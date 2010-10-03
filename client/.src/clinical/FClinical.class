@@ -20,6 +20,7 @@
 
 'These temporarly probably need removal at some stage
 Private FMetaData As New FDocumentMetaData
+Private Deleted_Document_keys As Collection 
 Private synonyms As Collection 
 Private currentobservations As Collection 
 Public currentTemporaryWebbrowserHTMLFilename As String 'temporary file being displayed in browser window
@@ -270,9 +271,8 @@ Public Sub Init()
    form_clinical = Me
    FPDF = New FPdf(Vbox_PDF)
    ScratchPad = New FScratchPad(VboxScratchPad)
-   FMetaData = New FDocumentMetaData(VboxScratchPad)
    modEditAreaHelpers.EditArea_SetTextBoxes_ReadOnly(FMetaData.VBox_EditArea)
-   With FMetaData
+    With FMetaData = New FDocumentMetaData(VboxScratchPad)
        .HBox_UserObservationName.visible = True
        .lblDocumentDate.text = "Date Collected"
        .Hbox_Requested.Visible = True
@@ -282,12 +282,12 @@ Public Sub Init()
        .lblMeasure.text = " Allow Patient Access "
        .txtUserObservationName.ReadOnly = False  
        .HBox_HealthIssue.Visible = True   
-    '  .lblAllStaff.Visible = False
        .chkAllStaff.Visible = False  
-       .Set_Embedded_Form_Name("Inbox")
+       .Set_Embedded_Form_Name("Clinical")
        .HBox_Author.Visible = False   
-       .visible = False  
-   End With
+        .visible = False  
+    End With
+   obs = New Observer(FMetaData.tbSave) As "Document_Metadata_Save"
    Form_ExportClinical = New FExportClinical(vBoxWorkSpace)
    Form_ExportClinical.Visible = False 
    ScratchPad.txtScratchPad.Enabled = False   
@@ -302,18 +302,21 @@ Public Sub Init()
      .bEmbeddedHelp = True
    End With
    obs = New Observer(FHelp.BtnClose) As "tbHelp_Close"
-   obs = New Observer(FPDF.tbClose) As "pdfViewer_Close"
+   obs = New Observer(FPDF.tbClose) As "pdfViewerClose"
    Layout_Form()
    Settings_Load()
+   ' For Each Printer_name In const.available_printers
+   '    cmbPrinters.Add(printer_name)
+   ' Next
    synonyms = modInboxDBI.Sender_User_Synonyms_get()
 End
 
 
-Public Sub pdfViewer_Close()
+Public Sub pdfViewerClose_click()
    'Not really a close, just a hide  
   Stop Event
-  Vbox_PDF.Visible = False
-  
+ 
+  UnFiled_Document_Metadata_Show(False)
 End
 
 Public Sub patient_load_record(patient As Collection) 
@@ -474,7 +477,8 @@ Public Sub Refresh_Section_Instance(section As Integer)
           ' cvwRequests_Refresh()
             modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwRequests)
       Case const.cSection_Referrals
-           cvwReferrals_Refresh()
+           currentconsult.Refresh("letters_received")  
+           cvwReferrals_Fill()
       Case Const.cSection_Recalls
            RecallLists_Refresh()
       Case Else
@@ -718,7 +722,7 @@ Public Sub cvwAllergies_Refresh()
 End
 
 
-Public Sub cvwReferrals_Refresh()
+Public Sub cvwReferrals_Fill()
     '-------------------------------------------------------------
     'NAME     : cvwReferrals_Refresh()
     'PURPOSE  : Displays the patients outgoing referral letters
@@ -889,6 +893,7 @@ Public Sub txtSearch_GotFocus()
    WorkspaceEditor.Visible = True 
    Vbox_PDF.Visible = False    
    vBoxWebBrowser.Visible = False    
+   Deleted_Document_keys = New Collection 
 End
 Public Sub Patient_Picture_Clear()
    '---------------------------------------------
@@ -1531,6 +1536,9 @@ Public Sub TabStrip_Lists_MouseUp()
    If IsNull(currentconsult) Then Return 
    Select Case TabStrip_Lists.Index
    Case cListRequests
+      If FMetaData.Visible = True Then
+         UnFiled_Document_Metadata_Show(False)
+      Endif
       If cvwRequests.Visible Then
          TabStrip_Lists.ToolTip = "Display available results"
          cvwRequests.Visible = False
@@ -1553,23 +1561,24 @@ Public Sub TabStrip_Lists_MouseUp()
       End If
       
    Case clistReferrals
-        If cvwReferrals.Visible Then
-            '-----------------------------------------------------------------------
-            'Have been viewing referrals we wrote, so toggle to the incoming letters
-            '-----------------------------------------------------------------------
-            cvwReferrals.Visible = False  
-            cvwLettersReceived.Visible = True
-            TabStrip_Lists.ToolTip = "Display Letter Inbox"
-           ' 'lblTabListsHeading.Text = "Letters Inbox"  'pig
-            currentconsult.Refresh("letters received")
-            lblLettersWritten.text = "Documents Received"
-            cvwLettersReceived_Refresh
-        Else
-          cvwReferrals.Visible = True  
-           lblLettersWritten.text = "Letters Written"
-          cvwLettersReceived.Visible = False 
-         cvwReferrals_Refresh()
-        End If 
+        tbLetters_Click()
+        ' If cvwReferrals.Visible Then
+        '     '-----------------------------------------------------------------------
+        '     'Have been viewing referrals we wrote, so toggle to the incoming letters
+        '     '-----------------------------------------------------------------------
+        '     cvwReferrals.Visible = False  
+        '     cvwLettersReceived.Visible = True
+        '     TabStrip_Lists.ToolTip = "Display Letter Inbox"
+        '    ' 'lblTabListsHeading.Text = "Letters Inbox"  'pig
+        '     currentconsult.Refresh("letters received")
+        '     tbLetters.text = "Documents Received"
+        '     cvwLettersReceived_Fill
+        ' Else
+        '   cvwReferrals.Visible = True  
+        '    tbLetters.text = "Letters Written"
+        '   cvwLettersReceived.Visible = False 
+        '  cvwReferrals_Refresh()
+        ' End If 
    Case clistMeasurements
          currentconsult.Refresh("measurements_available")  
         
@@ -1595,12 +1604,14 @@ Public Sub cvwMeasurements_Refresh(Optional filter As String)
    End If
 End
 
-Public Sub cvwLettersReceived_Refresh()
-   '-----------------------------
-   'Show all letters in the inbox
-   '-----------------------------
+Public Sub cvwLettersReceived_Fill(Optional bRefresh As Boolean = False)
+   '-----------------------------------------------------------------------
+   'Show all letters in the inbox, if bRefresh is true then reload them all
+   '-----------------------------------------------------------------------
     Dim x As Integer                      'for readability = key
     Dim letters_received As Collection 
+    Dim bSkip As Boolean
+    
     With cvwLettersReceived                       '3 columns
       .Clear()
       .Columns.count = 3
@@ -1614,13 +1625,27 @@ Public Sub cvwLettersReceived_Refresh()
     'pasted in an invisible CR \n line, which causes the list to
     'span muliple lines, so fix this 
     '-------------------------------------------------------------- 
-    currentconsult.Refresh("letters_received")   
-    For Each letters_received In currentconsult!letters_received
-      x = letters_received!pk_document
-      cvwLettersReceived.Add(x, 0)
-      cvwLettersReceived[x][0] = Format(letters_received!date_created, "dd/mm/yyyy")
-      cvwLettersReceived[x][1] = Replace$(letters_received!tag_user, "\n", "")
-      cvwLettersReceived[x][2] = letters_received!originator
+    If bRefresh Then currentconsult.Refresh("letters_received")   
+    For Each letters_received In currentconsult!letters_received                 
+       x = letters_received!pk_document 
+      If txtDocumentFilterAuthor.text <> "" Then
+          'User wants to filter by author  
+        If Not InStr(Lower(letters_received!originator), Trim(Lower(txtDocumentFilterAuthor.text))) Then
+           bskip = True
+        Else
+          bskip = False 
+       End If
+      End If
+      If bskip = False Then 
+         cvwLettersReceived.Add(x, 0)
+         cvwLettersReceived[x][0] = Format(letters_received!date_created, "dd/mm/yyyy")
+         If letters_received!tag_user = "" Then
+            cvwLettersReceived[x][1] = "** UNFILED LETTER **"
+         Else
+            cvwLettersReceived[x][1] = Replace$(letters_received!tag_user, "\n", "")
+         End If
+         cvwLettersReceived[x][2] = letters_received!originator
+      End If   
     Next
  
   
@@ -2065,6 +2090,11 @@ Public Sub TabbedLists_Menu()
    Dim menuitem As Menu
    If Not currentconsult Then Return 
    Select Case Last.tag
+     
+      Case "letters received"
+           If cvwLettersReceived.count Then
+              mnuLettersReceived.Popup()
+           Endif
       Case "requests"
            If cvwRequests.count Then 
               mnuTabbedListRequest.Popup()
@@ -2147,12 +2177,68 @@ Public Sub mnuResultsReceived_Click()
          End If
      Case "display"
          Inbox_showResult()
+     Case "display as letter"
+         Document_Display_As_Letter()
      Case "print"
        'temp
        Print currentconsult!results_received[cvwResults.Item.Key]!pk_document
        '  modPrinting.Print_html_as_pdf(currentconsult!results_received[cvwResults.Item.Key]!html, const.PlainPaper_Printer)
    End Select
 End 
+
+Public Sub Document_Display_As_Letter()
+   '---------------------------------------
+   'Swaps display type from result to letter
+   '----------------------------------------
+   Dim D As New Collection 
+   cvwLettersReceived.MoveCurrent() 
+   D!pk_document = currentconsult!results_received[cvwResults.Item.Key]!pk_document
+   d!fk_lu_display_as = const.Document_Display_As_Letter
+   modArchiveDocumentsDBI.Save(currentconsult!results_received, cvwResults.Item.Key, D)
+   modDBConnect.CommitTrans()
+   cvwResults_Refresh()
+End
+
+Public Sub Document_Display_As_Result()
+   '---------------------------------------
+   'Swaps display type from letter to result
+   '----------------------------------------
+   Dim D As New Collection 
+   cvwLettersReceived.MoveCurrent() 
+   D!pk_document = currentconsult!letters_received[cvwLettersReceived.Item.key]!pk_document
+   d!fk_lu_display_as = const.Document_Display_As_Result
+   modArchiveDocumentsDBI.Save(currentconsult!letters_received, cvwLettersReceived.Item.key, D)
+   Deleted_Document_keys.Add(d!pk_document, Deleted_Document_keys.count)
+   modDBConnect.CommitTrans()
+   
+   cvwLettersReceived_Fill(True)
+End
+Public Sub Document_Delete()
+   '---------------------------------------
+   'Swaps display type from letter to result
+   '----------------------------------------
+   Dim D As New Collection 
+   cvwLettersReceived.MoveCurrent() 
+   With Message
+      .Title = "Delete Document"
+      If .Warning("Are you sure you wish to delete this document?\n\nPlease confirm.", "Yes", "No") = 2 Then Return 
+   End With
+  
+   D!pk_document = currentconsult!letters_received[cvwLettersReceived.Item.key]!pk_document
+   d!deleted = True
+   modArchiveDocumentsDBI.Save(currentconsult!letters_received, cvwLettersReceived.Item.key, D)
+   modDBConnect.CommitTrans()
+   
+   cvwLettersReceived_Fill(True)
+End
+Public Sub Document_Print(pages As String)
+  
+  If pages = "single" Then
+    
+  Endif
+  
+  
+End
 
 Public Sub mnuResultGraphable_Click()
    Dim GraphableItem_Data As New Collection 
@@ -2323,6 +2409,28 @@ Public Sub tbPatientPicture_Menu()
   mnuPatientPhoto.Popup()
 
 End
+Public Sub mnuLettersReceived_Click()
+
+  Select Case Last.tag
+    Case "help"            'show help for this section 
+    Case "columns"         'adjust and save column widths
+    Case "fonts"           'adjust and save font
+    Case "display"         'show the letter
+    Case "print"           'print the letter'
+    Case "file as result"  'change fk_lu_display as to const.Document_Display_As_Result
+          Document_Display_As_Result()
+    Case "delete"          'mark this as deleted
+         Document_Delete()
+    Case "edit"            'edit the metadata
+    Case "link"            'link to a health issue
+    Case "print single"
+          Document_Print("single")
+    Case "print all"
+          Document_Print("all")
+  End Select
+  
+End
+
 Public Sub mnuPatientPhoto_Click()
   
   Select Case Last.tag
@@ -2522,6 +2630,10 @@ End Select
 End
 
 Public Sub Inbox_showResult()
+      '-------------------------------------------------------------------------------------
+      'Display a result - this could have been received as HL7 or as as scanned pdf or image
+      'It may or may not have been 'filed' - ie viewed in the users inbox
+      '-------------------------------------------------------------------------------------
       Dim bExcludeFTReport As Boolean
       Dim bExcludePIT As Boolean
       Dim display_style As Integer = const.Document_Display_As_Result
@@ -2530,6 +2642,7 @@ Public Sub Inbox_showResult()
       Dim sHtml As String 
       Dim SelectedDocument As Collection 
       Dim filename As String 
+      Dim file_extension As String
       
       If cvwResults.count = 0 Then Return 
       cvwResults.MoveCurrent()
@@ -2537,41 +2650,56 @@ Public Sub Inbox_showResult()
       '----------------------------------------------------
       'This will change with ian's new code, just temporary
       '----------------------------------------------------
-      If vBoxWorkSpace.Visible Then
-         vBoxWorkSpace.Visible = False        'remove the editor vbox    
-      End If
-      '------------------------------------------------------------------------------
-      'Determine what to display by file extension eg. could be pdf of a cardiac echo
-      '------------------------------------------------------------------------------
-      Select Case Lower(File.Ext(currentconsult!results_received[cvwResults.Item.Key]!source_file))
+      If vBoxWorkSpace.Visible = True Then vBoxWorkSpace.Visible = False        'remove the editor vbox    
+      '--------------------------------------------------------------------------------------------
+      'First, do we show the pdf viewer or the web-browser, FIXME:images not yet taken into account
+      '--------------------------------------------------------------------------------------------
+      file_extension = Lower(File.Ext(currentconsult!results_received[cvwResults.Item.Key]!source_file))
+      Select Case file_extension
         Case "pdf"
             vBoxWebBrowser.Visible = False
             Vbox_PDF.Visible = True
-             filename = currentconsult!results_received[cvwResults.Item.Key]!source_file
+            filename = currentconsult!results_received[cvwResults.Item.Key]!source_file
             FPDF.Load_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ filename)
-        Case Else
-           If IsNull(currentconsult!results_received[cvwResults.Item.Key]!html) Then
-              SelectedDocument = currentconsult!results_received[cvwResults.Item.Key] 'makes typing easier
-              bExcludeFTReport = SelectedDocument!exclude_ft_report
-              bExcludePIT = SelectedDocument!exclude_pit
-              fgc = SelectedDocument!abnormals_foreground_color
-              bgc = SelectedDocument!abnormals_background_color
-              display_style = SelectedDocument!fk_lu_message_display_style
-              CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & SelectedDocument!pk_document)
-              shtml = modHL7Process.Construct_HTML(currentconsult!patient, SelectedDocument, currentobservations, bExcludePIT, bExcludeFTReport, display_style, fgc, bgc)
-              sHtml = Replace(shtml, "%filingas%", cvwResults[cvwResults.Item.key][1])
-              sHtml = Replace(shtml, "** UNFILED **:", "")
-              WebBrowserNotes.html = shtml
-              VboxActiveProblemList.Visible = False
-              Vbox_MiniGraphs.Visible = False 
-              ScratchPad.Visible = False  
-              FMetaData.lblMeasure.text = "staff responsible"
-              FMetaData.Set_consult(currentconsult)
-              FMetaData.Edit(SelectedDocument, cvwResults.Item.Key)
-              FMetaData.bexit = True
-              FMetaData.txtUserObservationName.text = Replace$(cvwResults[cvwResults.Item.key][1], "** UNFILED **:", "")
-              FMetaData.txtUserObservationName.pos = 0
-              UnFiled_Document_Metadata_Show(True)   
+         Case Else
+            Vbox_PDF.Visible = False   
+            vBoxWebBrowser.Visible = True      
+      End Select
+      '----------------------------------------------------------------------
+      'Now determine if this has actually been viewed and filed by the doctor
+      'if it has, then there will be a user tag
+      'If not, then show the metadata for this document
+      '----------------------------------------------------------------------
+      If IsNull(currentconsult!results_received[cvwResults.Item.Key]!tag_user) Then
+            SelectedDocument = currentconsult!results_received[cvwResults.Item.Key] 'makes typing easier        
+            '-------------------------------------------------------------------
+            'Now, if a HL7 result, if no html - ie not yet file, create the html
+            '------------------------------------------------------------------
+            If IsNull(currentconsult!results_received[cvwResults.Item.Key]!html) And file_extension <> "pdf" Then 'FIXME: FOR PICTURES
+                 '  SelectedDocument = currentconsult!results_received[cvwResults.Item.Key] 'makes typing easier
+                   bExcludeFTReport = SelectedDocument!exclude_ft_report
+                   bExcludePIT = SelectedDocument!exclude_pit
+                   fgc = SelectedDocument!abnormals_foreground_color
+                   bgc = SelectedDocument!abnormals_background_color
+                   display_style = SelectedDocument!fk_lu_message_display_style
+                   CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & SelectedDocument!pk_document)
+                   shtml = modHL7Process.Construct_HTML(currentconsult!patient, SelectedDocument, currentobservations, bExcludePIT, bExcludeFTReport, display_style, fgc, bgc)
+                   sHtml = Replace(shtml, "%filingas%", cvwResults[cvwResults.Item.key][1])
+                   sHtml = Replace(shtml, "** UNFILED **:", "")
+                   WebBrowserNotes.html = shtml
+            End If
+            With FMetaData
+                  .lblMeasure.text = "staff responsible"
+                  .Set_Embedded_Form_Name("Clinical")
+                  .Set_consult(currentconsult)
+                  .Edit_New(currentconsult!results_received, cvwResults.Item.Key)
+                  .bexit = True
+                  .txtUserObservationName.text = Replace$(cvwResults[cvwResults.Item.key][1], "** UNFILED **:", "")
+                  .txtUserObservationName.pos = 0
+                  .HBox_ApplyChanges.visible = True
+                  .hBox_Urgency.Visible = False  'not needed as already in the patients notes
+              End With 
+              UnFiled_Document_Metadata_Show(True)                            'Setup FClinical gui to show the metadata form
               Select Case SelectedDocument!fk_lu_message_display_style        'If letter or results then
                 Case const.Document_Display_As_Letter                             'make some subtle changes to the gui wording
                    FMetaData.Hbox_Lateralisation.visible = False
@@ -2590,16 +2718,34 @@ Public Sub Inbox_showResult()
               End Select
              'fixme put in laterality
               FMetaData.bexit = False
-           Else
+       Else
                 WebBrowserNotes.html = currentconsult!results_received[cvwResults.Item.Key]!html
                 UnFiled_Document_Metadata_Show(False)
-           End If 
-            Vbox_PDF.Visible = False   
-            vBoxWebBrowser.Visible = True       'show the webrowser by making its vbox visible      
-       End Select
-
-                     
+       End If 
+       
 End
+Public Sub Document_Metadata_Save_Keypress()
+  
+  Stop Event
+  If key.code = key.Return Then
+    Document_Metadata_Save_Click()
+  Endif
+  
+End
+
+Public Sub Document_Metadata_Save_Click()
+   'User is modifying a document's metadata
+   'Apply the changes, remove the metadata gui and re-load the results list  
+     Stop Event
+     FMetaData.Save()
+     UnFiled_Document_Metadata_Show(False)
+     vBoxWebBrowser.Visible = False
+     WorkspaceEditor.Visible = True 
+     cvwResults_Refresh()  'Fixme, the appropriate one
+     cvwLettersReceived_Fill(True)
+End
+
+
 Public Sub UnFiled_Document_Metadata_Show(bShow As Boolean)
    '---------------------------------------------------------
    'Show or remove the unfiled document metadata gui elements
@@ -2613,7 +2759,8 @@ Public Sub UnFiled_Document_Metadata_Show(bShow As Boolean)
    Else
      VsplitClinical_RightPane.Layout = Settings["Main/VsplitClinical_RightPane"]
    Endif
-  
+  'vBoxWorkSpace.Visible = Not bshow
+ ' FPDF.Visible = bShow 
 End
 
 Public Sub Referral_Letter_Display()
@@ -2628,9 +2775,7 @@ Public Sub Referral_Letter_Display()
    '-------------------------------
     cvwReferrals.MoveCurrent()
     tbWebBrowserPrint.ToolTip = "Print the referral letter"
-  '  modHTML.Display_HTML(modConsultDBI.Images_Get(currentconsult!referrals_written[cvwReferrals.Item.key]!letter_html), WebBrowserNotes)
     WebBrowserNotes.html = modConsultDBI.Images_Get(currentconsult!referrals_written[cvwReferrals.Item.key]!letter_html)
-   
     vBoxWorkSpace.Visible = False        'remove the editor vbox
     vBoxWebBrowser.Visible = True        'show the webrowser by making its vbox visible
 End
@@ -2666,7 +2811,7 @@ Public Sub TabbedLists_Select()
            RequestForm_Display_Previous()
         End If 
       Case "letters received"        
-    
+      
        If vBoxWebBrowser.Visible Then
             Letter_Received_Display()
        End If
@@ -2729,24 +2874,75 @@ End
 
 Public Sub Letter_Received_Display()
       Dim filename As String 
-      
+      Dim file_extension As String
+      Dim SelectedDocument As Collection 
+    
      cvwLettersReceived.MoveCurrent()
      tbWebBrowserPrint.ToolTip = "Print the letter"
-     vBoxWorkSpace.Visible = False        'remove the editor vbox
-    
+     'vBoxWorkSpace.Visible = False        'remove the editor vbox
+      file_extension = File.Ext(currentconsult!letters_received[cvwLettersReceived.Item.key]!source_file)
      '--------------------------------------------------
      'check file extension to see what container to show
      '--------------------------------------------------
-     If Lower(File.Ext(currentconsult!letters_received[cvwLettersReceived.Item.key]!source_file)) = "pdf" Then
-       filename = currentconsult!letters_received[cvwLettersReceived.Item.key]!source_file
-        FPDF.Load_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ filename)
+     If vBoxWorkSpace.Visible = True Then vBoxWorkSpace.Visible = False        'remove the editor vbox    
+      UnFiled_Document_Metadata_Show(False) 'remove this it could be showing
+     If Lower(file_extension) = "pdf" Then
         vBoxWebBrowser.Visible = False
         Vbox_PDF.Visible = True
+        filename = currentconsult!letters_received[cvwLettersReceived.Item.key]!source_file
+        FPDF.Load_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ filename)
      Else
           Vbox_PDF.Visible = False  
           WebBrowserNotes.html = currentconsult!letters_received[cvwLettersReceived.Item.key]!html
           vBoxWebBrowser.Visible = True        'show the webrowser by making its vbox visible
      End If 
+      '----------------------------------------------------------------------
+      'Now determine if this has actually been viewed and filed by the doctor
+      'if it has, then there will be a user tag
+      'If not, then show the metadata for this document
+      '----------------------------------------------------------------------
+      If IsNull(currentconsult!letters_received[cvwLettersReceived.Item.key]!tag_user) Then
+          SelectedDocument = currentconsult!letters_received[cvwLettersReceived.Item.key]
+            '-------------------------------------------------------------------
+            'Now, if a HL7 result, if no html - ie not yet file, create the html
+            '------------------------------------------------------------------
+            With FMetaData
+                  .lblMeasure.text = " staff responsible "
+                  .Set_Embedded_Form_Name("Clinical")
+                  .Set_consult(currentconsult)
+                  .Edit_New(currentconsult!letters_received, cvwLettersReceived.Item.key)
+                  .bexit = True
+                  .txtUserObservationName.text = "** UNFILED **:"
+                  .txtUserObservationName.pos = 0
+                  .HBox_ApplyChanges.visible = True
+                  .hBox_Urgency.Visible = False  'not needed as already in the patients notes
+                  
+              End With 
+              UnFiled_Document_Metadata_Show(True)                            'Setup FClinical gui to show the metadata form
+              Select Case SelectedDocument!fk_lu_message_display_style        'If letter or results then
+                Case const.Document_Display_As_Letter                             'make some subtle changes to the gui wording
+                   FMetaData.Hbox_Lateralisation.visible = False
+                   FMetaData.chkCodeDocument.Visible = True
+                   FMetaData.txtDocumentDate.ReadOnly = False    'batched re-sent letters date <> date written.
+                   FMetaData.lblDocumentDate.text = "Letter Date"
+                   FMetaData.lblDocumentTag.text = "Seen By"
+                   FMetaData.lblUserTag.text = "Condition"
+                   FMetaData.txtDocumentTag.text = SelectedDocument!originator
+                   FMetaData.cmbDocumentTypes.index = -1
+                Case const.Document_Display_As_Result
+                   FMetaData.Hbox_Lateralisation.visible = True
+                   FMetaData.chkCodeDocument.Visible = False
+                   FMetaData.lblUserTag.text = "Request Name"
+                   FMetaData.txtDocumentDate.ReadOnly = False
+                   FMetaData.lblDocumentDate.text = "Request Date"
+              End Select
+             'fixme put in laterality
+              FMetaData.bexit = False
+     ' Else
+     '          WebBrowserNotes.html = currentconsult!results_received[cvwResults.Item.Key]!html
+     '          UnFiled_Document_Metadata_Show(False)
+       End If 
+   
 End
 
 Public Sub Tabbed_lists_Clear()
@@ -3102,9 +3298,33 @@ Public Sub HSplit_MeasurementLists_Resize()
 
 End
 
+Public Sub tbLetters_Click()
+      '----------------------------------------------------
+      'User clicks on button on top of list > switches list
+      '----------------------------------------------------
+    If cvwReferrals.Visible Then
+         '-----------------------------------------------------------------------
+         'Have been viewing referrals we wrote, so toggle to the incoming letters
+         '-----------------------------------------------------------------------
+         cvwReferrals.Visible = False  
+         tbLetters.text = "Documents Received"
+         cvwLettersReceived.Visible = True
+         TabStrip_Lists.ToolTip = "Display Letter Inbox"
+         cvwLettersReceived_Fill(True)
+    Else
+         cvwReferrals.Visible = True  
+         tbLetters.text = "Letters Written"
+         cvwLettersReceived.Visible = False 
+         currentconsult.Refresh("letters_received")  
+         cvwReferrals_Fill()
+    End If   
+
+End
 
 Public Sub tbResults_Click()
-      'temporary, just experimenting with using a button to switch lists
+      '----------------------------------------------------
+      'User clicks on button on top of list > switches list
+      '----------------------------------------------------
       
       If cvwRequests.Visible Then
          TabStrip_Lists.ToolTip = "Display available results"
@@ -3330,5 +3550,20 @@ If currentconsult Then
    currentconsult.Set(consultationtypes[cmbConsultationType.Index]!pk, "")
 End If   
 
+
+End
+
+
+Public Sub DocumentFilter_KeyRelease()
+   '-------------------------------------------------------------------------
+   'User wants to filter document on either tag or who sent them 'originator'
+   '-------------------------------------------------------------------------
+   Select Case Last.tag
+   Case "tag"
+     ' currentconsult.Refresh("letters received") 
+     ' cvwLettersReceived_Fill()
+   Case "author"
+      cvwLettersReceived_Fill()
+   End Select  
 
 End

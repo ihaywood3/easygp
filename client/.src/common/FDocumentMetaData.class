@@ -46,7 +46,8 @@ Private archive_dir As String
 Private Embedded_in_form_name As String 
 Private bDocumentNotLinkedToPatient As Boolean
 Private Document As Collection
-Private bReAllocating As Boolean 'if true, user in the indbox is reallocating the existing patient for the document to a new one.
+Private bReAllocating_Patient As Boolean 'if true, user in the indbox is reallocating the existing patient for the document to a new one.
+Public bReAllocating_Sender As Boolean 
 Private searchtext As String
 Private member As Collection 
 Private The_Collection As Collection 
@@ -61,6 +62,7 @@ Private fk_pasthistory As Integer
 Private Laterality As Integer 
 Private Staff As Collection 
 Private Staff_Member As Collection 
+Private Documents As Collection 
 
 Public Sub Set_Embedded_Form_Name(name As String)
    
@@ -68,10 +70,47 @@ Public Sub Set_Embedded_Form_Name(name As String)
    
 End
 
+Public Sub Set_Documents_Collection(c As Collection)
+  
+   Documents = c
+  
+End
+
+Public Sub Set_CurrentDocument(c As Collection)
+  
+ document = c
+  
+End
+
+
 Public Sub Form_Open()
    
    Init()
    
+End
+
+Public Sub Save()
+  '------------------------------------------------------------
+  'Saves changes to the currently displayed document's metadata
+  'documents = the old collection, set by form using this module
+  'Documents are never created in this module
+  '------------------------------------------------------------
+   Dim d As New Collection
+   
+   modDBConnect.BeginTrans()
+      d!concluded = True
+      d!pk_document = document!pk_document
+      d!fk_lu_display_as = Get_Display_Style()
+      d!html = document!html           'not displayed in this form, but by parent
+      d!tag_user = Trim(txtUserObservationName.text)
+      If get_laterality() > const.LateralityNone Then
+        d!tag_user = Replace$(d!tag_user, ";", " (" & UCase(const.LateralityText[get_laterality()]) & ");")
+      End If  
+      modArchiveDocumentsDBI.Save(documents, document!pk_document, D)
+       '  modConsultDBI.Make_Audit(Document_Make_Audit(document, const.cAuditAction_DocumentFiled), "documents", "documents")
+       
+      Document_SignOff(d)            'see documents.signed_off table > he who signed off this document
+   modDBConnect.CommitTrans()
 End
 
 Public Sub Get_Document_Type() As Integer
@@ -121,7 +160,7 @@ End
 Public Sub Init()
    
    modEditAreaHelpers.Resize_labels(VBox_EditArea, lblmeasure)
-   
+
    document_types = modUtil.LoadCombo(cmbDocumentTypes, modRequestsDBI.RequestTypes_Get(), "type")
    
    fk_urgency = const.UrgencyLevelRoutine
@@ -139,8 +178,9 @@ Public Sub EditArea_Clear()
    Dim iLastDisplayAs As Integer
    Dim iDocumentType As Integer = cmbDocumentTypes.Index 
    Dim bDocumentTypeLocked As Boolean
-   
    Dim AuthorType As Integer = Type_Document_Author
+
+   bReAllocating_Sender = False
    If chkLockDocumentType.value = True Then
        bDocumentTypeLocked = True
    Endif
@@ -160,11 +200,12 @@ Public Sub EditArea_Clear()
       iLastDisplayAs = iDisplay_As
       bDisplayAsLocked = True
    End If
-    modEditAreaHelpers.EditArea_Clear(VBox_EditARea)
+   modEditAreaHelpers.EditArea_Clear(VBox_EditARea)
    modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
    modEditAreaHelpers.EditArea_Clear(Vbox_Person)
    columnview1.Clear
    columnview1.Visible = False 
+   listview2.Visible = False  
    bDocumentNotLinkedToPatient = False  
    If Embedded_in_form_name = "Inbox" Then
       If bDocumentTypeLocked = True Then
@@ -282,7 +323,7 @@ End
 
 Public Sub Reallocate()
    
-   bReAllocating = True
+   bReAllocating_Patient = True
    txtPatient.Border = True
    With txtPatient
       .Foreground = Color.Red
@@ -310,7 +351,7 @@ Public Sub Edit(currentdocument As Collection, pk_view As Integer)
    EditArea_Clear()
    CurrentRequest = New Collection 
    bExit = True   
-   bReAllocating = False               
+   bReAllocating_Patient = False               
    document = New Collection
    document!pk_document = currentDocument!pk_document
    document!fk_patient = currentDocument!fk_patient
@@ -375,6 +416,7 @@ Public Sub Edit(currentdocument As Collection, pk_view As Integer)
    End If
    txtPatient.text = Trim(currentDocument!patient_title & " " & currentDocument!patient_firstname & " " & currentDocument!patient_surname)
    Try lblBirthdate.text = Format(currentDocument!patient_birthdate, "dd/mm/yyyy")
+ ' Try lblBirthdate2.text = lblBirthdate.text 'stupid I know, but acts as an identical spacer
    txtStreet.text = currentDocument!patient_street
    txtSuburb.text = currentDocument!patient_town & " " & currentDocument!patient_postcode
    
@@ -432,6 +474,138 @@ Public Sub Edit(currentdocument As Collection, pk_view As Integer)
    
 End
 
+Public Sub Edit_New(old_documents As Collection, pk_view As Integer)
+   
+   Dim bits As String[]
+   Dim sString As String 
+   
+   Documents = old_documents
+   EditArea_Clear()
+   CurrentRequest = New Collection 
+   bExit = True   
+   bReAllocating_Patient = False               
+   document = New Collection
+   document!pk_document = Documents[pk_view]!pk_document
+   document!fk_patient = Documents[pk_view]!fk_patient
+   Try fk_patient = Documents[pk_view]!fk_patient 'may not exist
+   document!fk_unmatched_patient = Documents[pk_view]!fk_unmatched_patient
+   document!fk_staff_filed_document = Documents[pk_view]!fk_staff_filed_document
+   document!fk_staff_destination = Documents[pk_view]!fk_staff_destination
+   document!source_file = Documents[pk_view]!source_file
+   document!md5sum = Documents[pk_view]!md5sum
+   document!imported_time = Documents[pk_view]!imported_time
+   document!date_requested = Documents[pk_view]!date_requested
+   document!date_created = Documents[pk_view]!date_created
+   document!tag = Documents[pk_view]!tag
+   document!comment_on_document = Documents[pk_view]!comment_on_document
+   document!provider_of_service = Documents[pk_view]!msh_sending_entity
+   document!patient_access = Documents[pk_view]!patient_access
+   document!concluded = Documents[pk_view]!concluded
+   document!fk_lu_type = Documents[pk_view]!fk_lu_provider_type
+   document!fk_lu_urgency = Documents[pk_view]!fk_lu_urgency 
+   document!fk_blob = Documents[pk_view]!fk_blob
+   document!fk_lu_message_display_style = Documents[pk_view]!fk_lu_message_display_style
+   document!provider_type = Documents[pk_view]!provider_type
+   document!organisation_category = Documents[pk_view]!organisation_category
+   document!person_category = Documents[pk_view]!person_category
+   If Not IsNull(document!fk_staff_destination)
+      With txtRecipient
+         .Border = False
+         .Foreground = Color.Black
+         .Font.Bold = False
+         .ReadOnly = True
+      End With
+      With lblStaffResponsible
+         .text = "Staff Responsible"
+         .Font.bold = False
+         .Foreground = Color.Black
+      End With
+      txtRecipient.text = Documents[pk_view]!staff_destination_title & " " & Documents[pk_view]!staff_destination_wholename    
+   Else
+      txtRecipient.Border = True
+      With txtRecipient
+         .Foreground = Color.Red
+         .Font.Bold = True
+         .ReadOnly = False  
+         .SetFocus()
+      End With
+      With lblStaffResponsible
+         .text = "STAFF ??"   
+         .foreground = Color.red  
+         .Font.bold = True
+      End With
+   End If
+   If Documents[pk_view]!fk_lu_message_display_style = 1 Then  'allow editing of tag if it is a letter
+      rbDisplayAsLetter.value = True
+      txtDocumentTag.ReadOnly = False
+      lblDocumentTag.text = "From"
+      cmbDocumentTypes.index = -1
+   Else
+      rbDisplayAsResult.value = True
+      txtDocumentTag.ReadOnly = True 
+      '---------------------------------------------------------------------------------
+      'Attempt to match the combo box on basis of the category of organisation or person
+      '---------------------------------------------------------------------------------
+   End If
+   txtPatient.text = Trim(Documents[pk_view]!patient_title & " " & Documents[pk_view]!patient_firstname & " " & Documents[pk_view]!patient_surname)
+   Try lblBirthdate.text = Format(Documents[pk_view]!patient_birthdate, "dd/mm/yyyy")
+   lblBirthdate2.text = lblBirthdate.text 'stupid I know, but acts as an identical spacer
+   txtStreet.text = Documents[pk_view]!patient_street
+   txtSuburb.text = Documents[pk_view]!patient_town & " " & Documents[pk_view]!patient_postcode
+   
+  ' sString = Trim(Replace(Documents[pk_view]!provider_type, "provider", "", gb.IgnoreCase))
+  ' sSTring = UCase(Left(sSTring)) & Right(sSTring, Len(sSTring) - 1)
+  ' Try cmbDocumentTypes.index = cmbDocumentTypes.Find(sSTring)
+   
+ '  If Error Then cmbDocumentTypes.index = -1 'the document may have no designated provider type
+   txtSender.text = Documents[pk_view]!msh_sending_entity
+   Try txtDocumentDate.text = Format(Documents[pk_view]!date_created, "dd/mm/yyyy")
+   Try txtDateRequested.text = Format(Documents[pk_view]!date_requested, "dd/mm/yyyy")
+   txtDocumentTag.text = document!tag
+   txtComment.text = document!comment_on_document
+   txtFilename.text = Document!source_file
+   
+   Select Case document!fk_lu_urgency 
+      Case const.UrgencyLevelRoutine
+         rbUrgencyRoutine.value = True
+      Case const.UrgencyLevelModerate
+         rbUrgencyModerate.value = True
+      Case const.UrgencyLevelUrgent
+         rbUrgencyUrgent.value = True
+   End Select
+   
+   If Not IsNull(document!fk_patient)
+      With txtPatient
+         .Border = False
+         .Foreground = Color.Black
+         .Font.Bold = False
+         .ReadOnly = True
+      End With
+      With lblSearchFor
+         .text = "Patient"
+         .Font.bold = False
+         .Foreground = Color.Black
+      End With
+      
+   Else
+      txtPatient.Border = True
+      With txtPatient
+         .Foreground = Color.Red
+         .Font.Bold = True
+         .ReadOnly = False  
+         .SetFocus()
+      End With
+      With lblSearchFor
+         .text = "PATIENT ??"   
+         .foreground = Color.red  
+         .Font.bold = True
+      End With
+   End If
+   
+   If Documents[pk_view]!fk_patient Then mnuHealthIssues_Show()
+   bExit = False  
+   
+End
 Public Sub Timer1_Timer()
    
    Patient_Find()
@@ -520,6 +694,7 @@ Public Sub Patient_Show(currentPatient As Collection)
    
    Try txtPatient.text = currentPatient!firstname & " " & currentPatient!surname
    Try lblBirthdate.text = Format(currentPatient!birthdate, "dd/mm/yyyy")
+   lblBirthdate2.text = lblBirthdate.text 'stupid I know, but acts as an identical spacer
    txtStreet.text = currentPatient!street
    txtSuburb.text = currentPatient!town & " " & currentPatient!postcode
    fk_patient = currentPatient!fk_patient
@@ -538,7 +713,7 @@ Public Sub Patient_Show(currentPatient As Collection)
    
    If Embedded_in_form_name = "Inbox" Then 
       
-      FInbox.reload_patient(bReAllocating)
+      FInbox.reload_patient(bReAllocating_Patient)
       
    End If  
    Select Case Type_Document_Author
@@ -761,6 +936,7 @@ Public Sub EditArea_TextBox_Change()
             txtStreet.text = ""
             txtSuburb.text = ""
             lblBirthdate.text = ""
+            
             columnview1.Visible = False   
          Endif
       Case "user name"
@@ -769,7 +945,9 @@ Public Sub EditArea_TextBox_Change()
             lastpos = 0
             request_items_text = ""
          End If
-         FInbox.Document_Filed_As_Update(Last.text)
+         If Embedded_In_Form_Name = "FInbox" Then 
+             FInbox.Document_Filed_As_Update(Last.text)
+         End If
    End Select
    
 End
@@ -846,7 +1024,9 @@ Public Sub ColumnView1_DblClick()
    Select Case Last.tag.tag
       Case "user name"
          RequestItem_Selection("accept", txtUserObservationName)
-         FInbox.Document_Filed_As_Update(txtUserObservationName.text)
+         If Embedded_In_Form_Name = "FInbox" Then 
+             FInbox.Document_Filed_As_Update(txtUserObservationName.text)
+         End If   
       Case "patient"
          Patient_Select()
       Case "staff member"
@@ -1155,6 +1335,9 @@ Public Sub Person_Selection(action As String, Optional calling_control As String
          End If
          SendingPerson = The_Collection[listview2.Item.key]
          SendingPerson_Display()
+      If Embedded_in_form_name = "Inbox" Then 
+                FInbox.Document_Reload()
+     End If
    End Select
    
 End
@@ -1429,7 +1612,7 @@ Public Sub Organisation_Select()
    SendingOrganisation = Organisations[listview2.item.key]
    Organisation_Display()
    If Embedded_in_form_name = "Inbox" Then 
-      FInbox.Reload_Organisation()
+      FInbox.Document_Reload()
    Endif
 
 End
@@ -1534,10 +1717,10 @@ Public Sub EditArea_TextBox_Activate()
    Select Case Last.tag
       Case "document date"
          If Embedded_In_Form_Name = "Inbox" Then Return 
-         FArchiveDocuments.tbFile_SetFocus()
+         If Embedded_in_form_name = "Scanning" Then FArchiveDocuments.tbFile.SetFocus()
       Case "user name"  
-         If Embedded_In_Form_Name = "Scanning" Then Return 
-         FInbox.tbFile_SetFocus()   
+         If Embedded_In_Form_Name = "Inbox" Then FInbox.tbFile.SetFocus()   
+         If Embedded_in_form_name = "Clinical" Then tbSave.SetFocus()
    End Select
    
 End
@@ -1618,6 +1801,7 @@ Public Sub rbDisplayAs_Click()
          txtDocumentTag.text = Replace(txtDocumentTag.text, "result", "letter")
       Endif
       Hbox_Lateralisation.visible = False
+      cmbDocumentTypes.index = -1
    Endif
 
 End
@@ -1630,4 +1814,188 @@ Public Sub Sender_Find()
    Type_Document_Author = const.contacttype_person
    Person_Selection("get")
    
+End
+
+
+Public Function Document_File_Request() As Boolean
+ '   '-----------------------------------------------------------------------------------------------
+ '   'Sign off the current document after some validation
+ '   'If the patient was previously un-matched, update the appropriate tables to indicate resolution
+ '   'Update the documents.signed-off table and the documents table
+ '   '-----------------------------------------------------------------------------------------------
+ '   Dim sMsg As String
+ '   Dim Audit As Collection 
+ '   Dim bExists As Boolean
+ '   Dim fk_patient As Integer
+ '   Dim fk_unmatched_patient As Integer
+ '   Dim fk_document As Integer
+ '   Dim fk_lu_request As Integer 'fixme
+ '   Dim D As New Collection
+ '   Dim S As Collection 
+ '   Dim sql As String 
+ '   Dim laterality As Integer
+ '   If cvwInboxDocuments.count = 0 Then Return 
+ '   '----------------------------------------------
+ '   '1: If patient is unmatched - do not allow save
+ '   '----------------------------------------------
+ '   If Unmatched_Patient() Then Return 
+ '   If FMetaData.cmbDocumentTypes.index = - 1 Then
+ '      FMetaData.cmbDocumentTypes.SetFocus()
+ '      Return False
+ '   Endif
+ '   cvwInboxDocuments.MoveCurrent()
+ '   smsg = "Observation name:" & cvwInboxDocuments[cvwInboxDocuments.item.key][1] & "\n" 
+ '   smsg &= "User equivalent :" & Trim(FMetaData.txtUserObservationName.text) & "\n\n"
+ '               "Often the name used by a company, i.e the name which it  delivers back, is not 'user-friendly' and dosn't correspond to the message content, nor what you ordered in the first place.\n\n" 
+ '              "We have attempted to match what you ordered, and outstanding requests are listed underneath the text of this message.\n\n"
+ '              "To make it easier to view your messages later on, you should type an equivalent user name "
+ '              "in the textbox labelled 'User name', or alternatively click on one or more names from what you ordered, to make the match.\n\n" 
+ '              "For example, a pathology result returned as 'Biochemistry', may have been ordered as "
+ '              "'UEC;LFTs', which is pretty obvious if you examine the text of the message.\n\n" 
+ '              "If you cannot match from your ordering, then if you type in the user name textbox, a popup list will appear, you can choose one or more "
+ '              "entries from the list sequentially, though you can use free text.\n\n" 
+ '              "Note, by convention, request names are separated by  ';' delimiter character.\n\n"
+ '              "If the message is a letter from a specialist, you should type some sort of summary -"
+ '              " e.g Operation report:cholecystectomy."
+ '   '--------------------------------------------------------------------------------------------------------------
+ '   '2: If Either the user or the system hasn't made a match of a user-name to the delivered name, don't allow save
+ '   '--------------------------------------------------------------------------------------------------------------
+ '   If Trim(FMetaData.txtUserObservationName.text) = "" Then
+ '       Message.Title = "Matching Delivered Request to What was Ordered"
+ '       Message.info(sMsg)
+ '       FMetaData.txtUserObservationName.SetFocus()
+ '       If Tabstrip1.index <> Metadata Then
+ '          Tabstrip1.Index = Metadata
+ '       End If  
+ '       Return 
+ '   End If
+ '   '------------------------------------------------------
+ '   '3:There is some sort of user-synonym, but is it valid?
+ '   '  Check all the user terms eg fbc;uec;lfts, make sure they  exit in the 
+ '   '  clin_requests.lu_requests table,and if we have not encountered them before for this
+ '   '  sending entity, add to the synonyms list
+ '   '------------------------------------------------------
+ '   modDBConnect.BeginTrans()
+ '   If Not InStr(Lower(SelectedDocument!tag), "scanned") Then 
+ '      If Not Synonyms_Update() Then
+ '          Message.Title = "User Term Not Found"
+ '          Message.info(sMsg)
+ '         Return 
+ '      End If
+ '   End If   
+ '   Unmatched_Patient_Reconcile()
+ '   Document_SignOff()
+ ' 
+ '  ' 
+ '  ' '------------------------------------------------ -----------------------------------
+ '  ' 'Next, ensure that user has entered a synonym for the sending entities document name
+ '  ' 'e.g if document's delivered tag is 'Biochemistry', the user equivalent could be UEC;
+ '  ' '------------------------------------------------------------------------------------
+ '  d!concluded = True
+ '  d!fk_lu_display_as = FMetaData.Get_Display_Style()
+ '  D!pk_document = SelectedDocument!pk_document
+ '  d!html = Document_HTML
+ '  pig
+ '  'FIXME - REMOVE THE CURRENT FILING TAG
+ ' '  sql = "Select fk_forms_request from clin_requests.vwRequestsOnForms "
+ ' '  sql &= "where fk_patient =  " & Selected_Inbox!fk_patient
+ ' '  sql &= " And fk_lu_request = " & fk_lu_request
+ ' '  sql &= "AND date = " & SelectedDocument!date_created
+ ' '  
+ '    '--------------------------------------------------------------------
+ '    'An attempt was made to match the delivered document with the request
+ '    'if a match was found, link the request form to the document
+ '    '--------------------------------------------------------------------
+ '    If bRequestMatchFound Then
+ '       d!fk_request = RequestOrdered!fk_forms_requests
+ '     End If
+ '    d!tag_user = Trim(FMetaData.txtUserObservationName.text)
+ '    If FMetaData.get_laterality() > const.LateralityNone Then
+ '      d!tag_user = Replace$(d!tag_user, ";", " (" & UCase(const.LateralityText[FMetaData.get_laterality()]) & ");")
+ '    End If  
+ '   '-------------------------------------------------------------------------------------
+ '   'Audit Trail - don't swap these lines as they are in chronological order for the audit
+ '   '-------------------------------------------------------------------------------------
+ '   modArchiveDocumentsDBI.Save(Selected_Inbox!documents, SelectedDocument!pk_document, D)
+ '   modConsultDBI.Make_Audit(Document_Make_Audit(SelectedDocument, const.cAuditAction_DocumentFiled), "documents", "documents")
+ ' 
+ '  ' '-------------------------------------------------------------------------------
+ '  ' 'Finally, as there can be more than one synonym for the same term, and whatever
+ '  ' 'we suggested, the user could have changed, need to double check
+ '  ' '-------------------------------------------------------------------------------
+ '  '  sMsg = "Select * from clin_requests.vwSynonyms where provider_request_name = " & SelectedDocument!tag
+ '  '  The_Collection = modDBConnect.exec_query_collection(smsg)
+ '  '  bExists = False 
+ '  '  For Each Member In The_Collection
+ '  '     If Member!user_request_name & ";" = Trim(FMetaData.txtUserObservationName) Then
+ '  '        bExists = True
+ '  '        Break
+ '  '     End If
+ '  '  Next
+ '  '  If Not bExists Then
+ '  '  
+ '  '  End If   
+ '   modDBConnect.CommitTrans()
+ '   dddd
+ '  '--------------------------------------------------------------------------
+ '  'finally remove this document from the  Selected_Inbox!documents collection
+ '  '--------------------------------------------------------------------------
+ '   Selected_Inbox!documents.Remove(iSelectedDocument)
+ '   cvwInboxDocuments.Remove(iSelectedDocument)
+ '   Return True
+End
+
+Public Sub Document_SignOff(Doc As Collection)
+   '--------------------------------------------------------------------
+   'Record who signed off the document, when and with comment (optional)
+   'FIXME NEEDS NOW A FDocumentMetadataDBI
+   '--------------------------------------------------------------------
+   Dim signed_off As New Collection 
+   signed_off!fk_staff = modDBConnect.currentUser!fk_staff
+   signed_off!fk_document = Doc!pk_document   
+   signed_off!date = Now()
+   signed_off!pk = modInboxDBI.Document_SignOff(signed_off)
+End
+
+
+
+' Public Sub ApplyChanges()
+'    '------------------------------------------------------------
+'    'Saves changes to the currently displayed document's metadata
+'    'document = the old collection
+'    '------------------------------------------------------------
+'    Dim d As New Collection
+'    
+'    modDBConnect.BeginTrans()
+' 
+'       d!concluded = True
+'       d!pk_document = document!pk_document
+'       d!fk_lu_display_as = Get_Display_Style()
+'       d!html = document!html           'not displayed in this form, but by parent
+'       d!tag_user = Trim(txtUserObservationName.text)
+'        If get_laterality() > const.LateralityNone Then
+'          d!tag_user = Replace$(d!tag_user, ";", " (" & UCase(const.LateralityText[get_laterality()]) & ");")
+'        End If  
+'       modArchiveDocumentsDBI.Save(documents, document!pk_document, D)
+'     '  modConsultDBI.Make_Audit(Document_Make_Audit(document, const.cAuditAction_DocumentFiled), "documents", "documents")
+'     
+'       Document_SignOff(d)            'see documents.signed_off table > he who signed off this document
+'     modDBConnect.CommitTrans()
+'   
+'   
+' End
+
+
+Public Sub tbSave_KeyPress()
+
+ ' If key.code = key.Return Then
+  '   tbApplyChanges_Click()
+ ' Endif
+
+End
+
+Public Sub tbSave_Click()
+   'This event is over-ridden by observer in FClinical
+  
+
 End

@@ -1,0 +1,303 @@
+' Gambas module file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Public $Result As Result
+Public sql As String
+
+'IAN CHECK THESET TOP 3  OUT, PROBABLY MORE EFFICIENT WAY TO DO?
+Public Function Document_SignOff(signed_off As Collection) As Integer
+  
+ Return modDBConnect.insert("documents.signed_off", signed_off)
+  
+End
+Public Sub Document_Mark_Deleted(pk_document As Integer)
+   '-------------------------------------------------------------
+   'Marks a document as deleted, doesn't remove it from the table
+   '-------------------------------------------------------------
+   modDBConnect.exec_query("Update documents.documents set deleted = True where pk = " & pk_document)
+End
+
+Public Sub Document_SetPatientFK(fk_patient As Integer, fk_unmatched_patient As Integer)
+  
+  modDBConnect.exec_query("Update documents.documents set fk_patient = " & fk_patient & "where fk_unmatched_patient =" & fk_unmatched_patient)
+  
+End
+
+Public Sub Document_Set_SendingEntity(fk_sending_entity As Integer)
+  
+' modDBConnect.exec_query("Update documents.documents set fk_patient = " & fk_patient & "where fk_unmatched_patient =" & fk_unmatched_patient)
+  
+End
+Public Sub Document_ReAllocate_To_Another_Patient(fk_document As Integer, fk_patient As Integer)
+   '-----------------------------------------------------------------------
+   'In situation where a document has been wrongly allocated to one patient  
+   'swap the fk_patient for the correct one
+   '-----------------------------------------------------------------------
+   modDBConnect.exec_query("Update documents.documents set fk_patient = " & fk_patient & " WHERE pk =" & fk_document)
+End
+
+Public Sub Unmatched_Patient_Mark_resolved(fk_unmatched_patient As Integer, fk_patient As Integer)
+     
+  sql = "UPDATE documents.unmatched_patients set  fk_real_patient = " & fk_patient
+  sql &= "  WHERE pk =" & fk_unmatched_patient
+  modDBConnect.exec_query(sql)
+
+  
+End
+Public Sub Request_GetPK()
+  
+  
+  
+End
+
+Public Sub Link_SendingEntity_Name_UserName(data As Collection) As Integer
+   Return modDBConnect.insert("clin_requests.lu_link_provider_user_requests", data)
+   
+  
+End
+
+Public Function Sender_User_Synonyms_get() As Collection
+  
+ Return modDBConnect.exec_query_collection("Select * from clin_requests.vwRequestSynonyms")
+  
+End
+
+ 
+
+Public Function category_get(txt As TextBox, lvw As ListView)
+   'FIXME - REMOVE THIS AND USE THE CONTACTS ROUTINES
+    If Trim(txt.text) = "" Then Return 
+    sql = "SELECT * FROM contacts.lu_categories "
+          "WHERE category ILIKE $$" 
+    sql &= Trim(txt.text) & "%$$  LIMIT 20"
+    $Result = modDBConnect.exec_query(sql)
+    lvw.Clear()
+    If $Result.count Then
+       For Each $Result
+           lvw.Add($Result!pk, $Result!category)
+       Next
+       lvw.tag = txt
+       lvw.Visible = True
+       lvw.Raise  
+    Else
+       lvw.Visible = False
+    End If 
+
+End
+Public Function occupation_get(txt As Textbox, lvw As ListView)
+    If Trim(txt.text) = "" Then Return 
+    sql = "SELECT * FROM common.lu_occupations "
+          "WHERE occupation ILIKE $$" 
+    sql &= Trim(txt.text) & "%$$  LIMIT 20"
+    $Result = modDBConnect.exec_query(sql)
+    lvw.Clear()
+    If $Result.count Then
+       For Each $Result
+           lvw.Add($Result!pk, $Result!occupation)
+       Next
+       lvw.tag = txt
+       lvw.Visible = True
+       lvw.Raise  
+    Else
+       lvw.Visible = False
+    End If 
+
+End
+
+Public Function Inbox_Staff_Get() As Collection
+  
+  Return modDBConnect.exec_query_collection("Select * from documents.vwInboxStaff")
+  
+End
+
+Public Function Save_HL7_FileHandling_Defaults(old_data As Collection, pk_view As Integer, newdata As Collection) As Integer
+      '---------------------------------------------------------------------------
+      'Saves information about sending entities and how to handle message defaults
+      '---------------------------------------------------------------------------
+      Dim data As New Collection
+   
+      If IsNull(newdata!pk_sending_entities) Then
+                 newdata!pk_sending_entities = modDBConnect.insert("documents.sending_entities", newdata)
+                Return newdata!pk_sending_entities
+      Else
+           modDBConnect.update("documents.sending_entities", old_data[pk_view], newdata, "pk_sending_entities")
+          Return 1
+      End If
+       
+End
+
+
+Public Function Get_Sending_Entities(filter As String) As Collection
+     Dim sql As String = "Select * from documents.SendingEntities "
+      If filter Then
+          sql &= "WHERE msh_sending_entity ILIKE $$%" & filter & "%$$"
+      End If
+      Return modDBConnect.exec_query_collection(sql)
+
+  
+  
+End
+
+Public Function Get_HL7_FileHandling_Defaults(Optional filter As String = "") As Collection
+      Dim sql As String = "Select * from documents.vwSendingEntities WHERE "
+      If filter Then
+          sql &= " msh_sending_entity ILIKE $$%" & filter & "%$$ AND "
+      End If
+      sql &= " msh_transmitting_entity <> 'snail mail'"
+      Return modDBConnect.exec_query_collection(sql)
+End
+
+
+Public Function Reconcile_Umatched_Staff(fk_unmatched_staff As Integer, fk_real_staff As Integer)
+   '--------------------------------------------------------------------------------------
+   'Documents schema is the only place an unmatched staff member could ever be found
+   'Where an unmatched staff has ended up in the documents table, and has been reconciled
+   'by sysadmin, fix up the keys to point to real staff member in documents schema
+   '--------------------------------------------------------------------------------------
+   Dim sql As String 
+    
+   sql = "UPDATE documents.unmatched_staff  SET fk_real_staff =" & fk_real_staff 
+   sql &= " WHERE pk = " & fk_unmatched_staff
+   modDBConnect.exec_query(sql)
+   sql = "UPDATE documents.documents  SET fk_staff_destination=" & fk_real_staff
+   sql &= ", fk_unmatched_staff= Null "
+   sql &= "WHERE fk_unmatched_staff = " & fk_unmatched_staff   
+   modDBConnect.exec_query(sql)
+End
+
+
+Public Sub Document_Get(pk As Integer) As Collection
+  
+  Return modDBConnect.exec_query_First("Select * from documents.vwDocuments where pk_document =" & pk)
+  
+End
+
+Public Sub View_AuditTrail(Optional fk_patient As Integer) As Collection 
+   '------------------------------------------------------------------
+   'if pk_scratchpad then display just the audit history for that item
+   'otherwise the entire scratchpad history
+   '------------------------------------------------------------------
+   Dim sql As String
+ 
+   sql = "Select * from audit.vwAudit where fk_schema =" & const.schema_documents
+   If fk_patient <> 0 Then
+      sql &= " AND fk_patient = " & fk_patient 
+   End If   
+   sql &= " ORDER BY date_audit"
+   Return modDBConnect.exec_query_collection(sql)
+End
+
+Public Function Get_Schema_Table_Keys(schema As String, table As String) As Collection
+  Dim sql As String 
+  sql = "SELECT "
+    "lu_tables.pk as fk_table, "
+    "lu_tables.fk_schema "
+    "FROM "
+    "audit.lu_schemas, "
+    "audit.lu_tables "
+    "WHERE "
+    "lu_tables.tablename = $$" & table & "$$ AND "
+    "lu_schemas.schema =  $$" & schema & "$$"
+   Return modDBConnect.exec_query_first(sql) 
+  
+  
+End
+
+Public Function Link_Document_Action(schema As String, table As String, fk_table_row As Integer, fk_document As Integer) As Integer
+   '---------------------------------------------------------------------  
+   'Until I come up with a better name, links a document to something
+   'done to that document, eg a scratch pad item was entered, or a recall
+   'This linkage then means the linked tables audit trail is accessable
+   '--------------------------------------------------------------------- 
+  Dim sql As String 
+  Dim data As Collection 
+  sql = "SELECT "
+    "lu_tables.pk as fk_table, "
+    "lu_tables.fk_schema "
+    "FROM "
+    "audit.lu_schemas, "
+    "audit.lu_tables "
+    "WHERE "
+    "lu_tables.tablename = $$" & table & "$$ AND "
+    "lu_schemas.schema =  $$" & schema & "$$"
+  data = modDBConnect.exec_query_first(sql)
+  If Not data.count Then Return 
+  data!fk_document = fk_document
+  data!fk_table_row = fk_table_row
+  data!pk_link_document_action = modDBConnect.insert("documents.link_document_action", data)
+End
+
+ 
+Public Function SendingEntity_GetPK(fk_lu_provider_type As Integer, fk_lu_message_display_style As Integer, originator As String, Optional fk_branch As Integer = 0, Optional fk_employee As Integer = 0, Optional fk_person As Integer = 0) As Integer
+   Dim sql As String
+   Dim R As Result
+   Dim SendingEntity As Collection 
+   Dim EmptyCollection As Collection 
+   '---------------------------------------------------------------------------------
+   'First, see if we have an entry in documents.sending_entities, if so, get the key
+   '   pk serial NOT NULL,
+   '   fk_lu_provider_type integer, -- The type of provider eg pathology provider, radiology provider
+   '   msh_sending_entity text NOT NULL, -- the entity sending, could be unintelligable eg a NATA/number or a recognizable name eg Hunter Radiology, however often bears no relationship to a real person or company
+   '   msh_transmitting_entity text, -- could be the sending entity or third party transmitter eg Medical Objects, or the name of a computer program generating the hl7
+   '   fk_lu_message_display_style integer NOT NULL, -- display as letter or result style
+   '   fk_branch integer,
+   '   fk_employee integer,
+   '   fk_person integer,
+   '   fk_lu_message_standard integer NOT NULL, -- hl7 or pit
+   '   exclude_ft_report boolean DEFAULT false, -- if true then no free text segments will be shown
+   '   exclude_pit boolean DEFAULT false, -- if contains PIT segments if true these will not be shown (often duplicated the hl7 data itself)
+   '   abnormals_foreground_color integer DEFAULT 16711680,
+   '   abnormals_background_color integer DEFAULT 16777215,
+   '----------------------------------------------------------------------------------
+   sql = "Select * from documents.sending_entities where "
+   If fk_branch <> 0 Then
+      sql &= "fk_branch=" & fk_branch
+      If fk_employee <> 0 Then
+         sql &= " AND fk_employee = " & fk_employee
+      Endif
+   Else
+      '------------------------------------------------------------------
+      'if not a company and employee must be just a sole trader or person
+      '------------------------------------------------------------------
+      If fk_person <> 0 Then sql &= " fk_person=" & fk_person
+   End If
+   R = modDBConnect.exec_query(sql)
+   SendingEntity = New Collection
+   If R.count Then
+      SendingEntity!fk_sending_entity = R!pk
+   Else
+      SendingEntity!msh_transmitting_entity = "snail mail"
+      If fk_lu_provider_type <> -1 Then
+         SendingEntity!fk_lu_provider_type = fk_lu_provider_type
+      End If   
+      SendingEntity!fk_lu_message_display_style = fk_lu_message_display_style 
+      SendingEntity!msh_sending_entity = originator
+      SendingEntity!fk_branch = fk_branch
+      SendingEntity!fk_employee = fk_employee
+      SendingEntity!fk_person = fk_person
+      SendingEntity!fk_lu_message_standard = const.document_message_standard_none 'this routine only used by scanned docs
+      SendingEntity!fk_sending_entity = modInboxDBI.Save_HL7_FileHandling_Defaults(EmptyCollection, 0, SendingEntity)
+      modDBConnect.CommitTrans()
+   Endif
+   Return SendingEntity!fk_sending_entity
+End
+
+Public Sub Document_Unallocate_Patient(fk_document As Integer)
+  
+    modDBConnect.exec_query("Update documents.documents set fk_patient = null WHERE pk =" & fk_document)
+
+  
+End

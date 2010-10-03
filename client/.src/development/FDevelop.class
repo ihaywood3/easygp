@@ -1,0 +1,271 @@
+' Gambas class file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'Don't delete this module = used to dump all schema and tables into the audit schema.
+'Updating this will break your database, so only do this if you know what you are doing.
+
+Public Sub Audit_Build_Table_List()
+   'Builds a list of all tables in the database
+   Dim sCommand As String
+   Dim sStem As String
+   Dim schema As Collection 
+   Dim oldtablename As String 'eg lu_type
+   Dim newtablename As String 'eg lu_sys_type
+   Dim x As Integer
+   Dim y As Integer
+   Dim tables As Collection
+   Dim table As Collection 
+   Dim fk_schema As Integer
+   Dim fk_table As Integer 
+   Dim $Result As Result
+   Dim Schemas As New Collection
+   Dim sql As String
+   '----------------------------------
+   'Notify user we are doing something
+   '----------------------------------
+   Inc Application.Busy
+   
+   lvMessages.Clear()
+   modDBConnect.BeginTrans()
+   modDBConnect.exec_query("delete From audit.lu_schemas")
+   sql = "ALTER SEQUENCE audit.lu_schemas_pk_seq"
+    " INCREMENT 1 MINVALUE 1 "
+    "MAXVALUE 9223372036854775807 RESTART 1 "
+    "CACHE 1 NO CYCLE"
+    modDBConnect.exec_query(sql)
+     modDBConnect.exec_query("delete From audit.lu_tables")
+   sql = "ALTER SEQUENCE  audit.lu_tables_pk_seq"
+    " INCREMENT 1 MINVALUE 1 "
+    "MAXVALUE 9223372036854775807 RESTART 1 "
+    "CACHE 1 NO CYCLE"
+    modDBConnect.exec_query(sql)
+   '----------------------------------------------------------------------
+   'First, get all the schema's in the database, display these in the list
+   'add these to a collection, except public
+   '---------------------------------------------------------------------- 
+   lvMessages.Add(lvMessages.count, "Exporting database structure.............")
+   $Result = modDBConnect.exec_query("select * FROM pg_namespace where nspowner <> 10")
+   lvSchemas.Clear()
+   For Each $Result
+      schema = New Collection 
+      schema!schema = $Result!nspname
+      schema!fk_schema = modDBConnect.insert("audit.lu_schemas", schema)
+      Schemas.Add(schema, schema!fk_schema)
+      lvSchemas.Add(schema!fk_schema, $Result!nspname)
+    Next
+   lblschemas.text = Schemas.Count 
+   '----------------------------------
+   'For each schema, get all the tables
+   '-----------------------------------
+   lvMessages.Add(lvMessages.count, "Exporting lookup table names.............")
+   lblschemas.text = Schemas.Count
+   lvTables.Clear()
+   For Each Schema In Schemas
+      $Result = modDBConnect.exec_query("Select * FROM pg_tables where schemaname =$$" & schema!schema & "$$")
+      For Each $Result
+         table = New Collection 
+         table!tablename = $Result!tablename
+         table!fk_schema = schema!fk_schema
+         table!fk_table = modDBConnect.insert("audit.lu_tables", table)
+         lvTables.Add(table!fk_table, $Result!tablename)
+      Next
+   Next
+   lblTables.text = lvTables.Count
+   lvMessages.Add(lvMessages.count, "Data export completed")
+   Dec Application.Busy
+   modDBConnect.CommitTrans()
+End
+
+Public Sub Button1_Click()
+   lblschemas.text = ""
+   lblTables.text = ""
+   
+Audit_Build_Table_List()
+  
+
+End
+
+
+
+Public Sub Button2_Click()
+   '---------------------------------------------------------------------------
+   'I put this in for temporary use as all my categories were screwed over time
+   'as there is some sort of bug in the category creation which I need to find
+   '----------------------------------------------------------------------------
+  Dim sql As String
+  Dim categories As Collection
+  Dim copycats As Collection 
+  Dim copycat As Collection 
+  Dim done As Boolean
+
+  Dim members As Collection
+  Dim member As Collection 
+  Dim old_category As String
+  Dim R As Result
+  Dim x As Integer
+  Dim category As Collection 
+  Dim new_pk_category As String 
+  
+  If Message.Warning("This will fix duplicated entries in the categories table.\n\nIt will not affect your current allocation of categories", "Yes", "No") = 2 Then Return 
+  sql = "Drop table contacts.lu_categories_new"       'try and drop it may not exist. at least it shouldn't
+  Try modDBConnect.exec_query(sql)
+  
+
+  sql = "CREATE TABLE contacts.lu_categories_new "        'create temporary table
+  sql &= "(pk  serial primary key,category text NOT NULL)"
+    modDBConnect.exec_query(sql)
+  'copy all 'provider' named categories over first to the new table  
+  sql = "Select * from contacts.lu_categories where category ILIKE '%provider' order by pk"
+  categories = modDBConnect.exec_query_collection(sql)
+  copycats = modDBConnect.exec_query_collection(sql)
+  For Each category In categories
+         'fist check it's not one we have saved
+          done = False
+          For Each copycat In copycats
+             If Lower(Trim(copycat!category)) = Lower(Trim(category!category)) Then
+                 If copycat!exists = True Then
+                    done = True
+                    Break
+                 Endif
+              Endif
+         Next
+        If Not done Then 
+            sql = "insert into contacts.lu_categories_new(category) values('" & category!category & "')"
+            modDBConnect.exec_query(sql)
+            For Each copycat In copycats
+             If Lower(Trim(copycat!category)) = Lower(Trim(category!category)) Then
+                 copycat!exists = True
+             Endif
+       
+         Next
+           
+     End If
+  Next
+  'Next read all categories not a provider
+  sql = "Select * from contacts.lu_categories order by pk"
+  categories = modDBConnect.exec_query_collection(sql)
+  copycats = modDBConnect.exec_query_collection(sql)
+  For Each category In categories
+         'fist check it's not one we have saved
+     If InStr(Lower(category!category), "provider") = False Then 
+          done = False
+          For Each copycat In copycats
+             If Lower(Trim(copycat!category)) = Lower(Trim(category!category)) Then
+                 If copycat!exists = True Then
+                    done = True
+                    Break
+                 Endif
+              Endif
+          Next
+          If Not done Then 
+            sql = "insert into contacts.lu_categories_new(category) values('" & category!category & "')"
+            modDBConnect.exec_query(sql)
+            For Each copycat In copycats
+             If Lower(Trim(copycat!category)) = Lower(Trim(category!category)) Then
+                 copycat!exists = True
+             Endif
+       
+          Next
+      End If
+    End If
+  Next   
+  modDBConnect.CommitTrans() 
+ 
+  'Now to fix all the tables contacts.data_branches, data_persons, data_employees
+  members = modDBConnect.exec_query_collection("Select * from contacts.data_branches")
+  For Each member In members
+     sql = "Select * from contacts.lu_categories where pk = " & member!fk_category        'for each branch get its fk_category
+     R = modDBConnect.exec_query(sql)
+     If R.count = 0 Then
+       Message.Warning("missing category")
+     Else
+        old_category = R!category                                                        'assuming dosn't fail
+        sql = "Select * from contacts.lu_categories_new where category ILIKE $$" & old_category & "$$"  'get new category pk
+        R = modDBConnect.exec_query(sql)
+        If R.count = 0 Then
+            Message.Warning("missing new category")
+        Else
+           new_pk_category = R!pk                                                            'then update the old table with new pk
+           sql = "Update contacts.data_branches set fk_category = " & new_pk_category & " where pk=" & member!pk
+           modDBConnect.exec_query(sql)
+        Endif
+     Endif
+   Next
+  members = modDBConnect.exec_query_collection("Select * from contacts.data_persons")
+  For Each member In members
+    'not every person has a category - eg all imported patients
+    If Not IsNull(member!fk_category) Then 
+         sql = "Select * from contacts.lu_categories where pk = " & member!fk_category        'for each branch get its fk_category
+         R = modDBConnect.exec_query(sql)
+         If R.count = 0 Then
+           Message.Warning("missing category")
+         Else
+            old_category = R!category                                                        'assuming dosn't fail
+            sql = "Select * from contacts.lu_categories_new where category ILIKE $$" & old_category & "$$"  'get new category pk
+            R = modDBConnect.exec_query(sql)
+            If R.count = 0 Then
+                Message.Warning("missing new category")
+            Else
+               new_pk_category = R!pk                                                            'then update the old table with new pk
+               sql = "Update  contacts.data_persons set fk_category = " & new_pk_category & " where pk=" & member!pk
+               modDBConnect.exec_query(sql)
+            Endif
+         Endif
+     End If
+   Next
+    members = modDBConnect.exec_query_collection("Select * from contacts.data_employees")
+    For Each member In members
+    If Not IsNull(member!fk_category) Then 
+         sql = "Select * from contacts.lu_categories where pk = " & member!fk_category        'for each branch get its fk_category
+         R = modDBConnect.exec_query(sql)
+         If R.count = 0 Then
+           Message.Warning("missing category")
+         Else
+            old_category = R!category                                                        'assuming dosn't fail
+            sql = "Select * from contacts.lu_categories_new where category ILIKE $$" & old_category & "$$"  'get new category pk
+            R = modDBConnect.exec_query(sql)
+            If R.count = 0 Then
+                Message.Warning("missing new category")
+            Else
+               new_pk_category = R!pk                                                            'then update the old table with new pk
+               sql = "Update contacts.data_employees set fk_category = " & new_pk_category & " where pk=" & member!pk
+               modDBConnect.exec_query(sql)
+            Endif
+         Endif
+     End If
+   Next 
+ '------------------------------------------------------------------------------
+ 'Now wipe the original contacts lu_categories table, copy back the altered data
+ '------------------------------------------------------------------------------
+  modDBConnect.exec_query("Delete from contacts.lu_categories")      'Now wipe the contacts lu_categories table
+  sql = "ALTER SEQUENCE contacts.lu_categories_pk_seq "              'reset the index to the start
+  sql &= " INCREMENT 1 MINVALUE 1 "
+  sql &= "MAXVALUE 9223372036854775807 RESTART 1 "
+  sql &= "CACHE 1 NO CYCLE"
+  modDBConnect.exec_query(sql)
+  sql = "INSERT INTO contacts.lu_categories(pk,category) "
+  sql &= "SELECT * from contacts.lu_categories_new order by pk"     'copy back the fixed data
+  modDBConnect.exec_query(sql)
+  sql = "Select count(pk) from contacts.lu_categories_new"
+  R = modDBConnect.exec_query(sql)
+  
+  sql = "ALTER SEQUENCE contacts.lu_categories_pk_seq RESTART " 'reset starting pk
+  sql &= R!count + 1
+  modDBConnect.exec_query(sql)
+  sql = "drop table contacts.lu_categories_new"
+  modDBConnect.exec_query(sql)
+modDBConnect.CommitTrans()
+  Message.Info("Finished refurbishing the category table")
+End

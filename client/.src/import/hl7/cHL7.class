@@ -1,0 +1,244 @@
+' Gambas class file
+' Copyright (C) 2010 Dr. Ian Haywood
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Private segments As String[]
+Private segment_parsed As String[]
+Private curr As Integer
+Private codeset As String = "ISO-8859-1" ' the Windows charset: sadly a safe assumption
+Property Read Number As Integer
+Property Read Segment As String
+
+
+Public Sub _new(txt As String)
+  Dim i As Integer
+  If txt = "" Then Return
+  If Left$(txt, 1) = "/" Then ' it's a filename
+    txt = File.Load(txt)
+  Endif
+  segments = Split(txt, "\r")
+  If segments.Length = 1 Then
+     segments = Split(txt, "\n")
+  Endif
+  If segments.Length > 1 Then
+     If Left$(segments[1], 1) = "\n" Then ' naughty, naughty, someone's using MS-DOS style newlines
+        For i = 1 To segments.Length - 1
+           segments[i] = Right$(segments[i], -1)
+        Next
+     Endif
+  Endif
+  curr = 0
+  segment_parsed = Null
+End Sub
+
+Public Function Get_segments() As String[]
+  
+  'please leave in just for a while
+  Return segments 
+  
+End
+
+Private Function Number_Read() As Integer
+  
+  Return curr
+  
+End
+
+Private Function Segment_Read() As String
+  
+  Return Left$(segments[curr], 3)
+  
+End
+
+Public Function Next(find_segment As String, Optional end_segment As String = "***", end_segment2 As String = "***", end_segment3 As String = "***") As Boolean
+  Dim segname As String
+  
+  If IsNull(segment_parsed) And Left$(segments[curr], 3) = find_segment Then
+    Return True
+  Endif
+  Do 
+    If curr >= segments.Length - 1 Then
+      Return False
+    Else
+      curr = curr + 1
+      segname = Left$(segments[curr], 3)
+      If segname = end_segment Or segname = end_segment2 Or segname = end_segment3 Then
+        curr = curr - 1
+        Return False
+      Else
+        If segname = find_segment Then
+          segment_parsed = Null
+          Return True
+        Endif
+      Endif
+    Endif
+  Loop
+End 
+
+
+Public Function _get(field As Integer, Optional subfield As Integer = -1) As String
+  Dim subfields As String[]
+ 'field -= 1 FIXME RICHARD ACTIVATE THIS LINE AFTER YOU CHANGE ALL THE SEGEMENT CONSTANTS
+  If IsNull(segment_parsed)
+    segment_parsed = Split(Conv$(segments[curr], codeset, Desktop.Charset), "|")
+  Endif
+  If field >= segment_parsed.Length Then
+    Return ""
+  Endif
+  If subfield = -1 Then
+    Return segment_parsed[field]
+  Else
+    subfields = Split(segment_parsed[field], "^")
+   Try Return subfields[subfield]
+  ' Try Return subfields[subfield]
+   If Error Then Return ""
+  Endif
+
+End
+
+' this is quick convience function to unpack a complex field into a collection
+
+Public Function GetField(field As Integer, names As String[]) As Collection
+   Dim subfields As String[]
+   Dim coll As New Collection
+   Dim i As Integer
+
+  subfields = Split(Me[field], "^")
+  For i = 0 To Min(subfields.Count - 1, names.Count - 1)
+      coll[names[i]] = subfields[i]
+  Next
+  Return coll
+End
+
+Public Function GetFieldAsName(field As Integer) As String
+   Dim subfields As String[]
+  
+   If Me[field] = ""
+      Return ""
+   Endif
+   subfields = Split(Me[field], "^")
+   Return subfields[modHL7Constants.RQ_Provider_Title] & " " & subfields[modHL7Constants.RQ_Provider_Firstname] & " " & subfields[modHL7Constants.RQ_Provider_Surname] 
+   
+End
+
+Public Function GetNameAsCollection(field As Integer, fname As String) As Collection  'temp remove fname
+   Dim subfields As String[]
+   Dim C As New Collection 
+   Dim bits As String[]
+   Dim r As Collection 
+   
+   If Me[field] = ""
+      Return C
+   Endif
+   subfields = Split(Me[field], "^")
+   Select Case subfields.Length
+      Case 1
+        c!wholename = subfields[0]
+        Return c
+      Case 2
+         'assume idiocy eg HAPS (John Hunter)
+        ' c!wholename = subfields[modHL7Constants.RQ_Provider_Surname] 
+        'This is HAPS crap - usually like this Dr J Smith
+         bits = Split(subfields[modHL7Constants.RQ_Provider_Surname], " ")
+         Select Case bits.Count
+         Case 2
+            c!provider_number = subfields[0]
+            c!firstname = Replace$(bits[0], ".", " ")
+            c!surname = bits[1]
+         Case 3
+            c!provider_number = subfields[0]
+            c!title = Replace$(bits[0], ".", " ")
+            c!firstname = Replace$(bits[1], ".", " ")
+            c!surname = bits[2]
+         End Select
+         Return c
+      Case 3
+      Case 4
+      Case Else
+            '----------------------------------------------------------------------
+            'Ian problem here: some hl7 has names like this Dr^PETER SMITH
+            'but others genuinely have a space in the surname eg De Lyall^Fred^^^Dr
+            'this falls over
+            'This also crashes this segment:
+            'UUH^UNIFIED HEALTHCARE^^^^^^^LOCNATA2203|
+            'Haps has some like 458332T^DR R Terry ^^^^^^^^^^^^^^^(12 of these ^~458332T
+            'I don't think there is  a good solution here
+            '-----------------------------------------------------------------------
+            c!provider_number = subfields[modHL7Constants.RQ_Provider_Provider_Number]
+            c!firstname = subfields[modHL7Constants.RQ_Provider_Firstname]
+            c!surname = subfields[modHL7Constants.RQ_Provider_Surname] 
+            c!title = subfields[modHL7Constants.RQ_Provider_Title]
+            '----------------------------------------------------------------------------------------------------
+            'ok, we could be fucked here  has some like 458332T^DR R Terry ^^^^^^^^^^^^^^^(12 of these ^~458332T
+            'Last penultimate last ditch effort, look up by provider number
+            '----------------------------------------------------------------------------------------------------
+            If c.count <> 4 Then
+                  r = modDBConnect.exec_query_first("Select * from admin.vwstaffinclinics where provider_number= $$" & c!provider_number & "$$")
+                   If IsNull(r) Then
+                        'really last ditch, sometimes they stick a zero in front of a0 provider number which may not be needed
+                         If Left(c!provider_number) = "0" Then
+                           c!provider_number = Right(c!provider_number, Len(c!provider_number) - 1)
+                          r = modDBConnect.exec_query_first("Select * from admin.vwstaffinclinics where provider_number= $$" & c!provider_number & "$$")
+                         End If
+                         If Not IsNull(r) Then
+                           c!firstname = r!firstname
+                           c!surname = r!surname
+                           c!title = r!title                        
+                         End If
+                   Else
+                        c!firstname = r!firstname
+                        c!surname = r!surname
+                        c!title = r!title
+                   End If
+             End If
+           Return C
+      End Select
+  ' End If
+End
+
+Static Public Function FreeText_Format(ft As String) As String
+  
+  Dim substs As String[]
+  Dim i As String
+  'Eliminate some crappy formatting eg _Hba1c, _Glucose, _PSA
+  substs = ["_BHCG PREG VIRTUAL", "_Creatinine Clearance", "_Cardiac markers", "_Hba1c", "_Glucose", "_PSA", "Routine Biochemistry", "_HAEMATOLOGY", "_BLOOD BANK", "_Hepatitis B Serology", "_Iron Studies", "_B12/Folate/RCF", "_Renin/Aldosterone", "_FERTILITY VIRTUAL", "_Thyroid Function", "_Rubella Serology", "_APOLIPOPROTEINS", "_URINE Drug Screen", "_Hepatitis Serology", "_Syphilis"] 
+
+  For Each i In substs
+     ft = Replace$(ft, i, "", gb.Text)
+  Next
+  ft = Replace$(ft, "\\T\\", " & ")
+  substs = ["Your reference", "Report date"]
+  For Each i In substs
+     ft = Replace$(ft, i, "<BR/><B>" & i & "</B>", gb.Text)
+  Next
+  ft = Replace(ft, "Comment:", "<B>Comment:</B><BR>", gb.Text)
+  substs = ["Consultation date", "Clinical History", "Findings", "Views", "ECG Summary:", "Clinical notes", "SUMMARY", "Impression", "Conclusion", 
+            "Comment ", "Summary", "Exam date:", "History:", "HISTORY:", "HISTORY", "Examination:", "MACROSCOPIC EXAMINATION", "MACROSCOPIC:", "CONCLUSION", "MICROSCOPIC EXAMINATION", "MICROSCOPIC:", "HISTOPATHOLOGY REPORT", "DIAGNOSIS", "Myocardial Perfusion Imaging",
+            "GLUCOSE TOLERANCE TEST:", "CULTURE", "SENSITIVITIES", "WOUND SWAB", "EYE SWAB", "GRAM STAIN", "CYTOPATHOLOGY REPORT", 
+            "URINE", "MICROSCOPY:", "CHEMISTRY:", "MOLECULAR BIOLOGY", "Site:", "Diagnostic Category:", "Specific Findings:", 
+            "Recommendation:", "Specimen Adequacy:", "Pap Test Register Consent:", "Dose given", "HEPATITIS SEROLOGY", "Recommendations:"]
+           
+  For Each i In substs
+     ft = Replace(ft, i, "<B>" & i & "</B>", gb.Text)
+  Next
+  ft = Replace(ft, "\\.br\\", "<BR>", gb.Text) 
+ 
+  ft = Replace(ft, "\\.nf\\", " ", gb.Text)
+  ft = Replace(ft, "\\h\\", "<B>", gb.Text)
+  ft = Replace(ft, "\\n\\", "</B>", gb.Text)
+  Return ft
+End
+
+

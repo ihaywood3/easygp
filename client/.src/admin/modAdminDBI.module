@@ -1,0 +1,169 @@
+' Gambas module file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Public Function Roles_Get() As Collection
+  
+  Return modDBConnect.exec_query_collection("Select pk as pk_role, role  from admin.lu_staff_roles order by role")
+  
+  
+End
+Public Function Staff_Get(Optional surname As String = "") As Collection 
+  'fixme: with possibility of running this across different clinics, need to
+  'fix the logon so that fk_clinic is passed to this
+  'at moment crudly  works for everyone
+  'different levels of staff inbox eg clerical/doctor/nurse, etc how to approach this??
+  Return modDBConnect.exec_query_collection("Select pk_view, title, wholename, surname From Admin.vwStaffInClinics order by surname LIMIT 50") 
+  
+End
+
+Private prefs As Collection
+
+Public Function Config_Get(config As String, Optional default_value As Variant = "no-default", local_setting As String = Null, fk_clinic As Integer = 0) As Variant
+  ' obtains a database-based configuration value
+  ' default_value is returned if not found
+  ' local_setting is a value to check in the Gambas Settings collection, this is also if present and no global config exist
+  ' fk_clinic is the associated clinic for the config
+  ' if unset, the clinic of the currently logged-in user is used
+  Dim v As String
+  
+  If fk_clinic = 0 Then
+    fk_clinic = modDBConnect.currentUser!fk_clinic
+  Endif
+  If IsNull(prefs) Then LoadPrefs()
+  If prefs.Exist(fk_clinic) And If prefs[fk_clinic].Exist(config) Then
+    Return prefs[fk_clinic][config]
+  Else
+    If IsNull(local_setting) Then
+      CheckDefault(config, default_value)
+      Return default_value
+    Else
+      v = Settings[local_setting, Null]
+      If IsNull(v) Then
+        CheckDefault(config, default_value)
+        Return default_value
+      Else
+        Return PrefCast(v)
+      Endif
+    Endif
+  Endif
+End
+
+Private Sub CheckDefault(config As String, def As Variant)
+  Dim s As String
+  
+  If def = "no-default" Then
+    ' special value, we shold crack it at this point
+    s = Subst$("Configuration option &1 unset when it should not be", config)
+    Log.WarningMsg(s)
+    Message.Error(Subst$("EasyGP needs the configuration option '&1' to be set, plus go to Global Settings in Admin tab and set it", config))
+    Error.Raise(s)
+  Endif
+  
+End
+
+
+
+Public Sub Config_Refresh()
+  
+  prefs = Null
+  
+End
+
+
+Private Sub LoadPrefs()
+  
+  Dim coll As Collection
+  
+  prefs = New Collection
+  For Each coll In modDBConnect.exec_query_collection("select * from admin.global_preferences")
+    If Not prefs.Exist(coll!fk_clinic) Then prefs[coll!fk_clinic] = New Collection
+       prefs[coll!fk_clinic][coll!name] = PrefCast(coll!value)
+  Next
+  
+End
+
+Private Function PrefCast(s As String) As Variant
+  Dim re As Regexp
+  
+  If s = "true" Then Return True
+  If s = "false" Then Return False
+  If s = "" Then Return Null
+  re = New Regexp(s, "^[0-9]+$")
+  If re.Offset <> -1 Then Return CInteger(s)
+  Return s
+End
+
+
+Public Sub Config_Save(fk_clinic As Integer, config As String, value As Variant)
+  Dim $result As Result
+  
+  If IsBoolean(value) Then
+    If value Then
+      value = "true"
+    Else
+      value = "false"
+    Endif
+  Else
+    value = Str$(value)
+  Endif
+  If value = "" Or value = "-1" Then
+    modDBConnect.exec_query(Subst$("delete from admin.global_preferences where fk_clinic = &1 and \"name\" = $$&2$$", fk_clinic, config))
+  Else
+     $result = modDBConnect.exec_query(Subst$("select 1 from admin.global_preferences where \"name\" = $$&1$$ and fk_clinic = &2", config, fk_clinic))
+     If $result.Count = 0 Then
+       modDBConnect.exec_query(Subst$("insert into admin.global_preferences (value,\"name\",fk_clinic) values ($$&1$$,$$&2$$,&3)", value, config, fk_clinic))
+     Else
+       modDBConnect.exec_query(Subst$("update admin.global_preferences set value=$$&1$$ where \"name\" = $$&2$$ and fk_clinic = &3", value, config, fk_clinic))
+     Endif
+  Endif
+End
+
+
+Public Function Clinics_Get() As Collection
+   '---------------------------------------------------
+   'Returns a collection of clinics in our organisation
+   '---------------------------------------------------
+   Return modDBConnect.exec_query_collection("Select * from admin.vwClinics")
+End
+
+Public Function Clinics_Setup() As Boolean
+  
+  'true if there are clinics in the database (i.e we need to run the wizard)
+  Dim coll As Collection
+  
+  coll = modDBConnect.exec_query_first("select count(*) as num from admin.clinics")
+  If coll!num > 0 Then
+    Return True
+  Else
+    Return False
+  Endif
+  
+End
+
+
+Public Function Clinic_Save(clinic As Collection) As Integer   
+   '-------------------------------
+   'save branch address as a clinic
+   '-------------------------------
+   If IsNull(clinic!fk_clinic) Then
+      clinic!fk_clinic = modDBConnect.insert("admin.clinics", clinic)
+   Else
+   End If
+   modDBConnect.CommitTrans()
+   Return clinic!fk_clinic
+  
+  
+End

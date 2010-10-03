@@ -1,0 +1,500 @@
+' Gambas class file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'
+'
+'clskSpell
+'March 30, 2008
+'Written by Maximillian Von Kloisterheim
+'
+'Use and Requirements
+'~~~~~~~~~~~~~~~~~~~~
+'You are expected to have aspell installed on your system. No aspell, no spelling!
+'When adding a word to the personal dictionary we dont actually get aspell to do it for us becuase it wont
+'exit properly, and the program ends up hanging about after everything has closed. Instead we write the
+'word directly to the dictionary ourselves.
+'POTENTIAL PROBLEM/BUG
+'If you have never used aspell, the file ".aspell.en.pws" might not be in your home folder, which could cause
+'a problem. I am *assuming* that aspell puts this file here even if its empty, but be aware of this just in case
+'you have problems with adding words
+'
+'You need to be using an Editor control - this code is designed to deal with the formatting etc, so other
+'types of text based controls will cause problems - Change the code a bit and it should work on any control
+'that can contain text
+'
+'From the form that contains the editor call the class like this:
+'
+'  DIM SCheck AS NEW clskSpell
+'  SCheck.EditorControlToCheck = TextEditorControl
+'  SCheck.TempFileForSpelling = "/home/max/.... myspelltemp.txt"
+'  SCheck.TempFileForErrors = "/home/max/.... myspelltemppp.txt"
+'  SCheck.StartSpelling
+'
+'The Temp files expect a full path and filename. These will be used BUT NOT deleted - It figures that you are
+'likely to do more than just a single spell check with whatever program this class is added to, so there is little
+'point in creating and deleting files like that - leave them where they are, use them in each application and they
+'will simply be re-used - If this changes for some reason then the KILL command can be issued directly after the
+'label DUNIT: at the end of the StartSpelling routine.
+'
+'Notes
+'~~~~~
+'There is only VERY rudimentary checking of the control that we are passed. As long as there IS a control
+'passed this code will continue to run. If that control is not an Editor control, expect to hit errors!
+'The contents of the temporary file variables are checked too, and if there is no path specified, the routine will
+'simply exit.
+'The code is not elegant (For now), and we cheat a bit to get the information back from aspell so we can process it.
+'To do this we save the text to be checked as a temporary file, then assign aspell to check this temp file and pipe
+'the results to another temporary file, which we load and process.
+'This means we don't need to worry about trying to hold up aspell long enough to open a window, choose a word
+'and correct the current one.
+'
+'
+'
+'
+'
+'
+'
+'DECLARATIONS
+'This is the object that the calling procedure must assign to the editor control that is to be spell checked
+Public EditorControlToCheck As Object
+'These are used to save the text in the editor object so that aspell can check it
+'and to save the results for us to load - full path and filenames please
+Public TempFileForSpelling As String
+Public TempFileForErrors As String
+'These are the controls that appear on the spelling form that is generated in the class
+Private SpellingForm As Object
+Private ThePanel As Object
+Private mButton1 As Object
+Private mButton2 As Object
+Private mButton3 As Object
+Private mButton4 As Object
+Private mLabel As Object
+Private mTBox As Object
+Private MList As Object
+'this array will hold the list of error lines reported by aspell
+Private TheErrorList As String[]
+'these are used during the spell check to hold and split the data returned by aspell
+'we set these up here because they are used in several routines
+Private WordStart As Integer
+Private WordLen As Integer
+Private CheckWord As String
+Private Drift As Integer
+'a boolean flag that can be set to cancel the spell check
+Private CancelSpell As Boolean 
+'These are used to store the format of the current word as we prepare to check it
+Private CurrentFormatBold As Boolean
+Private CurrentFormatItalic As Boolean
+Private CurrentFormatUnderline As Boolean
+Private CurrentFormatStrikeOut As Boolean
+Private CurrentFormatColor As Integer
+Private CurrentFormatFontName As String
+Private CurrentFormatFontSize As Integer
+'
+'
+'
+'
+'
+'
+'
+'===================================================
+'===================================================
+'===================================================
+'This is the routine that starts the whole thing - Kind of like the form_open in a form
+Public Sub StartSpelling()
+Dim aspell As process
+Dim i, x, frog As Integer
+Dim GetSuggestedWords, CUN, SPL, SPL2 As String[]
+Dim pos, holder As String
+Dim COD As String
+Dim JustTheText As String
+
+'Check that a control has been passed to us - there is currently NO checking to make sure that the
+'control is of the correct type
+If EditorControlToCheck = Null Then 
+    Message.Error("You Must Pass the Spell checker the name of an Editor!")
+    Return 
+Endif 
+
+'check the path names - if either of these is empty then dont even think of carrying on
+If TempFileForSpelling = "" Or TempFileForErrors = "" Then 
+    Message.Error("You must set the temporary filenames first!")
+    Return 
+Endif 
+
+'set this to false now - later it can be set to true to cancel the whole operation
+CancelSpell = False
+
+'Build the form
+BuildTheForm
+
+'Clear the array so we are ready for some data
+TheErrorList.Clear
+
+'Select the text and transfer it to the variable - this loses all the formatting shit that the textedit holds in 
+'its standard .text property
+EditorControlToCheck.SelectAll
+EditorControlToCheck.Copy
+EditorControlToCheck.Unselect
+JustTheText = Clipboard.Paste()
+
+'Replace any line feeds in the variable with a space- this makes aspell report the word positions as we expect to
+'get them in relation to the textedit control that is being checked
+COD = Replace(JustTheText, "\n", " ")
+JustTheText = COD
+
+'Save this data to a temp file
+File.Save(TempFileForSpelling, JustTheText)
+
+'Shell out to aspell, quoting the file we just saved and piping the spelling check to another temp file
+'Note that adding -H before pipe will stop aspell from trying to check HTML code (The underlying code
+'in the editor), but the positions are still out because aspell counts the html, even though you cant see it when you are
+'moving through the document - this is the reason why we don't just pass the control and check it directly
+Shell "aspell pipe <" & TempFileForSpelling & " >" & TempFileForErrors Wait
+
+'Load the temp file just created by aspell - this holds a list of the spelling mistakes and the suggestions that
+'aspell came up with
+LoadList
+
+'loop through the list we just loaded - these error lines look like this:
+'  & speling 25 33: spelling, spieling, sapling, spilling, spoiling, spooling, spline, spewing, spellings, pealing, peeling, sealing, selling, soling, spleen
+'BREAKDOWN:
+'The & denotes that this is an error line (a * indicates a correctly spelled word)
+'The first 'word' after the & is the wrongly spelled word
+'Next comes the number of suggestions aspell has found
+'Then the position in the text - In this case the start of the misspelled word is at position 33
+'Everything after the : is a suggested word
+For i = 0 To TheErrorList.Count - 1
+    'Get the first/next line in the array of errors
+    holder = TheErrorList[i]
+    
+    'split this line at the colon so that CUN[1] contains only the suggested words
+    CUN = Split(holder, ":")
+    
+    'Now split CUN[1] at the commas - GetSuggestedWords now holds all the suggested words
+    GetSuggestedWords = Split(CUN[1], ",")
+    
+    'Split the *original* error line at the commas - we are doing this to return the first item in the listing, which will
+    'give us (eventually) the position etc
+    SPL = Split(holder, ",")
+    
+    'Now loop through the suggested words and add them to the list on the spelling form
+    For x = 0 To GetSuggestedWords.Count - 1
+        mList.Add(Trim$(GetSuggestedWords[x]))
+    Next
+    
+    'Now split the first item in SPL - remember that this was the original error line split at the commas, so the first
+    'item contains the information we need about the positions of the errors, and also the first suggested word
+    SPL2 = Split(SPL[0], " ")
+    
+    'we can get the pos of the current error word by removing the : from item 3 in the array
+    pos = Replace$(SPL2[3], ":", "")
+    
+    'convert this into a variable now - it starts as a string so we need the value of it
+    frog = Val(pos)
+    
+    'set the position of the start of the word - note that on the first pass this will always be zero
+    'also note that in some instances Drift becomes negative, but this doesn't matter
+    WordStart = frog + Drift
+    
+    'now get the length of the word - we know its in SPL2[1]
+    WordLen = Len(SPL2[1])
+    
+    'and of course we want the actual word itself
+    CheckWord = SPL2[1]
+    
+    'Set this information on the spelling form
+    mLabel.Caption = CheckWord
+    mTBox.Text = CheckWord
+    
+    'Set the position to make sure it is INSIDE the word we are about to check
+    'We can then take a note of the formatting of the word, so this can be replicated when we
+    'replace it - without this the word will drop back to default formatting
+    EditorControlToCheck.Pos = WordStart + 1
+    CurrentFormatBold = EditorControlToCheck.Format.Font.Bold
+    CurrentFormatItalic = EditorControlToCheck.Format.Font.Italic
+    CurrentFormatUnderline = EditorControlToCheck.Format.Font.Underline
+    CurrentFormatStrikeOut = EditorControlToCheck.Format.Font.StrikeOut
+    CurrentFormatColor = EditorControlToCheck.Format.Color
+    CurrentFormatFontName = EditorControlToCheck.Format.Font.Name
+    CurrentFormatFontSize = EditorControlToCheck.Format.Font.Size
+    
+    'Select the offending word in the editor so that the user can see that something is actually being done
+    EditorControlToCheck.Select(WordStart, WordLen)
+    
+    'and finally show the spelling window as a modal one so that it holds up the loop we are currently in
+    'all of the other stuff is done inside the spelling form
+    SpellingForm.ShowModal
+    
+    'check that we don't want to cancel
+    If CancelSpell = True Then Goto DUNIT 
+    
+    'rebuild the form now, since we just closed it - I cant work out a way to do all this without the loop, otherwise
+    'we could have the replace button doing most of the work. As it is the modal form holds up the loop until the
+    'user clicks a button to ignore or replace the current word
+    BuildTheForm
+Next
+'this catches the form and destroys it since it has been created at the end of the loop
+'note that we don't put it at the start of the loop because it has to have been created before
+'then so that the data can be loaded into it
+SpellingForm.Delete
+
+'Its nasty, but using this label and the GOTO above we can drop out of the loop if we want to
+'but we have to jump here, rather than BREAKing, since the form will be closed when we get here
+'and an error would jump out when we tried to delete the form
+DUNIT:
+'If you choose to delete the temporary files you can safely do it here, just before we exit
+''KILL TempFileForSpelling
+''KILL TempFileForErrors
+End
+'
+'
+'
+'
+'
+'
+'
+'===================================================
+'===================================================
+'===================================================
+'The Add button
+Public Sub mButton3_Click()
+'Note that this is a bit of a hack - I couldnt get aspell to add the word itself AND exit gracefully enough to allow
+'the program to close, so I simply went directly to the personal dictionary that aspell uses, and added the
+'word to the end of it.
+Dim hFile As File
+hFile = Open "~/.aspell.en.pws" For Output Append 
+    Print #hfile, mTBox.Text
+Close #hFile
+SpellingForm.Close 
+End
+'
+'
+'
+'
+'
+'
+'
+'===================================================
+'===================================================
+'===================================================
+'The Cancel button
+Public Sub mButton4_Click()
+'Set this to true and Unselect the editor that we are checking
+'as soon as the form is closed CancelSpell will be checked and will
+'allow us to jump out of the loop
+CancelSpell = True
+EditorControlToCheck.Unselect
+SpellingForm.Close 
+End
+'
+'
+'
+'
+'
+'
+'
+'===================================================
+'===================================================
+'===================================================
+'The replace button
+Public Sub mButton2_Click()
+Dim OriLen, Newlen As Integer
+
+'First get the lengths of the original bad word and the new one we are replacing it with
+OriLen = WordLen
+Newlen = Len(mTBox.Text)
+
+'Now check to see the difference between the two words
+'note that if there is NO difference, nothing is done with Drift
+If OriLen < Newlen Then
+    'The original word is shorter than the new word, so set Drift by adding the difference between the two
+    Drift = Drift + (Newlen - OriLen)
+Else If OriLen > Newlen Then
+    'Here the original word is longer than the replacement, so we subtract the difference from Drift
+    Drift = Drift - (OriLen - Newlen)
+Endif 
+
+'Now that drift has been set we can select the offending word in the editor again (Its already selected 
+'but we do this to avoid errors) and then insert the new word, replacing the offending one
+EditorControlToCheck.Select(WordStart, WordLen)
+EditorControlToCheck.Insert(mTBox.Text)
+'Now reset the formatting according to the values we stored earlier
+EditorControlToCheck.Format.Font.Bold = CurrentFormatBold 
+EditorControlToCheck.Format.Font.Italic = CurrentFormatItalic 
+EditorControlToCheck.Format.Font.Underline = CurrentFormatUnderline 
+EditorControlToCheck.Format.Font.StrikeOut = CurrentFormatStrikeOut 
+EditorControlToCheck.Format.Color = CurrentFormatColor
+EditorControlToCheck.Format.Font.Name = CurrentFormatFontName 
+EditorControlToCheck.Format.Font.Size = CurrentFormatFontSize
+'close the spelling window because we are done now
+SpellingForm.Close
+End
+'
+'
+'
+'
+'
+'
+'
+'===================================================
+'===================================================
+'===================================================
+'The ignore button
+Public Sub mButton1_Click()
+'Ignore the current word
+SpellingForm.Close 
+End
+'
+'
+'
+'
+'
+'
+'
+'===================================================
+'===================================================
+'===================================================
+'List click to put the suggested word into the text box
+Public Sub mList_Click()
+mTBox.Text = mList[mList.Index].Text
+End
+'
+'
+'
+'
+'
+'
+'
+'===================================================
+'===================================================
+'===================================================
+'THE Spellingform Open routine
+Public Sub SpellingForm_Open()
+
+End
+'
+'
+'
+'
+'
+'
+'
+'===================================================
+'===================================================
+'===================================================
+'Routine to build the form and assign its events to this class
+Private Sub BuildTheForm()
+'THE FORM
+SpellingForm = New Form
+SpellingForm.Width = 301
+SpellingForm.Height = 294
+SpellingForm.Center
+SpellingForm.Caption = "Spelling Check"
+SpellingForm.Border = 1 'FIXED
+SpellingForm.SkipTaskbar = True
+SpellingForm.ToolBox = False
+SpellingForm.Arrangement = 5 'FILL
+SpellingForm.Padding = 5
+Object.Attach(SpellingForm, Me, "SpellingForm")
+
+'THE PANEL
+ThePanel = New Panel(SpellingForm)
+ThePanel.Border = 4 'ETCHED
+
+'THE BUTTONS
+mButton4 = New Button(ThePanel)
+mButton4.X = 203
+mButton4.Y = 245
+mButton4.width = 70
+mButton4.Height = 21
+mButton4.Caption = "Cancel"
+Object.Attach(mButton4, Me, "mButton4")
+'
+mButton3 = New Button(ThePanel)
+mButton3.X = 203
+mButton3.Y = 126
+mButton3.width = 70
+mButton3.Height = 21
+mButton3.Caption = "Add"
+Object.Attach(mButton3, Me, "mButton3")
+'
+mButton2 = New Button(ThePanel)
+mButton2.X = 203
+mButton2.Y = 70
+mButton2.width = 70
+mButton2.Height = 21
+mButton2.Caption = "Replace"
+Object.Attach(mButton2, Me, "mButton2")
+'
+mButton1 = New Button(ThePanel)
+mButton1.X = 203
+mButton1.Y = 14
+mButton1.width = 70
+mButton1.Height = 21
+mButton1.Caption = "Ignore"
+Object.Attach(mButton1, Me, "mButton1")
+
+'THE LABEL
+mLabel = New Label(ThePanel)
+mLabel.X = 14
+mLabel.Y = 14
+mLabel.width = 175
+mLabel.Height = 21
+mLabel.Border = 2 'Sunken
+
+'THE TEXT BOX
+mTBox = New TextBox(ThePanel)
+mTBox.X = 14
+mTBox.Y = 42
+mTBox.width = 175
+mTBox.Height = 21
+
+'THE LIST
+MList = New ListBox(ThePanel)
+MList.X = 14
+MList.Y = 70
+MList.width = 175
+MList.Height = 196
+Object.Attach(MList, Me, "MList")
+End
+'
+'
+'
+'
+'
+'
+'
+'===================================================
+'===================================================
+'===================================================  
+'Load the errorlist
+Public Sub LoadList()
+Dim hFile As File 
+Dim Holder As String
+
+hFile = Open TempFileForErrors For Input   
+  While Not Eof(hFile)
+    Line Input #hFile, Holder
+    If Holder <> "" Then
+      If Left$(Holder, 1) = "&" Then TheErrorList.Add(Holder)
+    Endif 
+  Wend 
+Close #hFile
+End
+
+
+
+
+

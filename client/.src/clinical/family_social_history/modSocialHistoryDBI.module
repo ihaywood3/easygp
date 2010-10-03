@@ -1,0 +1,107 @@
+' Gambas module file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Public Sub Import(cons As cConsult)
+  '-----------------------------------------------------
+  'FIXME Temporary, current used only when importin data
+  'fixme to be part of the usual saving of social history
+  '------------------------------------------------------
+  Dim sql As String
+  Dim $Result As Result
+  
+   sql = "INSERT into clin_history.data_social_history (fk_consult,history, responsible_person) "
+          "VALUES ("
+   sql &= cons.pk_consult & ",$$" & cons.patient.social_history.history & "$$,"
+   sql &= "$$" & cons.patient.social_history.responsible_person & "$$)"
+  ' Print sql
+   
+   $Result = modDbConnect.exec_query(sql)
+
+  
+End
+
+Public Function SocialHistory_Get(pk_patient As Integer) As collection 
+   '------------------------------------------------------------
+   'Gets the patients social history, ever only null or 1 record
+   '------------------------------------------------------------
+   Dim sql As String    
+   sql = "SELECT * FROM clin_history.vwSocialHistory "
+   sql &= "WHERE fk_patient =" & pk_patient 
+   Return modDBConnect.exec_query_collection(sql)
+End
+
+Public Sub Save(currentconsult As cConsult, pk_socialhistory As Integer, history As Collection) As Integer
+   '-------------------------------------------------
+   'Save or update the current social history
+   'creates an audit trail for new or changed records
+   '-------------------------------------------------
+   Dim audit As New collection 
+   If pk_socialhistory < 0 Then 
+      '----------------------------------------------------------------------------------
+      'If gets to here, there should be some text in either history or responsible person
+      '----------------------------------------------------------------------------------
+       history!fk_consult = currentconsult.GetPK()
+       history!pk_socialhistory = modDBConnect.insert("clin_history.social_history", history) 
+       Create_Audit_Summary(audit, history)
+       audit!fk_action = const.cAuditAction_Insert
+       audit!reason = "insert"
+
+    Else
+      '----------------------------------------------------------------------------
+      'save any changes to existing social history, returns false if nothing saved
+      'create audit trail if changes. If history!history <> "" Then
+      '----------------------------------------------------------------------------
+      If modDBConnect.update("clin_history.social_history", currentconsult!social_history[pk_socialhistory], history, "pk_socialhistory") Then ' save to backend and update the collection in RAM too
+        '-----------------------------------------------------------
+        'Not a new social history, edit the record 
+        'what was changed, for auditing purposes this will be hidden
+        '-----------------------------------------------------------
+        Create_Audit_Summary(audit, history)
+        audit!fk_action = const.cAuditAction_Change
+        audit!reason = "change"
+      End If
+   End If
+   If audit.count Then  
+      audit!fk_row = history!pk_socialhistory
+      audit!fk_consult = currentconsult.GetPK()
+      audit!fk_section = const.cSection_SocialHistory
+      modConsultDBI.Make_Audit(audit, "clin_history", "social_history")
+   End If   
+   modDBConnect.CommitTrans()
+   Return pk_socialhistory
+  
+End
+
+Public Sub Create_Audit_Summary(audit As collection, history As collection) 
+  
+     '----------------------------
+   'First tidy up the audit data
+   '----------------------------
+   audit.Add("", "data_summary")
+   If history!history <> "" Then
+    audit!data_summary &= history!history & "<BR>"
+   End If  
+   If history!responsible_person <> "" Then
+      audit!data_summary &= history!responsible_person
+   End If
+   '----------------------------------------------------------
+   'at this point could have a <"BR>" on the end for no reason
+   '----------------------------------------------------------
+   If Right(audit!data_summary, 4) = "<BR>" Then
+     audit!data_summary = Replace(audit!data_summary, "<BR>", "")
+   End If
+End
+

@@ -1,0 +1,355 @@
+' Gambas module file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Private $hconn As Connection
+Private bTransaction As Boolean
+Private my_current_user As Collection
+
+Property Read currentUser As Collection
+Property Read IsAdmin As Boolean
+Property Read IsConnected As Boolean
+
+Private Function timeDiff(startTime As Float) As String
+  
+  Dim diff As Float
+  
+  diff = Timer() - startTime ' actual difference in float seconds
+  diff = diff * 1000 ' milliseconds
+  If diff > 20 Then
+    Return Str$(Round(diff))
+  Else
+    If diff > 2 Then
+      Return Str$(Round(diff, -1))
+    Else
+      Return Str$(Round(diff, -2))
+    Endif
+  Endif
+  
+End
+
+
+Private Function IsConnected_Read() As Boolean
+  
+  Return Not IsNull($hconn)
+  
+End
+
+
+Private Function currentUser_Read() As Collection
+ 
+  Return my_current_user
+  
+End
+
+Public Function currentUser_FullName() As String
+  
+   Return my_current_user!title & " " & my_current_user!wholename
+  
+End
+
+
+Private Function IsAdmin_Read() As Boolean
+  
+  Return IsNull(my_current_user)
+  
+End
+
+
+Public Function dbConnect_global(host As String, database As String, login As String, password As String) As String
+  '-------------------------------------
+  'Attempts to connect to a database
+  'returns true if success, false if not
+  '-------------------------------------
+  $hconn = New Connection
+  
+  Try $hconn.Close
+  With $hconn
+    .Type = "postgresql"
+    .Host = host
+    .Login = login
+    .Password = password
+    .Name = ""
+  End With
+  $hconn.Name = database
+  $hconn.Open
+  $hconn.Exec("set datestyle = 'iso,dmy'") 
+  CheckDBVersion()
+  my_current_user = modConsultDBI.Staff_member_Get()
+  Return "success"
+Catch
+  Return DConv(Error.Text)
+
+End
+
+Private Sub CheckDBVersion()
+  Dim db_version As Collection
+  Dim app_version As New Collection
+  Dim s As String[]
+  Dim msg As String
+  
+  Try db_version = exec_query_first("Select lu_minor as minor, lu_major as major  from db.lu_version")
+  If Error Then
+    msg = Error.Text
+    If Left$(msg, 48) = "Query failed: ERROR:  schema \"db\" does not exist" Then
+      Error.Raise("The database is empty and must be set up properly on the remote system. See db/README in the EasyGP package")
+    Else
+      Error.Raise(msg)
+    Endif
+  Endif
+  If IsNull(db_version) Then
+    Error.Raise("No database version stored")
+  Endif
+  s = Split(Application.Version, ".")
+  app_version!major = CInt(s[0])
+  app_version!minor = CInt(s[1])
+  
+  If db_version!major <> app_version!major Or If db_version!minor < app_version!minor Then
+     msg = "You are running client version " & Application.Version
+     msg &= " but the database is version " & db_version!major & "." & db_version!minor
+     msg &= "\nThese are not compatible, you cannot login to this database." 
+     Log.PanicMsg(msg)
+     Message.Error(msg)
+     Error.Raise("Incompatible database version")
+  Endif 
+End
+
+
+
+Public Function BeginTrans() As Result
+
+  ' now a noop
+
+End
+
+Public Function RollBack() As Result
+   Dim $Result As Result
+   Dim startTime As Float
+  
+  If bTransaction Then
+    bTransaction = False
+    startTime = Timer() 
+    Try $Result = $hconn.Exec("ROLLBACK")
+    If Error Then 
+      Log.ErrorMsg(Error.Text)
+      Message.Error(Error.Text)   
+    Else
+      Log.DebugMsg(" ROLLBACK ( took " & timeDiff(startTime) & "msec )")
+    Endif 
+    Return $Result
+  End If  
+End
+
+Public Function CommitTrans() As Result
+  Dim $Result As Result
+  Dim startTime As Float
+  
+  If bTransaction Then
+    bTransaction = False
+    startTime = Timer() 
+    Try $Result = $hconn.Exec("COMMIT")
+    If Error Then 
+      Log.ErrorMsg(Error.Text)
+      Message.Error(Error.Text)   
+    Else
+      Log.DebugMsg(" COMMIT ( took " & timeDiff(startTime) & "msec )")
+    Endif 
+    Return $Result
+  End If
+End
+
+Public Function exec_query(sql As String) As Result
+  Dim $Result As Result
+  Dim prefix As String
+  Dim startTime As Float
+  Dim errtxt As String
+  
+  prefix = Lower$(Left$(sql, 6))     
+  startTime = Timer()
+  If Not bTransaction And prefix <> "select" Then
+    $hconn.Exec("BEGIN")
+    bTransaction = True 
+    Log.DebugMsg("begun transaction")
+  End If
+  Log.DebugMsg(sql)
+  Try $Result = $hconn.Exec(sql)
+  If Error Then 
+    errtxt = Error.Text
+    Log.ErrorMsg(errtxt)
+    Error.Raise(errtxt)
+  Else
+    Log.DebugMsg(" ( " & $Result.Count & " rows returned in " & timeDiff(startTime) & "msec )")  
+  Endif
+  Return $Result
+  
+End
+
+Public Function Select(table As String, field As String, v As Variant) As Collection
+  
+  Dim s As String
+  
+  If IsInteger(v) Then
+    s = " = " & Str$(v)
+  Else
+    s = " ilike $$" & Str$(v) & "%$$" 
+  Endif
+  Return exec_query_collection("select * from " & table & " where " & field & s)
+End
+
+
+' for queries where only 0 or 1 rows are expected
+' returns a collection representing the row or Null
+' if multiple rows returned it will bug out
+Public Function exec_query_first(sql As String) As Collection
+  
+  Dim $result As Result
+  Dim f As ResultField
+  Dim some_rows As New Collection
+  
+  $result = exec_query(sql)
+  If $result.Count = 0 Then Return Null
+  If $result.Count > 1 Then
+    Log.ErrorMsg("multiple rows shouldn't be returned") 
+    Error.Raise("multiple rows shouldn't be returned")
+  Endif
+  $result.MoveFirst
+  For Each f In $result.Fields
+   some_rows.Add($result[f.Name], f.Name)
+  Next
+  Return some_rows
+End
+
+
+Public Sub insert(table As String, data As Collection, Optional pk_name As String = "pk") As Integer
+   '--------------------------------------------------------------
+   'Inserts a new record into the table, returning its primary key
+   '--------------------------------------------------------------
+   Dim sql As String
+   Dim fieldslist As New String[]    '[data.count]
+   Dim valueslist As New String[]
+   Dim returned_row As Result
+   Dim field As Variant
+   For Each field In data
+     fieldslist.Push(data.Key)
+     If IsString(field) Then
+       If Left$(field, 5) = "BLOB:" Then
+           valueslist.Push($hconn.FormatBlob(File.Load((Right$(field, -5)))) & "::bytea")
+       Else
+         valueslist.Push($hconn.Subst("&1", field))
+       End If
+     Else
+        valueslist.Push($hconn.Subst("&1", field))
+     End If
+   Next
+   sql = "INSERT INTO " & table & " (" & fieldslist.Join(",") & ") VALUES (" & valueslist.Join(",") & ") RETURNING " & pk_name
+   returned_row = exec_query(sql)
+   Return returned_row[pk_name] 
+End
+           
+Public Function Role_Check_If_Exists(role As String) As Boolean
+   '---------------------------------------------------------
+   'Checks if a role (i.e user logon name) already exists
+   'Used when adding a staff member, eg from setupwizard
+   'returns TRUE if it does (!count = field, not record count
+   '---------------------------------------------------------
+   If modDBConnect.exec_query("select count(*) from pg_roles where rolname = $$" & role & "$$")!count Then
+      Return True
+   Else
+      Return False
+   End If
+End
+
+
+Public Function update(table As String, old_data As Collection, new_data As Collection, Optional old_pk_name As String = "pk", table_pk_name As String = "pk") As Boolean
+' updates a table by comparing old and new data and uploading the difference. At the end the new data is also copied back to old_data.
+' old_data can be Null, in which case all values in new_data are assumed to be changes
+' if no changes then no database query occurs
+' old_pk_name is the new of the primary key field in old_data. because this collection is coming from views, it is often
+' not "pk", such "pk_progress_note", or "pk_history" or suchlike and so often must be specified
+' table_pk_name is the name of the primary key in the underlying table, as it
+' is nearly always "pk", it is optional with this as a default.
+' returns True if a database action occurred, otherwise false
+  Dim changes As New String[]
+  Dim field As Variant
+  Dim field_as_str As String
+  Dim sql As String 'so I can see what is happening.
+  Dim old_pk As Integer
+  changes.Clear()
+  For Each field In new_data
+     If IsNull(old_data) Or If field <> old_data[new_data.Key] Then
+       If Not IsNull(old_data) Then
+         old_data[new_data.Key] = field ' copy back to old_data
+       Endif
+       If IsString(field) Then
+               If InStr(field, "BLOB:") Then
+                     changes.Push(new_data.Key & "=" & $hconn.FormatBlob(File.Load((Right$(field, -5)))) & ":: bytea ")       
+              Else
+                     changes.Push($hconn.Subst(new_data.Key & " = &1", field))
+            Endif
+       Else
+                 changes.Push($hconn.Subst(new_data.Key & " = &1", field))
+        
+        End If
+    End If
+  Next
+  If IsNull(old_data) Then
+    old_pk = new_data[old_pk_name]
+  Else
+    old_pk = old_data[old_pk_name]
+  Endif
+  If changes.Count > 0 Then
+     exec_query("UPDATE " & table & " SET " & changes.Join(",") & " WHERE " & table_pk_name & " = " & old_pk)
+     Return True
+  End If
+  Return False
+End
+
+
+Public Function exec_query_collection(sql As String) As Collection
+  ' perform a query and return result as a collection of collections
+  
+  Dim thelot As New Collection
+  Dim a_collection As Collection
+  Dim $result As Result
+  Dim resultfield As ResultField
+  Dim generic_pk As Variant 
+  Dim pk_field_present As Boolean
+
+  $result = exec_query(sql)
+  For Each $result
+    a_collection = New Collection
+    generic_pk = -1
+    For Each resultfield In $result.Fields
+      
+      If Not IsNull(resultfield.Name) Then
+         a_collection.Add($result[resultfield.Name], resultfield.Name) 
+         If Left$(resultfield.Name, 2) = "pk" Then
+           If Not IsNull($result[resultfield.Name]) Then
+             generic_pk = $result[resultfield.Name]
+             pk_field_present = True
+           Endif
+         End If
+     End If
+    Next 
+    If Not pk_field_present Then 
+       Message.info("Table in sql " & sql & " must have a field beginning with the letters pk\n Sorry, the program will now quit!")
+       Log.PanicMsg("Table in sql " & sql & " must have a field beginning with the letters pk")
+       Quit
+    End If 
+    thelot[generic_pk] = a_collection
+  Next
+  Return thelot
+End
+

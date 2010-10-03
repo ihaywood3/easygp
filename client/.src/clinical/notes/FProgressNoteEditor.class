@@ -1,0 +1,1789 @@
+' Gambas class file
+ ' Gambas class file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'-----------------------------------------------------------------------
+
+Public bBold As Boolean
+Public cp1 As Integer
+Private $Result As Result
+Public cp2 As Integer 
+Public sBP As String
+Public sMeasurement As String
+Public sWeight As String
+Public sHeight As String 'FIXME remove me back to patient
+Public pk_pastHistory As Integer 'temporary the pk of the past history item using this page.
+Public bExit As Boolean
+Public editor_contents As String 'fixme make me an array/push/pop
+Private dxPos As Integer
+Private dxText As String
+Public CurAt As Integer
+Public Paragraph_At As Integer
+Public character_at As Integer 
+Public iZoom As Integer
+Public default_Zoom As Integer
+Public check_state As Boolean
+Public FDraw As FDrawEditor
+Private Terms As Collection 
+Public FExcise As FProcedures
+Private hObs As Observer
+Public FMedicalCertificate As FMedicalCertificate
+Public EmbeddedForm As Object
+Public sShortCutText As String 
+Public CtrlDown As Boolean
+Public FnDown As Boolean
+Private copy_of_Editor_text As String
+Private data_changed As Boolean 'if true the content of the notes has changed.
+Private currentconsult As CConsult
+
+Public Sub Set_Copy_of_Editor_text(sText As String)
+
+  copy_of_Editor_text = sText  
+  
+End
+
+Public Sub Init(cons As CConsult)
+  
+  currentconsult = cons
+  
+End
+
+Public Function Get_Copy_of_Editor_text() As String
+
+    Return copy_of_Editor_text 
+  
+End
+
+Public Sub Form_KeyPress()
+
+  Try CtrlDown = Key.Control
+   If CtrlDown Then
+      Select Case Key.code
+      Case Asc("F")
+         mnuForms.Popup()
+
+      End Select
+   End If
+  
+End
+
+Public Function get_data_changed() As Boolean
+   Return data_changed   
+End
+
+Public Sub DataChange_Update_Indicators(flag As Integer)
+   '------------------------------------------
+   'Removes Or sets the red border To indicate
+   'if data is changed or note, resets flags
+   '------------------------------------------
+ If flag Then 
+      Vbox_ConsultNotes.BackGround = Color.Red
+      Vbox_ConsultNotes.Padding = 1
+   
+      data_changed = True  
+  Else
+      Vbox_ConsultNotes.BackGround = Color.Gray
+      Vbox_ConsultNotes.Padding = 1
+      tlsuggestions.text = ""
+      data_changed = False 
+  End If
+End 
+
+Public Sub teNotes_Change()
+ 
+  If bExit Then Return
+ '-------------------------------------------------------------
+ 'DO NOT be smart and make me Last (ie don't use Last.whatever)
+ 'this change event is called external to this form
+ 'see FInboxDocumentPage.Editor_Init()
+ '-------------------------------------------------------------
+' textarea1.text = teNotes.richtext
+ If Trim(teNotes.text) = "" Then
+    
+   '--------------------------------------------------------------------
+   'If there is not text, this dosn't mean that the data hasn't changed
+   'e.g it could have already been saved, and just deleted = changed
+   'Each time this parent's form saves the data, it sets:
+   'copy_of_Editor_text to the last, saved text
+   '--------------------------------------------------------------------
+   If copy_of_Editor_text = "" Then
+       DataChange_Update_Indicators(False)
+   Else
+       DataChange_Update_Indicators(True)
+   End If
+ Else
+        DataChange_Update_Indicators(True)
+ End If
+  '-------------------------------------------------------------------------
+  'The consult notes editor is either being used for general notes, or for
+  'a specific past history item if embedded frmFClinical
+  'so if Condition is null then it is general notes onFClinical (my convention)
+  ' '-------------------------------------------------------------------------
+  '  If Not Condition Then 
+  '    ' modglobal.clinicalform.currentConsult.GeneralNotes.notes = teNotes.RichText
+  '    ' gvar.currentconsult.generalnotes.notes = teNotes.RichText
+  '     'modglobal.clinicalForm.
+  '  Else
+  '     ' The condition was set by the calling form egFClinical.ShowPage
+  '   ' Condition.todays_notes_changed = True
+  '   ' Condition.todays_notes = teNotes.richtext
+  '   ' modDbug.pasthistory_debug(modglobal.clinicalform.currentpatient.past_history, modglobal.clinicalform.teDebugOutput) 
+  '  End If
+
+End
+
+Public Sub Editor_Fonts_Reset()
+   '------------------------------------------------------------
+   'Clears any font attributes ie saves clicking muliple buttons
+   '------------------------------------------------------------
+   Object.Lock(btnBold)
+   Object.Lock(btnItalic)
+   Object.Lock(btnUnderline)
+   Object.Lock(btnAlignLeft)
+   Object.Lock(btnAlignCenter)
+   Object.Lock(btnAlignRight)
+   Object.Lock(btnAlignJustify)
+   Object.Lock(cmbFonts)
+   Object.Lock(SpinBox1)
+   Object.Lock(ColourButton1)
+   btnBold.Value = False
+   btnItalic.Value = False
+   btnUnderline.Value = False
+
+   btnAlignLeft.value = False
+   btnAlignCenter.value = False
+   btnAlignJustify.Value = False 'what is this
+   btnAlignRight.value = False
+   'FIXME put in the default font
+   'put in black as default colour
+   teNotes.Format.Font.Bold = False
+   teNotes.Format.Font.Italic = False
+   teNotes.Format.Font.Underline = False
+   teNotes.Format.Font.StrikeOut = False
+   teNotes.Format.Alignment = Align.Left
+   ColourButton1.Color = Color.Black
+   teNotes.Format.Color = Color.Black
+   Object.UnLock(btnBold)
+   Object.UnLock(btnItalic)
+   Object.UnLock(btnUnderline)
+
+   Object.UnLock(btnAlignLeft)
+   Object.UnLock(btnAlignCenter)
+   Object.UnLock(btnAlignRight)
+   Object.UnLock(btnAlignJustify)
+   Object.UnLock(cmbFonts)
+   Object.UnLock(SpinBox1)
+   Object.UnLock(ColourButton1)
+End
+Public Sub Fonts_Fill_Combo()
+    Dim sFont As String
+    For Each sFont In Fonts
+      cmbFonts.add(sFont)
+    Next
+End
+
+Public Sub ColourButton1_Change()
+   teNotes.Format.Color = ColourButton1.Color
+   ' Print "the colour was", ColourButton1.Color
+End
+
+
+Public Sub SpinBox1_Change()
+   teNotes.Format.Font.Size = Last.Value
+   teNotes.SetFocus
+
+
+End
+
+
+Public Sub cmbFonts_Click()
+
+  teNotes.Format.Font.Name = Last.text 
+  teNotes.SetFocus
+
+End
+Public Sub Terms_Get()
+   '-------------------------------------------------------------------------------------
+   'Gets list of diagnostic terms
+   'Cannot set default if count is one because must  be able to add new occupations
+   'can't remove the label because it needs to occupy space to keep textbox correct width
+   '-------------------------------------------------------------------------------------
+   Dim term As Collection 
+   Dim key As String
+   Dim curpos As Integer
+   Dim charpos As String
+   Dim blankchar As Integer = -1
+   Return 
+   ' Do Until blankchar = 0
+        dxText = Mid$(teNotes.text, dxPos + 3, curpos - dxpos + 3)
+     ' charpos = InStr(teNotes.text,
+       ' "<p dir=\"ltr\">Dx"
+       charpos = teNotes.ToPos
+       textarea1.text = teNotes.richtext
+  '  Loop
+ 
+  '  If Trim(txtCodedTerm.text) = "" Then
+  '       currentTerm!code = ""
+  '       lblNewCondition.Foreground = Color.white
+  '       Return
+  '  End If
+  '  
+    Terms = modCodingDBI.Get_Terms(dxText, chkLimit.value, chkicd10.value, SpinBoxTermLimits.value)
+  ' VBox1.Height = Vsplit1.height
+   With columnview1
+         .Clear()
+         .Columns.count = 2
+         .Columns[0].Width = teNotes.width - 300
+         .Columns[1].width = 100
+         .width = teNotes.width 
+         
+   End With
+   If Terms.count Then
+      For Each term In Terms
+       key = term!code
+       columnview1.Add(key, 0)
+       columnview1[key][0] = term!term
+       columnview1[key][1] = term!system
+      Next 
+      lblTermCount.text = Str$(terms.count) & " terms retreived"
+      columnview1.tag = "something"
+      columnview1.Raise
+      columnview1.Visible = True
+      VBox9.Visible = True 
+   Else 
+      columnview1.Visible = False 'empty recordset
+      VBox9.Visible = False
+  
+   End If  
+End
+
+Public Sub getlist_diagnoses()
+  
+  Dim curpos As Integer
+  Dim charpos As String
+  Dim blankchar As Integer = -1
+ ' modTemp.TemP_Condition_Get("hyper", listview2)
+  Print teNotes.Pos
+  curpos = teNotes.Pos
+ ' Do Until blankchar = 0
+   'dxText = Mid(teNotes.text, curpos - 1, curpos)
+   dxText = Mid$(teNotes.text, dxPos + 3, curpos - dxpos + 3)
+   Print dxText 
+     'charpos =
+    ' Print "full text is", teNotes.Text
+    ' Print "dx pos =", dxpos
+    ' Print "curpos = ", curpos
+    ' Print "want to find", dxText
+   ' modTemp.TemP_Condition_Get(dxText, listview2)
+  ' =================
+  'this was in modtemp and nothing else
+  '------------------------------------
+  
+' Public Sub TemP_Condition_Get(txt As String, listview1 As ListView)
+'      
+'       Dim $Result As Result
+'      
+'       If Trim(txt) = "" Then
+'          listview1.Visible = False
+'           Return
+'       End If
+'       $Result = modcodingDBI.Condition_Get(Trim(txt))
+'      If $Result.count Then 
+'         listview1.Clear
+'          For Each $Result 
+'                     'Print $Result!description, $Result!pk
+'                    
+'                     listview1.Add(Str$($Result!pk), $Result!description)
+'                     $Result.MoveNext
+'                 
+'                   
+'            Next 
+'           ' listview1.tag = txtCondition
+'            listview1.Raise
+'            listview1.Visible = True
+'                    
+'       Else 
+'           'empty recordset
+'          listview1.Visible = False
+'               
+'       End If  
+' End
+
+ ' Loop
+End
+
+Public Sub temp()
+'     Dim CtrlDown As Boolean
+'     Dim FnDown As Boolean
+' ' Print " Form level detection", key.code
+'   ' Try FnDown = Key.Function
+'   ' If FnDown Then
+'   '  Select Case key.Code
+'   '  Case key.F12
+'   '      Print "detected F12 key"
+'   '     Editor_SpecialButtons_Click() 'save everything
+'   '  End Select
+'   ' End If
+'   Select Case Key.Code
+'   Case key.F12
+'  
+'   Case key.Esc
+'    If vBoxWebBrowser.Visible = True Then
+'       vBoxWebBrowser.Visible = False
+'       vBoxWorkSpace.Visible = True
+'    End If
+'   
+   
+ ' End Select
+  
+  ' 
+  ' Try CtrlDown = Key.Control
+  '  If CtrlDown Then
+  '     Select Case Key.code
+  '     Case Asc("F")
+  '     'If (Key.Code = Asc("F")) And CtrlDown Then
+  '       ''' Print "the ctrl F key was pressed"
+  '        Editor_ShowPage("Family History")
+  '     'Endif
+  '      Case Asc("A")
+  '        Editor_ShowPage("Allergies")
+  ' 
+  '      Case Asc("T")
+  '       Editor_ShowPage("Travel")
+  '      Case Asc("S")
+  '         Editor_ShowPage("Scripts")
+  '      Case Asc("H")
+  '        Editor_ShowPage("Past History")
+  '      Case Asc("R")
+  '        Editor_ShowPage("Requests")
+  '      Case Asc("L")
+  '        Editor_ShowPage("Referrals")
+  '      Case Asc("W")
+  '        Editor_ShowPage("Workcover")
+  '      Case Asc("M")
+  '        Editor_ShowPage("Mental Health Plan")
+  '      Case Asc("E")
+  '       ' Editor_ShowPage("Skin Excision")
+  '      Case Asc("W")
+  '        Editor_ShowPage("Workcover")
+  '     End Select
+  '  End If
+End 
+
+Public Sub tenotes_KeyPress()
+    Dim CtrlDown As Boolean
+    Dim FnDown As Boolean
+   If Key.code = Key.down And listview2.Visible Then
+     listview2.MoveFirst
+     listview2.SetFocus 
+     listview2.Item.Selected = True
+     Return 
+   End If
+   'FIXME MERGE ME WITH EDITORbUTTONS_CLICK()
+   Try CtrlDown = Key.Control
+   If CtrlDown Then
+      Select Case Key.code
+     ' Case Asc("B") 'fixme decide on keys for formattiing.
+     '   teNotes.Format.Font.Bold = Not (bBold)
+      Case Asc("L")
+           teNotes.Format.Alignment = Align.Left
+      Case Asc("M")
+            teNotes.Format.Alignment = Align.Center
+      Case Asc("R")
+         teNotes.Format.Alignment = Align.Right
+      Case Asc("M")
+      Case Asc("w") 'WIPE fixme put in docs
+            backup()
+            teNotes.Clear()
+            tlsuggestions.Text = ""
+      Case Asc("O") 'OOPS fixme implement me
+      Case Asc("Z")
+         If teNotes.text = "" Then
+            teNotes.RichText = editor_contents.text()
+         End If
+      
+      End Select
+   End If
+  
+End
+
+
+Public Sub listview2_keypress()
+  
+    If Key.code = Key.return Then
+        listview2.MoveCurrent
+        'teNotes.text = Replace(teNotes.text, "Dx " & dxText, "Diagnosis:" & listview2.Item.text)
+        teNotes.RichText = Replace$(teNotes.RichText, "Dx " & dxText, "<A HREF='Diagnosis'>Diagnosis " & listview2.Item.text & "</A><BR>")
+        listview2.Visible = False
+        teNotes.pos = Len(teNotes.text)
+        teNotes.SetFocus
+    End If
+    
+  
+End
+
+Public Sub teNotes_KeyRelease()
+  Dim aString As String
+  Dim charpos As Integer
+  Dim bMeasurementValid As Boolean
+  
+  If bExit Then Return 
+   Try CtrlDown = Key.Control
+   If CtrlDown Then
+      Select Case Key.code
+      Case Asc("F")
+         mnuForms.Popup()
+         Return 
+      End Select
+   End If
+  '--------------------------------------------------------
+  'Parse for user defined shortcuts FIXME MAKE USER DEFINED
+  '--------------------------------------------------------
+  If InStr(teNotes.text, "Dx ") Then
+     dxpos = InStr(teNotes.text, "Dx ")
+     getlist_diagnoses()
+     Terms_Get()
+   
+  End If
+  If InStr(teNotes.Text, ".F") Then
+     mnuForms.Popup()
+  End If 
+  If InStr(teNotes.text, ".fob") Then
+     teNotes.RichText = Replace(teNotes.RichText, ".fob", "Routine Faecal Occult Bloods * 3 - kit supplied, rationale explained<BR>")
+     teNotes.pos = Len(teNotes.text)
+  End If
+  If InStr(teNotes.text, ".ann") Then
+     teNotes.RichText = Replace(teNotes.RichText, ".ann", "<P><B><U>ANNUAL CHECKUP</U><P>")
+     teNotes.pos = Len(teNotes.text)
+  End If
+  If InStr(teNotes.text, ".sr") Then
+     teNotes.RichText = Replace(teNotes.RichText, ".sr", "<P><B>System Review</U><BR>")
+     teNotes.pos = Len(teNotes.text)
+  End If
+    If InStr(teNotes.text, ".pc") Then
+     teNotes.RichText = Replace(teNotes.RichText, ".pc", "<P><B><U>Patient concerns</U><B><P>")
+     teNotes.pos = Len(teNotes.text)
+  End If
+  If InStr(teNotes.text, ".psa") Then
+     teNotes.RichText = Replace(teNotes.RichText, ".psa", "Benign prostatic hypertrophy - PSA taken<BR>")
+     teNotes.pos = Len(teNotes.text)
+     sShortCutText = ".psa"
+  End If
+
+  If InStr(teNotes.text, ".gtt") Then
+     teNotes.RichText = Replace(teNotes.RichText, ".gtt", "Elevated glucometer BSL, GTT arranged<BR>")
+     teNotes.pos = Len(teNotes.text)
+  End If
+
+   If InStr(teNotes.text, ".draw") Then
+      sShortCutText = ".draw"
+      Fdraw = New FDrawEditor(Vbox_ConsultNotes)
+      EmbeddedForm_Show(FDraw)
+      FDraw_Create_Observer()
+   End If  
+   
+   If InStr(teNotes.text, ".mc") Then
+      sShortCutText = ".mc"
+      FMedicalCertificate = New FMedicalCertificate(Vbox_ConsultNotes)
+      EmbeddedForm_Show(FMedicalCertificate)
+   End If    
+
+   '------------------------------
+   'Now parse for any measurements
+   'rich text would be <p>BP=120/70_</p>
+   'where _ here represents what is 
+   'actually an ascii 32 character
+   '------------------------------
+   If InStr(LCase(teNotes.RichText), "bp=") Then
+      ParseText_Keyword("bp=")
+    End If
+   If InStr(LCase(teNotes.RichText), "bsl=") Then  'FIXME MAKE THIS CASE INSENSITIVE
+      ParseText_Keyword("bsl=")
+   End If
+   If InStr(LCase(teNotes.RichText), "h=") Then  'FIXME MAKE THIS CASE INSENSITIVE
+      ParseText_Keyword("h=")
+   End If
+   If InStr(LCase(teNotes.RichText), "w=") Then  'FIXME MAKE THIS CASE INSENSITIVE
+     ParseText_Keyword("w=")
+   End If
+ 
+ 
+End
+Public Function Validate_BSL() As Boolean
+    Dim charpos As Integer
+    Dim aString As String
+
+       Charpos = InStr(teNotes.text, "BSL=")
+       Try astring = Mid$(teNotes.text, charpos + 4, 4)
+       If Len(astring) < 3 Then Return
+       Try Val(astring)
+       If Error Then
+         ' Print "there was an error with BSL"
+         Return False
+       Else
+       ' Print "astring was for BsL,", astring
+         teNotes.RichText = Replace$(teNotes.RichText, "BSL=" & astring, "<A HREF='" & Str$(const.Measurement_BSL) & "'>blood sugar=" & astring & "</A><BR>")
+         teNotes.pos = InStr(teNotes.text, "blood sugar=" & astring) + Len("blood sugar=" & astring)
+
+       End If  
+       Return True
+  
+End
+Public Sub teNotes_Paste()
+   Dim spicPath As String 
+   Dim pic As New Picture
+   Dim H As Integer
+   Dim W As Integer
+   Stop Event
+ If Drag.Type = Drag.Image Then
+      Print Drag.Source.Tag
+      pic.Load(Drag.Source.Tag!fname)
+      H = Drag.Source.Tag!H
+      W = Drag.Source.Tag!W
+      sPicPath = "<TABLE WIDTH=100%><TR><TD WIDTH=100%><P><IMG src=\"" & Drag.Source.tag!fname & "\"" 
+      sPicPath &= " NAME=\"graphics\" ALIGN=\"LEFT\" WIDTH=\"" & Str(W) & "\" HEIGHT=\"" & Str(H) & "\" BORDER=\"0\"></TR></TD></TABLE><BR><BR>" '<BR CLEAR=Left>
+      teNotes.text &= "%image%"
+      teNotes.richtext = Replace$(teNotes.richtext, "%image%", sPicPath)
+      Print teNotes.RichText
+ End If
+End 
+
+
+Public Sub EmbeddedForm_Close()
+  '--------------------------------------
+  'Closes any form embedded in the editor
+  'reloads the main HSplit layout
+  '--------------------------------------
+   Dim Charpos As Integer
+   charpos = InStr(teNotes.text, sShortCutText)
+   EmbeddedForm.Close()
+'   HSplit1.Layout = Settings["Consult Notes/Hsplit"]
+   teNotes.Richtext = Replace$(teNotes.richtext, sShortCutText, "")
+   teNotes.pos = charpos - 1
+   teNotes.Visible = True
+   teNotes.SetFocus()
+   'VBox_PastHistory.Visible = True
+'   ConsultActionsList_Update()
+'   Vbox_Actions.Visible = True
+   HBox_WordProcessorButtons.Visible = True
+   lblTodaysNotes.Visible = True
+'   Separator1.Visible = True
+   tbHideForm.Visible = False 'FIXME CHANGE MY NAME
+
+  
+End
+Public Sub mnuForms_Click()
+  
+  Select Case Last.tag
+  Case "medical certificate"
+      sShortCutText = ".mc"
+      FMedicalCertificate = New FMedicalCertificate(Vbox_ConsultNotes)
+      EmbeddedForm_Show(FMedicalCertificate)
+
+  End Select
+  
+End
+
+Public Sub EmbeddedForm_Show(F As Form)
+ '------------------------------------------
+ 'Pops up an embedded form according to the
+ 'short cuts in the teNotes editor
+ 'Set EmbeddedForm so that tbHideForm can
+ 'close it later
+ '------------------------------------------
+  
+  teNotes.Visible = False
+'  VBox_PastHistory.Visible = False
+'  Vbox_Actions.Visible = False
+  HBox_WordProcessorButtons.Visible = False
+  lblTodaysNotes.Visible = False
+ '  Separator1.Visible = False
+  tbHideForm.Visible = True
+'   HSplit1.Layout = ("0,100")
+  
+  EmbeddedForm = F
+  EmbeddedForm.Show()
+  Vbox_ConsultNotes.BackGround = Color.Gray
+ ' Print F.Name, "is the name", F.Visible, "is the visibility"
+  
+End
+Public Sub Drawing_Editor_Show()
+ If FDraw.Visible Then
+   FDraw.Hide()
+   FDraw.Ignore = True
+   teNotes.Visible = True
+  Else
+    teNotes.Visible = False
+    FDraw.Visible = True
+   ' FDraw_Resize()
+  End If
+End
+
+Public Sub cmbTemplates_Click()
+  
+   ' teNotes.text = Last.text 
+    teNotes.Clear() 
+   'teNotes.text = "darned that up"
+   Try teNotes.RichText = File.Load("html/" & Last.text & ".html")
+    If Error Then 
+      message.Info("Cannot find the template " & Last.text)
+    End If
+    
+    
+  
+  
+End
+Public Sub teNotes_Drop()
+teNotes_Paste
+ 
+End
+
+Public Sub RequestForm_ToolButtons_Click()
+  
+    Stop Event
+    ' Print "You've clicked the close request form button"
+    FRequests.Hide
+    teNotes.Show()
+End
+
+Public Sub DrawEditor_ToolButtons_Click()
+     ' Print "This was the draw editor last.tag", Last.tag
+     Stop Event
+     Select Case Last.tag
+     Case "hide form"
+      ' Print "you clicked the hid form button"
+          DrawEditor_Hide()
+     Case "insert picture"
+         ' Print "you clicked the save button in the draw editor"
+         Insert_Picture()
+     End Select
+End
+Public Sub DrawEditor_Hide()
+      '-------------------------------------------------------------
+      'Editor being closed without inserting a picture, remove .draw
+      '-------------------------------------------------------------
+      teNotes.RichText = Replace$(teNotes.text, ".draw", "")
+      FDraw.Hide()
+      teNotes.Show()
+End
+
+Public Sub Insert_Picture1(sSource As String)
+   '--------------------------------------------------
+   'Inserts a picture into the form. This can come
+   'from either a cut/paste/import or from the
+   'draw 
+   'Creates an event observer.
+   'this will bug out if user clicks save in  Fdraw 
+   'without selecting image
+   '--------------------------------------------------
+  Dim s As String
+  Dim par As Integer = 2
+  Dim pos As Integer = 2
+  Dim temp As String
+  Dim count As Integer
+  Dim flag As Boolean = True
+  Dim lastpos As Integer
+  Dim parmarkpos As Integer
+ 
+   Dim curpos As Integer
+   Dim PicBox As PictureBox
+   Dim NewImage As Image
+   Dim Picture1 As New Picture 
+   Dim pic As Picture
+   Dim sPicPath As String
+   Dim tempfile As String
+   Dim hObs As Observer
+   Dim h As Integer
+   Dim w As Integer
+   Dim tempstring As String
+   Print teNotes.ToIndex(teNotes.pos)
+   Print teNotes.ToParagraph(teNotes.pos)
+ 
+   tempFile = Temp() & ".png"  
+   Select Case sSource
+   Case "editor"
+        ' '------------------------------------------------
+        ' 'Picture is being inserted from the draw editor
+        ' 'It is either a new picture, or one being edited
+        ' '------------------------------------------------
+        ' If Fdraw.bediting = True Then
+        '    '-------------------------------------------------
+        '    'If editing get the handle of the picture box with
+        '    'the temp file, and update that picture
+        '    'Hbox_pictures = the container of any pictures
+        '    'in the editing area
+        '    '-------------------------------------------------
+        '    Print "Editing existing picture", Fdraw.bEditing
+        '    For Each PicBox In Hbox_pictures.Children
+        '         Print "Fdraw.sPicturePath", Fdraw.sPicturePath
+        '         Print "PicBox.tag", PicBox.tag
+        '        If PicBox.tag = Fdraw.sPicturePath Then
+        '           Fdraw.$hImage.Save(Picbox.Tag)
+        '           Picbox.Picture = Picture1.Load(Picbox.Tag)
+        '          
+        '           EmbeddedForm_Close()
+        '           Return
+        '        End If
+        '     Next
+        '  Else
+        '      '-----------------------------------------------------
+        '      'Not editing, so is a new picture being returned
+        '      'from the draw editor
+        '      'Add a new picture box and observer for events
+        '      'Use the Save routine from FDraw to create a png
+        '      'file with this image (TempFile)
+        '      '-----------------------------------------------------
+        '      Print "no, we are not editing"
+        '      PicBox = New PictureBox(Hbox_pictures)
+        '      PicBox.Border = Border.Plain
+        '      hObs = New Observer(Picbox) As "RequestPictures"
+        '      Print "made a new box"
+        '      Print "ah, returning from the draw editor"
+        '      Fdraw.$hImage.Save(Tempfile)
+        '      EmbeddedForm_Close()
+        '  End If
+   Case "clipboard"
+        '----------------------------------------------------------
+        'If source of paste is a clipboard, validate it it an image
+        '----------------------------------------------------------
+       If Clipboard.type = Clipboard.Image Then
+          ' PicBox = New PictureBox(Hbox_pictures)
+           'PicBox.Border = Border.Plain
+          '' hObs = New Observer(Picbox) As "RequestPictures"
+           Print "made a new box"
+          ' Print "was an image on the clipboards"
+           NewImage = Clipboard.Paste()
+           NewImage.Save(Tempfile)
+           pic = Picture[tempfile]
+           Print "dimensions were", pic.Height, pic.Width
+            h = Abs(pic.Height * 2 / 3)
+            w = Abs(pic.width * 2 / 3)
+            h = pic.Height
+            w = pic.width
+           sPicPath = "<TABLE WIDTH=100%><TR><TD WIDTH=100%><P><IMG "
+           sPicPath &= "src=\"" & tempfile & "\" "  
+           sPicPath &= " NAME=\"graphics\" ALIGN=\"LEFT\" WIDTH=\"" & Str(W) & "\" HEIGHT=\"" & Str(H) & "\" BORDER=\"0\"></TR></TD></TABLE><BR><BR>" 
+      '  H = P.h
+      ' w = P.w
+     ' End If
+           teNotes.richtext = Replace$(teNotes.richtext, ".pic", sPicPath)
+            s = teNotes.RichText
+
+            
+             ' Do Until count = Paragraph_At + 1
+             '    Print "the count is", count
+             '    parmarkpos = InStr(s, "<p>", lastpos)
+             '    Print "<P> pos is", parmarkpos
+             '    ' If count = par + 1 Then
+             '    '    Print "matched count and par"
+             '    '    s = Left(s, lastpos)
+             '    '    Print "string is now", s
+             '    '    Break
+             '    ' End If
+             '    lastpos = parmarkpos + 1
+             '    Inc count
+             ' Loop
+             ' 'now are at start of paragraph the cursor is on
+             ' Print Left(teNotes.RichText, lastpos + pos + 2)
+             ' tempstring = Left(teNotes.RichText, lastpos + pos + 2)
+             ' Print "tempstring:", tempstring
+             ' Print "picpath:"
+             ' Print spicpath
+             ' Print Right(teNotes.RichText, Len(teNotes.RichText) - lastpos + pos + 3)
+             ' tempstring &= sPicPath & Right(teNotes.RichText, Len(teNotes.RichText) - lastpos - pos - 2)
+             ' teNotes.RichText = tempstring   
+       Else
+            '-------------------------------------------
+           'Not an image, nothing to paste leave routine
+           '--------------------------------------------
+           Print "no, it wasn't an image"
+           Return
+       End If
+    End Select
+
+    
+End
+
+Public Sub Insert_Picture1_old(sSource As String)
+   '--------------------------------------------------
+   'Inserts a picture into the form. This can come
+   'from either a cut/paste/import or from the
+   'draw 
+   'Creates an event observer.
+   'this will bug out if user clicks save in  Fdraw 
+   'without selecting image
+   '--------------------------------------------------
+  Dim s As String
+  Dim par As Integer = 2
+  Dim pos As Integer = 2
+  Dim temp As String
+  Dim count As Integer
+  Dim flag As Boolean = True
+  Dim lastpos As Integer
+  Dim parmarkpos As Integer
+ 
+   Dim curpos As Integer
+   Dim PicBox As PictureBox
+   Dim NewImage As Image
+   Dim Picture1 As New Picture 
+   Dim pic As Picture
+   Dim sPicPath As String
+   Dim tempfile As String
+   Dim hObs As Observer
+   Dim h As Integer
+   Dim w As Integer
+   Dim tempstring As String
+   Print teNotes.ToIndex(teNotes.pos)
+   Print teNotes.ToParagraph(teNotes.pos)
+ 
+   tempFile = Temp() & ".png"  
+   Select Case sSource
+   Case "editor"
+        ' '------------------------------------------------
+        ' 'Picture is being inserted from the draw editor
+        ' 'It is either a new picture, or one being edited
+        ' '------------------------------------------------
+        ' If Fdraw.bediting = True Then
+        '    '-------------------------------------------------
+        '    'If editing get the handle of the picture box with
+        '    'the temp file, and update that picture
+        '    'Hbox_pictures = the container of any pictures
+        '    'in the editing area
+        '    '-------------------------------------------------
+        '    Print "Editing existing picture", Fdraw.bEditing
+        '    For Each PicBox In Hbox_pictures.Children
+        '         Print "Fdraw.sPicturePath", Fdraw.sPicturePath
+        '         Print "PicBox.tag", PicBox.tag
+        '        If PicBox.tag = Fdraw.sPicturePath Then
+        '           Fdraw.$hImage.Save(Picbox.Tag)
+        '           Picbox.Picture = Picture1.Load(Picbox.Tag)
+        '          
+        '           EmbeddedForm_Close()
+        '           Return
+        '        End If
+        '     Next
+        '  Else
+        '      '-----------------------------------------------------
+        '      'Not editing, so is a new picture being returned
+        '      'from the draw editor
+        '      'Add a new picture box and observer for events
+        '      'Use the Save routine from FDraw to create a png
+        '      'file with this image (TempFile)
+        '      '-----------------------------------------------------
+        '      Print "no, we are not editing"
+        '      PicBox = New PictureBox(Hbox_pictures)
+        '      PicBox.Border = Border.Plain
+        '      hObs = New Observer(Picbox) As "RequestPictures"
+        '      Print "made a new box"
+        '      Print "ah, returning from the draw editor"
+        '      Fdraw.$hImage.Save(Tempfile)
+        '      EmbeddedForm_Close()
+        '  End If
+   Case "clipboard"
+        '----------------------------------------------------------
+        'If source of paste is a clipboard, validate it it an image
+        '----------------------------------------------------------
+       If Clipboard.type = Clipboard.Image Then
+          ' PicBox = New PictureBox(Hbox_pictures)
+           'PicBox.Border = Border.Plain
+          '' hObs = New Observer(Picbox) As "RequestPictures"
+           Print "made a new box"
+          ' Print "was an image on the clipboards"
+           NewImage = Clipboard.Paste()
+           NewImage.Save(Tempfile)
+           pic = Picture[tempfile]
+           Print "dimensions were", pic.Height, pic.Width
+            h = Abs(pic.Height * 2 / 3)
+            w = Abs(pic.width * 2 / 3)
+            h = pic.Height
+            w = pic.width
+  
+          Print h, w
+           sPicPath = ""
+           "<TABLE WIDTH=100% BORDER=0>"
+            "<COL WIDTH=256*>"
+            "<TR>"
+            "<TD WIDTH=100% VALIGN=TOP>"
+            "<P ALIGN=CENTER><IMG SRC="
+            spicPath &= TempFile & "  " 
+            sPicPath &= " NAME='graphics' ALIGN=LEFT WIDTH=" & Str(w) & " HEIGHT=" & Str(h) & " BORDER=0>"
+            sPicPath &= "</P></TD></TR></TABLE>"
+            teNotes.richtext = Replace$(teNotes.richtext, ".pic", sPicPath)
+            s = teNotes.RichText
+
+            
+             ' Do Until count = Paragraph_At + 1
+             '    Print "the count is", count
+             '    parmarkpos = InStr(s, "<p>", lastpos)
+             '    Print "<P> pos is", parmarkpos
+             '    ' If count = par + 1 Then
+             '    '    Print "matched count and par"
+             '    '    s = Left(s, lastpos)
+             '    '    Print "string is now", s
+             '    '    Break
+             '    ' End If
+             '    lastpos = parmarkpos + 1
+             '    Inc count
+             ' Loop
+             ' 'now are at start of paragraph the cursor is on
+             ' Print Left(teNotes.RichText, lastpos + pos + 2)
+             ' tempstring = Left(teNotes.RichText, lastpos + pos + 2)
+             ' Print "tempstring:", tempstring
+             ' Print "picpath:"
+             ' Print spicpath
+             ' Print Right(teNotes.RichText, Len(teNotes.RichText) - lastpos + pos + 3)
+             ' tempstring &= sPicPath & Right(teNotes.RichText, Len(teNotes.RichText) - lastpos - pos - 2)
+             ' teNotes.RichText = tempstring   
+       Else
+            '-------------------------------------------
+           'Not an image, nothing to paste leave routine
+           '--------------------------------------------
+           Print "no, it wasn't an image"
+           Return
+       End If
+    End Select
+     ' '-----------------------
+     ' 'Now deal with the image whatever the source
+     ' '-----------------------
+     ' RP.temppath = tempFile
+     ' With PicBox
+     '    .Expand = False
+     '    .stretch = True
+     '    .picture = Picture1.Load(Tempfile)
+     '    .tag = Tempfile
+     ' End With
+     ' currentRequestForm.pictures.Add(RP, currentRequestForm.pictures.count)
+     '  
+     ' 
+   
+    
+End
+Public Sub Insert_Picture()
+'FIX ME, PUT IN APPROPRIATE HEIGHT.WIDTH FROM THE DRAW FORM.
+ Dim curpos As Integer
+ Dim pic As Picture
+ Dim aString As String
+ Dim sPicPath As String
+ Dim tempFile As String
+ Dim h As Integer
+ Dim w As Integer
+  If Not IsNull(Fdraw.$hImage) Then 
+      tempFile = Temp() & ".png"
+     Fdraw.$hImage.Save(Tempfile)
+     pic = Picture[tempfile]
+     Print "dimensions were", pic.Height, pic.Width
+     h = Abs(pic.Height * 2 / 3)
+     w = Abs(pic.width * 2 / 3)
+     sPicPath = "<P><TABLE WIDTH=100%><TR><TD WIDTH=100%><P><IMG "
+     ' 
+     ' sPicPath = "<P>"
+     '       "<TABLE WIDTH=100% BORDER=0>"
+     '        "<COL WIDTH=256*>"
+     '        "<TR>"
+     '        "<TD WIDTH=100% VALIGN=TOP>"
+     '        "<P ALIGN=CENTER><IMG SRC='"
+      ' sPicPath &= TempFile & "'  " 
+      ' sPicPath &= " NAME='graphics' ALIGN=LEFT WIDTH=" & Str(w) & " HEIGHT=" & Str(h) & " BORDER=0>" '< BR CLEAR = Left > < BR > < BR > "" 
+      ' sPicPath &= "</P></TD></TR></TABLE></P>"
+       sPicPath &= "src=\"" & tempfile & "\" "  
+      sPicPath &= " NAME=\"graphics\" ALIGN=\"LEFT\" WIDTH=\"" & Str(W) & "\" HEIGHT=\"" & Str(H) & "\" BORDER=\"0\"></TR></TD></TABLE><BR><BR>" 
+ 
+      
+      teNotes.richtext = Replace$(teNotes.richtext, ".draw", sPicPath)
+  End If
+  EmbeddedForm_Close()
+
+End
+Public Sub ParseText_Keyword(keyword As String)
+  '--------------------------------------------------------------
+  'Tries to convert any BP=nnn/nn or nnn/nnn contained
+  'in the background HTML to a valid BP If unsuccessful, then
+  'no formatted html is inserted, so the user immediately knows
+  'they have typed something wrong.
+  '
+  'Example as user types in teNotes BP=120/70 the html looks like
+  'this. Note that this routine is not triggered until a ascii 32
+  'appears after the 120/70:
+  '
+  ' <html><head><meta name="qrichtext" content="1" /></head>
+  '<body style="font-size:9pt;font-family:Bitstream Vera Sans">
+  ' <p>BP=120/70 </p>
+  ' </body></html>
+  '
+  'After this routine, the resultant html looks like this:
+  '
+  ' <html><head><meta name="qrichtext" content="1" /></head>
+  '<body style="font-size:9pt;font-family:Bitstream Vera Sans">
+  ' <p><a href="Bloodpressure">Blood Pressure=120/70 </a><br /></p>
+  ' </body></html>
+  '
+  'and the cursor is moved on to the next line.
+  
+  'The resultant hmtl is parsed and the values extracted when the
+  ' progress note is later saved
+  '
+  'FIXME: NO CODE YET TO RE-CONSTRUCT THE HTML IF THE USER
+  'PARTIALY DELETES THE FORMATTED TEXT AFTER IT HAS BEEN INSERTED
+  '--------------------------------------------------------------
+  Dim sMeasurement As String
+  CP1 = InStr(LCase(teNotes.RichText), keyword)
+  cp2 = InStr(teNotes.RichText, "<", CP1)
+  sMeasurement = Mid(teNotes.RichText, cp1, Cp2 - cp1)
+  If Not (Right(sMeasurement, 1) = Chr(32)) Then 
+      Return
+  End If
+  IsMeasurement(keyword, sMeasurement)
+  
+ 
+End
+
+Public Function IsMeasurement(keyword As String, sMeasurement As String) As Boolean
+   Dim Delimiter As String
+   Dim charpos As Integer
+   Dim SS As String
+   Dim html_aref_tag As String
+   Dim html_text As String
+   Dim sUnits As String
+   Select Case keyword
+   Case "bp="
+      Delimiter = "/"
+      html_text = "blood pressure"
+      html_aref_tag = "blood pressure"
+      sUnits = "mmhg"
+   Case "h="
+      Delimiter = "."
+      html_text = "height"
+      html_aref_tag = "height"
+      sUnits = "cm"
+   Case "w="
+      Delimiter = "."
+      html_text = "weight"
+      html_aref_tag = "weight"
+      sUnits = "kg"
+   Case "bsl="
+      Delimiter = "."
+      html_text = "blood Sugar"
+      html_aref_tag = "blood Sugar"
+      sUnits = "mmole"
+   End Select
+   SS = Right(sMeasurement, Len(sMeasurement) - InStr(sMeasurement, "="))
+   charpos = InStr(SS, delimiter)
+   Try Val(Left(SS, charpos - 1))
+    If Error Then Return False
+   Try Right(SS, Len(SS) - charpos)
+    If Error Then Return False
+    teNotes.RichText = Replace$(LCase(teNotes.RichText), keyword & SS, "<A HREF='" & html_aref_tag & "'>" & html_text & "=" & SS & sUnits & "</A><BR>")
+    teNotes.pos = InStr(teNotes.text, html_text & "=" & SS & sunits) + Len(html_text & " = " & SS & sUnits)
+    If keyword = "h=" Then
+      sHeight = SS 
+       CalcBMI()
+    End If
+    If keyword = "w=" Then
+       sWeight = SS
+       CalcBMI()
+    Endif
+   Return True
+ 
+End
+' Public Function IsBloodPressure(sBP As String) As Boolean
+'    '-------------------------------------- 
+'    'Expects a valid BP string eg BP=120/70
+'    'I just put the return flag in not used
+'    'perhaps will be, or not needed
+'    '--------------------------------------
+'    Dim charpos As Integer
+'    Dim systolic As String
+'    Dim diastolic As String
+'    Dim BP As String 
+'    BP = Right(sBP, Len(sBP) - InStr(sBP, "="))
+'    charpos = InStr(BP, "/")
+'    Try Val(Left(BP, charpos - 1))
+'       If Error Then Return False
+'    Try Right(BP, Len(BP) - charpos)
+'       If Error Then Return False
+'    teNotes.RichText = Replace$(LCase(teNotes.RichText), "bp=" & BP, "<A HREF='Bloodpressure'>Blood Pressure=" & BP & "</A><BR>")
+'    teNotes.pos = InStr(teNotes.text, "Blood Pressure=" & BP) + Len("Blood Pressure=" & BP)
+'    Return True
+'   End
+'   
+' Public Sub ParseText_BSL()
+'   CP1 = InStr(LCase(teNotes.RichText), "bsl=")
+'   cp2 = InStr(teNotes.RichText, "<br />", CP1)
+'   If Not CP2 Then
+'       cp2 = InStr(teNotes.RichText, "</p>", CP1)
+'   End If
+'   sMeasurement = Mid(teNotes.RichText, cp1, Cp2 - cp1)
+'   If Not (Right(sMeasurement, 1) = Chr(32)) Then Return
+'   Print "sMeasurement", sMeasurement
+'   isBSL(sMeasurement)
+' End
+
+' Public Sub ParseText_Height()
+'   CP1 = InStr(LCase(teNotes.RichText), "h=")
+'   cp2 = InStr(teNotes.RichText, "</p>", CP1)
+'   sMeasurement = Mid(teNotes.RichText, cp1, Cp2 - cp1)
+'   If Not (Right(sMeasurement, 1) = Chr(32)) Then Return
+'   Print "sMeasurement", sMeasurement
+'   isHeight(sMeasurement)
+' End
+
+' Public Sub ParseText_Weight()
+'   CP1 = InStr(LCase(teNotes.RichText), "w=")
+'   cp2 = InStr(teNotes.RichText, "</p>", CP1)
+'   sMeasurement = Mid(teNotes.RichText, cp1, Cp2 - cp1)
+'   If Not (Right(sMeasurement, 1) = Chr(32)) Then Return
+'   Print "sMeasurement", sMeasurement
+'   isWeight(sMeasurement)
+' End
+
+' Public Sub ParseText_Height()
+'   CP1 = InStr(LCase(teNotes.RichText), "h=")
+'   cp2 = InStr(teNotes.RichText, "</p>", CP1)
+'   sMeasurement = Mid(teNotes.RichText, cp1, Cp2 - cp1)
+'   If Not (Right(sMeasurement, 1) = Chr(32)) Then Return
+'   Print "sMeasurement", sMeasurement
+'   isWeight(sMeasurement)
+' End 
+' Public Function isHeight(sMeasurement As String) As Boolean
+'    '-------------------------------------- 
+'    'Expects a valid HEIGHT string eg HEIGHT=99 OR 99.5
+'    'I just put the return flag in not used
+'    'perhaps will be, or not needed
+'    '--------------------------------------
+'    Dim charpos As Integer
+'    Dim HEIGHT As String 
+'    HEIGHT = Right(sMeasurement, Len(sMeasurement) - InStr(sMeasurement, "="))
+'    charpos = InStr(HEIGHT, ".")
+'    Print "left", Left(HEIGHT, charpos - 1)
+'    Print "right", Right(HEIGHT, Len(HEIGHT) - charpos)
+'    Try Val(Left(HEIGHT, charpos - 1))
+'       If Error Then Return False
+'    Try Right(HEIGHT, Len(HEIGHT) - charpos)
+'       If Error Then Return False
+'    teNotes.RichText = Replace$(LCase(teNotes.RichText), "h=" & HEIGHT, "<A HREF='HEIGHT'>Height=" & HEIGHT & "cm</A><BR>")
+'    teNotes.pos = InStr(teNotes.text, "Height=" & HEIGHT & "cm") + Len("HEIGHT=" & HEIGHT & "cm")
+'   
+'    Return True
+' End
+'sWeight
+
+' Public Function isWeight(sMeasurement As String) As Boolean
+'    '-------------------------------------- 
+'    'Expects a valid WEIGHT string eg WEIGHT=99 OR 99.5
+'    'I just put the return flag in not used
+'    'perhaps will be, or not needed
+'    '--------------------------------------
+'    Dim charpos As Integer
+'    Dim WEIGHT As String 
+'    Dim sBMI As String 
+'    Dim sNewSTring As String
+'   
+'    WEIGHT = Right(sMeasurement, Len(sMeasurement) - InStr(sMeasurement, "="))
+'    charpos = InStr(WEIGHT, ".")
+'    Try Val(Left(WEIGHT, charpos - 1))
+'       If Error Then Return False
+'    Try Right(WEIGHT, Len(WEIGHT) - charpos)
+'       If Error Then Return False
+'    sBMI = CalcBMI(WEIGHT) 'if possible
+'    If sBMI Then
+'      sNewString = "<A HREF='Weight'>Weight=" & WEIGHT & "Kg</A><BR>"
+'      sNewSTring &= "<A HREF='BMI'>BMI=" & sBMI & "</A><BR>"
+'      teNotes.RichText = Replace$(LCase(teNotes.RichText), "w=" & WEIGHT, sNewSTring)
+'      teNotes.pos = InStr(teNotes.text, "BMI=" & sBMI) + Len("BMI=" & sBMI)
+'    Else
+'       teNotes.RichText = Replace$(LCase(teNotes.RichText), "w=" & WEIGHT, "<A HREF='Weight'>Weight=" & WEIGHT & "Kg</A><BR>")
+'       teNotes.pos = InStr(teNotes.text, "Weight=" & WEIGHT & "Kg") + Len("WEIGHT=" & WEIGHT & "Kg")
+'    End If
+'    Return True
+' End
+
+Public Function CalcBMI() As String
+   '-------------------------------------------------------------------------
+   'Checks html to see if weight/height exist, if do > shows a calculated BMI
+   'and the weight range, and number of Kg's overweight
+   '-------------------------------------------------------------------------
+   Dim Height As String
+   Dim Data As String[] 
+   Dim BMI As Float
+   Dim range As String 
+   Dim sMsgOverweight As String = "Patient is in overweight range of BMI"
+   Dim sMsgObese As String = "Patient is in obese range of BMI"
+   Dim sMsgUnderweight As String = "Patient is in the underweight range of BMI"
+   Dim sWeightMessage As String  
+   '---------------------------------------------------------------------------------
+   'Either, get height from these notes, or if none, check if we have an existing one
+   '---------------------------------------------------------------------------------
+   ' If InStr(Lower(teNotes.richtext), "height=") Then     
+   '    CP1 = InStr(LCase(teNotes.RichText), "height=")
+   '    cp2 = InStr(teNotes.RichText, "cm", CP1)
+   '    height = Mid(teNotes.RichText, cp1, Cp2 - cp1)
+   '    height = Right(Height, Len(Height) - InStr(Height, "="))
+   ' End If
+   If sHeight = "" 
+       Data = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height), "|")
+      Try sHeight = Data[0]
+      If Not Error Then
+          teNotes.Richtext &= "Last measured height  on " & Data[1] & " was " & sHeight & "<BR>"
+       Endif
+   Endif
+   If sWeight = "" Then
+       Data = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Weight), "|")
+       Try sWeight = Data[0]
+       If Not Error Then
+          teNotes.Richtext &= "Last measured weight on " & Data[1] & " was " & sWeight & "<BR>"
+       Endif
+   Endif
+   If sHeight <> "" And sWeight <> "" Then 
+       BMI = Val(sweight) / ((sHeight / 100) * (sHeight / 100)) 
+       BMI = Val(Format(Str$(BMI), "##.#"))
+       Print BMI
+      If BMI > 20 And BMI < 25 Then range = "normal" 
+     
+      If BMI > 25 And BMI < 30 Then range = "overweight"
+      If BMI > 30 Then range = "obese" 
+      If BMI < 20 Then range = "underweight"
+      Select Case range
+      Case "underweight"
+         If Not (InStr(tlsuggestions.text, sMsgUnderweight)) Then
+               If Trim(tlsuggestions.text) = "" Then
+                  tlsuggestions.text = sMsgUnderweight   
+               Else
+                tlsuggestions.text &= "<BR>" & sMsgUnderweight
+               End If
+         End If
+         sWeightMessage = sMsgUnderweight
+      Case "overweight"
+         If Not (InStr(tlsuggestions.text, sMsgOverweight)) Then
+               If Trim(tlsuggestions.text) = "" Then
+                  tlsuggestions.text = sMsgOverweight   
+               Else
+                tlsuggestions.text &= "<BR>" & sMsgOverweight
+               End If
+         End If
+         sWeightMessage = sMsgOverweight
+      Case "obese"
+         If Not (InStr(tlsuggestions.text, sMsgObese)) Then
+               If Trim(tlsuggestions.text) = "" Then
+                  tlsuggestions.text = sMsgObese   
+               Else
+                tlsuggestions.text &= "<BR>" & sMsgObese
+               End If
+         End If
+         sWeightMessage = sMsgOverweight
+      End Select
+     teNotes.Richtext &= "<A HREF='" & "BMI=" & " '>" & "BMI=" & Str(BMI) & "</A>"
+     If sWeightMessage Then
+        teNotes.Richtext &= " <small>(" & sWeightMessage & ")</small><BR>"
+     Endif
+   
+      Return Format(BMI, "##.#")
+   Else
+    '  message.Info("No height data recorded for this patient. To calculate the BMI automatically please enter eg h=180 and hit spacebar")
+      Return "" 
+   End If
+
+End
+' 
+' ' ' Public Function isBSL(sMeasurementPublic Function isBSL(sMeasurement As String) As Boolean
+' '    '-------------------------------------- 
+' '    'Expects a valid BSL string eg BSL=120/70
+' '    'I just put the return flag in not used
+' '    'perhaps will be, or not needed
+' '    '--------------------------------------
+' '    Dim charpos As Integer
+' '    Dim systolic As String
+' '    Dim diastolic As String
+' '    Dim BSL As String 
+' '    Dim flBSL As Float
+' '    Dim sSuggestion As String
+' '    Dim sMsg As String[]
+' '    sMsg[0] = "Elevated glucose, If fasting should have 75gm GTT"
+' '    sMsg[1] = "Elevated glucose, If fasting this is in the diabetic range"      
+' '                 
+' '    BSL = Right(sMeasurement, Len(sMeasurement) - InStr(sMeasurPublic Function CalcBMI_old() As String
+'    '-------------------------------------------------------------------------
+'    'Checks html to see if weight/height exist, if do > shows a calculated BMI
+'    'and the weight range, and number of Kg's overweight
+'    '-------------------------------------------------------------------------
+'    Dim Height As String
+'    Dim HeightData As String[] 
+'    Dim BMI As Float
+'    Dim range As String 
+'    Dim sMsgOverweight As String = "Patient is in overweight range of BMI"
+'    Dim sMsgObese As String = "Patient is in obese range of BMI"
+'    Dim sMsgUnderweight As String = "Patient is in the underweight range of BMI"
+'    '---------------------------------------------------------------------------------
+'    'Either, get height from these notes, or if none, check if we have an existing one
+'    '---------------------------------------------------------------------------------
+'    If InStr(Lower(teNotes.richtext), "height=") Then     
+'       CP1 = InStr(LCase(teNotes.RichText), "height=")
+'       cp2 = InStr(teNotes.RichText, "cm", CP1)
+'       height = Mid(teNotes.RichText, cp1, Cp2 - cp1)
+'       height = Right(Height, Len(Height) - InStr(Height, "="))
+'    End If
+'    If height = "" Then 
+'       HeightData = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height), "|")
+'       Try height = HeightData[0]
+'    Endif
+'    If height <> "" Then 
+'        BMI = Val(sweight) / ((height / 100) * (height / 100)) 
+'       If BMI > 20 And BMI < 25 Then range = "normal" 
+'       If BMI > 25 And BMI < 30 Then range = "overweight"
+'       If BMI > 30 Then range = "obese" 
+'       If BMI < 25 Then range = "underweight"
+'       Select Case range
+'       Case "underweight"
+'          If Not (InStr(tlsuggestions.text, sMsgUnderweight)) Then
+'                If Trim(tlsuggestions.text) = "" Then
+'                   tlsuggestions.text = sMsgUnderweight   
+'                Else
+'                 tlsuggestions.text &= "<BR>" & sMsgUnderweight
+'                End If
+'          End If
+'       Case "overweight"
+'          If Not (InStr(tlsuggestions.text, sMsgOverweight)) Then
+'                If Trim(tlsuggestions.text) = "" Then
+'                   tlsuggestions.text = sMsgOverweight   
+'                Else
+'                 tlsuggestions.text &= "<BR>" & sMsgOverweight
+'                End If
+'          End If
+'         
+'       Case "obese" 
+'          If Not (InStr(tlsuggestions.text, sMsgObese)) Then
+'                If Trim(tlsuggestions.text) = "" Then
+'                   tlsuggestions.text = sMsgObese   
+'                Else
+'                 tlsuggestions.text &= "<BR>" & sMsgObese
+'                End If
+'          End If
+'          
+'       Case Else
+'          ' If Not (InStr(tlsuggestions.text, sMsgOverweight)) Then
+'          '    If Trim(tlsuggestions.text) = "" Then
+'          '       tlsuggestions.text = sMsgOverweight
+'          '    Else
+'          '     tlsuggestions.text &= "<BR>" & sMsgOverweight 
+'          '    End If
+'          ' End If
+'       End Select
+'      teNotes.Richtext &= "<A HREF='" & "BMI=" & " '>" & "BMI=" & Str(BMI) & "</A><BR>"
+'       Return Format(BMI, "##.#")
+'    Else
+'       message.Info("No height data recorded for this patient. To calculate the BMI automatically please enter eg h=180 and hit spacebar")
+'       Return "" 
+'    End If
+' 
+' Endement, "="))
+'    Print "in the routine", BSL
+'    charpos = InStr(BSL, ".")
+'    Print "left", Left(BSL, charpos - 1)
+'    Print "right", Right(BSL, Len(BSL) - charpos)
+'    Try Val(Left(BSL, charpos - 1))
+'       If Error Then Return False
+'    Try Right(BSL, Len(BSL) - charpos)
+'       If Error Then Return False
+'       Print "here and there"
+'    teNotes.RichText = Replace$(LCase(teNotes.RichText), "bsl=" & BSL, "<A HREF='Blood sugar'>BSL=" & BSL & "</A><BR>")
+'    teNotes.pos = InStr(teNotes.richtext, "BSL=" & BSL) + Len("BSL=" & BSL)
+'    If Val(bsl) > 5.4 And Val(bsl) < 7.0 Then sSuggestion = sMsg[0]
+'    If Val(bsl) > 6.9 Then sSuggestion = sMsg[1]
+'    
+'    If Not InStr(tlsuggestions.text, sSuggestion) Then
+'      If Trim(tlsuggestions.text) = "" Then
+'         tlsuggestions.text = sSuggestion
+'      Else
+'         tlsuggestions.text &= "<BR>" & sSuggestion
+'      End If
+'    End If
+'    
+'    Return True
+' 
+'   
+'   
+' End As String) As Boolean
+' '    '------------------------
+
+' ' Public Function isBSL(sMeasurementPublic Function isBSL(sMeasurement As String) As Boolean
+'    '-------------------------------------- 
+'    'Expects a valid BSL string eg BSL=120/70
+'    'I just put the return flag in not used
+'    'perhaps will be, or not needed
+'    '--------------------------------------
+'    Dim charpos As Integer
+'    Dim systolic As String
+'    Dim diastolic As String
+'    Dim BSL As String 
+'    Dim flBSL As Float
+'    Dim sSuggestion As String
+'    Dim sMsg As String[]
+'    sMsg[0] = "Elevated glucose, If fasting should have 75gm GTT"
+'    sMsg[1] = "Elevated glucose, If fasting this is in the diabetic range"      
+'                 
+'    BSL = Right(sMeasurement, Len(sMeasurement) - InStr(sMeasurement, "="))
+'    Print "in the routine", BSL
+'    charpos = InStr(BSL, ".")
+'    Print "left", Left(BSL, charpos - 1)
+'    Print "right", Right(BSL, Len(BSL) - charpos)
+'    Try Val(Left(BSL, charpos - 1))
+'       If Error Then Return False
+'    Try Right(BSL, Len(BSL) - charpos)
+'       If Error Then Return False
+'       Print "here and there"
+'    teNotes.RichText = Replace$(LCase(teNotes.RichText), "bsl=" & BSL, "<A HREF='Blood sugar'>BSL=" & BSL & "</A><BR>")
+'    teNotes.pos = InStr(teNotes.richtext, "BSL=" & BSL) + Len("BSL=" & BSL)
+'    If Val(bsl) > 5.4 And Val(bsl) < 7.0 Then sSuggestion = sMsg[0]
+'    If Val(bsl) > 6.9 Then sSuggestion = sMsg[1]
+'    
+'    If Not InStr(tlsuggestions.text, sSuggestion) Then
+'      If Trim(tlsuggestions.text) = "" Then
+'         tlsuggestions.text = sSuggestion
+'      Else
+'         tlsuggestions.text &= "<BR>" & sSuggestion
+'      End If
+'    End If
+'    
+'    Return True
+' 
+'   
+'   
+' End As String) As Boolean
+' '    '-------------------------------------- 
+'    'Expects a valid BSL string eg BSL=120/70
+'    'I just put the return flag in not used
+'    'perhaps will be, or not needed
+'    '--------------------------------------
+'    Dim charpos As Integer
+'    Dim systolic As String
+'    Dim diastolic As String
+'    Dim BSL As String 
+'    Dim flBSL As Float
+'    Dim sSuggestion As String
+'    Dim sMsg As String[]
+'    sMsg[0] = "Elevated glucose, If fasting should have 75gm GTT"
+'    sMsg[1] = "Elevated glucose, If fasting this is in the diabetic range"      
+'                 
+'    BSL = Right(sMeasurement, Len(sMeasurement) - InStr(sMeasurement, "="))
+'    Print "in the routine", BSL
+'    charpos = InStr(BSL, ".")
+'    Print "left", Left(BSL, charpos - 1)
+'    Print "right", Right(BSL, Len(BSL) - charpos)
+'    Try Val(Left(BSL, charpos - 1))
+'       If Error Then Return False
+'    Try Right(BSL, Len(BSL) - charpos)
+'       If Error Then Return False
+'       Print "here and there"
+'    teNotes.RichText = Replace$(LCase(teNotes.RichText), "bsl=" & BSL, "<A HREF='Blood sugar'>BSL=" & BSL & "</A><BR>")
+'    teNotes.pos = InStr(teNotes.richtext, "BSL=" & BSL) + Len("BSL=" & BSL)
+'    If Val(bsl) > 5.4 And Val(bsl) < 7.0 Then sSuggestion = sMsg[0]
+'    If Val(bsl) > 6.9 Then sSuggestion = sMsg[1]
+'    
+'    If Not InStr(tlsuggestions.text, sSuggestion) Then
+'      If Trim(tlsuggestions.text) = "" Then
+'         tlsuggestions.text = sSuggestion
+'      Else
+'         tlsuggestions.text &= "<BR>" & sSuggestion
+'      End If
+'    End If
+'    
+'    Return True
+' 
+'   
+'   
+' End
+Public Sub mnuNotes_Click()
+   Select Case Last.tag
+   Case "paste"
+      Insert_Picture1("clipboard")
+   End Select
+End
+Public Sub Medical_Certificate_Show()
+  
+  If FMedicalCertificate.Visible Then  
+     FMedicalCertificate.Hide()
+     FMedicalCertificate.Ignore = True
+      teNotes.Visible = True
+  Else
+    teNotes.Visible = False
+    FMedicalCertificate.Visible = True
+  End If
+   
+  
+End
+
+
+Public Sub teNotes_Menu()
+  Paragraph_At = teNotes.ToParagraph(teNotes.pos)
+  character_at = teNotes.ToIndex(teNotes.pos)
+
+  'teNotes.text = 
+  mnuNotes.Popup()
+
+End
+' Public Sub ParseText_BP()
+'   '--------------------------------------------------------------
+'   'Tries to convert any BP=nnn/nn or nnn/nnn contained
+'   'in the background HTML to a valid BP If unsuccessful, then
+'   'no formatted html is inserted, so the user immediately knows
+'   'they have typed something wrong.
+'   '
+'   'Example as user types in teNotes BP=120/70 the html looks like
+'   'this. Note that this routine is not triggered until a ascii 32
+'   'appears after the 120/70:
+'   '
+'   ' <html><head><meta name="qrichtext" content="1" /></head>
+'   '<body style="font-size:9pt;font-family:Bitstream Vera Sans">
+'   ' <p>BP=120/70 </p>
+'   ' </body></html>
+'   '
+'   'After this routine, the resultant html looks like this:
+'   '
+'   ' <html><head><meta name="qrichtext" content="1" /></head>
+'   '<body style="font-size:9pt;font-family:Bitstream Vera Sans">
+'   ' <p><a href="Bloodpressure">Blood Pressure=120/70 </a><br /></p>
+'   ' </body></html>
+'   '
+'   'and the cursor is moved on to the next line.
+'   
+'   'The resultant hmtl is parsed and the values extracted when the
+'   ' progress note is later saved
+'   '
+'   'FIXME: NO CODE YET TO RE-CONSTRUCT THE HTML IF THE USER
+'   'PARTIALY DELETES THE FORMATTED TEXT AFTER IT HAS BEEN INSERTED
+'   '--------------------------------------------------------------
+'   CP1 = InStr(LCase(teNotes.RichText), "bp=")
+'   cp2 = InStr(teNotes.RichText, "<", CP1)
+'   Print "CP1", cp1
+'   ' cp2 = InStr(teNotes.RichText, "<br />", CP1)
+'   ' If Not CP2 Then
+'   '     cp2 = InStr(teNotes.RichText, "</p>", CP1)
+'   ' End If
+'   sBP = Mid(teNotes.RichText, cp1, Cp2 - cp1)
+'   If Not (Right(sBP, 1) = Chr(32)) Then Return
+'   isBloodPressure(sBP)
+'   
+'  
+' End
+
+Public Sub FExcise_Show()
+      ' If Not FExcise Then
+          ' Print "should showing that lady"
+         teNotes.Visible = False
+'         VBox_PastHistory.Visible = False
+         FExcise = New FrmSkinExcision(Vbox_ConsultNotes)
+         tbHideForm.Visible = True
+         EmbeddedForm = FExcise
+      ' Else
+      '  'FExcise.Hide()
+      '  teNotes.Visible = True
+      '  VBox_PastHistory.Visible = True
+    ' End If
+  
+  
+End
+Public Sub FDraw_Create_Observer()
+'just a routine to overide the btn_save event of Fdraw
+ Dim hCtrl As Control
+ Dim hToolButton As ToolButton
+ hToolbutton = Fdraw.btnSave
+ hObs = New Observer(hToolbutton) As "DrawEditor_ToolButtons"
+' hToolbutton = Fdraw.tbHideForm
+' hObs = New Observer(hToolbutton) As "DrawEditor_ToolButtons"
+
+' hToolButton = FRequests.tbHideForm
+ 'hObs = New Observer(hToolbutton) As "RequestForm_ToolButtons"
+ ' ' Print "in the consult notes form now"
+ ' For Each hCtrl In Fdraw.Children
+ '   Print hCtrl.Name, "was the control"
+ '      ' If hCtrl Is ComboBox Then 
+ '      '    hCombo = hCtrl
+ '      '    hObs = New Observer(hCombo) As "Editor_ComboCtrl"
+ '      ' Else 
+ '      '    If hCtrl Is ToolButton Then 
+ '      '    hToolbutton = hCtrl
+ '      '    hObs = New Observer(hToolbutton) As "Editor_ToolButtons"
+ '      '    End If
+ 'r      ' End If
+ '      
+ '   Next 
+
+  
+End
+Public Sub Editor_Clear()
+   '-----------------------------------
+   'Clears the text editor with warning
+   '-----------------------------------
+   Select Case message.Warning("Caution:\n\nTo continue will entirely erase your notes.\n\nAre you sure?", "Yes - erase notes", "No")
+   Case 1
+      bExit = True   
+      teNotes.Clear()
+      tlsuggestions.Text = ""
+      bExit = False
+      sWeight = ""
+      sHeight = ""
+   End Select
+   
+    
+  
+End
+
+Public Sub EditorButtons_Click()
+
+   '---------------------------------------------
+   'User has clicked on one of the editor buttons
+   '---------------------------------------------
+   Select Case Last.tag
+   Case "about"
+         Balloon.Info("A simple TextEditor adapted from an example by\nFabien Bodard (gambix@users.sourceforge.net)\nand Benoît Minisini", Last)
+   Case "erase"
+      Editor_Clear()
+   Case "bold"
+      teNotes.Format.Font.Bold = Last.Value
+   Case "italic"
+      teNotes.Format.Font.Italic = Last.Value
+   Case "underline"
+      teNotes.Format.Font.Underline = Last.Value
+   Case "strikeout"
+      teNotes.Format.Font.StrikeOut = Last.Value
+   Case "align left"
+      teNotes.Format.Alignment = Align.Left
+   Case "align centre"
+      teNotes.Format.Alignment = Align.Center
+   Case "align right"
+      teNotes.Format.Alignment = Align.Right
+   Case "justify"
+      teNotes.Format.Alignment = Align.Justify  
+   Case "load file"
+       ' Dialog.Title = "Select Image File"
+       ' Dialog.Filter = ["*.png", "Image Files", "*", "All files"]
+       ' If Dialog.OpenFile() Then Return
+       ' Print Dialog.Path 
+       ' FImageGet.$hImage = Image.Load(Dialog.Path)
+       ' FImageGet.ShowModal()       
+       ' Insert_Picture1("clipboard")
+   Case "dot point"
+   Case "hide form"
+      EmbeddedForm_Close()
+   End Select
+End
+
+Public Function backup()
+  '-----------------------------------------
+  'FIXME BETTER NAME 
+  'make me a stack
+  'Saves the editor contents before erasing
+  'just in case user did it by accident
+  '-----------------------------------------
+  editor_contents = teNotes.RichText()
+  
+End
+
+Public Sub teNotes_Cursor()
+
+  Object.Lock(btnBold)
+  Object.Lock(btnItalic)
+  Object.Lock(btnUnderline)
+  Object.Lock(btnAlignLeft)
+  Object.Lock(btnAlignCenter)
+  Object.Lock(btnAlignRight)
+  Object.Lock(btnAlignJustify)
+  Object.Lock(SpinBox1)
+  Object.Lock(ColourButton1)
+  
+  btnBold.Value = teNotes.Format.Font.Bold
+  btnItalic.Value = teNotes.Format.Font.Italic
+  btnUnderline.Value = teNotes.Format.Font.Underline
+
+  
+  Select Case teNotes.Format.Alignment
+    Case Align.Left
+      btnAlignLeft.Value = True
+    Case Align.Right
+      btnAlignRight.Value = True
+    Case Align.Center
+      btnAlignCenter.Value = True
+    Case Align.Justify
+      btnAlignJustify.Value = True
+    Case Align.Normal
+      btnAlignLeft.Value = True ' If the displayed langage is left to right written, that's OK. Elsewhere...
+  End Select
+  
+  ColourButton1.Color = teNotes.Format.Color
+  cmbFonts.Text = teNotes.Format.Font.Name
+  SpinBox1.Value = teNotes.Format.Font.Size
+ 
+  Object.UnLock(btnBold)
+  Object.UnLock(btnItalic)
+  Object.UnLock(btnUnderline)
+  Object.UnLock(btnAlignLeft)
+  Object.UnLock(btnAlignCenter)
+  Object.UnLock(btnAlignRight)
+  Object.UnLock(btnAlignJustify)
+  Object.UnLock(cmbFonts)
+  Object.UnLock(SpinBox1)
+  Object.UnLock(ColourButton1)
+
+End
+
+
+
+Public Sub tbLoadFile_Click()
+   '-----------------------------------------------------------
+   'Load a file and insert into the editor either image or text
+   'todo -the text
+   '-----------------------------------------------------------
+  
+   teNotes.Insert(".pic")
+   Dialog.Title = "Select Image File"
+   Dialog.Filter = ["Pictures (*.png;*.jpg;*.jpeg)", "All files (*.*)"]
+   
+   If Dialog.OpenFile() Then Return
+   '----------------------------------------------------
+   'Ok, check this is a valid image (e.g they could have
+   'changed the file selector to any file
+   '-----------------------------------------------------
+  Try FImageGet.Set_Image(Image.Load(Dialog.Path))
+ '  Try FImageGet.$hImage = Image.Load(Dialog.Path)
+   If Not Error Then 
+       FImageGet.ShowModal()       
+       Insert_Picture1("clipboard")
+   Else
+     Try teNotes.Insert(File.Load(Dialog.Path))
+      If Error Then
+         Message.Info("An error occurred whilst trying to insert the file.\n")
+      End If
+   End If
+   
+
+
+End
+
+Sub temp_keep_this()
+  ' sPicPath = "<TABLE WIDTH=100%><TR><TD WIDTH=100%><P><IMG "
+  '  If PictureBox1.tag <> "" Then
+  '    sPicPath &= "pk_image=" & Pictures[PictureBox1.tag]!fk_image & " "
+  '    H = PictureBox1.Picture.H
+  '    W = PictureBox1.Picture.W
+  '  Else
+  '     Tempfile = Temp() & ".png" 
+  '     P = HBox_MainPicture.Screenshot()
+  '     P.Save(Tempfile) 
+  '     sPicPath &= "src=" & tempfile & " "  
+  '     H = P.h
+  '     w = P.w
+  '  End If
+  '  sPicPath &= " NAME=graphics ALIGN=LEFT WIDTH=" & Str(W) & " HEIGHT=" & Str(H) & " BORDER=0></TR></TD></TABLE><BR><BR>" 
+  '  Return sPicPath
+End

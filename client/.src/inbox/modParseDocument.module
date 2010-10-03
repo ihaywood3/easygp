@@ -1,0 +1,1469 @@
+' Gambas module file
+
+Public Sub Guess_UserName(cons As CConsult, synonyms As Collection, SelectedDocument As Collection, observations As Collection) As Collection
+   
+   Dim Guess As New Collection 
+   Dim RequestOrdered As Collection 
+   Dim synonym As Collection 
+   Dim synonym_count As Integer 
+   Dim all_synonyms As New Collection
+   Dim item As Collection 
+   Dim observation As Collection 
+   
+   If Not IsNull(SelectedDocument!fk_lu_provider_type) Then
+      If SelectedDocument!fk_lu_provider_type > 3 Then                               'path, radiology, nuclear medicine
+         guess!name = Guess_Letter_Content(observations)
+         If guess!name Then Return guess
+      End If
+   End If
+   
+   If Not IsNull(cons) Then
+      RequestOrdered = New Collection 
+      For Each RequestOrdered In cons!requests_ordered
+         If SelectedDocument!date_created = RequestOrdered!request_date Then
+            If Lower$(SelectedDocument!tag) = Lower(RequestOrdered!item) Then
+               guess!name = SelectedDocument!tag
+               Return Guess
+            End If
+         End If       
+      Next
+   End If  
+   
+   guess!name = Guess_Request_Names_From_tag(SelectedDocument, observations)
+   If guess!name <> "" Then Return guess
+   
+   If Not IsNull(SelectedDocument!fk_lu_provider_type) Then 
+      For Each item In modRequestsDBI.requests_get_items(SelectedDocument!tag, SelectedDocument!fk_lu_provider_type)
+         If Lower(item!item) = Lower(SelectedDocument!tag) Then
+            guess!name = item!item 
+            Return guess
+         End If
+      Next
+   End If   
+   
+   guess!name = Guess_Request_Names_From_Observation(observations)
+   If guess!name <> "" Then Return guess
+   
+   For Each synonym In synonyms                
+      If Lower(synonym!provider_request_name) = Lower(SelectedDocument!tag) Then 
+         all_synonyms.Add(synonym, all_synonyms.count)
+         Inc synonym_count
+      End If 
+   Next  
+   
+   If synonym_count = 1 Then
+      For Each synonym In all_synonyms
+         guess!name = synonym!user_request_name & ";"
+         Select Case synonym!lateralisation
+            Case const.LateralityLeft
+               guess!laterality = const.LateralityLeft
+               
+            Case const.LateralityRight
+               
+               guess!laterality = const.LateralityRight
+            Case Const.LateralityBoth
+               
+               guess!laterality = const.LateralityBoth
+         End Select
+         Return guess
+      Next
+   Else
+      For Each Observation In observations
+         If InStr(Lower(observation!value), Lower(synonym!user_request_name)) Then
+            guess!name = synonym!user_request_name & ";"
+            Return guess
+            Break
+         End If
+      Next
+   End If
+   guess = Guess_Radiology_From_Tag(SelectedDocument!tag)
+   If Guess!name Then Return Guess
+   guess = Guess_Request_Names_From_Parsing_Report(observations)
+   
+   Return guess
+
+End  
+
+Public Function Guess_Letter_Content(observations As Collection) As String   
+   
+   Dim observation As Collection
+   Dim From_pos As Integer
+   Dim To_pos As Integer
+   Dim diagnosis_guess As String
+   Dim Lines As String[]
+   Dim a_line As String
+
+   For Each observation In observations
+      Lines = Split(Replace(observation!value, "\\.br\\", "|"), "|", "", True)
+      For Each a_line In Lines
+         If Left(a_line, 3) = "Dx:" And Right(a_line) = ")" Then
+            Return Trim(Replace$(a_line, "Dx:", "")) 
+         End If
+      Next    
+   Next   
+   Return diagnosis_guess
+
+End  
+
+Public Function Guess_Request_Names_From_tag(SelectedDocument As Collection, observations As Collection) As String
+   
+   Dim requestname As String  
+   Dim sString As String 
+   Dim observation As Collection 
+   
+   Select Case Lower(SelectedDocument!tag)
+      Case "viral pcr panel"     'since when is MRSA viral?
+         For Each observation In observations
+            If InStr(Lower(observation!value), "mrsa") Then
+               If Not InStr(Lower(requestname), "MRSA PCR;") Then 
+                  requestname &= "MRSA PCR;"
+               End If 
+            End If
+            If InStr(Lower(observation!value), "human papillomavirus dna") Then
+               If Not InStr(Lower(requestname), "HUMAN PAPILLOMAVIRUS DNA;") Then 
+                  requestname &= "HUMAN PAPILLOMAVIRUS DNA;"
+               End If 
+            End If
+            
+         Next
+      Case "x029"
+         For Each observation In observations
+            If InStr(Lower(observation!value), "faeces ocp") Then
+               If Not InStr(Lower(requestname), "faeces - ova, cysts parasites (microscopy, direct+/-concentrate);") Then 
+                  requestname &= "Faeces - ova, cysts parasites (microscopy, direct+/-concentrate);"
+               End If 
+            End If        
+         Next     
+      Case "x019"
+         For Each observation In observations
+            If InStr(Lower(observation!value), "bordetella pertussis") Then
+               If Not InStr(Lower(requestname), "Bordetella Pertussis PCR;") Then 
+                  requestname &= "Bordetella Pertussis PCR;"
+               End If 
+            End If        
+         Next
+      Case "x015"
+         requestname = "MSU;"
+      Case "x017"
+         For Each observation In observations
+            If InStr(Lower(observation!value), "hdl") Then
+               If Not InStr(Lower(requestname), "hdl Cholesterol") Then
+                  requestname &= "HDL Cholesterol;"
+               End If
+            End If
+            If InStr(Lower(observation!value), "egfr") Then
+               If Not InStr(Lower(requestname), "egfr") Then 
+                  requestname &= "eGFR;"
+               End If
+            End If 
+            If InStr(Lower(observation!value), "glucose") Then
+               If Not InStr(Lower(requestname), "BSL;") Then 
+                  requestname &= "BSL;"
+               End If
+            End If           
+            
+         Next
+      Case "hormones (hoc-0)"
+         For Each observation In observations
+            If Not InStr(Lower(requestname), "testosterone;") Then 
+               If InStr(Lower(observation!value), "testosterone") Then
+                  requestname &= "Testosterone;"
+               End If
+            End If
+            If Not InStr(Lower(requestname), "dheas;") Then 
+               If InStr(Lower(observation!value), "dheas") Then
+                  requestname &= "DHEAS;"
+               End If
+            End If
+            
+         Next
+      Case "referred test (sen-0)"
+         For Each observation In observations
+            If InStr(Lower(observation!value), "shbg") Then
+               requestname &= "Sex hormone binding globulin;"
+               Break
+            End If
+         Next
+      Case "clinical chemistry"
+         
+         requestname = Guess_Request_Names_From_Observation(Observations)
+         If requestname = "" Then 
+            For Each observation In observations
+               If observation!value_type = "NM" Then
+                  If Not IsNull(observation!identifier) Then
+                     requestname &= Loinc_Get_component(observation!loinc)
+                  Endif
+                  Break
+               End If
+            Next
+         End If
+         
+      Case "biochem"
+         For Each observation In observations
+            If InStr(Lower(observation!value), "calculus analysis") Then
+               requestname &= "Calculus - renal;"
+               Break
+            End If
+         Next
+      Case "x011"
+         For Each observation In observations
+            If InStr(Lower(observation!identifier), "histology") Then
+               If Not InStr(requestname, "Histopathology") Then
+                  requestname = "Histopathology;"
+               End If 
+            End If
+         Next
+      Case "serology (axm-0)" 'symbion
+         For Each observation In observations
+            If InStr(Lower(observation!value), "rubella") Then
+               requestname = "Rubella - EIA IgG/IgM;"
+            End If
+            
+         Next
+      Case "general serology", "general serology."  'fuckwits 
+         For Each observation In observations
+            If InStr(Lower(observation!value), "pertussis pcr") Then
+               requestname &= "Bordetella pertussis PCR;"
+            End If
+            If InStr(Lower(observation!value), "hepb surface ag") Then
+               requestname &= "Hepatitis B surface antigen;"
+            End If
+            If InStr(Lower(observation!value), "syphilis") Then
+               requestname &= "Syphilis;"
+            End If
+            If InStr(Lower(observation!value), "cmv") Then
+               If Not InStr(requestname, "Cytomegalovirus - EIA IgG IgM;") Then
+                  requestname &= "Cytomegalovirus - EIA IgG IgM;"
+               End If
+            End If
+            If Not IsNull(observation!identifier) Then
+               requestname &= Loinc_Get_component(observation!loinc)
+            Endif
+         Next      
+      Case "viral pcr panel"
+         For Each observation In observations
+            If InStr(Lower(observation!value), "pertussis pcr") Then
+               requestname = "Bordetella pertussis PCR;"
+            End If
+         Next
+      Case "urine epg"
+         requestname = "EPG - urine"
+      Case "electrophoresis"
+         For Each observation In observations
+            If InStr(Lower(observation!value), "urine") Then
+               requestname = "EPG - urine;"
+               Break
+            Else
+               requestname = "Protein Electrophoresis;"
+               Break
+            End If
+         Next
+         
+      Case "hba1c/gtt"
+         For Each observation In observations
+            
+            If InStr(Lower(observation!identifier), "hba1c") Then
+               requestname &= "hba1c"
+            End If
+         Next
+      Case "respir.microbiology"
+         For Each observation In observations
+            If InStr(Lower(observation!value), "swab cough") Then
+               requestname = "Cough Swab C&S;"
+            End If
+         Next   
+      Case "coag inhibitor assay"
+         For Each observation In observations
+            If InStr(Lower(observation!value), "lupus anticoagulant") Then
+               requestname = "Lupus Anti-coagulant;"
+            End If
+         Next   
+         
+      Case "cross match (xm-0)"
+      Case "tumour markers", "hormone testing", "hepatitis serology (hep-0)", "specific proteins (spp-0)", "anti leucocyte antibody (lla-0)" ', "HORMONES (HOC-0)"
+         
+         For Each observation In observations
+            If Not IsNull(observation!identifier) Then
+               If Not IsNull(observation!loinc) Then 
+                  sString = modCodingDBI.Loinc_Get_component(observation!loinc)
+                  If Not InStr(Lower(sString), "service comment") Then
+                     If Not modRequestsDBI.Request_Item_?exists(sString) Then
+                        modRequestsDBI.Request_Save_loinc(sSTring)
+                        modDBConnect.CommitTrans()
+                     End If
+                     If Not InStr(requestname, sString) Then
+                        requestname &= sString & ";"
+                     End If   
+                  End If
+               End If
+            End If
+         Next
+      Case "direct antigen tests"   
+         For Each Observation In Observations
+            If InStr(Lower(Observation!value), "chlamydia trachomatis") Then
+               requestname = "Chlamydia trachomatis PCR;"
+            End If
+            
+            If InStr(Lower(Observation!value), "influenza") Then
+               requestname = "Viral antigen test - respiratory EIA IF - RSV influenza etc;"
+            End If
+            
+         Next
+      Case "b12/folate/ferritin"
+         For Each Observation In Observations
+            If InStr(Lower(Observation!identifier), "b12") Then
+               requestname &= "Vitamin B12 And Folate;"
+               
+            End If
+            If InStr(Lower(Observation!identifier), "iron") Then
+               requestname &= "Iron studies incl. iron/TIBC"
+            End If
+         Next
+         
+      Case "microbiology culture", "general swab m/c/s (pus-0)", "general swab m/c/s (pus-1)"
+         For Each Observation In Observations
+            If InStr(Lower(Observation!value), "blood culture") Then
+               If Not InStr(requestname, "Blood culture - routine;")
+                  requestname &= "Blood culture - routine;"
+               End If
+            End If
+            If InStr(Lower(Observation!value), "faeces") Then
+               If Not InStr(requestname, "Faeces - bacterial culture;")
+                  requestname &= "Faeces - bacterial culture;"
+               End If
+            End If
+            If InStr(Lower(Observation!value), "urine") Then
+               If Not InStr(requestname, "MSU;")
+                  requestname &= "MSU;"
+               End If
+            End If
+            If InStr(Lower(Observation!value), "wound") Or InStr(Lower(Observation!value), "ear") Or InStr(Lower(Observation!value), "toe") Or InStr(Lower(Observation!value), "leg") Or InStr(Lower(Observation!value), "breast") Then
+               If Not InStr(requestname, "Pus swab c&s;")
+                  requestname &= "Pus swab c&s;"
+               End If
+            End If
+            If InStr(Lower(Observation!value), "nose") Then
+               If Not InStr(requestname, "Nasal swab c&s;")
+                  requestname &= "Nasal swab c&s;"
+               End If
+            End If
+            If InStr(Lower(Observation!value), "abscess") Then
+               If Not InStr(requestname, "Abscess swab c&s;")
+                  requestname &= "Abscess swab c&s;"
+               End If
+            End If
+            If InStr(Lower(Observation!value), "sputum") Then
+               If Not InStr(requestname, "Sputum culture - routine;")
+                  requestname &= "Sputum culture - routine;"
+               End If
+            End If
+            If InStr(Lower(Observation!value), "fluid") And InStr(Lower(Observation!value), "knee") Then
+               If Not InStr(requestname, "Joint fluid c&s;")
+                  requestname &= "Joint fluid c&s;"
+               End If
+            End If
+            
+         Next
+      Case "respiratory serology"
+         requestname = "Viral antigen test - respiratory EIA IF - RSV influenza etc;"
+      Case "parasite screening"
+         For Each Observation In Observations
+            If InStr(Lower(Observation!value), "faeces") Then
+               requestname = "Faeces - ova, cysts parasites (microscopy, direct+/-concentrate);"
+            End If
+         Next
+      Case "nephrology lab urines"
+         requestname = "urine - red cell morphology;"
+      Case "rast"
+         
+         requestname = "RAST Allergy Testing"
+      Case "fbc", "haematology"
+         For Each Observation In Observations
+            If Not IsNull(observation!identifier) Then
+               Select Case Lower(observation!identifier)
+                  Case "haemoglobin"
+                     requestname = "Hb"
+                  Case "esr"
+                     requestname &= "ESR;"
+                  Case Else
+                     
+                     requestname &= observation!identifier
+                     Print observation!identifier
+               End Select
+            End If
+         Next
+         If requestname <> "ESR;" Then 
+            If InStr(requestname, "ESR") Then
+               requestname = "FBC;ESR"
+            Else
+               If requestname <> "Hb" Then
+                  requestname = "FBC;"
+               End If
+            End If
+         End If
+         
+      Case "pth"
+         For Each Observation In Observations
+            Select Case Lower(observation!identifier)
+               Case "intact parathyroid hormone"
+                  requestname &= "Parathyroid hormone;" 
+               Case "calcium"
+                  requestname &= "Calcium"
+                  
+            End Select
+         Next
+      Case "e498"
+         For Each Observation In Observations
+            Select Case Lower(observation!identifier)
+                  
+               Case "carcinoembryonic ag"
+                  requestname &= "Carcinoembryonic antigen;"
+               Case "alpha foetoprotein"
+                  requestname &= "alpha foetoprotein;"
+            End Select
+         Next 
+      Case "iron studies", "irs"
+         For Each Observation In Observations
+            Select Case Lower(observation!identifier)
+               Case "transferrin"
+                  
+               Case "ferritin"
+                  requestname &= "Ferritin" & ";"
+               Case "iron", "tibc(calculated)", "saturation"
+                  If Not InStr(requestname, "Iron studies incl. iron/TIBC") Then
+                     requestname &= "Iron studies incl. iron/TIBC;"
+                  End If   
+            End Select
+         Next
+         If InStr(requestname, "Iron studies incl. iron/TIBC") Then
+            requestname = Replace(requestname, "Ferritin;", "") 'if it exists
+         End If
+         
+      Case "ctsw1"
+         requestname = "Chlamydia trachomatis PCR"
+      Case "ngsw1"
+         requestname = "Neisseria gonorrhoeae PCR"
+      Case "creatinine clearance"
+         requestname = "24hour Urinary Creatinine Clearance"
+      Case "s/away"
+         requestname = "Pending - sent away"
+      Case "hiv"
+         requestname = "Anti-HIV Antibody"
+      Case "bpcr"
+         requestname = "Bordetella pertussis PCR"
+      Case "ebv"
+         For Each Observation In Observations
+            If InStr(Lower(observation!value), "epstein") Then
+               requestname &= "Epstein Barr virus EIA IgG IgM;"
+            End If
+            If InStr(Lower(observation!value), "cytomegalo") Then
+               requestname &= "Cytomegalovirus - EIA IgG IgM;"
+            End If
+         Next
+         
+      Case "syphilis"
+         For Each Observation In Observations
+            If InStr(Lower(observation!identifier), "treponemal ab (eia)") Then
+               requestname &= "Treponemal Ab (EIA);"
+            End If
+         Next
+      Case "pt"
+         requestname = "Prothrombin Time"
+      Case "jak2 mutation"
+         requestname = "JAK-2 mutation for polycythaemia"
+      Case "vitamin d 1-25"
+         requestname = "Vitamin D" 
+      Case "hep serology"
+         For Each Observation In Observations
+            If InStr(Lower(observation!value), "hepatitis c") Then
+               requestname &= "Hepatitis C Studies;"
+            End If   
+         Next
+      Case "metals, 24hr urine"
+         For Each Observation In Observations
+            If InStr(Lower(observation!identifier), "copper") Then
+               requestname &= "24hr Urine copper;"
+            End If
+         Next
+      Case "hepatitis serology", "hepatitis c serology"
+         
+         For Each Observation In Observations
+            If InStr(Lower(observation!identifier), "hepatitis a igg") Then
+               requestname &= "Hepatitis A IgG;"
+            End If
+            If InStr(Lower(observation!identifier), "hepatitis a igm") Then
+               requestname &= "Hepatitis A IgM;"
+            End If
+            If InStr(Lower(observation!identifier), "hepatitis b core ab") Then
+               requestname &= "Hepatitis B core antibody - EIA IgM;"
+            End If
+            If InStr(Lower(observation!identifier), "hepatitis c ab") Then
+               requestname &= "Hepatitis C Studies;"
+            End If
+            
+            If InStr(Lower(observation!identifier), "hepatitis b surface ag") Then
+               requestname &= "Hepatitis B surface antigen;"
+            End If
+            If InStr(Lower(observation!identifier), "hepatitis b surface ab") Then
+               requestname &= "Hepatitis B virus surface Ab;"
+            End If
+         Next
+         If requestname = "Hepatitis B surface antigen;Hepatitis B antibody;" Then
+            requestname = Replace(requestname, "Hepatitis B surface antigen;Hepatitis B virus surface Ab;", "Hepatitis B Studies")
+         End If
+         If requestname = "Hepatitis B virus surface Ab;Hepatitis B surface antigen;" Then
+            requestname = Replace(requestname, "Hepatitis B virus surface Ab;Hepatitis B surface antigen;", "Hepatitis B Studies")
+         End If
+         
+      Case "hepatitis b serology"
+         For Each Observation In Observations
+            If InStr(Lower(observation!identifier), "hepatitis b surface ag") Then
+               requestname &= "Hepatitis B surface antigen;"
+            End If
+            If InStr(Lower(observation!identifier), "hepatitis b surface ab") Then
+               requestname &= "Hepatitis B virus surface Ab;"
+            End If
+            If InStr(Lower(observation!identifier), "hepatitis b core ab") Then
+               requestname &= "Hepatitis B Core Ab;"
+            End If
+         Next
+         
+         If requestname = "Hepatitis B surface antigen;Hepatitis B virus surface Ab;" Or requestname = "Hepatitis B virus surface Ab;Hepatitis B surface antigen;" Then
+            requestname = "Hepatitis B Studies"
+         End If
+      Case "ngsp"
+         For Each Observation In Observations
+            
+            If InStr(Lower(observation!identifier), "sputum") Then
+               If Not InStr(Lower(requestname), "sputum") Then
+                  requestname = "Sputum cytology for malignant cells"
+               End If
+            End If
+         Next
+         
+      Case "sputum1", "sputum2", "sputum3"
+         For Each Observation In Observations
+            
+            If InStr(Lower(observation!value), "cytopathology") Then
+               requestname = "Sputum cytology for malignant cells"
+            End If
+         Next
+      Case "gluc2hrpp"
+         
+         requestname = "Glucose 2 Hr.PP"
+      Case "mcs"
+         For Each observation In observations
+            If InStr(Lower(observation!value), "specimen swab - leg") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+         Next
+      Case "gmc1", "gmc2", "gmc3"
+         For Each Observation In Observations
+            Select Case Lower(observation!value)
+               Case "penile swab"
+                  requestname = "Pus swab c&s"
+               Case "pus swab"
+                  requestname = "Pus swab c&s"
+               Case "urethral swab"
+                  requestname = "Urethral swab c&s;"
+               Case "sputum"
+                  requestname = "Sputum culture - routine"
+               Case "nasal swab"
+                  requestname = "Nose swab c&s"
+               Case "vaginal swab"
+                  requestname = "Genitourinary - eg vaginal discharge, vaginal swab - Gram stain and aerobic culture"
+               Case "perianal swab"
+                  requestname = "peri-anal swab c&s"
+               Case "synovial fluid"
+                  requestname = "Joint fluid c&s;Joint fluid crystals"
+                  
+               Case "genital swab"
+                  requestname = "Genitourinary - STD cervical urethral swabs - Gram stain gonococcal culture Trichomonas"
+               Case "throat swab"
+                  requestname = "Throat swab c&s"
+            End Select
+            If InStr(Lower(observation!value), "synovial") Then
+               If Not InStr(requestname, "Joint fluid c&s;Joint fluid crystals;") Then
+                  requestname = "Joint fluid c&s;Joint fluid crystals;"
+                  Break
+               End If
+               
+            End If
+            If InStr(Lower(observation!value), "wound") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            
+            If InStr(Lower(observation!value), "knee") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            If InStr(Lower(observation!value), "abdominal") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            
+            If InStr(Lower(observation!value), "umbilical") Then
+               requestname = "Umbilical swab c&s"
+               Break
+            End If
+            
+            If InStr(Lower(observation!value), "leg") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            If InStr(Lower(observation!value), "ear") Then
+               requestname = "Ear swab c&s;"
+               Break
+            End If
+            
+            If InStr(Lower(observation!value), "hand") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            If InStr(Lower(observation!value), "chest") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            If InStr(Lower(observation!value), "hand") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            If InStr(Lower(observation!value), "foot") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            
+            If InStr(Lower(observation!value), "paronychia") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            
+            If InStr(Lower(observation!value), "finger") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            
+            If InStr(Lower(observation!value), "pilonidal") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            
+            If InStr(Lower(observation!value), "perianal") Then
+               requestname = "Perianal swab c&s"
+               Break
+            End If
+            If InStr(Lower(observation!value), "face") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            If InStr(Lower(observation!value), "abscess") Then
+               requestname = "Abscess swab c&s;"
+               Break
+            End If
+            If InStr(Lower(observation!value), "shin") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            
+            If InStr(Lower(observation!value), "axilla") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            
+            If InStr(Lower(observation!value), "skin") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            If InStr(Lower(observation!value), "groin") Then
+               requestname = "Pus swab c&s"
+               Break
+            End If
+            
+            If InStr(Lower(observation!value), "vaginal") Or InStr(Lower(observation!value), "cervical") Then
+               requestname = "Genitourinary - eg vaginal discharge, vaginal swab - Gram stain and aerobic culture;"
+               Break
+            End If
+            
+         Next
+         
+      Case "coag"
+         requestname = "Coagulation screen"
+      Case "alb/creat ratio"
+         requestname = "spot urine albumin/creatinine ratio"
+      Case "albumin excr (ur)"
+         For Each Observation In Observations
+            If InStr(Lower(observation!identifier), "collection period") Then
+               requestname &= "Albumin/Creatinine ratio Timed overnight collection.;"
+            End If
+         Next
+         If requestname = "" Then requestname = "Albumin - urine (microalbumin)"
+      Case "tof"
+         requestname = "Outstanding Tests"
+      Case "hm"
+         requestname = "24Hr Holter Scan"
+      Case "x017"
+         For Each Observation In Observations
+            If InStr(Lower(observation!value), "folate red cell") Then
+               requestname &= "red cell folate"
+            End If
+         Next
+         
+      Case "cytology non gynae (cyt-0)", "urine1", "cytology", "urine2", "urine3"
+         For Each observation In observations
+            If InStr(Lower(observation!value), " pleural fluid") Then
+               If Not InStr(requestname, "Pleural fluid cytology;") Then
+                  requestname = "Pleural fluid cytology;"
+               End If
+            End If
+            If InStr(Lower(observation!value), "urine") Then
+               If Not InStr(requestname, "Urine cytology;") Then
+                  requestname = "Urine cytology;"
+               End If
+            End If
+            
+         Next
+      Case "phenotyping"
+         requestname = "Lymphocyte subsets;"
+      Case "ige specific allerg."
+         
+         For Each observation In observations
+            Print observation!value
+            If InStr(Lower(observation!value), "penicilloyl") Or InStr(Lower(observation!value), "amoxicilloyl") Then
+               requestname = "Penicillin & Amoxycillin IgE;"
+               
+            End If
+            If requestname = "" Then
+               If Not IsNull(observation!identifier) Then
+                  If Not IsNull(observation!loinc) Then 
+                     sString = modCodingDBI.Loinc_Get_component(observation!loinc)
+                     If Not modRequestsDBI.Request_Item_?exists(sString) Then
+                        modRequestsDBI.Request_Save_loinc(sSTring)
+                        modDBConnect.CommitTrans()
+                     End If
+                     requestname &= sString & ";"
+                  End If
+               End If
+            End If   
+            
+         Next  
+      Case "calc"
+         requestname = "Calculus - renal"
+      Case "urine chemistry", "immunoglobulins (imm-0)"
+         
+         For Each observation In observations
+            If Not IsNull(observation!identifier) Then
+               If Not IsNull(observation!loinc) Then 
+                  sString = modCodingDBI.Loinc_Get_component(observation!loinc)
+                  If Not modRequestsDBI.Request_Item_?exists(sString) Then
+                     modRequestsDBI.Request_Save_loinc(sSTring)
+                     modDBConnect.CommitTrans()
+                  End If
+                  If Not InStr(requestname, sString) Then
+                     requestname &= sString & ";"
+                  End If
+               End If
+            End If
+         Next  
+      Case "chemistry, ur.24h"
+         For Each Observation In Observations
+            Select Case Lower(observation!identifier)
+               Case "sodium excretion", "potassium excretion", "chloride excretion"
+                  If Not InStr(requestname, "24hr urine electrolytes") Then
+                     requestname &= "24hr urine electrolytes;"
+                  End If
+               Case "protein excretion"
+                  requestname &= "24 Hour Urinary Protein Excretion;"
+               Case "citrate excretion" 
+                  requestname &= "24hr urine citrate;"
+               Case "calcium excretion"
+                  requestname &= "24hr urine calcium;"
+               Case "u-creatinine excretion"
+                  requestname &= "24hr urine creatinine;"
+               Case "oxalate excretion"
+                  requestname &= "24hr urine oxalate;"
+               Case "u-magnesium excretion"
+                  requestname &= "24hr urine magnesium;"
+               Case "urate excretion"
+                  requestname &= "24hour Urinary Uric Acid Excretion;"
+            End Select
+         Next
+      Case "cardiac markers"
+         For Each Observation In Observations
+            If InStr(Lower(observation!identifier), "troponin") Then
+               requestname = "Troponin"
+            End If
+         Next
+         
+      Case "thyroid abs virtual", "_thyroid abs virtual", "thyab"
+         For Each Observation In Observations
+            Select Case Lower(observation!identifier)
+               Case "thyroid peroxidase ab"
+                  requestname &= "Thyroid Peroxidase Ab;"
+               Case "thyroglobulin"
+                  requestname &= "Thyroglobulin;"
+               Case "thyroglobulin ab"
+                  requestname &= "Thyroglobulin ab;"
+            End Select
+         Next
+      Case "x020", "fluid micro/culture (fld-0)", "fliud chemistries (cfl-0)", "fluid chemistries (cfl-0)" 'can't spell either
+         
+         For Each Observation In Observations
+            If InStr(Lower(observation!value), "parvovirus") Then
+               requestname = "Human parvovirus - EIA IgG IgM"
+            End If
+            If InStr(Lower(observation!value), "pleural", 0, gb.IgnoreCase) Then
+               If InStr(Lower(SelectedDocument!tag), "micro") Then
+                  If Not InStr(requestname, "Pleural fluid c&s;") Then
+                     requestname = "Pleural fluid c&s"
+                  End If
+               Else
+                  If Not InStr(requestname, "Pleural fluid biochemistry;") Then
+                     requestname &= "Pleural fluid biochemistry;"
+                  End If
+               End If  
+            End If
+         Next
+      Case "misc.chemistry"
+         For Each Observation In Observations
+            If InStr(Lower(observation!value), "ostase") Then
+               requestname = "Ostase;"
+            End If
+         Next
+      Case "chemistry urine", "chemistry, urine"
+         For Each Observation In Observations
+            If InStr(Lower(observation!identifier), "r-u-creatinine") Then
+               requestname = "Creatinine - urine"
+               
+            End If
+            If InStr(Lower(observation!identifier), "u-creatinine") Then
+               requestname = "Creatinine - urine"
+               
+            End If
+            If InStr(Lower(observation!identifier), "r-u-protein/creat ratio") Then
+               requestname = "spot urine albumin/creatinine ratio" 
+               
+            End If
+            
+         Next
+         
+      Case "retics"
+         requestname = "Reticulocyte count"
+      Case "cpls"
+         requestname = "caeruloplasmin"
+         
+      Case "fun", "fun2"
+         For Each Observation In Observations               
+            If InStr(Lower(observation!value), "abscess") Or InStr(Lower(observation!value), "swab") Or InStr(Lower(observation!value), "abcess") Then
+               requestname = "Fungal stain & culture - tissues swabs etc;"             'abcess!! mmmmmmmmmm spelling!!!!!!!!!!!!
+               Break
+            End If
+            
+            If InStr(Lower(observation!value), "nail") Then
+               requestname = "Nail c&s for fungi;"
+               Break
+            End If
+            If InStr(Lower(observation!value), "face") Or InStr(Lower(observation!value), "hand") Then
+               requestname = "Fungal stain & culture - skin scrapings (dermatophytes);"
+               Break
+            End If
+            
+            If InStr(Lower(observation!value), "skin") Or InStr(Lower(observation!value), "leg") Or InStr(Lower(observation!value), "chest") Then
+               requestname = "Fungal stain & culture - skin scrapings (dermatophytes);"
+               Break
+            End If
+            If InStr(Lower(observation!value), "trunk") Or InStr(Lower(observation!value), "foot") Or InStr(Lower(observation!value), "scalp") Then
+               requestname = "Fungal stain & culture - skin scrapings (dermatophytes);"
+               Break
+            End If
+            If InStr(Lower(observation!value), "biopsy") Then
+               requestname = "Fungal stain & culture - tissues swabs etc;"
+               Break
+            End If
+         Next
+         
+      Case "antenatal testing"
+         For Each Observation In Observations
+            If InStr(Lower(Observation!value), "blood group") Then
+               If InStr(Lower(Observation!value), "antibodies") Then
+                  requestname &= "pregnancy blood group antibody screen;"
+               Else
+                  requestname &= "Blood Group;"
+               End If
+            End If
+            If Not IsNull(observation!identifier) Then
+               If Not IsNull(observation!loinc) Then 
+                  sString = modCodingDBI.Loinc_Get_component(observation!loinc)
+                  If Not modRequestsDBI.Request_Item_?exists(sString) Then
+                     modRequestsDBI.Request_Save_loinc(sSTring)
+                     modDBConnect.CommitTrans()
+                  End If
+                  requestname &= sString & ";"
+               End If
+            End If
+            
+         Next
+      Case "cmv abs"
+         For Each Observation In Observations
+            Print Lower(Observation!value)
+            If InStr(Lower(Observation!value), "herpes simplex type 1") Then
+               requestname = "Herpes simplex virus - EIA IgG IgM;"
+            End If
+            If InStr(Lower(Observation!value), "herpes simplex type 2") Then
+               requestname = "Herpes simplex virus - EIA IgG IgM;"
+            End If
+            If requestname = "" Then 
+               If InStr(Lower(Observation!value), "pending") Then
+                  requestname = "Test Pending;"
+               End If
+            End If
+         Next
+      Case "u-alb"
+         For Each Observation In Observations
+            If InStr(Lower(observation!value), "timed") Then
+               requestname = "Albumin/Creatinine ratio Timed overnight collection.;"
+               Break
+            End If
+            If InStr(Lower(observation!value), "alb:cr ratio") Then
+               requestname = "spot urine albumin/creatinine ratio"
+            End If
+         Next
+         
+      Case "a1at"
+         requestname = "Alpha 1 - antitrypsin" 
+      Case "papr v"
+         requestname = "Vaginal Vault Smear;"
+         For Each Observation In Observations
+            If InStr(Lower(observation!value), "thinprep") Then
+               requestname &= "THINPREP;"
+               Break
+            End If
+         Next
+      Case "papr", "papr ns", "pap ns", "pap smear"
+         requestname = "PAP;"
+         For Each Observation In Observations
+            If InStr(Lower(observation!value), "thinprep") Then
+               requestname &= "THINPREP;"
+               Break
+            End If
+         Next
+         
+      Case "hapt"
+         requestname = "haptoglobins"
+      Case "fmcs"
+         requestname = "Faeces - ova, cysts parasites (microscopy, direct+/-concentrate);"               
+      Case "fob", "fob 2", "fob 3"
+         For Each Observation In Observations
+            If InStr(Lower(observation!identifier), "immunological") Then
+               requestname &= "Haemoglobin - Faecal (Immunological);"
+            End If
+            If InStr(Lower(observation!identifier), "immunochemical") Or InStr(Lower(observation!identifier), "chemical") Then
+               requestname &= "Haemoglobin - Faecal (ImmunoChemical);"
+            End If
+         Next
+      Case "ecg"
+         requestname = "ECG Resting and Report" 
+      Case "hb"
+         
+         For Each Observation In Observations
+            
+            If Lower(observation!identifier) = "white cell count" Then
+               requestname = "FBC;"
+               Break
+            End If
+         Next
+         If requestname <> "FBC;" Then requestname = "Hb;"
+      Case "venesection"
+         
+   End Select
+   If InStr(Lower(SelectedDocument!tag), "obstetric multiple pregnancy") Then
+      requestname = "Pregnancy U/S Morphology Scan;"
+   End If   
+   Return requestname
+
+End
+Public Function Guess_Radiology_From_Tag(tag As String) As Collection 
+   '--------------------------------------------------------
+   'Some companies supply quite good tags eg BREAST US RIGHT
+   '-------------------------------------------------------- 
+    Return Guess_Radiology(Lower(tag), Lower(tag))
+ 
+  
+End
+
+Public Function Guess_Request_Names_From_Parsing_Report_old(observations As Collection) As Collection  
+
+   Dim observation As Collection 
+   Dim Modality As String 'u/s xray mri doppler
+   Dim Lateralisation As String 
+   Dim requestname As String 
+   Dim bfoundModality As Boolean
+   Dim guess As New Collection 
+   
+   For Each Observation In Observations
+      
+      If InStr(Upper(observation!identifier), "CT ") Then 
+         Modality = "CT"  'words can end in ct/CT
+         bfoundModality = True   
+      Else
+         If InStr(observation!value, "CT ") And bfoundModality = False Then 
+            Modality = "CT"
+            bfoundModality = True
+         End If
+         
+         If (InStr(Lower(observation!value), "x-ray") Or InStr(Lower(observation!value), "xray")) And bfoundModality = False Then 
+            Modality = "XRay"
+            bfoundModality = True
+         End If
+         
+         If InStr(Lower(observation!value), "ultrasound") And bfoundModality = False Then 
+            Modality = "Ultrasound"
+            bfoundModality = True
+         End If
+         If InStr(Lower(observation!value), "mri") And bfoundModality = False Then  ' Or InStr(Lower(observation!value), "mr") And bfoundModality = False Then 
+            Modality = "MRI"
+            bfoundModality = True   
+         End If
+      End If   
+      If InStr(Lower(observation!value), "left") Then
+         Lateralisation = "left"
+         guess!laterality = const.LateralityLeft
+      End If
+      If InStr(Lower(observation!value), "right") Then
+         Lateralisation = "right"
+         guess!laterality = const.LateralityRight
+      End If
+      
+      If InStr(Lower(observation!value), "ultrasound renal tract") Then
+         guess!name = "Renal Tract Ultrasound;"
+      End If
+      
+      If Modality = "" Then Modality = "Xray" 'commonest stab in the dark
+      If InStr(Lower(observation!value), "brain") Then
+         Select Case Modality
+            Case "CT"
+               If InStr(Lower(observation!identifier), "no contrast") Then
+                  guess!name = "CT Brain Non Contrast;"
+               Else
+                  guess!name = "CT Brain Contrast;"
+               End If
+            Case "MRI"
+               guess!name = "MRI Brain;"
+         End Select
+      End If
+      If InStr(Lower(observation!value), "knee") Then
+         requestname = Modality & " " & "Knee"
+         guess!name = requestname
+         Return guess
+      End If
+      If InStr(Lower(observation!value), "achilles") Then
+         requestname = Modality & " " & "Achilles"
+         guess!name = requestname
+         Return guess
+      End If
+      
+      If InStr(Lower(observation!value), "elbow") Then
+         requestname = Modality & " " & "Elbow"
+         guess!name = requestname
+         Return guess
+      End If
+      If InStr(Lower(observation!value), "wrist") Then
+         requestname = Modality & " " & "Wrist"
+         guess!name = requestname
+         Return guess
+      End If
+      If InStr(Lower(observation!value), "ankle") Then
+         requestname = Modality & " " & "Ankle"
+         guess!name = requestname
+         Return guess
+      End If
+      
+      If InStr(Lower(observation!value), "foot") Then
+         requestname = Modality & " " & "Foot"
+         guess!name = requestname
+         Return guess
+      End If
+      If InStr(Lower(observation!value), "hand") Then
+         requestname = Modality & " " & "Hand"
+         guess!name = requestname
+         Return guess
+      End If
+      If InStr(Lower(observation!value), "finger") Then
+         requestname = Modality & " " & "Finger"
+         guess!name = requestname
+         Return guess
+      End If
+      
+      If InStr(Lower(observation!value), "abdomen and pelvis") Then
+         If Modality = "CT" Then guess!name = "CT Abdomen and Pelvis pre/post contrast;"
+         Return guess
+      End If
+      
+      If InStr(Lower(observation!value), "ultrasound pelvis") Then
+         guess!name = "Ultrasound Pelvis;"
+         Return guess
+      End If
+      
+      If InStr(Lower(observation!value), "breast") Then
+         If Modality = "Ultrasound" Then 
+            requestname = "Ultrasound Of breast"
+            guess!name = requestname
+            Return guess
+         End If
+      End If
+      If InStr(Lower(observation!value), "nuchal translucency") Then
+         guess!name = "Nuchal fold for Down's;"
+         Return guess
+      End If
+      If InStr(Lower(observation!value), "ct renal tract") Then
+         guess!name = "Renal Tract CT;"
+         Return guess
+      End If
+      If InStr(Lower(observation!value), "specialist consultation") Then
+         guess!name = "Specialist Consultation;"
+         Return guess
+      End If
+      If InStr(Lower(observation!value), "obstetric ultrasound") Then
+         If InStr(Lower(observation!identifier), "under 12 weeks") Then
+            guess!name = "Early Pregnancy U/S Scan;"
+            Return guess
+         End If
+      End If
+      If InStr(Lower(observation!value), "thoracic spine") Then
+         guess!name = Modality & " " & "Thoracic Spine;"
+         Return guess
+      End If
+      
+      If InStr(Lower(observation!value), "shoulder") Then
+         requestname = Modality & " Shoulder" 
+         guess!name = requestname
+         Return guess
+      End If
+      
+   Next
+   Return guess
+
+End
+
+Public Function Guess_Request_Names_From_Parsing_Report(observations As Collection) As Collection  ', laterality As Integer
+   '------------------------------------------------------------------
+   'Parse the free text of the report try and return a collection with
+   'name/laterality
+   '------------------------------------------------------------------
+   Dim observation As Collection 
+   Dim Modality As String 'u/s xray mri doppler
+   Dim Lateralisation As String 
+   Dim requestname As String 
+   
+   Dim guess As New Collection 
+   
+   For Each Observation In Observations
+      guess = Guess_Radiology(observation!identifier, observation!value)
+   Next
+   Return guess
+
+End
+
+Public Function Guess_Radiology(identifier As String, value As String) As Collection
+   
+   Dim bfoundModality As Boolean
+   Dim Modality As String 'u/s xray mri doppler
+   Dim Lateralisation As String 
+   Dim requestname As String 
+   Dim guess As New Collection 
+   
+   If InStr(Upper(identifier), "CT ") Then 
+      Modality = "CT"  'words can end in ct/CT
+      bfoundModality = True   
+   Else
+      If InStr(value, "CT ") And bfoundModality = False Then 
+         Modality = "CT"
+         bfoundModality = True
+      End If
+      
+      If (InStr(Lower(value), "x-ray") Or InStr(Lower(value), "xray")) And bfoundModality = False Then 
+         Modality = "XRay"
+         bfoundModality = True
+      End If
+      
+      If (InStr(Lower(value), "ultrasound") Or InStr(Upper(value), "US")) And bfoundModality = False Then 
+         Modality = "Ultrasound"
+         bfoundModality = True
+      End If
+      If InStr(Lower(value), "mri") And bfoundModality = False Then  ' Or InStr(Lower(value), "mr") And bfoundModality = False Then 
+         Modality = "MRI"
+         bfoundModality = True   
+      End If
+   End If   
+   If InStr(Lower(value), "left") Then
+      Lateralisation = "left"
+      guess!laterality = const.LateralityLeft
+   End If
+   If InStr(Lower(value), "right") Then
+      Lateralisation = "right"
+      guess!laterality = const.LateralityRight
+   End If
+   
+   If InStr(Lower(value), "ultrasound renal tract") Then
+      guess!name = "Renal Tract Ultrasound;"
+   End If
+   
+   If Modality = "" Then Modality = "Xray" 'commonest stab in the dark
+   If InStr(Lower(value), "brain") Then
+      Select Case Modality
+         Case "CT"
+            If InStr(Lower(identifier), "no contrast") Then
+               guess!name = "CT Brain Non Contrast;"
+            Else
+               guess!name = "CT Brain Contrast;"
+            End If
+         Case "MRI"
+            guess!name = "MRI Brain;"
+      End Select
+   End If
+   If InStr(Lower(value), "knee") Then
+      requestname = Modality & " " & "Knee"
+      guess!name = requestname
+      Return guess
+   End If
+   If InStr(Lower(value), "achilles") Then
+      requestname = Modality & " " & "Achilles"
+      guess!name = requestname
+      Return guess
+   End If
+   
+   If InStr(Lower(value), "elbow") Then
+      requestname = Modality & " " & "Elbow"
+      guess!name = requestname
+      Return guess
+   End If
+   If InStr(Lower(value), "wrist") Then
+      requestname = Modality & " " & "Wrist"
+      guess!name = requestname
+      Return guess
+   End If
+   If InStr(Lower(value), "ankle") Then
+      requestname = Modality & " " & "Ankle"
+      guess!name = requestname
+      Return guess
+   End If
+   
+   If InStr(Lower(value), "foot") Then
+      requestname = Modality & " " & "Foot"
+      guess!name = requestname
+      Return guess
+   End If
+   If InStr(Lower(value), "hand") Then
+      requestname = Modality & " " & "Hand"
+      guess!name = requestname
+      Return guess
+   End If
+   If InStr(Lower(value), "finger") Then
+      requestname = Modality & " " & "Finger"
+      guess!name = requestname
+      Return guess
+   End If
+   
+   If InStr(Lower(value), "abdomen and pelvis") Then
+      If Modality = "CT" Then guess!name = "CT Abdomen and Pelvis pre/post contrast;"
+      Return guess
+   End If
+   
+   If InStr(Lower(value), "ultrasound pelvis") Then
+      guess!name = "Ultrasound Pelvis;"
+      Return guess
+   End If
+   
+   If InStr(Lower(value), "breast") Then
+      If Modality = "Ultrasound" Then 
+         requestname = "Ultrasound Of breast"
+         guess!name = requestname
+         Return guess
+      End If
+   End If
+   If InStr(Lower(value), "nuchal translucency") Then
+      guess!name = "Nuchal fold for Down's;"
+      Return guess
+   End If
+   If InStr(Lower(value), "ct renal tract") Then
+      guess!name = "Renal Tract CT;"
+      Return guess
+   End If
+   If InStr(Lower(value), "specialist consultation") Then
+      guess!name = "Specialist Consultation;"
+      Return guess
+   End If
+   If InStr(Lower(value), "obstetric ultrasound") Then
+      If InStr(Lower(identifier), "under 12 weeks") Then
+         guess!name = "Early Pregnancy U/S Scan;"
+         Return guess
+      End If
+   End If
+   If InStr(Lower(value), "thoracic spine") Then
+      guess!name = Modality & " " & "Thoracic Spine;"
+      Return guess
+   End If
+   
+   If InStr(Lower(value), "shoulder") Then
+      requestname = Modality & " Shoulder" 
+      guess!name = requestname
+      Return guess
+   End If
+  Return guess
+End
+
+Public Function Guess_Request_Names_From_Observation(observations As Collection) As String 
+   
+   Dim requestnames As String 
+   Dim requestname As String
+   Dim observation As Collection
+
+   requestnames = ""
+   For Each Observation In Observations
+      requestname = ""
+      
+      Select Case Lower(Trim(observation!identifier)) 'yes, the fuckers also put blanks in front!!!!!1
+         Case "troponin i"   'yes, Haps uses an 'i' istead of 1
+            requestname = "troponin 1"
+         Case "prothrombin ratio"
+            requestname = "INR"
+         Case "ige"
+            requestname = "IgE"
+         Case "alk phos"
+            requestname = "Alkaline Phosphatase"
+         Case "insulin"
+            requestname = "insulin"
+         Case "carbamazepine"
+            requestname = "Carbamazepine"
+         Case "cryptococcal antigen"
+            requestname = "Cryptococcal antigen - latex EIA serum/CSF"
+         Case "igf-1"
+            requestname = "Insulin like growth factor 1, IGF-1"
+         Case "igfbp-3"
+            
+            requestname = "Insulin-like growth factor binding protein 3"
+            
+         Case "b. pertussis iga (eia)"
+            requestname = "B. pertussis IgA (EIA)"
+         Case "collagen/epinephrine"
+            requestname = "Platelet Function - collagen/epinephrine"
+         Case "phenytoin total"
+            requestname = "phenytoin"
+         Case "amylase"
+            requestname = "amylase"
+         Case "alpha fetoprotein"
+            requestname = "Alpha fetoprotein"
+         Case "ldh"
+            requestname = "LDH"
+         Case "erythropoetin"
+         Case "serum copper"
+            requestname = "Serum Copper"
+         Case "magnesium"
+            requestname = "Magnesium"
+         Case "prolactin (total)"
+            requestname = "Prolactin"
+         Case "shbg"
+            requestname = "Sex hormone binding globulin"
+         Case "free androgen index"
+            requestname = "Free Androgen Index"
+         Case "fsh"
+            requestname = "FSH"
+         Case "oestradiol"
+            requestname = "Oestradiol"
+         Case "progesterone"
+            requestname = "Progesterone"
+         Case "cea"
+            requestname = "carcinoembryonic antigen"
+         Case "lh"
+            requestname = "LH"
+         Case "testosterone"
+            requestname = "Testosterone"
+         Case "histopathology"
+            requestname = "Histopathology"
+         Case "hepatitis b surface ab"
+            requestname = "Hepatitis B surface antibody - EIAIgG"
+         Case "vitamin b12"
+            requestname = "Vitamin B12"
+         Case "red cell folate"
+            requestname = "Red cell folate"
+         Case "egfr", "est. gfr", "gfr est."
+            requestname = "eGFR"
+         Case "sodium", "bicarbonate", "creatinine"
+            requestname = "UEC"
+         Case "potassium"
+            requestname = "Potassium (not on U&E profile)"
+         Case "crp"
+            requestname = "c-Reactive protein"
+         Case "serum cortisol"
+            requestname = "Cortisol"
+         Case "lipase"
+            requestname = "lipase"
+         Case "ast", "alt", "bilirubin"
+            requestname = "LFTs"
+         Case "cholesterol"
+            requestname = "Cholesterol"
+         Case "triglycerides", "triglyceride"
+            requestname = "Triglycerides"
+         Case "hdl cholesterol", "hdl-cholesterol"
+            requestname = "HDL Cholesterol"
+         Case "ldl cholesterol", "ldl-cholesterol" 
+            requestname = "LDL Cholesterol"
+         Case "uric acid", "urate"
+            requestname = "Urate"
+         Case "glucose", "glucose random", "glucose fasting", "fasting glucose"
+            requestname = "BSL"
+         Case "calcium"
+            requestname = "Calcium"
+         Case "ck" 
+            requestname = "CPK"
+         Case "tsh"
+            requestname = "TSH"
+         Case "t4"
+            requestname = "T4"
+         Case "free t4", "free-t4"
+            requestname = "fT4"
+         Case "vitamin d"
+            requestname = "Vitamin D"
+         Case "t3", "free t3", "free-t3"
+            requestname = "T3"
+         Case "digoxin"
+            requestname = "Digoxin"
+         Case "r-u-protein/creat ratio"
+            requestname = "spot urine albumin/creatinine ratio"
+      End Select
+      
+      If requestname <> "" Then 
+         If Not InStr(requestnames, requestname) Then
+            requestnames &= requestname & ";"
+         End If
+      End If
+      
+   Next
+   Print requestnames
+   If InStr(requestnames, "Cholesterol") And InStr(requestnames, "Triglycerides") And InStr(requestnames, "HDL Cholesterol") And InStr(requestnames, "LDL Cholesterol") Then
+      requestnames = "HDL Cholesterol;"
+   End If
+   If InStr(requestnames, "UEC") Then
+      If InStr(requestnames, "not on U&E profile") Then
+         requestnames = Replace(requestnames, "Potassium (not on U&E profile);", "")
+      End If
+   End If
+   
+   If requestnames <> "" Then Return Left(requestnames, Len(requestnames) - 1)
+   Return requestnames
+
+End
+
+Public Function Loinc_Get_component(loinc As String) As String
+   
+   Dim Sstring As String 
+
+   sSTring = modCodingDBI.Loinc_Get_component(loinc)
+   If Not modRequestsDBI.Request_Item_?exists(sString) Then
+      modRequestsDBI.Request_Save_loinc(sString)
+      modDBConnect.CommitTrans()
+   End If
+   Return sString
+
+End

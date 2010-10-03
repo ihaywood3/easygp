@@ -1,0 +1,303 @@
+' Gambas module file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'----------------------------------------------------------------------
+
+Private printers As Collection    'information on printers attatched to workstation and their allocated function
+
+
+Public Function Latex_To_PDF(latex As String) As String
+   '---------------------------------------------------------
+   'converts a latex string to a pdf and returns the filename
+   '---------------------------------------------------------
+   Dim stem As String
+   Dim f As File
+   Dim cmd As String
+ 
+   Inc Application.Busy  
+   stem = Temp$("printl")
+   f = Open stem & ".tex" For Write Create
+   Print #f, latex
+   Close #f  
+   cmd = "cd `dirname " & stem & "` ; "
+   cmd &= "pdflatex printl.tmp.tex ; " 
+   Shell cmd Wait
+   Dec Application.Busy
+   Return Replace(stem, "printl.tmp", "printl.tmp.pdf")
+End
+
+Public Sub Print_latex(latex As String, Optional printertype As Integer = const.Paper_Plain, number_copies As Integer = 1)
+   '----------------------------------------------
+   'prints a laTeX file up to number_copies copies
+   '----------------------------------------------
+   Dim stem As String
+   Dim f As File
+   Dim cmd As String
+   Dim x As Integer
+
+   Inc Application.Busy  
+   stem = Temp$("printl")
+   
+   f = Open stem & ".tex" For Write Create
+   Print #f, latex
+   Close #f
+   cmd = "cd `dirname " & stem & "` ; " 
+   cmd &= "latex printl.tmp.tex ; "
+   cmd &= "dvips printl.tmp.dvi -o"
+   cmd &= Subst$(" '!lpr &1 -# &2'", GetLprOption(printertype), number_copies)
+   Shell cmd Wait
+   Try Kill stem & ".tex"
+   Try Kill stem & ".dvi"
+   Dec Application.Busy
+End
+
+
+Public Sub Print_html(sHtml As String, Optional printertype As Integer = const.Paper_Plain)
+   '-----------------------------------------------------------------------------
+   'prints some html to a printer as a pdf using wkhtmltopdf to do the conversion
+   '-----------------------------------------------------------------------------
+   Dim pro As Process
+   If sHtml = "" Then Return
+   Inc Application.Busy 
+   pro = Shell Subst$("wkhtmltopdf -q - - | lpr &1", GetLprOption(printertype)) For Write
+   Write #pro, sHtml
+
+Finally
+   Close #pro
+   Dec Application.Busy
+   Catch
+  Message.Error(Error.Text, "OK")
+End
+
+Public Function Make_PDF(sections As Collection, Optional orientation As Integer = const.orientation_portrait, Optional cover_page As String = "", Optional bPrintTOC As Boolean = False, Optional output_filename As String = "any", Optional pb As ProgressBar) As String 
+   '--------------------------------------------------------------------------------------------
+   'takes a number of html pages and joins into single pdf using wkhtmltopdf-static (QT patched) 
+   'if cover_page <> "" then it is the html for a coversheet
+   'if bPrintTOC is true then print a table of contents
+   '--------------------------------------------------------------------------------------------
+   Dim section As String
+   Dim shell_text As String 
+   Dim progressbar_interval As Float
+   Dim page_orientation As String
+   Dim tempfile As String
+   Dim pro As Process
+     Message.Info("Richard, should not be in this routine: Make_PDF stop and check")
+ 
+   If orientation = const.orientation_landscape Then
+      page_orientation = "landscape"
+   Else
+      page_orientation = "portrait"
+   End If
+   'FIXME - FIGURE OUT HOW TO MAKE PROGRESS BAR WORK
+   progressbar_interval = 1 / (sections.Count + 1)
+ 
+   '----------------------------------------------------------------------------------------------------------
+   'Construct the text to pass to the shell, first page orientation, toc, then headers, footers and coversheet
+   '----------------------------------------------------------------------------------------------------------
+   shell_text = "wkhtmltopdf -O " & page_orientation 
+   If bPrintTOC Then shell_text &= " --toc --outline" 'FIXME LATER: the gambas component dosn 't seem to handle outlines/indexs
+   shell_text &= " --margin-bottom 15 --header-right 'Page [page]' --footer-center '- EasyGP Medical Records -' --footer-spacing 1 --footer-font-name 'comic sans ms' " 
+   If cover_page <> "" Then
+         tempfile = modUtil.WriteFile(cover_page, "cover_page")
+         shell_text &= " --cover " & tempfile & " " 
+   End If
+   output_filename = Temp$(output_filename) & ".pdf"
+   shell_text &= " - " & output_filename
+   pro = Shell output_filename For Write   
+   '-----------------------------------------------------------------------------------
+   'Now for each section we want to print, create a temporary file, chain them together
+   '-----------------------------------------------------------------------------------
+   For Each section In sections
+        If Not IsNull(pb) Then 
+          pb.value = pb.value + progressbar_interval
+          Wait
+        Endif
+        Write #pro, section
+   Next
+   Close #pro
+   '--------------------------------------------------------------------------------------------------------
+   'This now looks like: wkhtmltopdf -O portrait ..flags.... file1.html, file2.html.... output_filename.pdf
+   '--------------------------------------------------------------------------------------------------------
+    pb.value = 1.0
+   Return output_filename
+End
+
+Public Function Join_PDF(pdf_files As Collection, Optional output_filename As String = "") As String
+   '-------------------------------------------
+   'Joins any number of files into a single pdf
+   '-------------------------------------------
+   Dim files As String
+   Dim files_to_join As String
+   If output_filename = "" Then
+       output_filename = Temp$()
+   Else
+     output_filename &= ".pdf"
+   End If  
+   For Each files In pdf_files
+     files_to_join &= files & " "
+   Next
+   Shell "pdfjoin " & files_to_join & " --outfile " & output_filename Wait
+   Return output_filename
+End
+
+Public Function Join_PDF_IAN(pdf_files As String[], Optional output_filename As String = "joined", metadata As Collection = Null) As String
+   '-------------------------------------------
+   'Joins any number of files into a single pdf
+   '-------------------------------------------
+   Dim f As String
+   Dim stem As String
+   Dim cmd As String
+   Dim lf As File
+   
+   stem = Left$(Temp$(output_filename), -4) ' strip .tmp from name
+   lf = Open stem & ".tex" For Write Create
+   Print #lf, "\\documentclass[a4paper]{article}"
+   Print #lf, "\\usepackage{pdfpages}"
+   If Not IsNull(metadata) Then
+     Print #lf, "\\pdfinfo{"
+     For Each f In metadata
+       ' this is actually raw PostScript
+       Print #lf, Subst$("/&1 (&2)", metadata.Key, f)
+     Next
+     Print #lf, "}"
+   Endif
+   Print #lf, "\\begin{document}"
+   For Each f In pdf_files
+     Print #lf, Subst$("\\includepdf[pages=-]{&1}", f)
+   Next
+   Print #lf, "\\end{document}"
+   Close #lf
+   cmd = "cd `dirname " & stem & "` ; " 
+   cmd &= "pdflatex " & stem & ".tex"
+   Shell cmd Wait
+   Return stem & ".pdf"
+End
+
+Public Sub Split_PDF(pdf_file As String)
+   '-------------------------------------------
+   'Splits a PDF into single page pdfs
+   ' pdf-file must be a full path
+   ' new files are created in the same directory
+   ' where foo.pdf, foo-1.pdf, foo-2,pdf, foo-3.pdf etc are created
+   '-------------------------------------------
+   Dim stem As String
+   Dim cmd As String
+   Dim lf As File
+   Dim cmd_result As String
+   Dim page As Integer = 1
+   
+   If Right$(pdf_file, 4) = ".pdf" Then
+      stem = Left$(pdf_file, -4) ' strip .pdf from name
+   Else
+     stem = pdf_file
+   Endif
+   Do
+     lf = Open stem & "-" & Str$(page) & ".tex" For Write Create
+     Print #lf, "\\documentclass[a4paper]{article}"
+     Print #lf, "\\usepackage{pdfpages}"
+     Print #lf, "\\begin{document}"
+     Print #lf, Subst$("\\includepdf[pages=&1]{&2}", Str$(page), pdf_file)
+     Print #lf, "\\end{document}"
+     Close #lf
+     cmd = "cd `dirname " & stem & "` ; " 
+     cmd &= "pdflatex -interaction=nonstopmode " & stem & "-" & Str$(page) & ".tex"
+     Shell cmd To cmd_result
+     Inc page
+   Loop Until InStr(cmd_result, "required page \ndoes not exist")
+   cmd = "cd `dirname " & stem & "` ; "
+   cmd &= "rm *.aux *.log *.tex"
+   Shell cmd Wait
+End
+
+
+Public Function Printers_Load() As String[]
+   '--------------------------------------------------
+   'Gets names of all available printers for this host
+   'i.e assuming cups is started FIXME add error msg
+   'then add these printer names to a temporary file
+   '--------------------------------------------------
+   Dim strs As String[]
+   Dim i As Integer
+   Dim sLineInput As String
+   Dim pro As Process
+   Dim printerlist As New String[]
+   
+   printers = New Collection
+   pro = Exec ["lpstat", "-v"] For Read
+   '--------------------------------------------
+   'Now open that file and populate the array
+   'lpstat -v gives device for Printername: path
+   'don't include temporary printer devices
+   '-------------------------------------------- 
+   While Not Eof(pro)                                   
+      Line Input #pro, sLineInput
+      If InStr(sLineInput, "tmp") Then Continue
+      sLineInput = Replace(sLineInput, "device for ", "")
+      i = InStr(sLineInput, ": ")
+      If i = 0 Then Continue
+      printers[Left$(sLineInput, i - 1)] = Right$(sLineInput, - (i + 1))
+      printerlist.Add(Left$(sLineInput, i - 1))
+   Wend
+   'Close #pro
+   pro.Wait()
+   Return printerlist
+  
+End
+
+Public Function NoPrinters() As Boolean
+  ' returns true if we can't print due to lack of printers
+  Return printers.Count = 0
+  
+End
+
+Private Function GetLprOption(printertype As Integer) As String
+  Dim config_printer As String
+  Dim i As String
+  
+  config_printer = FMain.GetSelectedPrinter()
+  If config_printer <> "Default" Then
+    FMain.ResetPrinters()
+    Return Subst$("-P &1", printers[config_printer])
+  Endif
+  Select Case printertype
+    Case const.Paper_Script
+      config_printer = Settings["Printers/script", "Default"]
+    Case const.Paper_Plain
+      config_printer = Settings["Printers/plain", "Default"]
+    Case const.Paper_Request
+      config_printer = Settings["Printers/request", "Default"]
+    Case const.Paper_Long
+      config_printer = Settings["Printers/long", "Default"]
+  End Select
+  If config_printer = "Default" Then
+    ' eek, we need to figure out a printer ourselves
+    For Each i In printers
+      If InStr(config_printer, "cups-pdf:/") Then 
+        config_printer = Subst$("-P &1", i)
+      ' preferentially ignore the PDF virtual printer
+      ' provided by CUPS
+      Endif
+      If config_printer = "Default" Then 
+        config_printer = Subst$("-P &1", i)
+      Endif
+    Next
+  Endif 
+  If config_printer = "Default" Then
+    ' OK, now we're in a mess
+    Log.ErrorMsg("Printing aborted as no printer found, this should never happen")
+    Error.Raise("No printer exists")
+  Endif
+  Return config_printer
+End

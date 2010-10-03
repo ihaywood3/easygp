@@ -1,0 +1,2522 @@
+' Gambas class file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'FIXME:
+' Look at implications if you allow the user to change an existing diagnosis wording
+' this should be allowable eg (could have made a spelling mistake etc, but need
+' to ripple this change through to other sections sharing the previous spelling
+'Don't change the save icon colour until actually do the accept.
+
+Private currentconsult As CConsult
+Private bEmbedded As Boolean             'If true the form is embedded in a frmConsultNotes editor
+
+Private embedded_form As String          'the form this form is embedded in
+Private bKeyValid As Boolean            'used in textbox routines
+Private iAgeinMonths As Integer         'currentconsult.patients age in months
+Private iCodingSystem As Integer  
+Private CurrentPastHistoryCVW As Columnview
+Private Terms As Collection
+Private currentPastHistory As Collection
+Private currentTerm As Collection
+Private TeamCareMember_Deleted As Collection
+Private TeamCareMembers As Collection 
+Private TeamCareMembers_old As Collection 
+'Private CarePlanComponents_old As Collection
+Private CarePlanCompoents As Collection
+'Private CurrentTeamMember As collection 
+Private iTeamCareMember As Integer 
+Private pk_pasthistory As Integer
+Public iProblemKey As Integer   'see problemlists_Select
+Private bExit As Boolean
+Private bEditing As Boolean 'True if we are editing an existing saved or unsaved record.
+Private collection_members As Collection
+Private collection_member As Collection 
+Private TeamCareMember_SearchBy_Criteria As Integer
+Private sSearchLimit As Integer = 20 'default to only get 20 terms
+'fixme make me configurable
+'-----------------------------------------------------
+'these integer keys used to identify team care members
+'-----------------------------------------------------
+Private fk_organisation As Integer
+Private fk_branch As Integer
+Private fk_employee As Integer
+Private fk_person As Integer
+'--------------------------------------------------------------------------
+'These are used to identify which of the three problem lists are clicked on
+'--------------------------------------------------------------------------
+Private scurrentPastHistoryList As String
+Private iTemporaryProblemKey As Integer
+Private currentICPC2Term As Collection 
+'------------------------------
+'stuff for the components grid
+'-----------------------------
+Private iRow As Integer
+Private icol As Integer
+Private iRowHeight As Integer
+Private current_careplan_components As Collection
+Private view_careplan_components As Collection
+Private embedded_in_form As String
+Private fk_progressnote As Integer
+
+Private currentCarePlanComponent As Collection
+Private CareTaskRow As CCareTaskRow
+Private obs As Observer
+Private task_rows As Integer
+Private current_Task_Row As Hbox
+
+Public Sub set_embedded(flag As Boolean, embeddedinform As String)
+   '--------------------------------------------------
+   'If this form is embeded from another form set flag
+   'embeddedinform = either "notes" or "documents"
+   '--------------------------------------------------
+   bEmbedded = flag
+   embedded_in_form = embeddedinform
+End
+
+Public Function Consult_Exists() As Boolean
+   '-----------------------------------------------------
+   'If the consult as been passed to the form return true
+   '-----------------------------------------------------  
+  If IsNull(currentconsult) Then Return False
+  Return True
+  
+End
+Public Function Consult_Set_Null() 
+   '-----------------------------------------------------
+   'If the consult as been passed to the form return true
+   '-----------------------------------------------------  
+  currentconsult = Null
+End
+
+Public Function HealthIssue_GetName() As String
+  
+  Return currentPastHistory!description 
+  
+End
+
+Public Function pk_pasthistory_get() As Integer
+   Return pk_pasthistory
+End
+
+Public Function pk_pasthistory_set(fk_ph As Integer)
+   '----------------------------------------------------
+   'allows a another form to set the current problem
+   'eg FClinical with popup menu over the problem lists
+   'so that this can be edited
+   '---------------------------------------------------
+   pk_pasthistory = fk_ph
+   iProblemKey = fk_ph
+End
+
+
+Public Sub Update_Editarea_Plan(sText As String, progressnote_pk_pastHistory As Integer)
+   '---------------------------------------------------------------------------------
+   'Perhaps temporary, this is called from a progress note page
+   'if the user has updated the progress notes summary in the progress note
+   'and at the same time is editing the same past history item in past history module
+   'match the text
+   '---------------------------------------------------------------------------------
+   If pk_pasthistory = progressnote_pk_pastHistory Then
+         txtManagementSummary.text = sText
+   End If
+End
+Public Sub Update_Editarea_Plan_Summary(sText As String, progressnote_pk_pastHistory As Integer)
+   If pk_pasthistory = progressnote_pk_pastHistory Then
+      txtHistoricalSummary.text = sText
+   End If
+   
+End 
+
+Public Sub Init(Cons As CConsult)
+  '----------------------------------------------------------
+   'PURPOSE    :Basic initialiseation
+   'CALLED BY  :calling form e.g FrmClinical.Editor_ShowPage()
+   '----------------------------------------------------------
+   ' Dim hTextbox As textbox
+   currentconsult = cons         'set current consult on this form
+   Settings_Load()               'set splits, font sizes etc
+   EditArea_Resize_Labels()      'Basline fonts as per system font for labels
+   cvwProblemsActive.Columns.count = 2
+   cvwProblemsInActive.Columns.count = 2
+   cvwProblemsMajor.Columns.count = 2 
+   columnview1.Columns.Count = 2
+   With cvwCareComponents
+      .Columns.count = 2
+    End With
+   lblComponent.width = cvwCareComponents.width - txtDue.width
+  '------------------------------------------------------------------
+   'Display the default coding system and set ICD10 checkbox if needed
+   'otherwise, users won't be able to find any terms, don't let them
+   'turn if off either or again, they will get nothing.
+   '------------------------------------------------------------------
+   bExit = True
+   modEditAreaHelpers.Set_ICD10(chkicd10, lblCodingSystem)
+   bExit = False
+   Problem_Lists_Refresh()                             'Initialise major, significant, inactive lists
+   EditArea_Clear()                                    'clear the editing area and set focus to txtCondition
+End
+
+
+
+Public Sub CarePlan_Components_Selection(action As String, Optional calling_control As String)
+   '-----------------------------------------------
+   'Fetches a list of existing care plan components
+   '-----------------------------------------------
+   Dim x As Integer
+   Dim sMsg As String
+  
+   Select Case action
+   Case "get"
+   
+      ' If Len(Trim(txtComponent.text)) = 0 Then
+         If Len(Trim(listview1.tag.text)) = 0 Then  
+          Listview1.Visible = False  
+          Return
+       End If
+       collection_members = modPastHistoryDBI.CarePlan_Component_Names_Get(Trim(listview1.tag.text))
+       listview1.Clear
+         '-----------------------------------------------------------------
+         'If categories exist to match the text, auto-select or show a list
+         '-----------------------------------------------------------------
+       If collection_members.count Then 
+           For Each collection_member In collection_members
+           
+              Listview1.Add(collection_member!pk, collection_member!component)
+           Next 
+          Listview1.Visible = True
+          Listview1.Raise
+         ' Listview1.tag = txtComponent
+          Return 
+        End If
+        Listview1.Visible = False  
+   Case "accept"
+      '-------------------------------------------------------
+      'CALLED BY  : user hitting <enter> in txtTeamCareMembers
+      '             user hitting <enter> on the popup list 
+      '             user double clicking on the popup list
+      '-------------------------------------------------------
+       bExit = True
+       If calling_control = "textbox" Then
+         '-------------------------------------------------------
+         'User has just hit <enter> without scrolling on the list
+         'try and find a match
+         '-------------------------------------------------------
+          If Listview1.Visible Then
+            listview1.MoveFirst
+            For x = 0 To listview1.count - 1
+               If Lower(listview1.Item.text) = Trim(Lower(listview1.tag.text)) Then
+                  Listview1.Visible = False  
+                  Break
+               End If
+            Next
+            listview1.Visible = False  
+         End If
+         '------------------------------------------------------------------
+         'Either no match was found OR list wasn't visible anyway = no match
+         '------------------------------------------------------------------
+        ' fk_component = 0
+         Listview1.Visible = False     
+       Else
+         '-----------------------------------------------------------
+         'Routine called by user clicking on list or pressing <enter>
+         '-----------------------------------------------------------
+         If Listview1.Visible Then
+           Listview1.MoveCurrent   'set internal cursor to match marquee
+           bExit = False
+          ' If Not duplicate_teamcare_member(collection_member) Then
+           '    TeamCareMembers_Add(collection_member)
+          ' End If
+          listview1.tag.text = listview1.Item.Text
+         End If
+       End If
+     
+      bExit = False  
+   End Select
+  
+End
+
+
+Public Sub CarePlan_Components_Get()
+   '----------------------------------------------------------------------------
+   'Gets collection of any care plan components and when due eg hba1c, eye check
+   '----------------------------------------------------------------------------  
+  view_careplan_components = modPastHistoryDBI.Get_CarePlan_Components_Due(pk_pasthistory)
+  CarePlan_Components_Set_data()
+End
+
+Public Sub CarePlan_Components_Set_data()
+   '---------------------------------------------------------
+   'Makes a copy of each of the existing care plan components
+   'contained in view_careplan_components and put this new
+   'collection intocurrent_careplan_components, that way
+   'the old can be compared to the new when saved
+   'Loads any existing data into the scroll view
+   'FIXME IMPLEMENT THE RECALLS
+   'temp: trying now to use columnview, so code is mixed
+   '---------------------------------------------------------
+   Dim existing_component As Collection
+   Dim member As Collection 
+   Dim x As Integer
+  
+    current_careplan_components = New Collection 
+   For Each existing_component In view_careplan_components
+         member = New Collection 
+         member!component = existing_component!component
+         
+         member!fk_pasthistory = existing_component!fk_pasthistory
+         member!pk_careplan_components_due = existing_component!pk_careplan_components_due
+        ' x = existing_component!pk_careplan_components_due
+         member!fk_component = existing_component!fk_component
+         member!due = existing_component!due
+        current_careplan_components.Add(member, x)
+        Inc x
+    Next
+    cvwCareComponents_Refresh()
+End
+
+Public Sub cvwCareComponents_Refresh()
+   '--------------------------------------------
+   'Reloads the care plan components to the list
+   '--------------------------------------------
+  Dim existing_component As Collection
+  Dim x As Integer
+  
+  cvwCareComponents.Clear()
+  For Each existing_component In current_careplan_components
+     
+      cvwCareComponents.Add(x, 0)
+      cvwCareComponents[x][0] = existing_component!component
+      cvwCareComponents[x][1] = Format(existing_component!due, "dd/mm/yyy")
+      Inc x
+  Next 
+End
+
+' Public Sub CarePlan_Components_Update_Collection()
+'    '--------------------------------------------------------------
+'    'For each new row, create a collection and add to the main
+'    'care plan collection for this health item  = past history item
+'    '--------------------------------------------------------------
+'    Dim member As collection
+'    If irow >current_careplan_components.count - 1 Then
+'       Member = New Collection
+'       Member!component = ""
+'       member!fk_pasthistory = pk_pasthistory
+'      current_careplan_components.Add(Member, irow)
+'    End If
+'    Select Case icol
+'    Case 0
+'    current_careplan_components[irow]!component = Trim(txtComponent.text)
+'    Case 1
+'      Trycurrent_careplan_components[irow]!due = Val(Trim(txtComponent.text))
+'      If Error Then
+'          txtComponent.text = ""
+'         current_careplan_components[irow]!due = ""
+'      End If
+'    End Select  
+' End
+
+Public Sub CarePlan_Components_Calculate_Recall_Date(txt As Textbox)
+   '--------------------------------------------
+   'Works out a date from e.g 18M or 2Y
+   'FIXME put in weeks and days
+   '--------------------------------------------
+   Dim sIntervalUnits As String 'eg if txtdate contains 3M then units interval is 3
+   Dim iNumberOfMonths As Integer      'do not need both these declared, but do for readability
+   Dim iNumberOfYears As Integer 
+   Dim iNumberOfDays As Integer
+   Dim iNumberOfWeeks As Integer
+   Dim vPossibleDate As Variant
+   Dim aDate As Date
+   Dim x As Integer
+   bExit = True 'stop change event of edit area triggering
+   
+   If UCase(Right(Trim(txt.text), 1)) = "M" Then
+          '---------------------------------------------------------------------------
+          'Try and convert the rest of the string (ie left part which should be number
+          'to a number, if error, pop up invalid date and return
+          'Remember that  bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code) has
+          'only allowed numbers or mM or Yy for this textbox, but some idiot could
+          'have tried out patience by typing in e.g 10m10M or something
+          '---------------------------------------------------------------------------
+          Try iNumberOfMonths = Val(Left(txt.text, Len(Trim(txt.text)) - 1))
+          If Error Then
+              txt.text = "" 
+              Return
+          End If
+          ' If txt.tag = "interval" Then
+          '    fk_interval_unit = const.Units_month
+          '    interval = iNumberOfMonths
+          ' Else
+          '    fk_default_interval_unit = const.Units_month
+          '    default_interval = iNumberOfMonths
+          '    If Trim(txtInterval.text) = "" Then 
+          '      fk_interval_unit = const.Units_month
+          '      interval = iNumberOfMonths
+          '      txtInterval.text = txtDefaultInterval.Text
+          '    End If
+          ' Endif
+           txt.text = Format(DateAdd(Now, gb.Month, iNumberOfMonths), "dd/mm/yyyy")
+
+  
+     Else If UCase(Right(Trim(txt.text), 1)) = "Y" Then
+             '---------------------------------------------------------------------------
+             'Try and convert the rest of the string (ie left part which should be number
+             'to a number, if error, pop up invalid date and return
+             'Remember that  bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code) has
+             'only allowed numbers or mM or Yy for this textbox, but some idiot could
+             'have tried out patience by typing in e.g 10m10M or something
+             '---------------------------------------------------------------------------
+             Try iNumberOfYears = Val(Left(txt.text, Len(Trim(txt.text)) - 1))
+             If Error Then
+                  txt.text = "" 
+                  Return
+             End If
+             
+             txt.text = Format(DateAdd(Now, gb.Year, iNumberOfYears), "dd/mm/yyyy")
+           '    If txt.tag = "interval" Then
+           '      fk_interval_unit = const.Units_year
+           '      interval = iNumberOfYears
+           '    Else
+           '       fk_default_interval_unit = const.Units_year
+           '       default_interval = iNumberOfYears
+           '       If Trim(txtInterval.text) = "" Then 
+           '           fk_interval_unit = const.Units_year
+           '           interval = iNumberOfYears
+           '           txtInterval.text = txtDefaultInterval.Text
+           '       End If
+           '   
+           '    End If
+           
+   Else 
+         If LCase(Trim(txt.text)) = "now" Then
+             txt.text = Format(Now, "dd/mm/yyyy")
+            End If  
+   End If
+   bExit = False 
+End
+
+
+
+' Public Sub txtComponent_Keypress()
+' 
+'   Select Case Key.Code
+' 
+'   Case Key.Return, Key.tab ', Key.Right
+'       '------------------------------------------------------------
+'       'First calculate the date if user typed in numberM or numberY
+'       '------------------------------------------------------------
+'        If icol Mod 2 Then
+'           CarePlan_Components_Calculate_Recall_Date(txtComponent)
+'        End If
+'        grdComponents[irow, icol].text = txtComponent.Text
+'        ()
+'        '----------------------------------------------------------
+'        'Now, don't allow a new row to be added, if the current row
+'        'hasn't been filled
+'        '----------------------------------------------------------
+'        icol = icol + 1
+'        If icol = 2 Then
+'           If grdComponents[irow, 0].text = "" Or grdComponents[irow, 1].text = "" Then
+'             icol = 1
+'             Stop Event
+'             Return
+'           End If  
+'           If irow + 1 = grdComponents.Rows.Count Then
+'               Inc grdComponents.Rows.count
+'           End If
+'           irow = Min(iRow + 1, grdComponents.Rows.Count - 1)
+'           grdComponents.Rows[irow].Height = 16
+'           grdComponents[irow, 2].Picture = Picture.Load("icons/16/unchecked.png")
+'           icol = 0
+'        End If
+'        Next_rc()
+'   Case Key.Down
+'        grdComponents[irow, icol].text = txtComponent.Text
+'        CarePlan_Components_Update_Collection()
+'        irow = Min(iRow + 1, grdComponents.Rows.Count - 1)
+'        Next_rc()
+'   Case Key.Up
+'       grdComponents[irow, icol].text = txtComponent.Text
+'       CarePlan_Components_Update_Collection()
+'       iRow = Max(iRow - 1, 0)
+'       Next_rc()
+'   End Select
+' End
+' 
+' Public Sub Next_rc()
+'    grdComponents_dblClick 
+'     
+' End
+
+
+Public Sub mnuGrid_Click()
+  
+  Select Case Last.tag
+  Case "add row"
+  Case "cut"
+   Print "cut"
+  Case "copy"
+   Print "copy"
+  Case "paste"
+   Print "paste"
+  Case "undo"
+   Print "undo"
+  Case "redo"
+   Print "redo"
+  Case "template"
+   Print "template"
+  Case "clear text"
+   Print "clear text"
+ 
+
+  End Select
+  
+End
+' Public Sub CarePlan_Components_ClearGrid()
+'    '-----------------------------
+'    'removes contents of all cells
+'    '-----------------------------
+'    grdComponents.Rows.count = 0  
+' End
+
+
+Public Sub grdComponents_Menu()
+
+ mnuGrid.Popup()
+
+End
+
+Public Sub Form_Close()
+  '----------------------------------------------
+  'Save all current form settings and split sizes
+  '----------------------------------------------
+  Settings_Save()  
+ ' Save()
+End
+
+Public Sub EditArea_YearOnset_CheckValid()
+   '-------------------------------------------------------
+   'IAN:README MAKE ME SMARTER
+   'This is meant to just ensure the year of onset is valid
+   ' Don't allow if invalid age or age < 0
+   '-------------------------------------------------------
+   Dim sTemp As String
+   Dim STempYear As String
+   Dim bDateValid As Boolean
+   STemp = Trim(txtYearOnset.text)
+   Select Case Len(sTemp)
+       Case 4 'could be yyyy
+        STempYear = "01/01/" & sTemp
+        If IsDate(Val(STempYear)) Then 
+           bDateValid = True
+        Else
+           txtYearOnset.text = ""
+        End If
+     Case 7 'could be mm/yyyy
+         STempYear = "01/" & sTemp
+         If IsDate(Val(STempYear)) Then 
+           bDateValid = True
+         Else
+           txtYearOnset.text = ""
+         End If
+         
+     Case 10 'could be dd/mm/yyyy
+          If IsDate(Val(STempYear)) Then
+              bDateValid = True
+          Else
+              txtYearOnset.text = ""
+          End If
+      End Select    
+     
+      
+      If bDateValid = False Or DateDiff(currentconsult!patient!birthdate, STempYear, gb.year) < 0 Then
+         ' lblYearOnsetInvalid.Text = "<<Invalid: try mm/yyyy e.g 12/2002 or" 
+         ' lblYearOnsetInvalid.Foreground = Color.red
+         ' lblYearOnsetInvalid.Visible = True   
+         txtYearOnset.text = ""
+      Else 
+       lblWarning.Foreground = Color.white
+       'calculate age this came on using months, so end up with mm/yyyy
+       txtAgeOnset.text = DateDiff(currentconsult!patient!birthdate, STempYear, gb.year)
+       End If
+End
+
+
+
+Public Function EditArea_AgeOnset_CheckValid() As Boolean
+   '---------------------------------------------------------------
+   'Ensures the age of onset if valid, display an prompt if invalid
+   '---------------------------------------------------------------
+   If Trim(txtAgeOnset.text) <> "" Then 
+      If Val((Trim(txtAgeOnset.text))) > Val(currentconsult!patient!age) Then
+         lblWarning.text = "<<Invalid age " & Trim(txtAgeOnset.text) & " is older than current age of " & currentconsult!patient!age
+         lblWarning.Visible = True   
+     
+         Return False
+       '  txtAgeOnset.SetFocus
+       Else
+         lblWarning.Visible = False
+         txtYearOnset.text = Year(currentconsult!patient!birthdate) + Val(txtAgeOnset.text)
+         chkMajor.SetFocus()
+         Return True
+      End If
+   End If
+   Return False
+End
+
+Public Sub Reset_Fonts()
+   '------------------------------------------------------------
+   'If user has changed the application font, re-size all labels
+   'to make gui look ok again
+   '------------------------------------------------------------  
+  Dim hCtrl As Control
+  Dim ABox As HBox
+  Dim lbl As Label
+ 
+  For Each Hctrl In VBox_EditArea.Children
+   If hctrl Is Hbox Then
+      Abox = hctrl
+      For Each hctrl In Abox.Children
+         If hctrl Is Label Then
+            lbl = hctrl
+            '------------------------------------------------------
+            'Resize those labels in the gui with autoresize = false
+            'I have set ones I don't want to be resized to 
+            'auto-resize = True
+            '------------------------------------------------------
+            If lbl.AutoResize = False Then
+               lbl.width = lblmeasure.Width 
+            End If   
+            Break
+         End If
+      Next
+   End If
+  Next
+  For Each Hctrl In HBox_TeamMembers.children
+  
+         If hctrl Is Label Then
+            lbl = hctrl
+            '------------------------------------------------------
+            'Resize those labels in the gui with autoresize = false
+            'I have set ones I don't want to be resized to 
+            'auto-resize = True
+            '------------------------------------------------------
+            If lbl.AutoResize = False Then
+               lbl.width = lblmeasure.Width 
+            End If   
+            Break
+         End If
+  Next
+
+End
+
+Public Sub EditArea_TxtBox_GotFocus()
+   '-------------------------------------------
+   'Set listbox to the correct screen position
+   'Highlight the textbox with nice green color
+   'FIXME: make this user-configurable
+   '-------------------------------------------
+   Dim x As Integer
+   Listview1.Visible = False
+   Last.BackGround = Color.rgb(95, 255, 175)
+   Select Case Last.tag
+   ' Case "care plan component"
+   '    With listview1
+   ' '   .top = VSplit_PastHistory.top + VBox_CarePlan.top + VBox_TeamCare.top + grdComponents.top + txtComponent.top
+   '   .top = Vsplit_PastHistory.top + VSplit_PastHistory.Layout[0] + Vsplit1.layout[0] + HSplit_TeamCareMembers.top + 40 '+ txtComponent.Height * 2
+   '    .left = Vbox_CarePlanGrid.Left + VBox1.padding
+   '    .width = grdComponents.width
+   '    End With
+   Case "coded term" 
+      With VBox_Terms
+             .top = Hbox_CodedTerm.top + txtCodedTerm.Height + VSplit_PastHistory.top 
+            .width = txtCodedTerm.Width
+            .Left = txtCodedTerm.Left + VBox1.padding
+      End With
+   Case "team care members"
+        With listview2
+           ' If embedded_in_form = "notes" Then
+            If HBox_Heading.Visible = False   
+               .top = VSplit_PastHistory.top + VBox_CarePlan.top + VBox_TeamCare.top + HBox_TeamMembers.top - listview2.Height
+            Else
+                .top = VSplit_PastHistory.top + VBox_CarePlan.top + VBox_TeamCare.top + HBox_TeamMembers.top + txtTeamCareMembers.Height
+            End If
+            .width = txtTeamCareMembers.Width + Hbox_rbSearchBy.width 
+            .Left = txtTeamCareMembers.Left
+            .Visible = False  
+            .border = False   
+        End With
+       
+        bExit = True   
+        iTeamCareMember = -1
+        txtTeamCareMember_Responsibility.text = "" 'dont destroy 
+        cvwTeamCareMembers.SelectAll(False)
+      '  tlResponsibility.text = "Responsibility"
+        bExit = False
+   Case "responsibility"
+      '-----------------------------------------------------------------
+       'Because of the peculiar screen design in this section we need
+       'to make sure that some-one is selected as the responsible person
+       'to add these notes to
+       '-----------------------------------------------------------------
+       cvwTeamCareMembers.MoveFirst()
+       For x = 0 To cvwTeamCareMembers.Count - 1
+         If cvwTeamCareMembers.Item.Selected = True Then
+            Return 
+         End If
+        cvwTeamCareMembers.MoveNext()
+       Next
+       Message.Info("Please select a team member before adding notes")
+       cvwTeamCareMembers.SetFocus()
+   
+   End Select 
+End
+
+Public Sub EditArea_TxtBox_LostFocus()
+   '-------------------------------------------------------------
+   'When textbox loses focus, change color of background to white  .Border = False   
+   '
+   '-------------------------------------------------------------
+   Last.BackGround = Color.White
+   Select Case Last.tag
+   Case "team care members"
+      Last.Border = True  
+   Case "age onset"
+         EditArea_AgeOnset_CheckValid()
+   Case "coded term"
+      Timer1.Stop() 'check this it may not be needed
+   End Select    
+  
+End
+
+Public Sub HealthIssue_Delete()
+   '------------------------------------------------------------------------
+   'Delete the currently highlighted health issue or problem
+   'Annotates any existing progress notes as to who did the deletion
+   'and converts all the text to strike through
+   'Checks if this health is is currently open on a tab and removes the tab
+   '-----------------------------------------------------------------------
+ 
+   If Message.Warning("Are you sure you want to delete the current health issue?\n\n" & currentPastHistory!description, "Yes", "No") = 2 Then Return 
+   modDBConnect.BeginTrans()
+      modPastHistoryDBI.HealthIssue_Delete(currentconsult, pk_pasthistory, currentPastHistory)
+   modDBConnect.CommitTrans()
+   FClinical.Editor_RemovePage(iProblemKey)
+   Reload()
+End
+
+
+
+
+Public Sub HealthIssue_Display()
+   '----------------------------------------------------------
+   'Place the contents of currentProblem into the editing area
+   'When this data is placed into the textboxes and checkboxes
+   'the change event in those controls will also be triggered
+   'so must set bExit to true whilst loading the data
+   'Note: cannot do:currentPastHistory = currentconsult!past_history[pk_pasthistory]
+   '----------------------------------------------------------
+   Dim PH_From_View As Collection    'for easy of readability = member of the view selected
+   EditArea_Clear()  'clear boxes, create new currentPastHistory also clears pk_pasthistory fixme
+   bEditing = True
+   pk_pasthistory = iProblemKey 'set when user clicked on list see problemlists_select 
+   PH_From_View = currentconsult!past_history[pk_pasthistory]
+   '-------------------------------------------------------------------
+   'set a couple of keys, the rest of the members of currentPastHistory
+   'will be set by the change events in the edit area
+   '-------------------------------------------------------------------  
+   currentPastHistory!fk_consult = PH_From_View!fk_consult
+   currentPastHistory!fk_coding_system = PH_From_View!fk_coding_system
+   currentPastHistory!fk_code = PH_From_View!fk_code
+   '-----------------------------------------------------------------------------
+   'If we are editing a past history item, saved during current consult, 
+   'or, if re-editing this item within the working day then
+   'use the pk_progress note which will already have been created, otherwise there
+   'is no fk_progress note yet
+   'FIXME: What if a different user is doing this? Must put in some auditing here
+   '-----------------------------------------------------------------------------
+   If Not IsNull(PH_From_View!fk_progressnote) Then
+        If Format(Now, "dd/mm/yyyy") = Format(PH_From_View!date_noted, "dd/mm/yyyy") Then 
+           currentPastHistory!fk_progressnote = PH_From_View!fk_progressnote
+        End If
+   End If 
+   ' If currentPastHistory!fk_consult = currentconsult.GetPK() Then
+   '     currentPastHistory!fk_progressnote = PH_From_View!fk_progressnote
+   ' End If
+   txtCondition.text = PH_From_View!description
+   txtCodedTerm.text = PH_From_View!combined_term_code
+   Select Case PH_From_View!fk_laterality
+     Case 1 
+        chkLateralityLeft.value = const.LateralityLeft
+     Case 2 
+        chkLateralityRight.value = const.LateralityRight
+     Case 3 
+        chkLateralityBoth.value = const.LateralityBoth
+   End Select
+   txtHistoricalSummary.text = PH_From_View!condition_summary
+   txtAgeOnset.text = PH_From_View!age_onset
+   txtYearOnset.text = PH_From_View!year_onset
+   txtManagementSummary.text = PH_From_View!management_summary
+   chkYearOnsetUncertain.value = PH_From_View!year_onset_uncertain
+   txtAimOfPlan.text = PH_From_View!aim_of_plan
+   chkActive.Value = PH_From_View!active
+   chkMajor.Value = PH_From_View!major
+   If PH_From_View!active = False And PH_From_View!major = False Then
+         chkInactive.Value = True
+   End If   
+   chkOperation.Value = PH_From_View!operation
+   chkConfidential.Value = PH_From_View!confidential
+   chkCauseOfDeath.Value = PH_From_View!cause_of_death
+   chkRiskFactor.Value = PH_From_View!risk_factor
+   TeamCareMembers_Get()
+   CarePlan_Components_Get()
+   EditArea_Notify_DataChange(False)
+   VBox_CarePlan.Padding = 0
+
+End 
+
+
+Public Sub Problem_Lists_Refresh()
+   '--------------------------------------------------------------------------------
+   'PURPOSE       :refreshes the cvwProblemsSignificant, cvwProblemsInactive lists
+   '               and the cvwProblemsMajor lists
+   '              :the collection members are referenced by the pk_past history
+   '               whcih is key to clin_history.past_history table and the unique
+   '               key of the clin_history.vwHealthIssues view
+   '               which is kept as the key of the columnviews
+   '--------------------------------------------------------------------------------
+   Dim PastHistoryCondition As Collection
+   Dim a_column_view As Columnview                          'to point to current list
+   Dim sLaterality As String
+   
+   cvwProblemsInActive.Clear()                        'clear the lists
+   cvwProblemsMajor.Clear()
+   cvwProblemsActive.Clear()
+   If Not currentconsult Then Return 
+   For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!major Then
+           a_column_view = cvwProblemsMajor
+      Else If PastHistoryCondition!active Then
+           a_column_view = cvwProblemsActive
+      Else
+           a_column_view = cvwProblemsInActive
+      End If
+      '-----------------------------------------------------------------
+      'Having pointed to the correct list, load it with the history item
+      '-----------------------------------------------------------------
+      a_column_view.Add(PastHistoryCondition!pk_pasthistory, 0)
+      a_column_view[PastHistoryCondition!pk_pasthistory][0] = PastHistoryCondition!year_onset
+      Select Case PastHistoryCondition!fk_laterality
+      Case const.LateralityBoth
+         sLaterality = "(Bilateral)"
+      Case const.LateralityLeft
+           sLaterality = "(Left)"
+      Case const.LateralityRight
+        sLaterality = "(Right)"
+      Case const.LateralityNone
+           sLaterality = ""
+      End Select
+      a_column_view[PastHistoryCondition!pk_pasthistory][1] = PastHistoryCondition!description & " " & sLaterality
+     Next
+End
+
+Public Sub Problem_Lists_ConfigureFont(cv As ColumnView)
+  '-------------------------------------------------
+  'Select new font for the organisations list
+  '       note this does not change the config file
+  '       configuration must be actively change
+  '------------------------------------------------
+  If Dialog.SelectFont() Then Return
+
+   cv.Font = Dialog.Font
+  
+End
+
+Public Sub ProblemLists_Click()
+   '----------------------------------------------------------------
+   'The user has clicked on any of the three problems lists
+   'so display this problem in the editing area. Note that
+   'this sets the flag bEditing to true see EditArea_HealthIssue_Display
+   '----------------------------------------------------------------
+   If Not Last.count Then Return 
+   Select Case Last.tag
+   Case "major problems"
+    cvwProblemsInActive.SelectAll(False)
+    cvwProblemsActive.SelectAll(False)
+   Case "inactive problems"
+    cvwProblemsMajor.SelectAll(False)
+    cvwProblemsActive.SelectAll(False)
+   Case "active problems"
+      cvwProblemsMajor.SelectAll(False)
+      cvwProblemsInActive.SelectAll(False)
+   End Select
+   Last.MoveCurrent
+   iProblemKey = Last.Item.key
+   HealthIssue_Display()
+ 
+ End
+Public Sub EditArea_Resize_Labels()
+   '-------------------------------------------------------------------
+   'Adjust all lables as per current system font to make sure text fits
+   '-------------------------------------------------------------------
+   modEditAreaHelpers.Resize_labels(Vbox_EditingArea, lblmeasure)
+   modEditAreaHelpers.Resize_labels(vbox_carePlanning, lblmeasure)
+   modEditAreaHelpers.Resize_labels(VBox_TeamCare, lblmeasure)
+  
+End
+
+Public Sub EditArea_Clear()
+  '----------------------------------------------------------------
+  'Clears the editing area - ie clears all txtboxes, checkboxes and
+  'resets all variables, sets foreground of error message to white
+  'to make them 'disappear'
+  'clin_history.data_past_history has these fields
+  ' removed me: kk=I checked this was set 
+  '   pk serial 
+  '   fk_consult          kk
+  '   age_onset           KK
+  '   age_onset_units
+  '   description         kk
+  '   notes               kk
+  '   fk_laterality       kk
+  '   year_onset          KK
+  '   active              kk
+  '   operation           kk
+  '   cause_of_death      kk
+  '   confidential        kk
+  '   major             Inc inbox_auto_process_counter
+  '   deleted             kk
+  '   year_onset_uncertain  kk
+  '   management_summary    kk
+  '   condition_summary     kk
+  '   team_care_members  ---------
+  '   risk_factor              kk
+  '   fk_coding_system integer kk
+  '   fk_code integer          kk
+  '
+  '   FIXME RICHARD remove hard code for coding system to config
+  'fixme richard to allow year or month units
+  '----------------------------------------------------------------
+   bExit = True
+   txtCondition.text = ""
+   txtCodedTerm.text = ""
+   txtHistoricalSummary.text = ""
+   txtManagementSummary.text = ""
+   txtYearOnset.text = ""
+   txtAgeOnset.text = ""
+   txtAimOfPlan.text = ""
+   txtTeamCareMember_Responsibility.text = ""
+   chkLateralityBoth.Value = False
+   chkLateralityLeft.Value = False
+   chkLateralityRight.Value = False
+   chkYearOnsetUncertain.VALUE = False
+   chkOperation.Value = False
+   chkConfidential.Value = False
+   chkMajor.Value = False
+   chkCauseOfDeath.Value = False
+   chkRiskFactor.Value = False
+   chkActive.Value = False
+   chkInactive.Value = False
+   rbSearchBy_Employee.value = True  
+   TeamCareMember_SearchBy_Criteria = Const.contacttype_employee
+   mnuTeamCare_UndoDelete.Enabled = False   
+   txtComponent.Clear()
+   txtDue.Clear()
+ 
+   cvwCareComponents.Clear()
+   bEditing = False
+   '----------------------------------------------------------------------
+   'Reset gui-elements to start up condition
+   'Remove padding to edit area (it's background is red) white = no change
+   '----------------------------------------------------------------------
+   HBox_Problem.Padding = 0
+   'vbox_EditingArea.Padding = 0
+   EditArea_Notify_DataChange(False)
+   lblNewCondition.Visible = False
+  
+   lblWarning.visible = False 
+   listview2.Visible = False  
+   VBox_Terms.Visible = False   
+ '  tlResponsibility.text = "Responsibility"
+   '-------------------------------------------------
+   'Make a new past history class and new collections
+   '-------------------------------------------------
+   pk_pasthistory = -1
+   currentPastHistory = New Collection
+   currentPastHistory!fk_coding_system = 0
+   currentPastHistory!fk_code = 0
+   currentPastHistory!age_onset_units = const.Units_year
+   currentTerm = New Collection
+   chkPatientAsTCM.value = False
+   TeamCareMembers_Init()
+   '---------------------------------------------------------
+   'Finally set focus to the problem line to start data entry
+   '---------------------------------------------------------
+   VBox_CarePlan.Padding = 0
+   bExit = False
+  current_careplan_components = New Collection 
+   currentCarePlanComponent = New Collection 
+
+End
+
+ 
+
+Public Sub EditAreaButtons_Click()
+   '---------------------------------------------------
+   'User has clicked on either the accept or ok buttons
+   'at the bottom of the editing area
+   '----------------------------------------------------
+   Select Case Last.tag
+   Case "help"
+     If bEmbedded = False Then FClinical.Help_Show(Application.Path &/ "help/health-issues.html", "Help:Health Issues", True)
+   Case "accept"
+      '---------------------------------------------------
+      'Accept everything in editing area either to its
+      'existing spot in PH collection ie
+      'modglobal.clinicalform.currentcurrentconsult.patient!past_history
+      'of add to collection if a new problem
+      '---------------------------------------------------
+      Save()
+   Case "new problem"
+      '-----------------------------------------------------
+      'user wants to add a new problem or condition or issue
+      'Clear editing area, resetting all gui elements
+      'classes, collections, flags etc, de-select problem
+      'lists (ie remove the marque line)
+      '-----------------------------------------------------
+      EditArea_Clear()
+      cvwProblemsActive.SelectAll(False)
+      cvwProblemsInActive.SelectAll(False)
+      txtCodedTerm.SetFocus()
+   Case "add component"
+        If Trim(txtComponent.text) <> "" And Trim(txtDue.text) <> "" Then
+           Careplan_Components_Accept()
+        Endif
+   Case "new component"
+         bexit = True
+         txtComponent.text = ""
+         txtDue.text = ""
+         bediting = False  
+         bexit = False  
+         currentCarePlanComponent = New Collection
+         listview1.Visible = False  
+    End Select
+End
+
+Public Sub Careplan_Components_Accept() 
+   '-----------------------------------------------------------------------------------------------  
+   'user adding new or changing existing
+   'when editing currentCarePlanComponent =current_careplan_components[cvwCareComponents.Item.key]
+   'As these are equivalent, changing one, ie currentCarePlanComponent automatically changes
+   'the contents ofcurrent_careplan_components[cvwCareComponents.Item.key], so it suffices,just
+   'to refresh the list. The original fk_component isn't used FIXME DELETE ME as the save
+   'routine dis-regards it anyway and re-looks it up
+   '-----------------------------------------------------------------------------------------------
+   currentCarePlanComponent!component = Trim(txtComponent.text)
+   currentCarePlanComponent!due = Val(txtdue.text)
+
+   If IsNull(currentCarePlanComponent!pk_careplan_components_due) Then
+     current_careplan_components.Add(currentCarePlanComponent, current_careplan_components.count)
+   End If
+   cvwCareComponents_Refresh()
+   bexit = True
+   txtComponent.Clear()
+   txtDue.Clear()
+  
+   txtComponent.SetFocus()
+ 
+   bEditing = False
+   bExit = False  
+  
+  
+End
+' Public Sub Careplan_Component_New()
+'   currentCarePlanComponent = New collection 
+'   
+'   
+' End
+
+Public Sub Reload()
+      Dim fk_patient_in_FClinical As Integer
+      currentconsult.Refresh("past_history")                   'remove key from cache > later forces a reload
+      If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then
+          FClinical.Refresh_Section(const.cSection_PastHistory)    'refresh lists on main screen FClinical
+          FClinical.Refresh_AllPreviousNotes() 
+      End If   
+      EditArea_Clear()                                         'clear for next condition
+      txtCodedTerm.SetFocus()
+      Problem_Lists_Refresh()                                  'reload  lists under edit area
+ 
+End
+
+Public Function ProgressNotes_Summary() As String
+   '---------------------------------------------------------------------
+   'Note this is sort-of-duplicated in FClinical.Care_Plan_construct_html
+   'so probably should change design and combine
+   '---------------------------------------------------------------------
+   Dim PH As Collection = currentPastHistory 'for ease of typing
+   Dim sText As String
+   Dim sCumulative_html_forPlan As String
+   Dim sResponsible_Table_start As String = ""
+         "<TABLE WIDTH=100%  BORDER=0 CELLPADDING=1 CELLSPACING=0>"
+         "<COL WIDTH=38%>"
+         "<COL WIDTH=54%>"
+         "<COL WIDTH=10%>"
+   Dim sResponsible_Table_row_template As String = ""
+      "<TR VALIGN=TOP>"
+            "<TD WIDTH=38%>"
+                "<P ALIGN=LEFT><small><B>%wholename</B></small><BR> %address</P>"
+             "</TD>"
+             "<TD WIDTH=54%>"
+               "<P ALIGN=LEFT>%responsibilities</P>"
+             "</TD>"
+             "<TD WIDTH=10%>"
+                "<P ALIGN=LEFT>%comms</P>"
+               "</TD>"
+         "</TR>"
+   Dim sTeamCare_row As String
+   Dim member As Collection 
+   sText = "<BR><B>" & UCase(PH!description) & "</B><BR>"
+   sText &= "- noted at age " & PH!age_onset
+   If PH!operation = True Then
+      sText &= " (operation)"
+   End If
+   If PH!major Then
+      sText &= " considered to be a major problem"
+   Else If PH!active Then
+      sText &= " considered to be a significant problem"
+   Else If PH!inactive Then
+      sText &= " considered to be a inactive problem"
+   End If
+   
+   If PH!risk_factor Then
+      stext &= " and a risk factor "
+   End If
+    stext &= "."
+   If PH!condition_summary Then
+      sText &= "<BR>- " 
+      sText &= LCase(Left(PH!condition_summary)) & Right(PH!condition_summary, Len(PH!condition_summary) - 1)
+   End If      
+   If PH!aim_of_plan Then
+       sText &= "<BR>- the aim of management is to "
+      '-------------------------------------------------------
+      'Ucase first letter, preserve internal caps in sentance.
+      '-------------------------------------------------------
+      sText &= LCase(Left(PH!aim_of_plan)) & Right(PH!aim_of_plan, Len(PH!aim_of_plan) - 1)
+      If Right(Trim(sText), 1) <> "." Then
+         sText = Trim(sText) & "."
+      End If  
+   End If
+
+   If PH!management_summary Then
+      sText &= "<BR>- the management plan is to "
+      sText &= LCase(Left(PH!management_summary)) & Right(PH!management_summary, Len(PH!management_summary) - 1)
+   End If
+   '---------------------
+   'Now team care members
+   '---------------------
+     If TeamCareMembers.count Then
+         sText &= "<BR>"
+         For Each Member In TeamCareMembers
+           sText &= " - " & Member!wholename & "'s responsbilities are: " & Member!responsibility & "<BR>"
+         Next
+       End If  
+    Return sText
+End
+
+Public Sub Save()
+   '--------------------------------------------------
+   ' Save the past history condition (ie health issue)
+   ' Minimally needed data validated
+   ' The Audit information is collected here 
+   '--------------------------------------------------
+   Dim member As Collection 
+   Dim Lastpk_pastHistory As Integer
+   Dim sProgressNotes As String 
+   Dim bNewPastHistoryItem As Boolean
+   If Not Valid_EditArea_Contents() Then 
+      Return 
+   End If
+  
+   If Vbox_EditingArea.padding Or vbox_carePlan.padding Then
+     'current_careplan_components = CarePlan_Tasks_Get()
+      modDBConnect.BeginTrans()
+         sProgressNotes = ProgressNotes_Summary()     'don't move this out of order or will lose team members names
+         If pk_pasthistory = -1 Then bNewPastHistoryItem = True 
+         pk_pastHistory = modPastHistoryDBI.Save(currentconsult, pk_pasthistory, currentPastHistory) 
+         'currently team members and care plan components not in the audit
+         modPastHistoryDBI.Save_TeamCareMembers(teamcaremembers_old, TeamCareMembers, pk_pasthistory)
+         modPastHistoryDBI.Save_CarePlanComponents(view_careplan_components, current_careplan_components, pk_pasthistory)
+         If IsNull(currentPastHistory!fk_progressnote) Then
+            fk_progressnote = -1
+         Else
+            fk_progressnote = currentPastHistory!fk_progressnote
+         End If
+         fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_PastHistory, fk_progressnote, "Past History", pk_pasthistory, False)
+         '-----------------------------------------------------------------------------------------------
+         'difficult - the fk_progressnote can't exist until this is saved as it needs the pk_past history
+         'so as an interim stupid solution I've re-saved it after the progress note is saved.
+         '-----------------------------------------------------------------------------------------------
+          modPastHistoryDBI.Link_To_ProgressNote(pk_pasthistory, fk_progressnote)
+      modDBConnect.CommitTrans()
+      Reload()
+   End If   
+End
+
+
+Public Function Valid_EditArea_Contents() As Boolean 
+   '--------------------------------------------------------------------
+   'validates the contents of edit area returns FALSE if invalid
+   '-------------------------------------------------------------------
+    Dim sMsg As String 
+   
+   If txtCondition.text = "" Then
+      txtCondition.SetFocus()
+      Return False
+   End If
+   
+   If Not currentPastHistory.Exist("fk_code") Then 
+      lblNewCondition.visible = True 'FIXME
+      txtCodedTerm.SetFocus()
+      Return False
+   End If
+   
+   If Len(Trim(txtAgeOnset.text)) = 0 Then
+      txtAgeOnset.SetFocus()
+       Return False
+   End If
+   If Len(Trim(txtYearOnset.text)) = 0 Then
+      txtAgeOnset.SetFocus()
+       Return False
+   End If
+   'lastly validate enough care planning. This is a little bit subjective
+   'as not all health issues need care plans, but will often have a
+   'historical summary and a management plan
+   'I'm enforcing an aim where those exist.
+   '---------------------------------------------------------------------
+   If Trim(txtManagementSummary.text) <> "" Then
+     If txtAimOfPlan.text = "" Then
+       txtAimOfPlan.SetFocus()
+       Return False
+     End If 
+   End If   
+      Return True
+End
+
+
+Public Sub EditArea_TxtBox_KeyRelease()
+ If bExit Then Return 
+
+ Select Case Last.tag
+  Case "team care members"
+      '-----------------------------------------------------
+      'Search for a company or a person as team care members
+      '-----------------------------------------------------   
+      TeamCareMembers_Selection("get") 
+  Case "problem"
+
+  Case "coded term"
+      '-----------------------------------------------
+      'on every key-release, start the timer
+      'and search for term like txtCodedTerm.text
+      '-----------------------------------------------
+      Timer1.Start() 
+
+   Case "care plan component"
+      CarePlan_Components_Selection("get")
+ End Select 
+End
+
+Public Sub EditArea_TxtBox_Change()
+  Dim x As Integer
+ If bExit Then Return
+ 
+ Select Case Last.tag
+ Case "problem"
+      If Len(Trim(Last.text)) Then
+         currentPastHistory!description = Trim(Last.text)
+      Else
+        currentPastHistory!description = ""
+     End If   
+ Case "coded term"  
+      If Trim(Last.text) = "" Then
+         'columnview1.Visible = False
+         VBox_Terms.Visible = False   'container of columnview1
+      End If
+         
+ Case "historical summary"
+       currentPastHistory!condition_summary = Trim(txtHistoricalSummary.text)
+ Case "aim of plan"
+       currentPastHistory!aim_of_plan = Trim(Last.text)
+ Case "age onset"
+      '----------------------------------------
+      'Sets or removes currentproblem!age_onset
+      'SEE ALSO: EditArea_AgeOnset_CheckValid()
+      '----------------------------------------
+      If IsInteger(Val(txtAgeOnset.Text)) Then
+         currentPastHistory!age_onset = Val(txtAgeOnset.text)
+      End If 
+      If Len(Trim(txtAgeOnset.text)) = 0 Then
+         txtYearOnset.text = ""
+         Try currentPastHistory.Remove("age_onset")
+      End If
+      
+ Case "year onset"
+     currentPastHistory!year_onset = Trim(txtYearOnset.text)
+     lblWarning.Visible = False  
+     If Len(Trim(txtYearOnset.text)) = 0 Then
+         txtAgeOnset.text = ""
+         Try currentPastHistory.Remove("year_onset")
+         lblWarning.Text = "Year of onset is invalid - try e.g 12/2002 (mm/yyyy) or a full date (dd/mm/yyyy) which is valid" 
+       
+         lblWarning.Visible = True   
+      End If
+      
+   Case "management plan"  
+ 
+      currentPastHistory!management_summary = Trim(txtManagementSummary.text)     
+       If InStr(Last.text, "\n\n") Then
+         Last.text = Replace(Last.text, "\n\n", "")
+         txtTeamCareMembers.SetFocus()
+      End If
+
+   Case "team care members"
+      If Trim(Last.text) = "" Then  
+         listview2.Visible = False  
+         fk_organisation = 0
+         fk_branch = 0
+         fk_employee = 0
+         fk_person = 0
+      End If   
+   Case "responsibility" 
+        Try TeamCareMembers[iTeamCareMember]!responsibility = Trim(Last.text)
+          If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "")
+            txtTeamCareMembers.SetFocus()
+         End If
+ End Select
+ Select Case Last.tag
+ Case "management plan", "historical summary", "team care members", "responsibility"
+    vbox_carePlan.padding = 1
+ Case Else
+    EditArea_Notify_DataChange(True)
+ End Select
+End
+
+Public Sub EditArea_Notify_DataChange(flag As Boolean)
+  If flag Then 
+    vbox_EditingArea.Padding = 1
+    tbAccept.Foreground = Color.Red
+  Else
+   vbox_EditingArea.Padding = 0
+   tbaccept.Foreground = Color.black
+  End If
+  
+  
+End
+
+
+Public Sub EditArea_ChkBoxes_Click()
+   '---------------------------------------------------------------------------------------------
+   'comment on top two lines of this routine
+   'this qt bug may have been fixed in recent releases
+   'This is in here because in QT, if a textbox loses focus and the next control clicked on is
+   'not a list/textbox/editor, then the lost focus event is not triggered
+   'we need the lost focus event because user could have tabbed off a control, hence the keypress
+   'event may not have validated the data in the textbox
+   'Note on intended checkbox usage:
+   '  chkMajor  = if checked then major problem and needs to be in a care plan
+   '  chkActive = if checked then a significant problem
+   '  Neither of these = problem is a past history item most likely dealt with
+   '---------------------------------------------------------------------------------------------
+  Dim flag As Boolean
+  If bexit Then Return 
+  EditArea_AgeOnset_CheckValid()
+  
+  '-----------------------------------------------
+   'Deals with all the check boxes in the edit area
+   '-----------------------------------------------
+   If bExit Then Return
+   flag = Abs(Last.value)
+   
+  
+   Select Case Last.tag
+   Case "icd10", "limit"
+         Terms_Get()
+  
+   Case "patient"
+         'Patient becomes a team member for this problem
+         If flag Then
+            TeamCareMember_AddPatient()
+         Else
+         End If   
+   Case "year onset uncertain"
+        currentPastHistory!year_onset_uncertain = flag
+   Case "operation"
+      currentPastHistory!operation = flag
+      
+   Case "confidential"
+      currentPastHistory!confidential = flag
+   Case "major"
+    currentPastHistory!major = flag
+     If currentPastHistory!major = True Then
+        chkActive.Value = Not flag
+        chkInactive.Value = Not flag
+        currentPastHistory!active = False 
+     End If
+   Case "risk factor"
+      currentPastHistory!risk_factor = flag
+   Case "active"
+        '--------------------------------------------------
+        'Flip on/off the active value. Make sure that if you
+        'make the problem significant and active then
+        'switch off the major checkbox
+        '---------------------------------------------------
+        currentPastHistory!active = flag
+         If chkActive.Value = True Then
+            chkMajor.Value = Not flag
+            chkInactive.value = Not flag
+            currentPastHistory!major = False
+         End If
+    Case "inactive"
+       
+         If chkInActive.Value = True Then
+            chkMajor.Value = Not flag
+            chkActive.value = Not flag
+            currentPastHistory!major = False
+            currentPastHistory!active = False   
+         End If
+   Case "left"
+      If chkLateralityLeft.value = True Then
+            currentPastHistory!fk_laterality = const.LateralityLeft
+            
+            chkLateralityRight.value = False
+            chkLateralityBoth.Value = False
+      End If
+  Case "right"
+      If chkLateralityRight.value = True Then
+         currentPastHistory!fk_laterality = const.LateralityRight
+      End If
+      chkLateralityLeft.value = False
+      chkLateralityBoth.Value = False
+   Case "both"
+      If chkLateralityBoth.value = True Then
+         currentPastHistory!fk_laterality = const.LateralityBoth
+      End If
+       chkLateralityLeft.value = False
+       chkLateralityRight.value = False
+  Case "cause of death"
+     currentPastHistory!cause_of_death = chkCauseOfDeath.Value
+   End Select
+  If chkLateralityLeft.value = False And chkLateralityRight.value = False And chkLateralityBoth.value = False Then
+    currentPastHistory!fk_laterality = const.LateralityNone
+  End If
+
+  EditArea_Notify_DataChange(True)  'give visual message to user data has changed
+End 
+
+
+Public Function EditArea_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   '----------------------------------------------------------
+   'PURPOSE       Restrict key presses for validation purposes
+   'HOW IT WORKS  see routines names
+   'FIXME         Ian would do this much simpler I'm sure
+   '-----------------------------------------------------------
+   Select Case Last.Tag
+     Case "problem", "coded term", "historical summary", "management plan", "team care members", "responsibility", "aim of plan", "care plan component"
+         bKeyValid = True
+     Case "age onset"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
+     Case "year onset"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
+     End Select
+     Return bKeyValid
+End
+
+Public Sub EditArea_TxtBox_KeyPress()
+   Dim X As Integer
+   Dim sYearOnset As String
+   Dim STempYear As String
+   Dim STemp As String
+   Dim bDateValid As Boolean
+   '----------------------------------------------------
+   'Each line may have a different set of key exclusions
+   'so only keep valid keypresses
+   '----------------------------------------------------
+   bkeyvalid = EditArea_ExcludeKeys(key.code, Last.tag)
+   
+   If bkeyvalid = False Then
+      Stop Event
+      Return
+   End If
+   Select Case key.Code
+   Case key.return, key.Tab
+         Select Case Last.tag
+            Case "problem"
+                  If currentPastHistory!description = "" Then
+                     HBox_Problem.Padding = 1
+                     'lblConditionInvalid.Foreground = Color.Red
+                  Else
+                   ' lblConditionInvalid.Foreground = Color.White
+                    HBox_Problem.Padding = 0
+                  End If
+                  'user could have hit <enter> with listview1.popped up full of terms
+                  'and because they can see the term in the list assume that this 
+                  'is beign chosen, so iterate through and see if can find a match
+                   '-----------------------------------------
+                  'the text could match the popped up list
+                  'without the user having scrolled on to it
+                  '-----------------------------------------
+                  If listview1.Visible Then
+                     listview1.MoveFirst
+                     For x = 0 To listview1.count - 1
+                       'Print listview1.Item.text, listview1.Item.key
+                         If LCase(listview1.Item.text) = LCase(Trim(txtCondition.text)) Then
+                             'Print "found a match"
+                             
+                           currentPastHistory!fk_reason = listview1.Item.Key
+                           currentPastHistory!description = listview1.Item.Text
+                           txtCondition.text = listview1.Item.Text
+                           HBox_Problem.Padding = 0
+                          txtHistoricalSummary.setfocus
+                            
+                            Break
+                         End If
+                         listview1.MoveNext
+                     Next
+                  End If
+             listview1.Visible = False
+             txtCodedTerm.SetFocus()
+            Case "coded term"
+                  txtAgeOnset.SetFocus()
+            Case "historical summary"
+                  txtManagementSummary.SetFocus()
+            Case "age onset"
+                  If Not EditArea_AgeOnset_CheckValid() Then
+                     txtYearOnset.SetFocus()
+                  End If   
+            Case "year onset"
+                   EditArea_YearOnset_CheckValid()
+                   chkMajor.setFocus
+            Case "aim of plan"
+                  txtHistoricalSummary.SetFocus()
+            Case "team care members"
+                  '-------------------------------------------
+                  'Add team members names and responsibilities
+                  '-------------------------------------------
+                  If Trim(txtTeamCareMembers.text) = "" Then
+                     tbAccept.SetFocus()
+                  Else
+                     '---------------------------------------------------
+                     'Add the next team member and set focus for next one
+                     '---------------------------------------------------
+                     txtTeamCareMember_Responsibility.SetFocus()
+                  End If
+            Case "care plan component"
+               ' '------------------------------------------------------------
+               ' 'First calculate the date if user typed in numberM or numberY
+               ' '------------------------------------------------------------
+               '  If icol Mod 2 Then
+               '     CarePlan_Components_Calculate_Recall_Date(txtComponent)
+               '  End If
+               '  grdComponents[irow, icol].text = txtComponent.Text
+               '  CarePlan_Components_Update_Collection()
+               '  '----------------------------------------------------------
+               '  'Now, don't allow a new row to be added, if the current row
+               '  'hasn't been filled
+               '  '----------------------------------------------------------
+               '  icol = icol + 1
+               '  If icol = 2 Then
+               '     If grdComponents[irow, 0].text = "" Or grdComponents[irow, 1].text = "" Then
+               '       icol = 1
+               '       Stop Event
+               '       Return
+               '     End If  
+               '     If irow + 1 = grdComponents.Rows.Count Then
+               '         Inc grdComponents.Rows.count
+               '     End If
+               '     irow = Min(iRow + 1, grdComponents.Rows.Count - 1)
+               '     grdComponents.Rows[irow].Height = 16
+               '     grdComponents[irow, 2].Picture = Picture.Load("icons/16/unchecked.png")
+               '     icol = 0
+               '  End If
+               '  Next_rc()            
+               ' 
+            Case "responsibility"
+            
+             End Select
+     Case key.Up
+     Select Case Last.tag
+     Case "care plan component"
+         ' grdComponents[irow, icol].text = txtComponent.Text
+         ' CarePlan_Components_Update_Collection()
+         ' iRow = Max(iRow - 1, 0)
+         ' Next_rc()
+     End Select
+     Case Key.Down
+         If listview1.Visible Then 
+            listview1.SetFocus
+            listview1.MoveFirst
+            listview1.Item.Selected = True
+            Return
+         End If
+           If VBox_Terms.visible Then 
+            columnview1.SetFocus
+            columnview1.MoveFirst
+            columnview1.Item.Selected = True
+            Return
+         End If
+         If listview2.Visible Then 
+            listview2.SetFocus
+            listview2.MoveFirst
+            listview2.Item.Selected = True
+            Return
+         End If
+         Select Case Last.tag
+         Case "care plan component"
+               '  grdComponents[irow, icol].text = txtComponent.Text
+               ' CarePlan_Components_Update_Collection()
+               ' irow = Min(iRow + 1, grdComponents.Rows.Count - 1)
+               ' Next_rc()
+
+         End Select
+     End Select
+End
+
+
+
+
+Public Sub EditArea_ChkBoxes_KeyPress()
+'FIXME - THE TABBING TO EXCLUDE STUFF
+'' Print " the last tag was ", Last.tag
+'' Print "the key code was", key.Code, key.Enter, key.Return
+   Select Case Key.Code
+      Case key.Return
+         Select Case Last.tag
+         Case "year onset uncertain" 'this checkbox excluded from <keyenter> order
+             chkOperation.SetFocus 
+         Case "operation"
+            chkConfidential.SetFocus
+         Case "confidential"
+            chkMajor.SetFocus
+         Case "major"
+           txtAimOfPlan.SetFocus()
+         Case "active"
+             tbaccept.SetFocus
+         Case "cause of death" 'excluded usually because hopefully most currentconsult.patients don't die.
+            tbAccept.SetFocus
+         End Select
+     
+   End Select
+  
+
+End
+Public Sub Columnview1_KeyPress()
+   '------------------------------------------------------------------
+   'Act only on the <ENTER> key display what is in list in the textbox
+   '------------------------------------------------------------------
+   If Key.code = Key.Return Then 
+     
+      Columnview1_DblClick
+   End If
+End
+
+Public Sub ListView1_KeyPress()
+   '------------------------------------------------------------------
+   'Act only on the <ENTER> key display what is in list in the textbox
+   '------------------------------------------------------------------
+   If Key.code = Key.Return Then 
+     
+      listview1_DblClick
+   End If
+End
+
+Public Sub ListView2_KeyPress()
+   '------------------------------------------------------------------
+   'Act only on the <ENTER> key display what is in list in the textbox
+   '------------------------------------------------------------------
+   If Key.code = Key.Return Then 
+      listview2_DblClick
+   End If
+End
+
+Public Sub listview2_DblClick()
+  'FIXME USE LISTVIEW1
+  TeamCareMembers_Selection("accept", "list")
+   
+  
+End
+Public Sub Columnview1_DblClick()
+  
+   Coded_Term_Select() 
+   'Columnview1.Visible = False 
+   VBox_Terms.Visible = False   
+End
+
+Public Sub listview1_DblClick()
+   '---------------------------------------------------------------------
+   'CALLED BY     :listview1_keypress(enter) or
+   '              :user double clicking on a row of a list
+   'WHAT IT DOES  :Accepts the list contents into the appropriate textbox
+   '              :and the listkey into the appropriate collection
+   '---------------------------------------------------------------------
+     
+  
+ '  Select Case listview1.Tag.
+  '  Case "care plan component" 
+         CarePlan_Components_Selection("accept", "list")
+  '  End Select
+  listview1.Visible = False
+  txtDue.SetFocus()
+ End
+
+
+Private Sub Settings_Save()
+
+
+      If bEmbedded Then
+       ' Settings["Past_History_Embedded_" & embedded_in_form & "/HSplit_ConditionAndManagement_Summary"] = HSplit_ConditionAndManagement_Summary.Layout
+        Settings["Past_History1/HSplit_ConditionAndManagement_Summary"] = HSplit_ConditionAndManagement_Summary.Layout
+
+        Settings["Past_History_Embedded_" & embedded_in_form & "/VSplit_PastHistory"] = VSplit_PastHistory.Layout
+        Settings["Past_History_Embedded_" & embedded_in_form & "/HSplit_ProblemLists"] = HSplit_ProblemLists.Layout
+       ' Settings["Past_History_Embedded_" & Embedded_form & "/VSplit_Data_Input_Summaries"] = VSplit_Data_Input_Summaries.Layout
+        Settings["Past_History_Embedded_" & embedded_in_form & "/HSplit_TeamCareMembers"] = HSplit_TeamCareMembers.Layout
+      Else
+        Settings["Past_History/HSplit_ConditionAndManagement_Summary"] = HSplit_ConditionAndManagement_Summary.Layout
+        Settings["Past_History/VSplit_PastHistory"] = VSplit_PastHistory.Layout
+        Settings["Past_History/HSplit_ProblemLists"] = HSplit_ProblemLists.Layout
+      '  Settings["Past_History/VSplit_Data_Input_Summaries"] = VSplit_Data_Input_Summaries.Layout
+        Settings["Past_History/HSplit_TeamCareMembers"] = HSplit_TeamCareMembers.Layout
+      End If
+   
+
+End
+
+Private Sub Settings_Load()
+
+
+      If bEmbedded Then
+         Try HSplit_ConditionAndManagement_Summary.Layout = Settings["Past_History_Embedded_" & embedded_in_form & "/HSplit_ConditionAndManagement_Summary"]
+         Try VSplit_PastHistory.Layout = Settings["Past_History_Embedded_" & embedded_in_form & "/VSplit_PastHistory"]
+         Try HSplit_ProblemLists.Layout = Settings["Past_History_Embedded_" & embedded_in_form & "/HSplit_ProblemLists"]
+       '  VSplit_Data_Input_Summaries.Layout = Settings["Past_History_Embedded_" & Embedded_form & "/VSplit_Data_Input_Summaries"] 
+         Try HSplit_TeamCareMembers.Layout = Settings["Past_History_Embedded_" & embedded_in_form & "/HSplit_TeamCareMembers"]
+      Else
+         HSplit_ConditionAndManagement_Summary.Layout = Settings["Past_History/HSplit_ConditionAndManagement_Summary"]
+         VSplit_PastHistory.Layout = Settings["Past_History/VSplit_PastHistory"]
+         HSplit_ProblemLists.Layout = Settings["Past_History/HSplit_ProblemLists"]
+       '  VSplit_Data_Input_Summaries.Layout = Settings["Past_History/VSplit_Data_Input_Summaries"] 
+         HSplit_TeamCareMembers.Layout = Settings["Past_History/HSplit_TeamCareMembers"]
+      End If
+   
+
+End
+
+
+
+
+Public Sub Clear_DataChange_Indicators()
+  Vbox_Major.Padding = 0
+  Vbox_Significant.Padding = 0
+  Vbox_Inactive.Padding = 0
+End
+
+
+Public Sub mnuTeamCare_Click()
+   '--------------------------------------------------------------------------
+   'Users has selected a team care member
+   'As all contacts must be added via contacts modules these may not be edited
+   '--------------------------------------------------------------------------
+   Dim c As Collection 
+   Dim the_key As Integer
+   cvwTeamCareMembers.MoveCurrent()
+  
+  Select Case Last.tag
+  Case "delete"
+         '----------------------------------------------------------------
+         'Delete a team care member and details, keeping a copy
+         'The teamcaremembers collection is 0-n keyed on the list
+         'mark item as deleted in DB
+         'keep a copy in TeamCareMember_Deleted collectin keyed to the pk
+         '----------------------------------------------------------------
+         modDBConnect.BeginTrans() 'noop
+    
+         modPastHistoryDBI.TeamCareMembers_Delete(TeamCareMembers[cvwTeamCareMembers.Item.Key]!pk)  
+         modDBConnect.CommitTrans()                                                                
+         TeamCareMember_Deleted.Add(TeamCareMembers[cvwTeamCareMembers.Item.Key], TeamCareMembers[cvwTeamCareMembers.Item.Key]!pk) 
+         TeamCareMembers_Get() 'refresh the collection
+         mnuTeamCare_UndoDelete.Enabled = True  
+   Case "undo delete"
+      '---------------------
+      'One level of undelete
+      '---------------------
+        'TeamCareMembers.Add(TeamCareMember_Deleted[TeamCareMember_Deleted.key])
+        If TeamCareMember_Deleted.Length Then
+           For Each c In TeamCareMember_Deleted
+              the_key = c!pk
+           Next
+          
+           modDBConnect.BeginTrans()
+        
+         modPastHistoryDBI.TeamCareMembers_UnDelete(TeamCareMember_Deleted[the_key]!pk)
+         modDBConnect.CommitTrans()
+         TeamCareMember_Deleted = New Collection 
+         TeamCareMembers_Get()
+         mnuTeamCare_UndoDelete.Enabled = False 
+        End If 
+  Case "help"
+  Case "quit"
+  End Select
+  
+End
+
+Public Sub cvwTeamCareMembers_Menu()
+   If cvwTeamCareMembers.count Or TeamCareMember_Deleted.count Then
+       If TeamCareMember_Deleted.count Then
+          mnuTeamCare_UndoDelete.Enabled = True
+       End If
+       If cvwTeamCareMembers.count = 0 Then
+           mnuTeamCare_Delete.Enabled = False  
+       Else
+         mnuTeamCare_Delete.Enabled = True     
+       End If
+       mnuTeamCare.Popup()
+   End If
+
+End
+
+Public Sub cvwTeamCareMembers_Click()
+  
+  cvwTeamCareMembers_Select()
+  
+End
+
+Public Sub cvwTeamCareMembers_Select()
+   '----------------------------------------------------------------
+   'Display the team care members responsibility
+   'either user clicks on or scrolls down to a row of the columnview
+   'We cannot edit team members except via the contacts database,
+   '----------------------------------------------------------------
+   If bexit Then Return 
+   cvwTeamCareMembers.MoveCurrent()
+   iTeamCareMember = cvwTeamCareMembers.Item.key
+   If Not IsNull(TeamCareMembers[iTeamCareMember]!wholename) Then
+       '  tlResponsibility.text = "Responsibilities of " & TeamCareMembers[iTeamCareMember]!wholename 
+   End If
+   bExit = True
+   If IsNull(TeamCareMembers[iTeamCareMember]!responsibility) Then
+      txtTeamCareMember_Responsibility.text = ""
+      
+   Else
+      txtTeamCareMember_Responsibility.text = TeamCareMembers[iTeamCareMember]!responsibility
+     
+   End If
+   bExit = False  
+End
+
+
+Public Sub ProblemLists_Menu()
+
+  If Last.count Then '
+     Last.MoveCurrent()
+     mnuProblemLists_Major_Title.caption = UCase(currentconsult!past_history[pk_pasthistory]!description)
+     MnuProblemLists.Popup()
+  End If
+ 
+
+End
+
+Public Sub mnuProblemLists_Click()
+   '----------------------------------------------------------------------
+   'User has selected an option from the popup menu over the problem lists
+   'Note:When the list itself was first clicked on the routine:
+   'ProblemLists_Select() set a private global variable sProblemKey to 
+   'point to the current problem in the list ie PH[sProblemKey]. the PH
+   'collection is initialised in init() for ease of typeing, and is a 
+   'pointer to modglobal.clinicalform.currentcurrentconsult.patient!past_history
+   'The lists if necessary are then re-refreshed visually. Note that the 
+   'contents of the problem the user is working on have already been
+   'automatically loaded into the editing area, so only the piece of
+   'information which has been changed eg problem made major, need be
+   'visually updated in the editing area
+   '----------------------------------------------------------------------
+  Dim audit_rows As Collection 'for readability only
+  Select Case Last.tag
+      Case "mark major"
+         chkMajor.Value = True
+         Save()
+      Case "mark significant"
+         chkActive.Value = True
+         Save()
+      Case "mark inactive"
+         chkInactive.Value = True
+         Save() 
+      Case "delete"
+         HealthIssue_Delete()
+        
+
+      Case "view audit trail" 
+          audit_rows = modAuditDBI.AuditTrail_Get_PastHistory("clin_history.vwpasthistoryaudit", currentconsult!patient!fk_patient, pk_pasthistory)
+          FClinical.WebBrowser_show(modAudit.Audit_HTML_Construct(audit_rows, "Past History").GetData())
+      Case "undo delete"
+            modUtil.NotImplemented("Health Issue - Undo Delete")
+      Case "help"
+           FClinical.WebBrowser_Show(Application.path & "/help/health-issues.html", "Please consult the help files for further detailed information on this topic")
+      Case "view all notes"
+           FClinical.WebBrowser_show(modProgressNotes.ConstructHTML_SingleProblem(currentconsult, pk_pasthistory, const.cSection_PastHistory))
+      Case "decision support"
+            modUtil.NotImplemented("Health Issue - Decision Support")
+      Case Else ' for "mark significant explain", "mark inactive explain","mark major explain"
+             modPastHistoryDBI.Popup_Menu_Process(currentconsult, Last.tag, CurrentPastHistory, pk_pasthistory)
+   End Select
+End
+
+Public Sub TeamCareMembers_Selection(action As String, Optional calling_control As String)
+   'Either fetches as list of potential team care members according to the value of rb
+   Dim x As Integer
+   Dim sMsg As String
+  
+   Select Case action
+   Case "get"
+   
+       If Len(Trim(txtTeamCareMembers.text)) = 0 Then
+          listview2.Visible = False  
+          Return
+       End If
+         Select Case TeamCareMember_SearchBy_Criteria
+            Case Const.contacttype_organisation
+                collection_members = modContactsDBI.Organisations_Get(Trim(txtTeamCareMembers.text))
+                If collection_members.count = 0 Then
+                  bExit = True
+                  rbSearchBy_branch.value = True
+                 
+                  bExit = False
+                  Return
+                End If
+            Case Const.contacttype_employee
+               collection_members = modContactsDBI.Employee_Get(Trim(txtTeamCareMembers.text))
+                 If collection_members.count = 0 Then
+                  rbSearchBy_Organisation.value = True
+                  Return
+               End If
+            Case Const.contacttype_PersonsAndPatients 'set to inlude all patients and other persons
+               collection_members = modContactsDBI.Person_Get(Trim(txtTeamCareMembers.text), const.contacttype_PersonsAndPatients)
+            Case const.contacttype_branch
+               collection_members = modContactsDBI.Branches_Get_Like(Trim(txtTeamCareMembers.text))
+               If collection_members.count = 0 Then
+                  rbSearchBy_Employee.value = True
+                  Return
+              End If
+          End Select
+         listview2.Clear
+         '-----------------------------------------------------------------
+         'If categories exist to match the text, auto-select or show a list
+         '-----------------------------------------------------------------
+         If collection_members.count Then 
+           Try collection_members.Remove("sql_in_english") 'ian included this for FClinical patient search
+           For Each collection_member In collection_members
+              Select Case TeamCareMember_SearchBy_Criteria
+                  Case Const.contacttype_organisation, Const.contacttype_branch
+                     sMsg = collection_member!organisation & " " & collection_member!branch & " " 
+                     sMsg &= collection_member!street & " " & collection_member!town & " " & collection_member!postcode 
+                  Case Const.contacttype_employee
+                     smsg = collection_member!title & " "
+                     sMsg &= collection_member!firstname & " "
+                     smsg &= collection_member!surname & " "
+                     sMsg &= "(" & collection_member!occupation & ") "
+                     sMsg &= collection_member!organisation & " " & collection_member!branch & " "  
+                     sMsg &= collection_member!street & " " & collection_member!town & " " & collection_member!postcode 
+                  Case Const.contacttype_PersonsAndPatients
+                    smsg = collection_member!wholename
+                    sMsg &= collection_member!street & " " & collection_member!town & " " & collection_member!postcode 
+                        
+              End Select
+              listview2.Add(collection_member!pk_view, sMsg)
+            Next 
+          listview2.Visible = True
+          listview2.Raise
+          listview2.tag = txtTeamCareMembers
+           Return 
+         Else 
+          listview2.Visible = False  
+         End If
+        
+            
+       
+   Case "accept"
+      '-------------------------------------------------------
+      'CALLED BY  : user hitting <enter> in txtTeamCareMembers
+      '             user hitting <enter> on the popup list 
+      '             user double clicking on the popup list
+      '-------------------------------------------------------
+       bExit = True
+       If calling_control = "textbox" Then
+         '-------------------------------------------------------
+         'User has just hit <enter> without scrolling on the list
+         'try and find a match
+         '-------------------------------------------------------
+          If listview2.Visible Then
+         '    listview1.MoveFirst
+         '    For x = 0 To listview1.count - 1
+         '       If Lower(listview1.Item.text) = Trim(Lower(txtEmployeeOccupation.text)) Then
+         '          fk_occupation = listview1.Item.Key
+         '          Break
+         '       End If
+         '   Next
+         End If
+         '------------------------------------------------------------------
+         'Either no match was found OR list wasn't visible anyway = no match
+         '------------------------------------------------------------------
+       '  fk_occupation = 0
+        listview2.Visible = False     
+       Else
+         '-----------------------------------------------------------
+         'Routine called by user clicking on list or pressing <enter>
+         '-----------------------------------------------------------
+         If listview2.Visible Then
+           listview2.MoveCurrent   'set internal cursor to match marquee
+           collection_member = collection_members[listview2.Item.key]
+           Try fk_organisation = collection_member!fk_organisation
+           Try fk_branch = collection_member!fk_branch
+           Try fk_person = collection_member!fk_person
+           Try fk_employee = collection_member!fk_employee
+           bExit = False
+           If Not teamcare_member_check_duplicated(collection_member) Then
+               TeamCareMembers_Add(collection_member)
+           End If
+         End If
+       End If
+     
+      bExit = False  
+   End Select
+
+End
+Public Sub TeamCareMember_AddPatient()
+  
+  Dim member As New Collection
+  bExit = True
+  rbSearchBy_person.value = True
+  bExit = False
+  listview2.Clear 'bad fudge see TeamCaremembers_add for reason
+  fk_person = currentconsult!patient!fk_person
+  fk_organisation = 0
+  fk_branch = 0
+  fk_employee = 0
+  Member!fk_person = currentconsult!patient!fk_person
+  Member!wholename = currentconsult!patient!wholename 
+  If Not teamcare_member_check_duplicated(Member) Then
+               TeamCareMembers_Add(member)
+  End If
+
+End
+
+Public Function teamcare_member_check_duplicated(Member As Collection) As Boolean
+   '--------------------------------
+   'returns False if not a duplicate
+   '-------------------------------- 
+  
+   Dim sMsg As String = "You have selected:\n\n"
+   If Not (fk_organisation Or fk_branch Or fk_employee Or fk_person) Then
+      Select Case TeamCareMember_SearchBy_Criteria
+         Case Const.contacttype_employee
+              smsg = "The employee "
+          Case Const.contacttype_organisation
+              smsg = "The organisation "
+        Case Const.contacttype_PersonsAndPatients
+            smsg = "The person "
+      End Select
+      sMsg &= "that you are looking for does not yet exist in the contacts database.\n\n" 
+      sMsg &= "You cannot enter free text here.\n\n"
+      sMsg &= "Please add the details via the contacts section before proceeding."
+      Goto reset
+   End If
+   For Each member In TeamCareMembers
+      Select Case TeamCareMember_SearchBy_Criteria
+      Case Const.contacttype_employee
+           If member!fk_employee = fk_employee Then
+             sMsg &= member!summary & "\n\nA person of this name already exsits in the team care list" 
+            Goto reset
+            End If
+      Case Const.contacttype_organisation
+         If member!fk_organisation = fk_organisation And member!fk_branch = fk_branch Then
+            sMsg &= member!summary & "\n\nA person of this name already exsits in the team care list" 
+            Goto reset 
+         End If   
+      Case Const.contacttype_PersonsAndPatients
+       If member!fk_person = fk_person Then
+          sMsg &= member!wholename & " " & member!summary & "\n\nA person Of this name already exsits In the team care list"
+Goto reset
+        End If   
+      End Select
+   Next  
+   Return False
+Reset:
+  listview2.Visible = False 
+  txtTeamCareMembers.SetFocus()
+  txtTeamCareMembers.Text = ""
+  Message.Info(sMsg)  
+  Return True 'ie is a duplicate
+End
+
+Public Sub TeamCareMembers_Init()
+   '---------------------------
+   'CALLED BY  EditArea_Clear()
+   '---------------------------
+   Dim member As New Collection 
+  ' Terms = New Collection
+   TeamCareMembers = New Collection 
+   TeamCareMember_Deleted = New Collection   
+   cvwTeamCareMembers.Clear()
+ '  Member!fk_person = currentconsult!patient!fk_person
+  ' Member!wholename = "Patient: " & currentconsult!patient!wholename 
+  ' Member!responsibility = "Keep record of when appointments are due\n" 
+    '   "Make appointments for investigations and specialists as requested\n"
+   
+ ' TeamCareMembers_Add(Member)
+End
+Public Sub TeamCareMembers_Get()
+   '-------------------------------------------------------------
+   'Get the team care members from backend, they are keyed by the
+   'clin_history.team_care_members.pk, no good if we want to add
+   'new items to the list, so re-order the collection with keys
+   'corresponding to the cvwTeamMembers.count value
+   '-------------------------------------------------------------
+   TeamCareMembers_old = New Collection
+   TeamCareMembers_old = modPastHistoryDBI.TeamCareMembers_Get(pk_pasthistory) 'the old data - never changed
+   TeamCareMembers_RefreshCollection()        'create a copy of this collection to keep changes
+   TeamCareMembers_RefreshList()
+
+  
+End
+
+Public Sub TeamCareMembers_MakeSummary(Collection_member As Collection) As String
+   '---------------------------------------------------------------------------
+   'makes a summary like organisation-address-employee (occupation) for display
+   '---------------------------------------------------------------------------
+   Dim sMsg As String
+   If IsNull(Collection_member!fk_employee) And IsNull(Collection_member!fk_organisation) Then
+      '----------------------------------------------------------
+      'ok- if not an organisation or an employee must be a person
+      '----------------------------------------------------------
+      TeamCareMember_SearchBy_Criteria = Const.contacttype_PersonsAndPatients
+      sMsg = collection_member!wholename & " " & collection_member!summary 
+    Else If Not IsNull(Collection_member!fk_person) Then
+         TeamCareMember_SearchBy_Criteria = Const.contacttype_employee
+         sMsg = collection_member!wholename & collection_member!summary
+    Else If Not IsNull(Collection_member!fk_organisation) Then
+         TeamCareMember_SearchBy_Criteria = Const.contacttype_organisation
+         sMsg = collection_member!summary ' & " "
+   ' Else
+   '    TeamCareMember_SearchBy_Criteria = Const.contacttype_PersonsAndPatients 'remove this
+   End If
+   Return sMsg    
+End
+
+
+Public Sub TeamCareMembers_Add(member As Collection)
+   Dim tcm As New Collection 
+   tcm = New Collection
+   Try tcm!summary = listview2.Item.text 'not present for patient
+   Try tcm!fk_organisation = member!fk_organisation
+   Try tcm!fk_branch = member!fk_branch
+   Try tcm!fk_employee = member!fk_employee
+   Try tcm!fk_person = member!fk_person
+  ' tcm!wholename = member!title & " " & member!firstname & " " & member!surname 
+   tcm!wholename = Member!wholename
+   If IsNull(Member!responsibility) Then
+      tcm!responsibility = ""
+   Else  
+      tcm!responsibility = Member!responsibility
+   End If   
+   '---------------------------------------
+   'Ok, all seems in order, add to the list
+   '---------------------------------------
+   TeamCareMembers.Add(tcm, TeamCareMembers.Count)
+   
+   TeamCareMembers_RefreshList()
+ 
+  
+   txtTeamCareMembers.Clear()
+   txtTeamCareMember_Responsibility.text = ""
+   txtTeamCareMember_Responsibility.setfocus()
+   listview2.Visible = False 
+   cvwTeamCareMembers.MoveLast()
+   cvwTeamCareMembers.Item.Selected = True   
+   cvwTeamCareMembers_Select()
+End
+
+Public Sub TeamCareMembers_RefreshList()
+   '---------------------------------------
+   'Refreshes the list of team care members
+   '---------------------------------------
+   Dim TeamCareMember As Collection 
+   Dim aCollection As Collection
+   
+   cvwTeamCareMembers.Clear()
+   For Each TeamCareMember In TeamCareMembers
+      cvwTeamCareMembers.Add(cvwTeamCareMembers.count, TeamCareMembers_MakeSummary(TeamCareMember))
+   Next
+   If TeamCareMembers.count Then
+      cvwTeamCareMembers.MoveFirst
+      cvwTeamCareMembers.Item.Selected = True
+      cvwTeamCareMembers_Click()
+   End If
+End
+
+Public Sub TeamCareMembers_RefreshCollection()
+   '-----------------------------------------------------
+   'When an item is removed from a collection, its count
+   'not longer reflects its internal key order
+   'so rebuild it
+   '-----------------------------------------------------
+   Dim teamMember As Collection 
+   
+   TeamCareMembers = New Collection 
+ '  Print TeamCareMembers_old
+   For Each collection_member In TeamCareMembers_old
+     teammember = New Collection
+     teamMember!pk = collection_member!pk
+     teammember!fk_pasthistory = collection_member!fk_pasthistory
+     teammember!fk_organisation = collection_member!fk_organisation
+     teammember!fk_branch = collection_member!fk_branch
+     teammember!fk_employee = collection_member!fk_employee
+     teammember!fk_person = collection_member!fk_person
+     teammember!wholename = collection_member!wholename
+     teammember!summary = collection_member!summary
+     teammember!responsibility = collection_member!responsibility
+     TeamCareMembers.Add(teammember, TeamCareMembers.count)
+    Next
+End
+
+
+Public Sub Timer1_Timer()
+   '------------------------------------------------------------
+   'The timer is activated with each key-release and switched
+   'off whilst the terms are being retreived by ICPC_Terms_Get()
+   '------------------------------------------------------------
+   Terms_Get()
+ 
+End
+
+Public Sub Coded_Term_Select()
+   '-------------------------------------------
+   'User has chosen a term from popup listview1
+   'Display this in the txtCodedTerm Textbox
+   'Set currentProblem!fk_code to the pk_term
+   '-------------------------------------------
+    columnview1.MoveCurrent()   'match internal cursor to visible row
+    currentPastHistory!fk_code = Terms[columnview1.Item.key]!code
+    CurrentTerm = Terms[columnview1.Item.key]
+    currentPastHistory!fk_coding_system = Terms[columnview1.Item.key]!fk_coding_system
+    '-----------------------------------------------------------------------
+    'We allow free text in the health issue = past history problem
+    'so, if user has typed something in there like ** very bad diabetes**
+    '(bad example I know), then we keep this as the health issue but it
+    'will be coded back to the appropriate icpc2+ term
+    'However if they havn't typed anything in here, put the natural language
+    'term in the txtConditon text box and the coded term in the coded textbox
+    'e.g Diabetes;Type1 (T89002) or something similar
+    '------------------------------------------------------------------------
+    If txtCondition.text = "" Then
+       txtCondition.text = columnview1.Item.Text
+      
+    End If   
+    txtCodedTerm.text = Terms[columnview1.Item.key]!term & "(" & Terms[columnview1.Item.key]!code & ")"
+    HBox_Problem.Padding = 0 
+    txtAgeOnset.SetFocus()
+End
+
+Public Sub Coded_Term_Select_withlistview1_old()
+   '-------------------------------------------
+   'User has chosen a term from popup listview1
+   'Display this in the txtCodedTerm Textbox
+   'Set currentProblem!fk_code to the pk_term
+   '-------------------------------------------
+    Listview1.MoveCurrent()   'match internal cursor to visible row
+    currentPastHistory!fk_code = listview1.Item.key
+    CurrentTerm = Terms[listview1.Item.key]
+    currentPastHistory!fk_coding_system = Terms[listview1.Item.key]!fk_coding_system
+    '-----------------------------------------------------------------------
+    'We allow free text in the health issue = past history problem
+    'so, if user has typed something in there like ** very bad diabetes**
+    '(bad example I know), then we keep this as the health issue but it
+    'will be coded back to the appropriate icpc2+ term
+    'However if they havn't typed anything in here, put the natural language
+    'term in the txtConditon text box and the coded term in the coded textbox
+    'e.g Diabetes;Type1 (T89002) or something similar
+    '------------------------------------------------------------------------
+    If txtCondition.text = "" Then
+       txtCondition.text = listview1.Item.Text
+      
+    End If   
+    txtCodedTerm.text = Terms[listview1.Item.key]!term & "(" & Terms[listview1.Item.key]!code & ")"
+    HBox_Problem.Padding = 0 
+    txtAgeOnset.SetFocus()
+End
+
+Public Sub Terms_Get()
+   '-------------------------------------------------------------------------------------
+   'Gets list of diagnostic terms
+   'Cannot set default if count is one because must  be able to add new occupations
+   'can't remove the label because it needs to occupy space to keep textbox correct width
+   '-------------------------------------------------------------------------------------
+   Dim term As Collection 
+   Dim key As String
+  
+   If Trim(txtCodedTerm.text) = "" Then
+        currentTerm!code = ""
+        lblNewCondition.Foreground = Color.white
+        Return
+   End If
+   Timer1.Stop()
+   Terms = modCodingDBI.Get_Terms(Trim(txtCodedTerm.text), chkLimit.value, chkicd10.value, SpinBoxTermLimits.value)
+   With columnview1
+         .Clear()
+         .Columns[0].Width = txtCodedTerm.width - 100
+         .Columns[1].width = 100
+       
+   End With
+   If Terms.count Then
+      For Each term In Terms
+       ' listview1.Add(term!code, term!term)
+       key = term!code
+       columnview1.Add(key, 0)
+       columnview1[key][0] = term!term
+       columnview1[key][1] = term!system
+      Next 
+      lblTermCount.text = Str$(terms.count) & " terms retreived"
+     ' listview1.tag = txtCodedTerm
+    '  listview1.Raise
+    '  listview1.Visible = True
+      columnview1.tag = txtCodedTerm
+      columnview1.Raise
+      columnview1.Visible = True
+      VBox_Terms.Visible = True 
+   Else 
+      columnview1.Visible = False 'empty recordset
+      VBox_Terms.Visible = False
+      If Trim(txtCodedTerm.text) <> "" Then
+          lblNewCondition.Foreground = Color.Red
+      Endif 
+   End If  
+End
+
+
+
+
+Public Sub rbTeamCareMember_SearchCriteria_Click()
+  
+   TeamCareMember_SearchBy_Criteria = Last.tag
+   If bExit Then Return 
+   TeamCareMembers_Selection("get")
+
+End
+
+
+Public Sub SpinBoxTermLimits_Change()
+
+  Terms_Get()
+
+End
+Public Sub txtComponent_Change()
+ If bexit Then Return 
+  If Trim(Last.text) Then EditArea_Notify_DataChange(True)
+  
+End
+
+Public Sub txtComponent_Keypress()
+   Select Case key.Code
+     Case key.Return, key.Tab
+        txtdue.setfocus()
+     Case key.Down
+         listview1.setfocus()
+  End Select
+  
+End
+Public Sub txtComponent_KeyRelease()
+  
+  CarePlan_Components_Selection("get")
+  
+End
+
+Public Sub txtComponent_Gotfocus()
+  
+   Last.BackGround = Color.rgb(95, 255, 175)
+   With listview1
+      .top = (Vsplit_PastHistory.top + VSplit_PastHistory.Layout[0] + Vsplit1.layout[0] + HSplit_TeamCareMembers.top) + Last.height + VBox1.Padding
+      .left = HSplit_TeamCareMembers.layout[0] + HSplit_TeamCareMembers.layout[1] + HSplit_TeamCareMembers.left + VBox1.Padding
+      .width = cvwCareComponents.Width
+      .Visible = False
+      .Clear()
+      .raise
+      .tag = Last
+   End With
+
+End
+
+Public Sub txtComponent_Lostfocus()
+
+  Last.background = Color.white
+  Last.pos = 0
+End
+Public Sub txtdue_change()
+    If bexit Then Return 
+    If Trim(Last.text) Then EditArea_Notify_DataChange(True)
+  
+End
+
+Public Sub txtdue_gotfocus()
+   Last.BackGround = Color.rgb(95, 255, 175)
+
+End
+
+Public Sub txtdue_Lostfocus()  
+  Last.background = Color.white
+
+End
+
+Public Sub txtdue_Keypress()
+  
+ 
+  If Key.code = Key.return Then
+    
+      CarePlan_Components_Calculate_Recall_Date(Last)
+      If IsDate(Val(Last.text)) Then
+         Careplan_Components_Accept()
+      End If  
+  Endif 
+
+End
+
+' Public Sub chkbox_Keypress()
+'   
+'   If Key.code = Key.return Then
+'       Create_Row()
+'   Endif
+'   
+' End
+' Public Sub Create_Row()
+'   '  Dim HBox_CareComponents As New HBox(HBox_CareComponents)
+'   '  current_Task_Row = HBox_CareComponents
+'   '  With HBox_CareComponents
+'   '    .height = 20
+'   '    .Width = ScrollView1.width
+'   '    .width = columnview1
+'   '    .Expand = True
+'   '  End With
+'    
+'    CareTaskRow = New cCareTaskRow(HBox_CareComponents)
+' 
+'    CareTaskRow.tb1.tag = CareTaskRow.tb2
+'    CareTaskRow.tb2.tag = CareTaskRow.cb1
+'    obs = New Observer(CareTaskRow.tb1) As "txtComponent"
+'    obs = New Observer(CareTaskRow.tb2) As "txtDue"
+'    obs = New Observer(CareTaskRow.cb1) As "chkbox"
+'    CareTaskRow.tb1.SetFocus()
+'    ' ScrollView1.EnsureVisible(
+'    Inc task_rows 
+'  
+' End
+' 
+' Public Sub ScrollView1_DblClick()
+'   Dim hCtrl As Control
+'   Dim tb As TextBox
+'   Dim data_count As Integer
+'   If IsNull(current_Task_Row) Then 
+'      Create_Row()
+'      Return
+'   Else
+'     For Each hCtrl In current_Task_Row.children 
+'         If hctrl Is TextBox Then
+'           tb = hctrl
+'           If tb.text <> "" Then
+'               Inc data_count
+'           Endif
+'         Endif
+'     Next
+'     If data_count = 2 Then Create_Row()
+'   End If
+' 
+' End
+
+' Public Function CarePlan_Tasks_Get() As collection 
+'    '------------------------------------------------------------
+'    'extracts data from the task component, dates and combo boxes
+'    'Yes I could have used an editable grid but I didn't
+'    'If it detects an incomplete row, simply skips over it
+'    'returns a collection looking like this:
+'    'task[0-n] of tasks
+'    'task[0]!component = "hba1c"
+'    'task[0]1due = "01/02/2010"
+'    'task[0]recall = TRUE or null
+'    '------------------------------------------------------------
+'   Dim hCtrl As Control
+'   Dim tb As TextBox
+'   Dim cb As CheckBox  
+'   Dim hb As HBox
+'   Dim task_row As Collection
+'   Dim tasks As New collection
+'  
+'   For Each hctrl In ScrollView1.children
+'      If hctrl Is hbox Then
+'         task_row = New Collection
+'         task_row!fk_pasthistory = pk_pastHistory
+'         hb = hctrl
+'         For Each hctrl In hb.Children
+'             If hctrl Is textbox Then
+'                tb = hctrl
+'                If Trim(tb.text) = "" Then Break
+'                If tb.name = "task" Then
+'                   task_row!component = Trim(tb.text) 
+'                Else
+'                   Try task_row!due = Val(tb.text)
+'                   If Error Then   'should never happen.
+'                      Message.Info("A date conversion error occurred for the task " & tb.text)
+'                   Endif
+'                Endif
+'             Endif
+'             If hctrl Is CheckBox Then
+'                cb = hctrl
+'                If cb.value = True Then
+'                   task_row!recall = True
+'                Endif
+'                tasks.Add(task_row, tasks.count)
+'             Endif
+'          Next
+'      Endif
+'   Next
+'   Return tasks 
+'   
+' End
+
+
+Public Sub cvwCareComponents_Click()
+   '-----------------------------------------------------------------------
+   'edit the row highlighted, if not yet saved, remove from list at editing
+   '-----------------------------------------------------------------------
+   bediting = True
+   bexit = True
+   cvwCareComponents.MoveCurrent
+   currentCarePlanComponent = current_careplan_components[cvwCareComponents.Item.key]
+   txtComponent.text = currentCarePlanComponent!component
+   txtdue.text = currentCarePlanComponent!due
+  'if this is as yet unsaved, remove it from the array when edited
+   If IsNull(currentCarePlanComponent!pk_careplan_components_due) Then
+       current_careplan_components.Remove(cvwCareComponents.Item.key)
+       cvwCareComponents_Refresh()
+   End If
+   bExit = False
+End

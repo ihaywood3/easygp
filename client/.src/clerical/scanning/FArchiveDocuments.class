@@ -1,0 +1,596 @@
+' Gambas class file
+
+Private hProcess As Process
+Private obs As Observer
+Private RootDir As String 
+Private bExit As Boolean
+Private Section As Integer
+Private PDForm As FPdf
+Private FFindPatients As FPatientsSelect
+Public formStaffTask As FStaffTasks
+Private Allpatients As Collection 
+Private pk_view As String 'for the patients
+Private old_pk As Integer
+Private currentpatient As Collection
+Private document_types As Collection 
+Private fk_patient As Integer 
+Private fk_staff_destination As Integer
+Private fk_staff As Integer 'current staff member logged on
+Private fk_lu_urgency As Integer
+Private fk_lu_archive_site As Integer
+Private member As Collection
+Private The_Collection As Collection 
+Private fname As String  
+Private old_data As Collection 
+Private patient As Collection 
+Private archive_dir As String 
+Private FMetaData As FDocumentMetaData
+Private bDocumentNotLinkedToPatient As Boolean
+Private Document As Collection
+Private Documents As Collection 
+Private Default_Zoom As Float
+
+Static Private Form_Archiving As FArchiveDocuments         'allows FArchiveDocuments Access from anywhere  = Me -see Init()
+
+Static Public Sub tbFile_SetFocus()
+   
+   Form_Archiving.tbFile.SetFocus()
+   
+End
+
+Public Function Process_read() As String
+   
+   Dim sOutput As String  
+   
+   Line Input #hProcess, sOutput 
+   Return Left(sOutput, InStr(sOutput, " ") - 1)
+   
+End
+
+Public Sub _new()
+   
+   Init()
+   
+End
+
+Public Sub Form_Close()
+   
+   Settings_Save()
+   
+End
+
+Public Sub Form_Show()
+   
+   Dim sMsg As String
+
+   fk_staff = modDBConnect.currentUser!fk_staff
+   Vbox_Main.Enabled = False  
+   Vbox_Main.Enabled = True   
+
+End
+
+Public Sub Init()
+   
+   Form_Archiving = Me
+   rootdir = modAdminDBI.Config_Get("document_scanning", "/var/easygp/scanning", "Directories/scanning")
+   obs = New Observer(filechooser1.FileView.Children[1]) As "filelist"
+   LibraryMenu_Construct()
+   With FMetaData = New FDocumentMetaData(Vbox_Metadata)             'This metadata instance is set up to look simple
+      .lblSendingEntity.font.bold = True                             'showing only input for staff,patient, who sent doc and doc date
+      .lblSendingEntity.alignment = Align.Center
+      .lblSendingEntity.Expand = True 
+      .lblSendingEntity.Foreground = Color.Blue
+      .txtSender.Visible = False   
+      .Set_Embedded_Form_Name("Scanning")
+      .HBox_Author.Visible = True
+      .VBox_Organisation.Visible = True  
+      .Hbox_TypeSender.visible = True 
+      .HBox_Document_Tag.Visible = False 
+      .HBox_Comment.Visible = False  
+      .HBox_Laterality.visible = False
+      .txtRecipient.Background = Color.White
+      .txtRecipient.Enabled = True
+      .lblMeasure.text = " Organisation "
+      .HBox_DocumentType.Visible = False  
+      modEditAreaHelpers.Resize_labels(.VBox_EditArea, .lblMeasure)
+      modEditAreaHelpers.Resize_labels(.VBox_Organisation, .lblMeasure)
+      modEditAreaHelpers.Resize_labels(.Vbox_Person, .lblmeasure)
+      .lblBirthdate.width = .ChkLockStaffMember.width
+      .txtStreet.ReadOnly = True             'patients street
+      .txtSuburb.ReadOnly = True             'patients suburb
+      .txtDocumentTag.ReadOnly = True
+      .txtStreet1.ReadOnly = True
+      .txtStreet2.ReadOnly = True
+      .txtOrganisationCategory.ReadOnly = True
+      .txtSuburbOrganisation.ReadOnly = True 
+      .txtPersonFirstname.ReadOnly = True
+      .txtPersonCategory.ReadOnly = True
+      .txtPersonOccupation.ReadOnly = True
+      .txtpersonPostcode.ReadOnly = True
+      .txtPersonState.ReadOnly = True
+      .txtPersonSuburb.ReadOnly = True
+      .EditArea_Clear()
+      
+   End With
+   With FileChooser1                               'Don't want all the filechooser control bits showing
+      .DirView.Visible = False                     'don't show the directory tree
+      .root = rootdir                              'set the root directory then will auto-show all scanned files.
+   End With
+   Settings_Load()
+   With PDForm = New FPdf(Vbox_Viewer) 'fix me to Vbox_PDF
+      .BtOpen.Visible = False
+      
+   End With
+   
+End
+
+Public Sub filelist_menu()
+   
+   Stop Event
+   mnuFileChooser.Popup()
+   
+End
+
+Public Sub filelist_Keypress()
+   
+   If key.code = key.return Then
+      Stop Event
+      
+      If FMetaData.txtRecipient.text <> "" Then
+         FMetaData.txtPatient.SetFocus()
+      Else
+         FMetaData.txtRecipient.SetFocus()
+      Endif
+   Endif
+   
+End
+
+Public Sub Settings_Save()
+   
+   If section = const.cSection_Inbox Then
+      Settings["Inbox_Scanned_Documents/VSplit_Archiving.Layout"] = VSplit_Archiving.Layout
+      Settings["Inbox_Scanned_Documents/HSplit_Archiving.Layout"] = HSplit_Archiving.Layout
+   Else
+      Settings["Clerical/VSplit_Archiving.Layout"] = VSplit_Archiving.Layout
+      Settings["Clerical/HSplit_Archiving.Layout"] = HSplit_Archiving.Layout
+      Settings["Clerical/pdfZoom"] = PDForm.CurrentZoom
+   End If   
+   
+End
+
+Private Sub Settings_Load()
+   
+   If section = const.cSection_Inbox Then
+      Try VSplit_Archiving.Layout = Settings["Inbox_Scanned_Documents/VSplit_Archiving.Layout"]
+      Try HSplit_Archiving.Layout = Settings["Inbox_Scanned_Documents/HSplit_Archiving.Layout"]
+   Else
+      Try VSplit_Archiving.Layout = Settings["Clerical/VSplit_Archiving.Layout"]
+      Try HSplit_Archiving.Layout = Settings["Clerical/HSplit_Archiving.Layout"]
+      Try Default_Zoom = Settings["Clerical/pdfZoom"] 
+   End If
+   
+End
+
+Public Sub FileChooser1_Activate()
+   
+   Dim Filepath As String
+   
+   If FileChooser1.SelectedPaths.count Then
+      Return 
+   Else
+      FMetaData.EditArea_Clear()
+      Inc Application.Busy
+      Filepath = FileChooser1.SelectedPath
+      If File.Ext(Filepath) <> "" Then
+         Select Case LCase(File.Ext(Filepath))
+            Case "pdf"
+               Vbox_Images.Visible = False  
+               PDForm.Visible = True
+               PDForm.hPdf.Orientation = PdfDocument.Normal 'may have been rotated last time.
+               PDForm.PBox.Visible = True 
+               PDForm.CurrentZoom = Default_Zoom
+               PDForm.Load_PDF(FilePath)
+               
+            Case "png", "jpeg", "tiff", "gif", "jpg"
+               PDForm.Visible = False
+               Vbox_Images.Visible = True
+               pbox.Visible = True  
+               pbox.Picture = Picture.Load(filepath)
+            Case Else
+               Message.Info("Unknown file type")
+         End Select
+         
+         With FMetaData
+            .txtFilename.text = File.Name(Filepath)
+          End With
+      End If   
+   End If
+   Dec Application.Busy
+   
+End
+
+Public Sub FileChooser1_Change()
+   
+   Try FileChooser1_Activate()
+   
+End
+
+Public Sub btZoomIn_Click()
+   
+   Vbox_Picture.padding = Min(Vbox_Picture.Padding + 10, VBox_ScannedDocument.width - 20)
+   
+End
+
+Public Sub btZoomOut_Click()
+   
+   Vbox_Picture.padding = Max(Vbox_Picture.Padding - 10, 10)
+   
+End
+
+Public Sub tbFile_Click()
+   
+   If Document_File() Then Reload()  'file the documen, reload files, set focus, show next doc
+   
+End
+
+Public Function Document_File() As Boolean
+   
+   Dim sMsg As String
+   Dim fk_patient As Integer
+   Dim fk_unmatched_patient As Integer
+   Dim fk_document As Integer
+   Dim fk_lu_request As Integer 'fixme
+   Dim S As Collection 
+   Dim sql As String 
+   Dim diagnosis_guess As String
+   Dim observation As Collection  
+   Dim button1_text As String
+   Dim button2_text As String
+   Dim R As Result   
+   Dim SendingEntity As Collection 
+   Dim EmptyCollection As Collection 
+   Dim Document As New Collection 
+   Dim newfilename As String 
+   Dim oldfilename As String = filechooser1.SelectedPath
+   Dim bInValidDate As Boolean
+   Dim nextDocumentPk As Integer
+   Dim Member As Collection 
+   Dim staff_members As Collection 
+   
+   If FMetaData.txtFilename.text = "" Then
+      sMsg = "Please select a document to file"
+      Message.Info(sMsg)
+      FileChooser1.DirView.Children[0].SetFocus() 'focus on the treeview part 
+      Return 
+   Endif
+   If FMetaData.Get_fk_Patient() = 0 Then
+      FMetaData.txtPatient.SetFocus()
+      Return  
+   Endif
+   If FMetaData.fk_staff_destination = 0 Then
+      FMetaData.txtRecipient.SetFocus()
+      Return 
+   Endif
+   
+   If FMetaData.fk_organisation = 0 Then
+      If FMetaData.fk_person = 0 Then
+         
+         sMsg = "Each scanned or faxed document will have been sent by someone, be they a person, organisation, or employee of an organisation "
+         "or perhaps even a patient.\n\nYou must allocate documents before filing."
+         Message.Info(sMsg)
+         If FMetaData.VBox_Organisation.Visible Then
+            If FMetaData.Type_Document_Author = const.contacttype_organisation Then
+               FMetaData.txtOrganisation.SetFocus()
+            Else
+               FMetaData.txtOrganisationEmployee.SetFocus()
+            Endif
+         Else
+            FMetaData.txtPersonSurname.SetFocus()
+         Endif
+         Return False
+         
+      Endif
+   Endif
+   If Not IsDate(Val(FMetaData.txtDocumentDate.text)) Then
+      sMsg = "Please enter the date the document was written.\n\n"
+      "This should be in the format dd/mm/yyyy, e.g 01/10/2010."
+      Message.Info(sMsg)
+      FMetaData.txtDocumentDate.SetFocus()
+      Return 
+   Endif
+   Inc Application.Busy
+   
+   If FMetaData.chkAllStaff.Value = True Then 
+      Staff_Members = modContactsDBI.Staff_Get() 'refresh the staff list,could have just employed someone!!!!!
+   End If  
+   
+   Document!fk_staff_filed_document = modDBConnect.currentUser!fk_staff
+   Document!date_created = Val(FMetaData.txtDocumentDate.text)
+   Document!fk_patient = FMetaData.Get_fk_Patient()
+   Select Case FMetaData.Type_Document_Author
+      Case const.contacttype_organisation
+         Document!originator = Trim(FMetaData.txtOrganisation.text) & "." & Trim(FMetaData.txtBranch.text)
+         
+      Case const.contacttype_employee
+         Document!originator = Trim(FMetaData.txtOrganisation.text) & "." & Trim(FMetaData.txtOrganisationEmployee.text)
+      Case const.contacttype_person, const.contacttype_patient
+         Document!originator = Trim(FMetaData.txtPersonFirstname.text) & " " & Trim(FMetaData.txtPersonSurname.text)
+   End Select
+   
+   Document!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(FMetaData.Get_Document_Type(), FMetaData.Get_Display_Style(), Document!originator, FMetaData.fk_branch, FMetaData.fk_employee, FMetaData.fk_person)
+   
+   If FMetaData.rbDisplayAsLetter.value = True Then 
+      Document!tag = Document!originator & " - scanned letter"
+   Else
+      Document!tag = Document!originator & " - scanned result"
+   End If
+   Document!comment = Trim(FMetaData.txtComment.text)
+   Document!fk_lu_urgency = FMetaData.fk_urgency
+   hProcess = Shell "md5sum " & oldfilename For Input Output    
+   Document!md5sum = Process_read()
+   Document!fk_staff_destination = FMetaData.fk_staff_destination
+   Document!fk_lu_display_as = FMetaData.Get_Display_Style()
+   
+   If FMetaData.chkAllStaff.Value = True Then 
+      For Each member In Staff_Members
+         Document!fk_staff_destination = member!fk_staff
+         modArchiveDocumentsDBI.Save(EmptyCollection, 0, Document)
+         Document.Remove("fk_document") 'don't want this key
+      Next
+   Else
+      Document!pk_document = modArchiveDocumentsDBI.Save(EmptyCollection, 0, Document)
+      Document!source_file = Document_Filename_Construct(document)
+      modArchiveDocumentsDBI.Document_Save_Filename(Document)
+   End If
+   Try Move oldfilename To modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ Lower(document!source_file)
+   If Not Error Then
+      modDBConnect.CommitTrans()
+   Else
+      Log.ErrorMsg(Error.Text)
+      modDBConnect.RollBack()
+   Endif
+   Dec Application.Busy
+   Return True 'success
+   
+End
+
+Public Function Document_Filename_Construct(document As Collection) As String 
+   
+   Dim newfilename As String
+   
+   If Trim(FMetaData.txtPatient.text) <> "" Then 
+      newfilename &= Replace(Trim(FMetaData.txtPatient.text), " ", "_") & "." & modutil.DateString_Encode(FMetaData.lblbirthdate.text) & "." & Str(Document!fk_patient) & "."
+   Else
+      If FMetaData.chkAllStaff.value = True Then
+         newfilename = "memo.allstaff." & Replace$(Trim(FMetaData.txtDocumentTag.text), " ", "_") & "." & Format$(Now, "dd-mm-yyyy:hh:nn:ss")
+      Endif
+   End If   
+   newfilename &= Replace(Document!originator, " ", "_") & "." & Str$(document!pk_document) & "."
+   newfilename &= File.Ext(FMetaData.txtFilename.text)
+   Return Lower(newfilename) 'ensure all in lower case
+   
+End
+
+Public Sub tbMultiPagefiles_Click()
+   
+   Select Case Last.tag
+      Case "add"
+         
+         Try lvfilesToJoin.Add(FileChooser1.SelectedPath, File.Name(FileChooser1.SelectedPath))
+         lblFilesToJoin_UpdateCount()
+      Case "remove"
+         lvFilestojoin.MoveCurrent()
+         lvfilesToJoin.Remove(lvFilestojoin.Item.key)
+         Try lvFilestojoin.MoveFirst()
+         lblFilesToJoin_UpdateCount()
+   End Select
+   
+End
+
+Public Sub lblFilesToJoin_UpdateCount()
+   
+   If lvfilesToJoin.count <> 0 Then 
+      lblFilesToJoin.text = "Files to join (" & Str(lvfilesToJoin.count) & ")"
+   Else
+      lblFilesToJoin.text = "Files to join"
+   End If
+   
+End
+
+Public Sub lvFilesToJoin_Select()
+   
+   lvFilestojoin.MoveCurrent()
+   Select Case LCase(File.Ext(Last.key))
+      Case "pdf"
+         PDForm.Load_PDF(Last.key)
+      Case "png", "jpeg", "tiff", "gif", "jpg"
+         
+   End Select
+   
+End
+
+Public Sub JoinPDF()
+   
+   Dim pdf_files As New Collection
+   Dim file_to_join As String 
+   Dim fname As String
+   Dim x As Integer
+   
+   If lvFilestojoin.count = 0 Then Return 
+   fname = File.Dir(FileChooser1.SelectedPath) & "/" & File.name(Temp$) & Format$(Now, "dd-mm-yyyy:hh:nn:ss")
+   lvFilestojoin.MoveFirst
+   For x = 0 To lvFilestojoin.count - 1
+      pdf_files.Add(lvFilestojoin.Item.Key, pdf_files.count)
+      lvFilestojoin.MoveNext
+   Next
+   fname = modPrinting.Join_PDF(pdf_files, fname)  'join the files together
+   lvFilestojoin.MoveFirst                         'then remove them from the HDD
+   For x = 0 To lvFilestojoin.count - 1
+      Kill lvFilestojoin.Item.Key
+      lvFilestojoin.MoveNext
+   Next
+   lvfilesToJoin.Clear()
+   lblFilestoJoin.text = "Files to join"
+   FileChooser1.Reload()
+   
+End
+
+Public Sub mnuFileChooser_Click()
+   
+   Select Case Last.tag
+      Case "delete single"
+         File_Delete()
+      Case "delete multiple"
+         Print "delete multiple"
+      Case "move to library"
+         Move_To_Library()
+      Case "rotate 180 and save"
+         Rotate_And_Save(180)
+      Case "rotate 90 and save"
+         Rotate_And_Save(90)
+      Case "rename file"
+   End Select
+   FileChooser1.Reload()
+   
+End
+
+Public Sub Rotate_And_Save(amount As Integer)
+   
+   Dim Step1File As String = Temp$() & "1.pdf"
+   Dim Step2File As String = Temp$() & "2.pdf"
+   Dim originalFileName As String = File.Name(FileChooser1.SelectedPath)
+   
+   Select Case amount
+      Case 180
+         Shell "pdf90 --outfile " & Step1File & " " & rootdir & "/" & originalFileName Wait
+         Shell "pdf90 --outfile " & Step2File & " " & Step1File Wait
+         Kill rootdir & "/" & originalFileName 
+         Try Copy Step2File To rootdir & "/" & originalFileName
+         If Not Error Then
+            Kill Step1File
+            Kill Step2File
+         Endif
+      Case 90
+         Shell "pdf90 --outfile " & Step1File & " " & rootdir & "/" & originalFileName Wait
+         Kill rootdir & "/" & originalFileName 
+         Try Copy Step1File To rootdir & "/" & originalFileName
+         If Not Error Then
+            Kill Step1File
+         Endif
+   End Select
+   
+End
+
+Public Sub Reload()
+   
+   Dim hCtrl As Control
+   Dim cv As ColumnView
+   
+   FileChooser1.Reload()
+   For Each hctrl In filechooser1.FileView.Children
+      If hctrl Is ColumnView Then
+         cv = hctrl
+         If Not cv.MoveFirst() Then  'could be empty
+            cv.Item.Selected = True  
+            cv.SetFocus()
+            FileChooser1_Activate()  
+            Break
+         Else
+            
+            FMetaData.EditArea_Clear()
+            PDForm.Visible = False
+            pbox.Visible = False
+            FMetaData.chkAllStaff.value = False
+            FMetaData.chkLockPatient.value = False
+            FMetaData.chkLockSender.value = False
+            
+         End If
+      Endif
+   Next
+   
+End
+
+Public Sub LibraryMenu_Construct()
+   
+   Dim root_dir As String = User.home & "/easygp/library"
+   Dim sFile As String
+   Dim mnu As Menu
+   
+   If IsDir(root_dir) Then
+      For Each sFile In Dir(root_dir)                      
+         If IsDir(root_dir & "/" & sFile) Then
+            mnu = New Menu(mnuFileChooser_MoveToLibrary)
+            mnu.Name = sFile
+            mnu.text = sFile
+            mnu.tag = sFile
+         Endif
+      Next
+   End If    
+   
+End
+
+Public Sub Move_To_Library()
+   
+End
+
+Public Sub File_Delete()
+   
+   Try Kill filechooser1.SelectedPath
+   If Error Then
+      Message.Info("An error occurred whilst attempting to delete the file.")
+   Endif
+   filechooser1.Reload()
+   PDForm.PBox.Visible = False   
+   pbox.Visible = False 
+   
+End
+
+Public Sub lvFilesToJoin_Menu()
+   
+   If Last.count Then mnuJoinFiles.Popup()
+   
+End
+
+Public Sub mnuJoinFiles_Click()
+   
+   If Last.tag = "remove" Then
+      lvFilestojoin.MoveCurrent()
+      lvFilestojoin.Remove(lvfilesToJoin.item.key)
+      Try lvfilesToJoin.MoveFirst()
+      If Not Error Then
+         lvfilesToJoin.SetFocus()
+      Else
+         lvfilesToJoin.Clear()
+      Endif
+   Endif
+   
+End
+
+Public Sub tbFile_KeyPress()
+   
+   If key.code = key.Return Then
+      tbFile_Click()
+   Endif
+   
+End
+
+Public Sub tbJoin_Click()
+   
+   Select Case Last.tag
+      Case "join"
+         JoinPDF()
+      Case "clear"
+         
+         lvFilestojoin.Clear()
+         lblFilestoJoin.text = "Files to join"
+   End Select
+   
+End
+
+Public Sub tbDiscard_Click()
+   
+   If Message.Question("Are you sure you want to delete this document") = 1 Then
+      File_Delete()
+   End If
+   
+End

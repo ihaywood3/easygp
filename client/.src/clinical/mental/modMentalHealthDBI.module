@@ -1,0 +1,195 @@
+' Gambas module file
+' Gambas class file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'----------------------------------------------------------------------
+'A module for accessing clin_mentalhealth schema in the database
+'----------------------------------------------------------------------
+Public Function Save_K10(currentconsult As cconsult, old_data As collection, fk_plan As Integer, currentK10 As collection)
+    Dim k10_row As collection 
+   '--------------------------------------
+   'If there is a K10 then save or edit it
+   '--------------------------------------
+   If currentK10.count Then
+        For Each k10_row In currentK10
+          k10_row.Remove("question")
+          If IsNull(k10_row!pk) Then
+            k10_row!fk_plan = fk_plan
+            k10_row!fk_k10_result = modDBConnect.insert("clin_mentalhealth.K10_results", k10_row)
+          Else
+           modDBConnect.update("clin_mentalhealth.k10_results", old_data[k10_row!pk], currentK10[k10_row!pk], "pk")
+           End If
+       Next
+  End If   
+  
+End
+
+Public Function Get_K10(fk_plan As Integer) As Collection
+   '--------------------------------------------------------
+   'Gets the K10 results for a particular plan if they exist
+   '--------------------------------------------------------
+   Return modDBConnect.exec_query_collection("Select * from clin_mentalhealth.k10_results where fk_plan =" & fk_plan)
+   
+   
+  
+End
+
+Public Function Save(currentconsult As cConsult, pk_view As Integer, fk_plan As Integer, mentalhealth_plan As collection) As Integer
+   '------------------------------------------------------------------------------------------------------------
+   'Saves or modifies the mental health plan, saves either DASS21, K10 outcome tools or nothing if no tool  used
+   '------------------------------------------------------------------------------------------------------------
+ 
+   If fk_plan = -1 Then
+      fk_plan = modDBConnect.insert("clin_mentalhealth.mentalhealth_plan", mentalhealth_plan)
+   Else
+  
+      mentalhealth_plan.Remove("fk_plan")
+      modDBConnect.update("clin_mentalhealth.mentalhealth_plan", currentconsult!mentalhealthplans[pk_view], mentalhealth_plan, "pk_mentalhealth_plan")
+   End If   
+
+  Return fk_plan
+  
+End
+
+Public Function Plans_Get(fk_patient As Integer) As Collection
+  
+  Return modDBConnect.exec_query_collection("Select * from clin_mentalhealth.vwMentalHealthPlans where fk_patient = " & fk_patient)
+  
+End
+
+Public Sub Plan_Mark_Deleted(currentconsult As cconsult, currentplan As collection, fk_plan As Integer, bDeleted As Boolean)
+   '-------------------------------------------------------------
+   'Deletes or undeletes a plan by altering the deleted field
+   'does not remove it from the database, places an audit trail
+   '-------------------------------------------------------------    
+   Dim bNotesExist As Boolean
+   Dim audit As New collection
+   Dim sAuditAnnotation As String 'audit annotation to insert into progress notes
+   Dim sToday As String 'todays date as a string
+   Dim progressnote As Collection
+   Dim iAuditAction As Integer
+   Dim sql As String    
+   sToday = Format(Now, "dd/mm/yyyy")
+    '-------------------------------------------------------------------
+   'First - popup the audit form and get reason for the deletion
+   'health issue could be deleted either during consulation 
+   'as we are allowed to change out mind within the consultation and
+   'don't need to give a reason for that
+   'or at a later date
+   '--------------------------------------------------------------------
+   audit!fk_row = currentplan!pk
+   audit!fk_consult = currentconsult.GetPK()
+   audit!fk_section = const.cSection_MentalHealth
+   audit!data_summary = "Mental Health Plan for " & currentplan!diagngosis & "written on " & currentplan!plan_date
+   iAuditAction = const.cAuditAction_MarkDeleted
+   If currentplan!fk_consult <> currentconsult.GetPK() Then
+      FAudit.Init(currentplan, Const.cSection_MentalHealth, iAuditAction, currentconsult)
+      If Not FAudit.ShowModal() Then Return 
+      audit!reason = "Delete" & ":<BR>- " & Lower(const.globalstring)
+      audit!reason = Lower(const.globalstring)
+      If iAuditAction = const.cAuditAction_Delete Then bDeleted = True   
+   Else
+       audit!reason = const.sAuditAction[const.cAuditAction_Reversal]
+   End If
+   bDeleted = True
+ 'Now if progress notes existed then update the database to reflect this
+ 'this is wrong, I've just inserted a key into clin_consult.progressnotes.fk_problem field with is the fk_plan
+ 'temporarily don't ask why
+ 
+    For Each progressnote In currentconsult!progress_notes
+      If progressnote!fk_problem = fk_plan And progressnote!fk_section = const.cSection_MentalHealth Then 
+       '-------------------------------------------------------------------
+       'Mark each problem and associated progress note with strike through
+       '-------------------------------------------------------------------
+       sAuditAnnotation = "<STRIKE><P><FONT COLOR='#b3b3b3'>" & progressnote!notes & "</STRIKE><p>"
+       sAuditAnnotation &= "<P ALIGN=CENTER><I><B>Audit trail</B> : notes deleted by " & modDBConnect.currentUser!wholename & " on "
+       sAuditAnnotation &= sToday & " the reason given was: " & Lower(const.globalstring) & "</P></I></FONT><p>"
+       progressnote!notes = sAuditAnnotation
+       currentconsult!progress_notes[progressnote!pk_progressnote] = progressnote
+      End If
+    Next 
+    modConsultDBI.ProgressNotes_Edit(currentconsult!progress_notes, fk_plan)
+    currentPlan!deleted = True
+ 
+   modDBConnect.exec_query("Update clin_mentalhealth.mentalhealth_plan set deleted = True where pk = " & fk_plan)
+   audit!fk_action = iAuditAction
+   modConsultDBI.Make_Audit(audit, "clin_mentalhealth", "mentalhealth_plan")
+
+End
+
+Public Function TextBox_Help_Get() As Collection
+   '------------------------------------------------------------------------
+   'Get some minimal help corresponding to each textbox, to make it easier
+   'for user to do a mental help plan
+   '-----------------------------------------------------------------------
+   Dim the_help As New collection 
+   Dim $Result As Result
+   $Result = modDBConnect.exec_query("Select * from clin_mentalhealth.lu_component_help")
+   For Each $Result
+       the_help.Add($Result!component_help, $Result!care_plan_component)
+   Next
+   Return the_help
+End
+
+Public Sub Get_K10_Questions()
+  Try const.K10_questions.Count
+  If Error Then const.K10_questions = modDBConnect.exec_query_collection("select * from clin_mentalhealth.lu_k10_components")
+End
+
+Public Function TeamCareMembers_Get(fk_plan As Integer) As collection
+'-------------------------------------------------------------
+'This view already has a selection criteria of deleted = false
+'-------------------------------------------------------------
+ Return modDBConnect.exec_query_collection("Select * from clin_mentalhealth.vwTeamCareMembers where fk_plan = " & fk_plan)
+ 
+End
+
+Public Function Save_TeamCareMembers(old_data As collection, TeamCareMembers As collection, fk_plan As Integer)
+   '----------------------------------
+   'Saves the team care members (keys) 
+   '----------------------------------
+   Dim tcm As collection 
+   For Each tcm In TeamCareMembers
+      '-------------------------------
+      'Save or edit team care members
+      '-------------------------------
+     If IsNull(tcm!pk) Then
+         tcm.Remove("summary")
+         Try tcm.Remove("wholename")
+         tcm!fk_plan = fk_plan
+         modDBConnect.insert("clin_mentalhealth.team_care_members", tcm)
+     Else
+         '--------------------------------------
+         'Update existing team care arrangements
+         '--------------------------------------
+         tcm.Remove("wholename")
+         tcm.Remove("summary")
+         modDBConnect.update("clin_mentalhealth.team_care_members", old_data[tcm!pk], tcm, "pk")
+     End If 
+   Next
+End
+
+Public Function TeamCareMembers_UnDelete(pk As Integer)
+  
+  modDBConnect.exec_query("UPDATE clin_mentalhealth.team_care_members SET deleted = False  WHERE pk = " & pk)
+  
+End
+
+Public Function TeamCareMembers_Delete(pk As Integer)
+  
+  modDBConnect.exec_query("UPDATE clin_mentalhealth.team_care_members SET deleted = True  WHERE pk = " & pk)
+
+  
+End

@@ -1,0 +1,67 @@
+' Gambas module file
+' A basic module to search for the EasyGP server using mDNS
+' (aka "Avahi","Bonjour" or "Rendezvous")
+' Copyright (C) 2010 Dr. Ian Haywood
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Public Function Find_Server() As Collection
+  ' this function checks if the "avahi-browse" command is
+  ' available on the system.
+  ' if it is it is used to scan for postgresql servers
+  ' on the local network, and if the first one it finds 
+  ' returns a collection with "host" and "port" set appropriately
+  ' otherwise Null is returned
+  
+  ' if the mDNS server also has a TXT field set, it is scanned for
+  ' a string containing easygp:XXX where XXX is the database name
+  ' this takes priority over other servers on the networkble iframe
+  ' so to publish the details of a server use this command
+  ' avahi-publish-service "My EasyGP server" _postgresql._tcp 5432 "easygp:easygp"
+  Dim coll As Collection
+  Dim avahi As Process
+  Dim lines As String
+  Dim fields As String[]
+  Dim r As Regexp
+  
+  If Exist("/usr/bin/avahi-browse") Then
+    ' we have the avahi ("bonjour") client
+    avahi = Exec ["/usr/bin/avahi-browse", "-tpkr", "_postgresql._tcp"] For Read
+    While Not Eof(avahi)
+      Line Input #avahi, lines
+      fields = Split(lines, ";")
+      If fields[0] = "=" Then
+        If Not coll.Exist("database") Then 
+          ' only load if we haven't set the database
+          ' so if there is more than one postgres server
+          ' available, the one with a TXT fields containing
+          ' easygp:XXX is set, where XXX is the database name
+          coll = New Collection
+          coll!host = fields[6]
+          coll!port = fields[8]
+          If fields.Length > 9 Then ' the TXT field is there
+            r = New Regexp(fields[10], "easygp:(\\S+)")
+            If r.Offset > -1 Then
+              coll!database = r.SubMatches[0]
+            Endif
+          Endif
+        Endif
+      Endif
+    Wend
+    Close #avahi
+  Endif  
+  Return coll
+  
+End
+

@@ -1,0 +1,604 @@
+' Gambas module file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'--------------------------------------------------------------------------------------------
+'EasyGP    : An  Open source medical record project for Australian GP's
+'
+'AUTHOR    : Dr Richard Terry
+'          : rterry@gnumed.net
+'PURPOSE   : Database routines for requesting tests from other providers
+'REFERENCES: Schema clin_requests
+'---------------------------------------------------------------------------------------------
+
+Private $Result As Result
+Private sql As String
+
+Public Function RequestTypes_Get() As Collection
+  
+  Return modDBConnect.exec_query_collection("Select * from clin_requests.lu_Request_type order by type")
+  
+End
+
+
+Public Function Provider_Type_Get(fk_type As Integer) As String
+  
+  sql = "Select * from clin_requests.lu_type where pk=" & fk_type
+  Print sql
+  $Result = modDBConnect.exec_query(sql)
+  If $Result.count Then Return $Result!type
+  
+End
+
+
+ Public Function Request_GetPk(request As String) As Integer
+  
+  Return modDBConnect.exec_query("Select pk from clin_requests.lu_requests where item ILIKE $$" & request & "$$")!pk
+End
+
+Public Sub Request_Delete(fk_request As Integer)
+   '---------------------------------------------------------------------------------------
+   'Marks as deleted a request in clin_requests.lu_requests, does not remove from the table
+   '---------------------------------------------------------------------------------------
+   sql = "Update clin_requests.lu_requests set deleted = true where pk = " & fk_request
+   modDBConnect.exec_query(sql)
+End
+
+Public Function Request_Save(old_data As Collection, pk_view As Integer, term As Collection) As Integer
+  
+  If IsNull(term!pk) Then
+     Return modDBConnect.insert("clin_requests.lu_requests", term)
+  Else
+     modDBConnect.update("clin_requests.lu_requests", old_data[pk_view], term) 
+  End If 
+  
+End
+
+Public Sub Request_Save_loinc(item As String)
+  'FIXME - put type of test into loinc, and fix the fk_section to reflect this eg serum, bacto etc
+  'temporary
+  Dim c As New Collection
+  c!fk_type = 1
+  c!item = item
+  c!fk_laterality = 0
+  c!fk_decision_support = 0
+  c!fk_instruction = 0
+  modDBConnect.insert("clin_requests.lu_requests", c)
+  
+End
+
+Public Sub Requests_Get(txt As TextBox, lvw As Listview)
+   '------------------------------------------------
+   'Fetches any existing requests from the database
+   '------------------------------------------------
+   Dim x As Integer
+   Message.Warning(" RICHARD STOP THIS CODE AND CHECK THIS ROUTINe")
+   If Trim(txt.text) = "" Then 
+      lvw.Visible = False
+      Return
+   End If
+   sql &= Trim(txt.text) & "%$$ order by item limit 20"
+   $Result = modDBConnect.exec_query(sql)
+   lvw.Clear()
+   If $Result.count Then
+      For Each $Result
+         lvw.Add($Result!pk, $Result!item)
+      Next
+      lvw.Raise
+      lvw.Visible = True
+   End If
+   
+End
+
+
+
+Public Function Employee_Get(employee As String) As Collection 
+
+  sql = " Select * From contacts.vwOrganisationsEmployees where surname ILIKE $$"
+  sql = sql & employee & "%$$ ORDER BY surname, firstname, category"  
+  Return modDBConnect.exec_query_collection(sql)
+End
+
+
+Public Function User_Get_Default_Type() As Collection 
+   '-----------------------------------------------------------------
+   'Return a collection representing a staff members defaults for use
+   'in the requests section , e.g default to always boot to pathology
+   '-----------------------------------------------------------------
+  Return modDBConnect.exec_query_collection(" Select * From clin_requests.vwStaffPreferences WHERE fk_staff = " & modDBConnect.currentUser!fk_staff)
+End
+
+Public Function User_Save_Default_Type(old_data As Collection, user_default_type As Collection) As Integer
+  
+  If IsNull(user_default_type!fk_user_default_type) Then
+     user_default_type!fk_staff = modDBConnect.currentUser!fk_staff
+     user_default_type!fk_default_type = modDBConnect.insert("clin_requests.user_default_type", user_default_type)
+  Else
+     modDBConnect.update("", old_data, user_default_type, "fk_user_default_type")
+  End If
+  Return user_default_type!fk_default_type
+End
+
+Public Function Providers_GetBy_RequestType(fk_category As Integer) As Collection
+   '---------------------------------------------------------------
+   'Gets a list of distinct organisations for a particular category
+   'e.g all the Pathology Providers
+   '---------------------------------------------------------------
+   Dim sql As String
+  
+   sql = "Select * from  Contacts.vwOrganisationsByCategory "
+   sql &= "WHERE  fk_category = " & fk_category
+   Return modDBConnect.exec_query_collection(sql)
+End
+
+Public Function Provider_Branches_Get(fk_organisation As Integer) As Collection
+   '---------------------------------------------------------------------------------------
+   'Gets branches for an organisation as a collection including comms using fk_organisation
+   '---------------------------------------------------------------------------------------
+   Dim sql As String
+   Dim branches As Collection 
+   Dim branch As Collection 
+   Dim comms As Collection 
+   sql = " Select * From contacts.vwOrganisationsEmployees where fk_organisation =" & fk_organisation & " AND branch_deleted = false"
+   sql &= " AND fk_employee = 0 " 
+   branches = modDBConnect.exec_query_collection(sql)
+   For Each branch In branches
+      sql = "Select * from contacts.vwBranchesComms WHERE fk_branch = " & branch!fk_branch 
+      comms = modDBConnect.exec_query_collection(sql)
+      branch!comms = comms
+   Next
+   Return branches    
+End
+
+
+Public Function Provider_Get_Default_For_Request_type(fk_lu_request_type As Integer) As Collection 
+   '------------------------------------------------------------------------------------------------
+   'CALLED BY  FRequests.Get_Default_Provider()
+   'RETURNS    collection (as a result) with head office and default branch for the type of provider
+   '           on a per-user basis
+   '-------------------------------------------------------------------------------------------------
+   Dim sql As String
+   sql = "Select * from clin_requests.vwUserProviderDefaults WHERE fk_staff = " & modDBConnect.currentUser!fk_staff
+   sql &= " AND deleted = False  AND fk_lu_request_type = " & fk_lu_request_type
+   Return modDBConnect.exec_query_collection(sql)
+End
+
+
+Public Function Organisation_Branches_Get_Like_Text(sSearchtext As String) As Collection 
+   '------------------------------------------------------------------------------------
+   'CALLED BY: Frequests.copyto_selection("get") when rbCopyTo_Organisation.value = true
+   'PURPOSE  : Find all branches or organisations sSearchText
+   '------------------------------------------------------------------------------------
+   sql = " Select * From contacts.vwOrganisationsEmployees where organisation ILIKE $$%"
+   sql = sql & sSearchtext & "%$$ AND fk_employee = 0 ORDER BY organisation, branch"
+   Return modDBConnect.exec_query_collection(sql)
+End
+
+ 
+
+
+Public Function Requests_Get_Notes(sSearchtext As String, fk_lu_type As Integer) As Collection 
+   '-------------------------------------------------------------------------
+   'Gets a collection of notes user has previously written for their requests
+   'on a per type (clin_requests.lu_type) and per user basis
+   '-------------------------------------------------------------------------
+   Dim sql As String
+   sql = "Select * from clin_requests.notes WHERE  note ILIKE $$%" & sSearchText & "%$$ "
+   sql &= " AND fk_lu_type = " & fk_lu_type & " AND fk_staff = " & modDBConnect.currentUser!fk_staff
+   Return modDBConnect.exec_query_collection(sql)
+End
+
+Public Function Request_Item_?exists(item As String) As Boolean
+   '--------------------------------------------------------------------------------
+   'Tries to get exact match for an item, returns true if does
+   'Used by inbox, when looks up a loinc code
+   '--------------------------------------------------------------------------------
+   Dim R As Result
+   sql = "Select * from clin_requests.vwRequestItems where item ILIKE $$" & item & "$$"
+   R = modDBConnect.exec_query(sql)
+   Return r.count 
+End
+
+
+Public Function requests_get_items(sSearchText As String, fk_lu_request_type As Integer) As Collection
+   '---------------------------------------------------------------------------------------------------------
+   'Fetch all requests like searchtext, if already have a fixed type e.g pathology, search with that criteria
+   'Note this is with laterality taken into account  .FIXME bring category names into line with
+   'lu_request_type table
+   '---------------------------------------------------------------------------------------------------------
+   sql = "Select * from clin_requests.vwRequestItems where lower(item) ILIKE $$%" & sSearchText & "%$$" 
+   If fk_lu_request_type Then sql &= " AND fk_type = " & fk_lu_request_type
+   sql = sql & " ORDER BY type,item LIMIT 20 "
+   Return modDBConnect.exec_query_collection(sql)
+End
+
+Public Function Requests_Get_By_Request_Type(fk_lu_request_type As Integer, Optional request_name As String = "") As Collection
+   '------------------------------------------------------------------------------------------   
+   'return a collection of all requests of particular type filtered by request_name if present
+   'unless fk_lu_request_type is 0, then entire table is searched.
+   '------------------------------------------------------------------------------------------
+   Dim sql As String 
+   sql = "Select * from clin_requests.lu_requests WHERE "
+   If fk_lu_request_type Then 
+      sql &= "fk_type = " & fk_lu_request_type & " AND "
+   End If
+   sql &= " item ILIKE $$%" & request_name & "%$$"
+   sql &= " AND deleted = false  ORDER BY item"
+   Return modDBConnect.exec_query_collection(sql)
+End 
+
+Public Function RequestForm_ResultsShow(fk_form As Integer, fk_lu_request_item As Integer) As String
+   '-----------------------------------------------------------------------
+   'embryonic
+   'display the result of a test temporarily hard coded during development
+   'for proof of concept
+   '----------------------------------------------------------------------
+   sql = "Select * from clin_requests.vwRequestResults where fk_form =" & fk_form
+   sql &= " AND fk_lu_request_item = 617" ' a FBC
+   'Print sql
+   $Result = modDBConnect.BeginTrans()
+   $Result = modDBConnect.exec_query(sql)
+   If $Result.count Then
+       Return $Result!HTML
+   End If
+   $Result = modDBConnect.CommitTrans()
+  
+End
+
+Public Function Results_Get(fk_patient As Integer) As Collection
+   '----------------------------------------------------------------------------
+   'Get all documents that could be considered a result - may not be 'numerical'
+   'e.g could be a scanned in old Xray or path, ecg etc
+   'Note these could as yet be 'unfiled' - ie not marked off by the doctor
+   'intended to receive these, but they will still be displayed in the patients
+   'records annotated as such
+   'FIXME: consider this: scanned documents have no date-requested
+   'maybe union the query, make the date requested = date created
+   '----------------------------------------------------------------------------
+   Dim sql As String
+   sql = "Select * from documents.vwDocuments where fk_patient = " & fk_patient
+   sql &= " AND fk_lu_display_as = " & const.Document_Display_As_Result
+   sql &= " AND deleted = false  ORDER BY date_created desc"
+   Print sql
+   Return modDBConnect.exec_query_collection(sql)
+End
+
+
+
+
+
+Public Function RequestForms_Written_This_Consult_Get(fk_patient As Integer, fk_consult As Integer) As Collection 
+ 
+    Return modDBConnect.exec_query_collection("Select * from clin_requests.vwForms WHERE fk_patient = " & fk_patient & " AND fk_consult = " & fk_consult)
+End
+
+Public Function RequestForms_Get(fk_patient As Integer, Optional Order_by As String = "consult_date", Optional Asc_Desc As String = "DESC") As Collection 
+   '----------------------------------------------------------------------------------------------------
+   'Retrieve all request forms for patient, optionally ordered by a field in ascending/descending order
+   'Default = order by consult_date in descending (latest to oldest) order
+   '----------------------------------------------------------------------------------------------------
+   Dim sql As String
+   sql = "Select * From clin_requests.vwForms WHERE fk_patient = " & fk_patient
+   sql &= " Order by " & Order_by & " " & Asc_Desc
+   Return modDBConnect.exec_query_collection(sql)
+    
+  
+End
+
+
+Public Function Request_Picture_icon(type As String, item As String, HasResult As Boolean) As Picture
+   Dim picname As String
+   'Dim aPicture As picture
+   
+    Select Case Lower(type)
+    Case "pathology provider"
+      Select Case LCase(item)
+      Case "pap"
+      
+      Case "msu"
+       picname = "icons/12/msu1212.png"
+      Case "histopathology"
+       picname = "icons/12/histology1212.png"
+      Case Else
+       If Hasresult Then
+         picname = "icons/12/bloodtube1212_greendot.png"
+       Else
+         picname = "icons/12/bloodtube1212.png"
+       End If
+      End Select
+    Case "radiology provider"
+      picname = "icons/12/xray1212.png"
+    Case "cardiovascular provider"
+      picname = "icons/12/heart1212.png"
+    End Select
+    Return Picture[picname]
+ 
+
+End
+
+
+
+
+
+
+Public Sub RequestForm_Note_Save(Note As CRequestNote)
+   '---------------------------------------------------
+   'Saves a note for the request form on a per category
+   'basis for future use to save typing
+   '----------------------------------------------------
+   sql = "insert into clin_requests.notes (fk_type,notes) "
+   sql &= "VALUES ("
+   sql &= note.fk_type & ",$$" & note.note & "$$)"
+   'Print sql
+   'Print "saving notes"
+   $Result = modDBConnect.exec_query(sql)
+End
+
+Public Sub RequestForm_Delete(currentconsult As Cconsult, old_pk As String, fk_form As Integer, RequestForm As Collection) 
+  '--------------------------------------------------------------------
+   'PURPOSE  :   Deletes a health issue
+   '             Keeps an audit trail
+   'CALLED BY:   Various popup menus in FClinical and FPasthistory
+   '             First check there are no associated progress notes
+   '             if so, cannot delete, but change the html to make the
+   '             text strike through, and add to the audit table
+   '------------------------------------------------------------------
+   Dim bNotesExist As Boolean
+   Dim audit As New Collection
+   Dim sAuditAnnotation As String 'audit annotation to insert into progress notes
+   Dim sToday As String 'todays date as a string
+   Dim progressnote As Collection
+   Dim bDeleted As Boolean 
+   Dim sString As String   
+   Dim newnote As New Collection
+   Dim iAuditAction As Integer
+   sToday = Format(Now, "dd/mm/yyyy")
+   '-------------------------------------------------------------------
+   'First - popup the audit form and get reason for the deletion
+   'health issue could be deleted either during consulation 
+   'as we are allowed to change out mind within the consultation and
+   'don't need to give a reason for that
+   'or at a later date
+   '--------------------------------------------------------------------
+   audit!fk_row = RequestForm!fk_form
+   audit!fk_consult = currentconsult.GetPK()
+   audit!fk_section = const.cSection_Requests
+   audit!data_summary = RequestForm!requests_summary 
+  
+
+   iAuditAction = const.cAuditAction_MarkDeleted
+   If RequestForm!fk_consult <> currentconsult.GetPK() Then
+      FAudit.Init(RequestForm, Const.cSection_Requests, iAuditAction, currentconsult)
+      If Not FAudit.ShowModal() Then Return 
+      audit!reason = "Delete" & ":<BR>- " & Lower(const.globalstring)
+      audit!reason = Lower(const.globalstring)
+      If iAuditAction = const.cAuditAction_Delete Then bDeleted = True   
+   Else
+       audit!reason = const.sAuditAction[const.cAuditAction_Reversal]
+       RequestForm!deleted = True
+       
+      ' cAuditAction_Reversal
+   End If
+   bDeleted = True
+ 
+   'Now if progress notes existed then update the database to reflect this
+   ' For Each progressnote In currentconsult!progress_notes
+   '    If progressnote!fk_problem = fk_form Then 
+   '     '-------------------------------------------------------------------
+   '     'Mark each problem and associated progress note with strike through
+   '     '-------------------------------------------------------------------
+   '     sAuditAnnotation = "<STRIKE><P><FONT COLOR='#b3b3b3'>" & progressnote!notes & "</STRIKE><p>"
+   '     sAuditAnnotation &= "<P ALIGN=CENTER><I><B>Audit trail</B> : notes deleted by " & modDBConnect.currentUser!wholename & " on "
+   '     sAuditAnnotation &= sToday & " the reason given was: " & Lower(const.globalstring) & "</P></I></FONT><p>"
+   '     progressnote!notes = sAuditAnnotation
+   '     currentconsult!progress_notes[progressnote!pk_progressnote] = progressnote
+   '    End If
+   ' Next 
+   newnote!fk_audit_action = const.cAuditAction_Reversal
+   newnote!pk_progressnote = RequestForm!fk_progressnote
+   modDBConnect.update("clin_requests.forms", currentconsult!requests_ordered_this_consult[old_pk], RequestForm, "fk_form")
+   modDBConnect.update("clin_consult.progressnotes", currentconsult!progress_notes[RequestForm!fk_progressnote], newnote, "pk_progressnote") ' save to backend and update the collection in RAM too
+
+   'modConsultDBI.ProgressNotes_Edit(currentconsult!progress_notes, fk_form)
+ ' RequestForm!deleted = True
+  
+ ' audit!fk_action = iAuditAction
+ ' modConsultDBI.Make_Audit(audit, "clin_history", "past_history")
+End
+
+
+Public Function RequestForm_Save(currentconsult As Cconsult, old_pk As String, RequestForm As Collection, Old_FormsRequests As Collection, formsRequests As Collection, Pictures As Collection) As Integer   
+   '--------------------------------------------
+   'PURPOSE    :Saves a request form
+   'EXPECTS    :
+   'RETURNS    :
+   '
+   'First, check if all the notes have keys
+   '--------------------------------------------
+   Dim notes As String[]
+   Dim note As String 
+   Dim fk_note As Integer
+   Dim fk_form As Integer
+   Dim newnote As Collection 
+   Dim RQ As Collection 
+   '--------------------------------------------------------------------
+   'Keep the current users notes on the request
+   'Why, makes typing easier every time they enter notes for a request
+   'I think its going to be really hard to keep track of keys as this
+   'data is delivered into the FRequests editnig area, so I won't bother
+   'just check if the notes exist already and save if they don't
+   '--------------------------------------------------------------------
+   If RequestForm!notes_summary Then
+      notes = Split(RequestForm!notes_summary, ";", "", True)
+      For Each note In notes
+         sql = "Select * from clin_requests.notes where note ILIKE $$" & Trim(note) & "$$"
+         If Not modDBConnect.exec_query(sql).count Then
+            newnote = New Collection 
+            newnote!note = note       
+            newnote!fk_staff = modDBConnect.currentUser!fk_staff
+            newnote!fk_lu_type = RequestForm!fk_lu_type
+            fk_note = modDBConnect.insert("clin_requests.notes", newnote)
+         End If
+       Next
+   End If
+   '----------------------------------
+   'Next Save any pictures in the html
+   '----------------------------------
+    RequestForm!form_html = modConsultDBI.Notes_Parse_For_Images(RequestForm!form_html) 
+   '-------------------------------------------------------------------
+   'Next, save the actual request form, these should mostly be there
+   'currently only allowing 1 image per form, if we need two, should we
+   'just join these into 1 eg diagram/photo stitched into 1 png?
+   '-------------------------------------------------------------------
+   '  fk_consult
+   '  date     'may <> consult!date
+   '  fk_branch 
+   '  fk_lu_type - key to clin_requests.lu_type table e.g 1 = pathology 
+   '  requests_summary
+   '  notes_summary
+   '  medications_summary
+   '  form_html 
+   '  copyto
+   '  copyto_patient
+   '  urgent
+   '  bulk_bill 
+   '  fasting
+   '  phone
+   '  fax
+   '  include_medications
+   '  fk_image                   
+   '  forms_results_html 
+   '
+   '  A Forms requests are saved in clin_requests.forms_requests
+   '  
+   '   fk_form                   key to clin_requests.forms table
+   '   fk_lu_request             key to clin-requests.lu_requests table
+   '--------------------------------------------------------------------
+   'If a new request form, get its pk
+   '---------------------------------
+   If IsNull(RequestForm!fk_form) Then
+      RequestForm!fk_consult = currentconsult.GetPK()
+      RequestForm!fk_form = modDBConnect.insert("clin_requests.forms", RequestForm)
+   Else
+       modDBConnect.update("clin_requests.forms", currentconsult!requests_ordered_this_consult[old_pk], RequestForm, "fk_form")
+   End If
+   '-------------------------------------------------------------------------
+   'Now, as this form could be being edited could have deleted or added items
+   'either update or insert the item.
+   '-------------------------------------------------------------------------
+   For Each RQ In FormsRequests
+      '  fix me using this is not correct
+         RQ!fk_form = RequestForm!fk_form
+         If IsNull(RQ!fk_lu_request) Then
+             RQ!fk_lu_request = RQ!pk  'was the pk of lu_requests table.
+         End If   
+         Try RQ.Remove("pk_view")
+         Try RQ.Remove("type")
+         Try RQ.remove("item")
+         Try RQ.Remove("fk_type")
+         Try RQ.Remove("fk_laterality")
+         Try RQ.Remove("instruction")
+         Try RQ.Remove("fk_decision_support")
+         Try RQ.Remove("fk_instruction")
+         If Not IsNull(RQ!forms_requests_pk) Then
+          
+            modDBConnect.update("clin_requests.forms_requests", Old_FormsRequests[RQ!forms_requests_pk], RQ, "forms_requests_pk")
+         Else
+            RQ.Remove("pk")
+            RQ!forms_requests_pk = modDBConnect.insert("clin_requests.forms_requests", RQ)
+         End If
+   Next
+  
+
+ Return RequestForm!fk_form
+End
+
+
+Public Function Notes_Parse_For_Images(Notes As String) As String
+  '--------------------------------------------------------------
+  'Expects string representing the html of clinical notes
+  'which could contain images, line drawings/photos eg of a skin
+  'lesion, and parses out the temporary file references to these
+  'e.g src=/tmp/gambas.1000/3562/2.tmp.png
+  'and substitutes the clin_consult.images.pk value after src=
+  'when the clinical notes are re-loaded, then another temporary
+  'file will be created and its path re-inserted into the notes
+  '
+  '------------------------------------------------------------
+  Dim charpos As Integer = -1
+  Dim afile As String
+  Dim someFiles As String[]
+  Dim x As Integer
+  Dim sHtml As String
+  Dim image_pk As Integer
+  Dim acopy As String
+  
+  acopy = notes
+  sHtml = Notes   
+  someFiles = New String[]
+  Do Until charpos = 0
+      charpos = InStr(shtml, "src=/")
+      If charpos Then
+         shtml = Right(shtml, Len(shtml) - charpos - 3)
+         charpos = InStr(shtml, ".png")
+         someFiles.Add(Left(shtml, charpos + 3))
+         sHtml = Right(shtml, Len(shtml) - charpos - 3)
+      End If
+ Loop 
+ For Each afile In someFiles
+      image_pk = modConsultDBI.Image_Save(afile)
+       Notes = Replace$(Notes, "src=" & afile, "pk_image=" & Str$(image_pk))
+  Next
+ Wait
+ Return Notes
+End
+
+Public Function Inbox_Get_Person(F As FInbox) As Integer 
+   '-------------------------------------------------
+   'Attempts to get a person as the sender of the hl7
+   '------------------------------------------------- 
+   With F
+      .txtOrganisation!text = ""
+      .txtSendingentity.Background = Color.White
+      .txtBranch.text = ""
+      .txtSuburb.text = ""
+      .txtStreet1.text = ""  
+      .txtState.text = ""
+      .txtPostcode.text = ""
+      .txtCategory.text = ""
+      .chkHeadOffice.value = False
+   End With
+   
+  
+End
+
+
+Public Sub Request_Providers_Get(fk_lu_request_type As Integer) As Collection
+  
+  Return modDBConnect.exec_query_collection("Select * from clin_requests.vwRequestProviders where fk_lu_request_type = " & fk_lu_request_type)
+  
+End
+
+Public Sub Request_Providers_Save(old_data As Collection, pk_view As Integer, request_provider As Collection) 
+   '---------------------------------------------------------------------------------------
+   'Saves or modifies info about those who can be sent requests by the practice, eg for FBC
+   '---------------------------------------------------------------------------------------
+   If IsNull(request_provider!pk_request_provider) Then
+       request_provider!fk_request_Provider = modDBConnect.insert("clin_requests.request_providers", request_provider)
+   Else
+       modDBConnect.update("clin_requests.request_providers", old_data[pk_view], request_provider, "pk_request_provider")
+   Endif
+ 
+End
+

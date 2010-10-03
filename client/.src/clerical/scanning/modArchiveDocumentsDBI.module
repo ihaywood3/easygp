@@ -1,0 +1,131 @@
+' Gambas module file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'Scanning module
+
+
+Public Function Get_Document_Types() As Collection
+    ' Return modDBConnect.exec_query_collection("Select pk, lower(split_part(category,' ', 1)) as category from contacts.lu_categories where lower(category) ILIKE $$%provider%$$")
+     Dim doc_types As Collection
+     Dim doc_type As Collection
+     doc_types = modDBConnect.exec_query_collection("Select pk, category from contacts.lu_categories where lower(category) ILIKE $$%provider%$$")
+     For Each doc_type In doc_types
+         doc_type!category = Trim(Replace(doc_type!category, "provider", "", gb.IgnoreCase))
+     Next
+     Return doc_types
+End
+
+Public Function Documents_pk_Get_NextVal() As Integer
+  
+  Return modDBConnect.exec_query("Select nextval('documents.documents_pk_seq')")!nextval
+  
+  
+End
+Public Sub Document_Save_Filename(document As Collection)
+  
+   Dim sql As String
+   sql = "Update documents.documents set source_file = $$" & document!source_file & "$$ WHERE pk = " & document!pk_document
+   modDBConnect.exec_query(sql)
+  
+End
+
+Public Function Save(old_data As Collection, pk_view As Integer, document As Collection) As Integer
+   '---------------------------------------------------------------------------------------
+   'Saves a documents metadata.
+   'If the user wants the file saved to database, save blob first to blobs.blob table
+   'document!data = "BLOB:/filenamepath"
+   '---------------------------------------------------------------------------------------
+  Dim data As New Collection
+  
+  If IsNull(document!pk_document) Then
+      If Not IsNull(document!data) Then
+         data!blob = document!data
+         document!fk_blob = modDBConnect.insert("blobs.blobs", data)
+      End If   
+      Try document.Remove("data")
+      document!pk_document = modDBConnect.insert("documents.documents", document)
+  Else
+      modDBConnect.update("documents.documents", old_data[pk_view], document, "pk_document")
+  End If
+  Return document!pk_document 
+End
+
+Public Sub Blob_Save_To_File(data As Variant, Optional file_extension As String = "blobdata") As String
+  'Have retrieved blob data > save as a file
+  Dim tempFile As String
+   tempFile = Temp() & "." & file_extension
+     If data.data Then 
+      File.Save(tempFile, data.data)
+   End If
+   Return tempFile
+
+  
+End
+
+Public Sub Blob_Retrieve(pk As Integer, file_extension As String) As String
+'-----------------------------------------------------------------------------
+   'gets back blob data, names a temp file as per file_extension expected
+   '---------------------------------------------------------------------------  
+  Dim $Result As Result
+  Dim tempFile As String
+  Dim tempdata As Variant
+  Dim sql As String = "Select * from Blobs.blobs WHERE pk=" & pk
+  $Result = modDBConnect.exec_query(sql)
+   If $Result.count Then
+      tempFile = Temp() & "." & file_extension
+      tempdata = $Result!data
+        If tempdata.data Then 
+         File.Save(tempFile, tempdata.data)
+      End If
+   End If
+  Return tempFile
+End
+
+Public Function Blob_get(pk As Integer) As String
+
+  Dim $Result As Result
+  Dim tempFile As String
+  Dim tempdata As Variant
+  Dim sql As String = "Select * from Documents.documents WHERE pk=" & pk
+  $Result = modDBConnect.exec_query(sql)
+   If $Result.count Then
+      tempFile = Temp() & ".pdf"
+      Print tempFile
+      tempdata = $Result!data
+    
+       If tempdata.data Then 
+         File.Save(tempFile, tempdata.data)
+      End If
+   End If
+  
+End
+
+Public Function Inbox_Documents_Get(fk_staff_destination As Integer, fk_lu_type As Integer, Optional limit As Integer = 0) As Collection 
+   '-----------------------------------------------------------------------------------------------------------
+   'Return a collection of documents if fk_lu_type <> 0 then only of that type documents.lu_type table
+   '-----------------------------------------------------------------------------------------------------------
+   Dim sql As String
+   sql = "Select * from Documents.vwDocuments where fk_staff_destination =" & fk_staff_destination
+   If fk_lu_type > 0 Then
+      sql &= " AND fk_lu_type = " & fk_lu_type
+   End If
+   sql &= " AND deleted = false and concluded = False "
+   If limit Then
+      sql &= "LIMIT " & limit
+   End If   
+   Return modDBConnect.exec_query_collection(sql)
+  
+End
+

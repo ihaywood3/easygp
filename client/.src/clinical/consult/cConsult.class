@@ -1,0 +1,224 @@
+' Gambas class file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+'-------------------------------------------------------------------------------------
+'This is probably quite a mess and needs to be sorted out, absolutely work in progress
+'
+'The patients prescence in the surgery could take place in one room with one
+'staff member, or over multiple rooms with multiple staff members. For the point of
+'the exercise at the moment I am arbitrarily using the date of consultation as the
+'unifying measure of an entire patient encounter
+'-------------------------------------------------------------------------------------
+ 
+Private cache As Collection
+Private pk_consult As Integer
+Public summary As String
+Public fk_type As Integer
+Private consult_date As Date
+
+Public Sub Refresh(key As String)
+   '--------------------------------------------------------------
+   ' Refreshes the cache by removing the key which effectively
+   ' means it will be re-loaded from the database when next called
+   '--------------------------------------------------------------
+   cache.Remove(key)
+End
+
+Public Function IsCreated() As Boolean
+  ' return flag if consult created yet
+  If pk_consult = -1 Then
+   Return False
+  Else
+   Return True
+  End If
+  
+End
+
+Public Function GetPK() As Integer
+  ' return consult's pk
+  ' create the consult on the backend if required
+  If Not IsCreated() Then
+   ' Create
+   Create()
+  End If
+  Return pk_consult
+End
+
+Public Sub Set(fk_type2 As Integer, summary2 As String)
+  ' set type and summary
+  ' if consult has been saved to backend, will update the backend
+  ' otherwise just stored in RAM
+  If (fk_type2 <> fk_type Or summary2 <> summary) And pk_consult > -1 Then
+   ' we need to update the backend
+   modConsultDBI.Consult_Update(pk_consult, fk_type2, summary2)
+  End If 
+  fk_type = fk_type2
+  summary = summary2
+  
+End
+
+Public Sub _new(patient As Collection)
+  '-----------------------------------------------------------------
+  ' creates a consultation not saved to the backend until necessary
+  ' fixme do something with summary i.e decide to implement or not
+  '-----------------------------------------------------------------
+   Dim sql As String 
+   Dim R As result
+   cache = New Collection    
+   cache!patient = patient
+   pk_consult = -1
+   fk_type = 0
+   summary = ""
+   ' Need solution to a continued consultation: This won't work as a consult
+   'several hours after this has the wrong time stamp.
+   ' R = modDBConnect.exec_query("Select date(consult_date), pk, fk_type from  clin_consult.consult where fk_patient = " & patient!fk_patient & "order by pk DESC limit 1")
+   ' If Not R.count Then Return 
+   ' If Format(R!date, "dd/mm/yyyy") = Format(Now, "dd/mm/yyyy") Then
+   '     If Message.Question("There has already been a consultation started today, do you wish to continue this?", "Yes", "No") = 1 Then
+   '        pk_consult = R!pk
+   '        fk_type = R!fk_type
+   '     End If
+   ' End If
+End
+
+
+Public Function _get(key As String) As Collection
+  ' this implements the "!" notation
+  ' so currentconsult!past_history grabs the past history
+  ' it's a cache: it will get past history from the backend
+  ' if necessary
+  ' the consult's own properties can be accessed this way too:
+  ' currentconsult!pk, currentconsult!fk_type, etc.
+  If Not cache.Exist(key) Then
+   cache[key] = GetData(key)
+  End If
+  Return cache[key]
+
+End
+
+Public Sub SetData(key As String, data As collection)
+  'temporary patch to update patients demographics, whilst the patient is loaded
+  'e.g if changed from contacts
+  Select Case key
+  Case "patient"
+          cache!patient = data
+  End Select
+  
+  
+End
+
+Private Function GetData(key As String) As Collection
+   '-----------------------------------------------------------------  
+   ' this is where new cacheable values should be defined, like this
+   ' Case "name"
+   '   Return modBlahBlahDBI.GetBlah(cache!patient!pk_patient)
+   ' don't put a big load of code here: put it in the DBI module
+   '---------------------------------------------------------------- 
+   Select Case key
+   Case "addresses"
+      If cache!patient.ExiProgressNotes_ConstructHTMLsts("addresses")
+         Return cache!patient!addresses
+      Else
+         Return modContactsDBI.person_addresses_get(cache!patient!fk_patient)
+      Endif
+   Case "comms"
+      '---------------------------------------------------------
+      ' bit of a cheat here, same for addresses
+      ' sometimes comms in patient collection, so use that first
+      '---------------------------------------------------------
+     'If cache!patient.Exists("comms") Then
+     
+         ' Return cache!patient!comms
+    '  Else
+          Return modContactsDBI.person_comms_get(cache!patient!fk_person)
+    '  Endif
+   Case "clinics"
+      Return modContactsDBI.Clinics_Get()        
+   Case "consult_date"
+      Return consult_date
+   Case "family_history"
+       Return modFamilyHistoryDBI.FamilyHistory_Get(cache!patient!fk_patient)
+   Case "fk_type"
+      Return fk_type
+   Case "measurements"
+      Return modMeasurementsDBI.Measurements_Get(cache!patient!fk_patient)
+   Case "measurements_available"
+      '---------------------------------------------------------------------------
+      'these are the default types of measurements to display in the graphing area
+      'on the progress notes page unique for each patient
+      '---------------------------------------------------------------------------
+      Return modMeasurementsDBI.Measurements_Get_Available(cache!patient!fk_patient)
+     ' Return modMeasurementsDBI.Measurement_Types_Defaults_Get(cache!patient!fk_patient)
+   Case "measurement_defaults"
+      Return modMeasurementsDBI.Measurement_Defaults_Get(cache!patient!fk_patient)
+   Case "mentalhealthplans"
+     Return modMentalHealthDBI.Plans_Get(cache!patient!fk_patient)
+   Case "occupational_history"
+      Return modOccupationalHistoryDBI.OccupationalHistory_Get(cache!patient!fk_patient)
+   Case "past_history"
+      Return modPastHistoryDBI.PastHistory_Get(cache!patient!fk_patient)
+   Case "patient"
+      '-------------------------------------------------------------------
+      'this should never happen as it's put in the cache on initialisation
+      'FIXME   but demographic data could be changed in other sections
+      'eg. contains IAN THINK ABOUT THIS.
+      '-------------------------------------------------------------------
+      Error.Raise("patient should always be populated in cConsult") 
+     
+  Case "progress_notes" 
+      Return modConsultDBI.progressnotes_get(cache!patient!fk_patient)
+  Case "scratchpad"
+      Return modScratchPadDBI.Get(cache!patient!fk_patient)
+  Case "skin_procedures"
+      Return modProceduresDBI.SkinProcedures_Get(cache!patient!fk_patient)
+  Case "recalls_logged"
+      Return modRecallsDBI.Get_Logged(cache!patient!fk_patient)
+  Case "recalls_this_consultation"
+      Return modRecallsDBI.Get_Recalls_Current_consult(cache!patient!fk_patient, pk_consult)
+  Case "letters_received"
+           Return modReferralsDBI.Letters_Received_Get(cache!patient!fk_patient)
+  Case "referrals_written"
+      Return modReferralsDBI.Referrals_Written_Get(cache!patient!fk_patient)
+  Case "referrals_written_this_consult"
+      Return modReferralsDBI.Referrals_Written_This_Consult_Get(cache!patient!fk_patient, pk_consult)
+  Case "requests_ordered"
+      Return modRequestsDBI.RequestForms_Get(cache!patient!fk_patient)
+  Case "requests_ordered_this_consult"
+      Return modRequestsDBI.RequestForms_Written_This_Consult_Get(cache!patient!fk_patient, pk_consult)
+  Case "results_received"
+      Return modRequestsDBI.Results_Get(cache!patient!fk_patient)
+  Case "social_history"
+      Return modSocialHistoryDBI.SocialHistory_Get(cache!patient!fk_patient)
+  Case "staff"
+      Return modContactsDBI.Staff_Get()
+  Case "summary"
+    Return summary
+  Case "workcover_claims"
+       Return modWorkCoverDBI.Claims_Get(cache!patient!fk_patient)  
+  Case Else
+   ' someone needs to define a new cacheable object
+   Error.Raise("unknown patient data object in cConsult: " & key)
+  End Select
+End
+
+Private Sub Create()
+  Dim coll As Collection
+  
+  coll = modConsultDBI.Consult_Create(cache!patient!fk_patient, fk_type, summary)
+  consult_date = coll!consult_date
+  pk_consult = coll!pk
+End
+

@@ -1,0 +1,81 @@
+' Gambas module file
+' Copyright (C) 2010 Dr. Ian Haywood
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+' import script for PIT (Pathology Information Transfer) files
+' designed to be called by another module (probably modHL7FileImport)
+' to handle files that look like PIT files
+' disturbingly, this format is still in wide use at time of writing
+' specs kindly provided from Dr. David Guest
+
+Private pk_sending_entity As Integer
+
+
+Public Sub Import(fname As file)
+  
+  Dim lin As String
+  Dim code As String
+  Dim f As File
+
+  
+  f = Open fname For Read
+  
+  
+  While Not f.EndOfFile
+    Line Input #f, lin
+    code = Left$(lin, 3)
+    Select Case code
+    Case "001"
+       Sender_Line(lin)
+    Case "002"
+         
+    Case Else
+       Log.Error("unknown PIT line type " & code)
+       'Print #stderr, "unknown PIT line type " & code)
+       Return
+    End Select  
+        
+  Wend  
+  
+End Sub
+
+Private Sub Sender_Line(lin As String)
+  Dim q As String
+  Dim coll As Collection
+  Dim r As Result
+  Dim originating_lab As String
+  
+  If Len(lin) > 65 Then
+    originating_lab = Mid$(lin, 5, 65)
+  Else
+    originating_lab = Right$(lin, Len(lin) - 5)
+  Endif
+  ' FIXME: chomp/strip the line here
+  q = "select * from documents.sending_entities"
+      "where fk_lu_message_standard = 1 and "
+      "msh_sending_entity = $$"
+  q &= originating_lab & "$$"
+  r = modDBConnect.exec_query(q)
+  If r.Count = 0 Then
+    ' we don't have a matching sender, so create one
+    coll = New Collection
+    coll!msh_sending_entity = originating_lab
+    coll!fk_lu_message_standard = 1 'FIXME: what is the true value for PIT??
+    pk_sending_entity = modDBConnect.insert("documents.sending_entities", coll)
+  Else
+    pk_sending_entity = r!pk
+  Endif
+  
+End

@@ -1,0 +1,305 @@
+' Gambas class file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+Public bEmbedded As Boolean
+Private bKeyValid As Boolean
+Private currentconsult As cConsult
+Private fk_pasthistory As Integer
+Private cProgressNote_Section As Integer
+Private FVaccination_EditArea_1 As FVaccineEditArea
+Private FVaccination_EditArea_2 As FVaccineEditArea
+Private FVaccination_EditArea_3 As FVaccineEditArea
+
+Public Sub Form_Close()
+  
+  Settings_Save()
+  
+End
+Public Sub form_Open()
+  
+   FVaccination_EditArea_1 = New FVaccineEditArea(VBox_Vax1)
+   FVaccination_EditArea_2 = New FVaccineEditArea(VBox_Vax2)
+   FVaccination_EditArea_3 = New FVaccineEditArea(VBox_Vax3)
+End
+
+Public Sub Init(consult2 As cConsult) 
+   Settings_load()
+  
+   currentconsult = consult2
+End
+
+Public Sub Save()
+  
+   FClinical.Refresh_AllPreviousNotes()
+  
+End
+
+
+Public Function txtEditArea_ExcludeKeys(keycode As Integer) As Boolean  
+      Select Case Last.Tag
+        Case "target disease", "vaccine", "site", "serial number"
+          bKeyValid = True
+        Case "date"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_Date_DWMY, keycode)
+      End Select
+       Return bKeyValid
+
+End
+Public Sub txtEditArea_GotFocus()
+
+   Last.BackGround = Color.rgb(95, 255, 175)
+   Select Case Last.tag
+   Case "target disease"
+        ' With listview1
+        '   .top = vboxEditArea.Top + Hbox_Target.Top + hBox_Target.Height
+        '   .left = txtTargetDisease.Left
+        '   .width = txtTargetDisease.width
+        ' End With
+   End Select
+
+End
+Public Sub txtEditArea_LostFocus()
+
+   Last.BackGround = Color.White
+
+End
+
+
+Public Sub Settings_Save()
+  '-------------------------------------------------------------------------
+  'If the form is embedded in an editor, save that config, otherwise, normal
+  '-------------------------------------------------------------------------
+  If bEmbedded Then
+      Settings["Vaccinations_Embedded/HSplit_SchedulesVaccines.Layout"] = HSplit_SchedulesVaccines.Layout 
+      Settings["Vaccinations_Embedded/VSplit_Vaccinations.Layout"] = VSplit_Vaccinations.Layout
+   Else 
+      Settings["Vaccinations/HSplit_SchedulesVaccines.Layout"] = HSplit_SchedulesVaccines.Layout 
+      Settings["Vaccinations/VSplit_Vaccinations.Layout"] = VSplit_Vaccinations.Layout
+  Endif
+End
+
+Public Sub Settings_load()
+   If bEmbedded Then
+       Try HSplit_SchedulesVaccines.Layout = Settings["Vaccinations_Embedded/HSplit_SchedulesVaccines.Layout"]
+        Try VSplit_Vaccinations.Layout = Settings["Vaccinations_Embedded/VSplit_Vaccinations.Layout"] 
+   Else
+       Try HSplit_SchedulesVaccines.Layout = Settings["Vaccinations/HSplit_SchedulesVaccines.Layout"]
+       Try VSplit_Vaccinations.Layout = Settings["Vaccinations/VSplit_Vaccinations.Layout"] 
+   End If
+End
+
+Public Sub EditAreaButtons_Click()
+   Select Case Last.tag
+   Case "new"
+   Case "help"
+    FClinical.Help_Show(Application.Path &/ "help/immunizations.html", "Help:Immunizations", True)
+   Case "brief pi"
+   Case "accept"
+   End Select
+ End
+
+Public Sub Vaccine_New()
+  
+End
+Public Sub BriefPI()
+
+End
+Public Sub Vaccine_Accept()
+
+End
+Public Sub txtEditArea_KeyRelease()
+  
+  Select Case Last.tag
+      Case "target disease"
+      '  modVaccinationDBI.TargetDisease_get(listview1, txtTargetDisease)
+      Case "vaccine"
+         modVaccinationDBI.Vaccines_get(listview1)
+      Case "Date"
+      Case "site"
+        modVaccinationDBI.Vaccination_Sites_Get(listview1)
+      Case "serial number"
+        modVaccinationDBI.SerialNumbers_GetList(listview1)
+  End Select
+  
+End
+
+
+Public Sub txtEditArea_KeyPress()
+   bkeyvalid = txtEditArea_ExcludeKeys(key.code)
+   If bkeyvalid = False Then
+     Stop Event
+     Return
+   End If
+  Select Case Key.Code
+      Case Key.Down
+         Select Case Last.tag
+            Case "target disease"
+            Case "vaccine"
+            Case "Date"
+            Case "site"
+            Case "serial number"
+         End Select
+
+      Case Key.tab, Key.Return
+         Select Case Last.tag
+            Case "target disease"
+            Case "vaccine"
+            Case "Date"
+            Case "site"
+            Case "serial number"
+
+         End Select
+      
+  End Select
+  
+
+End
+
+Public Sub mnuHealthIssues_Show()
+  
+  mnuHealthIssues_Refresh()
+  
+End
+
+Public Sub mnuHealthIssues_Refresh()
+   '------------------------------------------------------------------
+   'Refreshes the progress notes menu on the main toolbar
+   'Clears all existing entries as user could have added new problems
+   'rebuilds the menu with menu's for
+   '*show all notes
+   '*general notes
+   '*major problems as submenu
+   '*significant active problems as submenu
+   '*inactive problems as submenu
+   '-------------------------------------------------------------------   
+   Dim mnu As menu
+   Dim mnu_major As menu
+   Dim mnu_active As Menu
+   Dim mnu_inactive As menu
+   Dim PastHistoryCondition As Collection
+   Dim bNeedSeparator As Boolean = True
+   Dim bNoMainMenu As Boolean = True
+   
+   If Not currentconsult Then Return
+   '----------------------------------------------------------------
+   'Clear menu, even if exit this sub, don't want the last patient's
+   'menu items on the list
+   '----------------------------------------------------------------
+   mnuHealthIssues.Children.Clear()  
+   mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+   mnu.name = "General Notes"
+   mnu.caption = "General Notes"
+   mnu.tag = "general notes"  
+   If currentconsult!past_history.count = 0 Then Return 
+   currentconsult.Refresh("past_history")  
+   '---------------------------------------------------------
+   'Next add all the major conditions followed by a separator
+   '---------------------------------------------------------
+   For Each PastHistoryCondition In currentconsult!past_history
+    If PastHistoryCondition!major Then
+        If bNeedSeparator Then
+            mnu = New Menu(mnuHealthIssues)
+            mnu.name = "separator_1"
+            mnu.caption = ""
+            bNeedSeparator = False  
+         End If
+         If bNoMainMenu Then
+            mnu_major = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+            mnu_major.name = "mnuHealthIssues_Major"
+            mnu_major.caption = "Major Health Issues"
+            mnu_major.tag = "major"
+            bNoMainMenu = False  
+         End If
+        
+         mnu = New Menu(mnu_major) As "mnuHealthIssues"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+     End If
+   Next
+  
+   bNeedSeparator = True   
+   bNoMainMenu = True
+   '---------------------------------------------------------------
+   'Next add all the significant conditions followed by a separator
+   '---------------------------------------------------------------
+   For Each PastHistoryCondition In currentconsult!past_history
+    If PastHistoryCondition!active = True Then
+         If bNeedSeparator Then
+           mnu = New Menu(mnuHealthIssues)
+           mnu.name = "separator_2"
+           mnu.caption = ""
+           bNeedSeparator = False  
+         End If  
+         If bNoMainMenu Then
+            mnu_active = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+            mnu_active.name = "mnuHealthIssues_Significant"
+            mnu_active.caption = "Significant Issues"
+            mnu_active.tag = "significant"
+            bNoMainMenu = False  
+         End If         
+         mnu = New Menu(mnu_active) As "mnuHealthIssues"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+    End If
+   Next 
+   bNeedSeparator = True   
+   bNoMainMenu = True
+   '--------------------------------------------------------------
+   'Lastly add all the inactive conditions followed by a separator
+   '--------------------------------------------------------------
+    For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!active = False And PastHistoryCondition!major = False
+         If bNeedSeparator Then
+           mnu = New Menu(mnuHealthIssues)
+           mnu.name = "separator_3"
+           mnu.caption = ""
+           bNeedSeparator = False  
+         End If  
+         If bNoMainMenu Then
+            mnu_inactive = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+            mnu_inactive.name = "mnuHealthIssues_Significant"
+            mnu_inactive.caption = "Inactive Issues"
+            mnu_inactive.tag = "inactive"
+            bNoMainMenu = False  
+         End If         
+
+         mnu = New Menu(mnu_inactive) As "mnuHealthIssues"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+      End If
+    Next
+End
+
+
+Public Sub mnuHealthIssues_Click()
+   '---------------------------------------------------
+   'User wants to link a request form to a health issue
+   'The menu tag = the pk_pasthistory
+   '---------------------------------------------------
+  
+  Select Case Last.tag
+  Case "general notes", "remove link"
+    txtHealthIssue.text = "General Notes"
+    fk_pasthistory = 0
+    cProgressNote_Section = const.cSection_GeneralNotes
+  Case Else
+    txtHealthIssue.text = currentconsult!past_history[Last.tag]!description
+    fk_pasthistory = Last.tag
+    cProgressNote_Section = const.cSection_Vaccination
+  End Select
+End

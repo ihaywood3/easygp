@@ -1,0 +1,1464 @@
+' Gambas class file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+' The EasyGP letter writer
+'
+' Copyright(C)2008 Dr Richard Terry rterry@gnumed.net
+' 
+' This program Is free software; you can rerrdistribute it And / Or modify
+' it under the terms Of the GNU General Public License As published by
+' the Free Software Foundation; either version 2 Of the License, Or
+' (at your option)any later version.
+' 
+' This program Is distributed In the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty Of
+' MERCHANTABILITY Or FITNESS For A PARTICULAR PURPOSE.See the
+' GNU General Public License For more details.
+' 
+' You should have received a Copy Of the GNU General Public License
+' along With this program; If Not, Write To the Free Software
+' Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110 - 1301 USA
+
+
+Private bEmbedded As Boolean
+Private bExit As Boolean
+'Private Zoom As Integer[]
+'Private iZoom As Integer
+'Private iProgressNotes_Zoom As Integer 'the percentage zoom for the progress notes
+
+Private PersonWritingTo As Collection 
+Private specialists As Collection
+Private specialist As Collection 
+Private iCurrentKey As Integer
+Private Branches As Collection
+Private branch As Collection 
+Private Comms As Collection
+Private comm As Collection 
+'Private aBranch As cBranch
+Private aCurrentBranch As Integer
+'Private referral As collection 
+
+Private iCurrentReferral As Integer 'key to current referral
+Private bEditing As Integer 'if true we are editing a referral
+Private sReferralKey As Variant
+Private currentconsult As CConsult
+Private referral_types As Collection 
+Private referral_type As Collection 
+Private fk_person As Integer 'key for person the referral letter is to
+Private fk_type As Integer   'key for the type of referral letter
+Private fk_branch As Integer
+Private fk_organisation As Integer
+Private fk_pasthistory As Integer 'past history item the letter is linked to
+Private cProgressNote_Section As Integer 'either past history or general at moment
+Private fk_progressnote As Integer
+      ' set via the mnuHealthIssues_Click
+Private pk_referral As Integer
+
+Private FHtml_Viewer As FHtmlViewer
+Private hobs As Observer
+
+Public Sub set_embedded(flag As Boolean)
+   '--------------------------------------------------
+   'If this form is embeded from another form set flag
+   '--------------------------------------------------
+   bEmbedded = flag
+End
+
+Public Sub Init(cons As CConsult)
+   Dim printer_name As String
+   '---------------------------------------------------------
+   'Do all the form initialisation stuff like adding stuff to 
+   'combo's, setting numbers of columns in lists
+   '---------------------------------------------------------
+   currentconsult = Cons         'set current consult
+   Layout_Controls()             'do gui init stuff
+   Defaults_Load                 'defaults such as letter head templates,fonts
+   Settings_Load()         'load settings for this form
+   '--------------------------------------------------------------------------
+   'Create an instance of a html viewer and create observers for its buttons
+   'Over-ride the events on the embedded web browser back and forwards buttons
+   'and close buttons. Its boot up position will be on the first tab, but if
+   'user clicks on tabs subsequently it will be 'shuffled around' by reparenting
+   '----------------------------------------------------------------------------
+   FHtml_Viewer = New FHtmlViewer(VBox_Preview)  
+   With FHtml_Viewer
+       .tbWebBrowserBack.Visible = False   
+       .tbWebBrowserForeward.Visible = False 
+   End With
+   hObs = New Observer(FHtml_Viewer.tbWebBrowserClose) As "tbPreview_Close"
+   mnuHealthIssues_Refresh()
+   Reload()
+   
+End
+
+
+Public Sub mnuHealthIssues_Refresh()
+   '--------------------------------------------------------
+   'Puts all the current health issues onto a drop down menu
+   '--------------------------------------------------------
+   Dim mnu As Menu
+   Dim PastHistoryCondition As Collection
+   
+   If Not currentconsult Then Return
+   '---------------------------
+   'Everyone gets general notes
+   '---------------------------
+   mnuHealthIssues.Children.Clear()
+   mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+   mnu.name = "General Notes"
+   mnu.caption = "General Notes"
+   mnu.tag = "general notes"
+   '--------------------------
+   'Add any past history items
+   '--------------------------
+   If currentconsult!past_history.count = 0 Then Return 
+   currentconsult.Refresh("past_history") 
+   mnu = New Menu(mnuHealthIssues)
+   mnu.name = "separator_1"
+   mnu.caption = ""
+   currentconsult.Refresh("past_history") 
+   For Each PastHistoryCondition In currentconsult!past_history
+    If PastHistoryCondition!major Then
+      mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+      mnu.name = PastHistoryCondition!description
+      mnu.caption = PastHistoryCondition!description
+      mnu.tag = PastHistoryCondition!pk_pasthistory
+    End If
+   
+   Next
+     mnu = New Menu(mnuHealthIssues)
+     mnu.name = "separator_2"
+     mnu.caption = ""
+   For Each PastHistoryCondition In currentconsult!past_history
+    If PastHistoryCondition!active = True Then
+      mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+      mnu.name = PastHistoryCondition!description
+      mnu.caption = PastHistoryCondition!description
+      mnu.tag = PastHistoryCondition!pk_pasthistory
+    End If
+   Next 
+     mnu = New Menu(mnuHealthIssues)
+     mnu.name = "separator_3"
+     mnu.caption = ""
+    For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!active = False And PastHistoryCondition!major = False
+        mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+        mnu.name = PastHistoryCondition!description
+        mnu.caption = PastHistoryCondition!description
+        mnu.tag = PastHistoryCondition!pk_pasthistory
+      End If
+    Next
+    
+End
+Public Sub mnuHealthIssues_Refresh_DONOTDELETE()
+   '------------------------------------------------------------------
+   'Refreshes the progress notes menu on the main toolbar
+   'Clears all existing entries as user could have added new problems
+   'rebuilds the menu with menu's for
+   '*show all notes
+   '*general notes
+   '*major problems as submenu
+   '*significant active problems as submenu
+   '*inactive problems as submenu
+   '-------------------------------------------------------------------   
+   Dim mnu As Menu
+   Dim mnu_major As Menu
+   Dim mnu_active As Menu
+   Dim mnu_inactive As Menu
+   Dim PastHistoryCondition As Collection
+   Dim bNeedSeparator As Boolean = True
+   Dim bNoMainMenu As Boolean = True
+   
+   If Not currentconsult Then Return
+   '----------------------------------------------------------------
+   'Clear menu, even if exit this sub, don't want the last patient's
+   'menu items on the list
+   '----------------------------------------------------------------
+   mnuHealthIssues.Children.Clear()  
+   mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+   mnu.name = "General Notes"
+   mnu.caption = "General Notes"
+   mnu.tag = "general notes"  
+   If currentconsult!past_history.count = 0 Then Return 
+   currentconsult.Refresh("past_history")  
+   '---------------------------------------------------------
+   'Next add all the major conditions followed by a separator
+   '---------------------------------------------------------
+   For Each PastHistoryCondition In currentconsult!past_history
+    If PastHistoryCondition!major Then
+        If bNeedSeparator Then
+            mnu = New Menu(mnuHealthIssues)
+            mnu.name = "separator_1"
+            mnu.caption = ""
+            bNeedSeparator = False  
+         End If
+         If bNoMainMenu Then
+            mnu_major = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+            mnu_major.name = "mnuHealthIssues_Major"
+            mnu_major.caption = "Major Health Issues"
+            mnu_major.tag = "major"
+            bNoMainMenu = False  
+         End If
+        
+         mnu = New Menu(mnu_major) As "mnuHealthIssues"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+     End If
+   Next
+  
+   bNeedSeparator = True   
+   bNoMainMenu = True
+   '---------------------------------------------------------------
+   'Next add all the significant conditions followed by a separator
+   '---------------------------------------------------------------
+   For Each PastHistoryCondition In currentconsult!past_history
+    If PastHistoryCondition!active = True Then
+         If bNeedSeparator Then
+           mnu = New Menu(mnuHealthIssues)
+           mnu.name = "separator_2"
+           mnu.caption = ""
+           bNeedSeparator = False  
+         End If  
+         If bNoMainMenu Then
+            mnu_active = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+            mnu_active.name = "mnuHealthIssues_Significant"
+            mnu_active.caption = "Significant Issues"
+            mnu_active.tag = "significant"
+            bNoMainMenu = False  
+         End If         
+         mnu = New Menu(mnu_active) As "mnuHealthIssues"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+    End If
+   Next 
+   bNeedSeparator = True   
+   bNoMainMenu = True
+   '--------------------------------------------------------------
+   'Lastly add all the inactive conditions followed by a separator
+   '--------------------------------------------------------------
+    For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!active = False And PastHistoryCondition!major = False
+         If bNeedSeparator Then
+           mnu = New Menu(mnuHealthIssues)
+           mnu.name = "separator_3"
+           mnu.caption = ""
+           bNeedSeparator = False  
+         End If  
+         If bNoMainMenu Then
+            mnu_inactive = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+            mnu_inactive.name = "mnuHealthIssues_Significant"
+            mnu_inactive.caption = "Inactive Issues"
+            mnu_inactive.tag = "inactive"
+            bNoMainMenu = False  
+         End If         
+
+         mnu = New Menu(mnu_inactive) As "mnuHealthIssues"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+      End If
+    Next
+End
+
+Public Sub mnuHealthIssues_Show()
+  
+  mnuHealthIssues_Refresh()
+  
+End
+Public Sub mnuHealthIssues_Click()
+   '---------------------------------------------------
+   'User wants to link a request form to a health issue
+   'The menu tag = the pk_pasthistory
+   '---------------------------------------------------
+   Select Case Last.tag
+   Case "general notes", "remove link"
+    txtHealthIssue.text = "General Notes"
+    cProgressNote_Section = const.cSection_GeneralNotes
+    fk_pasthistory = 0
+   Case Else
+     txtHealthIssue.text = currentconsult!past_history[Last.tag]!description
+     fk_pasthistory = Last.tag
+     cProgressNote_Section = const.cSection_Referrals
+   End Select
+   
+  
+  
+End
+
+Public Sub tbPreview_Close_Click()
+   '-------------------------------------------------------------------------------
+   'this observer overides the click event on the close button on the embedded form
+   'Hide the preview form and re-show the referral letter gui
+   '-------------------------------------------------------------------------------  
+   Stop Event
+   Vbox_Preview.Visible = False  
+   VSplit_Referrals.Visible = True
+End
+
+Public Sub Form_Close()
+   '-------------------------------------
+   'Save the widths/heights of splits etc
+   '-------------------------------------  
+   Settings_Save()
+End
+
+Public Sub Save()
+   '--------------------------------------------------------------
+   'Save the current edit area recall and updates the recalls list
+   'Need this amount of info to save
+   'For table clin_referrals.referrals
+   '  pk 
+   '  fk_consult        Not Null key To the main clin_consult.consult table
+   '  fk_person         If Not Null key To contacts.data_persons table ie person referred To
+   '  fk_organisation   If Not Null key To contacts.data_organisations table ie org anisation referred To
+   '  fk_branch         key To contacts.data_branches table ie branch Of organisation
+   '  fk_type           key To lu_referral_type table ie type Of referral e.g opinion Or management
+   '  letter_html       Not Null Html which Is the letter itself
+   '  tag text          A description Of the letter eg 'heart failure'
+   '  deleted           Default False,
+   '  body_html         body of the letter = text minus headings etc
+   '--------------------------------------------------------------
+    Dim referral As New Collection
+    Dim sHtml As String
+    
+    If Not Valid_Referral() Then Return
+   ' -----------------------------------------------------------
+   ' Now load a fresh collection with data from the widgets
+   ' -----------------------------------------------------------
+   If pk_referral <> -1 Then
+      referral!pk_referral = pk_referral
+   End If
+    referral!fk_person = fk_person
+    referral!tag = Trim(txtTag.text)
+    If fk_branch <> 0 Then
+      referral!fk_branch = fk_branch
+    End If
+    If fk_organisation <> 0 Then
+      referral!fk_branch = fk_branch
+    End If
+    If chkIncludeCarePlan.value = True Then
+      referral!include_careplan = True
+    Else
+      referral!include_careplan = False   
+    End If  
+    If chkIncludehealthSummary.value = True Then
+       referral!include_healthsummary = True
+    Else
+      referral!include_healthsummary = False 
+    End If  
+    
+    referral!body_html = Referral_BodyHTML_Construct()
+    referral!letter_html = Referral_LetterHTML_Construct()
+    referral!fk_type = referral_types[cmbReferralTypes.index + 1]!pk
+    referral!fk_type = fk_type                                             'e.g opinion and management
+   ' referral!fk_pasthistory = fk_pasthistory '0 = general notes > 0 = key to clin_history.past_history table
+    '-------------------------------------------------
+    'Construct the text to embed in the progress notes
+    '-------------------------------------------------
+    sHtml = "Referral Letter to " & txtName.text 
+    sHtml &= " Re: " & txtTag.text & ":"
+    sHtml &= "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0>"
+     
+     "<COL WIDTH=80%>"
+     "<COL WIDTH=20%>"
+     "<TR VALIGN=TOP>"
+    
+     "<TD WIDTH=80%>"
+     "<HR><P><small><FONT FACE='Times New Roman, serif'>%letterbody%"
+     "</small></P><HR>"
+     "</TD>"
+     "<TD WIDTH=20%>"
+     "<P><BR>"
+     "</P>"
+     "</TD>"
+     "</TR>"
+     "</TABLE>"
+     shtml = Replace$(shtml, "%letterbody%", referral!body_html)
+     modDBConnect.BeginTrans()
+        referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, shtml, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
+        pk_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral)   'Save the referral letter
+    modDBConnect.CommitTrans()
+    If Not chkDoNotPrint.value Then
+        Referral_Print(referral)
+   End If
+  
+   Reload()                                                  'Default to a new letter
+   FClinical.Refresh_AllPreviousNotes()
+End
+
+Public Sub Referral_Print(referral As Collection)
+   '-----------------------------------------------
+   'temporary work-around, convert to pdf and print
+   '-----------------------------------------------
+   modPrinting.Print_html_as_pdf(referral!letter_html, const.PlainPaper_Printer)
+   If chkIncludehealthSummary.value = True Then
+       modPrinting.Print_html_as_pdf(FClinical.HealthSummary_Get(), const.PlainPaper_Printer)
+   End If
+   If chkIncludeCarePlan.value = True Then
+       modPrinting.Print_html_as_pdf(FClinical.CarePlan_Get(), const.PlainPaper_Printer)
+   End If   
+End
+
+
+Public Sub Reload()
+      currentconsult.Refresh("referrals_written")                            'Delete key = force a refresh
+      FClinical.Refresh_Section(const.cSection_Referrals)                    'Refresh lists on main screen FClinical
+      EditArea_Clear()                                         'clear for next condition
+      txtCategory.SetFocus()
+      Referrals_This_consult_Show()                                          'Update list under edit area
+      FClinical.Refresh_Section(const.cSection_Referrals)  
+
+  
+End
+
+Public Sub EditArea_Notify_DataChange(flag As Boolean)
+   '--------------------------------------------------
+   'Adds or removes padding around edit area and lists
+   'to indicate if data is changed and unsaved
+   '--------------------------------------------------
+  If flag Then
+     HBox_EditArea.Padding = 1
+     HBox_EditArea.Background = Color.red
+      Vbox_ReferralsList.Background = Color.red
+      Vbox_ReferralsList.Padding = 1
+      tbSave.Foreground = Color.red
+  Else
+     HBox_EditArea.Padding = 0
+     HBox_EditArea.Background = Color.white
+      Vbox_ReferralsList.Background = Color.White
+      Vbox_ReferralsList.Padding = 0
+      tbSave.Foreground = Color.Black
+  End If
+End
+
+Public Sub Defaults_Load()
+  'Loads defaults for letter writing module
+   Fonts_Fill_Combo
+   LetterHeads_Load()
+   ' iProgressNotes_Zoom = 75
+   ' zoom[0] = 20
+   ' zoom[1] = 60
+   ' zoom[2] = 70
+   ' zoom[3] = 75
+   ' zoom[4] = 80
+   ' zoom[5] = 85
+   ' zoom[6] = 95
+   ' 
+End
+
+Public Sub Layout_Controls()
+    
+    cvwLetters.Clear()           'clear the list    
+    cvwLetters.Columns.Count = 4
+    cvwLetters.Columns[0].width = 80  'date
+    cvwLetters.Columns[1].width = 120  'Who to
+    cvwLetters.Columns[2].width = 150  'type of referral
+    cvwLetters.Columns[3].width = 200  'referral tag
+    referral_types = modReferralsDBI.Referral_Get_Types()
+    modUtil.LoadCombo(cmbReferralTypes, referral_types, "type")
+    EditArea_Resize_Labels()
+    bexit = True  
+   ' cmbReferralTypes.Clear()
+   ' For Each referral_type In referral_types
+    '  cmbReferralTypes.Add(referral_type!type, referral_type!pk)
+   ' Next
+    bExit = False 
+    
+  
+   
+   
+End
+
+Public Sub LetterHeads_Load()
+  'Loads available letter heads
+  'TODO
+  cmbLetterHeads.Add("Doctor default", 0)
+  cmbLetterHeads.Add("Practice default", 1)
+  
+End
+
+
+
+Public Sub LetterWriter_Click()
+   '---------------------------------------------
+   'User has clicked on one of the editor buttons
+   '---------------------------------------------
+   Select Case Last.tag
+   Case "erase"
+   teLetter.Clear()
+   Case "bold"
+      teLetter.Format.Font.Bold = Last.Value
+      'Print Last.value
+   Case "italic"
+      teLetter.Format.Font.Italic = Last.Value
+   Case "underline"
+      teLetter.Format.Font.Underline = Last.Value
+   Case "strikeout"
+         teLetter.Format.Font.StrikeOut = Last.Value
+   Case "align left"
+         teLetter.Format.Alignment = Align.Left
+   Case "align centre"
+       teLetter.Format.Alignment = Align.Center
+   Case "align right"
+      teLetter.Format.Alignment = Align.Right
+   
+   Case "clear font attributes"
+        ' Editor_Fonts_Reset()
+  
+   Case "dot point"
+   End Select
+End
+
+Public Sub Editor_Fonts_Reset()
+   '------------------------------------------------------------
+   'Clears any font attributes ie saves clicking muliple buttons
+   '------------------------------------------------------------
+   Object.Lock(btnBold)
+   Object.Lock(btnItalic)
+   Object.Lock(btnUnderline)
+   Object.Lock(btnStrikeOut)
+   Object.Lock(btnAlignLeft)
+   Object.Lock(btnAlignCenter)
+   Object.Lock(btnAlignRight)
+   Object.Lock(btnAlignJustify)
+   Object.Lock(cmbFonts)
+   Object.Lock(SpinBox1)
+   Object.Lock(btnColour)
+   btnBold.Value = False
+   btnItalic.Value = False
+   btnUnderline.Value = False
+   btnStrikeOut.Value = False
+   btnAlignLeft.value = False
+   btnAlignCenter.value = False
+   btnAlignJustify.Value = False 'what is this
+   btnAlignRight.value = False
+   'FIXME put in the default font
+   'put in black as default colour
+   teLetter.Format.Font.Bold = False
+   teLetter.Format.Font.Italic = False
+   teLetter.Format.Font.Underline = False
+   teLetter.Format.Font.StrikeOut = False
+   teLetter.Format.Alignment = Align.Left
+   btnColour.Color = Color.Black
+   teLetter.Format.Color = Color.Black
+   Object.UnLock(btnBold)
+   Object.UnLock(btnItalic)
+   Object.UnLock(btnUnderline)
+   Object.UnLock(btnStrikeOut)
+   Object.UnLock(btnAlignLeft)
+   Object.UnLock(btnAlignCenter)
+   Object.UnLock(btnAlignRight)
+   Object.UnLock(btnAlignJustify)
+   Object.UnLock(cmbFonts)
+   Object.UnLock(SpinBox1)
+   Object.UnLock(btnColour)
+End
+Public Sub Fonts_Fill_Combo()
+    Dim sFont As String
+    For Each sFont In Fonts
+      cmbFonts.add(sFont)
+    Next
+End
+
+Public Sub btnColour_Change()
+   teLetter.Format.Color = btnColour.Color
+End
+
+
+Public Sub SpinBox1_Change()
+   teLetter.Format.Font.Size = Last.Value
+   teLetter.SetFocus
+ End
+
+Public Sub cmbFonts_Click()
+
+  teLetter.Format.Font.Name = Last.text 
+  teLetter.SetFocus
+
+End
+
+Public Function Referral_LetterHTML_Construct() As String
+
+     Dim sType As String
+     Dim sLetterHtml As String
+     Dim charpos As Integer
+     Dim sPatient As String = currentconsult!patient!firstname & " " & currentconsult!patient!surname & " " & currentconsult!patient!street 
+     spatient &= " " & currentconsult!patient!suburb & currentconsult!patient!postcode & "DOB:" & Format(currentconsult!patient!birthdate, "dd/mm/yyyy")
+     sPatient &= " Aged: " & currentconsult!patient!age 
+   'FIXME - CHANGE SbASCI ACCORDING TO ABSCENCE/PRESCENT OF VALUES EG COMPANY, STREET2
+     sLetterHtml = "<html><head><meta name='qrichtext' content='1' /></head><body>"
+   "<TABLE WIDTH=100% BORDER=0 CELLPADDING=4 CELLSPACING=3 >"
+      "<COL WIDTH=128*>"
+      "<COL WIDTH=128*>"
+      "<TR VALIGN=TOP>"
+         "<TD WIDTH=50%>"
+            "<P>%practitioner_name<BR>"
+            "%provider_no</P>"
+         "</TD>"
+         "<TD WIDTH=50%>"
+            "<P ALIGN=RIGHT>%clinic.name<BR>"
+            "%clinic.branch<BR>"
+            "%clinic.street<BR>"
+            "%clinic.suburb<BR></P>"
+         "</TD>"
+      "</TR>"
+   "</TABLE>"
+   "<hr style = 'width: 100%; height: 2px;' >"
+   "<P>%referred_to%<BR>" 
+   "%organisation%<BR>"
+   "%address%<BR>"
+   
+   "Phone:%phone%</P>"
+   "<p>Dear %firstname%,</p>"
+   "<p></p>"
+   "<p>Re:  %patient%</p>"
+   "<p></p>"
+   "<p>TYPE OF REFERRAL: %type%</p>"
+   "<p></p>"
+   "<p>%body%</p>"
+   "<p><BR></p>"
+   "<p>Yours Sincerely</p>"
+   "<p><BR><BR></p>"
+   "<p>%user%</p>"
+   
+   "</body></html>"
+   
+   sLetterHtml = Replace(sLetterHtml, "%practitioner_name", modDBConnect.currentUser!title & " " & modDBConnect.currentuser!wholename)
+   sLetterHtml = Replace(sLetterHtml, "%provider_no", modDBConnect.currentUser!provider_number)
+   sLetterHtml = Replace(sLetterHtml, "%clinic.name", modDBConnect.currentUser!organisation) 
+   sLetterHtml = Replace(sLetterHtml, "%clinic.name", modDBConnect.currentUser!organisation) 
+   sLetterHtml = Replace(sLetterHtml, "%clinic.branch", modDBConnect.currentUser!branch) 
+   sLetterHtml = Replace(sLetterHtml, "%clinic.street", modDBConnect.currentUser!street) 
+   sLetterHtml = Replace(sLetterHtml, "%clinic.suburb", modDBConnect.currentUser!town & " " & modDBConnect.currentuser!postcode)
+
+   sLetterHtml = Replace$(sLetterHtml, "%referred_to%", txtName.text)
+   sLetterHtml = Replace$(sLetterHtml, "%organisation%", txtOrganisation.text)
+   sLetterHtml = Replace$(sLetterHtml, "%address%", txtBranch.text & "," & txtStreet1.text & " " & txtSuburb.text & " " & txtPostcode.text)
+   sLetterHtml = Replace$(sLetterHtml, "%firstname%", PersonWritingTo!firstname)
+   sLetterHtml = Replace$(sLetterHtml, "%phone%", "")
+   sLetterHtml = Replace$(sLetterHtml, "%patient%", spatient)
+   sLetterHtml = Replace$(sLetterHtml, "%type%", cmbReferralTypes.Text)
+   sLetterHtml = Replace$(sLetterHtml, "%body%", Referral_BodyHTML_Construct())
+   sLetterHtml = Replace$(sLetterHtml, "%user%", modDBConnect.currentUser!wholename)
+   Return sLetterHtml
+End
+Public Function Referral_BodyHTML_Construct() As String
+   '-------------------------------------------------------------------------------------------
+   'extracts just the html for the body of the  letter
+   'IAN; the qt control has changed alot in how it handles html since I first implemented this
+   'this routine needs fixing. Its originally intent was to chop of everything bar the text
+   'of the letter. for some reason all blank lines in between paragraphs not being kept.
+   '--------------------------------------------------------------------------------------------
+   Dim sBodyHTML As String
+   Dim charpos As Integer
+   charpos = InStr(Lower(teLetter.RichText), "<p")
+   sBodyHTML = Right(teLetter.RichText, Len(teLetter.RichText) - charpos + 1)
+   charpos = InStr(sBodyHTML, "</body>")
+   sBodyHTML = Left(sBodyHTML, charpos - 1)
+   sBodyHTML = Replace(sBodyHTML, "</p>", "</p><BR>")
+   Return Trim(sBodyHTML)
+End
+
+Public Sub Referral_Preview()
+   '----------------------------------------------
+   'Previews a referral letter if content is valid
+   '----------------------------------------------
+   Dim sLetterHtml As String
+   Dim bValidContent As Boolean
+   Dim filename As String
+   bValidContent = Valid_Referral()
+   If Not bValidContent Then Return
+   VSplit_Referrals.Visible = False
+   Vbox_Preview.Visible = True
+   FHtml_Viewer.WebView1.html = Referral_LetterHTML_Construct()
+   FHtml_Viewer.SetHtmlFileName(filename)
+End
+
+Public Function Valid_Referral() As Boolean
+   '-------------------------------------------------------------
+   'PURPOSE    :Checks that there is adequate content in a letter
+   'RETUNRS    :False if inadequate, true if adquate
+   '           :Minimum = fk_person, fk_type
+   '           :          tag = description of letter
+   '           :          text of letter
+   '-------------------------------------------------------------
+   If fk_person = 0 Then 
+      Hbox_Provider.Padding = 1
+      Hbox_Provider.BackGround = Color.Red
+      txtName.SetFocus
+      Return False
+   End If
+   
+   If fk_type = 0 Then
+      HBox_ReferralFor.Padding = 1
+      HBox_ReferralFor.BackGround = Color.Red
+      cmbReferralTypes.SetFocus
+   End If  
+    
+   If Trim(txtTag.text) = "" Then
+       HBox_LetterTag.Padding = 1
+       HBox_LetterTag.BackGround = Color.Red
+       txtTag.SetFocus
+      Return False
+   End If
+  
+   If Trim(teLetter.text) = "" Then
+      vbox_LetterText.Padding = 1 
+      vbox_LetterText.BackGround = Color.Red
+      teLetter.SetFocus
+    Return False
+   End If
+   If Trim(txtHealthIssue.text) = "" Then
+      Message.Info("Please select a health issue to link to this request\nor link to 'General Notes'")
+      MenuButton1.SetFocus()
+      Return False
+   End If
+   Return True
+ End  
+ 
+
+Public Sub teLetter_Change()
+   'FIXME - PUT IN SOME USER-DEFINED TEXT SHORTCUTS
+   Dim sTExt As String
+   If bExit Then Return
+   If Len(teLetter.text) Then
+      vbox_LetterText.Padding = 0
+      vbox_LetterText.BackGround = Color.Default
+   End If
+   Object.Lock(teLetter)
+   sText = teLetter.RichText  
+   If InStr(sText, ".ms") Then
+      sText = Replace$(sText, ".ms", "I enclose the patients summary sheet.")
+      teLetter.RichText = sTExt
+   End If
+  
+  Object.Unlock(teLetter)
+EditArea_Notify_DataChange(True)
+End
+
+Public Sub EditAreaTextBox_Change()
+   If bExit Then Return
+   Select Case Last.tag
+   Case "name"
+      '-----------------------------------------------------
+      'User deletes the name, visciously reset the edit area
+      'Why, we must enforce keys for saving ie fk_person etc
+      'must exist
+      '------------------------------------------------------
+      If Trim(txtName.text) = "" Then
+            EditArea_Clear()
+      End If
+      Hbox_Provider.Padding = 0
+      Hbox_Provider.BackGround = Color.White
+   Case "referral for"
+      If Trim(cmbReferralTypes.text) = "" Then
+         lblReferralType_Missing.Visible = True
+          HBox_ReferralFor.Padding = 1
+          HBox_ReferralFor.BackGround = Color.Red
+         cmbReferralTypes.SetFocus
+      Else
+         HBox_ReferralFor.Padding = 0
+         HBox_ReferralFor.BackGround = Color.White
+      End If
+   Case "tag"
+        If Trim(txtTag.text) = "" Then
+            HBox_LetterTag.BackGround = Color.Red
+            HBox_LetterTag.Padding = 1
+            txtTag.SetFocus
+        Else
+           HBox_LetterTag.BackGround = Color.White
+           HBox_LetterTag.Padding = 0
+        End If
+   End Select
+   EditArea_Notify_DataChange(True)
+End
+
+Public Sub EditAreaTextBox_KeyRelease()
+   '----------------------------------------------------------------------------
+   'Search for appropriate collections of information on each key-release stroke
+   '-----------------------------------------------------------------------------
+   If bExit Then Return
+
+   Select Case Last.tag
+   Case "category" 
+      Category_Selection("get")
+   Case "name"
+       Person_Selection("get")
+   Case "organisation"
+     ' branches = modReferralsDBI.Organisations_Get_For_Employee(aProvider.pk_person, txtOrganisation, columnview1)
+  Case "referral for"    
+     
+ End Select
+ 
+End
+
+Public Sub EditArea_Resize_Labels()
+   '-------------------------------------------------------------------
+   'Adjust all lables as per current system font to make sure text fits
+   '-------------------------------------------------------------------
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
+   lblSpacerLeftOfButtons.width = lblmeasure.width
+End
+
+Public Sub EditArea_Clear()
+   '-----------------------------------------
+   'Clears the textboxes etc in the edit area
+   'needs cleverer code
+   '-----------------------------------------
+   bExit = True
+   '---------------
+   'Clear textboxes
+   '---------------
+   txtCategory.text = ""
+   txtName.text = ""
+   txtOrganisation.text = ""
+   txtBranch.text = "" 
+   txtStreet1.text = ""
+   txtStreet2.Text = ""
+   txtSuburb.text = ""
+   txtPostcode.text = ""
+   txtHealthIssue.text = ""
+   cmbReferralTypes.text = ""
+   txtTag.text = ""
+   HBox_LetterTag.BackGround = Color.White
+   HBox_LetterTag.Padding = 0
+   teLetter.text = "" 
+   '------------------------------------
+   'Remove labels which could be showing
+   '------------------------------------
+   lblReferralType_Missing.Visible = False
+   lblLetter_Missing.Visible = False
+   '-----------
+   'Clear lists
+   '-----------
+   lvworgcontacts.Clear()
+   lvwPersoncontacts.Clear()
+   columnview1.Visible = False
+   '----------------------------------------
+   'Finally set focus to allow input of name
+   'user can of course swap to category
+   'fix me the index of combo - 0 to n
+   'the database table is 1-n 
+   '----------------------------------------
+   pk_referral = -1
+   fk_organisation = 0    'used if letter to an organisation
+   fk_branch = 0          'in which case it will have a branch
+   fk_person = 0          'always will be used
+   cmbReferralTypes.index = const.ReferralType_OpinionAndManagement - 1
+   fk_type = const.ReferralType_OpinionAndManagement
+   fk_progressnote = -1
+   PersonWritingTo = New Collection 
+   txtName.SetFocus
+   EditArea_Notify_DataChange(False)
+   bExit = False
+End
+
+Public Sub EditAreaTextBox_GotFocus()
+   Last.BackGround = Color.rgb(95, 255, 175)
+   Select Case Last.tag
+   Case "category"
+      With columnview1
+         .top = Hbox_Category.top + txtCategory.Height
+         .width = txtCategory.Width
+         .left = txtCategory.Left
+         .height = 120
+         .columns.count = 2
+      End With  
+   Case "name"
+      With columnview1
+         .top = Hbox_Provider.top + txtName.Height
+         .width = txtName.Width 
+          .height = 120
+         .left = txtName.Left
+      End With  
+
+   Case "organisation"
+    With columnview1
+         .top = Hbox_Organisation.top + txtOrganisation.Height
+         .width = txtOrganisation.Width
+         .left = txtOrganisation.Left
+          .height = 120
+         .columns.count = 4 'branch, street, suburb
+      End With  
+      '-----------------------------------------------------------------------
+      'If organisation textbox gets focus and user has already chosen a person
+      'fetch a list of which organisations/branches they work at
+      'if only one, the organisation_selection("get") will auto-accept one
+      '------------------------------------------------------------------------
+      If fk_person Then
+         Organisation_Selection("get")
+      End If   
+   Case "street1"
+   Case "street2"
+   Case "suburb"
+   txtPostcode.BackGround = Color.rgb(95, 255, 175)
+   Case "postcode"
+   ' Case "referral for"
+   '    With listView1
+   '       
+   '       .left = cmbReferralTypes.Left
+   '       .top = Hbox_ReferralFor.top + cmbReferralTypes.Height
+   '       .width = cmbReferralTypes.width
+   '    End With
+   End Select
+End
+
+Public Sub EditAreaTextBox_LostFocus()
+   Last.BackGround = Color.White
+   If Last.tag = "suburb" Then txtPostcode.BackGround = Color.white
+End
+
+Public Sub EditAreaTextBox_KeyPress()
+ If bExit Then Return
+ Select Case Key.Code
+   Case Key.F1
+      Select Case Last.tag
+      Case "tag"
+      End Select
+   Case Key.Down
+       Select Case Last.tag
+         Case "category", "organisation", "street1", "Suburb", "linkto", "name"
+             If columnview1.Visible Then
+                columnview1.MoveCurrent
+                columnview1.Item.Selected = True
+                columnview1.SetFocus
+            End If
+           End Select
+   
+ 
+   Case Key.Return, Key.Tab
+      Select Case Last.tag
+         Case "name"
+               
+         Case "tag"
+               teLetter.SetFocus()
+      End Select
+ 
+ End Select
+  
+
+End
+
+
+Public Sub Referrals_This_Consult_Show()
+ '--------------------------------------
+  'Updates the display in the visits list
+  '--------------------------------------
+  Dim referral As Collection 
+  Dim bDataChanged As Boolean
+  Dim x As Integer
+  cvwLetters.Clear()
+  For Each referral In currentconsult!referrals_written
+      '-----------------------------------------------------------
+      'check all the referrals
+      'if this consult pk is same as any of the existing referrals
+      'then they were written this consultation, add to list
+      '-----------------------------------------------------------
+       If currentconsult.GetPK() = referral!fk_consult Then
+          x = referral!pk_referral
+         cvwLetters.Add(x, 0)
+         cvwletters[x][0] = Format(referral!date, "dd/mm/yyyy")
+         cvwletters[x][1] = referral!provider_title & " " & referral!provider_firstname & " " & referral!provider_surname
+         cvwletters[x][2] = referral!type
+         cvwletters[x][3] = referral!tag
+        End If
+   Next
+End
+
+
+Public Sub Referral_New()
+   EditArea_Clear()
+   chkIncludeCarePlan.value = True
+   chkIncludehealthSummary.Value = True
+   chkDoNotPrint.value = True
+  
+End
+
+Public Sub EditAreaButtons_Click()
+   Select Case Last.tag
+   Case "help"
+    FClinical.Help_Show(Application.Path &/ "help/referrals.html", "Help:Referrals", True)
+   Case "insert"
+        teLetter.Clear()
+   Case "save"
+        Save()
+   Case "new referral"
+        Referral_New()
+   Case "preview"
+        Referral_Preview()
+   End Select
+  
+End
+
+
+Private Sub Settings_Save()
+
+
+      If bEmbedded Then
+        Settings["Referrals_Embedded/Main_Vertical_Splits"] = VSplit_Referrals.Layout
+        Settings["Referrals_Embedded/EditArea_Communications"] = HSplitEditArea_Communications.Layout
+        Settings["Referrals_Embedded/Letters_Include"] = HSplit_Letter_Include.Layout
+        Settings["Referrals_Embedded/Letters_Preview_Zoom"] = FHtml_Viewer.WebView1.Zoom
+      Else
+        Settings["Referrals/Main_Vertical_Splits"] = VSplit_Referrals.Layout
+        Settings["Referrals/EditArea_Communications"] = HSplitEditArea_Communications.Layout
+        Settings["Referrals/Letters_Include"] = HSplit_Letter_Include.Layout
+        Settings["Referrals/Letters_Preview_Zoom"] = FHtml_Viewer.WebView1.Zoom
+    
+      End If
+  
+
+End
+
+Private Sub Settings_Load()
+
+
+      If bEmbedded Then
+          VSplit_Referrals.Layout = Settings["Referrals_Embedded/Main_Vertical_Splits"]
+          HSplitEditArea_Communications.Layout = Settings["Referrals_Embedded/EditArea_Communications"]
+          HSplit_Letter_Include.Layout = Settings["Referrals_Embedded/Letters_Include"]
+          Try FHtml_Viewer.WebView1.Zoom = Settings["Referrals_Embedded/Letters_Preview_Zoom"]
+      Else
+          VSplit_Referrals.Layout = Settings["Referrals/Main_Vertical_Splits"]
+          HSplitEditArea_Communications.Layout = Settings["Referrals/EditArea_Communications"]
+          HSplit_Letter_Include.Layout = Settings["Referrals/Letters_Include"]
+          Try FHtml_Viewer.WebView1.Zoom = Settings["Referrals/Letters_Preview_Zoom"]
+    
+      End If
+  
+
+End
+
+
+
+ 
+Public Sub HSplitEditArea_Communications_Resize()
+
+    HSplit_Letter_Include.layout = HSplitEditArea_Communications.Layout
+
+End
+
+Public Sub HSplit_Letter_Include_Resize()
+    HSplitEditArea_Communications.Layout = HSplit_Letter_Include.layout
+  
+
+End
+
+
+Public Sub ColumnView1_KeyPress()
+    If Key.Code = Key.RETURN Then 
+        ColumnView1_DblClick() 'FIX ME MAKE SAME IN OTHER MODULES
+    End If
+  
+
+End
+
+Public Sub ColumnView1_DblClick()
+         '-----------------------------------------------------------
+         'The columnview tag is always a control, usually a textbox
+         'here we read the textbox tag to determine which textbox
+         'poppuped up the columnview
+         '---------------------------------------------------------
+          Select Case Last.Tag.tag
+          Case "category"
+                Category_Selection("accept")
+         Case "name" 
+               person_Selection("accept")
+          Case "organisation"
+               Organisation_Selection("accept")
+
+          End Select
+          columnview1.Hide
+ End
+
+
+
+Public Sub mnuReferrals_Click()
+  
+  Select Case Last.tag
+      Case "font"
+         ReferralsList_Font()
+      Case "help"
+         ReferralsList_Help()
+      Case "delete"
+      ReferralsList_Delete()
+      Case "edit"
+          Referral_Edit()
+      Case "preview"
+          Referral_Preview()
+      Case "print", "print all", "re-print,", "re_print all"
+         ReferralsList_Print(Last.tag)
+      End Select
+ End
+
+Public Sub ReferralsList_Help()
+   'Print "helping a referral"
+  
+  
+End
+Public Sub ReferralsList_Delete()
+  'Print "deleting a referral"
+  
+  
+End
+Public Sub ReferralsList_DeleteUndo()
+  'Print "un-deleting a referral"
+  
+  
+End
+Public Sub ReferralsList_Font()
+  
+  'Print "fonting a referral list"
+  
+End
+Public Sub ReferralsList_Print(print_type As String)
+  Select Case print_type
+      Case "print"
+         'Print "printing referrals"
+      Case "print all"
+         'Print "printing all referrals"
+      Case "re-print"
+         'Print "reprinting one referral"
+      Case "re_print all"
+         'Print "reprinting all referrals"
+  End Select
+End
+
+
+
+
+Public Sub ColumnView1_Select()
+    
+    iCurrentKey = columnview1.Item.Key
+End
+' Public Sub listview1_DblClick()
+'    listview1.MoveCurrent
+'   Select Case listview1.Tag.tag
+'   Case "referral for"
+'     cmbReferralTypes.text = listview1.Item.Text
+'       referral.fk_type = listview1.Item.Key
+'      referral.referral_type = listview1.Item.Text
+'       lblReferralType_Missing.Visible = False
+'       
+'       'Print "the key was", referral.fk_type, "and the text was", listview1.Item.Text
+'       listview1.Visible = False
+'       txtTag.SetFocus()
+'   End Select
+'   
+'   
+' End
+
+' Public Sub ListView1_KeyPress()
+'       If Key.code = Key.Return Then
+'          listview1_DblClick()
+'       End If
+' End
+Public Sub Referral_Edit()
+   
+   'Edits either an letter just written (saved or not this consult)
+   'or an old referral that has been re-loaded for re-printing
+   'or editing
+   'Note:if re-edited from an old one,must ensure referral.pk set to 0
+   '------------------------------------------------------------------
+   
+   Dim Letter_from_View As Collection ' to make typing easier
+   Dim PH As Collection 
+   EditArea_Clear()
+   bExit = True
+   cvwLetters.MoveCurrent
+   pk_referral = cvwLetters.Item.key
+   
+   Letter_from_View = currentconsult!referrals_written[sReferralKey]
+   fk_branch = Letter_from_View!fk_branch
+   fk_person = Letter_from_View!fk_person
+   fk_organisation = Letter_from_View!fk_organisation
+   txtName.text = Letter_from_View!provider_title & " " & Letter_from_View!provider_firstname & " " & Letter_from_View!provider_surname 
+   txtCategory.text = Letter_from_View!category
+   txtOrganisation.text = Letter_from_View!organisation
+   txtBranch.text = Letter_from_View!branch
+   txtStreet1.text = Letter_from_View!street
+   txtStreet2.Text = ""
+   txtSuburb.text = Letter_from_View!town
+   txtPostcode.text = Letter_from_View!postcode
+   '-----------------------------------------------------------------------------
+   'Now, use the fk_pasthistory (default = 0) to set the linked past history item
+   '-----------------------------------------------------------------------------
+   If Letter_from_View!fk_pasthistory = 0 Then
+      txtHealthIssue.text = "General Notes"
+      fk_pasthistory = 0 
+   Else
+      For Each PH In currentconsult!past_history
+             If Letter_from_View!fk_pasthistory = PH!pk_pasthistory Then
+                txtHealthIssue.text = PH!description
+                fk_pasthistory = PH!pk_pasthistory
+                Break
+             End If
+      Next
+   End If
+   If Letter_from_View!include_careplan = True Then
+      chkIncludeCarePlan.value = True
+   Else
+      chkIncludeCarePlan.value = False
+   End If
+   If Letter_from_View!include_healthsummary = True Then
+      chkIncludehealthSummary.value = True
+   End If
+   
+  ' cmbReferralTypes.index = Letter_from_View!fk_type
+   cmbReferralTypes.index = cmbReferralTypes.Find(Letter_from_View!type)
+   fk_progressnote = Letter_from_View!fk_progressnote
+   txtTag.text = Letter_from_View!tag
+   teLetter.richtext = Letter_from_View!body_html  
+   teLetter.SetFocus()
+   bExit = False  
+End
+Public Sub cvwLetters_Menu()
+     If cvwLetters.count Then
+       mnuReferrals.popup()
+     End If
+End
+
+
+
+Public Sub cvwLetters_Select()
+   '-----------------------------------------------------------------
+   'User has clicked on an existing letter for today's consulatation
+   '-----------------------------------------------------------------
+      cvwLetters.MoveCurrent
+      cvwLetters.Item.Selected = True
+      sReferralKey = cvwLetters.Item.key
+End
+
+
+Public Sub lvwOrgContacts_Menu()
+If lvworgcontacts.Count Then
+   mnuReferrals_Communications.popup 
+End If
+  
+
+End
+
+Public Sub Person_Selection(action As String, Optional calling_control As String)
+   Select Case action
+   Case "get"
+         '----------------------
+         'Gets a list of persons
+         '----------------------
+         If Trim(txtName.text) = "" Then Return 
+         specialists = modReferralsDBI.Person_BySurname_Get(Trim(txtName.text))
+         columnview1.Clear()
+         ' '-----------------------------------------------------------------
+         ' 'If categories exist to match the text, auto-select or show a list
+         ' '-----------------------------------------------------------------
+          If specialists.count Then 
+            For Each Specialist In specialists
+                  columnview1.Add(Specialist!pk_person, 0)
+                  columnview1[Specialist!pk_person][0] = Specialist!surname & "," & specialist!firstname & " "
+                  columnview1[Specialist!pk_person][1] = "(" & Specialist!occupation & ")"
+            Next
+            columnview1.tag = txtCategory 
+            'If specialists.count = 1 Then 
+            '   Person_Selection("accept")
+            '   Return
+           ' End If
+            columnview1.Visible = True
+            columnview1.Raise
+            Return 
+          Else
+            '---------------------------------------
+            'The text user has typed in dosn't exist 
+            '---------------------------------------
+           ' If bEmployeeDisplayed Then
+            '    person.remove("fk_firstname")
+            'End If
+         End If
+        
+   Case "accept"
+      '----------------------------------------------------------------------
+      'CALLED BY  : user hitting <enter> in txtName ie editarea_keypress
+      '             user hitting <enter> on the popup list of names
+      '             user double clicking on the popup list of names
+      '----------------------------------------------------------------------
+      bExit = True
+      '-----------------------------------------------------------
+      'Routine called by user clicking on list or pressing <enter>
+      '-----------------------------------------------------------
+      If columnview1.Visible Then
+          columnview1.MoveCurrent   'set internal cursor to match marquee
+          txtCategory.text = specialists[columnview1.Item.key]!occupation
+          txtName.Text = specialists[columnview1.Item.key]!wholename
+          fk_person = specialists[columnview1.Item.key]!pk_person
+          PersonWritingTo!firstname = specialists[columnview1.Item.key]!firstname
+          PersonWritingTo!surname = specialists[columnview1.Item.key]!surname
+          PersonWritingTo!title = specialists[columnview1.Item.key]!title
+       End If
+      txtOrganisation.SetFocus()
+      bExit = False  
+   End Select
+End
+
+Public Sub Category_Selection(action As String, Optional calling_control As String)
+   Select Case action
+   Case "get"
+         '-----------------------------------------------------------------------
+         'Gets a list of categories of occupations, presented in a list like this
+         ' category .... persons name i.e
+         ' cardiologist      Dr Big heart
+         '-----------------------------------------------------------------------
+         If Trim(txtCategory.text) = "" Then Return 
+       '  specialists = modReferralsDBI.Employee_Occupations_Category_Get(Trim(txtCategory.text))
+         specialists = modReferralsDBI.Employee_Occupations_Category_Get(Trim(txtCategory.text))
+         columnview1.Clear()
+         ' '-----------------------------------------------------------------
+         ' 'If categories exist to match the text, auto-select or show a list
+         ' '-----------------------------------------------------------------
+          If specialists.count Then 
+            For Each Specialist In specialists
+                  columnview1.Add(Specialist!pk_person, 0)
+                  columnview1[Specialist!pk_person][0] = Specialist!occupation
+                  columnview1[Specialist!pk_person][1] = Specialist!wholename
+            Next 
+             If specialists.count = 1 Then 
+            '    If Trim(Lower(txtEmployeeSpecialist.text)) = Lower(Specialist!Specialist) Then
+            '        Specialist_Selection("select", "list")
+            '        Return
+            ' End If
+             End If
+            columnview1.Visible = True
+            columnview1.Raise
+            columnview1.tag = txtCategory
+            
+            Return 
+       
+         Else
+            columnview1.Visible = False   
+         End If
+        
+   Case "accept"
+      '----------------------------------------------------------------------
+      'CALLED BY  : user hitting <enter> in txtCategory ie editarea_keypress
+      '             user hitting <enter> on the popup list of names
+      '             user double clicking on the popup list of names
+      '----------------------------------------------------------------------
+      bExit = True
+      '-----------------------------------------------------------
+      'Routine called by user clicking on list or pressing <enter>
+      '-----------------------------------------------------------
+      If columnview1.Visible Then
+          columnview1.MoveCurrent   'set internal cursor to match marquee
+          txtCategory.text = specialists[columnview1.Item.key]!occupation
+          txtName.Text = specialists[columnview1.Item.key]!wholename
+          fk_person = specialists[columnview1.Item.key]!pk_person
+          PersonWritingTo!firstname = specialists[columnview1.Item.key]!firstname
+          PersonWritingTo!surname = specialists[columnview1.Item.key]!surname
+          PersonWritingTo!title = specialists[columnview1.Item.key]!title
+       End If
+      txtOrganisation.SetFocus
+      bExit = False  
+   End Select
+End
+
+Public Sub Organisation_Selection(action As String, Optional calling_control As String)
+   Select Case action
+   Case "get"
+         '--------------------------------------------------------------------
+         'Gets a list of organisations for the person selected
+         ' category ....     persons name i.e
+         ' cardiologist      Dr Big heart
+         'Note: the columnview1.count is set in the editareatextbox_gotFocus()
+         '--------------------------------------------------------------------
+         If Trim(txtName.text) = "" Then Return 
+         branches = modReferralsDBI.Organisations_Get_For_Employee(fk_person)
+         If Not branches.count Then Return 
+         columnview1.Clear()
+         '-----------------------------------------------------------------------------------
+         'If branches of an organisation  exist to match the text, auto-select or show a list
+         '-----------------------------------------------------------------------------------
+         For Each branch In branches
+               Columnview1.Add(branch!pk_view, 0)
+               Columnview1[branch!pk_view][0] = Branch!organisation
+               Columnview1[branch!pk_view][1] = Branch!branch
+               Columnview1[branch!pk_view][2] = Branch!street 
+               Columnview1[branch!pk_view][3] = Branch!suburb & " " & Branch!postcode
+         Next 
+
+         If branches.count = 1 Then 
+            Organisation_Selection("accept")
+            Return  
+         End If
+         columnview1.Visible = True
+         columnview1.Raise
+         columnview1.tag = txtOrganisation
+         Return 
+
+   Case "accept"
+      '-------------------------------------------------------------------------
+      'CALLED BY  : user hitting <enter> in txtOrganisation ie editarea_keypress
+      '             user hitting <enter> on the popup list of names
+      '             user double clicking on the popup list of names
+      '-------------------------------------------------------------------------
+      bExit = True
+    
+      columnview1.MoveCurrent 
+      fk_organisation = branches[columnview1.Item.key]!fk_organisation
+      fk_branch = branches[columnview1.Item.key]!fk_branch
+      txtOrganisation.text = branches[columnview1.Item.key]!organisation
+      txtBranch.text = branches[columnview1.Item.key]!branch
+      '-----------------
+      'These can be null
+      '-----------------
+      Try txtStreet1.text = branches[columnview1.Item.key]!street
+      Try txtSuburb.text = branches[columnview1.Item.key]!town
+      Try txtPostcode.text = branches[columnview1.Item.key]!postcode
+      cmbReferralTypes.text = "Opinion and Management"
+      fk_type = const.ReferralType_OpinionAndManagement
+      txtTag.SetFocus   
+      '------------------------------------------
+      'Get the comms for this organisation/branch
+      '------------------------------------------
+      lvworgcontacts.Clear() 
+      lvwPersonContacts.Clear()
+      comms = modContactsDBI.Branch_Comms_Get(fk_branch)
+     
+       For Each comm In comms
+          lvworgcontacts.Add(comm!pk, comm!type & " " & comm!value)
+     
+      Next
+      ' For Each comm In aBranch.employee.Comms
+      '     lvwPersoncontacts.Add(Str(comm.pk), comm.comm_type & " " & comm.comm_value)
+      ' 'Print comm.pk, comm.comm_type, comm.comm_value
+      '     Next
+      ' 
+      '  End If
+       bExit = False  
+      columnview1.Visible = False   
+   End Select
+End
+
+Public Sub EditAreaCombo_Click()
+ If bExit Then Return 
+  fk_type = Last.index + 1
+End
+
+Public Sub cvwLetters_LostFocus()
+
+   If Last.Header = True Then
+        Last.header = False
+   End If
+
+End

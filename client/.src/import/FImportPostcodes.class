@@ -1,0 +1,425 @@
+' Gambas class file
+Private Localities As Collection 
+Private Locality As String 
+Private Existing_Localities As Collection 
+Private postcode As Integer = 0
+Private town As Integer = 1
+Private state As Integer = 2
+Private comment As Integer = 3
+Private hLogfile As File
+Private bFieldDefsInFirstRow As Boolean
+Private Field_Contents As String[]
+Private FViewLog As FHtmlViewer
+Private countries As Collection 
+Private country_code As String 
+Private bExit As Boolean
+Private iImportType As Integer
+Private hFile As File 
+'Wizard page constants
+Private cPageWelcome As Integer = 0                  'page to welcome the user
+Private cPageSelectCountry As Integer = 1            'page select which countries postcodes
+Private cPageSelectFile As Integer = 2               'page where they select file with patients in
+Private cPageAnalyseImport As Integer = 3            'page where file is imported
+Private cPageFinished As Integer = 4                 'page where all ends      does not exist FIXME
+
+Private The_Collection As Collection 
+Private member As Collection 
+Public Sub Form_Open()
+  
+  Init()
+  
+End
+
+Public Sub Init()
+  
+  txtLogFile.text = "/tmp/easygp_postcode_import.log"
+  FViewLog = New FHtmlViewer(Vbox_LogFile)
+  Existing_Localities = modContactsDBI.Towns_Get() 'all the data in the lu_towns table ordered alphabetically
+  
+End
+
+Public Sub tbImportPath_Click()
+
+   '--------------------------------------
+   'Select a file to import Localities from
+   '--------------------------------------
+   Dim hfile As File
+   Dim sFilename As String
+   Dim sLineInput As String
+   Dim hCtrl As Control
+   Dim lbl As Label
+   Dim x As Integer
+   Dim filepath As String 
+  
+   Dim sMsg As String 
+   Dialog.Path = "import/"
+  
+   Dialog.Title = "Select Demographic Data Source File"
+   Dialog.Filter = ["*.csv;*.txt", "Text Files"]
+   If Dialog.OpenFile() Then Return
+   Wait 'visually removes the dialog quicker, visible on slow systems
+   lblImportFilename.text = Dialog.Path
+   Sample_Data_Show()
+
+End
+Public Sub Sample_Data_Show()
+   '------------------------------------------------------
+   'Load some sample data from the source file, 10 records
+   'display a list in the edit area
+   '------------------------------------------------------
+   Dim hFile As File
+   Dim sLineInput As String
+   Dim icounter As Integer
+   
+   Inc Application.Busy
+   lvSampleData.Clear()
+   Localities = New Collection
+   Try hfile = Open lblImportFilename.Text For Input 
+   While Not Eof(hfile)
+       Line Input #hfile, sLineInput
+       If InStr(sLineInput, ",") Then
+         txtCurrentDelimiter.text = ","
+         sLineInput = Replace(sLineInput, "\"", "") 'replace " with nothing
+         txtReplaceDelimiterWith.text = ",|"
+       Endif
+       
+       Localities.Add(sLineInput, icounter)
+       lvSampleData.Add(icounter, sLineInput)
+   
+     Inc icounter
+   Wend
+   Close hfile
+   Dec Application.Busy
+   Print "Loaded: ", icounter, "towns"
+   lvSampleData.MoveFirst
+   bFieldDefsInFirstRow = False
+   If lvSampleData.count Then
+      If InStr(Lower(lvSampleData.Item.text), "Pcode") Then
+        bFieldDefsInFirstRow = True
+        lvSampleData.MoveNext()
+      Endif
+   Endif
+  
+   '---------------------------------------------------------------------
+   'if this is a built-in demographic profile known to use, show a sample
+   '---------------------------------------------------------------------
+  'tlPatient.text = modImportDBI.Sample_Patient_HTML()
+  Try ShowData()
+    ' Determine_Fields()
+End
+
+Public Sub ShowData()
+  
+    tlSamplePostcode.text = modImportDBI.Sample_Postcode_HTML()
+    Field_Contents = Split(Localities[lvSampleData.key], ",")
+    tlSamplePostcode.text = Replace$(tlSamplePostcode.text, "%postcode", Field_Contents[0])
+    tlSamplePostcode.text = Replace$(tlSamplePostcode.text, "%locality", Field_Contents[1])
+    tlSamplePostcode.text = Replace$(tlSamplePostcode.text, "%state", Field_Contents[2])
+End
+
+Public Sub lvSampleData_Select()
+
+  ShowData()
+
+End
+
+Public Sub wizard_buttons_Click()
+
+  Select Case Last.tag
+    
+    Case "import"
+      Import()
+  End Select
+
+End
+
+Public Sub Import()
+   'Check locality against existing data, only add if new ?FIXME: does a postcode ever change for a locality? ask Aust Post
+  Dim R As Result
+  Dim C As Collection 
+  Dim icounter As Integer
+  Dim iTownNew As Integer
+  Dim sql As String
+  Dim sMsg As String
+  Dim existing_locality As Collection 
+  Dim bNewTown As Boolean
+  Dim sExistingData As String
+  Dim sNewDAta As String 
+  
+  Inc Application.Busy
+  If rbImport.value = True Then
+     sMsg = "Starting to import the postcode data...."
+  Else
+     sMsg = "Updating existing postcode data...."
+  Endif
+  Try hLogfile = Open Trim(txtLogFile.text) For Write Create
+  Print #hLogfile, sMsg 
+  lblImportFilename.text = sMsg  
+  '---------------------------------------------------------------------------------
+  'Each database entry in lu_towns has these fields
+  'town (aka location - could be single entity or suburb in city)
+  'postcode
+  'state
+  'comment - needed because Aust Post uses different postcode for post office boxes
+  '---------------------------------------------------------------------------------
+  For Each Locality In Localities                        'all the new data extracted from the cvs postcode file
+       bNewTown = True                                   'assume new town
+       If icounter > 0 Then                              'skip field-defs in first row
+         Field_Contents = Split(Locality, ",")
+         sNewdata = Lower(Field_Contents[town] & " " & Field_Contents[postcode] & " " & Field_Contents[state])
+         For Each existing_locality In Existing_Localities
+             sExistingData = Lower(existing_locality!town & " " & existing_locality!postcode & " " & existing_locality!state)
+             If sNewdata = sExistingData Then
+                  bNewTown = False
+               Break
+             Endif
+         Next
+         If bNewTown Then
+            'add the new locality   
+            C = New Collection
+            C!town = Field_Contents[town]
+            c!postcode = Field_Contents[postcode]
+            C!state = Field_Contents[state]
+            c!comment = Field_Contents[comment]
+            C!pk = modDBConnect.insert("contacts.lu_towns", C)
+            Print #hLogfile, "Added new record:" & Field_Contents[town] & " " & Field_Contents[state] & " " & Field_Contents[postcode] & " " & Field_Contents[comment]
+            Inc iTownNew
+         Endif
+      End If   
+      Inc icounter  
+   Next
+   Print #hLogfile, icounter, "towns analysed ", iTownNew, " towns were added"
+   modDBConnect.CommitTrans()
+   
+   Finally
+      Close #hLogfile
+      view_Log()
+      Dec Application.Busy
+End
+
+Public Sub view_Log()
+  
+      Dim hfile As File
+      Dim sLineInput As String
+      Dim sErrorLog As String
+      Try hfile = Open Trim(txtLogFile.text) For Input
+      While Not Eof(hfile)
+          Line Input #hfile, sLineInput
+          sErrorLog &= sLineInput & "<BR>"
+      Wend
+      Print sErrorLog
+      Close #hfile
+      FViewLog.WebView1.HTML = "<HTML><BODY>" & sErrorLog & "</BODY></HTML>"
+
+End
+
+Public Sub Wizard1_Change()
+   'Wizard has just changed to the current page
+   
+   Steps_FgColors_Reset()
+   Select Case Wizard1.Index
+     Case cPageWelcome
+         tlWelcome.Foreground = Color.Black
+         tlWelcome.Font.Bold = True
+     Case cPageSelectCountry  
+         tlCountry.Foreground = Color.Black
+         tlCountry.Font.bold = True   
+     Case cPageSelectFile
+         tlSelectFile.Foreground = Color.Black
+         tlSelectFile.Font.bold = True
+     Case cPageAnalyseImport
+          tlAnalyseImport.Foreground = Color.Black
+          tlAnalyseImport.Font.Bold = True
+     Case cPageFinished
+         tlFinish.Foreground = Color.Black
+         tlFinish.Font.Bold = True  
+   End Select
+  
+  
+End
+Public Sub Wizard1_BeforeChange()
+   '-------------------------------------------------------------------
+   'This event triggers after the user has clicked the next button, but
+   'before the page actually changes, so here is an opportunity to stop
+   'the event if the information on the page is not correct
+   'ie STOP EVENT > ABORTS THE PAGE CHANGE
+   '--------------------------------------------------------------------
+   Dim $str As String
+   If Bexit Then Return 
+   Select Case Wizard1.Index
+ 
+   Case cPageWelcome
+      If iImportType = 0 Then
+        Stop Event
+        Message.info("Please choose if you want to import or update your postcode data before proceeding")
+      Endif
+   Case cPageSelectCountry
+      If country_code = "" Then
+        Stop Event
+        Message.info("Please select a country proceeding")
+        txtCountry.SetFocus()
+     Endif
+   Case cPageSelectFile
+        If lblImportFilename.text = "" Then
+           Message.Info("Please select a file to import")
+           Stop Event
+           Return
+        End If
+       
+      Try hfile = Open lblImportFilename.text For Input 
+      If Error Then
+         Message.info("Unable to open designated file - check file exists and try again")
+         Return 
+      End If 
+      Close #hfile 
+   End Select
+End
+
+Public Sub Steps_FgColors_Reset()
+   '-----------------------------------------------------------------------------
+   'Just as the wizard changes, all the steps foreground set back to gray
+   'so that when the current page is selected its 'step title' is made black bold
+   'by wizard_change
+   '-----------------------------------------------------------------------------
+   Dim tl As TextLabel
+   Dim hctrl As Control
+   For Each hctrl In VBox_Steps.children
+      If Hctrl Is TextLabel Then
+          tl = hctrl
+          tl.Foreground = Color.Gray
+          tl.Font.Bold = False 
+      Endif
+   Next
+End
+
+
+
+Public Sub rbImportType_Click()
+
+  iImportType = Last.TAG
+
+End   
+Public Sub txtCountry_KeyPress()
+   If key.code = key.down Then
+      If listview2.Visible Then
+         listview2.SetFocus()
+         listview2.MoveFirst()
+         listview2.Item.Selected = True
+      Endif
+   Endif
+End      
+Public Sub txtCountry_LostFocus()
+
+    Last.BackGround = Color.White
+    Last.pos = 0
+
+End
+
+Public Sub txtCountry_KeyRelease()
+
+   Country_Selection("get")
+
+End
+Public Sub Country_Selection(action As String, Optional calling_control As String) 
+      '-------------------------------------------------------------------------------
+      'PURPOSE    :Select a country of birth
+      'CALLED BY  :listview2_DblClick()
+      '            or using hitting <enter> in txtCountry ie EditArea_TextBox_Keypress()
+      '--------------------------------------------------------------------------------
+      Dim iMatched As Boolean
+      Dim x As Integer
+      Select Case action
+      Case "get"
+         '----------------------------------------------------------
+         'Load all the towns like txtSuburb into the popupListview2
+         '----------------------------------------------------------
+        The_Collection = modContactsDBI.country_get(Lower(Trim$(txtCountry.text)))
+        Listview2.Clear
+         If The_Collection.count Then 
+            For Each Member In The_Collection
+               Listview2.Add(Member!pk, Member!country)
+            Next 
+            If The_Collection.count = 1 Then 
+               Country_Selection("accept")
+            Else 
+              Listview2.Visible = True
+              Listview2.Raise
+              Listview2.tag = txtCountry
+            End If
+         Else
+           Listview2.Visible = False  
+         End If
+      Case "accept"
+        
+         bExit = True
+         If calling_control = "textbox" Then
+            '-------------------------------------------------------
+            'User has just hit <enter> without scrolling on the list
+            'try and find a match
+            '-------------------------------------------------------
+            If Listview2.Visible Then
+                Listview2.MoveFirst
+                 For x = 0 To listview2.count - 1
+                     If InStr(Lower(listview2.Item.text), Trim(Lower(txtCountry.text))) Then
+                       iMatched = True 
+                       Break
+                    End If
+                 Next
+                 If Not iMatched Then
+                 Listview2.Visible = False
+                  txtCountry.SetFocus()
+                  Return 'no match found for country user typed in 
+                 End If 
+               End If
+          Else
+            '-------------------------------------
+            'User is selecting from the popup list
+            '-------------------------------------
+            If Listview2.Visible Then
+              Listview2.MoveCurrent()             'match internal cursor to marquee
+            End If
+          End If
+         '------------------------------------------------------------------------------------------
+         'either way, a match has been found within the list, or the user has selected from the list
+         '------------------------------------------------------------------------------------------
+         txtCountry.text = The_Collection[listview2.Item.key]!country
+         country_code = The_Collection[listview2.Item.key]!country_code
+          Listview2.Visible = False  
+         bExit = False  
+         End Select
+End
+Public Sub ListView2_DblClick()
+    Country_Selection("accept", "list")
+    listView2.visible = False
+End
+
+Public Sub ListView2_KeyPress()
+   '-------------------------------------------
+   'popup list visible, user hits the enter key
+   '-------------------------------------------
+   If Key.Code = Key.RETURN Then 
+      ListView2_DblClick()
+   End If
+End
+Public Sub txtCountry_GotFocus()
+  Last.BackGround = Color.rgb(95, 255, 175)
+  With listview2
+      .top = Last.parent.top + Last.height
+      .left = Last.Left + Vbox3.Padding
+      .Visible = False  
+      
+  End With
+
+End
+
+
+Public Sub txtCountry_Change()
+
+  If Trim(Last.text) = "" Then listview2.Visible = False 
+
+End
+
+Public Sub Wizard1_Close()
+    Wizard1.index = cPageWelcome
+
+End

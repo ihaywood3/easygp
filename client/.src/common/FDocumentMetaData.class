@@ -1,0 +1,1633 @@
+' Gambas class file
+
+Public Type_Document_Author As Integer
+Private sLastSearchedFor As String           'last text user was looking for
+Public iDisplay_As As Integer 
+Public fk_organisation As Integer
+Private organisations As Collection 
+Private organisation As Collection 
+Private branch As Collection 
+Public fk_branch As Integer
+Public fk_employee As Integer
+Public fk_person As Integer
+Private fk_category_organisation As Integer
+Private fk_address_organisation As Integer
+Private fk_town As Integer
+Private fk_town_organisation As Integer
+Private fk_town_person As Integer
+Private fk_occupation As Integer
+Private fk_category_person As Integer
+Private fk_address_person As Integer
+Private fk_code As String
+Private fk_coding_system As Integer
+Private SendingOrganisation As Collection
+Private SendingPerson As Collection 
+Public fk_urgency As Integer
+Private towns As Collection 
+Private town As Collection 
+Public bExit As Boolean
+Private Section As Integer
+Private FFindPatients As FPatientsSelect
+Private Allpatients As Collection 
+Private pk_view As String 'for the patients
+Private old_pk As Integer
+Private currentpatient As Collection
+Private document_types As Collection 
+Private fk_patient As Integer 
+Public fk_staff_destination As Integer
+Private fk_staff As Integer 'current staff member logged on
+Private fk_lu_urgency As Integer
+Private fk_lu_archive_site As Integer
+Private terms As Collection 
+Private fname As String  
+Private old_data As Collection 
+Private patient As Collection 
+Private archive_dir As String 
+Private Embedded_in_form_name As String 
+Private bDocumentNotLinkedToPatient As Boolean
+Private Document As Collection
+Private bReAllocating As Boolean 'if true, user in the indbox is reallocating the existing patient for the document to a new one.
+Private searchtext As String
+Private member As Collection 
+Private The_Collection As Collection 
+Private fk_lu_type As Integer 
+Private CurrentRequest As Collection 
+Private request_items_text As String 
+Private lastpos As Integer
+Private sSearchText As String 
+Private currentconsult As CConsult
+Private cProgressNote_Section As Integer
+Private fk_pasthistory As Integer
+Private Laterality As Integer 
+Private Staff As Collection 
+Private Staff_Member As Collection 
+
+Public Sub Set_Embedded_Form_Name(name As String)
+   
+   Embedded_In_Form_Name = name
+   
+End
+
+Public Sub Form_Open()
+   
+   Init()
+   
+End
+
+Public Sub Get_Document_Type() As Integer
+   
+   Try Return document_types[cmbDocumentTypes.index]!pk
+   If Error Then Return 0
+
+End
+
+Public Sub Get_laterality() As Integer
+   
+   Return laterality
+   
+End
+
+Public Sub Get_fk_Patient() As Integer
+   
+   Return fk_patient
+   
+End
+
+Public Sub Get_Display_Style() As Integer
+   
+   If rbDisplayAsResult.value = True Then Return 2
+   Return 1
+   
+End
+
+Public Sub Set_Consult(cons As Cconsult)
+   
+   currentconsult = cons
+   
+End
+
+Public Sub form_Show()
+   
+   Dim sMsg As String 
+   
+   If Not Exist(modAdminDBI.Config_Get("document_scanning_directory", "/var/easygp/scanning/")) Then 
+      sMsg = "You do not seem to have set the default directories where you place scanned documents.\n\n"
+      sMsg &= "Please go to the Admin section and select the General Preferences tab, and enter the appropriate directories, before continuing."
+      Message.Info(sMsg)
+   End If
+   
+End 
+
+Public Sub Init()
+   
+   modEditAreaHelpers.Resize_labels(VBox_EditArea, lblmeasure)
+   
+   document_types = modUtil.LoadCombo(cmbDocumentTypes, modRequestsDBI.RequestTypes_Get(), "type")
+   
+   fk_urgency = const.UrgencyLevelRoutine
+   modEditAreaHelpers.Fill_Combo_Titles(cmbTitle)
+   modEditAreaHelpers.Fill_Combo_Sex(cmbSex)
+
+End
+
+Public Sub EditArea_Clear()
+   
+   Dim bStaffLocked As Boolean
+   Dim bPatientLocked As Boolean
+   Dim bSenderLocked As Boolean
+   Dim bDisplayAsLocked As Boolean
+   Dim iLastDisplayAs As Integer
+   Dim iDocumentType As Integer = cmbDocumentTypes.Index 
+   Dim bDocumentTypeLocked As Boolean
+   
+   Dim AuthorType As Integer = Type_Document_Author
+   If chkLockDocumentType.value = True Then
+       bDocumentTypeLocked = True
+   Endif
+   If Type_Document_Author = 0 Then
+      Type_Document_Author = const.contacttype_organisation
+   Endif
+   If ChkLockStaffMember.value = True Then
+      bStaffLocked = True
+   End If 
+   If chkLockPatient.value = True Then
+      bPatientLocked = True
+   Endif
+   If chkLockSender.value = True Then
+      bSenderLocked = True
+   Endif
+   If chkLockDisplayAs.value = True Then
+      iLastDisplayAs = iDisplay_As
+      bDisplayAsLocked = True
+   End If
+    modEditAreaHelpers.EditArea_Clear(VBox_EditARea)
+   modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
+   modEditAreaHelpers.EditArea_Clear(Vbox_Person)
+   columnview1.Clear
+   columnview1.Visible = False 
+   bDocumentNotLinkedToPatient = False  
+   If Embedded_in_form_name = "Inbox" Then
+      If bDocumentTypeLocked = True Then
+          cmbDocumentTypes.index = iDocumentType
+          chkLockDocumentType.value = True
+      Else
+         cmbDocumentTypes.index = -1
+      End If
+   Else
+      txtDocumentTag.text = ""
+   End If 
+   fk_patient = 0
+   lblBirthdate.text = ""
+   fk_lu_urgency = const.UrgencyLevelRoutine 
+   rbUrgencyRoutine.value = True
+   rbDisplayAsLetter.value = True
+   If Embedded_in_form_name = "Scanning" Then
+      Reset_Keys()
+   Endif
+   
+   If bPatientLocked = True Then
+      chkLockPatient.value = True
+      Patient_Show(currentpatient)
+   Else
+      fk_patient = 0 
+      currentpatient = Null     
+   Endif
+   
+   If bStaffLocked = True Then
+      ChkLockStaffMember.value = True
+      Staff_Destination_Member_Show(staff_member)
+      If txtPatient.text = "" Then 
+            txtPatient.SetFocus()
+      End If
+   Else
+      fk_staff_destination = 0  
+      staff_member = Null
+   Endif
+   
+   If bSenderLocked = True Then
+      chkLockSender.value = True
+      Select Case Type_Document_Author
+         Case const.contacttype_organisation, const.contacttype_employee
+            Organisation_Display()  'predicated on previous selection having being made ie SendingOrganisation collection exists
+         Case const.contacttype_patient
+         Case const.contacttype_person
+            SendingPerson_Display()             
+      End Select
+   Endif
+   If bDisplayAsLocked = True Then
+      Select Case iLastDisplayAs
+        Case const.Document_Display_As_Result
+          rbDisplayAsResult.value = True  
+        Case const.Document_Display_As_Letter
+          rbDisplayAsLetter.Value = True
+      End Select
+      iDisplay_As = iLastDisplayAs
+      chkLockDisplayAs.value = True
+   Endif
+End
+
+Public Sub SendingPerson_Display()
+   Dim sMsg As String
+   
+   txtPersonSurname.text = SendingPerson!surname
+   txtPersonFirstname.text = SendingPerson!firstname
+   txtPersonoccupation.text = SendingPerson!occupation
+   Try fk_occupation = SendingPerson!fk_occupation
+   fk_person = SendingPerson!fk_person
+   If Type_Document_Author = const.contacttype_person Then 
+      Try fk_category_person = SendingPerson!fk_category
+      If Error Then 
+        
+         sMsg = "This person is missing a category in contacts.\n\nPerhaps you should be selecting employee, and searching again"
+         sMsg &= "If not, then please go back to the contacts database and allocate a category to this person."
+         Message.info(sMsg)
+      Endif
+   Endif
+   
+   Try fk_address_person = SendingPerson!fk_address
+   Try fk_town_person = SendingPerson!fk_town
+   txtPersonCategory.text = SendingPerson!category
+   Try cmbSex.index = SendingPerson!fk_sex
+   Try cmbTitle = SendingPerson!fk_title
+   txtPersonSuburb.text = SendingPerson!town
+   txtPersonState.text = SendingPerson!state
+   txtPersonPostcode.text = SendingPerson!postcode
+   txtPersonStreet1.text = SendingPerson!street
+   listview2.Visible = False
+   HBox_Document_Tag.Visible = True
+   txtDocumentTag.text = SendingPerson!title & " " & txtPersonFirstname.text & " " & txtPersonSurname.text
+   If rbDisplayAsResult.value = True Then
+      txtDocumentTag.text &= "- result"
+   Else
+      txtDocumentTag.text &= " - letter"
+   Endif
+   bExit = False  
+   txtDocumentDate.SetFocus()
+   
+End
+
+Public Sub Reset_Keys()
+   
+   fk_organisation = 0
+   fk_category_organisation = 0
+   fk_town_organisation = 0
+   fk_address_organisation = 0
+   fk_person = 0
+   fk_address_person = 0
+   fk_category_person = 0
+   fk_branch = 0
+   fk_employee = 0
+   
+End
+
+Public Sub Reallocate()
+   
+   bReAllocating = True
+   txtPatient.Border = True
+   With txtPatient
+      .Foreground = Color.Red
+      .Font.Bold = True
+      .ReadOnly = False  
+      .Clear()
+      .SetFocus()
+   End With
+   With lblSearchFor
+      .text = "PATIENT ??"   
+      .foreground = Color.red  
+      .Font.bold = True
+   End With  
+   lblBirthdate.text = ""
+   txtStreet.text = ""
+   txtsuburb.text = ""
+   
+End
+
+Public Sub Edit(currentdocument As Collection, pk_view As Integer)
+   
+   Dim bits As String[]
+   Dim sString As String 
+   
+   EditArea_Clear()
+   CurrentRequest = New Collection 
+   bExit = True   
+   bReAllocating = False               
+   document = New Collection
+   document!pk_document = currentDocument!pk_document
+   document!fk_patient = currentDocument!fk_patient
+   Try fk_patient = currentDocument!fk_patient 'may not exist
+   document!fk_unmatched_patient = currentDocument!fk_unmatched_patient
+   document!fk_staff_filed_document = currentDocument!fk_staff_filed_document
+   document!fk_staff_destination = currentDocument!fk_staff_destination
+   document!source_file = currentDocument!source_file
+   document!md5sum = currentDocument!md5sum
+   document!imported_time = currentDocument!imported_time
+   document!date_requested = currentDocument!date_requested
+   document!date_created = currentDocument!date_created
+   document!tag = currentDocument!tag
+   document!comment_on_document = currentDocument!comment_on_document
+   document!provider_of_service = currentDocument!msh_sending_entity
+   document!patient_access = currentDocument!patient_access
+   document!concluded = currentDocument!concluded
+   document!fk_lu_type = currentDocument!fk_lu_provider_type
+   document!fk_lu_urgency = currentDocument!fk_lu_urgency 
+   document!fk_blob = currentDocument!fk_blob
+   document!fk_lu_message_display_style = currentDocument!fk_lu_message_display_style
+   document!provider_type = currentDocument!provider_type
+   document!organisation_category = currentDocument!organisation_category
+   document!person_category = currentdocument!person_category
+   If Not IsNull(document!fk_staff_destination)
+      With txtRecipient
+         .Border = False
+         .Foreground = Color.Black
+         .Font.Bold = False
+         .ReadOnly = True
+      End With
+      With lblStaffResponsible
+         .text = "Staff Responsible"
+         .Font.bold = False
+         .Foreground = Color.Black
+      End With
+      txtRecipient.text = currentDocument!staff_destination_title & " " & currentDocument!staff_destination_wholename    
+   Else
+      txtRecipient.Border = True
+      With txtRecipient
+         .Foreground = Color.Red
+         .Font.Bold = True
+         .ReadOnly = False  
+         .SetFocus()
+      End With
+      With lblStaffResponsible
+         .text = "STAFF ??"   
+         .foreground = Color.red  
+         .Font.bold = True
+      End With
+   End If
+   If currentDocument!fk_lu_message_display_style = 1 Then  'allow editing of tag if it is a letter
+      rbDisplayAsLetter.value = True
+      txtDocumentTag.ReadOnly = False
+      lblDocumentTag.text = "From"
+   Else
+      rbDisplayAsResult.value = True
+      txtDocumentTag.ReadOnly = True 
+      '---------------------------------------------------------------------------------
+      'Attempt to match the combo box on basis of the category of organisation or person
+      '---------------------------------------------------------------------------------
+   End If
+   txtPatient.text = Trim(currentDocument!patient_title & " " & currentDocument!patient_firstname & " " & currentDocument!patient_surname)
+   Try lblBirthdate.text = Format(currentDocument!patient_birthdate, "dd/mm/yyyy")
+   txtStreet.text = currentDocument!patient_street
+   txtSuburb.text = currentDocument!patient_town & " " & currentDocument!patient_postcode
+   
+   sString = Trim(Replace(currentDocument!provider_type, "provider", "", gb.IgnoreCase))
+   sSTring = UCase(Left(sSTring)) & Right(sSTring, Len(sSTring) - 1)
+   Try cmbDocumentTypes.index = cmbDocumentTypes.Find(sSTring)
+   
+   If Error Then cmbDocumentTypes.index = -1 'the document may have no designated provider type
+   txtSender.text = currentDocument!msh_sending_entity
+   Try txtDocumentDate.text = Format(currentDocument!date_created, "dd/mm/yyyy")
+   Try txtDateRequested.text = Format(currentDocument!date_requested, "dd/mm/yyyy")
+   txtDocumentTag.text = document!tag
+   txtComment.text = document!comment_on_document
+   txtFilename.text = Document!source_file
+   
+   Select Case document!fk_lu_urgency 
+      Case const.UrgencyLevelRoutine
+         rbUrgencyRoutine.value = True
+      Case const.UrgencyLevelModerate
+         rbUrgencyModerate.value = True
+      Case const.UrgencyLevelUrgent
+         rbUrgencyUrgent.value = True
+   End Select
+   
+   If Not IsNull(document!fk_patient)
+      With txtPatient
+         .Border = False
+         .Foreground = Color.Black
+         .Font.Bold = False
+         .ReadOnly = True
+      End With
+      With lblSearchFor
+         .text = "Patient"
+         .Font.bold = False
+         .Foreground = Color.Black
+      End With
+      
+   Else
+      txtPatient.Border = True
+      With txtPatient
+         .Foreground = Color.Red
+         .Font.Bold = True
+         .ReadOnly = False  
+         .SetFocus()
+      End With
+      With lblSearchFor
+         .text = "PATIENT ??"   
+         .foreground = Color.red  
+         .Font.bold = True
+      End With
+   End If
+   
+   If currentDocument!fk_patient Then mnuHealthIssues_Show()
+   bExit = False  
+   
+End
+
+Public Sub Timer1_Timer()
+   
+   Patient_Find()
+   
+End
+
+Public Sub Patient_Clear()
+
+   txtPatient.text = ""
+   lblBirthdate.text = ""
+   txtStreet.text = ""
+   txtsuburb.text = ""
+   With columnview1
+      .Clear   
+      .Visible = False
+   End With
+
+End  
+
+Public Sub Patient_Find()
+   
+   Dim iaddress As Collection
+   Dim iLastPatient_pk As Integer
+   Dim iAddressCount As Integer
+   Dim x As Integer 
+   
+   Timer1.Stop()
+   If Trim(txtPatient.text) = "" Then Return 
+   Allpatients = modContactsDBI.patients_get_firstname_surname(txtPatient.text)
+   Allpatients.Remove("sql_in_english")       'not used in this context
+   
+   With columnview1
+      .Clear()
+      .Columns.count = 6
+      .width = txtStreet.width
+   End With
+   
+   iLastPatient_pk = -1
+   For Each patient In allpatients   
+      If patient!fk_patient <> iLastPatient_pk Then
+         iLastPatient_pk = patient!fk_patient
+         iAddressCount = 0
+         columnview1.Add(patient!pk_view, 0)    
+         columnview1[patient!pk_view][0] = patient!surname  
+         columnview1[patient!pk_view][1] = patient!firstname
+         columnview1[patient!pk_view][2] = patient!sex
+         
+         columnview1[patient!pk_view][3] = patient!street 
+         columnview1[patient!pk_view][4] = Format(patient!birthdate, "dd/mm/yyyy")
+         columnview1[patient!pk_view][5] = patient!town & " " & patient!postcode
+      Else
+         
+         columnview1.Add(patient!pk_view, 0)
+         columnview1[patient!pk_view][0] = "" 
+         columnview1[patient!pk_view][1] = ""
+         columnview1[patient!pk_view][2] = ""
+         columnview1[patient!pk_view][3] = patient!street 
+         columnview1[patient!pk_view][4] = Format(patient!birthdate, "dd/mm/yyyy")
+         columnview1[patient!pk_view][5] = patient!town & " " & patient!postcode
+      End If
+   Next   
+   If allpatients.count Then
+      Columnview1.Visible = True 
+      columnview1.Visible = True
+      Columnview1.Raise
+      columnview1.tag = txtPatient
+      Timer1.Stop()
+   Else
+      Columnview1.Visible = False  
+   End If
+   
+End
+
+Public Sub Patient_Select()
+   
+   columnview1.MoveCurrent()
+   pk_view = columnview1.Item.Key
+   currentpatient = Allpatients[pk_view]
+   fk_patient = currentpatient!fk_patient
+   Patient_Show(currentPatient)
+   columnview1.Visible = False 
+   
+End
+
+Public Sub Patient_Show(currentPatient As Collection)
+   
+   Try txtPatient.text = currentPatient!firstname & " " & currentPatient!surname
+   Try lblBirthdate.text = Format(currentPatient!birthdate, "dd/mm/yyyy")
+   txtStreet.text = currentPatient!street
+   txtSuburb.text = currentPatient!town & " " & currentPatient!postcode
+   fk_patient = currentPatient!fk_patient
+   
+   columnview1.Visible = False 
+   With txtPatient
+      .Foreground = Color.Black
+      .Border = False  
+      .Font.Bold = False  
+   End With
+   With lblSearchFor
+      .text = "Patient"
+      .Font.bold = False
+      .Foreground = Color.Black
+   End With 
+   
+   If Embedded_in_form_name = "Inbox" Then 
+      
+      FInbox.reload_patient(bReAllocating)
+      
+   End If  
+   Select Case Type_Document_Author
+      Case const.contacttype_organisation
+         txtOrganisation.SetFocus()
+      Case const.contacttype_employee
+         
+      Case const.contacttype_patient, const.contacttype_person
+         txtPersonSurname.SetFocus()
+   End Select  
+   
+End
+
+Public Sub Staff_Find()
+   
+   Dim iaddress As Collection
+   Dim iLastStaff_Member_pk As Integer
+   Dim iAddressCount As Integer
+   Dim x As Integer 
+   
+   Timer1.Stop()
+   If Trim(txtRecipient.text) = "" Then Return 
+   
+   With columnview1
+      .Clear()
+      .Columns.count = 3
+   End With 
+   staff = modContactsDBI.Staff_Get(Trim(txtRecipient.text))
+   iLastStaff_Member_pk = -1
+   For Each Staff_Member In staff
+      columnview1.Add(Staff_Member!pk_view, 0)    
+      columnview1[Staff_Member!pk_view][0] = Staff_Member!title & " " & Staff_Member!wholename
+      columnview1[Staff_Member!pk_view][1] = Staff_Member!occupation
+      columnview1[Staff_Member!pk_view][2] = Staff_Member!branch
+   Next   
+   If Staff.count Then
+      Columnview1.Visible = True 
+      columnview1.Visible = True
+      Columnview1.Raise
+      columnview1.tag = txtRecipient
+   Else
+      columnview1.Visible = False   
+   End If
+   
+End
+
+Public Sub Staff_Select()
+   
+   columnview1.MoveCurrent()
+   pk_view = columnview1.Item.Key
+   Staff_Member = staff[pk_view]
+   Staff_Destination_Member_Show(staff_member)
+   
+   columnview1.Visible = False 
+   
+End
+
+Public Sub Staff_Destination_Member_Show(staff_member As Collection)
+   
+   Try txtRecipient.text = staff_member!title & " " & staff_member!wholename
+   fk_staff_destination = staff_member!fk_staff
+   txtPatient.SetFocus()
+   
+End
+
+Public Sub EditArea_TextBox_KeyRelease()
+   
+   Select Case Last.tag
+         
+      Case "find sender"
+         Sender_Find()
+      Case "staff member"
+         Staff_Find()
+      Case "user name"
+         
+         If iDisplay_As = 2 Then 
+            RequestItem_Selection("get", Last, "textbox")
+         Else
+            
+            Terms_Get() 
+         End If
+      Case "patient"
+         Timer1.Start() 'find patients triggered when timer > timer.delay 
+         
+   End Select
+   
+End
+
+Public Sub RequestItem_Selection(action As String, txtbox As TextBox, Optional calling_control As String)
+   
+   Dim bDuplicate As Boolean 'if True the request item is duplicated
+   Dim sMsg As String
+   
+   Select Case action
+         
+      Case "get"
+         
+         columnview1.Visible = False   
+         If InStr(txtbox.text, ";") Then
+            
+            sSearchText = Trim(Right(txtbox.text, Len(txtbox.text) - lastpos))
+         Else
+            
+            sSearchText = Trim(txtbox.Text)
+         End If
+         If Trim(sSearchText) = "" Then 
+            Return 
+         End If
+         
+         If cmbDocumentTypes.index = -1 Then
+            
+            sMsg = "Before searching for a request name, you must select the type of request you wish to find.\n\n"
+            "For example, if the document you are about to file was a bone density, you would select "
+            "the category 'Radiology' from the combo box first, then type in a few letters of what  you want to find.\n\n"
+            "If the document was an echocardiograph, you would select 'Cardiolovascular' from the combobox etc."
+            
+            Message.Title = "Searching for Request Names"
+            Message.Info(sMsg)
+            Return 
+         Endif
+         The_Collection = modRequestsDBI.requests_get_items(sSearchText, document_types[cmbDocumentTypes.index]!pk)
+         
+         With columnview1
+            .Clear()
+            If fk_lu_type Then
+               .Columns.Count = 1
+               .Columns[0].width = 400
+            Else
+               .Columns.Count = 2
+               .Columns[0].width = 100
+               .Columns[1].width = 400
+            End If
+         End With
+         If The_Collection.count Then
+            For Each member In The_Collection
+               columnview1.Add(member!pk_view, 0)
+               If fk_lu_type Then
+                  columnview1[member!pk_view][0] = member!item
+               Else
+                  columnview1[member!pk_view][0] = member!type
+                  columnview1[member!pk_view][1] = member!item
+               End If
+            Next
+            columnview1.Visible = True
+            columnview1.Raise
+            columnview1.tag = txtbox
+         End If   
+         
+      Case "accept"
+         
+         columnview1.MoveCurrent()
+         CurrentRequest = The_Collection[columnview1.Item.key]
+         
+         If InStr(CurrentRequest!item, "(RIGHT)") Then
+            rblateralityright.value = True
+            CurrentRequest!item = Trim(Replace(CurrentRequest!item, "(RIGHT)", ""))
+            laterality = const.LateralityRight
+         End If
+         If InStr(CurrentRequest!item, "(LEFT)") Then
+            rblateralityLeft.value = True
+            CurrentRequest!item = Trim(Replace(CurrentRequest!item, "(LEFT)", ""))
+            laterality = const.LateralityLeft
+         End If
+         If InStr(CurrentRequest!item, "(BOTH)") Then
+            CurrentRequest!item = Trim(Replace(CurrentRequest!item, "(BOTH)", ""))
+            rblateralityBoth.value = True
+            laterality = const.LateralityBoth
+         End If
+         request_items_text = request_items_text & CurrentRequest!item & ";"
+         bExit = True
+         txtbox.text = request_items_text
+         txtbox.pos = Len(request_items_text)
+         lastpos = Len(request_items_text)
+         columnview1.Visible = False
+         txtbox.SetFocus()
+         bExit = False  
+   End Select
+
+End
+
+Public Sub EditArea_TextBox_KeyPress()
+   
+   If Not EditArea_Textbox_ExcludeKeys(key.code, Last.tag) Then 
+      Stop Event
+      Return
+   End If  
+   
+   Select Case Key.Code
+      Case key.Down
+         If columnview1.Visible Then
+            columnview1.MoveFirst()
+            columnview1.Item.Selected = True
+            columnview1.SetFocus()
+         End If
+         If VBox_ColumnView.Visible Then
+            columnview2.MoveFirst()
+            columnview2.Item.Selected = True
+            columnview2.SetFocus()
+         End If
+         If listview2.Visible Then
+            listview2.MoveFirst()
+            listview2.Item.Selected = True
+            listview2.SetFocus()
+         Endif
+   End Select
+   
+End
+
+Public Sub EditArea_TextBox_Change()
+   
+   If bexit Then Return
+   Select Case Last.tag
+      Case "document date"
+         If IsDate(Val(Last.text)) And lblInvalidDate.text <> "" Then
+            lblInvalidDate.text = ""
+         Endif
+      Case "patient"
+         If Trim(Last.text) = "" Then
+            fk_patient = 0
+            txtStreet.text = ""
+            txtSuburb.text = ""
+            lblBirthdate.text = ""
+            columnview1.Visible = False   
+         Endif
+      Case "user name"
+         If Trim(Last.text) = "" Then
+            sSearchText = ""
+            lastpos = 0
+            request_items_text = ""
+         End If
+         FInbox.Document_Filed_As_Update(Last.text)
+   End Select
+   
+End
+
+Public Sub EditArea_TextBox_GotFocus()
+   
+   Dim hctrl As Control
+   Dim tb As Textbox
+   
+   If bexit Then Return 
+   If chkLockPatient.value = True Then Return 
+   Last.BackGround = Color.rgb(95, 255, 175)  
+   Select Case Last.tag
+         
+      Case "find sender"
+         With listview2
+            .top = Last.parent.top + Last.height
+            .left = Last.left + VBox_EditArea.Padding
+            
+         End With
+      Case "user name", "patient", "staff member"
+         With Columnview1
+            .top = Last.parent.top + Last.height
+            .height = 120
+            For Each hctrl In Last.parent.children
+               If hctrl Is TextBox Then
+                  .left = hctrl.Left + Last.parent.parent.padding
+                  .width = txtStreet.width 'otherwise not wide enough if use Last.width
+                  Break
+               End If
+            Next
+            .Raise
+         End With
+         With VBox_ColumnView
+            .top = Last.parent.top + Last.parent.height
+            .left = Last.Left
+            .width = Last.width
+         End With
+   End Select
+   If Last.tag = "user name" Then
+      If Len(Trim(Last.text)) Then
+         If Right(Trim(Last.text)) <> ";" Then
+            Last.text &= ";"
+         End If 
+         Last.pos = Len(Last.text)
+      End If
+   End If
+   If Last.tag = "patient" Then
+      columnview1.Columns.count = 6   
+      columnview1.width = txtSender.width
+   Else
+      columnview1.Columns.count = 1
+   End If
+   
+End
+
+Public Sub ColumnView1_KeyPress()
+   '---------------------------------------------------------
+   'Either accept the user selection, or if they have hit the 
+   'up arrow, move back into the textbox
+   '----------------------------------------------------------   
+  Select Case key.Code
+    Case key.Return
+       ColumnView1_DblClick()
+    Case key.Up
+      '  If Last.MoveFirst() Then
+       ' Last.tag.pos = Len(Last.tag.text)
+       ' Last.tag.SetFocus()
+  End Select
+End
+
+Public Sub ColumnView1_DblClick()
+   
+   Select Case Last.tag.tag
+      Case "user name"
+         RequestItem_Selection("accept", txtUserObservationName)
+         FInbox.Document_Filed_As_Update(txtUserObservationName.text)
+      Case "patient"
+         Patient_Select()
+      Case "staff member"
+         Staff_Select()
+   End Select
+   Columnview1.Visible = False 
+   
+End
+
+Public Sub mnuHealthIssues_Refresh()
+   
+   Dim mnu As Menu
+   Dim PastHistoryCondition As Collection
+   
+   If Not currentconsult Then Return
+   
+   mnuHealthIssues.Children.Clear()
+   mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+   mnu.name = "General Notes"
+   mnu.caption = "General Notes"
+   mnu.tag = "general notes"
+   
+   If currentconsult!past_history.count = 0 Then Return 
+   mnu = New Menu(mnuHealthIssues)
+   mnu.name = "separator_1"
+   mnu.caption = ""
+   currentconsult.Refresh("past_history") 
+   For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!major Then
+         mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+      End If
+      
+   Next
+   mnu = New Menu(mnuHealthIssues)
+   mnu.name = "separator_2"
+   mnu.caption = ""
+   For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!active = True Then
+         mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+      End If
+   Next 
+   mnu = New Menu(mnuHealthIssues)
+   mnu.name = "separator_3"
+   mnu.caption = ""
+   For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!active = False And PastHistoryCondition!major = False
+         mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+         mnu.name = PastHistoryCondition!description
+         mnu.caption = PastHistoryCondition!description
+         mnu.tag = PastHistoryCondition!pk_pasthistory
+      End If
+   Next
+   
+End
+
+Public Sub mnuHealthIssues_Show()
+   
+   mnuHealthIssues_Refresh()
+   
+End
+
+Public Sub mnuHealthIssues_Click()
+   
+   Select Case Last.tag
+      Case "general notes", "remove link"
+         txtHealthIssue.text = "General Notes"
+         cProgressNote_Section = const.cSection_GeneralNotes
+         fk_pasthistory = 0
+      Case Else
+         txtHealthIssue.text = currentconsult!past_history[Last.tag]!description
+         fk_pasthistory = Last.tag
+         cProgressNote_Section = const.cSection_Referrals
+   End Select
+   
+End
+
+Public Sub Terms_Get()
+   
+   Dim term As Collection 
+   Dim key As String
+   
+   If Trim(txtUserObservationName.text) = "" Or chkCodeDocument.value = False Then
+      fk_code = 0
+      fk_coding_system = 0
+      VBox_ColumnView.Visible = False   
+      Return
+   End If
+   Terms = modCodingDBI.Get_Terms(Trim(txtUserObservationName.text), chkLimit.value, chkicd10.value, SpinBoxTermLimits.value)
+   With columnview2
+      .Clear()
+      .Columns.count = 2
+      .Columns[0].Width = txtUserObservationName.width - 100
+      .Columns[1].width = 100
+   End With
+   If Terms.count Then
+      For Each term In Terms
+         key = term!code
+         columnview2.Add(key, 0)
+         columnview2[key][0] = term!term
+         columnview2[key][1] = term!system
+      Next 
+      lblTermCount.text = Str$(terms.count) & " terms retreived"
+      columnview2.tag = txtUserObservationName
+      columnview2.Raise
+      columnview2.Visible = True
+      VBox_ColumnView.Visible = True 
+   Else 
+      VBox_ColumnView.Visible = False 'empty recordset
+   End If  
+   
+End
+
+Public Sub Columnview2_KeyPress()
+   
+   If key.code = key.return Then Columnview2_DblClick()
+   
+End
+
+Public Sub Coded_Term_Select()
+   
+   columnview2.MoveCurrent()   'match internal cursor to visible row
+   fk_code = Terms[columnview2.Item.key]!code
+   fk_coding_system = Terms[columnview2.Item.key]!fk_coding_system
+   
+   txtUserObservationName.text = Terms[columnview2.Item.key]!term & " (" & Terms[columnview2.Item.key]!code & ")"
+   
+End
+
+Public Sub Columnview2_DblClick()
+   
+   Coded_Term_Select() 
+   Columnview2.Visible = False 
+   VBox_ColumnView.Visible = False   
+   
+End
+
+Public Sub rblaterality_Click()
+   
+   Try laterality = Last.tag 'only works for 1-2-3 (left/right/both)
+   If Error Then
+      laterality = const.LateralityNone
+   End If 
+   
+End
+
+Public Sub EditArea_TextBox_LostFocus()
+   
+   Dim hasTExt As Boolean
+   Dim bDateInvalid As Boolean
+   
+   Last.background = Color.White
+   Last.pos = 0
+   Select Case Last.tag
+      Case "document date"
+         If Last.text <> "" Then
+            hasText = True
+            If Not modEditAreaHelpers.Valid_Date(Last) Then
+               If Not hastext Then Return
+               bDateInvalid = True 
+               bExit = True
+               lblInvalidDate.text = " **INVALID DATE**"
+               Last.SetFocus()
+               bExit = False   
+            End If
+         Else
+            lblInvalidDate.text = ""
+         End If       
+   End Select
+   
+End
+
+Public Sub Person_Category_select()
+   
+   Dim sMsg As String 
+   
+   txtPersonCategory.text = Listview2.Item.text
+   fk_category_person = Listview2.Item.Key
+   If Not InStr(LCase(Listview2.Item.text), "provider") Then
+      Listview2.Visible = False  
+      sMsg = "The persons's category must be some sort of provider\n\n e.g Endocrine Provider\n\n"
+      "i.e the name of the category must end in the word 'Provider'."
+      "You should consult the contacts database documentation for a full description of how to allocate categories. "
+      "Any new provider category you enter here will be available to the entire program, so take care of the spelling."
+      Message.Warning(smsg)
+      txtPersonCategory.text = ""
+      txtPersonCategory.SetFocus()
+   End If   
+   
+   txtStreet1.SetFocus() 
+   
+End
+
+Public Sub person_occupation_select()
+   
+End
+
+Public Sub Organisation_Category_select()
+   
+   Dim sMsg As String
+   
+   txtOrganisationCategory.text = Listview2.Item.text
+   fk_category_organisation = Listview2.Item.Key
+   If Not InStr(LCase(Listview2.Item.text), "provider") Then
+      Listview2.Visible = False  
+      sMsg = "The organisation's category must be some sort of provider\n\n e.g Pathology Provider\n\n"
+      "i.e the name of the category must end in the word 'Provider'."
+      "You should consult the contacts database documentation for a full description of how to allocate categories. "
+      "Any new provider category you enter here will be available to the entire program, so take care of the spelling."
+      Message.Warning(smsg)
+      txtOrganisationCategory.text = ""
+      txtOrganisationCategory.SetFocus()
+   End If   
+   
+End
+
+Public Sub listview2_KeyPress()
+   
+   If key.code = key.return Then
+      Listview2_DblClick()
+   End If
+   
+End
+
+Public Sub listview2_DblClick()
+   
+   Listview2.MoveCurrent
+   Select Case Last.tag.tag
+      Case "employee"
+         Organisation_Select()
+      Case "person category"
+         Person_Category_select()
+      Case "person occupation"
+         Person_Occupation_select()
+      Case "organisation"
+         Organisation_Select()
+      Case "organisation category"
+         Organisation_Category_select()
+      Case "surname"
+         Person_Selection("accept", "list")
+      Case "suburb", "person suburb"
+         suburb_Select(Last.tag.tag)
+         
+   End Select
+   
+End
+
+Public Sub Suburb_Select(tag As String)
+   
+   Select Case tag
+      Case "suburb"
+         fk_town_organisation = towns[Listview2.Item.key]!pk
+         txtsuburb.text = towns[Listview2.Item.key]!town
+         lblOrganisationState.text = towns[Listview2.Item.key]!state
+         lblOrganisationPostcode.text = towns[Listview2.Item.key]!postcode
+         txtOrganisationCategory.SetFocus()
+      Case "person suburb"
+         fk_town_person = towns[Listview2.Item.key]!pk
+         txtPersonSuburb.text = towns[Listview2.Item.key]!town
+         txtPersonState.text = towns[Listview2.Item.key]!state
+         txtPersonPostcode.text = towns[Listview2.Item.key]!postcode
+   End Select
+   
+End 
+
+Public Sub Person_Selection(action As String, Optional calling_control As String) 
+   
+   Select Case action
+      Case "get"
+         
+         listview2.Clear
+         If Trim(txtPersonSurname.text) = "" Then 
+            listview2.Visible = False  
+            Return 
+         End If
+         The_Collection = modContactsDBI.Person_Get(Trim(txtPersonSurname.text), Type_Document_Author) 'set by Type_Sender_Click()
+         The_Collection.Remove("sql_in_english")
+         
+         If The_Collection.count Then 
+            Listview2.Clear()
+            For Each Member In The_Collection
+               listview2.Add(Member!pk_view, Member!firstname & " " & Member!surname & " (" & Member!occupation & ") " & Member!street & " " & member!town)
+            Next 
+            
+            listview2.Visible = True
+            listview2.Raise
+            listview2.tag = txtPersonSurname
+         Else
+            listview2.Visible = False  
+         End If
+      Case "accept"
+         
+         bExit = True
+         
+         If listview2.Visible Then
+            Reset_Keys() 
+            Type_Document_Author = const.contacttype_person
+            VBox_Organisation.Visible = False 
+            Vbox_Person.Visible = True 
+            listview2.MoveCurrent()             'match internal cursor to marquee
+         End If
+         SendingPerson = The_Collection[listview2.Item.key]
+         SendingPerson_Display()
+   End Select
+   
+End
+
+Public Sub Suburb_Selection(action As String, Optional calling_control As Textbox) 
+   
+   Dim iMatched As Boolean
+   Dim x As Integer
+   
+   Select Case action
+      Case "get"
+         
+         Towns = modContactsDBI.Get_Town(Lower(Trim$(calling_control.text)))
+         listview2.Clear
+         If Towns.count Then 
+            For Each Town In Towns
+               listview2.Add(Town!pk, Town!town & " " & Town!state & " " & Town!postcode)
+            Next 
+            If Towns.count = 1 Then 
+               Suburb_Selection("accept")
+            Else 
+               listview2.Visible = True
+               listview2.Raise
+               listview2.tag = calling_control
+            End If
+         Else
+            listview2.Visible = False  
+         End If
+      Case "accept"
+         If Listview2.Visible = False Then Return 'tempoary patch FIXME REMOVE ME
+         bExit = True
+         If calling_control Is Textbox Then
+            
+            If listview2.Visible Then
+               listview2.MoveFirst
+               For x = 0 To listview2.count - 1
+                  If InStr(Lower(listview2.Item.text), Trim(Lower(calling_control.text))) Then
+                     
+                     iMatched = True 
+                     Break
+                  End If
+               Next
+               If Not iMatched Then
+                  listview2.Visible = False
+                  calling_control.SetFocus()
+                  Return 'no match found for suburb user typed in 
+               End If 
+            End If
+         Else
+            
+            If listview2.Visible Then
+               
+               listview2.MoveCurrent()             'match internal cursor to marquee
+            End If
+         End If
+         Select Case listview2.tag.tag
+            Case "organisation suburb"
+               fk_town_organisation = towns[Listview2.Item.key]!pk
+               txtsuburbOrganisation.text = towns[Listview2.Item.key]!town
+               lblOrganisationState.text = towns[Listview2.Item.key]!state
+               lblOrganisationPostcode.text = towns[Listview2.Item.key]!postcode
+               txtOrganisationCategory.SetFocus()
+               
+               If chkHeadOffice.Enabled = True Then
+                  chkHeadOffice.SetFocus()
+               Else
+                  chkPostal.SetFocus()
+               End If
+               
+            Case "person suburb"
+               fk_town_person = towns[Listview2.Item.key]!pk
+               txtPersonSuburb.text = towns[Listview2.Item.key]!town
+               txtPersonState.text = towns[Listview2.Item.key]!state
+               txtPersonPostcode.text = towns[Listview2.Item.key]!postcode
+         End Select         
+         
+         listview2.Visible = False  
+         bExit = False  
+   End Select
+   
+End
+
+Public Sub Type_Sender_Click()
+    
+   Reset_Keys() 
+   Select Case Last.tag
+      Case "organisation"
+         modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
+         Type_Document_Author = const.contacttype_organisation
+         Vbox_Person.Visible = False  
+         VBox_Organisation.Visible = True 
+         txtOrganisationEmployee.Enabled = False 
+         txtOrganisation.SetFocus()
+      Case "patient"
+         modEditAreaHelpers.EditArea_Clear(VBox_Person)
+         Type_Document_Author = const.contacttype_patient
+         VBox_Organisation.Visible = False 
+         Vbox_Person.Visible = True  
+            txtPersonSurname.SetFocus()
+      Case "person"
+         modEditAreaHelpers.EditArea_Clear(VBox_Person)
+         Type_Document_Author = const.contacttype_person
+         VBox_Organisation.Visible = False 
+         Vbox_Person.Visible = True 
+         If sLastSearchedFor Then 
+            txtPersonSurname.text = sLastSearchedFor
+            txtPersonSurname.pos = txtPersonSurname.Length
+            Person_Selection("get")
+         End If
+         txtPersonSurname.SetFocus()
+      Case "employee"
+         modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
+         Type_Document_Author = const.contacttype_employee
+         Vbox_Person.Visible = False  
+         VBox_Organisation.Visible = True 
+         txtOrganisationEmployee.Enabled = True   
+         modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
+         txtPersonSurname.SetFocus()
+   End Select
+   
+End
+
+Public Sub Organisation_Change()
+   
+   If bExit Then Return
+   Select Case Last.tag
+      Case "organisation", "employee"
+         If Trim(Last.text) = "" Then
+            txtBranch.text = ""
+            txtStreet1.text = ""
+            modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
+            txtDocumentTag.text = ""
+         Else
+            txtBranch.text = "HEAD OFFICE"
+         End If  
+        sLastSearchedFor = Trim(Last.text)
+      Case "organisation category"
+         If Trim(Last.text) = ""
+            
+            fk_category_organisation = 0
+         End If  
+      Case "organisation suburb"
+         If Trim(Last.text) = "" Then fk_town_organisation = 0
+   End Select
+   If Trim(Last.text) = "" Then
+      listview2.Visible = False
+   End If   
+   
+End
+
+Public Sub Organisation_LostFocus()
+   
+   Dim sMsg As String
+   
+   Last.pos = 1
+   Last.BackGround = Color.white
+   
+End 
+
+Public Sub Organisation_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)  
+   With listview2 'fixme rename me
+      .Visible = False   
+      .Clear()
+      .top = HBox_Author.top + Last.parent.top + Last.height
+      .left = Last.left + VBox_EditArea.Padding
+      .width = Last.width
+      .Raise
+   End With
+   
+End
+
+Public Sub Organisation_Employee_Get()
+   
+   Dim sMsg As String 
+   
+   If Trim(txtOrganisationEmployee.text) = "" Then
+      listview2.Visible = False
+      Return
+   End If
+   
+   Organisations = modContactsDBI.Employees_In_Organisations_Find(Trim(txtOrganisationEmployee.text))
+   
+   If Organisations.count Then 
+      listview2.Clear()
+      
+      For Each Member In Organisations
+         sMsg = Member!wholename & " " & Member!organisation & " " & Member!branch & " " 
+         sMsg &= Member!street & " " & Member!town & " " & Member!postcode 
+         
+         listview2.Add(Member!pk_view, sMsg)
+      Next
+      listview2.Visible = True
+      listview2.tag = txtOrganisationEmployee
+   Else
+      listview2.Visible = False   
+   End If
+   
+End
+
+Public Sub Organisation_Get()
+   
+   Dim sMsg As String 
+   
+   If Trim(txtOrganisation.text) = "" Then
+      listview2.Visible = False
+      Return
+   End If
+   
+  
+   Organisations = modContactsDBI.Organisations_Get(Trim(txtOrganisation.text))
+   
+   If Organisations.count Then 
+      listview2.Clear()
+      
+      For Each Member In Organisations
+         sMsg = Member!organisation & " " & Member!branch & " " 
+         sMsg &= Member!street & " " & Member!town & " " & Member!postcode 
+         
+         listview2.Add(Member!pk_view, sMsg)
+      Next
+      listview2.Visible = True
+      listview2.tag = txtOrganisation
+   Else
+      listview2.Visible = False   
+   End If
+   
+End
+
+Public Sub Organisation_KeyRelease()
+   
+   Select Case Last.tag
+      Case "organistion suburb"
+         Suburb_Selection("get", Last)
+      Case "employee"
+         Organisation_Employee_Get()
+      Case "organisation"
+         Organisation_Get()
+      Case "organisation category"
+         modInboxDBI.category_get(txtOrganisationCategory, Listview2)
+   End Select
+   
+End
+
+Public Sub Organisation_KeyPress()
+   
+   Print key.code
+   Select Case key.code
+      Case key.down
+         If Listview2.Visible Then 
+            Listview2.MoveFirst()
+            Listview2.SetFocus()
+            Listview2.Item.Selected = True
+         End If
+      Case key.tab, key.return 
+         Select Case Last.tag
+            Case "organisation"
+               txtStreet1.SetFocus()
+            Case "street1"
+               txtsuburb.SetFocus()
+            Case "suburb"
+               txtOrganisationCategory.SetFocus()
+         End Select
+   End Select
+   
+End
+
+Public Sub Organisation_Select()
+   
+   listview2.MoveCurrent
+   SendingOrganisation = Organisations[listview2.item.key]
+   Organisation_Display()
+   If Embedded_in_form_name = "Inbox" Then 
+      FInbox.Reload_Organisation()
+   Endif
+
+End
+
+Public Sub Organisation_Display()
+
+   fk_organisation = SendingOrganisation!fk_organisation
+   Try txtOrganisationEmployee.text = SendingOrganisation!wholename
+   fk_employee = SendingOrganisation!fk_employee
+   fk_branch = SendingOrganisation!fk_branch
+   txtOrganisation.text = SendingOrganisation!organisation
+   txtBranch.text = SendingOrganisation!branch
+   txtstreet1.text = SendingOrganisation!street
+   txtsuburbOrganisation.text = SendingOrganisation!town
+   lblOrganisationPostcode.text = SendingOrganisation!postcode
+   lblOrganisationState.text = SendingOrganisation!state
+   txtOrganisationCategory.text = SendingOrganisation!category
+   fk_category_organisation = SendingOrganisation!fk_category
+   Try chkHeadOffice.value = SendingOrganisation!head_office 
+   listview2.Visible = False
+   If txtOrganisationEmployee.text <> "" Then
+      txtDocumentTag.text = txtOrganisationEmployee.Text
+   Else
+      txtDocumentTag.text = txtOrganisation.text
+   Endif
+   If rbDisplayAsResult.value = True Then
+      txtDocumentTag.text &= "- result"
+   Else
+      txtDocumentTag.text &= " - letter"
+   Endif
+   txtDocumentDate.SetFocus()
+
+End
+
+Public Sub EditArea_Buttons_Click()
+   
+End
+
+Public Sub rbDegreeUrgency_Click()
+   
+   fk_urgency = Last.tag
+   
+End
+
+Public Sub Person_KeyRelease()
+   
+   Select Case Last.tag
+      Case "surname"
+         Person_Selection("get")
+   End Select
+   
+End
+
+Public Sub Person_KeyPress()
+   
+   If key.code = key.down Then
+      If listview2.Visible Then
+         listview2.MoveFirst()
+         listview2.SetFocus()
+         listview2.item.Selected = True
+      Endif
+   Endif
+   
+End
+
+Public Sub Person_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)  
+   With listview2 'fixme rename me
+      .Visible = False   
+      .Clear()
+      .top = HBox_Author.top + Last.parent.top + Last.height
+      .left = Last.left + VBox_EditArea.Padding
+      .width = txtPersonOccupation.Width 'widest
+      .Raise
+   End With
+   
+End
+
+Public Sub Person_LostFocus()
+   
+   Last.BackGround = Color.white
+   
+End
+
+Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   Dim bKeyValid As Boolean   
+   
+   Select Case tag
+      Case "document date"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
+      Case Else
+         bKeyValid = True
+   End Select
+   Return bKeyValid
+   
+End
+
+Public Sub EditArea_TextBox_Activate()
+   
+   Select Case Last.tag
+      Case "document date"
+         If Embedded_In_Form_Name = "Inbox" Then Return 
+         FArchiveDocuments.tbFile_SetFocus()
+      Case "user name"  
+         If Embedded_In_Form_Name = "Scanning" Then Return 
+         FInbox.tbFile_SetFocus()   
+   End Select
+   
+End
+
+Public Sub Person_Change()
+   
+   Select Last.tag
+      Case "surname"
+         If Trim(Last.text) = "" Then
+            modEditAreaHelpers.EditArea_Clear(VBox_Person)
+            txtDocumentTag.text = ""
+         Endif
+   End Select
+   
+End
+
+Public Sub EditArea_CheckBoxes_Click()
+   
+   Select Case Last.tag
+      Case "lock name"
+         
+      Case "all staff"
+         
+      Case "lock patient"   
+         If Last.value = False Then Patient_Clear()
+      Case "lock sender"
+            columnview1.Visible = False 'could be clicked whilst this is visible
+         If Last.value = False Then
+             modEditAreaHelpers.EditArea_Clear(VBox_Person)
+            modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
+            Reset_Keys() 
+         Endif
+   End Select
+   
+End
+
+Public Sub Guess_ResultType()
+   '--------------------------------------------------------------------------------------
+   'Attempts to guess the type of result it will be, given the category of provider/person
+   '--------------------------------------------------------------------------------------
+   Dim sSTring As String 
+   Dim category As String
+   If Not IsNull(Document!provider_type) Then
+       category = document!provider_type
+   Else
+       If Not IsNull(document!organisation_category) Then category = document!organisation_category
+   End If
+   sString = Trim(Replace(category, "provider", "", gb.IgnoreCase))
+   sSTring = UCase(Left(sSTring)) & Right(sSTring, Len(sSTring) - 1)
+   Try cmbDocumentTypes.index = cmbDocumentTypes.Find(sSTring)
+   If Error Then cmbDocumentTypes.index = -1 'the document may have no designated provider type
+End
+
+Public Sub rbDisplayAs_Click()
+   
+   iDisplay_As = Last.tag
+   If Last.tag = const.Document_Display_As_Result Then
+      Hbox_Lateralisation.visible = True
+      chkCodeDocument.Visible = False
+      lblUserTag.text = "Request Name"
+      txtDocumentDate.ReadOnly = False
+      lblDocumentDate.text = "Request Date"
+      HBox_RequestTypes.Enabled = True 
+      If Embedded_in_form_name = "Inbox" Then HBox_DocumentType.Visible = True 
+      If txtDocumentTag.text <> "" Then
+         txtDocumentTag.text = Replace(txtDocumentTag.text, "letter", "result")
+      Endif
+      'Attempt to match the combo
+      If Embedded_in_form_name = "Inbox" Then
+         Guess_ResultType()
+         txtUserObservationName.SetFocus()
+      End If   
+   Else
+      HBox_RequestTypes.Enabled = False 
+      lblDocumentDate.text = "Letter Date"
+      lblUserTag.text = "Letter Summary"
+      If txtDocumentTag.text <> "" Then
+         txtDocumentTag.text = Replace(txtDocumentTag.text, "result", "letter")
+      Endif
+      Hbox_Lateralisation.visible = False
+   Endif
+
+End
+
+Public Sub Sender_Find()
+   
+   Reset_Keys() 
+   listview2.Visible = True
+   txtPersonSurname.text = txtFindSender.text
+   Type_Document_Author = const.contacttype_person
+   Person_Selection("get")
+   
+End

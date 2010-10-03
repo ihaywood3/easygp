@@ -1,0 +1,548 @@
+' Gambas class file
+' A Module to keep list of what companies can be involved with what requests
+' E.G South Coast Pathology would be involved with pathology requesting e.g FBC
+'     North Coast Imaging   would be involved with imaging requests e.g CXR
+'
+' This form is plugged into FAdmin on the main tab
+'-------------------------------------------------------------------------------
+Private FHelp As FHtmlViewer 
+Private help_dir As String
+Private bExit As Boolean
+Private Type_Request_Provider As Integer
+Private Organisations As Collection 
+Private branches As Collection 
+Private member As Collection 
+Private SendingOrganisation As Collection
+Private fk_branch As Integer
+Private fk_organisation As Integer
+Private fk_person As Integer
+Private fk_patient As Integer
+Private fk_employee As Integer
+Private pk_request_provider As Integer '0 if a new provider
+Private RequestTypes As Collection 
+Private RequestType As Collection 
+Private RequestProviders As Collection
+Private RequestProvider As Collection 
+
+Private pk_view As Integer
+
+Public Sub Form_Open()
+   
+   Try Init()
+   
+End
+
+Public Sub Form_Close()
+   
+   Settings_Save()
+   
+End
+
+Public Sub Init()
+   RequestTypes = modUtil.LoadCombo(cmbRequesttypes, modRequestsDBI.RequestTypes_Get(), "type")
+   For Each RequestType In RequestTypes 
+      lvRequestTypes.Add(RequestType!pk, RequestType!type)
+   Next
+   
+   lvRequestTypes.MoveFirst()
+   lvRequestTypes.Item.Selected = True
+   lvRequestTypes.SetFocus()
+   
+   With cvwRequestProviders
+      .Columns.count = 2
+      
+   End With
+   FHelp = New FHtmlViewer(Vbox_Help)
+   Settings_Load()
+   help_dir = Application.Path &/ "help/"
+   '  Reset_Fonts(VBox_EditArea_Left_Inner)
+   '  Reset_Fonts(Vbox_EditArea_Right)
+   '  Reset_Fonts(Vbox_Employee)
+   Type_Request_Provider = const.contacttype_organisation
+   modEditAreaHelpers.Help_Show("help/global-request-ordering-defaults.html", FHelp)
+   lblMeasure.text = " Default Branch "
+   modEditAreaHelpers.Resize_labels(VBox_EditArea, lblMeasure)
+   modEditAreaHelpers.Resize_labels(VBox_Organisation, lblMeasure)
+   modEditAreaHelpers.Resize_labels(VBox_person, lblMeasure)
+   
+End
+
+Public Sub lvRequestTypes_Select()
+    lvRequestTypes.MoveCurrent()
+    EditArea_Clear()     'Clear input area
+    Vbox_EditArea.Enabled = False                                                                              
+    cmbRequesttypes.index = cmbRequesttypes.Find(lvRequestTypes.item.text)
+    Reload()
+ End
+
+Public Sub Settings_Save()
+   Settings["Admin_Requests_Defaults/HSplit_Request_Defaults.layout"] = HSplit_Request_Defaults.layout
+   Settings["Admin_Requests_Defaults/Vsplit_Main.layout"] = VSplit_Main.layout
+   Settings["Admin_Requests_Defaults/HSplit_Main.layout"] = HSplit_Main.layout
+   Settings["Contacts_Organisations/FHelp_zoom"] = FHelp.WebView1.Zoom
+End
+
+Private Sub Settings_Load()
+    Try VSplit_Main.layout = Settings["Admin_Requests_Defaults/Vsplit_Main.layout"] 
+    Try HSplit_Request_Defaults.layout = Settings["Admin_Requests_Defaults/HSplit_Request_Defaults.layout"]
+    Try HSplit_Main.layout = Settings["Admin_Requests_Defaults/HSplit_Main.layout"] 
+    Try FHelp.WebView1.Zoom = Settings["Contacts_Organisations/FHelp_zoom"]
+End
+
+Public Sub EditArea_TextBox_GotFocus()
+    Last.BackGround = Color.rgb(95, 255, 175)  
+   Select Case Last.tag
+      Case "find"
+         With columnview1
+            .top = Last.parent.top + Last.parent.height + VBox_Organisation.top
+            .left = Last.Left
+            .Raise
+            
+         End With
+         With listview2
+            .top = Last.parent.top + Last.parent.height + VBox_Organisation.top
+            .left = Last.Left
+            .Raise
+            .width = Last.width
+            
+         End With
+   End Select
+   
+End
+
+Public Sub Reset_Keys()
+   
+   'resets the keys when this form being used for allocating scanned documents
+   
+   ' fk_organisation = 0
+   ' fk_category_organisation = 0
+   ' fk_town_organisation = 0
+   ' fk_address_organisation = 0
+   ' fk_person = 0
+   ' fk_address_person = 0
+   ' fk_category_person = 0
+   ' 
+
+End
+
+Public Sub Type_Sender_Click()
+   
+   ' Reset_Keys() 
+   Select Case Last.tag
+      Case "organisation"
+         modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
+         Type_Request_Provider = const.contacttype_organisation
+         Vbox_Person.Visible = False  
+         VBox_Organisation.Visible = True 
+         ' txtOrganisationEmployee.Enabled = False 
+      Case "patient"
+         modEditAreaHelpers.EditArea_Clear(VBox_Person)
+         Type_Request_Provider = const.contacttype_patient
+         VBox_Organisation.Visible = False 
+         Vbox_Person.Visible = True  
+      Case "person"
+         modEditAreaHelpers.EditArea_Clear(VBox_Person)
+         Type_Request_Provider = const.contacttype_person
+         VBox_Organisation.Visible = False 
+         Vbox_Person.Visible = True 
+      Case "employee"
+         modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
+         Type_Request_Provider = const.contacttype_employee
+         Vbox_Person.Visible = False  
+         VBox_Organisation.Visible = True 
+         txtOrganisationEmployee.Enabled = True   
+         modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
+   End Select
+   txtFind.SetFocus()
+
+End
+
+Public Sub EditArea_TextBox_KeyRelease()
+   
+   Select Case Last.tag
+      Case "find"
+         Select Case Type_Request_Provider
+            Case const.contacttype_organisation
+               Organisation_Get()
+            Case const.contacttype_employee
+               
+            Case const.contacttype_patient
+               
+            Case const.contacttype_person
+         End Select
+   End Select
+
+End
+
+Public Sub Organisation_LostFocus()
+   
+   Last.pos = 1
+   Last.BackGround = Color.white
+   
+End 
+
+Public Sub Organisation_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)  
+   With listview2 'fixme rename me
+      .Visible = False   
+      .Clear()
+      .top = Last.parent.top + Last.height ' HBox_Author.top +
+      ' .left = Last.left + VBox_EditArea.Padding
+      .width = Last.width
+      .Raise
+   End With
+   
+End
+
+Public Sub Organisation_Get()
+   
+   Dim sMsg As String 
+   
+   'Get a list or organisations and their branches like  
+   If Trim(txtFind.text) = "" Then
+      listview2.Visible = False
+      Return
+   End If
+   
+   Organisations = modContactsDBI.Organisations_Get(Trim(txtFind.text))
+   '-----------------------------------------------------------------
+   'If categories exist to match the text, auto-select or show a list
+   '-----------------------------------------------------------------
+   If Organisations.count Then 
+      listview2.Clear()
+      
+      For Each Member In Organisations
+         sMsg = Member!organisation & " " & Member!branch & " " 
+         sMsg &= Member!street & " " & Member!town & " " & Member!postcode 
+         
+         listview2.Add(Member!pk_view, sMsg)
+      Next
+      listview2.Visible = True
+      Select Case Type_Request_Provider
+         Case const.contacttype_employee
+         Case const.contacttype_organisation
+            listview2.tag = txtOrganisation
+         Case const.contacttype_person
+            listview2.tag = txtPersonSurname
+      End Select
+      
+   Else
+      listview2.Visible = False   
+   End If
+   
+End
+
+Public Sub EditArea_TextBox_KeyPress()
+   
+   Select Case Last.tag
+      Case "find"
+         Select Case Key.Code
+            Case Key.Down
+               If listview2.Visible = True Then
+                  listview2.MoveFirst()
+                  listview2.Item.Selected = True
+                  listview2.SetFocus()
+               Endif
+         End Select
+   End Select
+   
+End
+
+Public Sub listview2_KeyPress()
+   
+   If key.code = key.return Then
+      Listview2_DblClick()
+   End If
+   
+End
+
+Public Sub listview2_DblClick()
+   
+   Listview2.MoveCurrent
+   Select Case Last.tag.tag
+      Case "employee"
+         Organisation_Select()
+      Case "organisation"
+         Organisation_Select()
+   End Select
+   
+End
+
+Public Sub Organisation_Select()
+   
+   listview2.MoveCurrent
+   RequestProvider = Organisations[listview2.item.key]
+   listview2.Visible = False
+   Organisation_Display()
+   tbAccept.SetFocus()
+
+End
+
+Public Sub Organisation_Display()
+
+   fk_organisation = RequestProvider!fk_organisation
+   Try txtOrganisationEmployee.text = RequestProvider!wholename
+   fk_employee = RequestProvider!fk_employee
+   fk_branch = RequestProvider!fk_branch
+   txtOrganisation.text = RequestProvider!organisation
+   txtBranch.text = RequestProvider!branch
+   txtstreet1.text = RequestProvider!street
+   txtsuburbOrganisation.text = RequestProvider!town & " " & RequestProvider!state & " " & RequestProvider!postcode
+  ' lblOrganisationPostcode.text = RequestProvider!postcode
+ '  lblOrganisationState.text = RequestProvider!state
+   txtOrganisationCategory.text = RequestProvider!category
+   '  fk_category_organisation = RequestProvider!fk_category
+   Try chkHeadOffice.value = RequestProvider!head_office 
+  '----------------------------------------------
+   'load branches for this provider into the combo
+   '----------------------------------------------
+   branches = modUtil.LoadCombo(cmbBranches, modContactsDBI.Branches_Get_For_Organisation(fk_organisation), "branch")
+   cmbBranches.index = cmbBranches.Find(RequestProvider!branch)
+  lblHeading.Visible = False  
+   
+End
+
+Public Sub EditArea_Clear()
+   bExit = True
+   modEditAreaHelpers.EditArea_Clear(VBox_EditArea)
+   modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
+   modEditAreaHelpers.EditArea_Clear(VBox_person)
+   lblHeading.text = ""
+   EditArea_Notify_DataChange(False)
+   bExit = False  
+   listview2.Visible = False  
+End
+
+Public Sub EditArea_Buttons_Click()
+   
+   Select Case Last.tag
+      Case "save"
+         RequestProvider_Save()
+      Case "add new"
+         RequestProvider_New()
+    End Select
+   
+End
+
+Public Sub EditArea_TextBox_Change()
+   If Bexit Then Return 
+   Select Case Last.tag
+      Case "find"
+         If Trim(Last.text) = "" Then
+            EditArea_Clear()
+            txtFind.SetFocus()
+         Endif
+   End Select
+   EditArea_Notify_DataChange(True)
+End
+
+Public Sub EditArea_Notify_DataChange(flag As Boolean)
+   If flag Then
+      With tbAccept
+         .text = "Save Changes"
+         .Foreground = Color.Red
+      End With
+      Hbox_EditArea.Padding = 1
+   Else
+      With tbAccept
+         .text = "Save"
+         .Foreground = Color.Black
+      End With
+      Hbox_EditArea.Padding = 0
+   Endif
+
+End
+
+Public Sub RequestProvider_Save()
+   Dim Request_Provider As New Collection 
+   '-----------------------------------------------------------------------
+   'Save nominated company/person/employee as a someone to send requests to
+   '-----------------------------------------------------------------------
+   If Hbox_EditArea.Padding = 0 Then Return 'no padding = no changes
+   If Not valid_Request_Provider() Then Return
+   If pk_request_provider <> 0 Then
+      Request_Provider!pk_request_provider = pk_request_provider
+   Endif
+   Request_Provider!fk_branch = fk_branch
+   Request_Provider!fk_employee = fk_employee
+   Request_Provider!fk_person = fk_person
+   Request_Provider!fk_lu_request_type = RequestTypes[cmbRequesttypes.Index]!pk
+   modDBConnect.BeginTrans()
+      modRequestsDBI.Request_Providers_Save(RequestProviders, pk_view, Request_Provider)
+   modDBConnect.CommitTrans()
+   Reload()
+   EditArea_Clear()
+End
+
+Public Sub Reload()
+  
+   Dim x As Integer
+   lvRequestTypes.MoveCurrent()
+   lblCompanies.text = "Providers for " & Lower(lvRequestTypes.Item.text) & " requests"   'tell user what type
+   RequestProviders = modRequestsDBI.Request_Providers_Get(lvRequestTypes.Item.key)                    'refresh providers for types
+   cvwRequestProviders.Clear()
+   For Each RequestProvider In RequestProviders                                                        'reload the types list
+       x = RequestProvider!pk_request_provider
+      cvwRequestProviders.Add(x, 0)
+     ' If IsNull(RequestProvider!head_office) Or RequestProvider!head_office = False Then 
+      '  cvwRequestProviders[x][0] = RequestProvider!branch & " [" & RequestProvider!organisation & "]"
+        cvwRequestProviders[x][0] = RequestProvider!organisation & " [" & RequestProvider!branch & " ]" 
+     ' Else
+     '     cvwRequestProviders[x][0] = RequestProvider!organisation
+     ' End If   
+      cvwRequestProviders[x][1] = RequestProvider!street & " " & RequestProvider!town
+   Next
+
+End
+
+Public Sub cmbRequestTypes_Click()
+
+   Dim x As Integer
+
+   lvRequestTypes.MoveFirst
+   For x = 0 To lvRequestTypes.count - 1
+     
+    Print lvRequestTypes.Item.text, cmbRequesttypes.Text
+      If lvRequestTypes.Item.text = cmbRequesttypes.Text Then
+        
+         lvRequestTypes.Item.Selected = True
+         lvRequestTypes.SetFocus()
+         Break
+      Else
+         lvRequestTypes.MoveNext
+      Endif
+      
+   Next
+   
+End
+
+Public Function valid_Request_Provider() As Boolean
+  
+   If IsNull(fk_branch) Or IsNull(fk_person) Then
+     Message.Info("Please select the organisation/employee or independant person\n\nto whom you will be sending the request")
+     Return False
+   Endif
+   Return True
+End
+
+Public Sub EditArea_Buttons_KeyPress()
+
+  Select Case Last.tag
+    Case "save"
+        RequestProvider_Save()
+    Case "clear"
+        EditArea_Clear()
+  End Select
+
+End
+
+Public Sub cvwRequestProviders_Menu()
+
+  If Last.count Then mnuRequestProviders.Popup()
+
+End
+
+Public Sub mnuRequestProviders_Click()
+  
+  Select Case Last.tag
+    Case "edit"
+      RequestProvider_Edit()
+    Case "remove"
+      RequestProvider_Remove()
+    Case "help"
+      
+  End Select
+  
+End
+
+Public Sub RequestProvider_Remove()
+  
+  
+  
+End
+
+Public Sub RequestProvider_New()
+   EditArea_Clear() 
+   txtFind.SetFocus()
+   lblHeading.text = "Add New Entity to Send Requests"
+   lblHeading.Foreground = Color.red
+   Vbox_EditArea.Enabled = True  
+End
+
+Public Sub RequestProvider_Edit()
+   '---------------------------------
+   'Edit the current Request Provider
+   'note: the fk_request_provider key is kept to indicate an edited record
+   '----------------------------------------------------------------------  
+  
+   cvwRequestProviders.MoveCurrent()
+   RequestProvider = RequestProviders[cvwRequestProviders.Item.key]
+   fk_employee = RequestProvider!fk_employee
+   fk_organisation = RequestProvider!fk_organisation
+   fk_branch = RequestProvider!fk_branch
+   fk_person = RequestProvider!fk_person
+   pk_request_provider = RequestProvider!pk_request_provider 
+   pk_view = RequestProvider!pk_request_provider
+   If fk_organisation Then
+      Type_Request_Provider = const.contacttype_organisation
+      Organisation_Display()
+      With lblHeading
+         .text = "Edit " & UCase(txtOrganisation.text)
+         .Foreground = Color.Red
+         .Visible = True
+      End With
+   End If   
+   If fk_employee Then
+      Type_Request_Provider = const.contacttype_employee
+      With lblHeading
+         .text = "Edit " & UCase(txtOrganisationEmployee.text)
+         .Foreground = Color.Red
+         .Visible = True
+      End With
+   End If     
+   If fk_person And fk_employee <> 0 Then
+       Type_Request_Provider = const.contacttype_person
+       With lblHeading
+         .text = "Edit " & UCase(txtPersonFirstname.text) & " " & UCase(txtPersonSurname.text)
+         .Foreground = Color.Red
+         .Visible = True
+       End With
+   End If
+   VBox_EditArea.Enabled = True  
+   With tbAccept
+         .text = "Save Changes"
+         .Foreground = Color.Black
+   End With
+
+ End
+
+Public Sub cvwRequestProviders_Select()
+
+   EditArea_Clear()
+  cvwRequestProviders.MoveCurrent
+End
+
+Public Sub lvRequestTypes_Click()
+
+  lvRequestTypes_Select()
+
+End
+
+Public Sub EditArea_TextBox_LostFocus()
+
+   Last.BackGround = Color.White
+
+End
+
+Public Sub cmbBranches_Click()
+   '------------------------------------
+   'User is selecting the default branch
+   '------------------------------------
+   EditArea_Notify_DataChange(True)
+   fk_branch = branches[cmbBranches.index]!fk_branch
+   txtBranch.text = branches[cmbBranches.index]!branch
+   txtstreet1.text = branches[cmbBranches.index]!street
+   txtsuburbOrganisation.text = branches[cmbBranches.index]!town & " " & branches[cmbBranches.index]!state & " " & branches[cmbBranches.index]!postcode
+   Try chkHeadOffice.value = branches[cmbBranches.index]!head_office 
+End

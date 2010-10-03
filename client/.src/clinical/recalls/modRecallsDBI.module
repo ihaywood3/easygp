@@ -1,0 +1,287 @@
+' Gambas module file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Private $Result As Result
+Private sql As String
+Private aCollection As Collection
+Private x As Integer
+Private currentRecall As Collection
+Private currentconsult As cConsult
+
+
+Public Sub Set_local_variables(CurrentRecall As collection, cons As cConsult)
+   currentrecall = currentrecall
+   currentConsult = currentconsult
+End
+Public Function Reason_Save(reason As String) As Integer
+   '-----------------------------------
+   'Saves a new reason, returns its key
+   '-----------------------------------
+   Dim sql As String
+   sql = "insert into clin_recalls.lu_reasons (reason) Values(" 
+   sql &= "$$" & Trim(reason) & "$$) returning pk"
+   Return modDBConnect.exec_query(sql)!pk
+  
+  
+End
+
+Public Function Get_Single_Recall(pk_recall As Integer) As collection 
+   '---------------------------------------------------------------------------
+   'Maybe a temporary routine
+   'I'm just using this to get a single recall from a view after I've saved it
+   'to the clin_recalls.recalls table, rather than stuff around re-constituting
+   'all the correct fields
+   '--------------------------------------------------------------------------- 
+  sql = "SELECT * FROM clin_recalls.vwRecalls WHERE " 
+  sql &= "pk_recall=" & pk_recall 
+  Print sql
+  Return modDBConnect.exec_query_collection(sql)
+  
+End
+
+Public Function Recalls_Get() As collection 
+  
+  '  Return modDBConnect.exec_query_collection("SELECT * FROM clin_recalls.vwRecalls WHERE  fk_status = " & const.cAuditAction_OverDue)
+     Return modDBConnect.exec_query_collection("SELECT * FROM clin_recalls.vwRecalls") ' WHERE  fk_status = " & const.cAuditAction_OverDue)
+ 
+End
+
+Public Function get_logged(fk_patient As Integer) As Collection
+    '-------------------------------------------------------------------
+   'PURPOSE: Gets all previously logged recalls for display
+   'EXPECTS: key to consult.patients table
+   'RETURNS: A collection of recalls for patient in DESC date order
+   'NOTE   : " fk_status <" & const.cAuditAction_RecallCompleted 
+   '           Is because  anything <5 is an outstanding recall   
+   'SEE    : cont.cAuditAction_Recall* constants
+   '---------------------------------------------------------------------
+   sql = "SELECT * FROM clin_recalls.vwRecalls WHERE  ("
+   sql &= " fk_status <" & const.cAuditAction_Delete
+   sql &= " ) AND fk_patient = " & fk_patient
+   Return modDBConnect.exec_query_collection(sql)
+End
+
+Public Function Get_Recalls_Current_consult(fk_patient As Integer, fk_consult As Integer) As Collection
+   '-------------------------------------------------------------------
+   'PURPOSE: Gets all recalls logged during current consult
+   'EXPECTS: key to consult.patients table
+   'RETURNS: A collection of recalls for patient in DESC date order
+   'NOTE   : " fk_status <" & const.cAuditAction_RecallCompleted 
+   '           Is because  anything <5 is an outstanding recall   
+   'SEE    : cont.cAuditAction_Recall* constants
+   '---------------------------------------------------------------------
+ Dim sql As String
+   sql = "SELECT * FROM clin_recalls.vwRecalls WHERE  ("
+   sql &= " fk_status < " & const.cAuditAction_Completed
+   sql &= " ) AND fk_patient = " & fk_patient & " AND fk_consult = " & fk_consult
+   Return modDBConnect.exec_query_collection(sql)
+End
+
+Public Function Save(currentconsult As cconsult, old_pk As Integer, recall As collection) As Integer
+   '-------------------------------------------------------
+   'Saves a single recall (which is a collection of fields)
+   '-------------------------------------------------------
+   Dim recallintervalDefaults As New collection 
+   Dim audit As New collection
+   Dim re As Regexp
+   Dim n As String
+   Dim sql As String
+   Dim r As collection
+   '--------------------------------------------------------------------
+   'First remove unwanted html
+   'FIXME: but like my method one ends up with a \n before and after 
+   '       which I don't want!
+   '--------------------------------------------------------------------
+   n = recall!additional_text
+   If n <> "" Then
+     re = New Regexp(n, "<body [^>]+>")
+     recall!additional_text = Trim(Right$(n, Len(n) - re.Offset - Len(re.Text)))
+   End If
+ 
+   '-----------------------------------------------------
+   'If user is entering a new reason for recall, add this
+   'There is a problem with the at the moment - need to
+   'allow user to change the default interval so will have
+   'to keep a key to this table
+   '-----------------------------------------------------
+  audit!data_summary = recall!reason & " due on " & Format(recall!due, "dd/mm/yyyy")
+  If recall!fk_reason = 0 Then
+      ' fixme use reason_save()
+     sql = "insert into clin_recalls.lu_reasons (reason) Values(" 
+     sql &= "$$" & Trim(recall!reason) & "$$) returning pk"
+     recall!fk_reason = modDBConnect.exec_query(sql)!pk
+     '------------------------------------------------------------------------
+     'Now save the default interval for this recall reason on a per-user basis
+     'NB: the fk_staff used here is the staff member logging the recall not
+     'the fk_staff of the person they are recalled to see
+     '------------------------------------------------------------------------
+     recallintervalDefaults!fk_reason = recall!fk_reason
+     recallintervalDefaults!fk_staff = modDBConnect.currentUser!fk_staff 
+     recallintervalDefaults!interval = recall!default_interval
+     recallintervalDefaults!fk_interval_unit = recall!fk_default_interval_unit
+     modDBConnect.insert("clin_recalls.lu_recall_intervals", recallintervalDefaults)
+   Else
+      '-----------------------------------------------------------
+      'Put code here to check if default interval has been changed
+      '-----------------------------------------------------------
+   Endif 
+   recall.Remove("reason")
+   recall.Remove("default_interval")
+   recall.Remove("fk_default_interval_unit")
+   If old_pk < 0 Then 
+      recall!fk_consult = currentconsult.GetPK()
+      old_pk = modDBConnect.insert("clin_recalls.recalls", recall)
+     ' recall!fk_recall = modDBConnect.insert("clin_recalls.recalls", recall)
+      audit!fk_action = const.cAuditAction_Insert
+      audit!reason = "insert"
+   Else
+     '----------------------------------------------------------------------------------
+     'This is an existing record, ' save to backend and update the collection in RAM too
+     '----------------------------------------------------------------------------------
+     If modDBConnect.update("clin_recalls.recalls", currentconsult!recalls_this_consultation[old_pk], recall, "pk_recall") Then 
+         audit!fk_action = const.cAuditAction_Change
+         audit!reason = "edit"
+     End If
+   End If
+   '----------------------------
+   'Finally save the audit trail
+   '----------------------------
+  If audit.count Then 
+      audit!fk_row = old_pk   'is recall!fk_recall
+      audit!fk_consult = currentconsult.GetPK()
+      audit!fk_section = const.cSection_Recalls
+      modConsultDBI.Make_Audit(audit, "clin_recalls", "recalls")
+   End If
+    Return old_pk
+
+    
+  
+End
+
+
+Public Sub Mark_Completed(pk_recall As Integer, fk_status As Integer, Optional bDeleted As Boolean = False)
+   Dim sql As String
+   
+   sql = "Update clin_recalls.recalls set fk_status = " & fk_status
+ '  sql &= " AND deleted = "
+   'SQL &= '* * IAN NEED To INSERT DELETED FLAG HERE * *
+   sql &= " WHERE pk =  " & pk_recall
+   Print sql
+   modDBConnect.exec_query(sql)
+   
+End
+
+
+Public Sub Staff_Get_Clinical(txtbox As textbox, listview1 As listview, lbl As Label)
+    '----------------------------------------------------
+    'Gets a list of clinical staff members for the recall
+    '----------------------------------------------------
+    Dim sStaff As String
+    
+     If Trim(txtbox.text) = "" Then
+       listview1.Visible = False
+        lbl.Visible = False 'fix me put in some sort of error label
+
+         Return
+      End If
+    sql = "Select * from admin.vwStaffInClinics WHERE surname ILIKE $$"
+    sql = sql & Trim(txtbox.text) & "%$$ ORDER BY surname LIMIT 10"
+    'Print sql
+    $Result = modDBConnect.exec_query(sql)
+    If $Result.count Then 
+        listview1.Clear
+         For Each $Result 
+            sStaff = $Result!Surname & "," & $Result!title & " " & $Result!firstname
+                      
+                    listview1.Add(Str$($Result!fk_staff), sStaff)
+                    $Result.MoveNext
+                
+                  
+           Next 
+           listview1.tag = txtbox
+           listview1.Raise
+           listview1.Visible = True
+      Else 
+          'empty recordset
+         listview1.Visible = False
+         lbl.text = "<< Staff member not found"
+         lbl.Visible = True
+           
+      End If  
+  
+End
+
+Public Function Get_Reason_pk(reason As String) As Integer
+  Dim $Result As Result
+  sql = "Select pk from clin_recalls.lu_reasons WHERE reason ILIKE $$" & reason & "$$"
+  $Result = modDBConnect.exec_query("Select pk from clin_recalls.lu_reasons WHERE reason ILIKE $$" & reason & "$$")
+  If $Result.COUNT Then Return $Result!pk
+  Return 0
+  
+End
+
+Public Function Get_Reasons(reason As String) As Collection 
+   '--------------------------------------------------
+   'WHAT IT DOES: searches clin_recalls.vwReasons for
+   '              reasons like reason
+   'CALLED BY   : FRecall.EditArea_KeyRelease()
+   'EXPECTS     : string representing a reason eg 'pap'
+   'RETURNS     : a collection of reasons           
+   '--------------------------------------------------- 
+   sql = "SELECT * from clin_recalls.vwReasons WHERE "
+   sql &= "lower(reason) ILIKE $$%" & Lower(reason) & "%$$ "
+   sql &= "AND fk_staff = " & modDBConnect.currentUser!fk_staff & " LIMIT 15 "
+  
+   Return modDBConnect.exec_query_collection(sql)
+End
+
+Public Function Templates_Get() As Collection
+   '--------------------------------------------------------------------
+   'retrieves a list of letter templates for a recall e.g annual checkup
+   '--------------------------------------------------------------------
+   Return modDBConnect.exec_query_collection("Select * from clin_recalls.lu_templates order by name")
+  
+End
+Public Sub Template_Delete(fk_template As Integer)
+  
+  
+  
+End
+
+Public Function Templates_Save(template As collection)
+  
+  If Not IsNull(template!fk_template) Then
+      template!fk_template = modDBConnect.insert("clin_recalls.lu_templates", template)
+  Else
+      modDBConnect.update("clin_recalls.lu_template")
+  End If
+  
+End
+
+
+Public Sub AuditTrail_Get_Recalls(schema_tablename As String, fk_patient As Integer, Optional fk_reason_recall As Integer) As collection 
+   '------------------------------------------------------------------
+   'if pk_scratchpad then display just the audit history for that item
+   'otherwise the entire scratchpad history. FIX ME ALL SHOULD BE IN ONE ROUTINE LIKE THE ABOVE
+   'AT MOMENT SCHEMA_TABLENAME NOT USED
+   '------------------------------------------------------------------
+   Dim sql As String
+   sql = "Select * from clin_recalls.vwRecallsAudit where fk_patient =" & fk_patient
+   If fk_reason_recall <> 0 Then
+      sql &= " AND fk_reason_recall = " & fk_reason_recall
+   End If   
+   Return modDBConnect.exec_query_collection(sql)
+End

@@ -1,0 +1,533 @@
+' Gambas class file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+' ------------------------------------------------------------------------------
+' FMain is called by modStartup, if logon successful, and 'runs the whole show'
+'------------------------------------------------------------------------------
+Private CurrentForm As Object
+Private sidebarfont As Font
+Private BtnSection_DayBook As CCoolButton
+Private btnSection_Clinical As CCoolButton
+Private btnSection_Inbox As CCoolButton
+Private btnSection_DrugRef As CCoolButton
+Private btnSection_Library As CCoolButton
+Private btnSection_Clerical As CCoolButton
+Private btnSection_Research As CCoolButton
+Private BtnSection_Admin As CCoolButton
+Private btnSection_Contacts As CCoolButton
+Private btnSection_Patients As CCoolButton
+Private btnSection_Staff As CCoolButton
+Private btnSection_Help As CCoolButton
+
+
+Public pnlDayBook As FDayBook               'nerve centre to organise your day
+Public pnlClinical As FClinical              'The main clinical panel
+Public pnlInbox As FInbox                    'The document inbox
+Public pnlDrugReference As FDrugReference    'Drug drug bible - currently not implemented
+Public pnlLibrary As FLibrary                'The Library for staff documents or patient handouts
+Public pnlClerical As FClerical              'Clerical tasks such as scanning, managing recalls
+Public pnlResearch As FResearch              'All research stuff
+Public pnlAdmin As FAdmin                    'Admin = tasks such as importing/exporting data
+Public pnlContacts As FContacts              'Contacts database for organisations and people who are not patients or staff
+Public pnlPatients As FContactsPatients      'Patient details, currently only demographic.
+Public pnlStaff As FStaff                    'Staff module - including basic staff preferences           
+Public pnlHelp As FHelp                      'The main program help browser, sort of like a chm file
+Public pnlPopUpHelp As FHtmlViewer           'overlays the program with a html viewer - used by any form except FClinical
+
+Private Const POS_BUTTON As Integer = 0
+Private HEIGHT_BUTTON As Integer = Desktop.Scale * 4
+Private bLogonshowing As Boolean = False
+
+Static Private form_main As FMain
+Private Const admin_user_error As String = "The admin user is not allowed to access this module."
+                                 " Please create an ordinary user in the Staff tab and log in as them" 
+Public Sub Form_Open()
+   Init() 
+End
+
+
+Public Sub Set_PopUp_Help(sPath As String)
+   Try form_main.pnlPopUpHelp.WebBrowser1.path = sPath
+   If Error Then
+      form_main.pnlPopUpHelp = New FHtmlViewer(VBoxMain)
+      form_main.pnlPopUpHelp.WebBrowser1.path = sPath
+   End If
+End
+
+Public Sub Show_PopUp_Help(flag As Boolean)
+   If flag Then 
+      CurrentForm.Hide()
+      Try form_main.pnlPopUpHelp.Show()
+      If Error Then
+         form_main.pnlHelp1 = New PnlHelp1(VBoxMain)
+         pnlHelp1.Show()
+      End If
+   Else
+      form_main.pnlPopUpHelp.Close()
+      CurrentForm.Show()
+   End If
+End
+Public Sub Timer1_Timer()
+  
+  Timer1.Stop
+  Try btnSection_Inbox.text = "Inbox(" & Str$(modDayBookDBI.Inbox_Document_Count(modDBConnect.currentUser!fk_staff).count) & ")" 'fixme not accurate
+  Try btnSection_DayBook.text = "Tasks (" & Str(modDayBookDBI.Staff_Tasks_Get(modDBConnect.currentUser!fk_staff).count) & ")"
+  
+End
+
+Public Sub Init()
+   form_main = Me
+   Form_Settings_Load()
+   Create_SideBar_Buttons()                     'create sidebar buttons
+   const.init()                                 'init some constant string arrays, global preferences
+   If IsNull(modDBConnect.currentUser) Then     'If user who logged on <> valid user
+       btnSection_Staff_Click()                 'throw them into contacts
+   End If
+   SetPrinterCombo()
+   lblToday.text = Format(Now, gb.MediumDate)
+   Wait 
+   Appointments_Show() 'dummy
+   
+End
+
+Public Sub Appointments_Show()
+   'Just for demo - pretend appointments
+  Dim x As Integer
+  Dim h As Integer
+  Dim i As Integer
+  Dim names As New String[]
+  Dim iName As Integer
+  Dim hpic1 As New Picture
+  hpic1.Load("icons/20/desktop_2020.png")
+  names.Add("Patient1", 0)
+  names.Add("Patient2 ", 1)
+  names.Add("Patient3 ", 2)
+  names.Add("Richard Terry", 3)
+  names.Add("Ian Haywood", 4)
+  names.Add("Horst Herb", 5)
+  names.Add("John Goswell", 6)
+  names.Add("Minnie Mouse", 7)
+  names.Add("Donald Duck", 8)
+  names.Add("Daffee Duck", 9)
+
+
+  h = 8
+  i = 3 
+  With gdvAppointments
+    .Columns.count = 1
+     
+    .Rows.count = 24
+    For x = 0 To 23
+      
+      .Rows[x].text = Str(h) & ":" & Str(i * 10)
+      .Rows[x].Height = 16
+      Inc i
+      If i = 6 Then 
+         i = 1
+         Inc h
+      End If
+      If h = 13 Then h = 1
+    '  .Row = x
+      If x < 9 Then 
+        
+      gdvAppointments[x, 0].text = names[x]
+      If x < 6 Then gdvAppointments[x, 0].Foreground = Color.Gray
+      If x = 6 Then gdvAppointments[x, 0].Foreground = Color.blue 
+      If x = 7 Then 
+         gdvAppointments[x, 0].Foreground = Color.Red
+         gdvAppointments[x, 0].Font.Bold = True
+        gdvAppointments[x, 0].Background = Color.Yellow
+      End If
+    
+     End If
+   Next
+  End With
+  
+End
+
+Public Sub Create_SideBar_Buttons()
+   '-------------------------------------------------------
+   'Creates the buttons on the side bar, sets the fonts etc
+   '-------------------------------------------------------
+   Dim sidebarfontString As String
+   Dim W As Integer
+   Dim R As Result
+   Dim image As New Image
+   Dim pic As Picture
+  ' R = modDayBookDBI.Inbox_Document_Count(modDBConnect.currentUser!fk_staff)
+   sidebarfontString = sidebarfont.ToString()
+   W = VboxSideBar.width
+   btnSection_Clinical = New CCoolButton(Vbox4, 0, POS_BUTTON, W, HEIGHT_BUTTON, ("Clinical"), "icons/20/desktop_2020.png", sidebarfontString) As "btnSection_Clinical"
+   btnSection_Clinical.Foreground = Color.SelectedForeground
+
+   btnSection_Inbox = New CCoolButton(Vbox4, 0, POS_BUTTON + HEIGHT_BUTTON + Vbox4.height, W, HEIGHT_BUTTON, ("Inbox"), "icons/20/inbox2222.png", sidebarfontstring) As "btnSection_Inbox"
+   btnSection_Inbox.Foreground = Color.SelectedForeground
+' btnSection_Inbox.text = "Inbox(" & Str$(R.count) & ")" 'fixme not accurate
+    
+   btnSection_DrugRef = New CCoolButton(Vbox4, 0, POS_BUTTON + HEIGHT_BUTTON * 2, W, HEIGHT_BUTTON, ("Drugs"), "icons/20/centigradeicons_drugs2222.png", sidebarfontstring) As "btnSection_DrugRef"
+   btnSection_DrugRef.Foreground = Color.SelectedForeground
+   
+   btnSection_Library = New CCoolButton(Vbox4, 0, POS_BUTTON + HEIGHT_BUTTON * 5, W, HEIGHT_BUTTON, ("Library"), "icons/20/openbook2020.png", sidebarfontstring) As "btnSection_Library"
+   btnSection_Library.Foreground = Color.SelectedForeground
+
+   btnSection_Clerical = New CCoolButton(Vbox4, 0, POS_BUTTON + HEIGHT_BUTTON * 7, W, HEIGHT_BUTTON, ("Clerical"), "icons/24/centigrade_person_list2424.png", sidebarfontstring) As "btnSection_Clerical"
+   btnSection_Clerical.Foreground = Color.SelectedForeground
+
+   btnSection_Research = New CCoolButton(Vbox4, 0, POS_BUTTON + HEIGHT_BUTTON * 3, W, HEIGHT_BUTTON, ("Research"), "icons/20/calipers2020.png", sidebarfontstring) As "btnSection_Research"
+   btnSection_Research.Foreground = Color.SelectedForeground
+   
+   btnSection_Admin = New CCoolButton(Vbox4, 0, POS_BUTTON + HEIGHT_BUTTON * 3, W, HEIGHT_BUTTON, ("Admin"), "icon:/medium/access", sidebarfontstring) As "btnSection_Admin" 
+   btnSection_Admin.Foreground = Color.SelectedForeground
+ 
+   btnSection_Patients = New CCoolButton(Vbox4, 0, POS_BUTTON + HEIGHT_BUTTON * 3, W, HEIGHT_BUTTON, ("Patients"), "icons/20/kde_family2020.png", sidebarfontstring) As "btnSection_Patients" 
+   btnSection_Patients.Foreground = Color.SelectedForeground
+  
+   btnSection_Staff = New CCoolButton(Vbox4, 0, POS_BUTTON + HEIGHT_BUTTON * 3, W, HEIGHT_BUTTON, ("Staff"), "icons/20/centigrade_stephascope2222.png", sidebarfontstring) As "btnSection_Staff"
+   btnSection_Staff.Foreground = Color.SelectedForeground
+   
+   btnSection_Contacts = New CCoolButton(Vbox4, 0, POS_BUTTON + HEIGHT_BUTTON * 4, W, HEIGHT_BUTTON, ("Contacts"), "icons/20/phone_2020.png", sidebarfontstring) As "btnSection_Contacts"
+   btnSection_Contacts.Foreground = Color.SelectedForeground
+   BtnSection_DayBook = New CCoolButton(Vbox4, 0, POS_BUTTON, W, HEIGHT_BUTTON, ("Tasks"), "icon:/16/calendar", sidebarfontString) As "btnSection_Daybook"
+   btnSection_DayBook.Foreground = Color.SelectedForeground
+ '  Try btnSection_DayBook.text = "Tasks (" & Str(modDayBookDBI.Staff_Tasks_Get(modDBConnect.currentUser!fk_staff).count) & ")"
+   btnSection_Help = New CCoolButton(Vbox4, 0, POS_BUTTON + HEIGHT_BUTTON * 7, W, HEIGHT_BUTTON, ("Help"), "icons/20/help2020.png", sidebarfontstring) As "btnSection_Help"
+   btnSection_Help.Foreground = Color.SelectedForeground
+   btnSection_Help.visible = False 
+End
+
+
+Public Sub btnSection_DayBook_Click()
+   '----------------------------------------------------------------------------------------
+   'Inbox:  everything which comes into/is generated by the clinic which could be considered 
+   'a document ends up here - we use this term loosely, to mean eg a scanned bit of paper,
+   'an email, a patients result, a staff memo
+   '----------------------------------------------------------------------------------------
+    If IsNull(modDBConnect.currentUser) Then
+      Message.Error(admin_user_error)
+      Return
+    Endif
+    Try CurrentForm.Hide()
+    Try pnlDayBook.Show()
+    If Error Then
+      pnlDayBook = New FDayBook(VBoxMain)
+      pnlDayBook.Show()
+    End If
+    CurrentForm = pnlDayBook
+End
+
+Public Sub btnSection_Clinical_Click()
+   '---------------------------------------------------------------------------
+   'Access the clinical section, ie where patient data is entered and displayed
+   'Clinical needs some things to be present before we can use it
+   '1) A user with valid access rights
+   '2) A default coding system
+   '---------------------------------------------------------------------------
+  Dim sMsg As String    
+  If IsNull(modDBConnect.currentUser) Then
+    Message.Error(admin_user_error)
+    Return
+  Endif
+  If Not modCodingDBI.Coding_System_Check_Default_Exists() Then
+      sMsg = "You must set a default coding system before using the clinical section.\n\n"
+             "This must be set by someone with administrator privileges and can be \n"
+             "done by selecting the Admin tab, and then the import data/coding system data tabs"
+     Message.Info(sMsg)
+     Return
+  End If
+  Try CurrentForm.Hide()
+  If IsNull(pnlClinical) Then pnlClinical = New FClinical(VBoxMain)
+  pnlClinical.Show()
+  CurrentForm = pnlClinical
+End
+
+Public Sub btnSection_Inbox_Click()
+   '----------------------------------------------------------------------------------------
+   'Inbox:  everything which comes into/is generated by the clinic which could be considered 
+   'a document ends up here - we use this term loosely, to mean eg a scanned bit of paper,
+   'an email, a patients result, a staff memo
+   '----------------------------------------------------------------------------------------
+    If IsNull(modDBConnect.currentUser) Then
+      Message.Error(admin_user_error)
+      Return
+    Endif
+    Try CurrentForm.Hide()
+    Try pnlInbox.Show()
+    If Error Then
+      pnlInbox = New FInbox(VBoxMain)
+      pnlInbox.Show()
+    End If
+    CurrentForm = pnlInbox
+End
+
+Public Sub btnSection_DrugRef_Click()
+   '--------------------------------------------------------------------------------------
+   'The 'drug bible' - currently not implemented, though I've written the code for MIMS it
+   'can't be put into open source. The gui exists though
+   '--------------------------------------------------------------------------------------
+   Try CurrentForm.Hide()
+   Try pnlDrugReference.Show()
+   If Error Then
+      pnlDrugReference = New FDrugReference(VBoxMain)
+      pnlDrugReference.Show()
+   End If
+   CurrentForm = pnlDrugReference
+ End
+
+Public Sub btnSection_Library_Click()
+   '----------------------------------------------------------------------------
+   'Repository of all things of knowlege - documents can be html/images/pdfs
+   'the libary mirrors the library tree  on the HDD as designated in preferences
+   'FIXME - IMPLEMENT LIBRARY DIRECTORY IN PREFERENCES
+   '----------------------------------------------------------------------------
+   Try CurrentForm.Hide()
+   Try pnlLibrary.Show()
+   If Error Then
+       pnlLibrary = New FLibrary(VBoxMain)
+       pnlLibrary.Show()
+   End If
+   CurrentForm = pnlLibrary
+End
+
+Public Sub btnSection_Clerical_Click()
+   '------------------------------------------------------------------------------
+   'Selects the clerical tasks section - e.g to manage recall, monitor staff tasks
+   'allocate scanned documents
+   '------------------------------------------------------------------------------
+   If IsNull(modDBConnect.currentUser) Then
+     Message.Error(admin_user_error)
+     Return
+   Endif
+   Try CurrentForm.Hide()
+   Try pnlClerical.Show()
+   If Error Then
+     pnlClerical = New FClerical(VBoxMain)
+     pnlClerical.Show()
+   End If
+   CurrentForm = pnlClerical
+End
+
+Public Sub btnSection_Research_Click()
+   '-------------------------------------
+   'Do all research here when implemented
+   '-------------------------------------
+      Try CurrentForm.Hide()
+      Try pnlResearch.Show()
+      If Error Then
+         pnlResearch = New FResearch(VBoxMain)
+         pnlResearch.Show()
+      End If
+      CurrentForm = pnlResearch
+End
+
+Public Sub btnSection_Admin_Click()
+      '-------------------------------------------------------------------------------------------------
+      'All admin tasks here - eg setting global preferences, setting hl7 import, library directories etc
+      'importing/updating postcodes, exporting or importing clinical records
+      '-------------------------------------------------------------------------------------------------
+      Try CurrentForm.Hide()
+      Try pnlAdmin.Show()
+      If Error Then
+          pnlAdmin = New FAdmin(VBoxMain)
+          pnlAdmin.Show()
+      End If
+      CurrentForm = pnlAdmin
+End
+
+Public Sub btnSection_Contacts_Click()
+      '----------------------------------------------------------------------------
+      'Contacts manager for all organisations/clinics/branches/persons not patients
+      '----------------------------------------------------------------------------
+      Try form_main.pnlPopUpHelp.Close()
+      Try CurrentForm.Hide()
+      Try pnlContacts.Show()
+      If Error Then
+          pnlContacts = New FContacts(vBoxMain)
+          pnlContacts.Show()
+      End If
+      CurrentForm = pnlContacts
+End
+
+Public Sub btnSection_Patients_Click()
+      '--------------------------------------------------------------------------
+      'Contacts manager for patients
+      'NB: this is entirely untested, will be buggy as I don't use it as I import
+      'from a legacy database, so needs debugging FIXME- DEBUG PATIENTS
+      '--------------------------------------------------------------------------
+      Try CurrentForm.Hide()
+      Try pnlPatients.Show()
+      If Error Then
+         pnlPatients = New FContactsPatients(VBoxMain)
+         pnlPatients.Show()
+      End If
+      CurrentForm = pnlPatients
+End
+
+   
+Public Sub btnSection_Staff_Click()
+      '--------------------------------------------------------------
+      'Staff management centre for your organisation and its branches
+      '--------------------------------------------------------------  
+      Try CurrentForm.Hide()
+      Try pnlStaff.Show()
+      If Error Then
+         pnlStaff = New FStaff(VBoxMain)
+         pnlStaff.Show()
+      End If
+      CurrentForm = pnlStaff
+End
+
+Public Sub btnSection_Help_Click()
+      '-----------------------------------------------
+      'Shown the chm style help viewer for EasyGP help
+      '-----------------------------------------------
+      Try form_main.pnlPopUpHelp.Close()
+      Try CurrentForm.Hide()
+      Try pnlHelp.Show()
+      If Error Then
+         pnlHelp = New FHelp(VBoxMain)
+         pnlHelp.Show()
+      End If
+      CurrentForm = pnlHelp
+End
+
+
+Public Sub Form_Settings_Save()
+   '---------------------------------------------------------------------
+   'Saves settings of the EasyGP main window, and all splits on all forms
+   'Note: these may be 'over-ridden on a per patient basis in FClinical
+   '---------------------------------------------------------------------
+   Settings["Main/Top"] = Me.Top
+   Settings["Main/Left"] = Me.Left
+   Settings["Main/Height"] = Me.Height 
+   Settings["Main/Width"] = Me.Width
+   Settings["Main/HsplitMain"] = HSplitMain.Layout
+   Settings["Main/sidebarfont"] = btnSection_Clinical.Font.ToString()
+   Settings["Main/application.font"] = Application.Font.ToString()
+   Settings["Main/application.tooltip.font"] = Application.tooltip.Font.ToString()
+   Try pnlClinical.Settings_Save()
+   Try pnlInbox.Settings_Save()
+   Try pnlDrugReference.Form_settings("save")
+   Try pnlLibrary.Form_settings("save")
+   Try pnlClerical.Settings_Save()
+   Try pnlResearch.Form_settings("save")
+   Try pnlAdmin.Settings_Save()
+   Try pnlContacts.frmOrganisations.Settings_Save()
+   Try pnlContacts.frmPersons.Settings_Save()
+   Try pnlPatients.Settings_Save()
+   Try pnlStaff.Form_settings("save")
+   Try pnlHelp.Settings_Save()
+   Try pnlDayBook.Settings_Save()
+End
+
+Private Sub Form_Settings_Load()
+   Me.Left = Settings["Main/Left", Me.Left] 
+   Me.Height = Settings["Main/Height", Me.Height] 
+   Me.Width = Settings["Main/Width", Me.Width] 
+   sidebarfont = New Font
+   Try Sidebarfont = Font[Settings["Main/sidebarfont"]]
+   HSplitMain.Layout = Settings["Main/HsplitMain", [1, 5]] 
+   Try Application.Font = Font[Settings["Main/application.font"]]
+   Try Application.ToolTip.Font = Font[Settings["Main/application.tooltip.font"]]
+End
+
+Public Sub Form_Close()
+   Form_Settings_Save() 'save this form and all child forms settings 
+   Quit
+End
+
+Public Sub mnuSideBar_Colours_Click()
+      If Dialog.SelectColor() Then Return 
+End 
+
+Public Sub mnuSideBar_FontSet(theFont As Font)
+   '----------------------------------------------------
+   'Expects a font object, sets all buttons to that font
+   '----------------------------------------------------
+   btnSection_Clinical.Font = theFont
+   btnSection_Inbox.Font = theFont  
+   btnSection_DrugRef.Font = theFont
+   btnSection_Library.Font = theFont 
+   btnSection_Clerical.Font = theFont  
+   btnSection_Research.Font = theFont
+   btnSection_Admin.Font = theFont 
+   btnSection_Contacts.Font = theFont  
+   btnSection_Patients.Font = theFont
+   btnSection_Staff.Font = theFont
+   btnSection_Help.Font = theFont 
+End 
+
+Public Sub mnuSideBar_Fonts_Click()
+  '-------------------------------------------------
+  'Select new font for sidebar buttons
+  '       note this does not change the config file
+  '       configuration must be actively change
+  '------------------------------------------------
+  Dialog.font = sidebarfont
+  If Dialog.SelectFont() Then Return
+  mnuSideBar_FontSet(Dialog.font)
+End 
+
+Public Sub grpSections_menu()
+      '-------------------------------------------------------
+      'The side bar contains the main sections of the program
+      'the popup menu mnuSideBar allows the user to:
+      '         change the fonts
+      '         change the colours
+      '         save the configuration of the program
+      '         re-set to defaults
+      'FIXME: CURRENTLY UNHOOKED
+      '--------------------------------------------------------
+      mnuSideBar_Popup.Popup()
+End
+
+Public Sub mnuFonts_Click()
+ 
+  Select Case Last.tag
+  Case "global font"
+      Try Application.font = modUtil.Change_Fonts(Application.font)
+      Print "AF", Application.font
+       If Not Error Then Settings.Save()
+     Try pnlClinical.FormFonts_Adjust()
+  Case "sidebar font"
+       Print "SBF: ", sidebarfont
+      Try sidebarfont = modUtil.Change_Fonts(sidebarfont)
+       
+       If Not Error Then
+           mnuSideBar_FontSet(sidebarfont)
+           Settings.Save()
+       End If
+  End Select
+
+End
+
+Private Sub SetPrinterCombo()
+  Dim printer As String
+  
+  cmbPrinters.Clear()
+  cmbPrinters.Add("Default")
+  For Each printer In modPrinting.Printers_Load()
+    cmbPrinters.Add(printer)
+  Next
+End
+
+Public Function GetSelectedPrinter() As String
+  Return cmbPrinters.Text  
+End
+
+Public Sub ResetPrinters()
+  cmbPrinters.Index = 1
+End
+

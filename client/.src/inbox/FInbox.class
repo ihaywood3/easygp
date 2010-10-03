@@ -1,0 +1,3764 @@
+' Gambas class file
+' Copyright (C) 2008-10 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+'------------------------------------------------------------------------------------------
+' PURPOSE        : Inbox For pathology, radiology, any other messaging or scanned documents
+' HOW THIS WORKS :
+' BUGS           : Lots of them, especially in the setting up of the messaging companies
+' NOT IMPLEMENTED: Some of the actioning of documents (look at the metadocument tab)
+'                : letting staff archive some of their documents
+'                : viewing audit trails on documents
+'------------------------------------------------------------------------------------------
+Private bAutoFilePatient As Boolean
+Private bAutoFileAll As Boolean
+Private Staff_members As Collection 
+Private Staff_member As Collection
+Private The_Collection As Collection
+Private person As Collection 
+Private Organisations As Collection 
+Private Member As Collection 
+Private bIncludeUnmatcheddocuments As Boolean
+Private bExcludeFTReport As Boolean
+Private bExcludePIT As Boolean
+Private obs As Observer
+Private sender As Collection
+Private sendingperson As Collection
+Private pk_view_sending_entities As Integer
+Private Sending_Entity As Collection 
+Private Sending_Entities As Collection 
+Private Inbox_Sending_Entities As Collection 
+Private Provider_Types As Collection 
+Private fk_lu_message_display_style As Integer
+Private fk_category_organisation As Integer
+Private fk_town As Integer
+Private fk_town_person As Integer
+Private fk_town_organisation As Integer
+Private fk_category_person As Integer
+Private fk_occupation As Integer
+
+Private Current_Sending_Entity As Collection 
+Private pk_view As Integer
+Private Town As Collection 
+Private Towns As Collection
+Private fgc As Integer = 16711680  'red foreground
+Private bgc As Integer = 16777215  'yellow background
+Private Sample_Inbox As Collection 
+Private Selected_Sample_Inbox As Collection 
+Private Sample_Inbox_Key As Integer
+Private SelectedSampleDocument As Collection 
+Private RequestOrdered As Collection 
+Private Sample_Observations As Collection 
+Private bRequestMatchFound As Boolean
+Private User_Term As Collection
+Private User_Terms As Collection 
+Private Organisation As Collection
+
+'------------------------
+'common used on both tabs
+'------------------------
+Private Inbox As Collection
+Private Inbox_key As Integer
+Private cvwDocumentInUse As Columnview
+Private Selected_Inbox As Collection
+Private Sample_Inbox_Document_Key As Integer
+
+Private type_Sender As Integer
+
+Private synonyms As Collection
+Private currentconsult As CConsult  
+Private section As String 
+Private PDForm As FPdf
+Private bexit As Boolean
+Private columnview_in_use As Object
+Private ResultDelivered As Collection 
+Private iRequestFormRow As Integer 'the row user clicked on of requested items
+Private picGreenDot As Picture
+Private picRedDot As Picture
+Private bFirstnameSurnameIsReversed As Boolean
+Private sInboxRootDir As String 'the root directory in filesystem 
+Private sParentDirectory As String
+Private sFilename As String
+Private Patients_PossibleMatches As Collection
+Private branch As Collection
+Private address As Collection
+Private UnfiledResults As Collection
+Private patientResult As Collection 
+Private Observations As Collection
+Private sKey_SelectedPatient As String
+Private sKey_currentHealthIssue As String
+Private sKey_ResultDelivered As String
+Private sKey_request_ordered As String
+Private RootDir As String
+Private requestingDr As Collection 
+Private CopytoDr As Collection 
+Private iZoom_Results As Integer
+Private Results_Zoom As Integer
+Private iZoom_Context As Integer
+Private Context_Zoom As Integer
+Private EmbeddedForm As Object
+Private fk_form As Integer
+
+Private missingPatientsAddresses As Collection
+Private fk_person As Integer
+Private fk_branch As Integer
+Private fk_organisation As Integer
+Private fk_employee As Integer
+Private fk_address_organisation As Integer
+Private fk_address_person As Integer
+Public PossibleSynonyms As Collection
+Private FMessage As FGenericHTMLMessage
+Private Providers_FTSeg As Collection 'of cKeyedItem
+'Temporary till I develop a better parser
+Private fk_Type As Integer 'type of form eg Request_Type_Pathology
+Private Form_Recalls As FRecalls 
+Private editor As FProgressNoteEditor
+Private FTasks As FStaffTasks
+'-------------------------------------------
+'To describe the tabs on main forms tabstrip
+'-------------------------------------------
+Private Const cDocumentINbox As Integer = 0
+Private Const cSetupMessageSenders As Integer = 1
+Private Const cStaffArchives As Integer = 2
+Private Const cDocumentsAudit As Integer = 3
+'---------------------------------------------------
+'To describe the tabs on document actioning tabstrip
+'---------------------------------------------------
+Private Const Metadata As Integer = 0
+Private Const pasthistory As Integer = 1
+Private Const script As Integer = 2
+Private Const request As Integer = 3
+Private Const recall As Integer = 4
+Private Const scratch As Integer = 5
+Private Const notes As Integer = 6
+Private Const tasks As Integer = 7
+Private Const appointment As Integer = 8
+Private Const context As Integer = 9
+
+Private Organisation_address As Collection
+Private person_address As Collection 
+Private Problemlists As FPastHistoryProblemLists
+Private hobs As Observer
+Private Form_PastHistory As FPastHistory
+Private FPrescription As FPrescriptions
+Private Form_Requests As FRequests
+Private Form_Scratchpad As FScratchPad
+Private Inboxconsult As CConsult
+Private LinkedProblem As CKeyedItem
+Private bInboxEmpty As Boolean
+Private bNoContext As Boolean 'if true there are no context relevant notes
+Private Documents As Collection
+Private Document As Collection
+Private Document_HTML As String 
+Private fk_staff As Integer                        'the current staff member 
+Private Document_Types As Collection 
+Private Document_Type As String 
+Private iSelectedDocument As Integer
+Private SelectedDocument As Collection 
+Private iCurrentInboxPatient As Integer
+Private Inbox_Observation As Collection 
+Private FPreview_HtmlDocument As FHtmlViewer 
+Private FPreview_Settings As FHtmlViewer 
+Private FMetaData As FDocumentMetaData
+Private SelectedPatient As Collection 
+Private provider_defaults As Collection
+Private Embedded_Forms As Collection 
+Private FStaffPersonalArchive As FStaffInboxArchives
+Private FAuditTrail As New FHtmlViewer
+Static Private Form_Inbox As FInbox
+ 
+ Public Sub _New()
+  Init_Inbox_Tab()                           'Initialse gui etc on the inbox tab
+  Init_Message_Defaults_Tab()                'Initialse gui etc on the defaults tab for companies sending hl7
+  Settings_Load()
+  Form_Inbox = Me
+  FStaffPersonalArchive = New FStaffInboxArchives(Vbox_StaffArchives)
+End
+
+Static Public Sub tbFile_SetFocus()
+  
+   Form_Inbox.tbFile.SetFocus()
+  
+End
+
+
+Public Sub Settings_Save()
+      '---------------------------------------
+      'Settings for the documents inbox tab
+      '---------------------------------------
+      Settings["Inbox/HSplit_Document_" & Me.tag] = HSplit_Document.Layout
+      Settings["Inbox/Vsplit_left_" & Me.tag] = Vsplit_left.Layout
+      Settings["Inbox/VSplit_Document" & Me.tag] = VSplit_Document.Layout 
+      Settings["Inbox/Results_Zoom"] = FPreview_HtmlDocument.Webview1.Zoom
+      Settings["Inbox/Context_Zoom"] = Webview2.Zoom
+      Settings["TabbedLists/cvwInboxDocuments.font"] = cvwInboxDocuments.font.ToString()     
+      Settings["Inbox/HSplit_Inbox_Documents_Lists.Layout"] = HSplit_Inbox_Documents_Lists
+      '--------------------------------------------------------------
+      'Now save the settings for the embedded forms
+      'this is a bit of a mix-up as there are multiple occurrences of
+      'these and the 'last one' will win out!. figure out a better
+      'way
+      '--------------------------------------------------------------
+      Try FTasks.Form_Settings("save")  'form my not be instantiated
+      '----------------------------------------------
+      'Settings for the Message Display Preferences Tab
+      '------------------------------------------------
+      Settings["Inbox_Message_Preferences/HSplit_Transmitter_Sender"] = HSplit_Transmitter_Sender.Layout
+      Settings["Inbox_Message_Preferences/Vsplit_File_Details"] = Vsplit_File_Details.Layout
+      Settings["Inbox_Message_Preferences/VSplit_Right"] = VSplit_Right.Layout
+      Settings["Inbox_Message_Preferences/default_zoom"] = FPreview_Settings.Webview1.Zoom
+      Settings["Inbox_Message_Preferences/HSplit_Patients_Results"] = HSplit_Patients_Results.Layout
+End
+
+Private Sub Settings_Load()
+      '----------------------------------------------
+      'Settings for the Message Display Preferences Tab
+      '------------------------------------------------
+      Try HSplit_Transmitter_Sender.Layout = Settings["Inbox_Message_Preferences/HSplit_Transmitter_Sender"]
+      Try Vsplit_File_Details.Layout = Settings["Inbox_Message_Preferences/Vsplit_File_Details"]
+      Try VSplit_Right.Layout = Settings["Inbox_Message_Preferences/VSplit_Right"]
+      Try FPreview_Settings.webview1.Zoom = Settings["Inbox_Message_Preferences/default_zoom", 1]
+      Try HSplit_Patients_Results.Layout = Settings["Inbox_Message_Preferences/HSplit_Patients_Results"] 
+      Try HSplit_Inbox_Documents_Lists.Layout = Settings["Inbox/HSplit_Inbox_Documents_Lists.Layout"]
+      '---------------------------------------
+      'Settings for the documents inbox tab
+      '---------------------------------------
+      Try VSplit_Document.Layout = Settings["Inbox/VSplit_Document" & Me.tag]
+      Try Vsplit_left.Layout = Settings["Inbox/Vsplit_left_" & Me.tag]
+      Try HSplit_Document.Layout = Settings["Inbox/HSplit_Document_" & Me.tag]
+      Try FPreview_HtmlDocument.Webview1.Zoom = Settings["Inbox/Results_Zoom"] 
+      Try Webview2.Zoom = Settings["Inbox/Context_Zoom"]  'the progress notes
+      Try cvwInboxDocuments.font = Font[Settings["TabbedLists/cvwInboxDocuments.font"]]
+      Try cvwInbox.font = cvwInboxDocuments.font
+End
+
+Public Sub StaffTasks_Load()
+  ' 'FTasks = New FStaffTasks(Hbox_Tasks)
+  ' FTasks.Embedded_form = "Inbox"
+  ' FTasks.Hbox_TaskDetails.Visible = False 'don't need this here
+  ' FTasks.lblBy.Visible = False
+  ' FTasks.txtLoggedBy.Visible = False 'not needed
+  ' FTasks.Consult = Inboxconsult    
+  ' FTasks.Tasks = New Collection
+  ' Ftasks.Patient = Inbox[sKey_SelectedPatient]
+  ' FTasks.bEmbedded = True
+  ' FTasks.Init()
+End
+
+Public Sub Editor_Init()
+   '---------------------------------------------------
+   'when a new patient on the list is selected the user
+   'could be going to enter new progress notes
+   'If thsi condition is left blank, then any notes
+   'entered in here become part of the patients 
+   'general notes. If the user selects a condition to
+   'link-to then the notes are linked to that
+   '---------------------------------------------------
+   Editor.condition = New CPastHistory
+   Editor.bExit = True
+   Editor.teNotes.text = ""
+   Editor.Condition.todays_notes_changed = False
+   Editor.bExit = False
+  End
+
+
+
+Public Sub Init_Message_Defaults_Tab()
+   '-----------------------------------------------------------
+   'When form first load, set up form gui, load combo's and the
+   'defaults for all the sending entities
+   '-----------------------------------------------------------
+   FPreview_Settings = New FHtmlViewer(VBox_Preview_Messages)
+   lblMeasure_message_settings.text = "    Sending Application        "
+   modEditAreaHelpers.Resize_labels(VBox_HL7FileDetails, lblMeasure_message_settings) 
+   modEditAreaHelpers.Resize_labels(VBox_Organisation, lblMeasure_message_settings)
+   modEditAreaHelpers.Resize_labels(VBox_Person, lblMeasure_message_settings)
+   modEditAreaHelpers.Fill_Combo_Titles(cmbTitle)
+   modEditAreaHelpers.Fill_Combo_Sex(cmbSex)
+   provider_types = modUtil.LoadCombo(cmbProvidertypes, modRequestsDBI.RequestTypes_Get(), "type")
+   cvwSendingEntities.Columns.Count = 2
+
+End
+
+Public Sub Sending_Entities_Reload()  
+    Sending_Entities = modInboxDBI.Get_HL7_FileHandling_Defaults(Trim(txtFilterSendingEntities.text)) 'FIXME CHANGE MY NAME IN OTHER MODULE TO Get_Sending_Entities
+End
+
+Public Sub cvwSendingEntities_Refresh()
+  '----------------------------------------
+  'Loads a list of all the sending entities
+  '----------------------------------------
+  Dim x As Integer
+  Inc Application.Busy
+  EditArea_DisplayPreferences_Clear()
+  cvwSendingEntities.Clear()
+ 
+  For Each Sending_Entity In Sending_Entities
+      x = Sending_Entity!pk_sending_entities
+      cvwSendingEntities.Add(x, 0)
+      If IsNull(Sending_Entity!fk_lu_provider_type)
+          cvwSendingEntities[x][0] = "*"
+      Else
+        cvwSendingEntities[x][0] = ""
+      End If
+       cvwSendingEntities[x][1] = Sending_Entity!msh_sending_entity
+  Next
+  lblKey.text = "key: * = not yet configured"
+  lblSendingEntities.text = "Sending Entities (" & Str$(Sending_Entities.count) & ")"
+  Dec Application.busy
+  If cvwSendingEntities.count = 0 Then Return 
+  cvwSendingEntities.MoveFirst()
+  cvwSendingEntities.Item.Selected = True
+ 
+End
+
+Public Sub Init_Inbox_Tab()
+  '-------------------------------------------------------------
+  'The document metadata form is embeeded below the patient list
+  'Disable most of the text boxes and checkboxes, except the
+  'textbox to allow user to set a synonym for the forwarded
+  'document tag or request (this will later be the text that is
+  'in the list in the clinical notes.
+  'e.g Path returned observation = 'Biochemistry' but we want
+  'to view it as the real result, which could be say 'UEC;BSL'
+  '-------------------------------------------------------------
+   If modDBConnect.IsAdmin Then
+     Return
+   Endif
+   fk_staff = modDBConnect.currentUser!fk_staff
+   timer1.start 'delay loading inbox data until gui showing
+   FMetaData = New FDocumentMetaData(VBox_MainTab)
+   modEditAreaHelpers.EditArea_SetTextBoxes_ReadOnly(FMetaData.VBox_EditArea)
+   With FMetaData
+       .HBox_UserObservationName.visible = True
+       .lblDocumentDate.text = "Date Collected"
+       .Hbox_Requested.Visible = True
+       .chkAllStaff.Enabled = False  
+       .HBox_DocumentType.visible = False  
+       .txtComment.ReadOnly = False
+       .lblComment.text = "Notes on Form"
+       .lblMeasure.text = " Staff Responsible "
+       .txtUserObservationName.ReadOnly = False  
+       .HBox_HealthIssue.Visible = True   
+       .chkAllStaff.Visible = False  
+       .chkLockStaffMember.Visible = False
+       .chkLockPatient.Visible = False
+       .Set_Embedded_Form_Name("Inbox")
+       .HBox_Author.Visible = False   
+   End With
+   '-------------------------------------------------------------------
+   'fill the staff members combo, made up of matched an unmatched staff
+   'FIXME: THE query to make the view is wrong as it dosn't take into
+   'account re-matched staff members
+   '-------------------------------------------------------------------
+   staff_members = modUtil.LoadCombo(cmbStaffMembers, modInboxDBI.Inbox_Staff_Get(), "wholename")
+   Inbox_Sending_Entities = modUtil.LoadCombo(cmbSenders, modInboxDBI.Get_HL7_FileHandling_Defaults(), "msh_sending_entity")
+   cmbSenders.index = -1
+   cmbStaffMembers.index = cmbStaffMembers.Find(modDBConnect.currentUser!wholename)
+   FPreview_HtmlDocument = New FHtmlViewer(HBox_HTML_Viewer)
+   obs = New Observer(FPreview_HtmlDocument.Webview1) As "mnuWebView"
+  
+   With PDForm = New FPdf(Vbox_PDf)
+       .BtOpen.Visible = False
+   End With
+   Editor = New FProgressNoteEditor(vbox_ProgressNotesEditor)
+   Editor.lblTodaysNotes.text = "Progress notes for this result"
+   Editor.tlsuggestions.text = "You may link the progress notes "
+      "to an existing problem. If you leave this blank then  the default is "
+      "to add the notes into the  patient's general notes."
+  ' Problemlists = New FPastHistoryProblemLists(vbox_problemlists)
+   ' 
+   ' hObs = New Observer(Problemlists.cvwProblemsMajor) As "cvwProblemLists"
+   ' hObs = New Observer(Problemlists.cvwProblemsActive) As "cvwProblemLists"
+   ' hObs = New Observer(Problemlists.cvwProblemsInActive) As "cvwProblemLists"
+   ' 
+ '  provider_defaults = modInboxDBI.Get_HL7_FileHandling_Defaults()
+   cvwPatientsRequests.Columns.count = 2
+   cvwInboxDocuments.Columns.count = 2
+   
+   tlMissingProvider.text = ""
+     "<HTML>"
+     "<P ALIGN=CENTER><B>Sending Entity Not found</B></P>"
+     "<P ALIGN=LEFT STYLE=\"font-weight: normal\">This document has been "
+     "received from a sending entity which we have not encountered before.</P>"
+     "<P ALIGN=LEFT STYLE=\"font-weight: normal\">Before you can deal with "
+     "this document, the system administrator will have to examine the file "
+     "and enter the details of the sending provider in the database.</P>"
+     "</HTML>"
+   Embedded_Forms = New Collection 
+   FAuditTrail = New FHtmlViewer(Vbox_DocumentAudit)
+End
+
+
+Public Sub cvwProblemLists_click()
+   '--------------------------------------------------------
+   'NB: theese lists don't exist on this form but on the
+   'embedded form problemlists = FPastHistoryProblemlists
+   'this is an over-ridden event
+   '--------------------------------------------------------
+   Stop Event
+   LinkedProblem = New CKeyedItem
+   sKey_currentHealthIssue = Last.item.Key
+   Editor.condition = Problemlists.SelectedPatient.past_history[Last.item.Key]
+   LinkedProblem.pk = Problemlists.SelectedPatient.past_history[Last.item.Key].pk_pasthistory
+   LinkedProblem.description = Problemlists.SelectedPatient.past_history[Last.item.Key].health_issue
+   txtLinkTo.text = Problemlists.SelectedPatient.past_history[Last.item.key].health_issue
+   '--------------------------------------------------------------------
+   'However, the user could have already typed something
+   'in the progress notes text editor, and just be changing the linkage
+   'so trigger the change event to save the rich text
+   'and set the data-changed flag
+   '-------------------------------------------------------------------
+   Editor.teNotes_change()
+
+End
+
+
+Public Sub Context_Load()
+   '-----------------------------------------------
+   'Loads progress notes in context of date of the
+   'request, may not be accurate FIXME
+   '-----------------------------------------------  
+ '  If cvwRequestsOrdered.count = 0 Then Return
+   Webview2.html = "<HTML><BODY>SHOULD BE EMPTY</BODY></HTML>"
+   Inbox[sKey_SelectedPatient].progress_notes = New Collection
+  ' Print cvwLabRequests[cvwLabRequests.Item.key][0]
+ '  modConsultDBI.progressnotes_get(Inbox[sKey_SelectedPatient], cvwDocuments[cvwDocumentstem.key][0])
+  ' ConstructHTML(Inbox[sKey_SelectedPatient])
+End
+Public Sub ProgressNote_Save()
+   ' '---------------------------------------------
+   ' 'We are not saving a past history item darnwit
+   ' 'just any progress note for it
+   ' 'If Editor.condition is null, then save this
+   ' 'to the general progress note, other wise
+   ' 'to the condition shown.
+   ' 'this routine is transacted from within File()
+   ' '---------------------------------------------
+   '    Dim pn As New cProgressNote
+   '   
+   '    If Not Editor.Condition.todays_notes_changed Then Return
+   '    '--------------------------------
+   '    'Create a consult if dosn't exist
+   '    '--------------------------------
+   '    If Inboxconsult.pk_consult = 0 Then modConsultDBI.Consult_Create(Inboxconsult)
+   '    
+   '      pn.fk_consult = Inboxconsult.pk_consult
+   '    '------------------------------------------------
+   '    'If no specifically linked condition in the editor
+   '    'save as a general note
+   '    '-------------------------------------------------
+   '    If sKey_currentHealthIssue = "" Then
+   '       pn.fk_section = const.ClinicalNotesSection_GeneralNotes
+   '       pn.notes = Editor.teNotes.RichText
+   '    Else
+   '       'otherwise, link to the current health issue
+   '       pn.notes = Problemlists.SelectedPatient.past_history[sKey_currentHealthIssue].todays_notes
+   '       pn.fk_section = const.ClinicalNotesSection_PastHistory
+   '       pn.problem = Problemlists.SelectedPatient.past_history[sKey_currentHealthIssue].health_issue
+   '       pn.fk_problem = Problemlists.SelectedPatient.past_history[sKey_currentHealthIssue].pk_pasthistory
+   ' 
+   '    End If
+   '    modConsultDBI.ProgressNote_save(pn)
+   '    'Problemlists.SelectedPatient.past_history[sKey_currentHealthIssue].todays_notes_changed = False
+   '    Editor.Vbox_ConsultNotes.padding = 0 'FIXME dont do this till transaction finishyed in parent
+End
+
+
+Public Function Identifyform() As String 
+   '-----------------------------------------------------
+   'Probably an easier way to do this, however:
+   'If the object is a form it will have a tag, return it
+   'otherwise return an empty string
+   '-----------------------------------------------------
+   Try Return EmbeddedForm.tag
+   If Error Then Return "" 
+End 
+
+Public Sub Embed_Appointments(sUrgency As String)
+   '-------------------------------------------------
+   'See if there is an object with a tag "sUrgency"
+   'if so, it must already be showing, exit
+   'If no tag, then create an appointment form
+   '------------------------------------------------
+    Dim sTag As String
+ '   Print "trying apps"
+    Try sTag = Identifyform()
+    If sTag = sUrgency Then Return
+  '  Print "creating appointment form", surgency
+    EmbedForm(sUrgency)
+End
+Public Sub Embed_RecallForm()
+   '----------------------------------------------------
+   'See if there is an object with a tag "Recall"
+   'if tag = "Recalls", it must already be showing, exit
+   'If no tag, then create a recalls form, otherwise 
+   '----------------------------------------------------
+    Dim sTag As String
+    Try sTag = Identifyform()
+    If sTag = "recall" Then Return 
+    EmbedForm("recall")
+End
+
+Public Sub EmbedForm(sTag As String)
+   '-----------------------------------------------------
+   'User is adding form of some sort after viewing the 
+   'current item in the inbox. We have checked that the
+   'form is not already showing
+   '-----------------------------------------------------
+   Dim RF As FRecalls
+   Dim AP As FAppointments
+  ' Try EmbeddedForm.Close()
+  ' Print "the tag was", stag
+   Select Case sTag
+   Case "recall"
+'       RF = New FRecalls(WebBrowser2Container)
+      ' RF.lblRecallsLogged.text = "Recalls for this Inbox Item"
+      ' EmbeddedForm = RF
+      ' lblEmbeddedForm.text = "" 
+   Case "routine", "urgent"
+     ' Print "creating appointments"
+'       AP = New FAppointments(WebBrowser2Container)
+     '  EmbeddedForm = AP
+      ' lblEmbeddedForm.text = "" 
+   End Select
+ '  EmbeddedForm.tag = stag
+ '  EmbeddedForm.bEmbedded = True
+  ' WebBrowser2.Visible = False     
+  ' hbox_toolbuttons.Visible = True
+End
+
+
+
+
+
+
+Public Sub cvwRequestsOrdered_Click()
+' 'Print "you clicked my cvwRequestsOrdered"
+'   If Not cvwRequestsOrdered.count Then Return
+'   cvwRequestsOrdered.MoveCurrent()
+'   'Print cvwRequestsOrdered.Item.key, "the key of test I ordered"
+'   sKey_request_ordered = cvwRequestsOrdered.Item.key
+End
+
+Public Sub Get_Requests()
+'   Dim sql As String
+'   Dim $Result As Result
+'   Dim x As Integer
+'   Return
+'   Inbox_UnProcessed_Results_Read_old()
+' '  Print DateChooser1.Value 
+'   modDBConnect.SetDateStyle_isodmy()
+'   sql = "  Select * From clin_requests.vwRequestForms ORDER BY request_date asc" 'where request_date = '"
+'   'sql &= Format(DateChooser1.Value, "dd/mm/yyyy") & "'"
+'   Print sql
+'  $Result = modDBConnect.exec_query(sql)
+'   If $Result.count Then
+'      With cvwMatched
+'       .Clear()
+'       .Columns.count = 5
+'       .Columns[0].width = 60
+'        .Columns[1].width = 120
+'         .Columns[2].width = 120
+'          .Columns[3].width = 120
+'            .Columns[4].width = 60
+'      End With
+'      For Each $Result
+'     
+'       cvwMatched.Add(x, 0)
+'       cvwMatched[x][0] = Format($Result!request_date, "dd/mm/yyyy")
+'       cvwMatched[x][1] = $Result!organisation
+'       cvwMatched[x][2] = $Result!Firstname & " " & $Result!surname
+'       cvwMatched[x][3] = $Result!Requests_Summary
+'       cvwMatched[x][4] = Format($Result!Birthdate, "dd/mm/yyyy")
+'       Inc x
+'      Next
+'   Else
+'      cvwMatched.Clear()
+'   End If   
+'      
+'   
+'   
+End
+
+
+
+ Public Function Synonyms_Update() As Boolean
+ '---------------------------------------------------------------------------
+ ' When this form was started the routine user_lab_synonyms_load()
+ ' loaded into Memory a list Of all the term the lab uses
+ ' And synonyms the user uses.
+ ' e.g to the lab E498=carcino-embryonic antigen or Haematology = FBC or Hb
+ ' Now see If the user term has an existing lab term
+ ' 
+ ' this Is vwSynonym:
+ ' Public pk_synonym As Integer 'key to clin_requests.lu_synonyms table
+ ' Public fk_lu_request As Integer 'key to clin_requests.lu_requests table.
+ ' Public user_request_name As String 'same as clin_requests.lu_requests.item
+ ' Public fk_organisation As Integer
+ ' Public organisation As String  
+ ' Public providers_request_name As String
+ '-----------------------------------------------------------------------------
+   Dim syn As Collection 
+   Dim sMsg As String 
+   Dim synonym_exists As Boolean
+   Dim bProvider_Synonym_Exists As Boolean
+   Dim bUser_Synonym_Exists As Boolean
+   Dim synonym As String
+   Dim x As Integer
+   Dim new_term As Collection 
+   Dim terms As String[]
+   Dim term As String
+   Dim provider_term As Collection 
+   Dim old_data As Collection          'not used but needed
+   Dim pk_view As Integer           'not used but needed
+   Dim Provider_Synonym As Collection 
+  
+   Dim Link_data As New Collection 
+   Dim bSuccess As Boolean = True 'hope for the best
+   user_terms = New Collection 'fixme remove from top put here
+   '-----------------------------------------------------------------------------
+   'split the line or user terms e.g fbc;uec;lfts 
+   'Split ignoring voids, In Case nothing on the End add a ';'
+   'we can't trust users to have typed this correctly, or, even if they have
+   'chosen from a pick list,some idiot could have gone back and changed a term
+   'and made it invalid
+   'fixme: discard duplicates - user could have put same thing in twice
+   '-----------------------------------------------------------------------------
+   If Right(FMetaData.txtUserObservationName.text) <> ";" Then
+       FMetaData.txtUserObservationName.text &= ";"
+   End If
+   terms = Split(FMetaData.txtUserObservationName.text, ";", "", True)
+   '------------------------------------------
+   ' does the term have a matching tag
+   '------------------------------------------
+   For Each Term In terms  
+         'The document tag could be E.g Biochemistry
+         'To us this may be uec;lfts;bsl;urate; 
+         'For each term on the user_request_names textbox 
+         'Check if 'Biochemistry' is known to equate to a term eg. uec
+         For Each syn In synonyms
+            '--------------------------------------------------------
+            'If we find the synonym which is = the tag eg Biochemistry
+            '---------------------------------------------------------
+            If Lower(SelectedDocument!tag) = Lower(syn!provider_request_name) Then
+              '-------------------------------------------------------------
+              'E.g document tag = Biochemistry, Username = uec;lfts;ldh;bsl;
+              '-------------------------------------------------------------
+              If Lower(term) = Lower(syn!user_request_name) Then
+                 bProvider_Synonym_Exists = True
+                 Break
+              End If
+           End If             
+         Next
+         '------------------------------------------------------------------------------------------------------
+         'If Having checked all the synonyms for say Biochemistry, the term, say 'amlyase' is not there, save it
+         '------------------------------------------------------------------------------------------------------
+         If Not bProvider_Synonym_Exists Then
+               
+                chkAutoProcess.Value = False 
+                 Link_data = New Collection 
+                 Try Link_data!fk_lu_request = modRequestsDBI.Request_GetPk(term)
+                 If Error Then
+                     new_term = New Collection
+                     new_term!fk_type = SelectedDocument!fk_lu_provider_type
+                     new_term!item = term 
+                     new_term!fk_laterality = FMetaData.get_laterality()
+                     smsg = "The term '" & new_term!item & "' does not exist in the requests table.\n\n"
+                     sMsg &= "The following is very important. Some tests can be ordered for the left "
+                     sMsg &= "right, or both sides of the body.\n\n" 
+                     sMsg &= "If you want your requests to come up looking like this in the popup lists, your should answer 'Yes' to Add lateralisation:\n\n"
+                     sMsg &= new_term!item & " (LEFT)\n"
+                     sMsg &= new_term!item & " (RIGHT)\n"
+                     sMsg &= new_term!item & " (BOTH)\n\n"
+                     sMsg &= "Add Lateralisation?\n\n"
+                   
+                     Select Case Message.Warning(sMsg, "Yes - I want to see left/right/both ", "No - just add the term", "Cancel")
+                     Case 1
+                       sMsg = "The term '" & new_term!item & "' will be added, and can be left/right/both sides of the body.\n\n"
+                     Case 2
+                       sMsg = "The term '" & new_term!item & "' will be added without lateralisation.\n\n"
+                     Case 3
+                        Return False   
+                     End Select
+                     If Message.Warning(sMsg & "Are you absolutely sure this is accurate?", "Yes", "No") = 2 Then
+                          Return False
+                     Else
+                        Print new_term 
+                        Print pk_view
+                           Link_data!fk_lu_request = modRequestsDBI.Request_Save(old_data, pk_view, new_term)
+                     End If 
+                End If
+                '---------------------------------------------------
+                'Table clin_requests.lu_link_provider_user_requests 
+                '   pk serial NOT NULL,
+                '   fk_lu_request integer NOT NULL,
+                '   provider_request_name text NOT NULL,
+                '   lateralisation integer DEFAULT 0,
+                '------------------------------------------------------
+                 Link_data!provider_request_name = SelectedDocument!tag
+                 Link_data!lateralisation = FMetaData.get_laterality()
+                 link_data!fk_lu_provider_user_request = modInboxDBI.Link_SendingEntity_Name_UserName(link_data)
+                 synonyms_Reload() 'should pickup if user typed same one in twice
+         End If     
+   Next
+  
+   
+ 
+  Return bSuccess
+End
+
+
+
+Public Sub Problemlists_Load()
+  txtLinkTo.text = ""
+  Problemlists.SelectedPatient = Inbox[sKey_SelectedPatient]
+  Problemlists.Refresh()
+  sKey_currentHealthIssue = ""
+  
+End
+
+
+
+Public Sub txtEditArea_Menu()
+  ' Dim mnuMajor As New Menu(mnuHealthIssues)
+ '  Dim mnuSignificant As New Menu(mnuHealthIssues)
+  ' Dim mnuInactive As New Menu(mnuHealthIssues)
+   Select Case Last.tag
+   Case "health issue"
+   ' mnuHealthIssues.mnuMajor.caption = "dog"
+
+  '  mnuHealthIssues.Popup()
+   End Select
+     
+
+  
+
+End
+
+Public Sub txtEditArea_Change()
+ Select Case Last.tag
+ Case "tag"
+      ResultDelivered.tag = Last.text
+ End Select
+
+End
+Public Sub chkExcludeFTReport_Click()
+   '---------------------------------------------------
+   'User wishes to exclude the free text section of
+   'a report before saving for beautification purposes
+   '---------------------------------------------------
+ ' If BExit Then Return 
+   cvwInboxDocuments_Select()
+
+End
+
+
+
+Public Sub mnuPatientsInInbox_Click()
+  
+  Select Case Last.tag
+  Case "delete from inbox"
+    '  Print "deleting from inbox"
+       'Inbox_Patient_Delete()
+  Case "move to holding file"
+      Print "moving to holding file"
+  End Select
+  
+End
+
+
+
+
+Public Sub TabStrip1_MouseUp()
+   Select Case Tabstrip1.Index
+   
+   Case "metadata"
+     ' Vsplit_left.Layout = Settings["Inbox/Vsplit_left_" & Me.tag]
+    ' Try Vsplit_left.Layout = [2, 2, 1]
+      Vsplit_left.Layout = [1, 2]
+      Last.tooltip = "Document Metadata"
+   Case pasthistory
+       '  Vsplit_left.Layout = [0, 0, 1] 'fixme make me configurable
+         Vsplit_left.Layout = [1, 2]
+        tbMaximize.tag = "maximized"
+         Last.tooltip = "Add a new health issue"
+   Case script
+       Last.tooltip = "Write a prescription"
+    '  Try Vsplit_left.Layout = [0, 0, 1] 'fixme make me configurable"
+      Vsplit_left.Layout = [1, 1]
+        tbMaximize.tag = "maximized"
+   Case request
+      ' Vsplit_left.Layout = Settings["Inbox/Vsplit_left_" & Me.tag]
+       Vsplit_left.Layout = [0, 0, 1]
+       tbMaximize.tag = "maximized"
+      Last.tooltip = "write a new request form"    
+   Case recall
+   
+      Vsplit_left.layout = [0, 0, 1]
+      tbMaximize.tag = "maximized"
+      Last.tooltip = "Add a new recall"
+  Case scratch
+      ' Vsplit_left.Layout = Settings["Inbox/Vsplit_left_" & Me.tag]
+        Vsplit_left.Layout = [2, 2, 1]
+       Last.tooltip = "Add a scratch pad item"
+       tbMaximize.tag = "minimized"
+       Vsplit_left.Layout = [2, 2, 1]
+   Case notes
+      '---------------------------------------------------
+      'User clicked on progress notes + problems lists tab
+      '---------------------------------------------------
+    Try Vsplit_left.layout = [0, 0, 1]
+      tbMaximize.tag = "maximized"
+      Last.tooltip = "Add progress notes"
+      '-----------------------------------------------------
+      'as user may have changed any of the data on the past
+      'history form, must update the identical lists every
+      'time they swap back to the notes form, however for
+      'lack of a better way to do it at this point in time
+      'I will implicitly save any changes the user has made
+      'in the past history form on this tapstip, otherwise
+      'there is no 'proper' past history key, but a temporary
+      'one, which will make it impossible to link progress
+      'notes to
+      '------------------------------------------------------
+    '  PastHistory_Save()         'save outstanding past history
+     ' Pasthistory_Init()         'refresh the past history form
+     ' Problemlists.Refresh()     'and problem lists on this tab
+   Case tasks
+      Last.tooltip = "Allocate a staff task"
+      Vsplit_left.Layout = [0, 0, 1]
+    '   Ftasks.Vbox_TaskResolution.Visible = False 'not used in this section
+       
+   Case appointment
+   Try Vsplit_left.layout = [0, 0, 1]
+      Last.tooltip = "Make an appointment"
+      tbMaximize.tag = "maximized"
+   Case context
+       If bNoContext = False Then
+        Try Vsplit_left.layout = [0, 0, 1]
+            tbMaximize.tag = "maximized"
+       End If
+       Last.tooltip = "View in ordering context"
+   
+   End Select
+  Vsplit_left.Layout = [1, 2]
+End
+
+
+Public Sub tbMaximize_Click()
+'    If bExit Then Return
+'    If tbMaximize.tag = "minimized" Then
+'       Vsplit_left.layout = [0, 0, 1]
+'      tbMaximize.tag = "maximized"
+'    Else
+'       tbMaximize.tag = "minimized"
+'      Try Vsplit_left.Layout = Settings["Inbox/Vsplit_left_" & Me.tag]
+'    End If
+ End
+
+
+Public Function Inbox_Reload()
+   Inc Application.Busy
+   lblSendingEntity.text = ""
+   With lblStaff
+      .Foreground = Color.Black
+      .text = " Staff  "
+   End With
+
+   Sending_Entities_Reload()
+   cvwInboxDocuments.Clear()
+   FPreview_HtmlDocument.WebView1.html = "<HTML><BODY></BODY></HTML>"
+   FMetaData.EditArea_Clear()
+   Inbox = Fill_Inbox(cvwInbox, 0, 500)   'fill all documents, limit FIXME UNHARD CODE ME
+   cvwInbox.MoveFirst()
+   Try cvwInbox.Item.Selected = True
+   If Error Then
+       Print Error.where, Error.Text
+   End If
+    Dec Application.Busy
+End
+
+
+
+Public Sub Document_RefreshList(cvw As Columnview, doc_collection As Collection)
+   '-------------------------------------------------------------------
+   'Refreshes the list of documents for the particular row in the inbox
+   'Dsiplays to the user, the first document in the list
+   '-------------------------------------------------------------------
+   Dim document As Collection
+   Dim x As Integer
+   
+   cvw.Clear()
+  ' For Each document In Inbox[iCurrentInboxPatient]!documents
+    For Each document In doc_collection
+       x = document!pk_document
+       cvw.Add(x, 0)
+       cvw[x][0] = modUtil.Format_Date(document!date_created)
+       cvw[x][1] = document!tag
+   Next
+End
+
+Public Sub cvwInboxDocuments_Select() 
+      '---------------------------------------------------------------------------------
+      'User has clicked on a document for the currently inbox item (may not be a patient)
+      'and hence wants to see the document. as the 'tag' provided with the hl7 may be
+      'unrecognisable, ex x017=eGFR 0r just as bad a name return from a radiologist:
+      ' MUSCULOSKELETAL CROSS-SECTIONAL (NON, JOINT OR SYNOVIAL CAVITY I
+      'we make every attempt to tranlate this into a user recognisable term, so that
+      'when filed in the patients notes it means something when reading it.
+      'The subroutines to figure this out are in
+      'Set check boxes according to default for this provider (if exists)
+      'If there are requests in the cvwPatientsRequests table, un-hightlight them as
+      'the user may have just filed a prior request
+      '---------------------------------------------------------------------------------
+      Dim request As Collection
+      Dim Guessed_user_Name As Collection 
+      Dim item As Collection 
+      Dim items As Collection 
+      Dim file_ext As String 
+      Dim observation As Collection 
+      Dim sString As String 
+      Dim x As Integer
+    
+      If bExit Or cvwInboxDocuments.count = 0 Then Return             'no documents > get outa here
+      bRequestMatchFound = False                                      'default to cannot match to ordering
+      cvwPatientsRequests.SelectAll(False)                            'remove marquee on list of ordered requests
+      bExit = True
+      '---------------------------------------------------------------
+      'Move to current document, set parameters for display of the hl7
+      '---------------------------------------------------------------
+      cvwInboxDocuments.MoveCurrent()                                 'set internal cursor to visible row
+      iSelectedDocument = cvwInboxDocuments.Item.key                  'key to Selected_Inbox!documents
+      SelectedDocument = Selected_Inbox!documents[iSelectedDocument]  'set current document
+      file_ext = File.Ext(SelectedDocument!source_file)
+      FMetaData.Edit(SelectedDocument, iSelectedDocument)
+      chkExcludePIT.value = SelectedDocument!exclude_pit              'do/do not display PIT segments
+      chkExcludeFTReport.value = SelectedDocument!exclude_ft_report   'do/do not display FT report
+      fgc = SelectedDocument!abnormals_foreground_color               'FIXME Put in user-defined to overide this
+      bgc = SelectedDocument!abnormals_background_color               'FIXME Put in user-defined to overide this
+      '---------------------------------------------------------------------------------
+      'mmm..... visually complicated but user could just have 're-allocated' the author
+      'so could need to 'change this back' to the more usual screen design for the inbox
+      '----------------------------------------------------------------------------------      If FMetaData.HBox_Author.visible = True Then
+      If FMetaData.HBox_Author.Visible = True Then  
+        Metadata_Author_Entry_Area_Hide()
+      End If
+       '-----------------------------------------------------------------
+      'Now setup screen design particular to it being document or result
+      '-----------------------------------------------------------------
+      Select Case SelectedDocument!fk_lu_message_display_style        'If letter or results then
+      Case const.Document_Display_As_Letter                               'make some subtle changes to the gui wording
+         rbInbox_DisplayStyleLetter.value = True
+         FMetaData.Hbox_Lateralisation.visible = False
+         FMetaData.chkCodeDocument.Visible = True
+         FMetaData.txtDocumentDate.ReadOnly = False    'batched re-sent letters date <> date written.
+         FMetaData.lblDocumentDate.text = "Letter Date"
+         FMetaData.lblDocumentTag.text = "From"
+         FMetaData.txtDocumentTag.ReadOnly = True
+         FMetaData.HBox_RequestTypes.Enabled = False   
+         FMetaData.txtComment.ReadOnly = True
+         FMetaData.lblUserTag.text = "Letter Summary"
+         FMetaData.txtDocumentTag.text = SelectedDocument!originator
+        
+         FMetaData.Hbox_Lateralisation.visible = False
+      Case const.Document_Display_As_Result
+         FMetaData.HBox_RequestTypes.enabled = True
+         rbInbox_DisplayStyleResult.value = True   
+         FMetaData.Hbox_Lateralisation.visible = True
+         FMetaData.chkCodeDocument.Visible = False
+         FMetaData.lblUserTag.text = "Request Name"
+         FMetaData.txtDocumentTag.ReadOnly = False  
+         FMetaData.txtDocumentDate.ReadOnly = False
+         FMetaData.lblDocumentDate.text = "Request Date"
+         If FMetaData.txtDocumentTag.text <> "" Then
+            FMetaData.txtDocumentTag.text = Replace(FMetaData.txtDocumentTag.text, "letter", "result")
+         End If
+          FMetaData.Hbox_Lateralisation.visible = True
+      End Select
+      If IsNull(SelectedDocument!fk_lu_provider_type) Then           'If the sending entity for this document hasn't been verified
+          TabStrip1.Enabled = False                                  'don't allow filing or editing admin must fix it first 
+          tbDiscard.Enabled = False 
+          tbFile.Enabled = False
+          chkAutoProcess.Enabled = False  
+          Vbox_OutstandingRequests.Visible = False 
+          tlMissingProvider.Visible = True   
+      Else
+          TabStrip1.Enabled = True
+          tbDiscard.Enabled = True 
+          tbFile.Enabled = True
+          chkAutoProcess.Enabled = True                              'temporary checkbox FIXME REMOVE ME FROM FORM
+      End If
+     
+      '-------------------------------------------------------
+      'Display the document metadata ie who sent, to whom, etc
+      'get any attatched observations ie. the granular data
+      'show the html of the document
+      '-------------------------------------------------------
+      If SelectedDocument!fk_staff_destination Then
+            tlMissingProvider.Visible = False
+            Vbox_OutstandingRequests.Visible = True  
+      Else
+            With lblStaff
+               .Foreground = Color.Red
+               .text = " Staff??  "
+               .Font.Bold = True 
+            End With
+            Vbox_OutstandingRequests.Visible = False  
+            If tlMissingProvider.Visible = False Then 
+                 With tlMissingProvider
+                   .Visible = True
+                   .text = "<P ALIGN=CENTER><B>Unidentified Recipient " & cmbStaffMembers.text & "</B><P>"
+                   .text &= "The staff member cannot be found, the document may not be filed.<BR><BR>"
+                   .text &= "This document may or may not be destined for this practice.<BR><BR>"
+                   .text &= "Please contact the System Administrator for assistance."
+                End With   
+            End If
+      End If
+      FMetaData.bexit = True
+       If Lower(file_ext) <> "pdf" Then  'FIXME - add code to check not an image file
+         Observations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & iSelectedDocument)
+         '-------------------------------------------------------------------------------------------
+         'Now try and match this documents tag (e.g FBC or INR) against something recognizable
+         'Remember, that the tag could be totally unrecognizable eg _Z100 or 'Hormone Testing'
+         'The logic  or lack of it goes something Like this, in this order for reasons that
+         'will evade you, but basically it works best this way.
+         ' 
+         '1) Try And guess the coded content If it was a letter - gpaccess only - first for no reason
+         '2) Try For an exact match of name, against what 's been ordered on that date in our records
+         '3) Try And guess content From the tag  - here is where the crazy names can be found
+         '   e.g x017=eGFR, hormones (hoc-0), etc - basically all attempts at translation here are
+         '   done by brute force, by looking through the observations
+         '4) Is The tag itself a valid test name
+         '5) Guess the name from content oOf the document observations
+         '   e.g biochemistry could be UEC;LFT's
+         '6) Is The tag a known synonym?, i.e have we encountered it before
+         '    match > set txtUserObservationName.text > Goto Showdocument
+         '7) Still failed, try parsing the report itself - mainly radiology, as they rarely
+         '   supply proper names
+         '------------------------------------------------------------------------------------
+        If SelectedDocument!fk_lu_message_display_style <> const.Document_Display_As_Letter Then 
+            Guessed_user_Name = modParseDocument.Guess_UserName(currentconsult, synonyms, SelectedDocument, Observations)
+            If Guessed_user_Name!name <> "" Then
+                FMetaData.txtUserObservationName.text = Guessed_user_Name!name
+                FMetaData.txtUserObservationName.pos = 0
+            End If   
+            Select Case Guessed_user_Name!laterality
+              Case const.LateralityLeft
+                  FMetaData.rbLateralityLeft.value = True  
+              Case const.LateralityRight
+                FMetaData.rbLateralityRight.Value = True   
+              Case const.LateralityBoth
+                FMetaData.rbLateralityBoth.Value = True
+              Case Else
+                FMetaData.rbLateralityNone.Value = True 
+            End Select
+        Else
+            'Just in case its a Gpar coded letter - sorry that's for me only
+            FMetaData.txtUserObservationName.text = modParseDocument.Guess_Letter_Content(observations)
+        End If
+   End If
+'---------------------------------------------------------------------------------------------
+'This is here for a reason, though I hate goto's:
+'Due to the huge variation in some vendors hl7, eg Newcastle pathology, 99% of time you don't
+'want the FT report segments to be shown, but in cases like PAP, Histo, you do, so these flags
+'though set as a default for the vendor by sys-admin configuring them, are over-ridden 
+'in the guess routines
+'----------------------------------------------------------------------------------------------  
+ShowDocument:
+   'bit of a hotch-potch at the moment whilst i'm integrating scanning into the inbox
+   lblSendingEntity.text = SelectedDocument!msh_sending_entity
+   Select Case Lower(file_ext)
+     Case "pdf"
+        PDF_Document_Show()
+        FMetaData.txtUserObservationName.SetFocus()
+     Case "png", "jpeg", "tiff", "gif", "jpg"
+        Image_File_Show()
+        FMetaData.txtUserObservationName.SetFocus()
+     Case Else
+       HTML_Document_Show(SelectedDocument!fk_lu_message_display_style, SelectedDocument, observations)
+   End Select
+
+    bexit = False
+    FMetaData.bexit = False
+   '------------------------------------------------------------
+   'Now try and match the received document to what was ordered'
+   'document tag didn't match a request, look further
+   'FIXME AT Moment column 0 = both date and request
+   '------------------------------------------------------------
+   If Not bRequestMatchFound And cvwPatientsRequests.count Then
+     ' ' For Each RequestOrdered In currentconsult!requests_ordered 
+     '   cvwPatientsRequests.MoveFirst 
+     '    For x = 0 To cvwPatientsRequests.count - 1
+     '        If InStr(cvwPatientsRequests[cvwPatientsRequests.Item.key][0], Format(SelectedDocument!date_created, "dd/mm/yyyy")) Then
+     '            If InStr(Lower(cvwPatientsRequests[cvwPatientsRequests.Item.key][0]), Lower(FMetaData.txtUserObservationName.text)) Then
+     '             '  If Lower(FMetaData.txtUserObservationName.text) = Lower(cvwPatientsRequests[cvwPatientsRequests.Item.key][1]) Then
+     '              ' If Lower(FMetaData.txtUserObservationName.text) = Lower(RequestOrdered!item) Then
+     '            bRequestMatchFound = True
+     '            cvwPatientsRequests.Item.Selected = True
+     '            Break
+     '          End If
+     '        End If
+     '        cvwPatientsRequests.MoveNext
+     '   Next
+   End If
+   
+ '  If chkAutoProcess.value = True Then 
+   
+   If bAutoFilePatient = True Then
+     tbFile_Click()
+   End If   
+End
+
+Public Sub Image_File_Show()
+   Document_HTML = ""
+   VSplit_Document.Visible = False 
+   Vbox_PDf.Visible = False
+   Vbox_Images.visible = True
+   Pbox.picture = Picture.Load(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ selecteddocument!source_file)
+End 
+
+Public Sub PDF_Document_Show()
+   Document_HTML = ""
+   VSplit_Document.Visible = False 
+   Vbox_Images.Visible = False   
+   Vbox_PDf.Visible = True
+   PDForm.Load_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ selecteddocument!source_file)
+End
+
+
+
+Public Sub Document_Set_Collection_Member(cvw As Columnview, Doc_collection As Collection)
+   '---------------------------------------------------------------------------------------------
+   'Set appropriate keys and collection members, get all observations from documents.observations
+   '---------------------------------------------------------------------------------------------
+   cvw.MoveCurrent                                 'set internal cursor to visible row
+   iSelectedDocument = cvw.Item.key                'key to documents.documents
+   SelectedDocument = Doc_collection[iSelectedDocument]  'set current document
+   
+   
+End
+
+
+Public Sub cvwInbox_Select()
+    '-------------------------------------------------------------------------------------------
+   'User has selected a patients name from the list, it will have 1 or more associate documents
+   'or observations i.e if a path result show all associated results 
+   'Show the html of the first docuemnt (test or whatever) in  the observations list 
+   'currently called cvwLabRequests for historical reasons and not yet changed.
+   'This won't always have patient names, so I'm going to have to change heaps of
+   'stuff here
+   '--------------------------------------------------------------------------------------------
+    cvwInboxDocuments.Clear()                                  'clear showing lists
+    cvwPatientsRequests.Clear()
+    cvwInbox.MoveCurrent()                                     'sets internal cursor to match whats visible
+    Inbox_key = cvwInbox.Item.Key                              'sets the key to Inbox collection 
+    Selected_Inbox = Inbox[Inbox_key]                          'create SelectedPatient collection 
+    EmbeddedForms_Reset()                                      'if exists, set all cons to null
+    '------------------------------------------------------------------------------------------
+    'If the inbox item is pertaining to a patient:
+    'create a new consult item for this patient
+    'remove the tag from the patients request = the last patients fk_patient
+    'show all outstanding requests for this category of providier for this patient for matching
+    '------------------------------------------------------------------------------------------
+    If Selected_Inbox!fk_patient Then 
+       cvwPatientsRequests.Clear()
+       cvwPatientsRequests.tag = 0
+       '--------------------------------------------------------------
+       'Init consult for inbox only. For all the other tabs eg recalls
+       'this consult is passed first time the tab is clicked
+       '--------------------------------------------------------------
+       currentconsult = New CConsult(Selected_Inbox)           'Each patient has a new consult 
+       Tabstrip1.index = Metadata
+       FMetaData.Set_Consult(currentconsult)   'set this on the metadataform
+       Patient_Outstanding_Requests_Show()                     'show requests for this category of provider
+       
+    End If
+    Document_RefreshList(cvwInboxDocuments, Selected_Inbox!documents)    'fill document list                              'display list of observations e.g list of tests, fbc, etc
+    cvwInboxDocuments.MoveFirst   
+    cvwInboxDocuments.Item.Selected = True                                      
+End
+ 
+Public Sub EmbeddedForms_Reset()
+   'If an embedded form exists, set its consult to null
+   Dim O As Object
+   For Each O In Embedded_Forms
+        O.Consult_Set_Null()
+   Next
+  
+End
+
+
+Public Function Document_File_Letter() As Boolean
+   '----------------------------------------------------------
+   'Sign off anything except pathology, radiology, imaging
+   'or user-designated FIXME categories. FIXME CALLING ROUTINE
+   '----------------------------------------------------------  
+   Dim sMsg As String
+   Dim fk_patient As Integer
+   Dim fk_unmatched_patient As Integer
+   Dim fk_document As Integer
+   Dim fk_lu_request As Integer 'fixme
+   Dim D As New Collection
+   Dim S As Collection 
+   Dim sql As String 
+   Dim diagnosis_guess As String
+   Dim observation As Collection  
+   Dim button1_text As String
+   Dim button2_text As String
+   
+   cvwInboxDocuments.MoveCurrent() 'I put this in because of an odd crash here ?fixes it?
+   If Not cvwInboxDocuments.count Then Return 
+   smsg = "Letter type:" & cvwInboxDocuments[cvwInboxDocuments.item.key][1] & "\n" 
+ '  smsg = smsg &= "Descriptive tag :" & Trim(FMetaData.txtUserObservationName.text) & "\n\n"
+   smsg &= "Descriptive tag :%tag%\n\n"
+               "Though not mandatory, to ensure the lists in your medical record system contain "
+               "useful information it is advisable to put some sort of description of the letter contents.\n\n" 
+               "For example, if a hostpital discharge, or after hours visit, the reason eg 'Allergic Rash, or "
+               "Insertion of Pacemaker"
+   '------------------------------------------------
+   'Lets try and find the diagnosis in the free text
+   '------------------------------------------------
+   If FMetaData.txtUserObservationName.text = "" Then
+      smsg = Replace$(sMsg, "%tag%", modParseDocument.Guess_Letter_Content(observations))
+   End If   
+   smsg = Replace$(sMsg, "%tag%", "")
+   '----------------------------------------------
+   '1: If patient is unmatched - do not allow save Message.Title = "Adding a descriptor to the delivered document"
+   '----------------------------------------------
+   If Unmatched_Patient() Then Return 
+   '--------------------------------------------------------------------------------------------------------------
+   '2: If Either the user or the system hasn't made a match of a user-name to the delivered name, don't allow save
+   '--------------------------------------------------------------------------------------------------------------
+   If Trim(FMetaData.txtUserObservationName.text) = "" Then
+        Message.Title = "Adding a descriptor to the delivered document"
+        If diagnosis_guess Then 
+             button1_text = "File with suggested descriptor"
+             button2_text = "No, let me add my own descriptor"
+        Else
+             button1_text = "File without descriptor"
+             button2_text = "Oops - Add Descriptor"
+        End If 
+        Select Case Message.warning(sMsg, button1_text, Button2_text, "Skip descriptor - I'll wing it")
+        Case 1
+           FMetaData.txtUserObservationName.text = diagnosis_guess
+        Case 2
+           FMetaData.txtUserObservationName.SetFocus()
+           If Tabstrip1.index <> Metadata Then
+               Tabstrip1.Index = Metadata
+           End If  
+
+           Return
+        Case 3 
+            If Message.Warning("No descriptor will be added - File anyway.", "Yes", "No") = 2 Then
+             FMetaData.txtUserObservationName.SetFocus()
+             If Tabstrip1.index <> Metadata Then
+               Tabstrip1.Index = Metadata
+             End If  
+             Return
+            End If
+        End Select
+    End If
+   '-------------------------------------------------
+   'Ok, at this point we have some sort of descriptor
+   '-------------------------------------------------
+   modDBConnect.BeginTrans()
+   Unmatched_Patient_Reconcile()
+   Document_SignOff()
+   d!concluded = True
+   D!pk_document = SelectedDocument!pk_document
+   d!fk_lu_display_as = FMetaData.Get_Display_Style()
+   d!html = Document_HTML
+   d!tag = FMetaData.txtDocumentTag.text
+   Try d!date_created = Val(FMetaData.txtDocumentDate.text) 'date could have been changed to reflect letter written date
+   d!tag_user = Trim(FMetaData.txtUserObservationName.text)
+   modArchiveDocumentsDBI.Save(Selected_Inbox!documents, SelectedDocument!pk_document, D)
+   modDBConnect.CommitTrans()
+  '--------------------------------------------------------------------------
+  'finally remove this document from the  Selected_Inbox!documents collection
+  '--------------------------------------------------------------------------
+   Selected_Inbox!documents.Remove(iSelectedDocument)
+   cvwInboxDocuments.Remove(iSelectedDocument)
+   Return True
+End
+
+Public Sub Unmatched_Patient_Reconcile()
+   '---------------------------------------------------------------------------
+   'If the patient whose document is being filed was unmatched, but now matched
+   'update the documents table and the unmatched patients table to reflect this
+   '---------------------------------------------------------------------------
+   Dim fk_patient As Integer
+   If Not IsNull(Selected_Inbox!fk_unmatched_patient) Then
+     fk_patient = FMetaData.get_fk_patient()
+     modInboxDBI.Document_SetPatientFK(fk_patient, Selected_Inbox!fk_unmatched_patient)
+     modInboxDBI.Unmatched_Patient_Mark_Resolved(Selected_Inbox!fk_unmatched_patient, fk_patient)
+   End If  
+End
+
+Public Sub Document_SignOff()
+   '--------------------------------------------------------------------
+   'Record who signed off the document, when and with comment (optional)
+   '--------------------------------------------------------------------
+   Dim signed_off As New Collection 
+   signed_off!fk_staff = modDBConnect.currentUser!fk_staff
+   signed_off!fk_document = SelectedDocument!pk_document   
+   signed_off!date = Now()
+   signed_off!pk = modInboxDBI.Document_SignOff(signed_off)
+End
+
+Public Function Document_File_Request() As Boolean
+   '-----------------------------------------------------------------------------------------------
+   'Sign off the current document after some validation
+   'If the patient was previously un-matched, update the appropriate tables to indicate resolution
+   'Update the documents.signed-off table and the documents table
+   '-----------------------------------------------------------------------------------------------
+   Dim sMsg As String
+   Dim Audit As Collection 
+   Dim bExists As Boolean
+   Dim fk_patient As Integer
+   Dim fk_unmatched_patient As Integer
+   Dim fk_document As Integer
+   Dim fk_lu_request As Integer 'fixme
+   Dim D As New Collection
+   Dim S As Collection 
+   Dim sql As String 
+   Dim laterality As Integer
+   If cvwInboxDocuments.count = 0 Then Return 
+   '----------------------------------------------
+   '1: If patient is unmatched - do not allow save
+   '----------------------------------------------
+   If Unmatched_Patient() Then Return 
+   If FMetaData.cmbDocumentTypes.index = - 1 Then
+      FMetaData.cmbDocumentTypes.SetFocus()
+      Return False
+   Endif
+   cvwInboxDocuments.MoveCurrent()
+   smsg = "Observation name:" & cvwInboxDocuments[cvwInboxDocuments.item.key][1] & "\n" 
+   smsg &= "User equivalent :" & Trim(FMetaData.txtUserObservationName.text) & "\n\n"
+               "Often the name used by a company, i.e the name which it  delivers back, is not 'user-friendly' and dosn't correspond to the message content, nor what you ordered in the first place.\n\n" 
+              "We have attempted to match what you ordered, and outstanding requests are listed underneath the text of this message.\n\n"
+              "To make it easier to view your messages later on, you should type an equivalent user name "
+              "in the textbox labelled 'User name', or alternatively click on one or more names from what you ordered, to make the match.\n\n" 
+              "For example, a pathology result returned as 'Biochemistry', may have been ordered as "
+              "'UEC;LFTs', which is pretty obvious if you examine the text of the message.\n\n" 
+              "If you cannot match from your ordering, then if you type in the user name textbox, a popup list will appear, you can choose one or more "
+              "entries from the list sequentially, though you can use free text.\n\n" 
+              "Note, by convention, request names are separated by  ';' delimiter character.\n\n"
+              "If the message is a letter from a specialist, you should type some sort of summary -"
+              " e.g Operation report:cholecystectomy."
+   '--------------------------------------------------------------------------------------------------------------
+   '2: If Either the user or the system hasn't made a match of a user-name to the delivered name, don't allow save
+   '--------------------------------------------------------------------------------------------------------------
+   If Trim(FMetaData.txtUserObservationName.text) = "" Then
+       Message.Title = "Matching Delivered Request to What was Ordered"
+       Message.info(sMsg)
+       FMetaData.txtUserObservationName.SetFocus()
+       If Tabstrip1.index <> Metadata Then
+          Tabstrip1.Index = Metadata
+       End If  
+       Return 
+   End If
+   '------------------------------------------------------
+   '3:There is some sort of user-synonym, but is it valid?
+   '  Check all the user terms eg fbc;uec;lfts, make sure they  exit in the 
+   '  clin_requests.lu_requests table,and if we have not encountered them before for this
+   '  sending entity, add to the synonyms list
+   '------------------------------------------------------
+   modDBConnect.BeginTrans()
+   If Not InStr(Lower(SelectedDocument!tag), "scanned") Then 
+      If Not Synonyms_Update() Then
+          Message.Title = "User Term Not Found"
+          Message.info(sMsg)
+         Return 
+      End If
+   End If   
+   Unmatched_Patient_Reconcile()
+   Document_SignOff()
+ 
+  ' 
+  ' '------------------------------------------------ -----------------------------------
+  ' 'Next, ensure that user has entered a synonym for the sending entities document name
+  ' 'e.g if document's delivered tag is 'Biochemistry', the user equivalent could be UEC;
+  ' '------------------------------------------------------------------------------------
+  d!concluded = True
+  d!fk_lu_display_as = FMetaData.Get_Display_Style()
+  D!pk_document = SelectedDocument!pk_document
+  d!html = Document_HTML
+  'FIXME - REMOVE THE CURRENT FILING TAG
+ '  sql = "Select fk_forms_request from clin_requests.vwRequestsOnForms "
+ '  sql &= "where fk_patient =  " & Selected_Inbox!fk_patient
+ '  sql &= " And fk_lu_request = " & fk_lu_request
+ '  sql &= "AND date = " & SelectedDocument!date_created
+ '  
+    '--------------------------------------------------------------------
+    'An attempt was made to match the delivered document with the request
+    'if a match was found, link the request form to the document
+    '--------------------------------------------------------------------
+    If bRequestMatchFound Then
+       d!fk_request = RequestOrdered!fk_forms_requests
+     End If
+    d!tag_user = Trim(FMetaData.txtUserObservationName.text)
+    If FMetaData.get_laterality() > const.LateralityNone Then
+      d!tag_user = Replace$(d!tag_user, ";", " (" & UCase(const.LateralityText[FMetaData.get_laterality()]) & ");")
+    End If  
+   '-------------------------------------------------------------------------------------
+   'Audit Trail - don't swap these lines as they are in chronological order for the audit
+   '-------------------------------------------------------------------------------------
+   modArchiveDocumentsDBI.Save(Selected_Inbox!documents, SelectedDocument!pk_document, D)
+   modConsultDBI.Make_Audit(Document_Make_Audit(SelectedDocument, const.cAuditAction_DocumentFiled), "documents", "documents")
+
+  ' '-------------------------------------------------------------------------------
+  ' 'Finally, as there can be more than one synonym for the same term, and whatever
+  ' 'we suggested, the user could have changed, need to double check
+  ' '-------------------------------------------------------------------------------
+  '  sMsg = "Select * from clin_requests.vwSynonyms where provider_request_name = " & SelectedDocument!tag
+  '  The_Collection = modDBConnect.exec_query_collection(smsg)
+  '  bExists = False 
+  '  For Each Member In The_Collection
+  '     If Member!user_request_name & ";" = Trim(FMetaData.txtUserObservationName) Then
+  '        bExists = True
+  '        Break
+  '     End If
+  '  Next
+  '  If Not bExists Then
+  '  
+  '  End If   
+   modDBConnect.CommitTrans()
+  '--------------------------------------------------------------------------
+  'finally remove this document from the  Selected_Inbox!documents collection
+  '--------------------------------------------------------------------------
+   Selected_Inbox!documents.Remove(iSelectedDocument)
+   cvwInboxDocuments.Remove(iSelectedDocument)
+   Return True
+End
+
+
+
+Public Function Unmatched_Patient() As Boolean
+    Dim sString As String 
+    If Not IsNull(Selected_Inbox!fk_unmatched_patient) Then
+      If FMetaData.get_fk_patient() Then Return 'if non zero has already been matched
+      '-------------------------------------------------
+      'No valid patient match found, tell user
+      'remove the cancel button and centre the ok button
+      '-------------------------------------------------
+      FMessage = New FGenericHTMLMessage
+      With FMessage
+            .Caption = "Inbox Error"
+            .lblHeading.text = "Result Cannot be Filed"
+            .lblHeading.text = "<P>"
+             sString = Selected_Inbox!firstname & " "
+             sString &= Selected_Inbox!surname 
+            .textlabel1.text = "<B>Patient : </B>" & sstring & "<BR>"
+            .textlabel1.text &= "<B>Result : </B>" & cvwInboxDocuments[cvwInboxDocuments.item.key][1] & " (Lab Name)<BR>"
+            .textlabel1.text &= "<B>Problem: </B> no match for the patient "
+            .textlabel1.text &= "was found in the database.<BR><BR>"
+            .textlabel1.text &= "Possible causes for this may be:<BR>"
+            .textlabel1.text &= "<UL>"
+            .textlabel1.text &= "<LI>The patient may not be in the contact database"
+            .textlabel1.text &= "<LI>The patient may be in the contact database "
+            .textlabel1.text &= "but the details may have been mis-spelt either "
+            .textlabel1.text &= "in the contact database or by the sending provider.<BR>"
+            .textlabel1.text &= "We have tried all sorts of things before suggesting "
+            .textlabel1.text &= "this such as swapping firstname/lastname, initials etc during out attempt to make a match."
+            
+            .textlabel1.text &= "<LI>You may have been sent this result in error - if "
+            .textlabel1.text &= "you suspect this discuss with the message provider."
+            .textlabel1.text &= "<LI>EasyGP may have bugged out though this is unlikely - "
+            .textlabel1.text &= "please enter a bug report"
+            .textlabel1.text &= "</UL>"
+             .textlabel1.text &= "<P>You can search the contacts database by typing the patients surname "
+             .textlabel1.text &= "in the textbox labeled ** UNMATCHED ** - currently highted in red, and select the correct name from the list.</P>"                 
+            .textlabel1.text &= "<P>If you can't fix up the name and address problem in the contacts database then "
+            .textlabel1.text &= "as an interim solution to clear your inbox of this record you can "
+            .textlabel1.text &= "right mouse click on the patients name, and select the following option "
+            .textlabel1.text &= "'Move to holding file', then ask your system-admin to fix the problem.</P>"
+          
+            .textlabel1.text &= "<P>If you are absolutely certain this result is irrelevant e.g this was a "
+            .textlabel1.text &= "fictitious patient in a test file, then right mouse click on the patient's name "
+            .textlabel1.text &= "and send all associated results to a black hole never to be seen again. "
+            .textlabel1.text &= "Your actions will however be recorded for posterity( Or an audit).</P>"
+
+            .btnCancel.Visible = False
+            .pnlRight.Visible = True
+      End With
+   '  FMessage.Title = "Problem: Patient was not found"
+    '  FMessage.ShowModal()
+      Return True
+   Else
+      Return False
+   End If   
+  
+End
+
+
+
+Public Sub tbFile_Click()
+   '-----------------------------------------------------------
+   'User has clicked on file this document, so do it!
+   'First validate they have permission FIXME
+   'If logged on, presumably their staff validity dates are ok
+   'They could be trying to file someone elses documents
+   'FIXME: RULES RE ACCESS OF INBOX FOR USERS
+   '
+   'FIXME COMMENT ON iDisplay_as.
+   'note documents.sending_entities.fk_lu_message_display style
+   'may not be the same as a particular result - which the user
+   'may have changed to display as request.
+   '-----------------------------------------------------------
+   If Not cvwInboxDocuments.count Then Return 
+   Select Case FMetaData.iDisplay_As
+   Case const.Document_Display_As_Result   
+         If Not Document_File_Request() Then Return 
+   Case const.Document_Display_As_Letter 
+         If Not Document_File_Letter() Then Return 
+   End Select
+   Tabstrip1.Index = Metadata
+   '------------------------------------------------- 
+   'Now, are there any documents left for this person
+   '-------------------------------------------------
+   If cvwInboxDocuments.count = 0 Then
+        '------------------------------------------------
+        'If no documents left, remove current inbox item
+        'try and show next one if any left
+        '------------------------------------------------
+        cvwInbox.MoveCurrent()
+        cvwInbox.Remove(cvwInbox.Item.key)
+        Try cvwInbox.MoveFirst()
+        Try cvwInbox.Item.Selected = True
+        If Error Then
+           txtFilterDocuments.Clear() 'could be more, but filtered
+           Inbox_Reload()
+        End If   
+       chkAutoProcess.Value = False 'Lest we forget and skips past on next auto-fill of inbox fixme I've hidden this
+       bAutoFileAll = False
+       bAutoFilePatient = False 
+    Else
+       Document_RefreshList(cvwInboxDocuments, Selected_Inbox!documents) 
+       If Not cvwInboxDocuments.MoveFirst() Then     'if not a void view
+           cvwInboxDocuments.Item.Selected = True
+       Else
+          tbRefreshInbox_Click()
+       End If
+    End If                                       
+End
+
+Public Sub timer1_Timer()
+   '-------------------------------------------------------------------------------------
+   'Called on _new, this delay allows gui to show before loading, visually more pleasing
+   'Loads the defaults for the sending entities
+   're-loads inbox with patients/documents
+   '--------------------------------------------
+   timer1.Stop()
+   synonyms_Reload()
+   Inbox_Reload()
+End
+
+Public Sub synonyms_Reload()
+   '----------------------------------------------------------------------------------------
+   'Loads list of synonyms to link sending entities request names with what the user ordered
+   '----------------------------------------------------------------------------------------
+   synonyms = modInboxDBI.Sender_User_Synonyms_get()
+End
+
+Public Sub TabStripInbox_Click()
+   '----------------------------------------------------------------
+   'User has clicked on the main tabstip at the top
+   'this has tabs for inbox documents, setting up sending entities
+   'staff members archives (not implemented) and audit trail only
+   'partially implementedPrivate Const cDocumentINbox As Integer = 0
+   '-----------------------------------------------------------------
+  Select Case Last.index
+    Case cSetupMessageSenders
+      Sending_Entities_Reload()
+      cvwSendingEntities_Refresh()  'fill sending entities on that tab
+    Case cDocumentsAudit
+      Audit_Trail()
+  End Select
+End
+
+Public Sub EditArea_DisplayPreferences_Clear()
+   Dim iLastDisplaypreference As Integer = fk_lu_message_display_style
+    bExit = True   
+    'messy but these generic routines clear the radiobox, which here we dont' want
+    modEditAreaHelpers.EditArea_Clear(VBox_Person)
+     modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
+    modEditAreaHelpers.EditArea_Clear(VBox_HL7FileDetails)
+    cmbProvidertypes.index = -1
+    cmbSex.Index = -1
+    cmbTitle.index = -1
+   Select Case fk_lu_message_display_style
+   Case const.Document_Display_As_Letter
+       rbDisplayFormatLetter.value = True
+   Case const.Document_Display_As_Result
+       rbDisplayFormatResult.value = True   
+   End Select   
+   
+    listview2.Visible = False  
+    cvwSampleInboxDocuments.Clear()
+    FPreview_Settings.WebView1.html = ""
+    sender = New Collection 
+    sender!address = New Collection
+    SendingPerson = New Collection 
+    chkHeadOffice.value = True
+    txtBranch.text = "HEAD OFFICE"
+    pk_view_sending_entities = 0
+    fk_organisation = 0
+    fk_branch = 0
+    fk_employee = 0
+    fk_person = 0
+    fk_category_organisation = 0
+    fk_category_person = 0
+    cbForeground.Color = color.red
+    cbBackground.color = color.yellow
+    EditArea_Preferences_Notify_DataChange(False)
+    rbTypeSender_Organisation.Value = True 'default to it being a company
+    bExit = False  
+ End
+ 
+Public Sub EditArea_Preferences_Notify_DataChange(flag As Boolean)
+         If flag Then 
+            tbSaveSendingEntity.Foreground = Color.Red
+            HBox_EditArea_Outer.Padding = 1
+         Else
+            tbSaveSendingEntity.Foreground = Color.Black
+            HBox_EditArea_Outer.Padding = 0
+        
+         End If
+End
+
+Public Sub cvwSendingEntities_Select()
+   '------------------------------------------------------------------------------------
+   'User has clicked on the sending entities list
+   'Note the  sending_entity collection is simply pointing to a collection member
+   'and as such is not used to collect any changed data, which is done in a new
+   'collection Current_Sending_Entity in  Save()
+   '-------------------------------------------------------------------------------------
+    Sending_Entity_Display()
+End
+Public Sub Sending_Entity_Display()
+      '---------------------------------------
+      'display defaults for the sending entity
+      '---------------------------------------
+      Dim x As Integer
+     
+      Inc Application.Busy
+      EditArea_DisplayPreferences_Clear()                                  'clear the data display area
+      
+      cvwSendingEntities.MoveCurrent                                       'set internal list cursor to obtan key
+      pk_view_sending_entities = cvwSendingEntities.Item.Key               'the key to the view
+      bExit = True                                                         'prevent change events in subroutines
+      Sending_Entity = New Collection 
+      Sending_Entity!pk_sending_entities = Sending_Entities[pk_view_sending_entities]!pk_sending_entities
+      Sending_Entity!provider_type = Sending_Entities[pk_view_sending_entities]!provider_type
+      Sending_Entity!fk_lu_message_display_style = Sending_Entities[pk_view_sending_entities]!fk_lu_message_display_style
+      fk_lu_message_display_style = Sending_Entity!fk_lu_message_display_style
+      txtSendingEntity.text = Sending_Entities[pk_view_sending_entities]!msh_sending_entity
+      txtTransmittingEntity.text = Sending_Entities[pk_view_sending_entities]!msh_transmitting_entity
+      chkExcludeFTReportSendingEntity.value = Sending_Entities[pk_view_sending_entities]!exclude_ft_report
+      chkExcludePITSendingEntity.value = Sending_Entities[pk_view_sending_entities]!exclude_pit
+      cmbProviderTypes.index = cmbProvidertypes.Find(Sending_Entities[pk_view_sending_entities]!provider_type)
+      cbForeground.Value = Sending_Entities[pk_view_sending_entities]!abnormals_foreground_color
+      cbBackground.value = Sending_Entities[pk_view_sending_entities]!abnormals_background_color
+      lblSample.Foreground = cbForeground.Value
+      lblSample2.Foreground = cbForeground.Value
+      lblSample.Background = cbBackground.value
+      lblSample2.Background = cbBackground.value
+      Select Case Sending_Entity!fk_lu_message_display_style
+      Case const.Document_Display_As_Letter
+         rbDisplayFormatLetter.value = True
+      Case const.Document_Display_As_Result
+         rbDisplayFormatResult.value = True
+      End Select
+
+      If Not IsNull(Sending_Entities[pk_view_sending_entities]!fk_branch) Then
+         Organisations = modContactsDBI.Branch_get_by_keys(Sending_Entities[pk_view_sending_entities]!fk_branch)
+         For Each Organisation In Organisations
+                Organisation_Display(Organisation)
+                rbTypeSender_Organisation.value = True
+         Next
+      End If
+     If Not IsNull(Sending_Entities[pk_view_sending_entities]!fk_person)
+         For Each Person In modContactsDBI.Person_Get_By_pk(Sending_Entities[pk_view_sending_entities]!fk_person)
+                 Person_Display(Person)
+         
+                rbTypeSender_Person.value = True
+         Next
+       End If
+  
+      EditArea_Preferences_Notify_DataChange(False) 
+      '-----------------------------------------------------------------------
+      'At this point, if either txtOrganisation is blank or txtPerson is blank
+      'search for an existing sending entity
+      '-----------------------------------------------------------------------
+      If fk_organisation = 0 And fk_person = 0 Then
+         Sending_entity_Find()
+      End If   
+      bExit = False
+    
+      'fill inbox, for this sending entidy, limit display to 5 records
+      Sample_Inbox = Fill_Inbox_Sample(cvwInbox_Sample, cvwSendingEntities.Item.Key, 5)
+       Dec Application.Busy
+      If cvwInbox_Sample.count Then
+         cvwInbox_Sample.MoveFirst()
+         cvwInbox_Sample.Item.Selected = True
+      End If
+
+End
+
+Public Sub Sending_entity_Find()
+  '-----------------------------------------------
+  'Try and get the sending entity from the backend
+  '-----------------------------------------------
+  If fk_organisation = 0 And fk_person = 0 Then
+     Organisations = modContactsDBI.Organisations_Get_HeadOffice(Trim(txtSendingEntity.text))
+     For Each Organisation In Organisations
+            Organisation_Display(Organisation)
+      Next  
+  End If 
+End
+
+
+Public Function Fill_Inbox(cvw As Columnview, Optional fk_sending_entity As Integer = 0, Optional limit As Integer = 0) As Collection 
+   '-------------------------------------------------------------------------
+   'fill the documents inbox on either tab, may be filtered by sending entity
+   'staffmember = staff_members[cmbStaffMembers.item.key]
+   '-------------------------------------------------------------------------
+   Dim sql As String
+   Dim C As Collection 
+   Dim Document As Collection
+   Dim fk_last_patient As String
+   Dim fk_last_umatched_patient As String 
+   Dim patient As Collection 
+   Dim x As Integer
+   Dim total_doc_count As Integer
+   
+   With cvw
+         .Columns.count = 1
+         .Clear()
+   End With
+   sql = "Select count(pk) as count  from documents.Documents Where concluded = false and deleted = False "
+   total_doc_count = Str(modDBConnect.exec_query(sql)!count) 
+   sql = "Select * from documents.vwDocuments Where concluded = false and deleted = False "
+   If fk_sending_entity Then
+         sql &= "AND fk_sending_entity = " & fk_sending_entity & " "
+   End If 
+   
+   '------------------------------------------------------------------
+   'Staff member could be unknown, ie message recipient not recognised
+   '------------------------------------------------------------------
+   staff_member = staff_members[cmbStaffMembers.index]
+   If IsNull(Staff_member!fk_staff) Then
+     sql &= "And fk_unmatched_staff = " & Staff_member!fk_unmatched_staff
+     With tlMissingProvider
+      .foreground = color.Red
+      .text = "<P>The recipient of this message was not found.</P> "
+               "You will have to ask the system adminstrator to "
+               "enter the correct details in the staff database before proceeding"
+     End With  
+   Else
+      sql &= " AND fk_staff_destination = " & staff_member!fk_staff
+      tlMissingProvider.text = ""
+   End If
+   If Trim(txtFilterDocuments.text) Then
+     sql &= " AND tag ILIKE $$%" & txtFilterDocuments.text & "%$$" 
+   Endif
+   sql &= " ORDER BY patient_surname, patient_firstname "
+   If limit Then 
+      sql &= " LIMIT " & limit
+   End If
+   Documents = modDBConnect.exec_query_collection(sql)
+   If Not Documents.count Then
+       tlOutstandingStaffMember.Visible = False  
+       tlOutstandingStaffMember.text = staff_member!title & " " & staff_member!wholename & ":0"  'do not change from staff_member!
+       tlOutstandingAllStaff.text = "There are " & Str$(total_doc_count) & " unread documents for other staff"
+      Return 
+   End If
+   If total_doc_count - Documents.count <> 0 Then 
+      tlOutstandingAllStaff.Visible = True 
+      tlOutstandingAllStaff.text = "There are " & Str$(total_doc_count - Documents.count) & " unread documents for other staff"
+   Else
+      tlOutstandingAllStaff.Visible = False  
+   End If   
+   tlOutstandingStaffMember.text = "There are " & Str(Documents.count) & " unread documents for " & staff_member!title & " " & staff_member!wholename 
+
+   C = New Collection     'a misnomer content = who message intended for, or About Who
+   For Each Document In Documents   
+         '-------------------------------------------------------------------------------------------------------
+         'Create new patient collection
+         'Some document collections have fk_patient, some fk_patient is null and fk_unmatched_patient is not null
+         '--------------------------------------------------------------------------------------------------------
+         If IsNull(Document!fk_patient) Then
+          If fk_last_patient <> Document!fk_unmatched_patient Then
+               fk_last_patient = Document!fk_unmatched_patient
+               patient = New Collection
+               patient!documents = New Collection
+               patient!fk_unmatched_patient = Document!fk_unmatched_patient
+               patient!firstname = Document!unmatched_patient_firstname
+               patient!surname = Document!unmatched_patient_surname
+               patient!birthdate = Document!unmatched_patient_birthdate
+               patient!sex = Document!unmatched_patient_sex
+               patient!title = Document!unmatched_patient_title
+               patient!wholename = patient!title & " " & patient!firstname & " " & patient!surname
+               patient!street = Document!unmatched_patient_street
+               patient!town = Document!unmatched_patient_town
+               patient!postcode = Document!unmatched_patient_postcode
+              
+               x = cvw.Count
+               '--------------------------------------------------------------
+               'INbox column view count = key to the C collection
+               '0-n
+               'The results columnview is keyed to the document pk
+               '--------------------------------------------------------------
+               C.Add(patient, x)
+               cvw.Add(x, 0)    
+               cvw[x][0] = document!unmatched_patient_surname & ", " & document!unmatched_patient_firstname
+               If cvw[x][0] = ", " Then 
+                  cvw[x][0] = "Non patient document"
+               End If
+    
+          End If 
+         Else
+           If fk_last_patient <> Document!fk_patient Then
+               '-------------------------------
+               'Create a new patient collection
+               '-------------------------------
+               fk_last_patient = Document!fk_patient
+               patient = New Collection
+               patient!documents = New Collection
+               patient!fk_patient = Document!fk_patient
+               patient!firstname = Document!patient_firstname
+               patient!surname = Document!patient_surname
+               patient!birthdate = Document!patient_birthdate
+               patient!sex = Document!patient_sex
+               patient!title = Document!patient_title 
+               patient!wholename = patient!title & " " & patient!firstname & " " & patient!surname
+               patient!age = Str(Document!patient_age)
+               'FIXME: age in vwPatients is double but FPastHistory seems to need string ?why
+               'as is used from FClinical without problems.
+               patient!street = Document!patient_street
+               patient!town = Document!patient_town
+               patient!postcode = Document!patient_postcode
+               x = cvw.Count
+               '--------------------------------------------------------------
+               'INbox column view count = key to the C collection
+               '0-n
+               'The results columnview is keyed to the document pk
+               '--------------------------------------------------------------
+               C.Add(patient, x)
+               cvw.Add(x, 0)    
+               cvw[x][0] = document!patient_surname & ", " & document!patient_firstname 
+               If cvw[x][0] = ", " Then 
+                  cvw[x][0] = "Non patient document"
+               End If
+            End If
+         End If
+         C[x]!documents.Add(Document, document!pk_document)
+      Next
+      Dec Application.Busy
+      Return C
+End
+
+Public Function Fill_Inbox_Sample(cvw As Columnview, Optional fk_sending_entity As Integer = 0, Optional limit As Integer = 0) As Collection 
+   '-------------------------------------------------------------------------
+   'fill the documents inbox on either tab, may be filtered by sending entity
+   '-------------------------------------------------------------------------
+   Dim sql As String
+   Dim C As Collection 
+   Dim Document As Collection
+   Dim fk_last_patient As String
+   Dim fk_last_umatched_patient As String 
+   Dim patient As Collection 
+   Dim x As Integer
+   
+   With cvw
+         .Columns.count = 1
+         .Clear()
+   End With
+  
+   sql = "Select * from documents.vwDocuments Where concluded = false and deleted = False "
+   If fk_sending_entity Then
+         sql &= "AND fk_sending_entity = " & fk_sending_entity & " "
+   End If   
+   sql &= " AND fk_staff_destination = " & modDBConnect.currentUser!fk_staff
+ '  If bIncludeUnmatcheddocuments = True Then
+   '   sql &= " AND fk_staff_destination is null "
+ '  End If
+ '  sql &= "AND fk_lu_provider_type = 1 "
+  ' If chkAutoProcess.value = True Then
+'   sql &= " and fk_unmatched_patient is null "
+ '  End If
+
+   If limit Then 
+      sql &= " LIMIT " & limit
+   End If
+   Print sql
+  Documents = modDBConnect.exec_query_collection(sql)
+   If Not Documents.count Then Return 
+ 
+   C = New Collection     'a misnomer content = who message intended for, or About Who
+   For Each Document In Documents   
+         '-------------------------------------------------------------------------------------------------------
+         'Create new patient collection
+         'Some document collections have fk_patient, some fk_patient is null and fk_unmatched_patient is not null
+         '--------------------------------------------------------------------------------------------------------
+         If IsNull(Document!fk_patient) Then
+          If fk_last_patient <> Document!fk_unmatched_patient Then
+               fk_last_patient = Document!fk_unmatched_patient
+               patient = New Collection
+               patient!documents = New Collection
+               patient!fk_unmatched_patient = Document!fk_unmatched_patient
+               patient!firstname = Document!unmatched_patient_firstname
+               patient!surname = Document!unmatched_patient_surname
+               patient!birthdate = Document!unmatched_patient_birthdate
+               patient!sex = Document!unmatched_patient_sex
+               patient!title = Document!unmatched_patient_title
+               patient!street = Document!unmatched_patient_street
+               patient!town = Document!unmatched_patient_town
+               patient!postcode = Document!unmatched_patient_postcode
+               x = cvw.Count
+               '--------------------------------------------------------------
+               'INbox column view count = key to the C collection
+               '0-n
+               'The results columnview is keyed to the document pk
+               '--------------------------------------------------------------
+               C.Add(patient, x)
+               cvw.Add(x, 0)    
+               cvw[x][0] = document!unmatched_patient_surname & ", " & document!unmatched_patient_firstname
+    
+          End If 
+         Else
+           If fk_last_patient <> Document!fk_patient Then
+               '-------------------------------
+               'Create a new patient collection
+               '-------------------------------
+               fk_last_patient = Document!fk_patient
+               patient = New Collection
+               patient!documents = New Collection
+               patient!fk_patient = Document!fk_patient
+               patient!firstname = Document!patient_firstname
+               patient!surname = Document!patient_surname
+               patient!birthdate = Document!patient_birthdate
+               patient!sex = Document!patient_sex
+               patient!title = Document!patient_title
+               patient!street = Document!patient_street
+               patient!town = Document!patient_town
+               patient!postcode = Document!patient_postcode
+               x = cvw.Count
+               '--------------------------------------------------------------
+               'INbox column view count = key to the C collection
+               '0-n
+               'The results columnview is keyed to the document pk
+               '--------------------------------------------------------------
+               C.Add(patient, x)
+               cvw.Add(x, 0)    
+               cvw[x][0] = document!patient_surname & ", " & document!patient_firstname 
+            End If
+         End If
+         C[x]!documents.Add(Document, document!pk_document)
+      Next
+      Dec Application.Busy
+   '   Wait
+      ' cvw.MoveFirst()
+      ' cvw.Item.Selected = True
+       Return C
+End
+
+
+Public Sub cvwInbox_Sample_Select()
+
+    '-------------------------------------------------------------------------------------------
+   'User has selected a patients name from the list, it will have 1 or more associate documents
+   'or observations i.e if a path result show all associated results 
+   'Show the html of the first docuemnt (test or whatever) in  the observations list 
+   'currently called cvwLabRequests for historical reasons and not yet changed.
+   'This won't always have patient names, so I'm going to have to change heaps of
+   'stuff here
+   '--------------------------------------------------------------------------------------------
+    cvwSampleInboxDocuments.Clear()
+    cvwInbox_Sample.MoveCurrent()                                      'sets internal cursor to match whats visible
+    Sample_Inbox_Key = cvwInbox_Sample.Item.Key                   'sets the key to Inbox collection 
+    Selected_Sample_Inbox = Sample_Inbox[Sample_Inbox_Key]   'create SelectedPatient collection 
+    Document_RefreshList(cvwSampleInboxDocuments, Selected_Sample_Inbox!documents)     
+    If cvwSampleInboxDocuments.count Then
+      cvwSampleInboxDocuments.MoveFirst                                     'display list of observations e.g list of tests, fbc, etc
+      cvwSampleInboxDocuments.Item.Selected = True
+    End If
+  '  cvwSampleInboxDocuments_Click()
+End
+
+Public Sub HTML_Document_Show(display_style As Integer, Doc As Collection, Document_observations As Collection)
+   '----------------------------------------------------------------
+   'Display html of the document (FIXME to include scanned pdf's etc
+   'according to the style set by either the record or the option 
+   'buttons (letter or result
+   '------------------------------------------------
+   Dim fname As String  'remove me
+  
+   Vbox_PDf.Visible = False
+   Vbox_Images.Visible = False   
+   VSplit_Document.Visible = True   
+  
+   Document_HTML = modHL7Process.Construct_HTML(Selected_Inbox, Doc, Document_observations, bExcludePIT, bExcludeFTReport, display_style, fgc, bgc)
+   Document_HTML = Replace(Document_HTML, "%filingas%", "")
+   lblFilingAs.text = "Filing as: " & FMetaData.txtUserObservationName.text
+   If TabStripInbox.index = 0 Then
+        FPreview_HtmlDocument.WebView1.html = Document_HTML
+   Else
+        FPreview_Settings.WebView1.html = Document_HTML
+   End If
+End
+
+
+Public Sub rbDisplayFormat_Click()
+      If Bexit = True Or IsNull(SelectedDocument) Then Return 
+          
+      fk_lu_message_display_style = Last.tag
+      SelectedDocument!fk_lu_message_display_style = Last.tag
+      Try HTML_Document_Show(Last.tag, SelectedDocument, observations) 
+End
+
+Public Sub cvwSampleInboxDocuments_Select()
+   If Not cvwSampleInboxDocuments.count Then Return 
+   cvwSampleInboxDocuments.MoveCurrent
+   Sample_Inbox_Document_Key = cvwSampleInboxDocuments.Item.key    
+   SelectedSampleDocument = Selected_Sample_Inbox!documents[Sample_Inbox_Document_Key] 
+   ' 
+   Select Case fk_lu_message_display_style
+   Case const.Document_Display_As_Letter
+       rbDisplayFormatLetter.value = True
+   Case const.Document_Display_As_Result
+       rbDisplayFormatResult.value = True   
+   End Select   
+   Inc Application.Busy ' 
+   Sample_Observations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & Sample_Inbox_Document_Key)
+   HTML_Document_Show(fk_lu_message_display_style, SelectedSampleDocument, Sample_Observations)
+   Dec Application.busy
+   
+End
+
+Public Sub tbSaveSendingEntity_Click()
+   '-----------------------
+   'Save the sending entity
+   '-----------------------
+   Dim sMsg As String
+   If cmbProvidertypes.index = -1 Then
+      cmbProvidertypes.SetFocus()
+      Return
+   End If   
+ '  If provider_types[cmbProvidertypes.index]!pk < 4 And fk_lu_message_display_style =  const.Document_Display_As_Letter Then
+  '     fk_lu_message_display_style = const.Document_Display_As_Result
+  '     EditArea_Preferences_Notify_DataChange(True)
+ '  End If   
+  SendingEntity_Save()
+  Inbox_Reload()
+  Inbox_Sending_Entities = modUtil.LoadCombo(cmbSenders, modInboxDBI.Get_HL7_FileHandling_Defaults(), "msh_sending_entity")
+  cmbSenders.index = -1
+  tbRefreshInbox_Click
+End
+  
+
+
+
+Public Sub SendingEntity_Save()
+   '--------------------------------------------------------------------------------------
+   'Saves the defaults for each sending entity which is either a person or an organsation
+   '   TABLE documents.sending_entities
+   ' 
+   '   pk serial NOT NULL,
+   '   fk_lu_provider_type integer
+   '   msh_sending_entity text NOT NULL
+   '   msh_transmitting_entity text
+   '   fk_lu_message_display_style integer NOT NULL
+   '   fk_branch integer,
+   '   fk_employee integer,
+   '   fk_person integer,
+   '   fk_lu_message_standard integer NOT NULL
+   '   exclude_ft_report boolean DEFAULT false
+   '   exclude_pit boolean DEFAULT false
+   '   abnormals_foreground_color integer DEFAULT 16711680,
+   '   abnormals_background_color integer DEFAULT 16777215,
+   '----------------------------------------------------------------------------------------  
+   Dim aCon As New Connection 
+   Dim fk_organisation_fk_branch As New Collection  'no use for this is this module, but needed
+   Dim Organisation As Collection 
+   Dim rows_in_view As Collection 'not needed in this module but needed but must be present for save
+   Dim comms As New Collection        'not needed in this module but must be present for save
+   Dim views_comms As New Collection  'not needed in this module but must be present for save
+   Dim old_pk As Integer          'not needed in this module  but must be present for save
+   Dim address As New Collection
+   Dim addresses As New Collection  
+   Dim clinic As New Collection        'not needed in this module  but must be present for save
+   Dim currentperson As Collection 'person in the editing area if any
+   '-------------------------------------------------------------------------   
+   'First, some minimal validation - some sort of change + valid minimum data
+   '------------------------------------------------------------------------- 
+   If HBox_EditArea_Outer.padding = 0 Then
+      Message.Info("No changes made to this sending entity, the record will not be saved")
+      Return   
+   End If
+   Inc Application.Busy
+   If Not SendingEntity_Valid() Then 
+        Dec Application.Busy
+        Return 
+   End If  
+   '---------------------------------------------------------------
+   'Now, if no organisation FIXME OR PERSON exists, save this first
+   '---------------------------------------------------------------
+   modDBConnect.BeginTrans() 'fixme maybe make the coms, viewcomms etc optional (but check how affects contacts and the routine first)
+
+   rows_in_view = New Collection             'need contain no data
+   comms = New Collection                    'need contain no data
+   views_comms = New Collection              'need contain no data
+   clinic = New Collection                   'need contain no data
+
+   '---------------------------------------------------------
+   'Currently cannot update the organisation from this screen
+   '---------------------------------------------------------
+  
+   Select Case type_Sender
+   Case const.contacttype_organisation
+         '------------------------------------------------------
+         'Is this a new organisation?:
+         'If category dosn't exist will be saved as new category
+         '------------------------------------------------------
+         If fk_organisation = 0 Then 
+            Organisation = New Collection
+            Branch = New Collection
+            organisation!organisation = Trim(txtOrganisation.text)
+            branch!branch = Trim(txtBranch.text) 
+            If fk_category_organisation <> 0 Then  
+               branch!fk_category = fk_category_organisation
+            Else
+               branch!category = Trim(txtOrganisationCategory.text) 
+            End If
+            If Trim(txtStreet1.text) = "" And fk_town = 0 Then
+               address = Null
+            Else
+               address = New Collection
+               address!street = Trim(txtStreet1.text) 'FIXME TO INCLUDE STREET1\NSTREET2
+               If fk_town_organisation <> 0 Then address!fk_town = fk_town_organisation
+               address!country_code = "AU" 'FIXME make me configurable
+               If chkHeadOffice.value = True Then
+                  address!head_office = True
+               Else
+                  address!head_office = False
+               End If
+               If chkPostal.Value = True Then
+                  address!postal_address = True
+               Else
+                  address!postal_address = False
+               End If  
+              
+            End If
+            '-----------------------------------------------
+            'Now save the organisation and retrieve the keys
+            '-----------------------------------------------
+            fk_organisation_fk_branch = modContactsDBI.Org_Save(rows_in_view, old_pk, organisation, branch, address, comms, views_comms, clinic)
+            fk_branch = fk_organisation_fk_branch["fk_branch"]
+         Else
+            'existing organisation
+            
+         End If 
+   Case const.contacttype_person
+         '-------------
+         'Save a person
+         '-------------
+         If Trim(txtPersonSurname.text) <> "" Then
+            currentperson = New Collection
+            If fk_person Then
+               currentperson!fk_person = fk_person 
+            End If
+            currentperson!fk_category = fk_category_person
+            currentperson!surname = Trim(txtPersonSurname.text)
+            currentperson!fk_sex = cmbSex.Index
+            currentperson!firstname = Trim(txtPersonFirstname.text)
+            currentperson!occupation = Trim(txtPersonOccupation.text)
+            currentperson!fk_title = cmbTitle.Index  
+            If fk_occupation <> 0 Then
+               currentperson!fk_occupation = fk_occupation
+               currentperson.Remove("occupation")
+            End If
+            If Trim(txtPersonStreet1.text) = "" And fk_town = 0 Then
+               address = Null
+            Else
+               address = New Collection
+               address!street = Trim(txtPersonStreet1.text) 'FIXME TO INCLUDE STREET1\NSTREET2
+               address!country_code = "AU" 'FIXME make me configurable
+               address!fk_town = fk_town_person
+               addresses.Add(address, 0)
+            End If
+            'fixme: make person updateable
+            If IsNull(currentperson!fk_person) Then
+               currentperson!fk_person = modContactsDBI.Person_Save(rows_in_view, old_pk, currentperson, comms, views_comms)
+               modContactsDBI.Person_Addresses_Save(rows_in_view, old_pk, addresses, currentperson)
+            End If
+        End If  
+   End Select 
+   '------------------------------------------------------------------------------------
+   'Sending entities are never created in this module, as if they don't exist they were 
+   'created by modHl7FileProcess so:
+   'Sending_Entities is the collection
+   'pk_view_sending_entities is the key
+   'Sending_Entity is the collection for the current sending entity in the list
+   'add or modify keys for the colection 
+   'We only keep keys, so discard the text
+   '------------------------------------------------------------------------------------
+   If Not IsNull(fk_organisation_fk_branch["fk_category"]) Then
+     Sending_Entity!fk_lu_provider_type = fk_organisation_fk_branch["fk_category"]
+   Else
+      Sending_Entity!fk_lu_provider_type = provider_types[cmbProvidertypes.index]!pk
+   End If   
+   Sending_Entity!fk_lu_message_display_style = fk_lu_message_display_style
+   Sending_Entity!fk_branch = fk_branch
+   Sending_Entity!fk_person = fk_person
+   Sending_Entity!fk_lu_message_standard = cmbFileType.index + 1
+   Sending_Entity!exclude_ft_report = CBool(chkExcludeFTReportSendingEntity.value)
+   Sending_Entity!exclude_pit = CBool(chkExcludePITSendingEntity.value)
+   Sending_Entity!abnormals_foreground_color = cbForeground.Value
+   Sending_Entity!abnormals_background_color = cbBackground.Value
+  
+   Try Sending_Entity.Remove("sender_name")
+   Try Sending_Entity.Remove("style")
+   Try Sending_Entity.Remove("message_version")
+   Try Sending_Entity.Remove("message_type")
+ 
+   Sending_Entity!fk_default = modInboxDBI.Save_HL7_FileHandling_Defaults(Sending_Entities, pk_view_sending_entities, Sending_Entity)
+   modDBConnect.CommitTrans()
+   Dec Application.Busy
+   EditArea_Preferences_Notify_DataChange(False)
+   Sending_Entities_Reload()
+   cvwSendingEntities_Refresh()
+ 
+End
+
+Public Sub Metadata_Author_Entry_Area_Hide()
+   '---------------------------------------------------
+   'shows and hides appropriate textboxes to expose the
+   'entry area for the author of the document
+   '---------------------------------------------------
+    With FMetaData
+            .HBox_Author.Visible = False
+            .VBox_Organisation.Visible = False  
+            .Hbox_TypeSender.visible = False 
+            .HBox_Document_Tag.Visible = True 
+            .HBox_Comment.Visible = True  
+            .HBox_Laterality.visible = True
+            .hBox_Urgency.Visible = True 
+            .HBox_HealthIssue.Visible = True
+            .HBox_DocumentDate.Visible = True
+            .HBox_UserObservationName.Visible = True 
+            .Vbox_Lock.Visible = True
+            .Hbox_Requested.Visible = True 
+    End With
+  
+  
+End
+
+Static Public Sub Reload_Organisation()
+   form_inbox.Organisation_ReAllocate()
+End
+
+Public Sub Document_SendBack_For_ReFiling()
+   Dim sMsg As String
+   Dim newdoc As Collection 
+   Dim oldname As String
+   Dim newname As String
+   '----------------------------------------------------------------
+   'Document has been mis-allocated, staff can't be bothered fixing
+   'just sends it back the clerical scanning directory for re-filing
+   'mark its entry in the database as deleted.
+   '----------------------------------------------------------------
+   sMsg = SelectedDocument!tag 
+   sMsg &= "\n\nSend back for clerical to re-allocate?"
+   If Message.Warning(sMsg, "Yes", "No") = 2 Then Return 
+   modInboxDBI.Document_Mark_Deleted(SelectedDocument!pk_document)        'remove from circulation, sorry ian
+   oldname = modAdminDBI.Config_Get("document_archiving_directroy", "/var/easygp/scanning", "Directories/scanning") &/ SelectedDocument!source_file
+   newname = modAdminDBI.Config_Get("document_scanning_directory", "/var/easygp/archiving", "Directories/archiving") &/ SelectedDocument!source_file
+   Try Move oldname To newname
+   If Error Then
+       Try Copy OldName To NewName
+       If Not Error Then Kill OldName
+   Endif
+   If Not Error Then
+      modDBConnect.CommitTrans()
+   Else
+      Message.Error("An error occured and the file could not be re-allocated")
+      modDBConnect.RollBack()
+   Endif
+   Inbox_Reload()
+End
+
+Public Sub Organisation_ReAllocate()
+   '---------------------------------------------------
+   'Reallocates the file to another organisation
+   'changes critical fields, moves old file to new file
+   'if this is successfull completes the transaction
+   '---------------------------------------------------
+   Dim sMsg As String
+   Dim oldFilename As String = SelectedDocument!source_file
+   Dim newfilename As String 'new name of source file
+   Dim Document As New Collection 
+   Dim NewTag As String
+   Dim docdir As String
+   
+   Select Case FMetaData.Type_Document_Author
+        Case const.contacttype_organisation
+            NewTag = FMetaData.txtOrganisation.text
+            If FMetaData.txtBranch.text <> "HEAD OFFICE" Then
+               NewTag &= "." & FMetaData.txtBranch.text 
+            Endif
+        Case const.contacttype_employee
+            NewTag = Trim(FMetaData.txtOrganisation.text) & "." & Trim(FMetaData.txtOrganisationEmployee.text)
+        Case const.contacttype_patient, const.contacttype_person
+           
+   End Select  
+
+   Message.Title = "Re-allocation of document"
+   sMsg = "You have selected to re-allocate the sender of this document from:\n\n"
+   sMsg &= Replace$(SelectedDocument!tag, " - scanned document", "")
+   sMsg &= "\n\nto\n\n" & NewTag
+  
+   If Message.Warning(sMsg, "Yes", "No") = 2 Then Return 
+   '----------------------------------
+   'Now re-allocate the sending entity
+   '----------------------------------
+   Document!pk_document = SelectedDocument!pk_document
+   Document!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(FMetaData.Get_Document_Type(), FMetaData.Get_Display_Style(), FMetaData.fk_branch, FMetaData.fk_employee, FMetaData.fk_person)
+   Document!originator = NewTag ' FMetaData.txtDocumentTag.text
+   Document!tag = Document!originator & " - scanned document" 'FIXME WHAT IF THIS IS A RESULT - SHOULD NEVER HAPPEN HOWEVER
+   '---------------------------------------------------------------------
+   ' Create the filename = (if the components exist)
+   '  patientname.dob.pk_patient.19531001.dr.j.smith.pk_document.1923.pdf
+   '  If not applicable to a patient but  document going to all staff:
+   '  memo.allstaff & Format$(Now, "dd-mm-yyyy:hh:nn:ss")
+   'FIXME: NOT GETTING THE NEXT DOCUMENT PK, BUT THE LAST DOCUMENT pk ?WHY
+   'FIXME: SAME CODE AS in FArchiveDocuments.class
+   'FIXME: POTENTIAL PROBLEM, DONT REALLOCATE FILES DESTINED FOR ALL STAFF
+   '---------------------------------------------------------------------
+   If Trim(FMetaData.txtPatient.text) <> "" Then 
+      newfilename &= Replace(Trim(FMetaData.txtPatient.text), " ", "_") & "." & modutil.DateString_Encode(FMetaData.lblbirthdate.text) & "." & Str(SelectedDocument!fk_patient) & "."
+   Else
+      ' If FMetaData.chkAllStaff.value = True Then
+      '    newfilename = "memo.allstaff." & Replace$(Trim(FMetaData.txtDocumentTag.text), " ", "_") & "." & Format$(Now, "dd-mm-yyyy:hh:nn:ss")
+    '  Endif
+   End If   
+   newfilename &= Replace(Document!originator, " ", "_") & "." & Str$(Document!pk_document) & "."
+   newfilename &= File.Ext(FMetaData.txtFilename.text)
+   Document!source_file = Lower(newfilename)
+   modArchiveDocumentsDBI.Save(Selected_Inbox!documents, iSelectedDocument, Document)
+   docdir = modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/")
+   Try Move docdir &/ oldfilename To docdir &/ Lower(newfilename) 
+   If Not Error Then
+      modDBConnect.CommitTrans()
+   Else
+      Message.Error("An error occured and the file could not be re-allocated")
+      modDBConnect.RollBack()
+   Endif
+  ' source_file, fk_sending_entity, originator(eg jHH.cardiology) And tag
+   'Metadata_Author_Entry_Area_Hide() 'remove me - temp only whilst design screen
+ 'just to a res-set on the inbox.
+ Inbox_Reload()
+  
+End
+
+Static Public Sub Reload_Patient(bReallocating As Boolean)
+   '----------------------------------------------------------------
+   ' Either an unmatched patient has been found In FMetaData and
+   ' we are replacing this with a now known patient bReAllocating = False
+   ' or if bReAllocating = True then we are replacing a wrong filed
+   ' document (ie - allocated to the wrong patient) with a new existing
+   ' patient that the user has just found by searching
+   '----------------------------------------------------------------- 
+   form_inbox.Unmatched_Patient_Resolve(bReallocating)
+End
+
+Static Public Sub Document_Filed_As_Update(name As String)
+  form_inbox.lblFilingAs.text = "Filing as: " & name
+ ' form_inbox.Filed_As_Update(name)
+
+End
+
+Public Sub Filed_As_Update(name As String)
+  
+ lblFilingAs.text = name
+  
+End
+
+Public Sub Unmatched_Patient_Resolve(bReallocating As Boolean)
+  Dim fk_patient As Integer
+  Dim sMsg As String 
+  Dim sName As String 
+  Dim x As Integer
+  Dim document_keys As Collection 
+  '------------------------------------------------------------------------
+  'The fk_patient returned here, is the fk_patient existing in the database
+  'that the user has selected as matching the unmatched patient
+  'It's easy to accidentally make an error, so double check
+  'Trust, me I'm useless like this I've done it heaps of times
+  'hence this error message
+  '-------------------------------------------------------------------------
+  fk_patient = FMetaData.get_fk_patient()
+  If bReallocating = False Then 
+      sName = SelectedDocument!unmatched_patient_title & " "
+      sName &= SelectedDocument!unmatched_patient_firstname & " "
+      sName &= SelectedDocument!unmatched_patient_surname & " "
+      sName &= SelectedDocument!unmatched_patient_sex & " "
+      sName &= Format(SelectedDocument!unmatched_patient_birthdate, "dd/mm/yyyy") & " " 
+      sMsg &= sName & "\n\nhas been matched to the following existing patient:\n\n"
+  Else
+       '-----------------------------------------------------------------------------------
+       'Document may or may not have been allocated to a patient by some slack staff member
+       'i.e sort of slipped through as a circular. or wrongly allocated.
+       'Firstly, are we trying to allocate one or more than one?. If more than one
+       'then when the popup menu was shown, we will have enabled/disabled the menu items
+       '-----------------------------------------------------------------------------------
+     
+        If Not IsNull(SelectedDocument!patient_fk_person) Then 
+            sName = SelectedDocument!patient_title & " "
+            sName &= SelectedDocument!patient_firstname & " "
+            sName &= SelectedDocument!patient_surname & " "
+            sName &= SelectedDocument!patient_sex & " "
+            sName &= Format(SelectedDocument!patient_birthdate, "dd/mm/yyyy") & " " 
+            sMsg &= sName & "\n\nwill now be allocated to the following patient:\n\n"
+         Else
+            sMsg = "No previous patient was allocated.\n\nThis document will now be allocated to the following patient:\n\n"
+         End If
+
+  End If
+  sname = FMetaData.txtPatient.text & " "
+  sname &= FMetaData.lblBirthdate.text
+
+  If mnuDocuments_ReAllocateMultiple.Enabled = True Then
+    
+      sMsg = "Multiple documents, currently allocated to\n\n" & sMsg 
+      sMsg &= "Note: Be very careful - you have selected multiple documents to re-allocate!\n\n"   
+  Else
+      sMsg = "A single document currently allocated to\n\n" & sMsg
+  Endif
+
+   sMsg &= sName & "\n\nPlease confirm."
+   Message.Title = "Confirm Patient Identity"
+   If Message.warning(smsg, "Yes", "No") = 1 Then 
+       Selected_Inbox!fk_patient = fk_patient
+       If bReallocating = False Then 
+         '-----------------------------
+         'Resolve the unmatched patient'FIXME CHECK THIS IS CORRECT
+         '-----------------------------
+         modInboxDBI.Document_SetPatientFK(fk_patient, SelectedDocument!fk_unmatched_patient)
+         modInboxDBI.Unmatched_Patient_Mark_Resolved(SelectedDocument!fk_unmatched_patient, fk_patient)
+        
+       Else
+         '-------------------------------------------------------------------------
+         'Resolve the wrongly allocated patient by reallocation 1 or more documents
+         '-------------------------------------------------------------------------
+         If mnuDocuments_ReAllocateMultiple.Enabled = True Then
+               cvwInboxDocuments.MoveFirst()                                'move internal cursor to start
+               For x = 0 To cvwInboxDocuments.count - 1                     'check every item in the list
+                   If cvwInboxDocuments.Item.Selected = True Then           'if it has been selected
+                    '  document_keys.Add(cvwInboxDocuments.Item.key, document_keys.count)
+                       modInboxDBI.Document_ReAllocate_To_Another_Patient(cvwInboxDocuments.Item.key, fk_patient)
+                   Endif
+                   cvwInboxDocuments.MoveNext()
+               Next
+          Else
+             modInboxDBI.Document_ReAllocate_To_Another_Patient(SelectedDocument!pk_document, fk_patient)
+         End If   
+       End If
+       modDBConnect.CommitTrans()
+   End If
+
+  Inbox_Reload()
+  cvwInbox_Select
+  
+  
+End
+
+Public Function SendingEntity_Valid() As Boolean
+   '-----------------------------------------------------
+   'Validate minimum data defaults for the sending entity
+   '-----------------------------------------------------
+   Dim sMsg As String 
+   
+   If Trim(txtSendingEntity.text) = "" Then
+      txtSendingEntity.SetFocus()
+      Return
+   End If
+   If Trim(txtTransmittingEntity.text) = "" Then   
+      sMsg = "Missing Transmission entity\n\n" 
+               "If unsure you can safely make this the same as the sending entity."
+                txtTransmittingEntity.SetFocus()
+               Goto Invalid
+   End If
+   '----------------------------------------------------
+   'Ensure valid details for an organisation or a person
+   '----------------------------------------------------
+   Select Case type_Sender
+   Case const.contacttype_organisation
+      If Trim(txtOrganisation.text) = "" Then
+         smsg = "You must enter the organisation's name, address and suburb before saving this record."
+         Goto Invalid
+      Else
+         If fk_organisation = 0 Then
+                 sMsg = "The sending facility:\n\n" & Trim(txtOrganisation.text)
+                  sMsg &= "\n\nis not in the contacts database.\n\n"
+         End If
+         If Trim(txtStreet1.text) = "" Then
+            sMsg &= "You have not entered the street address.\n" 
+            If fk_town = 0 Then
+              sMsg &= "You have not entered the suburb.\n" 
+            End If
+             Goto Invalid
+         End If 
+      End If
+      If Trim(txtOrganisationCategory.text) = "" Then
+         sMsg = "Please allocate a category to this organisation"
+         txtOrganisationCategory.SetFocus()
+         Goto Invalid
+      End If
+   
+   Case const.contacttype_person
+   
+   End Select
+     
+     
+   If cmbProvidertypes.index = -1 Then
+      If Trim(txtOrganisationCategory.text) = ""
+           smsg = "Please provide a category for this branch/organisation"
+            Message.title = "Missing category"
+            Message.info(sMsg, "OK")
+            txtOrganisationCategory.SetFocus()
+          Return
+      End If
+   End If   
+
+   If fk_lu_message_display_style = 0 Then
+       smsg = "Please click on one of the display style options before saving this record\n\n" 
+                  "Display as letter - the document will look like a normal letter in style.\n"
+                   "Display as result - the document will have a formal report style heading and may or may not contain results.\n\n"
+                   "It's a good idea to view a few patients documents (results or letters) to make sure of your display choice." 
+       Goto Invalid
+   End If
+   'now test that the directories are valid
+   If Not IsDir(modAdminDBI.Config_Get("hl7_root_directory", "/var/easygp/hl7/")) Then
+         sMsg = "You do not seem to have set the main download directory for incoming hl7, or it does not exist\n"
+                "The default is /var/easygp/hl7/incoming/\n"
+                "Please get the system administrator to help you do this in the Admin/Global Preferences Section before proceeding"
+         Goto Invalid
+   End If   
+    Return True  
+Invalid:
+     Dec Application.Busy
+      Message.Info(sMsg)
+      Inc Application.Busy
+      Return
+End
+
+
+Public Sub Organisation_Category_select()
+   '---------------------------------------------
+   'If popup list view with category visible then
+   'accept to textbox
+   '---------------------------------------------
+   Dim sMsg As String
+   txtOrganisationCategory.text = Listview2.Item.text
+   fk_category_organisation = Listview2.Item.Key
+   If Not InStr(LCase(Listview2.Item.text), "provider") Then
+      Listview2.Visible = False  
+      sMsg = "The organisation's category must be some sort of provider\n\n e.g Pathology Provider\n\n"
+            "i.e the name of the category must end in the word 'Provider'."
+             "You should consult the contacts database documentation for a full description of how to allocate categories. "
+             "Any new provider category you enter here will be available to the entire program, so take care of the spelling."
+      Message.Warning(smsg)
+             txtOrganisationCategory.text = ""
+             txtOrganisationCategory.SetFocus()
+   Else
+      cmbProvidertypes.index = cmbProvidertypes.Find(Listview2.Item.text)
+   End If   
+ 
+End
+
+
+Public Sub Organisation_Change()
+   '-----------------------------------------------------------
+   'The Organisation textboxes have changed:
+   'If critical fields with keys are deleted then set keys to 0
+   'Notify of data change to user by setting outline to red
+   '-----------------------------------------------------------
+   If bExit Then Return
+   Select Case Last.tag
+   Case "organisation"
+        If Trim(Last.text) = "" Then
+           txtBranch.text = ""
+        Else
+          txtBranch.text = "HEAD OFFICE"
+        End If  
+   Case "organisation category"
+     If Trim(Last.text) = ""
+            cmbProvidertypes.index = -1
+            fk_category_organisation = 0
+     End If  
+   Case "suburb"
+      If Trim(Last.text) = "" Then fk_town_organisation = 0
+   End Select
+   EditArea_Preferences_Notify_DataChange(True)
+   If Trim(Last.text) = "" Then
+      listview2.Visible = False
+   End If   
+End
+
+
+Public Sub Organisation_LostFocus()
+   Dim sMsg As String
+   Last.pos = 1
+   Last.BackGround = Color.white
+   Select Case Last.tag
+   Case "organisation category"
+      If fk_category_organisation = 0 And Trim(txtOrganisationCategory.Text) And Listview2.Visible = False Then
+         sMsg = "The category " & Trim(txtOrganisationCategory.Text) & " is not an existing category.\n\n"
+         sMsg &= "Do you wish to create a new category?"
+         Message.Title = "Add new category"
+         If Message.Question(sMsg, "Yes - Save Category", "No") = 1 Then
+             fk_category_organisation = Category_Save(Trim(Last.text))
+          Else
+             txtOrganisationCategory.text = ""
+             txtOrganisationCategory.SetFocus()
+         End If   
+   End If 
+   End Select   
+   bExit = True
+   Trim(Last.text) 'user could have cutn pasted blank space
+   bExit = False
+End
+
+Public Function Category_Save(category As String) As Integer
+    Dim pk As Integer
+    pk = modContactsDBI.Category_Save(category) 
+    modDBConnect.CommitTrans()
+    Return pk
+End
+
+
+Public Sub Organisation_GotFocus()
+    Last.BackGround = Color.rgb(95, 255, 175)  
+    With listview2 'fixme rename me
+          .Visible = False   
+          .Clear()
+          .top = VBox_Organisation.top + Last.parent.top + Last.height
+          .left = Last.left + HSplit_Transmitter_Sender.Layout[0] + VBox_Organisation.left + VBox_Organisation.padding
+          .width = Last.width
+         .Raise
+    End With
+End
+
+Public Sub Organisation_KeyPress()
+  Print key.code
+  Select Case key.code
+  Case key.down
+      If Listview2.Visible Then 
+         Listview2.MoveFirst()
+         Listview2.SetFocus()
+         Listview2.Item.Selected = True
+      End If
+  Case key.tab, key.return 
+   Select Case Last.tag
+      Case "organisation"
+         txtStreet1.SetFocus()
+      Case "street1"
+         txtsuburb.SetFocus()
+      Case "suburb"
+         txtOrganisationCategory.SetFocus()
+    End Select
+  End Select
+  
+
+End
+
+Public Sub Organisation_KeyRelease()
+
+   Select Case Last.tag
+   Case "suburb"
+         Suburb_Selection("get", Last)
+   Case "organisation"
+         Organisation_Get()
+   Case "organisation category"
+         modInboxDBI.category_get(txtOrganisationCategory, Listview2)
+   End Select
+End
+Public Sub Organisation_Get()
+   Dim sMsg As String 
+   'Get a list or organisations and their branches like  
+   If Trim(txtOrganisation.text) = "" Then
+      listview2.Visible = False
+      Return
+   End If
+ 
+   The_Collection = modContactsDBI.Organisations_Get(Trim(txtOrganisation.text))
+   '-----------------------------------------------------------------
+   'If categories exist to match the text, auto-select or show a list
+   '-----------------------------------------------------------------
+   If The_Collection.count Then 
+      listview2.Clear()
+  
+      For Each Member In The_Collection 
+          sMsg = Member!organisation & " " & Member!branch & " " 
+          sMsg &= Member!street & " " & Member!town & " " & Member!postcode 
+    
+        listview2.Add(Member!pk_view, sMsg)
+      Next
+      listview2.Visible = True
+      listview2.tag = txtOrganisation
+   Else
+      listview2.Visible = False   
+   End If
+      
+End
+Public Sub Organisation_Select()
+  
+          listview2.MoveCurrent
+          fk_organisation = Organisation!fk_organisation
+          txtOrganisation.text = The_Collection[listview2.item.key]!organisation
+          txtBranch.text = The_Collection[listview2.item.key]!branch
+          txtstreet1.text = The_Collection[listview2.item.key]!street
+          txtsuburb.text = The_Collection[listview2.item.key]!town
+          lblOrganisationPostcode.text = The_Collection[listview2.item.key]!postcode
+          lblOrganisationState.text = The_Collection[listview2.item.key]!state
+          listview2.Visible = False
+  
+End
+
+Public Sub Organisation_Display(Org As Collection)
+         '-------------------------------------------------------
+         'Display an organisation
+         'Called by: Sending_Entity_display
+         '           Listview2_dblClick via Organisation_Select()
+         '-------------------------------------------------------  
+         fk_organisation = ORg!fk_organisation
+         fk_branch = Org!fk_branch
+         Try fk_address_organisation = Org!fk_address
+         Try fk_town_organisation = Org!fk_town
+         Try fk_category_organisation = Org!fk_category
+          txtOrganisation.text = Org!organisation
+          txtBranch.text = Org!branch
+          txtstreet1.text = Org!street
+          txtsuburb.text = Org!town
+          txtOrganisationCategory.text = Org!category
+          lblOrganisationPostcode.text = Org!postcode
+          lblOrganisationState.text = Org!state
+          Try chkHeadOffice.value = Org!head_office
+          Try chkpostal.value = Org!postal_address
+End
+
+Public Sub Person_Display(person As Collection)
+      Try fk_category_person = Sending_Entities[pk_view_sending_entities]!fk_category_person
+      Try fk_town_person = Sending_Entities[pk_view_sending_entities]!fk_town_person
+      Try fk_address_person = Sending_Entities[pk_view_sending_entities]!fk_address_person
+      
+      If Sending_Entities[pk_view_sending_entities]!fk_person Then
+         txtPersonFirstname.text = Sending_Entities[pk_view_sending_entities]!firstname
+         txtPersonSurname.text = Sending_Entities[pk_view_sending_entities]!surname
+         cmbTitle.index = Sending_Entities[pk_view_sending_entities]!fk_title
+         cmbSex.index = Sending_Entities[pk_view_sending_entities]!fk_sex
+         txtPersonCategory.text = Sending_Entities[pk_view_sending_entities]!person_category
+         txtPersonoccupation.text = Sending_Entities[pk_view_sending_entities]!person_occupation
+         txtPersonStreet1.text = Sending_Entities[pk_view_sending_entities]!person_street
+         txtPersonSuburb.text = Sending_Entities[pk_view_sending_entities]!person_town
+         txtPersonPostcode.text = Sending_Entities[pk_view_sending_entities]!person_postcode
+          txtPersonState.text = Sending_Entities[pk_view_sending_entities]!person_state
+      End If
+
+  
+End
+
+Public Sub Suburb_Selection(action As String, Optional calling_control As Textbox) 
+      '--------------------------------
+      'PURPOSE    :Select a suburb
+      'CALLED BY  :listview2_DblClick()
+      '--------------------------------
+      Dim iMatched As Boolean
+      Dim x As Integer
+      Select Case action
+      Case "get"
+         '----------------------------------------------------------
+         'Load all the towns like txtSuburb into the popup listview2
+         '----------------------------------------------------------
+         Towns = modContactsDBI.Get_Town(Lower(Trim$(calling_control.text)))
+         listview2.Clear
+         If Towns.count Then 
+            For Each Town In Towns
+                listview2.Add(Town!pk, Town!town & " " & Town!state & " " & Town!postcode)
+            Next 
+            If Towns.count = 1 Then 
+               Suburb_Selection("accept")
+            Else 
+               listview2.Visible = True
+               listview2.Raise
+               listview2.tag = calling_control
+            End If
+         Else
+            listview2.Visible = False  
+         End If
+      Case "accept"
+         If Listview2.Visible = False Then Return 'tempoary patch FIXME REMOVE ME
+         bExit = True
+         If calling_control Is Textbox Then
+            '-------------------------------------------------------
+            'User has just hit <enter> without scrolling on the list
+            'try and find a match
+            '-------------------------------------------------------
+            If listview2.Visible Then
+                 listview2.MoveFirst
+                  For x = 0 To listview2.count - 1
+                    If InStr(Lower(listview2.Item.text), Trim(Lower(calling_control.text))) Then
+                    
+                       iMatched = True 
+                       Break
+                    End If
+                 Next
+                 If Not iMatched Then
+                  listview2.Visible = False
+                  calling_control.SetFocus()
+                  Return 'no match found for suburb user typed in 
+                 End If 
+               End If
+          Else
+            '-------------------------------------
+            'User is selecting from the popup list
+            '-------------------------------------
+            If listview2.Visible Then
+                        
+               listview2.MoveCurrent()             'match internal cursor to marquee
+            End If
+          End If
+         Select Case listview2.tag.tag
+         Case "suburb"
+          fk_town_organisation = towns[Listview2.Item.key]!pk
+          txtsuburb.text = towns[Listview2.Item.key]!town
+          lblOrganisationState.text = towns[Listview2.Item.key]!state
+          lblOrganisationPostcode.text = towns[Listview2.Item.key]!postcode
+          txtOrganisationCategory.SetFocus()
+                     
+         If chkHeadOffice.Enabled = True Then
+            chkHeadOffice.SetFocus()
+         Else
+            chkPostal.SetFocus()
+         End If
+
+         Case "person suburb"
+         fk_town_person = towns[Listview2.Item.key]!pk
+         txtPersonSuburb.text = towns[Listview2.Item.key]!town
+         txtPersonState.text = towns[Listview2.Item.key]!state
+         txtPersonPostcode.text = towns[Listview2.Item.key]!postcode
+         End Select         
+        
+          listview2.Visible = False  
+          bExit = False  
+          End Select
+      
+  End
+Public Sub person_occupation_select()
+   '-----------------------------------------------
+   'see notes at top Of Person_Change() To see why
+   'sender.employee.occupation and the
+   'data change flags not set here
+   'This next line triggers Person_change()
+   '----------------------------------------------
+   txtPersonOccupation.text = Listview2.Item.text
+   If SendingPerson!pk_person <> 0 Then 'could be null
+       SendingPerson!fk_occupation = Listview2.Item.Key
+       fk_occupation = Listview2.Item.Key
+   Else
+     If sender!pk_branch <> 0 Then
+        If sender!employee!pk_employee = 0 Then
+           sender!employee!fk_occupation = Listview2.Item.Key
+        End If
+     End If
+   End If
+   txtPersonStreet1.SetFocus()
+  
+End
+Public Sub Person_KeyPress()
+   Select Case Key.Code
+   Case key.down
+      If listview1.Visible Then 
+         listview1.MoveFirst()
+         listview1.SetFocus()
+         listview1.Item.Selected = True
+      End If
+      If listview2.Visible Then 
+         listview2.MoveFirst()
+         listview2.SetFocus()
+         listview2.Item.Selected = True
+      End If
+   Case Key.return, key.Tab
+      Select Case Last.tag
+         Case "surname"
+            cmbTitle.SetFocus()
+         Case "firstname"
+            cmbSex.SetFocus
+         Case "person occupation"
+            txtStreet1.SetFocus()
+         Case "person street1"
+               txtPersonSuburb.SetFocus()
+         Case "person suburb"
+              txtPersonCategory.SetFocus()
+          End Select
+   
+   End Select
+  
+
+End
+Public Sub Person_KeyRelease()
+   Select Case Last.tag
+   Case "person suburb"
+      Suburb_Selection("get", Last)
+   Case "person occupation"
+      modInboxDBI.occupation_get(txtPersonOccupation, listview2)
+   Case "person category"
+    modInboxDBI.category_get(txtPersonCategory, listview2)
+   Case "surname"
+      Surname_Duplicates_Selection("get")
+   
+   End Select
+   
+  
+
+End
+
+Public Sub Surname_Duplicates_Selection(action As String, Optional calling_control As String) 
+      '-------------------------------------------------------
+      'PURPOSE    :Allow selection of existing employee to put
+      '            into a new organisation or branch
+      'CALLED BY  :listview2_DblClick()
+      '-------------------------------------------------------
+      Select Case action
+      Case "get"
+         '----------------------------------------------------------
+         'Get all peresons, surname like
+         '----------------------------------------------------------
+         listview2.Clear
+         If Trim(txtPersonSurname.text) = "" Then 
+               listview2.Visible = False  
+               Return 
+         End If
+         The_Collection = modContactsDBI.Person_Get(Trim(txtPersonSurname.text), const.contacttype_person)
+         The_Collection.Remove("sql_in_english")
+       
+         If The_Collection.count Then 
+             Listview2.Clear()
+             For Each Member In The_Collection
+                listview2.Add(Member!pk_view, Member!firstname & " " & Member!surname & " (" & Member!occupation & ")")
+            Next 
+            '--------------------------------------------------------------------
+            'If this case, as we **MAYNOT ** want this employee, always show list
+            '--------------------------------------------------------------------
+            listview2.Visible = True
+            listview2.Raise
+            listview2.tag = txtPersonSurname
+         Else
+            listview2.Visible = False  
+         End If
+      Case "accept"
+       
+         bExit = True
+         '-------------------------------------
+         'User is selecting from the popup list
+         '-------------------------------------
+         If listview2.Visible Then
+            listview2.MoveCurrent()             'match internal cursor to marquee
+         End If
+        txtPersonSurname.text = The_Collection[listview2.Item.key]!surname
+        txtPersonFirstname.text = The_Collection[listview2.Item.key]!firstname
+        txtPersonoccupation.text = The_Collection[listview2.Item.key]!occupation
+        Try fk_occupation = The_Collection[listview2.Item.key]!fk_occupation
+         fk_person = The_Collection[listview2.Item.key]!fk_person
+         'fixme: Now at this point in evolution of the code, when we go to save
+         'the old_data fk_person = 0, because the highlighted row is the branch
+         'so I've fudged this till ian does better
+       '  rows_in_view[cvOrganisations.Current.key]!fk_person = fk_person
+         fk_category_person = The_Collection[listview2.Item.key]!fk_category
+         fk_address_person = The_Collection[listview2.Item.key]!fk_address
+         fk_town_person = The_Collection[listview2.Item.key]!fk_town
+         txtPersonCategory.text = The_Collection[listview2.Item.key]!category
+         Try cmbSex.index = The_Collection[listview2.Item.key]!fk_sex
+         Try cmbTitle = The_Collection[listview2.Item.key]!fk_title
+         txtPersonSuburb.text = The_Collection[listview2.Item.key]!town
+         txtPersonState.text = The_Collection[listview2.Item.key]!state
+         txtPersonPostcode.text = The_Collection[listview2.Item.key]!postcode
+         txtPersonStreet1.text = The_Collection[listview2.Item.key]!street
+         listview2.Visible = False
+         bExit = False  
+       End Select
+      
+      
+End
+Public Sub Person_Change()
+   If Bexit Then Return 
+  Select Case Last.tag
+  Case "person occupation"
+      If Trim(Last.text) = "" Then
+         fk_occupation = 0
+      End If
+  Case "person category"
+    If Trim(Last.text) = "" Then
+         fk_category_person = 0
+    End If
+
+  End Select
+
+ EditArea_Preferences_Notify_DataChange(True)
+End
+Public Sub Person_Lostfocus()
+  
+  Last.Background = Color.White
+  
+End
+
+Public Sub Person_Gotfocus()
+   'fixme combine person group with organisation group
+    Last.BackGround = Color.rgb(95, 255, 175)  
+    With listview2 'fixme rename me
+         .Visible = False   
+          .Clear()
+          .top = VBox_Person.top + Last.parent.top + Last.height + Vbox_EditArea_Inner.padding + HBox_EditArea_Outer.padding
+         .left = txtPersonoccupation.left + HSplit_Transmitter_Sender.Layout[0] + VBox_Person.left + VBox_Person.padding
+         .Raise
+    End With
+
+End
+
+Public Sub Person_Category_select()
+   '-----------------------------------------------
+   'see notes at top Of Person_Change() To see why
+   'sender.employee.category and the
+   'data change flags not set here
+   'This next line triggers Person_change()
+   '----------------------------------------------
+   Dim sMsg As String 
+   txtPersonCategory.text = Listview2.Item.text
+   fk_category_person = Listview2.Item.Key
+   If Not InStr(LCase(Listview2.Item.text), "provider") Then
+      Listview2.Visible = False  
+      sMsg = "The persons's category must be some sort of provider\n\n e.g Endocrine Provider\n\n"
+            "i.e the name of the category must end in the word 'Provider'."
+             "You should consult the contacts database documentation for a full description of how to allocate categories. "
+             "Any new provider category you enter here will be available to the entire program, so take care of the spelling."
+      Message.Warning(smsg)
+             txtPersonCategory.text = ""
+             txtPersonCategory.SetFocus()
+   Else
+      cmbProvidertypes.index = cmbProvidertypes.Find(Listview2.Item.text)
+   End If   
+
+   cmbProvidertypes.index = cmbProvidertypes.Find(Trim(txtPersonCategory.text))
+   
+   txtStreet1.SetFocus() 
+End
+Public Sub listview2_KeyPress()
+
+  If key.code = key.return Then
+           Listview2_DblClick()
+  End If
+
+End
+
+Public Sub listview2_DblClick()
+  
+  Listview2.MoveCurrent
+  Select Case Last.tag.tag
+  
+  Case "person category"
+       Person_Category_select()
+  Case "person occupation"
+       Person_Occupation_select()
+  Case "organisation"
+      Organisation_Select()
+  Case "organisation category"
+      Organisation_Category_select()
+  Case "surname"
+      Surname_Duplicates_Selection("accept", "list")
+  Case "suburb", "person suburb"
+       suburb_Select(Last.tag.tag)
+ 
+  End Select
+  
+
+  listview2.Visible = False
+End
+
+Public Sub Suburb_Select(tag As String)
+   '--------------------------------------------------------------
+   'Txtsuburb.text can only be set from here, not allowed freehand
+   'as must enforce suburb exists in the database
+   '--------------------------------------------------------------
+   Select Case tag
+   Case "suburb"
+    fk_town_organisation = towns[Listview2.Item.key]!pk
+    txtsuburb.text = towns[Listview2.Item.key]!town
+    lblOrganisationState.text = towns[Listview2.Item.key]!state
+    lblOrganisationPostcode.text = towns[Listview2.Item.key]!postcode
+    txtOrganisationCategory.SetFocus()
+   Case "person suburb"
+   fk_town_person = towns[Listview2.Item.key]!pk
+   txtPersonSuburb.text = towns[Listview2.Item.key]!town
+   txtPersonState.text = towns[Listview2.Item.key]!state
+   txtPersonPostcode.text = towns[Listview2.Item.key]!postcode
+   End Select
+End 
+
+Public Sub colour_buttons_Change()
+
+  Select Case Last.tag
+  Case "foreground"
+  
+    lblSample.foreground = Last.value
+    lblSample2.Foreground = Last.value
+ 
+  Case "background"
+  
+   lblSample.Background = Last.value
+   lblSample2.Background = Last.value
+  
+  End Select
+         '  If Bexit Then Return 
+  Try HTML_Document_Show(fk_lu_message_display_style, SelectedSampleDocument, Sample_Observations)
+  EditArea_Preferences_Notify_DataChange(True)
+End
+
+Public Sub tbRefreshSendingEntities_Click()
+
+   Sending_Entities_Reload()
+
+
+End
+
+Public Sub tbRefreshInbox_Click()
+   '-----------------------------------------------------------------------
+   'User has clicked the refresh inbox button
+   'Must clear entire screen first as situations exist where there may be
+   'nothing left in the inbox, but the last record is still shown on screen
+   'rationalise this routine with Inbox_Reload -seem to do similar things
+   '-----------------------------------------------------------------------
+   Dim fk_sending_entity As Integer
+  
+   Inc Application.Busy 
+    modHL7FileImport.Auto_Process()         'fixme remove me or at least make sure running on server
+   cvwInbox.Clear()
+   cvwInboxDocuments.Clear()
+   FMetaData.EditArea_Clear()
+   FPreview_HtmlDocument.WebView1.html = ""
+   If cmbSenders.index <> -1 Then 
+      fk_sending_entity = Inbox_Sending_Entities[cmbSenders.Index]!pk_sending_entities
+   Else
+      fk_sending_entity = 0 
+   Endif
+   Inbox = Fill_Inbox(cvwInbox, fk_sending_entity, 500)   'fill all documents, limit FIXME UNHARD CODE ME
+   cvwInbox.MoveFirst()
+   Try cvwInbox.Item.Selected = True
+   If Error Then
+       Print Error.where, Error.Text
+   End If
+   Dec Application.Busy
+End
+
+Public Sub chkDefaults_Click()
+   'for some reason the bExcludeFTReport is working erratically??
+     If IsNull(SelectedDocument) Then Return 
+     Select Case Last.tag
+     Case "exclude ft report"
+       bExcludeFTReport = Last.value
+     Case "exclude pit"
+      bExcludePIT = Last.value
+     End Select
+    Try HTML_Document_Show(SelectedDocument!fk_lu_message_display_style, SelectedDocument, observations)
+    EditArea_Preferences_Notify_DataChange(True)
+End
+
+Public Sub mnuWebView_Menu()
+  '--------------------------------------------------------
+   'Puts all the current health issues onto a drop down menu
+   '--------------------------------------------------------
+   Dim mnu As Menu
+   Dim Observation As Collection 
+    Stop Event
+   If Not currentconsult Then Return
+   '---------------------------
+   'Everyone gets general notes
+   '---------------------------
+   
+      FPreview_HtmlDocument.mnuWebView.Children.Clear()
+      mnu = New Menu(FPreview_HtmlDocument.mnuWebview) As "mnuWebview"
+      mnu.name = "heading"
+      mnu.caption = "Graph Cumulative"
+      mnu = New Menu(FPreview_HtmlDocument.mnuWebview) As "mnuWebview"
+      mnu.name = "separator_1"
+      mnu.caption = ""
+   If Observations.count = 0 Then Return 
+  
+   For Each Observation In Observations
+ 
+      mnu = New Menu(FPreview_HtmlDocument.mnuWebview) As "mnuWebview"
+      If Observation!value_type = "NM"                'graphable observation
+      mnu.name = Observation!identifier
+      mnu.caption = Observation!identifier
+      mnu.tag = Observation!pk
+      mnu.Checked = False  
+      End If
+   Next
+ 
+ FPreview_HtmlDocument.mnuWebView.Popup()
+  
+End
+' Public Sub mnuWebView_Click()
+' 
+'    Stop Event
+'    Print "here"
+'    ' '-----------------------------------------------------------------
+'    ' 'User has clicked on a graphable observation
+'    ' 'FIXME: Put the Fclinical Graph onto a form and use that embedded
+'    ' '-----------------------------------------------------------------
+'    ' Print Last.tag
+'    ' Print Last.identifier
+'    ' Print Observations[Last.tag]  
+'    ' 
+' End
+Private Sub Patient_Outstanding_Requests_Show()
+   '---------------------------------------------------
+   'show any outstanding requests if not already loaded
+   '---------------------------------------------------
+   Dim x As Integer
+   If cvwPatientsRequests.tag = 0 Then 
+       modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwPatientsRequests)
+       cvwPatientsRequests.tag = Selected_Inbox!fk_patient
+   End If  
+   
+End
+
+Public Sub cvwPatientsRequests_Click() 
+   '-----------------------------------------------------------------
+   'User has clicked on a previous ordered request
+   'if this is a sub request > put in txtUserObservationName.text
+   'the key is a string e.g "1-5-7","1-5-8" see clin_requests.vwForms
+   '-----------------------------------------------------------------
+   Dim bits As String[]
+   Print Last.item.key, Last[Last.item.key][0]
+   bits = Split(Last.item.key, "-")
+   If Split(Last.item.key, "-").count = 2
+      If Not (InStr(Lower(FMetaData.txtUserObservationName.text), Lower(Last[Last.item.key][0]))) Then
+        FMetaData.txtUserObservationName.text &= Last[Last.item.key][0] & ";" 
+        RequestOrdered = currentconsult!requests_ordered[Last.item.key]
+      End If   
+   End If
+   
+End
+
+Public Sub rbDisplayFormatSample_Click()
+         If bExit Then Return 
+         If Last.tag = 1 Then
+            Hbox_ResultType.Visible = False  
+         Else
+           Hbox_ResultType.Visible = True 
+         Endif
+         fk_lu_message_display_style = Last.tag
+         SelectedSampleDocument!fk_lu_message_style = Last.tag
+         Try HTML_Document_Show(Last.tag, SelectedSampleDocument, Sample_Observations) 
+ 
+         EditArea_Preferences_Notify_DataChange(True)
+
+  
+
+End
+
+Public Sub tbDiscard_Click()
+   '-----------------------------
+   'Mark this document as deleted
+   'FIXME: put in an audit trail
+   '-----------------------------
+   If IsNull(SelectedDocument) Then Return 
+   If Message.warning("Trash current document - this is not recoverable.\n\nAre you sure?", "Yes", "No") = 2 Then Return 
+   Document_Delete(const.cAuditAction_MarkDeleted)
+   Inbox_Reload()
+
+End
+
+
+' Public Function User_Term_Create(term As String) As Collection 
+'   
+'    
+'       user_term = New Collection
+'       user_term!item = term 
+'       user_term!fk_type = SelectedDocument!fk_lu_provider_type
+'       Try user_term!fk_lu_request = modRequestsDBI.Request_GetPk(term)
+'       If Error Then
+'          user_term!fk_lu_request = modRequestsDBI.Request_Save(user_term)
+'          user_terms.Add(user_term, user_terms.Count)
+'       Else
+'        user_terms.Add(user_term, user_terms.Count)
+'  
+'       End If
+'       Return user_term
+' End
+
+Public Sub cmbProviderTypes_click()
+
+  
+  EditArea_Preferences_Notify_DataChange(True)
+
+End
+
+Public Sub txtFilterSendingEntities_Change()
+   If Trim(Last.text) Then Sending_Entities_Reload()
+   cvwSendingEntities_Refresh()
+  
+End
+
+
+Public Sub Type_Sender_Click()
+
+  If Last.tag = "person" Then 
+   VBox_Person.Visible = True 
+   VBox_Organisation.Visible = False   
+   type_Sender = const.contacttype_person
+  Else
+   VBox_Organisation.Visible = True 
+   VBox_Person.Visible = False   
+   type_Sender = const.contacttype_organisation
+  End If
+  
+
+End
+
+Public Sub chkUnmatchedDocuments_Click()
+     bIncludeUnmatcheddocuments = Last.value
+     Inbox_Reload()
+End
+
+
+Public Sub EditArea_Combo_Keypress()
+ Select Case key.code
+ Case Key.tab, Key.Return
+   Select Case Last.tag
+   Case "title"
+    txtPersonFirstname.SetFocus()
+   Case "sex"
+    txtPersonOccupation.SetFocus()
+   End Select
+ End Select
+End
+
+
+Public Sub mnuDocuments_Click()
+  
+  Select Case Last.tag
+   Case "preliminary result not required", "duplicate result", "delete selected"
+         mnuDocuments_Delete(False, Last.tag)
+  Case "delete all"
+      '   mnuDocuments_Delete(True)
+  Case "font"
+      Try cvwInboxDocuments.font = modUtil.Change_Fonts(cvwInboxDocuments.font)
+      If Not Error Then 
+        cvwInbox.font = cvwInboxDocuments.font
+        Settings_Save()
+      End If
+  Case "reallocate single", "reallocate multiple"
+      modEditAreaHelpers.EditArea_Clear(FMetaData.Vbox_Person)
+      SelectedDocument!fk_patient = Null
+     ' FMetaData.Reallocate(SelectedDocument) 'FIXME DON'T NEED TO PASS THIS?
+      FMetaData.Reallocate()
+  Case "Display as result"
+  Case "Display as letter"
+  Case "refile"
+      '---------------------------------------------
+      'Send back for someone clerical to re-allocate
+      '---------------------------------------------
+       Document_SendBack_For_ReFiling()
+  Case "reallocate sender"
+      With FMetaData        'This metadata instance is set up to look simple
+         .HBox_Author.Visible = True
+         .VBox_Organisation.Visible = True  
+         .Hbox_TypeSender.visible = True 
+         .HBox_Document_Tag.Visible = False 
+         .HBox_Comment.Visible = False  
+         .HBox_Laterality.visible = False
+         .hBox_Urgency.Visible = False 
+         .HBox_HealthIssue.Visible = False
+         .HBox_DocumentDate.Visible = False
+         .HBox_UserObservationName.Visible = False 
+         .Vbox_Lock.Visible = False
+         .Hbox_Requested.Visible = False  
+         .txtRecipient.Background = Color.White
+         .txtRecipient.Enabled = True
+         .lblMeasure.text = " Staff Responsible "
+         .HBox_DocumentType.Visible = False  
+         modEditAreaHelpers.Resize_labels(.VBox_Organisation, .lblMeasure)
+         modEditAreaHelpers.Resize_labels(.Vbox_Person, .lblmeasure)
+    End With     
+     
+  Case "auto file single patient"
+      bAutoFilePatient = True
+      tbFile_Click()
+  Case "auto file all patients"
+  End Select
+ 
+End
+
+Public Function Document_Make_Audit(SelectedDocument As Collection, iAuditAction As Integer, Optional reason As String) As Collection 
+      'fixme: This will bomb where no patient
+      'fixme should return true if succeeded
+      Dim audit As Collection 
+      
+      If SelectedDocument!fk_patient = 0 Then
+         Message.Info("Richard, no patient") 
+         Return
+      Endif
+      audit = New Collection 
+      audit!tablename = "documents.documents"
+      audit!fk_row = SelectedDocument!pk_document
+      audit!fk_consult = currentconsult.GetPK()
+      audit!fk_section = const.cSection_Documents
+      audit!fk_action = iAuditAction
+      '--------------------------------------------------------------------------------------
+      'The data summary should end up looking sort of like this:
+      'Pathology Result Douglas Hanly Moir FBC or if unintelligable eGFR(X017) = the lab code
+      '--------------------------------------------------------------------------------------
+      audit!data_summary = "<B>" & FMetaData.txtPatient.text & " (" & FMetaData.lblBirthdate.text & ")</B><BR>" 
+      audit!data_summary &= FMetaData.cmbDocumentTypes.Text
+      Select Case SelectedDocument!fk_lu_message_display_style
+      Case const.Document_Display_As_Letter
+            audit!data_summary &= " Letter "
+      Case Else
+           audit!data_summary &= " Result "
+      End Select
+      audit!data_summary &= SelectedDocument!msh_sending_entity & " "
+      If Lower(SelectedDocument!tag) <> Lower(FMetaData.txtUserObservationName.text) Then
+        audit!data_summary &= FMetaData.txtUserObservationName.text & " (" & SelectedDocument!tag & ") "
+      Else
+         audit!data_summary &= FMetaData.txtUserObservationName.text
+      Endif
+       audit!data_summary &= "<BR><small><small>file:" & FMetaData.txtFilename.text & "/<small></small>"
+      Select Case iAuditAction
+      Case const.cAuditAction_Delete
+         '----------------------------------------------------------------------
+         'record being marked as deleted, if a common reason eg duplicate result
+         'or a preliminary result, bypass the request to give a reason
+         '----------------------------------------------------------------------
+         If reason = "" Then 
+            FAudit.Init(Audit, Const.cSection_Documents, iAuditAction, currentconsult)
+            If Not FAudit.ShowModal() Then Return 
+            Audit!reason = const.globalstring
+         Else
+            audit!reason = reason
+         End If
+      Case const.cAuditAction_StaffTaskAllocated
+       '  audit!reason = "staff task allocated -"
+      Case const.cAuditAction_Completed
+          audit!reason = "completed without reason being given"
+      Case const.cAuditAction_Refused
+           audit!reason = "nil reason given by patient"
+      Case const.cAuditAction_DocumentFiled
+         audit!reason = "viewed and filed"
+      Case const.cAuditAction_ScratchPad
+          
+      Case const.cAuditAction_MarkDeleted
+           audit!reason = "moved to trash"
+         '  FAudit.Init(currentRecall, Const.cSection_Recalls, iAuditAction, currentconsult)
+         ' If currentrecall!fk_consult <> currentconsult.GetPK() Then
+         '    If Not FAudit.ShowModal() Then Return 
+         '    audit!reason = const.globalstring
+         '    If iAuditAction = const.cAuditAction_Delete Then bDeleted = True   
+         ' End If
+       
+      Case const.cAuditAction_CompletedWithExplanation, const.cAuditAction_RefusedWithExplanation
+            ' FAudit.Init(currentRecall, Const.cSection_Recalls, iAuditAction, currentconsult)
+            ' If Not FAudit.ShowModal() Then Return 
+            ' audit!reason = const.globalstring
+            ' If iAuditAction = const.cAuditAction_Delete Then bDeleted = True   
+      End Select
+      audit.Remove("tablename") 'was used in the popup, not needed to save.
+      Return audit
+   '   modConsultDBI.Make_Audit(audit, "documents", "documents")
+End
+
+Public Sub Document_Delete(iAuditAction As Integer, Optional reason As String) As Boolean
+      '--------------------------------------------------------------
+      'Deletes the document in some fashion, enforcing an audit trail
+      'If document is being trashed const.cAuditAction_MarkDeleted
+      'don't enforce a reason for the deletion.
+      '--------------------------------------------------------------      
+      '--------------------------------------------------------------------
+      'Mark off the recall in clin_recalls, or mark deleted if so indicated
+      'put audit trail in clin_consult.progress notes
+      'refresh the lists in the gui
+      '--------------------------------------------------------------------
+      modConsultDBI.Make_Audit(Document_Make_Audit(SelectedDocument, const.cAuditAction_Delete, reason), "documents", "documents")
+      modDBConnect.exec_query("Update documents.documents set deleted = True where pk = " & SelectedDocument!pk_document)
+      modDBConnect.CommitTrans()
+      Return True
+End
+
+
+
+Public Sub mnuDocuments_Delete(bDeleteAll As Boolean, Optional reason As String)
+   '--------------------------------------------------------
+   'Deletes one of more documents from the inbox
+   'unless deletion fails, ie  Document_Delete returns false
+   'FIXME: CHECKME: made changes in popup menu which could have affected this
+   '--------------------------------------------------------
+   Dim x As Integer
+   
+   If bDeleteAll Then cvwInboxDocuments.MoveFirst()
+   For x = 1 To cvwInboxDocuments.count
+      If bDeleteAll Then
+         SelectedDocument = Selected_Inbox!documents[cvwInboxDocuments.Item.key]
+         If Not Document_Delete(const.cAuditAction_Delete) Then Return 
+      Else
+         cvwInboxDocuments.MoveCurrent()                  're-set was moved by the popup menu
+         If cvwInboxDocuments.Item.Selected = True Then
+            SelectedDocument = Selected_Inbox!documents[cvwInboxDocuments.Item.key]
+           If Not Document_Delete(const.cAuditAction_Delete, reason) Then Return 
+          End If
+      End If   
+      cvwInboxDocuments.MoveNext()
+   Next
+   Inbox_Reload()
+End
+
+Public Sub cvwInboxDocuments_Menu()
+  Dim x As Integer
+  Dim y As Integer
+  If Not cvwInboxDocuments.count Then Return
+      '--------------------------------------------------------
+      'First - determine if user selected one or more documents
+      'and then enable/disable appropriate menu items
+      '---------------------------------------------------------
+     cvwInboxDocuments.MoveFirst()
+     For x = 0 To cvwInboxDocuments.count - 1
+         If cvwInboxDocuments.Item.Selected = True Then
+            Inc y
+         Endif
+         cvwInboxDocuments.MoveNext()
+     Next
+     If y > 1 Then
+       mnuDocuments_ReAllocateSingle.Enabled = False  
+       mnuDocuments_ReAllocateMultiple.Enabled = True
+     Else
+       mnuDocuments_ReAllocateSingle.Enabled = True  
+       mnuDocuments_ReAllocateMultiple.Enabled = False
+   
+     Endif
+     mnuDocuments.Popup()
+
+End
+
+Public Sub cmbStaffMembers_Click()
+  If Bexit Then Return 
+  TabStripInbox.text = "Pending documents for " & cmbStaffMembers.text
+  Inbox_Reload()
+End
+
+Public Sub TabStrip1_Click()
+   '----------------------------------------------------------------------------------
+   'User has clicked on the main tabstip containing metadata, past history recalls etc
+   'With each new patient, if the tab's embedded form has been instantiated, then
+   'its currentconsult will have been set to null see:  EmbeddedForms_Reset()
+   'Notes:
+   '         Vsplit_PatientMatching.Visible = False  removes the inbox lists
+   '         allows tab to occupy the whole of the vertical space
+   '----------------------------------------------------------------------------------
+   Dim patient_details As String       
+   
+   If FMetaData.get_fk_patient() = 0 Then
+      Tabstrip1.index = 0
+     Return 
+   End If   
+   
+   patient_details = currentconsult!patient!wholename & " [" & Format(currentconsult!patient!birthdate, "dd/mm/yyyy") & "] " & currentconsult!patient!age & "yrs"
+   Select Case Tabstrip1.Index
+   Case Metadata
+  '  Vsplit_PatientMatching.Visible = True 
+     tbBackToInbox.visible = False 
+     Return 
+  
+   Case pasthistory
+    '  Vsplit_PatientMatching.Visible = False 
+      If IsNull(Form_PastHistory) Then
+         Form_PastHistory = New FPastHistory(HBox_PastHistory)
+         Form_PastHistory.set_embedded(True, "Inbox")
+         Embedded_Forms.Add(Form_PastHistory, Tabstrip1.index)
+      End If
+      If Not Form_PastHistory.Consult_Exists() Then
+         Form_PastHistory.Init(currentConsult)
+         Form_PastHistory.lblFormHeading.text = "Health Issues - " & patient_details
+      End If   
+  
+   Case script
+   
+   Case request
+      If IsNull(Form_Requests) Then
+         Form_Requests = New FRequests(HBox_Requests)
+         Form_Requests.set_embedded(True, "Inbox")
+         Embedded_Forms.Add(Form_Requests, Tabstrip1.index)
+      End If
+      If Not Form_Requests.Consult_Exists() Then
+         Form_Requests.Init(currentconsult)
+         Form_Requests.lblFormHeading.text = "Requests - " & patient_details
+      End If
+      
+   Case recall
+   '  Vsplit_PatientMatching.Visible = False 
+     If IsNull(Form_recalls) Then
+       Form_recalls = New FRecalls(Hbox_Recalls)
+       Form_recalls.set_embedded(True, "Inbox")
+       Embedded_Forms.Add(Form_recalls, Tabstrip1.index)
+     End If
+     If Not Form_recalls.Consult_Exists() Then
+         Form_recalls.Init(currentconsult)
+         Form_recalls.lblFormHeading.text = "Recalls - " & patient_details
+     End If
+     Form_recalls.Set_Audit_Schema_Table_SourceRowKey(SelectedDocument!pk_document, "clin_recalls", "recalls")
+  
+  Case scratch
+     ' Vsplit_PatientMatching.Visible = True 
+      If IsNull(Form_Scratchpad) Then
+         Form_Scratchpad = New FScratchPad(VboxScratchPad)
+         Form_Scratchpad.Hbox_ScratchPadHeading.Visible = True 
+         Embedded_Forms.Add(Form_Scratchpad, Tabstrip1.index)
+      End If
+      If Not Form_Scratchpad.Consult_Exists() Then
+         Form_Scratchpad.Init(currentconsult)
+         Form_Scratchpad.lblPatient.text = patient_details
+      End If
+      Form_Scratchpad.Set_Audit_Schema_Table_SourceRowKey(SelectedDocument!pk_document, "clin_consult", "scratchpad")
+  
+   Case tasks
+      If IsNull(FTasks) Then
+          FTasks = New FStaffTasks(Hbox_Tasks)
+      End If  
+      
+      With FTasks  
+       '   .VBox_TaskResolution.Visible = False                    'unwanted gui-elements here
+          .VSplit_Right.Visible = False   
+          .Set_Parent_Form("FInbox")
+          .Set_Audit_Schema_Table_SourceRowKey(SelectedDocument!pk_document, "documents", "documents")
+          .Set_Consult(currentconsult)
+          .Set_Document(SelectedDocument!pk_document)  
+          .Init()                'this clears edit area etc.
+          .bexit = True 
+          .txtPatient.text = SelectedDocument!patient_title & " " & SelectedDocument!patient_firstname & " " & SelectedDocument!patient_surname
+          .lblBirthdate.text = Format(SelectedDocument!patient_birthdate, "dd/mm/yyyy")
+          .txtStreet.text = SelectedDocument!patient_street
+          .txtSuburb.text = SelectedDocument!patient_town & " " & SelectedDocument!patient_postcode 
+          .txtPatient.ReadOnly = True  
+          .txtStreet.ReadOnly = True
+          .txtSuburb.ReadOnly = True
+          .lblFinaliseTask.Visible = False  
+          .HBox_FinalisedBy.Visible = False 
+          .Hbox_DateFinalised.Visible = False
+          .Vbox_AllStaffsTasks.Visible = False  
+          .tbNewPracticeTask.visible = False
+          .txtTask.TEXT = FMetaData.txtUserObservationName.text
+          .tbNewPatientTask.text = "New Task"
+          .rbAllocateToMe.Visible = True  
+          .bexit = False  
+      End With
+      
+   Case appointment
+  
+   Case context
+  
+   End Select
+   tbBackToInbox.visible = True
+
+End
+' Public Function Guess_Letter_Content() As String   
+'    '-------------------------------------------------------------------
+'    'Simple attempt to guess what the diagnosis is
+'    'First with GP Access: as they often have coded ICPC Plus diagnosis
+'    '-------------------------------------------------------------------
+'    
+'    Dim observation As Collection
+'    Dim From_pos As Integer
+'    Dim To_pos As Integer
+'    Dim diagnosis_guess As String
+'    Dim Lines As String[]
+'    Dim a_line As String
+'    If Trim(FMetaData.txtUserObservationName.text) = "" Then
+'       
+'        For Each observation In observations
+'            Lines = Split(Replace(observation!value, "\\.br\\", "|"), "|", "", True)
+'            For Each a_line In Lines
+'                If Left(a_line, 3) = "Dx:" And Right(a_line) = ")" Then
+'                    Return Trim(Replace$(a_line, "Dx:", "")) 
+'                End If
+'             Next    
+'       Next   
+'    End If
+'   Return diagnosis_guess
+' End
+
+
+Public Sub tbBackToInbox_Click()
+
+    Tabstrip1.index = Metadata
+  tbBackToInbox.visible = False  
+
+End
+
+Public Sub cmbSenders_Click() 
+   '-------------------------------------------------------
+   'User wants to filter the inbox to a particular provider
+   '-------------------------------------------------------
+   Last.pos = 0
+   cvwInboxDocuments.Clear()         'WAIT or visually a 'grey hole' left after
+   Wait                              'click activated and combo drop down removed
+   tbRefreshInbox_Click()
+End
+
+Public Sub Audit_Trail()
+  '------------------------------------------------------------
+  'Displays an audit trail of a single entry
+  'or the entire scratch pad according to value of iAuditFilter
+  '= const.Const.cDisplay_All orConst.cDisplay_Current
+  '------------------------------------------------------------
+  Dim audit_rows As Collection
+  Dim sHtml As String 
+  audit_rows = modInboxDBI.View_AuditTrail()
+  FAuditTrail.WebView1.html = modAudit.Audit_HTML_Construct(audit_rows, "Documents").GetData()
+End
+
+
+Public Sub tbFile_KeyPress()
+
+   If key.code = key.Return Then
+     tbFile_Click()
+   Endif
+
+End
+
+
+
+Public Sub txtFilterDocuments_Activate()
+   '---------------------------------------------
+   'Filters the document in the inbox by filename
+   '---------------------------------------------
+    tbRefreshInbox_Click
+
+End
+
+Public Sub tbClearFilter_Click()
+
+  txtFilterDocuments.Clear()
+  tbRefreshInbox_Click
+End

@@ -1,0 +1,641 @@
+' Gambas class file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'-----------------------------------------------------------------------
+'PURPOSE    User preference setup for request ordering
+'REASON     In medicine there are categories that one requests - eg
+'           radiology, cardiology, phyisotherapy, and there are many
+'           providers of these services, but the doctor usually likes
+'           one particular company, so this module forces the user to
+'           choose the 'default provider' and default branch. When in
+'           the requests section, this will be auto-filled in to save
+'           typing, but they will still have access to anyone else.
+'NOTE       The administrator must define in the first place which
+'           companies or individuals provide services of a particular
+'           type. Not until this is done will the names of these
+'           providers be 'findable'    
+'----------------------------------------------------------------------
+Private bexit As Boolean
+Public FPreview As FHtmlViewer 'needs to be accessed by help buttons in staff
+Private branches As Collection 
+Private branch As Collection 
+Private providers As Collection 
+Private provider As Collection 
+Private Request_Types As Collection 
+Private Request_Type As Collection 
+Private fk_organisation As Integer
+Private fk_default_branch As Integer
+Private fk_head_office_branch As Integer
+Private fk_lu_request_type As Integer 
+Private pk_view As Integer
+Private RequestDefaultProviders As Collection 
+Private RequestDefaultProvider As Collection 
+Private fk_staff As Integer  
+
+Public Sub Form_Open()
+      Init()
+End 
+
+Public Sub Set_Staff_member(staff_fk As Integer)
+   '--------------------------------------------------------------------
+   'This form will be used when the user or admin, having clicked on
+   'a staff members name in the Practice Staff form, switches to the
+   'preferences section by clicking on the Setup Preferences tab, which
+   'contains, amongst others, this form. To make sure the correct staff
+   'member is linked to, when their name is clicked on  in the Practice
+   'Staff form, this calls this routine and sets the fk_staff
+   '--------------------------------------------------------------------
+  fk_staff = staff_fk
+End
+
+
+
+Public Sub Notify_No_Providers_In_Contacts()
+   '------------------------------------------------------------------
+   'If user selects a provider type from the list in the combo, and no
+   'provider is yet linked to that type, tell them so
+   '------------------------------------------------------------------
+   Dim smsg As String
+   sMsg = "There are no " & cmbRequestTypes.Text & "s in the contacts database \n\n"
+   sMsg &= "Please enter the names and addresses of the providers\n" 
+                  "you wish to use in the contacts database - you can\n"
+                  "select this from the side bar menu\n\n"
+                  "If you have already entered companies or people in this category "
+                  "you may not have allocated them as a 'Provider'.\n\n" 
+                  "NB: When you enter a data in contacts, you must remember\n" 
+                  "to include the word 'Provider' in the category for example\n"
+                  "'Cardiology Provider' or 'Physiotherapy Provider', otherwise it will not be found.\n\n" 
+                  "After you have finished, click the refresh button on the toolbar\n"
+                  "and try again." 
+   Message.Info(sMsg)
+End
+
+Public Sub save()
+'-----------------------------------------------------------------------------------
+'Save the current provider default for the particular category shown in the combobox
+'  clin_requests.user_provider_defaults
+'   pk serial NOT NULL,
+'   fk_staff integer NOT NULL, -- key to admin.staff table ie describes the user
+'   fk_default_branch integer NOT NULL, -- key to contacts.branches table...
+'   fk_head_office_branch integer,
+'   send_electronically boolean DEFAULT false,
+'   print_paper boolean DEFAULT true,
+'   deleted boolean DEFAULT false,
+'   fk_lu_request_type integer not null
+'------------------------------------------------------------------------------------
+   Dim sMsg As String
+   If VBox_EditArea.Padding = 0 Then Return            'nothing to save
+   If Not Valid_Request_Provider_Default() Then
+       Notify_No_Providers_In_Contacts()
+       Return  
+   End If
+   RequestDefaultProvider = New Collection 
+   '-------------------------------------------------------------------------
+   'We don't need to keep the category as this is defined as  property of the
+   'organisation eg pathology provider. nor do we need fk_organisation as
+   'this is defined by the branch in contacts.data_branches.fk_organisation
+   '-------------------------------------------------------------------------
+   If pk_view <> -1 Then 
+     RequestDefaultProvider!pk_default = pk_view
+   Endif
+   RequestDefaultProvider!fk_default_branch = fk_default_branch 
+   RequestDefaultProvider!fk_staff = fk_staff
+   RequestDefaultProvider!fk_lu_request_type = request_types[cmbRequestTypes.index]!pk
+   '--------------------------------------------------------------------------
+   'Save the default type of provider for the user, get the type key
+   'Request_Types is the collection of types, keyed to the index of the combo
+   '--------------------------------------------------------------------------
+   ' If chkDefaultType.value Then
+   '    If IsNull(user_default_type) Then
+   '        user_default_type = New Collection
+   '    End If
+   '    user_default_type!fk_lu_type = Request_Types[cmbProvidertypes.index]!pk
+   ' End If
+   
+      
+   If chkElectronic.Value Then
+       RequestDefaultProvider!send_electronically = True
+   Else
+      RequestDefaultProvider!send_electronically = False
+   End If
+   If chkPrint.value Then
+        RequestDefaultProvider!print_paper = True
+   Else
+        RequestDefaultProvider!print_paper = False
+   End If
+   '----------------------------------------------------------------------------------
+   'At this point, get the default head office branch. This should never fail, however
+   'I think there are still bugs in contacts so it could
+   '----------------------------------------------------------------------------------
+   modDBConnect.BeginTrans()
+      RequestDefaultProvider!fk_head_office_branch = modContactsDBI.Organisation_Get_Head_office_pk(fk_organisation)
+      RequestDefaultProvider!fk_default = modPreferencesDBI.RequestType_DefaultsSave(RequestDefaultProviders, pk_view, RequestDefaultProvider)
+    ' DO NOT RE-INSERT THIS I'M MOVING IT OUT user_default_type!fk_user_default_type = modRequestsDBI.User_Save_Default_Type(old_user_default_type, user_default_type)
+   modDBConnect.CommitTrans()
+   RequestsDefaults_Refresh()  
+   Editarea_Clear()
+End
+
+
+Public Sub EditAreaTextBox_LostFocus()
+  
+  Last.BackGround = Color.white
+  Last.pos = 0
+  
+End
+
+Public Sub EditAreaTextBox_GotFocus()
+If bexit Then Return
+ Last.BackGround = Color.rgb(95, 255, 175)
+  Select Case Last.tag
+   Case "provider"
+     With Columnview1
+      .top = Hbox_Branch.top + Hbox_Branch.Height + Vbox1.Padding
+      .Top = Last.Parent.Top + Last.Parent.Height + Vbox1.Padding 
+      .width = Last.Width
+      .left = Last.Left + VBox_EditArea.padding + Vbox1.Padding + Vbox_EditArea_Inner.Padding
+     End With
+     If Trim(txtProvider.text) = "" Then 
+      If bexit Then
+         User_RequestDefault_New()
+      Return
+      End If
+     End If
+   Case "branch"
+     With Columnview1
+      .top = Hbox_Branch.top + Hbox_Branch.Height + Vbox1.Padding
+      .Top = Last.Parent.Top + Last.Parent.Height + Vbox1.Padding
+      .width = Last.Width * 1.5 
+      .left = Last.Left + VBox_EditArea.padding + Vbox1.Padding + Vbox_EditArea_Inner.Padding
+     End With
+     If fk_organisation Then 
+        Branches_Selection("get")
+     End If
+     
+   End Select
+  
+
+End
+
+
+Public Sub ColumnView1_KeyPress()
+   If Key.code = Key.return Then
+      ColumnView1_DblClick()
+   End If
+
+End
+Public Sub ColumnView1_LostFocus()
+   Columnview1.Visible = False
+  
+End
+
+Public Sub cvwUserDefaults_Click()
+   Editarea_Clear()
+End
+Public Function Valid_Request_Provider_Default() As Boolean
+  '---------------------------
+  'do some minimal validation
+  '---------------------------
+  Dim flag As Boolean = True
+  If fk_lu_request_type = 0 Then 
+    cmbRequestTypes.SetFocus()
+    Return False
+  End If
+  If fk_default_branch = 0 Then 
+      txtbranch.SetFocus()
+      Return False
+  End If
+  If fk_organisation = 0 Then 
+      txtProvider.SetFocus()
+      Return False
+  End If
+  Return True
+End
+
+
+Public Sub User_RequestDefault_New()
+  '---------------------------------------------------------------
+  'Allow entry  of a new default for a provider for provider type
+  'where pr ovider type e.g is radiology, pathology
+  '---------------------------------------------------------------
+  bExit = True
+  Editarea_Clear()
+  'RequestDefaultProvider = New collection 
+  branch = New Collection
+  provider = New Collection 
+  EditArea_Notify_Change(False)
+  pk_view = -1
+  fk_organisation = 0
+  fk_default_branch = 0
+  fk_lu_request_type = 0
+  cmbRequestTypes.SetFocus()
+  With lblEditArea_Heading
+      .Foreground = Color.Red
+      .Text = "New User Default Request Provider"
+      .Visible = True
+  End With
+  VBox_EditArea.Enabled = True   
+  bExit = False
+  
+End
+
+Public Sub EditAreaButtons_Click()
+  Select Case Last.tag
+  Case "accept"
+      save()
+  Case "new"
+      User_RequestDefault_New()
+  End Select
+
+End
+
+Public Sub cmbRequestTypes_Click()
+   '--------------------------------------------------------------------
+   'If provider changes, then the whole ball game changes
+   'clear the editing area which re-sets everything
+   'Remember that Admin.Global Request Defaults is where admin sets up
+   'which companies or individuals we can order or request things from
+   'eg Pathology companies, radiology etc
+   '-----------------------------------------------------
+   If bExit Then Return
+   If cmbRequestTypes.index = -1 Then Return 
+   fk_lu_request_type = Request_Types[cmbRequestTypes.index]!pk   'set request type key eg 1=pathology
+   txtProvider.SetFocus()                                         'this sets columnview to correct spot
+   Providers_Selection("get")                                     'get list of providers or this type
+End
+
+Public Function Provider_Get_fk_lu_request_type() As Integer
+    For Each Request_Type In Request_Types
+       If cmbRequestTypes.text = Request_Type!type Then
+          fk_lu_request_type = Request_Type!pk
+          Return Request_Type!pk
+          Break
+       End If
+    Next
+  
+  
+  
+End
+
+Public Sub Providers_Selection(action As String, Optional calling_control As String)
+   '-----------------------------------------------------------------------------
+   'PURPOSE    : Fetches a list of providers for the category in cmbProvidertypes
+   '             e.g all pathology companies
+   'NOTE       : As we cannot set a combo-key, then Provider_Get_fk_lu_request_type
+   '             will figure it out
+   '           : The initial provider collection is only the provider name as
+   '             each provider could have multiple addresses.
+   '-----------------------------------------------------------------------------
+   Dim sMsg As String 
+   
+   Select Case action
+   Case "get"
+      providers = modRequestsDBI.Request_Providers_Get(Request_Types[cmbRequestTypes.index]!pk)                    'refresh providers for types
+     With columnview1
+         .Clear
+         .Visible = False
+      End With   
+       '-----------------------------------------------------------------
+      'If providers exist to match the text, auto-select or show a list
+      '-----------------------------------------------------------------
+      If providers.count Then 
+        For Each provider In providers
+          columnview1.Add(provider!pk_request_provider, 0)
+          columnview1[provider!pk_request_provider][0] = provider!organisation
+        Next
+        columnview1.tag = txtprovider
+        If providers.count = 1 Then 
+           Providers_Selection("accept")
+           Return
+        End If
+        With columnview1
+         .Visible = True
+         .Raise
+        End With 
+        Return 
+      Else
+         sMsg = "There are no providers for the request type " & cmbRequestTypes.Text & "\n\n"
+         sMsg &= "The quick and easy way to fix this, assuming you have put the companies or individuals into the contact database "
+         sMsg &= "is to select the Admin section, and go to the tab named 'Global Request Defaults, and link any existing companies you wish "
+         sMsg &= "with a particular type of request.\n\n"
+         sMsg &= "Alternatively, you can view the help file now."
+         If Message.Question(sMsg, "View Help File", "Cancel") = 1 Then
+           Help_No_Providers("No providers exist for the request type " & cmbRequestTypes.text)
+         End If
+         Editarea_Clear()
+         Return 
+      End If
+             
+   Case "accept"
+      '----------------------------------------------------------------------
+      'CALLED BY  : user hitting <enter> in txtprovider ie editarea_keypress
+      '             user hitting <enter> on the popup list of providers
+      '             user double clicking on the popup list of providers
+      '----------------------------------------------------------------------
+      bExit = True
+      '-----------------------------------------------------------
+      'Routine called by user clicking on list or pressing <enter>
+      '-----------------------------------------------------------
+      columnview1.MoveCurrent   'set internal cursor to match marquee
+      txtProvider.text = providers[columnview1.Item.key]!organisation
+      fk_organisation = providers[columnview1.Item.key]!fk_organisation
+      columnview1.Visible = False  
+      txtBranch.SetFocus()
+      bExit = False  
+   End Select
+End
+
+Public Sub Branches_Selection(action As String, Optional calling_control As String)
+   '------------------------------------------------------------
+   'PURPOSE    : Fetches a list of branches for a given provider
+   '------------------------------------------------------------
+   Select Case action
+   Case "get"
+      With columnview1
+         .Clear
+         .Visible = False
+         .Columns.count = 2
+      End With   
+      branches = modContactsDBI.Branches_Get_For_Organisation(fk_organisation)
+      '-----------------------------------------------------------------
+      'If branches exist to match the text, auto-select or show a list
+      '-----------------------------------------------------------------
+      If branches.count Then 
+        For Each branch In branches
+            columnview1.Add(branch!pk_view, 0)
+            columnview1[branch!pk_view][0] = branch!branch
+            columnview1[branch!pk_view][1] = branch!street & " " & branch!town & " " & branch!state & " " & branch!postcode
+        Next
+        columnview1.tag = txtbranch
+        If branches.count = 1 Then 
+          columnview1.Visible = False 
+          branches_Selection("accept")
+           Return
+        End If
+        With columnview1
+         .Visible = True
+         .Raise
+        End With 
+        Return 
+      End If
+             
+   Case "accept"
+      columnview1.MoveCurrent   'set internal cursor to match marquee
+      fk_default_branch = branches[columnview1.Item.key]!fk_branch
+      txtbranch.text = branches[columnview1.Item.key]!branch
+      txtStreet.text = branches[columnview1.Item.key]!street
+      txtsuburb.text = branches[columnview1.Item.key]!town & " " & branches[columnview1.Item.key]!postcode
+      columnview1.Visible = False 
+      chkElectronic.SetFocus()
+   End Select
+End
+
+Public Sub EditArea_Notify_Change(flag As Boolean)
+   If flag Then
+     VBox_EditArea.Padding = 1
+     VBox_EditArea.Background = Color.Red
+      tbAccept.Foreground = Color.Red
+   Else
+      VBox_EditArea.Padding = 0
+       tbAccept.Foreground = Color.Black
+   End If
+
+  
+  
+End
+
+
+
+Public Sub EditAreaTextBox_KeyPress()
+   If bexit Then Return
+   
+    If cmbRequestTypes.text = "undefined provider" Then 
+      Stop Event
+      Help_No_Providers("You must select a provider type and ensure they are in the contacts database")
+      Return
+   End If
+
+   Select Case Key.code
+  
+   Case Key.Down
+   If Columnview1.Visible Then 
+      Columnview1.SetFocus
+      Columnview1.MoveFirst
+      Columnview1.Item.Selected = True
+   End If
+  End Select   
+
+End
+Public Sub EditAreacheckBox_Click()
+   If bexit Then Return
+   If cmbRequestTypes.text = "undefined provider" Then 
+         Stop Event
+         Help_No_Providers("You must select a provider type and ensure they are in the contacts database")
+         Return
+   End If
+   EditArea_Notify_Change(True)
+End
+
+
+Public Sub Editarea_Clear()
+   'Clear textboxes etc in the edit area
+   bExit = True    
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_Inner) 
+   bExit = False   
+   cmbRequestTypes.index = -1 
+   Columnview1.Visible = False
+   EditArea_Notify_Change(False)
+  With lblEditArea_Heading
+      .Foreground = Color.Red
+      .Text = ""
+  End With
+   
+  
+End
+
+Public Sub User_RequestDefault_Display()
+   bexit = True
+   cvwUserDefaults.MoveCurrent
+   RequestDefaultProvider = New Collection
+   txtProvider.text = RequestDefaultProviders[cvwUserDefaults.Item.key]!organisation
+   txtBranch.text = RequestDefaultProviders[cvwUserDefaults.Item.key]!default_branch
+   txtStreet.text = RequestDefaultProviders[cvwUserDefaults.Item.key]!default_branch_street
+   txtsuburb.text = RequestDefaultProviders[cvwUserDefaults.Item.key]!default_branch_town & " " & RequestDefaultProviders[cvwUserDefaults.Item.key]!default_branch_postcode
+   cmbRequestTypes.index = cmbRequestTypes.Find(RequestDefaultProviders[cvwUserDefaults.Item.key]!request_type)
+   chkElectronic.value = RequestDefaultProviders[cvwUserDefaults.Item.key]!send_electronically
+   chkPrint.value = RequestDefaultProviders[cvwUserDefaults.Item.key]!print_paper
+   fk_default_branch = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_default_branch
+   fk_organisation = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_organisation
+   fk_lu_request_type = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_lu_request_type
+   pk_view = cvwUserDefaults.Item.key ' = pk_default
+   
+   RequestDefaultProvider!pk_default = RequestDefaultProviders[cvwUserDefaults.Item.key]!pk_default
+   RequestDefaultProvider!fk_staff = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_staff
+   RequestDefaultProvider!fk_default_branch = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_default_branch 
+   RequestDefaultProvider!fk_head_office_branch = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_head_office_branch 
+   RequestDefaultProvider!send_electronically = RequestDefaultProviders[cvwUserDefaults.Item.key]!send_electronically
+   RequestDefaultProvider!print_paper = RequestDefaultProviders[cvwUserDefaults.Item.key]!print_paper
+   RequestDefaultProvider!deleted = False
+   bExit = False
+ End
+
+Public Sub ColumnView1_DblClick()
+   Select Case ColumnView1.tag.tag 'Do not put Last here please it kills other calling routines
+   
+   Case "provider"
+      Providers_selection("accept")
+   Case "branch"
+      Branches_Selection("accept")
+   End Select
+End
+
+
+
+
+Private Sub Settings_Save()
+      Settings["Preferences/VSplit_Defaults_Requests.Layout"] = VSplit_Defaults_Requests.Layout
+      Settings["Preferences/FPreview.WebBrowser1.Zoom"] = FPreview.WebBrowser1.Zoom
+End
+
+Private Sub Settings_Load()
+      Try VSplit_Defaults_Requests.Layout = Settings["Preferences/VSplit_Defaults_Requests.Layout"]
+      Try FPreview.WebBrowser1.Zoom = Settings["Preferences/FPreview.WebBrowser1.Zoom"]
+End
+
+
+Public Sub Form_Close()
+   Settings_Save()
+End
+
+Public Sub Help()
+   FStaff.Help_Show(Application.Path &/ "help/preferences---providers.html", True)
+End 
+
+Public Sub Help_No_Providers(sMsg As String)
+  
+  FStaff.Help_Show(Application.Path &/ "help/setting-up-providers.html", True)
+    'res-set to provider undefined
+      bexit = True
+      cmbRequestTypes.index = 17
+      bExit = False  
+  
+End
+
+Public Sub Help_No_Providers_old(sMsg As String)
+      FPreview.WebView1.url = Application.Path &/ "help/setting-up-providers.html"
+      FPreview.Visible = True
+        With FPreview.lblWebBrowserNotes
+            .text = sMsg
+            .Foreground = Color.Red
+            .Visible = True   
+         End With
+     'res-set to provider undefined
+      bexit = True
+      cmbRequestTypes.index = 17
+      bExit = False  
+End
+
+Public Sub Init()
+   '------------------------------------------------
+   'Load a html viewer to view help files if needed
+   'the default provider type is undefined
+   '------------------------------------------------
+   FPreview = New FHtmlViewer(Me)  
+   With FPreview      
+      .visible = False              
+      .tbWebBrowserBack.Visible = True
+      .tbWebBrowserForeward.Visible = True
+   End With
+   bexit = True
+   request_types = modUtil.LoadCombo(cmbRequestTypes, modRequestsDBI.RequestTypes_Get(), "type") 'all available types of requests
+   bexit = False
+   FStaff.Help_SetHomePageName(Application.Path &/ "help/preferences---providers.html")
+   lblMeasure.text = "Default Request Type"
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
+   Settings_Load()
+   cvwUserDefaults.Columns.count = 4
+   Editarea_Clear()
+   
+End
+
+Public Sub RequestsDefaults_Refresh()
+   '-----------------------------------------------------------------
+   'Gets the defaults for how the user wants to handle their requests
+   'e.g default pathology company, branch etc
+   'This is initally called by clicking on the staff lists in FStaff
+   '-----------------------------------------------------------------
+  VBox_EditArea.Enabled = False   
+  cvwUserDefaults.Clear()  
+  RequestDefaultProviders = modPreferencesDBI.User_Provider_Defaults_Get(fk_staff) 
+  For Each RequestDefaultProvider In RequestDefaultProviders
+       cvwUserDefaults.Add(RequestDefaultProvider!pk_default, 0)
+       cvwUserDefaults[RequestDefaultProvider!pk_default][0] = UCase(RequestDefaultProvider!request_type & ":")
+       cvwUserDefaults[RequestDefaultProvider!pk_default][1] = RequestDefaultProvider!organisation
+       cvwUserDefaults[RequestDefaultProvider!pk_default][2] = "HEAD OFFICE:" & RequestDefaultProvider!headoffice_street & " " & RequestDefaultProvider!headoffice_town
+       cvwUserDefaults[RequestDefaultProvider!pk_default][3] = " DEFAULT BRANCH::" & RequestDefaultProvider!default_branch_street & " " & RequestDefaultProvider!default_branch_town
+  Next
+End
+
+
+Public Sub EditAreaTextBox_Change()
+   If bexit Then Return
+   EditArea_Notify_Change(True)
+End
+
+
+Public Sub cvwUserDefaults_Menu()
+ If Last.count Then mnuProviderDefaults.Popup
+End
+
+Public Sub mnuProviderDefaults_Click()
+   '---------------------
+   'currently only delete
+   '---------------------
+   Select Case Last.tag
+   Case "delete"
+      If Message.warning("Are you sure you want to delete this provider default?", "Yes", "No") = 1 Then
+         modDBConnect.BeginTrans()
+         If modPreferencesDBI.Request_Default_Mark_Deleted(RequestDefaultProviders, pk_view, RequestDefaultProvider) Then
+            modDBConnect.CommitTrans()
+         End If   
+         RequestsDefaults_Refresh()
+       End If
+   Case "edit"
+       User_RequestDefault_Edit()
+   Case "help"
+      Help()
+   End Select
+
+End
+
+Public Sub User_RequestDefault_Edit()
+   '--------------------------------------------------------------
+   'Allow user to edit current default to change eg default branch
+   '--------------------------------------------------------------
+    Editarea_Clear()  
+     With lblEditArea_Heading
+      .Foreground = Color.Red
+      .Text = "Edit Existing User Request Default"
+      .Visible = True
+  End With
+  User_RequestDefault_Display()
+  VBox_EditArea.Enabled = True
+End
+
+Public Sub cmbRequestTypes_GotFocus()
+
+  Columnview1.Visible = False 'could be showing
+
+End

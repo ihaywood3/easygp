@@ -1,0 +1,2000 @@
+' Gambas class file
+' Copyright (C) 2008,2009,2010 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'
+' A Gambas form to describe a mental health plan as used in general practice
+' in Australia
+'
+' K10 outcome tool:
+' Kessler, R.C., Barker, P.R., Colpe, L.J., Epstein, J.F., Gfroerer, J.C., 
+' Hiripi, E., Howes, M.J, Normand, S-L.T., Manderscheid, R.W., Walters, E.E., 
+' Zaslavsky, A.M. (2003). Screening for serious mental illness in the general 
+' population Archives of General Psychiatry. 60(2), 184-189.
+  
+'TODO'S:    Implement DASS21
+'           Implement mental health specific progress notes
+'           Finish and debug the internet browser
+'           Implement re-showing of team members expertise
+'           Finish sample data by putting in a K10
+'
+'Minor     remove brackets in html if no address (patient or team member)
+'          Implement delete, undelete
+'          Beautify the K10 which ends up in the notes
+'          Last plan dosn't update on last plan tab after save
+'          remove hidden lblCodingSystem lable and fix associated routine
+'---------------------------------------------------------------------------------------
+Private bEmbedded As Boolean
+Private bkeyvalid As Boolean
+Private bexit As Boolean
+Private bSampleData As Boolean
+Private iDefault_Distress_Tool As Integer    'currently not used
+Private ReferralTo_SearchBy_Criteria As Integer  'eg organisation/employee/person etc
+Private sex_filter As Integer                'e.g const.cSexUnknown for searching for team members with option buttons
+
+'All database keys refer to schema clin_mental health
+'unless otherwise designated then the form is schema.table
+Private fk_lu_risk_to_others As Integer      'key lu_risk_to_others table
+Private pk_view As Integer                   'equivalent to fk_plan, the key or vwmentalhealthPlans
+Private last_fk_plan As Integer              'used by undo-delete
+Private fk_lu_plan_type As Integer           'key to lu_plan_type = 0=initial 1 = review
+Private fk_plan As Integer                   'key to mentalhealth_plan table
+Private fk_code As String                    'key to coding.generic_terms table (icd10 or ICPC terms)
+Private fk_coding_system As Integer          'key to coding.lu_systems eg icd10 or icpc2Plus or = const.coding_none_selected
+Private fk_pasthistory As Integer            'key to clin_history.past_history table, links plan to condition
+Private fk_progressnote As Integer           'key to clin_consult.progressnotes points to last progress note for the plan
+                                             'used for editing purpose
+Private cProgressNote_Section As Integer     'key to clin_consult.lu_progressnotes_sections 
+
+'See contacts schema data tables
+'The contacts schema and heirachy is pretty complicated and will need
+'much study to understand
+Private fk_organisation As Integer           'key to contacts.data_organisations
+Private fk_branch As Integer                 'key to contacts.data_branches
+Private fk_person As Integer                 'key to contacts.data_persons
+Private fk_employee As Integer               'key to contacts.data_employees
+
+Private currentconsult As CConsult           'pretty critical, the current consult class
+
+Private hObs As Observer
+
+'Embedded forms
+Private FHtml_Viewer As FHtmlViewer            'viewer to see the previous plans
+Private FB As FBrowser                         'Webkit browser for mental health resources
+Private Form_K10 As FK10OutcomeTool            'The k10 outcome tool, see end of file
+Private Form_DASS21 As FDASS21AssessmentTool   'DASS21 assessment tool
+Private ProgressNotesPage As FProgressNotePage 'Progress notes editor
+
+'lots of collections
+Private textbox_help As Collection 
+Private mentalhealthplan As Collection 
+Private mentalhealthplans As Collection 
+Private collection_members As Collection        'generic collection of collections
+Private collection_member As Collection         'generic collection
+Private terms As Collection
+Private term As Collection
+Private TeamCareMembers As Collection 
+Private TeamCareMember_Deleted As Collection    'holds single deleted team member
+Private K10s As Collection                      'the patient's K10's
+Private K10_Questions As Collection             'All the K10 questions
+Private TeamCareMembers_old As Collection       'Collection of existing team care members before edit
+Private currentTerm As Collection               'a coded term and its code
+Private iTeamCareMember As Integer              'the key to the TeamCareMembers collection
+Private currentK10 As Collection                'the K10 which is/has been just edited
+Private Old_K10 As Collection                   'Previous K10 of existing plan
+Private currentDASS21 As Collection             'the DASS21 which is/has just been edited
+
+
+Static Private form_mentalhealth As FMentalHealth
+
+Public Sub set_embedded(flag As Boolean)
+   '--------------------------------------------------
+   'If this form is embeded from another form set flag
+   '--------------------------------------------------
+   bEmbedded = flag
+End
+
+Public Sub Form_Close()
+  Settings_Save()
+End
+
+
+Public Sub form_Open()
+   'Note most of the setting up work is done by Init() called from FClinical
+   form_mentalhealth = Me
+End
+
+Static Public Function k10_Show_Results(score As Integer)
+   '------------------------------------------------------------------------
+   'When K10 is being done on the K10 form, it calls this routine
+   'to update the K10 result on the mental health form, otherwise
+   'if the user clicks the save key whilst the K10 is showing, having
+   'completed the entire mental health plan,the program would complain
+   'about no K10 and present them with a baffling prompt about 'Missing k10'
+   '-------------------------------------------------------------------------
+    form_mentalhealth.lblK10Score.text = score & "/50"
+    form_mentalhealth.EditArea_Notify_Datachanged(True)
+End
+
+
+Public Sub Init(cons As CConsult)
+   '--------------------------------------------------------------------------------
+   'This is called from FClinical when the mental health form is instantiated.
+   'Sets current consult
+   'Loads settings for qui-elements splits etc
+   'Instantiates forms for K10, DASS and a webbrowser for resources, progress notes
+   'Fetch all current MentalHealth claims
+   '-------------------------------------------------------------------------------
+   currentconsult = cons
+   Settings_Load()             
+   textbox_help = modMentalHealthDBI.textbox_help_Get() 'LinkInput textboxes to help prompts
+   modMentalHealthDBI.Get_K10_Questions()
+   Form_K10 = New FK10OutcomeTool(VBoxK10)
+   Form_DASS21 = New FDASS21AssessmentTool(VBox_DASS)
+   FB = New FBrowser(HBox_Browser) 'internet browser For resources
+   '----------------------------------------------------------------------------
+   'Create an instance of a html viewer and create observers for its buttons
+   'Over-ride the events on the embedded web browser back and forwards buttons
+   'and close buttons. Its boot up position will be on the first tab, but if
+   'user clicks on tabs subsequently it will be 'shuffled around' by reparenting
+   '----------------------------------------------------------------------------
+   FHtml_Viewer = New FHtmlViewer(VBox_LastForm)              'will show last mental health plan if exists
+   hObs = New Observer(FHtml_Viewer.tbWebBrowserClose) As "tbPreview_Close"
+   hObs = New Observer(FHtml_Viewer.tbWebBrowserBack) As "tbButton_Back"
+   hObs = New Observer(FHtml_Viewer.tbWebBrowserForeward) As "tbButton_forward"
+   '-----------------------------------------------------------------
+   'Create a new progress notes page for clinical mental health notes
+   '-----------------------------------------------------------------
+   ProgressNotesPage = New FProgressNotePage(VBox_ProgressNotes)
+   ProgressNotesPage.Set_fk_section(const.cSection_MentalHealth)
+   ProgressNotesPage.Init(currentconsult)
+   '----------------------
+   'Init some gui-elements
+   '----------------------
+   cvwPlans.Columns.Count = 7
+   iDefault_Distress_Tool = const.mentalhealth_assessmentdistresstool_K10
+   columnview1.Columns.count = 2          'the popup columnview for terms
+   mnuHealthIssues_Refresh()
+   '------------------------------------------------------------------
+   'Display the default coding system and set ICD10 checkbox if needed
+   'otherwise, users won't be able to find any terms, don't let them
+   'turn if off either or again, they will get nothing.
+   '------------------------------------------------------------------
+   bexit = True
+   modEditAreaHelpers.Set_ICD10(chkicd10, lblCodingSystem)
+   bexit = False
+   Reload()                                     'load any existing plans, edit area set to new plan
+   '-----------------------------------------------------------------
+   'Do not move Reload() or there will be no plans to show here!
+   'Show the latest mental health plan at init on the 'last plan' tab
+   '-----------------------------------------------------------------
+   If Not IsNull(mentalhealthplan) Then
+         Plan_Show(mentalhealthplan!html)
+   End If
+End
+
+Public Sub Save()
+   '-----------------------------------------------
+   'Saves the current mental health plan
+   'First validate enough information for the save
+    'FIXME ENFORCE ALL K10 OPTION BUTTONS TO BE SET BEFORE SAVE
+   '-----------------------------------------------
+   Dim sMsg As String
+   Dim sProgressNoteHtml As String 
+   Dim sK10html As String 
+   Dim bNewPlan As Boolean   
+   Dim P As Integer
+   '----------------------------------------------------------------------
+   'If no padding, then no data was changed, or if sample data, don't save
+   '----------------------------------------------------------------------
+   If Not (HBox_EditArea.Padding) Then Return  'no data to save
+   ' If bsampledata Then
+   '  Message.info("The sample plan cannot be saved")
+   '   Return
+   ' End If   
+   ' '------------------------------------------------------------------------------------
+   ' 'First, make sure a K10 has been filled out, or at least remind user if they forgot
+   ' 'Bad bug somewhere in gambas here, no combination of code seems to work> program dies
+   ' '-------------------------------------------------------------------------------------
+   ' If Not Form_K10.K10_Completed() Then
+   '   Message.Info("Please complete each question in the K10\n before saving")
+   '   If TabStrip1.index <> 1 Then
+   '      TabStrip1.index = 1
+   '   End If  
+   '   Return
+   ' End If   
+    currentK10 = Form_K10.Get_CurrentK10()
+    sK10html = K10_construct_html(currentK10)
+   ' '-------------------------------------------
+   ' 'Linkages are all important, so enforce this
+   ' '-------------------------------------------
+   ' If txtHealthIssue.text = "" Then
+   '    Message.Info("Please select a health issue to link to this request\nor link to 'General Notes'")
+   '    If TabStrip1.index <> 0 Then
+   '          TabStrip1.index = 0
+   '    End If  
+   '    MenuButton1.SetFocus()
+   '    Return 
+   ' End If
+    If Not Plan_Is_Valid() Then Return
+      '----------------------------
+      '   pk serial NOT NULL,
+      '   fk_consult integer NOT NULL, -- key to clin_consult.consult > gives Dr and date plan formulated
+      '   fk_pasthistory integer, -- key to clin_history.past_history if not null is linked to health issue
+      '   diagnosis text NOT NULL, -- the diagnosis may be free text but could be coded
+      '   fk_coding_system integer, -- if not null this is the coding system used for the coded diagnosis
+      '   fk_code text,
+      '   presenting_problems text,
+      '   bio_psycho_social text,
+      '   mental_state_examination text,
+      '   fk_lu_risk_to_others integer, -- key to lu_risk_to_others table
+      '   fk_stress_assessment integer, -- key to stress_assessment table eg results of K10
+      '   risk_harm_comments text,
+      '   goals text,
+      '   treatment_referrrals text,
+      '   patient_action text,
+      '   review_date date,
+      '   html text,
+      '   
+      '  OK: First prompt the user if they seem to be reviewing an existing plan
+      '-------------------------------------------------------------------------
+   Inc Application.Busy
+   If fk_plan And fk_lu_plan_type = Const.mentalhealth_plantype_review Then
+       sMsg = "You are saving an existing plan.\n\n"
+              "Conifirm save as a review?"
+       If Message.Warning(smsg, "Yes", "No") = 2 Then
+          Return
+       End If
+          fk_plan = -1
+          bNewPlan = True  
+   End If   
+       
+   mentalhealthplan = New Collection
+   mentalhealthplan!fk_lu_plan_type = fk_lu_plan_type
+   mentalhealthplan!fk_consult = currentconsult.GetPK()
+   If fk_plan <> -1 Then
+      mentalhealthplan!fk_plan = fk_plan
+   End If
+   If fk_pasthistory <> 0 Then
+      mentalhealthplan!fk_pasthistory = fk_pasthistory
+   End If
+   mentalhealthplan!diagnosis = Trim(txtdiagnosis.text)
+   mentalhealthplan!fk_coding_system = fk_coding_system
+   mentalhealthplan!fk_code = fk_code
+   mentalhealthplan!presenting_problems = Trim(txtpresentingProblems.text)
+   mentalhealthplan!bio_psycho_social = Trim(txtBioPsychoSocial.text)
+   mentalhealthplan!mental_state_examination = Trim(txtMentalStateExamination.text)
+   
+   If fk_lu_risk_to_others <> const.mentalhealth_risk_undefined Then  
+      mentalhealthplan!fk_lu_risk_to_others = fk_lu_risk_to_others
+   End If
+   mentalhealthplan!risk_harm_comments = Trim(txtRisk.text)
+   mentalhealthplan!goals = Trim(txtGoals.text)
+   mentalhealthplan!treatment_referrrals = Trim(txtTreatment.text)   
+   mentalhealthplan!relapse_plan = Trim(txtRelapsePlan.text)
+   mentalhealthplan!review_date = Val(txtReviewDate.text)
+   mentalhealthplan!html = Plan_Html_Construct().GetData()
+   sProgressNoteHtml = mentalhealthplan!html
+   sProgressNoteHtml = Replace(sProgressNoteHtml, "<HTML><BODY>", "")
+   sProgressNoteHtml = Replace(sProgressNoteHtml, "</BODY></HTML>", "")
+   sProgressNoteHtml = "<HR><small><small>" & sProgressNoteHtml
+   sProgressNoteHtml &= K10_construct_html(currentK10) & "</small></small><HR>"
+   '-----------------------------------------------------------------------------------------------------------------
+   'ok, save the progress note first, to have the fk_progressnote to add to the mentalhealthplan table, then the plan
+   'or edit progress note if this plan was done within the context of today's consultation.
+   '------------------------------------------------------------------------------------------------------------------
+   modDBConnect.BeginTrans()
+               
+       mentalhealthplan!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNoteHtml, const.cSection_MentalHealth, fk_progressnote, "mental health plan", 0, False)
+       fk_plan = modMentalHealthDBI.Save(currentconsult, pk_view, fk_plan, mentalhealthplan)
+       modMentalHealthDBI.Save_K10(currentConsult, old_K10, fk_plan, currentK10)
+       '--------------------------------------------------------------------------------------
+       'If the plan has been re-saved as a follow up, then ins Message.Question("Are you sure you don't want to include a K10 result?", "Yes", "Oops - I forgot - Let's do it")ert the current fk_plan into the
+       'team care members collection
+       '---------------------------------------------------------------------------------------
+       If bNewPlan Then
+          For Each collection_member In TeamCareMembers
+               TeamCareMembers[TeamCareMembers.key].Remove("pk")
+          Next
+       End If  
+       modMentalHealthDBI.Save_TeamCareMembers(teamcaremembers_old, TeamCareMembers, fk_plan)
+   modDBConnect.CommitTrans()
+   Reload()
+   FClinical.Refresh_AllPreviousNotes()
+   Dec Application.Busy
+End
+
+
+Public Sub Reload()
+   Plans_Refresh()         'Show plans in the columnview
+   Plan_New()              'clear the editing area as for new pla n
+End
+
+Public Sub Plans_Refresh()
+   '----------------------------------------------------------
+   'Refreshes the plans collection and puts back into the list
+   '----------------------------------------------------------
+   Dim plan As Collection
+   Dim x As Integer
+   Dim bDataChanged As Boolean
+   Dim sPerson As String
+   currentconsult.Refresh("mentalhealthplans")
+   mentalhealthplans = currentconsult!mentalhealthplans  
+   cvwPlans.Clear()           'clear the list    
+   '-------------------------------------------------
+   'Display the plan: Date/diagnosis/Type/Prepared By
+   '-------------------------------------------------
+   For Each mentalhealthplan In mentalhealthplans 
+       x = mentalhealthplan!pk_mentalhealth_plan
+       cvwPlans.Add(x, 0)
+       cvwPlans[x][0] = Format(mentalhealthplan!plan_date, "dd/mm/yyyy")
+       cvwPlans[x][1] = "  "
+       cvwPlans[x][2] = mentalhealthplan!diagnosis
+       cvwPlans[x][3] = "  "
+       cvwPlans[x][4] = mentalhealthplan!type
+       cvwPlans[x][5] = "  "
+       cvwPlans[x][6] = "Prepared by: " & mentalhealthplan!title & " " & mentalhealthplan!wholename
+       If x = 0 Then
+         Plan_Show(mentalhealthplan!html)
+       End If
+       Inc x
+    Next
+End
+
+Public Sub Plan_Show(shtml As String)
+   Dim filename As String
+   With FHtml_Viewer
+      .tbWebBrowserBack.visible = True   
+      .tbWebBrowserForeward.visible = True  
+      .lblWebBrowserNotes.text = "" 
+   End With 
+   FHtml_Viewer.Reparent(VBox_LastForm)
+   FHtml_Viewer.Raise
+   FHtml_Viewer.WebView1.HTML = shtml
+End
+
+Public Sub mnuHealthIssues_Show()
+  
+  mnuHealthIssues_Refresh()
+  
+End
+Public Sub mnuHealthIssues_Refresh()
+   '--------------------------------------------------------
+   'Puts all the current health issues onto a drop down menu
+   '--------------------------------------------------------
+   Dim mnu As Menu
+   Dim PastHistoryCondition As Collection
+   
+   If Not currentconsult Then Return
+   '---------------------------
+   'Everyone gets general notes
+   '---------------------------
+   mnuHealthIssues.Children.Clear()
+   mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+   mnu.name = "General Notes"
+   mnu.caption = "General Notes"
+   mnu.tag = "general notes"
+   '--------------------------
+   'Add any past history items
+   '--------------------------
+   If currentconsult!past_history.count = 0 Then Return 
+   currentconsult.Refresh("past_history") 
+   mnu = New Menu(mnuHealthIssues)
+   mnu.name = "separator_1"
+   mnu.caption = ""
+   currentconsult.Refresh("past_history") 
+   For Each PastHistoryCondition In currentconsult!past_history
+    If PastHistoryCondition!major Then
+      mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+      mnu.name = PastHistoryCondition!description
+      mnu.caption = PastHistoryCondition!description
+      mnu.tag = PastHistoryCondition!pk_pasthistory
+    End If
+   
+   Next
+     mnu = New Menu(mnuHealthIssues)
+     mnu.name = "separator_2"
+     mnu.caption = ""
+   For Each PastHistoryCondition In currentconsult!past_history
+    If PastHistoryCondition!active = True Then
+      mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+      mnu.name = PastHistoryCondition!description
+      mnu.caption = PastHistoryCondition!description
+      mnu.tag = PastHistoryCondition!pk_pasthistory
+    End If
+   Next 
+     mnu = New Menu(mnuHealthIssues)
+     mnu.name = "separator_3"
+     mnu.caption = ""
+    For Each PastHistoryCondition In currentconsult!past_history
+      If PastHistoryCondition!active = False And PastHistoryCondition!major = False
+        mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+        mnu.name = PastHistoryCondition!description
+        mnu.caption = PastHistoryCondition!description
+        mnu.tag = PastHistoryCondition!pk_pasthistory
+      End If
+    Next
+    
+End
+
+
+' Public Sub mnuHealthIssues_Refresh()
+'    '------------------------------------------------------------------
+'    'Refreshes the progress notes menu on the main toolbar
+'    'Clears all existing entries as user could have added new problems
+'    'rebuilds the menu with menu's for
+'    '*show all notes
+'    '*general notes
+'    '*major problems as submenu
+'    '*significant active problems as submenu
+'    '*inactive problems as submenu
+'    '-------------------------------------------------------------------   
+'    Dim mnu As menu
+'    Dim mnu_major As menu
+'    Dim mnu_active As Menu
+'    Dim mnu_inactive As menu
+'    Dim PastHistoryCondition As Collection
+'    Dim bNeedSeparator As Boolean = True
+'    Dim bNoMainMenu As Boolean = True
+'    
+'    If Not currentconsult Then Return
+'    '----------------------------------------------------------------
+'    'Clear menu, even if exit this sub, don't want the last patient's
+'    'menu items on the list
+'    '----------------------------------------------------------------
+'    mnuHealthIssues.Children.Clear()  
+'    mnu = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+'    mnu.name = "General Notes"
+'    mnu.caption = "General Notes"
+'    mnu.tag = "general notes"  
+'    If currentconsult!past_history.count = 0 Then Return 
+'    currentconsult.Refresh("past_history")  
+'    '---------------------------------------------------------
+'    'Next add all the major conditions followed by a separator
+'    '---------------------------------------------------------
+'    For Each PastHistoryCondition In currentconsult!past_history
+'     If PastHistoryCondition!major Then
+'         If bNeedSeparator Then
+'             mnu = New Menu(mnuHealthIssues)
+'             mnu.name = "separator_1"
+'             mnu.caption = ""
+'             bNeedSeparator = False  
+'          End If
+'          If bNoMainMenu Then
+'             mnu_major = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+'             mnu_major.name = "mnuHealthIssues_Major"
+'             mnu_major.caption = "Major Health Issues"
+'             mnu_major.tag = "major"
+'             bNoMainMenu = False  
+'          End If
+'         
+'          mnu = New Menu(mnu_major) As "mnuHealthIssues"
+'          mnu.name = PastHistoryCondition!description
+'          mnu.caption = PastHistoryCondition!description
+'          mnu.tag = PastHistoryCondition!pk_pasthistory
+'      End If
+'    Next
+'   
+'    bNeedSeparator = True   
+'    bNoMainMenu = True
+'    '---------------------------------------------------------------
+'    'Next add all the significant conditions followed by a separator
+'    '---------------------------------------------------------------
+'    For Each PastHistoryCondition In currentconsult!past_history
+'     If PastHistoryCondition!active = True Then
+'          If bNeedSeparator Then
+'            mnu = New Menu(mnuHealthIssues)
+'            mnu.name = "separator_2"
+'            mnu.caption = ""
+'            bNeedSeparator = False  
+'          End If  
+'          If bNoMainMenu Then
+'             mnu_active = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+'             mnu_active.name = "mnuHealthIssues_Significant"
+'             mnu_active.caption = "Significant Issues"
+'             mnu_active.tag = "significant"
+'             bNoMainMenu = False  
+'          End If         
+'          mnu = New Menu(mnu_active) As "mnuHealthIssues"
+'          mnu.name = PastHistoryCondition!description
+'          mnu.caption = PastHistoryCondition!description
+'          mnu.tag = PastHistoryCondition!pk_pasthistory
+'     End If
+'    Next 
+'    bNeedSeparator = True   
+'    bNoMainMenu = True
+'    '--------------------------------------------------------------
+'    'Lastly add all the inactive conditions followed by a separator
+'    '--------------------------------------------------------------
+'     For Each PastHistoryCondition In currentconsult!past_history
+'       If PastHistoryCondition!active = False And PastHistoryCondition!major = False
+'          If bNeedSeparator Then
+'            mnu = New Menu(mnuHealthIssues)
+'            mnu.name = "separator_3"
+'            mnu.caption = ""
+'            bNeedSeparator = False  
+'          End If  
+'          If bNoMainMenu Then
+'             mnu_inactive = New Menu(mnuHealthIssues) As "mnuHealthIssues"
+'             mnu_inactive.name = "mnuHealthIssues_Significant"
+'             mnu_inactive.caption = "Inactive Issues"
+'             mnu_inactive.tag = "inactive"
+'             bNoMainMenu = False  
+'          End If         
+' 
+'          mnu = New Menu(mnu_inactive) As "mnuHealthIssues"
+'          mnu.name = PastHistoryCondition!description
+'          mnu.caption = PastHistoryCondition!description
+'          mnu.tag = PastHistoryCondition!pk_pasthistory
+'       End If
+'     Next
+' End
+
+Public Sub mnuHealthIssues_Click()
+   '---------------------------------------------------
+   'User wants to link a request form to a health issue
+   'The menu tag = the pk_pasthistory
+   '---------------------------------------------------
+  Select Case Last.tag
+  Case "general notes", "remove link"
+    txtHealthIssue.text = "General Notes"
+    fk_pasthistory = 0
+    cProgressNote_Section = const.cSection_GeneralNotes
+  Case Else
+    txtHealthIssue.text = currentconsult!past_history[Last.tag]!description
+    fk_pasthistory = Last.tag
+    cProgressNote_Section = const.cSection_MentalHealth
+  End Select
+  EditArea_Notify_Datachanged(True)
+End
+
+
+Public Sub Settings_Save()
+
+
+      Settings["MentalHealth/HSplit_MentalHealthPlans.Layout"] = HSplit_MentalHealthPlans.Layout
+      Settings["MentalHealth/VSplit_EditArea_Right.Layout"] = VSplit_EditArea_Right.Layout
+      Settings["MentalHealth/VSplit_EditArea_Left.Layout"] = VSplit_EditArea_Left.Layout
+      Settings["MentalHealth/HSplit_EditArea.Layout"] = HSplit_EditArea.Layout
+      Settings["MentalHealth/VSplit_MentalHealth.Layout"] = VSplit_MentalHealth.Layout
+      Settings["MentalHealth/LastPlan.zoom"] = FHtml_Viewer.WebView1.zoom
+  
+
+End
+
+Private Sub Settings_Load()
+
+
+      Try HSplit_MentalHealthPlans.Layout = Settings["MentalHealth/HSplit_MentalHealthPlans.Layout"]
+      Try VSplit_EditArea_Right.Layout = Settings["MentalHealth/VSplit_EditArea_Right.Layout"]
+      Try VSplit_EditArea_Left.Layout = Settings["MentalHealth/VSplit_EditArea_Left.Layout"] 
+      Try HSplit_EditArea.Layout = Settings["MentalHealth/HSplit_EditArea.Layout"] 
+      Try VSplit_MentalHealth.Layout = Settings["MentalHealth/VSplit_MentalHealth.Layout"]
+      Try FHtml_Viewer.WebView1.Zoom = Settings["MentalHealth/LastPlan.zoom", const.zoom[1]]
+    '  Try Fpreview.WebView1.Zoom = Settings["MentalHealth/default_zoom_preview", const.zoom[1]]
+  
+
+End
+
+
+Public Sub SampleData_Show()
+  txtDiagnosis.text = "Adjustment Disorder With disturbance Of emotions And conduct"
+  txtdiagnosis.pos = 0
+  txtCodedTerm.text = "Adjustment disorders (F432)"
+  txtHealthIssue.text = "Chronic Anxiety"
+  txtpresentingProblems.text = ""
+    "Remorse and Insomnia"
+    "Problems with managing anger"
+    "Amphetamine and marijuana dependence?"
+    "Benzodiazepam dependence?"
+    "Drug withdraw"
+    "Perpetuator of DV"
+  txtMentalStateExamination.text = ""
+   "Appearance and behaviour: Alex appears much older than his 37 years, he looks exhausted, distressed and teary, his eyes remain downcast, rarely making eye contact."
+  "Content of thought: remorseful"
+  "Insight: has some insight into the his behaviour and the effect on others"
+  "Mood: depressed"
+  "Affect: congruent"
+  "Speech: tearful at times"
+  "Otherwise NAD"
+  txtBioPsychoSocial.text = ""
+  "Alex is currently living with his sister. His wife indicates that he has been verbally abusive to her before and punched holes in the wall on several occasions.  There has previously been an apprehended violence order against Alex.  Alex has been in gaol for six months for amphetamine use. He says he now only occasionally uses amphetamines and marijuana - mostly on weekends.  Alex is currently unemployed.  He left school in year 9, and has no other qualifications.  Alex has 3 daughters."
+  "No medications recorded, allergies not known. Use of alcohol and smoking status are not known."
+  txtGoals.text = ""
+"The main issues are safety for both Alex, his wife and daughters, disruption to the family and changed living conditions, unemployment and financial stresses."
+  ""
+  "The immediate goal is to relieve Alex's distress and keep him and his family safe."
+  txtRisk.text = ""
+  "There is low-moderate risk for Alex of an OD due to depressed mood and drug use, and of harm to his wife, though minimal risk of harm to his sister. It is unceratin as to whether Alex's daughters witnessed this or earlier episodes, and may be at risk of behavioural or developmental problems."
+   txtTreatment.text = ""
+"Treatment: Alex given a short supply of valium (low dose) to relieve immediate distress and help him get some sleep." 
+ "" 
+"It Is important that Alex look after himself, eat well And reduce activities that disrupt his sleep.Alex will Continue To live With his sister For the Time being And maintain regular visits With the GP." ""
+  ""
+  "Referral to a psychologist for further assessment and indivdual sessions to identify stressors and improve coping skills.  Alex will consider attending a men's group to deal with anger issues before attending relationship counselling. Information provided on stress and coping, dealing with anger and the stimulant treatment program."
+   rbHarmLow.value = True
+   txtRelapsePlan.text = ""
+   "It's important to be able to recognise when to seek help. "
+   "If your feelings become worse or persist for most of every day and interfere with your ability to manage with day-to-day"
+   "activities then you will need support.  During opening hours Monday to Friday you can phone this practice on the number above."
+    "In an emergency (24 hours) Dial 000 Lifeline 131114 Hunter New England Mental Health Service - 1800 655 085. "
+     "You can also visit your local hospital's emergency department"
+   txtPlanDate.text = Format(Now, "dd/mm/yyyy")
+   txtReviewDate.text = Format(DateAdd(Now, gb.Month, 1), "dd/mm/yyyy")
+   bSampleData = True   
+End
+
+Public Sub Terms_Get()
+   '-------------------------------------------------------------------------------------
+   'Gets list of diagnostic terms
+   'Cannot set default if count is one because must  be able to add new occupations
+   'can't remove the label because it needs to occupy space to keep textbox correct width
+   '-------------------------------------------------------------------------------------
+   Dim term As Collection 
+   Dim key As String
+   If Trim(txtCodedTerm.text) = "" Then
+        fk_code = 0
+        fk_coding_system = const.coding_none_selected
+        VBox_ColumnView.Visible = False   
+        Return
+   End If
+   Terms = modCodingDBI.Get_Terms(Trim(txtCodedTerm.text), chkLimit.value, chkicd10.value, SpinBoxTermLimits.value)
+   With columnview1
+         .Clear()
+         .Columns[0].Width = txtCodedTerm.width - 100
+         .Columns[1].width = 100
+   End With
+   If Terms.count Then
+      For Each term In Terms
+         key = term!code
+         columnview1.Add(key, 0)
+         columnview1[key][0] = term!term
+         columnview1[key][1] = term!system
+      Next 
+      lblTermCount.text = Str$(terms.count) & " terms retreived"
+      columnview1.tag = txtCodedTerm
+      columnview1.Raise
+      columnview1.Visible = True
+     VBox_ColumnView.Visible = True 
+   Else 
+      VBox_ColumnView.Visible = False 'empty recordset
+   End If  
+End
+
+Public Sub Columnview1_KeyPress()
+   If key.code = key.return Then Columnview1_DblClick()
+End
+
+Public Sub Coded_Term_Select()
+   '---------------------------------------------
+   'User has chosen a term from popup columnview1
+   'Display this in the txtCodedTerm Textbox
+   '---------------------------------------------
+    columnview1.MoveCurrent()   'match internal cursor to visible row
+    fk_code = Terms[columnview1.Item.key]!code
+    fk_coding_system = Terms[columnview1.Item.key]!fk_coding_system
+    If txtDiagnosis.text = "" Then
+       txtDiagnosis.text = columnview1.Item.Text
+       txtDiagnosis.pos = 0
+    End If   
+    txtCodedTerm.text = Terms[columnview1.Item.key]!term & " (" & Terms[columnview1.Item.key]!code & ")"
+    txtCodedTerm.pos = 0
+    txtpresentingProblems.SetFocus()
+End
+
+Public Sub Columnview1_DblClick()
+    Coded_Term_Select() 
+    Columnview1.Visible = False 
+    VBox_ColumnView.Visible = False   
+End
+
+Public Sub Decision_support(section As String)
+  Dim anger As String = ""
+     "<HTML>"
+    "<BODY>"
+    "<P><STRONG>Presenting Complaints </STRONG></P>"
+    "<UL>"
+    "<LI><P>May present initially with tension-related physical symptoms"
+    "(headache, pounding heart), but inquiry will reveal prominent"
+    "anxiety and excessive worry. "
+    "</P>"
+    "</UL>"
+    "<P><STRONG>Diagnostic Features</STRONG><BR><STRONG></P>"
+    "<P><STRONG>The key feature is months of uncontrollable worry over"
+    "everyday things</STRONG></P>"
+    "<UL>"
+    "<LI><P STYLE=\"margin-bottom: 0cm\">Multiple symptoms of worry,"
+    "anxiety or tension: "
+    "</P>"
+    "<UL>"
+    "<LI><P STYLE=\"margin-bottom: 0cm\">Mental tension (worry, feeling"
+    "tense or nervous, poor concentration "
+    "</P>"
+    "<LI><P STYLE=\"margin-bottom: 0cm\">Physical tension (restlessness,"
+    "headaches, tremors, can't relax) "
+    "</P>"
+    "<LI><P STYLE=\"margin-bottom: 0cm\">Physical arousal (dizziness,"
+    "sweating, fast or pounding heart, dry mouth, stomach pains) "
+    "</P>"
+    "</UL>"
+    "<LI><P STYLE=\"margin-bottom: 0cm\">May last for months and often"
+    "recurs. "
+    "</P>"
+    "<LI><P>Often triggered by stressful events in those with a chronic"
+    "tendency to worry. "
+    "</P>"
+    "</UL>"
+    "<P><STRONG>Differential Diagnosis </STRONG><BR></P>"
+    "<UL>"
+    "<LI><P STYLE=\"margin-bottom: 0cm\">If low or sad mood is also"
+    "present, see section on <A HREF=\"http://www.gpcare.org/diagnosis/08%20Depression%20F32%20Diagnosis.html\">Depression</A>"
+    "</P>"
+    "<LI><P STYLE=\"margin-bottom: 0cm\">If sudden attacks of unprovoked"
+    "anxiety are present, see section on <A HREF=\"http://www.gpcare.org/diagnosis/20%20Panic%20Disorder%20F41.0%20-%20D.html\">Panic"
+    "Disorder.</A> "
+    "</P>"
+    "<LI><P STYLE=\"margin-bottom: 0cm\">If fear and avoidance of specific"
+    "situations are present, see section on <A HREF=\"http://www.gpcare.org/diagnosis/21%20Phobic%20Disorder%20F40%20-%20D%20-%20D.html\">Phobic"
+    "Disorders.</A> "
+    "</P>"
+    "<LI><P STYLE=\"margin-bottom: 0cm\">If heavy alcohol or drug use is"
+    "present, see sections on <A HREF=\"http://www.gpcare.org/diagnosis/03%20Alcohol%20Use%20Disorders%20F10%20-%20d.html\">Alcohol"
+    "Use disorders</A>, or <A HREF=\"http://www.gpcare.org/diagnosis/12%20Drug%20Use%20Disorders%20F11%20diagnosis.html\">Drug"
+    "Use Disorder</A>. "
+    "</P>"
+    "<LI><P>Certain physical conditions (thyrotoxicosis) or medications"
+    "(methyl xanthines, beta agonists) may cause anxiety symptoms but few"
+    "cause excessive worry. "
+    "</P>"
+    "</UL>"
+    "<P>Edited by Gavin Andrews MD, UNSW, <BR>© 2007 <A HREF=\"http://www.crufad.com/\" TARGET=\"_parent\">CRUfAD</A></P>"
+    "<P><BR><BR>"
+    "</P>"
+    "</BODY>"
+    "</HTML>"
+    
+  Select Case section
+  Case "presenting problem"
+       FClinical.DecisionSupport_SetHTML(anger)
+  End Select
+End
+
+Public Sub Help_Prompt_Input(Show_support_for As String)
+   '-------------------------------------------------------------
+   'Shows a modicium of assistance to help users formulate a plan
+   '-------------------------------------------------------------
+   Select Case Show_support_for
+   Case "presenting problems"
+   Case "biopsychosocial history"
+   Case "mental state"
+ '  Case "risk none", "risk low", "risk medium", "risk high"
+   Case "risk comemnts"
+   Case "goals"
+   Case "treatment and referrals"
+   Case "actions"
+   
+   End Select
+End
+
+Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean  
+      Select Case tag
+        Case "plan date"
+             bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
+        Case "review date"
+              bKeyValid = modUtil.AllowKeys(const.AllowKeys_Date_DWMY, keycode)
+        Case Else
+             bKeyValid = True 
+      End Select
+      Return bKeyValid
+End
+
+
+Public Sub tbPreview_Close_Click()
+  Stop Event
+  If Tabstrip3.index = 1 Then
+      FHtml_Viewer.Hide()
+      VSplit_MentalHealth.Visible = True 
+  End If 
+End
+
+Public Sub MentalHealthPlans_Show()
+   '----------------------------------------------------------------
+   'Show all existing mental health plans in a html viewer and allow
+   'the user to arrow back and forth to view them
+   '----------------------------------------------------------------
+   With FHtml_Viewer
+      .lblWebBrowserNotes.text = "MentalHealth Plans"
+      .tbWebBrowserBack.Visible = True
+      .tbWebBrowserForeward.Visible = True
+      .tbWebBrowserForeward.ToolTip = "Next MentalHealth plan"
+      .tbWebBrowserBack.ToolTip = "Previous MentalHealth plan"
+   End With
+End
+
+Public Function Plan_Is_Valid() As Boolean
+   '----------------------------------------------
+   'Does minimal validation to ensure a valid plan
+   'returns true if valid, false if not
+   '----------------------------------------------  
+   If bsampledata Then
+     Message.info("The sample plan cannot be saved")
+     Return False
+   End If   
+   '------------------------------------------------------------------------------------
+   'First, make sure a K10 has been filled out, or at least remind user if they forgot
+   'Bad bug somewhere in gambas here, no combination of code seems to work> program dies
+   '-------------------------------------------------------------------------------------
+   If Not Form_K10.K10_Completed() Then
+     Message.Info("Please complete each question in the K10\n before saving")
+     If TabStrip1.index <> 1 Then
+        TabStrip1.index = 1
+     End If  
+     Return False
+   End If   
+   '-------------------------------------------
+   'Linkages are all important, so enforce this
+   '-------------------------------------------
+   If txtHealthIssue.text = "" Then
+      Message.Info("Please select a health issue to link to this request\nor link to 'General Notes'")
+      If TabStrip1.index <> 0 Then
+            TabStrip1.index = 0
+      End If  
+      MenuButton1.SetFocus()
+      Return False
+   End If
+    
+   If TabStrip1.index <> 0 Then
+      TabStrip1.index = 0
+   End If  
+   If Trim(txtDiagnosis.text) = "" Then 
+      txtDiagnosis.SetFocus()
+       Return False
+   End If
+   If fk_coding_system = const.coding_none_selected Then  'icpc and icd10 codes are strings"
+      txtCodedTerm.SetFocus()
+      Return False
+   End If   
+   If Trim(txtpresentingProblems.text) = "" Then
+      txtpresentingProblems.SetFocus()
+   End If
+   If Not (IsDate(Val(txtReviewDate.text))) Then
+      txtReviewDate.text = ""
+      txtReviewDate.SetFocus
+      Return False
+   End If
+  Return True
+End
+
+Public Function Plan_Html_Construct() As CTemplate
+   Dim templ As CTemplate
+   Dim sText As String
+   templ = New CTemplate(modHTML.mentalhealthplan_template)
+   
+   '---------------------------------------------------------
+   'Substitute appropriate information into the form template
+   'first the common stuff like practice details, dr details
+   '---------------------------------------------------------
+   templ.Subst_common(currentconsult)
+   '----------------------------
+   'Stuff which may not be known
+   '----------------------------
+   templ.Subst("%clinic.phone", "not recorded")
+   templ.Subst("%clinic.fax", "not recorded")
+   If rbInitialPlan.Value = True Then
+      sText = "INITIAL"
+   Else
+      sTeXT = "REVIEW"
+   End If
+   templ.Subst("type", sText)
+   templ.Subst("prepared_date", txtPlanDate.text)
+   templ.Subst("diagnosis", Trim(txtDiagnosis.text))
+   templ.Subst("presentingproblems", Trim(txtpresentingProblems.text))
+   templ.Subst("biopsychosocial", Trim(txtBioPsychoSocial.text))
+   templ.Subst("mmse", Trim(txtMentalStateExamination.text))
+   templ.Subst("k10", "The K10 score was " & lblK10Score.text)
+   templ.Subst("risklevel", Const.smentalhealth_risk[fk_lu_risk_to_others])
+   templ.Subst("risk", Trim(txtRisk.text))
+   templ.Subst("goals", Trim(txtGoals.text))   
+   templ.Subst("treatment", Trim(txtTreatment.text))
+   templ.Subst("ask_for_help", Trim(txtRelapsePlan.text))
+   '------------------------------------------------
+   'For each team member, show their responsibilites
+   '------------------------------------------------
+   sText = ""
+   For Each collection_member In TeamCareMembers
+      sText &= "<B>" & Collection_member!wholename & "</B> [" & collection_member!summary & "]<BR>"
+      sText &= "   -" & collection_member!responsibility & "<BR>"
+   Next
+   templ.Subst("teammembers", stext)
+   templ.Subst("reviewdate", "The plan will be reviewed on " & Format(Val(txtReviewDate.text), "dd/mm/yyyy"))
+   Return templ
+End
+
+Public Sub Plan_Preview()
+   '----------------------------------------------------------------------------
+   'Only preview the plan if it is valid, unless user looking at the sample data
+   '----------------------------------------------------------------------------
+   If Not Plan_Is_Valid() And bSampleData = False Then Return
+   With FHtml_Viewer
+      .tbWebBrowserBack.visible = False   
+      .tbWebBrowserForeward.visible = False  
+      .lblWebBrowserNotes.text = ""
+   End With 
+   FHtml_Viewer.Reparent(VBox_Preview)
+   FHtml_Viewer.Raise
+   VSplit_MentalHealth.Visible = False 
+  ' modHTML.Display_HTML(Plan_Html_Construct().GetData(), FHtml_Viewer.WebView1, "plan_preview")
+   FHtml_Viewer.WebView1.HTML = Plan_Html_Construct().GetData()
+End
+
+Public Sub Plan_New()
+   '------------------------------------------------------------------------------
+   'User wants a new plan - set focus to presenting symptoms and put up mini-help
+   '------------------------------------------------------------------------------ 
+   EditArea_Clear()
+   Vbox_Psychologists.Visible = False  
+   currentTerm = New Collection 
+   ReferralTo_SearchBy_Criteria = Const.contacttype_employee
+   fk_lu_risk_to_others = Const.mentalhealth_risk_undefined
+   fk_lu_plan_type = Const.mentalhealth_plantype_initial
+   rbSearchBySexEither.value = True
+   fk_progressnote = -1
+   fk_plan = -1
+   fk_organisation = 0
+   fk_employee = 0
+   fk_person = 0
+   fk_branch = 0
+   fk_code = ""
+   fk_coding_system = const.coding_none_selected
+   currentK10 = New Collection 
+   Form_K10.K10_Clear()
+   Form_K10.Init(currentK10)
+   rbInitialPlan.value = True 
+   rbSearchBy_Employee.value = True 'default search mode
+   rbHarmUnknown.value = True       'default to unknown harm level
+   ReferralTo_SearchBy_Criteria = Const.contacttype_employee
+   txtPlanDate.text = Format(Now, "dd/mm/yyyy")
+   bExit = True
+   TeamCareMembers_Init() 
+   bExit = False  
+   txtpresentingProblems.SetFocus()
+   Help_Prompt_Input(txtpresentingProblems.tag)
+   EditArea_Notify_Datachanged(False)
+End
+
+Public Sub Plan_Undelete()
+       If last_fk_plan <> 0 Then
+          modDBConnect.BeginTrans()
+          modMentalHealthDBI.Plan_Mark_Deleted(currentconsult, mentalhealthplans[fk_plan], last_fk_plan, False)
+          last_fk_plan = 0
+          modDBConnect.CommitTrans()
+       End If
+       Plans_Refresh()
+End
+
+Public Sub Plan_Delete()
+      'until I make some fundamental changes to the progressnotes table - disabled
+      modUtil.NotImplemented("Deleting a health plan")
+      Return 
+      cvwPlans.MoveCurrent
+      fk_Plan = cvwPlans.Item.Key
+      If Message.Question("Are you sure you want to delete this plan?", "Yes", "No") = 1 Then
+          modDBConnect.BeginTrans()
+          last_fk_plan = cvwPlans.Item.Key
+          modMentalHealthDBI.Plan_Mark_Deleted(currentconsult, mentalhealthplans[fk_plan], fk_plan, True)
+          modDBConnect.CommitTrans()
+      End If
+      Plans_Refresh()
+  
+  
+End
+
+Public Sub Plan_Edit()
+   '------------------------------------------------------------------------------
+   'User has clicked on an existing mental health plan display in the editing area
+   'pk_view is set by user clicking on the plans list: cvwPlans_click()
+   'extract the keys needed, otherwise, just load the textboxes
+   'fk_pasthsitory may not be >0 as the problem may not have been entered into th
+   'health issues (past history) section although it should have been
+   '------------------------------------------------------------------------------
+   EditArea_Clear()
+   pk_view = cvwPlans.Item.Key
+   '--------------------------------------------------------------------------
+   'If the plan is edited and the user DOES NOT CHANGE THE PLAN TYPE TO REVIEW
+   'it will be saved as the orginal plan (modified) and any progress notes
+   'edited. 
+   '---------------------------------------------------------------------------
+   fk_plan = pk_view
+   fk_code = mentalhealthplans[fk_plan]!fk_code
+   fk_coding_system = mentalhealthplans[fk_plan]!fk_coding_system
+   '--------------------------------------------------------------------
+   'Associated progress notes - difficult: arbitary decision
+   'Allow editing of the progress note when changed on the same day only
+   'otherwise a new note is associated with it ie fk_progressnote = -1
+   '--------------------------------------------------------------------
+   fk_progressnote = -1
+   If Not IsNull(mentalhealthplans[fk_plan]!fk_progressnote) Then
+        If Format(Now, "dd/mm/yyyy") = Format(mentalhealthplans[fk_plan]!plan_date, "dd/mm/yyyy") Then 
+            fk_progressnote = mentalhealthplans[fk_plan]!fk_progressnote
+        End If
+   End If 
+   If IsNull(mentalhealthplans[fk_plan]!fk_pasthistory) Then
+      txtHealthIssue.text = "General Notes"
+      fk_pasthistory = 0
+   Else
+      Try fk_pasthistory = mentalhealthplans[fk_plan]!fk_pasthistory
+      txtHealthIssue.text = currentconsult!past_history[fk_pasthistory]!description
+   End If   
+   Try fk_lu_risk_to_others = mentalhealthplans[fk_plan]!fk_lu_risk_to_others
+   fk_lu_plan_type = mentalhealthplans[fk_plan]!fk_lu_plan_type  'can be changed
+   Select Case fk_lu_plan_type
+      Case Const.mentalhealth_plantype_initial
+         rbInitialPlan.value = True
+      Case Const.mentalhealth_plantype_review
+         rbReviewPlan.Value = True  
+   End Select
+   '----------------------
+   'Populate the textboxes
+   '----------------------  
+   bExit = True
+   txtdiagnosis.text = mentalhealthplans[fk_plan]!diagnosis
+   txtCodedTerm.text = mentalhealthplans[fk_plan]!coded_term & " (" & mentalhealthplans[fk_plan]!fk_code & ")" 
+   txtMentalStateExamination.text = mentalhealthplans[fk_plan]!mental_state_examination
+   txtpresentingProblems.text = mentalhealthplans[fk_plan]!presenting_problems
+   txtBioPsychoSocial.text = mentalhealthplans[fk_plan]!bio_psycho_social
+   txtMentalStateExamination.text = mentalhealthplans[fk_plan]!mental_state_examination
+   Select Case fk_lu_risk_to_others
+      Case Const.mentalhealth_risk_none
+          rbHarmNone.value = True
+      Case Const.mentalhealth_risk_low
+          rbHarmLow.value = True
+      Case Const.mentalhealth_risk_medium
+          rbHarmMedium.value = True
+      Case Const.mentalhealth_risk_high
+         rbHarmHigh.value = True
+   End Select
+   txtRisk.text = mentalhealthplans[fk_plan]!risk_harm_comments
+   txtGoals.text = mentalhealthplans[fk_plan]!goals
+   txtTreatment.text = mentalhealthplans[fk_plan]!treatment_referrrals 
+   txtRelapsePlan.text = mentalhealthplans[fk_plan]!relapse_plan 
+   txtPlanDate.text = Format(mentalhealthplans[fk_plan]!plan_date, "dd/mm/yyy")
+   txtReviewDate.text = Format(mentalhealthplans[fk_plan]!review_date, "dd/mm/yyy")
+   Plan_Show(mentalhealthplans[fk_plan]!html)
+   Old_K10 = modMentalHealthDBI.Get_K10(fk_plan)
+   Form_K10.Init(old_k10)
+   lblK10Score.text = Form_K10.Get_CurrentK10_Score() & "/50"
+   tbNewK10.visible = False
+   TeamCareMembers_Get()
+   bExit = False
+   EditArea_Notify_Datachanged(False)  
+End
+
+Public Sub EditAreaButtons_Click()
+   Dim sMsg As String = "If you view the sample plan now, you will lose\n"
+                        "all the data you have entered\n\n"
+                        "Are you sure you want To continue?"
+  Select Case Last.tag
+  Case "help"
+       FClinical.Help_Show(Application.Path &/ "help/mental-health.html", "Help:Mental Health", True)
+  Case "save"
+      Save()
+  Case "new"
+      Plan_New()
+   Case "preview"
+       Plan_Preview()
+   Case "sample plan"
+      If HBox_EditArea.Padding = 1 Then
+         If Message.Warning(smsg, "Yes", "No") = 2 Then Return 
+      End If
+      EditArea_Clear()
+      SampleData_Show()
+      TeamCareMembers_Init()
+      EditArea_Notify_Datachanged(False)
+   End Select  
+End
+
+Public Sub EditArea_Notify_Datachanged(flag As Boolean)
+   '--------------------------------------------------
+   'Adds or removes padding around edit area 
+   'to indicate if data is changed and unsaved
+   '--------------------------------------------------
+   If flag Then
+      HBox_EditArea.Padding = 1
+      HBox_EditArea.Background = Color.red
+      tbSave.Foreground = color.red 
+      
+  Else
+      HBox_EditArea.Padding = 0
+      HBox_EditArea.Background = Color.white
+      tbSave.Foreground = color.black
+  End If
+End  
+
+Public Sub EditArea_Clear()
+   '-----------------------
+   'Clears the editing area
+   '-----------------------
+   bExit = True
+   txtBioPsychoSocial.text = ""
+   txtdiagnosis.text = ""
+   txtCodedTerm.text = ""
+   txtGoals.text = ""
+   txtHealthIssue.text = ""
+   txtMentalStateExamination.text = ""
+   txtSearchFilter.text = ""
+   txtpresentingProblems.text = ""
+   txtReviewDate.text = ""
+   txtPlanDate.text = ""
+   txtTreatment.text = ""
+   txtRelapsePlan.text = ""
+   txtRisk.text = ""
+   txtTeamCareMembers.text = ""
+   txtTeamCareMember_Responsibility.text = ""
+   rbReset.value = True 'turn off all the visible radio buttons
+   rbSearchBySexEither.Value = True
+   sex_filter = const.cSexUnknown
+   EditArea_Notify_Datachanged(False)
+   cvwTeamCareMembers.Clear()
+   listview2.Clear
+   Vbox_Psychologists.Visible = False  
+   taMemo.Clear
+   pk_view = 0
+   bSampleData = False  
+   VBox_ColumnView.Visible = False  
+   bExit = False   
+End
+
+Public Sub EditArea_TxtBox_GotFocus()
+   Dim sPrompts As String 
+  Last.BackGround = Color.rgb(95, 255, 175)
+  Help_Prompt_Input(Last.tag)
+  Select Case Last.tag
+  Case "presenting problems"
+      sPrompts = modHTML.mental_health_presenting_symptoms_prompts
+  Case "biopsychosocial history"
+       sPrompts = modHTML.mental_health_biopsychosocial_prompts
+  Case "risk comments"
+      sPrompts = modHTML.mental_Health_AssessRisk_Prompts
+  Case "relapse plan"
+       sPrompts = modHTML.mental_health_relapse_plan_prompts
+  Case "goals"
+        sPrompts = modHTML.mental_Health_goal_Prompts
+  Case "treatment"
+        sPrompts = modHTML.mental_health_treatment_prompts
+  Case "team care members", "filter"
+        With Vbox_Psychologists
+            .top = HSplit_TeamCareMembers.top
+            .left = HSplit_TeamCareMembers.Left
+            .width = HSplit_TeamCareMembers.Width
+            .height = HSplit_TeamCareMembers.Height
+        End With
+  Case "diagnosis", "coded diagnosis"
+      With VBox_ColumnView
+            .top = VBox16.top + Last.parent.top + Last.parent.height + HBox_EditArea.top
+            .left = Last.Left
+            .width = HBox_EditArea.width / 2
+      End With
+ Case "mental state"
+      sPrompts = modHTML.mental_Health_MMSE_Prompts
+  End Select
+  If sPrompts Then
+      FClinical.DecisionSupport_SetHTML(sPrompts)
+      FClinical.DecisionSupport_Show("Mental Health - Decision Support", True)
+  End If
+
+End
+
+Public Sub EditArea_TxtBox_KeyRelease()
+   Select Case Last.tag
+  Case "filter"
+       TeamCareMember_Selection("get")
+  Case "team care members"
+     TeamCareMember_Selection("get")
+  Case "coded diagnosis"
+       Terms_Get()
+  End Select
+End
+
+Public Sub EditArea_TxtBox_LostFocus()
+  Last.BackGround = color.White
+  If Last.tag = "review date" Then
+   If Not (IsDate(Val(Last.text))) Then
+      txtReviewDate.text = ""
+      txtReviewDate.SetFocus
+   End If
+  End If
+  Last.pos = 0 'ensure the first bit of text is showing
+End
+
+Public Sub EditArea_TxtBox_Change()
+  If bexit Then Return
+  Select Case Last.tag
+  Case "team care members", "filter"
+      If Trim(Last.text) = "" Then taMemo.Clear()
+  Case "coded diagnosis"
+      If Trim(txtCodedTerm.text) = "" Then               'coded diagnosis deleted, reset keys
+        VBox_ColumnView.Visible = False   
+        fk_code = ""
+        fk_coding_system = const.coding_none_selected
+      End If
+  Case "presenting problems"
+      If InStr(Last.text, "\n\n") Then
+         Last.text = Replace(Last.text, "\n\n", "")
+         txtBioPsychoSocial.SetFocus()
+      End If
+  Case "biopsychosocial history"
+        If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "")
+            txtMentalStateExamination.SetFocus()
+        End If
+  Case "mental state"
+        If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "")
+            rbHarmNone.SetFocus()
+        End If
+  Case "risk comments"
+        If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "")
+            txtGoals.SetFocus()
+        End If
+  Case "goals"
+         If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "")
+            txtTreatment.SetFocus()
+         End If
+  Case "treatment"
+        If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "")
+           ' txtPatientActions.SetFocus()
+             txtReviewDate.SetFocus()
+        End If
+  Case "responsibility" 
+        Try TeamCareMembers[iTeamCareMember]!responsibility = Trim(Last.text)
+          If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "")
+            txtTeamCareMembers.SetFocus()
+         End If
+  End Select
+  EditArea_Notify_Datachanged(True)
+End
+
+Public Sub EditArea_TxtBox_KeyPress()
+   Dim x As Integer
+   If bexit Then Return
+    bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code, Last.tag)
+   If bkeyvalid = False Then
+      Stop Event
+      Return
+   End If
+   Select Case Key.code
+   Case Key.Esc
+      Select Case Last.tag
+      Case "team care members"
+           txtTeamCareMembers.text = ""
+      Case "filter" 
+           txtSearchFilter.text = ""
+      End Select
+   Case Key.Down
+      If VBox_ColumnView.Visible Then  
+         columnview1.SetFocus()
+         columnview1.MoveFirst()
+         columnview1.Item.Selected = True
+      End If
+     If Vbox_Psychologists.Visible = True Then
+        listview2.SetFocus()
+        listview2.MoveFirst()
+        Listview2.Item.Selected = True
+     End If 
+   Case Key.return 
+      Select Case Last.tag
+      Case "diagnosis"
+         If Trim(txtCodedTerm.text) <> "" Then
+             txtpresentingProblems.SetFocus()
+         Else
+            txtCodedTerm.SetFocus()
+         End If  
+      Case "coded diagnosis"
+         'user could have typed a full term in so we have to check for a match
+         If VBox_ColumnView.Visible Then
+            columnview1.MoveFirst
+            For x = 0 To terms.count - 1
+               columnview1.MoveCurrent
+               If Lower(Trim(Last.text)) = Lower(Terms[columnview1.Item.key]!term) Then
+                  Coded_Term_Select()
+                  Break
+               End If
+            Next
+         End If
+         txtpresentingProblems.SetFocus()
+      End Select
+   End Select
+End
+
+Public Sub SpinBoxTermLimits_Change()
+  Terms_Get()
+End
+
+Public Sub EditArea_ChkBoxes_Click()
+   If bexit Then Return 
+   Terms_Get()
+End
+
+Public Sub cvwPlans_Click()
+  cvwPlans.MoveCurrent()
+  EditArea_Clear()
+End
+
+Public Sub cvwPlans_Menu()
+   If Not currentconsult!mentalhealthplans.count Then Return 
+   cvwPlans.MoveCurrent()
+   If last_fk_plan <> 0 Then
+       mnuMentalHealthPlans_UndoDelete.Enabled = True   
+   Else
+      mnuMentalHealthPlans_UndoDelete.Enabled = False 
+   End If
+   mnuMentalHealthPlans.Popup
+End
+
+Public Sub mnuMentalHealthPlans_Click()
+  Select Case Last.tag
+  Case "edit"
+      Plan_Edit()
+  Case "delete"
+      Plan_Delete()
+  Case "undo delete"
+      Plan_Undelete()
+  Case "preview"
+      Plan_Edit()
+      Plan_Preview()
+  End Select
+End
+
+Public Sub TabStrip3_Click()
+   '--------------------------------
+   'User clicks on the main tabstrip
+   '--------------------------------
+   Select Case Last.index
+   Case 0
+       FHtml_Viewer.Reparent(VBox_LastForm)
+   Case 1
+      VSplit_MentalHealth.Visible = True
+      FHtml_Viewer.Hide()
+   End Select
+   FHtml_Viewer.Raise
+End
+
+Public Sub EditArea_RadioButtons_KeyPress()
+  If key.code = key.return Then
+         txtRisk.SetFocus()
+  End If
+End
+
+Public Sub EditArea_RadioButtons_Click()
+  If bexit Then Return 
+   fk_lu_risk_to_others = Last.tag
+   EditArea_Notify_Datachanged(True)
+End
+
+Public Sub rbReviewPlan_Click()
+   '----------------------------------------------
+   'Tag of these controls = either:
+   ' Const.mentalhealth_plantype_initial or review
+   '---------------------------------------------- 
+   fk_lu_plan_type = Last.tag
+End
+
+Public Sub ListView2_KeyPress()
+   '------------------------------------------------------------------
+   'Act only on the <ENTER> key display what is in list in the textbox
+   '------------------------------------------------------------------
+   Select Case key.Code
+   Case Key.Return
+      listview2_DblClick
+   Case Key.Esc
+      Vbox_Psychologists.Visible = False  
+   End Select
+End
+
+Public Sub listview2_Select()
+  listview2.MoveCurrent
+  Try taMemo.text = collection_members[listview2.Item.key]!memo 'not everyone has a memo!
+  Try lblsuburb.text = UCase(collection_members[listview2.Item.key]!town) 'or a suburb
+End
+
+Public Sub listview2_DblClick()
+ TeamCareMember_Selection("accept", "list")
+ Vbox_Psychologists.Visible = False   
+End
+
+Public Sub TeamCareMember_Selection(action As String, Optional calling_control As String)
+   '-------------------------------------------------------------------------------
+   'Allows user to search for persons/organisations/employees they are referring to
+   '-------------------------------------------------------------------------------
+   Dim x As Integer
+   Dim sMsg As String
+  
+   Select Case action
+   Case "get"
+       Vbox_Psychologists.Visible = False  
+       If Len(Trim(txtTeamCareMembers.text)) = 0 And Len(Trim(txtSearchFilter.text)) = 0 Then
+          Vbox_Psychologists.Visible = False  
+          Return
+       End If
+       If Trim(txtSearchFilter.text) = "" Then 
+         Select Case ReferralTo_SearchBy_Criteria
+            Case Const.contacttype_organisation
+                collection_members = modContactsDBI.Organisations_Get(Trim(txtTeamCareMembers.text))
+                If collection_members.count = 0 Then
+                  bExit = True
+                '  rbSearchBy_branch.value = True
+                  bExit = False
+                  Return
+                End If
+            Case Const.contacttype_employee
+               collection_members = modContactsDBI.Employee_Get(Trim(txtTeamCareMembers.text))
+                 If collection_members.count = 0 Then
+                  rbSearchBy_Organisation.value = True
+                  Return
+               End If
+            Case Const.contacttype_PersonsAndPatients 'set to inlude all patients and other persons
+               collection_members = modContactsDBI.Person_Get(Trim(txtTeamCareMembers.text), const.contacttype_PersonsAndPatients)
+            Case const.contacttype_branch
+               collection_members = modContactsDBI.Branches_Get_Like(Trim(txtTeamCareMembers.text))
+               If collection_members.count = 0 Then
+                  rbSearchBy_Employee.value = True
+                  Return
+              End If
+          End Select
+         Else
+            '------------------------------------------------------------
+            'retrieve by the filter on the memo field of the psychologist
+            '------------------------------------------------------------
+            collection_members = modContactsDBI.Employee_Get_With_Memo_Like(Trim(txtTeamCareMembers.text), Trim(txtSearchFilter.text), sex_filter)
+         End If
+         listview2.Clear
+         '-----------------------------------------------------------------
+         'If categories exist to match the text, auto-select or show a list
+         '-----------------------------------------------------------------
+         If collection_members.count Then 
+           Try collection_members.Remove("sql_in_english") 'ian included this for FClinical patient search
+           For Each collection_member In collection_members
+              Select Case ReferralTo_SearchBy_Criteria
+                  Case Const.contacttype_organisation, Const.contacttype_branch
+                     sMsg = collection_member!organisation & " " & collection_member!branch & " " 
+                     sMsg &= collection_member!street & " " & collection_member!town & " " & collection_member!postcode 
+                  Case Const.contacttype_employee
+                     smsg = collection_member!title & " "
+                     sMsg &= collection_member!firstname & " "
+                     smsg &= collection_member!surname & " "
+                     sMsg &= "(" & collection_member!occupation & ") "
+                     sMsg &= collection_member!organisation & " " & collection_member!branch & " "  
+                     sMsg &= collection_member!street & " " & collection_member!town & " " & collection_member!postcode 
+                  Case Const.contacttype_PersonsAndPatients
+                    smsg = collection_member!wholename
+                    sMsg &= collection_member!street & " " & collection_member!town & " " & collection_member!postcode 
+              End Select
+              listview2.Add(collection_member!pk_view, sMsg)
+           Next 
+           Vbox_Psychologists.Visible = True
+           Vbox_Psychologists.Raise
+           listview2.tag = txtTeamCareMembers
+           Return 
+         Else 
+            Vbox_Psychologists.Visible = False  
+         End If
+   Case "accept"
+      '-------------------------------------------------------
+      'CALLED BY  : user hitting <enter> in txtTeamCareMembers
+      '             user hitting <enter> on the popup list 
+      '             user double clicking on the popup list
+      '-------------------------------------------------------
+       bExit = True
+       If calling_control = "textbox" Then
+         '-------------------------------------------------------
+         'User has just hit <enter> without scrolling on the list
+         'try and find a match
+         '-------------------------------------------------------
+          If Vbox_Psychologists.Visible Then
+          End If
+         Vbox_Psychologists.Visible = False     
+       Else
+         '-----------------------------------------------------------
+         'Routine called by user clicking on list or pressing <enter>
+         '-----------------------------------------------------------
+         If Vbox_Psychologists.Visible Then
+           listview2.MoveCurrent   'set internal cursor to match marquee
+           collection_member = collection_members[listview2.Item.key]
+           Try fk_organisation = collection_member!fk_organisation
+           Try fk_branch = collection_member!fk_branch
+           Try fk_person = collection_member!fk_person
+           Try fk_employee = collection_member!fk_employee
+           bExit = False
+           If Not teamcare_member_check_duplicated(collection_member) Then
+               TeamCareMembers_Add(collection_member)
+               txtSearchFilter.text = ""
+               txtTeamCareMember_Responsibility.SetFocus()
+           End If
+         End If
+       End If
+      bExit = False  
+   End Select
+End
+
+Public Sub TeamCareMembers_RefreshList()
+   '------------------------------------------------------------------------------
+   'Refreshes the list of team care members, first re-ordering the collection keys
+   'so they match the columnview keys
+   '------------------------------------------------------------------------------
+   Dim TeamCareMember As Collection 
+   Dim aCollection As Collection
+   Dim x As Integer
+   
+   TeamCareMembers = TeamCareMembers_RefreshCollection(TeamCareMembers)
+   cvwTeamCareMembers.Clear()
+   For Each TeamCareMember In TeamCareMembers
+     cvwTeamCareMembers.Add(cvwTeamCareMembers.count, TeamCareMembers_MakeSummary(TeamCareMember))
+   Next
+   cvwTeamCareMembers.MoveLast()
+End
+
+Public Function TeamCareMembers_RefreshCollection(The_collection As Collection) As Collection  
+   '-----------------------------------------------------
+   'When an item is removed from a collection, its count
+   'not longer reflects its internal key order
+   'so rebuild it, or use just to copy a collection
+   're-ordered
+   '-----------------------------------------------------
+   Dim NewCol As New Collection 
+   Dim member As Collection 
+   Dim teammember As Collection 
+   For Each member In The_collection
+     teammember = New Collection
+     teamMember!pk = member!pk
+     teammember!fk_pasthistory = member!fk_pasthistory
+     teammember!fk_organisation = member!fk_organisation
+     teammember!fk_branch = member!fk_branch
+     teammember!fk_employee = member!fk_employee
+     teammember!fk_person = member!fk_person
+     teammember!wholename = member!wholename
+     teammember!summary = member!summary
+     teammember!responsibility = member!responsibility
+     NewCol.Add(teammember, NewCol.count)
+    Next
+    Return NewCol 
+End
+
+Public Sub TeamCareMembers_Get()
+   '-------------------------------------------------------------
+   'Get the team care members from backend, they are keyed by the
+   'clin_history.team_care_members.pk, no good if we want to add
+   'new items to the list, so re-order the collection with keys
+   'corresponding to the cvwTeamMembers.count value
+   '-------------------------------------------------------------
+   TeamCareMembers_old = modMentalHealthDBI.TeamCareMembers_Get(fk_plan) 'the old data - never changed
+   TeamCareMembers = TeamCareMembers_RefreshCollection(TeamCareMembers_old)
+   TeamCareMembers_RefreshList()
+   cvwTeamCareMembers.MoveFirst()
+   cvwTeamCareMembers_Click()
+   cvwTeamCareMembers.Item.Selected = True
+   cvwTeamCareMembers_Select()
+End
+
+Public Sub TeamCareMembers_Init()
+   '-----------------------------------------------------
+   'CALLED BY  EditArea_Clear()
+   'The patient will always be the foundation team member
+   '-----------------------------------------------------
+   Dim member As New Collection 
+   TeamCareMembers = New Collection 
+   TeamCareMember_Deleted = New Collection   
+   cvwTeamCareMembers.Clear()
+   Member!fk_person = currentconsult!patient!fk_person
+   Member!wholename = "Patient: " & currentconsult!patient!wholename 
+   Member!responsibility = "Make appointment with the nominated psychologist\n"
+   "Return for review with GP at date specified in the plan\n" 
+   Member!summary = "Patient: " & currentconsult!patient!wholename
+   TeamCareMembers_Add(Member)
+End
+Public Sub TeamCareMembers_ViewExpertise()
+      '--------------------------------------------------------------------------
+      'Display this person's counselling expertise = the memo field from contacts
+      'we don't keep the interests in the mental health tables, they can change
+      'FIXME - CURRENTLY ONLY WORKS FOR EMPLOYEES
+      'in fact  currently dosn't work at all!
+      '--------------------------------------------------------------------------
+      collection_members = modContactsDBI.Employee_get_memo(fk_organisation, fk_branch, fk_person)
+      For Each collection_member In collection_members
+      Next
+End
+
+Public Sub TeamCareMembers_UnDelete()
+   '---------------------
+   'One level of undelete
+   '---------------------
+   Dim c As Collection 
+   Dim the_key As Integer
+   If TeamCareMember_Deleted.Count Then
+      For Each c In TeamCareMember_Deleted
+         the_key = c!pk
+      Next
+      modDBConnect.BeginTrans()
+      modMentalHealthDBI.TeamCareMembers_UnDelete(TeamCareMember_Deleted[the_key]!pk)
+      modDBConnect.CommitTrans()
+      TeamCareMember_Deleted = New Collection 
+      TeamCareMembers_Get()
+      mnuTeamCare_UndoDelete.Enabled = False 
+   End If 
+End
+
+Public Sub TeamCareMembers_Delete()
+   '----------------------------------------------------------------
+   'Delete a team care member and details, keeping a copy
+   'The teamcaremembers collection is 0-n keyed on the list
+   'mark item as deleted in DB.keep a copy in TeamCareMember_Deleted
+   ' collection keyed To the pk if previously saved.
+   '----------------------------------------------------------------
+   Dim sMsg As String
+   sMsg = TeamCareMembers[iTeamCareMember]!wholename  
+   If Message.Warning("Are you sure you want to delete the current team member " & sMsg & "?", " Yes ", " No ") = 2 Then Return 
+   If fk_plan = -1 Then
+      '---------------------------------------------------------------------
+      'this is an entirely new plan, so just remove the member from the list
+      '---------------------------------------------------------------------
+      TeamCareMembers.Remove(iTeamCareMember) 'keys are now out of order, not 0,1,2,3
+      TeamCareMembers_RefreshList()           're-order the keys to match columnview key
+      Return 
+   Else
+      '----------------------------------------------------------------------------------
+      'Otherwise, this is an existing team care member. FIXME NO FALL BACK IF TRANS FAILS
+      '----------------------------------------------------------------------------------  
+      modDBConnect.BeginTrans()
+               modMentalHealthDBI.TeamCareMembers_Delete(TeamCareMembers[iTeamCareMember]!pk)
+               TeamCareMember_Deleted.Add(TeamCareMembers[iTeamCareMember], TeamCareMembers[iTeamCareMember]!pk)
+               TeamCareMembers.Remove(iTeamCareMember) 
+      modDBConnect.CommitTrans()   
+      TeamCareMembers_RefreshList()                                                          
+      EditArea_Notify_Datachanged(True)
+   End If 
+End
+
+Public Sub TeamCareMembers_Add(member As Collection)
+   Dim tcm As New Collection 
+   tcm = New Collection
+   Try tcm!summary = listview2.Item.text 'not present for patient
+   Try tcm!fk_organisation = member!fk_organisation
+   Try tcm!fk_branch = member!fk_branch
+   Try tcm!fk_employee = member!fk_employee
+   Try tcm!fk_person = member!fk_person
+   tcm!wholename = Member!wholename
+   If IsNull(Member!responsibility) Then
+      tcm!responsibility = ""
+   Else  
+      tcm!responsibility = Member!responsibility
+   End If   
+   '---------------------------------------
+   'Ok, all seems in order, add to the list
+   '---------------------------------------
+   TeamCareMembers.Add(tcm, TeamCareMembers.Count)
+   TeamCareMembers_RefreshList()
+   cvwTeamCareMembers.Item.Selected = True 
+   iTeamCareMember = cvwTeamCareMembers.count - 1
+   txtTeamCareMembers.Clear()
+   txtTeamCareMember_Responsibility.text = ""
+  ' txtTeamCareMember_Responsibility.setfocus()
+End
+
+Public Sub TeamCareMembers_MakeSummary(Collection_member As Collection) As String
+   '---------------------------------------------------------------------------
+   'makes a summary like organisation-address-employee (occupation) for display
+   '---------------------------------------------------------------------------
+   Dim sMsg As String
+   If IsNull(Collection_member!fk_employee) And IsNull(Collection_member!fk_organisation) Then
+      '----------------------------------------------------------
+      'ok- if not an organisation or an employee must be a person
+      '----------------------------------------------------------
+       sMsg = collection_member!wholename & " " & collection_member!summary 
+   Else If Not IsNull(Collection_member!fk_person) Then
+       sMsg = collection_member!wholename & collection_member!summary
+   Else If Not IsNull(Collection_member!fk_organisation) Then
+       sMsg = collection_member!summary ' & " "
+   End If
+   Return sMsg    
+End
+
+Public Sub mnuTeamCare_Click()
+   '--------------------------------------------------------------------------
+   'Users has selected a team care member
+   'As all contacts must be added via contacts modules these may not be edited
+   'iTeamCaremember is set when the cvwTeamCaremembers list is clicked on
+   '--------------------------------------------------------------------------
+    cvwTeamCareMembers.MoveCurrent()
+   Try fk_organisation = TeamCareMembers[iTeamCareMember]!fk_organisation
+   Try fk_branch = TeamCareMembers[iTeamCareMember]!fk_branch
+   Try fk_person = TeamCareMembers[iTeamCareMember]!fk_person
+   Select Case Last.tag
+   Case "view expertise"
+         TeamCareMembers_ViewExpertise()
+   Case "delete"
+         TeamCareMembers_Delete()
+   Case "undo delete"
+         TeamCareMembers_UnDelete()
+   Case "help"
+   Case "quit"
+   End Select
+End
+
+Public Sub cvwTeamCareMembers_Menu()
+   '-------------------------------------------------------------------------------------
+   'Don't allow deletion or undeletion of the patient, they are always a team care member
+   '-------------------------------------------------------------------------------------
+   If cvwTeamCareMembers.count Or TeamCareMember_Deleted.count Then
+       If TeamCareMember_Deleted.count Then
+          mnuTeamCare_UndoDelete.Enabled = True
+       End If
+       If cvwTeamCareMembers.count = 0 Then
+           mnuTeamCare_Delete.Enabled = False  'still enables undo-delete with nothing in list
+       Else
+         mnuTeamCare_Delete.Enabled = True     
+       End If
+       If InStr(TeamCareMembers[iTeamCareMember]!wholename, "Patient") Then
+          mnuTeamCare_Delete.Enabled = False 
+          mnuTeamCare_UndoDelete.Enabled = False
+          mnuTeamCare_ViewExpertise.Enabled = False   
+       End If
+       mnuTeamCare.Popup()
+   End If
+End
+
+Public Sub cvwTeamCareMembers_Click()
+   If Not cvwTeamCareMembers.count Then Return 
+   cvwTeamCareMembers.MoveCurrent()
+   iTeamCareMember = cvwTeamCareMembers.Item.key
+End
+
+Public Sub cvwTeamCareMembers_Select()
+   '----------------------------------------------------------------
+   'Display the team care members responsibility
+   'either user clicks on or scrolls down to a row of the columnview
+   'We cannot edit team members except via the contacts database,
+   '----------------------------------------------------------------
+   bExit = True
+   cvwTeamCareMembers.MoveCurrent()
+   iTeamCareMember = cvwTeamCareMembers.Item.key
+   If IsNull(TeamCareMembers[iTeamCareMember]!responsibility) Then
+      txtTeamCareMember_Responsibility.text = ""
+   Else
+      txtTeamCareMember_Responsibility.text = TeamCareMembers[iTeamCareMember]!responsibility
+   End If
+   bExit = False  
+End
+
+Public Sub rbTeamCareMember_SearchCriteria_Click()
+   '-----------------------------------------------------------------------------
+   'User wants to change/define the type of search for someone to refer to
+   'The tag of the radiobuttons for searching for  is eg contacttype_organisation
+   'Re-trigger the search
+   '-----------------------------------------------------------------------------
+   ReferralTo_SearchBy_Criteria = Last.tag
+   If bExit Then Return 
+   TeamCareMember_Selection("get")
+End
+
+Public Function teamcare_member_check_duplicated(Member As Collection) As Boolean
+   '--------------------------------
+   'returns False if not a duplicate
+   '-------------------------------- 
+   Dim sMsg As String = "You have selected:\n\n"
+   If Not (fk_organisation Or fk_branch Or fk_employee Or fk_person) Then
+      Select Case ReferralTo_SearchBy_Criteria
+         Case Const.contacttype_employee
+              smsg = "The employee "
+          Case Const.contacttype_organisation
+              smsg = "The organisation "
+        Case Const.contacttype_PersonsAndPatients
+            smsg = "The person "
+      End Select
+      sMsg &= "that you are looking for does not yet exist in the contacts database.\n\n" 
+      sMsg &= "You cannot enter free text here.\n\n"
+      sMsg &= "Please add the details via the contacts section before proceeding."
+      Goto reset
+   End If
+   For Each member In TeamCareMembers
+      Select Case ReferralTo_SearchBy_Criteria
+      Case Const.contacttype_employee
+           If member!fk_employee = fk_employee Then
+             sMsg &= member!summary & "\n\nA person of this name already exsits in the team care list" 
+            Goto reset
+            End If
+      Case Const.contacttype_organisation
+         If member!fk_organisation = fk_organisation And member!fk_branch = fk_branch Then
+            sMsg &= member!summary & "\n\nA person of this name already exsits in the team care list" 
+            Goto reset 
+         End If   
+      Case Const.contacttype_PersonsAndPatients
+       If member!fk_person = fk_person Then
+          sMsg &= member!wholename & " " & member!summary & "\n\nA person Of this name already exsits In the team care list"
+          Goto reset
+        End If   
+      End Select
+   Next  
+   Return False
+Reset:
+  Vbox_Psychologists.Visible = False 
+  txtTeamCareMembers.SetFocus()
+  txtTeamCareMembers.Text = ""
+  Message.Info(sMsg)  
+  Return True 'ie is a duplicate
+End
+
+Public Sub TabStrip1_Click()
+  Select Case Last.index
+  Case 0
+      lblK10Score.text = Form_K10.Get_CurrentK10_Score() & "/50"
+      tbNewK10.visible = False
+  Case 1
+      tbNewK10.visible = True
+  End Select
+End
+
+Public Function K10_construct_html(currentK10 As Collection) As String 'parameter not needed, please leave it in for the moment
+  Dim y As Integer 
+  Dim K10_row As Collection 
+  Dim sRow As String = ""
+    "</TR>"
+    "<TR VALIGN=TOP>"
+    "<TD WIDTH=50%><P>%question</P></TD>"
+    "<TD WIDTH=10%><P ALIGN=CENTER>%result1</P></TD>"
+    "<TD WIDTH=10%><P ALIGN=CENTER>%result2</P></TD>"
+    "<TD WIDTH=10%><P ALIGN=CENTER>%result3</P></TD>"
+    "<TD WIDTH=10%><P ALIGN=CENTER>%result4</P></TD>"
+    "<TD WIDTH=10%><P ALIGN=CENTER>%result5</P></TD>"
+    "</TR>"
+  Dim sHtml As String = ""
+    "<TABLE WIDTH=100% BORDER=1 CELLPADDING=0 CELLSPACING=0 >"
+    "<COL WIDTH=50%>"
+    "<COL WIDTH=10%>"
+    "<COL WIDTH=10%>"
+    "<COL WIDTH=10%>"
+    "<COL WIDTH=10%>"
+    "<COL WIDTH=10%>"
+    "<TR VALIGN=TOP>"
+    "<TD WIDTH=50%>"
+    "<P><BR>"
+    "</P>"
+    "</TD>"
+    "<TD WIDTH=10%><P><B>None of<BR>the time</B></P></TD>"
+    "<TD WIDTH=10%><P><B>A Little of<BR>the time</B></P></TD>"
+    "<TD WIDTH=10%><P><B>Some of<BR>the time</B></P></TD>"
+    "<TD WIDTH=10%><P><B>Most of<BR>the time</B></P></TD>"
+    "<TD WIDTH=10%><P><B>All of<BR>the time</B></P></TD>"
+    "</TR>"
+
+   For Each K10_Row In currentK10
+      '---------------------------------------------------
+      'Each table row has 6 cells, insert appropriate data
+      'rows numbered x = 1 to 10 = the 10 questions
+      'K10 looks like this
+      ' question [col1],[col2],[col3],[col4],[col5]
+      ' only 1 column will have an option button checked
+      ' currentK10 collection is collection of rows
+      ' row-number,the question, score (1-5), fk_plan etc
+      '---------------------------------------------------
+      sHtml &= sRow
+      sHtml = Replace(sHtml, "%question", K10_Row!question)
+      '--------------------------------------------------------------------------
+      'replace eg $result2 with an option button picture, if that col has a score
+      'and all the other columns values with nothing
+      'FIXME - LATER ON ACTUALLY PUT AN OPTION BUTTON IN HERE, FOR NOW, THE SCORE
+      '--------------------------------------------------------------------------
+      shtml = Replace(shtml, "%result" & Str(K10_Row!score), Str(K10_Row!score))
+      For y = 1 To 5
+         If y <> K10_Row!score Then
+          sHtml = Replace(shtml, "%result" & Str(y), "")
+         End If
+      Next
+    Next
+    Return sHtml & "</TABLE><P ALIGN=RIGHT>Score " & Str(Form_K10.Get_CurrentK10_Score()) & "/50</P>"
+End
+
+Public Sub rbSex_Click()
+  sex_filter = Last.tag
+  TeamCareMember_Selection("get")
+End
+
+Public Sub EditArea_TxtBox_Activate()
+  If Last.tag = "review date" Then
+         modEditAreaHelpers.Calculate_Date_From_Interval(txtReviewDate)
+  End If 
+End
+
+Public Function K10_Decision_Support_HTML() As String 
+'Just experimenting, this sort of thing will live in the backend.
+  Dim K10 As String = ""
+  "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0 Transitional//EN\">"
+    "<HTML>"
+    "<HEAD>"
+    "<META HTTP-EQUIV=\"CONTENT-TYPE\" CONTENT=\"text/html; charset=utf-8\">"
+    "<TITLE></TITLE>"
+    "<META NAME=\"GENERATOR\" CONTENT=\"OpenOffice.org 3.1  (Linux)\">"
+    "<META NAME=\"CREATED\" CONTENT=\"20090802;9592700\">"
+    "<META NAME=\"CHANGED\" CONTENT=\"20090802;9595400\">"
+    "</HEAD>"
+    "<BODY LANG=\"en-AU\" DIR=\"LTR\">"
+    "<P STYLE=\"margin-bottom: 0cm\"><FONT FACE=\"Arial, sans-serif\"><FONT SIZE=3><B>K10"
+    "Outcome Tool</B></FONT></FONT></P>"
+    "<P STYLE=\"margin-bottom: 0cm; font-style: normal; font-weight: normal\">"
+    "<BR>"
+    "</P>"
+    "<P STYLE=\"margin-bottom: 0cm\"><FONT FACE=\"Arial, sans-serif\"><B>What"
+    "is the K10 and how is it scored? </B></FONT>"
+    "</P>"
+    "<P STYLE=\"margin-bottom: 0cm\"><FONT FACE=\"Arial, sans-serif\">The K10"
+    "is widely recommended as a simple measure of psychological distress"
+    "and as a measure of outcomes following treatment for common mental"
+    "health disorders. The K10 is in the public domain and is promoted on"
+    "the Clinical Research Unit for Anxiety and Depression website"
+    "(</FONT><FONT COLOR=\"#000080\"><U><A HREF=\"http://www.crufad.org/\"><FONT COLOR=\"#0000ff\"><SPAN STYLE=\"text-decoration: none\"><FONT FACE=\"Arial, sans-serif\"><FONT SIZE=2><SPAN LANG=\"en-AU\"><SPAN STYLE=\"font-style: normal\"><SPAN STYLE=\"font-weight: normal\"><SPAN STYLE=\"background: transparent\"><SPAN STYLE=\"text-decoration: none\">www.crufad.org</SPAN></SPAN></SPAN></SPAN></SPAN></FONT></FONT></SPAN></FONT></A></U></FONT><FONT FACE=\"Arial, sans-serif\">)"
+    "as a self report measure to identify need for treatment.</FONT></P>"
+    "<P STYLE=\"margin-bottom: 0cm\"><BR>"
+    "</P>"
+    "<P STYLE=\"margin-bottom: 0cm\"><FONT FACE=\"Arial, sans-serif\">The K10"
+    "uses a five value response option for each question â all of the"
+    "time (scores 5), most of the time (scores 4), some of the time"
+    "(scores 3), a little of the time (scores 2) and none of the time"
+    "(scores 1).</FONT></P>"
+    "<P STYLE=\"margin-bottom: 0cm\"><BR>"
+    "</P>"
+    "<P STYLE=\"margin-bottom: 0cm\"><FONT FACE=\"Arial, sans-serif\">The"
+    "maximum score is 50 indicating severe distress, the minimum score is"
+    "10 indicating no distress.</FONT></P>"
+    "<UL>"
+    "<LI><P STYLE=\"margin-bottom: 0cm\"><FONT FACE=\"Arial, sans-serif\">People"
+    "who score </FONT><FONT FACE=\"Arial, sans-serif\"><B>0-15</B></FONT><FONT FACE=\"Arial, sans-serif\">"
+    "have one quarter the population risk of meeting criteria for an"
+    "anxiety or depressive disorder as identified by the CIDI, and a"
+    "remote chance of reporting a suicidal attempt in their lifetime."
+    "This group comprise 78% of the population and are told their score"
+    "is low and that they probably do not need self help information.</FONT></P>"
+    "<LI><P STYLE=\"margin-top: 0.21cm; margin-bottom: 0cm\"><FONT FACE=\"Arial, sans-serif\">People"
+    "who score </FONT><FONT FACE=\"Arial, sans-serif\"><B>16-30</B></FONT><FONT FACE=\"Arial, sans-serif\">"
+    "have a one in four chance (three times the population risk) of"
+    "having a current anxiety or depressive disorder and 1% chance (three"
+    "times the population risk) of ever having made a suicide attempt."
+    "This group comprise 20% of the population, are encouraged to use the"
+    "information and self help techniques. </FONT>"
+    "</P>"
+    "<LI><P STYLE=\"margin-top: 0.21cm; margin-bottom: 0cm\"><FONT FACE=\"Arial, sans-serif\">People"
+    "who score </FONT><FONT FACE=\"Arial, sans-serif\"><B>30-50</B></FONT><FONT FACE=\"Arial, sans-serif\">"
+    "have a three out of four chance (ten times the population risk) of"
+    "meeting criteria for an anxiety or depressive disorder and 6% chance"
+    "(20 times the population risk) of ever having made a suicide"
+    "attempt. This group comprise 2% of the population, are strongly"
+    "encouraged to seek medical help.</FONT></P>"
+    "</UL>"
+    "<P STYLE=\"margin-bottom: 0cm\"><BR>"
+    "</P>"
+    "<P STYLE=\"margin-bottom: 0cm\"><FONT FACE=\"Arial, sans-serif\">For"
+    "further information on the K10 please refer to </FONT><FONT COLOR=\"#000080\"><U><A HREF=\"http://www.crufad.org/\"><FONT COLOR=\"#0000ff\"><SPAN STYLE=\"text-decoration: none\"><FONT FACE=\"Arial, sans-serif\"><FONT SIZE=2><SPAN LANG=\"en-AU\"><SPAN STYLE=\"font-style: normal\"><SPAN STYLE=\"font-weight: normal\"><SPAN STYLE=\"background: transparent\"><SPAN STYLE=\"text-decoration: none\">www.crufad.org</SPAN></SPAN></SPAN></SPAN></SPAN></FONT></FONT></SPAN></FONT></A></U></FONT><FONT FACE=\"Arial, sans-serif\">"
+    "or </FONT>"
+    "</P>"
+    "<P STYLE=\"margin-bottom: 0cm\"><FONT FACE=\"Arial, sans-serif\">Andrews,"
+    "G Slade, T. Interpreting scores on the Kessler Psychological Distress"
+    "Scale (K10). </FONT><FONT FACE=\"Arial, sans-serif\"><I>Australian and"
+    "New Zealand Journal of Public Health:</I></FONT><FONT FACE=\"Arial, sans-serif\">"
+    "2001; 25:6: 494-497.</FONT></P>"
+    "</BODY>"
+    "</HTML>"
+  Return K10
+End
+

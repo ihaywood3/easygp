@@ -1,0 +1,1002 @@
+' Gambas class file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Publico License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+Private Occupation As Collection
+Private Exposures As collection
+Private $Result As result
+Private bediting As Boolean
+Private bEmbedded As Boolean
+Private bExit As Boolean
+Private bKeyValid As Boolean
+Private fk_progressnote As Integer 
+Private currentExposure As collection
+Private currentExposures As collection      'of currentexposure
+Private currentoccupation As collection 
+Private occupational_history As collection 
+Private member As collection 
+Private the_collection As collection 
+Private currentconsult As cConsult
+Private fk_exposure As Integer 
+Private fk_occupation As Integer 
+Private fk_occupational_history As Integer      'key to clin_history.occupations table
+Private view_key_occupation As Integer
+Private view_key_exposure As String
+Private pk_view As String  'key to the row in the view.
+
+Public Sub set_embedded(flag As Boolean)
+   '--------------------------------------------------
+   'If this form is embeded from another form set flag
+   '--------------------------------------------------
+   bEmbedded = flag
+End
+
+Public Sub Init(cons As cConsult)
+   '----------------------------------------------------------
+   'PURPOSE    :Basic initialiseation
+   'CALLED BY  :calling form e.g FrmClinical.Editor_ShowPage()
+   '----------------------------------------------------------
+   Dim item As collection 
+   currentconsult = cons         'set current consult on this form
+   Settings_Load()               'set splits, font sizes etc
+   EditArea_Resize_Labels()
+   Init_Columnviews()
+   OccupationsList_Refresh()  
+   '--------------------------------------------------------------------
+   'At Init of this form if there are occupations in the list, highlight
+   'the first one, and show its occupational exposures
+   '--------------------------------------------------------------------
+   If cvwOccupations.count Then    
+      '---------------------------------------------------------------
+      'for the first member only in the list, fill the exposures list
+      '----------------------------------------------------------------
+     cvwOccupations.MoveFirst()     'move to first on the list
+     cvwOccupations.Item.Selected = True
+     cvwOccupations_Click()           'click event to show exposures
+     cvwOccupations.SetFocus() '
+  Else
+     Occupation_New()
+  End If 
+End
+
+Public Sub Init_Columnviews()
+  
+ 
+  cvwExposures.Columns.count = 2
+  cvwOccupations.Columns.count = 5
+  cvwOccupations.Columns[1].width = 200 'the occupation
+  cvwOccupations.Columns[2].width = 150 'from-to age
+    
+  
+End
+
+Public Sub Form_Close()
+  '------------------
+  'Save splits layout
+  '------------------
+  Settings_Save()
+End
+
+Public Sub Settings_Save()
+   If bEmbedded = True Then
+       Settings["Occupation_Embedded/VSplit_Occupation.Layout"] = VSplit_Occupations.layout
+       Settings["Occupation_Embedded/HSplit_Occupation.Layout"] = HSplit_Occupations.layout
+   Else
+       Settings["Occupation/VSplit_Occupation.Layout"] = VSplit_Occupations.layout
+       Settings["Occupation/HSplit_Occupation.Layout"] = HSplit_Occupations.layout
+    
+   End If
+
+End
+
+Public Sub Settings_Load()
+   If bEmbedded = True Then
+       VSplit_Occupations.layout = Settings["Occupation_Embedded/VSplit_Occupation.Layout"]
+       HSplit_Occupations.layout = Settings["Occupation_Embedded/HSplit_Occupation.Layout"]
+   Else
+       Try VSplit_Occupations.layout = Settings["Occupation/VSplit_Occupation.Layout"]
+       Try HSplit_Occupations.layout = Settings["Occupation/HSplit_Occupation.Layout"]
+   End If
+End
+
+Public Sub EditArea_Exposure_Clear()
+      bExit = True   
+      txtExposure.text = ""   
+      txtduration.text = ""   
+      txtNotesExposure.text = ""
+      bExit = False  
+End
+
+Public Sub EditArea_Occupation_Clear()
+      bExit = True   
+      Vbox_EditArea.Padding = 0  
+      txtOccupation.text = ""                            'clear the text boxes
+      txtFromAge.text = ""
+      txtToAge.text = "" 
+      txtNotes.text = "" 
+      chkCurrent.Value = False
+      chkRetired.Value = False
+      listview1.Clear()
+      listview1.Visible = False 
+      bEditing = False     
+      bExit = False
+End
+
+Public Sub Occupation_New()
+    Exposure_New()
+    EditArea_Occupation_Clear()
+    currentoccupation = New collection 
+    currentexposures = New Collection
+    currentexposure = New Collection 
+    fk_progressnote = -1
+    fk_occupational_history = -1
+    fk_occupation = 0
+    pk_view = "0"
+    txtOccupation.SetFocus()
+End
+
+Public Sub Exposure_New()
+      EditArea_Exposure_Clear()        'clear edit area
+      currentExposure = New collection 
+      cvwExposures.SelectAll(False)    'ie. remove the marquee
+      cvwOccupations.SelectAll(False)  'take focus off lists 
+      fk_exposure = -1
+      view_key_exposure = "0"
+      txtExposure.SetFocus()
+End
+
+Public Sub EditArea_Clear()
+   '------------------------------------------------------------
+   'Clears the editing area totally both occupation and exposure
+   '------------------------------------------------------------
+   
+   EditArea_Occupation_Clear
+   EditArea_Exposure_Clear
+End
+
+
+Public Sub EditArea_GotFocus()
+     Last.BackGround = Color.rgb(95, 255, 175)
+     Select Case Last.tag
+     Case "occupation"
+        With listview1 
+         .top = Last.Parent.top + Last.Parent.height
+         .left = Last.left + VBox_EditArea.Padding
+         .width = Last.width
+         .Raise
+         .Clear
+         .Visible = False   
+       End With
+     End Select
+End
+
+Public Sub EditArea_LostFocus()
+   Last.BackGround = Color.White
+   Last.pos = 0
+End
+
+
+
+Public Sub listview1_KeyPress()
+  
+     If Key.code = Key.return Then
+     
+       listview1_DblClick()
+     End If
+  
+End
+Public Sub listview1_DblClick()
+   '------------------------------------
+   'User has clicked on the popup list
+   'move internal cursor to current item
+   '------------------------------------
+   listview1.MoveCurrent
+   Select Case Last.tag.tag
+         Case "occupation"
+            Occupation_Selection("accept", "list")
+            txtFromAge.SetFocus()
+         Case "exposure"
+            Exposure_Select()
+   End Select
+    
+  
+End
+
+Public Sub Occupation_Selection(action As String, Optional calling_control As String)
+   Select Case action
+   Case "get"
+        
+         If Len(Trim(txtOccupation.text)) = 0 Then
+            fk_occupation = 0
+            Return
+         End If
+         The_Collection = modContactsDBI.Occupation_Get(Trim(txtOccupation.text))
+         listview1.Clear
+         '-----------------------------------------------------------------
+         'If categories exist to match the text, auto-select or show a list
+         '-----------------------------------------------------------------
+         If The_Collection.count Then 
+               For Each Member In The_Collection
+                    listview1.Add(Member!pk, Member!occupation)
+               Next 
+               If The_Collection.count = 1 Then 
+                  If Trim(Lower(txtOccupation.text)) = Lower(Member!occupation) Then
+                      Occupation_Selection("select", "list")
+                      Return
+                  End If
+               End If
+               listview1.Visible = True
+               listview1.Raise
+               listview1.tag = txtOccupation
+          Else
+               listview1.Visible = False  
+         End If
+   Case "accept"
+      '----------------------------------------------------------------------
+      'CALLED BY  : user hitting <enter> in txtOccupation ie editarea_keypress
+      '             user hitting <enter> on the popup list of names
+      '             user double clicking on the popup list of names
+      '----------------------------------------------------------------------
+       bExit = True
+       If calling_control = "textbox" Then
+            '-------------------------------------------------------
+            'User has just hit <enter> without scrolling on the list
+            'try and find a match
+            '-------------------------------------------------------
+            fk_occupation = 0
+            If listview1.Visible Then
+                  listview1.MoveFirst
+                  Do Until listview1.MoveNext()
+                     If Lower(listview1.Item.text) = Trim(Lower(txtOccupation.text)) Then
+                       fk_occupation = listview1.Item.Key
+                       Break
+                     End If
+                  Loop 
+             End If
+              listview1.Visible = False 
+        Else
+            '-----------------------------------------------------------
+            'Routine called by user clicking on list or pressing <enter>
+            '-----------------------------------------------------------
+            listview1.MoveCurrent   'set internal cursor to match marquee
+            fk_occupation = listview1.Item.key
+            txtOccupation.Text = listview1.Item.Text
+        End If
+         listview1.Visible = False 
+        bExit = False  
+   End Select
+  
+ End
+
+
+
+Public Function EditArea_Vaidate_Contents() As Boolean 
+   '--------------------------------------------------------------------
+   'validates the contents of edit area returns FALSE if invalid
+   '  Mimimum amount of data:
+   '  an occupation with or without a valid key
+   '-------------------------------------------------------------------
+   Dim member As collection 
+   Dim duplicatedcondition As Boolean
+   Dim sMsg As String 
+   '-----------------------------------------------
+   'Allow a new oocupation, but must have some text
+   '-----------------------------------------------
+   If Trim(txtOccupation.text) = "" Then Return False
+   
+   Return True
+End
+Public Sub Exposure_select()
+   '--------------------------------------------------
+   'User is selecting an exposure from the popup list
+   'txtExposure.text = the exposure, but this must be
+   'added to the exposure list by the user hitting
+   '<enter> at txtExposure.
+   'SEE: editarea_change for  currentexposure!exposure
+   '--------------------------------------------------
+    listview1.MoveCurrent()
+    txtExposure.text = listview1.Item.Text
+    currentexposure!fk_exposure = listview1.Item.key
+    ListView1.Visible = False
+    txtduration.SetFocus()
+End
+
+Public Sub EditArea_Change()
+   If bexit Then Return
+   Select Case Last.tag
+   Case "occupation"
+      '-------------------------------------------------------
+      'Triggered by either user typing in it and not selecting
+      'from the popup list, in which case OH.fk_occupation=0
+      'or by user selecting from popup listview1 in which case
+      'fk_occupation is set by that routine
+      '--------------------------------------------------------
+      If Trim(Last.text) = "" Then 
+         'currentoccupation!fk_occupation = 0
+         fk_occupation = 0
+      End If
+    ' currentoccupation!occupation = Trim(Last.text)
+   Case "from age"
+     ' Try currentoccupation!from_age = Val(Last.text)
+   Case "to age"
+     ' Try currentoccupation!to_age = Val(Last.text)
+   Case "notes occupation"
+       If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "")
+            Last.pos = 0
+       End If
+     
+   Case "notes exposure"
+       If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "")
+             Last.pos = 0
+       End If
+      
+       currentexposure!notes_exposure = Trim(Last.text)
+   Case "exposure"
+       '-------------------------------------------------------
+      'Triggered by either user typing in it and not selecting
+      'from the popup list, in which case 
+      'currentExposure.fk_workplace_exposure is 0
+      'or by user selecting from popup listview1 in which case
+      'fk_exposure is set by that routine
+      '--------------------------------------------------------
+      If Trim(Last.text) = "" Then 
+         Exposure_New()
+      End If
+      currentexposure!exposure = Trim(Last.text)
+   Case "duration"
+      'I think I've set this to default to Y years
+      Try currentexposure!exposure_duration = Val(Last.text)
+      If InStr(Lower(Last.text), "m") Then
+         currentexposure!exposure_duration_units = const.Units_month
+         currentexposure!exposure_duration = Val(Left(Last.text, Len(Trim(Last.text)) - 1))
+      Else
+        If InStr(Lower(Last.text), "y") Then
+            currentexposure!exposure_duration_units = const.Units_year
+            currentexposure!exposure_duration = Val(Left(Last.text, Len(Trim(Last.text)) - 1))
+        End If
+      End If
+   End Select
+   '------------------------------------------
+   'Highlight edit area in red to show changes
+   '------------------------------------------
+   EditArea_NotifyChange(True)
+End
+
+Public Sub EditArea_NotifyChange(flag As Boolean)
+  '------------------------------------------------------------
+  'Outlines the edit area in red to indicate change to the user
+  '------------------------------------------------------------
+  If Flag Then
+     VBox_EditArea.Padding = 1
+     Vbox_EditArea.Background = Color.Red
+     tbAccept.Foreground = Color.Red
+  Else
+    VBox_EditArea.Padding = 0
+    tbAccept.Foreground = Color.Black
+  End If
+End
+
+Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer) As Boolean  
+   '--------------------------------------------------
+   'Validate keypresses by excluding various key types
+   '--------------------------------------------------
+   Select Case Last.Tag
+   Case "occupation", "exposure", "notes exposure", "notes occupation"
+      bKeyValid = True
+   Case "from age", "to age"
+      bKeyValid = modUtil.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
+   Case "duration" 
+      bKeyValid = modUtil.AllowKeys(const.AllowKeys_Numbers_D_M_Y, keycode)
+   End Select
+   Return bKeyValid
+End
+
+Public Sub Editarea_KeyPress()
+   '--------------------------------------------
+   'Validate keys, e.g only numbers for age etc
+   '--------------------------------------------
+   Dim x As Integer
+   bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code)
+   If bkeyvalid = False Then
+     Stop Event
+     Return
+   End If
+   Select Case Key.Code
+   Case Key.Down
+      '--------------------------------------------
+      'If down key pressed, move onto popup listbox
+      '--------------------------------------------
+     If listview1.Visible Then
+           listview1.MoveFirst
+           listview1.Item.Selected = True
+           listview1.setfocus
+      End If
+    Case Key.Return, Key.tab
+      Select Case Last.tag
+         Case "occupation"
+               Occupation_Selection("accept", "textbox")
+               txtFromAge.SetFocus()
+         Case "from age"
+                txtToAge.SetFocus()
+         Case "to age"
+                txtNotes.SetFocus()
+         Case "notes occupation"
+              txtExposure.SetFocus()
+         Case "exposure"
+               '--------------------------------------------------
+               'User has hit <enter> without picking from the list
+               'check first that if listview1 is visible, that
+               'the text dosn't match any of the entires, if it
+               'does, accept that entry and its key
+               '-----------------------------------------------
+               If listview1.Visible Then
+                  For x = 0 To listview1.Count - 1
+                     listview1.MoveFirst
+                     If Lower(Trim(Last.text)) = Lower(listview1.item.text) Then
+                        Exposure_Select()
+                        Return
+                     End If
+                     listview1.MoveNext
+                  Next
+               End If
+               '---------------------------------------------------------
+               'If get to here, then either list not visible, or no match
+               '---------------------------------------------------------
+               If Trim(Last.text) = "" Then
+                  '----------------------------------------
+                  'Nothing there, user must want to move on
+                  '----------------------------------------
+                  tbAccept.SetFocus()
+               Else
+                  '-----------------------------------------------
+                  'this must be a new exposure not in the database
+                  '-----------------------------------------------
+                  'currentexposure!fk_exposure = 0
+                  currentexposure!exposure = Trim(txtExposure.text)
+                  txtduration.SetFocus()
+               End If
+        Case "duration"
+               '-------------------------------------------------
+               'User hit <enter> in the duration textbox
+               'check there is an exposure, if ok, accept to list
+               '-------------------------------------------------
+               If Trim(txtExposure.text) = "" Then
+                  txtExposure.SetFocus()
+               End If   
+               txtNotesExposure.setfocus()
+        Case "notes exposure"
+         tbAccept.SetFocus()
+      End Select
+   End Select
+   
+End
+
+Public Sub EditArea_KeyRelease()
+   '-----------------------------------------------
+   'Search routines are triggered on the this event
+   '-----------------------------------------------
+  Select Case Last.tag
+  Case "occupation"
+         Occupation_Selection("get")
+  Case "exposure"
+         Exposures_Get()
+  End Select   
+End
+
+Public Sub EditArea_Resize_Labels()
+   '-------------------------------------------------------------------
+   'Adjust all lables as per current system font to make sure text fits
+   '-------------------------------------------------------------------
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
+End
+
+Public Sub EditAreaButtons_Click()
+   '------------------------------------------
+   'The buttons on the button of the edit area
+   '------------------------------------------
+   Select Case Last.tag
+   Case "help"
+    FClinical.Help_Show(Application.Path &/ "help/occupational-history.html", "Help:Occupational History", True)
+   Case "accept"
+       '------------------------------------
+       'Do an immediate save to the database
+       'and re-populate the occupations list
+       '------------------------------------
+       Save()
+   Case "new exposure"
+       Exposure_New()
+    
+   Case "new occupation"
+   
+       '------------------------------------------
+       'User wants to add a new exposure
+       'clear edit area, set cursor to txtExposure
+       '------------------------------------------
+       Occupation_New()
+   
+   End Select
+End
+
+Public Sub Save()
+  '----------------------------------------------------------------
+  'PURPOSE        :Save the occupation and exposures
+  'CALLED BY      :tbAccept (editarea_buttons grou tag "accept"
+  '               :Either user has hit <enter> at this button
+  '               :or clicked on it with the mouse
+  'WHAT IT DOES   :Checks for minimal data validity - an oocupation
+  '----------------------------------------------------------------
+   Dim LastOccupations_pk As Integer
+   Dim occupation As New collection 
+   Dim x As Integer
+   Dim sProgressNotes As String 
+   If Vbox_EditArea.Padding = 0 Or Not EditArea_Vaidate_Contents() Then Return 'nothing to save or inadequate data
+ '  If Not EditArea_Vaidate_Contents() Then 
+ '     Return 
+ '  End If
+   '-----------------------------------------------------------------
+   'Key to clin_history.occupations (the data table) -1 = new record
+   '-----------------------------------------------------------------
+   If fk_occupational_history <> -1 Then
+     currentoccupation!fk_occupational_history = fk_occupational_history
+   End If
+   currentoccupation!occupation = Trim(txtOccupation.text)
+   If fk_occupation = 0 Then
+     currentoccupation!occupation = Trim(txtOccupation.text)
+     currentoccupation!fk_occupation = 0
+   Else
+      currentoccupation!fk_occupation = fk_occupation
+   End If
+   
+  currentoccupation!from_age = Val(txtFromAge.text)
+  currentoccupation!to_age = Val(txtToAge.text)
+  currentoccupation!notes_occupation = Trim(txtNotes.text)
+ 
+   If chkCurrent.value = True Then
+     currentoccupation!current = True
+   End If
+   If chkRetired.value = True Then
+     currentoccupation!retired = True
+   End If 
+   '----------------------------------------------------------------
+   'The exposure - may not exist, or may be new ie no fk_exposure. 
+   'If new, it won't yet be added to the currentexposures collection
+   'or no exposures at all may exist
+   '----------------------------------------------------------------
+  ' If IsNull(currentExposures) Then
+  '   currentExposures = New collection
+   'End If
+   'if a new exposure, not yet saved:
+   If IsNull(currentexposure!fk_occupations_exposures) And Not IsNull(currentexposure!exposure) Then
+      currentExposures.Add(currentExposure, "any_key")
+   End If
+   sProgressNotes = Progressnote_construct_html(currentoccupation, currentexposures) 
+   modDBConnect.BeginTrans() 'noop
+        currentoccupation!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_OccupationalHistory, fk_progressnote, "occupations", 0, False)
+        fk_occupational_history = modOccupationalHistoryDBI.Save(currentconsult, fk_occupational_history, currentoccupation, fk_exposure, currentexposure, pk_view, view_key_exposure)
+    modDbConnect.CommitTrans()
+    EditArea_NotifyChange(False)
+    OccupationsList_Refresh()                  'reload visual display
+    '--------------------------------------------------------------------
+    'Now move the cvwOccupations to the last created or edited occupation
+    'the unique key for vwOccupationalHistory is:
+    ' fk_occuaption & "-" & pk_occupational_exposures = key Of the cvwOccupations eg 1-n or 1-0 (no occupations)
+    'as one occupation as it can have multiple exposures can span multiple rows of the view.
+    '-------------------------------------------------------------------------------------------------
+    cvwOccupations.MoveFirst()
+    For Each occupation In occupational_history
+         If occupation!fk_occupation = fk_occupation Then
+           cvwOccupations.MoveTo(occupational_history.key)
+           cvwOccupations.Item.Selected = True
+           cvwOccupations.SetFocus() '
+           cvwOccupations_Click()           'click event to show exposures
+         Break
+         End If
+    Next
+   FClinical.Refresh_AllPreviousNotes()
+End
+
+Public Function Progressnote_construct_html(currentoccupation As collection, currrentexposures As collection) As String
+      
+      '--------------------------------------------
+      'Construct progress notes for this occupation
+      '--------------------------------------------
+      Dim sHtml As String
+      Dim Last_key As Integer
+      Dim sString As String 
+      '-----------------------------------------------------------------
+      'If this is the first row in the view for an occupation, show that
+      '-----------------------------------------------------------------
+      sString = "New occupation noted: "
+      If fk_occupational_history = -1 Then
+           
+      Else
+          If currentoccupation!fk_consult <> currentconsult.GetPK()
+             sString = "Occupational details changed:"
+          End If
+      End If
+      sString &= "<B>" & currentoccupation!occupation & "</B>"
+      If currentoccupation!current = True Then
+         sString &= " [Current]"
+      Else
+         If currentoccupation!retired = True Then 
+            sString &= " [Retired]"
+         End If
+      End If
+      '-----------------------
+      'work out the age string
+      '-----------------------
+    
+      If Not IsNull(currentoccupation!from_age) Then
+        sString &= " from age " & currentoccupation!from_age & "yrs" 
+        If Not IsNull(currentoccupation!to_age) Then
+        sString &= " to age " & currentoccupation!to_age & "yrs" 
+        End If
+      Else
+         If Not IsNull(currentoccupation!to_age) Then
+            sString &= " from age -? to age " & currentoccupation!to_age
+         End If
+      End If
+      If Not IsNull(currentoccupation!notes_occupation) Then
+         sString &= " (" & currentoccupation!notes_occupation & " )"
+      End If   
+      sHtml &= sString   
+      If currentexposures.count <> 0 Then
+           For Each Member In currentexposures
+               '--------------------------------------------------------
+               'If the same occupation, just add any more work exposures
+               'except if this progress note is being constructed during
+               'a delete
+               '--------------------------------------------------------
+               If Member!exposure <> "" And IsNull(member!deleted) Then
+                      If Not InStr(shtml, "workplace exposure") Then 'do not move these lines
+                            sHtml &= " - workplace exposure: "       'otherwise text for delete where
+                      End If                                         'single exposure exists will be wrong
+                      sHtml &= Member!exposure 
+                      If Not IsNull(Member!exposure_duration) Then
+                        sHtml &= " for a period of "
+                        If Not IsNull(Member!exposure_duration_units) Then
+                           shtml &= Str(Member!exposure_duration) & " " & const.UnitsText[member!exposure_duration_units] 
+                           If Member!exposure_duration_units > 1 Then
+                              shtml &= "s"
+                           End If
+                        End If
+                      End If 
+                      If Not IsNull(Member!notes_exposure) Then
+                      sHtml &= " (" & Trim(Member!notes_exposure) & ")"
+                      End If
+                      sHtml &= ","
+               End If
+           Next
+       End If
+   If Right(sHtml) = "," Then
+              sHtml = Left(sHtml, Len(sHtml) - 1)
+   End If   
+   Return sHtml
+End
+Public Sub exposure_delete()
+   '------------------------------------------------------------------------------------------------------------
+   'Delete the highlighted exposure, insist on audit if done in different consultation or day (if user the same)
+   'FIXME - IMPLEMENT THIS
+   '------------------------------------------------------------------------------------------------------------
+    EditArea_NotifyChange(True)
+    If Message.Warning("Do you really want to delete this work exposure: " & currentExposure!exposure, "Yes", "No") = 2 Then
+       EditArea_NotifyChange(False)
+       Return
+    End If
+    currentexposure!deleted = True
+    currentExposures[view_key_exposure]!deleted = True
+    Save()
+End
+
+Public Sub Exposures_Get()
+   '------------------------------------------------------
+   'fetches a list of substances or things the person may
+   'have been exposed to from clin_History.lu_exposures
+   '------------------------------------------------------
+   If Trim(txtExposure.text) = "" Then Return 
+   $result = modOccupationalHistoryDBI.Exposures_Get(Trim(txtExposure.text))
+   listview1.Clear
+   If $Result.count Then
+      For Each $Result     
+          listview1.Add($Result!pk, $Result!exposure)
+      Next
+      With listview1
+         .tag = Last
+         .Visible = True
+         .Raise
+         .top = Last.Parent.Top + Last.Height
+         .left = Last.Left
+      End With
+    Else
+    
+      listview1.Visible = False 
+    End If
+  
+End
+
+
+Public Sub OccupationsList_Refresh()
+   '--------------------------------------------------------------------------------------
+   'Refreshes the occupational history list and displays it like this:
+   ' Occupation from-age to-age notes - exposure(s)
+   'Note: the only unique key in view is :occupational_history!pk_link_occupation_exposure
+   'which identifies the occupational history item for editing
+   '---------------------------------------------------------------------------------------
+  ' Dim occupational_history As collection 
+   Dim x As Integer                          'for readability
+  
+   Dim view_row As collection               
+   Dim Astring As String
+   Dim Last_fk_patient As Integer
+   Dim current_fk_occupation As Integer
+   Dim last_fk_occupation As Integer
+   
+   cvwOccupations.Clear()
+   currentconsult.Refresh("occupational_history")     'reload all the history
+   occupational_history = currentconsult!occupational_history 'for ease of typing
+   For Each occupation In occupational_history
+      '-------------------------------------------------------------------------------------------
+      'If this is a new occupation, then add a new row to the columnview
+      '      occupation  from-age to-age notes and exposures
+      'e.g: teacher from age 20-40 'worked in the outback' exposed to noise, dust and pupils
+      'The key of the columnview = the index of the currentconsult!occupational_history collection
+      '-------------------------------------------------------------------------------------------
+      If occupation!fk_occupation <> current_fk_occupation Then  
+         '------------------------------------------------------------------------------------------- 
+         'If the occupation on the row we are reading <> the last one read, add new row in columnview
+         '-------------------------------------------------------------------------------------------
+         current_fk_occupation = occupation!fk_occupation  'set the occupation 
+         pk_view = occupation!pk_view                            'unique key from view 
+         cvwOccupations.Add(pk_view, 0)                                    'column 0 = the occupation
+         cvwOccupations[pk_view][0] = occupation!occupation
+         '-------------------------------------------------
+         'We must allow the occupation only for slack users
+         '-------------------------------------------------
+         Astring = ""
+         If Not IsNull(occupation!from_age) Then
+           Astring = "From age " & occupation!from_age
+           If Not IsNull(occupation!to_age) Then
+            Astring &= " to age" & occupation!to_age
+           End If
+         Else
+            If Not IsNull(occupation!to_age) Then
+               Astring = "From age -unknown to age " & occupation!to_age
+            End If
+         End If
+         cvwOccupations[pk_view][1] = Astring 
+      End If
+   Next
+End
+
+Public Sub Reset_Fonts()
+   '-----------------------------------------------------------------------------
+   'PURPOSE     :If application.fonts has been changed, then the labels could
+   '            no longer be wide enough so the display would look funny
+   '           
+   'HOW IT WORKS:loop through all the labels on the form and make sure they
+   '             are correct size.LblMeasure is a hidden control.
+   'NB:         :Resize those labels in the gui with autoresize = false
+   '             I have set ones I don't want to be resized manually by this
+   '             routine too auto-resize = True - ie they will do it themselves
+   '-----------------------------------------------------------------------------
+   Dim hCtrl As Control
+   Dim ABox As HBox
+   Dim lbl As Label
+   
+   For Each Hctrl In VBox_EditArea.Children
+    If hctrl Is hbox Then
+       Abox = hctrl
+       For Each hctrl In Abox.Children
+           If hctrl Is label Then
+             lbl = hctrl
+              If lbl.AutoResize = False Then
+                lbl.width = lblmeasure.Width 
+             End If   
+             Break
+          End If
+       Next
+    End If
+   Next
+End
+
+Public Sub cvwOccupations_Click()
+     '------------------------------------------------------
+   'User has clicked on the list of familiy members
+   'Clear editing area and display members details
+   'and load the conditions list with their diseases
+   'move to the first condition and display that condition
+   'in the editing area
+   '------------------------------------------------------
+   If cvwOccupations.count = 0 Then Return
+   EditArea_Clear()                       'clear the display area
+   Occupational_Details_Display()                   'display occupation details in edit area
+   cvwOccupations.Item.Selected = True  'by setting marquee
+   ExposuresList_Refresh()                'display their exposures in edit area
+   If cvwExposures.count <> 0 Then
+       cvwExposures.MoveFirst()               'and highlight first row of the list
+       cvwExposures.Item.Selected = True      'by setting marquee
+       Exposure_Display()
+   Else
+      currentexposure = New collection 
+   End If
+   bEditing = True                        'implicit editing
+End
+
+Public Sub Occupational_Details_Display()
+  '-------------------------------------------------------------------------------------
+  'Displays the currentoccupation in the editing area
+  'Note: view_key_occupation = key to the currentconsult!occupational_history collection
+  '    : currentoccupation!fk_occupation = key to common.lu_occupations table eg. Teacher
+  '    : currentoccupation.fk_occupations = key to clin_history.occupations table
+  '      which is info about the patients current occupation eg age from-to, notes etc
+  '-------------------------------------------------------------------------------------
+  'bEditing = True
+  bExit = True
+  cvwOccupations.MoveCurrent                          'move internal cursor to match what user sees
+  pk_view = cvwOccupations.Item.key       '= pk_link_occupational_exposure for no reason other than uniqueness
+  currentoccupation = New collection
+  fk_occupation = occupational_history[pk_view]!fk_occupation        'key to lu_occupations
+  fk_occupational_history = occupational_history[pk_view]!fk_occupational_history      'key to the data table clin_history.occupations
+  fk_progressnote = -1
+  If Not IsNull(occupational_history[pk_view]!fk_progressnote) Then
+        If Format(Now, "dd/mm/yyyy") = Format(occupational_history[pk_view]!consult_date, "dd/mm/yyyy") Then 
+            fk_progressnote = occupational_history[pk_view]!fk_progressnote
+        End If
+   End If
+  currentoccupation!fk_consult = occupational_history[pk_view]!fk_consult  
+  txtOccupation.text = occupational_history[pk_view]!occupation
+  txtFromAge.text = occupational_history[pk_view]!from_age
+  txtToAge.text = occupational_history[pk_view]!to_age
+  txtNotes.text = occupational_history[pk_view]!notes_occupation
+ 
+  chkCurrent.value = occupational_history[pk_view]!current
+  chkRetired.value = occupational_history[pk_view]!retired
+  bExit = False   
+End
+
+Public Sub ExposuresList_Refresh()
+   '-------------------------------------------------------
+   'User has clicked on a row of cvwOccupationalhistory, so
+   'next refresh the exposures for that occupation
+   '-------------------------------------------------------  
+   Dim exposure As Collection
+   Dim view_row As collection 
+   Dim x As Integer
+   currentExposures = New collection 
+   '------------------------------------------------------
+   'For each of the patients occupational histories
+   'if this occupation = the one loaded into the edit area
+   'add the exposures to the exposures list
+   'NB: if a new itme is later added to this list, then
+   'cannot use a numerical key as any number could be
+   'the same as pk_link_occupation_exposure, so when we
+   'later do this I will use the actual exposure itself
+   'as the key.
+   '-------------------------------------------------------
+   cvwExposures.Clear()
+   For Each view_row In occupational_history
+      If view_row!fk_occupation = fk_occupation And view_row!exposure_deleted = False Then
+         view_key_exposure = view_row!pk_view
+         cvwExposures.Add(view_key_exposure, 0)
+         cvwExposures[view_key_exposure][0] = view_row!exposure
+         cvwExposures[view_key_exposure][1] = Str(view_row!exposure_duration) & view_row!abbrev_text 'e.g 10Y
+         '-------------------------------------------------------------------------------
+         'Now add the individual exposure to the exposures collection for this occupation
+         '-------------------------------------------------------------------------------
+         exposure = New Collection
+         exposure!fk_occupations_exposures = view_row!fk_occupations_exposures        'key to occupations exposures table
+         exposure!fk_exposure = view_row!fk_exposure
+         exposure!exposure = view_row!exposure
+         exposure!exposure_duration = view_row!exposure_duration
+         exposure!exposure_duration_units = view_row!exposure_duration_units
+         exposure!notes_exposure = view_row!notes_exposure
+         currentExposures.Add(Exposure, view_key_exposure) 'the key linking back to the view row
+      Endif
+    Next
+End
+Public Sub Exposure_Display()
+   '--------------------------------------------------------------------------
+   'Displays the exposure in the editing area from the current highlighted row
+   'Note Setting the text triggers editarea_change which sets
+   'the currentExposure collection values
+   '--------------------------------------------------------------------------
+   Dim sString As String
+   bEditing = True
+   EditArea_Exposure_Clear()
+   cvwExposures.MoveCurrent
+   view_key_exposure = cvwExposures.Item.Key
+   bExit = True
+   currentexposure = New Collection
+   currentexposure!exposure = occupational_history[view_key_exposure]!exposure
+   currentexposure!exposure_duration = occupational_history[view_key_exposure]!exposure_duration
+   currentexposure!exposure_duration_units = occupational_history[view_key_exposure]!exposure_duration_units
+   currentExposure!fk_exposure = occupational_history[view_key_exposure]!fk_exposure
+   fk_exposure = currentExposure!fk_exposure
+   currentExposure!fk_occupations_exposures = occupational_history[view_key_exposure]!fk_occupations_exposures
+   sString = occupational_history[view_key_exposure]!exposure_duration
+   If sString <> "" Then
+      If occupational_history[view_key_exposure]!exposure_duration_units = const.Units_month Then
+         sString &= "M"
+      Else
+         sString &= "Y"
+      End If
+   End If
+   txtduration.text = sString 
+   txtNotesExposure.text = occupational_history[view_key_exposure]!notes_exposure
+   txtExposure.text = occupational_history[view_key_exposure]!exposure
+   bExit = False  
+End
+
+
+
+Public Sub EditAreaButtons_KeyPress()
+   '---------------------------------
+   'Enter key triggers button actions
+   '---------------------------------
+   If key.code <> key.return Then Return 
+   EditAreaButtons_Click()
+End
+
+Public Sub mnuExposures_Click()
+
+   Select Case Last.tag
+   Case "edit"
+      'a noop currently implicit editing 
+   Case "delete"
+      exposure_delete()
+   Case "help"
+   Print "help"
+   End Select
+
+
+End
+
+Public Sub mnuOccupations_Click()
+  
+   Select Case Last.tag
+   Case "edit"
+      Print "edit"
+   Case "delete"
+      Print "delete"
+   Case "help"
+   Print "help"
+   End Select
+  
+End
+Public Sub cvwOccupations_Menu()
+  
+  If cvwOccupations.count Then mnuOccupations.Popup()
+  
+End
+
+Public Sub cvwExposures_Menu()
+   If cvwExposures.count Then mnuExposures.Popup()
+
+End
+
+Public Sub Delete()
+  
+  
+  
+End
+
+Public Sub cvwExposures_Click()
+
+  If Not cvwExposures.count Then Return
+  Exposure_Display()
+End
+
+

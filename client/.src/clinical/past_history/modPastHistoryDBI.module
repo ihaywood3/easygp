@@ -1,0 +1,507 @@
+' Gambas module file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+Private iAuditAction As Integer
+
+Public Function PastHistory_Get(pk_patient As Integer) As collection
+   '--------------------------------------------------------------
+   'gets a list of the patients active/inactive past history items
+   '--------------------------------------------------------------
+   Dim sql As String
+   sql = "select * from clin_history.vwHealthIssues WHERE fk_patient = "
+   sql &= pk_patient 
+   Return modDBConnect.exec_query_collection(sql)
+End
+
+Public Function CarePlanComponent_Get_pk(cpc As String) As Integer
+  Dim $Result As Result
+  Dim careplancomponent As New Collection 
+  $Result = modDBConnect.exec_query("Select * from clin_history.lu_careplan_components where component ILIKE $$" & cpc & "$$")
+  If $Result.count Then Return $Result!pk
+  '---------------------
+  'Dosn't exist > insert
+  '---------------------
+  careplancomponent!component = cpc
+  Return modDBConnect.insert("clin_history.lu_careplan_components", careplancomponent)
+End
+
+Public Sub Save_CarePlanComponents(old_data As collection, careplancomponents_due As collection, fk_pasthistory As Integer)
+   '--------------------------------------------------
+   'Saves the care plan components which will fall due
+   'this could be an entirely empty collection
+   '--------------------------------------------------
+   Dim cpc_due As collection 
+   Dim careplancomponent As Collection
+   
+   For Each cpc_due In careplancomponents_due
+      If cpc_due.Exist("component") Then 
+            '----------------------------------------------------------------------------------------
+            'First check that the component name exists. As use could have deleted a name in the gui
+            'but then re-typed it in the same or different, can't always be sure so always look for
+            'term and if not insert it
+            '---------------------------------------------------------------------------------------
+            cpc_due!fk_component = CarePlanComponent_Get_pk(cpc_due!component)
+            ' If IsNull(cpc_due!fk_component) Then
+            '        careplancomponent = New Collection
+            '        careplancomponent!component = cpc_due!component
+            '        cpc_due!fk_component = modDBConnect.insert("clin_history.lu_careplan_components", careplancomponent)
+            ' End If  
+            cpc_due.Remove("component")
+            If IsNull(cpc_due!pk_careplan_components_due) Then
+               '------------------------------------------------------------------------------
+               'If the component does not exist in clin_history.lu_careplan_components, add it
+               '------------------------------------------------------------------------------
+               cpc_due!fk_pasthistory = fk_pasthistory
+               cpc_due!fk_care_plan_components_due = modDBConnect.insert("clin_history.care_plan_components_due", cpc_due)
+               
+            Else
+               '-----------------------------
+               'Else is an existing component
+               '-----------------------------
+               modDBConnect.update("clin_history.care_plan_components_due", old_data[cpc_due!pk_careplan_components_due], cpc_due, "pk_careplan_components_due")
+            End If   
+      End If
+   Next  
+ End
+Public Function CarePlan_Component_Names_Get(name As String) As Collection
+  
+  Return modDBConnect.exec_query_collection("Select * from clin_history.lu_careplan_components where component ILIKE $$%" & name & "%$$ ORDER BY component")
+  
+  
+End
+
+Public Function Get_CarePlan_Components_Due(fk_pasthistory As Integer) As Collection
+  
+  Return modDBConnect.exec_query_collection("Select * from clin_history.vwCarePlanComponentsDue where fk_pasthistory =" & fk_pasthistory)
+  
+End
+
+Public Function Save_TeamCareMembers(old_data As collection, TeamCareMembers As collection, pk_pasthistory As Integer)
+   '----------------------------------
+   'Saves the team care members (keys) 
+   '----------------------------------
+   Dim tcm As collection 
+   For Each tcm In TeamCareMembers
+      '-------------------------------
+      'Save or edit team care members
+      '-------------------------------
+     If IsNull(tcm!pk) Then
+         tcm.Remove("summary")
+         Try tcm.Remove("wholename")
+         tcm!fk_pasthistory = pk_pasthistory
+         modDBConnect.insert("clin_history.team_care_members", tcm)
+     Else
+         '--------------------------------------
+         'Update existing team care arrangements
+         '--------------------------------------
+         Print tcm
+         tcm.Remove("wholename")
+         tcm.Remove("summary")
+         modDBConnect.update("clin_history.team_care_members", old_data[tcm!pk], tcm, "pk")
+     End If 
+   Next
+  
+  
+End
+Public Function TeamCareMembers_UnDelete(pk As Integer)
+  
+  modDBConnect.exec_query("UPDATE clin_history.team_care_members SET deleted = False  WHERE pk = " & pk)
+  
+End
+
+Public Function TeamCareMembers_Delete(pk As Integer)
+  
+  modDBConnect.exec_query("UPDATE clin_history.team_care_members SET deleted = True  WHERE pk = " & pk)
+
+  
+End
+
+Public Function pasthistory_MakeAuditText(pasthistory As collection) As String
+   Dim sMsg As String
+   Dim ssubstring As String
+   sMsg = "<B>" & pasthistory!description & "</B>"
+   If pasthistory!fk_laterality Then
+    sMsg &= " [" & const.LateralityText[pasthistory!fk_laterality] & "]"
+   End If   
+   sMsg &= " This is "
+    If pasthistory!major Then
+      smsg &= "a major " 
+   Else If pasthistory!active Then
+      sMsg &= "a significant "
+   Else
+      sMsg &= "an inactive "
+   End If
+   sMsg &= "problem" 
+   sMsg &= " - onset at age " & pasthistory!age_onset & const.UnitsText[pasthistory!age_onset_units] & "s. "
+   If Not IsNull(pasthistory!condition_summary) Then
+         sMsg &= pasthistory!condition_summary & ". " 
+   End If
+   If Not IsNull(pasthistory!management_summary) Then 
+      sMsg &= "The management plan is " & pasthistory!management_summary & ". "
+   End If
+   If Not IsNull(pasthistory!aim_of_plan) Then
+      smsg &= "The aim of looking after this condition is " & pasthistory!aim_of_plan
+   End If
+   
+   Return smsg
+  
+  
+End
+Public Sub Link_To_ProgressNote(pk_pasthistory As Integer, fk_progressnote As Integer)
+   'a patch to link a past history item to a progress note
+   Dim $Result As Result
+   Dim sql As String 
+   sql = "Update clin_history.past_history set fk_progressnote = " & fk_progressnote & " WHERE pk =" & pk_pasthistory
+   $Result = modDBConnect.exec_query(sql)
+  
+  
+End
+
+Public Function Save(currentconsult As cconsult, old_pk As Integer, pasthistory As collection) As Integer
+   '------------------------------------------------------------------------------------------------------
+   'Saves the current past history collection from the editing area
+   'If reading this and wondering why unlike so ModFamilyHistory  there is no view_key:
+   'In Past_history, no view_key is needed explicitly as there is  only ever 1 row for a past history item
+   '
+   'NOTE RE AUDITING :by definition a new item will always end up in the audit table, however an old
+   '                 item may not have been changed.
+   '------------------------------------------------------------------------------------------------------
+   Dim audit As New collection
+   audit!data_summary = PastHistory_MakeAuditText(pasthistory)
+   If old_pk < 0 Then 
+      pasthistory!fk_consult = currentconsult.GetPK()
+      old_pk = modDBConnect.insert("clin_history.past_history", pasthistory)
+      audit!fk_action = const.cAuditAction_Insert
+      audit!reason = "insert"
+   Else
+     '-------------------------------------------------------------------------------------------------------------
+     'Existing record, update, if false flag returned - ie no data modified - then no audit so data_summary removed
+     '-------------------------------------------------------------------------------------------------------------
+     If modDBConnect.update("clin_history.past_history", currentconsult!past_history[old_pk], pasthistory, "pk_pasthistory") Then 
+        If pasthistory!deleted = True Then
+           audit!fk_action = const.cAuditAction_Delete
+           audit!reason = "delete"
+        Else   
+            audit!fk_action = const.cAuditAction_Change
+            audit!reason = "edit"
+        End If
+     Else
+        audit.Remove("data_summary")
+     End If
+   End If
+   '----------------------------
+   'Finally save the audit trail
+   '----------------------------
+   If audit.count Then 
+      audit!fk_row = old_pk   'is recall!fk_recall
+      audit!fk_consult = currentconsult.GetPK()
+      audit!fk_section = const.cSection_PastHistory
+      modConsultDBI.Make_Audit(audit, "clin_history", "past_history")
+   End If
+   Return old_pk
+End
+
+
+' Public Function PastHistory_Condition_Summary(condition As cPastHistory, bNew As Boolean) As String
+'    '--------------------------------------------------------------------------
+'    ' This could be wrong/temporary, just experimenting FIXME PUT IN LATERALITY
+'    '
+'    ' Creates a string looking something like this eg for Hypertension could be:
+'    '   Hypertension (new major problem was registered)
+'    '   "<B>Historical Summary</B><BR>First noted at age 50 yrs"
+'    '   "BP levels up to 190/100 on multiple occasions, started on ACE"
+'    '   "levels well controlled <BR>
+'    '   "<B>Management Plan</B><BR>6 monthly BP checks, medication as charted<BR>"
+'    'FIX ME CHANGE NAME OF PN AS NO LONGER MEANS PROGRESS NOTE
+'    '------------------------------------------------------------------------------
+'      Dim pn As String
+'      pn = "<B>" & condition.health_issue & "</B> "
+'      If condition.fk_laterality Then
+'               Select Case condition.fk_laterality
+'               Case const.LateralityBoth
+'                      pn &= " (bilateral) "
+'               Case const.LateralityLeft
+'                     pn &= " (Left) "
+'               Case const.LateralityRight
+'                  pn &= " (right) "  
+'               End Select
+'      End If
+'    '  pn &= "<small><small>"
+'      ' If Not InStr(Str(condition.pk_pasthistory), ".") Then
+'      '      pn &= "[DETAILS CHANGED]"
+'      ' Else
+'      '    pn &= "[NEW PROBLEM]"
+'      ' End If
+'      If bNew Then
+'          pn &= "[NEW PROBLEM]"
+'      Else
+'          pn &= "[DETAILS CHANGED]"
+'      End If
+'  
+'      If condition.major = True Then
+'          pn &= "[MAJOR]"
+'      Else
+'         If condition.active Then
+'            pn &= "[SIGNIFICANT]"
+'         Else
+'             pn &= "[INACTIVE]"
+'         End If
+'      End If
+'       If condition.confidential Then
+'         pn &= " [CONFIDENTIAL]"
+'      End If
+'        If condition.cause_of_death Then
+'        pn &= "[CAUSED DEATH]"
+'      End If
+'     ' pn &= "</small></small><BR>"
+'     pn &= "<BR>"
+'      pn &= "- " 
+'      If Not IsNull(condition.age_onset) Then
+'         pn &= "first noted at " & condition.age_onset & " yrs "  'FIXME COULD BE MONTHS"
+'      Endif
+'      pn &= "in " & condition.year_onset 
+'      pn &= "<BR>"
+'    '  pn &= "<B><small><small> Historical Summary</B><BR>"
+'      pn &= "<B>Historical Summary</B><BR>"
+'      pn &= condition.historical_summary & "<BR>"
+'      pn &= "<B>Management Plan</B><BR>"
+'     ' pn &= condition.management_summary & "</small></small><BR>"
+'      pn &= condition.management_summary & "<BR>"
+'      Return pn
+'   
+' End
+
+Public Sub Condition_Get(txtCondition As TextBox, listview1 As ListView, lblNewCondition As Label)
+      '-------------------------------------------------------------------
+      'Condition unlike say countries does not default to auto-completion 
+      'with a recordset of 1 because must allow entry of new terms
+      'unless the user hits enter whilst listview1 has contents
+      'in which case will search the list for match and use that
+      'FIX ME - as this routine is used all over the place put it in a global
+      'mod and just pass it the parameters
+      '-------------------------------------------------------------------
+      Dim $Result As Result
+      ' Print "here and now"
+      Print txtCondition.Text
+      If Trim(txtCondition.text) = "" Then
+         listview1.Visible = False
+         lblNewCondition.Visible = False
+         Return
+      End If
+      $Result = modcodingDBI.Condition_Get(Trim(txtcondition.text))
+     If $Result.count Then 
+        listview1.Clear
+        lblNewCondition.Visible = False
+         For Each $Result 
+                    'Print $Result!description, $Result!pk
+                   
+                    listview1.Add(Str$($Result!pk), $Result!description)
+                    $Result.MoveNext
+          Next 
+           listview1.tag = txtCondition
+           listview1.Raise
+           listview1.Visible = True
+           ' If lblConditionInvalid.Visible = True Then
+           '    listview1.width = txtCondition.width + lblConditionInvalid.width 
+           ' Else
+           '    listview1.width = txtcondition.Width
+           ' End If
+           
+      Else 
+          'empty recordset
+         listview1.Visible = False
+         lblNewCondition.visible = True
+      End If  
+End
+
+Public Sub HealthIssue_Delete(currentconsult As cconsult, pk_pasthistory As Integer, currentPastHistory As collection) 
+  '--------------------------------------------------------------------
+   'PURPOSE  :   Deletes a health issue
+   '             Keeps an audit trail
+   'CALLED BY:   Various popup menus in FClinical and FPasthistory
+   '             First check there are no associated progress notes
+   '             if so, cannot delete, but change the html to make the
+   '             text strike through, and add to the audit table
+   '------------------------------------------------------------------
+   Dim bNotesExist As Boolean
+   Dim audit As New collection
+   Dim sAuditAnnotation As String 'audit annotation to insert into progress notes
+   Dim sToday As String 'todays date as a string
+   Dim progressnote As Collection
+   Dim bDeleted As Boolean 
+   
+   sToday = Format(Now, "dd/mm/yyyy")
+   '-------------------------------------------------------------------
+   'First - popup the audit form and get reason for the deletion
+   'health issue could be deleted either during consulation 
+   'as we are allowed to change out mind within the consultation and
+   'don't need to give a reason for that
+   'or at a later date
+   '--------------------------------------------------------------------
+   audit!fk_row = currentPastHistory!pk_pasthistory
+   audit!fk_consult = currentconsult.GetPK()
+   audit!fk_section = const.cSection_PastHistory
+   audit!data_summary = currentPastHistory!description  
+   iAuditAction = const.cAuditAction_MarkDeleted
+   If currentPastHistory!fk_consult <> currentconsult.GetPK() Then
+      FAudit.Init(currentPastHistory, Const.cSection_PastHistory, iAuditAction, currentconsult)
+      If Not FAudit.ShowModal() Then Return 
+      audit!reason = "Delete" & ":<BR>- " & Lower(const.globalstring)
+      audit!reason = Lower(const.globalstring)
+      If iAuditAction = const.cAuditAction_Delete Then bDeleted = True   
+   Else
+       audit!reason = const.sAuditAction[const.cAuditAction_Reversal]
+   End If
+   bDeleted = True
+
+   'Now if progress notes existed then update the database to reflect this
+   For Each progressnote In currentconsult!progress_notes
+      If progressnote!fk_problem = pk_pasthistory And progressnote!fk_section = const.cSection_PastHistory Then 
+       '-------------------------------------------------------------------
+       'Mark each problem and associated progress note with strike through
+       '-------------------------------------------------------------------
+       sAuditAnnotation = "<STRIKE><P><FONT COLOR='#b3b3b3'>" & progressnote!notes & "</STRIKE><p>"
+       sAuditAnnotation &= "<P ALIGN=CENTER><I><B>Audit trail</B> : notes deleted by " & modDBConnect.currentUser!wholename & " on "
+       sAuditAnnotation &= sToday & " the reason given was: " & Lower(const.globalstring) & "</P></I></FONT><p>"
+       progressnote!notes = sAuditAnnotation
+       currentconsult!progress_notes[progressnote!pk_progressnote] = progressnote
+      End If
+   Next 
+
+   modConsultDBI.ProgressNotes_Edit(currentconsult!progress_notes, pk_pasthistory)
+   currentPastHistory!deleted = True
+   pk_pastHistory = modPastHistoryDBI.Save(currentconsult, pk_pasthistory, currentPastHistory) 
+   audit!fk_action = iAuditAction
+   modConsultDBI.Make_Audit(audit, "clin_history", "past_history")
+End
+
+Public Function PastHistory_Delete_old(pk_pasthistory As Integer)
+   '----------------------------------------------------------------------------------------------
+   'Marks as deleted a past history item aka health issue but does not remove it from the database
+   'adds entry to the audit table
+  Dim sql As String
+  Dim $Result As Result
+  $Result = modDBConnect.exec_query("BEGIN") 
+  sql = "UPDATE clin_history.data_past_history SET "
+  sql &= "deleted = TRUE "
+         
+  sql &= "WHERE pk=" & pk_pasthistory 
+  'PRINT sql
+  $Result = modDBConnect.exec_query(sql)
+                 
+   $Result = modDBConnect.exec_query("COMMIT") 
+ 
+End
+
+Public Function TeamCareMembers_Get(fk_pasthistory As Integer) As collection
+  
+ Return modDBConnect.exec_query_collection("Select * from clin_history.vwTeamCareMembers where fk_pasthistory = " & fk_pasthistory)
+ 
+End
+
+
+
+Public Sub Popup_Menu_Process(currentconsult As cconsult, tag As String, PH As collection, pk_pasthistory As Integer)
+    '  pk_pastHistory = modPastHistoryDBI.Save(currentconsult, pk_pasthistory, currentPastHistory) 
+     '      fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_PastHistory, fk_progressnote, "Past History", pk_pasthistory, False)
+    
+  Select Case tag
+      Case "mark major"
+      '  currentconsult!past_history[pk_pasthistory]!major = True
+       ' chkMajor.Value = True
+       ' modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_PastHistory, fk_progressnote, "Past History", pk_pasthistory, False)
+       modDBConnect.BeginTrans
+       PH!major = True
+      modPastHistoryDBI.Save(currentconsult, pk_pasthistory, PH) 
+      
+      ' Case "mark major explain"
+      ' '  
+      ' Case "mark significant"
+      '     chkActive.Value = True
+      '  '  pk_pastHistory = modPastHistoryDBI.Save(currentconsult, pk_pasthistory, currentPastHistory) 
+      '  '  fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_PastHistory, fk_progressnote, "Past History", pk_pasthistory, False)
+      '     
+      '     Save()
+      ' Case "mark significant explain"
+      ' 
+      ' Case "mark inactive"
+      '     chkInactive.Value = True
+      '     Save() 
+      ' Case "mark inactive explain"
+      ' 
+      ' Case "view historical trail"  
+      ' Case "delete"
+      '      HealthIssue_Delete()
+      ' Case "undo delete"
+      ' Case "help"
+      ' Case "exit"
+      ' Case "view all notes"
+      ' Case "decision support"
+  End Select
+   '------------------------------------------------------------------
+   'Process the popup menu options over any health issues/problem list
+   'CALLED BY  FClinical
+   '           FAnteNatal
+   '           FPastHistory etc
+   
+   '------------------------------------------
+   ' Dim iAuditAction As Integer
+   ' Dim bDeleted As Boolean
+   ' Dim bIncludeSummaryInProgressNotes As Boolean = True 
+   ' Dim audit As New collection
+   ' audit!fk_row = ScratchPadItem!pk_scratchpad
+   ' audit!fk_consult = currentconsult.GetPK()
+   ' audit!fk_section = const.cSection_ScratchPad
+   ' audit!data_summary = ScratchPadItem!note   ' & " logged on " & Format(ScratchPadItem!consult_date, "dd/mm/yyyy")
+   ' 
+   ' Select Case tag
+   ' Case "delete"
+   ' 
+   '       '--------------------------------------------------------------------
+   '       'scratch pad could be deleted either during consulation (ie mistake)
+   '       'in which case don't need FAudit to popup and get the reason
+   '       'as we are allowed to change out mind within the consultation.
+   '       'or at a later date
+   '       '--------------------------------------------------------------------
+   '       iAuditAction = const.cAuditAction_MarkDeleted
+   '       If ScratchPadItem!fk_consult <> currentconsult.GetPK() Then
+   '          FAudit.Init(ScratchPadItem, Const.cSection_ScratchPad, iAuditAction, currentconsult)
+   '          If Not FAudit.ShowModal() Then Return 
+   '              audit!reason = Last.tag & ":<BR> - " & Lower(const.globalstring)
+   '          If iAuditAction = const.cAuditAction_Delete Then bDeleted = True   
+   '       Else
+   '           audit!reason = const.sAuditAction[const.cAuditAction_Reversal]
+   '       End If
+   '       bDeleted = True
+   ' Case "complete"
+   '  
+   '    iAuditAction = const.cAuditAction_Completed
+   '    audit!reason = const.sAuditAction[const.cAuditAction_Completed]
+   '  
+   ' Case "complete with explanation"
+   '    iAuditAction = const.cAuditAction_CompletedWithExplanation
+   '    FAudit.Init(ScratchPadItem, Const.cSection_ScratchPad, iAuditAction, currentconsult)
+   '    If Not FAudit.ShowModal() Then Return 
+   '    audit!reason = Last.tag & ":<BR> - " & Lower(const.globalstring)
+   ' End Select
+   ' ScratchPadItem!fk_status = iAuditAction
+   ' audit!fk_action = iAuditAction
+   ' '------------------------------------------------------
+   ' 'Ok, now action the menu item and create an audit trail
+   ' '------------------------------------------------------
+   ' modScratchPadDBI.Mark_DealtWith(ScratchPadItem!pk_scratchpad, iAuditAction, bDeleted) 
+   ' modConsultDBI.Make_Audit(audit, "clin_consult", "scratchpad")
+   ' modDBConnect.CommitTrans()
+End

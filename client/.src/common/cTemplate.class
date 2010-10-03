@@ -1,0 +1,258 @@
+' Gambas class file
+' Copyright (C) 2009 Dr. Ian Haywood
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'----------------------------------------------------------------------
+
+Private data As String
+Private mode As String
+Private tabledata As String
+Private fieldbegin As String
+
+Public Sub _new(data2 As String, Optional mode2 As String = "html")
+  Dim fd As File  
+  
+  If Right$(data2, 5) = ".html" Then
+    ' it's a filename, load the file
+    fd = Open data2 For Read
+    Read #fd, data, Lof(fd)
+    Close #fd
+    mode = "html"
+  Else If Right$(data2, 4) = ".tex" Then
+    fd = Open data2 For Read
+    Read #fd, data, Lof(fd)
+    Close #fd
+    mode = "tex"
+  Else If Len(data2) < 20 Then
+    mode = mode2
+    fd = Open "templates" &/ data2 & "." & mode For Read
+    Read #fd, data, Lof(fd)
+    Close #fd
+  Else
+    data = data2
+    mode = mode2
+  Endif
+  tabledata = ""
+  If mode = "tex" Then
+    fieldbegin = "!"
+  Else
+    fieldbegin = "%"
+  Endif
+  
+End
+
+Private Function Escape(s As String) As String
+  If mode = "tex" Then
+    Return Esc_Tex(s)
+  Else
+    Return Esc_HTML(s)
+  Endif
+End
+
+Private Function Esc_Tex(s As String) As String
+  Dim re As New Regexp
+  
+  s = Replace$(s, "<b>", "{\\bf ", gb.Text)
+  s = Replace$(s, "</b>", "}", gb.Text)
+  s = Replace$(s, "<i>", "\\emph{", gb.Text)
+  s = Replace$(s, "</i>", "}", gb.Text)
+  s = Replace$(s, "<p>", "\n\n", gb.Text)
+  s = Replace$(s, "<p/>", "\n\n", gb.Text)
+  s = Replace$(s, "<br>", "\n\n", gb.Text)
+  s = Replace$(s, "<h1>", "\\section{", gb.Text)
+  s = Replace$(s, "</h1>", "}", gb.Text)
+  s = Replace$(s, "<h2>", "\\subsection{", gb.Text)
+  s = Replace$(s, "</h2>", "}", gb.Text)
+  s = Replace$(s, "&gt;", ">", gb.Text)
+  s = Replace$(s, "&lt;", "<", gb.Text)
+  s = Replace$(s, "&amp;", "&", gb.Text)
+  s = Replace$(s, "&", "\\&", gb.Text)
+  s = Replace$(s, "$", "\\$", gb.Text)
+  s = Replace$(s, "%", "\\%", gb.Text)
+  Return s
+  
+End
+
+Private Function Esc_HTML(s As String) As String
+  
+  ' this is difficult as string may or may not be HTML
+  Dim re As Regexp
+  
+  If Not s Then Return ""
+  re = New Regexp(s, "<[a-zA-Z].*>")
+
+  If re.Offset = -1 Then
+    s = Replace$(s, "&", "&amp;")
+    s = Replace$(s, "<", "&lt;")
+    s = Replace$(s, ">", "&gt;")
+    s = Replace$(s, "\n", "<br />")
+    s = Replace$(s, "\"", "&quot;")
+  Endif
+  Return s 
+End
+
+
+Public Sub Subst_common(consult As CConsult)
+   'IAN I'VE ADDED SOME MORE FOR DIFFERENT STYLE FORMS, E.G ADDRESS WON'T ALWAYS BE ACROSS THE PAGE
+   'The surgery needs a name/branch name eg The Best Practice Redhead Rooms
+   Dim sFax As String = ""
+   Dim sPhone As String = ""
+   Dim comm As Collection
+   Dim sSep As String
+    
+   Me.Subst("name", Escape(consult!patient!title & " " & consult!patient!firstname & " " & consult!patient!surname))
+   Me.Subst("birthdate", Escape(Str$(consult!patient!birthdate)))
+   Me.Subst("sex", Escape(consult!patient!sex))
+   Me.Subst("address", Escape(consult!patient!street & " " & consult!patient!town & " " & " " & consult!patient!postcode))
+   Me.Subst("street", Escape(consult!patient!street))
+   Me.Subst("suburb", Escape(consult!patient!town & " " & consult!patient!postcode))
+   For Each comm In consult!comms
+      Select Case comm!fk_type
+        Case const.CommModalityPhone
+           Me.Subst("patient.phone", Escape(comm!value))
+        Case const.CommModalityMobile
+           Me.Subst("patient.mobile", Escape(comm!value))
+      End Select
+   Next
+   Me.Subst("patient.phone", Escape(""))
+   Me.Subst("patient.mobile", Escape(""))  
+   'Me.Subst("comms_vertical", consult!patient!town & " " & consult!patient!postcode)
+   Me.Subst("medicare", Escape(consult!patient!medicare_number))
+   Me.Subst("practitioner name", Escape(modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename))
+   Me.Subst("provider no", Escape(modDBConnect.currentUser!provider_number))
+   Me.Subst("prescriber no", Escape(modDBConnect.currentUser!prescriber_number))
+   Me.Subst("practitioner address", Escape(modDBConnect.currentUser!street & " " & modDBConnect.currentUser!town & " " & modDBConnect.currentUser!postcode))
+   If mode = "html" Then
+     sSep = " <BR/> "
+   Else If mode = "tex" Then
+     sSep = "\\\\ "
+   Endif
+   Me.Subst("practitioneraddress_vertical", Escape(modDBConnect.currentUser!street) & sSep & Escape(modDBConnect.currentUser!town & " " & modDBConnect.currentUser!postcode))
+   Me.Subst("clinic.name", Escape(modDBConnect.currentUser!organisation)) 
+   Me.Subst("clinic.branch", Escape(modDBConnect.currentUser!branch))
+   Me.Subst("clinic.street", Escape(modDBConnect.currentUser!street))
+   Me.Subst("clinic.suburb", Escape(modDBConnect.currentUser!town & " " & modDBConnect.currentUser!postcode))
+   For Each comm In modDBConnect.currentUser!comms
+     If comm!fk_type = const.CommModalityPhone Then
+       sPhone = comm!value
+     Endif
+     If comm!fk_type = const.CommModalityFax Then
+       sFax = comm!value
+     Endif
+   Next
+   Me.Subst("clinic.phone", Escape(sPhone))
+   Me.Subst("clinic.fax", Escape(sFax))
+End
+
+
+Public Sub Subst(field As String, value As String)
+  
+  data = Replace(data, fieldbegin & field, Escape(value))
+
+End
+
+Public Sub Display(browser As WebView)
+  
+  browser.HTML = data
+    
+End
+
+
+Public Function GetData() As String
+  
+  Return data
+  
+End
+
+Public Sub Row(...)
+  ' insert a row of table data
+  ' each parameter is a row column
+  ' call multiple times, one for each row
+  Dim bSep As Boolean = False
+  Dim i As Variant
+  
+  If mode = "html" Then
+    tabledata &= "<TR><TD>"
+  Endif
+  For Each i In Param
+    If bSep Then
+      If mode = "tex" Then
+        tabledata &= " & "
+      Else
+        tabledata &= "</TD><TD>\n"
+      Endif
+    Else
+      bSep = True
+    Endif
+    tabledata &= Escape(Str$(i))
+  Next
+  If mode = "html" Then
+    tabledata &= "</TD></TR>\n"
+  Else
+    tabledata &= " \\\\\n"
+  Endif
+  
+End
+
+Public Sub Table(name As String)
+  ' after you have called Row(), call this to
+  ' actually do the substitution
+  data = Replace$(data, "%" & name, tabledata)
+  tabledata = ""
+  
+End
+
+Public Function Bold(word As String) As String
+  ' returns a word with tags to make it bold 
+  
+  If mode = "tex" Then
+    Return Subst$("{\\bf &1 }", word)
+  Else
+    Return Subst$("<B>&1</B>", word)
+  Endif
+  
+End
+
+
+Public Function Checkbox(item As String, Optional checked As Boolean = True) As String
+  
+  Dim s As String
+  
+  If mode = "tex" Then
+    If checked Then
+      s = "\\framebox(3,3){$\\bullet$}"
+    Else
+      s = "\\framebox(3,3){}"
+    Endif
+  Else
+    If checked Then
+      s = "checkbox_checked.png"
+    Else
+      s = "checkbox_notchecked.png " ' FIXME: no such file"
+    Endif
+    s = Application.Path &/ "icons/12" &/ s
+    s = Subst("<img src=\"&1\" alt=\"checkbox\" ALIGN=LEFT WIDTH=15 HEIGHT=15 BORDER=0 />", s)
+  Endif
+  data = Replace(data, fieldbegin & item, s)
+End
+
+Public Function MakeImage(imagename As String) As String
+  
+  If mode = "tex" Then
+    Return Subst$("\\includegraphics{&1}", imagename)
+  Else
+    Return "<img align=RIGHT border=0 height=174 name=graphics src=" & imagename & " width=130>"
+  Endif
+End
+

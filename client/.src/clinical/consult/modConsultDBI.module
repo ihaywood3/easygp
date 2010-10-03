@@ -1,0 +1,534 @@
+' Gambas module file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Public $Result As Result
+Public $Trans As Result
+Public $dataset As Result
+Public sSubroutineName As String
+
+
+
+
+Public Function ProgressNote_Save(currentconsult As Cconsult, notes As String, fk_section As Integer, pk_progressnote As Integer, problem As String, pk_problem As Integer, Optional parse_html As Boolean = True) As Integer
+   '----------------------------------------------------------------
+   'Save progress notes as second attempt with Ians code
+   'using the new smart method of comparing new/old 
+   'Sample contents - but we don't need the html headings or endings
+   '  <html><head><meta name="qrichtext" content="1" /></head><body
+   '   style = "font-size:8pt;font-family:Airial">
+   '  <p>testing</p>
+   '  </body></html>
+   'so remove those, need smarter way
+   'Get a consult.pk if it dosn't exist whilst building the query
+   'TODO: re-implement parsing for measurements.
+   '      remove the \n's somehow generated in removing the headers
+   'default to parsing html to strip out unwanted stuff
+   '---------------------------------------------------------------
+   Dim newnote As New Collection
+   Dim re As Regexp
+   '--------------------------------------------------------------------
+   'First remove unwanted html, f'd if I know how this works but it does
+   'FIXME: but like my method one ends up with a \n before and after 
+   '       which I don't want!
+   'Note it is possible to get to here and Notes = "", because this record
+   'could be being changed - notes could have been saved and now being set
+   'back to an empty string FIXME: ?should I just delete them then?
+   If Notes <> "" And parse_html = True Then 
+    '  re = New Regexp(Notes, "<body [^>]+>")
+      re = New Regexp(Notes, "<p [^>]+>")
+      notes = "<p>" & Trim(Right$(Notes, Len(Notes) - re.Offset - Len(re.Text)))
+      notes = Replace(notes, "</body></html>", "<BR>")
+   End If  
+   '--------------------------------------------------
+   'If notes have images in there, this routine will
+   'save them to postres and put a placer in the html
+   'which is the key to clin_consult.images
+   '-------------------------------------------------
+   newnote!notes = Notes_Parse_For_Images(notes) 
+   '--------------------------------------------------
+   'If measurements exist parse them out
+   '-------------------------------------------------
+   Print notes
+    modMeasurementsDBI.ProgressNote_Parse_For_Measurement(currentconsult, notes)
+  
+   If pk_progressnote < 0 Then
+      '-------------------------------------------
+      'If an entirely new note,insert a new record
+      '-------------------------------------------
+       newnote!fk_consult = currentconsult.GetPK()
+       newnote!fk_section = fk_section 
+       newnote!problem = problem 
+       newnote!fk_problem = pk_problem
+       newnote!fk_audit_action = const.cAuditAction_Insert
+      
+       newnote!pk_progressnote = modDBConnect.insert("clin_consult.progressnotes", newnote) ' saves the row and loads back the pk
+       newnote!consult_date = Now() '?given that this has time is the data added in consult the same?
+       currentconsult!progress_notes.Add(newnote, newnote!pk_progressnote)
+       pk_progressnote = newnote!pk_progressnote
+    Else
+       '-----------------------------------------------------------------------------------
+       'Not a new note, edit the record
+       'Unfortunately in gambas if say something in a collection  ="" its the same as null
+       '-----------------------------------------------------------------------------------
+       If notes = "" Then
+          newnote.Add("", "notes")
+       End If
+       newnote!pk_progressnote = pk_progressnote
+       newnote!fk_audit_action = const.cAuditAction_Change
+       modDBConnect.update("clin_consult.progressnotes", currentconsult!progress_notes[pk_progressnote], newnote, "pk_progressnote") ' save to backend and update the collection in RAM too
+    End If
+   ' modDBConnect.CommitTrans()
+    Return pk_progressnote
+End
+
+Public Function Get_Section_Name(section As Integer) As String
+  Dim section_name As String
+  
+  Select Case section
+    Case const.cSection_AnnualCheckup
+      section_name = "Annual Checkup"
+    Case const.cSection_FamilyHistory
+      section_name = "Family History"
+    Case const.cSection_GeneralNotes
+      section_name = "General Notes"
+    Case const.cSection_Inbox
+      section_name = "Inbox"
+    Case const.cSection_Measurement
+      section_name = "Measurement"
+    Case const.cSection_MentalHealth
+      section_name = "Mental Health"
+    Case const.cSection_OccupationalHistory
+      section_name = "Occupational History"
+    Case const.cSection_PastHistory
+      section_name = "Past History"
+    Case const.cSection_Prescriptions
+      section_name = "Prescriptions"
+    Case const.cSection_Recalls
+      section_name = "Recalls"
+    Case const.cSection_ReferralLetter
+      section_name = "Referral Letter"
+    Case const.cSection_Referrals
+      section_name = "Referrals"
+    Case const.cSection_Requests
+      section_name = "Requests"
+    Case const.cSection_ScratchPad
+      section_name = "Scratchpad"
+    Case const.cSection_SocialHistory
+      section_name = "Social History"
+    Case const.cSection_Travel
+      section_name = "Travel"
+    Case const.cSection_Vaccination
+      section_name = "Vaccination"
+    Case const.cSection_Workcover
+      section_name = "WorkCover"
+  End Select
+  Return section_name
+  
+End
+
+
+
+Public Sub Make_Audit(audit As Collection, Optional schema As String = "", tablename As String = "", Optional fk_schema As Integer = 0, fk_table As Integer = 0)
+  Dim sAuditText As String
+  Dim newrecord As New Collection
+  Dim section_name As String
+  Dim staff As Collection
+  Dim reason As New Collection 
+  Dim sql As String
+ 
+  Dim fk_reason As Integer
+  Dim $Result As Result
+  '   clin_audit.audit:
+  '   tablename text,
+  '   fk_table integer,
+  '   fk_row integer,
+  '   fk_consult integer,
+  '   fk_lu_reason integer,
+  '   fk_action integer,
+  '   fk_section integer,
+  '   data_summary text,
+  '
+  ' Get the fk_reason the the audit reason
+   '---------------------------------------
+  sql = "Select * from audit.lu_reasons where reason ILIKE $$" & Trim(audit!reason) & "$$"
+ 
+  $Result = modDBConnect.exec_query(sql)
+  If Not $Result.count Then
+      reason = New Collection 
+      reason!reason = audit!reason
+      audit!fk_lu_reason = modDBConnect.insert("audit.lu_reasons", reason)
+  Else
+    audit!fk_lu_reason = $Result!pk
+  End If
+  audit.Remove("reason")
+  'get the schema and table keys
+  If fk_schema = 0 Then
+      sql = "Select pk from audit.lu_schemas where lower(schema) =$$" & schema & "$$"
+      audit!fk_schema = modDBConnect.exec_query(sql)!pk
+  Else 
+      audit!fk_schema = fk_schema
+  End If
+  If fk_table = 0 Then 
+       sql = "Select pk from audit.lu_tables where fk_schema =" & audit!fk_schema
+       sql &= " AND  lower(tablename)= $$" & tablename & "$$"
+       audit!fk_table = modDBConnect.exec_query(sql)!pk
+  Else
+      audit!fk_table = fk_table
+  End If 
+   
+  modDBConnect.insert("audit.audit", audit)
+  
+  
+End
+
+Public Sub Make_Audit_IAN(currentconsult As CConsult, section As Integer, bIncludeBriefSummary As Boolean, new_value As String, Optional old_value As String = "", Optional iAction As Integer = const.cAuditAction_Change, Optional reason As String = "")
+  Dim sAuditText As String
+  Dim newrecord As New Collection
+  Dim section_name As String
+  Dim staff As Collection
+  
+  staff = modDBConnect.currentUser
+  sAuditText = modHTML.Audit_template_progress_note
+  newrecord!fk_problem = 0 'ensures this ends up in general notes
+  If iAction = const.cAuditAction_Change Then
+    If old_value = "" Then
+      iAction = const.cAuditActionInsert
+      If reason = "" Then
+        reason = "new record created"
+      End If
+    Else If new_value = "" Then
+      iAction = const.cAuditAction_Delete
+      If reason = "" Then
+        reason = "record deleted"
+      End If
+    End If
+    If reason = "" Then
+      reason = "record changed"
+    End If
+  End If
+  newrecord!fk_section = const.cSection_GeneralNotes 'at moment put display section as general
+  newrecord!fk_audit_action = iAction
+  newrecord!display = False 
+  newrecord!fk_consult = currentconsult.GetPK()
+  sAuditText = Replace$(sAuditText, "%section%", Get_Section_Name(section))
+  sAuditText = Replace$(sAuditText, "%staff%", staff!title & " " & staff!wholename)
+  sAuditText = Replace$(sAuditText, "%old%", old_value)
+  sAuditText = Replace$(sAuditText, "%new%", new_value)
+  sAuditText = Replace$(sAuditText, "%action%", const.sAuditAction[iaction])
+  sAuditText = Replace$(sAuditText, "%reason%", reason)
+  newrecord!notes = sAuditText  
+  modDBConnect.insert("clin_consult.progressnotes", newrecord) ' saves the row and loads back the pk
+  '------------------------------------------------------------------------------------
+  'We may want to keep a record of what we did so we can see in subsequent consults but
+  'not want the detailed audit. IAN LEAVE THIS IN UNTIL I TRIAL IT PLEASE.
+  '------------------------------------------------------------------------------------
+  Print newrecord 
+  If bIncludeBriefSummary Then
+     newrecord!notes = "<B>" & Get_Section_Name(section) & "</B>: " & old_value & " " & const.sAuditAction[iaction] & " - '" & reason & "'"
+     newrecord!display = True
+     modDBConnect.insert("clin_consult.progressnotes", newrecord) 
+  End If
+End
+
+
+Public Function Consult_Create(pk_patient As Integer, fk_type As Integer, summary As String) As Collection
+   '------------------------------------------------------------------------
+   'Currently this only creates an entry in clin_consult.consult to register
+   'that a consult has been created. Later FIXME So that at routine of this
+   'name saves the entire consult/data etc.
+   'DATE STUFF IS WRONG and must be fixed.
+   '--------------------------------------------------------------
+   'creates entry in clin_consult.consult table, returns the key
+   'note that there is no 'summary' created/enforced as yet
+   'though I think there should be - so FIXME
+   '
+   'pk_patient = key to key to clerical.data_patients table
+   'fk_staff = key to admin.stat table
+   'fk_type = key to consult.lu_consult_type table eg 'in surgery"
+   'summary could be 'Abdominal pain for investigation' for e.g
+   'FIXME - IF WE ARE GOING TO HAVE A 'CONSULT SUMMARY' THEN
+   'THIS NEEDS TO EDIT THE FIELD AS WELL.
+   '--------------------------------------------------------------
+   Dim sql As String
+   
+   sql = "set datestyle = 'iso,dmy'"
+   modDBConnect.exec_query(sql) 
+   sql = "insert into clin_consult.consult "
+      "(consult_date, fk_patient, fk_staff, fk_type, summary) "
+      "VALUES (now(),"
+   sql &= pk_patient & ","
+   sql &= modDBConnect.currentUser!fk_staff & ","
+   sql &= fk_type & ","
+   sql &= "$$" & summary & "$$) returning consult_date, pk"
+   Return modDBConnect.exec_query_first(sql)
+  
+  
+End
+
+
+
+Public Function ProgressNotes_Save(consult As Cconsult)
+   'Saves just the progress notes on the tabs
+   Dim x As Integer
+   Dim sql As String
+   
+   For x = 0 To consult.ProgressNotes.count - 1
+      ''' Print "These were the progress notes:for ", x
+      ''' Print "------------------------------"
+      'Print consult.ProgressNotes[x].notes
+      ''' Print "------------------------------"
+      If consult.ProgressNotes[x].pk_progressnote Then 
+      Else 
+         'is a new progress note
+         sql = "INSERT into clin_consult.progressnotes "
+            "(fk_consult, notes, problem) "
+            "VALUES ("
+         sql &= consult.pk_consult & ",$$" & consult.ProgressNotes[x].notes & "$$,$$"
+         sql &= consult.ProgressNotes[x].problem & "$$)"
+         'PRINT sql
+         $Result = modDBConnect.exec_query(sql)
+     End If
+     Next
+End
+
+
+Public Function ProgressNotes_Edit(progressnotes As Collection, pk_problem As Integer)
+  'used in auditing.
+  'user has elected for some reason to modify the progress note, eg could be an audit
+  'action like deleting say a past history item, hence strike through all associated notes
+  'fix me to allow actual editing whilst retaining the original in place
+  'along with annotations as to date/who etc.
+  'currently set to modify just for a particular problem
+  'just first pass attempt. FIXME
+  Dim progressnote As Collection 
+  Dim sql As String
+  
+'  $Result = modDBConnect.exec_query("BEGIN") 
+  For Each progressnote In progressnotes
+      If progressnote!fk_problem = pk_problem Then 
+          sql = "UPDATE clin_consult.progressnotes SET notes = $$" & progressnote!notes & "$$ "
+          sql &= "WHERE pk = " & progressnote!pk_progressnote
+          Print sql
+          modDBConnect.exec_query(sql)
+       End If
+  Next 
+
+End
+
+Public Function Image_Save(ImagePath As String, Optional fk_image As Integer = 0) As Integer
+  Dim data As New Collection
+  
+  data!image = "BLOB:" & ImagePath
+  If fk_image = 0 Then
+    Return modDBConnect.insert("all_images", data)
+  Else
+    data!pk = fk_image
+    modDBConnect.update("all_images", Null, data, "pk")
+    Return fk_image
+  Endif
+
+End
+
+Public Function Notes_Parse_For_Images(Notes As String) As String
+  '--------------------------------------------------------------
+  'Expects string representing the html of clinical notes
+  'which could contain images, line drawings/photos eg of a skin
+  'lesion, and parses out the temporary file references to these
+  'e.g src=/tmp/gambas.1000/3562/2.tmp.png
+  'and substitutes the clin_consult.images.pk value after src=
+  'when the clinical notes are re-loaded, then another temporary
+  'file will be created and its path re-inserted into the notes
+  '<img align=LEFT border=0 height=208 name=graphics src=/tmp/gambas.1000/6301/5.tmp.png width=181 >
+  '------------------------------------------------------------
+  Dim afile As String
+  Dim someFiles As String[]
+  Dim image_pk As Integer
+  Dim re As New Regexp
+  Dim sHtml As String
+  
+  someFiles = New String[]
+  sHtml = notes
+  re.Compile("src=\"([^\"]+\\.png)")
+  re.Exec(sHtml)
+  Do While re.Offset <> -1
+    someFiles.Add(re.SubMatches[1].Text)
+    sHtml = Right$(sHtml, - (re.Offset + Len(re.Text)))
+    re.Exec(sHtml)
+  Loop
+ For Each afile In someFiles
+      image_pk = Image_Save(afile)
+      Notes = Replace$(Notes, "src=\"" & afile & "\"", "pk_image=" & Str$(image_pk))
+ Next
+ Return Notes
+End
+
+
+
+ Public Function Staff_member_Get() As Collection
+   '---------------------------------------------------------
+   ' retrieves the associated demographic data for the currently logged in user
+   '---------------------------------------------------------
+   Dim sql As String
+   Dim user As Collection
+  
+   sql = "Select * from admin.vwStaffinclinics where logon_name = current_user"
+   user = modDBConnect.exec_query_first(sql)
+   If Not IsNull(user) Then
+     user!comms = modContactsDBI.Branch_Comms_Get(user!fk_branch) 
+   Endif
+   Return user
+  
+End
+
+
+Public Sub consult_get_types() As Collection 
+   '-------------------------------------------------------------------------------
+   'Gets a list of types of consulation eg 'In consulting rooms', or 'By Telephone'
+   '-------------------------------------------------------------------------------
+   Return modDBConnect.exec_query_collection("SELECT * FROM clin_consult.lu_consult_type where pk <" & const.ConsultType_DataImport & " ORDER by type")
+ 
+End
+
+Public Function progressnotes_get(fk_patient As Integer, Optional single_day As String) As Collection
+  
+       '--------------------------------------------------------------
+   'gets a list of the patients active/inactive past history items
+   '--------------------------------------------------------------
+   Dim sql As String
+
+   sql = "SELECT * FROM clin_consult.vwProgressNotes where fk_patient =" & fk_patient
+   If single_day <> "" Then
+     sql &= " AND consult_date = '" & single_day & "'"
+   End If
+   sql &= " AND fk_audit_action <> " & const.cAuditAction_Reversal ' OR DELETE?
+   sql &= " ORDER BY consult_date, fk_staff,fk_section"
+   Return modDBConnect.exec_query_collection(sql)
+
+End
+
+
+Public Function Image_get(pk_image As Integer) As String
+  Dim $Result As Result
+  Dim tempFile As String
+  Dim tempPicture As Variant
+  Dim sql As String = "Select * from all_images WHERE pk=" & pk_image
+  $Result = modDBConnect.exec_query(sql)
+   If $Result.count Then
+      tempFile = Temp() & ".png"
+      tempPicture = $Result!image
+       If tempPicture.data Then 
+         File.Save(tempFile, tempPicture.data)
+      End If
+   End If
+   Return tempFile
+End
+
+Public Function Images_Get(notes As String) As String
+   '----------------------------------------------------------------------------
+   'Now retrieve any linked images and create temporary files on the hard drive
+   '<IMG pk_image=30  NAME=graphics
+   '----------------------------------------------------------------------------
+   
+  Dim tempFile As String
+  Dim tempPicture As Variant
+  Dim sql As String
+  Dim charpos As Integer = -1
+  Dim NAMEPOS As Integer
+  Dim number_string As String
+  Dim afile As String
+  Dim pk_images As Integer[]
+  Dim x As Integer
+  Dim sHtml As String
+  Dim pk_image As Integer
+  Dim placeholder As String
+  sHtml = notes
+  pk_images = New Integer[]
+  Do Until charpos = 0
+      charpos = InStr(shtml, "pk_image=")
+      If charpos Then
+          shtml = Right(shtml, Len(shtml) - charpos - 8) 'now looks like eg 30 NAME.....
+          charpos = InStr(shtml, " ")
+          pk_images.Add(CInt(Left(shtml, charpos - 1)))
+          sHtml = Right(shtml, Len(shtml) - charpos - 1)
+      End If
+ Loop 
+ For Each pk_image In pk_images
+   'Now fetch the images, and put a temporary file name into the notes strin
+   Tempfile = Image_get(pk_image)
+   Notes = Replace$(Notes, "pk_image=" & pk_image, "src=" & Tempfile)
+  Next
+  Return Notes
+End
+
+Public Function Images_Get_old(notes As String) As String
+   '----------------------------------------------------------------------------
+   'Now retrieve any linked images and create temporary files on the hard drive
+   '<IMG pk_image=30  NAME=graphics
+   '----------------------------------------------------------------------------
+   
+  Dim tempFile As String
+  Dim tempPicture As Variant
+  Dim sql As String
+  Dim charpos As Integer = -1
+  Dim NAMEPOS As Integer
+  Dim afile As String
+  Dim pk_images As Integer[]
+  Dim x As Integer
+  Dim sHtml As String
+  Dim pk_image As Integer
+  Dim placeholder As String
+  sHtml = notes
+  pk_images = New Integer[]
+  Do Until charpos = 0
+      charpos = InStr(shtml, "pk_image=")
+      If charpos Then
+          shtml = Right(shtml, Len(shtml) - charpos - 8)
+          charpos = InStr(shtml, "NAME")
+          pk_images.Add(CInt(Left(shtml, charpos - 2)))
+          sHtml = Right(shtml, Len(shtml) - charpos - 2)
+      End If
+ Loop 
+ For Each pk_image In pk_images
+  
+   'Now fetch the images, and put a temporary file name into the notes strin
+   Tempfile = Image_get(pk_image)
+   Notes = Replace$(Notes, "pk_image=" & pk_image, "src=" & Tempfile)
+  Next
+  Return Notes
+End
+
+
+Public Function progressnotes_get_for_condition(pk_patient As Integer, fk_problem As Integer) As Result
+    Dim sql As String
+  sql = "SELECT * FROM clin_consult.vwProgressNotes where fk_patient = " & pk_patient
+   sql &= " AND fk_problem = " & fk_problem & " ORDER BY  consult_date"
+   'PRINT sql
+    $Result = modDBConnect.exec_query(sql)
+    Return $Result
+End
+
+
+
+Public Function staff_member_by_surname(surname As String) As Collection
+  
+  Dim sql As String
+  
+  sql = "Select * from admin.vwStaffInClinics WHERE surname ILIKE $$"
+  sql = sql & Trim(surname) & "%$$ ORDER BY surname LIMIT 10"
+  Return modDBConnect.exec_query_collection(sql)
+  
+End
+

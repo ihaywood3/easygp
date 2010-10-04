@@ -1,84 +1,48 @@
 ' Gambas class file
+' Copyright (C) 2008-10 Dr. Richard Terry
 
-Private hProcess As Process
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'---------------------------------------------------------------------------------------------------------
+' PURPOSE        : Module for importing pre-scanneed documents, image files, pictures
+' HOW THIS WORKS : Scanning and archiving directories pre-defined see Admin.Global Preferences tab
+'                : Basically the embedded metadata form does all the work and the saving
+'                : only menu items on this form do something eg split/join pdf/delete etc
+'                : the popup menu on the filechooser control is over-ridden by an observor
+'                : the toolbutton on the pdf viewer is over-ridden by an observor
+'                : fixme: this should operate off FMetdata.tbSave
+' BUGS           : Please report
+'                : tbMultiPagefiles_Click with "remove"
+' NOT IMPLEMENTED: Split PDF routine in modPrinting is buggy FIXME
+'                : Implement the move to library
+'                : Implement some sort of re-loading of this module if a document sent back from inbox
+'                : Fix the zoom - perhaps Fpdf should know what form it is embedded in and act accordingly
+'TODO            : beautify and line up the gui
+'---------------------------------------------------------------------------------------------------------
+
 Private obs As Observer
 Private RootDir As String 
 Private bExit As Boolean
-Private Section As Integer
 Private PDForm As FPdf
-Private FFindPatients As FPatientsSelect
-Public formStaffTask As FStaffTasks
-Private Allpatients As Collection 
-Private pk_view As String 'for the patients
-Private old_pk As Integer
-Private currentpatient As Collection
-Private document_types As Collection 
-Private fk_patient As Integer 
-Private fk_staff_destination As Integer
-Private fk_staff As Integer 'current staff member logged on
-Private fk_lu_urgency As Integer
-Private fk_lu_archive_site As Integer
-Private member As Collection
-Private The_Collection As Collection 
-Private fname As String  
-Private old_data As Collection 
-Private patient As Collection 
-Private archive_dir As String 
 Private FMetaData As FDocumentMetaData
-Private bDocumentNotLinkedToPatient As Boolean
-Private Document As Collection
-Private Documents As Collection 
-Private Default_Zoom As Float
-
-Static Private Form_Archiving As FArchiveDocuments         'allows FArchiveDocuments Access from anywhere  = Me -see Init()
-
-Static Public Sub tbFile_SetFocus()
-   
-   Form_Archiving.tbFile.SetFocus()
-   
-End
-
-Public Function Process_read() As String
-   
-   Dim sOutput As String  
-   
-   Line Input #hProcess, sOutput 
-   Return Left(sOutput, InStr(sOutput, " ") - 1)
-   
-End
-
-Public Sub _new()
-   
-  ' Init()
-   
-End
-
-Public Sub Form_Close()
-   
-   Settings_Save()
-   
-End
-
-Public Sub Form_Show()
-   
-   Dim sMsg As String
-
-   fk_staff = modDBConnect.currentUser!fk_staff
-   Vbox_Main.Enabled = False  
-   Vbox_Main.Enabled = True   
-
-End
+Private Default_Zoom As Float 
 
 Public Sub Init()
-   
-   Form_Archiving = Me
    rootdir = modAdminDBI.Config_Get("document_scanning", "/var/easygp/scanning", "Directories/scanning")
    
    obs = New Observer(filechooser1.FileView.Children[1]) As "filelist"
    LibraryMenu_Construct()
    With FMetaData = New FDocumentMetaData(Vbox_Metadata)             'This metadata instance is set up to look simple
-     
-      .Init()
+       .Init()
       .lblSendingEntity.font.bold = True                             'showing only input for staff,patient, who sent doc and doc date
       .lblSendingEntity.alignment = Align.Center
       .lblSendingEntity.Expand = True 
@@ -113,7 +77,6 @@ Public Sub Init()
       .txtPersonState.ReadOnly = True
       .txtPersonSuburb.ReadOnly = True
       .EditArea_Clear()
-      
    End With
    With FileChooser1                               'Don't want all the filechooser control bits showing
       .DirView.Visible = False                     'don't show the directory tree
@@ -122,25 +85,31 @@ Public Sub Init()
    Settings_Load()
    With PDForm = New FPdf(Vbox_Viewer) 'fix me to Vbox_PDF
       .BtOpen.Visible = False
-      
    End With
-   obs = New Observer(FMetaData.txtDocumentDate) As "txtDocumentDate"
+   obs = New Observer(FMetaData.txtDocumentDate) As "txtDocumentDate"      'detect when <enter> hit and file the document
+End
+
+Public Sub Form_Close()
+   
+   Settings_Save()
+   
 End
 
 Public Sub txtDocumentDate_Activate()
-  
-  Stop Event
- If Last.tag = "document date" Then
-    tbFile_Click()
- Endif
-  
+   
+   Stop Event
+   If Last.tag = "document date" Then
+      tbFile_Click()
+   Endif
+   
 End
 
 Public Sub filelist_menu()
-   
+   '----------------------------------------------------------------------------
+   'Over-ride the event handler on the filechooser1 control to show our own menu
+   '----------------------------------------------------------------------------   
    Stop Event
    mnuFileChooser.Popup()
-   
 End
 
 Public Sub filelist_Keypress()
@@ -158,29 +127,19 @@ Public Sub filelist_Keypress()
 End
 
 Public Sub Settings_Save()
-   
-   If section = const.cSection_Inbox Then
-      Settings["Inbox_Scanned_Documents/VSplit_Archiving.Layout"] = VSplit_Archiving.Layout
-      Settings["Inbox_Scanned_Documents/HSplit_Archiving.Layout"] = HSplit_Archiving.Layout
-   Else
-      Settings["Clerical/VSplit_Archiving.Layout"] = VSplit_Archiving.Layout
-      Settings["Clerical/HSplit_Archiving.Layout"] = HSplit_Archiving.Layout
-      Settings["Clerical/pdfZoom"] = PDForm.CurrentZoom
-   End If   
-   
+
+   Settings["Clerical/VSplit_Archiving.Layout"] = VSplit_Archiving.Layout
+   Settings["Clerical/HSplit_Archiving.Layout"] = HSplit_Archiving.Layout
+   Settings["Clerical/pdfZoom"] = PDForm.CurrentZoom
+
 End
 
 Private Sub Settings_Load()
-   
-   If section = const.cSection_Inbox Then
-      Try VSplit_Archiving.Layout = Settings["Inbox_Scanned_Documents/VSplit_Archiving.Layout"]
-      Try HSplit_Archiving.Layout = Settings["Inbox_Scanned_Documents/HSplit_Archiving.Layout"]
-   Else
-      Try VSplit_Archiving.Layout = Settings["Clerical/VSplit_Archiving.Layout"]
-      Try HSplit_Archiving.Layout = Settings["Clerical/HSplit_Archiving.Layout"]
-      Try Default_Zoom = Settings["Clerical/pdfZoom"] 
-   End If
-   
+
+   Try VSplit_Archiving.Layout = Settings["Clerical/VSplit_Archiving.Layout"]
+   Try HSplit_Archiving.Layout = Settings["Clerical/HSplit_Archiving.Layout"]
+   Try Default_Zoom = Settings["Clerical/pdfZoom"] 
+
 End
 
 Public Sub FileChooser1_Activate()
@@ -213,8 +172,8 @@ Public Sub FileChooser1_Activate()
          End Select
          
          With FMetaData
-            .txtFilename.text = File.Name(Filepath)
-          End With
+            .txtFilename.text = Filepath
+         End With
       End If   
    End If
    Dec Application.Busy
@@ -241,145 +200,9 @@ End
 
 Public Sub tbFile_Click()
    
-   If Document_File() Then Reload()  'file the documen, reload files, set focus, show next doc
-   
-End
-
-Public Function Document_File() As Boolean
-   
-   Dim sMsg As String
-   Dim fk_patient As Integer
-   Dim fk_unmatched_patient As Integer
-   Dim fk_document As Integer
-   Dim fk_lu_request As Integer 'fixme
-   Dim S As Collection 
-   Dim sql As String 
-   Dim diagnosis_guess As String
-   Dim observation As Collection  
-   Dim button1_text As String
-   Dim button2_text As String
-   Dim R As Result   
-   Dim SendingEntity As Collection 
-   Dim EmptyCollection As Collection 
-   Dim Document As New Collection 
-   Dim newfilename As String 
-   Dim oldfilename As String = filechooser1.SelectedPath
-   Dim bInValidDate As Boolean
-   Dim nextDocumentPk As Integer
-   Dim Member As Collection 
-   Dim staff_members As Collection 
-   
-   If FMetaData.txtFilename.text = "" Then
-      sMsg = "Please select a document to file"
-      Message.Info(sMsg)
-      FileChooser1.DirView.Children[0].SetFocus() 'focus on the treeview part 
-      Return 
-   Endif
-   If FMetaData.Get_fk_Patient() = 0 Then
-      FMetaData.txtPatient.SetFocus()
-      Return  
-   Endif
-   If FMetaData.fk_staff_destination = 0 Then
-      FMetaData.txtRecipient.SetFocus()
-      Return 
-   Endif
-   
-   If FMetaData.fk_organisation = 0 Then
-      If FMetaData.fk_person = 0 Then
-         
-         sMsg = "Each scanned or faxed document will have been sent by someone, be they a person, organisation, or employee of an organisation "
-         "or perhaps even a patient.\n\nYou must allocate documents before filing."
-         Message.Info(sMsg)
-         If FMetaData.VBox_Organisation.Visible Then
-            If FMetaData.Type_Document_Author = const.contacttype_organisation Then
-               FMetaData.txtOrganisation.SetFocus()
-            Else
-               FMetaData.txtOrganisationEmployee.SetFocus()
-            Endif
-         Else
-            FMetaData.txtPersonSurname.SetFocus()
-         Endif
-         Return False
-         
-      Endif
-   Endif
-   If Not IsDate(Val(FMetaData.txtDocumentDate.text)) Then
-      sMsg = "Please enter the date the document was written.\n\n"
-      "This should be in the format dd/mm/yyyy, e.g 01/10/2010."
-      Message.Info(sMsg)
-      FMetaData.txtDocumentDate.SetFocus()
-      Return 
-   Endif
-   Inc Application.Busy
-   
-   If FMetaData.chkAllStaff.Value = True Then 
-      Staff_Members = modContactsDBI.Staff_Get() 'refresh the staff list,could have just employed someone!!!!!
-   End If  
-   
-   Document!fk_staff_filed_document = modDBConnect.currentUser!fk_staff
-   Document!date_created = Val(FMetaData.txtDocumentDate.text)
-   Document!fk_patient = FMetaData.Get_fk_Patient()
-   Select Case FMetaData.Type_Document_Author
-      Case const.contacttype_organisation
-         Document!originator = Trim(FMetaData.txtOrganisation.text) & "." & Trim(FMetaData.txtBranch.text)
-         
-      Case const.contacttype_employee
-         Document!originator = Trim(FMetaData.txtOrganisation.text) & "." & Trim(FMetaData.txtOrganisationEmployee.text)
-      Case const.contacttype_person, const.contacttype_patient
-         Document!originator = Trim(FMetaData.txtPersonFirstname.text) & " " & Trim(FMetaData.txtPersonSurname.text)
-   End Select
-   
-   Document!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(FMetaData.Get_Document_Type(), FMetaData.Get_Display_Style(), Document!originator, FMetaData.fk_branch, FMetaData.fk_employee, FMetaData.fk_person)
-   
-   If FMetaData.rbDisplayAsLetter.value = True Then 
-      Document!tag = Document!originator & " - scanned letter"
-   Else
-      Document!tag = Document!originator & " - scanned result"
+   If FMetaData.Save() Then
+      Reload()  'file the document, reload files, set focus, show next doc
    End If
-   Document!comment = Trim(FMetaData.txtComment.text)
-   Document!fk_lu_urgency = FMetaData.fk_urgency
-   hProcess = Shell "md5sum " & oldfilename For Input Output    
-   Document!md5sum = Process_read()
-   Document!fk_staff_destination = FMetaData.fk_staff_destination
-   Document!fk_lu_display_as = FMetaData.Get_Display_Style()
-   
-   If FMetaData.chkAllStaff.Value = True Then 
-      For Each member In Staff_Members
-         Document!fk_staff_destination = member!fk_staff
-         modArchiveDocumentsDBI.Save(EmptyCollection, 0, Document)
-         Document.Remove("fk_document") 'don't want this key
-      Next
-   Else
-      Document!pk_document = modArchiveDocumentsDBI.Save(EmptyCollection, 0, Document)
-      Document!source_file = Document_Filename_Construct(document)
-      modArchiveDocumentsDBI.Document_Save_Filename(Document)
-   End If
-   Try Move oldfilename To modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ Lower(document!source_file)
-   If Not Error Then
-      modDBConnect.CommitTrans()
-   Else
-      Log.ErrorMsg(Error.Text)
-      modDBConnect.RollBack()
-   Endif
-   Dec Application.Busy
-   Return True 'success
-   
-End
-
-Public Function Document_Filename_Construct(document As Collection) As String 
-   
-   Dim newfilename As String
-   
-   If Trim(FMetaData.txtPatient.text) <> "" Then 
-      newfilename &= Replace(Trim(FMetaData.txtPatient.text), " ", "_") & "." & modutil.DateString_Encode(FMetaData.lblbirthdate.text) & "." & Str(Document!fk_patient) & "."
-   Else
-      If FMetaData.chkAllStaff.value = True Then
-         newfilename = "memo.allstaff." & Replace$(Trim(FMetaData.txtDocumentTag.text), " ", "_") & "." & Format$(Now, "dd-mm-yyyy:hh:nn:ss")
-      Endif
-   End If   
-   newfilename &= Replace(Document!originator, " ", "_") & "." & Str$(document!pk_document) & "."
-   newfilename &= File.Ext(FMetaData.txtFilename.text)
-   Return Lower(newfilename) 'ensure all in lower case
    
 End
 
@@ -387,7 +210,6 @@ Public Sub tbMultiPagefiles_Click()
    
    Select Case Last.tag
       Case "add"
-         
          Try lvfilesToJoin.Add(FileChooser1.SelectedPath, File.Name(FileChooser1.SelectedPath))
          lblFilesToJoin_UpdateCount()
       Case "remove"
@@ -447,6 +269,12 @@ Public Sub JoinPDF()
    
 End
 
+Public Sub Split_pdf()
+   
+   modPrinting.Split_PDF(FileChooser1.SelectedPath)
+   
+End
+
 Public Sub mnuFileChooser_Click()
    
    Select Case Last.tag
@@ -461,6 +289,8 @@ Public Sub mnuFileChooser_Click()
       Case "rotate 90 and save"
          Rotate_And_Save(90)
       Case "rename file"
+      Case "split"
+         Split_pdf()
    End Select
    FileChooser1.Reload()
    

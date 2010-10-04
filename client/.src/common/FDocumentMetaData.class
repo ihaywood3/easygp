@@ -33,6 +33,7 @@ Private pk_view As String 'for the patients
 Private old_pk As Integer
 Private currentpatient As Collection
 Private document_types As Collection 
+Private document_type As Collection 
 Private fk_patient As Integer 
 Public fk_staff_destination As Integer
 Private fk_staff As Integer 'current staff member logged on
@@ -85,7 +86,7 @@ End
 
 Public Sub Form_Open()
    
-   Init()
+  ' Init()
    
 End
 
@@ -156,6 +157,45 @@ Public Sub form_Show()
    End If
    
 End 
+
+Public Sub Guess_Sending_Entity_Category()
+     cmbDocumentTypes.index = -1
+     For Each document_type In document_types
+       If InStr(Lower(Documents[document!pk_document]!provider_type), Lower(document_type!type)) Then
+          cmbDocumentTypes.index = cmbDocumentTypes.Find(document_type!type)
+      Endif
+   Next
+  
+End
+Public Sub InitGui_Display_As_Result()
+   '---------------------------------------------------------------------
+   'Sets up the gui interface in assumption the document will be a result
+   '---------------------------------------------------------------------
+   Hbox_Lateralisation.visible = True
+   chkCodeDocument.Visible = False
+   lblUserTag.text = "Request Name"
+   txtDocumentDate.ReadOnly = False
+   lblDocumentDate.text = "Request Date"
+   HBox_RequestTypes.Enabled = True 
+   txtDocumentTag.ReadOnly = True 
+   Try Guess_Sending_Entity_Category()
+End
+
+
+Public Sub InitGui_Display_As_Letter()
+   '---------------------------------------------------------------------
+   'Sets up the gui interface in assumption the document will be a letter
+   '---------------------------------------------------------------------
+  Hbox_Lateralisation.visible = False
+  chkCodeDocument.Visible = True
+  txtDocumentDate.ReadOnly = False    'batched re-sent letters date <> date written.
+  lblDocumentDate.text = "Letter Date"
+  lblDocumentTag.text = "Seen By"
+  lblUserTag.text = "Letter Summary"
+  HBox_RequestTypes.Enabled = False
+  cmbDocumentTypes.index = -1
+  txtDocumentTag.ReadOnly = False
+End
 
 Public Sub Init()
    
@@ -535,33 +575,23 @@ Public Sub Edit_New(old_documents As Collection, pk_view As Integer)
          .Font.bold = True
       End With
    End If
-   If Documents[pk_view]!fk_lu_message_display_style = 1 Then  'allow editing of tag if it is a letter
-      rbDisplayAsLetter.value = True
-      txtDocumentTag.ReadOnly = False
-      lblDocumentTag.text = "From"
-      cmbDocumentTypes.index = -1
-   Else
-      rbDisplayAsResult.value = True
-      txtDocumentTag.ReadOnly = True 
-      '---------------------------------------------------------------------------------
-      'Attempt to match the combo box on basis of the category of organisation or person
-      '---------------------------------------------------------------------------------
-   End If
+ 
    txtPatient.text = Trim(Documents[pk_view]!patient_title & " " & Documents[pk_view]!patient_firstname & " " & Documents[pk_view]!patient_surname)
    Try lblBirthdate.text = Format(Documents[pk_view]!patient_birthdate, "dd/mm/yyyy")
    lblBirthdate2.text = lblBirthdate.text 'stupid I know, but acts as an identical spacer
    txtStreet.text = Documents[pk_view]!patient_street
    txtSuburb.text = Documents[pk_view]!patient_town & " " & Documents[pk_view]!patient_postcode
-   
-  ' sString = Trim(Replace(Documents[pk_view]!provider_type, "provider", "", gb.IgnoreCase))
-  ' sSTring = UCase(Left(sSTring)) & Right(sSTring, Len(sSTring) - 1)
-  ' Try cmbDocumentTypes.index = cmbDocumentTypes.Find(sSTring)
-   
- '  If Error Then cmbDocumentTypes.index = -1 'the document may have no designated provider type
+   '---------------------------------------------------------------------------------
+   'Attempt to match the combo box on basis of the category of organisation or person
+   'E.g if it was 'Pathology company' or 'Pathology provider' or 'Pathology'
+   'then the document_type 'Pathology' would find a match
+   '---------------------------------------------------------------------------------
+   Guess_Sending_Entity_Category()        'set combo e.g to 'Pathology'
    txtSender.text = Documents[pk_view]!msh_sending_entity
    Try txtDocumentDate.text = Format(Documents[pk_view]!date_created, "dd/mm/yyyy")
    Try txtDateRequested.text = Format(Documents[pk_view]!date_requested, "dd/mm/yyyy")
    txtDocumentTag.text = document!tag
+   txtDocumentTag.pos = 1 'this is often quite long - want the start of word showing
    txtComment.text = document!comment_on_document
    txtFilename.text = Document!source_file
    
@@ -573,7 +603,22 @@ Public Sub Edit_New(old_documents As Collection, pk_view As Integer)
       Case const.UrgencyLevelUrgent
          rbUrgencyUrgent.value = True
    End Select
-   
+'  bExit = False  
+   If Documents[pk_view]!fk_lu_message_display_style = const.Document_Display_As_Letter Then  'allow editing of tag if it is a letter
+      rbDisplayAsLetter.value = True
+      If txtDocumentTag.text <> "" Then
+         txtDocumentTag.text = Replace(txtDocumentTag.text, "result", "letter")
+         txtDocumentTag.text = Replace(txtDocumentTag.text, "RESULT", "LETTER")
+      Endif
+       
+   Else
+      rbDisplayAsResult.value = True
+       If txtDocumentTag.text <> "" Then
+          txtDocumentTag.text = Replace(txtDocumentTag.text, "letter", "result")
+          txtDocumentTag.text = Replace(txtDocumentTag.text, "LETTER", "RESULT")
+      Endif
+    End If
+  ' bExit = True   
    If Not IsNull(document!fk_patient)
       With txtPatient
          .Border = False
@@ -638,7 +683,8 @@ Public Sub Patient_Find()
    Allpatients.Remove("sql_in_english")       'not used in this context
    
    With columnview1
-      .Clear()
+      .Clear
+     
       .Columns.count = 6
       .width = txtStreet.width
    End With
@@ -1717,8 +1763,7 @@ Public Sub EditArea_TextBox_Activate()
    Select Case Last.tag
       Case "document date"
          If Embedded_In_Form_Name = "Inbox" Then Return 
-         If Embedded_in_form_name = "Scanning" Then FArchiveDocuments.tbFile.SetFocus()
-      Case "user name"  
+       Case "user name"  
          If Embedded_In_Form_Name = "Inbox" Then FInbox.tbFile.SetFocus()   
          If Embedded_in_form_name = "Clinical" Then tbSave.SetFocus()
    End Select
@@ -1775,18 +1820,18 @@ Public Sub Guess_ResultType()
 End
 
 Public Sub rbDisplayAs_Click()
-   
+   If Bexit Then Return 
    iDisplay_As = Last.tag
    If Last.tag = const.Document_Display_As_Result Then
-      Hbox_Lateralisation.visible = True
-      chkCodeDocument.Visible = False
-      lblUserTag.text = "Request Name"
-      txtDocumentDate.ReadOnly = False
-      lblDocumentDate.text = "Request Date"
-      HBox_RequestTypes.Enabled = True 
+      InitGui_Display_As_Result()
       If Embedded_in_form_name = "Inbox" Then HBox_DocumentType.Visible = True 
       If txtDocumentTag.text <> "" Then
-         txtDocumentTag.text = Replace(txtDocumentTag.text, "letter", "result")
+          txtDocumentTag.text = Replace(txtDocumentTag.text, "letter", "result")
+          txtDocumentTag.text = Replace(txtDocumentTag.text, "LETTER", "RESULT")
+      Endif
+      If txtUserObservationName.text <> "" Then
+          txtUserObservationName.text = Replace(txtUserObservationName.text, "letter", "result")
+          txtUserObservationName.text = Replace(txtUserObservationName.text, "LETTER", "RESULT")
       Endif
       'Attempt to match the combo
       If Embedded_in_form_name = "Inbox" Then
@@ -1794,15 +1839,16 @@ Public Sub rbDisplayAs_Click()
          txtUserObservationName.SetFocus()
       End If   
    Else
-      HBox_RequestTypes.Enabled = False 
-      lblDocumentDate.text = "Letter Date"
-      lblUserTag.text = "Letter Summary"
+      InitGui_Display_As_Letter()
       If txtDocumentTag.text <> "" Then
          txtDocumentTag.text = Replace(txtDocumentTag.text, "result", "letter")
+         txtDocumentTag.text = Replace(txtDocumentTag.text, "RESULT", "LETTER")
       Endif
-      Hbox_Lateralisation.visible = False
-      cmbDocumentTypes.index = -1
-   Endif
+      If txtUserObservationName.text <> "" Then
+          txtUserObservationName.text = Replace(txtUserObservationName.text, "result", "letter")
+          txtUserObservationName.text = Replace(txtUserObservationName.text, "RESULT", "LETTER")
+      End If
+    Endif
 
 End
 

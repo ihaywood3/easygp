@@ -184,21 +184,24 @@ def process_file(fd)
       $output.write("<li>%s" % esc($1))
       $latex.write("\n\\item %s" % latex_esc($1))
       indexise($1)
-    when /^\.nobullets/
-      $list = true
-      $output.write("\n<ul style=\"list-style-type: none\">\n")
-      $latex.write("\\begin{itemize}\n")
     when /^\.imagetext ([^ ]+)/
-      $output.write("<table><tr><td><img src=\"%s\" /></td><td>" % $1.strip)
+      fname = $1.strip
+      $output.write("<table><tr><td><img src=\"%s\" /></td><td>" % fname)
+      if File.exist?(fname)
+        fname = "\\includegraphics[width=\\linewidth]{%s}" % fname
+      else
+        $stderr.write("File does not exist %s\n" % fname)
+        fname = "{\\tt File %s does not exist}" % latex_esc(fname)
+      end
       frag = <<EOF
 \\begin{figure}[ht] 
 \\begin{minipage}[b]{0.3\\linewidth} 
-\\centering \\includegraphics[width=\\linewidth]{%s}
+\\centering %s
 \\end{minipage}
 \\hspace{0.5cm}
 \\begin{minipage}[b]{0.65\\linewidth}
 EOF
-      $latex.write(frag % $1.strip)
+        $latex.write(frag % fname)
     when /^\.end imagetext/
       if $list
         $output.write("</ul>")

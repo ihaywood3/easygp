@@ -19,7 +19,7 @@
 '-------------------------------------------------
 
 'These temporarly probably need removal at some stage
-Private FMetaData As New FDocumentMetaData
+Private FMetaData As FDocumentMetaData
 Private Deleted_Document_keys As Collection 
 Private synonyms As Collection 
 Private currentobservations As Collection 
@@ -271,32 +271,23 @@ Public Sub Init()
    form_clinical = Me
    FPDF = New FPdf(Vbox_PDF)
    ScratchPad = New FScratchPad(VboxScratchPad)
-   ' modEditAreaHelpers.EditArea_SetTextBoxes_ReadOnly(FMetaData.VBox_EditArea)
-   '  With FMetaData = New FDocumentMetaData(VboxScratchPad)
-   '    
-   '     .Set_consult(currentconsult) 
-   '     .HBox_UserObservationName.visible = True
-   '     .lblDocumentDate.text = "Date Collected"
-   '     .Hbox_Requested.Visible = True
-   '     .chkAllStaff.Enabled = False  
-   '     .txtComment.ReadOnly = False
-   '     .lblComment.text = "Notes on Form"
-   '     .txtUserObservationName.ReadOnly = False  
-   '     .HBox_HealthIssue.Visible = True   
-   '     .chkAllStaff.Visible = False  
-   '     .Set_Embedded_Form_Name("Clinical")
-   '     .HBox_Author.Visible = False   
-   '     .visible = False    
-   '     .lblMeasure.text = "staff responsible"    'used in .Init()
-   '     .Init()
-   '  End With
-   ' obs = New Observer(FMetaData.tbSave) As "Document_Metadata_Save"   'For saving metdata of unfiled documents
+ 
    Form_ExportClinical = New FExportClinical(vBoxWorkSpace)
    Form_ExportClinical.Visible = False 
    ScratchPad.txtScratchPad.Enabled = False   
    EditorPages = New Collection
    currentconsult = Null
    FHelp = New FBrowser(VboxEditorAndProgressNotes)
+   With FMetaData = New FDocumentMetaData(VboxScratchPad)  
+         .Set_consult(currentconsult)                     
+         .Set_Embedded_Form_Name("Clinical")  
+         .Visible = False 
+         .tbClose.Visible = True                            'only ever used on this form
+   End With 
+   obs = New Observer(FMetaData.tbSave) As "FMetaData_tbSave"    'Let FClinical handle the save event"
+   obs = New Observer(FMetaData.txtUserObservationName) As "FMetaData_txtUserObservationName"  
+  obs = New Observer(FMetaData.tbClose) As "FMetaData_tbClose"    'Let FClinical handle the save event"
+              'detect when <enter> hit and file the document
    With FHelp
      .Visible = False   
      .HBox3.Visible = False 'remove the google stuff
@@ -556,10 +547,12 @@ Public Sub Settings_Save()
       Next
 
       Settings["Main/HsplitClinical_Main"] = HSplitClinical_Main.Layout
-      If FMetaData.Visible = True Then
-         Settings["Main/VsplitClinical_RightPane_Metadata"] = VsplitClinical_RightPane.Layout
-      Else
-         Settings["Main/VsplitClinical_RightPane"] = VsplitClinical_RightPane.Layout
+      If Not IsNull(FMetaData) Then
+         If FMetaData.Visible = True Then
+            Settings["Main/VsplitClinical_RightPane_Metadata"] = VsplitClinical_RightPane.Layout
+         Else
+            Settings["Main/VsplitClinical_RightPane"] = VsplitClinical_RightPane.Layout
+         End If
       End If
       Settings["Requests_List_columns/date"] = cvwRequests.Columns[0].Width
       Settings["Progress Notes/default_zoom"] = WebBrowserNotes.Zoom
@@ -582,12 +575,13 @@ Private Sub Settings_Load()
    Dim i As Object
    
    Try HSplitClinical_Main.Layout = Settings["Main/HsplitClinical_Main"]
-   If FMetaData.Visible = True Then
-       Try VsplitClinical_RightPane.Layout = Settings["Main/VsplitClinical_RightPane_Metadata"] 
-   Else
-      Try VsplitClinical_RightPane.Layout = Settings["Main/VsplitClinical_RightPane"] 
-   End If
- 
+   If Not IsNull(FMetaData) Then
+      If FMetaData.Visible = True Then
+          Try VsplitClinical_RightPane.Layout = Settings["Main/VsplitClinical_RightPane_Metadata"] 
+      Else
+         Try VsplitClinical_RightPane.Layout = Settings["Main/VsplitClinical_RightPane"] 
+      End If
+   End If    
    Try cvwRecalls.Font = Font[Settings["TabbedLists/cvwRecalls.font"]]
    Try cvwRequests.Columns[0].Width = Settings["Requests_List_columns/date"]
    Try cvwRequests.Font = Font[Settings["TabbedLists/cvwRequests.font"]]
@@ -1348,6 +1342,8 @@ Public Sub Editor_ShowPage(sPageName As String)
       WebPage.Visible = True 'make it visible, default is not visible
       WorkspaceEditor.Add(page)
     Case "Pregnancy"
+      Message.info("This section is not available")
+      Return 
       page = New FLinkContainer
       PregnancyPage = New FPregnancy(page.VBoxEditor)
       PregnancyPage.Init(currentconsult)
@@ -2058,23 +2054,7 @@ Public Sub Form_KeyPress()
    
 End
 
-' Public Sub tbWebBrowserClose_Click()
-'   ' ProgressNotes_Display() 'toggle off
-'    
-'   'RT
-' 
-' End
 
-
-
-' Public Sub Workcover_Get()
-'   modWorkCoverDBI.Claims_Get1(currentconsult, cvwWorkcover)
-' End
-' 
-' Public Sub Workcover_Save()
-'   modWorkCoverDBI.Claims_Save(currentconsult)
-'   Workcover_Get()
-' End
 
 Public Sub cvwWorkcover_Select()
   Dim page As FProgressNotePageContainer
@@ -2707,6 +2687,7 @@ Public Sub Inbox_showResult()
       cvwResults.MoveCurrent()
       lblWebBrowserNotes.text = "Result"
       If vBoxWorkSpace.Visible = True Then vBoxWorkSpace.Visible = False        'remove the editor vbox    
+      Try UnFiled_Document_Metadata_Show(False)                                     'remove this it could be showing if not completed from previous document
       '--------------------------------------------------------------------------------------------
       'First, do we show the pdf viewer or the web-browser, FIXME:images not yet taken into account
       '--------------------------------------------------------------------------------------------
@@ -2727,14 +2708,7 @@ Public Sub Inbox_showResult()
       'If not, then show the metadata for this document
       '----------------------------------------------------------------------
       If IsNull(currentconsult!results_received[cvwResults.Item.Key]!tag_user) Then
-            If IsNull(FMetaData) Then                                              'FDocumentMetadata not shown yet
-               With FMetaData = New FDocumentMetaData(VboxScratchPad)              'create an instance
-                    .Set_consult(currentconsult)                                   'set consult on that form
-                    .Setup_Gui("Filing Allocated Document")                       'gui elements for filing, not allocating like in scanning
-                    .Set_Embedded_Form_Name("Clinical")  
-               End With
-               obs = New Observer(FMetaData.tbSave) As "Document_Metadata_Save"    'Let FClinical handle the save event
-            Endif
+            FMetaData.Init("Allocated Documents")                                      'gui elements for filing, not allocating like in scanning
             SelectedDocument = currentconsult!results_received[cvwResults.Item.Key] 'makes typing easier        
             '-------------------------------------------------------------------
             'Now, if a HL7 result, if no html - ie not yet file, create the html
@@ -2752,7 +2726,7 @@ Public Sub Inbox_showResult()
                    WebBrowserNotes.html = shtml
             End If
             With FMetaData
-                  .Edit_New(currentconsult!results_received, cvwResults.Item.Key)      'display metadata for this document
+                  .Edit(currentconsult!results_received, cvwResults.Item.Key)      'display metadata for this document
                   .bexit = True
                   .txtUserObservationName.text = cvwResults[cvwResults.Item.key][1]   ' Replace$(cvwResults[cvwResults.Item.key][1], "** UNFILED **:", "")
                   .txtUserObservationName.pos = 0                                      'ensure start of line showing
@@ -2767,8 +2741,31 @@ Public Sub Inbox_showResult()
        End If 
 End
 
+Public Sub FMetaData_tbClose_Click()
+      '---------------------------------------------------------
+      'Remove FMetadata, put back correct FClinical gui elements
+      '---------------------------------------------------------
+      UnFiled_Document_Metadata_Show(False)    
+      If Vbox_PDF.Visible Then Vbox_PDF.Visible = False
+      vBoxWebBrowser.Visible = False
+      WorkspaceEditor.Visible = True 
+      Wait
+      cvwResults_Refresh()  'Fixme, the appropriate one
+      cvwLettersReceived_Fill(True) 
+End
 
-Public Sub Document_Metadata_Save_Keypress()
+Public Sub FMetaData_txtUserObservationName_Activate()
+   '------------------------------------------------------------------------------------------
+   'This over-rides the event on this textbox in the FMetadata
+   'For ease of use, when user hits enter here, File doc and roll on to next one automatically
+   '------------------------------------------------------------------------------------------   
+   Stop Event
+   If Last.tag = "user name" Then
+     FMetadata_tbSave_Click()
+   Endif
+   
+End
+Public Sub FMetaData_tbSave_Activate()
    '------------------------------------------------------------
    'Detects if user clicked <enter> on the FMetadata save button
    'overrides this event and saves. I've done this so that
@@ -2777,24 +2774,21 @@ Public Sub Document_Metadata_Save_Keypress()
    '------------------------------------------------------------  
    Stop Event
    If key.code = key.Return Then
-     Document_Metadata_Save_Click()
+      FMetadata_tbSave_Click()
    Endif
 End
 
-Public Sub Document_Metadata_Save_Click()
+
+Public Sub FMetaData_tbSave_Click()
    '-----------------------------------------------------------------------
    'User is modifying a document's metadata
    'Apply the changes, remove the metadata gui and re-load the results list  
    '-----------------------------------------------------------------------
-   Stop Event
-   FMetaData.Save()
-   UnFiled_Document_Metadata_Show(False)
-   If Vbox_PDF.Visible Then Vbox_PDF.Visible = False
-   vBoxWebBrowser.Visible = False
-   WorkspaceEditor.Visible = True 
-   Wait
-   cvwResults_Refresh()  'Fixme, the appropriate one
-   cvwLettersReceived_Fill(True)
+   Stop Event 
+   If FMetaData.Save() Then                     'successful 
+      modDBConnect.CommitTrans()                'save transaction
+      FMetaData_tbClose_Click()                 'remove the gui components 
+   End If
 End
 
 
@@ -2811,8 +2805,6 @@ Public Sub UnFiled_Document_Metadata_Show(bShow As Boolean)
    Else
      VsplitClinical_RightPane.Layout = Settings["Main/VsplitClinical_RightPane"]
    Endif
-  'vBoxWorkSpace.Visible = Not bshow
- ' FPDF.Visible = bShow 
 End
 
 Public Sub Referral_Letter_Display()
@@ -2941,7 +2933,7 @@ Public Sub Letter_Received_Display()
      'check file extension to see what container to show
      '--------------------------------------------------
      If vBoxWorkSpace.Visible = True Then vBoxWorkSpace.Visible = False        'remove the editor vbox    
-     UnFiled_Document_Metadata_Show(False)                                     'remove this it could be showing if not completed from previous document
+     Try UnFiled_Document_Metadata_Show(False)                                     'remove this it could be showing if not completed from previous document
      If Lower(file_extension) = "pdf" Then
         vBoxWebBrowser.Visible = False
         Vbox_PDF.Visible = True
@@ -2958,7 +2950,8 @@ Public Sub Letter_Received_Display()
       'If not, then show the metadata for this document
       '----------------------------------------------------------------------
       If IsNull(currentconsult!letters_received[cvwLettersReceived.Item.key]!tag_user) Then
-          SelectedDocument = currentconsult!letters_received[cvwLettersReceived.Item.key]
+            FMetaData.Init("Allocated Documents")                                      'gui elements for filing, not allocating like in scanning
+            SelectedDocument = currentconsult!letters_received[cvwLettersReceived.Item.key]
             With FMetaData
                   .Edit_New(currentconsult!letters_received, cvwLettersReceived.Item.key)      'display metadata
                   .bexit = True

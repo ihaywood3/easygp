@@ -49,7 +49,7 @@ DROP VIEW contacts.vwPatients CASCADE; -- has to be here
 DROP VIEW contacts.vwpersonsincludingpatients ;
 DROP VIEW contacts.vwemployees;
 
-ALTER TABLE clerical.data_patients DROP COLUMN date_deceased;  - now belongs in persons
+ALTER TABLE clerical.data_patients DROP COLUMN date_deceased;  -- now belongs in persons
 
 CREATE OR REPLACE VIEW contacts.vwemployees AS 
  SELECT (data_branches.fk_address || '-'::text) || data_employees.pk AS pk_view, data_organisations.organisation, 

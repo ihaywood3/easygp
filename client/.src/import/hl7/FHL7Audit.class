@@ -20,6 +20,7 @@ Public Sub Init()
   With FEntities = New FSendingEntities(Vbox_Sending_Entities) 'embed the sending entities form
     .Init()                                                    'load the list of sending entities
   End With
+  Print FEntities.cvwSendingEntities.Count
   obs = New Observer(FEntities.cvwSendingEntities) As "cvwSendingEntities"       'over-ride the columnview events
   obs = New Observer(FEntities.txtFilterSendingEntities) As "txtFilterSendingEntities"
   Gui_Init()                                                   'config this gui
@@ -35,14 +36,33 @@ Public Sub Show_Files()
    '------------------------------------------------------------------------------------
    'Using the pk of documents.sending_entities, and an optional filter on the filenames
    'Fetch all distinct files imported into the database and display in a columnview
+   'Over historical time one or more sending entities can amalgamate (!!!) and then
+   'and retain their file prefixes,or separate trading entities share a common sending
+   'mechanism
    '------------------------------------------------------------------------------------
    Dim x As Integer
    Dim r As Result 
+   Dim entity_keys As New String[]
+   
+   If Not FEntities.cvwSendingEntities.Count Then Return 
+   FEntities.cvwSendingEntities.MoveFirst()
+   For x = 1 To FEntities.cvwSendingEntities.Count
+       ' FEntities.cvwSendingEntities.MoveCurrent()
+       If FEntities.cvwSendingEntities.Item.Selected = True Then
+        '     cvwInboxDocuments.Item.Selected
+     
+          entity_keys.Add(FEntities.cvwSendingEntities.Item.key, x)
+       Endif
+       FEntities.cvwSendingEntities.MoveNext()
+   Next
+   If entity_keys.count = 0 Then Return
    Inc Application.Busy
    cvwImportedFiles.Clear()
-   Sending_entity = FEntities.Get_Entity()            'get current sending entity
-   lblFilesImportedForEntity.text = "Files imported for " & Sending_entity!msh_sending_entity
-   R = modHL7AuditDBI.HL7FilesNames_GetImported(Sending_entity!pk_sending_entities, Trim(txtfilter.text))
+  ' Sending_entity = FEntities.Get_Entity()            'get current sending entity
+ ' lblFilesImportedForEntity.text = "Files imported for " & Sending_entity!msh_sending_entity
+ '  R = modHL7AuditDBI.HL7FilesNames_GetImported(Sending_entity!pk_sending_entities, Trim(txtFilterInclude.text), Trim(txtFilterExclude.text))
+   R = modHL7AuditDBI.HL7FilesNames_GetImported(entity_keys, Trim(txtFilterInclude.text), Trim(txtFilterExclude.text))
+
    If R.count Then 
       Files_in_DB = New Collection 
       For Each R
@@ -53,7 +73,7 @@ Public Sub Show_Files()
       Next
    End If
    Dec Application.Busy
-   lblFilesInDatabase.text = "Total: " & Str(x)
+   'lblFilesImportedForEntity.text = "Files imported for " & Sending_entity!msh_sending_entity & " (" & Str(x) & ")"
 End
 
 Public Sub cvwSendingEntities_Select()
@@ -106,21 +126,23 @@ Public Sub Compare_DirFiles_To_DatabaseFiles(Optional recursive As Boolean)
                 End If
            End If
        Next
-    'lblFilesInDirectory.text = "Matching files:" & Str(files_found)
+   lblFilesInDirectory.text = "Matching files on Disk" & "(" & Str(files_found) & ")"
    ' lblMissingFiles.text = "Missing: " & Str(x)
     lblFilesNotImported.text = "Files Not Imported "
     If x > 0 Then lblFilesNotImported.text &= "(" & Str(x) & ")"
 End
+
 Public Sub Compare_DatabaseFiles_To_DirFiles()
    Dim sFilename As String
    Dim x As Integer
+   listview2.Clear()
     For Each sFilename In Files_in_DB
             If Not files_in_dir.Exist(sFilename) Then
                listview2.Add(sFilename, SFilename)
                Inc x
             Endif
    Next
-   lblFilesInDirNotInDB.text = "Files in Dir Not in Database "
+   lblFilesInDirNotInDB.text = "Files in Database not in Dir"
    If x Then lblFilesInDirNotInDB.text &= "(" & Str(x) & ")"
 End
 
@@ -144,12 +166,17 @@ Public Sub Timer1_Timer()
   End If
 End
 
-Public Sub txtFilter_KeyRelease()
+Public Sub txtFilterInclude_KeyRelease()
   Timer1.start 
   Timer_Delay = 0
 
 End
 
+Public Sub txtFilterExclude_KeyRelease()
+  Timer1.start 
+  Timer_Delay = 0
+
+End
 Public Sub DirChooser1_Activate()
    '--------------------------------------------------
    'User has double clicked on a directory in the tree
@@ -157,8 +184,79 @@ Public Sub DirChooser1_Activate()
    '---------------------------------------------------
 
   txtDirectory.text = DirChooser1.SelectedPath
+  txtFileNameInDatabase.text = ""
+  txtDirectory.text = ""
+  txtFilename.text = ""
+  listview1.Clear()
+  listview2.Clear()
   Compare_DirFiles_To_DatabaseFiles()
   Compare_DatabaseFiles_To_DirFiles()
 End
 
 
+
+Public Sub ListView1_Select()
+
+  txtFilename.text = listview1.Item.Text
+
+End
+
+Public Sub ListView1_Menu()
+  If listview1.count Then mnFilesNotImported.Popup
+
+End
+
+Public Sub Files_Manipulate(action As String)
+  
+   Dim fname As String
+   Dim x As Integer
+   Dim incoming_hl7_dir As String = ModAdminDBI.Config_Get("hl7_root_directory", "/var/easygp/hl7/incoming")
+   
+   listview1.MoveFirst()
+   For x = 0 To listview1.Count - 1
+     If listview1.Item.Selected = True Then
+         Print listview1.Item.Key
+         If action = "move" Then 
+                Try Move DirChooser1.SelectedPath & "/" & listview1.Item.key To incoming_hl7_dir &/ listview1.Item.Key
+                If Error Then Message.info("Error whilst moving file\n\n" & Error.text)
+         End If
+         If action = "copy" Then
+           Try Copy DirChooser1.SelectedPath & "/" & listview1.Item.key To incoming_hl7_dir &/ listview1.Item.Key
+           If Error Then Error Message.info("Error whilst coying file\n\n" & Error.text)
+         Endif
+     End If
+     listview1.MoveNext()
+   Next
+  DirChooser1_Activate() 'reload
+End
+
+Public Sub mnFilesNotImported_Click()
+  
+  listview1.MoveCurrent()
+  Select Case Last.tag
+    Case "move single", "move all"
+      Files_Manipulate("move")
+    Case "delete"
+       Delete_File(DirChooser1.SelectedPath &/ listview1.Item.key)
+    Case "copy"
+          Files_Manipulate("copy")
+  End Select
+  
+End
+
+Public Sub Delete_File(filepath As String)
+  
+   Try Kill modUtil.filepath_fix_Blanks(Filepath)
+  
+  If Error Then
+     Print Error.Text
+     Message.Info("Unable to delete the file - an error occurred")
+  Endif
+  DirChooser1_Activate()
+End
+
+Public Sub ListView2_Select()
+
+  txtFilenameInDAtabase.text = Last.Item.text
+
+End

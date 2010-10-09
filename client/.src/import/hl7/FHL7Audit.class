@@ -1,0 +1,164 @@
+' Gambas class file
+Private hl7Filenames As Collection
+Private hl7Filename As Collection
+
+Private files_in_dir As String[]
+Private Files_in_DB As Collection 
+
+Private FEntities As FSendingEntities
+Private obs As Observer
+Private Sending_Entity As Collection 
+Private Timer_Delay As Integer = 0 
+
+Public Sub Form_Open()
+    Try Settings_Load()
+    Init()
+End
+
+Public Sub Init()
+  
+  With FEntities = New FSendingEntities(Vbox_Sending_Entities) 'embed the sending entities form
+    .Init()                                                    'load the list of sending entities
+  End With
+  obs = New Observer(FEntities.cvwSendingEntities) As "cvwSendingEntities"       'over-ride the columnview events
+  obs = New Observer(FEntities.txtFilterSendingEntities) As "txtFilterSendingEntities"
+  Gui_Init()                                                   'config this gui
+End
+
+Public Sub Gui_Init()
+  
+    cvwImportedFiles.Columns.count = 3   
+  
+End
+
+Public Sub Show_Files()
+   '------------------------------------------------------------------------------------
+   'Using the pk of documents.sending_entities, and an optional filter on the filenames
+   'Fetch all distinct files imported into the database and display in a columnview
+   '------------------------------------------------------------------------------------
+   Dim x As Integer
+   Dim r As Result 
+   Inc Application.Busy
+   cvwImportedFiles.Clear()
+   Sending_entity = FEntities.Get_Entity()            'get current sending entity
+   lblFilesImportedForEntity.text = "Files imported for " & Sending_entity!msh_sending_entity
+   R = modHL7AuditDBI.HL7FilesNames_GetImported(Sending_entity!pk_sending_entities, Trim(txtfilter.text))
+   If R.count Then 
+      Files_in_DB = New Collection 
+      For Each R
+         cvwImportedFiles.Add(x, 0)
+         cvwImportedFiles[x][0] = R!source_file
+         Files_in_DB.Add(R!source_file, R!source_file) ' source_file is the key
+         Inc x
+      Next
+   End If
+   Dec Application.Busy
+   lblFilesInDatabase.text = "Total: " & Str(x)
+End
+
+Public Sub cvwSendingEntities_Select()
+   '-----------------------------------------------------------
+   'User has selected one of the hl7 Sending Entities
+   'Display all filenames imported under their name into the DB
+   '-----------------------------------------------------------
+   Stop Event
+  
+   Show_Files()
+End
+
+
+Public Sub Compare_DirFiles_To_DatabaseFiles(Optional recursive As Boolean)
+      '------------------------------------------------------------------------------------------
+      'Seaches the selected path optionally recursively
+      'adds any file from the directory **NOT** found in the database for display
+      'Files_in_DB = collection of all files in the database (may be filtered by user:txtFilter)
+      '              for the selected sending entity
+      '
+      '------------------------------------------------
+      Dim sFile As String 
+      Dim Filepath As String = DirChooser1.SelectedPath
+      Dim file_in_DB As String 
+      Dim x As Integer
+      Dim files_found As Integer
+      If IsNull(Sending_Entity) Then  
+         Message.info("Please select a sending entity before proceeding")
+         Return 
+      Endif
+      files_in_dir = Dir(DirChooser1.SelectedPath)                   'string[] of all files in the directory
+      listview1.Sorted = True 
+      listview1.Clear()
+ 
+       For Each sFile In files_in_dir                                'for each file in the directory in the directory view
+           If IsDir(DirChooser1.SelectedPath & "/" & sFile) Then
+             ' Message.Info("Directory:" & sFile)
+           Else
+                'For each file in this directory, check if it has been imported into documents
+               ' For Each file_in_DB In Files_in_DB  
+                 If Not InStr(Lower(SFile), Lower(Trim(txtFilterDirectoryFiles.text)))  'exclude any files not in the filter
+                  If Not Files_in_DB.Exist(sFile) Then                           'if it dosn't exist in the files list in the Db
+                   ' listview1.Add(sfile & "-" & Str(x), Sfile)                         'add to the listview.
+                     listview1.Add(sfile, sFile)
+                   '  Files_in_Dir.Add(Sfile, sfile & "-" & Str(x))
+                      Inc x
+                  Else
+                     Inc files_found
+                  Endif
+                End If
+           End If
+       Next
+    'lblFilesInDirectory.text = "Matching files:" & Str(files_found)
+   ' lblMissingFiles.text = "Missing: " & Str(x)
+    lblFilesNotImported.text = "Files Not Imported "
+    If x > 0 Then lblFilesNotImported.text &= "(" & Str(x) & ")"
+End
+Public Sub Compare_DatabaseFiles_To_DirFiles()
+   Dim sFilename As String
+   Dim x As Integer
+    For Each sFilename In Files_in_DB
+            If Not files_in_dir.Exist(sFilename) Then
+               listview2.Add(sFilename, SFilename)
+               Inc x
+            Endif
+   Next
+   lblFilesInDirNotInDB.text = "Files in Dir Not in Database "
+   If x Then lblFilesInDirNotInDB.text &= "(" & Str(x) & ")"
+End
+
+Public Sub Settings_Save()
+  
+  Settings["Audit_HL7/Hsplit1.layout"] = HSplit1.Layout
+  
+End
+Public Sub Settings_Load()
+  
+   HSplit1.Layout = Settings["Audit_HL7/Hsplit1.layout"]
+  
+  
+End
+
+Public Sub Timer1_Timer()
+   Inc Timer_Delay
+   If Timer_Delay = 2 Then
+      Timer1.stop
+      Show_Files()
+  End If
+End
+
+Public Sub txtFilter_KeyRelease()
+  Timer1.start 
+  Timer_Delay = 0
+
+End
+
+Public Sub DirChooser1_Activate()
+   '--------------------------------------------------
+   'User has double clicked on a directory in the tree
+   'show all the files like the database filtered ones
+   '---------------------------------------------------
+
+  txtDirectory.text = DirChooser1.SelectedPath
+  Compare_DirFiles_To_DatabaseFiles()
+  Compare_DatabaseFiles_To_DirFiles()
+End
+
+

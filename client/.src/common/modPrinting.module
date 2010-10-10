@@ -63,7 +63,7 @@ Public Sub Print_latex(latex As String, Optional printertype As Integer = const.
    Dec Application.Busy
 End
 
-Public Sub Print_html(sHtml As String, Optional printertype As Integer = const.Paper_Plain)
+Public Sub PrintHtml(sHtml As String, Optional printertype As Integer = const.Paper_Plain)
    '-----------------------------------------------------------------------------
    'prints some html to a printer as a pdf using wkhtmltopdf to do the conversion
    '-----------------------------------------------------------------------------
@@ -77,7 +77,7 @@ Public Sub Print_html(sHtml As String, Optional printertype As Integer = const.P
 Finally
    Close #pro
    Dec Application.Busy
-   Catch
+Catch
   Message.Error(Error.Text, "OK")
 End
 
@@ -215,33 +215,15 @@ Public Sub Split_PDF(pdf_file As String)
      cmd &= "pdflatex -interaction=nonstopmode " & stem & "-" & Str$(page) & ".tex"
      Shell cmd To cmd_result
      Inc page
-   Loop Until InStr(cmd_result, "required page \ndoes not exist")
+   Loop Until Not InStr(cmd_result, "")
+   If Not InStr(cmd_result, "required page \ndoes not exist") Then
+     Log.ErrorMsg("pdfLaTeX error: " & cmd_result)
+     Error.Raise("pdfLateX failed: check the log")
+   Endif
    cmd = "cd `dirname " & stem & "` ; "
    cmd &= "rm *.aux *.log *.tex"
    Shell cmd Wait
 End
-
-Public Sub Print_html_as_pdf(sHtml As String, printername As String)
-   '-----------------------------------------------------------------------------
-   'prints some html to a printer as a pdf using wkhtmltopdf to do the conversion
-   'IAN: PUT THIS BACK IN CAUSE COULDN'T PRINT STUFF AT WORK (THE HTML)
-   '-----------------------------------------------------------------------------
-   Dim pdfname As String
-   
- '  Message.Info("Richard, should not be in this routine:Print_html_as_pdf  stop and check")
-   If printername = "" Then
-     Log.WarningMsg("not printing as blank printer name provided") 
-     Return
-   Endif
-   
-   pdfname = Temp$("print") & ".pdf"
-   Inc Application.Busy 
-   Shell "wkhtmltopdf " & modUtil.Write_HTML(sHtml, "html") & " " & pdfname Wait 
-  ' Shell "lpr -P " & Left(printername, InStr(printername, ":") - 1) & " " & pdfname
-   Shell "lpr -P " & printername & " " & pdfname
-   Dec Application.Busy
-End
-
 
 Public Function Printers_Load() As String[]
    '--------------------------------------------------
@@ -287,7 +269,9 @@ Private Function GetLprOption(printertype As Integer) As String
   Dim config_printer As String
   Dim i As String
   
-  config_printer = FMain.GetSelectedPrinter()
+  config_printer = "Default"
+  Try config_printer = FMain.GetSelectedPrinter()
+  If config_printer = "" Then config_printer = "Default"
   If config_printer <> "Default" Then
     FMain.ResetPrinters()
     Return Subst$("-P &1", printers[config_printer])
@@ -302,23 +286,6 @@ Private Function GetLprOption(printertype As Integer) As String
     Case const.Paper_Long
       config_printer = Settings["Printers/long", "Default"]
   End Select
-  If config_printer = "Default" Then
-    ' eek, we need to figure out a printer ourselves
-    For Each i In printers
-      If InStr(config_printer, "cups-pdf:/") Then 
-        config_printer = Subst$("-P &1", i)
-      ' preferentially ignore the PDF virtual printer
-      ' provided by CUPS
-      Endif
-      If config_printer = "Default" Then 
-        config_printer = Subst$("-P &1", i)
-      Endif
-    Next
-  Endif 
-  If config_printer = "Default" Then
-    ' OK, now we're in a mess
-    Log.ErrorMsg("Printing aborted as no printer found, this should never happen")
-    Error.Raise("No printer exists")
-  Endif
+  If config_printer = "Default" Then Return ""
   Return config_printer
 End

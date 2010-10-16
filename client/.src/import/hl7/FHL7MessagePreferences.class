@@ -1,0 +1,584 @@
+' Gambas class file
+Private FPreview_Settings As FHtmlViewer
+Private Requesttypes As Collection
+Private Sending_Entities As Collection 
+Private Sending_Entity As Collection
+Private pk_view_sending_entities As Integer
+Private Organisations As Collection
+Private organisation As Collection
+Private persons As Collection
+Private person As Collection
+Private fgc As Integer = 16711680  'red foreground 
+Private bgc As Integer = 16777215  'yellow background 
+Private fk_person As Integer
+Private fk_branch As Integer
+Private fk_organisation As Integer
+Private fk_employee As Integer
+Private fk_address_organisation As Integer
+Private fk_address_person As Integer
+Private fk_category_organisation As Integer
+Private fk_category_person As Integer 
+Private fk_town_person As Integer 
+Private fk_town_organisation As Integer
+Private fk_lu_message_display_style As Integer  
+Private fk_occupation As Integer
+Private bExit As Boolean
+Private sender As Collection
+Private sendingperson As Collection
+Private Contact_Type As Integer
+
+Public Sub Init()
+   
+   FPreview_Settings = New FHtmlViewer(VBox_Preview_Messages)
+   lblMeasure_message_settings.text = "    Sending Application        "
+   modEditAreaHelpers.Resize_labels(VBox_HL7FileDetails, lblMeasure_message_settings) 
+   Requesttypes = modUtil.LoadCombo(cmbResultTypes, modRequestsDBI.RequestTypes_Get(), "type")
+   cvwSendingEntities.Columns.Count = 2
+   Sending_Entities_Reload()
+   cvwSendingEntities_Refresh()  'fill sending entities on that tab
+   Settings_Load()
+End
+
+Public Sub Sending_Entity_Display()
+   '--------------------------------------
+   'Displays details of the sending entity
+   '--------------------------------------
+   Dim x As Integer
+   
+   Inc Application.Busy
+   EditArea_Clear()                                                     'clear the data display area
+   cvwSendingEntities.MoveCurrent                                       'set internal list cursor to obtan key
+   pk_view_sending_entities = cvwSendingEntities.Item.Key               'the key to the view
+   bExit = True                                                         'prevent change events in subroutines
+   Sending_Entity = New Collection                                      'need entirely new collection to compare to the old one
+   Sending_Entity!pk_sending_entities = Sending_Entities[pk_view_sending_entities]!pk_sending_entities
+   Sending_Entity!provider_type = Sending_Entities[pk_view_sending_entities]!provider_type
+   Sending_Entity!fk_lu_message_display_style = Sending_Entities[pk_view_sending_entities]!fk_lu_message_display_style
+   fk_lu_message_display_style = Sending_Entity!fk_lu_message_display_style
+   txtSendingEntity.text = Sending_Entities[pk_view_sending_entities]!msh_sending_entity
+   lblDetails.text = UCase(txtSendingEntity.text)                       'heading over the edit area
+   txtTransmittingEntity.text = Sending_Entities[pk_view_sending_entities]!msh_transmitting_entity
+   chkExcludeFTReportSendingEntity.value = Sending_Entities[pk_view_sending_entities]!exclude_ft_report
+   chkExcludePITSendingEntity.value = Sending_Entities[pk_view_sending_entities]!exclude_pit
+   cmbResultTypes.index = cmbResultTypes.Find(Sending_Entities[pk_view_sending_entities]!provider_type)
+   cbForeground.Value = Sending_Entities[pk_view_sending_entities]!abnormals_foreground_color
+   cbBackground.value = Sending_Entities[pk_view_sending_entities]!abnormals_background_color
+   lblSample.Foreground = cbForeground.Value
+   lblSample2.Foreground = cbForeground.Value
+   lblSample.Background = cbBackground.value
+   lblSample2.Background = cbBackground.value
+   Select Case Sending_Entity!fk_lu_message_display_style
+      Case const.Document_Display_As_Letter
+         rbDisplayFormatLetter.value = True
+      Case const.Document_Display_As_Result
+         rbDisplayFormatResult.value = True
+   End Select
+   
+   If Not IsNull(Sending_Entities[pk_view_sending_entities]!fk_branch) Then
+      If Sending_Entities[pk_view_sending_entities]!fk_branch <> 0 Then 
+         Organisations = modContactsDBI.Branch_get_by_keys(Sending_Entities[pk_view_sending_entities]!fk_branch)
+         For Each Organisation In Organisations
+            Organisation_Display()
+            rbTypeSender_Organisation.value = True
+         Next
+      End If   
+   End If
+   If Not IsNull(Sending_Entities[pk_view_sending_entities]!fk_person) Then
+       If Sending_Entities[pk_view_sending_entities]!fk_person <> 0 Then
+        For Each Person In modContactsDBI.Person_Get_By_pk(Sending_Entities[pk_view_sending_entities]!fk_person)
+            Person_Display()
+             rbTypeSender_Person.value = True
+         Next
+       End If
+   End If
+   
+   EditArea_Notify_DataChange(False) 
+   
+  ' If fk_organisation = 0 And fk_person = 0 Then
+  '    Sending_entity_Find()
+  ' End If   
+   bExit = False
+   If lblContactDetails.text = "" Then
+      With lblContactDetails
+         .text = "NO DEFAULTS ARE SET FOR THIS SENDER\n\n"
+                 "Please allocate this sender to an existing entity \n"
+                 "in the contacts database or if not yet in the database\n"
+                 "please add before continuing."
+      End With
+      txtfindSender.SetFocus()
+   Endif
+   Dec Application.Busy
+End
+
+Public Sub Sending_entity_Find()
+ 
+   If fk_organisation = 0 And fk_person = 0 Then
+      Organisations = modContactsDBI.Organisations_Get_HeadOffice(Trim(txtSendingEntity.text))
+      For Each Organisation In Organisations
+         Organisation_Display()
+      Next  
+   End If 
+   
+End
+Public Sub Sending_Entities_Reload()
+       Sending_Entities = modInboxDBI.Get_HL7_FileHandling_Defaults(Trim(txtFilterSendingEntities.text)) 'FIXME CHANGE MY NAME IN OTHER MODULE TO Get_Sending_Entities
+End
+
+Public Sub cvwSendingEntities_Select()
+   
+   Sending_Entity_Display()
+   
+End
+
+Public Sub cvwSendingEntities_Refresh()
+   Dim x As Integer
+   Dim y As Integer
+   Inc Application.Busy
+   EditArea_Clear()
+   cvwSendingEntities.Clear()
+   
+   For Each Sending_Entity In Sending_Entities
+      x = Sending_Entity!pk_sending_entities
+      y = 0
+      cvwSendingEntities.Add(x, 0)
+      'Has this entity been equated to a person or employee or organisation?
+      'fuck my logic is bad, anyway.
+      If Not IsNull(Sending_Entity!fk_organisation) Then
+         If Sending_Entity!fk_organisation <> 0 Then
+             Inc y
+         End If
+      End If
+        
+      If Not IsNull(Sending_Entity!fk_person) Then
+         If Sending_Entity!fk_person <> 0 Then Inc y
+       Endif
+       If y > 0 Then  
+         cvwSendingEntities[x][0] = ""
+      Else
+         cvwSendingEntities[x][0] = "*"
+      End If
+      cvwSendingEntities[x][1] = Sending_Entity!msh_sending_entity
+   Next
+   lblKey.text = "key: * = not yet configured"
+   lblSendingEntities.text = "Sending Entities (" & Str$(Sending_Entities.count) & ")"
+   Dec Application.busy
+   If cvwSendingEntities.count = 0 Then Return 
+   cvwSendingEntities.MoveFirst()
+   cvwSendingEntities.Item.Selected = True
+   
+End
+Public Sub EditArea_Clear()
+   
+   Dim iLastDisplaypreference As Integer = fk_lu_message_display_style
+   
+   bExit = True   
+   modEditAreaHelpers.EditArea_Clear(VBox_HL7FileDetails)
+   cmbResultTypes.index = -1
+   fk_lu_message_display_style = const.Document_Display_As_Letter 'default
+   lblDetails.text = ""
+   listview2.Visible = False  
+  
+   FPreview_Settings.WebView1.html = ""
+   sender = New Collection 
+   sender!address = New Collection
+   SendingPerson = New Collection 
+   Reset_Keys()
+   lblContactDetails.text = ""
+   cbForeground.Color = color.red
+   cbBackground.color = color.yellow
+   EditArea_Notify_DataChange(False)
+   rbTypeSender_Organisation.Value = True 'default to it being a company
+   Contact_Type = const.contacttype_organisation
+   rbTypeSender_Organisation.value = True
+   bExit = False  
+   
+End
+
+Public Sub EditArea_Notify_DataChange(flag As Boolean)
+   
+   If flag Then 
+      tbSaveSendingEntity.Foreground = Color.Red
+      HBox_EditArea_Outer.Padding = 1
+   Else
+      tbSaveSendingEntity.Foreground = Color.Black
+      HBox_EditArea_Outer.Padding = 0
+      
+   End If
+   
+End
+
+Public Sub Reset_Keys()
+   
+   fk_organisation = 0
+   fk_category_organisation = 0
+   fk_town_organisation = 0
+   fk_address_organisation = 0
+   fk_person = 0
+   fk_address_person = 0
+   fk_branch = 0
+   fk_employee = 0
+   
+End   
+
+Public Sub Settings_Save()
+  
+   Settings["Inbox_Message_Preferences/HSplit_Transmitter_Sender"] = HSplit_Transmitter_Sender.Layout  
+   Settings["Inbox_Message_Preferences/Vsplit_File_Details"] = Vsplit_File_Details.Layout  
+   Settings["Inbox_Message_Preferences/VSplit_Right"] = VSplit_Right.LayoutEnd
+   Settings["Inbox_Message_Preferences/default_zoom"] = FPreview_Settings.Webview1.Zoom
+  
+  
+  
+End
+     
+Public Sub Settings_Load()
+  
+     Try HSplit_Transmitter_Sender.Layout = Settings["Inbox_Message_Preferences/HSplit_Transmitter_Sender"]
+     Try Vsplit_File_Details.Layout = Settings["Inbox_Message_Preferences/Vsplit_File_Details"]
+     Try VSplit_Right.Layout = Settings["Inbox_Message_Preferences/VSplit_Right"]
+     Try FPreview_Settings.webview1.Zoom = Settings["Inbox_Message_Preferences/default_zoom", 1]
+End
+Public Sub listview2_DblClick()
+   
+   Listview2.MoveCurrent
+   Select Case Contact_Type
+      Case const.contacttype_organisation, const.contacttype_employee 
+         Organisation_Select()
+       Case const.contacttype_patient, const.contacttype_person
+         Person_Select()
+   End Select
+   listview2.Visible = False  
+End
+
+Public Sub listview2_KeyPress()
+   
+   If key.code = key.return Then
+      Listview2_DblClick()
+   End If
+   
+End
+Public Sub Persons_Get_List()
+   
+   '-----------------------------------------------------------------
+   'Pops up a list or either patients or persons who are not patients
+   '-----------------------------------------------------------------  
+  Persons = modMetaData.Persons_Fill_Popup_List(listview2, txtfindSender, Contact_Type)
+End
+
+Public Sub Person_Select()
+   
+   '--------------------------------------------------------
+   'User has clicked on a list of either patients or persons
+   'display the details
+   '--------------------------------------------------------
+   Person = Persons[listview2.Item.key]
+   Person_Display()
+End
+
+Public Sub Person_Display()
+   
+   Dim sMsg As String
+   
+   Try fk_occupation = Person!fk_occupation
+   fk_person = Person!fk_person
+   If Contact_Type = const.contacttype_person Then 
+      Try fk_category_person = Person!fk_category
+      If Error Then 
+         sMsg = "This person is missing a category in contacts.\n\nPerhaps you should be selecting employee, and searching again. "
+         sMsg &= "If not, then please go back to the contacts database and allocate a category to this person."
+         Message.info(sMsg)
+      Endif
+   Endif
+   
+   Try fk_address_person = Person!fk_address
+   Try fk_town_person = Person!fk_town
+   lblContactDetails.text = Person!title & " " & " " & Person!firstname & " " & Person!surname  
+  
+  
+   If Not IsNull(Person!sex) Then
+     lblContactDetails.text &= " (" & Person!sex & ")"
+   Endif
+   lblContactDetails.text &= "\n"
+   lblContactDetails.text &= Person!street & "\n"
+   lblContactDetails.text &= Person!town & " " & Person!state & " " & Person!postcode & "\n"
+   lblContactDetails.text &= "Occupation: " & Person!occupation & "\n"
+    If Not IsNull(Person!category) Then
+      lblContactDetails.text &= "Category: " & Person!category
+    Endif
+    bExit = False  
+ 
+   
+End
+
+
+
+Public Sub Type_Sender_Click()
+   
+   '------------------------------------------------------------------------------
+   'User has clicked on the type of sender
+   'either organisation, an employee of an organisation, a person or a patient
+   'Use the contents of txtFindSender (if any) to poup a list of possible choices
+   '------------------------------------------------------------------------------
+   Select Case Last.tag
+      Case "organisation"
+         Contact_Type = const.contacttype_organisation
+      Case "patient"
+         Contact_Type = const.contacttype_patient
+      Case "person"
+         Contact_Type = const.contacttype_person
+      Case "employee"
+         Contact_Type = const.contacttype_employee
+   End Select
+   txtfindSender.pos = Len(Trim(txtFindSender.text))
+   txtfindSender.SetFocus()
+   lblContactDetails.text = ""
+   Sender_Find()
+End
+
+Public Sub Sender_Find()
+   
+    Reset_Keys() 
+    Select Case Contact_Type
+      Case const.contacttype_organisation
+          Organisations_Get_List()
+      Case const.contacttype_patient, const.contacttype_person
+          Persons_Get_List()
+      Case const.contacttype_employee
+         Employees_Get_List()
+   End Select
+End
+
+
+Public Sub Employees_Get_List()
+   
+   '--------------------------------------------------------------
+   'Get list of employees in their organisations
+   'Note the collection is somewhat of a misnomer as it can contain
+   'just organisations or employees as well
+   '--------------------------------------------------------------- 
+   Organisations = modMetaData.Employee_Fill_Popup_List(listview2, txtfindSender)
+End
+
+Public Sub Organisations_Get_List()
+   
+   '-------------------------
+   'Get list of organisations
+   '-------------------------  
+  Organisations = modMetaData.Organisations_Fill_Popup_List(listview2, txtFindSender)
+End
+
+
+Public Sub Organisation_Select()
+   
+   '------------------------------------------------------------------------------
+   'User selects either an organisation or a organisation employee from popup list
+   '------------------------------------------------------------------------------   
+   Organisation = Organisations[listview2.item.key]
+   Organisation_Display()
+
+End
+
+Public Sub Organisation_Display()
+     
+   fk_organisation = Organisation!fk_organisation
+   fk_employee = Organisation!fk_employee
+   fk_branch = Organisation!fk_branch
+   lblContactDetails.text = ""
+   If fk_employee <> 0 Then
+     lblContactDetails.text = Organisation!wholename & "\n"
+   Endif
+   lblContactDetails.text &= Organisation!organisation & "\n"
+   lblContactDetails.text &= Organisation!branch & "\n"
+   lblContactDetails.text &= Organisation!street & "\n"
+   lblContactDetails.text &= Organisation!town & " " & Organisation!state & " " & Organisation!postcode
+   fk_category_organisation = Organisation!fk_category
+End
+
+Public Sub Inbox_txtImport_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)  
+   Select Case Last.tag
+     Case "find sender"
+       With listview2
+          .top = Last.parent.parent.top + Last.height 
+          .left = Last.Left
+          .width = Last.width
+          .Raise()
+          
+       End With
+   End Select
+
+End
+Public Sub Inbox_txtImport_LostFocus()
+   
+   Last.BackGround = Color.White 
+
+End
+
+
+
+Public Sub Inbox_txtImport_KeyRelease()
+   
+     Select Case Last.tag
+   Case "find sender"
+         Sender_Find()
+   End Select
+
+End
+
+Public Sub Inbox_txtImport_KeyPress()
+   
+  If key.code = key.down And Listview2.Visible Then
+     listview2.SetFocus()
+     listview2.MoveFirst()
+     listview2.Item.Selected = True
+  Endif
+
+End
+
+Public Sub Inbox_txtImport_Change()
+   
+  EditArea_Notify_DataChange(True)
+
+End
+
+Public Function Sample_Letter() As String 
+  Dim sHtml As String = ""
+  "<html><body><P STYLE='background: #ffb515'><FONT COLOR='#ffffff'><B>Letter: SAMPLE</B></FONT></P><P>AH:kc<BR><BR>20 July 2007 <BR><BR>"
+    "<BR>Dr Best Doctor<BR>141 Any Road<BR>Anytown NSW  2290<BR><BR><BR>Dear Best,<BR><BR>Re: Mrs Stephanie Peterson      DOB: 01/01/1901<BR><BR>I saw Stephanie today and she remains well. "
+    " She has had no bleeding or discharge and I can find no signs of recurrence on examination now, a year after her endometrial carcinoma.  I have taken a vault smear and will see her "
+    "again in three months.   <BR><BR><BR>Kind regards,<BR><BR><BR>Dr Guy Nacologist<BR><BR><BR><B>[Electronically checked but not signed.]</B> <BR></P></body></html>"
+ Return sHtml  
+End
+
+Public Sub rbDisplayFormatSample_Click()
+
+  If Last.tag = const.Document_Display_As_Letter Then 
+    FPreview_Settings.WebView1.HTML = Sample_Letter()
+    cmbResultTypes.index = -1
+    cmbResultTypes.Enabled = False
+  Else
+    cmbResultTypes.Enabled = True  
+  End If
+  EditArea_Notify_DataChange(True)
+End
+
+Public Sub tbSaveSendingEntity_Click()
+
+   SendingEntity_Save()
+
+End
+Public Sub SendingEntity_Save()
+   
+   If HBox_EditArea_Outer.padding = 0 Then
+      Message.Info("No changes made to this sending entity, the record will not be saved")
+      Return   
+   End If
+   Inc Application.Busy
+   If Not SendingEntity_Valid() Then 
+      Dec Application.Busy
+      Return 
+   End If  
+   
+   modDBConnect.BeginTrans() 
+   'fixme I'm changing this field name to fk_lu_request_type but havn't done it yet
+   'as will have to change heaps of views. So at moment makes no sense to you, does to me!
+   If cmbResultTypes.index <> -1 Then
+       Sending_Entity!fk_lu_provider_type = Requesttypes[cmbResultTypes.index]!pk
+   Else
+     Sending_Entity!fk_lu_provider_type = 0 'won't link to anything
+   End If
+   Sending_Entity!fk_lu_message_display_style = fk_lu_message_display_style
+   Sending_Entity!fk_branch = fk_branch
+   Sending_Entity!fk_person = fk_person
+   Sending_Entity!fk_employee = fk_employee
+   Sending_Entity!fk_lu_message_standard = cmbFileType.index + 1
+   Sending_Entity!exclude_ft_report = CBool(chkExcludeFTReportSendingEntity.value)
+   Sending_Entity!exclude_pit = CBool(chkExcludePITSendingEntity.value)
+   Sending_Entity!abnormals_foreground_color = cbForeground.Value
+   Sending_Entity!abnormals_background_color = cbBackground.Value
+   
+   Try Sending_Entity.Remove("sender_name")
+   Try Sending_Entity.Remove("style")
+   Try Sending_Entity.Remove("message_version")
+   Try Sending_Entity.Remove("message_type")
+   Try Sending_Entity.Remove("provider_type")
+   
+   Sending_Entity!fk_default = modInboxDBI.Save_HL7_FileHandling_Defaults(Sending_Entities, pk_view_sending_entities, Sending_Entity)
+   modDBConnect.CommitTrans()
+   Dec Application.Busy
+   EditArea_Notify_DataChange(False)
+   Sending_Entities_Reload()
+   cvwSendingEntities_Refresh()
+   
+End
+
+Public Function SendingEntity_Valid() As Boolean
+      '-----------------------------------------------------
+      'Validates that minimal data needed to save is present
+      '-----------------------------------------------------   
+      Dim sMsg As String 
+      
+      If Trim(txtSendingEntity.text) = "" Then
+         txtSendingEntity.SetFocus()
+         Return
+      End If
+      If Trim(txtTransmittingEntity.text) = "" Then   
+         sMsg = "Missing Transmission entity\n\n" 
+         "If unsure you can safely make this the same as the sending entity."
+         txtTransmittingEntity.SetFocus()
+         Goto Invalid
+      End If
+      
+      If lblContactDetails.text = "" Then 
+          Message.Title = "Selecting a sender"
+          sMsg = "Each HL7 message usually, but not always, has some sort of  indication as to who "
+                 "has sent the message. Examples of where this does not occur are pathology labs "
+                 "whose message sometimes only contains their NATA number.\n\n"
+                 "Before you can file HL7 messages, there must be an entry in the contacts database "
+                 "for each HL7 sender - be it from an organisation, an employee of an organisation "
+                 "a sole trader 'here the option is person', or even one of your patients.\n\n"
+                 "Please select one of these options, then search contacts by typing in the textbox "
+                 "next to the label 'Search Contacts'. You may have to put the sender's details "
+                 "into the contacts database before proceeding'"
+                 txtFindSender.SetFocus()   
+                 Goto Invalid
+        End If
+      
+     If rbDisplayFormatResult.value = True Then
+          If cmbResultTypes.index = -1 Then
+               smsg = "Please select a type of result that describes the message content"
+               Message.title = "Result Type"
+               Goto Invalid
+               cmbResultTypes.SetFocus()
+              Return
+            End If
+         End If   
+   
+   If fk_lu_message_display_style = 0 Then
+      smsg = "Please click on one of the display style options before saving this record\n\n" 
+      "Display as letter - the document will look like a normal letter in style.\n"
+      "Display as result - the document will have a formal report style heading and may or may not contain results.\n\n"
+      "It's a good idea to view a few patients documents (results or letters) to make sure of your display choice." 
+      Goto Invalid
+   End If
+   
+   If Not IsDir(modAdminDBI.Config_Get("hl7_root_directory", "/var/easygp/hl7/")) Then
+      sMsg = "You do not seem to have set the main download directory for incoming hl7, or it does not exist\n"
+      "The default is /var/easygp/hl7/incoming/\n"
+      "Please get the system administrator to help you do this in the Admin/Global Preferences Section before proceeding"
+      Goto Invalid
+   End If   
+   Return True  
+   Invalid:
+   Dec Application.Busy
+   Message.Info(sMsg)
+   Inc Application.Busy
+   Return
+ End   
+
+Public Sub cmbResultTypes_Click()
+
+   EditArea_Notify_DataChange(True)
+
+End

@@ -55,8 +55,6 @@ UNION
    LEFT JOIN admin.clinics ON branches.pk = clinics.fk_branch
   ORDER BY 1, 3, 4, 29, 28;
 
-ALTER TABLE contacts.vworganisationsemployees OWNER TO easygp;
-GRANT ALL ON TABLE contacts.vworganisationsemployees TO easygp;
 GRANT ALL ON TABLE contacts.vworganisationsemployees TO staff;
 
 -- replaces the concept of having the contacts category probably = the type of request
@@ -87,9 +85,6 @@ CREATE OR REPLACE VIEW documents.vwsendingentities AS
    LEFT JOIN contacts.vwpersons ON sending_entities.fk_person = vwpersons.fk_person
   ORDER BY sending_entities.msh_sending_entity;
 
-ALTER TABLE documents.vwsendingentities OWNER TO richard;
-GRANT ALL ON TABLE documents.vwsendingentities TO richard;
-GRANT ALL ON TABLE documents.vwsendingentities TO easygp;
 GRANT SELECT ON TABLE documents.vwsendingentities TO staff;
 COMMENT ON VIEW documents.vwsendingentities IS 'View of the sending entities note:
   -  LEFT JOIN contacts.lu_categories as when a file is parsed fk_lu_provider type cannot exist
@@ -139,14 +134,7 @@ CREATE OR REPLACE VIEW documents.vwdocuments AS
    LEFT JOIN documents.unmatched_staff ON documents.fk_unmatched_staff = unmatched_staff.pk
   ORDER BY documents.fk_patient, documents.date_created;
 
-ALTER TABLE documents.vwdocuments OWNER TO richard;
-GRANT ALL ON TABLE documents.vwdocuments TO richard;
-GRANT ALL ON TABLE documents.vwdocuments TO easygp;
 GRANT ALL ON TABLE documents.vwdocuments TO staff;
-
-
-
-
 
 CREATE OR REPLACE VIEW clin_requests.vwforms AS 
  SELECT (forms.pk || '-'::text) || forms_requests.pk AS pk_view, forms.fk_lu_request_type AS fk_lu_type, lu_type.type, forms.fk_consult, consult.consult_date, consult.fk_patient, data_persons.firstname, data_persons.surname, data_persons.birthdate, data_persons.fk_sex, forms_requests.fk_form, forms.requests_summary, forms_requests.pk AS fk_forms_requests, lu_requests.item, forms.date AS request_date, forms_requests.request_result_html, forms.forms_results_html, forms.fk_progressnote, forms_requests.fk_lu_request, forms_requests.deleted AS request_deleted, lu_requests.fk_laterality, lu_requests.fk_decision_support, lu_requests.fk_instruction, forms.fk_branch, forms.notes_summary, forms.medications_summary, forms.copyto, forms.form_html, forms.deleted, forms.copyto_patient, forms.urgent, forms.bulk_bill, forms.fasting, forms.phone, forms.fax, forms.include_medications, forms.pk_image AS fk_image, lu_title.title AS staff_title, staff.pk AS fk_staff, data_persons1.firstname AS staff_firstname, data_persons1.surname AS staff_surname, data_branches.branch, data_branches.fk_organisation, data_organisations.organisation, vwdocuments.html
@@ -166,8 +154,6 @@ CREATE OR REPLACE VIEW clin_requests.vwforms AS
   WHERE forms.deleted = false AND forms_requests.deleted = false
   ORDER BY consult.fk_patient, forms.date DESC, forms_requests.fk_form, lu_requests.item;
 
-ALTER TABLE clin_requests.vwforms OWNER TO easygp;
-GRANT ALL ON TABLE clin_requests.vwforms TO easygp;
 GRANT ALL ON TABLE clin_requests.vwforms TO staff;
 
 
@@ -178,8 +164,6 @@ CREATE OR REPLACE VIEW documents.vwhl7filesimported AS
   ORDER BY vwdocuments.source_file;
 
 
-ALTER TABLE documents.vwhl7filesimported  OWNER TO easygp;
-GRANT ALL ON TABLE documents.vwhl7filesimported  TO easygp;
 GRANT ALL ON TABLE documents.vwhl7filesimported  TO staff;
 
 
@@ -204,8 +188,6 @@ UNION
   WHERE team_care_members.deleted = false AND team_care_members.fk_employee IS NULL
   ORDER BY 2;
 
-ALTER TABLE clin_history.vwteamcaremembers OWNER TO easygp;
-GRANT ALL ON TABLE clin_history.vwteamcaremembers TO easygp;
 GRANT ALL ON TABLE clin_history.vwteamcaremembers TO staff;
 
 
@@ -230,8 +212,6 @@ UNION
   WHERE team_care_members.deleted = false AND team_care_members.fk_employee IS NULL
   ORDER BY 2;
 
-ALTER TABLE clin_history.vwteamcaremembers OWNER TO easygp;
-GRANT ALL ON TABLE clin_history.vwteamcaremembers TO easygp;
 GRANT ALL ON TABLE clin_history.vwteamcaremembers TO staff;
 
 

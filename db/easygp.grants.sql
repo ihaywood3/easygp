@@ -411,6 +411,8 @@ GRANT ALL ON TABLE contacts.todo TO staff;
 GRANT ALL ON TABLE contacts.vwbranchescomms TO staff;
 GRANT ALL ON TABLE contacts.vworganisationsbycategory TO staff;
 GRANT ALL ON TABLE contacts.vworganisationsemployees TO staff;
+GRANT ALL ON TABLE contacts.vworganisations TO easygp;
+GRANT ALL ON TABLE contacts.vworganisations TO staff;
 GRANT ALL ON TABLE contacts.vwpatients TO staff;
 GRANT ALL ON TABLE contacts.vwpersonsaddresses TO staff;
 GRANT ALL ON TABLE contacts.vwpersonscomms TO staff;

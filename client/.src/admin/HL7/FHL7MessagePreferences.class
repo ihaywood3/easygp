@@ -28,15 +28,25 @@ Private sendingperson As Collection
 Private Contact_Type As Integer
 
 Public Sub Init()
-   
-   FPreview_Settings = New FHtmlViewer(VBox_Preview_Messages)
-   lblMeasure_message_settings.text = "    Sending Application        "
-   modEditAreaHelpers.Resize_labels(VBox_HL7FileDetails, lblMeasure_message_settings) 
-   Requesttypes = modUtil.LoadCombo(cmbResultTypes, modRequestsDBI.RequestTypes_Get(), "type")
-   cvwSendingEntities.Columns.Count = 2
-   Sending_Entities_Reload()
-   cvwSendingEntities_Refresh()  'fill sending entities on that tab
+  
+   FPreview_Settings = New FHtmlViewer(VBox_Preview_Messages)                                  'a previewier for demo hl7 messages
+   lblMeasure_message_settings.text = "    Sending Application        "                        'set edit area width of labels
+   modEditAreaHelpers.Resize_labels(VBox_HL7FileDetails, lblMeasure_message_settings)          'do it!
+   Requesttypes = modUtil.LoadCombo(cmbResultTypes, modRequestsDBI.RequestTypes_Get(), "type") 'e.g Pathology/Radiology
+   cvwSendingEntities.Columns.Count = 3
    Try Settings_Load()
+  
+   Reload()
+End
+
+Public Sub Reload()
+   '-----------------------------------------------------------------
+   'Refreshes sending entities from backend, and displays in the list
+   'default to only hl7 entries, unless filters on snail mail - ie
+   'non hl7 documents
+   '-----------------------------------------------------------------  
+   Sending_Entities = modInboxDBI.Get_Document_Handling_Defaults(Trim(txtFilter.text), chkNonHl7.Value)                                                          'reload senders, default to hl7 only
+   cvwSendingEntities_Refresh()  
 End
 
 Public Sub Sending_Entity_Display()
@@ -56,7 +66,11 @@ Public Sub Sending_Entity_Display()
    Sending_Entity!request_type = Sending_Entities[pk_view_sending_entities]!request_type
    Sending_Entity!fk_lu_message_display_style = Sending_Entities[pk_view_sending_entities]!fk_lu_message_display_style
    fk_lu_message_display_style = Sending_Entity!fk_lu_message_display_style
-   txtSendingEntity.text = Sending_Entities[pk_view_sending_entities]!msh_sending_entity
+   If Sending_Entities[pk_view_sending_entities]!msh_sending_entity <> "" Then 
+         txtSendingEntity.text = Sending_Entities[pk_view_sending_entities]!msh_sending_entity
+   Else
+         txtSendingEntity.text = "N/A"
+   End If
    lblDetails.text = UCase(txtSendingEntity.text)                       'heading over the edit area
    txtTransmittingEntity.text = Sending_Entities[pk_view_sending_entities]!msh_transmitting_entity
    chkExcludeFTReportSendingEntity.value = Sending_Entities[pk_view_sending_entities]!exclude_ft_report
@@ -79,16 +93,25 @@ Public Sub Sending_Entity_Display()
       If Sending_Entities[pk_view_sending_entities]!fk_branch <> 0 Then 
          Organisations = modContactsDBI.Branch_get_by_keys(Sending_Entities[pk_view_sending_entities]!fk_branch)
          For Each Organisation In Organisations
-            Organisation_Display()
+           
+            bexit = True  
             rbTypeSender_Organisation.value = True
+            Contact_Type = Const.contacttype_organisation
+            bexit = False  
+            Organisation_Display()
+         
          Next
       End If   
    End If
    If Not IsNull(Sending_Entities[pk_view_sending_entities]!fk_person) Then
        If Sending_Entities[pk_view_sending_entities]!fk_person <> 0 Then
         For Each Person In modContactsDBI.Person_Get_By_pk(Sending_Entities[pk_view_sending_entities]!fk_person)
-            Person_Display()
-             rbTypeSender_Person.value = True
+           bexit = True 
+           rbTypeSender_Person.value = True
+           Contact_Type = const.contacttype_person
+           bExit = False 
+           Person_Display()
+           
          Next
        End If
    End If
@@ -118,8 +141,7 @@ Public Sub Sending_entity_Find()
    End If 
    
 End
-Public Sub Sending_Entities_Reload()
-       Sending_Entities = modInboxDBI.Get_HL7_FileHandling_Defaults(Trim(txtFilterSendingEntities.text)) 'FIXME CHANGE MY NAME IN OTHER MODULE TO Get_Sending_Entities
+Public Sub Sending_Entities_Get()
 End
 
 Public Sub cvwSendingEntities_Select()
@@ -131,9 +153,87 @@ End
 Public Sub cvwSendingEntities_Refresh()
    Dim x As Integer
    Dim y As Integer
+   Dim sString As String 
+   Dim sEmployee As String 
    Inc Application.Busy
-   EditArea_Clear()
-   cvwSendingEntities.Clear()
+   
+   EditArea_Clear()                                               'clear data input area
+   cvwSendingEntities.Clear()                                     'clear entries from list
+   
+   For Each Sending_Entity In Sending_Entities
+      x = Sending_Entity!pk_sending_entities
+      y = 0
+      sEmployee = ""
+      '------------------------------------------------
+      'Work out what to display on basis of filters etc
+      '------------------------------------------------
+      If chkNonHl7.value = False Then 
+           sString = Sending_Entity!msh_sending_entity
+      Else
+          If IsNull(Sending_Entity!organisation) Then
+            sString = Sending_Entity!firstname & " " & Sending_Entity!surname
+          Else
+             sString = Sending_Entity!organisation & " " & Sending_Entity!branch
+             Try sEmployee = Sending_Entity!firstname & " " & Sending_Entity!surname
+           
+          End If  
+      End If
+      '----------------------------------------------------------------------
+      'Has this entity been equated to a person or employee or organisation?
+      'fuck my logic is bad, anyway......
+      '-----------------------------------------------------------------------
+      If Not IsNull(Sending_Entity!fk_organisation) Then
+         If Sending_Entity!fk_organisation <> 0 Then
+             Inc y
+         End If
+      End If
+      If Not IsNull(Sending_Entity!fk_person) Then
+         If Sending_Entity!fk_person <> 0 Then Inc y
+      Endif
+      '--------------------
+      'Now apply the filter 
+      '--------------------
+      If txtFilter.text = "" Then 
+          cvwSendingEntities.Add(x, 0)
+          cvwSendingEntities[x][1] = sString 
+          Try cvwSendingEntities[x][2] = sEmployee
+          If y > 0 Then  
+               cvwSendingEntities[x][0] = ""
+          Else
+             cvwSendingEntities[x][0] = "*"
+          End If
+
+      Else
+         If InStr(Lower(sSTring), Lower(txtFilter.text)) Then
+            cvwSendingEntities.Add(x, 0)
+            cvwSendingEntities[x][1] = sString 
+             Try cvwSendingEntities[x][2] = sEmployee
+          If y > 0 Then  
+               cvwSendingEntities[x][0] = ""
+          Else
+             cvwSendingEntities[x][0] = "*"
+          End If
+
+         Endif
+      End If
+    Next
+   lblKey.text = "key: * = not yet configured"
+   lblSendingEntities.text = "Sending Entities (" & Str$(Sending_Entities.count) & ")"
+   Dec Application.busy
+   If cvwSendingEntities.count = 0 Then Return 
+   If bexit Then Return 
+   cvwSendingEntities.MoveFirst()
+   cvwSendingEntities.Item.Selected = True
+   
+End
+
+Public Sub cvwSendingEntities_Refresh_old()
+   Dim x As Integer
+   Dim y As Integer
+   Inc Application.Busy
+   
+   EditArea_Clear()                                               'clear data input area
+   cvwSendingEntities.Clear()                                     'clear entries from list
    
    For Each Sending_Entity In Sending_Entities
       x = Sending_Entity!pk_sending_entities
@@ -155,7 +255,15 @@ Public Sub cvwSendingEntities_Refresh()
       Else
          cvwSendingEntities[x][0] = "*"
       End If
-      cvwSendingEntities[x][1] = Sending_Entity!msh_sending_entity
+      If chkNonHl7.value = False Then 
+           cvwSendingEntities[x][1] = Sending_Entity!msh_sending_entity
+      Else
+          If IsNull(Sending_Entity!organisation) Then
+             cvwSendingEntities[x][1] = Sending_Entity!firstname & " " & Sending_Entity!surname
+          Else
+              cvwSendingEntities[x][1] = Sending_Entity!organisation & " " & Sending_Entity!branch
+          End If  
+      End If
    Next
    lblKey.text = "key: * = not yet configured"
    lblSendingEntities.text = "Sending Entities (" & Str$(Sending_Entities.count) & ")"
@@ -317,6 +425,7 @@ Public Sub Type_Sender_Click()
    'either organisation, an employee of an organisation, a person or a patient
    'Use the contents of txtFindSender (if any) to poup a list of possible choices
    '------------------------------------------------------------------------------
+   If Bexit Then Return 
    Select Case Last.tag
       Case "organisation"
          Contact_Type = const.contacttype_organisation
@@ -378,6 +487,7 @@ End
 
 Public Sub Organisation_Display()
      
+   Contact_Type = const.contacttype_organisation
    fk_organisation = Organisation!fk_organisation
    fk_employee = Organisation!fk_employee
    fk_branch = Organisation!fk_branch
@@ -508,8 +618,7 @@ Public Sub SendingEntity_Save()
    modDBConnect.CommitTrans()
    Dec Application.Busy
    EditArea_Notify_DataChange(False)
-   Sending_Entities_Reload()
-   cvwSendingEntities_Refresh()
+   Reload()
    
 End
 
@@ -580,5 +689,32 @@ Public Function SendingEntity_Valid() As Boolean
 Public Sub cmbResultTypes_Click()
 
    EditArea_Notify_DataChange(True)
+
+End
+
+Public Sub chkNonHl7_Click()
+
+
+End
+
+
+
+
+Public Sub tbRefreshSendingEntities_Click()
+  bExit = True 
+  Reload()
+  bExit = False   
+End
+
+Public Sub txtFilter_KeyRelease()
+   'Filter the list
+  cvwSendingEntities_Refresh() 
+  
+
+End
+
+Public Sub txtFilter_GotFocus()
+
+'  HBox_EditArea_Outer.Enabled = False
 
 End

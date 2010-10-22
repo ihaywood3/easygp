@@ -120,12 +120,18 @@ Public Sub Button2_Click()
   
   If Message.Warning("This will fix duplicated entries in the categories table.\n\nIt will not affect your current allocation of categories", "Yes", "No") = 2 Then Return 
   sql = "Drop table contacts.lu_categories_new"       'try and drop it may not exist. at least it shouldn't
-  Try modDBConnect.exec_query(sql)
-  
-
-  sql = "CREATE TABLE contacts.lu_categories_new "        'create temporary table
-  sql &= "(pk  serial primary key,category text NOT NULL)"
-    modDBConnect.exec_query(sql)
+' Try modDBConnect.exec_query(sql)
+  ' If Error Then
+  '   "CREATE TABLE \"contacts\".\"lu_categories_new\" ("
+  '     "  \"pk\" INTEGER NOT NULL, "
+  '     "  \"category\" VARCHAR(50) NOT NULL"
+  '     ") WITHOUT OIDS;"
+  '     modDBConnect.exec_query(sql)
+  ' Endif
+ 'If Error Then 
+ '  sql = "CREATE TABLE contacts.lu_categories_new "        'create temporary table
+ '  sql &= "(pk  serial primary key,category text NOT NULL)"
+ ''End If  
   'copy all 'provider' named categories over first to the new table  
   sql = "Select * from contacts.lu_categories where category ILIKE '%provider' order by pk"
   categories = modDBConnect.exec_query_collection(sql)
@@ -268,4 +274,135 @@ Public Sub Button2_Click()
   modDBConnect.exec_query(sql)
 modDBConnect.CommitTrans()
   Message.Info("Finished refurbishing the category table")
+End
+
+Public Sub Button3_Click()
+
+     '---------------------------------------------------------------------------
+   'I put this in for temporary use as all my occupations were screwed over time
+   'as there is some sort of bug in the occupation creation which I need to find
+   '----------------------------------------------------------------------------
+  Dim sql As String
+  Dim occupations As Collection
+  Dim copyoccup As Collection 
+  Dim copycat As Collection 
+  Dim done As Boolean
+
+  Dim members As Collection
+  Dim member As Collection 
+  Dim old_occupation As String
+  Dim R As Result
+  Dim x As Integer
+  Dim occupation As Collection 
+  Dim new_pk_occupation As String 
+  
+  If Message.Warning("This will fix duplicated entries in the occupations table.\n\nIt will not affect your current allocation of occupations", "Yes", "No") = 2 Then Return 
+'  sql = "Drop table common.lu_occupations_new"       'try and drop it may not exist. at least it shouldn't
+' CREATE TABLE common.lu_occupations_new
+' (
+'   pk serial,
+'   occupation text NOT NULL
+' )
+' WITH (
+'   OIDS=FALSE
+' );
+' Try modDBConnect.exec_query(sql)
+' "CREATE TABLE \"common\".\"lu_occupations_new\" ("
+'     "  \"pk\" INTEGER NOT NULL, "
+'     "  \"occupation\" TEXT NOT NULL"
+'     ") WITHOUT OIDS;"
+ 'If Error Then 
+ '  sql = "CREATE TABLE common.lu_occupations_new "        'create temporary table
+ '  sql &= "(pk  serial primary key,category text NOT NULL)"
+ ''End If  
+  'copy all 'provider' named occupations over first to the new table  
+
+  sql = "Select * from common.lu_occupations order by pk"
+  occupations = modDBConnect.exec_query_collection(sql)
+  copyoccup = modDBConnect.exec_query_collection(sql)
+  For Each occupation In occupations
+
+          If Trim(occupation!occupation) = "" Then
+            Message.info("the key for empty occupation is" & Str$(occupation!pk))
+          Else
+            sql = "Select * from common.lu_occupations_new where occupation =$$" & Lower(Trim(occupation!occupation)) & "$$"
+            R = modDBConnect.exec_query(sql)
+            If Not R.count Then
+              sql = "insert into common.lu_occupations_new(occupation) values('" & Lower(Trim(occupation!occupation)) & "')"
+              modDBConnect.exec_query(sql)
+              Inc x
+              Print x, occupation!occupation
+            End If
+         End If   
+  Next   
+  modDBConnect.CommitTrans() 
+ 
+  'Now to fix all the tables containing occupations
+
+  members = modDBConnect.exec_query_collection("Select * from contacts.data_persons")
+  For Each member In members
+    'not every person has a occupation - eg all imported patients
+    If Not IsNull(member!fk_occupation) Then 
+         sql = "Select * from common.lu_occupations where pk = " & member!fk_occupation        'for each branch get its fk_occupation
+         R = modDBConnect.exec_query(sql)
+         If R.count = 0 Then
+           Message.Warning("missing occupation")
+         Else
+            old_occupation = R!occupation                                                        'assuming dosn't fail
+            sql = "Select * from common.lu_occupations_new where occupation ILIKE $$" & old_occupation & "$$"  'get new occupation pk
+            R = modDBConnect.exec_query(sql)
+            If R.count = 0 Then
+                Message.Warning("missing new occupation")
+            Else
+               new_pk_occupation = R!pk                                                            'then update the old table with new pk
+               sql = "Update  contacts.data_persons set fk_occupation = " & new_pk_occupation & " where pk=" & member!pk
+               modDBConnect.exec_query(sql)
+            Endif
+         Endif
+     End If
+   Next
+    members = modDBConnect.exec_query_collection("Select * from contacts.data_employees")
+    For Each member In members
+    If Not IsNull(member!fk_occupation) Then 
+         sql = "Select * from common.lu_occupations where pk = " & member!fk_occupation        'for each branch get its fk_occupation
+         R = modDBConnect.exec_query(sql)
+         If R.count = 0 Then
+           Message.Warning("missing occupation")
+         Else
+            old_occupation = R!occupation                                                        'assuming dosn't fail
+            sql = "Select * from common.lu_occupations_new where occupation ILIKE $$" & old_occupation & "$$"  'get new occupation pk
+            R = modDBConnect.exec_query(sql)
+            If R.count = 0 Then
+                Message.Warning("missing new occupation")
+            Else
+               new_pk_occupation = R!pk                                                            'then update the old table with new pk
+               sql = "Update contacts.data_employees set fk_occupation = " & new_pk_occupation & " where pk=" & member!pk
+               modDBConnect.exec_query(sql)
+            Endif
+         Endif
+     End If
+   Next 
+ '------------------------------------------------------------------------------
+ 'Now wipe the original common lu_occupations table, copy back the altered data
+ '------------------------------------------------------------------------------
+  modDBConnect.exec_query("Delete from common.lu_occupations")      'Now wipe the common lu_occupations table
+  sql = "ALTER SEQUENCE common.lu_occupations_pk_seq "              'reset the index to the start
+  sql &= " INCREMENT 1 MINVALUE 1 "
+  sql &= "MAXVALUE 9223372036854775807 RESTART 1 "
+  sql &= "CACHE 1 NO CYCLE"
+  modDBConnect.exec_query(sql)
+  sql = "INSERT INTO common.lu_occupations(pk,occupation) "
+  sql &= "SELECT * from common.lu_occupations_new order by pk"     'copy back the fixed data
+  modDBConnect.exec_query(sql)
+  sql = "Select count(pk) from common.lu_occupations_new"
+  R = modDBConnect.exec_query(sql)
+  
+  sql = "ALTER SEQUENCE common.lu_occupations_pk_seq RESTART " 'reset starting pk
+  sql &= R!count + 1
+  modDBConnect.exec_query(sql)
+  sql = "drop table common.lu_occupations_new"
+  modDBConnect.exec_query(sql)
+modDBConnect.CommitTrans()
+  Message.Info("Finished refurbishing the occupation table")
+
 End

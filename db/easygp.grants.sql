@@ -2,6 +2,7 @@
 -- in case grants info gets clobbered on database update
 -- we have it hare
 
+grant usage on schema db to staff;
 grant usage on schema common to staff;
 grant usage on schema admin to staff;
 grant usage on schema contacts to staff;
@@ -409,10 +410,6 @@ GRANT select ON TABLE contacts.lu_marital TO staff;
 GRANT select, insert ON TABLE contacts.lu_surnames TO staff;
 GRANT ALL ON TABLE contacts.todo TO staff;
 GRANT ALL ON TABLE contacts.vwbranchescomms TO staff;
-GRANT ALL ON TABLE contacts.vworganisationsbycategory TO staff;
-GRANT ALL ON TABLE contacts.vworganisationsemployees TO staff;
-GRANT ALL ON TABLE contacts.vworganisations TO easygp;
-GRANT ALL ON TABLE contacts.vworganisations TO staff;
 GRANT ALL ON TABLE contacts.vwpatients TO staff;
 GRANT ALL ON TABLE contacts.vwpersonsaddresses TO staff;
 GRANT ALL ON TABLE contacts.vwpersonscomms TO staff;
@@ -684,7 +681,6 @@ grant select on coding.vwgenericterms to staff;
 grant select on clin_requests.lu_request_type to staff;
  GRANT USAGE ON SEQUENCE common.lu_appointment_length_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE clin_requests.vwforms_pk_seq TO staff;
- GRANT USAGE ON SEQUENCE contacts.vworganisations_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE admin.clinic_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE admin.link_staff_clinics_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE admin.staff_pk_seq TO staff;
@@ -824,7 +820,6 @@ grant select on coding.vwgenericterms to staff;
 grant select on clin_requests.lu_request_type to staff;
  GRANT USAGE ON SEQUENCE common.lu_appointment_length_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE clin_requests.vwforms_pk_seq TO staff;
- GRANT USAGE ON SEQUENCE contacts.vworganisations_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE admin.clinic_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE admin.link_staff_clinics_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE admin.staff_pk_seq TO staff;
@@ -965,3 +960,4 @@ grant select on clin_requests.lu_request_type to staff;
 grant usage on all_images_pk_seq TO staff;
 grant usage on schema clin_procedures to staff;
 grant select on clerical.lu_task_types to staff;
+grant select on clin_requests.vwrequestproviders to staff;

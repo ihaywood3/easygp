@@ -2252,6 +2252,32 @@ Public Sub Document_Display_As_Result()
    
    cvwLettersReceived_Fill(True)
 End
+
+Public Sub Document_Edit_Metadata(documents As Collection, document_key As Integer) ' As Integer, user_tag As String)
+   '------------------------------------------
+   'Edits the metadata of an existing document
+   'If not yet shown, show the document
+   '------------------------------------------
+  ' If vBoxWorkSpace.Visible = False Then
+  '   Document_Display()
+  ' Else
+         With FMetaData
+            .Init("Allocated Documents")                                      'gui elements for filing, not allocating like in scanning
+            .Edit(documents, document_key)     
+            .bexit = True
+            
+      '    .txtUserObservationName.text = user_tag  
+       '   .txtUserObservationName.pos = 0                                      'ensure start of line showing
+          .HBox_Save.visible = True                                           'contains the save button
+          .hBox_Urgency.Visible = False                                        'not needed as already in the patients notes
+          .bExit = False   
+          .txtUserObservationName.SetFocus()
+         End With 
+       '  Try FMetaData.txtUserObservationName.text = 
+       UnFiled_Document_Metadata_Show(True)                                    'set up FClinical to show FMetadata
+ ' End If
+End
+
 Public Sub Document_Delete()
    '---------------------------------------
    'Swaps display type from letter to result
@@ -2449,18 +2475,21 @@ Public Sub tbPatientPicture_Menu()
 
 End
 Public Sub mnuLettersReceived_Click()
-
+   cvwLettersReceived.MoveCurrent()
   Select Case Last.tag
     Case "help"            'show help for this section 
     Case "columns"         'adjust and save column widths
     Case "fonts"           'adjust and save font
     Case "display"         'show the letter
+       Document_Display(currentconsult!letters_received, cvwLettersReceived.Item.key)              'display document
+
     Case "print"           'print the letter'
     Case "file as result"  'change fk_lu_display as to const.Document_Display_As_Result
           Document_Display_As_Result()
     Case "delete"          'mark this as deleted
-         Document_Delete()
+          Document_Delete()
     Case "edit"            'edit the metadata
+          Document_Edit_Metadata(currentconsult!letters_received, cvwLettersReceived.Item.key)
     Case "link"            'link to a health issue
     Case "print single"
           Document_Print("single")
@@ -2636,6 +2665,7 @@ Public Sub TabbedLists_DblClick()
    
  
    If IsNull(currentconsult) Then Return
+   Last.MoveCurrent 'set internal cursor
    Select Case Last.tag
    Case "requests"
       '---------------------------------------------------------------
@@ -2651,9 +2681,7 @@ Public Sub TabbedLists_DblClick()
       End If
       
    Case "letters received" 
-   
-         Letter_Received_Display()
- 
+      Document_Display(currentconsult!letters_received, cvwLettersReceived.Item.key)              'display document
    Case "referrals"
    
        If vBoxWebBrowser.Visible = False Then
@@ -2667,6 +2695,45 @@ Public Sub TabbedLists_DblClick()
        Inbox_showResult()
 End Select
 End
+
+Public Sub Document_Display(documents As Collection, document_key As Integer)
+   '---------------------------------------------------------------------------------
+   'Displays a document currently in central area until IAN does the emulated browser
+   'If document metadata is not complete, prompt user by showing the metadata
+   '---------------------------------------------------------------------------------
+   Dim filename As String = documents[document_key]!source_file
+   Dim currentobservations As Collection 
+   Dim shtml As String 
+   
+   Inc application.Busy
+   If vBoxWorkSpace.Visible = True Then vBoxWorkSpace.Visible = False        'remove the editor vbox    
+   Try UnFiled_Document_Metadata_Show(False)                                 'remove this it could be showing if not completed from previous document
+   Select Case File.Ext(filename)
+     Case "pdf"
+         vBoxWebBrowser.Visible = False
+         Vbox_PDF.Visible = True
+         FPDF.Load_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ filename)
+     Case "jpg", "png", "bmp", "jpeg", "tiff"
+     Case Else 'must be hmtl
+           Vbox_PDF.Visible = False  
+           If IsNull(documents[document_key]!html) Then        'Null = unfiled, construct this from backend
+               CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & document_key)
+               shtml = modHL7Process.Construct_HTML(currentconsult!patient, documents[document_key], currentobservations, True, True, documents[document_key]!fk_lu_display_as)
+           Else
+              shtml = documents[document_key]!html
+           End If
+           WebBrowserNotes.html = sHTML
+           vBoxWebBrowser.Visible = True        'show the webrowser by making its vbox visible
+   End Select
+   '---------------------------------------------------------------------------------
+   'Has this document been filed by (a) the user?, No? then get user to edit metadata
+   '---------------------------------------------------------------------------------
+    If IsNull(documents[document_key]!tag_user) And FMetaData.visible = False Then
+       Document_Edit_Metadata(Documents, document_key)
+    Endif
+      Dec application.Busy
+End
+
 
 Public Sub Inbox_showResult()
       '-------------------------------------------------------------------------------------
@@ -2684,7 +2751,7 @@ Public Sub Inbox_showResult()
       Dim file_extension As String
       
       If cvwResults.count = 0 Then Return 
-      cvwResults.MoveCurrent()
+     ' cvwResults.MoveCurrent()
       lblWebBrowserNotes.text = "Result"
       If vBoxWorkSpace.Visible = True Then vBoxWorkSpace.Visible = False        'remove the editor vbox    
       Try UnFiled_Document_Metadata_Show(False)                                     'remove this it could be showing if not completed from previous document
@@ -2838,13 +2905,16 @@ Public Sub TabbedLists_Select()
    Dim Astring As String 
    Dim interval As Integer = 0
    If IsNull(currentconsult) Then Return
+   Last.MoveCurrent()   'set internal cursor
    Select Case Last.tag
       Case "recalls"
            cvwRecalls.MoveCurrent()
            currentrecall = currentconsult!recalls_logged[cvwRecalls.Item.key]
       Case "results"
           If vBoxWebBrowser.Visible = True Then
-          Inbox_showResult()
+            
+           cvwLettersReceived.MoveCurrent()
+           Inbox_showResult()
        End If
       Case "requests"
            If Last.Header = True Then
@@ -2855,10 +2925,9 @@ Public Sub TabbedLists_Select()
            RequestForm_Display_Previous()
         End If 
       Case "letters received"        
-      
-       If vBoxWebBrowser.Visible Then
-            Letter_Received_Display()
-       End If
+         If vBoxWebBrowser.Visible Or Vbox_PDF.Visible Then 'if visible, just move from letter to letter
+             Document_Display(currentconsult!letters_received, cvwLettersReceived.Item.key)        
+         End If
       Case "referrals"
          '----------------------------------------------------------------
          'If the central display area is visible the automatically show
@@ -2915,55 +2984,85 @@ Public Sub Measurement_Graph(loinc As String, Measurement As String)
    End If
   
 End
+' Public Sub Document_Edit(documents As Collection, document_key As Integer) ' user_tag As String)
+'    '------------------------------------------
+'    'Edits the metadata of an existing document
+'    'If not yet shown, show the document
+'    '------------------------------------------
+'    If vBoxWorkSpace.Visible = False Then
+'      Letter_Received_Display()
+'    Endif
+'    With FMetaData
+'       .Init("Allocated Documents")                                      'gui elements for filing, not allocating like in scanning
+'       .Edit(documents, document_key)     
+'       .bexit = True
+'  '  .txtUserObservationName.text = user_tag  
+'     .txtUserObservationName.pos = 0                                      'ensure start of line showing
+'     .HBox_Save.visible = True                                           'contains the save button
+'     .hBox_Urgency.Visible = False                                        'not needed as already in the patients notes
+'     .bExit = False   
+'    End With 
+'    UnFiled_Document_Metadata_Show(True)                                    'set up FClinical to show FMetadata
+' End
 
-Public Sub Letter_Received_Display()
-   '-----------------------------------------------------------------------------------------------------
-   'Displays letters received for the patient - either hl7 or scanned
-   'works out which is which using the file extension of the document and uses the appropriate container
-   'If this is an unfiled document > show the metadata form to encourage user to fill this in
-   '-----------------------------------------------------------------------------------------------------
-      Dim filename As String 
-      Dim file_extension As String
-      Dim SelectedDocument As Collection 
-    
-     cvwLettersReceived.MoveCurrent()                                            'set key to collection 
-     tbWebBrowserPrint.ToolTip = "Print the letter"
-     file_extension = File.Ext(currentconsult!letters_received[cvwLettersReceived.Item.key]!source_file)
-     '--------------------------------------------------
-     'check file extension to see what container to show
-     '--------------------------------------------------
-     If vBoxWorkSpace.Visible = True Then vBoxWorkSpace.Visible = False        'remove the editor vbox    
-     Try UnFiled_Document_Metadata_Show(False)                                     'remove this it could be showing if not completed from previous document
-     If Lower(file_extension) = "pdf" Then
-        vBoxWebBrowser.Visible = False
-        Vbox_PDF.Visible = True
-        filename = currentconsult!letters_received[cvwLettersReceived.Item.key]!source_file
-        FPDF.Load_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ filename)
-     Else
-          Vbox_PDF.Visible = False  
-          WebBrowserNotes.html = currentconsult!letters_received[cvwLettersReceived.Item.key]!html
-          vBoxWebBrowser.Visible = True        'show the webrowser by making its vbox visible
-     End If 
-      '----------------------------------------------------------------------
-      'Now determine if this has actually been viewed and filed by the doctor
-      'if it has, then there will be a user tag
-      'If not, then show the metadata for this document
-      '----------------------------------------------------------------------
-      If IsNull(currentconsult!letters_received[cvwLettersReceived.Item.key]!tag_user) Then
-            FMetaData.Init("Allocated Documents")                                      'gui elements for filing, not allocating like in scanning
-            SelectedDocument = currentconsult!letters_received[cvwLettersReceived.Item.key]
-            With FMetaData
-                  .Edit(currentconsult!letters_received, cvwLettersReceived.Item.key)      'display metadata
-                  .bexit = True
-                  .txtUserObservationName.text = Replace$(cvwLettersReceived[cvwLettersReceived.Item.key][1], "** UNFILED **:", "")
-                  .txtUserObservationName.pos = 0                 'ensure start of line showing
-                  .HBox_Save.visible = True               'contains the save button
-                  .hBox_Urgency.Visible = False                   'not needed as already in the patients notes
-                  .bExit = False   
-              End With               
-              UnFiled_Document_Metadata_Show(True)  
-              FMetaData.bexit = False
-       End If 
+' Public Sub Letter_Received_Display()
+'    '-------------------------------------------------------------------------------
+'    'Displays letters received for the patient - either hl7 or scanned
+'    'If document metadata not  yet complete Document_Display will popup the metadata
+'    '--------------------------------------------------------------------------------
+'    Document_Display(currentconsult!letters_received, cvwLettersReceived.Item.key)              'display document
+' End
+
+Public Sub Letter_Received_Display_old()
+   ' '-----------------------------------------------------------------------------------------------------
+   ' 'Displays letters received for the patient - either hl7 or scanned
+   ' 'works out which is which using the file extension of the document and uses the appropriate container
+   ' 'If this is an unfiled document > show the metadata form to encourage user to fill this in
+   ' '-----------------------------------------------------------------------------------------------------
+   '    Dim filename As String 
+   '    Dim file_extension As String
+   '    Dim Documents As Collection
+   '    Dim Document_key As Integer
+   '    
+   '   cvwLettersReceived.MoveCurrent()                                            'set key to collection 
+   '   tbWebBrowserPrint.ToolTip = "Print the letter"
+   '   file_extension = File.Ext(currentconsult!letters_received[cvwLettersReceived.Item.key]!source_file)
+   '   '--------------------------------------------------
+   '   'check file extension to see what container to show
+   '   '--------------------------------------------------
+   '   If vBoxWorkSpace.Visible = True Then vBoxWorkSpace.Visible = False        'remove the editor vbox    
+   '   Try UnFiled_Document_Metadata_Show(False)                                     'remove this it could be showing if not completed from previous document
+   '   If Lower(file_extension) = "pdf" Then
+   '      vBoxWebBrowser.Visible = False
+   '      Vbox_PDF.Visible = True
+   '      filename = currentconsult!letters_received[cvwLettersReceived.Item.key]!source_file
+   '      FPDF.Load_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ filename)
+   '   Else
+   '        Vbox_PDF.Visible = False  
+   '        WebBrowserNotes.html = currentconsult!letters_received[cvwLettersReceived.Item.key]!html
+   '        vBoxWebBrowser.Visible = True        'show the webrowser by making its vbox visible
+   '   End If 
+   '    '----------------------------------------------------------------------
+   '    'Now determine if this has actually been viewed and filed by the doctor
+   '    'if it has, then there will be a user tag
+   '    'If not, then show the metadata for this document
+   '    '----------------------------------------------------------------------
+   '    If IsNull(currentconsult!letters_received[cvwLettersReceived.Item.key]!tag_user) Then
+   '          FMetaData.Init("Allocated Documents")                                      'gui elements for filing, not allocating like in scanning
+   '          user_tag = Replace$(cvwLettersReceived[cvwLettersReceived.Item.key][1], "** UNFILED **:", "") 'why did I do this?
+   '          Document_Edit(Documents, document_key, user_tag)
+   '          ' With FMetaData
+   '          '       .Edit(currentconsult!letters_received, cvwLettersReceived.Item.key)      'display metadata
+   '          '       .bexit = True
+   '          '       .txtUserObservationName.text = Replace$(cvwLettersReceived[cvwLettersReceived.Item.key][1], "** UNFILED **:", "")
+   '          '       .txtUserObservationName.pos = 0                 'ensure start of line showing
+   '          '       .HBox_Save.visible = True               'contains the save button
+   '          '       .hBox_Urgency.Visible = False                   'not needed as already in the patients notes
+   '          '       .bExit = False   
+   '          '   End With               
+   '          '   UnFiled_Document_Metadata_Show(True)  
+   '          '   FMetaData.bexit = False
+   '     End If 
 End
 
 
@@ -3012,6 +3111,7 @@ Public Sub TabbedLists_Click()
     '--------------------------------------------------------------
  
    If IsNull(currentconsult) Then Return  'do nothing if no consult
+   Last.MoveCurrent()
    Select Case Last.tag
     Case "measurement favourite"
          cvwMeasurements.SelectAll(False)
@@ -3034,15 +3134,13 @@ Public Sub TabbedLists_Click()
        If vBoxWebBrowser.Visible = True Then
           Inbox_showResult()
        End If
-   Case "letters received"
-    
    Case "recalls"
       'user could have just been resizing the columns 
       cvwRecalls.Resizable = False
       cvwRecalls.Header = False  
    Case "requests"
     
-     
+   Case "letters received"
 
    ' Case "referrals"
    '     If vBoxWebBrowser.Visible Then

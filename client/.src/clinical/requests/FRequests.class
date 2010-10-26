@@ -1,4 +1,41 @@
 ' Gambas class file
+' Gambas module file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'----------------------------------------------------------------------
+' PURPOSE         Allow user to order requests
+' HOW THIS WORKS  Like all forms,  it has the currentconsult (cConsult) passed in INIT()
+'                 As user types in a type of request, brings up all request like this  -
+'                 from all clin_requests.lu_request_types. However once the request is
+'                 selected, all further requests are restricted to that type.
+' KNOWN BUGS      Probably squillions
+'                 email me rterry@pacific.net.au
+' TODO            Implement pictures on the form
+'                 Implement re-printing multiple forms
+'                 Once emulated browser is complete, the preview, help will appear on its tabs
+'                 and FPDF and FHMTLviewer will be removed
+'                 User_Defaults_Get() not implemented yet - the idea of this is that
+'                 I might want pathology to be my default request, but you may want audiology etc
+'                 Implemement printing of the image on the latex form
+'                 Look at clin_requests.vwforms definition and look at why vwDocuments.html (this
+'                 was used as the result html is still in this query - I think I origially used it
+'                 to link an incoming document to a request form written by the user.
+'                 When ian fixes things so a know integer value can be re-saved as null
+'                 fix save for fk_pasthistory when changed back to null
+'                 Implement help when no default provider is set
+'------------------------------------------------------------------------------------------------
 
 Private bEmbedded As Boolean  'If True this form is embedded in an editor
 Private EmbeddedForm As String
@@ -13,14 +50,14 @@ Private requestforms As Collection
 Private requestform As Collection
 Private member As Collection 
 Private x As Integer
-
+Private FPreview As FHtmlViewer
 Private Printer_Plain As String 
 Private currentrequest As Collection 
 Private Copytos As Collection
 Private currentRequestForm As Collection 
 Private currentFormsRequests As Collection 
 Private currentFormRequest As Collection 
-
+Private bPreviewingPrintedForm As Boolean
 Private semicolon_position As Integer
 Private Selected_text As String 
 Private Copyto As Collection 
@@ -46,7 +83,7 @@ Private CopytoCollection As Collection
 Private CopyToType As Integer  'e.g const.Request_CopyTo_Person
 Private iCurrentKey As Variant 'has to be this because some keys are compound string fields.
 
-Private sCurrentForm As Variant 'this is a compound key as a string (fk_form +  fk_lu_request) eg 19-519
+Private sCurrentForm_Key As Variant 'this is a compound key as a string (fk_form +  fk_lu_request) eg 19-519
 Private iZoom As Integer
 Private default_Zoom As Integer
 Private user_default As Collection  ' clin_requests.lu_user_default_type e.g 1 = pathology
@@ -79,7 +116,7 @@ Private sSearchText As String
 Private sStartPos As Integer
 Private lastpos As Integer
 Private charpos As Integer
-Private FPreview As FHtmlViewer
+Private Form_PDF As FPdf
 Private fk_category As Integer
 Private request_count As Integer 'temporary remove me
 Private currentconsult As CConsult
@@ -115,24 +152,25 @@ Public Sub Init(cons As CConsult)
    Dim sMsg As String
  
    currentconsult = cons
-   Try Settings_Load()
    request_types = modUtil.LoadCombo(cmbRequestTypes, modRequestsDBI.RequestTypes_Get(), "type")
    bexit = True
    cmbRequestTypes.index = cmbRequestTypes.Find("Pathology")
    fk_lu_request_type = const.Request_Type_Pathology
    bExit = False  
+   With Form_PDF = New FPdf(Me)                                             'pdf's of workcover forms shown here in preview
+      .Visible = False                                                   'Though Ian dosn't like this I do!
+   End With
+   hObs = New Observer(Form_PDF.tbClose) As "Form_PDF_Close"
    FPreview = New FHtmlViewer(Me)        
    FPreview.visible = False              
    FPreview.tbWebBrowserBack.Visible = True
-   FPreview.tbWebBrowserForward.Visible = True
    EditArea_Resize_Labels()                                       'to current system font
    cvwCopyTo.columns.count = 5
    cProgressNote_Section = const.cSection_GeneralNotes
    User_Defaults_Get()
-   Requests_This_Consult_Show()           'Display any existing forms
- 
-   Wait
-     RequestForm_New()                      'Default to want a new form
+   Requests_This_Consult_Show()           'Display any existing forms, eg user could have ordered, close form, re-opened
+   Try Settings_Load()
+   RequestForm_New()                      'Default to want a new form
 End
 
 Public Sub Reload()
@@ -171,23 +209,19 @@ Public Sub Save()
    Else
       fk_progressnote = CurrentRequestForm!fk_progressnote
    End If
+   If fk_pasthistory <> 0 Then
+     CurrentRequestForm!fk_pasthistory = fk_pasthistory
+   Endif
    CurrentRequestForm!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, cProgressNote_Section, fk_progressnote, "Requests", fk_pasthistory, False)
    
    fk_form = modRequestsDBI.RequestForm_Save(currentconsult, pk_view, CurrentRequestForm, old_forms_requests, currentFormsRequests, currentRequestFormPictures)
    
    modDBConnect.CommitTrans()
-   'If Printer_Plain <> "" Then 
-    RequestForm_Print()
-   
+   RequestForm_Print()
    Reload() 'reload all data, refresh other sections, default to new request
-
 End
 
-Public Sub RequestForm_Print()
 
-   modPrinting.Print_latex(RequestForm_LaTeX_Construct(CurrentRequestForm).GetData(), const.Paper_Request)
-
-End
 
 Public Function Valid_RequestForm() As Boolean
    
@@ -270,8 +304,17 @@ End
 
 Public Sub User_Defaults_Get()
    
-   user_default = modRequestsDBI.User_Get_Default_Type() 
+ '  user_default = modRequestsDBI.User_Get_Default_Type() 
    
+End
+
+Public Sub RequestForm_Delete()
+   
+   modDBConnect.BeginTrans()
+   modRequestsDBI.RequestForm_Delete(currentconsult, sCurrentForm_Key, currentRequestForm!fk_form, currentRequestForm)
+   modDBConnect.CommitTrans()
+   Reload()
+
 End
 
 Public Sub RequestForm_Edit()
@@ -283,7 +326,29 @@ Public Sub RequestForm_Edit()
 
    bEditing = True
    RequestForm_New()   'clear editing area, reset all collections 
-   currentRequestForm = modUtil.Copy_Collection(RequestForms[sCurrentForm])
+   currentRequestForm = New Collection 
+   currentRequestForm!fk_form = RequestForms[sCurrentForm_Key]!fk_form
+   currentRequestForm!date = RequestForms[sCurrentForm_Key]!date
+   currentRequestForm!fk_branch = RequestForms[sCurrentForm_Key]!fk_branch
+   currentRequestForm!fk_lu_request_type = RequestForms[sCurrentForm_Key]!fk_lu_request_type
+   currentRequestForm!requests_summary = RequestForms[sCurrentForm_Key]!requests_summary
+   currentRequestForm!medications_summary = RequestForms[sCurrentForm_Key]!medications_summary
+   currentRequestForm!notes_summary = RequestForms[sCurrentForm_Key]!notes_summary
+   currentRequestForm!copyto = RequestForms[sCurrentForm_Key]!copyto
+   currentRequestForm!copyto_patient = RequestForms[sCurrentForm_Key]!copyto_patient
+   currentRequestForm!urgent = RequestForms[sCurrentForm_Key]!urgent
+   currentRequestForm!bulk_bill = RequestForms[sCurrentForm_Key]!bulk_bill
+   currentRequestForm!fasting = RequestForms[sCurrentForm_Key]!fasting
+   currentRequestForm!fax = RequestForms[sCurrentForm_Key]!fax
+   currentRequestForm!phone = RequestForms[sCurrentForm_Key]!phone
+   currentRequestForm!include_medications = RequestForms[sCurrentForm_Key]!include_medications
+   currentRequestForm!fk_progressnote = RequestForms[sCurrentForm_Key]!fk_progressnote
+   Try fk_pasthistory = RequestForms[sCurrentForm_Key]!fk_pasthistory
+   If fk_pasthistory = 0 Then
+       txtHealthIssue.text = "General Notes"
+   Else
+       txtHealthIssue.text = RequestForms[sCurrentForm_Key]!description
+   End If   
    If Not IsNull(currentRequestForm!requests_summary) Then
       requests_summary = currentRequestForm!requests_summary
    End If
@@ -293,15 +358,15 @@ Public Sub RequestForm_Edit()
    If Not IsNull(currentRequestForm!notes_summary) Then
       notes_summary = currentRequestForm!notes_summary
    End If
-   fk_lu_request_type = currentRequestForm!fk_lu_type     'fixme in back end to fk_lu_request_type in lu_items table
+   fk_lu_request_type = currentRequestForm!fk_lu_request_type     'fixme in back end to fk_lu_request_type in lu_items table
    fk_form = currentRequestForm!fk_form   
-   pk_view = sCurrentForm                                  'duplicates sCurrentForm - keep for readability
+   pk_view = sCurrentForm_Key                                  'duplicates sCurrentForm_Key - keep for readability
    cmbRequestTypes_Set()                                  'set the combo provider type e.g to pathology
    Get_Default_Provider()                                  'Get default provider,branches and comms
    
    bExit = True
    txtBranch.text = currentRequestForm!branch
-   txtDate.text = Format(currentRequestForm!request_date, "dd/mm/yyyy")
+   txtDate.text = Format(currentRequestForm!date, "dd/mm/yyyy")
    txtRequest.text = requests_summary
    txtNotes.text = notes_summary
    txtMedications.text = medications_summary
@@ -312,15 +377,16 @@ Public Sub RequestForm_Edit()
    chkFasting.value = currentRequestForm!fasting
    chkPhone.Value = currentRequestForm!phone
    chkFax.Value = currentRequestForm!fax
+   chkCopyPatient.value = currentRequestForm!copyto_patient
    chkIncludeMedications.value = currentRequestForm!include_medications
    lblFormHeading.text = "Requests"
    lblCopyTo.text = "Copy to"
    request_notes_text = "" 
    request_items_text = "" 
    medications_text = "" 
-   
+   cvwRequestForms.SelectAll(False)
    bExit = False
-   
+   cmbProviders.index = cmbProviders.Find(RequestForms[sCurrentForm_Key]!organisation)
    CopyTos = modUtil.SplitStrings_into_collection(currentRequestForm!copyto, "|")
    cvwCopyTo_Refresh()
    
@@ -329,22 +395,37 @@ Public Sub RequestForm_Edit()
       If Member!fk_form = fk_form Then
          
          old_item = New Collection 
-         old_item!forms_requests_pk = Member!forms_requests_pk
+         old_item!fk_forms_requests = Member!fk_forms_requests
          old_item!fk_form = Member!fk_form
          old_item!fk_lu_request = Member!fk_lu_request
          old_item!item = Member!item
          
          item = New Collection
-         item!forms_requests_pk = Member!forms_requests_pk
+         item!fk_forms_requests = Member!fk_forms_requests
          item!fk_form = Member!fk_form
          item!fk_lu_request = Member!fk_lu_request
          item!item = Member!item
          
-         currentFormsRequests.Add(item, item!forms_requests_pk)
-         old_forms_requests.Add(old_item, old_item!forms_requests_pk)
+         currentFormsRequests.Add(item, item!fk_forms_requests)
+         old_forms_requests.Add(old_item, old_item!fk_forms_requests)
       End If
-   Next   
+   Next      
+   If RequestForms.count Then
+     lblFormHeading.text = "Requests - Edit Form"
+   End If
    
+End
+
+Public Sub RequestForm_Reprint()
+  
+
+  RequestForm_Print()
+End
+
+Public Sub RequestForm_Print()
+
+   modPrinting.Print_latex(RequestForm_LaTeX_Construct(CurrentRequestForm).GetData(), const.Paper_Request)
+
 End
 
 Public Function RequestForm_Fill_Collection() As String
@@ -394,19 +475,25 @@ Public Function RequestForm_Fill_Collection() As String
    CurrentRequestForm!fax = CBool(chkFax.value)
    CurrentRequestForm!phone = CBool(chkPhone.value)
    CurrentRequestForm!include_medications = CBool(chkIncludeMedications.value)
-   CurrentRequestForm!form_html = RequestForm_HTML_Construct(CurrentRequestForm).GetData()
+  ' CurrentRequestForm!form_html = RequestForm_HTML_Construct(CurrentRequestForm).GetData()
    
    Return sTextForProgressNotes
 
+End
+Public Sub Reset_Keys()
+   fk_pasthistory = 0
+   fk_organisation = 0
+   fk_lu_request_type = 0  
+  
 End
 
 Public Sub RequestForm_New()
    
    EditAreaTextBox_Clear() 
    mnuHealthIssues_Refresh() 'refresh the popup health issues menu
-   fk_pasthistory = 0 ' general notes linkage
+  
    txtHealthIssue.text = "General Notes"
-   
+   lblFormHeading.text = "Requests - New Form" 
    currentRequestForm = New Collection 
    currentRequest = New Collection
    currentRequestFormPictures = New Collection
@@ -423,8 +510,7 @@ Public Sub RequestForm_New()
    medications_text = "" 
    medications_summary = ""
    notes_summary = ""
-   fk_organisation = 0
-   fk_lu_request_type = 0
+   Reset_Keys
    sSearchText = "" 
    lastpos = 0
    txtDate.text = Format(Now, "dd/mm/yyyy")
@@ -435,7 +521,7 @@ Public Sub RequestForm_New()
    DataChange_Update_Indicators(False)
    cmbProviders.index = -1
    cmbBranches.index = -1
- '  cmbRequestTypes.Index = -1
+   bPreviewingPrintedForm = False  
    txtRequest.SetFocus()
 
 End
@@ -499,8 +585,8 @@ Public Sub EditAreaTextBox_GotFocus()
       '    
       Case "request"
          With Columnview1
-            .top = Hbox1.height + Hbox_Items.Top + txtRequest.Height + VBox1.Padding
-            .left = txtRequest.Left + VBox1.Padding
+            .top = Hbox1.height + Hbox_Items.Top + txtRequest.Height + Vbox_Main.Padding
+            .left = txtRequest.Left + Vbox_Main.Padding
             .Width = txtRequest.Width
          End With
          If Len(txtRequest.text) Then
@@ -514,8 +600,8 @@ Public Sub EditAreaTextBox_GotFocus()
       Case "copy to" 
          
          With Columnview1
-            .top = Vbox_CopyToList.Top + Hbox1.Height + VBox1.Padding + cvwCopyTo.top
-            .left = txtCopyTo.Left + VBox1.Padding
+            .top = Vbox_CopyToList.Top + Hbox1.Height + Vbox_Main.Padding + cvwCopyTo.top
+            .left = txtCopyTo.Left + Vbox_Main.Padding
             .Width = cvwCopyTo.Width - txtCopyTo.left - 10 'arbitary offset from right hand edge
             .Visible = False
             .Columns.count = 3
@@ -523,8 +609,8 @@ Public Sub EditAreaTextBox_GotFocus()
          
       Case "notes"
          With Columnview1
-            .top = Hbox1.height + Hbox_notes.Top + txtnotes.Height + VBox1.Padding
-            .left = txtnotes.Left + VBox1.Padding
+            .top = Hbox1.height + Hbox_notes.Top + txtnotes.Height + Vbox_Main.Padding
+            .left = txtnotes.Left + Vbox_Main.Padding
             .Width = txtnotes.Width
          End With
          
@@ -537,8 +623,8 @@ Public Sub EditAreaTextBox_GotFocus()
          
       Case "medications"
          With listview1
-            .top = Hbox1.height + Hbox_Medications.Top + txtMedications.Height + VBox1.Padding + 5 
-            .left = txtnotes.Left + VBox1.Padding
+            .top = Hbox1.height + Hbox_Medications.Top + txtMedications.Height + Vbox_Main.Padding + 5 
+            .left = txtnotes.Left + Vbox_Main.Padding
             .Width = txtMedications.Width
          End With
          
@@ -1080,7 +1166,7 @@ Public Sub mnuHealthIssues_Refresh_old()
 End
 
 Public Sub EditAreaButtons_Click()
-
+  
    Select Case Last.tag
       Case "help"
          FClinical.Help_Show(Application.Path &/ "help/requests.html", "Help:Requests", True)
@@ -1095,16 +1181,19 @@ Public Sub EditAreaButtons_Click()
          Return 
          DrawEditor_Show(False, "") 'new diagram,not loading an old one"
       Case "preview"
-         If Not Valid_RequestForm() Then Return 
-         
-         RequestForm_Fill_Collection()
-         RequestForm_Preview(currentRequestForm!form_html)
+             RequestForm_Preview()
       Case "hide draw editor"
          EmbeddedForm_Close()
    End Select
 
 End
-
+Public Sub Form_PDF_Close_Click()
+  'temporary routine until Emulated browser takes over 
+   Stop Event
+   Form_PDF.Visible = False  
+   VBox_Main.Visible = True  
+   
+   End
 Public Sub EditAreaTextBox_Change()
    
    If bExit Then Return
@@ -1218,10 +1307,9 @@ Public Sub cvwCopyTo_Refresh()
    End If   
    
    For Each Copyto In CopyTos
-      
-      CollectionCopy.Add(Copyto, CollectionCopy.count) 
-      cvwCopyTo.Add(CollectionCopy.count, 0)
-      cvwCopyTo[CollectionCopy.count][0] = Copyto
+       cvwCopyTo.Add(CollectionCopy.count, 0)
+       cvwCopyTo[CollectionCopy.count][0] = Copyto
+       CollectionCopy.Add(Copyto, CollectionCopy.count) 
    Next
    CopyTos = CollectionCopy
    
@@ -1405,15 +1493,15 @@ Public Sub Requests_This_Consult_Show()
    cvwRequestForms.Columns.Count = 5
    For Each requestform In RequestForms
       
-      If fk_last_form <> requestform!fk_form Then
-         fk_last_form = requestform!fk_form 
+    '  If fk_last_form <> requestform!fk_form Then
+     '    fk_last_form = requestform!fk_form 
          cvwRequestForms.Add(requestform!pk_view, 0)
-         cvwRequestForms[requestform!pk_view][0] = Format(requestform!request_date, "dd/mm/yyyy")
+         cvwRequestForms[requestform!pk_view][0] = Format(requestform!date, "dd/mm/yyyy")
          cvwRequestForms[requestform!pk_view][1] = requestform!type
          cvwRequestForms[requestform!pk_view][2] = requestform!organisation
          cvwRequestForms[requestform!pk_view][3] = requestform!requests_summary
          cvwRequestForms[requestform!pk_view][4] = requestform!notes_summary
-      End If
+    '  End If
    Next
    DataChange_Update_Indicators(False)
 
@@ -1459,7 +1547,7 @@ Public Sub EditAreaTextBox_Clear()
    Vbox_Communications.Visible = True
    Hbox_Date.Padding = 0
    Hbox_ProviderType.Padding = 0
-   
+   bPreviewingPrintedForm = False   
    Hbox99.Padding = 0
    Hbox_Provider.padding = 0
    Hbox_Items.Padding = 0
@@ -1481,35 +1569,34 @@ Public Sub RequestForm_Pictures_Delete()
 
 End
 
-Public Sub RequestForm_Preview(sHtml As String)
-   
-   With FPreview
-      If .Visible = False Then
-         .Ignore = False
-         .lblWebBrowserNotes.Visible = False 
-         .tbWebBrowserBack.Visible = False   
-         .tbWebBrowserForeward.Visible = False  
-         .top = HSplit_EditArea.Top
-         .width = HSplit_EditArea.Width
-         .Height = HSplit_EditArea.Height
-         .left = HSplit_EditArea.Left
-         .Raise
-         .WebView1.html = currentRequestForm!form_html
-         .Show
-      End If   
+Public Sub RequestForm_Preview()
+   '----------------------------------------------------
+   'Temporary routine until emulated browser is finished
+   'after that will appear on any old tab FIXME
+   'If form being previwed is still in edit area then
+   'make sure it's valid, otherwise, just preview it.
+   '---------------------------------------------------- 
+   Dim filename As String   
+  
+   If bPreviewingPrintedForm = False Then
+         If Not Valid_RequestForm() Then Return 
+         RequestForm_Fill_Collection()
+   Else
+       CurrentRequestForm = RequestForms[cvwRequestForms.Item.key]
+   End If   
+   Filename = modPrinting.Latex_To_PDF(RequestForm_LaTeX_Construct(CurrentRequestForm).GetData())
+   VBox_Main.Visible = False  
+   With Form_PDF
+     .chkUseDefaultPrinter.visible = False 
+     .BtPrint.Visible = False 
+     .BtOpen.Visible = False  
+     .BtRotate.visible = False   
+     Try .CurrentZoom = Settings["Requests/Form_PDF.Zoom"]
+     .Load_PDF(filename)
+     .Visible = True
    End With
-
 End
 
-Public Function RequestForm_HTML_Construct(RequestForm As Collection) As CTemplate
-
-   Dim templ As CTemplate
-   
-   templ = New CTemplate(modHTML.html_page_header & modHTML.html_template_requests & "</body></html>")
-   RequestForm_Construct(RequestForm, templ)
-   Return templ   
-
-End
 
 Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTemplate
 
@@ -1538,7 +1625,7 @@ Public Sub RequestForm_Construct(RequestForm As Collection, templ As CTemplate)
    
    sString = cmbRequestTypes.text 
    sString = Replace(sString, "provider", "")
-   templ.Subst("form_type", UCase(sString))
+   templ.Subst("form.type", UCase(Left(sString, 1)) & Right(sString, Len(sstring) - 1))
    templ.Subst("provider.organisation", default_provider!organisation)
    templ.Subst("provider.branch", default_provider!headoffice_branch)
    templ.Subst("provider.address.street", default_provider!headoffice_street)
@@ -1661,11 +1748,12 @@ Public Sub RequestForm_Construct(RequestForm As Collection, templ As CTemplate)
    If RequestForm!copyto_patient Then
       sString &= "Patient at their address on this form<BR>"
    End If
+   CopyTos = modUtil.SplitStrings_into_collection(requestform!copyto, "|")
    For Each cc In Copytos
       sString &= cc & "<BR>"
    Next  
    templ.Subst("copyto", sString)  
-   templ.Subst("date", Format(CurrentRequestForm!date, "dd/mm/yyyy")) 
+   templ.Subst("form.date", Format(RequestForm!date, "dd/mm/yyyy")) 
 
 End 
 
@@ -1743,22 +1831,28 @@ Public Sub Notes_CheckDuplicates() As Boolean
 End
 
 Private Sub Settings_Load()
-   
+   '---------------------------------------------------------------------------
+   'The request form is embedded in other forms eg FActionDocument, used in the 
+   'inbox, and in staff tasks
+   '---------------------------------------------------------------------------  
    If bEmbedded Then
       Try VSplit_Requests.Layout = Settings["Requests_Embedded_" & Embedded_form & "/VSplit_Requests"]
       Try VSplit_EditArea.Layout = Settings["Requests_Embedded_" & Embedded_form & "/VSplit_EditArea_Layout"] 
       Try HSplit_EditArea.Layout = Settings["Requests_Embedded_" & Embedded_form & "/HSplit_EditArea_Layout"]
+      Try VSplit_Contacts.Layout = Settings["Requests_Embedded_/VSplit_Contacts.Layout"]
+      Try cvwRequestForms.Font = Font[Settings["Requests_Embedded_/cvwRequestForms.Font"]]
+      Try modUtil.columnSizes_Set(Settings["Requests_Embedded_/cvwRequestForms.column_sizes"], cvwRequestForms)
    Else
       Try VSplit_Requests.Layout = Settings["Requests/VSplit_Requests"]
       Try VSplit_EditArea.Layout = Settings["Requests/VSplit_EditArea_Layout"] 
       Try HSplit_EditArea.Layout = Settings["Requests/HSplit_EditArea_Layout"]
       Try VSplit_Contacts.Layout = Settings["Requests/VSplit_Contacts.Layout"]
-      Try cvwRequestForms = Font[Settings["TabbedLists/RequestList.Font"]]
-      modUtil.columnSizes_Set(Settings["Requests/RequestList.column_sizes"], cvwRequestForms)
+      Try cvwRequestForms.Font = Font[Settings["Requests/cvwRequestForms.Font"]]
+      Try modUtil.columnSizes_Set(Settings["Requests/cvwRequestForms.column_sizes"], cvwRequestForms)
    End If
    
    Try FPreview.WebBrowser1.Zoom = Settings["Requests/FormPrevew_Zoom"]
-   
+   Try Form_PDF.CurrentZoom = Settings["Requests/Form_PDF.Zoom"]
 End
 
 Public Sub Settings_Save()
@@ -1767,16 +1861,20 @@ Public Sub Settings_Save()
       Settings["Requests_Embedded_" & Embedded_form & "/VSplit_Requests"] = VSplit_Requests.Layout 
       Settings["Requests_Embedded_" & Embedded_form & "/VSplit_EditArea_Layout"] = VSplit_EditArea.Layout 
       Settings["Requests_Embedded_" & Embedded_form & "/HSplit_EditArea_Layout"] = HSplit_EditArea.Layout 
+      Settings["Requests_Embedded_" & Embedded_form & "/VSplit_Contacts.Layout"] = VSplit_Contacts.Layout
+      Settings["Requests_Embedded_" & Embedded_form & "/cvwRequestForms.Font"] = cvwRequestForms.Font.ToString()
+      Settings["Requests_Embedded_" & Embedded_form & "/cvwRequestForms.column_sizes"] = Modutil.Columnsizes_To_String(cvwRequestForms)
    Else 
-      
       Settings["Requests/VSplit_Requests"] = VSplit_Requests.Layout 
       Settings["Requests/VSplit_EditArea_Layout"] = VSplit_EditArea.Layout 
       Settings["Requests/HSplit_EditArea_Layout"] = HSplit_EditArea.Layout
-      Settings["TabbedLists/RequestList.Font"] = cvwRequestForms.Font.ToString()
-      Settings["Requests/RequestList.column_sizes"] = Modutil.Columnsizes_To_String(cvwRequestForms)
       Settings["Requests/VSplit_Contacts.Layout"] = VSplit_Contacts.Layout
+      Settings["Requests/cvwRequestForms.Font"] = cvwRequestForms.Font.ToString()
+      Settings["Requests/cvwRequestForms.column_sizes"] = Modutil.Columnsizes_To_String(cvwRequestForms)
+    
    Endif
    Try Settings["Requests/FormPrevew_Zoom"] = FPreview.WebBrowser1.Zoom 'fix me dosn't exist on embedded forms
+   Try Settings["Requests/Form_PDF.Zoom"] = Form_PDF.CurrentZoom
    
 End
 
@@ -1797,8 +1895,8 @@ Public Sub rbCopyTo_Click()
    CopyToType = Last.Tag
    
    With Columnview1
-      .top = Vbox_CopyToList.Top + Hbox1.Height + VBox1.Padding + cvwCopyTo.top
-      .left = txtCopyTo.Left + VBox1.Padding
+      .top = Vbox_CopyToList.Top + Hbox1.Height + Vbox_Main.Padding + cvwCopyTo.top
+      .left = txtCopyTo.Left + Vbox_Main.Padding
       .Width = cvwCopyTo.Width - txtCopyTo.left - 10 'arbitary offset from right hand edge
       .Visible = False
       .Columns.count = 3
@@ -1890,12 +1988,11 @@ End
 
 Public Sub mnuRequestForms_Click()
 
-   currentRequestForm = modUtil.Copy_Collection(RequestForms[sCurrentForm])
+   currentRequestForm = modUtil.Copy_Collection(RequestForms[sCurrentForm_Key])
    Select Case Last.tag
-      Case "print selected"
-      Case "print all"
-      Case "reprint all"
+      Case "reprint all"  'fixme implement me
       Case "reprint selected"
+         RequestForm_Print()
       Case "edit"
          RequestForm_Edit()
       Case "delete form"
@@ -1907,45 +2004,26 @@ Public Sub mnuRequestForms_Click()
          cvwRequestForms.Header = True
          cvwRequestForms.Resizable = True
       Case "preview"  
-         
-         RequestForm_Preview(currentRequestForm!form_html)
+         bPreviewingPrintedForm = True 
+         RequestForm_Preview()
+         RequestForm_New()
    End Select
-
 End
 
-Public Sub Print_Selected()
-   
-End 
 
-Public Sub Print_All()
-   
-End
 
-Public Sub Reprint_All()
-   
-End
-
-Public Sub Reprint_Selected()
-   
-End
-
-Public Sub RequestForm_Delete()
-   
-   modDBConnect.BeginTrans()
-   modRequestsDBI.RequestForm_Delete(currentconsult, sCurrentForm, currentRequestForm!fk_form, currentRequestForm)
-   modDBConnect.CommitTrans()
-   Reload()
-
-End
 
 Public Sub cvwRequestForms_Select()
-
-   If Last.Header = True Then
+   '------------------------------------------------------------------------
+   'If the request forms ordered this consulation is clicked (ie selected)
+   'this sets the key so that later the correct form for the row clicked on
+   'can be picked from the RequestForms collection
+   '-----------------------------------------------------------------------
+   If Last.Header = True Then                  'remove header if user just adjusted the columns
       Last.header = False
    End If
-   cvwRequestForms.MoveCurrent
-   sCurrentForm = cvwRequestForms.Item.Key
-   
+   cvwRequestForms.MoveCurrent                 'set internal cursor to match what user seeing
+   sCurrentForm_Key = cvwRequestForms.Item.Key 'set the key
 End
 
 Public Sub EditAreaButtons_KeyPress()
@@ -1959,7 +2037,7 @@ Public Sub EditAreaButtons_KeyPress()
          Case "preview"
             If Not Valid_RequestForm() Then Return 
             RequestForm_Fill_Collection()
-            RequestForm_Preview(currentRequestForm!form_html)
+          
       End Select
    End If
 
@@ -1970,15 +2048,11 @@ Public Sub DataChange_Update_Indicators(flag As Boolean)
    If flag Then
       Vbox_EditArea.Padding = 1
       Vbox_EditArea.Background = Color.red
-      VBox_Requests.Background = Color.red
-      VBox_Requests.Padding = 1
       tbSave.Foreground = Color.Red
       
    Else
       Vbox_EditArea.Padding = 0
       Vbox_EditArea.Background = Color.white
-      VBox_Requests.Background = Color.White
-      VBox_Requests.Padding = 0
       tbSave.Foreground = Color.black
    End If
    
@@ -2319,7 +2393,7 @@ Public Sub RequestItem_Selection(action As String, Optional calling_control As S
          iCurrentKey = Columnview1.Item.Key
          CurrentRequest = items[iCurrentKey]
          If fk_lu_request_type = 0 Then
-            fk_lu_request_type = CurrentRequest!fk_type  'FIXME IN THE REQUESTS TABLE AT SOME STAGE SHOULD be fk_lu_request_type
+            fk_lu_request_type = CurrentRequest!fk_lu_request_type  
             cmbRequestTypes_Set                          'set the name in the combo = the type of request
             '----------------------------------------------------------------
             'We don't let anything be ordered if there is no default provider

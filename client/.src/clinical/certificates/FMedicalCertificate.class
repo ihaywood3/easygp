@@ -13,39 +13,251 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
-Private bExit As Boolean
-Private cons As cConsult
+'--------------------------------------------------------------------------
+' PURPOSE   A module to enter medical certificates
+'           See also FMedicalCertificates which manages/reviews all of them
+' TODOS     Insert health conditions menu/link certificate to this
+' FIXME     lblMeasure not resizing the internal labels in edit area
+'--------------------------------------------------------------------------
 
-Public Sub Form_Open()
+Private bExit As Boolean                           'exit subroutines as needed
+Private bkeyvalid As Boolean                       'see  EditArea_TxtBox_ExcludeKeys
+Private bCancel As Boolean                         'set by close key
+Private currentconsult As CConsult                 'passed from the notes editor
+Private fk_coding_system As Integer                'if non-zero is a valid coding system
+Private fk_code As String                          'if not "" then a valid code
+Private Terms As Collection                        'Coded term list
+Private Const cFit As Integer = 1                  'constants to make code easier to read
+Private Const cUnFit As Integer = 2
+Private Fitness As String[]                        'e.g 'unfit'
+Private Const cIs As Integer = 1
+Private Const cWas As Integer = 2
+Private Const cWillBe As Integer = 3
+Private Temporality As String[]
+Private iFitness_Temporality As Integer
+Private iFitness As Integer
+Private Certificates As Collection                 'All existing certificates for the patient
+Private Certificate As Collection                  'current certificate
+Private pk_view As Integer                         'key to clin_certificates.vwMedicalCertificates
+Private Reasons As Collection                      'collection of reasons for being sick for popup list
+Private Reason As Collection 
+Private fk_reason As Integer
+Private timer_count As Integer                    'zero'd on keypress in txtCodedTerm see Timer1_timer()
+
+
+Public Sub Init(Cons As CConsult)
+  currentconsult = cons                                          'set current consult
+  Fitness = New String[3]
+  Fitness[1] = "fit"
+  Fitness[2] = "unfit"
+  Temporality = New String[4]
+  Temporality[1] = "is"
+  Temporality[2] = "was"
+  Temporality[3] = "will be"
   
-  
-  Init()
-  
+  columnview1.Columns.count = 2                                  'coding system, term itself
+  lblMeasure.text = "  Coded Term "                              'max lengh label expecte
+  modEditAreaHelpers.Resize_labels(VBox_Certificate, lblMeasure) 'resize all to same size
+  Certificate_New()                                              'default to new certificate
 End
 
-Public Sub Init()
-  
-  EditArea_Clear()
-  Certificate_New()
-  
+Public Function Get_Summary() As String
+   '----------------------------------------------------------------
+   'Allows a progress notes editor page to retreive a summary of the
+   'certificate before closing
+   '----------------------------------------------------------------
+   Dim summary As String
+   
+   If bCancel Then Return ""
+   Summary = "<BR><B>Medical certificate</B>"
+   summary &= "<BR> - dated " & Trim(txtDate.text) & " for "
+   summary &= Trim(txtReason.Text)
+   If Trim(txtCodedTerm.text) <> "" Then
+      summary &= " [" & Trim(txtCodedTerm.text) & "]"
+   Endif
+   summary &= "<BR> - "
+   summary &= Temporality[iFitness_Temporality] & " " & Fitness[iFitness] & " for work "
+   summary &= "from " & Trim(txtDateFrom.text)
+   If Trim(txtDateTo.text) <> "" Then
+      summary &= " to " & Trim(txtDateTo.text)
+   Endif
+   If txtNotes.text <> "" Then
+      summary &= "<BR> - notes:" & Trim(txtnotes.text)
+   Endif
+   Return summary & "<BR>"
+   
 End
+
+Public Sub Coded_Terms_Get()
+   '-------------------------------------------------------------------------------------
+   'Gets list of diagnostic terms
+   'Cannot set default if count is one because must  be able to add new occupations
+   'can't remove the label because it needs to occupy space to keep textbox correct width
+   '-------------------------------------------------------------------------------------
+   Dim term As Collection 
+   Dim key As String
+   If Trim(txtCodedTerm.text) = "" Then
+        fk_code = 0
+        fk_coding_system = const.coding_none_selected
+        Vbox_CodedList.Visible = False   
+        Return
+   End If
+   If Trim(txtCodedTerm.text) = "" And Trim(txtReason.text) <> "" Then 'try and guess off non-coded reason first
+      Terms = modCodingDBI.Get_Terms(Trim(txtReason.text), chkLimit.value, chkicd10.value, SpinBoxTermLimits.value)
+   Else
+     Terms = modCodingDBI.Get_Terms(Trim(txtCodedTerm.text), chkLimit.value, chkicd10.value, SpinBoxTermLimits.value)
+   Endif
+   
+   With columnview1
+         .Clear()
+         .Columns[0].Width = txtCodedTerm.width - 100
+         .Columns[1].width = 100
+   End With
+   If Terms.count Then
+      For Each term In Terms
+         key = term!code
+         columnview1.Add(key, 0)
+         columnview1[key][0] = term!term
+         columnview1[key][1] = term!system
+      Next 
+      lblTermCount.text = Str$(terms.count) & " terms retreived"
+      columnview1.tag = txtCodedTerm
+      columnview1.Raise
+      columnview1.Visible = True
+     Vbox_CodedList.Visible = True 
+   Else 
+      Vbox_CodedList.Visible = False 'empty recordset
+   End If  
+End
+
+Public Sub Columnview1_KeyPress()
+   If key.code = key.return Then Columnview1_DblClick()
+End
+
+Public Sub Coded_Term_Select()
+   '---------------------------------------------
+   'User has chosen a term from popup columnview1
+   'Display this in the Vbox_CodedList Textbox
+   '---------------------------------------------
+    columnview1.MoveCurrent()   'match internal cursor to visible row
+    fk_code = Terms[columnview1.Item.key]!code
+    fk_coding_system = Terms[columnview1.Item.key]!fk_coding_system
+    txtCodedTerm.text = Terms[columnview1.Item.key]!term & " (" & Terms[columnview1.Item.key]!code & ")"
+    txtCodedTerm.pos = 0
+    txtDateFrom.SetFocus()
+End
+
+Public Sub Columnview1_DblClick()
+    Coded_Term_Select() 
+    Columnview1.Visible = False 
+    Vbox_CodedList.Visible = False   
+End
+
 Public Sub EditArea_Clear()
   
-  modEditAreaHelpers.EditArea_Clear(VBox2)
-  
-End
-Public Sub Certificate_New()
-  txtdate.text = Format(Now, "dd/mm/yyyy")
-  rbIsUnfit.value = True
-  txtCondition.SetFocus()
-  
+  modEditAreaHelpers.EditArea_Clear(VBox_Certificate)
 End
 
-Public Sub Form_Save()
-  
-   FClinical.Refresh_AllPreviousNotes()
-  
+Public Sub Certificate_New()
+  EditArea_Clear()
+  txtdate.text = Format(Now, "dd/mm/yyyy")
+  txtName.text = currentconsult!patient!wholename
+  RbIs.Value = True     'default to is 
+  rbUnfit.value = True  'unfit
+  lblSignature.text = modDBConnect.currentUser!title & "  " & modDBConnect.currentUser!firstname & modDBConnect.currentUser!surname
+  fk_reason = 0
+  fk_coding_system = 0
+  fk_code = ""
+  bCancel = False 
+  txtReason.SetFocus()
 End
+
+
+Public Sub ListView1_KeyPress()
+      If Key.code = Key.Return Then
+         listview1_DblClick()
+      End If
+End
+
+
+Public Sub Listview1_DblClick() 
+   ' '----------------------------------------------------
+   ' 'CALLED BY  :user directly clicks on list or
+   ' '           : listview1_keyPress where key =enter
+   ' '
+   ' 'listview1 used to display multiple choice of items
+   ' 'when user as initiated  search eg for recall reasons
+   ' '----------------------------------------------------
+   ' 
+   ' Dim SelectedReason As New Collection       'for readability
+   ' 
+   ' '-----------------------------------------------------------
+   ' 'Note this gambas quirk: the key is a string value, but when
+   ' 'the list was loaded gambas auto-converts any key, numeric
+   ' 'or otherwise to a string, so if you don't convert it back
+   ' 'implicitly as an integer, it will remain in your collection
+   ' 'as a string 
+   ' '-----------------------------------------------------------
+   ' listview1.MoveCurrent                  'set this for the key       
+   ' SelectedReason = recallreasons[listview1.Item.key]
+   ' Select Case listview1.Tag.tag
+   ' Case "recall for"
+   '    '-------------------------------------------
+   '    'User has been searching for a recall reason
+   '    '-------------------------------------------    
+   '    txtRecallFor.text = listview1.Item.Text
+   '    fk_reason = listview1.Item.Key 
+   '    lblRecallForInvalid.Visible = False
+   '    listview1.Visible = False
+   '    '----------------------------------------------------------
+   '    'When first selected set actual interval = default interval
+   '    '----------------------------------------------------------
+   '    txtDefaultInterval.text = SelectedReason!interval & SelectedReason!abbrev_text 
+   '    txtInterval.text = txtDefaultInterval.text 
+   '    '--------------------------------------------------------------
+   '    'Set variables,  Calculate_Recall_Date() sets fk_interval_units
+   '    'if interval is changed  by user
+   '    '--------------------------------------------------------------
+   '    interval = SelectedReason!interval
+   '    fk_interval_unit = SelectedReason!fk_interval_unit
+   ' 
+   '    default_interval = SelectedReason!interval
+   '    fk_default_interval_unit = SelectedReason!fk_interval_unit
+   '    
+   '    Calculate_Recall_Date(txtDefaultInterval)
+   '    chkPatientDefaultInterval.value = True
+   '    '----------------------------------------------------
+   '    'Lastly, check if any template exists for this reason
+   '    'if reason = matched to a combo item, auto-show
+   '    'Can't use  cmbTemplates.Find(Trim(txtRecallFor.text))
+   '    'because this is case sensitive
+   '    '----------------------------------------------------
+   '    ' If cmbTemplates.Find(Trim(txtRecallFor.text)) <> -1 Then
+   '    '    cmbTemplates.index = cmbTemplates.Find(Trim(txtRecallFor.text))
+   '    '    cmbTemplates_click()
+   '    ' End If   
+   '    ' For Each Template In templates
+   '    '    If Trim(Lower(txtRecallFor.text)) = Lower(template!name) Then
+   '    '       cmbTemplates.index = templates.Key
+   '    '       cmbTemplates_click()
+   '    '       Break
+   '    '    End If
+   '    ' Next
+   '    tbSave.SetFocus()
+   '    '---------------------------------------------------------
+   '    'At this point, the user either accepts all these defaults
+   '    'or goes back and changes them.
+   '    '---------------------------------------------------------
+   ' Case "see specific person"
+   '       'bugger - fix me need a column view here"
+   '     txtSeeSpecificPerson.text = listview1.Item.Text
+   '     lblStaffMissing.Visible = False
+   '     listview1.Visible = False
+   '  '   txtAdditionalNotes.SetFocus()
+   '   FAdditionalNotesEditor.teNotes.SetFocus()
+   ' End Select
+ End 
+
 Public Sub EditAreaButtons_Click()
   Dim hCtrl As Control
   Dim txtbox As TextBox
@@ -53,7 +265,7 @@ Public Sub EditAreaButtons_Click()
  
   Case "pick date"
   For Each Hctrl In Last.parent.children
-   If hctrl Is textbox Then
+   If hctrl Is Textbox Then
       txtbox = hctrl
       DateChooser1.tag = txtbox
       Break
@@ -71,59 +283,346 @@ Public Sub EditAreaButtons_Click()
   End Select
 
 End
-
 Public Sub DateChooser1_Activate()
      Last.tag.text = Format(Last.value, "dd/mm/yyyy")
      HBox_Calander.Visible = False  
      Select Case Last.tag.tag
-     Case "unfit from"
-     txtDateTo.setfocus()
-     Case "unfit to"
+     Case "from"
+         txtDateTo.setfocus()
+     Case "to"
      End Select
 End
 
 Public Sub DateChooser1_LostFocus()
    DateChooser1.visible = False  
 End
+
+Public Sub EditAreaTextBox_Change()
+   '--------------------------------------------
+   're-set appropriate keys if user deletes text
+   '--------------------------------------------
+  If bexit Then Return 
+  Select Case Last.tag
+    Case "reason"
+      If Trim(Last.text) = "" Then fk_reason = 0
+    Case "coded term"
+      If Trim(Last.text) = "" Then
+          fk_code = ""
+          fk_coding_system = 0
+      Endif
+  End Select
+End
+
+
 Public Sub EditAreaTextBox_LostFocus()
-   '-------------------------------------------------------------
-   'When textbox loses focus, change color of background to white
-   '
-   '-------------------------------------------------------------
-   Last.BackGround = Color.White
-End
-Public Sub ToolButton3_Click()
-
-  Me.Close()
-
-End
+ Last.BackGround = Color.White
+ 
+ Select Case Last.tag
+   
+   Case "coded term"
+      timer1.Stop
+   Case "from"       'must have a from date
+     
+      If Not (IsDate(Val(Last.text))) Then
+         txtDateFrom.text = ""
+         txtDateFrom.SetFocus()
+      End If
+   Case "to"   'not essential e.g dould be fit from date
+        If Trim(Last.text) <> "" Then
+            If Not (IsDate(Val(Last.text))) Then
+               txtDateTo.text = ""
+               txtDateTo.SetFocus()
+            End If
+        Endif
+   End Select
+End 
 
 Public Sub EditAreaTextBox_GotFocus()
-
-   Last.BackGround = Color.rgb(95, 255, 175)
+   Vbox_CodedList.Visible = False    'always ensure not visible, as could have been, and user just clicked elsewhere
+   listview1.Visible = False  
    Select Case Last.tag
-   Case "condition"
-   Case "unfit from", "unfit to"
+   Case "reason"
+      With listview1
+         .top = Last.parent.top + Last.height
+         .left = Last.left + VBox_Certificate.Padding
+         .Visible = False  
+         .Raise()
+      End With
+   Case "coded term" 
+      With Vbox_CodedList
+         .top = Last.parent.top + Last.height
+         .left = Last.left + VBox_Certificate.Padding
+         .Visible = False  
+         .Raise()
+      End With
+      timer1.Start()
+   Case "from"
+        DateChooser1.tag = Last
+        If Last.text = "" Then
+           Last.text = Format(Now, "dd/mm/yyyy")
+           Last.pos = 0
+        End If   
+   Case "to"
         DateChooser1.tag = Last
    End Select
 End
 
+Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean  
+      Select Case tag
+        Case "date"
+             bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode) 'only date keys
+        Case "from", "to"
+              bKeyValid = modUtil.AllowKeys(const.AllowKeys_Date_DWMY, keycode) 'also can type 1M, or 1W etc
+        Case Else
+             bKeyValid = True  'applies to all other textboxes
+      End Select
+      Return bKeyValid
+End
+
 Public Sub EditAreaTextBox_KeyPress()
    If bexit Then Return
-   
+   bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code, Last.tag) 'Do some basic key validation on date input areas
+   If bkeyvalid = False Then
+      Stop Event
+      Return
+   End If  
   Select Case Key.Code
   Case Key.Return, Key.Tab
-   Select Case Last.tag
-      Case "date"
-         txtCondition.SetFocus()
-      Case "condition"
-         txtDateFrom.SetFocus()
-   End Select
+      Select Case Last.tag
+         Case "date"
+            txtReason.SetFocus()
+         Case "reason"
+           If listview1.Visible And Trim(Last.text) <> "" Then 
+            Reason_Select(Last)
+           Else
+              txtCodedTerm.SetFocus()
+           End If
+         Case "coded term"
+            txtDateFrom.SetFocus()
+         Case "from"
+            txtDateTo.SetFocus
+         Case "to"
+             txtnotes.SetFocus()
+         Case "notes"
+            tbSave.SetFocus()
+      End Select
+  Case key.Down
+     If Last.tag = "coded term" Then
+        If Vbox_CodedList.Visible Then
+           columnview1.MoveFirst
+           columnview1.Item.Selected = True  
+           columnview1.SetFocus()
+        Endif
+        If listview1.Visible Then
+           listview1.MoveFirst
+           listview1.Item.Selected = True
+           listview1.setfocus()
+        Endif
+     Endif
   End Select
-
 End
+
 Public Sub mnuHealthIssues_Show()
-  
+  'FIXME: PUT ME IN - IE LINK CERTICATE TO HEALTH ISSUE
 ' mnuHealthIssues_Refresh()
   
 End
+
+Public Sub EditArea_Buttons_Click()
+
+  Select Case Last.tag
+    Case "close" 
+        bCancel = True  
+        Me.Close()   'event over-ridden by parent form
+    Case "new"
+         Certificate_New()
+    Case "save and print"
+         Save()
+  End Select
+
+End
+
+
+
+Public Sub Save()
+   '--------------------------------------------
+   'Saves the medical certificate to the backend
+   '
+   '   fk_consult integer NOT NULL, -- foreign key to clin_consult.consult table identifies consult date and staff member
+   '   reason text,                 -- temporary concession to non-coders, the text reason for the certificate
+   '   fk_coding_system integer,    -- key to coding.lu_coding_system containing name of coding system eg icpc, icd10
+   '   fk_code text,                -- the coded reason for the illness eg N18
+   '   fk_lu_illness_temporality integer NOT NULL, -- foreign key to fk_lu_illness_temporality table to tell temporal nature of the certificate...
+   '   from_date date NOT NULL,        -- Date from which the person was unwell or resuming workk
+   '   to_date date,                   -- Date to which the person will be unwell
+   '   deleted boolean DEFAULT false,  -- if true the record is marked as deleted
+   '   fk_lu_fitness integer,          -- fit or unfit
+   '   notes text                     -- optional notes
+   '   date                           -- the actual date of certificate, may not be consult date
+    '--------------------------------------------  
+   Certificate = New Collection 
+   
+   If Not Valid_Certificate() Then Return
+   Print Get_Summary()
+   If pk_view Then Certificate!pk_medical_certificate = pk_view
+   Certificate!reason = Trim(txtReason.Text)
+   If fk_coding_system <> 0 Then Certificate!fk_coding_system = fk_coding_system
+   If fk_code <> "" Then Certificate!fk_code = fk_code
+   Certificate!date = Val(txtdate.text) 'the actual date we want on certificate, may not be consult.date
+   Certificate!from_date = Val(txtDateFrom.text)
+   Try Certificate!to_date = Val(txtDateTo.text)
+   Certificate!notes = Trim(txtNotes.text)
+   Certificate!fk_lu_illness_temporality = iFitness_Temporality
+   Certificate!fk_lu_fitness = iFitness
+   Certificate!fk_consult = currentconsult.GetPK()
+   
+   modDBConnect.BeginTrans()
+      Certificate!pk_medical_certificate = modCertificatesDBI.MedicalCertificates_Save(Certificates, pk_view, Certificate)
+      Print()
+   modDBConnect.CommitTrans()
+   Me.Close() 'event over-ridden by parent form
+  
+End
+Public Sub Timer1_Timer()
+  
+       If timer_count > 1 Then  'FIXME MAKE THESE USER CONFIGURABLE PER TYPING SPEED
+         timer1.stop
+         timer_count = 0
+         Coded_Terms_Get()
+       End If
+  
+End
+
+Public Sub Print()
+   '-----------------------------------------------------------------------
+   'Print the certificate and insert an annotation into the progress notes
+   '----------------- tbClose_Click()
+End
+
+Public Sub EditAreaTextBox_KeyRelease()
+   Select Case Last.tag
+     Case "coded term"
+        timer_count = 0 
+        Coded_Terms_Get()
+     Case "reason"
+        Reasons_Get()
+   End Select
+  
+
+End
+ Public Sub EditAreaTextBox_Activate()
+
+  Select Case Last.tag
+    Case "to"
+         modEditAreaHelpers.Calculate_Date_From_Interval(txtDateTo)
+  End Select
+
+End
+
+Public Sub EditArea_Buttons_KeyPress()
+
+  If key.code = key.Return Then Save()
+
+End
+
+Public Function Valid_Certificate() As Boolean
+  '--------------------------------------------
+  'Returns true if contents of edit area valid
+  '-------------------------------------------
+  Dim sMsg As String 
+  
+  If txtdate.text = "" Then
+     txtdate.SetFocus()
+     Return False 
+  Endif
+  If txtReason.text = "" Then
+     txtReason.SetFocus()
+     Return False
+  Endif
+  If fk_code = "" Then 'this is a string
+    sMsg = "It's usually a good idea to code your certificates!\n\n"
+           "Skip coding?"
+    Message.Title = "Medical Certificates"  
+    If Message.Warning(sMsg, "Yes - save without a code", "Oops - let me code it!") = 2 Then Return False
+  End If
+  If Trim(txtdate.text) = "" Then
+     txtDateFrom.SetFocus()
+     Return False
+  Endif
+  Return True
+  
+  
+End
+
+Public Sub EditAreaRadioButton_Click()
+  Vbox_CodedList.Visible = False    'always ensure not visible, as could have been, and user just clicked elsewhere
+  listview1.Visible = False         'ditto
+  Select Case Last.tag
+    Case "is"
+        iFitness_Temporality = cIs
+    Case "was"
+       iFitness_Temporality = cWas
+    Case "will be"
+       iFitness_Temporality = cWillBe
+    Case "fit"
+         iFitness = cFit
+    Case "unfit"
+         iFitness = cUnFit
+  End Select
+
+End
+
+
+Public Sub Reasons_Get()
+  '------------------------------------------------------------
+  'Get list of reasons for patient's sickness on per-user basis
+  '------------------------------------------------------------
+  If Trim(txtReason.text) = "" Then Return
+
+  listview1.Clear()
+  Reasons = modCertificatesDBI.Reasons_Get(Trim(txtReason.text))
+  For Each reason In Reasons
+      listview1.Add(reason!pk, reason!reason)
+  Next
+  If reasons.count Then
+    listview1.Visible = True  
+  Else
+    listview1.Visible = False 
+  Endif
+End
+
+Public Sub Reason_Select(CallingControl As Object)
+     '------------------------------------------------------------------
+   'Select a reason from the Reasons collection i.e why patient is unfit
+   'Firstly has user just hit enter without selecting from list?
+   '--------------------------------------------------------------------
+   Dim x As Integer
+   Dim bFound As Boolean
+   
+   fk_reason = 0                                      'default - could be new reason
+   If CallingControl Is TextBox Then
+      For x = 0 To listview1.count - 1
+          If Lower(Trim(txtReason.text)) = Lower(listview1.Item.text) Then
+            bFound = True  
+            Goto Accept
+         End If
+         listview1.MoveNext
+      Next
+   End If
+   
+   If Not bfound Then Goto Accept
+   
+Accept:
+   listview1.MoveCurrent
+   fk_reason = listview1.Item.Key
+   bExit = True
+   txtReason.text = listview1.Item.Text
+   bExit = False  
+   listview1.Visible = False  
+   txtCodedTerm.SetFocus()
+End
+Public Sub tbClose_Click()
+    
+   Print "trying"
+End
+

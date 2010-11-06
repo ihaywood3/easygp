@@ -1,4 +1,31 @@
 ' Gambas class file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'-----------------------------------------------------------------------------------
+' PURPOSE         A module to assist in maintenance of request names
+' DATABASE        See clin_requests schema and associated tables lu_requests and
+'                 lu_request_type
+' HOW THIS WORKS  The pre-defined request categories are loaded into one list
+'                 when selected, all requests associated with this type are loaded
+'                 into the adjacent list - (see its popup menu for actions
+'                 mnRequests_Click()
+'                 New terms added via the editing area as usual, or mod's made.
+' BUGS            Please email to rterry@pacific.net
+'                 possible random crashes as I changed lu_type to fk_lu_request_type
+'                 recently and may not have updated all instances.
+'-----------------------------------------------------------------------------------
 
 Private RequestTypes As Collection
 Private RequestType As Collection 
@@ -8,13 +35,9 @@ Private help_dir As String
 Private FHelp As FHtmlViewer
 Private pk_view As Integer
 Private fk_request As Integer
+Private fk_lu_request_type As Integer
 Private bExit As Boolean
 Private Member As Collection 
-Public Sub Form_Open()
-  
-  Init()
-  
-End
 
 Public Sub Init()
    '------------------------------------------------------------------------------
@@ -25,11 +48,14 @@ Public Sub Init()
    '  - load the basic help page
    '  - lblMeasure set to widest text expected in edit area for re-sizing purposes
    '------------------------------------------------------------------------------
+
    Dim x As Integer
+
    Try Settings_Load()           
    RequestTypes = modUtil.LoadCombo(cmbRequesttypes, modRequestsDBI.RequestTypes_Get(), "type")
+   lvRequestTypes.Clear()
    For Each RequestType In RequestTypes 
-     lvRequestTypes.Add(x, RequestType!type)
+      lvRequestTypes.Add(x, RequestType!type)
       Inc x
    Next
    lvRequestTypes.MoveFirst()
@@ -43,24 +69,30 @@ Public Sub Init()
    modEditAreaHelpers.Help_Show("help/maintaining-requests.html", FHelp)
    lblMeasure.text = "  Organisation  "
    EditArea_Clear()
+
 End
 
 Private Sub Settings_Load()
+
    Try HSplit_Main.layout = Settings["Admin_Requests_Names/HSplit_Main.layout"]
    Try VSplit_Main.layout = Settings["Admin_Requests_Names/VSplit_Main.layout"]
    Try HSplit_Request_Defaults.layout = Settings["Admin_Requests_Names/HSplit_Request_Defaults.layout"]
+
 End
 
 Public Sub Settings_Save()
+
    Settings["Admin_Requests_Names/HSplit_Request_Defaults.layout"] = HSplit_Request_Defaults.layout
    Settings["Admin_Requests_Names/VSplit_Main.layout"] = VSplit_Main.layout
    Settings["Admin_Requests_Names/HSplit_Main.layout"] = HSplit_Main.layout
+
 End
 
 Public Sub EditArea_Clear()
    '--------------------------------------
    'Clear the input area, reset basic keys
    '--------------------------------------
+
    bExit = True
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_Inner)
    pk_view = 0
@@ -70,20 +102,21 @@ Public Sub EditArea_Clear()
    lblEditAreaHeading.Foreground = Color.Black
    lblEditAreaHeading.text = "Request Name"
    cmbRequesttypes.index = -1
+
 End
 
 Public Sub EditArea_Notify_DataChange(flag As Boolean)
-  If bExit Then Return 
-  If Flag Then 
-         Vbox_EditArea_Outer.Padding = 1
-         tbSave.Foreground = Color.Red
-  Else
-         Vbox_EditArea_Outer.Padding = 0
-         tbSave.Foreground = Color.Black
+
+   If bExit Then Return 
+   If Flag Then 
+      Vbox_EditArea_Outer.Padding = 1
+      tbSave.Foreground = Color.Red
+   Else
+      Vbox_EditArea_Outer.Padding = 0
+      tbSave.Foreground = Color.Black
+      
+   End If
    
-  End If
-  
-  
 End
 
 Public Sub lvRequestTypes_Select()
@@ -91,10 +124,13 @@ Public Sub lvRequestTypes_Select()
    'If request type list selected, re-set filter
    'default to displaying all requests of that type
    '-----------------------------------------------
+
    If Bexit Then Return 
    txtFilter.text = ""
+   Vbox_EditArea_Inner.Enabled = False 
    EditArea_Clear()
    Requests_Refresh()
+
 End
 
 Public Sub Requests_Refresh()
@@ -103,192 +139,200 @@ Public Sub Requests_Refresh()
    'ie clin_request.lu_request_type, unless the checkbox
    'to indicate search all has been checked
    '-----------------------------------------------------
-   Dim fk_lu_request_type As Integer = 0
-   
-   
+
    If chkSearchAll.value = False Then fk_lu_request_type = RequestTypes[lvRequestTypes.Item.key]!pk
    lvRequestTypes.MoveCurrent()
    Requests = modRequestsDBI.Requests_Get_By_Request_Type(fk_lu_request_type, Trim(txtFilter.text))
    cvwRequestNames.Clear()
    For Each Member In Requests
-       cvwRequestNames.Add(Member!pk, 0)
-       cvwRequestNames[Member!pk][0] = Member!item
+      cvwRequestNames.Add(Member!pk, 0)
+      cvwRequestNames[Member!pk][0] = Member!item
    Next
    lblRequestNames.text = "Requests"
    If REquests.count Then
-       lblRequestNames.text &= " (" & Str$(Requests.count) & ")"
+      lblRequestNames.text &= " (" & Str$(Requests.count) & ")"
    Endif
-  
+   
 End
 
 Public Sub txtFilter_KeyRelease()
-  EditArea_Clear()
-  Requests_Refresh()
 
+   EditArea_Clear()
+   Requests_Refresh()
+   
 End
 
 Public Sub cvwRequestNames_Menu()
-
-  If Last.count Then mnuRequests.Popup()
-
+   
+   If Last.count Then mnuRequests.Popup()
+   
 End
 
 Public Sub mnuRequests_Click()
-  
-  Select Case Last.tag
-    Case "edit"
+   
+   Select Case Last.tag
+      Case "edit"
          Request_Edit()
-    Case "delete"
+      Case "delete"
          Request_Delete()
-    Case "help"
+      Case "help"
          Request_Help()
-  End Select
+   End Select
+
 End
-
-
 
 Public Sub Request_Save()
    '-----------------------------------------------------------------------
    'Saves a new or  modified request
    'Decision support and instructions to accompany request not implemented
    '----------------------------------------------------------------------
-  '   pk serial NOT NULL,
-  '   fk_type integer NOT NULL, -- foreign key to clin_requests.lu_Request_type table
-  '   item text NOT NULL, -- the actual request eg Xray of wrist
-  '   fk_laterality integer DEFAULT 0, -- foreign key to common.lu_laterality, ie left/right/both
-  '   fk_decision_support integer DEFAULT 0, -- foreign key to decision_support.decision_support table neither of which exist yet
-  '   fk_instruction integer DEFAULT 0, -- foreign key to lu_instructions ie patient instructions for a particular test
-  '-----------------------------------------
-  Dim Request As New Collection
-  
-  If Vbox_EditArea_Outer.Padding = 0 Then Return
-  If Not Request_IsValid() Then Return
-  RequestTypes = modUtil.LoadCombo(cmbRequesttypes, modRequestsDBI.RequestTypes_Get(), "type")
- CurrentRequest = New Collection
-  If pk_view Then CurrentRequest!pk = pk_view
-  CurrentRequest!item = Trim(txtRequestName.text)
-  CurrentRequest!fk_type = RequestTypes[lvRequestTypes.Item.Key]!pk
-  If rbLateralityBoth.value = True Then CurrentRequest!fk_laterality = const.LateralityBoth
-  If rbLateralityLeft.value = True Then CurrentRequest!fk_laterality = const.LateralityLeft
-  If rbLateralityRight.value = True Then CurrentRequest!fk_laterality = const.LateralityRight
-  modDBConnect.BeginTrans()
-       modRequestsDBI.Request_Save(Requests, pk_view, CurrentRequest)
-  modDBConnect.CommitTrans()
-  EditArea_Clear()
-  Requests_Refresh()
-End
- 
-Public Function Request_IsValid() As Boolean
-  
-   If Trim(txtRequestName.text) = "" Then
-     txtRequestName.SetFocus()
-     Return False
-   Endif
-  Return True
+   '   pk serial NOT NULL,
+   '   fk_type integer NOT NULL, -- foreign key to clin_requests.lu_Request_type table
+   '   item text NOT NULL, -- the actual request eg Xray of wrist
+   '   fk_laterality integer DEFAULT 0, -- foreign key to common.lu_laterality, ie left/right/both
+   '   fk_decision_support integer DEFAULT 0, -- foreign key to decision_support.decision_support table neither of which exist yet
+   '   fk_instruction integer DEFAULT 0, -- foreign key to lu_instructions ie patient instructions for a particular test
+   '-----------------------------------------
+
+   Dim Request As New Collection
+   
+   If Vbox_EditArea_Outer.Padding = 0 Then Return
+   If Not Request_IsValid() Then Return
+   RequestTypes = modUtil.LoadCombo(cmbRequesttypes, modRequestsDBI.RequestTypes_Get(), "type")
+   CurrentRequest = New Collection
+   If pk_view Then CurrentRequest!pk = pk_view
+   CurrentRequest!item = Trim(txtRequestName.text)
+   CurrentRequest!fk_type = RequestTypes[lvRequestTypes.Item.Key]!pk
+   If rbLateralityBoth.value = True Then CurrentRequest!fk_laterality = const.LateralityBoth
+   If rbLateralityLeft.value = True Then CurrentRequest!fk_laterality = const.LateralityLeft
+   If rbLateralityRight.value = True Then CurrentRequest!fk_laterality = const.LateralityRight
+   modDBConnect.BeginTrans()
+   modRequestsDBI.Request_Save(Requests, pk_view, CurrentRequest)
+   modDBConnect.CommitTrans()
+   EditArea_Clear()
+   fk_lu_request_type = 0
+   Vbox_EditArea_Inner.Enabled = False 
+   Requests_Refresh()
+
 End
 
+Public Function Request_IsValid() As Boolean
+   
+   If Trim(txtRequestName.text) = "" Then
+      txtRequestName.SetFocus()
+      Return False
+   Endif
+   Return True
+
+End
 
 Public Sub Request_Edit()
+
    EditArea_Clear()
    cvwRequestNames.MoveCurrent
    fk_request = Requests[cvwRequestNames.Item.key]!pk '?not used
    pk_view = Requests[cvwRequestNames.Item.key]!pk
    bExit = True
- 
+   
    cmbRequesttypes.index = cmbRequesttypes.Find(lvRequestTypes.Item.Text)
    txtRequestName.text = Requests[cvwRequestNames.Item.key]!item
    Select Case Requests[cvwRequestNames.Item.key]!fk_laterality
-     Case const.LateralityBoth
+      Case const.LateralityBoth
          rbLateralityBoth.value = True
-     Case const.LateralityLeft
+      Case const.LateralityLeft
          rbLateralityLeft.value = True
-     Case const.LateralityNone
+      Case const.LateralityNone
          rbLateralityNone.Value = True
-     Case const.LateralityRight
-          rbLateralityRight.value = True
+      Case const.LateralityRight
+         rbLateralityRight.value = True
    End Select
    bExit = False  
    lblEditAreaHeading.text = "Edit Existing Request Name"
    lblEditAreaHeading.Foreground = Color.Red
-
-  
-  
+   Vbox_EditArea_Inner.Enabled = True  
+   
 End
+
 Public Sub Request_Delete()
+
    Dim sMsg As String
    
-    cvwRequestNames.MoveCurrent
+   cvwRequestNames.MoveCurrent
    sMsg = "Request:" & cvwRequestNames.Item.text & "\n\n"  
    sMsg &= "Are you sure you wish to delete this request"
    If Message.Warning(sMsg, "Yes", "No") = 2 Then Return
    modDBConnect.BeginTrans()
-       modRequestsDBI.Request_Delete(Requests[cvwRequestNames.Item.key]!pk)
+   modRequestsDBI.Request_Delete(Requests[cvwRequestNames.Item.key]!pk)
    modDBConnect.CommitTrans()  
+   Requests_Refresh()
+
 End
 
 Public Sub Request_Help()
-  
-  
-  
+   
 End
 
-
-
 Public Sub EditArea_Buttons_Click()
-
-  Select Case Last.tag
-    Case "new"
+   
+   Select Case Last.tag
+      Case "new"
          Request_New()
-    Case "save"
+      Case "save"
          Request_Save()
-  End Select
-
+   End Select
+   
 End
 
 Public Sub Request_New()
-  EditArea_Clear()
-  lblEditAreaHeading.text = "Add new request name"
-  lblEditAreaHeading.Foreground = Color.Red
-  
+
+   EditArea_Clear()
+   lblEditAreaHeading.text = "Add new request name"
+   lblEditAreaHeading.Foreground = Color.Red
+   
 End
 
 Public Sub chkSearchAll_Click()
- If Last.value = True Then
-   bExit = True
-   lvRequestTypes.SelectAll(False)
-   bexit = False  
- Endif
- EditArea_Clear()
- Requests_Refresh()
 
+   If Last.value = True Then
+      bExit = True
+      lvRequestTypes.SelectAll(False)
+      bexit = False  
+   Endif
+   EditArea_Clear()
+   Requests_Refresh()
+   
 End
 
 Public Sub cvwRequestNames_Select()
+
    Dim x As Integer
-    
+   Vbox_EditArea_Inner.Enabled = False       'no data entry unless explicity selecte Edit
    EditArea_Clear()                          'clear input area each time
    cvwRequestNames.MoveCurrent               'set internal cursor
    bExit = True
    lvRequestTypes.SelectAll(False)           'remove marquee from types of request list
    lvRequestTypes.MoveFirst()                'run through list until find a match between
    For x = 0 To lvRequestTypes.count - 1     'this requests type and that in the list
-      If RequestTypes[lvRequestTypes.Item.key]!pk = Requests[cvwRequestNames.item.key]!fk_type Then
+      If RequestTypes[lvRequestTypes.Item.key]!pk = Requests[cvwRequestNames.item.key]!fk_lu_request_type Then
          lvRequestTypes.Item.Selected = True
          lvRequestTypes.SetFocus()           'then set marquee on list to match the type
          Break
       Else
-           lvRequestTypes.Movenext()
+         lvRequestTypes.Movenext()
       End If 
    Next
    bExit = False   
+
 End
 
 Public Sub EditArea_TextBox_Change()
    '---------------------------------------------------------------------
    'User has changed data, reflect this with red outline around edit area
    '---------------------------------------------------------------------
+
    If bExit = True Then Return 
    EditArea_Notify_DataChange(True)
+
 End
 
 Public Sub lvRequestTypes_Click()
@@ -296,7 +340,10 @@ Public Sub lvRequestTypes_Click()
    'When click on type eg pathogy, or audiology, assume user just
    'want to see requests for that type, so remove search all check
    '--------------------------------------------------------------
-  chkSearchAll.value = False
+
+   chkSearchAll.value = False
+   
+
 End
 
 Public Sub cmbRequestTypes_Click()
@@ -305,8 +352,10 @@ Public Sub cmbRequestTypes_Click()
    'Could be just clicking on this combo without clicking the new button
    'Make sure the listview of request types is set to the correct row
    '--------------------------------------------------------------------
+
    Dim x As Integer
    Dim old_index As Integer = cmbRequesttypes.Index  'keep current index of type of request showing
+
    If Bexit Then Return 
    If pk_view <> 0 Then EditArea_Clear()
    cmbRequesttypes.index = old_index                 'switch combo back to one user selected
@@ -319,7 +368,7 @@ Public Sub cmbRequestTypes_Click()
          lvRequestTypes.SetFocus()
          Break
       Else
-           lvRequestTypes.Movenext()
+         lvRequestTypes.Movenext()
       End If 
    Next
    lblEditAreaHeading.Foreground = Color.Red
@@ -327,12 +376,17 @@ Public Sub cmbRequestTypes_Click()
    bExit = False   
    Requests_Refresh
    txtRequestName.SetFocus()
+
 End
 
 Public Sub EditArea_TextBox_GotFocus()
+
    Last.BackGround = Color.rgb(95, 255, 175)  
+
 End
 
 Public Sub EditArea_TextBox_LostFocus()
+
    Last.BackGround = Color.white
+
 End

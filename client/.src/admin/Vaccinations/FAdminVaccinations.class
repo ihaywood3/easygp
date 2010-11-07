@@ -18,20 +18,35 @@
 ' TERMINOLOGY     Which may be unfamiliar to non-australians:
 '                 TSI = Torres Straight Islanders eg bAboriginalTSI_Only flag
 '                 as government policy identifies these as special groups
+'                 My terminology of 'multiple vaccines' could be confusing
+'                 This means that a schedule eg 2 month childhood, has multiple
+'                 separate vaccines. this is not the same as a course of vaccination
+'                 say for hepatitis B given by itself which has 1 at each visit
+'                 but on three occasions.
+' TODO            All the key-press> set focus stuff in the edit area
+' KNOWN BUGS      in Schedule_save() when restoring the row, dosn't move the marquee
+'                 to make visible if below what's showing in the list.
 '---------------------------------------------------------------------------------
-Private bexit As Boolean
-Private schedules As Collection
-Private schedule As Collection
-Private fk_schedule As Integer
-Private fk_season As Integer = 0
+Private bexit As Boolean                  'prevent entry to subroutines as needed
+Private bKeyValid As Boolean              'if True this is a valid key press in edit area
+Private schedules As Collection           'All the vaccination schedules
+Private schedule As Collection            'A single vaccination schedule
+Private fk_schedule As Integer            'key to clin_vaccinations.schedules
+Private fk_season As Integer              'key to common.lu_seasons   
 Private pk_view As Integer
 Private bFemaleONly As Boolean            'if true the vaccine is only for females  
 Private bAboriginalTSI_Only As Boolean    'if true the schedule is only for this group
-Private bScheduleActive As Boolean    'if true the schedule is in current use
-Private Seasons As Collection 
-Private Vaccines As Collection
-Private Vaccine As Collection
-
+Private bScheduleStatus As Boolean        'if true the schedule is in current use
+Private Seasons As Collection             'see common.lu_seasons  
+Private Vaccines As Collection            'A collection of vaccines data
+Private Vaccine As Collection             'A Single vaccine 
+Private FHelp As FHtmlViewer
+Private help_dir As String
+Private Const cShow_Active_Schedules As Integer = 1
+Private Const cShow_InActive_Schedules As Integer = 2
+Private Const cShow_All_Schedules As Integer = 3
+Private iDisplay_Schedules As Integer = 1    'default to showing only active schedules
+Private bMultipleVaccinesInSchedule As Boolean       'If true the vaccination schedule has more than 1 vaccine 
 Public Sub Form_Open()
    
    Init()
@@ -39,26 +54,27 @@ Public Sub Form_Open()
 End
 
 Public Sub Init()
-
+   FHelp = New FHtmlViewer(Hbox_Help)
+   help_dir = Application.Path &/ "help/"
+   modEditAreaHelpers.Help_Show("help/maintaining-vaccination-schedules.html", FHelp)
    seasons = modUtil.LoadCombo(cmbSeasons, modCommonDBI.Seasons_Get(), "season")
    lblMeasure.text = " Maximum Age (Months) "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
-   Try Settings_Load()
-   Reload()
-
+   modEditAreaHelpers.Resize_label(lblbuttons, lblMeasure)
+   Settings_Load()
+   rbDisplaySchedulesActive.value = True 'will reload
+   
 End
 
 Public Sub Settings_Save()
-   
    Settings["Admin_Vaccination/VSplit_Main.layout"] = Vsplit_Main.layout
    Settings["Admin_Vaccination/HSplit_Schedules_Defaults.Layout"] = HSplit_Schedules_Defaults.Layout
    
 End
 
 Private Sub Settings_Load()
-   
-   HSplit_Schedules_Defaults.Layout = Settings["Admin_Vaccination/HSplit_Schedules_Defaults.Layout"]
-   Vsplit_Main.layout = Settings["Admin_Vaccination/VSplit_Main.layout"] 
+  Try HSplit_Schedules_Defaults.Layout = Settings["Admin_Vaccination/HSplit_Schedules_Defaults.Layout"]
+  Try Vsplit_Main.layout = Settings["Admin_Vaccination/VSplit_Main.layout"] 
    
 End
 
@@ -73,15 +89,88 @@ Public Sub EditArea_Notify_DataChanged(flag As Boolean)
    If flag Then 
       tbSave.Foreground = Color.Red
       Vbox_EditArea_Outer.Padding = 1
+      tbSave.Enabled = True   
    Else
       tbSave.Foreground = Color.Black
       Vbox_EditArea_Outer.Padding = 0 
+      tbSave.Enabled = False  
    Endif
    
 End
 
-Public Sub EditArea_TextBox_Activate()
+Public Sub EditArea_TextBox_KeyPress()
    
+   If bExit Then Return 
+   
+   If Not EditArea_Textbox_ExcludeKeys(key.code, Last.tag) Then 
+      Stop Event
+      Return
+   End If
+
+End 
+
+Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   Select Case tag
+      Case "age due from", "age due to"
+         bKeyValid = bKeyValid = modUtil.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
+      Case "date inactive"
+          bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
+      Case Else
+         bKeyValid = True
+   End Select
+   Return bKeyValid
+   
+End
+
+Public Sub EditArea_TextBox_GotFocus()
+
+   Last.BackGround = Color.rgb(95, 255, 175)
+
+End
+
+Public Sub EditArea_TextBox_LostFocus()
+
+   Dim Hastext As Boolean
+   
+   Last.BackGround = Color.White
+   Select Case Last.tag
+      Case "date inactive"
+         If Last.text <> "" Then
+            If Not modEditAreaHelpers.Valid_Date(Last) Then
+               bExit = True
+               Last.text = ""
+               lblInvalidDate.text = " **INVALID DATE**"
+               bExit = False   
+            End If
+         End If
+         
+   End Select 
+
+End
+
+Public Sub EditArea_TextBox_Activate()
+      '--------------------------
+      'Enter key has been pressed
+      '--------------------------
+      Select Case Last.tag
+        Case "schedule"
+           rbScheduleActiveYes.SetFocus()
+       Case "date inactive"
+          txtAgeDueFrom.SetFocus()
+       Case "age due from"
+            txtAgeDueTo.SetFocus()
+       Case "age due to"
+            tbSave.SetFocus()
+      End Select
+End
+
+Public Sub EditArea_TextBox_Change()
+
+   If bExit Then Return 
+   
+   EditArea_Notify_DataChanged(True)
+
 End
 
 Public Sub EditArea_TextBox_KeyRelease()
@@ -113,7 +202,7 @@ Public Sub Schedule_New()
    rbAboriginalTSINo.value = True
    rbSeasonalNo.value = True
    bFemaleOnly = False   
-   
+   bMultipleVaccinesInSchedule = False  'usually only 1 vax at a time.
 End
 
 Public Sub Schedule_Delete()
@@ -124,80 +213,174 @@ Public Sub Schedule_Display()
    '----------------------------------------  
    'Displays the schedule but cannot edit it
    '----------------------------------------
-
+   
    If lvwSchedules.count = 0 Then Return
+   bExit = True
    lvwSchedules.MoveCurrent
    pk_view = lvwSchedules.Item.Key
    fk_schedule = schedules[pk_view]!pk
    txtSchedule.text = schedules[pk_view]!schedule
    Try txtAgeDueFrom.text = schedules[pk_view]!age_due_from_months
    Try txtAgeDueTo.text = schedules[pk_view]!age_due_to_months
-   If schedules[pk_view]!female_only Then
+   If schedules[pk_view]!inactive = True Then
+     rbScheduleActiveNo.Value = True
+   Else
+     rbScheduleActiveYes.Value = True   
+   Endif
+   If schedules[pk_view]!multiple_vaccines = True Then
+      rbMultipleYes.value = True
+   Else
+      rbMultipleNo.value = True  
+   Endif
+   If schedules[pk_view]!female_only = True Then
       rbFemaleOnlyYes.value = True
+   Else
+      rbFemaleOnlyNo.Value = True
    Endif
    If schedules[pk_view]!aboriginal_tsi_only Then
       rbAboriginalTSIYes.Value = True
+   Else
+      rbAboriginalTSINo.value = True   
    Endif
-   If schedules[pk_view]!fk_season Then
+   If Not IsNull(schedules[pk_view]!fk_season) Then
       rbSeasonalYes.value = True
-   Endif
+      cmbSeasons.Visible = True
+      cmbSeasons.index = cmbSeasons.Find(seasons[schedules[pk_view]!fk_season - 1]!season)
+   Else
+      cmbSeasons.Visible = False 
+      rbSeasonalNo.value = True  
+   End If
    Vaccines_In_Schedule_Display()
-   HSplit_EditArea.Enabled = False   
-
+   Vbox_VaccineList.Enabled = False 
+   Vbox_EditArea_Inner.Enabled = False   
+   bExit = False
+   EditArea_Notify_DataChanged(False)
+   
 End
 
 Public Sub Schedule_Edit()
-
+   
    Schedule_Display()
-    HSplit_EditArea.Enabled = True  
+   Vbox_VaccineList.Enabled = True 
+   Vbox_EditArea_Inner.Enabled = True   
 
 End
 
 Public Sub Schedule_Save()
+   '------------------------------------------------------------
+   'Saves the schedule details and any vaccines in this schedule
+   '   pk serial NOT NULL,
+   '   age_due_from_months integer,
+   '   age_due_to_months integer,
+   '   schedule text NOT NULL, -- either a target disease name eg 'yellow fever' or a schedule name to describe course of combined vaccines eg Hepatits A + Hepatitis B.Hence this allows unlimited and user defined schedules.
+   '   female_only boolean DEFAULT false,
+   '   aboriginal_tsi_only boolean DEFAULT false, -- australian requirement, some schedules apply only to aboriginal or torres strait islanders at particular ages
+   '   fk_season integer, -- eg. influenza prompts only wanted at particular time of year
+   '   inactive boolean DEFAULT false,
+   '   date_inactive date,
+   '   deleted boolean DEFAULT false,
+    '------------------------------------------------------------   
+   Dim x As Integer
    
-   If Vbox_EditArea_Outer.Border = 0 Then Return ' no changes, nothing to save
-   If Not (Schedule_Valid) Then Return
+   If Vbox_EditArea_Outer.padding = 0 Then Return ' no changes, nothing to save
+   If Not Schedule_Valid() Then Return
    
    Schedule = New Collection
    If fk_schedule Then
-      Schedule!fk_schedule = fk_schedule
+      Schedule!pk = fk_schedule
    End If
-   
-End
+   schedule!schedule = Trim(txtSchedule.text)
+   schedule!age_due_from_months = Val(txtAgeDueFrom.text)
+   schedule!age_due_to_months = Val(txtAgeDueTo.text)
+   schedule!female_only = bFemaleOnly
+   schedule!aboriginal_tsi_only = bAboriginalTSI_Only
+   If fk_season Then    
+         schedule!fk_season = fk_season   'IAN FIXME: THE PROBLEM OF REVERTING TO NULL
+   End If   
+   schedule!inactive = bScheduleStatus
+   schedule!multiple_vaccines = bMultipleVaccinesInSchedule
+   If rbScheduleActiveNo.value = True Then
+      schedule!date_inactive = Val(txtDateInactive.text)
+   Endif
+   modDBConnect.BeginTrans()
+      modVaccinationDBI.Schedules_Save(Schedules, pk_view, schedule)
+   modDBConnect.CommitTrans()
+   Reload() 
+   'Move to the row just saved. FIXME: THIS SOMETIMES DOSN'T SHOW THE ROW MARQUEE
+   lvwSchedules.MoveFirst
+    For x = 0 To lvwSchedules.count - 1
+      If lvwSchedules.Item.key = pk_view Then
+      '  lvwSchedules.SetFocus()
+        lvwSchedules.Item.Selected = True
+         Break
+      Else  
+       lvwSchedules.MoveNext()
+      End If   
+    Next
+
+End 
 
 Public Sub Reload()
    
-   schedules = modVaccinationDBI.Schedules_get(Trim(txtFilterSchedule.text))
+   schedules = modVaccinationDBI.Schedules_get(Trim(txtFilterSchedule.text), iDisplay_Schedules)
    lvwSchedules.clear()
    For Each schedule In schedules
       lvwSchedules.Add(schedule!pk, Schedule!schedule)
    Next
+   Select Case iDisplay_Schedules
+     Case 1
+         lblSchedules.text = "Active Schedules"
+     Case 2
+          lblSchedules.text = "Inactive Schedules"
+      Case 3
+          lblSchedules.text = "Active and Inactive Schedules"
+   End Select
    EditArea_Clear()
    EditArea_Notify_DataChanged(False)
-   HSplit_EditArea.Enabled = False  
+   Vbox_VaccineList.Enabled = False 
+   Vbox_EditArea_Inner.Enabled = False   
 
-End
-
-Public Sub Schedule_Valid()
    
 End
 
-Public Sub rblaterality_Click()
+Public Function Schedule_Valid() As Boolean
+
+   Dim sMsg As String
+
+   If txtSchedule.text = "" Then
+      sMsg = "Please enter the name of the schedule or target disease"
+      txtSchedule.SetFocus()
+      Goto Prompt
+   Endif
+   If Trim(txtDateInactive.text) <> "" Then 
+      If Not IsDate(Val(txtDateInactive.text)) Then
+         sMsg = "Please enter a valid date"
+         txtDateInactive.SetFocus()
+         Goto Prompt
+      Endif
+   End If
    
+   Return True
+   
+Prompt:
+   Message.title = "Vaccination Schedules or Target Disease Schedules"
+   Message.Info(sMsg)
+   Return False   
+
 End
 
 Public Sub rbFemaleOnly_Click()
    
    bFemaleOnly = False  
    If Last.tag = "Yes" Then bFemaleOnly.value = True
-   
+    EditArea_Notify_DataChanged(True)
 End
 
 Public Sub rbAboriginalTSI_Click()
    
    bAboriginalTSI_Only = False
    If Last.tag = "yes" Then bAboriginalTSI_Only.value = True
-   
+    EditArea_Notify_DataChanged(True)
 End
 
 Public Sub rbSeasonal_Click()
@@ -209,13 +392,13 @@ Public Sub rbSeasonal_Click()
       cmbSeasons.index = -1
       fk_season = 0
    End If 
-   
+    EditArea_Notify_DataChanged(True)
 End
 
 Public Sub cmbSeasons_Click()
    
    fk_season = Seasons[Last.index]!pk
-   
+    EditArea_Notify_DataChanged(True)
 End
 
 Public Sub lvwSchedules_Menu()
@@ -235,10 +418,10 @@ Public Sub mnuSchedules_Click()
    
 End
 
-Public Sub rbScheduleActive_Click()
-
-   bScheduleActive = True
-   If Last.tag = "No" Then bScheduleActive = False
+Public Sub rbScheduleStatus_Click()
+   
+   bScheduleStatus = True
+   If Last.tag = "No" Then bScheduleStatus = False
    
 End
 
@@ -252,7 +435,7 @@ Public Sub Vaccines_In_Schedule_Display()
    '---------------------------------------------
    'Display all vaccines in a particular schedule
    '---------------------------------------------
-
+   
    Vaccines = modVaccinationDBI.Vaccines_In_Schedules_Get(fk_schedule)
    With cvwVaccines
       .Columns.count = 2
@@ -270,4 +453,41 @@ Public Sub txtFilterSchedule_KeyRelease()
    
    Reload()
    
+End
+
+Public Sub rbScheduleActiveNo_KeyPress()
+
+  Select Case Key.Code
+    Case Key.Return
+      If Last.key = "yes" Then
+          txtAgeDueFrom.SetFocus()
+      Else
+        If Last.value = True Then
+            txtDateInactive.SetFocus()
+        Endif
+     End If 
+      
+  End Select
+
+End
+
+Public Sub rbScheduleActive_Click()
+
+  EditArea_Notify_DataChanged(True)
+
+End
+
+Public Sub rbDisplaySchedules_Click()
+
+  iDisplay_Schedules = Last.tag
+  Reload()
+End
+
+Public Sub rbMultiple_Click()
+  If Last.tag = "yes" Then
+    bMultipleVaccinesInSchedule = True
+  Else
+    bMultipleVaccinesInSchedule = False
+  End If
+  EditArea_Notify_DataChanged(True)
 End

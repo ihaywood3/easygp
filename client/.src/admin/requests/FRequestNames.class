@@ -25,6 +25,8 @@
 ' BUGS            Please email to rterry@pacific.net
 '                 possible random crashes as I changed lu_type to fk_lu_request_type
 '                 recently and may not have updated all instances.
+' CAVEATS         Until I put in referential integrity deletion will fuck any ordered
+'                 requests, such is a pre-alpha program
 '-----------------------------------------------------------------------------------
 
 Private RequestTypes As Collection
@@ -48,9 +50,9 @@ Public Sub Init()
    '  - load the basic help page
    '  - lblMeasure set to widest text expected in edit area for re-sizing purposes
    '------------------------------------------------------------------------------
-
+   
    Dim x As Integer
-
+   
    Try Settings_Load()           
    RequestTypes = modUtil.LoadCombo(cmbRequesttypes, modRequestsDBI.RequestTypes_Get(), "type")
    lvRequestTypes.Clear()
@@ -67,46 +69,49 @@ Public Sub Init()
    FHelp = New FHtmlViewer(Vbox_Help)
    help_dir = Application.Path &/ "help/"
    modEditAreaHelpers.Help_Show("help/maintaining-requests.html", FHelp)
-   lblMeasure.text = "  Organisation  "
+   lblMeasure.text = "  Lateralisation  "
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
+   modEditAreaHelpers.Resize_label(lblButtons, lblMeasure)
    EditArea_Clear()
-
+   
 End
 
 Private Sub Settings_Load()
-
+   
    Try HSplit_Main.layout = Settings["Admin_Requests_Names/HSplit_Main.layout"]
    Try VSplit_Main.layout = Settings["Admin_Requests_Names/VSplit_Main.layout"]
    Try HSplit_Request_Defaults.layout = Settings["Admin_Requests_Names/HSplit_Request_Defaults.layout"]
-
+   
 End
 
 Public Sub Settings_Save()
-
+   
    Settings["Admin_Requests_Names/HSplit_Request_Defaults.layout"] = HSplit_Request_Defaults.layout
    Settings["Admin_Requests_Names/VSplit_Main.layout"] = VSplit_Main.layout
    Settings["Admin_Requests_Names/HSplit_Main.layout"] = HSplit_Main.layout
-
+   
 End
 
 Public Sub EditArea_Clear()
    '--------------------------------------
    'Clear the input area, reset basic keys
    '--------------------------------------
-
+   
    bExit = True
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_Inner)
    pk_view = 0
    fk_request = 0
+   fk_lu_request_type = 0
    bExit = False
    EditArea_Notify_DataChange(False)
    lblEditAreaHeading.Foreground = Color.Black
    lblEditAreaHeading.text = "Request Name"
    cmbRequesttypes.index = -1
-
+   Vbox_EditArea_Inner.Enabled = False 
 End
 
 Public Sub EditArea_Notify_DataChange(flag As Boolean)
-
+   
    If bExit Then Return 
    If Flag Then 
       Vbox_EditArea_Outer.Padding = 1
@@ -124,13 +129,21 @@ Public Sub lvRequestTypes_Select()
    'If request type list selected, re-set filter
    'default to displaying all requests of that type
    '-----------------------------------------------
-
+   
    If Bexit Then Return 
    txtFilter.text = ""
    Vbox_EditArea_Inner.Enabled = False 
    EditArea_Clear()
    Requests_Refresh()
+   
+End
 
+Public Sub Reload()
+  
+   EditArea_Clear()
+   tbSave.Enabled = False  
+   Requests_Refresh()
+  
 End
 
 Public Sub Requests_Refresh()
@@ -139,7 +152,7 @@ Public Sub Requests_Refresh()
    'ie clin_request.lu_request_type, unless the checkbox
    'to indicate search all has been checked
    '-----------------------------------------------------
-
+   
    If chkSearchAll.value = False Then fk_lu_request_type = RequestTypes[lvRequestTypes.Item.key]!pk
    lvRequestTypes.MoveCurrent()
    Requests = modRequestsDBI.Requests_Get_By_Request_Type(fk_lu_request_type, Trim(txtFilter.text))
@@ -156,7 +169,7 @@ Public Sub Requests_Refresh()
 End
 
 Public Sub txtFilter_KeyRelease()
-
+   
    EditArea_Clear()
    Requests_Refresh()
    
@@ -178,7 +191,7 @@ Public Sub mnuRequests_Click()
       Case "help"
          Request_Help()
    End Select
-
+   
 End
 
 Public Sub Request_Save()
@@ -193,7 +206,7 @@ Public Sub Request_Save()
    '   fk_decision_support integer DEFAULT 0, -- foreign key to decision_support.decision_support table neither of which exist yet
    '   fk_instruction integer DEFAULT 0, -- foreign key to lu_instructions ie patient instructions for a particular test
    '-----------------------------------------
-
+   
    Dim Request As New Collection
    
    If Vbox_EditArea_Outer.Padding = 0 Then Return
@@ -202,33 +215,46 @@ Public Sub Request_Save()
    CurrentRequest = New Collection
    If pk_view Then CurrentRequest!pk = pk_view
    CurrentRequest!item = Trim(txtRequestName.text)
-   CurrentRequest!fk_type = RequestTypes[lvRequestTypes.Item.Key]!pk
+   CurrentRequest!fk_lu_request_type = RequestTypes[lvRequestTypes.Item.Key]!pk
    If rbLateralityBoth.value = True Then CurrentRequest!fk_laterality = const.LateralityBoth
    If rbLateralityLeft.value = True Then CurrentRequest!fk_laterality = const.LateralityLeft
    If rbLateralityRight.value = True Then CurrentRequest!fk_laterality = const.LateralityRight
    modDBConnect.BeginTrans()
    modRequestsDBI.Request_Save(Requests, pk_view, CurrentRequest)
    modDBConnect.CommitTrans()
-   EditArea_Clear()
-   fk_lu_request_type = 0
-   Vbox_EditArea_Inner.Enabled = False 
-   Requests_Refresh()
-
+   Reload()
+   
 End
 
 Public Function Request_IsValid() As Boolean
-   
+   '-------------------------------------
+   'At mimumum a request must have a name
+   '-------------------------------------   
    If Trim(txtRequestName.text) = "" Then
       txtRequestName.SetFocus()
       Return False
    Endif
    Return True
-
+   
 End
 
 Public Sub Request_Edit()
+   '----------------------------------------------------
+   'Allow editing of the currently selected request name
+   '----------------------------------------------------   
+   lblEditAreaHeading.text = "Edit Existing Request Name"
+   lblEditAreaHeading.Foreground = Color.Red
+   Vbox_EditArea_Inner.Enabled = True  
+   tbSave.Enabled = True   
+   
+End
 
+Public Sub Request_Display()
+   '--------------------------------------------------------------------
+   'Display's the currently highlighted request without enabling editing
+   '--------------------------------------------------------------------
    EditArea_Clear()
+   tbSave.Enabled = False  
    cvwRequestNames.MoveCurrent
    fk_request = Requests[cvwRequestNames.Item.key]!pk '?not used
    pk_view = Requests[cvwRequestNames.Item.key]!pk
@@ -247,13 +273,13 @@ Public Sub Request_Edit()
          rbLateralityRight.value = True
    End Select
    bExit = False  
-   lblEditAreaHeading.text = "Edit Existing Request Name"
-   lblEditAreaHeading.Foreground = Color.Red
-   Vbox_EditArea_Inner.Enabled = True  
    
 End
 
 Public Sub Request_Delete()
+   '----------------------------------------
+   'Delete the currently highlighted request
+   '----------------------------------------   
 
    Dim sMsg As String
    
@@ -265,7 +291,7 @@ Public Sub Request_Delete()
    modRequestsDBI.Request_Delete(Requests[cvwRequestNames.Item.key]!pk)
    modDBConnect.CommitTrans()  
    Requests_Refresh()
-
+   
 End
 
 Public Sub Request_Help()
@@ -284,15 +310,18 @@ Public Sub EditArea_Buttons_Click()
 End
 
 Public Sub Request_New()
-
+   
    EditArea_Clear()
+   tbSave.Enabled = True
    lblEditAreaHeading.text = "Add new request name"
    lblEditAreaHeading.Foreground = Color.Red
+   Vbox_EditArea_Inner.Enabled = True
+  ' cmbRequesttypes.index = cmbRequesttypes.Find(RequestTypes[lvRequestTypes.Item.key]!type)
    
 End
 
 Public Sub chkSearchAll_Click()
-
+   
    If Last.value = True Then
       bExit = True
       lvRequestTypes.SelectAll(False)
@@ -304,8 +333,9 @@ Public Sub chkSearchAll_Click()
 End
 
 Public Sub cvwRequestNames_Select()
-
+   
    Dim x As Integer
+   
    Vbox_EditArea_Inner.Enabled = False       'no data entry unless explicity selecte Edit
    EditArea_Clear()                          'clear input area each time
    cvwRequestNames.MoveCurrent               'set internal cursor
@@ -322,17 +352,17 @@ Public Sub cvwRequestNames_Select()
       End If 
    Next
    bExit = False   
-
+   Request_Display()
 End
 
 Public Sub EditArea_TextBox_Change()
    '---------------------------------------------------------------------
    'User has changed data, reflect this with red outline around edit area
    '---------------------------------------------------------------------
-
+   
    If bExit = True Then Return 
    EditArea_Notify_DataChange(True)
-
+   
 End
 
 Public Sub lvRequestTypes_Click()
@@ -340,10 +370,9 @@ Public Sub lvRequestTypes_Click()
    'When click on type eg pathogy, or audiology, assume user just
    'want to see requests for that type, so remove search all check
    '--------------------------------------------------------------
-
+   
    chkSearchAll.value = False
    
-
 End
 
 Public Sub cmbRequestTypes_Click()
@@ -352,10 +381,10 @@ Public Sub cmbRequestTypes_Click()
    'Could be just clicking on this combo without clicking the new button
    'Make sure the listview of request types is set to the correct row
    '--------------------------------------------------------------------
-
+   
    Dim x As Integer
    Dim old_index As Integer = cmbRequesttypes.Index  'keep current index of type of request showing
-
+   
    If Bexit Then Return 
    If pk_view <> 0 Then EditArea_Clear()
    cmbRequesttypes.index = old_index                 'switch combo back to one user selected
@@ -376,17 +405,19 @@ Public Sub cmbRequestTypes_Click()
    bExit = False   
    Requests_Refresh
    txtRequestName.SetFocus()
-
+   
 End
 
 Public Sub EditArea_TextBox_GotFocus()
-
+   
    Last.BackGround = Color.rgb(95, 255, 175)  
-
+   
 End
 
 Public Sub EditArea_TextBox_LostFocus()
-
+   
    Last.BackGround = Color.white
-
+   
 End
+
+

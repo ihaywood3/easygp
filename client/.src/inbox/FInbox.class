@@ -180,7 +180,8 @@ End
 Public Sub Init()
    
    If modDBConnect.IsAdmin Then Return                                  'admin obviously not allowed to file stuff
-   
+  ' Try Settings_Load()
+  ' Form_Inbox = Me
    timer1.start                                                         'delay loading inbox data until gui showing
    With Form_ActionDocument = New FActionDocument(Vbox_ActionDocument)
       .Init("Inbox")                                                    'Loads its own forms, initially only an instance of the document metadata
@@ -390,16 +391,24 @@ Public Sub cvwInboxDocuments_Select()
       tbDiscard.Enabled = False 
       tbFile.Enabled = False
       chkAutoProcess.Enabled = False  
+      HBox_LowerLists.Padding = 10
+      With tlMissingProvider
+         .Foreground = color.Red
+         .text = "<P ALIGN=CENTER><B>Unidentified HL7 Sender</B><P>"
+         .text &= "The sender of this hl7 message cannot be found, the document may not be filed.<BR><BR>"
+         .text &= "Please contact the System Administrator for assistance<BR><BR>"
+                 "The Administrator can correct this via the Admin.Hl7Management tab"
+         .Visible = True  
+      End With
       Vbox_OutstandingRequests.Visible = False 
-      tlMissingProvider.Visible = True   
-   Else
+      Else
       Form_ActionDocument.TabStrip1.Enabled = True
       tbDiscard.Enabled = True 
       tbFile.Enabled = True
       chkAutoProcess.Enabled = True                              'temporary checkbox FIXME REMOVE ME FROM FORM
    End If
    
-   If SelectedDocument!fk_staff_destination Then
+   If tlMissingProvider.Visible = False And SelectedDocument!fk_staff_destination Then
       tlMissingProvider.Visible = False
       Vbox_OutstandingRequests.Visible = True  
    Else
@@ -461,11 +470,8 @@ Public Sub cvwInboxDocuments_Select()
    If Not bRequestMatchFound And cvwPatientsRequests.count Then
       
    End If
-   
-   If bAutoFilePatient = True Then
-      tbFile_Click()
-   End If   
-   
+   Vbox_ActionDocument.Enabled = True  
+
 End
 
 Public Sub Image_File_Show()
@@ -608,7 +614,7 @@ Public Sub tbFile_Click()
    '---------------------------------------------------------------   
    If Not cvwInboxDocuments.count Then Return      'no documents, no filing
    If Not Document_File() Then Return              'filing failed
-   
+   Vbox_ActionDocument.Enabled = False 
    Form_ActionDocument.Tabstrip1.Index = Metadata  'sucess. switch tab back to metadata
    If cvwInboxDocuments.count = 0 Then             'no documents left?
       cvwInbox.MoveCurrent()                       'try and show next inbox item, usually next patient
@@ -815,12 +821,12 @@ End
 
 Public Sub rbDisplayFormat_Click()
    
-   If Bexit = True Or IsNull(SelectedDocument) Then Return 
-   
-   fk_lu_message_display_style = Last.tag
-   SelectedDocument!fk_lu_message_display_style = Last.tag
-   Try HTML_Document_Show(Last.tag, SelectedDocument, observations) 
-   
+   ' If Bexit = True Or IsNull(SelectedDocument) Then Return 
+   ' 
+   ' fk_lu_message_display_style = Last.tag
+   ' SelectedDocument!fk_lu_message_display_style = Last.tag
+   ' Try HTML_Document_Show(Last.tag, SelectedDocument, observations) 
+   ' 
 End
 
 Public Function SendingEntity_Recognised() As Boolean
@@ -847,23 +853,29 @@ Public Function SendingEntity_Recognised() As Boolean
 
 End
 
-Public Sub Metadata_Author_Entry_Area_Hide()
-   
-   ' With FMetaData
-   '    .HBox_Author.Visible = False
-   '    .VBox_Organisation.Visible = False  
-   '    .HBox_Editarea_8.visible = False 
-   '    .HBox_Document_Tag.Visible = True 
-   '    .HBox_Comment.Visible = True  
-   '    .HBox_Laterality.visible = True
-   '    .hBox_Urgency.Visible = True 
-   '    .HBox_HealthIssue.Visible = True
-   '    .HBox_DocumentDate.Visible = True
-   '    .HBox_UserObservationName.Visible = True 
-   '    .Vbox_Lock.Visible = True
-   '    .Hbox_Requested.Visible = True 
-   ' End With
-   ' 
+Static Public Sub ReAllocate_Staff_Member(fk_staff_destination As Integer)
+   '------------------------------------------------------
+   'This is only called from the FDocumentMetadata when
+   'a staff member has been re-allocated, so must re-load
+   'the current users inbox after updating the document
+   '------------------------------------------------------
+    form_inbox.Staff_Member_ReAllocate(fk_staff_destination)
+  
+End
+
+Public Sub Staff_Member_ReAllocate(fk_staff_destination As Integer)
+  Dim Document As New Collection 
+  Dim sMsg As String 
+  
+  Message.Title = "Re-allocation of document"
+  sMsg = "You have selected to re-allocate the recipient  of this document\n\n"
+          "Are you sure?"
+  If Message.Warning(sMsg, "Yes", "No") = 2 Then Return 
+  modDBConnect.BeginTrans()
+       modArchiveDocumentsDBI.Re_Allocate_Recipient(SelectedDocument!pk_document, fk_staff_destination)
+  modDBConnect.CommitTrans()
+  
+  Inbox_Reload()
 End
 
 Static Public Sub ReAllocate_Sender()
@@ -1547,3 +1559,4 @@ Public Sub txtFilterPatient_LostFocus()
    timer1.Stop
 
 End
+

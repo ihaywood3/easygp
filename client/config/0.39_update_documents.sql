@@ -4,6 +4,9 @@
 -- with a message on how to rectify this. so................
 -- needed the addition of a new union query where fk_branch, fk_person or fk_employee was null
 -- otherwise, neither would the sending entity show up in vwSendingEntities, so admin couldn't access to allocate them a real company
+-- also added a deleted field to sending_entities
+
+Alter table documents.sending_entities add column deleted boolean default false;
 
 Drop view documents.vwsendingentities cascade ;
 
@@ -13,66 +16,62 @@ Drop view documents.vwsendingentities cascade ;
 --view documents.vwhl7filesimported depends on view documents.vwdocuments
 
 CREATE OR REPLACE VIEW documents.vwsendingentities AS 
-        (         SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, 
-        sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, 
-        sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, 
-        lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, 
-        sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, 
-        sending_entities.abnormals_background_color, NULL::unknown AS branch, NULL::unknown AS organisation, 
-        false AS organisation_deleted, NULL::unknown AS fk_organisation, false AS branch_deleted, 
-        NULL::unknown AS fk_address_organisation, NULL::unknown AS fk_category_organisation, NULL::unknown AS organisation_category, 
-        NULL::unknown AS organisation_street, NULL::unknown AS fk_town_organisation, NULL::unknown AS organisation_postal_address, NULL::unknown AS organisation_head_office, NULL::unknown AS organisation_postcode, NULL::unknown AS organisation_town, NULL::unknown AS organisation_state, vwpersons.firstname, vwpersons.surname, vwpersons.title, vwpersons.occupation AS person_occupation, vwpersons.sex, vwpersons.fk_address AS fk_address_person, vwpersons.postcode AS person_postcode, vwpersons.street AS person_street, vwpersons.fk_town AS fk_town_person, vwpersons.town AS person_town, vwpersons.state AS person_state, vwpersons.category AS person_category
-                   FROM documents.sending_entities
-              JOIN contacts.vwpersons ON sending_entities.fk_person = vwpersons.fk_person
-         LEFT JOIN clin_requests.lu_request_type ON sending_entities.fk_lu_request_type = lu_request_type.pk
-    JOIN documents.lu_message_display_style ON sending_entities.fk_lu_message_display_style = lu_message_display_style.pk
-   JOIN documents.lu_message_standard ON sending_entities.fk_lu_message_standard = lu_message_standard.pk
-  WHERE vwpersons.deleted = false AND sending_entities.fk_branch = 0 AND sending_entities.fk_employee = 0
+        (        (         SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type,
+         sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, 
+         sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, 
+         lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style,
+          sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, 
+          sending_entities.abnormals_background_color, sending_entities.deleted, 
+          NULL::unknown AS branch, NULL::unknown AS organisation, false AS organisation_deleted, NULL::unknown AS fk_organisation, false AS branch_deleted, NULL::unknown AS fk_address_organisation, NULL::unknown AS fk_category_organisation, NULL::unknown AS organisation_category, NULL::unknown AS organisation_street, NULL::unknown AS fk_town_organisation, NULL::unknown AS organisation_postal_address, NULL::unknown AS organisation_head_office, NULL::unknown AS organisation_postcode, NULL::unknown AS organisation_town, NULL::unknown AS organisation_state, vwpersons.firstname, vwpersons.surname, vwpersons.title, vwpersons.occupation AS person_occupation, vwpersons.sex, vwpersons.fk_address AS fk_address_person, vwpersons.postcode AS person_postcode, vwpersons.street AS person_street, vwpersons.fk_town AS fk_town_person, vwpersons.town AS person_town, vwpersons.state AS person_state, vwpersons.category AS person_category
+                           FROM documents.sending_entities
+                      JOIN contacts.vwpersons ON sending_entities.fk_person = vwpersons.fk_person
+                 LEFT JOIN clin_requests.lu_request_type ON sending_entities.fk_lu_request_type = lu_request_type.pk
+            JOIN documents.lu_message_display_style ON sending_entities.fk_lu_message_display_style = lu_message_display_style.pk
+       JOIN documents.lu_message_standard ON sending_entities.fk_lu_message_standard = lu_message_standard.pk
+      WHERE vwpersons.deleted = false AND sending_entities.fk_branch = 0 AND sending_entities.fk_employee = 0
+                UNION 
+                         SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, 
+                         sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, 
+                         sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard,
+                          lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, 
+                          sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, 
+                          sending_entities.abnormals_background_color,  sending_entities.deleted,
+                          vworganisations.branch, vworganisations.organisation, vworganisations.organisation_deleted, vworganisations.fk_organisation, vworganisations.branch_deleted, vworganisations.fk_address AS fk_address_organisation, vworganisations.fk_category AS fk_category_organisation, vworganisations.category AS organisation_category, vworganisations.street AS organisation_street, vworganisations.fk_town AS fk_town_organisation, vworganisations.postal_address AS organisation_postal_address, vworganisations.head_office AS organisation_head_office, vworganisations.postcode AS organisation_postcode, vworganisations.town AS organisation_town, vworganisations.state AS organisation_state, NULL::unknown AS firstname, NULL::unknown AS surname, NULL::unknown AS title, NULL::unknown AS person_occupation, NULL::unknown AS sex, NULL::unknown AS fk_address_person, NULL::unknown AS person_postcode, NULL::unknown AS person_street, NULL::unknown AS fk_town_person, NULL::unknown AS person_town, NULL::unknown AS person_state, NULL::unknown AS person_category
+                           FROM documents.sending_entities
+                      JOIN contacts.vworganisations ON sending_entities.fk_branch = vworganisations.fk_branch
+                 LEFT JOIN clin_requests.lu_request_type ON sending_entities.fk_lu_request_type = lu_request_type.pk
+            JOIN documents.lu_message_display_style ON sending_entities.fk_lu_message_display_style = lu_message_display_style.pk
+       JOIN documents.lu_message_standard ON sending_entities.fk_lu_message_standard = lu_message_standard.pk
+      WHERE vworganisations.branch_deleted = false AND sending_entities.fk_employee = 0 AND sending_entities.fk_person = 0)
         UNION 
-                 SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, vworganisations.branch, vworganisations.organisation, vworganisations.organisation_deleted, vworganisations.fk_organisation, vworganisations.branch_deleted, vworganisations.fk_address AS fk_address_organisation, vworganisations.fk_category AS fk_category_organisation, vworganisations.category AS organisation_category, vworganisations.street AS organisation_street, vworganisations.fk_town AS fk_town_organisation, vworganisations.postal_address AS organisation_postal_address, vworganisations.head_office AS organisation_head_office, vworganisations.postcode AS organisation_postcode, vworganisations.town AS organisation_town, vworganisations.state AS organisation_state, NULL::unknown AS firstname, NULL::unknown AS surname, NULL::unknown AS title, NULL::unknown AS person_occupation, NULL::unknown AS sex, NULL::unknown AS fk_address_person, NULL::unknown AS person_postcode, NULL::unknown AS person_street, NULL::unknown AS fk_town_person, NULL::unknown AS person_town, NULL::unknown AS person_state, NULL::unknown AS person_category
+                 SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type,
+                  sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, 
+                  sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, 
+                  lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, 
+                  sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color,
+                  sending_entities.abnormals_background_color, sending_entities.deleted,
+                   vworganisations.branch, vworganisations.organisation, vworganisations.organisation_deleted, vworganisations.fk_organisation, vworganisations.branch_deleted, vworganisations.fk_address AS fk_address_organisation, vworganisations.fk_category AS fk_category_organisation, vworganisations.category AS organisation_category, vworganisations.street AS organisation_street, vworganisations.fk_town AS fk_town_organisation, vworganisations.postal_address AS organisation_postal_address, vworganisations.head_office AS organisation_head_office, vworganisations.postcode AS organisation_postcode, vworganisations.town AS organisation_town, vworganisations.state AS organisation_state, vwpersons.firstname, vwpersons.surname, vwpersons.title, vwpersons.occupation AS person_occupation, vwpersons.sex, vwpersons.fk_address AS fk_address_person, vwpersons.postcode AS person_postcode, vwpersons.street AS person_street, vwpersons.fk_town AS fk_town_person, vwpersons.town AS person_town, vwpersons.state AS person_state, vwpersons.category AS person_category
                    FROM documents.sending_entities
               JOIN contacts.vworganisations ON sending_entities.fk_branch = vworganisations.fk_branch
          LEFT JOIN clin_requests.lu_request_type ON sending_entities.fk_lu_request_type = lu_request_type.pk
     JOIN documents.lu_message_display_style ON sending_entities.fk_lu_message_display_style = lu_message_display_style.pk
    JOIN documents.lu_message_standard ON sending_entities.fk_lu_message_standard = lu_message_standard.pk
-  WHERE vworganisations.branch_deleted = false AND sending_entities.fk_employee = 0 AND sending_entities.fk_person = 0)
-UNION 
-         SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, vworganisations.branch, vworganisations.organisation, vworganisations.organisation_deleted, vworganisations.fk_organisation, vworganisations.branch_deleted, vworganisations.fk_address AS fk_address_organisation, vworganisations.fk_category AS fk_category_organisation, vworganisations.category AS organisation_category, vworganisations.street AS organisation_street, vworganisations.fk_town AS fk_town_organisation, vworganisations.postal_address AS organisation_postal_address, vworganisations.head_office AS organisation_head_office, vworganisations.postcode AS organisation_postcode, vworganisations.town AS organisation_town, vworganisations.state AS organisation_state, vwpersons.firstname, vwpersons.surname, vwpersons.title, vwpersons.occupation AS person_occupation, vwpersons.sex, vwpersons.fk_address AS fk_address_person, vwpersons.postcode AS person_postcode, vwpersons.street AS person_street, vwpersons.fk_town AS fk_town_person, vwpersons.town AS person_town, vwpersons.state AS person_state, vwpersons.category AS person_category
-           FROM documents.sending_entities
-      JOIN contacts.vworganisations ON sending_entities.fk_branch = vworganisations.fk_branch
-   LEFT JOIN clin_requests.lu_request_type ON sending_entities.fk_lu_request_type = lu_request_type.pk
-   JOIN documents.lu_message_display_style ON sending_entities.fk_lu_message_display_style = lu_message_display_style.pk
-   JOIN documents.lu_message_standard ON sending_entities.fk_lu_message_standard = lu_message_standard.pk
    JOIN contacts.data_employees ON sending_entities.fk_employee = data_employees.pk
    JOIN contacts.vwpersons ON data_employees.fk_person = vwpersons.fk_person
-  WHERE vwpersons.deleted = false AND data_employees.deleted = false
-
-UNION
-
-  SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, 
-       lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, 
-       sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee,
-       sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, 
-       lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, 
-       sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, 
-       NULL::unknown as branch , NULL::unknown as organisation , 
-       NULL::unknown as organisation_deleted , NULL::unknown as fk_organisation ,
-       NULL::unknown as branch_deleted , NULL::unknown as fk_address_organisation, NULL::unknown as fk_category_organisation,
-       NULL::unknown as organisation_category , NULL::unknown as organisation_street, NULL::unknown as fk_town_organisation,
-       False organisation_postal_adress ,False as organisation_head_office ,
-       NULL::unknown as organisation_postcode, NULL::unknown as organisation_town , NULL::unknown as organisation_state,
-       NULL::unknown as firstname, NULL::unknown as surname, NULL::unknown as title, NULL::unknown as person_occupation,
-       NULL::unknown as sex, NULL::unknown as fk_address_person , NULL::unknown as person_postcode,  NULL::unknown  as person_street,
-       NULL::unknown fk_town_person, NULL::unknown as person_town,  NULL::unknown as person_state, NULL::unknown as person_category
-       FROM documents.sending_entities
-      
-       LEFT JOIN clin_requests.lu_request_type ON sending_entities.fk_lu_request_type = lu_request_type.pk
-       JOIN documents.lu_message_display_style ON sending_entities.fk_lu_message_display_style = lu_message_display_style.pk
-       JOIN documents.lu_message_standard ON sending_entities.fk_lu_message_standard = lu_message_standard.pk
-      where fk_branch is null and fk_employee is null and fk_person is null;
-
-
-  ;
+  WHERE vwpersons.deleted = false AND data_employees.deleted = false)
+UNION 
+         SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type,
+          sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style,
+           sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, 
+           lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, 
+           lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, 
+           sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color,sending_entities.deleted,
+            NULL::unknown AS branch, NULL::unknown AS organisation, NULL::unknown AS organisation_deleted, NULL::unknown AS fk_organisation, NULL::unknown AS branch_deleted, NULL::unknown AS fk_address_organisation, NULL::unknown AS fk_category_organisation, NULL::unknown AS organisation_category, NULL::unknown AS organisation_street, NULL::unknown AS fk_town_organisation, false AS organisation_postal_address, false AS organisation_head_office, NULL::unknown AS organisation_postcode, NULL::unknown AS organisation_town, NULL::unknown AS organisation_state, NULL::unknown AS firstname, NULL::unknown AS surname, NULL::unknown AS title, NULL::unknown AS person_occupation, NULL::unknown AS sex, NULL::unknown AS fk_address_person, NULL::unknown AS person_postcode, NULL::unknown AS person_street, NULL::unknown AS fk_town_person, NULL::unknown AS person_town, NULL::unknown AS person_state, NULL::unknown AS person_category
+           FROM documents.sending_entities
+      LEFT JOIN clin_requests.lu_request_type ON sending_entities.fk_lu_request_type = lu_request_type.pk
+   JOIN documents.lu_message_display_style ON sending_entities.fk_lu_message_display_style = lu_message_display_style.pk
+   JOIN documents.lu_message_standard ON sending_entities.fk_lu_message_standard = lu_message_standard.pk
+  WHERE sending_entities.fk_branch IS NULL AND sending_entities.fk_employee IS NULL AND sending_entities.fk_person IS NULL;
 
 ALTER TABLE documents.vwsendingentities OWNER TO easygp;
 GRANT ALL ON TABLE documents.vwsendingentities TO easygp;
@@ -80,8 +79,30 @@ GRANT SELECT ON TABLE documents.vwsendingentities TO staff;
 
 
 
+
+
 CREATE OR REPLACE VIEW documents.vwdocuments AS 
- SELECT documents.pk AS pk_document, documents.source_file, documents.fk_sending_entity, documents.imported_time, documents.date_requested, documents.date_created, documents.fk_patient, documents.fk_staff_filed_document, documents.originator, documents.originator_reference, documents.copy_to, documents.provider_of_service_reference, documents.internal_reference, documents.copies_to, documents.fk_staff_destination, documents.comment_on_document, documents.patient_access, documents.concluded, documents.deleted, documents.fk_lu_urgency, documents.tag, documents.tag_user, documents.md5sum, documents.html, documents.fk_unmatched_staff, documents.fk_referral, documents.fk_request, documents.fk_unmatched_patient, documents.fk_lu_display_as, documents.fk_lu_request_type, lu_request_type.type AS request_type, vwsendingentities.fk_lu_request_type AS sending_entity_fk_lu_request_type, vwsendingentities.request_type AS sending_entity_request_type, vwsendingentities.style, vwsendingentities.message_type, vwsendingentities.message_version, vwsendingentities.msh_sending_entity, vwsendingentities.msh_transmitting_entity, vwsendingentities.fk_lu_message_display_style, vwsendingentities.fk_branch AS fk_sender_branch, vwsendingentities.fk_employee AS fk_employee_branch, vwsendingentities.fk_person AS fk_sender_person, vwsendingentities.fk_lu_message_standard, vwsendingentities.exclude_ft_report, vwsendingentities.abnormals_foreground_color, vwsendingentities.abnormals_background_color, vwsendingentities.exclude_pit, vwsendingentities.organisation_category, vwsendingentities.person_category, vwpatients.fk_person AS patient_fk_person, vwpatients.firstname AS patient_firstname, vwpatients.surname AS patient_surname, vwpatients.birthdate AS patient_birthdate, vwpatients.sex AS patient_sex, vwpatients.age AS patient_age, vwpatients.title AS patient_title, vwpatients.street AS patient_street, vwpatients.town AS patient_town, vwpatients.state AS patient_state, vwpatients.postcode AS patient_postcode, vwstaff.wholename AS staff_destination_wholename, vwstaff.title AS staff_destination_title, unmatched_patients.surname AS unmatched_patient_surname, unmatched_patients.firstname AS unmatched_patient_firstname, unmatched_patients.birthdate AS unmatched_patient_birthdate, unmatched_patients.sex AS unmatched_patient_sex, unmatched_patients.title AS unmatched_patient_title, unmatched_patients.street AS unmatched_patient_street, unmatched_patients.town AS unmatched_patient_town, unmatched_patients.postcode AS unmatched_patient_postcode, unmatched_patients.state AS unmatched_patient_state, unmatched_staff.surname AS unmatched_staff_surname, unmatched_staff.firstname AS unmatched_staff_firstname, unmatched_staff.title AS unmatched_staff_title, unmatched_staff.provider_number AS unmatched_staff_provider_number
+ SELECT documents.pk AS pk_document, documents.source_file, documents.fk_sending_entity, documents.imported_time, documents.date_requested,
+  documents.date_created, documents.fk_patient, documents.fk_staff_filed_document, documents.originator, 
+  documents.originator_reference, documents.copy_to, documents.provider_of_service_reference, documents.internal_reference,
+   documents.copies_to, documents.fk_staff_destination, documents.comment_on_document, documents.patient_access, documents.concluded,
+    documents.deleted, documents.fk_lu_urgency, documents.tag, documents.tag_user, documents.md5sum, documents.html,
+     documents.fk_unmatched_staff, documents.fk_referral, documents.fk_request, documents.fk_unmatched_patient,
+      documents.fk_lu_display_as, documents.fk_lu_request_type, lu_request_type.type AS request_type,
+       vwsendingentities.fk_lu_request_type AS sending_entity_fk_lu_request_type,
+        vwsendingentities.request_type AS sending_entity_request_type, vwsendingentities.style,
+         vwsendingentities.message_type, vwsendingentities.message_version, vwsendingentities.msh_sending_entity, 
+         vwsendingentities.msh_transmitting_entity, vwsendingentities.fk_lu_message_display_style,
+          vwsendingentities.fk_branch AS fk_sender_branch, vwsendingentities.fk_employee AS fk_employee_branch,
+           vwsendingentities.fk_person AS fk_sender_person, vwsendingentities.fk_lu_message_standard, 
+           vwsendingentities.exclude_ft_report, vwsendingentities.abnormals_foreground_color,
+            vwsendingentities.abnormals_background_color, vwsendingentities.exclude_pit,
+            vwsendingentities.organisation,
+             vwsendingentities.organisation_category, vwsendingentities.person_category, 
+             vwpatients.fk_person AS patient_fk_person, vwpatients.firstname AS patient_firstname,
+              vwpatients.surname AS patient_surname, vwpatients.birthdate AS patient_birthdate, 
+              vwpatients.sex AS patient_sex, vwpatients.age AS patient_age, vwpatients.title AS patient_title,
+               vwpatients.street AS patient_street, vwpatients.town AS patient_town, vwpatients.state AS patient_state, vwpatients.postcode AS patient_postcode, vwstaff.wholename AS staff_destination_wholename, vwstaff.title AS staff_destination_title, unmatched_patients.surname AS unmatched_patient_surname, unmatched_patients.firstname AS unmatched_patient_firstname, unmatched_patients.birthdate AS unmatched_patient_birthdate, unmatched_patients.sex AS unmatched_patient_sex, unmatched_patients.title AS unmatched_patient_title, unmatched_patients.street AS unmatched_patient_street, unmatched_patients.town AS unmatched_patient_town, unmatched_patients.postcode AS unmatched_patient_postcode, unmatched_patients.state AS unmatched_patient_state, unmatched_staff.surname AS unmatched_staff_surname, unmatched_staff.firstname AS unmatched_staff_firstname, unmatched_staff.title AS unmatched_staff_title, unmatched_staff.provider_number AS unmatched_staff_provider_number
    FROM documents.documents
    JOIN documents.vwsendingentities ON documents.fk_sending_entity = vwsendingentities.pk_sending_entities
    LEFT JOIN clin_requests.lu_request_type ON documents.fk_lu_request_type = lu_request_type.pk

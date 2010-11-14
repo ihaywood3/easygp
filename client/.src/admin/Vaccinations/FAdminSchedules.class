@@ -51,50 +51,67 @@ Private Const cShow_All_Schedules As Integer = 3
 Private iDisplay_Schedules As Integer = 1    'default to showing only active schedules
 Private bMultipleVaccinesInSchedule As Boolean       'If true the vaccination schedule has more than 1 vaccine 
 Private sLibraryRootDir As String 
-
-Public Sub Form_Open()
-   
-   Init()
-   
-End
+Private CurrentVaccine As Collection
+Private pk_view_vaccine As String   
 
 Public Sub Init()
-
-  ' FHelp = New FHtmlViewer(Hbox_Help)
+   
+   ' FHelp = New FHtmlViewer(Hbox_Help)
    help_dir = Application.Path &/ "help/"
    sLibraryRootDir = User.home & "/easygp/library/Vaccination"
- '  modEditAreaHelpers.Help_Show("help/maintaining-vaccination-schedules.html", FHelp)
-   Form_PDF = New FPdf(HBox_Help)
-   Try Form_PDF.hPdf.Open(sLibraryRootDir & "/immunization_schedule.pdf")
-   If Not Error Then
-      Form_PDF.Set_Filename(sLibraryRootDir & "/immunization_schedule.pdf")
-      Form_PDF.Render_From_Another_Form()
-   End If
+   '  modEditAreaHelpers.Help_Show("help/maintaining-vaccination-schedules.html", FHelp)
+   With Form_PDF = New FPdf(HBox_Help)
+      .BtOpen.Visible = False                      'don't allow external files to be opened
+   End With
    seasons = modUtil.LoadCombo(cmbSeasons, modCommonDBI.Seasons_Get(), "season")
    lblMeasure.text = " Multiple Vaccines at Once "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
    modEditAreaHelpers.Resize_label(lblbuttons, lblMeasure)
    columnview1.Columns.count = 3 'brand/form/description see Vaccines_Get()
    Settings_Load()
+   cmbStateVaccinationsSchedules.Add("Australian Schedule")
+   cmbStateVaccinationsSchedules.Add("ACT Schedule")
+   cmbStateVaccinationsSchedules.Add("NSW Schedule")
+   cmbStateVaccinationsSchedules.Add("NT Schedule")
+   cmbStateVaccinationsSchedules.Add("TAS Schedule")
+   cmbStateVaccinationsSchedules.Add("VIC Schedule")
+   cmbStateVaccinationsSchedules.Add("QLD Schedule")
+   
+   cmbStateVaccinationsSchedules.index = 0
+   Schedule_Show_For_State()
+   
    rbDisplaySchedulesActive.value = True 'will reload
    
 End
 
-Public Sub Settings_Save()
+Public Sub Schedule_Show_For_State()
+   
+   Dim prefix As String
+   Dim charpos As Integer = InStr(cmbStateVaccinationsSchedules.text, " ")
+   
+   prefix = Lower(Trim(Left(cmbStateVaccinationsSchedules.text, InStr(cmbStateVaccinationsSchedules.text, " "))))
+   Try Form_PDF.hPdf.Open(sLibraryRootDir & "/" & prefix & "_" & "immunisation_schedule.pdf")
+   If Not Error Then
+      Form_PDF.Set_Filename(sLibraryRootDir & "/" & prefix & "_" & "immunisation_schedule.pdf")
+      Form_PDF.Render_From_Another_Form()
+   End If
+   
+End
 
-   Settings["Admin_Vaccination/VSplit_Main.layout"] = Vsplit_Main.layout
-   Settings["Admin_Vaccination/HSplit_Main.Layout"] = HSplit_Main.Layout
+Public Sub Settings_Save()
+   
+   Settings["Admin_Vaccination_Schedules/VSplit_Main.layout"] = Vsplit_Main.layout
+   Settings["Admin_Vaccination_Schedules/HSplit_Main.Layout"] = HSplit_Main.Layout
    
 End
 
 Private Sub Settings_Load()
-
+   
    Try HSplit_Main.Layout = Settings["Admin_Vaccination/HSplit_Main.Layout"]
    Try Vsplit_Main.layout = Settings["Admin_Vaccination/VSplit_Main.layout"] 
-   
+   Try cvwVaccines.Font = Font[Settings["Admin_Vaccination_Schedules/cvwVaccines.font"]]
+   Try lvwSchedules.Font = Font[Settings["Admin_Vaccination_Schedules/cvwVaccines.font"]]
 End
-
-
 
 Public Sub EditArea_Clear()
    
@@ -135,7 +152,7 @@ Public Sub EditArea_TextBox_KeyPress()
                Endif
          End Select
    End Select
-
+   
 End 
 
 Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
@@ -153,7 +170,8 @@ Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer, tag As String) 
 End
 
 Public Sub EditArea_TextBox_GotFocus()
-   
+
+   columnview1.Visible = False    'could be visible, e.g user 1/2 way through doing something, moves off that textbox
    Last.BackGround = Color.rgb(95, 255, 175)  
    Select Case Last.tag
       Case "find vaccine"
@@ -162,13 +180,6 @@ Public Sub EditArea_TextBox_GotFocus()
             .left = Last.left
             .width = Last.width + chkVaccineATSIOnly.Width
             .Raise
-            
-         End With
-         With listview2
-            .top = Last.parent.top + Last.parent.height
-            .left = Last.Left
-            .Raise
-            .width = Last.width
             
          End With
    End Select
@@ -196,28 +207,44 @@ Public Sub EditArea_TextBox_Activate()
    '--------------------------
    'Enter key has been pressed
    '--------------------------
-
+   
    Select Case Last.tag
       Case "schedule"
-         rbScheduleActiveYes.SetFocus()
+         rbMultipleYes.SetFocus()
+         
       Case "date inactive"
          txtAgeDueFrom.SetFocus()
       Case "age due from"
          txtAgeDueTo.SetFocus()
       Case "age due to"
          tbSave.SetFocus()
+      Case "notes"
+         
+         txtFindVaccine.SetFocus()
+      Case "find vaccine"
+         If Trim(txtFindVaccine.text) = "" Then
+            tbSave.SetFocus()
+         Else
+            tbAddVaccine.SetFocus()
+         Endif
+         
    End Select
-
+   
 End
 
 Public Sub EditArea_TextBox_Change()
    
    If bExit Then Return 
-   
+   Select Case Last.tag
+      Case "find vaccine"
+         If Trim(Last.text) = "" Then
+            fk_vaccine = 0
+         Endif
+         
+   End Select
    EditArea_Notify_DataChanged(True)
    
 End
-
 
 Public Sub EditArea_Buttons_Click()
    
@@ -230,15 +257,17 @@ Public Sub EditArea_Buttons_Click()
          txtFilterSchedule.text = ""
          Reload()
       Case "add vaccine"      'add a vaccine into the schedule
-            Vaccine_Add()
+         Vaccine_Add()
    End Select
    
 End
 
 Public Sub EditArea_Buttons_KeyPress()
-    If key.code = key.return Then
+   
+   If key.code = key.return Then
       EditArea_Buttons_Click()
-    Endif
+   Endif
+   
 End
 
 Public Sub Schedule_New()
@@ -250,7 +279,12 @@ Public Sub Schedule_New()
    bFemaleOnly = False   
    bMultipleVaccinesInSchedule = False  'usually only 1 vax at a time.
    cvwVaccines.clear()
-
+   Vaccines_in_schedule = New Collection
+   Vbox_EditArea_Inner.Enabled = True
+   fk_schedule = 0
+   pk_view = -1
+   txtSchedule.SetFocus()
+   
 End
 
 Public Sub Schedule_Delete()
@@ -270,6 +304,7 @@ Public Sub Schedule_Display()
    txtSchedule.text = schedules[pk_view]!schedule
    Try txtAgeDueFrom.text = schedules[pk_view]!age_due_from_months
    Try txtAgeDueTo.text = schedules[pk_view]!age_due_to_months
+   Try txtNotes.text = schedules[pk_view]!notes
    If schedules[pk_view]!inactive = True Then
       rbScheduleActiveNo.Value = True
    Else
@@ -287,10 +322,10 @@ Public Sub Schedule_Display()
    Else
       rbFemaleOnlyNo.Value = True
    Endif
-   If schedules[pk_view]!schedule_atsi_only Then
+   If schedules[pk_view]!atsi_only Then
       rbScheduleATSIOnlyYes.Value = True
    Else
-      rbScheduleATSIOnlyYes.value = True   
+      rbScheduleATSIOnlyNo.value = True   
    Endif
    If Not IsNull(schedules[pk_view]!fk_season) Then
       rbSeasonalYes.value = True
@@ -329,7 +364,7 @@ Public Sub Schedule_Save()
    '   date_inactive date,
    '   deleted boolean DEFAULT false,
    '------------------------------------------------------------   
-
+   
    Dim x As Integer
    
    If Vbox_EditArea_Outer.padding = 0 Then Return ' no changes, nothing to save
@@ -343,7 +378,7 @@ Public Sub Schedule_Save()
    schedule!age_due_from_months = Val(txtAgeDueFrom.text)
    schedule!age_due_to_months = Val(txtAgeDueTo.text)
    schedule!female_only = bFemaleOnly
-   schedule!aboriginal_tsi_only = bScheduleIsAboriginalTSI_Only
+   schedule!atsi_only = bScheduleIsAboriginalTSI_Only
    If fk_season Then    
       schedule!fk_season = fk_season   'IAN FIXME: THE PROBLEM OF REVERTING TO NULL
    End If   
@@ -352,9 +387,10 @@ Public Sub Schedule_Save()
    If rbScheduleActiveNo.value = True Then
       schedule!date_inactive = Val(txtDateInactive.text)
    Endif
+   schedule!notes = Trim(txtNotes.text)
    modDBConnect.BeginTrans()
-      modVaccinationDBI.Schedules_Save(Schedules, pk_view, schedule)
-      modVaccinationDBI.Vaccines_In_Schedule_Save(Vaccines_in_schedule)
+   fk_schedule = modVaccinationDBI.Schedules_Save(Schedules, pk_view, schedule)
+   modVaccinationDBI.Vaccines_In_Schedule_Save(Vaccines_in_schedule, fk_schedule)
    modDBConnect.CommitTrans()
    Reload() 
    'Move to the row just saved. FIXME: THIS SOMETIMES DOSN'T SHOW THE ROW MARQUEE
@@ -373,6 +409,7 @@ End
 
 Public Sub Reload()
    
+   EditArea_Clear()
    schedules = modVaccinationDBI.Schedules_get(Trim(txtFilterSchedule.text), iDisplay_Schedules)
    lvwSchedules.clear()
    For Each schedule In schedules
@@ -386,9 +423,11 @@ Public Sub Reload()
       Case 3
          lblSchedules.text = "Active and Inactive Schedules"
    End Select
-   EditArea_Clear()
+   
    EditArea_Notify_DataChanged(False)
-   Vbox_EditArea_Inner.Enabled = False   
+   Vbox_EditArea_Inner.Enabled = False 
+   lvwSchedules.MoveFirst()
+   lvwSchedules.Item.Selected = True    
    
 End
 
@@ -408,7 +447,10 @@ Public Function Schedule_Valid() As Boolean
          Goto Prompt
       Endif
    End If
-   
+   If cvwVaccines.count = 0 Then
+      txtFindVaccine.SetFocus()
+      Return False
+   Endif
    Return True
    
    Prompt:
@@ -423,7 +465,7 @@ Public Sub rbFemaleOnly_Click()
    bFemaleOnly = False  
    If Last.tag = "Yes" Then bFemaleOnly.value = True
    EditArea_Notify_DataChanged(True)
-
+   
 End
 
 Public Sub rbSeasonal_Click()
@@ -436,14 +478,14 @@ Public Sub rbSeasonal_Click()
       fk_season = 0
    End If 
    EditArea_Notify_DataChanged(True)
-
+   
 End
 
 Public Sub cmbSeasons_Click()
    
    fk_season = Seasons[Last.index]!pk
    EditArea_Notify_DataChanged(True)
-
+   
 End
 
 Public Sub lvwSchedules_Menu()
@@ -458,19 +500,40 @@ Public Sub mnuSchedules_Click()
       Case "edit"
          Schedule_Edit()
       Case "delete"
+      Case "font"
+         ' Try lvwSchedules.font = modUtil.Change_Fonts(cvwResults.font)
+         ' If Not Error Then 
+         '   Settings["TabbedLists/cvwResults.font"] = cvwResults.Font.ToString()
+         ' End If
+         
       Case "help"
    End Select
    
 End
 
 Public Sub mnuVaccines_Click()
+   '-----------------------------------------------------
+   'User has actioned the popup menu of the vaccines list
+   '-----------------------------------------------------   
    
    Select Case Last.tag
+      Case "font"
+         Try cvwVaccines.font = modUtil.Change_Fonts(cvwVaccines.font)
+         If Not Error Then 
+            Settings["Admin_Vaccination_Schedules/cvwVaccines.font"] = cvwVaccines.Font.ToString()
+             lvwSchedules.font = cvwVaccines.font
+         End If
+        
       Case "remove"
+         Vaccine_Remove()
       Case "atsi only"
+         Vaccine_ATSI(True)
       Case "available all"
+         Vaccine_ATSI(False)
       Case "product information"
+         modUtil.NotImplemented()
       Case "help"
+         modUtil.NotImplemented()
    End Select
    
 End
@@ -497,13 +560,14 @@ Public Sub Columnview1_KeyPress()
 End
 
 Public Sub columnview1_DblClick()
-
+   
    Columnview1.MoveCurrent
    Select Case Last.tag.tag
       Case "find vaccine"
          Vaccines_Select()
    End Select
    columnview1.Visible = False   
+   
 End
 
 Public Sub Vaccines_Get()
@@ -512,15 +576,16 @@ Public Sub Vaccines_Get()
    'This routine is called by EditArea_TextBox_KeyRelease() where textbox = txtfindVaccine only
    'It gives us a list of vaccines for when we are creating a schedule
    '-------------------------------------------------------------------------------------------
+   
    If Trim(txtFindVaccine.text) = "" Then
       Columnview1.Visible = False  
       Return
    Endif
    
    Vaccines = modVaccinationDBI.Vaccines_Get_By_Brand_Name(Trim(txtFindVaccine.text))
-  
+   
    If Vaccines.count = 0 Then Return
-    Columnview1.clear()
+   Columnview1.clear()
    For Each vaccine In Vaccines
       Columnview1.Add(vaccine!pk, 0)
       Columnview1[vaccine!pk][0] = vaccine!brand
@@ -542,53 +607,88 @@ Public Sub Vaccines_Select()
    txtFindVaccine.pos = 1
    fk_vaccine = vaccine!pk
    bExit = False
+   tbAddVaccine.SetFocus()
+   
+End
+
+Public Sub Vaccine_Remove()
+   
+   Message.Title = "Remove Vaccine"
+   If Message.Question("Are you sure you wish to remove " & cvwVaccines[cvwVaccines.Item.key][0] & " from the schedule?", "Yes", "No") = 2 Then Return 
+   modDBConnect.BeginTrans()
+   CurrentVaccine!date_inactive = Now
+   modVaccinationDBI.Vaccine_In_Schedule_Save(Vaccines_in_schedule, pk_view_vaccine, CurrentVaccine)
+   modDBConnect.CommitTrans()
+   Reload() 
+   
+End
+
+Public Sub Vaccine_ATSI(bATSIOnly As Boolean)
+   'Change vaccine status
+   
+   CurrentVaccine!atsi_only = bATSIOnly
+   modDBConnect.BeginTrans()
+   modVaccinationDBI.Vaccine_In_Schedule_Save(Vaccines_in_schedule, pk_view_vaccine, CurrentVaccine)
+   modDBConnect.CommitTrans()
+   Reload() 
+   
 End
 
 Public Sub Vaccine_Add()
-
-      Dim Schedule_Vaccine As New Collection
-      
-      Schedule_Vaccine!fk_vaccine = fk_vaccine
-      Schedule_Vaccine!fk_schedule = fk_schedule
-      Schedule_Vaccine!brand = txtFindVaccine.Text
-      If chkVaccineATSIOnly.value = True Then
-         Schedule_Vaccine!atsi_only.value = True
-      Endif
-      Schedule_Vaccine!description = vaccine!description
-      Schedule_Vaccine!form = vaccine!form
-  
-     Try Vaccines_in_schedule.Add(Schedule_Vaccine, Str(fk_schedule & "-" & fk_vaccine)) 
-     If Not Error Then  
-         Vaccines_In_Schedule_Display()
-         EditArea_Notify_DataChanged(True)
-     Else
-         Message.Info("Duplicate Vaccine")
-     End If 
+   
+   Dim Schedule_Vaccine As New Collection
+   
+   Schedule_Vaccine!fk_vaccine = fk_vaccine
+   Schedule_Vaccine!fk_schedule = fk_schedule
+   Schedule_Vaccine!brand = txtFindVaccine.Text
+   If chkVaccineATSIOnly.value = True Then
+      Schedule_Vaccine!atsi_only = True
+   Endif
+   Schedule_Vaccine!description = vaccine!description
+   ' Schedule_Vaccine!fk_lu_vaccines_in_schedule = 
+   Schedule_Vaccine!form = vaccine!form
+   Schedule_Vaccine!pk_view = Str(fk_schedule & "-" & fk_vaccine) '?FIXME THIS IS NOT TRUE
+   Try Vaccines_in_schedule.Add(Schedule_Vaccine, Str(fk_schedule & "-" & fk_vaccine)) 
+   If Not Error Then  
+      Vaccines_In_Schedule_Display()
+      EditArea_Notify_DataChanged(True)
+   Else
+      Message.Info("Duplicate Vaccine")
+   End If 
+   txtFindVaccine.text = "" 'the change event will reset fk_vaccine
+   txtFindVaccine.SetFocus()
+   
 End
 
 Public Sub Vaccines_In_Schedule_Refresh()
-    Vaccines_in_schedule = modVaccinationDBI.Vaccines_In_Schedules_Get(fk_schedule) 'unique key = lu_vaccines_in_shedule.pk
-
+   
+   Vaccines_in_schedule = modVaccinationDBI.Vaccines_In_Schedules_Get(fk_schedule) 'unique key = lu_vaccines_in_shedule.pk
+   
 End
 
 Public Sub Vaccines_In_Schedule_Display()
    '---------------------------------------------
    'Display all vaccines in a particular schedule
    '---------------------------------------------
-   Dim x As Integer
    
-    With cvwVaccines
+   Dim key As String 
+   
+   With cvwVaccines
       .Columns.count = 4
       .Clear
    End With
- 
+   
    For Each vaccine In Vaccines_in_schedule
-       x = cvwVaccines.Count
-      cvwVaccines.Add(x, 0)
-      cvwVaccines[x][0] = vaccine!brand
-      cvwVaccines[x][1] = vaccine!form
-      cvwVaccines[x][2] = vaccine!vaccine_atsi_only
-      cvwVaccines[x][3] = vaccine!description
+      key = vaccine!pk_view
+      cvwVaccines.Add(key, 0)
+      cvwVaccines[key][0] = vaccine!brand
+      cvwVaccines[key][1] = vaccine!form
+      If vaccine!atsi_only Then
+         cvwVaccines[key][2] = "ATSI Only"
+      Else
+         cvwVaccines[key][2] = ""
+      End If
+      cvwVaccines[key][3] = vaccine!description
    Next
    
 End
@@ -625,18 +725,18 @@ Public Sub rbDisplaySchedules_Click()
    
    iDisplay_Schedules = Last.tag
    Reload()
-
+   
 End
 
 Public Sub rbMultiple_Click()
-
+   
    If Last.tag = "yes" Then
       bMultipleVaccinesInSchedule = True
    Else
       bMultipleVaccinesInSchedule = False
    End If
    EditArea_Notify_DataChanged(True)
-
+   
 End
 
 Public Sub cvwVaccines_Menu()
@@ -646,44 +746,95 @@ Public Sub cvwVaccines_Menu()
 End
 
 Public Sub tbClear2_Click()
-
-  Dim sql As String
-  Dim R As Result
-  Dim x As Integer
-  Return 
-  x = 1
-  
-  sql = "Select * from clin_vaccination.lu_vaccines_in_schedule_bak"
-  R = modDBConnect.exec_query(sql)
-  For Each R
-     sql = "Insert into clin_vaccination.lu_vaccines_in_schedule "
-     sql &= "(pk, fk_schedule, fk_vaccine) Values ("
-     sql &= R!pk & "," & R!fk_schedule & "," & R!fk_vaccine & ")"
-     modDBConnect.exec_query(sql)
-     Inc x  
-  Next
-  modDBConnect.CommitTrans()
+   
+   Dim sql As String
+   Dim R As Result
+   Dim x As Integer
+   
+   Return 
+   x = 1
+   
+   sql = "Select * from clin_vaccination.lu_vaccines_in_schedule_bak"
+   R = modDBConnect.exec_query(sql)
+   For Each R
+      sql = "Insert into clin_vaccination.lu_vaccines_in_schedule "
+      sql &= "(pk, fk_schedule, fk_vaccine) Values ("
+      sql &= R!pk & "," & R!fk_schedule & "," & R!fk_vaccine & ")"
+      modDBConnect.exec_query(sql)
+      Inc x  
+   Next
+   modDBConnect.CommitTrans()
+   
 End
 
 Public Sub rbScheduleATSIOnly_Click()
-
-    bScheduleIsAboriginalTSI_Only = False
-   If Last.tag = "yes" Then bScheduleIsAboriginalTSI_Only = True
+   
+   bScheduleIsAboriginalTSI_Only = False
+   If Last.tag = "yes" Then
+      bScheduleIsAboriginalTSI_Only = True
+      chkVaccineATSIOnly.value = True
+      chkVaccineATSIOnly.Enabled = False 
+   Else
+      bScheduleIsAboriginalTSI_Only = False
+      chkVaccineATSIOnly.value = False
+      chkVaccineATSIOnly.Enabled = True
+   End If   
    EditArea_Notify_DataChanged(True)
-
+   
 End
 
 Public Sub EditArea_TextBox_KeyRelease()
-
+   
    If Last.tag = "find vaccine" Then
       Vaccines_Get()
    End If   
-
+   
 End
 
 Public Sub chkVaccineATSIOnly_Click()
-
-  EditArea_Notify_DataChanged(True)
-
+   
+   EditArea_Notify_DataChanged(True)
+   
 End
 
+Public Sub rbMultiple_KeyPress()
+   
+   If key.code = key.return Then 
+      If Last.tag = "yes" Then 
+         rbMultipleNo.SetFocus()
+      Else
+         rbScheduleActiveYes.SetFocus()
+      End If
+   End If
+   
+End
+
+Public Sub rbScheduleActive_KeyPress()
+   
+   If key.code = key.Return Then   
+      If Last.tag = "yes" Then
+         txtAgeDueFrom.SetFocus
+      Else
+         txtDateInactive.SetFocus()
+      Endif
+   End If  
+   
+End
+
+Public Sub cvwVaccines_Select()
+   
+   cvwVaccines.MoveCurrent
+   pk_view_vaccine = Vaccines_in_schedule[cvwVaccines.Item.key]!pk_view
+   CurrentVaccine = New Collection
+   CurrentVaccine!fk_schedule = Vaccines_in_schedule[cvwVaccines.Item.key]!fk_schedule
+   CurrentVaccine!fk_vaccine = Vaccines_in_schedule[cvwVaccines.Item.key]!fk_vaccine
+   CurrentVaccine!atsi_only = Vaccines_in_schedule[cvwVaccines.Item.key]!atsi_only
+   CurrentVaccine!fk_lu_vaccines_in_schedule = Vaccines_in_schedule[cvwVaccines.Item.key]!fk_lu_vaccines_in_schedule
+   
+End
+
+Public Sub cmbStateVaccinationsSchedules_Click()
+   
+   Schedule_Show_For_State()
+   
+End

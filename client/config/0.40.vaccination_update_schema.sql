@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
--- Started on 2010-11-14 15:57:43 EST
+-- Started on 2010-11-14 22:38:04 EST
 
 SET statement_timeout = 0;
 SET client_encoding = 'UTF8';
@@ -12,7 +12,7 @@ SET client_min_messages = warning;
 SET escape_string_warning = off;
 
 --
--- TOC entry 25 (class 2615 OID 271600)
+-- TOC entry 33 (class 2615 OID 284723)
 -- Name: clin_vaccination; Type: SCHEMA; Schema: -; Owner: -
 --
 
@@ -21,7 +21,7 @@ CREATE SCHEMA clin_vaccination;
 
 --
 -- TOC entry 3662 (class 0 OID 0)
--- Dependencies: 25
+-- Dependencies: 33
 -- Name: SCHEMA clin_vaccination; Type: COMMENT; Schema: -; Owner: -
 --
 
@@ -35,8 +35,8 @@ SET default_tablespace = '';
 SET default_with_oids = false;
 
 --
--- TOC entry 3019 (class 1259 OID 273146)
--- Dependencies: 3616 3617 25
+-- TOC entry 3024 (class 1259 OID 286270)
+-- Dependencies: 3616 3617 33
 -- Name: vaccinations; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -55,7 +55,7 @@ CREATE TABLE vaccinations (
 
 --
 -- TOC entry 3664 (class 0 OID 0)
--- Dependencies: 3019
+-- Dependencies: 3024
 -- Name: COLUMN vaccinations.date_given; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -63,8 +63,8 @@ COMMENT ON COLUMN vaccinations.date_given IS 'not a date field because sometimes
 
 
 --
--- TOC entry 3020 (class 1259 OID 273154)
--- Dependencies: 3019 25
+-- TOC entry 3025 (class 1259 OID 286278)
+-- Dependencies: 3024 33
 -- Name: data_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -78,7 +78,7 @@ CREATE SEQUENCE data_pk_seq
 
 --
 -- TOC entry 3666 (class 0 OID 0)
--- Dependencies: 3020
+-- Dependencies: 3025
 -- Name: data_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -87,7 +87,7 @@ ALTER SEQUENCE data_pk_seq OWNED BY vaccinations.pk;
 
 --
 -- TOC entry 3667 (class 0 OID 0)
--- Dependencies: 3020
+-- Dependencies: 3025
 -- Name: data_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
@@ -95,8 +95,8 @@ SELECT pg_catalog.setval('data_pk_seq', 1, false);
 
 
 --
--- TOC entry 3021 (class 1259 OID 273156)
--- Dependencies: 25
+-- TOC entry 3026 (class 1259 OID 286280)
+-- Dependencies: 33
 -- Name: lu_indication; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -109,7 +109,7 @@ CREATE TABLE lu_indication (
 
 --
 -- TOC entry 3669 (class 0 OID 0)
--- Dependencies: 3021
+-- Dependencies: 3026
 -- Name: TABLE lu_indication; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -117,8 +117,8 @@ COMMENT ON TABLE lu_indication IS ' vaccine target disease lookup table  eg hepa
 
 
 --
--- TOC entry 3022 (class 1259 OID 273162)
--- Dependencies: 3021 25
+-- TOC entry 3027 (class 1259 OID 286286)
+-- Dependencies: 3026 33
 -- Name: indication_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -132,7 +132,7 @@ CREATE SEQUENCE indication_pk_seq
 
 --
 -- TOC entry 3671 (class 0 OID 0)
--- Dependencies: 3022
+-- Dependencies: 3027
 -- Name: indication_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -141,7 +141,7 @@ ALTER SEQUENCE indication_pk_seq OWNED BY lu_indication.pk;
 
 --
 -- TOC entry 3672 (class 0 OID 0)
--- Dependencies: 3022
+-- Dependencies: 3027
 -- Name: indication_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
@@ -149,8 +149,8 @@ SELECT pg_catalog.setval('indication_pk_seq', 1, false);
 
 
 --
--- TOC entry 3023 (class 1259 OID 273164)
--- Dependencies: 25
+-- TOC entry 3028 (class 1259 OID 286288)
+-- Dependencies: 33
 -- Name: last_batch_number; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -164,7 +164,7 @@ CREATE TABLE last_batch_number (
 
 --
 -- TOC entry 3674 (class 0 OID 0)
--- Dependencies: 3023
+-- Dependencies: 3028
 -- Name: TABLE last_batch_number; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -172,8 +172,8 @@ COMMENT ON TABLE last_batch_number IS 'last used batch number to make it easier 
 
 
 --
--- TOC entry 3024 (class 1259 OID 273170)
--- Dependencies: 3023 25
+-- TOC entry 3029 (class 1259 OID 286294)
+-- Dependencies: 3028 33
 -- Name: last_batch_number_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -187,7 +187,7 @@ CREATE SEQUENCE last_batch_number_pk_seq
 
 --
 -- TOC entry 3676 (class 0 OID 0)
--- Dependencies: 3024
+-- Dependencies: 3029
 -- Name: last_batch_number_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -196,7 +196,7 @@ ALTER SEQUENCE last_batch_number_pk_seq OWNED BY last_batch_number.pk;
 
 --
 -- TOC entry 3677 (class 0 OID 0)
--- Dependencies: 3024
+-- Dependencies: 3029
 -- Name: last_batch_number_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
@@ -204,8 +204,8 @@ SELECT pg_catalog.setval('last_batch_number_pk_seq', 1, false);
 
 
 --
--- TOC entry 3251 (class 1259 OID 275806)
--- Dependencies: 3629 25
+-- TOC entry 3030 (class 1259 OID 286296)
+-- Dependencies: 3621 33
 -- Name: lu_descriptions; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -218,7 +218,7 @@ CREATE TABLE lu_descriptions (
 
 --
 -- TOC entry 3679 (class 0 OID 0)
--- Dependencies: 3251
+-- Dependencies: 3030
 -- Name: TABLE lu_descriptions; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -226,8 +226,8 @@ COMMENT ON TABLE lu_descriptions IS 'create the vaccines_descriptions table cont
 
 
 --
--- TOC entry 3025 (class 1259 OID 273177)
--- Dependencies: 3021 25
+-- TOC entry 3031 (class 1259 OID 286303)
+-- Dependencies: 3026 33
 -- Name: lu_indication_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -241,7 +241,7 @@ CREATE SEQUENCE lu_indication_pk_seq
 
 --
 -- TOC entry 3681 (class 0 OID 0)
--- Dependencies: 3025
+-- Dependencies: 3031
 -- Name: lu_indication_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -250,7 +250,7 @@ ALTER SEQUENCE lu_indication_pk_seq OWNED BY lu_indication.pk;
 
 --
 -- TOC entry 3682 (class 0 OID 0)
--- Dependencies: 3025
+-- Dependencies: 3031
 -- Name: lu_indication_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
@@ -258,8 +258,8 @@ SELECT pg_catalog.setval('lu_indication_pk_seq', 27, true);
 
 
 --
--- TOC entry 3026 (class 1259 OID 273179)
--- Dependencies: 3622 3623 3624 3625 3626 25
+-- TOC entry 3032 (class 1259 OID 286305)
+-- Dependencies: 3623 3624 3625 3626 3627 33
 -- Name: lu_schedules; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -274,13 +274,14 @@ CREATE TABLE lu_schedules (
     inactive boolean DEFAULT false,
     date_inactive date,
     deleted boolean DEFAULT false,
-    multiple_vaccines boolean DEFAULT false
+    multiple_vaccines boolean DEFAULT false,
+    notes text
 );
 
 
 --
 -- TOC entry 3684 (class 0 OID 0)
--- Dependencies: 3026
+-- Dependencies: 3032
 -- Name: TABLE lu_schedules; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -291,7 +292,7 @@ and practical referral to the doc for further information';
 
 --
 -- TOC entry 3685 (class 0 OID 0)
--- Dependencies: 3026
+-- Dependencies: 3032
 -- Name: COLUMN lu_schedules.schedule; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -300,7 +301,7 @@ COMMENT ON COLUMN lu_schedules.schedule IS 'either a target disease name eg ''ye
 
 --
 -- TOC entry 3686 (class 0 OID 0)
--- Dependencies: 3026
+-- Dependencies: 3032
 -- Name: COLUMN lu_schedules.atsi_only; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -309,7 +310,7 @@ COMMENT ON COLUMN lu_schedules.atsi_only IS 'australian requirement, some schedu
 
 --
 -- TOC entry 3687 (class 0 OID 0)
--- Dependencies: 3026
+-- Dependencies: 3032
 -- Name: COLUMN lu_schedules.fk_season; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -318,7 +319,7 @@ COMMENT ON COLUMN lu_schedules.fk_season IS 'eg. influenza prompts only wanted a
 
 --
 -- TOC entry 3688 (class 0 OID 0)
--- Dependencies: 3026
+-- Dependencies: 3032
 -- Name: COLUMN lu_schedules.multiple_vaccines; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -327,8 +328,17 @@ COMMENT ON COLUMN lu_schedules.multiple_vaccines IS 'if TRUE this vaccine schedu
 
 
 --
--- TOC entry 3027 (class 1259 OID 273185)
--- Dependencies: 3026 25
+-- TOC entry 3689 (class 0 OID 0)
+-- Dependencies: 3032
+-- Name: COLUMN lu_schedules.notes; Type: COMMENT; Schema: clin_vaccination; Owner: -
+--
+
+COMMENT ON COLUMN lu_schedules.notes IS 'any additional notes, eg the NSW 12-13yrs schedule is a school program only';
+
+
+--
+-- TOC entry 3033 (class 1259 OID 286316)
+-- Dependencies: 3032 33
 -- Name: lu_schedules_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -341,8 +351,8 @@ CREATE SEQUENCE lu_schedules_pk_seq
 
 
 --
--- TOC entry 3690 (class 0 OID 0)
--- Dependencies: 3027
+-- TOC entry 3691 (class 0 OID 0)
+-- Dependencies: 3033
 -- Name: lu_schedules_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -350,17 +360,17 @@ ALTER SEQUENCE lu_schedules_pk_seq OWNED BY lu_schedules.pk;
 
 
 --
--- TOC entry 3691 (class 0 OID 0)
--- Dependencies: 3027
+-- TOC entry 3692 (class 0 OID 0)
+-- Dependencies: 3033
 -- Name: lu_schedules_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_schedules_pk_seq', 1, false);
+SELECT pg_catalog.setval('lu_schedules_pk_seq', 60, true);
 
 
 --
--- TOC entry 3028 (class 1259 OID 273187)
--- Dependencies: 25
+-- TOC entry 3034 (class 1259 OID 286318)
+-- Dependencies: 33
 -- Name: lu_target; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -371,8 +381,8 @@ CREATE TABLE lu_target (
 
 
 --
--- TOC entry 3029 (class 1259 OID 273193)
--- Dependencies: 3028 25
+-- TOC entry 3035 (class 1259 OID 286324)
+-- Dependencies: 3034 33
 -- Name: lu_target_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -385,8 +395,8 @@ CREATE SEQUENCE lu_target_pk_seq
 
 
 --
--- TOC entry 3694 (class 0 OID 0)
--- Dependencies: 3029
+-- TOC entry 3695 (class 0 OID 0)
+-- Dependencies: 3035
 -- Name: lu_target_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -394,8 +404,8 @@ ALTER SEQUENCE lu_target_pk_seq OWNED BY lu_target.pk;
 
 
 --
--- TOC entry 3695 (class 0 OID 0)
--- Dependencies: 3029
+-- TOC entry 3696 (class 0 OID 0)
+-- Dependencies: 3035
 -- Name: lu_target_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
@@ -403,8 +413,8 @@ SELECT pg_catalog.setval('lu_target_pk_seq', 27, true);
 
 
 --
--- TOC entry 3253 (class 1259 OID 275834)
--- Dependencies: 3631 25
+-- TOC entry 3036 (class 1259 OID 286326)
+-- Dependencies: 3630 33
 -- Name: lu_vaccines; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -419,8 +429,8 @@ CREATE TABLE lu_vaccines (
 
 
 --
--- TOC entry 3697 (class 0 OID 0)
--- Dependencies: 3253
+-- TOC entry 3698 (class 0 OID 0)
+-- Dependencies: 3036
 -- Name: TABLE lu_vaccines; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -431,8 +441,8 @@ COMMENT ON TABLE lu_vaccines IS 'A Table to hold all vaccines.
 
 
 --
--- TOC entry 3250 (class 1259 OID 275804)
--- Dependencies: 3251 25
+-- TOC entry 3037 (class 1259 OID 286333)
+-- Dependencies: 3030 33
 -- Name: lu_vaccines_descriptions_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -445,8 +455,8 @@ CREATE SEQUENCE lu_vaccines_descriptions_pk_seq
 
 
 --
--- TOC entry 3699 (class 0 OID 0)
--- Dependencies: 3250
+-- TOC entry 3700 (class 0 OID 0)
+-- Dependencies: 3037
 -- Name: lu_vaccines_descriptions_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -454,8 +464,8 @@ ALTER SEQUENCE lu_vaccines_descriptions_pk_seq OWNED BY lu_descriptions.pk;
 
 
 --
--- TOC entry 3700 (class 0 OID 0)
--- Dependencies: 3250
+-- TOC entry 3701 (class 0 OID 0)
+-- Dependencies: 3037
 -- Name: lu_vaccines_descriptions_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
@@ -463,8 +473,8 @@ SELECT pg_catalog.setval('lu_vaccines_descriptions_pk_seq', 41, true);
 
 
 --
--- TOC entry 3261 (class 1259 OID 284660)
--- Dependencies: 3633 25
+-- TOC entry 3038 (class 1259 OID 286335)
+-- Dependencies: 3632 33
 -- Name: lu_vaccines_in_schedule; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -478,8 +488,8 @@ CREATE TABLE lu_vaccines_in_schedule (
 
 
 --
--- TOC entry 3260 (class 1259 OID 284658)
--- Dependencies: 3261 25
+-- TOC entry 3039 (class 1259 OID 286339)
+-- Dependencies: 3038 33
 -- Name: lu_vaccines_in_schedule_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -492,8 +502,8 @@ CREATE SEQUENCE lu_vaccines_in_schedule_pk_seq
 
 
 --
--- TOC entry 3702 (class 0 OID 0)
--- Dependencies: 3260
+-- TOC entry 3703 (class 0 OID 0)
+-- Dependencies: 3039
 -- Name: lu_vaccines_in_schedule_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -501,17 +511,17 @@ ALTER SEQUENCE lu_vaccines_in_schedule_pk_seq OWNED BY lu_vaccines_in_schedule.p
 
 
 --
--- TOC entry 3703 (class 0 OID 0)
--- Dependencies: 3260
+-- TOC entry 3704 (class 0 OID 0)
+-- Dependencies: 3039
 -- Name: lu_vaccines_in_schedule_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_vaccines_in_schedule_pk_seq', 160, true);
+SELECT pg_catalog.setval('lu_vaccines_in_schedule_pk_seq', 170, true);
 
 
 --
--- TOC entry 3252 (class 1259 OID 275832)
--- Dependencies: 3253 25
+-- TOC entry 3040 (class 1259 OID 286341)
+-- Dependencies: 3036 33
 -- Name: lu_vaccines_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -524,8 +534,8 @@ CREATE SEQUENCE lu_vaccines_pk_seq
 
 
 --
--- TOC entry 3704 (class 0 OID 0)
--- Dependencies: 3252
+-- TOC entry 3705 (class 0 OID 0)
+-- Dependencies: 3040
 -- Name: lu_vaccines_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -533,17 +543,17 @@ ALTER SEQUENCE lu_vaccines_pk_seq OWNED BY lu_vaccines.pk;
 
 
 --
--- TOC entry 3705 (class 0 OID 0)
--- Dependencies: 3252
+-- TOC entry 3706 (class 0 OID 0)
+-- Dependencies: 3040
 -- Name: lu_vaccines_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_vaccines_pk_seq', 1, false);
+SELECT pg_catalog.setval('lu_vaccines_pk_seq', 193, true);
 
 
 --
--- TOC entry 3262 (class 1259 OID 284695)
--- Dependencies: 3423 25
+-- TOC entry 3262 (class 1259 OID 288926)
+-- Dependencies: 3423 33
 -- Name: vwvaccines; Type: VIEW; Schema: clin_vaccination; Owner: -
 --
 
@@ -552,30 +562,18 @@ CREATE VIEW vwvaccines AS
 
 
 --
--- TOC entry 3263 (class 1259 OID 284699)
--- Dependencies: 3424 25
+-- TOC entry 3263 (class 1259 OID 288934)
+-- Dependencies: 3424 33
 -- Name: vwvaccinesinschedule; Type: VIEW; Schema: clin_vaccination; Owner: -
 --
 
 CREATE VIEW vwvaccinesinschedule AS
-    SELECT ((lu_schedules.pk || '-'::text) || lu_vaccines.pk) AS pk_view, lu_vaccines_in_schedule.pk AS fk_lu_vaccines_in_schedule, lu_schedules.age_due_from_months, lu_schedules.age_due_to_months, lu_schedules.schedule, lu_schedules.female_only, lu_schedules.atsi_only AS schedule_atsi_only, lu_schedules.fk_season, lu_schedules.inactive, lu_schedules.date_inactive AS date_schedule_inactive, lu_schedules.multiple_vaccines, lu_vaccines_in_schedule.fk_schedule, lu_vaccines_in_schedule.atsi_only AS vaccine_atsi_only, lu_vaccines_in_schedule.date_inactive AS date_vaccine_inactive, lu_vaccines.brand, lu_vaccines.fk_route, lu_vaccines.form, lu_vaccines.fk_description, lu_vaccines_in_schedule.fk_vaccine, lu_descriptions.description, lu_descriptions.deleted AS description_deleted FROM (((lu_schedules JOIN lu_vaccines_in_schedule ON ((lu_schedules.pk = lu_vaccines_in_schedule.fk_schedule))) JOIN lu_vaccines ON ((lu_vaccines_in_schedule.fk_vaccine = lu_vaccines.pk))) JOIN lu_descriptions ON ((lu_vaccines.fk_description = lu_descriptions.pk))) ORDER BY lu_schedules.schedule, lu_vaccines.brand;
+    SELECT ((lu_vaccines_in_schedule.fk_schedule || '-'::text) || lu_vaccines_in_schedule.fk_vaccine) AS pk_view, lu_vaccines_in_schedule.pk AS fk_lu_vaccines_in_schedule, lu_vaccines_in_schedule.fk_schedule, lu_vaccines_in_schedule.atsi_only, lu_vaccines_in_schedule.date_inactive AS date_vaccine_inactive, lu_vaccines.brand, lu_vaccines.fk_route, lu_vaccines.form, lu_vaccines.fk_description, lu_vaccines_in_schedule.fk_vaccine, lu_descriptions.description, lu_descriptions.deleted AS description_deleted FROM ((lu_vaccines_in_schedule JOIN lu_vaccines ON ((lu_vaccines_in_schedule.fk_vaccine = lu_vaccines.pk))) JOIN lu_descriptions ON ((lu_vaccines.fk_description = lu_descriptions.pk))) ORDER BY lu_vaccines_in_schedule.fk_schedule, lu_vaccines.brand;
 
 
 --
--- TOC entry 3707 (class 0 OID 0)
--- Dependencies: 3263
--- Name: VIEW vwvaccinesinschedule; Type: COMMENT; Schema: clin_vaccination; Owner: -
---
-
-COMMENT ON VIEW vwvaccinesinschedule IS 'A view of all vaccines in all schedules
- - notes peculiar to australia:
-  A Schedule can be ATSI only e.g there is a 12-24 Month schedule for hepatitis A for high risk areas
-  A Vaccine  within a schedule can be ATSI, the schedule could contain other vaccines for non ATSI and ATSI australians';
-
-
---
--- TOC entry 3620 (class 2604 OID 274184)
--- Dependencies: 3024 3023
+-- TOC entry 3620 (class 2604 OID 287308)
+-- Dependencies: 3029 3028
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -583,8 +581,8 @@ ALTER TABLE last_batch_number ALTER COLUMN pk SET DEFAULT nextval('last_batch_nu
 
 
 --
--- TOC entry 3628 (class 2604 OID 275809)
--- Dependencies: 3250 3251 3251
+-- TOC entry 3622 (class 2604 OID 287309)
+-- Dependencies: 3037 3030
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -592,8 +590,8 @@ ALTER TABLE lu_descriptions ALTER COLUMN pk SET DEFAULT nextval('lu_vaccines_des
 
 
 --
--- TOC entry 3619 (class 2604 OID 274186)
--- Dependencies: 3022 3021
+-- TOC entry 3619 (class 2604 OID 287310)
+-- Dependencies: 3027 3026
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -601,8 +599,8 @@ ALTER TABLE lu_indication ALTER COLUMN pk SET DEFAULT nextval('indication_pk_seq
 
 
 --
--- TOC entry 3621 (class 2604 OID 274187)
--- Dependencies: 3027 3026
+-- TOC entry 3628 (class 2604 OID 287311)
+-- Dependencies: 3033 3032
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -610,8 +608,8 @@ ALTER TABLE lu_schedules ALTER COLUMN pk SET DEFAULT nextval('lu_schedules_pk_se
 
 
 --
--- TOC entry 3627 (class 2604 OID 274188)
--- Dependencies: 3029 3028
+-- TOC entry 3629 (class 2604 OID 287312)
+-- Dependencies: 3035 3034
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -619,8 +617,8 @@ ALTER TABLE lu_target ALTER COLUMN pk SET DEFAULT nextval('lu_target_pk_seq'::re
 
 
 --
--- TOC entry 3630 (class 2604 OID 275837)
--- Dependencies: 3252 3253 3253
+-- TOC entry 3631 (class 2604 OID 287313)
+-- Dependencies: 3040 3036
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -628,8 +626,8 @@ ALTER TABLE lu_vaccines ALTER COLUMN pk SET DEFAULT nextval('lu_vaccines_pk_seq'
 
 
 --
--- TOC entry 3632 (class 2604 OID 284663)
--- Dependencies: 3260 3261 3261
+-- TOC entry 3633 (class 2604 OID 287314)
+-- Dependencies: 3039 3038
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -637,8 +635,8 @@ ALTER TABLE lu_vaccines_in_schedule ALTER COLUMN pk SET DEFAULT nextval('lu_vacc
 
 
 --
--- TOC entry 3618 (class 2604 OID 274192)
--- Dependencies: 3020 3019
+-- TOC entry 3618 (class 2604 OID 287315)
+-- Dependencies: 3025 3024
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -646,8 +644,8 @@ ALTER TABLE vaccinations ALTER COLUMN pk SET DEFAULT nextval('data_pk_seq'::regc
 
 
 --
--- TOC entry 3654 (class 0 OID 273164)
--- Dependencies: 3023
+-- TOC entry 3654 (class 0 OID 286288)
+-- Dependencies: 3028
 -- Data for Name: last_batch_number; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
@@ -656,8 +654,8 @@ COPY last_batch_number (pk, fk_vaccine, batch_number, fk_provider) FROM stdin;
 
 
 --
--- TOC entry 3657 (class 0 OID 275806)
--- Dependencies: 3251
+-- TOC entry 3655 (class 0 OID 286296)
+-- Dependencies: 3030
 -- Data for Name: lu_descriptions; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
@@ -707,8 +705,8 @@ COPY lu_descriptions (pk, description, deleted) FROM stdin;
 
 
 --
--- TOC entry 3653 (class 0 OID 273156)
--- Dependencies: 3021
+-- TOC entry 3653 (class 0 OID 286280)
+-- Dependencies: 3026
 -- Data for Name: lu_indication; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
@@ -744,65 +742,70 @@ COPY lu_indication (pk, medical_name, common_name) FROM stdin;
 
 
 --
--- TOC entry 3655 (class 0 OID 273179)
--- Dependencies: 3026
+-- TOC entry 3656 (class 0 OID 286305)
+-- Dependencies: 3032
 -- Data for Name: lu_schedules; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
-COPY lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines) FROM stdin;
-2  2  \N  2 month childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f
-3  4  \N  4 month  childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f
-4  6  \N  6 month  childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f
-5  12  \N  12 month  childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f
-6  18  \N  18 month  childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f
-7  4  5  Prior to school  (4-5yrs) (Prior 1/5/2000)  f  f  \N  t  \N  f  f
-8  10  16  Hepatitis B - school 10-16 years (Prior 1/5/2000)  f  f  \N  t  \N  f  f
-9  15  19  ADT + Polio -  15-19 years  f  f  \N  t  \N  f  f
-33  2  \N  2 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f
-34  4  \N  4 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f
-35  6  \N  6 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f
-36  12  \N  12 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f
-37  18  \N  18 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f
-38  45  5  Prior to school (4-5yrs) (After 1/5/2000)  f  f  \N  t  \N  f  f
-39  \N  144  Chicken Pox age < 12 years  f  f  \N  t  \N  f  f
-41  \N  \N  Pertussis  f  f  \N  t  \N  f  f
-42  2  2  2 month childhood (From 1/11/2005)  f  f  \N  t  \N  f  f
-43  4  4  4 month childhood (From 1/11/2005)  f  f  \N  t  \N  f  f
-49  216  312  Human Papilloma Virus (18-26yrs)  f  f  \N  t  \N  f  f
-16  \N  \N  Tuberculosis  f  f  \N  t  \N  f  f
-17  \N  \N  Q-Fever  f  f  \N  t  \N  f  f
-20  \N  \N  Meningococcal  f  f  \N  t  \N  f  f
-21  \N  \N  Poliomyelitis  f  f  \N  t  \N  f  f
-27  \N  \N  Mumps  f  f  \N  t  \N  f  f
-30  \N  \N  Hepatitis B  f  f  \N  t  \N  f  f
-31  \N  \N  Japanese Encephalitis  f  f  \N  t  \N  f  f
-24  \N  \N  Cholera  f  f  \N  f  \N  f  f
-19  \N  \N  Diptheria  f  f  \N  f  \N  f  f
-14  \N  \N  Influenza  f  f  3  f  \N  f  f
-18  \N  \N  Hepatitis A  f  f  \N  f  \N  f  f
-32  \N  \N  Hepatitis A + Hepatitis B  f  f  \N  f  \N  f  f
-28  \N  \N  Measles  f  f  \N  f  \N  f  f
-13  \N  \N  Pneumoccal  f  f  \N  f  \N  f  f
-22  \N  \N  Rabies  f  f  \N  f  \N  f  f
-26  \N  \N  Plague  f  f  \N  f  \N  f  f
-29  \N  \N  Rubella  f  f  \N  f  \N  f  f
-25  \N  \N  Yellow Fever  f  f  \N  f  \N  f  f
-48  \N  \N  Typhoid + Hepatitis A  f  f  \N  f  \N  f  f
-23  \N  \N  Typhoid  f  f  \N  f  \N  f  f
-15  \N  \N  Tetanus - every 10 years  f  f  \N  f  \N  f  f
-40  \N  \N  Chicken Pox age > 12 years  f  f  \N  f  \N  f  f
-46  18  \N  18 month childhood  f  f  \N  f  \N  f  f
-50  2  \N  2 month childhood  f  f  \N  f  \N  f  t
-51  4  \N  4 month childhood  f  f  \N  f  \N  f  t
-44  6  6  6 month childhood  f  f  \N  f  \N  f  t
-45  12  \N  12 month childhood  f  f  \N  f  \N  f  t
-47  46  60  4 year childhood  f  f  \N  f  \N  f  t
+COPY lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) FROM stdin;
+2  2  \N  2 month childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f  \N
+3  4  \N  4 month  childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f  \N
+4  6  \N  6 month  childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f  \N
+5  12  \N  12 month  childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f  \N
+6  18  \N  18 month  childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f  \N
+7  4  5  Prior to school  (4-5yrs) (Prior 1/5/2000)  f  f  \N  t  \N  f  f  \N
+8  10  16  Hepatitis B - school 10-16 years (Prior 1/5/2000)  f  f  \N  t  \N  f  f  \N
+9  15  19  ADT + Polio -  15-19 years  f  f  \N  t  \N  f  f  \N
+33  2  \N  2 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f  \N
+34  4  \N  4 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f  \N
+35  6  \N  6 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f  \N
+36  12  \N  12 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f  \N
+37  18  \N  18 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f  \N
+38  45  5  Prior to school (4-5yrs) (After 1/5/2000)  f  f  \N  t  \N  f  f  \N
+39  \N  144  Chicken Pox age < 12 years  f  f  \N  t  \N  f  f  \N
+41  \N  \N  Pertussis  f  f  \N  t  \N  f  f  \N
+42  2  2  2 month childhood (From 1/11/2005)  f  f  \N  t  \N  f  f  \N
+43  4  4  4 month childhood (From 1/11/2005)  f  f  \N  t  \N  f  f  \N
+49  216  312  Human Papilloma Virus (18-26yrs)  f  f  \N  t  \N  f  f  \N
+16  \N  \N  Tuberculosis  f  f  \N  t  \N  f  f  \N
+17  \N  \N  Q-Fever  f  f  \N  t  \N  f  f  \N
+20  \N  \N  Meningococcal  f  f  \N  t  \N  f  f  \N
+21  \N  \N  Poliomyelitis  f  f  \N  t  \N  f  f  \N
+27  \N  \N  Mumps  f  f  \N  t  \N  f  f  \N
+30  \N  \N  Hepatitis B  f  f  \N  t  \N  f  f  \N
+31  \N  \N  Japanese Encephalitis  f  f  \N  t  \N  f  f  \N
+24  \N  \N  Cholera  f  f  \N  f  \N  f  f  \N
+19  \N  \N  Diptheria  f  f  \N  f  \N  f  f  \N
+14  \N  \N  Influenza  f  f  3  f  \N  f  f  \N
+18  \N  \N  Hepatitis A  f  f  \N  f  \N  f  f  \N
+32  \N  \N  Hepatitis A + Hepatitis B  f  f  \N  f  \N  f  f  \N
+28  \N  \N  Measles  f  f  \N  f  \N  f  f  \N
+13  \N  \N  Pneumoccal  f  f  \N  f  \N  f  f  \N
+22  \N  \N  Rabies  f  f  \N  f  \N  f  f  \N
+26  \N  \N  Plague  f  f  \N  f  \N  f  f  \N
+29  \N  \N  Rubella  f  f  \N  f  \N  f  f  \N
+25  \N  \N  Yellow Fever  f  f  \N  f  \N  f  f  \N
+48  \N  \N  Typhoid + Hepatitis A  f  f  \N  f  \N  f  f  \N
+23  \N  \N  Typhoid  f  f  \N  f  \N  f  f  \N
+15  \N  \N  Tetanus - every 10 years  f  f  \N  f  \N  f  f  \N
+40  \N  \N  Chicken Pox age > 12 years  f  f  \N  f  \N  f  f  \N
+46  18  \N  18 month childhood  f  f  \N  f  \N  f  f  \N
+50  2  \N  2 month childhood  f  f  \N  f  \N  f  t  \N
+51  4  \N  4 month childhood  f  f  \N  f  \N  f  t  \N
+44  6  6  6 month childhood  f  f  \N  f  \N  f  t  \N
+45  12  \N  12 month childhood  f  f  \N  f  \N  f  t  \N
+47  46  60  4 year childhood  f  f  \N  f  \N  f  t  \N
+54  11  12  Aboriginal Winter Schedule  f  t  3  f  \N  f  t  \N
+57  50  \N  50yrs & Over ATSI (Influenza)  f  t  \N  f  \N  f  f  \N
+58  50  \N  50yrs & Over (ATSI) Pneumococcal  f  t  \N  f  \N  f  f  \N
+59  12  \N  12 yrs (School Based)  f  f  \N  f  \N  f  f  School based program only
+60  15  \N  15 Yrs (School program)  f  f  \N  f  \N  f  f  School based program
 \.
 
 
 --
--- TOC entry 3656 (class 0 OID 273187)
--- Dependencies: 3028
+-- TOC entry 3657 (class 0 OID 286318)
+-- Dependencies: 3034
 -- Data for Name: lu_target; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
@@ -838,8 +841,8 @@ COPY lu_target (pk, target) FROM stdin;
 
 
 --
--- TOC entry 3658 (class 0 OID 275834)
--- Dependencies: 3253
+-- TOC entry 3658 (class 0 OID 286326)
+-- Dependencies: 3036
 -- Data for Name: lu_vaccines; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
@@ -934,8 +937,8 @@ COPY lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) FROM stdi
 
 
 --
--- TOC entry 3659 (class 0 OID 284660)
--- Dependencies: 3261
+-- TOC entry 3659 (class 0 OID 286335)
+-- Dependencies: 3038
 -- Data for Name: lu_vaccines_in_schedule; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
@@ -975,7 +978,6 @@ COPY lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inact
 33  181  44  f  \N
 34  111  45  f  \N
 35  11  45  f  \N
-36  178  45  f  \N
 37  163  45  f  \N
 38  124  46  f  \N
 39  182  47  f  \N
@@ -1100,12 +1102,23 @@ COPY lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inact
 158  192  14  f  \N
 159  191  15  f  \N
 160  193  14  f  \N
+161  187  54  t  \N
+162  192  54  t  \N
+163  30  54  t  2010-11-14
+164  30  57  t  2010-11-14
+36  178  45  f  \N
+165  187  57  t  \N
+166  30  58  t  \N
+167  20  59  f  \N
+168  124  59  f  \N
+169  185  59  f  \N
+170  128  60  f  \N
 \.
 
 
 --
--- TOC entry 3652 (class 0 OID 273146)
--- Dependencies: 3019
+-- TOC entry 3652 (class 0 OID 286270)
+-- Dependencies: 3024
 -- Data for Name: vaccinations; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
@@ -1114,8 +1127,8 @@ COPY vaccinations (pk, fk_consult, fk_vaccine, fk_schedule, fk_site, fk_laterali
 
 
 --
--- TOC entry 3635 (class 2606 OID 275392)
--- Dependencies: 3019 3019
+-- TOC entry 3635 (class 2606 OID 288516)
+-- Dependencies: 3024 3024
 -- Name: data_pkey; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -1124,8 +1137,8 @@ ALTER TABLE ONLY vaccinations
 
 
 --
--- TOC entry 3637 (class 2606 OID 275394)
--- Dependencies: 3021 3021
+-- TOC entry 3637 (class 2606 OID 288518)
+-- Dependencies: 3026 3026
 -- Name: indication_key; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -1134,8 +1147,8 @@ ALTER TABLE ONLY lu_indication
 
 
 --
--- TOC entry 3641 (class 2606 OID 275396)
--- Dependencies: 3023 3023
+-- TOC entry 3641 (class 2606 OID 288520)
+-- Dependencies: 3028 3028
 -- Name: last_batch_number_pkey; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -1144,8 +1157,8 @@ ALTER TABLE ONLY last_batch_number
 
 
 --
--- TOC entry 3639 (class 2606 OID 275398)
--- Dependencies: 3021 3021
+-- TOC entry 3639 (class 2606 OID 288522)
+-- Dependencies: 3026 3026
 -- Name: lu_indication_pkey; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -1154,8 +1167,8 @@ ALTER TABLE ONLY lu_indication
 
 
 --
--- TOC entry 3643 (class 2606 OID 275400)
--- Dependencies: 3026 3026
+-- TOC entry 3645 (class 2606 OID 288524)
+-- Dependencies: 3032 3032
 -- Name: lu_schedules_pkey; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -1164,8 +1177,8 @@ ALTER TABLE ONLY lu_schedules
 
 
 --
--- TOC entry 3645 (class 2606 OID 275402)
--- Dependencies: 3028 3028
+-- TOC entry 3647 (class 2606 OID 288526)
+-- Dependencies: 3034 3034
 -- Name: lu_target_pkey1; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -1174,8 +1187,8 @@ ALTER TABLE ONLY lu_target
 
 
 --
--- TOC entry 3647 (class 2606 OID 275815)
--- Dependencies: 3251 3251
+-- TOC entry 3643 (class 2606 OID 288528)
+-- Dependencies: 3030 3030
 -- Name: lu_vaccines_descriptions_pkey; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -1184,8 +1197,8 @@ ALTER TABLE ONLY lu_descriptions
 
 
 --
--- TOC entry 3651 (class 2606 OID 284666)
--- Dependencies: 3261 3261
+-- TOC entry 3651 (class 2606 OID 288530)
+-- Dependencies: 3038 3038
 -- Name: lu_vaccines_in_schedule_pkey; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -1194,8 +1207,8 @@ ALTER TABLE ONLY lu_vaccines_in_schedule
 
 
 --
--- TOC entry 3649 (class 2606 OID 275842)
--- Dependencies: 3253 3253
+-- TOC entry 3649 (class 2606 OID 288532)
+-- Dependencies: 3036 3036
 -- Name: lu_vaccines_pkey; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -1205,7 +1218,7 @@ ALTER TABLE ONLY lu_vaccines
 
 --
 -- TOC entry 3663 (class 0 OID 0)
--- Dependencies: 25
+-- Dependencies: 33
 -- Name: clin_vaccination; Type: ACL; Schema: -; Owner: -
 --
 
@@ -1218,7 +1231,7 @@ GRANT USAGE ON SCHEMA clin_vaccination TO staff;
 
 --
 -- TOC entry 3665 (class 0 OID 0)
--- Dependencies: 3019
+-- Dependencies: 3024
 -- Name: vaccinations; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1231,7 +1244,7 @@ GRANT ALL ON TABLE vaccinations TO staff;
 
 --
 -- TOC entry 3668 (class 0 OID 0)
--- Dependencies: 3020
+-- Dependencies: 3025
 -- Name: data_pk_seq; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1244,7 +1257,7 @@ GRANT USAGE ON SEQUENCE data_pk_seq TO staff;
 
 --
 -- TOC entry 3670 (class 0 OID 0)
--- Dependencies: 3021
+-- Dependencies: 3026
 -- Name: lu_indication; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1257,7 +1270,7 @@ GRANT SELECT ON TABLE lu_indication TO staff;
 
 --
 -- TOC entry 3673 (class 0 OID 0)
--- Dependencies: 3022
+-- Dependencies: 3027
 -- Name: indication_pk_seq; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1270,7 +1283,7 @@ GRANT USAGE ON SEQUENCE indication_pk_seq TO staff;
 
 --
 -- TOC entry 3675 (class 0 OID 0)
--- Dependencies: 3023
+-- Dependencies: 3028
 -- Name: last_batch_number; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1283,7 +1296,7 @@ GRANT ALL ON TABLE last_batch_number TO staff;
 
 --
 -- TOC entry 3678 (class 0 OID 0)
--- Dependencies: 3024
+-- Dependencies: 3029
 -- Name: last_batch_number_pk_seq; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1296,19 +1309,20 @@ GRANT USAGE ON SEQUENCE last_batch_number_pk_seq TO staff;
 
 --
 -- TOC entry 3680 (class 0 OID 0)
--- Dependencies: 3251
+-- Dependencies: 3030
 -- Name: lu_descriptions; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
 REVOKE ALL ON TABLE lu_descriptions FROM PUBLIC;
-REVOKE ALL ON TABLE lu_descriptions FROM easygp;
+REVOKE ALL ON TABLE lu_descriptions FROM richard;
+GRANT ALL ON TABLE lu_descriptions TO richard;
 GRANT ALL ON TABLE lu_descriptions TO easygp;
 GRANT ALL ON TABLE lu_descriptions TO staff;
 
 
 --
 -- TOC entry 3683 (class 0 OID 0)
--- Dependencies: 3025
+-- Dependencies: 3031
 -- Name: lu_indication_pk_seq; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1320,32 +1334,34 @@ GRANT USAGE ON SEQUENCE lu_indication_pk_seq TO staff;
 
 
 --
--- TOC entry 3689 (class 0 OID 0)
--- Dependencies: 3026
+-- TOC entry 3690 (class 0 OID 0)
+-- Dependencies: 3032
 -- Name: lu_schedules; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
 REVOKE ALL ON TABLE lu_schedules FROM PUBLIC;
-REVOKE ALL ON TABLE lu_schedules FROM easygp;
+REVOKE ALL ON TABLE lu_schedules FROM richard;
+GRANT ALL ON TABLE lu_schedules TO richard;
 GRANT ALL ON TABLE lu_schedules TO easygp;
 GRANT SELECT ON TABLE lu_schedules TO staff;
 
 
 --
--- TOC entry 3692 (class 0 OID 0)
--- Dependencies: 3027
+-- TOC entry 3693 (class 0 OID 0)
+-- Dependencies: 3033
 -- Name: lu_schedules_pk_seq; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
 REVOKE ALL ON SEQUENCE lu_schedules_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE lu_schedules_pk_seq FROM easygp;
+REVOKE ALL ON SEQUENCE lu_schedules_pk_seq FROM richard;
+GRANT ALL ON SEQUENCE lu_schedules_pk_seq TO richard;
 GRANT ALL ON SEQUENCE lu_schedules_pk_seq TO easygp;
 GRANT USAGE ON SEQUENCE lu_schedules_pk_seq TO staff;
 
 
 --
--- TOC entry 3693 (class 0 OID 0)
--- Dependencies: 3028
+-- TOC entry 3694 (class 0 OID 0)
+-- Dependencies: 3034
 -- Name: lu_target; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1357,8 +1373,8 @@ GRANT SELECT ON TABLE lu_target TO staff;
 
 
 --
--- TOC entry 3696 (class 0 OID 0)
--- Dependencies: 3029
+-- TOC entry 3697 (class 0 OID 0)
+-- Dependencies: 3035
 -- Name: lu_target_pk_seq; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1370,31 +1386,33 @@ GRANT USAGE ON SEQUENCE lu_target_pk_seq TO staff;
 
 
 --
--- TOC entry 3698 (class 0 OID 0)
--- Dependencies: 3253
+-- TOC entry 3699 (class 0 OID 0)
+-- Dependencies: 3036
 -- Name: lu_vaccines; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
 REVOKE ALL ON TABLE lu_vaccines FROM PUBLIC;
-REVOKE ALL ON TABLE lu_vaccines FROM easygp;
+REVOKE ALL ON TABLE lu_vaccines FROM richard;
+GRANT ALL ON TABLE lu_vaccines TO richard;
 GRANT ALL ON TABLE lu_vaccines TO easygp;
 GRANT ALL ON TABLE lu_vaccines TO staff;
 
 
 --
--- TOC entry 3701 (class 0 OID 0)
--- Dependencies: 3261
+-- TOC entry 3702 (class 0 OID 0)
+-- Dependencies: 3038
 -- Name: lu_vaccines_in_schedule; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
 REVOKE ALL ON TABLE lu_vaccines_in_schedule FROM PUBLIC;
-REVOKE ALL ON TABLE lu_vaccines_in_schedule FROM easygp;
+REVOKE ALL ON TABLE lu_vaccines_in_schedule FROM richard;
+GRANT ALL ON TABLE lu_vaccines_in_schedule TO richard;
 GRANT ALL ON TABLE lu_vaccines_in_schedule TO easygp;
 GRANT ALL ON TABLE lu_vaccines_in_schedule TO staff;
 
 
 --
--- TOC entry 3706 (class 0 OID 0)
+-- TOC entry 3707 (class 0 OID 0)
 -- Dependencies: 3262
 -- Name: vwvaccines; Type: ACL; Schema: clin_vaccination; Owner: -
 --
@@ -1417,11 +1435,9 @@ GRANT ALL ON TABLE vwvaccinesinschedule TO easygp;
 GRANT ALL ON TABLE vwvaccinesinschedule TO staff;
 
 
--- Completed on 2010-11-14 15:57:43 EST
+-- Completed on 2010-11-14 22:38:04 EST
 
 --
 -- PostgreSQL database dump complete
 --
 
-truncate db.lu_version;
-insert into db.lu_version (lu_major,lu_minor) values (0, 40);

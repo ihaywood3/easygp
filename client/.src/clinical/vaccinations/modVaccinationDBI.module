@@ -20,33 +20,36 @@ Private $Result As Result
 Private sql As String
 
 Public Sub TargetDisease_get(lv As Listview, txt As Textbox)
-  '---------------------------------------------------
-  'Gets a list of target diseases to vaccinate against
-  '---------------------------------------------------
-  Dim x As Integer
-  If Not (txt) Then Return
-  sql = "Select * from clin_vaccination.lu_target WHERE "  
-  SQL &= "target ILIKE '%" & Lower(Trim(txt.text)) & "%' "
-  $Result = modDBConnect.exec_query(sql)
-  'Print $Result.Count
-  lv.clear
-  If $Result.count Then
-     For Each $Result
-          lv.Add(x, $Result!target)
-          Inc x
+   '---------------------------------------------------
+   'Gets a list of target diseases to vaccinate against
+   '---------------------------------------------------
+
+   Dim x As Integer
+
+   If Not (txt) Then Return
+   sql = "Select * from clin_vaccination.lu_target WHERE "  
+   SQL &= "target ILIKE '%" & Lower(Trim(txt.text)) & "%' "
+   $Result = modDBConnect.exec_query(sql)
+   'Print $Result.Count
+   lv.clear
+   If $Result.count Then
+      For Each $Result
+         lv.Add(x, $Result!target)
+         Inc x
       Next
       With lv
          .Raise
          .Visible = True
          .tag = txt
-     End With
-  Else
-     lv.Visible = False
-     
-  End If
- End
+      End With
+   Else
+      lv.Visible = False
+      
+   End If
+
+End
+
 Public Sub Vaccines_Guess(lv As Listview, sString As String)
- 
    
 End 
 
@@ -54,92 +57,110 @@ Public Function Vaccines_Get_By_Brand_Name(vaccine As String) As Collection
    '-------------------------------------------------------------
    'Gets a list of vaccines like vaccine by commercial brand name
    '-------------------------------------------------------------
+
    Return modDBConnect.exec_query_collection("Select * from clin_vaccination.vwVaccines where brand ILIKE $$%" & vaccine & "%$$ AND vaccine_inactive = FALSE ORDER BY brand")
+
 End
 
 Public Sub SerialNumbers_GetList(lv As Listview)
-  
-  '---------------------------------------------------
-  'Gets a list of serial numbers to vaccinate against
-  '---------------------------------------------------
-
-  
+   
+   '---------------------------------------------------
+   'Gets a list of serial numbers to vaccinate against
+   '---------------------------------------------------
+   
 End
+
 Public Sub Vaccination_Sites_Get(lv As Listview)
- '---------------------------------------------------
-  'Gets a list of vaccination sites
-  '---------------------------------------------------
-  sql = "Select * from common.lu_route_administration order by route;"
-  modDBConnect.exec_query(sql)
-  lv.Clear()
-  For Each $Result
-     lv.Add($Result!pk, $Result!route)
-  Next
-  If lv.count Then
-     lv.Visible = True
-  Else
-     lv.Visible = False
-  End If
-  
-End
+   '---------------------------------------------------
+   'Gets a list of vaccination sites
+   '---------------------------------------------------
 
+   sql = "Select * from common.lu_route_administration order by route;"
+   modDBConnect.exec_query(sql)
+   lv.Clear()
+   For Each $Result
+      lv.Add($Result!pk, $Result!route)
+   Next
+   If lv.count Then
+      lv.Visible = True
+   Else
+      lv.Visible = False
+   End If
+   
+End
 
 Public Sub Vaccines_In_Schedules_Get(fk_schedule As Integer) As Collection
-  
-  Return modDBConnect.exec_query_collection("select * from clin_vaccination.vwVaccinesInSchedule where fk_schedule = " & fk_schedule)
-  
+   
+   Return modDBConnect.exec_query_collection("select * from clin_vaccination.vwVaccinesInSchedule where fk_schedule = " & fk_schedule & " And date_vaccine_inactive Is Null")
+   
 End
 
-Public Sub Vaccines_In_Schedule_Save(vaccines_in_schedule As Collection)
+Public Sub Vaccine_In_Schedule_Save(old_data As Collection, pk_view As String, vaccine_in_schedule As Collection)
+   
+   modDBConnect.update("clin_vaccination.lu_vaccines_in_schedule", old_data[pk_view], vaccine_in_schedule, "fk_lu_vaccines_in_schedule")
+   
+End
+
+Public Sub Vaccines_In_Schedule_Save(vaccines_in_schedule As Collection, fk_schedule As Integer)
    '-------------------------------------------
    'Saves all vaccines in a particular schedule
    '-------------------------------------------  
+
    Dim item As Collection
    Dim vaccine_in_schedule As Collection
    
    For Each vaccine_in_schedule In vaccines_in_schedule
-       If IsNull(vaccine_in_schedule!pk_view) Then   'new item added to this schedule
-                    
-       Else
+      If IsNull(vaccine_in_schedule!fk_lu_vaccines_in_schedule) Then   'new item added to this schedule
+         vaccine_in_schedule.Remove("brand")
+         vaccine_in_schedule.Remove("form")
+         vaccine_in_schedule.Remove("description")
+         Try vaccine_in_schedule.Remove("pk_view")
+         vaccine_in_schedule!fk_schedule = fk_schedule
+         vaccine_in_schedule!fk_lu_vaccines_in_schedule = modDBConnect.insert("clin_vaccination.lu_vaccines_in_schedule", vaccine_in_schedule)   
+      Else
+         ' modDBConnect.update("clin_vaccination.lu_vaccines_in_schedule", old_data[pk_view], vaccine_in_schedule)
          
-       Endif
+      Endif
    Next
-  
+   
 End
 
 Public Function Schedules_Save(old_data As Collection, pk_view As Integer, new_data As Collection) As Integer
-  
-  'Save (create or change) a vaccination schedule
-  If IsNull(new_data!pk) Then
-      modDBConnect.insert("clin_vaccination.lu_schedules", new_data)
-  Else
+   '----------------------------------------------
+   'Save (create or change) a vaccination schedule
+   '----------------------------------------------
+   If IsNull(new_data!pk) Then
+      new_data!fk_schedule = modDBConnect.insert("clin_vaccination.lu_schedules", new_data)
+      Return new_data!fk_schedule
+   Else
       
       modDBConnect.update("clin_vaccination.lu_schedules", old_data[pk_view], new_data)
-  Endif
- 'fixme no return should be success or failure
+      Return new_data!pk
+   Endif
+   
+
 End
 
 Public Sub Schedules_get(Optional schedule As String = "", Optional active As Integer = 1) As Collection 
-  '--------------------------------
-  'Gets a list of current Schedules
-  'active = 1 = only display active
-  'active = 2 = only display inactive
-  'active = 3 = display all
-  '--------------------------------
-  Dim sql As String
-  
-  sql = "Select * from clin_vaccination.lu_schedules "
-'  If Schedule <> "" Then
-    sql &= " WHERE schedule ILIKE $$%" & schedule & "%$$ "
- ' Endif
+   '--------------------------------
+   'Gets a list of current Schedules
+   'active = 1 = only display active
+   'active = 2 = only display inactive
+   'active = 3 = display all
+   '--------------------------------
 
-  Select Case active
-    Case 1
-      sql &= " AND inactive = False  "
-    Case 2
-       sql &= " AND inactive = TRUE "
-  End Select
- 
+   Dim sql As String
+   
+   sql = "Select * from clin_vaccination.lu_schedules "
+   sql &= " WHERE schedule ILIKE $$%" & schedule & "%$$ "
+   
+   Select Case active
+      Case 1
+         sql &= " AND inactive = False  "
+      Case 2
+         sql &= " AND inactive = TRUE "
+   End Select
+   
    Return modDBConnect.exec_query_collection(sql & " ORDER BY schedule")
-  
+   
 End

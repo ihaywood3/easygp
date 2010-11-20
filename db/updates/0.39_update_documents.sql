@@ -73,8 +73,6 @@ UNION
    JOIN documents.lu_message_standard ON sending_entities.fk_lu_message_standard = lu_message_standard.pk
   WHERE sending_entities.fk_branch IS NULL AND sending_entities.fk_employee IS NULL AND sending_entities.fk_person IS NULL;
 
-ALTER TABLE documents.vwsendingentities OWNER TO easygp;
-GRANT ALL ON TABLE documents.vwsendingentities TO easygp;
 GRANT SELECT ON TABLE documents.vwsendingentities TO staff;
 
 
@@ -112,8 +110,6 @@ CREATE OR REPLACE VIEW documents.vwdocuments AS
    LEFT JOIN documents.unmatched_staff ON documents.fk_unmatched_staff = unmatched_staff.pk
   ORDER BY documents.fk_patient, documents.date_created;
 
-ALTER TABLE documents.vwdocuments OWNER TO easygp;
-GRANT ALL ON TABLE documents.vwdocuments TO easygp;
 GRANT ALL ON TABLE documents.vwdocuments TO staff;
 
 
@@ -136,8 +132,6 @@ CREATE OR REPLACE VIEW clin_requests.vwrequestforms AS
   WHERE forms.deleted = false AND forms_requests.deleted = false
   ORDER BY consult.fk_patient, forms.date DESC, forms_requests.fk_form, lu_requests.item;
 
-ALTER TABLE clin_requests.vwrequestforms OWNER TO easygp;
-GRANT ALL ON TABLE clin_requests.vwrequestforms TO easygp;
 GRANT ALL ON TABLE clin_requests.vwrequestforms TO staff;
 COMMENT ON VIEW clin_requests.vwrequestforms IS 'A view of just the unique forms, where the forms requests are represented only by for example fbc;uec;lfts
  Note that clin_requests.vwRequestFormsAndRequests has multiple rows for each form, one per request on that form';
@@ -162,8 +156,6 @@ CREATE OR REPLACE VIEW clin_requests.vwrequestsordered AS
   WHERE forms.deleted = false AND forms_requests.deleted = false
   ORDER BY consult.fk_patient, forms.date DESC, forms_requests.fk_form, lu_requests.item;
 
-ALTER TABLE clin_requests.vwrequestsordered OWNER TO easygp;
-GRANT ALL ON TABLE clin_requests.vwrequestsordered TO easygp;
 GRANT ALL ON TABLE clin_requests.vwrequestsordered TO staff;
 COMMENT ON VIEW clin_requests.vwrequestsordered IS 'a view of all requests ordered along with form detail, i.e
  for a form with say fbc, uec, lfts on it
@@ -176,8 +168,6 @@ CREATE OR REPLACE VIEW documents.vwhl7filesimported AS
   WHERE vwdocuments.md5sum IS NULL
   ORDER BY vwdocuments.source_file;
 
-ALTER TABLE documents.vwhl7filesimported OWNER TO easygp;
-GRANT ALL ON TABLE documents.vwhl7filesimported TO easygp;
 GRANT ALL ON TABLE documents.vwhl7filesimported TO staff;
 
 

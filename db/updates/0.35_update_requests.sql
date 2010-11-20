@@ -61,8 +61,6 @@ CREATE OR REPLACE VIEW clin_requests.vwrequestsOrdered AS
   WHERE forms.deleted = false AND forms_requests.deleted = false
   ORDER BY consult.fk_patient, forms.date DESC, forms_requests.fk_form, lu_requests.item;
 
-ALTER TABLE clin_requests.vwrequestsOrdered OWNER TO easygp;
-GRANT ALL ON TABLE clin_requests.vwrequestsOrdered TO easygp;
 GRANT ALL ON TABLE clin_requests.vwrequestsOrdered TO staff;
 
 COMMENT ON VIEW clin_requests.vwrequestsOrdered is
@@ -93,8 +91,6 @@ CREATE OR REPLACE VIEW clin_requests.vwRequestforms AS
   WHERE forms.deleted = false AND forms_requests.deleted = false
   ORDER BY consult.fk_patient, forms.date DESC, forms_requests.fk_form, lu_requests.item;
 
-ALTER TABLE clin_requests.vwRequestforms OWNER TO easygp;
-GRANT ALL ON TABLE clin_requests.vwRequestforms TO easygp;
 GRANT ALL ON TABLE clin_requests.vwRequestforms TO staff;
 
 COMMENT ON VIEW clin_requests.vwRequestforms IS 'A view of just the unique forms, where the forms requests are represented only by for example fbc;uec;lfts
@@ -139,8 +135,6 @@ UNION
   WHERE lower(lu_request_items.item) ~~ '%'::text AND lu_request_items.fk_laterality = 0
   ORDER BY 4, 5;
 
-ALTER TABLE clin_requests.vwRequestNames OWNER TO easygp;
-GRANT ALL ON TABLE clin_requests.vwRequestNames TO easygp;
 GRANT ALL ON TABLE clin_requests.vwRequestNames TO staff;
 
 

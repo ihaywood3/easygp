@@ -13,8 +13,6 @@ CREATE OR REPLACE VIEW contacts.vworganisations AS
    LEFT JOIN admin.clinics ON branches.pk = clinics.fk_branch
   ORDER BY nextval('contacts.vworganisations_pk_seq'::regclass), organisations.organisation, organisations.deleted;
 
-ALTER TABLE contacts.vworganisations OWNER TO easygp;
-GRANT ALL ON TABLE contacts.vworganisations TO easygp;
 GRANT ALL ON TABLE contacts.vworganisations TO staff;
 
 
@@ -57,8 +55,6 @@ CREATE OR REPLACE VIEW clin_workcover.vwworkcover AS
    JOIN clin_consult.consult consult1 ON claims.fk_consult = consult1.pk
   ORDER BY visits.fk_claim, visits.pk;
 
-ALTER TABLE clin_workcover.vwworkcover OWNER TO easygp;
-GRANT ALL ON TABLE clin_workcover.vwworkcover TO easygp;
 GRANT ALL ON TABLE clin_workcover.vwworkcover TO staff;
 COMMENT ON VIEW clin_workcover.vwworkcover IS 'View of all visits for all claims date ordered. If the work cover form was coded also contains the coding system
  the coded term and the code';

@@ -20,8 +20,6 @@ CREATE OR REPLACE VIEW contacts.vwpersonsexcludingpatients AS
   WHERE data_patients.pk IS NULL
   ORDER BY vwpersons.fk_person, vwpersons.fk_address;
 
-ALTER TABLE contacts.vwpersonsexcludingpatients OWNER TO easygp;
-GRANT ALL ON TABLE contacts.vwpersonsexcludingpatients TO easygp;
 GRANT ALL ON TABLE contacts.vwpersonsexcludingpatients TO staff;
 
 -- add person_deleted field to this view:
@@ -52,8 +50,6 @@ CREATE OR REPLACE VIEW contacts.vwemployees AS
   WHERE data_employees.deleted = false
   ORDER BY data_persons.surname, data_persons.firstname;
 
-ALTER TABLE contacts.vwemployees OWNER TO easygp;
-GRANT ALL ON TABLE contacts.vwemployees TO easygp;
 GRANT ALL ON TABLE contacts.vwemployees TO staff;
 
 
@@ -72,8 +68,6 @@ occupation from contacts.vwPersonsExcludingPatients where
 
 ORDER BY surname, firstname ASC;
 
-ALTER TABLE contacts.vwPersonsOrEmployees_By_Occupation OWNER TO easygp;
-GRANT ALL ON TABLE contacts.vwPersonsOrEmployees_By_Occupation TO easygp;
 GRANT ALL ON TABLE contacts.vwPersonsOrEmployees_By_Occupation TO staff;
 
 COMMENT ON VIEW contacts.vwPersonsOrEmployees_By_Occupation IS
@@ -120,8 +114,6 @@ CREATE VIEW clin_procedures.vwskinprocedures AS
       JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) 
       JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) ORDER BY consult.fk_patient;
       
-ALTER TABLE clin_procedures.vwskinprocedures OWNER TO easygp;
-GRANT ALL ON TABLE clin_procedures.vwskinprocedures TO easygp;
 GRANT ALL ON TABLE clin_procedures.vwskinprocedures TO staff;
 
 
@@ -145,8 +137,6 @@ WHERE data_organisations.deleted = false and data_branches.deleted = false
   order by category, organisation, branch ;
 
 
-  ALTER TABLE Contacts.vwOrganisationsByCategory OWNER TO easygp;
-GRANT ALL ON TABLE Contacts.vwOrganisationsByCategory TO easygp;
 GRANT ALL ON TABLE Contacts.vwOrganisationsByCategory TO staff;
 
 truncate db.lu_version;

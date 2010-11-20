@@ -5,8 +5,6 @@ create table clin_certificates.lu_fitness
 (pk serial primary key,
  fitness text not null);
 
-ALTER TABLE  clin_certificates.lu_fitness OWNER TO EasyGP;
-GRANT ALL ON TABLE clin_certificates.lu_fitness TO easygp;
 GRANT ALL ON TABLE clin_certificates.lu_fitness TO staff;
 
 Insert into clin_certificates.lu_fitness(fitness) values ('fit');
@@ -37,8 +35,6 @@ Create table clin_certificates.certificate_reasons
  'A table to keep reasons a particular doctor writes for certificates
   to make data entry quicker - for popup lists - caveat spelling - no checker yet installed';
 
-ALTER TABLE clin_certificates.certificate_reasons OWNER TO easygp;
-GRANT ALL ON TABLE clin_certificates.certificate_reasons TO easygp;
 GRANT SELECT ON TABLE clin_certificates.certificate_reasons TO staff;
  
  
@@ -62,8 +58,6 @@ CREATE OR REPLACE VIEW clin_certificates.vwmedicalcertificates AS
   WHERE medical_certificates.deleted = false
   ORDER BY consult.fk_patient, consult.consult_date;
 
-ALTER TABLE clin_certificates.vwmedicalcertificates OWNER TO easygp;
-GRANT ALL ON TABLE clin_certificates.vwmedicalcertificates TO easygp;
 GRANT ALL ON TABLE clin_certificates.vwmedicalcertificates TO staff;
 COMMENT ON VIEW clin_certificates.vwmedicalcertificates IS 'A view of patients medical certificate history, includes written by which staff member and where';
 

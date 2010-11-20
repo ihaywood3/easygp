@@ -3,8 +3,6 @@
 
 Alter table clin_requests.lu_link_provider_user_requests add column deleted boolean default false;
 
-ALTER TABLE clin_requests.lu_link_provider_user_requests OWNER TO easygp;
-GRANT ALL ON TABLE clin_requests.lu_link_provider_user_requests TO easygp;
 GRANT SELECT, INSERT ON TABLE clin_requests.lu_link_provider_user_requests TO staff;
 
 --re-create the view:
@@ -19,8 +17,6 @@ CREATE OR REPLACE VIEW clin_requests.vwrequestsynonyms AS
    FROM clin_requests.lu_requests, clin_requests.lu_link_provider_user_requests
   WHERE lu_link_provider_user_requests.fk_lu_request = lu_requests.pk;
 
-ALTER TABLE clin_requests.vwrequestsynonyms OWNER TO easygp;
-GRANT ALL ON TABLE clin_requests.vwrequestsynonyms TO easygp;
 GRANT ALL ON TABLE clin_requests.vwrequestsynonyms TO staff;
 
 

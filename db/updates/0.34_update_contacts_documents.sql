@@ -41,8 +41,6 @@ CREATE OR REPLACE VIEW contacts.vwpersons AS
    LEFT JOIN contacts.lu_towns ON "Addresses".fk_town = lu_towns.pk
   ORDER BY data_persons.pk, links_persons_addresses.fk_address;
 
-ALTER TABLE contacts.vwpersons OWNER TO easygp;
-GRANT ALL ON TABLE contacts.vwpersons TO easygp;
 GRANT ALL ON TABLE contacts.vwpersons TO staff;
 
 --insert missing field data_persons.deleted into employee view
@@ -66,8 +64,6 @@ CREATE OR REPLACE VIEW contacts.vwemployees AS
   WHERE data_employees.deleted = false
   ORDER BY data_persons.surname, data_persons.firstname;
 
-ALTER TABLE contacts.vwemployees OWNER TO easygp;
-GRANT ALL ON TABLE contacts.vwemployees TO easygp;
 GRANT ALL ON TABLE contacts.vwemployees TO staff;
 
 
@@ -98,8 +94,6 @@ UNION
    JOIN contacts.vwpersons ON data_employees.fk_person = vwpersons.fk_person
   WHERE vwpersons.deleted = false AND data_employees.deleted = false;
 
-ALTER TABLE documents.vwsendingentities OWNER TO easygp;
-GRANT ALL ON TABLE documents.vwsendingentities TO easygp;
 GRANT SELECT ON TABLE documents.vwsendingentities TO staff;
 
 
@@ -119,9 +113,6 @@ CREATE OR REPLACE VIEW documents.vwdocuments AS
    LEFT JOIN documents.unmatched_staff ON documents.fk_unmatched_staff = unmatched_staff.pk
   ORDER BY documents.fk_patient, documents.date_created;
 
-ALTER TABLE documents.vwdocuments OWNER TO richard;
-GRANT ALL ON TABLE documents.vwdocuments TO richard;
-GRANT ALL ON TABLE documents.vwdocuments TO easygp;
 GRANT ALL ON TABLE documents.vwdocuments TO staff;
 
 CREATE OR REPLACE VIEW documents.vwhl7filesimported AS 
@@ -130,9 +121,6 @@ CREATE OR REPLACE VIEW documents.vwhl7filesimported AS
   WHERE vwdocuments.md5sum IS NULL
   ORDER BY vwdocuments.source_file;
 
-ALTER TABLE documents.vwhl7filesimported OWNER TO richard;
-GRANT ALL ON TABLE documents.vwhl7filesimported TO richard;
-GRANT ALL ON TABLE documents.vwhl7filesimported TO easygp;
 GRANT ALL ON TABLE documents.vwhl7filesimported TO staff;
 
 CREATE OR REPLACE VIEW contacts.vwpersonsexcludingpatients AS 
@@ -143,9 +131,6 @@ CREATE OR REPLACE VIEW contacts.vwpersonsexcludingpatients AS
   WHERE data_patients.pk IS NULL
   ORDER BY vwpersons.fk_person, vwpersons.fk_address;
 
-ALTER TABLE contacts.vwpersonsexcludingpatients OWNER TO richard;
-GRANT ALL ON TABLE contacts.vwpersonsexcludingpatients TO richard;
-GRANT ALL ON TABLE contacts.vwpersonsexcludingpatients TO easygp;
 GRANT ALL ON TABLE contacts.vwpersonsexcludingpatients TO staff;
 
 CREATE OR REPLACE VIEW clin_workcover.vwworkcover AS 
@@ -169,9 +154,6 @@ CREATE OR REPLACE VIEW clin_workcover.vwworkcover AS
    JOIN clin_consult.consult consult1 ON claims.fk_consult = consult1.pk
   ORDER BY visits.fk_claim, visits.pk;
 
-ALTER TABLE clin_workcover.vwworkcover OWNER TO richard;
-GRANT ALL ON TABLE clin_workcover.vwworkcover TO richard;
-GRANT ALL ON TABLE clin_workcover.vwworkcover TO easygp;
 GRANT ALL ON TABLE clin_workcover.vwworkcover TO staff;
 COMMENT ON VIEW clin_workcover.vwworkcover IS 'View of all visits for all claims date ordered. If the work cover form was coded also contains the coding system
  the coded term and the code';
@@ -203,9 +185,6 @@ CREATE OR REPLACE VIEW clin_requests.vwforms AS
   WHERE forms.deleted = false AND forms_requests.deleted = false
   ORDER BY consult.fk_patient, forms.date DESC, forms_requests.fk_form, lu_requests.item;
 
-ALTER TABLE clin_requests.vwforms OWNER TO richard;
-GRANT ALL ON TABLE clin_requests.vwforms TO richard;
-GRANT ALL ON TABLE clin_requests.vwforms TO easygp;
 GRANT ALL ON TABLE clin_requests.vwforms TO staff;
 
 

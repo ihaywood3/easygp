@@ -35,6 +35,8 @@ Private schedule As Collection
 Private vaccines As Collection
 Private vaccine As Collection
 Private fk_vaccine As Integer
+Private fk_progressnote As Integer
+Private fk_consult_progress_note As Integer 
 Private pk_view As Integer
 Private Vaccinations As Collection
 Private Vaccination As Collection
@@ -79,13 +81,24 @@ Public Sub Init(cons As CConsult)
    
 End
 
-Public Sub cmbSiteAdministration_Keypress()
-   
-   Stop Event
-   If key.code = key.return Then
-      tbSave.SetFocus()
-   Endif
-   
+Public Sub cmbSiteAdministration_KeyPress()
+  Stop Event
+  If Key.code = Key.return Then
+    EditAreas[ieditarea].rbLateralityLeft.SetFocus()
+  Endif
+  EditArea_notifyData_Changed(True)
+End
+
+Public Sub cmbSiteAdministration_Click()
+    Stop Event
+    EditAreas[ieditarea].fk_site = EditAreas[ieditarea].Sites[EditAreas[ieditarea].cmbSiteAdministration.index]!pk
+    If EditAreas[ieditarea].sites[EditAreas[ieditarea].cmbSiteAdministration.index]!has_laterality Then
+      EditAreas[ieditarea].Hbox_Laterality.enabled = True
+    Else
+       EditAreas[ieditarea].Hbox_Laterality.enabled = False
+       EditAreas[ieditarea].rbLateralityNone.value = True
+    Endif
+    EditArea_notifyData_Changed(True)
 End
 
 Public Sub listview1_KeyPress()
@@ -105,7 +118,7 @@ Public Sub listview1_DblClick()
       Case "serial number"
          SerialNumber_Select()
          If EditAreas[ieditarea].cmbSiteAdministration.index = -1 Then
-             EditAreas[ieditarea].cmbSiteAdministration.SetFocus()
+            EditAreas[ieditarea].cmbSiteAdministration.SetFocus()
          Else
             If EditAreas[ieditarea].RbLateralityLeft.value = True Then
                tbSave.SetFocus()
@@ -120,27 +133,28 @@ End
 
 Public Sub EditArea_TextBox_GotFocus()
    
-   Last.BackGround = Color.rgb(95, 255, 175)
-   Stop Event
-   
+  
+ 
+    Last.BackGround = Color.rgb(95, 255, 175)
    Select Case Last.tag
       Case "target disease"
          With listview1
-            .Top = Last.parent.top + Last.Height + HBox_Heading.Height + VBox1.Padding + 5
-            .Left = VBox1.Padding + Last.Left
+            .Top = HBox_EditAreas.top '+ Last.Height '+ HBox_Heading.Height + VBox1.Padding + 5
+            .Left = 0 ' VBox1.Padding + Last.Left
             .Raise()
          End With
-      Case "vaccine", "serial number", "site"
+      Case "vaccine", "serial number"
          With listview1
-            .Top = Last.parent.top + Last.Height + HBox_Heading.Height + VBox1.Padding + 5 + txtSchedule.Height
-            .Left = VBox1.Padding + Last.Left + HBox_EditAreas.Left
+            .Top = Last.parent.top + Last.Height ' + HBox_Heading.Heigh 't + VBox1.Padding + 5 + txtSchedule.Height
+            .Left = 0 ' VBox1.Padding + Last.Left + HBox_EditAreas.Left
             .Raise()
          End With
          
-   End Select
+   End Select  
    'If have a schedule then select the vaccine, always popup, as may want to change our mind
    If Last.tag = "vaccine" And fk_schedule <> 0 Then 
       Vaccines_get(Last)
+      Return 
    Endif
    If Last.tag = "serial number" Then
       If Serial_Numbers.count Then
@@ -151,19 +165,21 @@ Public Sub EditArea_TextBox_GotFocus()
          With listview1
             .tag = EditAreas[ieditarea].txtSerialNumber
             .Raise()
-            .Visible = True
+            If .count > 1 Then 
+               .Visible = True
+            End If
             .MoveFirst()
             .Item.Selected = True
          End With
-    Else
-      SerialNumber_Get()
-   End If   
-Endif
-If Last.tag = "date" And Last.text = "" Then 
-   Last.text = Format(Now, "dd/mm/yyyy")
-   EditArea[iEditArea].txtSerialNumber.SetFocus()
-End If      
-
+      Else
+         SerialNumber_Get()
+      End If   
+   Endif
+   If Last.tag = "date" And Last.text = "" Then 
+      Last.text = Format(Now, "dd/mm/yyyy")
+      EditArea[iEditArea].txtSerialNumber.SetFocus()
+   End If      
+   
 End
 
 Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean  
@@ -184,13 +200,15 @@ End
 
 Public Sub Editarea_Textbox_Change()
    
-   If Bexit Then Return 
-   Stop Event
-   Select Case Last.tag
+  
+    Stop Event
+    If Bexit Then Return 
+    Select Case Last.tag
       Case "target disease"
          If Trim(Last.text) = "" Then
             Vaccination_New()
          Endif
+         Return 
    End Select
    EditArea_notifyData_Changed(True)
    
@@ -200,8 +218,6 @@ Public Sub EditArea_TextBox_LostFocus()
    
    Stop Event
    Last.BackGround = Color.White
-   If Last.tag = "date" And Trim(Last.text) <> "" Then
-   Endif
    
 End
 
@@ -237,8 +253,9 @@ Public Sub BriefPI()
 End
 
 Public Sub EditArea_TextBox_KeyRelease()
+  
    
-   Stop Event
+   Stop Event 
    Select Case Last.tag
       Case "target disease"
          Schedule_get()
@@ -246,11 +263,24 @@ Public Sub EditArea_TextBox_KeyRelease()
    
 End
 
+Public Sub Vaccination_Edit()
+   '------------------------------------------------------------
+   'User wants to edit a previously saved vaccine
+   'Called from the popup menu over the vaccines given list
+   'get all serial numbers for this type of vaccine, to be ready
+   '------------------------------------------------------------
+
+   Vbox_EditArea_Inner.enabled = True
+   tbSave.Enabled = True  
+   Serial_Numbers = modVaccinationDBI.Vaccines_Serial_Numbers_Get(EditAreas[ieditarea].fk_vaccine)
+   
+End
+
 Public Sub Vaccination_Display(EA As FVaccineEditArea, vaccination As Collection)
    '--------------------------------------------------------------------------
    'Displays the hilighted vaccination details in the appropriate editing area
    '--------------------------------------------------------------------------
-   
+
    bExit = True
    EA.txtVaccine.text = vaccination!brand
    EA.txtDate.text = vaccination!date_given 'NB: not a float, but a string here
@@ -264,6 +294,9 @@ Public Sub Vaccination_Display(EA As FVaccineEditArea, vaccination As Collection
          EA.RbLateralityNone.value = True
    End Select
    EA.txtSerialNumber.text = vaccination!serial_no
+   EA.fk_vaccination = vaccination!fk_vaccination
+   EA.fk_vaccine = vaccination!fk_vaccine
+   EA.fk_schedule = vaccination!fk_schedule
    bExit = False  
    
 End
@@ -275,10 +308,11 @@ Public Sub Schedule_Display()
    '-------------------------------------------------------------------
    
    Dim CurrentSchedule As New Collection
+   Dim x As Integer 
    
    EditArea_Clear()
+   
    bExit = True
-   iEditArea = 0
    CurrentVaccination = currentconsult!vaccinations_given[lvwSchedules.Item.Key]
    fk_schedule = CurrentVaccination!fk_schedule
    txtSchedule.text = CurrentVaccination!schedule
@@ -290,14 +324,18 @@ Public Sub Schedule_Display()
          cvwVaccines[vaccination!pk_view][1] = vaccination!brand          'e.g typhoid VI
          Try cvwVaccines[vaccination!pk_view][2] = vaccination!description 'FIXME PUT ME IN
          
-         If currentconsult!vaccinations_given.count > 1 And iEditArea <> 0 Then    'EditAreas[0] always exists
+         If currentconsult!vaccinations_given.count > 1 And x <> 0 Then    'EditAreas[0] always exists
             EditArea_Create(iEditArea)                                            'create another as needed
          Endif
-         Vaccination_Display(EditAreas[iEditArea], vaccination)
-         Inc iEditArea 
+         Vaccination_Display(EditAreas[x], vaccination)
+         Inc x 
       End If
-      
    Next
+ '  If Format(Now, "dd/mm/yyyy") = currentconsult!vaccinations_given[lvwSchedules.Item.Key]!consult_date Then
+    fk_progressnote = currentconsult!vaccinations_given[lvwSchedules.Item.Key]!fk_progressnote
+    fk_consult_progress_note = currentconsult!vaccinations_given[lvwSchedules.Item.Key]!fk_consult
+
+        
    bExit = False
    
 End
@@ -318,7 +356,7 @@ Public Sub EditArea_Create(x As Integer)
    hObs = New Observer(EditAreas[x]) As "EditArea"
    HObs = New Observer(EditAreas[x].RbLateralityLeft) As "rbLaterality"
    HObs = New Observer(EditAreas[x].RbLateralityRight) As "rbLaterality"
-   
+    HObs = New Observer(EditAreas[x].cmbSiteAdministration) As "cmbSiteAdministration"
 End
 
 Public Sub RbLaterality_Keypress()
@@ -346,7 +384,7 @@ Public Sub RbLaterality_Click()
 End
 
 Public Sub Schedule_get()
-   
+
    schedules = modVaccinationDBI.Schedules_get(txtSchedule.text)
    listview1.clear()
    For Each schedule In schedules
@@ -358,7 +396,7 @@ Public Sub Schedule_get()
          .tag = txtSchedule
       End With
    Endif
-   
+   Print "getting schedules"
 End
 
 Public Sub Schedule_Select()
@@ -372,9 +410,6 @@ Public Sub Schedule_Select()
    
 End
 
-Public Sub Schedule_Edit()
-   
-End
 
 Public Sub EditArea_Enter()
    '-----------------------------------------------------------------
@@ -388,7 +423,8 @@ Public Sub EditArea_Enter()
 End
 
 Public Sub EditArea_TextBox_KeyPress()
-   
+  
+    
    If Bexit Then 
       Return 
    End If   
@@ -403,9 +439,10 @@ Public Sub EditArea_TextBox_KeyPress()
             listview1.MoveFirst
             listview1.Item.Selected = True
             listview1.SetFocus()
+         
+            Return 
          Endif
       Case Key.Return
-         Print "return pressed in edit area ", iEditArea
          Select Case Last.tag
             Case "target disease"
                EditAreas[iEditArea].txtVaccine.SetFocus()
@@ -415,6 +452,7 @@ Public Sub EditArea_TextBox_KeyPress()
                EditAreas[iEditArea].txtSerialNumber.SetFocus()
             Case "serial number"
                EditAreas[iEditArea].cmbSiteAdministration.SetFocus()
+               listview1.Visible = False  
             Case "site"
                tbSave.SetFocus()
          End Select
@@ -423,10 +461,11 @@ Public Sub EditArea_TextBox_KeyPress()
    
 End
 
-
 Public Sub SerialNumber_Select()
-      listview1.MoveCurrent
-      EditAreas[ieditarea].txtSerialNumber.text = serial_numbers[listview1.Item.key]!serial_number
+
+   listview1.MoveCurrent
+   EditAreas[ieditarea].txtSerialNumber.text = serial_numbers[listview1.Item.key]!serial_number
+
 End
 
 Public Sub SerialNumber_Get()
@@ -437,7 +476,7 @@ Public Sub SerialNumber_Get()
    'at this textbox, will popup list of last say (3), but FIXME
    'this should be user configurable
    '----------------------------------------------------------   
-
+   
    Dim sn As Collection 
    Dim x As Integer
    
@@ -452,55 +491,96 @@ Public Sub SerialNumber_Get()
          Inc x
       Next
    End If
-
+   
 End
 
 Public Sub Vaccination_New()
    
    EditArea_Clear()
-   fk_schedule = 0
-   fk_vaccine = 0
-   listview1.Visible = False   
-   txtSchedule.SetFocus()
-   
+   txtSchedule.SetFocus() 
+   Vbox_EditArea_Inner.enabled = True
+   tbSave.Enabled = True    
+ 
 End
 
-Public Sub Vaccination_Save()
-   '------------------------------------------------------------------------------
-   '   Save the current vaccination episode from 1 or more editing areas
-   '   pk integer NOT NULL DEFAULT nextval('clin_vaccination.data_pk_seq'::regclass),
-   '   fk_consult integer,
-   '   fk_vaccine integer,
-   '   fk_schedule integer,
-   '   fk_site integer NOT NULL DEFAULT 1,
-   '   fk_laterality integer,
-   '   date_given character varying(10), -- not a date field because sometimes may need to record just say 01/2002 or 1998
-   '   serial_no text NOT NULL DEFAULT
-   '-----------------------------------------------------------------------------------
+Public Sub Vaccination_Episode_Save()
+    '------------------------------------------------------------------------------
+    '   Save the current vaccination episode from 1 or more editing areas
+    '   pk integer NOT NULL DEFAULT nextval('clin_vaccination.data_pk_seq'::regclass),
+    '   fk_progressnote as integer
+    '   fk_vaccine integer,
+    '   fk_schedule integer,
+    '   fk_site integer NOT NULL DEFAULT 1,
+    '   fk_laterality integer,
+    '   date_given character varying(10), -- not a date field because sometimes may need to record just say 01/2002 or 1998
+    '   serial_no text NOT NULL DEFAULT
+    '-----------------------------------------------------------------------------------
+    
+    Dim x As Integer
+    Dim EA As FVaccineEditArea
+    Dim sProgressNotes As String 
+    
+    If Hbox_EditArea.Padding = 0 Then Return
+    If Not Vaccination_Valid() Then Return 
+    
+    episode = New Collection 
+   '-------------------------------------------------------------------
+   'If a progress note key exists, then this record is being edited    
+   '1-n vaccines fk_progressnote always the same as part of an episode
+   'if this record being edited within the current consultation
+   'just change the progress notes.
+   'fk_consult
+   '-------------------------------------------------------------------
+   If currentconsult.GetPK() = fk_consult_progress_note Or fk_consult_progress_note = 0 Then    'if editing on same day, or creating new vaccination episode
+      sProgressNotes = "<B>New Vaccination - " & txtSchedule.text & "</B><BR>"     'allow replacing of existing text
+   Else
+      sProgressNotes = "<B>Vaccination Edited - " & txtSchedule.text & "</B><BR>"  'otherwise, annotate editing
+   End If  
    
-   Dim x As Integer
-   Dim EA As FVaccineEditArea
-   
-   If Hbox_EditArea.Padding = 0 Then Return
-   If Not Vaccination_Valid() Then Return 
-   
-   episode = New Collection 
    For Each EA In EditAreas
       vaccination = New Collection
-      vaccination!fk_consult = currentconsult.GetPK()
+      If EA.fk_vaccination <> 0 Then                           'previously saved vaccination
+         vaccination!fk_vaccination = EA.fk_vaccination
+      Endif
       vaccination!fk_vaccine = EA.fk_vaccine
       vaccination!fk_schedule = EA.fk_schedule
       vaccination!fk_site = EA.fk_site
       vaccination!fk_laterality = EA.fk_laterality
       Vaccination!date_given = EA.txtDate.text 'because may be entering vaccine retrospectively
       Vaccination!serial_no = EA.txtSerialNumber.text
+      sProgressNotes &= " - " & EA.txtVaccine.text & ", serial number:" & EA.txtSerialNumber.text & " given on " & EA.txtDate.text 
+      sProgressNotes &= ", site " & EA.cmbSiteAdministration.text
+      Select Case EA.fk_laterality
+         Case const.LateralityLeft
+            sProgressNotes &= " (L)"
+         Case const.LateralityRight
+            sProgressNotes &= " (R)"
+      End Select
+      sProgressNotes &= "<BR>"
       Episode.Add(vaccination, Episode.count)
    Next
    
    modDBConnect.BeginTrans()
-   modVaccinationDBI.Vaccination_Episode_Save(Episodes, pk_view, Episode)
+   fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_Vaccination, fk_progressnote, "Vaccinations", 0, False)
+   For Each vaccination In Episode
+      vaccination!fk_progressnote = fk_progressnote
+   Next
+   modVaccinationDBI.Vaccination_Episode_Save(currentconsult!vaccinations_given, Episode)
    modDBConnect.CommitTrans()
    Reload()
+   
+End
+
+Public Sub mnuVaccinesGiven_Click()
+   
+   Select Case Last.tag
+      Case "edit"
+         Vaccination_Edit()
+      Case "delete"
+      Case "pi"
+      Case "help"
+         
+   End Select
    
 End
 
@@ -516,6 +596,9 @@ Public Sub Reload()
    Dim last_fk_schedule As Integer
    
    EditArea_Clear()
+   Vbox_EditArea_Inner.enabled = False
+   tbSave.Enabled = False  
+   
    lvwSchedules.Clear
    currentconsult.Refresh("vaccinations_given")
    
@@ -531,7 +614,7 @@ Public Sub Reload()
       lvwSchedules.Item.Selected = True  'effectively lvwSchedules_Select()
       lvwSchedules.SetFocus() 
    End If   
-
+   
 End
 
 Public Sub lvwSchedules_Select()
@@ -571,20 +654,20 @@ Public Sub Vaccines_get(tb As Textbox)
       listview1.Add(vaccine!pk_view, vaccine!brand)
    Next
    If vaccine!multiple_vaccines = False Then                 'if this schedule dosn't contain
-     If vaccines.count = 1 Then
-       Vaccine_Select()
-       If EditAreas[x].txtSerialNumber.text <> "" Then
-          tbSave.SetFocus()
-          Return 
-       Endif
-       
-     Else
+      If vaccines.count = 1 Then
+         Vaccine_Select()
+         If EditAreas[x].txtSerialNumber.text <> "" Then
+            tbSave.SetFocus()
+            Return 
+         Endif
+         
+      Else
          With listview1                                         'multiple vaccines, then these
             .Visible = True                                     'vaccines are brand equivalents
             .tag = tb                                           'so popup the list of these for user to choose
          End With      
          Return 
-     End If
+      End If
    Else                                                       'otherwise, they must be a fixed schedule
       bExit = True                                                    
       For Each Vaccine In vaccines                           'containing multiple to be given at same time
@@ -629,11 +712,11 @@ Public Sub Vaccine_Select()
    Else
       tbSave.SetFocus()
    End If   
-
+   
 End
 
 Public Sub EditArea_notifyData_Changed(flag As Boolean)
-   
+    If Bexit Then Return 
    If flag Then 
       tbSave.Foreground = Color.Red
       Hbox_EditArea.Padding = 1
@@ -662,7 +745,14 @@ Public Sub EditArea_Clear()
       EditAreas.Delete(1, y)
    Endif
    iEditArea = 0
+   Serial_Numbers = New Collection 
    txtSchedule.Clear()
+   fk_progressnote = 0  
+   fk_consult_progress_note = 0
+   listview1.visible = False  
+   Vbox_EditArea_Inner.enabled = False
+   tbSave.Enabled = False    
+
    bExit = False  
    EditArea_notifyData_Changed(False)
    
@@ -686,11 +776,17 @@ Public Sub EditArea_Buttons_Click()
       Case "brief pi"
          Message.Info(Str(Hbox_EditArea.padding))
       Case "save"
-         Vaccination_Save()
+         Vaccination_Episode_Save()
    End Select
    
 End
 
 Public Sub HBox_EditAreas_MouseDown()
+   
+End
+
+Public Sub cvwVaccines_Menu()
+   
+   If Last.count Then mnuVaccinesGiven.Popup()
    
 End

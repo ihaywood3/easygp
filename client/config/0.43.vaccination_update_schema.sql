@@ -1123,3 +1123,5 @@ GRANT ALL ON TABLE vwvaccines TO staff;
 -- PostgreSQL database dump complete
 --
 
+truncate db.lu_version;
+insert into db.lu_version (lu_major,lu_minor) values (0, 43);

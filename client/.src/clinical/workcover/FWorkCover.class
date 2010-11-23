@@ -25,6 +25,10 @@
 '              all over the place is necessary, because the lost focus event of the 
 '              calender dosn't trigger reliably, leaving it poppup up at inopportune
 '              times.
+'KNOWN BUGS    There is an elusive missing fk_claim on some saves. It seems to be
+'              when claim is created, saved, and then new_visit clicked on but I've
+'              not been able to track it down.
+'
 ' TODO'S       Implement delete of visit/claim with audit trail
 '-----------------------------------------------------------------------------------
 
@@ -204,12 +208,9 @@ Public Sub Reload()
       cvwVisits.Item.Selected = True 'highlight with  marquee 
       lvwClaims_Select()             'setspkviewclaim, load claim collection
       Visit_Display()                'show (disabled) details of last visit)             
-      
-   Else
-      
-      Claim_New() 
-   End If           
-
+    End If           
+   VBox_EditArea.Enabled = False 
+   HBox_Visit_Type.Enabled = False  
 End
 
 Public Function EditArea_Contents_Valid() As Boolean
@@ -450,6 +451,7 @@ Public Sub Visit_New()
    bexit = False   
    bNewClaim = False 
    VBox_EditArea.Enabled = True
+   HBox_Visit_Type.Enabled = True   
    txtReviewDate.SetFocus()
 
 End
@@ -607,7 +609,7 @@ Public Function WorkcoverForm_LaTeX_Construct() As CTemplate
    templ.Subst("work.restrictions", txtRestrictions.text)
    templ.Subst("work.capabilities", txtCapabilities.text) 
    
-   If visit!fitness_perm_mod_duties_from = True Then 
+   If Not IsNull(visit!fitness_perm_mod_duties_from) Then 
       templ.Checkbox("permanent_checkbox", True)
    Else
       templ.Checkbox("permanent_checkbox", False)
@@ -891,9 +893,9 @@ Public Sub Claim_New()
    rbOrganisation.value = True
    Contact_Type = const.contacttype_organisation
    EditArea_Notify_Datachanged(False)
-   
+   HBox_Visit_Type.Enabled = True   
    VBox_EditArea.Enabled = True 
-  
+   tbPreview.Enabled = True
    txtIdentifier.SetFocus()
 
 End
@@ -972,7 +974,7 @@ Public Sub cvwVisits_Click()
    Visit_Display()
    EditArea_Notify_Datachanged(False)
    VBox_EditArea.Enabled = False
-
+   HBox_Visit_Type.Enabled = False  
 End
 
 Public Sub cvwVisits_Select()
@@ -1110,6 +1112,7 @@ Public Sub Visit_Edit()
    Visit_Display()
    lblWorkcover.text = "Edit Exiting Visit"
    VBox_EditArea.Enabled = True
+   HBox_Visit_Type.Enabled = True   
 
 End
 
@@ -1131,11 +1134,23 @@ Public Sub Visit_Display()
    Try txtCodedDiagnosis.text = visit!coded_term & "(" & visit!fk_code & ")"
    txtManagementPlan.text = visit!management_plan
    If Not IsNull(visit!review_date) Then txtReviewDate.text = modUtil.Format_Date(visit!review_date) 
-   If Not IsNull(visit!fitness_preinjury_from) Then txtPreInjury_From.text = modUtil.Format_Date(visit!fitness_preinjury_from)
-   If Not IsNull(visit!fitness_suitable_from) Then txtSuitable_From.text = modUtil.Format_Date(visit!fitness_suitable_from)
+   If Not IsNull(visit!fitness_preinjury_from) Then 
+         txtPreInjury_From.text = modUtil.Format_Date(visit!fitness_preinjury_from)
+         chkFitness_PreInjury.value = True
+   End If
+   If Not IsNull(visit!fitness_suitable_from) Then
+       txtSuitable_From.text = modUtil.Format_Date(visit!fitness_suitable_from)
+       chkFitness_Suitable.Value = True
+   End If   
    If Not IsNull(visit!fitness_suitable_to) Then txtSuitable_To.text = modUtil.Format_Date(visit!fitness_suitable_to)
-   If Not IsNull(visit!fitness_perm_mod_duties_from) Then txtPermModDuties_From.Text = modUtil.Format_Date(visit!fitness_perm_mod_duties_from)
-   If Not IsNull(visit!fitness_unfit_from) Then txtunfit_From.text = modUtil.Format_Date(visit!fitness_unfit_from)
+   If Not IsNull(visit!fitness_perm_mod_duties_from) Then
+       txtPermModDuties_From.Text = modUtil.Format_Date(visit!fitness_perm_mod_duties_from)
+       chkFitness_PermModDuties.Value = True
+   End If   
+   If Not IsNull(visit!fitness_unfit_from) Then 
+         txtunfit_From.text = modUtil.Format_Date(visit!fitness_unfit_from)
+         chkFitness_Unfit.Value = True 
+   End If   
    If Not IsNull(visit!fitness_unfit_to) Then txtUnfit_To.text = modUtil.Format_Date(visit!fitness_unfit_to)
    
    txtCanWork_HrsPerDay.text = visit!hours_capable
@@ -1556,7 +1571,7 @@ Public Sub EditAreaTextBox_GotFocus()
    'must do this as user could be selecting dose, then move off this control
    'sometimes the DateChooser1.lostfocus event dosn't trigger to remove itself
    HBox_Calander.Visible = False         
-   columnview1.Visible = False   
+   VBox_ColumnView.Visible = False   
    listview1.Visible = False   'needed, don't remove                   
    Last.BackGround = Color.rgb(95, 255, 175)
    Select Case Last.tag
@@ -1667,11 +1682,12 @@ Public Sub EditArea_Notify_Datachanged(flag As Boolean)
       VBox_EditAArea_Outer.Padding = 1
       VBox_EditAArea_Outer.Background = Color.red
       tbSave.Foreground = color.red 
-      
+      tbSave.Enabled = True
    Else
       VBox_EditAArea_Outer.Padding = 0
       VBox_EditAArea_Outer.Background = Color.white
       tbSave.Foreground = color.black
+      tbSave.Enabled = False   
    End If
 
 End 
@@ -1767,7 +1783,10 @@ Public Sub EditAreaTextBox_KeyPress()
             Case "hours per day"
                txtCanWork_DaysPerWeek.SetFocus()
             Case "days per week"
-               txtRestrictions.SetFocus()
+               txtCapabilities.SetFocus()
+            Case "work capabilities"
+              txtRestrictions.SetFocus()
+              
          End Select
       Case key.Down
          Select Case Last.tag
@@ -1864,7 +1883,8 @@ Public Sub TabStrip1_Click()
    
    Select Case TabStrip1.index
       Case cSection_ProgressNotes
-         HBox_WorkcoverHeading.Visible = False 
+          If IsNull(claim) Then Return 
+          HBox_WorkcoverHeading.Visible = False 
          ProgressNotesPage.ReLoad() 
          ProgressNotesPage.lblNotesFor.text = claim!identifier
       Case cSection_Claims
@@ -1949,9 +1969,7 @@ Public Sub Coded_Term_Get()
       Next 
       lblTermCount.text = Str$(terms.count) & " terms retreived"
       columnview1.tag = txtCodedDiagnosis
-      columnview1.Raise
-      columnview1.Visible = True
-      VBox_ColumnView.Visible = True 
+       VBox_ColumnView.Visible = True 
    Else 
       VBox_ColumnView.Visible = False 'empty recordset
    End If  
@@ -1981,7 +1999,6 @@ End
 Public Sub Columnview1_DblClick()
 
    Coded_Term_Select() 
-   Columnview1.Visible = False 
    VBox_ColumnView.Visible = False   
 
 End

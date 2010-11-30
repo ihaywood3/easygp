@@ -1,8 +1,9 @@
+Drop schema clin_vaccination cascade;
 --
 -- PostgreSQL database dump
 --
 
--- Started on 2010-11-21 19:41:55 EST
+-- Started on 2010-11-30 19:42:15 EST
 
 SET statement_timeout = 0;
 SET client_encoding = 'UTF8';
@@ -366,7 +367,7 @@ SELECT pg_catalog.setval('lu_vaccines_pk_seq', 193, true);
 
 
 --
--- TOC entry 3250 (class 1259 OID 297189)
+-- TOC entry 3249 (class 1259 OID 297189)
 -- Dependencies: 33
 -- Name: vaccine_serial_numbers; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
@@ -381,7 +382,7 @@ CREATE TABLE vaccine_serial_numbers (
 
 --
 -- TOC entry 3670 (class 0 OID 0)
--- Dependencies: 3250
+-- Dependencies: 3249
 -- Name: TABLE vaccine_serial_numbers; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -389,8 +390,8 @@ COMMENT ON TABLE vaccine_serial_numbers IS 'last used batch number to make it ea
 
 
 --
--- TOC entry 3249 (class 1259 OID 297187)
--- Dependencies: 3250 33
+-- TOC entry 3248 (class 1259 OID 297187)
+-- Dependencies: 3249 33
 -- Name: vaccine_serial_numbers_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -404,7 +405,7 @@ CREATE SEQUENCE vaccine_serial_numbers_pk_seq
 
 --
 -- TOC entry 3672 (class 0 OID 0)
--- Dependencies: 3249
+-- Dependencies: 3248
 -- Name: vaccine_serial_numbers_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -413,16 +414,16 @@ ALTER SEQUENCE vaccine_serial_numbers_pk_seq OWNED BY vaccine_serial_numbers.pk;
 
 --
 -- TOC entry 3673 (class 0 OID 0)
--- Dependencies: 3249
+-- Dependencies: 3248
 -- Name: vaccine_serial_numbers_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('vaccine_serial_numbers_pk_seq', 18, true);
+SELECT pg_catalog.setval('vaccine_serial_numbers_pk_seq', 19, true);
 
 
 --
--- TOC entry 3248 (class 1259 OID 288926)
--- Dependencies: 3412 33
+-- TOC entry 3247 (class 1259 OID 288926)
+-- Dependencies: 3411 33
 -- Name: vwvaccines; Type: VIEW; Schema: clin_vaccination; Owner: -
 --
 
@@ -431,8 +432,8 @@ CREATE VIEW vwvaccines AS
 
 
 --
--- TOC entry 3252 (class 1259 OID 301444)
--- Dependencies: 3414 33
+-- TOC entry 3251 (class 1259 OID 301444)
+-- Dependencies: 3413 33
 -- Name: vwvaccinesgiven; Type: VIEW; Schema: clin_vaccination; Owner: -
 --
 
@@ -441,8 +442,8 @@ CREATE VIEW vwvaccinesgiven AS
 
 
 --
--- TOC entry 3251 (class 1259 OID 301439)
--- Dependencies: 3413 33
+-- TOC entry 3250 (class 1259 OID 301439)
+-- Dependencies: 3412 33
 -- Name: vwvaccinesinschedule; Type: VIEW; Schema: clin_vaccination; Owner: -
 --
 
@@ -497,7 +498,7 @@ ALTER TABLE vaccinations ALTER COLUMN pk SET DEFAULT nextval('data_pk_seq'::regc
 
 --
 -- TOC entry 3621 (class 2604 OID 297192)
--- Dependencies: 3249 3250 3250
+-- Dependencies: 3248 3249 3249
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -907,13 +908,13 @@ COPY vaccinations (pk, fk_vaccine, fk_schedule, fk_site, fk_laterality, date_giv
 29  20  59  2  2  21/11/2010  HB-Vax-SN1  507
 30  124  59  4  2  21/11/2010  Varilrix-SN1  507
 31  128  15  1  2  21/11/2010  Boostrix - SN4  508
-22  128  15  3  2  21/11/2010  Boostrix - SN4  501
+22  42  26  2  1  24/11/2010  Plaque SN1  509
 \.
 
 
 --
 -- TOC entry 3639 (class 0 OID 297189)
--- Dependencies: 3250
+-- Dependencies: 3249
 -- Data for Name: vaccine_serial_numbers; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
@@ -925,6 +926,7 @@ COPY vaccine_serial_numbers (pk, fk_vaccine, serial_number, date_used) FROM stdi
 9  128  Boostrix - SN1  2010-11-21
 14  128  Boostrix - SN3  2010-11-21
 15  128  Boostrix - SN4  2010-11-21
+19  42  Plaque SN1  2010-11-24
 \.
 
 
@@ -980,7 +982,7 @@ ALTER TABLE ONLY lu_vaccines
 
 --
 -- TOC entry 3633 (class 2606 OID 297197)
--- Dependencies: 3250 3250
+-- Dependencies: 3249 3249
 -- Name: vaccine_serial_numbers_pkey; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -1094,7 +1096,7 @@ GRANT ALL ON TABLE lu_vaccines_in_schedule TO staff;
 
 --
 -- TOC entry 3671 (class 0 OID 0)
--- Dependencies: 3250
+-- Dependencies: 3249
 -- Name: vaccine_serial_numbers; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1107,7 +1109,7 @@ GRANT ALL ON TABLE vaccine_serial_numbers TO staff;
 
 --
 -- TOC entry 3674 (class 0 OID 0)
--- Dependencies: 3248
+-- Dependencies: 3247
 -- Name: vwvaccines; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1117,11 +1119,11 @@ GRANT ALL ON TABLE vwvaccines TO easygp;
 GRANT ALL ON TABLE vwvaccines TO staff;
 
 
--- Completed on 2010-11-21 19:41:55 EST
+-- Completed on 2010-11-30 19:42:16 EST
 
 --
 -- PostgreSQL database dump complete
 --
 
-truncate db.lu_version;
+  truncate db.lu_version;
 insert into db.lu_version (lu_major,lu_minor) values (0, 43);

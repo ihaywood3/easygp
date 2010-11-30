@@ -16,3 +16,7 @@ CREATE INDEX "sending_entity_idx" ON "documents"."documents"
   
   CREATE INDEX "tag_idx" ON "documents"."documents"
   USING btree ("tag");
+  
+  
+  truncate db.lu_version;
+insert into db.lu_version (lu_major,lu_minor) values (0, 44);

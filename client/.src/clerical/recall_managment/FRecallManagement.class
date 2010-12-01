@@ -18,6 +18,8 @@
 '----------------------------------------------------------------------
 Private recalls_due As Collection
 Private bexit As Boolean
+Private patient As Collection
+Private currentconsult As CConsult
 
 Public Sub form_Open()
   
@@ -39,30 +41,74 @@ Public Sub Init()
      .Columns[8].Text = "Contact by"
   
    End With
+   cmbRecallsDue.Add("All Overdue Recalls")
+   cmbRecallsDue.Add("Due in 2 Weeks")
+   cmbRecallsDue.Add("Due in 3 Weeks")
+   cmbRecallsDue.Add("Due in Next Month")
+   
    recalls_due = modRecallsDBI.Recalls_Due_Get()
-   cvwRecalls_Refresh
+   cvwRecalls_Refresh()
 End
 
-Public Sub cvwRecalls_Refresh()
+Public Sub Consult_Check_Created(summary As String)
+   'probably should live elsewhere ?cConsult and pass parameters
+   
+   If IsNull(currentconsult) Then   
+      CurrentConsult = New CConsult(patient)
+      currentconsult.Set(const.ConsultType_StaffTask, summary)
+   End If
+   
+End
+Public Sub cvwRecalls_Refresh(Optional days_due As Integer = 0, Optional bOverdue As Boolean = False)
       Dim x As Integer
       Dim recall As Collection
-      
+      cvwRecallsDue.Clear()
       For Each recall In recalls_due
-         x = recall!pk_recall
-         cvwRecallsDue.add(x, 0)
-         cvwRecallsDue[x][0] = Format(recall!due, "dd/mm/yyyy")
-         cvwRecallsDue[x][1] = recall!firstname
-         cvwRecallsDue[x][2] = recall!surname
-         cvwRecallsDue[x][3] = recall!street & " " & recall!suburb & " " & recall!postcode 
-         cvwRecallsDue[x][6] = recall!reason
-         cvwRecallsDue[x][7] = recall!urgency
-         cvwRecallsDue[x][8] = recall!contact_method
- 
+        
+         If bOverdue Then
+            If recall!days_due < 0 Then
+               cvwRecalls_Add(recall)
+            End If
+         Else
+           If recall!days_due < days_due And recall!days_due > 0 Then
+               cvwRecalls_Add(recall)
+           Endif
+         End If   
+  
       Next
     
   
 End
 
+Public Sub cvwRecalls_Add(recall As Collection)
+   Dim x As Integer
+   
+         x = recall!pk_recall
+         cvwRecallsDue.add(x, 0)
+         cvwRecallsDue[x][0] = Format(recall!due, "dd/mm/yyyy")
+         cvwRecallsDue[x][1] = recall!firstname
+         cvwRecallsDue[x][2] = recall!surname
+         cvwRecallsDue[x][3] = recall!street & " " & recall!town & " " & recall!postcode 
+         cvwRecallsDue[x][6] = recall!reason
+         cvwRecallsDue[x][7] = recall!urgency
+         cvwRecallsDue[x][8] = recall!contact_method
+ 
+  
+End
+
+
+Public Sub cmbRecallsDue_Click()
+   Select Case Last.Text
+     Case "All Overdue Recalls"
+          cvwRecalls_Refresh(0, True)
+     Case "Due in 2 Weeks"
+         cvwRecalls_Refresh(15, False)
+     Case "Due in 3 Weeks"
+         cvwRecalls_Refresh(22, False)
+     Case "Due in Next Month"
+        cvwRecalls_Refresh(29, False)
+   End Select
+End
 Public Sub form_Close()
   
    Settings_Save()
@@ -107,4 +153,38 @@ Public Sub cvwRecallsDue_Menu()
 
   mnuRecallManagement.Popup()
 
+End
+
+Public Sub ToolButton2_Click()
+     patient = recalls_due[cvwRecallsDue.Item.key]
+     Consult_Check_Created("recall")
+     modPrinting.Print_latex(RecallLetter_LaTex_Construct().GetData(), const.Paper_Plain, 1)
+
+End
+
+Public Sub RecallLetter_LaTex_Construct() As CTemplate
+   Dim sName As String
+   Dim sAddress As String
+   Dim sString As String
+   Dim comm As Collection 
+   Dim templ As New CTemplate("recall", "tex")
+  
+  templ.Subst_common(currentconsult)
+
+  
+  ' templ.Subst("from_date", Format(Certificate!from_date, "dd/mm/yyyy"))
+  ' If IsNull(Certificate!to_date) Then
+  '    templ.Subst("to_date", "(N/A)")
+  ' Else
+  '    templ.Subst("to_date", Format(Certificate!to_date, "dd/mm/yyyy"))
+  ' End If 
+  ' 
+  ' If Not IsNull(Certificate!notes) Then
+  '     templ.Subst("additional_notes", Certificate!notes)
+  ' Else
+  '     templ.Subst("additional_notes", "")
+  ' Endif
+  ' templ.Subst("certificate.date", Format(Certificate!date, "dd/mm/yyyy"))
+
+  Return templ
 End

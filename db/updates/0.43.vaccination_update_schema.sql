@@ -1,9 +1,9 @@
-Drop schema clin_vaccination cascade;
+drop schema clin_vaccination cascade;
 --
 -- PostgreSQL database dump
 --
 
--- Started on 2010-11-30 19:42:15 EST
+-- Started on 2010-12-03 08:24:52 EST
 
 SET statement_timeout = 0;
 SET client_encoding = 'UTF8';
@@ -13,7 +13,7 @@ SET client_min_messages = warning;
 SET escape_string_warning = off;
 
 --
--- TOC entry 33 (class 2615 OID 284723)
+-- TOC entry 10 (class 2615 OID 332185)
 -- Name: clin_vaccination; Type: SCHEMA; Schema: -; Owner: -
 --
 
@@ -21,8 +21,8 @@ CREATE SCHEMA clin_vaccination;
 
 
 --
--- TOC entry 3642 (class 0 OID 0)
--- Dependencies: 33
+-- TOC entry 3635 (class 0 OID 0)
+-- Dependencies: 10
 -- Name: SCHEMA clin_vaccination; Type: COMMENT; Schema: -; Owner: -
 --
 
@@ -36,8 +36,8 @@ SET default_tablespace = '';
 SET default_with_oids = false;
 
 --
--- TOC entry 3017 (class 1259 OID 286270)
--- Dependencies: 3606 3607 33
+-- TOC entry 3203 (class 1259 OID 332186)
+-- Dependencies: 3600 3601 10
 -- Name: vaccinations; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -54,8 +54,8 @@ CREATE TABLE vaccinations (
 
 
 --
--- TOC entry 3644 (class 0 OID 0)
--- Dependencies: 3017
+-- TOC entry 3637 (class 0 OID 0)
+-- Dependencies: 3203
 -- Name: COLUMN vaccinations.date_given; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -63,8 +63,8 @@ COMMENT ON COLUMN vaccinations.date_given IS 'not a date field because sometimes
 
 
 --
--- TOC entry 3018 (class 1259 OID 286278)
--- Dependencies: 3017 33
+-- TOC entry 3204 (class 1259 OID 332194)
+-- Dependencies: 10 3203
 -- Name: data_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -77,8 +77,8 @@ CREATE SEQUENCE data_pk_seq
 
 
 --
--- TOC entry 3646 (class 0 OID 0)
--- Dependencies: 3018
+-- TOC entry 3639 (class 0 OID 0)
+-- Dependencies: 3204
 -- Name: data_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -86,8 +86,8 @@ ALTER SEQUENCE data_pk_seq OWNED BY vaccinations.pk;
 
 
 --
--- TOC entry 3647 (class 0 OID 0)
--- Dependencies: 3018
+-- TOC entry 3640 (class 0 OID 0)
+-- Dependencies: 3204
 -- Name: data_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
@@ -95,8 +95,8 @@ SELECT pg_catalog.setval('data_pk_seq', 34, true);
 
 
 --
--- TOC entry 3019 (class 1259 OID 286296)
--- Dependencies: 3609 33
+-- TOC entry 3205 (class 1259 OID 332196)
+-- Dependencies: 3603 10
 -- Name: lu_descriptions; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -108,8 +108,8 @@ CREATE TABLE lu_descriptions (
 
 
 --
--- TOC entry 3649 (class 0 OID 0)
--- Dependencies: 3019
+-- TOC entry 3642 (class 0 OID 0)
+-- Dependencies: 3205
 -- Name: TABLE lu_descriptions; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -117,8 +117,8 @@ COMMENT ON TABLE lu_descriptions IS 'create the vaccines_descriptions table cont
 
 
 --
--- TOC entry 3020 (class 1259 OID 286305)
--- Dependencies: 3611 3612 3613 3614 3615 33
+-- TOC entry 3206 (class 1259 OID 332203)
+-- Dependencies: 3605 3606 3607 3608 3609 10
 -- Name: lu_schedules; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -139,8 +139,8 @@ CREATE TABLE lu_schedules (
 
 
 --
--- TOC entry 3651 (class 0 OID 0)
--- Dependencies: 3020
+-- TOC entry 3644 (class 0 OID 0)
+-- Dependencies: 3206
 -- Name: TABLE lu_schedules; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -150,8 +150,8 @@ and practical referral to the doc for further information';
 
 
 --
--- TOC entry 3652 (class 0 OID 0)
--- Dependencies: 3020
+-- TOC entry 3645 (class 0 OID 0)
+-- Dependencies: 3206
 -- Name: COLUMN lu_schedules.schedule; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -159,8 +159,8 @@ COMMENT ON COLUMN lu_schedules.schedule IS 'either a target disease name eg ''ye
 
 
 --
--- TOC entry 3653 (class 0 OID 0)
--- Dependencies: 3020
+-- TOC entry 3646 (class 0 OID 0)
+-- Dependencies: 3206
 -- Name: COLUMN lu_schedules.atsi_only; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -168,8 +168,8 @@ COMMENT ON COLUMN lu_schedules.atsi_only IS 'australian requirement, some schedu
 
 
 --
--- TOC entry 3654 (class 0 OID 0)
--- Dependencies: 3020
+-- TOC entry 3647 (class 0 OID 0)
+-- Dependencies: 3206
 -- Name: COLUMN lu_schedules.fk_season; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -177,8 +177,8 @@ COMMENT ON COLUMN lu_schedules.fk_season IS 'eg. influenza prompts only wanted a
 
 
 --
--- TOC entry 3655 (class 0 OID 0)
--- Dependencies: 3020
+-- TOC entry 3648 (class 0 OID 0)
+-- Dependencies: 3206
 -- Name: COLUMN lu_schedules.multiple_vaccines; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -187,8 +187,8 @@ COMMENT ON COLUMN lu_schedules.multiple_vaccines IS 'if TRUE this vaccine schedu
 
 
 --
--- TOC entry 3656 (class 0 OID 0)
--- Dependencies: 3020
+-- TOC entry 3649 (class 0 OID 0)
+-- Dependencies: 3206
 -- Name: COLUMN lu_schedules.notes; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -196,8 +196,8 @@ COMMENT ON COLUMN lu_schedules.notes IS 'any additional notes, eg the NSW 12-13y
 
 
 --
--- TOC entry 3021 (class 1259 OID 286316)
--- Dependencies: 3020 33
+-- TOC entry 3207 (class 1259 OID 332214)
+-- Dependencies: 3206 10
 -- Name: lu_schedules_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -210,8 +210,8 @@ CREATE SEQUENCE lu_schedules_pk_seq
 
 
 --
--- TOC entry 3658 (class 0 OID 0)
--- Dependencies: 3021
+-- TOC entry 3651 (class 0 OID 0)
+-- Dependencies: 3207
 -- Name: lu_schedules_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -219,8 +219,8 @@ ALTER SEQUENCE lu_schedules_pk_seq OWNED BY lu_schedules.pk;
 
 
 --
--- TOC entry 3659 (class 0 OID 0)
--- Dependencies: 3021
+-- TOC entry 3652 (class 0 OID 0)
+-- Dependencies: 3207
 -- Name: lu_schedules_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
@@ -228,8 +228,8 @@ SELECT pg_catalog.setval('lu_schedules_pk_seq', 60, true);
 
 
 --
--- TOC entry 3022 (class 1259 OID 286326)
--- Dependencies: 3617 33
+-- TOC entry 3208 (class 1259 OID 332216)
+-- Dependencies: 3611 10
 -- Name: lu_vaccines; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -244,8 +244,8 @@ CREATE TABLE lu_vaccines (
 
 
 --
--- TOC entry 3661 (class 0 OID 0)
--- Dependencies: 3022
+-- TOC entry 3654 (class 0 OID 0)
+-- Dependencies: 3208
 -- Name: TABLE lu_vaccines; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -256,8 +256,8 @@ COMMENT ON TABLE lu_vaccines IS 'A Table to hold all vaccines.
 
 
 --
--- TOC entry 3023 (class 1259 OID 286333)
--- Dependencies: 3019 33
+-- TOC entry 3209 (class 1259 OID 332223)
+-- Dependencies: 3205 10
 -- Name: lu_vaccines_descriptions_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -270,8 +270,8 @@ CREATE SEQUENCE lu_vaccines_descriptions_pk_seq
 
 
 --
--- TOC entry 3663 (class 0 OID 0)
--- Dependencies: 3023
+-- TOC entry 3656 (class 0 OID 0)
+-- Dependencies: 3209
 -- Name: lu_vaccines_descriptions_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -279,8 +279,8 @@ ALTER SEQUENCE lu_vaccines_descriptions_pk_seq OWNED BY lu_descriptions.pk;
 
 
 --
--- TOC entry 3664 (class 0 OID 0)
--- Dependencies: 3023
+-- TOC entry 3657 (class 0 OID 0)
+-- Dependencies: 3209
 -- Name: lu_vaccines_descriptions_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
@@ -288,8 +288,8 @@ SELECT pg_catalog.setval('lu_vaccines_descriptions_pk_seq', 41, true);
 
 
 --
--- TOC entry 3024 (class 1259 OID 286335)
--- Dependencies: 3619 33
+-- TOC entry 3210 (class 1259 OID 332225)
+-- Dependencies: 3613 10
 -- Name: lu_vaccines_in_schedule; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -303,8 +303,8 @@ CREATE TABLE lu_vaccines_in_schedule (
 
 
 --
--- TOC entry 3025 (class 1259 OID 286339)
--- Dependencies: 3024 33
+-- TOC entry 3211 (class 1259 OID 332229)
+-- Dependencies: 3210 10
 -- Name: lu_vaccines_in_schedule_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -317,8 +317,8 @@ CREATE SEQUENCE lu_vaccines_in_schedule_pk_seq
 
 
 --
--- TOC entry 3666 (class 0 OID 0)
--- Dependencies: 3025
+-- TOC entry 3659 (class 0 OID 0)
+-- Dependencies: 3211
 -- Name: lu_vaccines_in_schedule_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -326,8 +326,8 @@ ALTER SEQUENCE lu_vaccines_in_schedule_pk_seq OWNED BY lu_vaccines_in_schedule.p
 
 
 --
--- TOC entry 3667 (class 0 OID 0)
--- Dependencies: 3025
+-- TOC entry 3660 (class 0 OID 0)
+-- Dependencies: 3211
 -- Name: lu_vaccines_in_schedule_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
@@ -335,8 +335,8 @@ SELECT pg_catalog.setval('lu_vaccines_in_schedule_pk_seq', 170, true);
 
 
 --
--- TOC entry 3026 (class 1259 OID 286341)
--- Dependencies: 3022 33
+-- TOC entry 3212 (class 1259 OID 332231)
+-- Dependencies: 3208 10
 -- Name: lu_vaccines_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -349,8 +349,8 @@ CREATE SEQUENCE lu_vaccines_pk_seq
 
 
 --
--- TOC entry 3668 (class 0 OID 0)
--- Dependencies: 3026
+-- TOC entry 3661 (class 0 OID 0)
+-- Dependencies: 3212
 -- Name: lu_vaccines_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -358,8 +358,8 @@ ALTER SEQUENCE lu_vaccines_pk_seq OWNED BY lu_vaccines.pk;
 
 
 --
--- TOC entry 3669 (class 0 OID 0)
--- Dependencies: 3026
+-- TOC entry 3662 (class 0 OID 0)
+-- Dependencies: 3212
 -- Name: lu_vaccines_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
@@ -367,8 +367,8 @@ SELECT pg_catalog.setval('lu_vaccines_pk_seq', 193, true);
 
 
 --
--- TOC entry 3249 (class 1259 OID 297189)
--- Dependencies: 33
+-- TOC entry 3213 (class 1259 OID 332233)
+-- Dependencies: 10
 -- Name: vaccine_serial_numbers; Type: TABLE; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -381,8 +381,8 @@ CREATE TABLE vaccine_serial_numbers (
 
 
 --
--- TOC entry 3670 (class 0 OID 0)
--- Dependencies: 3249
+-- TOC entry 3663 (class 0 OID 0)
+-- Dependencies: 3213
 -- Name: TABLE vaccine_serial_numbers; Type: COMMENT; Schema: clin_vaccination; Owner: -
 --
 
@@ -390,8 +390,8 @@ COMMENT ON TABLE vaccine_serial_numbers IS 'last used batch number to make it ea
 
 
 --
--- TOC entry 3248 (class 1259 OID 297187)
--- Dependencies: 3249 33
+-- TOC entry 3214 (class 1259 OID 332239)
+-- Dependencies: 10 3213
 -- Name: vaccine_serial_numbers_pk_seq; Type: SEQUENCE; Schema: clin_vaccination; Owner: -
 --
 
@@ -404,8 +404,8 @@ CREATE SEQUENCE vaccine_serial_numbers_pk_seq
 
 
 --
--- TOC entry 3672 (class 0 OID 0)
--- Dependencies: 3248
+-- TOC entry 3665 (class 0 OID 0)
+-- Dependencies: 3214
 -- Name: vaccine_serial_numbers_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_vaccination; Owner: -
 --
 
@@ -413,8 +413,8 @@ ALTER SEQUENCE vaccine_serial_numbers_pk_seq OWNED BY vaccine_serial_numbers.pk;
 
 
 --
--- TOC entry 3673 (class 0 OID 0)
--- Dependencies: 3248
+-- TOC entry 3666 (class 0 OID 0)
+-- Dependencies: 3214
 -- Name: vaccine_serial_numbers_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
@@ -422,8 +422,8 @@ SELECT pg_catalog.setval('vaccine_serial_numbers_pk_seq', 19, true);
 
 
 --
--- TOC entry 3247 (class 1259 OID 288926)
--- Dependencies: 3411 33
+-- TOC entry 3215 (class 1259 OID 332241)
+-- Dependencies: 3378 10
 -- Name: vwvaccines; Type: VIEW; Schema: clin_vaccination; Owner: -
 --
 
@@ -432,8 +432,8 @@ CREATE VIEW vwvaccines AS
 
 
 --
--- TOC entry 3251 (class 1259 OID 301444)
--- Dependencies: 3413 33
+-- TOC entry 3216 (class 1259 OID 332245)
+-- Dependencies: 3379 10
 -- Name: vwvaccinesgiven; Type: VIEW; Schema: clin_vaccination; Owner: -
 --
 
@@ -442,8 +442,8 @@ CREATE VIEW vwvaccinesgiven AS
 
 
 --
--- TOC entry 3250 (class 1259 OID 301439)
--- Dependencies: 3412 33
+-- TOC entry 3217 (class 1259 OID 332250)
+-- Dependencies: 3380 10
 -- Name: vwvaccinesinschedule; Type: VIEW; Schema: clin_vaccination; Owner: -
 --
 
@@ -452,8 +452,8 @@ CREATE VIEW vwvaccinesinschedule AS
 
 
 --
--- TOC entry 3610 (class 2604 OID 287309)
--- Dependencies: 3023 3019
+-- TOC entry 3602 (class 2604 OID 332255)
+-- Dependencies: 3209 3205
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -461,8 +461,8 @@ ALTER TABLE lu_descriptions ALTER COLUMN pk SET DEFAULT nextval('lu_vaccines_des
 
 
 --
--- TOC entry 3616 (class 2604 OID 287311)
--- Dependencies: 3021 3020
+-- TOC entry 3604 (class 2604 OID 332256)
+-- Dependencies: 3207 3206
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -470,8 +470,8 @@ ALTER TABLE lu_schedules ALTER COLUMN pk SET DEFAULT nextval('lu_schedules_pk_se
 
 
 --
--- TOC entry 3618 (class 2604 OID 287313)
--- Dependencies: 3026 3022
+-- TOC entry 3610 (class 2604 OID 332257)
+-- Dependencies: 3212 3208
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -479,8 +479,8 @@ ALTER TABLE lu_vaccines ALTER COLUMN pk SET DEFAULT nextval('lu_vaccines_pk_seq'
 
 
 --
--- TOC entry 3620 (class 2604 OID 287314)
--- Dependencies: 3025 3024
+-- TOC entry 3612 (class 2604 OID 332258)
+-- Dependencies: 3211 3210
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -488,8 +488,8 @@ ALTER TABLE lu_vaccines_in_schedule ALTER COLUMN pk SET DEFAULT nextval('lu_vacc
 
 
 --
--- TOC entry 3608 (class 2604 OID 287315)
--- Dependencies: 3018 3017
+-- TOC entry 3599 (class 2604 OID 332259)
+-- Dependencies: 3204 3203
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -497,8 +497,8 @@ ALTER TABLE vaccinations ALTER COLUMN pk SET DEFAULT nextval('data_pk_seq'::regc
 
 
 --
--- TOC entry 3621 (class 2604 OID 297192)
--- Dependencies: 3248 3249 3249
+-- TOC entry 3614 (class 2604 OID 332260)
+-- Dependencies: 3214 3213
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
@@ -506,433 +506,421 @@ ALTER TABLE vaccine_serial_numbers ALTER COLUMN pk SET DEFAULT nextval('vaccine_
 
 
 --
--- TOC entry 3635 (class 0 OID 286296)
--- Dependencies: 3019
+-- TOC entry 3628 (class 0 OID 332196)
+-- Dependencies: 3205
 -- Data for Name: lu_descriptions; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
-COPY lu_descriptions (pk, description, deleted) FROM stdin;
-1  Hepatitis B vaccine,Haemophilus B conjugate vaccine  f
-2  Influenza virus vaccine  f
-3  Measles vaccine, live,Mumps vaccine, live,Rubella vaccine, live  f
-4  Varicella zoster vaccine, live attenuated  f
-5  Tetanus toxoid,Pertussis vaccine,Diphtheria toxoid  f
-6  Tetanus toxoid,Diphtheria toxoid  f
-7  Hepatitis B vaccine,Hepatitis A vaccine  f
-8  Ditheria,Tetanus,Pertussis,Hib, Hepatitis B, Polio  f
-9  Yellow fever vaccine  f
-10  Salmonella typhi vaccine  f
-11  Diphtheria toxoid  f
-12  Influenza Vaccine  f
-13  Human Papilloma Virus Vaccine  f
-14  Hepatitis A vaccine  f
-15  Yersinia pestis vaccine  f
-16  BCG vaccine  f
-17  Pertussis vaccine,Hepatitis B vaccine,Tetanus toxoid,Diphtheria toxoid  f
-18  Neisseria meningitidis vaccine  f
-19  Coxiella burnetii vaccine  f
-20  Japanese encephalitis virus vaccine  f
-21  Hepatitis B vaccine  f
-22  Rubella vaccine  f
-23  Vibrio cholerae vaccine, oral  f
-24  Poliomyelitis vaccine, oral  f
-25  Vibrio cholerae vaccine  f
-26  salmonella typhi vaccine,Hepatitis A vaccine  f
-27  Yellow fever Vaccine  f
-28  Rota Virus Vaccine  f
-29  Poliomyelitis vaccine  f
-30  Tetanus toxoid  f
-31  Cholera vaccine  f
-32  Hepatitis A vaccine,Hepatitis B vaccine  f
-33  Tetanus toxoid,Diphtheria toxoid,Pertussis vaccine  f
-34  Rabies vaccine  f
-35  Measles vaccine, live,Rubella vaccine, live,Mumps vaccine, live  f
-36  Salmonella typhi vaccine, oral  f
-37  Pertussis vaccine,Tetanus toxoid,Diphtheria toxoid  f
-38  Diptheria,Tetanus,Pertussis,Polio  f
-39  Diphtheria toxoid,Tetanus toxoid  f
-40  Haemophilus B conjugate vaccine  f
-41  Pneumococcal vaccine  f
-\.
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (1, 'Hepatitis B vaccine,Haemophilus B conjugate vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (2, 'Influenza virus vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (3, 'Measles vaccine, live,Mumps vaccine, live,Rubella vaccine, live', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (4, 'Varicella zoster vaccine, live attenuated', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (5, 'Tetanus toxoid,Pertussis vaccine,Diphtheria toxoid', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (6, 'Tetanus toxoid,Diphtheria toxoid', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (7, 'Hepatitis B vaccine,Hepatitis A vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (8, 'Ditheria,Tetanus,Pertussis,Hib, Hepatitis B, Polio', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (9, 'Yellow fever vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (10, 'Salmonella typhi vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (11, 'Diphtheria toxoid', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (12, 'Influenza Vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (13, 'Human Papilloma Virus Vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (14, 'Hepatitis A vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (15, 'Yersinia pestis vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (16, 'BCG vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (17, 'Pertussis vaccine,Hepatitis B vaccine,Tetanus toxoid,Diphtheria toxoid', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (18, 'Neisseria meningitidis vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (19, 'Coxiella burnetii vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (20, 'Japanese encephalitis virus vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (21, 'Hepatitis B vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (22, 'Rubella vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (23, 'Vibrio cholerae vaccine, oral', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (24, 'Poliomyelitis vaccine, oral', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (25, 'Vibrio cholerae vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (26, 'salmonella typhi vaccine,Hepatitis A vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (27, 'Yellow fever Vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (28, 'Rota Virus Vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (29, 'Poliomyelitis vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (30, 'Tetanus toxoid', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (31, 'Cholera vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (32, 'Hepatitis A vaccine,Hepatitis B vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (33, 'Tetanus toxoid,Diphtheria toxoid,Pertussis vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (34, 'Rabies vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (35, 'Measles vaccine, live,Rubella vaccine, live,Mumps vaccine, live', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (36, 'Salmonella typhi vaccine, oral', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (37, 'Pertussis vaccine,Tetanus toxoid,Diphtheria toxoid', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (38, 'Diptheria,Tetanus,Pertussis,Polio', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (39, 'Diphtheria toxoid,Tetanus toxoid', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (40, 'Haemophilus B conjugate vaccine', false);
+INSERT INTO lu_descriptions (pk, description, deleted) VALUES (41, 'Pneumococcal vaccine', false);
 
 
 --
--- TOC entry 3636 (class 0 OID 286305)
--- Dependencies: 3020
+-- TOC entry 3629 (class 0 OID 332203)
+-- Dependencies: 3206
 -- Data for Name: lu_schedules; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
-COPY lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) FROM stdin;
-2  2  \N  2 month childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f  \N
-3  4  \N  4 month  childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f  \N
-4  6  \N  6 month  childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f  \N
-5  12  \N  12 month  childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f  \N
-6  18  \N  18 month  childhood (Prior 1/5/2000)  f  f  \N  t  \N  f  f  \N
-7  4  5  Prior to school  (4-5yrs) (Prior 1/5/2000)  f  f  \N  t  \N  f  f  \N
-8  10  16  Hepatitis B - school 10-16 years (Prior 1/5/2000)  f  f  \N  t  \N  f  f  \N
-9  15  19  ADT + Polio -  15-19 years  f  f  \N  t  \N  f  f  \N
-33  2  \N  2 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f  \N
-34  4  \N  4 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f  \N
-35  6  \N  6 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f  \N
-36  12  \N  12 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f  \N
-37  18  \N  18 month childhood (After 1/5/2000)  f  f  \N  t  \N  f  f  \N
-38  45  5  Prior to school (4-5yrs) (After 1/5/2000)  f  f  \N  t  \N  f  f  \N
-39  \N  144  Chicken Pox age < 12 years  f  f  \N  t  \N  f  f  \N
-41  \N  \N  Pertussis  f  f  \N  t  \N  f  f  \N
-42  2  2  2 month childhood (From 1/11/2005)  f  f  \N  t  \N  f  f  \N
-43  4  4  4 month childhood (From 1/11/2005)  f  f  \N  t  \N  f  f  \N
-49  216  312  Human Papilloma Virus (18-26yrs)  f  f  \N  t  \N  f  f  \N
-16  \N  \N  Tuberculosis  f  f  \N  t  \N  f  f  \N
-17  \N  \N  Q-Fever  f  f  \N  t  \N  f  f  \N
-20  \N  \N  Meningococcal  f  f  \N  t  \N  f  f  \N
-21  \N  \N  Poliomyelitis  f  f  \N  t  \N  f  f  \N
-27  \N  \N  Mumps  f  f  \N  t  \N  f  f  \N
-30  \N  \N  Hepatitis B  f  f  \N  t  \N  f  f  \N
-31  \N  \N  Japanese Encephalitis  f  f  \N  t  \N  f  f  \N
-24  \N  \N  Cholera  f  f  \N  f  \N  f  f  \N
-19  \N  \N  Diptheria  f  f  \N  f  \N  f  f  \N
-14  \N  \N  Influenza  f  f  3  f  \N  f  f  \N
-18  \N  \N  Hepatitis A  f  f  \N  f  \N  f  f  \N
-32  \N  \N  Hepatitis A + Hepatitis B  f  f  \N  f  \N  f  f  \N
-28  \N  \N  Measles  f  f  \N  f  \N  f  f  \N
-13  \N  \N  Pneumoccal  f  f  \N  f  \N  f  f  \N
-22  \N  \N  Rabies  f  f  \N  f  \N  f  f  \N
-26  \N  \N  Plague  f  f  \N  f  \N  f  f  \N
-29  \N  \N  Rubella  f  f  \N  f  \N  f  f  \N
-25  \N  \N  Yellow Fever  f  f  \N  f  \N  f  f  \N
-48  \N  \N  Typhoid + Hepatitis A  f  f  \N  f  \N  f  f  \N
-23  \N  \N  Typhoid  f  f  \N  f  \N  f  f  \N
-15  \N  \N  Tetanus - every 10 years  f  f  \N  f  \N  f  f  \N
-40  \N  \N  Chicken Pox age > 12 years  f  f  \N  f  \N  f  f  \N
-46  18  \N  18 month childhood  f  f  \N  f  \N  f  f  \N
-50  2  \N  2 month childhood  f  f  \N  f  \N  f  t  \N
-51  4  \N  4 month childhood  f  f  \N  f  \N  f  t  \N
-44  6  6  6 month childhood  f  f  \N  f  \N  f  t  \N
-45  12  \N  12 month childhood  f  f  \N  f  \N  f  t  \N
-47  46  60  4 year childhood  f  f  \N  f  \N  f  t  \N
-54  11  12  Aboriginal Winter Schedule  f  t  3  f  \N  f  t  \N
-57  50  \N  50yrs & Over ATSI (Influenza)  f  t  \N  f  \N  f  f  \N
-58  50  \N  50yrs & Over (ATSI) Pneumococcal  f  t  \N  f  \N  f  f  \N
-60  15  \N  15 Yrs (School program)  f  f  \N  f  \N  f  f  School based program
-59  12  \N  12 yrs (School Based)  f  f  \N  f  \N  f  t  School based program only
-\.
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (2, 2, NULL, '2 month childhood (Prior 1/5/2000)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (3, 4, NULL, '4 month  childhood (Prior 1/5/2000)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (4, 6, NULL, '6 month  childhood (Prior 1/5/2000)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (5, 12, NULL, '12 month  childhood (Prior 1/5/2000)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (6, 18, NULL, '18 month  childhood (Prior 1/5/2000)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (7, 4, 5, 'Prior to school  (4-5yrs) (Prior 1/5/2000)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (8, 10, 16, 'Hepatitis B - school 10-16 years (Prior 1/5/2000)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (9, 15, 19, 'ADT + Polio -  15-19 years', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (33, 2, NULL, '2 month childhood (After 1/5/2000)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (34, 4, NULL, '4 month childhood (After 1/5/2000)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (35, 6, NULL, '6 month childhood (After 1/5/2000)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (36, 12, NULL, '12 month childhood (After 1/5/2000)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (37, 18, NULL, '18 month childhood (After 1/5/2000)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (38, 45, 5, 'Prior to school (4-5yrs) (After 1/5/2000)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (39, NULL, 144, 'Chicken Pox age < 12 years', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (41, NULL, NULL, 'Pertussis', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (42, 2, 2, '2 month childhood (From 1/11/2005)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (43, 4, 4, '4 month childhood (From 1/11/2005)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (49, 216, 312, 'Human Papilloma Virus (18-26yrs)', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (16, NULL, NULL, 'Tuberculosis', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (17, NULL, NULL, 'Q-Fever', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (20, NULL, NULL, 'Meningococcal', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (21, NULL, NULL, 'Poliomyelitis', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (27, NULL, NULL, 'Mumps', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (30, NULL, NULL, 'Hepatitis B', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (31, NULL, NULL, 'Japanese Encephalitis', false, false, NULL, true, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (24, NULL, NULL, 'Cholera', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (19, NULL, NULL, 'Diptheria', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (14, NULL, NULL, 'Influenza', false, false, 3, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (18, NULL, NULL, 'Hepatitis A', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (32, NULL, NULL, 'Hepatitis A + Hepatitis B', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (28, NULL, NULL, 'Measles', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (13, NULL, NULL, 'Pneumoccal', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (22, NULL, NULL, 'Rabies', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (26, NULL, NULL, 'Plague', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (29, NULL, NULL, 'Rubella', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (25, NULL, NULL, 'Yellow Fever', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (48, NULL, NULL, 'Typhoid + Hepatitis A', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (23, NULL, NULL, 'Typhoid', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (15, NULL, NULL, 'Tetanus - every 10 years', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (40, NULL, NULL, 'Chicken Pox age > 12 years', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (46, 18, NULL, '18 month childhood', false, false, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (50, 2, NULL, '2 month childhood', false, false, NULL, false, NULL, false, true, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (51, 4, NULL, '4 month childhood', false, false, NULL, false, NULL, false, true, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (44, 6, 6, '6 month childhood', false, false, NULL, false, NULL, false, true, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (45, 12, NULL, '12 month childhood', false, false, NULL, false, NULL, false, true, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (47, 46, 60, '4 year childhood', false, false, NULL, false, NULL, false, true, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (54, 11, 12, 'Aboriginal Winter Schedule', false, true, 3, false, NULL, false, true, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (57, 50, NULL, '50yrs & Over ATSI (Influenza)', false, true, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (58, 50, NULL, '50yrs & Over (ATSI) Pneumococcal', false, true, NULL, false, NULL, false, false, NULL);
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (60, 15, NULL, '15 Yrs (School program)', false, false, NULL, false, NULL, false, false, 'School based program');
+INSERT INTO lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) VALUES (59, 12, NULL, '12 yrs (School Based)', false, false, NULL, false, NULL, false, true, 'School based program only');
 
 
 --
--- TOC entry 3637 (class 0 OID 286326)
--- Dependencies: 3022
+-- TOC entry 3630 (class 0 OID 332216)
+-- Dependencies: 3208
 -- Data for Name: lu_vaccines; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
-COPY lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) FROM stdin;
-177  Varivax II  Injection  4  \N  f
-178  Meningitec  injection  18  \N  f
-179  Neis-vac C  injection  18  \N  f
-180  Menjugate  injection  18  \N  f
-181  Infranrix hexa  injection  8  \N  f
-182  Infranrix-IPV  injection  38  \N  f
-183  Vivaxim  injection  26  \N  f
-185  Gardasil  injection  13  \N  f
-186  Rotarix  oral  28  \N  f
-187  Influvac  injection  12  \N  f
-189  Boostrix IPV  injection  38  \N  f
-1  BCG Vaccine  Injection  16  \N  f
-17  Havrix prefilled syringe  Injection  14  \N  f
-18  Twinrix Junior Formulation  Injection  32  \N  f
-19  Twinrix Adult Formulation  Injection  7  \N  f
-20  H-B-Vax II Paediatric Formulation  Injection  21  \N  f
-21  H-B-Vax II Dialysis Formulation  Injection  21  \N  f
-22  H-B-Vax II Adult Formulation  Injection  21  \N  f
-23  Engerix-B Adult Formulation  Injection  21  \N  f
-24  Engerix-B Paediatric Formulation  Injection  21  \N  f
-25  Fluvax  Injection  2  \N  f
-26  Vaxigrip  Injection  2  \N  f
-27  M-M-R II  Injection  3  \N  f
-28  Mencevax ACWY  Injection  18  \N  f
-29  Menomune  Injection  18  \N  f
-30  Pneumovax 23  Injection  41  \N  f
-31  Ipol  Injection  29  \N  f
-32  Polio Sabin (Oral)  Drop  24  \N  f
-33  Merieux Inactivated Rabies Vaccine  Injection  34  \N  f
-34  Meruvax II  Injection  22  \N  f
-35  Ervevax  Injection  22  \N  f
-36  Typh-Vax (Oral)  Capsules  36  \N  f
-37  Typhim Vi  Injection  10  \N  f
-38  Typhoid Vaccine  injection  10  \N  f
-39  Tet-Tox  Injection  30  \N  f
-40  Cholera Vaccine  Injection  31  \N  f
-41  Yellow Fever Vaccine  injection  9  \N  f
-42  Plague Vaccine  Injection  15  \N  f
-52  Fluarix  Injection  2  \N  f
-64  Je-Vax  Injection  20  \N  f
-163  Prevenar  Injection  41  \N  f
-75  Stamaril  Injection  9  \N  f
-76  Brand Unknown  Injection  27  \N  f
-88  Fluvirin  Injection  2  \N  f
-98  Infanrix Hep B  Injection  17  \N  f
-101  Liquid PedvaxHIB  Injection  40  \N  f
-111  Priorix  Injection  35  \N  f
-120  Typherix  Injection  10  \N  f
-124  Varilrix  Injection  4  \N  f
-126  Avaxim Inactivated Hepatitis A Vaccine  Injection  14  \N  f
-128  Boostrix  Injection  37  \N  f
-131  Comvax  Injection  1  \N  f
-134  Engerix-B Adult Formulation Injection  Injection  21  \N  f
-135  Engerix-B Paediatric Formulation Injection  Injection  21  \N  f
-140  H-B-Vax II Adult Formulation Injection  Injection  21  \N  f
-141  H-B-Vax II Dialysis Formulation Injection  Injection  21  \N  f
-142  H-B-Vax II Paediatric Formulation Injection  Injection  21  \N  f
-143  H-B-Vax II Paediatric Formulation Injection Preservative free  Injection  21  \N  f
-144  Havrix Junior prefilled syringe Injection  Injection  14  \N  f
-145  Havrix monodose vial Injection  Injection  14  \N  f
-146  Havrix prefilled syringe Injection  Injection  14  \N  f
-159  Orochol  Powder  23  \N  f
-190  PanVax  Adult (Swine Flu)  injection  12  \N  f
-169  Twinrix Adult Formulation Injection  Injection  32  \N  f
-170  Twinrix Junior Formulation Injection  Injection  7  \N  f
-174  VAQTA Adult Formulation Injection  Injection  14  \N  f
-175  VAQTA Paediatric/adolescent Formulation Injection  Injection  14  \N  f
-184  Dukoral  oral  25  \N  f
-2  Q-Vax  Injection  19  \N  f
-3  Diphtheria Vaccine, Adsorbed (Diluted for Adult Use)  Injection  11  \N  f
-4  Diphtheria Vaccine, Adsorbed  Injection  11  \N  f
-5  Triple Antigen (Diphtheria, Tetanus, Pertussis - Adsorbed)  Injection  33  \N  f
-6  Infanrix  Injection  5  \N  f
-7  Tripacel  Injection  33  \N  f
-8  CDT Vaccine  Injection  39  \N  f
-9  ADT Vaccine  Injection  6  \N  f
-10  HibTITER  Injection  40  \N  f
-11  Hiberix  Injection  40  \N  f
-12  PedvaxHIB  Injection  40  \N  f
-13  VAQTA Adult Formulation  Injection  14  \N  f
-14  Havrix monodose vial  Injection  14  \N  f
-15  VAQTA Paediatric/adolescent Formulation  Injection  14  \N  f
-16  Havrix Junior prefilled syringe  Injection  14  \N  f
-191  Adacel  injection  37  \N  f
-192  PanVax Junior (Swine Flu) <3yrs  injection  12  \N  f
-193  Intanza  injection  12  \N  f
-\.
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (177, 'Varivax II', 'Injection', 4, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (178, 'Meningitec', 'injection', 18, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (179, 'Neis-vac C', 'injection', 18, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (180, 'Menjugate', 'injection', 18, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (181, 'Infranrix hexa', 'injection', 8, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (182, 'Infranrix-IPV', 'injection', 38, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (183, 'Vivaxim', 'injection', 26, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (185, 'Gardasil', 'injection', 13, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (186, 'Rotarix', 'oral', 28, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (187, 'Influvac', 'injection', 12, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (189, 'Boostrix IPV', 'injection', 38, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (1, 'BCG Vaccine', 'Injection', 16, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (17, 'Havrix prefilled syringe', 'Injection', 14, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (18, 'Twinrix Junior Formulation', 'Injection', 32, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (19, 'Twinrix Adult Formulation', 'Injection', 7, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (20, 'H-B-Vax II Paediatric Formulation', 'Injection', 21, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (21, 'H-B-Vax II Dialysis Formulation', 'Injection', 21, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (22, 'H-B-Vax II Adult Formulation', 'Injection', 21, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (23, 'Engerix-B Adult Formulation', 'Injection', 21, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (24, 'Engerix-B Paediatric Formulation', 'Injection', 21, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (25, 'Fluvax', 'Injection', 2, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (26, 'Vaxigrip', 'Injection', 2, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (27, 'M-M-R II', 'Injection', 3, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (28, 'Mencevax ACWY', 'Injection', 18, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (29, 'Menomune', 'Injection', 18, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (30, 'Pneumovax 23', 'Injection', 41, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (31, 'Ipol', 'Injection', 29, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (32, 'Polio Sabin (Oral)', 'Drop', 24, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (33, 'Merieux Inactivated Rabies Vaccine', 'Injection', 34, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (34, 'Meruvax II', 'Injection', 22, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (35, 'Ervevax', 'Injection', 22, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (36, 'Typh-Vax (Oral)', 'Capsules', 36, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (37, 'Typhim Vi', 'Injection', 10, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (38, 'Typhoid Vaccine', 'injection', 10, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (39, 'Tet-Tox', 'Injection', 30, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (40, 'Cholera Vaccine', 'Injection', 31, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (41, 'Yellow Fever Vaccine', 'injection', 9, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (42, 'Plague Vaccine', 'Injection', 15, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (52, 'Fluarix', 'Injection', 2, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (64, 'Je-Vax', 'Injection', 20, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (163, 'Prevenar', 'Injection', 41, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (75, 'Stamaril', 'Injection', 9, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (76, 'Brand Unknown', 'Injection', 27, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (88, 'Fluvirin', 'Injection', 2, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (98, 'Infanrix Hep B', 'Injection', 17, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (101, 'Liquid PedvaxHIB', 'Injection', 40, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (111, 'Priorix', 'Injection', 35, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (120, 'Typherix', 'Injection', 10, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (124, 'Varilrix', 'Injection', 4, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (126, 'Avaxim Inactivated Hepatitis A Vaccine', 'Injection', 14, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (128, 'Boostrix', 'Injection', 37, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (131, 'Comvax', 'Injection', 1, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (134, 'Engerix-B Adult Formulation Injection', 'Injection', 21, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (135, 'Engerix-B Paediatric Formulation Injection', 'Injection', 21, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (140, 'H-B-Vax II Adult Formulation Injection', 'Injection', 21, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (141, 'H-B-Vax II Dialysis Formulation Injection', 'Injection', 21, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (142, 'H-B-Vax II Paediatric Formulation Injection', 'Injection', 21, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (143, 'H-B-Vax II Paediatric Formulation Injection Preservative free', 'Injection', 21, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (144, 'Havrix Junior prefilled syringe Injection', 'Injection', 14, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (145, 'Havrix monodose vial Injection', 'Injection', 14, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (146, 'Havrix prefilled syringe Injection', 'Injection', 14, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (159, 'Orochol', 'Powder', 23, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (190, 'PanVax  Adult (Swine Flu)', 'injection', 12, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (169, 'Twinrix Adult Formulation Injection', 'Injection', 32, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (170, 'Twinrix Junior Formulation Injection', 'Injection', 7, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (174, 'VAQTA Adult Formulation Injection', 'Injection', 14, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (175, 'VAQTA Paediatric/adolescent Formulation Injection', 'Injection', 14, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (184, 'Dukoral', 'oral', 25, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (2, 'Q-Vax', 'Injection', 19, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (3, 'Diphtheria Vaccine, Adsorbed (Diluted for Adult Use)', 'Injection', 11, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (4, 'Diphtheria Vaccine, Adsorbed', 'Injection', 11, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (5, 'Triple Antigen (Diphtheria, Tetanus, Pertussis - Adsorbed)', 'Injection', 33, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (6, 'Infanrix', 'Injection', 5, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (7, 'Tripacel', 'Injection', 33, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (8, 'CDT Vaccine', 'Injection', 39, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (9, 'ADT Vaccine', 'Injection', 6, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (10, 'HibTITER', 'Injection', 40, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (11, 'Hiberix', 'Injection', 40, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (12, 'PedvaxHIB', 'Injection', 40, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (13, 'VAQTA Adult Formulation', 'Injection', 14, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (14, 'Havrix monodose vial', 'Injection', 14, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (15, 'VAQTA Paediatric/adolescent Formulation', 'Injection', 14, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (16, 'Havrix Junior prefilled syringe', 'Injection', 14, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (191, 'Adacel', 'injection', 37, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (192, 'PanVax Junior (Swine Flu) <3yrs', 'injection', 12, NULL, false);
+INSERT INTO lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) VALUES (193, 'Intanza', 'injection', 12, NULL, false);
 
 
 --
--- TOC entry 3638 (class 0 OID 286335)
--- Dependencies: 3024
+-- TOC entry 3631 (class 0 OID 332225)
+-- Dependencies: 3210
 -- Data for Name: lu_vaccines_in_schedule; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
-COPY lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) FROM stdin;
-1  12  35  f  \N
-2  32  35  f  \N
-3  111  36  f  \N
-4  27  36  f  \N
-5  101  36  f  \N
-6  6  37  f  \N
-7  6  38  f  \N
-8  111  38  f  \N
-9  32  38  f  \N
-10  111  5  f  \N
-11  111  7  f  \N
-12  20  30  f  \N
-13  18  8  f  \N
-14  19  8  f  \N
-15  163  13  f  \N
-16  126  18  f  \N
-17  88  14  f  \N
-18  159  24  f  \N
-19  76  25  f  \N
-20  111  27  f  \N
-21  111  28  f  \N
-22  111  29  f  \N
-23  101  33  f  \N
-24  101  34  f  \N
-25  179  20  f  \N
-26  180  20  f  \N
-27  128  41  f  \N
-28  163  42  f  \N
-29  163  43  f  \N
-30  163  44  f  \N
-31  181  42  f  \N
-32  181  43  f  \N
-33  181  44  f  \N
-34  111  45  f  \N
-35  11  45  f  \N
-37  163  45  f  \N
-38  124  46  f  \N
-39  182  47  f  \N
-40  111  47  f  \N
-41  30  47  f  \N
-42  183  48  f  \N
-43  184  24  f  \N
-44  185  49  f  \N
-45  181  50  f  \N
-46  163  50  f  \N
-47  163  51  f  \N
-48  181  51  f  \N
-49  186  50  f  \N
-50  186  51  f  \N
-51  187  14  f  \N
-52  189  15  f  \N
-53  128  15  f  \N
-54  124  39  f  \N
-55  124  40  f  \N
-56  120  23  f  \N
-57  177  39  f  \N
-58  177  40  f  \N
-59  178  20  f  \N
-60  20  1  f  \N
-61  24  1  f  \N
-62  6  2  f  \N
-63  7  2  f  \N
-64  5  2  f  \N
-65  10  2  f  \N
-66  11  2  f  \N
-67  12  2  f  \N
-68  32  2  f  \N
-69  5  3  f  \N
-70  6  3  f  \N
-71  7  3  f  \N
-72  10  3  f  \N
-73  11  3  f  \N
-74  12  3  f  \N
-75  5  4  f  \N
-76  6  4  f  \N
-77  7  4  f  \N
-78  10  4  f  \N
-79  11  4  f  \N
-80  27  5  f  \N
-81  12  5  f  \N
-82  5  6  f  \N
-83  6  6  f  \N
-84  7  6  f  \N
-85  10  6  f  \N
-86  11  6  f  \N
-87  32  3  f  \N
-88  32  4  f  \N
-89  9  15  f  \N
-90  39  15  f  \N
-91  1  16  f  \N
-92  2  17  f  \N
-93  13  18  f  \N
-94  14  18  f  \N
-95  15  18  f  \N
-96  16  18  f  \N
-97  17  18  f  \N
-98  19  32  f  \N
-99  3  19  f  \N
-100  4  19  f  \N
-101  28  20  f  \N
-102  29  20  f  \N
-103  31  21  f  \N
-104  32  21  f  \N
-105  33  22  f  \N
-106  36  23  f  \N
-107  37  23  f  \N
-108  38  23  f  \N
-109  40  24  f  \N
-110  41  25  f  \N
-111  42  26  f  \N
-112  27  27  f  \N
-113  27  28  f  \N
-114  27  29  f  \N
-115  34  29  f  \N
-116  25  14  f  \N
-117  26  14  f  \N
-118  30  13  f  \N
-119  30  11  f  \N
-120  25  12  f  \N
-121  26  12  f  \N
-122  34  10  f  \N
-123  35  10  f  \N
-124  31  9  f  \N
-125  32  9  f  \N
-126  5  7  f  \N
-127  6  7  f  \N
-128  7  7  f  \N
-129  31  7  f  \N
-130  32  7  f  \N
-131  9  9  f  \N
-132  27  7  f  \N
-133  21  30  f  \N
-134  22  30  f  \N
-135  23  30  f  \N
-136  24  30  f  \N
-137  35  29  f  \N
-138  52  12  f  \N
-139  52  14  f  \N
-140  75  25  f  \N
-141  64  31  f  \N
-142  18  32  f  \N
-143  20  8  f  \N
-144  21  8  f  \N
-145  22  8  f  \N
-146  23  8  f  \N
-147  24  8  f  \N
-148  98  33  f  \N
-149  12  33  f  \N
-150  32  33  f  \N
-151  98  34  f  \N
-152  12  34  f  \N
-153  32  34  f  \N
-154  98  35  f  \N
-155  190  14  f  \N
-156  191  41  f  \N
-157  191  19  f  \N
-158  192  14  f  \N
-159  191  15  f  \N
-160  193  14  f  \N
-161  187  54  t  \N
-162  192  54  t  \N
-163  30  54  t  2010-11-14
-164  30  57  t  2010-11-14
-36  178  45  f  \N
-165  187  57  t  \N
-166  30  58  t  \N
-167  20  59  f  \N
-168  124  59  f  \N
-169  185  59  f  \N
-170  128  60  f  \N
-\.
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (1, 12, 35, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (2, 32, 35, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (3, 111, 36, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (4, 27, 36, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (5, 101, 36, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (6, 6, 37, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (7, 6, 38, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (8, 111, 38, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (9, 32, 38, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (10, 111, 5, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (11, 111, 7, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (12, 20, 30, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (13, 18, 8, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (14, 19, 8, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (15, 163, 13, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (16, 126, 18, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (17, 88, 14, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (18, 159, 24, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (19, 76, 25, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (20, 111, 27, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (21, 111, 28, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (22, 111, 29, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (23, 101, 33, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (24, 101, 34, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (25, 179, 20, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (26, 180, 20, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (27, 128, 41, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (28, 163, 42, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (29, 163, 43, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (30, 163, 44, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (31, 181, 42, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (32, 181, 43, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (33, 181, 44, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (34, 111, 45, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (35, 11, 45, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (37, 163, 45, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (38, 124, 46, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (39, 182, 47, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (40, 111, 47, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (41, 30, 47, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (42, 183, 48, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (43, 184, 24, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (44, 185, 49, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (45, 181, 50, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (46, 163, 50, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (47, 163, 51, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (48, 181, 51, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (49, 186, 50, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (50, 186, 51, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (51, 187, 14, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (52, 189, 15, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (53, 128, 15, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (54, 124, 39, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (55, 124, 40, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (56, 120, 23, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (57, 177, 39, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (58, 177, 40, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (59, 178, 20, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (60, 20, 1, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (61, 24, 1, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (62, 6, 2, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (63, 7, 2, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (64, 5, 2, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (65, 10, 2, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (66, 11, 2, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (67, 12, 2, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (68, 32, 2, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (69, 5, 3, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (70, 6, 3, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (71, 7, 3, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (72, 10, 3, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (73, 11, 3, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (74, 12, 3, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (75, 5, 4, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (76, 6, 4, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (77, 7, 4, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (78, 10, 4, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (79, 11, 4, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (80, 27, 5, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (81, 12, 5, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (82, 5, 6, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (83, 6, 6, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (84, 7, 6, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (85, 10, 6, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (86, 11, 6, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (87, 32, 3, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (88, 32, 4, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (89, 9, 15, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (90, 39, 15, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (91, 1, 16, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (92, 2, 17, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (93, 13, 18, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (94, 14, 18, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (95, 15, 18, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (96, 16, 18, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (97, 17, 18, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (98, 19, 32, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (99, 3, 19, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (100, 4, 19, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (101, 28, 20, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (102, 29, 20, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (103, 31, 21, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (104, 32, 21, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (105, 33, 22, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (106, 36, 23, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (107, 37, 23, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (108, 38, 23, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (109, 40, 24, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (110, 41, 25, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (111, 42, 26, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (112, 27, 27, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (113, 27, 28, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (114, 27, 29, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (115, 34, 29, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (116, 25, 14, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (117, 26, 14, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (118, 30, 13, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (119, 30, 11, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (120, 25, 12, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (121, 26, 12, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (122, 34, 10, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (123, 35, 10, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (124, 31, 9, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (125, 32, 9, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (126, 5, 7, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (127, 6, 7, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (128, 7, 7, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (129, 31, 7, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (130, 32, 7, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (131, 9, 9, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (132, 27, 7, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (133, 21, 30, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (134, 22, 30, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (135, 23, 30, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (136, 24, 30, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (137, 35, 29, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (138, 52, 12, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (139, 52, 14, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (140, 75, 25, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (141, 64, 31, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (142, 18, 32, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (143, 20, 8, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (144, 21, 8, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (145, 22, 8, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (146, 23, 8, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (147, 24, 8, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (148, 98, 33, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (149, 12, 33, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (150, 32, 33, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (151, 98, 34, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (152, 12, 34, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (153, 32, 34, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (154, 98, 35, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (155, 190, 14, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (156, 191, 41, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (157, 191, 19, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (158, 192, 14, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (159, 191, 15, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (160, 193, 14, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (161, 187, 54, true, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (162, 192, 54, true, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (163, 30, 54, true, '2010-11-14');
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (164, 30, 57, true, '2010-11-14');
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (36, 178, 45, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (165, 187, 57, true, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (166, 30, 58, true, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (167, 20, 59, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (168, 124, 59, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (169, 185, 59, false, NULL);
+INSERT INTO lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) VALUES (170, 128, 60, false, NULL);
 
 
 --
--- TOC entry 3634 (class 0 OID 286270)
--- Dependencies: 3017
+-- TOC entry 3627 (class 0 OID 332186)
+-- Dependencies: 3203
 -- Data for Name: vaccinations; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
-COPY vaccinations (pk, fk_vaccine, fk_schedule, fk_site, fk_laterality, date_given, serial_no, fk_progressnote) FROM stdin;
-25  128  15  2  1  21/11/2010  Boostrix - SN1  504
-26  128  15  2  1  21/11/2010  Boostrix - SN2  505
-27  128  15  2  1  21/11/2010  Boostrix - SN2  506
-28  185  59  3  1  21/11/2010  Gardasil-SN1  507
-29  20  59  2  2  21/11/2010  HB-Vax-SN1  507
-30  124  59  4  2  21/11/2010  Varilrix-SN1  507
-31  128  15  1  2  21/11/2010  Boostrix - SN4  508
-22  42  26  2  1  24/11/2010  Plaque SN1  509
-\.
+INSERT INTO vaccinations (pk, fk_vaccine, fk_schedule, fk_site, fk_laterality, date_given, serial_no, fk_progressnote) VALUES (25, 128, 15, 2, 1, '21/11/2010', 'Boostrix - SN1', 504);
+INSERT INTO vaccinations (pk, fk_vaccine, fk_schedule, fk_site, fk_laterality, date_given, serial_no, fk_progressnote) VALUES (26, 128, 15, 2, 1, '21/11/2010', 'Boostrix - SN2', 505);
+INSERT INTO vaccinations (pk, fk_vaccine, fk_schedule, fk_site, fk_laterality, date_given, serial_no, fk_progressnote) VALUES (27, 128, 15, 2, 1, '21/11/2010', 'Boostrix - SN2', 506);
+INSERT INTO vaccinations (pk, fk_vaccine, fk_schedule, fk_site, fk_laterality, date_given, serial_no, fk_progressnote) VALUES (28, 185, 59, 3, 1, '21/11/2010', 'Gardasil-SN1', 507);
+INSERT INTO vaccinations (pk, fk_vaccine, fk_schedule, fk_site, fk_laterality, date_given, serial_no, fk_progressnote) VALUES (29, 20, 59, 2, 2, '21/11/2010', 'HB-Vax-SN1', 507);
+INSERT INTO vaccinations (pk, fk_vaccine, fk_schedule, fk_site, fk_laterality, date_given, serial_no, fk_progressnote) VALUES (30, 124, 59, 4, 2, '21/11/2010', 'Varilrix-SN1', 507);
+INSERT INTO vaccinations (pk, fk_vaccine, fk_schedule, fk_site, fk_laterality, date_given, serial_no, fk_progressnote) VALUES (31, 128, 15, 1, 2, '21/11/2010', 'Boostrix - SN4', 508);
+INSERT INTO vaccinations (pk, fk_vaccine, fk_schedule, fk_site, fk_laterality, date_given, serial_no, fk_progressnote) VALUES (22, 42, 26, 2, 1, '24/11/2010', 'Plaque SN1', 509);
 
 
 --
--- TOC entry 3639 (class 0 OID 297189)
--- Dependencies: 3249
+-- TOC entry 3632 (class 0 OID 332233)
+-- Dependencies: 3213
 -- Data for Name: vaccine_serial_numbers; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
-COPY vaccine_serial_numbers (pk, fk_vaccine, serial_number, date_used) FROM stdin;
-10  128  Boostrix - SN2  2010-11-21
-11  185  Gardasil-SN1  2010-11-21
-12  20  HB-Vax-SN1  2010-11-21
-13  124  Varilrix-SN1  2010-11-21
-9  128  Boostrix - SN1  2010-11-21
-14  128  Boostrix - SN3  2010-11-21
-15  128  Boostrix - SN4  2010-11-21
-19  42  Plaque SN1  2010-11-24
-\.
+INSERT INTO vaccine_serial_numbers (pk, fk_vaccine, serial_number, date_used) VALUES (10, 128, 'Boostrix - SN2', '2010-11-21');
+INSERT INTO vaccine_serial_numbers (pk, fk_vaccine, serial_number, date_used) VALUES (11, 185, 'Gardasil-SN1', '2010-11-21');
+INSERT INTO vaccine_serial_numbers (pk, fk_vaccine, serial_number, date_used) VALUES (12, 20, 'HB-Vax-SN1', '2010-11-21');
+INSERT INTO vaccine_serial_numbers (pk, fk_vaccine, serial_number, date_used) VALUES (13, 124, 'Varilrix-SN1', '2010-11-21');
+INSERT INTO vaccine_serial_numbers (pk, fk_vaccine, serial_number, date_used) VALUES (9, 128, 'Boostrix - SN1', '2010-11-21');
+INSERT INTO vaccine_serial_numbers (pk, fk_vaccine, serial_number, date_used) VALUES (14, 128, 'Boostrix - SN3', '2010-11-21');
+INSERT INTO vaccine_serial_numbers (pk, fk_vaccine, serial_number, date_used) VALUES (15, 128, 'Boostrix - SN4', '2010-11-21');
+INSERT INTO vaccine_serial_numbers (pk, fk_vaccine, serial_number, date_used) VALUES (19, 42, 'Plaque SN1', '2010-11-24');
 
 
 --
--- TOC entry 3623 (class 2606 OID 288516)
--- Dependencies: 3017 3017
+-- TOC entry 3616 (class 2606 OID 332262)
+-- Dependencies: 3203 3203
 -- Name: data_pkey; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -941,8 +929,8 @@ ALTER TABLE ONLY vaccinations
 
 
 --
--- TOC entry 3627 (class 2606 OID 288524)
--- Dependencies: 3020 3020
+-- TOC entry 3620 (class 2606 OID 332264)
+-- Dependencies: 3206 3206
 -- Name: lu_schedules_pkey; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -951,8 +939,8 @@ ALTER TABLE ONLY lu_schedules
 
 
 --
--- TOC entry 3625 (class 2606 OID 288528)
--- Dependencies: 3019 3019
+-- TOC entry 3618 (class 2606 OID 332266)
+-- Dependencies: 3205 3205
 -- Name: lu_vaccines_descriptions_pkey; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -961,8 +949,8 @@ ALTER TABLE ONLY lu_descriptions
 
 
 --
--- TOC entry 3631 (class 2606 OID 288530)
--- Dependencies: 3024 3024
+-- TOC entry 3624 (class 2606 OID 332268)
+-- Dependencies: 3210 3210
 -- Name: lu_vaccines_in_schedule_pkey; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -971,8 +959,8 @@ ALTER TABLE ONLY lu_vaccines_in_schedule
 
 
 --
--- TOC entry 3629 (class 2606 OID 288532)
--- Dependencies: 3022 3022
+-- TOC entry 3622 (class 2606 OID 332270)
+-- Dependencies: 3208 3208
 -- Name: lu_vaccines_pkey; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -981,8 +969,8 @@ ALTER TABLE ONLY lu_vaccines
 
 
 --
--- TOC entry 3633 (class 2606 OID 297197)
--- Dependencies: 3249 3249
+-- TOC entry 3626 (class 2606 OID 332272)
+-- Dependencies: 3213 3213
 -- Name: vaccine_serial_numbers_pkey; Type: CONSTRAINT; Schema: clin_vaccination; Owner: -; Tablespace: 
 --
 
@@ -991,8 +979,8 @@ ALTER TABLE ONLY vaccine_serial_numbers
 
 
 --
--- TOC entry 3643 (class 0 OID 0)
--- Dependencies: 33
+-- TOC entry 3636 (class 0 OID 0)
+-- Dependencies: 10
 -- Name: clin_vaccination; Type: ACL; Schema: -; Owner: -
 --
 
@@ -1004,8 +992,8 @@ GRANT USAGE ON SCHEMA clin_vaccination TO staff;
 
 
 --
--- TOC entry 3645 (class 0 OID 0)
--- Dependencies: 3017
+-- TOC entry 3638 (class 0 OID 0)
+-- Dependencies: 3203
 -- Name: vaccinations; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1017,8 +1005,8 @@ GRANT ALL ON TABLE vaccinations TO staff;
 
 
 --
--- TOC entry 3648 (class 0 OID 0)
--- Dependencies: 3018
+-- TOC entry 3641 (class 0 OID 0)
+-- Dependencies: 3204
 -- Name: data_pk_seq; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1030,8 +1018,8 @@ GRANT USAGE ON SEQUENCE data_pk_seq TO staff;
 
 
 --
--- TOC entry 3650 (class 0 OID 0)
--- Dependencies: 3019
+-- TOC entry 3643 (class 0 OID 0)
+-- Dependencies: 3205
 -- Name: lu_descriptions; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1043,8 +1031,8 @@ GRANT ALL ON TABLE lu_descriptions TO staff;
 
 
 --
--- TOC entry 3657 (class 0 OID 0)
--- Dependencies: 3020
+-- TOC entry 3650 (class 0 OID 0)
+-- Dependencies: 3206
 -- Name: lu_schedules; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1056,8 +1044,8 @@ GRANT SELECT ON TABLE lu_schedules TO staff;
 
 
 --
--- TOC entry 3660 (class 0 OID 0)
--- Dependencies: 3021
+-- TOC entry 3653 (class 0 OID 0)
+-- Dependencies: 3207
 -- Name: lu_schedules_pk_seq; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1069,8 +1057,8 @@ GRANT USAGE ON SEQUENCE lu_schedules_pk_seq TO staff;
 
 
 --
--- TOC entry 3662 (class 0 OID 0)
--- Dependencies: 3022
+-- TOC entry 3655 (class 0 OID 0)
+-- Dependencies: 3208
 -- Name: lu_vaccines; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1082,8 +1070,8 @@ GRANT ALL ON TABLE lu_vaccines TO staff;
 
 
 --
--- TOC entry 3665 (class 0 OID 0)
--- Dependencies: 3024
+-- TOC entry 3658 (class 0 OID 0)
+-- Dependencies: 3210
 -- Name: lu_vaccines_in_schedule; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
@@ -1095,35 +1083,37 @@ GRANT ALL ON TABLE lu_vaccines_in_schedule TO staff;
 
 
 --
--- TOC entry 3671 (class 0 OID 0)
--- Dependencies: 3249
+-- TOC entry 3664 (class 0 OID 0)
+-- Dependencies: 3213
 -- Name: vaccine_serial_numbers; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
 REVOKE ALL ON TABLE vaccine_serial_numbers FROM PUBLIC;
-REVOKE ALL ON TABLE vaccine_serial_numbers FROM postgres;
+REVOKE ALL ON TABLE vaccine_serial_numbers FROM richard;
+GRANT ALL ON TABLE vaccine_serial_numbers TO richard;
 GRANT ALL ON TABLE vaccine_serial_numbers TO postgres;
 GRANT ALL ON TABLE vaccine_serial_numbers TO easygp;
 GRANT ALL ON TABLE vaccine_serial_numbers TO staff;
 
 
 --
--- TOC entry 3674 (class 0 OID 0)
--- Dependencies: 3247
+-- TOC entry 3667 (class 0 OID 0)
+-- Dependencies: 3215
 -- Name: vwvaccines; Type: ACL; Schema: clin_vaccination; Owner: -
 --
 
 REVOKE ALL ON TABLE vwvaccines FROM PUBLIC;
-REVOKE ALL ON TABLE vwvaccines FROM easygp;
+REVOKE ALL ON TABLE vwvaccines FROM richard;
+GRANT ALL ON TABLE vwvaccines TO richard;
 GRANT ALL ON TABLE vwvaccines TO easygp;
 GRANT ALL ON TABLE vwvaccines TO staff;
 
 
--- Completed on 2010-11-30 19:42:16 EST
+-- Completed on 2010-12-03 08:24:52 EST
 
 --
 -- PostgreSQL database dump complete
 --
 
-  truncate db.lu_version;
+truncate db.lu_version;
 insert into db.lu_version (lu_major,lu_minor) values (0, 43);

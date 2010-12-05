@@ -19,4 +19,4 @@ GRANT ALL ON TABLE clin_recalls.vwrecallsdue TO easygp;
 GRANT ALL ON TABLE clin_recalls.vwrecallsdue TO staff;
 
 truncate db.lu_version;
-insert into db.lu_version (lu_major,lu_minor) values (0, 47)
+insert into db.lu_version (lu_major,lu_minor) values (0, 47);

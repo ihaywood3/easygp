@@ -125,6 +125,7 @@ Private fk_component As Integer
 Private CurrentTaskComponent As Collection 
 Private Components As Collection
 Private component As Collection 
+
 Private iCurrentTaskComponent As Integer
 Private bPatientTask As Boolean
 Public bExit As Boolean  'called from parent do not change
@@ -153,6 +154,7 @@ Private Notes As Collection
 Private pk_view_notes As Integer
 Private bEditing As Boolean
 Private bFinalised As Boolean
+Private iTaskRestriction As Integer          'const.cTaskRestriction_User, .._role .._none
 Private fk_note As Integer
 Private patient As New Collection 
 Private fk_table_row As Integer        'fixme fim my name = e.g fk_document
@@ -172,6 +174,9 @@ Private Form_Scratchpad As FScratchPad
 Private Embedded_Forms As Collection 
 Private Form_Recalls As FRecalls
 Private Form_ActionDocument As FActionDocument
+Private roles As Collection 'eg secretary, doctor
+Private Role As String 
+Private fk_role As Integer 
 
 Public Sub Set_Audit_Schema_Table_SourceRowKey(k As Integer, s As String, t As String)       
    '-----------------------------------------------------
@@ -219,18 +224,23 @@ Public Sub Init()
    '1) The users day book in which case all the users staff tasks are loaded
    '2) The users inbox
    '-------------------------------------------------------------------------
-
    Settings_Load()      'set splits on form
+   currentUser = modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename         'ease oftyping later on in the code
+   role = modDBConnect.currentUser!role
+   rbTaskRestrict_Role.text &= modUtil.Make_Plural(role)
+   fk_staff = modDBConnect.currentUser!fk_staff                                                   
    timer1.Delay = 600
    timer1.Enabled = True
-   timer1.Start                                                                 
+   timer1.Start    
+   iTaskRestriction = const.cTaskRestriction_user 
+   rbTaskRestrict_User.value = True                                                                'default only show user's tasks    
    schema_table_keys = modInboxDBI.Get_Schema_Table_Keys("documents", "documents")                 'will be deprecated once ian does the audit stuff
-   currentUser = modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename         'ease oftyping later on in the code
-   fk_staff = modDBConnect.currentUser!fk_staff                                                    'key to staff member using form
+   'key to staff member using form
    lblMeasure.text = "  Send copy to  "                                                            'get width of editarea labels ok
    modEditAreaHelpers.Resize_labels(VBox_EditArea_Task, lblMeasure)    
    modEditAreaHelpers.Resize_label(lblNotes, lblMeasure)                            'and resize them
    TaskTypes = modUtil.LoadCombo(cmbTaskType, modStaffTasksDBI.StaffTasks_Get_TaskTypes(), "type") 'pre-defined categories eg. Ring patient
+   Roles = modUtil.LoadCombo(cmbRoles, modAdminDBI.Roles_Get(), "role")
    Select Case Parent_Form
       Case "FDayBook"
          timer1.start                                                                               'load staff tasks for member
@@ -273,6 +283,7 @@ Public Sub Init()
             .Init("Staff Tasks")
          End With
          HBox_TaskFor.Visible = True   
+         HBox_TaskRestriction.Visible = True
       Case "Inbox"
          cvwStaffTasks.Columns.count = 4
          lblTask.text = "Tasks assigned for this document"
@@ -374,6 +385,14 @@ Public Sub Task_Save()
       staffTask!fk_staff_filed_task = fk_staff
       staffTask!task = Trim(txtTask.text)
    End If
+   If fk_component <> 0 Then
+     TaskComponent!fk_component = fk_component
+   Endif
+   If fk_role <> 0 Then
+     TaskComponent!fk_role = fk_role
+   Else
+      TaskComponent!fk_role = Null  'FIXME - FIX SAVE TO MAKE THIS BACK TO NULL WHEN SAVED
+   Endif
    TaskComponent!fk_staff_filed = fk_staff_filed_component
    TaskComponent!fk_lu_task_type = TaskTypes[cmbTaskType.index]!pk
    TaskComponent!details = Trim(txtTaskDetails.text)
@@ -567,7 +586,7 @@ Public Sub EditAreaButtons_Click()
    Select Case Last.tag
          
       Case "refresh"
-         StaffTasks_For_Staff_Member_ReLoad()
+         StaffTasks_Reload()
       Case "save and finalise"
          If Message.warning("Save and finalise?", "Yes", "No") = 2 Then Return 
          Note_Save_And_finalise
@@ -645,7 +664,7 @@ Public Sub cvwStaffTasks_ReLoad()
    Select Case Parent_Form
       Case "FDayBook"
          If timer1.Enabled = False Then
-            StaffTasks_For_Staff_Member_ReLoad()
+            StaffTasks_Reload()
          End If
       Case "Inbox"
          TasksComponents = modStaffTasksDBI.Tasks_For_Document_Get(fk_document, schema_table_keys!fk_schema, schema_table_keys!fk_table)
@@ -694,7 +713,7 @@ Public Sub TasksComponents_Document_Reload()
 
 End
 
-Public Sub StaffTasks_For_Staff_Member_ReLoad()
+Public Sub StaffTasks_Reload()
    '--------------------------------------------------------------------
    'Reloads and fills columnview of tasks just for a single staff member
    'Each task = 1 component of the overall task which could have several
@@ -716,7 +735,7 @@ Public Sub StaffTasks_For_Staff_Member_ReLoad()
    EditArea_Clear()
    cvwStaffTasks.Clear()
    currentconsult = Null
-   TasksComponents = modDayBookDBI.Staff_Tasks_Get(fk_staff, 0, True, fk_schema, fk_table, fk_table_row, False) 'get uncompleted tasks
+   TasksComponents = modDayBookDBI.Staff_Tasks_Get(fk_staff, 0, True, fk_schema, fk_table, fk_table_row, False, iTaskRestriction) 'get uncompleted tasks
    If TasksComponents.count = 0 Then
       cvwStaffTasks.Add(x, 0)
       cvwStaffTasks[x][0] = "Nil pending" 
@@ -774,14 +793,20 @@ Public Sub EditArea_Clear()
    
    bExit = True  
    modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Task)
+   lblBirthdate.text = ""
+   lblMobilePHone.text = ""
+   lblHomePhone.text = ""
    cvwTaskNotes.Clear()
    cmbTaskType.Index = -1
    rbUrgencyRoutine.value = True 
    txtDateLogged.text = Format(Now, "dd/mm/yyyy")
    txtLoggedBy.text = CurrentUser
+   fk_component = 0
    fk_staff_allocated = 0
    fk_tell = 0
    fk_urgency = 1
+   fk_role = 0
+   cmbRoles.index = -1
    fk_staff_filed_component = modDBConnect.currentUser!fk_staff
    bPatientTask = False  
    cmbTaskType.SetFocus()
@@ -795,7 +820,6 @@ Public Sub EditArea_Clear()
    Hbox_Patient.Enabled = True
    Hbox_Street.Enabled = True  
    bFinalised = False  
-   rbAllocateToMe.value = False
    With lblTask
       .Foreground = Color.Blue
       .text = "Task Details"
@@ -875,11 +899,11 @@ Public Sub Staff_Select()
       Else
          txtTaskDetails.SetFocus()
       End If   
-      
    Else
       tbSave.SetFocus()
    End If   
-
+   fk_role = Staff_Member!fk_role
+   cmbRoles.index = -1
 End
 
 Public Sub DateChooser1_Activate()
@@ -973,7 +997,10 @@ Public Sub EditArea_GotFocus()
    Dim tb As Textbox
    Dim numcolumns As Integer
 
+
    If bexit = True Or Last.readonly = True Then Return 
+   
+   columnview1.Visible = False    'because the lost focus event on columnview dosn't work
    Last.BackGround = Color.rgb(95, 255, 175)
    Select Case Last.tag
       Case "staff allocated", "tell patient", "copy to"
@@ -996,8 +1023,7 @@ Public Sub EditArea_GotFocus()
          End If
       Next
       .Columns.count = numcolumns
-      .width = txtSuburb.Width
-      '   .top = VBox_EditArea_Task
+      .width = txtTaskDetails.width
       .top = Last.parent.top + Last.parent.height
       .Raise
    End With
@@ -1117,9 +1143,10 @@ Public Sub Valid_Task() As Boolean
 
    If fk_staff_allocated = 0 Then
       If Trim(txtStaffAllocated.text) <> "" Then
-         Message.info("Please select a valid staff member before saving")
+        If Message.Question("Allocate to any Secretarial staff?", "Yes", "No") = 2 Then
          txtStaffAllocated.SetFocus()
          Return 
+        End If
       Endif
    Endif
    If cmbTaskType.index = -1 Then
@@ -1251,16 +1278,19 @@ Public Sub Display(SelectedTask As Collection)
    txtSuburb.text = SelectedTask!patient_town & " " & SelectedTask!patient_postcode
    lblBirthdate.text = Format(SelectedTask!patient_birthdate, "dd/mm/yyyy")
    fk_task = SelectedTask!fk_task
-   fk_staff_allocated = SelectedTask!fk_staff_allocated
+   pk_view_staff_task = SelectedTask!pk_view
+   Try fk_staff_allocated = SelectedTask!fk_staff_allocated  'could be null - allocated to anyone
    Try fk_table_row = SelectedTask!fk_row
    Try fk_schema = SelectedTask!fk_schema
    Try fk_table = SelectedTask!fk_table
+   Try fk_staff_filed_task = SelectedTask!fk_staff_filed_task
    fk_component = SelectedTask!fk_component
    txtLoggedBy.text = SelectedTask!staff_filed_task_title & " " & SelectedTask!staff_filed_task_wholename
    txtTaskDetails.text = SelectedTask!details
    txtTaskDetails.pos = 0
    txtDateLogged.text = Format(SelectedTask!date_component_logged)
    txtStaffAllocated.text = SelectedTask!staff_allocated_title & " " & SelectedTask!staff_allocated_wholename
+   If Trim(txtStaffAllocated.text) = "" Then txtStaffAllocated.text = "Anyone"
    cmbTaskType.index = cmbTaskType.Find(SelectedTask!task_type)
    fk_urgency = SelectedTask!fk_urgency
    Select Case SelectedTask!fk_urgency
@@ -1352,6 +1382,7 @@ Public Sub cvwStaffTasks_Select()
       Case "FDayBook"
          cvwStaffTasks.movecurrent()                                                'set key
          Try iCurrentTaskComponent = Task_Keys[cvwStaffTasks.item.key]              'but some lines don't match a task key
+         Try fk_component = Task_Keys[cvwStaffTasks.item.key]
          If Not Error Then 
             CurrentTaskComponent = TasksComponents[Task_Keys[cvwStaffTasks.item.key]]
             If CurrentTaskComponent!fk_patient Then
@@ -1445,9 +1476,10 @@ Public Sub timer1_Timer()
    'Otherwise except for init(0 this routine is not used
    'see  cvwStaffTasks_ReLoad()
    '------------------------------------------------------------------------------------
+   Return 
    If Parent_Form = "Inbox" Then Return 
    timer1.Stop()
-   StaffTasks_For_Staff_Member_ReLoad()
+   StaffTasks_Reload()
    timer1.Delay = 100000 're-set the delay to something longer
    timer1.start()
 
@@ -1564,19 +1596,18 @@ Public Sub Form_KeyPress()
 End
 
 Public Sub rbAllocateToMe_Click()
-
-   If Last.value = True Then
-      txtStaffAllocated.text = CurrentUser
-      fk_staff_allocated = fk_staff
-   Else
-      txtStaffAllocated.text = ""
-      fk_staff_allocated = 0
-   End If 
+   ' 
+   ' If Last.value = True Then
+   '    txtStaffAllocated.text = CurrentUser
+   '    fk_staff_allocated = fk_staff
+   ' Else
+   '    txtStaffAllocated.text = ""
+   '    fk_staff_allocated = 0
+   ' End If 
 
 End
 
 Public Sub cmbTaskType_Click()
-   
    If txtTask.text = "" Then
       txtTask.text = cmbTaskType.text
    Endif
@@ -1621,5 +1652,42 @@ End
 Public Sub Form_Enter()
 
   If Parent_Form <> "Inbox" Then timer1.start
+
+End
+
+
+
+
+Public Sub rbTaskRestriction_Click()
+   If Bexit Then Return 
+   iTaskRestriction = Last.tag
+   Select Case Last.tag
+     Case const.cTaskRestriction_user 
+       lblTaskHeading.text = "My Tasks"
+     Case const.cTaskRestriction_role
+       lblTaskHeading.text = "Tasks for me and others of role: " & role
+   End Select
+   StaffTasks_Reload()
+
+End
+
+Public Sub cmbRoles_Click()
+  txtStaffAllocated.text = ""  'sets fk_staff_allocated to 0
+  fk_role = roles[Last.index]!pk_role
+
+End
+
+
+Public Sub cmbTaskType_GotFocus()
+
+     columnview1.Visible = False    'because the lost focus event on columnview dosn't work
+
+
+End
+
+Public Sub cmbRoles_GotFocus()
+
+     columnview1.Visible = False    'because the lost focus event on columnview dosn't work
+
 
 End

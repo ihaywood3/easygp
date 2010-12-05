@@ -93,7 +93,6 @@ Private Laterality As Integer
 Private Staff As Collection 
 Private Staff_Member As Collection 
 Private Documents As Collection 
-Private hProcess As Process
 Private Document_HTML As String
 Private Persons As Collection
 Public Person As Collection   'do not make this private
@@ -133,6 +132,20 @@ Public Sub Set_Embedded_Form_Name(name As String)
    
 End
 
+Public Sub SetFilename(path As String)
+  
+  txtFilename.text = path
+  
+End
+
+Public Sub SetTxtFocus()
+  If txtRecipient.text <> "" Then
+     txtPatient.SetFocus()
+  Else
+     txtRecipient.SetFocus()
+  Endif
+End
+
 Public Sub Set_Documents_Collection(c As Collection)
   
    Documents = c
@@ -145,19 +158,103 @@ Public Sub Set_CurrentDocument(c As Collection)
   
 End
 
-Public Function Process_read() As String
-   '--------------------------------------
-   'Reads the out put of a shelled process
-   'eg gets an md5sum from a shell
-   '--------------------------------------   
-   Dim sOutput As String  
-   
-   Line Input #hProcess, sOutput 
-   Return Left(sOutput, InStr(sOutput, " ") - 1)
-   
+Public Function Save() As Boolean
+  If Embedded_in_form_name = "Scanning" Then
+    Return SaveInScanning()
+  Else
+    Return SaveNotInScanning()
+  Endif
 End
 
-Public Function Save() As Boolean
+Private Function SaveInScanning() As Boolean
+  '------------------------------------------------------------
+  'Saves changes to the currently displayed document's metadata
+  'documents = the old collection, set by form using this module
+  'Documents are never created in this module
+  'Returns true if successful
+  'if this save is from an exiting document:
+  '   documents = the collection of old documents
+  '   pk_document = key to the documents collection
+  '   only either new data or changes collected in collection d
+  'FIXME: put back in audit trail on document
+  '------------------------------------------------------------
+   Dim d As New Collection
+   Dim d2 As New Collection
+   Dim staff_members As Collection 
+   Dim bSuccess As Boolean                'if true the save succeeded
+   Dim md5Output As String
+   
+   If Not Valid_Document() Then Return
+   Inc Application.Busy
+   If chkAllStaff.Value = True Then 
+      Staff_Members = modContactsDBI.Staff_Get() 'refresh the staff list,could have just employed someone!!!!!
+   End If 
+   d!fk_staff_filed_document = modDBConnect.currentUser!fk_staff
+   d!date_created = Val(txtDocumentDate.text)
+   d!fk_patient = fk_patient
+   Select Case Contact_Type
+   Case const.contacttype_organisation
+      d!originator = Organisation!organisation & "." & Organisation!branch
+   Case const.contacttype_employee
+      d!originator = Organisation!organisation & "." & Organisation!wholename
+   Case const.contacttype_person, const.contacttype_patient
+      d!originator = Person!firstname & " " & Person!surname
+   End Select
+   d!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(Get_Document_Type(), Get_Display_Style(), d!originator, fk_branch, fk_employee, fk_person)
+   If rbDisplayAsLetter.value = True Then 
+       d!tag = d!originator & " - scanned letter"
+   Else
+       d!tag = d!originator & " - scanned result"
+   End If
+   d!comment = Trim(txtComment.text)
+   d!fk_lu_urgency = fk_urgency
+   Shell "md5sum " & txtFilename.text To md5Output   
+   d!md5sum = Left(md5Output, InStr(md5Output, " ") - 1)
+   d!fk_staff_destination = fk_staff_destination
+   d!fk_lu_display_as = Get_Display_Style()
+   modDBConnect.BeginTrans()
+   If modAdminDBI.Config_Get("document_save_to_database", True) Then
+      d!data = "BLOB:" & txtFilename.text
+      If chkAllStaff.Value = True Then 
+         For Each member In Staff_Members
+            d!fk_staff_destination = member!fk_staff
+            modArchiveDocumentsDBI.Save(d) ' BLOB saved the first time, re-uses fk_blob thereafter
+            d.Remove("fk_document") 'don't want this key to force new copies
+          Next
+      Else
+          modArchiveDocumentsDBI.Save(d)
+      Endif
+   Else
+     If chkAllStaff.Value = True Then
+       d!source_file = Document_Filename_Construct_AllStaff(d)
+       For Each member In Staff_Members
+            d!fk_staff_destination = member!fk_staff
+            modArchiveDocumentsDBI.Save(d)
+            d.Remove("fk_document") 'don't want this key to force new copies
+       Next
+     Else   
+       d!pk_document = modArchiveDocumentsDBI.Save(d, documents[pk_document])
+       ' chicken-and-egg issue: we need the PK to generate the filename but we need the filename to save the record
+       d!source_file = Document_Filename_Construct(d)
+       d2!source_file = d!source_file
+       d2!pk_document = d!pk_document
+       ' now "save twice": triggers a UPDATE carrying the filename
+       modArchiveDocumentsDBI.Save(d2)
+     Endif
+     Try Move txtFilename.Text To modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ Lower(d!source_file)
+     If Not Error Then
+         bSuccess = True
+     Else
+         modUtil.ReportError(Error.Text, Error.Backtrace)
+         modDBConnect.RollBack()
+         bSuccess = False  
+     Endif
+   Endif
+   Dec Application.Busy
+   Return bSuccess
+End
+
+Private Function SaveNotInScanning() As Boolean
   '------------------------------------------------------------
   'Saves changes to the currently displayed document's metadata
   'documents = the old collection, set by form using this module
@@ -171,104 +268,49 @@ Public Function Save() As Boolean
   '------------------------------------------------------------
    Dim d As New Collection
    Dim staff_members As Collection 
-   Dim bSuccess As Boolean                'if true the save succeeded
+   Dim bSuccess As Boolean = True               'if true the save succeeded
+
    
    If Not Valid_Document() Then Return
+   Inc Application.Busy
    If chkAllStaff.Value = True Then 
       Staff_Members = modContactsDBI.Staff_Get() 'refresh the staff list,could have just employed someone!!!!!
    End If 
-   Inc Application.Busy
-      '------------------------------------------------------------------
-      'If being used by the scanning module create an document collection 
-      '------------------------------------------------------------------
-      If Embedded_in_form_name = "Scanning" Then
-        
-         d!fk_staff_filed_document = modDBConnect.currentUser!fk_staff
-         d!date_created = Val(txtDocumentDate.text)
-         d!fk_patient = fk_patient
-         Select Case Contact_Type
-            Case const.contacttype_organisation
-               d!originator = Organisation!organisation & "." & Organisation!branch
-            Case const.contacttype_employee
-                d!originator = Organisation!organisation & "." & Organisation!wholename
-            Case const.contacttype_person, const.contacttype_patient
-               d!originator = Person!firstname & " " & Person!surname
-         End Select
-         d!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(Get_Document_Type(), Get_Display_Style(), d!originator, fk_branch, fk_employee, fk_person)
-         If rbDisplayAsLetter.value = True Then 
-            d!tag = d!originator & " - scanned letter"
-         Else
-            d!tag = d!originator & " - scanned result"
-         End If
-         d!comment = Trim(txtComment.text)
-         d!fk_lu_urgency = fk_urgency
-         hProcess = Shell "md5sum " & txtFilename.text For Input Output    
-         d!md5sum = Process_read()
-         d!fk_staff_destination = fk_staff_destination
-         d!fk_lu_display_as = Get_Display_Style()
-      Else
-         '-----------------------------------------------------------------------------------------------
-         'This document has been previously saved to the backend via the clerical module, or incoming hl7
-         'so it is being concluded in some form
-         '-----------------------------------------------------------------------------------------------
-         d!concluded = True
-         d!pk_document = pk_document
-         d!fk_lu_display_as = Get_Display_Style()
-         d!html = Document_HTML             'not displayed in this form, but by parent see Document_HTML_Set()
-         d!tag_user = Trim(txtUserObservationName.text)
-         d!date_created = Val(txtDocumentDate.text)
-         If get_laterality() > const.LateralityNone Then
-           d!tag_user = Replace$(d!tag_user, ";", " (" & UCase(const.LateralityText[get_laterality()]) & ");") 'FIXME, NOT ACCURATE EG FOR xRAY PELVIS + xRAY hIP (RIGHT)
-         End If  
-      End If
-      modDBConnect.BeginTrans()
-         '-----------------------------------------
-         'Is this document being sent to all staff?
-         '-----------------------------------------
-         If chkAllStaff.Value = True Then 
-            For Each member In Staff_Members
-               d!fk_staff_destination = member!fk_staff
-               modArchiveDocumentsDBI.Save(Documents, 0, d)
-               d.Remove("fk_document") 'don't want this key
-            Next
-         Else
-         '------------------------------------------------------------------------------------------  
-         'Either way, save document to backend for first tiem, or save modifications in collection d
-         '------------------------------------------------------------------------------------------ 
-         d!pk_document = modArchiveDocumentsDBI.Save(documents, pk_document, D)
-        
-          '  modConsultDBI.Make_Audit(Document_Make_Audit(document, const.cAuditAction_DocumentFiled), "documents", "documents")
-        
-         If Embedded_in_form_name = "Scanning" Then 
-            d!source_file = Document_Filename_Construct(d)
-            modArchiveDocumentsDBI.Document_Save_Filename(d)
-            Try Move txtFilename.Text To modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ Lower(d!source_file)
-            If Not Error Then
-               modDBConnect.CommitTrans()
-               bSuccess = True
-            Else
-               Log.ErrorMsg(Error.Text)
-               modDBConnect.RollBack()
-               bSuccess = False  
-            Endif
-          Else
-            '-------------------------------------------------------------
-            ' Now, if sending_entities has no fk_lu_request type, save this
-            '-------------------------------------------------------------
-            If bHas_sending_entity_fk_lu_request_type = False And rbDisplayAsResult.value = True Then 
-             modInboxDBI.SendingEntity_Set_fk_lu_request_type(document_types[cmbDocumentTypes.index]!pk, fk_sending_entity)
-            End If   
-     
-
-            Document_SignOff(d)            'see documents.signed_off table > he who signed off this document
-            'modDBConnect.CommitTrans() committed by calling module which does other stuff
-            bSuccess = True   
-         End If
-     End If
+   '-----------------------------------------------------------------------------------------------
+   'This document has been previously saved to the backend via the clerical module, or incoming hl7
+   'so it is being concluded in some form
+   '-----------------------------------------------------------------------------------------------
+   d!concluded = True
+   d!pk_document = pk_document
+   d!fk_lu_display_as = Get_Display_Style()
+   d!html = Document_HTML             'not displayed in this form, but by parent see Document_HTML_Set()
+   d!tag_user = Trim(txtUserObservationName.text)
+   d!date_created = Val(txtDocumentDate.text)
+   If get_laterality() > const.LateralityNone Then
+      d!tag_user = Replace$(d!tag_user, ";", " (" & UCase(const.LateralityText[get_laterality()]) & ");") 'FIXME, NOT ACCURATE EG FOR xRAY PELVIS + xRAY hIP (RIGHT)
+   End If  
+   modDBConnect.BeginTrans()
+   '-----------------------------------------
+   'Is this document being sent to all staff?
+   '-----------------------------------------
+   If chkAllStaff.Value = True Then 
+      For Each member In Staff_Members
+         d!fk_staff_destination = member!fk_staff
+         modArchiveDocumentsDBI.Save(d)
+         d.Remove("fk_document") 'don't want this key to force new copies
+      Next
+   Else
+     If bHas_sending_entity_fk_lu_request_type = False And rbDisplayAsResult.value = True Then 
+        modInboxDBI.SendingEntity_Set_fk_lu_request_type(document_types[cmbDocumentTypes.index]!pk, fk_sending_entity)
+     End If   
+     Document_SignOff(d)            'see documents.signed_off table > he who signed off this document
+     'modDBConnect.CommitTrans() committed by calling module which does other stuff
+     bSuccess = True   
+     d!pk_document = modArchiveDocumentsDBI.Save(d, documents[pk_document])
+   End If
    Dec Application.Busy
    Return bSuccess
 End
-
 
 Public Sub Get_Document_Type() As Integer
    
@@ -726,6 +768,7 @@ Public Sub Edit(old_documents As Collection, pk_view As Integer)
    End If
    
    If Documents[pk_view]!fk_patient Then mnuHealthIssues_Show()
+   chkAllStaff.Value = False
    bExit = False  
 End
 Public Sub Timer1_Timer()
@@ -1001,7 +1044,6 @@ Public Sub RequestItem_Selection(action As String, txtbox As TextBox, Optional c
          
          columnview1.MoveCurrent()
          CurrentRequest = The_Collection[columnview1.Item.key]
-         
          If InStr(CurrentRequest!item, "(RIGHT)") Then
             rblateralityright.value = True
             CurrentRequest!item = Trim(Replace(CurrentRequest!item, "(RIGHT)", ""))
@@ -1697,12 +1739,18 @@ Public Function Document_Filename_Construct(document As Collection) As String
    
    If Trim(txtPatient.text) <> "" Then 
       newfilename &= Replace(Trim(txtPatient.text), " ", "_") & "." & modutil.DateString_Encode(lblbirthdate.text) & "." & Str(Document!fk_patient) & "."
-   Else
-      If chkAllStaff.value = True Then
-         newfilename = "memo.allstaff." & Replace$(Trim(txtDocumentTag.text), " ", "_") & "." & Format$(Now, "dd-mm-yyyy:hh:nn:ss")
-      Endif
    End If   
    newfilename &= Replace(Document!originator, " ", "_") & "." & Str$(document!pk_document) & "."
+   newfilename &= File.Ext(txtFilename.text)
+   Return Lower(newfilename) 'ensure all in lower case
+   
+End
+
+Public Function Document_Filename_Construct_AllStaff(document As Collection) As String
+  Dim newfilename As String
+  
+   newfilename = "memo.allstaff." & Replace$(Trim(txtDocumentTag.text), " ", "_") & "." & Format$(Now, "yyyymmddhhnnss")
+   newfilename &= Replace(Document!originator, " ", "_") & "."
    newfilename &= File.Ext(txtFilename.text)
    Return Lower(newfilename) 'ensure all in lower case
    

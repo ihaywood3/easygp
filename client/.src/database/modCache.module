@@ -1,0 +1,103 @@
+' Gambas module file
+' a simple caching system for read-only lookup tables
+' Copyright (C) 2010 Dr. Ian Haywood
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+Private db_version As String
+Private cache_ram As New Collection
+Private file_error As Boolean = False
+
+Public Sub SetDBVersion(vers As Collection)
+  ' called only by modDBConnect to set the database version
+  db_version = vers!major & "." & vers!minor
+  
+End
+
+Public Function Get(table As String, Optional v As Variant, field As String) As Variant
+  ' obtains the content of a lookup table, caching the data in the 
+  ' local disc.
+  ' table: the name of the table with schema
+  ' v: the value to get
+  ' field: the field in the table to match v too
+  ' if v is not provided, the whole table is returned
+  ' if field isn't provided, returns one row, by the PK
+  ' if field is provided, provides one row, where v matches that field in the row 
+  Dim t As Collection
+  Dim i As Collection
+  Dim j As Variant
+  
+  Let t = GetTable(table)
+  If IsNull(v) Then
+    Return t
+  Else
+    If IsNull(field) Then
+      Return t[v]
+    Else
+      For Each i In t
+        If i[field] = v Then Return i!pk
+      Next
+    Endif
+  Endif
+  
+  Return Null
+  
+End
+
+Private Function GetTable(tbl As String) As Collection
+  Dim data As Collection
+  Dim f As File
+  Dim fname As String
+  Dim i As String
+  
+  If cache_ram.Exist(tbl) Then Return cache_ram[tbl]
+  Let fname = "/usr/lib/easygp/cache" &/ db_version &/ tbl
+  If Access(fname) Then
+    Let f = Open fname For Read
+    Read #f, data
+    Close #f
+  Else
+    fname = User.Home &/ ".cache/easygp" &/ db_version &/ tbl
+    If Access(fname) Then
+      Let f = Open fname For Read
+      Read #f, data
+      Close #f
+    Else
+      Let data = modDBConnect.exec_query_collection("select * from " & tbl)
+      If file_error Then Return data
+      For Each i In [".cache", ".cache/easygp", ".cache/easygp" &/ db_version]
+        If Not Access(User.Home &/ i) Then
+          Try Mkdir User.Home &/ i
+          If Error Then 
+            Message.Error("Can't create directory: " & User.Home &/ i & " (" & Error.Text & ")")
+            file_error = True
+            Return data
+          Endif
+        Endif
+      Next
+      Try f = Open fname For Write Create
+      If Error Then 
+        Message.Error("Can't create file: " & User.Home &/ i & " (" & Error.Text & ")")
+        file_error = True
+        Return data
+      Endif
+      Write #f, data As Collection
+      Close #f
+    Endif
+  Endif
+  cache_ram[tbl] = data
+  Return data
+    
+End

@@ -14,7 +14,76 @@
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-Public Sub Audit_HTML_Construct(audit_rows As Collection, heading As String) As CTemplate   
- ' Gambas module file
+Public Sub MakeAudit(consult As CConsult, audit_action As String, tbl As String, fk_row As Integer, Optional notes As String)
+   ' creates an audit entry
+   ' consult: the current consult
+   ' audit_action: the action as a string, must be from the list
+   ' in clin_consult.lu_actions
+   ' tbl: the name of the backend table being audited, as a string, with schema
+   ' fk_row: the PK of the row being auditing
+   ' notes: the free-html description of the change provided by calling code
+
+   Dim audit As New Collection
+   Dim s As String
+   Dim action_coll As Collection
+   Dim form_audit As FAudit
+   
+   audit!notes = notes
+   audit!fk_audit_action = modCache.Get("clin_consult.lu_actions", audit_action, "action")
+   audit!fk_row = fk_row
+   audit!linked_table = tbl
+   If IsNull(audit!fk_audit_action) Then
+     s = "Unrecognised audit action " & audit_action
+     Log.ErrorMsg(s)
+     Error.Raise(s)
+   Endif
+   action_coll = modCache.Get("clin_consult.lu_actions", audit!fk_audit_action)
+   If action_coll!insist_reason Then
+     ' user needs to give us a reason
+     form_audit = New FAudit
+     form_audit.Init(action_coll!action, tbl, notes)
+     If form_audit.ShowModal() = 0 Then
+       Error.Raise("user refuses to give a reason")
+     Endif
+     Let audit!fk_audit_reason = form_audit.GetReasonPK()
+   Endif
+   audit!fk_consult = consult.GetPK()
+   modDBConnect.insert("clin_consult.progressnotes", audit) 
 
 End
+
+
+Public Function Get_Reasons(reason As String) As Collection 
+   '-----------------------------------------------------------
+   'Gets  a user-specific list of reasons for the audit action
+   'e.g could be "written for the wrong patient" or
+   '             "patient has left practice"
+   '-----------------------------------------------------------
+   Dim sql As String
+   
+   sql = "SELECT * FROM clin_consult.lu_audit_reasons WHERE fk_staff = &1 "
+   " AND reason ILIKE $$&2%$$ LIMIT 10"
+   sql = Subst$(sql, modDBConnect.currentUser!fk_staff, reason) 
+   Return modDBConnect.exec_query_collection(sql)
+
+End
+
+Public Function New_Reason(reason As String) As Integer
+  
+  ' accepts a new reason and returns the PK
+  Dim sql As String
+  Dim coll As Collection
+  Dim fk_staff As Integer
+  
+  fk_staff = modDBConnect.currentUser!fk_staff
+  sql = "SELECT pk FROM clin_consult.lu_audit_reasons WHERE fk_staff = &1 "
+   " AND reason ILIKE $$&2$$ LIMIT 1"
+  sql = Subst$(sql, fk_staff, reason) 
+  coll = modDBConnect.exec_query_first(sql)
+  If IsNull(coll) Then
+    Return modDBConnect.insert("clin_consult.lu_audit_reasons", ["reason": reason, "fk_staff": fk_staff])
+  Else
+    Return coll!pk
+  Endif
+End
+

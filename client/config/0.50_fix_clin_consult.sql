@@ -8,7 +8,7 @@ alter table clin_consult.lu_actions rename to lu_audit_actions;
 CREATE OR REPLACE VIEW clin_consult.vwprogressnotes AS 
 SELECT 
   "CONSULT".fk_patient,
-   clin_consult.progressnotes.pk as pk_progress_note,
+   clin_consult.progressnotes.pk as pk_progressnote,
   "CONSULT".consult_date,
   "CONSULT_TYPE".type AS consult_type,
   "SECTION".section,

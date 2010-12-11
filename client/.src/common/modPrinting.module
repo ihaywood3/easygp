@@ -31,8 +31,10 @@ Public Function Latex_To_PDF(latex As String) As String
    f = Open stem & ".tex" For Write Create
    Print #f, latex
    Close #f  
-   cmd = "cd `dirname " & stem & "` ; "
-   cmd &= "pdflatex printl.tmp.tex ; " 
+   cmd = modUtil.FindProgram("pdflatex", "texlive-latex-base")
+   If IsNull(cmd) Then Error.Raise("LaTeX not available")
+   cmd = "cd `dirname " & stem & "` ; " & cmd
+   cmd &= " printl.tmp.tex ; " 
    Shell cmd Wait
    Dec Application.Busy
    Return Replace(stem, "printl.tmp", "printl.tmp.pdf")
@@ -53,8 +55,10 @@ Public Sub Print_latex(latex As String, Optional printertype As Integer = const.
    f = Open stem & ".tex" For Write Create
    Print #f, latex
    Close #f
-   cmd = "cd `dirname " & stem & "` ; " 
-   cmd &= "latex printl.tmp.tex ; "
+   cmd = modUtil.FindProgram("latex", "texlive-latex-base")
+   If IsNull(cmd) Then Return
+   cmd = "cd `dirname " & stem & "` ; " & cmd 
+   cmd &= " printl.tmp.tex ; "
    cmd &= "dvips printl.tmp.dvi -o"
    cmd &= Subst$(" '!lpr &1 -# &2'", GetLprOption(printertype), number_copies)
    Log.DebugMsg("Printing using command " & cmd)
@@ -70,10 +74,15 @@ Public Sub PrintHtml(sHtml As String, Optional printertype As Integer = const.Pa
    '-----------------------------------------------------------------------------
    Dim pro As Process
    Dim cmd As String
+   Dim lpr As String
    
    If sHtml = "" Then Return
-   Inc Application.Busy 
-   cmd = Subst$("wkhtmltopdf -q - - | lpr &1", GetLprOption(printertype))
+   Inc Application.Busy
+   cmd = modUtil.FindProgram("wkhtmltopdf", "wkhtmltopdf")
+   If IsNull(cmd) Then Return
+   lpr = modUtil.FindProgram("lpr", "cups")
+   If IsNull(lpr) Then Return
+   cmd = Subst$("&1 -q - - | &2 &3", cmd, lpr, GetLprOption(printertype))
    Log.DebugMsg("HTML print command: " & cmd)
    pro = Shell cmd For Write
    Write #pro, sHtml
@@ -97,8 +106,8 @@ Public Function Make_PDF(sections As Collection, Optional orientation As Integer
    Dim page_orientation As String
    Dim tempfile As String
    Dim pro As Process
-     Message.Info("Richard, should not be in this routine: Make_PDF stop and check")
- 
+   Dim cmd As String
+
    If orientation = const.orientation_landscape Then
       page_orientation = "landscape"
    Else
@@ -110,7 +119,9 @@ Public Function Make_PDF(sections As Collection, Optional orientation As Integer
    '----------------------------------------------------------------------------------------------------------
    'Construct the text to pass to the shell, first page orientation, toc, then headers, footers and coversheet
    '----------------------------------------------------------------------------------------------------------
-   shell_text = "wkhtmltopdf -O " & page_orientation 
+   cmd = modUtil.FindProgram("wkhtmltopdf", "wkhtmltopdf")
+   If IsNull(cmd) Then Return
+   shell_text = cmd & " -O " & page_orientation 
    If bPrintTOC Then shell_text &= " --toc --outline" 'FIXME LATER: the gambas component dosn 't seem to handle outlines/indexs
    shell_text &= " --margin-bottom 15 --header-right 'Page [page]' --footer-center '- EasyGP Medical Records -' --footer-spacing 1 --footer-font-name 'comic sans ms' " 
    If cover_page <> "" Then
@@ -165,6 +176,9 @@ Public Function Join_PDF_IAN(pdf_files As String[], Optional output_filename As 
    Dim cmd As String
    Dim lf As File
    
+   cmd = modUtil.FindProgram("pdflatex", "texlive-latex-base")
+   If IsNull(cmd) Then Return
+   
    stem = Left$(Temp$(output_filename), -4) ' strip .tmp from name
    lf = Open stem & ".tex" For Write Create
    Print #lf, "\\documentclass[a4paper]{article}"
@@ -202,6 +216,8 @@ Public Sub Split_PDF(pdf_file As String)
    Dim cmd_result As String
    Dim page As Integer = 1
    
+   cmd = modUtil.FindProgram("pdflatex", "texlive-latex-base")
+   If IsNull(cmd) Then Return
    If Right$(pdf_file, 4) = ".pdf" Then
       stem = Left$(pdf_file, -4) ' strip .pdf from name
    Else
@@ -215,8 +231,8 @@ Public Sub Split_PDF(pdf_file As String)
      Print #lf, Subst$("\\includepdf[pages=&1]{&2}", Str$(page), pdf_file)
      Print #lf, "\\end{document}"
      Close #lf
-     cmd = "cd `dirname " & stem & "` ; " 
-     cmd &= "pdflatex -interaction=nonstopmode " & stem & "-" & Str$(page) & ".tex"
+     cmd = "cd `dirname " & stem & "` ; " & cmd
+     cmd &= " -interaction=nonstopmode " & stem & "-" & Str$(page) & ".tex"
      Shell cmd To cmd_result
      Inc page
    Loop Until Not InStr(cmd_result, "")
@@ -239,9 +255,13 @@ Public Function Printers_Load() As String[]
    Dim i As Integer
    Dim sLineInput As String
    Dim pro As Process
+   Dim cmd As String
    
-   pro = Exec ["lpstat", "-v"] For Read
+ 
    printerlist = New String[]
+   cmd = modUtil.FindProgram("lpstat", "cups")
+   If IsNull(cmd) Then Return printerlist 
+   pro = Exec [cmd, "-v"] For Read
    '--------------------------------------------
    'Now open that file and populate the array
    'lpstat -v gives device for Printername: path

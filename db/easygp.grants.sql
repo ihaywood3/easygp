@@ -502,8 +502,6 @@ GRANT select ON TABLE documents.vwsendingentities TO staff;
 GRANT select ON TABLE import_export.lu_demographics_field_templates TO staff;
 GRANT select ON TABLE import_export.lu_source_program TO staff;
 GRANT select ON TABLE import_export.vwdemographictemplates TO staff;
-GRANT select, insert ON TABLE public.all_images TO staff;
-
 GRANT usage on SEQUENCE clin_certificates.lu_illness_temporality_pk_seq TO staff;
 GRANT usage on SEQUENCE clin_certificates.medical_certificate_pk_seq TO staff;
 GRANT usage on SEQUENCE clin_checkups.lu_nutrition_questions_pk_seq TO staff;
@@ -957,7 +955,7 @@ grant all on coding.usr_codes_weighting_pk_seq to staff;
 grant select on coding.vwcodesweighted to staff;
 grant select on coding.vwgenericterms to staff;
 grant select on clin_requests.lu_request_type to staff;
-grant usage on all_images_pk_seq TO staff;
 grant usage on schema clin_procedures to staff;
 grant select on clerical.lu_task_types to staff;
 grant select on clin_requests.vwrequestproviders to staff;
+grant select on clin_recalls.vwrecallsdue to staff;

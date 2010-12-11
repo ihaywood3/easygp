@@ -15,7 +15,7 @@ SET search_path = admin, pg_catalog;
 -- Name: lu_staff_roles_pk_seq; Type: SEQUENCE SET; Schema: admin; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_staff_roles_pk_seq', 5, true);
+SELECT pg_catalog.setval('lu_staff_roles_pk_seq', 8, false);
 
 
 --
@@ -146,6 +146,13 @@ SELECT pg_catalog.setval('lu_tasks_pk_seq', 9, true);
 
 
 SET search_path = clin_certificates, pg_catalog;
+
+--
+-- Name: lu_fitness_pk_seq; Type: SEQUENCE SET; Schema: clin_certificates; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_fitness_pk_seq', 2, true);
+
 
 --
 -- Name: lu_illness_temporality_pk_seq; Type: SEQUENCE SET; Schema: clin_certificates; Owner: -
@@ -479,83 +486,34 @@ SELECT pg_catalog.setval('lu_request_type_pk_seq', 11, true);
 SELECT pg_catalog.setval('lu_requests_pk_seq', 1526, true);
 
 
---
--- Name: lu_type_pk_seq; Type: SEQUENCE SET; Schema: clin_requests; Owner: -
---
-
-SELECT pg_catalog.setval('lu_type_pk_seq', 20, true);
-
-
 SET search_path = clin_vaccination, pg_catalog;
-
---
--- Name: indication_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
---
-
-SELECT pg_catalog.setval('indication_pk_seq', 1, false);
-
-
---
--- Name: lu_indication_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
---
-
-SELECT pg_catalog.setval('lu_indication_pk_seq', 27, true);
-
 
 --
 -- Name: lu_schedules_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_schedules_pk_seq', 1, false);
-
-
---
--- Name: lu_target_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
---
-
-SELECT pg_catalog.setval('lu_target_pk_seq', 27, true);
+SELECT pg_catalog.setval('lu_schedules_pk_seq', 60, true);
 
 
 --
 -- Name: lu_vaccines_descriptions_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_vaccines_descriptions_pk_seq', 62, true);
+SELECT pg_catalog.setval('lu_vaccines_descriptions_pk_seq', 41, true);
 
 
 --
 -- Name: lu_vaccines_in_schedule_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_vaccines_in_schedule_pk_seq', 1, false);
+SELECT pg_catalog.setval('lu_vaccines_in_schedule_pk_seq', 170, true);
 
 
 --
 -- Name: lu_vaccines_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_vaccines_pk_seq', 62, true);
-
-
---
--- Name: vaccines_descriptions_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
---
-
-SELECT pg_catalog.setval('vaccines_descriptions_pk_seq', 1, false);
-
-
---
--- Name: vaccines_in_schedule_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
---
-
-SELECT pg_catalog.setval('vaccines_in_schedule_pk_seq', 1, false);
-
-
---
--- Name: vaccines_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
---
-
-SELECT pg_catalog.setval('vaccines_pk_seq', 1, false);
+SELECT pg_catalog.setval('lu_vaccines_pk_seq', 193, true);
 
 
 SET search_path = clin_workcover, pg_catalog;
@@ -880,7 +838,7 @@ SET search_path = db, pg_catalog;
 -- Name: db_version_pk_seq; Type: SEQUENCE SET; Schema: db; Owner: -
 --
 
-SELECT pg_catalog.setval('db_version_pk_seq', 11, true);
+SELECT pg_catalog.setval('db_version_pk_seq', 27, true);
 
 
 SET search_path = defaults, pg_catalog;
@@ -999,11 +957,10 @@ COPY lu_staff_roles (pk, role) FROM stdin;
 4	student
 5	nurse
 7	secretary
-2	dental
 1	doctor - assistant
-9	doctor - principal
-8	Information technology
 6	practice manager
+2	dentist
+8	information technology
 \.
 
 
@@ -1577,6 +1534,16 @@ COPY lu_tasks (pk, task) FROM stdin;
 
 
 SET search_path = clin_certificates, pg_catalog;
+
+--
+-- Data for Name: lu_fitness; Type: TABLE DATA; Schema: clin_certificates; Owner: -
+--
+
+COPY lu_fitness (pk, fitness) FROM stdin;
+1	fit
+2	unfit
+\.
+
 
 --
 -- Data for Name: lu_illness_temporality; Type: TABLE DATA; Schema: clin_certificates; Owner: -
@@ -2358,783 +2325,783 @@ COPY lu_instructions (pk, instruction) FROM stdin;
 -- Data for Name: lu_link_provider_user_requests; Type: TABLE DATA; Schema: clin_requests; Owner: -
 --
 
-COPY lu_link_provider_user_requests (pk, fk_lu_request, provider_request_name, lateralisation) FROM stdin;
-1	1328	1 Leg AIF/2 Area Stent/Graft above & below groin	0
-2	65	1 Leg DVT Lower Limb: (no iliacs)	0
-3	608	24U-Cit	0
-4	665	24U-Cort	0
-5	471	24U-IFE	0
-6	422	24U-Ox	0
-7	471	24U-PEPG	0
-8	1052	2 Arm Arteries,Arm pressures/RAY Hands	0
-9	1328	2 Legs AIF/2 area stent/graft above &below groin	0
-10	847	2 Legs AIF/2 area stent/graft above &below groin,SAP (with exercise)	0
-11	1328	A005871	0
-12	1164	A009931	0
-13	708	A012962	0
-14	523	A1AT	0
-15	1172	AAA/Aorto Iliacs	0
-16	523	AATP	0
-17	1082	ACE	0
-18	1043	Administration of Contrast\\R\\63040	0
-19	305	ADRENAL ANTIBODY (ADR-0)	0
-20	707	AFB MICROSCOPY (AFB-0)	0
-21	518	Alb/Creat Ratio	0
-22	1176	Albumin Excr (Ur)	0
-23	977	Aldosterone	0
-24	812	AMA	0
-25	999	ANA	0
-26	406	ANA/Autoantibodies	0
-27	64	ANDROGENS (AND-0)	0
-28	51	ANDROGENS (AND-0)	0
-29	197	Antenatal Testing	0
-30	126	Antenatal Testing	0
-31	274	ANTI LEUCOCYTE ANTIBODY (LLA-0)	0
-32	756	Apol a	0
-33	1194	Apolipoproteins	0
-34	193	Arthrography,Derangement Hip or Supporting Structures	0
-35	999	AUTOIMMUNE (CTD-0)	0
-36	1430	B12 FOLATE	0
-37	1430	B12/Folate/Ferritin	0
-38	61	B12/Folate/RCF	0
-39	656	B12/Folate/RCF	0
-40	61	B12, FOLATE, R.C.FOLATE (VBF-0)	0
-41	90	Barium Enema	0
-42	53	BB WP	0
-43	388	BFV	0
-44	1033	Bgas	0
-45	140	BhCG	0
-46	390	Bilateral Mammogram	0
-47	355	BIOCHEM	0
-48	59	BIOCHEM	0
-49	355	Biochemistry	0
-50	59	Biochemistry	0
-51	571	Blood Bank	0
-52	1303	BORD	0
-53	109	BPCR	0
-54	1453	Breast Ultrasound (Both)	0
-55	545	BSL	0
-56	755	CA 125	0
-57	610	Calc	0
-58	942	Carb	0
-59	1084	Cardiac Markers	0
-60	590	Catecholamine 24h	0
-61	705	CCP	0
-62	1293	CEA	0
-63	1312	Chemistry, Ur.24H	0
-64	444	Chemistry, Urine	0
-65	1275	Chest X-Ray	0
-66	814	CHLAMYDIA PCR (CHM-0)	0
-67	814	CHLT	0
-68	100	CK/CE	0
-69	59	Clinical Chemistry	0
-70	355	Clinical Chemistry	0
-71	619	Clozapine	0
-72	1135	CMV Abs	0
-73	994	Coag	0
-74	654	Coag Inhibitor assay	0
-75	927	COAG-INR	0
-76	994	COAGULATION STUDIES (COA-0)	0
-77	994	Coagulation Tests	0
-78	379	Coeliac HLA DR/DQ	0
-79	826	COELIAC MASTER PANEL (COE-0)	0
-80	826	Coeliac Serology	0
-81	1136	Complement C3 + C4	0
-82	805	Cortisol	0
-83	867	CPLS	0
-84	442	C-REACTIVE PROTEIN (CRP-0)	0
-85	898	Creatinine Clearance	0
-86	267	CROSS MATCH (XM-0)	0
-87	442	CRP	0
-88	317	CRYP-S	0
-89	317	CryptAg	0
-90	381	CT Abdomen  &  Pelvis with contrast       56407	0
-91	381	CT - ABDO / PELVIS  -  WITH CONTRAST	0
-92	1167	CT - BRAIN  -  NO CONTRAST	0
-93	1167	CT Brain Non Contrast	0
-94	1025	CT Brain with Contrast	0
-95	401	CT Chest/Abdomen + Contrast	0
-96	771	CT Chest & Upp Abd No Contrast	0
-97	771	CT Cxr/abd/pel/Neck + Contrast	0
-98	452	CT Cxr/abd/pel/Neck + Contrast,CT Brain with Contrast	0
-99	1228	CT - EXTREMITIES - NO CONTRAST, HAND  WRIST  FOREARM ANY COMBINATION (RIGHT)	0
-100	225	CT Extremities non contrast	0
-101	1128	CT Left Wrist	0
-102	894	CT Lumbosacral Spine non-contrast	0
-103	1128	CT Right Wrist	0
-104	814	CTSW1	0
-105	381	CT Upper Abd/Pel + Contrast	0
-106	147	CT Upper Abd/Pel + Contrast	0
-107	664	CVI	0
-108	642	Cytology	0
-109	929	CYTOLOGY NON GYNAE (CYT-0)	0
-110	635	Derangement Ankle and/or  Foot or Supporting Structures	0
-111	177	Derangement Knee or Supporting Structures	0
-112	92	Derangement Shoulder or Supporting Structures	0
-113	737	DHEAS	0
-114	737	DHEA-S	0
-115	165	Diagnostic Imaging Report	0
-116	90	Diagnostic Imaging Report	0
-117	1048	Diagnostic Imaging Report	0
-118	1025	Diagnostic Imaging Report	0
-119	207	Diagnostic Imaging Report	0
-120	747	Diagnostic Imaging Report	0
-121	664	Diagnostic Imaging Report	0
-122	1328	Diagnostic Imaging Report	0
-123	1419	Dig	0
-124	786	Dihydrotesteron	0
-125	814	Direct Antigen Tests	0
-126	1235	DNA	0
-127	1385	DO NOT USE	0
-128	127	DPD	0
-129	594	E2	0
-130	196	E498	0
-131	1039	EBV	0
-132	790	ECG	0
-133	790	ECG-TR	0
-134	790	ELECTROCARDIOGRAM (ECG-0)	0
-135	872	Electrophoresis	0
-136	1415	ENA	0
-137	1415	_ENA	0
-138	101	Endoluminal Aortic Graft	0
-139	1039	EPSTEIN-BARR VIRUS (EBV-0)	0
-140	828	Erythropoietin	0
-141	687	Extra Views	0
-142	1339	Factor V Leiden	0
-143	209	FBC	0
-144	858	FMCS	0
-145	858	FMCS2	0
-146	445	FOB	0
-147	445	FOB 2	0
-148	445	FOB 3	0
-149	1279	FSH	0
-150	439	Fun	0
-151	739	Fungal Culture	0
-152	192	GAH	0
-153	938	General Serology	0
-154	921	General Serology	0
-155	955	General Serology	0
-156	906	General Serology.	0
-157	938	General Serology.	0
-158	1270	GENERAL SWAB M/C/S (PUS-0)	0
-159	1270	GENERAL SWAB M/C/S (PUS-1)	0
-160	839	GENERAL SWAB M/C/S (PUS-1)	0
-161	545	Gluc	0
-162	545	Gluc Challenge	0
-163	1367	Glucose	0
-164	545	_Glucose	0
-165	545	GLUCOSE (GLU-0)	0
-166	12	GLYCATED HAEMOGLOBIN (A1C-0)	0
-167	1270	GMC1	0
-168	552	GMC2	0
-169	245	GMC3	0
-170	1004	GPC	0
-171	536	GTT	0
-172	536	GTTP	0
-173	209	Haematology	0
-174	209	HAEMATOLOGY (FBE-0)	0
-175	209	HB	0
-176	12	HbA1c	0
-177	12	_HbA1c	0
-178	12	Hba1c/GTT	0
-179	1007	hCG	0
-180	766	HCG(TM)	0
-181	450	HDL	0
-182	921	Hepatitis B Serology	0
-183	223	Hepatitis C Serology	0
-184	856	Hepatitis Serology	0
-185	501	HEPATITIS SEROLOGY (HEP-0)	0
-186	1166	HEPATITIS SEROLOGY (HEP-0)	0
-187	223	HepC	0
-188	223	HEP SEROLOGY	0
-189	309	Histo	0
-190	309	HistoG	0
-191	309	Histology JHH	0
-192	309	HISTOPATHOLOGY	0
-193	309	HISTOPATHOLOGY (HIS-0)	0
-194	1091	HIV INSURANCE / VISA (HII-0)	0
-195	1091	HIV - NON COMMERCIAL (HIR-0)	0
-196	1184	HLAB27	0
-197	206	HM	0
-198	516	HOLD SERUM (HLD-0)	0
-199	964	Homo	0
-200	1374	HORMONE PROFILE (HOR-0)	0
-201	1279	HORMONE PROFILE (HOR-0)	0
-202	64	Hormones	0
-203	64	HORMONES (HOC-0)	0
-204	737	HORMONES (HOC-0)	0
-205	1082	Hormone Testing	0
-206	650	HPV DNA	0
-207	866	HSV	0
-208	363	HSVPCR	0
-209	1436	HTLV	0
-210	1304	IFAB	0
-211	1141	IgE	0
-212	301	IgE Specific Allerg.	0
-213	588	IGF1	0
-214	1141	IMMUNOGLOBULIN E (SERUM) (IGE-0)	0
-215	1185	Immunoglobulins	0
-216	1125	IMMUNOGLOBULINS (IMM-0)	0
-217	927	INR	0
-218	927	INR Report	0
-219	260	Iron Studies	0
-220	260	IRON STUDIES (FE-0)	0
-221	260	IRS	0
-222	1015	JAK2	0
-223	1015	JAK2 Mutation	0
-224	708	Knee Left X-Ray	0
-225	708	Knee Right X-Ray	0
-226	1370	KUB	0
-227	651	KUB+TOMOS	0
-228	899	LABEL	0
-229	570	LAMICTAL (LAM-0)	0
-230	570	Lamo	0
-231	65	! Leg Venous Reflux/Injection under U/S control	0
-232	1374	LH	0
-233	915	Limited US Both Breasts	0
-234	1086	Limited Xray Single Breast,Limited US Single Breast	3
-235	1086	Limited Xray Single Breast,US Single Breast	0
-236	525	Lip	0
-237	450	LipHDL	0
-238	450	Lipids	0
-239	675	LIPID STUDIES (LIP-0)	0
-240	1423	LIPID STUDIES (LIP-0)	0
-241	395	L.Mark	0
-242	395	LSMT1	0
-243	390	Mammogram Drs Report	0
-244	1270	MCS	0
-245	483	MeaAb	0
-246	956	Metals, 24Hr Urine	0
-247	338	Metals, Blood	0
-248	611	Microbiology Culture	0
-249	442	Misc.Chemistry	0
-250	467	Misc. Refer	0
-251	1301	MRI1 Reg/2 ContigRegSpine Cerv Radiculopathy,Xray Cervical Spine	0
-252	1043	MRI 1 Reg/2 Contig Reg Spine Sciatica	0
-253	834	MRI 3Cont/2 NonCon Reg Spine Tumour	0
-254	1366	MRI Acoustic Neuroma - IAMs	0
-255	1336	MRI BRAIN, GAD	0
-256	177	MRI RIGHT KNEE	0
-257	1019	MSU	0
-258	564	MTB1	0
-259	564	MTB2	0
-260	564	MTB3	0
-261	1288	MumAb	0
-262	1084	NCTROP	0
-263	350	Nephrology Lab Urines	0
-264	816	NGFNAP	0
-265	1289	NGSP	0
-266	639	NM Bone Marrow with Tc	0
-267	1440	NM Com Stress & Rest + Tomo,Exercise ECG Nuclear Medicine	0
-268	1443	NM Localised Bone/Joint + Tomo,NM Spect CT	0
-269	1168	NM Thyroid	0
-270	639	NM Whole Body	0
-271	924	NM Whole Body with tomo	0
-272	1102	NUCHAL TRANSLUCENCY	0
-273	815	OBSTETRIC SCAN UNDER 12 WEEKS	0
-274	960	PAP	0
-275	960	PAP NS	0
-276	960	PAPR	0
-277	991	PAPR	0
-278	991	PAPR NS	0
-279	960	PAPR NS	0
-280	991	PAPR V	0
-281	773	PAPR V	0
-282	960	PAP SMEAR	0
-283	960	PAP SMEAR (PAN-0)	0
-284	858	Parasite Screening	0
-285	348	PARATHYROID HORMONE (PTH-0)	0
-286	340	Par ID	0
-287	453	PARV	0
-288	872	PEPG	0
-289	872	..PEPG	0
-290	1153	PFA	0
-291	545	pGlu	0
-292	545	pGluc	0
-293	395	Phenotyping	0
-294	752	Phey	0
-295	545	PLASMA GLUCOSE (PGL-0)	0
-296	1094	PLASMA ZINC (RPAH)	0
-297	330	PROGESTERONE	0
-298	1373	Prol	0
-299	302	PROSTATE SPECIFIC ANTIGEN (PSA-0)	0
-300	872	PROTEIN EPG	0
-301	927	PROTHROMBIN TIME (PR-0)	0
-302	302	PSA	0
-303	1111	PT	0
-304	848	PTH	0
-305	348	PTH	0
-306	474	QGOLD	0
-307	1007	QUANTITATIVE PREG (PTQ-0)	0
-308	709	RAST	0
-309	709	RAST TEST (RAS-0)	0
-310	467	REFERRED TEST (SEN-0)	0
-311	1182	Renal	0
-312	977	Renin/Aldosterone	0
-313	284	Respir.Microbiology	0
-314	890	Retics	0
-315	587	RF	0
-316	19	Ross River	0
-317	838	Rubella IgG,IgM	0
-318	847	SAP (no exercise)/RAY FEET	0
-319	1362	SAP (with exercise),2 Legs AIF/2 area stent	0
-320	1149	S/Away	0
-321	478	SchAb	0
-322	1351	SERUM C.E.A (CEA-0)	0
-323	59	SERUM CHEMISTRY (MBA-0)	0
-324	355	SERUM CHEMISTRY (MBA-0)	0
-325	1122	SERUM INSULIN (INS-0)	0
-326	1232	SHOULDER (RIGHT)	0
-327	78	S-IFE	0
-328	364	SMA	0
-329	818	S-NT-proBNP	0
-330	156	SPECIALIST CONSULTATION	0
-331	199	SPECIFIC PROTEINS (SPP-0)	0
-332	282	SPNR	0
-333	282	SPNR DR	0
-334	1289	Sputum1	0
-335	1289	Sputum2	0
-336	1289	Sputum3	0
-337	984	Sweat Testing	0
-338	430	Syphilis	0
-339	64	TESTOSTERONE	0
-340	1010	TFT	0
-341	66	TFT	0
-342	77	TFT	0
-343	687	Therapeutic dose iodine	0
-344	942	THERAPEUTIC DRUG MON. (TDM-0)	0
-345	1242	THORACIC SPINE	0
-346	558	ThyAb	0
-347	601	ThyAb	0
-348	48	THYROGLOBULIN (THY-0)	0
-349	1278	Thyroid Abs	0
-350	48	_Thyroid Abs Virtual	0
-351	558	_Thyroid Abs Virtual	0
-352	601	_Thyroid Abs Virtual	0
-353	48	Thyroid Abs Virtual	0
-354	1278	THYROID AUTOANTIBODIES (TAA-0)	0
-355	77	Thyroid Function	0
-356	77	THYROID FUNCTION TEST (TFT-0)	0
-357	66	THYROID FUNCTION TEST (TFT-0)	0
-358	1010	THYROID FUNCTION TEST (TFT-0)	0
-359	77	Thyroid Funct Tests	0
-360	1171	TOF	0
-361	1171	TO FOLLOW TESTS (TOF-0)	0
-362	923	TOXO	0
-363	62	TRAB	0
-364	338	TRACE ELEMENTS (STE-0)	0
-365	955	TREPONEMAL SEROLOGY (SYP-0)	0
-366	1084	TROPONIN I ULTRA (TNI-0)	0
-367	1293	Tumour Markers	0
-368	1176	U-ALB	0
-369	123	U-B2M	0
-370	155	UBT	0
-371	814	U-CTPCR	0
-372	1076	UDSD	0
-373	915	Ultrasound Single Breast	0
-374	1453	Ultrasound Single Breast	0
-375	518	UMalb	0
-376	711	U-NGPCR	0
-377	642	Urine1	0
-378	642	Urine2	0
-379	642	Urine3	0
-380	694	Urine Chemistry	0
-381	1417	Urine Chemistry	0
-382	625	Urine Chemistry	0
-383	1108	Urine Chemistry	0
-384	959	URINE CHEMISTRY (URG-0)	0
-385	608	URINE CITRATE (UCI-0)	0
-386	1076	Urine Drug Screen	0
-387	546	Urine EPG	0
-388	1019	Urine MCS	0
-389	1019	Urine Microbiology	0
-390	1019	URINE MICRO/CULTURE (UMM-0)	0
-391	956	URINE TRACE ELEMENTS (UTE-0)	0
-392	747	US Abdomen	0
-393	1453	US - BREAST (LT)	0
-394	207	US Female Pelvis	0
-395	49	US FNA Breast	0
-396	792	US Hand or Wrist	0
-397	795	US Knee - Left	0
-398	795	US Knee - Right	0
-399	915	US Lump or Subcutaneous Structure	0
-400	1385	US MSK INTERVENTION+DIAGNOSTIC	0
-401	110	US Paediatric hip Dysplasia	0
-402	207	US - PELVIC - FEMALE (ANY APPROACH)	0
-403	207	US - PELVIC - FEMALE (ANY APPROACH), NON CONTIGUOUS BODY AREA, US - INTERVENTION - MSK(THERAPEUTIC)	0
-404	815	US Pregnancy under 12 weeks	0
-405	165	US - RENAL	0
-406	1385	US - SHOULDER OR UPPER ARM (RT)	0
-407	659	US Shoulder or Upper Arm,Xray Right Shoulder/Scapula	0
-408	165	US Urinary Tract	0
-409	1077	Valp	0
-410	1077	Valproate	0
-411	779	VCAb	0
-412	779	VCG	0
-413	331	VCZPCR	0
-414	1060	Venesection	0
-415	1060	VENESECTION (TV-0)	0
-416	109	Viral PCR panel	0
-417	787	Vitamin D	0
-418	787	VITAMIN D 1-25	0
-419	787	VITAMIN D (DVI-0)	0
-420	112	VitB1	0
-421	1429	Vit. C	0
-422	773	VLT	0
-423	309	X011	0
-424	59	X017	0
-425	453	X020	0
-426	267	XmatchE	0
-427	876	Xray Barium Meal/Swallow	0
-428	643	Xray Both Breasts	3
-429	1086	Xray Both Breasts,US Both Breasts	0
-430	1356	Xray Cervical Spine	0
-431	1275	Xray Chest	0
-432	1365	Xray Left Ankle + Leg,Xray Left Knee + Femur	1
-433	1205	Xray Left Ankle + Leg,Xray Left Knee,Xray Left Hip Joint	1
-434	22	Xray Left Foot	1
-435	1281	Xray Left Hip Joint	1
-436	708	Xray Left Knee	1
-437	1232	Xray Left Shoulder/Scapula	1
-438	935	Xray Lumbosacral Spine	0
-439	1370	Xray Plain Renal	0
-440	660	Xray Right Clavicle	2
-441	22	Xray Right Foot	2
-442	1097	Xray Right Hand	2
-443	1332	Xray Right Hip Joint,Xray Left Hip Joint,Xray Lumbosacral Spine	0
-444	708	Xray Right Knee	2
-445	1232	Xray Right Shoulder/Scapula	2
-446	1159	Xray Right Wrist	2
-447	643	Xray Single Breast	0
-448	1086	Xray Single Breast,US Both Breasts	0
-449	679	Y97B	0
-450	1094	Zinc	0
-451	787	VitD	0
-452	355	Biochemistry	0
-453	59	Biochemistry	0
-454	82	Biochemistry	0
-455	848	Biochemistry	0
-456	533	Biochemistry	0
-457	480	Biochemistry	0
-458	1423	Biochemistry	0
-459	675	Biochemistry	0
-460	209	Haematology	0
-461	757	Haematology	0
-462	1344	Biochemistry	0
-463	1423	LipHDL	0
-464	675	LipHDL	0
-465	441	Biochemistry	0
-466	1374	Hormones	0
-467	1279	Hormones	0
-468	1446	Biochemistry	0
-469	1225	Iron Studies	0
-470	242	FOB 3	0
-471	242	FOB 2	0
-472	242	FOB	0
-473	283	Biochemistry	0
-474	1091	HIV	0
-475	1101	Hepatitis B Serology	0
-476	518	Chemistry, Urine	0
-477	727	Hapt	0
-478	955	Syphilis	0
-479	68	Albumin Excr (Ur)	0
-480	334	GMC1	0
-481	245	GMC1	0
-482	739	Fun	0
-483	1032	GMC1	0
-484	1032	GMC2	0
-485	190	Chemistry, Ur.24H	0
-486	385	Hepatitis B Serology	0
-487	1351	Tumour Markers	0
-488	245	GMC2	0
-489	690	GMC1	0
-490	969	GMC1	0
-491	1180	GMC1	0
-492	1120	Syphilis	0
-493	711	NGSW1	0
-494	925	GMC1	0
-495	306	Hepatitis Serology	0
-496	1269	Hepatitis B Serology	0
-497	483	MeaG	0
-498	921	Hepatitis Serology	0
-499	385	Hepatitis Serology	0
-500	1423	HDL	0
-501	675	HDL	0
-502	1463	Gluc2HRPP	0
-503	1252	BLC	0
-504	71	GMC1	0
-505	519	Fun	0
-506	66	Thyroid Function	0
-507	1010	Thyroid Function	0
-508	1293	E498	0
-509	545	Biochemistry	0
-510	330	Hormones	0
-511	962	Hepatitis Serology	0
-512	223	Hepatitis Serology	0
-513	656	X017	0
-514	1007	_Pregnancy	0
-515	480	SERUM CHEMISTRY (MBA-0)	0
-516	839	GENERAL SWAB M/C/S (PUS-0)	0
-517	927	COAGULATION STUDIES (COA-0)	0
-518	185	FLUID MICRO/CULTURE (FLD-0)	0
-519	1464	FLIUD CHEMISTRIES (CFL-0)	0
-520	385	HEPATITIS SEROLOGY (HEP-0)	0
-521	205	HEPATITIS SEROLOGY (HEP-0)	0
-522	450	LIPID STUDIES (LIP-0)	0
-523	82	SERUM CHEMISTRY (MBA-0)	0
-524	1019	Microbiology Culture	0
-525	546	Electrophoresis	0
-526	1446	Misc.Chemistry	0
-527	260	B12/Folate/Ferritin	0
-528	808	Tumour Markers	0
-529	805	Hormone Testing	0
-530	1270	Microbiology Culture	0
-531	677	Tumour Markers	0
-532	1095	Hormone Testing	0
-533	1040	Hormone Testing	0
-534	1423	Lipids	0
-535	675	Lipids	0
-536	480	Clinical Chemistry	0
-537	545	Clinical Chemistry	0
-538	26	Hormone Testing	0
-539	437	Haematology	0
-540	839	Microbiology Culture	0
-541	1431	Hormone Testing	0
-542	1206	Hormone Testing	0
-543	150	Hormone Testing	0
-544	785	Hormone Testing	0
-545	1169	Hormone Testing	0
-546	228	Hormone Testing	0
-547	1420	Direct Antigen Tests	0
-548	1225	IRS	0
-549	1388	CMV Abs	0
-550	866	CMV Abs	0
-551	518	U-ALB	0
-552	68	U-ALB	0
-553	757	FBC	0
-554	480	BIOCHEM	0
-555	1344	BIOCHEM	0
-556	525	BIOCHEM	0
-557	848	SERUM CHEMISTRY (MBA-0)	0
-558	610	Biochem	0
-559	1465	GMC1	0
-560	585	GMC1	0
-561	840	GMC1	0
-562	1466	GMC1	0
-563	1467	Biochemistry	0
-564	51	REFERRED TEST (SEN-0)	0
-565	848	Clinical Chemistry	0
-566	453	PAR	0
-567	1235	S313	0
-568	1468	COCAU	0
-569	1469	CANNU	0
-570	1470	OPIU	0
-571	943	METHU	0
-572	1471	BENZU	0
-573	1472	AMPHU	0
-574	282	TO FOLLOW NOT RECD	0
-575	1303	BORG	0
-576	828	Erpo	0
-577	1473	U309	0
-578	47	A1AT PHENOTYPING	0
-579	317	Crypt Serum (ICPMR)	0
-580	457	FDP	0
-581	1474	J015	0
-582	525	SERUM CHEMISTRY (MBA-0)	0
-583	533	SERUM CHEMISTRY (MBA-0)	0
-584	204	Hormone Testing	0
-585	692	IgE Specific Allerg.	0
-586	1076	COC UDS	0
-587	1475	THIOPURINE METHYL TR	0
-588	406	Autoantibodies	0
-589	339	Hormone Testing	0
-590	82	Clinical Chemistry	0
-591	443	ELBOW (LEFT)	1
-592	1322	US - ANKLE OR HIND FOOT (RT)	2
-593	1275	CHEST	0
-594	352	OBSTETRIC MULTIPLE PREGNANCY 17 - 22 WEEKS GP	0
-595	1097	HAND (LEFT)	1
-596	480	SE-_ROUTINE CHEMISTRY	0
-597	480	U-CALCIUM 24HR EXCR.	0
-598	1082	SE-ANGIOTENSIN C. ENZYME	0
-599	1232	SHOULDER (RIGHT), US - SHOULDER OR UPPER ARM (RT)	2
-600	1159	WRIST (RIGHT)	2
-601	649	CT - ABDO / PELVIS  -  NO CONTRAST	0
-602	571	Blood Gp/Antibodies	0
-603	525	Misc.Chemistry	0
-604	708	KNEE (RIGHT)	2
-605	1478	Tumour Markers	0
-606	1479	MRI LUMBAR SPINE	0
-607	826	Coeliac Abs	0
-608	937	MRI LUMBAR SPINE	0
-609	1356	CERVICAL SPINE	0
-610	1164	Xray Pelvic Girdle,Xray Chest	3
-611	488	Xray Pelvic Girdle,Xray Chest	3
-612	1288	MumG	0
-613	804	MUSCULOSKELETAL CROSS-SECTIONAL (PRE	2
-614	352	OBSTETRIC SCAN 17 - 22 WEEKS GP	0
-615	22	FOOT (RIGHT), US - MID FOOT OR FOREFOOT (RT)	2
-616	708	RT KNEE	2
-617	440	CT IMAGING WITH INTERVENTION	1
-618	585	Microbiology Culture	0
-619	22	FOOT (LEFT)	1
-620	1370	RENAL(KUB)	2
-621	165	RENAL ULTRASOUND	0
-622	1167	CT BRAIN SCAN - NON CONTRAST	0
-623	1167	CT BRAIN SCAN - NON CONTRAST, DVA OUTPATIENT SERVICE IN ROOMS	2
-624	177	LT KNEE, DVA OUTPATIENT SERVICE IN ROOMS	1
-625	1480	LT ELBOW, FOREARM OR ELBOW MUSCULOSKELETAL ULT	1
-626	1481	SHOULDER OR UPPER ARM MUSCULOSKELETA, RT SHOULDER OR SCAPULA	2
-627	795	KNEE MUSCULOSKELETAL ULTRASOUND, RT KNEE	2
-628	1379	CT CERVICAL SPINE - NON CONTRAST	1
-629	1482	ANKLE OR HIND FOOT MUSCULOSKELETAL U, RT FOOT	2
-630	1483	LT HIP JOINT	2
-631	1385	SHOULDER OR UPPER ARM MUSCULOSKELETA	2
-632	486	MUSCULOSKELETAL CROSS-SECTIONAL (NON	2
-633	1086	MAMMOGRAPHY, BREAST ULTRASOUND-BOTH SIDES	3
-634	381	CT UPPER ABDOMEN AND PELVIS + CONT	2
-635	294	CT CHEST WITH CONTRAST	2
-636	1232	LT SHOULDER OR SCAPULA	1
-637	747	ABDOMINAL ULTRASOUND	0
-638	815	PREGNANCY ULTRASOUND-LESS THAN 12 WE	2
-639	207	PELVIC ULTRASOUND (FEMALE)	0
-640	1232	SHOULDER OR UPPER ARM MUSCULOSKELETA, LT SHOULDER OR SCAPULA	1
-641	361	CT LUMBAR SPINE - NO CONTRAST	2
-642	520	LT FOOT AND ANKLE	2
-643	772	PREGNANCY US-AFTER 22 WEEKS-GP	2
-644	1281	RT HIP JOINT, NOT FOR COMPARISON, LT HIP JOINT	3
-645	22	LT FOOT	1
-646	1025	CT SCAN BRAIN + CONT	1
-647	1097	RT HAND	2
-648	708	LT KNEE	1
-649	708	RT KNEE, NOT FOR COMPARISON, LT KNEE	3
-650	1159	RT WRIST	2
-651	1484	RT FEMUR, RT HIP JOINT	2
-652	1352	MID FOOT OR FORE FOOT MUSCULOSKELETA	1
-653	381	US - ABDOMEN, CT - ABDO / PELVIS  -  WITH CONTRAST	2
-654	594	Hormones	0
-655	104	Coag Factor Assay	0
-656	69	CT THORACIC SPINE - NON CONTRAST	1
-657	659	SHOULDER OR UPPER ARM MUSCULOSKELETA, LT SHOULDER OR SCAPULA	1
-658	1486	General Serology.	0
-659	1487	General Serology.	0
-660	1453	BREAST ULTRASOUND-BOTH SIDES	1
-661	1247	CT - PELVIS  -  WITH CONTRAST	0
-662	1385	RT SHOULDER OR SCAPULA	2
-663	1232	RT SHOULDER OR SCAPULA	2
-664	1488	Diagnostic Imaging Report	2
-665	635	Diagnostic Imaging Report	1
-666	1489	CT EXTREMITIES WITHOUT CONTRAST	2
-667	520	LT ANKLE	1
-668	1453	BREAST ULTRASOUND-ONE SIDE	1
-669	1172	Renal,AAA/Aorto Iliacs	2
-670	1182	Renal,AAA/Aorto Iliacs	2
-671	1440	Exercise ECG Nuclear Medicine,NM Com Stress & Rest + Tomo	1
-672	914	US - HIP OR GROIN (LT)	1
-673	1474	BLOOD GROUP AND HOLD (GPH-0)	0
-674	1344	Misc.Chemistry	0
-675	1490	HIV RNA	0
-676	1097	HAND (RIGHT)	2
-677	660	LT CLAVICLE	1
-678	937	MRI LUMBAR SPINE, NON REBATABLE MEDICARE	1
-679	1172	DOPPLER OF THE ABDOMEN	0
-680	177	MRI - LEFT KNEE	1
-681	520	ANKLE (LEFT)	1
-682	1232	SHOULDER (LEFT)	1
-683	1491	Clinical Chemistry	0
-684	1252	Microbiology Culture	0
-685	1419	Drugs	0
-686	1281	LT HIP JOINT, SELF DETERMINED, PELVIS	1
-687	177	MRI RIGHT KNEE, NON REBATABLE MEDICARE	2
-688	132	BLOOD GROUP (BG-0)	0
-689	1492	CT - PETROUS BONES +/- BRAIN  WITH OR WITHOUT CONTRAST	2
-690	1493	ORBITS	0
-691	245	Microbiology Culture	0
-692	1494	Virology Problem	0
-693	239	Legionella Culture	0
-694	1420	Respiratory Serology	0
-695	1135	General Serology.	0
-696	1495	RVM PCR	0
-697	1496	Misc.Chemistry	0
-698	1497	US - MID FOOT OR FOREFOOT (LT)	1
-699	65	DVT Right Leg	2
-700	690	Microbiology Culture	0
-701	1498	Viral PCR panel	0
-702	519	Fun2	0
-703	1336	MRI Stroke	0
-704	207	US Male Pelvis	0
-705	401	CT - CHEST +/- UPPER ABDOMEN  -  NO CONTRAST	2
-706	165	CT - ABDO / PELVIS  -  NO CONTRAST	0
-707	747	US - ABDOMEN, CT - ABDO / PELVIS  -  WITH CONTRAST	2
-708	1043	MRI LUMBAR SPINE	0
-709	109	X019	0
-710	747	US - ABDOMEN	2
-711	625	Clinical Chemistry	0
-712	546	RU-PEPG	0
-713	1058	RU-IFE	0
-714	924	NM Spect CT,NM Whole Body with tomo	2
-715	1043	MRI 1 Reg/2 Contig Reg Spine Post Surgical	2
-716	894	CT - LUMBAR SPINE  -  NO CONTRAST	2
-717	450	X017	0
-718	858	X029	0
-719	545	X017	0
-720	1019	X015	0
-721	1499	Clinical Chemistry	0
-722	1500	Clinical Chemistry	0
-725	708	KNEE (LEFT)	1
-726	838	SEROLOGY (AXM-0)	0
-727	22	US - SHOULDER OR UPPER ARM (LT), FOOT (RIGHT)	2
-728	1385	US - SHOULDER OR UPPER ARM (LT), FOOT (RIGHT)	2
-729	169	LT HAND	1
-730	177	MRI - LEFT KNEE, NON REBATABLE MEDICARE	1
-731	804	US - INTERVENTION - MSK(THERAPEUTIC)	1
-733	844	Scanned Document	0
-734	1506	CANCEL	0
-738	1089	Dr Rohan Bhagwandeen - scanned letter	0
-739	1507	Dr Antonio Ambrogetti - scanned letter	0
-740	1508	Scanned Document	0
-742	1509	General Serology	0
-743	985	Letter	2
-744	1164	Hunter Imaging Group - scanned document	0
-745	935	Hunter Imaging Group - scanned document	3
-746	708	Hunter Imaging Group - scanned document	3
-747	1123	Newcastle and Hunter Cardiac Services - scanned document	0
-748	48	Porphyrins	0
-749	64	Hormone Testing	3
-750	51	Hormone Testing	3
-751	1512	Hormone Testing	3
-752	1097	Xray Left Hand,Xray Right Hand	3
-753	1513	Administration of Contrast,Derangement Hip or Supporting Structures	2
-754	1051	CRYOGLOBULIN (CRY-0)	0
-755	654	LUPUS ANTICOAGULANT (LAC-0)	0
-756	1486	ANTI STREPTOLYSIN-O-TITRE (ASO-0)	0
-757	1182	Referral	2
-758	469	Referral	2
-759	1281	RT HIP JOINT, SELF DETERMINED, PELVIS	3
-760	1520	ANTI D.NASE B (ASE-0)	0
-761	1521	Clinical Chemistry	0
-762	294	CT - CHEST +/- UPPER ABDOMEN  -  WITH CONTRAST	2
-763	1522	TOTAL COMPLEMENT (TTP-0)	0
-764	1133	Referral	2
-765	24	Hip Left Injection US	1
-766	1373	Hormone Testing	0
-767	207	Pelvic US	2
-768	1420	INFLUENZA AG DHM	0
-769	641	Gent	0
-770	510	ORTHOPANTOMOGRAPHY	2
-771	1361	PREGNANCY TEST (PTS-0)	0
-772	1523	Viral PCR panel	0
-773	790	ECG-R	0
-774	376	G6PD (GPD-0)	0
-775	279	MYCOPLASMA SEROLOGY (MYS-0)	2
-776	708	Knee Right Xray	2
-777	1453	Breast Left US	1
-778	209	_Haematology	0
-779	747	Abdominal US	2
-780	1524	ANTI LEUCOCYTE ANTIBODY (LLA-0)	0
-781	1525	ANTI LEUCOCYTE ANTIBODY (LLA-0)	0
-782	1122	Ins	0
-783	12	Hba1c Clinic	0
+COPY lu_link_provider_user_requests (pk, fk_lu_request, provider_request_name, lateralisation, deleted) FROM stdin;
+1	1328	1 Leg AIF/2 Area Stent/Graft above & below groin	0	f
+2	65	1 Leg DVT Lower Limb: (no iliacs)	0	f
+3	608	24U-Cit	0	f
+4	665	24U-Cort	0	f
+5	471	24U-IFE	0	f
+6	422	24U-Ox	0	f
+7	471	24U-PEPG	0	f
+8	1052	2 Arm Arteries,Arm pressures/RAY Hands	0	f
+9	1328	2 Legs AIF/2 area stent/graft above &below groin	0	f
+10	847	2 Legs AIF/2 area stent/graft above &below groin,SAP (with exercise)	0	f
+11	1328	A005871	0	f
+12	1164	A009931	0	f
+13	708	A012962	0	f
+14	523	A1AT	0	f
+15	1172	AAA/Aorto Iliacs	0	f
+16	523	AATP	0	f
+17	1082	ACE	0	f
+18	1043	Administration of Contrast\\R\\63040	0	f
+19	305	ADRENAL ANTIBODY (ADR-0)	0	f
+20	707	AFB MICROSCOPY (AFB-0)	0	f
+21	518	Alb/Creat Ratio	0	f
+22	1176	Albumin Excr (Ur)	0	f
+23	977	Aldosterone	0	f
+24	812	AMA	0	f
+25	999	ANA	0	f
+26	406	ANA/Autoantibodies	0	f
+27	64	ANDROGENS (AND-0)	0	f
+28	51	ANDROGENS (AND-0)	0	f
+29	197	Antenatal Testing	0	f
+30	126	Antenatal Testing	0	f
+31	274	ANTI LEUCOCYTE ANTIBODY (LLA-0)	0	f
+32	756	Apol a	0	f
+33	1194	Apolipoproteins	0	f
+34	193	Arthrography,Derangement Hip or Supporting Structures	0	f
+35	999	AUTOIMMUNE (CTD-0)	0	f
+36	1430	B12 FOLATE	0	f
+37	1430	B12/Folate/Ferritin	0	f
+38	61	B12/Folate/RCF	0	f
+39	656	B12/Folate/RCF	0	f
+40	61	B12, FOLATE, R.C.FOLATE (VBF-0)	0	f
+41	90	Barium Enema	0	f
+42	53	BB WP	0	f
+43	388	BFV	0	f
+44	1033	Bgas	0	f
+45	140	BhCG	0	f
+46	390	Bilateral Mammogram	0	f
+47	355	BIOCHEM	0	f
+48	59	BIOCHEM	0	f
+49	355	Biochemistry	0	f
+50	59	Biochemistry	0	f
+51	571	Blood Bank	0	f
+52	1303	BORD	0	f
+53	109	BPCR	0	f
+54	1453	Breast Ultrasound (Both)	0	f
+55	545	BSL	0	f
+56	755	CA 125	0	f
+57	610	Calc	0	f
+58	942	Carb	0	f
+59	1084	Cardiac Markers	0	f
+60	590	Catecholamine 24h	0	f
+61	705	CCP	0	f
+62	1293	CEA	0	f
+63	1312	Chemistry, Ur.24H	0	f
+64	444	Chemistry, Urine	0	f
+65	1275	Chest X-Ray	0	f
+66	814	CHLAMYDIA PCR (CHM-0)	0	f
+67	814	CHLT	0	f
+68	100	CK/CE	0	f
+69	59	Clinical Chemistry	0	f
+70	355	Clinical Chemistry	0	f
+71	619	Clozapine	0	f
+72	1135	CMV Abs	0	f
+73	994	Coag	0	f
+74	654	Coag Inhibitor assay	0	f
+75	927	COAG-INR	0	f
+76	994	COAGULATION STUDIES (COA-0)	0	f
+77	994	Coagulation Tests	0	f
+78	379	Coeliac HLA DR/DQ	0	f
+79	826	COELIAC MASTER PANEL (COE-0)	0	f
+80	826	Coeliac Serology	0	f
+81	1136	Complement C3 + C4	0	f
+82	805	Cortisol	0	f
+83	867	CPLS	0	f
+84	442	C-REACTIVE PROTEIN (CRP-0)	0	f
+85	898	Creatinine Clearance	0	f
+86	267	CROSS MATCH (XM-0)	0	f
+87	442	CRP	0	f
+88	317	CRYP-S	0	f
+89	317	CryptAg	0	f
+90	381	CT Abdomen  &  Pelvis with contrast       56407	0	f
+91	381	CT - ABDO / PELVIS  -  WITH CONTRAST	0	f
+92	1167	CT - BRAIN  -  NO CONTRAST	0	f
+93	1167	CT Brain Non Contrast	0	f
+94	1025	CT Brain with Contrast	0	f
+95	401	CT Chest/Abdomen + Contrast	0	f
+96	771	CT Chest & Upp Abd No Contrast	0	f
+97	771	CT Cxr/abd/pel/Neck + Contrast	0	f
+98	452	CT Cxr/abd/pel/Neck + Contrast,CT Brain with Contrast	0	f
+99	1228	CT - EXTREMITIES - NO CONTRAST, HAND  WRIST  FOREARM ANY COMBINATION (RIGHT)	0	f
+100	225	CT Extremities non contrast	0	f
+101	1128	CT Left Wrist	0	f
+102	894	CT Lumbosacral Spine non-contrast	0	f
+103	1128	CT Right Wrist	0	f
+104	814	CTSW1	0	f
+105	381	CT Upper Abd/Pel + Contrast	0	f
+106	147	CT Upper Abd/Pel + Contrast	0	f
+107	664	CVI	0	f
+108	642	Cytology	0	f
+109	929	CYTOLOGY NON GYNAE (CYT-0)	0	f
+110	635	Derangement Ankle and/or  Foot or Supporting Structures	0	f
+111	177	Derangement Knee or Supporting Structures	0	f
+112	92	Derangement Shoulder or Supporting Structures	0	f
+113	737	DHEAS	0	f
+114	737	DHEA-S	0	f
+115	165	Diagnostic Imaging Report	0	f
+116	90	Diagnostic Imaging Report	0	f
+117	1048	Diagnostic Imaging Report	0	f
+118	1025	Diagnostic Imaging Report	0	f
+119	207	Diagnostic Imaging Report	0	f
+120	747	Diagnostic Imaging Report	0	f
+121	664	Diagnostic Imaging Report	0	f
+122	1328	Diagnostic Imaging Report	0	f
+123	1419	Dig	0	f
+124	786	Dihydrotesteron	0	f
+125	814	Direct Antigen Tests	0	f
+126	1235	DNA	0	f
+127	1385	DO NOT USE	0	f
+128	127	DPD	0	f
+129	594	E2	0	f
+130	196	E498	0	f
+131	1039	EBV	0	f
+132	790	ECG	0	f
+133	790	ECG-TR	0	f
+134	790	ELECTROCARDIOGRAM (ECG-0)	0	f
+135	872	Electrophoresis	0	f
+136	1415	ENA	0	f
+137	1415	_ENA	0	f
+138	101	Endoluminal Aortic Graft	0	f
+139	1039	EPSTEIN-BARR VIRUS (EBV-0)	0	f
+140	828	Erythropoietin	0	f
+141	687	Extra Views	0	f
+142	1339	Factor V Leiden	0	f
+143	209	FBC	0	f
+144	858	FMCS	0	f
+145	858	FMCS2	0	f
+146	445	FOB	0	f
+147	445	FOB 2	0	f
+148	445	FOB 3	0	f
+149	1279	FSH	0	f
+150	439	Fun	0	f
+151	739	Fungal Culture	0	f
+152	192	GAH	0	f
+153	938	General Serology	0	f
+154	921	General Serology	0	f
+155	955	General Serology	0	f
+156	906	General Serology.	0	f
+157	938	General Serology.	0	f
+158	1270	GENERAL SWAB M/C/S (PUS-0)	0	f
+159	1270	GENERAL SWAB M/C/S (PUS-1)	0	f
+160	839	GENERAL SWAB M/C/S (PUS-1)	0	f
+161	545	Gluc	0	f
+162	545	Gluc Challenge	0	f
+163	1367	Glucose	0	f
+164	545	_Glucose	0	f
+165	545	GLUCOSE (GLU-0)	0	f
+166	12	GLYCATED HAEMOGLOBIN (A1C-0)	0	f
+167	1270	GMC1	0	f
+168	552	GMC2	0	f
+169	245	GMC3	0	f
+170	1004	GPC	0	f
+171	536	GTT	0	f
+172	536	GTTP	0	f
+173	209	Haematology	0	f
+174	209	HAEMATOLOGY (FBE-0)	0	f
+175	209	HB	0	f
+176	12	HbA1c	0	f
+177	12	_HbA1c	0	f
+178	12	Hba1c/GTT	0	f
+179	1007	hCG	0	f
+180	766	HCG(TM)	0	f
+181	450	HDL	0	f
+182	921	Hepatitis B Serology	0	f
+183	223	Hepatitis C Serology	0	f
+184	856	Hepatitis Serology	0	f
+185	501	HEPATITIS SEROLOGY (HEP-0)	0	f
+186	1166	HEPATITIS SEROLOGY (HEP-0)	0	f
+187	223	HepC	0	f
+188	223	HEP SEROLOGY	0	f
+189	309	Histo	0	f
+190	309	HistoG	0	f
+191	309	Histology JHH	0	f
+192	309	HISTOPATHOLOGY	0	f
+193	309	HISTOPATHOLOGY (HIS-0)	0	f
+194	1091	HIV INSURANCE / VISA (HII-0)	0	f
+195	1091	HIV - NON COMMERCIAL (HIR-0)	0	f
+196	1184	HLAB27	0	f
+197	206	HM	0	f
+198	516	HOLD SERUM (HLD-0)	0	f
+199	964	Homo	0	f
+200	1374	HORMONE PROFILE (HOR-0)	0	f
+201	1279	HORMONE PROFILE (HOR-0)	0	f
+202	64	Hormones	0	f
+203	64	HORMONES (HOC-0)	0	f
+204	737	HORMONES (HOC-0)	0	f
+205	1082	Hormone Testing	0	f
+206	650	HPV DNA	0	f
+207	866	HSV	0	f
+208	363	HSVPCR	0	f
+209	1436	HTLV	0	f
+210	1304	IFAB	0	f
+211	1141	IgE	0	f
+212	301	IgE Specific Allerg.	0	f
+213	588	IGF1	0	f
+214	1141	IMMUNOGLOBULIN E (SERUM) (IGE-0)	0	f
+215	1185	Immunoglobulins	0	f
+216	1125	IMMUNOGLOBULINS (IMM-0)	0	f
+217	927	INR	0	f
+218	927	INR Report	0	f
+219	260	Iron Studies	0	f
+220	260	IRON STUDIES (FE-0)	0	f
+221	260	IRS	0	f
+222	1015	JAK2	0	f
+223	1015	JAK2 Mutation	0	f
+224	708	Knee Left X-Ray	0	f
+225	708	Knee Right X-Ray	0	f
+226	1370	KUB	0	f
+227	651	KUB+TOMOS	0	f
+228	899	LABEL	0	f
+229	570	LAMICTAL (LAM-0)	0	f
+230	570	Lamo	0	f
+231	65	! Leg Venous Reflux/Injection under U/S control	0	f
+232	1374	LH	0	f
+233	915	Limited US Both Breasts	0	f
+234	1086	Limited Xray Single Breast,Limited US Single Breast	3	f
+235	1086	Limited Xray Single Breast,US Single Breast	0	f
+236	525	Lip	0	f
+237	450	LipHDL	0	f
+238	450	Lipids	0	f
+239	675	LIPID STUDIES (LIP-0)	0	f
+240	1423	LIPID STUDIES (LIP-0)	0	f
+241	395	L.Mark	0	f
+242	395	LSMT1	0	f
+243	390	Mammogram Drs Report	0	f
+244	1270	MCS	0	f
+245	483	MeaAb	0	f
+246	956	Metals, 24Hr Urine	0	f
+247	338	Metals, Blood	0	f
+248	611	Microbiology Culture	0	f
+249	442	Misc.Chemistry	0	f
+250	467	Misc. Refer	0	f
+251	1301	MRI1 Reg/2 ContigRegSpine Cerv Radiculopathy,Xray Cervical Spine	0	f
+252	1043	MRI 1 Reg/2 Contig Reg Spine Sciatica	0	f
+253	834	MRI 3Cont/2 NonCon Reg Spine Tumour	0	f
+254	1366	MRI Acoustic Neuroma - IAMs	0	f
+255	1336	MRI BRAIN, GAD	0	f
+256	177	MRI RIGHT KNEE	0	f
+257	1019	MSU	0	f
+258	564	MTB1	0	f
+259	564	MTB2	0	f
+260	564	MTB3	0	f
+261	1288	MumAb	0	f
+262	1084	NCTROP	0	f
+263	350	Nephrology Lab Urines	0	f
+264	816	NGFNAP	0	f
+265	1289	NGSP	0	f
+266	639	NM Bone Marrow with Tc	0	f
+267	1440	NM Com Stress & Rest + Tomo,Exercise ECG Nuclear Medicine	0	f
+268	1443	NM Localised Bone/Joint + Tomo,NM Spect CT	0	f
+269	1168	NM Thyroid	0	f
+270	639	NM Whole Body	0	f
+271	924	NM Whole Body with tomo	0	f
+272	1102	NUCHAL TRANSLUCENCY	0	f
+273	815	OBSTETRIC SCAN UNDER 12 WEEKS	0	f
+274	960	PAP	0	f
+275	960	PAP NS	0	f
+276	960	PAPR	0	f
+277	991	PAPR	0	f
+278	991	PAPR NS	0	f
+279	960	PAPR NS	0	f
+280	991	PAPR V	0	f
+281	773	PAPR V	0	f
+282	960	PAP SMEAR	0	f
+283	960	PAP SMEAR (PAN-0)	0	f
+284	858	Parasite Screening	0	f
+285	348	PARATHYROID HORMONE (PTH-0)	0	f
+286	340	Par ID	0	f
+287	453	PARV	0	f
+288	872	PEPG	0	f
+289	872	..PEPG	0	f
+290	1153	PFA	0	f
+291	545	pGlu	0	f
+292	545	pGluc	0	f
+293	395	Phenotyping	0	f
+294	752	Phey	0	f
+295	545	PLASMA GLUCOSE (PGL-0)	0	f
+296	1094	PLASMA ZINC (RPAH)	0	f
+297	330	PROGESTERONE	0	f
+298	1373	Prol	0	f
+299	302	PROSTATE SPECIFIC ANTIGEN (PSA-0)	0	f
+300	872	PROTEIN EPG	0	f
+301	927	PROTHROMBIN TIME (PR-0)	0	f
+302	302	PSA	0	f
+303	1111	PT	0	f
+304	848	PTH	0	f
+305	348	PTH	0	f
+306	474	QGOLD	0	f
+307	1007	QUANTITATIVE PREG (PTQ-0)	0	f
+308	709	RAST	0	f
+309	709	RAST TEST (RAS-0)	0	f
+310	467	REFERRED TEST (SEN-0)	0	f
+311	1182	Renal	0	f
+312	977	Renin/Aldosterone	0	f
+313	284	Respir.Microbiology	0	f
+314	890	Retics	0	f
+315	587	RF	0	f
+316	19	Ross River	0	f
+317	838	Rubella IgG,IgM	0	f
+318	847	SAP (no exercise)/RAY FEET	0	f
+319	1362	SAP (with exercise),2 Legs AIF/2 area stent	0	f
+320	1149	S/Away	0	f
+321	478	SchAb	0	f
+322	1351	SERUM C.E.A (CEA-0)	0	f
+323	59	SERUM CHEMISTRY (MBA-0)	0	f
+324	355	SERUM CHEMISTRY (MBA-0)	0	f
+325	1122	SERUM INSULIN (INS-0)	0	f
+326	1232	SHOULDER (RIGHT)	0	f
+327	78	S-IFE	0	f
+328	364	SMA	0	f
+329	818	S-NT-proBNP	0	f
+330	156	SPECIALIST CONSULTATION	0	f
+331	199	SPECIFIC PROTEINS (SPP-0)	0	f
+332	282	SPNR	0	f
+333	282	SPNR DR	0	f
+334	1289	Sputum1	0	f
+335	1289	Sputum2	0	f
+336	1289	Sputum3	0	f
+337	984	Sweat Testing	0	f
+338	430	Syphilis	0	f
+339	64	TESTOSTERONE	0	f
+340	1010	TFT	0	f
+341	66	TFT	0	f
+342	77	TFT	0	f
+343	687	Therapeutic dose iodine	0	f
+344	942	THERAPEUTIC DRUG MON. (TDM-0)	0	f
+345	1242	THORACIC SPINE	0	f
+346	558	ThyAb	0	f
+347	601	ThyAb	0	f
+348	48	THYROGLOBULIN (THY-0)	0	f
+349	1278	Thyroid Abs	0	f
+350	48	_Thyroid Abs Virtual	0	f
+351	558	_Thyroid Abs Virtual	0	f
+352	601	_Thyroid Abs Virtual	0	f
+353	48	Thyroid Abs Virtual	0	f
+354	1278	THYROID AUTOANTIBODIES (TAA-0)	0	f
+355	77	Thyroid Function	0	f
+356	77	THYROID FUNCTION TEST (TFT-0)	0	f
+357	66	THYROID FUNCTION TEST (TFT-0)	0	f
+358	1010	THYROID FUNCTION TEST (TFT-0)	0	f
+359	77	Thyroid Funct Tests	0	f
+360	1171	TOF	0	f
+361	1171	TO FOLLOW TESTS (TOF-0)	0	f
+362	923	TOXO	0	f
+363	62	TRAB	0	f
+364	338	TRACE ELEMENTS (STE-0)	0	f
+365	955	TREPONEMAL SEROLOGY (SYP-0)	0	f
+366	1084	TROPONIN I ULTRA (TNI-0)	0	f
+367	1293	Tumour Markers	0	f
+368	1176	U-ALB	0	f
+369	123	U-B2M	0	f
+370	155	UBT	0	f
+371	814	U-CTPCR	0	f
+372	1076	UDSD	0	f
+373	915	Ultrasound Single Breast	0	f
+374	1453	Ultrasound Single Breast	0	f
+375	518	UMalb	0	f
+376	711	U-NGPCR	0	f
+377	642	Urine1	0	f
+378	642	Urine2	0	f
+379	642	Urine3	0	f
+380	694	Urine Chemistry	0	f
+381	1417	Urine Chemistry	0	f
+382	625	Urine Chemistry	0	f
+383	1108	Urine Chemistry	0	f
+384	959	URINE CHEMISTRY (URG-0)	0	f
+385	608	URINE CITRATE (UCI-0)	0	f
+386	1076	Urine Drug Screen	0	f
+387	546	Urine EPG	0	f
+388	1019	Urine MCS	0	f
+389	1019	Urine Microbiology	0	f
+390	1019	URINE MICRO/CULTURE (UMM-0)	0	f
+391	956	URINE TRACE ELEMENTS (UTE-0)	0	f
+392	747	US Abdomen	0	f
+393	1453	US - BREAST (LT)	0	f
+394	207	US Female Pelvis	0	f
+395	49	US FNA Breast	0	f
+396	792	US Hand or Wrist	0	f
+397	795	US Knee - Left	0	f
+398	795	US Knee - Right	0	f
+399	915	US Lump or Subcutaneous Structure	0	f
+400	1385	US MSK INTERVENTION+DIAGNOSTIC	0	f
+401	110	US Paediatric hip Dysplasia	0	f
+402	207	US - PELVIC - FEMALE (ANY APPROACH)	0	f
+403	207	US - PELVIC - FEMALE (ANY APPROACH), NON CONTIGUOUS BODY AREA, US - INTERVENTION - MSK(THERAPEUTIC)	0	f
+404	815	US Pregnancy under 12 weeks	0	f
+405	165	US - RENAL	0	f
+406	1385	US - SHOULDER OR UPPER ARM (RT)	0	f
+407	659	US Shoulder or Upper Arm,Xray Right Shoulder/Scapula	0	f
+408	165	US Urinary Tract	0	f
+409	1077	Valp	0	f
+410	1077	Valproate	0	f
+411	779	VCAb	0	f
+412	779	VCG	0	f
+413	331	VCZPCR	0	f
+414	1060	Venesection	0	f
+415	1060	VENESECTION (TV-0)	0	f
+416	109	Viral PCR panel	0	f
+417	787	Vitamin D	0	f
+418	787	VITAMIN D 1-25	0	f
+419	787	VITAMIN D (DVI-0)	0	f
+420	112	VitB1	0	f
+421	1429	Vit. C	0	f
+422	773	VLT	0	f
+423	309	X011	0	f
+424	59	X017	0	f
+425	453	X020	0	f
+426	267	XmatchE	0	f
+427	876	Xray Barium Meal/Swallow	0	f
+428	643	Xray Both Breasts	3	f
+429	1086	Xray Both Breasts,US Both Breasts	0	f
+430	1356	Xray Cervical Spine	0	f
+431	1275	Xray Chest	0	f
+432	1365	Xray Left Ankle + Leg,Xray Left Knee + Femur	1	f
+433	1205	Xray Left Ankle + Leg,Xray Left Knee,Xray Left Hip Joint	1	f
+434	22	Xray Left Foot	1	f
+435	1281	Xray Left Hip Joint	1	f
+436	708	Xray Left Knee	1	f
+437	1232	Xray Left Shoulder/Scapula	1	f
+438	935	Xray Lumbosacral Spine	0	f
+439	1370	Xray Plain Renal	0	f
+440	660	Xray Right Clavicle	2	f
+441	22	Xray Right Foot	2	f
+442	1097	Xray Right Hand	2	f
+443	1332	Xray Right Hip Joint,Xray Left Hip Joint,Xray Lumbosacral Spine	0	f
+444	708	Xray Right Knee	2	f
+445	1232	Xray Right Shoulder/Scapula	2	f
+446	1159	Xray Right Wrist	2	f
+447	643	Xray Single Breast	0	f
+448	1086	Xray Single Breast,US Both Breasts	0	f
+449	679	Y97B	0	f
+450	1094	Zinc	0	f
+451	787	VitD	0	f
+452	355	Biochemistry	0	f
+453	59	Biochemistry	0	f
+454	82	Biochemistry	0	f
+455	848	Biochemistry	0	f
+456	533	Biochemistry	0	f
+457	480	Biochemistry	0	f
+458	1423	Biochemistry	0	f
+459	675	Biochemistry	0	f
+460	209	Haematology	0	f
+461	757	Haematology	0	f
+462	1344	Biochemistry	0	f
+463	1423	LipHDL	0	f
+464	675	LipHDL	0	f
+465	441	Biochemistry	0	f
+466	1374	Hormones	0	f
+467	1279	Hormones	0	f
+468	1446	Biochemistry	0	f
+469	1225	Iron Studies	0	f
+470	242	FOB 3	0	f
+471	242	FOB 2	0	f
+472	242	FOB	0	f
+473	283	Biochemistry	0	f
+474	1091	HIV	0	f
+475	1101	Hepatitis B Serology	0	f
+476	518	Chemistry, Urine	0	f
+477	727	Hapt	0	f
+478	955	Syphilis	0	f
+479	68	Albumin Excr (Ur)	0	f
+480	334	GMC1	0	f
+481	245	GMC1	0	f
+482	739	Fun	0	f
+483	1032	GMC1	0	f
+484	1032	GMC2	0	f
+485	190	Chemistry, Ur.24H	0	f
+486	385	Hepatitis B Serology	0	f
+487	1351	Tumour Markers	0	f
+488	245	GMC2	0	f
+489	690	GMC1	0	f
+490	969	GMC1	0	f
+491	1180	GMC1	0	f
+492	1120	Syphilis	0	f
+493	711	NGSW1	0	f
+494	925	GMC1	0	f
+495	306	Hepatitis Serology	0	f
+496	1269	Hepatitis B Serology	0	f
+497	483	MeaG	0	f
+498	921	Hepatitis Serology	0	f
+499	385	Hepatitis Serology	0	f
+500	1423	HDL	0	f
+501	675	HDL	0	f
+502	1463	Gluc2HRPP	0	f
+503	1252	BLC	0	f
+504	71	GMC1	0	f
+505	519	Fun	0	f
+506	66	Thyroid Function	0	f
+507	1010	Thyroid Function	0	f
+508	1293	E498	0	f
+509	545	Biochemistry	0	f
+510	330	Hormones	0	f
+511	962	Hepatitis Serology	0	f
+512	223	Hepatitis Serology	0	f
+513	656	X017	0	f
+514	1007	_Pregnancy	0	f
+515	480	SERUM CHEMISTRY (MBA-0)	0	f
+516	839	GENERAL SWAB M/C/S (PUS-0)	0	f
+517	927	COAGULATION STUDIES (COA-0)	0	f
+518	185	FLUID MICRO/CULTURE (FLD-0)	0	f
+519	1464	FLIUD CHEMISTRIES (CFL-0)	0	f
+520	385	HEPATITIS SEROLOGY (HEP-0)	0	f
+521	205	HEPATITIS SEROLOGY (HEP-0)	0	f
+522	450	LIPID STUDIES (LIP-0)	0	f
+523	82	SERUM CHEMISTRY (MBA-0)	0	f
+524	1019	Microbiology Culture	0	f
+525	546	Electrophoresis	0	f
+526	1446	Misc.Chemistry	0	f
+527	260	B12/Folate/Ferritin	0	f
+528	808	Tumour Markers	0	f
+529	805	Hormone Testing	0	f
+530	1270	Microbiology Culture	0	f
+531	677	Tumour Markers	0	f
+532	1095	Hormone Testing	0	f
+533	1040	Hormone Testing	0	f
+534	1423	Lipids	0	f
+535	675	Lipids	0	f
+536	480	Clinical Chemistry	0	f
+537	545	Clinical Chemistry	0	f
+538	26	Hormone Testing	0	f
+539	437	Haematology	0	f
+540	839	Microbiology Culture	0	f
+541	1431	Hormone Testing	0	f
+542	1206	Hormone Testing	0	f
+543	150	Hormone Testing	0	f
+544	785	Hormone Testing	0	f
+545	1169	Hormone Testing	0	f
+546	228	Hormone Testing	0	f
+547	1420	Direct Antigen Tests	0	f
+548	1225	IRS	0	f
+549	1388	CMV Abs	0	f
+550	866	CMV Abs	0	f
+551	518	U-ALB	0	f
+552	68	U-ALB	0	f
+553	757	FBC	0	f
+554	480	BIOCHEM	0	f
+555	1344	BIOCHEM	0	f
+556	525	BIOCHEM	0	f
+557	848	SERUM CHEMISTRY (MBA-0)	0	f
+558	610	Biochem	0	f
+559	1465	GMC1	0	f
+560	585	GMC1	0	f
+561	840	GMC1	0	f
+562	1466	GMC1	0	f
+563	1467	Biochemistry	0	f
+564	51	REFERRED TEST (SEN-0)	0	f
+565	848	Clinical Chemistry	0	f
+566	453	PAR	0	f
+567	1235	S313	0	f
+568	1468	COCAU	0	f
+569	1469	CANNU	0	f
+570	1470	OPIU	0	f
+571	943	METHU	0	f
+572	1471	BENZU	0	f
+573	1472	AMPHU	0	f
+574	282	TO FOLLOW NOT RECD	0	f
+575	1303	BORG	0	f
+576	828	Erpo	0	f
+577	1473	U309	0	f
+578	47	A1AT PHENOTYPING	0	f
+579	317	Crypt Serum (ICPMR)	0	f
+580	457	FDP	0	f
+581	1474	J015	0	f
+582	525	SERUM CHEMISTRY (MBA-0)	0	f
+583	533	SERUM CHEMISTRY (MBA-0)	0	f
+584	204	Hormone Testing	0	f
+585	692	IgE Specific Allerg.	0	f
+586	1076	COC UDS	0	f
+587	1475	THIOPURINE METHYL TR	0	f
+588	406	Autoantibodies	0	f
+589	339	Hormone Testing	0	f
+590	82	Clinical Chemistry	0	f
+591	443	ELBOW (LEFT)	1	f
+592	1322	US - ANKLE OR HIND FOOT (RT)	2	f
+593	1275	CHEST	0	f
+594	352	OBSTETRIC MULTIPLE PREGNANCY 17 - 22 WEEKS GP	0	f
+595	1097	HAND (LEFT)	1	f
+596	480	SE-_ROUTINE CHEMISTRY	0	f
+597	480	U-CALCIUM 24HR EXCR.	0	f
+598	1082	SE-ANGIOTENSIN C. ENZYME	0	f
+599	1232	SHOULDER (RIGHT), US - SHOULDER OR UPPER ARM (RT)	2	f
+600	1159	WRIST (RIGHT)	2	f
+601	649	CT - ABDO / PELVIS  -  NO CONTRAST	0	f
+602	571	Blood Gp/Antibodies	0	f
+603	525	Misc.Chemistry	0	f
+604	708	KNEE (RIGHT)	2	f
+605	1478	Tumour Markers	0	f
+606	1479	MRI LUMBAR SPINE	0	f
+607	826	Coeliac Abs	0	f
+608	937	MRI LUMBAR SPINE	0	f
+609	1356	CERVICAL SPINE	0	f
+610	1164	Xray Pelvic Girdle,Xray Chest	3	f
+611	488	Xray Pelvic Girdle,Xray Chest	3	f
+612	1288	MumG	0	f
+613	804	MUSCULOSKELETAL CROSS-SECTIONAL (PRE	2	f
+614	352	OBSTETRIC SCAN 17 - 22 WEEKS GP	0	f
+615	22	FOOT (RIGHT), US - MID FOOT OR FOREFOOT (RT)	2	f
+616	708	RT KNEE	2	f
+617	440	CT IMAGING WITH INTERVENTION	1	f
+618	585	Microbiology Culture	0	f
+619	22	FOOT (LEFT)	1	f
+620	1370	RENAL(KUB)	2	f
+621	165	RENAL ULTRASOUND	0	f
+622	1167	CT BRAIN SCAN - NON CONTRAST	0	f
+623	1167	CT BRAIN SCAN - NON CONTRAST, DVA OUTPATIENT SERVICE IN ROOMS	2	f
+624	177	LT KNEE, DVA OUTPATIENT SERVICE IN ROOMS	1	f
+625	1480	LT ELBOW, FOREARM OR ELBOW MUSCULOSKELETAL ULT	1	f
+626	1481	SHOULDER OR UPPER ARM MUSCULOSKELETA, RT SHOULDER OR SCAPULA	2	f
+627	795	KNEE MUSCULOSKELETAL ULTRASOUND, RT KNEE	2	f
+628	1379	CT CERVICAL SPINE - NON CONTRAST	1	f
+629	1482	ANKLE OR HIND FOOT MUSCULOSKELETAL U, RT FOOT	2	f
+630	1483	LT HIP JOINT	2	f
+631	1385	SHOULDER OR UPPER ARM MUSCULOSKELETA	2	f
+632	486	MUSCULOSKELETAL CROSS-SECTIONAL (NON	2	f
+633	1086	MAMMOGRAPHY, BREAST ULTRASOUND-BOTH SIDES	3	f
+634	381	CT UPPER ABDOMEN AND PELVIS + CONT	2	f
+635	294	CT CHEST WITH CONTRAST	2	f
+636	1232	LT SHOULDER OR SCAPULA	1	f
+637	747	ABDOMINAL ULTRASOUND	0	f
+638	815	PREGNANCY ULTRASOUND-LESS THAN 12 WE	2	f
+639	207	PELVIC ULTRASOUND (FEMALE)	0	f
+640	1232	SHOULDER OR UPPER ARM MUSCULOSKELETA, LT SHOULDER OR SCAPULA	1	f
+641	361	CT LUMBAR SPINE - NO CONTRAST	2	f
+642	520	LT FOOT AND ANKLE	2	f
+643	772	PREGNANCY US-AFTER 22 WEEKS-GP	2	f
+644	1281	RT HIP JOINT, NOT FOR COMPARISON, LT HIP JOINT	3	f
+645	22	LT FOOT	1	f
+646	1025	CT SCAN BRAIN + CONT	1	f
+647	1097	RT HAND	2	f
+648	708	LT KNEE	1	f
+649	708	RT KNEE, NOT FOR COMPARISON, LT KNEE	3	f
+650	1159	RT WRIST	2	f
+651	1484	RT FEMUR, RT HIP JOINT	2	f
+652	1352	MID FOOT OR FORE FOOT MUSCULOSKELETA	1	f
+653	381	US - ABDOMEN, CT - ABDO / PELVIS  -  WITH CONTRAST	2	f
+654	594	Hormones	0	f
+655	104	Coag Factor Assay	0	f
+656	69	CT THORACIC SPINE - NON CONTRAST	1	f
+657	659	SHOULDER OR UPPER ARM MUSCULOSKELETA, LT SHOULDER OR SCAPULA	1	f
+658	1486	General Serology.	0	f
+659	1487	General Serology.	0	f
+660	1453	BREAST ULTRASOUND-BOTH SIDES	1	f
+661	1247	CT - PELVIS  -  WITH CONTRAST	0	f
+662	1385	RT SHOULDER OR SCAPULA	2	f
+663	1232	RT SHOULDER OR SCAPULA	2	f
+664	1488	Diagnostic Imaging Report	2	f
+665	635	Diagnostic Imaging Report	1	f
+666	1489	CT EXTREMITIES WITHOUT CONTRAST	2	f
+667	520	LT ANKLE	1	f
+668	1453	BREAST ULTRASOUND-ONE SIDE	1	f
+669	1172	Renal,AAA/Aorto Iliacs	2	f
+670	1182	Renal,AAA/Aorto Iliacs	2	f
+671	1440	Exercise ECG Nuclear Medicine,NM Com Stress & Rest + Tomo	1	f
+672	914	US - HIP OR GROIN (LT)	1	f
+673	1474	BLOOD GROUP AND HOLD (GPH-0)	0	f
+674	1344	Misc.Chemistry	0	f
+675	1490	HIV RNA	0	f
+676	1097	HAND (RIGHT)	2	f
+677	660	LT CLAVICLE	1	f
+678	937	MRI LUMBAR SPINE, NON REBATABLE MEDICARE	1	f
+679	1172	DOPPLER OF THE ABDOMEN	0	f
+680	177	MRI - LEFT KNEE	1	f
+681	520	ANKLE (LEFT)	1	f
+682	1232	SHOULDER (LEFT)	1	f
+683	1491	Clinical Chemistry	0	f
+684	1252	Microbiology Culture	0	f
+685	1419	Drugs	0	f
+686	1281	LT HIP JOINT, SELF DETERMINED, PELVIS	1	f
+687	177	MRI RIGHT KNEE, NON REBATABLE MEDICARE	2	f
+688	132	BLOOD GROUP (BG-0)	0	f
+689	1492	CT - PETROUS BONES +/- BRAIN  WITH OR WITHOUT CONTRAST	2	f
+690	1493	ORBITS	0	f
+691	245	Microbiology Culture	0	f
+692	1494	Virology Problem	0	f
+693	239	Legionella Culture	0	f
+694	1420	Respiratory Serology	0	f
+695	1135	General Serology.	0	f
+696	1495	RVM PCR	0	f
+697	1496	Misc.Chemistry	0	f
+698	1497	US - MID FOOT OR FOREFOOT (LT)	1	f
+699	65	DVT Right Leg	2	f
+700	690	Microbiology Culture	0	f
+701	1498	Viral PCR panel	0	f
+702	519	Fun2	0	f
+703	1336	MRI Stroke	0	f
+704	207	US Male Pelvis	0	f
+705	401	CT - CHEST +/- UPPER ABDOMEN  -  NO CONTRAST	2	f
+706	165	CT - ABDO / PELVIS  -  NO CONTRAST	0	f
+707	747	US - ABDOMEN, CT - ABDO / PELVIS  -  WITH CONTRAST	2	f
+708	1043	MRI LUMBAR SPINE	0	f
+709	109	X019	0	f
+710	747	US - ABDOMEN	2	f
+711	625	Clinical Chemistry	0	f
+712	546	RU-PEPG	0	f
+713	1058	RU-IFE	0	f
+714	924	NM Spect CT,NM Whole Body with tomo	2	f
+715	1043	MRI 1 Reg/2 Contig Reg Spine Post Surgical	2	f
+716	894	CT - LUMBAR SPINE  -  NO CONTRAST	2	f
+717	450	X017	0	f
+718	858	X029	0	f
+719	545	X017	0	f
+720	1019	X015	0	f
+721	1499	Clinical Chemistry	0	f
+722	1500	Clinical Chemistry	0	f
+725	708	KNEE (LEFT)	1	f
+726	838	SEROLOGY (AXM-0)	0	f
+727	22	US - SHOULDER OR UPPER ARM (LT), FOOT (RIGHT)	2	f
+728	1385	US - SHOULDER OR UPPER ARM (LT), FOOT (RIGHT)	2	f
+729	169	LT HAND	1	f
+730	177	MRI - LEFT KNEE, NON REBATABLE MEDICARE	1	f
+731	804	US - INTERVENTION - MSK(THERAPEUTIC)	1	f
+733	844	Scanned Document	0	f
+734	1506	CANCEL	0	f
+738	1089	Dr Rohan Bhagwandeen - scanned letter	0	f
+739	1507	Dr Antonio Ambrogetti - scanned letter	0	f
+740	1508	Scanned Document	0	f
+742	1509	General Serology	0	f
+743	985	Letter	2	f
+744	1164	Hunter Imaging Group - scanned document	0	f
+745	935	Hunter Imaging Group - scanned document	3	f
+746	708	Hunter Imaging Group - scanned document	3	f
+747	1123	Newcastle and Hunter Cardiac Services - scanned document	0	f
+748	48	Porphyrins	0	f
+749	64	Hormone Testing	3	f
+750	51	Hormone Testing	3	f
+751	1512	Hormone Testing	3	f
+752	1097	Xray Left Hand,Xray Right Hand	3	f
+753	1513	Administration of Contrast,Derangement Hip or Supporting Structures	2	f
+754	1051	CRYOGLOBULIN (CRY-0)	0	f
+755	654	LUPUS ANTICOAGULANT (LAC-0)	0	f
+756	1486	ANTI STREPTOLYSIN-O-TITRE (ASO-0)	0	f
+757	1182	Referral	2	f
+758	469	Referral	2	f
+759	1281	RT HIP JOINT, SELF DETERMINED, PELVIS	3	f
+760	1520	ANTI D.NASE B (ASE-0)	0	f
+761	1521	Clinical Chemistry	0	f
+762	294	CT - CHEST +/- UPPER ABDOMEN  -  WITH CONTRAST	2	f
+763	1522	TOTAL COMPLEMENT (TTP-0)	0	f
+764	1133	Referral	2	f
+765	24	Hip Left Injection US	1	f
+766	1373	Hormone Testing	0	f
+767	207	Pelvic US	2	f
+768	1420	INFLUENZA AG DHM	0	f
+769	641	Gent	0	f
+770	510	ORTHOPANTOMOGRAPHY	2	f
+771	1361	PREGNANCY TEST (PTS-0)	0	f
+772	1523	Viral PCR panel	0	f
+773	790	ECG-R	0	f
+774	376	G6PD (GPD-0)	0	f
+775	279	MYCOPLASMA SEROLOGY (MYS-0)	2	f
+776	708	Knee Right Xray	2	f
+777	1453	Breast Left US	1	f
+778	209	_Haematology	0	f
+779	747	Abdominal US	2	f
+780	1524	ANTI LEUCOCYTE ANTIBODY (LLA-0)	0	f
+781	1525	ANTI LEUCOCYTE ANTIBODY (LLA-0)	0	f
+782	1122	Ins	0	f
+783	12	Hba1c Clinic	0	f
 \.
 
 
@@ -3161,7 +3128,7 @@ COPY lu_request_type (pk, type) FROM stdin;
 -- Data for Name: lu_requests; Type: TABLE DATA; Schema: clin_requests; Owner: -
 --
 
-COPY lu_requests (pk, fk_type, item, fk_laterality, fk_decision_support, fk_instruction, deleted) FROM stdin;
+COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_support, fk_instruction, deleted) FROM stdin;
 1	1	IgA fibrinectin	0	0	0	f
 2	2	Ultrasound of muscles/bursa as per clinical notes	0	0	0	f
 3	2	VQ lung scan	0	0	0	f
@@ -4000,6 +3967,7 @@ COPY lu_requests (pk, fk_type, item, fk_laterality, fk_decision_support, fk_inst
 859	1	Retinol Binding Protein	0	0	0	f
 860	1	Xylose	0	0	0	f
 861	1	Enterovirus - CFT	0	0	0	f
+1500	1	Anion gap	0	0	0	f
 862	1	Cell count (misc fluid)	0	0	0	f
 863	1	ECG Tracing  only	0	0	0	f
 864	1	Quinine	0	0	0	f
@@ -4630,7 +4598,6 @@ COPY lu_requests (pk, fk_type, item, fk_laterality, fk_decision_support, fk_inst
 1497	2	Ultrasound Foot	1	0	0	f
 1498	1	MRSA PCR	0	0	0	f
 1499	1	Bicarbonate	0	0	0	f
-1500	1	Anion gap	0	0	0	f
 1502	1	Glomerular filtration rate/1.73 sq M.predicted	0	0	0	f
 1503	1	Service comment 24	0	0	0	f
 1504	1	Service comment 01	0	0	0	f
@@ -4659,69 +4626,54 @@ COPY lu_requests (pk, fk_type, item, fk_laterality, fk_decision_support, fk_inst
 \.
 
 
---
--- Data for Name: lu_type; Type: TABLE DATA; Schema: clin_requests; Owner: -
---
-
-COPY lu_type (pk, type, memo) FROM stdin;
-18	letter from provider	\N
-1	pathology provider	\N
-2	radiology provider	\N
-3	physiotherapy provider	\N
-5	vascular provider	\N
-6	neurology provider	\N
-15	nuclear medicine provider	\N
-4	cardiology provider	\N
-8	sleep disorder provider	\N
-9	endocrine provider	\N
-10	podiatry provider	\N
-11	rehabilitation provider	\N
-12	audiology provider	\N
-13	cosmetic provider	\N
-14	respiratory provider	\N
-16	occupational therapy provider	\N
-17	genetics provider	\N
-20	After Hours GP Service provider	\N
-19	undefined provider	\N
-7	obstetrics & gynaecology provider	\N
-21	Psychology Provider	\N
-\.
-
-
 SET search_path = clin_vaccination, pg_catalog;
 
 --
--- Data for Name: lu_indication; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
+-- Data for Name: lu_descriptions; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
-COPY lu_indication (pk, medical_name, common_name) FROM stdin;
-1	Vibrio cholerae	cholera
-2	diptheria	diptheria
-3	haemophylis influenzae	haemophylis
-4	hepatitis A	hepatitis A
-5	hepatitis B	hepatitis B
-6	influenza	influenza
-7	japanese b encephalitis	japanese b encephalitis
-8	malaria	malaria
-9	hiv	aids
-10	salmonella typhi	salmonella
-11	measles	measles
-12	Neisseria meningitidis A	meningococcus A
-13	Neisseria meningitidis C	meningococcus C
-14	Neisseria meningitidis W	meningococcus W
-15	Neisseria meningitidis Y	meningococcus Y
-16	mumps	mumps
-17	pertussis	whooping cough
-18	pneumococcus	pneumococcus
-19	poliomyelitis	polio
-20	Coxiella burnetii	q fever
-21	rabies	rabies
-22	rubella	german measles
-23	tetanus	lock jaw
-24	tuberculosis	tb
-25	varicella zoster	chickenpox/shingles
-26	yellow fever	yellow fever
-27	yersinia pestis	plague
+COPY lu_descriptions (pk, description, deleted) FROM stdin;
+1	Hepatitis B vaccine,Haemophilus B conjugate vaccine	f
+2	Influenza virus vaccine	f
+3	Measles vaccine, live,Mumps vaccine, live,Rubella vaccine, live	f
+4	Varicella zoster vaccine, live attenuated	f
+5	Tetanus toxoid,Pertussis vaccine,Diphtheria toxoid	f
+6	Tetanus toxoid,Diphtheria toxoid	f
+7	Hepatitis B vaccine,Hepatitis A vaccine	f
+8	Ditheria,Tetanus,Pertussis,Hib, Hepatitis B, Polio	f
+9	Yellow fever vaccine	f
+10	Salmonella typhi vaccine	f
+11	Diphtheria toxoid	f
+12	Influenza Vaccine	f
+13	Human Papilloma Virus Vaccine	f
+14	Hepatitis A vaccine	f
+15	Yersinia pestis vaccine	f
+16	BCG vaccine	f
+17	Pertussis vaccine,Hepatitis B vaccine,Tetanus toxoid,Diphtheria toxoid	f
+18	Neisseria meningitidis vaccine	f
+19	Coxiella burnetii vaccine	f
+20	Japanese encephalitis virus vaccine	f
+21	Hepatitis B vaccine	f
+22	Rubella vaccine	f
+23	Vibrio cholerae vaccine, oral	f
+24	Poliomyelitis vaccine, oral	f
+25	Vibrio cholerae vaccine	f
+26	salmonella typhi vaccine,Hepatitis A vaccine	f
+27	Yellow fever Vaccine	f
+28	Rota Virus Vaccine	f
+29	Poliomyelitis vaccine	f
+30	Tetanus toxoid	f
+31	Cholera vaccine	f
+32	Hepatitis A vaccine,Hepatitis B vaccine	f
+33	Tetanus toxoid,Diphtheria toxoid,Pertussis vaccine	f
+34	Rabies vaccine	f
+35	Measles vaccine, live,Rubella vaccine, live,Mumps vaccine, live	f
+36	Salmonella typhi vaccine, oral	f
+37	Pertussis vaccine,Tetanus toxoid,Diphtheria toxoid	f
+38	Diptheria,Tetanus,Pertussis,Polio	f
+39	Diphtheria toxoid,Tetanus toxoid	f
+40	Haemophilus B conjugate vaccine	f
+41	Pneumococcal vaccine	f
 \.
 
 
@@ -4729,42 +4681,59 @@ COPY lu_indication (pk, medical_name, common_name) FROM stdin;
 -- Data for Name: lu_schedules; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
-COPY lu_schedules (pk, age_due_from_months, age_due_to_months, schedule_text, female_only, aboriginal_tsi_only, fk_season, date_inactive, inactive) FROM stdin;
-\.
-
-
---
--- Data for Name: lu_target; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
---
-
-COPY lu_target (pk, target) FROM stdin;
-1	Cholera
-2	Coxiella burnetii
-3	Diptheria and Tetanus
-4	Diptheria, Tetanus, Hepatitis B, Polio, Pertussus
-5	Diptheria, Tetanus, Hepatitis B, Polio, Pertussus, Haemophilus
-6	Diptheria, Tetanus, Pertussus
-7	Diptheria, Tetanus, Polio, Pertussus
-8	Haemophilus B
-9	Haemophilus B,Hepatitis B vaccine, 
-10	Hepatitis A
-11	Hepatitis A, Hepatitis B
-12	Hepatitis A, Salmonella Typhi
-13	Hepatitis B
-14	Human papillomavirus Virus
-15	Influenza virus
-16	Japanese encephalitis
-17	Measles Mumps Rubella
-18	Neisseria meningitidis
-19	Pneumococcus
-20	Poliomyelitis
-21	Rabies
-22	Rotavirus
-23	Rubella 
-24	Salmonella Typhi
-25	Tuberculosis
-26	Varicella zoster
-27	Yellow fever
+COPY lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_only, atsi_only, fk_season, inactive, date_inactive, deleted, multiple_vaccines, notes) FROM stdin;
+2	2	\N	2 month childhood (Prior 1/5/2000)	f	f	\N	t	\N	f	f	\N
+3	4	\N	4 month  childhood (Prior 1/5/2000)	f	f	\N	t	\N	f	f	\N
+4	6	\N	6 month  childhood (Prior 1/5/2000)	f	f	\N	t	\N	f	f	\N
+5	12	\N	12 month  childhood (Prior 1/5/2000)	f	f	\N	t	\N	f	f	\N
+6	18	\N	18 month  childhood (Prior 1/5/2000)	f	f	\N	t	\N	f	f	\N
+7	4	5	Prior to school  (4-5yrs) (Prior 1/5/2000)	f	f	\N	t	\N	f	f	\N
+8	10	16	Hepatitis B - school 10-16 years (Prior 1/5/2000)	f	f	\N	t	\N	f	f	\N
+9	15	19	ADT + Polio -  15-19 years	f	f	\N	t	\N	f	f	\N
+33	2	\N	2 month childhood (After 1/5/2000)	f	f	\N	t	\N	f	f	\N
+34	4	\N	4 month childhood (After 1/5/2000)	f	f	\N	t	\N	f	f	\N
+35	6	\N	6 month childhood (After 1/5/2000)	f	f	\N	t	\N	f	f	\N
+36	12	\N	12 month childhood (After 1/5/2000)	f	f	\N	t	\N	f	f	\N
+37	18	\N	18 month childhood (After 1/5/2000)	f	f	\N	t	\N	f	f	\N
+38	45	5	Prior to school (4-5yrs) (After 1/5/2000)	f	f	\N	t	\N	f	f	\N
+39	\N	144	Chicken Pox age < 12 years	f	f	\N	t	\N	f	f	\N
+41	\N	\N	Pertussis	f	f	\N	t	\N	f	f	\N
+42	2	2	2 month childhood (From 1/11/2005)	f	f	\N	t	\N	f	f	\N
+43	4	4	4 month childhood (From 1/11/2005)	f	f	\N	t	\N	f	f	\N
+49	216	312	Human Papilloma Virus (18-26yrs)	f	f	\N	t	\N	f	f	\N
+16	\N	\N	Tuberculosis	f	f	\N	t	\N	f	f	\N
+17	\N	\N	Q-Fever	f	f	\N	t	\N	f	f	\N
+20	\N	\N	Meningococcal	f	f	\N	t	\N	f	f	\N
+21	\N	\N	Poliomyelitis	f	f	\N	t	\N	f	f	\N
+27	\N	\N	Mumps	f	f	\N	t	\N	f	f	\N
+30	\N	\N	Hepatitis B	f	f	\N	t	\N	f	f	\N
+31	\N	\N	Japanese Encephalitis	f	f	\N	t	\N	f	f	\N
+24	\N	\N	Cholera	f	f	\N	f	\N	f	f	\N
+19	\N	\N	Diptheria	f	f	\N	f	\N	f	f	\N
+14	\N	\N	Influenza	f	f	3	f	\N	f	f	\N
+18	\N	\N	Hepatitis A	f	f	\N	f	\N	f	f	\N
+32	\N	\N	Hepatitis A + Hepatitis B	f	f	\N	f	\N	f	f	\N
+28	\N	\N	Measles	f	f	\N	f	\N	f	f	\N
+13	\N	\N	Pneumoccal	f	f	\N	f	\N	f	f	\N
+22	\N	\N	Rabies	f	f	\N	f	\N	f	f	\N
+26	\N	\N	Plague	f	f	\N	f	\N	f	f	\N
+29	\N	\N	Rubella	f	f	\N	f	\N	f	f	\N
+25	\N	\N	Yellow Fever	f	f	\N	f	\N	f	f	\N
+48	\N	\N	Typhoid + Hepatitis A	f	f	\N	f	\N	f	f	\N
+23	\N	\N	Typhoid	f	f	\N	f	\N	f	f	\N
+15	\N	\N	Tetanus - every 10 years	f	f	\N	f	\N	f	f	\N
+40	\N	\N	Chicken Pox age > 12 years	f	f	\N	f	\N	f	f	\N
+46	18	\N	18 month childhood	f	f	\N	f	\N	f	f	\N
+50	2	\N	2 month childhood	f	f	\N	f	\N	f	t	\N
+51	4	\N	4 month childhood	f	f	\N	f	\N	f	t	\N
+44	6	6	6 month childhood	f	f	\N	f	\N	f	t	\N
+45	12	\N	12 month childhood	f	f	\N	f	\N	f	t	\N
+47	46	60	4 year childhood	f	f	\N	f	\N	f	t	\N
+54	11	12	Aboriginal Winter Schedule	f	t	3	f	\N	f	t	\N
+57	50	\N	50yrs & Over ATSI (Influenza)	f	t	\N	f	\N	f	f	\N
+58	50	\N	50yrs & Over (ATSI) Pneumococcal	f	t	\N	f	\N	f	f	\N
+60	15	\N	15 Yrs (School program)	f	f	\N	f	\N	f	f	School based program
+59	12	\N	12 yrs (School Based)	f	f	\N	f	\N	f	t	School based program only
 \.
 
 
@@ -4772,139 +4741,93 @@ COPY lu_target (pk, target) FROM stdin;
 -- Data for Name: lu_vaccines; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
-COPY lu_vaccines (pk, brand, fk_description, fk_route, form, inserted, deleted) FROM stdin;
-125	RotaTeq	1	3	Liquid	2008-04-02	\N
-126	Varivax Refrigerated	2	1	Powder for injection	2008-04-02	\N
-127	Vaxigrip	3	1	Injection	2008-04-02	\N
-128	Vaxigrip Junior	4	1	Injection	2008-04-02	\N
-129	Vivaxim	5	1	Injection	2008-04-02	\N
-130	Vivotif Oral	6	3	Capsules	2008-04-02	\N
-133	Rotarix	9	3	Powder for oral suspension	2008-04-02	\N
-135	Tripacel	11	1	Injection	2008-04-02	\N
-136	Twinrix (720/20) Injection	12	1	Injection	2008-04-02	\N
-137	Twinrix Junior (360/10) Injection	13	1	Injection	2008-04-02	\N
-138	Typherix	14	1	Injection	2008-04-02	\N
-139	Typhim Vi	15	1	Injection	2008-04-02	\N
-140	VAQTA Paediatric/adolescent Formulation Injection	16	1	Injection	2008-04-02	\N
-141	VAQTA Adult Formulation Injection	17	1	Injection	2008-04-02	\N
-131	Zostavax	7	\N	Powder for injection	2008-04-02	\N
-132	Rabipur	8	\N	Powder for injection	2008-04-02	\N
-134	Stamaril	10	\N	Injection	2008-04-02	\N
-142	Varilrix	18	\N	Powder for injection	2008-04-02	\N
-143	Meruvax II	19	\N	Injection	2008-04-02	\N
-144	NeisVac-C Vaccine	20	\N	Injection	2008-04-02	\N
-149	Quadracel	25	\N	Injection	2008-04-02	\N
-150	Q-Vax Vaccine	26	\N	Solution for injection	2008-04-02	\N
-151	Q-Vax Skin Test	27	\N	Concentrate for injection	2008-04-02	\N
-155	Je-Vax	31	\N	Injection	2008-04-02	\N
-157	Mencevax ACWY	33	\N	Powder for injection	2008-04-02	\N
-161	Merieux Inactivated Rabies Vaccine	37	\N	Injection	2008-04-02	\N
-181	BCG Vaccine	57	\N	Injection	2008-04-02	\N
-145	Pneumovax 23	21	1	Injection	2008-04-02	\N
-146	Polio Sabin (oral) Multidose	22	0	Drop	2008-04-02	\N
-147	Prevenar	23	1	Suspension for injection	2008-04-02	\N
-148	Priorix	24	1	Powder for injection	2008-04-02	\N
-152	Infanrix Penta	28	1	Injection	2008-04-02	\N
-153	Influvac	29	2	Suspension for injection	2008-04-02	\N
-154	Ipol	30	1	Injection	2008-04-02	\N
-156	Liquid PedvaxHIB	32	1	Suspension for injection	2008-04-02	\N
-158	Meningitec	34	1	Injection	2008-04-02	\N
-159	Menjugate Syringe	35	1	Powder for reconstitution	2008-04-02	\N
-160	Menomune	36	1	Injection	2008-04-02	\N
-162	Engerix-B Adult Formulation Injection	38	1	Injection	2008-04-02	\N
-163	Engerix-B Paediatric Formulation Injection	39	1	Injection	2008-04-02	\N
-164	Fluad	40	2	Injection	2008-04-02	\N
-165	Fluarix	41	2	Suspension for injection	2008-04-02	\N
-166	Fluvax	42	2	Injection	2008-04-02	\N
-167	Gardasil	43	1	Suspension for injection	2008-04-02	\N
-168	Havrix monodose vial Injection	44	1	Injection	2008-04-02	\N
-169	Havrix prefilled syringe Injection	45	1	Injection	2008-04-02	\N
-170	Havrix Junior prefilled syringe Injection	46	1	Injection	2008-04-02	\N
-171	H-B-Vax II Paediatric Formulation Injection Preservative Free	47	1	Suspension for injection	2008-04-02	\N
-172	H-B-Vax II Adult Formulation Injection Preservative Free	48	1	Suspension for injection	2008-04-02	\N
-173	H-B-Vax II Dialysis Formulation Injection Preservative Free	49	1	Suspension for injection	2008-04-02	\N
-174	Hiberix	50	1	Injection	2008-04-02	\N
-175	Infanrix Hexa	51	1	Injection	2008-04-02	\N
-176	Infanrix IPV	52	1	Suspension for injection	2008-04-02	\N
-177	Adacel	53	1	Suspension for injection	2008-04-02	\N
-178	Adacel Polio	54	1	Suspension for injection	2008-04-02	\N
-179	ADT Booster	55	1	Injection	2008-04-02	\N
-180	Avaxim Inactivated Hepatitis A Vaccine	56	1	Injection	2008-04-02	\N
-182	Boostrix	58	1	Suspension for injection	2008-04-02	\N
-183	Boostrix-IPV	59	1	Suspension for injection	2008-04-02	\N
-184	Cervarix	60	1	Injection	2008-04-02	\N
-185	Comvax	61	1	Injection	2008-04-02	\N
-186	Dukoral	62	3	Suspension	2008-04-02	\N
-\.
-
-
---
--- Data for Name: lu_vaccines_descriptions; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
---
-
-COPY lu_vaccines_descriptions (pk, description, inserted, deleted) FROM stdin;
-1	Rotavirus vaccine, live, oral, 	2008-04-02	\N
-2	Varicella zoster vaccine, live attenuated, 	2008-04-02	\N
-3	Influenza virus vaccine, 	2008-04-02	\N
-4	Influenza virus vaccine, 	2008-04-02	\N
-5	Hepatitis A vaccine, Salmonella typhi vaccine, 	2008-04-02	\N
-6	Salmonella typhi vaccine, oral, 	2008-04-02	\N
-7	Varicella zoster vaccine, live attenuated, 	2008-04-02	\N
-8	Rabies vaccine, 	2008-04-02	\N
-9	Rotavirus vaccine, live, oral, 	2008-04-02	\N
-10	Yellow fever vaccine, 	2008-04-02	\N
-11	Diphtheria toxoid, Tetanus toxoid, Pertussis vaccine, 	2008-04-02	\N
-12	Hepatitis B vaccine, Hepatitis A vaccine, 	2008-04-02	\N
-13	Hepatitis B vaccine, Hepatitis A vaccine, 	2008-04-02	\N
-14	Salmonella typhi vaccine, 	2008-04-02	\N
-15	Salmonella typhi vaccine, 	2008-04-02	\N
-16	Hepatitis A vaccine, 	2008-04-02	\N
-17	Hepatitis A vaccine, 	2008-04-02	\N
-18	Varicella zoster vaccine, live attenuated, 	2008-04-02	\N
-19	Rubella vaccine, 	2008-04-02	\N
-20	Neisseria meningitidis vaccine, 	2008-04-02	\N
-21	Pneumococcal vaccine, 	2008-04-02	\N
-22	Poliomyelitis vaccine, oral, 	2008-04-02	\N
-23	Pneumococcal vaccine, 	2008-04-02	\N
-24	Measles vaccine, live, Mumps vaccine, live, Rubella vaccine, live, 	2008-04-02	\N
-25	Diphtheria toxoid, Tetanus toxoid, Poliomyelitis vaccine, Pertussis vaccine, 	2008-04-02	\N
-26	Coxiella burnetii vaccine, 	2008-04-02	\N
-27	Coxiella burnetii vaccine, 	2008-04-02	\N
-28	Diphtheria toxoid, Tetanus toxoid, Hepatitis B vaccine, Poliomyelitis vaccine, Pertussis vaccine, 	2008-04-02	\N
-29	Influenza virus vaccine, 	2008-04-02	\N
-30	Poliomyelitis vaccine, 	2008-04-02	\N
-31	Japanese encephalitis virus vaccine, 	2008-04-02	\N
-32	Haemophilus B conjugate vaccine, 	2008-04-02	\N
-33	Neisseria meningitidis vaccine, 	2008-04-02	\N
-34	Neisseria meningitidis vaccine, 	2008-04-02	\N
-35	Neisseria meningitidis vaccine, 	2008-04-02	\N
-36	Neisseria meningitidis vaccine, 	2008-04-02	\N
-37	Rabies vaccine, 	2008-04-02	\N
-38	Hepatitis B vaccine, 	2008-04-02	\N
-39	Hepatitis B vaccine, 	2008-04-02	\N
-40	Influenza virus vaccine, 	2008-04-02	\N
-41	Influenza virus vaccine, 	2008-04-02	\N
-42	Influenza virus vaccine, 	2008-04-02	\N
-43	Human papillomavirus vaccine, recombinant, 	2008-04-02	\N
-44	Hepatitis A vaccine, 	2008-04-02	\N
-45	Hepatitis A vaccine, 	2008-04-02	\N
-46	Hepatitis A vaccine, 	2008-04-02	\N
-47	Hepatitis B vaccine, 	2008-04-02	\N
-48	Hepatitis B vaccine, 	2008-04-02	\N
-49	Hepatitis B vaccine, 	2008-04-02	\N
-50	Haemophilus B conjugate vaccine, 	2008-04-02	\N
-51	Diphtheria toxoid, Tetanus toxoid, Hepatitis B vaccine, Poliomyelitis vaccine, Pertussis vaccine, Haemophilus influenzae vaccine, 	2008-04-02	\N
-52	Diphtheria toxoid, Tetanus toxoid, Poliomyelitis vaccine, Pertussis vaccine, 	2008-04-02	\N
-53	Diphtheria toxoid, Tetanus toxoid, Pertussis vaccine, 	2008-04-02	\N
-54	Diphtheria toxoid, Tetanus toxoid, Poliomyelitis vaccine, Pertussis vaccine, 	2008-04-02	\N
-55	Diphtheria toxoid, Tetanus toxoid, 	2008-04-02	\N
-56	Hepatitis A vaccine, 	2008-04-02	\N
-57	BCG vaccine, 	2008-04-02	\N
-58	Diphtheria toxoid, Tetanus toxoid, Pertussis vaccine, 	2008-04-02	\N
-59	Diphtheria toxoid, Tetanus toxoid, Poliomyelitis vaccine, Pertussis vaccine, 	2008-04-02	\N
-60	Human papillomavirus vaccine, recombinant, 	2008-04-02	\N
-61	Haemophilus B conjugate vaccine, Hepatitis B vaccine, 	2008-04-02	\N
-62	Vibrio cholerae vaccine, Cholera toxin B subunit (recombinant), 	2008-04-02	\N
+COPY lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) FROM stdin;
+177	Varivax II	Injection	4	\N	f
+178	Meningitec	injection	18	\N	f
+179	Neis-vac C	injection	18	\N	f
+180	Menjugate	injection	18	\N	f
+181	Infranrix hexa	injection	8	\N	f
+182	Infranrix-IPV	injection	38	\N	f
+183	Vivaxim	injection	26	\N	f
+185	Gardasil	injection	13	\N	f
+186	Rotarix	oral	28	\N	f
+187	Influvac	injection	12	\N	f
+189	Boostrix IPV	injection	38	\N	f
+1	BCG Vaccine	Injection	16	\N	f
+17	Havrix prefilled syringe	Injection	14	\N	f
+18	Twinrix Junior Formulation	Injection	32	\N	f
+19	Twinrix Adult Formulation	Injection	7	\N	f
+20	H-B-Vax II Paediatric Formulation	Injection	21	\N	f
+21	H-B-Vax II Dialysis Formulation	Injection	21	\N	f
+22	H-B-Vax II Adult Formulation	Injection	21	\N	f
+23	Engerix-B Adult Formulation	Injection	21	\N	f
+24	Engerix-B Paediatric Formulation	Injection	21	\N	f
+25	Fluvax	Injection	2	\N	f
+26	Vaxigrip	Injection	2	\N	f
+27	M-M-R II	Injection	3	\N	f
+28	Mencevax ACWY	Injection	18	\N	f
+29	Menomune	Injection	18	\N	f
+30	Pneumovax 23	Injection	41	\N	f
+31	Ipol	Injection	29	\N	f
+32	Polio Sabin (Oral)	Drop	24	\N	f
+33	Merieux Inactivated Rabies Vaccine	Injection	34	\N	f
+34	Meruvax II	Injection	22	\N	f
+35	Ervevax	Injection	22	\N	f
+36	Typh-Vax (Oral)	Capsules	36	\N	f
+37	Typhim Vi	Injection	10	\N	f
+38	Typhoid Vaccine	injection	10	\N	f
+39	Tet-Tox	Injection	30	\N	f
+40	Cholera Vaccine	Injection	31	\N	f
+41	Yellow Fever Vaccine	injection	9	\N	f
+42	Plague Vaccine	Injection	15	\N	f
+52	Fluarix	Injection	2	\N	f
+64	Je-Vax	Injection	20	\N	f
+163	Prevenar	Injection	41	\N	f
+75	Stamaril	Injection	9	\N	f
+76	Brand Unknown	Injection	27	\N	f
+88	Fluvirin	Injection	2	\N	f
+98	Infanrix Hep B	Injection	17	\N	f
+101	Liquid PedvaxHIB	Injection	40	\N	f
+111	Priorix	Injection	35	\N	f
+120	Typherix	Injection	10	\N	f
+124	Varilrix	Injection	4	\N	f
+126	Avaxim Inactivated Hepatitis A Vaccine	Injection	14	\N	f
+128	Boostrix	Injection	37	\N	f
+131	Comvax	Injection	1	\N	f
+134	Engerix-B Adult Formulation Injection	Injection	21	\N	f
+135	Engerix-B Paediatric Formulation Injection	Injection	21	\N	f
+140	H-B-Vax II Adult Formulation Injection	Injection	21	\N	f
+141	H-B-Vax II Dialysis Formulation Injection	Injection	21	\N	f
+142	H-B-Vax II Paediatric Formulation Injection	Injection	21	\N	f
+143	H-B-Vax II Paediatric Formulation Injection Preservative free	Injection	21	\N	f
+144	Havrix Junior prefilled syringe Injection	Injection	14	\N	f
+145	Havrix monodose vial Injection	Injection	14	\N	f
+146	Havrix prefilled syringe Injection	Injection	14	\N	f
+159	Orochol	Powder	23	\N	f
+190	PanVax  Adult (Swine Flu)	injection	12	\N	f
+169	Twinrix Adult Formulation Injection	Injection	32	\N	f
+170	Twinrix Junior Formulation Injection	Injection	7	\N	f
+174	VAQTA Adult Formulation Injection	Injection	14	\N	f
+175	VAQTA Paediatric/adolescent Formulation Injection	Injection	14	\N	f
+184	Dukoral	oral	25	\N	f
+2	Q-Vax	Injection	19	\N	f
+3	Diphtheria Vaccine, Adsorbed (Diluted for Adult Use)	Injection	11	\N	f
+4	Diphtheria Vaccine, Adsorbed	Injection	11	\N	f
+5	Triple Antigen (Diphtheria, Tetanus, Pertussis - Adsorbed)	Injection	33	\N	f
+6	Infanrix	Injection	5	\N	f
+7	Tripacel	Injection	33	\N	f
+8	CDT Vaccine	Injection	39	\N	f
+9	ADT Vaccine	Injection	6	\N	f
+10	HibTITER	Injection	40	\N	f
+11	Hiberix	Injection	40	\N	f
+12	PedvaxHIB	Injection	40	\N	f
+13	VAQTA Adult Formulation	Injection	14	\N	f
+14	Havrix monodose vial	Injection	14	\N	f
+15	VAQTA Paediatric/adolescent Formulation	Injection	14	\N	f
+16	Havrix Junior prefilled syringe	Injection	14	\N	f
+191	Adacel	injection	37	\N	f
+192	PanVax Junior (Swine Flu) <3yrs	injection	12	\N	f
+193	Intanza	injection	12	\N	f
 \.
 
 
@@ -4912,7 +4835,177 @@ COPY lu_vaccines_descriptions (pk, description, inserted, deleted) FROM stdin;
 -- Data for Name: lu_vaccines_in_schedule; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
-COPY lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule) FROM stdin;
+COPY lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inactive) FROM stdin;
+1	12	35	f	\N
+2	32	35	f	\N
+3	111	36	f	\N
+4	27	36	f	\N
+5	101	36	f	\N
+6	6	37	f	\N
+7	6	38	f	\N
+8	111	38	f	\N
+9	32	38	f	\N
+10	111	5	f	\N
+11	111	7	f	\N
+12	20	30	f	\N
+13	18	8	f	\N
+14	19	8	f	\N
+15	163	13	f	\N
+16	126	18	f	\N
+17	88	14	f	\N
+18	159	24	f	\N
+19	76	25	f	\N
+20	111	27	f	\N
+21	111	28	f	\N
+22	111	29	f	\N
+23	101	33	f	\N
+24	101	34	f	\N
+25	179	20	f	\N
+26	180	20	f	\N
+27	128	41	f	\N
+28	163	42	f	\N
+29	163	43	f	\N
+30	163	44	f	\N
+31	181	42	f	\N
+32	181	43	f	\N
+33	181	44	f	\N
+34	111	45	f	\N
+35	11	45	f	\N
+37	163	45	f	\N
+38	124	46	f	\N
+39	182	47	f	\N
+40	111	47	f	\N
+41	30	47	f	\N
+42	183	48	f	\N
+43	184	24	f	\N
+44	185	49	f	\N
+45	181	50	f	\N
+46	163	50	f	\N
+47	163	51	f	\N
+48	181	51	f	\N
+49	186	50	f	\N
+50	186	51	f	\N
+51	187	14	f	\N
+52	189	15	f	\N
+53	128	15	f	\N
+54	124	39	f	\N
+55	124	40	f	\N
+56	120	23	f	\N
+57	177	39	f	\N
+58	177	40	f	\N
+59	178	20	f	\N
+60	20	1	f	\N
+61	24	1	f	\N
+62	6	2	f	\N
+63	7	2	f	\N
+64	5	2	f	\N
+65	10	2	f	\N
+66	11	2	f	\N
+67	12	2	f	\N
+68	32	2	f	\N
+69	5	3	f	\N
+70	6	3	f	\N
+71	7	3	f	\N
+72	10	3	f	\N
+73	11	3	f	\N
+74	12	3	f	\N
+75	5	4	f	\N
+76	6	4	f	\N
+77	7	4	f	\N
+78	10	4	f	\N
+79	11	4	f	\N
+80	27	5	f	\N
+81	12	5	f	\N
+82	5	6	f	\N
+83	6	6	f	\N
+84	7	6	f	\N
+85	10	6	f	\N
+86	11	6	f	\N
+87	32	3	f	\N
+88	32	4	f	\N
+89	9	15	f	\N
+90	39	15	f	\N
+91	1	16	f	\N
+92	2	17	f	\N
+93	13	18	f	\N
+94	14	18	f	\N
+95	15	18	f	\N
+96	16	18	f	\N
+97	17	18	f	\N
+98	19	32	f	\N
+99	3	19	f	\N
+100	4	19	f	\N
+101	28	20	f	\N
+102	29	20	f	\N
+103	31	21	f	\N
+104	32	21	f	\N
+105	33	22	f	\N
+106	36	23	f	\N
+107	37	23	f	\N
+108	38	23	f	\N
+109	40	24	f	\N
+110	41	25	f	\N
+111	42	26	f	\N
+112	27	27	f	\N
+113	27	28	f	\N
+114	27	29	f	\N
+115	34	29	f	\N
+116	25	14	f	\N
+117	26	14	f	\N
+118	30	13	f	\N
+119	30	11	f	\N
+120	25	12	f	\N
+121	26	12	f	\N
+122	34	10	f	\N
+123	35	10	f	\N
+124	31	9	f	\N
+125	32	9	f	\N
+126	5	7	f	\N
+127	6	7	f	\N
+128	7	7	f	\N
+129	31	7	f	\N
+130	32	7	f	\N
+131	9	9	f	\N
+132	27	7	f	\N
+133	21	30	f	\N
+134	22	30	f	\N
+135	23	30	f	\N
+136	24	30	f	\N
+137	35	29	f	\N
+138	52	12	f	\N
+139	52	14	f	\N
+140	75	25	f	\N
+141	64	31	f	\N
+142	18	32	f	\N
+143	20	8	f	\N
+144	21	8	f	\N
+145	22	8	f	\N
+146	23	8	f	\N
+147	24	8	f	\N
+148	98	33	f	\N
+149	12	33	f	\N
+150	32	33	f	\N
+151	98	34	f	\N
+152	12	34	f	\N
+153	32	34	f	\N
+154	98	35	f	\N
+155	190	14	f	\N
+156	191	41	f	\N
+157	191	19	f	\N
+158	192	14	f	\N
+159	191	15	f	\N
+160	193	14	f	\N
+161	187	54	t	\N
+162	192	54	t	\N
+163	30	54	t	2010-11-14
+164	30	57	t	2010-11-14
+36	178	45	f	\N
+165	187	57	t	\N
+166	30	58	t	\N
+167	20	59	f	\N
+168	124	59	f	\N
+169	185	59	f	\N
+170	128	60	f	\N
 \.
 
 
@@ -10596,6 +10689,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 5637	15010-2	Aldosterone	Urine
 5638	15011-0	Aldosterone^supine	Ser/Plas
 5639	15012-8	Aldosterone^upright	Ser/Plas
+6159	17830-1	Centromere Ab	Body fld
 5640	15013-6	Alkaline phosphatase.bone/Alkaline phosphatase.total	Ser/Plas
 6161	17832-7	5-Fluorocytosine	Isolate
 5641	15014-4	Alkaline phosphatase.intestinal/Alkaline phosphatase.total	Ser/Plas
@@ -11117,7 +11211,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 6156	17828-5	Cells.CD16/100 cells	Body fld
 6157	17829-3	Cells.CD19/100 cells	Body fld
 6158	1783-0	Alkaline phosphatase	Bld
-6159	17830-1	Centromere Ab	Body fld
 6160	17831-9	5-Fluorocytosine	Isolate
 6162	17833-5	Basophils/100 leukocytes	Synv fld
 6163	17834-3	Eosinophils/100 leukocytes	Synv fld
@@ -11745,6 +11838,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 6784	17016-7	Influenza virus B Ab.IgM	Ser
 6785	17017-5	Insulin^10M post XXX challenge	Ser/Plas
 6786	17018-3	Insulin^20M post XXX challenge	Ser/Plas
+7122	16291-7	Herpes simplex virus 1	XXX
 6787	17019-1	Insulin-Like growth factor-I^2H post XXX challenge	Ser/Plas
 6788	1702-0	Acetoacetate	Urine
 6789	17020-9	Intercellular substance Ab	Ser
@@ -12079,7 +12173,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 7119	16288-3	Monosialoganglioside GM1 Ab.IgG+IgM	Ser
 7120	16289-1	Monosialoganglioside GM1 Ab	Ser
 7121	16290-9	Neutrophils	Stool
-7122	16291-7	Herpes simplex virus 1	XXX
 7123	16292-5	1,4-Dioxane	Urine
 7124	16293-3	11-Deoxycorticosteroids	Plas
 7125	16294-1	11-Deoxycorticosterone^post XXX challenge	Ser/Plas
@@ -15830,6 +15923,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 10872	19851-5	Capacity.inspiratory	Respiratory system
 10873	19852-3	Capacity.inspiratory	Respiratory system
 11457	20467-7	Blood bank alert	^Patient
+11458	20468-5	Thiamine	Ser/Plas
 10874	19853-1	Capacity.inspiratory.bs/Capacity.inspiratory.preop	Respiratory system
 10875	19854-9	Capacity.inspiratory.bs/Capacity.inspiratory.preop	Respiratory system
 10876	19855-6	Capacity.inspiratory.measured/Capacity.inspiratory.predicted	Respiratory system
@@ -16413,7 +16507,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 11454	20464-4	Toxoplasma gondii Ab	Ser
 11455	20465-1	Choriogonadotropin	Ser/Plas
 11456	20466-9	Estriol.unconjugated	Ser/Plas
-11458	20468-5	Thiamine	Ser/Plas
 11459	20469-3	Acetone	Ser/Plas
 11460	20470-1	Ethanol	Ser/Plas
 11461	20471-9	Isopropanol	Ser/Plas
@@ -20669,6 +20762,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 15710	24215-6	Influenza virus A Ab^1st specimen	Ser
 15711	2421-6	Histidine	Ser/Plas
 15712	24216-4	Influenza virus A Ab^2nd specimen	Ser
+15816	2434-9	Homovanillate	CSF
 15713	24217-2	Influenza virus B Ab^1st specimen	Ser
 15714	24218-0	Influenza virus B Ab^2nd specimen	Ser
 15715	24219-8	Parainfluenza virus 1 Ab^1st specimen	Ser
@@ -20773,7 +20867,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 15813	24346-9	Parathyrin.intact & Calcium panel	Ser/Plas
 15814	24347-7	Parathyrin.mid molecule & Calcium panel	Ser/Plas
 15815	24348-5	Free T4 & TSH panel	Ser/Plas
-15816	2434-9	Homovanillate	CSF
 15817	24349-3	Drugs of abuse 5 panel	Urine
 15818	24350-1	Volatiles panel	Urine
 15819	24351-9	Protein electrophoresis panel	Ser/Plas
@@ -24495,6 +24588,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 19534	27736-8	Author ID	Respiratory therapy treatment plan
 19535	27737-6	Diagnosis.primary	Respiratory therapy treatment
 19536	27738-4	Start date	Hospitalization leading to respiratory therapy treatment
+19963	28192-3	Polypharmacy	^Patient
 19537	27739-2	End date	Hospitalization leading to respiratory therapy treatment
 19538	277-4	Hetacillin	Isolate+Ser
 19539	27740-0	Diagnosis.primary	Respiratory therapy treatment
@@ -24587,6 +24681,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 19625	27872-1	Insulin^6H post 75 g glucose PO	Ser/Plas
 19626	27873-9	Insulin^post CFst	Ser/Plas
 19627	27874-7	Insulin^5th specimen post XXX challenge	Ser/Plas
+20072	28306-9	Neglect.knowledge	^Patient
 19628	27875-4	Insulin^6th specimen post XXX challenge	Ser/Plas
 19629	27876-2	Cells.CD14+CD11b+/100 cells	Bld
 19630	27877-0	Cells.CD33+CD11b+/100 cells	Bld
@@ -24922,7 +25017,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 19960	28190-7	Physical regulation alteration	^Patient
 19961	2819-1	Potassium	CSF
 19962	28191-5	Poisoning risk	^Patient
-19963	28192-3	Polypharmacy	^Patient
 19964	28193-1	Post-trauma response	^Patient
 19965	28194-9	Powerlessness	^Patient
 19966	28195-6	Protection alteration	Immune system
@@ -25032,7 +25126,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20069	28303-6	Interpersonal relationship.knowledge	^Patient
 20070	28304-4	Interpersonal relationship.status	^Patient
 20071	28305-1	Neglect.behavior	^Patient
-20072	28306-9	Neglect.knowledge	^Patient
 20073	28307-7	Neglect.status	^Patient
 20074	2830-8	Potassium renal clearance	Urine+Ser/Plas
 20075	28308-5	Neighborhood &or workplace safety.behavior	^Patient
@@ -25256,6 +25349,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 21288	2939-7	Serotonin	Bld
 20293	28491-9	Genito-urinary function.status	^Family
 20294	28492-7	Antepartum &or postpartum.behavior	^Family
+20411	28665-8	Axis distance	Eye.right
 20295	28493-5	Antepartum &or postpartum.status	^Family
 20296	28494-3	Antepartum &or postpartum.knowledge	^Family
 20297	28495-0	Nutrition.behavior	^Family
@@ -25373,7 +25467,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20408	28662-5	Refraction comment	Eye
 20409	28663-3	Sphere distance	Eye.right
 20410	28664-1	Cylinder distance	Eye.right
-20411	28665-8	Axis distance	Eye.right
 20412	28666-6	HSA distance	Eye.right
 20413	28667-4	Visual acuity distance	Eye.right
 20414	28668-2	Sphere distance	Eye.left
@@ -25497,6 +25590,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20536	28785-4	SBM sphere distance	LM glasses.lens.left
 20537	28786-2	Cylinder distance	LM glasses.lens.left
 20538	2878-7	Protein	Amnio fld
+20643	30118-4	Lymphocytes.IgA	WBC
 20539	28787-0	Axis distance	LM glasses.lens.left
 20540	28788-8	Prism base distance	LM glasses.lens.left
 20541	28789-6	Pupillary distance	LM glasses.lens.left
@@ -25601,7 +25695,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20640	30115-0	Lymphocytes.kappa	Bld
 20641	30116-8	Cells.terminal deoxyribonucleotidyl transferase/100 cells	CSF
 20642	30117-6	Cells.terminal deoxyribonucleotidyl transferase/100 cells	XXX
-20643	30118-4	Lymphocytes.IgA	WBC
 20644	30341-2	Erythrocyte sedimentation rate	Bld
 20645	30342-0	Extractable nuclear Ab	Ser
 20646	30343-8	Glomerular basement membrane Ab.IgG	Ser
@@ -39003,6 +39096,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 34043	43458-9	Multisection^W & WO contrast IV	Orbit vessels
 34044	43459-7	Views^during electroconvulsive shock treatment	Brain
 34045	43460-5	Views^during electroconvulsive shock treatment	Heart
+34155	41019-1	Beta endorphin	Ser/Plas
 34046	40908-6	Streptococcus pneumoniae 4 Ab.IgG	Ser
 34156	4102-0	5-Fluorocytosine	Dose
 34047	40909-4	Streptococcus pneumoniae 4 Ab.IgG^1st specimen	Ser
@@ -39112,7 +39206,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 34152	41016-7	Bilirubin	Urine
 34153	41017-5	Protoporphyrin	RBC
 34154	41018-3	Testosterone.bioavailable	Ser/Plas
-34155	41019-1	Beta endorphin	Ser/Plas
 34157	41020-9	Flunitrazepam	Urine
 34158	41021-7	Cocaine	Hair
 34159	41022-5	Citrate	Urine
@@ -43847,6 +43940,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 38887	45430-6	Goes out 1 or more days a week	^Patient
 38888	45431-4	Stays busy with hobbies, reading or fixed daily routine	^Patient
 38889	45432-2	Spends most time alone or watching TV	^Patient
+39569	46063-4	Programs	^Patient
 38890	45433-0	Moves independently indoors	^Patient
 38891	45434-8	Use of tobacco products at least daily	^Patient
 38892	4543-5	Haptoglobin	Ser/Plas
@@ -44526,7 +44620,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 39566	46060-0	Special treatments, procedures and programs	^Patient
 39567	46061-8	Special care	^Patient
 39568	46062-6	Treatments	^Patient
-39569	46063-4	Programs	^Patient
 39570	46064-2	Therapies	^Patient
 39571	46065-9	Intervention programs for mood, behavior and cognitive loss	^Patient
 39573	46067-5	Devices and restraints	^Patient
@@ -45811,6 +45904,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 40852	4716-7	HLA-A11	Bld
 40853	47167-2	Norepinephrine^4th specimen post XXX challenge	Plas
 40854	47168-0	Norepinephrine^4th specimen post XXX challenge	Urine
+41056	47375-1	Views 1 or 2	Knee.right
 40855	47169-8	Norepinephrine^5th specimen post XXX challenge	Plas
 40856	47170-6	Norepinephrine^5th specimen post XXX challenge	Urine
 40857	47171-4	Norepinephrine^6th specimen post XXX challenge	Plas
@@ -46013,7 +46107,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 41053	4737-3	HLA-A32(w19)	Bld
 41054	47373-6	Views 1 or 2	Knee.left
 41055	47374-4	Views GE 4	Knee.left
-41056	47375-1	Views 1 or 2	Knee.right
 41057	47376-9	Views GE 4	Knee.right
 41058	47377-7	Views LE 4	Knee.right
 41059	47378-5	Multisection blood pool^W radionuclide IV	Liver
@@ -49263,6 +49356,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 44304	50301-1	Adipoylcarnitine+Methylglutarylcarnitine (C6-DC)	Urine
 44305	5030-2	Parvovirus B19 RNA	Bld
 44306	50758-2	Herpes simplex virus 1 Ab.IgM	Ser
+44415	50340-9	Eosinophils	Nose
 44307	50759-0	Beta-N-acetylhexosaminidase.A	WBC
 44413	50338-3	Cannabinoids	Dial fld
 44417	50342-5	Ependymal+Choroid plexus cells/100 leukocytes	CSF
@@ -49372,7 +49466,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 44411	50336-7	Beta cortolone/Cortisol	Urine
 44412	50337-5	Carbamazepine free & total & 10,11-Epoxide panel	Ser/Plas
 44414	50339-1	Cholesterol	Bld
-44415	50340-9	Eosinophils	Nose
 44416	50341-7	Eosinophils	Sputum
 44419	5034-4	Streptococcus agalactiae rRNA	XXX
 44420	50344-1	Parvovirus B19 DNA	Body fld
@@ -49800,6 +49893,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 44840	50718-6	11-Deoxycortisol^5th specimen post XXX challenge	Ser/Plas
 44841	50719-4	11-Deoxycortisol^4th specimen post XXX challenge	Ser/Plas
 44842	50720-2	11-Deoxycortisol^3rd specimen post XXX challenge	Ser/Plas
+45082	50940-6	Zinc/Creatinine	Urine
 44843	50721-0	11-Deoxycortisol^1st specimen post XXX challenge	Ser/Plas
 44844	50722-8	VKORC1 gene mutation analysis	Bld/Tiss
 44845	50723-6	Cells.CD38+Lambda+	Bld
@@ -50038,7 +50132,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 45079	50937-2	Vanadium	Urine
 45080	50938-0	Vancomycin	Body fld
 45081	50939-8	Zinc	Hair
-45082	50940-6	Zinc/Creatinine	Urine
 45083	50941-4	Mycobacterium sp	XXX
 45084	50942-2	Acarboxyprothrombin	Ser
 45085	50943-0	Reasons for assessment (full)	^Patient
@@ -51391,6 +51484,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 46426	52203-7	Past medical history	Cardiac rehabilitation treatment plan
 46427	52204-5	Level of function	Cardiac rehabilitation treatment plan
 46428	52205-2	Prior level of function	Cardiac rehabilitation treatment plan
+47594	5331-4	Rubella virus Ab	Ser
 46429	52206-0	Current level of function	Cardiac rehabilitation treatment plan
 46430	52207-8	Assessment information	Cardiac rehabilitation treatment plan
 46596	52399-3	Prior level of function	Speech therapy treatment plan
@@ -51652,6 +51746,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 46686	52481-9	Vital signs CARE panel	^Patient
 46687	52482-7	Laboratory	^Patient
 46688	52483-5	Other	^Patient
+47595	53314-1	Tyrosine crystals	Urine
 46689	52484-3	Arterial Blood Gases (ABGs)	^Patient
 46690	52485-0	Pulmonary Function Tests	^Patient
 46691	52486-8	Volume^at 2.0 s post forced expiration/Volume.forced expiration.total	Respiratory system
@@ -52552,8 +52647,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 47590	53310-9	Leucine crystals	Urine
 47591	53311-7	Urate crystals	Urine
 47592	53312-5	Calcium carbonate crystals	Urine
-47594	5331-4	Rubella virus Ab	Ser
-47595	53314-1	Tyrosine crystals	Urine
 47596	53315-8	Urinalysis microscopic panel	Urine
 47597	53316-6	Leukocytes	Urine
 47598	53317-4	Leukocyte clumps	Urine
@@ -52660,6 +52753,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 47699	5342-1	Salmonella paratyphi B O Ab	Ser
 47700	53421-4	Fibroblast growth factor 23.intact ^3rd specimen post XXX challenge	Plas
 47701	53429-7	Fibroblast growth factor 23 ^4th specimen post XXX challenge	Plas
+48237	55697-7	Oxolinate	Isolate
 47702	53430-5	Fibroblast growth factor 23 ^5th specimen post XXX challenge	Plas
 47703	53431-3	Fibroblast growth factor 23 ^6th specimen post XXX challenge	Plas
 47704	53432-1	Gamma glutamyl transferase	Dial fld
@@ -53084,6 +53178,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 48126	53827-2	History of neural tube defect	^Patient
 48127	53828-0	Cyclosporine^trough	Bld
 48128	53829-8	Casein Ab.IgG	Ser
+48238	55698-5	Oxolinate	Isolate
 48129	53830-6	Granulocytes.CD55 deficient/100 cells	Bld
 48130	53831-4	Granulocytes.CD59 deficient/100 cells	Bld
 48131	53832-2	Erythrocytes.CD55 deficient/100 erythrocytes	Bld
@@ -53192,8 +53287,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 48234	55694-4	Ornidazole	Isolate
 48235	55695-1	Oxolinate	Isolate
 48236	55696-9	Oxolinate	Isolate
-48237	55697-7	Oxolinate	Isolate
-48238	55698-5	Oxolinate	Isolate
 48239	5569-9	Acetone	Urine
 48240	55699-3	Oxytetracycline	Isolate
 48241	55700-9	Paromomycin	Isolate
@@ -53846,6 +53939,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 48887	55048-3	Physical restraints used in chair or out of bed - trunk restraint	^Patient
 48888	55049-1	Physical restraints used in chair or out of bed - limb restraint	^Patient
 48889	54714-1	Primary respondent for daily and activity preferences	^Patient
+48991	56358-5	Ananas comosus Ab.IgG4	Ser
 48890	54715-8	Staff assessment of daily and activity preferences should be conducted	^Patient
 48891	54716-6	Resident prefers choosing clothes to wear	^Patient
 48892	54717-4	Resident prefers caring for personal belongings	^Patient
@@ -53946,7 +54040,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 48988	56339-5	Dactylis glomerata Ab.IgG4	Ser
 48989	56340-3	Origanum vulgare Ab.IgG4	Ser
 48990	5635-8	Cyanide	Ser/Plas
-48991	56358-5	Ananas comosus Ab.IgG4	Ser
 48992	56359-3	Bean pinto Ab.IgG4	Ser
 48993	56360-1	Pistacia vera Ab.IgG4	Ser
 48994	56361-9	Prunus domestica Ab.IgG4	Ser
@@ -54481,6 +54574,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 49520	54986-5	Antidepressant received in last 7D or since admission &or reentry if less than 7D	^Patient
 49521	54987-3	Hypnotic received in last 7D or since admission &or reentry if less than 7D	^Patient
 49614	55075-6	Version code	Specifications
+49615	55076-4	Production or test indicator	Submission
 49522	54988-1	Anticoagulant received in last 7D or since admission &or reentry if less than 7D	^Patient
 49523	54989-9	Medications received - none of the above were received in last 7D or since admission &or reentry if less than 7D	^Patient
 49524	54990-7	Special treatments and procedures	^Patient
@@ -54573,7 +54667,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 49611	55072-3	Insurance case mix - RUG version code	^Patient
 49612	55073-1	Tissue type	Ulcer.Largest at most advanced stage
 49613	55074-9	Participation in assessment	^Family or significant other
-49615	55076-4	Production or test indicator	Submission
 49616	55077-2	State assigned facility submission ID	^Facility
 49617	55078-0	Federal employer tax ID	Software vendor
 49618	5507-9	CD58	WBC
@@ -56158,6 +56251,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 51200	56572-1	Somatotropin^20H post XXX challenge	Ser/Plas
 51533	57153-9	Referral note	{Setting}
 51201	56573-9	Renin^30M post XXX challenge	Plas
+51535	57155-4	Referral note	{Setting}
 51202	56574-7	Renin^1H post XXX challenge	Plas
 51203	56575-4	17-Hydroxyprogesterone^15M post XXX challenge	Ser/Plas
 51204	56576-2	17-Hydroxyprogesterone^45M post XXX challenge	Ser/Plas
@@ -56490,7 +56584,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 51531	57151-3	Referral note	{Setting}
 51532	57152-1	Referral note	{Setting}
 51534	57154-7	Referral note	{Setting}
-51535	57155-4	Referral note	{Setting}
 51536	57156-2	Referral note	{Setting}
 51537	57157-0	Referral note	{Setting}
 51538	5715-8	Platinum	Urine
@@ -56916,6 +57009,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 51956	5726-5	Selenium	Urine
 51957	57265-1	Supervision and safety	^Patient
 51958	57266-9	Advocacy or facilitation of patient participation	^Patient
+52075	57385-7	Urea	Urine
 51959	57267-7	ADL or IADL assistance from any caregiver	^Patient
 51960	57268-5	Therapy need	^Patient
 51961	57269-3	Patient-specific parameters for notifying physician of changes	^Patient
@@ -57031,7 +57125,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 52071	5738-0	Strychnine	Ser/Plas
 52072	57380-8	Potassium	Urine
 52073	57382-4	Sodium	Urine
-52075	57385-7	Urea	Urine
 52076	57386-5	Urate	Urine
 52077	57387-3	Urate	Urine
 52079	57389-9	Urea	Urine
@@ -57244,6 +57337,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 52285	57524-1	17-Ketogenic steroids^pre dose dexamethasone	Urine
 52286	57525-8	17-Ketogenic steroids^2D post dose dexamethasone	Urine
 52287	57526-6	17-Hydroxycorticosteroids^pre high dose dexamethasone	Urine
+52661	57857-5	Chlorpheniramine	XXX
 52288	57527-4	17-Hydroxycorticosteroids^2D post high dose dexamethasone	Urine
 52289	57528-2	17-Hydroxycorticosteroids^pre dose dexamethasone	Urine
 52290	57529-0	17-Hydroxycorticosteroids^2D post dose dexamethasone	Urine
@@ -57618,7 +57712,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 52658	57854-2	Thyrotropin^5M post XXX challenge	Ser/Plas
 52659	57855-9	Atenolol	XXX
 52660	57856-7	Carisoprodol	XXX
-52661	57857-5	Chlorpheniramine	XXX
 52662	57858-3	Normaprotiline	XXX
 52663	57859-1	Dextromethorphan	XXX
 52664	57860-9	Diethylamine	XXX
@@ -83716,7 +83809,7 @@ SET search_path = db, pg_catalog;
 --
 
 COPY lu_version (pk, lu_major, lu_minor) FROM stdin;
-11	0	32
+27	0	48
 \.
 
 

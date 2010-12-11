@@ -32,43 +32,6 @@ SELECT pg_catalog.setval('lu_staff_status_pk_seq', 4, true);
 SELECT pg_catalog.setval('lu_staff_type_pk_seq', 9, true);
 
 
-SET search_path = audit, pg_catalog;
-
---
--- Name: lu_actions_pk_seq; Type: SEQUENCE SET; Schema: audit; Owner: -
---
-
-SELECT pg_catalog.setval('lu_actions_pk_seq', 8, true);
-
-
---
--- Name: lu_actions_pk_seq1; Type: SEQUENCE SET; Schema: audit; Owner: -
---
-
-SELECT pg_catalog.setval('lu_actions_pk_seq1', 24, true);
-
-
---
--- Name: lu_reasons_pk_seq; Type: SEQUENCE SET; Schema: audit; Owner: -
---
-
-SELECT pg_catalog.setval('lu_reasons_pk_seq', 118, true);
-
-
---
--- Name: lu_schemas_pk_seq; Type: SEQUENCE SET; Schema: audit; Owner: -
---
-
-SELECT pg_catalog.setval('lu_schemas_pk_seq', 29, true);
-
-
---
--- Name: lu_tables_pk_seq; Type: SEQUENCE SET; Schema: audit; Owner: -
---
-
-SELECT pg_catalog.setval('lu_tables_pk_seq', 271, true);
-
-
 SET search_path = clerical, pg_catalog;
 
 --
@@ -178,6 +141,20 @@ SELECT pg_catalog.setval('lu_state_of_health_pk_seq', 5, true);
 
 
 SET search_path = clin_consult, pg_catalog;
+
+--
+-- Name: lu_actions_pk_seq; Type: SEQUENCE SET; Schema: clin_consult; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_actions_pk_seq', 23, true);
+
+
+--
+-- Name: lu_audit_reasons_pk_seq; Type: SEQUENCE SET; Schema: clin_consult; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 1, false);
+
 
 --
 -- Name: lu_consult_type_pk_seq; Type: SEQUENCE SET; Schema: clin_consult; Owner: -
@@ -766,7 +743,7 @@ SELECT pg_catalog.setval('lu_address_types_pk_seq', 6, true);
 -- Name: lu_categories_pk_seq; Type: SEQUENCE SET; Schema: contacts; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_categories_pk_seq', 207, true);
+SELECT pg_catalog.setval('lu_categories_pk_seq', 208, true);
 
 
 --
@@ -838,7 +815,7 @@ SET search_path = db, pg_catalog;
 -- Name: db_version_pk_seq; Type: SEQUENCE SET; Schema: db; Owner: -
 --
 
-SELECT pg_catalog.setval('db_version_pk_seq', 27, true);
+SELECT pg_catalog.setval('db_version_pk_seq', 31, true);
 
 
 SET search_path = defaults, pg_catalog;
@@ -990,414 +967,6 @@ COPY lu_staff_type (pk, type) FROM stdin;
 6	Secretarial
 7	Specialist
 8	Locum
-\.
-
-
-SET search_path = audit, pg_catalog;
-
---
--- Data for Name: lu_actions; Type: TABLE DATA; Schema: audit; Owner: -
---
-
-COPY lu_actions (pk, action) FROM stdin;
-1	insert
-2	change
-5	reversal
-6	mark deleted
-7	completed
-8	completed with explanation
-9	completed repeat same interval
-10	completed repeat new interval
-11	refused
-12	refused with explanation
-13	make active
-14	make inactive
-15	make significant
-16	make major
-17	not due
-18	overdue
-19	reminder sent
-20	arranged not completed
-21	rescheduled
-3	edit
-4	delete
-22	file import
-23	document filed
-24	staff task allocated
-\.
-
-
---
--- Data for Name: lu_reasons; Type: TABLE DATA; Schema: audit; Owner: -
---
-
-COPY lu_reasons (pk, fk_staff, reason) FROM stdin;
-85	\N	delete
-86	\N	wrong diagnosis in the first place
-87	\N	entered for the wrong patient
-88	\N	entered for wrong patient
-90	\N	duplicate
-92	\N	wrong information
-34	1	insert
-35	1	edit
-67	1	reversal
-93	\N	wrong data entry
-95	\N	Completed
-101	\N	change
-102	\N	recall re-logged at same interval of 6months now due on 30/11/2010
-104	\N	Done by lab in error
-84	\N	wrong information
-89	\N	modified
-96	\N	has had one foot amputated
-97	\N	wrong allocation
-98	\N	wrong substance
-99	\N	wrong vegetable
-100	\N	wrong object
-103	\N	written for wrong patient
-105	\N	written for wrong patient
-91	\N	written for wrong reason
-106	\N	moved to trash
-107	\N	duplicate result
-108	\N	viewed and actioned
-109	\N	viewed and filed without comment
-110	\N	preliminary result not required
-111	\N	viewed and filed
-112	\N	complete with explanation:<BR> - gave her another script
-113	\N	staff task allocated
-117	\N	Staff task finalised
-118	\N	delete selected
-\.
-
-
---
--- Data for Name: lu_schemas; Type: TABLE DATA; Schema: audit; Owner: -
---
-
-COPY lu_schemas (pk, schema) FROM stdin;
-1	clin_allergies
-2	clin_checkups
-3	blobs
-4	clin_requests
-5	clin_recalls
-6	clin_referrals
-7	clin_certificates
-8	clin_vaccination
-9	clin_workcover
-10	clin_mentalhealth
-11	coding
-12	clin_procedures
-13	defaults
-14	documents
-15	drugs
-16	maintenance
-17	admin
-18	contacts
-19	clerical
-20	audit
-21	common
-22	clin_careplans
-23	clin_history
-24	clin_prescribing
-25	clin_measurements
-26	research
-27	import_export
-28	db
-29	clin_consult
-\.
-
-
---
--- Data for Name: lu_status; Type: TABLE DATA; Schema: audit; Owner: -
---
-
-COPY lu_status (pk, status) FROM stdin;
-1	row added
-2	row changed
-3	row deleted
-4	row marked deleted
-5	scratchpad item active
-6	scratchpad item completed
-7	scratchpad item completed with explanation
-8	scratchpad item marked as deleted
-\.
-
-
---
--- Data for Name: lu_tables; Type: TABLE DATA; Schema: audit; Owner: -
---
-
-COPY lu_tables (pk, fk_schema, tablename) FROM stdin;
-1	1	allergies
-2	1	lu_reaction
-3	1	lu_type
-4	2	over75
-5	2	lu_state_of_health
-6	2	lu_nutrition_questions
-7	2	annual_checkup
-8	3	blobs
-9	4	lu_request_type
-10	4	lu_link_provider_user_requests
-11	4	request_providers
-12	4	lu_requests
-13	4	forms
-14	4	forms_requests
-15	4	link_forms_requests_requests_results
-16	4	lu_copyto_type
-17	4	lu_form_header
-18	4	lu_instructions
-19	4	lu_type
-20	4	notes
-21	4	user_default_type
-22	4	user_provider_defaults
-23	5	lu_recall_intervals
-24	5	lu_status
-25	5	lu_templates
-26	5	recalls
-27	5	forms
-28	5	links_forms
-29	5	lu_reasons
-30	5	sent
-31	6	inbox
-32	6	link_referral_condition
-33	6	lu_type
-34	6	referrals
-35	7	lu_illness_temporality
-36	7	medical_certificate
-37	8	last_batch_number
-38	8	vaccinations
-39	8	lu_schedules
-40	8	lu_target
-41	8	lu_vaccines_in_schedule
-42	8	link_provider_site_admininstered
-43	8	lu_indication
-44	8	lu_vaccines
-45	8	lu_vaccines_descriptions
-46	9	claims
-47	9	link_claim_documents
-48	9	lu_caused_by_employment
-49	9	lu_visit_type
-50	9	visits
-51	10	k10_results
-52	10	lu_component_help
-53	10	lu_assessment_tools
-54	10	lu_depression_degree
-55	10	lu_k10_components
-56	10	lu_plan_type
-57	10	lu_risk_to_others
-58	10	mentalhealth_plan
-59	10	team_care_members
-60	11	available_systems
-61	11	icpc2_chapters
-62	11	icpc2_codes
-63	11	icpc2_components
-64	11	icpc2_grp_grouper
-65	11	icpc2_grp_grp_icpc
-66	11	icpc2_grp_keyword
-67	11	icpc2_grp_keyword_grp
-68	11	icpc2_terms
-69	11	icpc2_keywords
-70	11	icpc2_link_keyword_term
-71	11	icpc2_version
-72	11	lu_drsdesk_icpc_term_mapper
-73	11	lu_icd10
-74	11	lu_icd10_chapters
-75	11	lu_icd10_old
-76	11	lu_icd10_subchapters
-77	11	lu_loinc
-78	11	lu_loinc_abbrev
-79	11	lu_user_icpc2_terms
-80	11	usr_reasons_weighting
-81	11	generic_terms
-82	11	lu_systems
-83	11	lu_reasons
-84	12	lu_skin_preparation
-85	12	lu_suture_site
-86	12	lu_suture_type
-87	12	skin_procedures
-88	12	link_images_procedures
-89	12	lu_anaesthetic_agent
-90	12	lu_complications
-91	12	lu_last_surgical_pack
-92	12	lu_procedure_type
-93	12	lu_repair_type
-94	12	staff_skin_procedure_defaults
-95	12	surgical_packs
-96	13	hl7_inboxes
-97	13	lu_message_display_style
-98	13	lu_message_standard
-99	13	incoming_message_handling
-100	13	lu_link_printer_task
-101	13	lu_printer_host
-102	13	lu_printer_task
-103	13	script_coordinates
-104	13	temp
-105	14	lu_archive_site
-106	14	link_document_action
-107	14	link_document_task
-108	14	lu_message_display_style
-109	14	lu_message_standard
-110	14	sending_entities
-111	14	documents
-112	14	unmatched_staff
-113	14	copies_to
-114	14	lu_stakeholder_type
-115	14	lu_stakeholders
-116	14	observations
-117	14	signed_off
-118	14	stakeholders
-119	14	unmatched_patients
-120	14	unmatched_types
-121	14	lu_type
-122	14	lu_display_as
-123	15	brand
-124	15	clinical_effects
-125	15	atc
-126	15	evidence_levels
-127	15	disease_code
-128	15	flags
-129	15	manufacturer
-130	15	link_atc_info
-131	15	link_disease_info
-132	15	restriction
-133	15	pbs
-134	15	topic
-135	15	link_flag_product
-136	15	sources
-137	15	info
-138	15	units
-139	15	pharmacologic_mechanisms
-140	15	severity_level
-141	15	patient_categories
-142	15	product
-143	17	clinic_rooms
-144	17	link_staff_clinics
-145	17	lu_staff_roles
-146	17	lu_staff_status
-147	17	global_preferences
-148	17	clinics
-149	17	lu_staff_type
-150	17	staff
-151	18	data_persons
-152	18	data_employees
-153	18	data_addresses
-154	18	data_organisations
-155	18	data_branches
-156	18	lu_misspelt_towns
-157	18	lu_categories
-158	18	images
-159	18	links_persons_addresses
-160	18	lu_sex
-161	18	lu_marital
-162	18	lu_address_types
-163	18	links_employees_comms
-164	18	links_persons_comms
-165	18	lu_title
-166	18	links_branches_comms
-167	18	lu_firstnames
-168	18	lu_surnames
-169	18	todo
-170	18	data_communications
-171	18	lu_towns
-172	18	lu_contact_type
-173	19	data_patients
-174	19	lu_task_types
-175	19	tasks
-176	19	task_components
-177	19	data_families
-178	19	task_component_notes
-179	19	data_family_members
-180	20	lu_actions
-181	20	audit
-182	20	lu_schemas
-183	20	lu_reasons
-184	20	lu_status
-185	20	lu_tables
-186	21	lu_ethnicity
-187	21	lu_languages
-188	21	lu_urgency
-189	21	lu_route_administration
-190	21	lu_companion_status
-191	21	lu_hearing_aid_status
-192	21	lu_religions
-193	21	lu_normality
-194	21	lu_occupations_bak
-195	21	lu_smoking_status
-196	21	lu_social_support
-197	21	lu_sub_religions
-198	21	lu_whisper_test
-199	21	lu_aboriginality
-200	21	lu_anatomical_localisation
-201	21	lu_formulation
-202	21	lu_medicolegal
-203	21	lu_motion
-204	21	lu_proximal_distal
-205	21	lu_recreationaldrugs
-206	21	lu_seasons
-207	21	lu_site_administration
-208	21	lu_countries
-209	21	lu_family_relationships
-210	21	lu_occupations
-211	21	lu_laterality
-212	21	lu_units
-213	21	lu_anatomical_site
-214	21	lu_anterior_posterior
-215	21	lu_appointment_length
-216	22	link_careplanpages_careplan
-217	22	careplan_pages
-218	22	careplans
-219	22	component_task_due
-220	22	link_careplanpage_advice
-221	22	sample_plan
-222	22	test
-223	22	lu_advice
-224	22	lu_aims
-225	22	lu_components
-226	22	lu_education
-227	22	lu_responsible
-228	22	lu_tasks
-229	22	link_careplanpage_components
-230	22	lu_conditions
-231	23	care_plan_components_due
-232	23	lu_careplan_components
-233	23	lu_dacc_components
-234	23	occupational_history
-235	23	occupations_exposures
-236	23	team_care_members
-237	23	past_history
-238	23	family_members
-239	23	lu_exposures
-240	23	data_recreational_drugs
-241	23	family_conditions
-242	23	family_links
-243	23	hospitalisations
-244	23	social_history
-245	24	items_prescribed
-246	24	link_generics_brands
-247	24	lu_instructions
-248	24	lu_next_authority_number
-249	24	medication_audit_reasons
-250	24	medication_audit_trail
-251	24	medications
-252	24	lu_authority_indications
-253	24	lu_brand
-254	24	lu_generics
-255	24	lu_instruction_habits
-256	24	lu_pbs_status
-257	24	pack_details
-258	24	script_dates
-259	25	lu_type
-260	25	measurements
-261	25	patients_defaults
-262	27	lu_demographics_field_templates
-263	27	lu_source_program
-264	28	lu_version
-265	29	consult
-266	29	lu_progressnotes_sections
-267	29	lu_scratchpad_status
-268	29	progressnotes
-269	29	lu_consult_type
-270	29	images
-271	29	scratchpad
 \.
 
 
@@ -1594,6 +1163,45 @@ COPY lu_state_of_health (pk, state_of_health) FROM stdin;
 
 
 SET search_path = clin_consult, pg_catalog;
+
+--
+-- Data for Name: lu_audit_actions; Type: TABLE DATA; Schema: clin_consult; Owner: -
+--
+
+COPY lu_audit_actions (pk, action, insist_reason) FROM stdin;
+1	progress note	f
+2	insert	f
+3	update	f
+4	mark deleted	t
+5	reversal	f
+6	completed	f
+7	completed with explanation	t
+8	completed repeat same interval	f
+9	completed repeat new interval	f
+10	refused	f
+11	refused with explanation	f
+12	make active	f
+13	make inactive	f
+14	make significant	f
+15	make major	f
+16	not due	f
+17	overdue	f
+18	reminder sent	f
+19	arranged not completed	f
+20	file import	f
+21	document filed	f
+22	staff task allocated	f
+23	staff task finalised	f
+\.
+
+
+--
+-- Data for Name: lu_audit_reasons; Type: TABLE DATA; Schema: clin_consult; Owner: -
+--
+
+COPY lu_audit_reasons (pk, fk_staff, reason) FROM stdin;
+\.
+
 
 --
 -- Data for Name: lu_consult_type; Type: TABLE DATA; Schema: clin_consult; Owner: -
@@ -64377,6 +63985,7 @@ COPY lu_categories (pk, category) FROM stdin;
 166	Public Hospital - Emergency
 167	Public Hospital - General Surgery
 206	Psychiatry
+208	Psychiatry
 \.
 
 
@@ -83809,7 +83418,7 @@ SET search_path = db, pg_catalog;
 --
 
 COPY lu_version (pk, lu_major, lu_minor) FROM stdin;
-27	0	48
+31	0	52
 \.
 
 

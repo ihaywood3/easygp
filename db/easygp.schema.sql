@@ -17,13 +17,6 @@ CREATE SCHEMA admin;
 
 
 --
--- Name: audit; Type: SCHEMA; Schema: -; Owner: -
---
-
-CREATE SCHEMA audit;
-
-
---
 -- Name: blobs; Type: SCHEMA; Schema: -; Owner: -
 --
 
@@ -986,249 +979,6 @@ CREATE VIEW vwstaffinclinics AS
     SELECT ((staff.pk || '-'::text) || data_addresses.pk) AS pk_view, ((data_persons.firstname || ' '::text) || data_persons.surname) AS wholename, staff.fk_person, staff.fk_role, staff.fk_status, staff.logon_name, staff.provider_number, staff.prescriber_number, staff.logon_date_from, staff.logon_date_to, link_staff_clinics1.fk_staff, link_staff_clinics1.fk_clinic, clinics.fk_branch, data_branches.branch, data_branches.fk_organisation, data_branches.fk_address, data_branches.memo AS branch_memo, data_branches.fk_category AS branch_category, data_branches.deleted AS branch_deleted, data_employees.pk AS fk_employee, data_employees.fk_occupation, data_employees.fk_category AS fk_employee_category, data_employees.memo AS employee_memo, data_employees.deleted AS employee_deleted, data_persons.firstname, data_persons.surname, data_persons.salutation, data_persons.birthdate, data_persons.fk_ethnicity, data_persons.fk_language, data_persons.memo AS person_memo, data_persons.fk_marital, data_persons.fk_title, data_persons.fk_sex, data_persons.country_code AS person_country_code, data_persons.fk_image, data_persons.retired, data_persons.deleted AS person_deleted, data_persons.deceased, data_persons.date_deceased, lu_title.title, lu_marital.marital, lu_sex.sex, lu_categories.category AS employee_category, lu_occupations.occupation, lu_ethnicity.ethnicity, lu_languages.language, all_images.image, all_images.deleted AS image_deleted, lu_staff_roles.role, lu_employee_status.status, data_organisations.organisation, data_organisations.deleted AS organisation_deleted, data_addresses.street, data_addresses.fk_town, lu_address_types.type AS address_type, data_addresses.preferred_address, data_addresses.postal_address, data_addresses.head_office, data_addresses.geolocation, data_addresses.country_code, data_addresses.fk_lu_address_type, data_addresses.deleted AS address_deleted, lu_towns.postcode, lu_towns.town, lu_towns.state, link_staff_clinics1.pk AS fk_link_staff_clinic FROM (((((((((((((((((((staff JOIN link_staff_clinics link_staff_clinics1 ON ((staff.pk = link_staff_clinics1.fk_staff))) JOIN clinics ON ((link_staff_clinics1.fk_clinic = clinics.pk))) JOIN contacts.data_employees ON (((staff.fk_person = data_employees.fk_person) AND (clinics.fk_branch = data_employees.fk_branch)))) JOIN contacts.data_branches ON ((clinics.fk_branch = data_branches.pk))) JOIN contacts.data_persons ON ((data_employees.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN contacts.lu_marital ON ((data_persons.fk_marital = lu_marital.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN contacts.lu_categories ON ((data_employees.fk_category = lu_categories.pk))) LEFT JOIN common.lu_occupations ON ((data_employees.fk_occupation = lu_occupations.pk))) LEFT JOIN common.lu_ethnicity ON ((data_persons.fk_ethnicity = lu_ethnicity.pk))) LEFT JOIN common.lu_languages ON ((data_persons.fk_language = lu_languages.pk))) LEFT JOIN public.all_images ON ((data_persons.fk_image = all_images.pk))) JOIN lu_staff_roles ON ((staff.fk_role = lu_staff_roles.pk))) JOIN contacts.lu_employee_status ON ((staff.fk_status = lu_employee_status.pk))) JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) LEFT JOIN contacts.lu_address_types ON ((data_addresses.fk_lu_address_type = lu_address_types.pk))) ORDER BY data_branches.branch, data_persons.surname;
 
 
-SET search_path = audit, pg_catalog;
-
---
--- Name: audit; Type: TABLE; Schema: audit; Owner: -; Tablespace: 
---
-
-CREATE TABLE audit (
-    pk integer NOT NULL,
-    fk_schema integer,
-    fk_table integer,
-    fk_row integer,
-    fk_consult integer,
-    fk_lu_reason integer,
-    fk_action integer,
-    fk_section integer,
-    data_summary text
-);
-
-
---
--- Name: audit_pk_seq; Type: SEQUENCE; Schema: audit; Owner: -
---
-
-CREATE SEQUENCE audit_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MAXVALUE
-    NO MINVALUE
-    CACHE 1;
-
-
---
--- Name: audit_pk_seq; Type: SEQUENCE OWNED BY; Schema: audit; Owner: -
---
-
-ALTER SEQUENCE audit_pk_seq OWNED BY audit.pk;
-
-
---
--- Name: lu_actions; Type: TABLE; Schema: audit; Owner: -; Tablespace: 
---
-
-CREATE TABLE lu_actions (
-    pk integer NOT NULL,
-    action text NOT NULL
-);
-
-
---
--- Name: TABLE lu_actions; Type: COMMENT; Schema: audit; Owner: -
---
-
-COMMENT ON TABLE lu_actions IS 'the action undertaken by the audit eg insert, update, delete, complete etc';
-
-
---
--- Name: lu_status; Type: TABLE; Schema: audit; Owner: -; Tablespace: 
---
-
-CREATE TABLE lu_status (
-    pk integer NOT NULL,
-    status text NOT NULL
-);
-
-
---
--- Name: lu_actions_pk_seq; Type: SEQUENCE; Schema: audit; Owner: -
---
-
-CREATE SEQUENCE lu_actions_pk_seq
-    START WITH 0
-    INCREMENT BY 1
-    NO MAXVALUE
-    MINVALUE 0
-    CACHE 1;
-
-
---
--- Name: lu_actions_pk_seq; Type: SEQUENCE OWNED BY; Schema: audit; Owner: -
---
-
-ALTER SEQUENCE lu_actions_pk_seq OWNED BY lu_status.pk;
-
-
---
--- Name: lu_actions_pk_seq1; Type: SEQUENCE; Schema: audit; Owner: -
---
-
-CREATE SEQUENCE lu_actions_pk_seq1
-    START WITH 1
-    INCREMENT BY 1
-    NO MAXVALUE
-    NO MINVALUE
-    CACHE 1;
-
-
---
--- Name: lu_actions_pk_seq1; Type: SEQUENCE OWNED BY; Schema: audit; Owner: -
---
-
-ALTER SEQUENCE lu_actions_pk_seq1 OWNED BY lu_actions.pk;
-
-
---
--- Name: lu_reasons; Type: TABLE; Schema: audit; Owner: -; Tablespace: 
---
-
-CREATE TABLE lu_reasons (
-    pk integer NOT NULL,
-    fk_staff integer,
-    reason text
-);
-
-
---
--- Name: TABLE lu_reasons; Type: COMMENT; Schema: audit; Owner: -
---
-
-COMMENT ON TABLE lu_reasons IS 'keeps reasons for the audit action on per-user basis';
-
-
---
--- Name: lu_reasons_pk_seq; Type: SEQUENCE; Schema: audit; Owner: -
---
-
-CREATE SEQUENCE lu_reasons_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MAXVALUE
-    NO MINVALUE
-    CACHE 1;
-
-
---
--- Name: lu_reasons_pk_seq; Type: SEQUENCE OWNED BY; Schema: audit; Owner: -
---
-
-ALTER SEQUENCE lu_reasons_pk_seq OWNED BY lu_reasons.pk;
-
-
---
--- Name: lu_schemas; Type: TABLE; Schema: audit; Owner: -; Tablespace: 
---
-
-CREATE TABLE lu_schemas (
-    pk integer NOT NULL,
-    schema text NOT NULL
-);
-
-
---
--- Name: lu_schemas_pk_seq; Type: SEQUENCE; Schema: audit; Owner: -
---
-
-CREATE SEQUENCE lu_schemas_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MAXVALUE
-    NO MINVALUE
-    CACHE 1;
-
-
---
--- Name: lu_schemas_pk_seq; Type: SEQUENCE OWNED BY; Schema: audit; Owner: -
---
-
-ALTER SEQUENCE lu_schemas_pk_seq OWNED BY lu_schemas.pk;
-
-
---
--- Name: lu_tables; Type: TABLE; Schema: audit; Owner: -; Tablespace: 
---
-
-CREATE TABLE lu_tables (
-    pk integer NOT NULL,
-    fk_schema integer NOT NULL,
-    tablename text
-);
-
-
---
--- Name: lu_tables_pk_seq; Type: SEQUENCE; Schema: audit; Owner: -
---
-
-CREATE SEQUENCE lu_tables_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MAXVALUE
-    NO MINVALUE
-    CACHE 1;
-
-
---
--- Name: lu_tables_pk_seq; Type: SEQUENCE OWNED BY; Schema: audit; Owner: -
---
-
-ALTER SEQUENCE lu_tables_pk_seq OWNED BY lu_tables.pk;
-
-
-SET search_path = clin_consult, pg_catalog;
-
---
--- Name: consult; Type: TABLE; Schema: clin_consult; Owner: -; Tablespace: 
---
-
-CREATE TABLE consult (
-    pk integer NOT NULL,
-    consult_date timestamp without time zone NOT NULL,
-    fk_patient integer NOT NULL,
-    fk_staff integer NOT NULL,
-    fk_type integer,
-    summary text
-);
-
-
---
--- Name: lu_progressnotes_sections; Type: TABLE; Schema: clin_consult; Owner: -; Tablespace: 
---
-
-CREATE TABLE lu_progressnotes_sections (
-    pk integer NOT NULL,
-    section text NOT NULL
-);
-
-
-SET search_path = audit, pg_catalog;
-
---
--- Name: vwaudit; Type: VIEW; Schema: audit; Owner: -
---
-
-CREATE VIEW vwaudit AS
-    SELECT ((consult.fk_patient || '-'::text) || audit.pk) AS pk_view, consult.fk_patient, consult.consult_date AS date_audit, audit.data_summary, lu_reasons.reason AS audit_trail_reason, vwstaff.title AS altered_by_title, vwstaff.wholename AS altered_by_name, lu_schemas.schema, lu_tables.fk_schema, lu_tables.tablename, audit.fk_table, audit.fk_row, audit.fk_consult, audit.fk_lu_reason, lu_actions.action, audit.fk_action, audit.fk_section, lu_progressnotes_sections.section FROM (((((((audit JOIN lu_tables ON ((audit.fk_table = lu_tables.pk))) JOIN lu_schemas ON ((lu_tables.fk_schema = lu_schemas.pk))) JOIN lu_reasons ON ((audit.fk_lu_reason = lu_reasons.pk))) JOIN clin_consult.consult ON ((audit.fk_consult = consult.pk))) JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN lu_actions ON ((audit.fk_action = lu_actions.pk))) JOIN clin_consult.lu_progressnotes_sections ON ((audit.fk_section = lu_progressnotes_sections.pk))) ORDER BY consult.fk_patient, audit.fk_table, audit.fk_row;
-
-
---
--- Name: vwschemas; Type: VIEW; Schema: audit; Owner: -
---
-
-CREATE VIEW vwschemas AS
-    SELECT lu_schemas.schema, lu_tables.tablename, lu_tables.fk_schema, lu_tables.pk AS fk_table FROM lu_schemas, lu_tables WHERE (lu_tables.fk_schema = lu_schemas.pk) ORDER BY lu_schemas.schema, lu_tables.tablename;
-
-
 SET search_path = blobs, pg_catalog;
 
 --
@@ -1677,6 +1427,22 @@ CREATE SEQUENCE tasks_pk_seq
 --
 
 ALTER SEQUENCE tasks_pk_seq OWNED BY tasks.pk;
+
+
+SET search_path = clin_consult, pg_catalog;
+
+--
+-- Name: consult; Type: TABLE; Schema: clin_consult; Owner: -; Tablespace: 
+--
+
+CREATE TABLE consult (
+    pk integer NOT NULL,
+    consult_date timestamp without time zone NOT NULL,
+    fk_patient integer NOT NULL,
+    fk_staff integer NOT NULL,
+    fk_type integer,
+    summary text
+);
 
 
 SET search_path = common, pg_catalog;
@@ -3118,6 +2884,80 @@ ALTER SEQUENCE images_pk_seq OWNED BY images.pk;
 
 
 --
+-- Name: lu_audit_actions; Type: TABLE; Schema: clin_consult; Owner: -; Tablespace: 
+--
+
+CREATE TABLE lu_audit_actions (
+    pk integer NOT NULL,
+    action text NOT NULL,
+    insist_reason boolean DEFAULT false NOT NULL
+);
+
+
+--
+-- Name: TABLE lu_audit_actions; Type: COMMENT; Schema: clin_consult; Owner: -
+--
+
+COMMENT ON TABLE lu_audit_actions IS 'the action undertaken by the audit eg insert, update, delete, complete etc';
+
+
+--
+-- Name: lu_actions_pk_seq; Type: SEQUENCE; Schema: clin_consult; Owner: -
+--
+
+CREATE SEQUENCE lu_actions_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+--
+-- Name: lu_actions_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: -
+--
+
+ALTER SEQUENCE lu_actions_pk_seq OWNED BY lu_audit_actions.pk;
+
+
+--
+-- Name: lu_audit_reasons; Type: TABLE; Schema: clin_consult; Owner: -; Tablespace: 
+--
+
+CREATE TABLE lu_audit_reasons (
+    pk integer NOT NULL,
+    fk_staff integer,
+    reason text
+);
+
+
+--
+-- Name: TABLE lu_audit_reasons; Type: COMMENT; Schema: clin_consult; Owner: -
+--
+
+COMMENT ON TABLE lu_audit_reasons IS 'keeps reasons for the audit action on per-user basis';
+
+
+--
+-- Name: lu_audit_reasons_pk_seq; Type: SEQUENCE; Schema: clin_consult; Owner: -
+--
+
+CREATE SEQUENCE lu_audit_reasons_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+--
+-- Name: lu_audit_reasons_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_consult; Owner: -
+--
+
+ALTER SEQUENCE lu_audit_reasons_pk_seq OWNED BY lu_audit_reasons.pk;
+
+
+--
 -- Name: lu_consult_type; Type: TABLE; Schema: clin_consult; Owner: -; Tablespace: 
 --
 
@@ -3144,6 +2984,16 @@ CREATE SEQUENCE lu_consult_type_pk_seq
 --
 
 ALTER SEQUENCE lu_consult_type_pk_seq OWNED BY lu_consult_type.pk;
+
+
+--
+-- Name: lu_progressnotes_sections; Type: TABLE; Schema: clin_consult; Owner: -; Tablespace: 
+--
+
+CREATE TABLE lu_progressnotes_sections (
+    pk integer NOT NULL,
+    section text NOT NULL
+);
 
 
 --
@@ -3218,8 +3068,10 @@ CREATE TABLE progressnotes (
     fk_code bigint,
     problem text,
     fk_problem integer,
-    fk_audit_action integer,
-    display boolean DEFAULT true
+    fk_audit_action integer DEFAULT 1,
+    linked_table regclass,
+    fk_row integer,
+    fk_audit_reason integer
 );
 
 
@@ -3287,7 +3139,7 @@ ALTER SEQUENCE scratchpad_pk_seq OWNED BY scratchpad.pk;
 --
 
 CREATE VIEW vwprogressnotes AS
-    SELECT "CONSULT".fk_patient, "PROGRESSNOTES".pk AS pk_progressnote, "CONSULT".consult_date, "CONSULT_TYPE".type AS consult_type, "CONSULT_TYPE".pk AS fk_lu_consult_type, "SECTION".section, "PROGRESSNOTES".problem, "PROGRESSNOTES".notes, "CONSULT".summary, "PROGRESSNOTES".fk_consult, "PROGRESSNOTES".fk_section, "PROGRESSNOTES".fk_code, "PROGRESSNOTES".fk_problem, "PROGRESSNOTES".fk_audit_action, "PROGRESSNOTES".display, "CONSULT".fk_staff, "CONSULT".fk_type, "AUDITACTIONS".pk AS fk_action, "AUDITACTIONS".status AS audit_action, data_persons.firstname, data_persons.surname, lu_title.title FROM (((((((progressnotes "PROGRESSNOTES" JOIN consult "CONSULT" ON (("PROGRESSNOTES".fk_consult = "CONSULT".pk))) LEFT JOIN lu_consult_type "CONSULT_TYPE" ON (("CONSULT".fk_type = "CONSULT_TYPE".pk))) LEFT JOIN lu_progressnotes_sections "SECTION" ON (("PROGRESSNOTES".fk_section = "SECTION".pk))) LEFT JOIN audit.lu_status "AUDITACTIONS" ON (("PROGRESSNOTES".fk_audit_action = "AUDITACTIONS".pk))) JOIN admin.staff ON (("CONSULT".fk_staff = staff.pk))) JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk))) JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) WHERE (("CONSULT_TYPE".pk <> 8) AND ("PROGRESSNOTES".display = true)) ORDER BY "CONSULT".fk_patient, "CONSULT".consult_date, "CONSULT".fk_staff, "SECTION".pk, "PROGRESSNOTES".fk_problem;
+    SELECT "CONSULT".fk_patient, progressnotes.pk AS pk_progressnote, "CONSULT".consult_date, "CONSULT_TYPE".type AS consult_type, "SECTION".section, progressnotes.problem, progressnotes.notes, "CONSULT".summary, progressnotes.fk_consult, progressnotes.fk_section, progressnotes.fk_code, progressnotes.fk_problem, progressnotes.fk_audit_action, "CONSULT".fk_staff, "CONSULT".fk_type, data_persons.firstname, data_persons.surname, lu_title.title, lu_audit_actions.action AS audit_action, progressnotes.linked_table, progressnotes.fk_audit_reason, progressnotes.fk_row, lu_audit_actions.insist_reason, lu_staff_roles.role FROM ((((((((consult "CONSULT" LEFT JOIN lu_consult_type "CONSULT_TYPE" ON (("CONSULT".fk_type = "CONSULT_TYPE".pk))) JOIN admin.staff ON (("CONSULT".fk_staff = staff.pk))) JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk))) JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) JOIN progressnotes ON (("CONSULT".pk = progressnotes.fk_consult))) JOIN lu_progressnotes_sections "SECTION" ON ((progressnotes.fk_section = "SECTION".pk))) JOIN lu_audit_actions ON ((progressnotes.fk_audit_action = lu_audit_actions.pk))) JOIN admin.lu_staff_roles ON ((staff.fk_role = lu_staff_roles.pk))) WHERE ("CONSULT_TYPE".pk <> 8) ORDER BY "CONSULT".fk_patient, "CONSULT".consult_date, "CONSULT".fk_staff, "SECTION".pk, progressnotes.fk_problem;
 
 
 --
@@ -3296,14 +3148,6 @@ CREATE VIEW vwprogressnotes AS
 
 CREATE VIEW vwscratchpad AS
     SELECT consult.fk_patient, scratchpad.pk AS pk_scratchpad, scratchpad.fk_consult, scratchpad.note, consult.consult_date, consult.fk_staff, lu_title.title, data_persons.firstname, data_persons.surname, ((data_persons.firstname || ' '::text) || data_persons.surname) AS wholename, scratchpad.deleted, scratchpad.fk_lu_status AS fk_status, scratchpad.fk_progressnote FROM ((((scratchpad JOIN consult ON ((scratchpad.fk_consult = consult.pk))) JOIN admin.staff ON ((consult.fk_staff = staff.pk))) JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) ORDER BY consult.fk_patient, consult.consult_date;
-
-
---
--- Name: vwscratchpadaudit; Type: VIEW; Schema: clin_consult; Owner: -
---
-
-CREATE VIEW vwscratchpadaudit AS
-    SELECT vwaudit.pk_view, vwaudit.fk_patient, vwaudit.date_audit, vwaudit.data_summary, vwaudit.audit_trail_reason, vwaudit.altered_by_title, vwaudit.altered_by_name, vwaudit.schema, vwaudit.fk_schema, vwaudit.tablename, vwaudit.fk_table, vwaudit.fk_row, vwaudit.fk_consult, vwaudit.fk_lu_reason, vwaudit.action, vwaudit.fk_action, vwaudit.fk_section, vwaudit.section, scratchpad.note FROM (audit.vwaudit JOIN scratchpad ON ((vwaudit.fk_row = scratchpad.pk))) WHERE ((vwaudit.schema = 'clin_consult'::text) AND (vwaudit.tablename = 'scratchpad'::text)) ORDER BY vwaudit.fk_patient, vwaudit.fk_row, vwaudit.date_audit;
 
 
 SET search_path = clin_history, pg_catalog;
@@ -4079,14 +3923,6 @@ SET search_path = clin_history, pg_catalog;
 
 CREATE VIEW vwoccupationalhistory AS
     SELECT CASE WHEN (occupations_exposures.pk IS NULL) THEN (occupational_history.pk || '-0'::text) ELSE ((occupational_history.pk || '-'::text) || occupations_exposures.pk) END AS pk_view, occupational_history.pk AS fk_occupational_history, occupational_history.fk_consult, occupational_history.fk_occupation, occupational_history.from_age, occupational_history.to_age, occupational_history.current, occupational_history.retired, occupational_history.notes_occupation, occupational_history.deleted AS occupational_history_deleted, occupational_history.fk_progressnote, consult.consult_date, consult.fk_patient, lu_occupations.occupation, occupations_exposures.pk AS fk_occupations_exposures, occupations_exposures.fk_exposure, occupations_exposures.exposure_duration, occupations_exposures.exposure_duration_units, occupations_exposures.notes_exposure, lu_exposures.exposure, lu_exposures.fk_decision_support, occupations_exposures.deleted AS exposure_deleted, lu_units.abbrev_text FROM (((((occupational_history JOIN clin_consult.consult ON ((occupational_history.fk_consult = consult.pk))) JOIN common.lu_occupations ON ((occupational_history.fk_occupation = lu_occupations.pk))) LEFT JOIN occupations_exposures ON ((occupational_history.pk = occupations_exposures.fk_occupational_history))) LEFT JOIN lu_exposures ON ((occupations_exposures.fk_exposure = lu_exposures.pk))) LEFT JOIN common.lu_units ON ((occupations_exposures.exposure_duration_units = lu_units.pk)));
-
-
---
--- Name: vwpasthistoryaudit; Type: VIEW; Schema: clin_history; Owner: -
---
-
-CREATE VIEW vwpasthistoryaudit AS
-    SELECT vwaudit.pk_view, vwaudit.fk_patient, vwaudit.date_audit, vwaudit.data_summary, vwaudit.audit_trail_reason, vwaudit.altered_by_title, vwaudit.altered_by_name, vwaudit.schema, vwaudit.fk_schema, vwaudit.tablename, vwaudit.fk_table, vwaudit.fk_row, vwaudit.fk_consult, vwaudit.fk_lu_reason, vwaudit.action, vwaudit.fk_action, vwaudit.fk_section, vwaudit.section FROM (audit.vwaudit JOIN past_history ON ((vwaudit.fk_row = past_history.pk))) WHERE ((vwaudit.schema = 'clin_history'::text) AND (vwaudit.tablename = 'past_history'::text)) ORDER BY vwaudit.fk_patient, vwaudit.fk_row, vwaudit.date_audit;
 
 
 --
@@ -6783,14 +6619,6 @@ CREATE VIEW vwrecalls AS
 
 
 --
--- Name: vwrecallsaudit; Type: VIEW; Schema: clin_recalls; Owner: -
---
-
-CREATE VIEW vwrecallsaudit AS
-    SELECT vwaudit.pk_view, vwaudit.fk_patient, vwaudit.date_audit, vwaudit.data_summary, vwaudit.audit_trail_reason, vwaudit.altered_by_title, vwaudit.altered_by_name, vwaudit.schema, vwaudit.fk_schema, vwaudit.tablename, vwaudit.fk_table, vwaudit.fk_row, vwaudit.fk_consult, vwaudit.fk_lu_reason, vwaudit.action, vwaudit.fk_action, vwaudit.fk_section, vwaudit.section, recalls.fk_reason AS fk_reason_recall FROM (audit.vwaudit JOIN recalls ON ((vwaudit.fk_row = recalls.pk))) WHERE ((vwaudit.schema = 'clin_recalls'::text) AND (vwaudit.tablename = 'recalls'::text)) ORDER BY vwaudit.fk_patient, vwaudit.fk_row, vwaudit.date_audit;
-
-
---
 -- Name: vwrecallsdue; Type: VIEW; Schema: clin_recalls; Owner: -
 --
 
@@ -8753,7 +8581,8 @@ CREATE TABLE visits (
     fk_consult integer,
     fk_progressnote integer,
     fk_coding_system integer,
-    capabilities text
+    capabilities text,
+    certificate_date date
 );
 
 
@@ -8846,6 +8675,14 @@ COMMENT ON COLUMN visits.fk_coding_system IS 'if not null this is the coding sys
 
 
 --
+-- Name: COLUMN visits.certificate_date; Type: COMMENT; Schema: clin_workcover; Owner: -
+--
+
+COMMENT ON COLUMN visits.certificate_date IS 'The certificate date, usually now() but sometimes needs to be backdated, for example if
+ replacing a paper certificate with an electronic one when copy needed';
+
+
+--
 -- Name: visits_pk_seq; Type: SEQUENCE; Schema: clin_workcover; Owner: -
 --
 
@@ -8869,7 +8706,7 @@ ALTER SEQUENCE visits_pk_seq OWNED BY visits.pk;
 --
 
 CREATE VIEW vwworkcover AS
-    SELECT visits.pk AS pk_view, visits.pk AS fk_visit, visits.fk_claim, consult1.consult_date AS start_date, consult.consult_date AS visit_date, consult.fk_patient, claims.claim_number, claims.fk_occupation, claims.fk_branch, claims.hours_week_worked, claims.mechanism_of_injury, claims.date_injury, claims.contact_person, claims.memo, claims.identifier, claims.fk_person, claims.accepted, consult.fk_staff, consult.fk_type, consult.summary, vwstaff.wholename AS staff_wholename, vwstaff.surname AS staff_surname, vwstaff.firstname AS staff_firstname, vwstaff.title AS staff_title, vwstaff.provider_number, lu_occupations.occupation, vworganisations.branch, vworganisations.fk_organisation, vworganisations.organisation, vworganisations.street AS branch_street, vworganisations.town AS branch_town, vworganisations.branch_deleted, vwpersons.wholename AS soletrader_wholename, vwpersons.firstname AS soletrader_firstname, vwpersons.surname AS soletrader_surname, vwpersons.title AS soletrader_title, vwpersons.town AS soletrader_town, vwpersons.street AS soletrader_street, vwpersons.postcode AS soletrader_postcode, vwpersons.address_deleted AS soletrader_address_deleted, lu_visit_type.type AS visit_type, visits.fk_lu_visit_type, visits.diagnosis, lu_systems.system AS coding_system, visits.fk_code, CASE WHEN (visits.fk_code IS NOT NULL) THEN (SELECT DISTINCT generic_terms.term FROM coding.generic_terms WHERE (visits.fk_code = generic_terms.code)) ELSE NULL::text END AS coded_term, visits.management_plan, visits.review_date, visits.assessworkplace, visits.hours_capable, visits.days_capable, visits.restrictions, visits.fk_caused_by_employment, visits.doctor_consented, visits.worker_consented, visits.fitness_preinjury_from, visits.fitness_suitable_from, visits.fitness_suitable_to, visits.fitness_unfit_from, visits.fitness_unfit_to, visits.fitness_perm_mod_duties_from, visits.fk_consult, visits.fk_progressnote, visits.fk_coding_system, visits.capabilities, lu_caused_by_employment.caused_by_employment FROM ((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN visits ON ((visits.fk_consult = consult.pk))) JOIN claims ON ((claims.pk = visits.fk_claim))) JOIN common.lu_occupations ON ((claims.fk_occupation = lu_occupations.pk))) LEFT JOIN coding.lu_systems ON ((visits.fk_coding_system = lu_systems.pk))) LEFT JOIN contacts.vworganisations ON ((claims.fk_branch = vworganisations.fk_branch))) LEFT JOIN contacts.vwpersons ON ((claims.fk_person = vwpersons.fk_person))) JOIN lu_visit_type ON ((visits.fk_lu_visit_type = lu_visit_type.pk))) JOIN lu_caused_by_employment ON ((visits.fk_caused_by_employment = lu_caused_by_employment.pk))) JOIN clin_consult.consult consult1 ON ((claims.fk_consult = consult1.pk))) ORDER BY visits.fk_claim, visits.pk;
+    SELECT visits.pk AS pk_view, visits.pk AS fk_visit, visits.fk_claim, consult1.consult_date AS start_date, consult.consult_date AS visit_date, consult.fk_patient, claims.claim_number, claims.fk_occupation, claims.fk_branch, claims.hours_week_worked, claims.mechanism_of_injury, claims.date_injury, claims.contact_person, claims.memo, claims.identifier, claims.fk_person, claims.accepted, consult.fk_staff, consult.fk_type, consult.summary, vwstaff.wholename AS staff_wholename, vwstaff.surname AS staff_surname, vwstaff.firstname AS staff_firstname, vwstaff.title AS staff_title, vwstaff.provider_number, lu_occupations.occupation, vworganisations.branch, vworganisations.fk_organisation, vworganisations.organisation, vworganisations.street AS branch_street, vworganisations.town AS branch_town, vworganisations.branch_deleted, vwpersons.wholename AS soletrader_wholename, vwpersons.firstname AS soletrader_firstname, vwpersons.surname AS soletrader_surname, vwpersons.title AS soletrader_title, vwpersons.town AS soletrader_town, vwpersons.street AS soletrader_street, vwpersons.postcode AS soletrader_postcode, vwpersons.address_deleted AS soletrader_address_deleted, lu_visit_type.type AS visit_type, visits.fk_lu_visit_type, visits.diagnosis, lu_systems.system AS coding_system, visits.fk_code, CASE WHEN (visits.fk_code IS NOT NULL) THEN (SELECT DISTINCT generic_terms.term FROM coding.generic_terms WHERE (visits.fk_code = generic_terms.code)) ELSE NULL::text END AS coded_term, visits.certificate_date, visits.management_plan, visits.review_date, visits.assessworkplace, visits.hours_capable, visits.days_capable, visits.restrictions, visits.fk_caused_by_employment, visits.doctor_consented, visits.worker_consented, visits.fitness_preinjury_from, visits.fitness_suitable_from, visits.fitness_suitable_to, visits.fitness_unfit_from, visits.fitness_unfit_to, visits.fitness_perm_mod_duties_from, visits.fk_consult, visits.fk_progressnote, visits.fk_coding_system, visits.capabilities, lu_caused_by_employment.caused_by_employment FROM ((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN visits ON ((visits.fk_consult = consult.pk))) JOIN claims ON ((claims.pk = visits.fk_claim))) JOIN common.lu_occupations ON ((claims.fk_occupation = lu_occupations.pk))) LEFT JOIN coding.lu_systems ON ((visits.fk_coding_system = lu_systems.pk))) LEFT JOIN contacts.vworganisations ON ((claims.fk_branch = vworganisations.fk_branch))) LEFT JOIN contacts.vwpersons ON ((claims.fk_person = vwpersons.fk_person))) JOIN lu_visit_type ON ((visits.fk_lu_visit_type = lu_visit_type.pk))) JOIN lu_caused_by_employment ON ((visits.fk_caused_by_employment = lu_caused_by_employment.pk))) JOIN clin_consult.consult consult1 ON ((claims.fk_consult = consult1.pk))) ORDER BY visits.fk_claim, visits.pk;
 
 
 --
@@ -12471,50 +12308,6 @@ ALTER TABLE lu_staff_type ALTER COLUMN pk SET DEFAULT nextval('lu_staff_type_pk_
 ALTER TABLE staff ALTER COLUMN pk SET DEFAULT nextval('staff_pk_seq'::regclass);
 
 
-SET search_path = audit, pg_catalog;
-
---
--- Name: pk; Type: DEFAULT; Schema: audit; Owner: -
---
-
-ALTER TABLE audit ALTER COLUMN pk SET DEFAULT nextval('audit_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: audit; Owner: -
---
-
-ALTER TABLE lu_actions ALTER COLUMN pk SET DEFAULT nextval('lu_actions_pk_seq1'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: audit; Owner: -
---
-
-ALTER TABLE lu_reasons ALTER COLUMN pk SET DEFAULT nextval('lu_reasons_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: audit; Owner: -
---
-
-ALTER TABLE lu_schemas ALTER COLUMN pk SET DEFAULT nextval('lu_schemas_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: audit; Owner: -
---
-
-ALTER TABLE lu_status ALTER COLUMN pk SET DEFAULT nextval('lu_actions_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: audit; Owner: -
---
-
-ALTER TABLE lu_tables ALTER COLUMN pk SET DEFAULT nextval('lu_tables_pk_seq'::regclass);
-
-
 SET search_path = blobs, pg_catalog;
 
 --
@@ -12765,6 +12558,20 @@ ALTER TABLE consult ALTER COLUMN pk SET DEFAULT nextval('consult_pk_seq'::regcla
 --
 
 ALTER TABLE images ALTER COLUMN pk SET DEFAULT nextval('images_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: clin_consult; Owner: -
+--
+
+ALTER TABLE lu_audit_actions ALTER COLUMN pk SET DEFAULT nextval('lu_actions_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: clin_consult; Owner: -
+--
+
+ALTER TABLE lu_audit_reasons ALTER COLUMN pk SET DEFAULT nextval('lu_audit_reasons_pk_seq'::regclass);
 
 
 --
@@ -14225,56 +14032,6 @@ ALTER TABLE ONLY staff
     ADD CONSTRAINT staff_pkey PRIMARY KEY (pk);
 
 
-SET search_path = audit, pg_catalog;
-
---
--- Name: audit_pkey; Type: CONSTRAINT; Schema: audit; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY audit
-    ADD CONSTRAINT audit_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_actions_pkey; Type: CONSTRAINT; Schema: audit; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY lu_status
-    ADD CONSTRAINT lu_actions_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_actions_pkey1; Type: CONSTRAINT; Schema: audit; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY lu_actions
-    ADD CONSTRAINT lu_actions_pkey1 PRIMARY KEY (pk);
-
-
---
--- Name: lu_reasons_pkey; Type: CONSTRAINT; Schema: audit; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY lu_reasons
-    ADD CONSTRAINT lu_reasons_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_schemas_pkey; Type: CONSTRAINT; Schema: audit; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY lu_schemas
-    ADD CONSTRAINT lu_schemas_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_tables_pkey; Type: CONSTRAINT; Schema: audit; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY lu_tables
-    ADD CONSTRAINT lu_tables_pkey PRIMARY KEY (pk);
-
-
 SET search_path = blobs, pg_catalog;
 
 --
@@ -14570,6 +14327,14 @@ ALTER TABLE ONLY images
 
 
 --
+-- Name: lu_actions_pkey; Type: CONSTRAINT; Schema: clin_consult; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_audit_actions
+    ADD CONSTRAINT lu_actions_pkey PRIMARY KEY (pk);
+
+
+--
 -- Name: lu_consult_type_pkey; Type: CONSTRAINT; Schema: clin_consult; Owner: -; Tablespace: 
 --
 
@@ -14583,6 +14348,14 @@ ALTER TABLE ONLY lu_consult_type
 
 ALTER TABLE ONLY lu_progressnotes_sections
     ADD CONSTRAINT lu_progressnotes_sections_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: lu_reasons_pkey; Type: CONSTRAINT; Schema: clin_consult; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_audit_reasons
+    ADD CONSTRAINT lu_reasons_pkey PRIMARY KEY (pk);
 
 
 --
@@ -16260,6 +16033,24 @@ SET search_path = clerical, pg_catalog;
 
 ALTER TABLE ONLY data_patients
     ADD CONSTRAINT data_patients_fk_family_fkey FOREIGN KEY (fk_family) REFERENCES data_families(pk);
+
+
+SET search_path = clin_consult, pg_catalog;
+
+--
+-- Name: action_action_ref; Type: FK CONSTRAINT; Schema: clin_consult; Owner: -
+--
+
+ALTER TABLE ONLY progressnotes
+    ADD CONSTRAINT action_action_ref FOREIGN KEY (fk_audit_action) REFERENCES lu_audit_actions(pk);
+
+
+--
+-- Name: progressnotes_fk_audit_reason_fkey; Type: FK CONSTRAINT; Schema: clin_consult; Owner: -
+--
+
+ALTER TABLE ONLY progressnotes
+    ADD CONSTRAINT progressnotes_fk_audit_reason_fkey FOREIGN KEY (fk_audit_reason) REFERENCES lu_audit_reasons(pk);
 
 
 SET search_path = contacts, pg_catalog;

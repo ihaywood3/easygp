@@ -142,7 +142,7 @@ Private The_Collection As Collection
 Private Member As Collection 
 Private fk_tell As Integer   'if not zero- user has selected a predfined 'tell patient...'
 Private staff As Collection 
-Private Staff_Member As Collection 
+Private Staff_Member_Allocated_Task As Collection 
 Private pk_view_staff As String
 Private pk_view_staff_task As Integer
 Private fk_staff_allocated As Integer
@@ -158,9 +158,9 @@ Private iTaskRestriction As Integer          'const.cTaskRestriction_User, .._ro
 Private fk_note As Integer
 Private patient As New Collection 
 Private fk_table_row As Integer        'fixme fim my name = e.g fk_document
-Private fk_schema As Integer
+'Private fk_schema As Integer
 Private schema As String
-Private fk_table As Integer 
+'Private fk_table As Integer 
 Private table As String 
 Private schema_table_keys As Collection 
 Private comms As Collection 
@@ -235,7 +235,7 @@ Public Sub Init()
    lblMeasure.text = "  Send copy to  "                                                            'get width of editarea labels ok
    modEditAreaHelpers.Resize_labels(VBox_EditArea_Task, lblMeasure)    
    modEditAreaHelpers.Resize_label(lblNotes, lblMeasure)                            'and resize them
-   TaskTypes = modUtil.LoadCombo(cmbTaskType, modStaffTasksDBI.StaffTasks_Get_TaskTypes(), "type") 'pre-defined categories eg. Ring patient
+  'TaskTypes = modUtil.LoadCombo(cmbTaskType, modStaffTasksDBI.StaffTasks_Get_TaskTypes(), "type") 'pre-defined categories eg. Ring patient
    Roles = modUtil.LoadCombo(cmbRoles, modAdminDBI.Roles_Get(), "role")
    Select Case Parent_Form
       Case "FDayBook"
@@ -252,7 +252,7 @@ Public Sub Init()
          tbFinalise.Visible = True
          txtDateLogged.readonly = True
          txtLoggedBy.readonly = True
-         cmbTaskType.Enabled = False 
+       '  cmbTaskType.Enabled = False 
          txtTaskDetails.readonly = True
          txtStaffAllocated.readonly = True
          HBox_Urgency.Enabled = False 
@@ -283,7 +283,7 @@ Public Sub Init()
        
       Case "Inbox"
          cvwStaffTasks.Columns.count = 4
-       '  Reload()
+         Reload()
    End Select
    Reload()
 End
@@ -329,33 +329,9 @@ End
 
 Public Sub Task_Save()
    '----------------------------------------------------------------------------------------------------
-   ' Saves the staff task this may or may not belong to a patient - for example it could be 'inter-staff
-   ' directive
+   ' Saves the staff task
+   ' this may or may not belong to a patient - for example it could be 'inter-staff  directive
    ' Can be one or more tasks allocated to staff members
-   '   clerical.tasks table:
-   '   pk serial NOT NULL,
-   '  x fk_schema integer,
-   '  x fk_table integer,
-   '  x fk_row integer,
-   '   finalised boolean DEFAULT false,
-   '   deleted boolean DEFAULT false,
-   '
-   '   clerical.task_components table: x = checked by me
-   ' x  fk_task integer NOT NULL,
-   ' x  fk_consult integer, -- key to clin_consult.consult ie gives patient if not null
-   '   date_logged date default null, -- Null where the task was logged for a patient, as it has fk_consult,...
-   '   fk_staff_filed_task integer NOT NULL, -- key to clerical.staff table = points to staff member who filed the task
-   ' x  fk_staff_allocated integer NOT NULL, -- foreign key to clerical.staff table, ie points to the staff member...
-   '   fk_staff_completed integer, -- foreign key to clerical.staff table, points to who...
-   '   allocated_staff text, -- usually null unless the staff is generic...
-   ' x  tell_patient text, -- what the staff member should tell the patient...
-   ' x  fk_lu_task_type integer NOT NULL, -- key to clerical.lu_staff_tasks, points to text e.g phone patient
-   '   fk_urgency integer DEFAULT 1, -- key to common.lu_urgency 1:routine 2:moderate 3:urgent
-   ' x  details text,
-   '   date_completed date, -- The date the component was finalised...
-   '   deleted boolean DEFAULT false,
-   ' 
-   
    '----------------------------------------------------------------------------------------------------
    Dim StaffTask As New Collection 
    Dim TaskComponent As New Collection 
@@ -390,43 +366,44 @@ Public Sub Task_Save()
       TaskComponent!fk_role = Null  'FIXME - FIX SAVE TO MAKE THIS BACK TO NULL WHEN SAVED
    Endif
    TaskComponent!fk_staff_filed = fk_staff_filed_component
-   TaskComponent!fk_lu_task_type = TaskTypes[cmbTaskType.index]!pk
    TaskComponent!details = Trim(txtTaskDetails.text)
    TaskComponent!fk_staff_allocated = fk_staff_allocated
    TaskComponent!fk_urgency = fk_urgency
    If fk_table_row <> 0 Then
       StaffTask!task = Trim(txtTask.text)
-      ' StaffTask!fk_schema = schema_table_keys!fk_schema
-      ' StaffTask!fk_table = schema_table_keys!fk_table
-      ' StaffTask!fk_row = fk_table_row
    Endif
-   sTaskComponentSummary = "Task component allocated to " & txtStaffAllocated.text & ": " & cmbTaskType.text & " Details:" & txtTaskDetails.text
+   If TaskComponent!fk_staff_allocated = fk_staff Then
+      If Staff_Member_Allocated_Task!fk_sex = const.cSexMale Then 
+         sTaskComponentSummary = " to himself - " 'FIXME check sex of staff member
+      Else
+          sTaskComponentSummary = " to herself - "
+      End If
+   Else
+      sTaskComponentSummary = " to " & txtStaffAllocated.text & " - "
+   Endif
+   sTaskComponentSummary &= Trim(txtTaskDetails.text) 
+   Print sTaskComponentSummary
    '------------------------------------------------------------------------------------
-   'Check if a consult has been created for the patient, if there is a patient of course
+   'Check if a consult has been created for the patient, if there is a patient of cours e
    '------------------------------------------------------------------------------------  
    If fk_patient <> 0 And bFinalised = False Then
-      Consult_Check_Created("Staff task allocated")
+      Consult_Check_Created(const.ConsultType_AuditNote, "Staff task allocated")
       TaskComponent!fk_consult = currentconsult.GetPK()
    End If
+   If fk_document Then stafftask!fk_row = fk_document
    modDBConnect.BeginTrans()
    '-------------------------------------------------------------------------------------------
    'Each task gets a 'master entry' in clerical.tasks table, then components linked to the task
    '-------------------------------------------------------------------------------------------   
    StaffTask!fk_task = modStaffTasksDBI.StaffTasks_Save(staffTasks, pk_view_staff_task, StaffTask, fk_document)
    TaskComponent!fk_task = StaffTask!fk_task
-   TaskComponent!fk_component = modStaffTasksDBI.StaffTasks_Components_Save(TasksComponents, fk_component, sTaskComponentSummary)
+   TaskComponent!fk_component = modStaffTasksDBI.StaffTasks_Components_Save(TasksComponents, fk_component, taskcomponent)
    '--------------------------------------------------------
    'if a document, create an audit trail for this staff task
    'othewise, the staff task table itself is the audit trail
    '--------------------------------------------------------
    If fk_document Then  
-      ' audit!fk_row = fk_document
-      ' audit!fk_consult = currentconsult.GetPK()
-      ' audit!fk_section = const.cSection_Documents
-      ' audit!fk_action = const.cAuditAction_StaffTaskAllocated
-      ' audit!data_summary = sTaskComponentSummary
-      ' audit!reason = "staff task allocated"
-       modAudit.MakeAudit(currentconsult, "staff task allocated", "clin_documents.documents", fk_document, sTaskComponentSummary)
+       modAudit.MakeAudit(currentconsult, "staff task allocated", "documents.documents", fk_document, const.cSection_StaffTasks, sTaskComponentSummary)
    End If
    modDBConnect.CommitTrans
    Reload()
@@ -456,15 +433,16 @@ Public Sub Finalise()
       End If   
    End If
    modDBConnect.BeginTrans()
+   Print CurrentTaskComponent
    If fk_table_row Then 
       audit!fk_row = fk_table_row
       If fk_patient <> 0 Then 
          If IsNull(currentconsult) Then 
             CurrentConsult = New CConsult(patient)
          Else   
-            currentconsult.Set(const.ConsultType_StaffTask, "Finalising staff task")
+            currentconsult.Set(const.ConsultType_AuditNote, "Finalising staff task")
          End If
-         modAudit.MakeAudit(currentconsult, "staff task finalised", " clin_documents.documents", fk_document, "Task finalised by " & modDBConnect.currentUser_FullName())
+         modAudit.MakeAudit(currentconsult, "task component finalised", "documents.documents", fk_document, const.cSection_StaffTasks, " by " & modDBConnect.currentUser_FullName())
 
       End If   
    End If 
@@ -537,9 +515,9 @@ Public Sub Note_Save()
       Return 
    Endif
    If fk_patient <> 0 Then 
-      Consult_Check_Created("Staff task note")
+      Consult_Check_Created(const.ConsultType_AuditNote, "Staff task note")
    Endif
-   sSummary = "Staff member " & currentUser & ": note on task - " & Trim(txtNotes.text)
+   ssummary = Trim(txtNotes.text)
    note!note = Trim(txtNotes.text)
    note!fk_staff_made_note = fk_staff
    note!date = Now
@@ -547,15 +525,9 @@ Public Sub Note_Save()
    'if a document, create an audit trail for this  note
    'othewise, the  task notes table itself is the audit trail
    '---------------------------------------------------------
+   Print CurrentTaskComponent
    If fk_document Then  
-      ' audit!fk_row = CurrentTaskComponent!fk_row
-      ' audit!fk_consult = currentconsult.GetPK()   '?? ALWAYS HAVE THIS nO, SO RETHINK THIS
-      ' audit!fk_section = const.cSection_Documents
-      ' audit!fk_action = const.cAuditAction_StaffTaskAllocated
-      ' audit!data_summary = sSummary
-      ' audit!reason = "staff task allocated"
-      ' modConsultDBI.Make_Audit(Audit, "", "", CurrentTaskComponent!fk_schema, CurrentTaskComponent!fk_table)  
-      modAudit.MakeAudit(currentconsult, "staff task allocated", "clin_documents.documents", fk_document, sSummary)
+      modAudit.MakeAudit(currentconsult, "note on task", "documents.documents", fk_document, const.cSection_StaffTasks, sSummary)
    End If   
    modStaffTasksDBI.StaffTasks_Notes_Save(notes, pk_view_notes, Note, fk_note)
  
@@ -660,8 +632,8 @@ Public Sub cvwTasks_Reload()
          End If
       Case "Inbox"
        
-        ' TasksComponents = modStaffTasksDBI.Tasks_For_Document_Get(fk_document, schema_table_keys!fk_schema, schema_table_keys!fk_table)
-        ' TasksComponents_Document_Reload()
+         TasksComponents = modStaffTasksDBI.Tasks_For_Document_Get(fk_document)
+         TasksComponents_Document_Reload()
    End Select
    
 End
@@ -695,8 +667,6 @@ Public Sub TasksComponents_Document_Reload()
          StaffTask!fk_staff_filed_task = component!fk_staff_filed_task
          fk_staff_filed_task = component!fk_staff_filed_task
          StaffTask!fk_staff_finalised_task = component!fk_staff_finalised_task
-         StaffTask!fk_schema = component!fk_schema
-         StaffTask!fk_table = component!fk_table
          StaffTask!fk_row = component!fk_row
          StaffTask!date_finalised = component!date_finalised
          staffTasks.Add(staffTask, fk_task)
@@ -728,8 +698,6 @@ Public Sub Tasks_Reload()
    
    Task_Keys = New Collection
    StaffTasks = New Collection
-   fk_schema = 0   'fixme
-   fk_table = 0
    fk_table_row = 0
    
    Inc Application.Busy
@@ -738,7 +706,7 @@ Public Sub Tasks_Reload()
    cvwStaffTasks.Clear()
    currentconsult = Null
    
-   TasksComponents = modDayBookDBI.Staff_Tasks_Get(fk_staff, 0, True, fk_schema, fk_table, fk_table_row, const.cTaskCompletionNo, iTaskRestriction, "ASC")              'get uncompleted tasks
+   TasksComponents = modDayBookDBI.Staff_Tasks_Get(fk_staff, 0, True, fk_table_row, const.cTaskCompletionNo, iTaskRestriction, "ASC")              'get uncompleted tasks
 
    If TasksComponents.count = 0 Then
       cvwStaffTasks.Add(x, 0)
@@ -801,7 +769,7 @@ Public Sub EditArea_Clear()
    lblMobilePHone.text = ""
    lblHomePhone.text = ""
    cvwTaskNotes.Clear()
-   cmbTaskType.Index = -1
+  ' cmbTaskType.Index = -1
    rbUrgencyRoutine.value = True 
    txtDateLogged.text = Format(Now, "dd/mm/yyyy")
    txtLoggedBy.text = CurrentUser
@@ -813,11 +781,12 @@ Public Sub EditArea_Clear()
    cmbRoles.index = -1
    fk_staff_filed_component = modDBConnect.currentUser!fk_staff
    bPatientTask = False  
-   cmbTaskType.SetFocus()
+ '  cmbTaskType.SetFocus()
+   txtTaskDetails.SetFocus
    EditArea_Notify_DataChange(False)
    HBox_Urgency.Enabled = True
    VBox_EditArea_Task.Enabled = True
-   cmbTaskType.Enabled = True 
+  ' cmbTaskType.Enabled = True 
    txtStaffAllocated.Enabled = True
    txtTaskDetails.Enabled = True
    HBox_Suburb.Enabled = True
@@ -870,11 +839,11 @@ Public Sub Staff_Find()
    End With 
    staff = modContactsDBI.Staff_Get(Trim(txtStaffAllocated.text))
    iLastStaff_Member_pk = -1
-   For Each Staff_Member In staff
-      columnview1.Add(Staff_Member!pk_view, 0)    
-      columnview1[Staff_Member!pk_view][0] = Staff_Member!title & " " & Staff_Member!wholename
-      columnview1[Staff_Member!pk_view][1] = Staff_Member!occupation
-      columnview1[Staff_Member!pk_view][2] = Staff_Member!branch
+   For Each Staff_Member_Allocated_Task In staff
+      columnview1.Add(Staff_Member_Allocated_Task!pk_view, 0)    
+      columnview1[Staff_Member_Allocated_Task!pk_view][0] = Staff_Member_Allocated_Task!title & " " & Staff_Member_Allocated_Task!wholename
+      columnview1[Staff_Member_Allocated_Task!pk_view][1] = Staff_Member_Allocated_Task!occupation
+      columnview1[Staff_Member_Allocated_Task!pk_view][2] = Staff_Member_Allocated_Task!branch
    Next   
    If Staff.count Then
       Columnview1.Visible = True 
@@ -893,20 +862,19 @@ Public Sub Staff_Select()
    columnview1.MoveCurrent()
    pk_view_staff = columnview1.Item.Key
    Try txtStaffAllocated.text = staff[pk_view_staff]!title & " " & staff[pk_view_staff]!wholename
-   Staff_Member = staff[pk_view_staff]
+   Staff_Member_Allocated_Task = staff[pk_view_staff]
    fk_staff_allocated = staff[pk_view_staff]!fk_staff
    columnview1.Visible = False 
-   If Parent_Form = "Inbox" Then txtTaskDetails.SetFocus()
    If bPatientTask = True Then
       If fk_patient = 0 Then 
          txtPatient.SetFocus()   
       Else
-         txtTaskDetails.SetFocus()
+          tbSave.SetFocus()
       End If   
    Else
       tbSave.SetFocus()
    End If   
-   fk_role = Staff_Member!fk_role
+   fk_role = Staff_Member_Allocated_Task!fk_role
    cmbRoles.index = -1
 End
 
@@ -979,15 +947,15 @@ Public Sub EditArea_KeyPress()
       Case key.Return, key.Tab
          Select Case Last.tag
             Case "task name"
-               cmbTaskType.SetFocus()
+               txtTaskDetails.SetFocus()
             Case "patient"
                txtTask.SetFocus()
             Case "staff allocated"
                tbSave.SetFocus()
             Case "details"
                columnview1.Visible = False  
-               tbSave.SetFocus()
-            Case "notes"
+               txtStaffAllocated.SetFocus()
+             Case "notes"
                tbAddNotes.SetFocus()
          End Select
          
@@ -1028,7 +996,7 @@ Public Sub EditArea_GotFocus()
       Next
       .Columns.count = numcolumns
       .width = txtTaskDetails.width
-      .top = Last.parent.top + Last.parent.height
+      .top = Vbox_Main.top + HBox_Heading.Height + Vbox_Task.padding + VBox_EditArea_Task.padding + Last.parent.top + Last.parent.height 
       .Raise
    End With
 
@@ -1133,7 +1101,7 @@ Public Sub Task_Patient_New()
         tbNewNotes.Visible = False  
         tbSaveAndFinalise.Visible = False 
       Case "Inbox"
-         txtStaffAllocated.SetFocus()
+         txtTaskDetails.SetFocus()
          lblTaskHeading.text = "Tasks Allocated for This Document"
          Hbox_NotesButtons.Visible = False
    End Select
@@ -1145,7 +1113,7 @@ Public Sub Valid_Task() As Boolean
    'Validates data for the task before saving, return true if ok
    '------------------------------------------------------------
 
-   If fk_staff_allocated = 0 Then
+   If fk_staff_allocated = 0 Then                                                         'no specific task member is allocated
       If Trim(txtStaffAllocated.text) <> "" Then
         If Message.Question("Allocate to any Secretarial staff?", "Yes", "No") = 2 Then
          txtStaffAllocated.SetFocus()
@@ -1153,26 +1121,35 @@ Public Sub Valid_Task() As Boolean
         End If
       Endif
    Endif
-   If cmbTaskType.index = -1 Then
-      Message.Info("Please select a task component from the combo box before saving")
-      cmbTaskType.SetFocus
-      Return 
+   If fk_staff_allocated = 0 And cmbRoles.index = -1 Then
+      Message.info("Please select either a specific staff member, or a generic 'role' from the roles combo box")
+      txtStaffAllocated.SetFocus
+      Return
+   End If    
+   If Trim(txtTaskDetails.text) = "" Then
+       txtTaskDetails.SetFocus()
+       Return
    Endif
+   ' If cmbTaskType.index = -1 Then
+   '    Message.Info("Please select a task component from the combo box before saving")
+   '    cmbTaskType.SetFocus
+   '    Return 
+   ' Endif
    Return True
 
 End
 
-Public Sub cmbTaskType_KeyPress()
-   
-   If key.code = key.return Then
-      If fk_staff_allocated = 0 Then
-         txtStaffAllocated.SetFocus()
-      Else   
-         txtTaskDetails.SetFocus()
-      End If
-   Endif
-   
-End
+' Public Sub cmbTaskType_KeyPress()
+'    
+'    If key.code = key.return Then
+'       If fk_staff_allocated = 0 Then
+'          txtStaffAllocated.SetFocus()
+'       Else   
+'          txtTaskDetails.SetFocus()
+'       End If
+'    Endif
+'    
+' End
 
 Public Sub rbDegreeUrgency_Click()
 
@@ -1265,7 +1242,7 @@ Public Sub Edit()
          If Message.Warning("This task was created by:" & sString & "\n\nContinue - you will be audited.", "Yes", "No") = 2 Then Return 
       End If
    End If
-   display(SelectedTask)
+   Display(SelectedTask)
 
 End
 
@@ -1283,10 +1260,10 @@ Public Sub Display(SelectedTask As Collection)
    lblBirthdate.text = Format(SelectedTask!patient_birthdate, "dd/mm/yyyy")
    fk_task = SelectedTask!fk_task
    pk_view_staff_task = SelectedTask!pk_view
+   
    Try fk_staff_allocated = SelectedTask!fk_staff_allocated  'could be null - allocated to anyone
    Try fk_table_row = SelectedTask!fk_row
-   Try fk_schema = SelectedTask!fk_schema
-   Try fk_table = SelectedTask!fk_table
+   Try fk_document = SelectedTask!fk_row
    Try fk_staff_filed_task = SelectedTask!fk_staff_filed_task
    fk_component = SelectedTask!fk_component
    txtLoggedBy.text = SelectedTask!staff_filed_task_title & " " & SelectedTask!staff_filed_task_wholename
@@ -1295,7 +1272,6 @@ Public Sub Display(SelectedTask As Collection)
    txtDateLogged.text = Format(SelectedTask!date_component_logged)
    txtStaffAllocated.text = SelectedTask!staff_allocated_title & " " & SelectedTask!staff_allocated_wholename
    If Trim(txtStaffAllocated.text) = "" Then txtStaffAllocated.text = "Anyone"
-   cmbTaskType.index = cmbTaskType.Find(SelectedTask!task_type)
    fk_urgency = SelectedTask!fk_urgency
    Select Case SelectedTask!fk_urgency
       Case const.UrgencyLevelRoutine
@@ -1333,42 +1309,7 @@ Public Sub Display(SelectedTask As Collection)
 
 End 
 
-Public Sub Display_old(SelectedTask As Collection)
-   '----------------
-   'Display the task
-   '----------------
 
-   bExit = True
-   txtPatient.text = SelectedTask!patient_wholename
-   txtStreet.text = SelectedTask!patient_street
-   txtSuburb.text = SelectedTask!patient_town & " " & SelectedTask!patient_postcode
-   lblBirthdate.text = Format(SelectedTask!patient_birthdate, "dd/mm/yyyy")
-   fk_task = SelectedTask!pk
-   fk_staff_allocated = SelectedTask!fk_staff_allocated
-   Try fk_table_row = SelectedTask!fk_row
-   Try fk_schema = SelectedTask!fk_schema
-   Try fk_table = SelectedTask!fk_table
-   txtLoggedBy.text = CurrentUser 'he who is now logging
-   txtTaskDetails.text = SelectedTask!details
-   txtDateLogged.text = SelectedTask!date_logged
-   txtStaffAllocated.text = SelectedTask!staff_allocated_title & " " & SelectedTask!staff_allocated_wholename
-   cmbTaskType.index = cmbTaskType.Find(SelectedTask!task)
-   fk_urgency = SelectedTask!fk_urgency
-   Select Case SelectedTask!fk_urgency
-      Case const.UrgencyLevelRoutine
-         rbUrgencyRoutine.Value = True 
-      Case const.UrgencyLevelModerate
-         rbUrgencyModerate.value = True
-      Case const.UrgencyLevelUrgent
-         rbUrgencyUrgent.value = True 
-   End Select
-   If Parent_Form = "FDayBook" Then
-      cvwTaskNotes_Refresh() 'display any previously entered notes for this task
-      note_new()
-   Endif
-   bExit = False   
-
-End 
 
 Public Sub Delete()   
    
@@ -1574,20 +1515,20 @@ Public Sub Patient_Select()
       .Font.bold = False
       .Foreground = Color.Black
    End With 
-   Consult_Check_Created("New Staff Task for patient")
+   Consult_Check_Created(const.ConstConsultType_AuditNote, "New Staff Task for patient")
    If Parent_Form = "FDayBook" And bPatientTask = True Then
       txtTask.SetFocus()
    Endif
    
 End
 
-Public Sub Consult_Check_Created(summary As String)
+Public Sub Consult_Check_Created(iconsult_type As Integer, summary As String)
    'probably should live elsewhere ?cConsult and pass parameters
-   
+  
    If IsNull(currentconsult) Then   
       CurrentConsult = New CConsult(patient)
-      currentconsult.Set(const.ConsultType_StaffTask, summary)
    End If
+  currentconsult.Set(iconsult_type, summary)
    
 End
 
@@ -1611,12 +1552,12 @@ Public Sub rbAllocateToMe_Click()
 
 End
 
-Public Sub cmbTaskType_Click()
-   If txtTask.text = "" Then
-      txtTask.text = cmbTaskType.text
-   Endif
-   
-End
+' Public Sub cmbTaskType_Click()
+'    If txtTask.text = "" Then
+'       txtTask.text = cmbTaskType.text
+'    Endif
+'    
+' End
 
 Public Sub rbWhoFor_Click()
   Dim flag As Boolean
@@ -1682,12 +1623,12 @@ Public Sub cmbRoles_Click()
 End
 
 
-Public Sub cmbTaskType_GotFocus()
-
-     columnview1.Visible = False    'because the lost focus event on columnview dosn't work
-
-
-End
+' Public Sub cmbTaskType_GotFocus()
+' 
+'      columnview1.Visible = False    'because the lost focus event on columnview dosn't work
+' 
+' 
+' End
 
 Public Sub cmbRoles_GotFocus()
 

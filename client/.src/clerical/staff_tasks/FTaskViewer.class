@@ -13,19 +13,15 @@ Private cTaskForPatient As Integer = 0
 Private cTaskBetweenStaff As Integer = 1
 Private ColumnHeadings As String[] = ["Patient", "Staff Member"]
 Private view_mode As String 
-
+Private FAuditViewer As FHtmlViewer
+Private obs As Observer
 
 Public Sub Init(mode As String)
    view_mode = mode 'view allocated to others "allocated" or "completed"
-   '  With cvwCompletedTasks
-   '    .Columns.count = 4
-   '    .Columns[0].Text = "Logged"
-   '    .Columns[1].Text = "For"
-   '    
-   '    .Columns[2].Text = "Task"
-   '    .Columns[3].Text = "Details"
-   '    
-   ' End With
+    With FAuditViewer = New FHtmlViewer(Vbox_Main)
+      .visible = False  
+   End With
+   obs = New Observer(FAuditViewer.tbWebBrowserClose) As "AuditViewer"
    With cvwTasks
       .Columns.count = 7
       '  .Columns[0].Width = 1
@@ -44,6 +40,15 @@ Public Sub Init(mode As String)
    End Select
    
 End
+
+Public Sub AuditViewer_Click()
+  
+  Stop Event
+ FAuditViewer.Visible = False   
+ Vbox_Tasks.Visible = True   
+  
+End
+
 Public Sub Tasks_Allocated_For_Others_ReLoad()
    '---------------------------------------------------------------------
    'Reloads and fills columnview of tasks that current user has allocated
@@ -84,8 +89,8 @@ Public Sub Tasks_Allocated_For_Others_ReLoad()
    
    '------------------------------------------------
    If chkTaskStatus.value = True Then task_status = const.cTaskCompletionNo
-   AllocatedTasks = modDayBookDBI.Staff_Tasks_Get(0, modDBConnect.currentUser!fk_staff, True, 0, 0, 0, task_status, const.cTaskRestriction_User, "DESC") 'get uncompleted tasks
-   
+   AllocatedTasks = modDayBookDBI.Staff_Tasks_Get(0, modDBConnect.currentUser!fk_staff, True, 0, task_status, const.cTaskRestriction_User, "DESC") 'get uncompleted tasks
+
    If AllocatedTasks.count = 0 Then
       cvwTasks.Add(x, 0)
       cvwTasks[x][0] = "None Allocated" 
@@ -96,6 +101,8 @@ Public Sub Tasks_Allocated_For_Others_ReLoad()
          'Display the patients name (if present)
          '--------------------------------------
          If Not IsNull(AllocatedTask!patient_wholename) Then
+           
+            x = allocatedTask!pk_view 
             If IsNull(AllocatedTask!date_finalised) Then
                cvwTasks.Add(x, "", pic_task_incomplete)
             Else 
@@ -112,7 +119,6 @@ Public Sub Tasks_Allocated_For_Others_ReLoad()
                cvwTasks[x][6] = "Complete: " & AllocatedTask!staff_finalised_task_title & " " & AllocatedTask!staff_finalised_task_wholename
             Endif
             ' Task_Keys.Add(AllocatedTask!pk, x)
-            Inc x
          End If
       Next   
    End If   
@@ -191,7 +197,7 @@ Public Sub rbTasks_Click()
    ' iTaskFor = Last.tag
    ' lblFilter.text = "Filter by " & ColumnHeadings[Last.tag] & "    " 'label is auto-resize
    ' cvwCompletedTasks.Columns[1].text = ColumnHeadings[iTaskFor]  
-   
+
 End
 
 Public Sub txtFilter_GotFocus()
@@ -216,5 +222,217 @@ Public Sub chkTaskStatus_Click()
    End Select
    Tasks_Allocated_For_Others_ReLoad()
    
+End
+
+
+Public Sub cvwTasks_Click()
+'-----------------------------------------------------------------------------------------------------------------------------------
+' This gives us a recordset looking something like this
+'  task           ; details                                        ;note
+' "urology review";"Ring Community Options and arrange home urinal";"Rang and discussed with supervisor - will do so after gets D904"
+' "urology review";"Ring Community Options and arrange home urinal";"D904 posted to Community Options"
+' "urology review";"arrange appointment to discuss DR Grats Letter";"Have rung him and left message on answering machine"
+' "urology review";"arrange appointment to discuss DR Grats Letter";"Rang his son and asked him to contact Bert and get him to ring us back"
+' "urology review";"arrange appointment to discuss DR Grats Letter";"Spoke to Bert appointment made for 15/12/2010"
+' (ctd)
+' Staff allocated; date component logged; urgency:date note
+
+' "Richard Terry";"Dr";"2010-12-13 14:30:00.636861" "routine";65;"2010-12-13 14:31:02"
+' "Richard Terry";"Dr";"2010-12-13 14:30:00.636861"  "routine";66;"2010-12-13 14:31:50"
+' "Denese Buck";"Mrs";"2010-12-13 14:18:51.625349"  "routine";62;"2010-12-13 14:20:33"
+' "Denese Buck";"Mrs";"2010-12-13 14:18:51.625349" "routine";63;"2010-12-13 14:21:19"
+'  
+
+'----------------------------------------------------------------------------------------------------------------------------------- 
+' Select *
+'   From clerical.vwtaskscomponentsandnotes 
+'  where fk_row = 19816
+'   order by fk_task, fk_staff_allocated, fk_task_component_note 
+  Dim shtml As String
+  Dim TasksAndNotes As Collection
+  Dim TaskAndNote As Collection
+  Dim sLastTask As String
+  Dim sLastDetails As String  
+  Dim allnotes As String
+  Dim R1 As Result
+  Dim importDatasql As String
+  Dim bUnfiled As Boolean
+  Dim document_user_tag As String 
+  
+ If Not cvwTasks.count Then Return 
+ cvwTasks.MoveCurrent()
+ 'Print AllocatedTasks[cvwTasks.Item.key]!fk_row
+ ' 
+ ' sHtml = modAudit.MakeTrail("documents.documents", AllocatedTasks[cvwTasks.Item.key]!fk_row)
+
+ importDatasql = "select * from documents.vwDocuments where pk_document = " & AllocatedTasks[cvwTasks.Item.key]!fk_row
+   
+   ' i = 0
+   ' While i < Param.Count
+   '    sql = "(linked_table = 'documents.documents'::regclass AND fk_row = &2)"
+   '    If Param[i] = "documents.documents" Then
+   '       importDatasql = Subst$(importDatasql, Param[i + 1])
+   '    End If
+   '    sql = Subst$(sql, Param[i], Param[i + 1])
+   '    row_selector.Add(sql)
+   '    i += 2
+   ' Wend
+   ' sql = row_selector.Join(" OR ")
+   ' sql = "SELECT * FROM clin_consult.vwprogressnotes WHERE " & sql & " ORDER BY consult_date, fk_audit_action"
+   ' '----------------------------------------------------------------------------------------------
+   ' 'Will only apply to documents
+   ' 'Construct the details of the document which was imported
+   ' 'Note this may not be 'filed', though could have been actioned but left in the inbox
+   ' 'If not filed, there will be no user_tag or description in users language, or summary of letter
+   ' '----------------------------------------------------------------------------------------------
+   r1 = modDBConnect.exec_query(importDatasql)
+   For Each R1
+     
+      sHTml = "<P align=center> <B><U> DOCUMENT AUDIT TRAIL</U></B></P>"
+      sHtml &= "<B>PATIENT     :</B>" & R1!patient_firstname & " " & R1!patient_surname & " (" & R1!patient_sex & " " & R1!patient_age & " ) " 
+      sHtml &= R1!patient_street & " " & R1!patient_town & " " & R1!patient_state & " " & R1!patient_postcode & " DOB:" & R1!patient_birthdate & "<BR><BR>"
+      If Not IsNull(R1!tag_user) Then
+         document_user_tag = R1!tag_user
+         If Right(document_user_tag) = ";" Then document_user_tag = Left(document_user_tag, Len(document_user_tag) - 1)
+      Else
+         document_user_tag = R1!tag
+         bUnfiled = True   
+      End If 
+      sHtml &= "<B>DOCUMENT:  " & document_user_tag & "</B>"
+      
+      If R1!style = "result" Then
+         sHtml &= " - " & R1!sending_entity_request_type & "<BR><BR> - Result"
+      Else
+         sHtml &= "<BR><BR> - Letter "
+      Endif
+      
+      If bUnfiled Then
+         sHtml &= " still in inbox and not filed<BR>"
+      End If
+    '  sHtml &= "<BR><BR>"
+     
+      
+      If Not IsNull(r1!date_requested) Then
+         sHtml &= "- requested on " & Format(r1!date_requested, "dd/mm/yyyy") 
+      Endif
+      sHtml &= "- document originated from " & r1!originator
+      If r1!msh_sending_entity <> "" Then 
+          sHtml &= " and was sent by " & r1!msh_sending_entity & " imported on " 
+      Else
+          sHtml &= " and was scanned into the database on "
+      End If
+      sHtml &= Format(r1!imported_time, "dd/mm/yyyy:hh:nn:ss") & "<BR>"
+      sHtml &= "- source file: " & r1!source_file & "<BR>"
+      sHtml &= "- destination staff member was " & r1!staff_destination_wholename & "<BR>"
+      sHtml &= "- document concerns: %summary"
+   Next
+
+
+
+ TasksAndNotes = modStaffTasksDBI.Tasks_And_Notes_Get(AllocatedTasks[cvwTasks.Item.key]!fk_row)
+
+ sHtml &= RowHeading()
+ For Each TaskAndNote In TasksAndNotes
+       If InStr(sHtml, "%summary") Then
+          sHtml = Replace$(sHtml, "%summary", TaskAndNote!task) 'somewhat of a misnomer is this field = letter summary or request(s)
+       Endif
+      '----------------------------------------------------------
+      'new task, new row, but put all components in the same cell
+      '----------------------------------------------------------
+      If sLastDetails <> TaskAndNote!details Then   'if new task
+        allnotes = ""
+        If allnotes <> "" Then shtml = Replace(shtml, "%notes", allnotes) & "<BR>"
+        
+        sHtml &= TableRow()     
+        sLastDetails = TaskAndNote!details
+        shtml = Replace(shtml, "%details", TaskAndNote!details)
+        shtml = Replace(shtml, "%log_date", Format(TaskAndNote!date_component_logged, "dd/mm/yyyy"))
+        shtml = Replace(shtml, "%staff_allocated", TaskAndNote!staff_allocated_title & " " & TaskAndNote!staff_allocated_wholename)
+        shtml = Replace(shtml, "%notes_date", Format(TaskAndNote!date_note, "dd/mm/yyyy"))
+        allnotes &= TaskAndNote!note & "<BR>"
+       ' shtml = Replace(shtml, "%notes", TaskAndNote!note) & "<BR>"
+        If TaskAndNote!date_component_completed <> Null Then
+            shtml = Replace(shtml, "%finalised", Format(TaskAndNote!date_component_completed, "dd/mm/yyyy"))
+        Else
+             shtml = Replace(shtml, "%finalised", "%No")
+        Endif
+      Else
+        '-----------------------------------------
+        'Is still the same task, keep adding notes
+        '-----------------------------------------
+        allnotes &= TaskAndNote!note & "<BR>"
+        Endif
+ Next
+         If allnotes <> "" Then shtml = Replace(shtml, "%notes", allnotes) & "<BR>"
+         If InStr(sHtml, "%No") Then
+            sHtml &= "<BR><B>Task Status</B>: Not Finalised"
+            sHtml = Replace$(sHtml, "%No", "No")
+         Else
+            sHtml &= "<BR><B>Task Status</B>: Complete"
+         Endif
+       sHtml &= "<HR>"
+   Vbox_Tasks.visible = False 
+  FAuditViewer.WebView1.HTML = "<HTML><BODY><TABLE>" & shtml & "</TABLE><HR></BODY></HTML>"
+  FAuditViewer.Visible = True  
+
+ 
+End
+
+Public Function RowHeading() As String
+  
+  Return ""
+ 
+  "<TR BGCOLOR='#e6e6e6' VALIGN=TOP>"
+    "<TD WIDTH=5%>"
+    "<P><B>Logged</B>"
+    "</P>"
+    "</TD>"
+    "<TD WIDTH=20%>"
+    "<P><B>What to do </B>"
+    "</P>"
+    "</TD>"
+    "<TD WIDTH=12%>"
+    "<P><B>Staff Responsible</B></P>"
+    "</TD>"
+    "<TD WIDTH=6%>"
+    "<P><B>Date of Note</B></P>"
+    "</TD>"
+    "<TD WIDTH=39%>"
+    "<P><B>Notes</B><BR>"
+    "</P>"
+    "</TD>"
+    "<TD WIDTH=5%>"
+    "<P><B>Component Finalised</B></P>"
+    "</TD>"
+    "</TR>"
+End
+
+Public Function TableRow() As String
+  
+  Return ""
+  
+
+   "<TR VALIGN=TOP>"
+    "<TD WIDTH=5% >"
+    "<P>%log_date</P>"
+    "</TD>"
+    "<TD WIDTH=20%>"
+    "<P>%details"
+    "</P>"
+    "</TD>"
+    "<TD WIDTH=12%>"
+    "<P>%staff_allocated"
+    "</P>"
+    "</TD>"
+    "<TD WIDTH=6%>"
+    "<P>%notes_date</P>"
+    "</TD>"
+    "<TD WIDTH=39%>"
+    "<P>%notes</P>"
+    "</TD>"
+    "<TD WIDTH=5%>"
+    "<P>%finalised</P>"
+    "</TD>"
+    "</TR>"
 End
 

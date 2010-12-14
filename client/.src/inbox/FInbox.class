@@ -371,7 +371,13 @@ Public Sub cvwInboxDocuments_Select()
    bRequestMatchFound = False                                      'default to cannot match to ordering
    cvwPatientsRequests.SelectAll(False)                            'remove marquee on list of ordered requests
    bExit = True
-   
+   tlMissingProvider.Visible = False                               'could be showing from previous document
+   Form_ActionDocument.VBox10.Enabled = True
+   tlMissingProvider.Visible = False   
+   tbDiscard.Enabled = True 
+   tbFile.Enabled = True
+   chkAutoProcess.Enabled = True                              'temporary checkbox FIXME REMOVE ME FROM FORM
+
    cvwInboxDocuments.MoveCurrent()                                 'set internal cursor to visible row
    iSelectedDocument = cvwInboxDocuments.Item.key                  'key to Selected_Inbox!documents
    SelectedDocument = Selected_Inbox!documents[iSelectedDocument]  'set current document
@@ -379,6 +385,7 @@ Public Sub cvwInboxDocuments_Select()
    With Form_ActionDocument
          .Set_Document(SelectedDocument)
          .FMetaData.Edit(Selected_Inbox!documents, iSelectedDocument)
+      '   Try .FTasks.txtTask.text = SelectedDocument!tag_user
          Try .FTasks.fk_task = 0 'each document must have a re-zero'd task
    End With 
    chkExcludePIT.value = SelectedDocument!exclude_pit              'do/do not display PIT segments
@@ -387,8 +394,7 @@ Public Sub cvwInboxDocuments_Select()
    bgc_errors = SelectedDocument!abnormals_background_color               'FIXME Put in user-defined to overide this
    ' 
    If Not SendingEntity_Recognised() Then            'If the sending entity for this document hasn't been verified
-     ' Form_ActionDocument.TabStrip1.Enabled = False  'don't allow filing or editing admin must fix it first 
-      Vbox_ActionDocument.Enabled = False
+      Form_ActionDocument.VBox10.Enabled = False
       tbDiscard.Enabled = False 
       tbFile.Enabled = False
       chkAutoProcess.Enabled = False  
@@ -402,12 +408,6 @@ Public Sub cvwInboxDocuments_Select()
          .Visible = True  
       End With
       Vbox_OutstandingRequests.Visible = False 
-   Else
-    ' Form_ActionDocument.TabStrip1.Enabled = True
-      Vbox_ActionDocument.Enabled = True
-      tbDiscard.Enabled = True 
-      tbFile.Enabled = True
-      chkAutoProcess.Enabled = True                              'temporary checkbox FIXME REMOVE ME FROM FORM
    End If
    
    If tlMissingProvider.Visible = False And SelectedDocument!fk_staff_destination Then
@@ -451,7 +451,7 @@ Public Sub cvwInboxDocuments_Select()
          Form_ActionDocument.FMetaData.txtUserObservationName.text = modParseDocument.Guess_Letter_Content(observations)
       End If
    End If
-   
+      Try Form_ActionDocument.FTasks.txtTask.text = Form_ActionDocument.FMetaData.txtUserObservationName.text
    ShowDocument:
    '---------------------------------------------------------------------------------
    'Bumma, wheras 99.9% of msh_sending_entities supplied are same as their companies, 
@@ -516,13 +516,12 @@ Public Sub cvwInbox_Select()
    If Selected_Inbox!fk_patient Then 
       cvwPatientsRequests.Clear()
       cvwPatientsRequests.tag = 0
-      
       currentconsult = New CConsult(Selected_Inbox)           'Each patient has a new consult 
+      currentconsult.Set(const.ConsultType_AuditNote, "importing document")
       Form_ActionDocument.Init_Cons(currentconsult)           'pass current cons to Any actioning forms
       Form_ActionDocument.Tabstrip1.index = Metadata          'user only sees metadata first
       Patient_Outstanding_Requests_Show()                     'show requests for this category of provider
-      
-   End If
+  End If
    Document_RefreshList()    'fill document list                              'display list of observations e.g list of tests, fbc, etc
    cvwInboxDocuments.MoveFirst   
    cvwInboxDocuments.Item.Selected = True                                      
@@ -530,18 +529,16 @@ Public Sub cvwInbox_Select()
 End
 
 Public Function Document_File() As Boolean
-   
-   Dim Audit As Collection
-   
+    
    If Not Valid_Document() Then Return                 'some inbox-related validation
    
    modDBConnect.BeginTrans()                           'start transaction NOOP
-   Unmatched_Patient_Reconcile()                       'reconcile any just-matched unkown patients
-   If Not Form_ActionDocument.FMetaData.Save() Then                        'file document, unsucessful 
-      modDBConnect.RollBack()                          'roll back transaction FIXME does this work?
-      Return False 
-   End If   
-   modConsultDBI.Make_Audit(Document_Make_Audit(SelectedDocument, const.cAuditAction_DocumentFiled), "documents", "documents")   
+       Unmatched_Patient_Reconcile()                       'reconcile any just-matched unkown patients
+       If Not Form_ActionDocument.FMetaData.Save() Then                        'file document, unsucessful 
+          modDBConnect.RollBack()                          'roll back transaction FIXME does this work?
+          Return False 
+       End If   
+       Document_Make_Audit(SelectedDocument, const.cAuditAction_DocumentFiled)
    modDBConnect.CommitTrans()                          'success - commit transaction
    Selected_Inbox!documents.Remove(iSelectedDocument)  'remove document from document collection 
    cvwInboxDocuments.Remove(iSelectedDocument)         'visually remove from list
@@ -1206,35 +1203,33 @@ Public Sub mnuDocuments_Click()
 End
 
 Public Function Document_Make_Audit(SelectedDocument As Collection, iAuditAction As Integer, Optional reason As String) As Collection 
-   
-   Dim audit As Collection 
-   
+   '---------------------------------------------------
+   'Constructs a string for the notes part of the audit
+   'uses modAudit.MakeAudit(..) to do the audit
+   'Ian,pretty much a mess, don't touch, I'll fix
+   '---------------------------------------------------   
+   Dim audit_notes As String  
+   Dim audit As New Collection 'fixme - fix and remove this and references to it in here collection not needed
    If SelectedDocument!fk_patient = 0 Then
       Message.Info("Richard, no patient") 
       Return
    Endif
-   audit = New Collection 
-   audit!tablename = "documents.documents"
-   audit!fk_row = SelectedDocument!pk_document
-   audit!fk_consult = currentconsult.GetPK()
-   audit!fk_section = const.cSection_Documents
-   audit!fk_action = iAuditAction
-   
-   audit!data_summary = "<B>" & Form_ActionDocument.FMetaData.txtPatient.text & " (" & Form_ActionDocument.FMetaData.lblBirthdate.text & ")</B><BR>" 
-   audit!data_summary &= Form_ActionDocument.FMetaData.cmbDocumentTypes.Text
-   Select Case SelectedDocument!fk_lu_message_display_style
-      Case const.Document_Display_As_Letter
-         audit!data_summary &= " Letter "
-      Case Else
-         audit!data_summary &= " Result "
-   End Select
-   audit!data_summary &= SelectedDocument!msh_sending_entity & " "
-   If Lower(SelectedDocument!tag) <> Lower(Form_ActionDocument.FMetaData.txtUserObservationName.text) Then
-      audit!data_summary &= Form_ActionDocument.FMetaData.txtUserObservationName.text & " (" & SelectedDocument!tag & ") "
-   Else
-      audit!data_summary &= Form_ActionDocument.FMetaData.txtUserObservationName.text
-   Endif
-   audit!data_summary &= "<BR><small><small>file:" & Form_ActionDocument.FMetaData.txtFilename.text & "/<small></small>"
+   audit_notes = ""
+  ' ' audit_notes = "<B>" & Form_ActionDocument.FMetaData.txtPatient.text & " (" & Form_ActionDocument.FMetaData.lblBirthdate.text & ")</B><BR>" 
+  '  'audit_notes &= Form_ActionDocument.FMetaData.cmbDocumentTypes.Text
+  '  Select Case SelectedDocument!fk_lu_message_display_style
+  '     Case const.Document_Display_As_Letter
+  '        audit_notes &= " Letter "
+  '     Case Else
+  '        audit_notes &= " Result "
+  '  End Select
+  '  audit_notes &= SelectedDocument!msh_sending_entity & " "
+  '  If Lower(SelectedDocument!tag) <> Lower(Form_ActionDocument.FMetaData.txtUserObservationName.text) Then
+  '     audit_notes &= Form_ActionDocument.FMetaData.txtUserObservationName.text & " (" & SelectedDocument!tag & ") "
+  '  Else
+  '     audit_notes &= Form_ActionDocument.FMetaData.txtUserObservationName.text
+  '  Endif
+  '  audit_notes &= "<BR><small><small>file:" & Form_ActionDocument.FMetaData.txtFilename.text & "/<small></small>"
    Select Case iAuditAction
       Case const.cAuditAction_Delete
          
@@ -1252,7 +1247,7 @@ Public Function Document_Make_Audit(SelectedDocument As Collection, iAuditAction
       Case const.cAuditAction_Refused
          audit!reason = "nil reason given by patient"
       Case const.cAuditAction_DocumentFiled
-         audit!reason = "viewed and filed"
+         audit!reason = "viewed and filed document"
       Case const.cAuditAction_ScratchPad
          
       Case const.cAuditAction_MarkDeleted
@@ -1261,7 +1256,9 @@ Public Function Document_Make_Audit(SelectedDocument As Collection, iAuditAction
       Case const.cAuditAction_CompletedWithExplanation, const.cAuditAction_RefusedWithExplanation
          
    End Select
-   audit.Remove("tablename") 'was used in the popup, not needed to save.
+   'fixme remove this collection stuff above and from in here once its working.
+    modAudit.MakeAudit(currentconsult, audit!reason, "documents.documents", SelectedDocument!pk_document, const.cSection_Documents, audit_notes)
+  
    Return audit
    
 End

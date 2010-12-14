@@ -14,15 +14,16 @@
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-Public Sub MakeAudit(consult As CConsult, audit_action As String, tbl As String, fk_row As Integer, Optional notes As String)
+Public Sub MakeAudit(consult As CConsult, audit_action As String, tbl As String, fk_row As Integer, fk_section As Integer, Optional notes As String)
    ' creates an audit entry
    ' consult: the current consult
    ' audit_action: the action as a string, must be from the list
    ' in clin_consult.lu_actions
    ' tbl: the name of the backend table being audited, as a string, with schema
    ' fk_row: the PK of the row being auditing
+   ' fk_section = key to clin_consult.lu_progressnote_section table e.g could be workcover, recalls, staff tasks etc.
    ' notes: the free-html description of the change provided by calling code
-
+   
    Dim audit As New Collection
    Dim s As String
    Dim action_coll As Collection
@@ -32,26 +33,26 @@ Public Sub MakeAudit(consult As CConsult, audit_action As String, tbl As String,
    audit!fk_audit_action = modCache.Get("clin_consult.lu_audit_actions", audit_action, "action")
    audit!fk_row = fk_row
    audit!linked_table = tbl
+   audit!fk_section = fk_section 
    If IsNull(audit!fk_audit_action) Then
-     s = "Unrecognised audit action " & audit_action
-     Log.ErrorMsg(s)
-     Error.Raise(s)
+      s = "Unrecognised audit action " & audit_action
+      Log.ErrorMsg(s)
+      Error.Raise(s)
    Endif
    action_coll = modCache.Get("clin_consult.lu_audit_actions", audit!fk_audit_action)
    If action_coll!insist_reason Then
-     ' user needs to give us a reason
-     form_audit = New FAudit
-     form_audit.Init(action_coll!action, tbl, notes)
-     If form_audit.ShowModal() = 0 Then
-       Error.Raise("user refuses to give a reason")
-     Endif
-     Let audit!fk_audit_reason = form_audit.GetReasonPK()
+      ' user needs to give us a reason
+      form_audit = New FAudit
+      form_audit.Init(action_coll!action, tbl, notes)
+      If form_audit.ShowModal() = 0 Then
+         Error.Raise("user refuses to give a reason")
+      Endif
+      Let audit!fk_audit_reason = form_audit.GetReasonPK()
    Endif
    audit!fk_consult = consult.GetPK()
    modDBConnect.insert("clin_consult.progressnotes", audit) 
-
+   
 End
-
 
 Public Function Get_Reasons(reason As String) As Collection 
    '-----------------------------------------------------------
@@ -59,68 +60,136 @@ Public Function Get_Reasons(reason As String) As Collection
    'e.g could be "written for the wrong patient" or
    '             "patient has left practice"
    '-----------------------------------------------------------
+
    Dim sql As String
    
    sql = "SELECT * FROM clin_consult.lu_audit_reasons WHERE fk_staff = &1 "
    " AND reason ILIKE $$&2%$$ LIMIT 10"
    sql = Subst$(sql, modDBConnect.currentUser!fk_staff, reason) 
    Return modDBConnect.exec_query_collection(sql)
-
+   
 End
 
 Public Function New_Reason(reason As String) As Integer
-  
-  ' accepts a new reason and returns the PK
-  Dim sql As String
-  Dim coll As Collection
-  Dim fk_staff As Integer
-  
-  fk_staff = modDBConnect.currentUser!fk_staff
-  sql = "SELECT pk FROM clin_consult.lu_audit_reasons WHERE fk_staff = &1 "
+   
+   ' accepts a new reason and returns the PK
+   Dim sql As String
+   Dim coll As Collection
+   Dim fk_staff As Integer
+   
+   fk_staff = modDBConnect.currentUser!fk_staff
+   sql = "SELECT pk FROM clin_consult.lu_audit_reasons WHERE fk_staff = &1 "
    " AND reason ILIKE $$&2$$ LIMIT 1"
-  sql = Subst$(sql, fk_staff, reason) 
-  coll = modDBConnect.exec_query_first(sql)
-  If IsNull(coll) Then
-    Return modDBConnect.insert("clin_consult.lu_audit_reasons", ["reason": reason, "fk_staff": fk_staff])
-  Else
-    Return coll!pk
-  Endif
-End
+   sql = Subst$(sql, fk_staff, reason) 
+   coll = modDBConnect.exec_query_first(sql)
+   If IsNull(coll) Then
+      Return modDBConnect.insert("clin_consult.lu_audit_reasons", ["reason": reason, "fk_staff": fk_staff])
+   Else
+      Return coll!pk
+   Endif
 
+End
 
 Public Function MakeTrail(...) As String
-  
-  ' creates a audit trail as HTML
-  ' parameters are an alternating sequence of table names and row PKs
-  ' EXAMPLE: modAudit.MakeTrail("documents.documents", 435, "clin_request.request", 653, "clin_tasks.tasks", 34)
-  ' the trail consists of all audits related to all the rows provided in time order.
-  Dim sql As String
-  Dim row_selector As New String[]
-  Dim i As Integer
-  Dim h As String
-  Dim r As Result
-  
-  Let i = 0
-  While i < Param.Count
-    Let sql = "(linked_table = '&1' AND fk_row = &2)"
-    Let sql = Subst$(sql, Param[i], Param[i + 1])
-    row_selector.Add(sql)
-    i += 2
-  Wend
-  Let sql = row_selector.Join(" OR ")
-  Let sql = "SELECT * FROM clin_consult.vwprogressnotes WHERE " & sql & " ORDER BY consult_date"
-  Let r = modDBConnect.exec_query(sql)
-  Let h = ""
-  For Each r 
-    h &= "<TR><TD>"
-    h &= Format$(r!consult_date, "dd/mm/yy hh:mm:ss") & "<BR/>"
-    h &= r!title & " " & r!firstname & " " & r!surname & "<BR/>"
-    h &= r!role & "</TD><TD>"
-    h &= r!audit_action & "<BR/>"
-    ' FIXME: put audit_reason in here too
-    h &= r!notes & "</TD></TR>"
-  Next
-  Let h = "<HTML><BODY>" & h & "</BODY></HTML>"
-  Return h
+   
+   ' creates a audit trail as HTML
+   ' parameters are an alternating sequence of table names and row PKs
+   ' EXAMPLE: modAudit.MakeTrail("documents.documents", 435, "clin_request.request", 653, "clin_tasks.tasks", 34)
+   ' the trail consists of all audits related to all the rows provided in time order.
+   Dim sql As String
+   Dim row_selector As New String[]
+   Dim i As Integer
+   Dim sHTML As String
+   Dim r As Result
+   Dim r1 As Result 
+   Dim document_user_tag As String 
+   Dim bUnfiled As Boolean 
+   
+   Dim importDatasql As String
+   
+   '-------------------------------------------------------
+   'importDatasql - this will only apply to document audits
+   'the returned recordset is null in any other situation
+   '-------------------------------------------------------
+   importDatasql = "select * from documents.vwDocuments where pk_document = &1"
+   
+   i = 0
+   While i < Param.Count
+      sql = "(linked_table = '&1'::regclass AND fk_row = &2)"
+      If Param[i] = "documents.documents" Then
+         importDatasql = Subst$(importDatasql, Param[i + 1])
+      End If
+      sql = Subst$(sql, Param[i], Param[i + 1])
+      row_selector.Add(sql)
+      i += 2
+   Wend
+   sql = row_selector.Join(" OR ")
+   sql = "SELECT * FROM clin_consult.vwprogressnotes WHERE " & sql & " ORDER BY consult_date, fk_audit_action"
+   '----------------------------------------------------------------------------------------------
+   'Will only apply to documents
+   'Construct the details of the document which was imported
+   'Note this may not be 'filed', though could have been actioned but left in the inbox
+   'If not filed, there will be no user_tag or description in users language, or summary of letter
+   '----------------------------------------------------------------------------------------------
+   r1 = modDBConnect.exec_query(importDatasql)
+   For Each R1
+      sHtml = "<TR><TD>"
+      If Not IsNull(R1!tag_user) Then
+         document_user_tag = R1!tag_user
+         If Right(document_user_tag) = ";" Then document_user_tag = Left(document_user_tag, Len(document_user_tag) - 1)
+      Else
+         document_user_tag = R1!tag
+         bUnfiled = True   
+      End If 
+      sHtml &= "<B>" & document_user_tag 
+      
+      If R1!style = "result" Then
+         sHtml &= " - " & R1!sending_entity_request_type & " result"
+      Else
+         sHtml &= "Letter"
+      Endif
+      
+      If bUnfiled Then
+         sHtml &= " ** STILL IN INBOX NOT FILED **"
+      End If
+      sHtml &= "</B><small> [source file: " & r1!source_file & "]</small><BR><BR>"
+      
+      If Not IsNull(r1!date_requested) Then
+         sHtml &= "- requested on " & Format(r1!date_requested, "dd/mm/yyyy") 
+      Endif
+      sHtml &= "- document originated from " & r1!originator
+      If r1!msh_sending_entity <> "" Then 
+          sHtml &= " and was sent by " & r1!msh_sending_entity & " imported on " 
+      Else
+          sHtml &= " and was scanned into the database on "
+      End If
+      sHtml &= Format(r1!imported_time, "dd/mm/yyyy:hh:nn:ss")
+      sHtml &= "<BR> - destination staff member was " & r1!staff_destination_wholename & "<BR>"
+   Next
+   '-------------------------------
+   'Now the rest of the audit trail
+   '-------------------------------
+   r = modDBConnect.exec_query(sql)
+   For Each r 
+      sHtml &= "<TR><TD>- "
+      sHtml &= r!title & " " & r!firstname & " " & r!surname
+      sHtml &= " (" & r!role & ") "
+      If r!audit_action = "note on task" Then
+         sHtml &= r!audit_action & ": '" & r!notes & "'"
+      Else
+         sHtml &= r!audit_action & " " & r!notes
+      Endif
+      
+      sHtml &= " on " & Format$(r!consult_date, "dd/mm/yy hh:nn:ss") & "<BR/>"
+      ' FIXME: put audit_reason in here too
+      sHtml &= "</TD></TR>"
+   Next
+   Return "<HTML><BODY>" & sHTML & "</BODY></HTML>"
+
 End
 
+Public Function Make_Audit_Staff_tasks()
+  
+  
+  
+End

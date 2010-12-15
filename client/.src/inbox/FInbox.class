@@ -121,9 +121,10 @@ Private Const context As Integer = 9
 Private Const cTabInbox As Integer = 0
 Private Const CTabArchives As Integer = 1
 Private Const cTabAudit As Integer = 2
-'-------
-'Strings
-'-------
+'---------------
+'Embedded Forms
+'---------------
+Private Form_Graph As FGraph
 Private Form_ActionDocument As FActionDocument           'This form contains minimum 1 (FArchiveMetadata) actioning form
 Private Form_PersonalArchives As FStaffInboxArchives     'Not Implemented yet - intended to be where we put inbox doc's not belonging to patient
 Private FPreview_HtmlDocument As FHtmlViewer             'The main html viewer for hl7
@@ -188,8 +189,14 @@ Public Sub Init()
    cmbStaffMembers.index = cmbStaffMembers.Find(modDBConnect.currentUser!wholename)                'show name of current user in staff combo
    Sending_Entities = modUtil.LoadCombo(cmbSenders, modInboxDBI.Get_Document_Handling_Defaults(), "msh_sending_entity")
    cmbSenders.index = -1
+   With Form_Graph = New FGraph(HBox_LowerLists)
+     .Visible = False   
+   End With
+  obs = New Observer(Form_Graph.tbGraphRemove) As "tbGraph"
+
    FPreview_HtmlDocument = New FHtmlViewer(HBox_HTML_Viewer)                                       'Form to show html of hl7 received
-   obs = New Observer(FPreview_HtmlDocument.Webview1) As "mnuWebView"                              'over-ride menu on the web-view control
+   obs = New Observer(FPreview_HtmlDocument.Webview1) As "WebView"                               'over-ride menu on the web-view control
+   obs = New Observer(FPreview_HtmlDocument.mnuWebView) As "mnuWebView"                               'over-ride menu on the web-view control
    obs = New Observer(Form_ActionDocument.FMetaData.txtUserObservationName) As "txtUserObservationName"                'detect when <enter> hit and file the document
    With PDForm = New FPdf(Vbox_PDf)                                                                'pdf form to show any scanned doc's
       .BtOpen.Visible = False
@@ -374,6 +381,7 @@ Public Sub cvwInboxDocuments_Select()
    tlMissingProvider.Visible = False                               'could be showing from previous document
    Form_ActionDocument.VBox10.Enabled = True
    tlMissingProvider.Visible = False   
+   Form_Graph.Visible = False
    tbDiscard.Enabled = True 
    tbFile.Enabled = True
    chkAutoProcess.Enabled = True                              'temporary checkbox FIXME REMOVE ME FROM FORM
@@ -1079,13 +1087,30 @@ Public Sub chkResultFormatting_Click()
 
 End
 
-Public Sub mnuWebView_Menu()
+Public Sub mnuWebView_Click()
+   '----------------------------------------------------------
+   'User has clicked on the popup graphing menu over web-view
+   'over-ride that forms event, if no tag not a measurement
+   'otherwise, attempt to graph it
+   '----------------------------------------------------------   
+   Stop Event
+   If IsNull(Last.tag) Then Return 
+   If Form_Graph.graph(currentconsult, Observations[Last.tag]!loinc, Observations[Last.tag]!identifier) Then
+      Vbox_OutstandingRequests.Visible = False   
+      tlMissingProvider.Visible = False 
+      Form_Graph.Visible = True
+   End If
+
+End
+
+
+Public Sub WebView_Menu()
    
    Dim mnu As Menu
    Dim Observation As Collection 
    
    Stop Event
-   If Not currentconsult Then Return
+   If Not currentconsult Or IsNull(Observations) Then Return
    
    FPreview_HtmlDocument.mnuWebView.Children.Clear()
    mnu = New Menu(FPreview_HtmlDocument.mnuWebview) As "mnuWebview"
@@ -1215,21 +1240,7 @@ Public Function Document_Make_Audit(SelectedDocument As Collection, iAuditAction
       Return
    Endif
    audit_notes = ""
-  ' ' audit_notes = "<B>" & Form_ActionDocument.FMetaData.txtPatient.text & " (" & Form_ActionDocument.FMetaData.lblBirthdate.text & ")</B><BR>" 
-  '  'audit_notes &= Form_ActionDocument.FMetaData.cmbDocumentTypes.Text
-  '  Select Case SelectedDocument!fk_lu_message_display_style
-  '     Case const.Document_Display_As_Letter
-  '        audit_notes &= " Letter "
-  '     Case Else
-  '        audit_notes &= " Result "
-  '  End Select
-  '  audit_notes &= SelectedDocument!msh_sending_entity & " "
-  '  If Lower(SelectedDocument!tag) <> Lower(Form_ActionDocument.FMetaData.txtUserObservationName.text) Then
-  '     audit_notes &= Form_ActionDocument.FMetaData.txtUserObservationName.text & " (" & SelectedDocument!tag & ") "
-  '  Else
-  '     audit_notes &= Form_ActionDocument.FMetaData.txtUserObservationName.text
-  '  Endif
-  '  audit_notes &= "<BR><small><small>file:" & Form_ActionDocument.FMetaData.txtFilename.text & "/<small></small>"
+ 
    Select Case iAuditAction
       Case const.cAuditAction_Delete
          
@@ -1576,4 +1587,14 @@ Public Sub cvwPatientsRequests_Select()
 
   Form_ActionDocument.context_date = "15/10/2010"
 
+End
+
+Public Sub tbGraph_Click()
+  Stop Event
+  Select Case Last.tag
+    Case "remove"
+       Form_Graph.Visible = False   
+       Vbox_OutstandingRequests.Visible = True  
+  End Select
+  
 End

@@ -15,10 +15,16 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 Public Sub Main()
- 
-   If Logon() Then
+   Dim opt As Collection
+   Dim form_main As FMain
+   
+   opt = GetOptions()
+   Print Settings.Path
+   If Logon(opt) Then
      If modAdminDBI.Clinics_Setup() Then
-       FMain.Show()
+       form_main = New FMain
+       form_main.Show()
+       If opt.Exist("test") Then RunTest(opt!test, form_main)
      Else
         If FSetupWizard.ShowModal() = 1 Then
           FMain.Show()
@@ -31,7 +37,7 @@ Public Sub Main()
    Endif
 End
   
-Private Function Logon() As Boolean
+Private Function Logon(opt As Collection) As Boolean
 
    Dim result As String
    Dim host As String
@@ -41,6 +47,12 @@ Private Function Logon() As Boolean
    Dim FLogOn As New FrmLogon
    
    host = Settings["Autoconnect/host", Null]
+   If opt.Exist("autologon") Then
+     If opt!autologon = "never" Then host = Null ' suppress auto-logon
+     If opt!autologon = "try" And IsNull(host) Then
+       host = "localhost" ' always attempt
+     Endif
+   Endif
    If Not IsNull(host) Then
      username = Settings["Autoconnect/username", User.Name]
      dbase = Settings["Autoconnect/database", "easygp"]
@@ -49,6 +61,11 @@ Private Function Logon() As Boolean
      result = modDBConnect.dbConnect_global(host, dbase, username, password)
      If result = "success" Then Return True
    Endif
+   ' auto-logon for command-line: die if we can't do it
+  If opt.Exist("autologon") And If opt!autologon = "try" Then
+    Print #File.Err, "login failed: see log"
+    Return False
+  Endif
   ' okay, none of that worked, use the logon dialogue box
   Select Case FLogOn.ShowModal()
   Case 1
@@ -58,5 +75,36 @@ Private Function Logon() As Boolean
   End Select
 End
 
+Private Function GetOptions() As Collection
+  
+  Dim opt As New Collection
+  Dim i As Integer
+  
+  i = 1
+  While i < Application.Args.Count
+    Select Case Application.Args[i]
+      Case "-a", "--autologon"
+        opt!autologon = "try"
+      Case "-n", "--no-autologon"
+        opt!autologon = "never"
+      Case "--test", "-t"
+        Inc i
+        opt!test = Application.Args[i]
+    End Select
+    Inc i
+  Wend 
+  Return opt
+End
 
+Private Sub RunTest(test As String, form_main As FMain)
+  
+  Dim s As String[]
+  Dim kls As Class
+  
+  Wait 0.2
+  s = Split(test, ".")
+  kls = Class.Load(s[0])
+  Object.Call(kls, s[1], [form_main])
+  
+End
 

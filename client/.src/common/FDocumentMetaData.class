@@ -205,8 +205,6 @@ End
 Private Function SaveInScanning() As Boolean
    '------------------------------------------------------------
    'Saves changes to the currently displayed document's metadata
-   'documents = the old collection, set by form using this module **IAN NEVER HAVE AN OLD COLLECTION IN SCANNING
-   'Documents are never created in this module** DOCUMENTS ARE ALWAYS CREATED FOR SCANNED DOCS
    'Returns true if successful
    'if this save is from an exiting document:
    '   documents = the collection of old documents
@@ -248,7 +246,6 @@ Private Function SaveInScanning() As Boolean
    End If
    d!comment = Trim(txtComment.text)
    d!fk_lu_urgency = fk_urgency
-' This program is distributed in the hope that it will 
    Shell "md5sum " & txtFilename.text To md5Output   
    d!md5sum = Left(md5Output, InStr(md5Output, " ") - 1)
    d!fk_staff_destination = fk_staff_destination
@@ -259,11 +256,18 @@ Private Function SaveInScanning() As Boolean
       If chkAllStaff.Value = True Then 
          For Each member In Staff_Members
             d!fk_staff_destination = member!fk_staff
-            modArchiveDocumentsDBI.Save(d) ' BLOB saved the first time, re-uses fk_blob thereafter
+            Try modArchiveDocumentsDBI.Save(d) ' BLOB saved the first time, re-uses fk_blob thereafter
+            If Error Then 
+               Dec Application.Busy
+               Return False
+            Else
+               bSuccess = True
+            Endif
             d.Remove("fk_document") 'don't want this key to force new copies
          Next
       Else
-         pk_document = modArchiveDocumentsDBI.Save(d)
+         Try pk_document = modArchiveDocumentsDBI.Save(d)
+         If Not Error Then bSuccess = True
       Endif
    Else
       If chkAllStaff.Value = True Then
@@ -274,18 +278,12 @@ Private Function SaveInScanning() As Boolean
             d.Remove("fk_document") 'don't want this key to force new copies
          Next
       Else   
-        ' d!pk_document = modArchiveDocumentsDBI.Save(d, documents[pk_document])
-          d!pk_document = modArchiveDocumentsDBI.Save(d)
+         pk_document = modArchiveDocumentsDBI.Save(d)
          ' chicken-and-egg issue: we need the PK to generate the filename but we need the filename to save the record
          d!source_file = Document_Filename_Construct(d)
-         d2!source_file = d!source_file
-         d2!pk_document = d!pk_document
-         pk_document = d!pk_document 'I need this in FARchiveDocuments, don't remove
          ' now "save twice": triggers a UPDATE carrying the filename
-      '  modArchiveDocumentsDBI.Save(d2) '** IAN no it dosn't,  there is no matching documents collection
-         'maybe you've changed something else, but this simply dosn't work, which is why the old code had this:
-         
-          modArchiveDocumentsDBI.Document_Save_Filename(d)
+         modArchiveDocumentsDBI.Save(["pk_document": pk_document, "source_file": d!source_file])       
+         'modArchiveDocumentsDBI.Document_Save_Filename(d)
       Endif
       Try Move txtFilename.Text To modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ Lower(d!source_file)
       If Not Error Then
@@ -1782,7 +1780,7 @@ Public Function Valid_Document() As Boolean
       txtRecipient.SetFocus()
       Return False   
    Endif
-   If Embedded_in_form_name = "Scanning then" 
+   If Embedded_in_form_name = "Scanning" Then 
       If fk_organisation = 0 Then
          If fk_person = 0 Then
             sMsg = "Each scanned or faxed document will have been sent by someone, be they a person, organisation, or employee of an organisation "
@@ -1792,7 +1790,7 @@ Public Function Valid_Document() As Boolean
       Endif
    End If   
    
-   If Not IsDate(txtDocumentDate.text) Then
+   If Not TypeOf(Val(txtDocumentDate.text)) = gb.Date Then
       sMsg = "Please enter the date the document was written.\n\n"
       "This should be in the format dd/mm/yyyy, e.g 01/10/2010."
       Message.Info(sMsg)

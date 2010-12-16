@@ -186,7 +186,11 @@ Public Function exec_query(sql As String) As Result
     $hconn.Exec("BEGIN")
     bTransaction = True 
   End If
-  Log.DebugMsg(sql)
+  If Len(sql) > 5000 Then
+    Log.DebugMsg(Left$(sql, 5000))
+  Else
+    Log.DebugMsg(sql)
+  Endif
   Try $Result = $hconn.Exec(sql)
   If Error Then 
     errtxt = Error.Text
@@ -280,7 +284,7 @@ Public Function update(table As String, old_data As Collection, new_data As Coll
 ' updates a table by comparing old and new data and uploading the difference. At the end the new data is also copied back to old_data.
 ' old_data can be Null, in which case all values in new_data are assumed to be changes
 ' if no changes then no database query occurs
-' old_pk_name is the new of the primary key field in old_data. because this collection is coming from views, it is often
+' old_pk_name is the name of the primary key field in old_data. because this collection is coming from views, it is often
 ' not "pk", such "pk_progress_note", or "pk_history" or suchlike and so often must be specified
 ' table_pk_name is the name of the primary key in the underlying table, as it
 ' is nearly always "pk", it is optional with this as a default.
@@ -290,29 +294,32 @@ Public Function update(table As String, old_data As Collection, new_data As Coll
   Dim field_as_str As String
   Dim sql As String 'so I can see what is happening.
   Dim old_pk As Integer
+  
   changes.Clear()
-  For Each field In new_data
-     If IsNull(old_data) Or If field <> old_data[new_data.Key] Then
-       If Not IsNull(old_data) Then
-         old_data[new_data.Key] = field ' copy back to old_data
-       Endif
-       If TypeOf(field) = gb.string Then
-               If InStr(field, "BLOB:") Then
-                     changes.Push(new_data.Key & "=" & $hconn.FormatBlob(File.Load((Right$(field, -5)))) & ":: bytea ")       
-              Else
-                     changes.Push($hconn.Subst(new_data.Key & " = &1", field))
-            Endif
-       Else
-                 changes.Push($hconn.Subst(new_data.Key & " = &1", field))
-        
-        End If
-    End If
-  Next
   If IsNull(old_data) Then
     old_pk = new_data[old_pk_name]
   Else
     old_pk = old_data[old_pk_name]
   Endif
+  For Each field In new_data
+     If IsNull(old_data) Then
+       If new_data.Key = old_pk_name Then Continue
+     Else
+       If field = old_data[new_data.Key] Then Continue
+     Endif
+     If Not IsNull(old_data) Then
+       old_data[new_data.Key] = field ' copy back to old_data
+     Endif
+     If TypeOf(field) = gb.string Then
+       If InStr(field, "BLOB:") Then
+          changes.Push(new_data.Key & "=" & $hconn.FormatBlob(File.Load((Right$(field, -5)))) & ":: bytea ")       
+       Else
+          changes.Push($hconn.Subst(new_data.Key & " = &1", field))
+       Endif
+     Else
+       changes.Push($hconn.Subst(new_data.Key & " = &1", field))
+    End If
+  Next
   If changes.Count > 0 Then
      exec_query("UPDATE " & table & " SET " & changes.Join(",") & " WHERE " & table_pk_name & " = " & old_pk)
      Return True

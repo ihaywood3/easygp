@@ -45,6 +45,8 @@ FROM
   WHERE "CONSULT_TYPE".pk <> 8 
   ORDER BY "CONSULT".fk_patient,
   "CONSULT".consult_date, "CONSULT".fk_staff, "SECTION".pk, clin_consult.progressnotes.fk_problem;
+
+grant select on clin_consult.vwprogressnotes to staff;
   
     truncate db.lu_version;
 insert into db.lu_version (lu_major,lu_minor) values (0, 50)

@@ -32,7 +32,7 @@ Private FAuditViewer As FHtmlViewer
 Private obs As Observer
 
 Public Sub Init(mode As String)
-
+   
    view_mode = mode 'view allocated to others "allocated" or "completed"
    With FAuditViewer = New FHtmlViewer(Vbox_Main)
       .visible = False  
@@ -233,7 +233,7 @@ Public Sub tbRefreshAllocatedTasks_Click()
 End
 
 Public Sub chkTaskStatus_Click()
-
+   
    Select Case view_mode
       Case "allocated"
    End Select
@@ -242,6 +242,7 @@ Public Sub chkTaskStatus_Click()
 End
 
 Public Sub cvwTasks_Click()
+
    Dim shtml As String
    Dim TasksAndNotes As Collection
    Dim TaskAndNote As Collection
@@ -249,9 +250,12 @@ Public Sub cvwTasks_Click()
    Dim sLastDetails As String  
    Dim allnotes As String
    Dim R1 As Result
+   Dim R2 As Result 
+   Dim sql As String 
    Dim importDatasql As String
    Dim bUnfiled As Boolean
    Dim document_user_tag As String 
+   Dim sRowHTML As String
    
    If Not cvwTasks.count Then Return 
    cvwTasks.MoveCurrent()                                      'setkey
@@ -265,9 +269,10 @@ Public Sub cvwTasks_Click()
    'destination staff member
    'what the document is about
    '----------------------------------------------
+   
    importDatasql = "select * from documents.vwDocuments where pk_document = " & AllocatedTasks[cvwTasks.Item.key]!fk_row
    r1 = modDBConnect.exec_query(importDatasql)
-   
+      
    For Each R1
       sHTml = "<P align=center> <B><U> DOCUMENT AUDIT TRAIL</U></B></P>"
       sHtml &= "<B>PATIENT     :</B>" & R1!patient_firstname & " " & R1!patient_surname & " (" & R1!patient_sex & " " & R1!patient_age & " ) " 
@@ -297,12 +302,20 @@ Public Sub cvwTasks_Click()
       If r1!msh_sending_entity <> "" Then 
          sHtml &= " and was sent by " & r1!msh_sending_entity & " imported on " 
       Else
-         sHtml &= " and was scanned into the database on "
+         sHtml &= " and was scanned into the database by "
+         sql = "Select * from clin_consult.vwProgressNotes where fk_row =" & AllocatedTasks[cvwTasks.Item.key]!fk_row  
+         sql &= " AND fk_audit_action = " & const.cAuditAction_ScannedDocumentImported 
+         R2 = modDBConnect.exec_query(sql)
+         If R2.count Then
+            sHtml &= R2!title & " " & R2!firstname & " " & R2!surname & " (" & R2!role & ") on "
+         Else
+            shtml &= "?? on "
+         Endif
       End If
       sHtml &= Format(r1!imported_time, "dd/mm/yyyy:hh:nn:ss") & "<BR>"
       sHtml &= "- source file: " & r1!source_file & "<BR>"
       sHtml &= "- destination staff member was " & r1!staff_destination_wholename & "<BR>"
-      sHtml &= "- document concerns: %summary"
+      sHtml &= "- document concerns: %summary" & "<BR><BR>"
       Break
    Next
    '---------------------------------------------------------------------------------
@@ -327,18 +340,30 @@ Public Sub cvwTasks_Click()
       '----------------------------------------------------------
       'new task, new row, but put all components in the same cell
       '----------------------------------------------------------
-      If sLastDetails <> TaskAndNote!details Then   'if new task
-        '  allnotes = ""
-         If allnotes <> "" Then shtml = Replace(shtml, "%notes", allnotes) & "<BR>"
-         allnotes = ""
-         sHtml &= TableRow()     
+      If sLastDetails <> TaskAndNote!details Then       
+         '---------------------------------------------------------------------------------------------
+         'On every change of component of a task, put into the appropriate cell, the last lot of notes
+         '--------------------------------------------------------------------------------------------
+         If allnotes <> "" Then
+             shtml = Replace(shtml, "%notes", allnotes) & "<BR>" 
+         Else
+            shtml = Replace(shtml, "%notes", "")
+         End If
+         allnotes = ""                                                              'zero notes string
+        ' sRowHTML = TableRow()
+         sHtml &= TableRow()                                                        'add new templated row of html
          sLastDetails = TaskAndNote!details
          shtml = Replace(shtml, "%details", TaskAndNote!details)
          shtml = Replace(shtml, "%log_date", Format(TaskAndNote!date_component_logged, "dd/mm/yyyy"))
          shtml = Replace(shtml, "%staff_allocated", TaskAndNote!staff_allocated_title & " " & TaskAndNote!staff_allocated_wholename)
-         shtml = Replace(shtml, "%notes_date", Format(TaskAndNote!date_note, "dd/mm/yyyy"))
-         allnotes &= "<B>" & Format(TaskAndNote!date_note, "dd/mm/yyyy") & "</B>: " & TaskAndNote!note & "<BR>"
-         ' shtml = Replace(shtml, "%notes", TaskAndNote!note) & "<BR>"
+         '-------------------------------------------------
+         'There may or may not be notes for this task
+         'If there are, put in the date first then the note
+         'e.g 10/12/2010  These are the notes
+         '-------------------------------------------------
+         If Not IsNull(TaskAndNote!date_note) Then
+            allnotes &= "<B>" & Format(TaskAndNote!date_note, "dd/mm/yyyy") & "</B>: " & TaskAndNote!note & "<BR>"
+         End If
          If TaskAndNote!date_component_completed <> Null Then
             shtml = Replace(shtml, "%finalised", Format(TaskAndNote!date_component_completed, "dd/mm/yyyy"))
          Else
@@ -348,11 +373,16 @@ Public Sub cvwTasks_Click()
          '-----------------------------------------
          'Is still the same task, keep adding notes
          '-----------------------------------------
-         
          allnotes &= "<B>" & Format(TaskAndNote!date_note, "dd/mm/yyyy") & "</B>: " & TaskAndNote!note & "<BR>"
       Endif
    Next
-   If allnotes <> "" Then shtml = Replace(shtml, "%notes", allnotes) & "<BR>"
+   '------------------------------------------------------------------------
+   'At end of loop, the last component of a task, hasn't yet had notes saved
+   '------------------------------------------------------------------------
+   If allnotes <> "" Then                                            'may have some notes
+      shtml = Replace(shtml, "%notes", allnotes) & "<BR>"            'if so put them in place of placeholder
+   End If
+   shtml = Replace(shtml, "%notes", "")                              'remove any un-used placeholders
    If InStr(sHtml, "%No") Then
       sHtml &= "<BR><B>Task Status</B>: Not Finalised"
       sHtml = Replace$(sHtml, "%No", "No")
@@ -362,13 +392,15 @@ Public Sub cvwTasks_Click()
    sHtml &= "<HR>"
    Vbox_Tasks.visible = False 
    FAuditViewer.WebView1.HTML = "<HTML><BODY><TABLE>" & shtml & "</TABLE><HR></BODY></HTML>"
-   Print "<HTML><BODY><TABLE>" & shtml & "</TABLE><HR></BODY></HTML>"
    FAuditViewer.Visible = True  
    
 End
 
 Public Function RowHeading() As String
-   
+   '-----------------------------------------------------------------------
+   'Table headings template
+   'Date Logged|task|Staff Responsible|Notes (date + notes|Finalised (date)
+   '-----------------------------------------------------------------------   
    Return ""
    
    "<TR BGCOLOR='#e6e6e6' VALIGN=TOP>"
@@ -391,11 +423,13 @@ Public Function RowHeading() As String
    "<P><B>Component Finalised</B></P>"
    "</TD>"
    "</TR>"
-
+   
 End
 
 Public Function TableRow() As String
-   
+   '-----------------------------
+   'Html template for a table row
+   '-----------------------------   
    Return ""
    
    "<TR VALIGN=TOP>"
@@ -417,65 +451,5 @@ Public Function TableRow() As String
    "<P>%finalised</P>"
    "</TD>"
    "</TR>"
-
+   
 End
-
-' 
-' Public Function RowHeading() As String
-'    
-'    Return ""
-'    
-'    "<TR BGCOLOR='#e6e6e6' VALIGN=TOP>"
-'    "<TD WIDTH=5%>"
-'    "<P><B>Logged</B>"
-'    "</P>"
-'    "</TD>"
-'    "<TD WIDTH=20%>"
-'    "<P><B>What to do </B>"
-'    "</P>"
-'    "</TD>"
-'    "<TD WIDTH=12%>"
-'    "<P><B>Staff Responsible</B></P>"
-'    "</TD>"
-'    "<TD WIDTH=6%>"
-'    "<P><B>Date of Note</B></P>"
-'    "</TD>"
-'    "<TD WIDTH=39%>"
-'    "<P><B>Notes</B><BR>"
-'    "</P>"
-'    "</TD>"
-'    "<TD WIDTH=5%>"
-'    "<P><B>Component Finalised</B></P>"
-'    "</TD>"
-'    "</TR>"
-' 
-' End
-' 
-' Public Function TableRow() As String
-'    
-'    Return ""
-'    
-'    "<TR VALIGN=TOP>"
-'    "<TD WIDTH=5% >"
-'    "<P>%log_date</P>"
-'    "</TD>"
-'    "<TD WIDTH=20%>"
-'    "<P>%details"
-'    "</P>"
-'    "</TD>"
-'    "<TD WIDTH=12%>"
-'    "<P>%staff_allocated"
-'    "</P>"
-'    "</TD>"
-'    "<TD WIDTH=6%>"
-'    "<P>%notes_date</P>"
-'    "</TD>"
-'    "<TD WIDTH=39%>"
-'    "<P>%notes</P>"
-'    "</TD>"
-'    "<TD WIDTH=5%>"
-'    "<P>%finalised</P>"
-'    "</TD>"
-'    "</TR>"
-' 
-' End

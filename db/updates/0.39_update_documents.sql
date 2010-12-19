@@ -6,7 +6,7 @@
 -- otherwise, neither would the sending entity show up in vwSendingEntities, so admin couldn't access to allocate them a real company
 -- also added a deleted field to sending_entities
 
-Alter table documents.sending_entities add column deleted boolean default false;
+--Alter table documents.sending_entities add column deleted boolean default false;
 
 Drop view documents.vwsendingentities cascade ;
 

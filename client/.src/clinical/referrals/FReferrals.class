@@ -378,12 +378,12 @@ Public Sub Save()
      "</TD>"
      "</TR>"
      "</TABLE>"
-     shtml = Replace$(shtml, "%letterbody%", referral!body_html)
-     modDBConnect.BeginTrans()
+    shtml = Replace$(shtml, "%letterbody%", referral!body_html)
+    modDBConnect.BeginTrans()
         referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, shtml, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
         pk_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral)   'Save the referral letter
     modDBConnect.CommitTrans()
-    If Not chkDoNotPrint.value Then
+    If chkDoNotPrint.value = False Then
         Referral_Print(referral)
    End If
   
@@ -391,17 +391,33 @@ Public Sub Save()
    FClinical.Refresh_AllPreviousNotes()
 End
 
+
+
 Public Sub Referral_Print(referral As Collection)
    '-----------------------------------------------
    'temporary work-around, convert to pdf and print
    '-----------------------------------------------
+   Dim inclusion As Collection
+   
    modPrinting.PrintHtml(referral!letter_html, const.Paper_Plain)
    If chkIncludehealthSummary.value = True Then
        modPrinting.PrintHtml(modProgressNotes.Health_Summary_Construct_html(currentconsult), const.Paper_Plain)
    End If
    If chkIncludeCarePlan.value = True Then
        modPrinting.PrintHtml(modProgressNotes.Care_Plan_Construct_html(currentconsult), const.Paper_Plain)
-   End If   
+   End If  
+   '------------------------------------------------------------------------------------
+   'Now print any included documents which were dragged'n dropped to the inclusions list
+   'FIXME: just first go, need to take into account document type in more thorough way
+   '------------------------------------------------------------------------------------
+     For Each inclusion In Inclusions
+         If Not IsNull(inclusion!document!html) Then
+            modPrinting.PrintHtml(inclusion!document!html, const.Paper_Plain)
+         Endif
+         If Right(Lower(inclusion!document!source_file), 3) = "pdf" Then
+            modPrinting.Print_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ inclusion!document!source_file)
+         Endif
+    Next
 End
 
 
@@ -503,7 +519,7 @@ Public Sub Editor_Fonts_Reset()
    Object.Lock(btnBold)
    Object.Lock(btnItalic)
    Object.Lock(btnUnderline)
-   Object.Lock(btnStrikeOut)
+  ' Object.Lock(btnStrikeOut)
    Object.Lock(btnAlignLeft)
    Object.Lock(btnAlignCenter)
    Object.Lock(btnAlignRight)
@@ -514,7 +530,7 @@ Public Sub Editor_Fonts_Reset()
    btnBold.Value = False
    btnItalic.Value = False
    btnUnderline.Value = False
-   btnStrikeOut.Value = False
+  ' btnStrikeOut.Value = False
    btnAlignLeft.value = False
    btnAlignCenter.value = False
    btnAlignJustify.Value = False 'what is this
@@ -531,7 +547,7 @@ Public Sub Editor_Fonts_Reset()
    Object.UnLock(btnBold)
    Object.UnLock(btnItalic)
    Object.UnLock(btnUnderline)
-   Object.UnLock(btnStrikeOut)
+ ' Object.UnLock(btnStrikeOut)
    Object.UnLock(btnAlignLeft)
    Object.UnLock(btnAlignCenter)
    Object.UnLock(btnAlignRight)
@@ -818,6 +834,7 @@ Public Sub EditArea_Clear()
 End
 
 Public Sub EditAreaTextBox_GotFocus()
+   If Bexit Then Return 
   columnview1.Visible = False 
    Last.BackGround = Color.rgb(95, 255, 175)
    Select Case Last.tag
@@ -841,17 +858,19 @@ Public Sub EditAreaTextBox_GotFocus()
    Case "organisation"
     With columnview1
          .top = Hbox_Organisation.top + txtOrganisation.Height
-         .width = txtOrganisation.Width
+         .width = txtOrganisation.Width - 10
          .left = txtOrganisation.Left
           .height = 120
          .columns.count = 4 'branch, street, suburb
       End With  
-      If fk_person Then
-         Employee_Workplace_Get()              'first assume they are employed in an organisation
-         If fk_organisation = 0 Then  'if not, then  treat them as sole trader
+    '  If fk_person Then
+    '     Employee_Workplace_Get()              'first assume they are employed in an organisation
+      '   If columnview1.Visible = False Then  'if not, then  treat them as sole trader
             person_AddressGet()
-         Endif
-      End If  
+       '  Else
+        '    bExit = True
+       '  Endif
+     ' End If  
    Case "branch"
      With columnview1
          .top = Last.parent.top + Last.Height
@@ -949,7 +968,7 @@ Public Sub Referral_New()
    EditArea_Clear()                          'clear input area
    chkIncludeCarePlan.value = False          'Don't include care plan
    chkIncludehealthSummary.Value = False     'Don't include summary
-   chkDoNotPrint.value = True
+   'chkDoNotPrint.value = True
    lvwInclusions.Clear()                     'clear inclusions list
    Inclusions = New Collection
   
@@ -1264,7 +1283,13 @@ Public Sub Person_Select()
           PersonWritingTo!surname = specialists[columnview1.Item.key]!surname
           PersonWritingTo!title = specialists[columnview1.Item.key]!title
        End If
-      txtOrganisation.SetFocus()
+        Employee_Workplace_Get()  
+         If columnview1.Visible = False Then  'if not, then  treat them as sole trader
+            person_AddressGet()
+       '  Else
+        '    bExit = True
+         Endif
+   '   txtOrganisation.SetFocus()
       bExit = False   
   
   
@@ -1440,6 +1465,7 @@ Public Function Employee_Workplace_Get()
       columnview1.Visible = True
       columnview1.Raise
       columnview1.tag = txtOrganisation
+     
       Return   
 End
 

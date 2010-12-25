@@ -18,19 +18,16 @@
 Private printerlist As String[]
 
 Public Sub Print_PDF(pdf_path As String, Optional printertype As Integer = const.Paper_Plain, number_copies As Integer = 1)
-   'Ian can you fix this, I just cutn pasted really without understanding anything
-   Dim pro As Process
    Dim cmd As String
-   Dim lpr As String
-
+   
    If pdf_path = "" Then Return
    Inc Application.Busy
-   lpr = modUtil.FindProgram("lpr", "cups")
-   If IsNull(lpr) Then Return
-   cmd = "lpr -d " & GetLprOption(printertype) & " " & Replace(pdf_path, " ", "\\ ")
-   Log.DebugMsg("PDF print command: " & cmd)
-  Shell cmd Wait
-  Dec Application.Busy
+   cmd = modUtil.FindProgram("lpr", "cups")
+   If IsNull(cmd) Then Return
+   pdf_path = Replace$(pdf_path, " ", "\\ ")
+   cmd &= " " & GetLprOption(printertype) & " -# " & number_copies & " " & pdf_path
+   Shell cmd Wait
+   Dec Application.Busy
 End
 
 
@@ -213,8 +210,7 @@ Public Function Join_PDF_IAN(pdf_files As String[], Optional output_filename As 
    Next
    Print #lf, "\\end{document}"
    Close #lf
-   cmd = "cd `dirname " & stem & "` ; " 
-   cmd &= "pdflatex " & stem & ".tex"
+   cmd = Subst$("cd `dirname &1` ; &2 &1.tex; rm *.aux *.log *.tex", stem, cmd)
    Shell cmd Wait
    Return stem & ".pdf"
 End
@@ -228,12 +224,14 @@ Public Sub Split_PDF(pdf_file As String)
    '-------------------------------------------
    Dim stem As String
    Dim cmd As String
+   Dim pdflatex As String
    Dim lf As File
    Dim cmd_result As String
    Dim page As Integer = 1
+   Dim status As Integer
    
-   cmd = modUtil.FindProgram("pdflatex", "texlive-latex-base")
-   If IsNull(cmd) Then Return
+   pdflatex = modUtil.FindProgram("pdflatex", "texlive-latex-base")
+   If IsNull(pdflatex) Then Return
    If Right$(pdf_file, 4) = ".pdf" Then
       stem = Left$(pdf_file, -4) ' strip .pdf from name
    Else
@@ -247,18 +245,24 @@ Public Sub Split_PDF(pdf_file As String)
      Print #lf, Subst$("\\includepdf[pages=&1]{&2}", Str$(page), pdf_file)
      Print #lf, "\\end{document}"
      Close #lf
-     cmd = "cd `dirname " & stem & "` ; " & cmd
+     cmd = "cd `dirname " & stem & "` ; " & pdflatex
      cmd &= " -interaction=nonstopmode " & stem & "-" & Str$(page) & ".tex"
      Shell cmd To cmd_result
+     status = 2 ' error unless proved otherwise
+     If InStr(cmd_result, "required page does not exist") Then
+       status = 1 ' ran out of files so stop gracefully
+     Else If Access(stem & "-" & Str(Page) & ".pdf") Then
+       status = 0 ' generated a file, so keep going
+     Endif
+     Try Kill stem & "-" & Str(page) & ".tex"
+     Try Kill stem & "-" & Str(page) & ".aux"
+     Try Kill stem & "-" & Str(page) & ".log"
      Inc page
-   Loop Until Not InStr(cmd_result, "")
-   If Not InStr(cmd_result, "required page \ndoes not exist") Then
+   Loop Until status > 0
+   If status = 2 Then
      Log.ErrorMsg("pdfLaTeX error: " & cmd_result)
      Error.Raise("pdfLateX failed: check the log")
    Endif
-   cmd = "cd `dirname " & stem & "` ; "
-   cmd &= "rm *.aux *.log *.tex"
-   Shell cmd Wait
 End
 
 Public Function Printers_Load() As String[]
@@ -337,4 +341,10 @@ Private Function GetLprOption(printertype As Integer) As String
     config_printer &= " " & printer_options
   Endif
   Return config_printer
+End
+
+Public Sub UnitTest(form_main As FMain)
+  
+  Split_PDF("/home/ian/testsplit.pdf")
+  
 End

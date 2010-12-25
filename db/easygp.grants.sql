@@ -93,6 +93,8 @@ GRANT select ON TABLE common.lu_occupations TO staff;
 GRANT ALL ON TABLE clin_history.vwfamilyhistory TO staff;
 GRANT select ON TABLE coding.generic_terms TO staff;
 GRANT select ON TABLE coding.lu_systems TO staff;
+grant select on coding.lu_loinc_abbrev to staff;
+grant select on coding.lu_loinc to staff;
 GRANT select ON TABLE common.lu_laterality TO staff;
 GRANT ALL ON TABLE clin_history.vwhealthissues TO staff;
 GRANT select ON TABLE common.lu_units TO staff;

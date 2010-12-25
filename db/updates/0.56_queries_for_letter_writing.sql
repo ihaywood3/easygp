@@ -19,8 +19,6 @@ UNION
           WHERE vwpersonsexcludingpatients.fk_person <> 0 AND vwpersonsexcludingpatients.fk_address IS NOT NULL
   ORDER BY 6, 12;
 
-ALTER TABLE contacts.vwPersonsAndEmployeesAddresses OWNER TO easygp;
-Grant all on contacts.vwPersonsAndEmployeesAddresses to easygp;
 Grant all on contacts.vwPersonsAndEmployeesAddresses to staff;
 
 

@@ -21,49 +21,103 @@
 ' specs kindly provided from Dr. David Guest
 
 Private pk_sending_entity As Integer
+Private doc As Collection
+Private lin As String
 
-
-Public Sub Import(fname As file)
+Public Sub Import(f As File)
   
-  Dim lin As String
   Dim code As String
-  Dim f As File
-
+  Dim re As Regexp
+  Dim s As String
   
-  f = Open fname For Read
-  
+  doc = New Collection
   
   While Not f.EndOfFile
     Line Input #f, lin
     code = Left$(lin, 3)
     Select Case code
     Case "001"
-       Sender_Line(lin)
-    Case "002"
-         
+       Sender_Line()
+    Case "100"
+       Load_Doc() ' if not loaded previously
+       Patient_Name()
+    Case "101"
+       Patient_Address()
+    Case "104"
+       Patient_DOB()
+    Case "105"
+      doc!phone = Grab(38, 54)
+    Case "110"
+      doc!our_ref = Grab(27, 43)
+    Case "111"
+      doc!lab_ref = Grab(27, 43)
+    Case "112"
+      doc!medicare = Grab(27, 39)
+    Case "121"
+      doc!referred_by = Grab(27, 49)
+    Case "122"
+      s = Grab(27, 49)
+      If Not s = "" Then
+         If Not doc.Exist("copies_to") Then doc!copies_to = New String[]
+         doc!copies_to.Add(s)
+      Endif
+    Case "123"
+      doc!addressee = Grab(27, 49)
+      doc!addressee_provider = Grab(61, 69)
+    Case "200"
+      Load_Doc() ' if not loaded previously
+    Case "201"
+      doc!specimen = Grab(27, 100)
+    Case "203"
+      doc!request_date = Grab(27, 38)
+      re = New Regexp(doc!request_date, "^[0-9]+/[0-9]+/[0-9]+")
+      If CheckRe(re, "request date") Then doc.Remove("request_date")
+    Case "204"
+      doc!collection_date = Grab(27, 45)
+      re = New Regexp(doc!collection_date, "^[0-9]+/[0-9]+/[0-9]+ *[0-9]?[0-9]:[0-9][0-9]")
+      If CheckRe(re, "collection date") Then doc.Remove("collection_date")
+    Case "205"
+      doc!test_name = Grab(27, 100)
+    Case "206"
+      doc!report_date = Grab(27, 43)
+      re = New Regexp(doc!report_date, "^[0-9]+/[0-9]+/[0-9]+ *([0-9]?[0-9]:[0-9][0-9])?")
+      If CheckRe(re, "report date") Then doc.Remove("report_date")
+    Case "210"
+      doc!normal_result = Grab(27, 28)
+      If doc!normal_result = "Y" Then
+        doc!normal_result = True
+      Else
+        doc!normal_result = False
+      Endif
+    Case "211"
+      doc!requested_tests = Grab(27, 100)
+    Case "212"
+      doc!test_complete = Grab(27, 28)
+      If doc!test_complete = "Y" Then
+        doc!test_complete = True
+      Else
+        doc!test_complete = False
+      Endif
+    Case "301", "311"
+      If Not doc.Exist("data") Then doc!data = ""
+      doc!data &= Grab(5, 200) & "\n"
     Case Else
-       Log.Error("unknown PIT line type " & code)
-       'Print #stderr, "unknown PIT line type " & code)
-       Return
+       Log.DataMsg("unknown PIT line type " & code)
     End Select  
-        
   Wend  
+  Load_Doc()
   
 End Sub
 
-Private Sub Sender_Line(lin As String)
+Private Sub Sender_Line()
   Dim q As String
   Dim coll As Collection
   Dim r As Result
   Dim originating_lab As String
   
-  If Len(lin) > 65 Then
-    originating_lab = Mid$(lin, 5, 65)
-  Else
-    originating_lab = Right$(lin, Len(lin) - 5)
-  Endif
-  ' FIXME: chomp/strip the line here
-  q = "select * from documents.sending_entities"
+  pk_sending_entity = -1
+  originating_lab = Grab(5, 200)
+  q = "select * from documents.sending_entities "
       "where fk_lu_message_standard = 1 and "
       "msh_sending_entity = $$"
   q &= originating_lab & "$$"
@@ -73,9 +127,99 @@ Private Sub Sender_Line(lin As String)
     coll = New Collection
     coll!msh_sending_entity = originating_lab
     coll!fk_lu_message_standard = 1 'FIXME: what is the true value for PIT??
+    coll!fk_lu_message_display_style = 2
     pk_sending_entity = modDBConnect.insert("documents.sending_entities", coll)
   Else
     pk_sending_entity = r!pk
   Endif
   
 End
+
+Private Sub Patient_Name()
+  
+  Dim re As New Regexp(Grab(27, 200), "^(.*),(.*) ?(.?)$")
+  Dim s As String
+  
+  If CheckRe(re, "patient name") Then Return
+  doc.Remove("fk_patient")
+  doc!surname = re.SubMatches[1].Text
+  doc!firstname = re.SubMatches[2].Text
+  If re.SubMatches.Count > 2 Then
+    doc!initial = re.SubMatches[3].Text
+  Endif
+  
+End
+
+Private Sub Patient_Address()
+  
+  Dim s As String
+  Dim re As Regexp
+  
+  s = Grab(27, 200)
+  re = New Regexp(s, "^(.*),.*([0-9][0-9][0-9][0-9])")
+  If CheckRe(re, "address") Then Return
+  doc!address_line = re.SubMatches[1].Text
+  doc!postcode = re.SubMatches[2].Text
+End
+
+Private Sub Patient_DOB()
+  
+  Dim s As String
+  Dim re As Regexp
+  
+  s = Grab(38, 49)
+  re = New Regexp(s, "[0-9]+/[0-9]+/[0-9]+")
+  If CheckRe(re, "birthdate") Then Return
+  doc!birthdate = re.Text
+  s = Grab(67, 68)
+  s = Upper$(s)
+  If s = "M" Or If s = "F" Then
+    doc!sex = s
+  Endif
+  
+End
+
+Private Sub Load_Doc()
+  
+  If Not doc.Exist("data") Then Return
+  
+End
+
+
+Private Function Grab(s As Integer, e As Integer) As String
+  Dim ret As String
+  
+  Dec s ' Gambas is 0-based, David Guest is 1-based
+  Dec e
+  If Len(lin) < s Then Return Null
+  If Len(lin) > e Then
+    ret = Mid$(lin, s, e - s)
+  Else
+    ret = Right$(lin, Len(lin) - s)
+  Endif
+  Return Trim$(ret)
+  
+End
+
+Private Function CheckRe(re As Regexp, err As String) As Boolean
+  Dim s As String
+  
+  If re.Offset = -1 Then
+    s = Subst$("&1 line '&2' isn't valid", err, lin)
+    Print #File.Err, s
+    Log.ErrorMsg(s)
+    Return True
+  Endif
+  Return False
+
+End
+
+Public Sub UnitTest(f As FMain)
+  
+  Dim fd As File
+  
+  fd = Open "/home/ian/preserve/mpxiaha00002.pit" For Read
+  Import(fd)
+  
+End
+

@@ -18,18 +18,20 @@
 
 ' contains the routines for scanning directories and  importing into the DB
  'This is what gets called as a script on the server
- 
+
+Private importdir As String
+
 Public Sub Auto_Process()
    '------------------------------------------------------
    'Using a list of all the providers in the system,
    'check their incoming dictories and process the file
    '-------------------------------------------------------
-   Dim hl7dir As String 
   '--------------------------------------------------------------------
    'Get the information for handling the different types of hl7 messages
    'eg incoming_dir could be douglass or medical\ objects
    '--------------------------------------------------------------------
-   Process_Dir_Or_File(modAdminDBI.Config_Get("hl7_root_directory", "/var/easygp/hl7/incoming"))
+   importdir = modAdminDBI.Config_Get("hl7_root_directory", "/var/easygp/hl7/incoming")
+   Process_Dir_Or_File(importdir)
 End Sub
 
 Private Sub Process_Dir_Or_File(fname As String)
@@ -41,45 +43,75 @@ Private Sub Process_Dir_Or_File(fname As String)
   '--------------------------------------------------------------------------
    Dim sFile As String
    Dim hl7 As CHL7
-  
+   Dim i As String
+   Dim f As File
+   
    If IsDir(fname) Then
-         For Each sFile In Dir(fname)                                        'List all files or subdirectories in the root
-            If Not (InStr(Lower(fname &/ sFile), "errors") Or InStr(Lower(fname &/ sFile), "processed")) Then  'if not in error or processee
-              Process_Dir_Or_File(fname &/ sFile)                            'try again, this time could be a file
-             
+         For Each sFile In Dir(fname)
+            i = Lower$(fname &/ sFile)                                        'List all files or subdirectories in the root
+            If Not InStr(i, "errors") And If Not InStr(i, "processed") Then  'if not in error or processee
+              Process_Dir_Or_File(i)                            'try again, this time could be a file
             End If
          Next
    Else  'yes, its a file, try and load it
-      Try hl7 = New CHL7(File.Load(fname))
-      If Error Then
-            Goto Processing_Failed
-      Else     'read it in ok, now try and process it
-            modDBConnect.BeginTrans
-           Try Process_File(hl7, fname)
-          '  Process_File(hl7, fname)
-            If Error Then
-               Goto Processing_Failed
-            Else
-               Try Move fname To User.home & "/processedhl7/" & modUtil.filepath_fix_Blanks(File.name(fname))
-               If Not Error Then
-                   modDBConnect.CommitTrans()
-               Else
-                  Log.ErrorMsg("Error moving " & fname & " to" & User.home & "/processedhl7/errors/ directory") 'FIXME WHEN ON SERVER
-                  Goto Processing_Failed
-               End If
-            End If
-      Endif
+     i = "unk"
+     If Lower$(Right$(fname, 4)) = ".pit" Then i = "pit"
+     If Lower$(Right$(fname, 4)) = ".hl7" Then i = "hl7"
+     f = Open fname For Read
+     If i = "unk" Then
+       i = Read #f, 3 ' "taste" the file to find type
+       Seek #f, 0
+       If i = "001" Then 
+          i = "pit"
+       Else
+          If i = "MSH" Or i = "FHS" Or i = "BSH" Then 
+            i = "hl7"
+          Else
+            i = "unk"
+          Endif
+       Endif
+     Endif
+     If i = "unk" Then
+       i = "can't decide type of " & fname
+       Goto Processing_Failed
+     Endif
+     If i = "hl7" Then
+       i = Read #f, Lof(f)
+        Try hl7 = New CHL7(i)
+        If Error Then
+          i = Error.Text
+          Goto Processing_Failed
+        Else     'read it in ok, now try and process it
+          modDBConnect.BeginTrans()
+          Try Process_File(hl7, fname)
+        Endif
+     Else ' it's PIT
+       If IsNull(f) Then f = Open fname For Read
+       Try PITImporter.Import(f)
+     Endif
+     If Error Then
+       i = Error.Text 
+       Goto Processing_Failed
+     Else
+       Try Move fname To importdir &/ "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
+       If Not Error Then
+         modDBConnect.CommitTrans()
+       Else
+         i = "Error moving " & fname & " to " & importdir &/ "processed (" & Error.Text & ")" 'FIXME WHEN ON SERVER
+         Goto Processing_Failed
+       End If
+     End If
    Endif
    Return 
    
 Processing_Failed:
-   Print Error.Text & " " & Error.Where, fname
-    Log.ErrorMsg(Error.Text & " " & Error.Where)
-   Try Move fname To User.home & "/processedhl7/errors/" & File.name(fname)
+   Print #File.Err, i
+   Log.ErrorMsg(i)
+   Try Move fname To importdir &/ "processed/errors" &/ File.Name(fname)
    If Error Then
-    Log.ErrorMsg("Error moving " & fname & " to" & User.home & "/processedhl7/errors/") 'FIXME WHEN ON SERVER"
-     Print Error.Text & " " & Error.Where
-     Log.ErrorMsg(Error.Text & " " & Error.Where)
+       i = "Error moving " & fname & " to " & importdir &/ "/processedhl7/errors/ (" & Error.Text & ")"
+       Print #File.Err, i
+       Log.ErrorMsg(i)
    End If
    modDBConnect.RollBack()
 End Sub
@@ -106,7 +138,7 @@ End
 
 Private Sub Process_File(hl7 As CHL7, fname As String)
    '-----------------------------------------------------------
-   'Process a hl7 (or PIT when Ian organises it) File
+   'Process a hl7  File
    'the contents saved to the documents and observations table
    '-----------------------------------------------------------
   Dim audit As Collection 

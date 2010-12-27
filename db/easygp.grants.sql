@@ -964,3 +964,5 @@ grant select on clerical.lu_task_types to staff;
 grant select on clin_requests.vwrequestproviders to staff;
 grant select on clin_recalls.vwrecallsdue to staff;
 grant select on clerical.vwtaskscomponents to staff;
+grant select on clin_requests.vwrequestsordered to staff;
+

@@ -25,32 +25,18 @@ comment on column sources.source_category is
 comment on column sources.description is
 	'URL or address or similar informtion allowing to reproduce the source of information';
 
--- ===========================================
-create table disease_code (
-	pk serial primary key,
-	code varchar (20) unique,
-	description text not null
-);
-
-comment on table disease_code is
-	'holds actual coding systems';
-
--- ===========================================
-create table units (
-	pk serial primary key,
-	unit varchar(30) not null
-);
-
-comment on table units is
-	'(SI) units used to quantify/measure drugs';
-comment on column units.unit is
-	'(SI) units used to quantify/measure drugs like "mg", "ml"';
+copy sources(description,source_category) from stdin with delimiter as '|';
+Manufacturer''s paper handout|m
+PBS Yellow Book Caution|a
+Australian Prescriber|a
+DailyMed (http://dailymed.nlm.nih.gov)|m
+\.
 
 -- ===========================================
 create table patient_categories(
 	pk serial primary key,
 	description text not null,
-	comment text
+	"comment" text
 );
 comment on table patient_categories is
 	'enumeration of categories of patient populations for targeted drug warnings';
@@ -61,13 +47,27 @@ create table evidence_levels
 	description text not null
 );
 
+comment on table evidence_levels is 
+       'different levels of evidence for a fact in the database';
+
+
 -- ===========================================
 create table severity_level (
 	pk serial primary key,
 	description varchar (100) not null,
-	comment text
+	"comment" text
 );
 
+comment on table severity_level is
+        'different level of severity for warnings. Levels may control client behaviour';
+
+copy severity_level(pk,description) from stdin with delimiter as '|';
+1|noting only
+2|mild effects
+3|significant but temporary effects
+4|severe morbidity
+5|risk of death
+\.
 
  --=========================================================
 
@@ -79,7 +79,7 @@ create table clinical_effects
 );
 
 comment on table clinical_effects is 
-'A list of sie-effects and consequences of interactions.
+'A list of side-effects and consequences of interactions.
 I appreciate this list will get long, some values may only apply to one or two drugs, but
 I think it is important to normalise. The interface may need to use a text box (it will be
 too long for a pick list) and confirm with users if they want to create a new entry.';
@@ -119,14 +119,17 @@ comment on table atc is
 -- ===========================================
 create table info(
         pk serial primary key,
-	comment text not null,
+	"comment" text not null,
 	fk_topic integer references topic (pk) not null,
         created_at timestamp default now () not null,
         fk_clinical_effect integer references clinical_effects (pk),
         fk_pharmacologic_mechanism integer references pharmacologic_mechanisms (pk),
         fk_evidence_level integer references evidence_levels (pk) not null,
         fk_source integer references sources (pk) not null,
-        fk_patient_category integer references patient_categories (pk)
+        fk_patient_category integer references patient_categories (pk),
+	standard_frequency text,
+        paed_dose float
+        paed_max float
 );
 comment on table info is
 	'any product information about a specific drug or class in HTML format';
@@ -145,12 +148,17 @@ link, but for interactions or contraindications there may be more';
 -- ===========================================
 create table product(
         pk serial primary key,
-	atccode varchar (8),
+	atccode varchar (8) not null,
 	"name" text not null,
-	form text not null,
+	salt text,
+	fk_form integer references form (pk) not null,
 	strength text,
+        salt_strength text,
 	amount text, 
-	packsize integer not null, 
+	packsize integer not null default 1, 
+        original_text text,
+	original_pbs_code varchar(10),
+        original_tga_code varchar(12)
         unique (atccode,"name",description,packsize)
 );
 

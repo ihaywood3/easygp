@@ -24,14 +24,14 @@ Private pk_sending_entity As Integer
 Private doc As Collection
 Private lin As String
 
-Public Sub Import(f As File)
+Public Sub Import(f As File, fname As String)
   
   Dim code As String
   Dim re As Regexp
   Dim s As String
   
   doc = New Collection
-  
+  doc!source_file = fname
   While Not f.EndOfFile
     Line Input #f, lin
     code = Left$(lin, 3)
@@ -78,17 +78,25 @@ Public Sub Import(f As File)
     Case "203"
       doc!request_date = Grab(27, 38)
       re = New Regexp(doc!request_date, "^[0-9]+/[0-9]+/[0-9]+")
-      If CheckRe(re, "request date") Then doc.Remove("request_date")
+      If CheckRe(re, "request date") Then 
+         doc.Remove("request_date")
+      Else
+         doc!request_date = re.Text
+      Endif
     Case "204"
-      doc!collection_date = Grab(27, 45)
-      re = New Regexp(doc!collection_date, "^[0-9]+/[0-9]+/[0-9]+ *([0-9]?[0-9]:[0-9][0-9])?")
-      If CheckRe(re, "collection date") Then doc.Remove("collection_date")
+      s = Grab(27, 45)
+      re = New Regexp(s, "^[0-9]+/[0-9]+/[0-9]+ *([0-9]?[0-9]:[0-9][0-9])?")
+      If Not CheckRe(re, "collection date") Then 
+         doc!collection_date = re.Text
+      Endif
     Case "205"
       doc!test_name = Grab(27, 100)
     Case "206"
-      doc!report_date = Grab(27, 100)
-      re = New Regexp(doc!report_date, "^[0-9]+/[0-9]+/[0-9]+ *([0-9]?[0-9]:[0-9][0-9])?")
-      If CheckRe(re, "report date") Then doc.Remove("report_date")
+      s = Grab(27, 100)
+      re = New Regexp(s, "^[0-9]+/[0-9]+/[0-9]+ *([0-9]?[0-9]:[0-9][0-9])?")
+      If Not CheckRe(re, "report date") Then 
+         doc!report_date = re.Text
+      Endif
     Case "208" ' test category: R=routine, U=urgent
       s = Upper$(Grab(27, 28))
       If s = "R" Then doc!urgency = 1
@@ -126,7 +134,7 @@ Private Sub Sender_Line()
   Dim originating_lab As String
   
   pk_sending_entity = -1
-  originating_lab = Grab(5, 200)
+  originating_lab = Grab(5, 61)
   q = "select * from documents.sending_entities "
       "where fk_lu_message_standard = 1 and "
       "msh_sending_entity = $$"
@@ -136,6 +144,7 @@ Private Sub Sender_Line()
     ' we don't have a matching sender, so create one
     coll = New Collection
     coll!msh_sending_entity = originating_lab
+    coll!msh_transmitting_entity = originating_lab
     coll!fk_lu_message_standard = 1 'FIXME: what is the true value for PIT??
     coll!fk_lu_message_display_style = 2
     pk_sending_entity = modDBConnect.insert("documents.sending_entities", coll)
@@ -203,14 +212,15 @@ Private Sub Load_Doc()
     Match_Staff()
   Endif
   newdoc!fk_sending_entity = pk_sending_entity
+  newdoc!source_file = doc!source_file
   newdoc!date_requested = doc!request_date
-  newdoc!date_created = doc!report_date
+  newdoc!date_created = doc!collection_date
   newdoc!fk_patient = doc!fk_patient
   newdoc!fk_staff_filed_document = modDBConnect.currentUser!fk_staff
   newdoc!internal_reference = doc!our_ref
   newdoc!provider_of_service_reference = doc!lab_ref
   newdoc!copies_to = doc!copies_to
-  newdoc!originator = doc!pathologist
+  newdoc!originator = doc!referred_by
   newdoc!fk_staff_destination = doc!fk_staff
   newdoc!fk_unmatched_patient = doc!fk_unmatched_patient
   newdoc!fk_unmatched_staff = doc!fk_unmatched_staff
@@ -221,7 +231,7 @@ Private Sub Load_Doc()
   obs!abnormal = doc!abnormal ' FIXME: I assume Y/N like PIT
   obs!value_type = "FT" ' PIT is always Formatted Text in HL7 terms
   obs!identifier = doc!test_name
-  obs!observation_date = doc!collection_date
+  obs!observation_date = doc!report_date
   obs!result_status = doc!test_complete ' FIXME: convert to HL7's values
   modDBConnect.insert("documents.observations", obs)
   doc!data = Null

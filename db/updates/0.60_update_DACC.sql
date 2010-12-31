@@ -79,3 +79,6 @@ order by fk_patient, fk_consult
 ALTER TABLE chronic_disease_management.vwDiabetesCycleOfCare OWNER TO easygp;
 GRANT ALL ON TABLE chronic_disease_management.vwDiabetesCycleOfCare TO easygp;
 GRANT ALL ON TABLE chronic_disease_management.vwDiabetesCycleOfCare TO staff;
+
+truncate db.lu_version;
+insert into db.lu_version (lu_major,lu_minor) values (0, 60)

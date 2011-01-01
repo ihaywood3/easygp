@@ -1,4 +1,7 @@
 
+update  clin_consult.lu_audit_actions set insist_reason = True where pk = 11;
+
+
 ALTER TABLE clin_consult.lu_audit_actions OWNER TO easygp;
 GRANT ALL ON TABLE clin_consult.lu_audit_actions TO easygp;
 GRANT SELECT ON TABLE clin_consult.lu_audit_actions TO staff;
@@ -9,27 +12,28 @@ GRANT SELECT, INSERT ON TABLE clin_consult.lu_audit_reasons TO staff;
 
 drop table clin_recalls.lu_status;
 
-alter table clin_recalls.recalls rename column fk_status to fk_lu_audit_action;
+drop column  clin_recalls.recalls.fk_status cascade;
+alter table clin_recalls add column active boolean default true;
 
-COMMENT ON COLUMN clin_recalls.recalls.fk_lu_audit_action IS 
-'key to clin_consult.lu_audit_action table, ie things like not due, finalised, refused
-     corresponds to e.g gvar.RecallNotDue constants
-     this defaults to 1 = not due';
+COMMENT ON COLUMN clin_recalls.recalls.active IS 
+'Whether the recall is active or not';
 
 
 alter  Table clin_recalls.recalls drop column fk_audit cascade;
 -- cascades to clin_recalls.vwRecallsdue
 
+drop view clin_recalls.vwRecallsDue;
+
 CREATE OR REPLACE VIEW clin_recalls.vwrecallsdue AS 
  SELECT recalls.pk AS pk_recall, recalls.fk_consult, recalls.due, recalls.due - date(now()) AS days_due, 
  recalls.fk_reason, recalls.fk_contact_method, recalls.fk_urgency, recalls.fk_appointment_length, 
- recalls.fk_staff, recalls.fk_lu_audit_action, recalls.additional_text, recalls.deleted, recalls."interval", 
+ recalls.fk_staff, recalls.active, recalls.additional_text, recalls.deleted, recalls."interval", 
  recalls.fk_interval_unit, recalls.fk_progressnote, recalls.fk_pasthistory, vwpatients.fk_person, 
  vwpatients.wholename, vwpatients.firstname, vwpatients.surname, vwpatients.salutation, vwpatients.birthdate, 
  vwpatients.age, vwpatients.sex, vwpatients.title, vwpatients.street, vwpatients.town, vwpatients.state, vwpatients.postcode, 
  vwpatients.language_problems, vwpatients.language, consult.fk_patient, vwstaff.firstname AS staff_to_see_firstname, 
  vwstaff.surname AS staff_to_see_surname, vwstaff.wholename AS staff_to_see_wholename, vwstaff.title AS staff_to_see_title, lu_reasons.reason, 
- lu_urgency.urgency, lu_contact_type.type AS contact_method, lu_appointment_length.length AS appointment_length, lu_audit_actions.action, consult.consult_date
+ lu_urgency.urgency, lu_contact_type.type AS contact_method, lu_appointment_length.length AS appointment_length,  consult.consult_date
    FROM clin_recalls.recalls
    JOIN clin_consult.consult ON recalls.fk_consult = consult.pk
    JOIN contacts.vwpatients ON consult.fk_patient = vwpatients.fk_patient
@@ -38,13 +42,14 @@ CREATE OR REPLACE VIEW clin_recalls.vwrecallsdue AS
    JOIN common.lu_urgency ON recalls.fk_urgency = lu_urgency.pk
    JOIN contacts.lu_contact_type ON recalls.fk_contact_method = lu_contact_type.pk
    JOIN common.lu_appointment_length ON recalls.fk_appointment_length = lu_appointment_length.pk
-   JOIN clin_consult.lu_audit_actions ON recalls.fk_lu_audit_action =  lu_audit_actions.pk
-  WHERE recalls.deleted = false
+   WHERE recalls.deleted = false
   ORDER BY recalls.due - date(now()), consult.fk_patient;
 
 ALTER TABLE clin_recalls.vwrecallsdue OWNER TO easygp;
 GRANT ALL ON TABLE clin_recalls.vwrecallsdue TO easygp;
 GRANT ALL ON TABLE clin_recalls.vwrecallsdue TO staff;
+
+
 
 DROP VIEW clin_recalls.vwrecalls;
 
@@ -53,10 +58,10 @@ CREATE OR REPLACE VIEW clin_recalls.vwrecalls AS
  lu_contact_type.type AS contact_by, lu_appointment_length.length, lu_title.title, 
  (data_persons.firstname || ' '::text) || data_persons.surname AS wholename, 
  recalls.fk_consult, recalls.pk AS pk_recall, recalls.fk_reason, recalls.fk_contact_method, recalls.fk_urgency, 
- recalls.fk_appointment_length, recalls.fk_staff, recalls.fk_lu_audit_action AS fk_status, recalls."interval", 
+ recalls.fk_appointment_length, recalls.fk_staff, recalls.active, recalls."interval", 
  lu_units.abbrev_text, recalls.fk_interval_unit, recalls.additional_text, recalls.deleted, recalls.fk_pasthistory, 
  recalls.fk_progressnote, data_persons.firstname, data_persons.surname, data_persons.fk_title, 
- lu_contact_type.pk AS fk_contact_by, lu_audit_actions.action as status, lu_recall_intervals."interval" AS default_interval, 
+ lu_contact_type.pk AS fk_contact_by, lu_recall_intervals."interval" AS default_interval, 
  lu_recall_intervals.fk_interval_unit AS fk_default_interval_unit
    FROM clin_recalls.recalls
    JOIN clin_recalls.lu_recall_intervals ON recalls.fk_reason = lu_recall_intervals.fk_reason

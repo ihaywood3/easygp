@@ -1,28 +1,23 @@
 
 update  clin_consult.lu_audit_actions set insist_reason = True where pk = 11;
 
-
-ALTER TABLE clin_consult.lu_audit_actions OWNER TO easygp;
-GRANT ALL ON TABLE clin_consult.lu_audit_actions TO easygp;
 GRANT SELECT ON TABLE clin_consult.lu_audit_actions TO staff;
 
-ALTER TABLE clin_consult.lu_audit_reasons OWNER TO easygp;
-GRANT ALL ON TABLE clin_consult.lu_audit_reasons TO easygp;
 GRANT SELECT, INSERT ON TABLE clin_consult.lu_audit_reasons TO staff;
 
-drop table clin_recalls.lu_status;
+DROP VIEW clin_consult.vwprogressnotes;
+DROP VIEW clin_recalls.vwrecalls;
+drop view clin_recalls.vwrecallsaudit;
+drop table clin_recalls.lu_status cascade;
 
-drop column  clin_recalls.recalls.fk_status cascade;
-alter table clin_recalls add column active boolean default true;
+alter table clin_recalls.recalls add column active boolean default true;
 
 COMMENT ON COLUMN clin_recalls.recalls.active IS 
 'Whether the recall is active or not';
 
-
-alter  Table clin_recalls.recalls drop column fk_audit cascade;
--- cascades to clin_recalls.vwRecallsdue
-
 drop view clin_recalls.vwRecallsDue;
+alter table clin_recalls.recalls drop column fk_audit cascade;
+-- would cascade to clin_recalls.vwRecallsdue
 
 CREATE OR REPLACE VIEW clin_recalls.vwrecallsdue AS 
  SELECT recalls.pk AS pk_recall, recalls.fk_consult, recalls.due, recalls.due - date(now()) AS days_due, 
@@ -45,13 +40,8 @@ CREATE OR REPLACE VIEW clin_recalls.vwrecallsdue AS
    WHERE recalls.deleted = false
   ORDER BY recalls.due - date(now()), consult.fk_patient;
 
-ALTER TABLE clin_recalls.vwrecallsdue OWNER TO easygp;
-GRANT ALL ON TABLE clin_recalls.vwrecallsdue TO easygp;
 GRANT ALL ON TABLE clin_recalls.vwrecallsdue TO staff;
 
-
-
-DROP VIEW clin_recalls.vwrecalls;
 
 CREATE OR REPLACE VIEW clin_recalls.vwrecalls AS 
  SELECT consult.fk_patient, consult.consult_date, lu_reasons.reason, recalls.due, lu_urgency.urgency, 
@@ -76,13 +66,9 @@ CREATE OR REPLACE VIEW clin_recalls.vwrecalls AS
    LEFT JOIN common.lu_units ON recalls.fk_interval_unit = lu_units.pk
 ORDER BY consult.fk_patient, recalls.due;
 
-ALTER TABLE clin_recalls.vwrecalls OWNER TO easygp;
-GRANT ALL ON TABLE clin_recalls.vwrecalls TO easygp;
 GRANT ALL ON TABLE clin_recalls.vwrecalls TO staff;
 
 
-
-DROP VIEW clin_consult.vwprogressnotes;
 
 CREATE OR REPLACE VIEW clin_consult.vwprogressnotes AS 
  SELECT "CONSULT".fk_patient, progressnotes.pk AS pk_progressnote, "CONSULT".consult_date, "CONSULT_TYPE".type AS consult_type, "SECTION".section, 
@@ -105,11 +91,7 @@ CREATE OR REPLACE VIEW clin_consult.vwprogressnotes AS
   WHERE "CONSULT_TYPE".pk <> 8
   ORDER BY "CONSULT".fk_patient, "CONSULT".consult_date, "CONSULT".fk_staff, "SECTION".pk, progressnotes.fk_problem;
 
-ALTER TABLE clin_consult.vwprogressnotes OWNER TO easygp;
-GRANT ALL ON TABLE clin_consult.vwprogressnotes TO easygp;
 GRANT SELECT ON TABLE clin_consult.vwprogressnotes TO staff;
-
-
 
 truncate db.lu_version;
 insert into db.lu_version (lu_major,lu_minor) values (0, 61)

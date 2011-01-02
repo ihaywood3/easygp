@@ -63,7 +63,7 @@ comment on table severity_level is
 
 copy severity_level(pk,description) from stdin with delimiter as '|';
 1|noting only
-2|mild effects
+2|mild effects, requires simple clinical action
 3|significant but temporary effects
 4|severe morbidity
 5|risk of death
@@ -84,6 +84,11 @@ I appreciate this list will get long, some values may only apply to one or two d
 I think it is important to normalise. The interface may need to use a text box (it will be
 too long for a pick list) and confirm with users if they want to create a new entry.';
 
+
+copy clinical_effects(description,fk_severity) from stdin with delimiter '|';
+increase in INR|2
+sharp decrease in INR|2
+increase in plasma concentration
 -- ==================================================================
 
 create table pharmacologic_mechanisms

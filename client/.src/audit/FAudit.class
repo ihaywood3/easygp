@@ -13,30 +13,25 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'
-'PURPOSE: Enforces an audit trail
-'         present the user With information about what they are about
-'         to act upon eg delete a record, or mark a recall complete
-'----------------------------------------------------------------------
+'-----------------------------------------------------------------------------
+'PURPOSE          Enforces an audit trail
+'                 present the user With information about what they are about
+'                 to act upon eg delete a record, or mark a recall complete
+'                 eg. Table      clin_recalls.recalls
+'                     Data       colonoscopy due 10/12/20
+'HOW THIS WORKS   Data is loaded into appropriate textboxes in Init() which
+'                 is set by the calling subroutine (modAudit.MakeAudit(..)
+'                 If the reason the user gives for their action is not in the
+'                 table clin_consult.lu_audit_reasons, then this is automically
+'                 added on a per-user basis (these are popped up in the list
+'                 as they type to use a previous reason)
+'                 on closing the dialog the return values are:
+'                 0 if cancelled
+'                 primary key or clin_consult.lu_audit_reasons if btnOK
+'-----------------------------------------------------------------------------
 Private audit_reasons As Collection
 Private pk_reason As Integer
-
-Public Function GetReasonPK() As Integer
-  
-  If pk_reason = 0 Then
-    ' we need to make a new reason
-    If txtAuditReason.Text = "" Then
-      ' this shouldn't ever happen
-      Error.Raise("user refuses to give a reason")
-    Else
-      Return modAudit.New_Reason(txtAuditReason.Text)
-    Endif
-  Else
-    Return pk_reason
-  Endif
-  
-End
-
+Private bExit As Boolean
 
 Public Sub Init(audit_action As String, tbl As String, comment As String) 
    '--------------------------------------------------------------------------
@@ -49,37 +44,43 @@ Public Sub Init(audit_action As String, tbl As String, comment As String)
    lblHeading.text = tbl & " " & audit_action
    textlabel1.text = comment
    pk_reason = 0
+   
 End
 
 Public Sub btnOK_Click()
    '------------------------------------------------------------------
    'User happy!, and pressed the ok button
-   'pass back the reason pk of audit.lu_reasons or pk=0 if new reason
-   'typing in the textbox, or picking from listview2
-   'IAN FIXME: a better way to pass back the reason
+   'If this is a new reason, then save it
+   'pass back the reason pk of audit.lu_reasons
    '------------------------------------------------------------------
-  If Trim(txtAuditReason.text) = "" Then 
-   Message.Info("Please enter a reason for your actions before proceeding")
-   Return 
-  Endif
- ' const.globalstring = Trim(txtAuditReason.text)
- If pk_reason = 0 Then 
-   Me.Close(modAudit.New_Reason(txtAuditReason.Text))
- Else
-   Me.Close(pk_reason)
- End If  
+   
+   If Trim(txtAuditReason.text) = "" Then 
+      Message.Info("Please enter a reason for your actions before proceeding")
+      txtAuditReason.SetFocus()
+      Return 
+   Endif
+   If pk_reason = 0 Then 
+      Me.Close(modAudit.New_Reason(txtAuditReason.Text))
+   Else
+      Me.Close(pk_reason)
+   End If  
+   
 End
 
 Public Sub btnCancel_Click()
+   
    Me.Close(0)
+   
 End
 
-
 Public Sub Form_Open()
+   
    Dim shtml As String 
+   
    Me.Title = "Audit Form"                           
    Me.Center                                            
    txtAuditReason.SetFocus()
+   
 End
 
 Public Sub txtAuditReason_Change()
@@ -87,10 +88,13 @@ Public Sub txtAuditReason_Change()
    'If user deletes all the text in the reason textbox
    'empty the collection which will contain data
    '--------------------------------------------------
+   
    If txtAuditReason.Text = "" Then 
       audit_reasons = New Collection
       pk_reason = 0
+      listview2.Visible = False  
    Endif
+   
 End
 
 Public Sub txtAuditReason_KeyRelease()
@@ -99,8 +103,10 @@ Public Sub txtAuditReason_KeyRelease()
    'one ie fetch a list (if it exists) of reasons for the audit
    'action on a per-user basis
    '------------------------------------------------------------
+   
    Dim reason As Collection 
-
+   
+   If Bexit Then Return 
    audit_reasons = modAudit.Get_Reasons(Trim(txtAuditReason.text))
    listview2.Clear()
    If audit_reasons.count Then
@@ -111,19 +117,22 @@ Public Sub txtAuditReason_KeyRelease()
       listview2.Raise()  
       pk_reason = 0
    Else
-     listview2.Visible = False  
+      listview2.Visible = False  
    End If  
+   
 End
 
 Public Sub txtAuditReason_GotFocus()
    '-------------------------------------
    'Align the popup list with the textbox
    '-------------------------------------
+   
    With listview2
-       .top = hbox10.top + Hbox10.height + Vbox3.padding  ' Vbox2.Padding
-       .width = txtAuditReason.width
-       .left = Hbox10.left + txtAuditReason.Left + Vbox3.Padding 
-       .Raise
+      .top = hbox2.top + Hbox2.height
+      .width = txtAuditReason.width
+      .left = Hbox2.left + txtAuditReason.Left + Vbox4.Padding 
+      .Raise
+      .Visible = False  
    End With
    
 End
@@ -140,26 +149,30 @@ Public Sub txtAuditReason_KeyPress()
    'If key pressed = down arrow, simply move
    'focus onto the list for user to select
    '--------------------------------------------
-  Dim x As Integer
-  Select Case Key.Code
-          Case Key.tab, Key.Return
-            If listview2.Visible Then
-                For x = 0 To listview2.Count
-                      If Lower(Trim(txtAuditReason.text)) = Lower(listview2.Item.text) Then
-                        ListView2_DblClick()
-                        Break
-                      End If
-                Next
-            End If
-            btnOK.SetFocus()
-            
-         Case Key.Down
-           If listview2.Visible Then
-              listview2.SetFocus()
-              listview2.MoveFirst
-              listview2.Item.Selected = True
-           End If
-  End Select
+   
+   Dim x As Integer
+   
+   Select Case Key.Code
+      Case Key.tab, Key.Return
+         If listview2.Visible Then
+            listview2.MoveFirst
+            For x = 0 To listview2.Count - 1
+               If Lower(Trim(txtAuditReason.text)) = Lower(listview2.Item.text) Then
+                  ListView2_DblClick()
+                  btnOK.SetFocus()
+                  Break
+               End If
+               listview2.MoveNext()
+            Next
+         End If
+      Case Key.Down
+         If listview2.Visible Then
+            listview2.SetFocus()
+            listview2.MoveFirst
+            listview2.Item.Selected = True
+         End If
+   End Select
+   
 End
 
 Public Sub ListView2_KeyPress()
@@ -167,29 +180,35 @@ Public Sub ListView2_KeyPress()
    'User has pressed <enter> key whilst perusing the
    'list of previous reasons, so accept this data
    '------------------------------------------------
+   
    If Key.code = Key.Return Then
       ListView2_DblClick()
    End If   
+   
 End
 
 Public Sub ListView2_DblClick()
-   '----------------------------------------------------
+   '-------------------------------------------------------
    'User has selected a reason for the audit action from
    'a list of his previously used reason
    'Accept this to textbox
    'pass back the pk of clin_audit.lu_reasons table
-   'FIXME IAN
-   '----------------------------------------------------
+   'via the OK button (return value of this form is integer
+   '-------------------------------------------------------
+   bExit = True   
    listview2.MoveCurrent
    txtAuditReason.text = listview2.Item.text
    pk_reason = listview2.Item.Key
-
+   listview2.Visible = False  
+   bExit = False  
+   btnOK.SetFocus()
+   
 End
 
 Public Sub btnOK_KeyPress()
-
-  If key.code = key.return Then  
+   
+   If key.code = key.return Then  
       btnOK_Click()
-  End If 
-
+   End If 
+   
 End

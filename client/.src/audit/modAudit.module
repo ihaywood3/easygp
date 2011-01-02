@@ -14,16 +14,18 @@
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-Public Sub MakeAudit(consult As CConsult, audit_action As String, tbl As String, fk_row As Integer, fk_section As Integer, Optional notes As String)
-   ' creates an audit entry
-   ' consult: the current consult
-   ' audit_action: the action as a string, must be from the list
-   ' in clin_consult.lu_actions
-   ' tbl: the name of the backend table being audited, as a string, with schema
-   ' fk_row: the PK of the row being auditing
-   ' fk_section = key to clin_consult.lu_progressnote_section table e.g could be workcover, recalls, staff tasks etc.
-   ' notes: the free-html description of the change provided by calling code
-   
+Public Sub MakeAudit(consult As CConsult, audit_action As String, tbl As String, fk_row As Integer, fk_section As Integer, Optional notes As String) As Boolean
+   '---------------------------------------------------------------------------------------
+   ' Creates an audit entry, uses FAudit not an instance as this is a modal window
+   '
+   ' consult      = the current consult
+   ' audit_action = the action as a string, must be from clin_consult.lu_audit_actions
+   ' tbl          = the name primary key of the row being auditing
+   ' fk_section   = key to clin_consult.lu_progressnote_section table e.g could be workcover
+   ' notes        = the free-html description of the change provided by calling code
+   '
+   'Returns True if succeeds
+   '-----------------------------------------------------------------------------------------
    Dim audit As New Collection
    Dim s As String
    Dim action_coll As Collection
@@ -38,25 +40,26 @@ Public Sub MakeAudit(consult As CConsult, audit_action As String, tbl As String,
       s = "Unrecognised audit action " & audit_action
       Log.ErrorMsg(s)
       Error.Raise(s)
+      Return False
    Endif
    action_coll = modCache.Get("clin_consult.lu_audit_actions", audit!fk_audit_action)
    If action_coll!insist_reason Then
-      ' user needs to give us a reason
-      'form_audit = New FAudit
-     ' form_audit.Init(action_coll!action, tbl, notes)
+      '------------------------------------------------------------
+      'clin_consult.lu_audit_actions has column to enforce a reason
+      'for pre-defined actions eg 'Delete'
+      'FAudit returns the key of clin_consult.lu_audit_reasons
+      '-------------------------------------------------------------
       Faudit.Init(action_coll!action, tbl, notes)
       audit!fk_audit_reason = FAudit.ShowModal() 
       If audit!fk_audit_reason = 0 Then 
-   '   If FAudit.ShowModal() = 0 Then
-         Error.Raise("user refuses to give a reason")
+        ' Error.Raise("user refuses to give a reason") 'Ian, can we 'Re-enter this routine here?
+         Message.Warning("You must give a reason for this action\n\nThe operation will now be terminated", "Ok")
+         Return False
       Endif
-    ' audit!fk_audit_reason = form_audit.GetReasonPK()
-     ' audit!fk_audit_reason = FAudit.GetReasonPK()
-     
    Endif
    audit!fk_consult = consult.GetPK()
    modDBConnect.insert("clin_consult.progressnotes", audit) 
-   
+   Return True 
 End
 
 Public Function Get_Reasons(reason As String) As Collection 
@@ -191,11 +194,13 @@ Public Function MakeTrail(...) As String
       sHtml = Replace(sHtml, "%logged_by", r!title & " " & r!firstname & " " & r!surname & "<BR><small><small>" & "(" & r!role & ")" & "<small><small>")
       sHtml = Replace(sHtml, "%date_updated", "")
       sHtml = Replace(sHtml, "%updated_by", "")
+      sHtml = Replace(sHtml, "%action", r!audit_action)
      Else
       sHtml = Replace(sHtml, "%date_updated", Format$(r!consult_date, "dd/mm/yyyy") & "<BR><small><small>" & Format$(r!consult_date, "hh:nn:ss") & "</small></small>")
       sHtml = Replace(sHtml, "%date_logged", "")
       sHtml = Replace(sHtml, "%logged_by", "")
       sHtml = Replace(sHtml, "%updated_by", r!title & " " & r!firstname & " " & r!surname & "<BR><small><small>" & "(" & r!role & ")" & "</small></small>")
+      sHtml = Replace(sHtml, "%action", r!audit_action)
      End If
      sHtml = Replace(sHtml, "%action", r!audit_action)
      If Not IsNull(r!audit_reason) Then
@@ -205,18 +210,6 @@ Public Function MakeTrail(...) As String
      End If 
      Print 
      Inc i 
-      ' If r!audit_action = "note on task" Then
-      '    sHtml &= r!audit_action & ": '" & r!notes & "'"
-      ' Else
-      '    sHtml &= r!audit_action & " " & r!notes
-      '    If Not IsNull(r!audit_reason) Then
-      '       sHtml &= "<BR>s" & r!audit_reason
-      '    Endif
-      ' Endif
-      ' 
-      ' sHtml &= " on " & Format$(r!consult_date, "dd/mm/yy hh:nn:ss") & "<BR/>"
-      ' FIXME: put audit_reason in here too
-     ' sHtml &= "</TD></TR>"
    Next
    Print sHTML
    

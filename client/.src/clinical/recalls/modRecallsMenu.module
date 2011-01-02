@@ -12,10 +12,21 @@
 ' GNU General Public License for more details.
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'
-' PURPOSE      Action menu options over lists of recalls
-' BUGS         Email rterry@internode.on.net, rterry@pacific.net.au
-' -------------------------------------------------------------------
+'-------------------------------------------------------------------------------------
+' PURPOSE            Action menu options over lists of recalls
+' HOW THIS WORKS     Currently only integer tags of a menu item are handled
+'                    Each of these corresponds to clin_consult.lu_audit_actions keys
+'                    If we need for example new intervals for a recall, appropriate
+'                    modal dialogs are popped up.
+'                    At the end of the day, the recall is saved and an audit trail
+'                    is created, if necessary modAudit.MakeAudit will popup a modal
+'                    dialog box to enforce a reason for the action eg a deletion
+' SPECIAL NOTES      Note that recalls are 're-used' or 'rolled on'. For example
+'                    if a hba1c is re-scheduled, then the original clin_recalls.recalls
+'                    entry is used, but an entire audit trail is kept in the table
+'                    clin_consult.progressnotes (as are all audits)
+' BUGS               Email rterry@internode.on.net, rterry@pacific.net.au
+' -------------------------------------------------------------------------------------
 Private currentconsult As Cconsult
 Private currentrecall As Collection
 Private NewRecall As Collection 
@@ -33,10 +44,11 @@ Public Sub Process(recall As Collection, tag As String, cons As Cconsult)
    
    Dim FNewInterval As FRecallAdjustInterval 'popup to get new interval and re-log recall
    Dim bDeleted As Boolean                   'hence default = False =don't delete completed recall
-   Dim bActive As Boolean                    'If true the recall is still active
+   Dim bActive As Boolean                    'If true the recall is still active, default to false
    Dim iAuditAction As Integer
    Dim audit_reason As String 
    
+   Inc Application.Busy
    currentconsult = cons                     'used in other subroutines in this module
    currentrecall = recall                    'used in other subroutines in this module
    '------------------------------------------------------------------------------------------------------
@@ -56,16 +68,29 @@ Public Sub Process(recall As Collection, tag As String, cons As Cconsult)
          Case const.cAuditAction_Refused                                         'user marking this as refused, giving no explanation
             audit_reason = "flagged as refused without reason being given"
          Case const.cAuditAction_CompletedRepeatSameInterval, const.cAuditAction_CompletedRepeatNewInterval, const.cAuditAction_ReScheduled
+            'NewRecall = modUtil.Copy_Collection(currentrecall) 'FIXME - once Ian fixes copy collection to retain null fields.
+            bActive = True                                                          'want this to remain an active recall
+            newrecall = Recall_CreateCopy()                                         'copy essential fields to new collection
             '---------------------------------------------------------------------------
-            'Popup modal dialog to get the new interval or just duplicate the old recall
+            'Need a new interval or re-scheduling to different date, need a popup dialog
             '---------------------------------------------------------------------------
             If iAuditAction = const.cAuditAction_CompletedRepeatNewInterval Or iAuditAction = const.cAuditAction_ReScheduled Then
-               FNewInterval = New FRecallAdjustInterval
-               FNewInterval.Init(currentrecall)
-               If Not FNewInterval.ShowModal() Then Return 
+               With FNewInterval = New FRecallAdjustInterval
+                  .title = "Adjust Recall Interval"
+                  .Init(NewRecall)                                                 'show recall reason/dates in the dialog box
+               End With
+               Dec Application.Busy
+               If Not FNewInterval.ShowModal() Then
+                  Inc Application.Busy
+                  Return                          'user has cancelled the operation
+               End If
+               Print NewRecall
+               
+               Inc Application.busy
+            Else
+               newrecall!due = Calc_Date_Due(newrecall!fk_interval_unit, newrecall!interval)         'repeating same interval - work out the due date from interval and units
             End If   
-            NewRecall = Recall_CreateNew()
-            Select Case iAuditAction
+            Select Case iAuditAction                                                'construct the audit reason
                Case const.cAuditAction_CompletedRepeatSameInterval
                   audit_reason = "recall re-logged at same interval of "
                Case const.cAuditAction_CompletedRepeatNewInterval
@@ -78,80 +103,87 @@ Public Sub Process(recall As Collection, tag As String, cons As Cconsult)
                audit_reason = audit_reason & "s"
             End If
             audit_reason = audit_reason & " now due on " & Format(NewRecall!due, "dd/mm/yyyy")
-            NewRecall!fk_recall = modDBConnect.insert("clin_recalls.recalls", NewRecall)
+            '--------------------------------------------
+            ' Save the modified recall with the new dates
+            '--------------------------------------------
+            If Not modDBConnect.update("clin_recalls.recalls", currentrecall, NewRecall, "pk_recall") Then 
+               Message.Info("Failed to save the recall")
+               modDBConnect.RollBack()
+               Dec Application.Busy
+               Return 
+            End If
          Case const.cAuditAction_MarkDeleted, const.cAuditAction_CompletedWithExplanation, const.cAuditAction_RefusedWithExplanation
-            'audit_reason will be enforced by the auditing process with popup FAudit for user to enter reason
-            bDeleted = True  
+            bDeleted = True   'audit_reason will be enforced by the auditing process with popup FAudit for user to enter reason later
       End Select
       '--------------------------------------------------------------------
       'Mark off the recall in clin_recalls, or mark deleted if so indicated
       'put audit trail in clin_consult.progress notes
       'refresh the lists in the gui
       '--------------------------------------------------------------------
-      modRecallsDBI.Mark_Completed(currentrecall!pk_recall, bActive, bDeleted) 
-      modAudit.MakeAudit(currentconsult, const.sAuditAction[iAuditAction], "clin_recalls.recalls", recall!pk_recall, const.cSection_Recalls, audit_reason)
-      modDBConnect.CommitTrans()
-      '---------------
-      'Refresh the gui
-      '---------------
-      currentconsult.Refresh("recalls_logged")  
-      FClinical.Refresh_Section(const.cSection_Recalls) 
-      'Need to also figure out how to refresh the recalls list of FRecalls is showing
-      '    FRecall = FClinical.CurrentObject()
-      '   If FClinical.VisiblePage.Tag = "Recalls" Then
-      '  End If
-      
-      currentconsult.Refresh("progress_notes")  
-      FClinical.Refresh_Section(const.cSection_GeneralNotes)
-   Else
-      Process_MenuItem(tag) 'NOT DONE YET
-   End If   
-   
+      If Not bactive Then
+         modRecallsDBI.Mark_Completed(currentrecall!pk_recall, bActive, bDeleted)
+      End If    
+      Dec Application.Busy
+      If modAudit.MakeAudit(currentconsult, const.sAuditAction[iAuditAction], "clin_recalls.recalls", recall!pk_recall, const.cSection_Recalls, audit_reason) Then 
+         Inc Application.Busy
+         modDBConnect.CommitTrans()
+         currentconsult.Refresh("recalls_logged")           'refresh the recalls in Fclinical list
+         FClinical.Refresh_Section(const.cSection_Recalls) 
+         'Need to also figure out how to refresh the recalls list of FRecalls is showing
+         '    FRecall = FClinical.CurrentObject()
+         '   If FClinical.VisiblePage.Tag = "Recalls" Then
+         '  End If
+         
+         currentconsult.Refresh("progress_notes")  
+         FClinical.Refresh_Section(const.cSection_GeneralNotes)
+          Dec Application.busy 
+      Else
+          modDBConnect.RollBack()  
+      End If   
+   End If 
+  
 End 
 
-Public Function Recall_CreateNew() As Collection 
-   '------------------------------------------------------------------------------
-   ' Create an entirely new recall, either with same interval
-   ' if iAuditAction  = const.cAuditAction_RecallCompletedRepeatSameInterval
-   ' or a new one 
-   ' if iAuditAction = const.cAuditAction_RecallCompletedRepeatNewInterval
-   ' (the fk_interval and interval already re-set in the currentRecall Collection
-   '----------------------------------------------------------------------------
+Public Function Recall_CreateCopy() As Collection 
+   '--------------------------------------------
+   'Makes a copy (sort of) of the current recall
+   'at least, of all the fields we need
+   '--------------------------------------------
    
    Dim NewRecall As New Collection 
-   
+
+   NewRecall!pk_recall = currentrecall!pk_recall
    NewRecall!fk_consult = currentconsult.GetPK()
-   NewRecall!fk_urgency = CurrentRecall!fk_urgency
-   NewRecall!fk_reason = CurrentRecall!fk_reason
-   NewRecall!fk_interval_unit = CurrentRecall!fk_interval_unit
-   NewRecall!interval = CurrentRecall!interval
-   NewRecall!due = CurrentRecall!due
-   NewRecall!fk_contact_method = CurrentRecall!fk_contact_method
-   NewRecall!fk_appointment_length = CurrentRecall!fk_appointment_length
+   NewRecall!fk_urgency = currentrecall!fk_urgency
+   NewRecall!fk_reason = currentrecall!fk_reason
+   newrecall!reason = currentrecall!reason
+   NewRecall!fk_interval_unit = currentrecall!fk_interval_unit
+   NewRecall!interval = currentrecall!interval
+   NewRecall!due = currentrecall!due
+   NewRecall!fk_contact_method = currentrecall!fk_contact_method
+   NewRecall!fk_appointment_length = currentrecall!fk_appointment_length
    NewRecall!active = True
-   
    NewRecall!fk_staff = modDBConnect.currentUser!fk_staff
-   'Note FIXME this makes an assumption which may not be correct, so check this
-   ' the all dates are from Now()
-   Select Case CurrentRecall!fk_interval_unit
-      Case const.Units_day
-         NewRecall!due = DateAdd(Now, gb.Day, CurrentRecall!interval)
-      Case const.Units_week
-         NewRecall!due = DateAdd(Now, gb.Week, CurrentRecall!interval)
-      Case const.Units_month
-         NewRecall!due = DateAdd(Now, gb.Month, CurrentRecall!interval)
-      Case const.Units_year
-         NewRecall!due = DateAdd(Now, gb.Year, CurrentRecall!interval)
-   End Select
    Return NewRecall
    
 End
 
-Public Sub Process_MenuItem(tag As String)
+Public Function Calc_Date_Due(fk_interval_unit As Integer, interval As Integer) As Date
+   '--------------------------------------------------------------
+   'Calculates the date due from Now() given the unit and interval
+   '--------------------------------------------------------------
+   Dim Due As Date
    
-   Select Case tag
-      Case "Print"
-         
-   End Select
-   
+   Select Case fk_interval_unit
+        Case const.Units_day
+            due = DateAdd(Now, gb.Day, interval)
+        Case const.Units_week
+            due = DateAdd(Now, gb.Week, interval)
+        Case const.Units_month
+            due = DateAdd(Now, gb.Month, interval)
+        Case const.Units_year
+            due = DateAdd(Now, gb.Year, interval)
+    End Select
+    Return due
+  
 End

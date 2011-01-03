@@ -5,19 +5,20 @@ GRANT SELECT ON TABLE clin_consult.lu_audit_actions TO staff;
 
 GRANT SELECT, INSERT ON TABLE clin_consult.lu_audit_reasons TO staff;
 
+
+
 DROP VIEW clin_consult.vwprogressnotes;
-DROP VIEW clin_recalls.vwrecalls;
-drop view clin_recalls.vwrecallsaudit;
 drop table clin_recalls.lu_status cascade;
+drop view clin_recalls.vwrecallsaudit;
+
 
 alter table clin_recalls.recalls add column active boolean default true;
 
 COMMENT ON COLUMN clin_recalls.recalls.active IS 
 'Whether the recall is active or not';
 
-drop view clin_recalls.vwRecallsDue;
 alter table clin_recalls.recalls drop column fk_audit cascade;
--- would cascade to clin_recalls.vwRecallsdue
+
 
 CREATE OR REPLACE VIEW clin_recalls.vwrecallsdue AS 
  SELECT recalls.pk AS pk_recall, recalls.fk_consult, recalls.due, recalls.due - date(now()) AS days_due, 

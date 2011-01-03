@@ -1,0 +1,35 @@
+#!/bin/sh -e
+
+# Source debconf library.
+. /usr/share/debconf/confmodule
+
+# Check their answer.
+db_get easygp-server/password
+PASSWORD=$RET
+CONN="host=locahost dbname=easygp user=easygp password=$PASSWORD"
+
+db_reset easygp-server/password
+
+if [ "$PASSWORD" = "not-set" ] ; then
+  echo "Password not set, so no database initialisation performed"
+else
+  cd /usr/share/easygp-server
+  if psql -l | grep -q easygp ; then
+     # database already exists, so run updates
+     ./update-server.sh $CONN
+   else
+     # make database from scratch
+     (
+       echo CREATE USER easygp CREATEUSER PASSWORD \'$PASSWORD\';
+       echo CREATE DATABASE easygp OWNER easygp;
+       echo CREATE ROLE staff NOLOGIN;
+       echo \\q
+     ) | su postgres -c "psql template1"
+     (
+        echo \\i easygp.schema.sql
+        echo \\i easygp.data.sql
+        echo \\i easygp.grants.sql
+        echo \\i coding/icd10_import_gambas.sql
+     ) | psql $CONN
+  fi
+fi

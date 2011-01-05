@@ -41,7 +41,6 @@
 '      creates an empty new currentconditon
 '      When use clicks the Accept button > Save()
 
-
 '   4) Saving  I had some trouble as I'm pretty slow with the save routines.
 '      a) Social history. As there is no <OK> or <SAVe> button for this, I've
 '         just opted to save it anytime a save is done, or if the form is closed
@@ -104,7 +103,9 @@ Public Sub set_embedded(flag As Boolean)
    '--------------------------------------------------
    'If this form is embeded from another form set flag
    '--------------------------------------------------
+   
    bEmbedded = flag
+   
 End
 
 Public Sub Init(cons As CConsult)
@@ -112,15 +113,15 @@ Public Sub Init(cons As CConsult)
    'PURPOSE    :Basic initialiseation
    'CALLED BY  :calling form e.g FrmClinical.Editor_ShowPage()
    '---------------------------------------------------------- 
+   
    bExit = True                  'stop change events triggering
    currentconsult = cons         'set current consult on this form
    Try Settings_Load()         'set splits, font sizes etc
-  ' Reset_Fonts()                 
-   EditArea_Resize_Labels()      'make sure label text visible full width 
-   modEditAreaHelpers.Resize_labels(VBox_EditArea, lblmeasure) 'if system fonts changed resize fonts
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblmeasure)
+   bexit = False  
    SocialHistory_Display()       'display current social history
    cvwConditions.Columns.count = 3
-
+   
    FamilyMembersList_Refresh()   'Display family members history
    If lvwMembers.count Then      'If there are actually family members
       '---------------------------------------------------------------
@@ -129,32 +130,39 @@ Public Sub Init(cons As CConsult)
       lvwMembers.MoveFirst()     'move to first on the list
       lvwMembers_Click           'click event to show member/condition
    Else
+      bExit = True 
       EditArea_Clear()           'no data at all - implicit add
       
    End If   
    bExit = False   
+   
 End
 
-
 Public Sub Form_Close()
-  '---------------------------------------------
-  'Save settings of all splits etc on form close
-  '---------------------------------------------
-  Settings_Save()         
-  SocialHistory_Save()           'no 'save social history button'
+   '---------------------------------------------
+   'Save settings of all splits etc on form close
+   '---------------------------------------------
+   
+   Settings_Save()         
+   Save()           'no 'save social history button'
+   
 End
 
 Public Sub Save()
    '-----------------------------------
    'Saves the family and social history
    '-----------------------------------
-   modDBConnect.BeginTrans() 
-      SocialHistory_Save()          'save this every time.
-      FamilyHistory_Save()          'save family history
-   modDBConnect.CommitTrans()
-   currentconsult.Refresh("social_history")  
-   SocialHistory_Display()
-   Clear_DataChange_Indicators() 'remove red borders around controls
+   
+   If Vbox_EditArea.padding = 0 Then Return 
+   
+   SocialHistory_Save()                          'save this every time.
+   
+   If Valid_EditArea_Contents() Then
+      FamilyHistory_Save()                           'save family history
+      EditArea_Notify_DataChange(False)
+   End If
+   EditArea_Notify_DataChange(True)
+   
 End
 
 Public Sub SocialHistory_Save()
@@ -168,23 +176,17 @@ Public Sub SocialHistory_Save()
    '           If tempted to rationalise this code, please read
    '           the reasons for its oddness below
    '----------------------------------------------------------
+   
    Dim item As New Collection
-   '------------------------------------------------------------------
-   'If not an existing record, and nothing present, don't try and save
-   '------------------------------------------------------------------
-   If Trim(teSocialHistory.text) & Trim(taResponsiblePerson.text) = "" And pk_socialhistory = -1 Then
-       Vbox_SocialHistory.padding = 0
-       HBox_ResponsiblePerson.padding = 0
-       Return 
-   End If
+   
    '------------------------------------------------------------------------------------
    'If you read this, this duplication may seem stupid, but is done so for these reasons
    'If a new record and got this far, one or other of these two things contains data
    '------------------------------------------------------------------------------------
    If pk_socialhistory = -1 Then
-     
+      
       item!history = Trim(teSocialHistory.text)
-      item!responsible_person = Trim(taResponsiblePerson.text)
+      item!responsible_person = Trim(txtResponsiblePerson.text)
    Else
       '-------------------------------------------------------------------------------------------------
       'social history already has a pk, so must have had some data in it previously
@@ -196,12 +198,14 @@ Public Sub SocialHistory_Save()
       '--------------------------------------------------------------------------------------------------
       item!pk_socialhistory = pk_socialhistory
       item.Add(Trim(teSocialHistory.text), "history")
-      item.Add(Trim(taResponsiblePerson.text), "responsible_person") 
+      item.Add(Trim(txtResponsiblePerson.text), "responsible_person") 
    End If
    pk_socialhistory = modSocialHistoryDBI.Save(currentconsult, pk_socialhistory, item) 
- 
+   modDBConnect.CommitTrans()                    'commit first in case FH not valid
+   currentconsult.Refresh("social_history")  
+   SocialHistory_Display()
+   
 End
-
 
 Public Sub Reset_Fonts()
    '-----------------------------------------------------------------------------
@@ -214,65 +218,57 @@ Public Sub Reset_Fonts()
    '             I have set ones I don't want to be resized manually by this
    '             routine too auto-resize = True - ie they will do it themselves
    '-----------------------------------------------------------------------------
+   
    Dim hCtrl As Control
    Dim ABox As HBox
    Dim lbl As Label
-  
-   For Each Hctrl In VBox_EditArea.Children
-    If hctrl Is Hbox Then
-       Abox = hctrl
-       For Each hctrl In Abox.Children
-          If hctrl Is Label Then
-             lbl = hctrl
-              If lbl.AutoResize = False Then
-                lbl.width = lblmeasure.Width 
-             End If   
-             Break
-          End If
-       Next
-    End If
+   
+   For Each Hctrl In Vbox_EditArea_inner.Children
+      If hctrl Is Hbox Then
+         Abox = hctrl
+         For Each hctrl In Abox.Children
+            If hctrl Is Label Then
+               lbl = hctrl
+               If lbl.AutoResize = False Then
+                  lbl.width = lblmeasure.Width 
+               End If   
+               Break
+            End If
+         Next
+      End If
    Next
+   
 End
 
-
 Private Sub Settings_Save()
-
-
-         '-------------------------------------------
-         'Save the sizes of splits to the config file
-         '-------------------------------------------
-         If bEmbedded Then
-            Settings["FamilyHistory_Embedded/Vsplit_FamilyHistory"] = Vsplit_FamilyHistory.Layout
-            Settings["FamilyHistory_Embedded/HSplit_MembersConditions"] = HSplit_MembersConditions.layout
-            Settings["FamilyHistory_Embedded/HSplit_SocialHistory"] = HSplit_SocialHistory.layout
-         Else
-            Settings["FamilyHistory/Vsplit_FamilyHistory"] = Vsplit_FamilyHistory.Layout
-            Settings["FamilyHistory/HSplit_MembersConditions"] = HSplit_MembersConditions.layout
-            Settings["FamilyHistory/HSplit_SocialHistory"] = HSplit_SocialHistory.layout
-         End If
    
-
+   '-------------------------------------------
+   'Save the sizes of splits to the config file
+   '-------------------------------------------
+   If bEmbedded Then
+      Settings["FamilyHistory_Embedded/Vsplit_FamilyHistory"] = Vsplit_FamilyHistory.Layout
+      Settings["FamilyHistory_Embedded/HSplit_MembersConditions"] = HSplit_MembersConditions.layout
+   Else
+      Settings["FamilyHistory/Vsplit_FamilyHistory"] = Vsplit_FamilyHistory.Layout
+      Settings["FamilyHistory/HSplit_MembersConditions"] = HSplit_MembersConditions.layout
+   End If
+   
 End
 
 Private Sub Settings_Load()
-
-
-      '-------------------------------------------
-      'load the sizes of splits from the config file
-      '-------------------------------------------
-      If bEmbedded Then
-         Try Vsplit_FamilyHistory.Layout = Settings["FamilyHistory_Embedded/Vsplit_FamilyHistory"]
-         Try HSplit_MembersConditions.layout = Settings["FamilyHistory_Embedded/HSplit_MembersConditions"]
-         Try HSplit_SocialHistory.layout = Settings["FamilyHistory_Embedded/HSplit_SocialHistory"]
-      Else
-         Try Vsplit_FamilyHistory.Layout = Settings["FamilyHistory/Vsplit_FamilyHistory"]
-         Try HSplit_MembersConditions.layout = Settings["FamilyHistory/HSplit_MembersConditions"]
-         Try HSplit_SocialHistory.layout = Settings["FamilyHistory/HSplit_SocialHistory"]
-       End If
    
-
+   '-------------------------------------------
+   'load the sizes of splits from the config file
+   '-------------------------------------------
+   If bEmbedded Then
+      Try Vsplit_FamilyHistory.Layout = Settings["FamilyHistory_Embedded/Vsplit_FamilyHistory"]
+      Try HSplit_MembersConditions.layout = Settings["FamilyHistory_Embedded/HSplit_MembersConditions"]
+   Else
+      Try Vsplit_FamilyHistory.Layout = Settings["FamilyHistory/Vsplit_FamilyHistory"]
+      Try HSplit_MembersConditions.layout = Settings["FamilyHistory/HSplit_MembersConditions"]
+   End If
+   
 End
-
 
 Public Sub SocialHistory_Display()
    '-----------------------------------------
@@ -280,17 +276,18 @@ Public Sub SocialHistory_Display()
    'there is never more than 1 member in the
    'social history colection
    '-----------------------------------------
-    Dim item As Collection
-    
-    pk_socialhistory = -1
-    For Each item In currentconsult!social_history
-       taResponsiblePerson.text = item!responsible_person
-       teSocialHistory.text = item!history
-       pk_socialhistory = item!pk_socialhistory
-    Next
-    bExit = False
+   
+   Dim item As Collection
+   
+   pk_socialhistory = -1
+   For Each item In currentconsult!social_history
+      txtResponsiblePerson.text = item!responsible_person
+      teSocialHistory.text = item!history
+      pk_socialhistory = item!pk_socialhistory
+   Next
+   bExit = False
+   
 End
-
 
 Public Function Data_InValid() As Boolean
    '----------------------------------------------------------------
@@ -300,6 +297,7 @@ Public Function Data_InValid() As Boolean
    '            could be free text and later saved to create key
    'RETURNS     :FALSE if data is valid TRUE if invalid
    '----------------------------------------------------------------
+   
    If currentMember!fk_relationship = 0 Then 
       txtRelationship.SetFocus
       Return True
@@ -309,8 +307,8 @@ Public Function Data_InValid() As Boolean
       Return True
    End If
    Return False
+   
 End
-
 
 Public Sub FamilyMembersList_Refresh()
    '-----------------------------------------------------------
@@ -320,8 +318,10 @@ Public Sub FamilyMembersList_Refresh()
    '             hasn't been enountered, adds the person's name   
    '             to the list
    '-----------------------------------------------------------
+   
    Dim member As Collection 
    Dim last_fk_member As Integer
+   
    lvwMembers.Clear
    For Each Member In currentconsult!family_history
       '------------------------------------------------------
@@ -336,9 +336,11 @@ Public Sub FamilyMembersList_Refresh()
       lvwMembers.MoveLast()
       lvwMembers.Item.Selected = True
    End If   
+   
 End
 
 Public Sub ConditionsList_Refresh()
+   
    Dim member As Collection
    Dim sRowText As String
    '-------------------------------------------------------------
@@ -355,9 +357,9 @@ Public Sub ConditionsList_Refresh()
          cvwConditions.Add(Member!fk_condition, 0) 'same as pk_view
          cvwConditions[Member!fk_condition][0] = Member!condition
          If Member!age_of_onset Then 
-             sRowText = Member!age_of_onset & " yrs "
+            sRowText = Member!age_of_onset & " yrs "
          Else
-             sRowText = ""
+            sRowText = ""
          End If
          cvwConditions[Member!fk_condition][1] = sRowText
          If Member!cause_of_death Then 
@@ -365,29 +367,31 @@ Public Sub ConditionsList_Refresh()
          Else
             sRowText = ""
          Endif
-        cvwConditions[Member!fk_condition][2] = sRowText
-       End If
+         cvwConditions[Member!fk_condition][2] = sRowText
+      End If
    Next
+   
 End
 
 Public Sub EditArea_Clear()
-     '-----------------------------------------------------------
-     'Clears the editing area totally. We make the assumption
-     'that most likely, the user is only going to be interested
-     'in recording the family member type eg 'mother', not the
-     'name, country of birth, occupation etc, so set focus
-     'to that textbox
-     '-----------------------------------------------------------
-     Clear_DataChange_Indicators()
-     EditArea_Condition_Clear()        'bottom half of edit area
-     EditArea_FamilyMember_Clear()     'top half of edit area
-     lvwMembers.SelectAll(False)
-     cvwConditions.SelectAll(False)
-     txtRelationship.SetFocus()        'focus to family relationship
+   '-----------------------------------------------------------
+   'Clears the editing area totally. We make the assumption
+   'that most likely, the user is only going to be interested
+   'in recording the family member type eg 'mother', not the
+   'name, country of birth, occupation etc, so set focus
+   'to that textbox
+   '-----------------------------------------------------------
+   
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_inner)
+   lvwMembers.SelectAll(False)
+   cvwConditions.SelectAll(False)
+   txtRelationship.SetFocus()        'focus to family relationship
+   EditArea_Notify_DataChange(False)
+   
 End
 
-
 Public Sub EditArea_FamilyMember_Clear()
+   
    bExit = True
    txtName.text = ""
    txtBirthdate.text = ""
@@ -395,7 +399,6 @@ Public Sub EditArea_FamilyMember_Clear()
    txtOccupation.text = ""
    txtRelationship.text = ""
    txtAgeDeath.text = ""
-   lblNewOccupation.Foreground = Color.White
    listview1.clear
    listview1.Visible = False
    currentmember = New Collection 
@@ -404,20 +407,20 @@ Public Sub EditArea_FamilyMember_Clear()
    bExit = False
    HBox_countryorigin.Padding = False 'fixme put me and like me elsewhere
    txtName.SetFocus
+   
 End
 
 Public Sub EditArea_Condition_Clear()
-  '-------------------------------------------------------------
-  'Clears only the family member condition textboxes,leaving the
-  'internal details of the family member intact
-  'CALLED BY: EditArea_Clear()
-  '         : Condition_Accept()
-  '         : EditAreaButtons_Click()
-  '-------------------------------------------------------------
+   '-------------------------------------------------------------
+   'Clears only the family member condition textboxes,leaving the
+   'internal details of the family member intact
+   'CALLED BY: EditArea_Clear()
+   '         : Condition_Accept()
+   '         : EditAreaButtons_Click()
+   '-------------------------------------------------------------
+   
    bExit = True
    txtCondition.text = ""
-   hbox_condition.Padding = 0
-   hbox_condition.BackGround = Color.White
    currentcondition = New Collection
    currentcondition!cause_of_death = False   
    currentCondition!contributed_to_death = False   
@@ -427,32 +430,38 @@ Public Sub EditArea_Condition_Clear()
    txtCondition.SetFocus
    fk_condition = -1
    bExit = False
+   
 End
+
 Public Function EditArea_ExcludeKeys(keycode As Integer, tag As String) As Boolean
    '----------------------------------------------------------
    'PURPOSE       Restrict key presses for validation purposes
    'HOW IT WORKS  see routines names
    'FIXME         Ian would do this much simpler I'm sure
    '-----------------------------------------------------------
+   
    Select Case tag
       Case "name", "relationship", "notes", "occupation", "condition", "country origin"
          '------------------------------------
          'these have no key input restrictions
          '------------------------------------
-          bKeyValid = True
-       Case "age onset", "age death"
-          bKeyValid = modUtil.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
-       Case "birthdate"
+         bKeyValid = True
+      Case "age onset", "age death"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
+      Case "birthdate"
          bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
    End Select
    Return bKeyValid
+   
 End
+
 Public Sub FamilyMember_KeyPress()
-  '-----------------------------------------------
-  'If enter key pressed, deal with that, otherwise
-  'check if it was down arrow key, if Yes, move
-  'to the popup list if it is visible
-  '-----------------------------------------------
+   '-----------------------------------------------
+   'If enter key pressed, deal with that, otherwise
+   'check if it was down arrow key, if Yes, move
+   'to the popup list if it is visible
+   '-----------------------------------------------
+   
    Dim x As Integer
    Dim bRelationshipValid As Boolean
    '------------------------------------------
@@ -467,63 +476,63 @@ Public Sub FamilyMember_KeyPress()
    'ok, key is validate, process as per control tag
    '-----------------------------------------------
    If Key.code = Key.return Then
-     
-          Select Case Last.tag
-          
-            Case "name"
-               txtBirthdate.SetFocus
-            Case "birthdate"
-                  txtCountryOrigin.SetFocus
-            Case "country origin"
-               txtOccupation.SetFocus
-            Case "occupation"
-                   '------------------------------------------------------------
-                  'Allow user to have hit enter without scolling down the list
-                  'attempt to match user input with list contents
-                  'if no match,then the FamilyMember_LostFocus() will
-                  'popup the warning about adding the occupation to the backend
-                  '------------------------------------------------------------
-                   If listview1.Visible Then
-                        listview1.MoveFirst
-                        For x = 0 To listview1.count - 1
-                             If Lower(listview1.Item.Text) = Lower(Trim(txtOccupation.text)) Then
-                               currentMember!fk_occupation = listview1.Item.Key
-                               Break
-                            End If
-                            listview1.MoveNext
-                        Next
-                   End If
-                   
-                   txtRelationship.SetFocus
-            Case "relationship"
-                  '------------------------------------------------------------
-                  'Allow user to have hit enter without scolling down the list
-                  'attempt to match user input with list contents
-                  '------------------------------------------------------------
-                   If listview1.Visible Then
-                        listview1.MoveFirst
-                        For x = 0 To listview1.count - 1
-                             If Lower(listview1.Item.Text) = Lower(Trim(txtRelationship.text)) Then
-                               currentMember!fk_relationship = listview1.Item.Key
-                               currentMember!relationship = listview1.Item.text
-                               bRelationshipValid = True
-                               Break
-                            End If
-                            listview1.MoveNext
-                        Next
+      
+      Select Case Last.tag
+            
+         Case "name"
+            txtBirthdate.SetFocus
+         Case "birthdate"
+            txtCountryOrigin.SetFocus
+         Case "country origin"
+            txtOccupation.SetFocus
+         Case "occupation"
+            '------------------------------------------------------------
+            'Allow user to have hit enter without scolling down the list
+            'attempt to match user input with list contents
+            'if no match,then the FamilyMember_LostFocus() will
+            'popup the warning about adding the occupation to the backend
+            '------------------------------------------------------------
+            If listview1.Visible Then
+               listview1.MoveFirst
+               For x = 0 To listview1.count - 1
+                  If Lower(listview1.Item.Text) = Lower(Trim(txtOccupation.text)) Then
+                     currentMember!fk_occupation = listview1.Item.Key
+                     Break
                   End If
-                  '----------------------
-                  'If no match was found
-                  '----------------------
-                  Relationship_DisplayValidity(bRelationshipValid)
-                  If bRelationshipValid = False Then
-                       txtRelationship.text = ""  'will re-set appropriate things
+                  listview1.MoveNext
+               Next
+            End If
+            
+            txtRelationship.SetFocus
+         Case "relationship"
+            '------------------------------------------------------------
+            'Allow user to have hit enter without scolling down the list
+            'attempt to match user input with list contents
+            '------------------------------------------------------------
+            If listview1.Visible Then
+               listview1.MoveFirst
+               For x = 0 To listview1.count - 1
+                  If Lower(listview1.Item.Text) = Lower(Trim(txtRelationship.text)) Then
+                     currentMember!fk_relationship = listview1.Item.Key
+                     currentMember!relationship = listview1.Item.text
+                     bRelationshipValid = True
+                     Break
                   End If
-                 txtCondition.SetFocus
+                  listview1.MoveNext
+               Next
+            End If
+            '----------------------
+            'If no match was found
+            '----------------------
+            Relationship_DisplayValidity(bRelationshipValid)
+            If bRelationshipValid = False Then
+               txtRelationship.text = ""  'will re-set appropriate things
+            End If
+            txtCondition.SetFocus
          Case "age death"
             tbAccept.SetFocus()
-         End Select
-        listview1.Visible = False
+      End Select
+      listview1.Visible = False
    Else 
       If Key.code = Key.Down Then 
          If listview1.Visible Then 
@@ -533,54 +542,57 @@ Public Sub FamilyMember_KeyPress()
          End If
       End If
    End If
+   
 End
 
-
 Public Sub CausedDeath_Click()
+   
    If bexit Then 
       Return
    End If
    If rbCausedDeathNo.Value = True Then 
-    currentcondition!cause_of_death = False
+      currentcondition!cause_of_death = False
    Else 
-        '--------------------------------------------
-        'assume that often the age death = age onset
-        'if not,they can change it anyway
-        '--------------------------------------------
-       If Trim(txtAgeDeath.text) = "" Then 
-             txtAgeDeath.text = txtAgeOnset.Text
-       End If
+      '--------------------------------------------
+      'assume that often the age death = age onset
+      'if not,they can change it anyway
+      '--------------------------------------------
+      If Trim(txtAgeDeath.text) = "" Then 
+         txtAgeDeath.text = txtAgeOnset.Text
+      End If
       currentcondition!cause_of_death = True
       rbContributedToDeathYes.Value = True   
    Endif 
    txtAgeDeath.SetFocus
+   
 End
 
-
-
 Public Sub CausedDeath_KeyPress()
-  If Key.code = Key.return Then 
-    Select Case Last.tag
-    Case "yes"
-         '--------------------------------------------
-         'assume that often the age death = age onset
-         'if not,they can change it anyway
-         '--------------------------------------------
-         If Trim(txtAgeDeath.text) = "" Then 
-             txtAgeDeath.text = txtAgeOnset.Text
-         End If
-         txtAgeDeath.setfocus
-    Case "no"
-      If rbCausedDeathNo.value = True Then   
-         txtAgeDeath.SetFocus
-      Else 
-         rbCausedDeathYes.SetFocus
-      End If
-    End Select 
-  End If
+   
+   If Key.code = Key.return Then 
+      Select Case Last.tag
+         Case "yes"
+            '--------------------------------------------
+            'assume that often the age death = age onset
+            'if not,they can change it anyway
+            '--------------------------------------------
+            If Trim(txtAgeDeath.text) = "" Then 
+               txtAgeDeath.text = txtAgeOnset.Text
+            End If
+            txtAgeDeath.setfocus
+         Case "no"
+            If rbCausedDeathNo.value = True Then   
+               txtAgeDeath.SetFocus
+            Else 
+               rbCausedDeathYes.SetFocus
+            End If
+      End Select 
+   End If
+   
 End
 
 Public Sub FamilyMember_GotFocus()
+   
    Last.BackGround = Color.rgb(95, 255, 175)
    If listview1.Visible Then 
       ListView1.Visible = False
@@ -589,144 +601,154 @@ Public Sub FamilyMember_GotFocus()
    listview1.left = txtRelationship.Left
    listview1.tag = Last.tag
    Select Case Last.tag
-   
-   Case "country origin"
-        listview1.top = VBox_EditArea.top + hbox_countryorigin.top + hbox_countryorigin.height
-        nextcontrol = txtOccupation
-   Case "occupation"
-       listview1.top = VBox_EditArea.top + hbox_occupation.top + hbox_occupation.height
-        nextcontrol = txtRelationship
-   Case "relationship"
-       listview1.top = VBox_EditArea.top + hbox_relationship.top + hbox_relationship.height
-       nextcontrol = txtCondition
-       
+         
+      Case "country origin"
+         listview1.top = Vbox_EditArea_inner.top + hbox_countryorigin.top + hbox_countryorigin.height
+         nextcontrol = txtOccupation
+      Case "occupation"
+         listview1.top = Vbox_EditArea_inner.top + hbox_occupation.top + hbox_occupation.height
+         nextcontrol = txtRelationship
+      Case "relationship"
+         listview1.top = Vbox_EditArea_inner.top + hbox_relationship.top + hbox_relationship.height
+         nextcontrol = txtCondition
+         
    End Select
+   
 End
 
-
 Public Sub FamilyMember_KeyRelease()
+   
    Select Case Last.tag
-   Case "country origin"
-      Country_Selection("get")
-   Case "relationship"
-      Relationship_Get()
-   Case "occupation"
-      Occupation_Selection("get")
+      Case "country origin"
+         Country_Selection("get")
+      Case "relationship"
+         Relationship_Get()
+      Case "occupation"
+         Occupation_Selection("get")
    End Select
+   
 End
 
 Public Sub Birthdate_DisplayValidity(bValid As Boolean)
-     If bValid Then
-         hbox_birthdate.padding = 0 
-      Else
-         hbox_birthdate.padding = 1 
-      End If   
+   
+   If bValid Then
+      hbox_birthdate.padding = 0 
+   Else
+      hbox_birthdate.padding = 1 
+   End If   
+   
 End
 
 Public Sub CountryOrigin_DisplayValidity(bValid As Boolean)
-     If bValid Then
-         hbox_countryorigin.padding = 0 
-     Else
-         hbox_countryorigin.padding = 1 
-     End If   
+   
+   If bValid Then
+      hbox_countryorigin.padding = 0 
+   Else
+      hbox_countryorigin.padding = 1 
+   End If   
+   
 End
 
 Public Sub Relationship_DisplayValidity(bValid As Boolean)
- ' 'FIXME:I put this in here temporarily to cover this situation:
- ' 'user has existing familiy members in the cvwmembers list
- ' 'but dosn't select one PRIOR to adding a new condition, but
- ' 'has simply slelected new family member button, so here,
- ' 'currentfamilymember.pk_member is 0, wherease in reality
- ' 'that family member does exist in the list below
- ' Dim familymember As cFamilyMember
- ' Dim x As Integer
- '       If bValid Then
- '         hbox_relationship.padding = 0 
- '         'Check if pk_member exists
- '         lvwMembers.MoveFirst
- '         For x = 0 To lvwMembers.Count - 1
- '            If lvwMembers.Item.text = Trim(txtRelationship.text) Then
- '               currentMember = FH[lvwMembers.Item.key]
- '               Member_Display()
- '               Break 
- '            End If
- '            lvwMembers.MoveNext
- '         Next
- '         
-'         '    If FH.Count Then 
- '         '       ' Print "there are existing family members"
- '         '       For Each familymember In FH
- '         '          ' Print "family member relation,key", familymember.fk_relationship, familymember.relationship
- '         '          If familymember.fk_relationship = currentFamilyMember.fk_relationship Then 
- '         '             Print "and I've found a match with an existing one'"
- '         '             currentFamilyMember = FH[lvwMembers.Item.key]familymember
- '         '           '  bMemberExists = True
- '         '             Break
- '         '          End If
- '         '       Next 
- '         '    End If
- '      Else
- '         hbox_relationship.padding = 1 
- '      End If   
+   ' 'FIXME:I put this in here temporarily to cover this situation:
+   ' 'user has existing familiy members in the cvwmembers list
+   ' 'but dosn't select one PRIOR to adding a new condition, but
+   ' 'has simply slelected new family member button, so here,
+   ' 'currentfamilymember.pk_member is 0, wherease in reality
+   ' 'that family member does exist in the list below
+   ' Dim familymember As cFamilyMember
+   ' Dim x As Integer
+   '       If bValid Then
+   '         hbox_relationship.padding = 0 
+   '         'Check if pk_member exists
+   '         lvwMembers.MoveFirst
+   '         For x = 0 To lvwMembers.Count - 1
+   '            If lvwMembers.Item.text = Trim(txtRelationship.text) Then
+   '               currentMember = FH[lvwMembers.Item.key]
+   '               Member_Display()
+   '               Break 
+   '            End If
+   '            lvwMembers.MoveNext
+   '         Next
+   '         
+   '         '    If FH.Count Then 
+   '         '       ' Print "there are existing family members"
+   '         '       For Each familymember In FH
+   '         '          ' Print "family member relation,key", familymember.fk_relationship, familymember.relationship
+   '         '          If familymember.fk_relationship = currentFamilyMember.fk_relationship Then 
+   '         '             Print "and I've found a match with an existing one'"
+   '         '             currentFamilyMember = FH[lvwMembers.Item.key]familymember
+   '         '           '  bMemberExists = True
+   '         '             Break
+   '         '          End If
+   '         '       Next 
+   '         '    End If
+   '      Else
+   '         hbox_relationship.padding = 1 
+   '      End If   
+   
 End
 
 Public Sub Condition_DisplayValidity(bValid As Boolean)
-   If bexit Then Return 
-       If bValid Then
-        hbox_condition.padding = 0 
-      Else
-         hbox_condition.padding = 1 
-      End If   
+   ' If bexit Then Return 
+   '     If bValid Then
+   '      hbox_condition.padding = 0 
+   '    Else
+   '       hbox_condition.padding = 1 
+   '    End If   
+   
 End
 
 Public Sub AgeDeath_DisplayValidity(bValid As Boolean)
-   If Bexit Then Return 
-       If bValid Then
-         hbox_AgeDeath.padding = 0 
-      Else
-         hbox_AgeDeath.padding = 1 
-      End If   
+   ' If Bexit Then Return 
+   '     If bValid Then
+   '       hbox_AgeDeath.padding = 0 
+   '    Else
+   '       hbox_AgeDeath.padding = 1 
+   '    End If   
+   
 End
 
 Public Sub FamilyMember_Change()
+   
    If bexit Then Return 
    If Len(Last.text) And Not bexit Then
-      EditArea_NotifyChange(True)            'red border around edit area
+      EditArea_Notify_DataChange(True)            'red border around edit area
    End If
    Select Case Last.tag
-   Case "name"
-      '----------------------------
-      'Not mandatory e.g Joan Smith
-      '----------------------------
-      currentmember!name = txtName.text
-   Case "birthdate"
-      Try currentmember!birthdate = Val(Trim(txtBirthdate.text))
-   Case "relationship"
-      '----------------------------------------------------
-      'Relation should have been accepted from a popup list
-      '----------------------------------------------------
-      If Trim(Last.text) = "" Then
-         currentmember!fk_relationship = 0
-      End If
-   Case "occupation"
-      '---------------------------------------------------------
-      'If occupation not shosen from list, set fk_occupation = 0
-      '---------------------------------------------------------
-      If currentmember!fk_occupation = 0 Then
-         currentmember!occupation = Trim(txtOccupation.text)
-      End If
-   Case "age death"
-      '-----------------------------------------------------------
-      'display age of death, if invalid, highlight textbox in red
-      '-----------------------------------------------------------
-      If IsInteger(Val(txtAgeDeath.text)) Then
-         currentmember!age_of_death = Val(txtAgeDeath.text)
-         AgeDeath_DisplayValidity(True)      'highlight in red
-      Else 
-         AgeDeath_DisplayValidity(False)
-         currentmember!age_of_death = ""
-         txtAgeDeath.text = ""
-      End If
+      Case "name"
+         '----------------------------
+         'Not mandatory e.g Joan Smith
+         '----------------------------
+         currentmember!name = txtName.text
+      Case "birthdate"
+         Try currentmember!birthdate = Val(Trim(txtBirthdate.text))
+      Case "relationship"
+         '----------------------------------------------------
+         'Relation should have been accepted from a popup list
+         '----------------------------------------------------
+         If Trim(Last.text) = "" Then
+            currentmember!fk_relationship = 0
+         End If
+      Case "occupation"
+         '---------------------------------------------------------
+         'If occupation not shosen from list, set fk_occupation = 0
+         '---------------------------------------------------------
+         If currentmember!fk_occupation = 0 Then
+            currentmember!occupation = Trim(txtOccupation.text)
+         End If
+      Case "age death"
+         '-----------------------------------------------------------
+         'display age of death, if invalid, highlight textbox in red
+         '-----------------------------------------------------------
+         If IsInteger(txtAgeDeath.text) Then
+            currentmember!age_of_death = Val(txtAgeDeath.text)
+            AgeDeath_DisplayValidity(True)      'highlight in red
+         Else 
+            AgeDeath_DisplayValidity(False)
+            currentmember!age_of_death = ""
+            txtAgeDeath.text = ""
+         End If
    End Select 
    
 End Sub 
@@ -735,9 +757,10 @@ Public Sub Relationship_Get()
    '-----------------------------------------------------------
    'Gets the family member relationship (list) from the backend
    '-----------------------------------------------------------
+   
    If Trim(txtRelationship.text) = "" Then
-         currentmember!fk_relationship = 0
-         Return
+      currentmember!fk_relationship = 0
+      Return
    End If
    $Result = modFamilyHistoryDBI.FamilyHistory_Get_Relationship(Trim(txtRelationship.text))
    If $Result.count Then 
@@ -747,30 +770,34 @@ Public Sub Relationship_Get()
          'If only one result, auto-insert, otherwise load list
          '----------------------------------------------------
          If $Result.count = 1 Then 
-             txtRelationship.text = $Result!relationship
-             currentmember!fk_relationship = $Result!pk
-             listview1.Visible = False
-             Relationship_DisplayValidity(True)
-             txtCondition.SetFocus
-             Break
-          End If
-          listview1.Add(Str$($Result!pk), $Result!relationship)
-            Next 
+            txtRelationship.text = $Result!relationship
+            currentmember!fk_relationship = $Result!pk
+            listview1.Visible = False
+            Relationship_DisplayValidity(True)
+            txtCondition.SetFocus
+            Break
+         End If
+         listview1.Add(Str$($Result!pk), $Result!relationship)
+      Next 
       listview1.tag = txtRelationship
       listview1.Raise
       listview1.Visible = True
    Else 
       listview1.Visible = False  'empty recordset
    End If  
+   
 End
+
 Public Sub Country_Selection(action As String, Optional calling_control As String) 
-      '-------------------------------------------------------------------------------
-      'PURPOSE    :Select a country of birth
-      'CALLED BY  :listview1_DblClick()
-      '            or using hitting <enter> in txtCountry ie EditAreaTextbox_Keypress()
-      '--------------------------------------------------------------------------------
-      Dim iMatched As Boolean
-      Select Case action
+   '-------------------------------------------------------------------------------
+   'PURPOSE    :Select a country of birth
+   'CALLED BY  :listview1_DblClick()
+   '            or using hitting <enter> in txtCountry ie EditAreaTextbox_Keypress()
+   '--------------------------------------------------------------------------------
+   
+   Dim iMatched As Boolean
+   
+   Select Case action
       Case "get"
          '----------------------------------------------------------
          'Load all the towns like txtSuburb into the popup listview1
@@ -779,7 +806,7 @@ Public Sub Country_Selection(action As String, Optional calling_control As Strin
          listview1.Clear
          If The_Collection.count Then 
             For Each A_Member In The_Collection
-                listview1.Add(A_Member!pk, A_Member!country)
+               listview1.Add(A_Member!pk, A_Member!country)
             Next 
             If The_Collection.count = 1 Then 
                Country_Selection("accept")
@@ -792,7 +819,7 @@ Public Sub Country_Selection(action As String, Optional calling_control As Strin
             listview1.Visible = False  
          End If
       Case "accept"
-        
+         
          bExit = True
          If calling_control = "textbox" Then
             '-------------------------------------------------------
@@ -800,42 +827,43 @@ Public Sub Country_Selection(action As String, Optional calling_control As Strin
             'try and find a match
             '-------------------------------------------------------
             If listview1.Visible Then
-                 listview1.MoveFirst
-                 Do Until listview1.MoveNext()
-                    If InStr(Lower(listview1.Item.text), Trim(Lower(txtCountryOrigin.text))) Then
-                       iMatched = True 
-                      ' currentmember!fk_country_birth = listview1.Item.Key
-                       currentmember!fk_country_birth = The_Collection[listview1.Item.key]!country_code
- 
-                      CountryOrigin_DisplayValidity(True)
-                       Break
-                    End If
-                   Loop
-                 If Not iMatched Then
+               listview1.MoveFirst
+               Do Until listview1.MoveNext()
+                  If InStr(Lower(listview1.Item.text), Trim(Lower(txtCountryOrigin.text))) Then
+                     iMatched = True 
+                     ' currentmember!fk_country_birth = listview1.Item.Key
+                     currentmember!fk_country_birth = The_Collection[listview1.Item.key]!country_code
+                     
+                     CountryOrigin_DisplayValidity(True)
+                     Break
+                  End If
+               Loop
+               If Not iMatched Then
                   listview1.Visible = False
                   txtCountryOrigin.SetFocus()
                   Return 'no match found for suburb user typed in 
-                 End If 
-               End If
-          Else
+               End If 
+            End If
+         Else
             '-------------------------------------
             'User is selecting from the popup list
             '-------------------------------------
             If listview1.Visible Then
                listview1.MoveCurrent()             'match internal cursor to marquee
             End If
-          End If
+         End If
          '------------------------------------------------------------------------------------------
          'either way, a match has been found within the list, or the user has selected from the list
          '------------------------------------------------------------------------------------------
          txtCountryOrigin.text = The_Collection[listview1.Item.key]!country
-        ' country_code = The_Collection[listview1.Item.key]!country_code
+         ' country_code = The_Collection[listview1.Item.key]!country_code
          currentmember!fk_country_birth = The_Collection[listview1.Item.key]!country_code
          CountryOrigin_DisplayValidity(True)
          txtOccupation.SetFocus
          listview1.Visible = False  
          bExit = False  
-         End Select
+   End Select
+   
 End
 
 Public Sub CountryOrigin_Get()
@@ -844,95 +872,99 @@ Public Sub CountryOrigin_Get()
    'Note that in database fk_country_birth is text = 'AU'.
    'No valid country, remove red border and exit
    '-----------------------------------------------------
-    If Trim(txtCountryOrigin.text) = "" Then
+   
+   If Trim(txtCountryOrigin.text) = "" Then
       currentmember!fk_country_birth = ""
       CountryOrigin_DisplayValidity(False)
       Return
-    End If
-    '----------------------------------------------------------------------
-    'Get a list of countries like textbox text
-    'Load into the listview, the listviews tag = the calling textbox itself
-    '----------------------------------------------------------------------
-    $Result = modContactsDBI.country_get(Trim(txtCountryOrigin.text))
-    If $Result.count = 0 Then
-         '--------------------------------
-         'empty recordset. remove the list
-         '--------------------------------
-         listview1.Visible = False
-         If Len(Trim(txtCountryOrigin.text)) > 1 Then
-             currentmember!fk_country_birth = gb.null
-             bExit = True
-             txtCountryOrigin.text = ""
-             bExit = False 
+   End If
+   '----------------------------------------------------------------------
+   'Get a list of countries like textbox text
+   'Load into the listview, the listviews tag = the calling textbox itself
+   '----------------------------------------------------------------------
+   $Result = modContactsDBI.country_get(Trim(txtCountryOrigin.text))
+   If $Result.count = 0 Then
+      '--------------------------------
+      'empty recordset. remove the list
+      '--------------------------------
+      listview1.Visible = False
+      If Len(Trim(txtCountryOrigin.text)) > 1 Then
+         currentmember!fk_country_birth = gb.null
+         bExit = True
+         txtCountryOrigin.text = ""
+         bExit = False 
+      End If
+   Else
+      listview1.Clear
+      For Each $Result 
+         '---------------------------------------------------------
+         'if a single country - auto display that, and set focus on
+         'next textbox down which is family member occupation
+         '---------------------------------------------------------
+         If $Result.count = 1 Then 
+            txtCountryOrigin.text = $Result!Country
+            '  currentmember!country_birth = $Result!country
+            currentmember!fk_country_birth = $Result!country_code
+            CountryOrigin_DisplayValidity(True)
+            listview1.Visible = False
+            txtOccupation.SetFocus
+            Return
          End If
-    Else
-        listview1.Clear
-        For Each $Result 
-            '---------------------------------------------------------
-            'if a single country - auto display that, and set focus on
-            'next textbox down which is family member occupation
-            '---------------------------------------------------------
-            If $Result.count = 1 Then 
-               txtCountryOrigin.text = $Result!Country
-             '  currentmember!country_birth = $Result!country
-               currentmember!fk_country_birth = $Result!country_code
-               CountryOrigin_DisplayValidity(True)
-               listview1.Visible = False
-               txtOccupation.SetFocus
-               Return
-             End If
-            '-----------------------------------------------
-            'otherwise load the list box for multiple choice
-            '-----------------------------------------------
-            listview1.Add(Str$($Result!country_code), $Result!Country)
-        Next 
-           '-----------------------------------------------
-           'set listview tag, ensure it listview is visible
-           '-----------------------------------------------
-           listview1.tag = txtCountryOrigin
-           listview1.Raise
-           listview1.Visible = True
-       End If  
+         '-----------------------------------------------
+         'otherwise load the list box for multiple choice
+         '-----------------------------------------------
+         listview1.Add(Str$($Result!country_code), $Result!Country)
+      Next 
+      '-----------------------------------------------
+      'set listview tag, ensure it listview is visible
+      '-----------------------------------------------
+      listview1.tag = txtCountryOrigin
+      listview1.Raise
+      listview1.Visible = True
+   End If  
+   
 End
 
 Public Sub Condition_Get()
-      Dim coll As Collection
-      Dim i As Collection
-      '-------------------------------------------------------------------
-      'Condition unlike say countries does not default to auto-completion 
-      'with a recordset of 1 because must allow entry of new terms
-      'unless the user hits enter whilst listview1 has contents
-      'in which case will search the list for match and use that
-      '-------------------------------------------------------------------
-      If Trim(txtcondition.text) = "" Then
-         listview1.Visible = False
-         hbox_condition.Padding = 0
-         hbox_condition.BackGround = Color.White
-         Return
-      End If
-      coll = modCodingDBI.Get_Terms(Trim(txtcondition.text))
-      '----------------------------------------------------------
-      'If medical conditions exist, fill the list and popup it up
-      '----------------------------------------------------------
-      If coll.count Then 
-         listview1.Clear
-         For Each i In coll
-                  listview1.Add(Str$(i!pk_view), i!description)
-         Next 
-         listview1.tag = txtCondition
-         listview1.Raise
-         listview1.Visible = True
-      Else 
-          'empty recordset
-         listview1.Visible = False
-      End If  
+   
+   Dim coll As Collection
+   Dim i As Collection
+   '-------------------------------------------------------------------
+   'Condition unlike say countries does not default to auto-completion 
+   'with a recordset of 1 because must allow entry of new terms
+   'unless the user hits enter whilst listview1 has contents
+   'in which case will search the list for match and use that
+   '-------------------------------------------------------------------
+   If Trim(txtcondition.text) = "" Then
+      listview1.Visible = False
+      Return
+   End If
+   coll = modCodingDBI.Get_Terms(Trim(txtcondition.text))
+   '----------------------------------------------------------
+   'If medical conditions exist, fill the list and popup it up
+   '----------------------------------------------------------
+   If coll.count Then 
+      listview1.Clear
+      For Each i In coll
+         listview1.Add(Str$(i!pk_view), i!term)
+      Next 
+      listview1.tag = txtCondition
+      listview1.Raise
+      listview1.Visible = True
+   Else 
+      'empty recordset
+      listview1.Visible = False
+   End If  
+   
 End
 
 Public Sub Occupation_Selection(action As String, Optional calling_control As String)
+   
    Dim x As Integer
+   
    Select Case action
-   Case "get"
-        
+      Case "get"
+         
          If Len(Trim(txtOccupation.text)) = 0 Then Return
          The_Collection = modContactsDBI.Occupation_Get(Trim(txtOccupation.text))
          listview1.Clear
@@ -940,77 +972,79 @@ Public Sub Occupation_Selection(action As String, Optional calling_control As St
          'If categories exist to match the text, auto-select or show a list
          '-----------------------------------------------------------------
          If The_Collection.count Then 
-           For Each A_Member In The_Collection
-                listview1.Add(A_Member!pk, A_Member!occupation)
-           Next 
-           If The_Collection.count = 1 Then 
-              If Trim(Lower(txtOccupation.text)) = Lower(A_Member!occupation) Then
+            For Each A_Member In The_Collection
+               listview1.Add(A_Member!pk, A_Member!occupation)
+            Next 
+            If The_Collection.count = 1 Then 
+               If Trim(Lower(txtOccupation.text)) = Lower(A_Member!occupation) Then
                   Occupation_Selection("select", "list")
                   Return
-              End If
-           End If
-           listview1.Visible = True
-           listview1.Raise
-           listview1.tag = txtOccupation
-           Return 
+               End If
+            End If
+            listview1.Visible = True
+            listview1.Raise
+            listview1.tag = txtOccupation
+            Return 
          Else
             '---------------------------------------------------------------------
             'The text user has typed in dosn't exist yet in contacts.lu_Firstnames
             'i.e this is a new firstname
             '---------------------------------------------------------------------
-                currentmember!fk_occupation = 0 'fixme
-          End If
+            currentmember!fk_occupation = 0 'fixme
+         End If
          listview1.Visible = False  
-   Case "accept"
-      '----------------------------------------------------------------------
-      'CALLED BY  : user hitting <enter> in txtoccupation ie editarea_keypress
-      '             user hitting <enter> on the popup list
-      '             user double clicking on the popup list
-      '----------------------------------------------------------------------
-       bExit = True
-       If calling_control = "textbox" Then
-         '-------------------------------------------------------
-         'User has just hit <enter> without scrolling on the list
-         'try and find a match
-         '-------------------------------------------------------
-         If listview1.Visible Then
-            listview1.MoveFirst
-            For x = 0 To listview1.count - 1
-               If Lower(listview1.Item.text) = Trim(Lower(txtOccupation.text)) Then
-                  currentmember!fk_occupation = listview1.Item.Key
-                  Break
-               End If
-           Next
+      Case "accept"
+         '----------------------------------------------------------------------
+         'CALLED BY  : user hitting <enter> in txtoccupation ie editarea_keypress
+         '             user hitting <enter> on the popup list
+         '             user double clicking on the popup list
+         '----------------------------------------------------------------------
+         bExit = True
+         If calling_control = "textbox" Then
+            '-------------------------------------------------------
+            'User has just hit <enter> without scrolling on the list
+            'try and find a match
+            '-------------------------------------------------------
+            If listview1.Visible Then
+               listview1.MoveFirst
+               For x = 0 To listview1.count - 1
+                  If Lower(listview1.Item.text) = Trim(Lower(txtOccupation.text)) Then
+                     currentmember!fk_occupation = listview1.Item.Key
+                     Break
+                  End If
+               Next
+            End If
+            '------------------------------------------------------------------
+            'Either no match was found OR list wasn't visible anyway = no match
+            '------------------------------------------------------------------
+            currentmember!fk_occupation = 0
+            listview1.Visible = False     
+         Else
+            '-----------------------------------------------------------
+            'Routine called by user clicking on list or pressing <enter>
+            '-----------------------------------------------------------
+            If listview1.Visible Then
+               listview1.MoveCurrent   'set internal cursor to match marquee
+               currentmember!fk_occupation = listview1.Item.key
+               txtOccupation.Text = listview1.Item.Text
+            End If
          End If
-         '------------------------------------------------------------------
-         'Either no match was found OR list wasn't visible anyway = no match
-         '------------------------------------------------------------------
-         currentmember!fk_occupation = 0
-         listview1.Visible = False     
-       Else
-         '-----------------------------------------------------------
-         'Routine called by user clicking on list or pressing <enter>
-         '-----------------------------------------------------------
-         If listview1.Visible Then
-            listview1.MoveCurrent   'set internal cursor to match marquee
-            currentmember!fk_occupation = listview1.Item.key
-            txtOccupation.Text = listview1.Item.Text
-         End If
-       End If
-      txtRelationship.SetFocus()
-      bExit = False  
+         txtRelationship.SetFocus()
+         bExit = False  
    End Select
- End
-
+   
+End
 
 Public Sub ListView1_KeyPress()
    '------------------------------------------------------------------
    'User has scrolled onto the popup list and his a key, allow <enter>
    'to accept the line contents to the edit area
    '------------------------------------------------------------------
+   
    If Key.code = Key.Return Then 
       listview1_DblClick
    End If
+   
 End
 
 Public Sub listview1_DblClick()
@@ -1021,6 +1055,7 @@ Public Sub listview1_DblClick()
    'NB: listview1.MoveCurrent needed to move the internal cursor of
    '    the list to match the row the user is actually clicking on
    '------------------------------------------------------------------
+   
    listview1.MoveCurrent   
    '-------------------------------------------------------------
    ' When listview was loaded, the actual calling textbox became
@@ -1028,86 +1063,80 @@ Public Sub listview1_DblClick()
    '-------------------------------------------------------------
    Select Case listview1.Tag.Tag
       Case "relationship"
-            currentmember!fk_relationship = listview1.Item.Key
-            txtRelationship.text = listview1.Item.Text
-            Relationship_DisplayValidity(True)
-            txtcondition.setfocus
+         currentmember!fk_relationship = listview1.Item.Key
+         txtRelationship.text = listview1.Item.Text
+         Relationship_DisplayValidity(True)
+         txtcondition.setfocus
       Case "occupation"
-            Occupation_Selection("accept", "list")
+         Occupation_Selection("accept", "list")
       Case "country origin"
-            Country_Selection("accept", "list")
+         Country_Selection("accept", "list")
       Case "condition"
-            currentcondition!fk_reason = listview1.Item.Key
-            currentcondition!condition = listview1.Item.Text 'FIXME SHIT NOMENCLATURE
-            txtCondition.text = listview1.Item.Text
-            txtConditionNotes.SetFocus
-      End Select
+         currentcondition!fk_reason = listview1.Item.Key
+         currentcondition!condition = listview1.Item.Text 'FIXME SHIT NOMENCLATURE
+         txtCondition.text = listview1.Item.Text
+         txtConditionNotes.SetFocus
+   End Select
    listview1.Visible = False  
+   
 End
 
-
-
 Public Sub FamilyMember_LostFocus()
-    Last.BackGround = Color.white
-    Last.pos = 0
-    Select Case Last.tag
-    Case "relationship"
-    Case "country origin"
-        If currentmember!fk_country_birth = "" Then 
+   
+   Last.BackGround = Color.white
+   Last.pos = 0
+   Select Case Last.tag
+      Case "relationship"
+      Case "country origin"
+         If currentmember!fk_country_birth = "" Then 
             txtCountryOrigin.text = ""
-        Else
-        End If
-  
-    Case "occupation"
-         If currentmember!fk_occupation = 0 Then 
-           lblNewOccupation.Visible = True
-         Else 
-           lblNewOccupation.Visible = False
+         Else
          End If
-         
-    Case "birthdate"
+      Case "birthdate"
          If IsDate(Val((Trim(txtBirthdate.text)))) Then 
             currentmember!birthdate = Trim(txtBirthdate.text)
             Birthdate_DisplayValidity(True) 
          Else 
             txtBirthdate.text = ""
             currentmember!birthdate = ""
-          End If
-    Case "age death"
-      If Trim(txtAgeDeath.text) <> "" Then 
+         End If
+      Case "age death"
+         If Trim(txtAgeDeath.text) <> "" Then 
             If Trim(txtAgeOnset.text) <> "" Then 
-                If currentmember!age_of_death < currentcondition!age_of_onset Then
-                     Hbox_AgeOnset.Padding = 1
-                     txtAgeOnset.SetFocus()
-                     Hbox_AgeDeath.Padding = 1
-                 Else 
-                     Hbox_AgeOnset.Padding = 0
-                     hbox_AgeDeath.Padding = 0
-                End If
+               If currentmember!age_of_death < currentcondition!age_of_onset Then
+                  Hbox_AgeOnset.Padding = 1
+                  txtAgeOnset.SetFocus()
+                  Hbox_AgeDeath.Padding = 1
+               Else 
+                  Hbox_AgeOnset.Padding = 0
+                  hbox_AgeDeath.Padding = 0
+               End If
             End If
          End If
    End Select
+   
 End
-
 
 Public Sub cvwConditions_Click()
-  '----------------------------------------------------------------------------
-  'user has clicked on a particular condition. re-display this in the edit area
-  '----------------------------------------------------------------------------
-     If row_key_member = 0 Then
-         Member_Display()  
-     End If 
-     Condition_Display()
+   '----------------------------------------------------------------------------
+   'user has clicked on a particular condition. re-display this in the edit area
+   '----------------------------------------------------------------------------
+   
+   If row_key_member = 0 Then
+      Member_Display()  
+   End If 
+   Condition_Display()
+   
 End
-
-
 
 Public Sub lvwMembers_Menu()
-  If lvwMembers.count Then
-       mnuFamilyMember.popup
-  End If 
-  
+   
+   If lvwMembers.count Then
+      mnuFamilyMember.popup
+   End If 
+   
 End
+
 Public Sub Member_Display()
    '-----------------------------------------------------
    'Displays the details of the family member highlighted
@@ -1116,11 +1145,12 @@ Public Sub Member_Display()
    'the familymember_change() event will put the text
    'into the collection.
    '-----------------------------------------------------
+   
    bExit = True
    lvwMembers.MoveCurrent()
    lvwMembers.Item.Selected = True
    fk_member = currentconsult!family_history[lvwMembers.Item.key]!fk_member
-  
+   
    row_key_member = lvwMembers.Item.Key
    
    currentmember = New Collection 
@@ -1138,9 +1168,10 @@ Public Sub Member_Display()
    txtOccupation.text = currentconsult!family_history[lvwMembers.Item.key]!occupation
    txtAgeDeath.text = currentconsult!family_history[lvwMembers.Item.key]!age_of_death
    txtRelationship.text = currentconsult!family_history[lvwMembers.Item.key]!relationship
-  
+   
    bExit = False
- End
+   
+End
 
 Public Sub lvwMembers_Click()
    '------------------------------------------------------
@@ -1150,6 +1181,7 @@ Public Sub lvwMembers_Click()
    'move to the first condition and display that condition
    'in the editing area
    '------------------------------------------------------
+   
    If lvwMembers.count = 0 Then Return
    EditArea_Clear()                    'clear the display area
    Member_Display()                    'display members detail in edit area
@@ -1158,45 +1190,58 @@ Public Sub lvwMembers_Click()
    cvwConditions.SetFocus()
    cvwConditions.Item.selected = True  'hightlight this row for the user
    Condition_Display()                 'display details of this condition
+   
 End
-
 
 Public Sub EditArea_Resize_Labels()
    '-------------------------------------------------------------------
    'Adjust all lables as per current system font to make sure text fits
    '-------------------------------------------------------------------
-   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
+   
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea_inner, lblmeasure)
+   
 End
 
-
 Public Sub EditAreaButtons_KeyPress()
+   
    If key.code = key.Return Then 
       EditAreaButtons_Click
    End If
+   
 End
 
 Public Sub EditAreaButtons_Click()
-     Select Case Last.tag
-     Case "help"
-       FClinical.Help_Show(Application.Path &/ "help/fh-add-or-change.html", "Help:Family History", True)
-     Case "responsible person"
-       Message.Info("Search for responsible person in the database:feature not implemented yet")
-      SocialHistory_Save()
-     Case "accept"
-           Save() 'both family and social history
-     Case "new condition"
-           Condition_Add()
-     Case "new relative"
-            'Clear edit area set currentmember and currentcondition as new collections
-           EditArea_Clear()
-     Case "import"
-          modUtil.NotImplemented("Importing family history is not yet implemented")
-       VBox_Conditions.Padding = 0
-       
-       Return 
-      Message.Info("Importing a family member is not implemented yet")
-     End Select
+   
+   Select Case Last.tag
+      Case "help"
+         FClinical.Help_Show(Application.Path &/ "help/fh-add-or-change.html", "Help:Family History", True)
+      Case "responsible person"
+         Message.Info("Search for responsible person in the database:feature not implemented yet")
+      Case "accept"
+         Save() 'both family and social history
+      Case "new condition"
+         Condition_New()
+      Case "new relative"
+         'Clear edit area set currentmember and currentcondition as new collections
+         Member_New()
+      Case "import"
+         modUtil.NotImplemented("Importing family history is not yet implemented")
+         
+         Return 
+         Message.Info("Importing a family member is not implemented yet")
+   End Select
+   
 End
+
+Public Sub Member_New()
+   
+   EditArea_Clear()
+   currentmember = New Collection 
+   Condition_New()  
+   txtRelationship.SetFocus() 
+   
+End
+
 Public Sub FamilyHistory_Save()
    '-------------------------------------------------------
    ' Save the family Member And condition To database 
@@ -1207,8 +1252,9 @@ Public Sub FamilyHistory_Save()
    ' probably a better way than reloading everything, it 
    ' was just quicker for me to do that   
    '------------------------------------------------------
+   
    Dim member As Collection 
-   If VBox_EditArea.padding = False Or Not Valid_EditArea_Contents() Then Return 
+   
    '-------------------------------
    'The view has 1-n rows
    'eg member1 condition1
@@ -1218,29 +1264,29 @@ Public Sub FamilyHistory_Save()
    ' the key of the conditions list = the view key of its record in the old data
    '-------------------------------
    If IsNull(currentmember!fk_member) Then
-     row_key_member = 0
+      row_key_member = 0
    Else
-    '  row_key_member = lvwMembers.Item.Key
-    End If
+      '  row_key_member = lvwMembers.Item.Key
+   End If
    If IsNull(currentCondition!fk_condition) Then
       row_key_condition = 0
    Else
       row_key_condition = cvwConditions.Item.key
    End If 
    pk_member = modFamilyHistoryDBI.FamilyHistory_Save(currentconsult, pk_member, currentMember, fk_condition, currentcondition, row_key_member, row_key_condition)
- 
+   modDBConnect.CommitTrans()
    currentconsult.Refresh("family_history")     'reload all the history
-  ' EditArea_Condition_Clear()                   'clear for next condition
    FamilyMembersList_Refresh()                  'reload visual display
    For Each Member In currentconsult!family_history
       If Member!fk_member = pk_member Then
          lvwMembers.MoveTo(Member!fk_condition) 'ambiguous I know, but fk-condition = unique key for each row
          lvwMembers.Item.Selected = True
          lvwMembers_Click()
-         Condition_Add() 'assume adding more
+         Condition_New() 'assume adding more
          Break
       End If   
    Next
+   
 End
 
 Public Function Valid_EditArea_Contents() As Boolean 
@@ -1252,9 +1298,11 @@ Public Function Valid_EditArea_Contents() As Boolean
    '  (could be New ) or a non-medical term
    'First the family relationship
    '-------------------------------------------------------------------
+   
    Dim member As Collection 
    Dim duplicatedcondition As Boolean
    Dim sMsg As String 
+   
    If currentMember!fk_relationship = 0 Or IsNull(currentMember!fk_relationship) Then 
       Relationship_DisplayValidity(False)
       txtRelationship.SetFocus
@@ -1278,9 +1326,9 @@ Public Function Valid_EditArea_Contents() As Boolean
    'Next a valid condition e.g Hypertension
    '---------------------------------------
    If currentcondition!condition = "" Then 
-        Condition_DisplayValidity(False)
-        txtCondition.SetFocus
-        Return False
+      Condition_DisplayValidity(False)
+      txtCondition.SetFocus
+      Return False
    Else
       '-----------------------------------------------------------------------
       'Ok, we have a condition, but it could duplicate one already in the list
@@ -1306,12 +1354,13 @@ Public Function Valid_EditArea_Contents() As Boolean
       '       Break 'because the condition is being edited so ok to continue 
       '    End If
       ' Next
-
-       Condition_DisplayValidity(True)
-     
+      
+      Condition_DisplayValidity(True)
+      
    End If
    
    Return True
+   
 End
 
 Public Sub Condition_Display()
@@ -1325,14 +1374,15 @@ Public Sub Condition_Display()
    'family member1 - name etc - condition 1 with pk_condition
    'family member2 - name etc - condition 2 with pk_condition
    '----------------------------------------------------
-  
+   
    Dim fk_member As Integer
    Dim item As Collection
+   
    EditArea_Condition_Clear()
    bExit = True  'prevent triggering database search whilst resetting display
    cvwConditions.MoveCurrent
    row_key_condition = cvwConditions.Item.Key
-
+   
    item = currentconsult!family_history[row_key_condition]
    currentcondition = New Collection
    currentcondition!fk_condition = item!fk_condition
@@ -1343,98 +1393,98 @@ Public Sub Condition_Display()
    currentcondition!age_of_onset = item!age_of_onset
    currentcondition!cause_of_death = item!cause_of_death
    currentcondition!contributed_to_death = item!contributed_to_death
-
+   
    txtcondition.text = currentcondition!condition
    txtConditionNotes.text = currentcondition!notes  
    txtAgeOnset.text = currentcondition!age_of_onset
    If currentcondition!cause_of_death Then 
-     rbCausedDeathYes.Value = True
+      rbCausedDeathYes.Value = True
    Else 
-    rbCausedDeathNo.Value = True
+      rbCausedDeathNo.Value = True
    End If
    If currentcondition!contributed_to_death Then 
-     rbContributedToDeathYes.Value = True
+      rbContributedToDeathYes.Value = True
    Else 
-    rbContributedToDeathNo.Value = True
+      rbContributedToDeathNo.Value = True
    End If
-
+   
    bExit = False
-     
-  
-  
+   
 End
 
-Public Sub Condition_Add()
-      '------------------------------------------------------------------
-      'Adds a new condition for current relative.
-      'if no relative chosen, then the currently highlighted one is used
-      'If no relatives yet exist, just re-set the editing area which
-      're-sets focus back to txtRelationship ready for a person.
-      '--------------------------------------
-      If row_key_member = 0 Then
-         Message.Info("Please select a relative to add a condition to")
-         Return
-      End If   
-      EditArea_Condition_Clear()
-      txtCondition.SetFocus  
+Public Sub Condition_New()
+   '------------------------------------------------------------------
+   'Adds a new condition for current relative.
+   'if no relative chosen, then the currently highlighted one is used
+   'If no relatives yet exist, just re-set the editing area which
+   're-sets focus back to txtRelationship ready for a person.
+   '--------------------------------------
+   
+   If row_key_member = 0 Then
+      Message.Info("Please select a relative to add a condition to")
+      Return
+   End If   
+   EditArea_Condition_Clear()
+   txtCondition.SetFocus  
+   
 End
-
 
 Public Sub FamilyMemberCondition_KeyRelease()
+   
    Select Case Last.tag
-   Case "condition"
-       Condition_Get()
+      Case "condition"
+         Condition_Get()
    End Select
-  
-  
+   
 End
 
-Public Sub EditArea_NotifyChange(flag As Boolean)
-  '------------------------------------------------------------
-  'Outlines the edit area in red to indicate change to the user
-  '------------------------------------------------------------
-  If Flag Then
-     VBox_EditArea.Padding = 1
-     tbAccept.Foreground = Color.Red
-  Else
-    VBox_EditArea.Padding = 0
-    tbAccept.Foreground = Color.Black
-  End If
+Public Sub EditArea_Notify_DataChange(flag As Boolean)
+   '------------------------------------------------------------
+   'Outlines the edit area in red to indicate change to the user
+   '------------------------------------------------------------
+   
+   If Flag Then
+      Vbox_EditArea.Padding = 1
+      tbAccept.Foreground = Color.Red
+   Else
+      Vbox_EditArea.Padding = 0
+      tbAccept.Foreground = Color.Black
+   End If
+   
 End
 
 Public Sub FamilyMemberCondition_Change()
-' If Not bexit Then EditArea_NotifyChange(True)
-   If Len(Last.text) And Not bexit Then
-      EditArea_NotifyChange(True)            'red border around edit area
-   End If
-
-  Select Case Last.tag 
-  Case "condition"
-     
-      'CHECK THIS LATER - THIS TRIMMING MEANS RE-ENTRY TO THIS ROUTINE.
-      If Time(txtcondition.text) = "" Then currentcondition!fk_reason = 0
-      currentcondition!condition = Trim(txtcondition.text) 'here because could be Free text
-     Case "age onset"
-       If IsInteger(Val(txtAgeOnset.text)) Then
-         currentcondition!age_of_onset = Val(txtAgeOnset.text) 'FIXME is an integer in database
-         Hbox_AgeOnset.BackGround = Color.White
-         Hbox_AgeOnset.Padding = 0
-      Else 
-         currentcondition!age_of_onset = ""
-         txtAgeOnset.text = ""
-      End If
-      
- 
-   Case "notes"
-        currentcondition!notes = Trim(txtConditionNotes.text)
-  
+   ' If Not bexit Then EditArea_Notify_DataChange(True)
    
-  End Select 
-  
-  
+   If Len(Last.text) And Not bexit Then
+      EditArea_Notify_DataChange(True)            'red border around edit area
+   End If
+   
+   Select Case Last.tag 
+      Case "condition"
+         
+         'CHECK THIS LATER - THIS TRIMMING MEANS RE-ENTRY TO THIS ROUTINE.
+         If Trim(txtcondition.text) = "" Then currentcondition!fk_reason = 0
+         currentcondition!condition = Trim(txtcondition.text) 'here because could be Free text
+      Case "age onset"
+         If IsInteger(txtAgeOnset.text) Then
+            currentcondition!age_of_onset = Val(txtAgeOnset.text) 'FIXME is an integer in database
+            Hbox_AgeOnset.BackGround = Color.White
+            Hbox_AgeOnset.Padding = 0
+         Else 
+            currentcondition!age_of_onset = ""
+            txtAgeOnset.text = ""
+         End If
+         
+      Case "notes"
+         currentcondition!notes = Trim(txtConditionNotes.text)
+         
+   End Select 
+   
 End
 
 Public Sub FamilyMemberCondition_GotFocus()
+   
    Last.BackGround = Color.rgb(95, 255, 175)
    If listview1.Visible Then 
       ListView1.Visible = False
@@ -1443,20 +1493,20 @@ Public Sub FamilyMemberCondition_GotFocus()
    listview1.left = txtRelationship.Left
    listview1.tag = Last.tag
    Select Case Last.tag
-   Case "condition"
-       listview1.top = VBox_EditArea.top + HBox_ConditionParent.top + HBox_ConditionParent.height
-    End Select   
+      Case "condition"
+         listview1.top = Vbox_EditArea_inner.top + HBox_ConditionParent.top + HBox_ConditionParent.height
+   End Select   
    
-     
-
 End
 
 Public Sub FamilyMemberCondition_KeyPress()
+   
    Dim x As Integer
- If Key.code = Key.return Then
-     
-    Select Case Last.tag
-      Case "condition"
+   
+   If Key.code = Key.return Then
+      
+      Select Case Last.tag
+         Case "condition"
             '-----------------------------------------
             'the text could match the popped up list
             'without the user having scrolled on to it
@@ -1464,23 +1514,23 @@ Public Sub FamilyMemberCondition_KeyPress()
             If listview1.Visible Then
                listview1.MoveFirst
                For x = 0 To listview1.count - 1
-                   If Lower(listview1.Item.Text) = Lower(Trim(txtCondition.text)) Then
-                      currentcondition!fk_reason = listview1.Item.Key
-                      currentcondition!condition = listview1.Item.text
-                       Break
-                   End If
-                   listview1.MoveNext
+                  If Lower(listview1.Item.Text) = Lower(Trim(txtCondition.text)) Then
+                     currentcondition!fk_reason = listview1.Item.Key
+                     currentcondition!condition = listview1.Item.text
+                     Break
+                  End If
+                  listview1.MoveNext
                Next
             End If
-           txtConditionNotes.SetFocus
-      Case "notes"
-         txtAgeOnset.SetFocus
-      Case "age onset"
-          rbCausedDeathNo.SetFocus
-      Case "age death"
-           tbAccept.SetFocus
-     End Select 
-        listview1.Visible = False
+            txtConditionNotes.SetFocus
+         Case "notes"
+            txtAgeOnset.SetFocus
+         Case "age onset"
+            rbCausedDeathNo.SetFocus
+         Case "age death"
+            tbAccept.SetFocus
+      End Select 
+      listview1.Visible = False
    Else 
       If Key.code = Key.Down Then 
          If listview1.Visible Then 
@@ -1490,72 +1540,78 @@ Public Sub FamilyMemberCondition_KeyPress()
          End If
       End If
    End If
-
+   
 End
 
 Public Sub FamilyMemberCondition_LostFocus()
-  Last.BackGround = Color.white
-  Last.pos = 0
+   
+   Last.BackGround = Color.white
+   Last.pos = 0
+   
 End
 
 Public Sub teSocialHistory_Change()
    '----------------------------
    'Show a data-changed indictor
    '----------------------------
-  If bExit Then Return
-     If Trim(Last.text) = "" And pk_socialhistory = -1 Then
-        Vbox_SocialHistory.Padding = 0
+   
+   If bExit Then Return
+   If Trim(Last.text) = "" And pk_socialhistory = -1 Then
+      EditArea_Notify_DataChange(False)
    Else
-        Vbox_SocialHistory.Padding = 1
+      EditArea_Notify_DataChange(True)
    End If
- 
+   
 End
-
 
 Public Sub cvwConditions_Menu()
    '-----------------------------------------------------
    'User has clicked on the family member conditions list
    'popup the menu
    '-----------------------------------------------------  
+   
    If cvwConditions.count Then
       mnuMemberConditions.Popup()
    End If
-  
+   
 End
+
 Public Sub mnuFamilyMember_Click()
    '----------------------------------
    'Actions for the family member menu
    '----------------------------------
-    Select Case Last.tag
-  Case "delete"
+   
+   Select Case Last.tag
+      Case "delete"
          Member_Delete()
-  End Select
-  
-  
+   End Select
+   
 End
+
 Public Sub Member_Delete()
    '----------------------------------------------
    'Delete the currently highlighted family member
    '---------------------------------------------- 
-    
-  
+   
 End
 
 Public Sub mnuMemberConditions_Click()
    '---------------------------------------------
    'Actions for the popup members conditions menu  
    '----------------------------------------------
-  Select Case Last.tag
-  Case "delete single"
+   
+   Select Case Last.tag
+      Case "delete single"
          MemberCondition_Delete()
-  Case "delete all"
-        ' MemberConditions_Delete()
-  
-  End Select
-  
-  
+      Case "delete all"
+         ' MemberConditions_Delete()
+         
+   End Select
+   
 End
+
 Public Sub MemberCondition_Delete()
+   
    Dim sMsg As String
    Dim condition As Collection 
    Dim sToday As String
@@ -1564,15 +1620,15 @@ Public Sub MemberCondition_Delete()
    'to back out
    '-----------------------------------------------------------------
    cvwConditions.MoveCurrent()
-  ' condition = FH[lvwMembers.Item.key].conditions[lvwConditions.Item.key]
+   ' condition = FH[lvwMembers.Item.key].conditions[lvwConditions.Item.key]
    Select Message.Warning("Do you really want to delete the condition: " & currentcondition!condition, "Yes", "No")
-   
-   Case 1
-       sMsg = "THIS CONDITION WILL BE PERMANANTLY DELETED!\n\n"
-                  "Do you still wish to proceed?"
-        Select Message.Warning(sMsg, "Yes", "No")
-        Case 1
-           ' If condition.fk_consult <> 0 Then
+         
+      Case 1
+         sMsg = "THIS CONDITION WILL BE PERMANANTLY DELETED!\n\n"
+         "Do you still wish to proceed?"
+         Select Message.Warning(sMsg, "Yes", "No")
+            Case 1
+               ' If condition.fk_consult <> 0 Then
                ' '--------------------------------------------------------------------
                ' 'Non zero fk_consult = saved in either this or a previous consulation
                ' 'create basic audit trail entry
@@ -1607,7 +1663,7 @@ Public Sub MemberCondition_Delete()
                ' If condition.notes Then
                '   gvar.audit.data_summary &= "-" & condition.notes & "<BR>"
                ' End If
-       
+               
                ' If modglobal.clinicalform.currentConsult.pk_consult = condition.fk_consult Then
                '    '------------------------------------------------------------------
                '    'If this item was saved during the current consultation insert some
@@ -1620,110 +1676,82 @@ Public Sub MemberCondition_Delete()
                '    'Deleted during a previous consult, so add audit trail
                '    'and make the user tell us why they deleted the item
                '    '-----------------------------------------------------
-                '    sToday = Format(Now, "dd/mm/yyyy")
+               '    sToday = Format(Now, "dd/mm/yyyy")
                '    frmAudit.ShowModal
                ' Endif 
                ' '---------------------------------------------------------------
                'Now, delete the previously saved condition + insert audit trail
                '---------------------------------------------------------------
-            ' If modConsultDBI.FamilyHistory_Condition_Delete(condition, gvar.audit) Then
-                    modFamilyHistoryDBI.Condition_Delete(currentconsult, currentcondition)
-                   currentconsult.Refresh("family_history")
-                   'this code duplicated in init() fixme
-                   bexit = True
-                   FamilyMembersList_Refresh()
-                   If lvwMembers.count Then      'If there are actually family members
-                     '---------------------------------------------------------------
-                     'for the first member only in the list, fill the conditions list
-                     '----------------------------------------------------------------
-                     lvwMembers.MoveFirst()     'move to first on the list
-                     lvwMembers_Click           'click event to show member/condition
-                  Else
-                     EditArea_Clear()           'no data at all - implicit add
-                  End If   
-                  bExit = False  
-              ' End If
-  
-          '  End If
-            Return   
-           ' '  If FH[lvwMembers.Item.key].conditions[lvwConditions.Item.key].
-           '  If modConsultDBI.FamilyHistory_Condition_Delete(FH[lvwMembers.Item.key].conditions[lvwConditions.Item.key]) = True Then
-           '     FH[lvwMembers.Item.key].conditions.Remove(lvwConditions.Item.key)
-           '     FamilyHistory_Refresh_Lists()
-           '  End If
-            
-        Case 2
-            Return
-        End Select
-    
+               ' If modConsultDBI.FamilyHistory_Condition_Delete(condition, gvar.audit) Then
+               modFamilyHistoryDBI.Condition_Delete(currentconsult, currentcondition)
+               currentconsult.Refresh("family_history")
+               'this code duplicated in init() fixme
+               bexit = True
+               FamilyMembersList_Refresh()
+               If lvwMembers.count Then      'If there are actually family members
+                  '---------------------------------------------------------------
+                  'for the first member only in the list, fill the conditions list
+                  '----------------------------------------------------------------
+                  lvwMembers.MoveFirst()     'move to first on the list
+                  lvwMembers_Click           'click event to show member/condition
+               Else
+                  EditArea_Clear()           'no data at all - implicit add
+               End If   
+               bExit = False  
+               ' End If
+               
+               '  End If
+               Return   
+               ' '  If FH[lvwMembers.Item.key].conditions[lvwConditions.Item.key].
+               '  If modConsultDBI.FamilyHistory_Condition_Delete(FH[lvwMembers.Item.key].conditions[lvwConditions.Item.key]) = True Then
+               '     FH[lvwMembers.Item.key].conditions.Remove(lvwConditions.Item.key)
+               '     FamilyHistory_Refresh_Lists()
+               '  End If
+               
+            Case 2
+               Return
+         End Select
+         
    End Select
+   
 End
 
 Public Sub MemberConditions_Delete()
-  
+   
 End
-
-Public Sub Clear_DataChange_Indicators()
-   '---------------------------------------------------------------
-   'PURPOSE: Removes the visual prompts that data has changed
-   '         i.e the red padding around textboxes and editing area
-   '         lists etc
-   '---------------------------------------------------------------       
-   If bExit Then Return 
-   Vbox_SocialHistory.padding = 0
-   VBox_Members.padding = 0
-   VBox_Conditions.padding = 0
-   HBox_ResponsiblePerson.padding = 0
-   VBox_Conditions.Background = Color.white
-   HBox_Name.Padding = 0
-   EditArea_NotifyChange(False)
-End
-
-
-Public Sub taResponsiblePerson_Change()
-   '---------------------------------------------------------------------
-   'Notes about the "Responsible Person" which is the more modern concept
-   'of 'next of kin' which is no longer used
-   '---------------------------------------------------------------------
-   If bExit Then Return 
-   If Trim(Last.text) = "" And pk_socialhistory = -1 Then
-       HBox_ResponsiblePerson.Padding = 0
-   Else
-       HBox_ResponsiblePerson.Padding = 1
-   End If
-End
-
 
 Public Sub ContributedToDeath_Click()
    '------------------------------------------------------------
    'A disease may not be the cause Of death but contribute To it
    '------------------------------------------------------------
+   
    If bexit Then Return
    Select Case Last.tag
-   Case "yes"
+      Case "yes"
          currentcondition!contributed_to_death = True 
-   Case "no"
-     
-      If rbCausedDeathYes.Value = True Then
-         rbContributedToDeathYes.Value = True  
-        
-         Return
-      End If   
-     currentcondition!contributed_to_death = False
+      Case "no"
+         
+         If rbCausedDeathYes.Value = True Then
+            rbContributedToDeathYes.Value = True  
+            
+            Return
+         End If   
+         currentcondition!contributed_to_death = False
    End Select
    Return 
    
    If bexit Then Return
- 
+   
    If rbContributedToDeathNo.Value = True Then 
       If rbCausedDeathYes.Value = True Then
          rbContributedToDeathNo.Value = True  
          currentcondition!contributed_to_death = True
          Return
       End If   
-       currentcondition!contributed_to_death = False
+      currentcondition!contributed_to_death = False
    Else 
       currentcondition!contributed_to_death = True 
    Endif 
    txtAgeDeath.SetFocus
+   
 End

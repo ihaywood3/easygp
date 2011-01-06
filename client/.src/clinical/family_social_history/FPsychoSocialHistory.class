@@ -1,0 +1,343 @@
+' Gambas class file
+
+Private currentConsult As CConsult
+Private bExit As Boolean
+Private pk_socialhistory As Integer
+Private responsible_persons As Collection
+Private responsible_person As Collection
+Private fk_responsible_person As Integer
+Private pk_view_responsible_persons As String '(pk_person-pk_adress)-
+Private Towns As Collection
+Private town As Collection
+Private fk_town As Integer
+
+Public Sub Init(cons As CConsult)
+   
+   currentConsult = cons
+   lblMeasure.text = "Responsible Person   "
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
+   modEditAreaHelpers.Resize_labels(Vbox_ResponsiblePerson, lblMeasure)
+   SocialHistory_Display()
+   
+End
+
+Public Sub EditArea_Notify_Data_Change(flag As Boolean)
+   
+   If flag Then
+      Vbox_EditArea.Padding = 1
+      tbSave.Foreground = Color.Red
+   Else
+      Vbox_EditArea.Padding = 0
+      tbSave.Foreground = Color.Black
+      
+   Endif
+   
+End
+
+Public Sub Save()
+   '----------------------------------------
+   'Save components of psycho-social history
+   '----------------------------------------
+   
+   If Vbox_EditArea.padding = 0 Then Return 
+   SocialHistory_Save()
+   responsible_person_Save()  
+   
+End
+
+Public Sub responsible_person_Save()
+   
+   If Not Valid_Responsible_person Then Return
+   
+End
+
+Public Function Valid_Responsible_person() As Boolean
+   '--------------------------------------------------------
+   'Accept at minimum a name, anything else is up for grabs
+   'hopefully they will have used contacts, if not we may
+   'save the persons details and put in contacts?
+   '--------------------------------------------------------   
+   
+   Return True
+   
+End
+
+Public Function Valid_SocialHistory() As Boolean
+   '------------------------------------------------------
+   'Validate there is at least some social history
+   'pretty rare that one would be deleting all the history
+   'Return True if valid
+   '------------------------------------------------------
+   
+   If pk_socialhistory = 0 Then                    'no social history ever
+      If Trim(teSocialHistory.text) = "" Then      'none to save  
+         Return False
+      Endif
+   Endif
+   Return True
+   
+End
+
+Public Sub SocialHistory_Save()
+   '----------------------------------------------------------
+   'PURPOSE  : Saves the social history.
+   'HOW WORKS: If no social hsitory yet creates new collection
+   '           saves record, refreshes collection and loads
+   '           currentsocialhistory!history 
+   '           fix me some duplication in this and associated
+   '           routines.
+   '           If tempted to rationalise this code, please read
+   '           the reasons for its oddness below
+   '----------------------------------------------------------
+   
+   Dim item As New Collection
+   
+   If Vbox_EditArea.padding = 0 Then Return 
+   '------------------------------------------------------------------------------------
+   'If you read this, this duplication may seem stupid, but is done so for these reasons
+   'If a new record and got this far, one or other of these two things contains data
+   '------------------------------------------------------------------------------------
+   If pk_socialhistory = -1 Then
+      
+      item!history = Trim(teSocialHistory.text)
+      item!responsible_person = Trim(txtResponsiblePerson.text)
+   Else
+      '-------------------------------------------------------------------------------------------------
+      'social history already has a pk, so must have had some data in it previously
+      'Having difficulties here. If the text is "" and pk > 0 then it could just have been deleted
+      'so have to keep an empty or null string
+      'Addressing it like this item!history, if text = "" sets item!history itself to null which
+      'is equivalent to item.remove("history") which then fucks the audit trail.
+      'whereas this code, will leave item!history in the collection,  but set to null if string is empty
+      '--------------------------------------------------------------------------------------------------
+      item!pk_socialhistory = pk_socialhistory
+      item.Add(Trim(teSocialHistory.text), "history")
+      item.Add(Trim(txtResponsiblePerson.text), "responsible_person") 
+   End If
+   pk_socialhistory = modSocialHistoryDBI.Save(currentconsult, pk_socialhistory, item) 
+   modDBConnect.CommitTrans()                    'commit first in case FH not valid
+   currentconsult.Refresh("social_history")  
+   SocialHistory_Display()
+   
+End
+
+Public Sub SocialHistory_Display()
+   '-----------------------------------------
+   'Displays the current social history
+   'there is never more than 1 member in the
+   'social history colection
+   '-----------------------------------------
+   
+   Dim item As Collection
+   
+   pk_socialhistory = -1
+   bExit = True 
+   For Each item In currentconsult!social_history
+      txtResponsiblePerson.text = item!responsible_person
+      teSocialHistory.text = item!history
+      pk_socialhistory = item!pk_socialhistory
+   Next
+   bExit = False
+   
+End
+
+Public Sub responsible_person_Find()
+   '-----------------------------------------------------------------------
+   'Search for (amongst the patients) a person who will be the next of kin
+   'aka, now-a-days as the 'responsible person
+   '---------------------------------------------------------------------- 
+   
+   If Trim(txtResponsiblePerson.text) = "" Then Return
+   With Listview1
+      .Visible = False  
+      .clear()
+   End With
+   Responsible_Persons = modContactsDBI.Person_Get(Trim(txtResponsiblePerson.text), const.contacttype_PersonsAndPatients)
+   Responsible_Persons.Remove("sql_in_english")
+   If responsible_persons.count Then
+      For Each responsible_person In Responsible_Persons
+         Listview1.Add(responsible_person!pk_view, responsible_person!surname & " " & responsible_person!firstname & " " & responsible_person!street & " " & responsible_person!town)
+      Next
+      With Listview1
+         .Visible = True   
+      End With
+      
+   Endif
+   
+End
+
+Public Sub Responsible_Person_Select()
+   '-----------------------------------------------------------------------------
+   'User has clicked on a name in the list, accept this as the responsible person
+   '-----------------------------------------------------------------------------  
+   
+   Listview1.MoveCurrent
+   pk_view_responsible_persons = Listview1.Item.key
+   bexit = True
+   txtResponsiblePerson.text = responsible_persons[pk_view_responsible_persons]!wholename
+   txtStreet1.text = responsible_persons[pk_view_responsible_persons]!street
+   txtSuburb.text = responsible_persons[pk_view_responsible_persons]!town
+   txtState.text = responsible_persons[pk_view_responsible_persons]!state
+   txtPostcode.text = responsible_persons[pk_view_responsible_persons]!postcode
+   Listview1.Visible = False  
+   bexit = False  
+   txtContactNumber.SetFocus()
+   
+End
+
+Public Sub ListView1_KeyPress()
+   '------------------------------------------------------------------
+   'User has scrolled onto the popup list and his a key, allow <enter>
+   'to accept the line contents to the edit area
+   '------------------------------------------------------------------
+   
+   If Key.code = Key.Return Then 
+      listview1_DblClick
+   End If
+   
+End
+
+Public Sub listview1_DblClick()
+   
+   Select Case Last.tag.tag
+      Case "name"
+         Responsible_Person_Select()
+      Case "suburb"
+         Suburb_Select()
+   End Select
+   
+End
+
+Public Sub EditArea_Buttons_Click()
+   
+   Select Case Last.tag
+      Case "save"  
+         Save()
+      Case "responsible person"
+   End Select
+   
+End
+
+Public Sub EditArea_TextBox_KeyRelease()
+   
+   Select Case Last.tag
+      Case "name"
+         responsible_person_Find()
+      Case "suburb"
+         Suburb_get()
+   End Select
+   
+End
+
+Public Sub EditArea_TextBox_KeyPress()
+   
+   Select Case key.code
+      Case key.Down
+         If Listview1.Visible Then
+            ListView1.MoveFirst
+            Listview1.SetFocus()
+            Listview1.Item.Selected = True   
+         Endif
+         
+      Case key.return, key.Tab
+         Select Case Last.tag
+               
+            Case "social history"
+               txtResponsiblePerson.SetFocus()
+            Case "name"
+               txtStreet1.SetFocus
+            Case "street1"
+               txtSuburb.SetFocus() 'skip street2, usually don't have one.
+            Case "street2"
+            Case "suburb"
+               txtContactNumber.SetFocus  
+            Case "contact number"
+               teResponsiblePersonNotes.SetFocus()
+            Case "responsible person notes"
+               tbSave.SetFocus() 
+         End Select
+   End Select
+   
+End
+Public Sub Responsible_Person_Remove()
+   'Fixme - some sort of prompt + remove if key in database 
+   fk_responsible_person = 0
+   bExit = True
+   modEditAreaHelpers.EditArea_Clear(VBox_ResponsiblePerson)
+   bExit = False  
+  
+End
+
+Public Sub EditArea_TextBox_Change()
+   
+   If Bexit Then Return 
+   EditArea_Notify_Data_Change(True)
+   Select Case Last.tag
+      Case "name"                                                  'no name = no keys or data
+         If Trim(Last.text) = "" Then 
+            Responsible_Person_Remove()
+
+         End If  
+   End Select
+End                          
+
+Public Sub EditArea_TextBox_Lostfocus()
+   
+   Last.BackGround = Color.white
+   
+End
+
+Public Sub EditArea_TextBox_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   With ListView1
+      .top = HBox_ResponsiblePerson.top + Last.Parent.height + Last.parent.top
+      .left = Vbox_EditArea_inner.padding + Last.Left
+      .width = teSocialHistory.Width
+      .Raise
+      .Visible = False  
+      .tag = Last 
+   End With
+   
+End
+
+Public Sub Suburb_Select()
+
+   listview1.MoveCurrent()             'match internal cursor to marquee
+   bExit = True
+   txtSuburb.text = Towns[listview1.Item.key]!town
+   txtState.text = Towns[listview1.Item.key]!state 
+   txtPostcode.text = Towns[listview1.Item.key]!postcode
+   fk_town = Towns[listview1.Item.key]!pk
+   listview1.Visible = False  
+   bExit = False  
+   
+End
+
+Public Sub Suburb_get() 
+   
+   Dim iMatched As Boolean
+   Dim x As Integer
+   
+   If Trim$(txtSuburb.text) = "" Then Return
+   listview1.Visible = False  
+   Towns = modContactsDBI.Get_Town(Lower(Trim$(txtSuburb.text)))
+   listview1.Clear
+   If Towns.count Then 
+      For Each town In Towns
+         listview1.Add(town!pk, town!town & " " & town!state & " " & town!postcode)
+      Next 
+      If Towns.count = 1 Then 
+         Suburb_Select()
+      Else 
+         listview1.Visible = True
+         listview1.Raise
+         listview1.tag = txtSuburb
+      End If
+   End If
+   
+End
+
+Public Sub tbRemovePerson_Click()
+       Responsible_Person_Remove()
+End

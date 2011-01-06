@@ -48,6 +48,7 @@ Private Sub Process_Dir_Or_File(fname As String)
   '--------------------------------------------------------------------------
    Dim sFile As String
    Dim hl7 As CHL7
+   Dim typ As String
    Dim i As String
    Dim f As File
    
@@ -59,64 +60,49 @@ Private Sub Process_Dir_Or_File(fname As String)
             End If
          Next
    Else  'yes, its a file, try and load it
-     i = "unk"
+     typ = "unk"
      f = Open fname For Read
      Select Case Lower$(Right$(fname, 4))
      Case ".pit"
-       i = "pit"
+       Log.DataMsg(Subst$("decided &1 is PIT by suffix", fname))
+       typ = "pit"
      Case ".hl7", ".oru"
-       i = "hl7"
-     Case Else
+       Log.DataMsg(Subst$("decided &1 is HL7 by suffix", fname))
+       typ = "hl7"
+     End Select
+     If typ = "unk" Then
          i = Read #f, 3 ' "taste" the file to find type
          Seek #f, 0
          Select Case i
          Case "001" 
-           i = "pit"
-         Case "MSH", "FHS", "BSH", Chr$(11) & "FH" 
-            i = "hl7"
-         Case Else
-            i = "unk"
+           Log.DataMsg(Subst$("decided &1 is PIT by header", fname))
+           typ = "pit"
+         Case Else 
+            typ = "hl7"
+            Log.DataMsg(Subst$("presuming &1 is HL7 with header &2", fname, i))
+            ' for now, decide all files are HL7 if not obviously PIT
          End Select
-     End Select
-     If i = "unk" Then
-       i = "can't decide type of " & fname
-       Goto Processing_Failed
      Endif
-     If i = "hl7" Then
-       i = Read #f, Lof(f)
-        Try hl7 = New CHL7(i)
-        If Error Then
-          i = Error.Text
-          Goto Processing_Failed
-        Else     'read it in ok, now try and process it
-          modDBConnect.BeginTrans()
-          Try Process_File(hl7, fname)
-        Endif
-     Else ' it's PIT
+     If typ = "pit" Then
        If IsNull(f) Then f = Open fname For Read
-       Try PITImporter.Import(f, File.Name(fname))
-     Endif
-     If Error Then
-       i = Error.Where & " " & Error.Text 
-       Goto Processing_Failed
+       PITImporter.Import(f, File.Name(fname))
      Else
-       Try Move fname To importdir &/ "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
-       If Not Error Then
-         modDBConnect.CommitTrans()
-       Else
-         i = "Error moving " & fname & " to " & importdir &/ "processed (" & Error.Text & ")" 'FIXME WHEN ON SERVER
-         Goto Processing_Failed
-       End If
-     End If
+       i = Read #f, Lof(f)
+       hl7 = New CHL7(i)
+       Process_File(hl7, fname)
+     Endif
+     Move fname To importdir &/ "processed" &/ modUtil.filepath_fix_Blanks(File.Name(fname))
+     modDBConnect.CommitTrans()
    Endif
    Return 
-   
-Processing_Failed:
+Catch
+  
+   Let i = Error.Text & " " & Error.Where & " (" & fname & ")"
    Print #File.Err, i
    Log.ErrorMsg(i)
    Try Move fname To importdir &/ "processed/errors" &/ File.Name(fname)
    If Error Then
-       i = "Error moving " & fname & " to " & importdir &/ "/processedhl7/errors/ (" & Error.Text & ")"
+       i = "Error of " & Error.Text & " moving " & fname & " to " & importdir &/ "/processedhl7/errors/ (" & Error.Text & ")"
        Print #File.Err, i
        Log.ErrorMsg(i)
    End If

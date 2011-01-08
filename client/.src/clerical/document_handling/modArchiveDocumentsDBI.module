@@ -15,33 +15,87 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 'Scanning module
 
-
 Public Function Get_Document_Types() As Collection
-    ' Return modDBConnect.exec_query_collection("Select pk, lower(split_part(category,' ', 1)) as category from contacts.lu_categories where lower(category) ILIKE $$%provider%$$")
-     Dim doc_types As Collection
-     Dim doc_type As Collection
-     doc_types = modDBConnect.exec_query_collection("Select pk, category from contacts.lu_categories where lower(category) ILIKE $$%provider%$$")
-     For Each doc_type In doc_types
-         doc_type!category = Trim(Replace(doc_type!category, "provider", "", gb.IgnoreCase))
-     Next
-     Return doc_types
+   ' Return modDBConnect.exec_query_collection("Select pk, lower(split_part(category,' ', 1)) as category from contacts.lu_categories where lower(category) ILIKE $$%provider%$$")
+
+   Dim doc_types As Collection
+   Dim doc_type As Collection
+
+   doc_types = modDBConnect.exec_query_collection("Select pk, category from contacts.lu_categories where lower(category) ILIKE $$%provider%$$")
+   For Each doc_type In doc_types
+      doc_type!category = Trim(Replace(doc_type!category, "provider", "", gb.IgnoreCase))
+   Next
+   Return doc_types
+
 End
 
 Public Function Re_Allocate_Recipient(pk_document As Integer, fk_staff_destination As Integer)
-  Dim sql As String
-  
-  sql = "Update Documents.documents set fk_staff_destination = " & fk_staff_destination 
-  sql &= ", fk_unmatched_staff = Null WHERE pk=" & pk_document
-  modDBConnect.exec_query(sql)
-  
+
+   Dim sql As String
+   
+   sql = "Update Documents.documents set fk_staff_destination = " & fk_staff_destination 
+   sql &= ", fk_unmatched_staff = Null WHERE pk=" & pk_document
+   modDBConnect.exec_query(sql)
+   
 End
 
 Public Sub Document_Save_Filename(document As Collection)
-  
+   
    Dim sql As String
+
    sql = "Update documents.documents set source_file = $$" & document!source_file & "$$ WHERE pk = " & document!pk_document
    modDBConnect.exec_query(sql)
+   
+End
+
+Public Function UnDelete(cons As Cconsult, pk_document As Integer, fk_section As Integer) As Boolean
+   '-----------------------------------------------------------------------------------
+   'Undeletes a document by changing deleted flag to false, returns true if successfull
+   '-----------------------------------------------------------------------------------
+   Dim D As New Collection
+   
+   D!deleted = False  
+   D!pk_document = pk_document
+   modArchiveDocumentsDBI.Save(d)
+   If modAudit.MakeAudit(cons, "undelete", "documents.documents", pk_document, fk_section) Then 
+        Return True
+   End If   
+   Return False
+End
+
+Public Function Change_Display_Mode(cons As Cconsult, documents As Collection, pk_document As Integer, fk_lu_display_as As Integer, fk_section As Integer, audit_action As String) As Boolean
+   '----------------------------------------------------------------
+   'Changes display from eg letter to result or certificate or image
+   'Returns True if successful
+   '----------------------------------------------------------------
+   Dim D As New Collection 
+
+   D!pk_document = pk_document
+   D!fk_lu_display_as = fk_lu_display_as
+   modArchiveDocumentsDBI.Save(d, documents[pk_document])
+   If modAudit.MakeAudit(cons, "document display mode changed", "documents.documents", pk_document, fk_section, "") Then 
+       modDBConnect.CommitTrans()
+       Return True
+   End If   
+   Return False  
   
+End
+
+Public Function Delete(cons As CConsult, documents As Collection, pk_document As Integer, fk_section As Integer, audit_action As String, audit_notes As String) As Boolean 
+   '--------------------------------------------------------------------------------------  
+   'Marks as deleted a current document, laying down audit trail, returns true if succeeds
+   '--------------------------------------------------------------------------------------
+
+   Dim D As New Collection 
+
+   D!pk_document = pk_document
+   D!deleted = True
+   modArchiveDocumentsDBI.Save(d, documents[pk_document])
+   If modAudit.MakeAudit(cons, audit_action, "documents.documents", pk_document, fk_section, audit_notes) Then 
+       modDBConnect.CommitTrans()
+       Return True
+   End If   
+   Return False
 End
 
 Public Function Save(document As Collection, Optional old_data As Collection) As Integer
@@ -50,9 +104,10 @@ Public Function Save(document As Collection, Optional old_data As Collection) As
    'If the user wants the file saved to database, save blob first to blobs.blob table
    'document!data = "BLOB:/filenamepath"
    '---------------------------------------------------------------------------------------
-  Dim data As Collection
-  
-  If IsNull(document!pk_document) Then  
+
+   Dim data As Collection
+   
+   If IsNull(document!pk_document) Then  
       
       If Not IsNull(document!data) Then
          data = New Collection
@@ -61,53 +116,59 @@ Public Function Save(document As Collection, Optional old_data As Collection) As
          document!fk_blob = modDBConnect.insert("blobs.blobs", data)
       End If
       document!pk_document = modDBConnect.insert("documents.documents", document) 
-  Else
+   Else
       modDBConnect.update("documents.documents", old_data, document, "pk_document")
-  End If
-  Return document!pk_document
+   End If
+   Return document!pk_document
+
 End
 
 Public Sub Blob_Retrieve(pk As Integer, Optional file_extension As String = "") As String
-'-----------------------------------------------------------------------------
+   '-----------------------------------------------------------------------------
    'gets back blob data, names a temp file as per file_extension expected
    '---------------------------------------------------------------------------  
-  Dim $Result As Collection
-  Dim tempFile As String
-  
-  $Result = modDBConnect.exec_query_first("select data from blobs.blobs where pk = " & pk)
-  If Not IsNull($Result)
+
+   Dim $Result As Collection
+   Dim tempFile As String
+   
+   $Result = modDBConnect.exec_query_first("select data from blobs.blobs where pk = " & pk)
+   If Not IsNull($Result)
       tempFile = Left$(Temp$($Result!pk), -4) ' knock off the .tmp added by Gambas
       If file_extension <> "" Then tempfile &= "." & file_extension
       File.Save(tempFile, $Result!data.data)
    End If
-  Return tempFile
+   Return tempFile
+
 End
 
 Public Sub Blobs_Backup(dest_cmd As String)
-  ' does an incremental backup of blobs only
-  ' dest_cmd is a shell command to send the blob file to where we want it to go
-  ' all blobs created since the last time this command was run are sent
-  ' {} within the command string is substituted with the blob filename
-  ' example: scp {} easygp@remote-backup.com:/home/user/easygp-backup/
-  Dim res As Result
-  Dim fname As String
-  
-  res = modDBConnect.exec_query("select blobs.pk from blobs.blobs, blobs.backups group by blobs.pk having created_at >= max(done_at)")
-  For Each res
-    fname = Blob_Retrieve(res!pk)
-    Shell Replace$(dest_cmd, "{}", fname) Wait
-    Kill fname
-  Next
-  modDBConnect.exec_query("insert into blobs.backups (done_by) values (current_user)")
-  modDBConnect.CommitTrans()
-  
+   ' does an incremental backup of blobs only
+   ' dest_cmd is a shell command to send the blob file to where we want it to go
+   ' all blobs created since the last time this command was run are sent
+   ' {} within the command string is substituted with the blob filename
+   ' example: scp {} easygp@remote-backup.com:/home/user/easygp-backup/
+
+   Dim res As Result
+   Dim fname As String
+   
+   res = modDBConnect.exec_query("select blobs.pk from blobs.blobs, blobs.backups group by blobs.pk having created_at >= max(done_at)")
+   For Each res
+      fname = Blob_Retrieve(res!pk)
+      Shell Replace$(dest_cmd, "{}", fname) Wait
+      Kill fname
+   Next
+   modDBConnect.exec_query("insert into blobs.backups (done_by) values (current_user)")
+   modDBConnect.CommitTrans()
+   
 End
 
 Public Function Inbox_Documents_Get(fk_staff_destination As Integer, fk_lu_type As Integer, Optional limit As Integer = 0) As Collection 
    '-----------------------------------------------------------------------------------------------------------
    'Return a collection of documents if fk_lu_type <> 0 then only of that type documents.lu_type table
    '-----------------------------------------------------------------------------------------------------------
+
    Dim sql As String
+
    sql = "Select * from Documents.vwDocuments where fk_staff_destination =" & fk_staff_destination
    If fk_lu_type > 0 Then
       sql &= " AND fk_lu_type = " & fk_lu_type
@@ -117,6 +178,5 @@ Public Function Inbox_Documents_Get(fk_staff_destination As Integer, fk_lu_type 
       sql &= "LIMIT " & limit
    End If   
    Return modDBConnect.exec_query_collection(sql)
-  
+   
 End
-

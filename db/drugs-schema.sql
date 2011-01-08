@@ -1,19 +1,19 @@
-
+drop schema drugs cascade;
 
 create schema drugs;
-alter schema drugs owner to easygp;
 
 SET search_path = drugs, pg_catalog;
 
 comment on schema drugs is '
-This schema is based on original DDL structure of drug database for the gnumed project
-Copyright 2000, 2001, 2002, 2010 by Dr. Horst Herb, Dr. Ian Haywood
+This schema is based on original proposed structure of drug database for the gnumed project
+Copyright 2000-02 Dr. Horst Herb
+Copyright 2010-11 Dr. Ian Haywood
 ';
 
 
 -- ===========================================
 create table sources(
-	pk serial primary key,
+	pk integer primary key,
 	source_category char check (source_category in ('p', 'a', 'i', 'm', 'o', 's')) not null,
 	description text not null
 );
@@ -25,35 +25,53 @@ comment on column sources.source_category is
 comment on column sources.description is
 	'URL or address or similar informtion allowing to reproduce the source of information';
 
-copy sources(description,source_category) from stdin with delimiter as '|';
-Manufacturer''s paper handout|m
-PBS Yellow Book Caution|a
-Australian Prescriber|a
-DailyMed (http://dailymed.nlm.nih.gov)|m
+copy sources(pk,description,source_category) from stdin with delimiter as '|';
+1|Manufacturer''s paper handout|m
+2|PBS Yellow Book Caution|a
+3|Australian Prescriber|a
+4|DailyMed (http://dailymed.nlm.nih.gov)|m
 \.
 
 -- ===========================================
 create table patient_categories(
-	pk serial primary key,
-	description text not null,
-	"comment" text
+	pk integer primary key,
+	description text not null
 );
 comment on table patient_categories is
 	'enumeration of categories of patient populations for targeted drug warnings';
 
+copy patient_categories(pk,description) from stdin with delimiter as '|';
+1|renal impairment
+2|hepatic impairment
+3|elderly
+4|child
+5|pregnant
+6|breastfeeding
+\.
+
 create table evidence_levels
 (
-	pk serial primary key,
+	pk integer primary key,
 	description text not null
 );
 
 comment on table evidence_levels is 
        'different levels of evidence for a fact in the database';
 
+copy evidence_levels(pk,description) from stdin with delimiter as '|';
+1|multiple controlled studies
+2|multiple case-reports
+3|single case-report
+4|pharmacological theory (too dangerous to test)
+5|pharmacological assumption
+6|no evidence of safety
+7|expert consenus
+8|established clinical experience
+\.
 
 -- ===========================================
 create table severity_level (
-	pk serial primary key,
+	pk integer primary key,
 	description varchar (100) not null,
 	"comment" text
 );
@@ -64,8 +82,8 @@ comment on table severity_level is
 copy severity_level(pk,description) from stdin with delimiter as '|';
 1|noting only
 2|mild effects, requires simple clinical action
-3|significant but temporary effects
-4|severe morbidity
+3|significant but reversible effect
+4|severe morbidity, not reversible
 5|risk of death
 \.
 
@@ -88,20 +106,42 @@ too long for a pick list) and confirm with users if they want to create a new en
 copy clinical_effects(description,fk_severity) from stdin with delimiter '|';
 increase in INR|2
 sharp decrease in INR|2
-increase in plasma concentration
+increase in plasma concentration|2
+rash|2
+Stevens-Johnson syndrome|4
+diarrhoea|2
+loss of contraceptive effect|4
+constipation|2
+nausea|1
+vomiting|3
+dizziness|2
+postural hypotension|3
+\.
 -- ==================================================================
 
 create table pharmacologic_mechanisms
 (
-	pk serial primary key,
+	pk integer primary key,
 	description text not null
 );
 
+copy pharmacologic_mechanisms(pk, description) from stdin with delimiter '|';
+1|competition for renal extraction
+2|competition for hepatic metabolic pathway
+3|induction of hepatic metaboilsm
+4|competition for plasma-protein binding site
+5|pharmacodynamic opposition (different receptor)
+6|competition for target receptor
+7|pharmacodynamic synergy (different receptor)
+8|pharmcodynamic synergy (same receptor)
+9|other
+10|unknown
+\.
 
 -- ===================================================================
 create table topic
 (
-	pk serial primary key,
+	pk integer primary key,
 	title varchar (60) not null,
 	target char check (target in ('h', 'p')) not null
 );
@@ -111,6 +151,20 @@ comment on table topic is 'topics for drug information, such as pharmaco-kinetic
 comment on column topic.target is
 	'the target of this information: h=health professional, p=patient';
 
+copy topic(pk,title,target) from stdin with delimiter '|';
+1|synposis|h
+2|indication|h
+3|dosage and titration|h
+4|warning|h
+5|contraindication|h
+6|interaction|h
+7|chemical structure|h
+8|side-effects|p
+9|instructions|p
+10|reason for use|p
+11|introduction|p
+\.
+
 -- ==============================================================
 
 create table atc (
@@ -119,7 +173,7 @@ create table atc (
 );
 
 comment on table atc is
-	'table associating drug names and ATC codes';
+	'table associating drug names and Anatomic Therapeutic Chemical (ATC) codes';
 
 -- ===========================================
 create table info(
@@ -133,7 +187,7 @@ create table info(
         fk_source integer references sources (pk) not null,
         fk_patient_category integer references patient_categories (pk),
 	standard_frequency text,
-        paed_dose float
+        paed_dose float,
         paed_max float
 );
 comment on table info is
@@ -150,25 +204,125 @@ comment on table link_atc_info is
        'links one or more ATC codes (i.e. drugs or classes) to a piece of information. Generally one 
 link, but for interactions or contraindications there may be more';
 
+create table link_category_info (
+       fK_category integer references patient_categories(pk),
+       fk_info integer references info (pk)
+);
+
+comment on table link_category_info is 'links information to a particular category: information only applies to 
+this categoery.';
+
+
 -- ===========================================
+create table form (
+	pk integer primary key,
+	description text
+);
+
+copy form(pk,description) from stdin with delimiter '|';
+2|bandage
+3|capsule
+4|cartridge
+5|chewing gum
+6|cream
+7|dispersible tablet
+8|dressing
+9|ear drops
+10|effervescent granules
+11|enema
+12|eye disc
+13|eye drops
+14|eye paste
+1|eye ointment
+15|eye spray
+16|film
+17|gas
+18|glove
+19|granules
+20|implant
+21|inhaler
+22|inj
+23|insert
+24|intrauterine implant
+25|kit
+26|lotion
+27|lozenge
+28|mouthwash
+29|nasal ointment
+30|nasal solution
+31|nasal spray
+32|nebule
+33|topical ointment
+34|oral gel
+35|oral liquid
+36|oral powder
+37|oral solution
+38|oral spray
+39|pack
+40|pad
+41|paint
+42|paste
+43|patch
+44|pen
+45|pessary
+46|powder for inhalation
+47|roll
+48|rope
+49|shampoo
+50|sheet
+51|slow-release capsule
+52|slow-release tablet
+53|spray
+54|stick
+55|sublingual spray
+56|sublingual tablet
+57|suppository
+58|syringe
+59|tablet
+60|test strip
+61|topical gel
+62|topical powder
+63|topical solution
+64|topical spray
+65|transdermal gel
+66|wafer
+\.
+
 create table product(
         pk serial primary key,
 	atccode varchar (8) not null,
 	"name" text not null,
 	salt text,
 	fk_form integer references form (pk) not null,
-	strength text,
+	strength text not null,
         salt_strength text,
-	amount text, 
-	packsize integer not null default 1, 
-        original_text text,
-	original_pbs_code varchar(10),
-        original_tga_code varchar(12)
-        unique (atccode,"name",description,packsize)
+	amount float,
+        amount_unit integer references common.lu_units(pk), 
+	packsize integer default 1, 
+        original_pbs_name text,
+        original_pbs_fs text,
+	"comment" text,
+        unique ("name",fk_form,strength,amount,amount_unit,packsize)
 );
 
 comment on table product is
 'dispensable form of a generic drug including strength, package size etc';
+
+comment on column product."name" is 'full generic name in lower-case. For compounds names separated by ";"';
+comment on column product.salt is 'if not normally part of generic name, the adjuvant salt';
+comment on column product.fk_form is 'the form of the drug';
+comment on column product.strength is 'the strength as a number followed by a unit. For compounds
+strengths are separated by "-", in the same order as the names of the consitituents in the generic name';
+comment on column product.salt_strength is 'where a weight of the full salt is listed (being heavier than the weight 
+of the solid drug. Must be in same unit';
+comment on column product.amount is 'the amount of drugs that have a fluid form';
+comment on column product.packsize is 'the number of identical units (bottles, vials, tablets, etc) within a pack';
+comment on column product.original_pbs_name is 'for a drug imported from the PBS Yellow Book database, the original 
+generic name as there listed, otherwise NULL';
+comment on column product.original_pbs_fs is 'for a drug imported from the PBS Yellow Book database, the original 
+form-and-strength field as there listed, otherwise NULL';
+comment on column product."comment" is 'a free-text comment on properties of the product. For example for complex packages
+with tablets lof differing strengths';
 
 -- ===========================================
 create table flags (
@@ -179,7 +333,17 @@ create table flags (
 comment on table flags is
 	'flags for adjuvants such as ''gluten-free'', ''paediatric formulation'', etc.';
 
--- ===========================================
+copy flags(pk,description) from stdin with delimiter '|';
+1|gluten-free
+2|with diluent syringe
+3|with diluent ampoule
+4|contains gluten
+5|orange flavour
+6|blackcurrent flavour
+7|banana flavour
+8|chocolate flavour
+\.
+
 create table link_flag_product (
 	fk_product integer references product (pk) not null,
 	fk_flag integer references flags (pk) not null
@@ -196,7 +360,7 @@ create table manufacturer(
 	address text,
 	telephone text,
 	facsimile text,
-	code char (2) unique
+	code varchar (3) unique
 );
 
 comment on table manufacturer is
@@ -210,24 +374,26 @@ comment on column manufacturer.telephone is
 comment on column manufacturer.facsimile is
 	'fax number of company';
 comment on column manufacturer.code is
-	'two-letter symbol of manufacturer';
+	'two- or three-letter symbol of manufacturer';
 
 -- ===========================================
 create table brand(
 	fk_product integer references product(pk) not null,
-	fk_manufacturer integer not null, -- references manufacturer(pk)
-	brand varchar (80) not null,
+	manufacturer varchar(3) not null references manufacturer(code),
+	brand varchar (100) not null,
 	price money,
-        from_pbs boolean default 'f'
+        from_pbs boolean not null default 'f',
+        original_tga_text text,
+        original_tga_code varchar(12)
 );
 
 comment on table brand is
 	'many to many pivot table linking drug products and manufacturers';
-
 comment on column brand.from_pbs is 
          'true if the brand comes from the PBS database, allows the list to be easily reloaded
 with new PBS data. False means data we added ourselves.';
-
+comment on column brand.original_tga_text is 'drugs imported from TGA database, the original label therein';
+comment on column brand.original_tga_code is 'drugs imported from TGA database, their TGA code';
 
 -- ===========================================
 

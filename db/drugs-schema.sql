@@ -286,6 +286,7 @@ copy form(pk,description) from stdin with delimiter '|';
 64|topical spray
 65|transdermal gel
 66|wafer
+67|ear ointment
 \.
 
 create table product(
@@ -296,13 +297,11 @@ create table product(
 	fk_form integer references form (pk) not null,
 	strength text not null,
         salt_strength text,
-	amount float,
-        amount_unit integer references common.lu_units(pk), 
-	packsize integer default 1, 
         original_pbs_name text,
         original_pbs_fs text,
 	"comment" text,
-        unique ("name",fk_form,strength,amount,amount_unit,packsize)
+        updated_at timestamp default now(),
+        unique (atccode,"name",fk_form,strength)
 );
 
 comment on table product is
@@ -315,14 +314,22 @@ comment on column product.strength is 'the strength as a number followed by a un
 strengths are separated by "-", in the same order as the names of the consitituents in the generic name';
 comment on column product.salt_strength is 'where a weight of the full salt is listed (being heavier than the weight 
 of the solid drug. Must be in same unit';
-comment on column product.amount is 'the amount of drugs that have a fluid form';
-comment on column product.packsize is 'the number of identical units (bottles, vials, tablets, etc) within a pack';
 comment on column product.original_pbs_name is 'for a drug imported from the PBS Yellow Book database, the original 
 generic name as there listed, otherwise NULL';
 comment on column product.original_pbs_fs is 'for a drug imported from the PBS Yellow Book database, the original 
 form-and-strength field as there listed, otherwise NULL';
 comment on column product."comment" is 'a free-text comment on properties of the product. For example for complex packages
 with tablets lof differing strengths';
+
+create table pack (
+      fk_product integer references product(pk),
+      amount float,
+      amount_unit integer, --references common.lu_units(pk), 
+      packsize integer default 1
+); 
+
+comment on column pack.amount is 'the amount of drugs that have a fluid form';
+comment on column pack.packsize is 'the number of identical units (bottles, vials, tablets, etc) within a pack';
 
 -- ===========================================
 create table flags (
@@ -355,12 +362,11 @@ comment on table link_flag_product is
 
 -- ===========================================
 create table manufacturer(
-	pk serial primary key,
 	"name" varchar(100) unique,
 	address text,
 	telephone text,
 	facsimile text,
-	code varchar (3) unique
+	code varchar (3) primary key
 );
 
 comment on table manufacturer is
@@ -368,7 +374,7 @@ comment on table manufacturer is
 comment on column manufacturer.name is
 	'company name';
 comment on column manufacturer.address is
-	E'complete printable address with embeded newline characters as "\\n"';
+	E'complete printable address with embedded newline characters as "\\n"';
 comment on column manufacturer.telephone is
 	'phone number of company';
 comment on column manufacturer.facsimile is
@@ -403,13 +409,14 @@ create table pbs (
 	max_rpt integer default 0 not null,
 	pbscode varchar(10) not null,
 	chapter varchar(2) not null,
-        restrictionflag char not null default 'U'
+        restrictionflag char not null default 'U',
+        check (restrictionflag in ('U','R','A'))
 );
 
 comment on table pbs is
 	'PBS-specific information about subsidy, authority riles, etc. Private-script only drugs wont have a entry in this table.';
 comment on column pbs.restrictionflag is
-        'U=unrestricted, R=restricted, A=authority, S=streamlined'; 
+        'U=unrestricted, R=restricted, A=authority'; 
 comment on column pbs.quantity is
 'quantity of packaged units dispensed under subsidy for any one prescription. 
 AU: this the maximum quantity in the PBS Yellow Book.';
@@ -418,7 +425,8 @@ comment on column pbs.max_rpt is
 
 create table restriction (
     pbscode varchar (10) not null,
-    comment text not null,
+    "comment" text not null,
+    "type" char,
     code varchar(10) not null
 );
 
@@ -430,3 +438,6 @@ comment on column restriction.code is
 
 comment on column restriction.comment is 
    'the actual text of the authority requirement';
+
+comment on column restriction."type" is
+    '1=only applies to increased quantities/repeats, 2=only to normal amounts, 3=to both';  

@@ -74,7 +74,7 @@ Public Function Change_Display_Mode(cons As Cconsult, documents As Collection, p
    D!fk_lu_display_as = fk_lu_display_as
    modArchiveDocumentsDBI.Save(d, documents[pk_document])
    If modAudit.MakeAudit(cons, "document display mode changed", "documents.documents", pk_document, fk_section, audit_action) Then 
-       modDBConnect.CommitTrans()
+      ' modDBConnect.CommitTrans()
        Return True
    End If   
    Return False  
@@ -92,8 +92,7 @@ Public Function Delete(cons As CConsult, documents As Collection, pk_document As
    D!deleted = True
    modArchiveDocumentsDBI.Save(d, documents[pk_document])
    If modAudit.MakeAudit(cons, audit_action, "documents.documents", pk_document, fk_section, audit_notes) Then 
-       modDBConnect.CommitTrans()
-       Return True
+      Return True
    End If   
    Return False
 End
@@ -341,3 +340,51 @@ Public Function Staff_Tasks_Document_Audit_Trail(fk_document As Integer) As Stri
    Return "<HTML><BODY><TABLE>" & shtml & "</TABLE><HR></BODY></HTML>"
 End
 
+Public Function Document_SendBack_For_ReFiling(currentconsult As CConsult, documents As Collection, fk_document As Integer) As Boolean
+   '------------------------------------------------------------------------------------
+   'User has decided there is something wrong with document allocation they cannot fix
+   'eg, wrongly joined pages etc, not just simple things like wrongly allocated patients
+   'so they send it back to clerical for re-filing
+   '------------------------------------------------------------------------------------   
+   
+   Dim sMsg As String
+   Dim newdoc As Collection 
+   Dim oldname As String
+   Dim newname As String
+   Dim sData As String
+   
+   Select Case documents[fk_document]!fk_lu_display_as
+      Case const.Document_Display_As_Result 
+        sData = documents[fk_document]!tag_user  
+      Case const.Document_Display_As_Certificate
+        
+      Case const.Document_Display_As_Image
+        
+      Case const.Document_Display_As_Letter
+        sData = documents[fk_document]!tag_user & " - " & documents[fk_document]!tag
+   End Select
+   
+ 
+   sMsg = sData & "\n\nSend back for clerical to re-allocate?"
+   If Message.Warning(sMsg, "Yes", "No") = 2 Then Return 
+  ' modInboxDBI.Document_Mark_Deleted(document!pk_document)        'remove from circulation, sorry ian
+   If Delete(currentconsult, documents, fk_document, const.cSection_Documents, const.sAuditAction[const.cAuditAction_Refile], sData) Then 
+  
+      oldname = modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/scanning", "Directories/scanning") &/ documents[fk_document]!source_file
+      newname = modAdminDBI.Config_Get("document_scanning_directory", "/var/easygp/archiving", "Directories/archiving") &/ documents[fk_document]!source_file
+      Try Move oldname To newname
+      If Error Then
+         Try Copy OldName To NewName
+         If Not Error Then Kill OldName
+      Endif
+      If Not Error Then
+         modDBConnect.CommitTrans()
+         Return True
+      Else
+         Message.Error("An error occured and the file could not be re-allocated")
+         modDBConnect.RollBack()
+         Return False
+      Endif
+  End If 
+   
+End

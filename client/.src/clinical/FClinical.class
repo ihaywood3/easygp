@@ -2258,6 +2258,7 @@ Public Sub TabbedLists_Menu()
    Select Case Last.tag
          
       Case "letters received"
+         cvwLettersReceived.MoveCurrent()
          If cvwLettersReceived.count Then
             mnuLettersReceived_UndoDelete.Enabled = False                       'assume there is no documents to undelete
             For Each Document In Deleted_Documents
@@ -2266,6 +2267,12 @@ Public Sub TabbedLists_Menu()
                   Break
                Endif
             Next
+            If currentconsult!letters_received[cvwLettersReceived.Item.key]!msh_transmitting_entity = "snail_mail" Then 'can only send back non-hl7 e.g scanned FIXME, LATER ?IMAGES
+              mnuResultsReceived_Refile.Enabled = True
+            Else
+               mnuResultsReceived_Refile.Enabled = False
+            End If      
+  
             mnuLettersReceived.Popup()
          Endif
       Case "requests"
@@ -2304,6 +2311,7 @@ Public Sub TabbedLists_Menu()
       Case "results"
          'FIXME and similar instances, need to disable the entire menu if the
          'count is zero, in situation where one or more undelete exists
+         cvwResults.MoveCurrent()
          If cvwResults.count Then 
                mnuResultsReceived_UndoDelete.Enabled = False                       'assume there is no documents to undelete
                For Each Document In Deleted_Documents
@@ -2312,8 +2320,13 @@ Public Sub TabbedLists_Menu()
                      Break
                   Endif
                Next
-         mnuResultsReceived_ShowGraphable()
-         mnuResultsReceived.Popup()
+            If currentconsult!results_received[cvwResults.Item.key]!msh_transmitting_entity = "snail mail" Then 'can only send back non-hl7 e.g scanned FIXME, LATER ?IMAGES
+               mnuResultsReceived_Refile.Enabled = True
+            Else
+               mnuResultsReceived_Refile.Enabled = False
+            End If      
+            mnuResultsReceived_ShowGraphable()
+            mnuResultsReceived.Popup()
          End If   
       Case "inbox"
       Case "certificates"
@@ -2371,19 +2384,22 @@ Public Sub mnuResultsReceived_Click()
          Document_Edit_Metadata(currentconsult!results_received, cvwResults.Item.key)
       Case "delete"                                              'deletes a document and enforces an audit trail
            If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!results_received, cvwResults.Item.key, const.cSection_Documents, const.sAuditAction[const.cAuditAction_MarkDeleted], "Result:" & currentconsult!results_received[cvwResults.Item.key]!tag_user) Then 
-            Deleted_Documents.Add(currentconsult!results_received[cvwResults.Item.key], cvwResults.Item.key)            'keep for undelete
-            cvwResults_Refresh(True)                                'refresh the collection and reshow the list
-         End If
+               modDBConnect.CommitTrans()
+               Deleted_Documents.Add(currentconsult!results_received[cvwResults.Item.key], cvwResults.Item.key)            'keep for undelete
+               cvwResults_Refresh(True)                                'refresh the collection and reshow the list
+           End If
       Case "delete duplicate"             'Delete the result, but don't enforce a reason
          If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!results_received, cvwResults.Item.key, const.cSection_Documents, const.sAuditAction[const.cAuditAction_DeleteDuplicateDocument], "duplicate result") Then 
-            Deleted_Documents.Add(currentconsult!results_received[cvwResults.Item.key], cvwResults.Item.key)
-           cvwResults_Refresh(True)   
-         End If
-      Case "delete preliminary result"
-          If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!results_received, cvwResults.Item.key, const.cSection_Documents, const.sAuditAction[const.cAuditAction_DeletePreliminaryResult], "preliminary result") Then 
+             modDBConnect.CommitTrans()
             Deleted_Documents.Add(currentconsult!results_received[cvwResults.Item.key], cvwResults.Item.key)
             cvwResults_Refresh(True)   
          End If
+      Case "delete preliminary result"
+          If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!results_received, cvwResults.Item.key, const.cSection_Documents, const.sAuditAction[const.cAuditAction_DeletePreliminaryResult], "preliminary result") Then 
+             modDBConnect.CommitTrans()
+             Deleted_Documents.Add(currentconsult!results_received[cvwResults.Item.key], cvwResults.Item.key)
+             cvwResults_Refresh(True)   
+          End If
  
       Case "undo delete"
             For Each D In Deleted_Documents
@@ -2396,7 +2412,10 @@ Public Sub mnuResultsReceived_Click()
                Endif
             Endif
          Next
-          
+      Case "refile document"
+          If modArchiveDocumentsDBI.Document_SendBack_For_ReFiling(currentconsult, currentconsult!results_received, cvwResults.Item.key) Then 'commit done in that routine
+            cvwResults_Refresh(True)   
+          Endif
       Case "display"
          Inbox_showResult()
       Case "display as letter"
@@ -2676,11 +2695,13 @@ Public Sub mnuLettersReceived_Click()
          Endif
       Case "delete"                        'mark this as deleted but enforce a reason
          If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!letters_received, cvwLettersReceived.Item.key, const.cSection_Documents, const.sAuditAction[const.cAuditAction_MarkDeleted], "Letter re:" & currentconsult!letters_received[cvwLettersReceived.Item.key]!tag_user) Then 
+            modDBConnect.CommitTrans()
             Deleted_Documents.Add(currentconsult!letters_received[cvwLettersReceived.Item.key], cvwLettersReceived.Item.key)
             cvwLettersReceived_Refresh(True) 'refresh the collection and reshow the list
          End If
       Case "delete duplicate"             'Delete the letter, but don't enforce a reason
          If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!letters_received, cvwLettersReceived.Item.key, const.cSection_Documents, const.sAuditAction[const.cAuditAction_DeleteDuplicateDocument], "duplicate letter") Then 
+            modDBConnect.CommitTrans()
             Deleted_Documents.Add(currentconsult!letters_received[cvwLettersReceived.Item.key], cvwLettersReceived.Item.key)
             cvwLettersReceived_Refresh(True)   
          End If
@@ -2711,6 +2732,11 @@ Public Sub mnuLettersReceived_Click()
          cvwLettersReceived.SelectAll(False)
       Case "audit trail"
          Document_AuditTrail_Show(cvwLettersReceived.Item.Key)
+      Case "refile document"
+          If modArchiveDocumentsDBI.Document_SendBack_For_ReFiling(currentconsult, currentconsult!letters_received, cvwLettersReceived.Item.key) Then 'commit done in that routine
+            cvwLettersReceived_Refresh(True)   
+          Endif
+
    End Select
    
 End

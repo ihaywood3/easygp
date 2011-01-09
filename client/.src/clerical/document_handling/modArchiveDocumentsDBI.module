@@ -73,7 +73,7 @@ Public Function Change_Display_Mode(cons As Cconsult, documents As Collection, p
    D!pk_document = pk_document
    D!fk_lu_display_as = fk_lu_display_as
    modArchiveDocumentsDBI.Save(d, documents[pk_document])
-   If modAudit.MakeAudit(cons, "document display mode changed", "documents.documents", pk_document, fk_section, "") Then 
+   If modAudit.MakeAudit(cons, "document display mode changed", "documents.documents", pk_document, fk_section, audit_action) Then 
        modDBConnect.CommitTrans()
        Return True
    End If   
@@ -180,3 +180,164 @@ Public Function Inbox_Documents_Get(fk_staff_destination As Integer, fk_lu_type 
    Return modDBConnect.exec_query_collection(sql)
    
 End
+
+
+
+Public Function Staff_Tasks_Document_Audit_Trail(fk_document As Integer) As String
+
+   'Given a document pk, contruct a html page of any tasks associated with the document
+   'the html sort of looks like this:
+   'Put heading on top of page:
+   'DOCUMENT AUDIT TRAIL
+   'PATIENT: name and address
+   'DOCUMENT: document name
+   'location (filing status - in  inbox or filed)
+   'source file
+   'destination staff member
+   'what the document is about
+   '----------------------------------------------
+  
+   Dim shtml As String
+   Dim TasksAndNotes As Collection
+   Dim TaskAndNote As Collection
+   Dim sLastTask As String
+   Dim sLastDetails As String  
+   Dim allnotes As String
+   Dim R1 As Result
+   Dim R2 As Result 
+   Dim sql As String 
+   Dim bUnfiled As Boolean
+   Dim document_user_tag As String 
+   Dim sRowHTML As String
+   
+   r1 = modDBConnect.exec_query("select * from documents.vwDocuments where pk_document = " & fk_document)
+      
+   For Each R1
+      sHTml = "<P align=center> <B><U> DOCUMENT AUDIT TRAIL</U></B></P>"
+      sHtml &= "<B>PATIENT     :</B>" & R1!patient_firstname & " " & R1!patient_surname & " (" & R1!patient_sex & " " & R1!patient_age & " ) " 
+      sHtml &= R1!patient_street & " " & R1!patient_town & " " & R1!patient_state & " " & R1!patient_postcode & " DOB:" & R1!patient_birthdate & "<BR><BR>"
+      If Not IsNull(R1!tag_user) Then
+         document_user_tag = R1!tag_user
+         If Right(document_user_tag) = ";" Then document_user_tag = Left(document_user_tag, Len(document_user_tag) - 1)
+      Else
+         document_user_tag = R1!tag
+         bUnfiled = True   
+      End If 
+      sHtml &= "<B>DOCUMENT:  " & document_user_tag & "</B>"
+      
+      If R1!style = "result" Then
+         sHtml &= " - " & R1!sending_entity_request_type & "<BR><BR> - Result"
+      Else
+         sHtml &= "<BR><BR> - Letter "
+      Endif
+      
+      If bUnfiled Then
+         sHtml &= " still in inbox and not filed<BR>"
+      End If
+      If Not IsNull(r1!date_requested) Then
+         sHtml &= "- requested on " & Format(r1!date_requested, "dd/mm/yyyy") 
+      Endif
+      sHtml &= "- document originated from " & r1!originator
+      If r1!msh_sending_entity <> "" Then 
+         sHtml &= " and was sent by " & r1!msh_sending_entity & " imported on " 
+      Else
+         sHtml &= " and was scanned into the database by "
+         sql = "Select * from clin_consult.vwProgressNotes where fk_row =" & fk_document 
+         sql &= " AND fk_audit_action = " & const.cAuditAction_ScannedDocumentImported 
+         R2 = modDBConnect.exec_query(sql)
+         If R2.count Then
+            sHtml &= R2!title & " " & R2!firstname & " " & R2!surname & " (" & R2!role & ") on "
+         Else
+            shtml &= "?? on "
+         Endif
+      End If
+      sHtml &= Format(r1!imported_time, "dd/mm/yyyy:hh:nn:ss") & "<BR>"
+      sHtml &= "- source file: " & r1!source_file & "<BR>"
+      sHtml &= "- destination staff member was " & r1!staff_destination_wholename & "<BR>"
+      sHtml &= "- document concerns: %summary" & "<BR><BR>"
+      Break
+   Next
+   '---------------------------------------------------------------------------------
+   ' Now get all the tasks and accompanying notes, essentially in this format or rows
+   ' This gives us a recordset looking something like this
+   ' "Task Name";"Staff Member 1";"Task component 1";"Comment 1"
+   ' "Task Name";"Staff Member 1";"Task component 1";"Comment 2"
+   ' "Task Name";"Staff Member 2";"Task component 2";"Comment 1"
+   ' "Task Name";"Staff Member 2";"Task component 2";"Comment 2"
+   ' "Task Name";"Staff Member 2";"Task component 2";"Comment 3"
+   '  plus dates etc
+   '---------------------------------------------------------------------------------
+   TasksAndNotes = modStaffTasksDBI.Tasks_And_Notes_Get(fk_document)
+   '---------------------------------------------------------------------
+   'If there are tasks attached to this document, put up the row headings
+   'otherwise skip this, no rows will be added under these headings
+   '---------------------------------------------------------------------
+   If TasksAndNotes.count Then sHtml &= modHTML.Staff_Tasks_Audit_RowHeading()                                  'the column headings for the table
+   For Each TaskAndNote In TasksAndNotes
+      If InStr(sHtml, "%summary") Then
+         sHtml = Replace$(sHtml, "%summary", TaskAndNote!task)                      'somewhat of a misnomer is this field = letter summary or request(s)
+      Endif
+      '----------------------------------------------------------
+      'new task, new row, but put all components in the same cell
+      '----------------------------------------------------------
+      If sLastDetails <> TaskAndNote!details Then       
+         '---------------------------------------------------------------------------------------------
+         'On every change of component of a task, put into the appropriate cell, the last lot of notes
+         '--------------------------------------------------------------------------------------------
+         If allnotes <> "" Then
+             shtml = Replace(shtml, "%notes", allnotes) & "<BR>" 
+         Else
+            shtml = Replace(shtml, "%notes", "")
+         End If
+         allnotes = ""                                                              'zero notes string
+        ' sRowHTML = TableRow()
+         sHtml &= modHTML.Staff_Tasks_Audit_TableRow()                           'add new templated row of html
+         sLastDetails = TaskAndNote!details
+         shtml = Replace(shtml, "%details", TaskAndNote!details)
+         shtml = Replace(shtml, "%log_date", Format(TaskAndNote!date_component_logged, "dd/mm/yyyy"))
+         shtml = Replace(shtml, "%staff_allocated", TaskAndNote!staff_allocated_title & " " & TaskAndNote!staff_allocated_wholename)
+         '-------------------------------------------------
+         'There may or may not be notes for this task
+         'If there are, put in the date first then the note
+         'e.g 10/12/2010  These are the notes
+         '-------------------------------------------------
+         If Not IsNull(TaskAndNote!date_note) Then
+            allnotes &= "<B>" & Format(TaskAndNote!date_note, "dd/mm/yyyy") & "</B>: " & TaskAndNote!note & "<BR>"
+         End If
+         If TaskAndNote!date_component_completed <> Null Then
+            shtml = Replace(shtml, "%finalised", Format(TaskAndNote!date_component_completed, "dd/mm/yyyy"))
+         Else
+            shtml = Replace(shtml, "%finalised", "%No")
+         Endif
+      Else
+         '-----------------------------------------
+         'Is still the same task, keep adding notes
+         '-----------------------------------------
+         allnotes &= "<B>" & Format(TaskAndNote!date_note, "dd/mm/yyyy") & "</B>: " & TaskAndNote!note & "<BR>"
+      Endif
+   Next
+   '------------------------------------------------------------------------
+   'At end of loop, the last component of a task, hasn't yet had notes saved
+   '------------------------------------------------------------------------
+   If allnotes <> "" Then                                            'may have some notes
+      shtml = Replace(shtml, "%notes", allnotes) & "<BR>"            'if so put them in place of placeholder
+   End If
+   shtml = Replace(shtml, "%notes", "")                              'remove any un-used placeholders
+   If InStr(shtml, "%summary") Then
+     shtml = Replace(shtml, "- document concerns: %summary" & "<BR><BR>", "")
+   End If   
+   '----------------------------------------------
+   'If there were tasks, check finalisation status
+   '----------------------------------------------
+   If TasksAndNotes.count Then 
+      If InStr(sHtml, "%No") Then
+         sHtml &= "<BR><B>Task Status</B>: Not Finalised"
+         sHtml = Replace$(sHtml, "%No", "No")
+      Else
+         sHtml &= "<BR><B>Task Status</B>: Complete"
+      Endif
+      sHtml &= "<HR>"
+   End If   
+   Return "<HTML><BODY><TABLE>" & shtml & "</TABLE><HR></BODY></HTML>"
+End
+

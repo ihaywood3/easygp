@@ -45,7 +45,7 @@
 '                automatically selected and the document displayed, by choosing the appropriate
 '                viewer
 '                       
-'                All documents must be actioned at least by viewing the meta - data Of the document
+'               All documents must be actioned at least by viewing the meta - data of the document
 '               and the user clicking File implicity means they have approved the document as 'OK'
 '               The Form that does all the actioning, and indeed also contains the metadata form 
 '               is FActionDocument - this is basically a tab control on form, and other forms
@@ -91,6 +91,7 @@ Private SelectedDocument As Collection          'currently selected document
 Private synonyms As Collection                  'collection matching a senders terms with readable users terms
 Private Observations As Collection              'Any 'observations' ie measurement results, associated with a document
 Private Documents As Collection 
+Private Deleted_Documents As Collection         'allow multi-level undo of deleted documents Inbox-wide
 '--------------
 'Integer Values
 '--------------
@@ -155,7 +156,8 @@ Public Sub Settings_Save()
    Settings["Inbox/HSplit_Document_" & Me.tag] = HSplit_Document.Layout
    Settings["Inbox/Vsplit_left_" & Me.tag] = Vsplit_left.Layout
    Settings["Inbox/VSplit_Document" & Me.tag] = VSplit_Document.Layout 
- End
+   
+End
 
 Private Sub Settings_Load()
    
@@ -205,6 +207,9 @@ Public Sub Init()
    "</HTML>"
    
    ' Ian temporary whilst I muck around with auto-graphing
+   ' The loinc stuff needs alot of work e.g the english terms I've used often
+   ' have a long winded version in the db
+   ' also the extended version of the loinc seems to have disappeared from easygp
    loincs = New Collection
    loincs.Add("eGFR", "33914-3")
    loincs.Add("HBA1c", "4548-4")
@@ -243,10 +248,11 @@ Public Sub Init()
    loincs.Add("MCHC", "786-4")
    loincs.Add("RDW", "788-0")
    loincs.Add("Lymphocytes", "731-0")
-   
    loincs.Add("Cholesterol", "14647-2")
    loincs.Add("HDL Cholesterol", "14646-4")
    loincs.Add("LDL Cholesterol", "22748-8")
+   
+   Deleted_Documents = New Collection
    
 End
 
@@ -366,15 +372,12 @@ Public Function Inbox_Reload()
    
    Inc Application.Busy
    lblSendingEntity.text = ""
-   
    cvwInboxDocuments.Clear()
    FPreview_HtmlDocument.WebView1.html = "<HTML><BODY></BODY></HTML>"
    Form_ActionDocument.FMetaData.EditArea_Clear()
    Inbox = Fill_Inbox(0, 2000)   'fill all documents, limit FIXME UNHARD CODE ME
    cvwInbox.MoveFirst()          
    Try cvwInbox.Item.Selected = True   'Triggers loading of documents
-   If Error Then
-   End If
    Dec Application.Busy
    
 End
@@ -598,10 +601,10 @@ Public Sub Auto_Graph(observations As Collection)
    '-----------------------------------------------------------------
    If Buttoncount Then Show_Graph(sLoinc, sMeasurement)
    Dec Application.Busy
-
+   
 End
 
-Public Sub graph_Buttons_click()
+Public Sub Graph_Buttons_click()
    '----------------------------------------------------------
    'User has clicked on a button underneath the embedded graph
    '----------------------------------------------------------
@@ -1094,13 +1097,20 @@ Static Public Sub Reload_Patient(bReallocating As Boolean)
 End
 
 Static Public Sub Document_Filed_As_Update(name As String)
-   
+   '--------------------------------------------------------
+   'Do not remove this routine it is called from other forms
+   'eg FMetadata, when user clicks the option button to 
+   'change from say a result to a letter
+   '--------------------------------------------------------   
    form_inbox.lblFilingAs.text = "Filing as: " & name
    
 End
 
 Public Sub Filed_As_Update(name As String)
-   
+  '---------------------------------------------------------------
+   'Do not remove this routine it is used in static routine above
+   '-------------------------------------------------------------
+    
    lblFilingAs.text = name
    
 End
@@ -1296,14 +1306,30 @@ End
 
 Public Sub mnuDocuments_Click()
    
+   Dim x As Integer
+   Dim D As Collection
+   
    Select Case Last.tag
-      Case "preliminary result not required", "duplicate result", "delete selected"
-         mnuDocuments_Delete(False, Last.tag)
+      Case "mark deleted", "delete - duplicate document", "delete - preliminary result"            'deletes a document and enforces an audit trail
+         If IsNull(SelectedDocument!tag_user) Then
+            Document_Delete(Last.tag, SelectedDocument!tag)
+         Else
+            Document_Delete(Last.tag, SelectedDocument!tag_user)
+         Endif
+         Inbox_Reload()      
+      Case "undo delete"                          'unmark the previous document as deleted
+         For Each D In Deleted_Documents
+            If modArchiveDocumentsDBI.UnDelete(currentconsult, d!pk_document, const.cSection_Documents) Then
+               modDBConnect.CommitTrans()
+               Deleted_Documents.Remove(d!pk_document)
+               Inbox_Reload()   
+               Break
+            Endif
+         Next
       Case "delete all"
-         
+         modutil.NotImplemented("Multiple Document Deletion")
       Case "fonts"
-          modutil.Columnview_SetFont(cvwInboxDocuments, "Inbox")
- 
+         modutil.Columnview_SetFont(cvwInboxDocuments, "Inbox")
       Case "reallocate single", "reallocate multiple"
          SelectedDocument!fk_patient = Null
          With Form_ActionDocument.FMetaData
@@ -1312,10 +1338,15 @@ Public Sub mnuDocuments_Click()
             .Reallocate()
             .rbTypeSender_Organisation.Value = True
          End With
-      Case "Display as result"
-      Case "Display as letter"
+      Case "display as result"
+         If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, Selected_Inbox!documents, iSelectedDocument, const.Document_Display_As_Result, const.cSection_Inbox, "") Then
+            Inbox_Reload()
+         Endif
+      Case "display as letter"
+         If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, Selected_Inbox!documents, iSelectedDocument, const.Document_Display_As_Letter, const.cSection_Inbox, "") Then
+            Inbox_Reload()
+         Endif
       Case "refile"
-         
          Document_SendBack_For_ReFiling()
       Case "reallocate sender"     
          With Form_ActionDocument.FMetaData
@@ -1323,30 +1354,6 @@ Public Sub mnuDocuments_Click()
             .Reset_Keys()
             .txtFindSender.SetFocus()
          End With   
-         '    .HBox_Author.Visible = True
-         '    .VBox_Organisation.Visible = True  
-         '    .HBox_Editarea_8.visible = True 
-         '    .HBox_Document_Tag.Visible = False 
-         '    .HBox_Comment.Visible = False  
-         '    .HBox_Laterality.visible = False
-         '    .hBox_Urgency.Visible = False 
-         '    .HBox_HealthIssue.Visible = False
-         '    .HBox_DocumentDate.Visible = False
-         '    .HBox_UserObservationName.Visible = False 
-         '    .Vbox_Lock.Visible = False
-         '    .Hbox_Requested.Visible = False  
-         '    .txtRecipient.Background = Color.White
-         '    .txtRecipient.Enabled = True
-         '    .lblMeasure.text = " Staff Responsible "
-         '    .HBox_DocumentType.Visible = False  
-         '    modEditAreaHelpers.Resize_labels(.VBox_Organisation, .lblMeasure)
-         '    modEditAreaHelpers.Resize_labels(.Vbox_Person, .lblmeasure)
-         ' End With     
-         
-      Case "auto file single patient"
-         bAutoFilePatient = True
-         tbFile_Click()
-      Case "auto file all patients"
    End Select
    
 End
@@ -1400,12 +1407,14 @@ Public Function Document_Make_Audit(SelectedDocument As Collection, iAuditAction
    
 End
 
-Public Sub Document_Delete(iAuditAction As Integer, Optional reason As String) As Boolean
+Public Sub Document_Delete(audit_action As String, Optional audit_notes As String = "")
+   '---------------------------------------------------------------
+   'Delete currrently selected document, laying down an audit trail
+   '---------------------------------------------------------------
    
-   modConsultDBI.Make_Audit(Document_Make_Audit(SelectedDocument, const.cAuditAction_Delete, reason), "documents", "documents")
-   modDBConnect.exec_query("Update documents.documents set deleted = True where pk = " & SelectedDocument!pk_document)
-   modDBConnect.CommitTrans()
-   Return True
+   If modArchiveDocumentsDBI.Delete(currentconsult, Selected_Inbox!documents, iSelectedDocument, const.cSection_Inbox, audit_action, audit_notes) Then 
+      Deleted_Documents.Add(SelectedDocument, iSelectedDocument)            'keep for undelete
+   End If
    
 End
 
@@ -1477,7 +1486,7 @@ Public Sub Document_SignOff()
 End
 
 Public Sub mnuDocuments_Delete(bDeleteAll As Boolean, Optional reason As String)
-   
+   'Currently not used please do not delete this   
    Dim x As Integer
    
    If bDeleteAll Then cvwInboxDocuments.MoveFirst()
@@ -1502,9 +1511,21 @@ Public Sub cvwInboxDocuments_Menu()
    
    Dim x As Integer
    Dim y As Integer
+   Dim mnu As Menu
    
-   If Not cvwInboxDocuments.count Then Return
-   
+   If Not cvwInboxDocuments.count Then                ' no documents?
+      If Deleted_Documents.count Then                 ' at least enable undo-delete if necessary
+         For Each mnu In mnuDocuments.Children
+            mnu.Enabled = False  
+         Next
+         mnuDocuments_UnDelete.enabled = True
+         Return
+      Endif
+   Else
+      For Each mnu In mnuDocuments.Children
+         mnu.Enabled = True  
+      Next
+   End If   
    cvwInboxDocuments.MoveFirst()
    For x = 0 To cvwInboxDocuments.count - 1
       If cvwInboxDocuments.Item.Selected = True Then
@@ -1519,6 +1540,12 @@ Public Sub cvwInboxDocuments_Menu()
       mnuDocuments_ReAllocateSingle.Enabled = True  
       mnuDocuments_ReAllocateMultiple.Enabled = False
       
+   Endif
+   If Deleted_Documents.count Then
+      mnuDocuments_UnDelete.enabled = True
+      
+   Else
+      mnuDocuments_UnDelete.enabled = False   
    Endif
    mnuDocuments.Popup()
    
@@ -1607,12 +1634,14 @@ Public Function Valid_Document() As Boolean
             Return 
          End If
          If Not InStr(Lower(SelectedDocument!tag), "scanned") Then 
-            If Not Synonyms_Update() Then
-               Message.Title = "User Term Not Found"
-               Message.info(sMsg)
-               Return 
-            End If
-         End If   
+            If SelectedDocument!tag <> "" Then 
+               If Not Synonyms_Update() Then
+                  Message.Title = "User Term Not Found"
+                  Message.info(sMsg)
+                  Return 
+               End If
+            End If 
+         End If     
       Case const.Document_Display_As_Letter 
          smsg = "Letter type:" & cvwInboxDocuments[cvwInboxDocuments.item.key][1] & "\n" 
          smsg &= "Descriptive tag :%tag%\n\n"

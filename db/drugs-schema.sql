@@ -15,17 +15,17 @@ Copyright 2010-11 Dr. Ian Haywood
 create table sources(
 	pk integer primary key,
 	source_category char check (source_category in ('p', 'a', 'i', 'm', 'o', 's')) not null,
-	description text not null
+	"source" text not null
 );
 
 comment on table sources is
 	'Source of any reference information in this database';
 comment on column sources.source_category is
 	'p=peer reviewed, a=official authority, i=independent source, m=manufacturer, o=other, s=self defined';
-comment on column sources.description is
+comment on column sources."source" is
 	'URL or address or similar informtion allowing to reproduce the source of information';
 
-copy sources(pk,description,source_category) from stdin with delimiter as '|';
+copy sources(pk,"source",source_category) from stdin with delimiter as '|';
 1|Manufacturer''s paper handout|m
 2|PBS Yellow Book Caution|a
 3|Australian Prescriber|a
@@ -35,12 +35,12 @@ copy sources(pk,description,source_category) from stdin with delimiter as '|';
 -- ===========================================
 create table patient_categories(
 	pk integer primary key,
-	description text not null
+	"category" text not null
 );
 comment on table patient_categories is
 	'enumeration of categories of patient populations for targeted drug warnings';
 
-copy patient_categories(pk,description) from stdin with delimiter as '|';
+copy patient_categories(pk,"category") from stdin with delimiter as '|';
 1|renal impairment
 2|hepatic impairment
 3|elderly
@@ -52,13 +52,13 @@ copy patient_categories(pk,description) from stdin with delimiter as '|';
 create table evidence_levels
 (
 	pk integer primary key,
-	description text not null
+	evidence_level text not null
 );
 
 comment on table evidence_levels is 
        'different levels of evidence for a fact in the database';
 
-copy evidence_levels(pk,description) from stdin with delimiter as '|';
+copy evidence_levels(pk,evidence_level) from stdin with delimiter as '|';
 1|multiple controlled studies
 2|multiple case-reports
 3|single case-report
@@ -72,14 +72,13 @@ copy evidence_levels(pk,description) from stdin with delimiter as '|';
 -- ===========================================
 create table severity_level (
 	pk integer primary key,
-	description varchar (100) not null,
-	"comment" text
+	severity text not null
 );
 
 comment on table severity_level is
         'different level of severity for warnings. Levels may control client behaviour';
 
-copy severity_level(pk,description) from stdin with delimiter as '|';
+copy severity_level(pk,severity) from stdin with delimiter as '|';
 1|noting only
 2|mild effects, requires simple clinical action
 3|significant but reversible effect
@@ -92,7 +91,7 @@ copy severity_level(pk,description) from stdin with delimiter as '|';
 create table clinical_effects
 (
 	pk serial primary key,
-	description text unique,
+	effect text unique not null,
 	fk_severity integer references severity_level (pk) not null
 );
 
@@ -103,7 +102,7 @@ I think it is important to normalise. The interface may need to use a text box (
 too long for a pick list) and confirm with users if they want to create a new entry.';
 
 
-copy clinical_effects(description,fk_severity) from stdin with delimiter '|';
+copy clinical_effects(effect,fk_severity) from stdin with delimiter '|';
 increase in INR|2
 sharp decrease in INR|2
 increase in plasma concentration|2
@@ -122,10 +121,10 @@ postural hypotension|3
 create table pharmacologic_mechanisms
 (
 	pk integer primary key,
-	description text not null
+	mechanism text not null
 );
 
-copy pharmacologic_mechanisms(pk, description) from stdin with delimiter '|';
+copy pharmacologic_mechanisms(pk, mechanism) from stdin with delimiter '|';
 1|competition for renal extraction
 2|competition for hepatic metabolic pathway
 3|induction of hepatic metaboilsm
@@ -168,8 +167,8 @@ copy topic(pk,title,target) from stdin with delimiter '|';
 -- ==============================================================
 
 create table atc (
-	atccode varchar(8) primary key,
-        "name" text not null
+	atccode text primary key,
+        atcname text not null
 );
 
 comment on table atc is
@@ -196,7 +195,7 @@ comment on column info.comment is
 	'the drug product information in HTML format';
 
 create table link_atc_info (
-       atccode varchar(8) not null,
+       atccode text not null references atc(atccode),
        fk_info integer references info (pk) not null
 );
 
@@ -216,10 +215,10 @@ this categoery.';
 -- ===========================================
 create table form (
 	pk integer primary key,
-	description text
+	form text not null
 );
 
-copy form(pk,description) from stdin with delimiter '|';
+copy form(pk,form) from stdin with delimiter '|';
 2|bandage
 3|capsule
 4|cartridge
@@ -292,22 +291,22 @@ copy form(pk,description) from stdin with delimiter '|';
 create table product(
         pk serial primary key,
 	atccode varchar (8) not null,
-	"name" text not null,
+	generic text not null,
 	salt text,
 	fk_form integer references form (pk) not null,
-	strength text not null,
+	strength text,
         salt_strength text,
         original_pbs_name text,
         original_pbs_fs text,
-	"comment" text,
+	free_comment text,
         updated_at timestamp default now(),
-        unique (atccode,"name",fk_form,strength)
+        unique (atccode,generic,fk_form,strength)
 );
 
 comment on table product is
 'dispensable form of a generic drug including strength, package size etc';
 
-comment on column product."name" is 'full generic name in lower-case. For compounds names separated by ";"';
+comment on column product.generic is 'full generic name in lower-case. For compounds names separated by ";"';
 comment on column product.salt is 'if not normally part of generic name, the adjuvant salt';
 comment on column product.fk_form is 'the form of the drug';
 comment on column product.strength is 'the strength as a number followed by a unit. For compounds
@@ -318,7 +317,7 @@ comment on column product.original_pbs_name is 'for a drug imported from the PBS
 generic name as there listed, otherwise NULL';
 comment on column product.original_pbs_fs is 'for a drug imported from the PBS Yellow Book database, the original 
 form-and-strength field as there listed, otherwise NULL';
-comment on column product."comment" is 'a free-text comment on properties of the product. For example for complex packages
+comment on column product.free_comment is 'a free-text comment on properties of the product. For example for complex packages
 with tablets lof differing strengths';
 
 create table pack (
@@ -359,33 +358,33 @@ create table link_flag_product (
 comment on table link_flag_product is
 	'many-to-many pivot table linking products to flags';
 
-
 -- ===========================================
-create table manufacturer(
-	"name" varchar(100) unique,
+create table company(
+	company text unique not null,
 	address text,
 	telephone text,
 	facsimile text,
 	code varchar (3) primary key
 );
 
-comment on table manufacturer is
-	'list of pharmaceutical manufacturers';
-comment on column manufacturer.name is
+comment on table company is
+	'list of pharmaceutical manufacturers/importers';
+comment on column company.company is
 	'company name';
-comment on column manufacturer.address is
-	E'complete printable address with embedded newline characters as "\\n"';
-comment on column manufacturer.telephone is
+comment on column company.address is
+	E'complete printable address, lines separated by commas';
+comment on column company.telephone is
 	'phone number of company';
-comment on column manufacturer.facsimile is
+comment on column company.facsimile is
 	'fax number of company';
-comment on column manufacturer.code is
-	'two- or three-letter symbol of manufacturer';
+comment on column company.code is
+	'Two- or three-letter guaranteed-unique code of company. Two-letter codes come
+from the PBS system. Three-letter codes assigned by me for companies that only produce non-PBS drugs';
 
 -- ===========================================
 create table brand(
 	fk_product integer references product(pk) not null,
-	manufacturer varchar(3) not null references manufacturer(code),
+	fk_company varchar(3) not null references company(code),
 	brand varchar (100) not null,
 	price money,
         from_pbs boolean not null default 'f',
@@ -398,6 +397,7 @@ comment on table brand is
 comment on column brand.from_pbs is 
          'true if the brand comes from the PBS database, allows the list to be easily reloaded
 with new PBS data. False means data we added ourselves.';
+comment on column brand.price is 'dispensed price for PBS drugs.';
 comment on column brand.original_tga_text is 'drugs imported from TGA database, the original label therein';
 comment on column brand.original_tga_code is 'drugs imported from TGA database, their TGA code';
 
@@ -425,9 +425,10 @@ comment on column pbs.max_rpt is
 
 create table restriction (
     pbscode varchar (10) not null,
-    "comment" text not null,
-    "type" char,
-    code varchar(10) not null
+    restriction text not null,
+    restriction_type char default '3' not null,
+    code varchar(10) not null,
+    streamlined boolean default false not null
 );
 
 comment on table restriction is 
@@ -436,8 +437,10 @@ comment on table restriction is
 comment on column restriction.code is
    'the authority code number, for doing streamlined authorities';
 
-comment on column restriction.comment is 
-   'the actual text of the authority requirement';
+comment on column restriction.restriction is 
+   'the actual text of the authority requirement, in basic HTML';
 
-comment on column restriction."type" is
-    '1=only applies to increased quantities/repeats, 2=only to normal amounts, 3=to both';  
+comment on column restriction.restriction_type is
+    '1=only applies to increased quantities/repeats, 2=only to normal amounts, 3=to both'; 
+
+comment on column restriction.streamlined is 'true if this is a "streamlined" Authority'; 

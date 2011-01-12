@@ -1,4 +1,6 @@
 ' Gambas class file
+
+' Gambas class file
 ' Copyright (C) 2008,2011 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
@@ -13,114 +15,663 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'---------------------------------------------------------------------
 
+' Whether something is PBS is determined by whether their is a drugs.pbs
+' row for that product.
+' RPBS have the pbs.chapter set to "R1"
+' 
+' The full list of chapters is:
+' 
+' Drug type code
+' PBS Section
+' 
+' CI
+' Colostomy and Ileostomy Associations
+' Not in PBS schedule
+' CS
+' Section 100 (Chemotherapy Special Benefits)
+' Not in PBS schedule - is a separate publication
+' CT
+' Section 100 (Chemotherapy Scheme)
+' Not in PBS schedule - is a separate publication
+' DB
+' Emergency Drug (Doctors' Bag) Items
+' Section 2 – Emergency Drug Supplies
+' DS
+' Dental (Special Pharmaceutical Benefits)
+' Section 2 – Special Pharmaceutical Benefits
+' DT
+' Dental
+' Section 2 – Pharmaceutical Benefits for Dental Use
+' GE
+' General
+' Section 2 – General Pharmaceutical Benefits
+' GH
+' Section 100 (Growth Hormone)
+' Section 2 – Items available under Special Arrangements (section 100)
+' HB
+' Section 100 (Highly Specialised Drugs) – Public Hospitals
+' Items available under Special Arrangements (section 100)
+' HS
+' Section 100 (Highly Specialised Drugs) –Private Hospitals
+' Items available under Special Arrangements (section 100)
+' IF
+' Section 100 (IVF/GIFT Treatment)
+' Section 2 – Items available under Special Arrangements (section 100)
+' MD
+' Section 100 (Opiate Addiction Treatment)
+' Section 2 – Items available under Special Arrangements (section 100)
+' MF
+' Section 100 (Botulinum Toxin Program)
+' Section 2 – Items available under Special Arrangements (section 100)
+' OT
+' Optometrical
+' Section 2 – Pharmaceutical Benefits for Optometrical  Use
+' PL
+' Palliative Care
+' Section 2 – Pharmaceutical Benefits for Palliative Care
+' PQ
+' Paraplegic and Quadriplegic Associations
+' Not in PBS schedule - is a separate publication
+' R1
+' Repatriation Pharmaceutical Benefits
+' Repatriation Pharmaceutical Benefits Section
+' SA
+' Section 100 (Special Access Scheme)
+' Section 2 – Items available under Special Arrangements (section 100)
+' SB
+' Special Pharmaceutical Benefits
+' Section 2 – Special Pharmaceutical Benefits
+' SY
+' Section 100 (Special Authority Items) – Private Hospitals
+' Items available under Special Arrangements (section 100)
+' SZ
+' Section 100 (Special Authority Items) – Public Hospitals
+' Items available under Special Arrangements (section 100)
+
+Private bExit As Boolean
+Private bKeyValid As Boolean
+Private bGenericSearch As Boolean
+Private Prescriptions As Collection
+Private Script As Collection
 Private fk_pasthistory As Integer
+Private fk_script As Integer
+Private pk_view As Integer
+Private iCurrentScriptKey As Integer
 Private cProgressNote_Section As Integer
 Private currentconsult As CConsult
 Private bEmbedded As Boolean             'If true the form is embedded in a frmConsultNotes editor
-Private embedded_in_form As String
-Private embedded_form As String          'the form this form is embedded in
+Private embedded_in_form As String          'the form this form is embedded in
 Private Brands As Collection
 Private Brand As Collection
+Private Deleted_Scripts As Collection
+Private currentDrug As Collection
+Private timer_count As Integer
+Private Restrictions As Collection
 
-
-
-Public Sub set_embedded(flag As Boolean, embeddedinform As String)
-   '--------------------------------------------------
+Public Sub set_embedded(F As String)
+   '----------------------------------------------------------
    'If this form is embeded from another form set flag
-   'embeddedinform = either "notes" or "documents"
-   '--------------------------------------------------
-   bEmbedded = flag
-   embedded_in_form = embeddedinform
-End
+   'embeddedinform = either "Fclinical", "FInbox" or "FTasks"
+   '---------------------------------------------------------
 
-Public Sub Save()
-  
-  
-   FClinical.Refresh_AllPreviousNotes()
-End
-
-Public Sub TextLabel1_MouseDown()
-
-  
+   embedded_in_form = F
 
 End
 
-Public Sub Form_settings(mode As String)
-  
-  Select Case mode
-    Case "save"
-        ' Settings["Tasks_Embedded_" & Parent_Form & "/HSplit_EditArea_Inner.Layout"] = HSplit_EditArea_Inner.Layout
-        ' Settings["Tasks_Embedded_" & Parent_Form & "/HSplit_EditArea_Outer.Layout"] = HSplit_EditArea_Outer.Layout
-        ' Settings["Tasks_Embedded_" & Parent_Form & "/Vsplit_Script.Layout"] = Vsplit_Script.Layout
-    Case "load"
-      
-  End Select
-  
+Public Sub Reload()
+   '-----------------------------------------
+   'Display scripts written this consultation
+   '-----------------------------------------
+   Dim x As Integer 'for readability
+   
+   cvwPrescriptions.Clear()
+   For Each script In currentconsult!prescriptions_written
+     x = script!pk_item_prescribe
+     cvwPrescriptions.Add(x, 0)
+     cvwPrescriptions[x][0] = script!script_date
+     cvwPrescriptions[x][1] = script!brand
+     cvwPrescriptions[x][2] = script!generic
+     cvwPrescriptions[x][3] = script!strength   
+     cvwPrescriptions[x][4] = script!quantity & " Rpt:" & script!repeats 
+   Next
+   '  
+End
+
+Public Sub Settings_Save()
+
+   Settings["Prescriptions_" & Embedded_In_Form & "/HSplit_EditArea_Inner.Layout"] = HSplit_EditArea_Inner.Layout
+   ' Settings["Tasks_Embedded_" & Embedded_In_Form & "/HSplit_EditArea_Outer.Layout"] = HSplit_EditArea_Outer.Layout
+   ' Settings["Tasks_Embedded_" & Embedded_In_Form & "/Vsplit_Script.Layout"] = Vsplit_Script.Layout
+   Settings["Prescriptions_" & Embedded_In_Form & "/Vsplit_Script.Layout"] = Vsplit_Script.Layout
+
+End
+
+Public Sub Settings_Load()
+   Try Vsplit_Script.Layout = Settings["Prescriptions_" & embedded_in_form & "/Vsplit_Script.Layout"]
+   Try HSplit_EditArea_Inner.Layout = Settings["Prescriptions_" & Embedded_In_Form & "/HSplit_EditArea_Inner.Layout"]
+End
+
+Public Sub Form_Open()
+   
+ 
 End
 
 Public Sub Init(cons As CConsult)
-  
-  currentconsult = cons
-  
-End
 
+   currentconsult = cons
+   lblMeasure.text = " Reason for use  "
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea_Left_Textboxes, lblMeasure)
+   modEditAreaHelpers.Resize_label(lblPrescribeFor, lblMeasure)
+   modEditAreaHelpers.Resize_label(label29, lblMeasure)
+   lblMeasure.text = "  Quantity  "
+   modEditAreaHelpers.Resize_label(lblQuantity, lblMeasure)
+   modEditAreaHelpers.Resize_label(lblLockDate, lblMeasure)
+   modEditAreaHelpers.Resize_label(lblVeteran, lblMeasure)
+   modEditAreaHelpers.Resize_label(lblREg24, lblMeasure)
+   modEditAreaHelpers.Resize_label(lblRepeats, lblMeasure)
+   modEditAreaHelpers.Resize_label(lblUsual, lblMeasure)
+   modEditAreaHelpers.Resize_label(lblPostAuthority, lblMeasure)
+   With cvwPrescriptions
+      .Columns.count = 6
+   End With
+   Settings_Load()
+End
 
 Public Sub mnuHealthIssues_Click()
    '---------------------------------------------------
    'User wants to link a request form to a health issue
    'The menu tag = the pk_pasthistory
    '---------------------------------------------------
-  
-  Select Case Last.tag
-  Case "general notes", "remove link"
-    txtHealthIssue.text = "General Notes"
-    fk_pasthistory = 0
-    cProgressNote_Section = const.cSection_GeneralNotes
-  Case Else
-    txtHealthIssue.text = currentconsult!past_history[Last.tag]!description
-    fk_pasthistory = Last.tag
-    cProgressNote_Section = const.cSection_Prescriptions
-  End Select
+   
+   Select Case Last.tag
+      Case "general notes", "remove link"
+         txtHealthIssue.text = "General Notes"
+         cProgressNote_Section = const.cSection_GeneralNotes
+         fk_pasthistory = 0
+      Case Else
+         txtHealthIssue.text = currentconsult!past_history[Last.tag]!description
+         fk_pasthistory = Last.tag
+         cProgressNote_Section = const.cSection_Referrals
+   End Select
+   
 End
 
-Public Sub EditArea_TxtBox_KeyRelease()
+Public Sub Delete(del As String)
+  
+  
+  
+End
 
+Public Sub Delete_Undo()
+  
+  
+  
+End
+
+Public Sub timer1_Timer()
+  
+  If timer_count > 3 Then
+    If bGenericSearch Then
+         Generics_Get()
+    Else
+        Brands_Get()
+    End If  
+  Endif
+  
+End
+
+Public Sub Edit()
+   '----------------------------
+   'Edit a script written today
+   '---------------------------
+   cvwPrescriptions.MoveCurrent
+   fk_script = Prescriptions[iCurrentScriptKey]!fk_script   
+   'etc
+End
+
+
+Public Sub EditArea_TxtBox_KeyRelease()
+   
+   Select Case Last.tag
+      Case "drug"
+          Timer1.Enabled = True
+          Inc timer_count
+     '    Timer1_start   
+      '   Brands_Get()
+         bGenericSearch = False  
+      Case "generic"
+           bGenericSearch = True
+           Timer1.Enabled = True
+           Inc timer_count
+   End Select
+   
+End
+
+Public Sub EditArea_Clear()
+  
+   bExit = True
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_Left_Textboxes)
+   modEditAreaHelpers.mnuHealthIssues_Refresh(currentconsult, mnuHealthissues)
+   teInteractions.Clear()
+   txtAuthorityWording.Clear()
+   fk_script = 0
+   pk_view = 0
+   lcRestrictions.Clear()
+   columnview1.Visible = False   
+   
+   txtAuthorityWording.text = "" 
+   lblDrug.text = "Drug"
+   txtdate.text = Format(Now, "dd/mm/yyyy")
+   txtDrug.SetFocus()
+   bExit = False  
+End
+
+Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   Select Case tag
+      Case "date"
+         bKeyValid = modUtil.AllowKeys(Const.AllowKeys_DateFormat, keycode)
+      Case "repeats", "quantity"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
+      Case Else  
+         bKeyValid = True  'date of injury can be free text e.g 'unkown'
+   End Select
+   Return bKeyValid
+
+End
+
+Public Sub Editarea_txtBox_KeyPress()
+  
+   If Not EditAreaTextbox_ExcludeKeys(key.code, Last.tag) Then    'validate key input first
+      Stop Event                                                  'no good? don't show key output
+      Return
+   End If
+   Select Case Key.Code
+     
+     Case Key.Down
+       If columnview1.Visible Then
+          With columnview1
+            .MoveFirst()
+            .SetFocus()
+            .Item.Selected = True
+          End With
+          
+          
+       Endif
+     Case Key.Return, Key.Tab
+       
+      Select Case Last.tag
+        Case "date"
+            txtDrug.SetFocus()
+        Case "directions"
+            TxtReason.SetFocus()
+        Case "reason"
+            tbSave.SetFocus()
+      End Select
+   End Select     
+End
+
+Public Sub EditArea_TxtBox_LostFocus()
+  
+  
+  Last.BackGround = Color.white
   Select Case Last.tag
+    Case "date"
+            If Last.text <> "" Then
+           If Not modEditAreaHelpers.Valid_Date(Last) Then
+               bExit = True
+               Last.text &= " **INVALID DATE**"
+               Last.SetFocus()
+               bExit = False   
+            End If
+         End If
     Case "drug"
-         Brands_Get()
+        Timer1.stop()
   End Select
 
+  Last.pos = 1
+End
+
+Public Sub EditArea_TxtBox_Change()
+  If bexit Then Return 
+  Select Case Last.tag
+    Case "drug", "generic"
+         If Trim(Last.text) = "" Then
+           New_Drug()
+         Endif
+    Case "directions"
+          Directions_Expand_Text(Last)
+  End Select
+  
+End
+
+Public Sub Directions_Expand_Text(txt As Textbox)
+  bexit = True
+  txt.text = Replace(txt.text, "bd", " twice daily")
+  txt.text = Replace(txt.text, "tds", " three times daily")
+  txt.text = Replace(txt.text, "nocte", " at night")
+  txt.text = Replace(txt.text, "ac", " before meals")
+  bexit = False
 End
 
 Public Sub EditArea_TxtBox_GotFocus()
-
+    If Last.tag <> "restriction" Then Last.BackGround = Color.rgb(95, 255, 175)
    With columnview1
-      .top = Vbox_EditArea_Left_Textboxes.top + Last.parent.top + Last.parent.height + HBox_PrescribeFor.height
+      .top = Vbox_EditArea_Left_Textboxes.top + Last.parent.top + Last.parent.height
       .left = Last.Left
-      .width = Last.width  
+      .width = txtClass.width
       .Visible = False
       .Raise
       
    End With
+ '  If Last.tag = "drug" Then Timer1.Start()
+End
 
+Public Sub columnview1_KeyPress()
+   If Key.code = Key.return Then
+      columnview1_DblClick()
+   Endif
+  
+End
+Public Sub restrictions_Show()
+   '--------------------------------
+   'Show a drugs restriction details
+   '--------------------------------
+   Dim row As Integer = 1
+   Dim pbscode As String 
+   Dim lbl As TextLabel
+   Dim sep As Separator
+   Restrictions = New Collection
+   currentDrug = brands[columnview1.Item.key]
+   pbscode = currentDrug!pbscode 
+   lcRestrictions.Clear()
+   For Each Brand In brands
+     If Not IsNull(brand!restriction) Then 
+       If brand!pbscode = pbscode
+       If Not Restrictions.Exist(brand!restriction) Then
+            With lbl = New TextLabel(lcRestrictions)
+               .text = brand!restriction
+               .Foreground = Color.DarkGray
+               .AutoResize = True
+               .font = Font["Arial,9"]
+            End With
+            With sep = New Separator(lcRestrictions)
+               .Height = 3
+               .Foreground = Color.Black
+            End With
+            Restrictions.Add(brand!restriction, brand!restriction)
+            Inc row
+        Endif
+      End If    
+        
+     End If 
+   Next
+  
+  
+End
+
+Public Sub columnview1_Select()
+  
+  columnview1.MoveCurrent()
+  txtAuthorityWording.richtext = brands[columnview1.Item.key]!restriction
+  If brands[columnview1.Item.key]!streamlined Then
+    lblRestrictions.text = "Authority - Streamlined"
+  Else
+    lblRestrictions.text = ""
+  Endif
+  Select Case brands[columnview1.Item.key]!restriction_type
+    Case Null
+         lblRestrictions.text = "unrestricted"
+    Case "1"
+         lblRestrictions.text = "Auth for increased quantities"
+    Case "2"
+       lblRestrictions.text = "Auth for normal amounts"
+    Case "3"
+         lblRestrictions.text = "Auth always"
+      
+  End Select
+  Restrictions_Show()
+End
+
+Public Sub columnview1_DblClick()
+  
+  Select Case Last.tag.tag
+    Case "drug"
+         Brand_Select()
+    Case "generic"
+         Generic_Select()
+  End Select
+  
+End
+
+Public Sub Generics_Get_old()
+   
+   Timer1.Stop()
+   With columnview1
+       .Clear()
+       .Columns.count = 4
+   End With
+   If Trim(txtGeneric.text) = "" Then Return 
+   brands = modPrescribingDBI.Generics_Get(Trim(txtGeneric.text))
+   If brands.count Then
+       For Each brand In brands
+   
+         ColumnView1.add(brand!pk_view, 0)
+         columnview1[brand!pk_view][0] = brand!brand
+         columnview1[brand!pk_view][1] = brand!generic
+         If InStr(brand!strength, "ml") Then
+            columnview1[brand!pk_view][2] = modPrescribingDBI.ConvertTo5mls(brand!strength)
+         Else
+            columnview1[brand!pk_view][2] = brand!strength
+         End If   
+         columnview1[brand!pk_view][3] = brand!form
+    Next
+         columnview1.Visible = True  
+         columnview1.tag = txtDrug 
+       
+   Endif
+     
+  
+  
+End
+Public Sub Generics_Get()
+   Dim last_brand As String 'brand+quantity+repeats
+   
+   Timer1.Stop()
+   With columnview1
+       .Clear()
+       .Columns.count = 5
+   End With
+   If Trim(txtGeneric.text) = "" Then Return 
+   brands = modPrescribingDBI.Generics_Get(Trim(txtGeneric.text))
+   If brands.count Then
+       For Each brand In brands
+         If last_brand <> brand!generic & brand!pbscode Then 
+             last_brand = brand!generic & brand!pbscode
+             '  If last_brand <> brand!brand & Str(brand!quantity) & Str(brand!max_rpt) Then 
+             '              last_brand = brand!brand & Str(brand!quantity) & Str(brand!max_rpt)
+             ' 
+             
+            ColumnView1.add(brand!pk_view, 0)
+           ' columnview1[brand!pk_view][0] = brand!brand
+            columnview1[brand!pk_view][0] = brand!generic
+            If InStr(brand!strength, "ml") Then
+               columnview1[brand!pk_view][1] = modPrescribingDBI.ConvertTo5mls(brand!strength)
+            Else
+               columnview1[brand!pk_view][1] = brand!strength
+            End If   
+            columnview1[brand!pk_view][2] = brand!form
+            columnview1[brand!pk_view][3] = Str(brand!quantity) & " Rpt:" & brand!max_rpt  
+         End If   
+    Next
+         columnview1.Visible = True  
+         columnview1.tag = txtDrug 
+       
+   Endif
+     
+  
+  
+End
+Public Sub Generic_Select()
+  
+  
+  Brand_Select()
 End
 
 Public Sub Brands_Get()
+   
+   Timer1.Stop()
+   With columnview1
+       .Clear()
+       .Columns.count = 4
+   End With
+   If Trim(txtDrug.text) = "" Then Return 
+   brands = modPrescribingDBI.Brands_Get(Trim(txtDrug.text))
+   If brands.count Then
+       For Each brand In brands
+   
+         ColumnView1.add(brand!pk_view, 0)
+         columnview1[brand!pk_view][0] = brand!brand
+         columnview1[brand!pk_view][1] = brand!generic
+         If InStr(brand!strength, "ml") Then
+            columnview1[brand!pk_view][2] = modPrescribingDBI.ConvertTo5mls(brand!strength)
+         Else
+            columnview1[brand!pk_view][2] = brand!strength
+         End If   
+         columnview1[brand!pk_view][3] = brand!form
+         Next
+         columnview1.Visible = True  
+         columnview1.tag = txtDrug 
+       
+   Endif
+   
+End
+
+Public Sub Brand_Select()
+   Dim strengh_bits As String[]  
+   columnview1.MoveCurrent
+   brand = brands[columnview1.Item.key]
+   bexit = True
+   txtGeneric.text = brand!generic
+   txtDrug.text = brand!brand
+   txtClass.text = brand!class   'fixme
+   If InStr(brand!strength, "ml") Then
+      txtStrength.text = modPrescribingDBI.ConvertTo5mls(brand!strength)
+   Else
+      txtStrength.text = brand!strength & " " & brand!form
+   End If
+   txtRepeats.text = brand!max_rpt
+   txtQuantity.text = brand!quantity
+    txtDirections.SetFocus()
+    lblDrug.text = "Drug " 
+    Select Case brand!chapter
+      Case "GE"
+         lblDrug.text &= " PBS"
+      
+    End Select
+    Try txtAuthorityWording.Richtext = brand!restriction
+    If Not Error Then
+       lblRestrictions.Visible = True
+    Else
+      lblRestrictions.Visible = False  
+    End If  
+    Try txtAuthorityWording.Richtext = brand!restriction
+    bexit = False 
+ End
+
+Public Sub EditArea_Buttons_Click()
+
+  Select Case Last.tag
+    Case "new"
+         New_Drug()
+    Case "save"
+         Save()
+    Case "brief pi"
+         Brief_PI()
+    Case "authority"
+         Authority()
+  End Select
+
+End
+
+Public Sub Save()
+   Dim script As Collection
+   
+   If Not Valid_Script() Then Return
+   If fk_script <> 0 Then
+      script!fk_script = fk_script  
+   Endif
+   
+   fk_script = modPrescribingDBI.Save(Prescriptions, fk_script, script)
+   Reload()
+   FClinical.Refresh_AllPreviousNotes()
+End
+
+Public Function Valid_Script() As Boolean
   
-  With columnview1
-      .Clear()
-      .Columns.count = 2
-  End With
   
-  brands = modPrescribingDBI.Brands_Get(Trim(txtDrug.text))
-  If brands.count Then
-      For Each brand In brands
- 
-       ColumnView1.add(brand!pk, 0)
-        columnview1[brand!pk][0] = brand!brand
-        Next
-        columnview1.Visible = True  
-  Endif
+  Return False
+End
+
+Public Sub Authority()
+  
+  
   
 End
+Public Sub Print_Script()
+  
+  
+  
+End
+
+Public Sub Brief_PI()
+  
+  
+  
+End
+
+Public Sub New_Drug()
+  
+   EditArea_Clear()
+  
+End
+
+Public Sub cvwPrescriptions_Menu()
+
+  If Last.count Then
+    mnuPrescriptions.Popup()
+  Endif
+
+End
+
+Public Sub cvwPrescriptions_Click()
+  
+   cvwPrescriptions.MoveCurrent
+   iCurrentScriptKey = Last.item.key
+  
+End
+
+Public Sub mnuPrescriptions_Click()
+  
+  Select Case Last.tag
+    Case "edit"
+         Edit()
+    Case "delete"
+         Delete("single")
+    Case "delete all"
+         Delete("all")
+    Case "undo delete"
+         Delete_Undo()
+    Case "print single"
+    Case "print all"
+    Case "brief pi"
+    Case "full pi"
+    Case "fonts"
+       modUtil.Columnview_SetFont(cvwPrescriptions, "Prescriptions_" & Embedded_In_Form)
+    Case "help"   
+  End Select
+  
+End
+

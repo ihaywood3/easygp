@@ -28,11 +28,6 @@ Public Function Generics_Get(generic As String) As Collection
    
 End
 
-Public Function Save_Drug_Pattern(Pattern As Collection) As Integer
-   
-   Return modDBConnect.insert("clin_prescribing.rxDetails", Pattern)
-   
-End
 
 Public Function Instruction_Get_PK(instruction As String) As Integer
    '--------------------------------------------------------------------
@@ -43,7 +38,7 @@ Public Function Instruction_Get_PK(instruction As String) As Integer
    
    r = modDBConnect.exec_query("Select * from clin_prescribing.instructions where instruction ILIKE $$" & instruction & "$$")
    If r.count Then Return r!pk
-   Return modDBConnect.insert("clin_prescribing.instructions", ["instruction": instruction])    
+   Return modDBConnect.insert("clin_prescribing.instructions", ["instruction": Lower(instruction)])    
    
 End
 
@@ -56,7 +51,7 @@ Public Function PrescribedFor_Get_PK(prescribed_for As String) As Integer
    
    r = modDBConnect.exec_query("Select * from clin_prescribing.prescribed_for where prescribed_for ILIKE $$" & prescribed_for & "$$")
    If r.count Then Return r!pk
-   Return modDBConnect.insert("clin_prescribing.prescribed_for", ["prescribed_for": prescribed_for])    
+   Return modDBConnect.insert("clin_prescribing.prescribed_for", ["prescribed_for": Lower(prescribed_for)])    
    
 End
 
@@ -144,11 +139,13 @@ Public Function Authority_Number_Save(authority_number As Integer)
    
 End
 
-Public Function Save(old_data As Collection, fk_script_item As Integer, script_item As Collection, fk_medication As Integer, medication As Collection) As Boolean
+Public Function Save(fk_patient As Integer, old_data As Collection, fk_script_item As Integer, script_item As Collection, fk_medication As Integer, medication As Collection) As Boolean
    'Ian to parse the instructions to create rest of fields for instructions table
    
    Dim script_dates As New Collection
-   Dim R As Recordset
+   Dim script_dates_old As New Collection
+   
+   Dim R As Result
    '------------------------------------------------------------------------------------------------------ 
    'Add new instruction or what prescibed for doesn't exist insert, otherwise get the pk
    'FIXME: try and find way to auto-code prescibed for
@@ -164,27 +161,37 @@ Public Function Save(old_data As Collection, fk_script_item As Integer, script_i
    'First save or update the core medication details
    '------------------------------------------------
    If fk_medication = 0 Then
-      
-      '------------------------------------------------------------- 
+      '--------------------------------------------------------------------------- 
       'Has this medication been prescribed before? in this exact way
-      '-------------------------------------------------------------
-      If Previously_Prescribed(medication)!count Then  'returns recordset of an existing medication
-         '---------------------------------------------- 
-         'New medication, has no start/end dates, so add
-         '----------------------------------------------
+      'For example user could have just re-prescibed de-novo from the editing area
+      '---------------------------------------------------------------------------
+      R = Previously_Prescribed(fk_patient, medication)   'returns recordset of an existing medication
+      If R.count Then  
+         '------------------------------------------------------------------------------- 
+         'yes, it exists, so don't need to create a new record, just update its last date
+         '-------------------------------------------------------------------------------
          medication!fk_script_dates = R!fk_script_dates
+         script_dates_old!pk = r!fk_script_dates
+         script_dates_old!last_date = r!last_date
          script_dates!last_date = script_item!script_date
+         modDBConnect.update("clin_prescribing.item_start_last_dates", script_dates_old, script_dates)
+         script_item!fk_medication = R!fk_medication              'link current script to existing medication key
       Else
+         '----------------------------------------------------
+         'New medication, has no start/end date record, so add
+         '----------------------------------------------------
          script_dates!start_date = script_item!script_date
          script_dates!last_date = script_item!script_date
          medication!fk_script_dates = modDBConnect.insert("clin_prescribing.item_start_last_dates", script_dates)
          script_item!fk_medication = modDBConnect.insert("clin_prescribing.medications", medication)
       End If
    Else
-      
+      '--------------------------------------
+      'prescribing from the medications list?
+      '--------------------------------------      
    Endif
+   
    If fk_script_item = 0 Then
-      
       script_item!fk_script_item = modDBConnect.insert("clin_prescribing.prescribed", script_item)
    Else
       modDBConnect.update("clin_prescribing.prescribed", old_data[fk_script_item], script_item, "fk_script_item")
@@ -205,7 +212,7 @@ Public Function Prescriptions_Written_This_Consult(fk_consult As Integer) As Col
    
 End
 
-Public Function Previously_Prescibed(m) As Integer
+Public Function Previously_Prescribed(fk_patient As Integer, M As Collection) As Result
    '--------------------------------------------------------------------
    'Checks for an **exact** pattern match with current active medication 
    'or past inactive medications, and returns fk_medication if exists
@@ -227,22 +234,22 @@ Public Function Previously_Prescibed(m) As Integer
    
    '-------------------------------------------------------------
    Dim sql As String
-   Dim existing_med As Collection
+   Dim R As Result 
    'fixme also  Return fk_script_dates
-   sql = "Select * from " & currentconsult!patient!fk_patient & " AND " 
+   sql = "Select * from clin_prescribing.vwMedications Where fk_patient = " & fk_patient & " AND " 
    sql &= "fk_generic_product = " & m!fk_generic_product 
-   sql &= " AND  fk_company= " & m!fk_company 
+   sql &= " AND  fk_company= $$" & m!fk_company & "$$"
    sql &= " AND  repeats= " & m!repeats
    sql &= " AND  quantity=" & m!quantity
-   sql &= " AND  fk_instruction =" & m! 
+   sql &= " AND  fk_instruction =" & m!fk_instruction
    sql &= " AND  fk_prescribed_for = " & m!fk_prescribed_for 
-   sql &= " AND  pbscode= " & m!pbscode
+   sql &= " AND  pbscode= $$" & m!pbscode & "$$"
    sql &= " AND  fk_print_status = " & m!fk_print_status
-   sql &= " AND  restriction_code= " & m!restriction_code 
+   sql &= " AND  restriction_code= $$" & m!restriction_code & "$$" 
    'FIXME PUT IN S8 WHEN SORT OUT WHERE TO FIND THIS
-   sql &= " AND  = delete = False" 
-   existing_med = modDBConnect.exec_query_collection(sql)
-   Return existing_med   
+   sql &= " AND medication_deleted = False   "
+   R = modDBConnect.exec_query(sql)
+   Return R
 End
 
 Public Function ConvertTo5mls(strength As String) As String

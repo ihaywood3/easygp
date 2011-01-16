@@ -168,6 +168,9 @@ Private timer_count As Integer
 Private Drug_Restrictions As Collection
 Private drug_Restriction As Collection 
 Private Print_Status As String
+Private medications As Collection
+Private medication As Collection
+Private fk_medication As Integer 
 
 Public Sub set_embedded(F As String)
    '----------------------------------------------------------
@@ -187,9 +190,11 @@ Public Sub Reload()
    Dim x As Integer 'for readability
    cvwPrescriptions.Clear()
    cvwPrescriptions.Visible = True  
+   Drug_New()
+  
    currentconsult.Refresh("prescriptions_written")
    For Each script In currentconsult!prescriptions_written
-      x = script!fk_script_item
+      x = script!pk_view
       cvwPrescriptions.Add(x, 0)
       cvwPrescriptions[x][0] = script!script_date
       ' cvwPrescriptions[x][1] = script!brand
@@ -200,7 +205,7 @@ Public Sub Reload()
       cvwPrescriptions[x][5] = script!prescribed_for   
       
    Next
-   Drug_New()
+
 
 End
 
@@ -735,38 +740,15 @@ Public Sub EditArea_Buttons_Click()
 End
 
 Public Sub Save()
-   '  TABLE clin_prescribing.items_prescribed
-   '  pk serial NOT NULL,
-   '   fk_consult integer NOT NULL,
-   '   script_date date NOT NULL, -- The actual date on the script may not be the consulation date, can be back/forwarded dated,...
-   '   fk_generic_product integer NOT NULL, -- fk to drugs.products gives generic name, atc, strengh and formulation
-   '   fk_company character varying(3) DEFAULT NULL::character varying, -- if not null, then this drug is a brand, ie ...
-   '   repeats integer NOT NULL, -- The actual number of repeats...
-   '   quantity integer NOT NULL, -- The quantity on the script...
-   '   fk_instruction integer NOT NULL,
-   '   fk_prescribed_for integer, -- key to clin_prescribing.prescribed_for table, keeps list of free text...
-   '   fk_script_dates integer NOT NULL,
-   '   restriction_code text,
-   '   pbscode text NOT NULL,
-   '   fk_print_status integer NOT NULL,
-   '   suppress_reason boolean DEFAULT false, -- If true, though kept, the reason...
-   '   s8 boolean DEFAULT false,
-   '   reg24 boolean DEFAULT false, -- If true reg24 allows us to tell the...
-   '   active boolean DEFAULT false, -- If true, the medication is on the patients...
-   '   authority_script_number integer, -- the pbs requires a unique script number for an authority item, pretty stupid, but a number that...
-   '   authority_approval_number text, -- either the steamlined authority number or the phone approval number obtained from a pbs operator
-   '   authority_post_to_patient boolean DEFAULT false,
-   '   script_number integer,
-   '   concession_details text,
-   '   brand_substitution boolean DEFAULT true,
+   'Don't even bother to unravel this I'm working on it
    
-   ' ----------------------------------------------------------------------------------------
    Dim ScriptItem As New Collection
-   Dim RxDetails As Collection
+   Dim medication As New Collection
+   
    
    If Not Valid_Script() Then Return
    If fk_script_item <> 0 Then
-      script!fk_script_item = fk_script_item  
+      ScriptItem!fk_script_item = fk_script_item  
    Else
       'fixme this logic is incomplete, eg dr may not have typed in a Zed number obtained by phone.
       If Trim(txtApprovalNumber.text) <> "" Then 
@@ -779,32 +761,35 @@ Public Sub Save()
    
    ScriptItem!fk_consult = currentconsult.GetPK()
    ScriptItem!script_date = Val(txtdate.text)
-   ScriptItem!fk_generic_product = fk_generic_product
-   ScriptItem!fk_company = fk_company
-   ScriptItem!instruction = Trim(txtDirections.text)  'this and nex line will be dropped later when key found 
-   ScriptItem!prescribed_for = Trim(txtReason.text)     'can't trust user not to have changed a pre-selected one
+   medication!fk_generic_product = fk_generic_product
+   medication!fk_company = fk_company
+   medication!instruction = Trim(txtDirections.text)  'this and nex line will be dropped later when key found 
+   medication!prescribed_for = Trim(txtReason.text)     'can't trust user not to have changed a pre-selected one
    If restriction_code <> "" Then 
-      ScriptItem!restriction_code = restriction_code
+      medication!restriction_code = restriction_code
    Endif
-   ScriptItem!pbscode = pbscode
-   ScriptItem!fk_print_status = iPrintStatus
-   ScriptItem!suppress_reason = False 'fixme put in mechanism for this
-   'ScriptItem!s8 =  
+   medication!pbscode = pbscode
+   medication!fk_print_status = iPrintStatus 'how it will  usually be printed
+   medication!suppress_reason = False 'fixme put in mechanism for this
    ScriptItem!reg24 = CBool(chkReg24.Value)
-   ScriptItem!active = CBool(chkActive.value)
-   ScriptItem!quantity = Val(txtQuantity.text)
-   ScriptItem!repeats = Val(txtRepeats.text)
+   'fixme put in s8 to medication
+   medication!active = CBool(chkActive.value)
+   medication!quantity = Val(txtQuantity.text)
+   medication!repeats = Val(txtRepeats.text)
    
    modDBConnect.BeginTrans()
-   fk_script_item = modPrescribingDBI.Save(Prescriptions, fk_script_item, scriptItem)
+  ' ScriptItem!fk_medication = modPrescribingDBI.Save_Medication(medications, fk_medication, medication)
+   fk_script_item = modPrescribingDBI.Save(Prescriptions, fk_script_item, scriptItem, fk_medication, medication)
    modPrescribingDBI.Script_Number_Save(ScriptItem!script_number)
    If Not IsNull(ScriptItem!authority_script_number) Then 
       modPrescribingDBI.Authority_Number_Save(ScriptItem!authority_script_number)
    Endif
    
    modDBConnect.CommitTrans()
+   FClinical.Refresh_Section(const.cSection_Prescriptions)    'refresh lists on main screen FClinical
+   FClinical.Refresh_AllPreviousNotes()
    Reload()
- '  FClinical.Refresh_AllPreviousNotes()
+ 
 
 End
 
@@ -914,30 +899,11 @@ Public Sub EditArea_Buttons_KeyPress()
    End If   
 
 End
-
-' 
-' CREATE OR REPLACE VIEW drugs.vwdrugs AS 
-'  SELECT nextval('drugs.vwdrugs_pk_seq'::regclass) AS pk_view, brand.fk_product, brand.fk_company, brand.brand, brand.price, brand.from_pbs, product.atccode, product.generic, product.salt, product.fk_form, product.strength, product.salt_strength, product.original_pbs_name, product.original_pbs_fs, product.free_comment, product.updated_at, form.form, atc.atcname, pbs.quantity, pbs.max_rpt, pbs.pbscode, pbs.chapter, pbs.restrictionflag, restriction.restriction, restriction.restriction_type, restriction.code AS restriction_code, restriction.streamlined
-'    FROM drugs.brand brand
-'    JOIN drugs.product ON brand.fk_product = product.pk
-'    JOIN drugs.form ON product.fk_form = form.pk
-'    LEFT JOIN drugs.atc ON product.atccode::text = atc.atccode
-'    LEFT JOIN drugs.pbs ON brand.fk_product = pbs.fk_product
-'    LEFT JOIN drugs.restriction ON pbs.pbscode::text = restriction.pbscode::text
-'   ORDER BY brand.brand, form.form, product.strength;
-' 
-' ALTER TABLE drugs.vwdrugs OWNER TO easygp;
-' GRANT ALL ON TABLE drugs.vwdrugs TO easygp;
-' GRANT ALL ON TABLE drugs.vwdrugs TO staff;
-' 
-' 
-
-
 ' --
 ' -- PostgreSQL database dump
 ' --
 ' 
-' -- Started on 2011-01-15 23:53:31 EST
+' -- Started on 2011-01-16 12:58:57 EST
 ' 
 ' SET statement_timeout = 0;
 ' SET client_encoding = 'UTF8';
@@ -963,7 +929,7 @@ End
 ' SET default_with_oids = false;
 ' 
 ' --
-' -- TOC entry 3233 (class 1259 OID 420549)
+' -- TOC entry 3234 (class 1259 OID 420549)
 ' -- Dependencies: 22
 ' -- Name: instruction_habits; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
@@ -981,8 +947,8 @@ End
 ' ALTER TABLE clin_prescribing.instruction_habits OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3640 (class 0 OID 0)
-' -- Dependencies: 3233
+' -- TOC entry 3645 (class 0 OID 0)
+' -- Dependencies: 3234
 ' -- Name: TABLE instruction_habits; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -994,8 +960,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3232 (class 1259 OID 420547)
-' -- Dependencies: 3233 22
+' -- TOC entry 3233 (class 1259 OID 420547)
+' -- Dependencies: 3234 22
 ' -- Name: instruction_habits_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1010,8 +976,8 @@ End
 ' ALTER TABLE clin_prescribing.instruction_habits_pk_seq OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3642 (class 0 OID 0)
-' -- Dependencies: 3232
+' -- TOC entry 3647 (class 0 OID 0)
+' -- Dependencies: 3233
 ' -- Name: instruction_habits_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1019,7 +985,7 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3228 (class 1259 OID 420462)
+' -- TOC entry 3229 (class 1259 OID 420462)
 ' -- Dependencies: 22
 ' -- Name: instructions; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
@@ -1039,8 +1005,8 @@ End
 ' ALTER TABLE clin_prescribing.instructions OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3643 (class 0 OID 0)
-' -- Dependencies: 3228
+' -- TOC entry 3648 (class 0 OID 0)
+' -- Dependencies: 3229
 ' -- Name: TABLE instructions; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1049,8 +1015,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3644 (class 0 OID 0)
-' -- Dependencies: 3228
+' -- TOC entry 3649 (class 0 OID 0)
+' -- Dependencies: 3229
 ' -- Name: COLUMN instructions.fk_lu_units; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1058,8 +1024,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3227 (class 1259 OID 420460)
-' -- Dependencies: 3228 22
+' -- TOC entry 3228 (class 1259 OID 420460)
+' -- Dependencies: 3229 22
 ' -- Name: instructions_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1074,8 +1040,8 @@ End
 ' ALTER TABLE clin_prescribing.instructions_pk_seq OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3646 (class 0 OID 0)
-' -- Dependencies: 3227
+' -- TOC entry 3651 (class 0 OID 0)
+' -- Dependencies: 3228
 ' -- Name: instructions_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1083,7 +1049,7 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 2875 (class 1259 OID 416106)
+' -- TOC entry 2877 (class 1259 OID 416106)
 ' -- Dependencies: 22
 ' -- Name: item_start_last_dates; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
@@ -1098,8 +1064,8 @@ End
 ' ALTER TABLE clin_prescribing.item_start_last_dates OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3647 (class 0 OID 0)
-' -- Dependencies: 2875
+' -- TOC entry 3652 (class 0 OID 0)
+' -- Dependencies: 2877
 ' -- Name: TABLE item_start_last_dates; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1108,15 +1074,13 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3241 (class 1259 OID 420727)
-' -- Dependencies: 3610 3611 3612 3613 3614 3615 3616 3617 22
-' -- Name: items_prescribed; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
+' -- TOC entry 3242 (class 1259 OID 420810)
+' -- Dependencies: 3612 3613 3614 3615 22
+' -- Name: medications; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
 ' 
-' CREATE TABLE items_prescribed (
+' CREATE TABLE medications (
 '     pk integer NOT NULL,
-'     fk_consult integer NOT NULL,
-'     script_date date NOT NULL,
 '     fk_generic_product integer NOT NULL,
 '     fk_company character varying(3) DEFAULT NULL::character varying,
 '     repeats integer NOT NULL,
@@ -1124,13 +1088,121 @@ End
 '     fk_instruction integer NOT NULL,
 '     fk_prescribed_for integer,
 '     fk_script_dates integer NOT NULL,
-'     restriction_code text,
 '     pbscode text NOT NULL,
 '     fk_print_status integer NOT NULL,
-'     suppress_reason boolean DEFAULT false,
+'     restriction_code text,
 '     s8 boolean DEFAULT false,
-'     reg24 boolean DEFAULT false,
 '     active boolean DEFAULT false,
+'     deleted boolean DEFAULT false,
+'     suppress_reason boolean
+' );
+' 
+' 
+' ALTER TABLE clin_prescribing.medications OWNER TO easygp;
+' 
+' --
+' -- TOC entry 3654 (class 0 OID 0)
+' -- Dependencies: 3242
+' -- Name: TABLE medications; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
+' --
+' 
+' COMMENT ON TABLE medications IS 'A list of a patients unique medications and whether active or not
+'  e.g fk_company gives the brand eg amoxil
+'      fk_generic_product gives the strengh and mg and generic
+'      Plus saves quantity/repeats and how to print it out';
+' 
+' 
+' --
+' -- TOC entry 3655 (class 0 OID 0)
+' -- Dependencies: 3242
+' -- Name: COLUMN medications.fk_generic_product; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
+' --
+' 
+' COMMENT ON COLUMN medications.fk_generic_product IS 'fk to drugs.products gives generic name, atc, strengh and formulation';
+' 
+' 
+' --
+' -- TOC entry 3656 (class 0 OID 0)
+' -- Dependencies: 3242
+' -- Name: COLUMN medications.fk_company; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
+' --
+' 
+' COMMENT ON COLUMN medications.fk_company IS 'if not null, then this drug is a brand, ie 
+' it is a generic made by a company with their own trade name';
+' 
+' 
+' --
+' -- TOC entry 3657 (class 0 OID 0)
+' -- Dependencies: 3242
+' -- Name: COLUMN medications.repeats; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
+' --
+' 
+' COMMENT ON COLUMN medications.repeats IS '
+' The actual number of repeats
+' may not be the max repeats allowed
+' by the pbs accessed by fk_pbs';
+' 
+' 
+' --
+' -- TOC entry 3658 (class 0 OID 0)
+' -- Dependencies: 3242
+' -- Name: COLUMN medications.quantity; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
+' --
+' 
+' COMMENT ON COLUMN medications.quantity IS '
+' The quantity on the script
+' May not be the actual quanitity allowed on the pbs
+' e.g sometimes we may prescribe diazepam in small quantities';
+' 
+' 
+' --
+' -- TOC entry 3659 (class 0 OID 0)
+' -- Dependencies: 3242
+' -- Name: COLUMN medications.active; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
+' --
+' 
+' COMMENT ON COLUMN medications.active IS '
+' If true, the medication is on the patients
+' active medication list';
+' 
+' 
+' --
+' -- TOC entry 3241 (class 1259 OID 420808)
+' -- Dependencies: 3242 22
+' -- Name: medications_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
+' --
+' 
+' CREATE SEQUENCE medications_pk_seq
+'     START WITH 1
+'     INCREMENT BY 1
+'     NO MAXVALUE
+'     NO MINVALUE
+'     CACHE 1;
+' 
+' 
+' ALTER TABLE clin_prescribing.medications_pk_seq OWNER TO easygp;
+' 
+' --
+' -- TOC entry 3661 (class 0 OID 0)
+' -- Dependencies: 3241
+' -- Name: medications_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
+' --
+' 
+' ALTER SEQUENCE medications_pk_seq OWNED BY medications.pk;
+' 
+' 
+' --
+' -- TOC entry 3244 (class 1259 OID 420826)
+' -- Dependencies: 3617 3618 3619 3620 22
+' -- Name: prescribed; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
+' --
+' 
+' CREATE TABLE prescribed (
+'     pk integer NOT NULL,
+'     fk_consult integer NOT NULL,
+'     fk_medication integer NOT NULL,
+'     script_date date NOT NULL,
+'     reg24 boolean DEFAULT false,
 '     authority_script_number integer,
 '     authority_approval_number text,
 '     authority_post_to_patient boolean DEFAULT false,
@@ -1142,15 +1214,15 @@ End
 ' );
 ' 
 ' 
-' ALTER TABLE clin_prescribing.items_prescribed OWNER TO easygp;
+' ALTER TABLE clin_prescribing.prescribed OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3649 (class 0 OID 0)
-' -- Dependencies: 3241
-' -- Name: TABLE items_prescribed; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
+' -- TOC entry 3662 (class 0 OID 0)
+' -- Dependencies: 3244
+' -- Name: TABLE prescribed; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
-' COMMENT ON TABLE items_prescribed IS 'Every single item prescribed has an entry here
+' COMMENT ON TABLE prescribed IS 'Every single item prescribed has an entry here
 ' 	this table gives us
 ' 	- the doctor who prescribed
 ' 	- the date prescription was issued consult.date
@@ -1165,150 +1237,50 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3650 (class 0 OID 0)
-' -- Dependencies: 3241
-' -- Name: COLUMN items_prescribed.script_date; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
+' -- TOC entry 3663 (class 0 OID 0)
+' -- Dependencies: 3244
+' -- Name: COLUMN prescribed.script_date; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
-' COMMENT ON COLUMN items_prescribed.script_date IS '
+' COMMENT ON COLUMN prescribed.script_date IS '
 ' The actual date on the script may not be the consulation date, can be back/forwarded dated,
 ' without this ability GP''s may as well pack up and go
 ' home though illegal in theory';
 ' 
 ' 
 ' --
-' -- TOC entry 3651 (class 0 OID 0)
-' -- Dependencies: 3241
-' -- Name: COLUMN items_prescribed.fk_generic_product; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
+' -- TOC entry 3664 (class 0 OID 0)
+' -- Dependencies: 3244
+' -- Name: COLUMN prescribed.reg24; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
-' COMMENT ON COLUMN items_prescribed.fk_generic_product IS 'fk to drugs.products gives generic name, atc, strengh and formulation';
-' 
-' 
-' --
-' -- TOC entry 3652 (class 0 OID 0)
-' -- Dependencies: 3241
-' -- Name: COLUMN items_prescribed.fk_company; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN items_prescribed.fk_company IS 'if not null, then this drug is a brand, ie 
-' it is a generic made by a company with their own trade name';
-' 
-' 
-' --
-' -- TOC entry 3653 (class 0 OID 0)
-' -- Dependencies: 3241
-' -- Name: COLUMN items_prescribed.repeats; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN items_prescribed.repeats IS '
-' The actual number of repeats
-' may not be the max repeats allowed
-' by the pbs accessed by fk_pbs';
-' 
-' 
-' --
-' -- TOC entry 3654 (class 0 OID 0)
-' -- Dependencies: 3241
-' -- Name: COLUMN items_prescribed.quantity; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN items_prescribed.quantity IS '
-' The quantity on the script
-' May not be the actual quanitity allowed on the pbs
-' e.g sometimes we may prescribe diazepam in small quantities';
-' 
-' 
-' --
-' -- TOC entry 3655 (class 0 OID 0)
-' -- Dependencies: 3241
-' -- Name: COLUMN items_prescribed.fk_prescribed_for; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN items_prescribed.fk_prescribed_for IS 'key to clin_prescribing.prescribed_for table, keeps list of free text
-'  reasons for prescribing an item plus code if exists';
-' 
-' 
-' --
-' -- TOC entry 3656 (class 0 OID 0)
-' -- Dependencies: 3241
-' -- Name: COLUMN items_prescribed.suppress_reason; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN items_prescribed.suppress_reason IS '
-' If true, though kept, the reason
-' for prescription is not printed on the script';
-' 
-' 
-' --
-' -- TOC entry 3657 (class 0 OID 0)
-' -- Dependencies: 3241
-' -- Name: COLUMN items_prescribed.reg24; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN items_prescribed.reg24 IS '
+' COMMENT ON COLUMN prescribed.reg24 IS '
 ' If true reg24 allows us to tell the
 ' pharmacist to dispense the script and all 
 ' its repeats at once';
 ' 
 ' 
 ' --
-' -- TOC entry 3658 (class 0 OID 0)
-' -- Dependencies: 3241
-' -- Name: COLUMN items_prescribed.active; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
+' -- TOC entry 3665 (class 0 OID 0)
+' -- Dependencies: 3244
+' -- Name: COLUMN prescribed.authority_script_number; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
-' COMMENT ON COLUMN items_prescribed.active IS '
-' If true, the medication is on the patients
-' active medication list';
-' 
-' 
-' --
-' -- TOC entry 3659 (class 0 OID 0)
-' -- Dependencies: 3241
-' -- Name: COLUMN items_prescribed.authority_script_number; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN items_prescribed.authority_script_number IS 'the pbs requires a unique script number for an authority item, pretty stupid, but a number that
+' COMMENT ON COLUMN prescribed.authority_script_number IS 'the pbs requires a unique script number for an authority item, pretty stupid, but a number that
 '  increments by 11. This is distinct from the streamlined approval number or phone approval number';
 ' 
 ' 
 ' --
-' -- TOC entry 3660 (class 0 OID 0)
-' -- Dependencies: 3241
-' -- Name: COLUMN items_prescribed.authority_approval_number; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
+' -- TOC entry 3666 (class 0 OID 0)
+' -- Dependencies: 3244
+' -- Name: COLUMN prescribed.authority_approval_number; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
-' COMMENT ON COLUMN items_prescribed.authority_approval_number IS 'either the steamlined authority number or the phone approval number obtained from a pbs operator';
-' 
-' 
-' --
-' -- TOC entry 3240 (class 1259 OID 420725)
-' -- Dependencies: 3241 22
-' -- Name: items_prescribed_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' CREATE SEQUENCE items_prescribed_pk_seq
-'     START WITH 1
-'     INCREMENT BY 1
-'     NO MAXVALUE
-'     NO MINVALUE
-'     CACHE 1;
-' 
-' 
-' ALTER TABLE clin_prescribing.items_prescribed_pk_seq OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3662 (class 0 OID 0)
-' -- Dependencies: 3240
-' -- Name: items_prescribed_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER SEQUENCE items_prescribed_pk_seq OWNED BY items_prescribed.pk;
+' COMMENT ON COLUMN prescribed.authority_approval_number IS 'either the steamlined authority number or the phone approval number obtained from a pbs operator';
 ' 
 ' 
 ' --
-' -- TOC entry 3230 (class 1259 OID 420481)
+' -- TOC entry 3231 (class 1259 OID 420481)
 ' -- Dependencies: 22
 ' -- Name: prescribed_for; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
@@ -1323,8 +1295,8 @@ End
 ' ALTER TABLE clin_prescribing.prescribed_for OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3663 (class 0 OID 0)
-' -- Dependencies: 3230
+' -- TOC entry 3668 (class 0 OID 0)
+' -- Dependencies: 3231
 ' -- Name: TABLE prescribed_for; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1334,7 +1306,7 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3235 (class 1259 OID 420563)
+' -- TOC entry 3236 (class 1259 OID 420563)
 ' -- Dependencies: 22
 ' -- Name: prescribed_for_habits; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
@@ -1352,8 +1324,8 @@ End
 ' ALTER TABLE clin_prescribing.prescribed_for_habits OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3665 (class 0 OID 0)
-' -- Dependencies: 3235
+' -- TOC entry 3670 (class 0 OID 0)
+' -- Dependencies: 3236
 ' -- Name: TABLE prescribed_for_habits; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1363,8 +1335,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3234 (class 1259 OID 420561)
-' -- Dependencies: 3235 22
+' -- TOC entry 3235 (class 1259 OID 420561)
+' -- Dependencies: 3236 22
 ' -- Name: prescribed_for_habits_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1379,8 +1351,8 @@ End
 ' ALTER TABLE clin_prescribing.prescribed_for_habits_pk_seq OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3667 (class 0 OID 0)
-' -- Dependencies: 3234
+' -- TOC entry 3672 (class 0 OID 0)
+' -- Dependencies: 3235
 ' -- Name: prescribed_for_habits_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1388,8 +1360,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3229 (class 1259 OID 420479)
-' -- Dependencies: 3230 22
+' -- TOC entry 3230 (class 1259 OID 420479)
+' -- Dependencies: 3231 22
 ' -- Name: prescribed_for_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1404,8 +1376,8 @@ End
 ' ALTER TABLE clin_prescribing.prescribed_for_pk_seq OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3668 (class 0 OID 0)
-' -- Dependencies: 3229
+' -- TOC entry 3673 (class 0 OID 0)
+' -- Dependencies: 3230
 ' -- Name: prescribed_for_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1413,9 +1385,34 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3237 (class 1259 OID 420633)
+' -- TOC entry 3243 (class 1259 OID 420824)
+' -- Dependencies: 3244 22
+' -- Name: prescribed_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
+' --
+' 
+' CREATE SEQUENCE prescribed_pk_seq
+'     START WITH 1
+'     INCREMENT BY 1
+'     NO MAXVALUE
+'     NO MINVALUE
+'     CACHE 1;
+' 
+' 
+' ALTER TABLE clin_prescribing.prescribed_pk_seq OWNER TO easygp;
+' 
+' --
+' -- TOC entry 3674 (class 0 OID 0)
+' -- Dependencies: 3243
+' -- Name: prescribed_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
+' --
+' 
+' ALTER SEQUENCE prescribed_pk_seq OWNED BY prescribed.pk;
+' 
+' 
+' --
+' -- TOC entry 3238 (class 1259 OID 420633)
 ' -- Dependencies: 22
-' -- Name: print_status; Type: TABLE; Schema: clin_prescribing; Owner: postgres; Tablespace: 
+' -- Name: print_status; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
 ' 
 ' CREATE TABLE print_status (
@@ -1424,12 +1421,12 @@ End
 ' );
 ' 
 ' 
-' ALTER TABLE clin_prescribing.print_status OWNER TO postgres;
+' ALTER TABLE clin_prescribing.print_status OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3669 (class 0 OID 0)
-' -- Dependencies: 3237
-' -- Name: TABLE print_status; Type: COMMENT; Schema: clin_prescribing; Owner: postgres
+' -- TOC entry 3675 (class 0 OID 0)
+' -- Dependencies: 3238
+' -- Name: TABLE print_status; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
 ' COMMENT ON TABLE print_status IS 'The various ways a script can be printed as for example:
@@ -1438,9 +1435,9 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3236 (class 1259 OID 420631)
-' -- Dependencies: 3237 22
-' -- Name: print_status_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: postgres
+' -- TOC entry 3237 (class 1259 OID 420631)
+' -- Dependencies: 3238 22
+' -- Name: print_status_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
 ' CREATE SEQUENCE print_status_pk_seq
@@ -1451,20 +1448,20 @@ End
 '     CACHE 1;
 ' 
 ' 
-' ALTER TABLE clin_prescribing.print_status_pk_seq OWNER TO postgres;
+' ALTER TABLE clin_prescribing.print_status_pk_seq OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3670 (class 0 OID 0)
-' -- Dependencies: 3236
-' -- Name: print_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: postgres
+' -- TOC entry 3677 (class 0 OID 0)
+' -- Dependencies: 3237
+' -- Name: print_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
 ' ALTER SEQUENCE print_status_pk_seq OWNED BY print_status.pk;
 ' 
 ' 
 ' --
-' -- TOC entry 2876 (class 1259 OID 416109)
-' -- Dependencies: 2875 22
+' -- TOC entry 2878 (class 1259 OID 416109)
+' -- Dependencies: 2877 22
 ' -- Name: script_dates_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1479,8 +1476,8 @@ End
 ' ALTER TABLE clin_prescribing.script_dates_pk_seq OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3671 (class 0 OID 0)
-' -- Dependencies: 2876
+' -- TOC entry 3678 (class 0 OID 0)
+' -- Dependencies: 2878
 ' -- Name: script_dates_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1488,7 +1485,7 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3239 (class 1259 OID 420665)
+' -- TOC entry 3240 (class 1259 OID 420665)
 ' -- Dependencies: 22
 ' -- Name: script_numbers; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
@@ -1503,8 +1500,8 @@ End
 ' ALTER TABLE clin_prescribing.script_numbers OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3673 (class 0 OID 0)
-' -- Dependencies: 3239
+' -- TOC entry 3680 (class 0 OID 0)
+' -- Dependencies: 3240
 ' -- Name: TABLE script_numbers; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1513,8 +1510,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3238 (class 1259 OID 420663)
-' -- Dependencies: 3239 22
+' -- TOC entry 3239 (class 1259 OID 420663)
+' -- Dependencies: 3240 22
 ' -- Name: script_numbers_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1529,8 +1526,8 @@ End
 ' ALTER TABLE clin_prescribing.script_numbers_pk_seq OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3675 (class 0 OID 0)
-' -- Dependencies: 3238
+' -- TOC entry 3682 (class 0 OID 0)
+' -- Dependencies: 3239
 ' -- Name: script_numbers_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1538,20 +1535,32 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3243 (class 1259 OID 420764)
-' -- Dependencies: 3410 22
-' -- Name: vwmedications; Type: VIEW; Schema: clin_prescribing; Owner: postgres
+' -- TOC entry 3246 (class 1259 OID 420860)
+' -- Dependencies: 3412 22
+' -- Name: vwmedications; Type: VIEW; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
 ' CREATE VIEW vwmedications AS
-'     SELECT items_prescribed.pk AS pk_view, items_prescribed.pk AS fk_script_item, consult.fk_patient, items_prescribed.fk_consult, items_prescribed.script_date, product.generic, brand.brand, product.strength, form.form, items_prescribed.repeats, items_prescribed.quantity, instructions.instruction, prescribed_for.prescribed_for, print_status.status AS pbs_print_status, items_prescribed.fk_generic_product, items_prescribed.fk_company, items_prescribed.fk_instruction, items_prescribed.fk_prescribed_for, items_prescribed.fk_script_dates, items_prescribed.restriction_code, items_prescribed.pbscode, items_prescribed.fk_print_status, items_prescribed.suppress_reason, items_prescribed.s8, items_prescribed.reg24, items_prescribed.active, items_prescribed.authority_script_number, items_prescribed.authority_approval_number, items_prescribed.authority_post_to_patient, items_prescribed.script_number, items_prescribed.concession_details, items_prescribed.brand_substitution, items_prescribed.fk_progress_note, items_prescr
+'     SELECT medications.pk AS pk_view, consult.consult_date AS date_script_written, consult.fk_patient, product.generic, brand.brand, product.strength, form.form, medications.repeats, medications.quantity, prescribed_for.prescribed_for, instructions.instruction, item_start_last_dates.start_date, item_start_last_dates.last_date, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, vwstaff.provider_number, product.atccode, product.salt, product.fk_form, product.salt_strength, medications.fk_generic_product, medications.fk_company, medications.fk_instruction, medications.fk_prescribed_for, medications.pbscode, medications.fk_print_status, medications.s8, medications.active, medications.deleted AS medication_deleted, medications.suppress_reason, medications.fk_script_dates, medications.restriction_code, print_status.status AS pbs_print_status, restriction.streamlined, restriction.restriction, restriction.restriction_type, prescribed.fk_medication FROM (((((((((((clin_consult.
 ' 
 ' 
-' ALTER TABLE clin_prescribing.vwmedications OWNER TO postgres;
+' ALTER TABLE clin_prescribing.vwmedications OWNER TO easygp;
 ' 
 ' --
-' -- TOC entry 3605 (class 2604 OID 420552)
-' -- Dependencies: 3232 3233 3233
+' -- TOC entry 3245 (class 1259 OID 420849)
+' -- Dependencies: 3411 22
+' -- Name: vwprescribeditems; Type: VIEW; Schema: clin_prescribing; Owner: postgres
+' --
+' 
+' CREATE VIEW vwprescribeditems AS
+'     SELECT prescribed.pk AS pk_view, consult.consult_date AS date_script_written, prescribed.script_date AS date_on_script, consult.fk_patient, product.generic, brand.brand, product.strength, form.form, medications.repeats, medications.quantity, prescribed_for.prescribed_for, instructions.instruction, item_start_last_dates.start_date, item_start_last_dates.last_date, brand.price, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, vwstaff.provider_number, product.atccode, product.salt, product.fk_form, product.salt_strength, prescribed.pk AS fk_item_prescibed, prescribed.fk_consult, prescribed.fk_medication, prescribed.reg24, prescribed.authority_script_number, prescribed.authority_approval_number, prescribed.authority_post_to_patient, prescribed.script_number, prescribed.concession_details, prescribed.brand_substitution, prescribed.fk_progress_note, prescribed.deleted AS prescribed_item_deleted, medications.fk_generic_product, medications.fk_company, medications.fk_ins
+' 
+' 
+' ALTER TABLE clin_prescribing.vwprescribeditems OWNER TO postgres;
+' 
+' --
+' -- TOC entry 3607 (class 2604 OID 420552)
+' -- Dependencies: 3233 3234 3234
 ' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1559,8 +1568,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3603 (class 2604 OID 420465)
-' -- Dependencies: 3227 3228 3228
+' -- TOC entry 3605 (class 2604 OID 420465)
+' -- Dependencies: 3228 3229 3229
 ' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1568,8 +1577,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3602 (class 2604 OID 417530)
-' -- Dependencies: 2876 2875
+' -- TOC entry 3604 (class 2604 OID 417530)
+' -- Dependencies: 2878 2877
 ' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1577,17 +1586,26 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3609 (class 2604 OID 420730)
-' -- Dependencies: 3240 3241 3241
+' -- TOC entry 3611 (class 2604 OID 420813)
+' -- Dependencies: 3241 3242 3242
 ' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
-' ALTER TABLE items_prescribed ALTER COLUMN pk SET DEFAULT nextval('items_prescribed_pk_seq'::regclass);
+' ALTER TABLE medications ALTER COLUMN pk SET DEFAULT nextval('medications_pk_seq'::regclass);
 ' 
 ' 
 ' --
-' -- TOC entry 3604 (class 2604 OID 420484)
-' -- Dependencies: 3229 3230 3230
+' -- TOC entry 3616 (class 2604 OID 420829)
+' -- Dependencies: 3243 3244 3244
+' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
+' --
+' 
+' ALTER TABLE prescribed ALTER COLUMN pk SET DEFAULT nextval('prescribed_pk_seq'::regclass);
+' 
+' 
+' --
+' -- TOC entry 3606 (class 2604 OID 420484)
+' -- Dependencies: 3230 3231 3231
 ' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1595,8 +1613,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3606 (class 2604 OID 420566)
-' -- Dependencies: 3234 3235 3235
+' -- TOC entry 3608 (class 2604 OID 420566)
+' -- Dependencies: 3235 3236 3236
 ' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1604,17 +1622,17 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3607 (class 2604 OID 420636)
-' -- Dependencies: 3236 3237 3237
-' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: postgres
+' -- TOC entry 3609 (class 2604 OID 420636)
+' -- Dependencies: 3237 3238 3238
+' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
 ' ALTER TABLE print_status ALTER COLUMN pk SET DEFAULT nextval('print_status_pk_seq'::regclass);
 ' 
 ' 
 ' --
-' -- TOC entry 3608 (class 2604 OID 420668)
-' -- Dependencies: 3238 3239 3239
+' -- TOC entry 3610 (class 2604 OID 420668)
+' -- Dependencies: 3239 3240 3240
 ' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1622,8 +1640,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3627 (class 2606 OID 420554)
-' -- Dependencies: 3233 3233
+' -- TOC entry 3630 (class 2606 OID 420554)
+' -- Dependencies: 3234 3234
 ' -- Name: instruction_habits_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
 ' 
@@ -1632,8 +1650,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3622 (class 2606 OID 420470)
-' -- Dependencies: 3228 3228
+' -- TOC entry 3625 (class 2606 OID 420470)
+' -- Dependencies: 3229 3229
 ' -- Name: instructions_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
 ' 
@@ -1642,18 +1660,18 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3636 (class 2606 OID 420742)
-' -- Dependencies: 3241 3241
-' -- Name: items_prescribed_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
+' -- TOC entry 3639 (class 2606 OID 420822)
+' -- Dependencies: 3242 3242
+' -- Name: medications_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
 ' 
-' ALTER TABLE ONLY items_prescribed
-'     ADD CONSTRAINT items_prescribed_pkey PRIMARY KEY (pk);
+' ALTER TABLE ONLY medications
+'     ADD CONSTRAINT medications_pkey PRIMARY KEY (pk);
 ' 
 ' 
 ' --
-' -- TOC entry 3629 (class 2606 OID 420568)
-' -- Dependencies: 3235 3235
+' -- TOC entry 3632 (class 2606 OID 420568)
+' -- Dependencies: 3236 3236
 ' -- Name: prescribed_for_habits_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
 ' 
@@ -1662,8 +1680,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3625 (class 2606 OID 420489)
-' -- Dependencies: 3230 3230
+' -- TOC entry 3628 (class 2606 OID 420489)
+' -- Dependencies: 3231 3231
 ' -- Name: prescribed_for_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
 ' 
@@ -1672,9 +1690,19 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3631 (class 2606 OID 420641)
-' -- Dependencies: 3237 3237
-' -- Name: print_status_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: postgres; Tablespace: 
+' -- TOC entry 3641 (class 2606 OID 420838)
+' -- Dependencies: 3244 3244
+' -- Name: prescribed_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
+' --
+' 
+' ALTER TABLE ONLY prescribed
+'     ADD CONSTRAINT prescribed_pkey PRIMARY KEY (pk);
+' 
+' 
+' --
+' -- TOC entry 3634 (class 2606 OID 420641)
+' -- Dependencies: 3238 3238
+' -- Name: print_status_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
 ' 
 ' ALTER TABLE ONLY print_status
@@ -1682,8 +1710,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3619 (class 2606 OID 418800)
-' -- Dependencies: 2875 2875
+' -- TOC entry 3622 (class 2606 OID 418800)
+' -- Dependencies: 2877 2877
 ' -- Name: script_dates_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
 ' 
@@ -1692,8 +1720,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3633 (class 2606 OID 420670)
-' -- Dependencies: 3239 3239
+' -- TOC entry 3636 (class 2606 OID 420670)
+' -- Dependencies: 3240 3240
 ' -- Name: script_numbers_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
 ' 
@@ -1702,8 +1730,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3620 (class 1259 OID 420756)
-' -- Dependencies: 3228
+' -- TOC entry 3623 (class 1259 OID 420756)
+' -- Dependencies: 3229
 ' -- Name: instructions_idx; Type: INDEX; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
 ' 
@@ -1711,17 +1739,17 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3634 (class 1259 OID 420758)
-' -- Dependencies: 3241
-' -- Name: items_prescribed_active_idx; Type: INDEX; Schema: clin_prescribing; Owner: easygp; Tablespace: 
+' -- TOC entry 3637 (class 1259 OID 420823)
+' -- Dependencies: 3242
+' -- Name: medications_active_idx; Type: INDEX; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
 ' 
-' CREATE INDEX items_prescribed_active_idx ON items_prescribed USING btree (active);
+' CREATE INDEX medications_active_idx ON medications USING btree (active);
 ' 
 ' 
 ' --
-' -- TOC entry 3623 (class 1259 OID 420757)
-' -- Dependencies: 3230
+' -- TOC entry 3626 (class 1259 OID 420757)
+' -- Dependencies: 3231
 ' -- Name: prescribed_for_idx; Type: INDEX; Schema: clin_prescribing; Owner: easygp; Tablespace: 
 ' --
 ' 
@@ -1729,7 +1757,7 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3639 (class 0 OID 0)
+' -- TOC entry 3644 (class 0 OID 0)
 ' -- Dependencies: 22
 ' -- Name: clin_prescribing; Type: ACL; Schema: -; Owner: richard
 ' --
@@ -1742,8 +1770,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3641 (class 0 OID 0)
-' -- Dependencies: 3233
+' -- TOC entry 3646 (class 0 OID 0)
+' -- Dependencies: 3234
 ' -- Name: instruction_habits; Type: ACL; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1754,8 +1782,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3645 (class 0 OID 0)
-' -- Dependencies: 3228
+' -- TOC entry 3650 (class 0 OID 0)
+' -- Dependencies: 3229
 ' -- Name: instructions; Type: ACL; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1766,8 +1794,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3648 (class 0 OID 0)
-' -- Dependencies: 2875
+' -- TOC entry 3653 (class 0 OID 0)
+' -- Dependencies: 2877
 ' -- Name: item_start_last_dates; Type: ACL; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1778,20 +1806,32 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3661 (class 0 OID 0)
-' -- Dependencies: 3241
-' -- Name: items_prescribed; Type: ACL; Schema: clin_prescribing; Owner: easygp
+' -- TOC entry 3660 (class 0 OID 0)
+' -- Dependencies: 3242
+' -- Name: medications; Type: ACL; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
-' REVOKE ALL ON TABLE items_prescribed FROM PUBLIC;
-' REVOKE ALL ON TABLE items_prescribed FROM easygp;
-' GRANT ALL ON TABLE items_prescribed TO easygp;
-' GRANT ALL ON TABLE items_prescribed TO staff;
+' REVOKE ALL ON TABLE medications FROM PUBLIC;
+' REVOKE ALL ON TABLE medications FROM easygp;
+' GRANT ALL ON TABLE medications TO easygp;
+' GRANT ALL ON TABLE medications TO staff;
 ' 
 ' 
 ' --
-' -- TOC entry 3664 (class 0 OID 0)
-' -- Dependencies: 3230
+' -- TOC entry 3667 (class 0 OID 0)
+' -- Dependencies: 3244
+' -- Name: prescribed; Type: ACL; Schema: clin_prescribing; Owner: easygp
+' --
+' 
+' REVOKE ALL ON TABLE prescribed FROM PUBLIC;
+' REVOKE ALL ON TABLE prescribed FROM easygp;
+' GRANT ALL ON TABLE prescribed TO easygp;
+' GRANT ALL ON TABLE prescribed TO staff;
+' 
+' 
+' --
+' -- TOC entry 3669 (class 0 OID 0)
+' -- Dependencies: 3231
 ' -- Name: prescribed_for; Type: ACL; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1802,8 +1842,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3666 (class 0 OID 0)
-' -- Dependencies: 3235
+' -- TOC entry 3671 (class 0 OID 0)
+' -- Dependencies: 3236
 ' -- Name: prescribed_for_habits; Type: ACL; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1814,8 +1854,20 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3672 (class 0 OID 0)
-' -- Dependencies: 2876
+' -- TOC entry 3676 (class 0 OID 0)
+' -- Dependencies: 3238
+' -- Name: print_status; Type: ACL; Schema: clin_prescribing; Owner: easygp
+' --
+' 
+' REVOKE ALL ON TABLE print_status FROM PUBLIC;
+' REVOKE ALL ON TABLE print_status FROM easygp;
+' GRANT ALL ON TABLE print_status TO easygp;
+' GRANT ALL ON TABLE print_status TO staff;
+' 
+' 
+' --
+' -- TOC entry 3679 (class 0 OID 0)
+' -- Dependencies: 2878
 ' -- Name: script_dates_pk_seq; Type: ACL; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1826,8 +1878,8 @@ End
 ' 
 ' 
 ' --
-' -- TOC entry 3674 (class 0 OID 0)
-' -- Dependencies: 3239
+' -- TOC entry 3681 (class 0 OID 0)
+' -- Dependencies: 3240
 ' -- Name: script_numbers; Type: ACL; Schema: clin_prescribing; Owner: easygp
 ' --
 ' 
@@ -1837,7 +1889,19 @@ End
 ' GRANT SELECT,INSERT ON TABLE script_numbers TO staff;
 ' 
 ' 
-' -- Completed on 2011-01-15 23:53:31 EST
+' --
+' -- TOC entry 3683 (class 0 OID 0)
+' -- Dependencies: 3246
+' -- Name: vwmedications; Type: ACL; Schema: clin_prescribing; Owner: easygp
+' --
+' 
+' REVOKE ALL ON TABLE vwmedications FROM PUBLIC;
+' REVOKE ALL ON TABLE vwmedications FROM easygp;
+' GRANT ALL ON TABLE vwmedications TO easygp;
+' GRANT ALL ON TABLE vwmedications TO staff;
+' 
+' 
+' -- Completed on 2011-01-16 12:58:57 EST
 ' 
 ' --
 ' -- PostgreSQL database dump complete
@@ -1845,23 +1909,60 @@ End
 ' 
 ' 
 
+' 
+' CREATE OR REPLACE VIEW drugs.vwdrugs AS 
+'  SELECT nextval('drugs.vwdrugs_pk_seq'::regclass) AS pk_view, brand.fk_product, brand.fk_company, brand.brand, brand.price, brand.from_pbs, product.atccode, product.generic, product.salt, product.fk_form, product.strength, product.salt_strength, product.original_pbs_name, product.original_pbs_fs, product.free_comment, product.updated_at, form.form, atc.atcname, pbs.quantity, pbs.max_rpt, pbs.pbscode, pbs.chapter, pbs.restrictionflag, restriction.restriction, restriction.restriction_type, restriction.code AS restriction_code, restriction.streamlined
+'    FROM drugs.brand brand
+'    JOIN drugs.product ON brand.fk_product = product.pk
+'    JOIN drugs.form ON product.fk_form = form.pk
+'    LEFT JOIN drugs.atc ON product.atccode::text = atc.atccode
+'    LEFT JOIN drugs.pbs ON brand.fk_product = pbs.fk_product
+'    LEFT JOIN drugs.restriction ON pbs.pbscode::text = restriction.pbscode::text
+'   ORDER BY brand.brand, form.form, product.strength;
+' 
+' ALTER TABLE drugs.vwdrugs OWNER TO easygp;
+' GRANT ALL ON TABLE drugs.vwdrugs TO easygp;
+' GRANT ALL ON TABLE drugs.vwdrugs TO staff;
+' 
+' 
 
+' CREATE OR REPLACE VIEW clin_prescribing.vwprescribeditems AS 
+'  SELECT prescribed.pk AS pk_view, consult.consult_date AS date_script_written, prescribed.script_date AS date_on_script, consult.fk_patient, product.generic, brand.brand, product.strength, form.form, medications.repeats, medications.quantity, prescribed_for.prescribed_for, instructions.instruction, item_start_last_dates.start_date, item_start_last_dates.last_date, brand.price, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, vwstaff.provider_number, product.atccode, product.salt, product.fk_form, product.salt_strength, prescribed.pk AS fk_item_prescibed, prescribed.fk_consult, prescribed.fk_medication, prescribed.reg24, prescribed.authority_script_number, prescribed.authority_approval_number, prescribed.authority_post_to_patient, prescribed.script_number, prescribed.concession_details, prescribed.brand_substitution, prescribed.fk_progress_note, prescribed.deleted AS prescribed_item_deleted, medications.fk_generic_product, medications.fk_company, medications.fk_instru
+'    FROM clin_consult.consult
+'    JOIN admin.vwstaff ON consult.fk_staff = vwstaff.fk_staff
+'    JOIN clin_prescribing.prescribed ON consult.pk = prescribed.fk_consult
+'    JOIN clin_prescribing.medications medications ON prescribed.fk_medication = medications.pk
+'    JOIN clin_prescribing.prescribed_for ON medications.fk_prescribed_for = prescribed_for.pk
+'    JOIN clin_prescribing.instructions ON medications.fk_instruction = instructions.pk
+'    JOIN clin_prescribing.item_start_last_dates ON medications.fk_script_dates = item_start_last_dates.pk
+'    JOIN clin_prescribing.print_status ON medications.fk_print_status = print_status.pk
+'    LEFT JOIN drugs.restriction ON medications.pbscode = restriction.pbscode::text AND medications.restriction_code = restriction.code::text
+'    LEFT JOIN drugs.brand ON medications.fk_generic_product = brand.fk_product AND medications.fk_company::text = brand.fk_company::text
+'    JOIN drugs.product ON medications.fk_generic_product = product.pk
+'    JOIN drugs.form ON product.fk_form = form.pk
+'   ORDER BY consult.fk_patient, product.generic, medications.active;
+' 
+' ALTER TABLE clin_prescribing.vwprescribeditems OWNER TO postgres;
 
 ' CREATE OR REPLACE VIEW clin_prescribing.vwmedications AS 
-'  SELECT items_prescribed.pk AS pk_view, items_prescribed.pk AS fk_script_item, consult.fk_patient, items_prescribed.fk_consult, items_prescribed.script_date, product.generic, brand.brand, product.strength, form.form, items_prescribed.repeats, items_prescribed.quantity, instructions.instruction, prescribed_for.prescribed_for, print_status.status AS pbs_print_status, items_prescribed.fk_generic_product, items_prescribed.fk_company, items_prescribed.fk_instruction, items_prescribed.fk_prescribed_for, items_prescribed.fk_script_dates, items_prescribed.restriction_code, items_prescribed.pbscode, items_prescribed.fk_print_status, items_prescribed.suppress_reason, items_prescribed.s8, items_prescribed.reg24, items_prescribed.active, items_prescribed.authority_script_number, items_prescribed.authority_approval_number, items_prescribed.authority_post_to_patient, items_prescribed.script_number, items_prescribed.concession_details, items_prescribed.brand_substitution, items_prescribed.fk_progress_note, items_prescribe
-'    FROM clin_prescribing.items_prescribed
-'    JOIN clin_consult.consult ON items_prescribed.fk_consult = consult.pk
+'  SELECT medications.pk AS pk_view, consult.consult_date AS date_script_written, consult.fk_patient, product.generic, brand.brand, product.strength, form.form, medications.repeats, medications.quantity, prescribed_for.prescribed_for, instructions.instruction, item_start_last_dates.start_date, item_start_last_dates.last_date, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, vwstaff.provider_number, product.atccode, product.salt, product.fk_form, product.salt_strength, medications.fk_generic_product, medications.fk_company, medications.fk_instruction, medications.fk_prescribed_for, medications.pbscode, medications.fk_print_status, medications.s8, medications.active, medications.deleted AS medication_deleted, medications.suppress_reason, medications.fk_script_dates, medications.restriction_code, print_status.status AS pbs_print_status, restriction.streamlined, restriction.restriction, restriction.restriction_type, prescribed.fk_medication
+'    FROM clin_consult.consult
 '    JOIN admin.vwstaff ON consult.fk_staff = vwstaff.fk_staff
-'    JOIN clin_prescribing.item_start_last_dates ON items_prescribed.fk_script_dates = item_start_last_dates.pk
-'    LEFT JOIN clin_prescribing.prescribed_for ON items_prescribed.fk_prescribed_for = prescribed_for.pk
-'    LEFT JOIN drugs.restriction ON items_prescribed.restriction_code = restriction.code::text AND items_prescribed.pbscode = restriction.pbscode::text
-'    JOIN clin_prescribing.print_status ON items_prescribed.fk_print_status = print_status.pk
-'    JOIN drugs.product ON items_prescribed.fk_generic_product = product.pk
+'    JOIN clin_prescribing.prescribed ON consult.pk = prescribed.fk_consult
+'    JOIN clin_prescribing.medications medications ON prescribed.fk_medication = medications.pk
+'    JOIN clin_prescribing.prescribed_for ON medications.fk_prescribed_for = prescribed_for.pk
+'    JOIN clin_prescribing.instructions ON medications.fk_instruction = instructions.pk
+'    JOIN clin_prescribing.item_start_last_dates ON medications.fk_script_dates = item_start_last_dates.pk
+'    JOIN clin_prescribing.print_status ON medications.fk_print_status = print_status.pk
+'    LEFT JOIN drugs.restriction ON medications.pbscode = restriction.pbscode::text AND medications.restriction_code = restriction.code::text
+'    LEFT JOIN drugs.brand ON medications.fk_generic_product = brand.fk_product AND medications.fk_company::text = brand.fk_company::text
+'    JOIN drugs.product ON medications.fk_generic_product = product.pk
 '    JOIN drugs.form ON product.fk_form = form.pk
-'    LEFT JOIN drugs.brand ON items_prescribed.fk_company::text = brand.fk_company::text AND items_prescribed.fk_generic_product = brand.fk_product
-'    JOIN clin_prescribing.instructions ON items_prescribed.fk_instruction = instructions.pk
-'   ORDER BY consult.fk_patient, product.generic, brand.brand;
+'   ORDER BY consult.fk_patient, product.generic, medications.active;
 ' 
-' ALTER TABLE clin_prescribing.vwmedications OWNER TO postgres;
+' ALTER TABLE clin_prescribing.vwmedications OWNER TO easygp;
+' GRANT ALL ON TABLE clin_prescribing.vwmedications TO easygp;
+' GRANT ALL ON TABLE clin_prescribing.vwmedications TO staff;
 ' 
+
 ' 

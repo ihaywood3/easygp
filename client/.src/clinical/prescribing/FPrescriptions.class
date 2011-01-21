@@ -93,58 +93,16 @@
 ' Section 100 (Special Authority Items) – Public Hospitals
 ' Items available under Special Arrangements (section 100)
 ' Re: Restrictions/generic prescribing
-' From: 
-' Ian Haywood <ihaywood3@gmail.com>
-'   To: 
-' richard terry <rterry@pacific.net.au>
-'   Date: 
-' 13/01/11 14:45
-' On Thu, Jan 13, 2011 at 2:09 PM, richard terry <rterry@pacific.net.au> wrote:
-' 
-' > No you won't as there are multiple identical pk's for product.
-' Ah, because you are including the pbs and the restrictions in the join
-' (as you know there can be multiple pbs items for each drug and
-' multiple restrictions
-' for each pbs item)
-' Hmm, ok, add these into the string, so
-' 
-' 'B' || brand.pk || pbs.pbscode || restriction.code as pk_view
-'    or
-' 
-' 'G' || product.pk || pbs.pbscode || restriction.code as pk_view
-' 
-' this will generate a unique but constant PK string (your method is unique but
-' not constant, it will also hammer database performance, and eventually
-' you will cause
-' an integer overflow as it's every row ever returned on every query)
-' 
-' > Anyway, the streamlining is now the major barrier for me so if you could give
-' > priority to sorting that it would be good. In the meantime I'll do as you
-' > suggest and just manually put in a few.
-' "barrier"? to what? surely there's heaps of work to do before you
-' could use this to generate a script on a real patient, at least:
-' - storing, maintaining and auditing lists of medications
-' - including med lists in care plans and referrals
-' 
-' plus we are still trying to work out the basic search views!
-' 
-' if the completeness of my drug DB becomes a bottleneck (and I agree
-' it's not complete), my advice would be to work on these things.
-' > Another Question which i didn't notice - telling PBS from RPBS, I guess it is
-' > there somewhere.
-' as I said pbs.chapter = 'R1'
-' maybe that mail got dropped: I'll re-send.
-' 
-' todos: editarea_limit_chars eg numbers for repeats etc, dates etc.
+'
 
 Private bExit As Boolean
 Private bAuthority As Boolean       'If True the script item needs an authority.
 Private bKeyValid As Boolean
 Private bGenericSearch As Boolean
-Private Prescriptions As Collection
+Private Script_Items_This_Consultation As Collection
 Private Script As Collection
 Private fk_pasthistory As Integer
-Private fk_script_item As Integer
+Private fk_item_prescribed As Integer
 Private pk_view As Integer
 Private fk_company As String 
 Private fk_generic_product As Integer
@@ -160,8 +118,8 @@ Private cProgressNote_Section As Integer
 Private currentconsult As CConsult
 Private bEmbedded As Boolean             'If true the form is embedded in a frmConsultNotes editor
 Private embedded_in_form As String          'the form this form is embedded in
-Private Brands As Collection
-Private Brand As Collection
+Private drugs As Collection
+Private drug As Collection
 Private Deleted_Scripts As Collection
 Private currentDrug As Collection
 Private timer_count As Integer
@@ -171,6 +129,12 @@ Private Print_Status As String
 Private medications As Collection
 Private medication As Collection
 Private fk_medication As Integer 
+Private script_items As Collection
+Private script_item As Collection
+Private view_items As Collection       'all the items from the view of script items written this consultation
+Private Instruction_Habits As Collection
+Private Prescribing_Habits As Collection 
+Private habit As Collection 
 
 Public Sub set_embedded(F As String)
    '----------------------------------------------------------
@@ -187,27 +151,11 @@ Public Sub Reload()
    'Display scripts written this consultation
    '-----------------------------------------
    
-   Dim x As Integer 'for readability
-
-   cvwPrescriptions.Clear()
-   cvwPrescriptions.Visible = True  
-   Drug_New()
-   
    currentconsult.Refresh("prescriptions_written")
-   For Each script In currentconsult!prescriptions_written
-      x = script!pk_view
-      cvwPrescriptions.Add(x, 0)
-      cvwPrescriptions[x][0] = Format(script!date_script_written, "dd/mm/yyyy")
-      cvwPrescriptions[x][1] = Format(script!date_on_script, "dd/mm/yyyy")
-      cvwPrescriptions[x][2] = script!brand
-      cvwPrescriptions[x][3] = script!generic
-      cvwPrescriptions[x][4] = script!strength   
-      cvwPrescriptions[x][5] = script!quantity & " Rpt:" & script!repeats 
-      cvwPrescriptions[x][6] = script!pbs_print_status
-      cvwPrescriptions[x][7] = script!instruction  
-      cvwPrescriptions[x][8] = script!prescribed_for   
-      
-   Next
+   ' cvwPrescriptions_Refresh(currentconsult!prescriptions_written)
+   script_items = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!prescriptions_written)
+   cvwPrescriptions_Refresh(script_items)
+   Drug_New()
    
 End
 
@@ -256,6 +204,8 @@ Public Sub Init(cons As CConsult)
       .Columns[8].text = "Prescibed For"
       
    End With
+   cvwBrands.Columns.count = 1
+   script_items = New Collection 'all those prescribed this consultation
    Settings_Load()
    Reload()
    
@@ -305,9 +255,25 @@ Public Sub Edit()
    'Edit a script written today
    '---------------------------
    
+   Dim script_item As Collection
+   
    cvwPrescriptions.MoveCurrent
-   fk_script_item = Prescriptions[iCurrentScriptKey]!fk_script_item   
-   'etc
+   fk_item_prescribed = currentconsult!prescriptions_written[iCurrentScriptKey]!fk_item_prescribed   
+   fk_medication = currentconsult!prescriptions_written[iCurrentScriptKey]!fk_medication
+   txtdate.text = currentconsult!prescriptions_written[iCurrentScriptKey]!date_script_written
+   txtClass.text = currentconsult!prescriptions_written[iCurrentScriptKey]!class
+   txtGeneric.text = currentconsult!prescriptions_written[iCurrentScriptKey]!generic
+   txtDrug.text = currentconsult!prescriptions_written[iCurrentScriptKey]!brand
+   txtStrength.text = currentconsult!prescriptions_written[iCurrentScriptKey]!strength
+   txtDirections.text = currentconsult!prescriptions_written[iCurrentScriptKey]!instruction
+   TxtReason.text = currentconsult!prescriptions_written[iCurrentScriptKey]!prescribed_for
+   txtQuantity.text = currentconsult!prescriptions_written[iCurrentScriptKey]!quantity
+   txtRepeats.text = currentconsult!prescriptions_written[iCurrentScriptKey]!repeats
+   lblRestrictions.text = currentconsult!prescriptions_written[iCurrentScriptKey]!restriction
+   chkActive.Value = currentconsult!prescriptions_written[iCurrentScriptKey]!active
+   ' chkSupressReason.value =  currentconsult!prescriptions_written[iCurrentScriptKey]!suppress_reason
+   chkPostAuthority.value = chkPostAuthority!authority_post_to_patient
+   chkReg24.value = currentconsult!prescriptions_written[iCurrentScriptKey]!reg24
    
 End
 
@@ -328,13 +294,14 @@ End
 
 Public Sub Reset_Flags()
    
-   fk_script_item = 0
+   fk_item_prescribed = 0
    pk_view = 0
    fk_company = ""          'fk_company + fk_generic_product is really equivalent to the non existant fk_brand
    fk_generic_product = 0
    pbscode = ""
    fk_prescribed_for = 0
    fk_instruction = 0
+   fk_medication = 0
    print_status = ""
    restriction_code = ""
    restriction = ""
@@ -349,7 +316,8 @@ Public Sub EditArea_Clear()
    modEditAreaHelpers.mnuHealthIssues_Refresh(currentconsult, mnuHealthissues)
    teInteractions.Clear()
    lcRestrictions.Clear()
-   columnview1.Visible = False   
+   pnlcolumnview.Visible = False   
+   cvwBrands.Clear()
    lblRestrictions.text = ""
    lblDrug.text = "Drug"
    txtdate.text = Format(Now, "dd/mm/yyyy")
@@ -380,7 +348,7 @@ Public Sub Editarea_txtBox_KeyPress()
    Select Case Key.Code
          
       Case Key.Down
-         If columnview1.Visible Then
+         If pnlcolumnview.Visible Then
             With columnview1
                .MoveFirst()
                .SetFocus()
@@ -396,7 +364,7 @@ Public Sub Editarea_txtBox_KeyPress()
             Case "directions"
                TxtReason.SetFocus()
             Case "reason"
-               tbSave.SetFocus()
+               tbOk.SetFocus()
          End Select
    End Select     
    
@@ -445,6 +413,8 @@ Public Sub Directions_Expand_Text(txt As Textbox)
    txt.text = Replace(txt.text, "nocte", " at night")
    txt.text = Replace(txt.text, "qid", " four times daily")
    txt.text = Replace(txt.text, "ac", " before meals")
+   txt.text = Replace(txt.text, "prn", " as needed")
+   txt.text = Replace(txt.text, "stat", " immediately")
    bexit = False
    
 End
@@ -452,7 +422,7 @@ End
 Public Sub EditArea_TxtBox_GotFocus()
    
    If Last.tag <> "restriction" Then Last.BackGround = Color.rgb(95, 255, 175)
-   With columnview1
+   With pnlcolumnview
       .top = Vbox_EditArea_Left_Textboxes.top + Last.parent.top + Last.parent.height
       .left = Last.Left
       .width = txtClass.width
@@ -460,7 +430,24 @@ Public Sub EditArea_TxtBox_GotFocus()
       .Raise
       
    End With
+   Select Case Last.tag
+      Case "reason"
+         If Trim(Last.text) = "" Then
+            PrescibedFor_Habits_Get()
+         Endif
+   End Select
    '  If Last.tag = "drug" Then Timer1.Start()
+   
+End
+
+Public Sub PrescibedFor_Habits_Get()
+   
+   Prescribing_Habits = modPrescribingDBI.PrescibedFor_Habits_Get(fk_generic_product)
+   For Each habit In Prescribing_Habits
+      TxtReason.text = habit!prescribed_for
+      tbOk.SetFocus()
+      Break
+   Next
    
 End
 
@@ -485,11 +472,12 @@ Public Sub Restrictions_Click()
    '-------------------------------------------------------------------------------------
    
    restriction_code = Last.children[Last.index].tag
-   restriction = Last.children[Last.index].text
+   textEdit1.richtext = Last.children[Last.index].text
+   restriction = textEdit1.Text
    bexit = True   
    txtApprovalNumber.text = restriction_code
    bExit = False  
-   If columnview1.Visible Then columnview1_DblClick()
+   If pnlcolumnview.Visible Then columnview1_DblClick()
    
 End
 
@@ -507,25 +495,26 @@ Public Sub Restrictions_Show()
    
    Drug_Restrictions = New Collection
    
-   currentDrug = brands[columnview1.Item.key]         'drug showing in the columview
+   currentDrug = drugs[columnview1.Item.key]         'drug showing in the columview
    pbscode = currentDrug!pbscode 
    lcRestrictions.Clear()
-   For Each Brand In brands                           'All drugs in the collectioni
-      If Not IsNull(brand!restriction) Then            'If drug has a restrciotn
-         If brand!pbscode = pbscode Then                'if the pbscode = same as that we are showing
-            If Not Drug_Restrictions.Exist(brand!restriction) Then  'if not already in the collection 
+   For Each drug In drugs                           'All drugs in the collectioni
+      If Not IsNull(drug!restriction) Then            'If drug has a restrciotn
+         If drug!pbscode = pbscode Then                'if the pbscode = same as that we are showing
+            If Not Drug_Restrictions.Exist(drug!restriction) Then  'if not already in the collection 
                With lbl = New TextLabel(lcRestrictions) As "Restrictions"  'add it, and to the list container
-                  .text = brand!restriction           'This is what will be sent to the printer (minus html tags)
-                  .tag = brand!restriction_code       'This will be saved to the database, if the row is selected
+                  .text = drug!restriction           'This is what will be sent to the printer (minus html tags)
+                  .tag = drug!restriction_code       'This will be saved to the database, if the row is selected
                   .Foreground = Color.DarkGray
                   .AutoResize = True
                   .font = Font["Arial,9"]
+                  
                End With
                With sep = New Separator(lcRestrictions)
                   .Height = 3
                   .Foreground = Color.Black
                End With
-               Drug_Restrictions.Add(brand!restriction, brand!restriction)
+               Drug_Restrictions.Add(drug!restriction, drug!restriction)
                Inc row
             Endif
          End If    
@@ -535,14 +524,14 @@ Public Sub Restrictions_Show()
    
 End
 
-Public Sub PBS_Show(brand As Collection)
+Public Sub PBS_Show(drug As Collection)
    '-----------------------------------------------------------
    'Shows the PBS status of the currently selected drug
    'Not until user selects an authority wording can we show
    'the streamlined, unless we just opt to show the first one?
    '-----------------------------------------------------------
    
-   Select Case brand!chapter & brand!restrictionflag     ' & brand!restriction_flag = "U", "R" or "A"
+   Select Case drug!chapter & drug!restrictionflag     ' & drug!restriction_flag = "U", "R" or "A"
       Case "OTU"
          lblRestrictions.text = "PBS OPTOMETRIST"
          iPrintStatus = const.script_print_type_pbs
@@ -557,10 +546,10 @@ Public Sub PBS_Show(brand As Collection)
          lblRestrictions.text = "PBS RESTRICTED"
          iPrintStatus = const.script_print_type_pbs
       Case "GEA"
-         If brand!streamlined Then  
-            lblRestrictions.text = "PBS STREAMLINED" '[" & brand!restriction_code & "]"
+         If drug!streamlined Then  
+            lblRestrictions.text = "PBS STREAMLINED" '[" & drug!restriction_code & "]"
             iPrintStatus = const.script_print_type_pbs_authority_streamlined
-            txtApprovalNumber.text = brand!restriction_code
+            txtApprovalNumber.text = drug!restriction_code
             bAuthority = True
          Else
             lblRestrictions.text = "PBS AUTHORITY"
@@ -574,14 +563,14 @@ Public Sub PBS_Show(brand As Collection)
          lblRestrictions.text = "RPBS RESTRICTED"
          iPrintStatus = const.script_print_type_rpbs
       Case "R1A"
-         If brand!streamlined Then 
-            lblRestrictions.text = "RPBS STREAMLINED" ' [" & brand!restriction_code & "]"
-            iPrintStatus = const.script_print_type_rbs_authority_streamlined
-            txtApprovalNumber.text = brand!restriction_code
+         If drug!streamlined Then 
+            lblRestrictions.text = "RPBS STREAMLINED" ' [" & drug!restriction_code & "]"
+            iPrintStatus = const.script_print_type_rpbs_authority_streamlined
+            txtApprovalNumber.text = drug!restriction_code
             bAuthority = True
          Else
             lblRestrictions.text = "RPBS AUTHORITY"
-            iPrintStatus = const.script_print_type_rbs_authority_streamlined
+            iPrintStatus = const.script_print_type_rpbs_authority_streamlined
             bAuthority = True
          End If
       Case Else
@@ -594,25 +583,24 @@ End
 Public Sub columnview1_Select()
    
    columnview1.MoveCurrent()
-   ' If brands[columnview1.Item.key]!streamlined Then
-   '   lblRestrictions.text = "Authority - Streamlined"
-   ' Else
-   '   lblRestrictions.text = ""
-   ' Endif
-   ' Select Case brands[columnview1.Item.key]!restriction_type
-   '   Case Null
-   '        lblRestrictions.text = "Unrestricted"
-   '   Case "1"
-   '        lblRestrictions.text = "Auth for increased quantities"
-   '   Case "2"
-   '      lblRestrictions.text = "Auth for normal amounts"
-   '   Case "3"
-   '        lblRestrictions.text = "Auth always"
-   '     
-   ' End Select
    Restrictions_Show()         'show which restrictions apply to this drug/generic or brand
-   PBS_Show(brands[columnview1.Item.key])
-   Print drug_restrictions.count 
+   PBS_Show(drugs[columnview1.Item.key])
+   Brands_For_Generic_Show() 
+   
+End
+
+Public Sub Brands_For_Generic_Show()
+
+   Dim brands As Collection
+   Dim brand As Collection
+   
+   brands = modPrescribingDBI.Brands_For_Generic_Get(drugs[columnview1.Item.key]!generic, drugs[columnview1.Item.key]!fk_product)
+   cvwBrands.Clear
+   For Each brand In brands
+      cvwBrands.Add(brand!pk_view, 0)
+      cvwBrands[brand!pk_view][0] = Left(brand!brand) & Lower(Right(brand!brand, Len(brand!brand) - 1))
+   Next
+   Print cvwBrands.count 
    
 End
 
@@ -629,36 +617,37 @@ End
 
 Public Sub Generics_Get()
    
-   Dim last_brand As String 'brand+quantity+repeats
+   Dim last_drug As String 'drug+quantity+repeats
    
    Timer1.Stop()
    With columnview1
       .Clear()
       .Columns.count = 5
    End With
+   cvwBrands.Clear()
    If Trim(txtGeneric.text) = "" Then Return 
-   brands = modPrescribingDBI.Generics_Get(Trim(txtGeneric.text))
-   If brands.count Then
-      For Each brand In brands
-         If last_brand <> brand!generic & brand!pbscode Then 
-            last_brand = brand!generic & brand!pbscode
-            '  If last_brand <> brand!brand & Str(brand!quantity) & Str(brand!max_rpt) Then 
-            '              last_brand = brand!brand & Str(brand!quantity) & Str(brand!max_rpt)
+   drugs = modPrescribingDBI.Generics_Get(Trim(txtGeneric.text))
+   If drugs.count Then
+      For Each drug In drugs
+         If last_drug <> drug!generic & drug!pbscode Then 
+            last_drug = drug!generic & drug!pbscode
+            '  If last_drug <> drug!drug & Str(drug!quantity) & Str(drug!max_rpt) Then 
+            '              last_drug = drug!drug & Str(drug!quantity) & Str(drug!max_rpt)
             ' 
             
-            ColumnView1.add(brand!pk_view, 0)
-            ' columnview1[brand!pk_view][0] = brand!brand
-            columnview1[brand!pk_view][0] = brand!generic
-            If InStr(brand!strength, "ml") Then
-               columnview1[brand!pk_view][1] = modPrescribingDBI.ConvertTo5mls(brand!strength)
+            ColumnView1.add(drug!pk_view, 0)
+            columnview1[drug!pk_view][0] = drug!generic
+            If InStr(drug!strength, "ml") Then
+               columnview1[drug!pk_view][1] = modPrescribingDBI.ConvertTo5mls(drug!strength)
             Else
-               columnview1[brand!pk_view][1] = brand!strength
+               columnview1[drug!pk_view][1] = drug!strength
             End If   
-            columnview1[brand!pk_view][2] = brand!form
-            columnview1[brand!pk_view][3] = Str(brand!quantity) & " Rpt:" & brand!max_rpt  
+            columnview1[drug!pk_view][2] = drug!form
+            columnview1[drug!pk_view][3] = Str(drug!quantity) & " Rpt:" & drug!max_rpt  
          End If   
       Next
-      columnview1.Visible = True  
+      pnlcolumnview.Visible = True  
+      cvwBrands.visible = True
       columnview1.tag = txtDrug 
       
    Endif
@@ -672,33 +661,42 @@ Public Sub Generic_Select()
 End
 
 Public Sub Brands_Get()
+   ' 
+   ' Return 
+   ' Timer1.Stop()
+   ' With columnview1
+   '    .Clear()
+   '    .Columns.count = 4
+   ' End With
+   ' If Trim(txtDrug.text) = "" Then Return 
+   ' brands = modPrescribingDBI.Brands_Get(Trim(txtDrug.text))
+   ' If brands.count Then
+   '    For Each brand In brands
+   '       
+   '       ColumnView1.add(brand!pk_view, 0)
+   '       columnview1[brand!pk_view][0] = brand!brand
+   '       columnview1[brand!pk_view][1] = brand!generic
+   '       If InStr(brand!strength, "ml") Then
+   '          columnview1[brand!pk_view][2] = modPrescribingDBI.ConvertTo5mls(brand!strength)
+   '       Else
+   '          columnview1[brand!pk_view][2] = brand!strength
+   '       End If   
+   '       columnview1[brand!pk_view][3] = brand!form
+   '    Next
+   '    pnlcolumnview.Visible = True  
+   '    cvwBrands.Visible = False   
+   '    columnview1.tag = txtDrug 
+   '    
+   ' Endif
+   ' 
+
+End
+
+Public Sub Drug_Print()
    
-   Return 
-   Timer1.Stop()
-   With columnview1
-      .Clear()
-      .Columns.count = 4
-   End With
-   If Trim(txtDrug.text) = "" Then Return 
-   brands = modPrescribingDBI.Brands_Get(Trim(txtDrug.text))
-   If brands.count Then
-      For Each brand In brands
-         
-         ColumnView1.add(brand!pk_view, 0)
-         columnview1[brand!pk_view][0] = brand!brand
-         columnview1[brand!pk_view][1] = brand!generic
-         If InStr(brand!strength, "ml") Then
-            columnview1[brand!pk_view][2] = modPrescribingDBI.ConvertTo5mls(brand!strength)
-         Else
-            columnview1[brand!pk_view][2] = brand!strength
-         End If   
-         columnview1[brand!pk_view][3] = brand!form
-      Next
-      columnview1.Visible = True  
-      columnview1.tag = txtDrug 
-      
-   Endif
-   
+   ' Save()
+   Print_Script_Items()
+
 End
 
 Public Sub Drug_Select()
@@ -709,29 +707,39 @@ Public Sub Drug_Select()
    Dim pbs_script_type As String                   'chapter + restrictionflag - selects how to print script
    
    columnview1.MoveCurrent                         'set the key
-   brand = brands[columnview1.Item.key]            'set brand collection   
+   drug = drugs[columnview1.Item.key]            'set drug collection   
    
-   fk_company = brand!fk_company                   'if not null points to brand.brand using fk_generic_product
-   fk_generic_product = brand!fk_product      'never null eg points to amoxycillin 250mg capsules
-   restriction_code = brand!fk_restriction         'may be null, if not = drugs restriction or authority details
-   pbscode = brand!pbscode                         'may be null if not pbs
+   fk_company = drug!fk_company                   'if not null points to drug.drug using fk_generic_product
+   fk_generic_product = drug!fk_product      'never null eg points to amoxycillin 250mg capsules
+   restriction_code = drug!fk_restriction         'may be null, if not = drugs restriction or authority details
+   pbscode = drug!pbscode                         'may be null if not pbs
    
    bexit = True
-   txtGeneric.text = brand!generic
-   txtDrug.text = brand!brand
+   txtGeneric.text = drug!generic
+   txtDrug.text = drug!brand 'won't be showing if user config configuration to hide this is set (not done yet FIXME)
    txtDrug.pos = 1
-   txtClass.text = brand!class   'fixme
-   If InStr(brand!strength, "ml") Then
-      txtStrength.text = modPrescribingDBI.ConvertTo5mls(brand!strength)
+   txtClass.text = drug!class   'fixme
+   If InStr(drug!strength, "ml") Then
+      txtStrength.text = modPrescribingDBI.ConvertTo5mls(drug!strength)
    Else
-      txtStrength.text = brand!strength & " " & brand!form
+      txtStrength.text = drug!strength & " " & drug!form
    End If
    txtStrength.pos = 1
-   txtRepeats.text = brand!max_rpt
-   txtQuantity.text = brand!quantity
+   txtRepeats.text = drug!max_rpt
+   txtQuantity.text = drug!quantity
    
-   PBS_Show(brand)
-   txtDirections.SetFocus()
+   PBS_Show(drug)
+   Instruction_Habits = modPrescribingDBI.Instruction_Habits_Get(fk_generic_product)
+   If Instruction_Habits.count Then
+      For Each Habit In Instruction_Habits
+         txtDirections.text = Habit!instruction
+         TxtReason.SetFocus()
+         Break
+      Next  
+   Else 
+      txtDirections.SetFocus()
+   Endif
+   
    bexit = False 
    
 End
@@ -741,8 +749,13 @@ Public Sub EditArea_Buttons_Click()
    Select Case Last.tag
       Case "new"
          Drug_New()
-      Case "save"
-         Save()
+      Case "ok"
+         Add_to_list()
+         
+         Drug_Print()
+      Case "print"
+         ' Save()
+         Drug_Print()
       Case "brief pi"
          Brief_PI()
       Case "authority"
@@ -751,58 +764,269 @@ Public Sub EditArea_Buttons_Click()
    
 End
 
-Public Sub Save()
-   'Don't even bother to unravel this I'm working on it
+Public Sub Add_to_list()
+   '----------------------------------------------------------------------------------------
+   'Script items are added to the list under the editing area, and printed en-mass whenever
+   'the user elects to do this - 3 items on a script for 'like' items
+   'e.g if all pbs, all private
+   '----------------------------------------------------------------------------------------
    
-   Dim ScriptItem As New Collection
-   Dim medication As New Collection
+   Dim x As Integer 'for readability
    
-   'If Vbox_EditArea.padding = 0 then return 
    If Not Scipt_Item_Valid() Then Return
    If Script_Item_Duplicate() Then Return 
    
-   If fk_script_item <> 0 Then
-      ScriptItem!fk_script_item = fk_script_item  
-   Else
-      'fixme this logic is incomplete, eg dr may not have typed in a Zed number obtained by phone.
-      If Trim(txtApprovalNumber.text) <> "" Then 
-         ScriptItem!authority_approval_number = Trim(txtApprovalNumber.Text)
-         ScriptItem!authority_post_to_patient = CBool(chkPostAuthority.value)
-         ScriptItem!authority_script_number = modPrescribingDBI.Authority_Number_Get_Next()
-      End If
-      ScriptItem!script_number = modPrescribingDBI.Script_Number_Get_Next()
-   Endif
+   script_item = New Collection
+   If fk_item_prescribed Then Script_item!fk_item_prescribed = fk_item_prescribed
+   If fk_medication Then script_item!fk_medication = fk_medication
+   script_item!date_on_script = Val(txtdate.text)
+   script_item!fk_consult = currentconsult.GetPK()
+   script_item!date_script_written = Now()
+   script_item!brand = Trim(txtDrug.text)
+   script_item!fk_company = fk_company
+   script_item!generic = txtGeneric.Text
+   script_item!fk_generic_product = fk_generic_product
+   script_item!strength = Trim(txtStrength.text)
+   script_item!quantity = Val(txtQuantity.text)
+   script_item!repeats = Val(txtRepeats.text)
+   script_item!pbs_print_status = lblRestrictions.Text
+   script_item!instruction = Trim(txtDirections.text) 
+   script_item!prescribed_for = Trim(txtReason.text)  
+   Script_item!restriction_code = restriction_code
+   Script_item!suppress_reason = False   'fixme implement me
+   Script_item!pbscode = pbscode
+   Script_item!fk_print_status = iPrintStatus
+   Script_item!reg24 = CBool(chkReg24.Value)
+   Script_item!active = CBool(chkActive.value)
+   Script_item!authority_approval_number = Trim(txtApprovalNumber.Text)
+   Script_item!authority_post_to_patient = CBool(chkPostAuthority.value)
+   If Trim(txtApprovalNumber.Text) <> "" Then
+      Script_item!authority_script_number = modPrescribingDBI.Authority_Number_Get_Next()
+   End If
+   Script_Item!script_number = modPrescribingDBI.Script_Number_Get_Next()
+   Script_item!authority_indication = restriction
+   script_items.Add(script_item, script_items.count)
+   cvwPrescriptions_Refresh(script_items)
    
-   ScriptItem!fk_consult = currentconsult.GetPK()
-   ScriptItem!script_date = Val(txtdate.text)
-   medication!fk_generic_product = fk_generic_product
-   medication!fk_company = fk_company
-   medication!instruction = Trim(txtDirections.text)  'this and nex line will be dropped later when key found 
-   medication!prescribed_for = Trim(txtReason.text)     'can't trust user not to have changed a pre-selected one
-   If restriction_code <> "" Then 
-      medication!restriction_code = restriction_code
-   Endif
-   medication!pbscode = pbscode
-   medication!fk_print_status = iPrintStatus 'how it will  usually be printed
-   medication!suppress_reason = False 'fixme put in mechanism for this
-   ScriptItem!reg24 = CBool(chkReg24.Value)
-   'fixme put in s8 to medication
-   medication!active = CBool(chkActive.value)
-   medication!quantity = Val(txtQuantity.text)
-   medication!repeats = Val(txtRepeats.text)
+End
+
+Public Sub Save()
+   '-----------------------------------------------------------
+   'Saves the drugs in the prescriptions list, then prints them
+   'each  script_item in collection is an amalgum off the
+   'medication details and the script details, so dis-entangle
+   'Ian don't worry about this seeming lack of logic for moment
+   'I'm just doing the functionality
+   'The nomenclature in this module sucks at the moment, sorry
+   '-----------------------------------------------------------
+   
+   Dim medication As Collection
+   Dim prescribed As Collection
    
    modDBConnect.BeginTrans()
-   ' ScriptItem!fk_medication = modPrescribingDBI.Save_Medication(medications, fk_medication, medication)
-   fk_script_item = modPrescribingDBI.Save(currentconsult!patient!fk_patient, Prescriptions, fk_script_item, scriptItem, fk_medication, medication)
-   modPrescribingDBI.Script_Number_Save(ScriptItem!script_number)
-   If Not IsNull(ScriptItem!authority_script_number) Then 
-      modPrescribingDBI.Authority_Number_Save(ScriptItem!authority_script_number)
-   Endif
-   
+   For Each script_item In script_items 
+      '------------------------------------------------------------------     
+      'The 'core' features of a medication > clin_prescribing.medications
+      '------------------------------------------------------------------
+      medication = New Collection 
+      medication!fk_medication = script_item!fk_medication
+      medication!fk_generic_product = script_item!fk_generic_product
+      medication!fk_company = script_item!fk_company
+      medication!instruction = script_item!instruction 
+      medication!prescribed_for = script_item!prescribed_for
+      If Not IsNull(script_item!restriction_code) Then 
+         medication!restriction_code = script_item!restriction_code
+      Endif
+      medication!pbscode = script_item!pbscode
+      medication!fk_print_status = script_item!fk_print_status
+      medication!suppress_reason = False 'fixme put in mechanism for this
+      medication!active = script_item!active
+      medication!quantity = script_item!quantity
+      medication!repeats = script_item!repeats
+      '----------------------------------------------------------------------------------------------
+      '   Table: clin_prescibring.prescibed
+      '
+      '   pk serial NOT NULL,
+      '   fk_consult integer NOT NULL,
+      '   fk_medication integer NOT NULL,
+      '   script_date date NOT NULL, -- The actual date on the script may not be the consulation date, can be back/forwarded dated,...
+      '   reg24 boolean DEFAULT false, -- If true reg24 allows us to tell the...
+      '   authority_script_number integer, -- the pbs requires a unique script number for an authority item, pretty stupid, but a number that...
+      '   authority_approval_number text, -- either the steamlined authority number or the phone approval number obtained from a pbs operator
+      '   authority_post_to_patient boolean DEFAULT false,
+      '   script_number integer,
+      '   concession_details text,
+      '   brand_substitution boolean DEFAULT true,
+      '   fk_progress_note integer,
+      '   deleted boolean DEFAULT false,
+      '   FIXME FROM IAN- REMOVE FK_CONSULT  AND USE FK_PROGRESS NOTE TO GET IT ??
+      ' Build a new collection for each item = could be new or old data
+      ' 
+      '----------------------------------------------------------------------------------------------
+      prescribed = New Collection
+      prescribed!fk_item_prescribed = Script_item!fk_item_prescribed
+      prescribed!date_on_script = Script_item!date_on_script
+      prescribed!fk_consult = Script_item!fk_consult
+      prescribed!reg24 = Script_item!reg24 
+      prescribed!authority_script_number = Script_item!authority_script_number
+      prescribed!authority_approval_number = Script_item!authority_approval_number
+      prescribed!authority_post_to_patient = Script_item!authority_post_to_patient
+      prescribed!script_number = Script_item!script_number
+      ' prescribed! = concession_details : these three not yet implemented
+      ' prescribed! = brand_substitution : do not remove this code
+      ' prescribed! = fk_progress_note
+      
+      fk_item_prescribed = modPrescribingDBI.Save(currentconsult!patient!fk_patient, script_item, prescribed, medication)
+   Next  
    modDBConnect.CommitTrans()
+   Print_Script_Items()
    FClinical.Refresh_Section(const.cSection_Prescriptions)    'refresh lists on main screen FClinical
    FClinical.Refresh_AllPreviousNotes()
    Reload()
+   
+End
+
+Public Sub Save_not_quite_so_old()
+   '-----------------------------------------------------------
+   'Saves the drugs in the prescriptions list, then prints them
+   'each  script_item in collection is an amalgum off the
+   'medication details and the script details, so dis-entangle
+   'Ian don't worry about this seeming lack of logic for moment
+   'I'm just doing the functionality
+   'The nomenclature in this module sucks at the moment, sorry
+   '-----------------------------------------------------------
+   
+   Dim medication As Collection
+   Dim Prescibed As Collection
+   
+   modDBConnect.BeginTrans()
+   For Each script_item In script_items 
+      '------------------------------------------------------------------     
+      'The 'core' features of a medication > clin_prescribing.medications
+      '------------------------------------------------------------------
+      medication = New Collection 
+      medication!fk_medication = script_item!fk_medication
+      medication!fk_generic_product = script_item!fk_generic_product
+      medication!fk_company = script_item!fk_company
+      medication!instruction = script_item!instruction 
+      medication!prescribed_for = script_item!prescribed_for
+      If Not IsNull(script_item!restriction_code) Then 
+         medication!restriction_code = script_item!restriction_code
+      Endif
+      medication!pbscode = script_item!pbscode
+      medication!fk_print_status = script_item!fk_print_status
+      medication!suppress_reason = False 'fixme put in mechanism for this
+      medication!active = script_item!active
+      medication!quantity = script_item!quantity
+      medication!repeats = script_item!repeats
+      '----------------------------------------------------------------------------------------------
+      'Remove re-allocated keys, or text not needed, leaves clin_prescibring.prescribed table content
+      '----------------------------------------------------------------------------------------------
+      script_item.Remove("fk_generic_product")
+      script_item.Remove("fk_medication")
+      script_item.Remove("fk_company")
+      script_item.Remove("instruction")
+      script_item.Remove("prescribed_for")
+      script_item.Remove("restriction_code")
+      script_item.Remove("pbscode")
+      script_item.Remove("fk_print_status")
+      script_item.Remove("s8")
+      script_item.Remove("active")
+      script_item.Remove("suppress_reason")
+      script_item.Remove("brand")
+      script_item.Remove("generic")
+      script_item.Remove("strength")
+      script_item.Remove("quantity")
+      script_item.Remove("repeats")
+      script_item.Remove("pbs_print_status")
+      script_item.Remove("date_script_written")
+      fk_item_prescribed = modPrescribingDBI.Save(currentconsult!patient!fk_patient, Script_Items_This_Consultation, fk_item_prescribed, script_Item, fk_medication, medication)
+   Next  
+   modDBConnect.CommitTrans()
+   Print_Script_Items()
+   FClinical.Refresh_Section(const.cSection_Prescriptions)    'refresh lists on main screen FClinical
+   FClinical.Refresh_AllPreviousNotes()
+   Reload()
+   
+End
+
+Public Sub Save_old()
+   ' '-----------------------------------------------------------
+   ' 'Saves the drugs in the prescriptions list, then prints them
+   ' '-----------------------------------------------------------
+   ' 
+   ' Dim ScriptItem As New Collection
+   ' Dim medication As New Collection
+   ' 
+   ' 'If Vbox_EditArea.padding = 0 then return 
+   '  
+   ' 
+   '    If fk_script_item <> 0 Then
+   '       ScriptItem!fk_script_item = fk_script_item  
+   '    Else
+   '       'fixme this logic is incomplete, eg dr may not have typed in a Zed number obtained by phone.
+   '       If Trim(txtApprovalNumber.text) <> "" Then 
+   '          ScriptItem!authority_approval_number = Trim(txtApprovalNumber.Text)
+   '          ScriptItem!authority_post_to_patient = CBool(chkPostAuthority.value)
+   '          ScriptItem!authority_script_number = modPrescribingDBI.Authority_Number_Get_Next()
+   '       End If
+   '       ScriptItem!script_number = modPrescribingDBI.Script_Number_Get_Next()
+   '    Endif
+   '    
+   '    ScriptItem!fk_consult = currentconsult.GetPK()
+   '    ScriptItem!script_date = Val(txtdate.text)
+   '    medication!fk_generic_product = fk_generic_product
+   '    medication!fk_company = fk_company
+   '    medication!instruction = Trim(txtDirections.text)  'this and nex line will be dropped later when key found 
+   '    medication!prescribed_for = Trim(txtReason.text)     'can't trust user not to have changed a pre-selected one
+   '    If restriction_code <> "" Then 
+   '       medication!restriction_code = restriction_code
+   '    Endif
+   '    medication!pbscode = pbscode
+   '    medication!fk_print_status = iPrintStatus 'how it will  usually be printed
+   '    medication!suppress_reason = False 'fixme put in mechanism for this
+   '    ScriptItem!reg24 = CBool(chkReg24.Value)
+   '    'fixme put in s8 to medication
+   '    medication!active = CBool(chkActive.value)
+   '    medication!quantity = Val(txtQuantity.text)
+   '    medication!repeats = Val(txtRepeats.text)
+   '    
+   '    modDBConnect.BeginTrans()
+   '    ' ScriptItem!fk_medication = modPrescribingDBI.Save_Medication(medications, fk_medication, medication)
+   '    fk_script_item = modPrescribingDBI.Save(currentconsult!patient!fk_patient, Prescriptions, fk_script_item, scriptItem, fk_medication, medication)
+   '    modPrescribingDBI.Script_Number_Save(ScriptItem!script_number)
+   '    If Not IsNull(ScriptItem!authority_script_number) Then 
+   '       modPrescribingDBI.Authority_Number_Save(ScriptItem!authority_script_number)
+   '    Endif
+   ' modDBConnect.CommitTrans()
+   ' FClinical.Refresh_Section(const.cSection_Prescriptions)    'refresh lists on main screen FClinical
+   ' FClinical.Refresh_AllPreviousNotes()
+   ' Reload()
+   
+End
+
+Public Function cvwPrescriptions_Refresh(Script_Items_Written As Collection)
+   
+   Dim x As Integer
+   
+   cvwPrescriptions.Clear()
+   
+   For Each script_item In Script_Items_Written
+      
+      x = cvwPrescriptions.Count
+      cvwPrescriptions.Add(x, 0)
+      cvwPrescriptions[x][0] = Format(script_item!date_script_written, "dd/mm/yyyy")
+      cvwPrescriptions[x][1] = Format(script_item!date_on_script, "dd/mm/yyyy")
+      cvwPrescriptions[x][2] = script_item!brand
+      cvwPrescriptions[x][3] = script_item!generic
+      cvwPrescriptions[x][4] = script_item!strength   
+      cvwPrescriptions[x][5] = script_item!quantity & " Rpt:" & script_item!repeats 
+      cvwPrescriptions[x][6] = script_item!pbs_print_status
+      cvwPrescriptions[x][7] = script_item!instruction  
+      cvwPrescriptions[x][8] = script_item!prescribedfor   
+      
+   Next
+   Print script_items
    
 End
 
@@ -820,14 +1044,14 @@ Public Function Script_Item_Duplicate() As Boolean
    '  restriction code aka authority code
    '  ignores active/inactive
    '--------------------------------------------------------------------------
-
+   
    Dim script_written As Collection
    Dim new_item As String
    Dim existing_item As String 
    
    new_item = Format(Val(txtdate.text), "dd/mm/yyyy") & " " & Str(fk_generic_product) & " " 
    new_item &= fk_company & " " & Trim(Lower(txtDirections.text)) & " "
-  ' new_item &= Trim(Lower(txtReason.text)) & " " & restriction_code
+   ' new_item &= Trim(Lower(txtReason.text)) & " " & restriction_code
    
    For Each script_written In currentconsult!prescriptions_written
       existing_item = Format(script_written!date_on_script, "dd/mm/yyyy") & " "
@@ -837,20 +1061,20 @@ Public Function Script_Item_Duplicate() As Boolean
       Else
          existing_item &= script_written!fk_company & " "
       Endif
-    '  existing_item &= script_written!instruction & " " 
-    '  existing_item &= script_written!prescribed_for & " "
-    '  If IsNull(script_written!restriction_code) Then
-     '    existing_item &= ""
-     ' Else
-     '    existing_item &= script_written!restriction_code   
-    '  Endif
+      '  existing_item &= script_written!instruction & " " 
+      '  existing_item &= script_written!prescribed_for & " "
+      '  If IsNull(script_written!restriction_code) Then
+      '    existing_item &= ""
+      ' Else
+      '    existing_item &= script_written!restriction_code   
+      '  Endif
       If new_item = existing_item Then
          Message.Info("This item has already been presecribed this consultation")
          Return True
       Endif
    Next
    Return False
-
+   
 End
 
 Public Function Scipt_Item_Valid() As Boolean
@@ -879,7 +1103,7 @@ Public Function Scipt_Item_Valid() As Boolean
    If txtReason.text = "" Then
       If Message.Warning("Do you want to the reason or condition for which you prescribed this medication?", "Yes", "No") = 1 Then Return
    Endif
-   If brand!restrictionflag = "A" And restriction_code = "" Then
+   If drug!restrictionflag = "A" And restriction_code = "" Then
       Message.Info("Please select an authority indication for this drug before saving")
       lcRestrictions.Children[0].SetFocus()
       Return 
@@ -892,9 +1116,63 @@ Public Sub Authority()
    
 End
 
-Public Sub Print_Script()
+Public Sub Print_Script_Items()
+   
+   For Each script_item In script_items 
+      modPrinting.Print_latex(Script_LaTex_Construct(script_item).GetData(), const.Paper_Script)
+   Next
    
 End
+
+Public Sub Script_LaTex_Construct(script_item As Collection) As CTemplate
+   
+   Dim templ As CTemplate
+   
+   templ = New CTemplate("authority-script", "tex")
+   ScriptForm_Construct(script_item, templ)
+   Return templ
+   
+End
+
+Public Sub ScriptForm_Construct(script_item As Collection, templ As CTemplate)
+
+   Dim Drug As String
+   Dim drugs As String 
+   templ.Subst_common(currentconsult)
+   
+   templ.Subst("authority_heading_authority_script_number", script_item!pbs_print_status & " AUTHORITY " & script_item!authority_script_number) 
+   templ.Subst("patientaddress", currentconsult!patient!street & " " & currentconsult!patient!town & " " & currentconsult!patient!postcode)
+   templ.Subst("medicarenumber", currentconsult!patient!medicare_number)
+   templ.Subst("doctorname", modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename)
+   templ.Subst("prescribernumber", modDBConnect.currentUser!prescriber_number)
+   templ.Subst("patientname", currentconsult!patient!title & " " & currentconsult!patient!firstname & " " & currentconsult!patient!surname)
+   templ.Subst("script_date", Format(script_item!date_script_written, "dd/mm/yyyy"))
+   templ.Subst("script_number", script_item!script_number)
+   If InStr(script_item!pbs_print_status, "PBS") Then  
+      templ.Checkbox("pbs_checkbox", True)
+   Else
+      templ.Checkbox("pbs_checkbox", False)
+   End If
+   If InStr(script_item!pbs_print_status, "RPBS") Then   'and check against patients actual rpbs entitlements FIXME SHOULD DO THIS BACK IN PRESRIBING.
+      templ.Checkbox("rpbs_checkbox", True)
+   Else
+      templ.Checkbox("rpbs_checkbox", False)
+   End If
+   templ.Checkbox("previous_authority_yes_checkbox", True)
+   templ.Checkbox("previous_authority_no_checkbox", False)
+   Print script_item
+   If script_item!authority_post_to_patient = True Then
+      templ.Checkbox("sendtopatient_checkbox", True)
+   Else
+      templ.Checkbox("sendtopatient_checkbox", False)
+   Endif
+   templ.Subst("authority_script_number", Script_Item!authority_script_number)
+   templ.Subst("authority_Indication", script_item!authority_indication)
+   templ.Subst("authority_approval_number", script_item!authority_approval_number)
+   templ.Subst("quantity_repeats", script_item!strength & " " & script_item!quantity & "'s Rpt " & script_item!repeats)
+   templ.Subst_Drugs(script_item)
+
+End 
 
 Public Sub Brief_PI()
    
@@ -953,1076 +1231,9 @@ Public Sub EditArea_Buttons_KeyPress()
    
    If key.code = key.return Then    
       Select Case Last.tag
-         Case "save"
-            Save()
+         Case "ok"
+            Add_to_list()
       End Select
    End If   
    
 End
-' --
-' -- PostgreSQL database dump
-' --
-' 
-' -- Started on 2011-01-16 12:58:57 EST
-' 
-' SET statement_timeout = 0;
-' SET client_encoding = 'UTF8';
-' SET standard_conforming_strings = off;
-' SET check_function_bodies = false;
-' SET client_min_messages = warning;
-' SET escape_string_warning = off;
-' 
-' --
-' -- TOC entry 22 (class 2615 OID 415063)
-' -- Name: clin_prescribing; Type: SCHEMA; Schema: -; Owner: richard
-' --
-' 
-' CREATE SCHEMA clin_prescribing;
-' 
-' 
-' ALTER SCHEMA clin_prescribing OWNER TO richard;
-' 
-' SET search_path = clin_prescribing, pg_catalog;
-' 
-' SET default_tablespace = '';
-' 
-' SET default_with_oids = false;
-' 
-' --
-' -- TOC entry 3234 (class 1259 OID 420549)
-' -- Dependencies: 22
-' -- Name: instruction_habits; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' CREATE TABLE instruction_habits (
-'     pk integer NOT NULL,
-'     fk_instruction integer NOT NULL,
-'     fk_company character varying(3),
-'     fk_generic_product integer NOT NULL,
-'     fk_staff integer NOT NULL,
-'     weighting integer NOT NULL
-' );
-' 
-' 
-' ALTER TABLE clin_prescribing.instruction_habits OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3645 (class 0 OID 0)
-' -- Dependencies: 3234
-' -- Name: TABLE instruction_habits; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON TABLE instruction_habits IS 'allow auto-completion of a script for the commonest instruction
-'  a particular staff member uses for a particular drug. 
-' 	-If fk_company and fk_generic product are not null,
-' 	then this points  to a brand name in drugs.brand
-' 	-If fk_company is null, then this is a generically prescribed drug';
-' 
-' 
-' --
-' -- TOC entry 3233 (class 1259 OID 420547)
-' -- Dependencies: 3234 22
-' -- Name: instruction_habits_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' CREATE SEQUENCE instruction_habits_pk_seq
-'     START WITH 1
-'     INCREMENT BY 1
-'     NO MAXVALUE
-'     NO MINVALUE
-'     CACHE 1;
-' 
-' 
-' ALTER TABLE clin_prescribing.instruction_habits_pk_seq OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3647 (class 0 OID 0)
-' -- Dependencies: 3233
-' -- Name: instruction_habits_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER SEQUENCE instruction_habits_pk_seq OWNED BY instruction_habits.pk;
-' 
-' 
-' --
-' -- TOC entry 3229 (class 1259 OID 420462)
-' -- Dependencies: 22
-' -- Name: instructions; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' CREATE TABLE instructions (
-'     pk integer NOT NULL,
-'     instruction text,
-'     fk_lu_units integer,
-'     am integer,
-'     lunch integer,
-'     pm integer,
-'     bed integer,
-'     prn integer
-' );
-' 
-' 
-' ALTER TABLE clin_prescribing.instructions OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3648 (class 0 OID 0)
-' -- Dependencies: 3229
-' -- Name: TABLE instructions; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON TABLE instructions IS 'A lookup table for instructions and hopefully with a bit of intelligence
-'  allow printing out of medications charts';
-' 
-' 
-' --
-' -- TOC entry 3649 (class 0 OID 0)
-' -- Dependencies: 3229
-' -- Name: COLUMN instructions.fk_lu_units; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN instructions.fk_lu_units IS 'key to common.lu_units = day, month, week or year = frequency of the medication';
-' 
-' 
-' --
-' -- TOC entry 3228 (class 1259 OID 420460)
-' -- Dependencies: 3229 22
-' -- Name: instructions_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' CREATE SEQUENCE instructions_pk_seq
-'     START WITH 1
-'     INCREMENT BY 1
-'     NO MAXVALUE
-'     NO MINVALUE
-'     CACHE 1;
-' 
-' 
-' ALTER TABLE clin_prescribing.instructions_pk_seq OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3651 (class 0 OID 0)
-' -- Dependencies: 3228
-' -- Name: instructions_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER SEQUENCE instructions_pk_seq OWNED BY instructions.pk;
-' 
-' 
-' --
-' -- TOC entry 2877 (class 1259 OID 416106)
-' -- Dependencies: 22
-' -- Name: item_start_last_dates; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' CREATE TABLE item_start_last_dates (
-'     pk integer NOT NULL,
-'     start_date date,
-'     last_date date
-' );
-' 
-' 
-' ALTER TABLE clin_prescribing.item_start_last_dates OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3652 (class 0 OID 0)
-' -- Dependencies: 2877
-' -- Name: TABLE item_start_last_dates; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON TABLE item_start_last_dates IS 'Quickly look up when the drug was started
-' and the last date it was prescribed';
-' 
-' 
-' --
-' -- TOC entry 3242 (class 1259 OID 420810)
-' -- Dependencies: 3612 3613 3614 3615 22
-' -- Name: medications; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' CREATE TABLE medications (
-'     pk integer NOT NULL,
-'     fk_generic_product integer NOT NULL,
-'     fk_company character varying(3) DEFAULT NULL::character varying,
-'     repeats integer NOT NULL,
-'     quantity integer NOT NULL,
-'     fk_instruction integer NOT NULL,
-'     fk_prescribed_for integer,
-'     fk_script_dates integer NOT NULL,
-'     pbscode text NOT NULL,
-'     fk_print_status integer NOT NULL,
-'     restriction_code text,
-'     s8 boolean DEFAULT false,
-'     active boolean DEFAULT false,
-'     deleted boolean DEFAULT false,
-'     suppress_reason boolean
-' );
-' 
-' 
-' ALTER TABLE clin_prescribing.medications OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3654 (class 0 OID 0)
-' -- Dependencies: 3242
-' -- Name: TABLE medications; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON TABLE medications IS 'A list of a patients unique medications and whether active or not
-'  e.g fk_company gives the brand eg amoxil
-'      fk_generic_product gives the strengh and mg and generic
-'      Plus saves quantity/repeats and how to print it out';
-' 
-' 
-' --
-' -- TOC entry 3655 (class 0 OID 0)
-' -- Dependencies: 3242
-' -- Name: COLUMN medications.fk_generic_product; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN medications.fk_generic_product IS 'fk to drugs.products gives generic name, atc, strengh and formulation';
-' 
-' 
-' --
-' -- TOC entry 3656 (class 0 OID 0)
-' -- Dependencies: 3242
-' -- Name: COLUMN medications.fk_company; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN medications.fk_company IS 'if not null, then this drug is a brand, ie 
-' it is a generic made by a company with their own trade name';
-' 
-' 
-' --
-' -- TOC entry 3657 (class 0 OID 0)
-' -- Dependencies: 3242
-' -- Name: COLUMN medications.repeats; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN medications.repeats IS '
-' The actual number of repeats
-' may not be the max repeats allowed
-' by the pbs accessed by fk_pbs';
-' 
-' 
-' --
-' -- TOC entry 3658 (class 0 OID 0)
-' -- Dependencies: 3242
-' -- Name: COLUMN medications.quantity; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN medications.quantity IS '
-' The quantity on the script
-' May not be the actual quanitity allowed on the pbs
-' e.g sometimes we may prescribe diazepam in small quantities';
-' 
-' 
-' --
-' -- TOC entry 3659 (class 0 OID 0)
-' -- Dependencies: 3242
-' -- Name: COLUMN medications.active; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN medications.active IS '
-' If true, the medication is on the patients
-' active medication list';
-' 
-' 
-' --
-' -- TOC entry 3241 (class 1259 OID 420808)
-' -- Dependencies: 3242 22
-' -- Name: medications_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' CREATE SEQUENCE medications_pk_seq
-'     START WITH 1
-'     INCREMENT BY 1
-'     NO MAXVALUE
-'     NO MINVALUE
-'     CACHE 1;
-' 
-' 
-' ALTER TABLE clin_prescribing.medications_pk_seq OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3661 (class 0 OID 0)
-' -- Dependencies: 3241
-' -- Name: medications_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER SEQUENCE medications_pk_seq OWNED BY medications.pk;
-' 
-' 
-' --
-' -- TOC entry 3244 (class 1259 OID 420826)
-' -- Dependencies: 3617 3618 3619 3620 22
-' -- Name: prescribed; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' CREATE TABLE prescribed (
-'     pk integer NOT NULL,
-'     fk_consult integer NOT NULL,
-'     fk_medication integer NOT NULL,
-'     script_date date NOT NULL,
-'     reg24 boolean DEFAULT false,
-'     authority_script_number integer,
-'     authority_approval_number text,
-'     authority_post_to_patient boolean DEFAULT false,
-'     script_number integer,
-'     concession_details text,
-'     brand_substitution boolean DEFAULT true,
-'     fk_progress_note integer,
-'     deleted boolean DEFAULT false
-' );
-' 
-' 
-' ALTER TABLE clin_prescribing.prescribed OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3662 (class 0 OID 0)
-' -- Dependencies: 3244
-' -- Name: TABLE prescribed; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON TABLE prescribed IS 'Every single item prescribed has an entry here
-' 	this table gives us
-' 	- the doctor who prescribed
-' 	- the date prescription was issued consult.date
-' 	- the actual date on the script (script_date)
-' 	  which could be foreward or back dated
-' 	- the medication details (fk_medication > who
-' 	  first prescribed it, date first started, active
-' 	- stuff which could be unique for this prescription
-' 	  such as pbs details, quantity, repeats, reg 25, s8
-' 	- print_status is pbs or rpbs or priv
-' 	- the pack details for this drug on this occasion.';
-' 
-' 
-' --
-' -- TOC entry 3663 (class 0 OID 0)
-' -- Dependencies: 3244
-' -- Name: COLUMN prescribed.script_date; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN prescribed.script_date IS '
-' The actual date on the script may not be the consulation date, can be back/forwarded dated,
-' without this ability GP''s may as well pack up and go
-' home though illegal in theory';
-' 
-' 
-' --
-' -- TOC entry 3664 (class 0 OID 0)
-' -- Dependencies: 3244
-' -- Name: COLUMN prescribed.reg24; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN prescribed.reg24 IS '
-' If true reg24 allows us to tell the
-' pharmacist to dispense the script and all 
-' its repeats at once';
-' 
-' 
-' --
-' -- TOC entry 3665 (class 0 OID 0)
-' -- Dependencies: 3244
-' -- Name: COLUMN prescribed.authority_script_number; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN prescribed.authority_script_number IS 'the pbs requires a unique script number for an authority item, pretty stupid, but a number that
-'  increments by 11. This is distinct from the streamlined approval number or phone approval number';
-' 
-' 
-' --
-' -- TOC entry 3666 (class 0 OID 0)
-' -- Dependencies: 3244
-' -- Name: COLUMN prescribed.authority_approval_number; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON COLUMN prescribed.authority_approval_number IS 'either the steamlined authority number or the phone approval number obtained from a pbs operator';
-' 
-' 
-' --
-' -- TOC entry 3231 (class 1259 OID 420481)
-' -- Dependencies: 22
-' -- Name: prescribed_for; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' CREATE TABLE prescribed_for (
-'     pk integer NOT NULL,
-'     prescribed_for text NOT NULL,
-'     fk_code text
-' );
-' 
-' 
-' ALTER TABLE clin_prescribing.prescribed_for OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3668 (class 0 OID 0)
-' -- Dependencies: 3231
-' -- Name: TABLE prescribed_for; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON TABLE prescribed_for IS 'keeps list of things prescribed for
-'   If fk_code is not null it has been coded
-'   referenced by items_prescibed.fk_prescibed_for';
-' 
-' 
-' --
-' -- TOC entry 3236 (class 1259 OID 420563)
-' -- Dependencies: 22
-' -- Name: prescribed_for_habits; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' CREATE TABLE prescribed_for_habits (
-'     pk integer NOT NULL,
-'     fk_prescribed_for integer NOT NULL,
-'     fk_company character varying(3),
-'     fk_generic_product integer NOT NULL,
-'     fk_staff integer NOT NULL,
-'     weighting integer NOT NULL
-' );
-' 
-' 
-' ALTER TABLE clin_prescribing.prescribed_for_habits OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3670 (class 0 OID 0)
-' -- Dependencies: 3236
-' -- Name: TABLE prescribed_for_habits; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON TABLE prescribed_for_habits IS 'used to auto-complete a script on a per-staff member, to
-'  display the commonest reason a particular generic +/- brand
-'  was prescribed for';
-' 
-' 
-' --
-' -- TOC entry 3235 (class 1259 OID 420561)
-' -- Dependencies: 3236 22
-' -- Name: prescribed_for_habits_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' CREATE SEQUENCE prescribed_for_habits_pk_seq
-'     START WITH 1
-'     INCREMENT BY 1
-'     NO MAXVALUE
-'     NO MINVALUE
-'     CACHE 1;
-' 
-' 
-' ALTER TABLE clin_prescribing.prescribed_for_habits_pk_seq OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3672 (class 0 OID 0)
-' -- Dependencies: 3235
-' -- Name: prescribed_for_habits_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER SEQUENCE prescribed_for_habits_pk_seq OWNED BY prescribed_for_habits.pk;
-' 
-' 
-' --
-' -- TOC entry 3230 (class 1259 OID 420479)
-' -- Dependencies: 3231 22
-' -- Name: prescribed_for_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' CREATE SEQUENCE prescribed_for_pk_seq
-'     START WITH 1
-'     INCREMENT BY 1
-'     NO MAXVALUE
-'     NO MINVALUE
-'     CACHE 1;
-' 
-' 
-' ALTER TABLE clin_prescribing.prescribed_for_pk_seq OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3673 (class 0 OID 0)
-' -- Dependencies: 3230
-' -- Name: prescribed_for_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER SEQUENCE prescribed_for_pk_seq OWNED BY prescribed_for.pk;
-' 
-' 
-' --
-' -- TOC entry 3243 (class 1259 OID 420824)
-' -- Dependencies: 3244 22
-' -- Name: prescribed_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' CREATE SEQUENCE prescribed_pk_seq
-'     START WITH 1
-'     INCREMENT BY 1
-'     NO MAXVALUE
-'     NO MINVALUE
-'     CACHE 1;
-' 
-' 
-' ALTER TABLE clin_prescribing.prescribed_pk_seq OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3674 (class 0 OID 0)
-' -- Dependencies: 3243
-' -- Name: prescribed_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER SEQUENCE prescribed_pk_seq OWNED BY prescribed.pk;
-' 
-' 
-' --
-' -- TOC entry 3238 (class 1259 OID 420633)
-' -- Dependencies: 22
-' -- Name: print_status; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' CREATE TABLE print_status (
-'     pk integer NOT NULL,
-'     status text NOT NULL
-' );
-' 
-' 
-' ALTER TABLE clin_prescribing.print_status OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3675 (class 0 OID 0)
-' -- Dependencies: 3238
-' -- Name: TABLE print_status; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON TABLE print_status IS 'The various ways a script can be printed as for example:
-' 	- PBS AUTHORITY, RPBS AUTHORITY, PBS STREAMLINED AUTHORITY
-' 	  PBS, RPBS PRIVATE';
-' 
-' 
-' --
-' -- TOC entry 3237 (class 1259 OID 420631)
-' -- Dependencies: 3238 22
-' -- Name: print_status_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' CREATE SEQUENCE print_status_pk_seq
-'     START WITH 1
-'     INCREMENT BY 1
-'     NO MAXVALUE
-'     NO MINVALUE
-'     CACHE 1;
-' 
-' 
-' ALTER TABLE clin_prescribing.print_status_pk_seq OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3677 (class 0 OID 0)
-' -- Dependencies: 3237
-' -- Name: print_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER SEQUENCE print_status_pk_seq OWNED BY print_status.pk;
-' 
-' 
-' --
-' -- TOC entry 2878 (class 1259 OID 416109)
-' -- Dependencies: 2877 22
-' -- Name: script_dates_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' CREATE SEQUENCE script_dates_pk_seq
-'     START WITH 1
-'     INCREMENT BY 1
-'     NO MAXVALUE
-'     NO MINVALUE
-'     CACHE 1;
-' 
-' 
-' ALTER TABLE clin_prescribing.script_dates_pk_seq OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3678 (class 0 OID 0)
-' -- Dependencies: 2878
-' -- Name: script_dates_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER SEQUENCE script_dates_pk_seq OWNED BY item_start_last_dates.pk;
-' 
-' 
-' --
-' -- TOC entry 3240 (class 1259 OID 420665)
-' -- Dependencies: 22
-' -- Name: script_numbers; Type: TABLE; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' CREATE TABLE script_numbers (
-'     pk integer NOT NULL,
-'     authority_number integer,
-'     script_number integer
-' );
-' 
-' 
-' ALTER TABLE clin_prescribing.script_numbers OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3680 (class 0 OID 0)
-' -- Dependencies: 3240
-' -- Name: TABLE script_numbers; Type: COMMENT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' COMMENT ON TABLE script_numbers IS 'the number on an authority script this goes up by 11 each time.
-'  the next script number as distinct from this';
-' 
-' 
-' --
-' -- TOC entry 3239 (class 1259 OID 420663)
-' -- Dependencies: 3240 22
-' -- Name: script_numbers_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' CREATE SEQUENCE script_numbers_pk_seq
-'     START WITH 1
-'     INCREMENT BY 1
-'     NO MAXVALUE
-'     NO MINVALUE
-'     CACHE 1;
-' 
-' 
-' ALTER TABLE clin_prescribing.script_numbers_pk_seq OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3682 (class 0 OID 0)
-' -- Dependencies: 3239
-' -- Name: script_numbers_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER SEQUENCE script_numbers_pk_seq OWNED BY script_numbers.pk;
-' 
-' 
-' --
-' -- TOC entry 3246 (class 1259 OID 420860)
-' -- Dependencies: 3412 22
-' -- Name: vwmedications; Type: VIEW; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' CREATE VIEW vwmedications AS
-'     SELECT medications.pk AS pk_view, consult.consult_date AS date_script_written, consult.fk_patient, product.generic, brand.brand, product.strength, form.form, medications.repeats, medications.quantity, prescribed_for.prescribed_for, instructions.instruction, item_start_last_dates.start_date, item_start_last_dates.last_date, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, vwstaff.provider_number, product.atccode, product.salt, product.fk_form, product.salt_strength, medications.fk_generic_product, medications.fk_company, medications.fk_instruction, medications.fk_prescribed_for, medications.pbscode, medications.fk_print_status, medications.s8, medications.active, medications.deleted AS medication_deleted, medications.suppress_reason, medications.fk_script_dates, medications.restriction_code, print_status.status AS pbs_print_status, restriction.streamlined, restriction.restriction, restriction.restriction_type, prescribed.fk_medication FROM (((((((((((clin_consult.
-' 
-' 
-' ALTER TABLE clin_prescribing.vwmedications OWNER TO easygp;
-' 
-' --
-' -- TOC entry 3245 (class 1259 OID 420849)
-' -- Dependencies: 3411 22
-' -- Name: vwprescribeditems; Type: VIEW; Schema: clin_prescribing; Owner: postgres
-' --
-' 
-' CREATE VIEW vwprescribeditems AS
-'     SELECT prescribed.pk AS pk_view, consult.consult_date AS date_script_written, prescribed.script_date AS date_on_script, consult.fk_patient, product.generic, brand.brand, product.strength, form.form, medications.repeats, medications.quantity, prescribed_for.prescribed_for, instructions.instruction, item_start_last_dates.start_date, item_start_last_dates.last_date, brand.price, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, vwstaff.provider_number, product.atccode, product.salt, product.fk_form, product.salt_strength, prescribed.pk AS fk_item_prescibed, prescribed.fk_consult, prescribed.fk_medication, prescribed.reg24, prescribed.authority_script_number, prescribed.authority_approval_number, prescribed.authority_post_to_patient, prescribed.script_number, prescribed.concession_details, prescribed.brand_substitution, prescribed.fk_progress_note, prescribed.deleted AS prescribed_item_deleted, medications.fk_generic_product, medications.fk_company, medications.fk_ins
-' 
-' 
-' ALTER TABLE clin_prescribing.vwprescribeditems OWNER TO postgres;
-' 
-' --
-' -- TOC entry 3607 (class 2604 OID 420552)
-' -- Dependencies: 3233 3234 3234
-' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER TABLE instruction_habits ALTER COLUMN pk SET DEFAULT nextval('instruction_habits_pk_seq'::regclass);
-' 
-' 
-' --
-' -- TOC entry 3605 (class 2604 OID 420465)
-' -- Dependencies: 3228 3229 3229
-' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER TABLE instructions ALTER COLUMN pk SET DEFAULT nextval('instructions_pk_seq'::regclass);
-' 
-' 
-' --
-' -- TOC entry 3604 (class 2604 OID 417530)
-' -- Dependencies: 2878 2877
-' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER TABLE item_start_last_dates ALTER COLUMN pk SET DEFAULT nextval('script_dates_pk_seq'::regclass);
-' 
-' 
-' --
-' -- TOC entry 3611 (class 2604 OID 420813)
-' -- Dependencies: 3241 3242 3242
-' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER TABLE medications ALTER COLUMN pk SET DEFAULT nextval('medications_pk_seq'::regclass);
-' 
-' 
-' --
-' -- TOC entry 3616 (class 2604 OID 420829)
-' -- Dependencies: 3243 3244 3244
-' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER TABLE prescribed ALTER COLUMN pk SET DEFAULT nextval('prescribed_pk_seq'::regclass);
-' 
-' 
-' --
-' -- TOC entry 3606 (class 2604 OID 420484)
-' -- Dependencies: 3230 3231 3231
-' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER TABLE prescribed_for ALTER COLUMN pk SET DEFAULT nextval('prescribed_for_pk_seq'::regclass);
-' 
-' 
-' --
-' -- TOC entry 3608 (class 2604 OID 420566)
-' -- Dependencies: 3235 3236 3236
-' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER TABLE prescribed_for_habits ALTER COLUMN pk SET DEFAULT nextval('prescribed_for_habits_pk_seq'::regclass);
-' 
-' 
-' --
-' -- TOC entry 3609 (class 2604 OID 420636)
-' -- Dependencies: 3237 3238 3238
-' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER TABLE print_status ALTER COLUMN pk SET DEFAULT nextval('print_status_pk_seq'::regclass);
-' 
-' 
-' --
-' -- TOC entry 3610 (class 2604 OID 420668)
-' -- Dependencies: 3239 3240 3240
-' -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' ALTER TABLE script_numbers ALTER COLUMN pk SET DEFAULT nextval('script_numbers_pk_seq'::regclass);
-' 
-' 
-' --
-' -- TOC entry 3630 (class 2606 OID 420554)
-' -- Dependencies: 3234 3234
-' -- Name: instruction_habits_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' ALTER TABLE ONLY instruction_habits
-'     ADD CONSTRAINT instruction_habits_pkey PRIMARY KEY (pk);
-' 
-' 
-' --
-' -- TOC entry 3625 (class 2606 OID 420470)
-' -- Dependencies: 3229 3229
-' -- Name: instructions_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' ALTER TABLE ONLY instructions
-'     ADD CONSTRAINT instructions_pkey PRIMARY KEY (pk);
-' 
-' 
-' --
-' -- TOC entry 3639 (class 2606 OID 420822)
-' -- Dependencies: 3242 3242
-' -- Name: medications_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' ALTER TABLE ONLY medications
-'     ADD CONSTRAINT medications_pkey PRIMARY KEY (pk);
-' 
-' 
-' --
-' -- TOC entry 3632 (class 2606 OID 420568)
-' -- Dependencies: 3236 3236
-' -- Name: prescribed_for_habits_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' ALTER TABLE ONLY prescribed_for_habits
-'     ADD CONSTRAINT prescribed_for_habits_pkey PRIMARY KEY (pk);
-' 
-' 
-' --
-' -- TOC entry 3628 (class 2606 OID 420489)
-' -- Dependencies: 3231 3231
-' -- Name: prescribed_for_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' ALTER TABLE ONLY prescribed_for
-'     ADD CONSTRAINT prescribed_for_pkey PRIMARY KEY (pk);
-' 
-' 
-' --
-' -- TOC entry 3641 (class 2606 OID 420838)
-' -- Dependencies: 3244 3244
-' -- Name: prescribed_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' ALTER TABLE ONLY prescribed
-'     ADD CONSTRAINT prescribed_pkey PRIMARY KEY (pk);
-' 
-' 
-' --
-' -- TOC entry 3634 (class 2606 OID 420641)
-' -- Dependencies: 3238 3238
-' -- Name: print_status_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' ALTER TABLE ONLY print_status
-'     ADD CONSTRAINT print_status_pkey PRIMARY KEY (pk);
-' 
-' 
-' --
-' -- TOC entry 3622 (class 2606 OID 418800)
-' -- Dependencies: 2877 2877
-' -- Name: script_dates_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' ALTER TABLE ONLY item_start_last_dates
-'     ADD CONSTRAINT script_dates_pkey PRIMARY KEY (pk);
-' 
-' 
-' --
-' -- TOC entry 3636 (class 2606 OID 420670)
-' -- Dependencies: 3240 3240
-' -- Name: script_numbers_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' ALTER TABLE ONLY script_numbers
-'     ADD CONSTRAINT script_numbers_pkey PRIMARY KEY (pk);
-' 
-' 
-' --
-' -- TOC entry 3623 (class 1259 OID 420756)
-' -- Dependencies: 3229
-' -- Name: instructions_idx; Type: INDEX; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' CREATE INDEX instructions_idx ON instructions USING btree (instruction);
-' 
-' 
-' --
-' -- TOC entry 3637 (class 1259 OID 420823)
-' -- Dependencies: 3242
-' -- Name: medications_active_idx; Type: INDEX; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' CREATE INDEX medications_active_idx ON medications USING btree (active);
-' 
-' 
-' --
-' -- TOC entry 3626 (class 1259 OID 420757)
-' -- Dependencies: 3231
-' -- Name: prescribed_for_idx; Type: INDEX; Schema: clin_prescribing; Owner: easygp; Tablespace: 
-' --
-' 
-' CREATE INDEX prescribed_for_idx ON prescribed_for USING btree (prescribed_for);
-' 
-' 
-' --
-' -- TOC entry 3644 (class 0 OID 0)
-' -- Dependencies: 22
-' -- Name: clin_prescribing; Type: ACL; Schema: -; Owner: richard
-' --
-' 
-' REVOKE ALL ON SCHEMA clin_prescribing FROM PUBLIC;
-' REVOKE ALL ON SCHEMA clin_prescribing FROM richard;
-' GRANT ALL ON SCHEMA clin_prescribing TO richard;
-' GRANT ALL ON SCHEMA clin_prescribing TO easygp;
-' GRANT USAGE ON SCHEMA clin_prescribing TO staff;
-' 
-' 
-' --
-' -- TOC entry 3646 (class 0 OID 0)
-' -- Dependencies: 3234
-' -- Name: instruction_habits; Type: ACL; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' REVOKE ALL ON TABLE instruction_habits FROM PUBLIC;
-' REVOKE ALL ON TABLE instruction_habits FROM easygp;
-' GRANT ALL ON TABLE instruction_habits TO easygp;
-' GRANT SELECT,INSERT ON TABLE instruction_habits TO staff;
-' 
-' 
-' --
-' -- TOC entry 3650 (class 0 OID 0)
-' -- Dependencies: 3229
-' -- Name: instructions; Type: ACL; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' REVOKE ALL ON TABLE instructions FROM PUBLIC;
-' REVOKE ALL ON TABLE instructions FROM easygp;
-' GRANT ALL ON TABLE instructions TO easygp;
-' GRANT SELECT,INSERT ON TABLE instructions TO staff;
-' 
-' 
-' --
-' -- TOC entry 3653 (class 0 OID 0)
-' -- Dependencies: 2877
-' -- Name: item_start_last_dates; Type: ACL; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' REVOKE ALL ON TABLE item_start_last_dates FROM PUBLIC;
-' REVOKE ALL ON TABLE item_start_last_dates FROM easygp;
-' GRANT ALL ON TABLE item_start_last_dates TO easygp;
-' GRANT ALL ON TABLE item_start_last_dates TO staff;
-' 
-' 
-' --
-' -- TOC entry 3660 (class 0 OID 0)
-' -- Dependencies: 3242
-' -- Name: medications; Type: ACL; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' REVOKE ALL ON TABLE medications FROM PUBLIC;
-' REVOKE ALL ON TABLE medications FROM easygp;
-' GRANT ALL ON TABLE medications TO easygp;
-' GRANT ALL ON TABLE medications TO staff;
-' 
-' 
-' --
-' -- TOC entry 3667 (class 0 OID 0)
-' -- Dependencies: 3244
-' -- Name: prescribed; Type: ACL; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' REVOKE ALL ON TABLE prescribed FROM PUBLIC;
-' REVOKE ALL ON TABLE prescribed FROM easygp;
-' GRANT ALL ON TABLE prescribed TO easygp;
-' GRANT ALL ON TABLE prescribed TO staff;
-' 
-' 
-' --
-' -- TOC entry 3669 (class 0 OID 0)
-' -- Dependencies: 3231
-' -- Name: prescribed_for; Type: ACL; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' REVOKE ALL ON TABLE prescribed_for FROM PUBLIC;
-' REVOKE ALL ON TABLE prescribed_for FROM easygp;
-' GRANT ALL ON TABLE prescribed_for TO easygp;
-' GRANT SELECT,INSERT ON TABLE prescribed_for TO staff;
-' 
-' 
-' --
-' -- TOC entry 3671 (class 0 OID 0)
-' -- Dependencies: 3236
-' -- Name: prescribed_for_habits; Type: ACL; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' REVOKE ALL ON TABLE prescribed_for_habits FROM PUBLIC;
-' REVOKE ALL ON TABLE prescribed_for_habits FROM easygp;
-' GRANT ALL ON TABLE prescribed_for_habits TO easygp;
-' GRANT SELECT,INSERT ON TABLE prescribed_for_habits TO staff;
-' 
-' 
-' --
-' -- TOC entry 3676 (class 0 OID 0)
-' -- Dependencies: 3238
-' -- Name: print_status; Type: ACL; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' REVOKE ALL ON TABLE print_status FROM PUBLIC;
-' REVOKE ALL ON TABLE print_status FROM easygp;
-' GRANT ALL ON TABLE print_status TO easygp;
-' GRANT ALL ON TABLE print_status TO staff;
-' 
-' 
-' --
-' -- TOC entry 3679 (class 0 OID 0)
-' -- Dependencies: 2878
-' -- Name: script_dates_pk_seq; Type: ACL; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' REVOKE ALL ON SEQUENCE script_dates_pk_seq FROM PUBLIC;
-' REVOKE ALL ON SEQUENCE script_dates_pk_seq FROM easygp;
-' GRANT ALL ON SEQUENCE script_dates_pk_seq TO easygp;
-' GRANT USAGE ON SEQUENCE script_dates_pk_seq TO staff;
-' 
-' 
-' --
-' -- TOC entry 3681 (class 0 OID 0)
-' -- Dependencies: 3240
-' -- Name: script_numbers; Type: ACL; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' REVOKE ALL ON TABLE script_numbers FROM PUBLIC;
-' REVOKE ALL ON TABLE script_numbers FROM easygp;
-' GRANT ALL ON TABLE script_numbers TO easygp;
-' GRANT SELECT,INSERT ON TABLE script_numbers TO staff;
-' 
-' 
-' --
-' -- TOC entry 3683 (class 0 OID 0)
-' -- Dependencies: 3246
-' -- Name: vwmedications; Type: ACL; Schema: clin_prescribing; Owner: easygp
-' --
-' 
-' REVOKE ALL ON TABLE vwmedications FROM PUBLIC;
-' REVOKE ALL ON TABLE vwmedications FROM easygp;
-' GRANT ALL ON TABLE vwmedications TO easygp;
-' GRANT ALL ON TABLE vwmedications TO staff;
-' 
-' 
-' -- Completed on 2011-01-16 12:58:57 EST
-' 
-' --
-' -- PostgreSQL database dump complete
-' --
-' 
-' 
-
-' 
-' CREATE OR REPLACE VIEW drugs.vwdrugs AS 
-'  SELECT nextval('drugs.vwdrugs_pk_seq'::regclass) AS pk_view, brand.fk_product, brand.fk_company, brand.brand, brand.price, brand.from_pbs, product.atccode, product.generic, product.salt, product.fk_form, product.strength, product.salt_strength, product.original_pbs_name, product.original_pbs_fs, product.free_comment, product.updated_at, form.form, atc.atcname, pbs.quantity, pbs.max_rpt, pbs.pbscode, pbs.chapter, pbs.restrictionflag, restriction.restriction, restriction.restriction_type, restriction.code AS restriction_code, restriction.streamlined
-'    FROM drugs.brand brand
-'    JOIN drugs.product ON brand.fk_product = product.pk
-'    JOIN drugs.form ON product.fk_form = form.pk
-'    LEFT JOIN drugs.atc ON product.atccode::text = atc.atccode
-'    LEFT JOIN drugs.pbs ON brand.fk_product = pbs.fk_product
-'    LEFT JOIN drugs.restriction ON pbs.pbscode::text = restriction.pbscode::text
-'   ORDER BY brand.brand, form.form, product.strength;
-' 
-' ALTER TABLE drugs.vwdrugs OWNER TO easygp;
-' GRANT ALL ON TABLE drugs.vwdrugs TO easygp;
-' GRANT ALL ON TABLE drugs.vwdrugs TO staff;
-' 
-' 
-
-' CREATE OR REPLACE VIEW clin_prescribing.vwprescribeditems AS 
-'  SELECT prescribed.pk AS pk_view, consult.consult_date AS date_script_written, prescribed.script_date AS date_on_script, consult.fk_patient, product.generic, brand.brand, product.strength, form.form, medications.repeats, medications.quantity, prescribed_for.prescribed_for, instructions.instruction, item_start_last_dates.start_date, item_start_last_dates.last_date, brand.price, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, vwstaff.provider_number, product.atccode, product.salt, product.fk_form, product.salt_strength, prescribed.pk AS fk_item_prescibed, prescribed.fk_consult, prescribed.fk_medication, prescribed.reg24, prescribed.authority_script_number, prescribed.authority_approval_number, prescribed.authority_post_to_patient, prescribed.script_number, prescribed.concession_details, prescribed.brand_substitution, prescribed.fk_progress_note, prescribed.deleted AS prescribed_item_deleted, medications.fk_generic_product, medications.fk_company, medications.fk_instru
-'    FROM clin_consult.consult
-'    JOIN admin.vwstaff ON consult.fk_staff = vwstaff.fk_staff
-'    JOIN clin_prescribing.prescribed ON consult.pk = prescribed.fk_consult
-'    JOIN clin_prescribing.medications medications ON prescribed.fk_medication = medications.pk
-'    JOIN clin_prescribing.prescribed_for ON medications.fk_prescribed_for = prescribed_for.pk
-'    JOIN clin_prescribing.instructions ON medications.fk_instruction = instructions.pk
-'    JOIN clin_prescribing.item_start_last_dates ON medications.fk_script_dates = item_start_last_dates.pk
-'    JOIN clin_prescribing.print_status ON medications.fk_print_status = print_status.pk
-'    LEFT JOIN drugs.restriction ON medications.pbscode = restriction.pbscode::text AND medications.restriction_code = restriction.code::text
-'    LEFT JOIN drugs.brand ON medications.fk_generic_product = brand.fk_product AND medications.fk_company::text = brand.fk_company::text
-'    JOIN drugs.product ON medications.fk_generic_product = product.pk
-'    JOIN drugs.form ON product.fk_form = form.pk
-'   ORDER BY consult.fk_patient, product.generic, medications.active;
-' 
-' ALTER TABLE clin_prescribing.vwprescribeditems OWNER TO postgres;
-
-' CREATE OR REPLACE VIEW clin_prescribing.vwmedications AS 
-'  SELECT medications.pk AS pk_view, consult.consult_date AS date_script_written, consult.fk_patient, product.generic, brand.brand, product.strength, form.form, medications.repeats, medications.quantity, prescribed_for.prescribed_for, instructions.instruction, item_start_last_dates.start_date, item_start_last_dates.last_date, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, vwstaff.provider_number, product.atccode, product.salt, product.fk_form, product.salt_strength, medications.fk_generic_product, medications.fk_company, medications.fk_instruction, medications.fk_prescribed_for, medications.pbscode, medications.fk_print_status, medications.s8, medications.active, medications.deleted AS medication_deleted, medications.suppress_reason, medications.fk_script_dates, medications.restriction_code, print_status.status AS pbs_print_status, restriction.streamlined, restriction.restriction, restriction.restriction_type, prescribed.fk_medication
-'    FROM clin_consult.consult
-'    JOIN admin.vwstaff ON consult.fk_staff = vwstaff.fk_staff
-'    JOIN clin_prescribing.prescribed ON consult.pk = prescribed.fk_consult
-'    JOIN clin_prescribing.medications medications ON prescribed.fk_medication = medications.pk
-'    JOIN clin_prescribing.prescribed_for ON medications.fk_prescribed_for = prescribed_for.pk
-'    JOIN clin_prescribing.instructions ON medications.fk_instruction = instructions.pk
-'    JOIN clin_prescribing.item_start_last_dates ON medications.fk_script_dates = item_start_last_dates.pk
-'    JOIN clin_prescribing.print_status ON medications.fk_print_status = print_status.pk
-'    LEFT JOIN drugs.restriction ON medications.pbscode = restriction.pbscode::text AND medications.restriction_code = restriction.code::text
-'    LEFT JOIN drugs.brand ON medications.fk_generic_product = brand.fk_product AND medications.fk_company::text = brand.fk_company::text
-'    JOIN drugs.product ON medications.fk_generic_product = product.pk
-'    JOIN drugs.form ON product.fk_form = form.pk
-'   ORDER BY consult.fk_patient, product.generic, medications.active;
-' 
-' ALTER TABLE clin_prescribing.vwmedications OWNER TO easygp;
-' GRANT ALL ON TABLE clin_prescribing.vwmedications TO easygp;
-' GRANT ALL ON TABLE clin_prescribing.vwmedications TO staff;
-' 
-
-' 

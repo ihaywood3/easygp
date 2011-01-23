@@ -126,6 +126,18 @@ Public Function Authority_Number_Get_Next() As Integer
     Return modDBConnect.exec_query("Select nextval('clin_prescribing.authority_number')")!nextval
 End
 
+Public Sub Authority_Increased_Qantity_Get_PK(reason As String) As Integer
+    '--------------------------------------------------------------------------------------
+   'Returns primary key for an reason for increased quantity authority, creating new if dosn't exist
+   '---------------------------------------------------------------------------------------  
+   
+   Dim r As Result
+   
+   r = modDBConnect.exec_query("Select pk from clin_prescribing.increased_quantity_authority_reasons where reason ILIKE $$" & reason & "$$")
+   If r.count Then Return r!pk
+   Return modDBConnect.insert("clin_prescribing.increased_quantity_authority_reasons", ["reason": Lower(reason)])    
+  
+End
 
 Public Function Save(fk_patient As Integer, old_data As Collection, script_item As Collection, medication As Collection) As Boolean
    'Ian to parse the instructions to create rest of fields for instructions table
@@ -135,16 +147,26 @@ Public Function Save(fk_patient As Integer, old_data As Collection, script_item 
    
    Dim R As Result
    '------------------------------------------------------------------------------------------------------ 
-   'Add new instruction or what prescibed for doesn't exist insert, otherwise get the pk
-   'FIXME: try and find way to auto-code prescibed for
+   'Add new instruction or what prescibed for if it  doesn't exist insert, otherwise get the pk
+   'Not despite the fact we could have got the pk from the backend, in fact usually will have for these
+   'fields, after these have been chosen, the user could have edited the line, so it is safest and quickest
+   'to just check if the text exists in the backend and get the key or create a new one. The alternate
+   'would have been to keep a track of this in the editing area and prompt the user, however this would
+   'often cause modal interuption which is a pain.
    '------------------------------------------------------------------------------------------------------
    medication!fk_instruction = Instruction_Get_PK(medication!instruction)
    medication!fk_prescribed_for = PrescribedFor_Get_Pk(medication!prescribed_for)
    medication.Remove("instruction")
    medication.Remove("prescribed_for")
-   
    Instructions_Save_Habit(medication)
    Prescribed_For_Save_Habit(medication)
+   '-----------------------------------------------------------------------------------------------
+   'Next, for increased quantities for authority - ditto as above, save or get key for same reasons
+   '-----------------------------------------------------------------------------------------------
+   If medication!fk_pbs_script_type = const.pbs_script_type_pbs_authority_increased_quantity Then
+     medication!fk_increased_quantity_authority_reason = Authority_Increased_Qantity_Get_PK(medication!authority_indication)
+   Endif
+   Try medication.Remove("authority_indication")
    '------------------------------------------------
    'First save or update the core medication details
    '------------------------------------------------
@@ -246,9 +268,8 @@ Public Function Previously_Prescribed(fk_patient As Integer, M As Collection) As
    sql &= " AND  fk_instruction =" & m!fk_instruction
    sql &= " AND  fk_prescribed_for = " & m!fk_prescribed_for 
    sql &= " AND  pbscode= $$" & m!pbscode & "$$"
-   sql &= " AND  fk_print_status = " & m!fk_print_status
+   sql &= " AND  fk_pbs_script_type = " & m!fk_pbs_script_type
    sql &= " AND  restriction_code= $$" & m!restriction_code & "$$" 
-   'FIXME PUT IN S8 WHEN SORT OUT WHERE TO FIND THIS
    sql &= " AND medication_deleted = False   "
    R = modDBConnect.exec_query(sql)
    Return R

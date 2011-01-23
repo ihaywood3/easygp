@@ -17,83 +17,14 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '----------------------------------------------------------------------
 'TODO    functionality for authority with increased quantity.
-'---------------------------------------------------------------------
-
-' Whether something is PBS is determined by whether their is a drugs.pbs
-' row for that product.
-' RPBS have the pbs.chapter set to "R1"
-' 
-' The full list of chapters is:
-' 
-' Drug type code
-' PBS Section
-' 
-' CI
-' Colostomy and Ileostomy Associations
-' Not in PBS schedule
-' CS
-' Section 100 (Chemotherapy Special Benefits)
-' Not in PBS schedule - is a separate publication
-' CT
-' Section 100 (Chemotherapy Scheme)
-' Not in PBS schedule - is a separate publication
-' DB
-' Emergency Drug (Doctors' Bag) Items
-' Section 2 – Emergency Drug Supplies
-' DS
-' Dental (Special Pharmaceutical Benefits)
-' Section 2 – Special Pharmaceutical Benefits
-' DT
-' Dental
-' Section 2 – Pharmaceutical Benefits for Dental Use
-' GE = ordinary PBS
-' General
-' Section 2 – General Pharmaceutical Benefits
-' GH
-' Section 100 (Growth Hormone)
-' Section 2 – Items available under Special Arrangements (section 100)
-' HB
-' Section 100 (Highly Specialised Drugs) – Public Hospitals
-' Items available under Special Arrangements (section 100)
-' HS
-' Section 100 (Highly Specialised Drugs) –Private Hospitals
-' Items available under Special Arrangements (section 100)
-' IF
-' Section 100 (IVF/GIFT Treatment)
-' Section 2 – Items available under Special Arrangements (section 100)
-' MD
-'palliative
-' Section 100 (Opiate Addiction Treatment)
-' Section 2 – Items available under Special Arrangements (section 100)
-' MF
-' Section 100 (Botulinum Toxin Program)
-' Section 2 – Items available under Special Arrangements (section 100)
-' OT
-' Optometrical
-' Section 2 – Pharmaceutical Benefits for Optometrical  Use
-' PL
-' Palliative Care
-' Section 2 – Pharmaceutical Benefits for Palliative Care
-' PQ
-' Paraplegic and Quadriplegic Associations
-' Not in PBS schedule - is a separate publication
-' R1 = repat
-' Repatriation Pharmaceutical Benefits
-' Repatriation Pharmaceutical Benefits Section
-' SA
-' Section 100 (Special Access Scheme)
-' Section 2 – Items available under Special Arrangements (section 100)
-' SB
-' Special Pharmaceutical Benefits
-' Section 2 – Special Pharmaceutical Benefits
-' SY
-' Section 100 (Special Authority Items) – Private Hospitals
-' Items available under Special Arrangements (section 100)
-' SZ
-' Section 100 (Special Authority Items) – Public Hospitals
-' Items available under Special Arrangements (section 100)
-' Re: Restrictions/generic prescribing
-'
+'         prescribed! = concession_details: these three Not yet implemented
+'         prescribed! = brand_substitution: Do Not remove this code
+'        prescribed! = fk_progress_note
+'BUGS    After ipbs_script_type is set by the generic, finding the 
+'        brands for the brand list is over-riding this ?does it matter
+'        ie are all the brands for this product the same ipbs_script_type
+'        probably yes but check.
+'--------------------------------------------------------------------
 
 Private bExit As Boolean
 Private bAuthority As Boolean       'If True the script item needs an authority.
@@ -107,8 +38,9 @@ Private pk_view As Integer
 Private fk_company As String 
 Private fk_generic_product As Integer
 Private fk_prescribed_for As Integer
+Private fk_increased_quantity_authority_reason As Integer      'if not 0 then key to clin_prescribing.increased_quantity_authority_reasons
 Private pbscode As String
-Private iPrintStatus As Integer              'e.g print as PBS, RPBS, PBS AUTHORITY etc, see Const
+Private iPBS_Script_Type As Integer              'e.g print as PBS, rpbs, PBS AUTHORITY etc, see Const
 Private restriction_code As String   ' pbs restriction.code  eg for authorities
 Private restriction As String 
 Private fk_prescibed_for As Integer = 0
@@ -175,14 +107,10 @@ Public Sub Settings_Load()
    
 End
 
-Public Sub Form_Open()
-   
-End
-
 Public Sub Init(cons As CConsult)
    
    currentconsult = cons
-   lblMeasure.text = " Reason for use  "
+   lblMeasure.text = " Authority Wording  "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea_Left_Textboxes, lblMeasure)
    modEditAreaHelpers.Resize_label(lblPrescribeFor, lblMeasure)
    modEditAreaHelpers.Resize_label(label29, lblMeasure)
@@ -302,6 +230,7 @@ Public Sub Reset_Flags()
    fk_prescribed_for = 0
    fk_instruction = 0
    fk_medication = 0
+   fk_increased_quantity_authority_reason = 0
    print_status = ""
    restriction_code = ""
    restriction = ""
@@ -333,8 +262,9 @@ Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) A
       Case "repeats", "quantity"
          bKeyValid = modUtil.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
       Case Else  
-         bKeyValid = True  'date of injury can be free text e.g 'unkown'
-   End Select
+         bKeyValid = True  
+         
+   End Select  
    Return bKeyValid
    
 End
@@ -348,11 +278,12 @@ Public Sub Editarea_txtBox_KeyPress()
    Select Case Key.Code
          
       Case Key.Down
+         'fixme there is a bug in here - somehow it is possible to have this visible without anything in the box
          If pnlcolumnview.Visible Then
             With columnview1
                .MoveFirst()
                .SetFocus()
-               .Item.Selected = True
+             Try .Item.Selected = True
             End With
             
          Endif
@@ -364,7 +295,51 @@ Public Sub Editarea_txtBox_KeyPress()
             Case "directions"
                TxtReason.SetFocus()
             Case "reason"
-               tbOk.SetFocus()
+               If iPBS_Script_Type = const.pbs_script_type_pbs_authority_increased_quantity Or drug!restrictionflag = "A" And Trim(txtAuthorityWording.text) = "" Then
+                  If Trim(txtAuthorityWording.text) = "" Then
+                     txtAuthorityWording.SetFocus()
+                  Else
+                     If Trim(txtApprovalNumber.text) <> "" Then
+                        tbOk.SetFocus()
+                     Else
+                        txtApprovalNumber.SetFocus()
+                     Endif
+                  Endif
+                  
+               Else
+                  tbOk.SetFocus()
+               End If   
+            Case "approval number"
+               If lblRestrictions.text = "PBS AUTHORITY (Inc Qty)" Or lblRestrictions.text = "rpbs AUTHORITY (Inc Qty)" Then
+                  If Not (Val(txtQuantity.text) > drug!quantity) Then
+                     txtQuantity.SetFocus()
+                  End If   
+               Endif
+            Case "quantity"
+               txtRepeats.SetFocus()
+            Case "repeats"
+              
+               If (Val(txtQuantity.text) > drug!quantity) Then
+                  If Trim(txtReason.text) = "" Then
+                     txtReason.SetFocus()
+                  Else
+                     If iPBS_Script_Type = const.pbs_script_type_pbs_authority_increased_quantity Or drug!restrictionflag = "A" And Trim(txtAuthorityWording.text) = "" Then
+                        If Trim(txtAuthorityWording.text) = "" Then
+                           txtAuthorityWording.SetFocus()
+                        Else
+                           If Trim(txtApprovalNumber.text) <> "" Then
+                              tbOk.SetFocus()
+                           Else
+                              txtApprovalNumber.SetFocus()
+                           Endif
+                        Endif
+                     End If 
+                End If   
+            Endif
+         Case "authority wording"
+               If Trim(txtApprovalNumber.text) = "" Then
+                  txtApprovalNumber.SetFocus()
+               Endif
          End Select
    End Select     
    
@@ -387,7 +362,7 @@ Public Sub EditArea_TxtBox_LostFocus()
          Timer1.stop()
    End Select
    
-   Last.pos = 1
+   Last.pos = 0
    
 End
 
@@ -399,22 +374,75 @@ Public Sub EditArea_TxtBox_Change()
          If Trim(Last.text) = "" Then
             Drug_New()
          Endif
+      Case "approval number"
+         chkAuthority.value = True
+         '------------------------------------------------------
+         'Drug should be already showing in the edit area
+         'If user typing in an approval number, this should be
+         'hence an increased quantity
+         'fix me take into account patients pbs/rpbs status
+         'If this drug is not listed as a PBS or rpbs authority
+         'the of quantity is over that usually prescibed
+         'tag this as an increased quantity authority
+         'If user fails to do this, Drug_Valid() will pick it up
+         'and throw them back to the quantity box
+         '------------------------------------------------------
+         bexit = True
+         Last.text = UCase(Last.text)
+         bexit = False
+         If iPBS_Script_Type <> const.pbs_script_type_pbs_authority Or iPBS_Script_Type <> const.pbs_script_type_rpbs_authority Then
+            
+            Drug_Show_Restriction()
+            If Val(txtQuantity.text) > drug!quantity Then
+               iPBS_Script_Type = const.pbs_script_type_pbs_authority_increased_quantity
+            Endif
+         End If  
+      Case "quantity"
+         'User is changing the quantity, is this increased quantity or PBS item
+         If Val(txtQuantity.text) > drug!quantity Then
+            If drug!restrictionflag <> "A" And (drug!restrictionflag = "U" Or drug!restrictionflag = "R") Then             'not a pbs authority
+               iPBS_Script_Type = const.pbs_script_type_pbs_authority_increased_quantity
+               Drug_Show_Restriction()
+            Else
+               
+            End If
+         Endif
       Case "directions"
          Directions_Expand_Text(Last)
    End Select
    
 End
 
-Public Sub Directions_Expand_Text(txt As Textbox)
+Public Sub Drug_Show_Restriction() 
+   'fixme bring me into line with const......
+
+   Select Case drug!chapter
+      Case "GE"
+         lblRestrictions.text = "PBS AUTHORITY (Inc Qty)"
+      Case "R1"
+         lblRestrictions.text = "RPBS AUTHORITY (Inc Qty)"
+   End Select
    
+End
+
+Public Sub Directions_Expand_Text(txt As Textbox)
+   '-----------------------------------------------------------
+   'Expand common abbreviations, taking into account that
+   'some of these could be part of an actual word eg ac or stat
+   '----------------------------------------------------------- 
+
    bexit = True
    txt.text = Replace(txt.text, "bd", " twice daily")
    txt.text = Replace(txt.text, "tds", " three times daily")
    txt.text = Replace(txt.text, "nocte", " at night")
    txt.text = Replace(txt.text, "qid", " four times daily")
-   txt.text = Replace(txt.text, "ac", " before meals")
+   If InStr(txt.text, " ac ") Then   
+      txt.text = Replace(txt.text, "ac", " before meals")
+   End If   
    txt.text = Replace(txt.text, "prn", " as needed")
-   txt.text = Replace(txt.text, "stat", " immediately")
+   If InStr(txt.text, " stat ") Then 
+      txt.text = Replace(txt.text, "stat", " immediately")
+   End If   
    bexit = False
    
 End
@@ -436,7 +464,6 @@ Public Sub EditArea_TxtBox_GotFocus()
             PrescibedFor_Habits_Get()
          Endif
    End Select
-   '  If Last.tag = "drug" Then Timer1.Start()
    
 End
 
@@ -474,6 +501,7 @@ Public Sub Restrictions_Click()
    restriction_code = Last.children[Last.index].tag
    textEdit1.richtext = Last.children[Last.index].text
    restriction = textEdit1.Text
+   txtAuthorityWording.text = textEdit1.Text
    bexit = True   
    txtApprovalNumber.text = restriction_code
    bExit = False  
@@ -529,53 +557,67 @@ Public Sub PBS_Show(drug As Collection)
    'Shows the PBS status of the currently selected drug
    'Not until user selects an authority wording can we show
    'the streamlined, unless we just opt to show the first one?
+   'fixme anomoly between const.pbs_script_type
+   'these labels should be same as those in const and used from there
+   '    see const:
+   '    pbs_script_types[pbs_script_type_pbs] = "PBS"
+   '    pbs_script_types[pbs_script_type_pbs_authority] = "PBS AUTHORITY"
+   '    pbs_script_types[pbs_script_type_pbs_authority_streamlined] = "PBS AUTHORITY STREAMLINED"
+   '    pbs_script_types[pbs_script_type_rpbs] = "rpbs"
+   '    pbs_script_types[pbs_script_type_rpbs_authority] = "rpbs AUTHORITY"
+   '    pbs_script_types[pbs_script_type_rpbs_authority_streamlined] = "rpbs AUTHORITY STREAMLINED"
+   '    pbs_script_types[pbs_script_type_private] = "PRIVATE"
+   '    pbs_script_types[pbs_script_type_section100] = "SECTION 100"
+   '    pbs_script_types[pbs_script_type_bps_authority_increased_quantity] = "PBS AUTHORITY INCREASED QUANTITY"
+   '    pbs_script_types[pbs_script_type_rpbs_authority_increased_quantity] = "rpbs AUTHORITY INCREASED QUANTITY"
+   
    '-----------------------------------------------------------
    
    Select Case drug!chapter & drug!restrictionflag     ' & drug!restriction_flag = "U", "R" or "A"
       Case "OTU"
          lblRestrictions.text = "PBS OPTOMETRIST"
-         iPrintStatus = const.script_print_type_pbs
+         iPBS_Script_Type = const.pbs_script_type_pbs
       Case "OTR"
          lblRestrictions.text = "PBS OPTOMETRIST RESTRICTED"
-         iPrintStatus = const.script_print_type_pbs
+         iPBS_Script_Type = const.pbs_script_type_pbs
          
       Case "GEU"
          lblRestrictions.text = "PBS UNRESTRICTED"
-         iPrintStatus = const.script_print_type_pbs
+         iPBS_Script_Type = const.pbs_script_type_pbs
       Case "GER"
          lblRestrictions.text = "PBS RESTRICTED"
-         iPrintStatus = const.script_print_type_pbs
+         iPBS_Script_Type = const.pbs_script_type_pbs
       Case "GEA"
          If drug!streamlined Then  
             lblRestrictions.text = "PBS STREAMLINED" '[" & drug!restriction_code & "]"
-            iPrintStatus = const.script_print_type_pbs_authority_streamlined
+            iPBS_Script_Type = const.pbs_script_type_pbs_authority_streamlined
             txtApprovalNumber.text = drug!restriction_code
             bAuthority = True
          Else
             lblRestrictions.text = "PBS AUTHORITY"
-            iPrintStatus = const.script_print_type_pbs_authority
+            iPBS_Script_Type = const.pbs_script_type_pbs_authority
             bAuthority = True
          End If
       Case "R1U"
-         lblRestrictions.text = "RPBS UNRESTRICTED"
-         iPrintStatus = const.script_print_type_rpbs
+         lblRestrictions.text = "rpbs UNRESTRICTED"
+         iPBS_Script_Type = const.pbs_script_type_rpbs
       Case "R1R"
-         lblRestrictions.text = "RPBS RESTRICTED"
-         iPrintStatus = const.script_print_type_rpbs
+         lblRestrictions.text = "rpbs RESTRICTED"
+         iPBS_Script_Type = const.pbs_script_type_rpbs
       Case "R1A"
          If drug!streamlined Then 
-            lblRestrictions.text = "RPBS STREAMLINED" ' [" & drug!restriction_code & "]"
-            iPrintStatus = const.script_print_type_rpbs_authority_streamlined
+            lblRestrictions.text = "rpbs STREAMLINED" ' [" & drug!restriction_code & "]"
+            iPBS_Script_Type = const.pbs_script_type_rpbs_authority_streamlined
             txtApprovalNumber.text = drug!restriction_code
             bAuthority = True
          Else
-            lblRestrictions.text = "RPBS AUTHORITY"
-            iPrintStatus = const.script_print_type_rpbs_authority_streamlined
+            lblRestrictions.text = "rpbs AUTHORITY"
+            iPBS_Script_Type = const.pbs_script_type_rpbs_authority_streamlined
             bAuthority = True
          End If
       Case Else
          lblRestrictions.text = "PRIVATE SCRIPT"
-         iPrintStatus = const.script_print_type_private
+         iPBS_Script_Type = const.pbs_script_type_private
    End Select  
    
 End
@@ -590,7 +632,7 @@ Public Sub columnview1_Select()
 End
 
 Public Sub Brands_For_Generic_Show()
-
+   
    Dim brands As Collection
    Dim brand As Collection
    
@@ -689,14 +731,14 @@ Public Sub Brands_Get()
    '    
    ' Endif
    ' 
-
+   
 End
 
 Public Sub Drug_Print()
    
    ' Save()
    Print_Script_Items()
-
+   
 End
 
 Public Sub Drug_Select()
@@ -750,12 +792,18 @@ Public Sub EditArea_Buttons_Click()
       Case "new"
          Drug_New()
       Case "ok"
-         Add_to_list()
+         '----------------------------------------------------------
+         'All drugs from the editing area are added to the drug list
+         'but not printed until the print button is clicked
+         'fixme, perhaps making authorities save and print at the 
+         'same time would be good, as the doctor may have to ring
+         'up for a number and this would be more efficient   
+         '----------------------------------------------------------
+         Drug_Add()
          
-         Drug_Print()
       Case "print"
-         ' Save()
-         Drug_Print()
+         Save()
+         ' Drug_Print()
       Case "brief pi"
          Brief_PI()
       Case "authority"
@@ -764,7 +812,7 @@ Public Sub EditArea_Buttons_Click()
    
 End
 
-Public Sub Add_to_list()
+Public Sub Drug_Add()
    '----------------------------------------------------------------------------------------
    'Script items are added to the list under the editing area, and printed en-mass whenever
    'the user elects to do this - 3 items on a script for 'like' items
@@ -773,12 +821,13 @@ Public Sub Add_to_list()
    
    Dim x As Integer 'for readability
    
-   If Not Scipt_Item_Valid() Then Return
+   If Not Drug_Valid() Then Return
    If Script_Item_Duplicate() Then Return 
    
    script_item = New Collection
    If fk_item_prescribed Then Script_item!fk_item_prescribed = fk_item_prescribed
    If fk_medication Then script_item!fk_medication = fk_medication
+   '  If fk_increased_quantity_authority_reason Then script_item!fk_increased_quantity_authority_reason
    script_item!date_on_script = Val(txtdate.text)
    script_item!fk_consult = currentconsult.GetPK()
    script_item!date_script_written = Now()
@@ -795,7 +844,7 @@ Public Sub Add_to_list()
    Script_item!restriction_code = restriction_code
    Script_item!suppress_reason = False   'fixme implement me
    Script_item!pbscode = pbscode
-   Script_item!fk_print_status = iPrintStatus
+   Script_item!fk_pbs_script_type = iPBS_Script_Type
    Script_item!reg24 = CBool(chkReg24.Value)
    Script_item!active = CBool(chkActive.value)
    Script_item!authority_approval_number = Trim(txtApprovalNumber.Text)
@@ -804,7 +853,7 @@ Public Sub Add_to_list()
       Script_item!authority_script_number = modPrescribingDBI.Authority_Number_Get_Next()
    End If
    Script_Item!script_number = modPrescribingDBI.Script_Number_Get_Next()
-   Script_item!authority_indication = restriction
+   Script_item!authority_indication = Trim(txtAuthorityWording.Text) 'could be a PBS description or our own for increased authority
    script_items.Add(script_item, script_items.count)
    cvwPrescriptions_Refresh(script_items)
    
@@ -838,18 +887,18 @@ Public Sub Save()
          medication!restriction_code = script_item!restriction_code
       Endif
       medication!pbscode = script_item!pbscode
-      medication!fk_print_status = script_item!fk_print_status
+      medication!fk_pbs_script_type = script_item!fk_pbs_script_type
       medication!suppress_reason = False 'fixme put in mechanism for this
       medication!active = script_item!active
       medication!quantity = script_item!quantity
       medication!repeats = script_item!repeats
+      medication!authority_indication = script_item!authority_indication 'will be dropped
       '----------------------------------------------------------------------------------------------
       '   Table: clin_prescibring.prescibed
-      '
-      '   pk serial NOT NULL,
+      '  pk serial NOT NULL,
       '   fk_consult integer NOT NULL,
       '   fk_medication integer NOT NULL,
-      '   script_date date NOT NULL, -- The actual date on the script may not be the consulation date, can be back/forwarded dated,...
+      '   date_on_script date NOT NULL, -- The actual date on the script may not be the consulation date, can be back/forwarded dated,...
       '   reg24 boolean DEFAULT false, -- If true reg24 allows us to tell the...
       '   authority_script_number integer, -- the pbs requires a unique script number for an authority item, pretty stupid, but a number that...
       '   authority_approval_number text, -- either the steamlined authority number or the phone approval number obtained from a pbs operator
@@ -859,9 +908,6 @@ Public Sub Save()
       '   brand_substitution boolean DEFAULT true,
       '   fk_progress_note integer,
       '   deleted boolean DEFAULT false,
-      '   FIXME FROM IAN- REMOVE FK_CONSULT  AND USE FK_PROGRESS NOTE TO GET IT ??
-      ' Build a new collection for each item = could be new or old data
-      ' 
       '----------------------------------------------------------------------------------------------
       prescribed = New Collection
       prescribed!fk_item_prescribed = Script_item!fk_item_prescribed
@@ -883,125 +929,6 @@ Public Sub Save()
    FClinical.Refresh_Section(const.cSection_Prescriptions)    'refresh lists on main screen FClinical
    FClinical.Refresh_AllPreviousNotes()
    Reload()
-   
-End
-
-Public Sub Save_not_quite_so_old()
-   '-----------------------------------------------------------
-   'Saves the drugs in the prescriptions list, then prints them
-   'each  script_item in collection is an amalgum off the
-   'medication details and the script details, so dis-entangle
-   'Ian don't worry about this seeming lack of logic for moment
-   'I'm just doing the functionality
-   'The nomenclature in this module sucks at the moment, sorry
-   '-----------------------------------------------------------
-   
-   Dim medication As Collection
-   Dim Prescibed As Collection
-   
-   modDBConnect.BeginTrans()
-   For Each script_item In script_items 
-      '------------------------------------------------------------------     
-      'The 'core' features of a medication > clin_prescribing.medications
-      '------------------------------------------------------------------
-      medication = New Collection 
-      medication!fk_medication = script_item!fk_medication
-      medication!fk_generic_product = script_item!fk_generic_product
-      medication!fk_company = script_item!fk_company
-      medication!instruction = script_item!instruction 
-      medication!prescribed_for = script_item!prescribed_for
-      If Not IsNull(script_item!restriction_code) Then 
-         medication!restriction_code = script_item!restriction_code
-      Endif
-      medication!pbscode = script_item!pbscode
-      medication!fk_print_status = script_item!fk_print_status
-      medication!suppress_reason = False 'fixme put in mechanism for this
-      medication!active = script_item!active
-      medication!quantity = script_item!quantity
-      medication!repeats = script_item!repeats
-      '----------------------------------------------------------------------------------------------
-      'Remove re-allocated keys, or text not needed, leaves clin_prescibring.prescribed table content
-      '----------------------------------------------------------------------------------------------
-      script_item.Remove("fk_generic_product")
-      script_item.Remove("fk_medication")
-      script_item.Remove("fk_company")
-      script_item.Remove("instruction")
-      script_item.Remove("prescribed_for")
-      script_item.Remove("restriction_code")
-      script_item.Remove("pbscode")
-      script_item.Remove("fk_print_status")
-      script_item.Remove("s8")
-      script_item.Remove("active")
-      script_item.Remove("suppress_reason")
-      script_item.Remove("brand")
-      script_item.Remove("generic")
-      script_item.Remove("strength")
-      script_item.Remove("quantity")
-      script_item.Remove("repeats")
-      script_item.Remove("pbs_print_status")
-      script_item.Remove("date_script_written")
-      fk_item_prescribed = modPrescribingDBI.Save(currentconsult!patient!fk_patient, Script_Items_This_Consultation, fk_item_prescribed, script_Item, fk_medication, medication)
-   Next  
-   modDBConnect.CommitTrans()
-   Print_Script_Items()
-   FClinical.Refresh_Section(const.cSection_Prescriptions)    'refresh lists on main screen FClinical
-   FClinical.Refresh_AllPreviousNotes()
-   Reload()
-   
-End
-
-Public Sub Save_old()
-   ' '-----------------------------------------------------------
-   ' 'Saves the drugs in the prescriptions list, then prints them
-   ' '-----------------------------------------------------------
-   ' 
-   ' Dim ScriptItem As New Collection
-   ' Dim medication As New Collection
-   ' 
-   ' 'If Vbox_EditArea.padding = 0 then return 
-   '  
-   ' 
-   '    If fk_script_item <> 0 Then
-   '       ScriptItem!fk_script_item = fk_script_item  
-   '    Else
-   '       'fixme this logic is incomplete, eg dr may not have typed in a Zed number obtained by phone.
-   '       If Trim(txtApprovalNumber.text) <> "" Then 
-   '          ScriptItem!authority_approval_number = Trim(txtApprovalNumber.Text)
-   '          ScriptItem!authority_post_to_patient = CBool(chkPostAuthority.value)
-   '          ScriptItem!authority_script_number = modPrescribingDBI.Authority_Number_Get_Next()
-   '       End If
-   '       ScriptItem!script_number = modPrescribingDBI.Script_Number_Get_Next()
-   '    Endif
-   '    
-   '    ScriptItem!fk_consult = currentconsult.GetPK()
-   '    ScriptItem!script_date = Val(txtdate.text)
-   '    medication!fk_generic_product = fk_generic_product
-   '    medication!fk_company = fk_company
-   '    medication!instruction = Trim(txtDirections.text)  'this and nex line will be dropped later when key found 
-   '    medication!prescribed_for = Trim(txtReason.text)     'can't trust user not to have changed a pre-selected one
-   '    If restriction_code <> "" Then 
-   '       medication!restriction_code = restriction_code
-   '    Endif
-   '    medication!pbscode = pbscode
-   '    medication!fk_print_status = iPrintStatus 'how it will  usually be printed
-   '    medication!suppress_reason = False 'fixme put in mechanism for this
-   '    ScriptItem!reg24 = CBool(chkReg24.Value)
-   '    'fixme put in s8 to medication
-   '    medication!active = CBool(chkActive.value)
-   '    medication!quantity = Val(txtQuantity.text)
-   '    medication!repeats = Val(txtRepeats.text)
-   '    
-   '    modDBConnect.BeginTrans()
-   '    ' ScriptItem!fk_medication = modPrescribingDBI.Save_Medication(medications, fk_medication, medication)
-   '    fk_script_item = modPrescribingDBI.Save(currentconsult!patient!fk_patient, Prescriptions, fk_script_item, scriptItem, fk_medication, medication)
-   '    modPrescribingDBI.Script_Number_Save(ScriptItem!script_number)
-   '    If Not IsNull(ScriptItem!authority_script_number) Then 
-   '       modPrescribingDBI.Authority_Number_Save(ScriptItem!authority_script_number)
-   '    Endif
-   ' modDBConnect.CommitTrans()
-   ' FClinical.Refresh_Section(const.cSection_Prescriptions)    'refresh lists on main screen FClinical
-   ' FClinical.Refresh_AllPreviousNotes()
-   ' Reload()
    
 End
 
@@ -1077,7 +1004,13 @@ Public Function Script_Item_Duplicate() As Boolean
    
 End
 
-Public Function Scipt_Item_Valid() As Boolean
+Public Function Drug_Valid() As Boolean
+   '---------------------------------------------------------------------------
+   'Does some basic validation that all is well in the state of Denmark
+   'however, not 100% foolproof as cannot protect all fools against themselves
+   '---------------------------------------------------------------------------
+
+   Dim sMsg As String 
    
    If Not IsDate(txtdate.text) Then
       txtdate.SetFocus()
@@ -1108,6 +1041,22 @@ Public Function Scipt_Item_Valid() As Boolean
       lcRestrictions.Children[0].SetFocus()
       Return 
    Endif
+   '-------------------
+   'Now authority stuff
+   '-------------------
+   If Trim(txtAuthorityWording.text) = "" And Trim(txtApprovalNumber.text) <> "" Then
+      Message.Info("Please enter an authority wording for this drug\n\nand adjust the quantity being prescribed.")
+      Return
+      
+   Endif
+   If iPBS_Script_Type = const.pbs_script_type_pbs_authority_increased_quantity Then
+      If Not (Val(txtQuantity.text) > drug!quantity) Then
+         sMsg = "You have prescibed a non-authority drug as an authority\n\n"
+         "It would be usual to increase the supplied quantity and/or repeats for this drug."
+         Message.Info(smsg)
+         Return 
+      Endif
+   Endif
    Return True
    
 End
@@ -1135,12 +1084,13 @@ Public Sub Script_LaTex_Construct(script_item As Collection) As CTemplate
 End
 
 Public Sub ScriptForm_Construct(script_item As Collection, templ As CTemplate)
-
+   
    Dim Drug As String
    Dim drugs As String 
+   
    templ.Subst_common(currentconsult)
    
-   templ.Subst("authority_heading_authority_script_number", script_item!pbs_print_status & " AUTHORITY " & script_item!authority_script_number) 
+   templ.Subst("authority_heading_authority_script_number", "AUTHORITY " & script_item!authority_script_number) 
    templ.Subst("patientaddress", currentconsult!patient!street & " " & currentconsult!patient!town & " " & currentconsult!patient!postcode)
    templ.Subst("medicarenumber", currentconsult!patient!medicare_number)
    templ.Subst("doctorname", modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename)
@@ -1149,14 +1099,14 @@ Public Sub ScriptForm_Construct(script_item As Collection, templ As CTemplate)
    templ.Subst("script_date", Format(script_item!date_script_written, "dd/mm/yyyy"))
    templ.Subst("script_number", script_item!script_number)
    If InStr(script_item!pbs_print_status, "PBS") Then  
-      templ.Checkbox("pbs_checkbox", True)
+      templ.Subst("pbs_script", "X")
    Else
-      templ.Checkbox("pbs_checkbox", False)
+      templ.Checkbox("pbs_script", "")
    End If
-   If InStr(script_item!pbs_print_status, "RPBS") Then   'and check against patients actual rpbs entitlements FIXME SHOULD DO THIS BACK IN PRESRIBING.
-      templ.Checkbox("rpbs_checkbox", True)
+   If InStr(script_item!pbs_print_status, "rpbs") Then   'and check against patients actual rpbs entitlements FIXME SHOULD DO THIS BACK IN PRESRIBING.
+      templ.Subst("rpbs_script", "X")
    Else
-      templ.Checkbox("rpbs_checkbox", False)
+      templ.Subst("rpbs_script", "")
    End If
    templ.Checkbox("previous_authority_yes_checkbox", True)
    templ.Checkbox("previous_authority_no_checkbox", False)
@@ -1171,7 +1121,7 @@ Public Sub ScriptForm_Construct(script_item As Collection, templ As CTemplate)
    templ.Subst("authority_approval_number", script_item!authority_approval_number)
    templ.Subst("quantity_repeats", script_item!strength & " " & script_item!quantity & "'s Rpt " & script_item!repeats)
    templ.Subst_Drugs(script_item)
-
+   
 End 
 
 Public Sub Brief_PI()
@@ -1232,7 +1182,7 @@ Public Sub EditArea_Buttons_KeyPress()
    If key.code = key.return Then    
       Select Case Last.tag
          Case "ok"
-            Add_to_list()
+            Drug_Add()
       End Select
    End If   
    

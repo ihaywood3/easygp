@@ -67,6 +67,7 @@ Private view_items As Collection       'all the items from the view of script it
 Private Instruction_Habits As Collection
 Private Prescribing_Habits As Collection 
 Private habit As Collection 
+Private Authority_Increased_Quantity_Reasons As Collection
 
 Public Sub set_embedded(F As String)
    '----------------------------------------------------------
@@ -84,7 +85,6 @@ Public Sub Reload()
    '-----------------------------------------
    
    currentconsult.Refresh("prescriptions_written")
-   ' cvwPrescriptions_Refresh(currentconsult!prescriptions_written)
    script_items = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!prescriptions_written)
    cvwPrescriptions_Refresh(script_items)
    Drug_New()
@@ -111,7 +111,7 @@ Public Sub Init(cons As CConsult)
    
    currentconsult = cons
    lblMeasure.text = " Authority Wording  "
-   modEditAreaHelpers.Resize_labels(Vbox_EditArea_Left_Textboxes, lblMeasure)
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
    modEditAreaHelpers.Resize_label(lblPrescribeFor, lblMeasure)
    modEditAreaHelpers.Resize_label(label29, lblMeasure)
    lblMeasure.text = "  Quantity  "
@@ -121,7 +121,7 @@ Public Sub Init(cons As CConsult)
    modEditAreaHelpers.Resize_label(lblPostAuthority, lblMeasure)
    With cvwPrescriptions
       .Columns.count = 9
-      .Columns[0].text = "Date written"
+      .Columns[0].text = "Date Written"
       .Columns[1].text = "Date on Script"
       .Columns[2].text = "Brand"
       .Columns[3].text = "Generic drug"
@@ -216,6 +216,8 @@ Public Sub EditArea_TxtBox_KeyRelease()
          bGenericSearch = True
          Timer1.Enabled = True
          Inc timer_count
+      Case "authority wording"
+         If drug!restrictionflag <> "A" Then Authority_Increased_Quantity_Reason_Get()
    End Select
    
 End
@@ -241,7 +243,7 @@ End
 Public Sub EditArea_Clear()
    
    bExit = True
-   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_Left_Textboxes)
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
    modEditAreaHelpers.mnuHealthIssues_Refresh(currentconsult, mnuHealthissues)
    teInteractions.Clear()
    lcRestrictions.Clear()
@@ -409,6 +411,11 @@ Public Sub EditArea_TxtBox_Change()
          Endif
       Case "directions"
          Directions_Expand_Text(Last)
+      Case "authority wording"
+           If Trim(Last.text) = "" Then
+               pnlcolumnview.Visible = False 
+           
+           Endif
    End Select
    
 End
@@ -451,13 +458,14 @@ Public Sub EditArea_TxtBox_GotFocus()
    
    If Last.tag <> "restriction" Then Last.BackGround = Color.rgb(95, 255, 175)
    With pnlcolumnview
-      .top = Vbox_EditArea_Left_Textboxes.top + Last.parent.top + Last.parent.height
+      .top = Vbox_EditArea.top + Last.parent.top + Last.parent.height
       .left = Last.Left
       .width = txtClass.width
       .Visible = False
+     
       .Raise
-      
    End With
+   columnview1.clear
    Select Case Last.tag
       Case "reason"
          If Trim(Last.text) = "" Then
@@ -498,10 +506,11 @@ Public Sub Restrictions_Click()
    'set restriction code and text
    '-------------------------------------------------------------------------------------
    
-   restriction_code = Last.children[Last.index].tag
+   restriction_code = Last.children[Last.index].tag     
    textEdit1.richtext = Last.children[Last.index].text
    restriction = textEdit1.Text
    txtAuthorityWording.text = textEdit1.Text
+   txtAuthorityWording.pos = 0
    bexit = True   
    txtApprovalNumber.text = restriction_code
    bExit = False  
@@ -549,7 +558,7 @@ Public Sub Restrictions_Show()
          
       End If 
    Next
-   
+
 End
 
 Public Sub PBS_Show(drug As Collection)
@@ -572,7 +581,7 @@ Public Sub PBS_Show(drug As Collection)
    '    pbs_script_types[pbs_script_type_rpbs_authority_increased_quantity] = "rpbs AUTHORITY INCREASED QUANTITY"
    
    '-----------------------------------------------------------
-   
+   bexit = True
    Select Case drug!chapter & drug!restrictionflag     ' & drug!restriction_flag = "U", "R" or "A"
       Case "OTU"
          lblRestrictions.text = "PBS OPTOMETRIST"
@@ -619,7 +628,7 @@ Public Sub PBS_Show(drug As Collection)
          lblRestrictions.text = "PRIVATE SCRIPT"
          iPBS_Script_Type = const.pbs_script_type_private
    End Select  
-   
+   bExit = False  
 End
 
 Public Sub columnview1_Select()
@@ -653,6 +662,8 @@ Public Sub columnview1_DblClick()
          Drug_Select()
       Case "generic"
          Generic_Select()
+      Case "authority wording"
+         Authority_Increased_Quantity_Reasons_Select()
    End Select
    
 End
@@ -735,8 +746,7 @@ Public Sub Brands_Get()
 End
 
 Public Sub Drug_Print()
-   
-   ' Save()
+
    Print_Script_Items()
    
 End
@@ -781,8 +791,7 @@ Public Sub Drug_Select()
    Else 
       txtDirections.SetFocus()
    Endif
-   
-   bexit = False 
+    bexit = False 
    
 End
 
@@ -804,10 +813,9 @@ Public Sub EditArea_Buttons_Click()
       Case "print"
          Save()
          ' Drug_Print()
-      Case "brief pi"
-         Brief_PI()
-      Case "authority"
-         Authority()
+      Case "pi"
+    
+ 
    End Select
    
 End
@@ -953,8 +961,6 @@ Public Function cvwPrescriptions_Refresh(Script_Items_Written As Collection)
       cvwPrescriptions[x][8] = script_item!prescribedfor   
       
    Next
-   Print script_items
-   
 End
 
 Public Function Script_Item_Duplicate() As Boolean
@@ -1061,36 +1067,113 @@ Public Function Drug_Valid() As Boolean
    
 End
 
-Public Sub Authority()
-   
-End
-
 Public Sub Print_Script_Items()
-   
-   For Each script_item In script_items 
-      modPrinting.Print_latex(Script_LaTex_Construct(script_item).GetData(), const.Paper_Script)
-   Next
-   
-End
-
-Public Sub Script_LaTex_Construct(script_item As Collection) As CTemplate
+   '-------------------------------------
+   'Prints out any unprinted script items
+   'fixme - single script only on s8
+   '-------------------------------------
+   Dim pbs_scripts As New Collection
+   Dim rpbs_scripts As New Collection
+   Dim private_scripts As New Collection
+   Dim s8_scripts As New Collection
    
    Dim templ As CTemplate
    
-   templ = New CTemplate("authority-script", "tex")
-   ScriptForm_Construct(script_item, templ)
-   Return templ
    
+   For Each script_item In script_items 
+     If script_item!fk_pbs_script_type < const.pbs_script_type_pbs Then 
+          templ = New CTemplate("authority-script", "tex")
+          modPrinting.Print_latex(ScriptForm_Construct_Authority(script_item, templ).GetData(), const.Paper_Script)
+     Else
+       Select script_item!fk_pbs_script_type
+         Case const.pbs_script_type_pbs
+            If pbs_scripts.count = 3 Then 
+               Print_Script(pbs_scripts, const.pbs_script_type_pbs)
+               pbs_scripts = New Collection
+            End If   
+            pbs_scripts.Add(script_item, pbs_scripts.count) 
+          
+         Case const.pbs_script_type_private
+           If private_scripts.count = 3 Then
+            Print_Script(private_scripts, const.pbs_script_type_private)
+               private_scripts = New Collection
+           Endif
+            private_scripts.Add(script_item, private_scripts.Count)  
+         Case const.pbs_script_type_rpbs  
+           If rpbs_scripts.count = 3 Then 
+           Print_Script(rpbs_scripts, const.pbs_script_type_rpbs)
+               rpbs_scripts = New Collection
+           Endif
+           rpbs_scripts.Add(script_item, rpbs_scripts.count)
+       End Select
+     End If
+   Next
+   '------------------------------------------------------------------------------
+   'Probably bad......... stupid........ way to do this but
+   'Any 'left over' after lots of three printed (except if three only), print them
+   '------------------------------------------------------------------------------
+   If pbs_scripts.count Then Print_Script(pbs_scripts, const.pbs_script_type_pbs)
+   If private_scripts.count Then Print_Script(private_scripts, const.pbs_script_type_private)
+   If rpbs_scripts.count Then Print_Script(rpbs_scripts, const.pbs_script_type_rpbs)  
 End
 
-Public Sub ScriptForm_Construct(script_item As Collection, templ As CTemplate)
+Public Sub Print_Script(items As Collection, pbs_script_type As Integer)
+      '-----------------------------------------------------------------------
+      'Accepts up to 3 drugs of same pbs_script_type and prints them on script
+      'applies to non-authority items only
+      '-----------------------------------------------------------------------
+      Dim templ As New CTemplate("script", "tex")
+      
+      modPrinting.Print_latex(Script_Construct_LaTex(items, templ, pbs_script_type).GetData(), const.Paper_Script)
+ 
+End     
+  
+Public Sub Script_Construct_LaTex(items As Collection, templ As CTemplate, pbs_script_type As Integer) As CTemplate
+   '------------------------------------------------------------------------------
+   'Construct the laTex for a non-authority script, max of three items on a script
+   '------------------------------------------------------------------------------    
+   templ.Subst_common(currentconsult)
+   templ.Subst("patientaddress", currentconsult!patient!street & " " & currentconsult!patient!town & " " & currentconsult!patient!postcode)
+   templ.Subst("medicarenumber", currentconsult!patient!medicare_number)
+   templ.Subst("doctorname", modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename)
+   templ.Subst("prescribernumber", modDBConnect.currentUser!prescriber_number)
+   templ.Subst("patientname", currentconsult!patient!title & " " & currentconsult!patient!firstname & " " & currentconsult!patient!surname)
+   templ.Subst("script_date", Format(script_item!date_script_written, "dd/mm/yyyy"))
+   templ.Subst("script_number", script_item!script_number)
+   '-----------------------
+   'set PBS RPBS or Private
+   '-----------------------
+   Select Case pbs_script_type
+     Case const.pbs_script_type_pbs
+          templ.Subst("pbs_script", "X")
+          templ.Subst("rpbs_script", "")
+          templ.Subst("wipe_pbs_rpbs", "")
+     Case const.pbs_script_type_rpbs
+         templ.Subst("rpbs_script", "X")
+         templ.Subst("pbs_script", "")
+         templ.Subst("wipe_pbs_rpbs", "")
+     Case const.pbs_script_type_private
+         templ.Subst("rpbs_script", "")
+         templ.Subst("pbs_script", "")
+         templ.Subst("wipe_pbs_rpbs", "XXXXXXXXXXXXXXX")
+   End Select
+   templ.Subst_Drugs1(items) 'build latex for up to 3 script items
+  
+   Print templ
+   Return templ 
+  
+  
+End
+
+
+Public Sub ScriptForm_Construct_Authority(script_item As Collection, templ As CTemplate) As CTemplate
    
    Dim Drug As String
    Dim drugs As String 
    
    templ.Subst_common(currentconsult)
-   
-   templ.Subst("authority_heading_authority_script_number", "AUTHORITY " & script_item!authority_script_number) 
+  
+   templ.Subst("authority_heading_authority_script_number", const.pbs_script_types[script_item!fk_pbs_script_type] & " SCRIPT NO. " & script_item!authority_script_number) 
    templ.Subst("patientaddress", currentconsult!patient!street & " " & currentconsult!patient!town & " " & currentconsult!patient!postcode)
    templ.Subst("medicarenumber", currentconsult!patient!medicare_number)
    templ.Subst("doctorname", modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename)
@@ -1121,12 +1204,9 @@ Public Sub ScriptForm_Construct(script_item As Collection, templ As CTemplate)
    templ.Subst("authority_approval_number", script_item!authority_approval_number)
    templ.Subst("quantity_repeats", script_item!strength & " " & script_item!quantity & "'s Rpt " & script_item!repeats)
    templ.Subst_Drugs(script_item)
-   
+   Return templ
 End 
 
-Public Sub Brief_PI()
-   
-End
 
 Public Sub Drug_New()
    
@@ -1136,6 +1216,7 @@ Public Sub Drug_New()
    'txtDrug.SetFocus()
    txtdate.text = Format(Now, "dd/mm/yyyy")
    chkActive.value = True
+   Drug = New Collection
    txtGeneric.SetFocus()
    
 End
@@ -1183,7 +1264,40 @@ Public Sub EditArea_Buttons_KeyPress()
       Select Case Last.tag
          Case "ok"
             Drug_Add()
+            Drug_New()
       End Select
    End If   
    
+End
+
+Public Sub Authority_Increased_Quantity_Reason_Get()
+   Dim reason As Collection
+   
+   With columnview1
+      .Clear
+      .Visible = False 
+      .Columns.count = 1
+      .Columns[0].width = columnview1.Width
+   End With
+   If Not Trim(txtAuthorityWording.text) Then Return    
+   Authority_Increased_Quantity_Reasons = modPrescribingDBI.Authority_Increased_Quantity_Reason_Get(Trim(txtAuthorityWording.text))
+   If Authority_Increased_Quantity_Reasons.count > 0 Then 
+      For Each reason In Authority_Increased_Quantity_Reasons
+         columnview1.Add(reason!pk, 0)  
+         columnview1[reason!pk][0] = reason!reason
+      Next
+      columnview1.tag = txtAuthorityWording
+      pnlcolumnview.Visible = True 
+   End If   
+End
+Public Sub Authority_Increased_Quantity_Reasons_Select()
+   '--------------------------------------------------
+   'User selecting a previously used authority wording
+   '--------------------------------------------------
+   columnview1.MoveCurrent
+   bExit = True   
+   txtAuthorityWording.text = Authority_Increased_Quantity_Reasons[columnview1.item.key]  
+   pnlcolumnview.Visible = False 
+   bexit = False  
+   tbOk.SetFocus()
 End

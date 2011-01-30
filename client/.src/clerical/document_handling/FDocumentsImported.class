@@ -1,5 +1,5 @@
 ' Gambas class file
-' Copyright (C) 2008-10 Dr. Richard Terry
+' Copyright (C) 2008-11 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -14,49 +14,57 @@
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-'------------------------------------------------------------------------------------------
-' PURPOSE        : Allow clerical staff to search for existance of documents
-'                  for example a patient may ring up and want to know if something is back
-' HOW THIS WORKS : 
-' BUGS           : Please report
-' TODO           : everything
 '----------------------------------------------------------------------------------------
+' PURPOSE         Allow clerical staff to search for existance of documents
+'                 For example a patient may ring up and want to know if something is back
+' HOW THIS WORKS  User may filter on dates or patient names
+'                 Show list of documents displays document and any tasks attatched 
+' BUGS            Please report to rterry@internode.on.net.
+' TODO'S          Make popup calandar buttons visible and fix code, implement LIMIT ctrl
+
+'-----------------------------------------------------------------------------------------
 
 Private Documents As Collection
 Private Document As Collection
 Private From_Date As Date
 Private To_Date As Date
 Private form_metadata As FDocumentMetaData
+Private FPreview_HtmlDocument As FHtmlViewer             'The main html viewer for hl7
+Private FDocumentTasks As FHtmlViewer
+Private PDForm As FPdf                                   'View any PDF files here
+Private Timer_Count As Integer
+Private bExit As Boolean
 
 Public Sub Init()
-
-   txtDateFrom.text = Format(DateAdd(Now(), gb.month, -1), "dd/mm/yyyy")
-   txtDateTo.text = Format(Now, "dd/mm/yyyy")
-   cvwDocumentsImported.Columns.Count = 8
-   cvwDocumentsImported.Columns[0].Text = "Patient"
-   cvwDocumentsImported.Columns[1].Text = "DOB"
-   cvwDocumentsImported.Columns[2].Text = "Sender" 'letter or result
-  ' cvwDocumentsImported.Columns[3].Text = "Type" 'letter or result
-  ' cvwDocumentsImported.Columns[4].Text = "Date"
-   'cvwDocumentsImported.Columns[5].Text = "Description"
-   'cvwDocumentsImported.Columns[6].Text = "User Tag"
-  ' cvwDocumentsImported.Columns[7].Text = "Intended For"
-   With form_metadata = New FDocumentMetaData(VBox_Metadata)
-      .Init("Allocated Documents")
-   End With
-   ' 
-   ' 
-   ' 
+   '------------------------------------------
+   'Load embedded forms and settings setup gui
+   '------------------------------------------
    
+   FPreview_HtmlDocument = New FHtmlViewer(HBox_HTML_Viewer)     'Form to show html of hl7 received
+   FDocumentTasks = New FHtmlViewer(Vbox_DocumentTasks)          'Form to show html of any associated tasks
+   With PDForm = New FPdf(Vbox_PDf)                              'Pdf form to show any scanned doc's
+      .BtOpen.Visible = False
+   End With
+   Settings_Load()
+   cvwDocumentsImported.Columns.Count = 3
+   cvwDocumentsImported.Columns[0].Text = "Patient"
+   cvwDocumentsImported.Columns[1].Text = "Date"
+   cvwDocumentsImported.Columns[2].Text = "Document"
+   With form_metadata = New FDocumentMetaData(VBox_Metadata)     'Set up gui for document metadata cf scanning
+      .Init("Allocated Documents")
+      .Enabled = False  
+   End With
+   txtDateFrom.text = Format(DateAdd(Now(), gb.month, -1), "dd/mm/yyyy") 'default to the last months records
+   txtDateTo.text = Format(Now, "dd/mm/yyyy") ' 
    Reload()
    
 End
 
 Public Sub EditAreaButtons_Click()
-
+   
    Dim hCtrl As Control
    Dim txtbox As TextBox
-
+   
    Select Case Last.tag
          
       Case "pick date"
@@ -68,48 +76,67 @@ Public Sub EditAreaButtons_Click()
             End If
          Next 
          With HBox_Calander
-            .top = Last.Parent.Parent.top + Last.Parent.Height
+            .top = Last.Parent.top + Last.Parent.Height
             .left = Last.Parent.left
             .Raise()
+            .Visible = True   
+            DateChooser1.SetFocus()
          End With     
-         
-         DateChooser1.Parent.Visible = True 
-         DateChooser1.Parent.Raise 
-         
+      Case "refresh"
+         Reload()
    End Select
    
 End
 
 Public Sub DateChooser1_Activate()
-
+   
    Last.tag.text = Format(Last.value, "dd/mm/yyyy")
    HBox_Calander.Visible = False  
    Select Case Last.tag.tag
       Case "from"
          txtDateTo.setfocus()
       Case "to"
+         
    End Select
-
+   
 End
 
 Public Sub DateChooser1_LostFocus()
-
-   DateChooser1.visible = False  
-
+   
+   ' HBox_Calander.visible = False  
+   
 End
 
 Public Sub Settings_Save()
    
-End
+   Settings["Clerical_Review_Documents/HSplit1.Layout"] = HSplit1.Layout
+   Settings["Clerical_Review_Documents/VSplit1.Layout"] = VSplit1.Layout
+   Settings["Clerical_Review_Documents/VSplit_RightSide.Layout"] = VSplit_RightSide.Layout
+   Settings["Clerical_Review_Documents/pdfZoom"] = PDForm.CurrentZoom
+   Settings["Clerical_Review_Documents/HTML_Document_Zoom"] = FPreview_HtmlDocument.Webview1.Zoom
+   Settings["Clerical_Review_Documents/HTML_Tasks_Zoom"] = FDocumentTasks.Webview1.Zoom
+
+End   
 
 Public Sub Settings_Load()
+   
+   Try HSplit1.Layout = Settings["Clerical_Review_Documents/HSplit1.Layout"]
+   Try VSplit1.Layout = Settings["Clerical_Review_Documents/VSplit1.Layout"]
+   Try PDForm.CurrentZoom = Settings["Clerical_Review_Documents/pdfZoom", 1.0] 
+   Try VSplit_RightSide.Layout = Settings["Clerical_Review_Documents/VSplit_RightSide.Layout"] 
+   Try FPreview_HtmlDocument.Webview1.Zoom = Settings["Clerical_Review_Documents/HTML_Document_Zoom"] 
+   Try FDocumentTasks.Webview1.Zoom = Settings["Clerical_Review_Documents/HTML_Tasks_Zoom"] 
    
 End
 
 Public Sub Reload()
-   '--------------------------------------------
-   'Loads the viewing list with recent documents
-   '-------------------------------------------- 
+   '----------------------------------------------------------------------------
+   'Re- Loads the viewing list with recent document excluding deleted documents
+   'from the backend, with optional filter on patient.
+   'Note this is different from Documents_Refresh_List() which uses the
+   'existing documents collection to filter patients on the contents of
+   'txtFilterPtient ie not reloaded from the backend
+   '---------------------------------------------------------------------------- 
    
    If IsDate(txtDateFrom.text) Then
       From_Date = Val(txtDateFrom.text)
@@ -123,17 +150,21 @@ Public Sub Reload()
       to_Date = Now()
    End If  
    Inc Application.Busy
-   Documents = modInboxDBI.Documents_Get(From_Date, To_Date, False)
+   Documents = modInboxDBI.Documents_Get(From_Date, To_Date, False, Trim(txtFilterPatient.text))
    Documents_Refresh_List()
    Dec Application.Busy
-
+   
 End 
 
 Public Sub Documents_Refresh_List()
-   
-   Dim sFilter As String 
+   '---------------------------------------------------------
+   'Refresh document list and apply filters
+   'FIXME: filters not used at moment aside from patient name
+   '---------------------------------------------------------
 
+   Dim sFilter As String 
    Dim bits_patient As String[]
+   
    If Trim(txtFilterPatient.text) <> "" Then
       sFilter = "P"
       bits_patient = Split(Trim(Lower(txtFilterPatient.text)), ",")
@@ -159,74 +190,123 @@ Public Sub Documents_Refresh_List()
             
          Case "PS"
             If bits_patient.count = 1 Then 
-                  If Left(Lower(document!patient_surname), Len(bits_patient[0])) = bits_patient[0] And InStr(Lower(document!msh_sending_entity), Trim(Lower(txtFilterSender.text))) Then   
-                     Document_Add(document)
-                  End If
+               If Left(Lower(document!patient_surname), Len(bits_patient[0])) = bits_patient[0] And InStr(Lower(document!msh_sending_entity), Trim(Lower(txtFilterSender.text))) Then   
+                  Document_Add(document)
+               End If
             Else
-                     If (Left(Lower(document!patient_surname), Len(bits_patient[0])) = bits_patient[0] And Left(Lower(document!patient_firstname), Len(bits_patient[1])) = bits_patient[1]) And InStr(Lower(document!msh_sending_entity), Trim(Lower(txtFilterSender.text))) Then
-                        Document_Add(document)
-                     End If   
+               If (Left(Lower(document!patient_surname), Len(bits_patient[0])) = bits_patient[0] And Left(Lower(document!patient_firstname), Len(bits_patient[1])) = bits_patient[1]) And InStr(Lower(document!msh_sending_entity), Trim(Lower(txtFilterSender.text))) Then
+                  Document_Add(document)
+               End If   
             End If
          Case Else
             'no filters
             Document_Add(document)
       End Select
    Next
-   '    If Trim(txtFilterSender.text) <> "" Then     
-   '       If InStr(Lower(Document!msh_sending_entity), Lower(Trim(txtFilterSender.text))) Then
-   '         Document_Add(document)
-   '       Endif
-   '    Else
-   '      Document_Add(document)
-   '    End If
-   ' Next
    txtFilterPatient.width = cvwDocumentsImported.Columns[0].Width
    txtDOB.width = cvwDocumentsImported.Columns[1].Width
    txtFilterSender.width = cvwDocumentsImported.Columns[2].Width
-   
+   If cvwDocumentsImported.count Then 
+      cvwDocumentsImported.MoveFirst()
+      cvwDocumentsImported.Item.Selected = True
+      
+   End If   
+
 End
 
 Public Sub Document_Add(document As Collection)
-   
+   '--------------------------------------------------------------
+   'Add a document to the columnview:patient:documentdate:user tag
+   '--------------------------------------------------------------   
+
    cvwDocumentsImported.Add(Document!pk_document, 0)
    If Not IsNull(Document!fk_patient) Then 
       cvwDocumentsImported[Document!pk_document][0] = Document!patient_surname & ", " & Document!patient_firstname
-      cvwDocumentsImported[Document!pk_document][1] = Format(Document!patient_birthdate, "dd/mm/yyyy")
    Else
       cvwDocumentsImported[Document!pk_document][0] = "??" & Document!unmatched_patient_surname & ", " & Document!unmatched_patient_firstname & "??"
-      cvwDocumentsImported[Document!pk_document][1] = Format(Document!unmatched_patient_birthdate, "dd/mm/yyyy")
    End If  
-   cvwDocumentsImported[Document!pk_document][2] = Document!msh_sending_entity
-   '  cvwDocumentsImported[Document!pk_document][2] = Document!originator
-   cvwDocumentsImported[Document!pk_document][3] = Document!style
-   cvwDocumentsImported[Document!pk_document][4] = Format(Document!date_created, "dd/mm/yyyy")
-   Select Case Document!fk_lu_display_as
-      Case const.Document_Display_As_Letter
-         cvwDocumentsImported[Document!pk_document][5] = Document!tag
-         
-      Case const.Document_Display_As_Result
-         cvwDocumentsImported[Document!pk_document][5] = Document!tag & " [ordered by " & Document!originator & "]"
-         
-   End Select
-   
-   cvwDocumentsImported[Document!pk_document][6] = Document!tag_user
-   cvwDocumentsImported[Document!pk_document][7] = Document!staff_name
-   
+   cvwDocumentsImported[Document!pk_document][1] = Format(Document!date_created, "dd/mm/yyyy")
+   cvwDocumentsImported[Document!pk_document][2] = Document!tag_user
+
 End
 
 Public Sub EditAreaTextBox_KeyRelease()
-
+   
    Select Case Last.tag
       Case "filter sender"
          Documents_Refresh_List()
       Case "filter patient"
-         Documents_Refresh_List()
+         timer_count = 0 'don't search for patient whilst typing
+         timer1.Start
    End Select
    
 End
 
-Public Sub cvwDocumentsImported_Select()
+
+Public Sub txtFilterPatient_LostFocus()
    
-   form_metadata.Edit(Documents, Last.item.key)
+   If Last.tag = "filter patient" Then timer1.Stop
+   
+End
+
+Public Sub timer1_Timer()
+
+   If bexit Then Return 
+   Inc timer_count
+   
+   If timer_count > 2 Then  'FIXME MAKE THESE USER CONFIGURABLE PER TYPING SPEED
+      bExit = True   
+      timer_count = 0
+      timer1.stop
+      Documents_Refresh_List()
+      bExit = False  
+   Endif
+   
+End
+
+Public Sub cvwDocumentsImported_Select()
+   '--------------------------------------------
+   'Either user has clicked on the document list
+   'or Reload() as set first document on list
+   '--------------------------------------------
+
+   cvwDocumentsImported.MoveCurrent()
+   form_metadata.Edit(Documents, cvwDocumentsImported.item.key)
+   Document_Display()
+   
+End
+
+Public Sub Document_Display()
+   '-------------------
+   'Displays a document 
+   '-------------------
+   
+   Dim filename As String = documents[cvwDocumentsImported.item.key]!source_file
+   Dim currentobservations As Collection 
+   Dim shtml As String 
+   
+   Inc application.Busy
+   Select Case File.Ext(filename)
+      Case "pdf"
+         VBox_HTML_Viewer.Visible = False 
+         Vbox_Images.Visible = False   
+         Vbox_PDF.Visible = True
+         PDForm.Load_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ filename)
+      Case "jpg", "png", "bmp", "jpeg", "tiff"
+         VBox_HTML_Viewer.Visible = False 
+         Vbox_PDf.Visible = False
+         Vbox_Images.visible = True
+         Pbox.picture = Picture.Load(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ filename)
+         
+      Case Else 'must be html
+         Vbox_PDF.Visible = False  
+         Vbox_Images.visible = False  
+         VBox_HTML_Viewer.Visible = True 
+         lblSendingEntity.text = documents[cvwDocumentsImported.item.key]!msh_sending_entity
+         FPreview_HtmlDocument.webview1.HTML = documents[cvwDocumentsImported.item.key]!html
+         Print documents[cvwDocumentsImported.item.key]!html
+   End Select
+   FDocumentTasks.WebView1.html = modArchiveDocumentsDBI.Staff_Tasks_Document_Audit_Trail(cvwDocumentsImported.item.key, True) 'True=no document detailis
+   Dec application.Busy
    
 End

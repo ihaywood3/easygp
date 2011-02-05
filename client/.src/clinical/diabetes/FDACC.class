@@ -17,8 +17,17 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '-----------------------------------------------------------------------------------------
 ' PURPOSE         A form for the Australian General Practice Diabetes Annual Cycle of Care
-' HOW THIS WORKS  
-' TODO
+'                 Also provides a 'snapshot' of up-to-date-ness of diabetic parameters.
+' HOW THIS WORKS  EasyGP attempts to pull as much information from the backend
+'                    - e.g letters from category like ophth* and occupations like the same
+'                    - pulls in latest blood tests and measurements if they exist
+'                    - this data cannot be entered manually on this screen
+'                    - user prompted if validation fails on save.
+' TODO            Printout .text file of the form.
+'                 Microalbumin, currently only works for the ratio
+'                 Not the timed overnight Or 24 / 24 collections
+'                 I've hidden the little bit of decision support I gather along the way
+'                 but its still done.?where to show
 ' BUGS            Please report to rterry@pacific.net.au
 '                 There will be many as pre-alpha and never used
 '-----------------------------------------------------------------------------------------
@@ -33,8 +42,11 @@ Private LastBP As String 'of BP|date
 Private LastRUAlbCreatRatio As Result
 Private DACCS As Collection
 Private DACC As Collection
+Private date_completed As Date
+Private fk_consult As Integer 
 Private pk_view As Integer
 Private fk_dacc As Integer    
+Private fk_progressnote As Integer     'if not 0 = key to clin_consult.progressnotes
 Private bCompleted As Boolean
 Private NextTextBoxDetails As TextEdit
 Private NextTextBoxLast As TextEdit 
@@ -47,14 +59,15 @@ Public Sub Init(cons As CConsult)
    currentconsult = cons
    Settings_Load()
    fk_patient = currentconsult!patient!fk_patient
-   
-   Reload()
+   lblNextDue.width = TextLabel12.width
+   Reload()    'loads any current DACCS and displays the most recent.
    
 End
 
 Public Function Valid_Data() As Boolean
    '------------------------------------------------
    'Checks for valid input and returns true if valid
+   'Prompts user with message if invalid.
    '------------------------------------------------
    
    Dim bInvalid As Boolean
@@ -63,32 +76,39 @@ Public Function Valid_Data() As Boolean
    Dim TE As TextEdit
    Dim bits As String[]
    Dim bit As String
-   
-   bcompleted = True   
+   Dim sMsg As String  
    '----------------------------------------------------------------------------
    'Check all the textboxes in the editing area, if should have a date, validate
    '----------------------------------------------------------------------------
    For Each hctrl In Vbox_EditArea_Inner.Children
-      If hctrl.tag <> "skip" Then                   'Hbox's without appropriate contents
+      If hctrl.tag <> "skip" Then                   'Hbox's without appropriate contents have this tag
          HB = hctrl
-         For Each hCtrl In HB.Children
+         For Each hCtrl In HB.Children   
+            '-------------------------------------------------------------------           
+            'look at all child controls In Each HBox
+            'if it should contain a date or columnized dates eg for h,w,bmi
+            'check date valid
+            '---------------------------------------------
             If InStr(Lower(hctrl.name), "due") Or InStr(Lower(hctrl.name), "last")
                TE = hctrl
-               If Te.text <> "" And Not IsDate(Te.text) Then
-                  bits = Split(Te.text, "\n", "", True)
+               If Trim(Te.text) <> "" And Not IsDate(Te.text) Then 'its its not blank or columized dates which though individual dates ok Val(txt)<> date
+                  bits = Split(Trim(Te.text), "\n", "", True)      'check if it is 'OVERDUE or stacked dates
                   For Each bit In bits
-                     If Not IsDate(bit) And bit <> "OVERDUE" Then 
+                     If Not IsDate(bit) Then  'some textboxes have multiple dates
                         TE.SetFocus()
-                        Return
+                        Goto Invalid
                      End If
                   Next
                Endif
             Else
+               '---------------------------------------------------------------------------
+               'Note a textedit containing date(s), if empty, should have some sort of data
+               '---------------------------------------------------------------------------
                If hctrl Is TextEdit Then
                   TE = hctrl
-                  If TE.text = "" Then
-                     bcompleted = False
-                     '   rbCompleteYes.value = True
+                  If Trim(TE.text) = "" Then
+                     TE.SetFocus()
+                     Goto Invalid
                   Endif
                Endif
             End If
@@ -98,35 +118,56 @@ Public Function Valid_Data() As Boolean
    
    Return True 
    
+   Invalid:
+   sMsg = "The information needed to complete this Diabetic Annual Cycle of Care is incomplete.\n\n"
+   "Please note, that measurents such as BP, Height, Weight, and pathology values must exist "
+   "in your database, so you may have to enter updated values now, then refresh this screen.\n\n"
+   "Also, pathology results must exist in the database. If these have been done at another practice "
+   "it is suggested you ring the company who performed these and arrange a HL7 download to obtain the "
+   "actual data - it will be needed anyway for statistical analysis later.\n\n"
+   "A special note about eyes:\n\n"
+   "EasyGP will look through this patients documents and try and find aletter from either an "
+   "optometrist or an ophthalmologist etc. It won't be able to find this information however if "
+   "you have mis-spelt the occupation or category for this type of provider, so if you think you "
+   "have received a letter which isn't being found - go back to contacts and check.\n\n"
+   "These data entry fields however, can contain free text if you are certain the eye check has been done."
+   
+   Message.Title = "Diabetic Cycle of Care"
+   Message.Info(sMsg, "Ok")
+   Return   
+   
 End
 
 Public Sub EditArea_NotifyData_Change(flag As Boolean)
-   
+   '----------------------------------------------
+   'If data has changed, edit area outlined in red
+   'for visual notification
+   '----------------------------------------------   
    If Flag Then
       Vbox_EditArea.Padding = 1
       tbSave.Foreground = Color.red
    Else
       
       Vbox_EditArea.Padding = 0
-      tbSave.Foreground = Color.blackl
+      tbSave.Foreground = Color.black
       
    Endif
    
 End
 
 Public Sub EditArea_Clear()
-
+   
    bExit = True   
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_Inner)
    bExit = False  
-
+   
 End
 
 Public Sub New_DACC()
    '-------------------------------------------------------------
    'User want a new DACC, attempt to get as much info as possible
    '-------------------------------------------------------------
-
+   
    tlNotes.text = ""
    bExit = True 
    Try Last_Hbaic()
@@ -142,12 +183,16 @@ Public Sub New_DACC()
    Last_Foot_Check()
    Last_Lipids()
    bExit = False     
-
+   Vbox_EditArea_Inner.Enabled = True  
+   tbEdit.enabled = False
+   fk_progressnote = -1
+   fk_dacc = 0
 End
 
 Public Sub Save()
    '---------------------------------------------------------------------------------------------------------
-   ' Save the annual cycle of care
+   ' Save the annual cycle of care, refreshes the data and progress notes in FClinical
+   '
    '  pk serial NOT NULL,
    '   fk_consult integer NOT NULL,
    '   date_completed date,
@@ -187,20 +232,26 @@ Public Sub Save()
    '   medication_review date,
    '   medication_review_date_due date,
    '   medication_review_details text,
+   '   fk_progressnote
+   '   deleted
    ' ----------------------------------------------------------------------------------------
-
+   
+   Dim sProgressNotes As String
+   
    If Vbox_EditArea.Padding = 0 Then Return 
    If Not Valid_Data() Then Return
    DACC = New Collection
-   If fk_dacc Then
-      DACC!fk_dacc = fk_dacc
+   If fk_dacc <> 0 Then
+      DACC!date_completed = date_completed
    Else
       DACC!date_completed = Now()
    Endif
-   DACC!fk_consult = currentconsult.GetPK()
-   ' If rbCompleteYes.value = True Then
-   '    DACC!data_completed = Now()
-   ' Endif
+   If fk_consult = 0 Then 
+     DACC!fk_consult = currentconsult.GetPK()
+   Else
+     DACC!fk_consult = fk_consult   
+   Endif
+   
    DACC!hba1c_date = Val(teNotesHBA1cLast.text)
    DACC!hba1c_date_due = Val(teNotesHBA1cDue.text)
    DACC!hba1c_details = teNotesHBA1C.text
@@ -210,16 +261,20 @@ Public Sub Save()
    DACC!bp_date = Val(teNotesBPLast.text)
    DACC!bp_date_due = Val(teNotesBPDue.text)
    DACC!bp_details = teNotesBP.Text
-   DACC!bmi_date = Val(teNotesBMILast.text)
+   If fk_dacc = 0 Then 
+      DACC!bmi_date = Now()
+   Else
+       DACC!bmi_date = Val(teNotesBMILast.Text)
+   End If     
    DACC!bmi_date_due = Val(teNotesBMIDue.text)
    DACC!bmi_details = Replace(teNotesBMI.Text, "\n\n", "\n")
-   DACC!feet_date = Val(teNotesFeetLast.text)
-   DACC!feet_date_due = Val(teNotesFeetDue.text)
+   DACC!feet_date = Val(teNotesFeetLast.text) 'missing
+   DACC!feet_date_due = Val(teNotesFeetDue.text) 'missing
    DACC!feet_details = teNotesFeet.text
    DACC!lipids_date = Val(teNotesHDLLast.text)
    DACC!lipids_date_due = Val(teNotesHDLDue.text)
    DACC!lipids_details = teNotesHDL.text
-   DACC!microalbumin_date = Val(teNotesMicroalbuminLast.text)
+   DACC!microalbumin_date = Val(teNotesMicroalbuminLast.text) 'missing
    DACC!microalbumin_date_due = Val(teNotesMicroalbuminDue.text)
    DACC!microalbumin_details = teNotesMicroalbumin.Text
    DACC!education_date = Val(teNotesEducationLast.text)
@@ -237,9 +292,13 @@ Public Sub Save()
    DACC!medication_review_date = Val(teNotesMedicationLast.text)
    DACC!medication_review_date_due = Val(teNotesMedicationDue.text)
    DACC!medication_review_details = teNotesMedication.Text
+   sProgressNotes = Progress_note_create_HTML(DACC).GetData()
    modDBConnect.BeginTrans()
-   modDACCDBI.Save_DACC(DACCS, DACC)
+      DACC!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_GeneralNotes, fk_progressnote, "diabetes", 0, False)
+      modDACCDBI.Save_DACC(DACCS, fk_dacc, DACC)
    modDBConnect.CommitTrans()
+   EditArea_NotifyData_Change(False)
+   FClinical.Refresh_AllPreviousNotes()
    Reload()
    
 End
@@ -271,8 +330,6 @@ Public Sub Last_Hbaic()
    teNotesHBA1c.richtext = Replace(teNotesHBA1c.richtext, "placeholder", sString)
    If hba1c!value_numeric > 7 Then tlNotes.Text &= " - a Hba1c value of &gt; 7 indicates suboptimal control<BR>"
    
-   Display_Completion_Status(Hbox_Hba1c, bCompleted)
-   
 End
 
 Public Sub Last_Foot_Check()
@@ -282,67 +339,52 @@ Public Sub Last_Foot_Check()
    
    If teNotesFeetLast.text = "" Then
       teNotesFeetDue.text = "OVERDUE"
-      Display_Completion_Status(Hbox_Feet, bCompleted)
    Endif
    
 End
 
 Public Sub Last_Education()
-   'TODO implement backend and include skin, pulses and sensation check
    
    Dim bCompleted As Boolean
    
    If teNotesEducationLast.text = "" Then
       teNotesEducationDue.text = "OVERDUE"
-      Display_Completion_Status(Hbox_SelfCare, bCompleted)
    Endif
    
 End
 
 Public Sub Last_Activity()
-   'TODO implement backend and include skin, pulses and sensation check
-   
    Dim bCompleted As Boolean
    
    If teNotesActivityLast.text = "" Then
       teNotesActivityDue.text = "OVERDUE"
-      Display_Completion_Status(Hbox_Activity, bCompleted)
    Endif
    
 End
 
 Public Sub Last_Medication()
-   'TODO implement backend and include skin, pulses and sensation check
-   
    Dim bCompleted As Boolean
    
    If teNotesMedicationLast.text = "" Then
       teNotesMedicationDue.text = "OVERDUE"
-      Display_Completion_Status(Hbox_Medication, bCompleted)
-   Endif
+    Endif
    
 End
 
 Public Sub Last_Diet()
-   'TODO implement backend and include skin, pulses and sensation check
-   
    Dim bCompleted As Boolean
    
    If teNotesDietLast.text = "" Then
       teNotesDietDue.text = "OVERDUE"
-      Display_Completion_Status(HBox_Diet, bCompleted)
    Endif
    
 End
 
 Public Sub Last_Smoking()
-   'TODO implement backend and include skin, pulses and sensation check
-   
    Dim bCompleted As Boolean
    
    If teNotesSmokingLast.text = "" Then
       teNotesSmokingDue.text = "OVERDUE"
-      Display_Completion_Status(HBox_Smoking, bCompleted)
    Endif
    
 End
@@ -376,8 +418,6 @@ Public Sub Last_Microalbumin()
       bCompleted = False   
    End If  
    teNotesMicroalbumin.richtext = Replace(teNotesMicroalbumin.richtext, "placeholder", sString)
-   Display_Completion_Status(Hbox_Microalbumin, bCompleted)
-   
 End 
 
 Public Sub Last_Lipids()
@@ -395,8 +435,6 @@ Public Sub Last_Lipids()
    sString = Lipid_Get_Component("LDL = ", const.Loinc_LDL, sSTring)
    teNotesHDL.richtext = Replace(teNotesHDL.richtext, "placeholder", sString)
    teNotesHDL.pos = 1
-   Display_Completion_Status(Hbox_HDL, bCompleted)
-   
 End 
 
 Public Sub Lipid_Get_Component(sComponentName As String, sLoinc As String, sString As String) As String 
@@ -436,6 +474,66 @@ Public Sub Lipid_Get_Component(sComponentName As String, sLoinc As String, sStri
    
 End
 
+Public Function Progress_note_create_HTML(DACC As Collection) As CTemplate
+   '----------------------------------------------------------------
+   'Creates a table akin to what is seen on the screen, as a summary
+   'for the progress notes
+   '-----------------------------------------------------------------
+   Dim templ As CTemplate
+   
+   templ = New CTemplate(modHTML.Diabetes_Annual_Cycle_Of_Care_HTML())
+   templ.Subst_common(currentconsult)
+   templ.Subst("data_hba1c", DACC!hba1c_details)
+   templ.Subst("last_hba1c", DACC!hba1c_date)
+   templ.Subst("due_hba1c", DACC!hba1c_date_due)
+   
+   templ.Subst("data_eyes", DACC!eyes_details)
+   templ.Subst("last_eyes", DACC!eyes_date)
+   templ.Subst("due_eyes", DACC!eyes_date_due)
+
+   templ.Subst("data_bp", DACC!bp_details)
+   templ.Subst("last_bp", DACC!bp_date)
+   templ.Subst("due_bp", DACC!bp_date_due)
+  
+   templ.Subst("data_bmi", DACC!bmi_details)
+   templ.Subst("last_bmi", DACC!bmi_date)
+   templ.Subst("due_bmi", DACC!bmi_date_due)
+ 
+   templ.Subst("data_feet", DACC!feet_details)
+   templ.Subst("last_feet", DACC!feet_date)
+   templ.Subst("due_feet", DACC!feet_date_due)
+   
+   templ.Subst("data_lipids", DACC!lipids_details)
+   templ.Subst("last_lipids", DACC!lipids_date)
+   templ.Subst("due_lipids", DACC!lipids_date_due) 
+  
+   templ.Subst("data_microalbumin", DACC!microalbumin_details)
+   templ.Subst("last_microalbumin", DACC!microalbumin_date)
+   templ.Subst("due_microalbumin", DACC!microalbumin_date_due)
+  
+   templ.Subst("data_education", DACC!education_details)
+   templ.Subst("last_education", DACC!education_date)
+   templ.Subst("due_education", DACC!education_date_due)
+
+   templ.Subst("data_diet", DACC!diet_details)
+   templ.Subst("last_diet", DACC!diet_date)
+   templ.Subst("due_diet", DACC!diet_date_due)
+
+   templ.Subst("data_exercise", DACC!exercise_details)
+   templ.Subst("last_exercise", DACC!exercise_date)
+   templ.Subst("due_exercise", DACC!exercise_date_due)
+   
+   templ.Subst("data_smoking", DACC!smoking_details)
+   templ.Subst("last_smoking", DACC!smoking_date)
+   templ.Subst("due_smoking", DACC!smoking_date_due) 
+   
+   templ.Subst("data_medication_review", DACC!medication_review_details)
+   templ.Subst("last_medication_review", DACC!medication_review_date)
+   templ.Subst("due_medication_review", DACC!medication_review_date_due)
+  
+   Return templ
+End
+
 Public Sub Last_BMI()
    '------------------------------------------------
    'Calculate last BMI, assumes height dosn't change
@@ -455,6 +553,7 @@ Public Sub Last_BMI()
    '-------------------------------------------
    'Get height as a delimted string:height|date
    '-------------------------------------------
+   currentconsult.Refresh("measurements")
    SData = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height), "|")
    teNotesBMI.richtext = "placeholder"
    teNotesBMILast.Richtext = "placeholder"
@@ -487,7 +586,7 @@ Public Sub Last_BMI()
          bCompleted = True 
          StrInsert &= "<B>BMI=</B>" & BMI
          teNotesBMIDue.text = Format(DateAdd(Val(sData[1]), gb.Month, 6), "dd/mm/yyyy")
-         
+         strDates &= Format(Now, "dd/mm/yyyy")
          tlNotes.text &= "- " & modDecisionSupport.BMI_DecSupp(weight, height) & "<BR>"
          'fixme just pass the BMI
          
@@ -507,8 +606,6 @@ Public Sub Last_BMI()
    End If   
    teNotesBMI.richtext = Replace(teNotesBMI.richtext, "placeholder", strinsert)
    teNotesBMILast.richtext = Replace(teNotesBMILast.richtext, "placeholder", strDates)
-   Display_Completion_Status(Hbox_BMI, bCompleted)
-   
 End 
 
 Public Sub Last_BP() 
@@ -548,8 +645,6 @@ Public Sub Last_BP()
       BpNotAtTarget = True 
    End If
    If BpNotAtTarget Then tlNotes.text &= " - recommended target BP level is &lt; 130/80 for diabetics<BR>"
-   Display_Completion_Status(Hbox_BP, bCompleted)
-   
 End 
 
 Public Sub Last_Eye_Review()
@@ -585,39 +680,8 @@ Public Sub Last_Eye_Review()
    Else
       teNotesEyesDue.text = "OVERDUE"
    Endif
-   Display_Completion_Status(Hbox_Eyes, bCompleted)
-   
 End
 
-Public Sub Display_Completion_Status(HB As HBox, bCompleted As Boolean)
-   '--------------------------------------------------------------
-   'Gives visual display to indicate state of component completion
-   'by putting up either a tick or a red dot next to the row
-   '---------------------------------------------------------------
-   
-   Dim hctrl As Control
-   Dim vb As VBox
-   Dim pb As PictureBox
-   
-   For Each hctrl In HB.children
-      If hctrl Is VBox Then
-         vb = hctrl
-         For Each hctrl In VB.children
-            If hctrl Is PictureBox Then
-               pb = hctrl  
-               If bCompleted Then
-                  pb.Picture = Picture.Load("icons/12/green_dot.png")
-                  
-               Else
-                  '     pb.Picture = Picture.Load("icons/12/red_dot.png")
-                  pb.Picture = Null
-               Endif
-            Endif
-         Next
-      Endif
-   Next
-   
-End
 
 Private Sub Settings_Load()
    
@@ -636,6 +700,9 @@ End
 Public Sub EditArea_Buttons_Click()
    
    Select Case Last.tag
+         
+      Case "edit"
+         Vbox_EditArea_Inner.Enabled = True 
       Case "save"
          Save()
       Case "refresh"
@@ -739,23 +806,6 @@ Public Sub teNotesDACC_gotFocus()
    
 End
 
-Public Sub teNotesDACC_KeyRelease()
-   '--------------------------------------------------------
-   'Parse for user defined shortcuts FIXME MAKE USER DEFINED
-   '--------------------------------------------------------
-   
-   If InStr(LCase(Last.RichText), "bp=") Then
-      ParseText_Keyword(Last, "bp=")
-   End If
-   
-   If InStr(LCase(Last.RichText), "h=") Then  'FIXME MAKE THIS CASE INSENSITIVE
-      ParseText_Keyword(Last, "h=")
-   End If
-   If InStr(LCase(Last.RichText), "w=") Then  'FIXME MAKE THIS CASE INSENSITIVE
-      ParseText_Keyword(Last, "w=")
-   End If
-   
-End
 
 Public Sub teNotesDACC_Change()
    '--------------------------------------------------------------
@@ -775,7 +825,7 @@ Public Sub teNotesDACC_Change()
       Endif
    Else
       NextTextBoxLast.text = ""
-      NextTextboxDue.text = ""
+      NextTextboxDue.text = "OVERDUE"
    Endif
    If Last.pos > 0 And InStr(Last.text, "\n\n") Then
       'FIXME - GET IAN DO DO REGEX   TO REMOVE A <P> </p> COMBINATION HERE 
@@ -787,6 +837,7 @@ Public Sub teNotesDACC_Change()
             If Right(Last.text, 2) = "\n" Then
                bexit = True
                Last.text = Left(Last.text, Len(Last.text) - 2)
+               Last.pos = 0
                bExit = False 
             Endif
             
@@ -795,163 +846,119 @@ Public Sub teNotesDACC_Change()
       NextTextBoxDetails.Pos = Len(NextTextBoxDetails.Text)
    End If
    EditArea_NotifyData_Change(True)
-
+   
 End
 
 Public Sub teNotesDACC_KeyPress()
    
-   Select Case Last.tag
-      Case "hba1c"
-      Case "eyes"
-      Case "bp"
-      Case "bmi"
-      Case "feet"
-      Case "hdl"
-      Case "microalbumin"
-      Case "education"
-      Case "diet"
-      Case "activity"
-      Case "smoking"
-      Case "medication"
-         
+   Select Case Key.Code
+     Case Key.return 
+         Select Case Last.tag
+             Case "hba1c"
+             Case "eyes"
+             Case "bp"
+             Case "bmi"
+             Case "feet"
+             Case "hdl"
+             Case "microalbumin"
+             Case "education"
+             Case "diet"
+             Case "activity"
+             Case "smoking"
+             Case "medication"
+                tbSave.SetFocus()
+          End Select
    End Select
-   
 End
 
-Public Sub ParseText_Keyword(te As Textedit, keyword As String)
-   '--------------------------------------------------------------
-   'FIXME THIS IS DUPLICATED IN fPROGRESNOTEEDIDITOR.CLASS
-   'Tries to convert any BP=nnn/nn or nnn/nnn contained
-   'in the background HTML to a valid BP If unsuccessful, then
-   'no formatted html is inserted, so the user immediately knows
-   'they have typed something wrong.
-   '
-   'Example as user types in te BP=120/70 the html looks like
-   'this. Note that this routine is not triggered until a ascii 32
-   'appears after the 120/70:
-   '
-   ' <html><head><meta name="qrichtext" content="1" /></head>
-   '<body style="font-size:9pt;font-family:Bitstream Vera Sans">
-   ' <p>BP=120/70 </p>
-   ' </body></html>
-   '
-   'After this routine, the resultant html looks like this:
-   '
-   ' <html><head><meta name="qrichtext" content="1" /></head>
-   '<body style="font-size:9pt;font-family:Bitstream Vera Sans">
-   ' <p><a href="Bloodpressure">Blood Pressure=120/70 </a><br /></p>
-   ' </body></html>
-   '
-   'and the cursor is moved on to the next line.
-   
-   'The resultant hmtl is parsed and the values extracted when the
-   ' progress note is later saved
-   '
-   'FIXME: NO CODE YET TO RE-CONSTRUCT THE HTML IF THE USER
-   'PARTIALY DELETES THE FORMATTED TEXT AFTER IT HAS BEEN INSERTED
-   '--------------------------------------------------------------
-   Dim sMeasurement As String
-   Dim cp1 As Integer
-   Dim cp2 As Integer
-   Dim BMI As Float
-   
-   CP1 = InStr(LCase(te.RichText), keyword)
-   cp2 = InStr(te.RichText, "<", CP1)
-   sMeasurement = Mid(te.RichText, cp1, Cp2 - cp1)
-   If Not (Right(sMeasurement, 1) = Chr(32)) Then 
-      Return
-   End If
-   '---------------------------------------------------------
-   'If measurement encountered and is valid, try and calc BMI
-   '---------------------------------------------------------
-   If modMeasurements.IsMeasurement(te, keyword, sMeasurement) Then
-      Select Case keyword
-         Case "h="
-            Height = Val(Replace(sMeasurement, keyword, ""))
-         Case "w="
-            Weight = Val(Replace(sMeasurement, keyword, ""))
-      End Select
-      If Height <> 0 And Weight <> 0 Then 
-         BMI = Format((weight / (height ^ 2)) * 10000, "##.#")
-         teNotesBMI.Richtext &= "<A HREF='" & "BMI=" & " '>" & "BMI=" & Str(BMI) & "</A>"
-         tlNotes.text &= "- " & modDecisionSupport.BMI_DecSupp(weight, height)
-      End If   
-   Endif
-   
-End
 
-Public Sub reload()
-   
-   cvwDACCS.columns.count = 2
+Public Sub Reload()
+   '------------------------------------------------------------
+   'Refreshes any existing DACC data
+   'Previous DACC's may (if I do it later) be able to be edited
+   'currently only the latest one can
+   'the columnview is now not visible
+   '-----------------------------------------------------------   
+
+   With cvwDACCS
+      .columns.count = 2
+      .Clear
+   End With 
+   currentconsult.Refresh("diabetes_annual_cycle_of_care")
    DACCS = currentconsult!diabetes_annual_cycle_of_care
    If DACCS.count = 0 Then
-       lblLastClaimed.text = "Overdue"
+      lblLastClaimed.text = "Overdue"
+      lblNextDue.text = ""
    Else
+      lblLastClaimed.text = ""
       For Each DACC In DACCS
-   
-          lblLastClaimed.text = "Claimed: " & DACC!date_completed & " Due:" & Format(DateAdd(DACC!date_completed, gb.year, 1))
-          Break
-         ' cvwDACCS.Add(DACC!pk, 0)
-         ' cvwDACCS[DACC!pk][0] = DACC!date_completed
-         ' cvwDACCS[DACC!pk, 0] = DACC!date_completed
+         If lblLastClaimed.text = "" Then 
+            lblLastClaimed.text = "Claimed: " & Format(DACC!date_completed, "dd/mm/yyyy")
+            lblNextDue.text = "Next Due: " & Format(DateAdd(DACC!date_completed, gb.year, 1))
+            Display(DACC)
+         End If   
+         cvwDACCS.Add(DACC!pk, 0)
+         cvwDACCS[DACC!pk][0] = DACC!date_completed
       Next
+      tbEdit.Enabled = True   
    End If
+   
 End
 
-Public Sub Display()
+Public Sub Display(DACC As Collection)
    '----------------------
-   'Displays the last DACc
+   'Displays the last DACC
    '----------------------
-
-   Dim C As Collection
    
    bExit = True
-   c = DACCS[cvwDACCS.Item.key]
-   fk_dacc = c!pk
-   teNotesHBA1C.text = c!hba1c_details
-   teNotesHBA1CLast = c!Date
-   teNotesHBA1CDue = c!date_due  
-   teNotesEyes.text = c!eyes_details
-   teNotesEyesLast.text = c!eyes_date
-   teNotesEyesDue.text = c!eyes_date_due     
-   
-   teNotesBP.text = c!bp_details
-   teNotesBPLast.text = c!bp_date
-   teNotesBPDue.text = c!bp_due
-   teNotesBMI.text = c!bmi_details
-   teNotesBMILast.text = c!bmi_date
-   teNotesBMIDue.text = c!bmi_due   
-   teNotesFeet.text = c!feet_details
-   teNotesFeetLast.text = c!feet_date
-   teNotesFeetDue.text = c!feet_due 
-   teNotesHDL.text = c!lipids_details
-   teNotesHDLLast.text = c!lipids_date  
-   teNotesHDLDue.text = c!lipids_due
-   teNotesMicroalbumin.text = c!microalbumin_details
-   teNotesMicroalbuminLast.text = c!microalbumin_date
-   teNotesMicroalbuminDue.text = c!microalbumin_date_due
-   teNotesEducation.text = c!education_details
-   teNotesEducationLast.text = c!education_date
-   teNotesEducationDue.text = c!education_date_due
-   teNotesDiet.text = c!diet_details
-   teNotesDietLast.text = c!diet_date
-   teNotesDietDue.text = c!diet_date_due
-   teNotesActivity.text = c!exercise_details
-   teNotesActivityLast.text = c!exercise_date
-   teNotesActivityDue.text = c!exercise_date_due
-   teNotesSmoking.text = c!smoking_details
-   teNotesSmokingLast.text = c!smoking_date
-   teNotesSmokingDue.text = c!smoking_date_due
-   teNotesMedication.text = c!medication_review_details
-   teNotesMedicationLast.text = c!medication_review_date
-   teNotesMedicationDue.text = c!medication_review_date_due 
-   lblLastClaimed.text = "Completed:" & Format(c!date_completed, "dd/mm/yyyy")
+   fk_consult = DACC!fk_consult 
+   fk_dacc = DACC!pk
+   date_completed = DACC!date_completed
+   fk_progressnote = DACC!fk_progressnote
+   teNotesHBA1C.text = DACC!hba1c_details
+   teNotesHBA1CLast.text = Format(DACC!hba1c_date, "dd/mm/yyyy")
+   teNotesHBA1CDue.text = Format(DACC!hba1c_date_due, "dd/mm/yyyy")
+   teNotesEyes.text = DACC!eyes_details
+   teNotesEyesLast.text = Format(DACC!eyes_date, "dd/mm/yyyy")
+   teNotesEyesDue.text = Format(DACC!eyes_date_due, "dd/mm/yyyy")    
+   teNotesBP.text = DACC!bp_details
+   teNotesBPLast.text = Format(DACC!bp_date, "dd/mm/yyyy")
+   teNotesBPDue.text = Format(DACC!bp_date_due, "dd/mm/yyyy")
+   teNotesBMI.text = DACC!bmi_details
+   teNotesBMILast.text = Format(DACC!bmi_date, "dd/mm/yyyy")
+   teNotesBMIDue.text = Format(DACC!bmi_date_due, "dd/mm/yyyy")  
+   teNotesFeet.text = DACC!feet_details
+   teNotesFeetLast.text = Format(DACC!feet_date, "dd/mm/yyyy")
+   teNotesFeetDue.text = Format(DACC!feet_date_due, "dd/mm/yyyy")
+   teNotesHDL.text = DACC!lipids_details
+   teNotesHDLLast.text = Format(DACC!lipids_date, "dd/mm/yyyy")  
+   teNotesHDLDue.text = Format(DACC!lipids_date_due, "dd/mm/yyyy")
+   teNotesMicroalbumin.text = DACC!microalbumin_details
+   teNotesMicroalbuminLast.text = Format(DACC!microalbumin_date, "dd/mm/yyyy")
+   teNotesMicroalbuminDue.text = Format(DACC!microalbumin_date_due, "dd/mm/yyyy")
+   teNotesEducation.text = DACC!education_details
+   teNotesEducationLast.text = Format(DACC!education_date, "dd/mm/yyyy")
+   teNotesEducationDue.text = Format(DACC!education_date_due, "dd/mm/yyyy")
+   teNotesDiet.text = DACC!diet_details
+   teNotesDietLast.text = Format(DACC!diet_date, "dd/mm/yyyy")
+   teNotesDietDue.text = Format(DACC!diet_date_due, "dd/mm/yyyy")
+   teNotesActivity.text = DACC!exercise_details
+   teNotesActivityLast.text = Format(DACC!exercise_date, "dd/mm/yyyy")
+   teNotesActivityDue.text = Format(DACC!exercise_date_due, "dd/mm/yyyy")
+   teNotesSmoking.text = DACC!smoking_details
+   teNotesSmokingLast.text = Format(DACC!smoking_date, "dd/mm/yyyy")
+   teNotesSmokingDue.text = Format(DACC!smoking_date_due, "dd/mm/yyyy")
+   teNotesMedication.text = DACC!medication_review_details
+   teNotesMedicationLast.text = Format(DACC!medication_review_date, "dd/mm/yyyy")
+   teNotesMedicationDue.text = Format(DACC!medication_review_date_due, "dd/mm/yyyy")
+   '   lblLastClaimed.text = "Completed:" & Format(DACC!date_completed, "dd/mm/yyyy")
    bExit = False  
+   Vbox_EditArea_Inner.Enabled = False 
    
 End
 
 Public Sub cvwDACCS_Select()
-
+   
    EditArea_Clear()
    cvwDACCS.MoveCurrent()
    Display()
@@ -959,11 +966,19 @@ Public Sub cvwDACCS_Select()
 End
 
 Public Sub teDue_Change()
-
+   
    If Last.text = "OVERDUE" Then
       Last.Foreground = Color.Red
    Else
       Last.Foreground = Color.Black
    End If
+   
+End
+
+Public Sub EditArea_Buttons_KeyPress()
+   
+   If Key.code = Key.Return Then
+      Save()
+   Endif
    
 End

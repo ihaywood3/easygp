@@ -43,7 +43,9 @@ Private LastBP As String 'of BP|date
 Private LastRUAlbCreatRatio As Result
 Private DACCS As Collection
 Private DACC As Collection
-Private date_completed As Date
+Private date_last_Claimed As Date               'date of last DACC medicare billing
+Private date_completed As Date                  'date the DACC was completed
+Private date_saved As Date                      'date the DACC was saved may <> date_completed which can be  null 
 Private fk_consult As Integer 
 Private pk_view As Integer
 Private fk_dacc As Integer    
@@ -57,6 +59,7 @@ Private weight As Variant = 0
 Private FProgressNotes As FProgressNoteEditor
 
 Public Sub Init(cons As CConsult)
+   
    currentconsult = cons
    With FProgressNotes = New FProgressNoteEditor(Vbox_Notes)
       .Init(currentconsult)
@@ -82,6 +85,17 @@ Public Function Valid_Data() As Boolean
    Dim bits As String[]
    Dim bit As String
    Dim sMsg As String  
+   '---------------------------------------------------------------
+   'First, is this DACC being claimed within 12/12 of the last one?
+   '----------------------------------------------------------------
+   If Not IsNull(date_last_Claimed) Then 
+      If DateDiff(Now, date_last_Claimed, gb.year) < 1 Then
+         sMsg = "The DACC item number may have been claimed on " & Format(date_last_Claimed, "dd/mm/yyyy")
+         sMsg &= ".\n\nIt is not due until " & Format(DateAdd(date_last_Claimed, gb.year, 1))
+         sMsg &= ". \n\nThis DACC may not be claimable.\n\nContinue?"
+         If Message.Question(sMsg, "Yes", "No") = 2 Then Return
+      Endif
+   End If   
    '----------------------------------------------------------------------------
    'Check all the textboxes in the editing area, if should have a date, validate
    '----------------------------------------------------------------------------
@@ -157,6 +171,7 @@ Public Sub EditArea_NotifyData_Change(flag As Boolean)
    'If data has changed, edit area outlined in red
    'for visual notification
    '----------------------------------------------   
+   
    If Flag Then
       Vbox_EditArea.Padding = 1
       tbSave.Foreground = Color.red
@@ -177,10 +192,10 @@ Public Sub EditArea_Clear()
    
 End
 
-Public Sub New_DACC()
-   '-------------------------------------------------------------
-   'User want a new DACC, attempt to get as much info as possible
-   '-------------------------------------------------------------
+Public Sub Refresh()
+   '-------------------------------------------------------
+   'User to refresh the components, get as much as possible
+   '-------------------------------------------------------
    
    tlNotes.text = ""
    bExit = True 
@@ -199,14 +214,13 @@ Public Sub New_DACC()
    bExit = False     
    Vbox_EditArea_Inner.Enabled = True  
    tbEdit.enabled = False
-   bSavePending = False 
-   fk_progressnote = -1
-   fk_dacc = 0
+   
 End
 
 Public Sub Save()
    '---------------------------------------------------------------------------------------------------------
    ' Save the annual cycle of care, refreshes the data and progress notes in FClinical
+   ' Over-rides the save in the embedded progress notes
    '
    '  pk serial NOT NULL,
    '   fk_consult integer NOT NULL,
@@ -250,23 +264,33 @@ Public Sub Save()
    '   fk_progressnote
    '   deleted
    ' ----------------------------------------------------------------------------------------
+    
+   Dim sProgressNotes As String            '=the tabulated DACC plus any clinical notes for this section
+   Message.Info("Sorry can't save, I've screwed up some code tonight, but off to bed now")
+   Return
    
-   Dim sProgressNotes As String
+   ' If Vbox_EditArea.Padding = 0 Or Then Return 
+   If Vbox_EditArea.Padding = 0 Or ((Trim(FProgressNotes.teNotes.text) = "" And FProgressNotes.Get_copy_of_editor_text() = "") Or Not FProgressNotes.get_data_changed()) Then
+      Return 
+   Endif
    
-   If Vbox_EditArea.Padding = 0 Then Return 
    If Not Valid_Data() Then Return
    DACC = New Collection
-   If fk_dacc <> 0 Then
-      DACC!date_completed = date_completed
-   Else
-      If bSavePending = False Then DACC!date_completed = Now()
-   Endif
-   If fk_consult = 0 Then 
-     DACC!fk_consult = currentconsult.GetPK()
-   Else
-     DACC!fk_consult = fk_consult   
-   Endif
+   Select Case fk_dacc
+      Case 0                                           'DACC is new
+         If bSavePending = False Then
+            DACC!date_completed = Val(Format(Now(), "dd/mm/yyyy"))  'new and completed add completion date
+            
+         End If   
+      Case Else                                   'DACC has already been saved
+         If Not IsNull(date_completed) Then      'Saving an edited completed DACC (allowed on the same day only)
+            DACC!date_completed = date_completed 'keep original completed date
+         Else
+            DACC!date_completed = Val(Format(Now(), "dd/mm/yyyy"))         'saving a partially completed DACC today
+         End If
+   End Select
    
+   DACC!fk_consult = currentconsult.GetPK() 
    DACC!hba1c_date = Val(teNotesHBA1cLast.text)
    DACC!hba1c_date_due = Val(teNotesHBA1cDue.text)
    DACC!hba1c_details = teNotesHBA1C.text
@@ -279,7 +303,7 @@ Public Sub Save()
    If fk_dacc = 0 Then 
       DACC!bmi_date = Now()
    Else
-       DACC!bmi_date = Val(teNotesBMILast.Text)
+      DACC!bmi_date = Val(teNotesBMILast.Text)
    End If     
    DACC!bmi_date_due = Val(teNotesBMIDue.text)
    DACC!bmi_details = Replace(teNotesBMI.Text, "\n\n", "\n")
@@ -307,12 +331,25 @@ Public Sub Save()
    DACC!medication_review_date = Val(teNotesMedicationLast.text)
    DACC!medication_review_date_due = Val(teNotesMedicationDue.text)
    DACC!medication_review_details = teNotesMedication.Text
-   sProgressNotes = Progress_note_create_HTML(DACC).GetData()
+   
    modDBConnect.BeginTrans()
-      DACC!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_GeneralNotes, fk_progressnote, "diabetes", 0, False)
-      modDACCDBI.Save_DACC(DACCS, fk_dacc, DACC)
+   '----------------------------------------------------------------------
+   'Only save the tabulated DACC into progress notes where it is completed
+   'Table will appear before comments in the progress notes.
+   '----------------------------------------------------------------------
+   If Not IsNull(DACC!date_completed) Then 
+      sProgressNotes = Progress_note_create_HTML(DACC).GetData()
+   Else
+      sProgressNotes = "<P>Diabetic Annual Cycle of Care partially completed</P>"
+   End If  
+   DACC!fk_progressnote_components = modConsultDBI.ProgressNote_Save(currentconsult, Progress_note_create_HTML(DACC).GetData(), const.cSection_GeneralNotes, fk_progressnote, "diabetes", 0, False)
+   If Not ((Trim(FProgressNotes.teNotes.text) = "" And FProgressNotes.Get_copy_of_editor_text() = "") Or Not FProgressNotes.get_data_changed()) Then
+      DACC!fk_progressnote_comments = modConsultDBI.ProgressNote_Save(currentconsult, FProgressNotes.teNotes.RichText, const.cSection_GeneralNotes, fk_progressnote, "diabetes", 0, False)
+   End If
+   modDACCDBI.Save_DACC(DACCS, fk_dacc, DACC)
    modDBConnect.CommitTrans()
    EditArea_NotifyData_Change(False)
+   FProgressNotes.DataChange_Update_Indicators(False)
    FClinical.Refresh_AllPreviousNotes()
    Reload()
    
@@ -343,7 +380,7 @@ Public Sub Last_Hbaic()
       bCompleted = False   
    End If  
    teNotesHBA1c.richtext = Replace(teNotesHBA1c.richtext, "placeholder", sString)
-   If hba1c!value_numeric > 7 Then tlNotes.Text &= " - a Hba1c value of &gt; 7 indicates suboptimal control<BR>"
+   If hba1c!value_numeric > 7 Then tlNotes.Text &= " - Hba1c is: " & hba1c!value_numeric & " (" & hba1c!reference_range & ")" & " - a value of &gt; 7 indicates suboptimal control<BR>"
    
 End
 
@@ -369,6 +406,7 @@ Public Sub Last_Education()
 End
 
 Public Sub Last_Activity()
+   
    Dim bCompleted As Boolean
    
    If teNotesActivityLast.text = "" Then
@@ -378,15 +416,17 @@ Public Sub Last_Activity()
 End
 
 Public Sub Last_Medication()
+   
    Dim bCompleted As Boolean
    
    If teNotesMedicationLast.text = "" Then
       teNotesMedicationDue.text = "OVERDUE"
-    Endif
+   Endif
    
 End
 
 Public Sub Last_Diet()
+   
    Dim bCompleted As Boolean
    
    If teNotesDietLast.text = "" Then
@@ -396,6 +436,7 @@ Public Sub Last_Diet()
 End
 
 Public Sub Last_Smoking()
+   
    Dim bCompleted As Boolean
    
    If teNotesSmokingLast.text = "" Then
@@ -426,13 +467,14 @@ Public Sub Last_Microalbumin()
          bCompleted = True 
       End If
       If Not IsNull(R!abnormal) Then
-         tlNotes.text &= "- microalbuminuria noted <BR>"
+         tlNotes.text &= "- microalbuminuria noted:" & R!value_numeric & " (" & R!reference_range & ")<BR>"
       Endif
    Else
       teNotesMicroalbuminDue.text = "OVERDUE"
       bCompleted = False   
    End If  
    teNotesMicroalbumin.richtext = Replace(teNotesMicroalbumin.richtext, "placeholder", sString)
+   
 End 
 
 Public Sub Last_Lipids()
@@ -450,6 +492,7 @@ Public Sub Last_Lipids()
    sString = Lipid_Get_Component("LDL = ", const.Loinc_LDL, sSTring)
    teNotesHDL.richtext = Replace(teNotesHDL.richtext, "placeholder", sString)
    teNotesHDL.pos = 1
+   
 End 
 
 Public Sub Lipid_Get_Component(sComponentName As String, sLoinc As String, sString As String) As String 
@@ -494,6 +537,7 @@ Public Function Progress_note_create_HTML(DACC As Collection) As CTemplate
    'Creates a table akin to what is seen on the screen, as a summary
    'for the progress notes
    '-----------------------------------------------------------------
+   
    Dim templ As CTemplate
    
    templ = New CTemplate(modHTML.Diabetes_Annual_Cycle_Of_Care_HTML())
@@ -505,15 +549,15 @@ Public Function Progress_note_create_HTML(DACC As Collection) As CTemplate
    templ.Subst("data_eyes", DACC!eyes_details)
    templ.Subst("last_eyes", DACC!eyes_date)
    templ.Subst("due_eyes", DACC!eyes_date_due)
-
+   
    templ.Subst("data_bp", DACC!bp_details)
    templ.Subst("last_bp", DACC!bp_date)
    templ.Subst("due_bp", DACC!bp_date_due)
-  
+   
    templ.Subst("data_bmi", DACC!bmi_details)
    templ.Subst("last_bmi", DACC!bmi_date)
    templ.Subst("due_bmi", DACC!bmi_date_due)
- 
+   
    templ.Subst("data_feet", DACC!feet_details)
    templ.Subst("last_feet", DACC!feet_date)
    templ.Subst("due_feet", DACC!feet_date_due)
@@ -521,19 +565,19 @@ Public Function Progress_note_create_HTML(DACC As Collection) As CTemplate
    templ.Subst("data_lipids", DACC!lipids_details)
    templ.Subst("last_lipids", DACC!lipids_date)
    templ.Subst("due_lipids", DACC!lipids_date_due) 
-  
+   
    templ.Subst("data_microalbumin", DACC!microalbumin_details)
    templ.Subst("last_microalbumin", DACC!microalbumin_date)
    templ.Subst("due_microalbumin", DACC!microalbumin_date_due)
-  
+   
    templ.Subst("data_education", DACC!education_details)
    templ.Subst("last_education", DACC!education_date)
    templ.Subst("due_education", DACC!education_date_due)
-
+   
    templ.Subst("data_diet", DACC!diet_details)
    templ.Subst("last_diet", DACC!diet_date)
    templ.Subst("due_diet", DACC!diet_date_due)
-
+   
    templ.Subst("data_exercise", DACC!exercise_details)
    templ.Subst("last_exercise", DACC!exercise_date)
    templ.Subst("due_exercise", DACC!exercise_date_due)
@@ -547,6 +591,7 @@ Public Function Progress_note_create_HTML(DACC As Collection) As CTemplate
    templ.Subst("due_medication_review", DACC!medication_review_date_due)
    templ.Subst("next_due", Format(DateAdd(DACC!date_completed, 1, gb.year), "dd/mm/yyyy"))
    Return templ
+   
 End
 
 Public Sub Last_BMI()
@@ -602,8 +647,7 @@ Public Sub Last_BMI()
          StrInsert &= "<B>BMI=</B>" & BMI
          teNotesBMIDue.text = Format(DateAdd(Val(sData[1]), gb.Month, 6), "dd/mm/yyyy")
          strDates &= Format(Now, "dd/mm/yyyy")
-         tlNotes.text &= "- " & modDecisionSupport.BMI_DecSupp(weight, height) & "<BR>"
-         'fixme just pass the BMI
+         tlNotes.text &= "- with a weight of " & weight & " and BMI of " & BMI & modDecisionSupport.BMI_DecSupp(weight, height) & "<BR>"
          
       Else
          teNotesBMIDue.text = "OVERDUE"
@@ -621,6 +665,7 @@ Public Sub Last_BMI()
    End If   
    teNotesBMI.richtext = Replace(teNotesBMI.richtext, "placeholder", strinsert)
    teNotesBMILast.richtext = Replace(teNotesBMILast.richtext, "placeholder", strDates)
+   
 End 
 
 Public Sub Last_BP() 
@@ -660,6 +705,7 @@ Public Sub Last_BP()
       BpNotAtTarget = True 
    End If
    If BpNotAtTarget Then tlNotes.text &= " - recommended target BP level is &lt; 130/80 for diabetics<BR>"
+   
 End 
 
 Public Sub Last_Eye_Review()
@@ -695,34 +741,71 @@ Public Sub Last_Eye_Review()
    Else
       teNotesEyesDue.text = "OVERDUE"
    Endif
+   
 End
-
 
 Private Sub Settings_Load()
    
-  ' Try VSplit_DACC.Layout = Settings["DACC/VSplit_DACC.layout"] 
-  ' Try HSplit_DACCComments.layout = Settings["DACC/HSplit_DACCComments.layout"]
-   
+   Try VSplit_DecSupport_Notes.layout = Settings["DACC/VSplit_DecSupport_Notes.layout"] 
+
 End
 
 Public Sub Settings_Save()
-   
-  ' Settings["DACC/VSplit_DACC.layout"] = VSplit_DACC.Layout
-   'Settings["DACC/HSplit_DACCComments.layout"] = HSplit_DACCComments.layout
+
+   Settings["DACC/VSplit_DecSupport_Notes.layout"] = VSplit_DecSupport_Notes.layout
    
 End
 
 Public Sub EditArea_Buttons_Click()
    
    Select Case Last.tag
-         
-      Case "edit"
-         Vbox_EditArea_Inner.Enabled = True 
+      Case "new"
+      Case "edit"          'only ever usable if an  existing DACC is displayed
+         Edit()
       Case "save"
          Save()
       Case "refresh"
-         New_DACC()
+         Refresh()         'refresh components, don't touch keys
    End Select
+   
+End
+
+Public Sub New_Dacc()
+   
+   EditArea_Clear()  'Clear entry area and refresh as many components as possible
+   Reset_Keys()      
+   Refresh()         
+   
+End
+
+Public Sub Edit()
+   '-----------------------------
+   'Allow editing on the same day
+   '-----------------------------
+   
+   Dim sMsg As String
+   
+   If Not IsNull(date_completed) And Format(date_completed, "dd/mm/yyyy") <> Format(Now, "dd/mm/yyyy") Then
+      sMsg = "This DACC was completed on " & Format(date_completed, "dd/mm/yyyy")
+      sMsg &= " and cannot be edited.\n\nIf the information in this DACC is inaccurate "
+      sMsg &= "you may delete it now."
+      Message.Title = "Diabetes Annual Cycle of Care"
+      If Message.Question(sMsg, "Delete DACC", "Cancel") = 2 Then Return
+      'fixme delete the dACC
+   Else
+      Vbox_EditArea_Inner.Enabled = True     
+   End If
+   
+End
+
+Public Sub Reset_Keys()
+   
+   fk_progressnote = -1
+   fk_dacc = 0
+   fk_consult = 0
+   date_completed = Null
+   date_saved = Null
+   '  bSavePending = False 
    
 End
 
@@ -821,7 +904,6 @@ Public Sub teNotesDACC_gotFocus()
    
 End
 
-
 Public Sub teNotesDACC_Change()
    '--------------------------------------------------------------
    'As the text in the details of the activity column changes,
@@ -867,25 +949,25 @@ End
 Public Sub teNotesDACC_KeyPress()
    
    Select Case Key.Code
-     Case Key.return 
+      Case Key.return 
          Select Case Last.tag
-             Case "hba1c"
-             Case "eyes"
-             Case "bp"
-             Case "bmi"
-             Case "feet"
-             Case "hdl"
-             Case "microalbumin"
-             Case "education"
-             Case "diet"
-             Case "activity"
-             Case "smoking"
-             Case "medication"
-                tbSave.SetFocus()
-          End Select
+            Case "hba1c"
+            Case "eyes"
+            Case "bp"
+            Case "bmi"
+            Case "feet"
+            Case "hdl"
+            Case "microalbumin"
+            Case "education"
+            Case "diet"
+            Case "activity"
+            Case "smoking"
+            Case "medication"
+               tbSave.SetFocus()
+         End Select
    End Select
+   
 End
-
 
 Public Sub Reload()
    '------------------------------------------------------------
@@ -894,22 +976,31 @@ Public Sub Reload()
    'currently only the latest one can
    'the columnview is now not visible
    '-----------------------------------------------------------   
-
+   
    With cvwDACCS
       .columns.count = 2
       .Clear
    End With 
    currentconsult.Refresh("diabetes_annual_cycle_of_care")
    DACCS = currentconsult!diabetes_annual_cycle_of_care
-   If DACCS.count = 0 Then
+   If DACCS.count = 0 Then                            'No DACC's then is overdue!
       lblLastClaimed.text = "Overdue"
       lblNextDue.text = ""
+      New_Dacc()
    Else
       lblLastClaimed.text = ""
-      For Each DACC In DACCS
+      For Each DACC In DACCS                          'sorted DESC so ist always latest
          If lblLastClaimed.text = "" Then 
-            lblLastClaimed.text = "Claimed: " & Format(DACC!date_completed, "dd/mm/yyyy")
-            lblNextDue.text = "Next Due: " & Format(DateAdd(DACC!date_completed, gb.year, 1))
+            '----------------------------------------------------
+            'Appropriate message for completed or incomplete DACC
+            '----------------------------------------------------
+            If Not IsNull(DACC!date_completed) Then 
+               date_last_Claimed = DACC!date_completed
+               lblLastClaimed.text = "Last Claim: " & Format(DACC!date_completed, "dd/mm/yyyy")
+               lblNextDue.text = "Next Due: " & Format(DateAdd(DACC!date_completed, gb.year, 1))
+            Else
+               lblLastClaimed.text = "Unfinished: " & Format(DACC!consult_date, "dd/mm/yyyy")
+            End If    
             Display(DACC)
          End If   
          cvwDACCS.Add(DACC!pk, 0)
@@ -921,63 +1012,67 @@ Public Sub Reload()
 End
 
 Public Sub Display(DACC As Collection)
-   '----------------------
-   'Displays the last DACC
-   '----------------------
-   
-   bExit = True
-   fk_consult = DACC!fk_consult 
-   fk_dacc = DACC!pk
-   date_completed = DACC!date_completed
-   fk_progressnote = DACC!fk_progressnote
-   teNotesHBA1C.text = DACC!hba1c_details
-   teNotesHBA1CLast.text = Format(DACC!hba1c_date, "dd/mm/yyyy")
-   teNotesHBA1CDue.text = Format(DACC!hba1c_date_due, "dd/mm/yyyy")
-   teNotesEyes.text = DACC!eyes_details
-   teNotesEyesLast.text = Format(DACC!eyes_date, "dd/mm/yyyy")
-   teNotesEyesDue.text = Format(DACC!eyes_date_due, "dd/mm/yyyy")    
-   teNotesBP.text = DACC!bp_details
-   teNotesBPLast.text = Format(DACC!bp_date, "dd/mm/yyyy")
-   teNotesBPDue.text = Format(DACC!bp_date_due, "dd/mm/yyyy")
-   teNotesBMI.text = DACC!bmi_details
-   teNotesBMILast.text = Format(DACC!bmi_date, "dd/mm/yyyy")
-   teNotesBMIDue.text = Format(DACC!bmi_date_due, "dd/mm/yyyy")  
-   teNotesFeet.text = DACC!feet_details
-   teNotesFeetLast.text = Format(DACC!feet_date, "dd/mm/yyyy")
-   teNotesFeetDue.text = Format(DACC!feet_date_due, "dd/mm/yyyy")
-   teNotesHDL.text = DACC!lipids_details
-   teNotesHDLLast.text = Format(DACC!lipids_date, "dd/mm/yyyy")  
-   teNotesHDLDue.text = Format(DACC!lipids_date_due, "dd/mm/yyyy")
-   teNotesMicroalbumin.text = DACC!microalbumin_details
-   teNotesMicroalbuminLast.text = Format(DACC!microalbumin_date, "dd/mm/yyyy")
-   teNotesMicroalbuminDue.text = Format(DACC!microalbumin_date_due, "dd/mm/yyyy")
-   teNotesEducation.text = DACC!education_details
-   teNotesEducationLast.text = Format(DACC!education_date, "dd/mm/yyyy")
-   teNotesEducationDue.text = Format(DACC!education_date_due, "dd/mm/yyyy")
-   teNotesDiet.text = DACC!diet_details
-   teNotesDietLast.text = Format(DACC!diet_date, "dd/mm/yyyy")
-   teNotesDietDue.text = Format(DACC!diet_date_due, "dd/mm/yyyy")
-   teNotesActivity.text = DACC!exercise_details
-   teNotesActivityLast.text = Format(DACC!exercise_date, "dd/mm/yyyy")
-   teNotesActivityDue.text = Format(DACC!exercise_date_due, "dd/mm/yyyy")
-   teNotesSmoking.text = DACC!smoking_details
-   teNotesSmokingLast.text = Format(DACC!smoking_date, "dd/mm/yyyy")
-   teNotesSmokingDue.text = Format(DACC!smoking_date_due, "dd/mm/yyyy")
-   teNotesMedication.text = DACC!medication_review_details
-   teNotesMedicationLast.text = Format(DACC!medication_review_date, "dd/mm/yyyy")
-   teNotesMedicationDue.text = Format(DACC!medication_review_date_due, "dd/mm/yyyy")
-   '   lblLastClaimed.text = "Completed:" & Format(DACC!date_completed, "dd/mm/yyyy")
-   bExit = False  
-   Vbox_EditArea_Inner.Enabled = False 
-   
-End
-
-Public Sub cvwDACCS_Select()
+   '------------------------------------------------------------------
+   'Displays the last DACC saved which may/may not have been completed
+   'Hence all the Try's in this subroutine.
+   '------------------------------------------------------------------
    
    EditArea_Clear()
-   cvwDACCS.MoveCurrent()
-   Display()
-   
+   bExit = True
+   fk_consult = DACC!fk_consult                    'consult DACC last worked on or finished
+   fk_dacc = DACC!pk                               'key to  chronic_disease_management.diabetes_annual_cycle_of_care
+   date_completed = DACC!date_completed            'can be null if an interim unclaimed DACC
+   date_saved = DACC!consult_date                 'will never be null
+   Try fk_progressnote = DACC!fk_progressnote     'may be null if date_completed is null
+   teNotesHBA1C.text = DACC!hba1c_details
+   Try teNotesHBA1CLast.text = Format(DACC!hba1c_date, "dd/mm/yyyy")
+   Try teNotesHBA1CDue.text = Format(DACC!hba1c_date_due, "dd/mm/yyyy")
+   teNotesEyes.text = DACC!eyes_details
+   Try teNotesEyesLast.text = Format(DACC!eyes_date, "dd/mm/yyyy")
+   Try teNotesEyesDue.text = Format(DACC!eyes_date_due, "dd/mm/yyyy")    
+   teNotesBP.text = DACC!bp_details
+   Try teNotesBPLast.text = Format(DACC!bp_date, "dd/mm/yyyy")
+   Try teNotesBPDue.text = Format(DACC!bp_date_due, "dd/mm/yyyy")
+   teNotesBMI.text = DACC!bmi_details
+   Try teNotesBMILast.text = Format(DACC!bmi_date, "dd/mm/yyyy")
+   Try teNotesBMIDue.text = Format(DACC!bmi_date_due, "dd/mm/yyyy")  
+   teNotesFeet.text = DACC!feet_details
+   Try teNotesFeetLast.text = Format(DACC!feet_date, "dd/mm/yyyy")
+   Try teNotesFeetDue.text = Format(DACC!feet_date_due, "dd/mm/yyyy")
+   teNotesHDL.text = DACC!lipids_details
+   Try teNotesHDLLast.text = Format(DACC!lipids_date, "dd/mm/yyyy")  
+   Try teNotesHDLDue.text = Format(DACC!lipids_date_due, "dd/mm/yyyy")
+   teNotesMicroalbumin.text = DACC!microalbumin_details
+   Try teNotesMicroalbuminLast.text = Format(DACC!microalbumin_date, "dd/mm/yyyy")
+   Try teNotesMicroalbuminDue.text = Format(DACC!microalbumin_date_due, "dd/mm/yyyy")
+   teNotesEducation.text = DACC!education_details
+   Try teNotesEducationLast.text = Format(DACC!education_date, "dd/mm/yyyy")
+   Try teNotesEducationDue.text = Format(DACC!education_date_due, "dd/mm/yyyy")
+   teNotesDiet.text = DACC!diet_details
+   Try teNotesDietLast.text = Format(DACC!diet_date, "dd/mm/yyyy")
+   Try teNotesDietDue.text = Format(DACC!diet_date_due, "dd/mm/yyyy")
+   teNotesActivity.text = DACC!exercise_details
+   Try teNotesActivityLast.text = Format(DACC!exercise_date, "dd/mm/yyyy")
+   Try teNotesActivityDue.text = Format(DACC!exercise_date_due, "dd/mm/yyyy")
+   teNotesSmoking.text = DACC!smoking_details
+   Try teNotesSmokingLast.text = Format(DACC!smoking_date, "dd/mm/yyyy")
+   Try teNotesSmokingDue.text = Format(DACC!smoking_date_due, "dd/mm/yyyy")
+   teNotesMedication.text = DACC!medication_review_details
+   Try teNotesMedicationLast.text = Format(DACC!medication_review_date, "dd/mm/yyyy")
+   Try teNotesMedicationDue.text = Format(DACC!medication_review_date_due, "dd/mm/yyyy")
+   bExit = False  
+   Vbox_EditArea_Inner.Enabled = False 
+   '----------------------------------------------------
+   're-display any previous progress notes for this DACC
+   '----------------------------------------------------
+   If Not IsNull(DACC!notes) Then 
+      With FProgressNotes
+         .bExit = True  'stop the datachanged event    
+         .teNotes.RichText = DACC!notes
+         .bExit = False 
+      End With    
+   End If      
+
 End
 
 Public Sub teDue_Change()

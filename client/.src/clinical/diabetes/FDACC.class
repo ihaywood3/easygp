@@ -49,7 +49,9 @@ Private date_saved As Date                      'date the DACC was saved may <> 
 Private fk_consult As Integer 
 Private pk_view As Integer
 Private fk_dacc As Integer    
-Private fk_progressnote As Integer     'if not 0 = key to clin_consult.progressnotes
+Private fk_progressnote_components As Integer     'if not 0 = key to clin_consult.progressnotes = the components table as html
+Private fk_progressnote_comments As Integer       'if not 0 = key to clin_consult.progressnotes = any notes on the DACC
+
 Private bCompleted As Boolean
 Private NextTextBoxDetails As TextEdit
 Private NextTextBoxLast As TextEdit 
@@ -61,8 +63,12 @@ Private FProgressNotes As FProgressNoteEditor
 Public Sub Init(cons As CConsult)
    
    currentconsult = cons
-   With FProgressNotes = New FProgressNoteEditor(Vbox_Notes)
+   Message.Info("This won't run with your current CDM schema, sorry, I've not updated the SVN")
+    Me.close
+    With FProgressNotes = New FProgressNoteEditor(Vbox_Notes)
       .Init(currentconsult)
+      .lblTodaysNotes.text = "Notes on current DACC"
+      
    End With 
    
    Settings_Load()
@@ -264,15 +270,15 @@ Public Sub Save()
    '   fk_progressnote
    '   deleted
    ' ----------------------------------------------------------------------------------------
-    
-   Dim sProgressNotes As String            '=the tabulated DACC plus any clinical notes for this section
-   Message.Info("Sorry can't save, I've screwed up some code tonight, but off to bed now")
-   Return
    
-   ' If Vbox_EditArea.Padding = 0 Or Then Return 
-   If Vbox_EditArea.Padding = 0 Or ((Trim(FProgressNotes.teNotes.text) = "" And FProgressNotes.Get_copy_of_editor_text() = "") Or Not FProgressNotes.get_data_changed()) Then
-      Return 
-   Endif
+   Dim sProgressNotes_Components As String            '=the tabulated DACC plus any clinical notes for this section
+    
+     
+   If Vbox_EditArea.Padding = 0 Then         'no changes to main DACC
+      If ((Trim(FProgressNotes.teNotes.text) = "" And FProgressNotes.Get_copy_of_editor_text() = "") Or Not FProgressNotes.get_data_changed()) Then 'and no progress notes
+         Return                'don't save of no progress notes and no DACC data
+      End If                  'there are progress notes, so save even if no DACC data
+   Endif                      
    
    If Not Valid_Data() Then Return
    DACC = New Collection
@@ -280,13 +286,14 @@ Public Sub Save()
       Case 0                                           'DACC is new
          If bSavePending = False Then
             DACC!date_completed = Val(Format(Now(), "dd/mm/yyyy"))  'new and completed add completion date
-            
          End If   
-      Case Else                                   'DACC has already been saved
+      Case Else                                  'DACC has already been saved, may not be completed
          If Not IsNull(date_completed) Then      'Saving an edited completed DACC (allowed on the same day only)
             DACC!date_completed = date_completed 'keep original completed date
          Else
-            DACC!date_completed = Val(Format(Now(), "dd/mm/yyyy"))         'saving a partially completed DACC today
+            If bSavePending = False Then  
+               DACC!date_completed = Val(Format(Now(), "dd/mm/yyyy"))         'saving a partially completed DACC today
+            End If
          End If
    End Select
    
@@ -336,15 +343,17 @@ Public Sub Save()
    '----------------------------------------------------------------------
    'Only save the tabulated DACC into progress notes where it is completed
    'Table will appear before comments in the progress notes.
+   'a completed DACC can only be edited on the same day it was created
    '----------------------------------------------------------------------
    If Not IsNull(DACC!date_completed) Then 
-      sProgressNotes = Progress_note_create_HTML(DACC).GetData()
+      sProgressNotes_Components = Progress_note_create_HTML(DACC).GetData()
    Else
-      sProgressNotes = "<P>Diabetic Annual Cycle of Care partially completed</P>"
+      sProgressNotes_Components = "<P>Diabetic Annual Cycle of Care partially completed</P>"
    End If  
-   DACC!fk_progressnote_components = modConsultDBI.ProgressNote_Save(currentconsult, Progress_note_create_HTML(DACC).GetData(), const.cSection_GeneralNotes, fk_progressnote, "diabetes", 0, False)
+   DACC!fk_progressnote_components = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes_Components, const.cSection_GeneralNotes, fk_progressnote_components, "diabetes", 0, False)
+   'Save any associated progress notes to the
    If Not ((Trim(FProgressNotes.teNotes.text) = "" And FProgressNotes.Get_copy_of_editor_text() = "") Or Not FProgressNotes.get_data_changed()) Then
-      DACC!fk_progressnote_comments = modConsultDBI.ProgressNote_Save(currentconsult, FProgressNotes.teNotes.RichText, const.cSection_GeneralNotes, fk_progressnote, "diabetes", 0, False)
+      DACC!fk_progressnote_comments = modConsultDBI.ProgressNote_Save(currentconsult, FProgressNotes.teNotes.RichText, const.cSection_GeneralNotes, fk_progressnote_comments, "diabetes", 0, False)
    End If
    modDACCDBI.Save_DACC(DACCS, fk_dacc, DACC)
    modDBConnect.CommitTrans()
@@ -747,11 +756,11 @@ End
 Private Sub Settings_Load()
    
    Try VSplit_DecSupport_Notes.layout = Settings["DACC/VSplit_DecSupport_Notes.layout"] 
-
+   
 End
 
 Public Sub Settings_Save()
-
+   
    Settings["DACC/VSplit_DecSupport_Notes.layout"] = VSplit_DecSupport_Notes.layout
    
 End
@@ -779,12 +788,11 @@ Public Sub New_Dacc()
 End
 
 Public Sub Edit()
-   '-----------------------------
-   'Allow editing on the same day
-   '-----------------------------
    
    Dim sMsg As String
-   
+   '---------------------------------------------------------------------------------
+   'Allow editing on the same day for a completed DACC, any time for uncompleted DACC
+   '---------------------------------------------------------------------------------
    If Not IsNull(date_completed) And Format(date_completed, "dd/mm/yyyy") <> Format(Now, "dd/mm/yyyy") Then
       sMsg = "This DACC was completed on " & Format(date_completed, "dd/mm/yyyy")
       sMsg &= " and cannot be edited.\n\nIf the information in this DACC is inaccurate "
@@ -793,6 +801,15 @@ Public Sub Edit()
       If Message.Question(sMsg, "Delete DACC", "Cancel") = 2 Then Return
       'fixme delete the dACC
    Else
+      '----------------------------------------------------------------------------------- 
+      'This is a partially completed DACC, if not edited on the same day it was originally 
+      'saved, need a new progress note key, however the totality of comments on the DACC
+      'will be carried forward as part of the new progress note as it is a logical whole
+      '------------------------------------------------------------------------------------
+      If Format(date_saved, "dd/mm/yyyy") <> Format(Now, "dd/mm/yyyy") Then
+         fk_progressnote_components = 0
+         fk_progressnote_comments = 0 
+      Endif
       Vbox_EditArea_Inner.Enabled = True     
    End If
    
@@ -800,12 +817,12 @@ End
 
 Public Sub Reset_Keys()
    
-   fk_progressnote = -1
+   fk_progressnote_comments = -1  'for historical (no real reason) i chose -1 = no notes, most flags now 0 but never changed this as is across many modules
+   fk_progressnote_components = -1
    fk_dacc = 0
    fk_consult = 0
    date_completed = Null
    date_saved = Null
-   '  bSavePending = False 
    
 End
 
@@ -1017,13 +1034,18 @@ Public Sub Display(DACC As Collection)
    'Hence all the Try's in this subroutine.
    '------------------------------------------------------------------
    
+   Dim lbl As TextLabel      'will contain a single unique previous days DACC notes where dacc unfinished
+   Dim sep As Separator       'will separate each day
+   
+  
    EditArea_Clear()
    bExit = True
-   fk_consult = DACC!fk_consult                    'consult DACC last worked on or finished
-   fk_dacc = DACC!pk                               'key to  chronic_disease_management.diabetes_annual_cycle_of_care
-   date_completed = DACC!date_completed            'can be null if an interim unclaimed DACC
-   date_saved = DACC!consult_date                 'will never be null
-   Try fk_progressnote = DACC!fk_progressnote     'may be null if date_completed is null
+   fk_consult = DACC!fk_consult                             'consult DACC last worked on or finished
+   fk_dacc = DACC!pk                                        'key to  chronic_disease_management.diabetes_annual_cycle_of_care
+   date_completed = DACC!date_completed                     'can be null if an interim unclaimed DACC
+   date_saved = DACC!consult_date                           'will never be null
+   fk_progressnote_components = DACC!fk_progressnote_components    'never null, but may not be the table of DACC but comment partially completed
+   Try fk_progressnote_comments = DACC!fk_progressnote_comments  'may be null if no associated progress notes for the DACC added.
    teNotesHBA1C.text = DACC!hba1c_details
    Try teNotesHBA1CLast.text = Format(DACC!hba1c_date, "dd/mm/yyyy")
    Try teNotesHBA1CDue.text = Format(DACC!hba1c_date_due, "dd/mm/yyyy")
@@ -1066,13 +1088,30 @@ Public Sub Display(DACC As Collection)
    're-display any previous progress notes for this DACC
    '----------------------------------------------------
    If Not IsNull(DACC!notes) Then 
+     ' With FProgressNotes
+      '   .bExit = True  'stop the datachanged event    
+      '   .teNotes.RichText = DACC!notes
+      '   .bExit = False 
+      'End With 
       With FProgressNotes
-         .bExit = True  'stop the datachanged event    
-         .teNotes.RichText = DACC!notes
-         .bExit = False 
-      End With    
+         .lcPreviousNotes.Clear()
+         .lcPreviousNotes.Visible = True   
+      End With
+      With lbl = New TextLabel(FProgressNotes.lcPreviousNotes) As "previous notes"  'add it, and to the list container
+         .text = DACC!notes           'This is what will be sent to the printer (minus html tags)
+        ' .tag =
+         .Foreground = Color.DarkGray
+         .AutoResize = True
+         .font = Font["Arial,9"]
+         
+      End With
+      With sep = New Separator(lcPreviousNotes)
+         .Height = 3
+         .Foreground = Color.Black
+      End With
+      
    End If      
-
+   
 End
 
 Public Sub teDue_Change()

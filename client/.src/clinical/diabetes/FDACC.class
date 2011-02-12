@@ -15,62 +15,60 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'-----------------------------------------------------------------------------------------
+'------------------------------------------------------------------------------------------------
 ' PURPOSE         A form for the Australian General Practice Diabetes Annual Cycle of Care
 '                 Also provides a 'snapshot' of up-to-date-ness of diabetic parameters.
 ' HOW THIS WORKS  EasyGP attempts to pull as much information from the backend
 '                    - e.g letters from category like ophth* and occupations like the same
+'                    - occupation or categories like opt%(metrist(s))
 '                    - pulls in latest blood tests and measurements if they exist
 '                    - this data cannot be entered manually on this screen
+'                    - if newer BP, weight etc needed must be entered on progress note page
 '                    - user prompted if validation fails on save.
 '                    
-' TODO            Printout .text file of the form.
-'                 Microalbumin, currently only works for the ratio
+' TODO            Microalbumin, currently only works for the ratio
 '                 Not the timed overnight Or 24 / 24 collections
-'                 I've hidden the little bit of decision support I gather along the way
-'                 but its still done.?where to show
 '                 - implement 'don't bug me with this again'
+'                 - backend and include skin, pulses and sensation check by checking podiatrists
+'                 - currently none of the saves linked to a diabetic PH item, are just in 'general'
+'                 - implement the 'don't bug me with this again in Valid_data
+'                 - Edit() "delete the DACC'
+'                 - Implement a combo box up top in place of label, with dates previous DACCs
+'                 - when recall is saved, this is not being stated so in the progress notes.
 ' BUGS            Please report to rterry@pacific.net.au
-'                 There will be many as pre-alpha and never used
-'-----------------------------------------------------------------------------------------
+'-----------------------------------------------------------------------------------------------
 
-Private bExit As Boolean
+Private bExit As Boolean                        'Stop re-entry into subroutines
 Private bSavePending As Boolean                 'if True will be saved even if not complete eg pending results coming back
-Private Activity As String[]
 Private currentconsult As CConsult
-Private HBA1c As Result 
-Private EyeReview As Result
-Private fk_patient As Integer
-Private LastBP As String 'of BP|date
-Private LastRUAlbCreatRatio As Result
-Private DACCS As Collection
+Private fk_pasthistory As Integer
+Private fk_consult As Integer 
+Private fk_patient As Integer                   'from currentconsult to save typing ( see Init)
+Private pk_view As String                       'Key to DACCS = current DACC being accessed
+Private DACCS As Collection                     'All previous Diabetic Annual Cycle of Care's
 Private DACC As Collection
 Private date_last_Claimed As Date               'date of last DACC medicare billing
 Private date_completed As Date                  'date the DACC was completed
 Private date_saved As Date                      'date the DACC was saved may <> date_completed which can be  null 
-Private fk_consult As Integer 
-Private pk_view As String
 Private fk_diabetes_annual_cycle_of_care As Integer    
 Private fk_progressnote_components As Integer     'if not 0 = key to clin_consult.progressnotes = the components table as html
 Private fk_progressnote_comments As Integer       'if not 0 = key to clin_consult.progressnotes = any notes on the DACC
-Private comments As Collection
-Private comment As Collection 
-Private bCompleted As Boolean
 Private NextTextBoxDetails As TextEdit
 Private NextTextBoxLast As TextEdit 
 Private NextTextboxDue As TextEdit
-Private height As Variant = 0
-Private weight As Variant = 0
 Private FProgressNotes As FProgressNoteEditor
-Private fk_pasthistory As Integer
 
 Public Sub Init(cons As CConsult)
-   
+   '------------------------------------------------------------------------
+   'Housekeeping FIXME
+   'currently I've change FProgresNoteEditor just for DACC, must be fixed
+   'I added a listcontainer in there to show previous notes as list entries
+   '------------------------------------------------------------------------   
+
    currentconsult = cons
    With FProgressNotes = New FProgressNoteEditor(Vbox_Notes)
       .Init(currentconsult)
       .lblTodaysNotes.text = "Notes on current DACC"
-      
    End With 
    Settings_Load()
    fk_patient = currentconsult!patient!fk_patient
@@ -82,6 +80,9 @@ End
 Public Sub Recall_Log()
    '----------------------------------------------------
    'Auto-logs a recall for the DACC if DACC is completed
+   'If a recall already exists uses that preferentially
+   'and adjusts the date due
+   'FIXME: currently not linked to a diabetic problem
    '----------------------------------------------------
    
    Dim sql As String    
@@ -98,7 +99,7 @@ Public Sub Recall_Log()
    '-----------------------------------------------------------------------------------
    'Firstly, is a recall for DACC already lodged?, if so get its key and the reason key
    '-----------------------------------------------------------------------------------
-   sql = "Select * from clin_recalls.vwrecalls where fk_patient = " & currentconsult!patient!fk_patient & " AND reason ILIKE '%Diabetes Annual Cycle of Care%' AND deleted = False LIMIT 1"
+   sql = "Select * from clin_recalls.vwrecalls where fk_patient = " & fk_patient & " AND reason ILIKE '%Diabetes Annual Cycle of Care%' AND deleted = False LIMIT 1"
    recall = modDBConnect.exec_query_first(sql)  'returns null if no rows
    If IsNull(recall) Then 
       '------------------------------------------------------------------------------------ 
@@ -141,24 +142,6 @@ Public Sub Recall_Log()
       modRecallsMenu.Process(recall, Str$(const.cAuditAction_CompletedRepeatSameInterval), currentconsult)  'fixme shouldn't be general notes
       
    End If
-   '-------------------------------------------------------
-   'Get the recall reason = 'Diabetes Annual Cycle of Care'
-   'May not yet be in the recalls reasons table
-   '-------------------------------------------------------
-   
-   ' txtAdditionalNotes.Text
-   'Temporarily put in current user as person to undertake recall but this
-   'may not be the case and code will be inserted to fix this
-   'FIXME RICHARDs
-   ' If IsNull(recall!fk_progressnote) Then
-   '    fk_progressnote = -1
-   ' Else
-   '    fk_progressnote = recall!fk_progressnote
-   ' End If
-   '--------------------------------------------------------------------------------------
-   'If progress notes exist, then they will be edited if this save is occurring during the
-   'same consultation it was created
-   '--------------------------------------------------------------------------------------
    
 End
 
@@ -275,11 +258,9 @@ Public Function Valid_Data() As Boolean
       Case 2
          Return False 
       Case 3 
-         Print "don't show any more" 
+         modUtil.NotImplemented("Removing this annoying dialog box") '  fixme
+         Return False
    End Select
-   '    bSavePending = True   
-   '   Return True 
-   ' Endif
    Return   
    
 End
@@ -294,10 +275,8 @@ Public Sub EditArea_NotifyData_Change(flag As Boolean)
       Vbox_EditArea.Padding = 1
       tbSave.Foreground = Color.red
    Else
-      
       Vbox_EditArea.Padding = 0
       tbSave.Foreground = Color.black
-      
    Endif
    
 End
@@ -341,7 +320,7 @@ Public Sub Save()
    ' Over-rides the save in the embedded progress notes
    ' Albeit currently without flawless validation. Bugga!
    '
-   '  pk serial NOT NULL,
+   '   pk serial NOT NULL,
    '   fk_consult integer NOT NULL,
    '   date_completed date,
    '   hba1c_date date, -- date of last hba1c could be null if not yet completed but DACC saved...
@@ -358,7 +337,7 @@ Public Sub Save()
    '   bmi_details text,
    '   feet_date date,
    '   feet_date_due date,
-   '   feet_text text,
+   '   feet_details text,
    '   lipids_date date,
    '   lipids_date_due date,
    '   lipids_details text,
@@ -377,11 +356,11 @@ Public Sub Save()
    '   smoking_date date,
    '   smoking_date_due date,
    '   smoking_details text,
-   '   medication_review date,
+   '   medication_review_date date,
    '   medication_review_date_due date,
    '   medication_review_details text,
-   '   fk_progressnote
-   '   deleted
+   '   deleted boolean DEFAULT false,
+   '   fk_progressnote_components integer
    ' ----------------------------------------------------------------------------------------
    
    Dim sProgressNotes_Components As String            '=the tabulated DACC plus any clinical notes for this section
@@ -427,13 +406,13 @@ Public Sub Save()
    End If     
    DACC!bmi_date_due = Val(teNotesBMIDue.text)
    DACC!bmi_details = Replace(teNotesBMI.Text, "\n\n", "\n")
-   DACC!feet_date = Val(teNotesFeetLast.text) 'missing
-   DACC!feet_date_due = Val(teNotesFeetDue.text) 'missing
+   DACC!feet_date = Val(teNotesFeetLast.text)
+   DACC!feet_date_due = Val(teNotesFeetDue.text)
    DACC!feet_details = teNotesFeet.text
    DACC!lipids_date = Val(teNotesHDLLast.text)
    DACC!lipids_date_due = Val(teNotesHDLDue.text)
    DACC!lipids_details = teNotesHDL.text
-   DACC!microalbumin_date = Val(teNotesMicroalbuminLast.text) 'missing
+   DACC!microalbumin_date = Val(teNotesMicroalbuminLast.text) 
    DACC!microalbumin_date_due = Val(teNotesMicroalbuminDue.text)
    DACC!microalbumin_details = teNotesMicroalbumin.Text
    DACC!education_date = Val(teNotesEducationLast.text)
@@ -466,7 +445,7 @@ Public Sub Save()
       sProgressNotes_Components = "<P>Diabetic Annual Cycle of Care partially completed</P>"
    End If  
    DACC!fk_progressnote_components = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes_Components, const.cSection_GeneralNotes, fk_progressnote_components, "diabetes", 0, True) 'true=parse the html see the routine
-   'Save any associated progress notes to the
+   'Save any associated progress notes to the backend - currently only linked to general notes.
    If Not ((Trim(FProgressNotes.teNotes.text) = "" And FProgressNotes.Get_copy_of_editor_text() = "") Or Not FProgressNotes.get_data_changed()) Then
       fk_progressnote_comments = modConsultDBI.ProgressNote_Save(currentconsult, FProgressNotes.teNotes.RichText, const.cSection_GeneralNotes, fk_progressnote_comments, "diabetes", 0, True)
    End If
@@ -486,6 +465,7 @@ Public Sub Last_Hbaic()
    
    Dim bCompleted As Boolean
    Dim sString As String 
+   Dim HBA1c As Result 
    
    teNotesHBA1c.RichText = "placeholder"
    hba1c = modMeasurementsDBI.Get_Loinc_Value(fk_patient, const.loinc_hba1c, 1, "DESC") 'Last hba1c by date
@@ -508,9 +488,6 @@ Public Sub Last_Hbaic()
 End
 
 Public Sub Last_Foot_Check()
-   'TODO implement backend and include skin, pulses and sensation check
-   
-   Dim bCompleted As Boolean
    
    If teNotesFeetLast.text = "" Then
       teNotesFeetDue.text = "OVERDUE"
@@ -520,8 +497,6 @@ End
 
 Public Sub Last_Education()
    
-   Dim bCompleted As Boolean
-   
    If teNotesEducationLast.text = "" Then
       teNotesEducationDue.text = "OVERDUE"
    Endif
@@ -529,8 +504,6 @@ Public Sub Last_Education()
 End
 
 Public Sub Last_Activity()
-   
-   Dim bCompleted As Boolean
    
    If teNotesActivityLast.text = "" Then
       teNotesActivityDue.text = "OVERDUE"
@@ -540,8 +513,6 @@ End
 
 Public Sub Last_Medication()
    
-   Dim bCompleted As Boolean
-   
    If teNotesMedicationLast.text = "" Then
       teNotesMedicationDue.text = "OVERDUE"
    Endif
@@ -550,8 +521,6 @@ End
 
 Public Sub Last_Diet()
    
-   Dim bCompleted As Boolean
-   
    If teNotesDietLast.text = "" Then
       teNotesDietDue.text = "OVERDUE"
    Endif
@@ -559,8 +528,6 @@ Public Sub Last_Diet()
 End
 
 Public Sub Last_Smoking()
-   
-   Dim bCompleted As Boolean
    
    If teNotesSmokingLast.text = "" Then
       teNotesSmokingDue.text = "OVERDUE"
@@ -604,8 +571,7 @@ Public Sub Last_Lipids()
    '------------------------------------------------
    'Attempt to get TC, HDL, LDL and Triglycerides
    '------------------------------------------------
-   
-   Dim bCompleted As Boolean
+
    Dim sString As String 
    
    teNotesHDL.richtext = "placeholder"      
@@ -626,6 +592,7 @@ Public Sub Lipid_Get_Component(sComponentName As String, sLoinc As String, sStri
    
    Dim R As Result
    Dim RefRange As String
+   Dim bCompleted As Boolean
    
    R = modMeasurementsDBI.Get_Loinc_Value(fk_patient, sLoinc, 1, "DESC")
    If R.count Then  
@@ -660,7 +627,7 @@ Public Function Progress_note_create_HTML(DACC As Collection) As CTemplate
    'Creates a table akin to what is seen on the screen, as a summary
    'for the progress notes
    '-----------------------------------------------------------------
-   
+
    Dim templ As CTemplate
    
    templ = New CTemplate(modHTML.Diabetes_Annual_Cycle_Of_Care_HTML())
@@ -746,8 +713,8 @@ Public Sub Last_BMI()
       strHeightWeight = "H=" & sData[0]
       teNotesHeight.Foreground = Color.black
    Else
-     teNotesHeight.text = "Height?"
-     strHeightWeight = "Height?"
+      teNotesHeight.text = "Height?"
+      strHeightWeight = "Height?"
    Endif
    '----------------------------------------------------------------------------------------
    'Ditto for weight, but if weight taken > 6 months ago, prompt that measurement is overdue
@@ -761,15 +728,15 @@ Public Sub Last_BMI()
          teNotesWeight.Foreground = Color.Black
          strHeightWeight &= " W=" & sData[0]
       Else
-          teNotesWeight.Text = "Weight?"
-          strHeightWeight &= " W=?"
+         teNotesWeight.Text = "Weight?"
+         strHeightWeight &= " W=?"
       End If    
       teNotesWeightLast.text = sData[1]                    'show date last weight
       teNotesWeightDue.text = Format(DateAdd(Val(sData[1]), gb.Month, 6), "dd/mm/yyyy")
       
    Else
-       teNotesWeight.text = "Weight?"
-       strHeightWeight &= " W=?"
+      teNotesWeight.text = "Weight?"
+      strHeightWeight &= " W=?"
    End If   
    '------------------------------------------------------------
    'if have enough data, calculate BMI, if not prompt as overdue
@@ -815,7 +782,6 @@ Public Sub Last_BP()
    Dim BpNotAtTarget As Boolean
    
    teNotesBP.RichText = "placeholder"
-   lastbp = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_BP)
    bits = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_BP), "|")
    If bits.count Then
       sString = "<B>BP</B>=" & bits[0]
@@ -854,6 +820,7 @@ Public Sub Last_Eye_Review()
    
    Dim bCompleted As Boolean
    Dim strinsert As String
+   Dim EyeReview As Result
    
    EyeReview = modDACCDBI.Last_Eye_Review(fk_patient, 1, "DESC")
    If EyeReview.count Then 
@@ -935,7 +902,6 @@ Public Sub Edit()
       If Format(date_saved, "dd/mm/yyyy") <> Format(Now, "dd/mm/yyyy") Then
          fk_progressnote_components = -1
          fk_progressnote_comments = -1 
-         comments = New Collection 
       Endif
       Vbox_EditArea_Inner.Enabled = True     
       VSplit_DecSupport_Notes.Enabled = True 
@@ -952,7 +918,6 @@ Public Sub Reset_Keys()
    fk_consult = 0
    date_completed = Null
    date_saved = Null
-   comments = New Collection 
    
 End
 
@@ -1072,7 +1037,6 @@ Public Sub teNotesDACC_Change()
       NextTextboxDue.text = "OVERDUE"
    Endif
    If Last.pos > 0 And InStr(Last.text, "\n\n") Then
-      'FIXME - GET IAN DO DO REGEX   TO REMOVE A <P> </p> COMBINATION HERE 
       Select Case Last.tag
          Case "bp", "bmi", "hdl", "microalbumin"
             
@@ -1095,24 +1059,7 @@ End
 
 Public Sub teNotesDACC_KeyPress()
    
-   Select Case Key.Code
-      Case Key.return 
-         Select Case Last.tag
-            Case "hba1c"
-            Case "eyes"
-            Case "bp"
-            Case "bmi"
-            Case "feet"
-            Case "hdl"
-            Case "microalbumin"
-            Case "education"
-            Case "diet"
-            Case "activity"
-            Case "smoking"
-            Case "medication"
-               tbSave.SetFocus()
-         End Select
-   End Select
+    If Key.code = Key.return And Last.tag = "medication" Then tbSave.SetFocus()
    
 End
 
@@ -1232,7 +1179,6 @@ Public Sub Display(DACC As Collection)
    'only allow editing of a progress note written today
    '----------------------------------------------------
    With FProgressNotes
-      
       .lcPreviousNotes.Clear()
       .lcPreviousNotes.Background = Color.RGB(248, 248, 248)
       .lcPreviousNotes.Enabled = False 
@@ -1269,8 +1215,7 @@ Public Sub Display(DACC As Collection)
             End If            
          Endif
       Endif
-      
-   Next
+    Next
    
 End
 
@@ -1294,13 +1239,17 @@ Public Sub EditArea_Buttons_KeyPress()
 End
 
 Public Sub DACC_Print(DACC As Collection)
-   
+   '-------------------------------
+   'Prints out the DACC using LaTex
+   '-------------------------------   
    modPrinting.Print_latex(DACC_LaTex_Construct(DACC).GetData(), const.Paper_Plain, 1) 
    
 End
 
 Public Sub DACC_LaTex_Construct(DACC As Collection) As CTemplate
-   
+   '-----------------------------------------------------
+   'Makes appropriate substitutions in the LaTex template
+   '-----------------------------------------------------   
    Dim sName As String
    Dim sAddress As String
    Dim sString As String

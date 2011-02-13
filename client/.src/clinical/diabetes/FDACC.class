@@ -34,6 +34,16 @@
 '                 - implement the 'don't bug me with this again in Valid_data
 '                 - Edit() "delete the DACC'
 '                 - Implement a combo box up top in place of label, with dates previous DACCs
+' > Aspirin is indicated for men >50  and women >60 with more than one other
+' > risk factors from Dyslipidaemia or Hypertension. Patients who already
+' > have evidence of small vessel disease (nephropathy, retinopathy) or
+' > known CV events (coronary or cerebral) should be aspirin anyway. There
+' > should be a data field to check for aspirin or other antiplatelet or
+' > warfarin.
+' 
+' > Would be easier to pick up the abnormals if we can code red colour for
+' > overdue tests and abnormal results (not on target)
+
 '                 - when recall is saved, this is not being stated so in the progress notes.
 ' BUGS            Please report to rterry@pacific.net.au
 '-----------------------------------------------------------------------------------------------
@@ -57,6 +67,8 @@ Private NextTextBoxDetails As TextEdit
 Private NextTextBoxLast As TextEdit 
 Private NextTextboxDue As TextEdit
 Private FProgressNotes As FProgressNoteEditor
+Private sDecisionSupportComments As String     'created on fly from analysing patients results
+Public Form_Graph As FGraph
 
 Public Sub Init(cons As CConsult)
    '------------------------------------------------------------------------
@@ -64,7 +76,7 @@ Public Sub Init(cons As CConsult)
    'currently I've change FProgresNoteEditor just for DACC, must be fixed
    'I added a listcontainer in there to show previous notes as list entries
    '------------------------------------------------------------------------   
-
+   
    currentconsult = cons
    With FProgressNotes = New FProgressNoteEditor(Vbox_Notes)
       .Init(currentconsult)
@@ -293,14 +305,18 @@ Public Sub Refresh()
    '-------------------------------------------------------
    'User to refresh the components, get as much as possible
    '-------------------------------------------------------
-   
-   tlNotes.text = ""
+   Inc Application.Busy
+   sDecisionSupportComments = ""
    bExit = True 
    Try Last_Hbaic()
    Try Last_BMI()
    Try Last_Eye_Review()
    Try Last_BP()
    Try Last_Microalbumin()
+   sDecisionSupportComments &= "<P><B>Aspirin</B></P>Aspirin is indicated for men >50  and women >60 with more than one other "
+     "risk factor - for example Dyslipidaemia or Hypertension. Patients who already "
+     "have evidence of small vessel disease (nephropathy, retinopathy) or "
+     "known CV events (coronary or cerebral) should be given aspirin providing there are no known contraindications.<P> "
    Last_Diet()
    Last_Smoking()
    Last_Education()
@@ -311,6 +327,16 @@ Public Sub Refresh()
    bExit = False     
    Vbox_EditArea_Inner.Enabled = True  
    tbEdit.enabled = False
+   Decision_Support_Show()
+   Dec Application.Busy
+End
+
+Public Sub Decision_Support_Show()
+
+   If sDecisionSupportComments <> "" Then
+      FClinical.DecisionSupport_SetHTML(sDecisionSupportComments)
+      FClinical.DecisionSupport_Show("Diabetes - Decision Support", True)
+   Endif
    
 End
 
@@ -483,7 +509,17 @@ Public Sub Last_Hbaic()
       bCompleted = False   
    End If  
    teNotesHBA1c.richtext = Replace(teNotesHBA1c.richtext, "placeholder", sString)
-   If hba1c!value_numeric > 7 Then tlNotes.Text &= " - Hba1c is: " & hba1c!value_numeric & " (" & hba1c!reference_range & ")" & " - a value of &gt; 7 indicates suboptimal control<BR>"
+   If hba1c!value_numeric > 7 Then
+      sDecisionSupportComments &= "<P><B>Haemoglobin A1c</B></P>"
+      Select Case currentconsult!patient!sex
+         Case "M"
+            sDecisionSupportComments &= "<P>His "
+         Case "F"
+            sDecisionSupportComments &= "<P>Her "
+      End Select
+      sDecisionSupportComments &= "hba1c is: " & hba1c!value_numeric & "(" & hba1c!reference_range & ").<BR> "
+      sDecisionSupportComments &= "A value of &gt; 7 indicates suboptimal control<P>"
+    End If
    
 End
 
@@ -557,7 +593,9 @@ Public Sub Last_Microalbumin()
          bCompleted = True 
       End If
       If Not IsNull(R!abnormal) Then
-         tlNotes.text &= "- microalbuminuria noted:" & R!value_numeric & " (" & R!reference_range & ")<BR>"
+         sDecisionSupportComments &= "<P><B>Microalbuminuria</B></P>"
+         sDecisionSupportComments &= "The patient may have microalbuminuria noted:" & R!value_numeric & " (" & R!reference_range & ").</P>"
+         sDecisionSupportComments &= "If this test was a spot urine, then you should probably do a timed overnight urine collection to confirm this.<BR><BR>"
       Endif
    Else
       teNotesMicroalbuminDue.text = "OVERDUE"
@@ -571,7 +609,7 @@ Public Sub Last_Lipids()
    '------------------------------------------------
    'Attempt to get TC, HDL, LDL and Triglycerides
    '------------------------------------------------
-
+   
    Dim sString As String 
    
    teNotesHDL.richtext = "placeholder"      
@@ -611,7 +649,8 @@ Public Sub Lipid_Get_Component(sComponentName As String, sLoinc As String, sStri
       End If
       If sLoinc = const.Loinc_TotalCholesterol Then
          If R!value_numeric > 3.5 Then
-            tlNotes.text &= "- total cholesterol of " & R!value_numeric & " elevated - aim for TC &lt;3.5 and LDL &lt;2.0)"
+             sDecisionSupportComments &= "<P><B>Serum Lipids</B><P>"
+            sDecisionSupportComments &= "The total cholesterol of " & R!value_numeric & " elevated - aim for TC &lt;3.5 and LDL &lt;2.0)."
          Endif
       Endif
    Else
@@ -627,7 +666,7 @@ Public Function Progress_note_create_HTML(DACC As Collection) As CTemplate
    'Creates a table akin to what is seen on the screen, as a summary
    'for the progress notes
    '-----------------------------------------------------------------
-
+   
    Dim templ As CTemplate
    
    templ = New CTemplate(modHTML.Diabetes_Annual_Cycle_Of_Care_HTML())
@@ -747,7 +786,9 @@ Public Sub Last_BMI()
       If Not Error Then
          bCompleted = True 
          teNotesBMIDue.text = Format(DateAdd(Val(sData[1]), gb.Month, 6), "dd/mm/yyyy")
-         tlNotes.text &= "- with a weight of " & weight & " and BMI of " & BMI & modDecisionSupport.BMI_DecSupp(weight, height) & "<BR>"
+          sDecisionSupportComments &= "<P><B>Weight and BMI</B></P>"
+         sDecisionSupportComments &= "<P>With a weight of " & weight & " and BMI of " & BMI & modDecisionSupport.BMI_DecSupp(weight, height) & "</P>"
+         
          teNotesBMILast.text = Format(Now, "dd/mm/yyyy")
          teNotesBMI.text = strHeightWeight & " BMI=" & Str(BMI)
          teNotesBMI.Foreground = Color.black
@@ -798,14 +839,17 @@ Public Sub Last_BP()
    teNotesBP.richtext = Replace(teNotesBP.richtext, "placeholder", sString)
    BPBits = Split(bits[0], "/")
    If Val(BPBits[0]) > 135 Then
-      tlNotes.text &= "- systolic pressure is above target at " & BPBits[0] & "<BR>"
+      sDecisionSupportComments &= "<P><B>Blood Pressure</B></P><P>"
+      sDecisionSupportComments &= "The systolic pressure is above target at " & BPBits[0] & ".<BR> "
       BpNotAtTarget = True 
    End If
    If Val(BPBits[1]) > 80 Then
-      tlNotes.text &= "- diastolic pressure is above target at " & BPBits[1] & "<BR>"
+      sDecisionSupportComments &= "The diastolic pressure is above target at " & BPBits[1] & ".BR>"
       BpNotAtTarget = True 
    End If
-   If BpNotAtTarget Then tlNotes.text &= " - recommended target BP level is &lt; 130/80 for diabetics<BR>"
+   If BpNotAtTarget Then
+      sDecisionSupportComments &= "The recommended target BP level is &lt; 130/80 for diabetic.</P>"
+   End If   
    
 End 
 
@@ -866,7 +910,7 @@ Public Sub EditArea_Buttons_Click()
          Edit()
       Case "save"
          Save()
-      Case "refresh"
+      Case "refresh", "support"
          Refresh()         'refresh components, don't touch keys
    End Select
    
@@ -918,6 +962,7 @@ Public Sub Reset_Keys()
    fk_consult = 0
    date_completed = Null
    date_saved = Null
+   sDecisionSupportComments = ""
    
 End
 
@@ -1059,7 +1104,7 @@ End
 
 Public Sub teNotesDACC_KeyPress()
    
-    If Key.code = Key.return And Last.tag = "medication" Then tbSave.SetFocus()
+   If Key.code = Key.return And Last.tag = "medication" Then tbSave.SetFocus()
    
 End
 
@@ -1215,7 +1260,7 @@ Public Sub Display(DACC As Collection)
             End If            
          Endif
       Endif
-    Next
+   Next
    
 End
 
@@ -1242,6 +1287,7 @@ Public Sub DACC_Print(DACC As Collection)
    '-------------------------------
    'Prints out the DACC using LaTex
    '-------------------------------   
+   
    modPrinting.Print_latex(DACC_LaTex_Construct(DACC).GetData(), const.Paper_Plain, 1) 
    
 End
@@ -1250,6 +1296,7 @@ Public Sub DACC_LaTex_Construct(DACC As Collection) As CTemplate
    '-----------------------------------------------------
    'Makes appropriate substitutions in the LaTex template
    '-----------------------------------------------------   
+   
    Dim sName As String
    Dim sAddress As String
    Dim sString As String
@@ -1299,3 +1346,55 @@ Public Sub DACC_LaTex_Construct(DACC As Collection) As CTemplate
    Return templ
    
 End
+
+Public Sub Measurement_Graph(loinc As String, Measurement As String)
+   '-----------------------------------------------------------
+   'Graph a measurement
+   'if Loinc = "" then measurement is BP, height, weight or PF
+   'if Loinc <> "" then graph an observable measurement
+   '-----------------------------------------------------------
+
+   Dim Astring As String 
+   Dim GraphableItem_Data As New Collection 
+   Dim GraphData As Collection 
+   Dim font_size As Integer = 1
+   Dim GraphWidth As Integer = FClinical.Vbox_Decision_Support.Width
+   Dim GraphHeight As Integer = 150
+   Dim pic As New Picture 
+
+   GraphWidth = 400
+   'fixe me replace 1 with font size tiny, med large
+   GraphData = New Collection 
+   GraphData = modMeasurementsDBI.Make_Graph(currentconsult!patient!fk_patient, loinc, Measurement, GraphHeight, GraphWidth, font_size)
+   GraphData = modMeasurementsDBI.Make_Graph(currentconsult!patient!fk_patient, loinc, Measurement, GraphHeight, GraphWidth, font_size)
+   GraphData!name = Measurement
+   GraphData!fontsize = font_size
+   GraphableItem_Data!loinc = loinc
+   GraphableItem_Data!name = Measurement
+   
+   Try pic.Load(GraphData!graph_filename)
+   If Not Error
+      sDecisionSupportComments &= "<TABLE WIDTH=100%><TR><TD WIDTH=100%><P><IMG src=\"" & GraphData!graph_filename & "\"" 
+      sDecisionSupportComments &= " NAME=\"graphics\" ALIGN=\"LEFT\" WIDTH=\"" & Str(GraphWidth) & "\" HEIGHT=\"" & Str(GraphHeight) & "\" BORDER=\"0\"></TR></TD></TABLE><BR><BR>" 
+      
+   Else
+      Message.Info("Unable to create graph")
+   End If
+   Print sDecisionSupportComments 
+
+End
+
+'  Dim spicPath As String 
+'   Dim pic As New Picture
+'   Dim H As Integer
+'   Dim W As Integer
+'   Stop Event
+' If Drag.Type = Drag.Image Then
+'      pic.Load(Drag.Source.Tag!fname)
+'      H = Drag.Source.Tag!H
+'      W = Drag.Source.Tag!W
+'      sPicPath = "<TABLE WIDTH=100%><TR><TD WIDTH=100%><P><IMG src=\"" & Drag.Source.tag!fname & "\"" 
+'      sPicPath &= " NAME=\"graphics\" ALIGN=\"LEFT\" WIDTH=\"" & Str(W) & "\" HEIGHT=\"" & Str(H) & "\" BORDER=\"0\"></TR></TD></TABLE><BR><BR>" '<BR CLEAR=Left>
+'      teNotes.text &= "%image%"
+'      teNotes.richtext = Replace$(teNotes.richtext, "%image%", sPicPath)
+' End If

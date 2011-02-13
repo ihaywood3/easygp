@@ -20,7 +20,6 @@
 
 'These temporarly probably need removal at some stage
 Private iCertificatetype As Integer = const.certificate_type_medical 'default to this
-Private FMetaData As FDocumentMetaData
 'fixme: make these deletions a different collection with key to type eg document/script etc.then remove the extra stuff
 Private Deleted_Documents As Collection     'will allow multiple levels of un-delete e.g see mnuLettersReceived_Click
 Private Deleted_Medications As Collection  'fixme join to the above
@@ -47,12 +46,15 @@ Private Const cMainDisplay_DataEntry As Integer = 1
 Private Const cMainDisplay_ProgressNotes As Integer = 2
 Private Const cMainDisplay_CarePlan As Integer = 3 
 Private obs As Observer                           'Observer used when FHelp is being shown, to detect the help close button
+
+Private FMetaData As FDocumentMetaData
 Private form_select As New FPatientsSelect        'popup multi-select patient form
 Public FHelp As FBrowser                          'shows help for anywhere in FClinical
 Private ScratchPad As FScratchPad                 'embedded 'jotter' or scratch pad
 Public Form_ExportClinical As New FExportClinical 'Allows user to export notes from FClinical as pdf
 Private FPDF As FPdf
 Private Toolbuttons As Collection                 'buttons which user selects to have on the toolbar
+Public Form_Decision_Support As FHtmlViewer
 
 Static Private form_clinical As FClinical         'allows FClinical Access from anywhere  = Me -see Init()
 
@@ -186,6 +188,12 @@ Static Public Sub WebBrowser_Show(sData As String, Optional heading As String)
    
 End
 
+Public Sub FDecision_Support_tbClose_Click()
+   Stop Event
+   DecisionSupport_Show("", False) 
+   
+End
+
 Static Public Sub DecisionSupport_Show(Heading As String, flag As Boolean)
    '----------------------------------------------------------------------------
    'There is a texteditor contained in Vbox_Decision_Support, which is hidden on
@@ -198,15 +206,15 @@ Static Public Sub DecisionSupport_Show(Heading As String, flag As Boolean)
    form_clinical.VboxScratchPad.Visible = Not flag
    form_clinical.VSplit_TabbedListsGraph.Visible = Not flag
    form_clinical.Vbox_Decision_Support.Visible = Flag
-   form_clinical.lblDecisionSupport.text = Heading
-   
+   form_clinical.Form_Decision_Support.lblViewerCaption.text = Heading
+                
 End
 
 Static Public Sub DecisionSupport_SetHTML(sHtml As String)
    'Ian just experimental
    
-   form_clinical.teDecisionSupport.RichText = shtml
-   
+  ' form_clinical.teDecisionSupport.RichText = shtml
+   form_clinical.Form_Decision_Support.WebView1.HTML = shtml
 End
 
 Static Public Sub Refresh_PastHistory(sPastHistory_HistoricalSummary As String, sPasthistory_ManagementSummary As String, fk_pasthistory As Integer)
@@ -308,9 +316,14 @@ Public Sub Init()
    Next
    FPDF = New FPdf(Vbox_PDF)
    ScratchPad = New FScratchPad(VboxScratchPad)
-   
+   With Form_Decision_Support = New FHtmlViewer(Vbox_Decision_Support)
+     .lblViewerCaption.Visible = True   
+   End With
    Form_ExportClinical = New FExportClinical(vBoxWorkSpace)
    Form_ExportClinical.Visible = False 
+
+
+  
    ScratchPad.txtScratchPad.Enabled = False   
    EditorPages = New Collection
    currentconsult = Null
@@ -325,6 +338,8 @@ Public Sub Init()
    obs = New Observer(FMetaData.tbSave) As "FMetaData_tbSave"    'Let FClinical handle the save event"
    obs = New Observer(FMetaData.txtUserObservationName) As "FMetaData_txtUserObservationName"  
    obs = New Observer(FMetaData.tbClose) As "FMetaData_tbClose"    'Let FClinical handle the save event"
+   obs = New Observer(Form_Decision_Support.tbWebBrowserClose) As "FDecision_Support_tbClose"
+
    'detect when <enter> hit and file the document
    With FHelp
       .Visible = False   
@@ -601,12 +616,17 @@ Public Sub Settings_Save()
    Next
    
    Settings["Main/HsplitClinical_Main"] = HSplitClinical_Main.Layout
+   If Vbox_Decision_Support.Visible = False Then  'if user closes program whilst this is open, don't save
+           Settings["Main/VsplitClinical_RightPane"] = VsplitClinical_RightPane.Layout
+   End If   
    If Not IsNull(FMetaData) Then
       If FMetaData.Visible = True Then
          Settings["Main/VsplitClinical_RightPane_Metadata"] = VsplitClinical_RightPane.Layout
-      Else
-         Settings["Main/VsplitClinical_RightPane"] = VsplitClinical_RightPane.Layout
-      End If
+      ' Else
+      '    If Vbox_Decision_Support.Visible = False Then  'if user closes program whilst this is open, don't save
+      '      Settings["Main/VsplitClinical_RightPane"] = VsplitClinical_RightPane.Layout
+      '    End If   
+       End If
    End If
    Settings["Requests_List_columns/date"] = cvwRequests.Columns[0].Width
    Settings["Progress Notes/default_zoom"] = WebBrowserNotes.Zoom
@@ -687,12 +707,14 @@ Public Sub Patients_Find(Optional search_txt As String)
    Dim patient As Collection
    Dim sql_in_english As String
    
+   Inc Application.Busy
    If IsNull(search_txt) Then search_txt = txtSearch.text
    AllPatients = modContactsDBI.patients_get_firstname_surname(search_txt)
    sql_in_english = AllPatients!sql_in_english
    AllPatients.Remove("sql_in_english")
    If AllPatients.count = 0 Then 
       txtSearch.SetFocus()
+      Dec application.Busy
       Return
    Else  
       '------------------------------------------------------  
@@ -716,13 +738,16 @@ Public Sub Patients_Find(Optional search_txt As String)
          '---------------------
          'more than one patient
          '---------------------
+         Dec Application.Busy
          Vbox1.Visible = False  
-         form_select = New FPatientsSelect(Me)                 
+         form_select = New FPatientsSelect(Me)
+         obs = New Observer(form_select.btnCancel) As "SelectPatient"     
          form_select.SetPatientList(AllPatients, sql_in_english, Me)
+         form_select.Visible = True 
          Return
       Endif
    End If   
-   
+   Dec application.Busy
 End
 
 Public Sub cvwMedications_Refresh()
@@ -4105,5 +4130,16 @@ Public Sub ToolButton_Create(pnl As Panel, pic As Variant, tag As String, height
       .Picture = hPict
       .tag = tag
    End With
+
+End
+
+Public Sub SelectPatient_click()                                       
+   '-------------------------------------------------------------------
+   'User has cancelled patient selection in popup patient selector form
+   '-------------------------------------------------------------------
+  If Last.tag = "cancel" Then Stop Event
+  form_select.Visible = False 
+  Vbox1.Visible = True   
+  txtSearch.SetFocus()   
 
 End

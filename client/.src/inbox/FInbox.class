@@ -180,12 +180,24 @@ End
 Public Sub Init()
    
    If modDBConnect.IsAdmin Then Return                                  'admin obviously not allowed to file stuff
+   'Setup inbox users according to role   'fixme not implemented properly
+   '     r = modDBConnect.currentUser!role
+   ' Endif
+   ' Select Case r
+   '    Case "doctor", "practice manager", "doctor - assistant", "sysadmin"
+   '    Case "sysadmin"    
+   '    Case "secretary"
+   ' End Select
+   ' 
+   
+   
    timer1.start                                                         'delay loading inbox data until gui showing
    With Form_ActionDocument = New FActionDocument(Vbox_ActionDocument)
       .Init("Inbox")                                                    'Loads its own forms, initially only an instance of the document metadata
    End With
    staff_members = modUtil.LoadCombo(cmbStaffMembers, modInboxDBI.Inbox_Staff_Get(), "wholename")  'combo box filled with staff members
    cmbStaffMembers.index = cmbStaffMembers.Find(modDBConnect.currentUser!wholename)                'show name of current user in staff combo
+   cmbStaffMembers.Enabled = False  
    Sending_Entities = modUtil.LoadCombo(cmbSenders, modInboxDBI.Get_Document_Handling_Defaults(), "msh_sending_entity")
    cmbSenders.index = -1
    With Form_Graph = New FGraph(HBox_LowerLists)
@@ -408,7 +420,11 @@ Public Sub cvwInboxDocuments_Select()
    cvwPatientsRequests.UnSelectAll()                                'remove marquee on list of ordered requests
    bExit = True
    tlMissingProvider.Visible = False                               'could be showing from previous document
-   Form_ActionDocument.VBox10.Enabled = True
+   If Selected_Inbox!fk_patient Then 
+      Form_ActionDocument.VBox10.Enabled = True           
+   Else
+      Form_ActionDocument.VBox10.Enabled = False                     'Can't currently action a non patient document FIXME    Else
+   End If 
    tlMissingProvider.Visible = False   
    Form_Graph.Visible = False
    tbFile.Enabled = True
@@ -550,14 +566,14 @@ Public Sub Auto_Graph(observations As Collection)
       '-------------------------------------    
       'Is this loinc, one we want to graph?
       '------------------------------------
-   '   If loincs.Exist(observation!loinc)
-    If Not IsNull(observation!abnormal) Then
-       'variations for this field for normality in HL7 I've encountered beleive it or not are these
-       If Trim(observation!abnormal) <> "N" Then '"N", " ", ""
-         '--------------------------------
-         'If it is abnormal, then graph it
-         '--------------------------------
-         ' If Not IsNull(observation!abnormal) Then
+      '   If loincs.Exist(observation!loinc)
+      If Not IsNull(observation!abnormal) Then
+         'variations for this field for normality in HL7 I've encountered beleive it or not are these
+         If Trim(observation!abnormal) <> "N" Then '"N", " ", ""
+            '--------------------------------
+            'If it is abnormal, then graph it
+            '--------------------------------
+            ' If Not IsNull(observation!abnormal) Then
             '-----------------------------------------------
             'Keep first abnormal, it will be the first graph
             '-----------------------------------------------
@@ -580,29 +596,29 @@ Public Sub Auto_Graph(observations As Collection)
                End With
                Inc Buttoncount
             End If
-        End If
-     Else
-            '--------------------------------------------------------
-            'Not abnormal, but one we want to graph, eg INR/HBa1c etc
-            '--------------------------------------------------------
-            Select Case observation!loinc
-               Case const.Loinc_UltraSensPSA, const.Loinc_TotalPSA, const.Loinc_EGFR, const.Loinc_HBA1c, const.loinc_INR, const.Loinc_TSH, const.Loinc_FreeF4, const.Loinc_FreeT3, const.Loinc_CReactiveProtein
-                  If sLoinc = "" Then
-                     sMeasurement = observation!identifier
-                     sLoinc = observation!loinc
-                  Endif
-                  With tb = New ToolButton(Form_Graph.pnlToolButtons) As "graph_buttons"
-                     .name = observation!loinc
-                     .tag = observation!loinc
-                     .autoresize = True
-                     .border = True
-                     .height = 18
-                     .text = observation!identifier
-                  End With
-                  Inc Buttoncount
-                  
-            End Select
          End If
+      Else
+         '--------------------------------------------------------
+         'Not abnormal, but one we want to graph, eg INR/HBa1c etc
+         '--------------------------------------------------------
+         Select Case observation!loinc
+            Case const.Loinc_UltraSensPSA, const.Loinc_TotalPSA, const.Loinc_EGFR, const.Loinc_HBA1c, const.loinc_INR, const.Loinc_TSH, const.Loinc_FreeF4, const.Loinc_FreeT3, const.Loinc_CReactiveProtein
+               If sLoinc = "" Then
+                  sMeasurement = observation!identifier
+                  sLoinc = observation!loinc
+               Endif
+               With tb = New ToolButton(Form_Graph.pnlToolButtons) As "graph_buttons"
+                  .name = observation!loinc
+                  .tag = observation!loinc
+                  .autoresize = True
+                  .border = True
+                  .height = 18
+                  .text = observation!identifier
+               End With
+               Inc Buttoncount
+               
+         End Select
+      End If
       'End If
    Next
    
@@ -679,21 +695,30 @@ Public Sub cvwInbox_Select()
 End
 
 Public Function Document_File() As Boolean
-   
-   If Not Valid_Document() Then Return                 'some inbox-related validation
-   
-   modDBConnect.BeginTrans()                           'start transaction NOOP
-   Unmatched_Patient_Reconcile()                       'reconcile any just-matched unkown patients
-   If Not Form_ActionDocument.FMetaData.Save() Then                        'file document, unsucessful 
-      modDBConnect.RollBack()                          'roll back transaction FIXME does this work?
-      Return False 
-   End If   
-   modAudit.MakeAudit(currentconsult, "viewed and filed document", "documents.documents", SelectedDocument!pk_document, const.cSection_Documents, "")
-   modDBConnect.CommitTrans()                          'success - commit transaction
+   '---------------------------------------------
+   'First, is this a non patient document?
+   'If so, then filing = "I've read this document
+   '---------------------------------------------
+   If Selected_Inbox!fk_patient = 0 Then
+      Form_ActionDocument.FMetaData.Document_SignOff(SelectedDocument)           
+      modArchiveDocumentsDBI.Save(["pk_document": SelectedDocument!pk_document, "concluded": True])   
+      modDBConnect.CommitTrans()
+   Else
+      If Not Valid_Document() Then Return                 'some inbox-related validation
+      
+      modDBConnect.BeginTrans()                           'start transaction NOOP
+      Unmatched_Patient_Reconcile()                       'reconcile any just-matched unkown patients
+      If Not Form_ActionDocument.FMetaData.Save() Then                        'file document, unsucessful 
+         modDBConnect.RollBack()                          'roll back transaction FIXME does this work?
+         Return False 
+      End If   
+      modAudit.MakeAudit(currentconsult, "viewed and filed document", "documents.documents", SelectedDocument!pk_document, const.cSection_Documents, "")
+      modDBConnect.CommitTrans()                          'success - commit transaction
+                                              
+   End If 
    Selected_Inbox!documents.Remove(iSelectedDocument)  'remove document from document collection 
    cvwInboxDocuments.Remove(iSelectedDocument)         'visually remove from list
-   Return True                                         
-   
+   Return True 
 End
 
 Public Sub Unmatched_Patient_Reconcile()
@@ -773,6 +798,17 @@ Public Sub tbFile_Click()
    
    If Not cvwInboxDocuments.count Then Return      'no documents, no filing
    If Not Document_File() Then Return              'filing failed
+   ' Vbox_ActionDocument.Enabled = False 
+   ' Form_ActionDocument.Tabstrip1.Index = Metadata  'sucess. switch tab back to metadata
+   Document_Display_Next()
+
+End
+
+Public Sub Document_Display_Next()
+   '--------------------------
+   'moves to the next document
+   '--------------------------
+   
    Vbox_ActionDocument.Enabled = False 
    Form_ActionDocument.Tabstrip1.Index = Metadata  'sucess. switch tab back to metadata
    If cvwInboxDocuments.count = 0 Then             'no documents left?
@@ -795,7 +831,7 @@ Public Sub tbFile_Click()
       Else
          tbRefreshInbox_Click()
       End If
-   End If                                       
+   End If     
    
 End
 
@@ -1112,7 +1148,7 @@ Static Public Sub Document_Filed_As_Update(name As String)
    'eg FMetadata, when user clicks the option button to 
    'change from say a result to a letter
    '--------------------------------------------------------   
-
+   
    form_inbox.lblFilingAs.text = "Filing as: " & name
    
 End
@@ -1323,8 +1359,10 @@ Public Sub mnuDocuments_Click()
    Dim x As Integer
    Dim D As Collection
    Dim audit_notes As String
-    
+   
    Select Case Last.tag
+      Case "library"
+         Make_Menu_Library() 
       Case "mark deleted", "delete - duplicate document", "delete - preliminary result"            'deletes a document and enforces an audit trail
          If IsNull(SelectedDocument!tag_user) Then
             Document_Delete(Last.tag, SelectedDocument!tag)
@@ -1342,27 +1380,27 @@ Public Sub mnuDocuments_Click()
             Endif
          Next
       Case "delete selected"
-           modutil.NotImplemented("Multiple Document Deletion")
+         modutil.NotImplemented("Multiple Document Deletion")
       Case "delete - sent in error"
-          If Message.Warning("Please confirm that the patient to whom these documents are allocated, is not a patient of this practice", "Confirm - not our patient", "Cancel") = 2 Then Return 
-          cvwInboxDocuments.MoveFirst()
-          For x = 1 To cvwInboxDocuments.count 
-             If cvwInboxDocuments.Item.Selected = True Then
-                iSelectedDocument = cvwInboxDocuments.item.key
-                If IsNull(Selected_Inbox!documents[iSelectedDocument]!tag_user) Then
+         If Message.Warning("Please confirm that the patient to whom these documents are allocated, is not a patient of this practice", "Confirm - not our patient", "Cancel") = 2 Then Return 
+         cvwInboxDocuments.MoveFirst()
+         For x = 1 To cvwInboxDocuments.count 
+            If cvwInboxDocuments.Item.Selected = True Then
+               iSelectedDocument = cvwInboxDocuments.item.key
+               If IsNull(Selected_Inbox!documents[iSelectedDocument]!tag_user) Then
                   audit_notes = Selected_Inbox!documents[iSelectedDocument]!tag
-                Else
-                    audit_notes = Selected_Inbox!documents[iSelectedDocument]!tag_user
-                Endif
+               Else
+                  audit_notes = Selected_Inbox!documents[iSelectedDocument]!tag_user
+               Endif
                If modArchiveDocumentsDBI.Delete(currentconsult, Selected_Inbox!documents, iSelectedDocument, const.cSection_Inbox, Last.tag, audit_notes) Then 
                   modDBConnect.CommitTrans()
                   Deleted_Documents.Add(SelectedDocument, iSelectedDocument)            'keep for undelete
                End If
-             Endif
-             cvwInboxDocuments.MoveNext()
-          Next
-          Inbox_Reload()
-       Case "fonts"
+            Endif
+            cvwInboxDocuments.MoveNext()
+         Next
+         Inbox_Reload()
+      Case "fonts"
          modutil.Columnview_SetFont(cvwInboxDocuments, "Inbox")
       Case "reallocate single", "reallocate multiple"
          SelectedDocument!fk_patient = Null
@@ -1479,11 +1517,11 @@ Public Sub Document_SendBack_For_ReFiling()
    'eg, wrongly joined pages etc, not just simple things like wrongly allocated patients
    'so they send it back to clerical for re-filing. Only for scanned documents
    '------------------------------------------------------------------------------------   
-
+   
    If modArchiveDocumentsDBI.Document_SendBack_For_ReFiling(currentconsult, Selected_Inbox!documents, iSelectedDocument) Then
       Inbox_Reload()
    Endif
-
+   
 End
 
 Public Sub Document_SignOff()
@@ -1502,7 +1540,7 @@ End
 
 Public Sub mnuDocuments_Delete(bDeleteAll As Boolean, Optional reason As String)
    'Currently not used please do not delete this   
-
+   
    Dim x As Integer
    
    If bDeleteAll Then cvwInboxDocuments.MoveFirst()
@@ -1529,46 +1567,55 @@ Public Sub cvwInboxDocuments_Menu()
    Dim y As Integer
    Dim mnu As Menu
    
-   If Not cvwInboxDocuments.count Then                ' no documents?
-      If Deleted_Documents.count Then                 ' at least enable undo-delete if necessary
+   If Selected_Inbox!fk_patient Then 
+      If Not cvwInboxDocuments.count Then                ' no documents?
+         If Deleted_Documents.count Then                 ' at least enable undo-delete if necessary
+            For Each mnu In mnuDocuments.Children
+               mnu.Enabled = False  
+            Next
+            mnuDocuments_UnDelete.enabled = True
+            Return
+         Endif
+      Else
          For Each mnu In mnuDocuments.Children
-            mnu.Enabled = False  
+            mnu.Enabled = True  
          Next
-         mnuDocuments_UnDelete.enabled = True
-         Return
+      End If   
+      If SelectedDocument!msh_transmitting_entity = "snail mail" Then  'scanned documents,not hl7
+         mnuDocuments_ReFile.Enabled = True
+      Else
+         mnuDocuments_ReFile.enabled = False 
       Endif
-   Else
-      For Each mnu In mnuDocuments.Children
-         mnu.Enabled = True  
+      cvwInboxDocuments.MoveFirst()
+      For x = 0 To cvwInboxDocuments.count - 1
+         If cvwInboxDocuments.Item.Selected = True Then
+            Inc y
+         Endif
+         cvwInboxDocuments.MoveNext()
       Next
-   End If   
-   If SelectedDocument!msh_transmitting_entity = "snail mail" Then  'scanned documents,not hl7
-      mnuDocuments_ReFile.Enabled = True
-   Else
-       mnuDocuments_ReFile.enabled = False 
-   Endif
-   cvwInboxDocuments.MoveFirst()
-   For x = 0 To cvwInboxDocuments.count - 1
-      If cvwInboxDocuments.Item.Selected = True Then
-         Inc y
+      If y > 1 Then
+         mnuDocuments_ReAllocateSingle.Enabled = False  
+         mnuDocuments_ReAllocateMultiple.Enabled = True
+      Else
+         mnuDocuments_ReAllocateSingle.Enabled = True  
+         mnuDocuments_ReAllocateMultiple.Enabled = False
+         
       Endif
-      cvwInboxDocuments.MoveNext()
-   Next
-   If y > 1 Then
-      mnuDocuments_ReAllocateSingle.Enabled = False  
-      mnuDocuments_ReAllocateMultiple.Enabled = True
+      If Deleted_Documents.count Then
+         mnuDocuments_UnDelete.enabled = True
+         
+      Else
+         mnuDocuments_UnDelete.enabled = False   
+      Endif
+     
+      mnuDocuments.Popup()
    Else
-      mnuDocuments_ReAllocateSingle.Enabled = True  
-      mnuDocuments_ReAllocateMultiple.Enabled = False
-      
-   Endif
-   If Deleted_Documents.count Then
-      mnuDocuments_UnDelete.enabled = True
-      
-   Else
-      mnuDocuments_UnDelete.enabled = False   
-   Endif
-   mnuDocuments.Popup()
+      '-------------------------------------- 
+      'This is not a patient related document
+      '-------------------------------------- 
+       Make_Menu_Library()
+       mnuNonPatientDocuments.Popup()
+   End If
    
 End
 
@@ -1760,5 +1807,51 @@ Public Sub tbGraph_Click()
          Form_Graph.Visible = False   
          Vbox_OutstandingRequests.Visible = True  
    End Select
+   
+End
+
+Public Sub mnuLibrary_Click()
+   
+  
+   cvwInboxDocuments.MoveCurrent
+   If Message.Warning("The selected file will be copied to your library?", "Confirm", "Cancel") = 2 Then Return 
+   Try Copy modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ SelectedDocument!source_file To User.home & "/easygp/library/" & Last.tag &/ SelectedDocument!source_file
+   If Not Error Then
+      Message.Info("A copy of this document was successfully moved to your library.") 
+   Endif
+   
+End
+
+Public Sub Make_Menu_Library()
+   '--------------------------------------------------------------------
+   'Makes the library directory tree as a menu option
+   'Probably temporary, so I can save any circulars I want to my library
+   '--------------------------------------------------------------------
+   
+   Dim sDir As String           'hold a directory name
+   Dim sFile As String          'hold a file anme
+   Dim iKey As Integer
+   Dim iKey2 As Integer
+   Dim sKeyGenerated As String
+   Dim picTag As Picture
+   Dim sLibraryRootDir As String 
+   Dim mnu As Menu
+   Dim dirs As New String[]
+   
+   sLibraryRootDir = User.home & "/easygp/library/"
+   
+   For Each sDir In Dir(sLibraryRootDir)         'Get all the dir's and sort them
+      If IsDir(sLibraryRootDir & sDir) Then      'check if it is actually a directory 
+         dirs.Add(sDir, dirs.count)
+      End If   
+   Next
+   dirs.Sort(gb.text)
+   
+   mnuNonPatientDocuments_ToLIbrary.Children.Clear()   'remove all current child items
+   For Each sDir In Dirs                        'Add each directory to the menu if a directory
+      mnu = New Menu(mnuNonPatientDocuments_ToLIbrary) As "mnuLibrary"
+      mnu.tag = sDir
+      mnu.caption = sDir
+   Next
    
 End

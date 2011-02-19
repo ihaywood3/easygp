@@ -107,3 +107,7 @@ comment on column diabetes_annual_cycle_of_care.eyes_details   is
  will be auto-trawled from the database ' ;
 comment on column diabetes_annual_cycle_of_care.eyes_fk_document   is 
 'foreign key to document containing letter from provider of eye check ' ;
+
+
+truncate db.lu_version;
+insert into db.lu_version (lu_major,lu_minor) values (0, 57)

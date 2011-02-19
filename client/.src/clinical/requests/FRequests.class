@@ -78,7 +78,7 @@ Private Notes_Fetched As Collection
 
 Private branches As Collection
 Private branch As Collection 
-Private head_offices As Collection
+Private Request_Providers As Collection
 Private CopytoCollection As Collection
 Private CopyToType As Integer  'e.g const.Request_CopyTo_Person
 Private iCurrentKey As Variant 'has to be this because some keys are compound string fields.
@@ -425,7 +425,7 @@ End
 
 Public Sub RequestForm_Print()
 
-   modPrinting.Print_latex(RequestForm_LaTeX_Construct(CurrentRequestForm).GetData(), const.Paper_Request)
+ modPrinting.Print_latex(RequestForm_LaTeX_Construct(CurrentRequestForm).GetData(), const.Paper_Request)
 
 End
 
@@ -1031,7 +1031,6 @@ Public Sub EditAreaButtons_Click()
       Case "new form"
          RequestForm_New()
       Case "save"
-         
          Save()
       Case "diagram"
          Return 
@@ -1232,11 +1231,12 @@ End
 Public Sub Get_Providers_For_Request_Type()
    '---------------------------------------------------------------------------
    'For the current type of request, fill the providers combo will the names of
-   'all organisations who 'do' this sort of request
+   'all organisations who 'do' this sort of request, the fk_branch here may or
+   'may not be the head office, but is the default branch key
    'CALLED BY: RequestItem_Selection()
    '           cmbRequestTypes_Click()
    '----------------------------------------------------------------------------
-   head_offices = modUtil.LoadCombo(cmbProviders, modRequestsDBI.Request_Providers_Get(Request_Types[cmbRequestTypes.index]!pk), "organisation")
+   Request_Providers = modUtil.LoadCombo(cmbProviders, modRequestsDBI.Request_Providers_Get(Request_Types[cmbRequestTypes.index]!pk), "organisation")
 End
 
 Public Sub Get_Default_Provider() As Boolean
@@ -1456,16 +1456,7 @@ End
 
 Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTemplate
 
-   Dim templ As CTemplate
-   
-   templ = New CTemplate("request-form", "tex")
-   RequestForm_Construct(RequestForm, templ)
-   Return templ
-
-End
-
-Public Sub RequestForm_Construct(RequestForm As Collection, templ As CTemplate)
-   
+   Dim templ As New CTemplate("request-form", "tex")
    Dim x As Integer
    Dim comm As Collection 
    Dim sHtml As String
@@ -1484,8 +1475,17 @@ Public Sub RequestForm_Construct(RequestForm As Collection, templ As CTemplate)
    templ.Subst("form.type", UCase(Left(sString, 1)) & Right(sString, Len(sstring) - 1))
    templ.Subst("provider.organisation", default_provider!organisation)
    templ.Subst("provider.branch", default_provider!headoffice_branch)
-   templ.Subst("provider.address.street", default_provider!headoffice_street)
-   templ.Subst("provider.address.suburb", default_provider!headoffice_town & " " & default_provider!headoffice_postcode)
+   
+   If Not IsNull(default_provider!headoffice_street) Then 
+       templ.Subst("provider.address.street", default_provider!headoffice_street)
+   Else
+     templ.Subst("provider.address.street", "\\relax ")  
+   End If 
+   If Not IsNull(default_provider!headoffice_town) Then
+       templ.Subst("provider.address.suburb", default_provider!headoffice_town & " " & default_provider!headoffice_postcode)
+   Else
+       templ.Subst("provider.address.suburb", "\\relax ")  
+   End If 
    If Not IsNull(default_provider!organisation_tollfree) Then
       templ.Subst("provider.phone", default_provider!tollfree)
    Else If Not IsNull(default_provider!phone) Then
@@ -1507,8 +1507,16 @@ Public Sub RequestForm_Construct(RequestForm As Collection, templ As CTemplate)
    Else
       
       templ.Subst("defaultbranch.branch", default_provider!default_branch)
-      templ.Subst("defaultbranch.address.street", default_provider!default_branch_street)
-      templ.Subst("defaultbranch.address.suburb", default_provider!default_branch_town & " " & default_provider!default_branch_postcode)
+      If Not IsNull(default_provider!default_branch_street) Then
+           templ.Subst("defaultbranch.address.street", default_provider!default_branch_street)
+      Else
+        templ.Subst("defaultbranch.address.street", "\\relax")
+      End If
+      If Not IsNull(default_provider!default_branch_town) Then
+            templ.Subst("defaultbranch.address.suburb", default_provider!default_branch_town & " " & default_provider!default_branch_postcode)
+      Else
+         templ.Subst("defaultbranch.address.suburb", "\\relax")
+      End If    
       If Not IsNull(default_branch_comms!tollfree) Then
          templ.Subst("defaultbranch.phone", default_branch_comms!tollfree)
       Else If Not IsNull(default_branch_comms!phone) Then
@@ -1527,22 +1535,23 @@ Public Sub RequestForm_Construct(RequestForm As Collection, templ As CTemplate)
    For Each branch In branches
       If branch!head_office <> True Then
          If branch!branch <> default_provider!default_branch Then
-            sstring = ""
-            For Each comm In branch!comms
-               If comm!fk_type = Const.CommModalityPhone Then
-                  sstring &= " " & comm!value
-               End If
-            Next 
-            branchlocations &= branch!branch & " " & branch!street & " " & branch!town & " " & branch!postcode
-            branchlocations &= sString & "<BR>"
+            If Lower(branch!category) = Lower(default_provider!branch_category) Then 
+               sstring = ""
+               For Each comm In branch!comms
+                  If comm!fk_type = Const.CommModalityPhone Then
+                     sstring &= " " & comm!value
+                  End If
+               Next 
+               branchlocations &= branch!branch & " " & branch!street & " " & branch!town & " " & branch!postcode
+               branchlocations &= sString & "<BR>"
+            End If
          End If
       End If
       Inc x
       If x > 10 Then Break
    Next 
-   
    If branchlocations = "" Then branchlocations = "no branches"
-   templ.Subst("branchlocations", branchlocations) 
+   templ.Subst_HTML("branchlocations", branchlocations) 
    templ.Subst("requests", requestform!requests_summary)
    templ.Subst("medications", requestform!medications_summary)
    templ.Subst("notes", requestform!notes_summary)
@@ -1608,9 +1617,9 @@ Public Sub RequestForm_Construct(RequestForm As Collection, templ As CTemplate)
    For Each cc In Copytos
       sString &= cc & "<BR>"
    Next  
-   templ.Subst("copyto", sString)  
+   templ.Subst_HTML("copyto", sString)  
    templ.Subst("form.date", Format(RequestForm!date, "dd/mm/yyyy")) 
-
+   Return templ
 End 
 
 Public Sub Notes_Selection(action As String, Optional calling_control As String)
@@ -1940,7 +1949,6 @@ Public Sub mnuPictures_Click()
       Case "copy"
          Picture_Copy()
       Case "paste"
-         
          Insert_Picture("clipboard")
       Case "import"
          Picture_Import()
@@ -1985,7 +1993,9 @@ Public Sub Picture_Import()
 End
 
 Public Sub Picture_Capture()
-   
+      Dim FCapture As New FWebCam
+      FWebCam.ShowModal()
+      Insert_Picture("clipboard")
 End
 
 Public Sub Picture_Help()
@@ -2067,6 +2077,8 @@ Public Sub Insert_Picture(sSource As String)
       .stretch = True
       .picture = Picture1.Load(Tempfile)
       .tag = Tempfile
+      .width = 50
+      .Height = Hbox_pictures.Height
    End With
    currentRequestFormPictures.Add(currentRequestFormPicture, currentRequestFormPictures.count)
    
@@ -2340,20 +2352,20 @@ Public Sub cmbPrinters_Click()
    
 End
 
-Public Sub Provider_Display_Alternate(default_provider As Collection)
+Public Sub Provider_Display_Alternate()
    '-------------------------------------------------------------------------------
    'User has clicked on the combo box containing providers for this type of request
    'Load that companies details
   '--------------------------------------------------------------------------------
    bExit = True    
-   default_provider = head_offices[cmbProviders.index]
+   default_provider = Request_Providers[cmbProviders.index]
    fk_organisation = default_provider!fk_organisation
    txtProvider.text = default_provider!organisation 
    txtBranch.text = default_provider!branch
-   fk_branch = default_provider!fk_branch
-   txtStreet.text = default_provider!street
-   txtSuburb.text = default_provider!town
-   txtPostcode.text = default_provider!dpostcode
+   fk_branch = default_provider!fk_default_branch
+   txtStreet.text = default_provider!default_branch_street
+   txtSuburb.text = default_provider!default_branch_town
+   txtPostcode.text = default_provider!default_branch_postcode
    chkDefaultProvider.value = False 
    bExit = False  
    Branches_Get()
@@ -2375,15 +2387,18 @@ Public Sub Branch_Display()
 End
 
 Public Sub Branches_Get()
-   '---------------------------------------------------------
+   '----------------------------------------------------------------------------
    'Fill the combo with branches according to fk_organisation
-   '---------------------------------------------------------  
-   branches = modUtil.LoadCombo(cmbBranches, modRequestsDBI.Provider_Branches_Get(fk_organisation), "branch")
+   'FIXME: Problem for some organisations eg hospital, branches <> same category
+   '----------------------------------------------------------------------------  
+    branches = modUtil.LoadCombo(cmbBranches, modRequestsDBI.Provider_Branches_Get(fk_organisation), "branch")
 End
 
 Public Sub cmbProviders_Click()
-   If bExit Then Return 
-   Provider_Display_Alternate(head_offices[cmbProviders.index])
+   If bExit Then
+       Return 
+   End If   
+   Provider_Display_Alternate()
    
 End
 

@@ -474,7 +474,7 @@ Public Sub Save()
    Else
       sProgressNotes_Components = "<P>Diabetic Annual Cycle of Care partially completed</P>"
    End If  
- 
+   
    DACC!fk_progressnote_components = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes_Components, const.cSection_GeneralNotes, fk_progressnote_components, "diabetes", 0, True) 'true=parse the html see the routine
    'Save any associated progress notes to the backend - currently only linked to general notes.
    If Not ((Trim(FProgressNotes.teNotes.text) = "" And FProgressNotes.Get_copy_of_editor_text() = "") Or Not FProgressNotes.get_data_changed()) Then
@@ -727,11 +727,11 @@ Public Function Last_Microalbumin() As String
             If urines["ratio"]!abnormal = True Then
                bHasMicroalbuminuria = True
             Endif
-             teNotesMicroalbuminLast.text = Format(urines["ratio"]!date, "dd/mm/yyyy")
+            teNotesMicroalbuminLast.text = Format(urines["ratio"]!date, "dd/mm/yyyy")
             If DateDiff(Now, DateAdd(urines["ratio"]!date, gb.Month, 12), gb.day) <= 0 Then
-              teNotesMicroalbuminDue.text = "OVERDUE"
+               teNotesMicroalbuminDue.text = "OVERDUE"
             Else
-              teNotesMicroalbuminDue.text = Format(DateAdd(urines["ratio"]!date, gb.Year, 1), "dd/mm/yyyy") 
+               teNotesMicroalbuminDue.text = Format(DateAdd(urines["ratio"]!date, gb.Year, 1), "dd/mm/yyyy") 
             End If
          End If  
       End If  
@@ -1517,31 +1517,60 @@ Public Sub EditArea_Buttons_KeyPress()
 End
 
 Public Sub DACC_Print(DACC As Collection)
-   '-------------------------------
-   'Prints out the DACC using LaTex
-   '-------------------------------   
-   modPrinting.Print_latex(DACC_LaTex_Construct(DACC).GetData(), const.Paper_Plain, 1) 
+   '-------------------------------------------------------------------
+   'Prints out the DACC using LaTex, cTemplate =Null if data is missing
+   '-------------------------------------------------------------------   
+   Dim templ As CTemplate
+   Dim sMsg As String
    
+   Inc Application.Busy
+   templ = DACC_LaTex_Construct(DACC)
+   If Not IsNull(templ) Then
+       modPrinting.Print_latex(templ.GetData(), const.Paper_Plain, 1) 
+   Else
+     Message.title = "DACC"
+     sMsg = "An error occurred whilst attempting to prepare this DACC for printing, possibly some of the data is missing, or you have not yet saved this DACC."
+            "\n\nIf you are sure all the fields are completed, and  you have already saved this DACC, try clicking the Rrefresh button, then try to print again"
+     Dec Application.Busy
+     Message.Info(sMsg) 
+     Return 
+   End If   
+   Dec Application.Busy   
 End
 
 Public Sub DACC_LaTex_Construct(DACC As Collection) As CTemplate
-   '-----------------------------------------------------
+   '---------------------------------------------------------
    'Makes appropriate substitutions in the LaTex template
-   '-----------------------------------------------------   
+   'returns null if an error occurs
+   'FIXME: perhaps allow printing of partially completed DACC
+   '---------------------------------------------------------   
    
    Dim sName As String
    Dim sAddress As String
    Dim sString As String
    Dim comm As Collection 
    Dim templ As New CTemplate("diabetes_cycle_care", "tex")
+   Dim iIncomplete As Integer
+   Dim sMissing As String = "**missing**"
    
    templ.Subst_common(currentconsult)
-   templ.Subst("due_on", Format(DateAdd(DACC!date_completed, gb.year, 1), "dd/mm/yyyy"))
-   templ.Subst("date_completed", Format(DACC!date_completed, "dd/mm/yyyy"))
+   If Not IsNull(DACC!date_completed) Then
+      templ.Subst("due_on", Format(DateAdd(DACC!date_completed, gb.year, 1), "dd/mm/yyyy"))
+      templ.Subst("date_completed", Format(DACC!date_completed, "dd/mm/yyyy"))
+   Else
+      Inc iIncomplete
+      templ.Subst("due_on", sMissing)
+      templ.Subst("date_completed", sMissing)
+   End If   
    templ.Subst("hba1c_details", DACC!hba1c_details)
-   templ.Subst("hba1c_date", Format(DACC!hba1c_date, "dd/mm/yyyy"))
-   templ.Subst("hba1c_due", Format(DACC!hba1c_date_due, "dd/mm/yyyy")) 'cannot use hba1c_date_due as the previous will wipe it
-   Print DACC!hba1c_details
+   If Not IsNull(DACC!hba1c_details) Then
+      templ.Subst("hba1c_date", Format(DACC!hba1c_date, "dd/mm/yyyy"))
+      templ.Subst("hba1c_due", Format(DACC!hba1c_date_due, "dd/mm/yyyy")) 'cannot use hba1c_date_due as the previous will wipe it
+   Else
+      templ.Subst("hba1c_date", "NOT DONE")
+      templ.Subst("hba1c_due", "\\relax")
+   Endif
+   
    templ.Subst("eyes_details", DACC!eyes_details)
    templ.Subst("eyes_date", Format(DACC!eyes_date, "dd/mm/yyyy"))
    templ.Subst("eyes_due", Format(DACC!eyes_date_due, "dd/mm/yyyy")) 'cannot use eyes_date_due as the previous will wipe it
@@ -1578,10 +1607,17 @@ Public Sub DACC_LaTex_Construct(DACC As Collection) As CTemplate
    If Trim(sDecisionSupportComments) <> "" Then 
       templ.Subst_HTML("decision_support_comments", sDecisionSupportComments)
    Else
-      templ.Subst("decision_support_comments", "\\relax ")  
+      templ.Subst("decision_support_comments", "\\relax")  
    End If 
+   If iIncomplete Then
+      templ.Subst("incomplete dacc", "INCOMPLETE")
+   Else
+      templ.Subst("incomplete dacc", "\\relax") 
+   Endif
    Return templ
    
+   Catch
+     Return Null 
 End
 
 Public Sub Measurement_Graph(loinc As String, Measurement As String)
@@ -1617,7 +1653,7 @@ Public Sub Measurement_Graph(loinc As String, Measurement As String)
    Else
       Message.Info("Unable to create graph")
    End If
-    
+   
 End
 
 '  Dim spicPath As String 

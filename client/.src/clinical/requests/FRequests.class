@@ -68,7 +68,7 @@ Private pk_view As String
 Private fk_branch As Integer
 Private fk_lu_request_type As Integer
 Private fk_organisation As Integer
-
+Private fk_request_provider As Integer 
 Private the_collection As Collection 
 Private default_provider As Collection             'company user sends to by default
 Private default_branch As Collection
@@ -106,7 +106,7 @@ Private request_notes_text As String
 Private notes_summary As String
 Private medications_summary As String
 Private currentRequestNote As Collection 
-
+Private fk_person As Integer 
 Private medication As Collection
 Private medications_text As String
 Private currentRequestMedication As Collection
@@ -205,6 +205,7 @@ Public Sub Save()
    
    If Not Valid_RequestForm() Then Return 
    
+   tbSave.Enabled = False                            'prevents user clicking twice in quick succession which is possible! cause it's happend to me > two saves
    sProgressNotes = RequestForm_Fill_Collection()    'probably not previewed > fills CurrentRequestForm including generates the forms html
    modDBConnect.BeginTrans()
    If IsNull(CurrentRequestForm!fk_progressnote) Then
@@ -215,6 +216,7 @@ Public Sub Save()
    If fk_pasthistory <> 0 Then
       CurrentRequestForm!fk_pasthistory = fk_pasthistory
    Endif
+ 
    CurrentRequestForm!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, cProgressNote_Section, fk_progressnote, "Requests", fk_pasthistory, False)
    
    fk_form = modRequestsDBI.RequestForm_Save(currentconsult, pk_view, CurrentRequestForm, old_forms_requests, currentFormsRequests, currentRequestFormPictures)
@@ -238,19 +240,20 @@ Public Function Valid_RequestForm() As Boolean
       txtDate.SetFocus()
       Return False
    End If
-   If Not fk_branch Then 
-      
-      tlRequestHints.text = "<P><b><U>Provider Names</U><b></P>"
-      "<P>Please enter a provider for the selected category. "
-      "If you unable to find any, it may be that you have not "
-      "as yet entered any in the Contacts database.</P>"
-      "Please Click on the Contacts icon on the side bar "
-      "and enter a provider name. Ensure that the category that "
-      "you allocate to them matches the category of request form "
-      "that you have chosen."
-      Vbox_Communications.visible = False
-      Vbox_RequestHints.Visible = True
-      Return False
+   If Not fk_branch Then            '
+      If Not fk_person Then 
+         tlRequestHints.text = "<P><b><U>Provider Names</U><b></P>"
+         "<P>Please enter a provider for the selected category. "
+         "If you unable to find any, it may be that you have not "
+         "as yet entered any in the Contacts database.</P>"
+         "Please Click on the Contacts icon on the side bar "
+         "and enter a provider name. Ensure that the category that "
+         "you allocate to them matches the category of request form "
+         "that you have chosen."
+         Vbox_Communications.visible = False
+         Vbox_RequestHints.Visible = True
+         Return False
+      End If   
    End If
    
    If Not fk_lu_request_type Then
@@ -454,7 +457,7 @@ Public Function RequestForm_Fill_Collection() As String
    End If
    
    Try CurrentRequestForm!date = Val(txtDate.text)
-   CurrentRequestForm!fk_branch = fk_branch
+   CurrentRequestForm!fk_request_provider = fk_request_provider
    CurrentRequestForm!fk_lu_request_type = fk_lu_request_type
    CurrentRequestForm!requests_summary = Trim(txtRequest.text)
    CurrentRequestForm!notes_summary = Trim(txtNotes.text)
@@ -530,7 +533,7 @@ Public Sub RequestForm_New()
    EditArea_Notify_Data_Change(False)
    cmbProviders.index = -1
    cmbBranches.index = -1
- 
+   tbSave.Enabled = True   
    bPreviewingPrintedForm = False  
    txtRequest.SetFocus()
    
@@ -1243,16 +1246,20 @@ Public Sub Get_Providers_For_Request_Type()
    'CALLED BY: RequestItem_Selection()
    '           cmbRequestTypes_Click()
    '----------------------------------------------------------------------------
-
-   Request_Providers = modUtil.LoadCombo(cmbProviders, modRequestsDBI.Request_Providers_Get(Request_Types[cmbRequestTypes.index]!pk), "organisation")
+   Dim Display_Fields As New String[]
+   Display_Fields.Add("organisation")
+   Display_Fields.Add("wholename")
+   Request_Providers = modUtil.LoadCombo_NEw(cmbProviders, modRequestsDBI.Request_Providers_Get(Request_Types[cmbRequestTypes.index]!pk), Display_Fields)
 
 End
 
 Public Sub Get_Default_Provider() As Boolean
    '------------------------------------------------------------------------------------------
    'Gets the name of the company or person who is the default provider for the type of request
-   'If there is none, pops up a dialog with 'mini help' and asks if you want full help
+   'from view clin_requests.vwUserProviderDefaults
    'This sets the default_provider collection
+   'If there is none, pops up a dialog with 'mini help' which explains how to set the
+   'default on a per user basis, and asks if you want 'full help'
    '------------------------------------------------------------------------------------------   
 
    Dim sMsg As String 
@@ -1266,6 +1273,7 @@ Public Sub Get_Default_Provider() As Boolean
          txtProvider.text = default_provider!organisation 
          txtBranch.text = default_provider!default_branch
          fk_branch = default_provider!fk_default_branch
+         fk_request_provider = default_provider!fk_request_provider
          ' txtStreet.text = default_provider!default_branch_street
          ' txtSuburb.text = default_provider!default_branch_town & " " & default_provider!default_branch_postcode
          txtPostcode.text = default_provider!default_branch_postcode '?remove me or leave to find branch close to postcode fuzzy logic?
@@ -1279,20 +1287,20 @@ Public Sub Get_Default_Provider() As Boolean
          Comms_Get()
       Next
    Else
-      smsg = "There is no default provider set for this type of request.\n\n"
+      smsg = "You have not set up a default provider set for this type of request.\n\n"
+      "Some of the steps listed below may have already been done.\n\n"
       "Before you can order any request of this type, EasyGP needs to know the names "
       "of companies or individuals to whom you will send this type of request and these "
       "must exist in the EasyGP contacts database.\n\n"
       "Step1: Your system admin enters the details in the contacts database.\n\n"
       "Step2: Your system admin will have to tell EasyGP that the company is one you will be sending requests to,"
       " and what the type of request is, by entering the data via the Admin.'Global Request Defaults' tab.\n\n"
-      "Step3: After that is done, you may tell EasyGP who your preferred provider is by going  to the Staff section "
-      "and after selecting the staff member, click the 'Preferences' tab, and then the "
-      "'Default Providers for Requests tab' and enter the appropriate data.\n\n"
+      "Step3: After that is done, you may tell EasyGP who your preferred provider is by going  to the Preferences Section "
+      " and then the 'Default Providers for Requests tab' and enter the appropriate data.\n\n"
       "Would you like to read the more extensive help on this subject?"
       Message.Title = "Setting Default Request Providers"
       If Message.warning(smsg, "Yes", "No") = 1 Then
-         'show help
+         modUtil.NotImplemented("Showing specific Help")
       Endif
       cmbRequestTypes.index = -1
       Return False
@@ -1361,15 +1369,15 @@ Public Sub Requests_This_Consult_Show()
    cvwRequestForms.Columns.Count = 5
    For Each requestform In RequestForms
       
-      '  If fk_last_form <> requestform!fk_form Then
-      '    fk_last_form = requestform!fk_form 
-      cvwRequestForms.Add(requestform!pk_view, 0)
-      cvwRequestForms[requestform!pk_view][0] = Format(requestform!date, "dd/mm/yyyy")
-      cvwRequestForms[requestform!pk_view][1] = requestform!type
-      cvwRequestForms[requestform!pk_view][2] = requestform!organisation
-      cvwRequestForms[requestform!pk_view][3] = requestform!requests_summary
-      cvwRequestForms[requestform!pk_view][4] = requestform!notes_summary
-      '  End If
+       If fk_last_form <> requestform!fk_form Then
+          fk_last_form = requestform!fk_form 
+         cvwRequestForms.Add(requestform!pk_view, 0)
+         cvwRequestForms[requestform!pk_view][0] = Format(requestform!date, "dd/mm/yyyy")
+         cvwRequestForms[requestform!pk_view][1] = requestform!type
+         cvwRequestForms[requestform!pk_view][2] = requestform!organisation
+         cvwRequestForms[requestform!pk_view][3] = requestform!requests_summary
+         cvwRequestForms[requestform!pk_view][4] = requestform!notes_summary
+      End If
    Next
    EditArea_Notify_Data_Change(False)
    
@@ -1451,6 +1459,7 @@ Public Sub RequestForm_Preview()
       If Not Valid_RequestForm() Then Return 
       RequestForm_Fill_Collection()
    Else
+      cvwRequestForms.MoveCurrent() 
       CurrentRequestForm = RequestForms[cvwRequestForms.Item.key]
    End If   
    Filename = modPrinting.Latex_To_PDF(RequestForm_LaTeX_Construct(CurrentRequestForm).GetData())
@@ -1485,20 +1494,39 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTempl
    
    sString = cmbRequestTypes.text 
    sString = Replace(sString, "provider", "")
-   templ.Subst("form.type", UCase(Left(sString, 1)) & Right(sString, Len(sstring) - 1))
-   templ.Subst("provider.organisation", default_provider!organisation)
-   templ.Subst("provider.branch", default_provider!headoffice_branch)
+   templ.Subst("form.type", UCase(Left(sString, 1)) & Right(sString, Len(sstring) - 1))   'The heading e.g 'Pathology Provider'
+ 
+   '-----------------------------------------------------------
+   'Mostly we are dealing with organisations providing services
+   '-----------------------------------------------------------
+    If Not IsNull(default_provider!organisation) Then 
+          templ.Subst("provider.organisation", default_provider!organisation)
+    Else
+          templ.Subst("provider.organisation", default_provider!wholename)
+    End If
+    templ.Subst("provider.branch", default_provider!headoffice_branch)
+    templ.Subst("provider.address.street", default_provider!headoffice_street)
+    templ.Subst("provider.address.suburb", default_provider!headoffice_town & " " & default_provider!headoffice_postcode)
+   ' Else
+    '     templ.Subst("provider.organisation", "\\relax ")
+    ' End If
+    ' If Not IsNull(default_provider!headoffice_branch) Then
+    '   templ.Subst("provider.branch", default_provider!headoffice_branch)
+    ' Else
+    '    templ.Subst("provider.branch", "\\relax ")
+    ' Endif
+ 
    
-   If Not IsNull(default_provider!headoffice_street) Then 
-      templ.Subst("provider.address.street", default_provider!headoffice_street)
-   Else
-      templ.Subst("provider.address.street", "\\relax ")  
-   End If 
-   If Not IsNull(default_provider!headoffice_town) Then
-      templ.Subst("provider.address.suburb", default_provider!headoffice_town & " " & default_provider!headoffice_postcode)
-   Else
-      templ.Subst("provider.address.suburb", "\\relax ")  
-   End If 
+   ' If Not IsNull(default_provider!headoffice_street) Then 
+   '    templ.Subst("provider.address.street", default_provider!headoffice_street)
+   ' Else
+   '    templ.Subst("provider.address.street", "\\relax ")  
+   ' End If 
+   ' If Not IsNull(default_provider!headoffice_town) Then
+   '    templ.Subst("provider.address.suburb", default_provider!headoffice_town & " " & default_provider!headoffice_postcode)
+   ' Else
+   '    templ.Subst("provider.address.suburb", "\\relax ")  
+   ' End If 
    If Not IsNull(default_provider!organisation_tollfree) Then
       templ.Subst("provider.phone", default_provider!tollfree)
    Else If Not IsNull(default_provider!phone) Then
@@ -1511,15 +1539,19 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTempl
    Else
       templ.Subst("provider.fax", "Fax   not recorded")
    End If
-   If branches.count = 1 Then
-      templ.Subst("defaultbranch.branch", ".")
-      templ.Subst("defaultbranch.address.street", ".")
-      templ.Subst("defaultbranch.address.suburb", ".")
-      templ.Subst("defaultbranch.phone", ".")
-      templ.Subst("defaultbranch.fax", ".")
+   If branches.count = 1 Or default_provider!fk_person <> 0 Then
+      templ.Subst("defaultbranch.branch", "\\relax")
+      templ.Subst("defaultbranch.address.street", "\\relax")
+      templ.Subst("defaultbranch.address.suburb", "\\relax")
+      templ.Subst("defaultbranch.phone", "\\relax")
+      templ.Subst("defaultbranch.fax", "\\relax")
    Else
-      
-      templ.Subst("defaultbranch.branch", default_provider!default_branch)
+               
+       If Not IsNull(default_provider!default_branch) Then
+          templ.Subst("defaultbranch.branch", default_provider!default_branch)
+       Else
+          templ.Subst("defaultbranch.branch", "\\relax")
+       End If 
       If Not IsNull(default_provider!default_branch_street) Then
          templ.Subst("defaultbranch.address.street", default_provider!default_branch_street)
       Else
@@ -1548,7 +1580,7 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTempl
    For Each branch In branches
       If branch!head_office <> True Then
          If branch!branch <> default_provider!default_branch Then
-            If Lower(branch!category) = Lower(default_provider!default_category) Then 
+            If Lower(branch!category) = Lower(default_provider!category) Then 
                sstring = ""
                For Each comm In branch!comms
                   If comm!fk_type = Const.CommModalityPhone Then
@@ -1632,6 +1664,188 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTempl
    Next  
    templ.Subst_HTML("copyto", sString)  
    templ.Subst("form.date", Format(RequestForm!date, "dd/mm/yyyy")) 
+   
+   Return templ
+
+End 
+Public Function RequestForm_LaTeX_Construct_old(RequestForm As Collection) As CTemplate
+   
+   Dim templ As New CTemplate("request-form", "tex")
+   Dim x As Integer
+   Dim comm As Collection 
+   Dim sHtml As String
+   Dim sString As String
+   Dim sImagePath As String
+   Dim pic As Picture
+   Dim cc As String 
+   Dim branch As Collection 
+   Dim branchlocations As String = ""
+   Dim cmd As String 
+   
+   templ.Subst_common(currentconsult)
+   
+   sString = cmbRequestTypes.text 
+   sString = Replace(sString, "provider", "")
+   templ.Subst("form.type", UCase(Left(sString, 1)) & Right(sString, Len(sstring) - 1))
+    If Not IsNull(default_provider!organisation) Then 
+          templ.Subst("provider.organisation", default_provider!organisation)
+    Else
+        templ.Subst("provider.organisation", "\\relax ")
+    End If
+    If Not IsNull(default_provider!headoffice_branch) Then
+      templ.Subst("provider.branch", default_provider!headoffice_branch)
+    Else
+       templ.Subst("provider.branch", "\\relax ")
+    Endif
+ 
+   
+   If Not IsNull(default_provider!headoffice_street) Then 
+      templ.Subst("provider.address.street", default_provider!headoffice_street)
+   Else
+      templ.Subst("provider.address.street", "\\relax ")  
+   End If 
+   If Not IsNull(default_provider!headoffice_town) Then
+      templ.Subst("provider.address.suburb", default_provider!headoffice_town & " " & default_provider!headoffice_postcode)
+   Else
+      templ.Subst("provider.address.suburb", "\\relax ")  
+   End If 
+   If Not IsNull(default_provider!organisation_tollfree) Then
+      templ.Subst("provider.phone", default_provider!tollfree)
+   Else If Not IsNull(default_provider!phone) Then
+      templ.Subst("provider.phone", "Phone: " & default_provider!phone)
+   Else
+      templ.Subst("provider.phone", "Phone not recorded")
+   End If
+   If Not IsNull(default_provider!fax) Then
+      templ.Subst("provider.fax", "Fax  : " & default_provider!fax)
+   Else
+      templ.Subst("provider.fax", "Fax   not recorded")
+   End If
+   If branches.count = 1 Then
+      templ.Subst("defaultbranch.branch", ".")
+      templ.Subst("defaultbranch.address.street", ".")
+      templ.Subst("defaultbranch.address.suburb", ".")
+      templ.Subst("defaultbranch.phone", ".")
+      templ.Subst("defaultbranch.fax", ".")
+   Else
+       If Not IsNull(default_provider!default_branch) Then
+          templ.Subst("defaultbranch.branch", default_provider!default_branch)
+       Else
+          templ.Subst("defaultbranch.branch", "\\relax ")  
+       End If 
+      If Not IsNull(default_provider!default_branch_street) Then
+         templ.Subst("defaultbranch.address.street", default_provider!default_branch_street)
+      Else
+         templ.Subst("defaultbranch.address.street", "\\relax ")
+      End If
+      If Not IsNull(default_provider!default_branch_town) Then
+         templ.Subst("defaultbranch.address.suburb", default_provider!default_branch_town & " " & default_provider!default_branch_postcode)
+      Else
+         templ.Subst("defaultbranch.address.suburb", "\\relax ")
+      End If    
+      If Not IsNull(default_branch_comms!tollfree) Then
+         templ.Subst("defaultbranch.phone", default_branch_comms!tollfree)
+      Else If Not IsNull(default_branch_comms!phone) Then
+         templ.Subst("defaultbranch.phone", "Phone :" & default_branch_comms!phone)
+      Else
+         templ.Subst("defaultbranch.phone", "Phone :Not recorded")
+      End If
+      If Not IsNull(default_branch_comms!fax) Then
+         templ.Subst("defaultbranch.fax", "Fax    :" & default_branch_comms!fax)
+      Else
+         templ.Subst("defaultbranch.fax", "Fax    :Not recorded")
+      End If
+   End If
+   
+   x = 0
+   For Each branch In branches
+      If branch!head_office <> True Then
+         If branch!branch <> default_provider!default_branch Then
+            If Lower(branch!category) = Lower(default_provider!category) Then 
+               sstring = ""
+               For Each comm In branch!comms
+                  If comm!fk_type = Const.CommModalityPhone Then
+                     sstring &= " " & comm!value
+                  End If
+               Next 
+               branchlocations &= branch!branch & " " & branch!street & " " & branch!town & " " & branch!postcode
+               branchlocations &= sString & "<BR>"
+            End If
+         End If
+      End If
+      Inc x
+      If x > 10 Then Break
+   Next 
+   If branchlocations = "" Then branchlocations = "no branches"
+   templ.Subst_HTML("branchlocations", branchlocations) 
+   templ.Subst("requests", requestform!requests_summary)
+   templ.Subst("medications", requestform!medications_summary)
+   templ.Subst("notes", requestform!notes_summary)
+   
+   sString = ""
+   If currentRequestFormPictures.count Then
+      For x = 0 To currentRequestFormPictures.count - 1
+         sImagePath = currentRequestFormPictures[x]!path
+         
+         cmd = "cd `dirname " & sImagePath & "` ; " 
+         cmd &= "convert " & File.Name(sImagePath) & " " & "test.eps"
+         Shell cmd Wait
+         
+         sString &= templ.MakeImage(File.Dir(sImagePath) & "/test.eps") 
+      Next
+      
+   End If
+   templ.Subst("diagrams pictures", sString)
+   
+   If requestform!urgent = True Then 
+      templ.Checkbox("urgent_checkbox", True)
+   Else
+      templ.Checkbox("urgent_checkbox", False)
+   End If
+   If requestform!phone = True Then 
+      templ.Checkbox("phone_checkbox", True)
+   Else
+      templ.Checkbox("phone_checkbox", False)
+   End If
+   If requestform!fax = True Then 
+      templ.Checkbox("fax_checkbox", True)
+   Else
+      templ.Checkbox("fax_checkbox", False)
+   End If
+   If requestform!fasting = True Then 
+      templ.Checkbox("fasting_checkbox", True)
+   Else
+      templ.Checkbox("fasting_checkbox", False)
+   End If
+   
+   sString = ""
+   
+   templ.Subst("our reference", "") 'FIXME PUT IN A REFERENCE
+   
+   sString = "" 
+   If requestform!bulk_bill Then sString = "Bulk Bill"
+   templ.Subst("billing", sString)
+   templ.Checkbox("urgent_checkbox", requestform!urgent)
+   If requestform!urgent Then
+      templ.Subst("urgent_word", templ.Bold("**Urgent**"))
+   Else
+      templ.Subst("urgent_word", "Urgent")
+   Endif
+   templ.Checkbox("fasting_checkbox", requestform!fasting)
+   templ.Checkbox("phone_checkbox", requestform!phone)
+   templ.Checkbox("fax_checkbox", requestform!fax)
+   
+   sString = ""
+   If RequestForm!copyto_patient Then
+      sString &= "Patient at their address on this form<BR>"
+   End If
+   CopyTos = modUtil.SplitStrings_into_collection(requestform!copyto, "|")
+   For Each cc In Copytos
+      sString &= cc & "<BR>"
+   Next  
+   templ.Subst_HTML("copyto", sString)  
+   templ.Subst("form.date", Format(RequestForm!date, "dd/mm/yyyy")) 
+   
    Return templ
 
 End 
@@ -1859,20 +2073,63 @@ Public Sub Medications_CheckDuplicates() As Boolean
 End
 
 Public Sub cvwRequestForms_Menu()
-   
+   '------------------------------------------------------------
+   'User has clicked over the requests printed this consult list
+   'First check what menu item(s) need to be enabled disabled
+   '------------------------------------------------------------
+   Dim y As Integer
+   Dim x As Integer
+     
    If cvwRequestForms.count Then
+      cvwRequestForms.MoveFirst()
+      For x = 0 To cvwRequestForms.count - 1
+         If cvwRequestForms.Item.Selected = True Then
+            Inc y
+         Endif
+         cvwRequestForms.MoveNext()
+      Next
+      If y > 1 Then
+         mnuRequestForms_ReprintSelected.Enabled = True
+         mnuRequestForms_ReprintForm.Enabled = False 
+         mnuRequestForms_Delete.Enabled = False
+         mnuRequestForms_Edit.Enabled = False   
+         mnuRequestForms_Preview.Enabled = False    
+      Else
+         mnuRequestForms_ReprintSelected.Enabled = False 
+         mnuRequestForms_ReprintForm.Enabled = True  
+         mnuRequestForms_Delete.Enabled = True
+         mnuRequestForms_Edit.Enabled = True   
+         mnuRequestForms_Preview.Enabled = True    
+
+      Endif     
+   
       mnuRequestForms.Popup
    End If 
    
 End
 
 Public Sub mnuRequestForms_Click()
+   Dim x As Integer
    
    currentRequestForm = modUtil.Copy_Collection(RequestForms[sCurrentForm_Key])
    Select Case Last.tag
-      Case "reprint all"  'fixme implement me
-      Case "reprint selected"
+      Case "undelete"
+         modUtil.NotImplemented("Undeleting request forms") 
+      Case "reprint selected" 
+         cvwRequestForms.MoveFirst()  
+         For x = 1 To cvwRequestForms.count 
+            If cvwRequestForms.Item.Selected = True Then 
+               sCurrentForm_Key = cvwRequestForms.Item.Key 
+               currentRequestForm = modUtil.Copy_Collection(RequestForms[sCurrentForm_Key])
+               RequestForm_Print()
+               cvwRequestForms.Item.Selected = False  
+            Endif
+           cvwRequestForms.MoveNext()
+         Next
+         cvwRequestForms.MoveFirst()
+      Case "reprint single"
          RequestForm_Print()
+         
       Case "edit"
          RequestForm_Edit()
       Case "delete form"
@@ -1883,6 +2140,8 @@ Public Sub mnuRequestForms_Click()
          Else
             modUtil.Columnview_SetFont(cvwRequestForms, "Requests")
          End If   
+      Case "help"
+         modUtil.NotImplemented("Help") 
       Case "adjust columns"
          cvwRequestForms.Header = True
          cvwRequestForms.Resizable = True
@@ -2350,8 +2609,8 @@ Public Sub cmbRequestTypes_Click()
    If cmbRequestTypes.index = -1 Then Return
    RequestForm_New()                                               'clear edit area
    fk_lu_request_type = request_types[cmbRequestTypes.index]!pk    'set as the current type
-   If Get_Default_Provider() Then                                   'get default provider company
-      Get_Providers_For_Request_Type()                              'load all other companies who do this type of request
+   If Get_Default_Provider() Then                                  'get default provider company
+      Get_Providers_For_Request_Type()                             'load all other companies who do this type of request
       bExit = True
       cmbProviders.index = cmbProviders.Find(txtProvider.text)
       bExit = False  
@@ -2384,13 +2643,12 @@ Public Sub Provider_Display_Alternate()
    'User has clicked on the combo box containing providers for this type of request
    'Load that companies details
    '--------------------------------------------------------------------------------
-
    bExit = True    
    default_provider = Request_Providers[cmbProviders.index]
    fk_organisation = default_provider!fk_organisation
    txtProvider.text = default_provider!organisation 
    txtBranch.text = default_provider!branch
-   fk_branch = default_provider!fk_default_branch
+   Try fk_branch = default_provider!fk_default_branch
    txtStreet.text = default_provider!default_branch_street
    txtSuburb.text = default_provider!default_branch_town
    txtPostcode.text = default_provider!default_branch_postcode

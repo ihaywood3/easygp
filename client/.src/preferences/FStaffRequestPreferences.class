@@ -39,6 +39,8 @@ Private fk_organisation As Integer
 Private fk_default_branch As Integer
 Private fk_head_office_branch As Integer
 Private fk_lu_request_type As Integer 
+Private fk_request_provider As Integer
+Private fk_person As Integer = 0
 Private pk_view As Integer
 Private RequestDefaultProviders As Collection 
 Private RequestDefaultProvider As Collection 
@@ -85,12 +87,12 @@ Public Sub Save()
 '  clin_requests.user_provider_defaults
 '   pk serial NOT NULL,
 '   fk_staff integer NOT NULL, -- key to admin.staff table ie describes the user
-'   fk_default_branch integer NOT NULL, -- key to contacts.branches table...
-'   fk_head_office_branch integer,
+'   fk_request_provider integer NOT NULL, -- key to clin_requests.provider_defaults table, this points to the organisation, employee or person who is the default provider, usually this is the companies head office.
+'   fk_default_branch integer, -- if Not null, then this is the branch address that the user whats printed on top of a request form - ie. could be a local branch of a large pathology organisation for their patients to go to.
 '   send_electronically boolean DEFAULT false,
 '   print_paper boolean DEFAULT true,
 '   deleted boolean DEFAULT false,
-'   fk_lu_request_type integer not null
+
 '------------------------------------------------------------------------------------
    Dim sMsg As String
    If VBox_EditArea.Padding = 0 Then Return            'nothing to save
@@ -107,8 +109,11 @@ Public Sub Save()
    If pk_view <> -1 Then 
      RequestDefaultProvider!pk_default = pk_view
    Endif
-   RequestDefaultProvider!fk_default_branch = fk_default_branch 
    RequestDefaultProvider!fk_staff = fk_staff
+   RequestDefaultProvider!fk_request_provider = fk_request_provider
+   If fk_default_branch <> 0 Then 
+      RequestDefaultProvider!fk_default_branch = fk_default_branch 
+   End If
    RequestDefaultProvider!fk_lu_request_type = request_types[cmbRequestTypes.index]!pk
    '--------------------------------------------------------------------------
    'Save the default type of provider for the user, get the type key
@@ -137,7 +142,7 @@ Public Sub Save()
    'I think there are still bugs in contacts so it could
    '----------------------------------------------------------------------------------
    modDBConnect.BeginTrans()
-      RequestDefaultProvider!fk_head_office_branch = modContactsDBI.Organisation_Get_Head_office_pk(fk_organisation)
+     ' RequestDefaultProvider!fk_head_office_branch = modContactsDBI.Organisation_Get_Head_office_pk(fk_organisation)
       RequestDefaultProvider!fk_default = modPreferencesDBI.RequestType_DefaultsSave(RequestDefaultProviders, pk_view, RequestDefaultProvider)
     ' DO NOT RE-INSERT THIS I'M MOVING IT OUT user_default_type!fk_user_default_type = modRequestsDBI.User_Save_Default_Type(old_user_default_type, user_default_type)
    modDBConnect.CommitTrans()
@@ -310,7 +315,12 @@ Public Sub Providers_Selection(action As String, Optional calling_control As Str
       If providers.count Then 
         For Each provider In providers
           columnview1.Add(provider!pk_request_provider, 0)
-          columnview1[provider!pk_request_provider][0] = provider!organisation
+          If provider!fk_person <> 0 Then
+              columnview1[provider!pk_request_provider][0] = provider!wholename
+          Else
+           columnview1[provider!pk_request_provider][0] = provider!organisation
+          Endif
+          
         Next
         columnview1.tag = txtprovider
         If providers.count = 1 Then 
@@ -343,10 +353,21 @@ Public Sub Providers_Selection(action As String, Optional calling_control As Str
       'Routine called by user clicking on list or pressing <enter>
       '-----------------------------------------------------------
       columnview1.MoveCurrent   'set internal cursor to match marquee
-      txtProvider.text = providers[columnview1.Item.key]!organisation
-      fk_organisation = providers[columnview1.Item.key]!fk_organisation
+      fk_request_provider = providers[columnview1.Item.key]!pk_request_provider
+      If providers[columnview1.Item.key]!fk_person <> 0 Then
+        txtProvider.text = providers[columnview1.Item.key]!wholename
+        fk_person = providers[columnview1.Item.key]!fk_person
+        txtbranch.text = "HEAD OFFICE"
+        txtStreet.text = providers[columnview1.Item.key]!headoffice_street
+        txtsuburb.text = providers[columnview1.Item.key]!headoffice_town & " " & providers[columnview1.Item.key]!postcode
+      Else
+         txtProvider.text = providers[columnview1.Item.key]!organisation
+         fk_organisation = providers[columnview1.Item.key]!fk_organisation
+         txtBranch.SetFocus()
+      End If   
+     
       columnview1.Visible = False  
-      txtBranch.SetFocus()
+      
       bExit = False  
    End Select
 End
@@ -532,7 +553,7 @@ Public Sub RequestsDefaults_Refresh()
    '-----------------------------------------------------------------
    'Gets the defaults for how the user wants to handle their requests
    'e.g default pathology company, branch etc
-   'This is initally called by clicking on the staff lists in FStaff
+   'Set initially in FStaffPreferences
    '-----------------------------------------------------------------
   VBox_EditArea.Enabled = False   
   cvwUserDefaults.Clear()  

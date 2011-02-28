@@ -13,10 +13,11 @@ Private Organisations As Collection
 Private branches As Collection 
 Private member As Collection 
 Private SendingOrganisation As Collection
-Private fk_branch As Integer                 'branch_key or the organisation head office
-Private fk_default_branch As Integer 
+Private fk_default_branch As Integer                 'branch_key or the organisation head office
+Private fk_headoffice_branch As Integer 
 Private fk_organisation As Integer
 Private fk_person As Integer
+Private fk_address_person As Integer
 Private fk_patient As Integer
 Private fk_employee As Integer
 Private pk_request_provider As Integer '0 if a new provider
@@ -24,6 +25,8 @@ Private RequestTypes As Collection
 Private RequestType As Collection 
 Private RequestProviders As Collection
 Private RequestProvider As Collection 
+Private persons As Collection
+Private person As Collection
 
 Private pk_view As Integer
 
@@ -52,17 +55,20 @@ Public Sub Init()
    
    With cvwRequestProviders
       .Columns.count = 2
-      
    End With
+   columnview1.columns.Count = 7
    FHelp = New FHtmlViewer(Vbox_Help)
    Try Settings_Load()
    help_dir = Application.Path &/ "help/"
+   rbTypeSender_Organisation.Value = True 
    Type_Request_Provider = const.contacttype_organisation
-   modEditAreaHelpers.Help_Show("help/global-request-ordering-defaults.html", FHelp)
+   modEditAreaHelpers.Help_Show("help/global-request-ordering.html", FHelp)
    lblMeasure.text = " Default Branch "
    modEditAreaHelpers.Resize_labels(VBox_EditArea, lblMeasure)
    modEditAreaHelpers.Resize_labels(VBox_Organisation, lblMeasure)
    modEditAreaHelpers.Resize_labels(VBox_person, lblMeasure)
+   modEditAreaHelpers.Fill_Combo_Sex(cmbSex)
+   modEditAreaHelpers.Fill_Combo_Titles(cmbtitle)
    
 End
 
@@ -101,11 +107,16 @@ Public Sub EditArea_TextBox_GotFocus()
    Select Case Last.tag
       Case "find"
          With listview2
-            .top = Last.parent.top + Last.parent.height + VBox_Organisation.top
+            .top = VBox_Organisation.top
             .left = Last.Left
             .Raise
             .width = Last.width
-            
+         End With
+         With columnview1
+            .top = VBox_Person.top
+            .left = Last.Left
+            .Raise
+            .width = Last.width
          End With
    End Select
    
@@ -115,46 +126,17 @@ Public Sub Reset_Keys()
    
    'resets the keys when this form being used for allocating scanned documents
    
-   ' fk_organisation = 0
-   ' fk_category_organisation = 0
-   ' fk_town_organisation = 0
-   ' fk_address_organisation = 0
-   ' fk_person = 0
-   ' fk_address_person = 0
-   ' fk_category_person = 0
-   ' 
-   
+   fk_organisation = 0
+   fk_person = 0
+   fk_address_person = 0 'not implemented fixme
+   fk_employee = 0
+   fk_headoffice_branch = 0
+   fk_default_branch = 0
 End
 
 Public Sub Type_Sender_Click()
-   
-   ' Reset_Keys() 
-   Select Case Last.tag
-      Case "organisation"
-         modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
-         Type_Request_Provider = const.contacttype_organisation
-         Vbox_Person.Visible = False  
-         VBox_Organisation.Visible = True 
-         ' txtOrganisationEmployee.Enabled = False 
-      Case "patient"
-         modEditAreaHelpers.EditArea_Clear(VBox_Person)
-         Type_Request_Provider = const.contacttype_patient
-         VBox_Organisation.Visible = False 
-         Vbox_Person.Visible = True  
-      Case "person"
-         modEditAreaHelpers.EditArea_Clear(VBox_Person)
-         Type_Request_Provider = const.contacttype_person
-         VBox_Organisation.Visible = False 
-         Vbox_Person.Visible = True 
-      Case "employee"
-         modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
-         Type_Request_Provider = const.contacttype_employee
-         Vbox_Person.Visible = False  
-         VBox_Organisation.Visible = True 
-         txtOrganisationEmployee.Enabled = True   
-         modEditAreaHelpers.EditArea_Clear(VBox_Organisation)
-   End Select
-   txtFind.SetFocus()
+   If bExit Then Return 
+   RequestProvider_New()
    
 End
 
@@ -167,9 +149,8 @@ Public Sub EditArea_TextBox_KeyRelease()
                Organisation_Get()
             Case const.contacttype_employee
                
-            Case const.contacttype_patient
-               
-            Case const.contacttype_person
+            Case const.contacttype_patient, const.contacttype_person
+               Timer1.start()
          End Select
    End Select
    
@@ -205,7 +186,9 @@ Public Sub Organisation_Get()
       Return
    End If
    
-   Organisations = modContactsDBI.Organisations_Get(Trim(txtFind.text))
+ 
+ '  Organisations = modContactsDBI.Organisations_Get(Trim(txtFind.text))
+   Organisations = modContactsDBI.Organisations_Get_HeadOffice(Trim(txtFind.text))
    '-----------------------------------------------------------------
    'If categories exist to match the text, auto-select or show a list
    '-----------------------------------------------------------------
@@ -244,6 +227,12 @@ Public Sub EditArea_TextBox_KeyPress()
                   listview2.Item.Selected = True
                   listview2.SetFocus()
                Endif
+               If columnview1.Visible = True Then
+                  columnview1.MoveFirst()
+                  columnview1.Item.Selected = True
+                  columnview1.SetFocus()
+               Endif
+               
          End Select
    End Select
    
@@ -273,6 +262,7 @@ Public Sub Organisation_Select()
    '---------------------------------------------------------------
    'User is adding a new organisation, is selecting from popup list
    '--------------------------------------------------------------- 
+   
    listview2.MoveCurrent
    RequestProvider = Organisations[listview2.item.key]
    listview2.Visible = False
@@ -288,31 +278,47 @@ Public Sub Organisation_Display()
    'in which case there will be no fields fro default_branch 
    'or clin_requests.vwRequestProviders if viewing an already saved record.
    '------------------------------------------------------------------------------------
+   
    bExit = True
    fk_organisation = RequestProvider!fk_organisation
+   branches = modUtil.LoadCombo(cmbBranches, modContactsDBI.Branches_Get_For_Organisation(fk_organisation), "branch")
+   branches = modUtil.LoadCombo(cmbBranchesDefault, branches, "branch")
    Try txtOrganisationEmployee.text = RequestProvider!wholename
    fk_employee = RequestProvider!fk_employee
-   fk_branch = RequestProvider!fk_branch
+   
    txtOrganisation.text = RequestProvider!organisation
-   Try fk_default_branch = RequestProvider!fk_default_branch
-   If Not Error Then
-      txtBranch.text = RequestProvider!default_branch
-      txtstreet1.text = RequestProvider!default_branch_street
-      txtsuburbOrganisation.text = RequestProvider!default_branch_town & " " & RequestProvider!default_branch_state & " " & RequestProvider!default_branch_postcode
-   Else
+   Try fk_default_branch = RequestProvider!fk_default_branch 'dosn't exist new record
+   If Error Then
+      cmbBranchesDefault.index = -1
+   End If    
+  
+   Try fk_headoffice_branch = RequestProvider!fk_headoffice_branch
+   If Error Then
+      fk_headoffice_branch = RequestProvider!fk_branch
       txtBranch.text = RequestProvider!branch
       txtstreet1.text = RequestProvider!street
       txtsuburbOrganisation.text = RequestProvider!town & " " & RequestProvider!state & " " & RequestProvider!postcode
-   End If
+      cmbBranches.index = cmbBranches.Find(RequestProvider!branch)
+   Else 
+      txtBranch.text = RequestProvider!default_branch
+      txtstreet1.text = RequestProvider!default_branch_street
+      txtsuburbOrganisation.text = RequestProvider!default_branch_town & " " & RequestProvider!default_branch_state & " " & RequestProvider!default_branch_postcode
+      cmbBranches.index = cmbBranches.Find(RequestProvider!headoffice_branch)
+      cmbBranchesDefault.index = cmbBranchesDefault.Find(RequestProvider!default_branch)
+
+  Endif
    txtOrganisationCategory.text = RequestProvider!category
    Try chkHeadOffice.value = RequestProvider!head_office 
    '----------------------------------------------
    'load branches for this provider into the combo
    '----------------------------------------------
-   branches = modUtil.LoadCombo(cmbBranches, modContactsDBI.Branches_Get_For_Organisation(fk_organisation), "branch")
-   cmbBranches.index = cmbBranches.Find(RequestProvider!default_branch)
+   ' If IsNull(RequestProvider!fk_default_provider)
+   '    cmbBranches.index = cmbBranches.Find("HEAD OFFICE")
+  ' Else
+  ' End If 
    lblHeading.Visible = False  
    bExit = False  
+   
 End
 
 Public Sub EditArea_Clear()
@@ -325,6 +331,7 @@ Public Sub EditArea_Clear()
    EditArea_Notify_DataChange(False)
    bExit = False  
    listview2.Visible = False  
+   columnview1.Visible = False   
    
 End
 
@@ -383,7 +390,8 @@ Public Sub RequestProvider_Save()
    If pk_request_provider <> 0 Then
       Request_Provider!pk_request_provider = pk_request_provider
    Endif
-   Request_Provider!fk_branch = fk_default_branch
+   Request_Provider!fk_default_branch = fk_default_branch
+   Request_Provider!fk_headoffice_branch = fk_headoffice_branch
    Request_Provider!fk_employee = fk_employee
    Request_Provider!fk_person = fk_person
    Request_Provider!fk_lu_request_type = RequestTypes[cmbRequesttypes.Index]!pk
@@ -396,7 +404,10 @@ Public Sub RequestProvider_Save()
 End
 
 Public Sub Reload()
-   
+   '-----------------------------------
+   'Displays all the types of providers
+   '-----------------------------------   
+
    Dim x As Integer
    
    lvRequestTypes.MoveCurrent()
@@ -406,43 +417,65 @@ Public Sub Reload()
    For Each RequestProvider In RequestProviders                                                        'reload the types list
       x = RequestProvider!pk_request_provider
       cvwRequestProviders.Add(x, 0)
-      ' If IsNull(RequestProvider!head_office) Or RequestProvider!head_office = False Then 
-      '  cvwRequestProviders[x][0] = RequestProvider!branch & " [" & RequestProvider!organisation & "]"
-      cvwRequestProviders[x][0] = RequestProvider!organisation & " [" & RequestProvider!default_branch & " ]" 
-      ' Else
-      '     cvwRequestProviders[x][0] = RequestProvider!organisation
-      ' End If   
-      cvwRequestProviders[x][1] = RequestProvider!street & " " & RequestProvider!town
+      '----------------------------------------------------------------------------------------------
+      'Now, a provider can be an organisation/person/employee or patient ' latter two not implemented
+      '----------------------------------------------------------------------------------------------
+      If RequestProvider!fk_person <> 0 Then
+         cvwRequestProviders[x][0] = RequestProvider!title & " " & RequestProvider!firstname & " " & RequestProvider!surname
+      Else
+         cvwRequestProviders[x][0] = RequestProvider!organisation & " [" & RequestProvider!default_branch & " ]" 
+      End If   
+      cvwRequestProviders[x][1] = RequestProvider!default_branch_street & " " & RequestProvider!default_branch_town
    Next
    
 End
 
 Public Sub cmbRequestTypes_Click()
    
-   Dim x As Integer
-   
-   lvRequestTypes.MoveFirst
-   For x = 0 To lvRequestTypes.count - 1
-      If lvRequestTypes.Item.text = cmbRequesttypes.Text Then
-         
-         lvRequestTypes.Item.Selected = True
-         lvRequestTypes.SetFocus()
-         Break
-      Else
-         lvRequestTypes.MoveNext
-      Endif
-      
-   Next
+   ' Dim x As Integer
+   ' 
+   ' lvRequestTypes.MoveFirst
+   ' For x = 0 To lvRequestTypes.count - 1
+   '    If lvRequestTypes.Item.text = cmbRequesttypes.Text Then
+   '       
+   '       lvRequestTypes.Item.Selected = True
+   '       lvRequestTypes.SetFocus()
+   '       Break
+   '    Else
+   '       lvRequestTypes.MoveNext
+   '    Endif
+   '    
+   ' Next
    
 End
 
 Public Function valid_Request_Provider() As Boolean
+   '------------------------------------------
+   'Valid providers may not be an organisation
+   '------------------------------------------
+   Dim sMsg As String
    
-   If IsNull(fk_branch) Or IsNull(fk_person) Then
-      Message.Info("Please select the organisation/employee or independant person\n\nto whom you will be sending the request")
-      Return False
+   Message.title = "Default Providers"
+   
+   If fk_default_branch = 0 And fk_person = 0 Then
+     sMsg = "Please select a default branch for this provider."
+     Goto ShowMissing
    Endif
-   Return True
+   If fk_headoffice_branch = 0 Then
+     If fk_person = 0 Then
+      sMsg = "Please select the organisation to whom you will be sending the request."
+      Goto ShowMissing
+     End If
+   End If
+   If fk_person = 0 Then
+     sMsg = "Please select the person to whom you will be sending the request." 
+   Endif
+  Return True
+
+ ShowMissing:
+    Message.Info(sMsg)
+    Return False
+  
    
 End
 
@@ -481,13 +514,44 @@ Public Sub RequestProvider_Remove()
 End
 
 Public Sub RequestProvider_New()
-   
-   EditArea_Clear() 
-   txtFind.SetFocus()
+
+   Layout_screen()
    lblHeading.text = "Add New Entity to Send Requests"
    lblHeading.Foreground = Color.red
    Vbox_EditArea_Outer.Enabled = True  
+   txtFind.SetFocus()
    
+End
+
+Public Sub Layout_screen()
+
+   EditArea_Clear()                                      'clear all editing areas
+   Reset_Keys()
+
+   If rbTypeSender_Organisation.value = True Then
+      Type_Request_Provider = const.contacttype_organisation
+      Vbox_Person.Visible = False  
+      VBox_Organisation.Visible = True 
+      VBox_Organisation.Enabled = True
+   End If
+   If rbTypeSender_Employee.Value = True Then
+      Type_Request_Provider = const.contacttype_employee
+      Vbox_Person.Visible = False  
+      VBox_Organisation.Visible = True 
+      VBox_Organisation.Enabled = True
+      txtOrganisationEmployee.Enabled = True   
+   Endif
+   If rbTypeSender_Patient.Value = True Then 
+      Type_Request_Provider = const.contacttype_patient
+      VBox_Organisation.Visible = False 
+      Vbox_Person.Visible = True 
+   End If  
+   If rbTypeSender_Person.Value = True Then 
+      Type_Request_Provider = const.contacttype_person
+      VBox_Organisation.Visible = False 
+      Vbox_Person.Visible = True 
+   End If
+
 End
 
 Public Sub RequestProvider_Edit()
@@ -500,7 +564,8 @@ Public Sub RequestProvider_Edit()
    RequestProvider = RequestProviders[cvwRequestProviders.Item.key]
    fk_employee = RequestProvider!fk_employee
    fk_organisation = RequestProvider!fk_organisation
-   fk_branch = RequestProvider!fk_default_branch
+   fk_default_branch = RequestProvider!fk_default_branch  'fixme duplicated in  Organisation_Display()
+   fk_headoffice_branch = RequestProvider!fk_headoffice_branch  'fixme duplicated in  Organisation_Display()
    fk_person = RequestProvider!fk_person
    pk_request_provider = RequestProvider!pk_request_provider 
    pk_view = RequestProvider!pk_request_provider
@@ -540,13 +605,26 @@ Public Sub RequestProvider_Edit()
 End
 
 Public Sub cvwRequestProviders_Select()
-
-  
-   VBox_EditArea_Outer.Enabled = False  'no data change unless explicitly edited
-   EditArea_Clear()
+   '----------------------------------------------------------------------
+   'User has clicked on the list of providers for the current request type
+   '----------------------------------------------------------------------   
    cvwRequestProviders.MoveCurrent
    RequestProvider = RequestProviders[cvwRequestProviders.Item.key]
-   Organisation_Display()
+   If RequestProvider!fk_person <> 0 Then 
+      bExit = True    
+      rbTypeSender_Person.Value = True    'otherwise get re-entry into layout_screen()
+      bExit = False  
+      Layout_screen()                     'change screen display for persons, re-set all keys
+      Person_Display(RequestProvider)
+   Else
+      bExit = True  
+      rbTypeSender_Organisation.value = True 
+      bExit = True  
+      Layout_screen()                     'change screen display for organisations, reset all keys
+      Organisation_Display()
+   Endif
+   VBox_EditArea_Outer.Enabled = False  'no data change unless explicitly edited
+   
 End
 
 Public Sub lvRequestTypes_Click()
@@ -562,15 +640,111 @@ Public Sub EditArea_TextBox_LostFocus()
 End
 
 Public Sub cmbBranches_Click()
+  fk_headoffice_branch = branches[cmbBranches.index]!fk_branch
+  Try chkHeadOffice.value = branches[cmbBranchesDefault.index]!head_office 
+End
+
+Public Sub cmbBranchesDefault_Click()
    '------------------------------------
    'User is selecting the default branch
    '------------------------------------
+   
    If bExit Then Return 
    EditArea_Notify_DataChange(True)
-   fk_default_branch = branches[cmbBranches.index]!fk_branch
-   txtBranch.text = branches[cmbBranches.index]!branch
-   txtstreet1.text = branches[cmbBranches.index]!street
-   txtsuburbOrganisation.text = branches[cmbBranches.index]!town & " " & branches[cmbBranches.index]!state & " " & branches[cmbBranches.index]!postcode
-   Try chkHeadOffice.value = branches[cmbBranches.index]!head_office 
+   fk_default_branch = branches[cmbBranchesDefault.index]!fk_branch
+   txtBranch.text = branches[cmbBranchesDefault.index]!branch
+   txtstreet1.text = branches[cmbBranchesDefault.index]!street
+   txtsuburbOrganisation.text = branches[cmbBranchesDefault.index]!town & " " & branches[cmbBranchesDefault.index]!state & " " & branches[cmbBranchesDefault.index]!postcode
+  
    
 End
+
+Public Sub Timer1_Timer()
+   
+   Persons_Find()
+   
+End
+
+Public Sub Persons_Find()
+   '-------------------------------------------------------------------------------------
+   'Finds either patients or persons according to Type
+   'A Patient could be a provider of a service in another life hence this option included
+   '-------------------------------------------------------------------------------------  
+   
+   Inc Application.Busy
+   Timer1.stop()
+   persons = modContactsDBI.Person_Get(Trim(txtFind.text), Type_Request_Provider)
+   
+   Persons_List_Fill()
+   Dec Application.Busy
+   
+End
+
+Public Sub Persons_List_Fill()
+   
+   Dim iKey As Integer
+   
+   Dim comm As Collection
+   Dim sTemp As String
+   Dim sStatusMessage As String
+   Dim person As Collection 
+   Dim iLastperson_pk As Integer
+   
+   columnview1.Clear                           'clear current list persons
+   If Persons.count Then       
+      Try Persons.Remove("sql_in_english") 'ian included this for FClinical patient search     
+      For Each Person In Persons
+         columnview1.Add(Person!pk_view, 0)
+         If iLastperson_pk <> Person!fk_person Then
+            columnview1[Person!pk_view][0] = Person!surname
+            columnview1[Person!pk_view][1] = Person!firstname 
+            columnview1[Person!pk_view][2] = Person!sex       
+            '  Try columnview1[Person!pk_view][3] = Format(person!birthdate, "dd/mm/yyyy")
+            iLastperson_pk = Person!fk_person
+         Else
+            columnview1[Person!pk_view][0] = ""
+         End If
+         columnview1[Person!pk_view][4] = ""
+         columnview1[Person!pk_view][5] = Person!street & " " & Person!town & " " & Person!postcode
+         columnview1[Person!pk_view][6] = ""
+      Next
+      With columnview1
+         .Visible = True                    
+      End With
+   End If
+   
+End 
+
+Public Sub columnview1_KeyPress()
+   
+   If key.code = key.return Then
+      columnview1_dblClick() 
+   End If 
+   
+End
+
+Public Sub columnview1_dblclick()
+   
+   columnview1.MoveCurrent()
+   person = persons[columnview1.Item.key]
+   Person_Display(person)
+   columnview1.Visible = False   
+
+End
+
+Public Sub Person_Display(person_data As Collection)
+  
+   txtPersonFirstname.text = Person_data!firstname
+   txtPersonSurname.text = Person_data!surname
+   txtPersonOccupation.text = Person_data!occupation
+   txtPersonstreet1.text = Person_data!street
+   txtPersonSuburb.text = Person_data!town
+   txtPersonpostcode.text = Person_data!postcode
+   txtPersonstate.text = Person_data!state
+   txtPersoncategory.text = Person_data!category
+   cmbtitle.index = Person_data!fk_title
+   cmbSex.Index = Person_data!fk_sex  
+   fk_person = Person_data!fk_person
+   
+End
+

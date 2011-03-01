@@ -20,15 +20,11 @@
 '                 As user types in a type of request, brings up all request like this  -
 '                 from all clin_requests.lu_request_types. However once the request is
 '                 selected, all further requests are restricted to that type.
-' KNOWN BUGS      Probably squillions
+' KNOWN BUGS      Probably squillions - pretty flakey
 '                 email me rterry@pacific.net.au
 ' TODO            Implement pictures on the form
-'                 Implement re-printing multiple forms
 '                 Once emulated browser is complete, the preview, help will appear on its tabs
 '                 and FPDF and FHMTLviewer will be removed
-'                 User_Defaults_Get() not implemented yet - the idea of this is that
-'                 I might want pathology to be my default request, but you may want audiology etc
-'                 Implemement printing of the image on the latex form
 '                 Look at clin_requests.vwforms definition and look at why vwDocuments.html (this
 '                 was used as the result html is still in this query - I think I origially used it
 '                 to link an incoming document to a request form written by the user.
@@ -167,12 +163,11 @@ Public Sub Init(cons As CConsult)
    EditArea_Resize_Labels()                                       'to current system font
    cvwCopyTo.columns.count = 5
    cProgressNote_Section = const.cSection_GeneralNotes
-   User_Defaults_Get()
    Requests_This_Consult_Show()           'Display any existing forms, eg user could have ordered, close form, re-opened
    Try Settings_Load()
    MenuButton1.menu = "mnuHealthIssues"
    RequestForm_New()                      'Default to want a new form
-
+   
 End
 
 Public Sub Reload()
@@ -187,7 +182,7 @@ End
 
 Public Sub Help_No_Providers(sMsg As String)
    ' VSplit_EditArea.enabled = False
-
+   
    FPreview.WebView1.url = Application.Path &/ "help/setting-up-providers.html"
    FPreview.SetHtmlFileName(Application.Path &/ "help/setting-up-providers.html")
    FPreview.Visible = True
@@ -196,7 +191,7 @@ Public Sub Help_No_Providers(sMsg As String)
    bexit = True
    cmbRequestTypes.index = 17
    bExit = False  
-
+   
 End
 
 Public Sub Save()
@@ -216,7 +211,7 @@ Public Sub Save()
    If fk_pasthistory <> 0 Then
       CurrentRequestForm!fk_pasthistory = fk_pasthistory
    Endif
- 
+   
    CurrentRequestForm!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, cProgressNote_Section, fk_progressnote, "Requests", fk_pasthistory, False)
    
    fk_form = modRequestsDBI.RequestForm_Save(currentconsult, pk_view, CurrentRequestForm, old_forms_requests, currentFormsRequests, currentRequestFormPictures)
@@ -224,7 +219,7 @@ Public Sub Save()
    modDBConnect.CommitTrans()
    RequestForm_Print()
    Reload() 'reload all data, refresh other sections, default to new request
-
+   
 End
 
 Public Function Valid_RequestForm() As Boolean
@@ -307,14 +302,10 @@ Public Sub mnuCopyTo_Click()
    
 End
 
-Public Sub User_Defaults_Get()
-   
-   '  user_default = modRequestsDBI.User_Get_Default_Type() 
-   
-End
-
 Public Sub RequestForm_Delete()
-   
+   '----------------------------------------------------
+   'Deletes a request form when written this consulation
+   '----------------------------------------------------   
    modDBConnect.BeginTrans()
    modRequestsDBI.RequestForm_Delete(currentconsult, sCurrentForm_Key, currentRequestForm!fk_form, currentRequestForm)
    modDBConnect.CommitTrans()
@@ -331,6 +322,8 @@ Public Sub RequestForm_Edit()
    
    bEditing = True
    RequestForm_New()   'clear editing area, reset all collections 
+   fk_request_provider = RequestForms[sCurrentForm_Key]!fk_request_provider
+   Try fk_organisation = RequestForms[sCurrentForm_Key]!fk_organisation 'may be null
    currentRequestForm = New Collection 
    currentRequestForm!fk_form = RequestForms[sCurrentForm_Key]!fk_form
    currentRequestForm!date = RequestForms[sCurrentForm_Key]!date
@@ -364,13 +357,16 @@ Public Sub RequestForm_Edit()
       notes_summary = currentRequestForm!notes_summary
    End If
    fk_lu_request_type = currentRequestForm!fk_lu_request_type     'fixme in back end to fk_lu_request_type in lu_items table
+   cmbRequestTypes_Set()                                  'set the combo provider type e.g to pathology set by fk_lu_request_type
    fk_form = currentRequestForm!fk_form   
    pk_view = sCurrentForm_Key                                  'duplicates sCurrentForm_Key - keep for readability
-   cmbRequestTypes_Set()                                  'set the combo provider type e.g to pathology
-   Get_Default_Provider()                                  'Get default provider,branches and comms
-   
-   bExit = True
-   txtBranch.text = currentRequestForm!branch
+   default_provider = modRequestsDBI.Request_Provider_Get(fk_request_provider)
+   Branches_Comms_Get()                                        'collection of branches with their comms if an organisation
+   Comms_Display()                                             'FIXME MISNOMER - THIS IS COMMS DISPLAY fixme only works for organisation
+   Get_Providers_For_Request_Type()                            'get all providers for this request type and load cmbProviders
+  
+   cmbBranches.index = cmbBranches.Find(RequestForms[sCurrentForm_Key]!default_branch) 'triggers click event of combo > fills address textboxes
+    bExit = True
    txtDate.text = Format(currentRequestForm!date, "dd/mm/yyyy")
    txtRequest.text = requests_summary
    txtNotes.text = notes_summary
@@ -390,8 +386,8 @@ Public Sub RequestForm_Edit()
    request_items_text = "" 
    medications_text = "" 
    cvwRequestForms.UnselectAll()
-   bExit = False
    cmbProviders.index = cmbProviders.Find(RequestForms[sCurrentForm_Key]!organisation)
+   bExit = False
    CopyTos = modUtil.SplitStrings_into_collection(currentRequestForm!copyto, "|")
    cvwCopyTo_Refresh()
    
@@ -422,13 +418,30 @@ Public Sub RequestForm_Edit()
 End
 
 Public Sub RequestForm_Reprint()
-   
+   '---------------------------------------------------------------------------------------------
+   'Forms list has been clicked on, and user popped up menu and requested a reprint
+   'Clicking on the list sets sCurrentForm_Key in  cvwRequestForms_Select()
+   'The mnuRequestForms_Click() actually sets the currentRequestForm 
+   'Now rebuild the collections, as for example the requests section
+   'may have just been re-loaded, even in case of where user has finished with a patient, then
+   'later reprint it
+   'FIXME: BUG HERE i THINK - if a non-standard  default provider was used this is not accurate
+   'sCurrentForm_Key is set in cvwRequestForms_Select(), ie when user clicked on the forms list
+   'or by mnuRequestForms_Click() for multiple forms eg "reprint selected" menu option
+   '---------------------------------------------------------------------------------------------
+   Reset_Keys()             ' fk_organisation,  fk_lu_request_type
+   fk_lu_request_type = currentRequestForm!fk_lu_request_type 
+   Get_Default_Provider()   'Get default provider,branches and comms for fk_lu_request_type
+   CopyTos = modUtil.SplitStrings_into_collection(currentRequestForm!copyto, "|")
    RequestForm_Print()
-
+   
 End
 
 Public Sub RequestForm_Print()
-   
+   '--------------------------------------------------------------------
+   'Prints a request form, the underlying collections must already exist
+   '--------------------------------------------------------------------   
+
    modPrinting.Print_latex(RequestForm_LaTeX_Construct(CurrentRequestForm).GetData(), const.Paper_Request)
    
 End
@@ -480,14 +493,13 @@ Public Function RequestForm_Fill_Collection() As String
    CurrentRequestForm!fax = CBool(chkFax.value)
    CurrentRequestForm!phone = CBool(chkPhone.value)
    CurrentRequestForm!include_medications = CBool(chkIncludeMedications.value)
-   ' CurrentRequestForm!form_html = RequestForm_HTML_Construct(CurrentRequestForm).GetData()
-   
+  
    Return sTextForProgressNotes
    
 End
 
 Public Sub Reset_Keys()
-
+   
    fk_pasthistory = 0
    fk_organisation = 0
    fk_lu_request_type = 0  
@@ -695,133 +707,14 @@ Public Sub EditAreaTextBox_KeyRelease()
    
 End
 
-' Public Sub Branches_Selection(action As String, Optional calling_control As String)
-'    
-'    Select Case action
-'       Case "get"
-'          With columnview1
-'             .Clear
-'             .Visible = False
-'          End With   
-'          branches = modContactsDBI.Branches_Get_For_Category(fk_organisation, fk_lu_request_type)
-'          
-'          If branches.count Then 
-'             For Each branch In branches
-'                columnview1.Add(branch!pk_view, 0)
-'                columnview1[branch!pk_view][0] = branch!branch
-'                columnview1[branch!pk_view][1] = branch!street & " " & branch!town & " " & branch!state & " " & branch!postcode
-'             Next
-'             columnview1.tag = txtbranch
-'             If branches.count = 1 Then 
-'                columnview1.Visible = False 
-'                branches_Selection("accept")
-'                Return
-'             End If
-'             With columnview1
-'                .Visible = True
-'                .Raise
-'             End With 
-'             Return 
-'          End If
-'          
-'       Case "accept"
-'          
-'          bExit = True
-'          
-'          columnview1.MoveCurrent   'set internal cursor to match marquee
-'          fk_branch = branches[columnview1.Item.key]!fk_branch
-'          txtbranch.text = branches[columnview1.Item.key]!branch
-'          txtStreet.text = branches[columnview1.Item.key]!street
-'          txtsuburb.text = branches[columnview1.Item.key]!town
-'          txtPostcode.text = branches[columnview1.Item.key]!postcode
-'          txtRequest.SetFocus()
-'          bExit = False  
-'    End Select
-' 
-' End
-
 Public Sub request_types_Selection(action As String, Optional calling_control As String)
    
 End
 
-' Public Sub Provider_HeadOffices_Selection(action As String, Optional calling_control As String)
-'    
-'    Select Case action
-'       Case "get"
-'          
-'          branches = modContactsDBI.Organisations_Get_HeadOffices_For_Provider_Type(fk_lu_request_type, Trim(txtProvider.text))
-'          If Not branches.count Then
-'             Message.Info("There are no default providers for this category in the database.\n\nPlease read the following help page before continuing, and enter the appropriate information in the contacts database.")
-'             If txtRequest.text <> "" Then
-'                Help_No_Providers("NO " & UCase(cmbRequestTypes.text) & "'s EXIST")
-'                txtRequest.text = ""
-'             End If
-'             Return
-'          End If
-'          
-'          With Columnview1
-'             .top = Hbox1.height + Hbox_Provider.Top + txtProvider.Height + VBox1.Padding
-'             .left = txtProvider.Left  
-'             .Width = txtProvider.Width
-'             .Raise
-'             .Visible = False
-'          End With
-'          
-'          columnview1.Clear()
-'          
-'          For Each branch In branches
-'             Columnview1.Add(branch!pk_view, 0)
-'             Columnview1[branch!pk_view][0] = Branch!organisation
-'             Columnview1[branch!pk_view][1] = Branch!branch
-'             Columnview1[branch!pk_view][2] = Branch!street 
-'             Columnview1[branch!pk_view][3] = Branch!suburb & " " & Branch!postcode
-'          Next 
-'          
-'          If branches.count = 1 Then 
-'             Provider_HeadOffices_Selection("accept")
-'             Return  
-'          End If
-'          columnview1.Visible = True
-'          columnview1.Raise
-'          columnview1.tag = txtProvider
-'          Return 
-'          
-'       Case "accept"
-'          
-'          bExit = True
-'          columnview1.MoveCurrent 
-'          fk_organisation = branches[columnview1.Item.key]!fk_organisation
-'          fk_branch = branches[columnview1.Item.key]!fk_branch
-'          txtProvider.text = branches[columnview1.Item.key]!organisation
-'          txtBranch.text = branches[columnview1.Item.key]!branch
-'          
-'          Try txtStreet.text = branches[columnview1.Item.key]!street
-'          Try txtSuburb.text = branches[columnview1.Item.key]!town
-'          Try txtPostcode.text = branches[columnview1.Item.key]!postcode
-'          
-'          the_collection = modContactsDBI.Branch_Comms_Get(modContactsDBI.Organisation_Get_Head_office_pk(fk_organisation))
-'          lvwOrgContacts_HeadOffice.Clear() 
-'          For Each Member In the_collection
-'             lvwOrgContacts_HeadOffice.Add(Member!pk, Member!type & " " & Member!value)
-'          Next
-'          If branches[columnview1.Item.key]!branch <> "Head Office" Then
-'             the_collection = modContactsDBI.Branch_Comms_Get(fk_branch)
-'             lvwOrgContacts_Branch.clear
-'             For Each Member In the_collection
-'                lvwOrgContacts_Branch.Add(Member!pk, Member!type & " " & Member!value)
-'             Next
-'          End If
-'          
-'          txtRequest.SetFocus()
-'          bExit = False  
-'          columnview1.Visible = False   
-'    End Select
-' 
-' End
 
 Public Sub EditAreaTextBox_Menu()
    'Don't let the text box default menu show   
-
+   
    Stop Event  
    
 End
@@ -1027,7 +920,7 @@ Public Sub mnuHealthIssues_Click()
    End Select
    txtHealthIssue.pos = 0
    EditArea_Notify_Data_Change(True)
-
+   
 End
 
 Public Sub EditAreaButtons_Click()
@@ -1052,7 +945,7 @@ End
 
 Public Sub Form_PDF_Close_Click()
    'temporary routine until Emulated browser takes over 
-
+   
    Stop Event
    Form_PDF.Visible = False  
    VBox_Main.Visible = True  
@@ -1114,12 +1007,8 @@ End
 Public Sub ColumnView1_DblClick()
    
    Select Case Last.tag.tag
-         ' Case "provider"
-         '    
       Case "request"
          RequestItem_Selection("accept")
-         ' Case "branch"
-         '    Branches_Selection("accept")
       Case "notes"
          Notes_Selection("accept")
       Case "copy to"
@@ -1246,11 +1135,13 @@ Public Sub Get_Providers_For_Request_Type()
    'CALLED BY: RequestItem_Selection()
    '           cmbRequestTypes_Click()
    '----------------------------------------------------------------------------
+   
    Dim Display_Fields As New String[]
+   
    Display_Fields.Add("organisation")
    Display_Fields.Add("wholename")
    Request_Providers = modUtil.LoadCombo_NEw(cmbProviders, modRequestsDBI.Request_Providers_Get(Request_Types[cmbRequestTypes.index]!pk), Display_Fields)
-
+   
 End
 
 Public Sub Get_Default_Provider() As Boolean
@@ -1261,7 +1152,7 @@ Public Sub Get_Default_Provider() As Boolean
    'If there is none, pops up a dialog with 'mini help' which explains how to set the
    'default on a per user basis, and asks if you want 'full help'
    '------------------------------------------------------------------------------------------   
-
+   
    Dim sMsg As String 
    
    If fk_organisation Then Return         'already have a default provider
@@ -1274,17 +1165,15 @@ Public Sub Get_Default_Provider() As Boolean
          txtBranch.text = default_provider!default_branch
          fk_branch = default_provider!fk_default_branch
          fk_request_provider = default_provider!fk_request_provider
-         ' txtStreet.text = default_provider!default_branch_street
-         ' txtSuburb.text = default_provider!default_branch_town & " " & default_provider!default_branch_postcode
          txtPostcode.text = default_provider!default_branch_postcode '?remove me or leave to find branch close to postcode fuzzy logic?
          chkDefaultProvider.value = True
          bExit = False  
          '--------------------------------------------------------
          'Now get all the branches and comms for this organisation
          '--------------------------------------------------------
-         Branches_Get()
+         Branches_Comms_Get()
          cmbBranches.index = cmbBranches.Find(default_provider!default_branch)
-         Comms_Get()
+         Comms_Display()
       Next
    Else
       smsg = "You have not set up a default provider set for this type of request.\n\n"
@@ -1306,19 +1195,25 @@ Public Sub Get_Default_Provider() As Boolean
       Return False
    End If
    Return True
-
+   
 End
 
-Public Sub Comms_Get()
+Public Sub Request_Provider_Show()
+   
+   
+   
+End
+
+Public Sub Comms_Display()
    '------------------------------------------------------------------------------
    'Get all comms for the organisation
    'display head office in the top list, and the default branch in the bottom list
    '------------------------------------------------------------------------------   
-
+   
    Dim br As Collection 
    Dim i As Integer
    Dim comm As Collection 
-
+   
    lvwOrgContacts_HeadOffice.Clear()
    lvwOrgContacts_Branch.Clear()
    default_branch_comms = New Collection
@@ -1369,8 +1264,8 @@ Public Sub Requests_This_Consult_Show()
    cvwRequestForms.Columns.Count = 5
    For Each requestform In RequestForms
       
-       If fk_last_form <> requestform!fk_form Then
-          fk_last_form = requestform!fk_form 
+      If fk_last_form <> requestform!fk_form Then
+         fk_last_form = requestform!fk_form 
          cvwRequestForms.Add(requestform!pk_view, 0)
          cvwRequestForms[requestform!pk_view][0] = Format(requestform!date, "dd/mm/yyyy")
          cvwRequestForms[requestform!pk_view][1] = requestform!type
@@ -1418,6 +1313,7 @@ Public Sub EditAreaTextBox_Clear()
    chkFax.value = False
    chkIncludeMedications.value = False
    lvwOrgContacts_HeadOffice.Clear()
+   lvwOrgContacts_Branch.Clear()
    RequestForm_Pictures_Delete()
    Vbox_RequestHints.Visible = False
    Vbox_Communications.Visible = True
@@ -1452,16 +1348,28 @@ Public Sub RequestForm_Preview()
    'If form being previwed is still in edit area then
    'make sure it's valid, otherwise, just preview it.
    '---------------------------------------------------- 
-
+   
    Dim filename As String   
    
-   If bPreviewingPrintedForm = False Then
-      If Not Valid_RequestForm() Then Return 
-      RequestForm_Fill_Collection()
-   Else
-      cvwRequestForms.MoveCurrent() 
-      CurrentRequestForm = RequestForms[cvwRequestForms.Item.key]
-   End If   
+   Print currentRequestForm 
+   If bPreviewingPrintedForm = False Then                'user previewing an unsaved form or edited form
+      If Not Valid_RequestForm() Then Return             'validate enough information
+      RequestForm_Fill_Collection()                      'fill the CurrentRequestForm collection
+   Else  
+      '---------------------------------------------------------------------------- 
+      'Otherwise are previewing a printed form CurrentRequestForm collection is set
+      'but a bit more complicated, for example we can't know if the provider used
+      'was the default for this type of request, so much re-fetch this from the key
+      '----------------------------------------------------------------------------
+      Reset_Keys()
+      fk_lu_request_type = currentRequestForm!fk_lu_request_type   
+
+      default_provider = modRequestsDBI.Request_Provider_Get(currentRequestForm!fk_request_provider)
+      fk_organisation = default_provider!fk_organisation
+      Branches_Comms_Get()
+      Comms_Display()
+      CopyTos = modUtil.SplitStrings_into_collection(currentRequestForm!copyto, "|")
+    End If   
    Filename = modPrinting.Latex_To_PDF(RequestForm_LaTeX_Construct(CurrentRequestForm).GetData())
    VBox_Main.Visible = False  
    With Form_PDF
@@ -1473,7 +1381,7 @@ Public Sub RequestForm_Preview()
       .Load_PDF(filename)
       .Visible = True
    End With
-
+   
 End
 
 Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTemplate
@@ -1495,27 +1403,26 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTempl
    sString = cmbRequestTypes.text 
    sString = Replace(sString, "provider", "")
    templ.Subst("form.type", UCase(Left(sString, 1)) & Right(sString, Len(sstring) - 1))   'The heading e.g 'Pathology Provider'
- 
+   
    '-----------------------------------------------------------
    'Mostly we are dealing with organisations providing services
    '-----------------------------------------------------------
-    If Not IsNull(default_provider!organisation) Then 
-          templ.Subst("provider.organisation", default_provider!organisation)
-    Else
-          templ.Subst("provider.organisation", default_provider!wholename)
-    End If
-    templ.Subst("provider.branch", default_provider!headoffice_branch)
-    templ.Subst("provider.address.street", default_provider!headoffice_street)
-    templ.Subst("provider.address.suburb", default_provider!headoffice_town & " " & default_provider!headoffice_postcode)
+   If Not IsNull(default_provider!organisation) Then 
+      templ.Subst("provider.organisation", default_provider!organisation)
+   Else
+      templ.Subst("provider.organisation", default_provider!wholename)
+   End If
+   templ.Subst("provider.branch", default_provider!headoffice_branch)
+   templ.Subst("provider.address.street", default_provider!headoffice_street)
+   templ.Subst("provider.address.suburb", default_provider!headoffice_town & " " & default_provider!headoffice_postcode)
    ' Else
-    '     templ.Subst("provider.organisation", "\\relax ")
-    ' End If
-    ' If Not IsNull(default_provider!headoffice_branch) Then
-    '   templ.Subst("provider.branch", default_provider!headoffice_branch)
-    ' Else
-    '    templ.Subst("provider.branch", "\\relax ")
-    ' Endif
- 
+   '     templ.Subst("provider.organisation", "\\relax ")
+   ' End If
+   ' If Not IsNull(default_provider!headoffice_branch) Then
+   '   templ.Subst("provider.branch", default_provider!headoffice_branch)
+   ' Else
+   '    templ.Subst("provider.branch", "\\relax ")
+   ' Endif
    
    ' If Not IsNull(default_provider!headoffice_street) Then 
    '    templ.Subst("provider.address.street", default_provider!headoffice_street)
@@ -1546,12 +1453,12 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTempl
       templ.Subst("defaultbranch.phone", "\\relax")
       templ.Subst("defaultbranch.fax", "\\relax")
    Else
-               
-       If Not IsNull(default_provider!default_branch) Then
-          templ.Subst("defaultbranch.branch", default_provider!default_branch)
-       Else
-          templ.Subst("defaultbranch.branch", "\\relax")
-       End If 
+      
+      If Not IsNull(default_provider!default_branch) Then
+         templ.Subst("defaultbranch.branch", default_provider!default_branch)
+      Else
+         templ.Subst("defaultbranch.branch", "\\relax")
+      End If 
       If Not IsNull(default_provider!default_branch_street) Then
          templ.Subst("defaultbranch.address.street", default_provider!default_branch_street)
       Else
@@ -1666,8 +1573,9 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTempl
    templ.Subst("form.date", Format(RequestForm!date, "dd/mm/yyyy")) 
    
    Return templ
-
+   
 End 
+
 Public Function RequestForm_LaTeX_Construct_old(RequestForm As Collection) As CTemplate
    
    Dim templ As New CTemplate("request-form", "tex")
@@ -1687,17 +1595,16 @@ Public Function RequestForm_LaTeX_Construct_old(RequestForm As Collection) As CT
    sString = cmbRequestTypes.text 
    sString = Replace(sString, "provider", "")
    templ.Subst("form.type", UCase(Left(sString, 1)) & Right(sString, Len(sstring) - 1))
-    If Not IsNull(default_provider!organisation) Then 
-          templ.Subst("provider.organisation", default_provider!organisation)
-    Else
-        templ.Subst("provider.organisation", "\\relax ")
-    End If
-    If Not IsNull(default_provider!headoffice_branch) Then
+   If Not IsNull(default_provider!organisation) Then 
+      templ.Subst("provider.organisation", default_provider!organisation)
+   Else
+      templ.Subst("provider.organisation", "\\relax ")
+   End If
+   If Not IsNull(default_provider!headoffice_branch) Then
       templ.Subst("provider.branch", default_provider!headoffice_branch)
-    Else
-       templ.Subst("provider.branch", "\\relax ")
-    Endif
- 
+   Else
+      templ.Subst("provider.branch", "\\relax ")
+   Endif
    
    If Not IsNull(default_provider!headoffice_street) Then 
       templ.Subst("provider.address.street", default_provider!headoffice_street)
@@ -1728,11 +1635,11 @@ Public Function RequestForm_LaTeX_Construct_old(RequestForm As Collection) As CT
       templ.Subst("defaultbranch.phone", ".")
       templ.Subst("defaultbranch.fax", ".")
    Else
-       If Not IsNull(default_provider!default_branch) Then
-          templ.Subst("defaultbranch.branch", default_provider!default_branch)
-       Else
-          templ.Subst("defaultbranch.branch", "\\relax ")  
-       End If 
+      If Not IsNull(default_provider!default_branch) Then
+         templ.Subst("defaultbranch.branch", default_provider!default_branch)
+      Else
+         templ.Subst("defaultbranch.branch", "\\relax ")  
+      End If 
       If Not IsNull(default_provider!default_branch_street) Then
          templ.Subst("defaultbranch.address.street", default_provider!default_branch_street)
       Else
@@ -1847,7 +1754,7 @@ Public Function RequestForm_LaTeX_Construct_old(RequestForm As Collection) As CT
    templ.Subst("form.date", Format(RequestForm!date, "dd/mm/yyyy")) 
    
    Return templ
-
+   
 End 
 
 Public Sub Notes_Selection(action As String, Optional calling_control As String)
@@ -1928,7 +1835,7 @@ Private Sub Settings_Load()
    'The request form is embedded in other forms eg FActionDocument, used in the 
    'inbox, and in staff tasks
    '---------------------------------------------------------------------------  
-
+   
    If bEmbedded Then
       Try VSplit_Requests.Layout = Settings["Requests_Embedded_" & Embedded_form & "/VSplit_Requests"]
       Try VSplit_EditArea.Layout = Settings["Requests_Embedded_" & Embedded_form & "/VSplit_EditArea_Layout"] 
@@ -1947,7 +1854,7 @@ Private Sub Settings_Load()
    
    Try FPreview.WebBrowser1.Zoom = Settings["Requests/FormPrevew_Zoom"]
    Try Form_PDF.CurrentZoom = Settings["Requests/Form_PDF.Zoom"]
-
+   
 End
 
 Public Sub Settings_Save()
@@ -2077,9 +1984,10 @@ Public Sub cvwRequestForms_Menu()
    'User has clicked over the requests printed this consult list
    'First check what menu item(s) need to be enabled disabled
    '------------------------------------------------------------
+   
    Dim y As Integer
    Dim x As Integer
-     
+   
    If cvwRequestForms.count Then
       cvwRequestForms.MoveFirst()
       For x = 0 To cvwRequestForms.count - 1
@@ -2100,15 +2008,16 @@ Public Sub cvwRequestForms_Menu()
          mnuRequestForms_Delete.Enabled = True
          mnuRequestForms_Edit.Enabled = True   
          mnuRequestForms_Preview.Enabled = True    
-
+         
       Endif     
-   
+      
       mnuRequestForms.Popup
    End If 
    
 End
 
 Public Sub mnuRequestForms_Click()
+   
    Dim x As Integer
    
    currentRequestForm = modUtil.Copy_Collection(RequestForms[sCurrentForm_Key])
@@ -2121,15 +2030,14 @@ Public Sub mnuRequestForms_Click()
             If cvwRequestForms.Item.Selected = True Then 
                sCurrentForm_Key = cvwRequestForms.Item.Key 
                currentRequestForm = modUtil.Copy_Collection(RequestForms[sCurrentForm_Key])
-               RequestForm_Print()
+               RequestForm_RePrint()
                cvwRequestForms.Item.Selected = False  
             Endif
-           cvwRequestForms.MoveNext()
+            cvwRequestForms.MoveNext()
          Next
          cvwRequestForms.MoveFirst()
       Case "reprint single"
-         RequestForm_Print()
-         
+         RequestForm_RePrint()
       Case "edit"
          RequestForm_Edit()
       Case "delete form"
@@ -2150,7 +2058,7 @@ Public Sub mnuRequestForms_Click()
          RequestForm_Preview()
          RequestForm_New()
    End Select
-
+   
 End
 
 Public Sub cvwRequestForms_Select()
@@ -2159,13 +2067,13 @@ Public Sub cvwRequestForms_Select()
    'this sets the key so that later the correct form for the row clicked on
    'can be picked from the RequestForms collection
    '-----------------------------------------------------------------------
-
-   If Last.Header = True Then                  'remove header if user just adjusted the columns
-      Last.header = False
+   
+   If cvwRequestForms.Header = True Then                  'remove header if user just adjusted the columns
+      cvwRequestForms.header = False
    End If
    cvwRequestForms.MoveCurrent                 'set internal cursor to match what user seeing
    sCurrentForm_Key = cvwRequestForms.Item.Key 'set the key
-
+   
 End
 
 Public Sub EditAreaButtons_KeyPress()
@@ -2268,12 +2176,12 @@ Public Sub Picture_Import()
 End
 
 Public Sub Picture_Capture()
-
+   
    Dim FCapture As New FWebCam
-
+   
    FWebCam.ShowModal()
    Insert_Picture("clipboard")
-
+   
 End
 
 Public Sub Picture_Help()
@@ -2422,7 +2330,7 @@ Public Sub Copyto_Selection(action As String, Optional calling_control As String
                CopytoCollection.Remove("sql_in_english") 'remove unwanted member
                For Each Copyto In CopytoCollection
                   columnview1.Add(Copyto!pk_view, 0)
-                  columnview1[Copyto!pk_view][0] = Copyto!firstname 
+                  columnview1[Copyto!pk_view][0] = Copyto!title & " " & Copyto!firstname 
                   columnview1[Copyto!pk_view][1] = copyto!surname
                   columnview1[Copyto!pk_view][2] = Copyto!street & " " & Copyto!town & " " & Copyto!postcode
                Next
@@ -2451,7 +2359,7 @@ Public Sub Copyto_Selection(action As String, Optional calling_control As String
                For Each Copyto In CopytoCollection
                   
                   columnview1.Add(Copyto!pk_view, 0)
-                  columnview1[Copyto!pk_view][0] = Copyto!firstname 
+                  columnview1[Copyto!pk_view][0] = Copyto!title & " " & Copyto!firstname 
                   columnview1[Copyto!pk_view][1] = copyto!surname
                   columnview1[Copyto!pk_view][2] = Copyto!street & " " & Copyto!town & " " & Copyto!postcode
                Next
@@ -2490,7 +2398,7 @@ Public Sub RequestItem_Selection(action As String, Optional calling_control As S
    'If accepting from the popup columnview:
    '  
    '-----------------------------------------------------------------------------------------
-
+   
    Dim bDuplicate As Boolean 'if True the request item is duplicated
    
    Select Case action
@@ -2573,7 +2481,7 @@ Public Sub RequestItem_Selection(action As String, Optional calling_control As S
          bExit = False  
          txtRequest.SetFocus()
    End Select
-
+   
 End
 
 Public Sub Hbox_Pictures_Menu()
@@ -2604,7 +2512,7 @@ Public Sub cmbRequestTypes_Click()
    'If none exist, after the help exits, re-set the editing area
    'Load all other  companies to whom we can send requests into the providers combo
    '------------------------------------------------------------------------------
-
+   
    If Bexit = True Then Return
    If cmbRequestTypes.index = -1 Then Return
    RequestForm_New()                                               'clear edit area
@@ -2617,7 +2525,7 @@ Public Sub cmbRequestTypes_Click()
    Else
       RequestForm_New() 
    End If
-
+   
 End
 
 Public Sub VSplit_EditArea_Arrange()
@@ -2643,47 +2551,39 @@ Public Sub Provider_Display_Alternate()
    'User has clicked on the combo box containing providers for this type of request
    'Load that companies details
    '--------------------------------------------------------------------------------
+   
    bExit = True    
    default_provider = Request_Providers[cmbProviders.index]
    fk_organisation = default_provider!fk_organisation
    txtProvider.text = default_provider!organisation 
-   txtBranch.text = default_provider!branch
+   cmbBranches.index = cmbBranches.Find(default_provider!default_branch) 'triggers click event of combo > fills address textboxes
+   txtBranch.text = default_provider!default_branch
    Try fk_branch = default_provider!fk_default_branch
    txtStreet.text = default_provider!default_branch_street
    txtSuburb.text = default_provider!default_branch_town
    txtPostcode.text = default_provider!default_branch_postcode
+   fk_request_provider = default_provider!pk_request_provider
    chkDefaultProvider.value = False 
    bExit = False  
-   Branches_Get()
-   Comms_Get()
+   Branches_Comms_Get()
+   Comms_Display()
    
 End
 
-Public Sub Branch_Display()
 
-   bExit = True
-   fk_branch = branches[cmbBranches.index]!fk_branch
-   txtbranch.text = branches[cmbBranches.index]!branch
-   txtStreet.text = branches[cmbBranches.index]!street
-   txtsuburb.text = branches[cmbBranches.index]!town & " " & branches[cmbBranches.index]!postcode
-   txtPostcode.text = branches[cmbBranches.index]!postcode
-   txtRequest.SetFocus()
-   bExit = False  
-   
-End
-
-Public Sub Branches_Get()
+Public Sub Branches_Comms_Get()
    '----------------------------------------------------------------------------
    'Fill the combo with branches according to fk_organisation
    'FIXME: Problem for some organisations eg hospital, branches <> same category
+   'This also gets branches!comms collection
    '----------------------------------------------------------------------------  
-
+   
    branches = modUtil.LoadCombo(cmbBranches, modRequestsDBI.Provider_Branches_Get(fk_organisation), "branch")
-
+   
 End
 
 Public Sub cmbProviders_Click()
-
+   
    If bExit Then
       Return 
    End If   
@@ -2692,7 +2592,18 @@ Public Sub cmbProviders_Click()
 End
 
 Public Sub cmbBranches_Click()
-   
-   Branch_Display()
-   
+   '-------------------------------------------------------------------------
+   'Display the branch details
+   'This is triggered by either user clicking on it or referencing it in code
+   'e.g in RequestForm_Edit()
+   '-------------------------------------------------------------------------
+   If Bexit Then Return 
+   bExit = True
+   fk_branch = branches[cmbBranches.index]!fk_branch
+   txtbranch.text = branches[cmbBranches.index]!branch
+   txtStreet.text = branches[cmbBranches.index]!street
+   txtsuburb.text = branches[cmbBranches.index]!town & " " & branches[cmbBranches.index]!postcode
+   txtPostcode.text = branches[cmbBranches.index]!postcode
+   txtRequest.SetFocus()
+   bExit = False     
 End

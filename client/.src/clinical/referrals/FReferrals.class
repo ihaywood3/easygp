@@ -57,9 +57,11 @@ Private currentconsult As CConsult                          'set by calling form
 Private referral_types As Collection                        'eg Management, indefinate etc, 
 Private referral_type As Collection 
 Private fk_person As Integer                                'key for person the referral letter is to see Contacts.data_persons
+Private fk_employee As Integer                              'key to contacts.data_employees
 Private fk_type As Integer                                  'key for the type of referral letter      see clin_referral.lu_type
 Private fk_branch As Integer                                'can be null or 0, but if not key to          Contacts.data_branches
 Private fk_organisation As Integer                          'can be null or 0, nut if not key to          Contacts.data_organisations
+Private fk_address As Integer                               'key to contacts.data_addresses
 Private fk_pasthistory As Integer                           'past history item the letter is linked to if 0 = general notes
 Private cProgressNote_Section As Integer                    'either past history or general at moment
 Private fk_progressnote As Integer                          'the progress note linked to this referral
@@ -657,7 +659,7 @@ Public Sub EditAreaTextBox_KeyRelease()
       Case "category" 
          Organisation_By_Category_Get()   'only organisation, search on occupation for person
       Case "occupation"
-         Person_By_Occupation_Get
+         Person_By_Occupation_Get()       'gets persons as employees or sole traders
       Case "name"
          Person_Get()
       Case "organisation"
@@ -715,7 +717,7 @@ Public Sub EditAreaTextBox_GotFocus()
             .top = Last.parent.top + Last.Height + hBox_heading.height + 5
             .width = HSplitEditArea_Communications.width - lblmeasure.width 
             .left = Last.Left 
-            .height = 120  'FIXME Make me smarter eg height  = that of # of items.
+            .height = 150  'FIXME Make me smarter eg height  = that of # of items.
             .columns.count = 3
          End With 
       Case "occupation"
@@ -723,17 +725,18 @@ Public Sub EditAreaTextBox_GotFocus()
             .top = Last.parent.top + Last.Height + hBox_heading.height + 5
             .width = txtOccupation.Width
             .left = Last.Left 
-            .height = 120  'FIXME Make me smarter eg height  = that of # of items.
-            .columns.count = 2
+            .height = 150  'FIXME Make me smarter eg height  = that of # of items.
+            .columns.count = 4 '0=occupation 1= name 2= organisation/branch 3=address
+            
          End With 
          
       Case "name"
          With columnview1
             .top = Hbox_Provider.top + txtName.Height + hBox_heading.height + 5
-         '   .width = HSplitEditArea_Communications.width - lblmeasure.width 
             .width = txtOrganisation.Width
-            .height = 120
+            .height = 150
             .left = txtName.Left
+            .columns.count = 4 '0=name,surname 1= occupation 2= organisation/branch 3=address
          End With  
          
       Case "organisation"
@@ -741,7 +744,7 @@ Public Sub EditAreaTextBox_GotFocus()
             .top = Last.parent.top + Last.Height + hBox_heading.height + 5
             .width = txtOrganisation.Width - 10
             .left = txtOrganisation.Left
-            .height = 120
+            .height = 150
             .columns.count = 4 'branch, street, suburb
          End With  
          ' person_AddressGet()
@@ -750,7 +753,7 @@ Public Sub EditAreaTextBox_GotFocus()
             .top = Last.parent.top + Last.Height + hBox_heading.height + 5
             .width = HSplitEditArea_Communications.width - lblmeasure.width
             .left = Last.Left
-            .height = 120
+            .height = 150
             .columns.count = 2
          End With  
          If fk_branch Then
@@ -762,7 +765,7 @@ Public Sub EditAreaTextBox_GotFocus()
             .top = Last.parent.top + Last.Height + hBox_heading.height + 5
             .width = HSplitEditArea_Communications.width - lblmeasure.width ' txtCategory.Width
             .left = Last.Left
-            .height = 120
+            .height = 150
             .columns.count = 2
          End With  
          Person_Addresses_Get()
@@ -1219,20 +1222,26 @@ Public Sub Person_Get()
    '-------------------------------------------------------------
    'Gets a list of persons who could be sole traders or employees
    '-------------------------------------------------------------
+   Dim address As String
    
    columnview1.Visible = False 
    If Trim(txtName.text) = "" Then Return 
    specialists = modReferralsDBI.Person_Get_By_Surname(Trim(txtName.text))
    columnview1.Clear()
-   columnview1.Columns.count = 2
-   ' '-----------------------------------------------------------------
-   ' 'If categories exist to match the text, auto-select or show a list
-   ' '-----------------------------------------------------------------
    If specialists.count Then 
       For Each Specialist In specialists
          columnview1.Add(Specialist!pk_view, 0)
          columnview1[Specialist!pk_view][0] = Specialist!wholename
          columnview1[Specialist!pk_view][1] = "(" & Specialist!occupation & ")"
+        columnview1.Columns[2].width = 150
+        If Not IsNull(Specialist!organisation) Then
+            columnview1[Specialist!pk_view][2] = Specialist!organisation & " " & Specialist!branch
+         Else
+             columnview1[Specialist!pk_view][2] = ""
+         Endif
+         Try address = Specialist!street & " "
+         Try address &= Specialist!town & " " & Specialist!postcode
+         columnview1[Specialist!pk_view][3] = address
       Next
       columnview1.tag = txtName 
       columnview1.Visible = True
@@ -1249,28 +1258,28 @@ Public Sub Person_Select()
    'There is a list of persons showing, user is selecting one
    'Routine called by user clicking on list or pressing <enter>
    '-----------------------------------------------------------
-   
-   bExit = True
-   If columnview1.Visible Then
-      columnview1.MoveCurrent   'set internal cursor to match marquee
-      txtOccupation.text = specialists[columnview1.Item.key]!occupation
-      txtName.Text = specialists[columnview1.Item.key]!wholename
-      fk_person = specialists[columnview1.Item.key]!fk_person
-      PersonWritingTo!firstname = specialists[columnview1.Item.key]!firstname
-      PersonWritingTo!surname = specialists[columnview1.Item.key]!surname
-      PersonWritingTo!title = specialists[columnview1.Item.key]!title
-   End If
-   bExit = False   
-   '-------------------------------------------------------------
-   'Now, this person could have multiple entries in contacts, eg
-   'We could be referring to an orthopaedic surgeon in say
-   'John Hunter outpatients, or
-   'Belmont Hospital Outpatients or
-   'His private rooms in Newcastle or
-   'His private rooms in Maitland
-   'So need to present all the possible addresses
-   '------------------------------------------------------------
-   txtStreet1.SetFocus()      'triggers Person_Addresses_Get(), sets columnview1
+   Person_By_Occupation_Select()
+   ' bExit = True
+   ' If columnview1.Visible Then
+   '    columnview1.MoveCurrent   'set internal cursor to match marquee
+   '    txtOccupation.text = specialists[columnview1.Item.key]!occupation
+   '    txtName.Text = specialists[columnview1.Item.key]!wholename
+   '    fk_person = specialists[columnview1.Item.key]!fk_person
+   '    PersonWritingTo!firstname = specialists[columnview1.Item.key]!firstname
+   '    PersonWritingTo!surname = specialists[columnview1.Item.key]!surname
+   '    PersonWritingTo!title = specialists[columnview1.Item.key]!title
+   ' End If
+   ' bExit = False   
+   ' '-------------------------------------------------------------
+   ' 'Now, this person could have multiple entries in contacts, eg
+   ' 'We could be referring to an orthopaedic surgeon in say
+   ' 'John Hunter outpatients, or
+   ' 'Belmont Hospital Outpatients or
+   ' 'His private rooms in Newcastle or
+   ' 'His private rooms in Maitland
+   ' 'So need to present all the possible addresses
+   ' '------------------------------------------------------------
+   ' txtStreet1.SetFocus()      'triggers Person_Addresses_Get(), sets columnview1
    
 End
 
@@ -1462,9 +1471,12 @@ Public Sub cvwLetters_LostFocus()
 End
 
 Public Sub Person_By_Occupation_Select()
-   '-----------------------------------------------------
+   '-----------------------------------------------------------------------------------------
    'User selects person to send letter to from popup list
-   '-----------------------------------------------------
+   'Remembering that the view contains person with addresses in organisations or sole traders
+   'Hence all the Try's. Also, an organisation or person can be in the database 'name only'
+   'without associated address. Bumma eh!
+   '------------------------------------------------------------------------------------------
    
    bExit = True
    If columnview1.Visible Then
@@ -1472,11 +1484,20 @@ Public Sub Person_By_Occupation_Select()
       txtName.Text = specialists[columnview1.Item.key]!wholename
       txtOccupation.text = specialists[columnview1.Item.key]!occupation
       fk_person = specialists[columnview1.Item.key]!fk_person
+      Try fk_employee = specialists[columnview1.Item.key]!fk_employee
+      Try fk_organisation = specialists[columnview1.Item.key]!fk_organisation
+      Try fk_address = specialists[columnview1.Item.key]!fk_address
+      Try fk_branch = specialists[columnview1.Item.key]!fk_branch
       PersonWritingTo!firstname = specialists[columnview1.Item.key]!firstname
       PersonWritingTo!surname = specialists[columnview1.Item.key]!surname
       PersonWritingTo!title = specialists[columnview1.Item.key]!title
+      Try txtOrganisation.text = specialists[columnview1.Item.key]!organisation
+      Try txtBranch.text = specialists[columnview1.Item.key]!branch
+      Try txtStreet1.text = specialists[columnview1.Item.key]!street
+      Try txtSuburb.text = specialists[columnview1.Item.key]!town
+      Try txtPostcode.text = specialists[columnview1.Item.key]!postcode 
+      txtTag.SetFocus()
    End If
-   txtOrganisation.SetFocus
    bExit = False  
    
 End
@@ -1487,6 +1508,7 @@ Public Sub Person_By_Occupation_Get()
    ' category .... persons name i.e
    ' cardiologist      Dr Big heart
    '-----------------------------------------------------------------------
+   Dim address As String 
    
    columnview1.Visible = False   
    If Trim(txtOccupation.text) = "" Then Return 
@@ -1501,6 +1523,15 @@ Public Sub Person_By_Occupation_Get()
          columnview1.Add(Specialist!pk_view, 0)
          columnview1[Specialist!pk_view][0] = Specialist!occupation
          columnview1[Specialist!pk_view][1] = Specialist!wholename
+         columnview1.Columns[2].width = 150
+         If Not IsNull(Specialist!organisation) Then
+            columnview1[Specialist!pk_view][2] = Specialist!organisation & " " & Specialist!branch
+         Else
+             columnview1[Specialist!pk_view][2] = ""
+         Endif
+         Try address = Specialist!street & " "
+         Try address &= Specialist!town & " " & Specialist!postcode
+         columnview1[Specialist!pk_view][3] = address
       Next 
       columnview1.Visible = True
       columnview1.Raise

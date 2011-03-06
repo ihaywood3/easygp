@@ -45,6 +45,7 @@
 Private bEmbedded As Boolean                                'True if this form is embedded e.g in the inbox
 Private bEditing As Boolean                                 'True if editing an existing referral written this consultation
 Private bExit As Boolean                                    'Used to prevent re-entry into subroutines
+Private bKeyValid As Boolean                                'Used in EditAreaTextBox routines to ensure valid data entry
 Private PersonWritingTo As Collection                       'Person for whom the letter is intended
 Private specialists As Collection
 Private specialist As Collection 
@@ -71,6 +72,7 @@ Private address As Collection
 Private FHtml_Viewer As FHtmlViewer
 Private obs As Observer
 Private pk_deleted_referral As Integer                      'if not 0 then it is the last referral written which was deleted
+Private Form_Copy_To As FCopyTo
 
 Public Sub set_embedded(flag As Boolean)
    '--------------------------------------------------
@@ -86,7 +88,7 @@ Public Sub Init(cons As CConsult)
    'Do all the form initialisation stuff like adding stuff to 
    'combo's, setting numbers of columns in lists
    '---------------------------------------------------------
-
+   
    currentconsult = Cons                       'set current consult
    cvwLetters.Clear()                          'clear the list of letters this consult
    cvwLetters.Columns.Count = 4                
@@ -106,12 +108,14 @@ Public Sub Init(cons As CConsult)
       .tbWebBrowserBack.Visible = False   
       .tbWebBrowserPrint.Visible = False         'don't allow printing before save
    End With
+   With Form_Copy_To = New FCopyTo(Vbox_CopyToList)
+      .Init(Me)
+   End With
    Obs = New Observer(FHtml_Viewer.tbWebBrowserClose) As "tbPreview_Close"
    MenuButton1.menu = "mnuHealthIssues"
    Reload()
    
 End
-
 
 Public Sub mnuHealthIssues_Click()
    '---------------------------------------------------
@@ -129,9 +133,9 @@ Public Sub mnuHealthIssues_Click()
          fk_pasthistory = Last.tag
          cProgressNote_Section = const.cSection_Referrals
    End Select
-   
-End
+   EditArea_Notify_DataChange(True)
 
+End
 Public Sub tbPreview_Close_Click()
    '-------------------------------------------------------------------------------
    'this observer overides the click event on the close button on the embedded form
@@ -149,20 +153,29 @@ Public Sub Save()
    'Save the current edit area recall and updates the recalls list
    'Need this amount of info to save
    'For table clin_referrals.referrals
-   '  pk 
-   '  fk_consult        Not Null key To the main clin_consult.consult table
-   '  fk_person         If Not Null key To contacts.data_persons table ie person referred To
-   '  fk_organisation   If Not Null key To contacts.data_organisations table ie org anisation referred To
-   '  fk_branch         key To contacts.data_branches table ie branch Of organisation
-   '  fk_type           key To lu_referral_type table ie type Of referral e.g opinion Or management
-   '  letter_html       Not Null Html which Is the letter itself
-   '  tag text          A description Of the letter eg 'heart failure'
-   '  deleted           Default False,
-   '  body_html         body of the letter = text minus headings etc
+   '   pk serial NOT NULL,
+   '   fk_consult integer NOT NULL,        -- key to the main clin_consult.consult table which is the master table of the database
+   '   fk_person integer,                  -- if not null key to contacts.data_persons table ie person referred to
+   '   fk_referral_recipient integer,      -- key to clin_referrals.referral_recipients table
+   '   fk_type integer,                    -- key to lu_referral_type table ie type of referral e.g opinion or management
+   '   letter_html text NOT NULL,          -- html which is the letter itself
+   '   tag text,                           -- A description of the letter eg 'heart failure'
+   '   deleted boolean DEFAULT false,
+   '   body_html text,                     -- Contains the html of the body of the letter
+   '   fk_pasthistory integer DEFAULT 0,   -- if not 0 = general notes, then is the key to clin_history.past_history table
+   '   fk_progressnote integer,            -- key to clin_consult.progress notes table - points to the progress note of a letter during the...
+   '   include_careplan boolean DEFAULT false,
+   '   include_healthsummary boolean DEFAULT false,
+   '   fk_branch integer DEFAULT null,
+   '   fk_employee integer default null,
+   '   fk_address integer default null,
    '--------------------------------------------------------------
    
    Dim referral As New Collection
-   Dim sHtml As String
+   Dim sProgressNote_Html As String
+   Dim sHtml_CopyTo As String 
+   
+   Dim CopyToData As Collection
    
    If Not Valid_Referral() Then Return
    ' -----------------------------------------------------------
@@ -171,14 +184,12 @@ Public Sub Save()
    If pk_referral <> -1 Then
       referral!pk_referral = pk_referral
    End If
-   referral!fk_person = fk_person
+   If fk_person <> 0 Then referral!fk_person = fk_person
+   If fk_employee <> 0 Then referral!fk_employee = fk_employee
+   If fk_branch <> 0 Then referral!fk_branch = fk_branch
+   If fk_address <> 0 Then referral!fk_address = fk_address
+   referral!date_referral = txtReferralDate.text
    referral!tag = Trim(txtTag.text)
-   If fk_branch <> 0 Then
-      referral!fk_branch = fk_branch
-   End If
-   If fk_organisation <> 0 Then
-      referral!fk_branch = fk_branch
-   End If
    If chkIncludeCarePlan.value = True Then
       referral!include_careplan = True
    Else
@@ -189,36 +200,20 @@ Public Sub Save()
    Else
       referral!include_healthsummary = False 
    End If  
-   
+   referral!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto 'FIXME, I'VE LEFT it as collection till I sort using this in FRequests
+   sHtml_CopyTo = Copyto_Html_Constuct(referral!copyto)
    referral!body_html = Referral_BodyHTML_Construct()
-   referral!letter_html = Referral_LetterHTML_Construct()
+   referral!letter_html = Referral_LetterHTML_Construct(sHtml_CopyTo)
    referral!fk_type = referral_types[cmbReferralTypes.index + 1]!pk
    referral!fk_type = fk_type                                             'e.g opinion and management
    ' referral!fk_pasthistory = fk_pasthistory '0 = general notes > 0 = key to clin_history.past_history table
    '-------------------------------------------------
    'Construct the text to embed in the progress notes
    '-------------------------------------------------
-   sHtml = "Referral Letter to " & txtName.text 
-   sHtml &= " Re: " & txtTag.text & ":"
-   sHtml &= "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0>"
-   
-   "<COL WIDTH=80%>"
-   "<COL WIDTH=20%>"
-   "<TR VALIGN=TOP>"
-   
-   "<TD WIDTH=80%>"
-   "<HR><P><small><FONT FACE='Times New Roman, serif'>%letterbody%"
-   "</small></P><HR>"
-   "</TD>"
-   "<TD WIDTH=20%>"
-   "<P><BR>"
-   "</P>"
-   "</TD>"
-   "</TR>"
-   "</TABLE>"
-   shtml = Replace$(shtml, "%letterbody%", referral!body_html)
+   sProgressNote_Html = Referral_ProgressNoteHTML_Construct(referral)
+   Print sProgressNote_Html
    modDBConnect.BeginTrans()
-      referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, shtml, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
+      referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote_Html, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
       pk_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral)   'Save the referral letter
    modDBConnect.CommitTrans()
    If chkDoNotPrint.value = False Then
@@ -233,35 +228,43 @@ End
 Public Sub Referral_Print(referral As Collection)
    '-----------------------------------------------
    'temporary work-around, convert to pdf and print
+   'Print enough copies
    '-----------------------------------------------
    
    Dim inclusion As Collection
+   Dim x As Integer
+   Dim num_copies As Integer   
    
-   modPrinting.PrintHtml(referral!letter_html, const.Paper_Plain)
-   If chkIncludehealthSummary.value = True Then
-      modPrinting.PrintHtml(modProgressNotes.Health_Summary_Construct_html(currentconsult), const.Paper_Plain)
-   End If
-   If chkIncludeCarePlan.value = True Then
-      modPrinting.PrintHtml(modProgressNotes.Care_Plan_Construct_html(currentconsult), const.Paper_Plain)
-   End If  
-   '------------------------------------------------------------------------------------
-   'Now print any included documents which were dragged'n dropped to the inclusions list
-   'FIXME: just first go, need to take into account document type in more thorough way
-   '------------------------------------------------------------------------------------
-   For Each inclusion In Inclusions
-      If Not IsNull(inclusion!document!html) Then
-         modPrinting.PrintHtml(inclusion!document!html, const.Paper_Plain)
-      Endif
-      If Right(Lower(inclusion!document!source_file), 3) = "pdf" Then
-         modPrinting.Print_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ inclusion!document!source_file)
-      Endif
+   num_copies = Max(Split(referral!copyto, "|").Count, 1)  'print at least 1 = our letter
+   If num_copies > 1 Then Inc num_copies                   'plus the extra copies we need
+   
+   For x = 1 To num_copies 
+      modPrinting.PrintHtml(referral!letter_html, const.Paper_Plain)
+      If chkIncludehealthSummary.value = True Then
+         modPrinting.PrintHtml(modProgressNotes.Health_Summary_Construct_html(currentconsult), const.Paper_Plain)
+      End If
+      If chkIncludeCarePlan.value = True Then
+         modPrinting.PrintHtml(modProgressNotes.Care_Plan_Construct_html(currentconsult), const.Paper_Plain)
+      End If  
+      '------------------------------------------------------------------------------------
+      'Now print any included documents which were dragged'n dropped to the inclusions list
+      'FIXME: just first go, need to take into account document type in more thorough way
+      '------------------------------------------------------------------------------------
+      For Each inclusion In Inclusions
+         If Not IsNull(inclusion!document!html) Then
+            modPrinting.PrintHtml(inclusion!document!html, const.Paper_Plain)
+         Endif
+         If Right(Lower(inclusion!document!source_file), 3) = "pdf" Then
+            modPrinting.Print_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ inclusion!document!source_file)
+         Endif
+      Next
    Next
    
 End
 
 Public Sub Reload()
    
-   currentconsult.Refresh("referrals_written")                            'Delete key = force a refresh
+   currentconsult.Refresh("referrals_written_this_consult")                            'Delete key = force a refresh
    FClinical.Refresh_Section(const.cSection_Referrals)                    'Refresh lists on main screen FClinical
    Referrals_This_consult_Show()                                          'Update list under edit area
    Referral_New()                                                         'clear for next condition
@@ -297,6 +300,15 @@ Public Sub LetterWriter_Click()
    '---------------------------------------------
    
    Select Case Last.tag
+     Case "maximize"
+       If HSplitEditArea_Communications.Visible Then
+        HSplitEditArea_Communications.Visible = False 
+        Vbox_CopyToList.Visible = False   
+       Else
+           HSplitEditArea_Communications.Visible = True 
+           Vbox_CopyToList.Visible = True
+            Try HSplitEditArea_Communications.Layout = Settings["Referrals/EditArea_Communications"]
+       End If     
       Case "erase"
          teLetter.Clear()
       Case "bold"
@@ -376,17 +388,81 @@ Public Sub SpinBox1_Change()
    
 End
 
-Public Function Referral_LetterHTML_Construct() As String
+Public Function Copyto_Html_Constuct(Optional copyto As String = "") As String
+
+   Dim sHtml As String
+   
+   sHtml = ""
+   "<TABLE WIDTH=100%>"
+   "<COL WIDTH=4%>"
+   "<COL WIDTH=96%>"
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=4%>"
+   "<P><small><small>cc</small></small></P>"
+   "</TD>"
+   "<TD WIDTH=96%>"
+   "<P<small><small>%copyto%</small></small></P>"
+   "</TD>"
+   "</TR>"
+   "</TABLE>"   
+   
+   '-------------------------------------------------------------------------------------------------------------------
+   'If there are one or more cc's then replace the table html with the appropriate data, otherwise wipe the copyto html
+   '-------------------------------------------------------------------------------------------------------------------  
+   If copyto <> "" Then 
+      copyto = Replace(copyto, "|", "<BR>")
+      sHtml = Replace(sHtml, "%copyto%", copyto)
+   Else
+      sHtml = ""
+   End If     
+   Return sHtml
+
+End
+
+Public Function Referral_ProgressNoteHTML_Construct(referral As Collection) As String 
+   '---------------------------------------------------------------------
+   'The HTML for the progress note is <> the letter
+   'it is an abbridged form, with just who it is for + body letter + cc's
+   '---------------------------------------------------------------------
+   Dim sHtml As String
+   
+   sHtml = "Referral Letter to " & txtName.text 
+   sHtml &= " Re: " & txtTag.text & ":"
+   sHtml &= "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0>"
+   "<COL WIDTH=80%>"
+   "<COL WIDTH=20%>"
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=80%>"
+   "<HR><P><small><FONT FACE='Times New Roman, serif'>%letterbody%%cc%"
+   "</small></P><HR>"
+   "</TD>"
+   "<TD WIDTH=20%>"
+   "<P><BR>"
+   "</P>"
+   "</TD>"
+   "</TR>"
+   "</TABLE>"
+   shtml = Replace$(shtml, "%letterbody%", referral!body_html)
+   shtml = Replace$(shtml, "%cc%", Copyto_Html_Constuct(referral!copyto)) 
+   Return sHTml
+End
+
+Public Function Referral_LetterHTML_Construct(Optional sHtml_CopyTo As String = "") As String
    '-----------------------------------------------------------
    'Construct Html of the referral letter, FIX ME USE cTemplate
    '-----------------------------------------------------------  
-
+   
    Dim sType As String
    Dim sLetterHtml As String
    Dim charpos As Integer
-   Dim sPatient As String = currentconsult!patient!firstname & " " & currentconsult!patient!surname & " " & currentconsult!patient!street 
+   Dim sPatient As String = currentconsult!patient!firstname & " " & currentconsult!patient!surname & " " & currentconsult!patient!street
+   Dim sPatient_Comms As String 'phone, etc for the patient
+   Dim com As Collection 
    
-   spatient &= " " & currentconsult!patient!suburb & currentconsult!patient!postcode & "DOB:" & Format(currentconsult!patient!birthdate, "dd/mm/yyyy")
+   '----------------------------------------------
+   'Replace the rest, patient name, who its to etc
+   '----------------------------------------------
+   spatient &= " " & currentconsult!patient!town & " " & currentconsult!patient!postcode & " DOB:" & Format(currentconsult!patient!birthdate, "dd/mm/yyyy")
    sPatient &= " Aged: " & currentconsult!patient!age 
    sLetterHtml = "<html><head><meta name='qrichtext' content='1' /></head><body>"
    "<TABLE WIDTH=100% BORDER=0 CELLPADDING=4 CELLSPACING=3 >"
@@ -405,7 +481,7 @@ Public Function Referral_LetterHTML_Construct() As String
    "</TD>"
    "</TR>"
    "</TABLE>"
-   "<hr style = 'width: 100%; height: 2px;' >"
+   "<hr>"
    "<P>%referred_to%<BR>" 
    "%organisation%"
    "%branch%"
@@ -414,9 +490,27 @@ Public Function Referral_LetterHTML_Construct() As String
    "%phone%"
    "%fax%</P>"
    "<p>Dear %firstname%,</p>"
-   "<p></p>"
-   "<p>Re:  %patient%</p>"
-   "<p></p>"
+   "<BR>"
+   "<TABLE WIDTH=100%>"
+   "<COL WIDTH=8%>"
+   "<COL WIDTH=92%>"
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=8%>"
+   "<P>Re:</P>"
+   "</TD>"
+   "<TD WIDTH=92%>"
+   "<P>%patient%</P>"
+   "</TD>"
+   "</TR>"
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=8%>"
+   "<P></P>"
+   "</TD>"
+   "<TD WIDTH=92%>"
+   "<P>%comms%</P>"
+   "</TD>"
+   "</TR>"
+   "</TABLE>"  
    "<p>TYPE OF REFERRAL: %type%</p>"
    "<p></p>"
    "<p>%body%</p>"
@@ -424,9 +518,9 @@ Public Function Referral_LetterHTML_Construct() As String
    "<p>Yours Sincerely</p>"
    "<p><BR><BR></p>"
    "<p>%user%</p>"
-   
+   "%cc%"
    "</body></html>"
-   
+   sLetterHtml = Replace(sLetterHtml, "%cc%", sHtml_CopyTo)
    sLetterHtml = Replace(sLetterHtml, "%practitioner_name", modDBConnect.currentUser!title & " " & modDBConnect.currentuser!wholename)
    sLetterHtml = Replace(sLetterHtml, "%provider_no", modDBConnect.currentUser!provider_number)
    sLetterHtml = Replace(sLetterHtml, "%clinic.name", modDBConnect.currentUser!organisation) 
@@ -452,19 +546,25 @@ Public Function Referral_LetterHTML_Construct() As String
    If Not IsNull(PersonWritingTo) Then
       sLetterHtml = Replace$(sLetterHtml, "%firstname%", PersonWritingTo!firstname)
    End If   
-   If cvwPersonContacts.count Then
-      For Each comm In comms
-         If comm!fk_type = const.CommModalityPhone Then
-            sLetterHtml = Replace$(sLetterHtml, "%phone%", comm!value)
-         Endif
-         If comm!fk_type = const.CommModalityFax Then
-            sLetterHtml = Replace$(sLetterHtml, "%fax%", comm!value)
-         Endif
-      Next
-   Endif
+   ' If cvwPersonContacts.count Then
+   '    For Each comm In comms
+   '       If comm!fk_type = const.CommModalityPhone Then
+   '          sLetterHtml = Replace$(sLetterHtml, "%phone%", comm!value)
+   '       Endif
+   '       If comm!fk_type = const.CommModalityFax Then
+   '          sLetterHtml = Replace$(sLetterHtml, "%fax%", comm!value)
+   '       Endif
+   '    Next
+   ' Endif
    sLetterHtml = Replace$(sLetterHtml, "%phone%", "")
    sLetterHtml = Replace$(sLetterHtml, "%fax%", "")
    sLetterHtml = Replace$(sLetterHtml, "%patient%", spatient)
+   'now the comms
+   
+   For Each com In currentconsult!comms
+      sPatient_Comms &= const.CommModalityTextFull[com!fk_type] & ":" & currentconsult!comms[currentconsult!comms.key]!value & "<BR>"
+   Next
+   sLetterHtml = Replace$(sLetterHtml, "%comms%", sPatient_Comms)
    sLetterHtml = Replace$(sLetterHtml, "%type%", cmbReferralTypes.Text)
    sLetterHtml = Replace$(sLetterHtml, "%body%", Referral_BodyHTML_Construct())
    sLetterHtml = Replace$(sLetterHtml, "%user%", modDBConnect.currentUser!wholename)
@@ -472,7 +572,7 @@ Public Function Referral_LetterHTML_Construct() As String
    sLetterHtml = Replace$(sLetterHtml, "%address%", "")
    sLetterHtml = Replace$(sLetterHtml, "%suburb%", "")
    Return sLetterHtml
-
+   
 End
 
 Public Function Referral_BodyHTML_Construct() As String
@@ -509,9 +609,9 @@ Public Sub Referral_Preview()
    
    If VBox_Letters.Enabled = True Then           'this will be with new referral or editing a referral
       If Not Valid_Referral() Then Return
-      FHtml_Viewer.WebView1.html = Referral_LetterHTML_Construct()
+      FHtml_Viewer.WebView1.html = Referral_LetterHTML_Construct(Copyto_Html_Constuct(Form_Copy_To.Get_CopyTo_Data()!copyto))
    Else                                           'otherwise previewing one written during consultation
-     FHtml_Viewer.WebView1.html = currentconsult!referrals_written[pk_referral]!letter_html
+      FHtml_Viewer.WebView1.html = currentconsult!referrals_written_this_consult[pk_referral]!letter_html
    End If 
    VSplit_Main.Visible = False
    Vbox_Preview.Visible = True
@@ -531,6 +631,12 @@ Public Function Valid_Referral() As Boolean
    '-------------------------------------------------------------
    
    Dim sMsg As String 
+   
+   If Not IsDate(txtReferralDate.text) Then
+      Message.Info("The referral date is invalid")
+      txtReferralDate.SetFocus()
+      Return
+   Endif
    '-------------------------------------------
    'Firstly, does letter have valid recipient?
    '-------------------------------------------
@@ -703,6 +809,8 @@ Public Sub EditArea_Clear()
    cProgressNote_Section = const.cSection_GeneralNotes
    txtHealthIssue.text = "general notes"
    bExit = False
+   Form_Copy_To.Reset() 'clears the copyto lists.
+   
 End
 
 Public Sub EditAreaTextBox_GotFocus()
@@ -777,16 +885,40 @@ Public Sub EditAreaTextBox_GotFocus()
    
 End
 
+Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   Select Case tag
+      Case "date"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
+      Case Else
+         bKeyValid = True
+   End Select
+   Return bKeyValid
+   
+End
+
 Public Sub EditAreaTextBox_LostFocus()
    
    Last.BackGround = Color.White
    If Last.tag = "suburb" Then txtPostcode.BackGround = Color.white
+   If Last.tag = "date" Then
+      If Not (IsDate(Last.text)) Then
+         bExit = True   
+         Last.text = "" 
+         bExit = False  
+      Endif
+   Endif
    
 End
 
 Public Sub EditAreaTextBox_KeyPress()
    
    If bExit Then Return
+   If Not EditAreaTextbox_ExcludeKeys(key.code, Last.tag) Then 
+      Stop Event
+      Return
+   End If
+   
    Select Case Key.Code
       Case Key.F1
          Select Case Last.tag
@@ -829,20 +961,15 @@ Public Sub Referrals_This_Consult_Show()
    Dim x As Integer
    
    cvwLetters.Clear()
-   For Each referral In currentconsult!referrals_written
-      '-----------------------------------------------------------
-      'check all the referrals
-      'if this consult pk is same as any of the existing referrals
-      'then they were written this consultation, add to list
-      '-----------------------------------------------------------
-      If currentconsult.GetPK() = referral!fk_consult Then
-         x = referral!pk_referral
-         cvwLetters.Add(x, 0)
-         cvwletters[x][0] = Format(referral!date, "dd/mm/yyyy")
-         cvwletters[x][1] = referral!provider_title & " " & referral!provider_firstname & " " & referral!provider_surname
-         cvwletters[x][2] = referral!type
-         cvwletters[x][3] = referral!tag
-      End If
+   For Each referral In currentconsult!referrals_written_this_consult
+      x = referral!pk_referral
+      cvwLetters.Add(x, 0)
+      cvwletters[x][0] = Format(referral!date_referral, "dd/mm/yyyy")
+      If Not IsNull(referral!surname) Then
+         cvwletters[x][1] = referral!wholename
+      Endif
+      cvwletters[x][2] = referral!type
+      cvwletters[x][3] = referral!tag
    Next
    
 End
@@ -853,6 +980,8 @@ Public Sub Referral_New()
    '----------------------------------------
    
    EditArea_Clear()                          'clear input area and zero all keys
+   modEditAreaHelpers.mnuHealthIssues_Refresh(currentconsult, mnuHealthIssues, Me) 'create the popup health issues menu but default to general notes
+
    chkIncludeCarePlan.value = False          'Don't include care plan
    chkIncludehealthSummary.Value = False     'Don't include summary
    lvwInclusions.Clear()                     'clear inclusions list
@@ -872,9 +1001,14 @@ Public Sub Referral_New()
    fk_type = const.ReferralType_OpinionAndManagement
    fk_progressnote = -1
    fk_pasthistory = 0                        'default to general notes
-   VBox_Letters.Enabled = True   
+   VBox_Letters.Enabled = True  
+   bExit = True   
+   txtReferralDate.text = Format(Now, "dd/mm/yyyy") 
+   bExit = False  
    bEditing = False  
+   
    txtName.SetFocus()
+   
 End
 
 Public Sub EditAreaButtons_Click()
@@ -989,7 +1123,7 @@ Public Sub mnuReferralsThisconsult_Click()
       Case "delete"
          ReferralsList_Delete()        'fixme not implemented
       Case "undo delete"
-        ReferralsList_DeleteUndo()
+         ReferralsList_DeleteUndo()
       Case "edit"
          Referral_Edit()               'edit the current referral
       Case "preview"
@@ -1010,16 +1144,18 @@ Public Sub ReferralsList_Delete()
    'Without audit trail if written this consultation, which is always if from
    'the cvwLetterse list
    '-------------------------------------------------------------------------
+   
    Dim referral As New Collection
    
    If Message.Question("Are you sure you want to delete this referral?", "Yes", "No") = 2 Then Return 
    referral!pk_referral = pk_referral
    referral!deleted = True
    modDBConnect.BeginTrans()
-       pk_deleted_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral)
+   pk_deleted_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral)
    modDBConnect.CommitTrans()
    Reload()                                                  'Default to a new letter
    FClinical.Refresh_AllPreviousNotes()
+   
 End
 
 Public Sub ReferralsList_DeleteUndo()
@@ -1031,30 +1167,30 @@ Public Sub ReferralsList_DeleteUndo()
    
    If pk_deleted_referral Then
       modDBConnect.BeginTrans()
-         modReferralsDBI.UnDelete(pk_deleted_referral)
-         pk_deleted_referral = 0
-     modDBConnect.CommitTrans()
-     Reload()
-     FClinical.Refresh_AllPreviousNotes()
+      modReferralsDBI.UnDelete(pk_deleted_referral)
+      pk_deleted_referral = 0
+      modDBConnect.CommitTrans()
+      Reload()
+      FClinical.Refresh_AllPreviousNotes()
    Endif
+   
 End
 
-
-
 Public Sub ReferralsList_Print(print_type As String)
+   
    Dim x As Integer
    
    Select Case print_type
       Case "re-print"
-          modPrinting.PrintHtml(currentconsult!referrals_written[pk_referral]!letter_html)
+         modPrinting.PrintHtml(currentconsult!referrals_written[pk_referral]!letter_html)
       Case "re-print all"
-           cvwLetters.MoveFirst
-           For x = 0 To cvwLetters.count - 1
-                modPrinting.PrintHtml(currentconsult!referrals_written[cvwLetters.Item.Key]!letter_html)
-                cvwLetters.MoveNext()
-           Next
-           cvwLetters.MoveFirst()
-           cvwLetters.Item.Selected = True
+         cvwLetters.MoveFirst
+         For x = 0 To cvwLetters.count - 1
+            modPrinting.PrintHtml(currentconsult!referrals_written[cvwLetters.Item.Key]!letter_html)
+            cvwLetters.MoveNext()
+         Next
+         cvwLetters.MoveFirst()
+         cvwLetters.Item.Selected = True
    End Select
    
 End
@@ -1069,6 +1205,7 @@ Public Sub Referral_Edit()
    
    Dim Letter_from_View As Collection ' to make typing easier
    Dim PH As Collection 
+   
    bEditing = True
    EditArea_Clear()
    Inclusions = New Collection
@@ -1076,14 +1213,17 @@ Public Sub Referral_Edit()
    bExit = True
    cvwLetters.MoveCurrent
    pk_referral = cvwLetters.Item.key
-   Letter_from_View = currentconsult!referrals_written[pk_referral]
+   Letter_from_View = currentconsult!referrals_written_this_consult[pk_referral]
    Try fk_branch = Letter_from_View!fk_branch
    Try fk_person = Letter_from_View!fk_person
-   Try fk_organisation = Letter_from_View!fk_organisation
-   PersonWritingTo!firstname = Letter_from_View!provider_firstname
-   PersonWritingTo!surname = Letter_from_View!provider_surname
+   Try fk_employee = Letter_from_View!fk_employee
+   Try fk_address = Letter_from_View!fk_address
+   Try fk_progressnote = Letter_from_View!fk_progressnote
+   PersonWritingTo!firstname = Letter_from_View!firstname
+   PersonWritingTo!surname = Letter_from_View!surname
    PersonWritingTo!title = Letter_from_View!title
-   txtName.text = Letter_from_View!provider_title & " " & Letter_from_View!provider_firstname & " " & Letter_from_View!provider_surname 
+   txtReferralDate.text = Format(Letter_from_View!date_referral, "dd/mm/yyyy")
+   txtName.text = Letter_from_View!wholename
    txtCategory.text = Letter_from_View!category
    txtOccupation.text = Letter_from_View!occupation
    txtOrganisation.text = Letter_from_View!organisation
@@ -1115,29 +1255,30 @@ Public Sub Referral_Edit()
    If Letter_from_View!include_healthsummary = True Then
       chkIncludehealthSummary.value = True
    End If
-   
-   ' cmbReferralTypes.index = Letter_from_View!fk_type
-   cmbReferralTypes.index = cmbReferralTypes.Find(Letter_from_View!type)
    fk_progressnote = Letter_from_View!fk_progressnote
    txtTag.text = Letter_from_View!tag
    teLetter.richtext = Letter_from_View!body_html  
    VBox_Letters.Enabled = True
    tbSave.Enabled = False  
    teLetter.SetFocus()
+   Form_Copy_To.CopyTos_Reload(modUtil.SplitStrings_into_collection(Letter_from_View!copyto, "|"))
    bExit = False  
-   
+   cmbReferralTypes.index = cmbReferralTypes.Find(Letter_from_View!type) 'leave outside of Bexit to use the click event
 End
+
+
 
 Public Sub cvwLetters_Menu()
    '------------------------------------------------------------------------------------
    'Popup menu of letters written this consult, enabling, disabling items as appropriate
    '------------------------------------------------------------------------------------
+   
    If pk_deleted_referral Then
-         mnuReferralsThisconsult_DeleteUndo.enabled = True
+      mnuReferralsThisconsult_DeleteUndo.enabled = True
    Else
-        mnuReferralsThisconsult_DeleteUndo.Enabled = False   
+      mnuReferralsThisconsult_DeleteUndo.Enabled = False   
    End If
-
+   
    ' If cvwLetters.count = 0 Then
    '    mnuReferralsThisconsult_Edit.Enabled = False   
    '    mnuReferralsThisconsult_Preview.Enabled = False
@@ -1151,34 +1292,35 @@ Public Sub cvwLetters_Menu()
    '    mnuReferralsThisconsult_RePrintAll.Enabled = True 
    '    mnuReferralsThisconsult_Delete.Enabled = True
    ' Endif
-      mnuReferralsThisconsult_Edit.Enabled = cvwLetters.count  
-      mnuReferralsThisconsult_Preview.Enabled = cvwLetters.count
-      mnuReferralsThisconsult_RePrint.Enabled = cvwLetters.count
-      mnuReferralsThisconsult_RePrintAll.Enabled = cvwLetters.count
-      mnuReferralsThisconsult_Delete.Enabled = cvwLetters.count
-
+   mnuReferralsThisconsult_Edit.Enabled = cvwLetters.count  
+   mnuReferralsThisconsult_Preview.Enabled = cvwLetters.count
+   mnuReferralsThisconsult_RePrint.Enabled = cvwLetters.count
+   mnuReferralsThisconsult_RePrintAll.Enabled = cvwLetters.count
+   mnuReferralsThisconsult_Delete.Enabled = cvwLetters.count
+   
    mnuReferralsThisconsult.popup()
    
 End
 
 Public Sub cvwLetters_Click()
-  
-  cvwLetters_Select()
-  
+   
+   cvwLetters_Select()
+   
 End
 
 Public Sub cvwLetters_Select()
    '-----------------------------------------------------------------
    'User has clicked on an existing letter for today's consulatation
    '-----------------------------------------------------------------
+   
    EditArea_Clear()
    cvwLetters.MoveCurrent
    cvwLetters.Item.Selected = True
    pk_referral = cvwLetters.Item.key
-  
    vbox_Letters.Enabled = False
    tbSave.Enabled = False 
    tbPreview.enabled = False 
+   
 End
 
 Public Sub lvwOrgContacts_Menu()
@@ -1222,6 +1364,7 @@ Public Sub Person_Get()
    '-------------------------------------------------------------
    'Gets a list of persons who could be sole traders or employees
    '-------------------------------------------------------------
+   
    Dim address As String
    
    columnview1.Visible = False 
@@ -1233,11 +1376,11 @@ Public Sub Person_Get()
          columnview1.Add(Specialist!pk_view, 0)
          columnview1[Specialist!pk_view][0] = Specialist!wholename
          columnview1[Specialist!pk_view][1] = "(" & Specialist!occupation & ")"
-        columnview1.Columns[2].width = 150
-        If Not IsNull(Specialist!organisation) Then
+         columnview1.Columns[2].width = 150
+         If Not IsNull(Specialist!organisation) Then
             columnview1[Specialist!pk_view][2] = Specialist!organisation & " " & Specialist!branch
          Else
-             columnview1[Specialist!pk_view][2] = ""
+            columnview1[Specialist!pk_view][2] = ""
          Endif
          Try address = Specialist!street & " "
          Try address &= Specialist!town & " " & Specialist!postcode
@@ -1258,6 +1401,7 @@ Public Sub Person_Select()
    'There is a list of persons showing, user is selecting one
    'Routine called by user clicking on list or pressing <enter>
    '-----------------------------------------------------------
+   
    Person_By_Occupation_Select()
    ' bExit = True
    ' If columnview1.Visible Then
@@ -1287,7 +1431,7 @@ Public Sub Person_Comms_Get()
    '--------------------------------------------------------
    'Get all the persons contacts, e.g phone, fax, mobile etc
    '--------------------------------------------------------   
-
+   
    Dim comm As Collection
    Dim x As Integer
    
@@ -1348,11 +1492,11 @@ Public Sub Organisation_By_Category_Select()
    
 End
 
-
 Public Sub Branch_Select()
    '-------------------------------------
    'Selects a branch from the columnview1
    '-------------------------------------   
+   
    bexit = True
    columnview1.MoveCurrent()
    txtOrganisation.text = branches[columnview1.Item.key]!organisation
@@ -1508,6 +1652,7 @@ Public Sub Person_By_Occupation_Get()
    ' category .... persons name i.e
    ' cardiologist      Dr Big heart
    '-----------------------------------------------------------------------
+   
    Dim address As String 
    
    columnview1.Visible = False   
@@ -1527,7 +1672,7 @@ Public Sub Person_By_Occupation_Get()
          If Not IsNull(Specialist!organisation) Then
             columnview1[Specialist!pk_view][2] = Specialist!organisation & " " & Specialist!branch
          Else
-             columnview1[Specialist!pk_view][2] = ""
+            columnview1[Specialist!pk_view][2] = ""
          Endif
          Try address = Specialist!street & " "
          Try address &= Specialist!town & " " & Specialist!postcode
@@ -1646,4 +1791,11 @@ Public Sub lvwInclusions_Drop()
    End If
    lblDocuments.text = "Documents (" & Str(lvwInclusions.Count) & ")"
    
+End
+
+
+Public Sub HSplit_Letter_Include_Resize()
+
+   
+ lblDocuments.width = HSplit_Letter_Include.children[1].width
 End

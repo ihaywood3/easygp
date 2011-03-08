@@ -335,6 +335,29 @@ Public Function update(table As String, old_data As Collection, new_data As Coll
   Return False
 End
 
+Public Sub update_array(tbl As String, old_pk As Integer, fields As String[], vals As Variant[])
+
+  Dim i As Integer = 0
+  Dim changes As New String[]
+  Dim field As Variant
+
+  For i = 0 To fields.Max
+     field = vals[i]
+     If TypeOf(field) = gb.string Then
+       If InStr(field, "BLOB:") Then
+          changes.Push(fields[i] & "=" & $hconn.FormatBlob(File.Load((Right$(field, -5)))) & ":: bytea ")       
+       Else
+         If TypeOf(field) = gb.Date Then
+           field = Format$(field, "dd/mm/yyyy")
+         Endif
+         changes.Push($hconn.Subst(fields[i] & " = &1", field))
+       Endif
+     Else
+       changes.Push($hconn.Subst(fields[i] & " = &1", field))
+    End If
+  Next
+  exec_query("UPDATE " & tbl & " SET " & changes.Join(",") & " WHERE pk = " & old_pk)
+End
 
 Public Function exec_query_collection(sql As String) As Collection
   ' perform a query and return result as a collection of collections
@@ -368,6 +391,42 @@ Public Function exec_query_collection(sql As String) As Collection
        Quit
     End If 
     thelot[generic_pk] = a_collection
+  Next
+  Return thelot
+End
+
+Public Function exec_query_row(sql As String) As Collection
+  ' perform a query and return result as a collection of cRows
+  
+  Dim thelot As New Collection
+  Dim a_collection As Collection
+  Dim $result As Result
+  Dim resultfield As ResultField
+  Dim generic_pk As Variant 
+  Dim pk_field_present As Boolean
+
+  $result = exec_query(sql)
+  For Each $result
+    a_collection = New Collection
+    generic_pk = -1
+    For Each resultfield In $result.Fields
+      
+      If Not IsNull(resultfield.Name) Then
+         a_collection.Add($result[resultfield.Name], resultfield.Name) 
+         If Left$(resultfield.Name, 2) = "pk" Then
+           If Not IsNull($result[resultfield.Name]) Then
+             generic_pk = $result[resultfield.Name]
+             pk_field_present = True
+           Endif
+         End If
+     End If
+    Next 
+    If Not pk_field_present Then 
+       Message.info("Table in sql " & sql & " must have a field beginning with the letters pk\n Sorry, the program will now quit!")
+       Log.PanicMsg("Table in sql " & sql & " must have a field beginning with the letters pk")
+       Quit
+    End If 
+    thelot[generic_pk] = New CRow(a_collection)
   Next
   Return thelot
 End

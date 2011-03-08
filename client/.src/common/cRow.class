@@ -1,0 +1,113 @@
+' Gambas class file
+' Copyright (C) 2011 Dr. Ian Haywood
+' class to representing a Collection with the semantics we want
+' specifically NULL members and can remember changes
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'----------------------------------------------------------------------
+
+Private coll As Collection
+Private mychanged As String[]
+
+Property Read changed As String[]
+
+' allows database columns to be set as if this was a Collection
+' so row!username = "John" sets field "username" to "John"
+Public Sub _put(value As Variant, field As String)
+   
+   Debug field, value
+   coll[field] = value
+   If Not mychanged.Exist(field) Then mychanged.Add(field)
+   
+End
+
+' allows database columns to be accessed like a Collection, so
+' row!username returns "John" after the _put command above
+Public Function _get(field As String) As Variant
+   
+  If coll.Exist(field) Then
+    Return coll[field]
+  Else
+    If mychanged.Exist(field) Then
+      ' not in coll but was changed: ergo it is NULL
+      Return Null
+    Else
+      ' it never existed at all
+      Error.Raise("Key " & field & " does not exist") ' Python-style error
+    Endif
+  Endif 
+   
+End
+
+
+' creats a new row from an existing collection
+Public Sub _new(mycoll As Collection)
+   
+  coll = mycoll
+  mychanged = New String[] 
+   
+End
+
+'returns true if this field exists in the row
+Public Function Exist(field As String) As Boolean
+   
+  If coll.Exist(field) Then Return True
+  If mychanged.Exist(field) Then Return True
+  Return False 
+   
+End
+
+Private Function changed_Read() As String[]
+
+   Return mychanged
+
+End
+
+Public Sub Save(table As String, pk_view_name As String)
+   
+  ' saves the changed fields to the backend database
+  ' table: the name of the table to save to (including the schema)
+  ' pk_view_name: the name of this table's pk in the view that
+  ' the row may come from. If exists used as PK for UPDATE, if
+  ' doesn't, INSERT is performed.   
+  Dim vals As New Variant[]
+  Dim s As String
+  
+  If coll.Exist(pk_view_name) Then
+    ' old pk exists so do update
+    If mychanged.Count > 0 Then
+       ' create update string
+       For Each s In mychanged
+         vals.Add(coll[s]) 
+       Next
+       modDBConnect.update_array(table, coll[pk_view_name], mychanged, vals)
+       mychanged = New String[]
+    Endif
+  Else
+    ' insert
+    coll[pk_view_name] = modDBConnect.insert(table, coll) 
+  Endif
+End
+
+
+Static Public Sub UnitTest(form_main As FMain)
+   Dim coll As Collection
+   
+   
+   coll = modDBConnect.exec_query_row("select * from contacts.data_persons where pk=1")
+   Debug coll["1"]!memo
+   coll["1"]!memo = Null
+   coll["1"].Save("contacts.data_persons", "pk")
+   
+End

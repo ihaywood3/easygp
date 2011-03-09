@@ -53,6 +53,7 @@ Private Branches As Collection
 Private branch As Collection 
 Private Comms As Collection
 Private comm As Collection 
+Private sHtml_Inclusions As String
 Private Inclusions As Collection                            'Documents/graphs etc, whatever is included in letter
 Private currentconsult As CConsult                          'set by calling form e.g Fclinical or FActionDocument
 Private referral_types As Collection                        'eg Management, indefinate etc, 
@@ -136,8 +137,9 @@ Public Sub mnuHealthIssues_Click()
          cProgressNote_Section = const.cSection_Referrals
    End Select
    EditArea_Notify_DataChange(True)
-
+   
 End
+
 Public Sub tbPreview_Close_Click()
    '-------------------------------------------------------------------------------
    'this observer overides the click event on the close button on the embedded form
@@ -204,31 +206,27 @@ Public Sub Save()
    End If  
    referral!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto 'FIXME, I'VE LEFT it as collection till I sort using this in FRequests
    sHtml_CopyTo = Copyto_Html_Constuct(referral!copyto)
+   sHtml_Inclusions = Inclusions_Construct_HTML()
+   
    referral!body_html = Referral_BodyHTML_Construct()
-   referral!letter_html = Referral_LetterHTML_Construct(sHtml_CopyTo)
+   referral!letter_html = Referral_LetterHTML_Construct(sHtml_CopyTo, sHtml_Inclusions)
    referral!fk_type = referral_types[cmbReferralTypes.index + 1]!pk
    referral!fk_type = fk_type                                             'e.g opinion and management
    ' referral!fk_pasthistory = fk_pasthistory '0 = general notes > 0 = key to clin_history.past_history table
    '-------------------------------------------------
    'Construct the text to embed in the progress notes
    '-------------------------------------------------
-   sProgressNote_Html = Referral_ProgressNoteHTML_Construct(referral)
-   'Bit sloppy, but if I delete the document itself from the inclusion so as just to save its key, I'll  have to re-load it to print it
-   'maybe that would be better, but first go, I'll do this.
- '  For Each inclusion In Inclusions
-   '      Accompanying_Documents = modUtil.Copy_Collection(Inclusions)
-   ' For Each inclusion In Accompanying_Documents
-   '    
-   ' Next
-   ' Accompanying_Documents.Remove("document")
-   
-   
+   sProgressNote_Html = Referral_ProgressNoteHTML_Construct(referral, sHtml_Inclusions)
+   '-------------------------------------------------
+   'Ok, save the referral
+   'Inclusions are saved to clin_referrals.inclusions
+   '-------------------------------------------------
    modDBConnect.BeginTrans()
-      referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote_Html, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
-      pk_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral, Accompanying_Documents)   'Save the referral letter
+   referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote_Html, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
+   pk_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral, Inclusions)   'Save the referral letter
    modDBConnect.CommitTrans()
    If chkDoNotPrint.value = False Then
-      Referral_Print(referral)
+    '  Referral_Print(referral)
    End If
    
    Reload()                                                  'Default to a new letter
@@ -245,6 +243,8 @@ Public Sub Referral_Print(referral As Collection)
    Dim inclusion As Collection
    Dim x As Integer
    Dim num_copies As Integer   
+   Dim Document As Collection
+   Dim file_extension As String
    
    num_copies = Max(Split(referral!copyto, "|").Count, 1)  'print at least 1 = our letter
    If num_copies > 1 Then Inc num_copies                   'plus the extra copies we need
@@ -260,14 +260,26 @@ Public Sub Referral_Print(referral As Collection)
       '------------------------------------------------------------------------------------
       'Now print any included documents which were dragged'n dropped to the inclusions list
       'FIXME: just first go, need to take into account document type in more thorough way
+      'At moment, I'm only allowing drag and drop of letters recieved or hl7 recieved
       '------------------------------------------------------------------------------------
       For Each inclusion In Inclusions
-         If Not IsNull(inclusion!document!html) Then
-            modPrinting.PrintHtml(inclusion!document!html, const.Paper_Plain)
-         Endif
-         If Right(Lower(inclusion!document!source_file), 3) = "pdf" Then
-            modPrinting.Print_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ inclusion!document!source_file)
-         Endif
+         Try Document = currentconsult!results_received[inclusion!fk_document]         '? a result??
+         If IsNull(document) Then                                                      'it wasn't a result             
+            Try Document = currentconsult!letters_received[inclusion!fk_document]      '? a letter ??   
+         End If  
+         '---------------------------------------------------------------------------
+         'If it was a valid document, print - at moment we only handle pdf's and html
+         'but hey, that's our perogative
+         '---------------------------------------------------------------------------   
+         If Not IsNull(Document) Then 
+            file_extension = Lower(File.Ext(document!source_file))
+            Select Case file_extension
+               Case "pdf"
+                  modPrinting.Print_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ document!source_file)
+               Case Else
+                  If Not IsNull(document!html) Then modPrinting.PrintHtml(document!html, const.Paper_Plain)
+            End Select
+         End If
       Next
    Next
    
@@ -311,15 +323,15 @@ Public Sub LetterWriter_Click()
    '---------------------------------------------
    
    Select Case Last.tag
-     Case "maximize"
-       If HSplitEditArea_Communications.Visible Then
-        HSplitEditArea_Communications.Visible = False 
-        Vbox_CopyToList.Visible = False   
-       Else
-           HSplitEditArea_Communications.Visible = True 
-           Vbox_CopyToList.Visible = True
+      Case "maximize"
+         If HSplitEditArea_Communications.Visible Then
+            HSplitEditArea_Communications.Visible = False 
+            Vbox_CopyToList.Visible = False   
+         Else
+            HSplitEditArea_Communications.Visible = True 
+            Vbox_CopyToList.Visible = True
             Try HSplitEditArea_Communications.Layout = Settings["Referrals/EditArea_Communications"]
-       End If     
+         End If     
       Case "erase"
          teLetter.Clear()
       Case "bold"
@@ -400,18 +412,18 @@ Public Sub SpinBox1_Change()
 End
 
 Public Function Copyto_Html_Constuct(Optional copyto As String = "") As String
-
+   
    Dim sHtml As String
    
    sHtml = ""
    "<TABLE WIDTH=100%>"
-   "<COL WIDTH=4%>"
-   "<COL WIDTH=96%>"
+   "<COL WIDTH=6%>"
+   "<COL WIDTH=94%>"
    "<TR VALIGN=TOP>"
-   "<TD WIDTH=4%>"
+   "<TD WIDTH=6%>"
    "<P><small><small>cc</small></small></P>"
    "</TD>"
-   "<TD WIDTH=96%>"
+   "<TD WIDTH=94%>"
    "<P<small><small>%copyto%</small></small></P>"
    "</TD>"
    "</TR>"
@@ -427,24 +439,26 @@ Public Function Copyto_Html_Constuct(Optional copyto As String = "") As String
       sHtml = ""
    End If     
    Return sHtml
-
+   
 End
 
-Public Function Referral_ProgressNoteHTML_Construct(referral As Collection) As String 
+Public Function Referral_ProgressNoteHTML_Construct(referral As Collection, sHtml_Inclusions As String) As String 
    '---------------------------------------------------------------------
    'The HTML for the progress note is <> the letter
    'it is an abbridged form, with just who it is for + body letter + cc's
    '---------------------------------------------------------------------
-   Dim sHtml As String
    
-   sHtml = "Referral Letter to " & txtName.text 
-   sHtml &= " Re: " & txtTag.text & ":"
+   Dim sHtml As String
+
+ 'sHtml = "<HR><BR>Referral Letter to " & txtName.text 
+ '  sHtml &= " Re: " & txtTag.text & ":"
    sHtml &= "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0>"
    "<COL WIDTH=80%>"
    "<COL WIDTH=20%>"
    "<TR VALIGN=TOP>"
    "<TD WIDTH=80%>"
-   "<HR><P><small><FONT FACE='Times New Roman, serif'>%letterbody%%cc%"
+   "<HR>Referral Letter to " & txtName.text & " Re: " & txtTag.text & ":"
+   "<HR><P><small><FONT FACE='Times New Roman, serif'>%letterbody%%cc%%inclusions%"
    "</small></P><HR>"
    "</TD>"
    "<TD WIDTH=20%>"
@@ -455,10 +469,13 @@ Public Function Referral_ProgressNoteHTML_Construct(referral As Collection) As S
    "</TABLE>"
    shtml = Replace$(shtml, "%letterbody%", referral!body_html)
    shtml = Replace$(shtml, "%cc%", Copyto_Html_Constuct(referral!copyto)) 
+   shtml = Replace$(shtml, "%inclusions%", sHtml_Inclusions) 
+
    Return sHTml
+   
 End
 
-Public Function Referral_LetterHTML_Construct(Optional sHtml_CopyTo As String = "") As String
+Public Function Referral_LetterHTML_Construct(Optional sHtml_CopyTo As String = "", sHtml_Inclusions As String = "") As String
    '-----------------------------------------------------------
    'Construct Html of the referral letter, FIX ME USE cTemplate
    '-----------------------------------------------------------  
@@ -525,12 +542,13 @@ Public Function Referral_LetterHTML_Construct(Optional sHtml_CopyTo As String = 
    "<p>TYPE OF REFERRAL: %type%</p>"
    "<p></p>"
    "<p>%body%</p>"
-   "<p><BR></p>"
    "<p>Yours Sincerely</p>"
    "<p><BR><BR></p>"
    "<p>%user%</p>"
+   "%inclusions%"
    "%cc%"
    "</body></html>"
+   sLetterHtml = Replace(sLetterHtml, "%inclusions%", sHtml_Inclusions)
    sLetterHtml = Replace(sLetterHtml, "%cc%", sHtml_CopyTo)
    sLetterHtml = Replace(sLetterHtml, "%practitioner_name", modDBConnect.currentUser!title & " " & modDBConnect.currentuser!wholename)
    sLetterHtml = Replace(sLetterHtml, "%provider_no", modDBConnect.currentUser!provider_number)
@@ -620,7 +638,7 @@ Public Sub Referral_Preview()
    
    If VBox_Letters.Enabled = True Then           'this will be with new referral or editing a referral
       If Not Valid_Referral() Then Return
-      FHtml_Viewer.WebView1.html = Referral_LetterHTML_Construct(Copyto_Html_Constuct(Form_Copy_To.Get_CopyTo_Data()!copyto))
+      FHtml_Viewer.WebView1.html = Referral_LetterHTML_Construct(Copyto_Html_Constuct(Form_Copy_To.Get_CopyTo_Data()!copyto), Inclusions_Construct_HTML())
    Else                                           'otherwise previewing one written during consultation
       FHtml_Viewer.WebView1.html = currentconsult!referrals_written_this_consult[pk_referral]!letter_html
    End If 
@@ -749,9 +767,22 @@ Public Sub EditAreaTextBox_Change()
          'must exist
          '------------------------------------------------------
          If Trim(txtName.text) = "" Then
-            EditArea_Clear()
-         End If
-      Case "referral for"
+             lvworgcontacts.Clear()
+             cvwPersonContacts.Clear()
+             bExit = True
+            fk_organisation = 0
+            fk_branch = 0
+            fk_employee = 0
+            fk_person = 0
+            txtOccupation.text = ""
+            txtOrganisation.text = ""
+            txtBranch.Text = ""
+            txtStreet1.Text = ""
+            txtStreet2.Text = ""
+            txtSuburb.text = ""
+            txtPostcode.text = ""             
+         End If   
+     Case "referral for"
          If Trim(cmbReferralTypes.text) = "" Then
             lblReferralType_Missing.Visible = True
             cmbReferralTypes.SetFocus
@@ -992,7 +1023,7 @@ Public Sub Referral_New()
    
    EditArea_Clear()                          'clear input area and zero all keys
    modEditAreaHelpers.mnuHealthIssues_Refresh(currentconsult, mnuHealthIssues, Me) 'create the popup health issues menu but default to general notes
-
+   
    chkIncludeCarePlan.value = False          'Don't include care plan
    chkIncludehealthSummary.Value = False     'Don't include summary
    lvwInclusions.Clear()                     'clear inclusions list
@@ -1275,9 +1306,8 @@ Public Sub Referral_Edit()
    Form_Copy_To.CopyTos_Reload(modUtil.SplitStrings_into_collection(Letter_from_View!copyto, "|"))
    bExit = False  
    cmbReferralTypes.index = cmbReferralTypes.Find(Letter_from_View!type) 'leave outside of Bexit to use the click event
+   tbPreview.Enabled = True   
 End
-
-
 
 Public Sub cvwLetters_Menu()
    '------------------------------------------------------------------------------------
@@ -1510,7 +1540,6 @@ Public Sub Branch_Comms_Get()
       lvworgcontacts.Add(comm!pk, comm!type & " " & comm!value)
       
    Next
- 
    
 End
 
@@ -1659,7 +1688,7 @@ Public Sub Person_By_Occupation_Select()
       Try txtPostcode.text = specialists[columnview1.Item.key]!postcode 
       If fk_branch Then Branch_Comms_Get()
       If fk_person Then Person_Comms_Get()
-    '  comms_get()
+      '  comms_get()
       txtTag.SetFocus()
    End If
    bExit = False  
@@ -1703,8 +1732,8 @@ Public Sub Person_By_Occupation_Get()
       columnview1.tag = txtOccupation
       Return 
    Else
-   '   Address_Select() 
-    '  columnview1.Visible = False    
+      '   Address_Select() 
+      '  columnview1.Visible = False    
    End If
    
 End
@@ -1756,10 +1785,10 @@ Public Sub Comms_Display()
    '    End If
    ' Next
    ' 
+   
 End
+
 Public Sub comms_get()
-   
-   
    
 End
 
@@ -1803,13 +1832,15 @@ Public Sub Organisation_Get()
 End
 
 Public Sub lvwInclusions_Drop()
-   '---------------------------------------------------
+   '---------------------------------------------------------------------
    'Something is being dropped on the inclusions list
-   'We will accept stuff which is a document or a graph
+   'We will (at some stage) accept stuff which is a document or a graph
+   'at moment I'm only allowing a document from documents (ie path or 
+   'letter/scanned document
    'Drag.source = the control this is coming from, but
    'is a 'control', not for example a columnview  so 
    'have to test it as below
-   '---------------------------------------------------
+   '---------------------------------------------------------------------
    
    Dim cv As ColumnView                'the 'source' control if columnview
    Dim sString As String               'summary eg 01/01/2010 CXR
@@ -1821,6 +1852,7 @@ Public Sub lvwInclusions_Drop()
    Dim select_mode As Integer 
    Dim x As Integer
    
+   'if selection mode = 1  = single document is highlighted
    If Drag.Source Is Columnview Then   'a result or letter ie document
       cv = Drag.Source
       cv.MoveCurrent()
@@ -1836,8 +1868,9 @@ Public Sub lvwInclusions_Drop()
       If cv.mode = 1 Then
          Document = Documents[Drag.data]
          sString = Document!date_created & " " & Document!tag_user
-         Inclusion!document = Document
-         Inclusion!type = "document"
+         '    Inclusion!document = Document
+         Inclusion!fk_document = Drag.data
+         ' Inclusion!type = "document"
          Inclusions.Add(Inclusion, lvwInclusions.count)
          lvwInclusions.add(lvwInclusions.count, sSTring)
       Else
@@ -1846,8 +1879,10 @@ Public Sub lvwInclusions_Drop()
             If cv.Item.Selected = True Then
                Document = Documents[cv.Item.key]
                sString = Document!date_created & " " & Document!tag_user
-               Inclusion!document = Document
-               Inclusion!type = "document"
+               'Inclusion!document = Document
+               inclusion!fk_document = Drag.data 'fk_document
+               
+               ' Inclusion!type = "document"
                Inclusions.Add(Inclusion, lvwInclusions.count)
                lvwInclusions.add(lvwInclusions.count, sSTring)
             Endif
@@ -1858,18 +1893,66 @@ Public Sub lvwInclusions_Drop()
       '---------------------------------
       'Must be a graph which was dropped
       '---------------------------------  
-      Inclusion!type = "graph"
-      Inclusion!filename = Drag.Source.Tag!fname
-      sString = "graph of something"
-      lvwInclusions.add(lvwInclusions.count, sSTring)
+      '  Inclusion!type = "graph"
+      '  Inclusion!filename = Drag.Source.Tag!fname
+      '  sString = "graph of something"
+      ' lvwInclusions.add(lvwInclusions.count, sSTring)
    End If
    lblDocuments.text = "Documents (" & Str(lvwInclusions.Count) & ")"
    
 End
 
+Public Function Inclusions_Construct_HTML() As String
+   '--------------------------------------------
+   'Construct a string describing the inclusions
+   '-------------------------------------------- 
+
+   Dim sHtml As String 
+   Dim sInclusions As String 
+   Dim inclusion As Collection 
+   Dim document As Collection
+   
+   sHtml = ""
+   "<TABLE WIDTH=100%>"
+   "<COL WIDTH= 6%>"
+   "<COL WIDTH=94%>"
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=6%>"
+   "<P><small><small>Inclusions</small></small></P>"
+   "</TD>"
+   "<TD WIDTH=94%>"
+   "<P<small><small>%inclusions%</small></small></P>"
+   "</TD>"
+   "</TR>"
+   "</TABLE>"   
+     
+   
+   For Each inclusion In Inclusions
+      Try Document = currentconsult!results_received[inclusion!fk_document]         '? a result??
+      If IsNull(document) Then                                                      'it wasn't a result             
+         Try Document = currentconsult!letters_received[inclusion!fk_document]      '? a letter ??   
+      End If  
+      '---------------------------------------------------------------------------
+      'If it was a valid document, print - at moment we only handle pdf's and html
+      'but hey, that's our perogative
+      '---------------------------------------------------------------------------   
+      If Not IsNull(Document) Then 
+         sInclusions &= Format(document!date_created, "dd/mm/yyyy") & " " & UCase(Left(document!style)) & Right(document!style, Len(document!style) - 1) & " "
+         If document!msh_sending_entity = "" Then
+            sInclusions &= "" & document!originator
+         Else
+            sInclusions &= "" & document!msh_sending_entity
+         Endif
+          sInclusions &= " - " & document!tag_user
+          sInclusions &= "<BR>"
+      Endif
+   Next
+   sHtml = Replace(sHtml, "%inclusions%", sInclusions)
+  Return sHtml 
+End
 
 Public Sub HSplit_Letter_Include_Resize()
-
    
- lblDocuments.width = HSplit_Letter_Include.children[1].width
+   lblDocuments.width = HSplit_Letter_Include.children[1].width
+   
 End

@@ -42,4 +42,4 @@ GRANT ALL ON TABLE chronic_disease_management.vwdiabetescycleofcare TO staff;
 
 
 truncate db.lu_version;
-insert into db.lu_version (lu_major,lu_minor) values (0, 81)
+insert into db.lu_version (lu_major,lu_minor) values (0, 81);

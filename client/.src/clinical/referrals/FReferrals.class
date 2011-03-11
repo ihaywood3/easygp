@@ -176,6 +176,7 @@ Public Sub Save()
    '--------------------------------------------------------------
    
    Dim referral As New Collection
+   Dim inclusion As Collection
    Dim sProgressNote_Html As String
    Dim sHtml_CopyTo As String 
    Dim CopyToData As Collection
@@ -221,16 +222,74 @@ Public Sub Save()
    'Ok, save the referral
    'Inclusions are saved to clin_referrals.inclusions
    '-------------------------------------------------
+ '  For Each inclusion In Inclusions
+ '     referral!inclusions &= inclusion!fk_document & "|"
+ '  Next
    modDBConnect.BeginTrans()
    referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote_Html, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
    pk_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral, Inclusions)   'Save the referral letter
    modDBConnect.CommitTrans()
    If chkDoNotPrint.value = False Then
-    '  Referral_Print(referral)
+      Referral_Print(referral)
    End If
    
    Reload()                                                  'Default to a new letter
    FClinical.Refresh_AllPreviousNotes()
+   
+End
+
+Public Sub Referral_Print_badmethod(referral As Collection)
+   '-----------------------------------------------
+   'temporary work-around, convert to pdf and print
+   'Print enough copies
+   '-----------------------------------------------
+   
+   Dim inclusion_keys As New String[]
+   Dim inclusion_key As String 
+   Dim x As Integer
+   Dim num_copies As Integer   
+   Dim Document As Collection
+   Dim file_extension As String
+   
+   Try inclusion_keys = Split(referral!inclusions, "|")
+   
+   
+   num_copies = Max(Split(referral!copyto, "|").Count, 1)  'print at least 1 = our letter
+   If num_copies > 1 Then Inc num_copies                   'plus the extra copies we need
+   
+   For x = 1 To num_copies 
+      modPrinting.PrintHtml(referral!letter_html, const.Paper_Plain)
+      If chkIncludehealthSummary.value = True Then
+         modPrinting.PrintHtml(modProgressNotes.Health_Summary_Construct_html(currentconsult), const.Paper_Plain)
+      End If
+      If chkIncludeCarePlan.value = True Then
+         modPrinting.PrintHtml(modProgressNotes.Care_Plan_Construct_html(currentconsult), const.Paper_Plain)
+      End If  
+      '------------------------------------------------------------------------------------
+      'Now print any included documents which were dragged'n dropped to the inclusions list
+      'FIXME: just first go, need to take into account document type in more thorough way
+      'At moment, I'm only allowing drag and drop of letters recieved or hl7 recieved
+      '------------------------------------------------------------------------------------
+      For Each inclusion_key In Inclusion_keys
+         Try Document = currentconsult!results_received[inclusion_key]         '? a result??
+         If IsNull(document) Then                                                      'it wasn't a result             
+            Try Document = currentconsult!letters_received[inclusion_key]      '? a letter ??   
+         End If  
+         '---------------------------------------------------------------------------
+         'If it was a valid document, print - at moment we only handle pdf's and html
+         'but hey, that's our perogative;;
+         '---------------------------------------------------------------------------   
+         If Not IsNull(Document) Then 
+            file_extension = Lower(File.Ext(document!source_file))
+            Select Case file_extension
+               Case "pdf"
+                  modPrinting.Print_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ document!source_file)
+               Case Else
+                  If Not IsNull(document!html) Then modPrinting.PrintHtml(document!html, const.Paper_Plain)
+            End Select
+         End If
+      Next
+   Next
    
 End
 
@@ -284,7 +343,6 @@ Public Sub Referral_Print(referral As Collection)
    Next
    
 End
-
 Public Sub Reload()
    
    currentconsult.Refresh("referrals_written_this_consult")                            'Delete key = force a refresh
@@ -292,7 +350,8 @@ Public Sub Reload()
    Referrals_This_consult_Show()                                          'Update list under edit area
    Referral_New()                                                         'clear for next condition
    txtName.SetFocus()
-   
+   inclusions = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False)
+
 End
 
 Public Sub EditArea_Notify_DataChange(flag As Boolean)
@@ -450,8 +509,6 @@ Public Function Referral_ProgressNoteHTML_Construct(referral As Collection, sHtm
    
    Dim sHtml As String
 
- 'sHtml = "<HR><BR>Referral Letter to " & txtName.text 
- '  sHtml &= " Re: " & txtTag.text & ":"
    sHtml &= "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0>"
    "<COL WIDTH=80%>"
    "<COL WIDTH=20%>"
@@ -860,6 +917,7 @@ Public Sub EditAreaTextBox_GotFocus()
    If Bexit Then Return 
    columnview1.Visible = False 
    Last.BackGround = Color.rgb(95, 255, 175)
+  
    Select Case Last.tag
          
       Case "category"
@@ -940,7 +998,7 @@ Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) A
 End
 
 Public Sub EditAreaTextBox_LostFocus()
-   
+ 
    Last.BackGround = Color.White
    If Last.tag = "suburb" Then txtPostcode.BackGround = Color.white
    If Last.tag = "date" Then
@@ -1078,12 +1136,14 @@ Public Sub Settings_Save()
       Settings["Referrals_Embedded/EditArea_Communications"] = HSplitEditArea_Communications.Layout
       Settings["Referrals_Embedded/Letters_Include"] = HSplit_Letter_Include.Layout
       Settings["Referrals_Embedded/Letters_Preview_Zoom"] = FHtml_Viewer.WebView1.Zoom
+      Settings["Referrals_Embedded/HSplit_Referrals_This_Consult.Layout"] = HSplit_Referrals_This_Consult.Layout
    Else
       Settings["Referrals/VSplit_Main.Layout"] = VSplit_Main.Layout
       Settings["Referrals/VSplit_Referrals.Layout"] = VSplit_Referrals.Layout
       Settings["Referrals/EditArea_Communications"] = HSplitEditArea_Communications.Layout
       Settings["Referrals/Letters_Include"] = HSplit_Letter_Include.Layout
       Settings["Referrals/Letters_Preview_Zoom"] = FHtml_Viewer.WebView1.Zoom
+      Settings["Referrals/HSplit_Referrals_This_Consult.Layout"] = HSplit_Referrals_This_Consult.Layout
    End If
    
 End
@@ -1097,6 +1157,7 @@ Private Sub Settings_Load()
       Try HSplit_Letter_Include.Layout = Settings["Referrals_Embedded/Letters_Include"]
       Try FHtml_Viewer.WebView1.Zoom = Settings["Referrals_Embedded/Letters_Preview_Zoom"]
       Try cvwLetters.font = Font[Settings["Referrals/cvwLetters.font"]]
+      Try HSplit_Referrals_This_Consult.Layout = Settings["Referrals_Embedded/HSplit_Referrals_This_Consult.Layout"]
    Else
       Try VSplit_Main.Layout = Settings["Referrals/VSplit_Main.Layout"]
       Try VSplit_Referrals.Layout = Settings["Referrals/VSplit_Referrals.Layout"]
@@ -1104,6 +1165,7 @@ Private Sub Settings_Load()
       Try HSplit_Letter_Include.Layout = Settings["Referrals/Letters_Include"]
       Try FHtml_Viewer.WebView1.Zoom = Settings["Referrals/Letters_Preview_Zoom"]
       Try cvwLetters.font = Font[Settings["Referrals/cvwLetters.font"]]
+      Try HSplit_Referrals_This_Consult.Layout = Settings["Referrals/HSplit_Referrals_This_Consult.Layout"]
    End If
    
 End
@@ -1343,6 +1405,42 @@ Public Sub cvwLetters_Menu()
    
 End
 
+
+
+ 
+
+
+Public Sub lvwInclusions_currentDocument_Refresh()
+   '--------------------------------------------------------------------------------
+   'Shows what documents are included for the currently highlighted referral written
+   '--------------------------------------------------------------------------------
+   Dim inclusion As Collection
+   Dim sString As String
+   Dim document As Collection 
+   
+   '
+  lvwInclusions_currentDocument.Clear()
+   For Each Inclusion In Inclusions
+      If inclusion!fk_referral = pk_referral Then 
+          Try Document = currentconsult!results_received[inclusion!fk_document]         '? a result??
+          If IsNull(document) Then                                                      'it wasn't a result             
+             Try Document = currentconsult!letters_received[inclusion!fk_document]      '? a letter ??   
+          End If  
+          sString = Document!date_created & " " & Document!tag_user  
+          lvwInclusions_currentDocument.add(lvwInclusions_currentDocument.count, sSTring)
+      End If   
+  
+   Next 
+   
+End
+
+
+
+
+
+                                   
+
+
 Public Sub cvwLetters_Click()
    
    cvwLetters_Select()
@@ -1361,6 +1459,7 @@ Public Sub cvwLetters_Select()
    vbox_Letters.Enabled = False
    tbSave.Enabled = False 
    tbPreview.enabled = False 
+   lvwInclusions_currentDocument_Refresh()
    
 End
 
@@ -1830,6 +1929,24 @@ Public Sub Organisation_Get()
    columnview1.tag = txtOrganisation   
    
 End
+Public Sub lvwInclusions_Refresh()
+   Dim inclusion As Collection
+   Dim sString As String
+   Dim document As Collection 
+   
+   '
+   lvwInclusions.Clear()
+   For Each Inclusion In Inclusions
+      Try Document = currentconsult!results_received[inclusion!fk_document]         '? a result??
+      If IsNull(document) Then                                                      'it wasn't a result             
+         Try Document = currentconsult!letters_received[inclusion!fk_document]      '? a letter ??   
+      End If  
+      sString = Document!date_created & " " & Document!tag_user  
+      lvwInclusions.add(lvwInclusions.count, sSTring)
+   Next
+   lblDocuments.text = "Documents (" & Str(lvwInclusions.Count) & ")"
+
+End
 
 Public Sub lvwInclusions_Drop()
    '---------------------------------------------------------------------
@@ -1857,34 +1974,23 @@ Public Sub lvwInclusions_Drop()
       cv = Drag.Source
       cv.MoveCurrent()
       Select_mode = cv.mode
-      Select Case cv.Tag             
-         Case "results"
-            Documents = currentconsult!results_received
-         Case "letters received" 
-            Documents = currentconsult!letters_received
-         Case "referrals"
-            Documents = currentconsult!referrals_written
-      End Select
+      ' Select Case cv.Tag             
+      '    Case "results"
+      '       Documents = currentconsult!results_received
+      '    Case "letters received" 
+      '       Documents = currentconsult!letters_received
+      '    Case "referrals"
+      '       Documents = currentconsult!referrals_written
+    '  End Select
       If cv.mode = 1 Then
-         Document = Documents[Drag.data]
-         sString = Document!date_created & " " & Document!tag_user
-         '    Inclusion!document = Document
          Inclusion!fk_document = Drag.data
-         ' Inclusion!type = "document"
          Inclusions.Add(Inclusion, lvwInclusions.count)
-         lvwInclusions.add(lvwInclusions.count, sSTring)
       Else
          cv.MoveFirst()
          For x = 0 To cv.count - 1
             If cv.Item.Selected = True Then
-               Document = Documents[cv.Item.key]
-               sString = Document!date_created & " " & Document!tag_user
-               'Inclusion!document = Document
                inclusion!fk_document = Drag.data 'fk_document
-               
-               ' Inclusion!type = "document"
                Inclusions.Add(Inclusion, lvwInclusions.count)
-               lvwInclusions.add(lvwInclusions.count, sSTring)
             Endif
             cv.MoveNext()
          Next
@@ -1898,8 +2004,7 @@ Public Sub lvwInclusions_Drop()
       '  sString = "graph of something"
       ' lvwInclusions.add(lvwInclusions.count, sSTring)
    End If
-   lblDocuments.text = "Documents (" & Str(lvwInclusions.Count) & ")"
-   
+   lvwInclusions_Refresh()
 End
 
 Public Function Inclusions_Construct_HTML() As String

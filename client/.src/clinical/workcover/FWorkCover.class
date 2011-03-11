@@ -25,6 +25,7 @@
 '              all over the place is necessary, because the lost focus event of the 
 '              calender dosn't trigger reliably, leaving it poppup up at inopportune
 '              times.
+'              fk_code is a string because the database field in coding is a string
 'KNOWN BUGS    There is an elusive missing fk_claim on some saves. It seems to be
 '              when claim is created, saved, and then new_visit clicked on but I've
 '              not been able to track it down.
@@ -34,6 +35,7 @@
 
 Private bEmbedded As Boolean
 Private bDateInvalid As Boolean
+Private bInsistCoding As Boolean
 Private bkeyvalid As Boolean
 Private bexit As Boolean
 Private Default_Zoom As Integer
@@ -83,6 +85,16 @@ Public Sub set_embedded(flag As Boolean)
 
 End
 
+Public Sub Set_Insist_Coding(f As Boolean)
+   '------------------------------------------------------------------------
+   'Will be for global option where admin wants all workcover consults coded
+   'currently not used
+   '------------------------------------------------------------------------   
+  bInsistCoding = f   
+   
+End
+
+
 Public Sub Form_Close()
 
    Settings_Save()
@@ -92,6 +104,7 @@ End
 Public Sub Init(cons As CConsult)
    
    currentconsult = cons                                                   'Set consult from FClinical
+   Set_Insist_Coding(True) 'remove me only for testing
    DateChooser1.Value = Now()
    With Form_PDF = New FPdf(Me)                                             'pdf's of workcover forms shown here in preview
       .Visible = False                                                   'Though Ian dosn't like this I do!
@@ -127,8 +140,6 @@ Public Sub Save()
    '---------------------------------------------
    If VBox_EditArea_Outer.padding = 0 Then Return
    If Not EditArea_Contents_Valid() Then Return 
-    
-
    claim!claim_number = Trim(txtClaim.text)
    claim!fk_occupation = fk_occupation
    If fk_occupation = 0 Then
@@ -211,8 +222,11 @@ Public Sub Reload()
 End
 
 Public Function EditArea_Contents_Valid() As Boolean
-   
+   '-------------------------------------------
+   'Validate adequate data exists before a save
+   '-------------------------------------------   
    Dim date_exists As Boolean
+   Dim sMsg As String 
    
    If Trim(txtIdentifier.text) = "" Then
       txtIdentifier.SetFocus()
@@ -247,23 +261,54 @@ Public Function EditArea_Contents_Valid() As Boolean
       txtDiagnosis.SetFocus()
       Return False
    End If
+   If bInsistCoding = True Then  'code keys are strings
+      If fk_code = "" Or fk_coding_system = 0 Then
+         Message.Title = "Coding Workcover Consultations"
+         sMsg = "Please enter a coded diagnosis.\n\n"
+                "Your SysAdmin has determined that all workcover certificates must also be coded."
+         Message.Info(sMsg)
+         txtCodedDiagnosis.SetFocus()
+         Return False   
+      Endif
+   Endif
    If txtManagementPlan.text = "" Then
       If rbWorkcoverConsultTypeInitial.value = True Or rbWorkcoverConsultTypeProgress.value = True Then 
          txtManagementPlan.SetFocus()
          Return False
       End If
    End If
- 
+   '----------------------
+   'Missing a review date?
+   '----------------------
    If txtReviewDate.text = "" Then
-      
-      If chkFitness_PreInjury.value = True And Not IsDate(txtPreInjury_From.text) Then
-         txtPreInjury_From.SetFocus() 'if this is pre-injury and not a valid date, then enforce this
-         Return False 
+      ' If chkFitness_PreInjury.value = True And Not IsDate(txtPreInjury_From.text) Then
+      '    txtPreInjury_From.SetFocus() 'if this is pre-injury and not a valid date, then enforce this
+      '    Return False 
+      ' End If
+      '------------------------------------------------------------------------------------------------------------
+      'If suitable duties scenarios are complicated, for example in practice one could fill in different
+      'sets of dates on the same for - a period of unfitness, a period of suitable and a fit for normal duties from.
+      '1) This is a final certficate, so don't need a review date, if so, should have perm mod duties
+      '2) This is on same certificate as a fit for pre-injury duties
+      '------------------------------------------------------------------------------------------------------------
+      If chkFitness_Suitable.value = True Then                                               'suitable duties
+        Select Case visit!fk_lu_visit_type
+          Case Const.Workcover_VisitType_Final, Const.Workcover_VisitType_InitialAndFinal
+              If chkFitness_PreInjury.Value = False Then                                     
+                 If Not IsDate(txtPermModDuties_From.text) Then
+                     txtReviewDate.SetFocus() 
+                     Return False
+                 Endif
+              End If
+          Case Else
+               '----------------------- 
+               'not a final certificate
+               '-----------------------
+               
+               txtReviewDate.SetFocus
+               Return False
+        End Select
       End If
-      If chkFitness_Suitable.value = True And Not IsDate(txtPermModDuties_From.text) Then
-           txtReviewDate.SetFocus()  'if this is suitable duties and not a valid date, then enforce this
-            Return False
-       End If
    End If
    
    If Not IsDate(txtPreInjury_From.text) And Trim(txtPreInjury_From.text) <> "" Then 
@@ -394,8 +439,8 @@ Public Sub Visit_New()
    lastvisit!visit_date = visit!visit_date
    lastvisit!fk_claim = visit!fk_claim
    lastvisit!fk_claim = visit!fk_claim
-   lastvisit!fk_code = visit!fk_code
-   lastvisit!fk_coding_system = visit!fk_coding_system
+   lastvisit!fk_code = visit!fk_code  'could be empty string
+   Try lastvisit!fk_coding_system = visit!fk_coding_system 'could be null
    lastvisit!fk_lu_visit_type = visit!fk_lu_visit_type
    lastvisit!visit_type = visit!visit_type
    lastvisit!diagnosis = visit!diagnosis
@@ -421,7 +466,6 @@ Public Sub Visit_New()
    visit = New Collection 
    fk_progressnote = -1
    If cvwVisits.count <> 0 Then
-      
       bExit = True  
       visit!diagnosis = lastvisit!diagnosis                         'assume diagnosis stays the same
       txtDiagnosis.text = lastvisit!diagnosis           
@@ -447,7 +491,7 @@ Public Sub Visit_New()
       visit!worker_consented = True
       visit!doctor_consented = True
       fk_claim = 0
-      fk_code = 0
+      fk_code = ""
       fk_coding_system = 0
    End If
    lblWorkcover.text = "NEW VISIT " & UCase(Trim(txtIdentifier.text))
@@ -1129,7 +1173,11 @@ Public Sub Visit_Display()
    End Select
    Try txtCertificateDate.text = Format(visit!certificate_date, "dd/mm/yyyy")
    txtDiagnosis.text = visit!diagnosis
-   Try txtCodedDiagnosis.text = visit!coded_term & "(" & visit!fk_code & ")"
+   If Not IsNull(visit!fk_code) Then 
+      txtCodedDiagnosis.text = visit!coded_term & "(" & visit!fk_code & ")"
+      fk_code = visit!fk_code
+      fk_coding_system = visit!fk_coding_system
+   End If    
    txtManagementPlan.text = visit!management_plan
    If Not IsNull(visit!review_date) Then txtReviewDate.text = modUtil.Format_Date(visit!review_date) 
    If Not IsNull(visit!fitness_preinjury_from) Then 
@@ -1645,7 +1693,7 @@ Public Sub EditAreaTextBox_Change()
             txtReviewDate.SetFocus()
          End If    
       Case "coded diagnosis"
-         If Len(Trim(Last.text)) = 0 Then
+         If Trim(Last.text) = "" Then
             fk_code = ""
             fk_coding_system = 0    
          End If
@@ -1982,7 +2030,7 @@ End
 
 Public Sub Coded_Term_Select()
    
-   columnview1.MoveCurrent()   'match internal cursor to visible row
+   columnview1.MoveCurrent()                     'match internal cursor to visible row
    fk_code = Terms[columnview1.Item.key]!code
    fk_coding_system = Terms[columnview1.Item.key]!fk_coding_system
    If txtDiagnosis.text = "" Then

@@ -113,17 +113,20 @@ Public Function UnDelete(pk_referral As Integer)
    
 End
 
-Public Function Inclusions_Get(fk_patient As Integer, Optional bdeleted As Boolean = False) As Collection 
-  '-------------------------------------- 
-  'Gets inclusions for patients referrals
-  '-------------------------------------- 
+Public Function Inclusions_Get(fk_patient As Integer, Optional bdeleted As Boolean = False, Optional bThisConsult As Boolean = False) As Collection 
+  '-----------------------------------------------------------------------------------------------------------------------
+  'Gets inclusions for patients referrals, either the entire collection or optionally only for current day of consultation
+  '-----------------------------------------------------------------------------------------------------------------------
   Dim sql As String
-  
+
   sql = "Select * from clin_referrals.vwInclusions where fk_patient = " & fk_patient & "  AND deleted = " 
   If bdeleted Then
     sql &= "True"
   Else
      sql &= "False" 
+  Endif
+  If bThisConsult Then
+      sql &= " AND date(consult_date) = '" & Format(Now, "dd/mm/yyyy") & "'::date "
   Endif
   Return modDBConnect.exec_query_collection(sql)
 End
@@ -258,5 +261,62 @@ Public Function Employee_Comms_Get(fk_employee As Integer) As Result
    $Result = modDBConnect.exec_query(sql)
    
    Return $Result
+   
+End
+
+Public Sub Referral_Print(currentconsult As CConsult, referral As Collection, bPrintCopies As Boolean, Inclusions As Collection)
+   '-----------------------------------------------
+   'Print the referral letter, appropriate copies, inclusions
+   '-----------------------------------------------
+   
+   Dim inclusion As Collection
+   Dim x As Integer
+   Dim num_copies As Integer   
+   Dim Document As Collection
+   Dim file_extension As String
+   Dim extra_copies As Integer
+   num_copies = 1                      'always want single copy
+   If bPrintCopies Then 
+      extra_copies = Max(Split(referral!copyto, "|").Count, 0) 
+      If extra_copies Then
+         num_copies = num_copies + extra_copies                 'plus the extra copies we need
+      End If
+   End If   
+    
+   For x = 1 To num_copies 
+      modPrinting.PrintHtml(referral!letter_html, const.Paper_Plain)
+      If referral!include_healthsummary = True Then
+         modPrinting.PrintHtml(modProgressNotes.Health_Summary_Construct_html(currentconsult), const.Paper_Plain)
+      End If
+      If referral!include_careplan = True Then
+         modPrinting.PrintHtml(modProgressNotes.Care_Plan_Construct_html(currentconsult), const.Paper_Plain)
+      End If  
+      '------------------------------------------------------------------------------------
+      'Now print any included documents which were dragged'n dropped to the inclusions list
+      'FIXME: just first go, need to take into account document type in more thorough way
+      'At moment, I'm only allowing drag and drop of letters recieved or hl7 recieved
+      '------------------------------------------------------------------------------------
+      If Not IsNull(inclusions) Then 
+         For Each inclusion In Inclusions
+            Try Document = currentconsult!results_received[inclusion!fk_document]         '? a result??
+            If IsNull(document) Then                                                      'it wasn't a result             
+               Try Document = currentconsult!letters_received[inclusion!fk_document]      '? a letter ??   
+            End If  
+            '---------------------------------------------------------------------------
+            'If it was a valid document, print - at moment we only handle pdf's and html
+            'but hey, that's our perogative
+            '---------------------------------------------------------------------------   
+            If Not IsNull(Document) Then 
+               file_extension = Lower(File.Ext(document!source_file))
+               Select Case file_extension
+                  Case "pdf"
+                     modPrinting.Print_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ document!source_file)
+                  Case Else
+                     If Not IsNull(document!html) Then modPrinting.PrintHtml(document!html, const.Paper_Plain)
+               End Select
+            End If
+         Next
+      End If   
+   Next
    
 End

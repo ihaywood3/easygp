@@ -33,10 +33,9 @@
 '                 Fix Referral_LetterHTML_Construct() to use cTemplate
 '                 Think about and implement user defined shortcuts in teLetter
 '                 Allow drag n drop of graph/images into the letter
-'                 Fix EditAreaTextBox_GotFocus() code
 '                 Implement putting dragged graph into pdf and printing.
+'                 Implement putting photographs/line diagrams into notes.
 '                 type in postcode > provider specialist of type near postcode
-'                 Save record of inclusions, put back inclusions when editing
 '                 Add audit trail to referrals/deletion of referral etc.
 ' KOWN BUGS       Please report to rterry@internode.on.net or rterry@pacific.net.au
 '                 occupation of employee not showing up in the view.
@@ -56,6 +55,7 @@ Private comm As Collection
 Private sHtml_Inclusions As String
 Private Inclusions_EditArea As Collection                    'Documents/graphs etc, whatever is included in letter in edit area
 Private Inclusions_Referrals_This_Consult As Collection      'Inclusions collection for those saved/printed
+Private Inclusions_Referral_This_Consult As Collection      'The inclusions for a single referral written this consult
 Private currentconsult As CConsult                          'set by calling form e.g Fclinical or FActionDocument
 Private referral_types As Collection                        'eg Management, indefinate etc, 
 Private referral_type As Collection 
@@ -230,9 +230,6 @@ Public Sub Save()
    'Ok, save the referral
    'Inclusions are saved to clin_referrals.inclusions
    '-------------------------------------------------
- '  For Each inclusion In Inclusions
- '     referral!inclusions &= inclusion!fk_document & "|"
- '  Next
    modDBConnect.BeginTrans()
    referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote_Html, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
    pk_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral, Inclusions_EditArea)   'Save the referral letter
@@ -240,9 +237,8 @@ Public Sub Save()
    If chkDoNotPrint.value = False Then
       modReferralsDBI.Referral_Print(currentconsult, referral, True, Inclusions_EditArea) 
    End If
-   
-   Reload()                                                  'Default to a new letter
-   FClinical.Refresh_AllPreviousNotes()
+   Reload()                                                  'Default to a new letter, reload controls
+   FClinical.Refresh_AllPreviousNotes()                      'Refresh progress notes in Fclinical
    
 End
 
@@ -301,56 +297,7 @@ Public Sub Referral_Print_badmethod(referral As Collection)
    
 End
 
-' Public Sub Referral_Print_lastused(referral As Collection)
-'    '-----------------------------------------------
-'    'temporary work-around, convert to pdf and print
-'    'Print enough copies
-'    '-----------------------------------------------
-'    
-'    Dim inclusion As Collection
-'    Dim x As Integer
-'    Dim num_copies As Integer   
-'    Dim Document As Collection
-'    Dim file_extension As String
-'    
-'    num_copies = Max(Split(referral!copyto, "|").Count, 1)  'print at least 1 = our letter
-'    If num_copies > 1 Then Inc num_copies                   'plus the extra copies we need
-'    
-'    For x = 1 To num_copies 
-'       modPrinting.PrintHtml(referral!letter_html, const.Paper_Plain)
-'       If chkIncludehealthSummary.value = True Then
-'          modPrinting.PrintHtml(modProgressNotes.Health_Summary_Construct_html(currentconsult), const.Paper_Plain)
-'       End If
-'       If chkIncludeCarePlan.value = True Then
-'          modPrinting.PrintHtml(modProgressNotes.Care_Plan_Construct_html(currentconsult), const.Paper_Plain)
-'       End If  
-'       '------------------------------------------------------------------------------------
-'       'Now print any included documents which were dragged'n dropped to the inclusions list
-'       'FIXME: just first go, need to take into account document type in more thorough way
-'       'At moment, I'm only allowing drag and drop of letters recieved or hl7 recieved
-'       '------------------------------------------------------------------------------------
-'       For Each inclusion In Inclusions
-'          Try Document = currentconsult!results_received[inclusion!fk_document]         '? a result??
-'          If IsNull(document) Then                                                      'it wasn't a result             
-'             Try Document = currentconsult!letters_received[inclusion!fk_document]      '? a letter ??   
-'          End If  
-'          '---------------------------------------------------------------------------
-'          'If it was a valid document, print - at moment we only handle pdf's and html
-'          'but hey, that's our perogative
-'          '---------------------------------------------------------------------------   
-'          If Not IsNull(Document) Then 
-'             file_extension = Lower(File.Ext(document!source_file))
-'             Select Case file_extension
-'                Case "pdf"
-'                   modPrinting.Print_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ document!source_file)
-'                Case Else
-'                   If Not IsNull(document!html) Then modPrinting.PrintHtml(document!html, const.Paper_Plain)
-'             End Select
-'          End If
-'       Next
-'    Next
-'    
-' End
+
 Public Sub Reload()
    '-----------------------------------------------------------------------------------------------------------
    'Reload any letters written this consultation
@@ -388,6 +335,22 @@ Public Sub EditArea_Notify_DataChange(flag As Boolean)
    
 End
 
+Public Sub Editor_Maximize_Minimize()
+   '---------------------------------------------------------------
+   'Either expands to full size, or minimizes the text editing area
+   '--------------------------------------------------------------- 
+   If HSplitEditArea_Communications.Visible Then
+      HSplitEditArea_Communications.Visible = False 
+      Vbox_CopyToList.Visible = False   
+   Else
+      HSplitEditArea_Communications.Visible = True 
+      Vbox_CopyToList.Visible = True
+      Try HSplitEditArea_Communications.Layout = Settings["Referrals/EditArea_Communications"]
+   End If     
+
+   
+End
+
 Public Sub LetterWriter_Click()
    '---------------------------------------------
    'User has clicked on one of the editor buttons
@@ -395,14 +358,7 @@ Public Sub LetterWriter_Click()
    
    Select Case Last.tag
       Case "maximize"
-         If HSplitEditArea_Communications.Visible Then
-            HSplitEditArea_Communications.Visible = False 
-            Vbox_CopyToList.Visible = False   
-         Else
-            HSplitEditArea_Communications.Visible = True 
-            Vbox_CopyToList.Visible = True
-            Try HSplitEditArea_Communications.Layout = Settings["Referrals/EditArea_Communications"]
-         End If     
+         Editor_Maximize_Minimize()
       Case "erase"
          teLetter.Clear()
       Case "bold"
@@ -705,6 +661,7 @@ Public Sub Referral_Preview()
    Dim bValidContent As Boolean
    Dim filename As String
    
+   
    If VBox_Letters.Enabled = True Then           'this will be with new referral or editing a referral
       If Not Valid_Referral() Then Return
       FHtml_Viewer.WebView1.html = Referral_LetterHTML_Construct(Copyto_Html_Constuct(Form_Copy_To.Get_CopyTo_Data()!copyto), Inclusions_Construct_HTML(Inclusions_EditArea))
@@ -713,9 +670,6 @@ Public Sub Referral_Preview()
    End If 
    VSplit_Main.Visible = False
    Vbox_Preview.Visible = True
-   
-   'FHtml_Viewer.SetHtmlFileName(filename)
-   
 End
 
 Public Function Valid_Referral() As Boolean
@@ -771,8 +725,11 @@ Public Function Valid_Referral() As Boolean
    End If  
    
    If Trim(txtTag.text) = "" Then
-      txtTag.SetFocus
-      Return False
+     If HSplitEditArea_Communications.Visible = False Then 
+        Editor_Maximize_Minimize()                                'if maximized text editor shrink it
+     End If 
+     txtTag.SetFocus
+     Return False
    End If
    
    If Trim(teLetter.text) = "" Then
@@ -849,7 +806,8 @@ Public Sub EditAreaTextBox_Change()
             txtStreet1.Text = ""
             txtStreet2.Text = ""
             txtSuburb.text = ""
-            txtPostcode.text = ""             
+            txtPostcode.text = ""   
+            bExit = False            
          End If   
      Case "referral for"
          If Trim(cmbReferralTypes.text) = "" Then
@@ -922,7 +880,9 @@ Public Sub EditArea_Clear()
    txtHealthIssue.text = "general notes"
    bExit = False
    Form_Copy_To.Reset() 'clears the copyto lists.
-   
+   If HSplitEditArea_Communications.Visible = False Then
+      Editor_Maximize_Minimize()                                'if maximized text editor shrink it
+   End If
 End
 
 Public Sub EditAreaTextBox_GotFocus()
@@ -1140,6 +1100,7 @@ Public Sub EditAreaButtons_Click()
       Case "new referral"
          Referral_New()
       Case "preview"
+         
          Referral_Preview()
    End Select
    
@@ -1267,12 +1228,16 @@ Public Sub ReferralsList_Delete()
    '-------------------------------------------------------------------------
    
    Dim referral As New Collection
+   Dim inclusion As Collection
    
    If Message.Question("Are you sure you want to delete this referral?", "Yes", "No") = 2 Then Return 
    referral!pk_referral = pk_referral
    referral!deleted = True
+   For Each inclusion In Inclusions_Referral_This_consult
+       inclusion!deleted = True 
+   Next
    modDBConnect.BeginTrans()
-   pk_deleted_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral)
+   pk_deleted_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral, Inclusions_Referral_This_consult)
    modDBConnect.CommitTrans()
    Reload()                                                  'Default to a new letter
    FClinical.Refresh_AllPreviousNotes()
@@ -1303,11 +1268,14 @@ Public Sub ReferralsList_Print(print_type As String)
    
    Select Case print_type
       Case "re-print"
-         modPrinting.PrintHtml(currentconsult!referrals_written_this_consult[pk_referral]!letter_html)
-      Case "re-print all"
+   '      modPrinting.PrintHtml(currentconsult!referrals_written_this_consult[pk_referral]!letter_html)
+         modReferralsDBI.Referral_Print(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], True, Inclusions_Referral_This_Consult) 
+     Case "re-print all"
          cvwLetters.MoveFirst
          For x = 0 To cvwLetters.count - 1
-            modPrinting.PrintHtml(currentconsult!referrals_written_this_consult[cvwLetters.Item.Key]!letter_html)
+           ' modPrinting.PrintHtml(currentconsult!referrals_written_this_consult[cvwLetters.Item.Key]!letter_html)
+           modReferralsDBI.Referral_Print(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], True, Inclusions_Referral_This_Consult) 
+
             cvwLetters.MoveNext()
          Next
          cvwLetters.MoveFirst()
@@ -1383,6 +1351,8 @@ Public Sub Referral_Edit()
    tbSave.Enabled = False  
    teLetter.SetFocus()
    Form_Copy_To.CopyTos_Reload(modUtil.SplitStrings_into_collection(Letter_from_View!copyto, "|"))
+   Inclusions_EditArea = modUtil.Copy_Collection(Inclusions_Referral_This_Consult)
+   lvwInclusions_EditArea_Refresh(Inclusions_EditArea)
    bExit = False  
    cmbReferralTypes.index = cmbReferralTypes.Find(Letter_from_View!type) 'leave outside of Bexit to use the click event
    tbPreview.Enabled = True   
@@ -1435,7 +1405,7 @@ Public Sub lvwInclusions_Saved_Refresh()
    Dim sString As String
    Dim document As Collection 
    
-   '
+   Inclusions_Referral_This_Consult = New Collection 
    lvwInclusions_Saved.Clear()
    For Each Inclusion In Inclusions_Referrals_This_Consult
       If inclusion!fk_referral = pk_referral Then 
@@ -1445,6 +1415,7 @@ Public Sub lvwInclusions_Saved_Refresh()
           End If  
           sString = Document!date_created & " " & Document!tag_user  
           lvwInclusions_Saved.add(lvwInclusions_Saved.count, sSTring)
+          Inclusions_Referral_This_Consult.Add(Inclusion, Inclusion!pk_inclusion)
       End If   
   
    Next 
@@ -1471,10 +1442,6 @@ Public Sub cvwLetters_Select()
    tbSave.Enabled = False 
    tbPreview.enabled = False 
    lvwInclusions_Saved_Refresh()
- '  If lvwInclusions_currentDocument.count Then 
-   '  Try lvwInclusions_currentDocument.MoveFirst
-  '   Try lvwInclusions_currentDocument.SetFocus()
-  ' End If   
 End
 
 Public Sub lvwOrgContacts_Menu()
@@ -1557,28 +1524,6 @@ Public Sub Person_Select()
    '-----------------------------------------------------------
    
    Person_By_Occupation_Select()
-   ' bExit = True
-   ' If columnview1.Visible Then
-   '    columnview1.MoveCurrent   'set internal cursor to match marquee
-   '    txtOccupation.text = specialists[columnview1.Item.key]!occupation
-   '    txtName.Text = specialists[columnview1.Item.key]!wholename
-   '    fk_person = specialists[columnview1.Item.key]!fk_person
-   '    PersonWritingTo!firstname = specialists[columnview1.Item.key]!firstname
-   '    PersonWritingTo!surname = specialists[columnview1.Item.key]!surname
-   '    PersonWritingTo!title = specialists[columnview1.Item.key]!title
-   ' End If
-   ' bExit = False   
-   ' '-------------------------------------------------------------
-   ' 'Now, this person could have multiple entries in contacts, eg
-   ' 'We could be referring to an orthopaedic surgeon in say
-   ' 'John Hunter outpatients, or
-   ' 'Belmont Hospital Outpatients or
-   ' 'His private rooms in Newcastle or
-   ' 'His private rooms in Maitland
-   ' 'So need to present all the possible addresses
-   ' '------------------------------------------------------------
-   ' txtStreet1.SetFocus()      'triggers Person_Addresses_Get(), sets columnview1
-   
 End
 
 Public Sub Person_Comms_Get()
@@ -1819,7 +1764,6 @@ Public Sub Person_By_Occupation_Get()
    
    columnview1.Visible = False   
    If Trim(txtOccupation.text) = "" Then Return 
-   '  specialists = modReferralsDBI.Employee_Occupations_Category_Get(Trim(txtOccupation.text))
    specialists = modReferralsDBI.Persons_Get_By_Occupation(Trim(txtOccupation.text))
    columnview1.Clear()
    ' '-----------------------------------------------------------------
@@ -1844,9 +1788,6 @@ Public Sub Person_By_Occupation_Get()
       columnview1.Raise
       columnview1.tag = txtOccupation
       Return 
-   Else
-      '   Address_Select() 
-      '  columnview1.Visible = False    
    End If
    
 End
@@ -1944,11 +1885,13 @@ Public Sub Organisation_Get()
    
 End
 
-Public Sub lvwInclusions_EditArea_Refresh()
+Public Sub lvwInclusions_EditArea_Refresh(Inclusions As Collection)
    '---------------------------------------------------------------------
    'Refresh the inclusions list for the current document in the edit area
    'ie. this is the list next to the letter text, not the one
    'underneath which is for thos letters already printed
+   'Called by  lvwInclusions_EditArea_Drop: Inclusions_EditArea collection
+   '           Referral_Edit:Inclusions_Referral_This_Consult collection
    '---------------------------------------------------------------------
    Dim inclusion As Collection
    Dim sString As String
@@ -1956,7 +1899,7 @@ Public Sub lvwInclusions_EditArea_Refresh()
    
    '
    lvwInclusions_EditArea.Clear()
-   For Each Inclusion In Inclusions_EditArea
+   For Each Inclusion In Inclusions
       Try Document = currentconsult!results_received[inclusion!fk_document]         '? a result??
       If IsNull(document) Then                                                      'it wasn't a result             
          Try Document = currentconsult!letters_received[inclusion!fk_document]      '? a letter ??   
@@ -2016,7 +1959,8 @@ Public Sub lvwInclusions_EditArea_Drop()
       '  sString = "graph of something"
       ' lvwInclusions_EditAreas.add(lvwInclusions_EditAreas.count, sSTring)
    End If
-   lvwInclusions_EditArea_Refresh()
+   lvwInclusions_EditArea_Refresh(Inclusions_EditArea)
+   EditArea_Notify_DataChange(True)
 End
 
 Public Function Inclusions_Construct_HTML(Inclusions As Collection) As String

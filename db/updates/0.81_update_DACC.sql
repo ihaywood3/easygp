@@ -35,8 +35,7 @@ CREATE OR REPLACE VIEW chronic_disease_management.vwdiabetescycleofcare AS
    JOIN admin.vwstaff vwstaff1 ON consult.fk_staff = vwstaff1.pk
   ORDER BY consult.fk_patient, diabetes_annual_cycle_of_care.pk, diabetes_annual_cycle_of_care_notes.pk;
 
-ALTER TABLE chronic_disease_management.vwdiabetescycleofcare OWNER TO richard;
-GRANT ALL ON TABLE chronic_disease_management.vwdiabetescycleofcare TO richard;
+ALTER TABLE chronic_disease_management.vwdiabetescycleofcare OWNER TO easygp;
 GRANT ALL ON TABLE chronic_disease_management.vwdiabetescycleofcare TO easygp;
 GRANT ALL ON TABLE chronic_disease_management.vwdiabetescycleofcare TO staff;
 

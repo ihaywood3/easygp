@@ -17,9 +17,9 @@ COMMENT ON TABLE clin_referrals.inclusions IS 'A Table describing which document
 COMMENT ON COLUMN clin_referrals.inclusions.deleted IS 'if deleted is true then the inclusion is marked as deleted and
  for example will not be sent out if the document is later re-printed';
 
-
 CREATE OR REPLACE VIEW clin_referrals.vwinclusions AS 
- SELECT DISTINCT inclusions.pk AS pk_inclusion, inclusions.fk_referral, inclusions.fk_document, inclusions.deleted, consult.fk_patient, documents.date_created, documents.tag_user
+ SELECT DISTINCT inclusions.pk AS pk_inclusion, inclusions.fk_referral, inclusions.fk_document, 
+ inclusions.deleted, consult.consult_date, consult.fk_patient, documents.date_created, documents.tag_user
    FROM clin_consult.consult
    JOIN clin_referrals.referrals ON referrals.fk_consult = consult.pk
    JOIN clin_referrals.inclusions ON referrals.pk = inclusions.fk_referral
@@ -29,7 +29,6 @@ CREATE OR REPLACE VIEW clin_referrals.vwinclusions AS
 ALTER TABLE clin_referrals.vwinclusions OWNER TO easygp;
 GRANT ALL ON TABLE clin_referrals.vwinclusions TO easygp;
 GRANT ALL ON TABLE clin_referrals.vwinclusions TO staff;
-
 
 truncate db.lu_version;
 insert into db.lu_version (lu_major,lu_minor) values (0, 83);

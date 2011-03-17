@@ -1,5 +1,25 @@
 DROP TABLE clin_vaccination.vaccinations cascade;
 
+alter table  clin_vaccination.lu_vaccines add column deleted boolean default false;
+alter table  clin_vaccination.lu_vaccines add column fk_form integer;
+
+create table clin_vaccination.lu_formulation
+(pk serial primary key,
+ form text not null
+ );
+
+ comment on table clin_vaccination.lu_formulation is
+ 'probably temporary table, until drugs.form sorted
+  but is the formulation of the vaccine';
+
+  insert into  clin_vaccination.lu_formulation (form) values ('injection');
+  insert into  clin_vaccination.lu_formulation (form) values ('oral liquid');
+  insert into  clin_vaccination.lu_formulation (form) values ('capsule');
+  insert into  clin_vaccination.lu_formulation (form) values ('powder');
+  insert into  clin_vaccination.lu_formulation (form) values ('drop');
+ 
+
+
 CREATE TABLE clin_vaccination.vaccinations
 (
   pk serial primary key,
@@ -9,6 +29,7 @@ CREATE TABLE clin_vaccination.vaccinations
   fk_laterality integer,
   date_given character varying(10), -- not a date field because sometimes may need to record just say 01/2002 or 1998
   serial_no text NOT NULL DEFAULT 'not recorded'::text,
+  deleted boolean default false,
   fk_progressnote integer);
 
   
@@ -16,10 +37,23 @@ ALTER TABLE clin_vaccination.vaccinations OWNER TO easygp;
 GRANT ALL ON TABLE clin_vaccination.vaccinations TO easygp;
 GRANT ALL ON TABLE clin_vaccination.vaccinations TO staff;
 COMMENT ON COLUMN clin_vaccination.vaccinations.date_given IS 'not a date field because sometimes may need to record just say 01/2002 or 1998';
-
+Comment on column clin_vaccination.vaccinations.deleted is
+'If True the vaccine is marked as deleted. The record is not deleted as
+ it may be reversed by the user';
 
 CREATE OR REPLACE VIEW clin_vaccination.vwvaccinesgiven AS 
- SELECT vaccinations.pk AS pk_view, vaccinations.pk AS fk_vaccination, consult.fk_patient, vwstaff.title AS staff_title, vwstaff.wholename AS staff_wholename, consult.consult_date, consult.fk_staff, consult.pk AS fk_consult, lu_schedules.age_due_from_months, lu_schedules.age_due_to_months, lu_schedules.schedule, lu_schedules.female_only, lu_schedules.atsi_only, lu_schedules.fk_season, lu_schedules.inactive AS schedule_inactive, lu_schedules.date_inactive AS date_schedule_inactive, lu_schedules.deleted AS schedule_deleted, lu_schedules.multiple_vaccines, lu_schedules.notes AS schedule_notes, lu_seasons.season, lu_laterality.laterality, lu_site_administration.site, progressnotes.notes AS progress_notes, lu_vaccines.brand, lu_vaccines.form, lu_vaccines.fk_description, lu_vaccines.fk_route, lu_vaccines.inactive, vaccinations.fk_vaccine, vaccinations.fk_schedule, vaccinations.fk_site, vaccinations.fk_laterality, vaccinations.date_given, vaccinations.serial_no, vaccinations.fk_progressnote
+ SELECT vaccinations.pk AS pk_view, vaccinations.pk AS fk_vaccination, consult.fk_patient,
+ vwstaff.title AS staff_title, vwstaff.wholename AS staff_wholename, consult.consult_date,
+ consult.fk_staff, consult.pk AS fk_consult, lu_schedules.age_due_from_months,
+ lu_schedules.age_due_to_months, lu_schedules.schedule, lu_schedules.female_only,
+ lu_schedules.atsi_only, lu_schedules.fk_season, lu_schedules.inactive AS schedule_inactive,
+ lu_schedules.date_inactive AS date_schedule_inactive,
+ lu_schedules.deleted AS schedule_deleted, lu_schedules.multiple_vaccines,
+ lu_schedules.notes AS schedule_notes, lu_seasons.season, lu_laterality.laterality, lu_site_administration.site,
+ progressnotes.notes AS progress_notes, lu_vaccines.brand, lu_vaccines.form, lu_vaccines.fk_description,
+ lu_vaccines.fk_route, lu_vaccines.inactive, vaccinations.fk_vaccine, vaccinations.fk_schedule,
+ vaccinations.fk_site, vaccinations.fk_laterality, vaccinations.date_given, vaccinations.serial_no,
+ vaccinations.deleted,  vaccinations.fk_progressnote
    FROM clin_consult.consult
    JOIN admin.vwstaff ON consult.fk_staff = vwstaff.fk_staff
    JOIN clin_consult.progressnotes ON progressnotes.fk_consult = consult.pk

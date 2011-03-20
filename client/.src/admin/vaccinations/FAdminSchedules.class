@@ -42,7 +42,7 @@ Private fk_schedule As Integer            'key to clin_vaccinations.schedules
 Private fk_vaccine As Integer
 Private fk_season As Integer              'key to common.lu_seasons   
 Private pk_view As Integer
-Private bFemaleONly As Boolean            'if true the vaccine is only for females  
+Private bScheduleFemaleOnly As Boolean            'if true the vaccine is only for females  
 Private bScheduleIsAboriginalTSI_Only As Boolean    'if true the schedule is only for this group
 Private bScheduleStatus As Boolean        'if true the schedule is in current use
 Private Seasons As Collection             'see common.lu_seasons  
@@ -64,18 +64,19 @@ Private Default_Zoom As Integer
 
 Public Sub Init()
    
-   ' FHelp = New FHtmlViewer(Hbox_Help)
+   FHelp = New FHtmlViewer(Hbox_Help)
    help_dir = Application.Path &/ "help/"
    sLibraryRootDir = User.home & "/easygp/library/Vaccination"
-   '  modEditAreaHelpers.Help_Show("help/maintaining-vaccination-schedules.html", FHelp)
-   With Form_PDF = New FPdf(HBox_Help)
+  
+   With Form_PDF = New FPdf(HBox_Scheduies)
       .BtOpen.Visible = False                      'don't allow external files to be opened
    End With
+   Show_Help(True)
    seasons = modUtil.LoadCombo(cmbSeasons, modCommonDBI.Seasons_Get(), "season")
    lblMeasure.text = " Multiple Vaccines at Once "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
    modEditAreaHelpers.Resize_label(lblbuttons, lblMeasure)
-    modEditAreaHelpers.Resize_label(lblFindVaccine, lblMeasure)
+   modEditAreaHelpers.Resize_label(lblFindVaccine, lblMeasure)
    columnview1.Columns.count = 3 'brand/form/description see Vaccines_Get()
    Settings_Load()
    cmbStateVaccinationsSchedules.Add("Australian Schedule")
@@ -85,7 +86,7 @@ Public Sub Init()
    cmbStateVaccinationsSchedules.Add("TAS Schedule")
    cmbStateVaccinationsSchedules.Add("VIC Schedule")
    cmbStateVaccinationsSchedules.Add("QLD Schedule")
-   
+   cvwVaccines.Columns.count = 5
    cmbStateVaccinationsSchedules.index = 0
    Schedule_Show_For_State()
    
@@ -107,7 +108,6 @@ Public Sub Schedule_Show_For_State()
    
 End
 
-
 Public Sub Settings_Save()
    
    Settings["Admin_Vaccination_Schedules/VSplit_Main.layout"] = Vsplit_Main.layout
@@ -125,7 +125,7 @@ Private Sub Settings_Load()
    Try cvwVaccines.Font = Font[Settings["Admin_Vaccination_Schedules/lvwSchedules.font"]]
    Try lvwSchedules.Font = Font[Settings["Admin_Vaccination_Schedules/cvwVaccines.font"]]
    Try Form_PDF.CurrentZoom = Settings["Admin_Vaccination_Schedules/Form_PDF.Zoom", 1.0] 
-
+   
 End
 
 Public Sub EditArea_Clear()
@@ -193,7 +193,7 @@ Public Sub EditArea_TextBox_GotFocus()
          With columnview1
             .top = Last.parent.top + Last.parent.height
             .left = Last.left
-            .width = Last.width + chkVaccineATSIOnly.Width
+            .width = Last.width + chkVaccineFemaleOnly.Width
             .Raise
             
          End With
@@ -261,6 +261,16 @@ Public Sub EditArea_TextBox_Change()
    
 End
 
+Public Sub Show_Help(flag As Boolean)
+   Hbox_Help.Visible = Flag
+   HBox_Scheduies.Visible = Not Flag
+   cmbStateVaccinationsSchedules.Visible = Not Flag
+   lblTaskSchedules.Visible = Not Flag
+   tbShowSchedules.Visible = True   
+   modEditAreaHelpers.Help_Show("help/maintaining-vaccination-schedules.html", FHelp)
+ 
+End
+
 Public Sub EditArea_Buttons_Click()
    
    Select Case Last.tag
@@ -273,7 +283,11 @@ Public Sub EditArea_Buttons_Click()
          Reload()
       Case "add vaccine"      'add a vaccine into the schedule
          Vaccine_Add()
-   End Select
+      Case "help"
+         Show_Help(True) 
+      Case "schedules"
+         Show_Help(False)   
+           End Select
    
 End
 
@@ -288,10 +302,11 @@ End
 Public Sub Schedule_New()
    
    EditArea_Clear()
-   rbFemaleOnlyNo.value = True
+   rbScheduleFemaleOnlyNo.value = True
    rbScheduleATSIOnlyNO.value = True
+   bScheduleIsAboriginalTSI_Only = False  
    rbSeasonalNo.value = True
-   bFemaleOnly = False   
+   bScheduleFemaleOnly = False   
    bMultipleVaccinesInSchedule = False  'usually only 1 vax at a time.
    cvwVaccines.clear()
    Vaccines_in_schedule = New Collection
@@ -310,7 +325,7 @@ Public Sub Schedule_Display()
    '----------------------------------------  
    'Displays the schedule but cannot edit it
    '----------------------------------------
-   
+   EditArea_Clear()
    If lvwSchedules.count = 0 Then Return
    bExit = True
    lvwSchedules.MoveCurrent
@@ -333,9 +348,9 @@ Public Sub Schedule_Display()
       rbMultipleNo.value = True  
    Endif
    If schedules[pk_view]!female_only = True Then
-      rbFemaleOnlyYes.value = True
+      rbScheduleFemaleOnlyYes.value = True
    Else
-      rbFemaleOnlyNo.Value = True
+      rbScheduleFemaleOnlyNo.Value = True
    Endif
    If schedules[pk_view]!atsi_only Then
       rbScheduleATSIOnlyYes.Value = True
@@ -392,7 +407,7 @@ Public Sub Schedule_Save()
    schedule!schedule = Trim(txtSchedule.text)
    schedule!age_due_from_months = Val(txtAgeDueFrom.text)
    schedule!age_due_to_months = Val(txtAgeDueTo.text)
-   schedule!female_only = bFemaleOnly
+   schedule!female_only = bScheduleFemaleOnly
    schedule!atsi_only = bScheduleIsAboriginalTSI_Only
    If fk_season Then    
       schedule!fk_season = fk_season   'IAN FIXME: THE PROBLEM OF REVERTING TO NULL
@@ -404,8 +419,8 @@ Public Sub Schedule_Save()
    Endif
    schedule!notes = Trim(txtNotes.text)
    modDBConnect.BeginTrans()
-      fk_schedule = modVaccinationDBI.Schedules_Save(Schedules, pk_view, schedule)
-      modVaccinationDBI.Vaccines_In_Schedule_Save(Vaccines_in_schedule, fk_schedule)
+   fk_schedule = modVaccinationDBI.Schedules_Save(Schedules, pk_view, schedule)
+   modVaccinationDBI.Vaccines_In_Schedule_Save(Vaccines_in_schedule, fk_schedule)
    modDBConnect.CommitTrans()
    Reload() 
    'Move to the row just saved. FIXME: THIS SOMETIMES DOSN'T SHOW THE ROW MARQUEE
@@ -438,7 +453,6 @@ Public Sub Reload()
       Case 3
          lblSchedules.text = "Active and Inactive Schedules"
    End Select
-   
    
    EditArea_Notify_DataChanged(False)
    Vbox_EditArea_Inner.Enabled = False 
@@ -476,10 +490,10 @@ Public Function Schedule_Valid() As Boolean
    
 End
 
-Public Sub rbFemaleOnly_Click()
+Public Sub rbScheduleFemaleOnly_Click()
    
-   bFemaleOnly = False  
-   If Last.tag = "Yes" Then bFemaleOnly.value = True
+   bScheduleFemaleOnly = False  
+   If Last.tag = "Yes" Then bScheduleFemaleOnly.value = True
    EditArea_Notify_DataChanged(True)
    
 End
@@ -512,10 +526,21 @@ End
 
 Public Sub mnuSchedules_Click()
    
+   Dim schedule As New Collection
+   
+   lvwSchedules.MoveCurrent
+   
    Select Case Last.tag
       Case "edit"
          Schedule_Edit()
       Case "delete"
+         Message.title = "Vaccination Schedules"
+        If Message.Warning("Are you sure you wish to delete the schedule:\n\n" & lvwSchedules.Item.Text, "Yes", "No") = 1 Then   
+            schedule!deleted = True
+            schedule!pk = schedules[lvwSchedules.Item.key]!pk
+            modVaccinationDBI.Schedules_Save(schedules, pk_view, schedule)
+            modDBConnect.CommitTrans()
+         End If   
       Case "font"
          modUtil.Listview_SetFont(lvwSchedules, "Admin_Vaccination_Schedules")
       Case "help"
@@ -531,15 +556,18 @@ Public Sub mnuVaccines_Click()
    Select Case Last.tag
       Case "font"
          modUtil.Columnview_SetFont(cvwVaccines, "Admin_Vaccination_Schedules")
-            
+      Case "remove only"
       Case "remove"
          Vaccine_Remove()
+      Case "female only"
+         Vaccine_FemaleOnly(True)
       Case "atsi only"
          Vaccine_ATSI(True)
       Case "available all"
          Vaccine_ATSI(False)
+         Vaccine_FemaleOnly(False)
       Case "product information"
-         modUtil.NotImplemented()
+         modUtil.NotImplemented("Viewing Product Information")
       Case "help"
          modUtil.NotImplemented()
    End Select
@@ -642,6 +670,17 @@ Public Sub Vaccine_ATSI(bATSIOnly As Boolean)
    
 End
 
+Public Sub Vaccine_FemaleOnly(Flag As Boolean)
+   CurrentVaccine!female_only = flag
+   modDBConnect.BeginTrans()
+   modVaccinationDBI.Vaccine_In_Schedule_Save(Vaccines_in_schedule, pk_view_vaccine, CurrentVaccine)
+   modDBConnect.CommitTrans()
+   Reload() 
+
+   
+   
+End
+
 Public Sub Vaccine_Add()
    
    Dim Schedule_Vaccine As New Collection
@@ -652,6 +691,10 @@ Public Sub Vaccine_Add()
    If chkVaccineATSIOnly.value = True Then
       Schedule_Vaccine!atsi_only = True
    Endif
+    If chkVaccineFemaleOnly.value = True Then
+      Schedule_Vaccine!female_only = True
+   Endif
+  
    Schedule_Vaccine!description = vaccine!description
    ' Schedule_Vaccine!fk_lu_vaccines_in_schedule = 
    Schedule_Vaccine!form = vaccine!form
@@ -681,22 +724,24 @@ Public Sub Vaccines_In_Schedule_Display()
    
    Dim key As String 
    
-   With cvwVaccines
-      .Columns.count = 4
-      .Clear
-   End With
+   cvwVaccines.Clear()
    
    For Each vaccine In Vaccines_in_schedule
       key = vaccine!pk_view
       cvwVaccines.Add(key, 0)
       cvwVaccines[key][0] = vaccine!brand
       cvwVaccines[key][1] = vaccine!form
-      If vaccine!atsi_only Then
+      If vaccine!vaccine_atsi_only Then
          cvwVaccines[key][2] = "ATSI Only"
       Else
          cvwVaccines[key][2] = ""
       End If
-      cvwVaccines[key][3] = vaccine!description
+      If vaccine!vaccine_female_only = True Then
+        cvwVaccines[key][3] = "female only"
+      Else
+        cvwVaccines[key][3] = ""
+      Endif
+      cvwVaccines[key][4] = vaccine!vaccine_description
    Next
    
 End
@@ -781,11 +826,9 @@ Public Sub rbScheduleATSIOnly_Click()
    If Last.tag = "yes" Then
       bScheduleIsAboriginalTSI_Only = True
       chkVaccineATSIOnly.value = True
-      chkVaccineATSIOnly.Enabled = False 
+      chkVaccineFemaleOnly.Enabled = False 
    Else
       bScheduleIsAboriginalTSI_Only = False
-      chkVaccineATSIOnly.value = False
-      chkVaccineATSIOnly.Enabled = True
    End If   
    EditArea_Notify_DataChanged(True)
    
@@ -799,7 +842,7 @@ Public Sub EditArea_TextBox_KeyRelease()
    
 End
 
-Public Sub chkVaccineATSIOnly_Click()
+Public Sub chkVaccineFemaleOnly_Click()
    
    EditArea_Notify_DataChanged(True)
    
@@ -846,4 +889,3 @@ Public Sub cmbStateVaccinationsSchedules_Click()
    Schedule_Show_For_State()
    
 End
-

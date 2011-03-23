@@ -707,7 +707,7 @@ vwsendingentities.msh_transmitting_entity, vwsendingentities.fk_lu_message_displ
 vwsendingentities.fk_branch AS fk_sender_branch, vwsendingentities.fk_employee AS fk_employee_branch, 
 vwsendingentities.fk_person AS fk_sender_person, vwsendingentities.fk_lu_message_standard, 
 vwsendingentities.exclude_ft_report, vwsendingentities.abnormals_foreground_color, 
-vwsendingentities.abnormals_background_color, vwsendingentities.exclude_pit, 
+vwsendingentities.abnormals_background_color, vwsendingentities.exclude_pit, vwsendingentities.person_occupation,
 vwsendingentities.organisation, vwsendingentities.organisation_category, vwpatients.fk_person AS patient_fk_person, 
 vwpatients.firstname AS patient_firstname, vwpatients.surname AS patient_surname, 
 vwpatients.birthdate AS patient_birthdate, vwpatients.sex AS patient_sex, vwpatients.age AS patient_age, 

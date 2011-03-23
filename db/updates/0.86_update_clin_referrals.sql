@@ -12,9 +12,9 @@ insert into clin_referrals.lu_type (type) values ('Non Medicare');
 
 -- added another query to the view to include letters to organisatios with no employees
 -- view now will pull out
-	-letter to an organisation
-	-letter to an employee in an organisation
-	-letter to a person not in an organisation
+	--letter to an organisation
+	--letter to an employee in an organisation
+	--letter to a person not in an organisation
 
 DROP VIEW clin_referrals.vwreferrals;
 

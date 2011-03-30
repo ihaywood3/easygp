@@ -1,6 +1,6 @@
 ' Gambas module file
 ' Gambas class file
-' Copyright (C) 2008,2009 Dr. Richard Terry
+' Copyright (C) 2008,2011 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -14,6 +14,116 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'----------------------------------------------------------------------
+Public Function Health_Summary_Construct_LaTex(currentconsult As Cconsult) As CTemplate
+   
+   Dim sName As String
+   Dim sAddress As String
+   Dim sString As String
+   Dim comm As Collection 
+   Dim templ As New CTemplate("health-summary", "tex")
+   Dim iIncomplete As Integer
+   Dim sMissing As String = "**missing**"
+   Dim item As Collection 
+   Dim items As Collection 
+   Dim R As Result
+   Dim sRange As String 
+   Dim height As Variant
+   Dim weight As Variant
+   Dim BMI As Variant
+   Dim sData As String[]
+   Dim Last_Key As Integer
+   
+   currentconsult.Refresh("family_history")
+   currentconsult.Refresh("social_history")
+   currentconsult.Refresh("past_history")
+   currentconsult.Refresh("occupational_history")
+   currentconsult.Refresh("recalls_logged")
+   
+   templ.Subst_common(currentconsult)
+   For Each item In currentconsult!social_history
+      templ.Subst("socialhistory", item!history)
+      templ.Subst("responsible_person", item!responsible_person)
+   Next
+   For Each item In currentconsult!occupational_history
+      sString &= item!occupation & "\\&" & item!from_age & " to " & item!to_age & "\\&" & item!exposure & "\\\\"
+   Next
+   templ.Subst("occupationalhistory", "occupational history goes here")
+   '-----------------------------------------------
+   'Family History
+   '    Construct something like this
+   '   Mother (Hilda smith)
+   '   Hypertension onset age 50
+   '   Carcinoma Breast onset age 65 (caused death)
+   '-----------------------------------------------
+   
+   '--------------
+   sstring = ""
+   Last_Key = 0
+   For Each item In currentconsult!family_history
+      If last_key <> item!fk_member Then
+         last_key = item!fk_member
+         sstring &= "\\textbf{" & item!relationship & "}" & item!name & "\\\\"
+      End If
+      sstring &= item!condition
+      Try sstring &= " onset " & item!age_of_onset
+      If item!cause_of_death = True Then
+         sstring &= " (caused death"
+         If Not IsNull(item!age_of_death) Then
+            sstring &= "-" & item!age_of_death & " yrs)"
+         Else
+            sstring &= ") "
+         End If
+      End If
+      sString &= "\\\\"
+    Next
+
+templ.Subst("familyhistory", sString)
+
+templ.Subst("occupation_details", sstring)
+SData = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height), "|")
+height = sData[0]
+templ.Subst("height_data", sData[0])
+templ.Subst("height_date", sData[1])
+SData = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Weight), "|")
+weight = sData[0]
+templ.Subst("weight_data", sData[0])
+templ.Subst("weight_date", sData[1])
+SData = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_BP), "|")
+templ.Subst("bp_data", sData[0])
+templ.Subst("bp_date", sData[1])
+R = modMeasurementsDBI.Get_Loinc_Value(currentconsult!patient!fk_patient, const.Loinc_EGFR, 1, "DESC") 'Last R by date
+If R.count Then 
+   sRange = R!reference_range 
+   sRange = Replace(sRange, "(", "")
+   sRange = Replace(sRange, ")", "")
+   sRange = Replace$(sRange, "<", Esc_Tex("<"))
+   sRange = Replace$(sRange, ">", Esc_Tex(">"))
+   templ.Subst("egfr_date", R!observation_date)
+   templ.Subst("egfr_data", R!value_numeric & " (" & sRange & ")")
+End If   
+
+Try BMI = Format((weight / (height ^ 2)) * 10000, "##.#")
+If Not Error Then
+   templ.Subst("bmi_data", BMI)
+Else
+   templ.Subst("bmi_data", "N/A")
+Endif
+Print templ
+Return templ
+
+End
+
+Private Function Esc_Tex(s As String) As String
+   
+   s = Replace$(s, "$", "\\$", gb.Text)
+   s = Replace$(s, "&", "\\&", gb.Text)
+   s = Replace$(s, "%", "\\%", gb.Text)
+   s = Replace$(s, ">", "$>$", gb.text)
+   s = Replace$(s, "<", "$<$", gb.text)
+   Return Trim$(s)
+   
+End
 
 Public Function Health_Summary_Construct_html(currentconsult As Cconsult) As String
    '--------------------------------------------------------
@@ -277,6 +387,7 @@ Public Function Health_Summary_Construct_html(currentconsult As Cconsult) As Str
    'the family history
    '------------------
    sFamilyHistory &= "<small>"
+   Last_key = 0
    For Each FM In currentconsult!family_history
       If last_key <> FM!fk_member Then
          last_key = FM!fk_member
@@ -568,7 +679,6 @@ Public Function Health_Summary_Construct_html(currentconsult As Cconsult) As Str
    sRow = Replace(sRow, "col3_width", "45%")  'col 2 has the rest
    sRow = Replace(sRow, "col1", "<B>BP</B>")
    
-   SData = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_BP), "|")
    If sData.count Then
       sRow = Replace(sRow, "col2", "<B>" & sData[0] & "</B>")
       sRow = Replace(sRow, "col3", "(" & sData[1] & ")")
@@ -872,6 +982,7 @@ Public Function Results_Summary_Construct_HTML(currentconsult As CConsult) As St
    
    Dim R As Collection 
    Dim sString As String
+   
    For Each R In currentconsult!results_received
       sString &= R!html
    Next

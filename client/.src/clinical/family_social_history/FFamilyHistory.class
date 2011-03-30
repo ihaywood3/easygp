@@ -98,6 +98,10 @@ Private row_key_member As Integer
 Private row_key_condition As Integer
 Private bKeyValid As Boolean
 Private pk_view As Integer 
+Private fk_code As String
+Private fk_coding_system As Integer
+Private Terms As Collection
+
 
 Public Sub set_embedded(flag As Boolean)
    '--------------------------------------------------
@@ -118,10 +122,10 @@ Public Sub Init(cons As CConsult)
    currentconsult = cons         'set current consult on this form
    Try Settings_Load()           'set splits, font sizes etc
    modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblmeasure)
+   modEditAreaHelpers.Resize_label(label25, lblmeasure)
    bexit = False  
-  ' SocialHistory_Display()       'display current social history
    cvwConditions.Columns.count = 3
-   
+   columnview1.Columns.count = 2          'the popup columnview for terms
    FamilyMembersList_Refresh()   'Display family members history lists
    ' If lvwMembers.count Then      'If there are actually family members
    '    '---------------------------------------------------------------
@@ -135,7 +139,8 @@ Public Sub Init(cons As CConsult)
    '    
    ' End If   
    ' bExit = False   
-   ' 
+     Member_New()       'default to new member
+     
 End
 
 Public Sub Form_Close()
@@ -421,6 +426,9 @@ Public Sub EditArea_Condition_Clear()
    
    bExit = True
    txtCondition.text = ""
+   txtCodedTerm.text = ""
+   fk_code = ""
+   fk_coding_system = 0
    currentcondition = New Collection
    currentcondition!cause_of_death = False   
    currentCondition!contributed_to_death = False   
@@ -598,7 +606,7 @@ Public Sub FamilyMember_GotFocus()
       ListView1.Visible = False
    End If
    
-   listview1.left = txtRelationship.Left
+   listview1.left = Last.Parent.Left
    listview1.tag = Last.tag
    Select Case Last.tag
          
@@ -609,7 +617,7 @@ Public Sub FamilyMember_GotFocus()
          listview1.top = Vbox_EditArea_inner.top + hbox_occupation.top + hbox_occupation.height
          nextcontrol = txtRelationship
       Case "relationship"
-         listview1.top = Vbox_EditArea_inner.top + hbox_relationship.top + hbox_relationship.height
+         listview1.top = Vbox_EditArea_inner.top + Last.parent.Parent.top + Last.Parent.height
          nextcontrol = txtCondition
          
    End Select
@@ -712,10 +720,7 @@ End
 Public Sub FamilyMember_Change()
    
    If bexit Then Return 
-   If Len(Last.text) And Not bexit Then
-      EditArea_Notify_DataChange(True)            'red border around edit area
-   End If
-   Select Case Last.tag
+    Select Case Last.tag
       Case "name"
          '----------------------------
          'Not mandatory e.g Joan Smith
@@ -750,7 +755,8 @@ Public Sub FamilyMember_Change()
             txtAgeDeath.text = ""
          End If
    End Select 
-   
+   EditArea_Notify_DataChange(True)            'red border around edit area
+
 End Sub 
 
 Public Sub Relationship_Get()
@@ -925,38 +931,79 @@ Public Sub CountryOrigin_Get()
    
 End
 
-Public Sub Condition_Get()
-   
-   Dim coll As Collection
-   Dim i As Collection
-   '-------------------------------------------------------------------
-   'Condition unlike say countries does not default to auto-completion 
-   'with a recordset of 1 because must allow entry of new terms
-   'unless the user hits enter whilst listview1 has contents
-   'in which case will search the list for match and use that
-   '-------------------------------------------------------------------
-   If Trim(txtcondition.text) = "" Then
-      listview1.Visible = False
+Public Sub Columnview1_KeyPress()
+
+   If key.code = key.return Then Columnview1_DblClick()
+
+End
+
+Public Sub Columnview1_DblClick()
+
+   Coded_Term_Select() 
+   VBox_ColumnView.Visible = False   
+
+End
+Public Sub Coded_Term_Select()
+   '---------------------------------------------
+   'User has chosen a term from popup columnview1
+   'Display this in the txtCodedTerm Textbox
+   'If no uncoded term exists, then use the same
+   '---------------------------------------------
+
+   columnview1.MoveCurrent()   'match internal cursor to visible row
+   fk_code = Terms[columnview1.Item.key]!code
+   fk_coding_system = Terms[columnview1.Item.key]!fk_coding_system
+   currentcondition!fk_code = fk_code
+   currentcondition!condition = columnview1.Item.Text
+    If txtCondition.text = "" Then
+       txtCondition.text = Terms[columnview1.Item.key]!term
+       txtCondition.pos = 0
+    End If   
+   txtCodedTerm.text = Terms[columnview1.Item.key]!term & " (" & Terms[columnview1.Item.key]!code & ")"
+   txtCodedTerm.pos = 0
+   txtConditionNotes.SetFocus()
+
+End
+
+Public Sub Coded_Term_Get()
+   '--------------------------------
+   'Gets list of conditions or terms
+   '--------------------------------
+
+   Dim term As Collection 
+   Dim key As String
+
+   If Trim(txtCodedTerm.text) = "" Then
+      fk_code = ""
+      fk_coding_system = const.coding_none_selected
+       VBox_ColumnView.Visible = False   
       Return
    End If
-   coll = modCodingDBI.Get_Terms(Trim(txtcondition.text))
-   '----------------------------------------------------------
-   'If medical conditions exist, fill the list and popup it up
-   '----------------------------------------------------------
-   If coll.count Then 
-      listview1.Clear
-      For Each i In coll
-         listview1.Add(Str$(i!pk_view), i!term)
+   Terms = modCodingDBI.Get_Terms(Trim(txtCodedTerm.text), chkLimit.value, chkicd10.value, SpinBoxTermLimits.value)
+   With columnview1
+      .Clear()
+      .Columns[0].Width = 300
+      .Columns[1].width = 100
+   End With
+   If Terms.count Then
+      For Each term In Terms
+         key = term!code
+         columnview1.Add(key, 0)
+         columnview1[key][0] = term!term
+         columnview1[key][1] = term!system
       Next 
-      listview1.tag = txtCondition
-      listview1.Raise
-      listview1.Visible = True
+      lblTermCount.text = Str$(terms.count) & " terms retreived"
+      columnview1.tag = txtCodedTerm
+      columnview1.Raise
+      columnview1.Visible = True
+      VBox_ColumnView.Visible = True 
    Else 
-      'empty recordset
-      listview1.Visible = False
+      VBox_ColumnView.Visible = False 'empty recordset
    End If  
-   
+
 End
+
+
 
 Public Sub Occupation_Selection(action As String, Optional calling_control As String)
    
@@ -1066,17 +1113,12 @@ Public Sub listview1_DblClick()
          currentmember!fk_relationship = listview1.Item.Key
          txtRelationship.text = listview1.Item.Text
          Relationship_DisplayValidity(True)
-         txtcondition.setfocus
+         txtCodedTerm.setfocus
       Case "occupation"
          Occupation_Selection("accept", "list")
       Case "country origin"
          Country_Selection("accept", "list")
-      Case "condition"
-         currentcondition!fk_reason = listview1.Item.Key
-         currentcondition!condition = listview1.Item.Text 'FIXME SHIT NOMENCLATURE
-         txtCondition.text = listview1.Item.Text
-         txtConditionNotes.SetFocus
-   End Select
+    End Select
    listview1.Visible = False  
    
 End
@@ -1093,7 +1135,7 @@ Public Sub FamilyMember_LostFocus()
          Else
          End If
       Case "birthdate"
-         If IsDate(Val((Trim(txtBirthdate.text)))) Then 
+         If IsDate(Trim(txtBirthdate.text)) Then
             currentmember!birthdate = Trim(txtBirthdate.text)
             Birthdate_DisplayValidity(True) 
          Else 
@@ -1236,6 +1278,7 @@ End
 Public Sub Member_New()
    
    EditArea_Clear()
+   Vbox_EditArea.Enabled = True  
    currentmember = New Collection 
    Condition_New()  
    txtRelationship.SetFocus() 
@@ -1388,13 +1431,14 @@ Public Sub Condition_Display()
    currentcondition!fk_condition = item!fk_condition
    fk_condition = item!fk_condition
    currentcondition!condition = item!condition
-   currentcondition!fk_reason = item!fk_reason
+   currentcondition!fk_code = item!fk_code
    currentcondition!notes = item!notes
    currentcondition!age_of_onset = item!age_of_onset
    currentcondition!cause_of_death = item!cause_of_death
    currentcondition!contributed_to_death = item!contributed_to_death
    
    txtcondition.text = currentcondition!condition
+   Try txtCodedTerm.text = item!term & " (" & item!code & ")" 
    txtConditionNotes.text = currentcondition!notes  
    txtAgeOnset.text = currentcondition!age_of_onset
    If currentcondition!cause_of_death Then 
@@ -1419,21 +1463,16 @@ Public Sub Condition_New()
    'If no relatives yet exist, just re-set the editing area which
    're-sets focus back to txtRelationship ready for a person.
    '--------------------------------------
-   
-   If row_key_member = 0 Then
-      Message.Info("Please select a relative to add a condition to")
-      Return
-   End If   
    EditArea_Condition_Clear()
-   txtCondition.SetFocus  
+   txtCodedTerm.SetFocus  
    
 End
 
 Public Sub FamilyMemberCondition_KeyRelease()
    
    Select Case Last.tag
-      Case "condition"
-         Condition_Get()
+      Case "coded term"
+         Coded_Term_Get()
    End Select
    
 End
@@ -1446,26 +1485,29 @@ Public Sub EditArea_Notify_DataChange(flag As Boolean)
    If Flag Then
       Vbox_EditArea.Padding = 1
       tbAccept.Foreground = Color.Red
+      tbAccept.Enabled = True 
    Else
       Vbox_EditArea.Padding = 0
       tbAccept.Foreground = Color.Black
+      tbAccept.Enabled = False
    End If
    
 End
 
 Public Sub FamilyMemberCondition_Change()
    ' If Not bexit Then EditArea_Notify_DataChange(True)
-   
-   If Len(Last.text) And Not bexit Then
-      EditArea_Notify_DataChange(True)            'red border around edit area
-   End If
-   
+   If bexit Then Return 
    Select Case Last.tag 
-      Case "condition"
+      Case "coded term"
          
          'CHECK THIS LATER - THIS TRIMMING MEANS RE-ENTRY TO THIS ROUTINE.
-         If Trim(txtcondition.text) = "" Then currentcondition!fk_reason = 0
-         currentcondition!condition = Trim(txtcondition.text) 'here because could be Free text
+         If Trim(txtCodedTerm.text) = "" Then
+             currentcondition!fk_code = ""
+             fk_code = ""
+             fk_coding_system = 0
+         End If
+      Case "condition"
+         currentcondition!condition = Trim(txtCondition.text)
       Case "age onset"
          If IsInteger(txtAgeOnset.text) Then
             currentcondition!age_of_onset = Val(txtAgeOnset.text) 'FIXME is an integer in database
@@ -1480,7 +1522,8 @@ Public Sub FamilyMemberCondition_Change()
          currentcondition!notes = Trim(txtConditionNotes.text)
          
    End Select 
-   
+   EditArea_Notify_DataChange(True)            'red border around edit area
+
 End
 
 Public Sub FamilyMemberCondition_GotFocus()
@@ -1493,8 +1536,13 @@ Public Sub FamilyMemberCondition_GotFocus()
    listview1.left = txtRelationship.Left
    listview1.tag = Last.tag
    Select Case Last.tag
-      Case "condition"
-         listview1.top = Vbox_EditArea_inner.top + HBox_ConditionParent.top + HBox_ConditionParent.height
+      Case "coded term"
+      '   listview1.top = Vbox_EditArea_inner.top + HBox_ConditionParent.top + HBox_ConditionParent.height
+          With VBox_ColumnView
+            .top = Vbox_EditArea_inner.top + Last.Parent.Parent.top + Last.Parent.height
+            .left = Last.Parent.Left
+            .width = Vbox_EditArea_inner.width / 2
+         End With
    End Select   
    
 End
@@ -1506,20 +1554,20 @@ Public Sub FamilyMemberCondition_KeyPress()
    If Key.code = Key.return Then
       
       Select Case Last.tag
-         Case "condition"
+         Case "coded term"
             '-----------------------------------------
             'the text could match the popped up list
             'without the user having scrolled on to it
             '-----------------------------------------
-            If listview1.Visible Then
-               listview1.MoveFirst
-               For x = 0 To listview1.count - 1
-                  If Lower(listview1.Item.Text) = Lower(Trim(txtCondition.text)) Then
-                     currentcondition!fk_reason = listview1.Item.Key
-                     currentcondition!condition = listview1.Item.text
+            If VBox_ColumnView.Visible Then
+               columnview1.MoveFirst
+               For x = 0 To columnview1.count - 1
+                  If Lower(columnview1.Item.Text) = Lower(Trim(txtCodedTerm.text)) Then
+                     currentcondition!fk_code = Terms[columnview1.Item.key]!code
+                     currentcondition!condition = columnview1.Item.Text
                      Break
                   End If
-                  listview1.MoveNext
+                  columnview1.MoveNext
                Next
             End If
             txtConditionNotes.SetFocus
@@ -1538,6 +1586,11 @@ Public Sub FamilyMemberCondition_KeyPress()
             listview1.MoveFirst
             listview1.Item.Selected = True
          End If
+         If VBox_ColumnView.Visible Then
+             columnview1.SetFocus()
+             columnview1.MoveFirst
+             columnview1.Item.Selected = True   
+         Endif
       End If
    End If
    

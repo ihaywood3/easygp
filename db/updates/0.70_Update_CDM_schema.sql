@@ -2,7 +2,7 @@
 
 Drop schema chronic_disease_management cascade;
 
-CREATE SCHEMA chronic_disease_management  AUTHORIZATION easygp;
+CREATE SCHEMA chronic_disease_management;
 GRANT ALL ON SCHEMA chronic_disease_management TO easygp;
 GRANT ALL ON SCHEMA chronic_disease_management TO staff;
 

@@ -67,11 +67,8 @@ CREATE OR REPLACE VIEW clin_referrals.vwreferrals AS
    JOIN admin.vwstaff ON consult.fk_staff = vwstaff.fk_staff
    JOIN clin_referrals.lu_type ON referrals.fk_type = lu_type.pk
    LEFT JOIN clin_history.past_history ON referrals.fk_pasthistory = past_history.pk
-  WHERE referrals.fk_person IS NULL)
-  ORDER BY 32, 2;
+  WHERE referrals.fk_person IS NULL);
 
-ALTER TABLE clin_referrals.vwreferrals OWNER TO easygp;
-GRANT ALL ON TABLE clin_referrals.vwreferrals TO easygp;
 GRANT ALL ON TABLE clin_referrals.vwreferrals TO staff;
 COMMENT ON VIEW clin_referrals.vwreferrals IS 'A view of referral letters written, includes also for example recall letters sent to patient, letters to non-medical providers e.g insurance companies
  FIXME: need to fix contacts.vwPersonsIncludingPatients to include occupation 

@@ -89,6 +89,9 @@ Private temp_image_path As String
 Private bExit As Boolean
 Private bHasBorder As Boolean   'if true the image has a border
 Private sOriginalPath As String 'path to the orginal 'unaltered' image
+Private CurrentThumb As PictureBox
+Private currentconsult As CConsult
+
 
 Static Public Sub _init()
    
@@ -103,20 +106,11 @@ Static Public Sub _init()
    
 End
 
-Public Sub Init(sPath As String)
-   
+Public Sub Init(sPath As String, Optional cons As CConsult)
+   Try currentconsult = cons
    Try $hImage = Image.Load(sPath)        'if being used as draw editor
    bExit = True                           'Load probable available devices (fixme - actually test for this)
-   ' cmbDevice.Add("/dev/video0")
-   ' cmbDevice.Add("/dev/video1")
-
    Form_WebCam = New FWebCam(VBox_WebCam) 'Insert the web cam
-   ' If Not IsNull(Settings["Webcam/video_device"]) Then                     'check settings
-   '    cmbDevice.index = cmbDevice.Find(Settings["Webcam/video_device"])    'set combo to previously used device
-   '    Form_WebCam.Set_Device(cmbDevice.text)                               'make it available to webcam form
-   ' Else
-   '     Form_WebCam.Set_Device("/dev/video0")                               'fall back position
-   ' Endif
    Try Form_WebCam.Get_Video()                                             'try and get a picture
    HObs = New Observer(Form_WebCam.btnTakeShot) As "webcam"                'Observor to access the buttons on webcam form
    temp_image_path = Temp() & ".png"
@@ -1184,12 +1178,32 @@ End
 
 Public Sub ShowPaste(Optional bReset As Boolean)
    
+   Dim HB As HBox
+   Dim VB As VBox
+   Dim PBox As PictureBox
+   Dim hCtrl As Control
+   
    If Clipboard.Type <> Clipboard.Image Then Return
    
    $hPaste = Clipboard.Paste()         '$hPaste is an image
    $hPaste.Save(temp_image_path)
-   pbThumb1.picture = Picture.Load(temp_image_path)
-   Print "showing thumb"
+   '---------------------------------------------------------
+   'Automatically put the paste into the next available thumb
+   '---------------------------------------------------------
+   For Each HCtrl In HBox_Thumbnails.Children
+      If Hctrl Is Vbox Then
+         VB = HCtrl
+         PBox = VB.Children[0]    
+         If IsNull(PBox.tag) Then
+            PBox.picture = Picture.Load(temp_image_path)
+            PBox.tag = temp_image_path
+            Break
+         Endif
+      End If
+   Next
+   '---------------------------------------
+   'Now paste the image to the main picture
+   '---------------------------------------
    $WS = $hPaste.Width
    $HS = $hPaste.Height
    
@@ -2224,4 +2238,43 @@ Public Sub txtToInsert_Activate()
 
    Insert_text()
 
+End
+
+Public Sub thumbs_Menu()
+   '-------------------------------------------------
+   'User has right mouse clicked on one of the thumbs
+   '-------------------------------------------------
+   If Not IsNull(Last.tag) Then
+      CurrentThumb = Last   
+      mnuThumbNails.Popup()
+   Endif
+
+End
+
+Public Sub mnuThumbNails_Click()
+   '------------------------------------------------------------------------------------
+   'User has clicked on one of the thumbnails, popped up the menu and selected an option
+   '------------------------------------------------------------------------------------
+   Dim PersonPicture As Collection 
+   Dim P As New CRow
+   
+   Select Case Last.tag
+     Case "save patient photo"
+         PersonPicture = New Collection
+         PersonPicture!path = CurrentThumb.Tag
+         Try P!fk_image = modContactsDBI.Image_Save(PersonPicture)
+         If Not Error Then
+             P!fk_person = currentconsult!patient!fk_person
+             P.Save("contacts.data_persons", currentconsult!patient!fk_person)
+             modDBConnect.CommitTrans()
+         Endif
+         
+  
+  ' person!fk_person = modContactsDBI.Person_Save(rows_in_view, pk_view, person, comms, views_comms) 
+     Case "delete"
+         Last.picture.Clear()
+         Last.tag = Null
+          
+   End Select
+   
 End

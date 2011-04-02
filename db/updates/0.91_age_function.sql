@@ -1,4 +1,4 @@
--- create a SQL function to display age in the "samrt" way
+-- create a SQL function to display age in the "smart" way
 
 CREATE OR REPLACE FUNCTION age_display(interval) RETURNS text AS $$
     SELECT
@@ -94,22 +94,6 @@ create view clerical.vwtaskscomponentsandnotes as
 grant select on clerical.vwtaskscomponentsandnotes to staff;
 
 
-create view research.diabetes_temp as
- SELECT DISTINCT ( SELECT vwobservations.value_numeric
-           FROM documents.vwobservations
-          WHERE vwobservations.fk_patient = vwpatients.fk_patient AND vwobservations.loinc = '4548-4'::text
-          ORDER BY vwobservations.observation_date DESC
-         LIMIT 1) AS hba1c
-   FROM contacts.vwpatients, documents.vwobservations
-  WHERE vwobservations.fk_patient = vwpatients.fk_patient AND vwobservations.loinc = '4548-4'::text
-  ORDER BY ( SELECT vwobservations.value_numeric
-           FROM documents.vwobservations
-          WHERE vwobservations.fk_patient = vwpatients.fk_patient AND vwobservations.loinc = '4548-4'::text
-          ORDER BY vwobservations.observation_date DESC
-         LIMIT 1);
-
-grant select on research.diabetes_temp to staff;
-
 create view research.diabetes_patients_latest_hba1c as
  SELECT DISTINCT vwobservations.fk_patient, vwpatients.wholename, vwpatients.surname, vwpatients.firstname, vwpatients.birthdate, vwpatients.age, ( SELECT vwobservations.observation_date
            FROM documents.vwobservations
@@ -164,3 +148,6 @@ create view clin_requests.vwrequestsordered as
   WHERE NOT forms.deleted AND NOT forms_requests.deleted;
 
 grant select on clin_requests.vwrequestsordered to staff;
+
+truncate db.lu_version;
+insert into db.lu_version (lu_major,lu_minor) values (0, 91);

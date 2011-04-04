@@ -1,11 +1,272 @@
 ' Gambas class file
-'Temporary form
 
+' Gambas class file
+' Copyright (C) 2008-2011 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+' A quickn dirty utility probably temporary for me to see who I've seen today
+' or 'actioned' today. This is <> an appointment book as many things done via
+' the clinical notes will have been phone conversations etc or tasks set by
+' a phone call such as 'can you write a referral for Joe blogs who has just
+' seen specialist D Head
+'
+' 1;"At consulting rooms"
+' 2;"Telephone"
+' 3;"Home visit"
+' 4;"Email"
+' 5;"Case conference"
+' 6;"Nursing home visit"
+' 7;"Teleconference"
+' 8;"Review of Correspondance"
+' 9;"Notes without patient present"
+' 10;"Legacy Data Import"
+' 11;"Audit"
+' 
+
+'----------------------------------------------------------------------------
+Private PatientsSeen As Collection
+Private PatientSeen As Collection
 
 Public Sub Form_Open()
    
-  Dim sql As String
-  Dim c As Collection 
+   Init()
    
 End
 
+Public Sub Init()
+   Me.Title = "Patients dealth with by " & modDBConnect.currentUser!wholename & " on " & Format$(Now, "dddd dd mmmm yyyy")
+   ColumnView1.Columns.count = 10 
+   Reload(Format(Now, "dd/mm/yyyy"))
+   
+End
+
+Public Sub Reload(date_seen As String)
+   
+   Dim X As Integer
+   Dim fk_last_patient As Integer
+   Dim am_pm As String 
+   Dim child_total As Integer
+   Dim child_female As Integer
+   Dim adult_total As Integer
+   Dim adult_female As Integer
+   Dim total_in_surgery As Integer
+   Dim total_home_visits As Integer
+   Dim total_patient_not_present As Integer
+   Dim total_nursing_home_visits As Integer
+   Dim total_phone_consults As Integer
+   Dim total_by_email As Integer
+   
+   Inc Application.Busy
+   tlHeading.text = "Patients dealt with  by " & modDBConnect.currentUser!wholename & " on " & Format$(Val(date_seen), "dddd dd mmmm yyyy")
+   Me.title = "Patients dealt with by " & modDBConnect.currentUser!wholename & " on " & Format$(Val(date_seen), "dddd dd mmmm yyyy")
+   ColumnView1.Clear()
+   PatientsSeen = modAppointmentsDBI.Patients_Seen(date_seen, modDBConnect.currentUser!fk_staff)
+   For Each PatientSeen In PatientsSeen
+      If fk_last_patient <> PatientSeen!fk_patient Then
+         fk_last_patient = PatientSeen!fk_patient
+         '-----------------------------
+         'Do age calculations for stats
+         '-----------------------------
+         Select Case PatientSeen!age_numeric
+            Case 0 To 18
+               Inc child_total
+               If PatientSeen!sex = "F" Then Inc child_female
+            Case Else
+               Inc adult_total
+               If PatientSeen!sex = "F" Then Inc adult_female 
+         End Select
+         '-------------------------------------------
+         'do site or nature of consultation for stats
+         '-------------------------------------------
+         Select Case PatientSeen!fk_type
+            Case const.consult_type_at_Surgery
+               Inc total_in_surgery
+            Case const.ConsultType_HomeVisit
+               Inc total_home_visits 
+            Case const.ConsultType_NursingHome
+               Inc total_nursing_home_visits
+            Case const.ConsultType_Telephone
+               Inc total_phone_consults
+            Case const.ConsultType_NotesPatientNotPresent
+               Inc total_patient_not_present
+            Case const.ContactMethodEmail
+               Inc total_by_email
+         End Select
+         ColumnView1.add(x, 0)
+         If Val(Format(PatientSeen!consult_date, "hh")) < 12 Then 
+            am_pm = "AM"
+         Else
+            am_pm = "PM" 
+         Endif
+         columnView1[x][0] = Format(PatientSeen!consult_date, "hh:nn") & " " & am_pm
+         ColumnView1[x][1] = PatientSeen!wholename 
+         ColumnView1[x][2] = PatientSeen!sex
+         ColumnView1[x][3] = PatientSeen!age_display
+         ColumnView1[x][4] = Trim(PatientSeen!street1 & " " & PatientSeen!street2) & " " & PatientSeen!town 
+         ColumnView1[x][5] = PatientSeen!consult_type
+         Inc x
+      End If
+   Next
+   '--------------------------------------
+   'Do some basic stats, just for interest
+   '--------------------------------
+   tlStats.text = stat_html()
+   tlStats.text = Replace(tlStats.text, "%total_patients", Str(x))
+   tlStats.text = Replace(tlStats.text, "%total_children", Str(child_total) & " (" & Format((child_total / x) * 100, "###.#") & "%)")
+   tlStats.text = Replace(tlStats.text, "%boys_girls", Str(child_female) & " girls, " & Str(child_total - child_female) & " boys")
+   tlStats.text = Replace(tlStats.text, "%adults", Str(adult_total) & " (" & Format((adult_total / x) * 100, "###.#") & "%) of all patients")
+   tlStats.text = Replace(tlStats.text, "%women", Str(adult_female) & " (" & Format((adult_female / adult_total) * 100, "###.#") & "%) of all adults")
+   tlStats.text = Replace(tlStats.text, "%men", Str(adult_total - adult_female) & " (" & Format(((adult_total - adult_female) / adult_total) * 100, "###.#") & "%) of all adults")
+   tlConsultType.text = consult_types_html()
+   tlConsultType.text = Replace(tlConsultType.text, "%at_surgery", Str(total_in_surgery))
+   tlConsultType.text = Replace(tlConsultType.text, "%home_visits", Str(total_home_visits))
+   tlConsultType.text = Replace(tlConsultType.text, "%nursing_home_visits", Str(total_nursing_home_visits))
+   tlConsultType.text = Replace(tlConsultType.text, "%phone_consults", Str(total_phone_consults))
+   tlConsultType.text = Replace(tlConsultType.text, "%patient_not_present", Str(total_patient_not_present))
+   tlConsultType.text = Replace(tlConsultType.text, "%email_consults", Str(total_phone_consults))
+   Dec Application.Busy
+End
+
+Public Function consult_types_html() As String
+   
+   Return ""
+   "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0 >"
+   " <COL WIDTH=75%>"
+   " <COL WIDTH=25%>"
+   " <TR VALIGN=TOP>"
+   "  <TD WIDTH=75%>"
+   "   <P><B>At Surgery</B></P>"
+   "  </TD>"
+   "  <TD WIDTH=25%>"
+   "   <P>%at_surgery</P>"
+   "  </TD>"
+   " </TR>"  
+   " <TR VALIGN=TOP>"
+   "  <TD WIDTH=75%>"
+   "   <P><B>Home Visits</B></P>"
+   "  </TD>"
+   "  <TD WIDTH=25%>"
+   "   <P>%home_visits</P>"
+   "  </TD>"
+   " </TR>"  
+   " <TR VALIGN=TOP>"
+   "  <TD WIDTH=75%>"
+   "   <P><B>Nursing Home Visits</B></P>"
+   "  </TD>"
+   "  <TD WIDTH=25%>"
+   "   <P>%nursing_home_visits</P>"
+   "  </TD>"
+   " </TR>"  
+   " <TR VALIGN=TOP>"
+   "  <TD WIDTH=75%>"
+   "   <P><B>Phone Consults</B></P>"
+   "  </TD>"
+   "  <TD WIDTH=25%>"
+   "   <P>%phone_consults</P>"
+   "  </TD>"
+   " </TR>"  
+   " <TR VALIGN=TOP>"
+   "  <TD WIDTH=75%>"
+   "   <P><B>Task - Patient not Present</B></P>"
+   "  </TD>"
+   "  <TD WIDTH=25%>"
+   "   <P>%patient_not_present</P>"
+   "  </TD>"
+   " </TR>"  
+   " <TR VALIGN=TOP>"
+   "  <TD WIDTH=75%>"
+   "   <P><B>Email Consults</B></P>"
+   "  </TD>"
+   "  <TD WIDTH=25%>"
+   "   <P>%email_consults</P>"
+   "  </TD>"
+   " </TR>"  
+   
+End
+
+Public Function stat_html() As String
+   
+   Return ""
+   "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0 >"
+   " <COL WIDTH=35%>"
+   " <COL WIDTH=65%>"
+   " <TR VALIGN=TOP>"
+   "  <TD WIDTH=35%>"
+   "   <P><B>Total  patients</B></P>"
+   "  </TD>"
+   "  <TD WIDTH=65%>"
+   "   <P>%total_patients</P>"
+   "  </TD>"
+   " </TR>"
+   " <TR VALIGN=TOP>"
+   "  <TD WIDTH=35% HEIGHT=47>"
+   "   <P><B>Children &lt; 18yrs</B></P>"
+   "  </TD>"
+   "  <TD WIDTH=65%>"
+   "   <TABLE WIDTH=100%  BORDER=0 CELLPADDING=0 CELLSPACING=0>"
+   "    <COL WIDTH=256*>"
+   "    <TR>"
+   "     <TD WIDTH=100% VALIGN=TOP>"
+   "      <P>%total_children</P>"
+   "     </TD>"
+   "    </TR>"
+   "    <TR>"
+   "     <TD WIDTH=100% VALIGN=TOP>"
+   "      <P>%boys_girls</P>"
+   "     </TD>"
+   "    </TR>"
+   "   </TABLE>"
+   "  </TD>"
+   " </TR>"
+   " <TR VALIGN=TOP>"
+   "  <TD WIDTH=35%>"
+   "   <P><B>Adults</B></P>"
+   "  </TD>"
+   "  <TD WIDTH=65%>"
+   "   <P>%adults</P>"
+   "  </TD>"
+   " </TR>"
+   " <TR VALIGN=TOP>"
+   "  <TD WIDTH=35%>"
+   "   <P><B>Women</B></P>"
+   "  </TD>"
+   "  <TD WIDTH=65%>"
+   "   <P>%women</P>"
+   "  </TD>"
+   " </TR>"
+   " <TR VALIGN=TOP>"
+   "  <TD WIDTH=35%>"
+   "   <P><B>Men</B></P>"
+   "  </TD>"
+   "  <TD WIDTH=65%>"
+   "   <P>%men</P>"
+   "  </TD>"
+   " </TR>"
+   "</TABLE>"
+   
+End
+
+Public Sub DateChooser1_Activate()
+
+    Reload(Format(DateChooser1.value, "dd/mm/yyyy"))
+
+
+End
+
+Public Sub DateChooser1_MouseUp()
+
+  '  Print DateChooser1.value
+    Reload(Format(DateChooser1.value, "dd/mm/yyyy"))
+
+End

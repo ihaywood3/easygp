@@ -26,7 +26,7 @@ Public Sub Print_PDF(pdf_path As String, Optional printertype As Integer = const
    cmd = modUtil.FindProgram("lpr", "cups")
    If IsNull(cmd) Then Return
    pdf_path = Replace$(pdf_path, " ", "\\ ")
-   cmd &= " " & GetLprOption(printertype) & " -# " & number_copies & " " & pdf_path
+   cmd &= " " & GetOption(printertype)!lpr & " -# " & number_copies & " " & pdf_path
    Shell cmd Wait
    Dec Application.Busy
    
@@ -64,26 +64,31 @@ Public Sub Print_latex(latex As String, Optional printertype As Integer = const.
    Dim stem As String
    Dim f As File
    Dim cmd As String
-   Dim x As Integer
+   Dim coll As Collection
    
-   Inc Application.Busy  
+     
    stem = Temp$("printl")
-   
    f = Open stem & ".tex" For Write Create
    Print #f, latex
    Close #f
    cmd = modUtil.FindProgram("latex", "texlive-latex-base")
    If IsNull(cmd) Then Return
+   Inc Application.Busy
    cmd = "cd `dirname " & stem & "` ; " & cmd 
    cmd &= " \\\\nonstopmode\\\\input printl.tmp.tex ; "
-   cmd &= "dvips printl.tmp.dvi -o"
-   cmd &= Subst$(" '!lpr &1 -# &2'", GetLprOption(printertype), number_copies)
+   coll = GetOption(printertype)
+   cmd &= Subst$("dvips printl.tmp.dvi &1 -o", coll!dvips)
+   cmd &= Subst$(" '!lpr &1 -# &2'", coll!lpr, number_copies)
    Log.DebugMsg("Printing using command " & cmd)
    Shell cmd Wait
    Try Kill stem & ".tex"
    Try Kill stem & ".dvi"
+   Try Kill stem & ".aux"
+   Try Kill stem & ".log"
+Finally
    Dec Application.Busy
-   
+Catch
+   Message.Error(Error.Text, "OK")
 End
 
 Public Sub PrintHtml(sHtml As String, Optional printertype As Integer = const.Paper_Plain)
@@ -96,18 +101,18 @@ Public Sub PrintHtml(sHtml As String, Optional printertype As Integer = const.Pa
    Dim lpr As String
    
    If sHtml = "" Then Return
-   Inc Application.Busy
    cmd = modUtil.FindProgram("wkhtmltopdf", "wkhtmltopdf")
    If IsNull(cmd) Then Return
    lpr = modUtil.FindProgram("lpr", "cups")
    If IsNull(lpr) Then Return
-   cmd = Subst$("&1 -q - - | &2 &3", cmd, lpr, GetLprOption(printertype))
+   Inc Application.Busy
+   cmd = Subst$("&1 -q - - | &2 &3", cmd, lpr, GetOption(printertype)!lpr)
    Log.DebugMsg("HTML print command: " & cmd)
    pro = Shell cmd For Write
    Write #pro, sHtml
    
 Finally
-   Close #pro
+   Try Close #pro
    Dec Application.Busy
 Catch
    Message.Error(Error.Text, "OK")
@@ -342,11 +347,13 @@ Public Function NoPrinters() As Boolean
    
 End
 
-Private Function GetLprOption(printertype As Integer) As String
+Private Function GetOption(printertype As Integer) As Collection
    
    Dim config_printer As String
    Dim printername As String
+   Dim coll As Collection
    Dim printer_options As String
+   
    Dim i As String
    
    config_printer = "Default"
@@ -368,20 +375,44 @@ Private Function GetLprOption(printertype As Integer) As String
    End Select
    config_printer = Settings[Subst$("Printers/&1", printername), "Default"]
    printer_options = Settings[Subst$("Printers/&1_options", printername), "Default"]
-   If config_printer = "Default" Then
-      config_printer = ""
-   Else
-      config_printer = Subst$("-P &1", config_printer)
-   Endif
    If printer_options <> "Default" Then
-      config_printer &= " " & printer_options
+      coll = SplitOptions(printer_options)
    Endif
-   Return config_printer
+   If config_printer <> "Default" Then
+      coll!lpr &= Subst$(" -P &1", config_printer)
+   Endif
+   Return coll
    
 End
 
+Public Function SplitOptions(opts As String) As Collection
+   
+  ' splits options string into dvips and lpr options strings
+  
+  Dim res As String[] = ["-O \\S+", "-T \\S+"]
+  Dim i As String
+  Dim re As Regexp
+  Dim dvips_opts As String
+  Dim lpr_opts As String
+  
+  dvips_opts = ""
+  For Each i In res
+    If opts = "" Then Break 
+    re = New Regexp(opts, i)
+    If re.Offset > -1 Then
+      dvips_opts &= " " & re.Text
+      opts = Left$(opts, re.Offset) & Right$(opts, Len(opts) - (re.Offset + Len(re.Text)))
+    End If
+  Next
+   
+  Return ["lpr": opts, "dvips": dvips_opts] 
+End
+
+
+
+
 Public Sub UnitTest(form_main As FMain)
    
-   Split_PDF("/home/ian/testsplit.pdf")
+   Print_latex(File.Load("templates/testpage.tex"), const.Paper_Plain)
    
 End

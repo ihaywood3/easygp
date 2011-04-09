@@ -97,26 +97,53 @@ End
 
 Private Sub PrintTestPage(cmb As ComboBox, opts As TextBox, printername As String, tag As String)
 
-   Dim s As String
-   Dim pro As Process
+   Dim lpr_opts_str As String
+   Dim dvips_opts_str As String
+   Dim cmd As String
+   Dim f As File
+   Dim fname As String
+   Dim coll As New Collection
+   
+   Inc Application.Busy
    
    If printername <> tag Then Return ' only do the clicked-on widget
-   s = cmb.Text
-   If s = "Default" Then
-     s = ""
+   lpr_opts_str = cmb.Text
+   dvips_opts_str = ""
+   If lpr_opts_str = "Default" Then
+     lpr_opts_str = ""
    Else
-     s = Subst$("-P &1", s)
+     lpr_opts_str = Subst$("-P &1 ", lpr_opts_str)
    Endif
    If opts.Text <> "" Then
-     s &= " " & opts.Text
+     coll = modPrinting.SplitOptions(opts.Text) 
+     lpr_opts_str &= coll!lpr
+     dvips_opts_str = coll!dvips
    Endif
-   pro = Shell "lpr " & s For Write
    ' we can't use this filename as a parameter to lpr
    ' as in production system all application files
    ' are wrapped up in the executable file, only 
-   ' gambas can read them 
-   Write #pro, File.Load("templates/testpage.pdf")
-   Close #pro
+   ' gambas can read them
+   fname = Temp$("example-print")
+   f = Open fname & ".tex" For Write Create
+   Print #f, File.Load("templates/testpage.tex")
+   Close #f
+   cmd = modUtil.FindProgram("latex", "texlive-latex-base")
+   If IsNull(cmd) Then Return
+   Inc Application.Busy
+   cmd = "cd `dirname " & fname & "` ; " & cmd 
+   cmd &= " \\\\nonstopmode\\\\input example-print.tmp.tex ; "
+   cmd &= Subst$("dvips example-print.tmp.dvi &1 -o", dvips_opts_str)
+   cmd &= Subst$(" '!lpr &1'", lpr_opts_str)
+   Log.DebugMsg("Printing using command " & cmd)
+   Shell cmd Wait
+   Try Kill fname & ".tex"
+   Try Kill fname & ".dvi"
+   Try Kill fname & ".aux"
+   Try Kill fname & ".log"
+   Finally
+     Dec Application.Busy
+   Catch
+     Message.Error(Error.Text, "OK")
 End
 
 Public Sub tbSave_Click()
@@ -133,12 +160,12 @@ End
 
 Private Sub SavePrinterOptions(cmb As ComboBox, opts As TextBox, printername As String)
 
-  If cmb.Text <> "Default" Then
-    Settings[Subst$("Printers/&1", printername)] = cmb.Text
-  Endif
   If cmb.Text = "Default" Then
     Settings[Subst$("Printers/&1", printername)] = Null
+  Else
+    Settings[Subst$("Printers/&1", printername)] = cmb.Text
   Endif
+  
   If Trim$(opts.Text) <> "" Then
     Settings[Subst$("Printers/&1_options", printername)] = opts.Text
   Endif

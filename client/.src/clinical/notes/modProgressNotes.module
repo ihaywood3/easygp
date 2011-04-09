@@ -1,5 +1,4 @@
 ' Gambas module file
-' Gambas class file
 ' Copyright (C) 2008,2011 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
@@ -15,7 +14,7 @@
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '----------------------------------------------------------------------
-Public Function Health_Summary_Construct_LaTex(currentconsult As Cconsult) As CTemplate
+Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult) As CTemplate
    
    Dim sName As String
    Dim sAddress As String
@@ -31,7 +30,7 @@ Public Function Health_Summary_Construct_LaTex(currentconsult As Cconsult) As CT
    Dim height As Variant
    Dim weight As Variant
    Dim BMI As Variant
-   Dim sData As String[]
+   Dim m As Collection
    Dim Last_Key As Integer
    
     
@@ -46,11 +45,10 @@ Public Function Health_Summary_Construct_LaTex(currentconsult As Cconsult) As CT
       templ.Subst("socialhistory", item!history)
       templ.Subst("responsible_person", item!responsible_person)
    Next
-   'ian, this
    For Each item In currentconsult!occupational_history
-      sString &= item!occupation & "\\&" & item!from_age & " to " & item!to_age & "\\&" & item!exposure & "\\\\"
+      templ.Row(item!occupation, item!from_age & " to " & item!to_age, item!exposure)
    Next
-   templ.Subst("occupationalhistory", sString)
+   templ.Table("occupationalhistory")
    '-----------------------------------------------
    'Family History
    '    Construct something like this
@@ -65,7 +63,7 @@ Public Function Health_Summary_Construct_LaTex(currentconsult As Cconsult) As CT
    For Each item In currentconsult!family_history
       If last_key <> item!fk_member Then
          last_key = item!fk_member
-         sstring &= "\\textbf{" & item!relationship & "}" & item!name & "\\\\"
+         templ.Row("\\textbf{" & item!relationship & "}" & item!name)
       End If
       sstring &= item!condition
       Try sstring &= " onset " & item!age_of_onset
@@ -77,58 +75,53 @@ Public Function Health_Summary_Construct_LaTex(currentconsult As Cconsult) As CT
             sstring &= ") "
          End If
       End If
-      sString &= "\\\\"
+      templ.Row(" ", sString)
     Next
+    templ.Table("familyhistory")
+    
+    m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height)
+    If Not IsNull(m) Then
+      height = m!data
+      templ.Subst("height_data", m!data)
+      templ.Subst("height_date", m!date)
+    Else
+      templ.Subst("height_data", "-")
+      templ.Subst("height_date", "-") 
+    Endif
+    m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Weight)
+    If Not IsNull(m) Then
+      weight = m!data
+      templ.Subst("weight_data", m!data)
+      templ.Subst("weight_date", m!date)
+    Else
+      templ.Subst("weight_data", "-")
+      templ.Subst("weight_date", "-")
+    Endif 
+    m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_BP)
+    If Not IsNull(m) Then
+      templ.Subst("bp_data", m!data)
+      templ.Subst("bp_date", m!date)
+    Else
+      templ.Subst("bp_data", "-")
+      templ.Subst("bp_date", "-")
+    Endif
+    R = modMeasurementsDBI.Get_Loinc_Value(currentconsult!patient!fk_patient, const.Loinc_EGFR, 1, "DESC") 'Last R by date
+    If R.count Then 
+      sRange = R!reference_range 
+      sRange = Replace(sRange, "(", "")
+      sRange = Replace(sRange, ")", "")
+      templ.Subst("egfr_date", R!observation_date)
+      templ.Subst("egfr_data", R!value_numeric & " (" & sRange & ")")
+   End If   
 
-Print sSTring
+   Try BMI = Format((weight / (height ^ 2)) * 10000, "##.#")
+   If Not Error Then
+      templ.Subst("bmi_data", BMI)  
+   Else
+      templ.Subst("bmi_data", "N/A")
+   Endif
+   Return templ
 
-templ.Subst("familyhistory", sString)
-
-
-'temporarily have exited from this routine whilst ian looks at it.
-templ.Subst("occupation_details", sstring)
-SData = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height), "|")
-height = sData[0]
-templ.Subst("height_data", sData[0])
-templ.Subst("height_date", sData[1])
-SData = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Weight), "|")
-weight = sData[0]
-templ.Subst("weight_data", sData[0])
-templ.Subst("weight_date", sData[1])
-SData = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_BP), "|")
-templ.Subst("bp_data", sData[0])
-templ.Subst("bp_date", sData[1])
-R = modMeasurementsDBI.Get_Loinc_Value(currentconsult!patient!fk_patient, const.Loinc_EGFR, 1, "DESC") 'Last R by date
-If R.count Then 
-   sRange = R!reference_range 
-   sRange = Replace(sRange, "(", "")
-   sRange = Replace(sRange, ")", "")
-   sRange = Replace$(sRange, "<", Esc_Tex("<"))
-   sRange = Replace$(sRange, ">", Esc_Tex(">"))
-   templ.Subst("egfr_date", R!observation_date)
-   templ.Subst("egfr_data", R!value_numeric & " (" & sRange & ")")
-End If   
-
-Try BMI = Format((weight / (height ^ 2)) * 10000, "##.#")
-If Not Error Then
-   templ.Subst("bmi_data", BMI)
-Else
-   templ.Subst("bmi_data", "N/A")
-Endif
-Print templ
-Return templ
-
-End
-
-Private Function Esc_Tex(s As String) As String
-   
-   s = Replace$(s, "$", "\\$", gb.Text)
-   s = Replace$(s, "&", "\\&", gb.Text)
-   s = Replace$(s, "%", "\\%", gb.Text)
-   s = Replace$(s, ">", "$>$", gb.text)
-   s = Replace$(s, "<", "$<$", gb.text)
-   Return Trim$(s)
-   
 End
 
 Public Function Health_Summary_Construct_html(currentconsult As Cconsult) As String

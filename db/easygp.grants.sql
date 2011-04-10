@@ -245,8 +245,7 @@ GRANT select ON TABLE common.lu_laterality TO staff;
 GRANT SELECT ON TABLE common.lu_medicolegal TO staff;
 GRANT SELECT ON TABLE common.lu_motion TO staff;
 GRANT select ON TABLE common.lu_normality TO staff;
-GRANT select ON TABLE common.lu_occupations_bak TO staff;
-GRANT select ON TABLE common.lu_occupations TO staff;
+GRANT select,insert ON TABLE common.lu_occupations TO staff;
 GRANT SELECT ON TABLE common.lu_proximal_distal TO staff;
 GRANT SELECT ON TABLE common.lu_recreationaldrugs TO staff;
 GRANT select ON TABLE common.lu_religions TO staff;
@@ -477,6 +476,11 @@ GRANT usage on SEQUENCE documents.unmatched_patients_pk_seq TO staff;
 GRANT usage on SEQUENCE documents.unmatched_staff_pk_seq TO staff;
 GRANT usage on SEQUENCE import_export.lu_demographics_field_templates_pk_seq TO staff;
 GRANT usage on SEQUENCE import_export.lu_source_program_pk_seq TO staff;
+grant all on admin.staff_clinical_toolbar to staff;
+grant usage on admin.staff_clinical_toolbar_pk_seq to staff;
+grant select on contacts.vwOrganisations to staff;
+grant usage on clin_referrals.referrals_pk_seq to staff;
 -- in case grants info gets clobbered on database update
 -- this is a grants table
 -- we have it hare
+grant usage on sequence common.lu_occupations_pk_seq to staff;

@@ -8,6 +8,7 @@ Private module As Collection
 Private modules As Collection 
 Private icon_path As String 
 Private fk_module As Integer 
+Private Toolbuttons As Collection
 
 Public Sub Run() As Boolean
    
@@ -15,21 +16,37 @@ Public Sub Run() As Boolean
    
 End
 
-
-Public Sub Init(Optional pf As String = "", Toolbuttons As Collection)
-   Dim btn As Collection
+Public Sub Init(Optional pf As String = "", buttons As Collection)
    
+   toolbuttons = buttons
    parent_form = pf 
    If Parent_Form = "Admin" Then
-     tbAdd.Visible = True
+      tbAdd.Visible = True
    Else
       btnOk.Visible = True
+      btnCancel.Visible = False  
    Endif
+   Toolbar_Refresh()
+   Reload()
+   
+End
+
+Public Sub Toolbar_Refresh()
+   '-------------------------------------------------------
+   'Remove all existing toolbuttons from the sample toolbar
+   'Reload from the Toolbuttons collection
+   '-------------------------------------------------------
+
+   Dim hCtrl As Control
+   Dim btn As Collection
+   Dim tb As ToolButton
+   
+   For Each hCtrl In pnlToolButtons.Children
+      hCtrl.Delete()
+   Next
    For Each btn In Toolbuttons
       modEditAreaHelpers.ToolButton_Create(pnlToolButtons, btn!icon_path, btn!pk_module, 24, btn!name, Me)
    Next
-  
-   Reload()
 
 End
 
@@ -51,16 +68,50 @@ Public Sub Reload()
       
       If parent_form = "Admin" Then icon_path = module!icon_path
       TBOption = New CToolBarConfig(ScrollView1, module, max_label_width, Parent_Form) As "ToolButton"
-      obs = New Observer(TBOption.tbadd) As "tbAdd_Section"
+      obs = New Observer(TBOption.$hModuleAddButton) As "tbAdd_Section"
+      obs = New Observer(TBOption.$hModuleRemoveButton) As "tbRemove_Section"
    Next
    tbAdd.Enabled = True
+   
 End
 
 Public Sub tbAdd_Section_Click()
+   ' Dim tbtn As New ToolButton
+
+   Dim newbutton As Collection
+   Dim btn As Collection   
    
-  Stop Event
-  Print "you are trying to add" 
-   
+   Stop Event
+   For Each btn In ToolButtons
+      If btn!pk_module = Last.Parent.tag Then
+         Message.Info("This button already exists in your toolbar")
+         Return 
+      Endif
+   Next
+  '---------------------------------------
+   'Not yet on the toolbar, save to backend
+   '---------------------------------------
+   newbutton = New Collection 
+   newbutton!fk_module = Last.Parent.tag
+   newbutton!fk_staff = modDBConnect.currentUser!fk_staff
+   newbutton!display_order = Toolbuttons.count + 1
+   newbutton!fk_staff_clinical_toolbar = modDBConnect.insert("admin.staff_clinical_toolbar", newbutton)
+   modDBConnect.CommitTrans()
+   Toolbuttons = modAdminDBI.Clinical_Toolbuttons_Get(modDBConnect.currentUser!fk_staff)  
+   Toolbar_Refresh()
+   FClinical.Toolbar_Reload()
+End
+
+Public Sub tbRemove_Section_Click()
+   '-----------------------------------
+   'User has clicked on a remove button
+   '-----------------------------------
+
+   Stop Event
+   modAdminDBI.Clinical_Toolbuttons_Remove(Toolbuttons[Last.Parent.tag]!fk_staff_clinical_toolbar) 
+   Toolbuttons = modAdminDBI.Clinical_Toolbuttons_Get(modDBConnect.currentUser!fk_staff)  
+   Toolbar_Refresh()
+   FClinical.Toolbar_Reload()
 End
 
 Public Sub Save()
@@ -69,40 +120,40 @@ Public Sub Save()
    'This is not accessible  by individual users, rather Admin may add/delete
    'toolbuttons for general use
    '-------------------------------------------------------------------------- 
+   
    Dim hCtrl As Control
    Dim pnl As Panel
    Dim module As Collection
    Dim txtbox As TextBox
    
    For Each hCtrl In ScrollView1.Children 'all of these are CToolBarConfig
-       pnl = hctrl
-       module = New Collection
-       fk_module = 0    'new module has tag of 0
-       If pnl.tag <> 0 Then
+      pnl = hctrl
+      module = New Collection
+      fk_module = 0    'new module has tag of 0
+      If pnl.tag <> 0 Then
          module!pk = pnl.tag
          fk_module = pnl.Tag
-       End If  
-             
-        For Each hCtrl In pnl.Children
-        If Hctrl Is TextBox Then
-           If hctrl.tag = "module name" Then
-              txtbox = hctrl
-              module!name = txtbox.Text
-           End If
-           If hctrl.tag = "icon path" Then
-             txtbox = hctrl
-             module!icon_path = txtbox.Text
-           Endif
-        Endif
-       Next
-       modAdminDBI.Clinical_Module_Save(modules, fk_module, module)
+      End If  
       
-    Next
-     modDBConnect.CommitTrans()
-     Reload()
+      For Each hCtrl In pnl.Children
+         If Hctrl Is TextBox Then
+            If hctrl.tag = "module name" Then
+               txtbox = hctrl
+               module!name = txtbox.Text
+            End If
+            If hctrl.tag = "icon path" Then
+               txtbox = hctrl
+               module!icon_path = txtbox.Text
+            Endif
+         Endif
+      Next
+      modAdminDBI.Clinical_Module_Save(modules, fk_module, module)
+      
+   Next
+   modDBConnect.CommitTrans()
+   Reload()
+   
 End
-
-
 
 Public Sub ToolButton_MouseDrag()
    
@@ -124,13 +175,13 @@ Public Sub btnOK_Click()
    If Parent_Form = "Admin" Then
       Save()
    Else
-       Me.Close(True)
+      Me.Close(True)
    End If   
    
 End
 
 Public Sub btnCancel_Click()
-
+   
    If Parent_Form <> "Admin" Then
       Me.Close
    Else
@@ -146,6 +197,7 @@ Public Sub New_Section()
    
    Dim TBObption As CToolBarConfig
    Dim Module As New Collection
+   
    module!pk = 0
    module!name = "New Section"
    module!icon_path = "icon:/small/question"
@@ -155,12 +207,12 @@ Public Sub New_Section()
       .$hModuleTextBox.SetFocus()
       .$hModuleTextBox.Pos = 0
    End With
-
+   
 End
 
 Public Sub tbAdd_Click()
    
    New_Section()
    tbAdd.enabled = False   
-
+   
 End

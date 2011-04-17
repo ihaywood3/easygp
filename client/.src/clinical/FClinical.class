@@ -1,5 +1,5 @@
 ' Gambas class file
-' Copyright (C) 2008-2010 Dr Richard TERRY
+' Copyright (C) 2008-2011 Dr Richard TERRY
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -17,7 +17,9 @@
 ' Notes to put somewhere
 ' note the tag's in the recall menu == the pk of audit.lu_action table.
 '-------------------------------------------------
-
+Private Control_For_Focus As Control            'don't remove this without asking me (RT)
+                                                'used to set focus to a designated control after tab is instantiated
+                                                'see Editor_ShowPage(.)
 'These temporarly probably need removal at some stage
 Private iCertificatetype As Integer = const.certificate_type_medical 'default to this
 'fixme: make these deletions a different collection with key to type eg document/script etc.then remove the extra stuff
@@ -448,13 +450,13 @@ Public Sub patient_load_record(patient As Collection)
       End If
    End If
   ' 
-  FConfirmPatient.Init(Tempfile, patient!wholename)
-  If Not FConfirmPatient.ShowModal() Then 
-   txtSearch.SetFocus()
-   Return 
-  Else  
+ ' FConfirmPatient.Init(Tempfile, patient!wholename)
+ 'If Not FConfirmPatient.ShowModal() Then 
+ '  txtSearch.SetFocus()
+ '  Return 
+ ' Else  
       Try PicPatient.Picture = Picture.Load(Tempfile)
-  End If   
+ ' End If   
   
   
    currentconsult = New CConsult(patient)
@@ -1396,7 +1398,7 @@ Public Sub cvwResults_Refresh(Optional bRefresh As Boolean = False)
    
 End
 
-Public Sub Editor_ShowPage(sPageName As String)
+Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String, page_data As Variant)
    '----------------------------------------------------------------
    'PURPOSE:   Adds a new page to the progress notes workspace
    '           according to sType parameter passsed to it            
@@ -1421,6 +1423,9 @@ Public Sub Editor_ShowPage(sPageName As String)
    '    make it impossible to auto-set focus on the first control
    '    in the new form.
    '--------------------------------------------------------------
+   Dim Browser As FHtmlViewer
+   Dim GPCOG As FGPCOG
+   Dim Cumulative As FCumulative
    Dim Chads As FChads
    Dim K10 As FK10OutcomeTool
    Dim ProgressNotesPage As FProgressNotePage
@@ -1446,6 +1451,7 @@ Public Sub Editor_ShowPage(sPageName As String)
    Dim GeneralCheckup As FCheckups
    Dim page As FLinkContainer
    Dim EditPastNotes As FEditNotes
+   Dim PDF As FPDF
    '----------------------------------------------------------------------
    'With these pages, we want the appropriate list to be in the foreground
    'So this switches the list
@@ -1472,7 +1478,43 @@ Public Sub Editor_ShowPage(sPageName As String)
       Goto EnsureVisible 'was return 
    Endif
    
-   Select Case sPageName
+   Select Case sPageName 
+      Case "pdf"
+         page = New FLinkContainer 
+         PDF = New FPDF(page.VBoxEditor) 
+         PDF.Load_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ page_data)
+
+         WorkspaceEditor.Add(page)
+         page.tag = page_tag  
+         Page.title = page_tag   
+         EditorPages.Add(PDF, page_tag) 
+      Case "browser" 
+         page = New FLinkContainer 
+         Browser = New FHtmlViewer(page.VBoxEditor) 
+         Browser.WebView1.HTML = page_data   
+         WorkspaceEditor.Add(page)
+         page.tag = page_tag  
+         Page.title = page_tag   
+         EditorPages.Add(Browser, page_tag)
+        
+      Case "GPCOG"
+         page = New FLinkContainer 
+         GPCOG = New FGPCOG(page.VBoxEditor) 
+         GPCOG.Init(Currentconsult)
+         WorkspaceEditor.Add(page)
+         page.tag = sPageName
+         Page.title = sPageName
+         EditorPages.Add(GPCOG, "GPCOG")
+        
+      Case "Cumulative"
+         page = New FLinkContainer 
+         Cumulative = New FCumulative(page.VBoxEditor) 
+         Cumulative.Init(Currentconsult, currentconsult!results_received[cvwResults.Item.key]!pk_document)
+         WorkspaceEditor.Add(page)
+         page.tag = sPageName
+         Page.title = sPageName
+         EditorPages.Add(Cumulative, "Cumulative Results")
+
       Case "K10"
          page = New FLinkContainer 
          K10 = New FK10OutcomeTool(page.VBoxEditor) 
@@ -1491,14 +1533,14 @@ Public Sub Editor_ShowPage(sPageName As String)
          page.Title = "Chads Calculator"
          EditorPages.Add(Chads, "Chads Calculator")
       Case "Edit Notes" 
-         page = New FLinkContainer
-         EditPastNotes = New FEditNotes(page.VBoxEditor)
-         EditPastNotes.Init(currentconsult)
-         WorkspaceEditor.Add(page)
-         page.tag = "Edit Notes"
-         page.Title = "Edit Notes"
-         EditorPages.Add(AllPreviousNotes, "Edit Notes")
-         
+         ' page = New FLinkContainer
+         ' EditPastNotes = New FEditNotes(page.VBoxEditor)
+         ' EditPastNotes.Init(currentconsult)
+         ' WorkspaceEditor.Add(page)
+         ' page.tag = "Edit Notes"
+         ' page.Title = "Edit Notes"
+         ' EditorPages.Add(AllPreviousNotes, "Edit Notes")
+         ' Control_For_Focus = EditPastNotes.teNotes
       Case "All Previous Notes"
          page = New FLinkContainer
          AllPreviousNotes = New FHtmlViewer(page.VBoxEditor)
@@ -1507,6 +1549,7 @@ Public Sub Editor_ShowPage(sPageName As String)
          page.Title = "All Previous Notes"
          EditorPages.Add(AllPreviousNotes, "All Previous Notes")
          AllPreviousNotes.webview1.html = modProgressNotes.ConstructHTML_AllProgressNotes(currentconsult)
+         Control_For_Focus = AllPreviousNotes
       Case "Diabetes Cycle of Care"
          page = New FLinkContainer
          DiabetesCycleOfCare = New FDACC(page.VBoxEditor)
@@ -1541,6 +1584,7 @@ Public Sub Editor_ShowPage(sPageName As String)
          ProgressNotesPage.lblNotesFor.text = "New General Notes"
          ProgressNotesPage.Init(currentconsult)
          EditorPages.Add(ProgressNotesPage, "New General Notes")
+         Control_For_Focus = ProgressNotesPage.Notes_Editor.teNotes
       Case "Travel"
          page = New FLinkContainer
          TravelPage = New FTravel(page.VBoxEditor)
@@ -1689,6 +1733,7 @@ Public Sub Editor_ShowPage(sPageName As String)
          page.Title = "Recalls"                      'put up headings
          EditorPages.Add(RecallPage, "Recalls")
          RecallPage.FAdditionalNotesEditor.bExit = False 
+         Control_For_Focus = RecallPage.txtRecallFor
       Case "Skin Excision"
          page = New FLinkContainer
          ExcisionPage = New FProcedures(page.VBoxEditor)
@@ -1712,7 +1757,6 @@ Public Sub Editor_ShowPage(sPageName As String)
       Form_Html_Viewer.Visible = False 
       Form_ExportClinical.Visible = False 
    End If
-   
 End 
 
 Function Editor_SetActivePage(pagetitle As String) As Boolean
@@ -2623,9 +2667,11 @@ Public Sub mnuResultsReceived_Click()
    '--------------------------------------------------------
    
    Dim D As Collection 
-   
+  
    cvwResults.MoveCurrent()
    Select Case Last.tag
+      Case "cumulative"
+          Editor_ShowPage("Cumulative") 
       Case "fonts"
          modUtil.Columnview_SetFont(cvwResults, "TabbedLists")
       Case "adjust columns"
@@ -3290,14 +3336,16 @@ Public Sub Inbox_showResult()
    Select Case file_extension
       Case "pdf"
     '     vBoxWebBrowser.Visible = False
-         Form_Html_Viewer.Visible = False 
-         Vbox_PDF.Visible = True
+       '  Form_Html_Viewer.Visible = False 
+       '  Vbox_PDF.Visible = True
          filename = currentconsult!results_received[cvwResults.Item.Key]!source_file
-         FPDF.Load_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ filename)
+        ' FPDF.Load_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ filename)
+          Editor_ShowPage("pdf", currentconsult!results_received[cvwResults.Item.Key]!tag_user, filename)
       Case Else
-         Vbox_PDF.Visible = False   
+        Editor_ShowPage("browser", currentconsult!results_received[cvwResults.Item.Key]!tag_user, currentconsult!results_received[cvwResults.Item.Key]!html)
+       ' Vbox_PDF.Visible = False   
         ' vBoxWebBrowser.Visible = True      
-         Form_Html_Viewer.Visible = True  
+        ' Form_Html_Viewer.Visible = True  
    End Select
    '----------------------------------------------------------------------
    'Now determine if this has actually been viewed and filed by the doctor
@@ -3335,7 +3383,7 @@ Public Sub Inbox_showResult()
       UnFiled_Document_Metadata_Show(True)                                    'set up FClinical to show FMetadata
    Else
      ' WebBrowserNotes.html = currentconsult!results_received[cvwResults.Item.Key]!html
-      Form_Html_Viewer.WebView1.html = currentconsult!results_received[cvwResults.Item.Key]!html
+   '   Form_Html_Viewer.WebView1.html = currentconsult!results_received[cvwResults.Item.Key]!html
       UnFiled_Document_Metadata_Show(False)
    End If 
    
@@ -3735,16 +3783,14 @@ Public Sub tbSections_Click()
    
    If Not currentconsult Then Return
    WorkspaceEditor.Lock()
-   ' Editor_ShowPage(Last.tag)
    Editor_ShowPage(const.Clinical_Toolbuttons[Last.tag]!name)
-  ' form_clinical.vBoxWebBrowser.Visible = False
    form_clinical.Form_Html_Viewer.Visible = False  
    WorkspaceEditor.UnLock()
-   
+   Control_For_Focus.SetFocus()                 'DO NOT REMOVE THIS SEE DECLARATION SECTINO AT THE TOP
 End
 
 Public Sub TabbedLists_Drag()
-   
+   Print Last.tag
    cvwResults.Drag(cvwResults[1].text)
    '  ListBox1.Drag(ListBox1[0].Text, "text/uri-list")
    '
@@ -4276,6 +4322,14 @@ Public Sub TabbedLists_MouseDrag()
    
    Last.MoveCurrent()
    Select Case Last.tag
+      Case "requests" 
+         Drag.icon = Picture.Load("icons/16/bloodtube16x16.png")
+         If Split(cvwRequests.item.key, "-").Count = 3 Then
+            Last.Drag(Str(currentconsult!requests_ordered[Right(cvwRequests.item.key, Len(cvwRequests.item.key) - InStr(cvwRequests.Item.key, "-"))]!pk_view))
+          Else
+           Last.Drag(Str(currentconsult!requests_ordered[cvwRequests.item.key]!pk_view))
+         End If
+  
       Case "results"
          Drag.icon = Picture.Load("icons/16/bloodtube16x16.png")
          Last.Drag(Str(currentconsult!results_received[cvwResults.Item.Key]!pk_document))

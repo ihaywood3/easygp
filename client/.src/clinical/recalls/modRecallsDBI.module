@@ -1,5 +1,5 @@
 ' Gambas module file
-' Copyright (C) 2008,2009 Dr. Richard Terry
+' Copyright (C) 2008-2011 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -13,7 +13,9 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+'----------------------------------------------------------------------------
+' PURPOSE        Database interface routines for recalls and their management
+'----------------------------------------------------------------------------
 Private $Result As Result
 Private sql As String
 Private aCollection As Collection
@@ -22,19 +24,19 @@ Private currentRecall As Collection
 Private currentconsult As CConsult
 
 Public Sub Set_local_variables(CurrentRecall As Collection, cons As CConsult)
-
+   
    currentrecall = currentrecall
    currentConsult = currentconsult
-
+   
 End
 
 Public Function Reason_Save(reason As String) As Integer
    '-----------------------------------
    'Saves a new reason, returns its key
    '-----------------------------------
-
+   
    Dim sql As String
-
+   
    sql = "insert into clin_recalls.lu_reasons (reason) Values(" 
    sql &= "$$" & Trim(reason) & "$$) returning pk"
    Return modDBConnect.exec_query(sql)!pk
@@ -48,7 +50,7 @@ Public Function Get_Single_Recall(pk_recall As Integer) As Collection
    'to the clin_recalls.recalls table, rather than stuff around re-constituting
    'all the correct fields
    '--------------------------------------------------------------------------- 
-
+   
    sql = "SELECT * FROM clin_recalls.vwRecalls WHERE " 
    sql &= "pk_recall=" & pk_recall & " AND deleted = False"
    Return modDBConnect.exec_query_collection(sql)
@@ -57,7 +59,7 @@ End
 
 Public Function Recalls_Due_Get() As Collection
    'embryonic query for recall management
-
+   
    Return modDBConnect.exec_query_collection("SELECT * from clin_recalls.vwRecallsDue")
    
 End
@@ -77,7 +79,7 @@ Public Function get_logged(fk_patient As Integer, Optional active As Boolean = T
    '           Is because  anything <5 is an outstanding recall   
    'SEE    : cont.cAuditAction_Recall* constants
    '---------------------------------------------------------------------
-
+   
    sql = "SELECT * FROM clin_recalls.vwRecalls WHERE fk_patient = " & fk_patient  
    If bshowAll = False Then
       If active Then
@@ -92,7 +94,7 @@ Public Function get_logged(fk_patient As Integer, Optional active As Boolean = T
       sql &= " AND deleted = False" 
    Endif
    Return modDBConnect.exec_query_collection(sql)
-
+   
 End
 
 Public Function Get_Recalls_Current_consult(fk_patient As Integer, fk_consult As Integer) As Collection
@@ -104,21 +106,31 @@ Public Function Get_Recalls_Current_consult(fk_patient As Integer, fk_consult As
    '           Is because  anything <5 is an outstanding recall   
    'SEE    : cont.cAuditAction_Recall* constants
    '---------------------------------------------------------------------
-
+   
    Dim sql As String
-
+   
    sql = "SELECT * FROM clin_recalls.vwRecalls WHERE  ("
    sql &= "active = True"
    sql &= " ) AND fk_patient = " & fk_patient & " AND fk_consult = " & fk_consult
    Return modDBConnect.exec_query_collection(sql)
-
+   
+End
+Public Function Recalls_Inclusions_Save(pk_recall As Integer, INclusions As Collection)
+   Dim Inclusion As Collection
+   For Each inclusion In Inclusions
+       Inclusion.Remove("pk_view") 
+       Inclusion!fk_recall = pk_recall
+       modDBConnect.insert("clin_recalls.links_forms", Inclusion)
+   Next
+   
+   
 End
 
 Public Function Save(currentconsult As Cconsult, old_pk As Integer, recall As Collection) As Integer
    '-------------------------------------------------------
    'Saves a single recall (which is a collection of fields)
    '-------------------------------------------------------
-
+   
    Dim recallintervalDefaults As New Collection 
    Dim audit As New Collection 
    Dim re As Regexp
@@ -189,7 +201,7 @@ End
 
 Public Sub Mark_Completed(pk_recall As Integer, Optional bActive As Boolean = False, Optional bDeleted As Boolean = False)
    'FIXME, PROBABLY DONT' NEED to both make status as inactive and deleted as false ??
-
+   
    Dim sql As String
    
    sql = "Update clin_recalls.recalls set active = "
@@ -210,7 +222,7 @@ Public Sub Staff_Get_Clinical(txtbox As Textbox, listview1 As Listview, lbl As L
    '----------------------------------------------------
    'Gets a list of clinical staff members for the recall
    '----------------------------------------------------
-
+   
    Dim sStaff As String
    
    If Trim(txtbox.text) = "" Then
@@ -245,9 +257,9 @@ Public Sub Staff_Get_Clinical(txtbox As Textbox, listview1 As Listview, lbl As L
 End
 
 Public Function Get_Reason_pk(reason As String) As Integer
-
+   
    Dim $Result As Result
-
+   
    sql = "Select pk from clin_recalls.lu_reasons WHERE reason ILIKE $$" & reason & "$$"
    $Result = modDBConnect.exec_query("Select pk from clin_recalls.lu_reasons WHERE reason ILIKE $$" & reason & "$$")
    If $Result.COUNT Then Return $Result!pk
@@ -263,21 +275,21 @@ Public Function Get_Reasons(reason As String) As Collection
    'EXPECTS     : string representing a reason eg 'pap'
    'RETURNS     : a collection of reasons           
    '--------------------------------------------------- 
-
+   
    sql = "SELECT * from clin_recalls.vwReasons WHERE "
    sql &= "lower(reason) ILIKE $$%" & Lower(reason) & "%$$ "
    sql &= "AND fk_staff = " & modDBConnect.currentUser!fk_staff & " LIMIT 15 "
    
    Return modDBConnect.exec_query_collection(sql)
-
+   
 End
 
 Public Function Templates_Get() As Collection
    '--------------------------------------------------------------------
    'retrieves a list of letter templates for a recall e.g annual checkup
+   'see Clerical.FRecallLetterTemplates
    '--------------------------------------------------------------------
-
-   Return modDBConnect.exec_query_collection("Select * from clin_recalls.lu_templates order by name")
+   Return modDBConnect.exec_query_collection("Select * from clin_recalls.lu_templates WHERE deleted = false order by name")
    
 End
 
@@ -285,26 +297,16 @@ Public Sub Template_Delete(fk_template As Integer)
    
 End
 
-Public Function Templates_Save(template As Collection)
-   
-   If Not IsNull(template!fk_template) Then
-      template!fk_template = modDBConnect.insert("clin_recalls.lu_templates", template)
-   Else
-      modDBConnect.update("clin_recalls.lu_template")
-   End If
-   
-End
+Public Function Templates_Save(old_data As Collection, fk_template As Integer, template As Collection) As Integer
+   '---------------------------------------
+   'saves a new or modified letter template
+   'see Clerical.FRecallLetterTemplates
+   '---------------------------------------
 
-' Public Sub AuditTrail_Get_Recalls(schema_tablename As String, fk_patient As Integer, Optional fk_reason_recall As Integer) As Collection 
-'    '------------------------------------------------------------------
-'    'if pk_scratchpad then display just the audit history for that item
-'    'otherwise the entire scratchpad history. FIX ME ALL SHOULD BE IN ONE ROUTINE LIKE THE ABOVE
-'    'AT MOMENT SCHEMA_TABLENAME NOT USED
-'    '------------------------------------------------------------------
-'    Dim sql As String
-'    sql = "Select * from clin_recalls.vwRecallsAudit where fk_patient =" & fk_patient
-'    If fk_reason_recall <> 0 Then
-'       sql &= " AND fk_reason_recall = " & fk_reason_recall
-'    End If   
-'    Return modDBConnect.exec_query_collection(sql)
-' End
+   If fk_template = 0 Then
+      fk_template = modDBConnect.insert("clin_recalls.lu_templates", template)
+   Else
+      modDBConnect.update("clin_recalls.lu_templates", old_data[fk_template], template)
+   End If
+   Return fk_template   
+End

@@ -9,6 +9,8 @@
 ' PURPOSE      A module to log recalls and reminders needed in patient care
 '              See also Clerical/recall_management/FRecallManagment
 '              which is used to send out referral letters
+' TODOS        Implement Accompanying Forms
+'
 ' BUGS         email rterry@internode.on.net or rterry@pacific.net.au
 
 Private bEmbedded As Boolean               'If true this form is embedded elsewhere than as a main tab
@@ -31,15 +33,16 @@ Private fk_interval_unit As Integer
 Private default_interval As Integer
 Private fk_default_interval_unit As Integer
 Public FAdditionalNotesEditor As FEditor
-Private cmbTemplates As ComboBox
 Private template As Collection
 Private templates As Collection '0 indexed to match the combo
+Private fk_template As Integer 
 Private fk_progressNote As Integer
 Private cProgressNote_Section As Integer
 Private fk_pasthistory As Integer
 Private fk_table_row As Integer        'fixme fim my name = e.g fk_document
 Private schema As String
 Private table As String 
+Private Inclusions_EditArea As Collection
 
 Public Sub set_embedded(flag As Boolean, embeddedinform As String)
    '--------------------------------------------------
@@ -67,20 +70,20 @@ End
 
 Public Sub Form_KeyPress()
    
-   Dim CtrlDown As Boolean
-   Dim FnDown As Boolean
-   
-   Try CtrlDown = Key.Control
-   If CtrlDown Then
-      Select Case Key.code
-         Case Asc("N")
-            EditArea_Clear()
-            
-         Case Asc("S")
-            Save()
-      End Select
-   End If
-   
+   ' Dim CtrlDown As Boolean
+   ' Dim FnDown As Boolean
+   ' 
+   ' Try CtrlDown = Key.Control
+   ' If CtrlDown Then
+   '    Select Case Key.code
+   '       Case Asc("N")
+   '          EditArea_Clear()
+   '          
+   '       Case Asc("S")
+   '          Save()
+   '    End Select
+   ' End If
+   ' 
 End
 
 Public Sub Form_Close()
@@ -95,8 +98,40 @@ End
 Public Sub ReLoad()
    
    Recalls_This_Consult_Show()   'show recalls ordered this consult
-   EditArea_Clear()              'clear the editing area and set focus to txtRecallFor
+   Recall_New()                  'clear the editing area, default to new recall
    
+End
+
+Public Sub EditArea_Clear()
+
+   bExit = True
+   modEditAreaHelpers.EditArea_Clear(VBox_EditArea)  'clear textboxes/combo's
+   cmbSeeAnyone.Enabled = False
+   lblRecallForInvalid.Visible = False
+   lblStaffMissing.Visible = False
+   Vbox_EditArea.BackGround = Color.White             'remove red outline around edit area  ?remove colour leave red
+   Vbox_EditArea.Padding = 0                         
+   listview1.Visible = False                         'remove popup list if showing
+   FAdditionalNotesEditor.Editor_Clear()
+   FAdditionalNotesEditor.Vbox_ConsultNotes.Background = Color.gray 
+   cmbContactMethod.Index = const.CommModalityLetter          'default = contact by letter 
+   cmbAppointmentLength.index = const.AppointmentLengthStandard
+   rbUrgencyRoutine.Value = True
+   cmbTemplates.Index = -1
+   fk_template = 0
+   teTemplates.Clear()
+   modEditAreaHelpers.mnuHealthIssues_Refresh(currentconsult, mnuHealthIssues, Me) 'create the popup health issues menu
+   txtHealthIssue.text = "General Notes"   'fk_pasthistory is the default of 0
+   cProgressNote_Section = const.cSection_GeneralNotes
+   With lblRecallFor
+      .Foreground = Color.Black
+      .Text = "Recall For"
+   End With
+   Inclusions_EditArea = New Collection 
+   lvwInclusions_EditArea.Clear()
+   lblINclusions.text = "Inclusions"
+   bExit = False
+
 End
 
 Public Sub Init(cons As CConsult)
@@ -161,7 +196,7 @@ Public Sub Save()
    Dim sPerson As String            'person who the recalled patient will see
    Dim sProgressNote As String 
    
-   If Vbox_EditArea.Padding = 0 Then Return ' no changes, nothing to save
+   If Vbox_EditArea.Padding = 0 And FAdditionalNotesEditor.Vbox_ConsultNotes.padding = 0 Then Return ' no changes, nothing to save
    If Not Valid_Recall() Then Return
    ' -----------------------------------------------------------
    ' Now load a fresh collection with data from the widgets
@@ -180,10 +215,11 @@ Public Sub Save()
    recall!active = True
    recall!additional_text = FAdditionalNotesEditor.Get_Copy_of_Editor_text()
    recall!fk_staff = modDBConnect.currentUser!fk_staff 
+   If fk_template <> 0 Then recall!fk_template = fk_template   
    If fk_pasthistory <> 0 Then
       recall!fk_pasthistory = fk_pasthistory
    End If
-   ' txtAdditionalNotes.Text
+   recall!additional_text = FAdditionalNotesEditor.teNotes.text 'always, even if empty string 'could have been deleted
    'Temporarily put in current user as person to undertake recall but this
    'may not be the case and code will be inserted to fix this
    'FIXME RICHARDs
@@ -198,8 +234,11 @@ Public Sub Save()
    '--------------------------------------------------------------------------------------
    sProgressNote = "<B> Recall logged:</B> for " & txtRecallFor.Text & " due on " & Format(Val(txtdate.text), "dd/mm/yyyy")
    modDBConnect.BeginTrans()
-   recall!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote, cProgressNote_Section, fk_progressNote, txtHealthIssue.text, fk_pasthistory, False)
-   pk_recall = modRecallsDBI.Save(currentconsult, pk_recall, recall)
+       recall!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote, cProgressNote_Section, fk_progressNote, txtHealthIssue.text, fk_pasthistory, False)
+       pk_recall = modRecallsDBI.Save(currentconsult, pk_recall, recall)
+       If Inclusions_EditArea.count Then
+           modRecallsDBI.Recalls_Inclusions_Save(pk_recall, Inclusions_EditArea) 
+       Endif
    'if Embedded from the inbox, link this recall back to the document in an audit trail
    If fk_table_row Then
       modInboxDBI.Link_Document_Action(Schema, table, pk_recall, fk_table_row)
@@ -236,6 +275,7 @@ Public Sub mnuHealthIssues_Click()
    'User wants to link a request form to a health issue
    'The menu tag = the pk_pasthistory
    '---------------------------------------------------
+
    Select Case Last.tag
       Case "general notes", "remove link"
          txtHealthIssue.text = "General Notes"
@@ -247,9 +287,8 @@ Public Sub mnuHealthIssues_Click()
          cProgressNote_Section = const.cSection_recalls
    End Select
    EditArea_Notify_DataChange(True)
+
 End
-
-
 
 Public Sub Settings_Save()
    
@@ -258,11 +297,11 @@ Public Sub Settings_Save()
       'The string value of Embedded_form is set by the calling form
       'currently Inbox or Consult form so appropriate split values saved
       '-----------------------------------------------------------------
-      Settings["Recalls_Embedded_" & Embedded_form & "/VSplit_Recalls"] = VSplit_Recalls.layout
+      Settings["Recalls_Embedded_" & Embedded_form & "/VSplit_EditArea"] = VSplit_EditArea.layout
       Settings["Recalls_Embedded_" & Embedded_form & "/HSplit_EditArea"] = HSplit_EditArea.Layout
       Settings["Recalls_Embedded_" & Embedded_form & "/HSplit_AdditionalNotes"] = HSplit_AdditionalNotes.Layout
    Else
-      Settings["Recalls/VSplit_Recalls"] = VSplit_Recalls.layout
+      Settings["Recalls/VSplit_EditArea"] = VSplit_EditArea.layout
       Settings["Recalls/HSplit_EditArea"] = HSplit_EditArea.Layout
       Settings["Recalls/HSplit_AdditionalNotes"] = HSplit_AdditionalNotes.Layout
       
@@ -273,71 +312,49 @@ End
 Private Sub Settings_Load()
    
    If bEmbedded Then
-      Try VSplit_Recalls.layout = Settings["Recalls_Embedded_" & Embedded_form & "/VSplit_Recalls"]
+      Try VSplit_EditArea.layout = Settings["Recalls_Embedded_" & Embedded_form & "/VSplit_EditArea"]
       Try HSplit_EditArea.Layout = Settings["Recalls_Embedded_" & Embedded_form & "/HSplit_EditArea"]
       Try HSplit_AdditionalNotes.Layout = Settings["Recalls_Embedded_" & Embedded_form & "/HSplit_AdditionalNotes"]
+      Try VSplit_Recalls.layout = Settings["Recalls_Embedded_" & Embedded_form & "/VSplitRecalls"]
    Else
-      Try VSplit_Recalls.layout = Settings["Recalls/VSplit_Recalls"]
+      Try VSplit_EditArea.layout = Settings["Recalls/VSplit_EditArea"]
       Try HSplit_EditArea.Layout = Settings["Recalls/HSplit_EditArea"]
       Try HSplit_AdditionalNotes.Layout = Settings["Recalls/HSplit_AdditionalNotes"]
+      Try VSplit_Recalls.layout = Settings["Recalls/Vsplit_Recalls"]
    End If
    
 End
 
-Public Sub EditArea_Clear()
-   'Clear the editing area, re-set current recall
-   
-   Dim u As Collection
-   
-   u = modDBConnect.currentUser
+Public Sub Recall_New()
+   '-----------------------------------------------
+   'User has selected a new recall
+   'Clear the editing area and collections and keys
+   '-----------------------------------------------
+   EditArea_Clear()              
    bExit = True                                      'stop re-entrance into change routines
-   Vbox_EditArea.BackGround = Color.White             'remove red outline around edit area  ?remove colour leave red
-   Vbox_EditArea.Padding = 0                         
-   listview1.Visible = False                         'remove popup list if showing
-   txtRecallFor.text = ""                            'clear the text boxes
-   txtDefaultInterval.text = ""
-   txtInterval.text = "" 
-   txtDate.text = ""
-   cmbSeeAnyone.index = 0                            'FIXME UNHARD CODE ME
-   cmbSeeAnyone.Enabled = False
-   lblRecallForInvalid.Visible = False
-   lblStaffMissing.Visible = False
-   txtSeeSpecificPerson.text = ""
-   '------------------------------------------------------------------
-   'clear editor and any red notification around it
-   'note that the editor_clear() dosn't remove the red box, becuase in 
-   'some situations (not in this form) the cleared editor could be the
-   'actual change as it could have contained text
-   '------------------------------------------------------------------
-   FAdditionalNotesEditor.Editor_Clear()
-   FAdditionalNotesEditor.Vbox_ConsultNotes.Background = Color.gray 
-   '-----------------------------------------------------------------------
-   'Create new recall colection and fill with default values where possible
-   'note that not all of these are saved, but are needed for display
-   '-----------------------------------------------------------------------
-   AccompanyingForms = New Collection             'any forms to be sent with recall NOT IMPLEMENTED
+   AccompanyingForms = New Collection                'any forms to be sent with recall NOT IMPLEMENTED
    RecallReasons = New Collection
    '--------------------------------------------------------------------
    'NB:this is important to understand:
    'fk_staff  = key to admin.staff table =  staff to see when comes back
    'this defaults to the person entering the data but can be changed
    '-------------------------------------------------------------------- 
-   txtSeeSpecificPerson.text = u!title & " " & u!wholename 
-   cmbContactMethod.Index = const.CommModalityLetter          'default = contact by letter 
-   txtContactDetails.text = ""
-   cmbAppointmentLength.index = const.AppointmentLengthStandard
-   rbUrgencyRoutine.Value = True
+   txtSeeSpecificPerson.text = modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename 
    bEditing = False                'not in edit mode
    fk_pasthistory = 0
-   txtHealthIssue.text = "General Notes"   'fk_pasthistory is the default of 0
-   cProgressNote_Section = const.cSection_GeneralNotes
-   txtRecallFor.SetFocus()
    bExit = False
    fk_reason = 0  'default
    fk_progressNote = -1
    fk_urgency = const.UrgencyLevelRoutine 'default
    pk_recall = -1
-   modEditAreaHelpers.mnuHealthIssues_Refresh(currentconsult, mnuHealthIssues, Me) 'create the popup health issues menu
+   With lblRecallFor
+      .Foreground = Color.Red
+      .Text = "New Recall For"
+   End With
+   Inclusions_EditArea = New Collection
+   lvwInclusions_EditArea.Enabled = True  
+   txtRecallFor.SetFocus()
+ 
 End
 
 Public Sub Layout_Controls()
@@ -373,29 +390,13 @@ Public Sub Layout_Controls()
       FAdditionalNotesEditor = New FEditor(Vbox_AdditionalNotes)
       FAdditionalNotesEditor.bExit = True
       FAdditionalNotesEditor.lblHeading.text = "Additional notes for recall letter"
-      lbl = New Label(FAdditionalNotesEditor.HBox_Editor)
-      With lbl 
-         .AutoResize = True
-         .Text = " Templates "
-         .expand = False
-      End With
-      cmbTemplates = New ComboBox(FAdditionalNotesEditor.HBox_Editor) As "cmbTemplates"
-      cmbTemplates.Expand = True
    End If
    EditArea_Resize_Labels()
-   
-   '----------------------------------------
-   'Get any existing templates load to combo
-   '---------------------------------------- 
-   templates = modUtil.LoadCombo(cmbTemplates, modRecallsDBI.Templates_Get(), "name")
+   templates = modUtil.LoadCombo(cmbTemplates, modRecallsDBI.Templates_Get(), "name")  'Get any existing templates load to combo
    MenuButton1.menu = "mnuHealthIssues"
+
 End
 
-Public Sub cmbTemplates_click()
-   
-   FAdditionalNotesEditor.teNotes.RichText = templates[cmbTemplates.index]!template
-   
-End
 
 Public Sub EditArea_KeyRelease()
    
@@ -494,9 +495,8 @@ Public Sub EditArea_GotFocus()
          
       Case "recall for"
          With listview1
-            .top = Vsplit_Recalls.top + HBox_RecallFor.Height
-            .left = txtRecallFor.Left + Vbox_Recalls.padding
-            '   .Left = Vbox_EditArea.left + txtRecallFor.Left
+            .top = VSplit_EditArea.top + Last.Parent.top + Last.Parent.height
+            .left = Last.Parent.Left
             .width = txtRecallFor.Width
          End With
          
@@ -554,10 +554,8 @@ Public Sub EditAreaButtons_Click()
       Case "save"
          Save()
       Case "new recall"
-         EditArea_Clear()
-         
-      Case "preview"
-      Case "help"
+          Recall_new()
+       Case "help"
          FClinical.Help_Show(Application.Path &/ "help/recalls.html", "Help:Recalls", True)
    End Select
    
@@ -758,10 +756,9 @@ Public Sub Listview1_DblClick()
          'Can't use  cmbTemplates.Find(Trim(txtRecallFor.text))
          'because this is case sensitive
          '----------------------------------------------------
-         ' If cmbTemplates.Find(Trim(txtRecallFor.text)) <> -1 Then
-         '    cmbTemplates.index = cmbTemplates.Find(Trim(txtRecallFor.text))
-         '    cmbTemplates_click()
-         ' End If   
+         If cmbTemplates.Find(Trim(txtRecallFor.text)) <> -1 Then
+            cmbTemplates.index = cmbTemplates.Find(Trim(txtRecallFor.text))
+          End If   
          ' For Each Template In templates
          '    If Trim(Lower(txtRecallFor.text)) = Lower(template!name) Then
          '       cmbTemplates.index = templates.Key
@@ -824,6 +821,7 @@ Public Sub Edit()
       Case const.UrgencyLevelUrgent
          rbUrgencyUrgent = True
    End Select
+   Try fk_template = recall!fk_template 'if error it is 0
    fk_urgency = recall!fk_urgency
    fk_reason = recall!fk_reason
    fk_default_interval_unit = recall!fk_default_interval_unit
@@ -835,10 +833,19 @@ Public Sub Edit()
       Case const.Units_year
          sString &= "Y"
    End Select
+   If recall!fk_template <> 0 Then
+      cmbTemplates.index = cmbTemplates.Find(recall!template_name)
+   Endif
    txtDefaultInterval.text = sString
-   ' txtAdditionalNotes.text = recall!additional_text
+   txtSeeSpecificPerson.text = recall!title & " " & recall!wholename
+   FAdditionalNotesEditor.bExit = True 
    FAdditionalNotesEditor.teNotes.text = recall!additional_text
-   
+   FAdditionalNotesEditor.bExit = False  
+   With lblRecallFor
+      .Foreground = Color.Red
+      .Text = "Edit Recall"
+   End With
+   Print recall!template
    bExit = False 
    
 End
@@ -958,17 +965,13 @@ Public Sub EditArea_Notify_DataChange(flag As Boolean)
    '--------------------------------------------------
    
    If flag Then
-      Vbox_EditArea.Padding = 1
-      Vbox_EditArea.Background = Color.red
-      VBox_RecallsList.Background = Color.red
-      VBox_RecallsList.Padding = 1 
+      Vbox_EditArea_Outer.Padding = 1
+      Vbox_EditArea_Outer.Background = Color.red
       tbSave.foreground = Color.red
       
    Else
-      Vbox_EditArea.Padding = 0
-      Vbox_EditArea.Background = Color.white
-      VBox_RecallsList.Background = Color.White
-      VBox_RecallsList.Padding = 0
+      Vbox_EditArea_Outer.Padding = 0
+      Vbox_EditArea_Outer.Background = Color.white
       tbSave.foreground = Color.Black
    End If
    
@@ -1139,7 +1142,7 @@ Public Sub EditArea_RadioButtons_Click()
          fk_urgency = const.UrgencyLevelUrgent
          
    End Select  
-   
+   EditArea_Notify_DataChange(True)
 End
 
 Public Sub txtAdditionalNotes_KeyPress()
@@ -1163,8 +1166,8 @@ Public Sub Patient_ShowContactDetails()
    'If embedded from INBOX no comms FIXME PUT IN COMMS IN INBOX CODE
    '----------------------------------------------------------------
    
-   cvwContacts.Clear()
-   Try modEditAreaHelpers.Patient_Comms_Display(currentconsult!comms, cvwContacts, True)
+   'cvwContacts.Clear()
+  'Try modEditAreaHelpers.Patient_Comms_Display(currentconsult!comms, cvwContacts, True)
    
 End
 
@@ -1210,7 +1213,132 @@ Public Sub cmbEditArea_Click()
          
       Case "appointment length"
          
+      Case "templates"
+            fk_template = templates[cmbTemplates.Index]!pk  
+            teTemplates.RichText = templates[cmbTemplates.Index]!template
    End Select
+   If Bexit Then Return 
+   EditArea_Notify_DataChange(True)
+End
+
+Public Sub VSplit_EditArea_Resize()
+
+   HBox_Template.height = HBox_RecallFor.height
+
+End
+Public Sub lvwInclusions_EditArea_Drop()
+   '---------------------------------------------------------------------
+   'Something is being dropped on the inclusions list in the edit area
+   'Drag.source = the control this is coming from, but
+   'is a 'control', not for example a columnview  so 
+   'have to test it as below
+   '---------------------------------------------------------------------
    
+   Dim cv As ColumnView                'the 'source' control if columnview
+   Dim sString As String               'summary eg 01/01/2010 CXR
+   Dim Document As Collection          'the document we want to include
+   Dim documents As Collection
+   Dim c As Control
+   Dim Inclusion As New Collection
+   Dim pic As New Picture
+   Dim select_mode As Integer 
+   Dim x As Integer
+   
+   'if selection mode = 1  = single document is highlighted
+   If Drag.Source Is Columnview Then   'a result or letter ie document
+      cv = Drag.Source
+      cv.MoveCurrent()
+      Select_mode = cv.mode
+      If cv.mode = 1 Then                    'only 1 item selected
+         Inclusion!pk_view = Drag.data
+         Inclusion!fk_form = currentconsult!requests_ordered[drag.data]!fk_form
+         Inclusions_EditArea.Add(Inclusion, lvwInclusions_EditArea.count)
+      Else
+         cv.MoveFirst()
+         For x = 0 To cv.count - 1
+            If cv.Item.Selected = True Then
+               Inclusion!fk_form = currentconsult!requests_ordered[drag.data]!fk_form
+               Inclusion!pk_view = drag.data
+               Inclusions_EditArea.Add(Inclusion, Inclusions_EditArea.count)
+            Endif
+            cv.MoveNext()
+         Next
+      End If  
+    End If
+   lvwInclusions_EditArea_Refresh(Inclusions_EditArea)
+
+   EditArea_Notify_DataChange(True)
+End
+
+Public Sub lvwInclusions_EditArea_Refresh(Inclusions As Collection)
+   '---------------------------------------------------------------------
+   'Refresh the inclusions list for the current document in the edit area
+   'ie. this is the list next to the letter text, not the one
+   'underneath which is for thos letters already printed
+   'Called by  lvwInclusions_EditArea_Drop: Inclusions_EditArea collection
+   '           Referral_Edit:Inclusions_Referral_This_Consult collection
+   '---------------------------------------------------------------------
+   Dim inclusion As Collection
+   Dim sString As String
+   Dim Request As Collection 
+   
+   '
+   lvwInclusions_EditArea.Clear()
+   For Each Inclusion In Inclusions
+      Try Request = currentconsult!requests_ordered[inclusion!pk_view]         '? a result??
+      sString = Request!date & " " & Request!requests_summary  
+      lvwInclusions_EditArea.add(lvwInclusions_EditArea.count, sSTring)
+   Next
+   lblInclusions.text = "Included Items (" & Str(lvwInclusions_EditArea.Count) & ")"
+
+End
+Public Function Inclusions_Construct_HTML(Inclusions As Collection) As String
+   '--------------------------------------------
+   'Construct a string describing the inclusions
+   '-------------------------------------------- 
+
+   Dim sHtml As String 
+   Dim sInclusions As String 
+   Dim inclusion As Collection 
+   Dim document As Collection
+   
+   sHtml = ""
+   "<TABLE WIDTH=100%>"
+   "<COL WIDTH= 6%>"
+   "<COL WIDTH=94%>"
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=6%>"
+   "<P><small><small>Inclusions</small></small></P>"
+   "</TD>"
+   "<TD WIDTH=94%>"
+   "<P<small><small>%inclusions%</small></small></P>"
+   "</TD>"
+   "</TR>"
+   "</TABLE>"   
+     
+   If Inclusions.count = 0 Then Return ""
+   
+   For Each inclusion In Inclusions
+      Try Document = currentconsult!results_received[inclusion!fk_document]         '? a result??
+      If IsNull(document) Then                                                      'it wasn't a result             
+         Try Document = currentconsult!letters_received[inclusion!fk_document]      '? a letter ??   
+      End If  
+      '---------------------------------------------------------------------------
+      'If it was a valid document, print - at moment we only handle pdf's and html
+      'but hey, that's our perogative
+      '---------------------------------------------------------------------------   
+      If Not IsNull(Document) Then 
+         sInclusions &= Format(document!date_created, "dd/mm/yyyy") & " " & UCase(Left(document!style)) & Right(document!style, Len(document!style) - 1) & " "
+         If document!msh_sending_entity = "" Then
+            sInclusions &= "" & document!originator
+         Else
+            sInclusions &= "" & document!msh_sending_entity
+         Endif
+          sInclusions &= " - " & document!tag_user
+          sInclusions &= "<BR>"
+      Endif
+   Next
+   sHtml = Replace(sHtml, "%inclusions%", sInclusions)
+  Return sHtml 
 End
 

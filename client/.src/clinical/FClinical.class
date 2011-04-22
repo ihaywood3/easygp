@@ -428,10 +428,15 @@ Public Sub pdfViewer_click()
    
 End
 
-Public Sub patient_load_record(patient As Collection) 
+Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean, P As Picture) 
    '----------------------------------------------------------------------------
    'PURPOSE   : Loads the minpatientimal necessary patient record
-   'CALLED BY : Patients_Find() 
+   'CALLED BY : Patients_Find() and FPatientsSelect()
+   '            If bPhotoConfirmed = True then selection was confirmed from the multiple
+   '            patient pick list which can contain a picture
+   '            otherwise if patient's was the only record, this flag is false
+   '            If there was a picture, then this flag = True, otherwise the user
+   '            will still be prompted with a second "Please confirm"
    'LOGIC     : Displays the minimal amount of information to
    '            start an encounter - the patients demographic details
    '            contact numbers, allergies, recalls, past history items
@@ -444,32 +449,12 @@ Public Sub patient_load_record(patient As Collection)
    'WARNING   : DO NOT MOVE THESE LINES OUT OF ORDER
    'TOFIX     : 
    '--------------------------------------------------------------------------- 
-   
-   Dim tempfile As String
-   Dim tempPicture As Variant
-   
    Vbox1.Visible = True
    mnuView.Visible = True 
    mnuSections.Visible = True   
    mnuDecisionSupport.Visible = True  
    mnuHelp.visible = True
-
-   If Not IsNull(patient!image) Then
-      tempFile = Temp() & ".png"
-      tempPicture = patient!image
-      If tempPicture.data Then 
-         File.Save(tempFile, tempPicture.data)
-      End If
-   End If
-   ' 
-   FConfirmPatient.Init(Tempfile, patient!wholename)
-   If Not FConfirmPatient.ShowModal() Then 
-      txtSearch.SetFocus()
-      Return 
-   Else  
-      Try PicPatient.Picture = Picture.Load(Tempfile)
-   End If   
-   
+   Try PicPatient.Picture = P
    currentconsult = New CConsult(patient)
    'fixme - check out what to do if continued consultation
    'and implement (if decide to) concept of a consultation summary
@@ -779,9 +764,10 @@ Public Sub Patients_Find(Optional search_txt As String)
    '-----------------------------------------------------------------------------
    
    Dim AllPatients As New Collection
-   Dim P As Collection
    Dim patient As Collection
    Dim sql_in_english As String
+   Dim P As Picture
+   Dim bPhotoConfirmed As Boolean = False 
    
    Inc Application.Busy
    If IsNull(search_txt) Then search_txt = txtSearch.text
@@ -793,24 +779,30 @@ Public Sub Patients_Find(Optional search_txt As String)
       Dec application.Busy
       Return
    Else  
-      '------------------------------------------------------  
-      'Resets the current consult and appropriate collections
-      'this includes adding the currently logged on staff
-      'member to the list of staff members accessing the
-      'patients record (from single machine at the moment)
-      'FIX ME - will have to save those accessing patients
-      'record in the backend
-      ''------------------------------------------------------ 
+      '----------------------------------------------------
+      'One or more patients.
+      'If one, get their photo if it exists and load record
+      '----------------------------------------------------
       chkIncludeDeceased.visible = False
       If AllPatients.count = 1 Then  
          '----------------------------------------------------
          'no way in gambas to get a key without an iteraction
          'get first key
          '----------------------------------------------------
-         For Each p In AllPatients
-            patient = p
+         For Each patient In AllPatients
+            If Not IsNull(patient!image.data) Then 
+                  P = modGraphics.Blob_Convert_To_Picture(patient!image) 
+            Else
+                  P = Picture.Load("icons/misc/no_photo.png")
+            End If   
          Next
-         patient_load_record(patient)
+         FConfirmPatient.Init(P, patient!wholename)
+         If Not FConfirmPatient.ShowModal() Then 
+             txtSearch.SetFocus()
+             Return            
+         End If
+         
+         patient_load_record(patient, bPhotoConfirmed, P)
       Else  
          '---------------------
          'more than one patient
@@ -823,7 +815,7 @@ Public Sub Patients_Find(Optional search_txt As String)
          Vbox1.Visible = False  
          form_select = New FPatientsSelect(Me)
          obs = New Observer(form_select.btnCancel) As "SelectPatient"     
-         form_select.SetPatientList(AllPatients, sql_in_english, Me)
+         form_select.Init(AllPatients, sql_in_english, Me)
          form_select.Visible = True 
          Return
       Endif

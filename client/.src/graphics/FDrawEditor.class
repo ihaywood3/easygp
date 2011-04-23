@@ -1,24 +1,26 @@
 ' Gambas class file
-' Copyright (C) 2008-2011 Dr. Richard Terry
 
-' This program is free software: you can redistribute it and/or modify
-' it under the terms of the GNU General Public License as published by
-' the Free Software Foundation, either version 3 of the License, or
-' (at your option) any later version.
-
-' This program is distributed in the hope that it will be useful,
-' but WITHOUT ANY WARRANTY; without even the implied warranty of
-' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-' GNU General Public License for more details.
-
-' You should have received a copy of the GNU General Public License
-' along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+' Gambas class file
+' This code was taken and modified from the FIconEditor in the gambas IDE                          
+'                                                                        
+' This program is free software: you can redistribute it and/or modify     
+' it under the terms of the GNU General Public License as published by     
+' the Free Software Foundation, either version 3 of the License, or        
+' (at your option) any later version.                                      
+                                                                           
+' This program is distributed in the hope that it will be useful,          
+' but WITHOUT ANY WARRANTY; without even the implied warranty of           
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the            
+' GNU General Public License for more details.                             
+                                                                           
+' You should have received a copy of the GNU General Public License        
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.    
+'----------------------------------------------------------------------- 
 Public Path As String
 
 Property Read ReadOnly As Boolean
 
-Private $hImage As Image
+Public $hImage As Image
 Private $iScale As Integer
 Private $iScale1 As Integer
 
@@ -31,10 +33,11 @@ Private $X2 As Integer
 Private $Y2 As Integer
 Private $iColor As Integer
 
-Private $bGhost As Boolean
+'Private $bGhost As Boolean
+Private $bShowSelection As Boolean
 
 Private Const MAX_UNDO As Integer = 32
-Private $hUndo[32] As Image
+Private $hUndo As New Image[32]
 Private $iUndo As Integer
 
 Private Const WIDTH_SEL As Integer = 4
@@ -59,8 +62,6 @@ Static Private $hTile As Picture
 
 Static Private $cColor As New Integer[]
 
-'PRIVATE $hCurrent AS FIconEditor
-
 Private $sTool As String
 
 Private $hTool As ToolButton
@@ -79,6 +80,18 @@ Private $iMouse As Integer
 Private $iBeginUndo As Integer
 
 Private $bNoPreview As Boolean
+'---------------------------------------------------------------------
+'All these declarations are my stuff, all above from gambas FIconEdit
+'--------------------------------------------------------------------
+Public Form_WebCam As FWebCam
+Private hObs As Observer
+Private temp_image_path As String
+Private bExit As Boolean
+Private bHasBorder As Boolean   'if true the image has a border
+Private sOriginalPath As String 'path to the orginal 'unaltered' image
+Private CurrentThumb As PictureBox
+Private currentconsult As CConsult
+
 
 Static Public Sub _init()
    
@@ -93,45 +106,63 @@ Static Public Sub _init()
    
 End
 
-Public Sub _new1(sPath As String)
-   ' 
-   ' Dim sText As String
-   ' Dim iScale As Integer
-   ' Dim iColor As Integer
-   ' Dim hColor As DrawingArea
-   ' Dim hCtrl As Control
-   ' 
-   ' Path = sPath
-   ' Me.Name = File.Name(sPath) 'Mid$(sPath, Len(File.Dir(Project.Path)) + 1)
-   ' 
-   ' $iMaxW = Me.Width
-   ' $iMaxH = Me.Height
-   ' 
+Public Sub Init(sPath As String, Optional cons As CConsult)
+   Try currentconsult = cons
+   Try $hImage = Image.Load(sPath)        'if being used as draw editor
+   bExit = True                           'Load probable available devices (fixme - actually test for this)
+   Form_WebCam = New FWebCam(VBox_WebCam) 'Insert the web cam
+   Try Form_WebCam.Get_Video()                                             'try and get a picture
+   HObs = New Observer(Form_WebCam.btnTakeShot) As "webcam"                'Observor to access the buttons on webcam form
+   temp_image_path = Temp() & ".png"
+   bExit = False  
+End
+
+Public Sub cmbDevice_Click()
+  If Bexit Then Return 
+ ' Try Form_WebCam.Get_Video()
+   
+End
+Public Sub _new()
+   
+   Dim sText As String
+   Dim iScale As Integer
+   Dim iColor As Integer
+   Dim hColor As DrawingArea
+   Dim hCtrl As Control
+   Dim sPath As String 
+
+   sPath = "/home/richard/webcam_shot.png"
+   Path = sPath
+   Me.Name = File.Name(sPath) 'Mid$(sPath, Len(File.Dir(Project.Path)) + 1)
+   
+   $iMaxW = Me.Width
+   $iMaxH = Me.Height
+   
+   For Each iScale In $aZoom
+      cmbZoom.Add(iScale & " x")
+   Next
+   
+   For iColor = 0 To $cColor.Max + 1
+      hColor = New DrawingArea(tlbColor) As "dwgColor"
+      hColor.Resize(24, 24)
+      hColor.Tag = iColor
+   Next
+   
+   Reload
+   
+   $iScale = 1  
    ' For Each iScale In $aZoom
-   '   cmbZoom.Add(iScale & " x")
+   '   If ($hImage.Width * iScale) > (Project.Workspace.ClientWidth * 0.75) Or ($hImage.Height * iScale) > (Project.Workspace.ClientHeight * 0.75) Then Break
+   '   $iScale = iScale
    ' Next
-   ' 
-   ' For iColor = 0 To $cColor.Max + 1
-   '   hColor = New DrawingArea(tlbColor) As "dwgColor"
-   '   hColor.Resize(24, 24)
-   '   hColor.Tag = iColor
-   ' Next
-   ' 
-   ' Reload
-   ' 
-   ' $iScale = 1  
-   ' For Each iScale In $aZoom
-   '  ' If ($hImage.Width * iScale) > (Project.Workspace.ClientWidth * 0.75) Or ($hImage.Height * iScale) > (Project.Workspace.ClientHeight * 0.75) Then Break
-   ' '  $iScale = iScale
-   ' Next
-   ' 
-   ' SetBackground(Color.White)
-   ' SetForeground(Color.Black)
-   ' 
-   ' SetTransparent(True)
-   ' SetMode(0)
-   ' SetTool(btnMove)
-   ' SetReadOnly
+   
+   SetBackground(Color.White)
+   SetForeground(Color.Black)
+   
+   SetTransparent(True)
+   SetMode(0)
+   SetTool(btnMove)
+   SetReadOnly
    
 End
 
@@ -139,7 +170,10 @@ Private Sub SetReadOnly()
    
    Dim hCtrl As Control  
    
-   ' $bReadOnly = Project.ReadOnly Or Project.Running Or Stat(Path).Type = gb.Link
+   $bReadOnly = False
+   ' If Project.ReadOnly Or If Project.Running Or If Project.IsReadOnly(Path) Then
+   '   $bReadOnly = True
+   ' Endif
    
    For Each hCtrl In panToolbar.Children
       If hCtrl.Name = "tlbMove" Then Continue
@@ -157,6 +191,83 @@ Public Sub LoadFile() As Boolean
    
 End
 
+Private Sub DrawSelection()
+   
+   Dim iS2 As Integer
+   Dim iSH As Integer
+   Dim iWH As Integer
+   
+   'WITH FIconTool
+   
+   If $sTool = "select" And Not $bSelect Then Return
+   
+   iS2 = $iScale \ 2
+   iSH = $iScale
+   iWH = iSH * 2 + 1
+   
+   'If Not bNoBegin Then Draw.Begin(dwgIcon)
+   
+   Select Case $sTool
+         
+      Case "line"
+         
+         Draw.Invert = True
+         Draw.LineStyle = Line.Solid
+         Draw.LineWidth = 3
+         Draw.FillStyle = Fill.None
+         Draw.Foreground = Color.White
+         Draw.Line($X * $iScale + iS2, $Y * $iScale + iS2, $X2 * $iScale + iS2, $Y2 * $iScale + iS2)
+         Draw.Rect($X * $iScale, $Y * $iScale - 1, $iScale1, $iScale1)
+         Draw.Rect($X2 * $iScale, $Y2 * $iScale - 1, $iScale1, $iScale1)
+         
+      Case "select"
+         
+         Draw.Invert = True
+         Draw.LineStyle = Line.Solid
+         Draw.LineWidth = 3
+         Draw.FillStyle = Fill.None
+         Draw.Foreground = Color.White
+         Draw.Rect(Min($X, $X2) * $iScale, Min($Y, $Y2) * $iScale, (Abs($X - $X2) + 1) * $iScale + 1, (Abs($Y - $Y2) + 1) * $iScale + 1)
+         
+      Case "rect"
+         
+         Draw.Invert = True
+         Draw.LineStyle = Line.Solid
+         Draw.LineWidth = 3
+         Draw.FillStyle = Fill.None
+         Draw.Foreground = Color.White
+         Draw.Rect(Min($X, $X2) * $iScale, Min($Y, $Y2) * $iScale, (Abs($X - $X2) + 1) * $iScale + 1, (Abs($Y - $Y2) + 1) * $iScale + 1)
+         If $iMode = 0 Then
+            If Abs($X - $X2) > 1 And Abs($Y - $Y2) > 1 Then
+               Draw.Rect((Min($X, $X2) + 1) * $iScale, (Min($Y, $Y2) + 1) * $iScale, (Abs($X - $X2) - 1) * $iScale + 1, (Abs($Y - $Y2) - 1) * $iScale + 1)
+            Endif
+         Endif
+         
+      Case "circle"
+         
+         Draw.Invert = True
+         Draw.LineStyle = LINE.Solid
+         Draw.LineWidth = 3
+         Draw.FillStyle = Fill.None
+         Draw.Foreground = Color.White
+         Draw.Ellipse(Min($X, $X2) * $iScale, Min($Y, $Y2) * $iScale, (Abs($X - $X2) + 1) * $iScale + 1, (Abs($Y - $Y2) + 1) * $iScale + 1)
+         If $iMode = 0 Then
+            If Abs($X - $X2) > 1 And Abs($Y - $Y2) > 1 Then
+               Draw.Ellipse((Min($X, $X2) + 1) * $iScale, (Min($Y, $Y2) + 1) * $iScale, (Abs($X - $X2) - 1) * $iScale + 1, (Abs($Y - $Y2) - 1) * $iScale + 1)
+            Endif
+         Endif
+         
+   End Select
+   
+   'If Not bNoBegin Then
+   '  Draw.End
+   '  $bGhost = Not $bGhost
+   'Endif
+   
+   'END WITH
+   
+End
+
 Public Sub dwgIcon_Draw()
    
    Dim X As Integer
@@ -168,7 +279,7 @@ Public Sub dwgIcon_Draw()
    Dim DX As Integer
    Dim DY As Integer
    Dim C As Integer
-   Dim W As Integer
+   Dim SW, SH As Integer
    
    Dim hZoom As Image
    
@@ -188,10 +299,12 @@ Public Sub dwgIcon_Draw()
    
    SX = Max(0, SX)
    DX = Min($hImage.Width - 1, DX)
+   SW = DX - SX + 1
    
    SY = Max(0, SY)
    DY = Min($hImage.Height - 1, DY)
-   
+   SH = DY - SY + 1
+   Draw.LineWidth = 50
    If $iScale > 5 Then
       Draw.LineStyle = Line.Solid
       Draw.Foreground = &H989898
@@ -199,9 +312,13 @@ Public Sub dwgIcon_Draw()
       Draw.LineStyle = Line.None
    Endif
    
-   Draw.Zoom($hImage, $iScale, SX * $iScale, SY * $iScale, SX, SY, DX - SX + 1, DY - SY + 1)
+   'If $iScale >= 6 Then
+   Draw.Zoom($hImage, $iScale, SX * $iScale, SY * $iScale, SX, SY, SW, SH)
+   'Else
+   '  Draw.Image($hImage, SX * $iScale, SY * $iScale, SW * $iScale, SH * $iScale, SX, SY, SW, SH)
+   'Endif
    
-   If $bGhost Then DrawGhost(True)
+   If $bShowSelection Then DrawSelection()
    
 End
 
@@ -219,6 +336,7 @@ Public Sub dwgPaste_Draw()
    Dim CP As Integer
    Dim W As Integer
    Dim hTemp As Image
+   Dim XD, WD As Integer
    
    If Not $hPaste Then Return
    
@@ -256,7 +374,7 @@ Public Sub dwgPaste_Draw()
    If $bTrans Then
       
       hTemp = $hImage.Copy($XS, $YS, $hPaste.Width, $hPaste.Height)
-      hTemp.Draw($hPaste, 0, 0)
+      hTemp.PaintImage($hPaste, 0, 0)
       'Draw.Zoom($hImage, $iScale, SX * $iScale, SY * $iScale, SX + $XS, SY + $YS, DX - SX + 1, DY - SY + 1)
       Draw.Zoom(hTemp, $iScale, SX * $iScale, SY * $iScale, SX, SY, DX - SX + 1, DY - SY + 1)
       
@@ -268,18 +386,22 @@ Public Sub dwgPaste_Draw()
    
    Draw.FillStyle = Fill.None
    Draw.LineStyle = Line.Dot
-   Draw.LineWidth = 3
+   Draw.LineWidth = 1 + $iScale \ 2
    Draw.Foreground = Color.Black
    Draw.Background = Color.White
    Draw.Transparent = False
    'Draw.Invert = TRUE
-   Draw.Rect(1, 1, dwgPaste.Width - 2, dwgPaste.Height - 2)
+   
+   XD = Draw.LineWidth \ 2
+   WD = Draw.LineWidth - 1
+   
+   Draw.Rect(XD, XD, dwgPaste.Width - WD, dwgPaste.Height - WD)
    
 End
 
 Private Sub DrawTitle()
    
-   'Project.DrawTitle(Me)
+   ' Project.DrawTitle(Me)
    
 End
 
@@ -321,16 +443,28 @@ End
 
 Public Function Save() As Boolean
    
-   ' If Project.ReadOnly Then Return
+   Return 
+   '  If Project.ReadOnly Then Return
    If $bReadOnly Then Return
    If Not $bModify Then Return
+   
+   'PRINT "Picture not saved"
+   
    HideSelection
+   
+   ' Save.Begin(Path)
+   
    $hImage.Save(Path)
+   
+   'Project.RefreshKey(Path)
+   
    $bModify = False
    DrawTitle
+   'Save.End()
+   
 Catch
    
-   'Return Save.Error()
+   ' Return Save.Error()
    
 End
 
@@ -385,7 +519,9 @@ Public Sub dwgIcon_MouseDown()
          
    End Select
    
-   DrawGhost
+   $bShowSelection = ["line", "select", "rect", "circle"].Exist($sTool)
+   
+   If $bShowSelection Then dwgIcon.Refresh
    
    Select $sTool
          
@@ -414,8 +550,6 @@ Public Sub dwgIcon_MouseMove()
    RefreshCoord(X \ $iScale, Y \ $iScale)
    
    If Not (Mouse.Left Or Mouse.Right) Then Return
-   
-   DrawGhost
    
    If $sTool <> "move" Then
       
@@ -454,7 +588,7 @@ Public Sub dwgIcon_MouseMove()
          
    End Select
    
-   DrawGhost
+   If $bShowSelection Then dwgIcon.Refresh
    
    'END WITH
    
@@ -463,8 +597,6 @@ End
 Public Sub dwgIcon_MouseUp()
    
    'WITH FIconTool
-   
-   DrawGhost
    
    Select Case $sTool
          
@@ -508,6 +640,10 @@ Public Sub dwgIcon_MouseUp()
          
    End Select
    
+   If $bShowSelection Then
+      $bShowSelection = False
+      dwgIcon.Refresh
+   Endif
    'END WITH
    
 End
@@ -515,7 +651,7 @@ End
 Private Sub RefreshZoom()
    
    Dim iIndex As Integer
-   
+
    iIndex = $aZoom.Find($iScale)
    
    If cmbZoom.Index <> iIndex Then cmbZoom.Index = iIndex
@@ -626,10 +762,16 @@ Private Sub DrawLine(X1 As Integer, Y1 As Integer, X2 As Integer, Y2 As Integer,
    
    DX = (X2 - X1) / D
    DY = (Y2 - Y1) / D
+   
+   'PRINT "-------"
+   'PRINT "D ="; D; " DX ="; DX; " "; Sgn(DX); " DY ="; DY; " "; Sgn(DY)
+   
    X = X1
    Y = Y1
    
    Do
+      'PRINT "X ="; X; " Y ="; Y
+      
       DrawPoint(X, Y, C)
       
       If X = X2 And Y = Y2 Then Break
@@ -768,83 +910,6 @@ Private Sub DrawEllipse(X As Integer, Y As Integer, W As Integer, H As Integer, 
    
 End
 
-Private Sub DrawGhost(Optional bNoBegin As Boolean)
-   
-   Dim iS2 As Integer
-   Dim iSH As Integer
-   Dim iWH As Integer
-   
-   'WITH FIconTool
-   
-   If $sTool = "select" And Not $bSelect Then Return
-   
-   iS2 = $iScale \ 2
-   iSH = $iScale
-   iWH = iSH * 2 + 1
-   
-   If Not bNoBegin Then Draw.Begin(dwgIcon)
-   
-   Select Case $sTool
-         
-      Case "line"
-         
-         Draw.Invert = True
-         Draw.LineStyle = Line.Solid
-         Draw.LineWidth = 3
-         Draw.FillStyle = Fill.None
-         Draw.Foreground = Color.White
-         Draw.Line($X * $iScale + iS2, $Y * $iScale + iS2, $X2 * $iScale + iS2, $Y2 * $iScale + iS2)
-         Draw.Rect($X * $iScale, $Y * $iScale - 1, $iScale1, $iScale1)
-         Draw.Rect($X2 * $iScale, $Y2 * $iScale - 1, $iScale1, $iScale1)
-         
-      Case "select"
-         
-         Draw.Invert = True
-         Draw.LineStyle = Line.Solid
-         Draw.LineWidth = 3
-         Draw.FillStyle = Fill.None
-         Draw.Foreground = Color.White
-         Draw.Rect(Min($X, $X2) * $iScale, Min($Y, $Y2) * $iScale, (Abs($X - $X2) + 1) * $iScale + 1, (Abs($Y - $Y2) + 1) * $iScale + 1)
-         
-      Case "rect"
-         
-         Draw.Invert = True
-         Draw.LineStyle = Line.Solid
-         Draw.LineWidth = 3
-         Draw.FillStyle = Fill.None
-         Draw.Foreground = Color.White
-         Draw.Rect(Min($X, $X2) * $iScale, Min($Y, $Y2) * $iScale, (Abs($X - $X2) + 1) * $iScale + 1, (Abs($Y - $Y2) + 1) * $iScale + 1)
-         If $iMode = 0 Then
-            If Abs($X - $X2) > 1 And Abs($Y - $Y2) > 1 Then
-               Draw.Rect((Min($X, $X2) + 1) * $iScale, (Min($Y, $Y2) + 1) * $iScale, (Abs($X - $X2) - 1) * $iScale + 1, (Abs($Y - $Y2) - 1) * $iScale + 1)
-            Endif
-         Endif
-         
-      Case "circle"
-         
-         Draw.Invert = True
-         Draw.LineStyle = LINE.Solid
-         Draw.LineWidth = 3
-         Draw.FillStyle = Fill.None
-         Draw.Foreground = Color.White
-         Draw.Ellipse(Min($X, $X2) * $iScale, Min($Y, $Y2) * $iScale, (Abs($X - $X2) + 1) * $iScale + 1, (Abs($Y - $Y2) + 1) * $iScale + 1)
-         If $iMode = 0 Then
-            If Abs($X - $X2) > 1 And Abs($Y - $Y2) > 1 Then
-               Draw.Ellipse((Min($X, $X2) + 1) * $iScale, (Min($Y, $Y2) + 1) * $iScale, (Abs($X - $X2) - 1) * $iScale + 1, (Abs($Y - $Y2) - 1) * $iScale + 1)
-            Endif
-         Endif
-         
-   End Select
-   
-   If Not bNoBegin Then
-      Draw.End
-      $bGhost = Not $bGhost
-   Endif
-   
-   'END WITH
-   
-End
-
 Private Sub BeginUndo()
    
    If $iBeginUndo = 0 Then
@@ -882,6 +947,10 @@ Public Sub Undo()
    If $hUndo[$iUndo] Then
       $hImage = $hUndo[$iUndo]
       $hUndo[$iUndo] = Null
+      'PRINT svwICon.ClientX; svwIcon.ClientY; svwIcon.ClientW, svwIcon.ClientH
+      'PRINT svwICon.ScrollX; svwIcon.ScrollY
+      'dwgIcon.Refresh(svwIcon.ScrollX, svwIcon.ScrollY, svwIcon.ClientW, svwIcon.ClientH)
+      'svwIcon.Refresh
       RefreshZoom
       If dwgPaste.Visible Then dwgPaste.Refresh
       Modify
@@ -1065,13 +1134,17 @@ End
 
 Private Sub CopySelection()
    
-   'IF dwgPaste.Visible THEN RETURN
+   Dim hCopy As Image
    
    If $bSelect Then
-      Clipboard.Copy($hImage.Copy($XS, $YS, $WS, $HS))
+      hCopy = $hImage.Copy($XS, $YS, $WS, $HS)
    Else
-      Clipboard.Copy($hImage)
+      hCopy = $hImage
    Endif
+   
+   hCopy.Save("~/copy.png")
+   
+   Clipboard.Copy(hCopy)
    
 End
 
@@ -1105,9 +1178,32 @@ End
 
 Public Sub ShowPaste(Optional bReset As Boolean)
    
+   Dim HB As HBox
+   Dim VB As VBox
+   Dim PBox As PictureBox
+   Dim hCtrl As Control
+   
    If Clipboard.Type <> Clipboard.Image Then Return
    
-   $hPaste = Clipboard.Paste()
+   $hPaste = Clipboard.Paste()         '$hPaste is an image
+   $hPaste.Save(temp_image_path)
+   '---------------------------------------------------------
+   'Automatically put the paste into the next available thumb
+   '---------------------------------------------------------
+   For Each HCtrl In HBox_Thumbnails.Children
+      If Hctrl Is Vbox Then
+         VB = HCtrl
+         PBox = VB.Children[0]    
+         If IsNull(PBox.tag) Then
+            PBox.picture = Picture.Load(temp_image_path)
+            PBox.tag = temp_image_path
+            Break
+         Endif
+      End If
+   Next
+   '---------------------------------------
+   'Now paste the image to the main picture
+   '---------------------------------------
    $WS = $hPaste.Width
    $HS = $hPaste.Height
    
@@ -1340,18 +1436,16 @@ End
 
 Public Sub Clear()
    
-   If Message.Delete(("Do you want to clear the image ?"), ("Clear"), ("Cancel")) <> 1 Then Return
+  ' If Message.Delete(("Do you want to clear the image ?"), ("Clear"), ("Cancel")) <> 1 Then Return
    
    SetUndo
    $hImage.Fill(-1)
    RefreshAllImage()
    Modify
+   sOriginalPath = ""
+   temp_image_path = ""
+   bHasBorder = False   
    
-End
-
-Public Sub dwgIcon_DblClick()
-   
-   DrawGhost
    
 End
 
@@ -1359,13 +1453,13 @@ Public Sub Form_Close()
    
    If $bModify Then
       ' If Not Project.AboutToQuit Then
-      Select Case Message.Question(("This image has been modified.\nDo you want to save it ?"), ("Save"), ("Close"), ("Cancel"))
-         Case 1
-            Save
-         Case 3
-            Stop Event
-            Return
-      End Select
+      '   Select Case Message.Question(("This image has been modified.\nDo you want to save it ?"), ("Save"), ("Close"), ("Cancel"))
+      '     Case 1
+      '       Save
+      '     Case 3
+      '       Stop Event
+      '       Return
+      '   End Select
       ' Endif
    Endif
    
@@ -1511,12 +1605,32 @@ Private Sub SetTransparent(bTrans As Boolean)
    
 End
 
+Public Sub Insert_text()
+         With lblTextToInsert
+            .text = " " & txtToInsert.Text & " "  
+            .Font.bold = True
+         End With 
+         txtToInsert.Visible = False   
+         lblTextToInsert.Visible = True  
+                 Panel10.Expand = True  
+  
+         Wait
+       '  $hPaste = Hbox_Text_To_insert.Screenshot().Image
+          $hPaste = Hbox_Text_To_insert.Grab()
+         Clipboard.Copy($hPaste)
+         DoPaste
+         SetTool(btnSelect)
+  
+   
+End
+
 Public Sub btnTool_Click()
    
    If $bIgnoreClick Then Return
    
    Select Case Last.Tag
-         
+      Case "insert text"
+        Insert_text()
       Case "move", "select", "pen", "line", "rect", "circle", "fill", "fill-alt", "pipette"
          SetTool(Last)
          
@@ -1845,6 +1959,7 @@ End
 Public Sub dwgForeground_Draw()
    
    'Draw.LineStyle = Line.None 'LINE.Solid
+   Draw.LineWidth = 50
    RedrawColor($iForeground, 3, 3, dwgForeground.Width - 6, dwgForeground.Height - 6)
    
 End
@@ -1981,3 +2096,186 @@ End
 '   IF svwPreview.Visible THEN splPreview.Layout = CStr(dwgPreview.W) & "," & CStr(ME.H - dwgPreview.W - 16)
 ' 
 ' END
+
+
+
+Public Sub BodyPicture_Popup(PBox As Picturebox)
+   '-------------------------------------------------
+   'As User moves mouse of the available pictures
+   'show an enlarged preview as the actual pictures
+   'stuck on the panels are shrunken to quite a small
+   'size which could be difficult for some eyes
+   '-------------------------------------------------
+   With pbSampleBodyPart
+     ' .top = PBox.Parent.top - pbSampleBodyPart.height
+     ' .Visible = True
+      .Picture = Picture["icons/body/" & PBox.tag & ".png"]
+     ' .left = (PBox.parent.Left + PBox.width / 2) - Picturebox4.width / 2
+   End With
+   HBox_LargePic.Visible = True
+   Vbox_DrawingArea.visible = False 
+ End
+
+Public Sub ImageButtons_Leave()
+   '----------------------------------------------------
+   'Mouse leaves pseudo-button, remove the popup picture
+   '----------------------------------------------------
+  '  HBox_LargePic.Visible = False   
+ '  Vbox_DrawingArea.visible = True 
+End
+
+Public Sub ImageButtons_Enter()
+   '------------------------------------------------------
+   'Each of the pictures on a panel is kinda-like a button
+   'as mouse goes over the pseudo-button, display a larger
+   'popup picture for those of failing eyesight like me
+   '------------------------------------------------------
+   BodyPicture_Popup(Last)
+End
+
+Public Sub ImageButtons_MouseUp()
+   '---------------------------------------
+   'Acts like a click_event
+   'loads image under mouse to drawing area
+   '---------------------------------------
+    
+   Path = "icons/body/" & Last.tag & ".png"
+   sOriginalPath = Temp() & ".png"
+   Try Reload()
+   If Error Then
+      Message.info("Unable to find image file to load")
+   Else
+        $hImage.Save(sOriginalPath)
+ 
+   End If
+
+End
+
+Public Sub panLineDrawings_Leave()
+
+     HBox_LargePic.Visible = False   
+   Vbox_DrawingArea.visible = True 
+
+End
+Public Sub Reset_Sliders()
+   
+  slider_Image_size.value = 500 
+  slider_brightness.value = 100
+End
+
+Public Sub chkAddBorder_Click()
+
+   If bHasBorder = False Then
+     path = modGraphics.Add_Border(bHasBorder, Path)
+     Reload()
+     bHasBorder = True  
+   End If   
+   
+
+End
+
+Public Sub slider_Image_size_Change()
+   '-------------------------------------------------------
+   'Change the image size, don't disturb the original image
+   '-------------------------------------------------------
+   temp_image_path = Path
+'  Picture_Load(modGraphics.Resize($iMaxH, $iMaxW, Last.value, User.Home & "/webcam_shot.png", bHasBorder))
+   Path = modGraphics.Resize($iMaxH, $iMaxW, Last.value, sOriginalPath, bHasBorder)
+   Reload()
+End
+
+Public Sub slider_brightness_Change()
+    temp_image_path = Path
+    path = modGraphics.Brighten($iMaxH, $iMaxW, slider_Image_size.value, Last.value, sOriginalPath, bHasBorder)
+    Reload()
+
+End
+
+
+Public Sub WebCam_click()
+   '--------------------------------------------------------------------
+   'User has clicked on the snapshot button of the embeddedd webcam form
+   '--------------------------------------------------------------------
+    Stop Event
+   sOriginalPath = Temp() & ".png"
+   Select Case Last.tag
+   Case "take shot"
+    ' Try Form_WebCam.hWebCam.Save(User.Home & "/webcam_shot.png") 
+     Try Form_WebCam.hWebCam.Save(sOriginalPath)
+     Path = sOriginalPath
+     Try Reload()
+     Reset_Sliders()
+     ' Try Clipboard.Copy(Fdraw.$hImage) 
+     '         tempFile = Temp() & ".png"
+     '         Fdraw.$hImage.Save(Tempfile)
+     '         PictureBox1.Picture = Picture.Load(tempfile) 
+   End Select 
+   
+End
+
+
+
+Public Sub Hbox_Text_To_insert_Leave()
+
+  ' lblTextToInsert.visible = True 
+  ' lblTextToInsert.text = txtToInsert.text
+  ' txtToInsert.Visible = False
+
+End
+
+Public Sub Hbox_Text_To_insert_Enter()
+   Print "entering"
+   lblTextToInsert.visible = False
+   txtToInsert.Visible = True 
+   txtToInsert.Border = True
+   txtToInsert.width = 100
+   txtToInsert.SetFocus()
+   Panel10.width = 10
+   Panel10.Expand = False  
+End
+
+Public Sub txtToInsert_Activate()
+
+   Insert_text()
+
+End
+
+Public Sub thumbs_Menu()
+   '-------------------------------------------------
+   'User has right mouse clicked on one of the thumbs
+   '-------------------------------------------------
+   If Not IsNull(Last.tag) Then
+      CurrentThumb = Last   
+      mnuThumbNails.Popup()
+   Endif
+
+End
+
+Public Sub mnuThumbNails_Click()
+   '------------------------------------------------------------------------------------
+   'User has clicked on one of the thumbnails, popped up the menu and selected an option
+   '------------------------------------------------------------------------------------
+   Dim PersonPicture As Collection 
+   Dim P As New Collection 
+   Dim sql As String 
+   
+   Select Case Last.tag
+     Case "save patient photo"
+         PersonPicture = New Collection
+         PersonPicture!path = CurrentThumb.Tag
+         P!fk_image = modContactsDBI.Image_Save(PersonPicture)
+         If Not Error Then
+             sql = "Update contacts.data_persons set fk_image = " & P!fk_image & " WHERE pk=" & currentconsult!patient!fk_person
+             modDBConnect.exec_query(sql)
+             modDBConnect.CommitTrans()
+         Endif
+         
+  
+  ' person!fk_person = modContactsDBI.Person_Save(rows_in_view, pk_view, person, comms, views_comms) 
+     Case "delete"
+         Last.picture.Clear()
+         Last.tag = Null
+          
+   End Select
+   
+End

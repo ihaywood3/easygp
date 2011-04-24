@@ -17,16 +17,37 @@
 '-------------------------------------------------------------------------
 ' PURPOSE   An exerimental form to allow editing of consults data <> today
 '-------------------------------------------------------------------------
+Private bExit As Boolean
 Private currentconsult As CConsult  
 Private progressnote As Collection
+Static Private form_editnotes As FEditNotes
+Public Active_Editor As Object
+Public Active_HBox As Object
+Public Active_Webview As Object
+Public fk_progressnote As Integer 
+
+Public ProgressNote_Before_Editing As String
+
+
+Public Sub Adjust_Editor_Size()
+   
+   tlMeasure.text = "<P STYLE=\"background: #ffffff\"><FONT COLOR=\"#000000\">" & Active_Editor.teNotes.RichText & "</FONT></P>"
+   
+   Active_Editor.parent.height = tlMeasure.height + 50
+   lcNotes.Refresh()
+   
+End
 
 Public Sub Init(Cons As CConsult)
+   
    currentconsult = Cons
    Load_Notes()
+   form_editnotes = Me
    
 End
 
 Public Sub Load_Notes()
+   
    Dim NotesViewer As WebView
    Dim NotesEditor As TextEdit
    Dim sep As Separator
@@ -38,79 +59,148 @@ Public Sub Load_Notes()
    Dim sNotesHtml As String
    Dim Editor As FEditor
    
-    tlMeasure.width = lcNotes.Width - 300
- For Each progressnote In currentconsult!progress_notes
-     With HB = New HBox(lcNotes)
-      ' .Expand = True  
-       .width = lcNotes.Width
-     '  .height = 150
-       .AutoResize = True
-       .Padding = 1
-       .Background = Color.White
-     End With
-     With tl = New TextLabel(HB) As "lcNotes_Date"
-       .width = 120
-       .Font.Bold = True   
-       .Expand = False   
-       .Background = Color.white
-       If last_fk_consult <> progressnote!fk_consult Then
-          .text = "<P STYLE=\"background: #ffffff\"><FONT COLOR=\"#000000\">" & Format(progressnote!consult_date, "dd/mm/yyyy") & "</FONT></P>"
-          last_fk_consult = progressnote!fk_consult
-       End If  
-     End With 
-     sNotesHtml = modConsultDBI.Images_Get(progressnote!notes)
-     tlMeasure.text = "<P STYLE=\"background: #ffffff\"><FONT COLOR=\"#000000\">" & sNotesHtml & "</FONT></P>"
-     With NotesBox = New VBox(HB)
-       .Expand = True 
-       .height = tlMeasure.Height + 20
-     End With
- 
-     With NotesViewer = New Webview(NotesBox) As "WebView_Notes"
-        .html = sNotesHtml
-       .tag = progressnote 
-       .Expand = True   
-       .Background = Color.white
-     End With
-     With Editor = New FEditor(NotesBox)
-       .Visible = False 
-       .lblHeading.visible = False  
-       .teNotes.RichText = sNotesHtml
-       .Border = False  
-     End With
-     ' With sep = New Separator(NotesBox)
-     '   .height = 3
-     ' End With
-   ' sCurrentDate = Format(progressnote!consult_date, "dd/mm/yyyy")
-     listview1.Add(progressnote!pk_progressnote, Format(progressnote!consult_date, "dd/mm/yyyy"))
-     
- Next 
+   lcNotes.Clear()
+   currentconsult.Refresh("progress_notes")
+   tlMeasure.width = lcNotes.Width - 300
+   For Each progressnote In currentconsult!progress_notes
+      With HB = New HBox(lcNotes)
+         ' .Expand = True  
+         .width = lcNotes.Width
+         '  .height = 150
+         .AutoResize = True
+         .Padding = 1
+         .Background = Color.White
+      End With
+      With tl = New TextLabel(HB) As "lcNotes_Date"
+         .width = 120
+         .Font.Bold = True   
+         .Expand = False   
+         .Background = Color.white
+         If last_fk_consult <> progressnote!fk_consult Then
+            .text = "<P STYLE=\"background: #ffffff\"><FONT COLOR=\"#000000\">" & Format(progressnote!consult_date, "dd/mm/yyyy") & "</FONT></P>"
+            last_fk_consult = progressnote!fk_consult
+         End If  
+      End With 
+      sNotesHtml = modConsultDBI.Images_Get(progressnote!notes)
+      tlMeasure.text = "<P STYLE=\"background: #ffffff\"><FONT COLOR=\"#000000\">" & sNotesHtml & "</FONT></P>"
+      With NotesBox = New VBox(HB)
+         .Expand = True 
+         .height = tlMeasure.Height + 50
+      End With
+      
+      With NotesViewer = New Webview(NotesBox) As "WebView_Notes"
+         .html = sNotesHtml
+         .tag = progressnote 
+         .Expand = True   
+      End With
+      With Editor = New FEditor(NotesBox)
+         .Visible = False 
+         .lblHeading.visible = False  
+         .teNotes.RichText = sNotesHtml
+         .Init("FEditNotes") 'init with the form's name see static stuff
+         .Border = False  
+      End With
+      
+   Next 
+   
+End
+
+Public Sub mnuEditNotes_Click()
+   Dim sMsg As String
+   
+   Select Case Last.tag
+      Case "edit"
+         bExit = True 
+         Edit() 
+         bExit = False  
+      Case "mark deleted"
+        sMsg = "Deleting progress notes is quite a serious action and should never be undertaken lightly.\n\n"
+          "A complete audit trail will be kept of your actions, and the progress not will not be actually "
+          "removed from the database, just flagged as hidden.\n\n"
+          "Should a medico-legal audit take place of this patients notes, the deleted notes will be visible to "
+          "the audit, along with your name, the time the note was deleted, and the reason you gave.\n\n"
+          " Are you sure you wish to do this?"
+         Message.Title = "Deleting Progress Notes"
+        Message.Question(sMsg, "Yes, Proceed and Delete the notes", "No")
+        Print Active_Webview.tag!pk_progressnote
+        If modAudit.MakeAudit(currentconsult, "mark deleted", "clin_consult.progressnotes", fk_progressnote, const.cSection_GeneralNotes, "Progress Notes") Then
+           modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "deleted": True])
+            modDBConnect.CommitTrans()
+        Else
+            Message.Info("An unspecified error occurred and the record was not deleted") 
+        Endif
+        Load_Notes()
+      Case "print"
+   End Select 
+   
+End
+
+Public Sub webview_Notes_Menu()
+   
+   Stop Event
+   mnuEditNotes.popup()
    
 End
 
 Public Sub WebView_Notes_dblClick()
-    Dim hctrl As Control
-    Dim TE As FEditor
+    Active_Webview = Last
+    Edit()   
     
-    Last.Visible = False   
-    For Each hCtrl In Last.parent.children
-      If Hctrl Is FEditor Then
-         TE = Hctrl 
-         TE.DataChange_Update_Indicators(False)
-         TE.Visible = True 
-         Te.SetFocus()
-         Break
-      Endif
-    Next
+End
+
+Public Sub Edit()
+   Dim hctrl As Control
+   Dim args As New Variant[]
+   
+   args.Add("FEditNotes")
+   args.Add(Me) 
+  
+   Active_Webview.Visible = False   
+ 
+   Active_Editor = Active_Webview.parent.children[1]
+   Active_Editor.Visible = True 
+   Object.Call(Active_Editor, "init", args)
+   ProgressNote_Before_Editing = Object.Call(Active_Editor, "Get_Copy_of_Editor_text")
+   Active_Editor.SetFocus()
    
 End
 
 Public Sub Settings_Save()
    
-   
-   
 End
+
 Public Sub Settings_Load()
    
+End
+
+Public Sub lcNotes_Click()
+
+   Dim Changed_Text As String
    
+   If Bexit Then Return 
+   If Not IsNull(Active_Editor) Then    
+      Changed_text = Object.Call(Active_Editor, "Get_Copy_of_Editor_text")
+      
+      If Changed_text <> ProgressNote_Before_Editing Then
+         Stop Event
+         If Message.Question("Save changes?", "Yes", "No") = 1 And Active_Editor.parent.children[1].visible = True Then 
+            Active_Editor.parent.children[0].html = Changed_text
+         Else
+            Active_Editor.parent.children[0].html = ProgressNote_Before_Editing
+         End If  
+      Else
+         Print "didn't change it" 
+         ' Active_Editor.visible = False   
+      End If
+      Active_Editor.parent.children[0].visible = True  
+      Active_Editor.parent.children[1].visible = False 
+      ProgressNote_Before_Editing = ""
+      Active_Editor = Null
+  End If
+      'Not in edit mode - get the webview control 
+      Active_Webview = Last.Children[1].Children[1].Children[0]
    
+  ' End If  
+   fk_progressnote = Active_Webview.tag!pk_progressnote  
+   Print fk_progressnote
 End

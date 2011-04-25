@@ -25,9 +25,9 @@ Public Active_Editor As Object
 Public Active_HBox As Object
 Public Active_Webview As Object
 Public fk_progressnote As Integer 
+Public ProgressNotes_Keys As Integer[]  
 
 Public ProgressNote_Before_Editing As String
-
 
 Public Sub Adjust_Editor_Size()
    
@@ -47,7 +47,10 @@ Public Sub Init(Cons As CConsult)
 End
 
 Public Sub Load_Notes()
-   
+   '---------------------------------------------------------------------------
+   'Loads the entire progress notes as individual lines into the list container
+   '---------------------------------------------------------------------------   
+
    Dim NotesViewer As WebView
    Dim NotesEditor As TextEdit
    Dim sep As Separator
@@ -59,14 +62,25 @@ Public Sub Load_Notes()
    Dim sNotesHtml As String
    Dim Editor As FEditor
    
-   lcNotes.Clear()
-   currentconsult.Refresh("progress_notes")
-   tlMeasure.width = lcNotes.Width - 300
+   lcNotes.Clear()                                                      'clear the list container
+   Wait
+   Inc Application.Busy                                                 'notify 'work in progress' for some reasons this can be slow ?why FIXME
+   ProgressNotes_Keys = New Integer[]
+   currentconsult.Refresh("progress_notes")                             'ensure have latest data (e.g) this could be after a deletion
+   tlMeasure.width = lcNotes.Width - 300                                'using tlMeasure to give us the editor height of the webview.
    For Each progressnote In currentconsult!progress_notes
+      ProgressNotes_Keys.Add(progressnote!pk_progressnote) 
+      '-------------------------------------------------------------------------
+      'This is the 'container' stuck onto the list container
+      'which contains all the other controls
+      '1) the textlabel showing the data/drs details  'fixme not done
+      '2) the notes_box - which contains initially a webview 
+      '                   and a hidden editor form in case user wants to edit
+      '                   This is BAD........ fixme to only put one in if needed
+      '-------------------------------------------------------------------------
       With HB = New HBox(lcNotes)
-         ' .Expand = True  
          .width = lcNotes.Width
-         '  .height = 150
+         .tag = progressnote
          .AutoResize = True
          .Padding = 1
          .Background = Color.White
@@ -90,7 +104,7 @@ Public Sub Load_Notes()
       
       With NotesViewer = New Webview(NotesBox) As "WebView_Notes"
          .html = sNotesHtml
-         .tag = progressnote 
+         ' .tag = progressnote 
          .Expand = True   
       End With
       With Editor = New FEditor(NotesBox)
@@ -100,12 +114,13 @@ Public Sub Load_Notes()
          .Init("FEditNotes") 'init with the form's name see static stuff
          .Border = False  
       End With
-      
    Next 
-   
+   Dec Application.Busy
+
 End
 
 Public Sub mnuEditNotes_Click()
+   
    Dim sMsg As String
    
    Select Case Last.tag
@@ -114,22 +129,27 @@ Public Sub mnuEditNotes_Click()
          Edit() 
          bExit = False  
       Case "mark deleted"
-        sMsg = "Deleting progress notes is quite a serious action and should never be undertaken lightly.\n\n"
-          "A complete audit trail will be kept of your actions, and the progress not will not be actually "
-          "removed from the database, just flagged as hidden.\n\n"
-          "Should a medico-legal audit take place of this patients notes, the deleted notes will be visible to "
-          "the audit, along with your name, the time the note was deleted, and the reason you gave.\n\n"
-          " Are you sure you wish to do this?"
+         sMsg = "Deleting progress notes is quite a serious action and should never be undertaken lightly.\n\n"
+         "A complete audit trail will be kept of your actions, and the progress not will not be actually "
+         "removed from the database, just flagged as hidden.\n\n"
+         "Should a medico-legal audit take place of this patients notes, the deleted notes will be visible to "
+         "the audit, along with your name, the time the note was deleted, and the reason you gave.\n\n"
+         " Are you sure you wish to do this?"
          Message.Title = "Deleting Progress Notes"
-        Message.Question(sMsg, "Yes, Proceed and Delete the notes", "No")
-        Print Active_Webview.tag!pk_progressnote
-        If modAudit.MakeAudit(currentconsult, "mark deleted", "clin_consult.progressnotes", fk_progressnote, const.cSection_GeneralNotes, "Progress Notes") Then
-           modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "deleted": True])
+         Message.Question(sMsg, "Yes, Proceed and Delete the notes", "No")
+         Wait
+         Inc Application.Busy
+         If modAudit.MakeAudit(currentconsult, "mark deleted", "clin_consult.progressnotes", fk_progressnote, const.cSection_GeneralNotes, "Progress Note") Then
+            modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "deleted": True])
             modDBConnect.CommitTrans()
-        Else
+         Else
+            Dec Application.Busy 
             Message.Info("An unspecified error occurred and the record was not deleted") 
-        Endif
-        Load_Notes()
+            Return 
+         Endif
+         Dec Application.Busy
+         FClinical.Refresh_AllPreviousNotes()
+         Load_Notes()
       Case "print"
    End Select 
    
@@ -143,24 +163,28 @@ Public Sub webview_Notes_Menu()
 End
 
 Public Sub WebView_Notes_dblClick()
-    Active_Webview = Last
-    Edit()   
-    
+   
+   Active_Webview = Last
+   Edit()   
+   
 End
 
 Public Sub Edit()
+   '-------------------------------------
+   'FIXME:  THIS DOES NOT WORK AT ALL?WHY
+   '-------------------------------------
+
    Dim hctrl As Control
    Dim args As New Variant[]
    
    args.Add("FEditNotes")
    args.Add(Me) 
-  
+   
    Active_Webview.Visible = False   
- 
    Active_Editor = Active_Webview.parent.children[1]
    Active_Editor.Visible = True 
    Object.Call(Active_Editor, "init", args)
-   ProgressNote_Before_Editing = Object.Call(Active_Editor, "Get_Copy_of_Editor_text")
+   ProgressNote_Before_Editing = Object.Call(Active_Editor, "Get_Copy_of_Editor_Richtext")
    Active_Editor.SetFocus()
    
 End
@@ -173,34 +197,48 @@ Public Sub Settings_Load()
    
 End
 
-Public Sub lcNotes_Click()
-
+Public Sub lcNotes_Click() 
+   '-----------------------------------------------
+   'User has clicked on a row of the progress notes
+   'Set fk_progress note to the correct key 
+   '-----------------------------------------------
+   
    Dim Changed_Text As String
    
    If Bexit Then Return 
+   Print "Last fk_progressnote=", fk_progressnote
    If Not IsNull(Active_Editor) Then    
-      Changed_text = Object.Call(Active_Editor, "Get_Copy_of_Editor_text")
-      
+      Changed_text = Object.Call(Active_Editor, "Get_Copy_of_Editor_RichText")
+     
       If Changed_text <> ProgressNote_Before_Editing Then
          Stop Event
+         '----------------------------------------------------------------------------------------------
+         'Now, the fk_progress now is that of the last row clicked, not the one the user just clicked on
+         '----------------------------------------------------------------------------------------------
          If Message.Question("Save changes?", "Yes", "No") = 1 And Active_Editor.parent.children[1].visible = True Then 
+            Inc Application.Busy
+            If modAudit.MakeAudit(currentconsult, "progress note edited", "clin_consult.progressnotes", fk_progressnote, const.cSection_GeneralNotes, "Progress Note") Then
+               modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": Changed_text])
+               modDBConnect.CommitTrans()
+            Else
+               Dec Application.Busy 
+               Message.Info("An unspecified error occurred and the record was not deleted") 
+               Return 
+            Endif
+            Dec Application.Busy
             Active_Editor.parent.children[0].html = Changed_text
          Else
             Active_Editor.parent.children[0].html = ProgressNote_Before_Editing
          End If  
-      Else
-         Print "didn't change it" 
-         ' Active_Editor.visible = False   
       End If
+      
       Active_Editor.parent.children[0].visible = True  
       Active_Editor.parent.children[1].visible = False 
       ProgressNote_Before_Editing = ""
       Active_Editor = Null
-  End If
-      'Not in edit mode - get the webview control 
-      Active_Webview = Last.Children[1].Children[1].Children[0]
-   
-  ' End If  
-   fk_progressnote = Active_Webview.tag!pk_progressnote  
-   Print fk_progressnote
+   End If
+   Active_Webview = Last.Children[1].Children[1].Children[0]
+   fk_progressnote = ProgressNotes_Keys[Last.index]
+   Print "next fk_progressNote:", fk_progressnote
+
 End

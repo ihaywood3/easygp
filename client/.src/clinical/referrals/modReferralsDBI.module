@@ -37,43 +37,8 @@ Public Function Letters_Received_Get(fk_patient As Integer) As Collection ', Opt
    Return modDBConnect.exec_query_collection(sql)
    
 End
-' Public Function Referral_Delete(cons As cConsult, ref As cReferral, audit As cAudit) As Boolean
-'  '------------------------------------------------------------------------
-'  'Deletes a referral, keeps the referral_pk on the referral_undelete stack
-'  'TODO THIS FIX ME   
-'  '------------------------------------------------------------------------
-'    
-'    If ref.fk_consult = cons.pk_consult Then
-'       modDBConnect.BeginTrans()
-'       sql = "Update  clin_referrals.referrals "
-'       sql &= "SET deleted = 't' WHERE pk = "
-'       sql &= ref.pk
-'       modDBConnect.exec_query(sql)
-'       modConsultDBI.Audit_Save(audit)
-'    Else
-'    
-'    End If
-'    
-'    Return modDBConnect.CommitTrans()
-'  
-' End
 
-Public Function Referrals_Written_This_Consult_Get(fk_patient As Integer) As Collection
-   '----------------------------------------------------------------------------------------------------------
-   'Returns collection of letters on same date by same doctor - this allows editing of mis-printed letters
-   '---------------------------------------------------------------------------------------------------------- 
-   
-   Dim sql As String
-   
-   sql = "Select * from clin_referrals.vwReferrals WHERE fk_patient = " & fk_patient
-   sql &= " AND fk_staff = " & modDBConnect.currentUser!fk_staff 
-   sql &= " AND date(consult_date) = '" & Format(Now, "dd/mm/yyyy") & "'::date "
-   sql &= " AND deleted = False"
-   Return modDBConnect.exec_query_collection(sql)
-   
-End
-
-Public Function Referrals_written_get(fk_patient As Integer) As Collection
+Public Function Referrals_Written_Get(fk_patient As Integer) As Collection
    '-------------------------------------------------------------------
    'PURPOSE: Gets all referral  letters or other outgoing letters
    '         but not recall letters for the patient
@@ -114,18 +79,13 @@ Public Function UnDelete(pk_referral As Integer)
    
 End
 
-Public Function Inclusions_Get(fk_patient As Integer, Optional bdeleted As Boolean = False, Optional bThisConsult As Boolean = False) As Collection 
+Public Function Inclusions_Get(fk_patient As Integer, Optional bThisConsult As Boolean = False) As Collection 
   '-----------------------------------------------------------------------------------------------------------------------
   'Gets inclusions for patients referrals, either the entire collection or optionally only for current day of consultation
   '-----------------------------------------------------------------------------------------------------------------------
   Dim sql As String
 
-  sql = "Select * from clin_referrals.vwInclusions where fk_patient = " & fk_patient & "  AND deleted = " 
-  If bdeleted Then
-    sql &= "True"
-  Else
-     sql &= "False" 
-  Endif
+  sql = "Select * from clin_referrals.vwInclusions where fk_patient = " & fk_patient
   If bThisConsult Then
       sql &= " AND date(consult_date) = '" & Format(Now, "dd/mm/yyyy") & "'::date "
   Endif
@@ -173,25 +133,6 @@ Public Function Organisations_Get_For_Employee(fk_person As Integer) As Collecti
    
 End
 
-' Public Function Person_Get_Distinct(txtName As String, Optional bPatient As Boolean = False) As Collection
-'    '------------------------------
-'    'return a collection of persons
-'    '------------------------------
-' 
-'    Dim bits As New String[]
-'    Dim sql As String    
-'    
-'    bits = Split(txtName, ",")
-'    sql = "Select * from contacts.vwPersonsOrEmployees_By_Occupation WHERE  " 
-'    If bits.count = 2 Then
-'       sql &= "surname ILIKE $$%" & bits[0] & "%$$ AND firstname ILIKE $$%" & bits[1] & "%$$ " 
-'    Else
-'       sql &= " surname  ILIKE $$%" & txtName & "%$$ "
-'    Endif
-'    sql &= " LIMIT 20"
-'    Return modDBConnect.exec_query_collection(sql)
-' 
-' End
 
 Public Function Persons_Addresses_Get(fk_person As Integer) As Collection
    '---------------------------------------------------------------------
@@ -265,7 +206,7 @@ Public Function Employee_Comms_Get(fk_employee As Integer) As Result
    
 End
 
-Public Sub Referral_Print(currentconsult As CConsult, referral As Collection, bPrintCopies As Boolean, Inclusions As Collection)
+Public Sub Referral_Print(currentconsult As CConsult, referral As Collection, bPrintCopies As Boolean, inclusions As Collection)
    '-----------------------------------------------
    'Print the referral letter, appropriate copies, inclusions
    '-----------------------------------------------
@@ -275,49 +216,105 @@ Public Sub Referral_Print(currentconsult As CConsult, referral As Collection, bP
    Dim num_copies As Integer   
    Dim Document As Collection
    Dim file_extension As String
-   Dim extra_copies As Integer
+   Dim latex As String
+   Dim templ As CTemplate
+   
    num_copies = 1                      'always want single copy
-   If bPrintCopies Then 
-      extra_copies = Max(Split(referral!copyto, "|").Count, 0) 
-      If extra_copies Then
-         num_copies = num_copies + extra_copies                 'plus the extra copies we need
-      End If
-   End If   
+   If bPrintCopies Then num_copies += Max(Split(referral!copyto, "|").Count, 0) 
     
    For x = 1 To num_copies 
-      modPrinting.PrintHtml(referral!letter_html, const.Paper_Plain)
-      If referral!include_healthsummary = True Then
-         modPrinting.PrintHtml(modProgressNotes.Health_Summary_Construct_html(currentconsult), const.Paper_Plain)
-      End If
-      If referral!include_careplan = True Then
-         modPrinting.PrintHtml(modProgressNotes.Care_Plan_Construct_html(currentconsult), const.Paper_Plain)
-      End If  
-      '------------------------------------------------------------------------------------
-      'Now print any included documents which were dragged'n dropped to the inclusions list
-      'FIXME: just first go, need to take into account document type in more thorough way
-      'At moment, I'm only allowing drag and drop of letters recieved or hl7 recieved
-      '------------------------------------------------------------------------------------
-      If Not IsNull(inclusions) Then 
-         For Each inclusion In Inclusions
-            Try Document = currentconsult!results_received[inclusion!fk_document]         '? a result??
-            If IsNull(document) Then                                                      'it wasn't a result             
-               Try Document = currentconsult!letters_received[inclusion!fk_document]      '? a letter ??   
-            End If  
-            '---------------------------------------------------------------------------
-            'If it was a valid document, print - at moment we only handle pdf's and html
-            'but hey, that's our perogative
-            '---------------------------------------------------------------------------   
-            If Not IsNull(Document) Then 
-               file_extension = Lower(File.Ext(document!source_file))
-               Select Case file_extension
-                  Case "pdf"
-                     modPrinting.Print_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ document!source_file)
-                  Case Else
-                     If Not IsNull(document!html) Then modPrinting.PrintHtml(document!html, const.Paper_Plain)
-               End Select
-            End If
+     templ = New CTemplate("templates/referral.tex") 
+     Construct_Letter(templ, currentconsult, referral, inclusions) 
+     modPrinting.Print_latex(templ.GetData(), const.Paper_Plain)
+     If referral!include_healthsummary = True Then
+       modPrinting.PrintHtml(modProgressNotes.Health_Summary_Construct_html(currentconsult), const.Paper_Plain)
+     End If
+     If referral!include_careplan = True Then
+       modPrinting.PrintHtml(modProgressNotes.Care_Plan_Construct_html(currentconsult), const.Paper_Plain)
+     End If  
+     '------------------------------------------------------------------------------------
+     'Now print any included documents which were dragged'n dropped to the inclusions list
+     'FIXME: just first go, need to take into account document type in more thorough way
+     'At moment, I'm only allowing drag and drop of letters recieved or hl7 recieved
+     '------------------------------------------------------------------------------------
+     If Not IsNull(inclusions) Then 
+       For Each inclusion In Inclusions
+         Try Document = currentconsult!results_received[inclusion!fk_document]         '? a result??
+         If IsNull(document) Then                                                      'it wasn't a result             
+           Try Document = currentconsult!letters_received[inclusion!fk_document]      '? a letter ??   
+         End If  
+         '---------------------------------------------------------------------------
+         'If it was a valid document, print - at moment we only handle pdf's and html
+         'but hey, that's our perogative
+         '---------------------------------------------------------------------------   
+         If Not IsNull(Document) Then 
+           file_extension = Lower(File.Ext(document!source_file))
+           Select Case file_extension
+             Case "pdf"
+               modPrinting.Print_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ document!source_file)
+             Case Else
+               If Not IsNull(document!html) Then modPrinting.PrintHtml(document!html, const.Paper_Plain)
+             End Select
+           End If
          Next
       End If   
    Next
    
 End
+
+' constructs a referral letter from a collection using the provided template.
+' note that it is expected that the collection comes from clin_referral.vwreferral,
+' including all the extra fields for addresses, organisations etc, even for new referrals.
+Public Sub Construct_Letter(templ As CTemplate, currentconsult As CConsult, referral As Collection, inclusions As Collection)
+   
+   Dim sPatient As String
+   Dim to_address As String[]
+   Dim i As String
+   Dim comm As Collection
+   
+   templ.Subst_common(currentconsult)
+   
+   ' the Re: line at the start of the letter
+   i = currentconsult!patient!firstname & " " & currentconsult!patient!surname & ", " & currentconsult!patient!street1 
+   If Not IsNull(currentconsult!patient!street2) Then i &= currentconsult!patient!street2 & " "
+   i &= " " & currentconsult!patient!town & " " & currentconsult!patient!postcode & ", DOB: " & Format(currentconsult!patient!birthdate, "dd/mm/yyyy")
+   i &= " Aged: " & currentconsult!patient!age 
+   templ.Subst("patient-line", i)
+   
+   ' recipient address, which as lots of bits that can be NULL
+   Let to_address = New String[]
+   For Each i In ["wholename", "organisation", "branch", "street1", "street2"]
+     If Not IsNull(referral[i]) Then to_address.Add(referral[i])
+   Next
+   If Not IsNull(referral!town) Then to_address.Add(referral!town & " " & referral!postcode)
+   ' with LaTeX the templater will turn <br> into the apropriate separator
+   templ.Subst_HTML("to-address", to_address.Join("<br>"))
+   
+   If IsNull(referral!wholename) Then
+     templ.Subst("salutation", "Dear Sir/Madam")
+     templ.Subst("finish", "Yours faithfully,")
+   Else
+     templ.Subst("salutation", "Dear " & referral!wholename)
+     templ.Subst("finish", "Yours sincerely,") 
+   Endif
+   ' TODO: move these to the new system
+   'sLetterHtml = Replace(sLetterHtml, "%inclusions%", sHtml_Inclusions)
+   'sLetterHtml = Replace(sLetterHtml, "%cc%", sHtml_CopyTo)
+   
+   Let i = ""
+   For Each comm In currentconsult!comms
+     i &= const.CommModalityTextFull[comm!fk_type] & ":" & comm!value & "<br>"
+   Next
+   templ.Subst_HTML("comms", i)
+   If referral!fk_type <> 13 Then ' other than "Non-Medicare" 
+      templ.Subst_HTML("type", "<b>Type of referral:</b> " & referral!type)
+   Else
+      templ.Subst("type", "")
+   End If
+   
+   ' the body itself
+   templ.Subst_HTML("body", referral!body_html)
+
+   
+End Sub
+

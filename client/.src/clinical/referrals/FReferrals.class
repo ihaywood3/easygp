@@ -29,9 +29,7 @@
 '                 might be 'Review of Aortic Stenosis' or 'Investigation of chest pain'
 ' NOTE            Contact data must be present in the Contacts database
 '                 and cannot be entered via this screen
-' TODO            Decide if using LaTex rather than html
-'                 Fix Referral_LetterHTML_Construct() to use cTemplate
-'                 Think about and implement user defined shortcuts in teLetter
+' TODO            Think about And implement user defined shortcuts In teLetter
 '                 Allow drag n drop of graph/images into the letter
 '                 Implement putting dragged graph into pdf and printing.
 '                 Implement putting photographs/line diagrams into notes.
@@ -53,7 +51,7 @@ Private branch As Collection
 Private Comms As Collection
 Private comm As Collection 
 Private sHtml_Inclusions As String
-Private Inclusions_EditArea As Collection                    'Documents/graphs etc, whatever is included in letter in edit area
+Private inclusions_coll As Collection                    'Documents/graphs etc, whatever is included in letter in edit area
 Private Inclusions_Referrals_This_Consult As Collection      'Inclusions collection for those saved/printed
 Private Inclusions_Referral_This_Consult As Collection      'The inclusions for a single referral written this consult
 Private currentconsult As CConsult                          'set by calling form e.g Fclinical or FActionDocument
@@ -215,87 +213,31 @@ Public Sub Save()
       referral!include_healthsummary = False 
    End If  
    referral!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto 'FIXME, I'VE LEFT it as collection till I sort using this in FRequests
-   sHtml_CopyTo = Copyto_Html_Constuct(referral!copyto)
-   sHtml_Inclusions = Inclusions_Construct_HTML(Inclusions_EditArea)
-   
-   referral!body_html = Referral_BodyHTML_Construct()
-   referral!letter_html = Referral_LetterHTML_Construct(sHtml_CopyTo, sHtml_Inclusions)
-   referral!fk_type = referral_types[cmbReferralTypes.index]!pk                                            'e.g opinion and management
+   referral!fk_type = referral_types[cmbReferralTypes.index]!pk
+   referral!body_html = Referral_BodyHTML_Construct()                                          'e.g opinion and management
    ' referral!fk_pasthistory = fk_pasthistory '0 = general notes > 0 = key to clin_history.past_history table
    '-------------------------------------------------
    'Construct the text to embed in the progress notes
    '-------------------------------------------------
-   sProgressNote_Html = Referral_ProgressNoteHTML_Construct(referral, sHtml_Inclusions)
+   sProgressNote_Html = Referral_ProgressNoteHTML_Construct(referral)
    '-------------------------------------------------
    'Ok, save the referral
    'Inclusions are saved to clin_referrals.inclusions
    '-------------------------------------------------
    modDBConnect.BeginTrans()
    referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote_Html, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
-   pk_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral, Inclusions_EditArea)   'Save the referral letter
+   pk_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral, inclusions_coll)   'Save the referral letter
    modDBConnect.CommitTrans()
+   currentconsult.Refresh("referrals_written")               'Delete key = force a refresh
+   ' reload the referral collection from the backend, this gives us the linked-in addresses etc.
+   referral = currentconsult!referrals_written[pk_referral]
    If chkDoNotPrint.value = False Then
-      modReferralsDBI.Referral_Print(currentconsult, referral, True, Inclusions_EditArea) 
-   End If
-   Reload()                                                  'Default to a new letter, reload controls
+      modReferralsDBI.Referral_Print(currentconsult, referral, True, inclusions_coll) 
+   End If                                 
    FClinical.Refresh_AllPreviousNotes()                      'Refresh progress notes in Fclinical
-   
+   Reload()
 End
 
-Public Sub Referral_Print_badmethod(referral As Collection)
-   '-----------------------------------------------
-   'temporary work-around, convert to pdf and print
-   'Print enough copies
-   '-----------------------------------------------
-   
-   Dim inclusion_keys As New String[]
-   Dim inclusion_key As String 
-   Dim x As Integer
-   Dim num_copies As Integer   
-   Dim Document As Collection
-   Dim file_extension As String
-   
-   Try inclusion_keys = Split(referral!inclusions, "|")
-   
-   
-   num_copies = Max(Split(referral!copyto, "|").Count, 1)  'print at least 1 = our letter
-   If num_copies > 1 Then Inc num_copies                   'plus the extra copies we need
-   
-   For x = 1 To num_copies 
-      modPrinting.PrintHtml(referral!letter_html, const.Paper_Plain)
-      If chkIncludehealthSummary.value = True Then
-         modPrinting.PrintHtml(modProgressNotes.Health_Summary_Construct_html(currentconsult), const.Paper_Plain)
-      End If
-      If chkIncludeCarePlan.value = True Then
-         modPrinting.PrintHtml(modProgressNotes.Care_Plan_Construct_html(currentconsult), const.Paper_Plain)
-      End If  
-      '------------------------------------------------------------------------------------
-      'Now print any included documents which were dragged'n dropped to the inclusions list
-      'FIXME: just first go, need to take into account document type in more thorough way
-      'At moment, I'm only allowing drag and drop of letters recieved or hl7 recieved
-      '------------------------------------------------------------------------------------
-      For Each inclusion_key In Inclusion_keys
-         Try Document = currentconsult!results_received[inclusion_key]         '? a result??
-         If IsNull(document) Then                                                      'it wasn't a result             
-            Try Document = currentconsult!letters_received[inclusion_key]      '? a letter ??   
-         End If  
-         '---------------------------------------------------------------------------
-         'If it was a valid document, print - at moment we only handle pdf's and html
-         'but hey, that's our perogative;;
-         '---------------------------------------------------------------------------   
-         If Not IsNull(Document) Then 
-            file_extension = Lower(File.Ext(document!source_file))
-            Select Case file_extension
-               Case "pdf"
-                  modPrinting.Print_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ document!source_file)
-               Case Else
-                  If Not IsNull(document!html) Then modPrinting.PrintHtml(document!html, const.Paper_Plain)
-            End Select
-         End If
-      Next
-   Next
-   
-End
 
 
 Public Sub Reload()
@@ -304,8 +246,7 @@ Public Sub Reload()
    'Reload all inclusions for the patients only this consult, this is the True flag in the Inclusions_Get below
    '-----------------------------------------------------------------------------------------------------------
    FClinical.Refresh_Section(const.cSection_Referrals)                    'Refresh lists on main screen FClinical
-   currentconsult.Refresh("referrals_written_this_consult")               'Delete key = force a refresh
-   Inclusions_Referrals_This_Consult = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False, True) 'fk_patient, deleted, only this consult
+   Inclusions_Referrals_This_Consult = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, True) 'only this consult
    Referrals_This_consult_Show()                                          'Update list under edit area
    Referral_New()                                                         'clear for next condition
    txtName.SetFocus()
@@ -469,7 +410,7 @@ Public Function Copyto_Html_Constuct(Optional copyto As String = "") As String
    
 End
 
-Public Function Referral_ProgressNoteHTML_Construct(referral As Collection, sHtml_Inclusions As String) As String 
+Public Function Referral_ProgressNoteHTML_Construct(referral As Collection) As String 
    '---------------------------------------------------------------------
    'The HTML for the progress note is <> the letter
    'it is an abbridged form, with just who it is for + body letter + cc's
@@ -494,168 +435,22 @@ Public Function Referral_ProgressNoteHTML_Construct(referral As Collection, sHtm
    "</small></P><HR>"
    "</TD>"
    "<TD WIDTH=20%>"
-  "</TD>"
+   "</TD>"
    "</TR>"
    "</TABLE>"
    shtml = Replace$(shtml, "%letterbody%", referral!body_html)
    shtml = Replace$(shtml, "%cc%", Copyto_Html_Constuct(referral!copyto)) 
-   shtml = Replace$(shtml, "%inclusions%", sHtml_Inclusions) 
+   shtml = Replace$(shtml, "%inclusions%", Inclusions_Construct_HTML(inclusions_coll)) 
 
    Return sHTml
    
 End
 
-Public Function Referral_LetterHTML_Construct(Optional sHtml_CopyTo As String = "", sHtml_Inclusions As String = "") As String
-   '-----------------------------------------------------------
-   'Construct Html of the referral letter, FIX ME USE cTemplate
-   '-----------------------------------------------------------  
-   
-   Dim sType As String
-   Dim sLetterHtml As String
-   Dim charpos As Integer
-   Dim sPatient As String = currentconsult!patient!firstname & " " & currentconsult!patient!surname & " " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2)
-   Dim sPatient_Comms As String 'phone, etc for the patient
-   Dim com As Collection 
-   
-   '----------------------------------------------
-   'Replace the rest, patient name, who its to etc
-   '----------------------------------------------
-   spatient &= " " & currentconsult!patient!town & " " & currentconsult!patient!postcode & " DOB:" & Format(currentconsult!patient!birthdate, "dd/mm/yyyy")
-   If currentconsult!patient!age_numeric < 18 Then
-       sPatient &= " Aged: " & currentconsult!patient!age_display 
-   Else
-      sPatient &= " Aged: " & Str(currentconsult!patient!age_numeric)
-   End If
-   sLetterHtml = "<html><head><meta name='qrichtext' content='1' /></head><body>"
-   "<TABLE WIDTH=100% BORDER=0 CELLPADDING=4 CELLSPACING=3 >"
-   "<COL WIDTH=128*>"
-   "<COL WIDTH=128*>"
-   "<TR VALIGN=TOP>"
-   "<TD WIDTH=50%>"
-   "<P>%practitioner_name<BR>"
-   "%provider_no</P>"
-   "<BR>"
-   "%date%"
-   "</TD>"
-   "<TD WIDTH=50%>"
-   "<P ALIGN=RIGHT>%clinic.name<BR>"
-   "%clinic.branch<BR>"
-   "%clinic.street<BR>"
-   "%clinic.suburb<BR></P>"
-   "</TD>"
-   "</TR>"
-   "</TABLE>"
-   "<hr>"
-   "<P>%referred_to%<BR>" 
-   "%organisation%"
-   "%branch%"
-   "%address%"
-   "%suburb%"
-   "%phone%"
-   "%fax%</P>"
-   "<p>Dear %firstname%,</p>"
-   "<BR>"
-   "<TABLE WIDTH=100%>"
-   "<COL WIDTH=8%>"
-   "<COL WIDTH=92%>"
-   "<TR VALIGN=TOP>"
-   "<TD WIDTH=8%>"
-   "<P>Re:</P>"
-   "</TD>"
-   "<TD WIDTH=92%>"
-   "<P>%patient%</P>"
-   "</TD>"
-   "</TR>"
-   "<TR VALIGN=TOP>"
-   "<TD WIDTH=8%>"
-   "<P></P>"
-   "</TD>"
-   "<TD WIDTH=92%>"
-   "<P>%comms%</P>"
-   "</TD>"
-   "</TR>"
-   "</TABLE>"  
-   "%type%"
-   "<p>%body%</p>"
-   "<p>Yours Sincerely</p>"
-   "<p><BR><BR></p>"
-   "<p>%user%</p>"
-   "%inclusions%"
-   "%cc%"
-   "</body></html>"
-   sLetterHtml = Replace(sLetterHtml, "%date%", txtReferralDate.text)
-   sLetterHtml = Replace(sLetterHtml, "%inclusions%", sHtml_Inclusions)
-   sLetterHtml = Replace(sLetterHtml, "%cc%", sHtml_CopyTo)
-   sLetterHtml = Replace(sLetterHtml, "%practitioner_name", modDBConnect.currentUser!title & " " & modDBConnect.currentuser!wholename)
-   sLetterHtml = Replace(sLetterHtml, "%provider_no", modDBConnect.currentUser!provider_number)
-   sLetterHtml = Replace(sLetterHtml, "%clinic.name", modDBConnect.currentUser!organisation) 
-   sLetterHtml = Replace(sLetterHtml, "%clinic.name", modDBConnect.currentUser!organisation) 
-   sLetterHtml = Replace(sLetterHtml, "%clinic.branch", modDBConnect.currentUser!branch)
-   If Not IsNull(modDBConnect.currentUser!street2) Then
-      sLetterHtml = Replace(sLetterHtml, "%clinic.street", modDBConnect.currentUser!street1 & "<BR>" & modDBConnect.currentUser!street2) 
-   Else
-      sLetterHtml = Replace(sLetterHtml, "%clinic.street", modDBConnect.currentUser!street1) 
-   Endif
-   sLetterHtml = Replace(sLetterHtml, "%clinic.suburb", modDBConnect.currentUser!town & " " & modDBConnect.currentuser!postcode)
-   
-   sLetterHtml = Replace$(sLetterHtml, "%referred_to%", txtName.text)
-   If txtOrganisation.text <> "" Then 
-      sLetterHtml = Replace$(sLetterHtml, "%organisation%", txtOrganisation.text & "<BR>")
-   Else
-      sLetterHtml = Replace$(sLetterHtml, "%organisation%", "")
-   End If
-   If txtBranch.text <> "" Then
-      sLetterHtml = Replace$(sLetterHtml, "%branch%", txtBranch.text & "<BR>")
-   Else
-      sLetterHtml = Replace$(sLetterHtml, "%branch%", "")
-   End If
-   sLetterHtml = Replace$(sLetterHtml, "%address%", Trim(txtStreet1.text & " " & txtStreet2.text) & "<BR>")
-   sLetterHtml = Replace$(sLetterHtml, "%suburb%", txtSuburb.text & " " & txtPostcode.text & "<BR>")
-   
-   If Not IsNull(PersonWritingTo!firstname) Then
-      sLetterHtml = Replace$(sLetterHtml, "%firstname%", PersonWritingTo!firstname)
-   Else
-      sLetterHtml = Replace$(sLetterHtml, "%firstname%", "Sir/Madam")
-   End If   
-   ' If cvwPersonContacts.count Then
-   '    For Each comm In comms
-   '       If comm!fk_type = const.CommModalityPhone Then
-   '          sLetterHtml = Replace$(sLetterHtml, "%phone%", comm!value)
-   '       Endif
-   '       If comm!fk_type = const.CommModalityFax Then
-   '          sLetterHtml = Replace$(sLetterHtml, "%fax%", comm!value)
-   '       Endif
-   '    Next
-   ' Endif
-   sLetterHtml = Replace$(sLetterHtml, "%phone%", "")
-   sLetterHtml = Replace$(sLetterHtml, "%fax%", "")
-   sLetterHtml = Replace$(sLetterHtml, "%patient%", spatient)
-   'now the comms
-   
-   For Each com In currentconsult!comms
-      sPatient_Comms &= const.CommModalityTextFull[com!fk_type] & ":" & currentconsult!comms[currentconsult!comms.key]!value & "<BR>"
-   Next
-   sLetterHtml = Replace$(sLetterHtml, "%comms%", sPatient_Comms)
-   If cmbReferralTypes.text <> "Non Medicare" Then 
-       sLetterHtml = Replace$(sLetterHtml, "%type%", "<p>TYPE Of REFERRAL: " & cmbReferralTypes.Text & "</P")
-   Else
-       sLetterHtml = Replace$(sLetterHtml, "%type%", "")
-   End If
-   sLetterHtml = Replace$(sLetterHtml, "%body%", Referral_BodyHTML_Construct())
-   sLetterHtml = Replace$(sLetterHtml, "%user%", modDBConnect.currentUser!wholename)
-   'Get rid of potentially empty strings
-   sLetterHtml = Replace$(sLetterHtml, "%address%", "")
-   sLetterHtml = Replace$(sLetterHtml, "%suburb%", "")
-   Return sLetterHtml
-   
-End
 
 Public Function Referral_BodyHTML_Construct() As String
    '-------------------------------------------------------------------------------------------
-   'extracts just the html for the body of the  letter
-   'IAN; the qt control has changed alot in how it handles html since I first implemented this
-   'this routine needs fixing. Its originally intent was to chop of everything bar the text
-   'of the letter. for some reason all blank lines in between paragraphs not being kept.
+   'extracts just the html for the body of the letter
+   ' converts the widget's quite odd HTML to something a bit more standard
    '--------------------------------------------------------------------------------------------
    
    Dim sBodyHTML As String
@@ -665,10 +460,25 @@ Public Function Referral_BodyHTML_Construct() As String
    sBodyHTML = Right(teLetter.RichText, Len(teLetter.RichText) - charpos + 1)
    charpos = InStr(sBodyHTML, "</body>")
    sBodyHTML = Left(sBodyHTML, charpos - 1)
-   sBodyHTML = Replace(sBodyHTML, "</p>", "</p><BR>")
+   sBodyHTML = Fix_HTML(sBodyHTML)
+   sBodyHTML = Replace$(sBodyHTML, "font-weight:600", "font-weight:bold")
    Return Trim(sBodyHTML)
    
 End
+
+Private Function Fix_HTML(s As String) As String
+   
+   Dim r As New Regexp(s, "<p[^>]+>")
+   
+   If r.Offset = -1 Then
+     Return s
+   Else
+     Return Left$(s, r.Offset) & "<p>" & Fix_HTML(Right$(s, - (r.Offset + Len(r.Text)))) 
+   Endif
+   
+End
+
+
 
 Public Sub Referral_Preview()
    '--------------------------------------------------------------------
@@ -685,7 +495,7 @@ Public Sub Referral_Preview()
    
    If VBox_Letters.Enabled = True Then           'this will be with new referral or editing a referral
       If Not Valid_Referral() Then Return
-      FHtml_Viewer.WebView1.html = Referral_LetterHTML_Construct(Copyto_Html_Constuct(Form_Copy_To.Get_CopyTo_Data()!copyto), Inclusions_Construct_HTML(Inclusions_EditArea))
+      'FHtml_Viewer.WebView1.html = Referral_LetterHTML_Construct(Copyto_Html_Constuct(Form_Copy_To.Get_CopyTo_Data()!copyto), Inclusions_Construct_HTML(inclusions_coll))
    Else                                           'otherwise previewing one written during consultation
       FHtml_Viewer.WebView1.html = currentconsult!referrals_written_this_consult[pk_referral]!letter_html
    End If 
@@ -886,7 +696,7 @@ Public Sub EditArea_Clear()
    '-----------
    lvworgcontacts.Clear()
    cvwPersonContacts.Clear()
-   lvwInclusions_EditArea.Clear()
+   lvwInclusions.Clear()
    columnview1.Visible = False
    txtHealthIssue.text = "General Notes"          'otherwise users will really get the shits
    cProgressNote_Section = const.cSection_GeneralNotes
@@ -1087,8 +897,8 @@ Public Sub Referral_New()
    
    chkIncludeCarePlan.value = False          'Don't include care plan
    chkIncludehealthSummary.Value = False     'Don't include summary
-   lvwInclusions_EditArea.Clear()                     'clear inclusions list
-   Inclusions_EditArea = New Collection
+   lvwInclusions.Clear()                     'clear inclusions list
+   inclusions_coll = New Collection
    PersonWritingTo = New Collection 
    '----------------------------------------
    'Finally set focus to allow input of name
@@ -1187,8 +997,7 @@ Public Sub Address_Select()
    columnview1.MoveCurrent
    Try txtOrganisation.text = Addresses[columnview1.Item.key]!organisation
    Try txtBranch.text = Addresses[columnview1.Item.key]!branch
-   Try txtStreet1.text = Addresses[columnview1.Item.key]!street1
-   Try txtStreet2.text = Addresses[columnview1.Item.key]!street2
+   Try txtStreet1.text = Addresses[columnview1.Item.key]!street
    Try txtSuburb.text = Addresses[columnview1.Item.key]!town
    Try txtPostcode.text = Addresses[columnview1.Item.key]!postcode
    Try fk_organisation = Addresses[columnview1.Item.key]!fk_organisation
@@ -1324,7 +1133,7 @@ Public Sub Referral_Edit()
    
    bEditing = True
    EditArea_Clear()
-   Inclusions_EditArea = New Collection
+   inclusions_coll = New Collection
    PersonWritingTo = New Collection 
    bExit = True
    cvwLetters.MoveCurrent
@@ -1344,8 +1153,8 @@ Public Sub Referral_Edit()
    txtOccupation.text = Letter_from_View!occupation
    txtOrganisation.text = Letter_from_View!organisation
    txtBranch.text = Letter_from_View!branch
-   txtStreet1.text = Letter_from_View!street1
-   txtStreet2.Text = Letter_from_View!street2
+   txtStreet1.text = Letter_from_View!street
+   txtStreet2.Text = ""
    txtSuburb.text = Letter_from_View!town
    txtPostcode.text = Letter_from_View!postcode
    '-----------------------------------------------------------------------------
@@ -1378,8 +1187,8 @@ Public Sub Referral_Edit()
    tbSave.Enabled = False  
    teLetter.SetFocus()
    Form_Copy_To.CopyTos_Reload(modUtil.SplitStrings_into_collection(Letter_from_View!copyto, "|"))
-   Inclusions_EditArea = modUtil.Copy_Collection(Inclusions_Referral_This_Consult)
-   lvwInclusions_EditArea_Refresh(Inclusions_EditArea)
+   inclusions_coll = modUtil.Copy_Collection(Inclusions_Referral_This_Consult)
+   lvwInclusions_Refresh(inclusions_coll)
    bExit = False  
    cmbReferralTypes.index = cmbReferralTypes.Find(Letter_from_View!type) 'leave outside of Bexit to use the click event
    tbPreview.Enabled = True   
@@ -1496,7 +1305,7 @@ Public Sub Person_Addresses_Get()
       Else
          ColumnView1[address!pk_view][0] = "Private rooms"
       End If   
-      ColumnView1[address!pk_view][1] = address!street1 & " " & address!street2 & " " & address!town
+      ColumnView1[address!pk_view][1] = address!street & " " & address!town
    Next
    If Addresses.count > 1 Then 
       columnview1.Raise
@@ -1530,7 +1339,7 @@ Public Sub Person_Get()
          Else
             columnview1[Specialist!pk_view][2] = ""
          Endif
-         Try address = Trim(Specialist!street1 & " " & Specialist!street2)
+         Try address = Specialist!street & " "
          Try address &= Specialist!town & " " & Specialist!postcode
          columnview1[Specialist!pk_view][3] = address
       Next
@@ -1538,7 +1347,7 @@ Public Sub Person_Get()
       columnview1.Visible = True
       columnview1.Raise
       Return 
-   Else 
+   Else
       columnview1.Visible = False   
    End If
    
@@ -1637,8 +1446,7 @@ Public Sub Branch_Select()
    columnview1.MoveCurrent()
    txtOrganisation.text = branches[columnview1.Item.key]!organisation
    txtBranch.text = branches[columnview1.Item.key]!branch
-   txtstreet1.text = branches[columnview1.Item.key]!street1
-   txtstreet2.text = branches[columnview1.Item.key]!street2
+   txtstreet1.text = branches[columnview1.Item.key]!street
    txtSuburb.text = branches[columnview1.Item.key]!town
    txtPostcode.text = branches[columnview1.Item.key]!postcode
    txtCategory.text = branches[columnview1.Item.key]!category
@@ -1661,7 +1469,7 @@ Public Sub Branch_Get()
       For Each branch In branches
          columnview1.Add(branch!pk_view, 0)
          columnview1[branch!pk_view][0] = branch!branch
-         columnview1[branch!pk_view][1] = Trim(branch!street1 & " " & branch!street2) & " " & branch!town & " " & branch!postcode
+         columnview1[branch!pk_view][1] = branch!street & " " & branch!town & " " & branch!postcode
       Next
       columnview1.Visible = True
       columnview1.Tag = txtBranch
@@ -1689,7 +1497,7 @@ Public Function Employee_Workplace_Get()
       Columnview1.Add(branch!pk_view, 0)
       Columnview1[branch!pk_view][0] = Branch!organisation
       Columnview1[branch!pk_view][1] = Branch!branch
-      Columnview1[branch!pk_view][2] = Trim(Branch!street1 & " " & Branch!street2)
+      Columnview1[branch!pk_view][2] = Branch!street 
       Columnview1[branch!pk_view][3] = Branch!town & " " & Branch!postcode
    Next 
    
@@ -1716,8 +1524,7 @@ Public Function Employee_Workplace_Select()
    '-----------------
    'These can be null
    '-----------------
-   Try txtStreet1.text = branches[columnview1.Item.key]!street1
-   Try txtStreet2.text = branches[columnview1.Item.key]!street2
+   Try txtStreet1.text = branches[columnview1.Item.key]!street
    Try txtSuburb.text = branches[columnview1.Item.key]!town
    Try txtPostcode.text = branches[columnview1.Item.key]!postcode
    txtTag.SetFocus   
@@ -1770,8 +1577,7 @@ Public Sub Person_By_Occupation_Select()
       PersonWritingTo!title = specialists[columnview1.Item.key]!title
       Try txtOrganisation.text = specialists[columnview1.Item.key]!organisation
       Try txtBranch.text = specialists[columnview1.Item.key]!branch
-      Try txtStreet1.text = specialists[columnview1.Item.key]!street1
-      Try txtStreet2.text = specialists[columnview1.Item.key]!street2
+      Try txtStreet1.text = specialists[columnview1.Item.key]!street
       Try txtSuburb.text = specialists[columnview1.Item.key]!town
       Try txtPostcode.text = specialists[columnview1.Item.key]!postcode 
       If fk_branch Then Branch_Comms_Get()
@@ -1810,7 +1616,7 @@ Public Sub Person_By_Occupation_Get()
          Else
             columnview1[Specialist!pk_view][2] = ""
          Endif
-         Try address = Trim(Specialist!street1 & " " & Specialist!street2)
+         Try address = Specialist!street & " "
          Try address &= Specialist!town & " " & Specialist!postcode
          columnview1[Specialist!pk_view][3] = address
       Next 
@@ -1901,7 +1707,7 @@ Public Sub Organisation_Get()
       Columnview1.Add(branch!pk_view, 0)
       Columnview1[branch!pk_view][0] = Branch!organisation
       Columnview1[branch!pk_view][1] = Branch!branch
-      Columnview1[branch!pk_view][2] = Trim(Branch!street1 & " " & Branch!street2)
+      Columnview1[branch!pk_view][2] = Branch!street 
       Columnview1[branch!pk_view][3] = Branch!suburb & " " & Branch!postcode
    Next 
    
@@ -1915,12 +1721,12 @@ Public Sub Organisation_Get()
    
 End
 
-Public Sub lvwInclusions_EditArea_Refresh(Inclusions As Collection)
+Public Sub lvwInclusions_Refresh(Inclusions As Collection)
    '---------------------------------------------------------------------
    'Refresh the inclusions list for the current document in the edit area
    'ie. this is the list next to the letter text, not the one
    'underneath which is for thos letters already printed
-   'Called by  lvwInclusions_EditArea_Drop: Inclusions_EditArea collection
+   'Called by  lvwInclusions_Drop: inclusions_coll collection
    '           Referral_Edit:Inclusions_Referral_This_Consult collection
    '---------------------------------------------------------------------
    Dim inclusion As Collection
@@ -1928,20 +1734,21 @@ Public Sub lvwInclusions_EditArea_Refresh(Inclusions As Collection)
    Dim document As Collection 
    
    '
-   lvwInclusions_EditArea.Clear()
+   lvwInclusions.Clear()
    For Each Inclusion In Inclusions
       Try Document = currentconsult!results_received[inclusion!fk_document]         '? a result??
       If IsNull(document) Then                                                      'it wasn't a result             
          Try Document = currentconsult!letters_received[inclusion!fk_document]      '? a letter ??   
       End If  
       sString = Document!date_created & " " & Document!tag_user  
-      lvwInclusions_EditArea.add(lvwInclusions_EditArea.count, sSTring)
+      lvwInclusions.add(lvwInclusions.count, sSTring)
    Next
-   lblDocuments.text = "Included Documents (" & Str(lvwInclusions_EditArea.Count) & ")"
+   lblDocuments.text = "Documents (" & Str(lvwInclusions.Count) & ")"
+
 
 End
 
-Public Sub lvwInclusions_EditArea_Drop()
+Public Sub lvwInclusions_Drop()
    '---------------------------------------------------------------------
    'Something is being dropped on the inclusions list in the edit area
    'We will (at some stage) accept stuff which is a document or a graph
@@ -1970,13 +1777,13 @@ Public Sub lvwInclusions_EditArea_Drop()
       Select_mode = cv.mode
       If cv.mode = 1 Then
          Inclusion!fk_document = Drag.data
-         Inclusions_EditArea.Add(Inclusion, lvwInclusions_EditArea.count)
+         inclusions_coll.Add(Inclusion, lvwInclusions.count)
       Else
          cv.MoveFirst()
          For x = 0 To cv.count - 1
             If cv.Item.Selected = True Then
                Inclusion!fk_document = Drag.data 'fk_document
-               Inclusions_EditArea.Add(Inclusion, Inclusions_EditArea.count)
+               inclusions_coll.Add(Inclusion, inclusions_coll.count)
             Endif
             cv.MoveNext()
          Next
@@ -1985,12 +1792,12 @@ Public Sub lvwInclusions_EditArea_Drop()
       '---------------------------------
       'Must be a graph which was dropped
       '---------------------------------  
-      '  Inclusions_EditArea!type = "graph"
-      '  Inclusions_EditArea!filename = Drag.Source.Tag!fname
+      '  inclusions_coll!type = "graph"
+      '  inclusions_coll!filename = Drag.Source.Tag!fname
       '  sString = "graph of something"
-      ' lvwInclusions_EditAreas.add(lvwInclusions_EditAreas.count, sSTring)
+      ' lvwInclusionss.add(lvwInclusionss.count, sSTring)
    End If
-   lvwInclusions_EditArea_Refresh(Inclusions_EditArea)
+   lvwInclusions_Refresh(inclusions_coll)
    EditArea_Notify_DataChange(True)
 End
 
@@ -2013,7 +1820,7 @@ Public Function Inclusions_Construct_HTML(Inclusions As Collection) As String
    "<P><small><small>Inclusions</small></small></P>"
    "</TD>"
    "<TD WIDTH=94%>"
-   "<P<small><small>%inclusions%</small></small></P>"
+   "<P><small><small>%inclusions%</small></small></P>"
    "</TD>"
    "</TR>"
    "</TABLE>"   

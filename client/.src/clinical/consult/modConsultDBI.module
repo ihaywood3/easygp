@@ -35,6 +35,7 @@ Public Function ProgressNote_Save(currentconsult As Cconsult, notes As String, f
    '      remove the \n's somehow generated in removing the headers
    'default to parsing html to strip out unwanted stuff
    '---------------------------------------------------------------
+
    Dim newnote As New Collection
    
    ' it is possible notes = "", because this record
@@ -55,7 +56,7 @@ Public Function ProgressNote_Save(currentconsult As Cconsult, notes As String, f
    'save them to postres and put a placer in the html
    'which is the key to clin_consult.images
    '-------------------------------------------------
-  
+   
    newnote!notes = Notes_Parse_For_Images(notes, currentconsult) 
    '--------------------------------------------------
    'If measurements exist parse them out
@@ -85,17 +86,17 @@ Public Function ProgressNote_Save(currentconsult As Cconsult, notes As String, f
          newnote.Add("", "notes")
       End If
       newnote!pk_progressnote = pk_progressnote ' visit!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_Workcover, fk_progressnote, "workcover", 0, False)
-
+      
       newnote!fk_audit_action = const.cAuditAction_Edit
       modDBConnect.update("clin_consult.progressnotes", currentconsult!progress_notes[pk_progressnote], newnote, "pk_progressnote") ' save to backend and update the collection in RAM too
    End If
    ' modDBConnect.CommitTrans()
    Return pk_progressnote
-
+   
 End
 
 Public Function Get_Section_Name(section As Integer) As String
-
+   
    Dim section_name As String
    
    Select Case section
@@ -140,8 +141,6 @@ Public Function Get_Section_Name(section As Integer) As String
    
 End
 
-
-
 Public Function Consult_Create(pk_patient As Integer, fk_type As Integer, summary As String) As Collection
    '------------------------------------------------------------------------
    'Currently this only creates an entry in clin_consult.consult to register
@@ -160,7 +159,7 @@ Public Function Consult_Create(pk_patient As Integer, fk_type As Integer, summar
    'FIXME - IF WE ARE GOING TO HAVE A 'CONSULT SUMMARY' THEN
    'THIS NEEDS TO EDIT THE FIELD AS WELL.
    '--------------------------------------------------------------
-
+   
    Dim sql As String
    
    sql = "set datestyle = 'iso,dmy'"
@@ -178,7 +177,7 @@ End
 
 Public Function ProgressNotes_Save(consult As Cconsult)
    'Saves just the progress notes on the tabs
-
+   
    Dim x As Integer
    Dim sql As String
    
@@ -194,7 +193,7 @@ Public Function ProgressNotes_Save(consult As Cconsult)
          $Result = modDBConnect.exec_query(sql)
       End If
    Next
-
+   
 End
 
 Public Function ProgressNotes_Edit(progressnotes As Collection, pk_problem As Integer)
@@ -205,7 +204,7 @@ Public Function ProgressNotes_Edit(progressnotes As Collection, pk_problem As In
    'along with annotations as to date/who etc.
    'currently set to modify just for a particular problem
    'just first pass attempt. FIXME
-
+   
    Dim progressnote As Collection 
    Dim sql As String
    
@@ -220,11 +219,12 @@ Public Function ProgressNotes_Edit(progressnotes As Collection, pk_problem As In
    
 End
 
-Public Function Image_Save(ImagePath As String, fk_consult As Integer, Optional fk_image As Integer = 0) As Integer
-
+Public Function Image_Save(ImagePath As String, fk_consult As Integer, md5sum As String, Optional fk_image As Integer = 0) As Integer
+   
    Dim data As New Collection
    
    data!image = "BLOB:" & ImagePath
+   data!md5sum = md5sum
    If fk_consult Then   
       data!fk_consult = fk_consult
    End If   
@@ -248,14 +248,21 @@ Public Function Notes_Parse_For_Images(Notes As String, currentconsult As CConsu
    'when the clinical notes are re-loaded, then another temporary
    'file will be created and its path re-inserted into the notes
    '<img align=LEFT border=0 height=208 name=graphics src=/tmp/gambas.1000/6301/5.tmp.png width=181 >
-   '------------------------------------------------------------
-
+   'There's a problem with this:
+   'the user can save a progress note many times during a consulation, so each time any images in the
+   'notes will be re-saved, again and again and again, so we use the md5sum to stop this until
+   'Ian figures out if there is a better way.
+   '-------------------------------------------------------------------------------------------------
+   
    Dim afile As String
    Dim someFiles As String[]
    Dim image_pk As Integer
    Dim re As New Regexp
    Dim sHtml As String
    Dim fk_consult As Integer
+   Dim sql As String
+   Dim R As Result
+   Dim md5sum As String
    
    fk_consult = currentconsult.GetPK()
    someFiles = New String[]
@@ -268,20 +275,27 @@ Public Function Notes_Parse_For_Images(Notes As String, currentconsult As CConsu
       re.Exec(sHtml)
    Loop
    For Each afile In someFiles
-      image_pk = Image_Save(afile, fk_consult)
-      Print "src=\"" & afile & "\"", "pk_image=" & Str$(image_pk)
-     ' Notes = Replace$(Notes, "src=\"" & afile & "\"", "pk_image=" & Str$(image_pk)) 'old
+      '--------------------------------------------------------- 
+      'Has this image been saved before?, if yes, re-use the key
+      '--------------------------------------------------------- 
+      md5sum = modUtil.Calc_md5sum_File(Right$(afile, -5)) 'chopped of the src=\ from the string
+      R = modDBConnect.exec_query("Select * from Blobs.vwPatientImages where md5sum = $$" & md5sum & "$$")
+      If R.count = 0 Then 
+         image_pk = Image_Save(afile, fk_consult, md5sum)
+      Else
+         image_pk = R!pk
+      End If 
       Notes = Replace$(Notes, afile & "\"", "pk_image=" & Str$(image_pk)) 'temporary
    Next
    Return Notes
-
+   
 End
 
 Public Function Staff_member_Get() As Collection
    '---------------------------------------------------------
    ' retrieves the associated demographic data for the currently logged in user
    '---------------------------------------------------------
-
+   
    Dim sql As String
    Dim user As Collection
    
@@ -298,7 +312,7 @@ Public Sub consult_get_types() As Collection
    '-------------------------------------------------------------------------------
    'Gets a list of types of consulation eg 'In consulting rooms', or 'By Telephone'
    '-------------------------------------------------------------------------------
-
+   
    Return modDBConnect.exec_query_collection("SELECT * FROM clin_consult.lu_consult_type where pk <" & const.ConsultType_DataImport & " ORDER by type")
    
 End
@@ -318,25 +332,31 @@ Public Function progressnotes_get(fk_patient As Integer, Optional single_day As 
    End If
    sql &= " AND fk_audit_action <> " & const.cAuditAction_Reversal ' OR DELETE?
    If bInclude_audit = False Then
-     sql &= " AND linked_table is null " 
+      sql &= " AND linked_table is null " 
    Endif
    If bInclude_Deleted = False Then
-     sql &= " AND deleted = False" 
+      sql &= " AND deleted = False" 
    Endif
- 
+   
    sql &= " ORDER BY consult_date, fk_staff,fk_section"
    
    Return modDBConnect.exec_query_collection(sql)
    
 End
 
-Public Function Image_get(pk_image As Integer) As String
-
+Public Function Image_get(pk_image As Integer, Optional bHas_MD5Sum As Boolean = False) As String
+   '--------------------------------------------------------------------------------
+   'Gets an image from the backend
+   'all progress note/procedures images will have an md5sum, not so patient pictures
+   '--------------------------------------------------------------------------------   
    Dim $Result As Result
    Dim tempFile As String
    Dim tempPicture As Variant
    Dim sql As String = "Select * from blobs.images WHERE pk=" & pk_image
-
+   
+   If bHas_MD5Sum Then
+      sql &= "  AND md5sum is not null" 
+   Endif
    $Result = modDBConnect.exec_query(sql)
    If $Result.count Then
       tempFile = Temp() & ".png"
@@ -346,35 +366,38 @@ Public Function Image_get(pk_image As Integer) As String
       End If
    End If
    Return tempFile
-
+   
 End
-Public Sub Run_Image_Fix()
+
+Public Sub Run_Image_Fix_md5sum()
    'temporary fixme remove me
-   'find all the images in all the notes and put a fk_consult in blobs.images
+   'add an md5sum to all images in the database which are in the progress notes.
+   'we can later remove all images not with an md5sum
+   
    Dim sql As String
    Dim Progressnotes As Collection
    Dim progressnote As Collection
    Dim sMsg As String
    
- 
-   Progressnotes = modDBConnect.exec_query_collection("Select * from clin_consult.vwProgressNotes")
+   Progressnotes = modDBConnect.exec_query_collection("Select * from clin_consult.vwProgressNotes")  ' get all progress notes
    sMsg = "You have " & Str(progressnotes.count)
    sMsg &= " progress note entries to correct \n\nThis could take some time\n\n Continue?"
-
+   
    If Message.Question(sMsg, "Yes", "No") = 2 Then Return 
    Inc Application.Busy
-  
+   
    For Each progressnote In progressnotes
-      Print progressnote!pk_progressnote 
-       ImageFix(progressnote!notes, progressnote!fk_consult) 
+      ImageFix_Add_MD5Sum(progressnote!notes) 
    Next
    Dec Application.Busy
+   modDBConnect.CommitTrans()
    
 End
 
-Public Sub ImageFix(notes As String, fk_consult As Integer)
-   'fixme remove me, just leaving this in to "repair" all the images I've got on the database
-   'as I changed the table structure and most of the pk's are 'hidden' in html in progressnotes!note
+Public Sub ImageFix_Add_MD5Sum(notes As String)
+   'fixme remove me, 
+   'adds md5sum but only for those blobs.images records which correspond to pk_image in progress note
+
    Dim tempFile As String
    Dim tempPicture As Variant
    Dim sql As String
@@ -388,8 +411,10 @@ Public Sub ImageFix(notes As String, fk_consult As Integer)
    Dim pk_image As Integer
    Dim placeholder As String
    Dim R As Result
- 
- 
+   Dim md5Output As String
+   Dim Img As Collection
+  
+   'Get all the pk_images from the progress notes
    sHtml = notes
    pk_images = New Integer[]
    Do Until charpos = 0
@@ -402,26 +427,55 @@ Public Sub ImageFix(notes As String, fk_consult As Integer)
       End If
    Loop 
    For Each pk_image In pk_images
-       R = modDBConnect.exec_query("Select * from blobs.images where pk=" & pk_image)
-       If R.count Then
-         Print "primary key:" & R!pk,
-         Try Print "fk_consult:", R!fk_consult
-         Print
-          
-        If IsNull(R!fk_consult) Then
-           modDBConnect.exec_query("Update blobs.images set fk_consult=" & fk_consult & " WHERE pk=" & pk_image)
-           modDBConnect.CommitTrans()
-        Endif
+      R = modDBConnect.exec_query("Select * from blobs.images where pk=" & pk_image)
+      If R.count Then
+         tempFile = Temp() & ".png"
+         tempPicture = R!image
+         If tempPicture.data Then 
+            File.Save(tempFile, tempPicture.data)
+         End If
+         
+         Exec ["/usr/bin/md5sum", tempFile] To md5Output
+         Print Left(md5Output, InStr(md5Output, " ") - 1)
+         modDBConnect.exec_query("Update blobs.images set md5sum =$$" & Left(md5Output, InStr(md5Output, " ") - 1) & "$$ WHERE pk=" & pk_image)
+       
       Endif
-   Next  
+   Next 
+   Return 
+Catch
+
+Message.Error(Error.Text, "Ok")
+
+End
+
+Public Sub Run_Image_Fix()
+   'temporary fixme remove me
+   'find all the images in all the notes and put a fk_consult in blobs.images
+
+   Dim sql As String
+   Dim Progressnotes As Collection
+   Dim progressnote As Collection
+   Dim sMsg As String
+   
+   Progressnotes = modDBConnect.exec_query_collection("Select * from clin_consult.vwProgressNotes")
+   sMsg = "You have " & Str(progressnotes.count)
+   sMsg &= " progress note entries to correct \n\nThis could take some time\n\n Continue?"
+   
+   If Message.Question(sMsg, "Yes", "No") = 2 Then Return 
+   Inc Application.Busy
+   
+   For Each progressnote In progressnotes
+      Print progressnote!pk_progressnote 
+      ImageFix(progressnote!notes, progressnote!fk_consult) 
+   Next
+   Dec Application.Busy
    
 End
 
-Public Function Images_Get(notes As String) As String
-   '----------------------------------------------------------------------------
-   'Now retrieve any linked images and create temporary files on the hard drive
-   '<IMG pk_image=30  NAME=graphics
-   '----------------------------------------------------------------------------
+Public Sub ImageFix(notes As String, fk_consult As Integer)
+   'fixme remove me, just leaving this in to "repair" all the images I've got on the database
+   'as I changed the table structure and most of the pk's are 'hidden' in html in progressnotes!note
+
    Dim tempFile As String
    Dim tempPicture As Variant
    Dim sql As String
@@ -434,7 +488,92 @@ Public Function Images_Get(notes As String) As String
    Dim sHtml As String
    Dim pk_image As Integer
    Dim placeholder As String
+   Dim R As Result
+   
+   sHtml = notes
+   pk_images = New Integer[]
+   Do Until charpos = 0
+      charpos = InStr(shtml, "pk_image=")
+      If charpos Then
+         shtml = Right(shtml, Len(shtml) - charpos - 8) 'now looks like eg 30 NAME.....
+         charpos = InStr(shtml, " ")
+         pk_images.Add(CInt(Left(shtml, charpos - 1)))
+         sHtml = Right(shtml, Len(shtml) - charpos - 1)
+      End If
+   Loop 
+   For Each pk_image In pk_images
+      R = modDBConnect.exec_query("Select * from blobs.images where pk=" & pk_image)
+      If R.count Then
+         Print "primary key:" & R!pk,
+         Try Print "fk_consult:", R!fk_consult
+         Print
+         
+         If IsNull(R!fk_consult) Then
+            modDBConnect.exec_query("Update blobs.images set fk_consult=" & fk_consult & " WHERE pk=" & pk_image)
+            modDBConnect.CommitTrans()
+         Endif
+      Endif
+   Next  
+   
+End
 
+Public Function Images_Get(notes As String) As String
+   '----------------------------------------------------------------------------
+   'Now retrieve any linked images and create temporary files on the hard drive
+   '<IMG pk_image=30  NAME=graphics
+   '----------------------------------------------------------------------------
+
+   Dim tempFile As String
+   Dim tempPicture As Variant
+   Dim sql As String
+   Dim charpos As Integer = -1
+   Dim NAMEPOS As Integer
+   Dim number_string As String
+   Dim afile As String
+   Dim pk_images As Integer[]
+   Dim x As Integer
+   Dim sHtml As String
+   Dim pk_image As Integer
+   Dim placeholder As String
+   
+   sHtml = notes
+   pk_images = New Integer[]
+   Do Until charpos = 0
+      charpos = InStr(shtml, "pk_image=")
+      If charpos Then
+         shtml = Right(shtml, Len(shtml) - charpos - 8) 'now looks like eg 30 NAME.....
+         charpos = InStr(shtml, " ")
+         pk_images.Add(CInt(Left(shtml, charpos - 1)))
+         sHtml = Right(shtml, Len(shtml) - charpos - 1)
+      End If
+   Loop 
+   For Each pk_image In pk_images
+      'Now fetch the images, and put a temporary file name into the notes strin
+      Tempfile = Image_get(pk_image, True) 'progress note image must have an md5sum
+      Notes = Replace$(Notes, "pk_image=" & pk_image, "src='file://" & Tempfile & "'")
+   Next
+   Return Notes
+   
+End
+Public Function Images_Get_Pre04May11_DONOTDELETETHIS_IAN(notes As String) As String
+   '----------------------------------------------------------------------------
+   'Now retrieve any linked images and create temporary files on the hard drive
+   '<IMG pk_image=30  NAME=graphics
+   '----------------------------------------------------------------------------
+
+   Dim tempFile As String
+   Dim tempPicture As Variant
+   Dim sql As String
+   Dim charpos As Integer = -1
+   Dim NAMEPOS As Integer
+   Dim number_string As String
+   Dim afile As String
+   Dim pk_images As Integer[]
+   Dim x As Integer
+   Dim sHtml As String
+   Dim pk_image As Integer
+   Dim placeholder As String
+   
    sHtml = notes
    pk_images = New Integer[]
    Do Until charpos = 0
@@ -452,18 +591,17 @@ Public Function Images_Get(notes As String) As String
       Notes = Replace$(Notes, "pk_image=" & pk_image, "src='file://" & Tempfile & "'")
    Next
    Return Notes
-
+   
 End
-
 Public Function progressnotes_get_for_condition(pk_patient As Integer, fk_problem As Integer) As Result
-
+   
    Dim sql As String
-
+   
    sql = "SELECT * FROM clin_consult.vwProgressNotes where fk_patient = " & pk_patient
    sql &= " AND fk_problem = " & fk_problem & " ORDER BY  consult_date"
    $Result = modDBConnect.exec_query(sql)
    Return $Result
-
+   
 End
 
 Public Function staff_member_by_surname(surname As String) As Collection
@@ -477,7 +615,7 @@ Public Function staff_member_by_surname(surname As String) As Collection
 End
 
 Public Function Consult_Update(pk_consult As Integer, fk_type As Integer, summary As String)
-
+   
    Dim sql As String
    
    sql = "Update clin_consult.consult set fk_type= " & fk_type

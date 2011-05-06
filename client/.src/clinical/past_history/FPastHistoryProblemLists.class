@@ -14,24 +14,60 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'-----------------------------------------------------------------------
 
-'Public currentPatient As cPatient
 Public currentconsult As CConsult
+Public pk_pasthistory As Integer
+Public healthissue As String 
 
-Public Sub Init(cons As Cconsult)
-  
-  currentconsult = cons
-  Refresh()
+Public currentProblem As Collection 
+Public cvwSelected As ColumnView
+Public ParentForm As String
+
+Public Sub Init(cons As Cconsult, PF As String)
+
+   ParentForm = PF
+   currentconsult = cons
+   Settings_Load()
+   Refresh()
+   
 End
 
+Private Sub Settings_Load()
+   
+   Try HSplit_ProblemLists.layout = Settings["ProblemLists_" & ParentForm & "/HSplit_ProblemLists"]
+   Try cvwProblemsActive.font = Font[Settings["ProblemLists_Embedded_" & ParentForm & "/problemlists_font"]]
+   Try cvwProblemsMajor.font = cvwProblemsActive.font
+   Try cvwProblemsInActive.font = cvwProblemsActive.font
+End
+
+Public Sub Settings_Save()
+
+  Settings["ProblemLists_" & ParentForm & "/HSplit_ProblemLists"] = HSplit_ProblemLists.layout 
+End
+
+Public Sub Update()
+   'deliberately not named save
+   
+   modDBConnect.BeginTrans
+   modDBConnect.update("clin_history.past_history", currentconsult!past_history[pk_pasthistory], currentProblem, "pk_pasthistory")
+   modDBConnect.CommitTrans
+   Refresh()
+   FClinical_Refresh()
+End
+
+Public Sub FClinical_Refresh()
+   
+     If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then
+      FClinical.Refresh_Section(const.cSection_PastHistory)    'refresh lists on main screen FClinical
+      FClinical.Refresh_AllPreviousNotes() 
+   End If   
+ 
+   
+End
 
 Public Sub Refresh()
-   '-------------------------------
-   'Refreshes the past history lists
-   'temp  - just trying something different
-   '--------------------------------
-   '--------------------------------------------------------------------
-   'refreshes the cvwProblemsActive an cvwProblemsInActive lists
+   'refreshes the problem lists.
    'the collection members are referenced by the pk_past history
    'which is kept as the key of the list
    'If any of the items in a particular list have their data changed
@@ -39,13 +75,14 @@ Public Sub Refresh()
    'otherwise the outline will be removed (may or may not be present)
    'i.e visual notification to the user of saved/unsaved status
    '--------------------------------------------------------------------
+   
    Dim health_issue As Collection 
    Dim bDataChanged As Boolean
    Dim bMajorProblemChanged As Boolean
    Dim bSignificantProblemChanged As Boolean
    Dim bInactiveProblemChanged As Boolean
    
-    '-------------------------------------------------------------------------
+   '-------------------------------------------------------------------------
    'clear the lists, loop through all members, add to active or inactive list
    '-------------------------------------------------------------------------
    cvwProblemsActive.Clear()
@@ -65,52 +102,117 @@ Public Sub Refresh()
    cvwProblemsMajor.Columns[1].width = 10
    cvwProblemsMajor.Columns[2].width = 300
    For Each health_issue In currentconsult!past_history
-          If health_issue!data_changed Then 
-              bDataChanged = True
-          End If   
-          If health_issue!major = True     
-               cvwProblemsMajor.Add(Str$(health_issue!pk_pasthistory), 0)     'add new row, key = row count fixme to pk?
-               cvwProblemsMajor[Str$(health_issue!pk_pasthistory)][0] = health_issue!year_onset
-               cvwProblemsMajor[Str$(health_issue!pk_pasthistory)][2] = health_issue!description
-               If health_issue!data_changed = True Then
-                  bMajorProblemChanged = True
-               End If
-               
-         Else
-            If health_issue!active = True     
-               cvwProblemsActive.Add(Str$(health_issue!pk_pasthistory), 0)     'add new row, key = row count fixme to pk?
-               cvwProblemsActive[Str$(health_issue!pk_pasthistory)][0] = health_issue!year_onset
-               cvwProblemsActive[Str$(health_issue!pk_pasthistory)][2] = health_issue!description
-               If health_issue!data_changed = True Then
-                  bSignificantProblemChanged = True
-               End If
-            Else 
-               cvwProblemsInActive.Add(Str$(health_issue!pk_pasthistory), 0)     'add new row, key = row count fixme to pk?
-               cvwProblemsInActive[Str$(health_issue!pk_pasthistory)][0] = health_issue!year_onset
-               cvwProblemsInActive[Str$(health_issue!pk_pasthistory)][2] = health_issue!description
-               If health_issue!data_changed = True Then
-                  bInactiveProblemChanged = True
-               End If
-            Endif
+      If health_issue!data_changed Then 
+         bDataChanged = True
+      End If   
+      If health_issue!major = True     
+         cvwProblemsMajor.Add(Str$(health_issue!pk_pasthistory), 0)     'add new row, key = row count fixme to pk?
+         cvwProblemsMajor[Str$(health_issue!pk_pasthistory)][0] = health_issue!year_onset
+         cvwProblemsMajor[Str$(health_issue!pk_pasthistory)][2] = health_issue!description
+         If health_issue!data_changed = True Then
+            bMajorProblemChanged = True
+         End If
+      Else
+         If health_issue!active = True     
+            cvwProblemsActive.Add(Str$(health_issue!pk_pasthistory), 0)     'add new row, key = row count fixme to pk?
+            cvwProblemsActive[Str$(health_issue!pk_pasthistory)][0] = health_issue!year_onset
+            cvwProblemsActive[Str$(health_issue!pk_pasthistory)][2] = health_issue!description
+            If health_issue!data_changed = True Then
+               bSignificantProblemChanged = True
+            End If
+         Else 
+            cvwProblemsInActive.Add(Str$(health_issue!pk_pasthistory), 0)     'add new row, key = row count fixme to pk?
+            cvwProblemsInActive[Str$(health_issue!pk_pasthistory)][0] = health_issue!year_onset
+            cvwProblemsInActive[Str$(health_issue!pk_pasthistory)][2] = health_issue!description
+            If health_issue!data_changed = True Then
+               bInactiveProblemChanged = True
+            End If
+         Endif
       Endif
    Next 
- 
    
-   If bDataChanged Then 
-          'frmClinical.tbSave.Picture = Picture.Load("icons/20/save_2020_changed.png")
-   Else 
-         'FClinical.tbSave.Picture = Picture.Load("icons/20/save_2020.png")
-   End If   
-
-  
-  
 End
 
-Public Sub ProblemLists_Click()
-   'This is over-ridden by the parent form
-  Last.movecurrent
-  ' modglobal.globalKeyedItem = New cKeyedItem
-  ' modglobal.globalKeyedItem.pk = currentPatient.past_history[Last.item.Key].pk_pasthistory
-  ' modglobal.globalKeyedItem.description = currentPatient.past_history[Last.item.Key].health_issue
+Public Sub ProblemLists_Menu()
+   
+   If Last.count Then '
+      cvwSelected = Last 
+      Last.MoveCurrent()
+      pk_pasthistory = Last.item.key
+      healthissue = currentconsult!past_history[pk_pasthistory]!description
+      '      ' mnuProblemLists_Major_Title.caption = UCase(currentconsult!past_history[pk_pasthistory]!description)
+      MnuProblemLists.Popup()
+   End If
+   
+End 
 
+Public Sub mnuProblemLists_Click()
+   '----------------------------------------------------------------------
+   'User has selected an option from the popup menu over the problem lists
+   'Note:When the list itself was first clicked on the routine:
+   'ProblemLists_Select() set a private global variable sProblemKey to 
+   'point to the current problem in the list ie PH[sProblemKey]. the PH
+   'collection is initialised in init() for ease of typeing, and is a 
+   'pointer to modglobal.clinicalform.currentcurrentconsult.patient!past_history
+   'The lists if necessary are then re-refreshed visually. Note that the 
+   'contents of the problem the user is working on have already been
+   'automatically loaded into the editing area, so only the piece of
+   'information which has been changed eg problem made major, need be
+   'visually updated in the editing area
+   '----------------------------------------------------------------------
+   
+   Dim audit_rows As Collection 'for readability only
+   Dim tempstring As String
+   
+   currentProblem = New Collection
+   currentProblem!pk_pasthistory = pk_pasthistory
+   
+   Select Case Last.tag
+      Case "edit"
+         FPastHistory.Edit_PastHistory() 
+      Case "mark major"
+         ' chkMajor.Value = True
+         ' rbMajor.value = True
+         currentProblem!major = True
+         
+         Update()
+         
+      Case "mark significant"
+         currentProblem!major = False
+         currentProblem!active = True 
+         Update()
+      Case "mark inactive"
+         currentProblem!major = False
+         currentProblem!active = False 
+         Update()
+      Case "delete"
+         currentProblem!deleted = True
+         Update()
+      Case "view audit trail" 
+         tempstring = "<HTML><BODY><TABLE>" & modHTML.HTML_Template_Audit_Row_Heading() 
+         tempstring &= modAudit.MakeTrail("clin_history.past_history", pk_pasthistory)
+         tempstring &= "</TABLE></BODY></HTML>"
+         FClinical.Editor_ShowPage_External("browser", "Audit Trail for " & healthissue, tempstring)
+    
+      Case "undo delete"
+         '  modUtil.NotImplemented("Health Issue - Undo Delete")
+      Case "help"
+         FClinical.Editor_ShowPage_External("browser", "Health Issues Help", File.Load(Application.path & "/help/health-issues.html"))
+      Case "view all notes"
+         '   FClinical.WebBrowser_show(modProgressNotes.ConstructHTML_SingleProblem(currentconsult, pk_pasthistory, const.cSection_PastHistory))
+      Case "decision support"
+         '   modUtil.NotImplemented("Health Issue - Decision Support")
+         
+      Case "fonts"
+         Dialog.font = cvwSelected.font
+         If Dialog.SelectFont() Then Return 
+         cvwSelected.font = Dialog.Font  
+         Settings["ProblemLists_Embedded_" & ParentForm & "/problemlists_font"] = cvwSelected.Font.ToString()
+         cvwProblemsMajor.font = cvwSelected.Font
+         cvwProblemsInActive.font = cvwSelected.Font
+         cvwProblemsActive.font = cvwSelected.Font
+      Case Else ' for "mark significant explain", "mark inactive explain","mark major explain"
+         '   modPastHistoryDBI.Popup_Menu_Process(currentconsult, Last.tag, CurrentPastHistory, pk_pasthistory)
+   End Select
+   
 End

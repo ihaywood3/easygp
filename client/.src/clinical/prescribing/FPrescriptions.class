@@ -738,7 +738,7 @@ Public Sub columnview1_DblClick()
       Case "authority wording"
          Authority_Increased_Quantity_Reasons_Select()
    End Select
-   
+   pnlColumnView.visible = False 
 End
 
 Public Sub Generics_Get()
@@ -822,9 +822,15 @@ Public Sub DP(c As Collection)
    
 End
 
+Public Sub Print_Content()
+   
+   Print_Script_Items(script_items)
+   
+End
+
 Public Sub Drug_Print()
    
-   Print_Script_Items()
+   Print_Script_Items(script_items)
    
 End
 
@@ -1174,33 +1180,35 @@ Public Sub Print_Script_Items(items As Collection)
    Dim rpbs_scripts As New Collection
    Dim private_scripts As New Collection
    Dim s8_scripts As New Collection
-   
+   Dim authority_scripts As New Collection
    Dim templ As CTemplate
    
    For Each script_item In items 
       If script_item!printed = False Then 
          If script_item!fk_pbs_script_type < const.pbs_script_type_pbs Then 
             templ = New CTemplate("authority-script", "tex")
-            '   modPrinting.Print_latex(ScriptForm_Construct_Authority(script_item, templ).GetData(), const.Paper_Script)
+            authority_scripts = New Collection 
+            authority_scripts.Add(script_item, 0)
+            modPrinting.Print_latex(ScriptForm_Construct_Authority(authority_scripts, templ).GetData(), const.Paper_Script)
             script_item!printed = True
          Else
             Select script_item!fk_pbs_script_type
                Case const.pbs_script_type_pbs
                   If pbs_scripts.count = 3 Then 
-                     '     Print_Script(pbs_scripts, const.pbs_script_type_pbs)
+                          Print_Script(pbs_scripts, const.pbs_script_type_pbs)
                      pbs_scripts = New Collection
                   End If   
                   pbs_scripts.Add(script_item, pbs_scripts.count) 
                   
                Case const.pbs_script_type_private
                   If private_scripts.count = 3 Then
-                     '   Print_Script(private_scripts, const.pbs_script_type_private)
+                        Print_Script(private_scripts, const.pbs_script_type_private)
                      private_scripts = New Collection
                   Endif
                   private_scripts.Add(script_item, private_scripts.Count)  
                Case const.pbs_script_type_rpbs  
                   If rpbs_scripts.count = 3 Then 
-                     '   Print_Script(rpbs_scripts, const.pbs_script_type_rpbs)
+                        Print_Script(rpbs_scripts, const.pbs_script_type_rpbs)
                      rpbs_scripts = New Collection
                   Endif
                   rpbs_scripts.Add(script_item, rpbs_scripts.count)
@@ -1213,9 +1221,9 @@ Public Sub Print_Script_Items(items As Collection)
    'Probably bad......... stupid........ way to do this but
    'Any 'left over' after lots of three printed (except if three only), print them
    '------------------------------------------------------------------------------
-   '  If pbs_scripts.count Then Print_Script(pbs_scripts, const.pbs_script_type_pbs)
-   '  If private_scripts.count Then Print_Script(private_scripts, const.pbs_script_type_private)
-   ' If rpbs_scripts.count Then Print_Script(rpbs_scripts, const.pbs_script_type_rpbs)  
+    If pbs_scripts.count Then Print_Script(pbs_scripts, const.pbs_script_type_pbs)
+    If private_scripts.count Then Print_Script(private_scripts, const.pbs_script_type_private)
+   If rpbs_scripts.count Then Print_Script(rpbs_scripts, const.pbs_script_type_rpbs)  
    
 End
 
@@ -1261,18 +1269,18 @@ Public Sub Script_Construct_LaTex(items As Collection, templ As CTemplate, pbs_s
          templ.Subst("pbs_script", "")
          templ.Subst("wipe_pbs_rpbs", "XXXXXXXXXXXXXXX")
    End Select
-   templ.Subst_Drugs1(items) 'build latex for up to 3 script items
+   templ.Subst_Drugs(items) 'build latex for up to 3 script items
    
    Print templ
    Return templ 
    
 End
 
-Public Sub ScriptForm_Construct_Authority(script_item As Collection, templ As CTemplate) As CTemplate
+Public Sub ScriptForm_Construct_Authority(auth_item As Collection, templ As CTemplate) As CTemplate
    
    Dim Drug As String
    Dim drugs As String 
-   
+   Dim script_item As Collection = Auth_item[0]
    templ.Subst_common(currentconsult)
    
    templ.Subst("authority_heading_authority_script_number", const.pbs_script_types[script_item!fk_pbs_script_type] & " SCRIPT NO. " & script_item!authority_script_number) 
@@ -1302,10 +1310,22 @@ Public Sub ScriptForm_Construct_Authority(script_item As Collection, templ As CT
       templ.Checkbox("sendtopatient_checkbox", False)
    Endif
    templ.Subst("authority_script_number", Script_Item!authority_script_number)
-   templ.Subst("authority_Indication", script_item!authority_indication)
+   If Script_item!streamlined = True Then
+     script_item!restriction = Replace(script_item!restriction, "<p>", "")
+     script_item!restriction = Replace(script_item!restriction, "</p>", "")
+     script_item!restriction = Replace(script_item!restriction, "<br/>", "")
+     templ.Subst("authority_indication", "[" & script_item!restriction_code & "]" & script_item!restriction)   
+      
+   Else
+     script_item!restriction = Replace(script_item!restriction, "<p>", "")
+     script_item!restriction = Replace(script_item!restriction, "</p>", "")
+     script_item!restriction = Replace(script_item!restriction, "<br/>", "")
+     templ.Subst("authority_indication", script_item!restriction)         
+   End If   
    templ.Subst("authority_approval_number", script_item!authority_approval_number)
    templ.Subst("quantity_repeats", script_item!strength & " " & script_item!quantity & "'s Rpt " & script_item!repeats)
-   templ.Subst_Drugs(script_item)
+   templ.Subst_Drugs(auth_item, True) 
+   Print templ.GetData()
    Return templ
    
 End 
@@ -1343,6 +1363,7 @@ End
 Public Sub mnuPrescriptions_Click()
    
    Dim fk_script_item As Integer 
+   Dim item As Collection 
    
    cvwPrescriptions.MoveCurrent()
    Select Case Last.tag
@@ -1368,6 +1389,12 @@ Public Sub mnuPrescriptions_Click()
          Drug_Print_Single(cvwPrescriptions.Item.key)       'prints a single script
          ' cvwPrescriptions[cvwPrescriptions.Item.key].Picture = pic_printed
       Case "print all"
+           For Each item In script_items
+              item!printed = False
+           Next
+           Print_Script_Items(script_items)
+      Case "print selected"
+       
       Case "brief pi"
       Case "full pi"
       Case "fonts"

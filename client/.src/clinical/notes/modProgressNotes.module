@@ -21,7 +21,7 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult) As CT
    Dim sAddress As String
    Dim sString As String
    Dim comm As Collection 
-   Dim templ As New CTemplate("health-summary", "tex")
+   Dim templ As New CTemplate("hsumv3", "tex")
    Dim iIncomplete As Integer
    Dim sMissing As String = "**missing**"
    Dim item As Collection 
@@ -33,8 +33,11 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult) As CT
    Dim BMI As Variant
    Dim m As Collection
    Dim Last_Key As Integer
+   Dim sLaterality As String  
+   Dim PH As Collection 
+   Dim Medication As Collection
+   Dim vaccination As Collection
    
-    
    currentconsult.Refresh("family_history")
    currentconsult.Refresh("social_history")
    currentconsult.Refresh("past_history")
@@ -42,10 +45,13 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult) As CT
    currentconsult.Refresh("recalls_logged")
    
    templ.Subst_common(currentconsult)
+  
+  
    For Each item In currentconsult!social_history
       templ.Subst("socialhistory", item!history)
-      templ.Subst("responsible_person", item!responsible_person)
+      templ.Subst("responsibleperson", item!responsible_person)
    Next
+ 
    '----------------------------------
    'Construct the occupational history
    'Ian here, one needs to specific the column widths of the three items
@@ -55,27 +61,46 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult) As CT
    ' {!occupationalhistory} 
    '\end{tabular}% 
     '----------------------------------
+    sstring = ""
    For Each item In currentconsult!occupational_history
-      templ.Row(item!occupation, item!from_age & " to " & item!to_age, item!exposure)
+    ' templ.Row(item!occupation, item!from_age & " to " & item!to_age, item!exposure & "-")
+      sstring &= item!occupation & "\\&" & (item!from_age & " to " & item!to_age) & "\\&" & item!exposure & "\\tabularnewline \n"
    Next
-   templ.Table("occupationalhistory")
+   Print sstring 
+    templ.Subst("occupationalhistory", sstring)
+    Print templ.GetData()
    '-----------------------------------------------
    'Family History
    '    Construct something like this
    '   Mother (Hilda smith)
-   '   Hypertension onset age 50
+   '   Hypertension onset age 50     templ.Row(" ", sString)
+     Print sstring 
+
    '   Carcinoma Breast onset age 65 (caused death)
    'Ian: the problem is that whatever is constructed here, after the first line return \\
    'in the outputted file, the rest ends up back in the social history column of the page.
    '-----------------------------------------------
    sstring = ""
+   
+   For Each PH In currentconsult!past_history
+      If PH!risk_factor = True Then
+       sstring &= "\\textbf{" & PH!year_onset & "}" & "\\&"
+       sstring &= "\\textbf{" & UCase(PH!description) & " " & sLaterality & "}\\\\"
+       sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
+       sstring &= "\\tabularnewline \n"
+      Endif
+  Next
+  templ.Subst("riskfactors", sstring)
+   
+   sstring = ""
    Last_Key = 0
+
    For Each item In currentconsult!family_history
       If last_key <> item!fk_member Then
          last_key = item!fk_member
-         templ.Row("\\textbf{" & item!relationship & "}" & item!name)
+          sstring &= "\\textbf{" & item!relationship & "}" & item!name & "\\\\"
       End If
-      sstring = item!condition
+      sstring &= item!condition
       Try sstring &= " onset " & item!age_of_onset
       If item!cause_of_death = True Then
          sstring &= " (caused death"
@@ -85,10 +110,11 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult) As CT
             sstring &= ") "
          End If
       End If
-      templ.Row(" ", sString)
-    Next
-    templ.Table("familyhistory")
-    
+      sstring &= "\\\\"
+     Next
+     Print sstring 
+     templ.Subst("familyhistory", sstring)
+  
     m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height)
     If Not IsNull(m) Then
       height = m!data
@@ -123,17 +149,289 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult) As CT
       templ.Subst("egfr_date", r!observation_date)
       templ.Subst("egfr_data", r!value_numeric & " (" & sRange & ")")
    End If   
-
+   
    Try BMI = Format((weight / (height ^ 2)) * 10000, "##.#")
    If Not Error Then
       templ.Subst("bmi_data", BMI)  
-   Else
+   Else 
       templ.Subst("bmi_data", "N/A")
-   Endif
-   Return templ
-
+   End If   
+   '------------------------------
+   'Now do the major health issues
+   '------------------------------
+ sstring = ""
+ For Each PH In currentconsult!past_history
+      If PH!major = True And PH!risk_factor = False Then
+   
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+       sstring &= "\\textbf{" & PH!year_onset & "}" & "\\&"
+       sstring &= "\\textbf{" & UCase(PH!description) & " " & sLaterality & "}\\\\"
+       sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
+       sstring &= "\\tabularnewline \n"
+      Endif
+  Next
+  templ.Subst("majorhealthissues", sstring)
+   sstring = ""
+   For Each PH In currentconsult!past_history
+      If PH!active = True And PH!risk_factor = False Then
+   
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+       sstring &= "\\textbf{" & PH!year_onset & "}" & "\\&"
+       sstring &= "\\textbf{" & UCase(PH!description) & " " & sLaterality & "}\\\\"
+       sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
+       sstring &= "\\tabularnewline \n"
+      Endif
+  Next
+  templ.Subst("significanthealthissues", sstring)
+  
+  '  sstring = ""
+  '  For Each PH In currentconsult!past_history
+  '     If PH!active = False And PH!major = False And PH!risk_factor = False Then
+  '  
+  '        Select Case PH!fk_laterality
+  '           Case const.LateralityBoth
+  '              sLaterality = "(Bilateral)"
+  '           Case const.LateralityLeft
+  '              sLaterality = "(Left)"
+  '           Case const.LateralityRight
+  '              sLaterality = "(Right)"
+  '           Case const.LateralityNone
+  '              sLaterality = ""
+  '        End Select
+  '      sstring &= "\\textbf{" & PH!year_onset & "}" & "\\&"
+  '      sstring &= "\\textbf{" & UCase(PH!description) & " " & sLaterality & "}\\\\"
+  '      sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
+  '      sstring &= "\\tabularnewline \n"
+  '     Endif
+  ' Next
+  ' templ.Subst("inactivehealthissues", sstring)
+  sString = ""
+  For Each medication In currentconsult!medications
+    If medication!active = True Then 
+        sstring &= medication!generic & "\\&" & medication!strength & medication!form & "\\&" 
+        sstring &= medication!instruction & "\\&" & medication!prescribed_for & "\\tabularnewline\n"
+    End If  
+  Next
+  templ.Subst("medications", sString)
+  Print templ.GetData()
+  Return templ
 End
 
+Public Function Health_Summary_Construct_LaTeX_V1(currentconsult As Cconsult) As CTemplate
+   
+   Dim sName As String
+   Dim sAddress As String
+   Dim sString As String
+   Dim comm As Collection 
+   Dim templ As New CTemplate("hsum", "tex")
+   Dim iIncomplete As Integer
+   Dim sMissing As String = "**missing**"
+   Dim item As Collection 
+   Dim items As Collection 
+   Dim r As Result
+   Dim sRange As String 
+   Dim height As Variant
+   Dim weight As Variant
+   Dim BMI As Variant
+   Dim m As Collection
+   Dim Last_Key As Integer
+   Dim sLaterality As String  
+   Dim PH As Collection 
+    
+   currentconsult.Refresh("family_history")
+   currentconsult.Refresh("social_history")
+   currentconsult.Refresh("past_history")
+   currentconsult.Refresh("occupational_history")
+   currentconsult.Refresh("recalls_logged")
+   
+   templ.Subst_common(currentconsult)
+  
+  
+   For Each item In currentconsult!social_history
+      templ.Subst("socialhistory", item!history)
+      templ.Subst("responsibleperson", item!responsible_person)
+   Next
+ 
+   '----------------------------------
+   'Construct the occupational history
+   'Ian here, one needs to specific the column widths of the three items
+   'as I did here (generated by Lyx)
+   ' \begin{tabular}{>{\raggedright}p{2.5cm}>{\raggedright}p{2cm}>{\raggedright}p{3cm}}
+   ' \textbf{Occupation} &  & \textbf{Exposures}\tabularnewline
+   ' {!occupationalhistory} 
+   '\end{tabular}% 
+    '----------------------------------
+    sstring = ""
+   For Each item In currentconsult!occupational_history
+    ' templ.Row(item!occupation, item!from_age & " to " & item!to_age, item!exposure & "-")
+      sstring &= item!occupation & "\\&" & (item!from_age & " to " & item!to_age) & "\\&" & item!exposure & "\\tabularnewline \n"
+   Next
+   Print sstring 
+    templ.Subst("occupationalhistory", sstring)
+    Print templ.GetData()
+   '-----------------------------------------------
+   'Family History
+   '    Construct something like this
+   '   Mother (Hilda smith)
+   '   Hypertension onset age 50     templ.Row(" ", sString)
+     Print sstring 
+
+   '   Carcinoma Breast onset age 65 (caused death)
+   'Ian: the problem is that whatever is constructed here, after the first line return \\
+   'in the outputted file, the rest ends up back in the social history column of the page.
+   '-----------------------------------------------
+   sstring = ""
+   Last_Key = 0
+
+   For Each item In currentconsult!family_history
+      If last_key <> item!fk_member Then
+         last_key = item!fk_member
+          sstring &= "\\textbf{" & item!relationship & "}" & item!name & "\\\\"
+      End If
+      sstring &= item!condition
+      Try sstring &= " onset " & item!age_of_onset
+      If item!cause_of_death = True Then
+         sstring &= " (caused death"
+         If Not IsNull(item!age_of_death) Then
+            sstring &= "-" & item!age_of_death & " yrs)"
+         Else
+            sstring &= ") "
+         End If
+      End If
+      sstring &= "\\\\"
+     Next
+     Print sstring 
+     templ.Subst("familyhistory", sstring)
+  
+    m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height)
+    If Not IsNull(m) Then
+      height = m!data
+      templ.Subst("height_data", m!data)
+      templ.Subst("height_date", m!date)
+    Else
+      templ.Subst("height_data", "-")
+      templ.Subst("height_date", "-") 
+    Endif
+    m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Weight)
+    If Not IsNull(m) Then
+      weight = m!data
+      templ.Subst("weight_data", m!data)
+      templ.Subst("weight_date", m!date)
+    Else
+      templ.Subst("weight_data", "-")
+      templ.Subst("weight_date", "-")
+    Endif 
+    m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_BP)
+    If Not IsNull(m) Then
+      templ.Subst("bp_data", m!data)
+      templ.Subst("bp_date", m!date)
+    Else
+      templ.Subst("bp_data", "-")
+      templ.Subst("bp_date", "-")
+    Endif
+    r = modMeasurementsDBI.Get_Loinc_Value(currentconsult!patient!fk_patient, const.Loinc_EGFR, 1, "DESC") 'Last R by date
+    If r.count Then 
+      sRange = r!reference_range 
+      sRange = Replace(sRange, "(", "")
+      sRange = Replace(sRange, ")", "")
+      templ.Subst("egfr_date", r!observation_date)
+      templ.Subst("egfr_data", r!value_numeric & " (" & sRange & ")")
+   End If   
+   
+   Try BMI = Format((weight / (height ^ 2)) * 10000, "##.#")
+   If Not Error Then
+      templ.Subst("bmi_data", BMI)  
+   Else 
+      templ.Subst("bmi_data", "N/A")
+   End If   
+   '------------------------------
+   'Now do the major health issues
+   '------------------------------
+ sstring = ""
+ For Each PH In currentconsult!past_history
+      If PH!major = True And PH!risk_factor = False Then
+   
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+       sstring &= "\\textbf{" & PH!year_onset & "}" & "\\&"
+       sstring &= "\\textbf{" & UCase(PH!description) & " " & sLaterality & "}\\\\"
+       sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
+       sstring &= "\\tabularnewline \n"
+      Endif
+  Next
+  templ.Subst("majorhealthissues", sstring)
+   sstring = ""
+   For Each PH In currentconsult!past_history
+      If PH!active = True And PH!risk_factor Then
+   
+         Select Case PH!fk_laterality
+            Case const.LateralityBoth
+               sLaterality = "(Bilateral)"
+            Case const.LateralityLeft
+               sLaterality = "(Left)"
+            Case const.LateralityRight
+               sLaterality = "(Right)"
+            Case const.LateralityNone
+               sLaterality = ""
+         End Select
+       sstring &= "\\textbf{" & PH!year_onset & "}" & "\\&"
+       sstring &= "\\textbf{" & UCase(PH!description) & " " & sLaterality & "}\\\\"
+       sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
+       sstring &= "\\tabularnewline \n"
+      Endif
+  Next
+  templ.Subst("significanthealthissues", sstring)
+  
+  '  sstring = ""
+  '  For Each PH In currentconsult!past_history
+  '     If PH!active = False And PH!major = False And PH!risk_factor = False Then
+  '  
+  '        Select Case PH!fk_laterality
+  '           Case const.LateralityBoth
+  '              sLaterality = "(Bilateral)"
+  '           Case const.LateralityLeft
+  '              sLaterality = "(Left)"
+  '           Case const.LateralityRight
+  '              sLaterality = "(Right)"
+  '           Case const.LateralityNone
+  '              sLaterality = ""
+  '        End Select
+  '      sstring &= "\\textbf{" & PH!year_onset & "}" & "\\&"
+  '      sstring &= "\\textbf{" & UCase(PH!description) & " " & sLaterality & "}\\\\"
+  '      sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
+  '      sstring &= "\\tabularnewline \n"
+  '     Endif
+  ' Next
+  ' templ.Subst("inactivehealthissues", sstring)
+
+  Return templ
+End
 Public Function Health_Summary_Construct_html(currentconsult As Cconsult) As String
    '--------------------------------------------------------
    'Constructs a health summmary which is really a care plan
@@ -518,9 +816,9 @@ Public Function Health_Summary_Construct_html(currentconsult As Cconsult) As Str
          End Select
          sSTring = "<B>" & UCase(PH!description) & " " & sLaterality & "</B><BR>"
          sString &= "<small>"
-         sString &= PH!condition_summary & "<BR>"
-         sString &= "<B><I>Management Plan </I></B>"
-         sString &= PH!management_summary & "<BR>"
+         sString &= PH!condition_summary & ". "
+        ' sString &= "<B><I>Management Plan </I></B>"
+        sString &= PH!management_summary & "."  ' & "<BR>"
          '------------------------------------------------------
          'insert any team care members and their responsibilties
          '------------------------------------------------------
@@ -577,126 +875,131 @@ Public Function Health_Summary_Construct_html(currentconsult As Cconsult) As Str
    sRow = Replace(sRow, "col1", "<B>Height</B>")
    
    currentconsult.Refresh("measurements")
-   SData = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height), "|")
-   
-   If sData.count Then
-      height = sData[0]
-      sRow = Replace(sRow, "col2", "<B>" & sData[0] & "cm</B>")
-      sRow = Replace(sRow, "col3", "(" & sData[1] & ")")
-   Else
-      sRow = Replace(sRow, "col2", "N/A")
-      sRow = Replace(sRow, "col3", "")
-   End If
-   sString &= sRow
-   '------
-   'Weight
-   '------
-   sRow = sRowTemplate1
-   sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
-   sRow = Replace(sRow, "col2_width", "20%") 'col 2 has the rest
-   sRow = Replace(sRow, "col3_width", "45%") 'col 3 has the rest
-   sRow = Replace(sRow, "col1", "<B>Weight</B>")
-   SData = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Weight), "|")
-   If SData.Count Then
-      weight = sData[0]
-      sRow = Replace(sRow, "col2", "<B>" & sData[0] & "Kg</B>")
-      sRow = Replace(sRow, "col3", "(" & sData[1] & ")")
-   Else
-      sRow = Replace(sRow, "col2", "N/A")
-      sRow = Replace(sRow, "col3", "")
-   End If
-   sString &= sRow
-   '---------------------------------
-   'Now Calculate the BMI if possible
-   '---------------------------------
-   sRow = sRowTemplate1
-   sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
-   sRow = Replace(sRow, "col2_width", "20%") 'col 2 has the rest
-   sRow = Replace(sRow, "col3_width", "45%") 'col 3 has the rest
-   sRow = Replace(sRow, "col1", "<B>BMI</B>")
-   Try BMI = Format((weight / (height ^ 2)) * 10000, "##.#")
-   sRow = Replace(sRow, "col2", "<B>" & BMI & "</B>")
-   sRow = Replace(sRow, "col3", "")
-   sString &= sRow
-   '---------
-   'waist/hip
-   '---------
-   sRow = sRowTemplate1
-   sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
-   sRow = Replace(sRow, "col2_width", "20%") 'col 2 has the rest
-   sRow = Replace(sRow, "col3_width", "45%") 'col 3 has the rest
-   sRow = Replace(sRow, "col1", "<B>Waist/Hip</B>")
-   sRow = Replace(sRow, "col3", "")
-   sString &= sRow
-   '---------------------------------------------------------
-   'Kg's overweight BMI * H2 = max ideal weight - approximate
-   '---------------------------------------------------------
-   Try max_ideal_weight = 25 * (height / 100) * (height / 100)
-   Try min_ideal_weight = 20 * (height / 100) * (height / 100)
-   sRow = sRowTemplate1
-   sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
-   sRow = Replace(sRow, "col2_width", "20%") 'col 2 has the rest
-   sRow = Replace(sRow, "col3_width", "45%") 'col 3 has the rest
-   sRow = Replace(sRow, "col1", "<B>Ideal Weight</B>")
-   If max_ideal_weight Then
-      sRow = Replace(sRow, "col2", "<B>" & Format(min_ideal_weight, "##") & "-" & Format(max_ideal_weight, "##") & "Kg</B>")
-      sRow = Replace(sRow, "col3", "")
-   Else
-      sRow = Replace(sRow, "col2", "N/A")
-      sRow = Replace(sRow, "col3", "")
-   End If
-   sString &= sRow
-   '-------------------------------------
-   'Now the approximate amount overweight
-   '-------------------------------------
-   sRow = sRowTemplate
-   sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
-   sRow = Replace(sRow, "col2_width", "30%") 'col 2 has the rest
-   'sRow = Replace(sRow, "col1", "<B>Overweight</B>")
-   If Not IsNull(BMI) Then
-      If Val(BMI) > 25 Then
-         If max_ideal_weight Then
-            sRow = Replace(sRow, "col1", "<B>Overweight</B>")
-            sRow = Replace(sRow, "col2", "<B>" & Format(weight - max_ideal_weight, "##.##") & "Kg</B>")
-         Else
-            sRow = Replace(sRow, "col2", "N/A")
-         End If
-      End If
-      If Val(BMI) < 20 Then
-         If min_ideal_weight Then
-            sRow = Replace(sRow, "col1", "<B>Underweight</B>")
-            sRow = Replace(sRow, "col2", "<B>" & Format(min_ideal_weight - weight, "##.##") & "-" & Format(max_ideal_weight - weight, "##.##") & "Kg</B>")
-         Else
-            sRow = Replace(sRow, "col2", "N/A")
-         End If
-      End If
-   Else
-      sRow = Replace(sRow, "col2", "N/A")
-   End If
-   
-   sString &= sRow
-   
-   sRow = sRowTemplate
-   sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
-   sRow = Replace(sRow, "col2_width", "75%") 'col 2 has the rest
-   sRow = Replace(sRow, "col1", "<B>Exercise</B>")
-   sString &= sRow
-   
-   sRow = sRowTemplate1
-   sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
-   sRow = Replace(sRow, "col2_width", "30%") 'col 2 has the rest
-   sRow = Replace(sRow, "col3_width", "45%")  'col 2 has the rest
-   sRow = Replace(sRow, "col1", "<B>BP</B>")
-   
-   If sData.count Then
-      sRow = Replace(sRow, "col2", "<B>" & sData[0] & "</B>")
-      sRow = Replace(sRow, "col3", "(" & sData[1] & ")")
-   Else
-      sRow = Replace(sRow, "col2", "NA")
-      sRow = Replace(sRow, "col3", "")
+   If currentconsult!measurements.count Then 
       
-   End If
+      sData = New String[]
+      Try SData = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height), "|")
+      
+      If sData.count Then
+         height = sData[0]
+         sRow = Replace(sRow, "col2", "<B>" & sData[0] & "cm</B>")
+         sRow = Replace(sRow, "col3", "(" & sData[1] & ")")
+      Else
+         sRow = Replace(sRow, "col2", "N/A")
+         sRow = Replace(sRow, "col3", "")
+      End If
+      sString &= sRow
+      '------
+      'Weight
+      '------
+      sRow = sRowTemplate1
+      sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
+      sRow = Replace(sRow, "col2_width", "20%") 'col 2 has the rest
+      sRow = Replace(sRow, "col3_width", "45%") 'col 3 has the rest
+      sRow = Replace(sRow, "col1", "<B>Weight</B>")
+      sData = New String[]
+      Try SData = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Weight), "|")
+      If SData.Count Then
+         weight = sData[0]
+         sRow = Replace(sRow, "col2", "<B>" & sData[0] & "Kg</B>")
+         sRow = Replace(sRow, "col3", "(" & sData[1] & ")")
+      Else
+         sRow = Replace(sRow, "col2", "N/A")
+         sRow = Replace(sRow, "col3", "")
+      End If
+      sString &= sRow
+      '---------------------------------
+      'Now Calculate the BMI if possible
+      '---------------------------------
+      sRow = sRowTemplate1
+      sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
+      sRow = Replace(sRow, "col2_width", "20%") 'col 2 has the rest
+      sRow = Replace(sRow, "col3_width", "45%") 'col 3 has the rest
+      sRow = Replace(sRow, "col1", "<B>BMI</B>")
+      Try BMI = Format((weight / (height ^ 2)) * 10000, "##.#")
+      sRow = Replace(sRow, "col2", "<B>" & BMI & "</B>")
+      sRow = Replace(sRow, "col3", "")
+      sString &= sRow
+      '---------
+      'waist/hip
+      '---------
+      sRow = sRowTemplate1
+      sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
+      sRow = Replace(sRow, "col2_width", "20%") 'col 2 has the rest
+      sRow = Replace(sRow, "col3_width", "45%") 'col 3 has the rest
+      sRow = Replace(sRow, "col1", "<B>Waist/Hip</B>")
+      sRow = Replace(sRow, "col3", "")
+      sString &= sRow
+      '---------------------------------------------------------
+      'Kg's overweight BMI * H2 = max ideal weight - approximate
+      '---------------------------------------------------------
+      Try max_ideal_weight = 25 * (height / 100) * (height / 100)
+      Try min_ideal_weight = 20 * (height / 100) * (height / 100)
+      sRow = sRowTemplate1
+      sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
+      sRow = Replace(sRow, "col2_width", "20%") 'col 2 has the rest
+      sRow = Replace(sRow, "col3_width", "45%") 'col 3 has the rest
+      sRow = Replace(sRow, "col1", "<B>Ideal Weight</B>")
+      If max_ideal_weight Then
+         sRow = Replace(sRow, "col2", "<B>" & Format(min_ideal_weight, "##") & "-" & Format(max_ideal_weight, "##") & "Kg</B>")
+         sRow = Replace(sRow, "col3", "")
+      Else
+         sRow = Replace(sRow, "col2", "N/A")
+         sRow = Replace(sRow, "col3", "")
+      End If
+      sString &= sRow
+      '-------------------------------------
+      'Now the approximate amount overweight
+      '-------------------------------------
+      sRow = sRowTemplate
+      sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
+      sRow = Replace(sRow, "col2_width", "30%") 'col 2 has the rest
+      'sRow = Replace(sRow, "col1", "<B>Overweight</B>")
+      If Not IsNull(BMI) Then
+         If Val(BMI) > 25 Then
+            If max_ideal_weight Then
+               sRow = Replace(sRow, "col1", "<B>Overweight</B>")
+               sRow = Replace(sRow, "col2", "<B>" & Format(weight - max_ideal_weight, "##.##") & "Kg</B>")
+            Else
+               sRow = Replace(sRow, "col2", "N/A")
+            End If
+         End If
+         If Val(BMI) < 20 Then
+            If min_ideal_weight Then
+               sRow = Replace(sRow, "col1", "<B>Underweight</B>")
+               sRow = Replace(sRow, "col2", "<B>" & Format(min_ideal_weight - weight, "##.##") & "-" & Format(max_ideal_weight - weight, "##.##") & "Kg</B>")
+            Else
+               sRow = Replace(sRow, "col2", "N/A")
+            End If
+         End If
+      Else
+         sRow = Replace(sRow, "col2", "N/A")
+      End If
+  
+      sString &= sRow
+      
+      sRow = sRowTemplate
+      sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
+      sRow = Replace(sRow, "col2_width", "75%") 'col 2 has the rest
+      sRow = Replace(sRow, "col1", "<B>Exercise</B>")
+      sString &= sRow
+      
+      sRow = sRowTemplate1
+      sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
+      sRow = Replace(sRow, "col2_width", "30%") 'col 2 has the rest
+      sRow = Replace(sRow, "col3_width", "45%")  'col 2 has the rest
+      sRow = Replace(sRow, "col1", "<B>BP</B>")
+      
+      If sData.count Then
+         sRow = Replace(sRow, "col2", "<B>" & sData[0] & "</B>")
+         sRow = Replace(sRow, "col3", "(" & sData[1] & ")")
+      Else
+         sRow = Replace(sRow, "col2", "NA")
+         sRow = Replace(sRow, "col3", "")
+         
+      End If
    sString &= sRow
+    End If
    sRow = sRowTemplate
    sRow = Replace(sRow, "col1_width", "35%") 'col1 has the year noted
    sRow = Replace(sRow, "col2_width", "75%") 'col 2 has the rest
@@ -740,10 +1043,11 @@ Public Function Health_Summary_Construct_html(currentconsult As Cconsult) As Str
          sString = ""
          sSTring &= "<B>" & UCase(PH!description) & "-" & PH!year_onset & "</B><BR>"
          sString &= "<small>"
-         sString &= PH!condition_summary 
+         sString &= PH!condition_summary & "."
          
          If PH!management_summary <> "" Then
-            sString &= "<BR><B>Management Summary</B><BR>" & PH!management_summary
+          '  sString &= "<BR><B>Management Summary</B><BR>" & PH!management_summary
+            sString &= PH!management_summary & "."
          End If
          sString &= "</small>"
          sRow = Replace(sRow, "col1", sString)
@@ -1306,8 +1610,8 @@ Public Function Care_Plan_Construct_html(currentconsult As CConsult) As String
                sText &= LCase(Left(PH!condition_summary)) & Right(PH!condition_summary, Len(PH!condition_summary) - 1)
             End If      
             If PH!management_summary Then
-               sText &= "<BR>- the management plan is to "
-               sText &= LCase(Left(PH!management_summary)) & Right(PH!management_summary, Len(PH!management_summary) - 1)
+               'sText &= "<BR>- the management plan is to "
+               sText &= LCase(Left(PH!management_summary)) & Right(PH!management_summary, Len(PH!management_summary) - 1) & "."
             End If            
             ' sHistory_Management_Components = Replace(sHistory_Management_Components, "%historicalsummary", PH!condition_summary)
             sHistory_Management_Components = Replace(sHistory_Management_Components, "%historicalsummary_and_plan", sText)

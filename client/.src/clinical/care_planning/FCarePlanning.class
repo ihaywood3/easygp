@@ -31,7 +31,11 @@ Private fk_code As String
 Private fk_progressnote As Integer 
 Private TeamCareMember_Deleted As Collection
 Private TeamCareMembers_BeforeEdit As Collection
-'
+Private interval As Integer
+Private fk_interval_unit As Integer
+Private default_interval As Integer
+Private fk_default_interval_unit As Integer
+Private fk_recall_reason As Integer
 Private CarePlanCompoents As Collection
 Static Private form_careplanning As FCarePlanning
 
@@ -55,6 +59,17 @@ Public Sub Init(cons As Cconsult)
    obs = New Observer(Problemlists.cvwProblemsMajor) As "HealthIssues"
    obs = New Observer(Problemlists.cvwProblemsInActive) As "HealthIssues"
    cvwCareComponents.Columns.count = 3
+   cmbContactMethod.Add("Home", const.CommModalityHome)
+   cmbContactMethod.Add("Work", const.CommModalityWork)
+   cmbContactMethod.Add("Fax", const.CommModalityFax)
+   cmbContactMethod.Add("Email", const.CommModalityEmail)
+   cmbContactMethod.Add("Mobile", const.CommModalityMobile)
+   cmbContactMethod.Add("VOIP", const.CommModalityVOIP)
+   cmbContactMethod.Add("Web URL ", const.CommModalityWeb)
+   cmbContactMethod.Add("Phone unspecified", const.CommModalityPhone)
+   cmbContactMethod.Add("Toll Free", const.CommModalityTollFree)
+   cmbContactMethod.Add("Letter", const.CommModalityLetter)
+   
    lblmeasure.text = "  Management Summary  "
    modEditAreaHelpers.Resize_labels(Vbox_CarePlanning, lblmeasure)
    Try Settings_Load()
@@ -178,6 +193,7 @@ Public Sub EditArea_Clear()
    txtTeamCareMember_Responsibility.text = ""
    TeamCareMember_SearchBy_Criteria = Const.contacttype_PersonsAndPatients 'fix me 
    rbSearchBy_person.value = True
+   cmbContactMethod.Index = const.ContactMethodLetter
    bExit = False
    
 End
@@ -203,7 +219,9 @@ Public Sub Save()
    'an intact collection to be able to write the description of
    'any audit changes.
    '---------------------------------------------------------------
-
+   
+   Dim Recall As Collection
+   
    If Vbox_EditArea.padding = 0 Then Return
    If Not Valid_CarePlan() Then Return 
    HealthIssue!description = Trim(txtHealthIssue.text)
@@ -213,7 +231,37 @@ Public Sub Save()
    modDBConnect.BeginTrans()
    modPastHistoryDBI.Save(currentconsult, pk_pasthistory, HealthIssue)
    modPastHistoryDBI.Save_TeamCareMembers(TeamCareMembers_BeforeEdit, TeamCareMembers, pk_pasthistory)   
+   For Each PlanComponent In PlanComponents
+      If PlanComponent!recall = True Then
+         recall = New Collection  
+         recall!fk_urgency = const.UrgencyLevelRoutine
+         If Not IsNull(PlanComponent!fk_recall) Then
+            recall!fk_recall = PlanComponent!fk_recall
+         Else
+            recall!fk_recall = 0 
+         Endif
+         If Not IsNull(PlanComponent!fk_reason) Then
+            recall!fk_reason = PlanComponent!fk_reason
+         Else
+            recall!fk_reason = 0 
+         Endif
+         recall!reason = PlanComponent!component
+         ' recall!default_interval = default_interval 'work this out
+         ' recall!fk_default_interval_unit = fk_default_interval_unit
+         ' recall!fk_interval_unit = fk_interval_unit
+         ' recall!interval = interval 
+         recall!due = PlanComponent!due
+         recall!fk_contact_method = cmbContactMethod.Index
+         recall!fk_appointment_length = const.AppointmentLengthStandard
+         recall!active = True
+         recall!additional_text = ""
+         recall!fk_staff = modDBConnect.currentUser!fk_staff 
+         recall!fk_pasthistory = pk_pasthistory
+         modRecallsDBI.Save(currentconsult, 0, recall)
+      Endif
+   Next
    modPastHistoryDBI.Save_CarePlanComponents(view_careplan_components, PlanComponents, pk_pasthistory)
+   
    modDBConnect.CommitTrans()
    ProblemLists.Refresh()
    FClinical.Refresh_Section(const.cSection_PastHistory)
@@ -227,6 +275,7 @@ Public Sub Edit()
       .Text = "Edit Care Plan For"
       .Foreground = Color.Red 
    End With
+   txtAim.SetFocus()
    
 End
 
@@ -284,9 +333,9 @@ Public Sub EditArea_TxtBox_GotFocus()
          End If    
       Case "component"
          With ListView1
-            .top = Last.Parent.Parent.Parent.Top + Last.height
+            .top = Last.Parent.Parent.Top + Last.height
             .width = HSplit_TeamCareMembers.Width ' + Hbox_rbSearchBy.width 
-            .Left = Last.Parent.Parent.left
+            .Left = Last.Parent.left
             .Visible = False  
             .height = HSplit_TeamCareMembers.Height
          End With
@@ -317,15 +366,24 @@ Public Sub EditArea_TxtBox_Change()
             txtTeamCareMembers.SetFocus()
          End If
       Case "historical summary"
-          If InStr(Last.text, "\n\n") Then
-              Last.text = Replace(Last.text, "\n\n", "") 
-          End If
+         If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "") 
+         End If
          txtManagementSummary.SetFocus()
       Case "management plan"
-           If InStr(Last.text, "\n\n") Then
+         If InStr(Last.text, "\n\n") Then
             Last.text = Replace(Last.text, "\n\n", "") 
-           End If
-           txtTeamCareMembers.SetFocus()
+         End If
+         txtTeamCareMembers.SetFocus()
+      Case "default interval"
+         If txtDefaultInterval.text = "" Then 
+            txtDue.text = ""
+         End If
+      Case "interval"
+         If Trim(txtInterval.text) <> "" Then 
+            Calculate_Recall_Date(txtInterval)
+         End If
+         
    End Select
    Editarea_NotifyData_Change(True)
    
@@ -343,6 +401,9 @@ Public Function EditArea_txtbox_ExcludeKeys(keycode As Integer, tag As String) A
    Select Case Last.Tag
       Case "date due"
          bKeyValid = modUtil.AllowKeys(const.AllowKeys_Date_DWMY, keycode)
+      Case "default interval", "interval"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_Date_DWMY, keycode)
+         
       Case Else
          bKeyValid = True
    End Select
@@ -363,66 +424,53 @@ Public Sub EditArea_TxtBox_KeyPress()
       Stop Event
       Return
    End If 
-   Select Case Last.tag
-      Case "team care members"
-         '-------------------------------------------
-         'Add team members names and responsibilities
-         '-------------------------------------------
-         If Trim(txtTeamCareMembers.text) = "" Then
-            ' tbAccept.SetFocus()
-         Else
-            '---------------------------------------------------
-            'Add the next team member and set focus for next one
-            '---------------------------------------------------
-            '  txtTeamCareMember_Responsibility.SetFocus()
-         End If
-         If key.code = Key.down And columnview1.Visible Then
+   Select Case Key.code
+      Case key.Down
+         If columnview1.Visible Then
             With columnview1
                .MoveFirst
                .SetFocus() 
                .Item.Selected = True   
             End With 
+            
          Endif
-         
-      Case "component"
-         If key.code = Key.down And ListView1.Visible Then
+         If ListView1.Visible Then
             With ListView1
                .MoveFirst
                .Item.Selected = True   
                .SetFocus() 
             End With 
+            
          Endif
-      Case "date due"
-         ' '------------------------------------------------------------
-         'First calculate the date if user typed in numberM or numberY
-         '------------------------------------------------------------
-         ' If icol Mod 2 Then
-         '    CarePlan_Components_Calculate_Recall_Date(txtComponent)
-         ' End If
-         ' grdComponents[irow, icol].text = txtComponent.Text
-         ' CarePlan_Components_Update_Collection()
-         ' '----------------------------------------------------------
-         ' 'Now, don't allow a new row to be added, if the current row
-         ' 'hasn't been filled
-         ' '----------------------------------------------------------
-         ' icol = icol + 1
-         ' If icol = 2 Then
-         '    If grdComponents[irow, 0].text = "" Or grdComponents[irow, 1].text = "" Then
-         '       icol = 1
-         '       Stop Event
-         '       Return
-         '    End If  
-         '    If irow + 1 = grdComponents.Rows.Count Then
-         '       Inc grdComponents.Rows.count
-         '    End If
-         '    irow = Min(iRow + 1, grdComponents.Rows.Count - 1)
-         '    grdComponents.Rows[irow].Height = 16
-         '    grdComponents[irow, 2].Picture = Picture.Load("icons/16/unchecked.png")
-         '    icol = 0
-         ' End If
-         ' Next_rc()            
-         
-      Case "responsibility" 
+      Case key.return, key.Tab
+         Select Case Last.tag
+            Case "default interval"  
+               '---------------------------------------------------------
+               'If at this point, either the user is putting in a decault
+               'for the first time, or changing an existingone
+               'if no date present, insert the date from calculating
+               'time from now  + the default time
+               '----------------------------------------------------------
+               If Not txtDue.text Then
+                  Calculate_Recall_Date(txtDefaultInterval)
+                  If txtDue.text Then
+                     ' txtInterval.text = txtDefaultInterval.Text
+                     tbAcceptComponent.SetFocus()
+                  End If
+               Else
+                  If Not txtInterval.text Then
+                     txtInterval.SetFocus
+                  Else
+                     tbAcceptComponent.SetFocus()
+                  End If
+               End If
+            Case "interval"  
+               Calculate_Recall_Date(txtInterval)
+               If txtDue.text Then
+                  
+                  tbAcceptComponent.SetFocus()
+               End If          
+         End Select
    End Select
    
 End
@@ -685,6 +733,7 @@ Public Sub TeamCareMember_Get()
    
    Dim sMsg As String 
    
+   If Trim(txtTeamCareMembers.text) = "" Then Return 
    Try Person_Get()
    If collection_members.count = 0 Then
       Try Organisation_Get()
@@ -958,14 +1007,16 @@ Public Sub CarePlan_Component_Get()
       Listview1.Visible = False  
       Return
    End If
-   collection_members = modPastHistoryDBI.CarePlan_Component_Names_Get(Trim(txtComponent.text))
+   ' collection_members = modPastHistoryDBI.CarePlan_Component_Names_Get(Trim(txtComponent.text))
+   collection_members = modRecallsDBI.Get_Reasons(Trim(txtComponent.text))
    listview1.Clear
    '-----------------------------------------------------------------
    'If categories exist to match the text, auto-select or show a list
    '-----------------------------------------------------------------
    If collection_members.count Then 
       For Each collection_member In collection_members
-         Listview1.Add(collection_member!pk, collection_member!component)
+         ' Listview1.Add(collection_member!pk, collection_member!component)
+         Listview1.Add(collection_member!pk_reason, collection_member!reason)
       Next 
       Listview1.Visible = True
       Listview1.Raise
@@ -982,6 +1033,59 @@ Public Function duplicate_component() As Boolean
 End
 
 Public Sub CarePlan_Component_Select(Optional bSourceIsTextbox As Boolean = False)
+   '-------------------------------------------------------------------------------
+   'User is selecting a care plan component from the list or <ENTER> on the textbox
+   '-------------------------------------------------------------------------------
+   
+   Dim x As Integer
+   Dim bFoundMatch As Boolean
+   Dim SelectedReason As Collection
+   
+   fk_component = 0
+   If Trim(txtComponent.text) = "" Then Return 
+   bExit = True   
+   '-------------------------------------------------------------------
+   'If user just hit <enter> form the textbox
+   'assume they want either their text or have seen a match in the list
+   'all this may not be needed, unless I decide to keep the component key
+   'instead of looking the keys up every save.
+   '-------------------------------------------------------------------
+   If bSourceIsTextbox Then
+      If Listview1.Visible = True Then    
+         listview1.MoveFirst
+         For x = 0 To listview1.count - 1
+            If Lower(listview1.Item.text) = Trim(Lower(listview1.tag.text)) Then
+               Goto SetRecall
+               Break
+            End If
+         Next
+         listview1.Visible = False  
+      End If   
+      txtDue.SetFocus()
+      Return 
+   End If 
+   Goto SetRecall
+   
+   
+   SetRecall:
+  
+   Listview1.MoveCurrent 
+   SelectedReason = collection_members[listview1.Item.key]
+   fk_recall_reason = listview1.Item.Key 
+   txtComponent.text = Listview1.Item.Text
+   txtDefaultInterval.text = SelectedReason!interval & SelectedReason!abbrev_text 
+   interval = SelectedReason!interval
+   fk_interval_unit = SelectedReason!fk_interval_unit
+   default_interval = SelectedReason!interval
+   fk_default_interval_unit = SelectedReason!fk_interval_unit
+   Calculate_Recall_Date(txtDefaultInterval)
+   
+   Listview1.Visible = False 
+   bExit = False    
+
+End
+
+Public Sub CarePlan_Component_Select_old(Optional bSourceIsTextbox As Boolean = False)
    '-------------------------------------------------------------------------------
    'User is selecting a care plan component from the list or <ENTER> on the textbox
    '-------------------------------------------------------------------------------
@@ -1271,10 +1375,14 @@ Public Sub Careplan_Components_Accept()
 End
 
 Public Sub Careplan_Component_New()
-   
+   '  bExit = True
+
    PlanComponent = New Collection 
    txtComponent.Clear
    txtDue.Clear   
+   txtDefaultInterval.Clear
+   txtInterval.Clear
+   ' bExit = False  
    
 End
 
@@ -1350,10 +1458,7 @@ Public Sub EditAreaButtons_Click()
    '----------------------------------------------------
    
    Print TeamCareMembers
-   Return 
    Select Case Last.tag
-      Case "help"
-         '  If bEmbedded = False Then FClinical.Help_Show(Application.Path &/ "help/health-issues.html", "Help:Health Issues", True)
       Case "accept"
          '---------------------------------------------------
          'Accept everything in editing area either to its
@@ -1396,3 +1501,173 @@ Public Sub EditArea_TxtBox_Activate()
    End Select
    
 End
+
+Public Sub Calculate_Recall_Date(txt As Textbox)
+   '--------------------------------------------
+   'Works out a date from e.g 18M or 2Y
+   'FIXME put in weeks and days
+   '--------------------------------------------
+   
+   Dim sIntervalUnits As String 'eg if txtDue contains 3M then units interval is 3
+   Dim iNumberOfMonths As Integer      'do not need both these declared, but do for readability
+   Dim iNumberOfYears As Integer 
+   Dim iNumberOfDays As Integer
+   Dim iNumberOfWeeks As Integer
+   Dim vPossibleDate As Variant
+   Dim aDate As Date
+   Dim x As Integer
+   
+   bExit = True 'stop change event of edit area triggering
+   If UCase(Right(Trim(txt.text), 1)) = "M" Then
+      '---------------------------------------------------------------------------
+      'Try and convert the rest of the string (ie left part which should be number
+      'to a number, if error, pop up invalid date and return
+      'Remember that  bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code) has
+      'only allowed numbers or mM or Yy for this textbox, but some idiot could
+      'have tried out patience by typing in e.g 10m10M or something
+      '---------------------------------------------------------------------------
+      Try iNumberOfMonths = Val(Left(txt.text, Len(Trim(txt.text)) - 1))
+      If Error Then
+         txtDue.text = "" 
+         Return
+      End If
+      If txt.tag = "interval" Then
+         fk_interval_unit = const.Units_month
+         interval = iNumberOfMonths
+      Else
+         fk_default_interval_unit = const.Units_month
+         default_interval = iNumberOfMonths
+         If Trim(txtInterval.text) = "" Then 
+            fk_interval_unit = const.Units_month
+            interval = iNumberOfMonths
+            txtInterval.text = txtDefaultInterval.Text
+         End If
+      Endif
+      txtDue.text = Format(DateAdd(Now, gb.Month, iNumberOfMonths), "dd/mm/yyyy")
+      
+   Else If UCase(Right(Trim(txt.text), 1)) = "Y" Then
+      '---------------------------------------------------------------------------
+      'Try and convert the rest of the string (ie left part which should be number
+      'to a number, if error, pop up invalid date and return
+      'Remember that  bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code) has
+      'only allowed numbers or mM or Yy for this textbox, but some idiot could
+      'have tried out patience by typing in e.g 10m10M or something
+      '---------------------------------------------------------------------------
+      Try iNumberOfYears = Val(Left(txt.text, Len(Trim(txt.text)) - 1))
+      If Error Then
+         txtDue.text = "" 
+         Return
+      End If
+      
+      txtDue.text = Format(DateAdd(Now, gb.Year, iNumberOfYears), "dd/mm/yyyy")
+      If txt.tag = "interval" Then
+         fk_interval_unit = const.Units_year
+         interval = iNumberOfYears
+      Else
+         fk_default_interval_unit = const.Units_year
+         default_interval = iNumberOfYears
+         If Trim(txtInterval.text) = "" Then 
+            fk_interval_unit = const.Units_year
+            interval = iNumberOfYears
+            txtInterval.text = txtDefaultInterval.Text
+         End If
+         
+      End If
+      
+   Else If UCase(Right(Trim(txt.text), 1)) = "W" Then
+      Try iNumberOfWeeks = Val(Left(txt.text, Len(Trim(txt.text)) - 1))
+      If Error Then
+         txtDue.text = "" 
+         Return
+      End If
+      
+      If txt.tag = "interval" Then
+         fk_interval_unit = const.Units_week
+         interval = iNumberOfWeeks
+      Else
+         fk_default_interval_unit = const.Units_week
+         default_interval = iNumberOfWeeks
+         If Trim(txtInterval.text) = "" Then 
+            fk_interval_unit = const.Units_week
+            interval = iNumberOfWeeks
+            txtInterval.text = txtDefaultInterval.Text
+         End If
+         
+      Endif
+      txtDue.text = Format(DateAdd(Now, gb.Week, iNumberOfWeeks), "dd/mm/yyyy")
+      
+   Else
+      
+      If UCase(Right(Trim(txt.text), 1)) = "D" Then
+         Try iNumberOfdays = Val(Left(txt.text, Len(Trim(txt.text)) - 1))
+         If Error Then
+            txtDue.text = "" 
+            Return
+         End If
+         If txt.tag = "interval" Then
+            fk_interval_unit = const.Units_day
+            interval = iNumberOfdays
+         Else
+            fk_default_interval_unit = const.Units_day
+            default_interval = iNumberOfdays
+            If Trim(txtInterval.text) = "" Then 
+               fk_interval_unit = const.Units_day
+               interval = iNumberOfdays
+               txtInterval.text = txtDefaultInterval.Text
+            End If
+         Endif
+      End If
+      txtDue.text = Format(DateAdd(Now, gb.Day, iNumberOfdays), "dd/mm/yyyy")
+   End If
+   bExit = False 
+   
+End
+
+' SelectedReason = recallreasons[listview1.Item.key]
+' Select Case listview1.Tag.tag
+'    Case "recall for"
+'       '-------------------------------------------
+'       'User has been searching for a recall reason
+'       '-------------------------------------------    
+'       txtRecallFor.text = listview1.Item.Text
+'       fk_reason = listview1.Item.Key 
+'       lblRecallForInvalid.Visible = False
+'       listview1.Visible = False
+'       '----------------------------------------------------------
+'       'When first selected set actual interval = default interval
+'       '----------------------------------------------------------
+'       txtDefaultInterval.text = SelectedReason!interval & SelectedReason!abbrev_text 
+'       txtInterval.text = txtDefaultInterval.text 
+'       '--------------------------------------------------------------
+'       'Set variables,  Calculate_Recall_Date() sets fk_interval_units
+'       'if interval is changed  by user
+'       '--------------------------------------------------------------
+'       interval = SelectedReason!interval
+'       fk_interval_unit = SelectedReason!fk_interval_unit
+'       
+'       default_interval = SelectedReason!interval
+'       fk_default_interval_unit = SelectedReason!fk_interval_unit
+'       
+'       Calculate_Recall_Date(txtDefaultInterval)
+'       chkPatientDefaultInterval.value = True
+'       '----------------------------------------------------
+'       'Lastly, check if any template exists for this reason
+'       'if reason = matched to a combo item, auto-show
+'       'Can't use  cmbTemplates.Find(Trim(txtRecallFor.text))
+'       'because this is case sensitive
+'       '----------------------------------------------------
+'       If cmbTemplates.Find(Trim(txtRecallFor.text)) <> -1 Then
+'          cmbTemplates.index = cmbTemplates.Find(Trim(txtRecallFor.text))
+'       End If   
+'       ' For Each Template In templates
+'       '    If Trim(Lower(txtRecallFor.text)) = Lower(template!name) Then
+'       '       cmbTemplates.index = templates.Key
+'       '       cmbTemplates_click()
+'       '       Break
+'       '    End If
+'       ' Next
+'       tbSave.SetFocus()
+'       '---------------------------------------------------------
+'       'At this point, the user either accepts all these defaults
+'       'or goes back and changes them.
+'       '---------------------------------------------------------

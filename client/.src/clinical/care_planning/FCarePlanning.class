@@ -221,6 +221,7 @@ Public Sub Save()
    '---------------------------------------------------------------
    
    Dim Recall As Collection
+   Dim pk_recall As Integer = -1     'if > zero this is an existing recall for a component.
    
    If Vbox_EditArea.padding = 0 Then Return
    If Not Valid_CarePlan() Then Return 
@@ -231,25 +232,30 @@ Public Sub Save()
    modDBConnect.BeginTrans()
    modPastHistoryDBI.Save(currentconsult, pk_pasthistory, HealthIssue)
    modPastHistoryDBI.Save_TeamCareMembers(TeamCareMembers_BeforeEdit, TeamCareMembers, pk_pasthistory)   
+   '------------------------------------------------------------------------------------------ 
+   'For each care plan component which the user wants to be included as a recall
+   'create and save the recall, the key of which is returned into the PlanComponent collection
+   '------------------------------------------------------------------------------------------ 
    For Each PlanComponent In PlanComponents
       If PlanComponent!recall = True Then
          recall = New Collection  
          recall!fk_urgency = const.UrgencyLevelRoutine
          If Not IsNull(PlanComponent!fk_recall) Then
-            recall!fk_recall = PlanComponent!fk_recall
+            pk_recall = PlanComponent!fk_recall
          Else
-            recall!fk_recall = 0 
+            pk_recall = -1 
          Endif
          If Not IsNull(PlanComponent!fk_reason) Then
             recall!fk_reason = PlanComponent!fk_reason
          Else
             recall!fk_reason = 0 
          Endif
+         PlanComponent.Remove("fk_reason")
          recall!reason = PlanComponent!component
-         ' recall!default_interval = default_interval 'work this out
-         ' recall!fk_default_interval_unit = fk_default_interval_unit
-         ' recall!fk_interval_unit = fk_interval_unit
-         ' recall!interval = interval 
+         recall!default_interval = default_interval 'work this out
+         recall!fk_default_interval_unit = fk_default_interval_unit
+         recall!fk_interval_unit = fk_interval_unit
+         recall!interval = interval 
          recall!due = PlanComponent!due
          recall!fk_contact_method = cmbContactMethod.Index
          recall!fk_appointment_length = const.AppointmentLengthStandard
@@ -257,11 +263,18 @@ Public Sub Save()
          recall!additional_text = ""
          recall!fk_staff = modDBConnect.currentUser!fk_staff 
          recall!fk_pasthistory = pk_pasthistory
-         modRecallsDBI.Save(currentconsult, 0, recall)
+         PlanComponent!fk_recall = modRecallsDBI.Save(currentconsult, pk_recall, recall)
+         PlanComponent.Remove("recall") 'this was  a flag = true or false.
+         PlanComponent.Remove("fk_default_interval_unit") 'this was  a flag = true or false.
+         PlanComponent.Remove("fk_interval_unit")
+         PlanComponent.Remove("default_interval")
+         PlanComponent.Remove("interval") 
       Endif
    Next
+   '-------------------------------------
+   'finally save the care plan components
+   '-------------------------------------
    modPastHistoryDBI.Save_CarePlanComponents(view_careplan_components, PlanComponents, pk_pasthistory)
-   
    modDBConnect.CommitTrans()
    ProblemLists.Refresh()
    FClinical.Refresh_Section(const.cSection_PastHistory)
@@ -542,11 +555,11 @@ Public Sub TeamCareMembers_RefreshList()
       cvwTeamCareMembers[(Str(x))][0] = TeamCareMembers_MakeSummary(TeamCareMember)
       Inc x
    Next
-   ' If TeamCareMembers.count Then
-   '    cvwTeamCareMembers.MoveFirst
-   '    cvwTeamCareMembers.Item.Selected = True
-   '    cvwTeamCareMembers_Click()
-   ' End If
+   If TeamCareMembers.count Then
+      cvwTeamCareMembers.MoveFirst
+      cvwTeamCareMembers.Item.Selected = True
+      cvwTeamCareMembers_Click()
+   End If
    
 End
 
@@ -962,17 +975,14 @@ Public Sub cvwTeamCareMembers_Select()
    iTeamCareMember = Val(cvwTeamCareMembers.Item.key)
    Print "cvwTeamCareMembers.Item.key", cvwTeamCareMembers.Item.key
    If Not IsNull(TeamCareMembers[iTeamCareMember]!wholename) Then
-      tlResponsibility.text = "Responsibilities of " & TeamCareMembers[iTeamCareMember]!wholename 
+      ' tlResponsibility.text = "Responsibilities of " & TeamCareMembers[iTeamCareMember]!wholename 
+      lblMember.text = TeamCareMembers[iTeamCareMember]!wholename 
    End If
    bExit = True
    If IsNull(TeamCareMembers[iTeamCareMember]!responsibility) Then
-      Print "it was null"
-      Print TeamCareMembers 
       txtTeamCareMember_Responsibility.text = ""
    Else
       txtTeamCareMember_Responsibility.text = TeamCareMembers[iTeamCareMember]!responsibility
-      Print "was not null"
-      Print TeamCareMembers
    End If
    bExit = False  
    
@@ -1061,14 +1071,13 @@ Public Sub CarePlan_Component_Select(Optional bSourceIsTextbox As Boolean = Fals
          Next
          listview1.Visible = False  
       End If   
-      txtDue.SetFocus()
+      txtDefaultInterval.SetFocus() 'this is a new recall reason
       Return 
    End If 
    Goto SetRecall
    
-   
    SetRecall:
-  
+   
    Listview1.MoveCurrent 
    SelectedReason = collection_members[listview1.Item.key]
    fk_recall_reason = listview1.Item.Key 
@@ -1077,12 +1086,16 @@ Public Sub CarePlan_Component_Select(Optional bSourceIsTextbox As Boolean = Fals
    interval = SelectedReason!interval
    fk_interval_unit = SelectedReason!fk_interval_unit
    default_interval = SelectedReason!interval
-   fk_default_interval_unit = SelectedReason!fk_interval_unit
+   'this is not a type-o fk_default_interval_unit will always be fk_interval_unit 
+   'though the interval value may be different - see note in the recalls module
+   'by searching for AT SOME STAGE RE-THINK THIS.
+   fk_default_interval_unit = SelectedReason!fk_interval_unit '
    Calculate_Recall_Date(txtDefaultInterval)
    
    Listview1.Visible = False 
+   tbAcceptComponent.SetFocus()
    bExit = False    
-
+   
 End
 
 Public Sub CarePlan_Component_Select_old(Optional bSourceIsTextbox As Boolean = False)
@@ -1161,7 +1174,7 @@ Public Sub Components_CarePlan_Display()
    'Gets collection of any care plan components and when due eg hba1c, eye check
    '----------------------------------------------------------------------------  
    
-   view_careplan_components = modPastHistoryDBI.Get_CarePlan_Components_Due(pk_pasthistory)
+   view_careplan_components = modPastHistoryDBI.Get_CarePlan_Components(pk_pasthistory)
    CarePlan_Components_Set_data()
    
 End
@@ -1176,21 +1189,29 @@ Public Sub CarePlan_Components_Set_data()
    'FIXME IMPLEMENT THE RECALLS
    'temp: trying now to use columnview, so code is mixed
    '---------------------------------------------------------
-   
    Dim existing_component As Collection
    Dim member As Collection 
    Dim x As Integer
    
    PlanComponents = New Collection 
+ '  PlanComponent = modUtil.Copy_Collection(view_careplan_components)
    For Each existing_component In view_careplan_components
       member = New Collection 
       member!component = existing_component!component
-      
       member!fk_pasthistory = existing_component!fk_pasthistory
-      member!pk_careplan_components_due = existing_component!pk_careplan_components_due
-      ' x = existing_component!pk_careplan_components_due
-      member!fk_component = existing_component!fk_component
+      member!pk_careplan_components = existing_component!pk_careplan_components
+      If Not IsNull(existing_component!fk_recall) Then
+         member!fk_recall = existing_component!fk_recall
+         member!recall = True
+      Else
+         member!recall = False
+      End If 
+      member!fk_reason = existing_component!fk_reason
       member!due = existing_component!due
+      member!default_interval = existing_component!default_interval
+      member!fk_default_interval_unit = existing_component!fk_default_interval_unit
+      member!fk_interval_unit = existing_component!fk_interval_unit
+      member!interval = existing_component!interval
       PlanComponents.Add(member, x)
       Inc x
    Next
@@ -1212,11 +1233,10 @@ Public Sub cvwCareComponents_Refresh()
       cvwCareComponents.Add(x, 0)
       cvwCareComponents[x][1] = PlanComponent!component
       cvwCareComponents[x][0] = Format(PlanComponent!due, "dd/mm/yyy")
-      If PlanComponent!recall = True Then
-         cvwCareComponents[x][2] = "Auto Recall"
+      If PlanComponent!fk_recall Then
+         cvwCareComponents[x][2] = "Auto Recall" 'fixme put in details
       Else
          cvwCareComponents[x][2] = "Opportunistic"
-         
       End If    
       Inc x
    Next 
@@ -1353,7 +1373,8 @@ Public Sub Careplan_Components_Accept()
    'to refresh the list. The original fk_component isn't used FIXME DELETE ME as the save
    'routine dis-regards it anyway and re-looks it up
    '-----------------------------------------------------------------------------------------------
-   
+   PlanComponent = New Collection
+   PlanComponent!fk_reason = fk_recall_reason
    PlanComponent!component = Trim(txtComponent.text)
    PlanComponent!due = Val(txtdue.text)
    If chkautoRecall.value = True Then
@@ -1361,9 +1382,14 @@ Public Sub Careplan_Components_Accept()
    Else
       PlanComponent!recall = False
    End If 
-   If IsNull(PlanComponent!pk_careplan_components_due) Then
+   PlanComponent!default_interval = default_interval
+   PlanComponent!fk_default_interval_unit = fk_default_interval_unit
+   PlanComponent!fk_interval_unit = fk_interval_unit
+   PlanComponent!interval = interval
+   If IsNull(PlanComponent!pk_careplan_components) Then
       PlanComponents.Add(PlanComponent, PlanComponents.count)
    End If
+
    cvwCareComponents_Refresh()
    bexit = True
    Careplan_Component_New()
@@ -1376,12 +1402,13 @@ End
 
 Public Sub Careplan_Component_New()
    '  bExit = True
-
+   
    PlanComponent = New Collection 
    txtComponent.Clear
    txtDue.Clear   
    txtDefaultInterval.Clear
    txtInterval.Clear
+   fk_recall_reason = 0
    ' bExit = False  
    
 End
@@ -1409,7 +1436,6 @@ Public Sub ListView1_DblClick()
    Select Case ListView1.Tag.tag
       Case "component" 
          CarePlan_Component_Select()
-         txtDue.SetFocus()
       Case "team care members"
          TeamCareMember_Select()
          txtTeamCareMembers.SetFocus()
@@ -1671,3 +1697,14 @@ End
 '       'At this point, the user either accepts all these defaults
 '       'or goes back and changes them.
 '       '---------------------------------------------------------
+
+Public Sub EditAreaButtons_KeyPress()
+
+   If key.code = key.return Then
+      Select Case Last.tag
+         Case "add component" 
+             Careplan_Components_Accept() 
+      End Select
+   Endif
+   
+End

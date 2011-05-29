@@ -1,10 +1,12 @@
 -- added a column to this table so that if the user so wishes, the component when due is sent a recall
 
+drop table clin_history.care_plan_components cascade;
+-- drops to view clin_history.vwcareplancomponents
 CREATE TABLE clin_history.care_plan_components
 (
   pk serial primary key,
   fk_pasthistory integer NOT NULL, 
-  fk_reason integer NOT NULL, 
+  component text NOT NULL, 
   due date not null, 
   fk_recall integer default null);
 
@@ -22,23 +24,24 @@ COMMENT ON TABLE clin_history.care_plan_components IS
  -  As each fk_pasthistory is unique to a patient and not re-used, 
     this key identifies the patient or visa-versa - i.e the patient''s past history item or health issue identifies its care plan components.';
 COMMENT ON COLUMN clin_history.care_plan_components.fk_pasthistory IS 'foreign key references clin_history.past_history.pk';
-COMMENT ON COLUMN clin_history.care_plan_components.fk_reason IS 'foreign key references clin_recalls.lu_reasons';
+COMMENT ON COLUMN clin_history.care_plan_components.component IS 'the component e.g weight opportunistically, in theory can be null, i''ve left this as not null for time being';
 COMMENT ON COLUMN clin_history.care_plan_components.due IS 'date the comment is due to be done';
-COMMENT ON COLUMN clin_history.care_plan_components.fk_recall IS 'if not null, then is the key to clin_recalls.recalls table'
+COMMENT ON COLUMN clin_history.care_plan_components.fk_recall IS 'if not null, then is the key to clin_recalls.recalls table';
 
 
 CREATE OR REPLACE VIEW clin_history.vwcareplancomponents AS 
- SELECT care_plan_components.fk_pasthistory, lu_reasons.reason, care_plan_components.fk_reason, 
+ SELECT care_plan_components.fk_pasthistory,  care_plan_components.component, 
  care_plan_components.pk AS pk_careplan_components, care_plan_components.due , care_plan_components.fk_recall,
 clin_recalls.vwRecalls.fk_staff,
 clin_recalls.vwRecalls.interval,
+clin_recalls.vwRecalls.reason,
+clin_recalls.vwrecalls.fk_reason,
 clin_recalls.vwRecalls.fk_interval_unit,
 clin_recalls.vwRecalls.default_interval,
 clin_recalls.vwRecalls.fk_default_interval_unit,
 clin_recalls.vwRecalls.fk_contact_by,
 clin_recalls.vwRecalls.abbrev_text
    FROM clin_history.care_plan_components
-   JOIN clin_recalls.lu_reasons ON care_plan_components.fk_reason = lu_reasons.pk
    LEFT JOIN clin_recalls.vwRecalls on care_plan_components.fk_recall = clin_recalls.vwRecalls.pk_recall
   ORDER BY care_plan_components.fk_pasthistory, care_plan_components.due;
 

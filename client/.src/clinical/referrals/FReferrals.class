@@ -73,8 +73,10 @@ Private pk_referral As Integer                              'key to clin_referra
 Private Addresses As Collection
 Private address As Collection 
 Private obs As Observer
-Private pk_deleted_referral As Integer                      'if not 0 then it is the last referral written which was deleted
+Private pk_deleted_referral As Integer 
+Private pk_deleted_progressnote As Integer                     'if not 0 then it is the last referral written which was deleted
 Private Form_Copy_To As FCopyTo
+Private referrals_written_this_consult As Collection 
 Static Private form_referral As FClinical
 
 'Private SpellChecker As ClskSpell
@@ -1040,6 +1042,7 @@ Public Sub Referrals_This_Consult_Show()
    Dim x As Integer
    
    cvwLetters.Clear()
+   referrals_written_this_consult = currentconsult!referrals_written_this_consult
    For Each referral In currentconsult!referrals_written_this_consult
       x = referral!pk_referral
       cvwLetters.Add(x, 0)
@@ -1211,7 +1214,7 @@ Public Sub mnuReferralsThisconsult_Click()
       Case "help"
          ReferralsList_Help()          'fixme not implemented
       Case "delete"
-         ReferralsList_Delete()        'fixme not implemented
+         ReferralsList_Delete()       
       Case "undo delete"
          ReferralsList_DeleteUndo()
       Case "edit"
@@ -1233,18 +1236,23 @@ Public Sub ReferralsList_Delete()
    'Deletes the current referral
    'Without audit trail if written this consultation, which is always if from
    'the cvwLetterse list
+   'However keep the keys, so that can undelete (single level) this referral
+   'and its associated progress note
    '-------------------------------------------------------------------------
    
    Dim referral As New Collection
    Dim inclusion As Collection
    
    If Message.Question("Are you sure you want to delete this referral?", "Yes", "No") = 2 Then Return 
-   referral!pk_referral = pk_referral
+   referral = referrals_written_this_consult[pk_referral]
+  ' referral!pk_referral = pk_referral
    referral!deleted = True
    For Each inclusion In Inclusions_Referral_This_consult
       inclusion!deleted = True 
    Next
    modDBConnect.BeginTrans()
+   modDBConnect.update("clin_consult.progressnotes", Null, ["pk": referral!fk_progressnote, "deleted": True])
+   pk_deleted_progressnote = referral!fk_progressnote
    pk_deleted_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral, Inclusions_Referral_This_consult)
    modDBConnect.CommitTrans()
    Reload()                                                  'Default to a new letter
@@ -1261,8 +1269,10 @@ Public Sub ReferralsList_DeleteUndo()
    
    If pk_deleted_referral Then
       modDBConnect.BeginTrans()
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": pk_deleted_progressnote, "deleted": False])
       modReferralsDBI.UnDelete(pk_deleted_referral)
       pk_deleted_referral = 0
+      pk_deleted_progressnote = 0
       modDBConnect.CommitTrans()
       Reload()
       FClinical.Refresh_AllPreviousNotes()

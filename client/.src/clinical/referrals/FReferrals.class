@@ -113,14 +113,14 @@ Public Sub Init(cons As CConsult)
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
    lblSpacerLeftOfButtons.width = lblmeasure.width
    cvwPersonContacts.Columns.count = 2
-      'Spelling stuff
+   'Spelling stuff
    ' With SpellChecker = New ClskSpell
    '    .EditorControlToCheck = teLetter
    '    .TempFileForSpelling = User.home &/ "myspelltemp.txt"
    '    .TempFileForErrors = User.home &/ "myspellerrors.txt"
    ' End With
    ' modUtil.FindProgram("aspell", "aspell")
-
+   
    Try Settings_Load()                          'load settings for this form
    With Form_Copy_To = New FCopyTo(Vbox_CopyToList)
       .Init(Me)
@@ -237,16 +237,14 @@ Public Sub Save()
    referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote_Html, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
    pk_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral, Inclusions_EditArea)   'Save the referral letter
    modDBConnect.CommitTrans()
-   If chkDoNotPrint.value = False Then
+   '---------------------------------------------------------------------------------------------------------------
+   'Now, if have been editing a referral and there are no additional inclusions to print, don't reprint inclusions
+   '--------------------------------------------------------------------------------------------------------------
+   If chkReprintInclusions.Value = False Then 
       modReferralsDBI.Referral_Print_AS_HTML(currentconsult, referral, True, Inclusions_EditArea) 
-   End If
-   ' currentconsult.Refresh("referrals_written")               'Delete key = force a refresh
-   'Ian, actually we need currentconsult.Refresh("referrals_written_this_consult")
-   'but this is done in Reload() as Reload() also called after e.g a referral written
-   'is subsequently deleted during the same consultaion
-   'See also in reload FClinical.Refresh_Section(const.cSection_Referrals), which does
-   'currentconsult.Refresh("referrals_written")  as part of updating the Fclinical lists
-   ' referral = currentconsult!referrals_written[pk_referral] 'don't need this
+   Else
+      modReferralsDBI.Referral_Print_AS_HTML(currentconsult, referral, True) 
+   End If 
    FClinical.Refresh_AllPreviousNotes()
    Reload()                                                  'Default to a new letter, reload controls
    
@@ -259,7 +257,7 @@ Public Sub Reload()
    '-----------------------------------------------------------------------------------------------------------
    '  FClinical.Refresh_Section(const.cSection_Referrals)                    'Refresh lists on main screen FClinical
    '  FClinical.Refresh_AllPreviousNotes()                      'Refresh progress notes in Fclinical
-
+   
    currentconsult.Refresh("referrals_written_this_consult")               'Delete key = force a refresh
    Inclusions_Referrals_This_Consult = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False, True) 'fk_patient, deleted, only this consult
    Referrals_This_consult_Show()                                          'Update list under edit area
@@ -294,7 +292,7 @@ Public Sub Editor_Maximize_Minimize()
    '---------------------------------------------------------------
    'Either expands to full size, or minimizes the text editing area
    '--------------------------------------------------------------- 
-
+   
    If HSplitEditArea_Communications.Visible Then
       HSplitEditArea_Communications.Visible = False 
       Vbox_CopyToList.Visible = False   
@@ -675,7 +673,7 @@ Public Sub Referral_Preview()
    '    FHtml_Viewer.WebView1.html = currentconsult!referrals_written_this_consult[pk_referral]!letter_html
    ' End If 
    FClinical.Editor_ShowPage_External("browser", "Referral Preview", Referral_LetterHTML_Construct(Copyto_Html_Construct(Form_Copy_To.Get_CopyTo_Data()!copyto), Inclusions_Construct_HTML(Inclusions_EditArea)))
-
+   
 End
 
 Public Function Valid_Referral() As Boolean
@@ -876,6 +874,7 @@ Public Sub EditArea_Clear()
    txtHealthIssue.text = "General Notes"          'otherwise users will really get the shits
    cProgressNote_Section = const.cSection_GeneralNotes
    fk_pasthistory = 0
+   chkReprintInclusions.value = False  
    EditArea_Notify_DataChange(False)
    '----------------------------------------------------------------
    'create the popup health issues menu but default to general notes
@@ -890,7 +889,7 @@ Public Sub EditArea_Clear()
    If HSplitEditArea_Communications.Visible = False Then
       Editor_Maximize_Minimize()                                'if maximized text editor shrink it
    End If
-
+   
 End
 
 Public Sub EditAreaTextBox_GotFocus()
@@ -1062,13 +1061,14 @@ Public Sub Referrals_This_Consult_Show()
       cvwletters.Item.Selected = True
       
    Endif
-
+   
 End
 
 Public Sub Print_Content()
    '---------------------------------------------------------------------------
    'Called from FClinical, as this is referrals print is synonymous with Save()
    '---------------------------------------------------------------------------   
+
    Save() 
    
 End
@@ -1078,6 +1078,7 @@ Public Sub New_Entry()
    'Called from FClinical where the button tag is a generic 'New Entry'
    'I've left the orginal nomenclature here for easier reading of the code
    '----------------------------------------------------------------------   
+
    Referral_New()
    
 End
@@ -1137,7 +1138,9 @@ Public Sub EditAreaButtons_Click()
 End
 
 Public Sub Preview()
+
    Referral_Preview()
+
 End
 
 Public Sub Settings_Save()
@@ -1243,7 +1246,7 @@ Public Sub mnuReferralsThisconsult_Click()
          Referral_Preview()
       Case "re-print", "re-print all", "re-print with inclusions"
          ReferralsList_Print(Last.tag) 'fixme not implemented
-      End Select
+   End Select
    
 End
 
@@ -1265,7 +1268,7 @@ Public Sub ReferralsList_Delete()
    
    If Message.Question("Are you sure you want to delete this referral?", "Yes", "No") = 2 Then Return 
    referral = referrals_written_this_consult[pk_referral]
-  ' referral!pk_referral = pk_referral
+   ' referral!pk_referral = pk_referral
    referral!deleted = True
    For Each inclusion In Inclusions_Referral_This_consult
       inclusion!deleted = True 
@@ -1309,9 +1312,9 @@ Public Sub ReferralsList_Print(print_type As String)
          modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], True) 
          'FIXME change me back to referral_print once latex template ok
       Case "re-print with inclusions"
-            modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], True, Inclusions_Referral_This_Consult) 
+         modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], True, Inclusions_Referral_This_Consult) 
       Case "re-print all with inclusions" '  're-prints all with the inclusions
-        cvwLetters.MoveFirst
+         cvwLetters.MoveFirst
          For x = 0 To cvwLetters.count - 1
             modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], True, Inclusions_Referral_This_Consult) 
             'FIXME change me back to referral_print once latex template ok
@@ -1319,7 +1322,7 @@ Public Sub ReferralsList_Print(print_type As String)
          Next
          cvwLetters.MoveFirst()
          cvwLetters.Item.Selected = True
-       
+         
       Case "re-print all"  're-prints all letters but not the inclusions
          cvwLetters.MoveFirst
          For x = 0 To cvwLetters.count - 1
@@ -1405,7 +1408,7 @@ Public Sub Referral_Edit()
    bExit = False  
    cmbReferralTypes.index = cmbReferralTypes.Find(Letter_from_View!type) 'leave outside of Bexit to use the click event
    tbPreview.Enabled = True   
-
+   
 End
 
 Public Sub cvwLetters_Menu()
@@ -1446,12 +1449,12 @@ Public Sub lvwInclusions_Saved_Refresh()
    '--------------------------------------------------------------------------------
    'Shows what documents are included for the currently highlighted referral written
    '--------------------------------------------------------------------------------
-
+   
    Dim inclusion As Collection
    Dim sString As String
    Dim document As Collection 
    
-   Inclusions_Referral_This_Consult = New Collection 
+   Inclusions_Referral_This_Consult = New Collection ' note this is singular Inclusions_Referral not Inclusions_Referrals
    lvwInclusions_Saved.Clear()
    For Each Inclusion In Inclusions_Referrals_This_Consult
       If inclusion!fk_referral = pk_referral Then 
@@ -1486,7 +1489,7 @@ Public Sub cvwLetters_Select()
    tbSave.Enabled = False 
    tbPreview.enabled = False 
    lvwInclusions_Saved_Refresh()
-
+   
 End
 
 Public Sub lvwOrgContacts_Menu()
@@ -1569,7 +1572,7 @@ Public Sub Person_Select()
    '-----------------------------------------------------------
    
    Person_By_Occupation_Select()
-
+   
 End
 
 Public Sub Person_Comms_Get()
@@ -1756,7 +1759,7 @@ Public Sub EditAreaCombo_Click()
    If bExit Then Return 
    fk_type = Last.index + 1
    EditArea_Notify_DataChange(True)
-
+   
 End
 
 Public Sub cvwLetters_LostFocus()
@@ -1943,7 +1946,7 @@ Public Sub lvwInclusions_EditArea_Refresh(Inclusions As Collection)
    'Called by  lvwInclusions_EditArea_Drop: Inclusions_EditArea collection
    '           Referral_Edit:Inclusions_Referral_This_Consult collection
    '---------------------------------------------------------------------
-
+   
    Dim inclusion As Collection
    Dim sString As String
    Dim document As Collection 
@@ -2013,7 +2016,7 @@ Public Sub lvwInclusions_EditArea_Drop()
    End If
    lvwInclusions_EditArea_Refresh(Inclusions_EditArea)
    EditArea_Notify_DataChange(True)
-
+   
 End
 
 Public Function Inclusions_Construct_HTML(Inclusions As Collection) As String
@@ -2064,7 +2067,7 @@ Public Function Inclusions_Construct_HTML(Inclusions As Collection) As String
    Next
    sHtml = Replace(sHtml, "%inclusions%", sInclusions)
    Return sHtml 
-
+   
 End
 
 Public Sub HSplit_Letter_Include_Resize()
@@ -2080,7 +2083,8 @@ Public Sub EditAreaCheckBox_Click()
 End
 
 Public Sub EditorButtons_Click()
- Return 
+
+   Return 
    ' Select Case Last.tag
    '    Case "spell"
    '       SpellChecker.init()

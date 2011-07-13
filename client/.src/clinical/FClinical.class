@@ -1309,7 +1309,7 @@ Public Sub cvwResults_Refresh(Optional bRefresh As Boolean = False)
             If Not IsNull(guessed_user_Name!name) Then
                result_received = "** UNFILED **:" & guessed_user_Name!name
             Else
-               result_received = "** UNFILED RESULT **:" '& results_received!tag
+               result_received = "** UNFILED RESULT **:"
             End If
          Else
             result_received = results_received!tag_user
@@ -2726,6 +2726,8 @@ Public Sub mnuResultsReceived_Click()
                Endif
             Endif
          Next
+      Case "do not show"
+         'Enable user to permanantly remove from sight unwanted results eg INR's in patient no longer on coumadin. 
       Case "refile document"
          If modArchiveDocumentsDBI.Document_SendBack_For_ReFiling(currentconsult, currentconsult!results_received, cvwResults.Item.key) Then 'commit done in that routine
             cvwResults_Refresh(True)   
@@ -2779,12 +2781,34 @@ Public Sub Document_Edit_Metadata(documents As Collection, document_key As Integ
    
 End
 
-Public Sub Document_Print(pages As String)
-   
-   If pages = "single" Then
-      
-   Endif
-   
+Public Sub Document_Print(fk_document As Integer)
+      '--------------------------------------------------------------
+      'Print a document by its key
+      'All documents have a filename - but they are either PDF or HL7
+      '--------------------------------------------------------------
+      Dim Document As Collection 
+      Dim Filename As String
+      '---------------------------------------------------
+      'Is the document a result?, if not, must be a letter
+      'i.e decide which collection to pull them from
+      '---------------------------------------------------
+      Try Document = currentconsult!results_received[fk_document]         '? a result??
+      If IsNull(document) Then                                            'it wasn't a result?             
+         Try Document = currentconsult!letters_received[fk_document]      '? a letter ??   
+      End If  
+      '----------------------------------------------------------
+      'Having got the document, print according to file extension
+      'All our non scanned documents are html
+      'FIXME: could be printing a picture
+      '----------------------------------------------------------
+      Select Case File.Ext(Document!source_file)
+        Case "pdf"
+              modPrinting.Print_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ Document!source_file)
+        Case "jpg", "png", "tiff", "jpeg", "bitmap"
+           
+        Case Else
+              modPrinting.PrintHtml(Document!html)
+      End Select
 End
 
 Public Sub mnuResultGraphable_Click()
@@ -2811,11 +2835,14 @@ Public Sub mnuTabbedListReferral_Click()
          'Referral_Delete()
       Case "undo delete"
       Case "print no inclusions"         'single copy no included documents
-         Re_Print(currentconsult!referrals_written[cvwReferrals.Item.key]!letter_html)
+        Re_Print_Document_Html(currentconsult!referrals_written[cvwReferrals.Item.key]!letter_html)
       Case "print with inclusions"      ' single copy including original documents sent.
-         Re_Print(currentconsult!referrals_written[cvwReferrals.Item.key]!letter_html)
-         ' Inclusions =
-      Case "email"
+        Re_Print_Document_Html(currentconsult!referrals_written[cvwReferrals.Item.key]!letter_html)
+        Inclusions = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False, False, currentconsult!referrals_written[cvwReferrals.Item.key]!pk_referral)
+        For Each Inclusion In Inclusions
+          Document_Print(inclusion!fk_document)
+        Next
+     Case "email"
          modUtil.NotImplemented("Email Request")
       Case "preview"
          Referral_Letter_Display()
@@ -2914,9 +2941,9 @@ Public Sub mnuTabbedListRequest_Click()
       Case "re-order"
       Case "re-print"
          If Split(cvwRequests.item.key, "-").Count = 3 Then
-            Re_Print(currentconsult!requests_ordered[Right(cvwRequests.item.key, Len(cvwRequests.item.key) - InStr(cvwRequests.Item.key, "-"))]!form_html)
+           Re_Print_Document_Html(currentconsult!requests_ordered[Right(cvwRequests.item.key, Len(cvwRequests.item.key) - InStr(cvwRequests.Item.key, "-"))]!form_html)
          Else
-            Re_Print(currentconsult!requests_ordered[cvwRequests.item.key]!form_html)
+           Re_Print_Document_Html(currentconsult!requests_ordered[cvwRequests.item.key]!form_html)
          End If
       Case "preview form"
          RequestForm_Display_Previous()
@@ -3013,6 +3040,7 @@ Public Sub mnuLettersReceived_Click()
       Case "display"                       'show the letter
          Document_Display(currentconsult!letters_received, cvwLettersReceived.Item.key)              'display document
       Case "print"                         'print the letter'
+         
       Case "display as result"                'change fk_lu_display as to const.Document_Display_As_Result
          If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!letters_received, cvwLettersReceived.Item.key, const.Document_Display_As_Result, const.cSection_Documents, "display mode changed from letter to result") Then
             cvwLettersReceived_Refresh(True)
@@ -3859,7 +3887,7 @@ Public Sub tabstrip_lists_Click()
    
 End
 
-Public Sub Re_Print(sHtml As String, Optional num_copies As Integer = 1)  
+Public Sub Re_Print_Document_Html(sHtml As String, Optional num_copies As Integer = 1)  
    '------------------------------------------
    'prints html to default plain paper printer
    '------------------------------------------

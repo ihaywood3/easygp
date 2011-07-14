@@ -21,7 +21,7 @@
 Private BMICalc As FBMICalc
 Private PregCalc As FPregCalc
 Private Calculator As FCalculator
-
+Private Patients_Seen As Collection             'the patients seen by a staff member today
 Private Control_For_Focus As Control            'don't remove this without asking me (RT)
 'used to set focus to a designated control after tab is instantiated
 'see Editor_ShowPage(.)
@@ -407,7 +407,7 @@ Public Sub Init()
    mnuDecisionSupport_K10.Visible = True
    mnuDecisionSupport_Dass.visible = True
    mnuDecisionSupport_Chads.Visible = True   
-   
+   cmbSearch_LoadPatients() 
 End
 
 Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean, P As Picture) 
@@ -438,6 +438,8 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
    mnuDecisionSupport.Visible = True  
    mnuHelp.visible = True
    Try PicPatient.Picture = P
+   'Has there been a consulation today already?
+   
    currentconsult = New CConsult(patient)
    'fixme - check out what to do if continued consultation
    'and implement (if decide to) concept of a consultation summary
@@ -742,10 +744,11 @@ Public Sub Consult_Save()
    
 End
 
-Public Sub Patients_Find(Optional search_txt As String) 
+Public Sub Patients_Find(Optional fk_patient As Integer) 
    '-----------------------------------------------------------------------------
-   'Attemps to find patients according to criteria entered in txtSearch
-   'If none, resets focus to txtSearch
+   'Attemps to find patients according to criteria entered in cmbSearch
+   'of by patient key if picked from list of patients seen that day
+   'If none found , resets focus to txtSearch
    'Otherwise creates an empty patient object
    'If only one name and address auto-load that patient to currentconsult
    'If multiple names/addresses, popup a modal for choice
@@ -760,12 +763,16 @@ Public Sub Patients_Find(Optional search_txt As String)
    Dim bPhotoConfirmed As Boolean = False 
    
    Inc Application.Busy
-   If IsNull(search_txt) Then search_txt = txtSearch.text
-   AllPatients = modContactsDBI.patients_get_firstname_surname(search_txt, chkIncludeDeceased.value)
-   sql_in_english = AllPatients!sql_in_english
-   AllPatients.Remove("sql_in_english")
+   'If IsNull(search_txt) Then search_txt = txtSearch.text
+   If fk_patient Then
+       AllPatients = modContactsDBI.Patient_Get_Using_PK(fk_patient)
+   Else
+      AllPatients = modContactsDBI.patients_get_firstname_surname(cmbSearch.text, chkIncludeDeceased.value)
+      sql_in_english = AllPatients!sql_in_english
+      AllPatients.Remove("sql_in_english")
+   End If   
    If AllPatients.count = 0 Then 
-      txtSearch.SetFocus()
+      cmbSearch.SetFocus()
       Dec application.Busy
       Return
    Else  
@@ -788,7 +795,8 @@ Public Sub Patients_Find(Optional search_txt As String)
          Next
          FConfirmPatient.Init(P, patient!wholename)
          If Not FConfirmPatient.ShowModal() Then 
-            txtSearch.SetFocus()
+         '  txtSearch.SetFocus()
+            cmbSearch.SetFocus()
             Return            
          End If
          
@@ -961,11 +969,18 @@ Public Sub Patient_Demographics_Display()
    Dim com As Collection 
    
    bExit = True
-   txtSearch.text = currentconsult!patient!firstname & " " & currentconsult!patient!surname & " " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town
-   txtSearch.text &= " " & currentconsult!patient!postcode
-   txtSearch.pos = 0
+   ' txtSearch.text = currentconsult!patient!firstname & " " & currentconsult!patient!surname & " " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town
+   ' txtSearch.text &= " " & currentconsult!patient!postcode
+   ' txtSearch.pos = 0
+   ' txtAge.text = "Age " & currentconsult!patient!age_display
+   ' txtSearch.Tag = currentconsult!patient!firstname & " " & currentconsult!patient!surname & "\n"
+   
+   cmbSearch.text = currentconsult!patient!firstname & " " & currentconsult!patient!surname & " " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town
+   cmbSearch.text &= " " & currentconsult!patient!postcode
+   cmbSearch.pos = 0
    txtAge.text = "Age " & currentconsult!patient!age_display
-   txtSearch.Tag = currentconsult!patient!firstname & " " & currentconsult!patient!surname & "\n"
+   cmbSearch.Tag = currentconsult!patient!firstname & " " & currentconsult!patient!surname & "\n"
+
    '----------------------------------------------------------------
    'On the top toolbar, show a list containing dob, medicare number,
    'and some basic contact numbers
@@ -1002,6 +1017,114 @@ Public Sub txtSearch_KeyPress()
       '--------------------------------------------------------
       patients_find()     
    End If
+   
+End
+
+Public Sub cmbSearch_Activate()
+
+    If bExit = True Then 
+      Return
+   End If
+   If Len(Trim(cmbSearch.text)) > 0 Then 
+      '--------------------------------------------------------
+      'Try and find a patient as per the text in the search box\
+      'If this fails, then focus is res-set to the search box
+      'If finds 1 patient, loads their records
+      'If finds > 1 patient, popup multiple choice list
+      'which is instance for FPatientsSelect      
+      '--------------------------------------------------------
+      patients_find()     
+   End If
+   
+
+End
+Public Sub cmbSearch_LoadPatients()
+   '------------------------------------
+   'Loads combo with patients seen today
+   '------------------------------------  
+   Dim Patient_Seen As Collection
+   Dim fk_last_patient As Integer
+   Dim x As Integer
+   bExit = True
+   cmbSearch.Clear()
+   Patients_Seen = New Collection
+  '  Patients_seen = modUtil.Copy_Collection_Keyed_Sequentially(Patients_Seen)
+   
+   For Each Patient_seen In modAppointmentsDBI.Patients_Seen(Format(Now, "dd/mm/yyyy"), modDBConnect.currentUser!fk_staff) 
+       If fk_last_patient <> Patient_Seen!fk_patient And Patient_Seen!fk_type = const.consult_type_at_Surgery Then
+         fk_last_patient = Patient_Seen!fk_patient 
+         cmbSearch.add(Patient_Seen!wholename)
+         Patients_Seen.Add(Patient_Seen, x)
+         Inc x
+      End If
+    Next
+   bExit = False  
+End
+
+Public Sub cmbSearch_GotFocus()
+
+     '----------------------------------
+   'User has clicked on the search box
+   'First check there is no un-saved data
+   '-----------------------------------
+   
+   Dim i As Object
+   
+   If bexit Then
+      Return 
+   End If
+   TabStrip_Lists.Enabled = False   
+   If Not IsNull(currentconsult) Then
+      Consult_Save()
+      ScratchPad.Save()
+   End If
+   bExit = True
+   application.busy = 0
+   cmbSearch.text = "" 
+   txtAge.text = ""
+   lblID.text = ""
+   chkIncludeDeceased.visible = True
+   tlAllergies.text = ""
+   tlReminders.text = ""
+   tlPatientComms.text = ""
+   lblBirthdate.text = ""
+   Try BMICalc.EditArea_Clear()
+   Try PregCalc.EditArea_Clear()
+   WorkspaceEditor_Clear()  'remove all current pages from collection
+   '   ProgressNotes_Clear()
+   Tabbed_lists_Clear()   'scripts, recalls, requests lists etc
+   TabStrip_Lists.index = 0 'the medication list
+   cvwProblemsSignificant.Clear()
+   cvwProblemsInActive.Clear()
+   cvwProblemsMajor.Clear()
+   
+   Measurements_Reset()
+   txtInboxResults_filter.text = "" 
+   txtInboxResults_Exclude.text = ""
+   currentconsult = Null
+   cmbConsultationType.index = cmbConsultationType.Find("At consulting rooms")
+   ScratchPad.Clear()
+   UnFiled_Document_Metadata_Show(False)
+   ScratchPad.txtScratchPad.Enabled = False  
+   TabStripProblemLists.index = 2
+   TabStripProblemLists.Caption = "Inactive"
+   TabStripProblemLists.index = 1
+   TabStripProblemLists.Caption = "Significant"
+   TabStripProblemLists.index = 0
+   TabStripProblemLists.Caption = "Major"
+   Patient_Picture_Clear()
+   bExit = False
+   Form_ExportClinical.visible = False
+   DecisionSupport_Show("", False)
+   WorkspaceEditor.Visible = True 
+   Deleted_Documents = New Collection 
+   Deleted_Medications = New Collection 'fixme unite these collections
+   txtConsultDate.text = Format(Now, "dd/mm/yyyy") 
+
+End
+Public Sub cmbSearch_LostFocus()
+   
+  Last.pos = 0 
    
 End
 
@@ -1063,6 +1186,13 @@ Public Sub txtSearch_GotFocus()
    Deleted_Documents = New Collection 
    Deleted_Medications = New Collection 'fixme unite these collections
    txtConsultDate.text = Format(Now, "dd/mm/yyyy")
+   
+End
+
+Public Sub txtSearch_LostFocus()
+   'Make sure the start of name visible
+   
+   Last.pos = 0
    
 End
 
@@ -3631,9 +3761,10 @@ End
 Public Sub Tabbed_lists_Clear()
    '---------------------------------------------------------
    'PURPOSE    :Clears all the lists on the main tab control
-   'REASON     :When user clicks on txtSearch to get a new 
+   'REASON     :When user clicks on txtSearch to get a new FIXME NOW CMBSEARCH
    '            patient, the old data Is showing
    'CALLED BY  :txtSearch_GotFocus()
+   '           :cmbSearch_Gotfocus()  
    '--------------------------------------------------------
    
    cvwReferrals.clear()
@@ -3718,12 +3849,6 @@ Public Sub TabbedLists_Click()
    
 End
 
-Public Sub txtSearch_LostFocus()
-   'Make sure the start of name visible
-   
-   Last.pos = 0
-   
-End
 
 Public Sub cvwMedications_Menu()
    
@@ -4448,7 +4573,8 @@ Public Sub SelectPatient_click()
    mnuSections.Visible = False   
    mnuDecisionSupport.Visible = False  
    mnuHelp.visible = False
-   txtSearch.SetFocus()   
+   'txtSearch.SetFocus()   
+   cmbSearch.SetFocus()
    
 End
 
@@ -4581,4 +4707,11 @@ Public Sub tsCalculators_Click()
          End If   
    End Select
    
+End
+
+
+Public Sub cmbSearch_Click()
+  cmbSearch_GotFocus()
+  Patients_Find(Patients_Seen[cmbSearch.index]!fk_patient)
+
 End

@@ -1,0 +1,726 @@
+' Gambas class file
+
+' Copyright (C) 2008-2011 Dr. Richard Terry  rterry@pacific.net.au
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'----------------------------------------------------------------------
+' A QUICK CONTACT FINDER
+'----------------------------------------------------------------------
+' TODO      Pretty much everything, I've just cut and pasted FReferrals
+'----------------------------------------------------------------------
+
+Private bEmbedded As Boolean                                'True if this form is embedded e.g in the inbox
+Private bEditing As Boolean                                 'True if editing an existing referral written this consultation
+Private bExit As Boolean                                    'Used to prevent re-entry into subroutines
+Private bKeyValid As Boolean                                'Used in EditAreaTextBox routines to ensure valid data entry
+Private specialists As Collection
+Private specialist As Collection 
+Private Branches As Collection
+Private branch As Collection 
+Private Comms As Collection
+Private comm As Collection 
+Private currentconsult As CConsult                          'set by calling form e.g Fclinical or FActionDocument
+Private fk_person As Integer                                'key for person the referral letter is to see Contacts.data_persons
+Private fk_employee As Integer                              'key to contacts.data_employees
+Private fk_type As Integer                                  'key for the type of referral letter      see clin_referral.lu_type
+Private fk_branch As Integer                                'can be null or 0, but if not key to          Contacts.data_branches
+Private fk_organisation As Integer                          'can be null or 0, nut if not key to          Contacts.data_organisations
+Private fk_address As Integer                               'key to contacts.data_addresses
+Private fk_pasthistory As Integer                           'past history item the letter is linked to if 0 = general notes
+Private cProgressNote_Section As Integer                    'either past history or general at moment
+Private fk_progressnote As Integer                          'the progress note linked to this referral
+Private pk_referral As Integer                              'key to clin_referrals.referrals
+Private Addresses As Collection
+Private address As Collection 
+Private obs As Observer
+Private pk_deleted_referral As Integer 
+Private pk_deleted_progressnote As Integer                     'if not 0 then it is the last referral written which was deleted
+
+
+
+Public Sub Init(cons As CConsult)
+   '---------------------------------------------------------
+   'Do all the form initialisation stuff like adding stuff to 
+   'combo's, setting numbers of columns in lists
+   '---------------------------------------------------------
+   
+   currentconsult = Cons                       'set current consult
+   lblmeasure.text = " Organisation "
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
+   Try Settings_Load()                          'load settings for this form
+    
+End
+
+
+
+
+
+
+
+
+Public Sub EditAreaTextBox_Change()
+   
+   If bExit Then Return
+   Select Case Last.tag
+         
+      Case "organisation"
+         If Trim(Last.text) = "" Then
+            bexit = True
+            fk_organisation = 0
+            fk_branch = 0
+            txtOrganisation.text = ""
+            txtBranch.Text = ""
+            txtStreet1.Text = ""
+            txtStreet2.Text = ""
+            txtSuburb.text = ""
+            txtPostcode.text = ""
+            lvworgcontacts.Clear()
+            bexit = False
+         Endif
+      Case "name"
+         '-----------------------------------------------------
+         'User deletes the name, visciously reset the edit area
+         'Why, we must enforce keys for saving ie fk_person etc
+         'must exist
+         '------------------------------------------------------
+         If Trim(txtName.text) = "" Then
+            lvworgcontacts.Clear()
+            cvwPersonContacts.Clear()
+            bExit = True
+            fk_organisation = 0
+            fk_branch = 0
+            fk_employee = 0
+            fk_person = 0
+            txtOccupation.text = ""
+            txtOrganisation.text = ""
+            txtBranch.Text = ""
+            txtStreet1.Text = ""
+            txtStreet2.Text = ""
+            txtSuburb.text = ""
+            txtPostcode.text = ""   
+            bExit = False            
+         End If   
+   End Select
+End
+
+Public Sub EditAreaTextBox_KeyRelease()
+   '----------------------------------------------------------------------------
+   'Search for appropriate collections of information on each key-release stroke
+   '-----------------------------------------------------------------------------
+   
+   If bExit Then Return
+   
+   Select Case Last.tag
+      Case "category" 
+         Organisation_By_Category_Get()   'only organisation, search on occupation for person
+      Case "occupation"
+         Person_By_Occupation_Get()       'gets persons as employees or sole traders
+      Case "name"
+         Person_Get()
+      Case "organisation"
+         Organisation_Get()  
+   End Select
+   
+End
+
+Public Sub EditArea_Clear()
+   '-----------------------------------------
+   'Clears the textboxes etc in the edit area
+   'needs cleverer code
+   '-----------------------------------------
+   
+   bExit = True
+   '---------------
+   'Clear textboxes
+   '---------------
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
+   '-----------
+   'Clear lists
+   '-----------
+   columnview1.Visible = False
+   cvwPersonContacts.Clear
+   lvwOrgContacts.Clear()
+  bExit = False
+ End
+
+Public Sub EditAreaTextBox_GotFocus()
+   
+   If Bexit Then Return 
+   columnview1.Visible = False 
+   Last.BackGround = Color.rgb(95, 255, 175)
+   
+   Select Case Last.tag
+         
+      Case "category"
+         With columnview1
+            .top = Last.parent.parent.top + Last.Height
+            .width = txtCategory.Width
+            .left = Last.parent.Left 
+            .height = 150  'FIXME Make me smarter eg height  = that of # of items.
+            .columns.count = 3
+         End With 
+      Case "occupation"
+         With columnview1
+            .top = Last.parent.parent.top + Last.Height
+            .width = txtOccupation.Width
+            .left = Last.parent.Left 
+            .height = 150  'FIXME Make me smarter eg height  = that of # of items.
+            .columns.count = 4 '0=occupation 1= name 2= organisation/branch 3=address
+            
+         End With 
+         
+      Case "name"
+         With columnview1
+            .top = Last.parent.parent.top + txtName.Height
+            .width = txtOrganisation.Width
+            .height = 150
+            .left = Last.parent.Left 
+            .columns.count = 4 '0=name,surname 1= occupation 2= organisation/branch 3=address
+         End With  
+         
+      Case "organisation"
+         With columnview1
+            .top = Last.parent.parent.top + Last.Height
+            .width = txtOrganisation.Width - 10
+            .left = Last.parent.Left 
+            .height = 150
+            .columns.count = 4 'branch, street, suburb
+         End With  
+         ' person_AddressGet()
+      Case "branch"
+         With columnview1
+            .top = Last.parent.parent.top + Last.Height 
+            .width = Last.parent.parent.width
+            .left = Last.parent.Left 
+            .height = 150
+            .columns.count = 2
+         End With  
+         If fk_branch Then
+            Branch_Get()
+         Endif
+         
+      Case "street1"
+         With columnview1
+            .top = Last.parent.parent.top + Last.Height 
+          '  .width = HSplitEditArea_Communications.width - lblmeasure.width ' txtCategory.Width
+            .left = Last.Left
+            .height = 150
+            .columns.count = 2
+         End With  
+         Person_Addresses_Get()
+      Case "street2"
+      Case "suburb"
+         txtPostcode.BackGround = Color.rgb(95, 255, 175)
+      Case "postcode"
+   End Select
+   
+End
+
+Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   Select Case tag
+      Case "date"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
+      Case Else
+         bKeyValid = True
+   End Select
+   Return bKeyValid
+   
+End
+
+Public Sub EditAreaTextBox_LostFocus()
+   
+   Last.BackGround = Color.White
+   If Last.tag = "suburb" Then txtPostcode.BackGround = Color.white
+   If Last.tag = "date" Then
+      If Not (IsDate(Last.text)) Then
+         bExit = True   
+         Last.text = "" 
+         bExit = False  
+      Endif
+   Endif
+   
+End
+
+Public Sub EditAreaTextBox_KeyPress()
+   
+   If bExit Then Return
+   If Not EditAreaTextbox_ExcludeKeys(key.code, Last.tag) Then 
+      Stop Event
+      Return
+   End If
+   
+   Select Case Key.Code
+      Case Key.F1
+         Select Case Last.tag
+            Case "tag"
+         End Select
+      Case Key.Down
+         Select Case Last.tag
+            Case "category", "organisation", "street1", "Suburb", "linkto", "name", "occupation"
+               If columnview1.Visible Then
+                  columnview1.MoveCurrent
+                  columnview1.Item.Selected = True
+                  columnview1.SetFocus()
+               End If
+         End Select
+         
+      Case Key.Return, Key.Tab
+         Select Case Last.tag
+               
+            Case "category"
+               txtOccupation.SetFocus()
+            Case "occupation"
+               txtName.SetFocus()
+         End Select
+         
+   End Select
+   
+End
+
+
+
+
+
+
+
+Public Sub Settings_Save()
+  
+   
+End
+
+Private Sub Settings_Load()
+   
+  
+   
+End
+
+Public Sub ColumnView1_KeyPress()
+   
+   If Key.Code = Key.RETURN Then 
+      ColumnView1_DblClick() 
+   End If
+   
+End
+
+Public Sub Address_Select()
+   
+   columnview1.MoveCurrent
+   Try txtOrganisation.text = Addresses[columnview1.Item.key]!organisation
+   Try txtBranch.text = Addresses[columnview1.Item.key]!branch
+   Try txtStreet1.text = Addresses[columnview1.Item.key]!street1
+   Try txtStreet2.text = Addresses[columnview1.Item.key]!street2
+   Try txtSuburb.text = Addresses[columnview1.Item.key]!town
+   Try txtPostcode.text = Addresses[columnview1.Item.key]!postcode
+   Try fk_organisation = Addresses[columnview1.Item.key]!fk_organisation
+   Try fk_branch = Addresses[columnview1.Item.key]!fk_branch
+End
+
+Public Sub ColumnView1_DblClick()
+   '-----------------------------------------------------------
+   'The columnview tag is always a control, usually a textbox
+   'here we read the textbox tag to determine which textbox
+   'poppuped up the columnview
+   '---------------------------------------------------------
+   
+   Select Case Last.Tag.tag
+      Case "category"
+         Organisation_By_Category_Select()
+      Case "occupation"
+         Person_By_Occupation_Select()
+      Case "branch"
+         Branch_Select()
+      Case "street1"
+         Address_Select()
+      Case "name" 
+         Person_Select()
+      Case "organisation"
+         Organisation_Select()
+   End Select
+   columnview1.Visible = False  
+   
+End
+
+
+
+Public Sub Person_Addresses_Get()
+   '----------------------------------------------------------------------
+   'Get all addresses this person works, private rooms or in organisations
+   '----------------------------------------------------------------------
+   
+   Dim x As Integer
+   
+   columnview1.Clear
+   columnview1.Columns.count = 2
+   Addresses = modReferralsDBI.Persons_Addresses_Get(fk_person)
+   For Each address In Addresses
+      ColumnView1.add(address!pk_view, 0)
+      If address!organisation <> Null Then 
+         ColumnView1[address!pk_view][0] = address!organisation & " " & address!branch
+      Else
+         ColumnView1[address!pk_view][0] = "Private rooms"
+      End If   
+      ColumnView1[address!pk_view][1] = address!street1 & " " & address!street2 & " " & address!town
+   Next
+   If Addresses.count > 1 Then 
+      columnview1.Raise
+      columnview1.Visible = True
+      columnview1.tag = txtStreet1
+   Else
+      If Addresses.Count = 1 Then Address_Select()
+   Endif
+   
+End
+
+Public Sub Person_Get()
+   '-------------------------------------------------------------
+   'Gets a list of persons who could be sole traders or employees
+   '-------------------------------------------------------------
+   
+   Dim address As String
+   
+   columnview1.Visible = False 
+   If Trim(txtName.text) = "" Then Return 
+   specialists = modReferralsDBI.Person_Get_By_Surname(Trim(txtName.text))
+   columnview1.Clear()
+   If specialists.count Then 
+      For Each Specialist In specialists
+         columnview1.Add(Specialist!pk_view, 0)
+         columnview1[Specialist!pk_view][0] = Specialist!wholename
+         columnview1[Specialist!pk_view][1] = "(" & Specialist!occupation & ")"
+         columnview1.Columns[2].width = 150
+         If Not IsNull(Specialist!organisation) Then
+            columnview1[Specialist!pk_view][2] = Specialist!organisation & " " & Specialist!branch
+         Else
+            columnview1[Specialist!pk_view][2] = ""
+         Endif
+         Try address = Trim(Specialist!street1 & " " & Specialist!street2)
+         Try address &= Specialist!town & " " & Specialist!postcode
+         columnview1[Specialist!pk_view][3] = address
+      Next
+      columnview1.tag = txtName 
+      columnview1.Visible = True
+      columnview1.Raise
+      Return 
+   Else 
+      columnview1.Visible = False   
+   End If
+   
+End
+
+Public Sub Person_Select()
+   '-----------------------------------------------------------
+   'There is a list of persons showing, user is selecting one
+   'Routine called by user clicking on list or pressing <enter>
+   '-----------------------------------------------------------
+   
+   Person_By_Occupation_Select()
+   
+End
+
+Public Sub Person_Comms_Get()
+   '--------------------------------------------------------
+   'Get all the persons contacts, e.g phone, fax, mobile etc
+   '--------------------------------------------------------   
+   
+   Dim comm As Collection
+   Dim x As Integer
+   
+   comms = modContactsDBI.person_comms_get(fk_person)
+   cvwPersonContacts.Clear()
+   For Each Comm In comms
+      x = Comm!pk
+      cvwPersonContacts.Add(x, 0)
+      cvwPersonContacts[x][0] = comm!type
+      cvwPersonContacts[x][1] = comm!value 
+   Next
+   
+End
+
+Public Sub Organisation_By_Category_Get()
+   '---------------------------------------------------------------  
+   'Allows user to select a recipient by category
+   'applies only to organisation, for persons, search on occupation
+   '---------------------------------------------------------------
+   
+   columnview1.Visible = False
+   If Trim(txtCategory.text) = "" Then Return 
+   branches = modContactsDBI.Organisations_Get_By_Category(Trim(txtCategory.text))
+   If Not branches.count Then Return
+   columnview1.Clear()
+   For Each branch In branches
+      columnview1.Add(branch!pk_view, 0)
+      columnview1[branch!pk_view][0] = branch!category
+      columnview1[branch!pk_view][1] = branch!organisation
+      columnview1[branch!pk_view][2] = branch!branch
+   Next
+   
+   With columnview1
+      .tag = txtCategory
+      .Raise()
+      .Visible = True
+   End With 
+   
+End
+
+Public Sub Organisation_By_Category_Select()
+   '--------------------------------------------------------------
+   'User has been trying to find organisation by typing a category
+   '--------------------------------------------------------------
+   
+   Branch_Select()
+   
+   '------------------------------------------
+   'Get the comms for this organisation/branch
+   '------------------------------------------
+   lvworgcontacts.Clear() 
+   cvwPersonContacts.Clear()
+   comms = modContactsDBI.Branch_Comms_Get(fk_branch)
+   For Each comm In comms
+      lvworgcontacts.Add(comm!pk, comm!type & " " & comm!value)
+   Next
+   
+End
+
+Public Sub Branch_Comms_Get()
+   
+   comms = modContactsDBI.Branch_Comms_Get(fk_branch)
+   
+   For Each comm In comms
+      lvworgcontacts.Add(comm!pk, comm!type & " " & comm!value)
+      
+   Next
+   
+End
+
+Public Sub Branch_Select()
+   '-------------------------------------
+   'Selects a branch from the columnview1
+   '-------------------------------------   
+   
+   bexit = True
+   columnview1.MoveCurrent()
+   txtOrganisation.text = branches[columnview1.Item.key]!organisation
+   txtBranch.text = branches[columnview1.Item.key]!branch
+   txtstreet1.text = branches[columnview1.Item.key]!street1
+   txtstreet2.text = branches[columnview1.Item.key]!street2
+   txtSuburb.text = branches[columnview1.Item.key]!town
+   txtPostcode.text = branches[columnview1.Item.key]!postcode
+   txtCategory.text = branches[columnview1.Item.key]!category
+   columnview1.Visible = False   
+   fk_branch = branches[columnview1.Item.key]!fk_branch
+   fk_organisation = branches[columnview1.Item.key]!fk_organisation
+   bexit = False
+End
+
+Public Sub Branch_Get()
+   '--------------------------------
+   'Get branches for an organisation
+   '--------------------------------
+   
+   Branches = modContactsDBI.Branches_Get_For_Organisation(fk_organisation)
+   If Branches.count Then
+      columnview1.Clear
+      For Each branch In branches
+         columnview1.Add(branch!pk_view, 0)
+         columnview1[branch!pk_view][0] = branch!branch
+         columnview1[branch!pk_view][1] = Trim(branch!street1 & " " & branch!street2) & " " & branch!town & " " & branch!postcode
+      Next
+      columnview1.Visible = True
+      columnview1.Tag = txtBranch
+   Endif
+   
+End
+
+Public Function Employee_Workplace_Get()  
+   '-----------------------------------------------------------------------------
+   'Given an fk_person, get where they could work (may not however be an employee
+   'If a single place of employ - auto accept and put in the details
+   '-----------------------------------------------------------------------------
+   
+   columnview1.Visible = False 
+   If Trim(txtName.text) = "" Then Return 
+   fk_organisation = 0
+   fk_branch = 0
+   branches = modReferralsDBI.Organisations_Get_For_Employee(fk_person)
+   If Not branches.count Then Return 
+   columnview1.Clear()
+   '-----------------------------------------------------------------------------------
+   'If branches of an organisation  exist to match the text, auto-select or show a list
+   '-----------------------------------------------------------------------------------
+   For Each branch In branches
+      Columnview1.Add(branch!pk_view, 0)
+      Columnview1[branch!pk_view][0] = Branch!organisation
+      Columnview1[branch!pk_view][1] = Branch!branch
+      Columnview1[branch!pk_view][2] = Trim(Branch!street1 & " " & Branch!street2)
+      Columnview1[branch!pk_view][3] = Branch!town & " " & Branch!postcode
+   Next 
+   
+   If branches.count = 1 Then 
+      Employee_Workplace_Select()
+      Return  
+   End If
+   columnview1.Visible = True
+   columnview1.Raise
+   columnview1.tag = txtOrganisation
+   
+   Return   
+   
+End
+
+Public Function Employee_Workplace_Select()  
+   
+   bExit = True
+   columnview1.MoveCurrent 
+   fk_organisation = branches[columnview1.Item.key]!fk_organisation
+   fk_branch = branches[columnview1.Item.key]!fk_branch
+   txtOrganisation.text = branches[columnview1.Item.key]!organisation
+   txtBranch.text = branches[columnview1.Item.key]!branch
+   '-----------------
+   'These can be null
+   '-----------------
+   Try txtStreet1.text = branches[columnview1.Item.key]!street1
+   Try txtStreet2.text = branches[columnview1.Item.key]!street2
+   Try txtSuburb.text = branches[columnview1.Item.key]!town
+   Try txtPostcode.text = branches[columnview1.Item.key]!postcode
+   '------------------------------------------
+   'Get the comms for this organisation/branch
+   '------------------------------------------
+   lvworgcontacts.Clear() 
+   cvwPersonContacts.Clear()
+   Branch_Comms_Get()
+   bExit = False  
+   columnview1.Visible = False     
+   
+End
+
+
+
+
+Public Sub Person_By_Occupation_Select()
+   '-----------------------------------------------------------------------------------------
+   'User selects person to send letter to from popup list
+   'Remembering that the view contains person with addresses in organisations or sole traders
+   'Hence all the Try's. Also, an organisation or person can be in the database 'name only'
+   'without associated address. Bumma eh!
+   '------------------------------------------------------------------------------------------
+   
+   bExit = True
+   If columnview1.Visible Then
+      columnview1.MoveCurrent   'set internal cursor to match marquee
+      txtName.Text = specialists[columnview1.Item.key]!wholename
+      txtOccupation.text = specialists[columnview1.Item.key]!occupation
+      fk_person = specialists[columnview1.Item.key]!fk_person
+      Try fk_employee = specialists[columnview1.Item.key]!fk_employee
+      Try fk_organisation = specialists[columnview1.Item.key]!fk_organisation
+      Try fk_address = specialists[columnview1.Item.key]!fk_address
+      Try fk_branch = specialists[columnview1.Item.key]!fk_branch
+      Try txtOrganisation.text = specialists[columnview1.Item.key]!organisation
+      Try txtBranch.text = specialists[columnview1.Item.key]!branch
+      Try txtStreet1.text = specialists[columnview1.Item.key]!street1
+      Try txtStreet2.text = specialists[columnview1.Item.key]!street2
+      Try txtSuburb.text = specialists[columnview1.Item.key]!town
+      Try txtPostcode.text = specialists[columnview1.Item.key]!postcode 
+      If fk_branch Then Branch_Comms_Get()
+      If fk_person Then Person_Comms_Get()
+    End If
+   bExit = False  
+   
+End
+
+Public Sub Person_By_Occupation_Get()
+   '-----------------------------------------------------------------------
+   'Gets a list of categories of occupations, presented in a list like this
+   ' category .... persons name i.e
+   ' cardiologist      Dr Big heart
+   '-----------------------------------------------------------------------
+   
+   Dim address As String 
+   
+   columnview1.Visible = False   
+   If Trim(txtOccupation.text) = "" Then Return 
+   specialists = modReferralsDBI.Persons_Get_By_Occupation(Trim(txtOccupation.text))
+   columnview1.Clear()
+   ' '-----------------------------------------------------------------
+   ' 'If categories exist to match the text, auto-select or show a list
+   ' '-----------------------------------------------------------------
+   If specialists.count > 1 Then 
+      For Each Specialist In specialists
+         columnview1.Add(Specialist!pk_view, 0)
+         columnview1[Specialist!pk_view][0] = Specialist!occupation
+         columnview1[Specialist!pk_view][1] = Specialist!wholename
+         columnview1.Columns[2].width = 150
+         If Not IsNull(Specialist!organisation) Then
+            columnview1[Specialist!pk_view][2] = Specialist!organisation & " " & Specialist!branch
+         Else
+            columnview1[Specialist!pk_view][2] = ""
+         Endif
+         Try address = Trim(Specialist!street1 & " " & Specialist!street2)
+         Try address &= Specialist!town & " " & Specialist!postcode
+         columnview1[Specialist!pk_view][3] = address
+      Next 
+      columnview1.Visible = True
+      columnview1.Raise
+      columnview1.tag = txtOccupation
+      Return 
+   End If
+   
+End
+
+
+Public Sub Organisation_Select()
+   
+   Branch_Select()
+   
+End
+
+Public Sub Organisation_Get()
+   
+   '------------------------------
+   'Gets list of all organisations
+   '------------------------------
+   columnview1.Visible = False 
+   If Trim(txtOrganisation.text) = "" Then Return 
+   fk_organisation = 0
+   fk_branch = 0
+   branches = modContactsDBI.Organisations_Get(Trim(txtOrganisation.text))
+   If Not branches.count Then Return 
+   columnview1.Clear()
+   '-----------------------------------------------------------------------------------
+   'If branches of an organisation  exist to match the text, auto-select or show a list
+   '-----------------------------------------------------------------------------------
+   For Each branch In branches
+      Columnview1.Add(branch!pk_view, 0)
+      Columnview1[branch!pk_view][0] = Branch!organisation
+      Columnview1[branch!pk_view][1] = Branch!branch
+      Columnview1[branch!pk_view][2] = Trim(Branch!street1 & " " & Branch!street2)
+      Columnview1[branch!pk_view][3] = Branch!suburb & " " & Branch!postcode
+   Next 
+   
+   If branches.count = 1 Then 
+      Organisation_Select
+      Return  
+   End If
+   columnview1.Visible = True
+   columnview1.Raise
+   columnview1.tag = txtOrganisation   
+   
+End
+
+
+Public Sub EditArea_Buttons_Click()
+
+   EditArea_Clear()
+
+End

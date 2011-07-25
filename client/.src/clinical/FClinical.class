@@ -410,6 +410,7 @@ Public Sub Init()
    mnuDecisionSupport_Dass.visible = True
    mnuDecisionSupport_Chads.Visible = True   
    cmbSearch_LoadPatients() 
+
 End
 
 Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean, P As Picture) 
@@ -440,23 +441,41 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
    mnuDecisionSupport.Visible = True  
    mnuHelp.visible = True
    Try PicPatient.Picture = P
-   'Has there been a consulation today already?
-   
+   '---------------------------------------------------------------------------
+   'Has there been a consulation today already?, if yes, then re-use fk_consult
+   'then show all previous notes and general notes, reloading these if a 
+   'continuation from a previous consult, and user dosn't want a new consult
+   '---------------------------------------------------------------------------
    currentconsult = New CConsult(patient)
-   'fixme - check out what to do if continued consultation
-   'and implement (if decide to) concept of a consultation summary
-   'which i still like but would have to enforce on quitting.
    currentconsult.Set(consultationtypes[cmbConsultationType.Index]!pk, "")
-   Patient_Demographics_Display()   'display name address phone etc
-   WorkspaceEditor.Lock()
-   Editor_ShowPage("All Previous Notes")
-   Editor_ShowPage("New General Notes") 'Default to general notes tab.
-   WorkspaceEditor.Unlock()
-   Wait
-   cvwAllergies_Refresh()                  'Get all allergies, display on toolbar
-   cvwRecalls_Refresh()            'Display recalls on toolbar
-   cvwMedications_Refresh()                'Get all meds, display current in list
-   ScratchPad.Init(currentconsult)  'Get all scratch pad items and display
+   Patient_Demographics_Display()            'display name address phone etc
+   WorkspaceEditor.Lock()                    'DO NOT REMOVE THE LOCK/UNLOCK
+   Editor_ShowPage("All Previous Notes")     'Always show all previous notes
+   Editor_ShowPage("New General Notes")      'Default to general notes tab.
+   WorkspaceEditor.Unlock()                  'OR THE GUI WILL RE-SET ITSELF
+   Wait                                      'AND LOADING PATIENT IS IMPOSSIBLE
+   cvwAllergies_Refresh()                    'Get all allergies, display on toolbar
+   cvwRecalls_Refresh()                      'Display recalls on toolbar
+   cvwMedications_Refresh()                  'Get all meds, display current in list
+   '-------------------------------------------------------------------------------
+   'Show a list of outstanding tasks if any and show on main task bar to hightlight
+   '-------------------------------------------------------------------------------
+   ScratchPad.Init(currentconsult)           'Get all patienet task items and display
+   If currentconsult!staff_tasks.count Then  'To get the users attention hightlight these
+      Vbox_Notifications.Background = Color.red
+         tlNotifications.Text = "<TABLE WIDTH=100% BORDER=0 CELLPADDING=2>"
+      "<COL WIDTH=256*>"
+      "<TR>"
+      "<TD WIDTH=100% VALIGN=TOP>"
+      tlNotifications.Text &= "<B>There "
+      If currentconsult!staff_tasks.count = 1 Then 
+         tlNotifications.Text &= "is 1 task"
+      Else
+         tlNotifications.Text &= " are " & Str(currentconsult!staff_tasks.count) & " tasks "
+      Endif
+      tlNotifications.Text &= " needing attention</B>"
+      tlNotifications.Text &= "</TD></TR></TABLE>"
+   Endif
    pasthistory_refresh_lists()
    Measurement_Favourites_Refresh()
    Measurement_Defaults_Refresh()
@@ -737,20 +756,24 @@ Public Sub Consult_Save()
    Dim i As Object
    
    Inc Application.Busy 
-   For Each i In EditorPages
-      Try Object.Call(i, "Save")
-      If Error Then
-      End If
-   Next
+   TabStrip_Lists.Enabled = False   
+   If Not IsNull(currentconsult) Then
+      For Each i In EditorPages
+         Try Object.Call(i, "Save")
+         If Error Then
+         End If
+      Next
+      ScratchPad.Save()
+   End If   
    Dec Application.Busy
-   
+     TabStrip_Lists.Enabled = True
 End
 
 Public Sub Patients_Find(Optional fk_patient As Integer) 
    '-----------------------------------------------------------------------------
    'Attemps to find patients according to criteria entered in cmbSearch
    'of by patient key if picked from list of patients seen that day
-   'If none found , resets focus to txtSearch
+   'If none found , resets focus to cmbsearch
    'Otherwise creates an empty patient object
    'If only one name and address auto-load that patient to currentconsult
    'If multiple names/addresses, popup a modal for choice
@@ -764,10 +787,13 @@ Public Sub Patients_Find(Optional fk_patient As Integer)
    Dim P As Picture
    Dim bPhotoConfirmed As Boolean = False 
    
+   If BExit Then Return 
+   bExit = True   
+   
    Inc Application.Busy
-   'If IsNull(search_txt) Then search_txt = txtSearch.text
+   
    If fk_patient Then
-       AllPatients = modContactsDBI.Patient_Get_Using_PK(fk_patient)
+      AllPatients = modContactsDBI.Patient_Get_Using_PK(fk_patient)
    Else
       AllPatients = modContactsDBI.patients_get_firstname_surname(cmbSearch.text, chkIncludeDeceased.value)
       sql_in_english = AllPatients!sql_in_english
@@ -776,6 +802,7 @@ Public Sub Patients_Find(Optional fk_patient As Integer)
    If AllPatients.count = 0 Then 
       cmbSearch.SetFocus()
       Dec application.Busy
+      bExit = False  
       Return
    Else  
       '----------------------------------------------------
@@ -797,8 +824,8 @@ Public Sub Patients_Find(Optional fk_patient As Integer)
          Next
          FConfirmPatient.Init(P, patient!wholename)
          If Not FConfirmPatient.ShowModal() Then 
-         '  txtSearch.SetFocus()
             cmbSearch.SetFocus()
+            bExit = False  
             Return            
          End If
          
@@ -817,9 +844,10 @@ Public Sub Patients_Find(Optional fk_patient As Integer)
          obs = New Observer(form_select.btnCancel) As "SelectPatient"     
          form_select.Init(AllPatients, sql_in_english, Me)
          form_select.Visible = True 
-         Return
+        
       Endif
    End If   
+   bExit = False  
    Dec application.Busy
    
 End
@@ -971,18 +999,12 @@ Public Sub Patient_Demographics_Display()
    Dim com As Collection 
    
    bExit = True
-   ' txtSearch.text = currentconsult!patient!firstname & " " & currentconsult!patient!surname & " " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town
-   ' txtSearch.text &= " " & currentconsult!patient!postcode
-   ' txtSearch.pos = 0
-   ' txtAge.text = "Age " & currentconsult!patient!age_display
-   ' txtSearch.Tag = currentconsult!patient!firstname & " " & currentconsult!patient!surname & "\n"
-   
    cmbSearch.text = currentconsult!patient!firstname & " " & currentconsult!patient!surname & " " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town
    cmbSearch.text &= " " & currentconsult!patient!postcode
    cmbSearch.pos = 0
    txtAge.text = "Age " & currentconsult!patient!age_display
    cmbSearch.Tag = currentconsult!patient!firstname & " " & currentconsult!patient!surname & "\n"
-
+   
    '----------------------------------------------------------------
    'On the top toolbar, show a list containing dob, medicare number,
    'and some basic contact numbers
@@ -1003,28 +1025,14 @@ Public Sub Patient_Demographics_Display()
    bExit = False
    
 End
-
-Public Sub txtSearch_KeyPress()
+Public Sub cmbSearch_KeyPress()
    
-   If bExit = True Then 
-      Return
-   End If
-   If key.code = key.Return And Len(Trim(txtSearch.text)) > 0 Then 
-      '--------------------------------------------------------
-      'Try and find a patient as per the text in the search box\
-      'If this fails, then focus is res-set to the search box
-      'If finds 1 patient, loads their records
-      'If finds > 1 patient, popup multiple choice list
-      'which is instance for FPatientsSelect      
-      '--------------------------------------------------------
-      patients_find()     
-   End If
    
 End
 
 Public Sub cmbSearch_Activate()
-
-    If bExit = True Then 
+   
+   If bExit = True Then 
       Return
    End If
    If Len(Trim(cmbSearch.text)) > 0 Then 
@@ -1035,51 +1043,40 @@ Public Sub cmbSearch_Activate()
       'If finds > 1 patient, popup multiple choice list
       'which is instance for FPatientsSelect      
       '--------------------------------------------------------
-      patients_find()     
+       patients_find() 
    End If
    
-
 End
+
 Public Sub cmbSearch_LoadPatients()
    '------------------------------------
    'Loads combo with patients seen today
    '------------------------------------  
+
    Dim Patient_Seen As Collection
    Dim fk_last_patient As Integer
    Dim x As Integer
+
    bExit = True
    cmbSearch.Clear()
    Patients_Seen = New Collection
-  '  Patients_seen = modUtil.Copy_Collection_Keyed_Sequentially(Patients_Seen)
-   
    For Each Patient_seen In modAppointmentsDBI.Patients_Seen(Format(Now, "dd/mm/yyyy"), modDBConnect.currentUser!fk_staff) 
-       If fk_last_patient <> Patient_Seen!fk_patient And Patient_Seen!fk_type = const.consult_type_at_Surgery Then
+      If fk_last_patient <> Patient_Seen!fk_patient And Patient_Seen!fk_type = const.consult_type_at_Surgery Then
          fk_last_patient = Patient_Seen!fk_patient 
          cmbSearch.add(Patient_Seen!wholename)
          Patients_Seen.Add(Patient_Seen, x)
          Inc x
       End If
-    Next
+   Next
    bExit = False  
+
 End
 
-Public Sub cmbSearch_GotFocus()
+Public Sub Gui_Clear()
+   '------------------------------------------------
+   'Removes all patient data from the user interface
+   '------------------------------------------------
 
-     '----------------------------------
-   'User has clicked on the search box
-   'First check there is no un-saved data
-   '-----------------------------------
-   
-   Dim i As Object
-   
-   If bexit Then
-      Return 
-   End If
-   TabStrip_Lists.Enabled = False   
-   If Not IsNull(currentconsult) Then
-      Consult_Save()
-      ScratchPad.Save()
-   End If
    bExit = True
    application.busy = 0
    cmbSearch.text = "" 
@@ -1093,13 +1090,13 @@ Public Sub cmbSearch_GotFocus()
    Try BMICalc.EditArea_Clear()
    Try PregCalc.EditArea_Clear()
    WorkspaceEditor_Clear()  'remove all current pages from collection
-   '   ProgressNotes_Clear()
    Tabbed_lists_Clear()   'scripts, recalls, requests lists etc
    TabStrip_Lists.index = 0 'the medication list
    cvwProblemsSignificant.Clear()
    cvwProblemsInActive.Clear()
    cvwProblemsMajor.Clear()
-   
+   Vbox_Notifications.Background = Color.RGB(237, 239, 235)
+   tlNotifications.text = ""
    Measurements_Reset()
    txtInboxResults_filter.text = "" 
    txtInboxResults_Exclude.text = ""
@@ -1116,85 +1113,36 @@ Public Sub cmbSearch_GotFocus()
    TabStripProblemLists.Caption = "Major"
    Patient_Picture_Clear()
    bExit = False
+ 
    Form_ExportClinical.visible = False
    DecisionSupport_Show("", False)
    WorkspaceEditor.Visible = True 
    Deleted_Documents = New Collection 
    Deleted_Medications = New Collection 'fixme unite these collections
    txtConsultDate.text = Format(Now, "dd/mm/yyyy") 
+   
+End
+
+Public Sub cmbSearch_GotFocus()
+   '------------------------------------------------------------
+   'User has clicked on the cmbSearch combo box in the text part
+   'First check there is no un-saved data - save that
+   'then clear all patient specific data from the gui
+   're-setting the lists, notification labels etc
+   '------------------------------------------------------------
+   
+   If bexit Then Return 
+   Consult_Save()
+   Gui_Clear()
 
 End
+
 Public Sub cmbSearch_LostFocus()
-   
-  Last.pos = 0 
-   
-End
+   '--------------------------------------------------
+   'Ensure that the patient's name at least is showing
+   '--------------------------------------------------  
 
-Public Sub txtSearch_GotFocus()
-   '----------------------------------
-   'User has clicked on the search box
-   'First check there is no un-saved data
-   '-----------------------------------
-   
-   Dim i As Object
-   
-   If bexit Then
-      Return 
-   End If
-   TabStrip_Lists.Enabled = False   
-   If Not IsNull(currentconsult) Then
-      Consult_Save()
-      ScratchPad.Save()
-   End If
-   bExit = True
-   application.busy = 0
-   txtSearch.text = "" 
-   txtAge.text = ""
-   lblID.text = ""
-   chkIncludeDeceased.visible = True
-   tlAllergies.text = ""
-   tlReminders.text = ""
-   tlPatientComms.text = ""
-   lblBirthdate.text = ""
-   Try BMICalc.EditArea_Clear()
-   Try PregCalc.EditArea_Clear()
-   WorkspaceEditor_Clear()  'remove all current pages from collection
-   '   ProgressNotes_Clear()
-   Tabbed_lists_Clear()   'scripts, recalls, requests lists etc
-   TabStrip_Lists.index = 0 'the medication list
-   cvwProblemsSignificant.Clear()
-   cvwProblemsInActive.Clear()
-   cvwProblemsMajor.Clear()
-   
-   Measurements_Reset()
-   txtInboxResults_filter.text = "" 
-   txtInboxResults_Exclude.text = ""
-   currentconsult = Null
-   cmbConsultationType.index = cmbConsultationType.Find("At consulting rooms")
-   ScratchPad.Clear()
-   UnFiled_Document_Metadata_Show(False)
-   ScratchPad.txtScratchPad.Enabled = False  
-   TabStripProblemLists.index = 2
-   TabStripProblemLists.Caption = "Inactive"
-   TabStripProblemLists.index = 1
-   TabStripProblemLists.Caption = "Significant"
-   TabStripProblemLists.index = 0
-   TabStripProblemLists.Caption = "Major"
-   Patient_Picture_Clear()
-   bExit = False
-   Form_ExportClinical.visible = False
-   DecisionSupport_Show("", False)
-   WorkspaceEditor.Visible = True 
-   Deleted_Documents = New Collection 
-   Deleted_Medications = New Collection 'fixme unite these collections
-   txtConsultDate.text = Format(Now, "dd/mm/yyyy")
-   
-End
-
-Public Sub txtSearch_LostFocus()
-   'Make sure the start of name visible
-   
-   Last.pos = 0
+   Last.pos = 0 
    
 End
 
@@ -2914,33 +2862,35 @@ Public Sub Document_Edit_Metadata(documents As Collection, document_key As Integ
 End
 
 Public Sub Document_Print(fk_document As Integer)
-      '--------------------------------------------------------------
-      'Print a document by its key
-      'All documents have a filename - but they are either PDF or HL7
-      '--------------------------------------------------------------
-      Dim Document As Collection 
-      Dim Filename As String
-      '---------------------------------------------------
-      'Is the document a result?, if not, must be a letter
-      'i.e decide which collection to pull them from
-      '---------------------------------------------------
-      Try Document = currentconsult!results_received[fk_document]         '? a result??
-      If IsNull(document) Then                                            'it wasn't a result?             
-         Try Document = currentconsult!letters_received[fk_document]      '? a letter ??   
-      End If  
-      '----------------------------------------------------------
-      'Having got the document, print according to file extension
-      'All our non scanned documents are html
-      'FIXME: could be printing a picture
-      '----------------------------------------------------------
-      Select Case File.Ext(Document!source_file)
-        Case "pdf"
-              modPrinting.Print_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ Document!source_file)
-        Case "jpg", "png", "tiff", "jpeg", "bitmap"
-           
-        Case Else
-              modPrinting.PrintHtml(Document!html)
-      End Select
+   '--------------------------------------------------------------
+   'Print a document by its key
+   'All documents have a filename - but they are either PDF or HL7
+   '--------------------------------------------------------------
+
+   Dim Document As Collection 
+   Dim Filename As String
+   '---------------------------------------------------
+   'Is the document a result?, if not, must be a letter
+   'i.e decide which collection to pull them from
+   '---------------------------------------------------
+   Try Document = currentconsult!results_received[fk_document]         '? a result??
+   If IsNull(document) Then                                            'it wasn't a result?             
+      Try Document = currentconsult!letters_received[fk_document]      '? a letter ??   
+   End If  
+   '----------------------------------------------------------
+   'Having got the document, print according to file extension
+   'All our non scanned documents are html
+   'FIXME: could be printing a picture
+   '----------------------------------------------------------
+   Select Case File.Ext(Document!source_file)
+      Case "pdf"
+         modPrinting.Print_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ Document!source_file)
+      Case "jpg", "png", "tiff", "jpeg", "bitmap"
+         
+      Case Else
+         modPrinting.PrintHtml(Document!html)
+   End Select
+
 End
 
 Public Sub mnuResultGraphable_Click()
@@ -2967,14 +2917,14 @@ Public Sub mnuTabbedListReferral_Click()
          'Referral_Delete()
       Case "undo delete"
       Case "print no inclusions"         'single copy no included documents
-        Re_Print_Document_Html(currentconsult!referrals_written[cvwReferrals.Item.key]!letter_html)
+         Re_Print_Document_Html(currentconsult!referrals_written[cvwReferrals.Item.key]!letter_html)
       Case "print with inclusions"      ' single copy including original documents sent.
-        Re_Print_Document_Html(currentconsult!referrals_written[cvwReferrals.Item.key]!letter_html)
-        Inclusions = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False, False, currentconsult!referrals_written[cvwReferrals.Item.key]!pk_referral)
-        For Each Inclusion In Inclusions
-          Document_Print(inclusion!fk_document)
-        Next
-     Case "email"
+         Re_Print_Document_Html(currentconsult!referrals_written[cvwReferrals.Item.key]!letter_html)
+         Inclusions = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False, False, currentconsult!referrals_written[cvwReferrals.Item.key]!pk_referral)
+         For Each Inclusion In Inclusions
+            Document_Print(inclusion!fk_document)
+         Next
+      Case "email"
          modUtil.NotImplemented("Email Request")
       Case "preview"
          Referral_Letter_Display()
@@ -3073,9 +3023,9 @@ Public Sub mnuTabbedListRequest_Click()
       Case "re-order"
       Case "re-print"
          If Split(cvwRequests.item.key, "-").Count = 3 Then
-           Re_Print_Document_Html(currentconsult!requests_ordered[Right(cvwRequests.item.key, Len(cvwRequests.item.key) - InStr(cvwRequests.Item.key, "-"))]!form_html)
+            Re_Print_Document_Html(currentconsult!requests_ordered[Right(cvwRequests.item.key, Len(cvwRequests.item.key) - InStr(cvwRequests.Item.key, "-"))]!form_html)
          Else
-           Re_Print_Document_Html(currentconsult!requests_ordered[cvwRequests.item.key]!form_html)
+            Re_Print_Document_Html(currentconsult!requests_ordered[cvwRequests.item.key]!form_html)
          End If
       Case "preview form"
          RequestForm_Display_Previous()
@@ -3453,7 +3403,7 @@ Public Sub Document_Display(documents As Collection, document_key As Integer)
    Select Case File.Ext(filename)
       Case "pdf"
          If IsNull(documents[document_key]!tag_user) Then
-            Editor_ShowPage("pdf document", "UNFILED", filename)
+            Editor_ShowPage("pdf document", "UNFILED ID:" & Str(documents[document_key]!pk_document), filename)
          Else
             Editor_ShowPage("pdf document", documents[document_key]!tag_user, filename)
          Endif
@@ -3763,10 +3713,9 @@ End
 Public Sub Tabbed_lists_Clear()
    '---------------------------------------------------------
    'PURPOSE    :Clears all the lists on the main tab control
-   'REASON     :When user clicks on txtSearch to get a new FIXME NOW CMBSEARCH
-   '            patient, the old data Is showing
-   'CALLED BY  :txtSearch_GotFocus()
-   '           :cmbSearch_Gotfocus()  
+   'REASON     :When goes to search for a new patient, the
+   '            old data is showing
+   'CALLED BY  :cmbSearch_Gotfocus() 
    '--------------------------------------------------------
    
    cvwReferrals.clear()
@@ -3850,7 +3799,6 @@ Public Sub TabbedLists_Click()
    End Select
    
 End
-
 
 Public Sub cvwMedications_Menu()
    
@@ -4011,9 +3959,9 @@ Public Sub tabstrip_lists_Click()
             BMICalc = New FBMICalc(HBox_BMI) 
          End If  
       Case cTabQuickContacts
-        If IsNull(QuickContacts) Then
-           QuickContacts = New FQuickContact(HBox_Contacts) 
-        End If
+         If IsNull(QuickContacts) Then
+            QuickContacts = New FQuickContact(HBox_Contacts) 
+         End If
    End Select 
    
 End
@@ -4100,7 +4048,7 @@ Public Sub WorkSpaceEditor_Activate()
                   Case "FPDF"
                      tbPrint.Tooltip = "Print PDF"
                      tbPrint.Enabled = True  
-                      
+                     
                   Case "FProgressNotePage"
                      frmConsult = hctrl       
                      frmConsult.Display_Existing_Notes()  're-load progress notes
@@ -4586,7 +4534,6 @@ Public Sub SelectPatient_click()
    mnuSections.Visible = False   
    mnuDecisionSupport.Visible = False  
    mnuHelp.visible = False
-   'txtSearch.SetFocus()   
    cmbSearch.SetFocus()
    
 End
@@ -4637,22 +4584,24 @@ Public Sub lcImages_Menu()
 End
 
 Public Sub mnuImages_Click()
+
    Dim fk_image As Integer
    Dim PatientPicture As Collection
    
    Dim sql As String 
+
    Select Case Last.tag
-       Case "patient picture"
-          PatientPicture = Currentconsult!images[lcImages.children[lcImages.index].tag]
-          fk_image = Currentconsult!images[lcImages.children[lcImages.index].tag]!pk  
-      '    PersonPicture!path = CurrentThumb.Tag
-      '     P!fk_image = modContactsDBI.Image_Save(PersonPicture, currentconsult.GetPK())
-      '    If Not Error Then
-             sql = "Update contacts.data_persons set fk_image = " & fk_image & " WHERE pk=" & currentconsult!patient!fk_person
-             modDBConnect.exec_query(sql)
-             modDBConnect.CommitTrans()
-             Try PicPatient.Picture = Picture.Load(PatientPicture!path)
-      '    Endif
+      Case "patient picture"
+         PatientPicture = Currentconsult!images[lcImages.children[lcImages.index].tag]
+         fk_image = Currentconsult!images[lcImages.children[lcImages.index].tag]!pk  
+         '    PersonPicture!path = CurrentThumb.Tag
+         '     P!fk_image = modContactsDBI.Image_Save(PersonPicture, currentconsult.GetPK())
+         '    If Not Error Then
+         sql = "Update contacts.data_persons set fk_image = " & fk_image & " WHERE pk=" & currentconsult!patient!fk_person
+         modDBConnect.exec_query(sql)
+         modDBConnect.CommitTrans()
+         Try PicPatient.Picture = Picture.Load(PatientPicture!path)
+         '    Endif
          
    End Select 
    
@@ -4693,16 +4642,23 @@ Public Sub ButtonBox1_Menu()
 End
 
 Public Sub HBox_Consultation_Type1_Enter()
-   
+   '---------------------------------------------
+   'If user's mouse over the type of consultation
+   'replace the label with a combo box
+   '---------------------------------------------   
+
    cmbConsultationType.Visible = True  
    lblConsultationType.visible = False 
    
 End                                       
 
 Public Sub HBox_Consultation_Type1_Leave()        
-   
+   '-------------------------------------------------
+   'The consultation type combo is now made invisible
+   'and its text shown on a label in its placee
+   '--------------------------------------------------  
+
    cmbConsultationType.Visible = False           
-   
    lblConsultationType.visible = True        
    
 End                                                  
@@ -4722,9 +4678,13 @@ Public Sub tsCalculators_Click()
    
 End
 
-
 Public Sub cmbSearch_Click()
-  cmbSearch_GotFocus()
-  Patients_Find(Patients_Seen[cmbSearch.index]!fk_patient)
+   '-----------------------------------------------------------------------------------
+   'User has clicked on the down arrow of the combo box and selected a previous patient
+   '-----------------------------------------------------------------------------------
+
+   Consult_Save()
+   Gui_Clear()
+   Patients_Find(Patients_Seen[cmbSearch.index]!fk_patient)
 
 End

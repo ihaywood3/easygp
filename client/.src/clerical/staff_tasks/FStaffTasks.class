@@ -1,4 +1,5 @@
 ' Gambas class file
+
 ' Copyright (C) 2008-2011 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
@@ -158,14 +159,10 @@ Private iTaskRestriction As Integer          'const.cTaskRestriction_User, .._ro
 Private fk_note As Integer
 Private patient As New Collection 
 Private fk_table_row As Integer        'fixme fim my name = e.g fk_document
-'Private fk_schema As Integer
-Private schema As String
-'Private fk_table As Integer 
-Private table As String 
+Private table As String 'fixme check if this is being used - noted set from Finbox tasks
 Private schema_table_keys As Collection 
 Private comms As Collection 
 Private comm As Collection 
-Private Problemlists As FPastHistoryProblemLists
 Private hobs As Observer
 Private Form_PastHistory As FPastHistory
 Private Form_prescription As FPrescriptions
@@ -174,19 +171,23 @@ Private Form_Scratchpad As FScratchPad
 Private Embedded_Forms As Collection 
 Private Form_Recalls As FRecalls
 Private Form_ActionDocument As FActionDocument
+Private Form_PDF As FPdf 
+Private Form_html_viewer As FHtmlViewer
 Private roles As Collection 'eg secretary, doctor
 Private Role As String 
 Private fk_role As Integer 
+Private fk_task_deleted As Integer     'the last deleted task
+Private fk_tasks_Components_keys_deleted As Collection 'component keys of last deleted task.
 
 Public Sub Set_Audit_Schema_Table_SourceRowKey(k As Integer, t As String)       
    '----------------------------------------------
    'Used in auditing see modAudit.MakeAudit(..)
    'table = qualified with schema ie schema.table
    '---------------------------------------------
-
+   
    fk_table_row = k
-   table = t
-
+   table = t  'FIXME - I don't think this is ever used - old code - check calling forms.
+   
 End
 
 Public Sub Set_Parent_Form(parent_form_name As String)
@@ -222,18 +223,18 @@ Public Sub Init()
    '1) The users day book in which case all the users staff tasks are loaded
    '2) The users inbox
    '-------------------------------------------------------------------------
-
+   
    Settings_Load()      'set splits on form
    currentUser = modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename         'ease oftyping later on in the code
    role = modDBConnect.currentUser!role
    rbTaskRestrict_Role.text &= modUtil.Make_Plural(role)
    fk_staff = modDBConnect.currentUser!fk_staff                                                   
-   timer1.Delay = 600
-   timer1.Enabled = True
-   timer1.Start    
+  ' timer1.Delay = 600
+ '  timer1.Enabled = True
+ '  timer1.Start    
+ 
    iTaskRestriction = const.cTaskRestriction_user 
    rbTaskRestrict_User.value = True                                                                'default only show user's tasks    
-   '  schema_table_keys = modInboxDBI.Get_Schema_Table_Keys("documents", "documents")                 'will be deprecated once ian does the audit stuff
    'key to staff member using form
    lblMeasure.text = "  Send copy to  "                                                            'get width of editarea labels ok
    modEditAreaHelpers.Resize_labels(VBox_EditArea_Task, lblMeasure)    
@@ -278,18 +279,31 @@ Public Sub Init()
             .Columns[0].width = 100
             .Visible = True
          End With
-         With Form_ActionDocument = New FActionDocument(Vbox_ActionDocument) 'FIXME fix my spelling
-            .Init("Staff Tasks")
+      '   With Form_ActionDocument = New FActionDocument(Vbox_ActionDocument) 'FIXME fix my spelling
+       '     .Init("Staff Tasks")
+       '  End With
+         With Form_PDF = New FPdf(Vbox_ActionDocument)
+            .Visible = False  
+            .btZoomIn.Visible = True
+            .BtPrint.Enabled = True
+            .BtPrint.Visible = True 
+            .btZoomOut.Visible = True
+            .Visible = False   
+         End With
+         With Form_html_viewer = New FHtmlViewer(Vbox_ActionDocument)
+           .tbWebBrowserZoomIn.visible = True
+           .tbWebBrowserZoomout.visible = True  
+           .tbWebBrowserPrint.Visible = True 
          End With
          HBox_TaskFor.Visible = True   
          HBox_TaskRestriction.Visible = True
          
       Case "Inbox"
          cvwStaffTasks.Columns.count = 4
-         Reload()
+        ' Reload()
    End Select
    Reload()
-
+   
 End
 
 Public Sub Settings_Save()
@@ -322,15 +336,16 @@ Public Sub Settings_Load()
 End
 
 Public Function Save() As Boolean
-
+   
    modDBConnect.BeginTrans()
    Note_Save()
    If Task_Save() Then
-       modDBConnect.CommitTrans()
-       cvwTaskNotes_Refresh()           'refresh the notes on tasks list
-       note_new()                       'default to adding another note
-       Return True                      'true flag used by FInbox to check a task was saved
+      modDBConnect.CommitTrans()
+      cvwTaskNotes_Refresh()           'refresh the notes on tasks list
+      note_new()                       'default to adding another note
+      Return True                      'true flag used by FInbox to check a task was saved
    End If   
+
 End
 
 Public Function Task_Save() As Boolean
@@ -339,7 +354,7 @@ Public Function Task_Save() As Boolean
    ' this may or may not belong to a patient - for example it could be 'inter-staff  directive
    ' Can be one or more tasks allocated to staff members
    '----------------------------------------------------------------------------------------------------
-
+   
    Dim StaffTask As New Collection 
    Dim TaskComponent As New Collection 
    Dim Tell_Patient As New Collection 
@@ -407,7 +422,7 @@ Public Function Task_Save() As Boolean
    modDBConnect.CommitTrans
    Reload()
    Return True    
-
+   
 End
 
 Public Sub Finalise()
@@ -474,7 +489,7 @@ Public Sub Note_Add()
    'User is adding a note to the current task
    'Saves the current note and refreshes the list
    '---------------------------------------------
-
+   
    modDBConnect.BeginTrans()
    Note_Save()                      'save to backend, commit transaction
    modDBConnect.CommitTrans()
@@ -489,7 +504,7 @@ Public Sub Note_New()
    'As each new note entered they are added to the list so that for audit-purposes, these
    'notes cannot be changed unless edited - in which case the users actions are recorded
    '-----------------------------------------------------------------------------------------------------
-
+   
    txtStaffMakingNotes.text = CurrentUser
    txtNotes.Clear()
    txtNotes.SetFocus()
@@ -531,7 +546,7 @@ Public Sub Note_Save_And_finalise()
    Note_Save() 
    Finalise() 
    modDBConnect.CommitTrans()
-
+   
 End
 
 Public Sub EditAreaButtons_Click()
@@ -620,9 +635,9 @@ Public Sub cvwTasks_Reload()
    cvwStaffTasks.Clear()
    Select Case Parent_Form
       Case "FDayBook"
-         If timer1.Enabled = False Then
-            Tasks_Reload()
-         End If
+         '  If timer1.Enabled = False Then
+         Tasks_Reload()
+         '   End If
       Case "Inbox"
          
          TasksComponents = modStaffTasksDBI.Tasks_For_Document_Get(fk_document)
@@ -741,9 +756,9 @@ Public Sub Tasks_Reload()
          StaffTask!date_finalised = component!date_finalised
          staffTasks.Add(staffTask, component!fk_task)
       Next   
-      cvwStaffTasks.MoveFirst
-      cvwStaffTasks.Item.Selected = True   
-      cvwStaffTasks_Select()
+   '   cvwStaffTasks.MoveFirst
+    '  cvwStaffTasks.Item.Selected = True   
+    '  cvwStaffTasks_Select()
    End If   
    Dec Application.Busy
    
@@ -871,7 +886,7 @@ Public Sub Staff_Select()
    End If   
    fk_role = Staff_Member_Allocated_Task!fk_role
    cmbRoles.index = -1
-
+   
 End
 
 Public Sub DateChooser1_Activate()
@@ -985,13 +1000,13 @@ Public Sub EditArea_GotFocus()
       .height = 120
       For Each hctrl In Last.parent.children
          If hctrl Is TextBox Then
-            .left = hctrl.Left + Last.parent.parent.padding + Vbox_Main.Padding 
+            .left = hctrl.Parent.Left + Last.parent.parent.padding + Vbox_Main.Padding 
             Break
          End If
       Next
       .Columns.count = numcolumns
       .width = txtTaskDetails.width
-      .top = Vbox_Main.top + HBox_Heading.Height + Vbox_Task.padding + VBox_EditArea_Task.padding + Last.parent.top + Last.parent.height 
+      .top = Vbox_Main.top + HBox_Heading.Height + Vbox_Task.padding + VBox_EditArea_Task.padding + Last.parent.parent.top + Last.parent.height 
       .Raise
    End With
    
@@ -1107,13 +1122,14 @@ Public Sub Valid_Task() As Boolean
    '------------------------------------------------------------
    'Validates data for the task before saving, return true if ok
    '------------------------------------------------------------
+
    Dim sMsg As String
    
    sMsg = "You have started to allocate a staff task to this document, but it is not complete\n\n"
    Message.Title = "Allocating Staff Task"
    If fk_staff_allocated = 0 Then                                                         'no specific task member is allocated
       If Trim(txtStaffAllocated.text) <> "" Then
-          sMsg &= "Allocate to any Secretarial staff?"
+         sMsg &= "Allocate to any Secretarial staff?"
          If Message.Question(sMsg, "Yes", "No") = 2 Then
             txtStaffAllocated.SetFocus()
             Return 
@@ -1121,8 +1137,8 @@ Public Sub Valid_Task() As Boolean
       Endif
    Endif
    If fk_staff_allocated = 0 And cmbRoles.index = -1 Then
-     sMsg &= "Please select either a specific staff member, or a generic 'role' from the roles combo box"
-     Message.info(sMsg)
+      sMsg &= "Please select either a specific staff member, or a generic 'role' from the roles combo box"
+      Message.info(sMsg)
       txtStaffAllocated.SetFocus
       Return
    End If    
@@ -1228,7 +1244,69 @@ Public Sub Edit()
    
 End
 
-Public Sub Display(SelectedTask As Collection)
+Public Sub Display(CurrentTaskComponent As Collection)
+   '------------------------------------------
+   'Display the selected component of the task
+   '------------------------------------------
+   
+   bExit = True
+   txtTask.text = UCase(CurrentTaskComponent!task)
+   txtTask.pos = 0
+   txtPatient.text = CurrentTaskComponent!patient_wholename
+   txtStreet.text = Trim(CurrentTaskComponent!patient_street1 & " " & CurrentTaskComponent!patient_street2)
+   txtSuburb.text = CurrentTaskComponent!patient_town & " " & CurrentTaskComponent!patient_postcode
+   lblBirthdate.text = Format(CurrentTaskComponent!patient_birthdate, "dd/mm/yyyy")
+   fk_task = CurrentTaskComponent!fk_task
+   pk_view_staff_task = CurrentTaskComponent!pk_view
+   
+   Try fk_staff_allocated = CurrentTaskComponent!fk_staff_allocated  'could be null - allocated to anyone
+   Try fk_table_row = CurrentTaskComponent!fk_row
+   Try fk_document = CurrentTaskComponent!fk_row
+   Try fk_staff_filed_task = CurrentTaskComponent!fk_staff_filed_task
+   fk_component = CurrentTaskComponent!fk_component
+   txtLoggedBy.text = CurrentTaskComponent!staff_filed_task_title & " " & CurrentTaskComponent!staff_filed_task_wholename
+   txtTaskDetails.text = CurrentTaskComponent!details
+   txtTaskDetails.pos = 0
+   txtDateLogged.text = Format(CurrentTaskComponent!date_component_logged)
+   txtStaffAllocated.text = CurrentTaskComponent!staff_allocated_title & " " & CurrentTaskComponent!staff_allocated_wholename
+   If Trim(txtStaffAllocated.text) = "" Then txtStaffAllocated.text = "Anyone"
+   fk_urgency = CurrentTaskComponent!fk_urgency
+   Select Case CurrentTaskComponent!fk_urgency
+      Case const.UrgencyLevelRoutine
+         rbUrgencyRoutine.Value = True 
+      Case const.UrgencyLevelModerate
+         rbUrgencyModerate.value = True
+      Case const.UrgencyLevelUrgent
+         rbUrgencyUrgent.value = True 
+   End Select
+   If Parent_Form = "FDayBook" Then
+      HBox_StaffMember_Notes.Visible = True 
+      HBox_StaffMember_AddingNotes.Visible = True 
+      VBox_Notes.Background = Color.Red
+      lblAddNewNote.Visible = True 
+      lblFinaliseTask.Foreground = Color.blue
+      cvwTaskNotes.background = Color.white
+      cvwTaskNotes.Visible = True 
+      cvwTaskNotes_Refresh() 'display any previously entered notes for this task
+      lblNotesAllMembers.text = "Notes All Staff"
+      lblNotesAllMembers.Foreground = Color.Black
+      HBox_StaffMember_AddingNotes.Visible = True  
+      HBox_StaffMember_Notes.Visible = True  
+      VBox_Notes.Background = Color.ButtonBackground
+      VBox_Notes.Enabled = True  
+      Hbox_NotesButtons.Enabled = True 
+      lblAddNewNote.Foreground = Color.blue
+      tbfinalise.Visible = True  
+      tbAddNotes.Visible = True  
+      tbNewNotes.Visible = True  
+      tbSaveAndFinalise.Visible = True       
+      note_new()
+   Endif
+   
+   bExit = False   
+   
+End 
+Public Sub Display_old(SelectedTask As Collection)
    '------------------------------------------
    'Display the selected component of the task
    '------------------------------------------
@@ -1290,12 +1368,45 @@ Public Sub Display(SelectedTask As Collection)
    bExit = False   
    
 End 
-
 Public Sub Delete()   
-   '-----------------------
-   'Delete with Audit Trail
-   '-----------------------  
+   '------------------------------------------------------------------------------------------------
+   'Marks a task and or component as Deleted with an Audit Trail
+   'FIXME: only allow this to be done by the person with final responsibility - not yet implemented
+   '------------------------------------------------------------------------------------------------  
+   Dim iComponentCount As Integer
+   Dim sString As String
+
+   If Not fk_component Then Return 
    
+   Message.Title = "Delete a Task or Component"
+
+   sSTring = "Patient       : " & CurrentTaskComponent!patient_wholename
+   sSTring &= "\nRelated to  : " & CurrentTaskComponent!task 
+   sString &= "\nComponent: " & CurrentTaskComponent!details
+   sString &= "\n\nAre you sure you wish to delete this component?"
+            
+   If Message.Question(sString, "Yes", "No") = 2 Then
+      Return
+   End If
+   modDBConnect.BeginTrans()
+   
+   If IsNull(currentconsult) Then 
+      CurrentConsult = New CConsult(patient)
+   End If     
+   If modAudit.MakeAudit(currentconsult, "mark deleted", "clerical.tasks", fk_task, const.cSection_StaffTasks, " by " & modDBConnect.currentUser_FullName()) Then 
+      Print fk_task
+      modDBConnect.update("clerical.tasks", Null, ["pk": fk_task, "deleted": True])
+      modDBConnect.update("clerical.task_components", Null, ["pk": fk_component, "deleted": True])
+      fk_task_deleted = fk_task
+      fk_tasks_Components_keys_deleted = New Collection
+      fk_tasks_Components_keys_deleted.Add(fk_component, iComponentCount)
+      modDBConnect.CommitTrans()
+      Tasks_Reload()
+   Else
+     Message.Info("Deletion of the task was cancelled by the user")
+     modDBConnect.RollBack()
+   End If   
+    
 End
 
 Public Sub cvwStaffTasks_Select()
@@ -1306,8 +1417,10 @@ Public Sub cvwStaffTasks_Select()
    Dim p As Collection 
    
    EditArea_Clear()
+   
    Select Case Parent_Form
       Case "FDayBook"
+         Vbox_Task.Enabled = False    
          cvwStaffTasks.movecurrent()                                                'set key
          Try iCurrentTaskComponent = Task_Keys[cvwStaffTasks.item.key]              'but some lines don't match a task key
          Try fk_component = Task_Keys[cvwStaffTasks.item.key]
@@ -1344,10 +1457,37 @@ Public Sub cvwStaffTasks_Select()
             fk_component = 0
          End If 
          cvwAllTasks_Refresh()                     'show other staff members involved
+         Show_Document(CurrentTaskComponent!fk_row)
       Case "Inbox"
-         
+         Return 
    End Select
    
+  
+   '---------------------------------------------------------------------------------
+   'Bumma, wheras 99.9% of msh_sending_entities supplied are same as their companies, 
+   'some idiots who obviously programmed in the pre-dos area of 6 characters
+   'concatenate the real name to something illedgible
+   '---------------------------------------------------------------------------------
+  
+  
+   ' Vbox_ActionDocument.Enabled = True  
+   ' If Not IsNull(SelectedDocument!organisation) Then
+   '    lblSendingEntity.text = SelectedDocument!organisation
+   ' Else
+   '    lblSendingEntity.text = SelectedDocument!msh_sending_entity
+   ' End If
+   ' Select Case Lower(file_ext)
+   '    Case "pdf"
+   '       PDF_Document_Show()
+   '       Form_ActionDocument.FMetaData.txtUserObservationName.SetFocus()
+   '    Case "png", "jpeg", "tiff", "gif", "jpg"
+   '       Image_File_Show()
+   '       Form_ActionDocument.FMetaData.txtUserObservationName.SetFocus()
+   '    Case Else
+   '       Allow_Filing(True)
+   '       HTML_Document_Show(SelectedDocument!fk_lu_message_display_style, SelectedDocument, observations)
+   '       Auto_Graph(Observations)
+   ' End Select
 End
 
 Public Sub cvwAllTasks_Refresh()
@@ -1404,7 +1544,8 @@ Public Sub timer1_Timer()
    'Otherwise except for init(0 this routine is not used
    'see  cvwTasks_Reload()
    '------------------------------------------------------------------------------------
-   
+
+   Return 
    If Parent_Form = "Inbox" Then Return 
    timer1.Stop()
    Tasks_Reload()
@@ -1543,7 +1684,7 @@ End
 ' End
 
 Public Sub rbWhoFor_Click()
-
+   
    Dim flag As Boolean
    'Task_Patient_New()
    Select Case Last.tag
@@ -1562,7 +1703,7 @@ Public Sub rbWhoFor_Click()
    Hbox_Patient.Enabled = Flag
    Hbox_Street.Enabled = Flag
    HBox_Suburb.Enabled = Flag
-
+   
 End
 
 Public Sub Vbox_Task_Leave()
@@ -1589,7 +1730,7 @@ Public Sub Form_Enter()
 End
 
 Public Sub rbTaskRestriction_Click()
-
+   
    If Bexit Then Return 
    iTaskRestriction = Last.tag
    Select Case Last.tag
@@ -1603,21 +1744,48 @@ Public Sub rbTaskRestriction_Click()
 End
 
 Public Sub cmbRoles_Click()
-
+   
    txtStaffAllocated.text = ""  'sets fk_staff_allocated to 0
    fk_role = roles[Last.index]!pk_role
    
 End
 
-' Public Sub cmbTaskType_GotFocus()
-' 
-'      columnview1.Visible = False    'because the lost focus event on columnview dosn't work
-' 
-' 
-' End
 
 Public Sub cmbRoles_GotFocus()
    
    columnview1.Visible = False    'because the lost focus event on columnview dosn't work
+   
+End
+
+Public Sub cvwStaffTasks_Click()
+
+   
+
+End
+
+Public Sub Show_Document(fk_document As Integer)
+    Dim document As Collection
+    
+    If bExit Then Return 
+    document = modArchiveDocumentsDBI.Document_Get_By_pk(fk_document)
+    Print document!source_file
+    Select Case File.Ext(document!source_file)
+      Case "pdf"
+          Form_html_viewer.Visible = False
+          With form_Pdf
+            .Visible = True   
+            .Load_PDF(modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ document!source_file)
+          End With
+          
+      Case "png", "bmp", "jpeg", "jpg", "tiff"
+      
+      Case Else
+           Form_PDF.Visible = False
+           With Form_html_viewer
+               .WebView1.HTML = document!html 
+               .Visible = True
+           End With
+           
+    End Select
    
 End

@@ -281,9 +281,6 @@ Public Sub Init()
             .Columns[0].width = 100
             .Visible = True
          End With
-         '   With Form_ActionDocument = New FActionDocument(Vbox_ActionDocument) 'FIXME fix my spelling
-         '     .Init("Staff Tasks")
-         '  End With
          With Form_PDF = New FPdf(Vbox_ActionDocument)
             .Visible = False  
             .btZoomIn.Visible = True
@@ -398,7 +395,7 @@ Public Function Task_Save() As Boolean
    TaskComponent!fk_staff_filed = fk_staff_filed_component
    TaskComponent!details = Trim(txtTaskDetails.text)
    TaskComponent!fk_staff_allocated = fk_staff_allocated
-  
+   
    TaskComponent!fk_urgency = fk_urgency
    If fk_table_row <> 0 Then
       StaffTask!task = Trim(txtTask.text)
@@ -434,13 +431,23 @@ Public Function Task_Save() As Boolean
    
 End
 
-Public Sub Finalise()
-   '-------------------------------------------------------------
+Public Function Finalise() As Boolean
+   '----------------------------------------------------------------------------------------
    'Task is being finalised, user has clicked the finalise button
+   'Returns True if this was successfull   
+   'Complex so probably not good but this is the logic
+   'A Task  - has been allocated by someone to someone else (perhaps themselves)
+   '        - at allocation time also allocated was the person who had final responsibility
+   '          for marking it off fk_staff_must_finalise
+   '        - Now this user, may just be finalising their own role
+   '          if fk_staff<>fk-staff_must_finalise, so we need to shift the task off their
+   '          task list, but leave it 'open' for fk_staff_must_finalise to finish
+   '
    'Fixme currently only applies to a document
    'fixme ?does new cConsult belong here.
    'fixme won't work if not patient nor a doc
-   '------------------------------------------------------------- 
+   'Transaction is started in the calling routine
+   '---------------------------------------------------------------------------------------- 
    
    Dim StaffTask As New Collection 
    Dim TaskComponent As New Collection 
@@ -452,11 +459,11 @@ Public Sub Finalise()
    If Bfinalised = False And IsNull(currentconsult) Then
       If Message.Question("It is usually advisable to explain how the task was finalised.\n\nAdd finalisation note?", "Yes", "No") = 1 Then
          note_new()
-         bFinalised = True 
+         bFinalised = True  '??bug check this
          Return
       End If   
    End If
-   modDBConnect.BeginTrans()
+  ' modDBConnect.BeginTrans() 
    If fk_table_row Then 
       audit!fk_row = fk_table_row
       If fk_patient <> 0 Then 
@@ -466,7 +473,6 @@ Public Sub Finalise()
             currentconsult.Set(const.ConsultType_AuditNote, "Finalising staff task")
          End If
          modAudit.MakeAudit(currentconsult, "task component finalised", "documents.documents", fk_document, const.cSection_StaffTasks, " by " & modDBConnect.currentUser_FullName())
-         
       End If   
    End If 
    '-----------------------------
@@ -479,17 +485,23 @@ Public Sub Finalise()
    'Is this the last component for the task? - Yes, then finalise the task in clerical.tasks table
    '----------------------------------------------------------------------------------------------
    If modStaffTasksDBI.StaffTasks_CheckOutstandingComponents(fk_task) = 1 Then
-      StaffTask!fk_task = fk_task
-      StaffTask!fk_staff_finalised_task = modDBConnect.currentUser!fk_staff
-      StaffTask!date_finalised = Now
-      StaffTask!fk_task = modStaffTasksDBI.StaffTasks_Save(staffTasks, fk_task, stafftask, fk_document)
+      '--------------------------------------------------------------------- 
+      'If the person finalising this task/component= he/she who must do that 
+      '---------------------------------------------------------------------
+      If CurrentTaskComponent!fk_staff_must_finalise = modDBConnect.currentUser!fk_staff
+         StaffTask!fk_task = fk_task
+         StaffTask!fk_staff_finalised_task = modDBConnect.currentUser!fk_staff
+         StaffTask!date_finalised = Now
+         StaffTask!fk_task = modStaffTasksDBI.StaffTasks_Save(staffTasks, fk_task, stafftask, fk_document)
+      End If
    End If
    '------------------------------------------
    'Mark the component finalised (last or not)
    '------------------------------------------
    TaskComponent!fk_component = modStaffTasksDBI.StaffTasks_Components_Save(TasksComponents, fk_component, taskcomponent)
-   modDBConnect.CommitTrans()
-   Reload()
+   Return True
+  ' modDBConnect.CommitTrans()
+  
    
 End
 
@@ -500,8 +512,9 @@ Public Sub Note_Add()
    '---------------------------------------------
    
    modDBConnect.BeginTrans()
-   Note_Save()                      'save to backend, commit transaction
-   modDBConnect.CommitTrans()
+   If Note_Save() Then                      'save to backend, commit transaction
+       modDBConnect.CommitTrans()
+   End If   
    cvwTaskNotes_Refresh()           'refresh the notes on tasks list
    note_new()                       'default to adding another note
    
@@ -521,9 +534,10 @@ Public Sub Note_New()
    
 End
 
-Public Sub Note_Save()
+Public Function Note_Save() As Boolean
    '---------------------------------------------------
-   'Save a new note about this tas complete transaction
+   'Save a new note about this task complete transaction
+   'returns true if not successfully saved
    '---------------------------------------------------
    
    Dim x As Integer
@@ -541,29 +555,34 @@ Public Sub Note_Save()
    If fk_patient <> 0 Then 
       Consult_Check_Created(const.ConsultType_AuditNote, "Staff task note")
    Endif
-   ssummary = Trim(txtNotes.text)
+   sSummary = Trim(txtNotes.text)
    note!note = Trim(txtNotes.text)
    note!fk_staff_made_note = fk_staff
    note!date = Now
    modStaffTasksDBI.StaffTasks_Notes_Save(notes, pk_view_notes, Note, fk_note)
-   
+   Return True
 End
 
 Public Sub Note_Save_And_finalise()
-   
+   '------------------------------------------------------------------------
+   'User has elected to save a note and finalise their involvement in a task
+   '------------------------------------------------------------------------   
    modDBConnect.BeginTrans()
-   Note_Save() 
-   Finalise() 
-   modDBConnect.CommitTrans()
-   
+   If Note_Save() Then 
+      If Finalise() Then
+         modDBConnect.CommitTrans()
+      End If   
+   Else
+      modDBConnect.RollBack()
+   End If  
+    Reload()
 End
 
 Public Sub EditAreaButtons_Click()
    
    Dim hctrl As Control
    Dim hTextbox As Textbox
-   '  txtTaskDetails.ReadOnly = False
-   '  Return 
+
    Select Case Last.tag
          
       Case "refresh"
@@ -900,7 +919,7 @@ Public Sub Staff_To_Finalise_Select()
    '---------------------------------------------------
    'User is selecting a staff member to finalise a task
    '---------------------------------------------------
-
+   
    columnview1.MoveCurrent()
    pk_view_staff = columnview1.Item.Key
    Try txtStaffToFinalise.text = staff[pk_view_staff]!title & " " & staff[pk_view_staff]!wholename
@@ -1189,7 +1208,7 @@ Public Sub Valid_Task() As Boolean
          Return
       End If   
    Endif
-    
+   
    If Trim(txtTaskDetails.text) = "" Then
       txtTaskDetails.SetFocus()
       Return
@@ -1426,7 +1445,7 @@ Public Sub Delete()
    'Marks a task and or component as Deleted with an Audit Trail
    'FIXME: only allow this to be done by the person with final responsibility - not yet implemented
    '------------------------------------------------------------------------------------------------  
-
+   
    Dim iComponentCount As Integer
    Dim sString As String
    
@@ -1510,10 +1529,10 @@ Public Sub cvwStaffTasks_Select()
             iCurrentTaskComponent = 0 '?no longer needed
             fk_component = 0
          End If 
-         cvwAllTasks_Refresh()                     'show other staff members involved
-         Show_Document(CurrentTaskComponent!fk_row)
-    End Select
-
+         ' cvwAllTasks_Refresh()                     'show other staff members involved
+         ' Show_Document(CurrentTaskComponent!fk_row)
+   End Select
+   
 End
 
 Public Sub cvwAllTasks_Refresh()
@@ -1773,7 +1792,7 @@ Public Sub cmbRolesCanFinalise_Click()
    
    txtStaffToFinalise.text = ""  'sets fk_staff_allocated to 0
    fk_role_can_finalise = RolesCanAction[Last.index]!pk_role
-
+   
 End
 
 Public Sub cmbRolesCanAction_Click()
@@ -1790,7 +1809,7 @@ Public Sub cmbRolesCanAction_GotFocus()
 End
 
 Public Sub Show_Document(fk_document As Integer)
-
+   
    Dim document As Collection
    
    If bExit Then Return 

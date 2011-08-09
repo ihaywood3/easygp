@@ -246,6 +246,7 @@ Public Sub Save()
       modReferralsDBI.Referral_Print_AS_HTML(currentconsult, referral, True) 
    End If 
    FClinical.Refresh_AllPreviousNotes()
+   FClinical.Refresh_Section(const.cSection_Referrals)
    Reload()                                                  'Default to a new letter, reload controls
    
 End
@@ -1104,8 +1105,9 @@ Public Sub Referral_New()
    '----------------------------------------
    pk_referral = -1
    fk_organisation = 0    'used if letter to an organisation
-   fk_branch = 0          'in which case it will have a branch
-   fk_person = 0          'always will be used
+   fk_branch = 0          'in which case it will have a branch even if head office
+   fk_person = 0          
+   fk_employee = 0
    cmbReferralTypes.index = const.ReferralType_OpinionAndManagement - 1
    fk_type = const.ReferralType_OpinionAndManagement
    fk_progressnote = -1
@@ -1190,7 +1192,16 @@ Public Sub ColumnView1_KeyPress()
 End
 
 Public Sub Address_Select()
-   
+   '-------------------------------------------------------------------------------
+   'There is a complicated problem with this, because of the very freedom we allow
+   'in the editing area, namely that a person could have been selected with an 
+   'attatched private address, but they could also be 'employed' in an organisation
+   'and hence have a fk_employee [maybe fundamentally bad contacts design]
+   'So, if the user first selects  the first scenario, then prints the letter, and 
+   'then re-edits, there is no fk_employee for the address, or visa-versa if they
+   'choose to send to a person at an address where they are not an employee, then
+   'fk_employee no longer exists
+   '--------------------------------------------------------------------------------
    columnview1.MoveCurrent
    Try txtOrganisation.text = Addresses[columnview1.Item.key]!organisation
    Try txtBranch.text = Addresses[columnview1.Item.key]!branch
@@ -1200,6 +1211,23 @@ Public Sub Address_Select()
    Try txtPostcode.text = Addresses[columnview1.Item.key]!postcode
    Try fk_organisation = Addresses[columnview1.Item.key]!fk_organisation
    Try fk_branch = Addresses[columnview1.Item.key]!fk_branch
+   If Error Then
+     fk_employee = 0 
+   Endif
+   '-----------------------------------------------------------------------------------
+   'if the letter is being edited, then the original letter could have been just to the
+   'person at a non-company address, so get the fk_employee
+   '-----------------------------------------------------------------------------------
+   If bEditing Then 
+      If fk_branch And fk_person <> 0 Then
+         If fk_employee = 0 Then
+            '--------------------------------------------------
+            ' get the fk_employee the the person at this branch
+            '-------------------------------------------------- 
+            fk_employee = modContactsDBI.Employee_Get_By_Fk_branch_fk_person(fk_person, fk_branch)
+          Endif   
+      Endif
+   End If   
    txtTag.SetFocus()
    
 End
@@ -1279,6 +1307,7 @@ Public Sub ReferralsList_Delete()
    pk_deleted_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral, Inclusions_Referral_This_consult)
    modDBConnect.CommitTrans()
    Reload()                                                  'Default to a new letter
+   FClinical.Refresh_Section(const.cSection_Referrals)
    FClinical.Refresh_AllPreviousNotes()
    
 End
@@ -1298,6 +1327,7 @@ Public Sub ReferralsList_DeleteUndo()
       pk_deleted_progressnote = 0
       modDBConnect.CommitTrans()
       Reload()
+      FClinical.Refresh_Section(const.cSection_Referrals)
       FClinical.Refresh_AllPreviousNotes()
    Endif
    

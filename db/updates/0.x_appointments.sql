@@ -32,7 +32,7 @@ CREATE FUNCTION clerical.listsessions(timestamp, integer) RETURNS SETOF clerical
            and of_month[((extract(day from $1)-1)/7)+1]
 $$ LANGUAGE SQL;
 
-comment on function clerical.listsessions(timestamp.integer) is 'returns sessions for all doctors on a particular calendar day'; 
+comment on function clerical.listsessions is 'returns sessions for all doctors on a particular calendar day'; 
 
 CREATE TABLE clerical.schedule (
 	pk serial primary key,

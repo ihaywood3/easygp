@@ -53,6 +53,8 @@ Private ParentLayout As Integer[]
 Private shortcuts As Collection 
 Private SpellChecker As ClskSpell
 Private bFontBold As Boolean
+Private FTermSelector As FCodedTermSelector
+Private obs As Observer
 
 Public Sub Set_Copy_of_Editor_text(sText As String)
    
@@ -64,7 +66,7 @@ Public Sub Init(cons As CConsult, notes As String)
    '-----------------------------------------------------------------------
    'If progress notes have already been written this consultation show them
    '-----------------------------------------------------------------------
-
+   
    Dim R As Result
    Dim sString As String 
    
@@ -93,6 +95,16 @@ Public Sub Init(cons As CConsult, notes As String)
    Add_Shortcut("Home Visit ", ".hv", True, False, False)
    Add_Shortcut("Section:", ".sh", True, True, True)
    Add_Shortcut("Impression:", ".imp", True, False, False)
+   Add_Shortcut("Coded Diagnosis:", ".cdx", True, False, False)
+   
+   With FTermSelector = New FCodedTermSelector(VBox1)
+      .Ignore = True 
+      .Visible = False   
+      .left = 10
+      .width = teNotes.width - 20
+      .ColumnView1.Background = Color.White
+   End With
+   obs = New Observer(FTermSelector.ColumnView1) As "Terms_columnview"
    
    'Spelling stuff
    With SpellChecker = New ClskSpell
@@ -102,18 +114,7 @@ Public Sub Init(cons As CConsult, notes As String)
    End With
    modUtil.FindProgram("aspell", "aspell")
    Templates_ReLoad()
-   '  '-------------------------------------------------------
-   '  'If fk_consult, then reload last notes written for today
-   '  '-------------------------------------------------------
-   ' r = modConsultDBI.ProgressNotes_GetFor_fk_Consult(currentconsult.GetPK())
-   ' If r.count Then
-   '    Print modConsultDBI.ProgressNotes_GetFor_fk_Consult(currentconsult.GetPK())!notes
-   '    sstring = modConsultDBI.Images_Get(modConsultDBI.ProgressNotes_GetFor_fk_Consult(currentconsult.GetPK())!notes)
-   '    sString = Replace(sstring, "file://", "")
-   ' 
-   '   
-   '  Endif
-
+   
 End
 
 Private Sub Add_Shortcut(text As String, abbrev As String, bold As Boolean, uline As Boolean, section As Boolean)
@@ -200,6 +201,8 @@ Public Sub teNotes_Change()
       End If
    Else
       DataChange_Update_Indicators(True)
+      Editor1.text = tenotes.text
+      textarea1.text = tenotes.text
    End If
    '-------------------------------------------------------------------------
    'The consult notes editor is either being used for general notes, or for
@@ -308,13 +311,20 @@ Public Sub Terms_Get()
    Dim charpos As String
    Dim blankchar As Integer = -1
    
-   Return 
    ' Do Until blankchar = 0
-   dxText = Mid$(teNotes.text, dxPos + 3, curpos - dxpos + 3)
+   Print "pos", tenotes.Pos
+   Print "curpos", 
+   dxpos = InStr(teNotes.text, "Coded Diagnosis:")
+   dxText = Mid$(teNotes.text, dxPos + 16, tenotes.pos - dxpos)
+   Print dxText
    ' charpos = InStr(teNotes.text,
    ' "<p dir=\"ltr\">Dx"
-   charpos = teNotes.ToPos
-   textarea1.text = teNotes.richtext
+   With FTermSelector
+      .set_SearchText(dxText)
+      .Visible = True
+   End With
+   ' charpos = teNotes.ToPos
+   ' textarea1.text = teNotes.richtext
    '  Loop
    
    '  If Trim(txtCodedTerm.text) = "" Then
@@ -444,6 +454,13 @@ Public Sub tenotes_KeyPress()
             
       End Select
    End If
+   If key.code = key.down And FTermSelector.Visible Then 
+      With FTermSelector.ColumnView1
+         .SetFocus()
+         .MoveFirst
+         .Item.Selected = True
+      End With
+   End If   
    
 End
 
@@ -498,8 +515,10 @@ Public Sub teNotes_KeyRelease()
    ' '--------------------------------------------------------
    'Parse for user defined shortcuts FIXME MAKE USER DEFINED
    '--------------------------------------------------------
-   ' If InStr(teNotes.text, "Dx ") Then
-   '    dxpos = InStr(teNotes.text, "Dx ")
+   'If InStr(Lower(teNotes.text), ".dx ") Then
+   '    dxpos = InStr(teNotes.text, ".dx ")
+   ' End If
+   
    '    getlist_diagnoses()
    '    Terms_Get()
    '    
@@ -522,7 +541,10 @@ Public Sub teNotes_KeyRelease()
          If InStr(teNotes.Text, s!abbrev, 0, gb.IgnoreCase) Then Auto_Text(s)
       End If 
    Next
-   
+   If InStr(teNotes.text, "Coded Diagnosis") Then
+      FTermSelector.Visible = True 
+      Terms_Get()
+   Endif
    If InStr(teNotes.text, ".mc") Then
       sShortCutText = ".mc"
       '  FClinical.Editor_ShowPage_External("Medical Certificate", "Medical Certificate", "")
@@ -746,6 +768,7 @@ Public Sub DrawEditor_ToolButtons_Click()
    End Select
    
 End
+
 Public Sub Insert_Picture1()
    '--------------------------------------------------------------------
    'User is inserting a picture from the draw editor back into the notes
@@ -1056,10 +1079,9 @@ Public Sub mnuNotes_Click()
          ' End If 
          Insert_Picture("clipboard")
       Case "paste"
-        If Clipboard.type = Clipboard.Text Then 
-               tenotes.Insert(Clipboard.Text) 
-        End If 
-         
+         If Clipboard.type = Clipboard.Text Then 
+            tenotes.Insert(Clipboard.Text) 
+         End If 
          
       Case "save as template"
          With Save_Template = New FSaveNotesTemplate
@@ -1351,13 +1373,65 @@ Public Sub tbWebCam_Click()
 End
 
 Public Sub Button1_Click()
-
+   
    Dim M As Collection
    Dim MM As Collection 
-
+   
    M = currentconsult!measurements_recorded_this_consult
    For Each MM In M
       Print M
    Next 
+   
+End
+
+Public Sub Terms_Columnview_KeyPress()
+   
+   If key.code = key.return Then 
+      Terms_Columnview_dblClick
+   End If   
+
+End
+
+Public Sub Terms_Columnview_dblClick()
+
+   Dim CurrentTerm As Collection
+   
+   Stop Event
+   FTermSelector.Visible = False 
+   Last.movecurrent()
+   CurrentTerm = FTermSelector.Terms[FTermSelector.columnview1.Item.key]
+   teNotes.text = Replace(tenotes.text, "Coded Diagnosis:" & dxText, "Coded Diagnosis:" & CurrentTerm!term & "(" & CurrentTerm!code & ")")
+   teNotes.SetFocus()
+   
+End
+
+Public Sub TextArea1_Change()
+   ' 
+   '  Editor1.text = "TA.pos" & Str(textarea1.Pos) & "\n"
+   ' Editor1.text &= " TA.line" & Str(textarea1.Line) & "\n"
+   '  Editor1.text &= " TA.column " & Str(textarea1.Column) & "\n"
+   '  ' Editor1.text &= " teNotes.textheight" & textarea1.
+   '   Editor1.text &= "E1-font" & Editor1.Font.Name & "\n"
+   '   Editor1.Font = tenotes.Font
+   '    Editor1.text &= "Editor1.LineHeight " & Editor1.LineHeight & "\n"
+   '   Try Editor1.text &= "Editor1.x" & Str(Editor1.Cursor.x)
+   '  Try Editor1.text &= "Editor1.y" & Str(Editor1.Cursor.y)
+   ' cvwTerms.left = 20
+
+   FTermSelector.left = 20
+   FTermSelector.top = (Editor1.LineHeight * (textArea1.line + 1)) + Hbox_WordProcessorButtons.height - textArea1.line + 5
+   ' cvwTerms.top = (Editor1.LineHeight * (Editor1.line + 1)) + Hbox_WordProcessorButtons.height - Editor1.line 
+   ' Print txtReasonEncounter.text = textArea1.toline(tenotes.pos)
+   '  Editor1.CharWidth 'in pixels
+   ' Editor1.Goto( Line , col)
+   ' Editor1.PosToColumn
+   ' Editor1.PosToLine
+   ' Editor1.p
+
+End
+
+Public Sub Form_Resize()
+   
+   FTermSelector.width = Me.Width - 100
    
 End

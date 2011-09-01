@@ -152,7 +152,11 @@ Public Sub mnuScratchPad_Click()
          '  iAuditFilter = Const.cDisplay_Current
          Try Document_AuditTrail_Show(currentconsult!staff_tasks[cvwScratchPad.Item.key]!fk_row)
       Case "complete"
-         StaffTask_Finalise(currentconsult!staff_tasks[cvwScratchPad.Item.key]!fk_row) 
+         If Not IsNull(currentconsult!staff_tasks[cvwScratchPad.Item.key]!fk_row) Then  ' attatched to a document
+                   StaffTask_Finalise_For_Document(currentconsult!staff_tasks[cvwScratchPad.Item.key]!fk_row) 
+         Else
+                   StaffTask_Finalise_Non_Document_Task(currentconsult!staff_tasks[cvwScratchPad.Item.key])
+         End If    
       Case Else
        '  modScratchPadMenu.Process(currentconsult!scratchpad[pk_scratchpad], Last.tag, currentconsult)
         ' Refresh()
@@ -198,8 +202,45 @@ Public Sub Document_AuditTrail_Show(fk_document As Integer)
    FClinical.Editor_ShowPage_External("browser", "Audit Trail", sHtml)
 
 End
+Public Sub StaffTask_Finalise_Non_Document_Task(task As Collection)
+   '---------------------------------------------------------
+   'Finalise a staff task which was not related to a document
+   '---------------------------------------------------------   
+   'fixme allow finalisation by a role
+   '----------------------------------------------------------------------------------------- 
+   Dim theTask As Collection = currentconsult!staff_tasks[cvwScratchPad.Item.key]
+   Dim StaffTask As New Collection
+   Dim audit As New Collection
+   
+   ' audit!fk_row = fk_document
+   '-----------------------------------------------------------
+   'first check if this person is allowed to finalise the task
+   'FIXME REMOVE Or IsNull(theTask!fk_staff_must_finalise), had to put this in due to developmental database changes
+   ' till I cleared all tasks where this was a factor.
+   '-----------------------------------------------------------
+   If theTask!fk_staff_must_finalise = modDBConnect.currentUser!fk_staff Or IsNull(theTask!fk_staff_must_finalise) Then   
+      modDBConnect.BeginTrans
+         modAudit.MakeAudit(currentconsult, "staff task finalised", "clerical.tasks", currentconsult!staff_tasks[cvwScratchPad.Item.key]!fk_task, const.cSection_StaffTasks, " by " & modDBConnect.currentUser_FullName())
+         StaffTask!pk = theTask!fk_task
+         StaffTask!fk_staff_finalised_task = modDBConnect.currentUser!fk_staff
+         StaffTask!date_finalised = Now
+         If modDBConnect.update("clerical.tasks", Null, staffTask) Then
+          modDBConnect.CommitTrans
+          FClinical.Notifications_Refresh_External()
+          Refresh()
+        Else
+         modDBConnect.RollBack() 
+        Endif
+     
+   Else
+      Message.title = "Tasks Finalisation"
+      Message.Info("Sorry, you do not have permission to finalise this task")
+   End If  
+      
+   
+End
 
-Public Sub StaffTask_Finalise(fk_document As Integer)
+Public Sub StaffTask_Finalise_For_Document(fk_document As Integer)
    '----------------------------------------------------------------------------------------- 
    'Flag the task attatched to a document as complete FIXME integrate with simple scratch pad
    'fixme allow finalisation by a role

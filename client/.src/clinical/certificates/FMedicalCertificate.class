@@ -35,22 +35,25 @@ Private Const cIs As Integer = 1
 Private Const cWas As Integer = 2
 Private Const cWillBe As Integer = 3
 Private Temporality As String[]
-Private iFitness_Temporality As Integer
-Private iFitness As Integer
+Private iFitness_Temporality As Integer            'key to clin_certificates.lu_illness_temporality
+Private iFitness As Integer                        'key to clin_certificates.lu_fitness
 Private Certificates As Collection                 'All existing certificates for the patient
 Private Certificate As Collection                  'current certificate
 Private pk_view As Integer                         'key to clin_certificates.vwMedicalCertificates
 Private Reasons As Collection                      'collection of reasons for being sick for popup list
 Private Reason As Collection 
-Private fk_reason As Integer
 Private timer_count As Integer                    'zero'd on keypress in txtCodedTerm see Timer1_timer()
-Private Form_Terms As New FCodedTermSelector
-Private obs As Observer
+Private Form_Terms As New FCodedTermSelector      'Popup form to display coded terms for user to choose from
+Private obs As Observer                           'to over-ride events on  FCodedTermSelector
+Private fk_progressnote As Integer                'if not zero (0) then points to progress note for a certificate
 
 Public Sub Init(Cons As CConsult)
-   
+   '---------------------------------------
+   'Set by calling form - usually FClinical
+   '---------------------------------------   
+
    currentconsult = cons                                          'set current consult
- 
+   
    Try Settings_Load()
    Fitness = New String[3]
    Fitness[1] = "fit"
@@ -59,24 +62,34 @@ Public Sub Init(Cons As CConsult)
    Temporality[1] = "is"
    Temporality[2] = "was"
    Temporality[3] = "will be"
-   With Form_Terms = New FCodedTermSelector(Vbox_EditArea)
+   With Form_Terms = New FCodedTermSelector(Vbox_EditArea)        'hide a new instance of popup coded term selector
       .Ignore = True
       .ColumnView1.Background = Color.White
       .Visible = False
       .Expand = True
       .Raise()
    End With
-   obs = New Observer(Form_Terms.columnview1) As "Terms_columnview" '  columnview1.Columns.count = 2                                  'coding system, term itself
-   lblMeasure.text = "  Coded Term "                              'max lengh label expecte
-   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure) 'resize all to same size
-   Certificate_New()                                              'default to new certificate
-   
+   With cvwCertificates
+      .Columns.count = 7
+      .Columns[0].Text = "Certificate Date"   'can be back date
+      .Columns[1].Text = "Reason"
+      .Columns[2].Text = "Coded Reason"
+      .Columns[3].Text = "Fitness"
+      .Columns[4].Text = "From Date"
+      .Columns[5].Text = "To Date"
+      .Columns[6].Text = "Notes"
+   End With
+   obs = New Observer(Form_Terms.columnview1) As "Terms_columnview"  'Over-ride events on this form
+   lblMeasure.text = "  Coded Term "                                 'max length label expected
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)       'resize all to same size
+   Reload()                                                          'Reload all written this consult, default to new certificate
+
 End
 
 Private Sub Settings_Load()
    
    VSplit_Certificates.Layout = Settings["Medical Certificates/VSplit_Certificates.Layout"] 
-   
+   cvwCertificates.font = Font[Settings["Medical Certificates/cvwCertificates.font"]]
 End
 
 Public Sub Settings_Save()
@@ -85,12 +98,12 @@ Public Sub Settings_Save()
    
 End
 
-Public Function Get_Summary() As String
+Public Function Progress_Note_Construct() As String
    '----------------------------------------------------------------
    'Allows a progress notes editor page to retreive a summary of the
    'certificate before closing
    '----------------------------------------------------------------
-   
+
    Dim summary As String
    
    If bCancel Then Return ""
@@ -110,12 +123,12 @@ Public Function Get_Summary() As String
       summary &= "<BR> - notes:" & Trim(txtnotes.text)
    Endif
    Return summary & "<BR>"
-   
+
 End
 
 Public Sub Coded_Terms_Get()
    '-------------------------------------------------------------------------------------
-   'Gets list of diagnostic terms
+   'Gets list of coded terms
    'Cannot set default if count is one because must  be able to add new occupations
    'can't remove the label because it needs to occupy space to keep textbox correct width
    '-------------------------------------------------------------------------------------
@@ -126,84 +139,65 @@ Public Sub Coded_Terms_Get()
    If Trim(txtCodedTerm.text) = "" Then
       fk_code = 0
       fk_coding_system = const.coding_none_selected
-      ' Form_Terms.Visible = False   
+      Form_Terms.Visible = False  
       Return
    End If
- '  If Trim(txtCodedTerm.text) = "" And Trim(txtReason.text) <> "" Then 'try and guess off non-coded reason first
- '     Terms = modCodingDBI.Get_Terms(Trim(txtReason.text), Form_Terms.chkLimit.value, Form_Terms.SpinBoxTermLimits.value)
- '  Else
- '     Terms = modCodingDBI.Get_Terms(Trim(txtCodedTerm.text), Form_Terms.chkLimit.value, Form_Terms.SpinBoxTermLimits.value)
- '  Endif
+   
    Form_Terms.Set_SearchText(Trim(txtCodedTerm.text))
-   ' With columnview1
-   '    .Clear()
-   '    .Columns[0].Width = txtCodedTerm.width - 100
-   '    .Columns[1].width = 100
-   ' End With
-   ' If Terms.count Then
-   '    For Each term In Terms
-   '       key = term!code
-   '       columnview1.Add(key, 0)
-   '       columnview1[key][0] = term!term
-   '       columnview1[key][1] = term!system
-   '    Next 
-   '    lblTermCount.text = Str$(terms.count) & " terms retreived"
-   '    columnview1.tag = txtCodedTerm
-   '    columnview1.Raise
-   '    columnview1.Visible = True
-   '    Form_Terms.Visible = True 
-   ' Else 
-   '    Form_Terms.Visible = False 'empty recordset
-   ' End If  
-   
-End
-
-Public Sub Columnview1_KeyPress()
-   
-   If key.code = key.return Then Columnview1_DblClick()
-   
-End
-
-Public Sub Coded_Term_Select()
-   '---------------------------------------------
-   'User has chosen a term from popup columnview1
-   'Display this in the Form_Terms Textbox
-   '---------------------------------------------
-   
-   ' columnview1.MoveCurrent()   'match internal cursor to visible row
-   ' fk_code = Terms[columnview1.Item.key]!code
-   ' fk_coding_system = Terms[columnview1.Item.key]!fk_coding_system
-   ' txtCodedTerm.text = Terms[columnview1.Item.key]!term & " (" & Terms[columnview1.Item.key]!code & ")"
-   ' txtCodedTerm.pos = 0
-   ' txtDateFrom.SetFocus()
-   
-End
-
-Public Sub Columnview1_DblClick()
-   
-   ' Coded_Term_Select() 
-   ' Columnview1.Visible = False 
-   ' Form_Terms.Visible = False   
    
 End
 
 Public Sub EditArea_Clear()
-   
+   '--------------------------
+   'Clears the data input area
+   '--------------------------  
+
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
+   EditArea_Notify_Data_Change(False)
    
 End
 
 Public Sub Certificate_New()
-   
+   '----------------------------------------------------------------------------------------
+   'Called from New_Entry which is called by FClinical toolbar button or in code eg Reload()
+   '----------------------------------------------------------------------------------------
+
    EditArea_Clear()
    txtdate.text = Format(Now, "dd/mm/yyyy")
    RbIs.Value = True     'default to is 
    rbUnfit.value = True  'unfit
-   fk_reason = 0
    fk_coding_system = 0
    fk_code = ""
+   fk_progressnote = 0
+   pk_view = 0
    bCancel = False 
+   EditArea_Notify_Data_Change(False)
+   Vbox_EditArea_Outer.Enabled = True  
    txtReason.SetFocus()
+   
+End
+Public Sub mnuMedicalCertificates_Click()
+   
+  Select Case Last.tag
+  Case "edit"
+      Edit()
+  Case "delete"
+      Delete()
+  Case "undo delete"
+      Undo_Delete()
+  Case "reprint single"
+      modUtil.NotImplemented("reprint")  
+  Case "reprint all"
+      modUtil.NotImplemented("reprint all")  
+  Case "help"
+      modUtil.NotImplemented("Help")  
+  Case "preview"
+      Certificate_Preview() 
+  Case "change font"
+      modUtil.Columnview_SetFont(cvwCertificates, "Medical Certificates")
+  End Select
+  
+   
    
 End
 
@@ -282,14 +276,14 @@ Public Sub EditAreaTextBox_Change()
    
    If bexit Then Return 
    Select Case Last.tag
-      Case "reason"
-         If Trim(Last.text) = "" Then fk_reason = 0
       Case "coded term"
          If Trim(Last.text) = "" Then
             fk_code = ""
             fk_coding_system = 0
+            Form_Terms.Visible = False  
          Endif
    End Select
+   EditArea_Notify_Data_Change(True)
    
 End
 
@@ -320,6 +314,7 @@ End
 
 Public Sub EditAreaTextBox_GotFocus()
    
+   Last.BackGround = Color.rgb(95, 255, 175)
    Form_Terms.Visible = False    'always ensure not visible, as could have been, and user just clicked elsewhere
    
    listview1.Visible = False  
@@ -397,11 +392,11 @@ Public Sub EditAreaTextBox_KeyPress()
                tbSave.SetFocus()
          End Select
       Case key.Down
-          If Form_Terms.Visible Then
-             Form_Terms.columnview1.MoveFirst
-             Form_Terms.columnview1.Item.Selected = True  
+         If Form_Terms.Visible Then
+            Form_Terms.columnview1.MoveFirst
+            Form_Terms.columnview1.Item.Selected = True  
             Form_Terms.columnview1.SetFocus()
-          Endif
+         Endif
          If listview1.Visible Then
             listview1.MoveFirst
             listview1.Item.Selected = True
@@ -429,13 +424,16 @@ Public Sub New_Entry()
    '--------------------------------------
    'Called from the main FClinical toolbar
    '--------------------------------------
+   
    Certificate_New()
    
 End
+
 Public Sub Print_Content()
    '--------------------------------------------------------------------------
    'Called from FClinical - a users logical would expect print button to print
    '--------------------------------------------------------------------------
+   
    Save() 
    
 End
@@ -457,28 +455,34 @@ Public Sub Save()
    '   date                           -- the actual date of certificate, may not be consult date
    '--------------------------------------------  
    
-   Certificate = New Collection 
+   Dim sProgressNotes As String
    
+   Certificate = New Collection 
+   If Vbox_EditArea_Outer.Padding = 0 Then Return 
    If Not Valid_Certificate() Then Return
-   If pk_view Then Certificate!pk_medical_certificate = pk_view
-   If fk_reason <> 0 Then Certificate!fk_reason = fk_reason  
+   Vbox_EditArea_Outer.Enabled = False 
+   If pk_view Then Certificate!pk_medicalcertificate = pk_view
+   If fk_progressnote = 0 Then fk_progressnote = -1               'not 0 if certificate being edited
    Certificate!reason = Trim(txtReason.Text)
    If fk_coding_system <> 0 Then Certificate!fk_coding_system = fk_coding_system
    If fk_code <> "" Then Certificate!fk_code = fk_code
-   Certificate!date = Val(txtdate.text) 'the actual date we want on certificate, may not be consult.date
+   Certificate!certificate_date = Val(txtdate.text) 'the actual date we want on certificate, may not be consult.date
    Certificate!from_date = Val(txtDateFrom.text)
    Try Certificate!to_date = Val(txtDateTo.text)
    Certificate!notes = Trim(txtNotes.text)
    Certificate!fk_lu_illness_temporality = iFitness_Temporality
    Certificate!fk_lu_fitness = iFitness
    Certificate!fk_consult = currentconsult.GetPK()
-   
+   sProgressNotes = Progress_Note_Construct()
    modDBConnect.BeginTrans()
+   Certificate!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_MedicalCertificates, fk_progressnote, "Medical Certificates", 0, False)
    Certificate!pk_medical_certificate = modCertificatesDBI.MedicalCertificates_Save(Certificates, pk_view, Certificate)
    Print()
    modDBConnect.CommitTrans()
-   FClinical.Refresh_Section(const.cSection_MedicalCertificates)
-   FClinical.Editor_ShowPage_External("New General Notes", "New General Notes", "")
+   FClinical.Refresh_Section(const.cSection_MedicalCertificates)                          'in case certificates list is showing
+   FClinical.Editor_ShowPage_External("New General Notes", "New General Notes", "")       'default to flick back to general notes
+   FClinical.Refresh_AllPreviousNotes()
+   Reload()
    
 End
 
@@ -546,12 +550,11 @@ Public Sub MedicalCertificate_LaTex_Construct() As CTemplate
    Else
       templ.Subst("additional_notes", "")
    Endif
-   templ.Subst("certificate.date", Format(Certificate!date, "dd/mm/yyyy"))
-   
+   templ.Subst("certificate.date", Format(Certificate!certificate_date, "dd/mm/yyyy"))
+    
    Return templ
    
 End
-
 
 Public Sub EditAreaTextBox_KeyRelease()
    
@@ -607,7 +610,7 @@ Public Function Valid_Certificate() As Boolean
    If Trim(txtDateFrom.text) = "" Then
       txtDateFrom.SetFocus()
       Return False
-   Endif
+     Endif
    Return True
    
 End
@@ -660,7 +663,6 @@ Public Sub Reason_Select(CallingControl As Object)
    Dim x As Integer
    Dim bFound As Boolean
    
-   fk_reason = 0                                      'default - could be new reason
    If CallingControl Is TextBox Then
       For x = 0 To listview1.count - 1
          If Lower(Trim(txtReason.text)) = Lower(listview1.Item.text) Then
@@ -677,7 +679,6 @@ Public Sub Reason_Select(CallingControl As Object)
    
 Accept:
    listview1.MoveCurrent
-   fk_reason = listview1.Item.Key
    bExit = True
    txtReason.text = listview1.Item.Text
    bExit = False  
@@ -705,8 +706,159 @@ Public Sub Terms_Columnview_dblClick()
    CurrentTerm = Form_Terms.Terms[Form_Terms.columnview1.Item.key]
    fk_code = CurrentTerm!code
    fk_coding_system = CurrentTerm!fk_coding_system
-   txtCodedTerm.text = CurrentTerm!term & "(" & CurrentTerm!code & ")"
+   txtCodedTerm.text = CurrentTerm!term & " (" & CurrentTerm!code & ")"
    txtCodedTerm.pos = 0
    txtDateFrom.SetFocus()
    
 End
+
+Public Sub Reload()
+   '---------------------------------------------------------------
+   'Reloads all medical certificates written just this consultation
+   '---------------------------------------------------------------
+   
+   Certificates_This_Consult_Show()           'Display any existing forms
+   Certificate_New()
+   
+End
+
+Public Sub EditArea_Notify_Data_Change(flag As Boolean)
+   If bexit Then Return 
+   If flag Then
+      Vbox_EditArea_Outer.Padding = 1
+      Vbox_EditArea_Outer.Background = Color.red
+      
+   Else
+      Vbox_EditArea_Outer.Padding = 0
+      Vbox_EditArea_Outer.Background = Color.white
+   End If
+   
+End
+
+Public Sub Certificates_This_Consult_Show()
+   '----------------------------------------------------------------------
+   'Show all certificates written this consult underneath the editing area
+   '---------------------------------------------------------------------- 
+   
+   Dim Certificate As Collection 
+   Dim fk_last_form As Integer 
+   Dim sSTring As String
+   
+   currentconsult.Refresh("medical_certificates_this_consult")        'remove key = refresh
+   Certificates = currentconsult!medical_certificates_this_consult    'only get those written today
+   cvwCertificates.Clear()                                            'clear the list    
+   
+   For Each Certificate In Certificates
+      cvwCertificates.Add(Certificate!pk_medicalcertificate, 0)
+      cvwCertificates[Certificate!pk_medicalcertificate][0] = Format(Certificate!certificate_date, "dd/mm/yyyy")
+      cvwCertificates[Certificate!pk_medicalcertificate][1] = Certificate!reason      'the free text reason
+      cvwCertificates[Certificate!pk_medicalcertificate][2] = Certificate!term & " (" & Certificate!code & ")"  'the coded reason
+      sString = Temporality[Certificate!fk_lu_illness_temporality]
+      sString &= " " & Fitness[Certificate!fk_lu_fitness] & " for work from"
+      cvwCertificates[Certificate!pk_medicalcertificate][3] = sString                 'fitness for work
+      cvwCertificates[Certificate!pk_medicalcertificate][4] = Format(Certificate!from_date, "dd/mm/yyyy")
+      Try cvwCertificates[Certificate!pk_medicalcertificate][5] = Format(Certificate!to_date, "dd/mm/yyyy") 'can be null
+      cvwCertificates[Certificate!pk_medicalcertificate][6] = Certificate!notes
+   Next
+   EditArea_Notify_Data_Change(False) 
+   
+End
+Public Sub Preview()
+   '----------------------------------------------------------------------
+   'Previews  a medical certificate, called from main toolbar in FClinical
+   '----------------------------------------------------------------------
+   Certificate_Preview()
+   
+End
+
+Public Sub Certificate_Preview()
+   '-----------------------------------------------------------
+   'The certificate is shown as a PDF on a new tab in Fclinical
+   'fixme not yet implemented
+   '-----------------------------------------------------------
+ 
+   Dim filename As String 
+   Filename = modPrinting.Latex_To_PDF(MedicalCertificate_LaTex_Construct().GetData())
+   FClinical.Editor_ShowPage_External("pdf file", "MC:" & Format(Certificate!certificate_date, "dd/mm/yyyy"), filename)
+End
+
+Public Sub Display()
+   '------------------------------------------------------------------
+   'Displays the current certificate when user clicks on it
+   'User cannot edit this unless selects from popup menu over the list
+   '------------------------------------------------------------------
+   EditArea_Clear()                    'clear display between each row
+   Vbox_EditArea_Outer.Enabled = False 
+   bExit = True                        'stop the EditArea_Notify_Data_Change etc
+   cvwCertificates.MoveCurrent()       'sets current key
+   pk_view = cvwCertificates.Item.Key  'key to the view for use in save
+   Certificate = Certificates[pk_view] 'current certificate ease of typing
+   fk_progressnote = Certificate!fk_progressnote
+   fk_code = Certificate!fk_code   
+   fk_coding_system = Certificate!fk_coding_system
+   txtReason.text = Certificate!reason
+   txtCodedTerm.text = Certificate!term & " (" & Certificate!code & ")"  'the coded reason
+   txtnotes.text = Certificate!notes
+   
+   Select Case Certificate!fk_lu_illness_temporality 'sets  iFitness_Temporality via click event
+      Case cIs
+         RbIs.Value = True
+      Case cWas
+         RbWas.Value = True 
+      Case cWillBe
+         rbWillbe.Value = True
+   End Select
+   
+   Select Case Certificate!fk_lu_fitness
+      Case cFit
+         rbfit.value = True 
+      Case cUnFit 
+         rbUnfit.value = True
+   End Select
+   txtdate.text = Format(Certificate!certificate_date, "dd/mm/yyyy")
+   txtDateFrom.text = Format(Certificate!from_date, "dd/mm/yyyy")
+   Try txtDateTo.text = Format(Certificate!to_date, "dd/mm/yyyy")
+   bExit = False  
+End
+
+Public Sub Edit()
+   '---------------------------------------------------------
+   'Allow the user to edit an existing certificate definition
+   '---------------------------------------------------------   
+   
+   Vbox_EditArea_Outer.Enabled = True    
+   
+End
+
+Public Sub cvwCertificates_Select()
+   
+   Display()
+   
+End
+      
+Public Sub Delete()
+
+   '---------------------------------------------
+   'Delete the currently hightlighted certificate
+   '---------------------------------------------
+   
+End
+
+Public Sub Undo_Delete()
+   
+    modUtil.NotImplemented("Undeleting a deleted certificate")  
+   
+End
+Public Sub cvwCertificates_Click()
+   
+   Display() 
+   
+End
+
+Public Sub cvwCertificates_menu()
+
+   If Last.count Then mnuMedicalCertificates.Popup()
+End
+
+
+

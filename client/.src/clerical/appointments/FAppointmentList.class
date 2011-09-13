@@ -14,9 +14,11 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'--------------------------------------------------------------------------
+'PURPOSE          A form to display and enter appointment for a single day
+'TODO             Add ability of user to add a note.
 '
-' A Form Template for most other new forms
-' Copy this form and paste as a new form
+'
 '----------------------------------------------------------------------
 
 Private $iLast As Integer
@@ -28,7 +30,7 @@ Private bexit As Boolean
 Private obs As Observer
 Private OnRow As Integer
 Private GridData As Collection 
-Private GridRows As Collection
+Public GridRows As Collection
 Private iLeft As Integer
 Private iTop As Integer
 Private i As Integer
@@ -47,117 +49,127 @@ Private irowheight As Integer = 18 'fix me
 Private staff_photo As Picture
 Private staff_member As Collection
 Private form_select As FPatientsSelect
+Private appointment_interval As Integer      'the time interval in minutes for this user for this day FIXME get from backend
+Private fk_clinic As Integer                 'clinic where the appointments are being made for
+Private Appointments As Collection
+Private pk_view As Integer
+Private appointment As Collection
+Private appointment_Date As Date
 Public patient As Collection 
 
-' Static Public form_appointmentlist As FAppointmentList        ' so that patient multi-select can acess this form
-' 
-' Static Public Sub patient_load_record_external(patient As Collection, bPhotoConfirmed As Boolean, P As Picture) 
-'    '------------------------------------------------------------------------------
-'    'User has searched for a patient > multiple choice > chosen, so load the record
-'    '------------------------------------------------------------------------------   
-'    
-'    form_appointmentlist.patient_load_record(patient, bPhotoConfirmed, P)
-' 
-' 
-' End
-
-Public Sub Init(sm As Collection, sDate As String)
-   '------------------------------------------------
-   'initialise the appointment module from fclerical 
-   '------------------------------------------------
+Public Sub Init(sm As Collection, app_date As Date, clinic_key As Integer)
+   '----------------------------------------------------------
+   'initialise the appointment module from  FMakeAppointments 
+   'embryonic so don't worry about the fixed values they will be
+   'later grabbed from the backend
+   '----------------------------------------------------------
    
-   Dim appointment_interval As Integer                                                 'interval in minutes for appointments
-   
-   Dim x As Integer
-   Dim ihour As Integer
-   Dim iminute As Integer
-   Dim istarthour As Integer = 8                                                       'fixme make me configurable
-   Dim istartminute As Integer = 30
-   
-   ' form_appointmentlist = Me
    staff_member = sm
-   txtAppointment.height = irowheight                                                        'grid rows = same height as our textbox
-   Me.title = UCase(staff_member!title & " " & staff_member!wholename)                        'heading e.g "appointments for 01/01/2011"
-   lblDate.text = Format(Val(sDate), gb.LongDate)
-   appointment_interval = 10                                                           'fixme make me configurable
-   
-   With gridview1                                                                         
-      .columns.count = 3
-      .columns[0].width = 100
-      .columns[1].width = 24
-      .columns[2].width = gridview1.width - 124
-      .rows.count = 50
+   fk_clinic = clinic_key
+   Appointment_Date = app_date
+   txtAppointment.height = irowheight                                    'grid rows = same height as our textbox
+   Me.title = UCase(staff_member!title & " " & staff_member!wholename)   'will appear on the tab                     'heading e.g "appointments for 01/01/2011"
+   lblDate.text = Format(appointment_date, gb.LongDate)                        'Wednesay 18th September   
+   '------------------------------------------------------------------
+   'Contruct the basic grid
+   'FIXME:later get the times and intervals from backend configuration
+   'for each staff member and each day as appropriate
+   '------------------------------------------------------------------
+   With gridview1                                                                                                             
+      .columns.count = 3 
+      .columns[0].width = 100                                            'col 0=time
+      .columns[1].width = 24                                             'col 1=icon
+      .columns[2].width = gridview1.width - 124                          'col 2=the appointment details
    End With
-   ihour = istarthour
-   iminute = istartminute
-   gridrows = New Collection
-   
-   For x = 0 To 49
-      griddata = New Collection
-      griddata!time = Format(Time(ihour, iminute, 0), "hh:nn")
-      griddata!slots = 1
-      gridrows.add(griddata, Str(x))
-      gridview1[x, 0].text = Format(Time(ihour, iminute, 0), "hh:nn") 
-      gridview1.rows[x].height = griddata!slots * irowheight
-      iminute += 10
-      Print iminute
-      
-      If iminute = 60 Then
-         Inc ihour
-         iminute = 0
-         
-      Endif
-   Next
+   appointment_interval = 10 'fixme get me from the backend
+   AppointmentGrid_Init(Time(8, 30, 0), Time(18, 0, 0), appointment_interval)              'start time, end time, appointment interval
    
 End
 
 Public Sub GridData_Rebuild()
+   '----------------------------------------------------------------
+   'Rebuild the collection of apointments in the gridrows collection
+   'iFirstrow has previously been set when user selected one or more
+   'rows in the grid to place an appointment time
+   '----------------------------------------------------------------
    
    Dim NewRows As New Collection
    Dim iNewRowCount As Integer
    
    Dim i As Integer 
    
-   'Gridview1[iFirstRow, 2].text = TextBox1.Text
-   For i = 0 To Gridview1.Rows.Count - 1
-      If i < iFirstRow Then 
-         NewRows.Add(GridRows[i], iNewRowCount)
-         
-      Else If i = iFirstRow And i < iLastRow + 1 Then
-         
-         GridData = New Collection
-         If iFirstRow = iLastRow Then
-            GridData!time = GridRows[i]!time
-            GridData!picture = GridRows[i]!picture
-            GridData!slots = 1
-         Else
-            GridData!time = GridRows[i]!time & "-" & GridRows[iLastRow + 1]!time
-            GridData!picture = GridRows[i]!picture
-            GridData!slots = iLastRow + 1 - iFirstRow
-            i = i + iLastRow + 1 - iFirstRow
+   For i = 0 To Gridview1.Rows.Count - 1              'look through all the rows on the grid
+      If i < iFirstRow Then                           'for each time slot prior to this new appointment                     
+         NewRows.Add(GridRows[i], iNewRowCount)       'just add it into the new collection of appointments
+      Else If i = iFirstRow And i < iLastRow + 1 Then 'have now reached the first row the user selected
+         GridData = New Collection                    'when they first searched for the patient
+         If iFirstRow = iLastRow Then                 'if they only selected a single row= 1 slot
+            GridData!time = GridRows[i]!time          'put in the time of the appointment
+            GridData!picture = GridRows[i]!picture    'any associated icon e.g for pregnancy check
+            GridData!slots = 1                        'and it only takes up one time slot
+         Else                                         'otherwise - they must have selected > 1 rows
+            GridData!time = GridRows[i]!time & "-" & GridRows[iLastRow]!time 'time e.g 9:00-9:20
+            GridData!picture = GridRows[i]!picture    'plus any icon
+            GridData!slots = iLastRow + 1 - iFirstRow 'and covering however many of standard grid heights
+            i = i + iLastRow - iFirstRow              'increment the loop counter
          End If 
-         GridData!name = Trim(txtAppointment.text)
-         NewRows.Add(GridData, iNewRowCount)
-         
-      Else
-         GridData = New Collection
-         GridData!time = GridRows[i]!time
-         GridData!slots = GridRows[i]!slots
-         NewRows.Add(GridData, iNewRowCount)
+         GridData!name = Trim(txtAppointment.text)    'complete the collection with the patient name
+         NewRows.Add(GridData, iNewRowCount)          'add the collection to the rows collection
+      Else                                            'as above, the next one is an existing appointment
+         GridData = New Collection                    'create a new collection
+         GridData!time = GridRows[i]!time             'put in existing time
+         GridData!slots = GridRows[i]!slots           'the number of slots (or grid rows) it spans
+         GridData!name = GridRows[i]!name             'the patients name
+         NewRows.Add(GridData, iNewRowCount)          'add to the new collection
       End If   
       Inc iNewRowCount
    Next
-   Print NewRows
+   GridRows = modUtil.Copy_Collection(NewRows)        'and copy back to gridRows
    
-   GridRows = modUtil.Copy_Collection(NewRows)
+End
+
+Public Sub AppointmentGrid_Init(starttime As Date, EndTime As Date, appointment_interval As Integer)
+   '---------------------------------------------------------------
+   'Using pre-defined start and end times and appointment intervals
+   'build the grid
+   '---------------------------------------------------------------
+   
+   Dim ihour As Integer = Hour(starttime)
+   Dim iminute As Integer = Minute(starttime)
+   Dim x As Integer
+   
+   gridrows = New Collection
+   
+   Do Until x = -1
+      gridview1.Rows.count += 1 
+      griddata = New Collection
+      griddata!time = Format(Time(ihour, iminute, 0), "hh:nn")
+      griddata!slots = 1
+      gridrows.add(griddata, Str(x))
+      gridview1[x, 0].text = Format(Time(ihour, iminute, 0), "hh:nn") 
+      gridview1.rows[x].height = griddata!slots * irowheight
+      iminute += appointment_interval
+      If iminute = 60 Then
+         Inc ihour
+         iminute = 0
+      End If   
+      If ihour = Hour(EndTime) Then
+         If iminute > Minute(Endtime) Then
+            Break
+         End If    
+      Endif
+      Inc x
+   Loop
    
 End
 
 Public Sub Gridview1_Rebuild(data As Collection)
-   
+   '----------------------------------------------------
+   'Using the underlying collection of appointment times
+   're-build the grid
+   '-----------------------------------------------------   
+
    Dim i As Integer
-   
-   Dim pic As Picture = Picture["icons/20/green_dot.png"]
    
    Gridview1.Clear()
    Gridview1.Rows.count = data.count
@@ -202,30 +214,44 @@ Private Sub Settings_Load()
 End
 
 Public Sub Gridview1_Keypress()
-   ' 
+   '------------------------------------------------------------------------------
+   'Keypress detected coming from the grid - ie using typing whilst grid has focus
+   '------------------------------------------------------------------------------   
 
-    
    If bExit Then Return 
-   'bexit = True
-   '  Print Key.code 
    
-   Try txtAppointment.text = Chr(Key.code)
-   GridView1_DblClick()
+   If txtAppointment.text = "" Then
+      '----------------------------------------------------------- 
+      'user has just started typing whilst the gridview1 has focus
+      '----------------------------------------------------------- 
+      If Key.code > 64 And Key.code < 91 Then         'capture first keypress of the user
+         Try txtAppointment.text = Chr(Key.code)      'if valid a-z and put it into the txtAppointment
+         GridView1_DblClick()                         'and enter edit mode to allow typing/searching
+      End If   
+   Else
+      '------------------------------------------------------------------- 
+      'user just has hit <enter> key = assume they want to enter edit mode
+      '------------------------------------------------------------------- 
+      If Key.code = Key.return Then 
+         Try txtAppointment.text = Chr(Key.code) 
+         GridView1_DblClick()
+      End If   
+   End If 
    
 End
 
-
-
 Public Sub Gridview1_DblClick()
-   '----------------------------------------------
-   'User has double clicked on an appointment slot
-   '----------------------------------------------
+   '----------------------------------------------------------------
+   'User has double clicked on an appointment slot - enter edit mode
+   'figure out which row is selected and if multi-selected, then
+   'move the editing textbox txtAppointment to align to proper place
+   'overlying this appointment slow.
+   '----------------------------------------------------------------
    
    Dim i As Integer
    Dim iSlotCount As Integer
    Dim x As Integer
- 
-   txtAppointment.text = ""                              'clear search textbox FIXME, SHOULD PUT BACK NAME IF ALREADY EXISTS
+   
    bFoundFirst = False  
    For i = 0 To Gridview1.rows.count - 1           'figure out which rows are selected
       x = x + Gridview1.Rows[i].Height
@@ -241,45 +267,28 @@ Public Sub Gridview1_DblClick()
          iSlotCount += GridRows[i]!slots
       Endif
    Next 
-   onrow = iFirstRow  ', Gridview1.Row
+   onrow = iFirstRow  
    Show_EditingTextBox()
    txtAppointment.Height = ((iLastRow - iFirstRow) + 1) * Gridview1.Rows[0].Height + 5
    
 End
 
 Public Sub Gridview1_Select()
-   
-   '  With TextBox1
-   '      .Visible = False   
-   '      .text = ""
-   '  End With
-  ' GridView1[0, 2].Control = txtAppointment
-   
-End
+   '----------------------------------------------------
+   'user has clicked on or otherwise selected a grid row
+   'remove and clear the appointment textbox
+   '----------------------------------------------------   
 
-' Public Sub gridview1_Keypress()
-'    
-'    If bExit Then Return 
-'    bexit = True
-'    Gridview1_DblClick()
-'    TextBox1.text = Asc(Gridview1.Key.code)
-'    bexit = False 
-'    
-' End
-
-Public Sub txtAppointment_Activate()
-   '--------------------------------------------
-   'First, rebuild the array of apointment times
-   '--------------------------------------------
-   
-   ' bExit = False
-   ' Patients_Find()
-   ' textbox1.Visible = False   
+   txtAppointment.visible = False   
+   txtAppointment.text = ""
    
 End
 
 Public Sub Gridview1_Menu()
-   
+   '-------------------------------------------------------------------
+   'User has right mouse clicked on the name column, show them the menu
+   '-------------------------------------------------------------------   
+
    If Gridview1[Gridview1.Row, 2].text = "" Then Return 
    mnuAppointments.Popup()
    
@@ -369,19 +378,53 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
    '-------------------------------------------
    'Loads the patients name for the appointment
    '-------------------------------------------
+   
    Me.Parent.Parent.Parent.Visible = True       're-show the appointment grids
    txtAppointment.text = patient!wholename & " [" & Format(patient!birthdate, "dd/mm/yyyy") & "] " & Trim(patient!street1 & " " & patient!street2) & " " & patient!town
-   Save(patient)
+   ' Save(patient)
+   Print gridrows[onrow]
+   
    GridData_Rebuild()
+   Save(patient)
+   Print gridrows
    Gridview1_Rebuild(GridRows)
    gridview1.SetFocus()
    
 End
 
 Public Sub Save(patient As Collection)
+   ' pk bigserial NOT NULL,
+   '   fk_patient integer,
+   '   fk_staff integer NOT NULL,
+   '   "begin" timestamp without time zone,
+   '   duration interval,
+   '   notes text,
+   '   fk_staff_booked integer NOT NULL,
+   '   fk_clinic timestamp without time zone NOT NULL DEFAULT now()
    
+   Dim appointment As New Collection 
+   Dim cAppointment As CRow   
+   Dim starttime As Date
+   Dim Endtime As Date
    
+   appointment!fk_patient = patient!fk_patient  
+   appointment!fk_staff = staff_member!fk_staff
    
+   If InStr(gridrows[onrow]!time, "-") Then
+   Else
+     ' appointment!begin = gridrows[onrow]!time
+      appointment!begin = Date(Year(appointment_date), Month(appointment_date), Day(appointment_date), Hour(gridrows[onrow]!time), Minute(gridrows[onrow]!time), 0)
+      appointment!duration = Str(appointment_interval) & " minutes"
+      
+    
+   Endif
+   appointment!notes = gridrows[onrow]!notes
+   appointment!fk_staff_booked = modDBConnect.currentUser!fk_staff 
+   appointment!fk_clinic = fk_clinic  
+   modDBConnect.BeginTrans()
+   cAppointment = New CRow(appointment)
+   modAppointmentsDBI.Appointment_Save(cAppointment)
+   modDBConnect.CommitTrans()
 End
 
 Public Sub SelectPatient_click()                                       
@@ -417,12 +460,16 @@ Public Sub TextBox2_Change()
 End
 
 Public Sub Show_EditingTextBox()
+   '--------------------------------------------------------------------------------------------
    'Displays the editing textbox
    'Copied some of this code from the gambas IDE so can't remmber reason for use of the hEditor   
+   '--------------------------------------------------------------------------------------------
+   
    Dim sAppointment As String  'the contents of the grid column with patients 
    Dim hEditor As Object 
    
    hEditor = txtAppointment
+   Print txtAppointment.text, " was the text"
    txtAppointment.ReadOnly = False
    $hEditor = hEditor
    Move_EditingTextBox
@@ -431,6 +478,12 @@ Public Sub Show_EditingTextBox()
    $hEditor.SetFocus
    $hEditor = txtAppointment 
    txtAppointment.SelectAll
+   If Not IsNull(gridrows[onrow]!name) Then
+      txtAppointment.text = gridrows[onrow]!name
+   Else
+      '
+      txtAppointment.pos = Len(txtAppointment.text) 
+   End If   
    
 End
 
@@ -441,31 +494,14 @@ Public Sub Move_EditingTextBox()
    If IsNull($hEditor) Then Return
    
    With gridview1[gridview1.Row, 2]
-      
-     ' panEditor.Move(gridview1.X + .X - gridview1.ScrollX, gridview1.Y + .Y - gridview1.ScrollY, .Width, .Height)
-     ' panEditor.Raise
       txtAppointment.Move(gridview1.X + .X - gridview1.ScrollX, gridview1.Y + itop - gridview1.ScrollY, .Width, ((iLastRow - iFirstRow) + 1) * Gridview1.Rows[0].Height + 5)
-     ' txtAppointment.Raise 
    End With
    
 End
 
 Public Sub Gridview1_Scroll()
    
+   If gridview1.row = -1 Then Return 
    Move_EditingTextBox
    
 End
-
-Public Sub Gridview1_MouseUp()
-   
-  ' Show_EditingTextBox
-   
-End
-
-Public Sub Button1_Click()
-
-   Print "irowheight", irowheight
-   Print txtAppointment.Height, "= txtappointment.height"
-
-End
-

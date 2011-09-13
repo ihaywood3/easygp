@@ -7,7 +7,7 @@ create table clerical.sessions (
     weekday smallint, 
     of_month boolean[5] default '{true,true,true,true,true}' 
 );
-
+grant all on table clerical.sessions to staff;
 
 comment on table clerical.sessions is 'list of all sessions currently running at a clinic';
 comment on column clerical.sessions.of_month is 'which weeks of the month the session runs for fortnightly/monthly sessions';
@@ -20,12 +20,12 @@ create table clerical.bookings (
       "begin" timestamp,
       "duration" interval,
       notes text,
-      booked_by integer not null references admin.staff (pk),
-      booked_at timestamp not null default now ()
+      deleted boolean not null default 'f'
 );
 
 comment on table clerical.bookings is 'list of all bookings past and future. Note fk_patient can be NULL for non-patien things: meetings, holidays etc';
 
+grant all on table clerical.bookings to staff;
 
 CREATE FUNCTION clerical.listsessions(timestamp, integer) RETURNS SETOF clerical.sessions AS $$
     select * from clerical.sessions where fk_clinic = $2 and weekday = extract(dow from $1)
@@ -33,6 +33,8 @@ CREATE FUNCTION clerical.listsessions(timestamp, integer) RETURNS SETOF clerical
 $$ LANGUAGE SQL;
 
 comment on function clerical.listsessions is 'returns sessions for all doctors on a particular calendar day'; 
+
+grant execute on function clerical.listsessions(timestamp,integer) to staff;
 
 CREATE TABLE clerical.schedule (
 	pk serial primary key,
@@ -48,6 +50,8 @@ comment on table clerical.schedule is 'the Schedule of Fees';
 comment on column clerical.schedule.mbs_item is 'the item number in the Medicare Benefits Schedule, NULL only if only appears on AMA Schedule';
 comment on column clerical.schedule.ama_item is 'the item number in the AMA version of the schedule, if used, otherwise NULL';
 
+grant all on table clerical.schedule to staff;
+
 create table clerical.lu_billing_type (
 	"name" text not null unique,
 	pk integer primary key
@@ -62,6 +66,7 @@ insert into clerical.lu_billing_type (pk,"name") values (6,'WorkCover');
 insert into clerical.lu_billing_type (pk,"name") values (7,'TAC');
 insert into clerical.lu_billing_type (pk,"name") values (8,'Medico-legal');
 
+grant select on table clerical.lu_billing_type to staff;
 
 create table clerical.prices (
 	fk_schedule integer not null references clerical.schedule (pk),
@@ -73,6 +78,7 @@ create table clerical.prices (
 
 comment on column clerical.prices.price is 'the price to the patient';
 
+grant select on table clerical.prices to staff;
 
 create table clerical.invoices (
 	pk serial primary key,
@@ -85,6 +91,8 @@ create table clerical.invoices (
         raised timestamp not null default now(),
 	paid boolean not null default false
 );
+
+grant all on clerical.invoices to staff;
 
 create table clerical.items_billed (
 	pk serial8 primary key,
@@ -102,6 +110,8 @@ create table clerical.payments_received (
 	"when" timestamp not null default now()
 );
 
+grant all on clerical.payments_received to staff;
+
 create function invoice_total(integer) returns money as  $$
     select sum(patient_charge) from clerical.items_billed where fk_invoice=$1; $$ 
 language sql;
@@ -109,6 +119,9 @@ language sql;
 create function invoice_received(integer) returns money as $$
     select sum(amount) from clerical.payments_received where fk_invoice=$1;$$
 language sql;
+
+grant execute on function invoice_total(integer) to staff;
+grant execute on function invoice_received(integer) to staff;
 
 create view clerical.vwinvoices as 
 	select pk as pk_invoice, 
@@ -121,3 +134,5 @@ create view clerical.vwinvoices as
 	invoice_received(pk) as paid
 from
 	clerical.invoices;
+
+grant select on clerical.vwinvoices to staff;

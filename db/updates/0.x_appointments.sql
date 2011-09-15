@@ -20,6 +20,8 @@ create table clerical.bookings (
       "begin" timestamp,
       "duration" interval,
       notes text,
+      fk_staff_booked integer not null,
+      fk_clinic integer not null,
       deleted boolean not null default 'f'
 );
 
@@ -136,3 +138,25 @@ from
 	clerical.invoices;
 
 grant select on clerical.vwinvoices to staff;
+Create or replace view clerical.vwAppointments as
+SELECT 
+  clerical.bookings.pk,
+  clerical.bookings.fk_staff,
+  clerical.bookings.begin,
+  clerical.bookings.duration,
+  clerical.bookings.notes,
+  clerical.bookings.fk_staff_booked,
+  clerical.bookings.fk_clinic,
+  clerical.bookings.deleted,
+  admin.vwstaffinclinics.wholename AS staff_booked_wholename,
+  admin.vwstaffinclinics.title AS staff_booked_title,
+  contacts.vwpatients.*
+  from
+  clerical.bookings
+  INNER JOIN admin.vwstaffinclinics ON (clerical.bookings.fk_staff_booked = admin.vwstaffinclinics.fk_staff)
+  LEFT OUTER JOIN contacts.vwpatients ON (clerical.bookings.fk_patient = contacts.vwpatients.fk_patient)
+  order by begin;
+
+  ALTER TABLE clerical.vwAppointments OWNER TO easygp;
+GRANT ALL ON TABLE clerical.vwAppointments TO easygp;
+GRANT SELECT ON TABLE clerical.vwtaskscomponents TO staff;

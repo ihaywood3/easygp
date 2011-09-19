@@ -29,7 +29,7 @@ Public Sub Print_PDF(pdf_path As String, Optional printertype As Integer = const
    pdf_path = Replace$(pdf_path, " ", "\\ ")
    cmd &= " " & GetOption(printertype)!lpr & " -# " & number_copies & " " & pdf_path
    'cmd &= " " & GetLprOption(printertype) & " -# " & number_copies & " " & pdf_path
-
+   
    Shell cmd Wait
    Dec Application.Busy
    
@@ -43,7 +43,7 @@ Public Function Latex_To_PDF(latex As String) As String
    Dim stem As String
    Dim f As File
    Dim cmd As String
- 
+   
    Inc Application.Busy  
    stem = Temp$("printl")
    f = Open stem & ".tex" For Write Create
@@ -69,7 +69,6 @@ Public Sub Print_latex(latex As String, Optional printertype As Integer = const.
    Dim cmd As String
    Dim coll As Collection
    
-     
    stem = Temp$("printl")
    f = Open stem & ".tex" For Write Create
    Print #f, latex
@@ -94,6 +93,7 @@ Finally
    Dec Application.Busy
 Catch
    Message.Error(Error.Text, "OK")
+   
 End
 
 Public Sub PrintHtml(sHtml As String, Optional printertype As Integer = const.Paper_Plain)
@@ -107,7 +107,6 @@ Public Sub PrintHtml(sHtml As String, Optional printertype As Integer = const.Pa
    
    If sHtml = "" Then Return
    cmd = modUtil.FindProgram("wkhtmltopdf", "wkhtmltopdf")
-   Print sHtml
    If IsNull(cmd) Then Return
    lpr = modUtil.FindProgram("lpr", "cups")
    If IsNull(lpr) Then Return
@@ -130,7 +129,7 @@ Public Function Write_HTML(sHTML As String, Optional prefix As String = "html") 
    '----------------------------------------------------------------
    'expects some html, returns a temporary filename it is written to
    '----------------------------------------------------------------  
-
+   
    Dim wFile As File
    Dim sFilename As String
    
@@ -139,10 +138,57 @@ Public Function Write_HTML(sHTML As String, Optional prefix As String = "html") 
    Print #wfile, sHTML
    Close #wfile
    Return sFilename
-
+   
 End
 
-Public Function Make_PDF(sections As Collection, Optional orientation As Integer = const.orientation_portrait, Optional cover_page As String = "", Optional bPrintTOC As Boolean = False, Optional output_filename As String = "any", Optional pb As ProgressBar) As String 
+Public Function Make_PDF_From_Html(sHtml As String, Optional orientation As Integer = const.orientation_portrait, Optional cover_page As String = "", Optional bPrintTOC As Boolean = False, Optional output_filename As String = "any", Optional pb As ProgressBar) As String 
+   '--------------------------------------------------------
+   'Makes a PDF file from some html and returns the filename
+   '-------------------------------------------------------- 
+   
+   Dim section As String
+   Dim shell_text As String 
+   Dim progressbar_interval As Float
+   Dim page_orientation As String
+   Dim tempfile As String
+   Dim pro As Process
+   Dim cmd As String
+   
+   If orientation = const.orientation_landscape Then
+      page_orientation = "landscape"
+   Else
+      page_orientation = "portrait"
+   End If
+   'FIXME - FIGURE OUT HOW TO MAKE PROGRESS BAR WORK
+ '  progressbar_interval = 1 / (sections.Count + 1)
+   
+   '----------------------------------------------------------------------------------------------------------
+   'Construct the text to pass to the shell, first page orientation, toc, then headers, footers and coversheet
+   '----------------------------------------------------------------------------------------------------------
+   cmd = modUtil.FindProgram("wkhtmltopdf", "wkhtmltopdf")
+   If IsNull(cmd) Then Return
+   shell_text = cmd & " -O " & page_orientation 
+   shell_text &= " --margin-bottom 15 --header-right 'Page [page]' --footer-center '- EasyGP Medical Records -' --footer-spacing 1 --footer-font-name 'comic sans ms' " 
+   If cover_page <> "" Then
+      shell_text &= " --cover " & Write_HTML(cover_page, "cover_page") & " "
+   End If
+   If Not IsNull(pb) Then 
+      pb.value = pb.value + progressbar_interval
+      Wait
+   Endif
+   shell_text &= Write_HTML(sHTML) & " " 
+   shell_text &= "/tmp/" & output_filename
+   '------------------------------------------------------------------------------------------------------------
+   'This now looks like: wkhtmltopdf -O portrait ..flags.... file1.html .... /tmp/output_filename.pdf
+   '------------------------------------------------------------------------------------------------------------
+   pro = Shell shell_text For Write 
+   Close #pro
+   pb.value = 1.0                                        're-set progress bar
+   Return "/tmp/" & output_filename   
+   
+End
+
+Public Function Make_PDF_From_HTML_Pages(sections As Collection, Optional orientation As Integer = const.orientation_portrait, Optional cover_page As String = "", Optional bPrintTOC As Boolean = False, Optional output_filename As String = "any", Optional pb As ProgressBar) As String 
    '--------------------------------------------------------------------------------------------
    'takes a number of html pages and joins into single pdf using wkhtmltopdf-static (QT patched) 
    'if cover_page <> "" then it is the html for a coversheet
@@ -357,6 +403,7 @@ End
 Private Function GetLprOption(printertype As Integer) As String
    'put back in temporarily to get me functional again
    'till ian fixes somes bugs
+   
    Dim config_printer As String
    Dim printername As String
    Dim printer_options As String
@@ -433,29 +480,27 @@ End
 
 Public Function SplitOptions(opts As String) As Collection
    
-  ' splits options string into dvips and lpr options strings
-  
-  Dim res As String[] = ["-O \\S+", "-T \\S+"]
-  Dim i As String
-  Dim re As Regexp
-  Dim dvips_opts As String
-  Dim lpr_opts As String
-  
-  dvips_opts = ""
-  For Each i In res
-    If opts = "" Then Break 
-    re = New Regexp(opts, i)
-    If re.Offset > -1 Then
-      dvips_opts &= " " & re.Text
-      opts = Left$(opts, re.Offset) & Right$(opts, Len(opts) - (re.Offset + Len(re.Text)))
-    End If
-  Next
+   ' splits options string into dvips and lpr options strings
    
-  Return ["lpr": opts, "dvips": dvips_opts] 
+   Dim res As String[] = ["-O \\S+", "-T \\S+"]
+   Dim i As String
+   Dim re As Regexp
+   Dim dvips_opts As String
+   Dim lpr_opts As String
+   
+   dvips_opts = ""
+   For Each i In res
+      If opts = "" Then Break 
+      re = New Regexp(opts, i)
+      If re.Offset > -1 Then
+         dvips_opts &= " " & re.Text
+         opts = Left$(opts, re.Offset) & Right$(opts, Len(opts) - (re.Offset + Len(re.Text)))
+      End If
+   Next
+   
+   Return ["lpr": opts, "dvips": dvips_opts] 
+   
 End
-
-
-
 
 Public Sub UnitTest(form_main As FMain)
    

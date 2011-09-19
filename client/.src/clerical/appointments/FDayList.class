@@ -35,14 +35,17 @@ Private i As Integer
 Public iFirstRow As Integer
 Private iLastRow As Integer
 Private bFoundFirst As Integer
-Private PregnancyIcon As Picture = Picture["icons/20/pregnancy.png"]
-Private BloodTestIcon As Picture = Picture["icons/16/bloodtube16x16.png"]
-Private ProcedureIcon As Picture = Picture["icons/24/glove-scalple_2424.png"]
-Private MentalHealthPlan As Picture = Picture["icons/22/face-smile.png"]
-Private ScriptIcon As Picture = Picture["icons/20/pill2020.png"]
-Private ImmunizationIcon As Picture = Picture["icons/20/syringe2020.png"]
-Private WorkcoverIcon As Picture = Picture["icons/20/workcover2020.png"]  
-Private CheckupIcon As Picture = Picture["icons/22/heart.png"]
+Private appointment_icons As Collection
+Private fk_lu_appointment_icon As Integer
+' Private PregnancyIcon As Picture = Picture["icons/20/pregnancy.png"]
+' Private BloodTestIcon As Picture = Picture["icons/16/bloodtube16x16.png"]
+' Private ProcedureIcon As Picture = Picture["icons/24/glove-scalple_2424.png"]
+' Private MentalHealthPlan As Picture = Picture["icons/22/face-smile.png"]
+' Private ScriptIcon As Picture = Picture["icons/20/pill2020.png"]
+' Private ImmunizationIcon As Picture = Picture["icons/20/syringe2020.png"]
+' Private WorkcoverIcon As Picture = Picture["icons/20/workcover2020.png"]  
+' Private CheckupIcon As Picture = Picture["icons/22/heart.png"]
+
 Private irowheight As Integer = 18 'fix me
 Private staff_photo As Picture
 Private staff_member As Collection
@@ -56,7 +59,7 @@ Private appointment As Collection
 Private appointment_Date As Date
 Public patient As Collection 
 
-Public Sub Init(sm As Collection, app_date As Date, clinic_key As Integer)
+Public Sub Init(sm As Collection, app_date As Date, clinic_key As Integer, icons As Collection)
    '----------------------------------------------------------
    'initialise the appointment module from  FMakeAppointments 
    'embryonic so don't worry about the fixed values they will be
@@ -67,6 +70,7 @@ Public Sub Init(sm As Collection, app_date As Date, clinic_key As Integer)
    fk_staff = staff_member!fk_staff
    fk_clinic = clinic_key
    Appointment_Date = app_date
+   appointment_icons = icons
    txtAppointment.height = irowheight                                    'grid rows = same height as our textbox
    Me.title = UCase(staff_member!title & " " & staff_member!wholename)   'will appear on the tab                     'heading e.g "appointments for 01/01/2011"
    lblDate.text = Format(appointment_date, gb.LongDate)                        'Wednesay 18th September   
@@ -76,14 +80,44 @@ Public Sub Init(sm As Collection, app_date As Date, clinic_key As Integer)
    'for each staff member and each day as appropriate
    '------------------------------------------------------------------
    With gridview1                                                                                                             
-      .columns.count = 3 
+      .columns.count = 4
       .columns[0].width = 80                                            'col 0=time
       .columns[1].width = 24                                             'col 1=icon
       .columns[2].width = gridview1.width - 104                          'col 2=the appointment details
+      .columns[3].width = 0                                              'col 2=the appointment details
+      
    End With
    appointment_interval = 10 'fix me get me from backend (when done)  
+   
    GridRows_Init(Time(8, 30, 0), Time(18, 0, 0), appointment_interval)   'fill empty collection with times
    Reload()                                                              'load the days appointments
+   
+End
+
+Public Sub Form_KeyPress()
+   
+   Dim CtrlDown As Boolean
+   Dim FnDown As Boolean
+   
+   Select Case Key.Code
+      Case key.F12
+         
+   End Select
+   Try CtrlDown = Key.Control
+   If CtrlDown Then
+      bExit = True 
+      
+      Select Case Key.code
+            
+         Case Asc("W")
+            Gridview1_Set_RowColor(Color.blue)
+         Case Asc("G")
+            Gridview1_Set_RowColor(Color.LightGray)
+         Case Asc("N")
+            Gridview1_Set_RowColor(Color.Black)            
+      End Select
+      Stop Event
+   End If
    
 End
 
@@ -121,14 +155,13 @@ Public Sub GridRows_Init(starttime As Date, EndTime As Date, appointment_interva
    
 End
 
-
-
 Public Sub Reload()
    '----------------------------------------------------------
    'Get any existing appointments for the day from the backend
    'Merge these with the initialised gridrows collection
    'and fill gridview1 with the appointments.
    '----------------------------------------------------------   
+
    Appointments = modAppointmentsDBI.Appointments_GetDay(appointment_date, fk_staff, fk_clinic)
    GridRows_Update()
    Gridview1_Rebuild(gridrows)
@@ -170,6 +203,7 @@ Public Sub GridRows_Update()
                   gridrows[i]!time = sTime
                   gridrows[i]!name = appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] " & Trim(appointment!street1 & " " & appointment!street2) & " " & appointment!town
                   gridrows[i]!slots = slots
+                  gridrows[i]!pk_appointment = appointment!pk
                   For x = 1 To slots - 1
                      gridrows.Remove(i + x)
                   Next
@@ -186,6 +220,7 @@ Public Sub GridRows_Update()
             If Not IsNull(gridrows[i]) Then    
                If gridrows[i]!time = stime Then
                   gridrows[i]!name = appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] " & Trim(appointment!street1 & " " & appointment!street2) & " " & appointment!town
+                  gridrows[i]!pk_appointment = appointment!pk
                Endif
             End If
          Next
@@ -197,12 +232,13 @@ Public Sub GridRows_Update()
    '----------------------------------------------------------------------------------------------   
    x = 0
    For i = 0 To GridRows.Count - 1
-        If Not IsNull(GridRows[i]) Then 
-           NewRows.Add(GridRows[i], x)
-           Inc x
-        End If 
+      If Not IsNull(GridRows[i]) Then 
+         NewRows.Add(GridRows[i], x)
+         Inc x
+      End If 
    Next
    GridRows = modUtil.Copy_Collection(NewRows)
+
 End
 
 Public Sub GridData_Rebuild()
@@ -226,9 +262,11 @@ Public Sub GridData_Rebuild()
             GridData!time = GridRows[i]!time          'put in the time of the appointment
             GridData!picture = GridRows[i]!picture    'any associated icon e.g for pregnancy check
             GridData!slots = 1                        'and it only takes up one time slot
+            GridData!pk_appointment = GridRows[i]!pk_appointment
          Else                                         'otherwise - they must have selected > 1 rows
             GridData!time = GridRows[i]!time & "-" & GridRows[iLastRow + 1]!time 'time e.g 9:00-9:20
             GridData!picture = GridRows[i]!picture    'plus any icon
+            GridData!pk_appointment = GridRows[i]!pk_appointment
             GridData!slots = iLastRow + 1 - iFirstRow 'and covering however many of standard grid heights
             i = i + iLastRow - iFirstRow              'increment the loop counter
          End If 
@@ -239,16 +277,15 @@ Public Sub GridData_Rebuild()
          GridData!time = GridRows[i]!time             'put in existing time
          GridData!slots = GridRows[i]!slots           'the number of slots (or grid rows) it spans
          GridData!name = GridRows[i]!name             'the patients name
+         GridData!pk_appointment = GridRows[i]!pk_appointment
          NewRows.Add(GridData, iNewRowCount)          'add to the new collection
+         
       End If   
       Inc iNewRowCount
    Next
    GridRows = modUtil.Copy_Collection(NewRows)        'and copy back to gridRows
    
 End
-
-
-
 
 Public Sub Gridview1_Rebuild(data As Collection)
    '----------------------------------------------------
@@ -279,18 +316,16 @@ End
 
 Public Sub mnuAppointments_Click()
    
-   Print Last.Picture
-   Gridview1[Gridview1.Row, 1].Picture = Last.Picture
-   GridRows[Gridview1.Row]!picture = Last.Picture
-   Return 
    Select Case Last.tag
-      Case "ante-natal"
-         Gridview1[Gridview1.Row, 1].Picture = PregnancyIcon
-         GridRows[Gridview1.Row]!picture = PregnancyIcon
-      Case "blood test"
-         Gridview1[Gridview1.Row, 1].Picture = BloodTestIcon
-         GridRows[Gridview1.Row]!picture = BloodTestIcon
-   End Select 
+      Case "delete"
+      Case Else 
+         Gridview1[Gridview1.Row, 1].Picture = Last.Picture
+        ' Gridview1[Gridview1.Row, 3].text = Last.tag
+         GridRows[Gridview1.Row]!picture = Last.Picture
+        ' GridRows[Gridview1.Row]!fk_lu_appointment_type = Last.tag
+         fk_lu_appointment_icon = Last.tag
+         Save_Appointment_Icon()
+   End Select
    
 End
 
@@ -371,8 +406,15 @@ Public Sub Gridview1_Select()
    
    txtAppointment.visible = False   
    txtAppointment.text = ""
-   
+   Print appointments
+   Print onrow
 End
+
+Public Sub Gridview1_Set_RowColor(rowcolor As Integer)
+
+   Gridview1[Gridview1.Row, 2].Foreground = rowcolor
+
+End 
 
 Public Sub Gridview1_Menu()
    '-------------------------------------------------------------------
@@ -457,6 +499,7 @@ Public Sub Patients_Find(Optional fk_patient As Integer)
    End If   
    bExit = False  
    Dec application.Busy
+
 End
 
 Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean, Optional P As Picture) 
@@ -470,6 +513,11 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
    GridData_Rebuild()
    Save(patient)
    gridview1.SetFocus()
+   
+End
+Public Sub Save_appointment_icon()
+   
+   
    
 End
 
@@ -505,6 +553,7 @@ Public Sub Save(patient As Collection)
    appointment!notes = gridrows[onrow]!notes
    appointment!fk_staff_booked = modDBConnect.currentUser!fk_staff 
    appointment!fk_clinic = fk_clinic  
+   appointment!fk_appointment_icon = fk_lu_appointment_icon
    modDBConnect.BeginTrans()
    modAppointmentsDBI.Appointment_Save(appointment)
    modDBConnect.CommitTrans()
@@ -541,6 +590,7 @@ Public Sub TextBox2_Change()
    'This is triggered externally by the FPatientSelect form
    'when > 1 patient name for the search criteria
    '-------------------------------------------------------   
+
    If Len(Last.text) Then
       patient_load_record(patient, True) 
    Endif

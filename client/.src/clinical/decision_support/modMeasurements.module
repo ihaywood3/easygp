@@ -1,20 +1,67 @@
 ' Gambas module file
 
+Public Function Measurement_Fix_Common_Typos(sMeasurement As String, delimeter As String, keyword As String) As String
+   '------------------------------------------------------------
+   'A crude attempt IAN FIXME to fix common typos
+   'eg user could have typed in 170/100, or 170,/100 or 170a/100
+   '------------------------------------------------------------
+   Dim chars As New String[]
+   Dim single_char As String 
+   Dim sNewString As String
+   Dim x As Integer
+   
+   sMeasurement = Trim(Replace(sMeasurement, keyword, ""))
+   For x = 1 To Len(sMeasurement)
+      single_char = Mid(sMeasurement, x, 1)
+      chars.Add(single_char, x) 
+    
+   Next
+   
+   
+   For Each single_char In chars
+       If IsNumber(single_char) Then
+         sNewString &= single_char
+       Else
+         If single_char = delimeter And IsNumber(sNewstring) Then
+           If Not InStr(sNewString, delimeter) Then
+             sNewString &= delimeter
+           End If 
+         End If
+       End If  
+    Next
+
+   Return keyword & sNewString
+   
+End
+
 Public Function IsMeasurement(te As Textedit, keyword As String, sMeasurement As String) As Boolean
-   '-------------------------------------------------------------------------------
+   '-------------------------------------------------------------------------------------------
    'Attempts to validate a measurement is valid and insert html into the texteditor
    'currently minimal validation FIXME: make me smarter
-   'at moment this routine is duplicated in FProgressNoteEditor needs to be 
-   'removed from that.
-   '-------------------------------------------------------------------------------
+   'at moment this routine is duplicated in FProgressNoteEditor needs to be  removed from that.
+   'possiblemeasurement = the original text which could contain junk or misspelt bits
+   'this will be auto-corrected to some degree, and is the text later replaced with the
+   'validated measurment
+   '
+   '1) works out from keyword the delimiter
+   '2) if no delimeter in the measurement return false 
+   '3) strips out common typos eg, user could have put in extra space, or comma or slash
+   '4) if no number to right and left of delimeter return false
+   '5) Finally if all seems ok, then put the measurement into a href tag
+   '-------------------------------------------------------------------------------------------
    
    Dim Delimiter As String
    Dim charpos As Integer
-   Dim SS As String
+   Dim measurement_only As String
    Dim html_aref_tag As String
    Dim html_text As String
    Dim sUnits As String
-
+   Dim sLeftside_number As String
+   Dim sRightside_number As String
+   Dim curpos As Integer
+   
+   Dim Possiblemeasurement As String = sMeasurement
+   
    Select Case keyword
       Case "bp="
          Delimiter = "/"
@@ -37,22 +84,22 @@ Public Function IsMeasurement(te As Textedit, keyword As String, sMeasurement As
          html_aref_tag = "blood Sugar"
          sUnits = "mmole"
    End Select
-   SS = Right(sMeasurement, Len(sMeasurement) - InStr(sMeasurement, "="))
-   charpos = InStr(SS, delimiter)
-   Try Val(Left(SS, charpos - 1))
-   If Error Then Return False
-   Try Right(SS, Len(SS) - charpos)
-   If Error Then Return False
-   te.RichText = Replace$(LCase(te.RichText), keyword & SS, "<A HREF='" & html_aref_tag & "'>" & html_text & "=" & SS & sUnits & "</A><BR>")
-   te.pos = InStr(te.text, html_text & "=" & SS & sunits) + Len(html_text & " = " & SS & sUnits)
-   ' If keyword = "h=" Then
-   '    sHeight = SS 
-   '    CalcBMI()
-   ' End If
-   ' If keyword = "w=" Then
-   '    sWeight = SS
-   '    CalcBMI()
-   ' Endif
+   sMeasurement = Measurement_Fix_Common_Typos(sMeasurement, Delimiter, keyword)             'strip out blanks, non valid characters
+   measurement_only = Right(sMeasurement, Len(sMeasurement) - InStr(sMeasurement, "="))      'eg bp=120/70 now measurement_only = 120/70
+   charpos = InStr(measurement_only, delimiter)                                              'does it contain a delimeter?
+   If Not charpos Then Return                                                                'no? then not valid, so return false
+   sLeftside_number = Left(measurement_only, charpos - 1)                                    'left side of the delimeter eg 120
+   sRightside_number = Right(measurement_only, Len(measurement_only) - charpos)              'right side of the delimeter eg 70
+   If Not (IsNumber(sLeftside_number) And IsNumber(Right(measurement_only, Len(measurement_only) - charpos))) Then Return  'not numbers? > return false
+   sLeftside_number = Str(Val(sLeftside_number))                                             'this will strip out leading zeros eg 090 now 90
+   sRightside_number = Str(Val(sRightside_number))
+   If Delimiter = "/" And Val(sLeftside_number) < Val(sRightside_number) Then Return          'if BP systolic must be > diastolic
+   If Delimiter = "/" And InStr(measurement_only, ".") Then 
+      measurement_only = Replace(measurement_only, ".", "") 'because isnumber("." returns true)
+   End If   
+   '----------------------------------------------------------------------------------------
+   'At this point have hopefully some sort of valid measurement string, put it into the html
+   '----------------------------------------------------------------------------------------
+   te.RichText = Replace$(LCase(te.RichText), Possiblemeasurement, "<A HREF='" & html_aref_tag & "'>" & html_text & "=" & measurement_only & " " & sUnits & "</A><BR>")
    Return True
-   
 End

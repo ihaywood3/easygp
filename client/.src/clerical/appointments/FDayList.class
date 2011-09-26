@@ -16,8 +16,8 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '--------------------------------------------------------------------------
 'PURPOSE          A form to display and enter appointment for a single day
-'TODO             IAN TO RE-WRITE THIS MODULE USING PROPER LOGIC
-'                 CODE IN THIS MODULE SUCKS BADLY - TOTALLY WRONG!
+'TODO             Implement quite a few of the popup menu options
+'                 load appointment grid time intervals from session setup
 '-------------------------------------------------------------------------
 
 Private $iLast As Integer
@@ -37,7 +37,12 @@ Private iLastRow As Integer
 Private bFoundFirst As Integer
 Private appointment_icons As Collection
 Private fk_lu_appointment_icon As Integer
-
+Private Const appointment_made As Integer = 1
+Private Const arrived_and_waiting As Integer = 2
+Private Const in_consulting_room As Integer = 3
+Private Const patient_departed As Integer = 4
+Private fk_lu_appointment_status As Integer  '1-4 see clerical.lu_appointment_status
+Private Appointment_Status_Colors As String[]
 Private irowheight As Integer = 18 'fix me
 Private staff_photo As Picture
 Private staff_member As Collection
@@ -52,36 +57,36 @@ Private appointment_Date As Date
 Public patient As Collection 
 
 Public Sub Init(sm As Collection, app_date As Date, clinic_key As Integer, icons As Collection)
-   '----------------------------------------------------------
+   '-------------------------------------------------------------------
    'initialise the appointment module from  FMakeAppointments 
-   'embryonic so don't worry about the fixed values they will be
+   'sm= the staff member
+   'app-date = the date of this apointment grid
+   'icons= collection from backend of icons for the grid eg home visit
    'later grabbed from the backend
-   '----------------------------------------------------------
+   '-------------------------------------------------------------------
    
-   staff_member = sm
+   staff_member = sm                                                   
    fk_staff = staff_member!fk_staff
    fk_clinic = clinic_key
    Appointment_Date = app_date
    appointment_icons = icons
    txtAppointment.height = irowheight                                    'grid rows = same height as our textbox
-   Me.title = UCase(staff_member!title & " " & staff_member!wholename)   'will appear on the tab                     'heading e.g "appointments for 01/01/2011"
-   lblDate.text = Format(appointment_date, gb.LongDate)                        'Wednesay 18th September   
-   '------------------------------------------------------------------
-   'Contruct the basic grid
-   'FIXME:later get the times and intervals from backend configuration
-   'for each staff member and each day as appropriate
-   '------------------------------------------------------------------
-   With gridview1                                                                                                             
+   Me.title = UCase(staff_member!title & " " & staff_member!wholename)   'will appear on the tab 
+   lblDate.text = Format(appointment_date, gb.LongDate)                  'Wednesay 18th September   
+   With gridview1                                                        'construct the basic grid                             
       .columns.count = 4
-      .columns[0].width = 80                                            'col 0=time
+      .columns[0].width = 80                                             'col 0=time
       .columns[1].width = 24                                             'col 1=icon
       .columns[2].width = gridview1.width - 104                          'col 2=the appointment details
-      .columns[3].width = 0                                              'col 2=the appointment details
-      
+      .columns[3].width = 0                                              'col 3=
    End With
    appointment_interval = 10 'fix me get me from backend (when done)  
-   
    GridRows_Init(Time(8, 30, 0), Time(18, 0, 0), appointment_interval)   'fill empty collection with times
+   Appointment_Status_Colors = New String[5]                             'don't use 0 member
+   Appointment_Status_Colors[appointment_made] = Color.Black             
+   Appointment_Status_Colors[arrived_and_waiting] = Color.Blue
+   Appointment_Status_Colors[in_consulting_room] = Color.Red
+   Appointment_Status_Colors[patient_departed] = Color.Gray
    Reload()                                                              'load the days appointments
    
 End
@@ -90,27 +95,24 @@ Public Sub Form_KeyPress()
    
    Dim CtrlDown As Boolean
    Dim FnDown As Boolean
-   
-   Select Case Key.Code
-      Case key.F12
-         
-   End Select
+  
    Try CtrlDown = Key.Control
    If CtrlDown Then
       bExit = True 
-      
-      Select Case Key.code
-            
-         Case Asc("W")
-            Gridview1_Set_RowColor(Color.blue)
-         Case Asc("G")
-            Gridview1_Set_RowColor(Color.LightGray)
-         Case Asc("N")
-            Gridview1_Set_RowColor(Color.Black)            
+        'change grid foreground colours according to control keyc odes
+        Select Case Key.code
+           Case Asc("W")                                    'w=waiting
+            fk_lu_appointment_status = arrived_and_waiting
+         Case Asc("G")                                      'g=gone
+             fk_lu_appointment_status = patient_departed
+         Case Asc("N")                                      'n=normal appointment made
+             fk_lu_appointment_status = appointment_made
+         Case Asc("C")                                      'c=consulting
+            fk_lu_appointment_status = in_consulting_room
       End Select
+      Appointment_Update()
       Stop Event
    End If
-   
 End
 
 Public Sub GridRows_Init(starttime As Date, EndTime As Date, appointment_interval As Integer)
@@ -153,18 +155,19 @@ Public Sub Reload()
    'Merge these with the initialised gridrows collection
    'and fill gridview1 with the appointments.
    '----------------------------------------------------------   
-
+   
    Appointments = modAppointmentsDBI.Appointments_GetDay(appointment_date, fk_staff, fk_clinic)
-   GridRows_Update()
-   Gridview1_Rebuild(gridrows)
+   GridRows_Update()             'update the underlying collection of data
+   Gridview1_Rebuild(gridrows)   'display this in the grid
+   '  If Hour(Now) > 12 And Format(Now, "dd/mm/yyyy") = Format(appointment_Date, "dd/mm/yyyy") Then
+   '    Gridview1.MoveTo(gridview1.rows.count, 1)
+   ' End If
    
 End
 
 Public Sub GridRows_Update()
    '----------------------------------------------
    'Update the contents of the gridrows collection
-   '!time, !name,!picture!slots
-   'really really really crap code
    '---------------------------------------------- 
    
    Dim NewRows As New Collection
@@ -193,11 +196,12 @@ Public Sub GridRows_Update()
                If gridrows[i]!time = sBeginTime Then
                   slots = duration / appointment_interval 
                   gridrows[i]!time = sTime
-                  gridrows[i]!name = appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] " & Trim(appointment!street1 & " " & appointment!street2) & " " & appointment!town
+                  gridrows[i]!name = appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] " ' & Trim(appointment!street1 & " " & appointment!street2) & " " & appointment!town
                   gridrows[i]!slots = slots
                   gridrows[i]!pk_appointment = appointment!pk
                   gridrows[i]!fk_patient = appointment!fk_patient   
                   gridrows[i]!fk_lu_appointment_icon = appointment!fk_lu_appointment_icon
+                  gridrows[i]!fk_lu_appointment_status = appointment!fk_lu_appointment_status
                   Try gridrows[i]!picture = Picture.Load(appointment_icons[appointment!fk_lu_appointment_icon]!icon_path) 'most often there is no icon
                   For x = 1 To slots - 1
                      gridrows.Remove(i + x)
@@ -205,7 +209,6 @@ Public Sub GridRows_Update()
                   Break
                End If   
             Endif
-            
          Next
       Else
          '------------------------------------------------------------- 
@@ -214,10 +217,11 @@ Public Sub GridRows_Update()
          For i = 0 To GridRows.Count - 1
             If Not IsNull(gridrows[i]) Then    
                If gridrows[i]!time = stime Then
-                  gridrows[i]!name = appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] " & Trim(appointment!street1 & " " & appointment!street2) & " " & appointment!town
+                  gridrows[i]!name = appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] "  '& Trim(appointment!street1 & " " & appointment!street2) & " " & appointment!town
                   gridrows[i]!pk_appointment = appointment!pk
                   gridrows[i]!fk_patient = appointment!fk_patient 
                   gridrows[i]!fk_lu_appointment_icon = appointment!fk_lu_appointment_icon
+                  gridrows[i]!fk_lu_appointment_status = appointment!fk_lu_appointment_status
                   Try gridrows[i]!picture = Picture.Load(appointment_icons[appointment!fk_lu_appointment_icon]!icon_path) 'most often there is no icon
                Endif
             End If
@@ -236,7 +240,7 @@ Public Sub GridRows_Update()
       End If 
    Next
    GridRows = modUtil.Copy_Collection(NewRows)
-
+   
 End
 
 Public Sub GridData_Rebuild()
@@ -277,7 +281,6 @@ Public Sub GridData_Rebuild()
          GridData!name = GridRows[i]!name             'the patients name
          GridData!pk_appointment = GridRows[i]!pk_appointment
          NewRows.Add(GridData, iNewRowCount)          'add to the new collection
-         
       End If   
       Inc iNewRowCount
    Next
@@ -286,10 +289,9 @@ Public Sub GridData_Rebuild()
 End
 
 Public Sub Gridview1_Rebuild(data As Collection)
-   '----------------------------------------------------
-   'Using the underlying collection of appointment times
-   're-build the grid
-   '-----------------------------------------------------   
+   '-------------------------------------------------------------------------
+   'Using the underlying collection of appointment times to re-build the grid
+   '-------------------------------------------------------------------------   
    
    Dim i As Integer
    Dim sTimes As String[]
@@ -302,6 +304,7 @@ Public Sub Gridview1_Rebuild(data As Collection)
       Gridview1[i, 1].picture = data[i]!picture
       Gridview1[i, 2].text = data[i]!name
       Gridview1.Rows[i].height = data[i]!slots * irowheight
+      Try Gridview1[i, 2].Foreground = Appointment_Status_Colors[data[i]!fk_lu_appointment_status]  
    Next
    
 End
@@ -313,21 +316,30 @@ Public Sub form_Close()
 End
 
 Public Sub mnuAppointments_Click()
+   '------------------------------------------------------
+   'User has clicked on one of the apointment menu options   
+   '------------------------------------------------------
    
-  
    Select Case Last.tag
       Case "delete"
-      Case "routine"
-       Gridview1[Gridview1.Row, 1].Picture.Clear()
-      ' Reload()
+         modUtil.NotImplemented("Sorry, deleting the patient's apointment is not yet implemented.") 
+      Case "no icon"
+         Gridview1[Gridview1.Row, 1].Picture.Clear()
+         fk_lu_appointment_icon = 0
+      Case "in waiting room"
+         fk_lu_appointment_status = arrived_and_waiting
+      Case "in consulting room"
+         fk_lu_appointment_status = in_consulting_room
+      Case "patient gone"
+         fk_lu_appointment_status = patient_departed
+      Case "help"
+         modUtil.NotImplemented("Sorry, viewing help is not implemented")
+      Case "add fit"
+         modUtil.NotImplemented("Sorry, adding fit-in appointment is not implemented")
       Case Else 
-       
-         Gridview1[Gridview1.Row, 1].Picture = Last.Picture
-         GridRows[Gridview1.Row]!picture = Last.Picture
-         GridRows[Gridview1.Row]!fk_lu_appointment_icon = Last.tag  
-         fk_lu_appointment_icon = Last.tag
-         Save_Appointment_Icon()
+         If IsNumber(Last.tag) Then fk_lu_appointment_icon = Last.tag
    End Select
+   Appointment_Update()
    
 End
 
@@ -394,11 +406,12 @@ Public Sub Gridview1_DblClick()
       Endif
    Next 
    onrow = iFirstRow  
+   fk_lu_appointment_icon = 0
+   fk_lu_appointment_status = appointment_made
    Show_EditingTextBox()
    txtAppointment.Height = ((iLastRow - iFirstRow) + 1) * Gridview1.Rows[0].Height + 5
    
 End
-
 
 Public Sub Gridview1_Select()
    '----------------------------------------------------
@@ -408,15 +421,9 @@ Public Sub Gridview1_Select()
    
    txtAppointment.visible = False   
    txtAppointment.text = ""
-   Print appointments
-   Print onrow
+   onrow = gridview1.row
+   
 End
-
-Public Sub Gridview1_Set_RowColor(rowcolor As Integer)
-
-   Gridview1[Gridview1.Row, 2].Foreground = rowcolor
-
-End 
 
 Public Sub Gridview1_Menu()
    '-------------------------------------------------------------------
@@ -426,9 +433,8 @@ Public Sub Gridview1_Menu()
    If Gridview1[Gridview1.Row, 2].text = "" Then Return 
    onrow = gridview1.row
    iFirstRow = onrow
-    Print gridrows
    mnuAppointments.Popup()
-  
+   
 End
 
 Public Sub Patients_Find(Optional fk_patient As Integer) 
@@ -504,7 +510,7 @@ Public Sub Patients_Find(Optional fk_patient As Integer)
    End If   
    bExit = False  
    Dec application.Busy
-
+   
 End
 
 Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean, Optional P As Picture) 
@@ -520,12 +526,14 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
    gridview1.SetFocus()
    
 End
-Public Sub Save_appointment_icon()
+
+Public Sub Appointment_Update()
+   
    Dim patient As New Collection
- '  GridRows_Update()
- '  GridData_Rebuild()
+   
    patient!fk_patient = gridrows[onrow]!fk_patient 
    Save(patient)
+   
 End
 
 Public Sub Save(patient As Collection)
@@ -557,10 +565,15 @@ Public Sub Save(patient As Collection)
       appointment!begin = Format$(starttime, "dd/mm/yyyy hh:nn")
       appointment!duration = Str(appointment_interval) & " minutes"
    Endif
+   If Not IsNull(gridrows[onrow]!pk_appointment) Then
+      appointment!pk = gridrows[onrow]!pk_appointment
+   Endif
+   
    appointment!notes = gridrows[onrow]!notes
    appointment!fk_staff_booked = modDBConnect.currentUser!fk_staff 
    appointment!fk_clinic = fk_clinic  
    appointment!fk_lu_appointment_icon = fk_lu_appointment_icon
+   appointment!fk_lu_appointment_status = fk_lu_appointment_status
    modDBConnect.BeginTrans()
    modAppointmentsDBI.Appointment_Save(appointment)
    modDBConnect.CommitTrans()
@@ -597,7 +610,7 @@ Public Sub TextBox2_Change()
    'This is triggered externally by the FPatientSelect form
    'when > 1 patient name for the search criteria
    '-------------------------------------------------------   
-
+   
    If Len(Last.text) Then
       patient_load_record(patient, True) 
    Endif

@@ -17,7 +17,23 @@
 '
 ' Notes to put somewhere
 ' note the tag's in the recall menu == the pk of audit.lu_action table.
-'-------------------------------------------------
+' WHERE TO FIND STUFF
+' ==================
+' :toolbar buttons enabled-disabled as needed for each module on workspace tab : WorkSpaceEditor_Activate()
+' SHOWING MODULES/DOCUMENTS/GENERATED PDF'S, GENERATED HTML on a new tab:
+' ======================================================================
+' - This depends as to whether you are within Fclinical or outside of FClinical, however ultimately the  same routine is called
+'   Editor_ShowPage(sPageName As String, Optional page_tag As String = "", page_data As Variant, Optional additional_page_tag As String = "")
+'   if from outside FClinical you need to use Editor_ShowPage_External(....) which accesses FClinical via Static Private form_clinical As FClinical    
+'   Examples
+'   ========
+'   load a module, document or html  onto a tab from within Fclinical                  : Editor_ShowPage(....)
+'   - for an example see FClinical.Inbox_showResult()
+'   load a module, document or html  onto a tab from outside of FClinical      : Editor_ShowPage_External(....)
+'   load a pdf document from outside FClinical which is  a document             :Editor_ShowPage("pdf document",...)
+'   load a pdf document from outside FClinical which is not a document from EasyGP :Editor_ShowPage_External("pdf file",...)
+'   for an example see FProgressNotesViews.Preview()
+'--------------------------------------------------------------------------------------------------------
 Private BMICalc As FBMICalc
 Private PregCalc As FPregCalc
 Private Calculator As FCalculator
@@ -31,6 +47,7 @@ Private Control_For_Focus As Control            'don't remove this without askin
 Private iCertificatetype As Integer = const.certificate_type_medical 'default to this
 'fixme: make these deletions a different collection with key to type eg document/script etc.then remove the extra stuff
 Private Deleted_Documents As Collection     'will allow multiple levels of un-delete e.g see mnuLettersReceived_Click
+Private Deleted_Referral As Collection      'single level undelete
 Private Deleted_Medications As Collection  'fixme join to the above
 Private synonyms As Collection 
 Private currentobservations As Collection 
@@ -88,9 +105,9 @@ Static Public Sub RefreshExternal_ImageList()
    'and an image would have just been saved in the current progress note
    '-------------------------------------------------------------------------------  
    
-   If form_clinical.TabStrip_Lists.index = clistImages Then 
-      form_clinical.Images_Refresh()
-   End If   
+   '  If form_clinical.TabStrip_Lists.index = clistImages Then 
+   form_clinical.Images_Refresh(True)
+   ' End If   
    
 End
 
@@ -745,7 +762,6 @@ Public Sub Consult_Save()
       For Each i In EditorPages
          Try Object.Call(i, "Save")
       Next
-      '  ScratchPad.Save()
    End If   
    Dec Application.Busy
    TabStrip_Lists.Enabled = True
@@ -1106,6 +1122,7 @@ Public Sub Gui_Clear()
    WorkspaceEditor.Visible = True 
    Deleted_Documents = New Collection 
    Deleted_Medications = New Collection 'fixme unite these collections
+   Deleted_Referral = New Collection
    txtConsultDate.text = Format(Now, "dd/mm/yyyy") 
    
 End
@@ -1547,7 +1564,12 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
          Case "pdf file"
             page = New FLinkContainer 
             PDF = New FPDF(page.VBoxEditor) 
+            PDF.Init(currentconsult)
             PDF.Load_PDF(page_data)
+            With PDF.tbSave
+               .Enabled = True  
+               .Visible = True   
+            End With
             WorkspaceEditor.Add(page)
             page.tag = page_tag  
             Page.title = page_tag   
@@ -1634,7 +1656,6 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
             AllPreviousNotes.Init(currentconsult, modProgressNotes.ConstructHTML_AllProgressNotes(currentconsult))
             EditorPages.Add(AllPreviousNotes, "All Previous Notes")
             Control_For_Focus = AllPreviousNotes
-            
          Case "Diabetes Cycle of Care"
             page = New FLinkContainer
             DiabetesCycleOfCare = New FDACC(page.VBoxEditor)
@@ -2700,12 +2721,39 @@ Public Sub TabbedLists_Menu()
             
             mnuLettersReceived.Popup()
          Endif
-      Case "requests"
-         If cvwRequests.count Then 
-            mnuTabbedListRequest.Popup()
-         End If
       Case "referrals"
-         If cvwReferrals.count Then mnuTabbedListReferral.popup()
+         '------------------------------------------------------------------------ 
+         'If there is a deleted referral, enable that menu item, otherwise disable
+         '------------------------------------------------------------------------ 
+         If Not IsNull(deleted_referral!pk_referral) Then                          
+            mnuTabbedListReferral.Children[6].Enabled = True
+         Else
+            mnuTabbedListReferral.Children[6].Enabled = False
+         Endif
+         '----------------------------------------------------------------------------
+         'if no letters but a deleted letter exists, must have deleted the last letter
+         'So disable all menu items except undo-delete
+         '----------------------------------------------------------------------------
+         If cvwReferrals.count = 0 Then
+            If mnuTabbedListReferral.Children[6].Enabled = True Then  
+               For Each menuitem In mnuTabbedListReferral.Children
+                  menuitem.Enabled = False
+               Next
+               mnuTabbedListReferral.Children[6].Enabled = True
+            Else
+               Return
+            End If
+         Else
+           For Each menuitem In mnuTabbedListReferral.Children
+             menuitem.Enabled = True    
+           Next
+           If IsNull(deleted_referral!pk_referral) Then
+               mnuTabbedListReferral.Children[6].Enabled = False  
+           Endif
+         End If 
+         mnuTabbedListReferral.Popup()
+      Case "requests"
+         If cvwrequests.count Then mnuTabbedListRequest.popup()
       Case "medications"
          If cvwMedications.count Then mnuMedications.popup()
       Case "measurements"
@@ -2957,6 +3005,7 @@ Public Sub mnuTabbedListReferral_Click()
       Case "delete"
          Referral_Delete()
       Case "undo delete"
+         Referral_UnDelete() 
       Case "print no inclusions"         'single copy no included documents
          Re_Print_Document_Html(currentconsult!referrals_written[cvwReferrals.Item.key]!letter_html)
       Case "print with inclusions"      ' single copy including original documents sent.
@@ -2966,7 +3015,7 @@ Public Sub mnuTabbedListReferral_Click()
             Document_Print(inclusion!fk_document)
          Next
       Case "email"
-         modUtil.NotImplemented("Email Request")
+         modUtil.NotImplemented("Email Referral")
       Case "preview"
          Referral_Letter_Display()
       Case "sort by letter tag"
@@ -2978,8 +3027,60 @@ Public Sub mnuTabbedListReferral_Click()
    
 End
 
-Public Sub Referral_Delete()
+Public Sub Referral_Letter_Display()
+   '------------------------------------------------------------------------
+   ' Display a previously written referral or letter on new tab in workspace
+   '------------------------------------------------------------------------
+   
+   cvwReferrals.MoveCurrent()
+   Editor_ShowPage("browser", currentconsult!referrals_written[cvwReferrals.Item.key]!tag, modConsultDBI.Images_Get(currentconsult!referrals_written[cvwReferrals.Item.key]!letter_html))
+   
+End
 
+Public Sub Referral_UnDelete()
+   '----------------------------------------------------------
+   'Single level un-delete of a the last deleted letter written
+   'remove the audit notes and strike through of the text
+   '-----------------------------------------------------------
+   
+   Dim sHtml As String
+   Dim fk_progressnote As Integer
+   Dim fk_referral As Integer
+   Dim pn As Collection
+   Dim charpos As Integer
+   
+  ' modUtil.NotImplemented("Undelete referral is buggy.... sorry")
+'   Return 
+   fk_progressnote = deleted_referral!fk_progressnote
+   fk_referral = deleted_referral!pk_referral    
+   sHtml = deleted_referral!letter_html
+   For Each PN In currentconsult!progress_notes
+      If PN!pk_progressnote = fk_progressnote Then
+        Print pn!notes 
+         charpos = InStr(pn!notes, "</TABLE>")
+         pn!notes = Left(pn!notes, charpos + 7)
+         ' pn!notes = Left(pn!notes, InStr(pn!notes, "</TABLE>") + 7)
+         Print pn!notes
+         pn!notes = Replace$(pn!notes, "BGCOLOR='#CFCFCF'", "")
+         pn!notes = Replace$(pn!notes, "<strike>", "")
+         pn!notes = Replace$(pn!notes, "</strike>", "")
+         Print pn!notes
+         pn!notes = "<P>" & pn!notes & "</P>"
+         modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
+         modDBConnect.update("clin_referrals.referrals", Null, ["pk": fk_referral, "deleted": False])
+         
+         modDBConnect.CommitTrans()
+         Deleted_Referral = New Collection
+         Refresh_AllPreviousNotes() 
+         Refresh_Section(const.cSection_Referrals)
+         Break
+      Endif
+   Next
+   
+End
+
+Public Sub Referral_Delete()
+   
    Dim sHtml As String
    Dim referral As New Collection
    Dim fk_progressnote As Integer
@@ -2996,24 +3097,27 @@ Public Sub Referral_Delete()
    sHtml = referral!letter_html
    For Each PN In currentconsult!progress_notes
       If PN!pk_progressnote = fk_progressnote Then
-        ' pn!notes = Replace$(pn!notes, "<TABLE", "<small><B><I>Audit note:</B> this referral letter was deleted by " & modDBConnect.currentUser!wholename & " who gave this explanation:'" & reason & "'</I></small><TABLE BGCOLOR='#F4F4F4' ") 
-         pn!notes = Replace$(pn!notes, "<TABLE", "<TABLE BGCOLOR='#F4F4F4' ") 
+         Print pn!notes 
+         pn!notes = Replace$(pn!notes, "<TABLE", "<TABLE BGCOLOR='#CFCFCF' ") 
          pn!notes = Replace$(pn!notes, "<small>", "<strike><small>", gb.IgnoreCase)
          pn!notes = Replace$(pn!notes, "</small>", "</strike></small>", gb.IgnoreCase)
          Faudit.Init(": Delete Referral Letter", "clin_consult.progressnotes/clin_referrals.referrals", "Letter summary:" & referral!tag)
          fk_reason = FAudit.ShowModal() 
          modDBConnect.CommitTrans()  'otherwise if a new reason it won't have been comitted
          reason = modAudit.Get_Reason_Using_pk(fk_reason)
-        ' pn!notes = Replace(pn!notes, "</TABLE>", "<small><B><I>Audit note:</B> this referral letter was deleted by " & modDBConnect.currentUser!wholename & " who gave this explanation:'" & reason & "'</I></small></TABLE>")
-         pn!notes = Replace(pn!notes, "</TABLE>", "<small><B><I>Audit note:</B> this referral letter was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small></TABLE>")
+         pn!notes = Replace(pn!notes, "</TABLE>", "</TABLE><small><B><I>Audit note:</B> this referral letter was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small>")
+         Print pn!notes
+         
          modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
          modDBConnect.update("clin_referrals.referrals", Null, ["pk": fk_referral, "deleted": True])
          modDBConnect.CommitTrans() 
-         Refresh_AllPreviousNotes()  'BGCOLOR="#e6e6e6"
+         Deleted_Referral = referral
+         Refresh_AllPreviousNotes() 
          Refresh_Section(const.cSection_Referrals)
+         Break
       Endif
    Next
-  
+   
 End
 
 Public Sub Recalls_Audit_Trail(sAudit_action As String)
@@ -3450,13 +3554,7 @@ Public Sub TabbedLists_DblClick()
       Case "letters received" 
          Document_Display(currentconsult!letters_received, cvwLettersReceived.Item.key)              'display document
       Case "referrals"
-         '   If Form_Html_Viewer.Visible = False Then   
-         ' If cvwReferrals.Visible = True
          Referral_Letter_Display()
-         ' Else
-         ' Letter_Received_DISPLAY()
-         '  End If   
-         '  End If
       Case "results"
          Inbox_showResult()
    End Select
@@ -3653,16 +3751,6 @@ Public Sub UnFiled_Document_Metadata_Show(bShow As Boolean)
    
 End
 
-Public Sub Referral_Letter_Display()
-   '------------------------------------------------------------------------
-   ' Display a previously written referral or letter on new tab in workspace
-   '------------------------------------------------------------------------
-   
-   cvwReferrals.MoveCurrent()
-   Editor_ShowPage("browser", currentconsult!referrals_written[cvwReferrals.Item.key]!tag, modConsultDBI.Images_Get(currentconsult!referrals_written[cvwReferrals.Item.key]!letter_html))
-   
-End
-
 Public Sub TabbedLists_Select()
    '-------------------------------------------------------------------------------------
    'NOTE the effect of Select and Click on a list are different
@@ -3683,37 +3771,14 @@ Public Sub TabbedLists_Select()
          cvwRecalls.MoveCurrent()
          currentrecall = currentconsult!recalls_logged[cvwRecalls.Item.key]
       Case "results"
-         '  If vBoxWebBrowser.Visible = True Then
-         '  If Form_Html_Viewer.Visible = True Then  
-         
          cvwResults.MoveCurrent()
-         '  Inbox_showResult()
-         'End If
       Case "requests"
          If Last.Header = True Then
             Last.header = False
          End If
          cvwRequests.MoveCurrent()
-         '  If vBoxWebBrowser.Visible Then
-         ' If Form_Html_Viewer.Visible Then  
          RequestForm_Display_Previous()
-         'End If 
       Case "letters received"        
-         ' If vBoxWebBrowser.Visible Or Vbox_PDF.Visible Then 'if visible, just move from letter to letter
-         '    If Form_Html_Viewer.Visible Or Vbox_PDF.Visible Then 'if visible, just move from letter to letter
-         '      Document_Display(currentconsult!letters_received, cvwLettersReceived.Item.key)        
-         '   End If
-      Case "referrals"
-         '----------------------------------------------------------------
-         'If the central display area is visible the automatically show
-         'the letter, otherwise the first letter has to have been loaded
-         'by the double click event of any letter in the cvwReferrals list
-         '----------------------------------------------------------------
-         cvwReferrals.MoveCurrent()
-         '  If vBoxWebBrowser.Visible Then
-         ' If Form_Html_Viewer.Visible Then 
-         Referral_Letter_Display()
-         '  End If
       Case "measurements"
          cvwMeasurements.MoveCurrent()
          Measurement_Graph(cvwMeasurements.Item.key, cvwMeasurements.Item.text)
@@ -3785,29 +3850,6 @@ Public Sub Tabbed_lists_Clear()
 End
 
 Public Sub TabbedLists_Click()
-   '-------------------------------------------------------------
-   'NAME        : TabbedLists_Click()
-   'AUTHOR      : Dr Richard Terry rterry@pacific.net.au
-   'WHAT IS     : TabbedLists
-   '             a tabbed container which here holds all the main
-   '             lists the user would want to access e.ge
-   '             lists of past medications, results, recalls etc
-   'pURPOSE     : the contained lists display the patients results i.e
-   '              pathology/radiology/nuclear medicine. display
-   '              the appropriate list.
-   'CALLED BY   : user clicks on the tab control containing
-   '              the main lists.
-   'RELATED     : TabbedLists_dblclick()
-   'LOGIC       : when a tab containing a list is clicked on if the
-   '              contents of this list have not been previously loaded
-   '              they are fetched from the back end. If user clicks
-   '              twice in succesion on the tab then if there are two
-   '              lists on this tab, invisible one is made visible ie.
-   '              say requests forms is showing, one click > the
-   '              request results list is then showing.
-   'WARNING      : 
-   'TOFIX        : 
-   '--------------------------------------------------------------
    
    If IsNull(currentconsult) Then Return  'do nothing if no consult
    Last.MoveCurrent()
@@ -3817,15 +3859,6 @@ Public Sub TabbedLists_Click()
       Case "requests"
          
       Case "results"
-         '-------------------------------------------------------------
-         'if the webbrowser contain a result is visible, then just show
-         'the result, otherwise the initial showing must be called by
-         'user double clicking on the line in the list.
-         'REASON: we don't want to auto-show a html result page every time
-         'user clicks on list, they may just want a menu etc, but once the
-         'results are showing they may well want to keep scrolling down
-         'and viewing several results in sucession.
-         '--------------------------------------------------------------
          If cvwResults.Header = True Then      'user has been resizing the columns
             cvwResults.Resizable = False
             cvwResults.Header = False  
@@ -3834,8 +3867,6 @@ Public Sub TabbedLists_Click()
          'user could have just been resizing the columns 
          cvwRecalls.Resizable = False
          cvwRecalls.Header = False  
-      Case "requests"
-         
       Case "letters received"
       Case "measurements"
          '------------------------------
@@ -4079,13 +4110,30 @@ Public Sub WorkSpaceEditor_Activate()
                tbRefresh.Tooltip = ""
                Print hctrl.Name
                Select Case hctrl.Name
-                  Case "FHtmlViewer"
+                  Case "FExportClinical" 
+                     tbPrint.Tooltip = "Print PDF to be exported"
+                     tbPrint.Enabled = True   
+                     tbPreview.Enabled = True
+                     tbPreview.Tooltip = "Generate and Preview PDF of notes to export"   
+                     tbRefresh.Enabled = True
+                     tbRefresh.Tooltip = "Reload data to export"
+                     tbSave.ToolTip = "Save file to be exported"
+                     tbSave.Enabled = True
+                   Case "FHtmlViewer"
                      tbPrint.Tooltip = "Print Text"
                      tbPrint.Enabled = True  
                   Case "FPDF"
                      tbPrint.Tooltip = "Print PDF"
                      tbPrint.Enabled = True  
-                     
+                  Case "FProgressNotesViewer"
+                     '------------------------------------------------------------------------ 
+                     'This is wherever the user is reading previously generated progress notes
+                     'either 'all progress notess' or specific to a condition
+                     '------------------------------------------------------------------------ 
+                     tbPrint.Tooltip = "Print Progress Notes"
+                     tbPrint.Enabled = True  
+                     tbPreview.Enabled = True
+                     tbPreview.Tooltip = "Preview PDF of the progress notes"   
                   Case "FProgressNotePage"
                      frmConsult = hctrl       
                      frmConsult.Display_Existing_Notes()  're-load progress notes

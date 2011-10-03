@@ -115,6 +115,9 @@ Public Sub Preview()
    Dim Output_file As String
    Dim pdf_files As Collection 
    Dim tempstring As String 
+   Dim temp_dir As String
+   Dim Letter_PDF_path As Collection
+   Dim pro As Process
    
    If chkAudit.value = True Then
       Message.Title = "Adding Audit to Document Export"
@@ -254,12 +257,7 @@ Public Sub Preview()
                      Case "requests"
                         If currentconsult!requests_ordered.count Then
                            sections.Add(modProgressNotes.Requests_summary_construct_html(currentconsult), sections.Count)
-                        End If  
-                     Case "letters received"
-                        For Each Member In currentconsult!letters_received
-                           
-                           'sections.Add(modProgressNotes.Requests_summary_construct_html(currentconsult), sections.Count)
-                        Next
+                        End If 
                      Case "recalls"
                         sections.Add(modProgressNotes.Recalls_summary_construct_html(currentconsult), sections.Count)
                      Case "results"
@@ -276,7 +274,7 @@ Public Sub Preview()
                                  Endif
                                  tempstring &= "</H3></DIV" & Member!html
                               End If
-                            
+                              
                               '----------------------------------------
                               'now, is there an audit on this document?
                               '----------------------------------------
@@ -308,8 +306,52 @@ Public Sub Preview()
                                  tempstring &= shtml
                               End If  
                               If Len(tempstring) Then sections.Add(tempstring, sections.count)
-                           End If                                       
+                           End If  
                         Next 
+                     Case "letters received list"
+                        If currentconsult!letters_received_sorted_ascending.count Then 
+                           sections.Add(modProgressNotes.Letters_summary_construct_html(currentconsult), sections.Count)
+                        End If
+                        
+                     Case "letters received" 
+                        Temp_dir = "/tmp/letters"
+                        Try Mkdir "/tmp/letters"
+                        If Error Then
+                           If Error.Code = const.File_ioError_DirectoryExists Then    
+                               pro = Shell "rm /tmp/letters/*.pdf" Wait For Write 
+                              Close #pro
+                           Else
+                              Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the letters.")
+                              Break
+                           End If   
+                        End If   
+                        Letter_PDF_path = New Collection
+                        'Last for a reason  
+                         Letter_PDF_path.Add("", 0) 'will be the generated_pdf sans the letters
+                         x = 1
+                        For Each Member In currentconsult!letters_received_sorted_ascending
+                           
+                           Tempstring = ""
+                           '    If x = 0 Then
+                           '      tempstring = "<body><DIV ALIGN=CENTRE><H3>LETTERS RECEIVED</H3></DIV"
+                           '     End If  
+                           Select Case File.Ext(member!source_file)
+                              Case "pdf"
+                                 Letter_PDF_path.Add(archive_dir &/ member!source_file, x)
+                                 
+                              Case Else
+                                 '------------------ 
+                                 'must be a hl7 file
+                                 '------------------
+                                 tempstring &= member!html
+                                 Letter_PDF_path.Add(modPrinting.Make_PDF_From_Html(member!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/letters/"), x)
+                                
+                           End Select 
+                            Inc x
+                           '     Print member
+                           '    'sections.Add(modProgressNotes.Requests_summary_construct_html(currentconsult), sections.Count)
+                        Next
+                        
                   End Select
                End If
          End Select
@@ -326,8 +368,17 @@ Public Sub Preview()
    Output_file &= "FileId:" & Str(currentconsult!patient!fk_patient) & "-birthdate:" & Format(currentconsult!patient!birthdate, "dd-mm-yyyy") & ".pdf"
    If sections.count Then
       tempstring = modPrinting.Make_PDF_From_HTML_Pages(sections, const.orientation_portrait, ContentsPage, bPrintTableOfContents, Output_file, ProgressBar1)
+      '------------------------------------------------------------------------
+      'Now, have joined all the html we can but most of the incoming mail
+      'at this point in time is scanned to pdf's
+      'so have to join all the letters received pdf's onto the end of the file
+      '-----------------------------------------------------------------------
+      Letter_PDF_path[0] = tempstring
+      tempstring = Temp()
+      modPrinting.Join_PDF(Letter_PDF_path, tempstring)
+     
       With Form_PDF
-         .Load_PDF(tempstring)
+         .Load_PDF(modPrinting.Join_PDF(Letter_PDF_path, tempstring))
          .PBox.Visible = True  
       End With
    End If   
@@ -389,8 +440,6 @@ Public Sub EditArea_Buttons_Click()
    
 End
 
-
-
 Public Sub Refresh()
    '---------------------------------------------------
    'Re-sets the gui checkboxe, zero's progress bar
@@ -431,7 +480,8 @@ Public Sub Refresh()
    chkRequestsOrdered.Visible = currentconsult!requests_ordered.count
    ChkResults.Visible = currentconsult!results_received.count 
    chkRecalls.Visible = currentconsult!recalls_logged.count 
-   chkLettersReceived.Visible = currentconsult!letters_received.count
+   chkLettersReceived.Visible = currentconsult!letters_received_sorted_ascending.count
+   chkLettersReceivedlist.Visible = currentconsult!letters_received_sorted_ascending.count
    chkWorkcover.Visible = currentconsult!workcover_claims.count 
    chkAudit.Visible = True 
    With chkExcludeINR
@@ -449,7 +499,7 @@ Public Sub Refresh()
          Break
       End If    
    Next
-  
+   
    For Each hctrl In Vbox1.Children
       If hctrl Is CheckBox Then
          cb = hctrl
@@ -462,7 +512,7 @@ Public Sub Refresh()
    Dec application.Busy
    rbSinglePDF.Value = True
    lblStatus.text = ""
-
+   
 End
 
 Public Sub rbMultiplePDFs_Click()
@@ -474,6 +524,7 @@ Public Sub rbMultiplePDFs_Click()
    Dim member As Collection
    Dim sections As New Collection
    Dim tempfile As String 
+   
    Return 
    Refresh()
    

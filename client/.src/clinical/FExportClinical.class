@@ -30,6 +30,7 @@ Private Page_Orientation As Integer
 Private bExit As Integer
 Private collection_members As Collection
 Private archive_dir As String
+Private patient As Collection
 
 Public Sub Form_Close()
    
@@ -43,6 +44,7 @@ Public Sub Init(cons As Cconsult)
    '-------------------------------------------------------------------
    
    currentconsult = cons
+   patient = currentconsult!patient
    Form_PDF = New FPdf(HBox_PDF)
    Try Settings_Load()
    archive_dir = modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/")
@@ -89,7 +91,19 @@ Public Sub Refresh_Collections()
 End
 
 Public Sub Preview()
+   
+   If rbMultiplePDFs.Value = True Then
+      Multiple_PDFs()
+   Else
+      Single_PDF 
+   Endif
+   
+End
+
+Public Sub Single_PDF()
    '----------------------------------------------------------------------------------------
+   'The dump will be into a single PDF
+   '
    '1) Note - only checkboxes corresponding To sections containing data are shown as options
    '2) On the basis of the checkboxes tags - build the html sections to put in the pdf
    '   preceeding them by either a coversheet or TOC if desired
@@ -98,6 +112,10 @@ Public Sub Preview()
    '   then insert the header into the first instance of the collection
    '4) Note  - < Hn > levels are used to generate the toc (table of contents) by wxhtmltopdf. 
    '  These are nested unless flagged out by an --toc-depth value
+   '5) Because EasyGP letter type documents is a mix of PDF/HTML and workcover is generated
+   '   from latex, and wkhtmltopdf can't handle the mix - I've done most of the generation
+   '   in wkhtmltopdf then put the letters in last by joining all the non-html files
+   '   into the main pdf.
    '  
    ' This subroutine is called from the FClinical toolbar and generates the PDF
    '-----------------------------------------------------------------------------------------
@@ -318,7 +336,7 @@ Public Sub Preview()
                         Try Mkdir "/tmp/letters"
                         If Error Then
                            If Error.Code = const.File_ioError_DirectoryExists Then    
-                               pro = Shell "rm /tmp/letters/*.pdf" Wait For Write 
+                              pro = Shell "rm /tmp/letters/*.pdf" Wait For Write 
                               Close #pro
                            Else
                               Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the letters.")
@@ -327,8 +345,8 @@ Public Sub Preview()
                         End If   
                         Letter_PDF_path = New Collection
                         'Last for a reason  
-                         Letter_PDF_path.Add("", 0) 'will be the generated_pdf sans the letters
-                         x = 1
+                        Letter_PDF_path.Add("", 0) 'will be the generated_pdf sans the letters
+                        x = 1
                         For Each Member In currentconsult!letters_received_sorted_ascending
                            
                            Tempstring = ""
@@ -345,11 +363,9 @@ Public Sub Preview()
                                  '------------------
                                  tempstring &= member!html
                                  Letter_PDF_path.Add(modPrinting.Make_PDF_From_Html(member!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/letters/"), x)
-                                
+                                 
                            End Select 
-                            Inc x
-                           '     Print member
-                           '    'sections.Add(modProgressNotes.Requests_summary_construct_html(currentconsult), sections.Count)
+                           Inc x
                         Next
                         
                   End Select
@@ -362,10 +378,10 @@ Public Sub Preview()
    '---------------------------------------------------------------
    'Ok, construct the pdf Pages for each section using wkhtmltopdf
    '---------------------------------------------------------------
-   Output_file = currentconsult!patient!wholename     'create filename and remove illegal characters
+   Output_file = patient!wholename     'create filename and remove illegal characters
    Output_file = Replace(Output_file, " ", "_")
    Output_file = Replace(Output_file, "'", "")
-   Output_file &= "FileId:" & Str(currentconsult!patient!fk_patient) & "-birthdate:" & Format(currentconsult!patient!birthdate, "dd-mm-yyyy") & ".pdf"
+   Output_file &= "FileId:" & Str(patient!fk_patient) & "-birthdate:" & Format(patient!birthdate, "dd-mm-yyyy") & ".pdf"
    If sections.count Then
       tempstring = modPrinting.Make_PDF_From_HTML_Pages(sections, const.orientation_portrait, ContentsPage, bPrintTableOfContents, Output_file, ProgressBar1)
       '------------------------------------------------------------------------
@@ -376,7 +392,7 @@ Public Sub Preview()
       Letter_PDF_path[0] = tempstring
       tempstring = Temp()
       modPrinting.Join_PDF(Letter_PDF_path, tempstring)
-     
+      
       With Form_PDF
          .Load_PDF(modPrinting.Join_PDF(Letter_PDF_path, tempstring))
          .PBox.Visible = True  
@@ -385,6 +401,154 @@ Public Sub Preview()
    ProgressBar1.Visible = False 
    Dec application.Busy
    
+End
+
+Public Sub Multiple_PDFs()
+   '---------------------------------------------------------------------------------------------------------
+   ' Dump the record but As Multiple PDF 's into a tempdir of User.home + patient name
+   ' Notes:
+   '        By convention rightly or wrongly for historical reasons when we scan a filename is this:
+   '        firstname_surname. yyyymmdd.patientid.organsisation.doc_pk.person.pdf
+   '        e.g peter_smith.19200323.304.newcastle_and_hunter_cardiac_services.dr_geoffrey_oldfield.16462.pdf
+   ' --------------------------------------------------------------------------------------------------------
+   
+   Dim sHtml As String
+   Dim temp_dir As String
+   Dim Destination_File As String
+   Dim Patient_Details As String
+   Dim hctrl As Control
+   Dim cbox As CheckBox
+   Dim pro As Process
+   Dim member As Collection
+   Dim Doc_File_Stem As String 
+   Dim tempstring As String                          
+   Dim x As Integer
+   
+   Doc_File_Stem = LCase(patient!firstname & "_" & patient!surname & "." & modUtil.DateString_Encode(patient!birthdate) & "." & patient!fk_patient)
+   Patient_Details = Trim(patient!wholename) & "_" & Format(patient!birthdate, "dd-mm-yyyy")
+   Patient_Details = Replace$(Patient_Details, " ", "-")
+   Patient_Details = Replace$(Patient_Details, "'", "")
+   Temp_dir = User.home &/ Patient_Details
+   
+   Try Mkdir Temp_dir
+   If Error Then
+      If Error.Code = const.File_ioError_DirectoryExists Then    
+         pro = Shell "rm " & Temp_dir &/ "*.pdf " Wait For Write
+         Close #pro
+      Else
+         Message.Info("An error occurred code:" & Error.code & ".\n\nCannot dump the file.")
+         Return
+      End If   
+   End If  
+   If chkAudit.value = True Then
+      Message.Title = "Adding Audit to Document Export"
+      tempstring = "Including the audit trail when exporting the documents will take quite a while.\n\n"
+      "This is not recommended unless these documents will be used for medico-legal reasons, or you are "
+      "transferring the records to another practice.\n\n"
+      "Are you sure you want to do this?"
+      Select Case Message.Question(tempstring, "Include Audit Details in PDF", "Skip Audit", "Cancel")
+         Case 3
+            Return
+         Case 2
+            chkAudit.value = False    
+      End Select
+      
+   Endif
+   Inc application.Busy
+   ProgressBar1.value = 0.0            
+   ProgressBar1.Visible = True  
+   lblStatus.Visible = False   
+   Wait  
+   For Each hctrl In VBox1.children
+      If hctrl Is CheckBox And hctrl.Visible Then
+         Cbox = hctrl
+         If Cbox.Value = True And Cbox.visible Then
+            Select Case cbox.Tag
+               Case "health summary" 
+                  shtml = modProgressNotes.Health_Summary_Construct_html(currentconsult) 
+                  Destination_File = Doc_File_Stem & ".health-summary.pdf"
+                  modPrinting.Make_PDF_From_Html(shtml, const.orientation_portrait, "", False, Destination_File, Progressbar1, Temp_dir)
+               Case "care plan" 
+                  shtml = modProgressNotes.Care_Plan_Construct_html(currentconsult) 
+                  Destination_File = Doc_File_Stem & ".careplan.pdf"
+                   modPrinting.Make_PDF_From_Html(shtml, const.orientation_portrait, "", False, Destination_File, Progressbar1, Temp_dir)
+                Case "all progress notes" 
+                  shtml = modProgressNotes.ConstructHTML_AllProgressNotes(currentconsult) 
+                  Destination_File = Doc_File_Stem & ".progressnotes.pdf"
+                  modPrinting.Make_PDF_From_Html(shtml, const.orientation_portrait, "", False, Destination_File, Progressbar1, Temp_dir)
+                 
+               Case "health issue progress notes"
+                '  shtml =  
+                '     Destination_File = Doc_File_Stem & "."
+               Case "tasks" 
+                '  shtml =  
+                 '    Destination_File = Doc_File_Stem & ".outstanding-tasks.pdf"
+               Case "workcover" 
+                 ' shtml =  
+                 '    Destination_File = Doc_File_Stem & ".workcover-forms.pdf"
+               Case "mental health" 
+                '  shtml =  
+                 '    Destination_File = Doc_File_Stem & ".mental-health-plans.pdf"
+               Case "referral letter summaries" 
+                  sHtml = modProgressNotes.Letters_summary_construct_html(currentconsult) 
+                  Destination_File = Doc_File_Stem & ".summary-referral-letters.pdf"
+               Case "referrals"
+                
+                  ' If currentconsult!referrals_written.count Then
+                  '    x = 0 
+                  '    For Each Member In currentconsult!referrals_written        'all the referrals
+                  '       If x = 0 Then
+                  '          shtml = Member!letter_html
+                  '          sections.Add(tempstring, sections.count)
+                  '          Inc x
+                  '       Else
+                  '          sections.Add(Member!letter_html, sections.count)
+                  '       End If                                       
+                  '    Next   
+                 ' End If   
+                   '  Destination_File = Doc_File_Stem & ".referral-letters.pdf"
+                  Case "requests" 
+                    ' shtml =  
+                    '    Destination_File = Doc_File_Stem & ".requests-ordered.pdf"
+                  Case "recalls" 
+                   '  shtml =  
+                    '    Destination_File = Doc_File_Stem & ".recalls-logged.pdf"
+                  Case "results"
+                    ' shtml =  
+                     '   Destination_File = Doc_File_Stem & ".results-received.pdf"
+                  Case "letters received list" 
+                     sHtml = modProgressNotes.Letters_summary_construct_html(currentconsult)
+                     Destination_File = Doc_File_Stem & ".list-of-letters-received.pdf"
+                     modPrinting.Make_PDF_From_Html(shtml, const.orientation_portrait, "", False, Destination_File, Progressbar1, Temp_dir)
+                  Case "letters received"  
+                     For Each member In currentconsult!letters_received_sorted_ascending
+                        Select Case File.Ext(member!source_file)
+                           Case "pdf"
+                              Copy archive_dir &/ member!source_file To temp_dir &/ member!source_file
+                           Case Else
+                              '------------------------------------------------------------------------- 
+                              'This is html, so we have to make the file as pdf, use convention as above
+                              'Doc_File_Stem =  peter_smith.19200323.304
+                              '-------------------------------------------------------------------------
+                              filename = Doc_File_Stem & "."
+                              If Not IsNull(member!organisation) Then
+                                 Destination_File = Replace(member!organisation, ".", "-") & "." & member!originator & "." & member!pk_document
+                                 Destination_File = Replace$(Destination_File, " ", "-") 
+                                 Destination_File = Replace$(Destination_File, "--", "-")
+                                 Destination_File = Doc_File_Stem & "." & LCase(Replace$(Destination_File, "'", "")) & ".pdf" 'some apostrophes have escaped through
+                              Endif
+                              modPrinting.Make_PDF_From_Html(member!html, const.orientation_portrait, "", False, Destination_File, Progressbar1, Temp_dir)
+                        End Select
+                     Next 
+               End Select 
+            Endif
+         End If
+      Next
+      
+   Catch
+      Message.Info(Error.text) 
+      Print 
+      
 End
 
 Private Sub Settings_Save()
@@ -526,42 +690,30 @@ Public Sub rbMultiplePDFs_Click()
    Dim tempfile As String 
    
    Return 
-   Refresh()
-   
-   Try Mkdir "/tmp/export_patient"
-   If Error.code = const.File_ioError_DirectoryExists Then
-      Shell "rm -Rf /tmp/export_patient" Wait
-      Try Mkdir "/tmp/export_patient"
-      If Error Then
-         'give up
-         Message.info("Sorry, couldn't create the temporary directory to export the files....")
-         Return 
-      Endif
-      
-   Endif
-   For Each Member In currentconsult!letters_received
-      file_extension = File.Ext(member!source_file)   
-      Select Case file_extension
-         Case "pdf"
-            Copy archive_dir &/ member!source_file To "/tmp/export_patient" &/ member!source_file 
-         Case Else
-            filename = Replace(member!originator & "_" & member!tag_user, " ", "_") & ".pdf" 'fix this for eg o'neil
-            filename = Replace(filename, "(", "")
-            filename = Replace(filename, ")", "") 
-            filename = Replace(filename, "'", "")  
-            filename = Replace(filename, ",", "")   
-            filename = Replace(filename, ">", "for")   
-            Print filename
-            tempfile = modPrinting.Make_PDF_From_Html(member!html, const.orientation_portrait, "", False, filename, ProgressBar1)
-            
-            Try Move tempfile To "/tmp/export_patient" &/ filename
-            If Error Then
-               Try Copy tempfile To "/tmp/export_patient" &/ filename
-               If Not Error Then Kill tempfile
-            Endif
-      End Select  
-      
-   Next                      
-   ' Shell "mv /tmp/*.pdf /tmp/export_patient/" Wait
+   ' 
+   ' For Each Member In currentconsult!letters_received
+   '    file_extension = File.Ext(member!source_file)   
+   '    Select Case file_extension
+   '       Case "pdf"
+   '          Copy archive_dir &/ member!source_file To "/tmp/export_patient" &/ member!source_file 
+   '       Case Else
+   '          filename = Replace(member!originator & "_" & member!tag_user, " ", "_") & ".pdf" 'fix this for eg o'neil
+   '          filename = Replace(filename, "(", "")
+   '          filename = Replace(filename, ")", "") 
+   '          filename = Replace(filename, "'", "")  
+   '          filename = Replace(filename, ",", "")   
+   '          filename = Replace(filename, ">", "for")   
+   '          Print filename
+   '          tempfile = modPrinting.Make_PDF_From_Html(member!html, const.orientation_portrait, "", False, filename, ProgressBar1)
+   '          
+   '          Try Move tempfile To "/tmp/export_patient" &/ filename
+   '          If Error Then
+   '             Try Copy tempfile To "/tmp/export_patient" &/ filename
+   '             If Not Error Then Kill tempfile
+   '          Endif
+   '    End Select  
+   '    
+   ' Next                      
+   ' ' Shell "mv /tmp/*.pdf /tmp/export_patient/" Wait
    
 End

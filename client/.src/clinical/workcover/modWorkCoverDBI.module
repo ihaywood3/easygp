@@ -14,28 +14,32 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
- Public sql As String
- Public $Result As Result
- 
- 
+'--------------------------------------------------------------------
+' WORKCOVER DATABASE ACCESSING AND FORM FORMATTING ROUTINES
+' Currently NSW Workcover only (Sorry... do your own Latex
+' and I'll put in a state option
+' -------------------------------------------------------------------
+Public sql As String
+Public $Result As Result
 
 Public Function Claims_Get(fk_patient As Integer) As Collection 
-  '--------------------------------------------------------------------------
-  'Gets all the patients workcover claims, and loads the cvwWorkcover control
-  'clin_workcover, currently ordered newest to oldest visit for each claim
-  '--------------------------------------------------------------------------
-  Return modDBConnect.exec_query_collection("Select * from clin_workcover.vwWorkcover  WHERE fk_patient =" & fk_patient & " ORDER BY fk_claim, fk_visit DESC")
- ' Return modDBConnect.exec_query_row("Select * from clin_workcover.vwWorkcover  WHERE fk_patient =" & fk_patient & " ORDER BY fk_claim, fk_visit DESC")
+   '--------------------------------------------------------------------------
+   'Gets all the patients workcover claims, and loads the cvwWorkcover control
+   'clin_workcover, currently ordered newest to oldest visit for each claim
+   '--------------------------------------------------------------------------
+
+   Return modDBConnect.exec_query_collection("Select * from clin_workcover.vwWorkcover  WHERE fk_patient =" & fk_patient & " ORDER BY fk_claim, fk_visit DESC")
 End
 
 Public Function Save(currentconsult As Cconsult, view_key As Integer, claim As Collection, visit As Collection) As Integer
-    '------------------------------
+   '------------------------------
    'Check if the occupation exists
    '------------------------------
-    If claim!fk_occupation = 0 Then  'could be null ? if so will crash
+
+   If claim!fk_occupation = 0 Then  'could be null ? if so will crash
       claim!fk_occupation = modCommonDBI.occupation_save(claim!occupation)
-    End If
-    Try claim.Remove("occupation")
+   End If
+   Try claim.Remove("occupation")
    
    If view_key = -1 Then 
       '----------------------------------------------------------------------------------------
@@ -50,29 +54,201 @@ Public Function Save(currentconsult As Cconsult, view_key As Integer, claim As C
       visit!fk_consult = claim!fk_consult
       visit!fk_visit = modDBConnect.insert("clin_workcover.visits", visit)
    Else
-     '-----------------------------------------------------------------------------------
-     'Record exists in the view, so will need to update claim details (if changed) first
-     '----------------------------------------------------------------------------------
-     If modDBConnect.update("clin_workcover.claims", currentconsult!workcover_claims[view_key], claim, "fk_claim") Then ' save to backend and update the collection in RAM too
-       'IAN WHAT DO TO WITH THIS FLAG
-     End If
-     '------------------------------------------------------------------------------------------
-     'Now, there **must be** a new claim, or if this is the same date and visit!pk_visit exists
-     'we must have altered the visit on the same day, so allow a change.
-     'FIXME DO THIS
-     '----------------------------------------------------------------------------------------- 
-     If visit!fk_visit Then
+      '-----------------------------------------------------------------------------------
+      'Record exists in the view, so will need to update claim details (if changed) first
+      '----------------------------------------------------------------------------------
+      If modDBConnect.update("clin_workcover.claims", currentconsult!workcover_claims[view_key], claim, "fk_claim") Then ' save to backend and update the collection in RAM too
+         'IAN WHAT DO TO WITH THIS FLAG
+      End If
+      '------------------------------------------------------------------------------------------
+      'Now, there **must be** a new claim, or if this is the same date and visit!pk_visit exists
+      'we must have altered the visit on the same day, so allow a change.
+      'FIXME DO THIS
+      '----------------------------------------------------------------------------------------- 
+      If visit!fk_visit Then
          visit.remove("fk_visit")
          modDBConnect.update("clin_workcover.visits", currentconsult!workcover_claims[view_key], visit, "fk_visit")
-     
-     Else
+      Else
          visit!fk_claim = claim!fk_claim
          visit!fk_consult = currentconsult.GetPK() 'each visit dated 'today'
          visit!fk_visit = modDBConnect.insert("clin_workcover.visits", visit)
-     End If  
+      End If  
    End If
    Return claim!fk_claim
-  
-  
 End
 
+Public Function WorkcoverForm_LaTeX_Construct(currentconsult As CConsult, visit As Collection) As CTemplate
+   '-----------------------------------------------
+   'Constructs the Latex Form for the Workcover Form
+   '------------------------------------------------   
+   Dim sEmployer As String
+   Dim sAssess_Workplace As String = "   No"
+   Dim sName As String
+   Dim sAddress As String
+   Dim sString As String
+   Dim sContactPerson As String
+   Dim sMemo As String  
+   Dim sCausedBy As String = ""
+   Dim comm As Collection 
+   Dim Comms As Collection 
+   Dim templ As New CTemplate("workcover-nsw", "tex")
+      Print visit
+   Print currentconsult
+   
+   
+
+   Select Case visit!fk_lu_visit_type              'Can't selectively do one
+      Case Const.Workcover_VisitType_Initial        'once replaced, their 'gone'
+         templ.Checkbox("visit_type_initial", True)
+         templ.Checkbox("visit_type_progress", False)
+         templ.Checkbox("visit_type_final", False)
+      Case Const.Workcover_VisitType_Progress
+         templ.Checkbox("visit_type_initial", False)
+         templ.Checkbox("visit_type_progress", True)
+         templ.Checkbox("visit_type_final", False)
+      Case Const.Workcover_VisitType_Final
+         templ.Checkbox("visit_type_initial", False)
+         templ.Checkbox("visit_type_progress", False)
+         templ.Checkbox("visit_type_final", True)
+      Case Const.Workcover_VisitType_InitialAndFinal
+         templ.Checkbox("visit_type_initial", True)
+         templ.Checkbox("visit_type_progress", False)
+         templ.Checkbox("visit_type_final", True)
+         
+   End Select
+   If visit!assessworkplace = True Then
+      sAssess_Workplace = "   Yes"
+      templ.Checkbox("assessment_checkbox", True)
+   Else
+      templ.Checkbox("assessment_checkbox", False)
+   End If
+   
+   Select Case visit!fk_caused_by_employment 
+      Case Const.Workcover_CausedByEmployment_Yes
+         sCausedBy = "yes"
+         templ.Checkbox("caused_certain", True)
+         templ.Checkbox("caused_no", False)
+         templ.Checkbox("caused_uncertain", False)
+      Case Const.Workcover_CausedByEmployment_No
+         sCausedBy = "no"
+         templ.Checkbox("caused_certain", False)
+         templ.Checkbox("caused_no", True)
+         templ.Checkbox("caused_uncertain", False)
+      Case Const.Workcover_CausedByEmployment_Uncertain
+         sCausedBy = "uncertain"
+         templ.Checkbox("caused_certain", False)
+         templ.Checkbox("caused_no", False)
+         templ.Checkbox("caused_uncertain", True)
+   End Select
+   
+   If visit!fk_person Then    'sole trader
+      sEmployer = visit!soletrader_wholename
+      sAddress = Trim(visit!soletrader_street1 & "" & visit!soletrader_street2) & " " 
+      sAddress &= visit!soletrader_town & " " & visit!soletrader_postcode
+   Else
+      sEmployer = visit!organisation & " " & visit!branch
+      saddress = Trim(visit!branch_street1 & " " & visit!branch_street2) & " "
+      saddress &= visit!branch_town & " " & visit!branch_postcode
+   End If    
+   
+   templ.Subst_common(currentconsult)
+   Try templ.Subst("claim", Trim(visit!claim_number))
+   If Error Then templ.Subst("claim", "")
+   templ.Subst("employername", sEmployer)
+   templ.Subst("employeraddress", sAddress)
+   templ.Subst("occupation", visit!occupation)
+   templ.Subst("hoursworked", visit!hours_week_worked)
+   templ.Subst("mechanismofinjury", visit!mechanism_of_injury)
+   templ.Subst("dateofinjury", visit!date_injury)  'text field not date field
+   templ.Subst("diagnosis", visit!diagnosis)
+   templ.Subst("caused_by_employment", sCausedBy)
+   templ.Subst("managementplan", visit!management_plan)
+   templ.Subst("assess_workplace", sAssess_Workplace)
+   Try templ.Subst("reviewdate", Format(visit!review_date, "dd/mm/yyyy"))
+   If Error Then templ.Subst("reviewdate", "")
+   Try templ.Subst("preinjuryfrom", Format(visit!fitness_preinjury_from, "dd/mm/yyyy"))
+   If Error Then templ.Subst("preinjuryfrom", "")
+   Try templ.Subst("unfitfrom", Format(visit!fitness_unfit_from, "dd/mm/yyyy"))
+   If Error Then templ.Subst("unfitfrom", "")
+   Try templ.Subst("unfitto", Format(visit!fitness_unfit_to, "dd/mm/yyyy"))
+   If Error Then templ.Subst("unfitto", "")
+   Try templ.Subst("suitablefrom", Format(visit!fitness_suitable_from, "dd/mm/yyyy"))
+   If Error Then templ.Subst("suitablefrom", "")
+   Try templ.Subst("suitableto", Format(visit!fitness_suitable_to, "dd/mm/yyyy"))
+   If Error Then templ.Subst("suitableto", "")
+   Try templ.Subst("permmodifiedfrom", Format(visit!fitness_perm_mod_duties_from, "dd/mm/yyyy"))
+   If Error Then templ.Subst("permmodifiedfrom", "")
+   templ.Subst("hoursperday", visit!hours_capable)
+   templ.Subst("daysperweek", visit!days_capable)
+   templ.Subst("work.restrictions", visit!restrictions)
+   templ.Subst("work.capabilities", visit!capabilities) 
+   
+   If Not IsNull(visit!fitness_perm_mod_duties_from) Then 
+      templ.Checkbox("permanent_checkbox", True)
+   Else
+      templ.Checkbox("permanent_checkbox", False)
+   End If
+   If Not IsNull(visit!fitness_unfit_from) Then
+      templ.Checkbox("unfit_checkbox", True)
+   Else
+      templ.Checkbox("unfit_checkbox", False)
+   Endif
+   If Not IsNull(visit!fitness_suitable_from) Then
+      templ.Checkbox("fit_suitable_checkbox", True)
+   Else
+      templ.Checkbox("fit_suitable_checkbox", False)
+   Endif
+   If Not IsNull(visit!fitness_perm_mod_duties_from) Then
+      templ.Checkbox("permanent_checkbox", True)
+   Else
+      templ.Checkbox("permanent_checkbox", False)
+   Endif
+   If Not IsNull(visit!fitness_preinjury_from) Then
+      templ.Checkbox("pre_injury_checkbox", True)
+   Else
+      templ.Checkbox("pre_injury_checkbox", False)
+   Endif
+   If Not IsNull(visit!contact_person) Then sContactPerson = visit!contact_person
+   If Not IsNull(visit!memo) Then sMemo = visit!memo
+   templ.Subst("contacts_person", sContactPerson & " " & sMemo)
+   If visit!doctor_consented = True Then 
+      templ.Checkbox("treating_doctor_yes_checkbox", True)
+      templ.Checkbox("treating_doctor_no_checkbox", False)
+   Else
+      templ.Checkbox("treating_doctor_no_checkbox", True) 'fixme make me reflect true status of these boxes
+      templ.Checkbox("treating_doctor_yes_checkbox", False) 
+   End If
+   If Not IsNull(visit!fk_branch) Then   
+      comms = modContactsDBI.Branch_Comms_Get(visit!fk_branch)
+   End If   
+   If Not IsNull(Comms) Then 
+      sSTring = ""
+      For Each Comm In comms
+         If comm!value Then
+            sString &= comm!type & ":" & comm!value & "<BR>"
+         End If 
+      Next
+      If Right(sString, 3) = "<BR>" Then
+         sString = Left(sSTring, Len(sSTring) - 3)
+      End If
+      templ.Subst("comms", sString)
+   Else
+      templ.Subst("comms", "")
+   End If 
+   
+   If visit!doctor_consented Then
+      sString = "yes"
+   Else
+      sString = "No"
+   End If
+   templ.Subst("doctor_consented", sString)
+   If visit!worker_consented Then
+      sSTring = "yes"
+   Else
+      sstring = "no"
+   End If
+   templ.Subst("worker_consented", sString)
+   templ.Subst("date", Format(visit!certificate_date, "dd/mm/yyyy"))
+   Return templ
+   
+End

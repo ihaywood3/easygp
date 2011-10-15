@@ -67,7 +67,7 @@ Public Sub Measurement_Types_Get_For_Patient(pk_patient As Integer) As Collectio
    
 End
 
-Public Function Make_Graph(fk_patient As Integer, loinc As String, heading As String, H As Integer, W As Integer, font_size As Integer, Optional number_months As Integer) As Collection
+Public Function Make_Graph(fk_patient As Integer, loinc As String, heading As String, H As Integer, W As Integer, font_size As Integer, Optional line_type As String = "unique", Optional number_months As Integer) As Collection
    '------------------------------------------------------
    'Creates a graph - currrently just returns the picture
    '------------------------------------------------------
@@ -75,7 +75,7 @@ Public Function Make_Graph(fk_patient As Integer, loinc As String, heading As St
    Dim x As Integer
    Dim Graph_Data As Collection 
    
-   Graph_Data = modPlot.Graph_And_Values_Get(fk_patient, loinc, heading, H, W, font_size, number_months)
+   Graph_Data = modPlot.Graph_And_Values_Get(fk_patient, loinc, heading, H, W, font_size, line_type, number_months)
    If IsNull(Graph_Data!graph_filename) Then
       Graph_Data!name = heading
       
@@ -293,73 +293,29 @@ Public Sub ProgressNote_Parse_For_Measurement(cons As CConsult, notes As String)
 End
 
 Public Sub Measurements_Save(cons As CConsult, measurements As Collection)
-   '---------------------------------------------------------------------
+   '----------------------------------------------------------------------
    'saves any outstanding values for the patient's measurements
-   '
-   'Tricky As we are parsing a text editor:
-   ' 
-   '  A user could be writing in the notes and say put in a BP of 120/70
-   '  then realise they have mis-typed this later on, having previously
-   '  saved the consult, so we have to check all measurements saved for
-   '  the current consultation, mark as deleted any that are not in this
-   '  current list of measurements, and **NOT SAVE AGAIN** any we have
-   '  already saved.
-   '--------------------------------------------------------------------
+   'Use the sledge hammer approach
+   'just delete all measurements for this consult and re-save the new ones
+   'I tried it the 'fancy way', checking the new-ones against what was
+   'already save and not worth the complications
+   '----------------------------------------------------------------------
    
    Dim m As Collection 
-   Dim Measurements_This_Consultation As Collection
-   Dim Measurement_This_Consultation As Collection
-   Dim bAlreadySaved As Boolean   
-   '----------------------------------------------------------------------------
-   'Refresh all the measurements for this consultation
-   'At the moment FIXME this is actually for 'today', not on a consult!pk basis
-   'If a measurement has already been saved, don't re-save
-   'Note there are problems here and we need to change this so that the
-   'measurements this consult really is measurments this pk-consult
-   '----------------------------------------------------------------------------
-   cons.Refresh("measurements_recorded_this_consult") ' all measurements recorded today
-   Measurements_This_Consultation = cons!measurements_recorded_this_consult
+   
+   modDBConnect.exec_query("Delete  from clin_measurements.measurements where fk_consult = " & cons.GetPK())
    For Each m In Measurements
-      bAlreadySaved = False
-      For Each Measurement_This_Consultation In Measurements_This_Consultation
-         If m!measurement = Measurement_This_Consultation!measurement Then
-            bAlreadySaved = True
-            Measurement_This_Consultation!saved = True
-            Break
-         End If    
-      Next
-      If Not bAlreadySaved Then
          m!fk_consult = cons.GetPK()
          m!time_noted = Format(Time(Now()), "hh:nn:ss") 'yes nn= mins cause mm=months
          Measurement_Save(m)
-         m!saved = True
-         '--------------------------------------------------------------------------------------------------
-         'rather than refresh from the backend - just add to the collection
-         'dosn't matter that the keyname is m!pk here, not using this collection outside of this subroutine.
-         '--------------------------------------------------------------------------------------------------
-         Measurements_This_Consultation.Add(m, m!pk)
-      End If       
-   Next
-   '-------------------------------------------------------------------------------
-   'Now, the reverse of saving measurement is possible, ie we may have previously
-   'saved a progress note, and then gone back and deleted one or more measurements
-   'for some reason e.g made a mistake.
-   '-------------------------------------------------------------------------------
-   For Each m In Measurements_This_Consultation
-      If IsNull(m!saved) Then
-         '--------------------------------------------------------------------
-         'The measurement has been removed by the user from the progress notes
-         'so mark it deleted from the measurements table. Note that the key of
-         'any void measurements will always be pk_measurement, never pk
-         '--------------------------------------------------------------------
-         modDBConnect.update("clin_measurements.measurements", Null, ["pk": m!pk_measurement, "deleted": True])
-      End If    
    Next
    
 End
 
 Public Sub Measurement_Save(m As Collection) As Integer
-   
+   '-------------------------
+   'Save a single measurement
+   '-------------------------   
    If m!pk Then
       
    Else
@@ -418,7 +374,6 @@ Public Function Get_Lipids(fk_patient As Integer) As Result
    sql &= "UNION " & sql_stem 
    sql = Replace(sql, "%LOINC%", const.Loinc_LDL)
    sql &= " ORDER BY observation_date DESC"
-   Print sql
    Return modDBConnect.exec_query(sql)
 
 End

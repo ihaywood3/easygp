@@ -46,6 +46,7 @@
 
 '                 - when recall is saved, this is not being stated so in the progress notes.
 ' BUGS            Please report to rterry@pacific.net.au
+'                 If your microalbumin seems not to come  up - different Loinc - notify me
 '-----------------------------------------------------------------------------------------------
 
 Private bExit As Boolean                        'Stop re-entry into subroutines
@@ -241,7 +242,7 @@ Public Function Valid_Data() As Boolean
    'If user wishes to save the DACC as a 'pending results', eg some stuff needs to
    'come back before claiming, allow this if they choose
    '------------------------------------------------------------------------------
-   Invalid:
+Invalid:
    sMsg = "The information needed to complete this Diabetic Annual Cycle of Care is incomplete - "
    "missing items are lablled 'OVERDUE'.\n\n"
    "Please note, that measurents such as BP, Height, Weight, and pathology values must exist "
@@ -326,11 +327,10 @@ Public Sub Refresh()
    Vbox_EditArea_Inner.Enabled = True  
    tbEdit.enabled = True
    teComments.RichText = sDecisionSupportComments
-   ' Decision_Support_Show()
    FClinical.Editor_ShowPage_External("browser", "DACC Analysis", sDecisionSupportComments)
    Dec Application.Busy
    EditArea_NotifyData_Change(False)
-
+   
 End
 
 Public Sub Decision_Support_Show()
@@ -397,12 +397,8 @@ Public Sub Save()
    Dim sProgressNotes_Components As String            '=the tabulated DACC plus any clinical notes for this section
    Dim view_row As Collection
    
-   If Vbox_EditArea.Padding = 0 Then         'no changes to main DACC
-      '    If ((Trim(FProgressNotes.teNotes.text) = "" And FProgressNotes.Get_copy_of_editor_text() = "") Or Not FProgressNotes.get_data_changed()) Then 'and no progress notes
-      Return                'don't save of no progress notes and no DACC data
-      '    End If                  'there are progress notes, so save even if no DACC data
-   Endif                      
-   
+   If Vbox_EditArea.Padding = 0 Then Return        'no changes to main DACC
+    
    If Not Valid_Data() Then Return
    DACC = New Collection
    Select Case fk_diabetes_annual_cycle_of_care
@@ -479,13 +475,8 @@ Public Sub Save()
    End If  
    
    DACC!fk_progressnote_components = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes_Components, const.cSection_GeneralNotes, fk_progressnote_components, "diabetes", 0, True) 'true=parse the html see the routine
-   'Save any associated progress notes to the backend - currently only linked to general notes.
-   '  If Not ((Trim(FProgressNotes.teNotes.text) = "" And FProgressNotes.Get_copy_of_editor_text() = "") Or Not FProgressNotes.get_data_changed()) Then
-   '    fk_progressnote_comments = modConsultDBI.ProgressNote_Save(currentconsult, FProgressNotes.teNotes.RichText, const.cSection_GeneralNotes, fk_progressnote_comments, "diabetes", 0, True)
-   ' End If
    modDACCDBI.Save_DACC(DACCS, pk_view, DACC, fk_progressnote_comments) 
    modDBConnect.CommitTrans()
-   '   FProgressNotes.DataChange_Update_Indicators(False)
    FClinical.Refresh_AllPreviousNotes()
    Reload()
    
@@ -627,6 +618,7 @@ Public Function Last_Microalbumin() As String
    ' Loinc_Spot_Urine_Albumin As String = "14957-5"
    ' loinc_Timed_UrineAlbumin_Excretion As String = "14956-7"
    ' Loinc_Spot_ProtCreatRatio as string = "2890-2"
+   'Seems a lot of different codes used by Labs ?whats correct
    '----------------------------------------------------------
    
    Dim R As Result
@@ -686,6 +678,7 @@ Public Function Last_Microalbumin() As String
       Endif
       urines.Add(urine, "spot albumin")
    End If
+   
    R = modMeasurementsDBI.Get_Loinc_Value(fk_patient, const.Loinc_Spot_RUAlbCreatRatio, 1, "DESC") 'Last R by date
    If R.count Then  
       urine = New Collection
@@ -724,68 +717,89 @@ Public Function Last_Microalbumin() As String
       Endif
       urines.Add(urine, "timed")
    End If
+   '---------------------------------------------
+   'Neither Spot nor timed, tell user its overdue
+   '---------------------------------------------
    If urines.count = 0 Then
       teNotesMicroalbuminDue.text = "OVERDUE"
-      sString = ""
+      teNotesMicroalbumin.richtext = Replace(teNotesMicroalbumin.richtext, "placeholder", "")
    Else
       '---------------------------------------------------------------------- 
       'could have either single spot, single timed or both within the period
       'Now, the timed could be older than the spot, use the most recent
       '---------------------------------------------------------------------
-      ' Try monthsold_timed = DateDiff(urines["timed"]!date, Now, gb.month)
-      ' Try monthsold_ratio = DateDiff(urines["ratio"]!date, Now, gb.month) 
-      ' If monthsold_ratio <> 0 And monthsold_timed <> 0 Then       'have one of each
-      '    If monthsold_ratio < monthsold_timed Thdownen
-      '       
-      '    Endif
-      ' Endif
-      ' 
-      
-      If urines.Exist("timed") Then         'preferentially use timed.
-         sSTring = urines["timed"]!text 
-         If urines["timed"]!abnormal = True Then
-            bHasMicroalbuminuria = True
-         Endif
-         teNotesMicroalbuminLast.text = Format(urines["timed"]!date, "dd/mm/yyyy")
-         If DateDiff(Now, DateAdd(urines["timed"]!date, gb.Month, 12), gb.day) <= 0 Then
-            teNotesMicroalbuminDue.text = "OVERDUE"
+      Try monthsold_timed = DateDiff(urines["timed"]!date, Now, gb.month)
+      Try monthsold_ratio = DateDiff(urines["spot a/c ratio"]!date, Now, gb.month)
+      '----------------------------------------------------------------------
+      'Firstly, if there is both a timed and a spot, see which is most recent
+      '----------------------------------------------------------------------
+      If monthsold_ratio <> 0 And monthsold_timed <> 0 Then       'have one of each
+         If monthsold_ratio < monthsold_timed Then                'the a/c ratio is the most recent
+            microalbumin_ShowSpot(urines)
          Else
-            teNotesMicroalbuminDue.text = Format(DateAdd(urines["timed"]!date, gb.Year, 1), "dd/mm/yyyy") 
+            microalbumin_ShowTimed(urines)
          End If
-      End If
-      'Now, if don't have timed, could have one of the others
-      If urines.Exist("spot a/c ratio") And urines.Exist("timed") = False Then 
-         sSTring = urines["spot a/c ratio"]!text   
-         If urines["spot a/c ratio"]!abnormal = True Then
-            bHasMicroalbuminuria = True
-         Endif
-         teNotesMicroalbuminLast.text = Format(urines["spot a/c ratio"]!date, "dd/mm/yyyy")
-         If DateDiff(Now, DateAdd(urines["spot a/c ratio"]!date, gb.Month, 12), gb.day) <= 0 Then
-            teNotesMicroalbuminDue.text = "OVERDUE"
+      Else
+         '---------------------------------------------- 
+         'only have one or the other, ie spot or a timed
+         '----------------------------------------------
+         If monthsold_ratio <> 0 Then
+            microalbumin_ShowSpot(urines)
          Else
-            teNotesMicroalbuminDue.text = Format(DateAdd(urines["spot a/c ratio"]!date, gb.Year, 1), "dd/mm/yyyy") 
-         End If
-      End If 
-      If urines.Exist("spot prot/c ratio") And urines.Exist("timed") = False Then 
-         sSTring = urines["spot prot/c ratio"]!text   
-         If urines["spot prot/c ratio"]!abnormal = True Then
-            bHasMicroalbuminuria = True
+            microalbumin_ShowTimed(urines)
          Endif
-         teNotesMicroalbuminLast.text = Format(urines["spot prot/c ratio"]!date, "dd/mm/yyyy")
-         If DateDiff(Now, DateAdd(urines["spot prot/c ratio"]!date, gb.Month, 12), gb.day) <= 0 Then
-            teNotesMicroalbuminDue.text = "OVERDUE"
-         Else
-            teNotesMicroalbuminDue.text = Format(DateAdd(urines["spot prot/c ratio"]!date, gb.Year, 1), "dd/mm/yyyy") 
-         End If
-      End If 
+      End If    
       
    Endif
-   teNotesMicroalbumin.richtext = Replace(teNotesMicroalbumin.richtext, "placeholder", sString)
-   If bHasMicroalbuminuria Then
-      sDecisionSupportComments &= "<P><B>Microalbuminuria</B></P>"
-      sDecisionSupportComments &= "Microalbuminuria noted. "
-      sDecisionSupportComments &= "If this test was a spot urine, then you should probably do a timed overnight urine collection to confirm this.<BR><BR>"
+   
+End
+
+Public Function microalbumin_ShowSpot(urines As Collection) As String
+   '-----------------------------------------------------------
+   'Show text appropriate for the spot microalbumin collection
+   '-----------------------------------------------------------
+   
+   teNotesMicroalbuminLast.text = Format(urines["spot a/c ratio"]!date, "dd/mm/yyyy")
+   If DateDiff(Now, DateAdd(urines["spot a/c ratio"]!date, gb.Month, 12), gb.day) <= 0 Then
+      teNotesMicroalbuminDue.text = "OVERDUE"
+   Else
+      teNotesMicroalbuminDue.text = Format(DateAdd(urines["spot a/c ratio"]!date, gb.Year, 1), "dd/mm/yyyy") 
+   End If
+   teNotesMicroalbumin.richtext = Replace(teNotesMicroalbumin.richtext, "placeholder", urines["spot a/c ratio"]!text)
+   If urines["spot a/c ratio"]!abnormal = True Then
+      microalbuminuria_update_decision_support("spot")
    Endif
+   
+End
+
+Public Function microalbumin_ShowTimed(urines As Collection) As String
+   '-----------------------------------------------------------
+   'Show text appropriate for the timed microalbumin collection
+   '-----------------------------------------------------------
+   
+   teNotesMicroalbuminLast.text = Format(urines["timed"]!date, "dd/mm/yyyy")
+   If DateDiff(Now, DateAdd(urines["timed"]!date, gb.Month, 12), gb.day) <= 0 Then
+      teNotesMicroalbuminDue.text = "OVERDUE"
+   Else
+      teNotesMicroalbuminDue.text = Format(DateAdd(urines["timed"]!date, gb.Year, 1), "dd/mm/yyyy") 
+      teNotesMicroalbumin.richtext = Replace(teNotesMicroalbumin.richtext, "placeholder", urines["timed"]!text)
+   End If   
+   If urines["timed"]!abnormal = True Then
+      microalbuminuria_update_decision_support("timed")
+   End If   
+   
+End
+
+Public Sub microalbuminuria_update_decision_support(stestType As String)
+   '------------------------------------------
+   'Add a message to the decision support text
+   '------------------------------------------   
+   
+   sDecisionSupportComments &= "<P><B>Microalbuminuria</B></P>"
+   sDecisionSupportComments &= "Microalbuminuria noted. "
+   If stestType <> "timed" Then 
+      sDecisionSupportComments &= "You should probably do a timed overnight urine collection to confirm this.<BR><BR>"
+   End If   
    
 End
 
@@ -853,10 +867,6 @@ Public Sub Lipid_Get_Component(R As Result) As String
          sDecisionSupportComments &= "The total cholesterol of " & R!value_numeric & " elevated - aim for TC &lt;3.5 and LDL &lt;2.0)."
       Endif
    Endif
-   'Else
-   '  teNotesHDLDue.text = "OVERDUE"
-   '  bCompleted = False   
-   'End If  
    Return sString
    
 End
@@ -1143,12 +1153,14 @@ Public Sub Dacc_Reprint()
    DACC_Print(DACC)
    EditArea_NotifyData_Change(False)
    tbRePrint.SetFocus() 'can't see if anyway, but if no focus, currently defaults to FClinical.txtSearch for some reason
-
+   
 End
 
 Public Sub print_content()
+   '--------------------------------------------------------
    'So named like all forms as called from FClinical Toolbar
-
+   '--------------------------------------------------------
+   
    Dacc_Reprint()
    
 End
@@ -1157,7 +1169,7 @@ Public Sub New_Entry()
    '--------------------------------------------------------------------------------------------------------
    'New Dacc this routine is  so-named in all edit area forms as called from toolbutton in FClinical toolbar
    '--------------------------------------------------------------------------------------------------------
-
+   
    EditArea_Clear()  'Clear entry area and refresh as many components as possible
    Reset_Keys()      
    Refresh()  
@@ -1189,7 +1201,6 @@ Public Sub Edit()
          fk_progressnote_comments = -1 
       Endif
       Vbox_EditArea_Inner.Enabled = True     
-      '  VSplit_DecSupport_Notes.Enabled = True 
    End If
    
 End
@@ -1235,11 +1246,11 @@ Public Sub teNotesDACC_LostFocus()
    
    Last.pos = 1
    Last.BackGround = Color.white 
-
+   
 End
 
 Public Sub teNotesDACC_gotFocus()
-
+   
    Last.BackGround = Color.rgb(95, 255, 175)
    Select Case Last.tag
       Case "hba1c"
@@ -1364,7 +1375,6 @@ Public Sub Reload()
    'the columnview is now not visible
    '-----------------------------------------------------------   
    
-   '  VSplit_DecSupport_Notes.Enabled = False
    With cvwDACCS
       .columns.count = 2
       .Clear
@@ -1689,17 +1699,3 @@ Public Sub Measurement_Graph(loinc As String, Measurement As String)
    
 End
 
-'  Dim spicPath As String 
-'   Dim pic As New Picture
-'   Dim H As Integer
-'   Dim W As Integer
-'   Stop Event
-' If Drag.Type = Drag.Image Then
-'      pic.Load(Drag.Source.Tag!fname)
-'      H = Drag.Source.Tag!H
-'      W = Drag.Source.Tag!W
-'      sPicPath = "<TABLE WIDTH=100%><TR><TD WIDTH=100%><P><IMG src=\"" & Drag.Source.tag!fname & "\"" 
-'      sPicPath &= " NAME=\"graphics\" ALIGN=\"LEFT\" WIDTH=\"" & Str(W) & "\" HEIGHT=\"" & Str(H) & "\" BORDER=\"0\"></TR></TD></TABLE><BR><BR>" '<BR CLEAR=Left>
-'      teNotes.text &= "%image%"
-'      teNotes.richtext = Replace$(teNotes.richtext, "%image%", sPicPath)
-' End If

@@ -48,6 +48,7 @@ Public Sub Process(recall As Collection, tag As String, cons As Cconsult)
    Dim bActive As Boolean                    'If true the recall is still active, default to false
    Dim iAuditAction As Integer
    Dim audit_reason As String 
+   Dim Recall_Form As FRecalls
    
    Inc Application.Busy
    currentconsult = cons                     'used in other subroutines in this module
@@ -78,9 +79,9 @@ Public Sub Process(recall As Collection, tag As String, cons As Cconsult)
             If iAuditAction = const.cAuditAction_CompletedRepeatNewInterval Or iAuditAction = const.cAuditAction_ReScheduled Then
                With FNewInterval = New FRecallAdjustInterval
                   .title = "Adjust Recall Interval"
-                 If iAuditAction = const.cAuditAction_ReScheduled Then
-                      FNewInterval.txtInterval.Enabled = False 
-                 Endif
+                  If iAuditAction = const.cAuditAction_ReScheduled Then
+                     FNewInterval.txtInterval.Enabled = False 
+                  Endif
                   .Init(NewRecall)                                               'show recall reason/dates in the dialog box
                End With
                Dec Application.Busy
@@ -118,13 +119,13 @@ Public Sub Process(recall As Collection, tag As String, cons As Cconsult)
             End If
          Case const.cAuditAction_MarkDeleted, const.cAuditAction_CompletedWithExplanation, const.cAuditAction_RefusedWithExplanation
             bDeleted = True   'audit_reason will be enforced by the auditing process with popup FAudit for user to enter reason later
-         Case const.cAuditAction_Delete
+         Case const.cAuditAction_DeleteFRecalls.ReLoad()
             bDeleted = True   'audit_reason will be enforced by the auditing process with popup FAudit for user to enter reason later
             If recall!fk_consult = currentconsult.GetPK() Then
-              '------------------------------------------------------------------ 
-              'we are reversing a progress note from within the same consultation
-              '------------------------------------------------------------------
-              modDBConnect.update("clin_consult.progressnotes", Null, ["pk": recall!fk_progressnote, "deleted": True])
+               '------------------------------------------------------------------ 
+               'we are reversing a progress note from within the same consultation
+               '------------------------------------------------------------------
+               modDBConnect.update("clin_consult.progressnotes", Null, ["pk": recall!fk_progressnote, "deleted": True])
             Endif
       End Select
       '--------------------------------------------------------------------
@@ -137,23 +138,27 @@ Public Sub Process(recall As Collection, tag As String, cons As Cconsult)
       End If    
       Dec Application.Busy
       If modAudit.MakeAudit(currentconsult, const.sAuditAction[iAuditAction], "clin_recalls.recalls", recall!pk_recall, const.cSection_Recalls, audit_reason) Then 
+         '-----------------------------------------------------------------
+         'if recall was logged this consult - must remove the progress note
+         '-----------------------------------------------------------------
+         If currentconsult.GetPK() = recall!fk_consult Then
+            modDBConnect.update("clin_consult.progressnotes", Null, ["pk": recall!fk_progressnote, "deleted": True])
+         Endif
          Inc Application.Busy
          modDBConnect.CommitTrans()
-         currentconsult.Refresh("recalls_logged")           'refresh the recalls in Fclinical list
-         FClinical.Refresh_Section(const.cSection_Recalls) 
-         'Need to also figure out how to refresh the recalls list of FRecalls is showing
-         '    FRecall = FClinical.CurrentObject()
-         '   If FClinical.VisiblePage.Tag = "Recalls" Then
-         '  End If
-         
-         currentconsult.Refresh("progress_notes")  
-         FClinical.Refresh_Section(const.cSection_GeneralNotes)
-          Dec Application.busy 
+         currentconsult.Refresh("recalls_logged")               'refresh the recalls collection for the patient
+         FClinical.Refresh_Section(const.cSection_Recalls)      'refresh the recalls list showing in FClinical
+         currentconsult.Refresh("progress_notes")               'refresh the progress notes collection
+         FClinical.Refresh_Section(const.cSection_GeneralNotes) 'refresh the general notes section
+         FClinical.Refresh_AllPreviousNotes()                   ' refresh all previous notes
+         Recall_Form = FClinical.EditorPage_Get("Recalls")
+         Try Recall_Form.ReLoad()                                   ' If the recalls panel loaded in FClinical, refresh its list
+         Dec Application.busy 
       Else
-          modDBConnect.RollBack()  
+         modDBConnect.RollBack()  
       End If   
    End If 
-  
+   
 End 
 
 Public Function Recall_CreateCopy() As Collection 
@@ -163,7 +168,7 @@ Public Function Recall_CreateCopy() As Collection
    '--------------------------------------------
    
    Dim NewRecall As New Collection 
-
+   
    NewRecall!pk_recall = currentrecall!pk_recall
    NewRecall!fk_consult = currentconsult.GetPK()
    NewRecall!fk_urgency = currentrecall!fk_urgency
@@ -184,18 +189,19 @@ Public Function Calc_Date_Due(fk_interval_unit As Integer, interval As Integer) 
    '--------------------------------------------------------------
    'Calculates the date due from Now() given the unit and interval
    '--------------------------------------------------------------
+
    Dim Due As Date
    
    Select Case fk_interval_unit
-        Case const.Units_day
-            due = DateAdd(Now, gb.Day, interval)
-        Case const.Units_week
-            due = DateAdd(Now, gb.Week, interval)
-        Case const.Units_month
-            due = DateAdd(Now, gb.Month, interval)
-        Case const.Units_year
-            due = DateAdd(Now, gb.Year, interval)
-    End Select
-    Return due
-  
+      Case const.Units_day
+         due = DateAdd(Now, gb.Day, interval)
+      Case const.Units_week
+         due = DateAdd(Now, gb.Week, interval)
+      Case const.Units_month
+         due = DateAdd(Now, gb.Month, interval)
+      Case const.Units_year
+         due = DateAdd(Now, gb.Year, interval)
+   End Select
+   Return due
+   
 End

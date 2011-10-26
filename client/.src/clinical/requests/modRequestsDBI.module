@@ -287,18 +287,70 @@ Public Function RequestForms_Get(fk_patient As Integer, Optional Order_by As Str
    
    Dim sql As String
    
-  ' sql = "Select * From clin_requests.vwRequestsOrdered WHERE fk_patient = " & fk_patient
    sql = "Select * From clin_requests.vwRequestForms WHERE fk_patient = " & fk_patient & " AND deleted = false"
    sql &= " Order by " & Order_by & " " & Asc_Desc
    Return modDBConnect.exec_query_collection(sql)
    
 End
 
+Public Sub RequestForm_Preview(RequestForm As Collection)
+   '-------------------------------------------------
+   'Load the LaTex of the request form onto a new tab
+   '-------------------------------------------------   
+
+   If Not IsNull(RequestForm!latex) Then 
+      Try FClinical.Editor_ShowPage_External("pdf file", "Request Form " & Format(RequestForm!date, "dd/mm/yyyy"), modPrinting.Latex_To_PDF(RequestForm!latex))
+      If Error Then
+         Message.info("An error occurred whilst attempting to show the request form.") 
+      Endif
+   Else
+      Message.Info("No LaTex template was found for this file.")
+   End If    
+
+End
+
+Public Sub RequestForm_Delete(currentconsult As Cconsult, requestform As Collection)
+   '--------------------------------------------------------------------
+   'Delete's the current request form
+   'If it was ordered this consult - just deletes it Fixme.
+   'If ordered a previous consuilt strike-through the text in the notes
+   'and put in an audit trail
+   '-------------------------------------------------------------------
+
+ 
+   Dim fk_progressnote As Integer
+   Dim fk_form As Integer
+   Dim pn As Collection
+   Dim fk_reason As Integer
+   Dim reason As String
+ 
+   If Message.Warning("Are you sure you wish to delete this request for:\n\n" & RequestForm!requests_summary & "\n\nAn audit trail will be created if you proceed.", "Yes", "No") = 2 Then Return 
+   fk_progressnote = RequestForm!fk_progressnote
+   fk_form = RequestForm!fk_form
+   For Each PN In currentconsult!progress_notes
+      If PN!pk_progressnote = fk_progressnote Then
+         pn!notes = "<strike>" & pn!notes & "</strike><BR>"
+         Faudit.Init(": Delete Request Form", "clin_consult.progressnotes/clin_requests.forms", "Requests summary:" & RequestForm!requests_summary)
+         fk_reason = FAudit.ShowModal() 
+         modDBConnect.CommitTrans()  'otherwise if a new reason it won't have been comitted
+         reason = modAudit.Get_Reason_Using_pk(fk_reason)
+         pn!notes &= "<small><B><I>Audit note:</B> this request form was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small>"
+         modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
+         modDBConnect.update("clin_requests.forms", Null, ["pk": fk_form, "deleted": True])
+         modDBConnect.exec_query("Update clin_requests.forms_requests set deleted = True where fk_form = " & fk_form)
+         modDBConnect.CommitTrans() 
+         FClinical.Refresh_AllPreviousNotes() 
+         FClinical.Refresh_Section(const.cSection_Requests)
+         Break
+      Endif
+   Next
+   
+End
+
 Public Function Request_Picture_icon(type As String, item As String, HasResult As Boolean) As Picture
    
    Dim picname As String
-   'Dim aPicture As picture
-   
+    
    Select Case Lower(type)
       Case "pathology provider"
          Select Case LCase(item)
@@ -337,80 +389,6 @@ Public Sub RequestForm_Note_Save(Note As CRequestNote)
    
 End
 
-Public Sub RequestForm_Delete(currentconsult As Cconsult, old_pk As String, fk_form As Integer, RequestForm As Collection) 
-   '--------------------------------------------------------------------
-   'PURPOSE  :   Deletes a health issue
-   '             Keeps an audit trail
-   'CALLED BY:   Various popup menus in FClinical and FPasthistory
-   '             First check there are no associated progress notes
-   '             if so, cannot delete, but change the html to make the
-   '             text strike through, and add to the audit table
-   '------------------------------------------------------------------
-   
-   Dim bNotesExist As Boolean
-   Dim audit As New Collection
-   Dim sAuditAnnotation As String 'audit annotation to insert into progress notes
-   Dim sToday As String 'todays date as a string
-   Dim progressnote As Collection
-   Dim bDeleted As Boolean 
-   Dim sString As String   
-   Dim newnote As New Collection
-   Dim iAuditAction As Integer
-   
-   sToday = Format(Now, "dd/mm/yyyy")
-   '-------------------------------------------------------------------
-   'First - popup the audit form and get reason for the deletion
-   'health issue could be deleted either during consulation 
-   'as we are allowed to change out mind within the consultation and
-   'don't need to give a reason for that
-   'or at a later date
-   '--------------------------------------------------------------------
-   audit!fk_row = RequestForm!fk_form
-   audit!fk_consult = currentconsult.GetPK()
-   audit!fk_section = const.cSection_Requests
-   audit!data_summary = RequestForm!requests_summary 
-   
-   iAuditAction = const.cAuditAction_MarkDeleted
-   
-  ' If RequestForm!fk_consult <> currentconsult.GetPK() Then
-   If Format(RequestForm!consult_date, "dd/mm/yyyy") <> Format(Now(), "dd/mm/yyyy") Then 
-      FAudit.Init(RequestForm, Const.cSection_Requests, iAuditAction, currentconsult)
-      If Not FAudit.ShowModal() Then Return 
-      audit!reason = "Delete" & ":<BR>- " & Lower(const.globalstring)
-      audit!reason = Lower(const.globalstring)
-      If iAuditAction = const.cAuditAction_Delete Then bDeleted = True   
-   Else
-      audit!reason = const.sAuditAction[const.cAuditAction_Reversal]
-      RequestForm!deleted = True
-      
-      ' cAuditAction_Reversal
-   End If
-   bDeleted = True
-   
-   'Now if progress notes existed then update the database to reflect this
-   ' For Each progressnote In currentconsult!progress_notes
-   '    If progressnote!fk_problem = fk_form Then 
-   '     '-------------------------------------------------------------------
-   '     'Mark each problem and associated progress note with strike through
-   '     '-------------------------------------------------------------------
-   '     sAuditAnnotation = "<STRIKE><P><FONT COLOR='#b3b3b3'>" & progressnote!notes & "</STRIKE><p>"
-   '     sAuditAnnotation &= "<P ALIGN=CENTER><I><B>Audit trail</B> : notes deleted by " & modDBConnect.currentUser!wholename & " on "
-   '     sAuditAnnotation &= sToday & " the reason given was: " & Lower(const.globalstring) & "</P></I></FONT><p>"
-   '     progressnote!notes = sAuditAnnotation
-   '     currentconsult!progress_notes[progressnote!pk_progressnote] = progressnote
-   '    End If
-   ' Next 
-   newnote!fk_audit_action = const.cAuditAction_Reversal
-   newnote!pk_progressnote = RequestForm!fk_progressnote
-   modDBConnect.update("clin_requests.forms", currentconsult!requests_ordered_this_consult[old_pk], RequestForm, "fk_form")
-   modDBConnect.update("clin_consult.progressnotes", currentconsult!progress_notes[RequestForm!fk_progressnote], newnote, "pk_progressnote") ' save to backend and update the collection in RAM too
-   
-   'modConsultDBI.ProgressNotes_Edit(currentconsult!progress_notes, fk_form)
-   ' RequestForm!deleted = True
-   
-   ' audit!fk_action = iAuditAction
-   ' modConsultDBI.Make_Audit(audit, "clin_history", "past_history")
-End
 
 Public Function RequestForm_Save(currentconsult As Cconsult, old_pk As String, RequestForm As Collection, Old_FormsRequests As Collection, formsRequests As Collection, Pictures As Collection) As Integer   
    '--------------------------------------------
@@ -601,201 +579,5 @@ Public Sub Request_Providers_Save(old_data As Collection, pk_view As Integer, re
    Endif
    
 End
-
-Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTemplate
-   'ian please do not remove this.
-   ' Dim templ As New CTemplate("request-form", "tex")
-   ' Dim x As Integer
-   ' Dim comm As Collection 
-   ' Dim sHtml As String
-   ' Dim sString As String
-   ' Dim sImagePath As String
-   ' Dim pic As Picture
-   ' Dim cc As String 
-   ' Dim branch As Collection 
-   ' Dim branchlocations As String = ""
-   ' Dim cmd As String 
-   ' 
-   ' templ.Subst_common(currentconsult)
-   ' 
-   ' sString = cmbRequestTypes.text 
-   ' sString = Replace(sString, "provider", "")
-   ' templ.Subst("form-type", UCase(Left(sString, 1)) & Right(sString, Len(sstring) - 1))   'The heading e.g 'Pathology Provider'
-   ' 
-   ' '-----------------------------------------------------------
-   ' 'Mostly we are dealing with organisations providing services
-   ' '-----------------------------------------------------------
-   ' If Not IsNull(default_provider!organisation) Then 
-   '    templ.Subst("provider-organisation", default_provider!organisation)
-   ' Else
-   '    templ.Subst("provider-organisation", default_provider!wholename)
-   ' End If
-   ' templ.Subst("provider-branch", default_provider!headoffice_branch)
-   ' If Not IsNull(default_provider!headoffice_street2) Then
-   '     templ.Subst("provider-address-street", default_provider!headoffice_street1 & "\\\\" & default_provider!headoffice_street2)
-   ' Else
-   '    templ.Subst("provider-address-street", default_provider!headoffice_street1)
-   ' End If   
-   ' templ.Subst("provider-address-suburb", default_provider!headoffice_town & " " & default_provider!headoffice_postcode)
-   ' ' Else
-   ' '     templ.Subst("provider.organisation", "\\relax ")
-   ' ' End If
-   ' ' If Not IsNull(default_provider!headoffice_branch) Then
-   ' '   templ.Subst("provider.branch", default_provider!headoffice_branch)
-   ' ' Else
-   ' '    templ.Subst("provider.branch", "\\relax ")
-   ' ' Endif
-   ' 
-   ' ' If Not IsNull(default_provider!headoffice_street) Then 
-   ' '    templ.Subst("provider.address.street", default_provider!headoffice_street)
-   ' ' Else
-   ' '    templ.Subst("provider.address.street", "\\relax ")  
-   ' ' End If 
-   ' ' If Not IsNull(default_provider!headoffice_town) Then
-   ' '    templ.Subst("provider.address.suburb", default_provider!headoffice_town & " " & default_provider!headoffice_postcode)
-   ' ' Else
-   ' '    templ.Subst("provider.address.suburb", "\\relax ")  
-   ' ' End If 
-   ' If Not IsNull(default_provider!organisation_tollfree) Then
-   '    templ.Subst("provider-phone", default_provider!tollfree)
-   ' Else If Not IsNull(default_provider!phone) Then
-   '    templ.Subst("provider-phone", "Phone: " & default_provider!phone)
-   ' Else
-   '    templ.Subst("provider-phone", "Phone not recorded")
-   ' End If
-   ' If Not IsNull(default_provider!fax) Then
-   '    templ.Subst("provider-fax", "Fax  : " & default_provider!fax)
-   ' Else
-   '    templ.Subst("provider-fax", "Fax   not recorded")
-   ' End If
-   ' If branches.count = 1 Or default_provider!fk_person <> 0 Then
-   '    templ.Subst("defaultbranch-branch", "\\relax")
-   '    templ.Subst("defaultbranch-address.street", "\\relax")
-   '    templ.Subst("defaultbranch-address.suburb", "\\relax")
-   '    templ.Subst("defaultbranch-phone", "\\relax")
-   '    templ.Subst("defaultbranch-fax", "\\relax")
-   ' Else
-   '    
-   '    If Not IsNull(default_provider!default_branch) Then
-   '       templ.Subst("defaultbranch-branch", default_provider!default_branch)
-   '    Else
-   '       templ.Subst("defaultbranch-branch", "\\relax")
-   '    End If 
-   '    If Not IsNull(default_provider!default_branch_street1) Then
-   '       If Not IsNull(default_provider!default_branch_street2) Then
-   '          templ.Subst("defaultbranch-address-street", default_provider!default_branch_street1 & "\\\\" & default_provider!default_branch_street2)
-   '       Else
-   '          templ.Subst("defaultbranch-address-street", default_provider!default_branch_street1)
-   '       End If 
-   '    Else
-   '       templ.Subst("defaultbranch-address-street", "\\relax")
-   '    End If
-   '    If Not IsNull(default_provider!default_branch_town) Then
-   '       templ.Subst("defaultbranch-address-suburb", default_provider!default_branch_town & " " & default_provider!default_branch_postcode)
-   '    Else
-   '       templ.Subst("defaultbranch-address-suburb", "\\relax")
-   '    End If    
-   '    If Not IsNull(default_branch_comms!tollfree) Then
-   '       templ.Subst("defaultbranch-phone", default_branch_comms!tollfree)
-   '    Else If Not IsNull(default_branch_comms!phone) Then
-   '       templ.Subst("defaultbranch-phone", "Phone :" & default_branch_comms!phone)
-   '    Else
-   '       templ.Subst("defaultbranch-phone", "Phone :Not recorded")
-   '    End If
-   '    If Not IsNull(default_branch_comms!fax) Then
-   '       templ.Subst("defaultbranch-fax", "Fax    :" & default_branch_comms!fax)
-   '    Else
-   '       templ.Subst("defaultbranch-fax", "Fax    :Not recorded")
-   '    End If
-   ' End If
-   ' 
-   ' x = 0
-   ' For Each branch In branches
-   '    If branch!head_office <> True Then
-   '       If branch!branch <> default_provider!default_branch Then
-   '          If Lower(branch!category) = Lower(default_provider!category) Then 
-   '             sstring = ""
-   '             For Each comm In branch!comms
-   '                If comm!fk_type = Const.CommModalityPhone Then
-   '                   sstring &= " " & comm!value
-   '                End If
-   '             Next 
-   '             branchlocations &= branch!branch & " " & Trim(branch!street1 & " " & branch!street2) & " " & branch!town & " " & branch!postcode
-   '             branchlocations &= sString & "<BR>"
-   '          End If
-   '       End If
-   '    End If
-   '    Inc x
-   '    If x > 10 Then Break
-   ' Next 
-   ' If branchlocations = "" Then branchlocations = "no branches"
-   ' templ.Subst_HTML("branchlocations", branchlocations) 
-   ' templ.Subst("requests", requestform!requests_summary)
-   ' templ.Subst("medications", requestform!medications_summary)
-   ' templ.Subst("notes", requestform!notes_summary)
-   ' 
-   ' sString = ""
-   ' If currentRequestFormPictures.count Then
-   '    For x = 0 To currentRequestFormPictures.count - 1
-   '       sImagePath = currentRequestFormPictures[x]!path
-   '       
-   '       cmd = "cd `dirname " & sImagePath & "` ; " 
-   '       cmd &= "convert " & File.Name(sImagePath) & " " & "test.eps"
-   '       Shell cmd Wait
-   '       
-   '       sString &= templ.MakeImage(File.Dir(sImagePath) & "/test.eps") 
-   '    Next
-   '    
-   ' End If
-   ' templ.Subst("diagrams-pictures", sString)
-   ' 
-   ' If requestform!urgent = True Then 
-   '    templ.Checkbox("urgent-checkbox", True)
-   ' Else
-   '    templ.Checkbox("urgent-checkbox", False)
-   ' End If
-   ' If requestform!phone = True Then 
-   '    templ.Checkbox("phone-checkbox", True)
-   ' Else
-   '    templ.Checkbox("phone-checkbox", False)
-   ' End If
-   ' If requestform!fax = True Then 
-   '    templ.Checkbox("fax-checkbox", True)
-   ' Else
-   '    templ.Checkbox("fax-checkbox", False)
-   ' End If
-   ' If requestform!fasting = True Then 
-   '    templ.Checkbox("fasting-checkbox", True)
-   ' Else
-   '    templ.Checkbox("fasting-checkbox", False)
-   ' End If
-   ' 
-   ' sString = ""
-   ' 
-   ' templ.Subst("our-reference", "") 'FIXME PUT IN A REFERENCE
-   ' 
-   ' sString = "" 
-   ' If requestform!bulk_bill Then sString = "Bulk Bill"
-   ' templ.Subst("billing", sString)
-   ' If requestform!urgent Then
-   '    templ.Subst("urgent-word", templ.Bold("**Urgent**"))
-   ' Else
-   '    templ.Subst("urgent-word", "Urgent")
-   ' Endif
-   ' 
-   ' sString = ""
-   ' If RequestForm!copyto_patient Then
-   '    sString &= "Patient at their address on this form<BR>"
-   ' End If
-   ' CopyTos = modUtil.SplitStrings_into_collection(requestform!copyto, "|")
-   ' For Each cc In Copytos
-   '    sString &= cc & "<BR>"
-   ' Next  
-   ' templ.Subst_HTML("copyto", sString)  
-   ' templ.Subst("form-date", Format(RequestForm!date, "dd/mm/yyyy")) 
-   ' 
-  ' Return templ
-   
-End 
 
 

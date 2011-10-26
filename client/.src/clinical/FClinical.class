@@ -51,6 +51,7 @@ Private iCertificatetype As Integer = const.certificate_type_medical 'default to
 Private Deleted_Documents As Collection     'will allow multiple levels of un-delete e.g see mnuLettersReceived_Click
 Private Deleted_Referral As Collection      'single level undelete
 Private Deleted_Medications As Collection  'fixme join to the above
+Private Deleted_Request As Collection      'fixme join to the above
 Private synonyms As Collection 
 Private currentobservations As Collection 
 Public currentTemporaryWebbrowserHTMLFilename As String 'temporary file being displayed in browser window
@@ -389,16 +390,15 @@ Public Sub Refresh_Toolbar()
 End
 
 Public Sub Init()
-   'form_clinical used when other forms need to 'find' this form to udpate something
-   'Embed forms needed to complete the gui here
-   'Real mess, so hang in there, alot of experimentation
+   '--------------------------------------------------------------------------------
+   'form_clinical used when other forms need to 'find' this form to update something
+   '--------------------------------------------------------------------------------   
    
-   Dim Printer_name As String
-   Dim tb As ToolButton   
-   
-   form_clinical = Me                                       'allow access of FClinical from any other module
+   form_clinical = Me                                        'allow access of FClinical from any other module
    Refresh_Toolbar
-   ScratchPad = New FScratchPad(VboxScratchPad)
+   With ScratchPad = New FScratchPad(VboxScratchPad)              'add the scratch pad
+      .txtScratchPad.Enabled = False   
+   End With
    With Form_Decision_Support = New FHtmlViewer(Vbox_Decision_Support)
       .lblViewerCaption.Visible = True   
       .tbWebBrowserClose.Visible = True 
@@ -406,7 +406,6 @@ Public Sub Init()
       .tbWebBrowserZoomOut.Visible = True   
    End With
    
-   ScratchPad.txtScratchPad.Enabled = False   
    EditorPages = New Collection
    currentconsult = Null
    With FMetaData = New FDocumentMetaData(VboxScratchPad)  
@@ -1117,7 +1116,7 @@ Public Sub Gui_Clear()
    txtMeasurementShowLastMonths.text = ""
    txtFindGraphable.text = ""
    
-   WorkspaceEditor_Clear()                     'remove all current pages from collection
+   WorkspaceEditor_Clear()                     'remove all current pages from workspace, starts new EditorPages collection
    Tabbed_lists_Clear()                        'scripts, recalls, requests lists etc
    TabStrip_Lists.index = 0                    'make medication list the default one showing
    cvwProblemsSignificant.Clear()
@@ -1148,7 +1147,7 @@ Public Sub Gui_Clear()
    Deleted_Referral = New Collection
    txtConsultDate.text = Format(Now, "dd/mm/yyyy") 
    application.busy = 0                        'ensure have no hourglass
-
+   
 End
 
 Public Sub cmbSearch_GotFocus()
@@ -1197,6 +1196,7 @@ Public Sub WorkspaceEditor_Clear()
       hWindow.Close()
    Next
    WorkspaceEditor.Unlock()
+   EditorPages = New Collection
    
 End
 
@@ -3032,6 +3032,7 @@ Public Sub mnuTabbedListReferral_Click()
    Select Case Last.tag
       Case "delete"
          Referral_Delete()
+         
       Case "undo delete"
          Referral_UnDelete() 
       Case "print no inclusions"         'single copy no included documents
@@ -3113,7 +3114,7 @@ Public Sub Referral_Delete()
    Dim referral As New Collection
    Dim fk_progressnote As Integer
    Dim fk_referral As Integer
-   Dim pn As Collection
+   Dim pn As Collection  
    Dim fk_reason As Integer
    Dim reason As String
    
@@ -3125,7 +3126,6 @@ Public Sub Referral_Delete()
    sHtml = referral!letter_html
    For Each PN In currentconsult!progress_notes
       If PN!pk_progressnote = fk_progressnote Then
-         Print pn!notes 
          pn!notes = Replace$(pn!notes, "<TABLE", "<TABLE BGCOLOR='#CFCFCF' ") 
          pn!notes = Replace$(pn!notes, "<small>", "<strike><small>", gb.IgnoreCase)
          pn!notes = Replace$(pn!notes, "</small>", "</strike></small>", gb.IgnoreCase)
@@ -3134,8 +3134,6 @@ Public Sub Referral_Delete()
          modDBConnect.CommitTrans()  'otherwise if a new reason it won't have been comitted
          reason = modAudit.Get_Reason_Using_pk(fk_reason)
          pn!notes = Replace(pn!notes, "</TABLE>", "</TABLE><small><B><I>Audit note:</B> this referral letter was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small>")
-         Print pn!notes
-         
          modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
          modDBConnect.update("clin_referrals.referrals", Null, ["pk": fk_referral, "deleted": True])
          modDBConnect.CommitTrans() 
@@ -3216,84 +3214,87 @@ Public Sub mnuTabbedListRecalls_click()
 End
 
 Public Sub mnuTabbedListRequest_Click()
+   '-----------------------------------------------------------------------------------
+   'This is the menu which has popped up over the requests the user has ordered e.g FBC
+   'Process the menu options
+   'Explanation Split(cvwRequests.item.key, "-").Count = 3
+   '- was included because at some stage I allowed double clicking to expand the
+   '- columnview and show the requests on form, with sub lines being the 
+   '- individual requests - I'll probably remove this as not found useful
+   '-----------------------------------------------------------------------------------   
+   
+   Dim Filename As String
+   Dim RequestForm As New Collection 
    
    cvwRequests.MoveCurrent()
+   If Split(cvwRequests.item.key, "-").Count = 3 Then
+      Try RequestForm = currentconsult!requests_ordered[Right(cvwRequests.item.key, Len(cvwRequests.item.key) - InStr(cvwRequests.Item.key, "-"))]
+   Else
+      RequestForm = currentconsult!requests_ordered[cvwRequests.item.key]
+   End If
    
    Select Case Last.tag
-      Case "adjust columns"
+      Case "adjust columns"                  'allow user to adjust the column sizes
          cvwRequests.Header = True
          cvwRequests.Resizable = True 
       Case "delete"
-         
+         Try modRequestsDBI.RequestForm_Delete(currentconsult, RequestForm)
+         Deleted_Request = RequestForm
       Case "undo delete"
-      Case "reverse single request"
+         modUtil.NotImplemented("Un- deleting a request form is not implemented")
       Case "re-order"
+         
       Case "re-print"
-         If Split(cvwRequests.item.key, "-").Count = 3 Then
-            Re_Print_Document_Html(currentconsult!requests_ordered[Right(cvwRequests.item.key, Len(cvwRequests.item.key) - InStr(cvwRequests.Item.key, "-"))]!form_html)
-         Else
-            Re_Print_Document_Html(currentconsult!requests_ordered[cvwRequests.item.key]!form_html)
-         End If
+         Try modPrinting.Print_latex(RequestForm!latex)
       Case "preview form"
-         RequestForm_Display_Previous()
-      Case "show result"
-         RequestForm_ShowResult()
-         
-         ' Case "graph"
-         '    vBoxWebBrowser.Visible = False
-         '    vBoxWorkSpace.Visible = True
-         '    'Measurement_Graph()
-         
-      Case "sort by date ascending"
-      Case "sort by date descending"
-         
-      Case "sort name ascending"
-      Case "sort name descending"
-      Case "list as forms"
-      Case "list as requests"
+         Try modRequestsDBI.RequestForm_Preview(RequestForm)       
       Case "fonts"
          modUtil.Columnview_SetFont(cvwRequests, "TabbedLists")
    End Select
    
 End
 
-Public Sub RequestForm_ShowResult()
-   
-   ' Dim bits As String[]
-   ' 
-   ' If Split(cvwRequests.item.key, "-").count = 2
-   '    ' WebBrowserNotes.HTML = currentconsult!requests_ordered[cvwRequests.Item.Key]!html
-   '    Form_Html_Viewer.WebView1.html = currentconsult!requests_ordered[cvwRequests.Item.Key]!html
-   '    vBoxWorkSpace.Visible = False        'remove the editor vbox
-   '    'vBoxWebBrowser.Visible = True       'show the webrowser by making its vbox visible
-   '    Form_Html_Viewer.Visible = True
-   ' End If
-   
-End
-
-Public Sub RequestForm_Display_Previous()
-   '--------------------------------------------------------------------
-   'Displays a previously saved request form when user clicks on list
-   'Key of unexpanded columnview item is n(..n)-n(..n) eg 21-24
-   'key of an expanded columnview item is eg 12-24-56
-   'replaces pk of an image with the actual image retreived from backend
-   '---------------------------------------------------------------------
-   
-   Dim sHtml As String      
-   Dim requests As String
-   
-   modUtil.NotImplemented("Preview Previous") 'FIXME - this used to work when we used html, now have to reconstitute using latex
-   Print currentconsult!requests_ordered[Right(cvwRequests.item.key, Len(cvwRequests.item.key) - InStr(cvwRequests.Item.key, "-"))]
-   
-   ' cvwRequests.MoveCurrent
-   ' If Split(cvwRequests.item.key, "-").Count = 3 Then
-   '    requests = currentconsult!requests_ordered[Right(cvwRequests.item.key, Len(cvwRequests.item.key) - InStr(cvwRequests.Item.key, "-"))]!requests_summary
-   ' Else
-   '    requests = currentconsult!requests_ordered[Right(cvwRequests.item.key, Len(cvwRequests.item.key) - InStr(cvwRequests.Item.key, "-"))]!requests_summary   
-   ' End If 
-   '   Editor_ShowPage(...)
-   '
-End
+' Public Sub RequestForm_Delete(requestform As Collection)
+'    '--------------------------------------------------------------------
+'    'Delete's the current request form
+'    'If it was ordered this consult - just deletes it
+'    'If ordered a previous consuilt strike-through the text in the notes
+'    'and put in an audit trail
+'    '-------------------------------------------------------------------
+' 
+'    Dim sHtml As String
+'    Dim fk_progressnote As Integer
+'    Dim fk_form As Integer
+'    Dim pn As Collection
+'    Dim fk_reason As Integer
+'    Dim reason As String
+'    
+'    cvwRequests.MoveCurrent()
+'    If Message.Warning("Are you sure you wish to delete this request for:\n\n" & RequestForm!requests_summary & "\n\nAn audit trail will be created if you proceed.", "Yes", "No") = 2 Then Return 
+'    fk_progressnote = RequestForm!fk_progressnote
+'    fk_form = RequestForm!fk_form
+'    Print requestform
+'   
+'    For Each PN In currentconsult!progress_notes
+'       If PN!pk_progressnote = fk_progressnote Then
+'          pn!notes = "<strike>" & pn!notes & "</strike><BR>"
+'          Faudit.Init(": Delete Request Form", "clin_consult.progressnotes/clin_requests.forms", "Requests summary:" & RequestForm!requests_summary)
+'          fk_reason = FAudit.ShowModal() 
+'          modDBConnect.CommitTrans()  'otherwise if a new reason it won't have been comitted
+'          reason = modAudit.Get_Reason_Using_pk(fk_reason)
+'          pn!notes &= "<small><B><I>Audit note:</B> this request form was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small>"
+'          modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
+'          modDBConnect.update("clin_requests.forms", Null, ["pk": fk_form, "deleted": True])
+'          modDBConnect.exec_query("Update clin_requests.forms_requests set deleted = True where fk_form = " & fk_form)
+'          modDBConnect.CommitTrans() 
+'          Deleted_Request = RequestForm
+'          Refresh_AllPreviousNotes() 
+'          Refresh_Section(const.cSection_Requests)
+'          Break
+'       Endif
+'    Next
+'    
+' End
 
 Public Sub tbPatientPicture_Menu()
    
@@ -3566,18 +3567,6 @@ Public Sub TabbedLists_DblClick()
    If IsNull(currentconsult) Then Return
    Last.MoveCurrent 'set internal cursor
    Select Case Last.tag
-      Case "requests"
-         '---------------------------------------------------------------
-         'double clicking on this list, expands the list if not expanded
-         'display the result being double clicked on.
-         '---------------------------------------------------------------
-         '-----------------------------------------------------
-         'If this item has a parent - allow dbleclick to
-         'display it, otherwise, defaults to expanding the list
-         '-----------------------------------------------------
-         If Not cvwRequests.MoveParent() Then
-            RequestForm_ShowResult()
-         End If
          
       Case "letters received" 
          Document_Display(currentconsult!letters_received, cvwLettersReceived.Item.key)              'display document
@@ -3791,9 +3780,11 @@ Public Sub TabbedLists_Select()
    
    Dim Astring As String 
    Dim interval As Integer = 0
+   Dim RequestForm As New Collection 
    
    If IsNull(currentconsult) Then Return
    Last.MoveCurrent()   'set internal cursor
+   
    Select Case Last.tag
       Case "recalls"
          cvwRecalls.MoveCurrent()
@@ -3801,11 +3792,18 @@ Public Sub TabbedLists_Select()
       Case "results"
          cvwResults.MoveCurrent()
       Case "requests"
+         ' If Split(cvwRequests.item.key, "-").Count = 3 Then
+         '    Try RequestForm = currentconsult!requests_ordered[Right(cvwRequests.item.key, Len(cvwRequests.item.key) - InStr(cvwRequests.Item.key, "-"))]
+         ' Else
+         '    Try RequestForm = currentconsult!requests_ordered[cvwRequests.item.key]
+         ' End If
+         ' Print RequestForm
+         
          If Last.Header = True Then
             Last.header = False
-         End If
-         cvwRequests.MoveCurrent()
-         RequestForm_Display_Previous()
+         End If '
+         
+         ' RequestForm_Preview(RequestForm)
       Case "letters received"        
       Case "measurements"
          cvwMeasurements.MoveCurrent()
@@ -4018,14 +4016,6 @@ Public Sub TabbedLists_Drag()
    cvwResults.Drag(cvwResults[1].text)
    '  ListBox1.Drag(ListBox1[0].Text, "text/uri-list")
    '
-   
-End
-
-Public Sub TabbedLists_MouseDown()
-   
-   Return
-   cvwResults.MoveCurrent()
-   cvwResults.Drag(cvwResults[cvwResults.Item.key][1], "text/uri-list")
    
 End
 
@@ -4270,7 +4260,7 @@ Public Sub tbDecisionSupport_Click()
 End
 
 Public Sub txtFindMeasurement_KeyRelease()
-
+   
    If bexit Then Return 
    If Last.tag = "find" Then 
       Try cvwMeasurements_Refresh(Trim(Last.text))
@@ -4562,7 +4552,7 @@ Public Sub DocumentFilter_KeyRelease()
    '-------------------------------------------------------------------------
    'User wants to filter document on either tag or who sent them 'originator'
    '-------------------------------------------------------------------------
-
+   
    If bexit Then Return 
    Select Case Last.tag
       Case "tag"
@@ -4593,7 +4583,7 @@ End
 
 Public Sub TabbedLists_MouseDrag()
    'RR   
-
+   
    Dim x As Integer
    
    Last.MoveCurrent()

@@ -123,6 +123,7 @@ Private request_types As Collection
 Private old_forms_requests As Collection 
 Private fk_progressnote As Integer 'progress note for current form
 Private cProgressNote_Section As Integer
+Private Deleted_Forms As Collection
 
 Public Sub Set_Embedded(flag As Boolean, Embedded_in_form As String)
    
@@ -163,6 +164,7 @@ Public Sub Init(cons As CConsult)
       .Columns[4].width = 120
       
    End With
+   Deleted_Forms = New Collection
    EditArea_Resize_Labels()                                       'to current system font
    cvwCopyTo.columns.count = 5
    cProgressNote_Section = const.cSection_GeneralNotes
@@ -215,13 +217,13 @@ Public Sub Save()
    If fk_pasthistory <> 0 Then
       CurrentRequestForm!fk_pasthistory = fk_pasthistory
    Endif
-   
+   CurrentRequestForm!latex = RequestForm_LaTeX_Construct(CurrentRequestForm).GetData()
    CurrentRequestForm!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, cProgressNote_Section, fk_progressnote, "Requests", fk_pasthistory, False)
    
    fk_form = modRequestsDBI.RequestForm_Save(currentconsult, pk_view, CurrentRequestForm, old_forms_requests, currentFormsRequests, currentRequestFormPictures)
    
    modDBConnect.CommitTrans()
-   RequestForm_Print()
+   modPrinting.Print_latex(CurrentRequestForm!latex)
    Reload() 'reload all data, refresh other sections, default to new request
    
 End
@@ -310,9 +312,26 @@ Public Sub RequestForm_Delete()
    '----------------------------------------------------   
    
    modDBConnect.BeginTrans()
-   modRequestsDBI.RequestForm_Delete(currentconsult, sCurrentForm_Key, currentRequestForm!fk_form, currentRequestForm)
+   modDBConnect.update("clin_requests.forms", Null, ["pk": currentRequestForm!fk_form, "deleted": True])
+   modDBConnect.update("clin_consult.progressnotes", Null, ["pk": currentRequestForm!fk_progressnote, "deleted": True])
+   modDBConnect.exec_query("update clin_requests.forms_requests set deleted = True where fk_form = " & currentRequestForm!fk_form)
    modDBConnect.CommitTrans()
+   Deleted_Forms.Add(currentRequestForm, Deleted_Forms.count)
    Reload()
+   
+End
+
+Public Sub RequestForm_UnDelete()
+   '---------------------------------------
+   'Undeletes the last deleted request form
+   '--------------------------------------- 
+   
+   modDBConnect.update("clin_requests.forms", Null, ["pk": Deleted_Forms[Deleted_Forms.count - 1]!fk_form, "deleted": False])
+   modDBConnect.update("clin_consult.progressnotes", Null, ["pk": Deleted_Forms[Deleted_Forms.count - 1]!fk_progressnote, "deleted": False])
+   modDBConnect.exec_query("update clin_requests.forms_requests set deleted = False where fk_form = " & Deleted_Forms[Deleted_Forms.count - 1]!fk_form)
+   modDBConnect.CommitTrans()
+   Deleted_Forms.Remove(Deleted_Forms.count - 1)
+   Reload()  
    
 End
 
@@ -344,6 +363,8 @@ Public Sub RequestForm_Edit()
    currentRequestForm!phone = RequestForms[sCurrentForm_Key]!phone
    currentRequestForm!include_medications = RequestForms[sCurrentForm_Key]!include_medications
    currentRequestForm!fk_progressnote = RequestForms[sCurrentForm_Key]!fk_progressnote
+   currentRequestForm!latex = RequestForms[sCurrentForm_Key]!latex
+   
    Try fk_pasthistory = RequestForms[sCurrentForm_Key]!fk_pasthistory
    If fk_pasthistory = 0 Then
       txtHealthIssue.text = "General Notes"
@@ -515,9 +536,9 @@ Public Sub New_Entry()
    'Called from FClinical where the button tag is a generic 'New Entry'
    'I've left the orginal nomenclature here for easier reading of the code
    '----------------------------------------------------------------------   
-
+   
    RequestForm_New()
-
+   
 End
 
 Public Sub RequestForm_New()
@@ -572,9 +593,9 @@ Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) A
       Case "date"
          bKeyValid = modUtil.AllowKeys(const.AllowKeys_Date_DWMY, keycode)
       Case "notes"
-        bKeyValid = modUtil.AllowKeys(const.AllowKeys_SQLCrash, keycode) 
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_SQLCrash, keycode) 
       Case Else
-        bKeyValid = True
+         bKeyValid = True
    End Select
    Return bKeyValid
    
@@ -778,7 +799,7 @@ Public Sub EditAreaTextBox_KeyPress()
       Case Key.Return, key.Tab
          Select Case Last.tag
             Case "date"
-                modEditAreaHelpers.Calculate_Date_From_Interval(txtDate)
+               modEditAreaHelpers.Calculate_Date_From_Interval(txtDate)
             Case "provider type"
                txtProvider.SetFocus()
             Case "provider"
@@ -1122,11 +1143,11 @@ Public Sub Get_Default_Provider() As Boolean
    If fk_organisation Then Return         'already have a default provider
    coll = modRequestsDBI.Provider_Get_Default_For_Request_type(fk_lu_request_type)
    If coll.count = 0 Then  
-     ' try and look at all providers for that type
-     the_collection = modRequestsDBI.Providers_GetBy_RequestType(fk_lu_request_type)
-     If the_collection.Count <> 1 Then
-       ' uh-ho: we can't work out which company to use 
-       smsg = "You have not set up a default provider set for this type of request.\n\n"
+      ' try and look at all providers for that type
+      the_collection = modRequestsDBI.Providers_GetBy_RequestType(fk_lu_request_type)
+      If the_collection.Count <> 1 Then
+         ' uh-ho: we can't work out which company to use 
+         smsg = "You have not set up a default provider set for this type of request.\n\n"
          "Some of the steps listed below may have already been done.\n\n"
          "Before you can order any request of this type, EasyGP needs to know the names "
          "of companies or individuals to whom you will send this type of request and these "
@@ -1137,13 +1158,13 @@ Public Sub Get_Default_Provider() As Boolean
          "Step3: After that is done, you may tell EasyGP who your preferred provider is by going  to the Preferences Section "
          " and then the 'Default Providers for Requests tab' and enter the appropriate data.\n\n"
          "Would you like to read the more extensive help on this subject?"
-       Message.Title = "Setting Default Request Providers"
-       If Message.warning(smsg, "Yes", "No") = 1 Then
-         modUtil.NotImplemented("Showing specific Help")
-       Endif
-       cmbRequestTypes.index = -1
-       Return False
-     End If
+         Message.Title = "Setting Default Request Providers"
+         If Message.warning(smsg, "Yes", "No") = 1 Then
+            modUtil.NotImplemented("Showing specific Help")
+         Endif
+         cmbRequestTypes.index = -1
+         Return False
+      End If
    End If
    
    For Each default_provider In coll 'there is only one if we get to this point
@@ -1165,6 +1186,7 @@ Public Sub Get_Default_Provider() As Boolean
    Next
    
    Return True
+   
 End
 
 Public Sub Request_Provider_Show()
@@ -1307,9 +1329,9 @@ Public Sub Preview()
    '-----------------------------
    'Called from Fclinical Toolbar
    '-----------------------------
-
+   
    RequestForm_Preview()
-
+   
 End
 
 Public Sub RequestForm_Preview()
@@ -1593,15 +1615,15 @@ Public Sub Notes_Selection(action As String, Optional calling_control As String)
             
             columnview1.MoveCurrent()
             iCurrentKey = columnview1.Item.Key
-             If IsNull(currentRequestNote) Then 'fix me - inserted due to bug not found where this coulid be null.
-                 currentrequestnote = New Collection
-             End If    
+            If IsNull(currentRequestNote) Then 'fix me - inserted due to bug not found where this coulid be null.
+               currentrequestnote = New Collection
+            End If    
             currentrequestnote = Notes_Fetched[iCurrentKey]
             bDuplicate = Notes_CheckDuplicates()
             requests_notes.Add(currentrequestNote, requests_notes.count)
             
             If Len(Trim(request_notes_text)) = 0 Then
-              
+               
                request_notes_text = currentrequestNote!note & ";"  'NULL OBJECT BUG
                
             Else
@@ -1801,26 +1823,33 @@ Public Sub cvwRequestForms_Menu()
          mnuRequestForms_Preview.Enabled = False    
       Else
          mnuRequestForms_ReprintSelected.Enabled = False 
-         mnuRequestForms_ReprintForm.Enabled = True  
+         mnuRequestForms_ReprintForm.Enabled = True
          mnuRequestForms_Delete.Enabled = True
          mnuRequestForms_Edit.Enabled = True   
          mnuRequestForms_Preview.Enabled = True    
-         
       Endif     
-      
-      mnuRequestForms.Popup
+   Else
+      If Deleted_Forms.count Then
+         mnuRequestForms_ReprintSelected.Enabled = False 
+         mnuRequestForms_ReprintForm.Enabled = False  
+         mnuRequestForms_Delete.Enabled = False
+         mnuRequestForms_UnDelete.Enabled = True  
+         mnuRequestForms_Edit.Enabled = False   
+         mnuRequestForms_Preview.Enabled = False   
+      Endif
    End If 
+   mnuRequestForms.Popup
    
 End
 
 Public Sub mnuRequestForms_Click()
    
    Dim x As Integer
-   
-   currentRequestForm = modUtil.Copy_Collection(RequestForms[sCurrentForm_Key])
+   'fixme put this in temp cause crashes undelete
+   Try currentRequestForm = modUtil.Copy_Collection(RequestForms[sCurrentForm_Key])
    Select Case Last.tag
       Case "undelete"
-         modUtil.NotImplemented("Undeleting request forms") 
+         RequestForm_UnDelete
       Case "reprint selected" 
          cvwRequestForms.MoveFirst()  
          For x = 1 To cvwRequestForms.count 

@@ -297,7 +297,7 @@ Public Sub RequestForm_Preview(RequestForm As Collection)
    '-------------------------------------------------
    'Load the LaTex of the request form onto a new tab
    '-------------------------------------------------   
-
+   
    If Not IsNull(RequestForm!latex) Then 
       Try FClinical.Editor_ShowPage_External("pdf file", "Request Form " & Format(RequestForm!date, "dd/mm/yyyy"), modPrinting.Latex_To_PDF(RequestForm!latex))
       If Error Then
@@ -306,51 +306,154 @@ Public Sub RequestForm_Preview(RequestForm As Collection)
    Else
       Message.Info("No LaTex template was found for this file.")
    End If    
-
+   
 End
+' 
+' Public Sub RequestForm_Delete_old(currentconsult As Cconsult, old_pk As String, fk_form As Integer, RequestForm As Collection) 
+'    '--------------------------------------------------------------------
+'    'PURPOSE  :   Deletes a health issue
+'    '             Keeps an audit trail
+'    'CALLED BY:   Various popup menus in FClinical and FPasthistory
+'    '             First check there are no associated progress notes
+'    '             if so, cannot delete, but change the html to make the
+'    '             text strike through, and add to the audit table
+'    '------------------------------------------------------------------
+'    
+'    Dim bNotesExist As Boolean
+'    Dim audit As New Collection
+'    Dim sAuditAnnotation As String 'audit annotation to insert into progress notes
+'    Dim sToday As String 'todays date as a string
+'    Dim progressnote As Collection
+'    Dim bDeleted As Boolean 
+'    Dim sString As String   
+'    Dim newnote As New Collection
+'    Dim iAuditAction As Integer
+'    
+'    sToday = Format(Now, "dd/mm/yyyy")
+'    '-------------------------------------------------------------------
+'    'First - popup the audit form and get reason for the deletion
+'    'health issue could be deleted either during consulation 
+'    'as we are allowed to change out mind within the consultation and
+'    'don't need to give a reason for that
+'    'or at a later date
+'    '--------------------------------------------------------------------
+'    audit!fk_row = RequestForm!fk_form
+'    audit!fk_consult = currentconsult.GetPK()
+'    audit!fk_section = const.cSection_Requests
+'    audit!data_summary = RequestForm!requests_summary 
+'    
+'    iAuditAction = const.cAuditAction_MarkDeleted
+'    
+'    ' If RequestForm!fk_consult <> currentconsult.GetPK() Then
+'    If Format(RequestForm!consult_date, "dd/mm/yyyy") <> Format(Now(), "dd/mm/yyyy") Then 
+'       FAudit.Init(RequestForm, Const.cSection_Requests, iAuditAction, currentconsult)
+'       If Not FAudit.ShowModal() Then Return 
+'       audit!reason = "Delete" & ":<BR>- " & Lower(const.globalstring)
+'       audit!reason = Lower(const.globalstring)
+'       If iAuditAction = const.cAuditAction_Delete Then bDeleted = True   
+'    Else
+'       audit!reason = const.sAuditAction[const.cAuditAction_Reversal]
+'       RequestForm!deleted = True
+'       
+'       ' cAuditAction_Reversal
+'    End If
+'    bDeleted = True
+'    
+'    'Now if progress notes existed then update the database to reflect this
+'    ' For Each progressnote In currentconsult!progress_notes
+'    '    If progressnote!fk_problem = fk_form Then 
+'    '     '-------------------------------------------------------------------
+'    '     'Mark each problem and associated progress note with strike through
+'    '     '-------------------------------------------------------------------
+'    '     sAuditAnnotation = "<STRIKE><P><FONT COLOR='#b3b3b3'>" & progressnote!notes & "</STRIKE><p>"
+'    '     sAuditAnnotation &= "<P ALIGN=CENTER><I><B>Audit trail</B> : notes deleted by " & modDBConnect.currentUser!wholename & " on "
+'    '     sAuditAnnotation &= sToday & " the reason given was: " & Lower(const.globalstring) & "</P></I></FONT><p>"
+'    '     progressnote!notes = sAuditAnnotation
+'    '     currentconsult!progress_notes[progressnote!pk_progressnote] = progressnote
+'    '    End If
+'    ' Next 
+'    newnote!fk_audit_action = const.cAuditAction_Reversal
+'    newnote!pk_progressnote = RequestForm!fk_progressnote
+'    modDBConnect.update("clin_requests.forms", currentconsult!requests_ordered_this_consult[old_pk], RequestForm, "fk_form")
+'    modDBConnect.update("clin_consult.progressnotes", curr)"" entconsult!progress_notes[RequestForm!fk_progressnote], newnote, "pk_progressnote") ' save to backend and update the collection in RAM too
+'    
+'    'modConsultDBI.ProgressNotes_Edit(currentconsult!progress_notes, fk_form)
+'    ' RequestForm!deleted = True
+'    
+'    ' audit!fk_action = iAuditAction
+'    ' modConsultDBI.Make_Audit(audit, "clin_history", "past_history")
+' End
 
 Public Sub RequestForm_Delete(currentconsult As Cconsult, requestform As Collection)
-   '--------------------------------------------------------------------
+   '-----------------------------------------------------------------------------------
    'Delete's the current request form
-   'If it was ordered this consult - just deletes it Fixme.
-   'If ordered a previous consuilt strike-through the text in the notes
-   'and put in an audit trail
-   '-------------------------------------------------------------------
-
- 
+   'If it was ordered this consult - just deletes it but creates a reversal audit trail
+   'If ordered a previous consult strike-through the text in the notes and add text
+   'to the progress notes showing who deleted it and why and put in an audit trail 
+   '-----------------------------------------------------------------------------------
+   
    Dim fk_progressnote As Integer
    Dim fk_form As Integer
    Dim pn As Collection
    Dim fk_reason As Integer
    Dim reason As String
- 
-   If Message.Warning("Are you sure you wish to delete this request for:\n\n" & RequestForm!requests_summary & "\n\nAn audit trail will be created if you proceed.", "Yes", "No") = 2 Then Return 
-   fk_progressnote = RequestForm!fk_progressnote
-   fk_form = RequestForm!fk_form
-   For Each PN In currentconsult!progress_notes
-      If PN!pk_progressnote = fk_progressnote Then
-         pn!notes = "<strike>" & pn!notes & "</strike><BR>"
-         Faudit.Init(": Delete Request Form", "clin_consult.progressnotes/clin_requests.forms", "Requests summary:" & RequestForm!requests_summary)
-         fk_reason = FAudit.ShowModal() 
-         modDBConnect.CommitTrans()  'otherwise if a new reason it won't have been comitted
-         reason = modAudit.Get_Reason_Using_pk(fk_reason)
-         pn!notes &= "<small><B><I>Audit note:</B> this request form was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small>"
-         modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
-         modDBConnect.update("clin_requests.forms", Null, ["pk": fk_form, "deleted": True])
-         modDBConnect.exec_query("Update clin_requests.forms_requests set deleted = True where fk_form = " & fk_form)
-         modDBConnect.CommitTrans() 
-         FClinical.Refresh_AllPreviousNotes() 
-         FClinical.Refresh_Section(const.cSection_Requests)
-         Break
-      Endif
-   Next
+   
+   If Format(RequestForm!consult_date, "dd/mm/yyyy") <> Format(Now(), "dd/mm/yyyy") Then 
+      '------------------------------------------------------------------- 
+      'This request has been written  before today, so need an audit trail
+      '------------------------------------------------------------------- 
+      If Message.Warning("Are you sure you wish to delete this request for:\n\n" & RequestForm!requests_summary & "\n\nAn audit trail will be created if you proceed.", "Yes", "No") = 2 Then Return 
+      fk_progressnote = RequestForm!fk_progressnote
+      fk_form = RequestForm!fk_form
+      For Each PN In currentconsult!progress_notes
+         If PN!pk_progressnote = fk_progressnote Then
+            pn!notes = "<strike>" & pn!notes & "</strike><BR>"
+            Faudit.Init(": Delete Request Form", "clin_consult.progressnotes/clin_requests.forms", "Requests summary:" & RequestForm!requests_summary)
+            fk_reason = FAudit.ShowModal() 
+            modDBConnect.CommitTrans()  'otherwise if a new reason it won't have been comitted
+            reason = modAudit.Get_Reason_Using_pk(fk_reason)
+            pn!notes &= "<small><B><I>Audit note:</B> this request form was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small>"
+            modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
+            modAudit.MakeAudit(currentconsult, "mark deleted", "clin_consult.progressnotes", RequestForm!fk_form, const.cSection_Requests, pn!notes)
+            Break
+         Endif
+      Next
+   Else
+      '------------------------------------------------------------------------------- 
+      'This request has been written today, so just reverse it and audit as a reversal
+      'and mark this progress note as deleted
+      '------------------------------------------------------------------------------- 
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": RequestForm!fk_progressnote, "deleted": True])
+      modAudit.MakeAudit(currentconsult, "reversal", "clin_consult.progressnotes", RequestForm!fk_form, const.cSection_Requests, RequestForm!requests_summary)
+   End If
+   
+   modDBConnect.update("clin_requests.forms", Null, ["pk": RequestForm!fk_form, "deleted": True])
+   modDBConnect.exec_query("Update clin_requests.forms_requests set deleted = True where fk_form = " & RequestForm!fk_form)
+   modDBConnect.CommitTrans() 
+   FClinical.Refresh_AllPreviousNotes() 
+   FClinical.Refresh_Section(const.cSection_Requests)
+   
+End
+
+Public Function RequestForm_UnDelete(currentconsult As CConsult, RequestForm As Collection)
+   '-----------------------------------------------------------------------------
+   'Un-Deletes a request form provided from the calling forms deleted collection
+   'FIXME: check what happens to the audit trail created for this
+   '----------------------------------------------------------------------------
+   If Format(RequestForm!consult_date, "dd/mm/yyyy") <> Format(Now(), "dd/mm/yyyy") Then 
+  'FIXME; will have to reverse the strike-through
+   End If   
+   modDBConnect.update("clin_requests.forms", Null, ["pk": RequestForm!fk_form, "deleted": False])
+   modDBConnect.update("clin_consult.progressnotes", Null, ["pk": RequestForm!fk_progressnote, "deleted": False])
+   modDBConnect.exec_query("update clin_requests.forms_requests set deleted = False where fk_form = " & RequestForm!fk_form)
+   modDBConnect.CommitTrans()
    
 End
 
 Public Function Request_Picture_icon(type As String, item As String, HasResult As Boolean) As Picture
    
    Dim picname As String
-    
+   
    Select Case Lower(type)
       Case "pathology provider"
          Select Case LCase(item)
@@ -388,7 +491,6 @@ Public Sub RequestForm_Note_Save(Note As CRequestNote)
    $Result = modDBConnect.exec_query(sql)
    
 End
-
 
 Public Function RequestForm_Save(currentconsult As Cconsult, old_pk As String, RequestForm As Collection, Old_FormsRequests As Collection, formsRequests As Collection, Pictures As Collection) As Integer   
    '--------------------------------------------
@@ -555,14 +657,14 @@ End
 
 Public Function Request_Provider_Get(pk_request_provider As Integer) As Collection
    'Returns a collection representing a specific request provider   
-
+   
    Return modDBConnect.exec_query_first("Select * from clin_requests.vwRequestProviders where pk_request_provider = " & pk_request_provider)
-
+   
 End
 
 Public Sub Request_Providers_Get(fk_lu_request_type As Integer) As Collection
    'Collection is keyed to pk of clin_requests.request_provider as pk_request_provider
-
+   
    Return modDBConnect.exec_query_collection("Select * from clin_requests.vwRequestProviders where fk_lu_request_type = " & fk_lu_request_type)
    
 End
@@ -579,5 +681,3 @@ Public Sub Request_Providers_Save(old_data As Collection, pk_view As Integer, re
    Endif
    
 End
-
-

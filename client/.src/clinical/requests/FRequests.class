@@ -33,7 +33,7 @@
 '                 fix save for fk_pasthistory when changed back to null
 '                 Implement help when no default provider is set
 '------------------------------------------------------------------------------------------------
-
+Private icounter As Integer 
 Private bEmbedded As Boolean  'If True this form is embedded in an editor
 Private EmbeddedForm As String
 Private bEditing As Boolean
@@ -113,7 +113,6 @@ Private sSearchText As String
 Private sStartPos As Integer
 Private lastpos As Integer
 Private charpos As Integer
-'Private Form_PDF As FPdf
 Private fk_category As Integer
 Private request_count As Integer 'temporary remove me
 Private currentconsult As CConsult
@@ -162,7 +161,6 @@ Public Sub Init(cons As CConsult)
       .Columns[2].width = 120
       .Columns[3].width = 120
       .Columns[4].width = 120
-      
    End With
    Deleted_Forms = New Collection
    EditArea_Resize_Labels()                                       'to current system font
@@ -177,25 +175,20 @@ End
 
 Public Sub Reload()
    
-   currentconsult.Refresh("requests_ordered_this_consult")  'remove key = refresh
-   Requests_This_Consult_Show()           'Display any existing forms
-   FClinical.Refresh_Section(const.cSection_Requests)    'refresh lists on main screen FClinical
-   FClinical.Refresh_AllPreviousNotes()
-   RequestForm_New()                      'Default to want a new form
+ '  currentconsult.Refresh("requests_ordered_this_consult")      'remove key = refresh
+   Requests_This_Consult_Show()                                 'Display any existing forms written this consult
+  ' FClinical.Refresh_Section(const.cSection_Requests)           'refresh lists on main screen FClinical
+  ' FClinical.Refresh_AllPreviousNotes()                         'refresh progress notes in FClinical
+   RequestForm_New()                                            'Default to wanting  a new form
    
 End
 
 Public Sub Help_No_Providers(sMsg As String)
-   ' VSplit_EditArea.enabled = False
-   
-   '  FPreview.WebView1.url = Application.Path &/ "help/setting-up-providers.html"
-   '   FPreview.SetHtmlFileName(Application.Path &/ "help/setting-up-providers.html")
-   '  FPreview.Visible = True
+
    FClinical.Editor_ShowPage_External("browser", "Help - Requests", Application.Path &/ "help/setting-up-providers.html")
-   'res-set to provider undefined
    RequestForm_New()
    bexit = True
-   cmbRequestTypes.index = 17
+   cmbRequestTypes.index = 17  'res-set to provider undefined
    bExit = False  
    
 End
@@ -224,7 +217,9 @@ Public Sub Save()
    
    modDBConnect.CommitTrans()
    modPrinting.Print_latex(CurrentRequestForm!latex)
-   Reload() 'reload all data, refresh other sections, default to new request
+   FClinical.Refresh_Section(const.cSection_Requests)           'refresh lists on main screen FClinical
+   FClinical.Refresh_AllPreviousNotes()                         'refresh progress notes in FClinical
+   Reload() 'reload all data default to new request
    
 End
 
@@ -311,7 +306,7 @@ Public Sub RequestForm_Delete()
    'Deletes a request form when written this consulation
    '----------------------------------------------------   
    
-   modRequestsDBI.RequestForm_Delete(currentconsult, currentRequestForm)
+   modRequestsDBI.RequestForm_Delete(currentconsult, currentRequestForm) 'deletes form and updates FClinical
    Deleted_Forms.Add(currentRequestForm, Deleted_Forms.count)
    Reload()
    
@@ -321,14 +316,8 @@ Public Sub RequestForm_UnDelete()
    '---------------------------------------
    'Undeletes the last deleted request form
    '--------------------------------------- 
+
    modRequestsDBI.RequestForm_UnDelete(currentconsult, Deleted_Forms[Deleted_Forms.count - 1])
-   Deleted_Forms.Remove(Deleted_Forms.count - 1)
-   Reload()  
-   Return 
-   modDBConnect.update("clin_requests.forms", Null, ["pk": Deleted_Forms[Deleted_Forms.count - 1]!fk_form, "deleted": False])
-   modDBConnect.update("clin_consult.progressnotes", Null, ["pk": Deleted_Forms[Deleted_Forms.count - 1]!fk_progressnote, "deleted": False])
-   modDBConnect.exec_query("update clin_requests.forms_requests set deleted = False where fk_form = " & Deleted_Forms[Deleted_Forms.count - 1]!fk_form)
-   modDBConnect.CommitTrans()
    Deleted_Forms.Remove(Deleted_Forms.count - 1)
    Reload()  
    
@@ -336,13 +325,26 @@ End
 
 Public Sub RequestForm_Edit()
    
+   RequestForm_Display()
+   VBox_EditArea_Outer.Enabled = True 
+   txtRequest.SetFocus()
+   
+   
+End
+
+Public Sub RequestForm_Display()
+
+   
    Dim x As Integer
    Dim old_item As Collection 
    Dim the_key As String 
    Dim key_value As Variant
    
+   cvwRequestForms.MoveCurrent()
+   sCurrentForm_Key = cvwRequestForms.Item.Key
    bEditing = True
-   RequestForm_New()   'clear editing area, reset all collections 
+   EditAreaTextBox_Clear   'clear editing area, reset all collections 
+ 
    fk_request_provider = RequestForms[sCurrentForm_Key]!fk_request_provider
    Try fk_organisation = RequestForms[sCurrentForm_Key]!fk_organisation 'may be null
    currentRequestForm = New Collection 
@@ -362,14 +364,15 @@ Public Sub RequestForm_Edit()
    currentRequestForm!phone = RequestForms[sCurrentForm_Key]!phone
    currentRequestForm!include_medications = RequestForms[sCurrentForm_Key]!include_medications
    currentRequestForm!fk_progressnote = RequestForms[sCurrentForm_Key]!fk_progressnote
-   currentRequestForm!latex = RequestForms[sCurrentForm_Key]!latex
-   
+   currentRequestForm!latex = RequestForms[sCurrentForm_Key]!latex   'could be null in my system as written 100's forms prior to latex being saved
+   bExit = True
    Try fk_pasthistory = RequestForms[sCurrentForm_Key]!fk_pasthistory
    If fk_pasthistory = 0 Then
       txtHealthIssue.text = "General Notes"
    Else
       txtHealthIssue.text = RequestForms[sCurrentForm_Key]!description
-   End If   
+   End If 
+   bExit = False    
    If Not IsNull(currentRequestForm!requests_summary) Then
       requests_summary = currentRequestForm!requests_summary
    End If
@@ -380,14 +383,14 @@ Public Sub RequestForm_Edit()
       notes_summary = currentRequestForm!notes_summary
    End If
    fk_lu_request_type = currentRequestForm!fk_lu_request_type     'fixme in back end to fk_lu_request_type in lu_items table
-   cmbRequestTypes_Set()                                  'set the combo provider type e.g to pathology set by fk_lu_request_type
+   cmbRequestTypes_Set()                                          'set the combo provider type e.g to pathology set by fk_lu_request_type
    fk_form = currentRequestForm!fk_form   
-   pk_view = sCurrentForm_Key                                  'duplicates sCurrentForm_Key - keep for readability
+   pk_view = sCurrentForm_Key                                     'duplicates sCurrentForm_Key - keep for readability
    default_provider = modRequestsDBI.Request_Provider_Get(fk_request_provider)
-   Branches_Comms_Get()                                        'collection of branches with their comms if an organisation
-   Comms_Display()                                             'FIXME MISNOMER - THIS IS COMMS DISPLAY fixme only works for organisation
-   Get_Providers_For_Request_Type()                            'get all providers for this request type and load cmbProviders
-   
+   Branches_Comms_Get()                                           'collection of branches with their comms if an organisation
+   Comms_Display()                                                'FIXME MISNOMER - THIS IS COMMS DISPLAY fixme only works for organisation
+   Get_Providers_For_Request_Type()                               'get all providers for this request type and load cmbProviders
+
    cmbBranches.index = cmbBranches.Find(RequestForms[sCurrentForm_Key]!default_branch) 'triggers click event of combo > fills address textboxes
    bExit = True
    txtDate.text = Format(currentRequestForm!date, "dd/mm/yyyy")
@@ -445,19 +448,17 @@ Public Sub RequestForm_Reprint()
    'Forms list has been clicked on, and user popped up menu and requested a reprint
    'Clicking on the list sets sCurrentForm_Key in  cvwRequestForms_Select()
    'The mnuRequestForms_Click() actually sets the currentRequestForm 
-   'Now rebuild the collections, as for example the requests section
-   'may have just been re-loaded, even in case of where user has finished with a patient, then
-   'later reprint it
-   'FIXME: BUG HERE i THINK - if a non-standard  default provider was used this is not accurate
-   'sCurrentForm_Key is set in cvwRequestForms_Select(), ie when user clicked on the forms list
-   'or by mnuRequestForms_Click() for multiple forms eg "reprint selected" menu option
+   'as of 26/10/11 I've saved the LaTex definition so this is now easy
    '---------------------------------------------------------------------------------------------
+
+   modPrinting.Print_latex(currentRequestForm!latex, const.Paper_Request)
    
-   Reset_Keys()             ' fk_organisation,  fk_lu_request_type
-   fk_lu_request_type = currentRequestForm!fk_lu_request_type 
-   Get_Default_Provider()   'Get default provider,branches and comms for fk_lu_request_type
-   CopyTos = modUtil.SplitStrings_into_collection(currentRequestForm!copyto, "|")
-   RequestForm_Print()
+   ' Return 
+   ' Reset_Keys()                                                 ' fk_organisation,  fk_lu_request_type
+   ' fk_lu_request_type = currentRequestForm!fk_lu_request_type 
+   ' Get_Default_Provider()                                       'Get default provider,branches and comms for fk_lu_request_type
+   ' CopyTos = modUtil.SplitStrings_into_collection(currentRequestForm!copyto, "|")
+   ' RequestForm_Print()
    
 End
 
@@ -541,36 +542,15 @@ Public Sub New_Entry()
 End
 
 Public Sub RequestForm_New()
-   
+   '----------------------------------------
+   'User wants a new request form
+   'Clear the editing area, notify new form 
+   '----------------------------------------  
+
    EditAreaTextBox_Clear() 
    lblFormHeading.text = "Requests - New Form" 
-   currentRequestForm = New Collection 
-   currentRequest = New Collection
-   currentRequestFormPictures = New Collection
-   currentFormsRequests = New Collection 
-   Notes_Fetched = New Collection
-   Copytos = New Collection
-   requests_notes = New Collection 
-   Medications = New Collection 
-   currentrequestnote = New Collection 
    bExit = True
-   '----------------------------------------------------------------
-   'create the popup health issues menu but default to general notes
-   '----------------------------------------------------------------
-   modEditAreaHelpers.mnuHealthIssues_Refresh(currentconsult, mnuHealthIssues, Me)
-   fk_pasthistory = 0
-   cProgressNote_Section = const.cSection_GeneralNotes
-   txtHealthIssue.text = "general notes"
-   
-   request_notes_text = ""
-   requests_summary = ""
-   request_items_text = "" 
-   medications_text = "" 
-   medications_summary = ""
-   notes_summary = ""
-   Reset_Keys
-   sSearchText = "" 
-   lastpos = 0
+ 
    txtDate.text = Format(Now, "dd/mm/yyyy")
    chkBulkBill.value = True     'FIXME MAKE ME CONFIGURAABLE
    bEditing = False
@@ -580,9 +560,8 @@ Public Sub RequestForm_New()
    cmbProviders.index = -1
    cmbBranches.index = -1
    tbSave.Enabled = True   
-   bPreviewingPrintedForm = False  
+   VBox_EditArea_Outer.Enabled = True 
    txtRequest.SetFocus()
-   
 End
 
 Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
@@ -1277,7 +1256,10 @@ Public Sub EditArea_Resize_Labels()
 End
 
 Public Sub EditAreaTextBox_Clear()
-   
+   '-----------------------------------------------------------
+   'Clears the editing area and resets all collections and keys
+   '-----------------------------------------------------------
+
    bExit = True
    txtProvider.text = ""
    txtBranch.text = ""
@@ -1309,8 +1291,38 @@ Public Sub EditAreaTextBox_Clear()
    Vbox_RequestHints.Visible = False
    Vbox_Communications.Visible = True
    Vbox_EditArea.Background = Color.white
-   bExit = False
+   '----------------- 
+   'Clear collections
+   '-----------------
+   currentRequestForm = New Collection 
+   currentRequest = New Collection
+   currentRequestFormPictures = New Collection
+   currentFormsRequests = New Collection 
+   Notes_Fetched = New Collection
+   Copytos = New Collection
+   requests_notes = New Collection 
+   Medications = New Collection 
+   currentrequestnote = New Collection 
+   '----------------------------------------------------------------
+   'create the popup health issues menu but default to general notes
+   '----------------------------------------------------------------
+   modEditAreaHelpers.mnuHealthIssues_Refresh(currentconsult, mnuHealthIssues, Me)
    
+   request_notes_text = ""
+   requests_summary = ""
+   request_items_text = "" 
+   medications_text = "" 
+   medications_summary = ""
+   notes_summary = ""
+   sSearchText = "" 
+   Reset_Keys
+   lastpos = 0
+   bPreviewingPrintedForm = False  
+   cProgressNote_Section = const.cSection_GeneralNotes
+   txtHealthIssue.text = "general notes"
+   VBox_EditArea_Outer.Enabled = False 
+   bExit = False
+
 End
 
 Public Sub RequestForm_Pictures_Delete()
@@ -1845,6 +1857,8 @@ Public Sub mnuRequestForms_Click()
    
    Dim x As Integer
    'fixme put this in temp cause crashes undelete
+   
+   cvwRequestForms.MoveCurrent()
    Try currentRequestForm = modUtil.Copy_Collection(RequestForms[sCurrentForm_Key])
    Select Case Last.tag
       Case "undelete"
@@ -1886,6 +1900,24 @@ Public Sub mnuRequestForms_Click()
    
 End
 
+Public Sub cvwRequestForms_GotFocus()
+   '-------------------------------------------------------------------
+   'If user has right mouse clicked, list appears to have been selected
+   'but no marquee so force a marquee
+   '-------------------------------------------------------------------
+'
+ '  cvwRequestForms_Select() 'sets CurrentForm_Key
+   EditAreaTextBox_Clear()
+End
+
+Public Sub cvwRequestForms_LostFocus()
+   
+   If Last.Header = True Then
+      Last.header = False
+   End If
+   
+End
+
 Public Sub cvwRequestForms_Select()
    '------------------------------------------------------------------------
    'If the request forms ordered this consulation is clicked (ie selected)
@@ -1898,7 +1930,8 @@ Public Sub cvwRequestForms_Select()
    End If
    cvwRequestForms.MoveCurrent                 'set internal cursor to match what user seeing
    sCurrentForm_Key = cvwRequestForms.Item.Key 'set the key
-   
+  ' EditAreaTextBox_Clear()
+  
 End
 
 Public Sub EditAreaButtons_KeyPress()
@@ -2129,7 +2162,7 @@ Public Sub DrawEditor_Show(bEditing As Boolean, sPicturePath As String)
    Vbox_EditArea.Visible = False
    Vbox_CopyToList.Visible = False
    Hbox_CloseDrawEditor.Visible = True
-   Fdraw = New FDrawEditor(Vbox_DrawArea)
+   Fdraw = New FDrawEditor(VBox_EditArea_Inner)
    Fdraw.bEditing = bediting
    Fdraw.sPicturePath = sPicturePath
    hToolbutton = Fdraw.btnSave
@@ -2359,13 +2392,6 @@ Public Sub VSplit_EditArea_Arrange()
    
 End
 
-Public Sub cvwRequestForms_LostFocus()
-   
-   If Last.Header = True Then
-      Last.header = False
-   End If
-   
-End
 
 Public Sub cmbPrinters_Click()
    
@@ -2467,3 +2493,4 @@ Public Sub cmbBranches_Click()
    bExit = False     
    
 End
+

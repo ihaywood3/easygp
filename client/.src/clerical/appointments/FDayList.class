@@ -41,6 +41,7 @@ Private Const appointment_made As Integer = 1
 Private Const arrived_and_waiting As Integer = 2
 Private Const in_consulting_room As Integer = 3
 Private Const patient_departed As Integer = 4
+Private Const emergency As Integer = 5
 Private fk_lu_appointment_status As Integer  '1-4 see clerical.lu_appointment_status
 Private Appointment_Status_Colors As String[]
 Private irowheight As Integer = 18 'fix me
@@ -82,11 +83,12 @@ Public Sub Init(sm As Collection, app_date As Date, clinic_key As Integer, icons
    End With
    appointment_interval = 10 'fix me get me from backend (when done)  
    GridRows_Init(Time(8, 30, 0), Time(18, 0, 0), appointment_interval)   'fill empty collection with times
-   Appointment_Status_Colors = New String[5]                             'don't use 0 member
+   Appointment_Status_Colors = New String[6]                             'don't use 0 member
    Appointment_Status_Colors[appointment_made] = Color.Black             
    Appointment_Status_Colors[arrived_and_waiting] = Color.Blue
-   Appointment_Status_Colors[in_consulting_room] = Color.Red
+   Appointment_Status_Colors[in_consulting_room] = Color.DarkRed
    Appointment_Status_Colors[patient_departed] = Color.Gray
+   Appointment_Status_Colors[emergency] = Color.Red
    Reload()                                                              'load the days appointments
    
 End
@@ -113,7 +115,7 @@ Public Sub Form_KeyPress()
       Appointment_Update()
       Stop Event
    End If
-
+   
 End
 
 Public Sub GridRows_Init(starttime As Date, EndTime As Date, appointment_interval As Integer)
@@ -197,7 +199,11 @@ Public Sub GridRows_Update()
                If gridrows[i]!time = sBeginTime Then
                   slots = duration / appointment_interval 
                   gridrows[i]!time = sTime
-                  gridrows[i]!name = appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] " ' & Trim(appointment!street1 & " " & appointment!street2) & " " & appointment!town
+                  If IsNull(appointment!fk_patient) Then
+                     gridrows[i]!name = appointment!notes
+                  Else
+                     gridrows[i]!name = appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] " ' & Trim(appointment!street1 & " " & appointment!street2) & " " & appointment!town
+                  Endif
                   gridrows[i]!slots = slots
                   gridrows[i]!pk_appointment = appointment!pk
                   gridrows[i]!fk_patient = appointment!fk_patient   
@@ -218,7 +224,11 @@ Public Sub GridRows_Update()
          For i = 0 To GridRows.Count - 1
             If Not IsNull(gridrows[i]) Then    
                If gridrows[i]!time = stime Then
-                  gridrows[i]!name = appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] "  '& Trim(appointment!street1 & " " & appointment!street2) & " " & appointment!town
+                  If Not IsNull(appointment!fk_patient) Then  
+                    gridrows[i]!name = appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] "  '& Trim(appointment!street1 & " " & appointment!street2) & " " & appointment!town
+                  Else
+                     Try gridrows[i]!name = appointment!notes   
+                  End If   
                   gridrows[i]!pk_appointment = appointment!pk
                   gridrows[i]!fk_patient = appointment!fk_patient 
                   gridrows[i]!fk_lu_appointment_icon = appointment!fk_lu_appointment_icon
@@ -306,7 +316,10 @@ Public Sub Gridview1_Rebuild(data As Collection)
       Gridview1[i, 1].picture = data[i]!picture
       Gridview1[i, 2].text = data[i]!name
       
-      Try Gridview1[i, 2].Foreground = Appointment_Status_Colors[data[i]!fk_lu_appointment_status]  
+      Try Gridview1[i, 2].Foreground = Appointment_Status_Colors[data[i]!fk_lu_appointment_status] 
+      If data[i]!fk_lu_appointment_status = emergency Then
+         Gridview1[i, 2].Background = Color.Yellow
+      Endif
    Next
    
 End
@@ -321,10 +334,11 @@ Public Sub mnuAppointments_Click()
    '------------------------------------------------------
    'User has clicked on one of the apointment menu options   
    '------------------------------------------------------
-   
+   Print patient 
    Select Case Last.tag
       Case "delete"
          modUtil.NotImplemented("Sorry, deleting the patient's apointment is not yet implemented.") 
+          Return 
       Case "no icon"
          Gridview1[Gridview1.Row, 1].Picture.Clear()
          fk_lu_appointment_icon = 0
@@ -336,13 +350,21 @@ Public Sub mnuAppointments_Click()
          fk_lu_appointment_status = patient_departed
       Case "help"
          modUtil.NotImplemented("Sorry, viewing help is not implemented")
+          Return 
       Case "emergency"
+        
+         fk_lu_appointment_status = emergency 
          Gridview1[Gridview1.Row, 2].Background = Color.Yellow
          Gridview1[Gridview1.Row, 2].Foreground = Color.Red
          Gridview1[Gridview1.Row, 2].text = "RESERVED FOR EMERGENCY"
+         gridrows[Gridview1.Row]!text = "RESERVED FOR EMERGENCY"
+         GridData_Rebuild()
+         patient = New Collection
+         Save()
          Return 
       Case "add fit"
          modUtil.NotImplemented("Sorry, adding fit-in appointment is not implemented")
+         Return 
       Case Else 
          If IsNumber(Last.tag) Then fk_lu_appointment_icon = Val(Last.tag)
          '  Gridview1[Gridview1.Row, 1].Picture = Picture.Load(appointment_icons[Val(Last.tag)]!icon_path)
@@ -437,13 +459,25 @@ Public Sub Gridview1_Menu()
    '-------------------------------------------------------------------
    'User has right mouse clicked on the name column, show them the menu
    '-------------------------------------------------------------------   
-   
+    fk_lu_appointment_icon = 0 
    If Gridview1[Gridview1.Row, 2].text = "" Then
-    'fix me disable stuff
+      'fix me disable stuff
    End If   
    onrow = gridview1.row
    iFirstRow = onrow
-   mnuAppointments.Popup()
+   If Not IsNull(gridrows[Gridview1.Row]!fk_patient) Then 
+      mnuAppointments_PatientWaiting.Enabled = True
+     mnuAppointments_Consulting.Enabled = True 
+     mnuAppointments_Gone.Enabled = True
+     mnuAppointments_Type.Enabled = True  
+      mnuAppointments.Popup()
+   Else
+     mnuAppointments_PatientWaiting.Enabled = False
+     mnuAppointments_Consulting.Enabled = False 
+     mnuAppointments_Gone.Enabled = False
+     mnuAppointments_Type.Enabled = False 
+     mnuAppointments.Popup()
+   End If    
    
 End
 
@@ -534,7 +568,7 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
    txtAppointment.text = patient!wholename & " [" & Format(patient!birthdate, "dd/mm/yyyy") & "] " & Trim(patient!street1 & " " & patient!street2) & " " & patient!town
    
    GridData_Rebuild()
-   Save(patient)
+   Save()
    gridview1.SetFocus()
    
 End
@@ -544,27 +578,36 @@ Public Sub Appointment_Update()
    Dim patient As New Collection
    
    patient!fk_patient = gridrows[onrow]!fk_patient 
-   Save(patient)
+   Save()
    
 End
 
-Public Sub Save(patient As Collection)
+Public Sub Save()
+   '--------------------------------------------------------------
+   ' Saves an appointment slot
    ' pk bigserial NOT NULL,
-   '   fk_patient integer,
-   '   fk_staff integer NOT NULL,
-   '   "begin" timestamp without time zone,
-   '   duration interval,
-   '   notes text,
-   '   fk_staff_booked integer NOT NULL,
-   '   fk_clinic timestamp without time zone NOT NULL DEFAULT now()
-   
+   ' fk_patient integer but can be null if a comment
+   ' fk_staff integer NOT NULL,
+   ' "begin" timestamp without time zone,
+   ' duration interval,
+   ' notes text,
+   ' fk_staff_booked integer NOT NULL,
+   ' fk_clinic timestamp without time zone NOT NULL DEFAULT now()
+   '-------------------------------------------------------------  
+
    Dim appointment As New CRow
    Dim starttime As Date
    Dim endtime As Date
    Dim Appointment_times As String[]
    Dim appointment_length As String[]
    
-   appointment!fk_patient = patient!fk_patient  
+ '  appointment!fk_patient = patient!fk_patient  'may be null in collection
+   If Not IsNull(patient) Then
+       appointment!fk_patient = patient!fk_patient
+   Else
+      appointment!fk_patient = gridrows[onrow]!fk_patient
+   End If    
+  
    appointment!fk_staff = staff_member!fk_staff
    Appointment_times = Split(gridrows[onrow]!time, "-")
    If Appointment_times.count = 2 Then

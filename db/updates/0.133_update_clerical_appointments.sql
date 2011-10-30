@@ -1,7 +1,11 @@
 -- remove constraint on bookings as a appointment slot dosn't need a patient key
 -- examples drug rep or comment.
+
 alter table clerical.bookings drop constraint bookings_fk_patient_fkey;
 insert into clerical.lu_appointment_status (status) values ('emergency');
+update clerical.lu_appointment_icons set icon_path = 'icons/16/pregnancy1616.png' where appointment_type= 'pregnancy';
+
+
 DROP VIEW clerical.vwappointments;
 
 CREATE OR REPLACE VIEW clerical.vwappointments AS 
@@ -17,11 +21,9 @@ CREATE OR REPLACE VIEW clerical.vwappointments AS
    left JOIN contacts.lu_title ON data_persons.fk_title = lu_title.pk
   ORDER BY bookings.begin;
 
-ALTER TABLE clerical.vwappointments OWNER TO richard;
-GRANT ALL ON TABLE clerical.vwappointments TO richard;
+ALTER TABLE clerical.vwappointments OWNER TO easygp;
 GRANT ALL ON TABLE clerical.vwappointments TO easygp;
 GRANT ALL ON TABLE clerical.vwappointments TO staff;
-
 
 truncate db.lu_version;
 insert into db.lu_version (lu_major,lu_minor) values (0, 133);

@@ -14,14 +14,17 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'----------------------------------------------------------------------------
+'----------------------------------------------------------------------------------
 'PURPOSE          Allow transfer of a progress note to another persons file
-'                 with appropriate audit trail. This allows for the situation
-'                 where one writes in the wrong file
-'-------------------------------------------------------------------------
+'                 with appropriate audit trail.
+'                 This allows for the situation where one writes in the wrong file
+'FIXME            Put in the audit trail
+'---------------------------------------------------------------------------------
 Private From_Patient As Collection
 Private To_Patient As Collection
 Private To_Patient_Row As CPatientSelectRow
+Private fk_consult As Integer
+Private patients As Collection 
 
 Public Sub Run() As Boolean
    
@@ -31,25 +34,43 @@ End
 
 Public Sub Form_Open()
    
-   Me.Center
-   Me.Title = "TRANSFER CLINICAL NOTES"
+   With Me
+      .Center
+      .Title = "TRANSFER CLINICAL NOTES"
+   End With
+
 End
 
-Public Sub Init(fp As Collection, Notes As String)
-   
+Public Sub Init(fp As Collection, Notes As String, consult_fk As Integer)
+   '-------------------------------------------------------------------------
+   'fp is patient transfering the notes from
+   'notes = the richtext of the notes
+   'fk_consult = the fk_consult in clin_consult.consult for this progress note
+   'this row in clin_consult.consult current as fp!fk_patient = source patient
+   '--------------------------------------------------------------------------   
+
    Dim FPR As CPatientSelectRow
    
    WebView1.HTML = Notes
    From_Patient = fp 
    FPR = New CPatientSelectRow(ListContainer1, fp)
-   With ColumnView1
+   With cvwPatients
       .Columns.count = 3 
    End With
-   
+   fk_consult = consult_fk 
+   cvwPatients.Columns.count = 6
+
 End
 
 Public Sub btnOK_Click()
-   
+   '------------------------------------------------------------------
+   'User has decided to transfer the notes from one patient to another
+   'Give them a change to back out
+   '------------------------------------------------------------------
+
+   If Message.Warning("Please confirm transfer - this cannot be undone.", "Yes - transfer notes", "Cancel") = 2 Then Return 
+   modDBConnect.update("clin_consult.consult", Null, ["pk": fk_consult, "fk_patient": To_Patient!fk_patient])
+   modDBConnect.CommitTrans()
    Me.Close(True)
    
 End
@@ -61,21 +82,26 @@ Public Sub btnCancel_Click()
 End
 
 Public Sub EditAreaTextBox_GotFocus()
-   
-   Last.BackGround = Color.rgb(95, 255, 175)
-   With ColumnView1  
-      .top = Last.Parent.Parent.top
-      .left = Last.Parent.Left
-      .width = Last.width
-      .Visible = False   
-      .Raise() 
+   '------------------------------------------------------
+   'User has clicked on the search for patient textbox
+   'clear it, and ensure patient list columnview is visible
+   '--------------------------------------------------------   
+
+   With Last
+      .BackGround = Color.rgb(95, 255, 175)
+      .Clear()
    End With
-   
+   With cvwPatients
+      .Visible = True 
+      .Clear()
+   End With 
+   ListContainer2.Visible = False   
+   btnOK.Enabled = False  
+
 End
 
 Public Sub Patients_Find() 
    
-   Dim AllPatients As New Collection
    Dim patient As Collection
    Dim sql_in_english As String
    Dim P As Picture
@@ -83,49 +109,83 @@ Public Sub Patients_Find()
    
    Inc Application.Busy
    
-   AllPatients = modContactsDBI.patients_get_firstname_surname(Trim(txtFindPatient.text))
-   sql_in_english = AllPatients!sql_in_english
-   AllPatients.Remove("sql_in_english")
-   If AllPatients.count = 0 Then 
+   Patients = modContactsDBI.patients_get_firstname_surname(Trim(txtFindPatient.text))
+   sql_in_english = Patients!sql_in_english
+   Patients.Remove("sql_in_english")
+   If Patients.count = 0 Then 
       txtFindPatient.SetFocus()
       Dec application.Busy
-      
       Return
    Else  
       '----------------------------------------------------
       'One or more patients.
       'If one, get their photo if it exists and load record
       '----------------------------------------------------
-      If AllPatients.count = 1 Then  
-         Vbox_Search.Visible = False    
-         For Each To_Patient In AllPatients
-            
-            To_Patient_Row = New CPatientSelectRow(ListContainer2, To_Patient)
-            
+      If Patients.count = 1 Then  
+         For Each To_Patient In Patients 'no interaction = no collection
+            Patient_Show(To_Patient)
          Next
       Else  
-         ' '---------------------
-         ' 'more than one patient
-         ' '---------------------
-         ' mnuView.Visible = False 
-         ' mnuSections.Visible = False   
-         ' mnuDecisionSupport.Visible = False  
-         ' mnuHelp.visible = False
-         ' Dec Application.Busy
-         ' Vbox1.Visible = False  
-         ' form_select = New FPatientsSelect(Me)
-         ' obs = New Observer(form_select.btnCancel) As "SelectPatient"     
-         ' form_select.Init(AllPatients, sql_in_english, "FClinical") 'was Me
-         ' form_select.Visible = True 
-         ' 
+         cvwPatients.Clear()
+         For Each patient In Patients
+            cvwPatients.Add(patient!pk_view, 0)
+            cvwPatients[patient!pk_view][0] = patient!surname
+            cvwPatients[patient!pk_view][1] = patient!firstname
+            cvwPatients[patient!pk_view][2] = patient!age_display
+            cvwPatients[patient!pk_view][3] = Format(patient!birthdate, "dd/mm/yyyy")
+            cvwPatients[patient!pk_view][4] = patient!sex
+            cvwPatients[patient!pk_view][5] = Trim(patient!street1 & " " & patient!street2) & " " & patient!town 
+         Next
+         With cvwPatients
+            .MoveFirst
+            .SetFocus
+            .Item.Selected = True    
+         End With
       Endif
    End If   
-   
    Dec application.Busy
    
 End
 
-Public Sub EditAreaTextBox_KeyRelease()
+Public Sub Patient_Show(Patient As Collection)
+   '-----------------------------------------------------------------------------
+   'shows patient details + photo in the list container to make it really obvious
+   '----------------------------------------------------------------------------- 
+
+   cvwPatients.Visible = False    
+   With ListContainer2
+      .Visible = True 
+      .Clear()
+   End With
+   To_Patient_Row = New CPatientSelectRow(ListContainer2, Patient)
+   
+End
+
+Public Sub cvwPatients_KeyPress()
+   '-------------------------------------------------------------
+   'User has hit the enter key on the patients list, show details
+   '-------------------------------------------------------------   
+
+   If Key.code = Key.Return Then cvwPatients_DblClick() 
+   
+End
+
+Public Sub cvwPatients_DblClick()
+   '-----------------------------------------------------------
+   'User has selected a patient = show expanded details + photo
+   '-----------------------------------------------------------   
+
+   cvwPatients.MoveCurrent()
+   To_Patient = Patients[cvwPatients.Item.Key]
+   Patient_Show(To_Patient)
+   btnOK.Enabled = True 
+
+End
+
+Public Sub EditAreaTextBox_Activate()
+   '------------------------------------------------
+   'If user hits <enter> key, search for the patient
+   '------------------------------------------------  
    
    Patients_Find()
    

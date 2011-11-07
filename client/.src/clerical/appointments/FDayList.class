@@ -29,9 +29,8 @@ Private obs As Observer
 Private OnRow As Integer
 Private GridData As Collection 
 Public GridRows As Collection
-Private iLeft As Integer
+
 Private iTop As Integer
-'Private i As Integer
 Public iFirstRow As Integer
 Private iLastRow As Integer
 Private bFoundFirst As Integer
@@ -56,7 +55,8 @@ Private pk_view As Integer
 Private appointment As Collection
 Private appointment_Date As Date
 Private iSlotCount As Integer
-
+Private iNextSequentialVacantRow As Integer            'row of the next blank appointment for that date after that last filled
+Private iFirstVacantRow As Integer                     ' row of the first vacant appointment in the grid 
 Public patient As Collection 
 
 Public Sub Init(sm As Collection, app_date As Date, clinic_key As Integer, icons As Collection)
@@ -72,7 +72,6 @@ Public Sub Init(sm As Collection, app_date As Date, clinic_key As Integer, icons
    fk_staff = staff_member!fk_staff
    fk_clinic = clinic_key
    Appointment_Date = app_date
-   Print app_date
    appointment_icons = icons
    txtAppointment.height = irowheight                                    'grid rows = same height as our textbox
    Me.title = UCase(staff_member!title & " " & staff_member!wholename)   'will appear on the tab 
@@ -163,18 +162,18 @@ Public Sub Reload()
    'fixme the init
    '----------------------------------------------------------   
    '  If Format(appointment_date, "dd/mm/yyyy") <> "06/11/2011" Then Return 
-
+   
    patient = Null
    Appointments = modAppointmentsDBI.Appointments_GetDay(appointment_date, fk_staff, fk_clinic)
    If appointments.count Then
       GridRows_Init(Time(8, 30, 0), Time(18, 0, 0), appointment_interval)   'fill empty collection with times
-      GridRows_Collection_Update(appointments)             'update the underlying collection of data
+      GridData_Update(appointments)             'update the underlying collection of data
    End If   
-   Gridview1_Rebuild(gridrows)   'display this in the grid
+   Gridview1_Rebuild()   'display this in the grid
    
 End
 
-Public Sub GridRows_Collection_Update(Appts As Collection)
+Public Sub GridData_Update(Appts As Collection)
    '----------------------------------------------
    'Update the contents of the gridrows collection
    '---------------------------------------------- 
@@ -287,7 +286,6 @@ Public Sub GridData_Rebuild()
          NewRows.Add(GridRows[i], iNewRowCount)       'just add it into the new collection of appointments
       Else If i = iFirstRow And i < iLastRow + 1 Then 'have now reached the first row the user selected
          GridData = New Collection                    'when they first searched for the patient
-         Print "slots:" & gridrows[gridview1.Row]!slots
          If iFirstRow = iLastRow Then                 'if they only selected a single row= 1 slot
             GridData!time = GridRows[i]!time          'put in the time of the appointment
             GridData!picture = GridRows[i]!picture    'any associated icon e.g for pregnancy check
@@ -295,14 +293,25 @@ Public Sub GridData_Rebuild()
             GridData!pk_appointment = GridRows[i]!pk_appointment
             GridData!notes = GridRows[i]!notes     
          Else                                         'otherwise - they must have selected > 1 rows
-            GridData!time = GridRows[i]!time & "-" & GridRows[iLastRow + 1]!time 'time e.g 9:00-9:20
+            '------------------------------------------------------------------------------------- 
+            'mm. a bit complex - if the appointment slot after that being added is already spanned
+            'e.g 9:10-9:20, we only want the 9:10 part
+            '------------------------------------------------------------------------------------- 
+            If Split(GridRows[iLastRow + 1]!time, "-").Count = 2 Then 
+               GridData!time = GridRows[i]!time & "-" & Split(GridRows[iLastRow + 1]!time, "-")[0] 'time e.g 9:00-9:20
+            Else   
+            GridData!time = GridRows[i]!time & "-" & GridRows[iLastRow + 1]!time
+            End If
             GridData!picture = GridRows[i]!picture    'plus any icon
             GridData!pk_appointment = GridRows[i]!pk_appointment
-            GridData!notes = GridRows[i]!notes     
+            If IsNull(GridData!notes) Then            'keep any free text name as notes FIXME
+               GridData!notes = GridRows[iFirstRow]!notes   
+            End If     
             GridData!slots = iLastRow - iFirstRow + 1  'and covering however many of standard grid heights
             i = i + iLastRow - iFirstRow              'increment the loop counter
          End If 
          GridData!name = Trim(txtAppointment.text)    'complete the collection with the patient name
+         onrow = iNewRowCount
          NewRows.Add(GridData, iNewRowCount)          'add the collection to the rows collection
       Else                                            'as above, the next one is an existing appointment
          GridData = New Collection                    'create a new collection
@@ -319,9 +328,10 @@ Public Sub GridData_Rebuild()
    
 End
 
-Public Sub Gridview1_Rebuild(gridrows As Collection)
+Public Sub Gridview1_Rebuild()
    '-------------------------------------------------------------------------
    'Using the underlying collection of appointment times to re-build the grid
+   'i.e what the user sees
    '-------------------------------------------------------------------------   
    
    Dim i As Integer
@@ -336,18 +346,12 @@ Public Sub Gridview1_Rebuild(gridrows As Collection)
       Gridview1[i, 1].Alignment = Align.Center
       Gridview1[i, 1].picture = gridrows[i]!picture
       Gridview1[i, 2].text = gridrows[i]!name
-      
       Try Gridview1[i, 2].Foreground = Appointment_Status_Colors[gridrows[i]!fk_lu_appointment_status] 
       If gridrows[i]!fk_lu_appointment_status = emergency Then
          Gridview1[i, 2].Background = Color.Yellow
+         Gridview1[i, 2].text = "RESERVED FOR EMERGENCY"
       Endif
    Next
-   
-End
-
-Public Sub form_Close()
-   
-   Settings_Save()
    
 End
 
@@ -355,7 +359,7 @@ Public Sub mnuAppointments_Click()
    '------------------------------------------------------
    'User has clicked on one of the apointment menu options   
    '------------------------------------------------------
-
+   
    onrow = Gridview1.Row
    Select Case Last.tag
       Case "delete"
@@ -373,13 +377,11 @@ Public Sub mnuAppointments_Click()
          modUtil.NotImplemented("Sorry, viewing help is not implemented")
          Return 
       Case "emergency"
+         If Not IsNull(gridrows[onrow]!fk_patient) Then
+            Message.title = "Delete existing appointment" 
+            If Message.Warning("Existing patient appointment:" & gridrows[onrow]!name & "\n\nReplace with an emergency slot?", "Yes", "No") = 2 Then Return
+         Endif
          fk_lu_appointment_status = emergency 
-         ' Gridview1[Gridview1.Row, 2].Background = Color.Yellow
-         ' Gridview1[Gridview1.Row, 2].Foreground = Color.Red
-         ' gridrows[Gridview1.Row]!notes = "RESERVED FOR EMERGENCY"
-         ' gridrows[Gridview1.Row]!name = "RESERVED FOR EMERGENCY"
-         ' Save()
-         ' Return 
       Case "add fit"
          modUtil.NotImplemented("Sorry, adding fit-in appointment is not implemented")
          Return 
@@ -389,7 +391,7 @@ Public Sub mnuAppointments_Click()
    End Select
    
    Save()
-
+   
 End
 
 Private Sub Settings_Save()
@@ -406,15 +408,13 @@ Public Sub Gridview1_Keypress()
    '------------------------------------------------------------------------------   
    
    If bExit Then Return 
-   
    If txtAppointment.text = "" Then
       '----------------------------------------------------------- 
       'user has just started typing whilst the gridview1 has focus
       '----------------------------------------------------------- 
-      If Key.code > 64 And Key.code < 91 Then         'capture first keypress of the user
-         Try txtAppointment.text = Chr(Key.code)      'if valid a-z and put it into the txtAppointment
-         GridView1_DblClick()                         'and enter edit mode to allow typing/searching
-      End If   
+      ' If (Key.code > 64 And Key.code < 91) Then         'capture first keypress of the user
+      Try txtAppointment.text = Chr(Key.code)      'if valid a-z and put it into the txtAppointment
+      GridView1_DblClick()                         'and enter edit mode to allow typing/searching
    Else
       '------------------------------------------------------------------- 
       'user just has hit <enter> key = assume they want to enter edit mode
@@ -440,7 +440,9 @@ Public Sub Gridview1_DblClick()
    Dim x As Integer
    
    patient = Null
+   bExit = True   
    textbox2.text = ""
+   bExit = False  
    bFoundFirst = False  
    For i = 0 To Gridview1.rows.count - 1           'figure out which rows are selected
       x = x + Gridview1.Rows[i].Height
@@ -459,7 +461,7 @@ Public Sub Gridview1_DblClick()
    fk_lu_appointment_status = appointment_made
    Show_EditingTextBox()
    textarea1.text &= "Slots selected=" & Str(iSlotCount)
-
+   
 End
 
 Public Sub Gridview1_Select()
@@ -474,11 +476,11 @@ Public Sub Gridview1_Select()
    If onrow = -1 Then Return 
    
    Temp_Read_Grid()
-
+   
 End
 
 Public Sub Temp_Read_Grid()
-
+   
    onrow = gridview1.row
    textarea1.text = "Grid row is " & Str(Gridview1.row) & "\n"
    
@@ -515,26 +517,8 @@ Public Sub Gridview1_Menu()
    
 End
 
-Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean, Optional P As Picture) 
-   '------------------------------------------------------------------
-   'Loads the patients name for the appointment
-   'called by textbox2_change
-   'this is called by FMakeAppointments only and not by this module
-   'If called, then some sort of popup is over the daybook
-   'either the single patient confirm select or whole page multi-select
-   '-------------------------------------------------------------------
-   
-   Me.Parent.Parent.Parent.Visible = True       're-show the appointment grids
-   txtAppointment.text = patient!wholename & " [" & Format(patient!birthdate, "dd/mm/yyyy") & "] " & Trim(patient!street1 & " " & patient!street2) & " " & patient!town
-   GridData_Rebuild()                           'put appropriate data into the collection
-   Save()                                       'save the appointment, re-load grid
-   gridview1.SetFocus()                         'allows user just to use eg down/up arrow keys to continue      
-   
-End
-
 Public Sub Appointment_Update()
    
-   'patient!fk_patient = gridrows[onrow]!fk_patient 
    Save()
    
 End
@@ -546,11 +530,17 @@ Public Sub Delete()
    '-------------------------------------------------------------------------
    
    Dim appointment As New CRow 
+   Dim sMsg As String
    
+   If gridview1.row = -1 Then Return 
    If Not IsNull(gridrows[Gridview1.Row]!pk_appointment) Then
       appointment!pk = gridrows[Gridview1.Row]!pk_appointment
       Message.Title = "Delete an appointment"
-      If Message.Warning("Are you sure you wish to delete this appointment?", "Yes", "No") = 2 Then Return 
+      If Not IsNull(gridrows[onrow]!fk_patient)
+         smsg = "Existing appointment for " & gridrows[onrow]!name & "\n\n"
+      End If
+      sMsg &= "Are you sure you wish to delete this appointment?"
+      If Message.Warning(sMsg, "Yes", "No") = 2 Then Return 
       modAppointmentsDBI.Appointment_Delete(appointment)
       modDBConnect.CommitTrans()
       GridRows_Init(Time(8, 30, 0), Time(18, 0, 0), appointment_interval)   'fill empty collection with times
@@ -577,7 +567,7 @@ Public Sub Save()
    Dim endtime As Date
    Dim Appointment_times As String[]
    Dim appointment_length As String[]
-
+   
    Try appointment!fk_patient = patient!fk_patient
    If Error Then
       appointment!fk_patient = gridrows[onrow]!fk_patient
@@ -609,6 +599,22 @@ Public Sub Save()
    
 End
 
+Public Sub Gridview1_First_Vacant(startrow As Integer) As Integer
+   '----------------------------------------------------------
+   'finds the first vacant row taking time of day into account
+   'fixme
+   '----------------------------------------------------------  
+   
+   Dim i As Integer
+   
+   For i = startrow To Gridview1.Rows.Count - 1
+      If Gridview1[i, 2].text = "" Then
+         Return i 
+      Endif
+   Next
+   
+End
+
 Public Sub SelectPatient_click()                                       
    '-------------------------------------------------------------------
    'User has cancelled patient selection in popup patient selector form
@@ -627,10 +633,17 @@ Public Sub Form_Resize()
    
 End
 
+Public Sub Form_Close()
+   
+   Settings_Save()
+   
+End
+
 Public Sub Form_Leave()
    
    txtAppointment.Visible = False   
-   
+   Gridview1.row = -1
+
 End
 
 Public Sub TextBox2_Change()
@@ -639,21 +652,34 @@ Public Sub TextBox2_Change()
    'when > 1 patient name for the search criteria
    '-------------------------------------------------------   
    
+   If Bexit Then Return 
    If Len(Last.text) Then
       If Not IsNull(patient) Then
-         patient_load_record(patient, True) 
+         Me.Parent.Parent.Parent.Visible = True       're-show the appointment grids
       Else
          txtAppointment.text = Last.text 
-         gridrows[Gridview1.Row]!name = Last.text 
-         gridrows[Gridview1.Row]!notes = Last.text  
-         GridData_Rebuild()
-         Save()
-         'FIXME specify the on-row to set focus to - dosnt' work with multiple appt slots
-         
-      End If
-   Endif
-   gridview1.SetFocus()
+          Print onrow
+        ' gridrows[Gridview1.Row]!name = Last.text 
+        ' gridrows[Gridview1.Row]!notes = Last.text 
+         gridrows[onrow]!name = Last.text 
+         gridrows[onrow]!notes = Last.text 
 
+      End If  
+      ' txtAppointment.text = Last.text 
+       GridData_Rebuild()
+       Save()
+      'FIXME specify the on-row to set focus to - dosnt' work with multiple appt slots
+   Endif
+   bExit = True   
+   txtAppointment.text = ""
+   bExit = False  
+   '-----------------------------------------------------------------
+   'Find next vacant row, search downwards, if none left, find first
+   '----------------------------------------------------------------
+   iFirstVacantRow = Gridview1_First_Vacant(onRow)
+   gridview1.row = iFirstVacantRow
+   gridview1.SetFocus()
+   
 End
 
 Public Sub Show_EditingTextBox()
@@ -687,13 +713,9 @@ Public Sub Move_EditingTextBox()
    Dim iW As Integer
    
    If IsNull($hEditor) Or gridview1.Row = -1 Then Return 'FIXME BAD BAD BUGFIX ?WHY GOING -1
-   Print gridrows[gridview1.Row]
-   ' iSlotCount = gridrows[gridview1.Row]!slots
    
    With gridview1[gridview1.Row, 2]
-      txtAppointment.Move(gridview1.X + .X - gridview1.ScrollX, gridview1.Y + itop - gridview1.ScrollY, .Width, ((iLastRow - iFirstRow) + 1) * Gridview1.Rows[0].Height + 5)
-      '  txtAppointment.Move(gridview1.X + .X - gridview1.ScrollX, gridview1.Y + itop - gridview1.ScrollY, .Width, (iSlotCount * Gridview1.Rows[0].Height) + 5)
-      
+      txtAppointment.Move(gridview1.X + .X - gridview1.ScrollX, gridview1.Y + itop - gridview1.ScrollY, .Width, ((iLastRow - iFirstRow) + 1) * irowheight + 5)
    End With
    
 End
@@ -711,8 +733,46 @@ Public Sub txtAppointment_Change()
    'is user typing, and has backspaced or deleted a row, delete after prompt
    '------------------------------------------------------------------------
    
+   If bexit Then Return 
    If Len(txtAppointment.text) = 0 And txtAppointment.visible = True And bexit = False Then
       Delete()
    End If
    
 End
+' - - - - - - - - - - -
+' Public Sub TextBox2_Change()
+'    '-------------------------------------------------------
+'    'This is triggered externally by the FPatientSelect form
+'    'when > 1 patient name for the search criteria
+'    '-------------------------------------------------------   
+'    
+'    If Bexit Then Return 
+'    If Len(Last.text) Then
+'       If Not IsNull(patient) Then
+'          Me.Parent.Parent.Parent.Visible = True       're-show the appointment grids
+'          'patient_load_record(patient, True) 
+'       Else
+'          txtAppointment.text = Last.text 
+'          gridrows[Gridview1.Row]!name = Last.text 
+'          gridrows[Gridview1.Row]!notes = Last.text 
+'          gridrows[onrow]!name = Last.text 
+'          gridrows[onrow]!notes = Last.text 
+'       End If  
+'       GridData_Rebuild()
+'       '     iNextVacentRow = Min(gridview1.Rows.count, onRow + 1)
+'       Save()
+'       
+'       'FIXME specify the on-row to set focus to - dosnt' work with multiple appt slots
+'       '  End If
+'    Endif
+'    bExit = True   
+'    txtAppointment.text = ""
+'    bExit = False  
+'    '-----------------------------------------------------------------
+'    'Find next vacant row, search downwards, if none left, find first
+'    '----------------------------------------------------------------
+'    iFirstVacantRow = Gridview1_First_Vacant(onRow)
+'    gridview1.row = iFirstVacantRow
+'    gridview1.SetFocus()
+'    
+'

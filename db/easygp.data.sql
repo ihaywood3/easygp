@@ -12,6 +12,13 @@ SET escape_string_warning = off;
 SET search_path = admin, pg_catalog;
 
 --
+-- Name: lu_clinical_modules_pk_seq; Type: SEQUENCE SET; Schema: admin; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_clinical_modules_pk_seq', 18, true);
+
+
+--
 -- Name: lu_staff_roles_pk_seq; Type: SEQUENCE SET; Schema: admin; Owner: -
 --
 
@@ -32,7 +39,37 @@ SELECT pg_catalog.setval('lu_staff_status_pk_seq', 4, true);
 SELECT pg_catalog.setval('lu_staff_type_pk_seq', 9, true);
 
 
+SET search_path = chronic_disease_management, pg_catalog;
+
+--
+-- Name: lu_allied_health_type_pk_seq; Type: SEQUENCE SET; Schema: chronic_disease_management; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_allied_health_type_pk_seq', 14, true);
+
+
+--
+-- Name: lu_dacc_components_pk_seq; Type: SEQUENCE SET; Schema: chronic_disease_management; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_dacc_components_pk_seq', 1, false);
+
+
 SET search_path = clerical, pg_catalog;
+
+--
+-- Name: lu_appointment_icons_pk_seq; Type: SEQUENCE SET; Schema: clerical; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_appointment_icons_pk_seq', 11, true);
+
+
+--
+-- Name: lu_appointment_status_pk_seq; Type: SEQUENCE SET; Schema: clerical; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_appointment_status_pk_seq', 5, true);
+
 
 --
 -- Name: lu_task_types_pk_seq; Type: SEQUENCE SET; Schema: clerical; Owner: -
@@ -146,14 +183,14 @@ SET search_path = clin_consult, pg_catalog;
 -- Name: lu_actions_pk_seq; Type: SEQUENCE SET; Schema: clin_consult; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_actions_pk_seq', 23, true);
+SELECT pg_catalog.setval('lu_actions_pk_seq', 35, true);
 
 
 --
 -- Name: lu_audit_reasons_pk_seq; Type: SEQUENCE SET; Schema: clin_consult; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 1, false);
+SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 251, true);
 
 
 --
@@ -164,10 +201,17 @@ SELECT pg_catalog.setval('lu_consult_type_pk_seq', 11, true);
 
 
 --
+-- Name: lu_progressnote_templates_pk_seq; Type: SEQUENCE SET; Schema: clin_consult; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_progressnote_templates_pk_seq', 12, true);
+
+
+--
 -- Name: lu_progressnotes_sections_pk_seq; Type: SEQUENCE SET; Schema: clin_consult; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_progressnotes_sections_pk_seq', 20, true);
+SELECT pg_catalog.setval('lu_progressnotes_sections_pk_seq', 23, true);
 
 
 --
@@ -197,7 +241,16 @@ SELECT pg_catalog.setval('lu_dacc_components_pk_seq', 1, false);
 -- Name: lu_exposures_pk_seq; Type: SEQUENCE SET; Schema: clin_history; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_exposures_pk_seq', 37, true);
+SELECT pg_catalog.setval('lu_exposures_pk_seq', 36, true);
+
+
+SET search_path = common, pg_catalog;
+
+--
+-- Name: lu_appointment_length_pk_seq; Type: SEQUENCE SET; Schema: common; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_appointment_length_pk_seq', 4, true);
 
 
 SET search_path = clin_measurements, pg_catalog;
@@ -260,57 +313,6 @@ SET search_path = clin_pregnancy, pg_catalog;
 --
 
 SELECT pg_catalog.setval('lu_antenatal_venue_pk_seq', 1, false);
-
-
-SET search_path = clin_prescribing, pg_catalog;
-
---
--- Name: lu_authority_indications_pk_seq; Type: SEQUENCE SET; Schema: clin_prescribing; Owner: -
---
-
-SELECT pg_catalog.setval('lu_authority_indications_pk_seq', 1, false);
-
-
---
--- Name: lu_brand_pk_seq; Type: SEQUENCE SET; Schema: clin_prescribing; Owner: -
---
-
-SELECT pg_catalog.setval('lu_brand_pk_seq', 26, true);
-
-
---
--- Name: lu_generics_pk_seq; Type: SEQUENCE SET; Schema: clin_prescribing; Owner: -
---
-
-SELECT pg_catalog.setval('lu_generics_pk_seq', 25, true);
-
-
---
--- Name: lu_instruction_habits_pk_seq; Type: SEQUENCE SET; Schema: clin_prescribing; Owner: -
---
-
-SELECT pg_catalog.setval('lu_instruction_habits_pk_seq', 27, true);
-
-
---
--- Name: lu_instructions_pk_seq; Type: SEQUENCE SET; Schema: clin_prescribing; Owner: -
---
-
-SELECT pg_catalog.setval('lu_instructions_pk_seq', 26, true);
-
-
---
--- Name: lu_next_authority_number_pk_seq; Type: SEQUENCE SET; Schema: clin_prescribing; Owner: -
---
-
-SELECT pg_catalog.setval('lu_next_authority_number_pk_seq', 1, false);
-
-
---
--- Name: lu_pbs_status_pk_seq; Type: SEQUENCE SET; Schema: clin_prescribing; Owner: -
---
-
-SELECT pg_catalog.setval('lu_pbs_status_pk_seq', 20, true);
 
 
 SET search_path = clin_procedures, pg_catalog;
@@ -377,37 +379,21 @@ SET search_path = clin_recalls, pg_catalog;
 -- Name: lu_reasons_pk_seq; Type: SEQUENCE SET; Schema: clin_recalls; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_reasons_pk_seq', 206, true);
+SELECT pg_catalog.setval('lu_reasons_pk_seq', 41, true);
 
 
 --
 -- Name: lu_recall_intervals_pk_seq; Type: SEQUENCE SET; Schema: clin_recalls; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_recall_intervals_pk_seq', 97, true);
-
-
---
--- Name: lu_status_pk_seq; Type: SEQUENCE SET; Schema: clin_recalls; Owner: -
---
-
-SELECT pg_catalog.setval('lu_status_pk_seq', 6, true);
+SELECT pg_catalog.setval('lu_recall_intervals_pk_seq', 41, true);
 
 
 --
 -- Name: lu_templates_pk_seq; Type: SEQUENCE SET; Schema: clin_recalls; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_templates_pk_seq', 1, false);
-
-
-SET search_path = common, pg_catalog;
-
---
--- Name: lu_appointment_length_pk_seq; Type: SEQUENCE SET; Schema: common; Owner: -
---
-
-SELECT pg_catalog.setval('lu_appointment_length_pk_seq', 4, true);
+SELECT pg_catalog.setval('lu_templates_pk_seq', 4, true);
 
 
 SET search_path = clin_referrals, pg_catalog;
@@ -416,7 +402,7 @@ SET search_path = clin_referrals, pg_catalog;
 -- Name: lu_type_pk_seq; Type: SEQUENCE SET; Schema: clin_referrals; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_type_pk_seq', 12, true);
+SELECT pg_catalog.setval('lu_type_pk_seq', 13, true);
 
 
 SET search_path = clin_requests, pg_catalog;
@@ -446,30 +432,37 @@ SELECT pg_catalog.setval('lu_instructions_pk_seq', 1, false);
 -- Name: lu_link_provider_user_requests_pk_seq; Type: SEQUENCE SET; Schema: clin_requests; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_link_provider_user_requests_pk_seq', 783, true);
+SELECT pg_catalog.setval('lu_link_provider_user_requests_pk_seq', 1318, true);
 
 
 --
 -- Name: lu_request_type_pk_seq; Type: SEQUENCE SET; Schema: clin_requests; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_request_type_pk_seq', 11, true);
+SELECT pg_catalog.setval('lu_request_type_pk_seq', 14, true);
 
 
 --
 -- Name: lu_requests_pk_seq; Type: SEQUENCE SET; Schema: clin_requests; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_requests_pk_seq', 1526, true);
+SELECT pg_catalog.setval('lu_requests_pk_seq', 1721, true);
 
 
 SET search_path = clin_vaccination, pg_catalog;
 
 --
+-- Name: lu_formulation_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_formulation_pk_seq', 5, true);
+
+
+--
 -- Name: lu_schedules_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_schedules_pk_seq', 60, true);
+SELECT pg_catalog.setval('lu_schedules_pk_seq', 66, true);
 
 
 --
@@ -483,14 +476,14 @@ SELECT pg_catalog.setval('lu_vaccines_descriptions_pk_seq', 41, true);
 -- Name: lu_vaccines_in_schedule_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_vaccines_in_schedule_pk_seq', 170, true);
+SELECT pg_catalog.setval('lu_vaccines_in_schedule_pk_seq', 185, true);
 
 
 --
 -- Name: lu_vaccines_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_vaccines_pk_seq', 193, true);
+SELECT pg_catalog.setval('lu_vaccines_pk_seq', 194, true);
 
 
 SET search_path = clin_workcover, pg_catalog;
@@ -633,17 +626,10 @@ SELECT pg_catalog.setval('lu_normality_pk_seq', 2, true);
 
 
 --
--- Name: lu_occupations_bak_pk_seq; Type: SEQUENCE SET; Schema: common; Owner: -
---
-
-SELECT pg_catalog.setval('lu_occupations_bak_pk_seq', 82, true);
-
-
---
 -- Name: lu_occupations_pk_seq; Type: SEQUENCE SET; Schema: common; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_occupations_pk_seq', 203, true);
+SELECT pg_catalog.setval('lu_occupations_pk_seq', 293, true);
 
 
 --
@@ -671,7 +657,7 @@ SELECT pg_catalog.setval('lu_religions_pk_seq', 13, true);
 -- Name: lu_route_administration_pk_seq; Type: SEQUENCE SET; Schema: common; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_route_administration_pk_seq', 5, true);
+SELECT pg_catalog.setval('lu_route_administration_pk_seq', 27, true);
 
 
 --
@@ -685,7 +671,7 @@ SELECT pg_catalog.setval('lu_seasons_pk_seq', 4, true);
 -- Name: lu_site_administration_pk_seq; Type: SEQUENCE SET; Schema: common; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_site_administration_pk_seq', 4, true);
+SELECT pg_catalog.setval('lu_site_administration_pk_seq', 10, true);
 
 
 --
@@ -743,7 +729,7 @@ SELECT pg_catalog.setval('lu_address_types_pk_seq', 6, true);
 -- Name: lu_categories_pk_seq; Type: SEQUENCE SET; Schema: contacts; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_categories_pk_seq', 208, true);
+SELECT pg_catalog.setval('lu_categories_pk_seq', 357, true);
 
 
 --
@@ -815,7 +801,7 @@ SET search_path = db, pg_catalog;
 -- Name: db_version_pk_seq; Type: SEQUENCE SET; Schema: db; Owner: -
 --
 
-SELECT pg_catalog.setval('db_version_pk_seq', 31, true);
+SELECT pg_catalog.setval('db_version_pk_seq', 124, true);
 
 
 SET search_path = defaults, pg_catalog;
@@ -868,7 +854,7 @@ SELECT pg_catalog.setval('lu_archive_site_pk_seq', 2, true);
 -- Name: lu_display_as_pk_seq; Type: SEQUENCE SET; Schema: documents; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_display_as_pk_seq', 2, true);
+SELECT pg_catalog.setval('lu_display_as_pk_seq', 4, true);
 
 
 --
@@ -883,27 +869,6 @@ SELECT pg_catalog.setval('lu_message_display_style_pk_seq', 2, true);
 --
 
 SELECT pg_catalog.setval('lu_message_standard_pk_seq', 3, true);
-
-
---
--- Name: lu_stakeholder_type_pk_seq; Type: SEQUENCE SET; Schema: documents; Owner: -
---
-
-SELECT pg_catalog.setval('lu_stakeholder_type_pk_seq', 4, true);
-
-
---
--- Name: lu_stakeholders_pk_seq; Type: SEQUENCE SET; Schema: documents; Owner: -
---
-
-SELECT pg_catalog.setval('lu_stakeholders_pk_seq', 4, true);
-
-
---
--- Name: lu_type_pk_seq; Type: SEQUENCE SET; Schema: documents; Owner: -
---
-
-SELECT pg_catalog.setval('lu_type_pk_seq', 11, true);
 
 
 SET search_path = import_export, pg_catalog;
@@ -923,6 +888,32 @@ SELECT pg_catalog.setval('lu_source_program_pk_seq', 8, true);
 
 
 SET search_path = admin, pg_catalog;
+
+--
+-- Data for Name: lu_clinical_modules; Type: TABLE DATA; Schema: admin; Owner: -
+--
+
+COPY lu_clinical_modules (pk, name, icon_path) FROM stdin;
+2	Requests	icons/16/bloodtube16x16.png
+3	Referrals	icons/16/referrals_3_1616.png
+4	Scripts	icons/20/pill2020.png
+6	Travel	icons/16/airplane.png
+7	Mental Health	icons/20/smiley2020.png
+8	Workcover	icons/20/workcover2020.png
+9	Occupational History	icon:/small/tools
+11	Vaccinations	icons/20/syringe2020.png
+12	Pregnancy	icons/20/pregnancy.png
+13	Allergy	icons/20/allergy2020.png
+14	Skin Excision	icons/24/glove-scalple_2424.png
+15	Diabetes Cycle of Care	icons/20/united_nations_diabetes_icon.png
+16	Psycho-Social History	icons/misc/no_photo.png
+1	Health Issues	icons/24/tim_pasthistory_2424.png
+5	Recalls	icons/24/tim_recall_2424.png
+10	Family History	icons/22/tim_people_2222.png
+18	Medical Certificates	icons/24/centigrade_person_list2424.png
+17	Care Planning	icons/20/careplan2020_1.png
+\.
+
 
 --
 -- Data for Name: lu_staff_roles; Type: TABLE DATA; Schema: admin; Owner: -
@@ -970,7 +961,87 @@ COPY lu_staff_type (pk, type) FROM stdin;
 \.
 
 
+SET search_path = chronic_disease_management, pg_catalog;
+
+--
+-- Data for Name: lu_allied_health_type; Type: TABLE DATA; Schema: chronic_disease_management; Owner: -
+--
+
+COPY lu_allied_health_type (pk, type, item_number, deleted) FROM stdin;
+1	aboriginal health worker	10950	f
+2	audiologist	10952	f
+3	chiropractor	10964	f
+4	dental	0	f
+5	diabetes educator	10951	f
+6	dietitian	10954	f
+7	exercise physiologist	10953	f
+8	mental health worker	10956	f
+9	occupational therapist	10958	f
+10	osteopath	10966	f
+11	physiotherapist	10960	f
+12	podiatrist	10962	f
+13	psychologist	10968	f
+14	speech pathologist	10970	f
+\.
+
+
+--
+-- Data for Name: lu_dacc_components; Type: TABLE DATA; Schema: chronic_disease_management; Owner: -
+--
+
+COPY lu_dacc_components (pk, fk_component) FROM stdin;
+\.
+
+
 SET search_path = clerical, pg_catalog;
+
+--
+-- Data for Name: lu_appointment_icons; Type: TABLE DATA; Schema: clerical; Owner: -
+--
+
+COPY lu_appointment_icons (pk, appointment_type, icon_path) FROM stdin;
+2	blood test	icons/16/bloodtube16x16.png
+3	mental health plan	icons/22/face-smile.png
+4	home visit	icons/22/user-home.png
+5	over 75 health assessment	icons/24/hand_2020.png
+6	procedure	icons/24/glove-scalple_2424.png
+7	immunization	icons/20/syringe2020.png
+8	workcover	icons/20/workcover2020.png
+9	annual checkup	icons/22/heart.png
+10	prescription	icons/20/pill2020.png
+11	diabetes cycle of care	icons/20/united_nations_diabetes_icon.png
+1	pregnancy	icons/16/pregnancy1616.png
+\.
+
+
+--
+-- Data for Name: lu_appointment_status; Type: TABLE DATA; Schema: clerical; Owner: -
+--
+
+COPY lu_appointment_status (pk, status) FROM stdin;
+1	appointment made
+2	arrived and waiting
+3	in consulting room
+4	patient departed
+5	emergency
+\.
+
+
+--
+-- Data for Name: lu_billing_type; Type: TABLE DATA; Schema: clerical; Owner: -
+--
+
+COPY lu_billing_type (name, pk) FROM stdin;
+Standard	1
+DVA	2
+Schedule Fee	3
+AMA Fee	4
+Concession	5
+WorkCover	6
+TAC	7
+Medico-legal	8
+\.
+
 
 --
 -- Data for Name: lu_task_types; Type: TABLE DATA; Schema: clerical; Owner: -
@@ -1169,9 +1240,6 @@ SET search_path = clin_consult, pg_catalog;
 --
 
 COPY lu_audit_actions (pk, action, insist_reason) FROM stdin;
-1	progress note	f
-2	insert	f
-3	update	f
 4	mark deleted	t
 5	reversal	f
 6	completed	f
@@ -1179,7 +1247,6 @@ COPY lu_audit_actions (pk, action, insist_reason) FROM stdin;
 8	completed repeat same interval	f
 9	completed repeat new interval	f
 10	refused	f
-11	refused with explanation	f
 12	make active	f
 13	make inactive	f
 14	make significant	f
@@ -1189,9 +1256,25 @@ COPY lu_audit_actions (pk, action, insist_reason) FROM stdin;
 18	reminder sent	f
 19	arranged not completed	f
 20	file import	f
-21	document filed	f
 22	staff task allocated	f
 23	staff task finalised	f
+21	viewed and filed document	f
+24	note on task	f
+25	task component finalised	f
+26	scanned document imported	f
+1	insert	f
+2	edit	f
+3	delete	f
+27	re-scheduled	f
+11	refused with explanation	t
+28	delete - duplicate document	f
+29	delete - preliminary result	f
+30	undelete	f
+31	document display mode changed	f
+32	return for re-filing	t
+33	delete - sent in error	f
+34	moved to library	f
+35	progress note edited	t
 \.
 
 
@@ -1200,6 +1283,172 @@ COPY lu_audit_actions (pk, action, insist_reason) FROM stdin;
 --
 
 COPY lu_audit_reasons (pk, fk_staff, reason) FROM stdin;
+85	\N	delete
+86	\N	wrong diagnosis in the first place
+87	\N	entered for the wrong patient
+88	\N	entered for wrong patient
+90	\N	duplicate
+92	\N	wrong information
+34	1	insert
+35	1	edit
+67	1	reversal
+93	\N	wrong data entry
+95	\N	Completed
+101	\N	change
+102	\N	recall re-logged at same interval of 6months now due on 30/11/2010
+104	\N	Done by lab in error
+84	\N	wrong information
+89	\N	modified
+96	\N	has had one foot amputated
+97	\N	wrong allocation
+98	\N	wrong substance
+99	\N	wrong vegetable
+100	\N	wrong object
+103	\N	written for wrong patient
+105	\N	written for wrong patient
+91	\N	written for wrong reason
+106	\N	moved to trash
+107	\N	duplicate result
+108	\N	viewed and actioned
+109	\N	viewed and filed without comment
+110	\N	preliminary result not required
+111	\N	viewed and filed
+112	\N	complete with explanation:<BR> - gave her another script
+113	\N	staff task allocated
+117	\N	Staff task finalised
+118	\N	delete selected
+120	1	wrong sender should have been Xray Dept
+121	1	reported with wrong date of birth
+122	1	wrong request
+123	1	not done for this patient - specimen wongly labelled
+124	1	wrong sender
+125	1	scewed - please rescan
+126	1	result joined to a letter
+127	1	not our patient
+128	1	for rescanning in color
+129	1	legacy document will be imported
+130	1	missing one page
+131	1	wrong allocation
+132	1	done in error
+133	1	letter not dated
+134	1	includes PIT will be re-imported
+135	1	no date
+136	1	only one page
+137	1	they will send an electronic copy
+138	1	wrongly allocated
+139	1	bad pdf
+140	1	not relevant to patient care
+141	1	will receive electronically
+142	1	clerical letter
+143	1	document not needed
+144	1	missed pages
+145	1	legal letter not needed
+146	1	Illegible document not needed for patient care
+147	1	needs splitting into separate pages
+148	1	poor quality scan
+149	1	not signed by doctor
+150	1	wrong patient
+151	1	in colour
+152	1	document not signed
+153	1	needs to be joined
+154	1	needs joining
+155	1	scanned in color
+156	1	not real data
+157	1	practice data
+158	1	for rescanning - incomplete document
+159	1	wrong address
+160	1	re-scan needed
+161	1	result incorrectly reported
+162	1	practice data before started using database
+163	1	added qualifying text
+164	1	prac
+165	1	pr
+166	1	spelling error
+167	1	spell
+168	1	wrong anatomical location on form
+169	1	removed underline
+170	1	notes incomplete done on same day 
+171	1	program crash during development
+172	1	wrong date
+173	1	wrong vaccine number
+174	1	pract
+175	1	practi
+176	1	duplicate
+177	1	to obtain electronic version
+178	1	wrrong sender
+179	1	missing page
+180	1	removed .draw
+181	1	forget some clinical findings
+182	1	will be re-imported with no pathology
+183	1	forgot to enter clinical notes re examination
+184	1	histopathy included should be separate
+185	1	remove .mc when programme bugged out
+186	1	date formatted mm/dd/yyyy fixed to dd/mm/yyyy
+187	1	wrong patient and wrong sender
+188	1	wrote wrong value
+189	1	photograph taken no consultation
+190	1	not rel
+191	1	illegible scan
+192	1	wrong immunisation schedule
+193	1	removed bp=, bsl= not filled in
+194	1	missed bracket
+195	1	duplicate DACC due to programming bug
+196	1	added reminder about result for next visit
+197	6	wrong patient - programming error
+198	1	wrong site - provider will resend
+199	1	for re-scanning
+200	1	missing pa
+201	1	forgot to enter Hep C details and medication for his BP
+202	1	wrong age
+203	1	to join
+204	1	wrong test performed by lab
+205	1	letter content not for our patient
+206	1	patient letter
+207	1	discussed - aware of need for diet initially
+208	1	explained - repeat PSA in 6 months
+209	1	No alcohol + do K+ in 1 week
+210	1	Explained - Dietry advice
+211	1	will attend to food/bsl diary and return
+212	1	referred to Paul Ainsworth
+213	1	have discussed and arranged investigaiton and treatment
+214	1	has not been taking tablets - will restart
+215	1	referred to Dr Ambrogetti for formal assessment
+216	1	on steroids - redo when off these
+217	1	discussed, ensure plenty of fluids, avoid nsaid
+218	1	Discussed with renal physician - just monitor this
+219	1	Has got neurosurgical referral
+220	1	now started vitamin D
+221	1	referred to John Newton to remove this
+222	1	missed a word
+223	1	GTT done today
+224	1	Referred to Dr Santhanam
+225	1	further tests organised
+226	1	has started on Vit D
+227	1	redo this
+228	1	Another letter to Dr Santhanam
+229	1	bone density arranged
+230	1	referral provided
+231	1	discussed in detail
+232	1	Performed today 75gm
+233	1	Discussed and review after his GTT
+234	1	repeated test
+235	1	statin started under guidelines
+236	1	referred to David Gill
+237	1	entered in error
+238	1	arranged GTT
+239	1	done 03/08/11 BSL fasting was 5.0
+240	1	discussed on the phone
+241	1	Advises only to repeat at later date not start treatment
+242	1	referred to orthopaedic surgeon
+243	1	is attending dietitian at Belmont Hospital
+244	1	wrong interval - re-entered
+245	1	changed his anti-hypertensive medication
+246	1	written for wrong provider
+247	1	removed .pic
+248	1	remove .h 
+249	1	typo
+250	1	decided no further GTT needed - review next annual checkup
+251	1	Dr Nanra has written to Sandra Deveridge
 \.
 
 
@@ -1218,7 +1467,27 @@ COPY lu_consult_type (pk, type) FROM stdin;
 8	Review of Correspondance
 9	Notes without patient present
 10	Legacy Data Import
-11	Staff Task Notes
+11	Audit
+\.
+
+
+--
+-- Data for Name: lu_progressnote_templates; Type: TABLE DATA; Schema: clin_consult; Owner: -
+--
+
+COPY lu_progressnote_templates (pk, fk_staff, shared, name, deleted, template) FROM stdin;
+1	1	f	Annual Checkup	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:9pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">ANNUAL CHECKUP</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Patient Concerns</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">System Review</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">On Examination</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">bp=</p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">h=</p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">w=</p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">urine=</p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">bsl=</p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">bmi=</p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">Assessment &amp; Plan</span></p></body></html>
+2	1	f	Over 75 Health Review	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:9pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">OVER 75 HEALTH CARE ASSESSMENT</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Patient Concerns</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">System Review including Habits</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Social Support</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Mood &amp; Sleep &amp; Mental Status</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Bladder &amp; Bowels</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Immunizations</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Exercise Home Safety &amp; Mobility</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Medication Review</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">EXAMINATION</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">Assessment &amp; Plan</span></p></body></html>
+3	1	f	Skin Excision PDS/Miralene	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:9pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">Skin Excision   </span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Procedure </span>- explained and consent obtained</p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Pack ID </span> </p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Skin Prep </span> - chlorhexadine and alcohol/sterile drape</p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Anaesthesia </span> </p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Type  </span> </p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Sutures </span>- PDS 4/0  subcutaneous and Miralene 4/0 skin</p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">ROS </span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p></body></html>
+4	1	f	Punch Biopsy - Adrenaline/Xylocaine	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:8pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600; text-decoration: underline;">Punch BIopsy</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600;">Procedure </span><span style=" font-size:9pt;">- explained and consent obtained</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600;">Pack ID </span><span style=" font-size:9pt;"> </span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600;">Skin Prep </span><span style=" font-size:9pt;"> - chlorhexadine and alcohol/sterile drape</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600;">Anaesthesia </span><span style=" font-size:9pt;"> - adrenaline + xylocaine 1%</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600;">Type  </span><span style=" font-size:9pt;"> </span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600;">Sutures </span><span style=" font-size:9pt;">-  Miralene 4/0 skin</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600;">ROS 7/7</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:9pt; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:9pt; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:9pt;"></p></body></html>
+5	1	f	National Breast & Ovarian Cancer Shared Care Plan	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:8pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">National Breast &amp; Ovarian Cancer Shared Care Plan</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">HISTORY</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Recommended</span>: Years 1-2 every 3-6 months, Years 3-5 every 6-12 months after 5 years every 12 months.</p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">C<span style=" font-weight:600;">urrent Period since Breast Ca</span>: </p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">General Health &amp; New Problems</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">New Breast Symptoms</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Hormonal Status</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Risk Factors/Secondary Prevention Strategies</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Change in Medication</span>s</p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Compliance Issues</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"> </p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">CLINICAL EXAMINATION</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Breast/chest wall (both sides)</span> </p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Chest &amp; Abdomen </span> </p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Regional Lymph Nodes</span> </p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Arm on treated side</span> </p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">IMAGING</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">(Specialist/GP- arrange a mammogram of the ipsilateral and contralateral breast, consider u/s in addition for younger women, women with dense breasts and those whose initial breast cancer could not be detected by mammography).</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">PSYCHOSOCIAL CARE</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">(Assess the woman's level of psychosocial distress and the impact of the disease and its treatment (including effects on sexuality, fertility and relationship, provider appropriate support and referral, be aware that some women may find regular checkups reassuring while others may associate them with increased anxiety)</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">TREATMENT SIDE EFFECTS</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">(Check for early signs fo secondary lymphoedema, if the woman is receiving ongoing treatment with hormonal therpaies - eg tamoxifen or aromatase inhibitors - check for possible sequelae of treatment (menopausal symptoms or reduced ABMD and refer for sepcialist review if necessary)</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">OTHER CONSIDERATIONS</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">(Actively promote secondary prevention strategies including maintaining a healthy body weight, regular exercise and limiting alcohol intake).</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p></body></html>
+6	1	f	Digital Nail Removal	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:8pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">Removal of Digital Nail</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Indication - </span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Anesthetic -</span> plain xylocine</p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Pack - </span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Type - </span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Dressing -  </span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p></body></html>
+7	1	f	18 Month Check and Immunizations	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:8pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">18/12 Checkup and Immunization</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">Measurements</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600; text-decoration: underline;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; text-decoration: underline;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">Eyes, Hearing and Vision</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600; text-decoration: underline;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; text-decoration: underline;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">Health Protective Factors</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600; text-decoration: underline;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; text-decoration: underline;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">Feeding</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600; text-decoration: underline;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; text-decoration: underline;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600; text-decoration: underline;">Health information discussed</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600; text-decoration: underline;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600; text-decoration: underline;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600; text-decoration: underline;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600; text-decoration: underline;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600; text-decoration: underline;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600; text-decoration: underline;"></p></body></html>
+8	1	f	45-49 Year Health Assessment	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:8pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600; text-decoration: underline;">45-49 Year Health Review</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600;">Family History</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:9pt; font-weight:600;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600;">Risk Factors</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:9pt; font-weight:600;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600;">Patient Concerns</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:9pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600;">System Review</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:9pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600;">On Examination</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt;">bp=</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt;">h=</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt;">w=</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt;">urine=</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt;">bsl=</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt;">bmi=</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-size:9pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-size:9pt; font-weight:600; text-decoration: underline;">Assessment &amp; Plan</span></p></body></html>
+9	1	f	4 Year Checkup	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:8pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">4yr Checkup and Needles</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Parental concerns</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Development</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Hearing and Sight</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Immunisations</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p></body></html>
+10	1	f	Skin Curettage	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:8pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Curettage</span> </p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Site</span> </p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Anesthetic </span>- adrenaline/xylocaine</p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p></body></html>
+11	1	f	12 Month Checkup Immunizations Male	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:8pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">12 Month Checkup and Immunizations</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Parental Questionaire</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Measurements &amp; Eyes &amp; Testes</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Feeding</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p></body></html>
+12	1	f	12 Months Immunizations & Checkup Female	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:8pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">12 Month Checkup and Immunizations</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Parental Questionaire</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Measurements &amp; Eyes </span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Feeding</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p></body></html>
 \.
 
 
@@ -1244,10 +1513,13 @@ COPY lu_progressnotes_sections (pk, section) FROM stdin;
 18	prescriptions
 15	vaccinations
 14	referral letters
-13	scratchpad
 0	general notes
 19	allergies
 20	documents
+13	staff tasks
+21	images
+22	care plans
+23	medical certificates
 \.
 
 
@@ -1355,7 +1627,6 @@ COPY lu_exposures (pk, exposure, fk_decision_support, deleted) FROM stdin;
 34	tar	\N	\N
 35	smoke	\N	\N
 36	sawdust	\N	\N
-37	paint stripper	\N	\N
 \.
 
 
@@ -1462,188 +1733,6 @@ SET search_path = clin_pregnancy, pg_catalog;
 --
 
 COPY lu_antenatal_venue (pk, fk_branch) FROM stdin;
-\.
-
-
-SET search_path = clin_prescribing, pg_catalog;
-
---
--- Data for Name: lu_authority_indications; Type: TABLE DATA; Schema: clin_prescribing; Owner: -
---
-
-COPY lu_authority_indications (pk, indication) FROM stdin;
-\.
-
-
---
--- Data for Name: lu_brand; Type: TABLE DATA; Schema: clin_prescribing; Owner: -
---
-
-COPY lu_brand (pk, brand) FROM stdin;
-25	tenormin
-47	tenormin
-48	losec tablets
-49	olmetec plus 20/12.5 mg tablets
-50	astrix tablets
-51	diabex xr
-52	keflex pulvules
-53	ventolin cfc-free inhaler
-54	seretide mdi (250/25)
-55	fluvax
-56	keflex pulvules
-57	coversyl plus 5mg/1.25mg tablets
-59	tritace
-60	tritace
-61	lipitor
-62	lipex
-63	coversyl plus 5mg/1.25mg tablets
-64	lipex
-65	fluvax
-66	ceclor
-67	noten
-68	noten
-69	ventolin cfc-free inhaler
-70	lipex
-71	diaformin xr
-72	tenormin
-\.
-
-
---
--- Data for Name: lu_generics; Type: TABLE DATA; Schema: clin_prescribing; Owner: -
---
-
-COPY lu_generics (pk, generics, class_codes) FROM stdin;
-17	Atenolol	class codes go here
-18	Omeprazole magnesium	class codes go here
-19	Olmesartan medoxomil,Hydrochlorothiazide	class codes go here
-20	Aspirin	class codes go here
-21	Metformin hydrochloride	class codes go here
-22	Cephalexin	class codes go here
-23	Salbutamol sulfate	class codes go here
-24	Salmeterol xinafoate,Fluticasone propionate	class codes go here
-25	Influenza virus vaccine	class codes go here
-26	Cephalexin	class codes go here
-27	Perindopril arginine,Indapamide hemihydrate	class codes go here
-29	Ramipril	class codes go here
-30	Ramipril	class codes go here
-31	Atorvastatin calcium	class codes go here
-32	Simvastatin	class codes go here
-33	Perindopril arginine,Indapamide hemihydrate	class codes go here
-34	Simvastatin	class codes go here
-35	Influenza virus vaccine	class codes go here
-36	Cefaclor monohydrate	class codes go here
-37	Atenolol	class codes go here
-38	Atenolol	class codes go here
-39	Salbutamol sulfate	class codes go here
-40	Simvastatin	class codes go here
-41	Metformin hydrochloride	class codes go here
-42	Atenolol	class codes go here
-\.
-
-
---
--- Data for Name: lu_instruction_habits; Type: TABLE DATA; Schema: clin_prescribing; Owner: -
---
-
-COPY lu_instruction_habits (pk, fk_instruction, fk_brand, fk_staff, formulation, weighting) FROM stdin;
-1	5	9	1	Tablets	1
-17	21	25	1	Tablets	1
-38	43	47	1	Tablets	1
-39	44	48	1	Tablets	1
-40	45	49	1	Tablets	1
-41	46	50	1	Tablets	1
-42	47	51	1	Extended release tablets	1
-43	48	52	1	Capsules	1
-44	49	53	1	Inhaler	1
-45	50	54	1	Inhaler (CFC-free)	1
-46	51	55	1	Solution for injection	1
-47	52	56	1	Capsules	1
-48	53	57	1	Tablets	1
-50	55	59	1	Tablets	1
-51	56	60	1	Tablets	1
-52	57	61	1	Tablets	1
-53	58	62	1	Tablets	1
-54	59	63	1	Tablets	1
-55	60	64	1	Tablets	1
-56	61	65	1	Solution for injection	1
-57	62	66	1	Suspension	1
-58	63	67	1	Tablets	1
-59	64	68	1	Tablets	1
-60	65	69	1	Inhaler	1
-61	66	70	1	Tablets	1
-62	67	71	1	Extended release tablets	1
-63	68	72	1	Tablets	1
-\.
-
-
---
--- Data for Name: lu_instructions; Type: TABLE DATA; Schema: clin_prescribing; Owner: -
---
-
-COPY lu_instructions (pk, instruction, fk_unit, am, lunch, pm, bed, prn) FROM stdin;
-21	1 daily	\N	\N	\N	\N	\N	\N
-43	1 daily	\N	\N	\N	\N	\N	\N
-44	1 daily	\N	\N	\N	\N	\N	\N
-45	1 daily	\N	\N	\N	\N	\N	\N
-46	1 daily	\N	\N	\N	\N	\N	\N
-47	4 in the evening	\N	\N	\N	\N	\N	\N
-48	1 twice daily	\N	\N	\N	\N	\N	\N
-49	2 four times daily as needed	\N	\N	\N	\N	\N	\N
-50	2 puffs twice daily	\N	\N	\N	\N	\N	\N
-51	to be injected by the doctor	\N	\N	\N	\N	\N	\N
-52	1 four times daily	\N	\N	\N	\N	\N	\N
-53	1 daily	\N	\N	\N	\N	\N	\N
-55	1 daily	\N	\N	\N	\N	\N	\N
-56	1 daily	\N	\N	\N	\N	\N	\N
-57	1 daily	\N	\N	\N	\N	\N	\N
-58	1 daily	\N	\N	\N	\N	\N	\N
-59	1 daily	\N	\N	\N	\N	\N	\N
-60	1 in the evening	\N	\N	\N	\N	\N	\N
-61	to be injected by the doctor	\N	\N	\N	\N	\N	\N
-62	5 mls three times a day	\N	\N	\N	\N	\N	\N
-63	once daily	\N	\N	\N	\N	\N	\N
-64	1 daily	\N	\N	\N	\N	\N	\N
-65	1 puff four times daily	\N	\N	\N	\N	\N	\N
-66	1 daily	\N	\N	\N	\N	\N	\N
-67	2 in the evening	\N	\N	\N	\N	\N	\N
-68	1 daily	\N	\N	\N	\N	\N	\N
-\.
-
-
---
--- Data for Name: lu_next_authority_number; Type: TABLE DATA; Schema: clin_prescribing; Owner: -
---
-
-COPY lu_next_authority_number (pk, authority_number) FROM stdin;
-\.
-
-
---
--- Data for Name: lu_pbs_status; Type: TABLE DATA; Schema: clin_prescribing; Owner: -
---
-
-COPY lu_pbs_status (pk, status) FROM stdin;
-1	PRIV
-2	Authority (Streamlined) - PBS/RPBS
-3	Authority - PBS/RPBS
-4	Authority - PBS/RPBS Optometrist
-5	Authority - RPBS
-6	PBS/RPBS
-7	PBS/RPBS Optometrist
-8	RPBS
-9	Restricted - PBS/RPBS
-10	Restricted - PBS/RPBS Optometrist
-11	Restricted - RPBS
-12	Section 100 - Botulinum Toxin Program
-13	Section 100 - CT (Chemotherapy Scheme)
-14	Section 100 - CT (Chemotherapy Scheme) Authority
-15	Section 100 - CT (Chemotherapy Scheme) Restricted
-16	Section 100 - Highly Specialised Drugs Program
-17	Section 100 - Human Growth Hormone Program
-18	Section 100 - IVF/GIFT Program
-19	Section 100 - Opiate Dependence Treatment Program
-20	Section 100 - Special Authority Program
 \.
 
 
@@ -1765,46 +1854,46 @@ SET search_path = clin_recalls, pg_catalog;
 --
 
 COPY lu_reasons (pk, reason) FROM stdin;
-165	Pap Smear
-166	Annual Checkup
-167	PSA
-168	DACC
-170	3rd Hepatitis B Injection
-171	counselling
-172	Hepatitis A second injection
-173	Colonoscopy
-174	Faecal Occult Bloods
-175	FBC
-176	gastroscopy
-177	hba1c
-178	gardasil second injection
-179	Second Hepatitis B injection
-180	Screening Colonoscopy
-181	Tetnus Diptheria and Whooping Cough Vaccination
-182	Mental health Plan Review
-183	Care Plan Review
-184	Follow up of removal of skin lesion
-185	melanoma checkup
-186	Follow up of removal of skin lesion
-187	msu
-188	Follow up of removal of skin lesion
-189	Follow up of removal of skin lesion
-190	Follow up of removal of skin lesion
-191	BP review
-192	mammogram
-194	Follow up of removal of skin lesion
-195	Follow up of removal of skin lesion
-196	Follow up of removal of skin lesion
-197	Follow up of removal of skin lesion
-198	vitamen D level
-199	DIabetic Annual Cycle of Care (DACC)
-200	HDL Cholecterol
-201	Full renal function tests
-202	ultrasound of liver
-203	cardiology review
-204	Appointment to discuss results
-205	CPK
-206	KUB
+2	Annual Checkup
+3	Over 75 Health Care Review
+4	Screening Colonoscopy
+5	PSA
+6	PAP
+7	Second Hepatitis A
+8	Gastroscopy
+9	Diabetes Annual Cycle of Care (DACC)
+10	Bone Densitometry
+11	Mammogram
+12	KUB
+13	Joint Replacment Review
+14	Vaginal Vault Smear
+15	Breast Ultrasound & Mammogram
+16	skin check
+17	Echocardiograph
+18	GP Management Plan Review
+19	Screening Mammogram
+20	Carcinoembyronic antigen
+21	cystoscopy
+22	hba1c
+23	Final Hepatitis B
+24	CXR
+25	Liver Function Tests
+26	diabetic eye review
+27	ENT Review
+28	Cardiac Consultation and Echocardiograph
+29	Cardiac Review
+30	Review with Dr Santhanam
+31	breast review
+32	Neurological Review
+33	Protein S and C
+34	carotid doppler
+35	Third Twinrix injection
+36	AAA Screening Scan
+37	exercise stress test
+38	Efudix for Keratoses
+39	faecal occult blood
+40	CPAP Review
+41	Colposcopy
 \.
 
 
@@ -1813,57 +1902,46 @@ COPY lu_reasons (pk, reason) FROM stdin;
 --
 
 COPY lu_recall_intervals (pk, fk_reason, fk_staff, "interval", fk_interval_unit) FROM stdin;
-66	165	1	2	9
-67	166	1	12	8
-68	167	1	12	8
-69	168	1	12	8
-71	170	1	5	8
-72	171	1	1	8
-73	172	1	12	8
-74	173	1	5	9
-75	174	1	12	8
-76	175	1	6	8
-77	176	1	2	9
-78	177	1	6	8
-79	178	1	2	8
-80	179	1	1	8
-81	180	1	5	9
-82	181	1	10	9
-83	182	1	3	8
-84	183	1	12	8
-85	185	1	6	8
-86	187	1	1	8
-87	191	1	6	8
-88	192	1	2	9
-89	198	1	12	8
-90	199	1	12	8
-91	200	1	12	8
-92	201	1	12	8
-93	202	1	1	9
-94	203	1	12	8
-95	204	1	0	0
-96	205	1	1	8
-97	206	1	12	8
-\.
-
-
---
--- Data for Name: lu_status; Type: TABLE DATA; Schema: clin_recalls; Owner: -
---
-
-COPY lu_status (pk, status) FROM stdin;
-1	not due
-2	overdue
-3	reminder sent
-4	arranged not completed
-5	completed
-6	refused
-7	rescheduled
-8	completed with explanation
-9	repeated with same interval
-10	repeated with new interval
-11	refused with explanation
-12	marked deleted
+2	2	1	12	8
+3	3	1	12	8
+4	4	1	5	9
+5	5	1	12	8
+6	6	1	2	9
+7	7	1	10	8
+8	8	1	2	9
+9	9	1	1	9
+10	10	1	2	9
+11	11	1	2	9
+12	12	1	12	8
+13	13	1	2	9
+14	14	1	2	9
+15	15	1	12	8
+16	16	1	12	8
+17	17	1	12	8
+18	18	1	12	8
+19	19	1	2	9
+20	20	1	12	8
+21	21	1	12	8
+22	22	1	6	8
+23	23	1	6	8
+24	24	1	12	8
+25	25	1	12	8
+26	26	1	12	8
+27	27	1	12	8
+28	28	1	12	8
+29	29	1	12	8
+30	30	1	12	8
+31	31	1	12	8
+32	32	1	12	8
+33	33	1	12	8
+34	34	1	2	9
+35	35	1	5	8
+36	36	1	5	9
+37	37	1	12	8
+38	38	1	2	9
+39	39	1	12	8
+40	40	1	2	9
+41	41	1	12	8
 \.
 
 
@@ -1872,7 +1950,10 @@ COPY lu_status (pk, status) FROM stdin;
 --
 
 COPY lu_templates (pk, name, deleted, template) FROM stdin;
-1	Annual checkup	f	<html><head><meta name="qrichtext" content="1" /></head><body style="font-size:7pt;font-family:Helvetica">\n<p align="center"><span style="font-weight:600;text-decoration:underline">Annual Checkup </span></p>\n<p>The annual checkup is one of the most important facets of your medical care. When you ring for an appointment you should request a long consultation.</p>\n<ul type="disc"><li>On the morning of your checkup you should do the following</li>\n<li>If you are<span style="font-weight:600"> not a known diabetic</span> you should fast overnight, and drink plenty of water in the morning</li>\n<li>If you have diabetes you may eat breakfast and drink fluids as per normal</li>\n<li>Take your medications as usual in the morning.</li></ul>\n<p>Have a think about any health issues you wish to discuss prior to the consultation.</p>\n</body></html>\n
+1	Do not use template	f	
+2	Annual Checkup	f	<html><head><meta name="qrichtext" content="1" /></head><body style="font-size:7pt;font-family:Helvetica">\n<p align="center"><span style="font-weight:600;text-decoration:underline">Annual Checkup </span></p>\n<p>The annual checkup is one of the most important facets of your medical care. When you ring for an appointment you should request a long consultation.</p>\n<p>On the morning of your checkup, you should do one or more of the following, unless your doctor has given you specific instructions which contradict this:</P>\n<ul type="disc">\n<li>If you are<span style="font-weight:600"> not a known diabetic</span> you should fast overnight, and drink plenty of water in the morning</li>\n<li>If you have diabetes you may eat breakfast and drink fluids as per normal</li>\n<li>Take your medications as usual in the morning.</li></ul>\n<p>Have a think about any health issues you wish to discuss prior to the consultation, and attend the surgery at least 10 minutes prior to your consulation \nto allow time to check in with the secretary and provide a urine specimen.</p>\n</body></html>\n
+3	Pap Smear	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'DejaVu Sans'; font-size:9pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:7pt;">Our reminder system tells us you are due for a PAP Smear, so it is time to make an appointment to have this done.</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'Helvetica'; font-size:7pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:7pt;">If you prefer a female doctor or nurse, and we currently have none available, we will happily make arrangements with another practice or clinic  to assist you.</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'Helvetica'; font-size:7pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:7pt;">If you have had your PAP smear performed elsewhere, or you no longer attend this practice, could you let our clerical staff know so we can update our records.</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'Helvetica'; font-size:7pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:7pt;">There is also a slightly better diagnostic test which can be done at the time of your PAP, called a THINPREP.  This pathology test is not covered by medicare,  but is important to do, especially  if you have had abormal smears in the past. The cost is about $40.00, payable to the pathology company who processes your smear test. Please let us know at the time if you require this service.</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'Helvetica'; font-size:7pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:7pt;">If you need a complete female health check at the same time, can you please let the staff know so that a long consultation is booked, to allow plenty of time.</span></p></body></html>
+4	Over 75 Health Care Review	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'DejaVu Sans'; font-size:9pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:10pt;">The  Over 75 Years Health Check  is one of the most important facets of your medical care. When you ring for an appointment you should request a half hour consultation.</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'Helvetica'; font-size:10pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:10pt;">On the morning of your checkup, you should do one or more of the following, unless your doctor has given you specific instructions which contradict this:</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'Helvetica'; font-size:10pt;"></p>\n<ul style="-qt-list-indent: 1;"><li style=" font-family:'Helvetica'; font-size:10pt;" style=" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"> If you are not a known diabetic you should fast overnight, and drink plenty of water in the morning</li>\n<li style=" font-family:'Helvetica'; font-size:10pt;" style=" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"> If you have diabetes you may eat breakfast and drink fluids as per normal</li>\n<li style=" font-family:'Helvetica'; font-size:10pt;" style=" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"> Take your medications as usual in the morning</li></ul>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'Helvetica'; font-size:10pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:10pt;">Have a think about any health issues you wish to discuss prior to the consultation, and attend the surgery at least 10 minutes prior to your consulation to allow time to check in with the secretary and provide a urine specimen.</span></p></body></html>
 \.
 
 
@@ -1895,6 +1976,7 @@ COPY lu_type (pk, type) FROM stdin;
 10	Recall or Reminder
 11	Imported Letter
 12	Recall or Reminder Imported
+13	Non Medicare
 \.
 
 
@@ -2530,7 +2612,6 @@ COPY lu_link_provider_user_requests (pk, fk_lu_request, provider_request_name, l
 594	352	OBSTETRIC MULTIPLE PREGNANCY 17 - 22 WEEKS GP	0	f
 595	1097	HAND (LEFT)	1	f
 596	480	SE-_ROUTINE CHEMISTRY	0	f
-597	480	U-CALCIUM 24HR EXCR.	0	f
 598	1082	SE-ANGIOTENSIN C. ENZYME	0	f
 599	1232	SHOULDER (RIGHT), US - SHOULDER OR UPPER ARM (RT)	2	f
 600	1159	WRIST (RIGHT)	2	f
@@ -2710,6 +2791,540 @@ COPY lu_link_provider_user_requests (pk, fk_lu_request, provider_request_name, l
 781	1525	ANTI LEUCOCYTE ANTIBODY (LLA-0)	0	f
 782	1122	Ins	0	f
 783	12	Hba1c Clinic	0	f
+784	1459	Referral	0	f
+785	1089	Letter	0	f
+786	1246	MAMMOGRAPHY	3	f
+787	1305	General Serology	0	f
+788	1528	Wrist Left US	1	f
+789	325	MRI CSV /Brach Plexus Tumour	2	f
+790	1531	! Leg Venous Reflux/Injection under U/S control	2	f
+791	1532	CT Upper Abd/Pel + Contrast	0	f
+792	401	CT Chest & Upp Abd No Contrast	0	f
+793	1533	General Serology.	0	f
+794	1534	General Serology.	0	f
+795	700	Coagulation Tests	0	f
+796	639	Newcastle Nuclear Medicine Consultation Note	2	f
+797	858	Faeces MCS	0	f
+798	1446	BIOCHEM	0	f
+799	848	BIOCHEM	0	f
+800	274	ANCA	0	f
+801	999	ANA/Autoantibodies	0	f
+802	676	MRI1 Reg/2 ContigRegSpine Cerv Radiculopathy	0	f
+803	959	U-CALCIUM 24HR EXCR.	0	f
+804	1535	Newcastle Nuclear Medicine Consultation Note	0	f
+805	752	Drugs	0	f
+806	1168	Newcastle Nuclear Medicine Consultation Note	2	f
+807	1537	Newcastle Nuclear Medicine Consultation Note	2	f
+808	1538	Newcastle Nuclear Medicine Consultation Note	1	f
+809	77	X051	0	f
+810	790	X014	0	f
+813	346	ACETYLCHOLINE RECEPTOR AB (ACR-0)	0	f
+814	1541	General Serology	0	f
+815	841	SPW Raymond Consultation Note	0	f
+816	990	IMMUNOGLOBULINS (IMM-0)	0	f
+812	480	MSU	0	t
+597	480	U-CALCIUM 24HR EXCR.	0	t
+817	1281	Hip Right Xray	2	f
+818	486	Hip Right Xray	2	f
+819	245	GENERAL SWAB M/C/S (PUS-0)	0	f
+820	22	Foot Right Xray	2	f
+821	708	Knee Left Xray	1	f
+822	1545	Skin US	1	f
+823	1043	MRI Lumbar Spine Post surgical	2	f
+824	1164	Chest Xray	1	f
+825	65	Leg DVT Right US	2	f
+826	866	HERPES SIMPLEX VIRUS ABS (HSV-0)	0	f
+827	917	FIRST TRIMESTER SCREEN (FTS-0)	0	f
+828	1546	Obstetric US 17 - 22 weeks referred by Med Prac	0	f
+829	739	FUNGAL EXAM	0	f
+830	1547	Clinical Chemistry	0	f
+831	283	Clinical Chemistry	0	f
+832	1548	Tumour Markers	0	f
+833	649	Abdo, Pelvis CT	2	f
+834	443	Elbow Right Xray	2	f
+835	22	Foot Left Xray	1	f
+836	1550	Ankle Left US	1	f
+837	1385	Shoulder Left US	1	f
+838	177	Derangement Right Knee or Supporting Structures	2	f
+839	1102	Obstetric US Nuchal Translucency	0	f
+840	1551	General Serology.	0	f
+841	165	Renal US	2	f
+842	3	Newcastle Nuclear Medicine Consultation Note	1	f
+843	86	Newcastle Nuclear Medicine Consultation Note	2	f
+844	1414	Calcitonin	0	f
+845	653	PERTUSSIS IGG AND IGA (PER-0)	0	f
+846	1553	Bilateral Knee X-rays	3	f
+847	1385	Shoulder Right US	2	f
+848	469	ARTERIAL ULTRASOUND	0	f
+811	545	MSU	0	t
+849	545	MSU	0	f
+850	480	MSU	0	f
+851	1467	ALP Iso	0	f
+852	649	KUB CT	2	f
+853	1453	Breast Right US	2	f
+854	1322	Ankle Left Injection/Scan US	1	f
+855	536	Hba1c/GTT	0	f
+856	1453	MAMMOGRAPHY, BREAST ULTRASOUND-ONE SIDE	0	f
+857	1554	MAMMOGRAPHY, BREAST ULTRASOUND-ONE SIDE	0	f
+858	1339	D039	0	f
+859	1086	MAMMOGRAPHY, BREAST ULTRASOUND-ONE SIDE	3	f
+860	1232	Shoulder Right Xray	2	f
+861	900	Mass Biopsy US	2	f
+862	209	FBC  &  General Haem	0	f
+863	1232	Shoulder Left Xray	1	f
+864	1557	Shoulder Left Injection US	1	f
+865	309	NGFNA	1	f
+866	1521	TROPONIN I FOR AQT (TNQ-0)	0	f
+867	361	Lumbar Spine CT	2	f
+869	1559	Bil	0	f
+870	1560	Wrist Right Xray	2	f
+871	1124	CT PNS/Facial Non Contrast	2	f
+872	1563	GROUP & SCREEN	0	f
+873	1122	Hba1c/GTT	0	f
+874	1564	CSF	0	f
+875	1565	Drugs	0	f
+876	1566	Drugs	0	f
+877	1561	Brain, Neck and Chest CT with contrast	0	f
+878	1562	Brain, Neck and Chest CT with contrast	0	f
+879	804	Shoulder Left Injection US	1	f
+880	601	ANA/Autoantibodies	0	f
+881	1569	AMH	0	f
+882	1570	CA 199	0	f
+883	676	MRI 1 Reg/2 Contig Reg Spine Myelopathy	0	f
+884	1564	Microbiology Culture	0	f
+885	1567	Drugs	0	f
+886	1311	Drugs	0	f
+887	619	Drugs	0	f
+888	1568	Drugs	0	f
+889	1439	Misc.Chemistry	0	f
+890	747	Upper abdomen-ultrasound	2	f
+891	1167	C/T BRAIN (PLAIN)	2	f
+892	1571	ABDOMEN - SUPINE AND ERECT-X-RAY	1	f
+893	1560	RT HAND,WRIST AND FOREARM	0	f
+894	1083	S-Osmo	0	f
+895	1572	C/T CHEST +/- UPPER ABDOMEN (CONTRAST)	0	f
+896	24	Hip Right Injection US	2	f
+897	815	Obstetric US <12 weeks	2	f
+898	8	CT Chest & Upp Abd No Contrast	0	f
+899	1575	2 Legs DVT Lower Limb (inc IVC/iliacs),Left leg not for comparison,Right leg not for comparison	3	f
+900	417	MUSCULOSKELETAL CROSS-SECTIONAL (PRE	2	f
+901	1544	_Immunoglobulins	0	f
+902	395	LSM	0	f
+903	1453	Xray Single Breast,US Single Breast	2	f
+904	1554	Xray Single Breast,US Single Breast	2	f
+905	65	1 Leg DVT Lower Limb (no iliacs)	2	f
+906	1530	ASSESSMENT OF A MASS ASSOCIATED WITH	1	f
+907	914	ASSESSMENT OF A MASS ASSOCIATED WITH	1	f
+908	1453	US Both Breasts (US only no mammogram)	3	f
+909	1440	ECG monitoring during exercise	1	f
+910	1370	Renal Xray	2	f
+911	520	Ankle Right Xray	2	f
+912	1580	Ankle Right Xray	2	f
+913	1580	Left Finger X-ray	1	f
+914	8	Chest High Res CT                             56301	2	f
+915	1582	PT TO PAY $350 - CT Angio Coronary Arteries	2	f
+916	518	URINE MICROALBUMIN (UMA-0)	0	f
+917	209	.BLOOD COUNT	0	f
+918	872	Protein Studies	0	f
+919	1372	.SURFACE MARKERS PB	0	f
+920	355	S-_ROUTINE CHEMISTRY	0	f
+921	82	S-_ROUTINE CHEMISTRY	0	f
+922	59	S-_ROUTINE CHEMISTRY	0	f
+923	480	S-_ROUTINE CHEMISTRY	0	f
+924	1467	S-_ROUTINE CHEMISTRY	0	f
+925	533	S-_ROUTINE CHEMISTRY	0	f
+926	1336	MRI Demyelinating Disease	1	f
+927	62	TSH RECEPTOR ANTIBODY (TRA-0)	0	f
+928	518	Urine Chemistry	0	f
+929	1097	Hand Right Xray	2	f
+930	1361	Hormone Testing	0	f
+931	22	Foot Right CT	2	f
+932	1039	EBVNA	0	f
+933	1281	Hip Left Xray	1	f
+934	639	NM Whole Body with tomo,NM Spect CT	2	f
+935	408	BMD - Fracture	0	f
+936	898	Urine Chemistry	0	f
+937	554	Urine Chemistry	0	f
+938	182	General Serology	0	f
+939	1097	Hand Left Xray	1	f
+940	1560	Wrist Left Xray	1	f
+941	942	Drugs	0	f
+942	1590	SAP (with exercise)	0	f
+943	1576	Foot Left Injection/Scan US	1	f
+944	1295	Foot Left Injection/Scan US	1	f
+945	1322	Ankle Right US	2	f
+946	1182	AAA/Aorta Iliacs,Renal	0	f
+947	764	AAA/Aorta Iliacs,Renal	0	f
+948	804	US Joint Injection Shoulder	2	f
+949	844	Consultation Note (P HAYES)	2	f
+950	804	Shoulder Right Injection US	2	f
+951	1385	Cervical Spine Xray	2	f
+952	1135	CMV Serology	0	f
+953	923	Toxoplasma Serology	0	f
+954	702	LKM	0	f
+955	1607	Therapeutic dose iodine,Specialist, referred consultation - surgery or hospital	0	f
+956	1609	.CD34	0	f
+957	923	S-*TOXOPLASMA VIRTUAL	0	f
+958	779	*VZV VIRTUAL	0	f
+959	1039	S-EPSTEIN-BARR	0	f
+960	994	.BLEEDING STUDIES	0	f
+961	1355	S-Rheumatology	0	f
+962	866	S-HERPES SIMPLEX SEROL	0	f
+963	1091	S-_HIV VIRTUAL	0	f
+964	182	S-_HEP VIRTUAL	0	f
+965	1135	S-*CMV VIRTUAL	0	f
+966	1252	BLOOD CULTURE 1	0	f
+967	994	BS VIRTUAL	0	f
+968	1436	S-_HTLV VIRTUAL	0	f
+969	1610	SURFACE MARKERS PBSC	0	f
+970	551	QFAb	0	f
+971	503	Tibia/Fibula Right Xray	2	f
+972	1385	SHOULDER OR UPPER ARM MUSCULOSKELETA, LT SHOULDER OR SCAPULA	1	f
+973	1611	ECHOVIRUS AB	0	f
+974	457	Coag Factor Assay	0	f
+975	1453	Bilateral Mammogram - Referred	2	f
+976	1246	Bilateral Mammogram - Referred	2	f
+977	71	THROAT SWAB CULT/SENS (TS-0)	0	f
+978	22	RT FOOT	2	f
+979	1281	RT HIP JOINT, NOT FOR COMPARISON, LT HIP JOINT, SELF DETERMINED, PELVIS	3	f
+980	381	C/T ABDO/PELVIS (IV CONTRAST)	0	f
+981	66	Thyroid Funct Tests	0	f
+982	1010	Thyroid Funct Tests	0	f
+983	1619	ANA/Autoantibodies	0	f
+984	309	Histo PEI clinics;Hi	2	f
+985	1097	FINGER 5-X-RAY	2	f
+986	1620	MRI Stroke,Exam Not Performed	0	f
+987	177	MRI Left knee	1	f
+988	1336	MRI Brain and IAM's	2	f
+989	1621	MRI Brain and IAM's	2	f
+990	273	Urine Chemistry	2	f
+991	408	BMD 70+	0	f
+992	1622	Chest Wall US	1	f
+993	8	Chest CT	2	f
+994	1185	Electrophoresis	0	f
+995	1355	Electrophoresis	0	f
+996	988	L OR R RIB / OR STERNUM, SELF DETERMINED, CHEST	2	f
+997	177	MRI PERFORMED USING CONTRAST AGENT.	1	f
+998	1019	SDS PATHOLOGY ARCHIVE DAT (SDP-0)	0	f
+999	960	SDS PATHOLOGY ARCHIVE DAT (SDP-0)	0	f
+1000	69	Thoracic Spine CT	0	f
+1001	1097	HAND-X-RAY	0	f
+1002	24	MUSCULOSKELETAL CROSS-SECTIONAL (PRE	1	f
+1003	814	X020	0	f
+1004	1167	Brain CT	1	f
+1005	639	Bone,W/body,+/-flow,+/-2nd day image,+SPECT	2	f
+1006	960	X016	0	f
+1007	602	!FLMP	0	f
+1008	355	X101	0	f
+1009	191	X903	0	f
+1010	1372	X167	0	f
+1011	960	PAP.	0	f
+1012	826	X168	0	f
+1013	355	.EUC	0	f
+1014	1489	C/T EXTREMITY (PLAIN)	2	f
+1015	60	X029	0	f
+1016	773	PAP SMEAR (PAN-0)	0	f
+1017	1635	MRI Lumbar Spine	0	f
+1018	1637	Yttrium Synovectomy (therapeutic)	3	f
+1019	330	Prog21	0	f
+1020	1638	Sinuvertebral Nerve Block	2	f
+1021	486	Left Hand Injection US	1	f
+1022	708	KNEE-X-RAY	3	f
+1023	1633	BONE AGE - WRIST-X-RAY	0	f
+1024	1336	MRI Brain with MRA	0	f
+1025	1373	SERUM PROLACTIN (PRL-0)	0	f
+1026	1084	TROPTHS	0	f
+1027	1336	MRI PERFORMED USING CONTRAST AGENT.	1	f
+1028	401	Chest CT	2	f
+1029	503	Tibia/Fibula Left Xray	1	f
+1030	170	Guided FNA US	1	f
+1031	1639	MRI PERFORMED USING CONTRAST AGENT.	0	f
+1032	1434	ECG-TR	0	f
+1033	1164	CHEST X-RAY-MOBILE	2	f
+1034	1640	Chest CT	0	f
+1035	436	Neck/Thyroid US	2	f
+1036	804	MUSCULOSKELETAL CROSS-SECTIONAL (PRE, JOINT OR SYNOVIAL CAVITY INJECTION	1	f
+1037	22	FOOT-X-RAY	1	f
+1038	1560	WRIST-X-RAY	1	f
+1039	972	TOE 5-X-RAY	2	f
+1040	1642	KNEE-X-RAY	2	f
+1041	1583	PELVIS-X-RAY	1	f
+1042	928	MRI PERFORMED USING CONTRAST AGENT.	0	f
+1043	1645	Vit. E	0	f
+1044	1328	Bilateral Leg Arterial Doppler US	2	f
+1045	486	US Knee for Injection - Left	1	f
+1046	1328	2 legs AIF/2 area stent,Right Leg Not For Comparison,Left Leg Not For Comparison	2	f
+1047	1649	Electrophoresis	0	f
+1048	1650	Urine EPG	0	f
+1049	757	_Haematology	0	f
+1050	520	ANKLE-X-RAY	1	f
+1051	1648	SHOULDER OR UPPER ARM MUSCULOSKELETA	1	f
+1052	1647	Hip Right US	2	f
+1053	676	MRI Cervical Spine	2	f
+1054	1556	URINE TOTAL PROTEIN (UMP-0)	0	f
+1055	418	ABDOMEN - PLAIN-X-RAY	1	f
+1056	209	X032	0	f
+1057	64	X012	0	f
+1058	302	X023	0	f
+1059	662	X023	0	f
+1060	1656	Xray Single Breast,US Single Breast	0	f
+1061	624	Lumbosacral Spine Xray	0	f
+1062	1653	Nerve Root Block CT - Cervical Spine	2	f
+1063	1659	GMC1	0	f
+1064	1661	CTSW1	0	f
+1065	1185	X018	0	f
+1066	392	X027	0	f
+1067	898	X027	0	f
+1068	1610	X025	0	f
+1069	628	X013	0	f
+1070	1548	X029	0	f
+1071	355	X017	0	f
+1072	443	LT ELBOW	1	f
+1073	848	CALCIUM, CORRECTED SERUM (CA-0)	0	f
+1074	1082	RT ACE (R5-0)	0	f
+1075	480	LIVER FUNCTION TESTS (LFT-0)	0	f
+1076	1666	NGSW2	0	f
+1077	1667	CTSW2	0	f
+1078	1668	CTSW1	0	f
+1079	294	Chest, Abdo, Pelvis +/- Neck CT with contrast	2	f
+1080	147	Chest, Abdo, Pelvis +/- Neck CT with contrast	2	f
+1081	1652	Injection Under US	2	f
+1082	1521	TROPONIN I ULTRA (TNI-0)	0	f
+1083	1097	Bilateral Hand X-rays	0	f
+1084	1317	Scrotal US	3	f
+1085	207	US Pelvic - Female	2	f
+1086	1356	Cervical Spine Xray	2	f
+1087	1654	Pulmonary Angiogram CT	2	f
+1088	1120	X020	0	f
+1089	385	X049	0	f
+1090	1091	X034	0	f
+1091	1671	X045	0	f
+1092	1446	Trace Metals	0	f
+1093	1672	Trace Metals	0	f
+1094	1136	Electrophoresis	0	f
+1095	594	X012	0	f
+1096	169	THUMB-X-RAY	2	f
+1097	1635	MRI - SPINE (1 OR 2 REGION) FOR MYELOPATHY x 3	2	f
+1098	439	X036	0	f
+1099	1270	X010	0	f
+1100	839	X010	0	f
+1101	840	X010	0	f
+1102	1676	HEEL-X-RAY	0	f
+1103	1164	Chest XR	0	f
+1104	155	C14 UREA BREATH TESING (C14-0)	0	f
+1105	1232	HUMERUS-X-RAY	1	f
+1106	1235	AUTOIMMUNE (CTD-0)	0	f
+1107	1415	AUTOIMMUNE (CTD-0)	0	f
+1108	68	Urine Chemistry	0	f
+1109	520	RT ANKLE	2	f
+1110	1550	ANKLE OR HIND FOOT MUSCULOSKELETAL U	2	f
+1111	823	X029	0	f
+1112	1528	Wrist Left Injection/Scan US	1	f
+1113	140	X059	0	f
+1114	520	Ankle Left Xray	1	f
+1115	779	X020	0	f
+1116	71	X010	0	f
+1117	1678	X032	0	f
+1118	1135	X020	0	f
+1119	1032	X010	0	f
+1120	1352	Hindfoot Right US	2	f
+1121	206	HOLTER MONITOR REPORT	0	f
+1122	12	X017	0	f
+1123	282	X022	0	f
+1124	191	X017	0	f
+1125	1434	X014	0	f
+1126	1679	X034	0	f
+1127	162	Hand Right US	2	f
+1128	480	X017	0	f
+1129	1430	X017	0	f
+1130	787	X017	0	f
+1131	1417	X017	0	f
+1132	711	X019	0	f
+1133	206	X014	0	f
+1134	279	X020	0	f
+1135	1681	X020	0	f
+1136	1168	Thyroid scan	0	f
+1137	610	X027	0	f
+1138	1373	X012	0	f
+1139	690	X043	0	f
+1140	969	X043	0	f
+1141	1682	Coag Factor Assay	0	f
+1142	309	Histology	0	f
+1143	1601	Cytology	0	f
+1144	788	Cytology	0	f
+1145	918	Coagulation Tests	0	f
+1146	623	Coagulation Tests	0	f
+1147	657	Coagulation Tests	0	f
+1148	217	ANA/Autoantibodies	0	f
+1149	1681	Respiratory Serology	0	f
+1150	443	ELBOW-X-RAY	2	f
+1151	147	C/T UPPER ABDO (IV CONTRAST)	2	f
+1152	844	Cardiac Echo Study (P HAYES)	2	f
+1153	1076	!UDS	0	f
+1154	1683	QFG	0	f
+1155	140	X054	0	f
+1156	245	X028	0	f
+1157	1684	X026	0	f
+1158	688	X017	0	f
+1159	95	X019	0	f
+1160	964	X017	0	f
+1161	1434	ECG	0	f
+1162	918	X035	0	f
+1163	623	X035	0	f
+1164	654	X035	0	f
+1165	657	X035	0	f
+1166	217	X018	0	f
+1167	1685	X018	0	f
+1168	595	X027	0	f
+1169	590	X027	0	f
+1170	805	X017	0	f
+1171	437	X032	0	f
+1172	838	X020	0	f
+1173	866	X042	0	f
+1174	1237	Metals, Blood	0	f
+1175	42	CHEST OR ABDOMINAL WALL 1 OR MORE AR	1	f
+1176	1689	Microbiology Culture	0	f
+1177	624	LUMBO-SACRAL SPINE-X-RAY	2	f
+1178	1576	Autologous Injection Right Hamstring US	2	f
+1179	100	X017	0	f
+1180	825	X017	0	f
+1181	1180	X010	0	f
+1182	169	Bilateral Thumb X-ray	3	f
+1183	1033	X044	0	f
+1184	437	X044	0	f
+1185	359	X035	0	f
+1186	1252	X039	0	f
+1187	927	X035	0	f
+1188	1111	X035	0	f
+1189	532	X035	0	f
+1190	1067	Fruc	0	f
+1191	564	X046	0	f
+1192	787	X031	0	f
+1193	787	X013	0	f
+1194	1684	Gluc Challenge	0	f
+1195	1690	X010	0	f
+1196	1691	X013	0	f
+1197	1431	X013	0	f
+1198	977	X013	0	f
+1199	78	X017	0	f
+1200	1082	X017	0	f
+1201	1523	.HPVDNA	0	f
+1202	1434	ELECTROCARDIOGRAM (ECG-0)	0	f
+1203	206	HOLTER MONITOR (HOL-0)	0	f
+1204	1084	X017	0	f
+1205	61	X017	0	f
+1206	260	X017	0	f
+1207	1692	Cervical Spine Xray	0	f
+1208	1304	X018	0	f
+1209	927	Coagulation Tests	0	f
+1210	1694	X018	0	f
+1211	1693	X018	0	f
+1212	346	X013	0	f
+1213	1279	X012	0	f
+1214	921	X049	0	f
+1215	1580	Right Finger X-ray	2	f
+1216	1696	.ATH	0	f
+1217	1695	X020	0	f
+1218	990	X018	0	f
+1219	1544	X018	0	f
+1220	1125	X018	0	f
+1221	430	X055	0	f
+1222	1698	Hormone Testing	0	f
+1223	1328	US DUPLEX SCANNING INVOLVING, NOT FOR COMPARISON, US DUPLEX SCANNING INVOLVING	0	f
+1224	1097	MRI1 Reg/2 ContigRegSpine Cerv Radiculopathy,Xray Left Hand,Xray Right Hand	2	f
+1225	1699	Sendaways	0	f
+1226	975	Miscellaneous tests	0	f
+1227	1381	Panel Serology	0	f
+1228	1237	Blood Metals	0	f
+1229	1700	Blood Metals	0	f
+1230	992	Blood Metals	0	f
+1231	315	Blood Metals	0	f
+1232	379	COELIAC GENE TEST (HLA DQ (HLC-0)	0	f
+1233	1613	Wrist Left Injection US	1	f
+1234	1613	Wrist Right Injection US	1	f
+1235	1336	MRI Brain	0	f
+1236	1359	Abdominal US	2	f
+1237	536	X026	0	f
+1238	1132	CARNITINE (CRT-0)	0	f
+1239	209	FULL BLOOD COUNT (FBE-0)	0	f
+1240	1548	OCCULT BLOOD (OCB-2)	0	f
+1241	545	SERUM CHEMISTRY (MBA-0)	0	f
+1242	1548	OCCULT BLOOD (OCB-1)	0	f
+1243	1548	OCCULT BLOOD (OCB-0)	0	f
+1244	906	VARICELLA ZOSTER (VZ-0)	0	f
+1245	594	HORMONE PROFILE (HOR-0)	0	f
+1246	330	HORMONE PROFILE (HOR-0)	0	f
+1247	103	Miscellaneous tests	0	f
+1248	587	RHEUMATOID FACTOR (RF-0)	0	f
+1249	192	HAEMOCHROMATOSIS GENE STY (HGA-0)	0	f
+1250	1232	US Shoulder or Upper Arm,Xray Left Shoulder/Scapula	1	f
+1251	1385	US Shoulder or Upper Arm,Xray Left Shoulder/Scapula	1	f
+1252	1541	Panel Serology	0	f
+1253	1039	General Serology	0	f
+1254	601	THYROID AUTOANTIBODIES (TAA-0)	0	f
+1255	1232	US Shoulder or Upper Arm,Xray Right Shoulder/Scapula	2	f
+1256	1385	US Shoulder or Upper Arm,Xray Right Shoulder/Scapula	2	f
+1257	928	Xray Orbits,MRI 1 Reg/2 Contig Reg Spine Cerv Radiculopathy	2	f
+1258	1701	X010	0	f
+1259	334	X010	0	f
+1260	1164	CHEST X-RAY	0	f
+1261	1303	Respiratory Serology	0	f
+1262	439	Fun2	0	f
+1263	150	ANDROGENS (AND-0)	0	f
+1264	1680	ANDROGENS (AND-0)	0	f
+1265	441	X017	0	f
+1266	917	X013	0	f
+1267	1381	HEPATITIS SEROLOGY (HEP-0)	0	f
+1268	322	1 Leg DVT Lower Limb (inc IVC/iliacs)	2	f
+1269	1704	BorAb	0	f
+1270	1077	X017	0	f
+1271	752	X017	0	f
+1272	773	X016	0	f
+1273	739	X036	0	f
+1274	221	Blood Bank	0	f
+1275	126	Blood Bank	0	f
+1276	788	X016	0	f
+1277	225	C/T EXTREMITY (PLAIN)	1	f
+1278	1495	Virus Culture	0	f
+1279	1705	Pertussis Culture	0	f
+1280	1077	Drugs	0	f
+1281	1706	Misc.Chemistry	0	f
+1282	1707	Hormone Testing	0	f
+1283	486	Elbow Right Injection US	2	f
+1284	914	Skin US	2	f
+1285	309	Histo PEI - hospital;Histo Level 4,  >1 spec;Histo	1	f
+1287	309	Histo PEI - hospital;Histo Level 4;	2	f
+1288	1708	Newcastle Nuclear Medicine Consultation Note	0	f
+1289	1709	Chemistry, Urine	0	f
+1290	1615	FOOT-X-RAY	3	f
+1291	1625	FOOT-X-RAY	3	f
+1292	1416	Femur Right Xray	2	f
+1293	1232	SHOULDER-X-RAY	2	f
+1294	499	U-Osmo	0	f
+1295	708	Bilateral Knee X-rays	3	f
+1296	1232	US Shoulder - Left, Shoulder Left X-Ray	1	f
+1297	1385	US Shoulder - Left, Shoulder Left X-Ray	1	f
+1298	1711	CT Extremities non contrast	1	f
+1299	1255	Forearm Left Xray	1	f
+1300	309	HistoS	0	f
+1301	429	Biochemistry	0	f
+1302	990	_Immunoglobulins	0	f
+1303	1089	Exercise Stress Test (S FLANAGAN)	0	f
+1304	844	Cardiac Echo Study (S FLANAGAN)	0	f
+1305	1717	Spore4	0	f
+1306	1717	Spore6	0	f
+1307	1717	Spore5	0	f
+1308	1717	Spore2	0	f
+1309	1717	Spore1	0	f
+1310	1717	Spore3	0	f
+1311	639	Bone,W/body,+/-flow,+/-2nd day image	2	f
+1312	872	PROTEIN ELECTROPH.(SERUM) (EPG-0)	0	f
+1313	587	RHEUMATIC DISEASE AB (RDA-0)	0	f
+1314	705	RHEUMATIC DISEASE AB (RDA-0)	0	f
+1315	35	Holter Monitor Study (S FLANAGAN)	0	f
+1316	988	Ribs Right Xray	2	f
+1317	1242	Ribs Right Xray	2	f
+1318	297	ACTH	0	f
 \.
 
 
@@ -2729,6 +3344,9 @@ COPY lu_request_type (pk, type) FROM stdin;
 10	Audiology
 11	Nuclear Medicine
 2	Radiology
+12	ophthalmology
+13	gastroenterology
+14	Exercise Physiology
 \.
 
 
@@ -2801,7 +3419,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 62	1	anti tsh receptor antibody	0	0	0	f
 63	1	Larynx partial or total resection	0	0	0	f
 64	1	Testosterone	0	0	0	f
-65	2	venous dopper lower limb	0	0	0	f
 66	1	fT4	0	0	0	f
 67	1	Pregnancy Associated Plasma Protein a (PAPPA)	0	0	0	f
 68	1	Albumin/Creatinine ratio Timed overnight collection.	0	0	0	f
@@ -2938,7 +3555,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 201	1	Doxepin hydrochloride	0	0	0	f
 202	1	Brain/meninges resection not tumour	0	0	0	f
 203	1	Skin all specimens NOS including all tumours	0	0	0	f
-204	1	Somatotropin	0	0	0	f
 205	1	Hepatitis A virus Ab	0	0	0	f
 206	1	24Hr Holter Scan	0	0	0	f
 207	2	Pelvic Ultrasound	0	0	0	f
@@ -2951,7 +3567,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 217	1	Anti-cardiolipin antibody	0	0	0	f
 218	1	24Hr BP Monitor	0	0	0	f
 219	1	Sulthiame	0	0	0	f
-149	10	Audiology 	0	0	0	f
 210	9	Ingrown nail surgery	3	0	0	f
 221	1	Ante-natal - red blood cell antibody screen	0	0	0	f
 222	1	Bartholin's gland cyst	0	0	0	f
@@ -2999,7 +3614,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 271	1	Infection control swabs (patient screening) - MRSA/VRE etc	0	0	0	f
 272	1	Ischaemic forearm exercise test (state whether using lactate, ammonia, or other)	0	0	0	f
 273	1	24 Urine Electrolytes and Protein	0	0	0	f
-274	1	Anti-neutrophil cytoplasmic antibody	0	0	0	f
 275	1	Anti-lymphocyte antibody	0	0	0	f
 276	1	Tissue organ NOS haematoma	0	0	0	f
 277	1	Antimony	0	0	0	f
@@ -3039,9 +3653,9 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 312	1	thiamine pyrophosphate (TPP)-Vitamin B1	0	0	0	f
 313	2	Xray Humerus	3	0	0	f
 314	1	Noradrenaline	0	0	0	f
-315	1	Cadmium	0	0	0	f
 316	2	Venous doppler upper limb	3	0	0	f
 317	1	Cryptococcal antigen - latex EIA serum/CSF	0	0	0	f
+274	1	ANCA (Anti-neutrophil cytoplasmic antibody)	0	0	0	f
 318	5	Segmental Artery Pressures	3	0	0	f
 319	1	Vulva/labia biopsy	0	0	0	f
 320	1	Methicillin resistance assay PCR	0	0	0	f
@@ -3085,7 +3699,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 356	1	Red cell phenotype	0	0	0	f
 357	1	Alkaline phosphatase - isoenzymes	0	0	0	f
 358	1	Products of conception - spontaneous/missed abortion	0	0	0	f
-359	1	APTT	0	0	0	f
 360	1	Hormone receptor (prog)	0	0	0	f
 361	2	CT Lumbar Spine	0	0	0	f
 363	1	Herpes Virus PCR	0	0	0	f
@@ -3102,7 +3715,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 374	1	Wound swab c&s	0	0	0	f
 375	2	MRI elbow	0	0	0	f
 376	1	Glucose-6-Phosphate Dehydrogenase	0	0	0	f
-377	1	Vitamin E	0	0	0	f
 378	2	Haemoglobin	0	0	0	f
 379	1	Coeliac Genotyping	0	0	0	f
 380	1	Clonality, Translocation or Rearrangement studies (e.g. T-cell, B-cell, lymphoid by PCR (or any other amplification system):	0	0	0	f
@@ -3157,6 +3769,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 431	1	Body fluids including cyst fluids, peritoneal, pleural, bladder, other	0	0	0	f
 432	1	Hepatitis A post vaccination titre	0	0	0	f
 433	1	Glucose - CSF	0	0	0	f
+867	1	Caeruloplasmin	0	0	0	f
 434	1	T3 (Resin) Uptake	0	0	0	f
 435	4	Carotid Ultrasound	0	0	0	f
 436	2	Thyroid Ultrasound	0	0	0	f
@@ -3261,6 +3874,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 536	1	GTT	0	0	0	f
 538	1	Amino acids - quantitative	0	0	0	f
 539	1	N-acetyl Procainamide	0	0	0	f
+868	1	Bronchus biopsy	0	0	0	f
 540	1	Donath landsteiner antibody - direct and indirect	0	0	0	f
 541	1	Cord blood study for possible blood group compatibility	0	0	0	f
 542	1	TPHA - haemagglutination	0	0	0	f
@@ -3347,9 +3961,8 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 624	2	lumbar spine AP/Lateral	0	0	0	f
 625	1	Sodium	0	0	0	f
 626	1	Nerve NOS	0	0	0	f
-839	1	Nasal swab C&S	0	0	0	f
 627	1	Tongue/tonsil tumour local	0	0	0	f
-628	1	Total haemolytic complements	0	0	0	f
+942	1	Carbamazepine	0	0	0	f
 629	2	Liver Ultrasound	0	0	0	f
 630	1	Needle - HIV Hepatitis B Hepatitis C	0	0	0	f
 631	1	c-Peptide	0	0	0	f
@@ -3507,7 +4120,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 787	1	Vitamin D	0	0	0	f
 788	1	FNA	0	0	0	f
 789	1	Manganese - whole blood	0	0	0	f
-790	1	ECG Resting and Report	0	0	0	f
 791	1	Tongue biopsy	0	0	0	f
 792	2	Ultrasound of hand and wrist joint	3	0	0	f
 793	1	Folate	0	0	0	f
@@ -3554,6 +4166,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 836	7	Cyst aspiration	0	0	0	f
 837	1	gastric antibodies	0	0	0	f
 838	1	Rubella - EIA IgG/IgM	0	0	0	f
+839	1	Nasal swab C&S	0	0	0	f
 840	1	Ear swab c&s	0	0	0	f
 841	7	Ultrasound - early pregnancy	0	0	0	f
 842	1	Tonsil biopsy	0	0	0	f
@@ -3575,14 +4188,11 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 859	1	Retinol Binding Protein	0	0	0	f
 860	1	Xylose	0	0	0	f
 861	1	Enterovirus - CFT	0	0	0	f
-1500	1	Anion gap	0	0	0	f
 862	1	Cell count (misc fluid)	0	0	0	f
 863	1	ECG Tracing  only	0	0	0	f
 864	1	Quinine	0	0	0	f
 865	1	Testis and adjacent structures - vas deferens sterilisation	0	0	0	f
 866	1	Herpes simplex virus - EIA IgG IgM	0	0	0	f
-867	1	Caeruloplasmin	0	0	0	f
-868	1	Bronchus biopsy	0	0	0	f
 869	1	Kidney biopsy incl transplant	0	0	0	f
 870	2	Ultrasound of occiput	0	0	0	f
 871	1	Anti-skin intracellular substance antibody	0	0	0	f
@@ -3656,7 +4266,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 938	1	Rubella virus Ab.IgG	0	0	0	f
 939	1	Myoglobin	0	0	0	f
 941	1	Oligloconal proteins, CSF	0	0	0	f
-942	1	Carbamazepine	0	0	0	f
 943	1	Methadone	0	0	0	f
 945	1	Paraprotein typing IEP/U	0	0	0	f
 946	1	Bone biopsy/curettings/fragments-lesion	0	0	0	f
@@ -3705,7 +4314,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 989	1	CA 19.9	0	0	0	f
 990	1	IGG	0	0	0	f
 991	1	THINPREP	0	0	0	f
-992	1	Mercury	0	0	0	f
 993	1	Phosphate - serum, plasma	0	0	0	f
 994	1	Coagulation screen	0	0	0	f
 995	1	Cytokine assays	0	0	0	f
@@ -3795,7 +4403,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1079	1	Adrenal resection not tumour	0	0	0	f
 1080	1	Chronic leukemia work up	0	0	0	f
 1081	1	Viral antigen test - serum: EIA - HbsAg HbeAg	0	0	0	f
-1082	1	Angiotensin converting enzyme	0	0	0	f
 1083	1	Osmolality - plasma	0	0	0	f
 1084	1	troponin	0	0	0	f
 1085	1	Protein - CSF	0	0	0	f
@@ -3857,7 +4464,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1139	8	Multiple Sleep Latency Tests	0	0	0	f
 1140	1	Metabolic disorder (using isotope dilution) of any metabolite not already specified in the Chemistry sections - specify name of disorder or metabolite for purposes of statistical collation.	0	0	0	f
 1141	1	IgE	0	0	0	f
-1249	1	Mutation search (any gene, any number of mutations or variants, any techniques)	0	0	0	f
 1143	1	Fluids - cell count Gram stain, aerobic culture                                                                              - Fluids - cell count; Gram stain, aerobic/anaerobic culture	0	0	0	f
 1144	1	MBA	0	0	0	f
 1145	1	Factor IX	0	0	0	f
@@ -3894,7 +4500,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1176	1	Albumin - urine (microalbumin)	0	0	0	f
 1177	1	Glutathione Reductase	0	0	0	f
 1178	1	Anti-heart antibody	0	0	0	f
-1179	5	Venous incompetence	0	0	0	f
 1180	1	Urethral swab c&s	0	0	0	f
 1181	2	thoracic spine AP/Lateral	0	0	0	f
 1182	5	Renal artery duplex scan	0	0	0	f
@@ -3925,7 +4530,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1208	1	C4 bf typing	0	0	0	f
 1209	1	Bilirubin - urine	0	0	0	f
 1210	1	Prothrombin time - mixing tests	0	0	0	f
-1211	3	Blackslab plaster/synthetic	0	0	0	f
 1212	2	Ultrasound heel and Ankle	3	0	0	f
 1214	2	Xray of upper limb (shoulder to hand)	3	0	0	f
 1215	1	Swabs (including catheter tips) - with/without Gram stain; aerobic culture only	0	0	0	f
@@ -3949,7 +4553,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1234	1	Urobilinogen - Urine	0	0	0	f
 1235	1	Anti-DNA antibody	0	0	0	f
 1236	2	Xray Skull	0	0	0	f
-1237	1	Lead	0	0	0	f
 1238	2	CT face and orbit	0	0	0	f
 1239	1	Heart - NOS	0	0	0	f
 1240	1	Streptokinase resistance titre	0	0	0	f
@@ -3960,8 +4563,11 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1245	1	Breast tissue NOS	0	0	0	f
 1246	2	Mammogram	3	0	0	f
 1247	2	CT Pelvis	0	0	0	f
+1249	1	Mutation search (any gene, any number of mutations or variants, any techniques)	0	0	0	f
 1251	1	Larynx biopsy	0	0	0	f
 1252	1	Blood culture - routine	0	0	0	f
+1237	1	Lead blood	0	0	0	f
+1179	5	Venous incompetence Lower Limb	3	0	0	f
 1253	1	Thyroxin - total	0	0	0	f
 1254	1	T4	0	0	0	f
 1255	2	Xray Radius	3	0	0	f
@@ -4025,7 +4631,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1314	1	Trimipramine	0	0	0	f
 1315	1	Thymidine kinase, serum	0	0	0	f
 1316	7	Ultrasound  - gynecological	0	0	0	f
-1317	2	Testis Ultrasound	3	0	0	f
 1318	1	Kidney partial/total nephrectomy	0	0	0	f
 1319	1	Oesophagus diverticulum	0	0	0	f
 1320	1	Tissue organ NOS abscess	0	0	0	f
@@ -4063,6 +4668,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1352	2	Ultrasound soft tissue foot	3	0	0	f
 1353	1	Bone marrow aspirate	0	0	0	f
 1354	1	Fluorescent In Situ Hybridisation (FISH)	0	0	0	f
+1567	1	Acetaminophen	0	0	0	f
 1355	1	Rheumatoid factor	0	0	0	f
 1356	2	XRay Cervical Spine	0	0	0	f
 1357	1	Aneurysm - all types	0	0	0	f
@@ -4073,7 +4679,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1362	2	Duplex scan lower limb arteries with pressures with exercise	3	0	0	f
 1363	1	Gastrin	0	0	0	f
 1364	5	Deep venous thrombosis	0	0	0	f
-1365	2	Xray Knee and Both Legs	3	0	0	f
 1366	2	MRI Acoustic neuroma and IAMs	3	0	0	f
 1367	1	Glucose	0	0	0	f
 1368	1	Hydrocele sac	0	0	0	f
@@ -4146,7 +4751,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1437	1	Vulval subtotal/total with/without nodes	0	0	0	f
 1438	1	Venesection for Polycythaemia Vera	0	0	0	f
 1439	1	Ethanol	0	0	0	f
-1440	2	Persantin Sestamibi scan	0	0	0	f
 1441	1	Cyrofibrinogen - qualitative	0	0	0	f
 1442	1	Mantoux test	0	0	0	f
 1443	2	Bone scan and SPECT CT	\N	\N	\N	f
@@ -4166,6 +4770,8 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1458	1	Whole Blood Viscosity	0	0	0	f
 1459	5	Arterial - upper limb	0	0	0	f
 1460	2	Abdominal wall ultrasound	0	0	0	f
+1568	1	Norclozapine	0	0	0	f
+1365	2	Xray Knee and  Leg	3	0	0	f
 1461	1	Skin biopsy blistering skin diseases	0	0	0	f
 1462	1	Free Androgen Index	0	0	0	f
 711	1	Neisseria gonorrhoeae PCR	0	0	0	f
@@ -4195,7 +4801,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1486	1	Streptolysin O Ab	0	0	0	f
 1487	1	DNAse B Ab.Streptococcal	0	0	0	f
 1488	2	Synvisc Injection	2	0	0	f
-1489	2	CT Foot	2	0	0	f
 1490	1	hiv RNA	0	0	0	f
 1491	1	Troponin I.cardiac	0	0	0	f
 1492	2	CT Petrous Bones	2	0	0	f
@@ -4206,6 +4811,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1497	2	Ultrasound Foot	1	0	0	f
 1498	1	MRSA PCR	0	0	0	f
 1499	1	Bicarbonate	0	0	0	f
+1500	1	Anion gap	0	0	0	f
 1502	1	Glomerular filtration rate/1.73 sq M.predicted	0	0	0	f
 1503	1	Service comment 24	0	0	0	f
 1504	1	Service comment 01	0	0	0	f
@@ -4230,7 +4836,212 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1523	1	HUMAN PAPILLOMAVIRUS DNA	0	0	0	f
 1524	1	Myeloperoxidase Ab	0	0	0	f
 1525	1	Proteinase 3 Ab	0	0	0	f
-1526	1	U&E	0	0	0	f
+1527	1	Faecal Occult Bloods * 2 (National Bowel Campaign)	0	0	0	f
+1529	10	Hearing test	0	0	0	f
+1530	2	Upper abdominal Ultrasound	0	0	0	f
+1531	2	Venous Reflux Examination	2	0	0	f
+1532	2	CT Urinary Tract with Contrast	0	0	0	f
+1533	1	Rubella virus Ab	0	0	0	f
+1534	1	IgGVaricella zoster virus Ab.IgG	0	0	0	f
+204	1	Somatotropin (growth hormone)	0	0	0	f
+1535	2	myocardial perfusion scan	0	0	0	f
+1539	1	Consultation note	0	0	0	f
+149	10	Audiology	0	0	0	f
+1540	11	DMSA renal scan	0	0	0	f
+1541	1	Hepatitis C RNA	0	0	0	f
+1526	10	Myocardial perfusion scan - sestambi	0	0	0	t
+1542	10	ccc	0	0	0	t
+1543	1	Histopathology - Image	0	0	0	f
+1544	1	IgM	0	0	0	f
+1545	2	Ultrasound Hand	1	0	0	f
+1546	2	18 week morphology scan	0	0	0	f
+1547	1	Urea	0	0	0	f
+1548	1	Faecal Occult Blood	0	0	0	f
+1549	11	Thyroid nuclear scan	0	0	0	f
+1550	2	Ultrasound Ankle	1	0	0	f
+1551	1	Rubella virus Ab.IgGVaricella zoster virus Ab.IgG	0	0	0	f
+1552	11	VQ Lung Scan	0	0	0	f
+1538	11	Myocardial Perfusion Scan - Sestamibi	0	0	0	f
+1553	2	XRay Knees	3	0	0	f
+1554	2	mammogram breast	0	0	0	f
+1555	1	Protein	0	0	0	f
+1556	1	Protein/Creatinine	0	0	0	f
+1557	2	injection of a-c joint with steroid	1	0	0	f
+1559	1	bilirubin direct & indirect	0	0	0	f
+1560	2	XRay Wrist	2	0	0	f
+1561	2	CT head and Neck (contrast)	0	0	0	f
+1562	2	CT Chest (contrast)	0	0	0	f
+1563	1	blood group and antibody screen	0	0	0	f
+1564	1	CSF	0	0	0	f
+1565	1	Tetrahydrocannabinol	0	0	0	f
+1566	1	drug screen	0	0	0	f
+1528	2	wrist Ultrasound	3	0	0	f
+1489	2	CT Foot	3	0	0	f
+1569	1	Anti-Mullerian Hormone	0	0	0	f
+1570	1	carbohydrate antigen 19-9	0	0	0	f
+1571	2	Abdomen - supine and erect XRay	1	0	0	f
+1572	2	CT Neck and Chest	0	0	0	f
+1573	1	Albumin	0	0	0	f
+1574	1	Albumin/Creatinine	0	0	0	f
+1575	2	venous doppler IVC Iliac and legs	3	0	0	f
+1577	5	dopplers of abdominal & iliac arteries	0	0	0	f
+1537	11	salivary scintigraphy study	0	0	0	f
+1578	2	nasal bones	0	0	0	f
+1440	2	Persantin (Dipyridamole)Sestamibi scan	0	0	0	f
+1579	8	Saline Bronchial Challenge	0	0	0	f
+1580	2	Xray Finger	2	0	0	f
+1581	2	MRI internal Auditory Meatus	3	0	0	f
+1582	2	CT angiogram of coronary arteries	0	0	0	f
+1647	2	Ultrasound Hamstring Insertions	3	0	0	f
+1583	2	Xray Pelvis and Hip(s)	3	0	0	f
+1584	1	Creatinine renal clearance	0	0	0	f
+1585	1	Potassium	0	0	0	f
+1586	1	Gestational age	0	0	0	f
+1587	1	Choriogonadotropin.beta subunit	0	0	0	f
+1588	5	duplex scan abdominal aorta	0	0	0	f
+1589	5	duplex scan lower limb arteries	0	0	0	f
+1590	5	arterial lower limb pressures	0	0	0	f
+1591	4	ambulatory blood pressure monitoring	0	0	0	f
+1592	7	Pelvic Ultrasound	0	0	0	f
+1593	3	cam walker boot	0	0	0	f
+1211	3	backslab plaster/synthetic	0	0	0	f
+1594	2	Arterial lower limb pressures	0	0	0	f
+1595	12	optical coherent tomography	3	0	0	f
+1596	12	Estermann Driving Visual Field Test	0	0	0	f
+1597	6	Lateral Femoral Cutaneous Nerve SEP	3	0	0	f
+1598	4	coronary angiography	0	0	0	f
+1599	2	ultrasound of thigh	3	0	0	f
+1600	2	renal artery duplex scan	0	0	0	f
+1601	1	cytology - fluid	0	0	0	f
+1602	4	carotid doppler	0	0	0	f
+1603	2	CT Petrous Bones	3	0	0	f
+1604	5	Aortic and Femoral Angiography	0	0	0	f
+1605	2	Xray Parotid Region for Stone	3	0	0	f
+1606	2	Oesophageal Motility Study (Nuclear)	0	0	0	f
+1607	2	Radioactive Iodine Therapy	0	0	0	f
+1608	4	cardiac catheterisation	0	0	0	f
+1609	1	CD34 Molecule	0	0	0	f
+1610	1	Peripheral Blood Surface Markers	0	0	0	f
+1611	1	Echovirus IgG, IgM (Enteric Cytopathic Human Orphan)	0	0	0	f
+1612	4	Duplex scan lower limb veins	3	0	0	f
+1613	2	Ultrasound guided carpometacarpal joint injection	3	0	0	f
+1614	1	Flavivirus IgG/IgM	0	0	0	f
+1615	2	Xray Ankle and Foot	3	0	0	f
+65	2	venous dopper lower limb	3	0	0	f
+1616	2	Inguinal node biopsy (US Guided)	3	0	0	f
+1617	2	Gallium Scan	0	0	0	f
+1618	2	Micturating Cysto-urethrogram (MCU)	0	0	0	f
+1619	1	ANA/Autoantibodies	0	0	0	f
+1620	2	examination not peformed	0	0	0	f
+1621	2	MRI Brain and IAM	3	0	0	f
+1622	2	Chest Wall Ultrasound	3	0	0	f
+1623	2	Steriod Injection Plantar Fascia	3	0	0	f
+1624	2	PET scan	0	0	0	f
+1625	2	Xray hand & wrist	3	0	0	f
+1626	13	Oesophageal Manometry	0	0	0	f
+1627	2	Pregnancy Ultrasound - Foetal Growth	0	0	0	f
+1628	4	Tilt Test	0	0	0	f
+1629	12	Humphrey Matrix Visual Field Test	0	0	0	f
+1630	2	CT Thoracic Aorta	0	0	0	f
+1631	4	Foetal Echocardiography	0	0	0	f
+1632	2	Xray Lateral Airways	0	0	0	f
+1633	2	Xray Hand/Wrist for Bone Age	0	0	0	f
+1634	8	Arterial Blood Gases	0	0	0	f
+1635	2	MRI LUMBAR SPINE	0	0	0	f
+1636	12	Visual Field Test	0	0	0	f
+1637	2	Yttrium Synovectomy (therapeutic)	3	0	0	f
+1638	2	Transforaminal Injection Lumbar	0	0	0	f
+1639	2	MRI PERFORMED USING CONTRAST AGENT.	0	0	0	f
+1640	2	Chest CT	0	0	0	f
+1641	4	Home Blood Pressure Measurements	0	0	0	f
+1642	2	CXR	2	0	0	f
+1643	1	Poliovirus Titre	0	0	0	f
+1644	2	MRI Neck	0	0	0	f
+1645	1	Vitamin E (Tocopherol)	0	0	0	t
+377	1	Vitamin E (Tocopherol)	0	0	0	f
+1646	1	Holter Scan Recording	0	0	0	f
+1648	2	Ultrasound Scapula Area	3	0	0	f
+1649	1	Urine IgG	0	0	0	f
+1650	1	Urine Alpha-1 Microglobulin	0	0	0	f
+1651	2	Barium Meal	0	0	0	f
+1652	2	U/S Guided steroid to Ischial Tuberosity hamstring Insertion	3	0	0	f
+1653	2	Transforaminal Steroid Injection Cervical	3	0	0	f
+1654	2	CT Pulmonary Angiogram	0	0	0	f
+1655	1	sample of water for bacterial culture	0	0	0	f
+1656	2	Xray Single Breast,US Single Breast	0	0	0	f
+1657	1	double stranded dna	0	0	0	f
+1658	1	CH100	0	0	0	f
+1659	1	Eye swab C&S	3	0	0	f
+1660	1	Eye swab PCR for Chlamydia	3	0	0	f
+1661	1	Chlamydia PCR Eye	0	0	0	f
+628	1	Total haemolytic complement (CH50)	0	0	0	f
+1662	3	Gym Program	0	0	0	f
+1663	12	Retinal Photograph	3	0	0	f
+1082	1	Angiotensin converting enzyme (ACE)	0	0	0	f
+1664	1	Throat PCR chlamydia & Gonorrhoea	0	0	0	f
+1665	1	Urethral swab PCR & Gonorrhoea PCR	0	0	0	f
+1317	2	testis ultrasound	3	0	0	f
+1666	1	Throat swab Neisseria Gonorrhoea PCR	0	0	0	f
+1667	1	Throat swab chlamydia PCR	0	0	0	f
+1668	1	Urethral swab Chlamydia	0	0	0	f
+1669	2	U/S Steriod - Lateral Cutaneous Nerve	3	0	0	f
+1670	2	U/S guided steroid injection Lateral Cutaneous Nerve	3	0	0	f
+1671	1	Chlamydia Urine PCR	0	0	0	f
+1672	1	Zinc	0	0	0	f
+1673	1	Cancer Ag 19-9	0	0	0	f
+1674	4	Holter Scan with BP Monitoring	0	0	0	f
+1675	2	Achromioclavicular joint steroid injection	3	0	0	f
+1676	2	XRay Heel	0	0	0	f
+1576	2	autologous blood injection	0	0	0	f
+1677	2	CXR - Comparison old films	0	0	0	f
+1678	1	Heterophile antibody	0	0	0	f
+1679	1	chromosome analysis	0	0	0	f
+1680	1	Testosterone.free	0	0	0	f
+1681	1	Bordetella Pertussis IGA	0	0	0	f
+1682	1	Serum crosslinked fibrin (XDP)	0	0	0	f
+1683	1	Q Fever Phase 2 IgG (IFA)	0	0	0	f
+1684	1	GTT 50gm Pregnancy	0	0	0	f
+1685	1	Beta 2 Glycoprotein 1 (B2GP1) Antibodies	0	0	0	f
+1686	2	Xray Thoracolumbar spine	0	0	0	f
+1687	5	Ankle Brachial Index	0	0	0	f
+1688	2	MRI Muscle Lump	0	0	0	f
+1689	1	Cannula or intravenous line tip C&S	0	0	0	f
+359	1	APTT (Activated Partial Thromboplastin Time)	0	0	0	f
+1690	1	Mouth swab c&s	0	0	0	f
+1691	1	Urinary Iodine	0	0	0	f
+1692	2	Cervical Spine Xray	0	0	0	f
+1693	1	Anti-microsomal Ab	0	0	0	f
+1694	1	Anti-thyroglobulin Ab	0	0	0	f
+1695	1	Barmah Forest Virus Serology	0	0	0	f
+1696	1	Antithrombin	0	0	0	f
+1697	1	Kleihauer test (Foetal hb)	0	0	0	f
+1698	1	Angiotensin converting enzyme	0	0	0	f
+1699	1	Toxocara IgG	0	0	0	f
+992	1	Mercury blood	0	0	0	f
+315	1	Cadmium blood	0	0	0	f
+1700	1	Arsenic blood	0	0	0	f
+1701	1	axilla swab c&s	0	0	0	f
+1702	2	scrotal ultrasound	0	0	0	f
+1703	5	Diagram Venous Duplex Lower Limb	0	0	0	f
+1704	1	Borrelia burgdorferi IgG/IgM (EIA) (Lyme)	0	0	0	f
+1705	1	Bordetella Culture	0	0	0	f
+1706	1	urine Androgen steroid profile	0	0	0	f
+1707	1	17-Hydroxyprogesterone	0	0	0	f
+1708	11	Gastric Emptying Scan	0	0	0	f
+1709	1	spot urinary sodium	0	0	0	f
+1710	1	Faecal occult Bloods (Rotary Program)	0	0	0	f
+1711	2	CT Femur	3	0	0	f
+1712	2	CT Tibia/Fibula	3	0	0	f
+1715	14	Manual Handling Education Program	0	0	0	f
+1714	14	Injury Prevention Education Program	0	0	0	f
+1713	14	WRAP (Work Related Activity Program - Rehabilitation)	0	0	0	f
+1716	14	Work Place Rehabilitation Program	0	0	0	f
+1717	1	spore testing - autoclave	0	0	0	f
+1718	2	Temporomandibular joint CT scan	3	0	0	f
+1719	2	U/S of adductor insertions thigh	3	0	0	f
+1720	1	spot urinary protein	0	0	0	f
+1721	1	Serum Cotinine	0	0	0	f
+790	1	ECG Tracing and Report	0	0	0	f
 \.
 
 
@@ -4286,6 +5097,19 @@ COPY lu_descriptions (pk, description, deleted) FROM stdin;
 
 
 --
+-- Data for Name: lu_formulation; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
+--
+
+COPY lu_formulation (pk, form) FROM stdin;
+1	injection
+2	oral liquid
+3	capsule
+4	powder
+5	drop
+\.
+
+
+--
 -- Data for Name: lu_schedules; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
@@ -4332,8 +5156,6 @@ COPY lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_
 15	\N	\N	Tetanus - every 10 years	f	f	\N	f	\N	f	f	\N
 40	\N	\N	Chicken Pox age > 12 years	f	f	\N	f	\N	f	f	\N
 46	18	\N	18 month childhood	f	f	\N	f	\N	f	f	\N
-50	2	\N	2 month childhood	f	f	\N	f	\N	f	t	\N
-51	4	\N	4 month childhood	f	f	\N	f	\N	f	t	\N
 44	6	6	6 month childhood	f	f	\N	f	\N	f	t	\N
 45	12	\N	12 month childhood	f	f	\N	f	\N	f	t	\N
 47	46	60	4 year childhood	f	f	\N	f	\N	f	t	\N
@@ -4342,6 +5164,14 @@ COPY lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_
 58	50	\N	50yrs & Over (ATSI) Pneumococcal	f	t	\N	f	\N	f	f	\N
 60	15	\N	15 Yrs (School program)	f	f	\N	f	\N	f	f	School based program
 59	12	\N	12 yrs (School Based)	f	f	\N	f	\N	f	t	School based program only
+61	\N	\N	Hepatitis B	f	f	\N	f	\N	f	f	\N
+62	\N	\N	Mumps	f	f	\N	f	\N	f	f	\N
+63	\N	\N	Human Papilloma Virus	f	f	\N	f	\N	f	f	\N
+64	\N	\N	Meningococcal C	f	f	\N	f	\N	f	f	\N
+50	2	\N	2 month childhood - old prevenar	f	f	\N	f	2011-10-17	f	t	\N
+51	4	\N	4 month childhood - old prevenar	f	f	\N	f	2011-10-17	f	f	\N
+66	\N	\N	4 Month Childhood	f	f	\N	f	\N	f	t	\N
+65	2	\N	2 Month Childhood	f	f	\N	f	\N	f	t	\N
 \.
 
 
@@ -4349,93 +5179,94 @@ COPY lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_
 -- Data for Name: lu_vaccines; Type: TABLE DATA; Schema: clin_vaccination; Owner: -
 --
 
-COPY lu_vaccines (pk, brand, form, fk_description, fk_route, inactive) FROM stdin;
-177	Varivax II	Injection	4	\N	f
-178	Meningitec	injection	18	\N	f
-179	Neis-vac C	injection	18	\N	f
-180	Menjugate	injection	18	\N	f
-181	Infranrix hexa	injection	8	\N	f
-182	Infranrix-IPV	injection	38	\N	f
-183	Vivaxim	injection	26	\N	f
-185	Gardasil	injection	13	\N	f
-186	Rotarix	oral	28	\N	f
-187	Influvac	injection	12	\N	f
-189	Boostrix IPV	injection	38	\N	f
-1	BCG Vaccine	Injection	16	\N	f
-17	Havrix prefilled syringe	Injection	14	\N	f
-18	Twinrix Junior Formulation	Injection	32	\N	f
-19	Twinrix Adult Formulation	Injection	7	\N	f
-20	H-B-Vax II Paediatric Formulation	Injection	21	\N	f
-21	H-B-Vax II Dialysis Formulation	Injection	21	\N	f
-22	H-B-Vax II Adult Formulation	Injection	21	\N	f
-23	Engerix-B Adult Formulation	Injection	21	\N	f
-24	Engerix-B Paediatric Formulation	Injection	21	\N	f
-25	Fluvax	Injection	2	\N	f
-26	Vaxigrip	Injection	2	\N	f
-27	M-M-R II	Injection	3	\N	f
-28	Mencevax ACWY	Injection	18	\N	f
-29	Menomune	Injection	18	\N	f
-30	Pneumovax 23	Injection	41	\N	f
-31	Ipol	Injection	29	\N	f
-32	Polio Sabin (Oral)	Drop	24	\N	f
-33	Merieux Inactivated Rabies Vaccine	Injection	34	\N	f
-34	Meruvax II	Injection	22	\N	f
-35	Ervevax	Injection	22	\N	f
-36	Typh-Vax (Oral)	Capsules	36	\N	f
-37	Typhim Vi	Injection	10	\N	f
-38	Typhoid Vaccine	injection	10	\N	f
-39	Tet-Tox	Injection	30	\N	f
-40	Cholera Vaccine	Injection	31	\N	f
-41	Yellow Fever Vaccine	injection	9	\N	f
-42	Plague Vaccine	Injection	15	\N	f
-52	Fluarix	Injection	2	\N	f
-64	Je-Vax	Injection	20	\N	f
-163	Prevenar	Injection	41	\N	f
-75	Stamaril	Injection	9	\N	f
-76	Brand Unknown	Injection	27	\N	f
-88	Fluvirin	Injection	2	\N	f
-98	Infanrix Hep B	Injection	17	\N	f
-101	Liquid PedvaxHIB	Injection	40	\N	f
-111	Priorix	Injection	35	\N	f
-120	Typherix	Injection	10	\N	f
-124	Varilrix	Injection	4	\N	f
-126	Avaxim Inactivated Hepatitis A Vaccine	Injection	14	\N	f
-128	Boostrix	Injection	37	\N	f
-131	Comvax	Injection	1	\N	f
-134	Engerix-B Adult Formulation Injection	Injection	21	\N	f
-135	Engerix-B Paediatric Formulation Injection	Injection	21	\N	f
-140	H-B-Vax II Adult Formulation Injection	Injection	21	\N	f
-141	H-B-Vax II Dialysis Formulation Injection	Injection	21	\N	f
-142	H-B-Vax II Paediatric Formulation Injection	Injection	21	\N	f
-143	H-B-Vax II Paediatric Formulation Injection Preservative free	Injection	21	\N	f
-144	Havrix Junior prefilled syringe Injection	Injection	14	\N	f
-145	Havrix monodose vial Injection	Injection	14	\N	f
-146	Havrix prefilled syringe Injection	Injection	14	\N	f
-159	Orochol	Powder	23	\N	f
-190	PanVax  Adult (Swine Flu)	injection	12	\N	f
-169	Twinrix Adult Formulation Injection	Injection	32	\N	f
-170	Twinrix Junior Formulation Injection	Injection	7	\N	f
-174	VAQTA Adult Formulation Injection	Injection	14	\N	f
-175	VAQTA Paediatric/adolescent Formulation Injection	Injection	14	\N	f
-184	Dukoral	oral	25	\N	f
-2	Q-Vax	Injection	19	\N	f
-3	Diphtheria Vaccine, Adsorbed (Diluted for Adult Use)	Injection	11	\N	f
-4	Diphtheria Vaccine, Adsorbed	Injection	11	\N	f
-5	Triple Antigen (Diphtheria, Tetanus, Pertussis - Adsorbed)	Injection	33	\N	f
-6	Infanrix	Injection	5	\N	f
-7	Tripacel	Injection	33	\N	f
-8	CDT Vaccine	Injection	39	\N	f
-9	ADT Vaccine	Injection	6	\N	f
-10	HibTITER	Injection	40	\N	f
-11	Hiberix	Injection	40	\N	f
-12	PedvaxHIB	Injection	40	\N	f
-13	VAQTA Adult Formulation	Injection	14	\N	f
-14	Havrix monodose vial	Injection	14	\N	f
-15	VAQTA Paediatric/adolescent Formulation	Injection	14	\N	f
-16	Havrix Junior prefilled syringe	Injection	14	\N	f
-191	Adacel	injection	37	\N	f
-192	PanVax Junior (Swine Flu) <3yrs	injection	12	\N	f
-193	Intanza	injection	12	\N	f
+COPY lu_vaccines (pk, brand, form, fk_description, fk_route, inactive, deleted, fk_form) FROM stdin;
+1	BCG Vaccine	Injection	16	\N	f	f	\N
+42	Plague Vaccine	Injection	15	\N	f	f	\N
+2	Q-Vax	Injection	19	\N	f	f	\N
+191	Adacel	injection	37	1	f	f	1
+194	Prevenar 13	\N	41	1	f	f	1
+181	Infranrix hexa	injection	8	1	f	f	1
+186	Rotarix	oral	28	5	f	f	2
+9	ADT Vaccine	Injection	6	1	f	f	1
+126	Avaxim Inactivated Hepatitis A Vaccine	Injection	14	1	f	f	1
+189	Boostrix IPV	injection	38	1	f	f	1
+8	CDT Vaccine	Injection	39	1	f	f	1
+40	Cholera Vaccine	Injection	31	1	f	f	1
+131	Comvax	Injection	1	1	f	f	1
+4	Diphtheria Vaccine, Adsorbed	Injection	11	1	f	f	1
+3	Diphtheria Vaccine, Adsorbed (Diluted for Adult Use)	Injection	11	1	f	f	1
+184	Dukoral	oral	25	5	f	f	2
+23	Engerix-B Adult Formulation	Injection	21	1	f	f	1
+134	Engerix-B Adult Formulation Injection	Injection	21	1	f	f	1
+24	Engerix-B Paediatric Formulation	Injection	21	1	f	f	1
+135	Engerix-B Paediatric Formulation Injection	Injection	21	1	f	f	1
+35	Ervevax	Injection	22	1	f	f	1
+52	Fluarix	Injection	2	2	f	f	1
+25	Fluvax	Injection	2	2	f	f	1
+88	Fluvirin	Injection	2	2	f	f	1
+185	Gardasil	injection	13	1	f	f	1
+16	Havrix Junior prefilled syringe	Injection	14	1	f	f	1
+144	Havrix Junior prefilled syringe Injection	Injection	14	1	f	f	1
+14	Havrix monodose vial	Injection	14	1	f	f	1
+145	Havrix monodose vial Injection	Injection	14	1	f	f	1
+17	Havrix prefilled syringe	Injection	14	1	f	f	1
+146	Havrix prefilled syringe Injection	Injection	14	1	f	f	1
+30	Pneumovax 23	Injection	41	1	f	f	1
+182	Infranrix-IPV	injection	38	1	f	f	1
+31	Ipol	Injection	29	1	f	f	1
+32	Polio Sabin (Oral)	Drop	24	5	f	f	2
+11	Hiberix	Injection	40	1	f	f	1
+10	HibTITER	Injection	40	1	f	f	1
+101	Liquid PedvaxHIB	Injection	40	1	f	f	1
+28	Mencevax ACWY	Injection	18	1	f	f	1
+178	Meningitec	injection	18	1	f	f	1
+180	Menjugate	injection	18	1	f	f	1
+27	M-M-R II	Injection	3	2	f	f	1
+179	Neis-vac C	injection	18	1	f	f	1
+12	PedvaxHIB	Injection	40	1	f	f	1
+163	Prevenar	Injection	41	1	f	f	1
+111	Priorix	Injection	35	2	f	f	1
+120	Typherix	Injection	10	1	f	f	1
+37	Typhim Vi	Injection	10	1	f	f	1
+36	Typh-Vax (Oral)	Capsules	36	5	f	f	2
+183	Vivaxim	injection	26	1	f	f	1
+38	Typhoid Vaccine	injection	10	1	f	f	1
+128	Boostrix	Injection	37	1	f	f	1
+6	Infanrix	Injection	5	1	f	f	1
+98	Infanrix Hep B	Injection	17	1	f	f	1
+7	Tripacel	Injection	33	1	f	f	1
+5	Triple Antigen (Diphtheria, Tetanus, Pertussis - Adsorbed)	Injection	33	1	f	f	1
+64	Je-Vax	Injection	20	2	f	f	1
+33	Merieux Inactivated Rabies Vaccine	Injection	34	1	f	f	1
+76	Brand Unknown	Injection	27	2	f	f	1
+22	H-B-Vax II Adult Formulation	Injection	21	1	f	f	1
+140	H-B-Vax II Adult Formulation Injection	Injection	21	1	f	f	1
+141	H-B-Vax II Dialysis Formulation Injection	Injection	21	1	f	f	1
+143	H-B-Vax II Paediatric Formulation Injection Preservative free	Injection	21	1	f	f	1
+21	H-B-Vax II Dialysis Formulation	Injection	21	1	f	f	1
+20	H-B-Vax II Paediatric Formulation	Injection	21	1	f	f	1
+142	H-B-Vax II Paediatric Formulation Injection	Injection	21	1	f	f	1
+19	Twinrix Adult Formulation	Injection	7	1	f	f	1
+169	Twinrix Adult Formulation Injection	Injection	32	1	f	f	1
+18	Twinrix Junior Formulation	Injection	32	1	f	f	1
+170	Twinrix Junior Formulation Injection	Injection	7	1	f	f	1
+13	VAQTA Adult Formulation	Injection	14	1	f	f	1
+174	VAQTA Adult Formulation Injection	Injection	14	1	f	f	1
+15	VAQTA Paediatric/adolescent Formulation	Injection	14	1	f	f	1
+175	VAQTA Paediatric/adolescent Formulation Injection	Injection	14	1	f	f	1
+187	Influvac	injection	12	2	f	f	1
+193	Intanza	injection	12	4	f	f	1
+190	PanVax  Adult (Swine Flu)	injection	12	2	f	f	1
+192	PanVax Junior (Swine Flu) <3yrs	injection	12	2	f	f	1
+26	Vaxigrip	Injection	2	2	f	f	1
+29	Menomune	Injection	18	1	f	f	1
+34	Meruvax II	Injection	22	1	f	f	1
+124	Varilrix	Injection	4	2	f	f	1
+177	Varivax II	Injection	4	2	f	f	1
+39	Tet-Tox	Injection	30	1	f	f	1
+41	Yellow Fever Vaccine	injection	9	2	f	f	1
+75	Stamaril	Injection	9	2	f	f	1
+159	Orochol	Powder	23	5	f	f	2
 \.
 
 
@@ -4479,11 +5310,9 @@ COPY lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inact
 33	181	44	f	\N
 34	111	45	f	\N
 35	11	45	f	\N
-37	163	45	f	\N
 38	124	46	f	\N
 39	182	47	f	\N
 40	111	47	f	\N
-41	30	47	f	\N
 42	183	48	f	\N
 43	184	24	f	\N
 44	185	49	f	\N
@@ -4614,6 +5443,23 @@ COPY lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inact
 168	124	59	f	\N
 169	185	59	f	\N
 170	128	60	f	\N
+171	23	61	f	\N
+172	24	61	f	\N
+173	22	61	f	\N
+174	21	61	f	\N
+175	20	61	f	\N
+176	111	62	f	\N
+37	163	45	f	2011-07-11
+41	30	47	f	2011-07-25
+177	185	63	f	\N
+178	180	64	f	\N
+179	194	65	f	\N
+180	181	65	f	\N
+181	186	65	f	\N
+182	194	66	f	\N
+183	181	66	f	\N
+184	186	66	f	\N
+185	194	13	f	\N
 \.
 
 
@@ -62358,9 +63204,9 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 --
 
 COPY lu_systems (pk, system, author, preferred) FROM stdin;
-1	ICPC2 Plus	Family Medicine Research Unit, University of Sydney	f
+1	ICPC2 Plus	Family Medicine Research Unit, University of Sydney	t
+2	ICD10	World Health Organisation	f
 3	FreeCodes	EasyGP developers	f
-2	ICD10	World Health Organisation	t
 \.
 
 
@@ -63250,292 +64096,297 @@ COPY lu_normality (pk, normality) FROM stdin;
 --
 
 COPY lu_occupations (pk, occupation) FROM stdin;
-2	Drover
-3	teacher
-4	Painter
-5	Nurse
-6	Haematologist
-7	counsellor
-8	Dental Nurse
-9	farmer
-10	Dietitian
-11	Colono-rectal surgeon
-12	endocrinologist
-13	Diabetologist
-14	Sheep Drover
-15	Roof Tiler
-16	Nuclear Physician
-17	Home Duties
-18	Project officer
-19	Cheif Executive Officer
-20	Medical Student
-21	General Practitioner
-22	Database Manager
-23	Artist
-24	IT Consultant
-25	Cardiologist - Interventional
-26	Prime Minister
-27	secretary
-28	Accountant
-29	Medical Practitioner
-30	Boiler Maker
-31	Sex worker
-32	seamstress
-33	Psychiatrist
-34	Podiatrist
-35	Cartoon character
-36	Roofer
-37	Mine Worker
-38	Cardiologist
-39	bank manager
-40	Teacher - Primary School
-41	Cleaner
-42	Rheumatologist
-43	ENT surgeon
-44	unknown
-45	Police Officer
-46	Gynaecologist
-47	builder
-48	Radio Operator
-49	Physiotherapist
-50	Fish Monger
-51	Office Manager
-52	Clinical Psychologist
-53	Sales representative
-54	Dentist
-55	Rocket Scientist
-56	Businessman
-57	Practice Manager
-58	Gardiner
-59	Gas Controller
-60	cane cutter
-61	General Surgeon
-62	Psychiatry Registrar
-63	Liason Officer
-64	Butcher
-65	Spectum Manager
-66	Medical secretary
-67	Nurses Aid
-68	Secretary
-69	Geriatrician
-70	sailor
-71	Information Technology Manager
-72	Respiratory Physician
-73	Dancer
-74	Radiologist
-75	Gastroenterologist
-76	Sex Therapist
-77	Pantry Maid
-78	General and Oncological Surgeon
-79	Teacher - High School
-80	Medical Secretary
-81	Child Minder
-82	Bowel Surgeon
-83	tailor
-84	Plumber
-86	Primary School Teacher
-87	Doctor
-88	Psychologist
-89	Taxi Driver
-90	Night Watchman
-91	soldier
-92	Speech Therapist
-93	IT Manager
-94	Immunologist
-95	General Surgeon
-96	solicitor
-97	Dietitian
-98	Cartoon character
-99	Minister of Religion
-100	Cleaner
-101	Cleaner
-103	engineer
-104	Teacher
-105	Tunnel Borer
-106	School counsellor
-107	Coal Miner
-108	coal miner
-109	Seamstress
-110	Truck Driver
-111	Hair Dresser
-112	Labourer
-113	electrician
-114	strip club dancer
-115	Carpenter
-117	Carpenter
-119	Carpenter
-120	Carpenter
-121	Carpenter
-122	Carpenter
-123	Carpenter
-124	security guard
-125	Carpenter
-127	Orthopaedic Surgeon
-128	General Surgeon
-130	Dermatologist
-131	Drug Representative
-132	Obstetrician and Gynaecologist
-133	Carpenter
-134	ENT surgeon
-135	Marketing Manager
-136	Gastroenterologist and Hepatologist
-137	Physician
-138	Paediatric Neurologist
-139	Radiation Oncologist
-140	Registrar - Radiation Oncology
-141	Colorectal and General Surgeon
-142	Emergency Physician
-143	Case Manager
-144	Vascular & Endovascular Surgeon
-145	Medical Oncologist (Trainee)
-146	Directory Rehabilitation Medicine
-147	Pain Medicine Specialist
-148	Plastic Surgeon
-149	Ophthalmic Surgeon
-150	Acute Case Manager
-151	Cosmetic Plastic Surgeon
-152	Shoulder Physician
-153	Workcover Assessor
-154	Occupational Therapist
-155	Staff Specialist Medical Oncology
-156	Neurologist - Adult
-157	Nephrologist
-158	Orthopaedic Surgeon - Upper Limb
-159	General Surgeon
-160	General Surgeon
-161	Cardiologist and Physician
-162	General and Abdominal Surgeon
-163	Vascular Surgeon
-164	Registered Psychologist
-165	Urologist
-166	Neonatal Paediatrician
-167	Orthopaedic Registrar
-168	Physician & Allergist
-169	Orthopaedic Surgeon - Hand
-170	Research Co-ordinator
-171	Physician - General
-172	Neurosurgeon
-173	ENT Surgeon
-174	Cardiologist - Electrophysiologist
-175	Surgeon - Breast
-176	Haematology Registrar
-177	Physician - Infectious Disease
-178	General & Laparoscopic Surgeon
-179	Spinal & Orthopaedic Surgeon
-180	Physician - renal
-181	Chiropractor
-182	Audiologist
-183	Solicitor
-184	Physican - Geriatric
-185	Hand Therapist
-186	Phlebolgist
-187	Anaesthetist & Intensivist
-188	Physician - Rehabilitation
-189	Diabetes Educator
-190	Optometrist
-191	Orthopaedic Surgeon - General
-192	Physician - Muskuloskeletal
-193	Psychologist
-194	Physician - Breast
-195	Case Manager
-196	Tyre Fitter
-197	Orthopaedic Surgeon -  Paediatric
-198	ENT registrar
-199	Haematologist
-200	Massage Therapist
-201	Neonatologist
-202	Surgeon
-203	Student - High School
-\.
-
-
---
--- Data for Name: lu_occupations_bak; Type: TABLE DATA; Schema: common; Owner: -
---
-
-COPY lu_occupations_bak (pk, occupation) FROM stdin;
-1	Drover
+182	medical practitioner
+183	Gynaecological Oncologist
+184	Paediatrician
+185	gynaecologist
+186	Paediatrician - Behaviour
+187	Paediatrician - General
+188	Plant Operator
+189	psychologist
+190	psychologist
+191	Plant Fitter
+192	Roof Tiler
+193	Service Supervisor
+194	Ophthalmologist & Plastic Surgeon
+195	Fitter Machinist
+196	Radiation Oncology
+197	Paediatric Allergist and Immunologist
+198	Transplant Surgeon
+1	drover
 2	teacher
-3	Painter
-4	Nurse
-5	Haematologist
+3	painter
+4	nurse
+5	haematologist
 6	counsellor
-7	Dental Nurse
+7	dental nurse
 8	farmer
-9	Dietitian
-10	Colono-rectal surgeon
+9	dietitian
+10	colono-rectal surgeon
 11	endocrinologist
-12	Diabetologist
-13	Sheep Drover
-14	Roof Tiler
-15	Nuclear Physician
-16	Home Duties
-17	Project officer
-18	Cheif Executive Officer
-19	Medical Student
-20	General Practitioner
-21	Database Manager
-22	Artist
-23	IT Consultant
-24	Cardiologist - Interventional
-25	Prime Minister
+12	diabetologist
+13	sheep drover
+14	roof tiler
+15	nuclear physician
+16	home duties
+17	project officer
+18	cheif executive officer
+19	medical student
+20	general practitioner
+21	database manager
+22	artist
+23	it consultant
+24	cardiologist - interventional
+25	prime minister
 26	secretary
-27	Accountant
-28	Medical Practitioner
-29	Boiler Maker
-30	Sex worker
+27	accountant
+28	medical practitioner
+29	boiler maker
+30	sex worker
 31	seamstress
-32	Psychiatrist
-33	Podiatrist
-34	Cartoon character
-35	Roofer
-36	Mine Worker
-37	Cardiologist
+32	psychiatrist
+33	podiatrist
+34	cartoon character
+35	roofer
+36	mine worker
+37	cardiologist
 38	bank manager
-39	Teacher - Primary School
-40	Cleaner
-41	Rheumatologist
-42	ENT surgeon
+39	teacher - primary school
+40	cleaner
+41	rheumatologist
+42	ent surgeon
 43	unknown
-44	Police Officer
-45	Gynaecologist
+44	police officer
+45	gynaecologist
 46	builder
-47	Radio Operator
-48	Physiotherapist
-49	Fish Monger
-50	Office Manager
-51	Clinical Psychologist
-52	Sales representative
-53	Dentist
-54	Rocket Scientist
-55	Businessman
-56	Practice Manager
-57	Gardiner
-58	Gas Controller
+47	radio operator
+48	physiotherapist
+49	fish monger
+50	office manager
+51	clinical psychologist
+52	sales representative
+53	dentist
+54	rocket scientist
+55	businessman
+56	practice manager
+57	gardiner
+58	gas controller
 59	cane cutter
-60	General Surgeon
-61	Psychiatry Registrar
-62	Liason Officer
-63	Butcher
-64	Spectum Manager
-65	Medical secretary
-66	Nurses Aid
-67	Secretary
-68	Geriatrician
-69	sailor
-70	Information Technology Manager
-71	Respiratory Physician
-72	Dancer
-73	Radiologist
-74	Gastroenterologist
-75	Sex Therapist
-76	Pantry Maid
-77	General and Oncological Surgeon
-78	Teacher - High School
-79	Medical Secretary
-80	Child Minder
-81	Bowel Surgeon
-82	tailor
+60	general surgeon
+61	psychiatry registrar
+62	liason officer
+63	butcher
+64	spectum manager
+65	medical secretary
+66	nurses aid
+67	geriatrician
+68	sailor
+69	information technology manager
+70	respiratory physician
+71	dancer
+72	radiologist
+73	gastroenterologist
+74	sex therapist
+75	pantry maid
+76	general and oncological surgeon
+77	teacher - high school
+78	child minder
+79	bowel surgeon
+80	tailor
+81	plumber
+82	primary school teacher
+83	doctor
+84	psychologist
+85	taxi driver
+86	night watchman
+87	soldier
+88	speech therapist
+89	it manager
+90	immunologist
+91	solicitor
+92	minister of religion
+93	engineer
+94	tunnel borer
+95	school counsellor
+96	coal miner
+97	truck driver
+98	hair dresser
+99	labourer
+100	electrician
+101	strip club dancer
+102	carpenter
+103	security guard
+104	orthopaedic surgeon
+105	dermatologist
+106	drug representative
+107	obstetrician and gynaecologist
+108	marketing manager
+109	gastroenterologist and hepatologist
+110	physician
+111	paediatric neurologist
+112	radiation oncologist
+113	registrar - radiation oncology
+114	colorectal and general surgeon
+115	emergency physician
+116	case manager
+117	vascular & endovascular surgeon
+118	medical oncologist (trainee)
+119	directory rehabilitation medicine
+120	pain medicine specialist
+121	plastic surgeon
+122	ophthalmic surgeon
+123	acute case manager
+124	cosmetic plastic surgeon
+125	shoulder physician
+126	workcover assessor
+127	occupational therapist
+128	staff specialist medical oncology
+129	neurologist - adult
+130	nephrologist
+131	orthopaedic surgeon - upper limb
+132	cardiologist and physician
+133	general and abdominal surgeon
+134	vascular surgeon
+135	registered psychologist
+136	urologist
+137	neonatal paediatrician
+138	orthopaedic registrar
+139	physician & allergist
+140	orthopaedic surgeon - hand
+141	research co-ordinator
+142	physician - general
+143	neurosurgeon
+144	cardiologist - electrophysiologist
+145	surgeon - breast
+146	haematology registrar
+147	physician - infectious disease
+148	general & laparoscopic surgeon
+149	spinal & orthopaedic surgeon
+150	physician - renal
+151	chiropractor
+152	audiologist
+153	physican - geriatric
+154	hand therapist
+155	phlebolgist
+156	anaesthetist & intensivist
+157	physician - rehabilitation
+158	diabetes educator
+159	optometrist
+160	orthopaedic surgeon - general
+161	physician - muskuloskeletal
+162	physician - breast
+163	tyre fitter
+164	orthopaedic surgeon -  paediatric
+165	ent registrar
+166	massage therapist
+167	neonatologist
+168	surgeon
+169	student - high school
+170	paediatric urology
+171	neurosurgery
+172	consultant - pain medicine
+173	rheumatology
+174	orthopaedic surgeons - paediatric
+175	oral surgery
+176	general manager
+177	occupational physician
+178	urology
+179	surgeon - thoracic
+180	cardiology
+181	ent surgeron
+199	Landscaper
+200	Labourer
+201	ent surgeon - paediatric
+202	crew member
+203	Deli Assistant
+204	Pest controller
+205	Sergeant of Police
+206	Sports physician
+207	Store Manger
+210	personal assistant
+211	steel fixer
+212	Senior Firefighter
+213	Chef
+214	Chef
+215	Catchment Officer
+216	Machine Operator
+217	Air Conditioning Mechanic
+218	orthopaedic surgeon - Hip & Knee
+219	career medical officer
+220	Bistro Assistant
+221	Scaffolder
+222	Carpenter
+223	Counselling Psychogist
+224	respiratory & sleep physician
+225	Merchandiser
+226	Cardiothoracic Surgeon
+227	Exercise Physiologist
+228	Customer Service Assistant
+229	Apprentice Boilermaker
+230	Paediatrician
+231	Audiometrist
+232	Orthpaedic Surgeon - Upper Limb
+233	Falls Intake Coordinator
+234	Booking Officer
+235	Process Worker
+236	Medical Oncology Registrar
+237	Horticulturalist Supervisor
+238	Stevadore
+239	Rehabilitation Paediatrician
+240	Paediatric Surgeon
+241	Rheumatologist
+242	vascular surgeon
+243	Dietitian
+244	Orthodontist
+245	Resident Medical Officer
+246	staff specialist diabetic clinic
+247	Speech Pathologist
+248	podiatrist
+249	Oral & Maxillofacial Surgeon
+250	Clinic Research Data Manager
+251	Geotechnician
+252	Assistant In Nursing
+253	Physician - Emergency
+254	Supervisor
+255	Truck Driver
+256	Plastic, Reconstructive & Hand Surgeon
+257	School Learning Support Officer
+258	Return to Work Co-Ordinator
+259	Medical Oncologist
+260	Locum Cardiologist
+261	gastroenterologist and hepatologist - paediatric
+262	Forensic Phychologist
+263	Counselling Bereavement adult
+264	Rehabilitation and Pain Medicine consultant
+265	coal miner
+266	Epidemiologist
+267	General work
+268	Laundry Worker
+269	Senior Staff Specialist Addiction Medicine
+270	Wardsperson
+271	Hepatopancreatobilliary & Upper GI Surgeon
+272	Farm Hand
+273	rehabilitation consultant
+274	Psychogeriiatrician
+275	Occupational Medical Consultant
+276	Clinical Nurse Consultant
+277	Registered Nurse
+278	Purchasing Officer
+279	Cook
+280	Rehabilitation Medicine Physician
+281	House Keeper
+282	Consultant Psychologist
+283	clerk
+284	PE Teacher
+285	Urology Registrar
+286	Delivery Driver
+287	Manager
+288	Account Manager
+289	Sales Assistant
+290	Registrar - neurosurgery
+291	Registrar - Surgery
+292	Child care worker
+293	Surgeon - GIT and General
 \.
 
 
@@ -63584,13 +64435,33 @@ COPY lu_religions (pk, religion) FROM stdin;
 --
 
 COPY lu_route_administration (pk, abbreviation, route) FROM stdin;
-1	i.m.	intramuscular
-2	s.c.	subcutaneous
-4	nasal	intra-nasal
-3	o	oral
-5	dermal	intradermal
-6	inhaled	inhaled
-7	topical	topical
+1	imi	intramuscular
+2	sc	subcutaneous
+3	sc or imi	subcutaneous or intramuscular
+4		intradermal
+5		oral
+6		intranasal
+7		inhaled
+8		topical
+9		intrathecal
+10		sublinqual
+11	ivi	intravenous
+12		intraarterial
+13		intracardiac
+14		intraosseous
+15		intraperitoneal
+16		intravesical
+17		intravitreal
+18		intrauterine
+19		intrauterine
+20		intracavernous
+21		intravaginal
+22		extra-amniotic
+23		topical
+24		epidural
+25		intracerebral
+26		intracerebroventricular
+27		rectal
 \.
 
 
@@ -63610,11 +64481,17 @@ COPY lu_seasons (pk, season) FROM stdin;
 -- Data for Name: lu_site_administration; Type: TABLE DATA; Schema: common; Owner: -
 --
 
-COPY lu_site_administration (pk, site) FROM stdin;
-1	thigh
-2	deltoid
-3	abdomen
-4	buttock
+COPY lu_site_administration (pk, site, has_laterality) FROM stdin;
+1	thigh (imi)	t
+2	deltoid (imi)	t
+3	ventrogluteal (imi)	t
+4	thigh (scut)	t
+6	ventrogluteal (scut)	t
+7	abdo wall  (scut)	t
+9	intra-nasal	f
+5	deltoid (scut)	t
+8	oral	f
+10	unkown	f
 \.
 
 
@@ -63780,43 +64657,6 @@ COPY lu_address_types (pk, type) FROM stdin;
 --
 
 COPY lu_categories (pk, category) FROM stdin;
-173	Hospital Clinic
-174	Rheumatologists
-176	Pathology Company Staff
-177	Public Hospital - Orthopaedics
-178	Public Hospital - Renal
-182	Public Hospital - Surgery
-185	Cardiac Electrophysiology
-186	Workcover Insurance
-187	Tyre Company
-188	Orthopaedic Surgeons - Paediatric
-189	Public Hospital - Registrars
-190	Orthopaedic Surgery - Foot and ankle
-191	Pharmaceutical Company
-192	Public Hospital - Obstetrics
-193	Public Hospital - Radiology
-194	Public Hospital - Paediatrics
-196	Urologists
-197	Paediatric Surgery
-198	Paediatrics - Neonatal
-199	physiotherapy - Hand
-202	Public hospital
-203	Public Hospital - Immunology
-169	Anaesthetic Provider
-175	Optometrists
-179	Audiologists
-180	Health Centre - Community
-181	Public Hospital - Podiatry
-183	Psychological Services
-184	Psychologists
-195	Massage
-200	Surgery - Oesophago-gastric
-201	Public Hospital - Otolaryngology
-204	Public Hospital -  Urology
-170	Anaesthetics
-171	Public Health - Diabetes
-172	Diabetes Education
-205	Public Hospital - Diabetes
 1	pathology provider
 2	radiology provider
 3	nuclear Medicine Provider
@@ -63851,10 +64691,31 @@ COPY lu_categories (pk, category) FROM stdin;
 32	Diabetes provider
 33	ENT Provider
 34	Dermatology Provider
-35	opthalmology provider
 36	messaging Provider
 37	urology provider
 38	Geriatric Provider
+220	Varicose Veins & Cosmetic
+221	Community Nursing
+225	Public Hospital - Physiotherapy
+226	Public Hospital  - Neonatal Unit
+227	Paediatric  Provider
+228	Public Guardian
+229	Public Hospital - ENT
+230	Ophthalmic Provider
+231	Medical Specialist Centre
+232	Construction
+233	Public Hospital - Theatres
+234	Public Hospital -  Audiology
+235	Roofing Company
+236	Pump Suppliers
+237	Psychogists
+238	Ocular Plastic Surgeons
+239	Health Fund
+240	Engineering Company
+241	Paediatrics - Immunology
+242	Public Hospital - Transplant Unit
+243	Surgery -  Transplant
+244	Public School
 39	Oncology Provider
 40	Hearing Services Provider
 41	Preventive Health Provider
@@ -63865,127 +64726,294 @@ COPY lu_categories (pk, category) FROM stdin;
 46	Bone Density Provider
 47	Periodontal Provider
 48	Health Care Provider
-49	obstetrics & gynaecology
-50	General Practitioner
-51	Public Hospital
-52	Cardiology
-53	Radiologist
-54	General Practice
-55	Clinical Psychology
-56	Medical
-57	Dietition
-58	General Practice Staff
-59	Nursing Staff
-60	Speech Therapy
-61	Cardiologist
-62	Sales Representative
-63	Information Technology
-64	Immunology
-65	Endocrinologist
-66	Surgery - General
-67	Technical College
-68	Division of General Practice
-69	Dietitian
-70	Clinical Psychologist
-71	physiotherapy
-72	Nursing
-73	Gynaecology
-74	Dermatology
-75	psychologist
-76	endocrinology
-77	locum
-78	Public Hospital - Endocrinology
-79	Geriatritian
-80	Radiology Staff
-81	Physician - Infectious Diseases
-82	Orthopaedic Surgeon
-83	Paediatric Neurology
-84	colorectal surgery
-85	Radiation Oncology
-86	High School -  Public
-87	School Counsellor
-88	Emergency Medicine
-89	Rehabilitation Managers
-90	General & Oncological Surgery
-91	Vascular Surgery
-92	Public Hospital - Oncology
-93	Medical Oncology
-94	Cardiac Investigations
-95	Public Hospital - Outpatients
-96	Rehabilitation Medicine
-97	Pain Service
-98	Pain Medicine
-99	ENT Surgeon
-100	Ophthalmology
-101	Orthopaedic Surgery
-102	Aged Care
-103	Private Hospital
-104	Geriatric Medicine
-105	Haematology
-106	Screening Program
-107	Musculoskeletal Medicine
-108	Insurancee Company
-109	WorkCover Rehabilitation
-110	Public Hospital Staff
-111	Medical Practitioner
-112	Renal
-113	Physician - Nephrology
-114	Opathalmic Surgeons
-115	gastroenterology
-116	State Government
-117	Skin Check Clinic
-118	Orthopaedic Surgery - Upper Limb
-119	Breast Surveillance
-120	General Surgery
-121	Physician - Respiratory
-122	Pathology Company
-123	Psychology
-124	Respiratory Physicians
-125	Injury Management
-126	Urology
-127	Opthalmic Surgery
-128	Neonatal Paediatrics
-129	ENT Surgery
-130	Hospital staff
-131	Physican - General
-132	Nephrology
-133	Neurology
-134	Orthopaedic Surgery - Hand
-135	Public Health
-136	Research
-137	Cardiologists
-138	Plastic Surgery
-139	Eye Surgery
-140	Physicians - General
-141	Neurosurgery
-142	Surgery - Oncology
-143	Public Hospital - Haematology
-144	Public Hospital - Staff
-145	Public Hospital - Appointments
-146	Public Hospital - Imaging
-147	Orthopaedic Surgeons
-148	Medical Centre
-149	Laparoscopic Surgery
-150	Public Hospital - Vascular
-151	Chiropractic
-152	chiropractors
-153	Sports Medicine
-154	Podiatrists
-155	Dietitians
-156	Endocinologists
-157	Occupational Therapists
-158	Lawyers and Solicitors
-159	Physiotherapists
-160	General Practitioners
-161	Geriatrics
-162	Ophthalmic Surgeons
-163	Haematologists
-164	Psychiatry
-165	Phlebology
-166	Public Hospital - Emergency
-167	Public Hospital - General Surgery
-206	Psychiatry
-208	Psychiatry
+49	Anaesthetic Provider
+50	obstetrics & gynaecology
+51	General Practitioner
+52	Public Hospital
+222	Paediatrics
+223	Community Mental Health Service
+224	Old Age Service
+53	Cardiology
+54	Radiologist
+55	General Practice
+56	Clinical Psychology
+57	Medical
+58	Dietition
+59	General Practice Staff
+60	Nursing Staff
+61	Speech Therapy
+62	Cardiologist
+63	Sales Representative
+64	Information Technology
+65	Immunology
+66	Endocrinologist
+67	Surgery - General
+68	Technical College
+69	Division of General Practice
+70	Dietitian
+71	Clinical Psychologist
+72	physiotherapy
+73	Nursing
+74	Gynaecology
+75	Dermatology
+76	psychologist
+77	endocrinology
+78	locum
+79	Public Hospital - Endocrinology
+80	Geriatritian
+81	Radiology Staff
+82	Physician - Infectious Diseases
+83	Orthopaedic Surgeon
+84	Paediatric Neurology
+85	colorectal surgery
+86	Radiation Oncology
+87	High School -  Public
+88	School Counsellor
+89	Emergency Medicine
+90	Rehabilitation Managers
+91	General & Oncological Surgery
+92	Vascular Surgery
+93	Public Hospital - Oncology
+94	Medical Oncology
+95	Cardiac Investigations
+96	Public Hospital - Outpatients
+97	Rehabilitation Medicine
+98	Pain Service
+99	Pain Medicine
+100	ENT Surgeon
+101	Ophthalmology
+102	Orthopaedic Surgery
+103	Aged Care
+104	Private Hospital
+105	Geriatric Medicine
+106	Haematology
+107	Screening Program
+108	Musculoskeletal Medicine
+110	WorkCover Rehabilitation
+111	Public Hospital Staff
+112	Medical Practitioner
+113	Renal
+114	Physician - Nephrology
+116	gastroenterology
+117	State Government
+118	Skin Check Clinic
+119	Orthopaedic Surgery - Upper Limb
+120	Breast Surveillance
+121	General Surgery
+122	Physician - Respiratory
+115	Ophthalmic Surgeons
+35	ophthalmology provider
+123	Pathology Company
+124	Psychology
+125	Respiratory Physicians
+126	Injury Management
+127	Urology
+129	Neonatal Paediatrics
+130	ENT Surgery
+131	Hospital staff
+132	Physican - General
+133	Nephrology
+134	Neurology
+135	Orthopaedic Surgery - Hand
+136	Public Health
+137	Research
+138	Cardiologists
+139	Plastic Surgery
+140	Eye Surgery
+141	Physicians - General
+142	Neurosurgery
+143	Surgery - Oncology
+144	Public Hospital - Haematology
+145	Public Hospital - Staff
+146	Public Hospital - Appointments
+147	Public Hospital - Imaging
+148	Orthopaedic Surgeons
+149	Medical Centre
+150	Laparoscopic Surgery
+151	Public Hospital - Vascular
+152	Chiropractic
+153	chiropractors
+154	Sports Medicine
+155	Podiatrists
+156	Dietitians
+157	Endocinologists
+158	Occupational Therapists
+159	Lawyers and Solicitors
+160	Physiotherapists
+161	General Practitioners
+162	Geriatrics
+163	Ophthalmic Surgeons
+164	Haematologists
+165	Psychiatry
+166	Phlebology
+167	Public Hospital - Emergency
+168	Public Hospital - General Surgery
+169	Anaesthetics
+170	Public Health - Diabetes
+171	Diabetes Education
+172	Hospital Clinic
+173	Rheumatologists
+174	Optometrists
+175	Pathology Company Staff
+176	Public Hospital - Orthopaedics
+177	Public Hospital - Renal
+178	Audiologists
+179	Health Centre - Community
+180	Public Hospital - Podiatry
+181	Public Hospital - Surgery
+182	Psychological Services
+183	Psychologists
+184	Cardiac Electrophysiology
+185	Workcover Insurance
+186	Tyre Company
+187	Orthopaedic Surgeons - Paediatric
+188	Public Hospital - Registrars
+189	Orthopaedic Surgery - Foot and ankle
+190	Pharmaceutical Company
+191	Public Hospital - Obstetrics
+192	Public Hospital - Radiology
+193	Public Hospital - Paediatrics
+194	Massage
+195	Urologists
+196	Paediatric Surgery
+197	Paediatrics - Neonatal
+198	physiotherapy - Hand
+199	Surgery - Oesophago-gastric
+200	Public Hospital - Otolaryngology
+201	Public Hospital - Immunology
+202	Public Hospital -  Urology
+203	Public Hospital - Diabetes
+204	Public Hospital - Endoscopy
+205	Public Hospital - Neurosurgery
+206	Paediatric Orthopaedic surgeon
+207	Oral Surgeons
+208	public Hospital - Respiratory
+209	Public  Hospital - Staff
+210	Thoracic Surgery
+211	Public Hospital - General Medicine
+212	Polyclinic
+213	Polyclinic - Nursing
+214	Polyclinic - ACAT
+215	Day Surgery Facility
+216	Dermatologists
+217	Neurologists
+218	Public Hospital - Mental Health
+219	Mental Health - Substance Abuse
+245	Labour Hire
+109	insurance company
+246	Shipping Company
+247	Mining Services
+248	Dental Provider
+249	Bricklayers
+250	Paediatric Otolaryngology
+251	Fast Food Outlet
+252	Supermarket Chain
+253	Coal Mining Company
+254	Pest Control
+255	Police
+256	Palliative Care
+257	Travel Medicine
+258	Paint Company
+259	Construction Contractors
+260	Public Hospital
+261	Public Hospital - Cardiology
+262	Fire Brigade
+263	Restaurant
+264	Surgical Supplies
+265	Air Conditioning
+266	Adolescent Health
+267	Infectious Diseases
+128	Ophthalmic Surgery
+268	Public Hospital
+269	Public Hospital
+270	Private Hospital - Oncology
+271	Medical Officer
+272	Club
+273	Community Services
+274	Builders
+275	Counselling Psychogists
+276	public hospital
+277	Diabetes
+278	Houshold Product Company
+279	Cardiothoracic Surgery
+280	Occupational Health
+281	LifeStyle Clinic
+282	Exercise Physiology
+283	Public Hospital
+284	Retail
+285	Parenting
+286	Metal Services
+287	Public hospital
+288	Head and Neck Surgery
+289	Counsellors
+290	Paediatrics
+291	Paediatrics
+292	Terminations
+293	Day Hospital
+294	Rehabilitation
+295	Workplace Health Specialists
+296	Auction Company
+297	Local Government
+298	Call Centre
+299	New South Wales Government
+300	Training Company
+301	Blood Bank
+302	Blood Service
+303	University
+304	Orthodontic Provider
+305	NSW Government
+306	Public Hospital
+307	Family Planning
+308	Netball Association
+309	GeoTechnical Testing
+310	Aged Care Facility
+311	Building Services
+312	Motor Registry
+313	Continence
+314	Superannuation
+315	Teriary Education Institute
+316	Manufacturing Company
+317	Bereavement Counselling
+318	Travel Insurance
+319	Oral & Maxillofacial Surgery
+320	Fabrication
+321	Alternative Health
+322	Psychiatric Rehabilitation
+323	Disability
+324	Health Clinic
+325	Chartered Accountants
+326	Electrical Contractors
+327	Turf Supply
+328	airline
+329	Steel Products
+330	Employment Medical Provider
+331	Public Hospital - Occupational Therapy
+332	Security Company
+333	Public Hospital - eye
+334	Building Company
+335	veteran affairs
+336	Electrical Manufacturing
+337	College of Education
+338	Coal Health Services
+339	family care centre
+340	Weight loss centre
+341	Disability Residential Centre
+342	child care
+343	blood transfusion
+344	Rehabilitation Equipment
+345	Gym
+346	cancer foundation
+347	Public Hospital - Palliative Care
+348	dental prosthetist
+349	Pre Employment service
+350	Retail Store
+351	Life Insurance
+352	Nursing Home
+353	Heartmoves Team
+354	Home Modifications
+355	Telecross Service
+356	City Council
+357	social security
 \.
 
 
@@ -64014,8 +65042,8 @@ COPY lu_contact_type (pk, type) FROM stdin;
 COPY lu_employee_status (pk, status) FROM stdin;
 0	Active
 1	Inactive
-3	Left organisation
-4	On Leave
+2	Left organisation
+3	On Leave
 \.
 
 
@@ -71897,7 +72925,7 @@ COPY lu_title (pk, title) FROM stdin;
 4	Dr
 5	Prof
 6	Ms
-7	Unkown
+7	Unknown
 \.
 
 
@@ -83418,7 +84446,7 @@ SET search_path = db, pg_catalog;
 --
 
 COPY lu_version (pk, lu_major, lu_minor) FROM stdin;
-31	0	52
+124	0	134
 \.
 
 
@@ -83499,6 +84527,8 @@ COPY lu_archive_site (pk, archive_site) FROM stdin;
 COPY lu_display_as (pk, display_as) FROM stdin;
 1	letter
 2	result
+3	certificate
+4	image
 \.
 
 
@@ -83520,49 +84550,6 @@ COPY lu_message_standard (pk, type, version) FROM stdin;
 1	hl7	\N
 2	pit	\N
 3	none	\N
-\.
-
-
---
--- Data for Name: lu_stakeholder_type; Type: TABLE DATA; Schema: documents; Owner: -
---
-
-COPY lu_stakeholder_type (pk, type) FROM stdin;
-1	originator
-2	transmitter
-3	service provider
-4	recipient of copy
-\.
-
-
---
--- Data for Name: lu_stakeholders; Type: TABLE DATA; Schema: documents; Owner: -
---
-
-COPY lu_stakeholders (pk, stakeholder) FROM stdin;
-1	originator
-2	transmitter
-3	service provider
-4	recipient of copy
-\.
-
-
---
--- Data for Name: lu_type; Type: TABLE DATA; Schema: documents; Owner: -
---
-
-COPY lu_type (pk, type) FROM stdin;
-1	letter provider
-2	imaging
-3	pathology
-4	workcover
-5	insurance
-6	legal
-7	advertising
-8	education
-9	hospital discharge
-10	general correspondence
-11	legacy medical records
 \.
 
 

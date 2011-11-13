@@ -10,6 +10,8 @@ Private pk_view_responsible_persons As String '(pk_person-pk_adress)-
 Private Towns As Collection
 Private town As Collection
 Private fk_town As Integer
+Private timer_count As Integer
+Private fk_responsible_patient As Integer 
 
 Public Sub Init(cons As CConsult)
    
@@ -41,7 +43,7 @@ Public Sub Save()
    
    If Vbox_EditArea.padding = 0 Then Return 
    SocialHistory_Save()
-   Responsible_person_Save()  
+  ' Responsible_person_Save()  
    EditArea_Notify_Data_Change(False)
    
 End
@@ -89,6 +91,7 @@ Public Sub SocialHistory_Save()
    '           routines.
    '           If tempted to rationalise this code, please read
    '           the reasons for its oddness below
+   '           FIXME replace with cRow which now takes care of nulls
    '----------------------------------------------------------
    
    Dim item As New Collection
@@ -98,7 +101,7 @@ Public Sub SocialHistory_Save()
    'If you read this, this duplication may seem stupid, but is done so for these reasons
    'If a new record and got this far, one or other of these two things contains data
    '------------------------------------------------------------------------------------
-   If pk_socialhistory = -1 Then
+   If pk_socialhistory <> -1 Then
       
       item!history = Trim(teSocialHistory.text)
       item!responsible_person = Trim(txtResponsiblePerson.text)
@@ -115,6 +118,8 @@ Public Sub SocialHistory_Save()
       item.Add(Trim(teSocialHistory.text), "history")
       item.Add(Trim(txtResponsiblePerson.text), "responsible_person") 
    End If
+   item!history = Trim(teSocialHistory.text)
+   
    pk_socialhistory = modSocialHistoryDBI.Save(currentconsult, pk_socialhistory, item) 
    modDBConnect.CommitTrans()                    'commit first in case FH not valid
    currentconsult.Refresh("social_history")  
@@ -130,7 +135,7 @@ Public Sub SocialHistory_Display()
    '-----------------------------------------
    
    Dim item As Collection
-   
+   fk_responsible_patient = 0 'if 
    pk_socialhistory = -1
    bExit = True 
    For Each item In currentconsult!social_history
@@ -149,6 +154,8 @@ Public Sub responsible_person_Find()
    '---------------------------------------------------------------------- 
    
    If Trim(txtResponsiblePerson.text) = "" Then Return
+   timer1.Stop()
+   timer_count = 0
    With Listview1
       .Visible = False  
       .clear()
@@ -161,10 +168,11 @@ Public Sub responsible_person_Find()
       Next
       With Listview1
          .Visible = True   
+         .Raise
       End With
-      
    Endif
-   
+   timer1.Start
+
 End
 
 Public Sub Responsible_Person_Select()
@@ -184,7 +192,8 @@ Public Sub Responsible_Person_Select()
    Listview1.Visible = False  
    bexit = False  
    txtContactNumber.SetFocus()
-   
+   timer1.stop
+
 End
 
 Public Sub ListView1_KeyPress()
@@ -224,11 +233,20 @@ Public Sub EditArea_TextBox_KeyRelease()
    
    Select Case Last.tag
       Case "name"
-         responsible_person_Find()
+         timer_count = 0
       Case "suburb"
          Suburb_get()
    End Select
    
+End
+
+Public Sub Timer1_Timer()
+
+   Inc timer_count          'constantly being zero'd by editarea_keypress until user pauses typign
+   If timer_count > 3 Then 'arbitary should be user configured depending on typing speed FIXME
+      responsible_person_Find()
+   End If 
+
 End
 
 Public Sub EditArea_TextBox_KeyPress()
@@ -245,7 +263,7 @@ Public Sub EditArea_TextBox_KeyPress()
          Select Case Last.tag
                
             Case "social history"
-               txtResponsiblePerson.SetFocus()
+             txtResponsiblePerson.SetFocus()
             Case "name"
                txtStreet1.SetFocus
             Case "street1"
@@ -261,13 +279,15 @@ Public Sub EditArea_TextBox_KeyPress()
    End Select
    
 End
+
 Public Sub Responsible_Person_Remove()
    'Fixme - some sort of prompt + remove if key in database 
+
    fk_responsible_person = 0
    bExit = True
    modEditAreaHelpers.EditArea_Clear(VBox_ResponsiblePerson)
    bExit = False  
-  
+   
 End
 
 Public Sub EditArea_TextBox_Change()
@@ -278,9 +298,12 @@ Public Sub EditArea_TextBox_Change()
       Case "name"                                                  'no name = no keys or data
          If Trim(Last.text) = "" Then 
             Responsible_Person_Remove()
-
+            listview1.Visible = False  
+            timer_count = 0
+            timer1.Start()
          End If  
    End Select
+
 End                          
 
 Public Sub EditArea_TextBox_Lostfocus()
@@ -292,19 +315,22 @@ End
 Public Sub EditArea_TextBox_GotFocus()
    
    Last.BackGround = Color.rgb(95, 255, 175)
-   With ListView1
-      .top = HBox_ResponsiblePerson.top + Last.Parent.height + Last.parent.top
-      .left = Vbox_EditArea_inner.padding + Last.Left
-      .width = teSocialHistory.Width
-      .Raise
-      .Visible = False  
-      .tag = Last 
-   End With
-   
+   If Last.tag = "name" Then 
+      With ListView1
+         .top = Last.Parent.Parent.top + Last.Parent.height
+         .left = Last.Parent.Left
+         .width = Last.width
+         .Raise
+         .tag = Last 
+      End With
+      timer1.Start()
+      timer_count = 0
+   End If   
+
 End
 
 Public Sub Suburb_Select()
-
+   
    listview1.MoveCurrent()             'match internal cursor to marquee
    bExit = True
    txtSuburb.text = Towns[listview1.Item.key]!town
@@ -341,5 +367,7 @@ Public Sub Suburb_get()
 End
 
 Public Sub tbRemovePerson_Click()
-       Responsible_Person_Remove()
+
+   Responsible_Person_Remove()
+
 End

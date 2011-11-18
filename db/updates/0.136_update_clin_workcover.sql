@@ -5,7 +5,20 @@ comment on column clin_workcover.visits.latex is 'the LaTex definition of the wo
 DROP VIEW clin_workcover.vwworkcover;
 
 CREATE OR REPLACE VIEW clin_workcover.vwworkcover AS 
- SELECT visits.pk AS pk_view, visits.pk AS fk_visit, visits.fk_claim, consult1.consult_date AS start_date, consult.consult_date AS visit_date, consult.fk_patient, claims.claim_number, claims.fk_occupation, claims.fk_branch, claims.hours_week_worked, claims.mechanism_of_injury, claims.date_injury, claims.contact_person, claims.memo, claims.identifier, claims.fk_person, claims.accepted, consult.fk_staff, consult.fk_type, consult.summary, vwstaff.wholename AS staff_wholename, vwstaff.surname AS staff_surname, vwstaff.firstname AS staff_firstname, vwstaff.title AS staff_title, vwstaff.provider_number, lu_occupations.occupation, vworganisations.branch, vworganisations.fk_organisation, vworganisations.organisation, vworganisations.street1 AS branch_street1, vworganisations.street2 AS branch_street2, vworganisations.town AS branch_town, vworganisations.branch_deleted, vwpersons.wholename AS soletrader_wholename, vwpersons.firstname AS soletrader_firstname, vwpersons.surname AS soletrader_surname, vwpersons.title AS soletrader_title, vwpersons.town AS soletrader_town, vwpersons.street1 AS soletrader_street1, vwpersons.street2 AS soletrader_street2, vwpersons.postcode AS soletrader_postcode, vwpersons.address_deleted AS soletrader_address_deleted, lu_visit_type.type AS visit_type, visits.fk_lu_visit_type, visits.diagnosis, lu_systems.system AS coding_system, visits.fk_code, 
+ SELECT visits.pk AS pk_view, visits.pk AS fk_visit, visits.fk_claim, consult1.consult_date AS start_date,
+ consult.consult_date AS visit_date, consult.fk_patient, claims.claim_number, claims.fk_occupation,
+ claims.fk_branch, claims.hours_week_worked, claims.mechanism_of_injury, claims.date_injury,
+ claims.contact_person, claims.memo, claims.identifier, claims.fk_person, claims.accepted,
+ consult.fk_staff, consult.fk_type, consult.summary, vwstaff.wholename AS staff_wholename,
+ vwstaff.surname AS staff_surname, vwstaff.firstname AS staff_firstname, vwstaff.title AS staff_title,
+ vwstaff.provider_number, lu_occupations.occupation, vworganisations.branch, vworganisations.fk_organisation,
+ vworganisations.organisation, vworganisations.street1 AS branch_street1, vworganisations.street2 AS branch_street2,
+ vworganisations.town AS branch_town, vworganisations.branch_deleted, vwpersons.wholename AS soletrader_wholename,
+ vwpersons.firstname AS soletrader_firstname, vwpersons.surname AS soletrader_surname,
+ vwpersons.title AS soletrader_title, vwpersons.town AS soletrader_town, vwpersons.street1 AS soletrader_street1,
+ vwpersons.street2 AS soletrader_street2, vwpersons.postcode AS soletrader_postcode,
+ vwpersons.address_deleted AS soletrader_address_deleted, lu_visit_type.type AS visit_type,
+ visits.fk_lu_visit_type, visits.diagnosis, lu_systems.system AS coding_system, visits.fk_code, 
         CASE
             WHEN visits.fk_code IS NOT NULL THEN ( SELECT DISTINCT generic_terms.term
                FROM coding.generic_terms

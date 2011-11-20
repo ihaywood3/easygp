@@ -1,0 +1,749 @@
+' Gambas class file
+
+' Gambas class file
+' Copyright (C) 2008,2009 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'
+'----------------------------------------------------------------------
+
+Private bExit As Boolean
+Private iCurrentTab As Integer
+Private coding_systems As Collection 
+Private codingsystem As Collection 
+Private fk_system As Integer
+Private pk_available_system As Integer 
+Private pk_view As Integer 
+Private zip_file_path As String
+Private view_rows As Collection
+Private help_dir As String
+Private FHelp As FHtmlViewer 
+Private Boot_message As String = ""
+"<html><head><title>Selecting a coding system</title></head><body>"
+"<h2>Selecting a coding system</h2>"
+"<p>A basic version of ICD10 is installed as the EasyGP default.</P>"
+"<p>Whilst this will provide you with a basic coding system, often the terms used "
+"in icd10 are not that easy to find, or are 'long winded'. For Australian general practice "
+"ICPC2Plus is more user friendly.</P>"
+"<p>You may change the coding system for example to ICPC2 Plus, but you must have a paid subscription. For "
+"details of how to obtain this please consult the help files Licencing section.</P>"
+"If you already have a licence and the supplied zipped data files, please do the following:</P>" 
+"<UL>"
+"<LI><P> Click on the Add button which will enable the file-find buttons in the editing area."
+"<LI><P> Set the path to the zip file on your hard drive </P>"
+"< LI > < P > Set the path To the an licence file on your " 
+"hard drive and the data will be imported or updated</P>"
+"<P></P>"
+"<LI> <P>Next check the 'Set as EasyGP Default' checkbox</P> "
+"</UL>"
+"After you have finished click the Save (F12) button and the status bar of the program should "
+"update and notify that you will not be using ICPC2 Plus"
+
+"</BODY></HTML>"
+
+"</BODY></HTML>"
+Private About_ICD10 As String = ""
+"<html><head><title>ICD10</title></head><body>"
+"<h2>ICD10</h2>"
+"<p>The <b>International Statistical Classification of Diseases and Related Health Problems</b> 10th Revision "
+"Is a coding of diseases and signs, symptoms, abnormal findings, complaints, social circumstances "
+"and external causes of injury or diseases, "
+"as classified by the World_Health_Organization (WHO)</p>"
+"<P>The code set allows more than 155,000 different codes and permits tracking of many new "
+"diagnoses and  surgical Procedures,"
+" a significant expansion on the 17,000 codes available in ICD-9 </p> "
+"<p>Work on ICD-10 began in 1983  and was completed in 1992</p>"
+"</BODY></HTML>"
+
+Public Sub form_Open()
+   
+   Init()
+   
+End
+
+Public Sub Init()
+   
+   lblmeasure.text = "  Set as EasyGP Default  "
+   modEditAreaHelpers.Resize_labels(VBox_EditArea, lblmeasure)
+   With cvwInstalledSystems
+      .Columns.count = 3
+      .Columns[0].width = 400 '
+      .Columns[1].width = 200
+   End With
+   coding_systems = modUtil.LoadCombo(cmbCodingSystem, modCodingDBI.Get_coding_Systems_Available(), "system")
+   With FHelp = New FHtmlViewer(Vbox_Help)
+      .tbWebBrowserZoomIn.Visible = True   
+      .tbWebBrowserZoomOut.Visible = True   
+   End With
+   Try Settings_Load()
+   help_dir = Application.Path &/ "help/"
+   Reload()
+   modEditAreaHelpers.Help_Show("setting-a-coding-system.html", FHelp)
+
+End
+
+Public Sub Reload()
+   '---------------------------------
+   'Show all installed coding systems
+   '---------------------------------  
+   
+   Dim codingsystem As Collection
+   Dim x As Integer
+   
+   EditArea_Clear()
+   view_rows = modCodingDBI.Check_installed()
+   cvwInstalledSystems.Clear()
+   '  FMain.Set_Coding_Panel_Label("") 'remove existing coding system from notification on task bar
+   For Each codingsystem In view_rows
+      x = codingsystem!pk_system
+      cvwInstalledSystems.Add(x, 0)
+      cvwInstalledSystems[x][0] = codingsystem!system
+      '     If codingsystem!default_system = True Then 
+      '     cvwInstalledSystems[x][2] = "Default coding system for clinical section"
+      '   FMain.Set_Coding_Panel_Label(codingsystem)
+      '     FClinical.Display_Coding_System()
+      '   Else
+      '     cvwInstalledSystems[x][2] = "Not used"
+      '   End If
+   Next
+  ' tlhelp.text = Boot_message
+   cvwInstalledSystems.SetFocus()
+   
+End
+
+
+Public Sub form_Close()
+   
+   Settings_Save()
+   
+End
+
+Public Sub Settings_Save()
+   
+   Settings["Admin_Import/Hsplit_ImportCoding.layout"] = HSplit_ImportCoding.layout
+   Settings["Admin_Import/VSplit_CodingImport.Layout"] = VSplit_CodingImport.Layout
+   Settings["Admin_Import/HSplit_ImportCoding.Layout"] = FHelp.WebView1.Zoom
+End
+
+Private Sub Settings_Load()
+   
+   Try HSplit_ImportCoding.layout = Settings["Admin_Import/Hsplit_ImportCoding.layout"] 
+   Try VSplit_CodingImport.Layout = Settings["Admin_Import/VSplit_CodingImport.Layout"]
+   Try FHelp.WebView1.Zoom = Settings["Admin_Import/HSplit_ImportCoding.Layout"]
+End
+
+Public Function ICD10_Import() As Boolean 
+   
+   Dim cmd As String 
+   
+   cmd = "cd " & Replace(Application.path, "client", "db/coding/") & "; "
+   cmd &= "psql " & modDBConnect.DbName & " -f icd10_import_gambas.sql;" 
+   Try Shell cmd Wait 
+   
+End
+
+Public Function ICPC2_Import() As Boolean
+   '------------------------------------------------------------------
+   'Import ICPC2 Plus via bash commands
+   'FIX ME APPEND USER TERMS FROM OLD DB TO NEW
+   'God knows why these people are so inconsistant, but 
+   'all files with .csv have field defs in first line but
+   '.CVS dont.
+   'So this routine, removes that line before import
+   'returns true if successful
+   'We have had permission to use the schema publically, not the data
+   '------------------------------------------------------------------
+   
+   Dim tmp As String
+   Dim cmd As String
+   Dim dirname As String 
+   Dim filename As String
+   Dim oneline As String
+   Dim tmpfile As File 
+   Dim csvfile As File
+   Dim linecount As Integer
+   '--------------------------
+   'First some basic validation
+   '---------------------------
+   Return 
+   If Trim(txtImportFilename.text) = "" Or Lower(Right(Trim(txtImportFilename.text), 4)) <> ".zip" Then
+      '  If Lower(Right(Trim(txtImportFilename.text), 4)) <> ".zip" Then
+      Message.info("Please supply a valid path to the ICPC2Plus data zip file.")
+      '  End If
+      txtImportFilename.SetFocus()
+      Return False
+   End If   
+   
+   '-----------------------------------------------------------------------------------
+   'Create a Log file And at same Time update the listbox To show user what 's happening
+   '-----------------------------------------------------------------------------------
+   Inc Application.Busy
+   tmp = Temp()
+   Log.DebugMsg("Subroutine:Fmaintainance.ICPC2Plus_Import")
+   Log.DebugMsg("User:" & modDBConnect.currentUser!wholename)
+   Log.DebugMsg("Started importing icpc2 plus data")
+   lvwImport.Add(lvwImport.count, "Started importing icpc2 plus data...........")
+   Wait
+   lvwImport.Add(lvwImport.count, "Testing if " & "/tmp/easygp-install exists.....")
+   Log.DebugMsg("Testing if " & "/tmp/easygp-install exists.....")
+   Wait
+   '--------------------------------------------
+   'Create a tmp directory in /tmp/easygp-install 
+   '---------------------------------------------
+   If Not Exist("/tmp/easygp-install") Then
+      Log.DebugMsg("Couldn't find /tmp/easygp-install - trying to create the directory") 
+      Try Mkdir "/tmp/easygp-install"
+      If Error Then
+         Message.info("The temporary directory could not be created, the files will not be extracted")
+         lvwImport.Add(lvwImport.count, "The temporary directory could not be created, the files will not be extracted")
+         Log.DebugMsg("Looks like we failed.... exiting") 
+         Wait zip_file_path = Trim(Last.text)
+         Goto Error_closelogfile
+      End If
+   End If   
+   '-----------------------------------------------------------------------
+   'Now unzip the developers file and copy all files to /tmp/easygp-install
+   'The file could have blanks in the name, so fix this
+   '-----------------------------------------------------------------------
+   lvwImport.Add(lvwImport.count, "Importing icpc2 data into tables.....") 
+    Log.DebugMsg("Importing icpc2 data into tables.....")
+   Wait
+   lvwImport.Add(lvwImport.count, "unzipping icpc2 data.....") 
+   Log.DebugMsg("unzipping icpc2 data.....") 
+   Wait
+   If InStr(zip_file_path, " ") Then
+      zip_file_path = Replace(zip_file_path, " ", "\\ ")
+   End If
+   Log.DebugMsg("unzip -o " & zip_file_path & " -d " & "/tmp/easygp-install")
+   lvwImport.Add(lvwImport.count, "unzip" & " " & "-o -P" & " " & zip_file_path & " -d " & "/tmp/easygp-install")
+   Wait 
+   Try Shell "unzip -o " & zip_file_path & " -d " & "/tmp/easygp-install" Wait
+   If Error Then
+      Message.info("error whilst unzipping the data file")
+      Log.DebugMsg("an error whilst unzipping the data file")
+      lvwImport.Add(lvwImport.count, "error whilst unzipping the data file")
+      Goto Error_closelogfile 
+   End If
+   '----------------------------------------------------------
+   'Now remove the first line on all the lower case .csv files
+   'which contain field names
+   '----------------------------------------------------------
+   dirname = File.BaseName(zip_file_path)
+   Log.DebugMsg("copying files to temp directory")
+   Log.DebugMsg("Removing unwanted field names in first line of file.....")
+   Shell "cp /tmp/easygp-install/" & dirname & "/* /tmp/easygp-install/" 
+   lvwImport.Add(lvwImport.count, "Copying files to temporary directory.....")
+   lvwImport.Add(lvwImport.count, "Removing unwanted field names in first line of file.....")
+   Wait
+   tmp = Temp() 'get a temp filename
+   '--------------------------------------------
+   'List all files or subdirectories in the root
+   '--------------------------------------------
+   If Not Dir("/tmp/easygp-install").count Then 
+      Message.Info("There are no valid files to import in the zip archive")
+      Log.DebugMsg("There are no valid files To import In the zip archive")
+      Shell "rm -Rf /tmp/easygp-install" Wait
+       Log.DebugMsg("rm -Rf /tmp/easygp-install")
+      Goto Error_closelogfile  
+   End If
+   For Each filename In Dir("/tmp/easygp-install")
+      '------------------------------------------------------------------------------
+      'Check each file in this directory, if the file ending is .csv, doctor the file
+      '------------------------------------------------------------------------------
+      lvwImport.Add(lvwImport.count, "Checking file endings for .csv occurrence .....")
+      Log.DebugMsg("Checking file endings for .csv occurrence .....")
+      Wait
+      If Not IsDir("/tmp/easygp-install" & filename) Then 
+         If File.Ext(filename) = "csv" Then                                              'if a .csv file
+            lvwImport.Add(lvwImport.count, "Found file:" & filename & " stripping out field definitions.....")
+            Log.DebugMsg("Found file:" & filename & " stripping out field definitions.....")
+            Wait
+            tmp = Temp() 
+            lvwImport.Add(lvwImport.count, "tail -n+2 " & "/tmp/easygp-install/" & filename & ">" & tmp & "; mv " & tmp & " /tmp/easygp-install/" & filename)
+            Log.DebugMsg("tail -n+2 " & "/tmp/easygp-install/" & filename & ">" & tmp & "; mv " & tmp & " /tmp/easygp-install/" & filename)
+            Shell "tail -n+2 " & "/tmp/easygp-install/" & filename & ">" & tmp & "; mv " & tmp & " /tmp/easygp-install/" & filename Wait
+         End If
+      End If  
+   Next
+   '-------------------------------------
+   'Now create the actual database schemapsql easygp -f 0.136_update_clin_workcover.sql
+
+   '-------------------------------------
+   Log.DebugMsg("Looks good to go... create the schema...")
+  
+   cmd = "cd " & Replace(Application.path, "client", "db/coding/") & "; "
+   cmd &= "psql " & modDBConnect.DbName & " -f icpc2_create_schema_gambas.sql;" 
+   Try Shell cmd Wait 
+   Log.DebugMsg("Don't seem to have hit any rocks.. now the data")
+   '--------------------------
+   'now import the data itself
+   '--------------------------
+   Log.DebugMsg("Importing icpc2 data into tables. existing data will be deleted")
+   lvwImport.Add(lvwImport.count, "Existing data will be deleted....") 'fixme at some point need update script
+   Wait
+   lvwImport.Add(lvwImport.count, "Importing icpc2 data into tables.........")
+   Wait    
+ '  cmd = "cd " & Replace(Application.path, "client", "db/coding/") & "; "
+                          
+   cmd = "cp " & Replace(Application.path, "client", "db/coding/") &/ "icpc2_install_data.sql /tmp/easygp-install/"
+   Print cmd
+   
+   Shell cmd Wait                                                                    
+   cmd = "cd /tmp/easygp-install;" ' where we unpacked the datafiles
+   cmd &= "psql " & modDBConnect.DbName & " -f  icpc2_install_data.sql;"
+   Log.DebugMsg("psql " & modDBConnect.DbName & " -f " & Application.Path & "/db/coding/icpc2_install_data.sql")
+   lvwImport.Add(lvwImport.count, "Bash command: psql " & modDBConnect.DbName & " -f " & Application.Path & "/db/coding/icpc2_install_data.sql")
+   Wait
+   Shell cmd Wait
+   lvwImport.Add(lvwImport.count, "ICPC2 Plus data import is complete") 
+   Wait
+   Log.DebugMsg("ICPC2 Plus data was successfully imported... hopefully")
+   Shell "rm -Rf /tmp/easygp-install" Wait
+   Dec Application.busy
+   Return True
+Error_closelogfile:
+
+   Dec Application.busy
+   Return False  
+   
+Finally 'unspecified error
+   Message.info("An unspecified error occurred whilst attempting to import ICPC2 Plus")
+   Log.DebugMsg("An unspecified error occurred whilst attempting to import ICPC2 Plus")
+   Dec Application.busy
+   Return False
+   
+End
+Public Function ICPC2_Import_old() As Boolean
+   '----------------------------------------------------------------------
+   'Import ICPC2 Plus via bash commands, dosn't go through database object
+   'FIX ME APPEND USER TERMS FROM OLD DB TO NEW
+   'God knows why these people are so inconsistant, but 
+   'all files with .csv have field defs in first line but
+   '.CVS dont.
+   'So this routine, removes that line before import
+   'returns true if successful
+   ' Log.DebugMsg Log.DebugMsg
+   '-----------------------------------------------------
+   
+   Dim tmp As String
+   Dim wfile As File
+   Dim dirname As String 
+   Dim filename As String
+   Dim oneline As String
+   Dim tmpfile As File 
+   Dim csvfile As File
+   Dim linecount As Integer
+   '--------------------------
+   'First some basic validation
+   '---------------------------
+   If Trim(txtImportFilename.text) = "" Or Lower(Right(Trim(txtImportFilename.text), 4)) <> ".zip" Then
+      '  If Lower(Right(Trim(txtImportFilename.text), 4)) <> ".zip" Then
+      Message.info("Please supply a valid path to the ICPC2Plus data zip file.")
+      '  End If
+      txtImportFilename.SetFocus()
+      Return False
+   End If   
+   
+   '-----------------------------------------------------------------------------------
+   'Create a log file and at same time update the listbox to show user what's happening
+   '-----------------------------------------------------------------------------------
+   Inc Application.Busy
+   tmp = Temp()
+   wfile = Open tmp & "FMaintenance.ICPC2Plus_Import" For Write Create
+   Print #wfile, "Subroutine:Fmaintainance.ICPC2Plus_Import"
+   Print #wfile, "User:" & modDBConnect.currentUser!wholename
+   Print #wfile, "Started importing icpc2 plus data"
+   lvwImport.Add(lvwImport.count, "Started importing icpc2 plus data...........")
+   Wait
+   lvwImport.Add(lvwImport.count, "Testing if " & "/tmp/easygp-install exists.....")
+   Print #wfile, "Testing if " & "/tmp/easygp-install exists....." 
+   Wait
+   '---------------------------------------------html_datahtml_data
+   'Create a tmp directory in /tmp/easygp-install 
+   '---------------------------------------------
+   If Not Exist("/tmp/easygp-install") Then
+      Try Mkdir "/tmp/easygp-install"
+      If Error Then
+         Message.info("The temporary directory could not be created, the files will not be extracted")
+         lvwImport.Add(lvwImport.count, "The temporary directory could not be created, the files will not be extracted")
+         Wait
+         Goto Error_closelogfile
+      End If
+   End If   
+   '-----------------------------------------------------------------------
+   'Now unzip the developers file and copy all files to /tmp/easygp-install
+   'The file could have blanks in the name, so fix this
+   '-----------------------------------------------------------------------
+   lvwImport.Add(lvwImport.count, "Importing icpc2 data into tables.....") 
+   Wait
+   lvwImport.Add(lvwImport.count, "unzipping icpc2 data.....") 
+   Wait
+   If InStr(zip_file_path, " ") Then
+      zip_file_path = Replace(zip_file_path, " ", "\\ ")
+   End If
+   Print #wfile, "unzip -o " & zip_file_path & " -d " & "/tmp/easygp-install"
+   lvwImport.Add(lvwImport.count, "unzip" & " " & "-o -P" & " " & zip_file_path & " -d " & "/tmp/easygp-install")
+   Wait 
+   Try Shell "unzip -o " & zip_file_path & " -d " & "/tmp/easygp-install" Wait
+   If Error Then
+      Message.info("error whilst unzipping the data file")
+      lvwImport.Add(lvwImport.count, "error whilst unzipping the data file")
+      Goto Error_closelogfile
+   End If
+   '----------------------------------------------------------
+   'Now remove the first line on all the lower case .csv files
+   'which contain field names
+   '----------------------------------------------------------
+   dirname = File.BaseName(zip_file_path)
+   Shell "cp /tmp/easygp-install/" & dirname & "/* /tmp/easygp-install/" 
+   lvwImport.Add(lvwImport.count, "Copying files to temporary directory.....")
+   lvwImport.Add(lvwImport.count, "Removing unwanted field names in first line of file.....")
+   Wait
+   tmp = Temp() 'get a temp filename
+   '--------------------------------------------
+   'List all files or subdirectories in the root
+   '--------------------------------------------
+   If Not Dir("/tmp/easygp-install").count Then 
+      Message.Info("There are no valid files to import in the zip archive")
+      Shell "rm -Rf /tmp/easygp-install" Wait
+      Goto Error_closelogfile
+   End If
+   For Each filename In Dir("/tmp/easygp-install")
+      '------------------------------------------------------------------------------
+      'Check each file in this directory, if the file ending is .csv, doctor the file
+      '------------------------------------------------------------------------------
+      lvwImport.Add(lvwImport.count, "Checking file endings for .csv occurrence .....")
+      Wait
+      If Not IsDir("/tmp/easygp-install" & filename) Then 
+         If File.Ext(filename) = "csv" Then                                              'if a .csv file
+            lvwImport.Add(lvwImport.count, "Found file:" & filename & " stripping out field definitions.....")
+            Wait
+            tmp = Temp() 
+            lvwImport.Add(lvwImport.count, "tail -n+2 " & "/tmp/easygp-install/" & filename & ">" & tmp & "; mv " & tmp & " /tmp/easygp-install/" & filename)
+            Shell "tail -n+2 " & "/tmp/easygp-install/" & filename & ">" & tmp & "; mv " & tmp & " /tmp/easygp-install/" & filename Wait
+         End If
+      End If  
+   Next
+   
+   Print #wfile, "Importing icpc2 data into tables"
+   lvwImport.Add(lvwImport.count, "Existing data will be deleted....")
+   Wait
+   lvwImport.Add(lvwImport.count, "Importing icpc2 data into tables.........")
+   Wait
+   Print #wfile, "psql " & modDBConnect.GetDbName() & " -f " & Application.Path & "/db/coding/icpc2/scripts/icpc2_import_gambas.sql"
+   lvwImport.Add(lvwImport.count, "Bash command: psql " & modDBConnect.GetDbName() & " -f " & Application.Path & "/db/coding/icpc2_import_gambas.sql")
+   Wait
+   Shell "psql " & modDBConnect.GetDbName() & " -f " & Application.Path & "/db/coding/icpc2_import_gambas.sql" Wait
+   lvwImport.Add(lvwImport.count, "ICPC2 Plus data import is complete") 
+   Wait
+   Print #wfile, "ICPC2 Plus data was successfully imported"
+   Shell "rm -Rf /tmp/easygp-install" Wait
+   Dec Application.busy
+   Close #wfile
+   Return True
+   
+Error_closelogfile:
+   Close #wfile
+   Dec Application.busy
+   Return False
+Finally 'unspecified error
+   Message.info("An unspecified error occurred whilst attempting to import ICPC2 Plus")
+   Close #wfile
+   Dec Application.busy
+   Return False
+   
+End
+Public Sub tbImportPath_Click()
+   '------------------------------------------------
+   'Get file path  and put in textbox
+   'Note this works because Last is global in gambas
+   '------------------------------------------------
+   
+   Dim hfile As File
+   Dim sFilename As String
+   Dim sLineInput As String
+   Dim hCtrl As Control
+   Dim aTextbox As Textbox
+   Dim x As Integer
+   
+   Dialog.Path = User.Home
+   If Dialog.OpenFile() Then Return
+   For Each hctrl In Last.parent.children
+      If hctrl Is Textbox Then
+         aTextbox = hctrl
+         aTextbox.text = Dialog.Path
+         aTextbox.pos = 0
+         Break
+      End If
+   Next
+   
+   
+End
+
+Public Sub Save()
+   '----------------------------------------------------------------------------
+   'Saves any modifications to coding system defaults
+   'ICPC may not yet be installed, the others come pre-installed
+   'at the moment can only install ICPC2Plus
+   '
+   'Clear the generic table used throughout EasyGP clin_coding.generic_terms
+   'and populate with terms from the coding system now set as default
+   '----------------------------------------------------------------------------
+   
+   Dim sMsg As String
+   
+   If fk_system = 0 Then  
+      Message.Info("Please select the type of coding system\n before saving")
+      Return 
+   End If
+   '------------------------------------------------------------------------------
+   'Check if any past history items already coded, if so, can't change the coding 
+   'system default
+   '------------------------------------------------------------------------------
+   ' If modCodingDBI.Codingsystem_Check_if_in_use() Then
+   '    'ok, database has started but are we changing the default coding system?
+   '    If FMain.Get_Coding_System_In_Use() = fk_system And chkDefaultSystem.Value = False Then
+   '       '------------------------------------------------------------------------
+   '       'Don't allow the existing coding system to be switched off as the default
+   '       '------------------------------------------------------------------------
+   '       sMsg = "The coding system " & cmbCodingSystem.Text & " is the default system\n"
+   '       sMsg &= "and has already been used in the clinical section, hence cannot be removed.\n"
+   '       sMsg &= "as the default, however you may modify the options and re-save."
+   '       Message.info(sMsg)
+   ' Return 
+   '       Return 
+   '    Else
+   '      '------------------------------------
+   '      'User is changing a system not in use
+   '      '------------------------------------
+   '      Return 
+   '    End If
+   ' End If   
+   If fk_system = Const.coding_icpcPlus Then
+      If pk_available_system = 0 Then
+         If Trim(txtImportFilename.text) = "" Then
+            '--------------------------------------------------
+            'never installed, no filename > prompt for zip file
+            '--------------------------------------------------
+            Message.Info("Please locate the zipped icpc2 plus data files before saving")
+            txtImportFilename.SetFocus()
+            Return 
+         End If   
+         '------------------------------------------------------
+         'There is a filename > attempt to import for first time
+         '------------------------------------------------------
+         If Not ICPC2_Import() Then Goto ICPC_Import_Error
+      Else
+         If Trim(txtImportFilename.text) <> "" Then
+            '--------------------------------------------------
+            'User must be wanting to re-import icpc2 plus files
+            '--------------------------------------------------
+            Select Case Message.warning("Update ICPC Plus?", "Yes", "No")
+               Case 1
+                  If Not ICPC2_Import() Then Goto ICPC_Import_Error
+            End Select
+         End If
+      End If
+   End If
+   
+  ' modDBConnect.BeginTrans()
+   ' codingsystem = New Collection
+   ' '-----------------------------------------------------------
+   ' 'I've allowed more than 1 coding system to live side by side
+   ' 'but let there be a default one
+   ' 'Must re-set all the others to false if this one is now true
+   ' 'set: codingsystem!default_system
+   ' '     codingsystem!fk_system
+   ' '     codingsystem!installed
+   ' '     codingsystem!pk_available_system (null if new system)
+   ' '-----------------------------------------------------------
+   ' If chkDefaultSystem.Value Then 
+   '    modCodingDBI.code_System_Available_Set_False()
+   '    codingsystem!default_system = True
+   ' Else
+   '    codingsystem!default_system = False
+   ' End If
+   ' codingsystem!installed = True
+   ' codingsystem!fk_system = fk_system
+   ' If pk_available_system Then
+   '    codingsystem!pk_available_system = pk_available_system
+   ' End If   
+   ' '------------------------------------------------------------
+   ' 'ICD10 will always be in the coding.generic_terms table, but
+   ' 'we can add ICPC (or update ICPC terms
+   ' 'FIXME in production will need to check every ICPC update and
+   ' 'fix deleted codes
+   ' '------------------------------------------------------------
+   ' If codingsystem!fk_system = const.coding_icpcPlus Then
+   '    modCodingDBI.Populate_Generic_Coding_Table(fk_system)
+   ' End If
+   ' '----------------------------------
+   ' 'Update the available_systems table
+   ' '----------------------------------
+   ' codingsystem!fk_system = modCodingDBI.Coding_System_Available_Save(view_rows, codingsystem)
+   ' modDBConnect.CommitTrans()
+   Reload()
+   Return
+ICPC_Import_Error:
+   Message.info("ICPC was not imported successfully\n\nPlease consult the log file for details.")
+   
+End
+
+Public Sub EditArea_Change()
+   
+   If bexit Then Return 
+   If Last.tag = "filename" Then
+      zip_file_path = Trim(Last.text)
+   End If
+   EditArea_Notify_DataChange(True)
+   
+End
+
+Public Sub EditArea_Notify_DataChange(f As Boolean)
+
+   If bExit Then Return 
+   If f Then
+      VBox_EditArea.Padding = 1
+      tbSave.Foreground = Color.Red
+   Else
+      VBox_EditArea.Padding = 0
+      tbSave.Foreground = Color.Black
+   End If
+   
+End
+
+Public Sub EditArea_LostFocus()
+   
+   Last.BackGround = Color.White
+   
+End
+
+Public Sub EditArea_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   
+End
+
+Public Sub EditArea_Clear()
+   
+   bexit = True
+   txtImportFilename.text = ""
+   txtLicenceKey.text = ""
+   txtLogFile.text = ""
+   txtInstallationStatus.text = "Not installed"
+  ' tbSelectLicenceFile.Enabled = False  
+   tbSelectDatafile.Enabled = False  
+   EditArea_Notify_DataChange(False)
+   VBox_EditArea.Enabled = False   
+   cmbCodingSystem.index = coding_systems.Count 'set to "not defined"
+   fk_system = 0
+   cmbCodingSystem.index = -1
+   pk_available_system = 0
+   lvwImport.clear
+   bExit = False
+End
+
+Public Sub cvwInstalledSystems_Click()
+   '-----------------------------------------------
+   'display the installed systemin the editing area
+   '-----------------------------------------------
+   
+   codingsystem = New Collection
+   EditArea_Clear()
+   VBox_EditArea.Enabled = True 
+   bExit = True
+   cvwInstalledSystems.moveCurrent()
+   codingsystem = view_rows[cvwInstalledSystems.Item.key]
+   pk_available_system = cvwInstalledSystems.Item.key
+   fk_system = codingsystem!pk_system
+   cmbCodingSystem.index = cmbCodingSystem.Find(codingsystem!system)
+   Select Case fk_system
+      Case Const.coding_icd10
+         txtInstallationStatus.text = "Installed"
+         txtLicenceKey.text = "n/a"
+         txtLicenceKey.ReadOnly = True
+         txtImportFilename.text = "n/a"
+         txtImportFilename.ReadOnly = True 
+         modEditAreaHelpers.Help_Show("coding---icd10.html", FHelp) 
+        ' tbSelectLicenceFile.Enabled = False  
+         tbSelectDatafile.Enabled = False  
+      Case Const.coding_icpcPlus
+         modEditAreaHelpers.Help_Show("icpc2-2-plus-codes.html", FHelp) 
+         'tbSelectLicenceFile.Enabled = True  
+         txtImportFilename.ReadOnly = False  
+         tbSelectDatafile.Enabled = True  
+         txtImportFilename.ReadOnly = False 
+   End Select
+   txtLogFile.text = User.home & "_" & codingsystem!system & ".log"
+   VBox_EditArea.Enabled = True
+   bExit = False  
+   
+End
+
+Public Sub chkDefaultSystem_Click()
+   
+   If bexit Then Return
+   EditArea_Notify_DataChange(True)
+   
+End
+
+Public Sub EditArea_Buttons_Click()
+   
+   Select Case Last.tag
+      Case "save"
+         Save()
+      Case "install"
+         Install_New()
+   End Select
+   
+End
+
+Public Sub Install_New()
+   
+   EditArea_Clear()
+   VBox_EditArea.Enabled = True  
+  ' tbSelectLicenceFile.Enabled = True  
+   tbSelectDatafile.Enabled = True  
+   cmbCodingSystem.SetFocus()  
+   
+End
+
+Public Sub cmbCodingSystem_Click()
+   
+   Dim c As Collection
+   
+   If bexit Then Return 
+   c = modCodingDBI.Check_installed(Last.text)
+   txtInstallationStatus.text = ""
+   If modCodingDBI.Check_installed(Last.text).count Then
+      txtInstallationStatus.text = "Installed"
+   Else
+      Select Case Last.text
+      Case "ICD10" 
+         fk_system = const.coding_icd10 
+         If Message.Question(Last.text & " is not currently installed.\n\nWould you like to install this?", "Yes", "No") = 2 Then 
+            txtInstallationStatus.text = "Not installed"
+            Return 
+         Else
+            ICD10_Import 
+         End If  
+      Case "ICPC2 Plus"
+        fk_system = const.coding_icpcPlus
+        txtInstallationStatus.text = "Not installed"
+        tbSelectDatafile.SetFocus()
+      End Select
+   Endif
+   
+End
+

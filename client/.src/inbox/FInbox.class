@@ -808,28 +808,34 @@ Public Function Document_File() As Boolean
    'First, is this a non patient document?
    'If so, then filing = "I've read this document
    '---------------------------------------------
-   
+   tbFile.Enabled = False  
    If Selected_Inbox!fk_patient = 0 Then
       Form_ActionDocument.FMetaData.Document_SignOff(SelectedDocument)           
       modArchiveDocumentsDBI.Save(["pk_document": SelectedDocument!pk_document, "concluded": True])   
       modDBConnect.CommitTrans()
    Else
-      If Not Valid_Document() Then Return                 'some inbox-related validation
-      
+      If Not Valid_Document() Then
+       tbFile.Enabled = True  
+       Return                 'some inbox-related validation
+      End If   
       modDBConnect.BeginTrans()                           'start transaction NOOP
       Unmatched_Patient_Reconcile()                       'reconcile any just-matched unkown patients
       If Not Form_ActionDocument.FMetaData.Save() Then                        'file document, unsucessful 
          modDBConnect.RollBack()                          'roll back transaction FIXME does this work?
+         tbFile.Enabled = True
          Return False 
       End If   
       modAudit.MakeAudit(currentconsult, "viewed and filed document", "documents.documents", SelectedDocument!pk_document, const.cSection_Documents, "")
       modDBConnect.CommitTrans()                          'success - commit transaction
-      
    End If 
    Selected_Inbox!documents.Remove(iSelectedDocument)  'remove document from document collection 
    cvwInboxDocuments.Remove(iSelectedDocument)         'visually remove from list
+   Wait
+   tbFile.Enabled = True   
    Return True 
-   
+  Catch
+   Message.info("An error occurred whilst trying to file the document.\n\nIf this persists please contact technical support")
+   Return 
 End
 
 Public Sub Unmatched_Patient_Reconcile()
@@ -1366,26 +1372,26 @@ Public Sub tbRefreshInbox_Click()
    Dim fk_sending_entity As Integer
    
    Inc Application.Busy
-   modHL7FileImport.Auto_Process()         'fixme remove me or at least make sure running on server
-   cvwInbox.Clear()
-   cvwInboxDocuments.Clear()
-   Form_ActionDocument.FMetaData.EditArea_Clear()
-   FPreview_HtmlDocument.WebView1.html = ""
-   If cmbSenders.index <> -1 Then 
+   modHL7FileImport.Auto_Process()               'fixme remove me or at least make sure running on server
+   cvwInbox.Clear()                               'clear everything from the inbox list of persons 
+   cvwInboxDocuments.Clear()                      'clear the document list
+   Form_ActionDocument.FMetaData.EditArea_Clear() 'clear the document metadata 
+   FPreview_HtmlDocument.WebView1.html = ""       'clear the html in the webview
+   If cmbSenders.index <> -1 Then                 'if user wants to filter on sender, set that 
       fk_sending_entity = Sending_Entities[cmbSenders.Index]!pk_sending_entities
    Else
       fk_sending_entity = 0 
    Endif
    Inbox = Fill_Inbox(fk_sending_entity, 2000, Trim(txtFilterPatient.text))   'fill all documents, limit FIXME UNHARD CODE ME
-   cvwInbox.MoveFirst()
-   If Not IsNull(cvwInbox.Item) Then 
-      cvwInbox.Item.Selected = True
+   If Not IsNull(Inbox) Then                    'Some items where found
+      cvwInbox.MoveFirst()
+      If Not IsNull(cvwInbox.Item) Then
+          cvwInbox.Item.Selected = True
+      Endif
    Else
-      cmbSenders.index = -1                   'if this has been switched to a sender
-      tbRefreshInbox_Click()
-   End If    
+      cmbSenders.index = -1                   'if this has been switched to a sender, reset to none
+   Endif
    Dec Application.Busy
-   
 End
 
 Public Sub chkResultFormatting_Click()

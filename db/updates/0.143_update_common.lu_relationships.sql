@@ -12,10 +12,7 @@ ALTER SEQUENCE "common"."lu_family_relationships_pk_seq"
 -- can only allow one of this type of relationship
 
 Insert into common.lu_family_relationships (relationship) values ('Mother');
-Insert into common.lu_family_relationships (relations-- These can never be named in FFamilyHistory and can have only 1 entry
-Insert into common.lu_family_relationships (relationship) values ('General Family History');
-Insert into common.lu_family_relationships (relationship) values ('General History - paternal');
-Insert into common.lu_family_relationships (relationship) values ('General History - maternal');hip) values ('Father');
+Insert into common.lu_family_relationships (relationship) values ('Father');
 Insert into common.lu_family_relationships (relationship) values ('Grandmother - maternal');
 Insert into common.lu_family_relationships (relationship) values ('Grandmother - paternal');
 Insert into common.lu_family_relationships (relationship) values ('Grandfather - maternal');

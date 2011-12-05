@@ -3577,36 +3577,6 @@ CREATE SEQUENCE medical_certificate_pk_seq
 ALTER SEQUENCE medical_certificate_pk_seq OWNED BY medical_certificates.pk;
 
 
---
--- Name: temp; Type: TABLE; Schema: clin_certificates; Owner: -; Tablespace: 
---
-
-CREATE TABLE temp (
-    pk integer NOT NULL,
-    reason text NOT NULL,
-    fk_staff integer NOT NULL
-);
-
-
---
--- Name: temp_pk_seq; Type: SEQUENCE; Schema: clin_certificates; Owner: -
---
-
-CREATE SEQUENCE temp_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MAXVALUE
-    NO MINVALUE
-    CACHE 1;
-
-
---
--- Name: temp_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_certificates; Owner: -
---
-
-ALTER SEQUENCE temp_pk_seq OWNED BY temp.pk;
-
-
 SET search_path = coding, pg_catalog;
 
 --
@@ -7719,14 +7689,6 @@ ALTER SEQUENCE surgical_packs_pk_seq OWNED BY surgical_packs.pk;
 
 CREATE VIEW vwimages AS
     SELECT images.image, images.md5sum, images.tag, images.deleted AS image_deleted, images.fk_consult AS fk_consult_image, link_images_procedures.fk_image, link_images_procedures.fk_procedure, link_images_procedures.deleted, link_images_procedures.pk AS pk_link_images_procedures FROM (link_images_procedures JOIN blobs.images ON ((link_images_procedures.fk_image = images.pk))) WHERE (link_images_procedures.deleted = false) ORDER BY link_images_procedures.fk_procedure;
-
-
---
--- Name: vwimages1; Type: VIEW; Schema: clin_procedures; Owner: -
---
-
-CREATE VIEW vwimages1 AS
-    SELECT images.image, link_images_procedures.fk_image, link_images_procedures.fk_procedure, link_images_procedures.deleted, link_images_procedures.pk AS pk_link_images_procedures FROM (link_images_procedures JOIN clin_consult.images ON ((link_images_procedures.fk_image = images.pk))) WHERE (link_images_procedures.deleted = false) ORDER BY link_images_procedures.fk_procedure;
 
 
 SET search_path = clin_requests, pg_catalog;
@@ -13691,13 +13653,6 @@ ALTER TABLE lu_illness_temporality ALTER COLUMN pk SET DEFAULT nextval('lu_illne
 ALTER TABLE medical_certificates ALTER COLUMN pk SET DEFAULT nextval('medical_certificate_pk_seq'::regclass);
 
 
---
--- Name: pk; Type: DEFAULT; Schema: clin_certificates; Owner: -
---
-
-ALTER TABLE temp ALTER COLUMN pk SET DEFAULT nextval('temp_pk_seq'::regclass);
-
-
 SET search_path = clin_checkups, pg_catalog;
 
 --
@@ -15470,14 +15425,6 @@ ALTER TABLE ONLY lu_illness_temporality
 
 ALTER TABLE ONLY medical_certificates
     ADD CONSTRAINT medical_certificate_pkey PRIMARY KEY (pk);
-
-
---
--- Name: temp_pkey; Type: CONSTRAINT; Schema: clin_certificates; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY temp
-    ADD CONSTRAINT temp_pkey PRIMARY KEY (pk);
 
 
 SET search_path = clin_checkups, pg_catalog;

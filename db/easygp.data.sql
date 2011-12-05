@@ -190,7 +190,7 @@ SELECT pg_catalog.setval('lu_actions_pk_seq', 35, true);
 -- Name: lu_audit_reasons_pk_seq; Type: SEQUENCE SET; Schema: clin_consult; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 267, true);
+SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 268, true);
 
 
 --
@@ -432,7 +432,7 @@ SELECT pg_catalog.setval('lu_instructions_pk_seq', 1, false);
 -- Name: lu_link_provider_user_requests_pk_seq; Type: SEQUENCE SET; Schema: clin_requests; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_link_provider_user_requests_pk_seq', 1364, true);
+SELECT pg_catalog.setval('lu_link_provider_user_requests_pk_seq', 1370, true);
 
 
 --
@@ -446,7 +446,7 @@ SELECT pg_catalog.setval('lu_request_type_pk_seq', 14, true);
 -- Name: lu_requests_pk_seq; Type: SEQUENCE SET; Schema: clin_requests; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_requests_pk_seq', 1733, true);
+SELECT pg_catalog.setval('lu_requests_pk_seq', 1735, true);
 
 
 SET search_path = clin_vaccination, pg_catalog;
@@ -573,7 +573,7 @@ SELECT pg_catalog.setval('lu_ethnicity_pk_seq', 218, true);
 -- Name: lu_family_relationships_pk_seq; Type: SEQUENCE SET; Schema: common; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_family_relationships_pk_seq', 43, true);
+SELECT pg_catalog.setval('lu_family_relationships_pk_seq', 42, true);
 
 
 --
@@ -629,7 +629,7 @@ SELECT pg_catalog.setval('lu_normality_pk_seq', 2, true);
 -- Name: lu_occupations_pk_seq; Type: SEQUENCE SET; Schema: common; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_occupations_pk_seq', 296, true);
+SELECT pg_catalog.setval('lu_occupations_pk_seq', 298, true);
 
 
 --
@@ -801,7 +801,7 @@ SET search_path = db, pg_catalog;
 -- Name: db_version_pk_seq; Type: SEQUENCE SET; Schema: db; Owner: -
 --
 
-SELECT pg_catalog.setval('db_version_pk_seq', 134, true);
+SELECT pg_catalog.setval('db_version_pk_seq', 133, true);
 
 
 SET search_path = defaults, pg_catalog;
@@ -1465,6 +1465,7 @@ COPY lu_audit_reasons (pk, fk_staff, reason) FROM stdin;
 265	1	discussed - will adjust diet and review
 266	1	wrong join
 267	1	Chest CT arranged
+268	1	have arranged annual checkup to do these things
 \.
 
 
@@ -3395,6 +3396,12 @@ COPY lu_link_provider_user_requests (pk, fk_lu_request, provider_request_name, l
 1362	1553	HIP;HIP;Foot, ankle,	3	f
 1363	1082	ANGIOTENSIN CONVERT. ENZ (ACE-0)	0	f
 1364	766	Hormone Testing	0	f
+1365	453	Panel Serology	0	f
+1366	453	General Serology	0	f
+1367	401	CT Chest without contrast	0	f
+1368	1025	Brain CT with contrast	0	f
+1369	1379	Cervical Spine CT	0	f
+1370	1735	CYTOLOGY NON GYNAE (CYT-0)	0	f
 \.
 
 
@@ -5124,6 +5131,8 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1731	1	Red Cell Ferritin	0	0	0	f
 1732	2	Ultrasound Cheek	3	0	0	f
 1733	1	Post vasectomy sperm count	0	0	0	f
+1734	2	Steroid injection to finger	0	0	0	f
+1735	1	FNA cytology	0	0	0	f
 \.
 
 
@@ -63942,48 +63951,47 @@ COPY lu_ethnicity (pk, ethnicity) FROM stdin;
 
 COPY lu_family_relationships (pk, relationship) FROM stdin;
 1	Mother
-2	Father
-3	Grandmother - maternal
-4	Grandmother - paternal
-5	Grandfather - maternal
-6	Grandfather - paternal
-7	Great grandmother paternal
-8	Great grandmother maternal
-9	Great grandfather maternal
-10	Great grandfather paternal
-11	General Family History
-12	General History - paternal
-13	General History - maternal
-14	Wife
-15	Husband
-16	Defacto wife
-17	Defacto husband
-18	Uncle - maternal
-19	Uncle - paternal
-20	Aunt - maternal
-21	Aunt - paternal
-22	Cousin maternal
-23	Cousin paternal
-24	Nephew - maternal
-25	Nephew - paternal
-26	Niece - paternal
-27	Niece - maternal
-28	Son
-29	Step son
-30	Daughter
-31	Step daughter
-32	Step mother
-33	Step father
-34	Uncle - side of family unknown
-35	Aunt - side of family unknown
-36	Cousin side of family unknown
-37	Nephew - side of family unknown
-38	Grandmother side of family unknown
-39	Grandfather side of family unknown
-40	Grandaughter side of family unknown
-41	Grandson side of family unknown
-42	Adopted son
-43	Adopted daughter
+2	Grandmother - maternal
+3	Grandmother - paternal
+4	Grandfather - maternal
+5	Grandfather - paternal
+6	Great grandmother paternal
+7	Great grandmother maternal
+8	Great grandfather maternal
+9	Great grandfather paternal
+10	General Family History
+11	General History - paternal
+12	General History - maternal
+13	Wife
+14	Husband
+15	Defacto wife
+16	Defacto husband
+17	Uncle - maternal
+18	Uncle - paternal
+19	Aunt - maternal
+20	Aunt - paternal
+21	Cousin maternal
+22	Cousin paternal
+23	Nephew - maternal
+24	Nephew - paternal
+25	Niece - paternal
+26	Niece - maternal
+27	Son
+28	Step son
+29	Daughter
+30	Step daughter
+31	Step mother
+32	Step father
+33	Uncle - side of family unknown
+34	Aunt - side of family unknown
+35	Cousin side of family unknown
+36	Nephew - side of family unknown
+37	Grandmother side of family unknown
+38	Grandfather side of family unknown
+39	Grandaughter side of family unknown
+40	Grandson side of family unknown
+41	Adopted son
+42	Adopted daughter
 \.
 
 
@@ -64468,6 +64476,8 @@ COPY lu_occupations (pk, occupation) FROM stdin;
 294	registrar
 295	Rheumatology Clinical Nurse Specialist
 296	General Assistant
+297	LIfeguard
+298	Doorman
 \.
 
 
@@ -84527,7 +84537,7 @@ SET search_path = db, pg_catalog;
 --
 
 COPY lu_version (pk, lu_major, lu_minor) FROM stdin;
-134	0	144
+133	0	143
 \.
 
 

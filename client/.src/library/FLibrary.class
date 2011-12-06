@@ -30,6 +30,8 @@ Private cTabLibrary As Integer = 0
 Private cTabHandouts As Integer = 1
 Private cTabWeb As Integer = 2
 Private cTabBookmarks As Integer = 3
+Private sLibDirLocal As String
+Private sLibDirNetwork As String
 
 Public Sub Form_Open()
    
@@ -60,9 +62,11 @@ Public Sub Init()
    cmbFilter.Add("*.htm,html", 1)
    cmbFilter.Add("*.doc", 2)
    cmbFilter.Add("*.rtf", 3)
+   sLibDirLocal = modAdminDBI.Config_Get_Staff_Member("library_directory_local", "", Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) 
+   sLibDirNetwork = modAdminDBI.Config_Get("library_directory_network", "", Null, modDBConnect.currentUser!fk_clinic)
+
    TabStrip1.index = 0
    TabStrip1_Click()
-   
 End
 
 Public Sub form_Close()
@@ -116,25 +120,86 @@ Public Sub tvHandOuts_Click()
    
 End
 
+Public Function Check_have_path() As Boolean
+   
+    If modAdminDBI.Config_Get("library_directory_network", "", Null, modDBConnect.currentUser!fk_clinic) = "" Then
+       If modAdminDBI.Config_Get_Staff_Member("library_directory_local", "", Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) = "" Then
+          Message.info("Please set the location of the library files in the Admin and User Preferences Sections")
+          Return False 
+       Endif
+    Endif
+   
+End
+
+
 Public Sub Load_Library_Tree()
    '------------------------------------------------------------------
    'Loads the tree control with directories and files from the library
    'Tries server first, if fails falls back to local if available
    '------------------------------------------------------------------
+   Dim sMsg As String
    
-   sLibraryRootDir = modAdminDBI.Config_Get("library_directory_network", "", Null, modDBConnect.currentUser!fk_clinic) & "/"
-   If Not Load_Tree(tvLibrary, sLibraryRootDir, "network") Then 
-      sLibraryRootDir = modAdminDBI.Config_Get_Staff_Member("library_directory_local", "", Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) & "/"
-      If Load_Tree(tvLibrary, sLibraryRootDir, "local") Then
-         TabStrip1.Caption = "My Library (local filesystem)" 
-         
-      Endif
-   Else
-      TabStrip1.Caption = "My Library (network filesystem)" 
+   If sLibDirNetwork <> "" Then  'have some sort of network path, use that first
+      If Not Load_Tree(tvLibrary, sLibDirNetwork, "network") Then         'failed to load network
+         If sLibDirLocal <> "" Then                                        'path exists for local
+            If Not Load_Tree(tvLibrary, sLibDirLocal, "local") Then     'try and load the tree ?fail
+               Goto Load_Library_error
+            Else
+               sLibraryRootDir = sLibDirLocal & "/"
+               TabStrip1.Caption = "My Library (local filesystem)"        'success
+            Endif
+         Endif
+      Else                                                                'success on the network path
+         If Not Load_Tree(tvLibrary, sLibDirNetwork, "network") Then     'If fails > error
+          Goto Load_Library_error
+         Else                                                             'otherwise load tree
+           TabStrip1.Caption = "My Library (network filesystem)" 
+           sLibraryRootDir = sLibDirNetwork & "/"
+         Endif
+      End If     
    Endif
+ 
+   Return
    
+Load_Library_error:
+  
+     Message.Title = "Missing Path"
+     smsg = "The location of the library directory could not be found.\n\n"
+            "You should get the system adminstrator to set the networked pathway to this directory, "
+            "and you can set a local pathway in the Preferences section should the network not be available"
+     Message.info(sMsg)
+  ' 
 End
 
+Public Sub Load_Library_Tree_old()
+   '------------------------------------------------------------------
+   'Loads the tree control with directories and files from the library
+   'Tries server first, if fails falls back to local if available
+   '------------------------------------------------------------------
+   If modAdminDBI.Config_Get("library_directory_network", "", Null, modDBConnect.currentUser!fk_clinic) = "" Then          'network path not set
+       If modAdminDBI.Config_Get_Staff_Member("library_directory_local", "", Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) <> "" Then
+           sLibraryRootDir = modAdminDBI.Config_Get_Staff_Member("library_directory_local", "", Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) & "/"
+           If Load_Tree(tvLibrary, sLibraryRootDir, "local") Then
+                TabStrip1.Caption = "My Library (local filesystem)" 
+          Else
+               Goto Load_Library_error
+           End If  
+        Endif
+   Else
+     sLibraryRootDir = modAdminDBI.Config_Get("library_directory_network", "", Null, modDBConnect.currentUser!fk_clinic) & "/"
+       If Not Load_Tree(tvLibrary, sLibraryRootDir, "network") Then 
+          Goto Load_Library_error
+       Else
+           TabStrip1.Caption = "My Library (network filesystem)" 
+       Endif
+   Endif
+ 
+   Return
+   
+Load_Library_error:
+   Message.Info("The path to the libary could not be found")
+  ' 
+End
 Public Function Load_Tree(trview As Treeview, sLibDir As String, sLocation As String) As Boolean
    '--------------------------------------------
    'Fills the tree with directories and files
@@ -154,11 +219,11 @@ Public Function Load_Tree(trview As Treeview, sLibDir As String, sLocation As St
       'Each sub file of a DIR will be a Directory or file
       'but in our structure there are no files in the rootdir
       For Each sDir In Dir(sLibDir)        'Add each directory to the tree
-         If IsDir(sLibDir & sDir) Then       'check if it is actually a directory
+         If IsDir(sLibDir &/ sDir) Then       'check if it is actually a directory
             trview.Add(sDir, sDir) 'if yes, then add to tree as node
             ikey = ikey + 1
-            
-            For Each sFile In Dir(sLibDir & sDir, "*.*")
+            bFilesExist = True 'well, directories exist
+            For Each sFile In Dir(sLibDir &/ sDir, "*.*")
                If InStr(Lower(Sfile), ".pdf") Then
                   pictag = picPDF   
                Else
@@ -168,8 +233,7 @@ Public Function Load_Tree(trview As Treeview, sLibDir As String, sLocation As St
                If Error Then
                End If
                iKey2 = iKey2 + 1
-               bFilesExist = True
-            Next 
+             Next 
          Endif 
       Next 
    Endif 
@@ -179,43 +243,6 @@ Catch
    
 End
 
-Public Sub Load_Library_Tree_old()
-   'FIXME: put in a default dir for library - probably on server
-   
-   Dim sDir As String           'hold a directory name
-   Dim sFile As String          'hold a file anme
-   Dim iKey As Integer
-   Dim iKey2 As Integer
-   Dim sKeyGenerated As String
-   Dim picTag As Picture
-   'loads defaults for inbox, as yet there are none so hard code
-   sLibraryRootDir = User.home & "/easygp/library/"
-   sLibraryRootDir = User.home & "/ubuntu-server/library/"
-   tvLIbrary.Clear()
-   If IsDir(sLibraryRootDir) Then 
-      'Each sub file of a DIR will be a Directory or file
-      'but in our structure there are no files in the rootdir
-      For Each sDir In Dir(sLibraryRootDir)        'Add each directory to the tree
-         If IsDir(sLibraryRootDir & sDir) Then       'check if it is actually a directory
-            tvLIbrary.Add(sDir, sDir) 'if yes, then add to tree as node
-            ikey = ikey + 1
-            
-            For Each sFile In Dir(sLibraryRootDir & sDir, "*.*")
-               If InStr(Lower(Sfile), ".pdf") Then
-                  pictag = picPDF   
-               Else
-                  picTag = picGreenDot
-               End If
-               Try tvLIbrary.Add(sFile, sFile, picTag, sDir)
-               If Error Then
-               End If
-               iKey2 = iKey2 + 1
-            Next 
-         Endif 
-      Next 
-   Endif 
-   
-End
 
 Public Sub Load_Handouts_Tree()
    
@@ -225,6 +252,8 @@ Public Sub Load_Handouts_Tree()
    Dim iKey2 As Integer
    Dim sKeyGenerated As String
    Dim picTag As Picture
+   Dim sMsg As String
+   
    'loads defaults for inbox, as yet there are none so hard code
    sHandoutRootDir = User.home & "/easygp/handouts/"
    tvHandOuts.Clear()
@@ -249,8 +278,13 @@ Public Sub Load_Handouts_Tree()
             Next 
          Endif 
       Next 
-   Endif 
-   
+   Else
+     Message.Title = "Missing Path"
+     smsg = "The location of the patient handouts directory could not be found.\n\n"
+            "You should get the system adminstrator to set the networked pathway to this directory, "
+            "and you can set a local pathway in the Preferences section should the network not be available"
+     Message.info(sMsg)
+   End If   
 End
 
 Public Sub Load_Bookmarks_Tree()

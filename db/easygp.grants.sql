@@ -256,7 +256,6 @@ GRANT select ON TABLE db.lu_version TO staff;
 GRANT select ON TABLE documents.lu_archive_site TO staff;
 GRANT select ON TABLE documents.lu_message_display_style TO staff;
 GRANT select ON TABLE documents.lu_message_standard TO staff;
-GRANT select ON TABLE documents.lu_type TO staff;
 GRANT select ON TABLE documents.vwdocuments TO staff;
 GRANT select ON TABLE documents.vwgraphableobservations TO staff;
 GRANT select ON TABLE documents.vwinboxstaff TO staff;

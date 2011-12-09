@@ -5,32 +5,106 @@ Private Descriptor As Collection
 Private bExit As Boolean
 Private lcRow As CDescriptorRow
 Private timer_count As Integer 
-
+Private pk_descriptor As Integer
+Private cSearchMBS As Integer = 0
+Private cSearchAMA As Integer = 1
+Private cSearchDescriptor As Integer = 2
+Private cSearchDescriptor_Brief As Integer = 3
+Private cSearchGroup As Integer = 4
+Private Billingtypes As Collection
+Private BillingType As Collection
 
 Public Sub Init()
    
+   lblMeasure.text = "  Abbreviated Descriptor  "
    modEditAreaHelpers.Resize_labels(Vbox_Editarea, lblmeasure)
+   modEditAreaHelpers.Resize_label(lblSearch, lblMeasure)
+   cmbSearchFor.Add("MBS Item Number")
+   cmbSearchFor.Add("AMA Item Number")
+   cmbSearchFor.Add("Description")
+   cmbSearchFor.Add("Brief Description")
+   cmbSearchFor.Add("Group")
+   Gridview1_Init()
    Try Settings_Load()
    Reload() 
    
 End
+
+Public Sub Gridview1_Init()
+
+   Dim x As Integer
+
+  Billingtypes = modBillingDBI.Fee_types_Get()
+   With gridview1
+      .Rows.H = 20 
+      .Columns.Count = 2
+      .Rows.count = Billingtypes.Count
+      For x = 0 To 1
+         If x <> 1 Then 
+            .Columns[x].Width = 100
+         Else
+            .Columns[1].width = gridview1.width - 400
+         End If
+      Next
+      .Columns[0].text = "Type"
+      .Columns[1].text = "Fee"
+    End With
+    x = 0
+    For Each Billingtype In Billingtypes
+       gridview1.row = x 
+       gridview1[x, 0].text = Billingtype!name
+       Inc x
+    Next
+   ' Hbox_FeeList.height = (Billingtypes.count + 2) * 20
+End
+
 Public Sub Reload()
+   
    Timer1.enabled = False
    lcDescriptors.Clear()
    Descriptors = modBillingDBI.Descriptors_Get(Trim(txtFilterDescriptor.text), sbLimit.value)
-
+   
    For Each Descriptor In Descriptors
-        lcRow = New CDescriptorRow(lcDescriptors, descriptor)
+      lcRow = New CDescriptorRow(lcDescriptors, descriptor)
    Next    
    Timer1.Enabled = True   
+   
+End
+
+Public Sub Search()
+   
+   Select Case cmbSearchFor.Index
+      Case cSearchMBS 
+         Descriptors = modBillingDBI.Items_Get(Trim(txtSearch.text), const.Billingtype_Schedule)
+      Case cSearchAMA
+         Descriptors = modBillingDBI.Items_Get(Trim(txtSearch.text), const.Billingtype_AMA) 
+      Case cSearchDescriptor
+         Descriptors = modBillingDBI.Descriptors_Get(Trim(txtSearch.text))
+      Case cSearchDescriptor_Brief
+         Descriptors = modBillingDBI.Descriptors_Brief_Get(Trim(txtSearch.text))
+      Case cSearchGroup
+         
+   End Select 
+   lcDescriptors.Clear
+   For Each Descriptor In Descriptors
+      lcRow = New CDescriptorRow(lcDescriptors, descriptor)
+   Next    
+   
 End
 
 Public Sub Save()
    '--------------------------
    'Save a modified descriptor
    '--------------------------
-
+   
+   Dim Descriptor As New Collection
+   
+   If VBox_EditArea_Outer.padding = 0 Then Return
+   
+   Descriptor!pk = pk_descriptor
+   Descriptor!descriptor_Brief = Trim(txtDescriptorBrief.text)
    modDBConnect.BeginTrans()
+   modBillingDBI.Descriptors_Save(Descriptors, pk_descriptor, descriptor)
    modDBConnect.CommitTrans() 
    Reload()
    
@@ -48,31 +122,31 @@ Private Sub Settings_Load()
    
 End
 
-
-
 Public Sub Timer1_Timer()
+   
    Inc timer_count
    If timer_count = 3 Then
-       Reload()
+      Reload()
    End If   
+   
 End
 
 Public Sub txtFilterDescriptor_KeyRelease()
-  If Timer1.Enabled = False Then Timer1.Enabled = True   
+   
+   If Timer1.Enabled = False Then Timer1.Enabled = True   
    timer_count = 0 
-
+   
 End
 
 Public Sub txtFilterDescriptor_GotFocus()
-
-Timer1.Start()
    
-
+   Timer1.Start()
+   
 End
 
 Public Sub EditArea_Clear()
    
-  modEditAreaHelpers.EditArea_Clear(Vbox_Editarea) 
+   modEditAreaHelpers.EditArea_Clear(Vbox_Editarea) 
    
 End
 
@@ -80,11 +154,14 @@ Public Sub Display()
    '------------------------------------------
    'Displays the currently selected descriptor
    '------------------------------------------ 
+   
    EditArea_Clear()
    bexit = True
    txtMBSItemNumber.text = descriptor!mbs_item
    txtAMAItemNumber.text = descriptor!ama_item
    txtDescriptor.text = descriptor!descriptor
+   pk_descriptor = descriptor!pk
+   txtDescriptorBrief.text = descriptor!descriptor_brief
    Try txtDateceased = Format(descriptor!ceased_date, "dd/mm/yyyy")
    txtGroup.text = descriptor!group
    
@@ -92,10 +169,9 @@ Public Sub Display()
    
 End
 
-
 Public Sub lcDescriptors_Click()
-
-     '----------------------------------------------------------------------------------
+   
+   '----------------------------------------------------------------------------------
    'User has clicked on one row of the list container - hence selecting a patient
    'put that patient into the current patient collection, and photo into patient_photo
    '----------------------------------------------------------------------------------
@@ -106,15 +182,54 @@ Public Sub lcDescriptors_Click()
    
    If lcDescriptors.Count Then
       descriptor = Descriptors[Last.children[Last.index].tag] 
+      
       Display()
    Endif
    
-
 End
 
 Public Sub Form_Close()
-
    
    Settings_Save()
+   
+End
 
+Public Sub EditArea_Notify_Datachange(bFlag As Boolean)
+   
+   If bFlag Then
+      VBox_EditArea_Outer.Padding = 1
+   Else
+      VBox_EditArea_Outer.Padding = 0
+   End If  
+   
+End
+
+Public Sub EditArea_Buttons_Click()
+   
+   Select Case Last.tag
+      Case "save"
+         Save() 
+   End Select
+   
+End
+
+Public Sub EditAreaTextBox_Change()
+   
+   If bexit Then Return
+   If Last.tag <> "search" Then 
+      EditArea_Notify_Datachange(True)
+   Else
+      EditArea_Clear()
+      EditArea_Notify_Datachange(False)
+   End If 
+   
+End
+
+Public Sub EditAreaTextBox_KeyRelease()
+   
+   Select Case Last.tag
+      Case "search"
+         Search() 
+   End Select
+   
 End

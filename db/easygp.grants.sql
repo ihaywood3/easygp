@@ -451,4 +451,7 @@ grant all on clerical.sessions to staff;
 grant all on clerical.bookings to staff;
 grant all on clerical.sessions_pk_seq to staff;
 grant all on clerical.bookings_pk_seq to staff;
-
+grant all on clerical.schedule to staff;
+grant all on clerical.prices to staff;
+grant select on clerical.lu_billing_type to staff;
+grant select on clerical.vwFees to staff;

@@ -14,9 +14,11 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'
+'-----------------------------------------------------------------------------
 ' PURPOSE      A module for maintain letter templates to send out with recalls
-' TODO'S       
+' TODO'S       if Ian Fixes the html/LaTex conversion problem can revert to the
+'              Template_Editor rather than TextArea control.
+'              Write the help file for this module and display in Init()
 ' BUGS         Please email rterry@pacific.net.au
 '-----------------------------------------------------------------------------
 Private FHelp As FHtmlViewer                       'Embedded form to show help
@@ -43,15 +45,18 @@ Public Sub Init()
    
    Form_Templates = Me
    FHelp = New FHtmlViewer(Vbox_Help)                                  'load appropriate help FIXME
-   
-   modEditAreaHelpers.Help_Show("recalls.html", FHelp) 'wrong file FIXME
-   With Template_Editor = New FEditor(Vbox_FEditor)                     'Editor to create/load template
-      .lblHeading.text = "Template Editor"
-      .Init("FRecallLetterTemplates")
-   End With
-   lblMeasure.text = " Template Name "                                 'ensure gui elements ok
-   'modEditAreaHelpers.Resize_label(lblTemplateName, lblMeasure)
-   'modEditAreaHelpers.Resize_label(lblButtons, lblMeasure)
+   modEditAreaHelpers.Help_Show("recalls.html", FHelp)                 'wrong file FIXME
+   ' With Template_Editor = New FEditor(Vbox_FEditor)                     'Editor to create/load template
+   '    .lblHeading.text = "Template Editor"
+   '    .Init("FRecallLetterTemplates")
+   '    .Visible = False  
+   ' End With
+   lblMeasure.text = " Appointment Type "                                 'ensure gui elements ok
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
+   cmbAppointmentLength.Add("Brief", const.AppointmentLengthBrief)
+   cmbAppointmentLength.Add("Standard", const.AppointmentLengthStandard)
+   cmbAppointmentLength.Add("Long", const.AppointmentLengthLong)
+   cmbAppointmentLength.Add("Prolonged", const.AppointmentLengthProlonged)
    Reload()                                                            'show existing templates in list.
    
 End
@@ -88,17 +93,26 @@ Public Sub EditArea_Notify_DataChange(flag As Boolean)
    
 End  
 
-Public Sub Display()
+Public Sub Display() 
+   '------------------------------------------------------------------------------------------
+   'Display the template
+   'Duplicate code in here - I've temporarily hidden the Template_Editor as the LaTex routines
+   'can't convert the html, and put a simple TextArea  in its place. When printed the Latex 
+   'ignores the \n lines, so as a fudge when saved the templates \n are replaced with <BR>
+   'which cTemplate.subst_HTML understands
+   '-------------------------------------------------------------------------------------------   
    
    EditArea_Clear() 
    bExit = True   
    cvwRecallTemplates.MoveCurrent()
    txtTemplateName.text = Templates[cvwRecallTemplates.Item.key]!name
-   With Template_Editor
-      .bExit = True   
-      .teNotes.RichText = Templates[cvwRecallTemplates.Item.key]!template
-      .bExit = False 
-   End With  
+   cmbAppointmentLength.index = Templates[cvwRecallTemplates.Item.key]!fk_lu_appointment_length
+   ' With Template_Editor
+   '    .bExit = True   
+   '    .teNotes.RichText = Templates[cvwRecallTemplates.Item.key]!template
+   '    .bExit = False 
+   ' End With   
+   TextArea1.text = Replace(Templates[cvwRecallTemplates.Item.key]!template, "<BR>", "\n")      
    bExit = False  
    
 End
@@ -113,7 +127,7 @@ Public Sub Edit()
 End
 
 Public Sub Save()
-   '------------------------------------------------------ 
+   '--------------------------------------------------------------------------------------- 
    ' Saves a new or modified template
    ' Clin_Recalls.lu_templates
    ' pk 
@@ -121,7 +135,12 @@ Public Sub Save()
    ' deleted boolean default false,
    ' template text NOT NULL, -- html for a letter template
    ' if fk_template <> 0 then it is an edited template
-   '------------------------------------------------------ 
+   ' --------------------------------------------------------------------------------------
+   ' I've temporarily hidden the Template_Editor as the LaTex routines
+   'can't convert the html, and put a simple TextArea  in its place. When printed the Latex 
+   'ignores the \n lines, so as a fudge when saved the templates \n are replaced with <BR>
+   'which cTemplate.subst_HTML understands
+   '---------------------------------------------------------------------------------------- 
    
    Dim template As New Collection
    
@@ -135,11 +154,12 @@ Public Sub Save()
       Return
    End If   
    template!name = Trim(txtTemplateName.text)
-   template!template = Template_Editor.teNotes.Text
-    fk_template = modRecallsDBI.Templates_Save(Templates, fk_template, template)
+   template!fk_lu_appointment_length = Max(cmbAppointmentLength.Index, 1) ' at least a standard consult
+   ' template!template = Template_Editor.teNotes.RichText    'leave this in until the hmtl latex problem resolved
+   template!template = Replace(TextArea1.text, "\n", "<BR>") 'convert to simple html which cTemplate understands      
+   fk_template = modRecallsDBI.Templates_Save(Templates, fk_template, template)
    modDBConnect.CommitTrans()
    EditArea_Clear()
-   
    Reload()
    
 End
@@ -152,13 +172,14 @@ Public Sub EditArea_Clear()
    bExit = True
    txtTemplateName.text = ""
    fk_template = 0
-   With Template_Editor
-      .bExit = True
-      .teNotes.Clear()
-      .bExit = False
-   End With
+   ' With Template_Editor
+   '    .bExit = True
+   '    .teNotes.Clear()
+   '    .bExit = False
+   ' End With
    EditArea_Notify_DataChange(False)
    bExit = False  
+   
 End
 
 Public Sub Template_New()
@@ -218,9 +239,17 @@ Public Function Valid_Template() As Boolean
       txtTemplateName.SetFocus()
       Return 
    Endif
+   If cmbAppointmentLength.Index = 1 Then
+      cmbAppointmentLength.SetFocus()
+      Return 
+   Endif
    
-   If Template_Editor.teNotes.text = "" Then 
-      Template_Editor.teNotes.SetFocus
+   ' If Template_Editor.teNotes.text = "" Then 
+   '    Template_Editor.teNotes.SetFocus
+   '    Return    
+   ' Endif
+    If textarea1.text = "" Then 
+       textarea1.text.SetFocus
       Return    
    Endif
    Return True
@@ -268,11 +297,11 @@ Public Sub EditArea_KeyPress()
    
    Dim x As Integer
    
-  ' bkeyvalid = EditArea_ExcludeKeys(key.code, Last.tag)
-  ' If bkeyvalid = False Then
-  '    Stop Event
-  '    Return
- '  End If
+   ' bkeyvalid = EditArea_ExcludeKeys(key.code, Last.tag)
+   ' If bkeyvalid = False Then
+   '    Stop Event
+   '    Return
+   '  End If
    If key.code = key.Down Then
       If listview1.Visible Then
          listview1.MoveFirst
@@ -384,7 +413,7 @@ Public Sub Listview1_DblClick()
    '-----------------------------------------------------------------
    
    Dim SelectedReason As New Collection       'for readability
-
+   
    listview1.MoveCurrent                  'set this for the key       
    txtTemplateName.text = listview1.Item.Text
    listview1.Visible = False
@@ -400,5 +429,11 @@ Public Sub Listview1_DblClick()
          Break
       End If
    Next
+   
 End 
 
+Public Sub TextArea1_Change()
+   
+   EditArea_Notify_DataChange(True)
+   
+End

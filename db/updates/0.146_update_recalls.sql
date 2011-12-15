@@ -5,11 +5,18 @@ COMMENT ON COLUMN clin_recalls.lu_templates.fk_lu_appointment_length IS
 'key to common.lu_appointment_length, A Template for a recall must always have a default appointment length here a standard consult length=1';
 
 -- new view for templates to include common.lu_appointment_length.length.
-create or replace view clin_recalls.vwTemplates as 
-select lu_templates.*, lu_appointment_length.length as appointment_length 
-from clin_recalls.lu_templates 
-JOIN common.lu_appointment_length ON lu_templates.fk_lu_appointment_length = lu_appointment_length.pk 
-where clin_recalls.lu_templates.template<> '';
+
+CREATE OR REPLACE VIEW clin_recalls.vwtemplates AS 
+ SELECT lu_templates.pk, lu_templates.name, lu_templates.deleted, lu_templates.template, 
+lu_templates.fk_lu_appointment_length, lu_appointment_length.length
+   FROM clin_recalls.lu_templates, common.lu_appointment_length
+  WHERE lu_templates.fk_lu_appointment_length = lu_appointment_length.pk AND lu_templates.template <> ''::text;
+
+ALTER TABLE clin_recalls.vwtemplates OWNER TO easygp;
+GRANT ALL ON TABLE clin_recalls.vwtemplates TO easygp;
+GRANT ALL ON TABLE clin_recalls.vwtemplates TO staff;
+
+
 
 ALTER TABLE clin_recalls.vwTemplates OWNER TO easygp;
 GRANT ALL ON TABLE clin_recalls.vwTemplates TO easygp;
@@ -42,7 +49,7 @@ CREATE OR REPLACE VIEW clin_recalls.vwrecalls AS
    LEFT JOIN contacts.lu_title ON data_persons.fk_title = lu_title.pk
    JOIN common.lu_urgency ON recalls.fk_urgency = lu_urgency.pk
    JOIN common.lu_appointment_length ON recalls.fk_appointment_length = lu_appointment_length.pk
-   JOIN common.lu_appointment_length as lu_appointment_length1 ON lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk
+   JOIN common.lu_appointment_length as lu_appointment_length1 ON clin_recalls.lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk
    LEFT JOIN common.lu_units ON recalls.fk_interval_unit = lu_units.pk
   ORDER BY consult.fk_patient, recalls.due;
 
@@ -66,4 +73,3 @@ GRANT ALL ON TABLE clin_history.vwcareplancomponents TO staff;
 
 truncate db.lu_version;
 insert into db.lu_version (lu_major,lu_minor) values (0, 146);
-

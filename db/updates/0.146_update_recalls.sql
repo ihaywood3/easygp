@@ -1,14 +1,13 @@
 
 -- give each template a default appointment length. this will over-ride a recalls appointment length
-ALTER TABLE clin_recalls.lu_templates ADD COLUMN fk_appointment_length integer default 1;
+ALTER TABLE clin_recalls.lu_templates ADD COLUMN fk_lu_appointment_length integer default 1;
 COMMENT ON COLUMN clin_recalls.lu_templates.fk_lu_appointment_length IS 
 'key to common.lu_appointment_length, A Template for a recall must always have a default appointment length here a standard consult length=1';
 
 -- new view for templates to include common.lu_appointment_length.length.
 
 CREATE OR REPLACE VIEW clin_recalls.vwtemplates AS 
- SELECT lu_templates.pk, lu_templates.name, lu_templates.deleted, lu_templates.template, 
-lu_templates.fk_lu_appointment_length, lu_appointment_length.length
+ SELECT lu_templates.pk, lu_templates.name, lu_templates.deleted, lu_templates.template, lu_templates.fk_lu_appointment_length, lu_appointment_length.length
    FROM clin_recalls.lu_templates, common.lu_appointment_length
   WHERE lu_templates.fk_lu_appointment_length = lu_appointment_length.pk AND lu_templates.template <> ''::text;
 
@@ -16,11 +15,6 @@ ALTER TABLE clin_recalls.vwtemplates OWNER TO easygp;
 GRANT ALL ON TABLE clin_recalls.vwtemplates TO easygp;
 GRANT ALL ON TABLE clin_recalls.vwtemplates TO staff;
 
-
-
-ALTER TABLE clin_recalls.vwTemplates OWNER TO easygp;
-GRANT ALL ON TABLE clin_recalls.vwTemplates TO easygp;
-GRANT ALL ON TABLE clin_recalls.vwTemplates TO staff;
 
 -- Cascades to clin_history.vwcareplancomponents
 
@@ -48,8 +42,8 @@ CREATE OR REPLACE VIEW clin_recalls.vwrecalls AS
    LEFT JOIN contacts.data_persons ON staff.fk_person = data_persons.pk
    LEFT JOIN contacts.lu_title ON data_persons.fk_title = lu_title.pk
    JOIN common.lu_urgency ON recalls.fk_urgency = lu_urgency.pk
-   JOIN common.lu_appointment_length ON recalls.fk_appointment_length = lu_appointment_length.pk
-   JOIN common.lu_appointment_length as lu_appointment_length1 ON clin_recalls.lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk
+   left JOIN common.lu_appointment_length ON recalls.fk_appointment_length = lu_appointment_length.pk
+   left JOIN common.lu_appointment_length as lu_appointment_length1 ON clin_recalls.lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk
    LEFT JOIN common.lu_units ON recalls.fk_interval_unit = lu_units.pk
   ORDER BY consult.fk_patient, recalls.due;
 
@@ -69,6 +63,7 @@ CREATE OR REPLACE VIEW clin_history.vwcareplancomponents AS
 ALTER TABLE clin_history.vwcareplancomponents OWNER TO easygp;
 GRANT ALL ON TABLE clin_history.vwcareplancomponents TO easygp;
 GRANT ALL ON TABLE clin_history.vwcareplancomponents TO staff;
+
 
 
 truncate db.lu_version;

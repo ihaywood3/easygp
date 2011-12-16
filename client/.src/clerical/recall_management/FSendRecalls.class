@@ -36,36 +36,38 @@ Public Sub form_Open()
 End
 
 Public Sub Init()
-
+   
    With cvwRecallsDue
-      .columns.count = 8
+      .columns.count = 10
       .Columns[0].Text = "Date Due"
       .Columns[1].Text = "Firstname"
       .Columns[2].Text = "Surname"
       .Columns[3].Text = "Street"
       .Columns[4].Text = "Reason"
       .Columns[5].Text = "Urgency"
-      .Columns[6].Text = "Contact by"
+      .Columns[6].Text = "By"
+      .Columns[7].Text = "Last Done"
+      .Columns[8].Text = "# Sent"
+      .Columns[9].Text = "Template"
       
    End With
    cmbRecallsDue.Add("All Overdue Recalls")
    cmbRecallsDue.Add("Due in 2 Weeks")
    cmbRecallsDue.Add("Due in 3 Weeks")
    cmbRecallsDue.Add("Due in Next Month")
-   With Template_Editor = New FEditor(Vbox_Editor)                     'Editor to create/load template
-      .lblHeading.text = "Template Editor"
-      .Init("FSendRecalls")
-   End With
+   ' With Template_Editor = New FEditor(Vbox_Editor)                     'Editor to create/load template
+   '    .lblHeading.text = "Template Editor"
+   '    .Init("FSendRecalls")
+   ' End With
    
- 
    cvwRecalls_Refresh(0, True) 'days overdue and overdue
-
+   
 End
 
 Public Sub Consult_Check_Created(iconsult_type As Integer, summary As String)
    'probably should live elsewhere ?cConsult and pass parameters
    'see const for types of consult
-
+   
    If IsNull(currentconsult) Then   
       CurrentConsult = New CConsult(patient)
       currentconsult.Set(iconsult_type, summary)
@@ -74,10 +76,10 @@ Public Sub Consult_Check_Created(iconsult_type As Integer, summary As String)
 End
 
 Public Sub cvwRecalls_Refresh(Optional days_due As Integer = 0, Optional bOverdue As Boolean = False)
-
+   
    Dim x As Integer
    Dim recall As Collection
-
+   
    cvwRecallsDue.Clear()
    templates = modRecallsDBI.Templates_Get() 'could have been updated
    recalls_due = modRecallsDBI.Recalls_Due_Get() 'always refresh collection
@@ -98,7 +100,7 @@ Public Sub cvwRecalls_Refresh(Optional days_due As Integer = 0, Optional bOverdu
 End
 
 Public Sub cvwRecalls_Add(recall As Collection)
-
+   
    Dim x As Integer
    
    x = recall!pk_recall
@@ -110,11 +112,15 @@ Public Sub cvwRecalls_Add(recall As Collection)
    cvwRecallsDue[x][4] = recall!reason
    cvwRecallsDue[x][5] = recall!urgency
    cvwRecallsDue[x][6] = recall!contact_method
+   Try cvwRecallsDue[x][7] = Format(recall!date_reminder_sent, "dd/mm/yyyy") 'may not exist
+   cvwRecallsDue[x][8] = recall!num_reminders
+   cvwRecallsDue[x][9] = recall!name                  'of the template
+   
    
 End
 
 Public Sub cmbRecallsDue_Click()
-
+   
    Select Case Last.Text
       Case "All Overdue Recalls"
          cvwRecalls_Refresh(0, True)
@@ -125,7 +131,7 @@ Public Sub cmbRecallsDue_Click()
       Case "Due in Next Month"
          cvwRecalls_Refresh(29, False)
    End Select
-
+   
 End
 
 Public Sub form_Close()
@@ -143,22 +149,23 @@ Private Sub Settings_Load()
 End
 
 Public Sub mnuRecallManagement_Click()
+   
    Dim x As Integer
    
    Select Case Last.tag
       Case "opportunistic"
       Case "arrange by phone"
       Case "print for mailing"
-          Print recalls_due    
-        cvwRecallsDue.MoveFirst() 
-        For x = 1 To cvwRecallsDue.count 
-         
+         Print recalls_due    
+         cvwRecallsDue.MoveFirst() 
+         For x = 0 To cvwRecallsDue.count - 1
             If cvwRecallsDue.Item.Selected = True Then
                Print()
-               cvwRecallsDue.Item.Selected = False 
-            End If   
+            Endif
             cvwRecallsDue.MoveNext()
-        Next
+         Next
+         cvwRecallsDue.UnselectAll()
+         cvwRecalls_Refresh(0, True)
       Case "view archived"
       Case "refused"
       Case "refused with explanation"
@@ -181,11 +188,54 @@ End
 Public Sub Print()
    '-----------------------
    'Print the recall letter
+   '  pk serial NOT NULL,
+   '   fk_recall integer NOT NULL, -- key to clin_recalls.recall table
+   '   date date NOT NULL, -- the date the reminder for the recall was processed
+   '   latex text NOT NULL, -- the latex definition of the recall reminder sent
+   '   fk_contact_method integer NOT NULL, -- key to contacts.lu_contact_type table e.g could point to letter/phone
+   '   fk_address text, -- if not null letter posted or delivered to this address
+   '   contact_value text, -- if not null contact via this text eg mobile phone, voip, email
+   '   fk_staff integer, -- key to admin.staff table staff member who prepared the letter
+   '   memo text, -- memo added by staff at the time e.g could have called patient who said they would make appointment
+   ' 
+   
    '-----------------------
-   cvwRecallsDue.MoveCurrent()
-   patient = recalls_due[cvwRecallsDue.Item.key]
-   Consult_Check_Created(const.ConsultType_AuditNote, "recall")
-   modPrinting.Print_latex(RecallLetter_LaTex_Construct().GetData(), const.Paper_Plain, 1)
+   Dim laTex As String                                                'LaTex definition of the letter
+   Dim sent As New Collection
+   Dim audit_notes As String
+   
+   currentRecall = recalls_due[cvwRecallsDue.Item.Key] 
+   CurrentConsult = New CConsult(recalls_due[cvwRecallsDue.Item.key])   'create the consultation
+   Print cvwRecallsDue.Item.Key, recalls_due[cvwRecallsDue.Item.key]!wholename
+   currentconsult.Set(const.cAuditAction_ReminderSent, "recall")        'of type audit for recall
+   laTex = RecallLetter_LaTex_Construct().GetData()                     'get the letter definition
+   '---------------------------------------------------------------
+   'get the data together about how reminder was sent and save this  
+   '---------------------------------------------------------------   
+   sent!fk_recall = currentRecall!pk_recall                                                                                '
+   sent!date = Now()
+   sent!latex = laTex
+   sent!fk_contact_method = const.ContactMethodLetter
+   sent!fk_staff = modDBConnect.currentUser!fk_staff
+   sent!pk = modDBConnect.insert("clin_recalls.sent", sent) 
+   '-------------------------------------------------------------------------------------
+   'Now update the actual recall so that it knows the last fk_sent and incr num_reminders
+   '------------------------------------------------------------------------------------- 
+   modDBConnect.update("clin_recalls.recalls", Null, ["pk": currentRecall!pk_recall, "fk_sent": sent!pk])
+   modDBConnect.update("clin_recalls.recalls", Null, ["pk": currentRecall!pk_recall, "num_reminders": recalls_due[cvwRecallsDue.Item.Key]!num_reminders + 1])
+   '---------------------------------------------------------------------------------------------------------------------------
+   'Now the audit trail this will always be linked to the recall, so viewable e.g in FClinical using menu over the recalls list
+   '---------------------------------------------------------------------------------------------------------------------------
+   audit_notes = "letter sent to " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town & " " & currentconsult!patient!postcode
+  
+ 
+   If modAudit.MakeAudit(currentconsult, const.sAuditAction[const.cAuditAction_ReminderSent], "clin_recalls.recalls", currentrecall!pk_recall, const.cSection_Recalls, audit_notes) Then 
+      modDBConnect.CommitTrans()
+      modPrinting.Print_latex(RecallLetter_LaTex_Construct().GetData(), const.Paper_Plain, 1)
+   Else
+       modDBConnect.RollBack()
+   End If    
+   
    
 End
 
@@ -193,6 +243,7 @@ Public Sub RecallLetter_LaTex_Construct() As CTemplate
    '------------------------------------------
    'Construct the LaTex to send to the printer
    '------------------------------------------
+   
    Dim sName As String
    Dim sAddress As String
    Dim sString As String
@@ -205,7 +256,7 @@ Public Sub RecallLetter_LaTex_Construct() As CTemplate
    If Not IsNull(currentRecall!additional_text) Then
       templ.Subst("additional_text", currentRecall!additional_text)
    Else
-     templ.Subst("additional_text", "\\relax")
+      templ.Subst("additional_text", "\\relax")
    Endif
    
    sString = Trim(currentRecall!staff_to_see_title & " " & currentRecall!staff_to_see_firstname & " " & currentRecall!staff_to_see_surname)
@@ -214,21 +265,21 @@ Public Sub RecallLetter_LaTex_Construct() As CTemplate
    'Template appointment length, over-rides the recall appointment lengh
    'it's more likely the doctor just forgot the right length
    '--------------------------------------------------------------------
-  ' templ.Subst("consult_length", currentRecall!appointment_length)
+   ' templ.Subst("consult_length", currentRecall!appointment_length)
    If Not IsNull(currentRecall!fk_template) Then
-       If currentRecall!fk_template <> 1 Then   '1= set back to no template
-             templ.Subst_html("template", Templates[currentRecall!fk_template]!template) 'currently have fudged html see FRecallLetterTemplate.Save()
-             templ.Subst("consult_length", Templates[currentRecall!fk_template]!appointment_length) 
-       Else
-           templ.Subst("consult_length", currentRecall!appointment_length)  
-          templ.Subst("template", "\\relax") 
-       End If  
+      If currentRecall!fk_template <> 1 Then   '1= set back to no template
+         templ.Subst_html("template", Templates[currentRecall!fk_template]!template) 'currently have fudged html see FRecallLetterTemplate.Save()
+         templ.Subst("consult_length", Templates[currentRecall!fk_template]!appointment_length) 
+      Else
+         templ.Subst("consult_length", currentRecall!appointment_length)  
+         templ.Subst("template", "\\relax") 
+      End If  
    Else   
-       templ.Subst("consult_length", currentRecall!appointment_length) 
-       templ.Subst("template", "\\relax") 
+      templ.Subst("consult_length", currentRecall!appointment_length) 
+      templ.Subst("template", "\\relax") 
    Endif
    Return templ
-
+   
 End
 
 Public Sub cvwRecallsDue_Select()
@@ -238,27 +289,27 @@ Public Sub cvwRecallsDue_Select()
    If Not IsNull(currentRecall!fk_template) Then
       Display_Template()
    Else
-      txtTemplateName.text = "" 
-      With Template_Editor
-         .bExit = True   
-         .teNotes.RichText = ""
-         .bExit = False 
-      End With  
-      bExit = False    
+      ' txtTemplateName.text = "" 
+      ' With Template_Editor
+      '    .bExit = True   
+      '    .teNotes.RichText = ""
+      '    .bExit = False 
+      ' End With  
+      ' bExit = False    
    Endif
-
+   
 End
 
 Public Sub Display_Template()
    
    bExit = True   
    
-   txtTemplateName.text = Templates[recalls_due[cvwRecallsDue.Item.Key]!fk_template]!name
-   With Template_Editor
-      .bExit = True   
-      .teNotes.RichText = Templates[recalls_due[cvwRecallsDue.Item.Key]!fk_template]!template
-      .bExit = False 
-   End With  
-   bExit = False  
+   ' txtTemplateName.text = Templates[recalls_due[cvwRecallsDue.Item.Key]!fk_template]!name
+   ' With Template_Editor
+   '    .bExit = True   
+   '    .teNotes.RichText = Templates[recalls_due[cvwRecallsDue.Item.Key]!fk_template]!template
+   '    .bExit = False 
+   ' End With  
+   ' bExit = False  
    
 End

@@ -4,7 +4,7 @@ alter table clerical.schedule add column percentage_fee_rule boolean default fal
 
 comment on column clerical.schedule.descriptor_brief is 'a brief description of a long descriptor';
 comment on column clerical.schedule.gst_rate is 'the goods and services tax rate';
-comment on column clerical.schedule.ypercentage_fee_rule is 'if true then percentage rules apply for the fee
+comment on column clerical.schedule.percentage_fee_rule is 'if true then percentage rules apply for the fee
  for example ist excision paid at 100%, second on same occasion at 50% etc';
 
 -- some additional types for billing

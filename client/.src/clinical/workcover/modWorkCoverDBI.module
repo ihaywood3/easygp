@@ -22,20 +22,30 @@
 Public sql As String
 Public $Result As Result
 
-Public Function Claims_Get(fk_patient As Integer) As Collection 
+Public Function Claims_Get(fk_patient As Integer, Optional OrderBy As String = "DESC") As Collection 
    '--------------------------------------------------------------------------
    'Gets all the patients workcover claims, and loads the cvwWorkcover control
-   'clin_workcover, currently ordered newest to oldest visit for each claim
+   'clin_workcover, default ordered newest to oldest visit for each claim as
+   'user in FClinical would normally want to access the most recent
+   'however other listings may call this with the optional parameter as ASC
    '--------------------------------------------------------------------------
-
-   Return modDBConnect.exec_query_collection("Select * from clin_workcover.vwWorkcover  WHERE fk_patient =" & fk_patient & " ORDER BY fk_claim, fk_visit DESC")
+   Dim sql As String
+   
+   sql = "Select * from clin_workcover.vwWorkcover  WHERE fk_patient =" & fk_patient & " ORDER BY fk_claim, fk_visit" 
+   If Orderby = "ASC" Then
+      sql &= " ASC"
+   Else
+      sql &= " DESC"
+   Endif
+   Return modDBConnect.exec_query_collection(sql)
+   
 End
 
 Public Function Save(currentconsult As Cconsult, view_key As Integer, claim As Collection, visit As Collection) As Integer
    '------------------------------
    'Check if the occupation exists
    '------------------------------
-
+   
    If claim!fk_occupation = 0 Then  'could be null ? if so will crash
       claim!fk_occupation = modCommonDBI.occupation_save(claim!occupation)
    End If
@@ -75,12 +85,14 @@ Public Function Save(currentconsult As Cconsult, view_key As Integer, claim As C
       End If  
    End If
    Return claim!fk_claim
+   
 End
 
 Public Function WorkcoverForm_LaTeX_Construct(currentconsult As CConsult, visit As Collection) As CTemplate
    '-----------------------------------------------
    'Constructs the Latex Form for the Workcover Form
    '------------------------------------------------   
+   
    Dim sEmployer As String
    Dim sAssess_Workplace As String = "   No"
    Dim sName As String
@@ -92,7 +104,7 @@ Public Function WorkcoverForm_LaTeX_Construct(currentconsult As CConsult, visit 
    Dim comm As Collection 
    Dim Comms As Collection 
    Dim templ As New CTemplate("workcover-nsw", "tex")
-
+   
    Select Case visit!fk_lu_visit_type              'Can't selectively do one
       Case Const.Workcover_VisitType_Initial        'once replaced, their 'gone'
          templ.Checkbox("visit_type_initial", True)
@@ -246,5 +258,71 @@ Public Function WorkcoverForm_LaTeX_Construct(currentconsult As CConsult, visit 
    templ.Subst("worker_consented", sString)
    templ.Subst("date", Format(visit!certificate_date, "dd/mm/yyyy"))
    Return templ
+   
+End
+
+Public Function Workcover_summary_construct_html(claims As Collection) As String
+   
+   Dim sHtml As String
+   Dim visit As Collection 
+   Dim sString As String = ""
+   Dim sRow_Template As String = ""
+   
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=8%>"
+   "%certificate_date"
+   "</TD>"
+   "<TD WIDTH=15%>"
+   "%claim_identifier"
+   "</TD>"
+   "<TD WIDTH=30%>"
+   "%fitness"
+   "</TD>"
+   "<TD WIDTH=47%>"
+   "%management<BR>"
+   "</TD>"
+   
+   "</TR>" 
+   shtml = "<HTML><BODY><DIV ALIGN=CENTER><H3>Summary of Workcover Forms</H3><DIV>"
+   shtml &= "<TABLE WIDTH=100% BORDER=0 CELLPADDING=3>"
+    "<COL WIDTH=8%>"
+   "<COL WIDTH=15%>"
+   "<COL WIDTH=30%>"
+   "<COL WIDTH=47%>"
+   shtml &= sRow_Template
+   sHtml = Replace(shtml, "%certificate_date", "<B>Certificate Date</B>")
+   sHtml = Replace(shtml, "%claim_identifier", "<B>Idenfitier</B>")
+   sHtml = Replace(shtml, "%fitness", "<B>Fitness</B>")
+   sHtml = Replace(shtml, "%management", "<B>Management Plan</B>")
+   '---------------------------------------------------------
+   'Note - imported letters won't have tag's = contents col 3
+   '---------------------------------------------------------
+   For Each visit In claims
+      shtml &= sRow_Template 
+      shtml = Replace(shtml, "%certificate_date", modUtil.Format_Date(visit!certificate_date))
+      shtml = Replace(shtml, "%claim_identifier", visit!identifier)
+      shtml = Replace(shtml, "%management", visit!management_plan)
+      If Not IsNull(visit!fitness_preinjury_from) Then
+           sString = "Pre-injury duties from  " & modUtil.Format_Date(visit!fitness_preinjury_from)
+           shtml = Replace(shtml, "%fitness", sstring)
+      Endif
+      If Not IsNull(visit!fitness_unfit_from) Then
+         sSTring = "Unfit from <BR> " & Format(visit!fitness_unfit_from, "dd/mm/yyyy")
+         sstring &= " to " & Format(visit!fitness_unfit_to, "dd/mm/yyyy")
+         shtml = Replace(shtml, "%fitness", sstring)
+      Endif
+      If Not IsNull(visit!fitness_suitable_from) Then
+         sSTring = "Suitable duties from <BR> " & Format(visit!fitness_suitable_from, "dd/mm/yyyy")
+         sstring &= " to " & Format(visit!fitness_suitable_to, "dd/mm/yyyy")
+         shtml = Replace(shtml, "%fitness", sstring)
+      Endif
+      
+      If Not IsNull(visit!fitness_perm_mod_duties_from) Then
+         sSTring = "Perm Modified from  " & Format(visit!fitness_perm_mod_duties_from, "dd/mm/yyyy")
+         shtml = Replace(shtml, "%fitness", sstring)
+      Endif
+   Next
+   Print sHtml & "</TABLE></BODY></HTML>"
+   Return sHtml & "</TABLE></BODY></HTML>"
    
 End

@@ -16,10 +16,21 @@
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '----------------------------------------------------------------------
+'
+Private appointment_icons As Collection          'passed from FMakeAppointments (saves loading in every day occurrence)
+Private Appointment_Status_Colors As String[]
+Private Const appointment_made As Integer = 1
+Private Const arrived_and_waiting As Integer = 2
+Private Const in_consulting_room As Integer = 3
+Private Const patient_departed As Integer = 4
+Private Const emergency As Integer = 5
+Private Const fitin As Integer = 6      
+Private appointment_interval As Integer = 10
+
 Public Function Patients_Seen(date_seen As String, Optional fk_staff As Integer = 0, bShowAudits As Boolean = False) As Collection 
-
+   
    Dim sql As String
-
+   
    sql = "Select * from clin_consult.vwPatientConsults WHERE date(consult_date) = '" & date_seen & "'::date "
    If fk_staff Then
       sql &= " AND fk_staff = " & fk_staff 
@@ -33,22 +44,22 @@ End
 
 '''List sessions for a given user
 Public Function Sessions_List(fk_staff As Integer) As Collection
-
-  Return modDBConnect.exec_query_row("select * from clerical.sessions where fk_staff =  " & fk_staff)
+   
+   Return modDBConnect.exec_query_row("select * from clerical.sessions where fk_staff =  " & fk_staff)
    
 End
 
 '''Save a session
 Public Sub Sessions_Save(row As CRow)
    
-  row.Save("clerical.sessions", "pk") 
+   row.Save("clerical.sessions", "pk") 
    
 End
 
 '''Delete session
 Public Sub Sessions_Delete(row As CRow)
    
-  modDBConnect.exec_query("delete from clerical.sessions where pk = " & row!pk) 
+   modDBConnect.exec_query("delete from clerical.sessions where pk = " & row!pk) 
    
 End
 
@@ -59,15 +70,15 @@ End
 Public Function Appt_List(Optional day1 As Date = Null, fk_staff As Integer = -1, timeunit As String = "day") As Collection
    
    Dim sql As String
-
+   
    sql = ""
    If Not IsNull(day1) Then
-     sql = Format$(day1, "yyyy-mm-dd")
-     sql = Subst$("date_trunc('&2',begin) = date_trunc('&2',timestamp '&1')", sql, timeunit)
+      sql = Format$(day1, "yyyy-mm-dd")
+      sql = Subst$("date_trunc('&2',begin) = date_trunc('&2',timestamp '&1')", sql, timeunit)
    Endif
    If fk_staff <> -1 Then
-     If sql <> "" Then sql &= " and "
-     sql &= "fk_staff = " & fk_staff
+      If sql <> "" Then sql &= " and "
+      sql &= "fk_staff = " & fk_staff
    Endif
    If sql = "" Then sql = "1=1"
    sql = "select * from clerical.bookings where " & sql & " order by begin limit 500"
@@ -77,38 +88,222 @@ End
 
 Public Function Appointments_GetWeek(start_date As Date, fk_staff As Integer, fk_clinic As Integer) As Collection
    
-  Dim sql As String
-  'date_trunc('week', begin) =date_trunc( 'week', &1)
-  sql = "Select * from clerical.vwAppointments where "
-  sql &= "date_trunc('week', begin) =date_trunc('week','" & Now & "')"
-  Return modDBConnect.exec_query_collection(sql) 
+   Dim sql As String
+   'date_trunc('week', begin) =date_trunc( 'week', &1)
+   sql = "Select * from clerical.vwAppointments where "
+   sql &= "date_trunc('week', begin) =date_trunc('week','" & Now & "')"
+   Return modDBConnect.exec_query_collection(sql) 
    
 End
+
 Public Function Appointment_icons_get() As Collection
    
-  Return modDBConnect.exec_query_collection("Select * from clerical.lu_appointment_icons") 
+   Return modDBConnect.exec_query_collection("Select * from clerical.lu_appointment_icons") 
+   
+End
+
+Public Sub Appointment_Status_Colors_Init()
+   
+   Appointment_Status_Colors = New String[6]                             'don't use 0 member
+   Appointment_Status_Colors[appointment_made] = Color.Black             
+   Appointment_Status_Colors[arrived_and_waiting] = Color.Blue
+   Appointment_Status_Colors[in_consulting_room] = Color.DarkRed
+   Appointment_Status_Colors[patient_departed] = Color.Gray
+   Appointment_Status_Colors[emergency] = Color.Red 
+   
+End
+Public Sub GridRows_Update(Appointments As Collection, gridrows As Collection[])
+   '----------------------------------------------
+   'Update the contents of the gridrows collection
+   '---------------------------------------------- 
+   
+   Dim NewRows As New Collection
+   Dim i As Integer
+   Dim x As Integer
+   Dim sTime As String
+   Dim sArray As String[]
+   Dim duration As Integer
+   Dim sEndTime As Date 
+   Dim sBeginTime As String 
+   Dim slots As Integer
+   Dim oldRowCount As Integer    
+   Dim lastAppointment As Collection 
+   Dim FitIn As Collection 
+   Dim find_time As Date
+   Dim appointment As Collection 
+   
+   If IsNull(appointment_icons) Then
+      Appointment_Icons = Appointment_icons_Get_Picture(Appointment_icons_get()) 
+   Endif
+   
+   For Each appointment In appointments
+      '------------------------------------------------------------- 
+      'Duration can be in multiples of the days appointment_interval
+      'the time off appointmen is the key to the gridrows collection
+      '-------------------------------------------------------------
+      sTime = Format(appointment!begin, "hh:nn")                      ' e.g 10:20 gridrows key
+      duration = Val(Split(appointment!duration, ":")[1])             ' e.g 10, 20, 30
+      Select Case duration
+         Case 1 
+               'do nothing but please don't remove this or scews things up
+         Case 10
+            '---------------------------------------------------------------- 
+            'this is a standard appointment length - will have only 1 slot
+            'i.e in this fixed 10 minute interval FIXME MAKE ME CONFIGURABLE
+            'this appointment is for 10 minutes only
+            '----------------------------------------------------------------  
+            For i = 0 To GridRows.Count - 1
+               
+               If Not IsNull(gridrows[i]) Then    'may have been merged so i is missing
+                  If gridrows[i]!time = stime Then
+                     If Not IsNull(appointment!fk_patient) Then  
+                        gridrows[i]!name = Replace(appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] ", "Unknown", "")
+                     Else
+                        gridrows[i]!name = appointment!notes  
+                        gridrows[i]!notes = appointment!notes  
+                     End If   
+                     gridrows[i]!pk_appointment = appointment!pk
+                     gridrows[i]!fk_patient = appointment!fk_patient 
+                     gridrows[i]!fk_lu_appointment_icon = appointment!fk_lu_appointment_icon
+                     gridrows[i]!fk_lu_appointment_status = appointment!fk_lu_appointment_status
+                     Try gridrows[i]!picture = Picture.Load(appointment_icons[appointment!fk_lu_appointment_icon]!icon_path) 'most often there is no icon
+                  Endif
+               End If
+            Next 
+         Case Else
+            '--------------------------------------- 
+            'duration longer than 1 appointment slot
+            '---------------------------------------
+            sBeginTime = Format(appointment!begin, "hh:nn")
+            sEndTime = DateAdd(appointment!begin, gb.minute, duration)   ' work out the end time
+            sTime = sTime & "-" & Format(sEndTime, "hh:nn")              ' key becomes eg 10-20:10-30 fixme more complex than this eg 10:50-11,20
+            For i = 0 To GridRows.Count - 1
+               If Not IsNull(gridrows[i]) Then   
+                  If gridrows[i]!time = sBeginTime Then
+                     slots = duration / appointment_interval 
+                     gridrows[i]!time = sTime
+                     If IsNull(appointment!fk_patient) Then
+                        gridrows[i]!name = appointment!notes
+                     Else
+                        gridrows[i]!name = Replace(appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] ", "Uknown", "") 'if title unknown don't show this
+                     Endif
+                     gridrows[i]!slots = slots
+                     gridrows[i]!pk_appointment = appointment!pk
+                     gridrows[i]!fk_patient = appointment!fk_patient   
+                     gridrows[i]!fk_lu_appointment_icon = appointment!fk_lu_appointment_icon
+                     gridrows[i]!fk_lu_appointment_status = appointment!fk_lu_appointment_status
+                     Try gridrows[i]!picture = Picture.Load(appointment_icons[appointment!fk_lu_appointment_icon]!icon_path) 'most often there is no icon
+                     '---------------------------------------------------------------------------------------------
+                     'Now the 'virgin' grid has time slots all the same - each 10 minutes
+                     'now, we have 'consumed' extra slots, so remove the gridrow corresponding to those extra slots
+                     'as gridrows is a collection[] array, this automatically re-orders the index 0-n
+                     '---------------------------------------------------------------------------------------------
+                     For x = 1 To slots - 1
+                        gridrows.Remove(i + x)
+                     Next
+                     Break
+                  End If   
+               End If   
+            Next
+      End Select
+      Inc x
+   Next
+   '-------------------
+   'now add the fit-ins
+   '-------------------
+   For Each appointment In appointments
+      sTime = Format(appointment!begin, "hh:nn")                      ' e.g 11:00
+      duration = Val(Split(appointment!duration, ":")[1])             ' e.g 10, 20, 30
+      If duration = 1 Then                                            ' e,g 11:01
+         find_time = Time(Hour(appointment!begin), Minute(appointment!begin) - 1, 0)
+         For i = 0 To gridrows.count - 1
+            If gridrows[i]!time = Format(find_time, "hh:nn") Then 
+               fitin = New Collection
+               fitin!time = sTime
+               fitin!slots = 1
+               fitin!name = Replace(appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] ", "Unknown", "")
+               fitin!pk_appointment = appointment!pk
+               fitin!fk_patient = appointment!fk_patient 
+               fitin!fk_lu_appointment_icon = appointment!fk_lu_appointment_icon
+               fitin!fk_lu_appointment_status = appointment!fk_lu_appointment_status
+               gridrows.add(fitin, i + 1)
+               Try gridrows[i + 1]!picture = Picture.Load(appointment_icons[appointment!fk_lu_appointment_icon]!icon_path) 'most often there is no icon
+               Break 
+            Endif
+         Next
+      Endif
+   Next
+   
+End
+
+Public Sub Appointment_icons_Get_Picture(Appointment_Icons As Collection) As Collection 
+   '-----------------------------------------------------------------------------------------
+   'Loads the actual picture of the appointment icon into the collection got from the backend
+   '-----------------------------------------------------------------------------------------
+
+   Dim Appointment_icon As Collection
+   
+   For Each Appointment_Icon In Appointment_Icons
+      Appointment_Icon!picture = Picture.Load(Appointment_Icon!icon_path)
+   Next
+   Return Appointment_Icons
+   
+End
+Public Sub Appointment_Grid_Refresh(gv As Gridview, gridRows As Collection[], Optional form As String = "")
+   
+   '-------------------------------------------------------------------------
+   'Using the underlying collection of appointment times to re-build the grid
+   'i.e what the user sees
+   '-------------------------------------------------------------------------   
+   
+   Dim i As Integer
+   Dim sTimes As String[]
+   Dim sTime As String 
+   
+   If IsNull(Appointment_Status_Colors) Then
+      Appointment_Status_Colors_Init() 
+   Endif
+   gv.Clear()                               'clear the grid
+   gv.Rows.count = gridrows.count           'set actual number of rows in the grid <> gridrows_init()
+   For i = 0 To gridrows.count - 1
+      gv.Rows[i].height = gridrows[i]!slots * 18 'will vary according to length of appt times
+      gv[i, 0].text = gridrows[i]!time
+    '  gv[i, 0].text = Replace(gridrows[i]!time, "-", "\n")
+      gv[i, 1].Alignment = Align.Center
+      gv[i, 1].picture = gridrows[i]!picture
+      gv[i, 2].text = gridrows[i]!name
+      Try gv[i, 2].Foreground = Appointment_Status_Colors[gridrows[i]!fk_lu_appointment_status] 
+      Select Case gridrows[i]!fk_lu_appointment_status
+         Case emergency 
+            gv[i, 2].Background = Color.Yellow
+            gv[i, 2].text = "RESERVED FOR EMERGENCY"
+         Case fitin
+            gv[i, 2].Background = Color.cyan
+      End Select
+   Next
    
 End
 
 Public Function Appointments_GetDay(appointment_date As Date, fk_staff As Integer, fk_clinic As Integer) As Collection
    
-  Dim sql As String
-  sql = "Select * from clerical.vwAppointments where date_trunc('day', begin) = '" & Format$(appointment_date, "dd/mm/yyyy") & "'" 
-  sql &= " AND fk_staff = " & fk_staff & " AND fk_clinic = " & fk_clinic & " AND deleted = false"
-  Return modDBConnect.exec_query_collection(sql)
-End
+   Dim sql As String
 
+   sql = "Select * from clerical.vwAppointments where date_trunc('day', begin) = '" & Format$(appointment_date, "dd/mm/yyyy") & "'" 
+   sql &= " AND fk_staff = " & fk_staff & " AND fk_clinic = " & fk_clinic & " AND deleted = false"
+   Return modDBConnect.exec_query_collection(sql)
+
+End
 
 '''Save an appointment
 Public Sub Appointment_Save(row As CRow)
    
-  row.Save("clerical.bookings", "pk") 
+   row.Save("clerical.bookings", "pk") 
    
 End
 
 '''Mark appointment as deleted
 Public Sub Appointment_Delete(row As Crow)
    
-  modDBConnect.exec_query("update clerical.bookings set deleted='t' where pk = " & row!pk) 
+   modDBConnect.exec_query("update clerical.bookings set deleted='t' where pk = " & row!pk) 
    
 End

@@ -37,7 +37,7 @@
 Private $hEditor As Object
 Private bexit As Boolean
 Private obs As Observer
-Private OnRow As Integer                           'current row the user has selected
+Public OnRow As Integer                            'current row the user has selected do not make this private
 Public GridRows As Collection[]                    'A collection array to allow .delete and .add to re-order the collecton index automatically
 Private iTop As Integer                            'top of txtAppointments for positioning over the grid
 Private iFirstRow As Integer                       'first row selected in the grid
@@ -104,29 +104,45 @@ Public Sub Form_KeyPress()
    
    Dim CtrlDown As Boolean
    Dim FnDown As Boolean
+   Dim altDown As Boolean
    
    If Key.code = Key.F9 Then 
-      Reload()
+      FMakeAppointments.Reload()
       Return 
    Endif
    Try CtrlDown = Key.Control
+   Try altDown = Key.alt
+   If CtrlDown And altDown Then
+      ' Select Case Key.Code
+      '   Case 66, Asc("B")
+      '    fk_lu_appointment_icon = 2 'fixme should not be hard coded
+      '   Case 73, 105 'i/I
+      '     fk_lu_appointment_icon = 7  'fixme should not be hard coded
+      ' End Select
+      ' Appointment_Update()
+      ' Stop Event
+   Endif
    If CtrlDown Then
       bExit = True 
-      
       '-------------------------------------------------------------
       'change grid foreground colours according to control key codes
       '-------------------------------------------------------------
       Select Case Key.code
          Case 87, 119 'Asc("w") for some reason Asc("w") on my machine gives 119
             fk_lu_appointment_status = arrived_and_waiting
-               Appointment_Update()
+            gridrows[onrow]!fk_lu_appointment_status = arrived_and_waiting
+            Appointment_Update()
          Case 71, 103 'Asc("g")
             fk_lu_appointment_status = patient_departed 
+            gridrows[onrow]!fk_lu_appointment_status = patient_departed 
             Appointment_Update()
          Case 78, 110 ' Asc("n")                                     'n=normal appointment made
             fk_lu_appointment_status = appointment_made
+            gridrows[onrow]!fk_lu_appointment_status = appointment_made
+            Appointment_Update()
          Case 73, 105 ' Asc("i")                          'i=in consulting room
             fk_lu_appointment_status = in_consulting_room
+            gridrows[onrow]!fk_lu_appointment_status = in_consulting_room
             Appointment_Update()
          Case 69, 101 'Asc("e")
             Emergency_Insert()
@@ -135,10 +151,10 @@ Public Sub Form_KeyPress()
          Case 79, 111
             fk_lu_appointment_status = appointment_made
       End Select
-     Stop Event
+      Stop Event
    End If   
    bExit = False  
-
+   
 End
 
 Public Sub GridRows_Init(starttime As Date, EndTime As Date, appointment_interval As Integer)
@@ -186,6 +202,7 @@ Public Sub Reload()
    patient = Null
    fk_lu_appointment_status = 1                                         'default to normal appointment length
    fk_lu_appointment_icon = 0 
+   appointment_interval = 10
    GridRows_Init(Time(8, 30, 0), Time(18, 0, 0), appointment_interval)  'fill empty collection with times
    Appointments_Refresh()                                               'get appointments for this day
    If appointments.count Then                                           'have appointments?
@@ -294,6 +311,7 @@ Public Sub GridRows_Update()
             Next
       End Select
       Inc x
+      'gridrows[i]!fk_patient = appointment!fk_patient
    Next
    '-------------------
    'now add the fit-ins
@@ -316,6 +334,7 @@ Public Sub GridRows_Update()
                fitin!fk_patient = appointment!fk_patient 
                fitin!fk_lu_appointment_icon = appointment!fk_lu_appointment_icon
                fitin!fk_lu_appointment_status = appointment!fk_lu_appointment_status
+               fitin!is_fitin = True   
                gridrows.add(fitin, i + 1)
                Try gridrows[i + 1]!picture = Picture.Load(appointment_icons[appointment!fk_lu_appointment_icon]!icon_path) 'most often there is no icon
                Break 
@@ -345,17 +364,35 @@ Public Sub Gridview1_Refresh()
       Gridview1[i, 1].picture = gridrows[i]!picture
       Gridview1[i, 2].text = gridrows[i]!name
       Try Gridview1[i, 2].Foreground = Appointment_Status_Colors[gridrows[i]!fk_lu_appointment_status] 
-      Select Case gridrows[i]!fk_lu_appointment_status
-         Case emergency 
-            Gridview1[i, 2].Background = Color.Yellow
-            Gridview1[i, 2].text = "RESERVED FOR EMERGENCY"
-         Case fitin
-            Gridview1[i, 2].Background = Color.cyan
-            Gridview1[i, 1].Background = Color.cyan
-            Gridview1[i, 1].text = "FIT"
-      End Select
+      If gridrows[i]!fk_lu_appointment_status = emergency Then
+         Gridview1[i, 2].Background = Color.Yellow
+         Gridview1[i, 2].text = "RESERVED FOR EMERGENCY"
+      Endif
+      If Not IsNull(gridrows[i]!is_fitin) Then
+         Gridview1[i, 2].Background = Color.cyan
+         Gridview1[i, 1].text = "FIT"
+      Endif
    Next
    
+End
+Public Sub Next_Daylist(i As Integer) ' (d As Date)
+   
+    Dim Obj As Object
+    Dim x As Integer
+    Dim F As FDayList
+    
+    Return 
+    F = FMakeAppointments.Get_DayLists()[Min(Me.tag + 1, 4)]
+    Print F
+   With F
+      .OnRow = OnRow
+      .Gridview1_Select()
+      .Gridview1.SetFocus()
+   End With
+   'If Error Then 
+   '   Message.Error("error")  
+   '   gridview1.SetFocus()
+ '  End If     
 End
 
 Public Sub mnuAppointments_Click()
@@ -369,7 +406,7 @@ Public Sub mnuAppointments_Click()
          Appointment_Delete()
          Return 
       Case "no icon"
-         fk_lu_appointment_icon = 0
+        gridrows[onrow]!fk_lu_appointment_icon = 0
       Case "in waiting room"
          fk_lu_appointment_status = arrived_and_waiting
       Case "in consulting room"
@@ -389,7 +426,7 @@ Public Sub mnuAppointments_Click()
          Appointment_Add_Fit()
          Return 
       Case Else 
-         If IsNumber(Last.tag) Then fk_lu_appointment_icon = Val(Last.tag)
+         If IsNumber(Last.tag) Then gridrows[onrow]!fk_lu_appointment_icon = Val(Last.tag)
    End Select
    Save()
    
@@ -397,12 +434,12 @@ End
 
 Public Sub Emergency_Insert()
    
-       If Not IsNull(gridrows[onrow]!fk_patient) Then
-            Message.title = "Delete existing appointment" 
-            If Message.Warning("Existing patient appointment:" & gridrows[onrow]!name & "\n\nReplace with an emergency slot?", "Yes", "No") = 2 Then Return
-         Endif
-         fk_lu_appointment_status = emergency  
-       Save()
+   If Not IsNull(gridrows[onrow]!fk_patient) Then
+      Message.title = "Delete existing appointment" 
+      If Message.Warning("Existing patient appointment:" & gridrows[onrow]!name & "\n\nReplace with an emergency slot?", "Yes", "No") = 2 Then Return
+   Endif
+   fk_lu_appointment_status = emergency  
+   Save()
    
 End
 
@@ -449,7 +486,8 @@ Public Sub Appointment_Add_Fit()
    griddata!time = Format(iHour, "0#") & ":" & Format(iMinute, "0#")
    griddata!time = Appointment_Format(iHour, iminute)
    griddata!slots = 1
-   griddata!fk_lu_appointment_status = fitin
+   griddata!is_fitin = True
+  ' griddata!fk_lu_appointment_status = fitin
    griddata!duration = 1
    gridrows.add(griddata, x)
    Gridview1_Refresh()
@@ -467,20 +505,31 @@ Private Sub Settings_Load()
    
 End
 
-
 Public Sub Gridview1_Keypress()
    '------------------------------------------------------------------------------
    'Keypress detected coming from the grid - ie using typing whilst grid has focus
    '------------------------------------------------------------------------------   
    
    If bExit Then Return 
-   If modUtil.AllowKeys(const.AllowKeys_AtoZ, Key.code) = False Then
+   If modUtil.AllowKeys(const.AllowKeys_AtoZ_UpDown_Arrows, Key.code) = False Then
       Stop Event
       Return
    End If
+   If Key.code = Key.right Then
+      Next_Daylist(1) '(DateAdd(appointment_Date, gb.day, 1))
+      Return    
+   Endif
+    If Key.code = Key.Left Then
+      Next_Daylist(-1) '(DateAdd(appointment_Date, gb.day, -1))
+      Return    
+   Endif
    If Key.code = Key.delete Then
       Appointment_Delete()
       Return 
+   Endif
+   If Key.code = Key.up Or Key.code = Key.down Then
+      gridview1.SetFocus()
+      Return    
    Endif
    If txtAppointment.text = "" Then
       '----------------------------------------------------------- 
@@ -626,7 +675,7 @@ Public Sub Save()
    Dim Appointment_times As String[]
    Dim appointment_length As String[]
    Dim iStatus As Integer
-    
+   
    Timer1.stop
    Try appointment!fk_patient = patient!fk_patient
    If Error Then
@@ -634,30 +683,35 @@ Public Sub Save()
    Endif
    appointment!fk_staff = staff_member!fk_staff
    Appointment_times = Split(gridrows[onrow]!time, "-")
-   If Appointment_times.count > 1 Then 'multiple appointment slots
+   '--------------------------
+   'multiple appointment slots
+   '--------------------------
+   If Appointment_times.count > 1 Then 
       starttime = Date(Year(appointment_date), Month(appointment_date), Day(appointment_date), Hour(Appointment_times[0]), Minute(Appointment_times[0]), 0)
       appointment!begin = Format$(starttime, "dd/mm/yyyy hh:nn")
       EndTime = Date(Year(appointment_date), Month(appointment_date), Day(appointment_date), Hour(Appointment_times[1]), Minute(Appointment_times[1]), 0)
       appointment!duration = Str(Abs(DateDiff(starttime, EndTime, gb.Minute))) & " minutes"
       If fk_lu_appointment_status = 0 Then fk_lu_appointment_status = 1 'normal appointment for 10 min or multiple of 10 min slots
    Else
+      '------------------------- 
+      'only one appointment slot
+      '------------------------- 
+      If fk_lu_appointment_status = 0 Then fk_lu_appointment_status = 1
       starttime = Date(Year(appointment_date), Month(appointment_date), Day(appointment_date), Hour(gridrows[onrow]!time), Minute(gridrows[onrow]!time), 0)
       appointment!begin = Format$(starttime, "dd/mm/yyyy hh:nn")
-      If gridrows[onrow]!fk_lu_appointment_status Then
-        iStatus = gridrows[onrow]!fk_lu_appointment_status
+      If Not IsNull(gridrows[onrow]!fk_lu_appointment_status) Then
+         iStatus = gridrows[onrow]!fk_lu_appointment_status
       Else
-        iStatus = fk_lu_appointment_status
+         iStatus = fk_lu_appointment_status
       Endif
-      Select Case iStatus
-         Case fitin
-            appointment!duration = "1 minutes"  
-         Case emergency
-            appointment!duration = Str(appointment_interval) & " minutes"  
-            fk_lu_appointment_status = emergency  
-         Case Else
-            appointment!duration = Str(appointment_interval) & " minutes"  
-            If fk_lu_appointment_status = 0 Then fk_lu_appointment_status = 1
-      End Select
+      
+      If Not IsNull(gridrows[onrow]!is_fitin) Then
+         appointment_interval = "1" 
+      Endif
+      If iStatus = emergency Then
+         fk_lu_appointment_status = emergency  
+       Endif
+       appointment!duration = Str(appointment_interval) & " minutes"  
    Endif
    If Not IsNull(gridrows[onrow]!pk_appointment) Then
       appointment!pk = gridrows[onrow]!pk_appointment
@@ -665,13 +719,14 @@ Public Sub Save()
    appointment!notes = gridrows[onrow]!notes
    appointment!fk_staff_booked = modDBConnect.currentUser!fk_staff 
    appointment!fk_clinic = fk_clinic  
-   appointment!fk_lu_appointment_icon = fk_lu_appointment_icon
+   appointment!fk_lu_appointment_icon = gridrows[onrow]!fk_lu_appointment_icon
    appointment!fk_lu_appointment_status = fk_lu_appointment_status
    modDBConnect.BeginTrans()
    modAppointmentsDBI.Appointment_Save(appointment)
    modDBConnect.CommitTrans()
    Reload()
    Timer1.start
+
 End
 
 Public Sub Gridview1_First_Vacant(startrow As Integer) As Integer
@@ -747,6 +802,7 @@ Public Sub txtFindPatient_Change()
       End If
       gridrows[onrow]!name = txtFindPatient.text 
       gridrows[onrow]!notes = txtFindPatient.text 
+      gridrows[onrow]!fk_lu_appointment_status = appointment_made
       fk_lu_appointment_status = appointment_made
       Save()                                                    'Saves and reloads the grid                                             
    Endif
@@ -878,12 +934,13 @@ Public Sub Timer1_Timer()
    'accessed all over the office
    'F9=force refresh FIXME DO THIS
    '----------------------------------------------------------
-'   Reload()
+   '   Reload()
    
 End
 
 Public Sub ToolButton1_Click()
-
+   
    Me.Reparent(Null)
-
+   
 End
+

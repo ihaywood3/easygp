@@ -42,7 +42,7 @@ Private iLastRow As Integer
 Private bFoundFirst As Integer
 Private Appointment_Icons As Collection 
 Private Staff As Collection
-Private Staff_Member As Collection
+Public Staff_Member As Collection
 Private form_select As FPatientsSelect
 Private clinics As Collection
 Private clinic As Collection
@@ -82,10 +82,10 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
    AppointmentList.patient = New Collection
    AppointmentList.patient = Patient
    If IsNull(patient!birthdate) Then
-     Message.info("SLACK SECRETARIAL STAFF - YOU MUST ALWAYS PUT THE PATIENT DOB IN THE COMPUTER\n\nPLEASE FIX THIS NOW!!!!!!!!!!!!!!!!")
-    Endif
+      Message.info("SLACK SECRETARIAL STAFF - YOU MUST ALWAYS PUT THE PATIENT DOB IN THE COMPUTER\n\nPLEASE FIX THIS NOW!!!!!!!!!!!!!!!!")
+   Endif
    AppointmentList.txtFindPatient.text = patient!wholename & " [" & Format(patient!birthdate, "dd/mm/yyyy") & "] " & Trim(patient!street1 & " " & patient!street2) & " " & patient!town
-    
+   
 End
 
 Public Sub Init()
@@ -122,14 +122,45 @@ Public Sub Init()
    cmbTimeDay.Add("Afternoon")
    cmbTimeDay.Add("Evening")
    Appointment_Icons = Appointment_icons_Get_Picture(modAppointmentsDBI.Appointment_icons_get())
+   DateChooser1.Day = Day(Now)
    
+End
+
+Static Public Sub Reload()
+   '-------------------------------------------------------
+   'This is called from any instance of FDayList
+   'Reload the Weeklist to Now for staff member in cmbStaff
+   '-------------------------------------------------------
+   Form_Make_Appointments.DateChooser1.value = Now   
+   Form_Make_Appointments.Workspace_Close_Windows()
+   If Form_Make_Appointments.Workspace1.ActiveWindow.Caption <> "This week: " & Form_Make_Appointments.Staff_Member!wholename Then 
+      Form_Make_Appointments.Generate_WeekList(Now)
+   End If   
+
+End
+
+Public Sub Workspace_Close_Windows()
+   
+   Dim window1 As Window  
+
+   Workspace1.Lock() 
+   
+   For Each window1 In Workspace1.Windows
+   If window1.Caption <> "This week: " & Staff_Member!wholename Then
+      window1.Close() 
+   Else
+      Workspace1.ActiveWindow = window1 
+   End If   
+Next  
+Workspace1.Unlock()
+
 End
 
 Public Sub Appointment_icons_Get_Picture(Appointment_Icons As Collection) As Collection 
    '-----------------------------------------------------------------------------------------
    'Loads the actual picture of the appointment icon into the collection got from the backend
    '-----------------------------------------------------------------------------------------
-
+   
    Dim Appointment_icon As Collection
    
    For Each Appointment_Icon In Appointment_Icons
@@ -164,7 +195,7 @@ Public Sub form_Resize()
    
 End
 
-Public Sub cmbEditArea_Click()
+Public Sub Generate_WeekList(startdate As Date)
    '-------------------------------------------
    'User has clicked on the staff members combo
    '-------------------------------------------  
@@ -173,53 +204,64 @@ Public Sub cmbEditArea_Click()
    Dim x As Integer
    Dim theDate As Date
    Dim HBox_Week As Hbox
+   
+   Daylists = New Object[]
+   Staff_Member = staff[cmbStaff.Index]
+   With DayListContainer = New Window
+      .Arrangement = Arrange.Fill
+      .Expand = True
+      If DateDiff(startdate, Now, gb.day) < 0 Then
+         .title = "Week starting " & Format(startdate, "dd/mm/yyyy") & ": " & Staff_Member!wholename 
+      Else
+         .title = "This week: " & Staff_Member!wholename
+      Endif
+      
+   End With
+   With sv = New ScrollView(DayListContainer)
+      .Expand = True
+      .Arrangement = Arrange.Horizontal
+      .Border = False
+   End With
+   With HB = New HBox(sv)
+      .Expand = False   
+      .Padding = 5
+   End With
+   Workspace1.Add(DayListContainer)
+   Inc Application.Busy 
+   For x = 0 To 4
+      theDate = DateAdd(startdate, gb.day, x)
+      With HB
+         .width = (x + 1) * (Workspace1.width / 3)    'try and fit 3 days/screen
+      End With
+      With AL = New FDayList(HB)
+         .Init(Staff_Member, thedate, clinics[cmbLocation.index]!fk_clinic, Appointment_Icons)
+         obs = New Observer(AL.Gridview1) As "AppointmentList"
+         obs = New Observer(AL.txtAppointment) As "TxtFindPatient"
+         .tag = x
+         DayLists.Add(AL)
+      End With
+   Next
+   Dec application.Busy
+
+End
+
+Public Sub cmbEditArea_Click()
+
    Dim window1 As Window
    
-   Select Case Last.tag
-      Case "location"
-         'Set location 
-      Case "seen by"
-         Staff_Member = staff[cmbStaff.Index]
-         '----------------------------------------------
-         'Is this staff member already on the workspace?
-         '----------------------------------------------
-         For Each window1 In Workspace1.windows
-            If window1.Caption = Staff_Member!wholename Then
-               Workspace1.ActiveWindow = Window1
-               Return
-            Endif
-         Next
-         
-         With DayListContainer = New Window
-            .Arrangement = Arrange.Fill
-            .Expand = True
-            .title = Staff_Member!wholename
-         End With
-         With sv = New ScrollView(DayListContainer)
-            .Expand = True
-            .Arrangement = Arrange.Horizontal
-            .Border = False
-         End With
-         With HB = New HBox(sv)
-            .Expand = False   
-            .Padding = 5
-         End With
-         Workspace1.Add(DayListContainer)
-         Inc Application.Busy 
-         For x = 0 To 4
-            theDate = DateAdd(Now, gb.day, x)
-            With HB
-               .width = (x + 1) * (Workspace1.width / 3)    'try and fit 3 days/screen
-            End With
-            With AL = New FDayList(HB)
-               .Init(Staff_Member, thedate, clinics[cmbLocation.index]!fk_clinic, Appointment_Icons)
-               obs = New Observer(AL.Gridview1) As "AppointmentList"
-               obs = New Observer(AL.txtAppointment) As "TxtFindPatient"
-            End With
-         Next
-         Dec application.Busy
-         
-   End Select
+   For Each window1 In Workspace1.windows
+      If window1.Caption = "This week: " & Staff_Member!wholename Then
+         Workspace1.ActiveWindow = Window1
+         Return
+      Endif
+   Next
+   Generate_WeekList(Now)
+   
+End
+
+Static Public Function Get_DayLists() As Object[]
+   
+   Return Form_Make_Appointments.Daylists
    
 End
 
@@ -227,6 +269,7 @@ Public Sub txtFindPatient_Activate()
    '-------------------------------------------------------
    'The Enter key has been pressed on the FDayList instance
    '-------------------------------------------------------   
+   
    Stop Event
    
    bExit = False
@@ -339,12 +382,32 @@ Public Sub Workspace1_Activate()
    'User has clicked on a tab on the workspace
    '------------------------------------------
    
-   Dim page As Window
-   
-   For Each page In Workspace1.Windows
-      If page = Workspace1.ActiveWindow Then  
-         Print page.Title 
-      End If   
-   Next
+   ' Dim page As Window
+   ' 
+   ' For Each page In Workspace1.Windows
+   '    If page = Workspace1.ActiveWindow Then  
+   '       Print page.Title 
+   '    End If   
+   ' Next
+   ' 
+End
+
+Public Sub DateChooser1_Activate()
+ 
+   Generate_WeekList(Last.value)
    
 End
+
+Public Sub Form_KeyPress()
+   
+   If Key.code = Key.F9 Then 
+      Workspace_Close_Windows()
+      If Workspace1.ActiveWindow.Caption <> "This week: " & Staff_Member!wholename Then 
+             Generate_WeekList(Now)
+      End If   
+      Stop Event
+      Return 
+   Endif
+   
+End
+

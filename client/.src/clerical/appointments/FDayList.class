@@ -84,7 +84,7 @@ Public Sub Init(sm As Collection, app_date As Date, clinic_key As Integer, icons
    lblDate.text = Format(appointment_date, gb.LongDate)                  'Wednesay 18th September   
    With gridview1                                                        'construct the basic grid  for appointments                           
       .columns.count = 4
-      .columns[0].width = 80                                             'col 0=time
+      .columns[0].width = 120                                            'col 0=time
       .columns[1].width = 24                                             'col 1=icon
       .columns[2].width = gridview1.width - 104                          'col 2=the appointment details
       .columns[3].width = 0                                              'col 3=
@@ -173,7 +173,8 @@ Public Sub GridRows_Init(starttime As Date, EndTime As Date, appointment_interva
    gridrows = New Collection[0]
    Do Until x = -1
       griddata = New Collection
-      griddata!time = Format(Time(ihour, iminute, 0), "hh:nn")
+      griddata!time = Format(Time(ihour, iminute, 0), "hh:nn:AM/PM")
+      ' griddata!time = Format(Time(ihour, iminute, 0), "hh:nn")
       griddata!slots = 1
       gridrows.add(griddata, x) 
       iminute += appointment_interval
@@ -242,7 +243,136 @@ Public Sub GridRows_Update()
       'Duration can be in multiples of the days appointment_interval
       'the time off appointmen is the key to the gridrows collection
       '-------------------------------------------------------------
-      sTime = Format(appointment!begin, "hh:nn")                      ' e.g 10:20 gridrows key
+      sTime = Format(appointment!begin, "hh:nn:AM/PM")                      ' e.g 10:20 gridrows key
+      ' sTime = Format(appointment!begin, "hh:nn") 
+      duration = Val(Split(appointment!duration, ":")[1]) + Val(Split(appointment!duration, ":")[0]) * 60          ' e.g 10, 20, 30, 50, 60, 70 .... etc!
+      Select Case duration
+         Case 1 
+            'do nothing but please don't remove this or scews things up
+         Case 10
+            '---------------------------------------------------------------- 
+            'this is a standard appointment length - will have only 1 slot
+            'i.e in this fixed 10 minute interval FIXME MAKE ME CONFIGURABLE
+            'this appointment is for 10 minutes only
+            '----------------------------------------------------------------  
+            For i = 0 To GridRows.Count - 1
+               
+               If Not IsNull(gridrows[i]) Then    'may have been merged so i is missing
+                  If gridrows[i]!time = stime Then
+                     If Not IsNull(appointment!fk_patient) Then  
+                        gridrows[i]!name = Replace(appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] ", "Unknown", "")
+                     Else
+                        gridrows[i]!name = appointment!notes  
+                        gridrows[i]!notes = appointment!notes  
+                     End If   
+                     gridrows[i]!pk_appointment = appointment!pk
+                     gridrows[i]!fk_patient = appointment!fk_patient 
+                     gridrows[i]!fk_lu_appointment_icon = appointment!fk_lu_appointment_icon
+                     gridrows[i]!fk_lu_appointment_status = appointment!fk_lu_appointment_status
+                     Try gridrows[i]!picture = Picture.Load(appointment_icons[appointment!fk_lu_appointment_icon]!icon_path) 'most often there is no icon
+                  Endif
+               End If
+            Next 
+         Case Else
+            '--------------------------------------- 
+            'duration longer than 1 appointment slot
+            '---------------------------------------
+            sBeginTime = Format(appointment!begin, "hh:nn:AM/PM")
+            sEndTime = DateAdd(appointment!begin, gb.minute, duration)        ' work out the end time
+            sTime = sTime & "-" & Format(sEndTime, "hh:nn:AM/PM")              ' key becomes eg 10-20:10-30 fixme more complex than this eg 10:50-11,20
+            For i = 0 To GridRows.Count - 1
+               If Not IsNull(gridrows[i]) Then   
+                  If gridrows[i]!time = sBeginTime Then
+                     slots = duration / appointment_interval 
+                     gridrows[i]!time = sTime
+                     If IsNull(appointment!fk_patient) Then
+                        gridrows[i]!name = appointment!notes
+                     Else
+                        gridrows[i]!name = Replace(appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] ", "Uknown", "") 'if title unknown don't show this
+                     Endif
+                     gridrows[i]!slots = slots
+                     gridrows[i]!pk_appointment = appointment!pk
+                     gridrows[i]!fk_patient = appointment!fk_patient   
+                     gridrows[i]!fk_lu_appointment_icon = appointment!fk_lu_appointment_icon
+                     gridrows[i]!fk_lu_appointment_status = appointment!fk_lu_appointment_status
+                     Try gridrows[i]!picture = Picture.Load(appointment_icons[appointment!fk_lu_appointment_icon]!icon_path) 'most often there is no icon
+                     '---------------------------------------------------------------------------------------------
+                     'Now the 'virgin' grid has time slots all the same - each 10 minutes
+                     'now, we have 'consumed' extra slots, so remove the gridrow corresponding to those extra slots
+                     'as gridrows is a collection[] array, this automatically re-orders the index 0-n
+                     'We don't remove the next say 2 slots if it was a double appointment, but the same slot twice
+                     'reason for this is the Gridrows.Remove(n) re-orders the collection to contain 1 less every 
+                     'time
+                     '---------------------------------------------------------------------------------------------
+                     For x = 1 To slots - 1
+                        gridrows.Remove(i + 1)  'important do not change this.
+                     Next
+                     Break
+                  End If   
+               End If   
+            Next
+      End Select
+      Inc x
+      'gridrows[i]!fk_patient = appointment!fk_patient
+   Next
+   '-------------------
+   'now add the fit-ins
+   '-------------------
+   For Each appointment In appointments
+      sTime = Format(appointment!begin, "hh:nn")                      ' e.g 11:00
+      duration = Val(Split(appointment!duration, ":")[1])             ' e.g 10, 20, 30
+      If duration = 1 Then                                            ' e,g 11:01
+         find_time = Time(Hour(appointment!begin), Minute(appointment!begin) - 1, 0)
+         For i = 0 To gridrows.count - 1
+            If gridrows[i]!time = Format(find_time, "hh:nn") Then 
+               fitin = New Collection
+               fitin!time = sTime
+               fitin!slots = 1
+               Try fitin!name = Replace(appointment!wholename & " [" & Format(appointment!birthdate, "dd/mm/yyyy") & "] ", "Unknown", "")
+               If Error Then
+                  fitin!name = appointment!notes    
+               Endif
+               fitin!pk_appointment = appointment!pk
+               fitin!fk_patient = appointment!fk_patient 
+               fitin!fk_lu_appointment_icon = appointment!fk_lu_appointment_icon
+               fitin!fk_lu_appointment_status = appointment!fk_lu_appointment_status
+               fitin!is_fitin = True   
+               gridrows.add(fitin, i + 1)
+               Try gridrows[i + 1]!picture = Picture.Load(appointment_icons[appointment!fk_lu_appointment_icon]!icon_path) 'most often there is no icon
+               Break 
+            Endif
+         Next
+      Endif
+   Next
+   
+End
+
+Public Sub GridRows_Update_old()
+   '----------------------------------------------
+   'Update the contents of the gridrows collection
+   '---------------------------------------------- 
+   
+   Dim NewRows As New Collection
+   Dim i As Integer
+   Dim x As Integer
+   Dim sTime As String
+   Dim sArray As String[]
+   Dim duration As Integer
+   Dim sEndTime As Date 
+   Dim sBeginTime As String 
+   Dim slots As Integer
+   Dim oldRowCount As Integer    
+   Dim lastAppointment As Collection 
+   Dim FitIn As Collection 
+   Dim find_time As Date
+   
+   For Each appointment In appointments
+      '------------------------------------------------------------- 
+      'Duration can be in multiples of the days appointment_interval
+      'the time off appointmen is the key to the gridrows collection
+      '-------------------------------------------------------------
+      sTime = Format(appointment!begin, "hh:nn:AM/PM")                      ' e.g 10:20 gridrows key
+      sTime = Format(appointment!begin, "hh:nn") 
       duration = Val(Split(appointment!duration, ":")[1]) + Val(Split(appointment!duration, ":")[0]) * 60          ' e.g 10, 20, 30, 50, 60, 70 .... etc!
       Select Case duration
          Case 1 
@@ -369,21 +499,24 @@ Public Sub Gridview1_Refresh()
          Gridview1[i, 2].text = "RESERVED FOR EMERGENCY"
       Endif
       If Not IsNull(gridrows[i]!is_fitin) Then
-         Gridview1[i, 2].Background = Color.cyan
-         Gridview1[i, 1].text = "FIT"
+         If gridrows[i]!fk_lu_appointment_status <> patient_departed Then
+            Gridview1[i, 2].Background = Color.cyan
+            Gridview1[i, 1].text = "FIT"
+         Endif
       Endif
    Next
    
 End
+
 Public Sub Next_Daylist(i As Integer) ' (d As Date)
    
-    Dim Obj As Object
-    Dim x As Integer
-    Dim F As FDayList
-    
-    Return 
-    F = FMakeAppointments.Get_DayLists()[Min(Me.tag + 1, 4)]
-    Print F
+   Dim Obj As Object
+   Dim x As Integer
+   Dim F As FDayList
+   
+   Return 
+   F = FMakeAppointments.Get_DayLists()[Min(Me.tag + 1, 4)]
+   Print F
    With F
       .OnRow = OnRow
       .Gridview1_Select()
@@ -392,7 +525,8 @@ Public Sub Next_Daylist(i As Integer) ' (d As Date)
    'If Error Then 
    '   Message.Error("error")  
    '   gridview1.SetFocus()
- '  End If     
+   '  End If     
+
 End
 
 Public Sub mnuAppointments_Click()
@@ -406,7 +540,7 @@ Public Sub mnuAppointments_Click()
          Appointment_Delete()
          Return 
       Case "no icon"
-        gridrows[onrow]!fk_lu_appointment_icon = 0
+         gridrows[onrow]!fk_lu_appointment_icon = 0
       Case "in waiting room"
          fk_lu_appointment_status = arrived_and_waiting
       Case "in consulting room"
@@ -487,7 +621,7 @@ Public Sub Appointment_Add_Fit()
    griddata!time = Appointment_Format(iHour, iminute)
    griddata!slots = 1
    griddata!is_fitin = True
-  ' griddata!fk_lu_appointment_status = fitin
+   ' griddata!fk_lu_appointment_status = fitin
    griddata!duration = 1
    gridrows.add(griddata, x)
    Gridview1_Refresh()
@@ -519,7 +653,7 @@ Public Sub Gridview1_Keypress()
       Next_Daylist(1) '(DateAdd(appointment_Date, gb.day, 1))
       Return    
    Endif
-    If Key.code = Key.Left Then
+   If Key.code = Key.Left Then
       Next_Daylist(-1) '(DateAdd(appointment_Date, gb.day, -1))
       Return    
    Endif
@@ -675,21 +809,51 @@ Public Sub Save()
    Dim Appointment_times As String[]
    Dim appointment_length As String[]
    Dim iStatus As Integer
+   Dim start_hour_as_24hrtime As Integer
+   Dim end_hour_as_24hrtime As Integer
+   Dim start_time As String[]
+   Dim end_time As String[]
    
    Timer1.stop
    Try appointment!fk_patient = patient!fk_patient
    If Error Then
       appointment!fk_patient = gridrows[onrow]!fk_patient
    Endif
-   appointment!fk_staff = staff_member!fk_staff
-   Appointment_times = Split(gridrows[onrow]!time, "-")
-   '--------------------------
-   'multiple appointment slots
-   '--------------------------
+   appointment!fk_staff = staff_member!fk_staff 
+   Appointment_times = Split(gridrows[onrow]!time, "-") 'gives eg Appointment_times[0]=12:10:AM,   Appointment_times[1]=01:00:PM
+   Try start_time = Split(Appointment_times[0], ":")
+   Try end_time = Split(Appointment_times[1], ":") 
+   '-------------------------------------------------------
+   'multiple appointment slots, convert back to 24hour time
+   '-------------------------------------------------------
    If Appointment_times.count > 1 Then 
-      starttime = Date(Year(appointment_date), Month(appointment_date), Day(appointment_date), Hour(Appointment_times[0]), Minute(Appointment_times[0]), 0)
+      '------------------------------------------------------------- 
+      'first convert the start appointment time to 24hour date/time
+      '------------------------------------------------------------- 
+      If InStr(Appointment_times[0], "AM") Then                      'start time in morning, keep hours
+         start_hour_as_24hrtime = Val(start_time[0])
+      Else
+         If Val(start_time[0]) < 12 Then 
+            start_hour_as_24hrtime = start_time[0] + 12                'convert to 24 hour time if in afternoon
+         Else
+            start_hour_as_24hrtime = Val(start_time[0])
+         End If  
+      Endif
+      starttime = Date(Year(appointment_date), Month(appointment_date), Day(appointment_date), start_hour_as_24hrtime, Val(start_time[1]))
       appointment!begin = Format$(starttime, "dd/mm/yyyy hh:nn")
-      EndTime = Date(Year(appointment_date), Month(appointment_date), Day(appointment_date), Hour(Appointment_times[1]), Minute(Appointment_times[1]), 0)
+      '------------------------------------------------------------- 
+      'second convert the end appointment time to 24hour date/time
+      '------------------------------------------------------------- 
+      If InStr(Appointment_times[1], "AM") Then                      'start time in morning, keep hours
+         end_hour_as_24hrtime = Val(end_time[0])
+      Else
+         If Val(end_time[0]) < 12 Then 
+            end_hour_as_24hrtime = end_time[0] + 12                'convert to 24 hour time if in afternoon
+         Else
+            end_hour_as_24hrtime = Val(end_time[0])
+         End If  
+      Endif
+      EndTime = Date(Year(appointment_date), Month(appointment_date), Day(appointment_date), end_hour_as_24hrtime, Val(end_time[1]))
       appointment!duration = Str(Abs(DateDiff(starttime, EndTime, gb.Minute))) & " minutes"
       If fk_lu_appointment_status = 0 Then fk_lu_appointment_status = 1 'normal appointment for 10 min or multiple of 10 min slots
    Else
@@ -697,7 +861,17 @@ Public Sub Save()
       'only one appointment slot
       '------------------------- 
       If fk_lu_appointment_status = 0 Then fk_lu_appointment_status = 1
-      starttime = Date(Year(appointment_date), Month(appointment_date), Day(appointment_date), Hour(gridrows[onrow]!time), Minute(gridrows[onrow]!time), 0)
+      
+      If InStr(Appointment_times[0], "AM") Then                      'start time in morning, keep hours
+         start_hour_as_24hrtime = Val(start_time[0])
+      Else
+         If Val(start_time[0]) < 12 Then 
+            start_hour_as_24hrtime = start_time[0] + 12                'convert to 24 hour time if in afternoon
+         Else
+            start_hour_as_24hrtime = Val(start_time[0])
+         End If  
+      Endif
+      starttime = Date(Year(appointment_date), Month(appointment_date), Day(appointment_date), start_hour_as_24hrtime, Val(start_time[1]))
       appointment!begin = Format$(starttime, "dd/mm/yyyy hh:nn")
       If Not IsNull(gridrows[onrow]!fk_lu_appointment_status) Then
          iStatus = gridrows[onrow]!fk_lu_appointment_status
@@ -710,8 +884,8 @@ Public Sub Save()
       Endif
       If iStatus = emergency Then
          fk_lu_appointment_status = emergency  
-       Endif
-       appointment!duration = Str(appointment_interval) & " minutes"  
+      Endif 
+      appointment!duration = Str(appointment_interval) & " minutes"  
    Endif
    If Not IsNull(gridrows[onrow]!pk_appointment) Then
       appointment!pk = gridrows[onrow]!pk_appointment
@@ -726,7 +900,7 @@ Public Sub Save()
    modDBConnect.CommitTrans()
    Reload()
    Timer1.start
-
+   
 End
 
 Public Sub Gridview1_First_Vacant(startrow As Integer) As Integer
@@ -943,4 +1117,3 @@ Public Sub ToolButton1_Click()
    Me.Reparent(Null)
    
 End
-

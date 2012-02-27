@@ -2225,6 +2225,10 @@ CREATE TABLE schedule (
     descriptor text NOT NULL,
     ceased_date date,
     "group" text,
+    derived_fee text,
+    descriptor_brief text,
+    gst_rate integer DEFAULT 0,
+    percentage_fee_rule boolean DEFAULT false,
     CONSTRAINT schedule_check CHECK (((NOT (mbs_item IS NULL)) OR (NOT (ama_item IS NULL))))
 );
 
@@ -2248,6 +2252,20 @@ COMMENT ON COLUMN schedule.mbs_item IS 'the item number in the Medicare Benefits
 --
 
 COMMENT ON COLUMN schedule.ama_item IS 'the item number in the AMA version of the schedule, if used, otherwise NULL';
+
+
+--
+-- Name: COLUMN schedule.descriptor_brief; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON COLUMN schedule.descriptor_brief IS 'a brief description of a long descriptor';
+
+
+--
+-- Name: COLUMN schedule.gst_rate; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON COLUMN schedule.gst_rate IS 'the goods and services tax rate';
 
 
 --
@@ -2524,6 +2542,14 @@ ALTER SEQUENCE tasks_pk_seq OWNED BY tasks.pk;
 
 CREATE VIEW vwappointments AS
     SELECT bookings.pk, bookings.fk_patient, bookings.fk_staff, bookings.begin, bookings.duration, bookings.notes, bookings.fk_staff_booked, bookings.fk_clinic, bookings.fk_lu_appointment_icon, bookings.fk_lu_appointment_status, bookings.deleted, data_patients.fk_person, data_persons.firstname, data_persons.surname, data_persons.birthdate, lu_sex.sex, lu_title.title, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename FROM ((((bookings LEFT JOIN data_patients ON ((bookings.fk_patient = data_patients.pk))) LEFT JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) ORDER BY bookings.begin;
+
+
+--
+-- Name: vwfees; Type: VIEW; Schema: clerical; Owner: -
+--
+
+CREATE VIEW vwfees AS
+    SELECT schedule.pk, schedule.mbs_item, schedule.ama_item, schedule.descriptor, schedule.descriptor_brief, schedule.gst_rate, schedule.percentage_fee_rule, schedule.ceased_date, schedule."group", schedule.derived_fee, prices.fk_schedule, prices.price, prices.fk_lu_billing_type, prices.notes, lu_billing_type.name FROM ((schedule JOIN prices ON ((schedule.pk = prices.fk_schedule))) JOIN lu_billing_type ON ((prices.fk_lu_billing_type = lu_billing_type.pk)));
 
 
 --
@@ -5161,7 +5187,8 @@ CREATE TABLE lu_templates (
     pk integer NOT NULL,
     name text NOT NULL,
     deleted boolean DEFAULT false,
-    template text NOT NULL
+    template text NOT NULL,
+    fk_lu_appointment_length integer DEFAULT 1
 );
 
 
@@ -5177,6 +5204,13 @@ COMMENT ON TABLE lu_templates IS 'Table to hold templates for recall letters';
 --
 
 COMMENT ON COLUMN lu_templates.template IS 'html for a letter template';
+
+
+--
+-- Name: COLUMN lu_templates.fk_lu_appointment_length; Type: COMMENT; Schema: clin_recalls; Owner: -
+--
+
+COMMENT ON COLUMN lu_templates.fk_lu_appointment_length IS 'key to common.lu_appointment_length, A Template for a recall must always have a default appointment length here a standard consult length=1';
 
 
 --
@@ -5200,7 +5234,9 @@ CREATE TABLE recalls (
     fk_progressnote integer,
     fk_pasthistory integer,
     active boolean DEFAULT true,
-    fk_template integer
+    fk_template integer,
+    fk_sent integer,
+    num_reminders integer DEFAULT 0
 );
 
 
@@ -5319,6 +5355,93 @@ COMMENT ON COLUMN recalls.active IS 'Whether the recall is active or not';
 COMMENT ON COLUMN recalls.fk_template IS 'If not null, then the template text will be included in the patients recalls';
 
 
+--
+-- Name: COLUMN recalls.fk_sent; Type: COMMENT; Schema: clin_recalls; Owner: -
+--
+
+COMMENT ON COLUMN recalls.fk_sent IS 'key to clin_recalls.sent table - gives info about when the last reminder was sent, who sent it
+  the actual letter latex definition and how sent';
+
+
+--
+-- Name: COLUMN recalls.num_reminders; Type: COMMENT; Schema: clin_recalls; Owner: -
+--
+
+COMMENT ON COLUMN recalls.num_reminders IS 'the number of times the practice has attempted to deal with this reminder';
+
+
+--
+-- Name: sent; Type: TABLE; Schema: clin_recalls; Owner: -; Tablespace: 
+--
+
+CREATE TABLE sent (
+    pk integer NOT NULL,
+    fk_recall integer NOT NULL,
+    date date NOT NULL,
+    latex text NOT NULL,
+    fk_contact_method integer NOT NULL,
+    contact_value text,
+    fk_staff integer,
+    memo text
+);
+
+
+--
+-- Name: TABLE sent; Type: COMMENT; Schema: clin_recalls; Owner: -
+--
+
+COMMENT ON TABLE sent IS 'Details of recalls sent out to remind the patient';
+
+
+--
+-- Name: COLUMN sent.fk_recall; Type: COMMENT; Schema: clin_recalls; Owner: -
+--
+
+COMMENT ON COLUMN sent.fk_recall IS 'key to clin_recalls.recall table';
+
+
+--
+-- Name: COLUMN sent.date; Type: COMMENT; Schema: clin_recalls; Owner: -
+--
+
+COMMENT ON COLUMN sent.date IS 'the date the reminder for the recall was processed';
+
+
+--
+-- Name: COLUMN sent.latex; Type: COMMENT; Schema: clin_recalls; Owner: -
+--
+
+COMMENT ON COLUMN sent.latex IS 'the latex definition of the recall reminder sent';
+
+
+--
+-- Name: COLUMN sent.fk_contact_method; Type: COMMENT; Schema: clin_recalls; Owner: -
+--
+
+COMMENT ON COLUMN sent.fk_contact_method IS 'key to contacts.lu_contact_type table e.g could point to letter/phone';
+
+
+--
+-- Name: COLUMN sent.contact_value; Type: COMMENT; Schema: clin_recalls; Owner: -
+--
+
+COMMENT ON COLUMN sent.contact_value IS 'if not null contact via this text eg mobile phone, voip, email';
+
+
+--
+-- Name: COLUMN sent.fk_staff; Type: COMMENT; Schema: clin_recalls; Owner: -
+--
+
+COMMENT ON COLUMN sent.fk_staff IS 'key to admin.staff table staff member who prepared the letter';
+
+
+--
+-- Name: COLUMN sent.memo; Type: COMMENT; Schema: clin_recalls; Owner: -
+--
+
+COMMENT ON COLUMN sent.memo IS 'memo added by staff at the time e.g could have called patient who said they would make appointment';
+
+
 SET search_path = common, pg_catalog;
 
 --
@@ -5373,7 +5496,7 @@ SET search_path = clin_recalls, pg_catalog;
 --
 
 CREATE VIEW vwrecalls AS
-    SELECT consult.fk_patient, consult.consult_date, lu_reasons.reason, recalls.due, lu_urgency.urgency, lu_contact_type.type AS contact_by, lu_appointment_length.length, lu_title.title, ((data_persons.firstname || ' '::text) || data_persons.surname) AS wholename, recalls.fk_consult, recalls.pk AS pk_recall, recalls.fk_reason, recalls.fk_contact_method, recalls.fk_urgency, recalls.fk_appointment_length, recalls.fk_staff, recalls.active, recalls."interval", lu_units.abbrev_text, recalls.fk_interval_unit, recalls.additional_text, recalls.deleted, recalls.fk_pasthistory, recalls.fk_progressnote, recalls.fk_template, data_persons.firstname, data_persons.surname, data_persons.fk_title, lu_contact_type.pk AS fk_contact_by, lu_recall_intervals."interval" AS default_interval, lu_recall_intervals.fk_interval_unit AS fk_default_interval_unit, lu_templates.name AS template_name, lu_templates.template FROM (((((((((((recalls JOIN lu_recall_intervals ON ((recalls.fk_reason = lu_recall_intervals.fk_reason))) JOIN clin_consult.consult ON ((recalls.fk_consult = consult.pk))) JOIN lu_reasons ON ((recalls.fk_reason = lu_reasons.pk))) JOIN contacts.lu_contact_type ON ((recalls.fk_contact_method = lu_contact_type.pk))) JOIN admin.staff ON ((consult.fk_staff = staff.pk))) LEFT JOIN lu_templates ON ((recalls.fk_template = lu_templates.pk))) LEFT JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) JOIN common.lu_urgency ON ((recalls.fk_urgency = lu_urgency.pk))) JOIN common.lu_appointment_length ON ((recalls.fk_appointment_length = lu_appointment_length.pk))) LEFT JOIN common.lu_units ON ((recalls.fk_interval_unit = lu_units.pk))) ORDER BY consult.fk_patient, recalls.due;
+    SELECT consult.fk_patient, consult.consult_date, lu_reasons.reason, recalls.due, lu_urgency.urgency, lu_contact_type.type AS contact_by, lu_appointment_length.length, lu_title.title, ((data_persons.firstname || ' '::text) || data_persons.surname) AS wholename, recalls.fk_consult, recalls.pk AS pk_recall, recalls.fk_reason, recalls.fk_contact_method, recalls.fk_urgency, recalls.fk_appointment_length, recalls.fk_staff, recalls.active, recalls."interval", lu_units.abbrev_text, recalls.fk_interval_unit, recalls.additional_text, recalls.deleted, recalls.fk_pasthistory, recalls.fk_progressnote, recalls.fk_template, recalls.fk_sent, recalls.num_reminders, data_persons.firstname, data_persons.surname, data_persons.fk_title, lu_contact_type.pk AS fk_contact_by, lu_recall_intervals."interval" AS default_interval, lu_recall_intervals.fk_interval_unit AS fk_default_interval_unit, lu_templates.name AS template_name, lu_templates.template, lu_templates.fk_lu_appointment_length AS template_fk_lu_appointment_length, lu_appointment_length1.length AS template_appointment_length, sent.latex FROM (((((((((((((recalls JOIN lu_recall_intervals ON ((recalls.fk_reason = lu_recall_intervals.fk_reason))) JOIN clin_consult.consult ON ((recalls.fk_consult = consult.pk))) JOIN lu_reasons ON ((recalls.fk_reason = lu_reasons.pk))) JOIN contacts.lu_contact_type ON ((recalls.fk_contact_method = lu_contact_type.pk))) JOIN admin.staff ON ((consult.fk_staff = staff.pk))) LEFT JOIN lu_templates ON ((recalls.fk_template = lu_templates.pk))) LEFT JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) JOIN common.lu_urgency ON ((recalls.fk_urgency = lu_urgency.pk))) LEFT JOIN common.lu_appointment_length ON ((recalls.fk_appointment_length = lu_appointment_length.pk))) LEFT JOIN common.lu_appointment_length lu_appointment_length1 ON ((lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk))) LEFT JOIN common.lu_units ON ((recalls.fk_interval_unit = lu_units.pk))) LEFT JOIN sent ON ((recalls.fk_sent = sent.pk))) ORDER BY consult.fk_patient, recalls.due;
 
 
 SET search_path = clin_history, pg_catalog;
@@ -8016,86 +8139,6 @@ ALTER SEQUENCE recalls_pk_seq OWNED BY recalls.pk;
 
 
 --
--- Name: sent; Type: TABLE; Schema: clin_recalls; Owner: -; Tablespace: 
---
-
-CREATE TABLE sent (
-    pk integer NOT NULL,
-    fk_recall integer NOT NULL,
-    date date NOT NULL,
-    reminder_text text NOT NULL,
-    fk_contact_method integer NOT NULL,
-    fk_address text,
-    contact_value text,
-    fk_staff integer,
-    memo text
-);
-
-
---
--- Name: TABLE sent; Type: COMMENT; Schema: clin_recalls; Owner: -
---
-
-COMMENT ON TABLE sent IS 'Details of recalls sent out to remind the patient';
-
-
---
--- Name: COLUMN sent.fk_recall; Type: COMMENT; Schema: clin_recalls; Owner: -
---
-
-COMMENT ON COLUMN sent.fk_recall IS 'key to clin_recalls.recall table';
-
-
---
--- Name: COLUMN sent.date; Type: COMMENT; Schema: clin_recalls; Owner: -
---
-
-COMMENT ON COLUMN sent.date IS 'the date the reminder for the recall was processed';
-
-
---
--- Name: COLUMN sent.reminder_text; Type: COMMENT; Schema: clin_recalls; Owner: -
---
-
-COMMENT ON COLUMN sent.reminder_text IS 'the actual html text constructed and sent by whatever method';
-
-
---
--- Name: COLUMN sent.fk_contact_method; Type: COMMENT; Schema: clin_recalls; Owner: -
---
-
-COMMENT ON COLUMN sent.fk_contact_method IS 'key to contacts.lu_contact_type table e.g could point to letter/phone';
-
-
---
--- Name: COLUMN sent.fk_address; Type: COMMENT; Schema: clin_recalls; Owner: -
---
-
-COMMENT ON COLUMN sent.fk_address IS 'if not null letter posted or delivered to this address';
-
-
---
--- Name: COLUMN sent.contact_value; Type: COMMENT; Schema: clin_recalls; Owner: -
---
-
-COMMENT ON COLUMN sent.contact_value IS 'if not null contact via this text eg mobile phone, voip, email';
-
-
---
--- Name: COLUMN sent.fk_staff; Type: COMMENT; Schema: clin_recalls; Owner: -
---
-
-COMMENT ON COLUMN sent.fk_staff IS 'key to admin.staff table staff member who prepared the letter';
-
-
---
--- Name: COLUMN sent.memo; Type: COMMENT; Schema: clin_recalls; Owner: -
---
-
-COMMENT ON COLUMN sent.memo IS 'memo added by staff at the time e.g could have called patient who said they would make appointment';
-
-
---
 -- Name: sent_pk_seq; Type: SEQUENCE; Schema: clin_recalls; Owner: -
 --
 
@@ -8127,7 +8170,15 @@ CREATE VIEW vwreasons AS
 --
 
 CREATE VIEW vwrecallsdue AS
-    SELECT recalls.pk AS pk_recall, recalls.fk_consult, recalls.due, (recalls.due - date(now())) AS days_due, recalls.fk_reason, recalls.fk_contact_method, recalls.fk_urgency, recalls.fk_appointment_length, recalls.fk_staff, recalls.active, recalls.additional_text, recalls.deleted, recalls."interval", recalls.fk_interval_unit, recalls.fk_progressnote, recalls.fk_pasthistory, vwpatients.fk_person, vwpatients.wholename, vwpatients.firstname, vwpatients.surname, vwpatients.salutation, vwpatients.birthdate, vwpatients.age_numeric, vwpatients.sex, vwpatients.title, vwpatients.street1, vwpatients.street2, vwpatients.town, vwpatients.state, vwpatients.postcode, vwpatients.language_problems, vwpatients.language, consult.fk_patient, vwstaff.firstname AS staff_to_see_firstname, vwstaff.surname AS staff_to_see_surname, vwstaff.wholename AS staff_to_see_wholename, vwstaff.title AS staff_to_see_title, lu_reasons.reason, lu_urgency.urgency, lu_contact_type.type AS contact_method, lu_appointment_length.length AS appointment_length, consult.consult_date FROM (((((((recalls JOIN clin_consult.consult ON ((recalls.fk_consult = consult.pk))) JOIN contacts.vwpatients ON ((consult.fk_patient = vwpatients.fk_patient))) JOIN admin.vwstaff ON ((recalls.fk_staff = vwstaff.fk_staff))) JOIN lu_reasons ON ((recalls.fk_reason = lu_reasons.pk))) JOIN common.lu_urgency ON ((recalls.fk_urgency = lu_urgency.pk))) JOIN contacts.lu_contact_type ON ((recalls.fk_contact_method = lu_contact_type.pk))) JOIN common.lu_appointment_length ON ((recalls.fk_appointment_length = lu_appointment_length.pk))) WHERE (recalls.deleted = false) ORDER BY (recalls.due - date(now())), consult.fk_patient;
+    SELECT recalls.pk AS pk_recall, recalls.fk_consult, recalls.due, (recalls.due - date(now())) AS days_due, recalls.fk_reason, recalls.fk_contact_method, recalls.fk_urgency, recalls.fk_appointment_length, recalls.fk_staff, recalls.active, recalls.additional_text, recalls.deleted, recalls."interval", recalls.fk_interval_unit, recalls.fk_progressnote, recalls.fk_pasthistory, recalls.fk_sent, recalls.num_reminders, sent.latex, sent.date AS date_reminder_sent, lu_units.abbrev_text, vwpatients.fk_person, vwpatients.wholename, vwpatients.firstname, vwpatients.surname, vwpatients.salutation, vwpatients.birthdate, vwpatients.age_numeric, vwpatients.sex, vwpatients.title, vwpatients.street1, vwpatients.street2, vwpatients.town, vwpatients.state, vwpatients.postcode, vwpatients.language_problems, vwpatients.language, consult.fk_patient, vwstaff.firstname AS staff_to_see_firstname, vwstaff.surname AS staff_to_see_surname, vwstaff.wholename AS staff_to_see_wholename, vwstaff.title AS staff_to_see_title, lu_reasons.reason, lu_urgency.urgency, lu_contact_type.type AS contact_method, lu_appointment_length.length AS appointment_length, consult.consult_date, recalls.fk_template, lu_appointment_length1.length, lu_templates.name, lu_templates.template FROM (((((((((((recalls JOIN clin_consult.consult ON ((recalls.fk_consult = consult.pk))) JOIN contacts.vwpatients ON ((consult.fk_patient = vwpatients.fk_patient))) JOIN admin.vwstaff ON ((recalls.fk_staff = vwstaff.fk_staff))) JOIN lu_reasons ON ((recalls.fk_reason = lu_reasons.pk))) JOIN common.lu_urgency ON ((recalls.fk_urgency = lu_urgency.pk))) JOIN contacts.lu_contact_type ON ((recalls.fk_contact_method = lu_contact_type.pk))) JOIN common.lu_appointment_length ON ((recalls.fk_appointment_length = lu_appointment_length.pk))) LEFT JOIN common.lu_units ON ((recalls.fk_interval_unit = lu_units.pk))) LEFT JOIN lu_templates ON ((recalls.fk_template = lu_templates.pk))) LEFT JOIN common.lu_appointment_length lu_appointment_length1 ON ((lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk))) LEFT JOIN sent ON ((recalls.fk_sent = sent.pk))) WHERE (recalls.deleted = false) ORDER BY (recalls.due - date(now())), consult.fk_patient;
+
+
+--
+-- Name: vwtemplates; Type: VIEW; Schema: clin_recalls; Owner: -
+--
+
+CREATE VIEW vwtemplates AS
+    SELECT lu_templates.pk, lu_templates.name, lu_templates.deleted, lu_templates.template, lu_templates.fk_lu_appointment_length, lu_appointment_length.length FROM lu_templates, common.lu_appointment_length WHERE ((lu_templates.fk_lu_appointment_length = lu_appointment_length.pk) AND (lu_templates.template <> ''::text));
 
 
 SET search_path = clin_referrals, pg_catalog;

@@ -44,7 +44,7 @@ Private BMICalc As FBMICalc
 Private PregCalc As FPregCalc
 Private Calculator As FCalculator
 Private QuickContacts As FQuickContact
-
+Private ActiveGraphButton As Toolbutton
 Private Patients_Seen As Collection             'the patients seen by a staff member today
 Private Control_For_Focus As Control            'don't remove this without asking me (RT)
 'used to set focus to a designated control after tab is instantiated
@@ -182,6 +182,12 @@ Static Public Function Display_Coding_System()
    'Form may not be loaded, so try
    
    Try form_clinical.lblCodingSystem.text = "Coding System:" & modCodingDBI.coding_system!system
+   
+End
+
+Static Public Sub Update_graphs()
+   
+  Try form_clinical.Measurements_Make_Graph()
    
 End
 
@@ -1136,10 +1142,10 @@ Public Sub Patient_Demographics_Display()
    cmbSearch.pos = 0
    txtAge.text = "Age " & currentconsult!patient!age_display & " " 
    If Not IsNull(currentconsult!patient!occupation) Then
-      txtAge.Text &= UCase(Left(currentconsult!patient!occupation, 1)) & Right(currentconsult!patient!occupation, Len(currentconsult!patient!occupation) - 1)
+      lblOccupation.Text = UCase(Left(currentconsult!patient!occupation, 1)) & Right(currentconsult!patient!occupation, Len(currentconsult!patient!occupation) - 1)
       If currentconsult!patient!retired Then
-         txtAge.text &= " (Retired)"
-         txtAge.pos = 0
+         lblOccupation.text &= " (Retired)"
+         lblOccupation.pos = 0
       End If  
    Endif
    cmbSearch.Tag = currentconsult!patient!firstname & " " & currentconsult!patient!surname & "\n"
@@ -1153,7 +1159,6 @@ Public Sub Patient_Demographics_Display()
    'Display comms with abbreviated prefix in list
    '---------------------------------------------
    currentconsult.Refresh("comms") 'refreshed because can be called from outside of this module eg FPersons
-   ' modEditAreaHelpers.Patient_Comms_Display(currentconsult!comms, cvwClerical, False)
    tlPatientComms.text = ""
    
    For Each com In currentconsult!comms
@@ -1161,6 +1166,7 @@ Public Sub Patient_Demographics_Display()
    Next
    If tlPatientComms.text = "" Then tlPatientComms.text = "Contact Numbers"
    LBLID.text = "ID:" & currentconsult!patient!fk_patient 'show database ID under photo" 
+   
    bExit = False
    
 End
@@ -1234,6 +1240,7 @@ Public Sub Gui_Clear()
    lblBirthdate.text = ""
    tlNotifications.text = ""
    txtURL.text = ""
+   lblOccupation.text = ""
    '-----------------------
    'Remove filters on lists
    '-----------------------
@@ -2162,7 +2169,7 @@ Public Sub TabStrip_Lists_MouseUp()
          End If 
       Case clistMeasurements
          currentconsult.Refresh("measurements_available")  
-         cvwMeasurements_Refresh()   
+        ' cvwMeasurements_Refresh()   
       Case cListCertificates
          
          Certificates_Refresh()
@@ -2259,23 +2266,23 @@ End
 
 Public Sub cvwMeasurements_Refresh(Optional filter As String)
    
-   Dim measurement_type As Collection 
-   
-   cvwMeasurements.Clear()                     '3 columns
-   For Each measurement_type In currentconsult!measurements_available
-      If filter Then
-         If Not (InStr(Lower(measurement_type!identifier), filter)) Then
-            Continue
-         End If
-      End If
-      cvwMeasurements.Add(measurement_type!pk_loinc, 0)
-      cvwMeasurements[measurement_type!pk_loinc][0] = measurement_type!identifier
-   Next
-   If cvwMeasurements.count Then
-      cvwMeasurements.MoveFirst
-      cvwMeasurements.Item.Selected = True
-   End If
-   
+   ' Dim measurement_type As Collection 
+   ' 
+   ' cvwMeasurements.Clear()                     '3 columns
+   ' For Each measurement_type In currentconsult!measurements_available
+   '    If filter Then
+   '       If Not (InStr(Lower(measurement_type!identifier), filter)) Then
+   '          Continue
+   '       End If
+   '    End If
+   '    cvwMeasurements.Add(measurement_type!pk_loinc, 0)
+   '    cvwMeasurements[measurement_type!pk_loinc][0] = measurement_type!identifier
+   ' Next
+   ' If cvwMeasurements.count Then
+   '    cvwMeasurements.MoveFirst
+   '    cvwMeasurements.Item.Selected = True
+   ' End If
+   ' 
 End
 
 Public Sub cvwLettersReceived_Refresh(Optional bRefresh As Boolean = False)
@@ -2690,7 +2697,6 @@ Public Sub MainToolbar_Click()
          Health_Summary_Display
       Case "health summary"
          Health_Summary_Display 
-         ' Health_Summary_Display_HTML()
       Case "care plan"
          Care_Plan_Display()
       Case "export pdf"
@@ -2702,7 +2708,6 @@ Public Sub MainToolbar_Click()
          VB = WorkspaceEditor.ActiveWindow.Children[0]   'this is VBox containing the form
          i = VB.Children[0]
          Try Object.Call(i, Last.tag)
-         
          Select Case ActiveWindow_Get_Name() 
             Case "FPrescriptions"
                FPrescriptions.Drug_Print() 'fixme change my name to print_content
@@ -2780,7 +2785,7 @@ Public Sub Form_KeyPress()
             Zoom("zoom_in")
          Case Asc("-")
             Zoom("zoom_out") 
-       End Select
+      End Select
    End If   
    If AltDown Then 
       Select Case Key.Code 
@@ -3917,8 +3922,8 @@ Public Sub TabbedLists_Select()
          cvwMeasurements.MoveCurrent()
          Measurement_Graph(cvwMeasurements.Item.key, cvwMeasurements.Item.text)
       Case "measurement favourites"
-         cvwMeasurementFavourites.MoveCurrent()
-         Measurement_Graph("", cvwMeasurementFavourites.Item.text)
+         cvwMeasurementFavorites.MoveCurrent()
+         Measurement_Graph("", cvwMeasurementFavorites.Item.text)
    End Select
    
 End
@@ -3930,6 +3935,91 @@ Public Sub Measurement_Graph_Picture_Clear()
       .tag = ""
       .Refresh()
    End With
+   
+End
+
+Public Sub InboxResults_Click()
+   '------------------------------------------------------
+   'User has clicked on one of the buttons under the graph
+   '------------------------------------------------------   
+   
+    ActiveGraphButton = Last
+    Measurements_Make_Graph()
+    
+End
+
+Public Sub Measurements_Make_Graph()
+   '----------------------------------------------------------------------------------
+   'Called either by InboxResults_Click - i.e user clicked on a button under graph or
+   '                 FProgressNotesPage.FClinical.Update_graphs()  in which case the
+   '                 currently highlighted graph is updated  when progress notes saved
+   '----------------------------------------------------------------------------------                 
+   Dim loinc As String 
+   Dim currentresult As Collection 
+   Dim tag As String 
+   Dim MD As Collection 
+   
+   If IsNull(currentconsult) Then Return 
+   bexit = True
+   chkGraph_MakeDefault.value = False
+   bexit = False  
+   
+  
+   Try tag = ActiveGraphButton.tag!name 
+   If Error Then
+      tag = ActiveGraphButton.tag
+   Endif
+   
+   Select Case tag
+      Case "egfr"
+         Measurement_Graph(const.Loinc_EGFR, "eGFR")
+      Case "blood pressure"
+         Measurement_Graph("", "blood pressure")
+      Case "weight"
+         Measurement_Graph("", "weight")
+      Case "height"
+         Measurement_Graph("", "height")
+      Case "peak flow"
+         
+      Case "add"
+         'Add to favourites, but first, is it already a favourite?
+         For Each MD In MeasurementDefaults 
+            If Lower(Md!name) = Lower(pbGraphName.Tag!name) Then Return
+         Next
+         If Message.Question("Do you wish to add " & pbGraphName.Tag!name & " to the favourites?", "Yes", "No") = 1 Then
+            pbGraphName.tag!display_as_default = False
+            Measurement_Favourites_Update()
+         Endif
+      Case "remove"
+         If Message.Question("Do you wish to remove " & pbGraphName.Tag!name & " from the favourites?", "Yes", "No") = 1 Then
+            modMeasurementsDBI.Measurement_Default_Mark_Deleted(pbGraphName.tag!pk)
+            modDBConnect.CommitTrans()
+            Measurement_Defaults_Refresh()
+         Endif
+         
+      Case "refresh"
+         '------------------------------------------------------
+         'Reset the measuremnts list to include all measurements
+         '------------------------------------------------------
+         bexit = True 
+         txtInboxResults_Exclude.Text = ""
+         txtInboxResults_filter.text = ""
+         bExit = False  
+         cvwResults_Refresh()
+      Case Else
+         '---------------------------------------------------------------
+         'This must be a user-defined button
+         'pbGraphName.tag used to 'store' information about graph default
+         'for want of a better place
+         '---------------------------------------------------------------
+         Measurement_Graph(ActiveGraphButton.tag!loinc, ActiveGraphButton.tag!name)
+         pbGraphName.tag = ActiveGraphButton.tag
+         If ActiveGraphButton.tag!display_as_default = True Then
+            bexit = True
+            chkGraph_MakeDefault.value = True
+            bexit = False  
+         End If
+   End Select
    
 End
 
@@ -3949,9 +4039,7 @@ Public Sub Measurement_Graph(loinc As String, Measurement As String)
    End If   
    'fixe me replace 1 with font size tiny, med large
    GraphData = New Collection 
-   ' GraphData = modMeasurementsDBI.Make_Graph(currentconsult!patient!fk_patient, loinc, Measurement, pbMeasurementGraph.H, pbMeasurementGraph.W, slGraphFontSize.value, interval)
    GraphData = modMeasurementsDBI.Make_Graph(currentconsult!patient!fk_patient, loinc, Measurement, pbMeasurementGraph.H, pbMeasurementGraph.W, slGraphFontSize.value, cmbLineStyle.text, interval)
-   
    GraphData!name = Measurement
    GraphData!fontsize = slGraphFontSize.value
    GraphableItem_Data!loinc = loinc
@@ -3991,7 +4079,7 @@ Public Sub TabbedLists_Click()
    Last.MoveCurrent()
    Select Case Last.tag
       Case "measurement favourite"
-         cvwMeasurements.UnselectAll()
+        Measurement_Show_Data_List(const.Measurement_Types[Last.item.key])
       Case "requests"
          
       Case "results"
@@ -4007,7 +4095,7 @@ Public Sub TabbedLists_Click()
          '------------------------------
          'Graph measurements if possible
          '------------------------------
-         cvwMeasurementFavourites.UnselectAll()
+         cvwMeasurementFavorites.UnselectAll()
    End Select
    
 End
@@ -4308,6 +4396,8 @@ Public Sub WorkspaceEditor_Activate()
                      tbSave.Tooltip = "Save DACC"
                      tbPrint.Enabled = True
                      tbPrint.Tooltip = "Re-Print DACC"
+                     tbNew.Tooltip = "New DACC"
+                     tbNew.Enabled = True 
                   Case "FFamilyHistory"
                      tbSave.ToolTip = "Save Family History"
                      tbSave.Enabled = True
@@ -4385,7 +4475,7 @@ Public Sub txtFindMeasurement_KeyRelease()
    
    If bexit Then Return 
    If Last.tag = "find" Then 
-      Try cvwMeasurements_Refresh(Trim(Last.text))
+     ' Try cvwMeasurements_Refresh(Trim(Last.text))
    End If  
    
 End
@@ -4393,7 +4483,7 @@ End
 Public Sub tbRefreshMeasurements_Click()
    
    txtFindGraphable.text = ""
-   cvwMeasurements_Refresh()
+   'cvwMeasurements_Refresh()
    
 End
 
@@ -4451,12 +4541,13 @@ End
 
 Public Sub HSplit_MeasurementLists_Resize()
    
-   lblMeasurementFavourites.width = cvwMeasurementFavourites.Width
-   lblGraphableObservations.width = cvwMeasurements.width
+  ' lblMeasurementFavourites.width = cvwMeasurementFavorites.Width
+ '  lblGraphableObservations.width = cvwMeasurements.width
    
 End
 
-Public Sub InboxResults_Click()
+
+Public Sub InboxResults_Click_old()
    
    Dim loinc As String 
    Dim currentresult As Collection 
@@ -4472,10 +4563,9 @@ Public Sub InboxResults_Click()
    If Error Then
       tag = Last.tag
    Endif
-   
+   ActiveGraphButton = Last
    Select Case tag
       Case "egfr"
-         
          Measurement_Graph(const.Loinc_EGFR, "eGFR")
       Case "blood pressure"
          Measurement_Graph("", "blood pressure")
@@ -4499,7 +4589,6 @@ Public Sub InboxResults_Click()
             modMeasurementsDBI.Measurement_Default_Mark_Deleted(pbGraphName.tag!pk)
             modDBConnect.CommitTrans()
             Measurement_Defaults_Refresh()
-            
          Endif
          
       Case "refresh"
@@ -4573,6 +4662,35 @@ Public Sub Measurement_Favourites_Update()
    Measurement_Defaults_Refresh()
    
 End
+Public Sub Measurement_Show_Data_List(measurement_type As Collection)
+   '-----------------------------------------------------
+   'when user clicks on the tabbed lists for measurments
+   'show list for bp/height/weight in a numerical list
+   '-----------------------------------------------------
+   Dim M As Collection 
+   Dim Measurement_value As String
+  
+   With cvwMeasurementValues
+         .Clear
+         .Columns.count = 2
+         .Columns[0].width = 80
+   End With
+   For Each M In currentconsult!measurements
+      If M!fk_type = measurement_type!pk Then
+         Select Case measurement_type!pk
+            Case const.Measurement_BP  
+                measurement_value = modMeasurementsDBI.BP_Format(M!measurement)
+            Case const.Measurement_Height
+                measurement_value = Format(M!measurement, "##.##")
+            Case const.Measurement_Weight
+                measurement_value = Format(M!measurement, "##.##")
+         End Select
+         cvwMeasurementValues.Add(M!pk_measurement, 0)
+         cvwMeasurementValues[M!pk_measurement][0] = Format(M!consult_date, "dd/mm/yyyy")
+         cvwMeasurementValues[M!pk_measurement][1] = measurement_value
+      Endif
+   Next
+End
 
 Public Sub Measurements_Reset()
    '----------------------------------------------------------------------------
@@ -4644,10 +4762,10 @@ Public Sub Measurement_Favourites_Refresh()
    
    Dim Measurement As Collection 
    
-   cvwMeasurementFavourites.clear()
+   cvwMeasurementFavorites.clear()
    For Each measurement In const.Measurement_Types
-      cvwMeasurementFavourites.add(measurement!pk, 0)
-      cvwMeasurementFavourites[measurement!pk][0] = measurement!name_full
+      cvwMeasurementFavorites.add(measurement!pk, 0)
+      cvwMeasurementFavorites[measurement!pk][0] = measurement!name_full
    Next
    
 End
@@ -5018,4 +5136,15 @@ Public Sub cmbSearch_Click()
    Gui_Clear()
    Patients_Find(Patients_Seen[cmbSearch.index]!fk_patient)
    
+End
+
+Public Sub pbMeasurementGraph_MouseDown()
+   
+End
+
+Public Sub Button1_Click()
+  'temporary for richard only
+   modMeasurementsDBI.Run_Measurement_Fix(currentconsult!progress_notes, currentconsult!patient!fk_patient)
+   cvwMeasurementFavorites.MoveCurrent()
+   Measurement_Graph("", cvwMeasurementFavorites.Item.text)
 End

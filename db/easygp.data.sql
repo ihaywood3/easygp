@@ -68,7 +68,7 @@ SELECT pg_catalog.setval('lu_appointment_icons_pk_seq', 11, true);
 -- Name: lu_appointment_status_pk_seq; Type: SEQUENCE SET; Schema: clerical; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_appointment_status_pk_seq', 5, true);
+SELECT pg_catalog.setval('lu_appointment_status_pk_seq', 6, true);
 
 
 --
@@ -190,7 +190,7 @@ SELECT pg_catalog.setval('lu_actions_pk_seq', 35, true);
 -- Name: lu_audit_reasons_pk_seq; Type: SEQUENCE SET; Schema: clin_consult; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 268, true);
+SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 319, true);
 
 
 --
@@ -379,14 +379,14 @@ SET search_path = clin_recalls, pg_catalog;
 -- Name: lu_reasons_pk_seq; Type: SEQUENCE SET; Schema: clin_recalls; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_reasons_pk_seq', 45, true);
+SELECT pg_catalog.setval('lu_reasons_pk_seq', 49, true);
 
 
 --
 -- Name: lu_recall_intervals_pk_seq; Type: SEQUENCE SET; Schema: clin_recalls; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_recall_intervals_pk_seq', 45, true);
+SELECT pg_catalog.setval('lu_recall_intervals_pk_seq', 49, true);
 
 
 --
@@ -432,7 +432,7 @@ SELECT pg_catalog.setval('lu_instructions_pk_seq', 1, false);
 -- Name: lu_link_provider_user_requests_pk_seq; Type: SEQUENCE SET; Schema: clin_requests; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_link_provider_user_requests_pk_seq', 1370, true);
+SELECT pg_catalog.setval('lu_link_provider_user_requests_pk_seq', 1489, true);
 
 
 --
@@ -446,7 +446,7 @@ SELECT pg_catalog.setval('lu_request_type_pk_seq', 14, true);
 -- Name: lu_requests_pk_seq; Type: SEQUENCE SET; Schema: clin_requests; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_requests_pk_seq', 1735, true);
+SELECT pg_catalog.setval('lu_requests_pk_seq', 1761, true);
 
 
 SET search_path = clin_vaccination, pg_catalog;
@@ -462,7 +462,7 @@ SELECT pg_catalog.setval('lu_formulation_pk_seq', 5, true);
 -- Name: lu_schedules_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_schedules_pk_seq', 66, true);
+SELECT pg_catalog.setval('lu_schedules_pk_seq', 69, true);
 
 
 --
@@ -476,14 +476,14 @@ SELECT pg_catalog.setval('lu_vaccines_descriptions_pk_seq', 41, true);
 -- Name: lu_vaccines_in_schedule_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_vaccines_in_schedule_pk_seq', 185, true);
+SELECT pg_catalog.setval('lu_vaccines_in_schedule_pk_seq', 191, true);
 
 
 --
 -- Name: lu_vaccines_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_vaccines_pk_seq', 194, true);
+SELECT pg_catalog.setval('lu_vaccines_pk_seq', 195, true);
 
 
 SET search_path = clin_workcover, pg_catalog;
@@ -629,7 +629,7 @@ SELECT pg_catalog.setval('lu_normality_pk_seq', 2, true);
 -- Name: lu_occupations_pk_seq; Type: SEQUENCE SET; Schema: common; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_occupations_pk_seq', 298, true);
+SELECT pg_catalog.setval('lu_occupations_pk_seq', 321, true);
 
 
 --
@@ -729,7 +729,7 @@ SELECT pg_catalog.setval('lu_address_types_pk_seq', 6, true);
 -- Name: lu_categories_pk_seq; Type: SEQUENCE SET; Schema: contacts; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_categories_pk_seq', 357, true);
+SELECT pg_catalog.setval('lu_categories_pk_seq', 379, true);
 
 
 --
@@ -801,7 +801,7 @@ SET search_path = db, pg_catalog;
 -- Name: db_version_pk_seq; Type: SEQUENCE SET; Schema: db; Owner: -
 --
 
-SELECT pg_catalog.setval('db_version_pk_seq', 133, true);
+SELECT pg_catalog.setval('db_version_pk_seq', 140, true);
 
 
 SET search_path = defaults, pg_catalog;
@@ -1000,17 +1000,17 @@ SET search_path = clerical, pg_catalog;
 --
 
 COPY lu_appointment_icons (pk, appointment_type, icon_path) FROM stdin;
-2	blood test	icons/16/bloodtube16x16.png
-3	mental health plan	icons/22/face-smile.png
-4	home visit	icons/22/user-home.png
-5	over 75 health assessment	icons/24/hand_2020.png
-6	procedure	icons/24/glove-scalple_2424.png
-7	immunization	icons/20/syringe2020.png
-8	workcover	icons/20/workcover2020.png
-9	annual checkup	icons/22/heart.png
-10	prescription	icons/20/pill2020.png
-11	diabetes cycle of care	icons/20/united_nations_diabetes_icon.png
-1	pregnancy	icons/16/pregnancy1616.png
+1	pregnancy	icons/12/pregnancy1212.png
+2	blood test	icons/12/bloodtube1212.png
+8	workcover	icons/12/workcover1212.png
+3	mental health plan	icons/12/mentalhealth1212.png
+11	diabetes cycle of care	icons/12/united_nations_diabetes_icon1212.png
+9	annual checkup	icons/12/heart1212.png
+10	prescription	icons/16/pill1808.png
+4	home visit	icons/12/home1212.png
+7	immunization	icons/12/syringe1212.png
+5	over 75 health assessment	icons/12/over75healthassessment1212.png
+6	procedure	icons/12/glove-scalpel1212.png
 \.
 
 
@@ -1024,6 +1024,7 @@ COPY lu_appointment_status (pk, status) FROM stdin;
 3	in consulting room
 4	patient departed
 5	emergency
+6	fit in appointment made
 \.
 
 
@@ -1040,6 +1041,12 @@ Concession	5
 WorkCover	6
 TAC	7
 Medico-legal	8
+Rebate 75	9
+Rebate 85	10
+DVA LMO	11
+AMA	12
+Health Care Card	13
+Pensioner	14
 \.
 
 
@@ -1466,6 +1473,57 @@ COPY lu_audit_reasons (pk, fk_staff, reason) FROM stdin;
 266	1	wrong join
 267	1	Chest CT arranged
 268	1	have arranged annual checkup to do these things
+269	1	will be rescanned
+270	1	sent to specialist
+271	1	illedgible document
+272	1	tests already arranged
+273	1	Discussed and finishes tomorrow
+274	1	repeat in 6 months
+275	1	Discussed - her Hep C
+276	1	will arrange insulin conversion
+277	1	Examined and discussed
+278	1	has been arranged (letter santhanm 24Nov11)
+279	1	Lamisil treatment started
+280	1	not patient related
+281	1	discussed in depth
+282	1	wrong dosage written in notes
+283	1	wrong lateralisation
+284	1	wrong doctor
+285	1	mssing page
+286	1	needs re-scanning after fillling in
+287	1	dosage reduction
+288	1	appointment arranged for 11th January 2010
+289	1	changed dose
+290	1	corrected anatomical site for the injection
+291	1	tests now normal
+292	1	was not taking this regularly
+293	1	omitted medication name
+294	1	discussed and reviewed
+295	1	discussed and arranged follow up
+296	1	Arramged in prescence patient for Monday 30th Jan
+297	1	didn't complete consultation
+298	1	discussed and started on statin
+299	1	referred to melanojma unit for chest lesion
+300	1	organised lumbo-sacral MRI
+301	1	ACAT requested delete wrong information
+302	1	wrong dates
+303	1	course of clexane started
+304	1	Breast NAD seems to be chest wall pain
+305	1	discussed
+306	1	patient changed to another doctor
+307	1	delete this and fix
+308	1	Discussed and referred for diabetic education
+309	1	discussed - definately was false =ve
+310	1	bug in program
+311	1	inserted histopathology
+312	1	Follow up u/s endometrium arranged
+313	1	Added at patient's request - forgot to write up on dayt
+314	1	this schedule not given
+315	1	parotid ultrasound organised
+316	1	to be rescanned
+317	1	must be split
+318	1	will be downloaded electronically
+319	1	discussed and stressed further follow up important
 \.
 
 
@@ -1915,6 +1973,10 @@ COPY lu_reasons (pk, reason) FROM stdin;
 43	thyroid function tests
 44	HDL Cholesterol
 45	cardiology review
+46	tetanus booster
+47	gynaecology review
+48	subclavian artery ultrasound
+49	Polyp Review
 \.
 
 
@@ -1967,6 +2029,10 @@ COPY lu_recall_intervals (pk, fk_reason, fk_staff, "interval", fk_interval_unit)
 43	43	1	12	8
 44	44	1	12	8
 45	45	1	12	8
+46	46	1	10	9
+47	47	1	6	8
+48	48	1	12	8
+49	49	1	6	8
 \.
 
 
@@ -1974,11 +2040,11 @@ COPY lu_recall_intervals (pk, fk_reason, fk_staff, "interval", fk_interval_unit)
 -- Data for Name: lu_templates; Type: TABLE DATA; Schema: clin_recalls; Owner: -
 --
 
-COPY lu_templates (pk, name, deleted, template) FROM stdin;
-1	Do not use template	f	
-2	Annual Checkup	f	<html><head><meta name="qrichtext" content="1" /></head><body style="font-size:7pt;font-family:Helvetica">\n<p align="center"><span style="font-weight:600;text-decoration:underline">Annual Checkup </span></p>\n<p>The annual checkup is one of the most important facets of your medical care. When you ring for an appointment you should request a long consultation.</p>\n<p>On the morning of your checkup, you should do one or more of the following, unless your doctor has given you specific instructions which contradict this:</P>\n<ul type="disc">\n<li>If you are<span style="font-weight:600"> not a known diabetic</span> you should fast overnight, and drink plenty of water in the morning</li>\n<li>If you have diabetes you may eat breakfast and drink fluids as per normal</li>\n<li>Take your medications as usual in the morning.</li></ul>\n<p>Have a think about any health issues you wish to discuss prior to the consultation, and attend the surgery at least 10 minutes prior to your consulation \nto allow time to check in with the secretary and provide a urine specimen.</p>\n</body></html>\n
-3	Pap Smear	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'DejaVu Sans'; font-size:9pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:7pt;">Our reminder system tells us you are due for a PAP Smear, so it is time to make an appointment to have this done.</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'Helvetica'; font-size:7pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:7pt;">If you prefer a female doctor or nurse, and we currently have none available, we will happily make arrangements with another practice or clinic  to assist you.</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'Helvetica'; font-size:7pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:7pt;">If you have had your PAP smear performed elsewhere, or you no longer attend this practice, could you let our clerical staff know so we can update our records.</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'Helvetica'; font-size:7pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:7pt;">There is also a slightly better diagnostic test which can be done at the time of your PAP, called a THINPREP.  This pathology test is not covered by medicare,  but is important to do, especially  if you have had abormal smears in the past. The cost is about $40.00, payable to the pathology company who processes your smear test. Please let us know at the time if you require this service.</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'Helvetica'; font-size:7pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:7pt;">If you need a complete female health check at the same time, can you please let the staff know so that a long consultation is booked, to allow plenty of time.</span></p></body></html>
-4	Over 75 Health Care Review	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'DejaVu Sans'; font-size:9pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:10pt;">The  Over 75 Years Health Check  is one of the most important facets of your medical care. When you ring for an appointment you should request a half hour consultation.</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'Helvetica'; font-size:10pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:10pt;">On the morning of your checkup, you should do one or more of the following, unless your doctor has given you specific instructions which contradict this:</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'Helvetica'; font-size:10pt;"></p>\n<ul style="-qt-list-indent: 1;"><li style=" font-family:'Helvetica'; font-size:10pt;" style=" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"> If you are not a known diabetic you should fast overnight, and drink plenty of water in the morning</li>\n<li style=" font-family:'Helvetica'; font-size:10pt;" style=" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"> If you have diabetes you may eat breakfast and drink fluids as per normal</li>\n<li style=" font-family:'Helvetica'; font-size:10pt;" style=" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"> Take your medications as usual in the morning</li></ul>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-family:'Helvetica'; font-size:10pt;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-family:'Helvetica'; font-size:10pt;">Have a think about any health issues you wish to discuss prior to the consultation, and attend the surgery at least 10 minutes prior to your consulation to allow time to check in with the secretary and provide a urine specimen.</span></p></body></html>
+COPY lu_templates (pk, name, deleted, template, fk_lu_appointment_length) FROM stdin;
+1	Do not use template	f		1
+2	Annual Checkup	f	The annual checkup is one of the most important facets of your medical care. On the morning of your checkup, you should do one or more of the following, unless your doctor has given you specific instructions which contradict this:<BR><BR>If you are not a diabetic you should fast overnight, and drink plenty of water in the morning.<BR>If you have diabetes you may eat breakfast and drink fluids as per normal.<BR>Take your medications as usual in the morning.<BR><BR>Have a think about any health issues you wish to discuss prior to the consultation, and attend the surgery at least 10 minutes prior to your consultation to allow time to check in with the secretary and provide a urine specimen.<BR>	2
+4	Over 75 Health Care Review	f	The  Over 75 Years Health Check  is one of the most important facets of your medical care. <BR><BR>On the morning of your checkup, you should do one or more of the following, unless your doctor has given you specific instructions which contradict this:<BR><BR>If you are not a diabetic you should fast overnight, and drink plenty of water in the morning.<BR>If you have diabetes you may eat breakfast and drink fluids as per normal.<BR>Take your medications as usual in the morning<BR><BR>Have a think about any health issues you wish to discuss prior to the consultation, and attend the surgery at least 10 minutes prior to your consulation to allow time to check in with the secretary and provide a urine specimen.	2
+3	Pap Smear	f	If you prefer a female doctor or nurse, and we currently have none available, we will happily make arrangements with another practice or clinic to assist you.<BR><BR>If you have had your PAP smear performed elsewhere, or you no longer attend this practice, could you let our clerical staff know so we can update our records.<BR><BR>There is also a slightly better diagnostic test which can be done at the time of your PAP, called a THINPREP.  This pathology test is not covered by medicare,  but is important to do, especially  if you have had abormal smears in the past. The cost is about $40.00, payable to the pathology company who processes your smear test. Please let us know at the time if you require this service.<BR>	1
 \.
 
 
@@ -3402,6 +3468,125 @@ COPY lu_link_provider_user_requests (pk, fk_lu_request, provider_request_name, l
 1368	1025	Brain CT with contrast	0	f
 1369	1379	Cervical Spine CT	0	f
 1370	1735	CYTOLOGY NON GYNAE (CYT-0)	0	f
+1371	556	Pelvis Xray	1	f
+1372	132	Blood Bank	0	f
+1373	381	Abdo, Pelvis CT with contrast	2	f
+1374	126	Blood Gp/Antibodies	0	f
+1375	301	IgE Specific Allergen	0	f
+1376	705	ANA/Autoantibodies	0	f
+1377	1321	ANA/Autoantibodies	0	f
+1378	65	2 Leg DVT Lower Limb (inc IVC/iliacs)	2	f
+1379	988	Ribs 1 side or stern	1	f
+1380	182	HEPATITIS SEROLOGY (HEP-0)	0	f
+1381	486	Injection for Workcover	2	f
+1382	1530	Abdominal US	0	f
+1383	450	Lipids and HDL	0	f
+1384	985	ARTERIAL ULTRASOUND	0	f
+1385	182	Panel Serology	0	f
+1386	12	Special Chem - HPLC	0	f
+1387	1576	Autologous Injection Left Ankle US	1	f
+1388	1133	ARTERIAL ULTRASOUND	0	f
+1389	1135	General Serology	0	f
+1390	155	X017	0	f
+1391	1415	ANA/Autoantibodies	0	f
+1392	1182	ARTERIAL ULTRASOUND	0	f
+1393	688	ANA/Autoantibodies	0	f
+1394	958	ANA/Autoantibodies	0	f
+1395	1125	Electrophoresis	0	f
+1396	1744	Microbiology Culture	0	f
+1397	1745	Clinical Chemistry	0	f
+1398	1083	Misc.Chemistry	0	f
+1399	1027	Coagulation Tests	0	f
+1400	1453	NGFNAS	2	f
+1401	1423	Lipids and HDL	0	f
+1402	675	Lipids and HDL	0	f
+1403	214	Stress Echocardiogram (M HARRISON)	0	f
+1404	844	Stress Echocardiogram (M HARRISON)	0	f
+1405	1640	CT Chest with contrast	0	f
+1406	1247	C/T PELVIS (PLAIN)	1	f
+1407	1746	SPIROMETRY (SPR-0)	0	f
+1408	1521	.NC TROPI	0	f
+1409	1748	ECG	0	f
+1410	727	Electrophoresis	0	f
+1411	659	Xray Left Shoulder/Scapula,US Shoulder or Upper Arm	1	f
+1412	48	Thyroid Abs	0	f
+1413	1691	RU-Iod	0	f
+1414	1051	Cryo	0	f
+1415	217	CLA	0	f
+1416	1685	CLA	0	f
+1417	1750	Cytology	0	f
+1418	1179	ARTERIAL ULTRASOUND	1	f
+1419	1281	Bialteral Hip X-Ray	3	f
+1420	1741	CRYF	0	f
+1421	255	C DIFF	0	f
+1422	1097	Xray Left Hand	1	f
+1423	1124	Facial Bones/Sinuses CT	2	f
+1424	1252	BLOOD CULTURE (BC-0)	0	f
+1425	1754	Clavicle Left Xray	1	f
+1426	1734	Left Hand Injection US	1	f
+1427	1477	Urine Chemistry	0	f
+1428	1702	US Testes	2	f
+1429	24	US MSK Imaging+Surgical Proc	1	f
+1430	1252	BLOOD CULTURE (BC-1)	0	f
+1431	1756	Blood Gp/Antibodies	0	f
+1432	1756	Blood Gp/Antibodies	0	f
+1433	1756	Blood Gp/Antibodies	0	f
+1434	960	Pap Screen	0	f
+1435	960	Pap Screen	0	f
+1436	960	Pap Screen	0	f
+1437	265	X027	0	f
+1438	422	X027	0	f
+1439	608	X027	0	f
+1440	265	X027	0	f
+1441	422	X027	0	f
+1442	608	X027	0	f
+1443	1419	X017	0	f
+1444	1091	X020	0	f
+1445	1166	Hepatitis C Serology	0	f
+1446	71	GMC2	0	f
+1447	71	Microbiology Culture	0	f
+1448	190	Urine Chemistry	0	f
+1449	1735	Cytology	0	f
+1450	309	FINE NEEDLE SAMPLE (FNA-0)	2	f
+1451	452	Brain, Chest, Abdomen and Pelvis CT with contrast	0	f
+1452	996	NORMETANEPHRINES U	0	f
+1453	1328	ARTERIAL ULTRASOUND	0	f
+1454	1748	ELECTROCARDIOGRAM (ECG-0)	0	f
+1455	408	Bone Mineral Density - 12306	2	f
+1456	1111	Coagulation Tests	0	f
+1457	532	Coagulation Tests	0	f
+1458	1682	Coagulation Tests	0	f
+1459	1111	Coagulation Tests	0	f
+1460	1111	Coagulation Tests	0	f
+1461	1111	Coagulation Tests	0	f
+1462	1111	Coagulation Tests	0	f
+1463	1111	Coagulation Tests	0	f
+1464	1012	Stress Echocardiogram (S FLANAGAN)	0	f
+1465	659	SHOULDER OR UPPER ARM MUSCULOSKELETA	1	f
+1466	1291	IgE Specific Allergen	0	f
+1467	523	Electrophoresis	0	f
+1468	74	IgE Specific Allergen	0	f
+1469	1675	Shoulder Right Injection US	2	f
+1470	1757	Biochemistry	0	f
+1471	855	HEEL-X-RAY	1	f
+1472	855	HEEL-X-RAY	1	f
+1473	520	HEEL-X-RAY	1	f
+1474	659	SHOULDER OR UPPER ARM MUSCULOSKELETA, RT SHOULDER OR SCAPULA	1	f
+1475	1006	Legionella Culture	0	f
+1476	330	X012	0	f
+1477	330	X012	0	f
+1478	330	X012	0	f
+1479	330	X012	0	f
+1480	1374	X012	0	f
+1481	140	X033	0	f
+1482	140	X021	0	f
+1483	223	X049	0	f
+1484	223	X049	0	f
+1485	279	Respiratory Serology	0	f
+1486	1322	Lower Leg Left US	1	f
+1487	1086	Xray Single Breast,US Single Breast	2	f
+1488	486	MUSCULOSKELETAL CROSS-SECTIONAL (PRE	0	f
+1489	177	MRI Zimmer Left	1	f
 \.
 
 
@@ -4403,7 +4588,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1000	1	Uterus +/- adnexa not tumour NOS	0	0	0	f
 1001	2	IGFBP-3 (Insulin-like growth factor binding protein 3)	0	0	0	f
 1002	1	Tissue organ NOS tumour local	0	0	0	f
-1003	2	Intravenous pyelogram	0	0	0	f
 1004	1	Anti-gastric parietal cell antibody	0	0	0	f
 1005	1	TFT's	0	0	0	f
 1006	1	Legionella testing - direct fluorescent antigen (DFA) test culture	0	0	0	f
@@ -4447,6 +4631,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1044	1	Cystic Fibrosis Mouthwash for DF508	0	0	0	f
 1045	2	Xray Radius & Ulna	3	0	0	f
 1046	1	Leucocyte phenotyping marrow	0	0	0	f
+1003	2	Intravenous pyelogram (IVP)	0	0	0	f
 1048	2	Head CT	0	0	0	f
 1049	2	Ankle Ultrasound	3	0	0	f
 1050	1	Bone femoral head	0	0	0	f
@@ -5067,13 +5252,13 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1672	1	Zinc	0	0	0	f
 1673	1	Cancer Ag 19-9	0	0	0	f
 1674	4	Holter Scan with BP Monitoring	0	0	0	f
-1675	2	Achromioclavicular joint steroid injection	3	0	0	f
 1676	2	XRay Heel	0	0	0	f
 1576	2	autologous blood injection	0	0	0	f
 1677	2	CXR - Comparison old films	0	0	0	f
 1678	1	Heterophile antibody	0	0	0	f
 1679	1	chromosome analysis	0	0	0	f
 1680	1	Testosterone.free	0	0	0	f
+1739	1	CA19.9 tumour marker	0	0	0	f
 1681	1	Bordetella Pertussis IGA	0	0	0	f
 1682	1	Serum crosslinked fibrin (XDP)	0	0	0	f
 1683	1	Q Fever Phase 2 IgG (IFA)	0	0	0	f
@@ -5133,6 +5318,32 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1733	1	Post vasectomy sperm count	0	0	0	f
 1734	2	Steroid injection to finger	0	0	0	f
 1735	1	FNA cytology	0	0	0	f
+1736	2	Xray Forearm	3	0	0	f
+1737	1	spot urine calcium	0	0	0	f
+1738	2	CT temporal bones	3	0	0	f
+1740	1	Complete digestive stool analysis	0	0	0	f
+1741	1	cryofibrinogens	0	0	0	f
+1742	10	24Hr urinary urate	0	0	0	t
+1743	1	24Hr Urinary Urate	0	0	0	f
+1744	1	Gastric Aspirate C&S	0	0	0	f
+1745	1	Bilirubin	0	0	0	f
+1746	1	Spirometry	0	0	0	f
+1747	8	Spirometry	0	0	0	f
+1748	1	ECG Resting and Report	0	0	0	f
+1749	2	CT Mandible	3	0	0	f
+1750	1	Cytology - Abdominal Washings	0	0	0	f
+1751	10	Ultrasound guided FNA biopsy	0	0	0	t
+1752	2	Ultrasound Guided FNA biopsy	0	0	0	f
+1753	1	BSL/Food Diary	0	0	0	f
+1675	2	Acromioclavicular joint steroid injection	3	0	0	f
+1754	2	sterno-clavicular joint	3	0	0	f
+1755	2	Screening Mammogram - Recall Further Views	0	0	0	f
+1756	1	Blood Gp/Antibodies	0	0	0	f
+1757	1	total serum protein	0	0	0	f
+1758	1	skin prick allergen testing	0	0	0	f
+1759	2	Screening Mammogram - Result of Further Views	0	0	0	f
+1760	2	XRay Great Toe	3	0	0	f
+1761	2	Ultrasound Eye	3	0	0	f
 \.
 
 
@@ -5247,7 +5458,6 @@ COPY lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_
 15	\N	\N	Tetanus - every 10 years	f	f	\N	f	\N	f	f	\N
 40	\N	\N	Chicken Pox age > 12 years	f	f	\N	f	\N	f	f	\N
 46	18	\N	18 month childhood	f	f	\N	f	\N	f	f	\N
-44	6	6	6 month childhood	f	f	\N	f	\N	f	t	\N
 45	12	\N	12 month childhood	f	f	\N	f	\N	f	t	\N
 47	46	60	4 year childhood	f	f	\N	f	\N	f	t	\N
 54	11	12	Aboriginal Winter Schedule	f	t	3	f	\N	f	t	\N
@@ -5263,6 +5473,10 @@ COPY lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_
 51	4	\N	4 month childhood - old prevenar	f	f	\N	f	2011-10-17	f	f	\N
 66	\N	\N	4 Month Childhood	f	f	\N	f	\N	f	t	\N
 65	2	\N	2 Month Childhood	f	f	\N	f	\N	f	t	\N
+67	\N	\N	Polio	f	f	\N	f	\N	f	f	\N
+44	6	6	6 month childhood - old prevenar	f	f	\N	f	\N	f	f	\N
+68	\N	\N	6 Month Childhood	f	f	\N	f	\N	f	t	\N
+69	\N	\N	Meningococcal ACWY	f	f	\N	f	\N	f	f	\N
 \.
 
 
@@ -5309,7 +5523,6 @@ COPY lu_vaccines (pk, brand, form, fk_description, fk_route, inactive, deleted, 
 11	Hiberix	Injection	40	1	f	f	1
 10	HibTITER	Injection	40	1	f	f	1
 101	Liquid PedvaxHIB	Injection	40	1	f	f	1
-28	Mencevax ACWY	Injection	18	1	f	f	1
 178	Meningitec	injection	18	1	f	f	1
 180	Menjugate	injection	18	1	f	f	1
 27	M-M-R II	Injection	3	2	f	f	1
@@ -5358,6 +5571,8 @@ COPY lu_vaccines (pk, brand, form, fk_description, fk_route, inactive, deleted, 
 41	Yellow Fever Vaccine	injection	9	2	f	f	1
 75	Stamaril	Injection	9	2	f	f	1
 159	Orochol	Powder	23	5	f	f	2
+195	Vivotif Oral	\N	36	5	f	f	2
+28	Mencevax ACWY	Injection	18	2	f	f	1
 \.
 
 
@@ -5551,6 +5766,12 @@ COPY lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inact
 183	181	66	f	\N
 184	186	66	f	\N
 185	194	13	f	\N
+186	195	23	f	\N
+187	31	67	f	\N
+188	194	68	f	\N
+189	181	68	f	\N
+190	28	69	f	\N
+191	128	59	f	\N
 \.
 
 
@@ -64478,6 +64699,29 @@ COPY lu_occupations (pk, occupation) FROM stdin;
 296	General Assistant
 297	LIfeguard
 298	Doorman
+299	Clerical Support Staff
+300	Community Worker
+301	Storeman
+302	Neck and General Surgeon
+303	Sales and Service Co-ordinator
+304	Haematology Advanced Trainee
+305	Advanced Medical Oncology Trainee
+306	anaesthetist
+307	nurse - psychiatry
+308	Sheet Metal Worker
+309	Surgical Registrar
+310	Sandblaster
+311	Occupation Unknown
+312	Assistant Director
+313	Boiler Maker
+314	Hospital Assistant
+315	Forklift driver- booking officer
+316	Installer
+317	Customer Contact Officer (Fines)
+318	Registrar - medical
+319	Fitter
+320	Engineer - Mechanical
+321	Teacher - Trades
 \.
 
 
@@ -65105,6 +65349,28 @@ COPY lu_categories (pk, category) FROM stdin;
 355	Telecross Service
 356	City Council
 357	social security
+358	Private Hospital - Mental Health
+359	Educational Supplies
+360	natropath
+361	Legal Services
+362	District Court
+363	Dementia
+364	Preschool
+365	Public Hospital - Pain
+366	phone provider
+367	Sand Blasting & Spray Painting
+368	Animal Welfare
+369	Metal Roofing Contractor
+370	High School - Sports
+371	Visual Impared instituion
+372	School - Catholic
+373	Hydrotherapy Pool
+374	Glass Merchant
+375	Legal Firm
+376	Pharmacy
+377	Learning Centre
+378	Coal Mining Fabrication
+379	Women's Health
 \.
 
 
@@ -84537,7 +84803,7 @@ SET search_path = db, pg_catalog;
 --
 
 COPY lu_version (pk, lu_major, lu_minor) FROM stdin;
-133	0	143
+140	0	148
 \.
 
 

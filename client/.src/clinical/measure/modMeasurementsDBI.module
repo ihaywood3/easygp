@@ -78,7 +78,6 @@ Public Function Make_Graph(fk_patient As Integer, loinc As String, heading As St
    Graph_Data = modPlot.Graph_And_Values_Get(fk_patient, loinc, heading, H, W, font_size, line_type, number_months)
    If IsNull(Graph_Data!graph_filename) Then
       Graph_Data!name = heading
-      
    End If
    Return Graph_Data
    
@@ -248,7 +247,6 @@ Public Sub ProgressNote_Parse_For_Measurement(cons As CConsult, notes As String)
    Dim slashpos As Integer
    Dim systolic As String
    Dim diastolic As String
-   
    Dim measurement As Collection 
    Dim measurements As New Collection 
    Dim measurement$ As String
@@ -261,7 +259,6 @@ Public Sub ProgressNote_Parse_For_Measurement(cons As CConsult, notes As String)
       'e.g  const_measurement_BSL
       '------------------------------------------------------------
       sHtml = notes
-      Print shtml
       x = MT!pk
       sPattern = ">" & MT!name_full & "="
       charpos = -1
@@ -306,9 +303,9 @@ Public Sub Measurements_Save(cons As CConsult, measurements As Collection)
    
    modDBConnect.exec_query("Delete  from clin_measurements.measurements where fk_consult = " & cons.GetPK())
    For Each m In Measurements
-         m!fk_consult = cons.GetPK()
-         m!time_noted = Format(Time(Now()), "hh:nn:ss") 'yes nn= mins cause mm=months
-         Measurement_Save(m)
+      m!fk_consult = cons.GetPK()
+      m!time_noted = Format(Time(Now()), "hh:nn:ss") 'yes nn= mins cause mm=months
+      Measurement_Save(m)
    Next
    
 End
@@ -317,14 +314,99 @@ Public Sub Measurement_Save(m As Collection) As Integer
    '-------------------------
    'Save a single measurement
    '-------------------------   
+   
    If m!pk Then
-      
+      Message.info("Richard in measurements ?bug here")
    Else
       'New measurement
       m!pk = modDBConnect.insert("clin_measurements.measurements", m)
    End If
    Return m!pk
+   
+End
 
+Public Sub Run_Measurement_Fix(ProgressNotes As Collection, fk_patient As Integer)
+   'temporary routine for Richard to clean up his progress note measurments fucked up during developement
+   'temp for me to fix measurements fucked up during development.
+   
+   Dim pn As Collection
+   Dim charpos As Integer
+   Dim sPattern As String
+   Dim MT As Collection  
+   Dim slashpos As Integer
+   Dim systolic As String
+   Dim diastolic As String
+   Dim measurement As Collection 
+   Dim measurements As New Collection 
+   Dim measurement$ As String
+   Dim sHtml As String 
+   Dim bits As String[]
+   Dim existing_measurements As Collection
+   
+   modDBConnect.BeginTrans()
+   existing_measurements = modDBConnect.exec_query_collection("select * from clin_measurements.vwMeasurements where fk_patient =" & fk_patient)
+   For Each measurement In existing_measurements
+      modDBConnect.exec_query("Delete from clin_measurements.measurements where pk=" & measurement!pk_measurement)
+   Next
+  
+   For Each pn In ProgressNotes
+      For Each MT In const.Measurement_Types
+         '----------------------------------------------------------
+         'For each type of measurement, the key = eg BP, BSL, Height 
+         'as represented by const.measurement_type
+         'e.g  const_measurement_BSL
+         '----------------------------------------------------------
+         sHtml = pn!notes
+         sPattern = ">" & MT!name_full & "="
+         charpos = -1
+         '----------------------------------------------------------
+         'Now, loop through the entire html in the progress note for
+         'just the single type of measurement
+         '-----------------------------------------------------------
+         Do Until charpos = 0
+            charpos = InStr(shtml, sPattern)  
+            If charpos Then
+               sHtml = Right(shtml, Len(shtml) - charpos - Len(sPattern) + 1)
+               charpos = InStr(shtml, " ")             'found the space after measurement
+               measurement$ = Left(shtml, charpos - 1)  'the measurement
+               '-------------------------------------------------------------------------------------
+               'Developmental code bugs had bad parsing, so e.g bp could end up in html as bp=-120/70
+               'fix this
+               '--------------------------------------------------------------------------------------
+               If InStr(measurement$, "-") Then          'if is a - before the measurement
+                 measurement$ = Replace$(measurement$, "-", "")
+                 pn!notes = Replace(pn!notes, "-" & measurement$, measurement$)
+                 modDBConnect.update("clin_consult.progressnotes", Null, ["pk": pn!pk_progressnote, "notes": pn!notes])
+               Endif
+               measurement = New Collection 
+               measurement!fk_type = MT!pk
+               measurement!fk_consult = pn!fk_consult
+               bits = Split(pn!consult_date, " ")
+               bits = Split(bits[1], ".")
+               measurement!time_noted = bits[0]
+               If measurement!fk_type = const.Measurement_BP Then
+                  slashpos = InStr(measurement$, "/")
+                  systolic = Left(measurement$, slashpos - 1) & "000" 'now e.g 180000
+                  diastolic = Right(measurement$, Len(measurement$) - slashpos)
+                  measurement!measurement = Val(systolic) + Val(diastolic)
+               Else
+                  measurement!measurement = Val(measurement$)
+               End If
+               measurements.Add(measurement, measurements.count)
+            End If
+         Loop
+         
+      Next 
+   Next 
+   Print measurements
+   '-----------------------------------------
+   'Now finally, re-save these to the backend
+   '-----------------------------------------
+   For Each measurement In measurements
+        measurement!pk = modDBConnect.insert("clin_measurements.measurements", measurement)
+   Next
+   modDBConnect.CommitTrans()
+  Print
 End
 
 Public Function Units_Get_Text() As Collection 
@@ -360,7 +442,7 @@ Public Function Get_Lipids(fk_patient As Integer) As Result
    'const.Loinc_HDL
    'const.Loinc_LDL
    '--------------------------------------------
-
+   
    Dim sql_stem As String
    Dim sql As String
    
@@ -376,7 +458,7 @@ Public Function Get_Lipids(fk_patient As Integer) As Result
    sql = Replace(sql, "%LOINC%", const.Loinc_LDL)
    sql &= " ORDER BY observation_date DESC"
    Return modDBConnect.exec_query(sql)
-
+   
 End
 
 Public Function Get_Loinc_Value(fk_patient As Integer, loinc As String, Optional limit As Integer = 0, Optional sort As String = "ASC") As Result

@@ -424,7 +424,6 @@ Public Sub Gridview1_Refresh()
          End If 
       End If   
    Next
-   gridview1.Refresh()
 
 End
 
@@ -484,13 +483,16 @@ End
 
 Public Sub Emergency_Insert()
    
+   Dim iLastRowOn As Integer
+   
+   iLastRowOn = onrow
    If Not IsNull(gridrows[onrow]!fk_patient) Then
       Message.title = "Delete existing appointment" 
       If Message.Warning("Existing patient appointment:" & gridrows[onrow]!name & "\n\nReplace with an emergency slot?", "Yes", "No") = 2 Then Return
    Endif
    fk_lu_appointment_status = emergency  
    Save()
-   
+  
 End
 
 Public Function Appointment_Format(h As Integer, m As Integer, am_pm As String) As String
@@ -550,11 +552,12 @@ Public Sub Appointment_Add_Fit()
    griddata!is_fitin = True
    griddata!duration = 1
    gridrows.add(griddata, x)
-   Gridview1_Refresh()
-   gridview1.row = x
-   gridview1.Rows[x].Selected = True  
-   Gridview1.SetFocus()
-   
+   Gridview1_Refresh()                       'rebuild the grid using the expanded collection
+   gridview1.UnSelectAll()                   'unselect all rows
+   gridview1.row = x                         'this will be the row we are now at
+   gridview1.Select(x, 1)                    'set's onrow
+   Wait                                      
+   Gridview1_DblClick()                      'enter edit mode to find patient
 End
 
 Private Sub Settings_Save()
@@ -621,6 +624,7 @@ Public Sub Gridview1_DblClick()
    
    Dim i As Integer
    Dim x As Integer
+   Dim bFoundSelected As Boolean
    
    patient = Null
    bExit = True   
@@ -630,6 +634,7 @@ Public Sub Gridview1_DblClick()
    For i = 0 To Gridview1.rows.count - 1           'figure out which rows are selected
       x = x + Gridview1.Rows[i].Height
       If Gridview1.Rows[i].Selected = True Then
+         bFoundSelected = True
          If bFoundFirst = False Then
             bFoundFirst = True
             iFirstRow = i
@@ -638,10 +643,11 @@ Public Sub Gridview1_DblClick()
          iLastRow = i
       End If 
    Next 
-   onrow = iFirstRow  
-   iSlotCount = iLastRow - iFirstRow + 1
-   Show_EditingTextBox()
-   
+   If bFoundSelected Then  
+      onrow = iFirstRow  
+      iSlotCount = iLastRow - iFirstRow + 1
+      Show_EditingTextBox()
+   End If   
 End
 
 Public Sub Gridview1_Select()
@@ -654,7 +660,7 @@ Public Sub Gridview1_Select()
    txtAppointment.text = ""
    onrow = gridview1.row
    Try fk_lu_appointment_status = gridrows[onrow]!fk_lu_appointment_status
-   
+   Print "on  row is now ", onrow
 End
 
 Public Sub Gridview1_Menu()
@@ -698,8 +704,10 @@ Public Sub Appointment_Delete()
    
    Dim appointment As New CRow 
    Dim sMsg As String
+   Dim iDeletedRow As Integer
    
-   If gridview1.row = -1 Then Return 
+   If gridview1.row = -1 Then Return
+   iDeletedRow = Gridview1.Row
    If Not IsNull(gridrows[Gridview1.Row]!pk_appointment) Then
       appointment!pk = gridrows[Gridview1.Row]!pk_appointment
       Message.Title = "Delete an appointment"
@@ -711,6 +719,7 @@ Public Sub Appointment_Delete()
       modAppointmentsDBI.Appointment_Delete(appointment)
       modDBConnect.CommitTrans()
       Reload()
+      gridview1.row = iDeletedRow
    Endif
    
 End
@@ -739,6 +748,7 @@ Public Sub Save()
    Dim end_hour_as_24hrtime As Integer
    Dim start_time As String[]
    Dim end_time As String[]
+   Dim currow As Integer = onrow
    
    Timer1.stop
    Try appointment!fk_patient = patient!fk_patient
@@ -825,8 +835,14 @@ Public Sub Save()
    modAppointmentsDBI.Appointment_Save(appointment)
    modDBConnect.CommitTrans()
    Reload()
-   Timer1.start
    
+   gridview1.row = Gridview1_First_Vacant(onrow)
+   gridview1.UnSelectAll()                   'unselect all rows
+ '  gridview1.MoveTo(onrow, 1)
+   gridview1.Select(onrow, 1)
+   Wait
+   gridview1.SetFocus()
+ 
 End
 
 Public Sub Gridview1_First_Vacant(startrow As Integer) As Integer
@@ -839,7 +855,10 @@ Public Sub Gridview1_First_Vacant(startrow As Integer) As Integer
    
    For i = startrow To Gridview1.Rows.Count - 1
       If Gridview1[i, 1].text = "" Then
+         Print "start row was ", startrow  
+         Print "next row should be ", i
          Return i 
+         Break
       Endif
    Next
    
@@ -849,10 +868,11 @@ Public Sub SelectPatient_click()
    '-------------------------------------------------------------------
    'User has cancelled patient selection in popup patient selector form
    '-------------------------------------------------------------------
-   
+   Message.info("Richard in SelectPatient in FDayList")
    If Last.tag = "cancel" Then Stop Event
    form_select.Visible = False 
    Vbox1.Visible = True   
+   Dec Application.Busy
    Gridview1_Refresh()
    
 End
@@ -906,12 +926,13 @@ Public Sub txtFindPatient_Change()
       fk_lu_appointment_status = appointment_made
       Save()                                                    'Saves and reloads the grid                                             
    Endif '
-   bExit = True   
-   txtAppointment.text = ""
-   bExit = False 
-   ix = Gridview1_First_Vacant(iLastRowOn) 
-   gridview1.row = Gridview1_First_Vacant(iLastRowOn) 
-   gridview1.SetFocus()
+  ' bExit = True   
+  ' txtAppointment.text = ""
+  ' bExit = False 
+  ' gridview1.row = Gridview1_First_Vacant(iLastRowOn) 
+  ' Print gridview1.row, " is the row now shold be on"
+  
+   ' Gridview1.SetFocus()
    
 End
 
@@ -976,6 +997,15 @@ Public Sub Gridview1_Scroll()
    Try Move_EditingTextBox
    
 End
+Public Sub txtAppointment_KeyPress()
+   
+  Select Case Key.Code
+  Case Key.Up, Key.down, Key.esc
+      txtAppointment.Visible = False  
+      gridview1.SetFocus() 
+ End Select 
+   
+End
 
 Public Sub txtAppointment_Change()
    '----------------------------------------------------------
@@ -1004,4 +1034,10 @@ Public Sub ToolButton1_Click()
    
    Me.Reparent(Null)
    
+End
+
+Public Sub Gridview1_GotFocus()
+
+   
+
 End

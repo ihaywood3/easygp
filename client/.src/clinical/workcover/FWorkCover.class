@@ -47,7 +47,7 @@ Private branch As Collection
 Private branches As Collection
 Private occupation As Collection
 Private occupations As Collection 
-Private Claims_Forms As Collection 'of forms for a claim
+Private Claims_Forms As Collection 'of forms for a claim as yet is unused
 Private iCurrentKey As Integer
 Private currentconsult As CConsult
 Private bClaimLoaded As Integer
@@ -142,7 +142,6 @@ Public Sub Save()
    claim!memo = Trim(txtMemo.text)
    claim!identifier = Trim(txtIdentifier.text)
    claim!accepted = CBool(chkClaimAccepted.value)
-   
    If fk_claim Then
       visit!fk_claim = fk_claim
    Endif
@@ -162,7 +161,6 @@ Public Sub Save()
    Try visit!fitness_unfit_from = Val(txtUnfit_From.text)
    Try visit!fitness_unfit_to = Val(txtUnfit_To.text)
    Try visit!fitness_perm_mod_duties_from = Val(txtPermModDuties_From.text)
-   
    If rbAssessWorkplaceYes.value = True Then
       visit!assessworkplace = True
    Else
@@ -183,9 +181,8 @@ Public Sub Save()
    visit!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_Workcover, fk_progressnote, "workcover", 0, False)
    fk_claim = modWorkCoverDBI.Save(currentconsult, pk_view_visits, claim, visit) 
    modDBConnect.CommitTrans()
-   
    EditArea_Notify_Datachanged(False)
-   Visit_Print()
+   modPrinting.Print_latex(visit!latex, const.Paper_Plain, 2)
    FClinical.Refresh_AllPreviousNotes()
    FClinical.Refresh_Section(const.cSection_Workcover)
    Reload()
@@ -196,7 +193,7 @@ Public Sub New_Entry()
    '--------------------------------------
    'Called from the main Fclinical Toolbar
    '--------------------------------------  
-
+   
    Claim_New() 
    
 End
@@ -427,7 +424,6 @@ Public Sub Visit_New()
    
    Dim lastvisit As New Collection 
    
-  
    lastvisit!pk_visit = visit!pk_visit
    lastvisit!visit_date = visit!visit_date
    lastvisit!fk_claim = visit!fk_claim
@@ -454,6 +450,7 @@ Public Sub Visit_New()
    lastvisit!fitness_unfit_to = visit!fitness_unfit_to
    lastvisit!fitness_perm_mod_duties = visit!fitness_perm_mod_duties_from
    lastvisit!form_html = visit!form_html
+   lastvisit!latex = visit!latex
    
    EditArea_Visit_Clear()                    'Clear all the input area for a visit
    bNewVisit = True  
@@ -504,21 +501,9 @@ Public Sub Visit_RePrint()
    'the act of doing this has loaded all the data into Visit and the gui
    'so now, load all the stuff into Claim
    '----------------------------------------------------------------------------   
-
-   lvwClaims_Select 'load stuff into claim
-   Visit_Print_New() 'temporary whilst I make changes - swap back to visit_print()
    
-End
-
-Public Sub Visit_Print()
-   
-   modPrinting.Print_latex(WorkcoverForm_LaTeX_Construct().GetData(), const.Paper_Plain, 2)
-   
-End
-
-Public Sub Visit_Print_New()
-   
-   modPrinting.Print_latex(WorkcoverForm_LaTeX_Construct_New().GetData(), const.Paper_Plain, 2)
+   lvwClaims_Select 'load stuff into claim ?need anymore fixme
+   modPrinting.Print_latex(visit!latex, const.Paper_Plain, 2)
    
 End
 
@@ -526,7 +511,7 @@ Public Sub Claims_Refresh()
    '---------------------------------------
    'Refreshes all existing workcover claims
    '---------------------------------------   
-
+   
    Dim iLastClaim As Integer
    
    currentconsult.Refresh("workcover_claims")     'reload all the history
@@ -540,7 +525,6 @@ Public Sub Claims_Refresh()
    
 End
 
-
 Public Sub Preview()
    '-----------------------------
    'Called from FClinical toolbar
@@ -553,15 +537,15 @@ End
 Public Sub Claim_Preview()
    '------------------------------------------------
    'Previews a claim but on another tab in FClinical
+   'FIXME, once I've run the workcover latex fix on my db can modify this code to 2 lines
    '------------------------------------------------   
-
+   
    Dim Filename As String
    
    If bNewVisit Then Return 'currently can't preview a new form
-    Claim_Collect_Data()
-   filename = modPrinting.Latex_To_PDF(modWorkCoverDBI.WorkcoverForm_LaTeX_Construct(currentconsult, currentconsult!workcover_claims[pk_view_visits]).GetData())
+   filename = modPrinting.Latex_To_PDF(currentconsult!workcover_claims[pk_view_visits]!latex)
    FClinical.Editor_ShowPage_External("pdf file", "Workcover Form " & Format(currentconsult!workcover_claims[pk_view_visits]!certificate_date, "dd/mm/yyyy"), filename)
-
+   
 End
 
 Public Sub Claim_Collect_Data()
@@ -726,175 +710,6 @@ Public Function WorkcoverForm_LaTeX_Construct() As CTemplate
    End If
    templ.Subst("worker_consented", sString)
    templ.Subst("date", Format(visit!certificate_date, "dd/mm/yyyy"))
-   Return templ
-   
-End
-
-Public Function WorkcoverForm_LaTeX_Construct_New() As CTemplate
-   
-   Dim sEmployer As String
-   Dim sAssess_Workplace As String = "   No"
-   Dim sName As String
-   Dim sAddress As String
-   Dim sString As String
-   Dim sContactPerson As String
-   Dim sMemo As String  
-   Dim sCausedBy As String = ""
-   Dim comm As Collection 
-   Dim templ As New CTemplate("workcover-nsw", "tex")
-   Dim claim_visit As Collection = currentconsult!workcover_claims[pk_view_visits]
-
-   Select Case claim_visit!fk_lu_visit_type              'Can't selectively do one
-      Case Const.Workcover_VisitType_Initial        'once replaced, their 'gone'
-         templ.Checkbox("visit_type_initial", True)
-         templ.Checkbox("visit_type_progress", False)
-         templ.Checkbox("visit_type_final", False)
-      Case Const.Workcover_VisitType_Progress
-         templ.Checkbox("visit_type_initial", False)
-         templ.Checkbox("visit_type_progress", True)
-         templ.Checkbox("visit_type_final", False)
-      Case Const.Workcover_VisitType_Final
-         templ.Checkbox("visit_type_initial", False)
-         templ.Checkbox("visit_type_progress", False)
-         templ.Checkbox("visit_type_final", True)
-      Case Const.Workcover_VisitType_InitialAndFinal
-         templ.Checkbox("visit_type_initial", True)
-         templ.Checkbox("visit_type_progress", False)
-         templ.Checkbox("visit_type_final", True)
-         
-   End Select
-   If claim_visit!assessworkplace = True Then
-      sAssess_Workplace = "   Yes"
-      templ.Checkbox("assessment_checkbox", True)
-   Else
-      templ.Checkbox("assessment_checkbox", False)
-   End If
-   
-   Select Case claim_visit!fk_caused_by_employment 
-      Case Const.Workcover_CausedByEmployment_Yes
-         sCausedBy = "yes"
-         templ.Checkbox("caused_certain", True)
-         templ.Checkbox("caused_no", False)
-         templ.Checkbox("caused_uncertain", False)
-      Case Const.Workcover_CausedByEmployment_No
-         sCausedBy = "no"
-         templ.Checkbox("caused_certain", False)
-         templ.Checkbox("caused_no", True)
-         templ.Checkbox("caused_uncertain", False)
-      Case Const.Workcover_CausedByEmployment_Uncertain
-         sCausedBy = "uncertain"
-         templ.Checkbox("caused_certain", False)
-         templ.Checkbox("caused_no", False)
-         templ.Checkbox("caused_uncertain", True)
-   End Select
-   
-   If claim_visit!fk_person Then    'sole trader
-      sEmployer = claim_visit!soletrader_wholename
-      sAddress = Trim(claim_visit!soletrader_street1 & "" & claim_visit!soletrader_street2) & " " 
-      sAddress &= claim_visit!soletrader_town & " " & claim_visit!soletrader_postcode
-   Else
-      sEmployer = claim_visit!organisation & " " & claim_visit!branch
-      saddress = Trim(claim_visit!branch_street1 & " " & claim_visit!branch_street2) & " "
-      saddress &= claim_visit!branch_town & " " & claim_visit!branch_postcode
-   End If    
-   
-   templ.Subst_common(currentconsult)
-   Try templ.Subst("claim", Trim(claim_visit!claim_number))
-   If Error Then templ.Subst("claim", "")
-   templ.Subst("employername", sEmployer)
-   templ.Subst("employeraddress", sAddress)
-   templ.Subst("occupation", claim_visit!occupation)
-   templ.Subst("hoursworked", claim_visit!hours_week_worked)
-   templ.Subst("mechanismofinjury", claim_visit!mechanism_of_injury)
-   templ.Subst("dateofinjury", claim_visit!date_injury)  'text field not date field
-   templ.Subst("diagnosis", claim_visit!diagnosis)
-   templ.Subst("caused_by_employment", sCausedBy)
-   templ.Subst("managementplan", claim_visit!management_plan)
-   templ.Subst("assess_workplace", sAssess_Workplace)
-   templ.Subst("reviewdate", Format(claim_visit!review_date, "dd/mm/yyyy"))
-   Try templ.Subst("preinjuryfrom", Format(claim_visit!fitness_preinjury_from, "dd/mm/yyyy"))
-   If Error Then templ.Subst("preinjuryfrom", "")
-   Try templ.Subst("unfitfrom", Format(claim_visit!fitness_unfit_from, "dd/mm/yyyy"))
-   If Error Then templ.Subst("unfitfrom", "")
-   Try templ.Subst("unfitto", Format(claim_visit!fitness_unfit_to, "dd/mm/yyyy"))
-   If Error Then templ.Subst("unfitto", "")
-   Try templ.Subst("suitablefrom", Format(claim_visit!fitness_suitable_from, "dd/mm/yyyy"))
-   If Error Then templ.Subst("suitablefrom", "")
-   Try templ.Subst("suitableto", Format(claim_visit!fitness_suitable_to, "dd/mm/yyyy"))
-   If Error Then templ.Subst("suitableto", "")
-   Try templ.Subst("permmodifiedfrom", Format(claim_visit!fitness_perm_mod_duties_from, "dd/mm/yyyy"))
-   If Error Then templ.Subst("permmodifiedfrom", "")
-   templ.Subst("hoursperday", claim_visit!hours_capable)
-   templ.Subst("daysperweek", claim_visit!days_capable)
-   templ.Subst("work.restrictions", claim_visit!restrictions)
-   templ.Subst("work.capabilities", claim_visit!capabilities) 
-   
-   If Not IsNull(claim_visit!fitness_perm_mod_duties_from) Then 
-      templ.Checkbox("permanent_checkbox", True)
-   Else
-      templ.Checkbox("permanent_checkbox", False)
-   End If
-   If Not IsNull(claim_visit!fitness_unfit_from) Then
-      templ.Checkbox("unfit_checkbox", True)
-   Else
-      templ.Checkbox("unfit_checkbox", False)
-   Endif
-   If Not IsNull(claim_visit!fitness_suitable_from) Then
-      templ.Checkbox("fit_suitable_checkbox", True)
-   Else
-      templ.Checkbox("fit_suitable_checkbox", False)
-   Endif
-   If Not IsNull(claim_visit!fitness_perm_mod_duties_from) Then
-      templ.Checkbox("permanent_checkbox", True)
-   Else
-      templ.Checkbox("permanent_checkbox", False)
-   Endif
-   If Not IsNull(claim_visit!fitness_preinjury_from) Then
-      templ.Checkbox("pre_injury_checkbox", True)
-   Else
-      templ.Checkbox("pre_injury_checkbox", False)
-   Endif
-   If Not IsNull(claim_visit!contact_person) Then sContactPerson = claim_visit!contact_person
-   If Not IsNull(claim_visit!memo) Then sMemo = claim_visit!memo
-   templ.Subst("contacts_person", sContactPerson & " " & txtMemo.text)
-   If claim_visit!doctor_consented = True Then 
-      templ.Checkbox("treating_doctor_yes_checkbox", True)
-      templ.Checkbox("treating_doctor_no_checkbox", False)
-   Else
-      templ.Checkbox("treating_doctor_no_checkbox", True) 'fixme make me reflect true status of these boxes
-      templ.Checkbox("treating_doctor_yes_checkbox", False) 
-   End If
-   If Not IsNull(claim_visit!fk_branch) Then   
-      comms = modContactsDBI.Branch_Comms_Get(claim_visit!fk_branch)
-   End If   
-   If Not IsNull(Comms) Then 
-      sSTring = ""
-      For Each Comm In comms
-         If comm!value Then
-            sString &= comm!type & ":" & comm!value & "<BR>"
-         End If 
-      Next
-      If Right(sString, 3) = "<BR>" Then
-         sString = Left(sSTring, Len(sSTring) - 3)
-      End If
-      templ.Subst("comms", sString)
-   Else
-      templ.Subst("comms", "")
-   End If 
-   
-   If claim_visit!doctor_consented Then
-      sString = "yes"
-   Else
-      sString = "No"
-   End If
-   templ.Subst("doctor_consented", sString)
-   If claim_visit!worker_consented Then
-      sSTring = "yes"
-   Else
-      sstring = "no"
-   End If
-   templ.Subst("worker_consented", sString)
-   templ.Subst("date", Format(claim_visit!certificate_date, "dd/mm/yyyy"))
    Return templ
    
 End
@@ -1235,8 +1050,7 @@ Public Sub cvwVisits_Select()
    visit!fitness_unfit_from = currentconsult!workcover_claims[pk_view_visits]!fitness_unfit_from
    visit!fitness_unfit_to = currentconsult!workcover_claims[pk_view_visits]!fitness_unfit_to
    visit!fitness_perm_mod_duties_from = currentconsult!workcover_claims[pk_view_visits]!fitness_perm_mod_duties_from
-   visit!form_html = currentconsult!workcover_claims[pk_view_visits]!form_html
-   
+   visit!latex = currentconsult!workcover_claims[pk_view_visits]!latex
    'Editing a pre-existing claim - really need to allow editing of th progress note
    ' but later FIXME put in an audit-trail to show what was changed
    fk_progressnote = -1  'new unless editing a visit
@@ -1251,7 +1065,7 @@ Public Sub Claim_Display()
    'Display the 'core' claim details
    'Note the injury date is a text field
    '------------------------------------   
-
+   
    EditArea_Claim_Clear()
    bExit = True
    lblWorkcover.Text = "Existing Claim for " & claim!identifier
@@ -1326,6 +1140,17 @@ Public Sub EditAreaButtons_Click()
    
 End
 
+Public Sub Visit_Delete()
+   
+   'Can only delete visit if 
+   If bClaimLoaded = False Then
+      lvwClaims_Select()
+      Claim_Display()
+   End If  
+   Print visit, claim
+   
+End
+
 Public Sub Visit_Edit()
    
    If bClaimLoaded = False Then
@@ -1343,7 +1168,7 @@ Public Sub Visit_Display()
    '----------------------------------------
    'Display the details of the current visit
    '----------------------------------------   
-
+   
    EditArea_Visit_Clear()        'just clear textboxes etc, dosn't affect the keys
    bExit = True
    Select Case visit!fk_lu_visit_type
@@ -1420,7 +1245,7 @@ Public Sub Visits_Refresh()
          cvwVisits[visit!fk_visit][1] = visit!visit_type
          cvwVisits[visit!fk_visit][2] = visit!diagnosis
          cvwVisits[visit!fk_visit][3] = visit!management_plan
-         Claims_Forms.Add(visit!form_html, cvwVisits.count)
+         Claims_Forms.Add(visit!latex, cvwVisits.count)
       End If
    Next
    
@@ -1444,14 +1269,6 @@ Public Sub EditArea_Claim_Clear()
    bClaimLoaded = False 
    Contact_Type = const.contacttype_organisation 'default
    bExit = False
-   
-End
-
-Public Sub reset_keys()
-   
-   fk_organisation = 0
-   fk_branch = 0
-   fk_person = 0 
    
 End
 
@@ -1672,7 +1489,7 @@ Public Sub SoleTrader_Get()
    '-----------------------------------------------------------------  
    
    Sole_Traders = modMetaData.Persons_Fill_Popup_List(Listview1, txtEmployer, Contact_Type)
-  
+   
 End 
 
 Public Sub SoleTrader_Select()
@@ -1852,7 +1669,9 @@ Public Sub EditAreaTextBox_Change()
    Select Case Last.tag
       Case "employer"
          If Len(Last.text) = 0 Then
-            reset_keys()
+            fk_organisation = 0
+            fk_branch = 0
+            fk_person = 0 
             bexit = True
             txtAddress.text = ""
             columnview2.Visible = False   
@@ -2233,7 +2052,9 @@ Public Sub mnuVisits_Click()
       Case "edit"
          Visit_Edit()
       Case "delete"
+         Visit_Delete()
       Case "help"
+         modUtil.NotImplemented("Displaying Help")
       Case "preview"
          Preview() 
       Case "reprint"

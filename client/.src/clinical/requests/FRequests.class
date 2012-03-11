@@ -123,6 +123,7 @@ Private old_forms_requests As Collection
 Private fk_progressnote As Integer 'progress note for current form
 Private cProgressNote_Section As Integer
 Private Deleted_Forms As Collection
+Private Form_Copy_To As FCopyTo
 
 Public Sub Set_Embedded(flag As Boolean, Embedded_in_form As String)
    
@@ -164,8 +165,11 @@ Public Sub Init(cons As CConsult)
    End With
    Deleted_Forms = New Collection
    EditArea_Resize_Labels()                                       'to current system font
-   cvwCopyTo.columns.count = 5
    cProgressNote_Section = const.cSection_GeneralNotes
+   With Form_Copy_To = New FCopyTo(Vbox_CopyTo)
+      .Init(Me)
+      .lblCopyTo.width = lblmeasure.Width
+   End With
    Requests_This_Consult_Show()           'Display any existing forms, eg user could have ordered, close form, re-opened
    Try Settings_Load()
    MenuButton1.menu = "mnuHealthIssues"
@@ -175,7 +179,6 @@ End
 
 Public Sub Reload()
    
-   '  currentconsult.Refresh("requests_ordered_this_consult")      'remove key = refresh
    Requests_This_Consult_Show()                                 'Display any existing forms written this consult
    ' FClinical.Refresh_Section(const.cSection_Requests)           'refresh lists on main screen FClinical
    ' FClinical.Refresh_AllPreviousNotes()                         'refresh progress notes in FClinical
@@ -196,7 +199,8 @@ End
 Public Sub Save()
    
    Dim sProgressNotes As String 
-   
+
+   If VBox_Referrals.Padding = 0 Then Return
    If Not Valid_RequestForm() Then Return 
    
    tbSave.Enabled = False                            'prevents user clicking twice in quick succession which is possible! cause it's happend to me > two saves
@@ -280,27 +284,6 @@ Public Sub Form_Close()
    
 End
 
-Public Sub cvwCopyTo_Menu()
-   
-   If cvwCopyTo.count Then
-      mnuCopyTo.Popup
-   End If 
-   
-End
-
-Public Sub mnuCopyTo_Click()
-   
-   Dim x As Integer
-   
-   cvwCopyTo.MoveCurrent 'ensure visible marquee matches internal list cursor
-   Select Case Last.tag
-      Case "delete"
-         cvwCopyTo.MoveCurrent()
-         cvwCopyTo.Remove(cvwCopyTo.Item.key)
-   End Select
-   
-End
-
 Public Sub RequestForm_Delete()
    '----------------------------------------------------
    'Deletes a request form when written this consulation
@@ -326,8 +309,11 @@ End
 Public Sub RequestForm_Edit()
    
    RequestForm_Display()
-   VBox_EditArea_Outer.Enabled = True 
+   bEditing = True
+   VBox_Referrals.Enabled = True 
+   EditArea_Notify_DataChange(False)
    txtRequest.SetFocus()
+   bexit = False
    
 End
 
@@ -340,7 +326,6 @@ Public Sub RequestForm_Display()
    
    cvwRequestForms.MoveCurrent()
    sCurrentForm_Key = cvwRequestForms.Item.Key
-   bEditing = True
    EditAreaTextBox_Clear   'clear editing area, reset all collections 
    
    fk_request_provider = RequestForms[sCurrentForm_Key]!fk_request_provider
@@ -388,15 +373,12 @@ Public Sub RequestForm_Display()
    Branches_Comms_Get()                                           'collection of branches with their comms if an organisation
    Comms_Display()                                                'FIXME MISNOMER - THIS IS COMMS DISPLAY fixme only works for organisation
    Get_Providers_For_Request_Type()                               'get all providers for this request type and load cmbProviders
-   
    cmbBranches.index = cmbBranches.Find(RequestForms[sCurrentForm_Key]!default_branch) 'triggers click event of combo > fills address textboxes
    bExit = True
    txtDate.text = Format(currentRequestForm!date, "dd/mm/yyyy")
    txtRequest.text = requests_summary
    txtNotes.text = notes_summary
    txtMedications.text = medications_summary
-   txtCopyTo.text = ""
-   
    chkurgent.value = currentRequestForm!urgent
    chkBulkBill.value = currentRequestForm!bulk_bill
    chkFasting.value = currentRequestForm!fasting
@@ -405,16 +387,13 @@ Public Sub RequestForm_Display()
    chkCopyPatient.value = currentRequestForm!copyto_patient
    chkIncludeMedications.value = currentRequestForm!include_medications
    lblFormHeading.text = "Requests"
-   lblCopyTo.text = "Copy to"
    request_notes_text = "" 
    request_items_text = "" 
    medications_text = "" 
    cvwRequestForms.UnselectAll()
    cmbProviders.index = cmbProviders.Find(RequestForms[sCurrentForm_Key]!organisation)
    bExit = False
-   CopyTos = modUtil.SplitStrings_into_collection(currentRequestForm!copyto, "|")
-   cvwCopyTo_Refresh()
-   
+   Form_Copy_To.CopyTos_Reload(modUtil.SplitStrings_into_collection(currentRequestForm!copyto, "|"))
    old_forms_requests = New Collection 'needed for the comparison in save()
    For Each Member In RequestForms
       If Member!fk_form = fk_form Then
@@ -471,7 +450,6 @@ End
 
 Public Function RequestForm_Fill_Collection() As String
    
-   Dim sCopyTo As String
    Dim x As Integer
    Dim sString As String
    Dim sTextForProgressNotes As String  
@@ -499,16 +477,9 @@ Public Function RequestForm_Fill_Collection() As String
    CurrentRequestForm!notes_summary = Trim(txtNotes.text)
    CurrentRequestForm!medications_summary = Trim(txtMedications.text)
    copytos.Clear()
-   sCopyto = ""
-   
-   For x = 0 To cvwCopyTo.count - 1
-      sTextForProgressNotes &= " - copy to " & cvwCopyTo[x][0] & "<BR>"
-      sCopyto &= cvwCopyTo[x][0] & "|"
-      Copytos.Add(cvwCopyTo[x][0], Copytos.count)
-      cvwCopyTo.MoveNext
-   Next
-   
-   CurrentRequestForm!copyto = Left(sCopyTo, Len(sCopyto) - 1)
+   CurrentRequestForm!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto 'FIXME, I'VE LEFT it as collection till I sort using this in FRequests
+   sTextForProgressNotes &= Copyto_Html_Construct(CurrentRequestForm!copyto)
+   CurrentRequestForm!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto
    CurrentRequestForm!copyto_patient = CBool(chkCopypatient.value)
    CurrentRequestForm!urgent = CBool(chkUrgent.value)
    CurrentRequestForm!bulk_bill = CBool(chkBulkBill.value)
@@ -518,6 +489,37 @@ Public Function RequestForm_Fill_Collection() As String
    CurrentRequestForm!include_medications = CBool(chkIncludeMedications.value)
    
    Return sTextForProgressNotes
+   
+End
+
+Public Function Copyto_Html_Construct(Optional copyto As String = "") As String
+   
+   Dim sHtml As String
+   
+   sHtml = ""
+   "<TABLE WIDTH=100%>"
+   "<COL WIDTH=6%>"
+   "<COL WIDTH=94%>"
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=6%>"
+   "<P><small><small>cc</small></small></P>"
+   "</TD>"
+   "<TD WIDTH=94%>"
+   "<P<small><small>%copyto%</small></small></P>"
+   "</TD>"
+   "</TR>"
+   "</TABLE>"   
+   
+   '-------------------------------------------------------------------------------------------------------------------
+   'If there are one or more cc's then replace the table html with the appropriate data, otherwise wipe the copyto html
+   '-------------------------------------------------------------------------------------------------------------------  
+   If copyto <> "" Then 
+      copyto = Replace(copyto, "|", "<BR>")
+      sHtml = Replace(sHtml, "%copyto%", copyto)
+   Else
+      sHtml = ""
+   End If     
+   Return sHtml
    
 End
 
@@ -543,7 +545,24 @@ Public Sub RequestForm_New()
    '----------------------------------------
    'User wants a new request form
    'Clear the editing area, notify new form 
-   '----------------------------------------  
+   '---------------------------------------- 
+
+   Dim sMsg As String
+   
+   If VBox_Referrals.Padding = 1 Then
+      If Valid_RequestForm() Then
+         If bEditing = True Then
+            sMsg = "The request form you are editing  has not been saved.\n\nIf  you continue you will lose "
+            sMsg &= "any changes you have made to this form.\n\n"
+         Else
+            sMsg = "The current request form you have completed has not been saved.\n\n"
+            smsg &= "If  you continue you will lose all the data you have entered.\n\n"
+         Endif
+      Else
+         sMsg = "You have started a request but not completed it.\n\n"
+      Endif
+      If Message.Question(sMsg & "Are you sure you want to continue?", "Yes", "No") = 2 Then Return 
+   Endif
    
    EditAreaTextBox_Clear() 
    lblFormHeading.text = "Requests - New Form" 
@@ -553,12 +572,12 @@ Public Sub RequestForm_New()
    chkBulkBill.value = True     'FIXME MAKE ME CONFIGURAABLE
    bEditing = False
    bExit = False
-   rbCopyTo_Employee.value = True       'default to search by employee
-   EditArea_Notify_Data_Change(False)
+   Form_Copy_To.rbCopyTo_Person.value = True 'default to person/employee search
+   EditArea_Notify_DataChange(False)
    cmbProviders.index = -1
    cmbBranches.index = -1
    tbSave.Enabled = True   
-   VBox_EditArea_Outer.Enabled = True 
+   VBox_Referrals.Enabled = True 
    txtRequest.SetFocus()
    
 End
@@ -594,7 +613,7 @@ Public Sub EditAreaTextBox_GotFocus()
          lastpos = Len(request_items_text)
          columnview1.Visible = False
          currentRequest = New Collection
-          bExit = False  
+         bExit = False  
       End If 
    Else
       columnview1.Visible = False   
@@ -614,15 +633,6 @@ Public Sub EditAreaTextBox_GotFocus()
             txtRequest.pos = Len(request_items_text)
             lastpos = Len(request_items_text)
          End If
-      Case "copy to" 
-         
-         With Columnview1
-            .top = Vbox_CopyToList.Top + Hbox1.Height + Vbox_Main.Padding + cvwCopyTo.top
-            .left = txtCopyTo.Left + Vbox_Main.Padding
-            .Width = cvwCopyTo.Width - txtCopyTo.left - 10 'arbitary offset from right hand edge
-            .Visible = False
-            .Columns.count = 3
-         End With 
          
       Case "notes"
          With Columnview1
@@ -637,7 +647,7 @@ Public Sub EditAreaTextBox_GotFocus()
             txtnotes.pos = Len(request_notes_text)
             lastpos = Len(request_notes_text)
          End If
-         
+         bexit = False 'bad bug fix, don't know why this is set to true here
       Case "medications"
          With listview1
             .top = Hbox1.height + Hbox_Medications.Top + txtMedications.Height + Vbox_Main.Padding + 5 
@@ -675,8 +685,6 @@ Public Sub EditAreaTextBox_KeyRelease()
          
       Case "notes"
          Notes_Selection("get")
-      Case "copy to"
-         Copyto_selection("get")
    End Select
    
 End
@@ -694,12 +702,10 @@ End
 
 Public Sub EditAreaTextBox_KeyPress()
    
-   Print Last.tag
    If bExit Then
-      
-      Print "returning"
       Return 
    End If
+
    If cmbRequestTypes.text = "undefined provider" Then
       If Not (Last.tag = "request" Or Last.tag = "date") Then 
          Stop Event
@@ -745,7 +751,6 @@ Public Sub EditAreaTextBox_KeyPress()
                End If 
                
                For Each currentRequest In currentFormsRequests
-                  
                   If currentRequest!item = modStrings.TrimRightChars(txtRequest.selection.text, 1) Then
                      currentFormsRequests.Remove(currentFormsRequests.key)
                      Break
@@ -771,10 +776,8 @@ Public Sub EditAreaTextBox_KeyPress()
       Case Asc(";")
          Select Case Last.tag
             Case "request"
-               
                Stop Event      '; will be later added as don't allow free terms
                RequestItem_select_bysemicolon()
-               
             Case "notes"
                Stop Event
                Notes_Select_bysemicolon() 'allow addition of ';' to delineate free term
@@ -795,7 +798,6 @@ Public Sub EditAreaTextBox_KeyPress()
                   bexit = False  
                   Stop Event
                   RequestItem_select_bysemicolon()
-                  
                Else 
                   txtNotes.SetFocus()
                End If
@@ -804,8 +806,8 @@ Public Sub EditAreaTextBox_KeyPress()
                If Not InStr(txtNotes.text, ";", Len(txtNotes.text) - 1) Then
                   bExit = True
                   txtNotes.text &= ";"
-                  bexit = False 
-                  Notes_Select_bySemicolon()
+                   Notes_Select_bySemicolon()
+                   bexit = False 
                Else
                   If Trim(txtNotes.text) = ";" Then
                      bExit = True
@@ -813,37 +815,18 @@ Public Sub EditAreaTextBox_KeyPress()
                      bExit = False  
                   End If
                   Last.text = Replace(Last.text, "\n\n", "\n") 
-                  
                   txtMedications.SetFocus()
                End If
-               
                Stop Event 'get rid of the enter event
-            Case "copy to"
-               
-               If Trim(txtCopyTo.text) <> "" Then
-                  bexit = True
-                  If Lower(Trim(txtCopyTo.text)) <> "patient" Then
-                     cvwCopyTo.Add(cvwCopyTo.count, Trim(txtCopyTo.text))
-                  Else
-                     chkCopypatient.value = True
-                  End If   
-                  txtCopyTo.text = ""
-                  columnview1.visible = False
-                  txtCopyTo.SetFocus()
-                  bExit = False  
-                  Return 
-               End If
-               tbSave.SetFocus()
             Case "medications"
                If Trim(txtMedications.text) = ";" Then
                   bExit = True
                   txtMedications.text = ""
                   bExit = False  
                End If
-               txtCopyTo.SetFocus()
+               Form_Copy_To.txtCopyTo.SetFocus()
          End Select
       Case key.Down
-         
          Select Case Last.tag
             Case "provider type", "medications"
                If listview1.Visible Then 
@@ -896,7 +879,7 @@ Public Sub mnuHealthIssues_Click()
          cProgressNote_Section = const.cSection_Requests   
    End Select
    txtHealthIssue.pos = 0
-   EditArea_Notify_Data_Change(True)
+   EditArea_Notify_DataChange(True)
    
 End
 
@@ -922,12 +905,12 @@ End
 
 Public Sub EditAreaTextBox_Change()
    
-   If bExit Then Return
-   
+   If bExit Then 
+      Return
+   End If   
    Select Case Last.tag
       Case "request"
          If Last.text = "" Then
-            
             sSearchText = ""
             lastpos = 0
             request_items_text = ""
@@ -973,7 +956,7 @@ Public Sub EditAreaTextBox_Change()
             medications_summary = Trim(Last.text)
          End If
    End Select
-   EditArea_Notify_Data_Change(True)
+   EditArea_Notify_DataChange(True)
    
 End
 
@@ -984,8 +967,6 @@ Public Sub ColumnView1_DblClick()
          RequestItem_Selection("accept")
       Case "notes"
          Notes_Selection("accept")
-      Case "copy to"
-         Copyto_Selection("accept")
    End Select
    columnview1.Visible = False 
    
@@ -1005,43 +986,6 @@ Public Sub columnview1_Select()
    
 End
 
-Public Sub Copyto_CheckDuplicates(sString As String) As Boolean
-   
-   Dim x As Integer
-   
-   cvwCopyTo.MoveFirst
-   For x = 0 To cvwCopyTo.count - 1
-      If cvwCopyTo.Item.text = sString Then
-         Return True
-      End If
-      cvwCopyTo.MoveNext
-   Next
-   Return False
-   
-End
-
-Public Sub cvwCopyTo_Refresh()
-   
-   Dim x As Integer
-   Dim CollectionCopy As New Collection
-   Dim Copyto As String 
-   
-   cvwCopyTo.Clear()
-   If CopyTos.count > 1 Then
-      lblCopyTo.text = "Copies to"
-   Else
-      lblCopyTo.text = "Copy to"
-   End If   
-   
-   For Each Copyto In CopyTos
-      cvwCopyTo.Add(CollectionCopy.count, 0)
-      cvwCopyTo[CollectionCopy.count][0] = Copyto
-      CollectionCopy.Add(Copyto, CollectionCopy.count) 
-   Next
-   CopyTos = CollectionCopy
-   
-End
-
 Public Sub Notes_Select_bysemicolon()
    
    Dim x As Integer
@@ -1050,18 +994,13 @@ Public Sub Notes_Select_bysemicolon()
    If columnview1.Visible Then
       columnview1.MoveFirst()
       For Each Note In Notes_Fetched
-         
          If Lower(sSearchText) = Lower(note!note) Then
-            
             Notes_selection("accept")
             Break
          End If
-         
          columnview1.MoveNext
       Next
-      
    Else
-      
       bDuplicate = Notes_CheckDuplicates()
       Requests_notes.Add(sSearchText, Requests_notes.count)
       request_notes_text = txtNotes.text 
@@ -1179,7 +1118,6 @@ Public Sub Get_Default_Provider() As Boolean
    
 End
 
-
 Public Sub Comms_Display()
    '------------------------------------------------------------------------------
    'Get all comms for the organisation
@@ -1252,7 +1190,7 @@ Public Sub Requests_This_Consult_Show()
          cvwRequestForms[requestform!pk_view][4] = requestform!notes_summary
       End If
    Next
-   EditArea_Notify_Data_Change(False)
+   EditArea_Notify_DataChange(False)
    
 End
 
@@ -1260,7 +1198,6 @@ Public Sub EditArea_Resize_Labels()
    
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
    lblSpacerLeftOfButtons.width = lblMeasure.Width
-   lblCopyTo.width = lblMeasure.Width
    
 End
 
@@ -1280,11 +1217,8 @@ Public Sub EditAreaTextBox_Clear()
    txtRequest.text = ""
    txtNotes.text = ""
    txtMedications.text = ""
-   txtCopyTo.text = ""
    bEditing = False 
    lblFormHeading.text = "Requests"
-   lblCopyTo.text = "Copy to"
-   cvwCopyTo.Clear()
    columnview1.Visible = False
    listview1.Visible = False
    chkCopypatient.value = False
@@ -1329,7 +1263,8 @@ Public Sub EditAreaTextBox_Clear()
    bPreviewingPrintedForm = False  
    cProgressNote_Section = const.cSection_GeneralNotes
    txtHealthIssue.text = "general notes"
-   VBox_EditArea_Outer.Enabled = False 
+   VBox_Referrals.Enabled = False 
+   Form_Copy_To.Reset() 
    bExit = False
    
 End
@@ -1412,11 +1347,9 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTempl
    Dim cmd As String 
    
    templ.Subst_common(currentconsult)
-   
    sString = cmbRequestTypes.text 
    sString = Replace(sString, "provider", "")
    templ.Subst("form-type", UCase(Left(sString, 1)) & Right(sString, Len(sstring) - 1))   'The heading e.g 'Pathology Provider'
-   
    '-----------------------------------------------------------
    'Mostly we are dealing with organisations providing services
    '-----------------------------------------------------------
@@ -1432,25 +1365,6 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTempl
       templ.Subst("provider-address-street", default_provider!headoffice_street1)
    End If   
    templ.Subst("provider-address-suburb", default_provider!headoffice_town & " " & default_provider!headoffice_postcode)
-   ' Else
-   '     templ.Subst("provider.organisation", "\\relax ")
-   ' End If
-   ' If Not IsNull(default_provider!headoffice_branch) Then
-   '   templ.Subst("provider.branch", default_provider!headoffice_branch)
-   ' Else
-   '    templ.Subst("provider.branch", "\\relax ")
-   ' Endif
-   
-   ' If Not IsNull(default_provider!headoffice_street) Then 
-   '    templ.Subst("provider.address.street", default_provider!headoffice_street)
-   ' Else
-   '    templ.Subst("provider.address.street", "\\relax ")  
-   ' End If 
-   ' If Not IsNull(default_provider!headoffice_town) Then
-   '    templ.Subst("provider.address.suburb", default_provider!headoffice_town & " " & default_provider!headoffice_postcode)
-   ' Else
-   '    templ.Subst("provider.address.suburb", "\\relax ")  
-   ' End If 
    If Not IsNull(default_provider!organisation_tollfree) Then
       templ.Subst("provider-phone", default_provider!tollfree)
    Else If Not IsNull(default_provider!phone) Then
@@ -1470,7 +1384,6 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTempl
       templ.Subst("defaultbranch-phone", "\\relax")
       templ.Subst("defaultbranch-fax", "\\relax")
    Else
-      
       If Not IsNull(default_provider!default_branch) Then
          templ.Subst("defaultbranch-branch", default_provider!default_branch)
       Else
@@ -1528,7 +1441,6 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTempl
    templ.Subst("requests", requestform!requests_summary)
    templ.Subst("medications", requestform!medications_summary)
    templ.Subst("notes", requestform!notes_summary)
-   
    sString = ""
    If currentRequestFormPictures.count Then
       For x = 0 To currentRequestFormPictures.count - 1
@@ -1543,7 +1455,6 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTempl
       
    End If
    templ.Subst("diagrams-pictures", sString)
-   
    If requestform!urgent = True Then 
       templ.Checkbox("urgent-checkbox", True)
    Else
@@ -1564,11 +1475,8 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTempl
    Else
       templ.Checkbox("fasting-checkbox", False)
    End If
-   
    sString = ""
-   
    templ.Subst("our-reference", "") 'FIXME PUT IN A REFERENCE
-   
    sString = "" 
    If requestform!bulk_bill Then sString = "Bulk Bill"
    templ.Subst("billing", sString)
@@ -1577,7 +1485,6 @@ Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTempl
    Else
       templ.Subst("urgent-word", "Urgent")
    Endif
-   
    sString = ""
    If RequestForm!copyto_patient Then
       sString &= "Patient at their address on this form<BR>"
@@ -1601,7 +1508,6 @@ Public Sub Notes_Selection(action As String, Optional calling_control As String)
    Select Case action
       Case "get"
          sSearchText = ""
-         
          If InStr(txtNotes.text, ";") Then
             bits = Split(Trim(txtNotes.text), ";")
             sSearchText = bits[bits.count - 1] 'the last one
@@ -1609,7 +1515,6 @@ Public Sub Notes_Selection(action As String, Optional calling_control As String)
             sSearchText = Trim(txtNotes.text)
          End If
          If Trim(sSearchText) = "" Then Return 
-         
          Notes_Fetched = modRequestsDBI.Requests_Get_Notes(sSearchText, fk_lu_request_type)
          If Notes_Fetched.count Then 
             With columnview1
@@ -1626,25 +1531,19 @@ Public Sub Notes_Selection(action As String, Optional calling_control As String)
          Else
             columnview1.Visible = False   
          End If   
-         
       Case "accept"
-         
          bExit = True
          If columnview1.Visible Then  'if visible notes exist
-            
             columnview1.MoveCurrent()
             iCurrentKey = columnview1.Item.Key
             If IsNull(currentRequestNote) Then 'fix me - inserted due to bug not found where this coulid be null.
                currentrequestnote = New Collection
             End If    
             currentrequestnote = Notes_Fetched[iCurrentKey]
-            bDuplicate = Notes_CheckDuplicates()
+            bDuplicate = Notes_CheckDuplicates() 'fixme not implemented
             requests_notes.Add(currentrequestNote, requests_notes.count)
-            
             If Len(Trim(request_notes_text)) = 0 Then
-               
                Try request_notes_text = currentrequestNote!note & ";"  'NULL OBJECT BUG
-               
             Else
                request_notes_text &= currentrequestNote!note & ";"
                If request_notes_text = "" Then
@@ -1690,9 +1589,6 @@ Private Sub Settings_Load()
       '  Try modUtil.columnSizes_Set(Settings["Requests/cvwRequestForms.column_sizes"], cvwRequestForms)
    End If
    
-   '  Try FPreview.WebBrowser1.Zoom = Settings["Requests/FormPrevew_Zoom"]
-   ' Try Form_PDF.CurrentZoom = Settings["Requests/Form_PDF.Zoom"]
-   
 End
 
 Public Sub Settings_Save()
@@ -1726,43 +1622,25 @@ Public Sub EditAreaTextBox_DblClick()
    
 End
 
-Public Sub rbCopyTo_Click()
-   
-   CopyToType = Last.Tag
-   
-   With Columnview1
-      .top = Vbox_CopyToList.Top + Hbox1.Height + Vbox_Main.Padding + cvwCopyTo.top
-      .left = txtCopyTo.Left + Vbox_Main.Padding
-      .Width = cvwCopyTo.Width - txtCopyTo.left - 10 'arbitary offset from right hand edge
-      .Visible = False
-      .Columns.count = 3
-   End With 
-   
-   If Trim(txtCopyTo.text) <> "" Then
-      Copyto_Selection("get")
-   End If
-   
-End
-
 Public Sub chkCopyPatient_Click()
    
-   Dim requestCopyTo As New CRequestCopyTo
-   Dim existingRequestCopyTo As CRequestCopyTo 
-   
-   If Last.value = True Then
-      requestCopyTo = New CRequestCopyTo
-      requestCopyTo.copyto = "patient"
-      CopyTos.Add(requestCopyTo, cvwCopyTo.count)
-      cvwCopyTo_Refresh()
-      txtCopyTo.text = ""
-      txtCopyTo.SetFocus()
-   End If
+   ' Dim requestCopyTo As New CRequestCopyTo
+   ' Dim existingRequestCopyTo As CRequestCopyTo 
+   ' 
+   ' If Last.value = True Then
+   '    requestCopyTo = New CRequestCopyTo
+   '    requestCopyTo.copyto = "patient"
+   ' '   Form_Copy_To.CopyTos.Add(requestCopyTo, cvwCopyTo.count)
+   '    cvwCopyTo_Refresh()
+   '    txtCopyTo.text = ""
+   '    txtCopyTo.SetFocus()
+   ' End If
    
 End
 
-Public Sub CopyTo_Patient(check_value As Boolean)
-   
-End
+' Public Sub CopyTo_Patient(check_value As Boolean)
+'    
+' End
 
 Public Sub chkEditArea_Click() 
    
@@ -1771,9 +1649,9 @@ Public Sub chkEditArea_Click()
    Select Case Last.Tag
       Case "copy patient"
          If bexit Then Return  'see mnuCopyTo_Click for reason
-         CopyTo_Patient(Last.value)
+         '   CopyTo_Patient(Last.value)
    End Select
-   EditArea_Notify_Data_Change(True)
+   EditArea_Notify_DataChange(True)
    
 End
 
@@ -1958,16 +1836,16 @@ Public Sub EditAreaButtons_KeyPress()
    
 End
 
-Public Sub EditArea_Notify_Data_Change(flag As Boolean)
+Public Sub EditArea_Notify_DataChange(flag As Boolean)
    
    If flag Then
-      Vbox_EditArea.Padding = 1
-      Vbox_EditArea.Background = Color.red
+      VBox_Referrals.Padding = 1
+      VBox_Referrals.Background = Color.red
       tbSave.Foreground = Color.Red
       
    Else
-      Vbox_EditArea.Padding = 0
-      Vbox_EditArea.Background = Color.white
+      VBox_Referrals.Padding = 0
+      VBox_Referrals.Background = Color.white
       tbSave.Foreground = Color.black
    End If
    
@@ -1978,7 +1856,7 @@ Public Sub EmbeddedForm_Close()
    Fdraw.Close()
    Hbox_CloseDrawEditor.Visible = False
    Vbox_EditArea.Visible = True
-   Vbox_CopyToList.Visible = True
+   Vbox_CopyTo.Visible = True
    VBox_Communications.Show()
    
 End
@@ -2086,9 +1964,7 @@ Public Sub Insert_Picture(sSource As String)
    tempFile = Temp() & ".png"  
    Select Case sSource
       Case "editor"
-         
          If Fdraw.bediting = True Then
-            
             For Each PicBox In Hbox_pictures.Children
                If PicBox.tag = Fdraw.sPicturePath Then
                   Fdraw.$hImage.Save(Picbox.Tag)
@@ -2098,7 +1974,6 @@ Public Sub Insert_Picture(sSource As String)
                End If
             Next
          Else
-            
             Try Fdraw.$hImage.Save(Tempfile)
             If Not Error Then
                PicBox = New PictureBox(Hbox_pictures)
@@ -2108,7 +1983,6 @@ Public Sub Insert_Picture(sSource As String)
             EmbeddedForm_Close()
          End If
       Case "clipboard"
-         
          If Clipboard.type = Clipboard.Image Then
             PicBox = New PictureBox(Hbox_pictures)
             PicBox.Border = Border.Plain
@@ -2116,7 +1990,6 @@ Public Sub Insert_Picture(sSource As String)
             NewImage = Clipboard.Paste()
             NewImage.Save(Tempfile)
          Else
-            
             Return
          End If
    End Select
@@ -2164,7 +2037,7 @@ Public Sub DrawEditor_Show(bEditing As Boolean, sPicturePath As String)
    Dim hToolButton As ToolButton
    
    Vbox_EditArea.Visible = False
-   Vbox_CopyToList.Visible = False
+   Vbox_CopyTo.Visible = False
    Hbox_CloseDrawEditor.Visible = True
    Fdraw = New FDrawEditor(VBox_EditArea_Inner)
    Fdraw.bEditing = bediting
@@ -2173,80 +2046,6 @@ Public Sub DrawEditor_Show(bEditing As Boolean, sPicturePath As String)
    hObs = New Observer(hToolbutton) As "DrawEditor_ToolButtons"
    VBox_Communications.Hide()
    FDraw.Show()
-   
-End
-
-Public Sub Copyto_Selection(action As String, Optional calling_control As String)
-   
-   Dim bDuplicate As Boolean 'if True the request item is duplicated
-   
-   Select Case action
-      Case "get"
-         
-         If Trim(txtCopyTo.text) = "" Then Return 
-         columnview1.Clear()
-         columnview1.columns.count = 3 
-         Select Case CopyToType
-            Case const.Request_CopyTo_Person
-               CopytoCollection = modContactsDBI.Person_Get(Trim(txtCopyTo.text), const.contacttype_person)
-               CopytoCollection.Remove("sql_in_english") 'remove unwanted member
-               For Each Copyto In CopytoCollection
-                  columnview1.Add(Copyto!pk_view, 0)
-                  columnview1[Copyto!pk_view][0] = Copyto!title & " " & Copyto!firstname 
-                  columnview1[Copyto!pk_view][1] = copyto!surname
-                  columnview1[Copyto!pk_view][2] = Trim(Copyto!street1 & " " & Copyto!street2) & " " & Copyto!town & " " & Copyto!postcode
-               Next
-               
-            Case const.request_CopyTo_Employee
-               CopytoCollection = modRequestsDBI.Employee_Get(Trim(txtCopyTo.text))
-               For Each Copyto In CopytoCollection
-                  
-                  columnview1.Add(Copyto!pk_view, 0)
-                  columnview1[Copyto!pk_view][0] = Copyto!title & " " & Copyto!firstname & " " & Copyto!surname & "(" & Copyto!occupation & ")" 
-                  columnview1[Copyto!pk_view][1] = Copyto!organisation & " " & Copyto!branch
-                  columnview1[Copyto!pk_view][2] = Trim(Copyto!street1 & " " & Copyto!street) & " " & Copyto!town & " " & Copyto!postcode
-                  Copytos.Add(Copyto, Copyto!pk_view)
-               Next 
-            Case const.Request_CopyTo_Organisation
-               CopytoCollection = modContactsDBI.Organisations_Get(Trim(txtCopyTo.text))
-               For Each Copyto In CopytoCollection
-                  columnview1.Add(Copyto!pk_view, 0)
-                  columnview1[Copyto!pk_view][0] = Copyto!organisation
-                  columnview1[Copyto!pk_view][1] = Copyto!branch    
-                  columnview1[Copyto!pk_view][2] = Trim(Copyto!street1 & " " & Copyto!stree) & " " & Copyto!town & " " & Copyto!postcode
-               Next  
-            Case Const.Request_CopyTo_AnyPatient
-               CopytoCollection = modContactsDBI.patients_get_firstname_surname(txtCopyto.text)
-               CopytoCollection.Remove("sql_in_english") 'remove unwanted member
-               For Each Copyto In CopytoCollection
-                  
-                  columnview1.Add(Copyto!pk_view, 0)
-                  columnview1[Copyto!pk_view][0] = Copyto!title & " " & Copyto!firstname 
-                  columnview1[Copyto!pk_view][1] = copyto!surname
-                  columnview1[Copyto!pk_view][2] = Trim(Copyto!street & " " & Copyto!street2) & " " & Copyto!town & " " & Copyto!postcode
-               Next
-         End Select
-         If columnview1.count Then  
-            columnview1.Visible = True
-            columnview1.Raise
-            columnview1.tag = txtCopyTo
-         Else
-            columnview1.Visible = False   
-         End If   
-      Case "accept"
-         
-         bExit = True
-         txtCopyTo.text = ""
-         columnview1.MoveCurrent
-         iCurrentKey = columnview1.Item.key
-         Select Case CopyToType
-            Case const.request_CopyTo_Employee, const.Request_CopyTo_Organisation, Const.Request_CopyTo_AnyPatient, const.Request_CopyTo_Person
-               cvwCopyTo.Add(cvwCopyTo.count, columnview1[iCurrentKey][0] & " " & columnview1[iCurrentKey][1] & " " & columnview1[iCurrentKey][2])
-               Copytos.Add(columnview1[iCurrentKey][0] & " " & columnview1[iCurrentKey][1] & " " & columnview1[iCurrentKey][2], cvwCopyTo.count)
-         End Select
-         bExit = False  
-         txtCopyTo.SetFocus()
-   End Select  
    
 End
 
@@ -2396,7 +2195,6 @@ Public Sub VSplit_EditArea_Arrange()
    
 End
 
-
 Public Sub Provider_Display_Alternate()
    '-------------------------------------------------------------------------------
    'User has clicked on the combo box containing providers for this type of request
@@ -2419,7 +2217,7 @@ Public Sub Provider_Display_Alternate()
    fk_request_provider = default_provider!pk_request_provider
    chkDefaultProvider.value = False 
    bExit = False  
-  
+   
    Comms_Display()
    
 End
@@ -2471,6 +2269,7 @@ Public Sub cmbProviders_Click()
       Return 
    End If   
    Provider_Display_Alternate()
+   EditArea_Notify_DataChange(True)
    
 End
 
@@ -2489,7 +2288,7 @@ Public Sub cmbBranches_Click()
    txtStreet2.text = branches[cmbBranches.index]!street2
    txtsuburb.text = branches[cmbBranches.index]!town & " " & branches[cmbBranches.index]!postcode
    txtPostcode.text = branches[cmbBranches.index]!postcode
-   
+   EditArea_Notify_DataChange(True)
    Comms_Branch_Show()
    txtRequest.SetFocus()
    bExit = False     

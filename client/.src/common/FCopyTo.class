@@ -17,27 +17,40 @@
 '
 ' PURPOSE      A form to plug-in whenever you need to send copies of
 '              something e.g document or letter
+'              E.g used by FReferrals and Frequests
+'              The CopyTo's are retrieved by the calling form via
+'              Get_CopyTo_Data()
+'              the CopTo's are re-loaded into the columnview when 
+'              editing is taking place by Copytos_Reload()
 '-------------------------------------------------------------------
 Private CopytoCollection As Collection
+Private Member As Collection 
 Private CopyToType As Integer  'e.g const.Request_CopyTo_Person
 Private bexit As Boolean
 Private Copyto As Collection
 Private Copytos As Collection
-Private iCurrentKey As Variant 'has to be this because some keys are compound string fields.
+Private iCurrentKey As Variant 'has to be this because some keys are  string fields.
 Private Embedded_In_Form As Form
-Private FRef As FReferrals
+Private Form_Referrals As FReferrals
+Private Form_Requests As FRequests
 
 Public Sub Init(callingform As Form)
-   
+   '---------------------------------------------------------------------------------
+   'Passed to calling form allows notifying that form of data change in the cvwCopyTo
+   '---------------------------------------------------------------------------------   
    With columnview1
       .Visible = False 
-      .Columns.count = 3  
+      .Columns.count = 4  
       .height = .Parent.height - HBox_CopyTo.height
    End With  
-   Embedded_In_Form = Form
-   If callingform.tag = "Referrals" Then
-      FRef = callingform 
-   Endif
+   Embedded_In_Form = callingform
+   Select Case callingform.Tag
+      Case "Referrals"
+         Form_Referrals = callingform 
+      Case "Requests"
+         Form_Requests = callingform   
+   End Select
+   
    Reset()
    
 End
@@ -49,9 +62,10 @@ Public Sub Get_CopyTo_Data() As Collection
    'John Smith 1 Any Rd newtown|A Public Hosppital 100 Lookout Rd New Lambton Heights 2305| etc
    'Returns a collection = the pipe string + some text for progress notes
    '-------------------------------------------------------------------------------------------
+   
    Dim data As New Collection
    Dim x As Integer
-  
+   
    copytos.Clear()
    For x = 0 To cvwCopyTo.count - 1
       data!progress_note &= " - copy to " & cvwCopyTo[x][0] & "<BR>"
@@ -63,32 +77,38 @@ Public Sub Get_CopyTo_Data() As Collection
    Return data
    
 End
+
 Public Sub Copytos_Reload(c As Collection)
    '--------------------------------------------------------------------------------------------
    'The calling form may wish to set the copytos collection, e.g when editing an existing record
    '--------------------------------------------------------------------------------------------
-
+   
    copytos = c
    cvwCopyTo_Refresh()
-
+   
 End
 
 Public Sub Reset()
-   'Clears all lists, textboxes etc, sets default search to an employee
-
+   '------------------------------------------------------------------
+   'Clears all lists, textboxes etc, sets default search to an person
+   'either 'sole trader, other sole  person contact or employee
+   '------------------------------------------------------------------
    bExit = True
    columnview1.Visible = False  
    cvwCopyTo.Visible = True   
    cvwCopyTo.Clear
-   Copytos = New Collection 'also called from the parent form
-   rbCopyTo_Employee.value = True     'default to searching for employee's the commonets
-   CopyToType = const.request_CopyTo_Employee
+   Copytos = New Collection         'also called from the parent form
+   rbCopyTo_Person.value = True     'default to searching for person
+   CopyToType = const.Request_CopyTo_Person
    bExit = False
-
+   
 End
 
 Public Sub rbCopyTo_Click()
-   
+   '---------------------------------------------------------------------------------
+   'User has changed the type of search, either or organisations, person, or patients
+   'so reload the data
+   '---------------------------------------------------------------------------------   
    CopyToType = Last.Tag
    
    If Trim(txtCopyTo.text) <> "" Then
@@ -98,32 +118,43 @@ Public Sub rbCopyTo_Click()
 End
 
 Public Sub Copyto_Get()
+   '------------------------------------------------------------
+   'Search by either organisation, patient, or person who could 
+   'be in contacts as sole trader or employee of an organisation
+   'Persons no-longer at an address will not be shown
+   '------------------------------------------------------------   
    
    Dim bDuplicate As Boolean 
+   Dim Address As String
    
    If Trim(txtCopyTo.text) = "" Then Return 
    columnview1.Clear()
    Select Case CopyToType
       Case const.Request_CopyTo_Person
-         CopytoCollection = modContactsDBI.Person_Get(Trim(txtCopyTo.text), const.contacttype_person)
-         CopytoCollection.Remove("sql_in_english") 'remove unwanted member
-         For Each Copyto In CopytoCollection
-            columnview1.Add(Copyto!pk_view, 0)
-            columnview1[Copyto!pk_view][0] = Copyto!title & " " & Copyto!firstname 
-            columnview1[Copyto!pk_view][1] = copyto!surname
-            columnview1[Copyto!pk_view][2] = Trim(Copyto!street1 & " " & Copyto!street2) & " " & Copyto!town & " " & Copyto!postcode
-         Next
-         
-      Case const.request_CopyTo_Employee
-         CopytoCollection = modRequestsDBI.Employee_Get(Trim(txtCopyTo.text))
-         For Each Copyto In CopytoCollection
-            
-            columnview1.Add(Copyto!pk_view, 0)
-            columnview1[Copyto!pk_view][0] = Copyto!title & " " & Copyto!firstname & " " & Copyto!surname & "(" & Copyto!occupation & ")" 
-            columnview1[Copyto!pk_view][1] = Copyto!organisation & " " & Copyto!branch
-            columnview1[Copyto!pk_view][2] = Trim(Copyto!street1 & " " & Copyto!street2) & " " & Copyto!town & " " & Copyto!postcode
-            Copytos.Add(Copyto, Copyto!pk_view)
-         Next 
+         If rbCopyTo_Patient.value = True Then
+            CopytoCollection = modContactsDBI.patients_get_firstname_surname(Trim(txtCopyTo.text))
+            CopytoCollection.Remove("sql_in_english")  'remove unwanted member
+         Else
+            CopytoCollection = modReferralsDBI.Person_Get_By_Surname(Trim(txtCopyTo.text))
+         Endif    
+         If CopytoCollection.count Then 
+            For Each Member In CopytoCollection
+               columnview1.Add(Member!pk_view, 0)
+               columnview1[Member!pk_view][0] = Member!wholename
+               columnview1[Member!pk_view][1] = "(" & Member!occupation & ")" 
+               columnview1.Columns[2].width = 150
+               If Not IsNull(Member!organisation) Then
+                  columnview1[Member!pk_view][2] = Member!organisation & " " & Member!branch
+               Else
+                  columnview1[Member!pk_view][2] = ""
+               Endif
+               Try address = Trim(Member!street1 & " " & Member!street2)
+               Try address &= Member!town & " " & Member!postcode
+               columnview1[Member!pk_view][3] = address
+            Next
+         Else 
+            columnview1.Visible = False   
+         End If
       Case const.Request_CopyTo_Organisation
          CopytoCollection = modContactsDBI.Organisations_Get(Trim(txtCopyTo.text))
          For Each Copyto In CopytoCollection
@@ -136,7 +167,6 @@ Public Sub Copyto_Get()
          CopytoCollection = modContactsDBI.patients_get_firstname_surname(txtCopyto.text)
          CopytoCollection.Remove("sql_in_english") 'remove unwanted member
          For Each Copyto In CopytoCollection
-            
             columnview1.Add(Copyto!pk_view, 0)
             columnview1[Copyto!pk_view][0] = Copyto!title & " " & Copyto!firstname 
             columnview1[Copyto!pk_view][1] = copyto!surname
@@ -154,29 +184,26 @@ Public Sub Copyto_Get()
    
 End
 
-Public Sub copyto_Accept()
+Public Sub Copyto_Accept()
    '------------------------------------------------------------------------
    'User is selecting some organisation/employee or person to send a copy to
+   'by either dbl clicking the columnview1 or <enter> when it has focus
    '------------------------------------------------------------------------   
-
+   
+   Dim sSTring As String
+   
    bExit = True
    txtCopyTo.text = ""
    columnview1.MoveCurrent
    iCurrentKey = columnview1.Item.key
+   Sstring = columnview1[iCurrentKey][0] & " " & columnview1[iCurrentKey][1] & " " & columnview1[iCurrentKey][2] & " " & columnview1[iCurrentKey][3]
    Select Case CopyToType
-      Case const.request_CopyTo_Employee, const.Request_CopyTo_Organisation, Const.Request_CopyTo_AnyPatient, const.Request_CopyTo_Person
- '      If Not_Duplicated() Then 
-            cvwCopyTo.Add(cvwCopyTo.count, columnview1[iCurrentKey][0] & " " & columnview1[iCurrentKey][1] & " " & columnview1[iCurrentKey][2])
-            Copytos.Add(columnview1[iCurrentKey][0] & " " & columnview1[iCurrentKey][1] & " " & columnview1[iCurrentKey][2], cvwCopyTo.count)
-            Select Case Embedded_In_Form.tag
-               Case "Referrals"
-                  FReferrals.Show_Datachanged_CopyList(True) 
-               Case "Requests"
-            End Select
-    '   Else
-     '      Message.Title = "Duplicate Copy To"
-     '      Message.Info("The Person/Organisation/Employee already is listed as receiving a copy") 
-    '     End If   
+      Case const.Request_CopyTo_Organisation, Const.Request_CopyTo_AnyPatient, const.Request_CopyTo_Person
+         If Not Duplicated(sString) Then 
+            Copytos.Add(columnview1[iCurrentKey][0] & " " & columnview1[iCurrentKey][1] & " " & columnview1[iCurrentKey][2] & " " & columnview1[iCurrentKey][3], cvwCopyTo.count)
+            cvwCopyTo.Add(cvwCopyTo.count, sstring)
+            CallingForm_EditArea_Notify_DataChange()
+         End If   
    End Select
    bExit = False  
    cvwCopyTo.Visible = True   
@@ -184,8 +211,25 @@ Public Sub copyto_Accept()
    
 End
 
-Public Sub EditAreaTextBox_KeyRelease()
+Public Sub CallingForm_EditArea_Notify_DataChange()
+   '----------------------------------------------------------------------------
+   'Updates the visual clue (red border) in the editing area on the calling form
+   '-----------------------------------------------------------------------------   
+
+   Select Case Embedded_In_Form.tag
+      Case "Referrals"
+         Form_Referrals.EditArea_Notify_DataChange(True) 
+      Case "Requests"
+         Form_Requests.EditArea_Notify_DataChange(True)
+   End Select
    
+End
+
+Public Sub EditAreaTextBox_KeyRelease()
+   '----------------------------------------------------------
+   'User is typing to try and find organisation/person/patient
+   'display a popup list on each keypress
+   '----------------------------------------------------------   
    Copyto_Get()
    
 End
@@ -195,14 +239,14 @@ Public Sub EditAreaTextBox_Change()
    If Trim(Last.text) = "" Then
       columnview1.Visible = False   
    Endif
-   ' If Embedded_In_Form.tag = "Referrals" Then
-   '    FRef.EditArea_Notify_DataChange(True)
-   ' Endif
-   
+    
 End
 
 Public Sub EditAreaTextBox_KeyPress()
-
+   '--------------------------------------------------------------------------
+   'Either user has hit the down key, in which case scroll onto the popup list
+   'or the <enter> key = here we allow free text as a copy to
+   '--------------------------------------------------------------------------   
    Select Case key.Code
       Case key.Down
          If columnview1.Visible = True Then
@@ -214,37 +258,41 @@ Public Sub EditAreaTextBox_KeyPress()
          If Trim(txtCopyTo.text) <> "" Then
             bexit = True
             If Lower(Trim(txtCopyTo.text)) <> "patient" Then
-               '   If Not_Duplicated() Then  
-               cvwCopyTo.Add(cvwCopyTo.count, Trim(txtCopyTo.text))
-               txtCopyTo.text = ""
-               columnview1.visible = False
-               txtCopyTo.SetFocus()
-               bExit = False  
-               ' End If
+               If Not Duplicated() Then  
+                  cvwCopyTo.Add(cvwCopyTo.count, Trim(txtCopyTo.text))
+                  txtCopyTo.text = ""
+                  columnview1.visible = False
+                  txtCopyTo.SetFocus()
+                  bExit = False  
+               End If
             End If
          End If   
    End Select
    
 End
 
-Public Function Not_Duplicated() As Boolean
-   '----------------------------------
-   'Check the copyto is not duplicated
-   ' returns TRUE if not a duplicate
+Public Sub Duplicated(sString As String) As Boolean
+   '------------------------------------------------
+   'Checks if a copy-to in cvwCopy to already exists
+   'returns True flag if it is, false if not
+   '------------------------------------------------   
+   Dim x As Integer
    
-   Dim CT As Collection
- 
-   For Each CT In Copytos
-      If CT = columnview1[iCurrentKey][0] & " " & columnview1[iCurrentKey][1] & " " & columnview1[iCurrentKey][2] Then
-         Return 
-      Endif
+   cvwCopyTo.MoveFirst
+   For x = 0 To cvwCopyTo.count - 1
+      If cvwCopyTo.Item.text = sString Then
+         Return True
+      End If
+      cvwCopyTo.MoveNext
    Next
-   Return True   
-
+   Return False
+   
 End
 
 Public Sub ColumnView1_DblClick()
-   
+   '-----------------------------------------------------------
+   'User clicked on the pop-up list of organisations or persons
+   '-----------------------------------------------------------   
    copyto_Accept()
    columnview1.Visible = False 
    
@@ -258,23 +306,10 @@ Public Sub columnview1_KeyPress()
    
 End
 
-Public Sub columnview1_Select()
-   
-   iCurrentKey = columnview1.Item.Key 
-   
-End
-
-Public Sub Reload()
-   
-   ' CopyTos = modUtil.SplitStrings_into_collection(copyto_string, "|")
-   ' cvwCopyTo_Refresh() 
-   
-End
 
 Public Sub cvwCopyTo_Refresh()
    
    Dim x As Integer
-   Dim CollectionCopy As New Collection
    Dim Copyto As String 
    
    cvwCopyTo.Clear()
@@ -285,47 +320,16 @@ Public Sub cvwCopyTo_Refresh()
    End If   
    
    For Each Copyto In CopyTos
-      cvwCopyTo.Add(CollectionCopy.count, 0)
-      cvwCopyTo[CollectionCopy.count][0] = Copyto
-      CollectionCopy.Add(Copyto, CollectionCopy.count) 
+      x = cvwCopyTo.count
+      cvwCopyTo.Add(x, 0)
+      cvwCopyTo[x][0] = Copyto
    Next
    If copytos.count Then
-      Select Case Embedded_In_Form.tag
-         Case "Referrals"
-            FReferrals.Show_Datachanged_CopyList(True) 
-         Case "Requests"
-      End Select 
+        CallingForm_EditArea_Notify_DataChange
    Endif
-   CopyTos = CollectionCopy
    
 End
 
-' Public Sub Get_CopyTo_Data() As Collection
-'    '-------------------------------------------------------------------------------------------
-'    'Rightly or wrong I've not stored copy to's in the database as keys
-'    'data!copyto = for example:
-'    'John Smith 1 Any Rd newtown|A Public Hopspital 100 Lookout Rd New Lambton Heights 2305| etc
-'    'Returns a collection = the pipe string + some text for progress notes
-'    '-------------------------------------------------------------------------------------------
-' 
-'    Dim data As New Collection
-'    Dim x As Integer
-'    
-'    copytos.Clear()
-'    For x = 0 To cvwCopyTo.count - 1
-'       data!progress_note &= " - copy to " & cvwCopyTo[x][0] & "<BR>"
-'       data!copyto &= cvwCopyTo[x][0] & "|"
-'       Copytos.Add(cvwCopyTo[x][0], Copytos.count)
-'       cvwCopyTo.MoveNext
-'    Next
-'    data!copyto = Left(data!copyto, Len(data!copyto) - 1) 
-'    Return data
-'    
-' End
-
-Public Sub EditAreaTextBox_GotFocus()
-   
-End
 
 Public Sub Form_Resize()
    
@@ -333,5 +337,41 @@ Public Sub Form_Resize()
       .width = .Parent.Width
       .height = .Parent.Height - HBox_CopyTo.Height 
    End With
+   
+End
+
+Public Sub cvwCopyTo_Menu()
+   '----------------------------------------------------
+   'user has clicked over the copyto list, show the menu
+   '----------------------------------------------------
+   
+   If cvwCopyTo.count Then
+      cvwCopyTo.MoveCurrent()
+      Print cvwCopyTo.Item.Key
+      mnuCopyTo.Popup()   
+   End If  
+   
+End
+
+Public Sub mnuCopyTo_Click()
+   '-----------------------------------------------------------
+   'User has clicked on the menu over the copy to list
+   'Only Delete is actioned
+   'As the key of teh copyto collection is the collection count
+   're-build the collection
+   '-----------------------------------------------------------
+   
+   Dim newcol As Collection
+   
+   Print copytos 
+   
+   Select Case Last.tag
+      Case "delete" 
+         Copytos.Remove(cvwCopyTo.Item.key)
+         copytos = modUtil.Copy_Collection_Keyed_Sequentially(copytos)
+      Case "delete all"
+         Copytos.Clear()
+    End Select
+   cvwCopyTo_Refresh()
    
 End

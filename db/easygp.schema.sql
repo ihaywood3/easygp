@@ -283,7 +283,7 @@ CREATE SCHEMA research;
 -- Name: plpgsql; Type: PROCEDURAL LANGUAGE; Schema: -; Owner: -
 --
 
-CREATE PROCEDURAL LANGUAGE plpgsql;
+CREATE OR REPLACE PROCEDURAL LANGUAGE plpgsql;
 
 
 SET search_path = clerical, pg_catalog;
@@ -459,8 +459,8 @@ COMMENT ON COLUMN clinics.fk_branch IS 'foreign key to contacts.branches table';
 CREATE SEQUENCE clinic_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -512,8 +512,8 @@ COMMENT ON COLUMN clinic_rooms.fk_clinic IS 'foreign key to admin.clinics table'
 CREATE SEQUENCE clinic_rooms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -551,8 +551,8 @@ COMMENT ON COLUMN global_preferences.fk_staff IS 'if not null, then this is a st
 CREATE SEQUENCE global_preferences_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -581,8 +581,8 @@ CREATE TABLE link_staff_clinics (
 CREATE SEQUENCE link_staff_clinics_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -618,8 +618,8 @@ COMMENT ON TABLE lu_clinical_modules IS 'modules which could be available clinic
 CREATE SEQUENCE lu_clinical_modules_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -655,8 +655,8 @@ COMMENT ON TABLE lu_staff_roles IS 'Type of role in the organisation
 CREATE SEQUENCE lu_staff_roles_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -693,8 +693,8 @@ COMMENT ON TABLE lu_staff_status IS 'Working status of staff member
 CREATE SEQUENCE lu_staff_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -739,8 +739,8 @@ COMMENT ON TABLE lu_staff_type IS 'Type of staff:
 CREATE SEQUENCE lu_staff_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -796,8 +796,8 @@ COMMENT ON TABLE staff_clinical_toolbar IS 'Links staff member to a toolbar butt
 CREATE SEQUENCE staff_clinical_toolbar_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -815,8 +815,8 @@ ALTER SEQUENCE staff_clinical_toolbar_pk_seq OWNED BY staff_clinical_toolbar.pk;
 CREATE SEQUENCE staff_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -1233,8 +1233,8 @@ CREATE TABLE blobs (
 CREATE SEQUENCE blobs_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -1252,8 +1252,8 @@ ALTER SEQUENCE blobs_pk_seq OWNED BY blobs.pk;
 CREATE SEQUENCE images_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -1408,8 +1408,8 @@ COMMENT ON TABLE diabetes_annual_cycle_of_care_notes IS 'as a cycle_of_care may 
 CREATE SEQUENCE diabetes_annual_cycle_of_care_notes_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -1427,8 +1427,8 @@ ALTER SEQUENCE diabetes_annual_cycle_of_care_notes_pk_seq OWNED BY diabetes_annu
 CREATE SEQUENCE diabetes_annual_cycle_of_care_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -1466,8 +1466,8 @@ COMMENT ON TABLE epc_link_provider_form IS 'links the core EPC referral details 
 CREATE SEQUENCE epc_link_provider_form_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -1536,8 +1536,8 @@ COMMENT ON COLUMN epc_referral.fk_electronic_signature IS 'if not null, an image
 CREATE SEQUENCE epc_referral_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -1574,8 +1574,8 @@ COMMENT ON TABLE lu_allied_health_type IS 'describes the type of allied health p
 CREATE SEQUENCE lu_allied_health_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -1618,8 +1618,8 @@ COMMENT ON COLUMN lu_dacc_components.fk_component IS 'key to chronic_disease_man
 CREATE SEQUENCE lu_dacc_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -1657,8 +1657,8 @@ COMMENT ON TABLE team_care_arrangements IS 'the team care arrangements table';
 CREATE SEQUENCE team_care_arrangements_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -1808,8 +1808,8 @@ COMMENT ON TABLE bookings IS 'list of all bookings past and future. Note fk_pati
 CREATE SEQUENCE bookings_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -1837,8 +1837,8 @@ CREATE TABLE data_families (
 CREATE SEQUENCE data_families_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -1867,8 +1867,8 @@ CREATE TABLE data_family_members (
 CREATE SEQUENCE data_family_members_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -1965,8 +1965,8 @@ COMMENT ON COLUMN data_patients.pk_legacy IS 'the key from the legacy database f
 CREATE SEQUENCE data_patients_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2001,8 +2001,8 @@ CREATE TABLE invoices (
 CREATE SEQUENCE invoices_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2032,8 +2032,8 @@ CREATE TABLE items_billed (
 CREATE SEQUENCE items_billed_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2069,8 +2069,8 @@ COMMENT ON TABLE lu_appointment_icons IS 'a table holding path to icons to use a
 CREATE SEQUENCE lu_appointment_icons_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2105,8 +2105,8 @@ COMMENT ON TABLE lu_appointment_status IS 'the status of the appointment as it a
 CREATE SEQUENCE lu_appointment_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2151,8 +2151,8 @@ COMMENT ON TABLE lu_task_types IS 'the type of task e.g ring the patient';
 CREATE SEQUENCE lu_task_types_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2183,8 +2183,8 @@ CREATE TABLE payments_received (
 CREATE SEQUENCE payments_received_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2275,8 +2275,8 @@ COMMENT ON COLUMN schedule.gst_rate IS 'the goods and services tax rate';
 CREATE SEQUENCE schedule_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2294,8 +2294,8 @@ ALTER SEQUENCE schedule_pk_seq OWNED BY schedule.pk;
 CREATE SEQUENCE sessions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2335,8 +2335,8 @@ COMMENT ON COLUMN task_component_notes.note IS 'notes about the component as the
 CREATE SEQUENCE task_component_notes_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2451,8 +2451,8 @@ COMMENT ON COLUMN task_components.fk_role IS 'foreign key to admin.lu_staff_role
 CREATE SEQUENCE task_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2524,8 +2524,8 @@ COMMENT ON COLUMN tasks.fk_role_can_finalise IS 'if not null, then a staff membe
 CREATE SEQUENCE tasks_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2663,8 +2663,8 @@ CREATE TABLE allergies (
 CREATE SEQUENCE allergies_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2692,8 +2692,8 @@ CREATE TABLE lu_reaction (
 CREATE SEQUENCE lu_reaction_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2721,8 +2721,8 @@ CREATE TABLE lu_type (
 CREATE SEQUENCE lu_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2796,8 +2796,8 @@ COMMENT ON COLUMN careplan_pages.summary IS 'a complete html page which is the c
 CREATE SEQUENCE careplan_pages_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2856,8 +2856,8 @@ COMMENT ON COLUMN careplans.fk_consult IS 'foreigh key to the clin_consult.consu
 CREATE SEQUENCE careplans_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2906,8 +2906,8 @@ COMMENT ON COLUMN component_task_due."interval" IS 'temporary field containg e.g
 CREATE SEQUENCE component_task_due_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2959,8 +2959,8 @@ COMMENT ON COLUMN link_careplanpage_advice.fk_advice IS 'foreign key to lu_advic
 CREATE SEQUENCE link_careplanpage_advice_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -2996,8 +2996,8 @@ COMMENT ON TABLE link_careplanpage_components IS ' links a  careplan page to its
 CREATE SEQUENCE link_careplanpage_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3047,8 +3047,8 @@ COMMENT ON COLUMN link_careplanpages_careplan.fk_careplanpage IS 'key to clin_ca
 CREATE SEQUENCE link_careplanpages_careplan_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3090,8 +3090,8 @@ COMMENT ON COLUMN lu_advice.advice IS 'advice printed on care plan e.g ring if c
 CREATE SEQUENCE lu_advice_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3119,8 +3119,8 @@ CREATE TABLE lu_aims (
 CREATE SEQUENCE lu_aims_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3157,8 +3157,8 @@ COMMENT ON TABLE lu_components IS 'A component is a part of a care plan describi
 CREATE SEQUENCE lu_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3210,8 +3210,8 @@ this is confusing and ambiguous because of reasons in the care plan schema';
 CREATE SEQUENCE lu_conditions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3246,8 +3246,8 @@ COMMENT ON COLUMN lu_education.education IS 'text of education e.g all about hyp
 CREATE SEQUENCE lu_education_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3284,8 +3284,8 @@ COMMENT ON TABLE lu_responsible IS 'the person responsible for implementing a co
 CREATE SEQUENCE lu_responsible_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3323,8 +3323,8 @@ COMMENT ON TABLE lu_tasks IS 'A task is something that needs to be done to achei
 CREATE SEQUENCE lu_tasks_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3381,8 +3381,8 @@ COMMENT ON TABLE certificate_reasons IS 'A table to keep reasons a particular do
 CREATE SEQUENCE certificate_reasons_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3410,8 +3410,8 @@ CREATE TABLE lu_fitness (
 CREATE SEQUENCE lu_fitness_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3454,8 +3454,8 @@ COMMENT ON COLUMN lu_illness_temporality.temporality IS 'text contents: is - was
 CREATE SEQUENCE lu_illness_temporality_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3591,8 +3591,8 @@ COMMENT ON COLUMN medical_certificates.print_notes IS 'if true then the notes wi
 CREATE SEQUENCE medical_certificate_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3732,8 +3732,8 @@ COMMENT ON TABLE annual_checkup IS 'Describes a persons annual checkup';
 CREATE SEQUENCE annual_checkup_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3783,8 +3783,8 @@ COMMENT ON COLUMN lu_nutrition_questions.red_flag_text IS 'the question translat
 CREATE SEQUENCE lu_nutrition_questions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3826,8 +3826,8 @@ COMMENT ON COLUMN lu_state_of_health.state_of_health IS 'excellent, very good, g
 CREATE SEQUENCE lu_state_of_health_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3943,8 +3943,8 @@ COMMENT ON COLUMN over75.fk_lu_earcanal_status IS 'references common.lu_normalit
 CREATE SEQUENCE over75_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3964,8 +3964,8 @@ SET search_path = clin_consult, pg_catalog;
 CREATE SEQUENCE consult_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -3994,8 +3994,8 @@ CREATE TABLE images (
 CREATE SEQUENCE images_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4013,8 +4013,8 @@ ALTER SEQUENCE images_pk_seq OWNED BY images.pk;
 CREATE SEQUENCE lu_actions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4032,8 +4032,8 @@ ALTER SEQUENCE lu_actions_pk_seq OWNED BY lu_audit_actions.pk;
 CREATE SEQUENCE lu_audit_reasons_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4051,8 +4051,8 @@ ALTER SEQUENCE lu_audit_reasons_pk_seq OWNED BY lu_audit_reasons.pk;
 CREATE SEQUENCE lu_consult_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4105,8 +4105,8 @@ COMMENT ON COLUMN lu_progressnote_templates.template IS 'html for a letter templ
 CREATE SEQUENCE lu_progressnote_templates_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4124,8 +4124,8 @@ ALTER SEQUENCE lu_progressnote_templates_pk_seq OWNED BY lu_progressnote_templat
 CREATE SEQUENCE lu_progressnotes_sections_pk_seq
     START WITH 20
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4165,8 +4165,8 @@ e.g outstanding
 CREATE SEQUENCE lu_scratchpad_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4184,8 +4184,8 @@ ALTER SEQUENCE lu_scratchpad_status_pk_seq OWNED BY lu_scratchpad_status.pk;
 CREATE SEQUENCE progressnotes_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4224,8 +4224,8 @@ COMMENT ON COLUMN scratchpad.fk_progressnote IS 'foreign key to clin_consult.pro
 CREATE SEQUENCE scratchpad_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4363,8 +4363,8 @@ COMMENT ON COLUMN care_plan_components_due.due IS 'date the comment is due to be
 CREATE SEQUENCE care_plan_components_due_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4382,8 +4382,8 @@ ALTER SEQUENCE care_plan_components_due_pk_seq OWNED BY care_plan_components_due
 CREATE SEQUENCE care_plan_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4414,8 +4414,8 @@ CREATE TABLE data_recreational_drugs (
 CREATE SEQUENCE data_recreational_drugs_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4467,8 +4467,8 @@ COMMENT ON COLUMN family_conditions.fk_code IS 'foreign key to coding.generic_te
 CREATE SEQUENCE family_conditions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4498,8 +4498,8 @@ CREATE TABLE family_links (
 CREATE SEQUENCE family_links_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4542,8 +4542,8 @@ COMMENT ON COLUMN family_members.fk_person IS 'I put this in in-case it was need
 CREATE SEQUENCE family_members_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4582,8 +4582,8 @@ COMMENT ON TABLE hospitalisations IS 'if specialist exists in contacts use pk_pe
 CREATE SEQUENCE hospitalisations_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4625,8 +4625,8 @@ COMMENT ON COLUMN lu_careplan_components.component IS 'a component of a care pla
 CREATE SEQUENCE lu_careplan_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4671,8 +4671,8 @@ COMMENT ON COLUMN lu_dacc_components.fk_component IS 'key to clin_history.lu_car
 CREATE SEQUENCE lu_dacc_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4717,8 +4717,8 @@ COMMENT ON COLUMN lu_exposures.fk_decision_support IS '
 CREATE SEQUENCE lu_exposures_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4807,8 +4807,8 @@ COMMENT ON COLUMN occupational_history.fk_progressnote IS 'key to clin_consult.p
 CREATE SEQUENCE occupational_history_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4877,8 +4877,8 @@ COMMENT ON COLUMN occupations_exposures.exposure_duration_units IS 'foreign key 
 CREATE SEQUENCE occupations_exposures_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4942,8 +4942,8 @@ COMMENT ON COLUMN past_history.fk_progressnote IS 'foreign key to clin_consult.p
 CREATE SEQUENCE past_history_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -4961,8 +4961,8 @@ ALTER SEQUENCE past_history_pk_seq OWNED BY past_history.pk;
 CREATE SEQUENCE pk_view_familyhistory
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -5045,8 +5045,8 @@ COMMENT ON COLUMN social_history.responsible_person_contacts IS 'one or more typ
 CREATE SEQUENCE social_history_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -5089,8 +5089,8 @@ COMMENT ON TABLE team_care_members IS 'links a past history item to team care me
 CREATE SEQUENCE team_care_members_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -5451,8 +5451,8 @@ SET search_path = common, pg_catalog;
 CREATE SEQUENCE lu_appointment_length_pk_seq
     START WITH 0
     INCREMENT BY 1
-    MAXVALUE 100
     MINVALUE 0
+    MAXVALUE 100
     CACHE 1;
 
 
@@ -5616,8 +5616,8 @@ SET search_path = contacts, pg_catalog;
 CREATE SEQUENCE vworganisations_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -5626,7 +5626,20 @@ CREATE SEQUENCE vworganisations_pk_seq
 --
 
 CREATE VIEW vworganisationsemployees AS
-    SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, employees.memo, branches.fk_category, NULL::unknown AS category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, employees.pk AS fk_employee, CASE WHEN (employees.pk > 0) THEN (((title.title || ' '::text) || (persons.firstname || ' '::text)) || persons.surname) ELSE 'Nothing'::text END AS wholename, employees.fk_occupation, employees.fk_status, employee_status.status AS employee_status, employees.deleted AS employee_deleted, occupations.occupation, persons.pk AS fk_person, persons.firstname, persons.surname, persons.salutation, persons.birthdate, persons.deceased, persons.date_deceased, persons.fk_ethnicity, persons.fk_language, persons.fk_marital, persons.fk_title, persons.fk_sex, sex.sex, title.title FROM (((((((((((data_employees employees JOIN data_branches branches ON ((employees.fk_branch = branches.pk))) LEFT JOIN lu_employee_status employee_status ON ((employees.fk_status = employee_status.pk))) JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN common.lu_occupations occupations ON ((employees.fk_occupation = occupations.pk))) LEFT JOIN data_persons persons ON ((employees.fk_person = persons.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) WHERE (employees.fk_person IS NOT NULL) UNION SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, 0 AS fk_employee, ((organisations.organisation || ' '::text) || branches.branch) AS wholename, 0 AS fk_occupation, 0 AS fk_status, NULL::unknown AS employee_status, false AS employee_deleted, NULL::unknown AS occupation, 0 AS fk_person, NULL::unknown AS firstname, NULL::unknown AS surname, NULL::unknown AS salutation, NULL::unknown AS birthdate, false AS deceased, NULL::unknown AS date_deceased, 0 AS fk_ethnicity, 0 AS fk_language, 0 AS fk_marital, 0 AS fk_title, 0 AS fk_sex, NULL::unknown AS sex, NULL::unknown AS title FROM ((((((data_branches branches JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) ORDER BY 1, 3, 4, 29, 28;
+    SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, employees.memo, branches.fk_category, NULL::unknown AS category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, employees.pk AS fk_employee, CASE WHEN (employees.pk > 0) THEN (((title.title || ' '::text) || (persons.firstname || ' '::text)) || persons.surname) ELSE 'Nothing'::text END AS wholename, employees.fk_occupation, employees.fk_status, employee_status.status AS employee_status, employees.deleted AS employee_deleted, occupations.occupation, persons.pk AS fk_person, persons.firstname, persons.surname, persons.salutation, persons.birthdate, persons.deceased, persons.date_deceased, persons.retired, persons.fk_ethnicity, persons.fk_language, persons.fk_marital, persons.fk_title, persons.fk_sex, sex.sex, title.title FROM (((((((((((data_employees employees JOIN data_branches branches ON ((employees.fk_branch = branches.pk))) LEFT JOIN lu_employee_status employee_status ON ((employees.fk_status = employee_status.pk))) JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN common.lu_occupations occupations ON ((employees.fk_occupation = occupations.pk))) LEFT JOIN data_persons persons ON ((employees.fk_person = persons.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) WHERE (employees.fk_person IS NOT NULL) UNION SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, 0 AS fk_employee, ((organisations.organisation || ' '::text) || branches.branch) AS wholename, 0 AS fk_occupation, 0 AS fk_status, NULL::unknown AS employee_status, false AS employee_deleted, NULL::unknown AS occupation, 0 AS fk_person, NULL::unknown AS firstname, NULL::unknown AS surname, NULL::unknown AS salutation, NULL::unknown AS birthdate, false AS deceased, NULL::unknown AS date_deceased, false AS retired, 0 AS fk_ethnicity, 0 AS fk_language, 0 AS fk_marital, 0 AS fk_title, 0 AS fk_sex, NULL::unknown AS sex, NULL::unknown AS title FROM ((((((data_branches branches JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) ORDER BY 1, 3, 4, 29, 28;
+
+
+--
+-- Name: VIEW vworganisationsemployees; Type: COMMENT; Schema: contacts; Owner: -
+--
+
+COMMENT ON VIEW vworganisationsemployees IS 'a heirachical view of organisations and their employees e.g:
+   John Hunter Hospital  HEAD OFFICE
+   John Hunter Hopsital  Surgical Dept
+   John Hunter Hospital  Dr The Best Surgeon
+   John Hunter Hospital  Urology Dept
+   John Hunter Hospital  Dr Ima Urologist etc
+   This view **includes** persons who are dead, retired or left the organisation';
 
 
 SET search_path = clin_history, pg_catalog;
@@ -5752,8 +5765,8 @@ COMMENT ON COLUMN lu_type.fk_plotting_method IS 'foreign key for lu_plotting met
 CREATE SEQUENCE lu_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -5829,8 +5842,8 @@ COMMENT ON COLUMN measurements.comment IS 'comment on this measurement e.g resti
 CREATE SEQUENCE measurements_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -5899,8 +5912,8 @@ COMMENT ON COLUMN patients_defaults.deleted IS 'If True, then this record is mar
 CREATE SEQUENCE patients_defaults_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -5956,8 +5969,8 @@ CREATE TABLE k10_results (
 CREATE SEQUENCE k10_results_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -5994,8 +6007,8 @@ COMMENT ON TABLE lu_assessment_tools IS 'table containing names of assessment to
 CREATE SEQUENCE lu_assessment_tools_pk_tool_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6038,8 +6051,8 @@ COMMENT ON COLUMN lu_component_help.care_plan_component IS 'the components of a 
 CREATE SEQUENCE lu_component_help_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6067,8 +6080,8 @@ CREATE TABLE lu_depression_degree (
 CREATE SEQUENCE lu_depression_degree_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6096,8 +6109,8 @@ CREATE TABLE lu_k10_components (
 CREATE SEQUENCE lu_k10_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6125,8 +6138,8 @@ CREATE TABLE lu_plan_type (
 CREATE SEQUENCE lu_plan_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6154,8 +6167,8 @@ CREATE TABLE lu_risk_to_others (
 CREATE SEQUENCE lu_risk_to_others_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6266,8 +6279,8 @@ COMMENT ON COLUMN mentalhealth_plan.fk_progressnote IS 'foreign key to clin_cons
 CREATE SEQUENCE mentalhealth_plan_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6310,8 +6323,8 @@ COMMENT ON TABLE team_care_members IS 'links a mental health plan to team care m
 CREATE SEQUENCE team_care_members_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6372,8 +6385,8 @@ COMMENT ON TABLE lu_antenatal_venue IS 'available venues for attendance for preg
 CREATE SEQUENCE lu_antenatal_venue_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6393,8 +6406,8 @@ SET search_path = clin_prescribing, pg_catalog;
 CREATE SEQUENCE authority_number
     START WITH 1
     INCREMENT BY 11
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6415,8 +6428,8 @@ CREATE TABLE increased_quantity_authority_reasons (
 CREATE SEQUENCE increased_quantity_authority_reasons_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6459,8 +6472,8 @@ COMMENT ON TABLE instruction_habits IS 'allow auto-completion of a script for th
 CREATE SEQUENCE instruction_habits_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6509,8 +6522,8 @@ COMMENT ON COLUMN instructions.fk_lu_units IS 'key to common.lu_units = day, mon
 CREATE SEQUENCE instructions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6651,8 +6664,8 @@ COMMENT ON COLUMN medications.fk_code IS 'foreign key to references coding.gener
 CREATE SEQUENCE medications_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6806,8 +6819,8 @@ COMMENT ON TABLE prescribed_for_habits IS 'used to auto-complete a script on a p
 CREATE SEQUENCE prescribed_for_habits_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6825,8 +6838,8 @@ ALTER SEQUENCE prescribed_for_habits_pk_seq OWNED BY prescribed_for_habits.pk;
 CREATE SEQUENCE prescribed_for_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6844,8 +6857,8 @@ ALTER SEQUENCE prescribed_for_pk_seq OWNED BY prescribed_for.pk;
 CREATE SEQUENCE prescribed_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6863,8 +6876,8 @@ ALTER SEQUENCE prescribed_pk_seq OWNED BY prescribed.pk;
 CREATE SEQUENCE print_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6882,8 +6895,8 @@ ALTER SEQUENCE print_status_pk_seq OWNED BY pbs_script_type.pk;
 CREATE SEQUENCE script_dates_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -6901,8 +6914,8 @@ ALTER SEQUENCE script_dates_pk_seq OWNED BY item_start_last_dates.pk;
 CREATE SEQUENCE script_number
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -7213,8 +7226,8 @@ COMMENT ON COLUMN link_images_procedures.deleted IS 'if true then the image is m
 CREATE SEQUENCE link_images_procedures_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -7250,8 +7263,8 @@ COMMENT ON COLUMN lu_anaesthetic_agent.fk_lu_route_administration IS 'foreign ke
 CREATE SEQUENCE lu_anaesthetic_agent_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -7279,8 +7292,8 @@ CREATE TABLE lu_complications (
 CREATE SEQUENCE lu_complications_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -7315,8 +7328,8 @@ COMMENT ON TABLE lu_procedure_type IS 'the type of excision eg ellipse, graft, f
 CREATE SEQUENCE lu_excision_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -7352,8 +7365,8 @@ COMMENT ON TABLE lu_last_surgical_pack IS 'the last pack used - probably close t
 CREATE SEQUENCE lu_pack_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -7381,8 +7394,8 @@ CREATE TABLE lu_repair_type (
 CREATE SEQUENCE lu_repair_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -7410,8 +7423,8 @@ CREATE TABLE lu_skin_preparation (
 CREATE SEQUENCE lu_skin_preparation_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -7446,8 +7459,8 @@ COMMENT ON TABLE lu_suture_site IS 'the site the suture is used eg subcutaneous,
 CREATE SEQUENCE lu_suture_site_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -7483,8 +7496,8 @@ COMMENT ON TABLE lu_suture_type IS 'type of sutures, could extend this table to 
 CREATE SEQUENCE lu_suture_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -7701,8 +7714,8 @@ At each exicision, the user can put in free-hand  clinical notes';
 CREATE SEQUENCE skin_procedures_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -7754,8 +7767,8 @@ COMMENT ON COLUMN staff_skin_procedure_defaults.fk_user_provider_defaults IS 'ke
 CREATE SEQUENCE staff_skin_procedure_defaults_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -7794,8 +7807,8 @@ COMMENT ON TABLE surgical_packs IS 'info about each surgical pack sterilized';
 CREATE SEQUENCE surgical_packs_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -7999,8 +8012,8 @@ COMMENT ON TABLE forms IS 'embryonic table, will contain all data to create form
 CREATE SEQUENCE forms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8050,8 +8063,8 @@ COMMENT ON COLUMN links_forms.fk_form IS 'foreign key to forms table';
 CREATE SEQUENCE links_forms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8069,8 +8082,8 @@ ALTER SEQUENCE links_forms_pk_seq OWNED BY links_forms.pk;
 CREATE SEQUENCE lu_reasons_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8088,8 +8101,8 @@ ALTER SEQUENCE lu_reasons_pk_seq OWNED BY lu_reasons.pk;
 CREATE SEQUENCE lu_recall_intervals_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8107,8 +8120,8 @@ ALTER SEQUENCE lu_recall_intervals_pk_seq OWNED BY lu_recall_intervals.pk;
 CREATE SEQUENCE lu_templates_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8126,8 +8139,8 @@ ALTER SEQUENCE lu_templates_pk_seq OWNED BY lu_templates.pk;
 CREATE SEQUENCE recalls_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8145,8 +8158,8 @@ ALTER SEQUENCE recalls_pk_seq OWNED BY recalls.pk;
 CREATE SEQUENCE sent_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8217,8 +8230,8 @@ COMMENT ON COLUMN inclusions.deleted IS 'if deleted is true then the inclusion i
 CREATE SEQUENCE inclusions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8256,8 +8269,8 @@ COMMENT ON TABLE lu_type IS 'List of types of referral eg required by medicare s
 CREATE SEQUENCE lu_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8402,8 +8415,8 @@ COMMENT ON COLUMN referrals.copyto IS 'a Pipe delimated list of entities receivi
 CREATE SEQUENCE referrals_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8589,8 +8602,8 @@ SET search_path = clin_requests, pg_catalog;
 CREATE SEQUENCE forms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8667,8 +8680,8 @@ COMMENT ON COLUMN forms_requests.request_result_html IS ' the entire html of a s
 CREATE SEQUENCE forms_requests_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8686,8 +8699,8 @@ ALTER SEQUENCE forms_requests_pk_seq OWNED BY forms_requests.pk;
 CREATE SEQUENCE inbox_oru_unresolved_temp_patient_id_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8709,8 +8722,8 @@ CREATE TABLE link_forms_requests_requests_results (
 CREATE SEQUENCE link_forms_requests_requests_results_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8746,8 +8759,8 @@ COMMENT ON TABLE lu_copyto_type IS 'The type of contact that is being sent a cop
 CREATE SEQUENCE lu_copyto_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8813,8 +8826,8 @@ who may or who has made a claim under the scheme.';
 CREATE SEQUENCE lu_form_header_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8864,8 +8877,8 @@ The clothing you wear is important.<P>
 CREATE SEQUENCE lu_instructions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8896,8 +8909,8 @@ CREATE TABLE lu_link_provider_user_requests (
 CREATE SEQUENCE lu_link_provider_user_requests_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -8939,8 +8952,8 @@ COMMENT ON COLUMN lu_request_type.type IS 'the type of request e.g radiology, pa
 CREATE SEQUENCE lu_request_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -9015,8 +9028,8 @@ COMMENT ON COLUMN lu_requests.fk_instruction IS 'foreign key to lu_instructions 
 CREATE SEQUENCE lu_requests_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -9063,8 +9076,8 @@ COMMENT ON COLUMN notes.fk_lu_type IS 'key to lu_type table, ie pathology/radiol
 CREATE SEQUENCE notes_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -9107,8 +9120,8 @@ COMMENT ON TABLE request_providers IS 'table which points to those persons, orga
 CREATE SEQUENCE request_providers_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -9126,8 +9139,8 @@ ALTER SEQUENCE request_providers_pk_seq OWNED BY request_providers.pk;
 CREATE SEQUENCE results_requests_episode_key
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -9179,8 +9192,8 @@ COMMENT ON COLUMN user_default_type.fk_lu_type IS 'key to lu_type table ie type 
 CREATE SEQUENCE user_default_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -9237,8 +9250,8 @@ COMMENT ON COLUMN user_provider_defaults.fk_default_branch IS 'key to contacts.b
 CREATE SEQUENCE user_provider_defaults_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -9256,8 +9269,8 @@ ALTER SEQUENCE user_provider_defaults_pk_seq OWNED BY user_provider_defaults.pk;
 CREATE SEQUENCE vwforms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -9583,8 +9596,8 @@ COMMENT ON TABLE lu_formulation IS 'probably temporary table, until drugs.form s
 CREATE SEQUENCE lu_formulation_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -9667,8 +9680,8 @@ COMMENT ON COLUMN lu_schedules.notes IS 'any additional notes, eg the NSW 12-13y
 CREATE SEQUENCE lu_schedules_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -9712,8 +9725,8 @@ COMMENT ON TABLE lu_vaccines IS 'A Table to hold all vaccines.
 CREATE SEQUENCE lu_vaccines_descriptions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -9744,8 +9757,8 @@ CREATE TABLE lu_vaccines_in_schedule (
 CREATE SEQUENCE lu_vaccines_in_schedule_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -9763,8 +9776,8 @@ ALTER SEQUENCE lu_vaccines_in_schedule_pk_seq OWNED BY lu_vaccines_in_schedule.p
 CREATE SEQUENCE lu_vaccines_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -9834,8 +9847,8 @@ can have several vaccines and one may not be given - we need to know why';
 CREATE SEQUENCE vaccinations_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -9872,8 +9885,8 @@ COMMENT ON TABLE vaccine_serial_numbers IS 'last used batch number to make it ea
 CREATE SEQUENCE vaccine_serial_numbers_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10047,8 +10060,8 @@ COMMENT ON COLUMN claims.accepted IS 'If True then the work cover claim as been 
 CREATE SEQUENCE claims_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10098,8 +10111,8 @@ COMMENT ON COLUMN link_claim_documents.fk_encounter IS 'foreign key to encounter
 CREATE SEQUENCE link_claim_documents_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10134,8 +10147,8 @@ COMMENT ON TABLE lu_caused_by_employment IS 'degree of certainty that the workco
 CREATE SEQUENCE lu_caused_by_employment_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10177,8 +10190,8 @@ COMMENT ON COLUMN lu_visit_type.type IS 'Initial Progress or Final or Initial an
 CREATE SEQUENCE lu_visit_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10333,8 +10346,8 @@ COMMENT ON COLUMN visits.latex IS 'the LaTex definition of the workcover form';
 CREATE SEQUENCE visits_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10442,8 +10455,8 @@ CREATE TABLE lu_loinc_abbrev (
 CREATE SEQUENCE lu_loinc_abbrev_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10461,8 +10474,8 @@ ALTER SEQUENCE lu_loinc_abbrev_pk_seq OWNED BY lu_loinc_abbrev.pk;
 CREATE SEQUENCE lu_systems_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10480,8 +10493,8 @@ ALTER SEQUENCE lu_systems_pk_seq OWNED BY lu_systems.pk;
 CREATE SEQUENCE user_terms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10505,8 +10518,8 @@ CREATE TABLE usr_codes_weighting (
 CREATE SEQUENCE usr_codes_weighting_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10552,8 +10565,8 @@ CREATE TABLE lu_aboriginality (
 CREATE SEQUENCE lu_aboriginality_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10581,8 +10594,8 @@ CREATE TABLE lu_anatomical_localisation (
 CREATE SEQUENCE lu_anatomical_location_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10600,8 +10613,8 @@ ALTER SEQUENCE lu_anatomical_location_pk_seq OWNED BY lu_anatomical_localisation
 CREATE SEQUENCE lu_anatomical_site_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10619,8 +10632,8 @@ ALTER SEQUENCE lu_anatomical_site_pk_seq OWNED BY lu_anatomical_site.pk;
 CREATE SEQUENCE lu_anterior_posterior_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10648,8 +10661,8 @@ CREATE TABLE lu_companion_status (
 CREATE SEQUENCE lu_companion_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10667,8 +10680,8 @@ ALTER SEQUENCE lu_companion_status_pk_seq OWNED BY lu_companion_status.pk;
 CREATE SEQUENCE lu_countries_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10686,8 +10699,8 @@ ALTER SEQUENCE lu_countries_pk_seq OWNED BY lu_countries.pk;
 CREATE SEQUENCE lu_ethnicity_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10705,8 +10718,8 @@ ALTER SEQUENCE lu_ethnicity_pk_seq OWNED BY lu_ethnicity.pk;
 CREATE SEQUENCE lu_family_relationships_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10734,8 +10747,8 @@ CREATE TABLE lu_formulation (
 CREATE SEQUENCE lu_formulation_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10763,8 +10776,8 @@ CREATE TABLE lu_hearing_aid_status (
 CREATE SEQUENCE lu_hearing_aid_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10782,8 +10795,8 @@ ALTER SEQUENCE lu_hearing_aid_status_pk_seq OWNED BY lu_hearing_aid_status.pk;
 CREATE SEQUENCE lu_languages_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10801,8 +10814,8 @@ ALTER SEQUENCE lu_languages_pk_seq OWNED BY lu_languages.pk;
 CREATE SEQUENCE lu_laterality_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10837,8 +10850,8 @@ COMMENT ON TABLE lu_medicolegal IS ' list of medicolegal things eg - patient inf
 CREATE SEQUENCE lu_medicolegal_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10866,8 +10879,8 @@ CREATE TABLE lu_motion (
 CREATE SEQUENCE lu_motion_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10895,8 +10908,8 @@ CREATE TABLE lu_normality (
 CREATE SEQUENCE lu_normality_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10914,8 +10927,8 @@ ALTER SEQUENCE lu_normality_pk_seq OWNED BY lu_normality.pk;
 CREATE SEQUENCE lu_occupations_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10943,8 +10956,8 @@ CREATE TABLE lu_proximal_distal (
 CREATE SEQUENCE lu_proximal_distal_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -10972,8 +10985,8 @@ CREATE TABLE lu_recreationaldrugs (
 CREATE SEQUENCE lu_recreationaldrugs_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11009,8 +11022,8 @@ COMMENT ON TABLE lu_religions IS 'The -core- religions eg christiantity, the sub
 CREATE SEQUENCE lu_religions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11028,8 +11041,8 @@ ALTER SEQUENCE lu_religions_pk_seq OWNED BY lu_religions.pk;
 CREATE SEQUENCE lu_route_administration_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11047,8 +11060,8 @@ ALTER SEQUENCE lu_route_administration_pk_seq OWNED BY lu_route_administration.p
 CREATE SEQUENCE lu_seasons_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11066,8 +11079,8 @@ ALTER SEQUENCE lu_seasons_pk_seq OWNED BY lu_seasons.pk;
 CREATE SEQUENCE lu_site_administration_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11095,8 +11108,8 @@ CREATE TABLE lu_smoking_status (
 CREATE SEQUENCE lu_smoking_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11124,8 +11137,8 @@ CREATE TABLE lu_social_support (
 CREATE SEQUENCE lu_social_support_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11161,8 +11174,8 @@ COMMENT ON TABLE lu_sub_religions IS 'The eg christiantity may be Baptist, Metho
 CREATE SEQUENCE lu_sub_religions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11180,8 +11193,8 @@ ALTER SEQUENCE lu_sub_religions_pk_seq OWNED BY lu_sub_religions.pk;
 CREATE SEQUENCE lu_units_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11199,8 +11212,8 @@ ALTER SEQUENCE lu_units_pk_seq OWNED BY lu_units.pk;
 CREATE SEQUENCE lu_urgency_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11228,8 +11241,8 @@ CREATE TABLE lu_whisper_test (
 CREATE SEQUENCE lu_whisper_test_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11257,8 +11270,8 @@ SET search_path = contacts, pg_catalog;
 CREATE SEQUENCE data_addresses_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11276,8 +11289,8 @@ ALTER SEQUENCE data_addresses_pk_seq OWNED BY data_addresses.pk;
 CREATE SEQUENCE data_branches_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11310,8 +11323,8 @@ CREATE TABLE data_communications (
 CREATE SEQUENCE data_communications_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11329,8 +11342,8 @@ ALTER SEQUENCE data_communications_pk_seq OWNED BY data_communications.pk;
 CREATE SEQUENCE data_employees_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11348,8 +11361,8 @@ ALTER SEQUENCE data_employees_pk_seq OWNED BY data_employees.pk;
 CREATE SEQUENCE data_organisations_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11367,8 +11380,8 @@ ALTER SEQUENCE data_organisations_pk_seq OWNED BY data_organisations.pk;
 CREATE SEQUENCE data_persons_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11386,8 +11399,8 @@ ALTER SEQUENCE data_persons_pk_seq OWNED BY data_persons.pk;
 CREATE SEQUENCE images_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11417,8 +11430,8 @@ CREATE TABLE links_branches_comms (
 CREATE SEQUENCE links_branches_comms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11448,8 +11461,8 @@ CREATE TABLE links_employees_comms (
 CREATE SEQUENCE links_employees_comms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11467,8 +11480,8 @@ ALTER SEQUENCE links_employees_comms_pk_seq OWNED BY links_employees_comms.pk;
 CREATE SEQUENCE links_persons_addresses_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11498,8 +11511,8 @@ CREATE TABLE links_persons_comms (
 CREATE SEQUENCE links_persons_comms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11517,8 +11530,8 @@ ALTER SEQUENCE links_persons_comms_pk_seq OWNED BY links_persons_comms.pk;
 CREATE SEQUENCE lu_address_types_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11536,8 +11549,8 @@ ALTER SEQUENCE lu_address_types_pk_seq OWNED BY lu_address_types.pk;
 CREATE SEQUENCE lu_categories_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11555,8 +11568,8 @@ ALTER SEQUENCE lu_categories_pk_seq OWNED BY lu_categories.pk;
 CREATE SEQUENCE lu_contact_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11574,8 +11587,8 @@ ALTER SEQUENCE lu_contact_type_pk_seq OWNED BY lu_contact_type.pk;
 CREATE SEQUENCE lu_employee_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11605,8 +11618,8 @@ CREATE TABLE lu_firstnames (
 CREATE SEQUENCE lu_firstnames_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11624,8 +11637,8 @@ ALTER SEQUENCE lu_firstnames_pk_seq OWNED BY lu_firstnames.pk;
 CREATE SEQUENCE lu_marital_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11663,8 +11676,8 @@ COMMENT ON TABLE lu_misspelt_towns IS 'When patient demographics is imported, th
 CREATE SEQUENCE lu_mismatched_towns_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11682,8 +11695,8 @@ ALTER SEQUENCE lu_mismatched_towns_pk_seq OWNED BY lu_misspelt_towns.pk;
 CREATE SEQUENCE lu_sex_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11711,8 +11724,8 @@ CREATE TABLE lu_surnames (
 CREATE SEQUENCE lu_surnames_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11730,8 +11743,8 @@ ALTER SEQUENCE lu_surnames_pk_seq OWNED BY lu_surnames.pk;
 CREATE SEQUENCE lu_title_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11749,8 +11762,8 @@ ALTER SEQUENCE lu_title_pk_seq OWNED BY lu_title.pk;
 CREATE SEQUENCE lu_towns_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11801,8 +11814,8 @@ CREATE VIEW vworganisationsbycategory AS
 CREATE SEQUENCE vwpatients_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11889,8 +11902,8 @@ CREATE TABLE lu_version (
 CREATE SEQUENCE db_version_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -11940,8 +11953,8 @@ COMMENT ON COLUMN hl7_inboxes.destination IS 'where the hl7 message is routed to
 CREATE SEQUENCE hl7_message_destination_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12048,8 +12061,8 @@ COMMENT ON COLUMN incoming_message_handling.fk_blob IS 'sample file data';
 CREATE SEQUENCE incoming_message_handling_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12085,8 +12098,8 @@ COMMENT ON TABLE lu_link_printer_task IS 'Links a printer on a host = linux host
 CREATE SEQUENCE lu_link_printer_task_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12114,8 +12127,8 @@ CREATE TABLE lu_message_display_style (
 CREATE SEQUENCE lu_message_display_style_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12151,8 +12164,8 @@ COMMENT ON TABLE lu_message_standard IS 'hl7 or pit version not yet implemented'
 CREATE SEQUENCE lu_message_standard_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12189,8 +12202,8 @@ COMMENT ON TABLE lu_printer_host IS 'keeps a list of which printers live in whic
 CREATE SEQUENCE lu_printer_host_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12218,8 +12231,8 @@ CREATE TABLE lu_printer_task (
 CREATE SEQUENCE lu_printer_task_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12281,8 +12294,8 @@ COMMENT ON TABLE script_coordinates IS 'keeps the paper positions x-y for printi
 CREATE SEQUENCE script_coordinates_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12310,8 +12323,8 @@ CREATE TABLE temp (
 CREATE SEQUENCE temp_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12339,8 +12352,8 @@ SET search_path = documents, pg_catalog;
 CREATE SEQUENCE documents_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12375,8 +12388,8 @@ COMMENT ON TABLE lu_archive_site IS 'sites documents are archived eg filesystem,
 CREATE SEQUENCE lu_archive_site_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12404,8 +12417,8 @@ CREATE TABLE lu_display_as (
 CREATE SEQUENCE lu_display_as_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12423,8 +12436,8 @@ ALTER SEQUENCE lu_display_as_pk_seq OWNED BY lu_display_as.pk;
 CREATE SEQUENCE lu_message_display_style_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12442,8 +12455,8 @@ ALTER SEQUENCE lu_message_display_style_pk_seq OWNED BY lu_message_display_style
 CREATE SEQUENCE lu_message_standard_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12520,8 +12533,8 @@ COMMENT ON COLUMN observations.value_numeric_qualifier IS 'numerical qualifier e
 CREATE SEQUENCE observations_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12539,8 +12552,8 @@ ALTER SEQUENCE observations_pk_seq OWNED BY observations.pk;
 CREATE SEQUENCE sending_entities_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12571,8 +12584,8 @@ CREATE TABLE signed_off (
 CREATE SEQUENCE signed_off_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12590,8 +12603,8 @@ ALTER SEQUENCE signed_off_pk_seq OWNED BY signed_off.pk;
 CREATE SEQUENCE unmatched_patients_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12609,8 +12622,8 @@ ALTER SEQUENCE unmatched_patients_pk_seq OWNED BY unmatched_patients.pk;
 CREATE SEQUENCE unmatched_staff_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12688,8 +12701,8 @@ COMMENT ON TABLE atc IS 'table associating drug names and Anatomic Therapeutic C
 CREATE SEQUENCE brand_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12738,8 +12751,8 @@ too long for a pick list) and confirm with users if they want to create a new en
 CREATE SEQUENCE clinical_effects_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12847,8 +12860,8 @@ COMMENT ON TABLE flags IS 'flags for adjuvants such as ''gluten-free'', ''paedia
 CREATE SEQUENCE flags_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -12900,8 +12913,8 @@ COMMENT ON COLUMN info.comment IS 'the drug product information in HTML format';
 CREATE SEQUENCE info_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -13069,8 +13082,8 @@ CREATE TABLE pharmacologic_mechanisms (
 CREATE SEQUENCE product_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -13220,8 +13233,8 @@ COMMENT ON TABLE lu_demographics_field_templates IS 'demographic details importe
 CREATE SEQUENCE lu_demographics_field_templates_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -13256,8 +13269,8 @@ COMMENT ON TABLE lu_source_program IS 'source program for imported data either c
 CREATE SEQUENCE lu_source_program_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -13285,8 +13298,8 @@ SET search_path = public, pg_catalog;
 CREATE SEQUENCE authority_number
     START WITH 1
     INCREMENT BY 11
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 
@@ -13297,8 +13310,8 @@ CREATE SEQUENCE authority_number
 CREATE SEQUENCE script_number
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     NO MINVALUE
+    NO MAXVALUE
     CACHE 1;
 
 

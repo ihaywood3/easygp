@@ -801,7 +801,7 @@ SET search_path = db, pg_catalog;
 -- Name: db_version_pk_seq; Type: SEQUENCE SET; Schema: db; Owner: -
 --
 
-SELECT pg_catalog.setval('db_version_pk_seq', 140, true);
+SELECT pg_catalog.setval('db_version_pk_seq', 141, true);
 
 
 SET search_path = defaults, pg_catalog;
@@ -4226,6 +4226,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 627	1	Tongue/tonsil tumour local	0	0	0	f
 942	1	Carbamazepine	0	0	0	f
 629	2	Liver Ultrasound	0	0	0	f
+736	1	Heart valve	0	0	0	f
 630	1	Needle - HIV Hepatitis B Hepatitis C	0	0	0	f
 631	1	c-Peptide	0	0	0	f
 632	1	Pentobarbitone	0	0	0	f
@@ -4329,7 +4330,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 733	2	Steroid injection of hip	3	0	0	f
 734	6	Sleep deprived EEG	0	0	0	f
 735	1	Fallopian tube sterilization	0	0	0	f
-736	1	Heart valve	0	0	0	f
 737	1	DHEAS	0	0	0	f
 738	1	Lymphocyte stimulation (mitogen)	0	0	0	f
 739	1	Fungal stain & culture - skin scrapings (dermatophytes)	0	0	0	f
@@ -4433,6 +4433,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 841	7	Ultrasound - early pregnancy	0	0	0	f
 842	1	Tonsil biopsy	0	0	0	f
 843	1	Catecholamines	0	0	0	f
+948	1	OD 450	0	0	0	f
 844	4	Color Doppler Echocardiography (includes 2D Echo)	0	0	0	f
 845	1	APTT Mixing	0	0	0	f
 847	2	Duplex scan lower limb arteries with pressures	0	0	0	f
@@ -4532,7 +4533,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 945	1	Paraprotein typing IEP/U	0	0	0	f
 946	1	Bone biopsy/curettings/fragments-lesion	0	0	0	f
 947	1	Uterus +/- adnexa malignant tumour all specimen types NOS	0	0	0	f
-948	1	OD 450	0	0	0	f
 949	5	Duplex Scan Aortic Endoluminal Graft	0	0	0	f
 950	1	Androstenedione	0	0	0	f
 951	1	Adrenal resection tumour	0	0	0	f
@@ -5149,6 +5149,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1577	5	dopplers of abdominal & iliac arteries	0	0	0	f
 1537	11	salivary scintigraphy study	0	0	0	f
 1578	2	nasal bones	0	0	0	f
+1672	1	Zinc	0	0	0	f
 1440	2	Persantin (Dipyridamole)Sestamibi scan	0	0	0	f
 1579	8	Saline Bronchial Challenge	0	0	0	f
 1580	2	Xray Finger	2	0	0	f
@@ -5249,7 +5250,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1669	2	U/S Steriod - Lateral Cutaneous Nerve	3	0	0	f
 1670	2	U/S guided steroid injection Lateral Cutaneous Nerve	3	0	0	f
 1671	1	Chlamydia Urine PCR	0	0	0	f
-1672	1	Zinc	0	0	0	f
 1673	1	Cancer Ag 19-9	0	0	0	f
 1674	4	Holter Scan with BP Monitoring	0	0	0	f
 1676	2	XRay Heel	0	0	0	f
@@ -12133,6 +12133,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 6314	17067-0	Legionella pneumophila 4 Ab.IgM	Ser
 6315	17068-8	Legionella pneumophila 5 Ab	Ser
 6316	15464-1	Caprine arthritis encephalitis virus Ab	Ser
+6610	15-8	Amoxicillin	Isolate
 6317	15465-8	Caprine arthritis encephalitis virus Ab	Ser
 6318	15466-6	Epizootic hemorrhagic disease virus Ab	Ser
 6319	15467-4	Equine herpesvirus 1 Ab	Ser
@@ -12427,7 +12428,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 6607	15797-4	Isocyanate MDI Ab.IgE.RAST class	Ser
 6608	15798-2	Isocyanate TDI Ab.IgE.RAST class	Ser
 6609	15799-0	Ispaghula laxative Ab.IgE.RAST class	Ser
-6610	15-8	Amoxicillin	Isolate
 6611	1580-0	17-Ketogenic steroids^pre 500 ug dexamethasone PO 2.5 day low dose q6h	Urine
 6612	15800-6	Juniper Ab.IgE.RAST class	Ser
 6613	15801-4	Kapok Ab.IgE.RAST class	Ser
@@ -12526,6 +12526,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 6706	16042-4	Helianthus annuus seed Ab.IgE.RAST class	Ser
 6707	16043-2	Swine epithelium Ab.IgE.RAST class	Ser
 6708	16044-0	Swine urine proteins Ab.IgE.RAST class	Ser
+7025	16202-4	Nordiazepam	Urine
 6709	16045-7	Xiphias gladius Ab.IgE.RAST class	Ser
 6710	16166-1	Glucose^11 AM specimen	Ser/Plas
 6711	16167-9	Glucose^2 PM specimen	Ser/Plas
@@ -12733,6 +12734,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 6912	16076-2	Juglans nigra pollen Ab.IgE.RAST class	Ser
 6913	16077-0	Juglans regia pollen Ab.IgE.RAST class	Ser
 6914	16078-8	Juglans california pollen Ab.IgE.RAST class	Ser
+7026	16203-2	Alprazolam	Urine
 6915	16079-6	Juglans california pollen Ab.IgE.RAST class	Ser
 6916	16080-4	Polistes spp Ab.IgE.RAST class	Ser
 6917	16081-2	Polistes spp Ab.IgE.RAST class	Ser
@@ -12843,8 +12845,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 7022	16199-2	Methadone	Urine
 7023	16200-8	Propoxyphene	Urine
 7024	16201-6	Oxazepam	Urine
-7025	16202-4	Nordiazepam	Urine
-7026	16203-2	Alprazolam	Urine
 7027	1620-4	Prolactin^pre dose TRH IV	Ser/Plas
 7028	16204-0	Clonazepam	Urine
 7029	16205-7	Lorazepam	Urine
@@ -14955,6 +14955,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 9137	1815-0	Alpha glucosidase	Tiss
 9138	18150-3	Systole.min	Heart.ventricle.left
 9139	18151-1	Systole.min	Heart.ventricle.left
+9475	1843-2	Ammonia nitrogen	Urine
 9140	18152-9	Thickness.diastole	Heart.ventricle.left.posterior wall
 9141	18153-7	Thickness.diastole	Heart.ventricle.right.anterior wall
 9142	18154-5	Thickness.diastole	Heart.interventricular septum
@@ -15289,7 +15290,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 9472	20400-8	Nuclear Ab pattern.rim	Ser
 9473	18430-9	Rickettsia rickettsii Ab.IgM	CSF
 9474	18431-7	Amphetamines	Stool
-9475	1843-2	Ammonia nitrogen	Urine
 9476	18432-5	Tetrahydrocannabinol	Stool
 9477	18433-3	1,3-Dichlorobenzene	Bld
 9478	18434-1	1,2-Dichlorobenzene	Bld
@@ -16990,6 +16990,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 11171	20134-3	Volume min setting	Ventilator.alarm
 11172	20135-0	Volume.at 25-75% of forced expiration.measured.post bronchodilation/Volume.at 25-75% of forced expiration.predicted	Respiratory system
 11173	20136-8	Volume.at 25-75% of forced expiration.measured.pre bronchodilation/Volume.at 25-75% of forced expiration.predicted	Respiratory system
+11263	20256-4	Gradient.mean	Circulatory system.XXX
 11174	20137-6	Volume.at 25-75% of forced expiration.measured/Volume.at 25-75% of forced expiration.predicted	Respiratory system
 11175	20138-4	Volume.compressed gas	Ventilator airway circuit
 11176	20139-2	Volume.expired	Respiratory system
@@ -17079,7 +17080,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 11260	20254-9	Blood flow 2.max	Tricuspid valve.regurgitant jet
 11261	2025-5	Carbon dioxide.dissolved	RBC
 11262	20255-6	Gradient.mean	Circulatory system.XXX
-11263	20256-4	Gradient.mean	Circulatory system.XXX
 11264	20257-2	Gradient 2.mean	Circulatory system.XXX
 11265	20258-0	Gradient 2.mean	Circulatory system.XXX
 11266	20259-8	Gradient.mean.XXX/Gradient 2.mean.XXX	Circulatory system.XXX
@@ -25461,6 +25461,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 19637	27884-6	Lutropin^40M post XXX challenge	Ser/Plas
 19638	27885-3	Lutropin^1.5H post XXX challenge	Ser/Plas
 19639	27886-1	Follitropin^40M post XXX challenge	Ser/Plas
+19748	2799-5	Phosphoglyceromutase	Ser
 19640	27887-9	Follitropin^15M post XXX challenge	Ser/Plas
 19641	2788-8	Phosphoenolpyruvate carboxykinase	Ser
 19642	27888-7	Somatotropin^2nd specimen post XXX challenge	Ser/Plas
@@ -25569,7 +25570,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 19745	27992-7	Borrelia burgdorferi 23kD Ab	CSF
 19746	27993-5	Sympathomimetics	Urine
 19747	27994-3	Ehrlichia chaffeensis DNA	Bld
-19748	2799-5	Phosphoglyceromutase	Ser
 19749	27995-0	Asparagine	Ser/Plas
 20530	28779-7	Type	LM glasses.lens.left
 19750	27996-8	17-Hydroxyprogesterone^baseline	Ser/Plas
@@ -26111,6 +26111,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20289	28487-7	Bowel function.knowledge	^Family
 20290	28488-5	Bowel function.status	^Family
 20291	28489-3	Genito-urinary function.behavior	^Family
+20525	28775-5	Physician	LM glasses
 20292	28490-1	Genito-urinary function.knowledge	^Family
 21288	2939-7	Serotonin	Bld
 20293	28491-9	Genito-urinary function.status	^Family
@@ -26346,7 +26347,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20522	28772-2	Type description	LM glasses
 20523	28773-0	Since when	LM glasses
 20524	28774-8	Physician code	LM glasses
-20525	28775-5	Physician	LM glasses
 20526	28776-3	Type	LM glasses.lens.right
 20531	28780-5	Sphere distance	LM glasses.lens.right
 20532	28781-3	Axis distance	LM glasses.lens.right
@@ -26449,6 +26449,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20628	2943-9	Sialate	Plas
 20629	29446-2	Thickening.fractional change	Heart.ventricle.left.posterior wall
 20630	2944-7	Sialate	Urine
+20952	28987-6	Axis 2	Eye.left
 20631	29447-0	Thickening.fractional change	Heart.ventricle.left.posterior wall
 20632	30665-4	Guidance for radiation treatment^WO contrast	XXX
 20633	30666-2	Multisection^WO contrast	Pituitary+Sella turcica
@@ -26769,7 +26770,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20949	2898-5	Protoporphyrin	RBC
 20950	28985-0	Axis	Eye.left
 20951	28986-8	Base curve 2	Eye.left
-20952	28987-6	Axis 2	Eye.left
 20953	28988-4	Comment	Eye.left
 20954	28989-2	Sagittal radius.superior	Eye.left
 20955	289-9	Isoniazid	Isolate+Ser
@@ -27200,6 +27200,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 21381	29503-0	2-Hydroxyisocaproate/Creatinine	Urine
 21382	2950-4	Sodium	Body fld
 21383	29504-8	2-Hydroxyisovalerate/Creatinine	Urine
+21605	29636-8	Appearance	Stool
 21384	29505-5	2-Hydroxy-3-Methylvalerate/Creatinine	Urine
 21385	29506-3	2-Oxoadipate/Creatinine	Urine
 21386	29507-1	Alpha ketoglutarate/Creatinine	Urine
@@ -27303,6 +27304,8 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 21485	31000-3	Phleum pratense recombinant rph1 p11 Ab.IgE	Ser
 21486	31001-1	Parietaria judaica Ab.IgE.RAST class	Ser
 21487	31002-9	Phoenix dactylifera Ab.IgE	Ser
+21606	2963-7	Somatotropin	Ser/Plas
+21607	29637-6	Time last dose	Dose
 21488	31003-7	(Bromus inermis+Cynodon dactylon+Holcus lanatus+Lolium perenne+Paspalum notatum+Sorghum halepense) Ab.IgE	Ser
 21489	33071-2	Length from T6 to L3	Spine^fetus
 21490	33072-0	Gestational age	^Fetus
@@ -27419,9 +27422,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 21602	29633-5	CD122 Ag	Tiss
 21603	29634-3	Terbutaline	Urine
 21604	29635-0	Albuterol	Urine
-21605	29636-8	Appearance	Stool
-21606	2963-7	Somatotropin	Ser/Plas
-21607	29637-6	Time last dose	Dose
 21608	29638-4	Specimen weight	Tiss
 21609	29639-2	Alkaline phosphatase	Tiss
 21610	296-4	Ketoconazole	Isolate
@@ -27529,6 +27529,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 21712	29737-4	Rickettsia rickettsii Ab	Ser
 21713	29738-2	Leptospira interrogans serovar Robinsoni Ab	Ser
 21714	29739-0	Leptospira interrogans serovar Kremastos Ab	Ser
+21826	29846-3	Trivittatus virus Ab	Ser
 21715	29740-8	Leptospira interrogans serovar Szwajizak Ab	Ser
 21716	29741-6	Leptospira interrogans serovar Medanensis Ab	Ser
 21717	29742-4	Date last dose	Dose
@@ -27640,7 +27641,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 21823	29843-0	Powassan virus Ab.IgM	CSF
 21824	29844-8	Anaplasma phagocytophilum Ab.IgG	CSF
 21825	29845-5	Anaplasma phagocytophilum Ab.IgM	CSF
-21826	29846-3	Trivittatus virus Ab	Ser
 21827	29847-1	Highlands J virus Ab	Ser
 21828	29848-9	Eastern equine encephalitis virus Ab.IgG	Ser
 21829	29849-7	Jamestown canyon virus Ab.IgM	Ser
@@ -27867,6 +27867,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 22049	30048-3	Lysine/Creatinine	Urine
 22050	3004-9	Thiocyanate	Urine
 22051	30049-1	Ornithine/Creatinine	Urine
+22163	3012-2	Thromboxane beta 2	Ser/Plas
 22052	30050-9	Hydroxylysine/Creatinine	Urine
 22053	30051-7	Homocystine/Creatinine	Urine
 22054	30052-5	Isoleucine/Creatinine	Urine
@@ -27978,7 +27979,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 22160	301-2	Lincomycin	Isolate+Ser
 22161	30120-0	Lymphocytes.IgD	WBC
 22162	30121-8	Colony count	Dial fld
-22163	3012-2	Thromboxane beta 2	Ser/Plas
 22164	30122-6	Aeromonas sp	XXX
 22165	30123-4	Testosterone.bound	Ser/Plas
 22166	30124-2	Amylase	Urine
@@ -45506,6 +45506,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 39689	46196-2	Leptospira interrogans Ab.IgG	Ser
 39690	46197-0	Measles virus Ab	Ser
 39691	46198-8	Mycoplasma pneumoniae Ab.IgG	Ser
+39796	46822-3	Hearing.behavior	^Community
 39692	46199-6	Parainfluenza virus 1 Ab	CSF
 39693	46200-2	Parainfluenza virus 3 Ab	CSF
 39694	4620-1	Hemoglobin S	Bld
@@ -45610,7 +45611,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 39793	46820-7	Health care supervision.knowledge	^Community
 39794	4682-1	Streptokinase	Ser
 39795	46821-5	Health care supervision.status	^Community
-39796	46822-3	Hearing.behavior	^Community
 39797	47036-9	Streptococcus pneumoniae 34 Ab.IgG^1st specimen	Ser
 39798	47037-7	Streptococcus pneumoniae 68 Ab.IgG^2nd specimen/1st specimen	Ser
 39799	47038-5	Villin Ag	Tiss
@@ -46113,6 +46113,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 40295	46692-0	Treatment or examining source statements	^Patient
 40296	46693-8	Treating or examining source statement regarding claimant's physical capacities in file	^Patient
 40398	46798-5	Communicable &or infectious condition function.behavior	^Community
+40395	46796-9	Cognition.knowledge	^Community
 40297	46694-6	Treating or examining source conclusions about the claimant's limitations or restrictions which are significantly different from your file	^Patient
 40298	46695-3	Why conclusions are not supported by the evidence in file	^Patient
 40299	46696-1	Additional comments	^Patient
@@ -46211,7 +46212,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 40392	46793-6	Circulation.knowledge	^Community
 40393	46794-4	Circulation.status	^Community
 40394	46795-1	Cognition.behavior	^Community
-40395	46796-9	Cognition.knowledge	^Community
 40396	4679-7	Reticulocytes/100 erythrocytes	RBC
 40397	46797-7	Cognition.status	^Community
 40399	46799-3	Communicable &or infectious condition function.knowledge	^Community
@@ -46548,6 +46548,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 40731	47258-9	Creatinine^3rd specimen post XXX challenge	Urine
 40732	47259-7	Creatinine^4th specimen post XXX challenge	Urine
 40733	47260-5	Plasmodium sp DNA	Bld
+40841	4923-9	HLA-DP w2	Bld
 40734	47261-3	Creatinine^6th specimen post XXX challenge	Urine
 40735	47262-1	Adenosine monophosphate.cyclic^6th specimen post XXX challenge	Urine
 40736	47387-6	Neisseria gonorrhoeae DNA	Genital
@@ -46655,7 +46656,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 40838	49236-3	Patient symptoms^2.5H post dose lactose PO	^Patient
 40839	49237-1	Patient symptoms^2H post dose lactose PO	^Patient
 40840	49238-9	Patient symptoms^30M post dose lactose PO	^Patient
-40841	4923-9	HLA-DP w2	Bld
 40842	49239-7	Patient symptoms^3H post dose lactose PO	^Patient
 41249	4902-3	HLA-D w26	Bld^donor
 40843	49240-5	Patient symptoms^pre dose lactose PO	^Patient
@@ -47275,6 +47275,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 41458	47752-1	Somatotropin^1.5H post dose arginine	Ser/Plas
 41459	4775-3	HLA-B w60(40)	Bld
 41460	47753-9	Somatotropin^1.5H post dose insulin IV	Ser/Plas
+41762	4805-8	HLA-B12	Bld
 41461	47754-7	Somatotropin^10M post dose TRH	Ser/Plas
 41462	47755-4	Somatotropin^10th specimen post XXX challenge	Ser/Plas
 41463	47756-2	Somatotropin^15M pre dose arginine	Ser/Plas
@@ -47377,6 +47378,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 41560	4784-5	HLA-B w65(14)	Bld^donor
 41561	47845-3	Cortisol^post 1 mg dexamethasone PO overnight	Ser/Plas
 41562	47846-1	Cortisol^post 2 mg dexamethasone PO 2.5 day high dose q6h	Ser/Plas
+41763	48058-2	Fibrin D-dimer DDU	PPP
 41563	47847-9	Cortisol^post 2 mg dexamethasone PO 2.5 day high dose q6h	Ser/Plas
 41564	47858-6	Gentisate/Creatinine	Urine
 41565	47859-4	Glucose^5M post dose glucose	Ser/Plas
@@ -47577,8 +47579,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 41759	48055-8	Pneumocystis jiroveci	XXX
 41760	48056-6	Human bocavirus Ag	XXX
 41761	48057-4	Human bocavirus Ab.IgG	XXX
-41762	4805-8	HLA-B12	Bld
-41763	48058-2	Fibrin D-dimer DDU	PPP
 41764	48059-0	Giardia lamblia+Cryptosporidium sp Ag	Stool
 41766	48061-6	Giardia lamblia+Cryptosporidium sp Ag	Stool
 41767	48062-4	Giardia lamblia+Cryptosporidium parvum Ag	Stool
@@ -47996,6 +47996,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 42178	48371-9	Docosapentaenoate	Ser/Plas
 42179	48372-7	Spermatozoa.isolated head/100 spermatozoa	Semen
 42180	48373-5	Spermatozoa.angled midpiece/100 spermatozoa	Semen
+42291	48481-6	Views GE 3	Elbow.bilateral
 42181	48374-3	Spermatozoa.isolated tail/100 spermatozoa	Semen
 42182	48375-0	Spermatozoa.short tail/100 spermatozoa	Semen
 42183	48376-8	Collagen type 1 Ab	Ser
@@ -48106,7 +48107,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 42288	48478-2	Views GE 3	Foot.bilateral
 42289	48479-0	Views GE 3	Facial bones
 42290	48480-8	Views GE 3	Ankle.bilateral
-42291	48481-6	Views GE 3	Elbow.bilateral
 42292	48482-4	Views GE 3	Sternoclavicular joints
 42293	48483-2	Views GE 3	Wrist.bilateral
 42294	48484-0	Views GE 3 & PA chest	Ribs.right+Chest
@@ -50332,6 +50332,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 44515	50459-7	Cortisol^7th specimen	Ser/Plas
 44516	50460-5	Cortisol^8th specimen	Ser/Plas
 44517	50461-3	C peptide^1st specimen	Ser/Plas
+44730	50620-4	Opiates cutoff	Meconium
 44518	50476-1	Calcitonin^8th specimen	Ser/Plas
 44519	50477-9	Follitropin^1st specimen	Ser/Plas
 44520	50478-7	Follitropin^2nd specimen	Ser/Plas
@@ -50545,7 +50546,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 44727	51638-5	Erythrocyte aggregates	Bld
 44728	51639-3	Acanthocytes/1000 erythrocytes	Bld
 44729	50619-6	Karyotype	Bld/Tiss
-44730	50620-4	Opiates cutoff	Meconium
 44731	50621-2	HD gene mutation analysis	Bld/Tiss
 44732	50622-0	Allergen.miscellaneous Ab.IgG	Ser
 44733	50623-8	AS gene mutation analysis	Bld/Tiss
@@ -52122,6 +52122,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 46301	52030-4	Explanation of benefits attachment	^Patient
 46302	52031-2	Explanation of benefits to subscriber attachment	^Patient
 46303	52032-0	Appeal denial letter attachment	^Patient
+46384	5212-6	Herpes virus 6 Ab.IgM	Ser
 46304	52033-8	General correspondence attachment	^Patient
 46305	52034-6	Payer letter attachment	^Patient
 46306	5203-5	Herpes simplex virus Ab	Ser
@@ -52204,7 +52205,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 46381	52123-7	Coagulation surface induced^post heparin adsorption	PPP
 46382	52124-5	Osmotic fragility^0.90% sodium chloride	RBC
 46383	52125-2	Osmotic fragility^0.90% sodium chloride 24H 37 deg C incubation	RBC
-46384	5212-6	Herpes virus 6 Ab.IgM	Ser
 46385	52126-0	Acid glycerol lysis	RBC
 46386	52127-8	Megaloblasts/100 cells	Bone mar
 47199	52921-4	Strontium/Creatinine	Urine
@@ -53947,6 +53947,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 48238	55698-5	Oxolinate	Isolate
 48129	53830-6	Granulocytes.CD55 deficient/100 cells	Bld
 48130	53831-4	Granulocytes.CD59 deficient/100 cells	Bld
+48236	55696-9	Oxolinate	Isolate
 48131	53832-2	Erythrocytes.CD55 deficient/100 erythrocytes	Bld
 48132	53833-0	Myoglobin	Bld
 48133	53834-8	Cyclosporine^peak	Bld
@@ -54052,7 +54053,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 48233	55693-6	Ornidazole	Isolate
 48234	55694-4	Ornidazole	Isolate
 48235	55695-1	Oxolinate	Isolate
-48236	55696-9	Oxolinate	Isolate
 48239	5569-9	Acetone	Urine
 48240	55699-3	Oxytetracycline	Isolate
 48241	55700-9	Paromomycin	Isolate
@@ -54885,6 +54885,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 49068	54481-7	Dicarboxystearoylcarnitine (C18-DC)/Creatinine	Urine
 49069	54482-5	Dicarboxystearoylcarnitine (C18-DC)	CSF
 49070	54483-3	Dicarboxystearoylcarnitine (C18-DC)	Amnio fld
+49499	5495-7	CD49E	WBC
 49071	54484-1	Octadecanedioylcarnitine (C18-DC)	Bld.dot
 49072	54485-8	Dicarboxystearoylcarnitine (C18-DC)	Urine
 49073	5448-6	CD20	WBC
@@ -55050,6 +55051,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 49229	5470-0	CD38	WBC
 49230	54700-0	How important it is to choose between a tub bath, shower, bed bath, or sponge bath while in this facility	^Patient
 49231	54701-8	How important it is to have snacks available between meals while in this facility	^Patient
+49788	55229-9	Study report	Tiss
 49232	54702-6	How important it is to choose your own bedtime while in this facility	^Patient
 49233	54703-4	How important it is to have your family or a close friend involved in discussions about your care while in this facility	^Patient
 49234	54704-2	How important it is to be able to use the phone in private while in this facility	^Patient
@@ -55133,6 +55135,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 49313	54968-3	Second or third degree burns in last 7D	^Patient
 49314	54969-1	Other ulcers, wounds, and skin problems - none of above in last 7D	^Patient
 49315	54970-9	Number of venous and arterial ulcers in last 7D	^Patient
+49789	55230-7	Study report	Bld/Tiss
 49316	54971-7	Skin and ulcer treatments in last 7D	^Patient
 49317	54972-5	Pressure reducing device for chair provided in last 7D	^Patient
 49318	5497-3	CD5	WBC
@@ -55316,7 +55319,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 49496	54954-3	Number of current pressure ulcers not present or were at a lesser stage on prior assessment - stage 3	^Patient
 49497	54955-0	Number of current pressure ulcers not present or were at a lesser stage on prior assessment - stage 4	^Patient
 49498	54956-8	Healed pressure ulcers	^Patient
-49499	5495-7	CD49E	WBC
 49500	54957-6	Pressure ulcers were present on the prior assessment	^Patient
 49501	54958-4	Number of pressure ulcers noted on prior assessment that have completely closed - stage 2	^Patient
 49502	54959-2	Number of pressure ulcers noted on prior assessment that have completely closed - stage 3	^Patient
@@ -55395,6 +55397,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 49573	55036-8	Number of days with at least 15M of recreational and music therapy in last 7D	^Patient
 49574	55037-6	Start date of recreational and music therapy	^Patient
 49575	5503-8	CD54	WBC
+49790	55231-5	Electrolytes panel	Bld
 49576	55062-4	Therapy evaluations completed	^Patient
 49577	55063-2	Assessment administration	^Patient
 49578	55064-0	Medicare part A billing	^Patient
@@ -55602,9 +55605,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 49785	55211-7	Shared razor, toothbrushes or nail care items	^Patient
 49786	55212-5	Occupation related direct blood or body fluid exposure frequency	^Patient
 49787	55213-3	Number of male sexual partners in 6 months before symptom onset	^Patient
-49788	55229-9	Study report	Tiss
-49789	55230-7	Study report	Bld/Tiss
-49790	55231-5	Electrolytes panel	Bld
 49791	55232-3	Genetic analysis summary panel	Bld/Tiss
 49792	55233-1	Genetic analysis master panel	Bld/Tiss
 49793	55234-9	Alpha thalassemia gene deletion panel	Bld
@@ -57040,6 +57040,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 51221	57191-9	Outcome and assessment information set (OASIS) form - version C - Resumption of Care	^Patient
 51222	57192-7	Outcome and assessment information set (OASIS) form - version C - Follow-Up	^Patient
 51223	56661-2	Myelin basic protein	Ser
+51330	56652-1	Arsenic/Creatinine	Urine
 51224	57193-5	Outcome and assessment information set (OASIS) form - version C - Transfer to facility	^Patient
 51225	57194-3	Outcome and assessment information set (OASIS) form - version C - Discharge from agency	^Patient
 51226	57195-0	Patient &or caregiver drug education intervention	^Patient
@@ -57146,7 +57147,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 51327	56649-7	Hippurate/Creatinine	Urine
 51328	56650-5	Chromium/Creatinine	Urine
 51329	56651-3	Cadmium/Creatinine	Urine
-51330	56652-1	Arsenic/Creatinine	Urine
 51331	56653-9	Mercury/Creatinine	Urine
 51332	56654-7	Nickel/Creatinine	Urine
 51333	5665-5	Indium	Bld
@@ -57783,6 +57783,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 51963	57271-9	Fall prevention interventions	^Patient
 51964	57272-7	Depression intervention	^Patient
 51965	5727-3	Selenium	Urine
+52082	57392-3	Urea	Body fld
 51966	57273-5	Intervention to monitor and mitigate pain	^Patient
 51967	57274-3	Intervention to prevent pressure ulcers	^Patient
 51968	57275-0	Pressure ulcer treatment - moist healing	^Patient
@@ -57896,7 +57897,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 52079	57389-9	Urea	Urine
 52080	57390-7	Specimen volume	Urine
 52081	57391-5	Eosinophils/100 leukocytes	Synv fld
-52082	57392-3	Urea	Body fld
 52083	57393-1	Cells.CD11a/100 cells	Body fld
 52084	57394-9	Cells.CD19+CD34+/100 cells	Body fld
 52085	57395-6	Cells.CD19+CD38+/100 cells	Body fld
@@ -59835,6 +59835,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 54018	6608-4	Virus identified	Isolate
 54019	6609-2	Listeria sp identified	XXX
 54020	66-1	Cefadroxil	Isolate+Ser
+54142	6732-2	Arachis hypogaea Ab.IgG	Ser
 54021	6610-0	Haemophilus influenzae A Ag	CSF
 54022	6611-8	Haemophilus influenzae B Ag	CSF
 54023	6612-6	Haemophilus influenzae C Ag	CSF
@@ -59956,7 +59957,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 54139	6729-8	Cow milk Ab.IgG	Ser
 54140	6730-6	Citrus sinensis Ab.IgG	Ser
 54141	6731-4	Polistes spp Ab.IgG	Ser
-54142	6732-2	Arachis hypogaea Ab.IgG	Ser
 54143	6733-0	Pigeon serum Ab	Ser
 54144	673-4	Microscopic observation	XXX
 54145	6734-8	Pork Ab.IgG	Ser
@@ -60071,6 +60071,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 54254	8478-0	Intravascular mean	Arterial system
 54255	8479-8	Intravascular systolic	Arterial system
 54256	8480-6	Intravascular systolic	Arterial system
+54483	6875-9	Cancer Ag 15-3	Ser/Plas
 54257	8481-4	Intravascular systolic	Arterial system
 54258	848-2	A1 B Ag	RBC^BPU
 54259	8482-2	Intravascular systolic	Arterial system
@@ -60183,6 +60184,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 54366	9052-2	Calorie intake.total	^Patient
 54367	9053-0	Calorie intake.total	^Patient
 54368	9054-8	Calorie intake.total	^Patient
+54484	6876-7	Citrulline	Urine
 54369	9055-5	Calorie intake.total	^Patient
 54370	9056-3	Calorie intake.total	^Patient
 54371	9057-1	Calorie intake.total	^Patient
@@ -60298,8 +60300,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 54480	6873-4	Beta hydroxybutyrate	Ser/Plas
 54481	687-4	Mycoplasma sp+Ureaplasma sp	XXX
 54482	6874-2	Calcium	Urine
-54483	6875-9	Cancer Ag 15-3	Ser/Plas
-54484	6876-7	Citrulline	Urine
 54485	6877-5	Coproporphyrin 1	Urine
 54486	6878-3	Coproporphyrin 3	Urine
 54487	6879-1	Corticotropin	Plas
@@ -61230,6 +61230,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 55413	7753-7	Turkey feather Ab.IgE	Ser
 55414	7754-5	Turnip Ab.IgE	Ser
 55415	7755-2	Upholstery dust Ab.IgE	Ser
+55651	79-4	Cefixime	Isolate
 55416	7756-0	Vanilla planifolia Ab.IgE	Ser
 55417	775-7	Platelet mean diameter	Bld
 55418	7757-8	Veal Ab.IgE	Ser
@@ -61466,7 +61467,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 55648	7937-6	Junin virus Ab	Ser
 55649	7938-4	La Crosse virus Ab	Ser
 55650	7939-2	La Crosse virus Ab	Ser
-55651	79-4	Cefixime	Isolate
 55652	7940-0	La Crosse virus Ab.IgG	Ser
 55653	7941-8	La Crosse virus Ab.IgM	Ser
 55654	7942-6	Lassa virus Ab.IgG	Ser
@@ -62340,6 +62340,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 56520	8753-6	Cardiac output/Body surface area	Heart.ventricle.left
 56521	875-5	A,B Ab	Ser/Plas^BPU
 56522	8755-1	Cardiac output/Body surface area	Heart.ventricle.right
+56838	9261-9	Fluid output.total	^Patient
 56523	8756-9	Cardiac output/Body surface area	Heart.ventricle.right
 56524	8757-7	Cardiac output/Body surface area	Heart.ventricle.right
 56525	8758-5	Cardiac output/Body surface area	Heart.ventricle.right
@@ -62444,6 +62445,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 56624	8830-2	Hemodynamic resistance	Systemic vasculature
 56625	8831-0	Hemodynamic resistance	Systemic vasculature
 56626	8832-8	Hemodynamic resistance/Body surface area	Pulmonary vasculature
+56839	9262-7	Fluid output.total	^Patient
 56627	8833-6	Hemodynamic resistance/Body surface area	Pulmonary vasculature
 56628	8834-4	Hemodynamic resistance/Body surface area	Pulmonary vasculature
 56629	8835-1	Hemodynamic resistance/Body surface area	Systemic vasculature
@@ -62654,8 +62656,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 56835	9258-5	Fluid output.total	^Patient
 56836	9259-3	Fluid output.total	^Patient
 56837	9260-1	Fluid output.total	^Patient
-56838	9261-9	Fluid output.total	^Patient
-56839	9262-7	Fluid output.total	^Patient
 56840	9263-5	Fluid output route	*
 56841	9264-3	Apache II score	^Patient
 56842	9265-0	Apache III score	^Patient
@@ -84803,7 +84803,7 @@ SET search_path = db, pg_catalog;
 --
 
 COPY lu_version (pk, lu_major, lu_minor) FROM stdin;
-140	0	148
+141	0	149
 \.
 
 

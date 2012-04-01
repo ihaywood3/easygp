@@ -72,6 +72,8 @@ Private comms As Collection                                             'of comm
 Private printer_name As String 
 Private Sole_Traders As Collection
 Private Sole_Trader As Collection
+Private Deleted_WorkcoverVisit As Collection
+Private Deleted_Workcoverclaim As Collection
 
 Public Sub set_embedded(flag As Boolean)
    
@@ -1051,6 +1053,7 @@ Public Sub cvwVisits_Select()
    visit!fitness_unfit_to = currentconsult!workcover_claims[pk_view_visits]!fitness_unfit_to
    visit!fitness_perm_mod_duties_from = currentconsult!workcover_claims[pk_view_visits]!fitness_perm_mod_duties_from
    visit!latex = currentconsult!workcover_claims[pk_view_visits]!latex
+   visit!fk_progressnote = currentconsult!workcover_claims[pk_view_visits]!fk_progressnote
    'Editing a pre-existing claim - really need to allow editing of th progress note
    ' but later FIXME put in an audit-trail to show what was changed
    fk_progressnote = -1  'new unless editing a visit
@@ -1141,14 +1144,48 @@ Public Sub EditAreaButtons_Click()
 End
 
 Public Sub Visit_Delete()
+   '-------------------------------------------------------------------------
+   'Deletes a visit and or claim (if had a single visit or only 1 visit left) 
+   'if fk_consult = currentconsult.pk then it removed from the backend
+   'otherwise it is marked as deleted
+   '-------------------------------------------------------------------------   
    
-   'Can only delete visit if 
+   Dim fk_reason As Integer
+   Dim PN As Collection
+   Dim reason As String 
+   Dim R As Result
+   
    If bClaimLoaded = False Then
       lvwClaims_Select()
       Claim_Display()
    End If  
    Print visit, claim
-   
+   If Message.Question("Do you really want to delete this workcover form?", "Yes", "No") = 2 Then Return
+   ' cvwVisits.MoveCurrent()
+    For Each PN In currentconsult!progress_notes
+       If PN!pk_progressnote = fk_progressnote Then
+          Faudit.Init(": Delete Workcover Form", "clin_consult.progressnotes/clin_workcover.visits", "Workcover summary:" & pn!notes)
+          fk_reason = FAudit.ShowModal() 
+          modDBConnect.CommitTrans()  'otherwise if a new reason it won't have been comitted
+          pn!notes = Replace$(pn!notes, "<TABLE", "<TABLE BACKGROUND='/tmp/watermark.png' BGCOLOR='#E7E7E7' ") 'FIXME EXPERIMENTAL PUT IN PROPER NOTE
+          reason = modAudit.Get_Reason_Using_pk(fk_reason)
+          pn!notes = Replace(pn!notes, "</table><HR>", "</TABLE><small><BR><B><I>Audit note:</B> this workcover form was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small><HR>")
+          modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
+          modDBConnect.update("clin_workcover.visits", Null, ["pk": visit!fk_visit, "deleted": True])
+          'FIXME: DELETE CLAIM TO IF NO VISITS LEFT ON THIS CLAIM.
+          R = modDBConnect.exec_query("Select * from clin_workcover.visits where fk_claim= " & visit!fk_claim & " AND deleted = False")
+          If R.count = 0 Thenvisit!fk_claim
+             modDBConnect.update("clin_workcover.claims", Null, ["pk": visit!fk_claim, "deleted": True])
+          Endif
+          modDBConnect.CommitTrans() 
+          Deleted_WorkcoverVisit = visit
+          Deleted_Workcoverclaim = claim
+          FClinical.Refresh_Section(const.cSection_Workcover)
+          FClinical.Refresh_AllPreviousNotes()
+          Break
+       Endif
+    Next
+    Reload()
 End
 
 Public Sub Visit_Edit()

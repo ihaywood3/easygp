@@ -455,3 +455,7 @@ grant all on clerical.schedule to staff;
 grant all on clerical.prices to staff;
 grant select on clerical.lu_billing_type to staff;
 grant select on clerical.vwFees to staff;
+grant select on drugs.vwDrugs to staff;
+grant select on drugs.drugs.vwdistinctbrandsforgenericproduct to staff;
+grant usage on schema drugs to staff;
+grant select on drugs.brand to staff;

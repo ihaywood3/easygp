@@ -4,10 +4,9 @@
 
 SET statement_timeout = 0;
 SET client_encoding = 'UTF8';
-SET standard_conforming_strings = off;
+SET standard_conforming_strings = on;
 SET check_function_bodies = false;
 SET client_min_messages = warning;
-SET escape_string_warning = off;
 
 --
 -- Name: admin; Type: SCHEMA; Schema: -; Owner: -
@@ -280,10 +279,17 @@ CREATE SCHEMA research;
 
 
 --
--- Name: plpgsql; Type: PROCEDURAL LANGUAGE; Schema: -; Owner: -
+-- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: -
 --
 
-CREATE OR REPLACE PROCEDURAL LANGUAGE plpgsql;
+CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
+
+
+--
+-- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
 
 
 SET search_path = clerical, pg_catalog;
@@ -1713,7 +1719,8 @@ COMMENT ON TABLE lu_audit_reasons IS 'keeps reasons for the audit action on per-
 
 CREATE TABLE lu_consult_type (
     pk integer NOT NULL,
-    type text NOT NULL
+    type text NOT NULL,
+    user_selectable boolean DEFAULT true
 );
 
 
@@ -5626,7 +5633,7 @@ CREATE SEQUENCE vworganisations_pk_seq
 --
 
 CREATE VIEW vworganisationsemployees AS
-    SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, employees.memo, branches.fk_category, NULL::unknown AS category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, employees.pk AS fk_employee, CASE WHEN (employees.pk > 0) THEN (((title.title || ' '::text) || (persons.firstname || ' '::text)) || persons.surname) ELSE 'Nothing'::text END AS wholename, employees.fk_occupation, employees.fk_status, employee_status.status AS employee_status, employees.deleted AS employee_deleted, occupations.occupation, persons.pk AS fk_person, persons.firstname, persons.surname, persons.salutation, persons.birthdate, persons.deceased, persons.date_deceased, persons.retired, persons.fk_ethnicity, persons.fk_language, persons.fk_marital, persons.fk_title, persons.fk_sex, sex.sex, title.title FROM (((((((((((data_employees employees JOIN data_branches branches ON ((employees.fk_branch = branches.pk))) LEFT JOIN lu_employee_status employee_status ON ((employees.fk_status = employee_status.pk))) JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN common.lu_occupations occupations ON ((employees.fk_occupation = occupations.pk))) LEFT JOIN data_persons persons ON ((employees.fk_person = persons.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) WHERE (employees.fk_person IS NOT NULL) UNION SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, 0 AS fk_employee, ((organisations.organisation || ' '::text) || branches.branch) AS wholename, 0 AS fk_occupation, 0 AS fk_status, NULL::unknown AS employee_status, false AS employee_deleted, NULL::unknown AS occupation, 0 AS fk_person, NULL::unknown AS firstname, NULL::unknown AS surname, NULL::unknown AS salutation, NULL::unknown AS birthdate, false AS deceased, NULL::unknown AS date_deceased, false AS retired, 0 AS fk_ethnicity, 0 AS fk_language, 0 AS fk_marital, 0 AS fk_title, 0 AS fk_sex, NULL::unknown AS sex, NULL::unknown AS title FROM ((((((data_branches branches JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) ORDER BY 1, 3, 4, 29, 28;
+    SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, employees.memo, branches.fk_category, NULL::character varying AS category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, employees.pk AS fk_employee, CASE WHEN (employees.pk > 0) THEN (((title.title || ' '::text) || (persons.firstname || ' '::text)) || persons.surname) ELSE 'Nothing'::text END AS wholename, employees.fk_occupation, employees.fk_status, employee_status.status AS employee_status, employees.deleted AS employee_deleted, occupations.occupation, persons.pk AS fk_person, persons.firstname, persons.surname, persons.salutation, persons.birthdate, persons.deceased, persons.date_deceased, persons.retired, persons.fk_ethnicity, persons.fk_language, persons.fk_marital, persons.fk_title, persons.fk_sex, sex.sex, title.title FROM (((((((((((data_employees employees JOIN data_branches branches ON ((employees.fk_branch = branches.pk))) LEFT JOIN lu_employee_status employee_status ON ((employees.fk_status = employee_status.pk))) JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN common.lu_occupations occupations ON ((employees.fk_occupation = occupations.pk))) LEFT JOIN data_persons persons ON ((employees.fk_person = persons.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) WHERE (employees.fk_person IS NOT NULL) UNION SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, 0 AS fk_employee, ((organisations.organisation || ' '::text) || branches.branch) AS wholename, 0 AS fk_occupation, 0 AS fk_status, NULL::text AS employee_status, false AS employee_deleted, NULL::text AS occupation, 0 AS fk_person, NULL::text AS firstname, NULL::text AS surname, NULL::text AS salutation, NULL::date AS birthdate, false AS deceased, NULL::date AS date_deceased, false AS retired, 0 AS fk_ethnicity, 0 AS fk_language, 0 AS fk_marital, 0 AS fk_title, 0 AS fk_sex, NULL::text AS sex, NULL::text AS title FROM ((((((data_branches branches JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) ORDER BY 1, 3, 4, 29, 28;
 
 
 --
@@ -5649,7 +5656,7 @@ SET search_path = clin_history, pg_catalog;
 --
 
 CREATE VIEW vwteamcaremembers AS
-    SELECT team_care_members.pk, team_care_members.fk_pasthistory, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_branch, vworganisationsemployees.fk_person, vworganisationsemployees.fk_employee, CASE WHEN (vworganisationsemployees.fk_employee = 0) THEN vworganisationsemployees.branch ELSE (((vworganisationsemployees.title || ' '::text) || (vworganisationsemployees.firstname || ' '::text)) || vworganisationsemployees.surname) END AS wholename, (((vworganisationsemployees.organisation || ' '::text) || (vworganisationsemployees.branch || ' '::text)) || CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN ''::text ELSE ((((vworganisationsemployees.street1 || ' '::text) || vworganisationsemployees.town) || ' '::text) || (vworganisationsemployees.postcode)::text) END) AS summary, team_care_members.responsibility FROM (team_care_members LEFT JOIN contacts.vworganisationsemployees ON (((team_care_members.fk_branch = vworganisationsemployees.fk_branch) AND (team_care_members.fk_employee = vworganisationsemployees.fk_employee)))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_branch > 0)) UNION SELECT team_care_members.pk, team_care_members.fk_pasthistory, NULL::unknown AS fk_organisation, NULL::unknown AS fk_branch, vwpersonsincludingpatients.fk_person, NULL::unknown AS fk_employee, vwpersonsincludingpatients.wholename, ((((vwpersonsincludingpatients.street1 || ' '::text) || vwpersonsincludingpatients.town) || ' '::text) || (vwpersonsincludingpatients.postcode)::text) AS summary, team_care_members.responsibility FROM ((team_care_members JOIN contacts.vwpersonsincludingpatients ON ((team_care_members.fk_person = vwpersonsincludingpatients.fk_person))) LEFT JOIN contacts.vworganisationsemployees ON ((team_care_members.fk_person = vworganisationsemployees.fk_person))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_employee = 0)) ORDER BY 2;
+    SELECT team_care_members.pk, team_care_members.fk_pasthistory, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_branch, vworganisationsemployees.fk_person, vworganisationsemployees.fk_employee, CASE WHEN (vworganisationsemployees.fk_employee = 0) THEN vworganisationsemployees.branch ELSE (((vworganisationsemployees.title || ' '::text) || (vworganisationsemployees.firstname || ' '::text)) || vworganisationsemployees.surname) END AS wholename, (((vworganisationsemployees.organisation || ' '::text) || (vworganisationsemployees.branch || ' '::text)) || CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN ''::text ELSE ((((vworganisationsemployees.street1 || ' '::text) || vworganisationsemployees.town) || ' '::text) || (vworganisationsemployees.postcode)::text) END) AS summary, team_care_members.responsibility FROM (team_care_members LEFT JOIN contacts.vworganisationsemployees ON (((team_care_members.fk_branch = vworganisationsemployees.fk_branch) AND (team_care_members.fk_employee = vworganisationsemployees.fk_employee)))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_branch > 0)) UNION SELECT team_care_members.pk, team_care_members.fk_pasthistory, NULL::integer AS fk_organisation, NULL::integer AS fk_branch, vwpersonsincludingpatients.fk_person, NULL::integer AS fk_employee, vwpersonsincludingpatients.wholename, ((((vwpersonsincludingpatients.street1 || ' '::text) || vwpersonsincludingpatients.town) || ' '::text) || (vwpersonsincludingpatients.postcode)::text) AS summary, team_care_members.responsibility FROM ((team_care_members JOIN contacts.vwpersonsincludingpatients ON ((team_care_members.fk_person = vwpersonsincludingpatients.fk_person))) LEFT JOIN contacts.vworganisationsemployees ON ((team_care_members.fk_person = vworganisationsemployees.fk_person))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_employee = 0)) ORDER BY 2;
 
 
 SET search_path = clin_measurements, pg_catalog;
@@ -6356,7 +6363,7 @@ CREATE VIEW vwmentalhealthplans AS
 --
 
 CREATE VIEW vwteamcaremembers AS
-    SELECT team_care_members.pk, team_care_members.fk_plan, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_branch, vworganisationsemployees.fk_person, CASE WHEN (vworganisationsemployees.fk_employee = 0) THEN vworganisationsemployees.branch ELSE (((vworganisationsemployees.title || ' '::text) || (vworganisationsemployees.firstname || ' '::text)) || vworganisationsemployees.surname) END AS wholename, (((vworganisationsemployees.organisation || ' '::text) || (vworganisationsemployees.branch || ' '::text)) || CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN ''::text ELSE ((((vworganisationsemployees.street1 || ' '::text) || vworganisationsemployees.town) || ' '::text) || (vworganisationsemployees.postcode)::text) END) AS summary, team_care_members.responsibility FROM (team_care_members LEFT JOIN contacts.vworganisationsemployees ON (((team_care_members.fk_branch = vworganisationsemployees.fk_branch) AND (team_care_members.fk_employee = vworganisationsemployees.fk_employee)))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_branch > 0)) UNION SELECT team_care_members.pk, team_care_members.fk_plan, NULL::unknown AS fk_organisation, NULL::unknown AS fk_branch, vwpersonsincludingpatients.fk_person, vwpersonsincludingpatients.wholename, ((((vwpersonsincludingpatients.street1 || ' '::text) || vwpersonsincludingpatients.town) || ' '::text) || (vwpersonsincludingpatients.postcode)::text) AS summary, team_care_members.responsibility FROM ((team_care_members JOIN contacts.vwpersonsincludingpatients ON ((team_care_members.fk_person = vwpersonsincludingpatients.fk_person))) LEFT JOIN contacts.vworganisationsemployees ON ((team_care_members.fk_person = vworganisationsemployees.fk_person))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_employee IS NULL)) ORDER BY 2;
+    SELECT team_care_members.pk, team_care_members.fk_plan, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_branch, vworganisationsemployees.fk_person, CASE WHEN (vworganisationsemployees.fk_employee = 0) THEN vworganisationsemployees.branch ELSE (((vworganisationsemployees.title || ' '::text) || (vworganisationsemployees.firstname || ' '::text)) || vworganisationsemployees.surname) END AS wholename, (((vworganisationsemployees.organisation || ' '::text) || (vworganisationsemployees.branch || ' '::text)) || CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN ''::text ELSE ((((vworganisationsemployees.street1 || ' '::text) || vworganisationsemployees.town) || ' '::text) || (vworganisationsemployees.postcode)::text) END) AS summary, team_care_members.responsibility FROM (team_care_members LEFT JOIN contacts.vworganisationsemployees ON (((team_care_members.fk_branch = vworganisationsemployees.fk_branch) AND (team_care_members.fk_employee = vworganisationsemployees.fk_employee)))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_branch > 0)) UNION SELECT team_care_members.pk, team_care_members.fk_plan, NULL::integer AS fk_organisation, NULL::integer AS fk_branch, vwpersonsincludingpatients.fk_person, vwpersonsincludingpatients.wholename, ((((vwpersonsincludingpatients.street1 || ' '::text) || vwpersonsincludingpatients.town) || ' '::text) || (vwpersonsincludingpatients.postcode)::text) AS summary, team_care_members.responsibility FROM ((team_care_members JOIN contacts.vwpersonsincludingpatients ON ((team_care_members.fk_person = vwpersonsincludingpatients.fk_person))) LEFT JOIN contacts.vworganisationsemployees ON ((team_care_members.fk_person = vworganisationsemployees.fk_person))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_employee IS NULL)) ORDER BY 2;
 
 
 SET search_path = clin_pregnancy, pg_catalog;
@@ -6941,7 +6948,8 @@ CREATE TABLE brand (
     from_pbs boolean DEFAULT false NOT NULL,
     original_tga_text text,
     original_tga_code character varying(12),
-    pk integer NOT NULL
+    pk integer NOT NULL,
+    product_information_filename text
 );
 
 
@@ -6987,7 +6995,8 @@ COMMENT ON COLUMN brand.original_tga_code IS 'drugs imported from TGA database, 
 
 CREATE TABLE form (
     pk integer NOT NULL,
-    form text NOT NULL
+    form text NOT NULL,
+    volume_amount_required boolean DEFAULT false
 );
 
 
@@ -7007,7 +7016,8 @@ CREATE TABLE product (
     original_pbs_fs text,
     free_comment text,
     updated_at timestamp without time zone DEFAULT now(),
-    poison smallint DEFAULT 4
+    poison smallint DEFAULT 4,
+    shared boolean DEFAULT false
 );
 
 
@@ -9302,7 +9312,7 @@ SET search_path = clin_requests, pg_catalog;
 --
 
 CREATE VIEW vwrequestproviders AS
-    SELECT request_providers.pk AS pk_request_provider, lu_request_type.type, request_providers.fk_headoffice_branch, request_providers.fk_default_branch, request_providers.fk_employee, request_providers.fk_person, request_providers.fk_lu_request_type, request_providers.deleted AS request_provider_deleted, data_organisations.organisation, lu_categories.category, data_branches.branch AS headoffice_branch, data_branches.fk_organisation, data_branches.deleted AS headoffice_branch_deleted, data_addresses.street1 AS headoffice_street1, data_addresses.street2 AS headoffice_street2, data_addresses.deleted AS headoffice_address_deleted, lu_towns.postcode AS headoffice_postcode, lu_towns.town AS headoffice_town, lu_towns.state AS headoffice_state, NULL::unknown AS wholename, NULL::unknown AS firstname, NULL::unknown AS surname, NULL::unknown AS salutation, 0 AS fk_title, NULL::unknown AS title, 0 AS fk_sex, NULL::unknown AS sex, 0 AS fk_occupation, NULL::unknown AS occupation, data_branches1.branch AS default_branch, data_addresses1.street1 AS default_branch_street1, data_addresses1.street2 AS default_branch_street2, lu_towns1.postcode AS default_branch_postcode, lu_towns1.town AS default_branch_town, lu_towns1.state AS default_branch_state FROM (((((((((request_providers JOIN contacts.data_branches ON ((request_providers.fk_headoffice_branch = data_branches.pk))) JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) JOIN contacts.lu_categories ON ((data_branches.fk_category = lu_categories.pk))) JOIN lu_request_type ON ((request_providers.fk_lu_request_type = lu_request_type.pk))) LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) JOIN contacts.data_branches data_branches1 ON ((request_providers.fk_default_branch = data_branches1.pk))) LEFT JOIN contacts.data_addresses data_addresses1 ON ((data_branches1.fk_address = data_addresses1.pk))) LEFT JOIN contacts.lu_towns lu_towns1 ON ((data_addresses1.fk_town = lu_towns1.pk))) WHERE ((request_providers.fk_employee = 0) AND (request_providers.fk_person = 0)) UNION SELECT request_providers.pk AS pk_request_provider, lu_request_type.type, request_providers.fk_headoffice_branch, request_providers.fk_default_branch, request_providers.fk_employee, request_providers.fk_person, request_providers.fk_lu_request_type, request_providers.deleted AS request_provider_deleted, NULL::unknown AS organisation, NULL::unknown AS category, 'HEAD OFFICE' AS headoffice_branch, 0 AS fk_organisation, NULL::unknown AS headoffice_branch_deleted, vwpersons.street1 AS headoffice_street1, vwpersons.street2 AS headoffice_street2, NULL::unknown AS headoffice_address_deleted, vwpersons.postcode AS headoffice_postcode, vwpersons.town AS headoffice_town, vwpersons.state AS headoffice_state, vwpersons.wholename, vwpersons.firstname, vwpersons.surname, vwpersons.salutation, vwpersons.fk_title, vwpersons.title, vwpersons.fk_sex, vwpersons.sex, vwpersons.fk_occupation, vwpersons.occupation, NULL::unknown AS default_branch, vwpersons.street1 AS default_branch_street1, vwpersons.street2 AS default_branch_street2, vwpersons.postcode AS default_branch_postcode, vwpersons.town AS default_branch_town, vwpersons.state AS default_branch_state FROM ((request_providers JOIN lu_request_type ON ((request_providers.fk_lu_request_type = lu_request_type.pk))) JOIN contacts.vwpersons ON ((request_providers.fk_person = vwpersons.fk_person))) WHERE (request_providers.fk_person <> 0) ORDER BY 7;
+    SELECT request_providers.pk AS pk_request_provider, lu_request_type.type, request_providers.fk_headoffice_branch, request_providers.fk_default_branch, request_providers.fk_employee, request_providers.fk_person, request_providers.fk_lu_request_type, request_providers.deleted AS request_provider_deleted, data_organisations.organisation, lu_categories.category, data_branches.branch AS headoffice_branch, data_branches.fk_organisation, data_branches.deleted AS headoffice_branch_deleted, data_addresses.street1 AS headoffice_street1, data_addresses.street2 AS headoffice_street2, data_addresses.deleted AS headoffice_address_deleted, lu_towns.postcode AS headoffice_postcode, lu_towns.town AS headoffice_town, lu_towns.state AS headoffice_state, NULL::text AS wholename, NULL::text AS firstname, NULL::text AS surname, NULL::text AS salutation, 0 AS fk_title, NULL::text AS title, 0 AS fk_sex, NULL::text AS sex, 0 AS fk_occupation, NULL::text AS occupation, data_branches1.branch AS default_branch, data_addresses1.street1 AS default_branch_street1, data_addresses1.street2 AS default_branch_street2, lu_towns1.postcode AS default_branch_postcode, lu_towns1.town AS default_branch_town, lu_towns1.state AS default_branch_state FROM (((((((((request_providers JOIN contacts.data_branches ON ((request_providers.fk_headoffice_branch = data_branches.pk))) JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) JOIN contacts.lu_categories ON ((data_branches.fk_category = lu_categories.pk))) JOIN lu_request_type ON ((request_providers.fk_lu_request_type = lu_request_type.pk))) LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) JOIN contacts.data_branches data_branches1 ON ((request_providers.fk_default_branch = data_branches1.pk))) LEFT JOIN contacts.data_addresses data_addresses1 ON ((data_branches1.fk_address = data_addresses1.pk))) LEFT JOIN contacts.lu_towns lu_towns1 ON ((data_addresses1.fk_town = lu_towns1.pk))) WHERE ((request_providers.fk_employee = 0) AND (request_providers.fk_person = 0)) UNION SELECT request_providers.pk AS pk_request_provider, lu_request_type.type, request_providers.fk_headoffice_branch, request_providers.fk_default_branch, request_providers.fk_employee, request_providers.fk_person, request_providers.fk_lu_request_type, request_providers.deleted AS request_provider_deleted, NULL::text AS organisation, NULL::character varying AS category, 'HEAD OFFICE'::text AS headoffice_branch, 0 AS fk_organisation, NULL::boolean AS headoffice_branch_deleted, vwpersons.street1 AS headoffice_street1, vwpersons.street2 AS headoffice_street2, NULL::boolean AS headoffice_address_deleted, vwpersons.postcode AS headoffice_postcode, vwpersons.town AS headoffice_town, vwpersons.state AS headoffice_state, vwpersons.wholename, vwpersons.firstname, vwpersons.surname, vwpersons.salutation, vwpersons.fk_title, vwpersons.title, vwpersons.fk_sex, vwpersons.sex, vwpersons.fk_occupation, vwpersons.occupation, NULL::text AS default_branch, vwpersons.street1 AS default_branch_street1, vwpersons.street2 AS default_branch_street2, vwpersons.postcode AS default_branch_postcode, vwpersons.town AS default_branch_town, vwpersons.state AS default_branch_state FROM ((request_providers JOIN lu_request_type ON ((request_providers.fk_lu_request_type = lu_request_type.pk))) JOIN contacts.vwpersons ON ((request_providers.fk_person = vwpersons.fk_person))) WHERE (request_providers.fk_person <> 0) ORDER BY 7;
 
 
 --
@@ -9514,7 +9524,7 @@ CREATE TABLE unmatched_staff (
 --
 
 CREATE VIEW vwsendingentities AS
-    ((SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, NULL::unknown AS branch, NULL::unknown AS organisation, false AS organisation_deleted, NULL::unknown AS fk_organisation, false AS branch_deleted, NULL::unknown AS fk_address_organisation, NULL::unknown AS fk_category_organisation, NULL::unknown AS organisation_category, NULL::unknown AS organisation_street1, NULL::unknown AS organisation_street2, NULL::unknown AS fk_town_organisation, NULL::unknown AS organisation_postal_address, NULL::unknown AS organisation_head_office, NULL::unknown AS organisation_postcode, NULL::unknown AS organisation_town, NULL::unknown AS organisation_state, vwpersons.firstname, vwpersons.surname, vwpersons.title, vwpersons.occupation AS person_occupation, vwpersons.sex, vwpersons.fk_address AS fk_address_person, vwpersons.postcode AS person_postcode, vwpersons.street1 AS person_street1, vwpersons.street2 AS person_street2, vwpersons.fk_town AS fk_town_person, vwpersons.town AS person_town, vwpersons.state AS person_state FROM ((((sending_entities JOIN contacts.vwpersons ON ((sending_entities.fk_person = vwpersons.fk_person))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE (((vwpersons.deleted = false) AND (sending_entities.fk_branch = 0)) AND (sending_entities.fk_employee = 0)) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, vworganisations.branch, vworganisations.organisation, vworganisations.organisation_deleted, vworganisations.fk_organisation, vworganisations.branch_deleted, vworganisations.fk_address AS fk_address_organisation, vworganisations.fk_category AS fk_category_organisation, vworganisations.category AS organisation_category, vworganisations.street1 AS organisation_street1, vworganisations.street2 AS organisation_street2, vworganisations.fk_town AS fk_town_organisation, vworganisations.postal_address AS organisation_postal_address, vworganisations.head_office AS organisation_head_office, vworganisations.postcode AS organisation_postcode, vworganisations.town AS organisation_town, vworganisations.state AS organisation_state, NULL::unknown AS firstname, NULL::unknown AS surname, NULL::unknown AS title, NULL::unknown AS person_occupation, NULL::unknown AS sex, NULL::unknown AS fk_address_person, NULL::unknown AS person_postcode, NULL::unknown AS person_street1, NULL::unknown AS person_street2, NULL::unknown AS fk_town_person, NULL::unknown AS person_town, NULL::unknown AS person_state FROM ((((sending_entities JOIN contacts.vworganisations ON ((sending_entities.fk_branch = vworganisations.fk_branch))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE (((vworganisations.branch_deleted = false) AND (sending_entities.fk_employee = 0)) AND (sending_entities.fk_person = 0))) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, vworganisations.branch, vworganisations.organisation, vworganisations.organisation_deleted, vworganisations.fk_organisation, vworganisations.branch_deleted, vworganisations.fk_address AS fk_address_organisation, vworganisations.fk_category AS fk_category_organisation, vworganisations.category AS organisation_category, vworganisations.street1 AS organisation_street1, vworganisations.street2 AS organisation_street2, vworganisations.fk_town AS fk_town_organisation, vworganisations.postal_address AS organisation_postal_address, vworganisations.head_office AS organisation_head_office, vworganisations.postcode AS organisation_postcode, vworganisations.town AS organisation_town, vworganisations.state AS organisation_state, vwpersons.firstname, vwpersons.surname, vwpersons.title, vwpersons.occupation AS person_occupation, vwpersons.sex, vwpersons.fk_address AS fk_address_person, vwpersons.postcode AS person_postcode, vwpersons.street1 AS person_street1, vwpersons.street2 AS person_street2, vwpersons.fk_town AS fk_town_person, vwpersons.town AS person_town, vwpersons.state AS person_state FROM ((((((sending_entities JOIN contacts.vworganisations ON ((sending_entities.fk_branch = vworganisations.fk_branch))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) JOIN contacts.data_employees ON ((sending_entities.fk_employee = data_employees.pk))) JOIN contacts.vwpersons ON ((data_employees.fk_person = vwpersons.fk_person))) WHERE ((vwpersons.deleted = false) AND (data_employees.deleted = false))) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, NULL::unknown AS branch, NULL::unknown AS organisation, NULL::unknown AS organisation_deleted, NULL::unknown AS fk_organisation, NULL::unknown AS branch_deleted, NULL::unknown AS fk_address_organisation, NULL::unknown AS fk_category_organisation, NULL::unknown AS organisation_category, NULL::unknown AS organisation_street1, NULL::unknown AS organisation_street2, NULL::unknown AS fk_town_organisation, false AS organisation_postal_address, false AS organisation_head_office, NULL::unknown AS organisation_postcode, NULL::unknown AS organisation_town, NULL::unknown AS organisation_state, NULL::unknown AS firstname, NULL::unknown AS surname, NULL::unknown AS title, NULL::unknown AS person_occupation, NULL::unknown AS sex, NULL::unknown AS fk_address_person, NULL::unknown AS person_postcode, NULL::unknown AS person_street1, NULL::unknown AS person_street2, NULL::unknown AS fk_town_person, NULL::unknown AS person_town, NULL::unknown AS person_state FROM (((sending_entities LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE (((sending_entities.fk_branch IS NULL) AND (sending_entities.fk_employee IS NULL)) AND (sending_entities.fk_person IS NULL));
+    ((SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, NULL::text AS branch, NULL::text AS organisation, false AS organisation_deleted, NULL::integer AS fk_organisation, false AS branch_deleted, NULL::integer AS fk_address_organisation, NULL::integer AS fk_category_organisation, NULL::character varying AS organisation_category, NULL::text AS organisation_street1, NULL::text AS organisation_street2, NULL::integer AS fk_town_organisation, NULL::boolean AS organisation_postal_address, NULL::boolean AS organisation_head_office, NULL::character varying AS organisation_postcode, NULL::text AS organisation_town, NULL::character varying AS organisation_state, vwpersons.firstname, vwpersons.surname, vwpersons.title, vwpersons.occupation AS person_occupation, vwpersons.sex, vwpersons.fk_address AS fk_address_person, vwpersons.postcode AS person_postcode, vwpersons.street1 AS person_street1, vwpersons.street2 AS person_street2, vwpersons.fk_town AS fk_town_person, vwpersons.town AS person_town, vwpersons.state AS person_state FROM ((((sending_entities JOIN contacts.vwpersons ON ((sending_entities.fk_person = vwpersons.fk_person))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE (((vwpersons.deleted = false) AND (sending_entities.fk_branch = 0)) AND (sending_entities.fk_employee = 0)) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, vworganisations.branch, vworganisations.organisation, vworganisations.organisation_deleted, vworganisations.fk_organisation, vworganisations.branch_deleted, vworganisations.fk_address AS fk_address_organisation, vworganisations.fk_category AS fk_category_organisation, vworganisations.category AS organisation_category, vworganisations.street1 AS organisation_street1, vworganisations.street2 AS organisation_street2, vworganisations.fk_town AS fk_town_organisation, vworganisations.postal_address AS organisation_postal_address, vworganisations.head_office AS organisation_head_office, vworganisations.postcode AS organisation_postcode, vworganisations.town AS organisation_town, vworganisations.state AS organisation_state, NULL::text AS firstname, NULL::text AS surname, NULL::text AS title, NULL::text AS person_occupation, NULL::text AS sex, NULL::integer AS fk_address_person, NULL::character varying AS person_postcode, NULL::text AS person_street1, NULL::text AS person_street2, NULL::integer AS fk_town_person, NULL::text AS person_town, NULL::character varying AS person_state FROM ((((sending_entities JOIN contacts.vworganisations ON ((sending_entities.fk_branch = vworganisations.fk_branch))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE (((vworganisations.branch_deleted = false) AND (sending_entities.fk_employee = 0)) AND (sending_entities.fk_person = 0))) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, vworganisations.branch, vworganisations.organisation, vworganisations.organisation_deleted, vworganisations.fk_organisation, vworganisations.branch_deleted, vworganisations.fk_address AS fk_address_organisation, vworganisations.fk_category AS fk_category_organisation, vworganisations.category AS organisation_category, vworganisations.street1 AS organisation_street1, vworganisations.street2 AS organisation_street2, vworganisations.fk_town AS fk_town_organisation, vworganisations.postal_address AS organisation_postal_address, vworganisations.head_office AS organisation_head_office, vworganisations.postcode AS organisation_postcode, vworganisations.town AS organisation_town, vworganisations.state AS organisation_state, vwpersons.firstname, vwpersons.surname, vwpersons.title, vwpersons.occupation AS person_occupation, vwpersons.sex, vwpersons.fk_address AS fk_address_person, vwpersons.postcode AS person_postcode, vwpersons.street1 AS person_street1, vwpersons.street2 AS person_street2, vwpersons.fk_town AS fk_town_person, vwpersons.town AS person_town, vwpersons.state AS person_state FROM ((((((sending_entities JOIN contacts.vworganisations ON ((sending_entities.fk_branch = vworganisations.fk_branch))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) JOIN contacts.data_employees ON ((sending_entities.fk_employee = data_employees.pk))) JOIN contacts.vwpersons ON ((data_employees.fk_person = vwpersons.fk_person))) WHERE ((vwpersons.deleted = false) AND (data_employees.deleted = false))) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, NULL::text AS branch, NULL::text AS organisation, NULL::boolean AS organisation_deleted, NULL::integer AS fk_organisation, NULL::boolean AS branch_deleted, NULL::integer AS fk_address_organisation, NULL::integer AS fk_category_organisation, NULL::character varying AS organisation_category, NULL::text AS organisation_street1, NULL::text AS organisation_street2, NULL::integer AS fk_town_organisation, false AS organisation_postal_address, false AS organisation_head_office, NULL::character varying AS organisation_postcode, NULL::text AS organisation_town, NULL::character varying AS organisation_state, NULL::text AS firstname, NULL::text AS surname, NULL::text AS title, NULL::text AS person_occupation, NULL::text AS sex, NULL::integer AS fk_address_person, NULL::character varying AS person_postcode, NULL::text AS person_street1, NULL::text AS person_street2, NULL::integer AS fk_town_person, NULL::text AS person_town, NULL::character varying AS person_state FROM (((sending_entities LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE (((sending_entities.fk_branch IS NULL) AND (sending_entities.fk_employee IS NULL)) AND (sending_entities.fk_person IS NULL));
 
 
 --
@@ -9988,7 +9998,8 @@ CREATE TABLE claims (
     memo text,
     identifier text NOT NULL,
     fk_person integer,
-    accepted boolean
+    accepted boolean,
+    deleted boolean DEFAULT false
 );
 
 
@@ -10054,6 +10065,13 @@ COMMENT ON COLUMN claims.accepted IS 'If True then the work cover claim as been 
 
 
 --
+-- Name: COLUMN claims.deleted; Type: COMMENT; Schema: clin_workcover; Owner: -
+--
+
+COMMENT ON COLUMN claims.deleted IS 'if true the claim is marked as deleted';
+
+
+--
 -- Name: claims_pk_seq; Type: SEQUENCE; Schema: clin_workcover; Owner: -
 --
 
@@ -10070,57 +10088,6 @@ CREATE SEQUENCE claims_pk_seq
 --
 
 ALTER SEQUENCE claims_pk_seq OWNED BY claims.pk;
-
-
---
--- Name: link_claim_documents; Type: TABLE; Schema: clin_workcover; Owner: -; Tablespace: 
---
-
-CREATE TABLE link_claim_documents (
-    pk integer NOT NULL,
-    fk_document integer,
-    fk_encounter integer NOT NULL
-);
-
-
---
--- Name: TABLE link_claim_documents; Type: COMMENT; Schema: clin_workcover; Owner: -
---
-
-COMMENT ON TABLE link_claim_documents IS 'link table to link documents received to a particular work-cover encounter';
-
-
---
--- Name: COLUMN link_claim_documents.fk_document; Type: COMMENT; Schema: clin_workcover; Owner: -
---
-
-COMMENT ON COLUMN link_claim_documents.fk_document IS 'foreign key to documents table (when it exists) to link a document to this encounter';
-
-
---
--- Name: COLUMN link_claim_documents.fk_encounter; Type: COMMENT; Schema: clin_workcover; Owner: -
---
-
-COMMENT ON COLUMN link_claim_documents.fk_encounter IS 'foreign key to encounter table';
-
-
---
--- Name: link_claim_documents_pk_seq; Type: SEQUENCE; Schema: clin_workcover; Owner: -
---
-
-CREATE SEQUENCE link_claim_documents_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: link_claim_documents_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_workcover; Owner: -
---
-
-ALTER SEQUENCE link_claim_documents_pk_seq OWNED BY link_claim_documents.pk;
 
 
 --
@@ -10232,7 +10199,8 @@ CREATE TABLE visits (
     fk_coding_system integer,
     capabilities text,
     certificate_date date,
-    latex text
+    latex text,
+    deleted boolean DEFAULT false
 );
 
 
@@ -10340,6 +10308,13 @@ COMMENT ON COLUMN visits.latex IS 'the LaTex definition of the workcover form';
 
 
 --
+-- Name: COLUMN visits.deleted; Type: COMMENT; Schema: clin_workcover; Owner: -
+--
+
+COMMENT ON COLUMN visits.deleted IS 'if true the visit is marked as deleted';
+
+
+--
 -- Name: visits_pk_seq; Type: SEQUENCE; Schema: clin_workcover; Owner: -
 --
 
@@ -10363,15 +10338,16 @@ ALTER SEQUENCE visits_pk_seq OWNED BY visits.pk;
 --
 
 CREATE VIEW vwworkcover AS
-    SELECT visits.pk AS pk_view, visits.pk AS fk_visit, visits.fk_claim, consult1.consult_date AS start_date, consult.consult_date AS visit_date, consult.fk_patient, claims.claim_number, claims.fk_occupation, claims.fk_branch, claims.hours_week_worked, claims.mechanism_of_injury, claims.date_injury, claims.contact_person, claims.memo, claims.identifier, claims.fk_person, claims.accepted, consult.fk_staff, consult.fk_type, consult.summary, vwstaff.wholename AS staff_wholename, vwstaff.surname AS staff_surname, vwstaff.firstname AS staff_firstname, vwstaff.title AS staff_title, vwstaff.provider_number, lu_occupations.occupation, vworganisations.branch, vworganisations.fk_organisation, vworganisations.organisation, vworganisations.street1 AS branch_street1, vworganisations.street2 AS branch_street2, vworganisations.town AS branch_town, vworganisations.branch_deleted, vwpersons.wholename AS soletrader_wholename, vwpersons.firstname AS soletrader_firstname, vwpersons.surname AS soletrader_surname, vwpersons.title AS soletrader_title, vwpersons.town AS soletrader_town, vwpersons.street1 AS soletrader_street1, vwpersons.street2 AS soletrader_street2, vwpersons.postcode AS soletrader_postcode, vwpersons.address_deleted AS soletrader_address_deleted, lu_visit_type.type AS visit_type, visits.fk_lu_visit_type, visits.diagnosis, lu_systems.system AS coding_system, visits.fk_code, CASE WHEN (visits.fk_code IS NOT NULL) THEN (SELECT DISTINCT generic_terms.term FROM coding.generic_terms WHERE (visits.fk_code = generic_terms.code)) ELSE NULL::text END AS coded_term, visits.certificate_date, visits.management_plan, visits.review_date, visits.assessworkplace, visits.hours_capable, visits.days_capable, visits.restrictions, visits.fk_caused_by_employment, visits.doctor_consented, visits.worker_consented, visits.fitness_preinjury_from, visits.fitness_suitable_from, visits.fitness_suitable_to, visits.fitness_unfit_from, visits.fitness_unfit_to, visits.fitness_perm_mod_duties_from, visits.fk_consult, visits.fk_progressnote, visits.fk_coding_system, visits.capabilities, visits.latex, lu_caused_by_employment.caused_by_employment FROM ((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN visits ON ((visits.fk_consult = consult.pk))) JOIN claims ON ((claims.pk = visits.fk_claim))) JOIN common.lu_occupations ON ((claims.fk_occupation = lu_occupations.pk))) LEFT JOIN coding.lu_systems ON ((visits.fk_coding_system = lu_systems.pk))) LEFT JOIN contacts.vworganisations ON ((claims.fk_branch = vworganisations.fk_branch))) LEFT JOIN contacts.vwpersons ON ((claims.fk_person = vwpersons.fk_person))) JOIN lu_visit_type ON ((visits.fk_lu_visit_type = lu_visit_type.pk))) JOIN lu_caused_by_employment ON ((visits.fk_caused_by_employment = lu_caused_by_employment.pk))) JOIN clin_consult.consult consult1 ON ((claims.fk_consult = consult1.pk))) ORDER BY visits.fk_claim, visits.pk;
+    SELECT visits.pk AS pk_view, visits.pk AS fk_visit, visits.fk_claim, consult1.consult_date AS start_date, consult.consult_date AS visit_date, consult.fk_patient, claims.claim_number, claims.fk_occupation, claims.fk_branch, claims.hours_week_worked, claims.mechanism_of_injury, claims.date_injury, claims.contact_person, claims.memo, claims.identifier, claims.fk_person, claims.accepted, claims.deleted AS claim_deleted, consult.fk_staff, consult.fk_type, consult.summary, vwstaff.wholename AS staff_wholename, vwstaff.surname AS staff_surname, vwstaff.firstname AS staff_firstname, vwstaff.title AS staff_title, vwstaff.provider_number, lu_occupations.occupation, vworganisations.branch, vworganisations.fk_organisation, vworganisations.organisation, vworganisations.street1 AS branch_street1, vworganisations.street2 AS branch_street2, vworganisations.town AS branch_town, vworganisations.branch_deleted, vwpersons.wholename AS soletrader_wholename, vwpersons.firstname AS soletrader_firstname, vwpersons.surname AS soletrader_surname, vwpersons.title AS soletrader_title, vwpersons.town AS soletrader_town, vwpersons.street1 AS soletrader_street1, vwpersons.street2 AS soletrader_street2, vwpersons.postcode AS soletrader_postcode, vwpersons.address_deleted AS soletrader_address_deleted, lu_visit_type.type AS visit_type, visits.fk_lu_visit_type, visits.diagnosis, lu_systems.system AS coding_system, visits.fk_code, CASE WHEN (visits.fk_code IS NOT NULL) THEN (SELECT DISTINCT generic_terms.term FROM coding.generic_terms WHERE (visits.fk_code = generic_terms.code)) ELSE NULL::text END AS coded_term, visits.certificate_date, visits.management_plan, visits.review_date, visits.assessworkplace, visits.hours_capable, visits.days_capable, visits.restrictions, visits.fk_caused_by_employment, visits.doctor_consented, visits.worker_consented, visits.fitness_preinjury_from, visits.fitness_suitable_from, visits.fitness_suitable_to, visits.fitness_unfit_from, visits.fitness_unfit_to, visits.fitness_perm_mod_duties_from, visits.fk_consult, visits.fk_progressnote, visits.fk_coding_system, visits.capabilities, visits.latex, visits.deleted AS visit_deleted, lu_caused_by_employment.caused_by_employment FROM ((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN visits ON ((visits.fk_consult = consult.pk))) JOIN claims ON ((claims.pk = visits.fk_claim))) JOIN common.lu_occupations ON ((claims.fk_occupation = lu_occupations.pk))) LEFT JOIN coding.lu_systems ON ((visits.fk_coding_system = lu_systems.pk))) LEFT JOIN contacts.vworganisations ON ((claims.fk_branch = vworganisations.fk_branch))) LEFT JOIN contacts.vwpersons ON ((claims.fk_person = vwpersons.fk_person))) JOIN lu_visit_type ON ((visits.fk_lu_visit_type = lu_visit_type.pk))) JOIN lu_caused_by_employment ON ((visits.fk_caused_by_employment = lu_caused_by_employment.pk))) JOIN clin_consult.consult consult1 ON ((claims.fk_consult = consult1.pk))) ORDER BY visits.fk_claim, visits.pk;
 
 
 --
 -- Name: VIEW vwworkcover; Type: COMMENT; Schema: clin_workcover; Owner: -
 --
 
-COMMENT ON VIEW vwworkcover IS 'View of all visits for all claims date ordered. If the work cover form was coded also contains the coding system
- the coded term and the code';
+COMMENT ON VIEW vwworkcover IS 'View of all visits for all claims date ordered.
+                                              If the work cover form was coded also contains the coding system
+                                              the coded term and the code';
 
 
 SET search_path = coding, pg_catalog;
@@ -11840,7 +11816,7 @@ CREATE VIEW vwpersonsexcludingpatients AS
 --
 
 CREATE VIEW vwpersonsandemployeesaddresses AS
-    SELECT vworganisationsemployees.fk_address, CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN (vworganisationsemployees.fk_person || '-0'::text) ELSE ((vworganisationsemployees.fk_person || '-'::text) || (vworganisationsemployees.fk_address)::text) END AS pk_view, vworganisationsemployees.fk_branch, vworganisationsemployees.branch, vworganisationsemployees.organisation, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_person, vworganisationsemployees.firstname, vworganisationsemployees.surname, vworganisationsemployees.title, vworganisationsemployees.occupation, vworganisationsemployees.street1, vworganisationsemployees.street2, vworganisationsemployees.town, vworganisationsemployees.state, vworganisationsemployees.postcode FROM vworganisationsemployees WHERE (vworganisationsemployees.fk_person <> 0) UNION SELECT vwpersonsexcludingpatients.fk_address, CASE WHEN (vwpersonsexcludingpatients.fk_address IS NULL) THEN (vwpersonsexcludingpatients.fk_person || '-0'::text) ELSE ((vwpersonsexcludingpatients.fk_person || '-'::text) || (vwpersonsexcludingpatients.fk_address)::text) END AS pk_view, NULL::unknown AS fk_branch, NULL::unknown AS branch, NULL::unknown AS organisation, NULL::unknown AS fk_organisation, vwpersonsexcludingpatients.fk_person, vwpersonsexcludingpatients.firstname, vwpersonsexcludingpatients.surname, vwpersonsexcludingpatients.title, vwpersonsexcludingpatients.occupation, vwpersonsexcludingpatients.street1, vwpersonsexcludingpatients.street2, vwpersonsexcludingpatients.town, vwpersonsexcludingpatients.state, vwpersonsexcludingpatients.postcode FROM vwpersonsexcludingpatients WHERE ((vwpersonsexcludingpatients.fk_person <> 0) AND (vwpersonsexcludingpatients.fk_address IS NOT NULL)) ORDER BY 6, 12;
+    SELECT vworganisationsemployees.fk_address, CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN (vworganisationsemployees.fk_person || '-0'::text) ELSE ((vworganisationsemployees.fk_person || '-'::text) || (vworganisationsemployees.fk_address)::text) END AS pk_view, vworganisationsemployees.fk_branch, vworganisationsemployees.branch, vworganisationsemployees.organisation, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_person, vworganisationsemployees.firstname, vworganisationsemployees.surname, vworganisationsemployees.title, vworganisationsemployees.occupation, vworganisationsemployees.street1, vworganisationsemployees.street2, vworganisationsemployees.town, vworganisationsemployees.state, vworganisationsemployees.postcode FROM vworganisationsemployees WHERE (vworganisationsemployees.fk_person <> 0) UNION SELECT vwpersonsexcludingpatients.fk_address, CASE WHEN (vwpersonsexcludingpatients.fk_address IS NULL) THEN (vwpersonsexcludingpatients.fk_person || '-0'::text) ELSE ((vwpersonsexcludingpatients.fk_person || '-'::text) || (vwpersonsexcludingpatients.fk_address)::text) END AS pk_view, NULL::integer AS fk_branch, NULL::text AS branch, NULL::text AS organisation, NULL::integer AS fk_organisation, vwpersonsexcludingpatients.fk_person, vwpersonsexcludingpatients.firstname, vwpersonsexcludingpatients.surname, vwpersonsexcludingpatients.title, vwpersonsexcludingpatients.occupation, vwpersonsexcludingpatients.street1, vwpersonsexcludingpatients.street2, vwpersonsexcludingpatients.town, vwpersonsexcludingpatients.state, vwpersonsexcludingpatients.postcode FROM vwpersonsexcludingpatients WHERE ((vwpersonsexcludingpatients.fk_person <> 0) AND (vwpersonsexcludingpatients.fk_address IS NOT NULL)) ORDER BY 6, 12;
 
 
 --
@@ -12655,7 +12631,7 @@ CREATE VIEW vwhl7filesimported AS
 --
 
 CREATE VIEW vwinboxstaff AS
-    SELECT vwstaffinclinics.pk_view, vwstaffinclinics.title, vwstaffinclinics.fk_staff, vwstaffinclinics.wholename, vwstaffinclinics.surname, NULL::unknown AS fk_unmatched_staff FROM admin.vwstaffinclinics UNION SELECT ((unmatched_staff.pk || '-'::text) || 'unmatched'::text) AS pk_view, unmatched_staff.title, unmatched_staff.fk_real_staff AS fk_staff, ((unmatched_staff.firstname || ' '::text) || (unmatched_staff.surname || ' [Unkown]'::text)) AS wholename, unmatched_staff.surname, unmatched_staff.pk AS fk_unmatched_staff FROM unmatched_staff WHERE (unmatched_staff.fk_real_staff IS NULL) ORDER BY 5;
+    SELECT vwstaffinclinics.pk_view, vwstaffinclinics.title, vwstaffinclinics.fk_staff, vwstaffinclinics.wholename, vwstaffinclinics.surname, NULL::integer AS fk_unmatched_staff FROM admin.vwstaffinclinics UNION SELECT ((unmatched_staff.pk || '-'::text) || 'unmatched'::text) AS pk_view, unmatched_staff.title, unmatched_staff.fk_real_staff AS fk_staff, ((unmatched_staff.firstname || ' '::text) || (unmatched_staff.surname || ' [Unkown]'::text)) AS wholename, unmatched_staff.surname, unmatched_staff.pk AS fk_unmatched_staff FROM unmatched_staff WHERE (unmatched_staff.fk_real_staff IS NULL) ORDER BY 5;
 
 
 --
@@ -13076,6 +13052,16 @@ CREATE TABLE pharmacologic_mechanisms (
 
 
 --
+-- Name: product_information_unmatched; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
+--
+
+CREATE TABLE product_information_unmatched (
+    brand text NOT NULL,
+    product_information_filename text NOT NULL
+);
+
+
+--
 -- Name: product_pk_seq; Type: SEQUENCE; Schema: drugs; Owner: -
 --
 
@@ -13184,6 +13170,14 @@ CREATE VIEW vwdrugs AS
 
 CREATE VIEW vwdistinctbrandsforgenericproduct AS
     SELECT DISTINCT (vwdrugs.fk_product || (vwdrugs.brand)::text) AS pk_view, vwdrugs.fk_product, vwdrugs.generic, vwdrugs.brand FROM vwdrugs ORDER BY vwdrugs.fk_product, vwdrugs.generic;
+
+
+--
+-- Name: vwdrugs2; Type: VIEW; Schema: drugs; Owner: -
+--
+
+CREATE VIEW vwdrugs2 AS
+    SELECT brand.pk AS pk_view, brand.fk_product, brand.fk_company, brand.brand, brand.price, brand.from_pbs, product.atccode, product.generic, product.salt, product.fk_form, product.strength, product.salt_strength, pack.amount, pack.amount_unit, pack.packsize, lu_units.abbrev_text, product.free_comment, product.poison, product.updated_at, form.form FROM ((((brand brand JOIN product ON ((brand.fk_product = product.pk))) JOIN pack ON ((pack.fk_product = product.pk))) LEFT JOIN common.lu_units ON ((lu_units.pk = pack.amount_unit))) JOIN form ON ((product.fk_form = form.pk)));
 
 
 SET search_path = import_export, pg_catalog;
@@ -13325,76 +13319,84 @@ CREATE VIEW diabetes_patients_latest_hba1c AS
     SELECT DISTINCT vwobservations.fk_patient, vwpatients.wholename, vwpatients.surname, vwpatients.firstname, vwpatients.birthdate, vwpatients.age_numeric, (SELECT vwobservations.observation_date FROM documents.vwobservations WHERE ((vwobservations.fk_patient = vwpatients.fk_patient) AND (vwobservations.loinc = '4548-4'::text)) ORDER BY vwobservations.observation_date DESC LIMIT 1) AS observation_date, (SELECT vwobservations.value_numeric FROM documents.vwobservations WHERE ((vwobservations.fk_patient = vwpatients.fk_patient) AND (vwobservations.loinc = '4548-4'::text)) ORDER BY vwobservations.observation_date DESC LIMIT 1) AS hba1c FROM contacts.vwpatients, documents.vwobservations WHERE ((vwobservations.fk_patient = vwpatients.fk_patient) AND (vwobservations.loinc = '4548-4'::text)) ORDER BY (SELECT vwobservations.value_numeric FROM documents.vwobservations WHERE ((vwobservations.fk_patient = vwpatients.fk_patient) AND (vwobservations.loinc = '4548-4'::text)) ORDER BY vwobservations.observation_date DESC LIMIT 1);
 
 
+--
+-- Name: vwldh; Type: VIEW; Schema: research; Owner: -
+--
+
+CREATE VIEW vwldh AS
+    SELECT vwpatients.wholename, vwpatients.fk_patient, vwobservations.value_numeric, vwobservations.abnormal FROM contacts.vwpatients, documents.vwobservations WHERE (((vwobservations.identifier ~~* '%LDH%'::text) AND (vwobservations.fk_patient = vwpatients.fk_patient)) AND (vwobservations.abnormal IS NOT NULL)) ORDER BY vwobservations.value_numeric;
+
+
 SET search_path = admin, pg_catalog;
 
 --
 -- Name: pk; Type: DEFAULT; Schema: admin; Owner: -
 --
 
-ALTER TABLE clinic_rooms ALTER COLUMN pk SET DEFAULT nextval('clinic_rooms_pk_seq'::regclass);
+ALTER TABLE ONLY clinic_rooms ALTER COLUMN pk SET DEFAULT nextval('clinic_rooms_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: admin; Owner: -
 --
 
-ALTER TABLE clinics ALTER COLUMN pk SET DEFAULT nextval('clinic_pk_seq'::regclass);
+ALTER TABLE ONLY clinics ALTER COLUMN pk SET DEFAULT nextval('clinic_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: admin; Owner: -
 --
 
-ALTER TABLE global_preferences ALTER COLUMN pk SET DEFAULT nextval('global_preferences_pk_seq'::regclass);
+ALTER TABLE ONLY global_preferences ALTER COLUMN pk SET DEFAULT nextval('global_preferences_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: admin; Owner: -
 --
 
-ALTER TABLE link_staff_clinics ALTER COLUMN pk SET DEFAULT nextval('link_staff_clinics_pk_seq'::regclass);
+ALTER TABLE ONLY link_staff_clinics ALTER COLUMN pk SET DEFAULT nextval('link_staff_clinics_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: admin; Owner: -
 --
 
-ALTER TABLE lu_clinical_modules ALTER COLUMN pk SET DEFAULT nextval('lu_clinical_modules_pk_seq'::regclass);
+ALTER TABLE ONLY lu_clinical_modules ALTER COLUMN pk SET DEFAULT nextval('lu_clinical_modules_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: admin; Owner: -
 --
 
-ALTER TABLE lu_staff_roles ALTER COLUMN pk SET DEFAULT nextval('lu_staff_roles_pk_seq'::regclass);
+ALTER TABLE ONLY lu_staff_roles ALTER COLUMN pk SET DEFAULT nextval('lu_staff_roles_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: admin; Owner: -
 --
 
-ALTER TABLE lu_staff_status ALTER COLUMN pk SET DEFAULT nextval('lu_staff_status_pk_seq'::regclass);
+ALTER TABLE ONLY lu_staff_status ALTER COLUMN pk SET DEFAULT nextval('lu_staff_status_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: admin; Owner: -
 --
 
-ALTER TABLE lu_staff_type ALTER COLUMN pk SET DEFAULT nextval('lu_staff_type_pk_seq'::regclass);
+ALTER TABLE ONLY lu_staff_type ALTER COLUMN pk SET DEFAULT nextval('lu_staff_type_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: admin; Owner: -
 --
 
-ALTER TABLE staff ALTER COLUMN pk SET DEFAULT nextval('staff_pk_seq'::regclass);
+ALTER TABLE ONLY staff ALTER COLUMN pk SET DEFAULT nextval('staff_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: admin; Owner: -
 --
 
-ALTER TABLE staff_clinical_toolbar ALTER COLUMN pk SET DEFAULT nextval('staff_clinical_toolbar_pk_seq'::regclass);
+ALTER TABLE ONLY staff_clinical_toolbar ALTER COLUMN pk SET DEFAULT nextval('staff_clinical_toolbar_pk_seq'::regclass);
 
 
 SET search_path = blobs, pg_catalog;
@@ -13403,14 +13405,14 @@ SET search_path = blobs, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: blobs; Owner: -
 --
 
-ALTER TABLE blobs ALTER COLUMN pk SET DEFAULT nextval('blobs_pk_seq'::regclass);
+ALTER TABLE ONLY blobs ALTER COLUMN pk SET DEFAULT nextval('blobs_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: blobs; Owner: -
 --
 
-ALTER TABLE images ALTER COLUMN pk SET DEFAULT nextval('images_pk_seq'::regclass);
+ALTER TABLE ONLY images ALTER COLUMN pk SET DEFAULT nextval('images_pk_seq'::regclass);
 
 
 SET search_path = chronic_disease_management, pg_catalog;
@@ -13419,49 +13421,49 @@ SET search_path = chronic_disease_management, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: chronic_disease_management; Owner: -
 --
 
-ALTER TABLE diabetes_annual_cycle_of_care ALTER COLUMN pk SET DEFAULT nextval('diabetes_annual_cycle_of_care_pk_seq'::regclass);
+ALTER TABLE ONLY diabetes_annual_cycle_of_care ALTER COLUMN pk SET DEFAULT nextval('diabetes_annual_cycle_of_care_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: chronic_disease_management; Owner: -
 --
 
-ALTER TABLE diabetes_annual_cycle_of_care_notes ALTER COLUMN pk SET DEFAULT nextval('diabetes_annual_cycle_of_care_notes_pk_seq'::regclass);
+ALTER TABLE ONLY diabetes_annual_cycle_of_care_notes ALTER COLUMN pk SET DEFAULT nextval('diabetes_annual_cycle_of_care_notes_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: chronic_disease_management; Owner: -
 --
 
-ALTER TABLE epc_link_provider_form ALTER COLUMN pk SET DEFAULT nextval('epc_link_provider_form_pk_seq'::regclass);
+ALTER TABLE ONLY epc_link_provider_form ALTER COLUMN pk SET DEFAULT nextval('epc_link_provider_form_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: chronic_disease_management; Owner: -
 --
 
-ALTER TABLE epc_referral ALTER COLUMN pk SET DEFAULT nextval('epc_referral_pk_seq'::regclass);
+ALTER TABLE ONLY epc_referral ALTER COLUMN pk SET DEFAULT nextval('epc_referral_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: chronic_disease_management; Owner: -
 --
 
-ALTER TABLE lu_allied_health_type ALTER COLUMN pk SET DEFAULT nextval('lu_allied_health_type_pk_seq'::regclass);
+ALTER TABLE ONLY lu_allied_health_type ALTER COLUMN pk SET DEFAULT nextval('lu_allied_health_type_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: chronic_disease_management; Owner: -
 --
 
-ALTER TABLE lu_dacc_components ALTER COLUMN pk SET DEFAULT nextval('lu_dacc_components_pk_seq'::regclass);
+ALTER TABLE ONLY lu_dacc_components ALTER COLUMN pk SET DEFAULT nextval('lu_dacc_components_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: chronic_disease_management; Owner: -
 --
 
-ALTER TABLE team_care_arrangements ALTER COLUMN pk SET DEFAULT nextval('team_care_arrangements_pk_seq'::regclass);
+ALTER TABLE ONLY team_care_arrangements ALTER COLUMN pk SET DEFAULT nextval('team_care_arrangements_pk_seq'::regclass);
 
 
 SET search_path = clerical, pg_catalog;
@@ -13470,105 +13472,105 @@ SET search_path = clerical, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE bookings ALTER COLUMN pk SET DEFAULT nextval('bookings_pk_seq'::regclass);
+ALTER TABLE ONLY bookings ALTER COLUMN pk SET DEFAULT nextval('bookings_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE data_families ALTER COLUMN pk SET DEFAULT nextval('data_families_pk_seq'::regclass);
+ALTER TABLE ONLY data_families ALTER COLUMN pk SET DEFAULT nextval('data_families_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE data_family_members ALTER COLUMN pk SET DEFAULT nextval('data_family_members_pk_seq'::regclass);
+ALTER TABLE ONLY data_family_members ALTER COLUMN pk SET DEFAULT nextval('data_family_members_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE data_patients ALTER COLUMN pk SET DEFAULT nextval('data_patients_pk_seq'::regclass);
+ALTER TABLE ONLY data_patients ALTER COLUMN pk SET DEFAULT nextval('data_patients_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE invoices ALTER COLUMN pk SET DEFAULT nextval('invoices_pk_seq'::regclass);
+ALTER TABLE ONLY invoices ALTER COLUMN pk SET DEFAULT nextval('invoices_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE items_billed ALTER COLUMN pk SET DEFAULT nextval('items_billed_pk_seq'::regclass);
+ALTER TABLE ONLY items_billed ALTER COLUMN pk SET DEFAULT nextval('items_billed_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE lu_appointment_icons ALTER COLUMN pk SET DEFAULT nextval('lu_appointment_icons_pk_seq'::regclass);
+ALTER TABLE ONLY lu_appointment_icons ALTER COLUMN pk SET DEFAULT nextval('lu_appointment_icons_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE lu_appointment_status ALTER COLUMN pk SET DEFAULT nextval('lu_appointment_status_pk_seq'::regclass);
+ALTER TABLE ONLY lu_appointment_status ALTER COLUMN pk SET DEFAULT nextval('lu_appointment_status_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE lu_task_types ALTER COLUMN pk SET DEFAULT nextval('lu_task_types_pk_seq'::regclass);
+ALTER TABLE ONLY lu_task_types ALTER COLUMN pk SET DEFAULT nextval('lu_task_types_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE payments_received ALTER COLUMN pk SET DEFAULT nextval('payments_received_pk_seq'::regclass);
+ALTER TABLE ONLY payments_received ALTER COLUMN pk SET DEFAULT nextval('payments_received_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE schedule ALTER COLUMN pk SET DEFAULT nextval('schedule_pk_seq'::regclass);
+ALTER TABLE ONLY schedule ALTER COLUMN pk SET DEFAULT nextval('schedule_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE sessions ALTER COLUMN pk SET DEFAULT nextval('sessions_pk_seq'::regclass);
+ALTER TABLE ONLY sessions ALTER COLUMN pk SET DEFAULT nextval('sessions_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE task_component_notes ALTER COLUMN pk SET DEFAULT nextval('task_component_notes_pk_seq'::regclass);
+ALTER TABLE ONLY task_component_notes ALTER COLUMN pk SET DEFAULT nextval('task_component_notes_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE task_components ALTER COLUMN pk SET DEFAULT nextval('task_components_pk_seq'::regclass);
+ALTER TABLE ONLY task_components ALTER COLUMN pk SET DEFAULT nextval('task_components_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
-ALTER TABLE tasks ALTER COLUMN pk SET DEFAULT nextval('tasks_pk_seq'::regclass);
+ALTER TABLE ONLY tasks ALTER COLUMN pk SET DEFAULT nextval('tasks_pk_seq'::regclass);
 
 
 SET search_path = clin_allergies, pg_catalog;
@@ -13577,21 +13579,21 @@ SET search_path = clin_allergies, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_allergies; Owner: -
 --
 
-ALTER TABLE allergies ALTER COLUMN pk SET DEFAULT nextval('allergies_pk_seq'::regclass);
+ALTER TABLE ONLY allergies ALTER COLUMN pk SET DEFAULT nextval('allergies_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_allergies; Owner: -
 --
 
-ALTER TABLE lu_reaction ALTER COLUMN pk SET DEFAULT nextval('lu_reaction_pk_seq'::regclass);
+ALTER TABLE ONLY lu_reaction ALTER COLUMN pk SET DEFAULT nextval('lu_reaction_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_allergies; Owner: -
 --
 
-ALTER TABLE lu_type ALTER COLUMN pk SET DEFAULT nextval('lu_type_pk_seq'::regclass);
+ALTER TABLE ONLY lu_type ALTER COLUMN pk SET DEFAULT nextval('lu_type_pk_seq'::regclass);
 
 
 SET search_path = clin_careplans, pg_catalog;
@@ -13600,91 +13602,91 @@ SET search_path = clin_careplans, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_careplans; Owner: -
 --
 
-ALTER TABLE careplan_pages ALTER COLUMN pk SET DEFAULT nextval('careplan_pages_pk_seq'::regclass);
+ALTER TABLE ONLY careplan_pages ALTER COLUMN pk SET DEFAULT nextval('careplan_pages_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_careplans; Owner: -
 --
 
-ALTER TABLE careplans ALTER COLUMN pk SET DEFAULT nextval('careplans_pk_seq'::regclass);
+ALTER TABLE ONLY careplans ALTER COLUMN pk SET DEFAULT nextval('careplans_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_careplans; Owner: -
 --
 
-ALTER TABLE component_task_due ALTER COLUMN pk SET DEFAULT nextval('component_task_due_pk_seq'::regclass);
+ALTER TABLE ONLY component_task_due ALTER COLUMN pk SET DEFAULT nextval('component_task_due_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_careplans; Owner: -
 --
 
-ALTER TABLE link_careplanpage_advice ALTER COLUMN pk SET DEFAULT nextval('link_careplanpage_advice_pk_seq'::regclass);
+ALTER TABLE ONLY link_careplanpage_advice ALTER COLUMN pk SET DEFAULT nextval('link_careplanpage_advice_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_careplans; Owner: -
 --
 
-ALTER TABLE link_careplanpage_components ALTER COLUMN pk SET DEFAULT nextval('link_careplanpage_components_pk_seq'::regclass);
+ALTER TABLE ONLY link_careplanpage_components ALTER COLUMN pk SET DEFAULT nextval('link_careplanpage_components_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_careplans; Owner: -
 --
 
-ALTER TABLE link_careplanpages_careplan ALTER COLUMN pk SET DEFAULT nextval('link_careplanpages_careplan_pk_seq'::regclass);
+ALTER TABLE ONLY link_careplanpages_careplan ALTER COLUMN pk SET DEFAULT nextval('link_careplanpages_careplan_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_careplans; Owner: -
 --
 
-ALTER TABLE lu_advice ALTER COLUMN pk SET DEFAULT nextval('lu_advice_pk_seq'::regclass);
+ALTER TABLE ONLY lu_advice ALTER COLUMN pk SET DEFAULT nextval('lu_advice_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_careplans; Owner: -
 --
 
-ALTER TABLE lu_aims ALTER COLUMN pk SET DEFAULT nextval('lu_aims_pk_seq'::regclass);
+ALTER TABLE ONLY lu_aims ALTER COLUMN pk SET DEFAULT nextval('lu_aims_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_careplans; Owner: -
 --
 
-ALTER TABLE lu_components ALTER COLUMN pk SET DEFAULT nextval('lu_components_pk_seq'::regclass);
+ALTER TABLE ONLY lu_components ALTER COLUMN pk SET DEFAULT nextval('lu_components_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_careplans; Owner: -
 --
 
-ALTER TABLE lu_conditions ALTER COLUMN pk SET DEFAULT nextval('lu_conditions_pk_seq'::regclass);
+ALTER TABLE ONLY lu_conditions ALTER COLUMN pk SET DEFAULT nextval('lu_conditions_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_careplans; Owner: -
 --
 
-ALTER TABLE lu_education ALTER COLUMN pk SET DEFAULT nextval('lu_education_pk_seq'::regclass);
+ALTER TABLE ONLY lu_education ALTER COLUMN pk SET DEFAULT nextval('lu_education_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_careplans; Owner: -
 --
 
-ALTER TABLE lu_responsible ALTER COLUMN pk SET DEFAULT nextval('lu_responsible_pk_seq'::regclass);
+ALTER TABLE ONLY lu_responsible ALTER COLUMN pk SET DEFAULT nextval('lu_responsible_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_careplans; Owner: -
 --
 
-ALTER TABLE lu_tasks ALTER COLUMN pk SET DEFAULT nextval('lu_tasks_pk_seq'::regclass);
+ALTER TABLE ONLY lu_tasks ALTER COLUMN pk SET DEFAULT nextval('lu_tasks_pk_seq'::regclass);
 
 
 SET search_path = clin_certificates, pg_catalog;
@@ -13693,28 +13695,28 @@ SET search_path = clin_certificates, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_certificates; Owner: -
 --
 
-ALTER TABLE certificate_reasons ALTER COLUMN pk SET DEFAULT nextval('certificate_reasons_pk_seq'::regclass);
+ALTER TABLE ONLY certificate_reasons ALTER COLUMN pk SET DEFAULT nextval('certificate_reasons_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_certificates; Owner: -
 --
 
-ALTER TABLE lu_fitness ALTER COLUMN pk SET DEFAULT nextval('lu_fitness_pk_seq'::regclass);
+ALTER TABLE ONLY lu_fitness ALTER COLUMN pk SET DEFAULT nextval('lu_fitness_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_certificates; Owner: -
 --
 
-ALTER TABLE lu_illness_temporality ALTER COLUMN pk SET DEFAULT nextval('lu_illness_temporality_pk_seq'::regclass);
+ALTER TABLE ONLY lu_illness_temporality ALTER COLUMN pk SET DEFAULT nextval('lu_illness_temporality_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_certificates; Owner: -
 --
 
-ALTER TABLE medical_certificates ALTER COLUMN pk SET DEFAULT nextval('medical_certificate_pk_seq'::regclass);
+ALTER TABLE ONLY medical_certificates ALTER COLUMN pk SET DEFAULT nextval('medical_certificate_pk_seq'::regclass);
 
 
 SET search_path = clin_checkups, pg_catalog;
@@ -13723,28 +13725,28 @@ SET search_path = clin_checkups, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_checkups; Owner: -
 --
 
-ALTER TABLE annual_checkup ALTER COLUMN pk SET DEFAULT nextval('annual_checkup_pk_seq'::regclass);
+ALTER TABLE ONLY annual_checkup ALTER COLUMN pk SET DEFAULT nextval('annual_checkup_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_checkups; Owner: -
 --
 
-ALTER TABLE lu_nutrition_questions ALTER COLUMN pk SET DEFAULT nextval('lu_nutrition_questions_pk_seq'::regclass);
+ALTER TABLE ONLY lu_nutrition_questions ALTER COLUMN pk SET DEFAULT nextval('lu_nutrition_questions_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_checkups; Owner: -
 --
 
-ALTER TABLE lu_state_of_health ALTER COLUMN pk SET DEFAULT nextval('lu_state_of_health_pk_seq'::regclass);
+ALTER TABLE ONLY lu_state_of_health ALTER COLUMN pk SET DEFAULT nextval('lu_state_of_health_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_checkups; Owner: -
 --
 
-ALTER TABLE over75 ALTER COLUMN pk SET DEFAULT nextval('over75_pk_seq'::regclass);
+ALTER TABLE ONLY over75 ALTER COLUMN pk SET DEFAULT nextval('over75_pk_seq'::regclass);
 
 
 SET search_path = clin_consult, pg_catalog;
@@ -13753,70 +13755,70 @@ SET search_path = clin_consult, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_consult; Owner: -
 --
 
-ALTER TABLE consult ALTER COLUMN pk SET DEFAULT nextval('consult_pk_seq'::regclass);
+ALTER TABLE ONLY consult ALTER COLUMN pk SET DEFAULT nextval('consult_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_consult; Owner: -
 --
 
-ALTER TABLE images ALTER COLUMN pk SET DEFAULT nextval('images_pk_seq'::regclass);
+ALTER TABLE ONLY images ALTER COLUMN pk SET DEFAULT nextval('images_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_consult; Owner: -
 --
 
-ALTER TABLE lu_audit_actions ALTER COLUMN pk SET DEFAULT nextval('lu_actions_pk_seq'::regclass);
+ALTER TABLE ONLY lu_audit_actions ALTER COLUMN pk SET DEFAULT nextval('lu_actions_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_consult; Owner: -
 --
 
-ALTER TABLE lu_audit_reasons ALTER COLUMN pk SET DEFAULT nextval('lu_audit_reasons_pk_seq'::regclass);
+ALTER TABLE ONLY lu_audit_reasons ALTER COLUMN pk SET DEFAULT nextval('lu_audit_reasons_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_consult; Owner: -
 --
 
-ALTER TABLE lu_consult_type ALTER COLUMN pk SET DEFAULT nextval('lu_consult_type_pk_seq'::regclass);
+ALTER TABLE ONLY lu_consult_type ALTER COLUMN pk SET DEFAULT nextval('lu_consult_type_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_consult; Owner: -
 --
 
-ALTER TABLE lu_progressnote_templates ALTER COLUMN pk SET DEFAULT nextval('lu_progressnote_templates_pk_seq'::regclass);
+ALTER TABLE ONLY lu_progressnote_templates ALTER COLUMN pk SET DEFAULT nextval('lu_progressnote_templates_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_consult; Owner: -
 --
 
-ALTER TABLE lu_progressnotes_sections ALTER COLUMN pk SET DEFAULT nextval('lu_progressnotes_sections_pk_seq'::regclass);
+ALTER TABLE ONLY lu_progressnotes_sections ALTER COLUMN pk SET DEFAULT nextval('lu_progressnotes_sections_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_consult; Owner: -
 --
 
-ALTER TABLE lu_scratchpad_status ALTER COLUMN pk SET DEFAULT nextval('lu_scratchpad_status_pk_seq'::regclass);
+ALTER TABLE ONLY lu_scratchpad_status ALTER COLUMN pk SET DEFAULT nextval('lu_scratchpad_status_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_consult; Owner: -
 --
 
-ALTER TABLE progressnotes ALTER COLUMN pk SET DEFAULT nextval('progressnotes_pk_seq'::regclass);
+ALTER TABLE ONLY progressnotes ALTER COLUMN pk SET DEFAULT nextval('progressnotes_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_consult; Owner: -
 --
 
-ALTER TABLE scratchpad ALTER COLUMN pk SET DEFAULT nextval('scratchpad_pk_seq'::regclass);
+ALTER TABLE ONLY scratchpad ALTER COLUMN pk SET DEFAULT nextval('scratchpad_pk_seq'::regclass);
 
 
 SET search_path = clin_history, pg_catalog;
@@ -13825,105 +13827,105 @@ SET search_path = clin_history, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE care_plan_components ALTER COLUMN pk SET DEFAULT nextval('care_plan_components_pk_seq'::regclass);
+ALTER TABLE ONLY care_plan_components ALTER COLUMN pk SET DEFAULT nextval('care_plan_components_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE care_plan_components_due ALTER COLUMN pk SET DEFAULT nextval('care_plan_components_due_pk_seq'::regclass);
+ALTER TABLE ONLY care_plan_components_due ALTER COLUMN pk SET DEFAULT nextval('care_plan_components_due_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE data_recreational_drugs ALTER COLUMN pk SET DEFAULT nextval('data_recreational_drugs_pk_seq'::regclass);
+ALTER TABLE ONLY data_recreational_drugs ALTER COLUMN pk SET DEFAULT nextval('data_recreational_drugs_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE family_conditions ALTER COLUMN pk SET DEFAULT nextval('family_conditions_pk_seq'::regclass);
+ALTER TABLE ONLY family_conditions ALTER COLUMN pk SET DEFAULT nextval('family_conditions_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE family_links ALTER COLUMN pk SET DEFAULT nextval('family_links_pk_seq'::regclass);
+ALTER TABLE ONLY family_links ALTER COLUMN pk SET DEFAULT nextval('family_links_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE family_members ALTER COLUMN pk SET DEFAULT nextval('family_members_pk_seq'::regclass);
+ALTER TABLE ONLY family_members ALTER COLUMN pk SET DEFAULT nextval('family_members_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE hospitalisations ALTER COLUMN pk SET DEFAULT nextval('hospitalisations_pk_seq'::regclass);
+ALTER TABLE ONLY hospitalisations ALTER COLUMN pk SET DEFAULT nextval('hospitalisations_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE lu_careplan_components ALTER COLUMN pk SET DEFAULT nextval('lu_careplan_components_pk_seq'::regclass);
+ALTER TABLE ONLY lu_careplan_components ALTER COLUMN pk SET DEFAULT nextval('lu_careplan_components_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE lu_dacc_components ALTER COLUMN pk SET DEFAULT nextval('lu_dacc_components_pk_seq'::regclass);
+ALTER TABLE ONLY lu_dacc_components ALTER COLUMN pk SET DEFAULT nextval('lu_dacc_components_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE lu_exposures ALTER COLUMN pk SET DEFAULT nextval('lu_exposures_pk_seq'::regclass);
+ALTER TABLE ONLY lu_exposures ALTER COLUMN pk SET DEFAULT nextval('lu_exposures_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE occupational_history ALTER COLUMN pk SET DEFAULT nextval('occupational_history_pk_seq'::regclass);
+ALTER TABLE ONLY occupational_history ALTER COLUMN pk SET DEFAULT nextval('occupational_history_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE occupations_exposures ALTER COLUMN pk SET DEFAULT nextval('occupations_exposures_pk_seq'::regclass);
+ALTER TABLE ONLY occupations_exposures ALTER COLUMN pk SET DEFAULT nextval('occupations_exposures_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE past_history ALTER COLUMN pk SET DEFAULT nextval('past_history_pk_seq'::regclass);
+ALTER TABLE ONLY past_history ALTER COLUMN pk SET DEFAULT nextval('past_history_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE social_history ALTER COLUMN pk SET DEFAULT nextval('social_history_pk_seq'::regclass);
+ALTER TABLE ONLY social_history ALTER COLUMN pk SET DEFAULT nextval('social_history_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_history; Owner: -
 --
 
-ALTER TABLE team_care_members ALTER COLUMN pk SET DEFAULT nextval('team_care_members_pk_seq'::regclass);
+ALTER TABLE ONLY team_care_members ALTER COLUMN pk SET DEFAULT nextval('team_care_members_pk_seq'::regclass);
 
 
 SET search_path = clin_measurements, pg_catalog;
@@ -13932,21 +13934,21 @@ SET search_path = clin_measurements, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_measurements; Owner: -
 --
 
-ALTER TABLE lu_type ALTER COLUMN pk SET DEFAULT nextval('lu_type_pk_seq'::regclass);
+ALTER TABLE ONLY lu_type ALTER COLUMN pk SET DEFAULT nextval('lu_type_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_measurements; Owner: -
 --
 
-ALTER TABLE measurements ALTER COLUMN pk SET DEFAULT nextval('measurements_pk_seq'::regclass);
+ALTER TABLE ONLY measurements ALTER COLUMN pk SET DEFAULT nextval('measurements_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_measurements; Owner: -
 --
 
-ALTER TABLE patients_defaults ALTER COLUMN pk SET DEFAULT nextval('patients_defaults_pk_seq'::regclass);
+ALTER TABLE ONLY patients_defaults ALTER COLUMN pk SET DEFAULT nextval('patients_defaults_pk_seq'::regclass);
 
 
 SET search_path = clin_mentalhealth, pg_catalog;
@@ -13955,63 +13957,63 @@ SET search_path = clin_mentalhealth, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_mentalhealth; Owner: -
 --
 
-ALTER TABLE k10_results ALTER COLUMN pk SET DEFAULT nextval('k10_results_pk_seq'::regclass);
+ALTER TABLE ONLY k10_results ALTER COLUMN pk SET DEFAULT nextval('k10_results_pk_seq'::regclass);
 
 
 --
 -- Name: pk_tool; Type: DEFAULT; Schema: clin_mentalhealth; Owner: -
 --
 
-ALTER TABLE lu_assessment_tools ALTER COLUMN pk_tool SET DEFAULT nextval('lu_assessment_tools_pk_tool_seq'::regclass);
+ALTER TABLE ONLY lu_assessment_tools ALTER COLUMN pk_tool SET DEFAULT nextval('lu_assessment_tools_pk_tool_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_mentalhealth; Owner: -
 --
 
-ALTER TABLE lu_component_help ALTER COLUMN pk SET DEFAULT nextval('lu_component_help_pk_seq'::regclass);
+ALTER TABLE ONLY lu_component_help ALTER COLUMN pk SET DEFAULT nextval('lu_component_help_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_mentalhealth; Owner: -
 --
 
-ALTER TABLE lu_depression_degree ALTER COLUMN pk SET DEFAULT nextval('lu_depression_degree_pk_seq'::regclass);
+ALTER TABLE ONLY lu_depression_degree ALTER COLUMN pk SET DEFAULT nextval('lu_depression_degree_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_mentalhealth; Owner: -
 --
 
-ALTER TABLE lu_k10_components ALTER COLUMN pk SET DEFAULT nextval('lu_k10_components_pk_seq'::regclass);
+ALTER TABLE ONLY lu_k10_components ALTER COLUMN pk SET DEFAULT nextval('lu_k10_components_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_mentalhealth; Owner: -
 --
 
-ALTER TABLE lu_plan_type ALTER COLUMN pk SET DEFAULT nextval('lu_plan_type_pk_seq'::regclass);
+ALTER TABLE ONLY lu_plan_type ALTER COLUMN pk SET DEFAULT nextval('lu_plan_type_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_mentalhealth; Owner: -
 --
 
-ALTER TABLE lu_risk_to_others ALTER COLUMN pk SET DEFAULT nextval('lu_risk_to_others_pk_seq'::regclass);
+ALTER TABLE ONLY lu_risk_to_others ALTER COLUMN pk SET DEFAULT nextval('lu_risk_to_others_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_mentalhealth; Owner: -
 --
 
-ALTER TABLE mentalhealth_plan ALTER COLUMN pk SET DEFAULT nextval('mentalhealth_plan_pk_seq'::regclass);
+ALTER TABLE ONLY mentalhealth_plan ALTER COLUMN pk SET DEFAULT nextval('mentalhealth_plan_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_mentalhealth; Owner: -
 --
 
-ALTER TABLE team_care_members ALTER COLUMN pk SET DEFAULT nextval('team_care_members_pk_seq'::regclass);
+ALTER TABLE ONLY team_care_members ALTER COLUMN pk SET DEFAULT nextval('team_care_members_pk_seq'::regclass);
 
 
 SET search_path = clin_pregnancy, pg_catalog;
@@ -14020,7 +14022,7 @@ SET search_path = clin_pregnancy, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_pregnancy; Owner: -
 --
 
-ALTER TABLE lu_antenatal_venue ALTER COLUMN pk SET DEFAULT nextval('lu_antenatal_venue_pk_seq'::regclass);
+ALTER TABLE ONLY lu_antenatal_venue ALTER COLUMN pk SET DEFAULT nextval('lu_antenatal_venue_pk_seq'::regclass);
 
 
 SET search_path = clin_prescribing, pg_catalog;
@@ -14029,63 +14031,63 @@ SET search_path = clin_prescribing, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: -
 --
 
-ALTER TABLE increased_quantity_authority_reasons ALTER COLUMN pk SET DEFAULT nextval('increased_quantity_authority_reasons_pk_seq'::regclass);
+ALTER TABLE ONLY increased_quantity_authority_reasons ALTER COLUMN pk SET DEFAULT nextval('increased_quantity_authority_reasons_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: -
 --
 
-ALTER TABLE instruction_habits ALTER COLUMN pk SET DEFAULT nextval('instruction_habits_pk_seq'::regclass);
+ALTER TABLE ONLY instruction_habits ALTER COLUMN pk SET DEFAULT nextval('instruction_habits_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: -
 --
 
-ALTER TABLE instructions ALTER COLUMN pk SET DEFAULT nextval('instructions_pk_seq'::regclass);
+ALTER TABLE ONLY instructions ALTER COLUMN pk SET DEFAULT nextval('instructions_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: -
 --
 
-ALTER TABLE item_start_last_dates ALTER COLUMN pk SET DEFAULT nextval('script_dates_pk_seq'::regclass);
+ALTER TABLE ONLY item_start_last_dates ALTER COLUMN pk SET DEFAULT nextval('script_dates_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: -
 --
 
-ALTER TABLE medications ALTER COLUMN pk SET DEFAULT nextval('medications_pk_seq'::regclass);
+ALTER TABLE ONLY medications ALTER COLUMN pk SET DEFAULT nextval('medications_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: -
 --
 
-ALTER TABLE pbs_script_type ALTER COLUMN pk SET DEFAULT nextval('print_status_pk_seq'::regclass);
+ALTER TABLE ONLY pbs_script_type ALTER COLUMN pk SET DEFAULT nextval('print_status_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: -
 --
 
-ALTER TABLE prescribed ALTER COLUMN pk SET DEFAULT nextval('prescribed_pk_seq'::regclass);
+ALTER TABLE ONLY prescribed ALTER COLUMN pk SET DEFAULT nextval('prescribed_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: -
 --
 
-ALTER TABLE prescribed_for ALTER COLUMN pk SET DEFAULT nextval('prescribed_for_pk_seq'::regclass);
+ALTER TABLE ONLY prescribed_for ALTER COLUMN pk SET DEFAULT nextval('prescribed_for_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: -
 --
 
-ALTER TABLE prescribed_for_habits ALTER COLUMN pk SET DEFAULT nextval('prescribed_for_habits_pk_seq'::regclass);
+ALTER TABLE ONLY prescribed_for_habits ALTER COLUMN pk SET DEFAULT nextval('prescribed_for_habits_pk_seq'::regclass);
 
 
 SET search_path = clin_procedures, pg_catalog;
@@ -14094,84 +14096,84 @@ SET search_path = clin_procedures, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_procedures; Owner: -
 --
 
-ALTER TABLE link_images_procedures ALTER COLUMN pk SET DEFAULT nextval('link_images_procedures_pk_seq'::regclass);
+ALTER TABLE ONLY link_images_procedures ALTER COLUMN pk SET DEFAULT nextval('link_images_procedures_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_procedures; Owner: -
 --
 
-ALTER TABLE lu_anaesthetic_agent ALTER COLUMN pk SET DEFAULT nextval('lu_anaesthetic_agent_pk_seq'::regclass);
+ALTER TABLE ONLY lu_anaesthetic_agent ALTER COLUMN pk SET DEFAULT nextval('lu_anaesthetic_agent_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_procedures; Owner: -
 --
 
-ALTER TABLE lu_complications ALTER COLUMN pk SET DEFAULT nextval('lu_complications_pk_seq'::regclass);
+ALTER TABLE ONLY lu_complications ALTER COLUMN pk SET DEFAULT nextval('lu_complications_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_procedures; Owner: -
 --
 
-ALTER TABLE lu_last_surgical_pack ALTER COLUMN pk SET DEFAULT nextval('lu_pack_pk_seq'::regclass);
+ALTER TABLE ONLY lu_last_surgical_pack ALTER COLUMN pk SET DEFAULT nextval('lu_pack_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_procedures; Owner: -
 --
 
-ALTER TABLE lu_procedure_type ALTER COLUMN pk SET DEFAULT nextval('lu_excision_type_pk_seq'::regclass);
+ALTER TABLE ONLY lu_procedure_type ALTER COLUMN pk SET DEFAULT nextval('lu_excision_type_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_procedures; Owner: -
 --
 
-ALTER TABLE lu_repair_type ALTER COLUMN pk SET DEFAULT nextval('lu_repair_type_pk_seq'::regclass);
+ALTER TABLE ONLY lu_repair_type ALTER COLUMN pk SET DEFAULT nextval('lu_repair_type_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_procedures; Owner: -
 --
 
-ALTER TABLE lu_skin_preparation ALTER COLUMN pk SET DEFAULT nextval('lu_skin_preparation_pk_seq'::regclass);
+ALTER TABLE ONLY lu_skin_preparation ALTER COLUMN pk SET DEFAULT nextval('lu_skin_preparation_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_procedures; Owner: -
 --
 
-ALTER TABLE lu_suture_site ALTER COLUMN pk SET DEFAULT nextval('lu_suture_site_pk_seq'::regclass);
+ALTER TABLE ONLY lu_suture_site ALTER COLUMN pk SET DEFAULT nextval('lu_suture_site_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_procedures; Owner: -
 --
 
-ALTER TABLE lu_suture_type ALTER COLUMN pk SET DEFAULT nextval('lu_suture_type_pk_seq'::regclass);
+ALTER TABLE ONLY lu_suture_type ALTER COLUMN pk SET DEFAULT nextval('lu_suture_type_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_procedures; Owner: -
 --
 
-ALTER TABLE skin_procedures ALTER COLUMN pk SET DEFAULT nextval('skin_procedures_pk_seq'::regclass);
+ALTER TABLE ONLY skin_procedures ALTER COLUMN pk SET DEFAULT nextval('skin_procedures_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_procedures; Owner: -
 --
 
-ALTER TABLE staff_skin_procedure_defaults ALTER COLUMN pk SET DEFAULT nextval('staff_skin_procedure_defaults_pk_seq'::regclass);
+ALTER TABLE ONLY staff_skin_procedure_defaults ALTER COLUMN pk SET DEFAULT nextval('staff_skin_procedure_defaults_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_procedures; Owner: -
 --
 
-ALTER TABLE surgical_packs ALTER COLUMN pk SET DEFAULT nextval('surgical_packs_pk_seq'::regclass);
+ALTER TABLE ONLY surgical_packs ALTER COLUMN pk SET DEFAULT nextval('surgical_packs_pk_seq'::regclass);
 
 
 SET search_path = clin_recalls, pg_catalog;
@@ -14180,49 +14182,49 @@ SET search_path = clin_recalls, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_recalls; Owner: -
 --
 
-ALTER TABLE forms ALTER COLUMN pk SET DEFAULT nextval('forms_pk_seq'::regclass);
+ALTER TABLE ONLY forms ALTER COLUMN pk SET DEFAULT nextval('forms_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_recalls; Owner: -
 --
 
-ALTER TABLE links_forms ALTER COLUMN pk SET DEFAULT nextval('links_forms_pk_seq'::regclass);
+ALTER TABLE ONLY links_forms ALTER COLUMN pk SET DEFAULT nextval('links_forms_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_recalls; Owner: -
 --
 
-ALTER TABLE lu_reasons ALTER COLUMN pk SET DEFAULT nextval('lu_reasons_pk_seq'::regclass);
+ALTER TABLE ONLY lu_reasons ALTER COLUMN pk SET DEFAULT nextval('lu_reasons_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_recalls; Owner: -
 --
 
-ALTER TABLE lu_recall_intervals ALTER COLUMN pk SET DEFAULT nextval('lu_recall_intervals_pk_seq'::regclass);
+ALTER TABLE ONLY lu_recall_intervals ALTER COLUMN pk SET DEFAULT nextval('lu_recall_intervals_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_recalls; Owner: -
 --
 
-ALTER TABLE lu_templates ALTER COLUMN pk SET DEFAULT nextval('lu_templates_pk_seq'::regclass);
+ALTER TABLE ONLY lu_templates ALTER COLUMN pk SET DEFAULT nextval('lu_templates_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_recalls; Owner: -
 --
 
-ALTER TABLE recalls ALTER COLUMN pk SET DEFAULT nextval('recalls_pk_seq'::regclass);
+ALTER TABLE ONLY recalls ALTER COLUMN pk SET DEFAULT nextval('recalls_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_recalls; Owner: -
 --
 
-ALTER TABLE sent ALTER COLUMN pk SET DEFAULT nextval('sent_pk_seq'::regclass);
+ALTER TABLE ONLY sent ALTER COLUMN pk SET DEFAULT nextval('sent_pk_seq'::regclass);
 
 
 SET search_path = clin_referrals, pg_catalog;
@@ -14231,21 +14233,21 @@ SET search_path = clin_referrals, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_referrals; Owner: -
 --
 
-ALTER TABLE inclusions ALTER COLUMN pk SET DEFAULT nextval('inclusions_pk_seq'::regclass);
+ALTER TABLE ONLY inclusions ALTER COLUMN pk SET DEFAULT nextval('inclusions_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_referrals; Owner: -
 --
 
-ALTER TABLE lu_type ALTER COLUMN pk SET DEFAULT nextval('lu_type_pk_seq'::regclass);
+ALTER TABLE ONLY lu_type ALTER COLUMN pk SET DEFAULT nextval('lu_type_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_referrals; Owner: -
 --
 
-ALTER TABLE referrals ALTER COLUMN pk SET DEFAULT nextval('referrals_pk_seq'::regclass);
+ALTER TABLE ONLY referrals ALTER COLUMN pk SET DEFAULT nextval('referrals_pk_seq'::regclass);
 
 
 SET search_path = clin_requests, pg_catalog;
@@ -14254,91 +14256,91 @@ SET search_path = clin_requests, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_requests; Owner: -
 --
 
-ALTER TABLE forms ALTER COLUMN pk SET DEFAULT nextval('forms_pk_seq'::regclass);
+ALTER TABLE ONLY forms ALTER COLUMN pk SET DEFAULT nextval('forms_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_requests; Owner: -
 --
 
-ALTER TABLE forms_requests ALTER COLUMN pk SET DEFAULT nextval('forms_requests_pk_seq'::regclass);
+ALTER TABLE ONLY forms_requests ALTER COLUMN pk SET DEFAULT nextval('forms_requests_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_requests; Owner: -
 --
 
-ALTER TABLE link_forms_requests_requests_results ALTER COLUMN pk SET DEFAULT nextval('link_forms_requests_requests_results_pk_seq'::regclass);
+ALTER TABLE ONLY link_forms_requests_requests_results ALTER COLUMN pk SET DEFAULT nextval('link_forms_requests_requests_results_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_requests; Owner: -
 --
 
-ALTER TABLE lu_copyto_type ALTER COLUMN pk SET DEFAULT nextval('lu_copyto_type_pk_seq'::regclass);
+ALTER TABLE ONLY lu_copyto_type ALTER COLUMN pk SET DEFAULT nextval('lu_copyto_type_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_requests; Owner: -
 --
 
-ALTER TABLE lu_form_header ALTER COLUMN pk SET DEFAULT nextval('lu_form_header_pk_seq'::regclass);
+ALTER TABLE ONLY lu_form_header ALTER COLUMN pk SET DEFAULT nextval('lu_form_header_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_requests; Owner: -
 --
 
-ALTER TABLE lu_instructions ALTER COLUMN pk SET DEFAULT nextval('lu_instructions_pk_seq'::regclass);
+ALTER TABLE ONLY lu_instructions ALTER COLUMN pk SET DEFAULT nextval('lu_instructions_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_requests; Owner: -
 --
 
-ALTER TABLE lu_link_provider_user_requests ALTER COLUMN pk SET DEFAULT nextval('lu_link_provider_user_requests_pk_seq'::regclass);
+ALTER TABLE ONLY lu_link_provider_user_requests ALTER COLUMN pk SET DEFAULT nextval('lu_link_provider_user_requests_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_requests; Owner: -
 --
 
-ALTER TABLE lu_request_type ALTER COLUMN pk SET DEFAULT nextval('lu_request_type_pk_seq'::regclass);
+ALTER TABLE ONLY lu_request_type ALTER COLUMN pk SET DEFAULT nextval('lu_request_type_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_requests; Owner: -
 --
 
-ALTER TABLE lu_requests ALTER COLUMN pk SET DEFAULT nextval('lu_requests_pk_seq'::regclass);
+ALTER TABLE ONLY lu_requests ALTER COLUMN pk SET DEFAULT nextval('lu_requests_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_requests; Owner: -
 --
 
-ALTER TABLE notes ALTER COLUMN pk SET DEFAULT nextval('notes_pk_seq'::regclass);
+ALTER TABLE ONLY notes ALTER COLUMN pk SET DEFAULT nextval('notes_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_requests; Owner: -
 --
 
-ALTER TABLE request_providers ALTER COLUMN pk SET DEFAULT nextval('request_providers_pk_seq'::regclass);
+ALTER TABLE ONLY request_providers ALTER COLUMN pk SET DEFAULT nextval('request_providers_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_requests; Owner: -
 --
 
-ALTER TABLE user_default_type ALTER COLUMN pk SET DEFAULT nextval('user_default_type_pk_seq'::regclass);
+ALTER TABLE ONLY user_default_type ALTER COLUMN pk SET DEFAULT nextval('user_default_type_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_requests; Owner: -
 --
 
-ALTER TABLE user_provider_defaults ALTER COLUMN pk SET DEFAULT nextval('user_provider_defaults_pk_seq'::regclass);
+ALTER TABLE ONLY user_provider_defaults ALTER COLUMN pk SET DEFAULT nextval('user_provider_defaults_pk_seq'::regclass);
 
 
 SET search_path = clin_vaccination, pg_catalog;
@@ -14347,49 +14349,49 @@ SET search_path = clin_vaccination, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
-ALTER TABLE lu_descriptions ALTER COLUMN pk SET DEFAULT nextval('lu_vaccines_descriptions_pk_seq'::regclass);
+ALTER TABLE ONLY lu_descriptions ALTER COLUMN pk SET DEFAULT nextval('lu_vaccines_descriptions_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
-ALTER TABLE lu_formulation ALTER COLUMN pk SET DEFAULT nextval('lu_formulation_pk_seq'::regclass);
+ALTER TABLE ONLY lu_formulation ALTER COLUMN pk SET DEFAULT nextval('lu_formulation_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
-ALTER TABLE lu_schedules ALTER COLUMN pk SET DEFAULT nextval('lu_schedules_pk_seq'::regclass);
+ALTER TABLE ONLY lu_schedules ALTER COLUMN pk SET DEFAULT nextval('lu_schedules_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
-ALTER TABLE lu_vaccines ALTER COLUMN pk SET DEFAULT nextval('lu_vaccines_pk_seq'::regclass);
+ALTER TABLE ONLY lu_vaccines ALTER COLUMN pk SET DEFAULT nextval('lu_vaccines_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
-ALTER TABLE lu_vaccines_in_schedule ALTER COLUMN pk SET DEFAULT nextval('lu_vaccines_in_schedule_pk_seq'::regclass);
+ALTER TABLE ONLY lu_vaccines_in_schedule ALTER COLUMN pk SET DEFAULT nextval('lu_vaccines_in_schedule_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
-ALTER TABLE vaccinations ALTER COLUMN pk SET DEFAULT nextval('vaccinations_pk_seq'::regclass);
+ALTER TABLE ONLY vaccinations ALTER COLUMN pk SET DEFAULT nextval('vaccinations_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_vaccination; Owner: -
 --
 
-ALTER TABLE vaccine_serial_numbers ALTER COLUMN pk SET DEFAULT nextval('vaccine_serial_numbers_pk_seq'::regclass);
+ALTER TABLE ONLY vaccine_serial_numbers ALTER COLUMN pk SET DEFAULT nextval('vaccine_serial_numbers_pk_seq'::regclass);
 
 
 SET search_path = clin_workcover, pg_catalog;
@@ -14398,35 +14400,28 @@ SET search_path = clin_workcover, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_workcover; Owner: -
 --
 
-ALTER TABLE claims ALTER COLUMN pk SET DEFAULT nextval('claims_pk_seq'::regclass);
+ALTER TABLE ONLY claims ALTER COLUMN pk SET DEFAULT nextval('claims_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_workcover; Owner: -
 --
 
-ALTER TABLE link_claim_documents ALTER COLUMN pk SET DEFAULT nextval('link_claim_documents_pk_seq'::regclass);
+ALTER TABLE ONLY lu_caused_by_employment ALTER COLUMN pk SET DEFAULT nextval('lu_caused_by_employment_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_workcover; Owner: -
 --
 
-ALTER TABLE lu_caused_by_employment ALTER COLUMN pk SET DEFAULT nextval('lu_caused_by_employment_pk_seq'::regclass);
+ALTER TABLE ONLY lu_visit_type ALTER COLUMN pk SET DEFAULT nextval('lu_visit_type_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: clin_workcover; Owner: -
 --
 
-ALTER TABLE lu_visit_type ALTER COLUMN pk SET DEFAULT nextval('lu_visit_type_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: clin_workcover; Owner: -
---
-
-ALTER TABLE visits ALTER COLUMN pk SET DEFAULT nextval('visits_pk_seq'::regclass);
+ALTER TABLE ONLY visits ALTER COLUMN pk SET DEFAULT nextval('visits_pk_seq'::regclass);
 
 
 SET search_path = coding, pg_catalog;
@@ -14435,21 +14430,21 @@ SET search_path = coding, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: coding; Owner: -
 --
 
-ALTER TABLE lu_loinc_abbrev ALTER COLUMN pk SET DEFAULT nextval('lu_loinc_abbrev_pk_seq'::regclass);
+ALTER TABLE ONLY lu_loinc_abbrev ALTER COLUMN pk SET DEFAULT nextval('lu_loinc_abbrev_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: coding; Owner: -
 --
 
-ALTER TABLE lu_systems ALTER COLUMN pk SET DEFAULT nextval('lu_systems_pk_seq'::regclass);
+ALTER TABLE ONLY lu_systems ALTER COLUMN pk SET DEFAULT nextval('lu_systems_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: coding; Owner: -
 --
 
-ALTER TABLE usr_codes_weighting ALTER COLUMN pk SET DEFAULT nextval('usr_codes_weighting_pk_seq'::regclass);
+ALTER TABLE ONLY usr_codes_weighting ALTER COLUMN pk SET DEFAULT nextval('usr_codes_weighting_pk_seq'::regclass);
 
 
 SET search_path = common, pg_catalog;
@@ -14458,196 +14453,196 @@ SET search_path = common, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_aboriginality ALTER COLUMN pk SET DEFAULT nextval('lu_aboriginality_pk_seq'::regclass);
+ALTER TABLE ONLY lu_aboriginality ALTER COLUMN pk SET DEFAULT nextval('lu_aboriginality_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_anatomical_localisation ALTER COLUMN pk SET DEFAULT nextval('lu_anatomical_location_pk_seq'::regclass);
+ALTER TABLE ONLY lu_anatomical_localisation ALTER COLUMN pk SET DEFAULT nextval('lu_anatomical_location_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_anatomical_site ALTER COLUMN pk SET DEFAULT nextval('lu_anatomical_site_pk_seq'::regclass);
+ALTER TABLE ONLY lu_anatomical_site ALTER COLUMN pk SET DEFAULT nextval('lu_anatomical_site_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_anterior_posterior ALTER COLUMN pk SET DEFAULT nextval('lu_anterior_posterior_pk_seq'::regclass);
+ALTER TABLE ONLY lu_anterior_posterior ALTER COLUMN pk SET DEFAULT nextval('lu_anterior_posterior_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_companion_status ALTER COLUMN pk SET DEFAULT nextval('lu_companion_status_pk_seq'::regclass);
+ALTER TABLE ONLY lu_companion_status ALTER COLUMN pk SET DEFAULT nextval('lu_companion_status_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_countries ALTER COLUMN pk SET DEFAULT nextval('lu_countries_pk_seq'::regclass);
+ALTER TABLE ONLY lu_countries ALTER COLUMN pk SET DEFAULT nextval('lu_countries_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_ethnicity ALTER COLUMN pk SET DEFAULT nextval('lu_ethnicity_pk_seq'::regclass);
+ALTER TABLE ONLY lu_ethnicity ALTER COLUMN pk SET DEFAULT nextval('lu_ethnicity_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_family_relationships ALTER COLUMN pk SET DEFAULT nextval('lu_family_relationships_pk_seq'::regclass);
+ALTER TABLE ONLY lu_family_relationships ALTER COLUMN pk SET DEFAULT nextval('lu_family_relationships_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_formulation ALTER COLUMN pk SET DEFAULT nextval('lu_formulation_pk_seq'::regclass);
+ALTER TABLE ONLY lu_formulation ALTER COLUMN pk SET DEFAULT nextval('lu_formulation_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_hearing_aid_status ALTER COLUMN pk SET DEFAULT nextval('lu_hearing_aid_status_pk_seq'::regclass);
+ALTER TABLE ONLY lu_hearing_aid_status ALTER COLUMN pk SET DEFAULT nextval('lu_hearing_aid_status_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_languages ALTER COLUMN pk SET DEFAULT nextval('lu_languages_pk_seq'::regclass);
+ALTER TABLE ONLY lu_languages ALTER COLUMN pk SET DEFAULT nextval('lu_languages_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_laterality ALTER COLUMN pk SET DEFAULT nextval('lu_laterality_pk_seq'::regclass);
+ALTER TABLE ONLY lu_laterality ALTER COLUMN pk SET DEFAULT nextval('lu_laterality_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_medicolegal ALTER COLUMN pk SET DEFAULT nextval('lu_medicolegal_pk_seq'::regclass);
+ALTER TABLE ONLY lu_medicolegal ALTER COLUMN pk SET DEFAULT nextval('lu_medicolegal_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_motion ALTER COLUMN pk SET DEFAULT nextval('lu_motion_pk_seq'::regclass);
+ALTER TABLE ONLY lu_motion ALTER COLUMN pk SET DEFAULT nextval('lu_motion_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_normality ALTER COLUMN pk SET DEFAULT nextval('lu_normality_pk_seq'::regclass);
+ALTER TABLE ONLY lu_normality ALTER COLUMN pk SET DEFAULT nextval('lu_normality_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_occupations ALTER COLUMN pk SET DEFAULT nextval('lu_occupations_pk_seq'::regclass);
+ALTER TABLE ONLY lu_occupations ALTER COLUMN pk SET DEFAULT nextval('lu_occupations_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_proximal_distal ALTER COLUMN pk SET DEFAULT nextval('lu_proximal_distal_pk_seq'::regclass);
+ALTER TABLE ONLY lu_proximal_distal ALTER COLUMN pk SET DEFAULT nextval('lu_proximal_distal_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_recreationaldrugs ALTER COLUMN pk SET DEFAULT nextval('lu_recreationaldrugs_pk_seq'::regclass);
+ALTER TABLE ONLY lu_recreationaldrugs ALTER COLUMN pk SET DEFAULT nextval('lu_recreationaldrugs_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_religions ALTER COLUMN pk SET DEFAULT nextval('lu_religions_pk_seq'::regclass);
+ALTER TABLE ONLY lu_religions ALTER COLUMN pk SET DEFAULT nextval('lu_religions_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_route_administration ALTER COLUMN pk SET DEFAULT nextval('lu_route_administration_pk_seq'::regclass);
+ALTER TABLE ONLY lu_route_administration ALTER COLUMN pk SET DEFAULT nextval('lu_route_administration_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_seasons ALTER COLUMN pk SET DEFAULT nextval('lu_seasons_pk_seq'::regclass);
+ALTER TABLE ONLY lu_seasons ALTER COLUMN pk SET DEFAULT nextval('lu_seasons_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_site_administration ALTER COLUMN pk SET DEFAULT nextval('lu_site_administration_pk_seq'::regclass);
+ALTER TABLE ONLY lu_site_administration ALTER COLUMN pk SET DEFAULT nextval('lu_site_administration_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_smoking_status ALTER COLUMN pk SET DEFAULT nextval('lu_smoking_status_pk_seq'::regclass);
+ALTER TABLE ONLY lu_smoking_status ALTER COLUMN pk SET DEFAULT nextval('lu_smoking_status_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_social_support ALTER COLUMN pk SET DEFAULT nextval('lu_social_support_pk_seq'::regclass);
+ALTER TABLE ONLY lu_social_support ALTER COLUMN pk SET DEFAULT nextval('lu_social_support_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_sub_religions ALTER COLUMN pk SET DEFAULT nextval('lu_sub_religions_pk_seq'::regclass);
+ALTER TABLE ONLY lu_sub_religions ALTER COLUMN pk SET DEFAULT nextval('lu_sub_religions_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_units ALTER COLUMN pk SET DEFAULT nextval('lu_units_pk_seq'::regclass);
+ALTER TABLE ONLY lu_units ALTER COLUMN pk SET DEFAULT nextval('lu_units_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_urgency ALTER COLUMN pk SET DEFAULT nextval('lu_urgency_pk_seq'::regclass);
+ALTER TABLE ONLY lu_urgency ALTER COLUMN pk SET DEFAULT nextval('lu_urgency_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: common; Owner: -
 --
 
-ALTER TABLE lu_whisper_test ALTER COLUMN pk SET DEFAULT nextval('lu_whisper_test_pk_seq'::regclass);
+ALTER TABLE ONLY lu_whisper_test ALTER COLUMN pk SET DEFAULT nextval('lu_whisper_test_pk_seq'::regclass);
 
 
 SET search_path = contacts, pg_catalog;
@@ -14656,154 +14651,154 @@ SET search_path = contacts, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE data_addresses ALTER COLUMN pk SET DEFAULT nextval('data_addresses_pk_seq'::regclass);
+ALTER TABLE ONLY data_addresses ALTER COLUMN pk SET DEFAULT nextval('data_addresses_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE data_branches ALTER COLUMN pk SET DEFAULT nextval('data_branches_pk_seq'::regclass);
+ALTER TABLE ONLY data_branches ALTER COLUMN pk SET DEFAULT nextval('data_branches_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE data_communications ALTER COLUMN pk SET DEFAULT nextval('data_communications_pk_seq'::regclass);
+ALTER TABLE ONLY data_communications ALTER COLUMN pk SET DEFAULT nextval('data_communications_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE data_employees ALTER COLUMN pk SET DEFAULT nextval('data_employees_pk_seq'::regclass);
+ALTER TABLE ONLY data_employees ALTER COLUMN pk SET DEFAULT nextval('data_employees_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE data_organisations ALTER COLUMN pk SET DEFAULT nextval('data_organisations_pk_seq'::regclass);
+ALTER TABLE ONLY data_organisations ALTER COLUMN pk SET DEFAULT nextval('data_organisations_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE data_persons ALTER COLUMN pk SET DEFAULT nextval('data_persons_pk_seq'::regclass);
+ALTER TABLE ONLY data_persons ALTER COLUMN pk SET DEFAULT nextval('data_persons_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE images ALTER COLUMN pk SET DEFAULT nextval('images_pk_seq'::regclass);
+ALTER TABLE ONLY images ALTER COLUMN pk SET DEFAULT nextval('images_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE links_branches_comms ALTER COLUMN pk SET DEFAULT nextval('links_branches_comms_pk_seq'::regclass);
+ALTER TABLE ONLY links_branches_comms ALTER COLUMN pk SET DEFAULT nextval('links_branches_comms_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE links_employees_comms ALTER COLUMN pk SET DEFAULT nextval('links_employees_comms_pk_seq'::regclass);
+ALTER TABLE ONLY links_employees_comms ALTER COLUMN pk SET DEFAULT nextval('links_employees_comms_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE links_persons_addresses ALTER COLUMN pk SET DEFAULT nextval('links_persons_addresses_pk_seq'::regclass);
+ALTER TABLE ONLY links_persons_addresses ALTER COLUMN pk SET DEFAULT nextval('links_persons_addresses_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE links_persons_comms ALTER COLUMN pk SET DEFAULT nextval('links_persons_comms_pk_seq'::regclass);
+ALTER TABLE ONLY links_persons_comms ALTER COLUMN pk SET DEFAULT nextval('links_persons_comms_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE lu_address_types ALTER COLUMN pk SET DEFAULT nextval('lu_address_types_pk_seq'::regclass);
+ALTER TABLE ONLY lu_address_types ALTER COLUMN pk SET DEFAULT nextval('lu_address_types_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE lu_categories ALTER COLUMN pk SET DEFAULT nextval('lu_categories_pk_seq'::regclass);
+ALTER TABLE ONLY lu_categories ALTER COLUMN pk SET DEFAULT nextval('lu_categories_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE lu_contact_type ALTER COLUMN pk SET DEFAULT nextval('lu_contact_type_pk_seq'::regclass);
+ALTER TABLE ONLY lu_contact_type ALTER COLUMN pk SET DEFAULT nextval('lu_contact_type_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE lu_employee_status ALTER COLUMN pk SET DEFAULT nextval('lu_employee_status_pk_seq'::regclass);
+ALTER TABLE ONLY lu_employee_status ALTER COLUMN pk SET DEFAULT nextval('lu_employee_status_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE lu_firstnames ALTER COLUMN pk SET DEFAULT nextval('lu_firstnames_pk_seq'::regclass);
+ALTER TABLE ONLY lu_firstnames ALTER COLUMN pk SET DEFAULT nextval('lu_firstnames_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE lu_marital ALTER COLUMN pk SET DEFAULT nextval('lu_marital_pk_seq'::regclass);
+ALTER TABLE ONLY lu_marital ALTER COLUMN pk SET DEFAULT nextval('lu_marital_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE lu_misspelt_towns ALTER COLUMN pk SET DEFAULT nextval('lu_mismatched_towns_pk_seq'::regclass);
+ALTER TABLE ONLY lu_misspelt_towns ALTER COLUMN pk SET DEFAULT nextval('lu_mismatched_towns_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE lu_sex ALTER COLUMN pk SET DEFAULT nextval('lu_sex_pk_seq'::regclass);
+ALTER TABLE ONLY lu_sex ALTER COLUMN pk SET DEFAULT nextval('lu_sex_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE lu_surnames ALTER COLUMN pk SET DEFAULT nextval('lu_surnames_pk_seq'::regclass);
+ALTER TABLE ONLY lu_surnames ALTER COLUMN pk SET DEFAULT nextval('lu_surnames_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE lu_title ALTER COLUMN pk SET DEFAULT nextval('lu_title_pk_seq'::regclass);
+ALTER TABLE ONLY lu_title ALTER COLUMN pk SET DEFAULT nextval('lu_title_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: contacts; Owner: -
 --
 
-ALTER TABLE lu_towns ALTER COLUMN pk SET DEFAULT nextval('lu_towns_pk_seq'::regclass);
+ALTER TABLE ONLY lu_towns ALTER COLUMN pk SET DEFAULT nextval('lu_towns_pk_seq'::regclass);
 
 
 SET search_path = db, pg_catalog;
@@ -14812,7 +14807,7 @@ SET search_path = db, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: db; Owner: -
 --
 
-ALTER TABLE lu_version ALTER COLUMN pk SET DEFAULT nextval('db_version_pk_seq'::regclass);
+ALTER TABLE ONLY lu_version ALTER COLUMN pk SET DEFAULT nextval('db_version_pk_seq'::regclass);
 
 
 SET search_path = defaults, pg_catalog;
@@ -14821,63 +14816,63 @@ SET search_path = defaults, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: defaults; Owner: -
 --
 
-ALTER TABLE hl7_inboxes ALTER COLUMN pk SET DEFAULT nextval('hl7_message_destination_pk_seq'::regclass);
+ALTER TABLE ONLY hl7_inboxes ALTER COLUMN pk SET DEFAULT nextval('hl7_message_destination_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: defaults; Owner: -
 --
 
-ALTER TABLE incoming_message_handling ALTER COLUMN pk SET DEFAULT nextval('incoming_message_handling_pk_seq'::regclass);
+ALTER TABLE ONLY incoming_message_handling ALTER COLUMN pk SET DEFAULT nextval('incoming_message_handling_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: defaults; Owner: -
 --
 
-ALTER TABLE lu_link_printer_task ALTER COLUMN pk SET DEFAULT nextval('lu_link_printer_task_pk_seq'::regclass);
+ALTER TABLE ONLY lu_link_printer_task ALTER COLUMN pk SET DEFAULT nextval('lu_link_printer_task_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: defaults; Owner: -
 --
 
-ALTER TABLE lu_message_display_style ALTER COLUMN pk SET DEFAULT nextval('lu_message_display_style_pk_seq'::regclass);
+ALTER TABLE ONLY lu_message_display_style ALTER COLUMN pk SET DEFAULT nextval('lu_message_display_style_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: defaults; Owner: -
 --
 
-ALTER TABLE lu_message_standard ALTER COLUMN pk SET DEFAULT nextval('lu_message_standard_pk_seq'::regclass);
+ALTER TABLE ONLY lu_message_standard ALTER COLUMN pk SET DEFAULT nextval('lu_message_standard_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: defaults; Owner: -
 --
 
-ALTER TABLE lu_printer_host ALTER COLUMN pk SET DEFAULT nextval('lu_printer_host_pk_seq'::regclass);
+ALTER TABLE ONLY lu_printer_host ALTER COLUMN pk SET DEFAULT nextval('lu_printer_host_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: defaults; Owner: -
 --
 
-ALTER TABLE lu_printer_task ALTER COLUMN pk SET DEFAULT nextval('lu_printer_task_pk_seq'::regclass);
+ALTER TABLE ONLY lu_printer_task ALTER COLUMN pk SET DEFAULT nextval('lu_printer_task_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: defaults; Owner: -
 --
 
-ALTER TABLE script_coordinates ALTER COLUMN pk SET DEFAULT nextval('script_coordinates_pk_seq'::regclass);
+ALTER TABLE ONLY script_coordinates ALTER COLUMN pk SET DEFAULT nextval('script_coordinates_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: defaults; Owner: -
 --
 
-ALTER TABLE temp ALTER COLUMN pk SET DEFAULT nextval('temp_pk_seq'::regclass);
+ALTER TABLE ONLY temp ALTER COLUMN pk SET DEFAULT nextval('temp_pk_seq'::regclass);
 
 
 SET search_path = documents, pg_catalog;
@@ -14886,70 +14881,70 @@ SET search_path = documents, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: documents; Owner: -
 --
 
-ALTER TABLE documents ALTER COLUMN pk SET DEFAULT nextval('documents_pk_seq'::regclass);
+ALTER TABLE ONLY documents ALTER COLUMN pk SET DEFAULT nextval('documents_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: documents; Owner: -
 --
 
-ALTER TABLE lu_archive_site ALTER COLUMN pk SET DEFAULT nextval('lu_archive_site_pk_seq'::regclass);
+ALTER TABLE ONLY lu_archive_site ALTER COLUMN pk SET DEFAULT nextval('lu_archive_site_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: documents; Owner: -
 --
 
-ALTER TABLE lu_display_as ALTER COLUMN pk SET DEFAULT nextval('lu_display_as_pk_seq'::regclass);
+ALTER TABLE ONLY lu_display_as ALTER COLUMN pk SET DEFAULT nextval('lu_display_as_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: documents; Owner: -
 --
 
-ALTER TABLE lu_message_display_style ALTER COLUMN pk SET DEFAULT nextval('lu_message_display_style_pk_seq'::regclass);
+ALTER TABLE ONLY lu_message_display_style ALTER COLUMN pk SET DEFAULT nextval('lu_message_display_style_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: documents; Owner: -
 --
 
-ALTER TABLE lu_message_standard ALTER COLUMN pk SET DEFAULT nextval('lu_message_standard_pk_seq'::regclass);
+ALTER TABLE ONLY lu_message_standard ALTER COLUMN pk SET DEFAULT nextval('lu_message_standard_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: documents; Owner: -
 --
 
-ALTER TABLE observations ALTER COLUMN pk SET DEFAULT nextval('observations_pk_seq'::regclass);
+ALTER TABLE ONLY observations ALTER COLUMN pk SET DEFAULT nextval('observations_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: documents; Owner: -
 --
 
-ALTER TABLE sending_entities ALTER COLUMN pk SET DEFAULT nextval('sending_entities_pk_seq'::regclass);
+ALTER TABLE ONLY sending_entities ALTER COLUMN pk SET DEFAULT nextval('sending_entities_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: documents; Owner: -
 --
 
-ALTER TABLE signed_off ALTER COLUMN pk SET DEFAULT nextval('signed_off_pk_seq'::regclass);
+ALTER TABLE ONLY signed_off ALTER COLUMN pk SET DEFAULT nextval('signed_off_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: documents; Owner: -
 --
 
-ALTER TABLE unmatched_patients ALTER COLUMN pk SET DEFAULT nextval('unmatched_patients_pk_seq'::regclass);
+ALTER TABLE ONLY unmatched_patients ALTER COLUMN pk SET DEFAULT nextval('unmatched_patients_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: documents; Owner: -
 --
 
-ALTER TABLE unmatched_staff ALTER COLUMN pk SET DEFAULT nextval('unmatched_staff_pk_seq'::regclass);
+ALTER TABLE ONLY unmatched_staff ALTER COLUMN pk SET DEFAULT nextval('unmatched_staff_pk_seq'::regclass);
 
 
 SET search_path = drugs, pg_catalog;
@@ -14958,35 +14953,35 @@ SET search_path = drugs, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: drugs; Owner: -
 --
 
-ALTER TABLE brand ALTER COLUMN pk SET DEFAULT nextval('brand_pk_seq'::regclass);
+ALTER TABLE ONLY brand ALTER COLUMN pk SET DEFAULT nextval('brand_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: drugs; Owner: -
 --
 
-ALTER TABLE clinical_effects ALTER COLUMN pk SET DEFAULT nextval('clinical_effects_pk_seq'::regclass);
+ALTER TABLE ONLY clinical_effects ALTER COLUMN pk SET DEFAULT nextval('clinical_effects_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: drugs; Owner: -
 --
 
-ALTER TABLE flags ALTER COLUMN pk SET DEFAULT nextval('flags_pk_seq'::regclass);
+ALTER TABLE ONLY flags ALTER COLUMN pk SET DEFAULT nextval('flags_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: drugs; Owner: -
 --
 
-ALTER TABLE info ALTER COLUMN pk SET DEFAULT nextval('info_pk_seq'::regclass);
+ALTER TABLE ONLY info ALTER COLUMN pk SET DEFAULT nextval('info_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: drugs; Owner: -
 --
 
-ALTER TABLE product ALTER COLUMN pk SET DEFAULT nextval('product_pk_seq'::regclass);
+ALTER TABLE ONLY product ALTER COLUMN pk SET DEFAULT nextval('product_pk_seq'::regclass);
 
 
 SET search_path = import_export, pg_catalog;
@@ -14995,14 +14990,14 @@ SET search_path = import_export, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: import_export; Owner: -
 --
 
-ALTER TABLE lu_demographics_field_templates ALTER COLUMN pk SET DEFAULT nextval('lu_demographics_field_templates_pk_seq'::regclass);
+ALTER TABLE ONLY lu_demographics_field_templates ALTER COLUMN pk SET DEFAULT nextval('lu_demographics_field_templates_pk_seq'::regclass);
 
 
 --
 -- Name: pk; Type: DEFAULT; Schema: import_export; Owner: -
 --
 
-ALTER TABLE lu_source_program ALTER COLUMN pk SET DEFAULT nextval('lu_source_program_pk_seq'::regclass);
+ALTER TABLE ONLY lu_source_program ALTER COLUMN pk SET DEFAULT nextval('lu_source_program_pk_seq'::regclass);
 
 
 SET search_path = admin, pg_catalog;
@@ -16259,14 +16254,6 @@ SET search_path = clin_workcover, pg_catalog;
 
 ALTER TABLE ONLY claims
     ADD CONSTRAINT claims_pkey PRIMARY KEY (pk);
-
-
---
--- Name: link_claim_documents_pkey; Type: CONSTRAINT; Schema: clin_workcover; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY link_claim_documents
-    ADD CONSTRAINT link_claim_documents_pkey PRIMARY KEY (pk);
 
 
 --

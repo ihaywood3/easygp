@@ -8,6 +8,7 @@ Private drug_forms As Collection
 Private bKeyValid As Boolean
 Private bExit As Boolean  
 Private fk_form As Integer
+Private units_keys As Integer[]
 
 Public Sub Form_Open()
    
@@ -27,7 +28,7 @@ Public Sub Settings_Save()
    Settings["Drugs/VSplit_DataEntry.Layout"] = VSplit_DataEntry.Layout
    Settings["Drugs/HSplit1.Layout"] = HSplit1.Layout
    Settings["Drugs/Form_PDF.Zoom"] = Form_PDF.CurrentZoom
-
+   
 End
 
 Private Sub Settings_Load()
@@ -41,7 +42,7 @@ End
 
 Public Sub Init()
    
-   lblMeasure.text = " Occupation "
+   lblMeasure.text = " Amount (Liquids only) "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea_Outer, lblMeasure)
    Try Settings_Load()
    With cvwDrugs
@@ -53,6 +54,13 @@ Public Sub Init()
       .BtPrint.Visible = True  
       Try .Load_PDF(User.home &/ "Documents/alphamox.pdf")
    End With
+   cmbUnits.Add("mcg")
+   cmbUnits.Add("mg")
+   cmbUnits.Add("gm")
+   cmbUnits.Add("mg/g")
+   cmbUnits.Add("mcg/g")
+   cmbUnits.Add("mg/ml")
+   cmbUnits.Add("mcg/ml")
    Reload()
    
 End Sub
@@ -76,7 +84,10 @@ Public Sub Brands_Show()
       cvwDrugs[brand!pk_view][1] = brand!generic
       cvwDrugs[brand!pk_view][2] = brand!strength & " " & brand!form
    Next
-   
+   If cvwDrugs.count = 1 Then
+      cvwDrugs_Select()
+   Endif
+
 End
 
 Public Sub txtSearch_KeyRelease()
@@ -86,7 +97,7 @@ Public Sub txtSearch_KeyRelease()
 End
 
 Public Sub cvwDrugs_Select()
-
+   
    cvwDrugs.MoveCurrent
    txtBrand.text = brands[cvwDrugs.Item.key]!brand
    txtGeneric.text = brands[cvwDrugs.Item.key]!generic
@@ -113,11 +124,12 @@ End
 
 Public Sub Drug_New()
    
-   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_Outer)   
+   modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Inner)   
    EditArea_Notify_Data_Change(False)
- 
    EditArea_TextBoxes_SetRead_Status(False)
+   
    cvwDrugs.Clear()
+   ListView1.Clear()
    fk_form = 0
    txtBrand.SetFocus()
    
@@ -130,6 +142,11 @@ Public Sub EditArea_TextBoxes_SetRead_Status(bflag As Boolean)
    txtForm.ReadOnly = bflag
    txtStrength.ReadOnly = bflag  
    txtPackSize.ReadOnly = bflag  
+   txtComment.ReadOnly = bflag
+   Hbox_Generics.Visible = bflag     
+   HBox_Strength.Visible = bflag  
+   Hbox_AddGeneric.Visible = Not bFlag   
+   HBox_GenericsList.Visible = Not bFlag
    
 End
 
@@ -137,15 +154,14 @@ Public Sub Drug_Forms_Get()
    
    Dim drug_form As Collection
    
-    listview2.Clear()
-    drug_forms = modPrescribingDBI.Formulations_Get(Trim(txtForm.text))  
-    For Each drug_form In drug_forms
-      listview2.Add(drug_forms.pk, drug_forms.form)
+   listview2.Clear()
+   drug_forms = modPrescribingDBI.Formulations_Get(Trim(txtForm.text))  
+   For Each drug_form In drug_forms
+      listview2.Add(drug_form!pk, drug_form!form)
    Next
-    If listview2.count Then
-        listview2.Visible = True
-
-    Endif 
+   If listview2.count Then
+      listview2.Visible = True
+   Endif 
    
 End
 
@@ -153,13 +169,14 @@ Public Sub Save()
    '-----------------------------
    'Save a new user defined drug
    '-----------------------------   
-
+   
    If Vbox_EditArea_Outer.padding = 0 Then Return 
    If Not Drug_Valid() Then Return 
    
-   EditArea_TextBoxes_SetRead_Status(True)
+   EditArea_TextBoxes_SetRead_Status(False)
    Reload()
    txtSearch.SetFocus
+   
 End
 
 Public Function Drug_Valid() As Boolean
@@ -168,7 +185,7 @@ Public Function Drug_Valid() As Boolean
    '------------------------------------------
    
    Return True
-
+   
 End
 
 Public Sub EditArea_Buttons_Click()
@@ -185,7 +202,7 @@ End
 Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
    
    Select Case tag
-      Case "pack size"
+      Case "pack size", "strength new"
          bKeyValid = modUtil.AllowKeys(Const.AllowKeys_NumbersOnly, keycode)
       Case Else  
          bKeyValid = True  
@@ -207,22 +224,30 @@ Public Sub EditArea_TextBox_KeyPress()
             listview2.SetFocus()            
          End If 
       Case key.Return, key.Tab
-   
-      Select Case Last.tag
-         Case "brand"
-            txtGeneric.SetFocus()
-         Case "generic"
-            txtStrength.SetFocus()
-         Case "strength"
-            txtForm.SetFocus()
-         Case "form"
-            txtAmount.SetFocus()
-         Case "packsize"
-            txtPIFile.SetFocus()
-      End Select
-      
+         
+         Select Case Last.tag
+            Case "brand"
+               If Hbox_AddGeneric.Visible Then
+                  txtGenericNew.SetFocus
+               Else
+                  txtGeneric.SetFocus
+               Endif
+            Case "generic"
+               txtStrength.SetFocus()
+            Case "strength"
+               txtForm.SetFocus()
+            Case "form"
+               txtPackSize.SetFocus()
+            Case "packsize"
+               txtPIFile.SetFocus()   
+            Case "generic add"
+               txtStrengthNew.SetFocus()
+            Case "strength add"
+               cmbUnits.SetFocus()
+         End Select
+         
    End Select
-
+   
 End Sub
 
 Public Sub listview2_KeyPress()
@@ -236,43 +261,93 @@ End Sub
 Public Sub listview2_DblClick()
    
    listview2.MoveCurrent
-   txtForm.text = drug_forms(listview2.Item.key)
-   fk_form = listview2.Item.key 
-   
-End
-
-Public Sub EditArea_TextBox_LosttFocus()
-   
-   Last.BackGround = Color.white
+   txtForm.text = drug_forms(listview1.Item.key)
+   fk_form = listview1.Item.key 
    
 End
 
 Public Sub EditArea_TextBox_GotFocus()
    
    Last.BackGround = Color.rgb(95, 255, 175)   
+   ListView2.Visible = False  
    Select Case Last.tag                         
-         Case "form"
-                              
+      Case "form"
+         
          With listview2                        
-            .top = Last.Parent.Parent.top
+            .top = Last.Parent.Parent.top + Last.Parent.height 
             .Left = Last.Parent.Left           
             .width = Last.width   
             .Visible = False                   
             .Raise                             
-            End With                              
-      End Select                                   
+         End With                              
+   End Select                                   
+   
 End  
 
 Public Sub EditArea_TextBox_KeyRelease()
    
-    
-    Select Case Last.tag
-       Case "form"
-          Drug_Forms_Get()
-    End Select
-  
-      
+   Select Case Last.tag
+      Case "form"
+         Drug_Forms_Get()
+   End Select
+   
+End
+
+Public Sub EditArea_TextBox_LostFocus()
+   
+   Last.Background = Color.White
+   If Last.tag <> "form" Then ListView2.Visible = False  
+   
+End
+
+Public Sub txtSearch_GotFocus()
+   
+   EditArea_TextBoxes_SetRead_Status(True)
+   
+End
+
+Public Sub ListView1_Menu()    
+   
+   If Last.count Then mnuGenerics.Popup()
+   
+End
+
+Public Sub mnuGenerics_Click()
+   
+   Select Case Last.tag
+      Case "edit"
+         modUtil.NotImplemented("Editing a generic component")
+      Case "delete"
+         modUtil.NotImplemented("Deleting a generic component")
+         
+   End Select
 
 End
 
+Public Sub tbAddGeneric_Click()
+   
+   ListView1.Add(ListView1.count, txtGenericNew.text & " " & txtStrengthNew.text & " " & cmbUnits.text)
+   txtGenericNew.Clear()
+   txtStrength.Clear()
+   txtGenericNew.SetFocus()
+   
+End
 
+Public Sub txtSearch_KeyPress()
+   
+   If key.code = key.down Then
+      If cvwDrugs.count Then
+         cvwDrugs.MoveFirst
+         cvwdrugs.SetFocus
+         
+      Endif
+   Endif
+   
+End
+
+Public Sub EditArea_Combo_KeyPress()
+
+   If Last.key = key.return Then
+    tbAddGeneric.SetFocus()
+End If   
+End

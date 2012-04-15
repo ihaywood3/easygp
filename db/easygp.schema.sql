@@ -258,6 +258,24 @@ Copyright 2010-11 Dr. Ian Haywood
 
 
 --
+-- Name: drugs_old; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA drugs_old;
+
+
+--
+-- Name: SCHEMA drugs_old; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON SCHEMA drugs_old IS '
+This schema is based on original proposed structure of drug database for the gnumed project
+Copyright 2000-02 Dr. Horst Herb
+Copyright 2010-11 Dr. Ian Haywood
+';
+
+
+--
 -- Name: import_export; Type: SCHEMA; Schema: -; Owner: -
 --
 
@@ -290,6 +308,20 @@ CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
 --
 
 COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
+
+
+--
+-- Name: uuid-ossp; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION "uuid-ossp"; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION "uuid-ossp" IS 'generate universally unique identifiers (UUIDs)';
 
 
 SET search_path = clerical, pg_catalog;
@@ -6454,10 +6486,10 @@ ALTER SEQUENCE increased_quantity_authority_reasons_pk_seq OWNED BY increased_qu
 CREATE TABLE instruction_habits (
     pk integer NOT NULL,
     fk_instruction integer NOT NULL,
-    fk_company character varying(3),
-    fk_generic_product integer NOT NULL,
+    fk_generic_product uuid NOT NULL,
     fk_staff integer NOT NULL,
-    weighting integer NOT NULL
+    weighting integer NOT NULL,
+    fk_brand uuid
 );
 
 
@@ -6542,22 +6574,22 @@ ALTER SEQUENCE instructions_pk_seq OWNED BY instructions.pk;
 
 
 --
--- Name: item_start_last_dates; Type: TABLE; Schema: clin_prescribing; Owner: -; Tablespace: 
+-- Name: lu_pbs_script_type; Type: TABLE; Schema: clin_prescribing; Owner: -; Tablespace: 
 --
 
-CREATE TABLE item_start_last_dates (
+CREATE TABLE lu_pbs_script_type (
     pk integer NOT NULL,
-    start_date date,
-    last_date date
+    type text NOT NULL
 );
 
 
 --
--- Name: TABLE item_start_last_dates; Type: COMMENT; Schema: clin_prescribing; Owner: -
+-- Name: TABLE lu_pbs_script_type; Type: COMMENT; Schema: clin_prescribing; Owner: -
 --
 
-COMMENT ON TABLE item_start_last_dates IS 'Quickly look up when the drug was started
-and the last date it was prescribed';
+COMMENT ON TABLE lu_pbs_script_type IS 'The various ways a script can be printed as for example:
+	- PBS AUTHORITY, RPBS AUTHORITY, PBS STREAMLINED AUTHORITY
+	  PBS, RPBS,  PRIVATE';
 
 
 --
@@ -6566,21 +6598,22 @@ and the last date it was prescribed';
 
 CREATE TABLE medications (
     pk integer NOT NULL,
-    fk_generic_product integer NOT NULL,
-    fk_company character varying(3) DEFAULT NULL::character varying,
     repeats integer NOT NULL,
     quantity integer NOT NULL,
     fk_instruction integer NOT NULL,
     fk_prescribed_for integer,
-    fk_script_dates integer NOT NULL,
     pbscode text NOT NULL,
-    fk_pbs_script_type integer NOT NULL,
     restriction_code text,
     active boolean DEFAULT false,
     deleted boolean DEFAULT false,
     suppress_reason boolean,
     fk_code text,
-    fk_increased_quantity_authority_reason integer
+    fk_increased_quantity_authority_reason integer,
+    fk_generic_product uuid NOT NULL,
+    fk_brand uuid,
+    start_date date DEFAULT now() NOT NULL,
+    last_date date DEFAULT now() NOT NULL,
+    fk_lu_pbs_script_type integer
 );
 
 
@@ -6601,21 +6634,6 @@ COMMENT ON TABLE medications IS 'The main medications table
   -  if suppress_reason is true the reason for prescribing is not printed on the script
   -  if fk_code is not null then the reason for prescribing is coded to coding.generic_terms
   ';
-
-
---
--- Name: COLUMN medications.fk_generic_product; Type: COMMENT; Schema: clin_prescribing; Owner: -
---
-
-COMMENT ON COLUMN medications.fk_generic_product IS 'fk to drugs.products gives generic name, atc, strengh and formulation';
-
-
---
--- Name: COLUMN medications.fk_company; Type: COMMENT; Schema: clin_prescribing; Owner: -
---
-
-COMMENT ON COLUMN medications.fk_company IS 'if not null, then this drug is a brand, ie 
-it is a generic made by a company with their own trade name';
 
 
 --
@@ -6681,25 +6699,6 @@ CREATE SEQUENCE medications_pk_seq
 --
 
 ALTER SEQUENCE medications_pk_seq OWNED BY medications.pk;
-
-
---
--- Name: pbs_script_type; Type: TABLE; Schema: clin_prescribing; Owner: -; Tablespace: 
---
-
-CREATE TABLE pbs_script_type (
-    pk integer NOT NULL,
-    type text NOT NULL
-);
-
-
---
--- Name: TABLE pbs_script_type; Type: COMMENT; Schema: clin_prescribing; Owner: -
---
-
-COMMENT ON TABLE pbs_script_type IS 'The various ways a script can be printed as for example:
-	- PBS AUTHORITY, RPBS AUTHORITY, PBS STREAMLINED AUTHORITY
-	  PBS, RPBS,  PRIVATE';
 
 
 --
@@ -6803,10 +6802,10 @@ COMMENT ON TABLE prescribed_for IS 'keeps list of things prescribed for
 CREATE TABLE prescribed_for_habits (
     pk integer NOT NULL,
     fk_prescribed_for integer NOT NULL,
-    fk_company character varying(3),
-    fk_generic_product integer NOT NULL,
+    fk_generic_product uuid NOT NULL,
     fk_staff integer NOT NULL,
-    weighting integer NOT NULL
+    weighting integer NOT NULL,
+    fk_brand uuid
 );
 
 
@@ -6892,26 +6891,7 @@ CREATE SEQUENCE print_status_pk_seq
 -- Name: print_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: -
 --
 
-ALTER SEQUENCE print_status_pk_seq OWNED BY pbs_script_type.pk;
-
-
---
--- Name: script_dates_pk_seq; Type: SEQUENCE; Schema: clin_prescribing; Owner: -
---
-
-CREATE SEQUENCE script_dates_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: script_dates_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_prescribing; Owner: -
---
-
-ALTER SEQUENCE script_dates_pk_seq OWNED BY item_start_last_dates.pk;
+ALTER SEQUENCE print_status_pk_seq OWNED BY lu_pbs_script_type.pk;
 
 
 --
@@ -6931,7 +6911,7 @@ CREATE SEQUENCE script_number
 --
 
 CREATE VIEW vwinstructionhabits AS
-    SELECT instruction_habits.pk AS pk_instruction_habit, instruction_habits.fk_instruction, instruction_habits.fk_company, instruction_habits.fk_generic_product, instruction_habits.fk_staff, instruction_habits.weighting, instructions.instruction FROM instruction_habits, instructions WHERE (instruction_habits.fk_instruction = instructions.pk);
+    SELECT instruction_habits.pk AS pk_instruction_habit, instruction_habits.fk_instruction, instruction_habits.fk_brand, instruction_habits.fk_generic_product, instruction_habits.fk_staff, instruction_habits.weighting, instructions.instruction FROM instruction_habits, instructions WHERE (instruction_habits.fk_instruction = instructions.pk);
 
 
 SET search_path = drugs, pg_catalog;
@@ -6941,14 +6921,14 @@ SET search_path = drugs, pg_catalog;
 --
 
 CREATE TABLE brand (
-    fk_product integer NOT NULL,
+    fk_product uuid NOT NULL,
     fk_company character varying(3) NOT NULL,
     brand character varying(100) NOT NULL,
     price money,
     from_pbs boolean DEFAULT false NOT NULL,
     original_tga_text text,
     original_tga_code character varying(12),
-    pk integer NOT NULL,
+    pk uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     product_information_filename text
 );
 
@@ -7005,7 +6985,7 @@ CREATE TABLE form (
 --
 
 CREATE TABLE product (
-    pk integer NOT NULL,
+    pk uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     atccode character varying(8) NOT NULL,
     generic text NOT NULL,
     salt text,
@@ -7016,8 +6996,9 @@ CREATE TABLE product (
     original_pbs_fs text,
     free_comment text,
     updated_at timestamp without time zone DEFAULT now(),
-    poison smallint DEFAULT 4,
-    shared boolean DEFAULT false
+    fk_schedule integer,
+    shared boolean DEFAULT true,
+    poison smallint DEFAULT 4
 );
 
 
@@ -7090,10 +7071,10 @@ with tablets lof differing strengths';
 
 
 --
--- Name: COLUMN product.poison; Type: COMMENT; Schema: drugs; Owner: -
+-- Name: COLUMN product.shared; Type: COMMENT; Schema: drugs; Owner: -
 --
 
-COMMENT ON COLUMN product.poison IS 'poisons schedule this generic product belongs to';
+COMMENT ON COLUMN product.shared IS 'if true then the user/surgery wants to share this drug with easygp-central';
 
 
 --
@@ -7145,20 +7126,13 @@ COMMENT ON COLUMN restriction.streamlined IS 'true if this is a "streamlined" Au
 
 
 --
--- Name: schedule; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
+-- Name: schedules; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
 --
 
-CREATE TABLE schedule (
-    pk smallint NOT NULL,
+CREATE TABLE schedules (
+    pk integer,
     schedule text
 );
-
-
---
--- Name: TABLE schedule; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON TABLE schedule IS 'the Schedules of Drugs and Poisons';
 
 
 SET search_path = clin_prescribing, pg_catalog;
@@ -7168,7 +7142,7 @@ SET search_path = clin_prescribing, pg_catalog;
 --
 
 CREATE VIEW vwmedications AS
-    SELECT medications.pk AS pk_view, consult.consult_date AS date_script_written, consult.fk_patient, product.generic, brand.brand, product.strength, form.form, medications.repeats, medications.quantity, prescribed_for.prescribed_for, instructions.instruction, item_start_last_dates.start_date, item_start_last_dates.last_date, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, vwstaff.provider_number, product.atccode, product.salt, product.fk_form, product.salt_strength, product.poison, medications.fk_generic_product, medications.fk_company, medications.fk_instruction, medications.fk_prescribed_for, medications.pbscode, medications.fk_pbs_script_type, medications.active, medications.deleted AS medication_deleted, medications.suppress_reason, medications.fk_script_dates, medications.restriction_code, medications.fk_code, medications.fk_increased_quantity_authority_reason, increased_quantity_authority_reasons.reason AS increased_authority_reason, pbs_script_type.type AS pbs_script_type, restriction.streamlined, restriction.restriction, restriction.restriction_type, prescribed.fk_medication, schedule.schedule FROM (((((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN prescribed ON ((consult.pk = prescribed.fk_consult))) JOIN medications medications ON ((prescribed.fk_medication = medications.pk))) JOIN prescribed_for ON ((medications.fk_prescribed_for = prescribed_for.pk))) JOIN instructions ON ((medications.fk_instruction = instructions.pk))) JOIN item_start_last_dates ON ((medications.fk_script_dates = item_start_last_dates.pk))) JOIN pbs_script_type ON ((medications.fk_pbs_script_type = pbs_script_type.pk))) LEFT JOIN drugs.restriction ON (((medications.pbscode = (restriction.pbscode)::text) AND (medications.restriction_code = (restriction.code)::text)))) LEFT JOIN drugs.brand ON (((medications.fk_generic_product = brand.fk_product) AND ((medications.fk_company)::text = (brand.fk_company)::text)))) JOIN drugs.product ON ((medications.fk_generic_product = product.pk))) JOIN drugs.schedule ON ((product.poison = schedule.pk))) JOIN drugs.form ON ((product.fk_form = form.pk))) LEFT JOIN increased_quantity_authority_reasons ON ((medications.fk_increased_quantity_authority_reason = increased_quantity_authority_reasons.pk))) ORDER BY consult.fk_patient, product.generic, medications.active;
+    SELECT medications.pk AS pk_view, consult.consult_date AS date_script_written, consult.fk_patient, product.generic, brand.brand, product.strength, form.form, brand.pk, medications.repeats, medications.quantity, prescribed_for.prescribed_for, instructions.instruction, medications.start_date, medications.last_date, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, vwstaff.provider_number, product.atccode, product.salt, product.fk_form, product.salt_strength, product.poison, medications.fk_instruction, medications.fk_prescribed_for, medications.pbscode, medications.fk_lu_pbs_script_type, medications.active, medications.deleted AS medication_deleted, medications.suppress_reason, medications.restriction_code, medications.fk_code, medications.fk_increased_quantity_authority_reason, increased_quantity_authority_reasons.reason AS increased_authority_reason, lu_pbs_script_type.type AS pbs_script_type, restriction.streamlined, restriction.restriction, restriction.restriction_type, schedules.schedule FROM ((((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN prescribed ON ((consult.pk = prescribed.fk_consult))) JOIN medications medications ON ((prescribed.fk_medication = medications.pk))) JOIN prescribed_for ON ((medications.fk_prescribed_for = prescribed_for.pk))) JOIN instructions ON ((medications.fk_instruction = instructions.pk))) JOIN lu_pbs_script_type ON ((medications.fk_lu_pbs_script_type = lu_pbs_script_type.pk))) LEFT JOIN drugs.restriction ON (((medications.pbscode = (restriction.pbscode)::text) AND (medications.restriction_code = (restriction.code)::text)))) LEFT JOIN drugs.brand ON ((medications.fk_brand = brand.pk))) JOIN drugs.product ON ((medications.fk_generic_product = product.pk))) JOIN drugs.schedules ON ((product.poison = schedules.pk))) JOIN drugs.form ON ((product.fk_form = form.pk))) LEFT JOIN increased_quantity_authority_reasons ON ((medications.fk_increased_quantity_authority_reason = increased_quantity_authority_reasons.pk)));
 
 
 --
@@ -7176,7 +7150,7 @@ CREATE VIEW vwmedications AS
 --
 
 CREATE VIEW vwprescribedforhabits AS
-    SELECT prescribed_for.prescribed_for, prescribed_for.fk_code, prescribed_for_habits.pk AS pk_prescibed_for_habit, prescribed_for_habits.fk_prescribed_for, prescribed_for_habits.fk_company, prescribed_for_habits.fk_generic_product, prescribed_for_habits.fk_staff, prescribed_for_habits.weighting FROM prescribed_for, prescribed_for_habits WHERE (prescribed_for_habits.fk_prescribed_for = prescribed_for.pk) ORDER BY prescribed_for.prescribed_for, prescribed_for_habits.weighting;
+    SELECT prescribed_for.prescribed_for, prescribed_for.fk_code, prescribed_for_habits.pk AS pk_prescibed_for_habit, prescribed_for_habits.fk_prescribed_for, prescribed_for_habits.fk_brand, prescribed_for_habits.fk_generic_product, prescribed_for_habits.fk_staff, prescribed_for_habits.weighting FROM prescribed_for, prescribed_for_habits WHERE (prescribed_for_habits.fk_prescribed_for = prescribed_for.pk);
 
 
 --
@@ -7184,7 +7158,7 @@ CREATE VIEW vwprescribedforhabits AS
 --
 
 CREATE VIEW vwprescribeditems AS
-    SELECT prescribed.pk AS pk_view, consult.consult_date AS date_script_written, prescribed.date_on_script, consult.fk_patient, product.generic, brand.brand, product.strength, product.poison, form.form, medications.repeats, medications.quantity, prescribed_for.prescribed_for, instructions.instruction, item_start_last_dates.start_date, item_start_last_dates.last_date, brand.price, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, vwstaff.provider_number, product.atccode, product.salt, product.fk_form, product.salt_strength, prescribed.pk AS fk_item_prescribed, prescribed.fk_consult, prescribed.fk_medication, prescribed.reg24, prescribed.authority_script_number, prescribed.authority_approval_number, prescribed.authority_post_to_patient, prescribed.script_number, prescribed.concession_details, prescribed.brand_substitution, prescribed.fk_progress_note, prescribed.deleted AS prescribed_item_deleted, medications.fk_generic_product, medications.fk_company, medications.fk_instruction, medications.fk_prescribed_for, medications.pbscode, medications.fk_pbs_script_type, medications.active, medications.deleted AS medication_deleted, medications.suppress_reason, medications.fk_script_dates, medications.fk_code, medications.restriction_code, medications.fk_increased_quantity_authority_reason, increased_quantity_authority_reasons.reason AS increased_authority_reason, pbs_script_type.type AS pbs_print_type, restriction.streamlined, restriction.restriction, restriction.restriction_type, schedule.schedule FROM (((((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN prescribed ON ((consult.pk = prescribed.fk_consult))) JOIN medications medications ON ((prescribed.fk_medication = medications.pk))) JOIN prescribed_for ON ((medications.fk_prescribed_for = prescribed_for.pk))) JOIN instructions ON ((medications.fk_instruction = instructions.pk))) JOIN item_start_last_dates ON ((medications.fk_script_dates = item_start_last_dates.pk))) JOIN pbs_script_type ON ((medications.fk_pbs_script_type = pbs_script_type.pk))) LEFT JOIN drugs.restriction ON (((medications.pbscode = (restriction.pbscode)::text) AND (medications.restriction_code = (restriction.code)::text)))) LEFT JOIN drugs.brand ON (((medications.fk_generic_product = brand.fk_product) AND ((medications.fk_company)::text = (brand.fk_company)::text)))) JOIN drugs.product ON ((medications.fk_generic_product = product.pk))) JOIN drugs.form ON ((product.fk_form = form.pk))) JOIN drugs.schedule ON ((product.poison = schedule.pk))) LEFT JOIN increased_quantity_authority_reasons ON ((medications.fk_increased_quantity_authority_reason = increased_quantity_authority_reasons.pk))) ORDER BY consult.fk_patient, product.generic, medications.active;
+    SELECT prescribed.pk AS pk_view, consult.consult_date AS date_script_written, prescribed.date_on_script, consult.fk_patient, product.generic, brand.brand, product.strength, product.poison, form.form, medications.repeats, medications.quantity, prescribed_for.prescribed_for, instructions.instruction, medications.start_date, medications.last_date, brand.price, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, vwstaff.provider_number, product.atccode, product.salt, product.fk_form, product.salt_strength, prescribed.pk AS fk_item_prescribed, prescribed.fk_consult, prescribed.fk_medication, prescribed.reg24, prescribed.authority_script_number, prescribed.authority_approval_number, prescribed.authority_post_to_patient, prescribed.script_number, prescribed.concession_details, prescribed.brand_substitution, prescribed.fk_progress_note, prescribed.deleted AS prescribed_item_deleted, medications.fk_generic_product, medications.fk_brand, medications.fk_instruction, medications.fk_prescribed_for, medications.pbscode, medications.fk_lu_pbs_script_type, medications.active, medications.deleted AS medication_deleted, medications.suppress_reason, medications.fk_code, medications.restriction_code, medications.fk_increased_quantity_authority_reason, increased_quantity_authority_reasons.reason AS increased_authority_reason, lu_pbs_script_type.type AS pbs_script_type, restriction.streamlined, restriction.restriction, restriction.restriction_type, schedules.schedule FROM ((((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN prescribed ON ((consult.pk = prescribed.fk_consult))) JOIN medications medications ON ((prescribed.fk_medication = medications.pk))) JOIN prescribed_for ON ((medications.fk_prescribed_for = prescribed_for.pk))) JOIN instructions ON ((medications.fk_instruction = instructions.pk))) JOIN lu_pbs_script_type ON ((medications.fk_lu_pbs_script_type = lu_pbs_script_type.pk))) LEFT JOIN drugs.restriction ON (((medications.pbscode = (restriction.pbscode)::text) AND (medications.restriction_code = (restriction.code)::text)))) LEFT JOIN drugs.brand ON ((medications.fk_brand = brand.pk))) JOIN drugs.product ON ((medications.fk_generic_product = product.pk))) JOIN drugs.form ON ((product.fk_form = form.pk))) JOIN drugs.schedules ON ((product.poison = schedules.pk))) LEFT JOIN increased_quantity_authority_reasons ON ((medications.fk_increased_quantity_authority_reason = increased_quantity_authority_reasons.pk)));
 
 
 SET search_path = clin_procedures, pg_catalog;
@@ -12671,31 +12645,12 @@ COMMENT ON TABLE atc IS 'table associating drug names and Anatomic Therapeutic C
 
 
 --
--- Name: brand_pk_seq; Type: SEQUENCE; Schema: drugs; Owner: -
+-- Name: chapters; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
 --
 
-CREATE SEQUENCE brand_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: brand_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs; Owner: -
---
-
-ALTER SEQUENCE brand_pk_seq OWNED BY brand.pk;
-
-
---
--- Name: chapter; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
---
-
-CREATE TABLE chapter (
-    code character varying(2) NOT NULL,
-    chapter text
+CREATE TABLE chapters (
+    chapter character varying(2) NOT NULL,
+    chapter_name text
 );
 
 
@@ -12942,7 +12897,7 @@ this categoery.';
 --
 
 CREATE TABLE link_flag_product (
-    fk_product integer NOT NULL,
+    fk_product uuid NOT NULL,
     fk_flag integer NOT NULL
 );
 
@@ -12959,10 +12914,10 @@ COMMENT ON TABLE link_flag_product IS 'many-to-many pivot table linking products
 --
 
 CREATE TABLE pack (
-    fk_product integer,
+    fk_product uuid,
     amount double precision,
     amount_unit integer,
-    packsize integer DEFAULT 1
+    pack_size integer DEFAULT 1
 );
 
 
@@ -12974,10 +12929,10 @@ COMMENT ON COLUMN pack.amount IS 'the amount of drugs that have a fluid form';
 
 
 --
--- Name: COLUMN pack.packsize; Type: COMMENT; Schema: drugs; Owner: -
+-- Name: COLUMN pack.pack_size; Type: COMMENT; Schema: drugs; Owner: -
 --
 
-COMMENT ON COLUMN pack.packsize IS 'the number of identical units (bottles, vials, tablets, etc) within a pack';
+COMMENT ON COLUMN pack.pack_size IS 'the number of identical units (bottles, vials, tablets, etc) within a pack';
 
 
 --
@@ -13002,7 +12957,7 @@ COMMENT ON TABLE patient_categories IS 'enumeration of categories of patient pop
 --
 
 CREATE TABLE pbs (
-    fk_product integer NOT NULL,
+    fk_product uuid NOT NULL,
     quantity integer DEFAULT 1 NOT NULL,
     max_rpt integer DEFAULT 0 NOT NULL,
     pbscode character varying(10) NOT NULL,
@@ -13059,25 +13014,6 @@ CREATE TABLE product_information_unmatched (
     brand text NOT NULL,
     product_information_filename text NOT NULL
 );
-
-
---
--- Name: product_pk_seq; Type: SEQUENCE; Schema: drugs; Owner: -
---
-
-CREATE SEQUENCE product_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: product_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs; Owner: -
---
-
-ALTER SEQUENCE product_pk_seq OWNED BY product.pk;
 
 
 --
@@ -13157,7 +13093,753 @@ COMMENT ON COLUMN topic.target IS 'the target of this information: h=health prof
 
 
 --
+-- Name: vwdistinctbrandsforgenericproduct; Type: VIEW; Schema: drugs; Owner: -
+--
+
+CREATE VIEW vwdistinctbrandsforgenericproduct AS
+    SELECT DISTINCT brand.pk AS pk_view, brand.fk_product, brand.brand, product.generic, brand.price, brand.fk_company, brand.from_pbs, product.atccode, product.salt, product.strength, product.fk_form, product.salt_strength, pack.pack_size, pack.amount, pack.amount_unit, lu_units.abbrev_text, product.free_comment, product.poison, form.form, brand.product_information_filename, product.updated_at, brand.pk AS fk_brand FROM ((((brand JOIN product ON ((product.pk = brand.fk_product))) JOIN pack ON ((product.pk = pack.fk_product))) LEFT JOIN common.lu_units ON ((lu_units.pk = pack.amount_unit))) JOIN form ON ((form.pk = product.fk_form)));
+
+
+--
 -- Name: vwdrugs; Type: VIEW; Schema: drugs; Owner: -
+--
+
+CREATE VIEW vwdrugs AS
+    SELECT ((brand.pk || (COALESCE(pbs.pbscode, ''::character varying))::text) || (COALESCE(restriction.code, ''::character varying))::text) AS pk_view, brand.fk_product, brand.fk_company, brand.brand, brand.price, brand.from_pbs, product.atccode, product.generic, product.salt, product.fk_form, product.strength, product.salt_strength, product.original_pbs_name, product.original_pbs_fs, product.free_comment, product.poison, product.updated_at, form.form, atc.atcname, pbs.quantity, pbs.max_rpt, pbs.pbscode, pbs.chapter, pbs.restrictionflag, restriction.restriction, restriction.restriction_type, restriction.code AS restriction_code, restriction.streamlined, brand.product_information_filename FROM (((((brand brand JOIN product ON ((brand.fk_product = product.pk))) JOIN form ON ((product.fk_form = form.pk))) LEFT JOIN atc ON (((product.atccode)::text = atc.atccode))) LEFT JOIN pbs ON ((brand.fk_product = pbs.fk_product))) LEFT JOIN restriction ON (((pbs.pbscode)::text = (restriction.pbscode)::text)));
+
+
+SET search_path = drugs_old, pg_catalog;
+
+--
+-- Name: atc; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE atc (
+    atccode text NOT NULL,
+    atcname text NOT NULL
+);
+
+
+--
+-- Name: TABLE atc; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE atc IS 'table associating drug names and Anatomic Therapeutic Chemical (ATC) codes';
+
+
+--
+-- Name: brand; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE brand (
+    fk_product integer NOT NULL,
+    fk_company character varying(3) NOT NULL,
+    brand character varying(100) NOT NULL,
+    price money,
+    from_pbs boolean DEFAULT false NOT NULL,
+    original_tga_text text,
+    original_tga_code character varying(12),
+    pk integer NOT NULL,
+    product_information_filename text
+);
+
+
+--
+-- Name: TABLE brand; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE brand IS 'many to many pivot table linking drug products and manufacturers';
+
+
+--
+-- Name: COLUMN brand.price; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN brand.price IS 'dispensed price for PBS drugs.';
+
+
+--
+-- Name: COLUMN brand.from_pbs; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN brand.from_pbs IS 'true if the brand comes from the PBS database, allows the list to be easily reloaded
+with new PBS data. False means data we added ourselves.';
+
+
+--
+-- Name: COLUMN brand.original_tga_text; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN brand.original_tga_text IS 'drugs imported from TGA database, the original label therein';
+
+
+--
+-- Name: COLUMN brand.original_tga_code; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN brand.original_tga_code IS 'drugs imported from TGA database, their TGA code';
+
+
+--
+-- Name: brand_pk_seq; Type: SEQUENCE; Schema: drugs_old; Owner: -
+--
+
+CREATE SEQUENCE brand_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: brand_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs_old; Owner: -
+--
+
+ALTER SEQUENCE brand_pk_seq OWNED BY brand.pk;
+
+
+--
+-- Name: chapter; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE chapter (
+    code character varying(2) NOT NULL,
+    chapter text
+);
+
+
+--
+-- Name: clinical_effects; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE clinical_effects (
+    pk integer NOT NULL,
+    effect text NOT NULL,
+    fk_severity integer NOT NULL
+);
+
+
+--
+-- Name: TABLE clinical_effects; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE clinical_effects IS 'A list of side-effects and consequences of interactions.
+I appreciate this list will get long, some values may only apply to one or two drugs, but
+I think it is important to normalise. The interface may need to use a text box (it will be
+too long for a pick list) and confirm with users if they want to create a new entry.';
+
+
+--
+-- Name: clinical_effects_pk_seq; Type: SEQUENCE; Schema: drugs_old; Owner: -
+--
+
+CREATE SEQUENCE clinical_effects_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: clinical_effects_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs_old; Owner: -
+--
+
+ALTER SEQUENCE clinical_effects_pk_seq OWNED BY clinical_effects.pk;
+
+
+--
+-- Name: company; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE company (
+    company text NOT NULL,
+    address text,
+    telephone text,
+    facsimile text,
+    code character varying(3) NOT NULL
+);
+
+
+--
+-- Name: TABLE company; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE company IS 'list of pharmaceutical manufacturers/importers';
+
+
+--
+-- Name: COLUMN company.company; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN company.company IS 'company name';
+
+
+--
+-- Name: COLUMN company.address; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN company.address IS 'complete printable address, lines separated by commas';
+
+
+--
+-- Name: COLUMN company.telephone; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN company.telephone IS 'phone number of company';
+
+
+--
+-- Name: COLUMN company.facsimile; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN company.facsimile IS 'fax number of company';
+
+
+--
+-- Name: COLUMN company.code; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN company.code IS 'Two- or three-letter guaranteed-unique code of company. Two-letter codes come
+from the PBS system. Three-letter codes assigned by me for companies that only produce non-PBS drugs';
+
+
+--
+-- Name: evidence_levels; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE evidence_levels (
+    pk integer NOT NULL,
+    evidence_level text NOT NULL
+);
+
+
+--
+-- Name: TABLE evidence_levels; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE evidence_levels IS 'different levels of evidence for a fact in the database';
+
+
+--
+-- Name: flags; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE flags (
+    pk integer NOT NULL,
+    description character varying(100)
+);
+
+
+--
+-- Name: TABLE flags; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE flags IS 'flags for adjuvants such as ''gluten-free'', ''paediatric formulation'', etc.';
+
+
+--
+-- Name: flags_pk_seq; Type: SEQUENCE; Schema: drugs_old; Owner: -
+--
+
+CREATE SEQUENCE flags_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: flags_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs_old; Owner: -
+--
+
+ALTER SEQUENCE flags_pk_seq OWNED BY flags.pk;
+
+
+--
+-- Name: form; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE form (
+    pk integer NOT NULL,
+    form text NOT NULL,
+    volume_amount_required boolean DEFAULT false
+);
+
+
+--
+-- Name: info; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE info (
+    pk integer NOT NULL,
+    comment text NOT NULL,
+    fk_topic integer NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    fk_clinical_effect integer,
+    fk_pharmacologic_mechanism integer,
+    fk_evidence_level integer NOT NULL,
+    fk_source integer NOT NULL,
+    fk_patient_category integer,
+    standard_frequency text,
+    paed_dose double precision,
+    paed_max double precision
+);
+
+
+--
+-- Name: TABLE info; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE info IS 'any product information about a specific drug or class in HTML format';
+
+
+--
+-- Name: COLUMN info.comment; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN info.comment IS 'the drug product information in HTML format';
+
+
+--
+-- Name: info_pk_seq; Type: SEQUENCE; Schema: drugs_old; Owner: -
+--
+
+CREATE SEQUENCE info_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: info_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs_old; Owner: -
+--
+
+ALTER SEQUENCE info_pk_seq OWNED BY info.pk;
+
+
+--
+-- Name: link_atc_info; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE link_atc_info (
+    atccode text NOT NULL,
+    fk_info integer NOT NULL
+);
+
+
+--
+-- Name: TABLE link_atc_info; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE link_atc_info IS 'links one or more ATC codes (i.e. drugs or classes) to a piece of information. Generally one 
+link, but for interactions or contraindications there may be more';
+
+
+--
+-- Name: link_category_info; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE link_category_info (
+    fk_category integer,
+    fk_info integer
+);
+
+
+--
+-- Name: TABLE link_category_info; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE link_category_info IS 'links information to a particular category: information only applies to 
+this categoery.';
+
+
+--
+-- Name: link_flag_product; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE link_flag_product (
+    fk_product integer NOT NULL,
+    fk_flag integer NOT NULL
+);
+
+
+--
+-- Name: TABLE link_flag_product; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE link_flag_product IS 'many-to-many pivot table linking products to flags';
+
+
+--
+-- Name: pack; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE pack (
+    fk_product integer,
+    amount double precision,
+    amount_unit integer,
+    packsize integer DEFAULT 1
+);
+
+
+--
+-- Name: COLUMN pack.amount; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN pack.amount IS 'the amount of drugs that have a fluid form';
+
+
+--
+-- Name: COLUMN pack.packsize; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN pack.packsize IS 'the number of identical units (bottles, vials, tablets, etc) within a pack';
+
+
+--
+-- Name: patient_categories; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE patient_categories (
+    pk integer NOT NULL,
+    category text NOT NULL
+);
+
+
+--
+-- Name: TABLE patient_categories; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE patient_categories IS 'enumeration of categories of patient populations for targeted drug warnings';
+
+
+--
+-- Name: pbs; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE pbs (
+    fk_product integer NOT NULL,
+    quantity integer DEFAULT 1 NOT NULL,
+    max_rpt integer DEFAULT 0 NOT NULL,
+    pbscode character varying(10) NOT NULL,
+    chapter character varying(2) NOT NULL,
+    restrictionflag character(1) DEFAULT 'U'::bpchar NOT NULL,
+    CONSTRAINT pbs_restrictionflag_check CHECK ((restrictionflag = ANY (ARRAY['U'::bpchar, 'R'::bpchar, 'A'::bpchar])))
+);
+
+
+--
+-- Name: TABLE pbs; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE pbs IS 'PBS-specific information about subsidy, authority riles, etc. Private-script only drugs wont have a entry in this table.';
+
+
+--
+-- Name: COLUMN pbs.quantity; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN pbs.quantity IS 'quantity of packaged units dispensed under subsidy for any one prescription. 
+AU: this the maximum quantity in the PBS Yellow Book.';
+
+
+--
+-- Name: COLUMN pbs.max_rpt; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN pbs.max_rpt IS 'maximum number of repeat (refill) authorizations allowed on any one subsidised prescription (series)';
+
+
+--
+-- Name: COLUMN pbs.restrictionflag; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN pbs.restrictionflag IS 'U=unrestricted, R=restricted, A=authority';
+
+
+--
+-- Name: pharmacologic_mechanisms; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE pharmacologic_mechanisms (
+    pk integer NOT NULL,
+    mechanism text NOT NULL
+);
+
+
+--
+-- Name: product; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE product (
+    pk integer NOT NULL,
+    atccode character varying(8) NOT NULL,
+    generic text NOT NULL,
+    salt text,
+    fk_form integer NOT NULL,
+    strength text,
+    salt_strength text,
+    original_pbs_name text,
+    original_pbs_fs text,
+    free_comment text,
+    updated_at timestamp without time zone DEFAULT now(),
+    poison smallint DEFAULT 4,
+    shared boolean DEFAULT false
+);
+
+
+--
+-- Name: TABLE product; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE product IS 'dispensable form of a generic drug including strength, package size etc';
+
+
+--
+-- Name: COLUMN product.generic; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN product.generic IS 'full generic name in lower-case. For compounds names separated by ";"';
+
+
+--
+-- Name: COLUMN product.salt; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN product.salt IS 'if not normally part of generic name, the adjuvant salt';
+
+
+--
+-- Name: COLUMN product.fk_form; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN product.fk_form IS 'the form of the drug';
+
+
+--
+-- Name: COLUMN product.strength; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN product.strength IS 'the strength as a number followed by a unit. For compounds
+strengths are separated by "-", in the same order as the names of the consitituents in the generic name';
+
+
+--
+-- Name: COLUMN product.salt_strength; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN product.salt_strength IS 'where a weight of the full salt is listed (being heavier than the weight 
+of the solid drug. Must be in same unit';
+
+
+--
+-- Name: COLUMN product.original_pbs_name; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN product.original_pbs_name IS 'for a drug imported from the PBS Yellow Book database, the original 
+generic name as there listed, otherwise NULL';
+
+
+--
+-- Name: COLUMN product.original_pbs_fs; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN product.original_pbs_fs IS 'for a drug imported from the PBS Yellow Book database, the original 
+form-and-strength field as there listed, otherwise NULL';
+
+
+--
+-- Name: COLUMN product.free_comment; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN product.free_comment IS 'a free-text comment on properties of the product. For example for complex packages
+with tablets lof differing strengths';
+
+
+--
+-- Name: COLUMN product.poison; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN product.poison IS 'poisons schedule this generic product belongs to';
+
+
+--
+-- Name: product_information_unmatched; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE product_information_unmatched (
+    brand text NOT NULL,
+    product_information_filename text NOT NULL
+);
+
+
+--
+-- Name: product_pk_seq; Type: SEQUENCE; Schema: drugs_old; Owner: -
+--
+
+CREATE SEQUENCE product_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: product_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs_old; Owner: -
+--
+
+ALTER SEQUENCE product_pk_seq OWNED BY product.pk;
+
+
+--
+-- Name: restriction; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE restriction (
+    pbscode character varying(10) NOT NULL,
+    restriction text NOT NULL,
+    restriction_type character(1) DEFAULT '3'::bpchar NOT NULL,
+    code character varying(10) NOT NULL,
+    streamlined boolean DEFAULT false NOT NULL
+);
+
+
+--
+-- Name: TABLE restriction; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE restriction IS 'list of PBS restrictions and authority warnings';
+
+
+--
+-- Name: COLUMN restriction.restriction; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN restriction.restriction IS 'the actual text of the authority requirement, in basic HTML';
+
+
+--
+-- Name: COLUMN restriction.restriction_type; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN restriction.restriction_type IS '1=only applies to increased quantities/repeats, 2=only to normal amounts, 3=to both';
+
+
+--
+-- Name: COLUMN restriction.code; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN restriction.code IS 'the authority code number, for doing streamlined authorities';
+
+
+--
+-- Name: COLUMN restriction.streamlined; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN restriction.streamlined IS 'true if this is a "streamlined" Authority';
+
+
+--
+-- Name: schedule; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE schedule (
+    pk smallint NOT NULL,
+    schedule text
+);
+
+
+--
+-- Name: TABLE schedule; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE schedule IS 'the Schedules of Drugs and Poisons';
+
+
+--
+-- Name: severity_level; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE severity_level (
+    pk integer NOT NULL,
+    severity text NOT NULL
+);
+
+
+--
+-- Name: TABLE severity_level; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE severity_level IS 'different level of severity for warnings. Levels may control client behaviour';
+
+
+--
+-- Name: sources; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE sources (
+    pk integer NOT NULL,
+    source_category character(1) NOT NULL,
+    source text NOT NULL,
+    CONSTRAINT sources_source_category_check CHECK ((source_category = ANY (ARRAY['p'::bpchar, 'a'::bpchar, 'i'::bpchar, 'm'::bpchar, 'o'::bpchar, 's'::bpchar])))
+);
+
+
+--
+-- Name: TABLE sources; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE sources IS 'Source of any reference information in this database';
+
+
+--
+-- Name: COLUMN sources.source_category; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN sources.source_category IS 'p=peer reviewed, a=official authority, i=independent source, m=manufacturer, o=other, s=self defined';
+
+
+--
+-- Name: COLUMN sources.source; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN sources.source IS 'URL or address or similar informtion allowing to reproduce the source of information';
+
+
+--
+-- Name: topic; Type: TABLE; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+CREATE TABLE topic (
+    pk integer NOT NULL,
+    title character varying(60) NOT NULL,
+    target character(1) NOT NULL,
+    CONSTRAINT topic_target_check CHECK ((target = ANY (ARRAY['h'::bpchar, 'p'::bpchar])))
+);
+
+
+--
+-- Name: TABLE topic; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON TABLE topic IS 'topics for drug information, such as pharmaco-kinetics, indications, etc.';
+
+
+--
+-- Name: COLUMN topic.target; Type: COMMENT; Schema: drugs_old; Owner: -
+--
+
+COMMENT ON COLUMN topic.target IS 'the target of this information: h=health professional, p=patient';
+
+
+--
+-- Name: vwdrugs; Type: VIEW; Schema: drugs_old; Owner: -
 --
 
 CREATE VIEW vwdrugs AS
@@ -13165,7 +13847,7 @@ CREATE VIEW vwdrugs AS
 
 
 --
--- Name: vwdistinctbrandsforgenericproduct; Type: VIEW; Schema: drugs; Owner: -
+-- Name: vwdistinctbrandsforgenericproduct; Type: VIEW; Schema: drugs_old; Owner: -
 --
 
 CREATE VIEW vwdistinctbrandsforgenericproduct AS
@@ -13173,7 +13855,7 @@ CREATE VIEW vwdistinctbrandsforgenericproduct AS
 
 
 --
--- Name: vwdrugs2; Type: VIEW; Schema: drugs; Owner: -
+-- Name: vwdrugs2; Type: VIEW; Schema: drugs_old; Owner: -
 --
 
 CREATE VIEW vwdrugs2 AS
@@ -14052,7 +14734,7 @@ ALTER TABLE ONLY instructions ALTER COLUMN pk SET DEFAULT nextval('instructions_
 -- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: -
 --
 
-ALTER TABLE ONLY item_start_last_dates ALTER COLUMN pk SET DEFAULT nextval('script_dates_pk_seq'::regclass);
+ALTER TABLE ONLY lu_pbs_script_type ALTER COLUMN pk SET DEFAULT nextval('print_status_pk_seq'::regclass);
 
 
 --
@@ -14060,13 +14742,6 @@ ALTER TABLE ONLY item_start_last_dates ALTER COLUMN pk SET DEFAULT nextval('scri
 --
 
 ALTER TABLE ONLY medications ALTER COLUMN pk SET DEFAULT nextval('medications_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: clin_prescribing; Owner: -
---
-
-ALTER TABLE ONLY pbs_script_type ALTER COLUMN pk SET DEFAULT nextval('print_status_pk_seq'::regclass);
 
 
 --
@@ -14953,13 +15628,6 @@ SET search_path = drugs, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: drugs; Owner: -
 --
 
-ALTER TABLE ONLY brand ALTER COLUMN pk SET DEFAULT nextval('brand_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: drugs; Owner: -
---
-
 ALTER TABLE ONLY clinical_effects ALTER COLUMN pk SET DEFAULT nextval('clinical_effects_pk_seq'::regclass);
 
 
@@ -14977,8 +15645,38 @@ ALTER TABLE ONLY flags ALTER COLUMN pk SET DEFAULT nextval('flags_pk_seq'::regcl
 ALTER TABLE ONLY info ALTER COLUMN pk SET DEFAULT nextval('info_pk_seq'::regclass);
 
 
+SET search_path = drugs_old, pg_catalog;
+
 --
--- Name: pk; Type: DEFAULT; Schema: drugs; Owner: -
+-- Name: pk; Type: DEFAULT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY brand ALTER COLUMN pk SET DEFAULT nextval('brand_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY clinical_effects ALTER COLUMN pk SET DEFAULT nextval('clinical_effects_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY flags ALTER COLUMN pk SET DEFAULT nextval('flags_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY info ALTER COLUMN pk SET DEFAULT nextval('info_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: drugs_old; Owner: -
 --
 
 ALTER TABLE ONLY product ALTER COLUMN pk SET DEFAULT nextval('product_pk_seq'::regclass);
@@ -15896,16 +16594,8 @@ ALTER TABLE ONLY prescribed
 -- Name: print_status_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: -; Tablespace: 
 --
 
-ALTER TABLE ONLY pbs_script_type
+ALTER TABLE ONLY lu_pbs_script_type
     ADD CONSTRAINT print_status_pkey PRIMARY KEY (pk);
-
-
---
--- Name: script_dates_pkey; Type: CONSTRAINT; Schema: clin_prescribing; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY item_start_last_dates
-    ADD CONSTRAINT script_dates_pkey PRIMARY KEY (pk);
 
 
 SET search_path = clin_procedures, pg_catalog;
@@ -16895,19 +17585,19 @@ ALTER TABLE ONLY atc
 
 
 --
--- Name: brand_pk_key; Type: CONSTRAINT; Schema: drugs; Owner: -; Tablespace: 
+-- Name: brand_pkey; Type: CONSTRAINT; Schema: drugs; Owner: -; Tablespace: 
 --
 
 ALTER TABLE ONLY brand
-    ADD CONSTRAINT brand_pk_key UNIQUE (pk);
+    ADD CONSTRAINT brand_pkey PRIMARY KEY (pk);
 
 
 --
--- Name: chapter_pkey; Type: CONSTRAINT; Schema: drugs; Owner: -; Tablespace: 
+-- Name: chapters_pkey; Type: CONSTRAINT; Schema: drugs; Owner: -; Tablespace: 
 --
 
-ALTER TABLE ONLY chapter
-    ADD CONSTRAINT chapter_pkey PRIMARY KEY (code);
+ALTER TABLE ONLY chapters
+    ADD CONSTRAINT chapters_pkey PRIMARY KEY (chapter);
 
 
 --
@@ -16927,11 +17617,11 @@ ALTER TABLE ONLY clinical_effects
 
 
 --
--- Name: company_company_key; Type: CONSTRAINT; Schema: drugs; Owner: -; Tablespace: 
+-- Name: company_code_key; Type: CONSTRAINT; Schema: drugs; Owner: -; Tablespace: 
 --
 
 ALTER TABLE ONLY company
-    ADD CONSTRAINT company_company_key UNIQUE (company);
+    ADD CONSTRAINT company_code_key UNIQUE (code);
 
 
 --
@@ -16948,6 +17638,14 @@ ALTER TABLE ONLY company
 
 ALTER TABLE ONLY evidence_levels
     ADD CONSTRAINT evidence_levels_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: flags_pk_key; Type: CONSTRAINT; Schema: drugs; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY flags
+    ADD CONSTRAINT flags_pk_key UNIQUE (pk);
 
 
 --
@@ -16983,6 +17681,14 @@ ALTER TABLE ONLY patient_categories
 
 
 --
+-- Name: pbs_pbscode_key; Type: CONSTRAINT; Schema: drugs; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY pbs
+    ADD CONSTRAINT pbs_pbscode_key UNIQUE (pbscode);
+
+
+--
 -- Name: pharmacologic_mechanisms_pkey; Type: CONSTRAINT; Schema: drugs; Owner: -; Tablespace: 
 --
 
@@ -17007,11 +17713,11 @@ ALTER TABLE ONLY product
 
 
 --
--- Name: schedule_pkey; Type: CONSTRAINT; Schema: drugs; Owner: -; Tablespace: 
+-- Name: schedules_schedule_key; Type: CONSTRAINT; Schema: drugs; Owner: -; Tablespace: 
 --
 
-ALTER TABLE ONLY schedule
-    ADD CONSTRAINT schedule_pkey PRIMARY KEY (pk);
+ALTER TABLE ONLY schedules
+    ADD CONSTRAINT schedules_schedule_key UNIQUE (pk);
 
 
 --
@@ -17032,6 +17738,160 @@ ALTER TABLE ONLY sources
 
 --
 -- Name: topic_pkey; Type: CONSTRAINT; Schema: drugs; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY topic
+    ADD CONSTRAINT topic_pkey PRIMARY KEY (pk);
+
+
+SET search_path = drugs_old, pg_catalog;
+
+--
+-- Name: atc_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY atc
+    ADD CONSTRAINT atc_pkey PRIMARY KEY (atccode);
+
+
+--
+-- Name: brand_pk_key; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY brand
+    ADD CONSTRAINT brand_pk_key UNIQUE (pk);
+
+
+--
+-- Name: chapter_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY chapter
+    ADD CONSTRAINT chapter_pkey PRIMARY KEY (code);
+
+
+--
+-- Name: clinical_effects_effect_key; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY clinical_effects
+    ADD CONSTRAINT clinical_effects_effect_key UNIQUE (effect);
+
+
+--
+-- Name: clinical_effects_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY clinical_effects
+    ADD CONSTRAINT clinical_effects_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: company_company_key; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY company
+    ADD CONSTRAINT company_company_key UNIQUE (company);
+
+
+--
+-- Name: company_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY company
+    ADD CONSTRAINT company_pkey PRIMARY KEY (code);
+
+
+--
+-- Name: evidence_levels_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY evidence_levels
+    ADD CONSTRAINT evidence_levels_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: flags_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY flags
+    ADD CONSTRAINT flags_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: form_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY form
+    ADD CONSTRAINT form_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: info_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY info
+    ADD CONSTRAINT info_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: patient_categories_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY patient_categories
+    ADD CONSTRAINT patient_categories_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: pharmacologic_mechanisms_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY pharmacologic_mechanisms
+    ADD CONSTRAINT pharmacologic_mechanisms_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: product_atccode_key; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY product
+    ADD CONSTRAINT product_atccode_key UNIQUE (atccode, generic, fk_form, strength);
+
+
+--
+-- Name: product_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY product
+    ADD CONSTRAINT product_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: schedule_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY schedule
+    ADD CONSTRAINT schedule_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: severity_level_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY severity_level
+    ADD CONSTRAINT severity_level_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: sources_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY sources
+    ADD CONSTRAINT sources_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: topic_pkey; Type: CONSTRAINT; Schema: drugs_old; Owner: -; Tablespace: 
 --
 
 ALTER TABLE ONLY topic
@@ -17072,13 +17932,6 @@ SET search_path = clin_prescribing, pg_catalog;
 --
 
 CREATE INDEX instructions_idx ON instructions USING btree (instruction);
-
-
---
--- Name: medications_active_idx; Type: INDEX; Schema: clin_prescribing; Owner: -; Tablespace: 
---
-
-CREATE INDEX medications_active_idx ON medications USING btree (active);
 
 
 --
@@ -17303,6 +18156,16 @@ ALTER TABLE ONLY progressnotes
     ADD CONSTRAINT progressnotes_fk_audit_reason_fkey FOREIGN KEY (fk_audit_reason) REFERENCES lu_audit_reasons(pk);
 
 
+SET search_path = clin_prescribing, pg_catalog;
+
+--
+-- Name: medications_fk_lu_pbs_script_type_fkey; Type: FK CONSTRAINT; Schema: clin_prescribing; Owner: -
+--
+
+ALTER TABLE ONLY medications
+    ADD CONSTRAINT medications_fk_lu_pbs_script_type_fkey FOREIGN KEY (fk_lu_pbs_script_type) REFERENCES lu_pbs_script_type(pk);
+
+
 SET search_path = contacts, pg_catalog;
 
 --
@@ -17480,6 +18343,14 @@ ALTER TABLE ONLY pack
 
 
 --
+-- Name: pbs_chapter_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: -
+--
+
+ALTER TABLE ONLY pbs
+    ADD CONSTRAINT pbs_chapter_fkey FOREIGN KEY (chapter) REFERENCES chapters(chapter);
+
+
+--
 -- Name: pbs_fk_product_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: -
 --
 
@@ -17489,6 +18360,168 @@ ALTER TABLE ONLY pbs
 
 --
 -- Name: product_fk_form_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: -
+--
+
+ALTER TABLE ONLY product
+    ADD CONSTRAINT product_fk_form_fkey FOREIGN KEY (fk_form) REFERENCES form(pk);
+
+
+--
+-- Name: product_fk_schedule_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: -
+--
+
+ALTER TABLE ONLY product
+    ADD CONSTRAINT product_fk_schedule_fkey FOREIGN KEY (fk_schedule) REFERENCES schedules(pk);
+
+
+--
+-- Name: restriction_pbscode_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: -
+--
+
+ALTER TABLE ONLY restriction
+    ADD CONSTRAINT restriction_pbscode_fkey FOREIGN KEY (pbscode) REFERENCES pbs(pbscode);
+
+
+SET search_path = drugs_old, pg_catalog;
+
+--
+-- Name: brand_fk_company_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY brand
+    ADD CONSTRAINT brand_fk_company_fkey FOREIGN KEY (fk_company) REFERENCES company(code);
+
+
+--
+-- Name: brand_fk_product_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY brand
+    ADD CONSTRAINT brand_fk_product_fkey FOREIGN KEY (fk_product) REFERENCES product(pk);
+
+
+--
+-- Name: clinical_effects_fk_severity_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY clinical_effects
+    ADD CONSTRAINT clinical_effects_fk_severity_fkey FOREIGN KEY (fk_severity) REFERENCES severity_level(pk);
+
+
+--
+-- Name: info_fk_clinical_effect_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY info
+    ADD CONSTRAINT info_fk_clinical_effect_fkey FOREIGN KEY (fk_clinical_effect) REFERENCES clinical_effects(pk);
+
+
+--
+-- Name: info_fk_evidence_level_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY info
+    ADD CONSTRAINT info_fk_evidence_level_fkey FOREIGN KEY (fk_evidence_level) REFERENCES evidence_levels(pk);
+
+
+--
+-- Name: info_fk_patient_category_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY info
+    ADD CONSTRAINT info_fk_patient_category_fkey FOREIGN KEY (fk_patient_category) REFERENCES patient_categories(pk);
+
+
+--
+-- Name: info_fk_pharmacologic_mechanism_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY info
+    ADD CONSTRAINT info_fk_pharmacologic_mechanism_fkey FOREIGN KEY (fk_pharmacologic_mechanism) REFERENCES pharmacologic_mechanisms(pk);
+
+
+--
+-- Name: info_fk_source_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY info
+    ADD CONSTRAINT info_fk_source_fkey FOREIGN KEY (fk_source) REFERENCES sources(pk);
+
+
+--
+-- Name: info_fk_topic_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY info
+    ADD CONSTRAINT info_fk_topic_fkey FOREIGN KEY (fk_topic) REFERENCES topic(pk);
+
+
+--
+-- Name: link_atc_info_atccode_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY link_atc_info
+    ADD CONSTRAINT link_atc_info_atccode_fkey FOREIGN KEY (atccode) REFERENCES atc(atccode);
+
+
+--
+-- Name: link_atc_info_fk_info_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY link_atc_info
+    ADD CONSTRAINT link_atc_info_fk_info_fkey FOREIGN KEY (fk_info) REFERENCES info(pk);
+
+
+--
+-- Name: link_category_info_fk_category_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY link_category_info
+    ADD CONSTRAINT link_category_info_fk_category_fkey FOREIGN KEY (fk_category) REFERENCES patient_categories(pk);
+
+
+--
+-- Name: link_category_info_fk_info_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY link_category_info
+    ADD CONSTRAINT link_category_info_fk_info_fkey FOREIGN KEY (fk_info) REFERENCES info(pk);
+
+
+--
+-- Name: link_flag_product_fk_flag_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY link_flag_product
+    ADD CONSTRAINT link_flag_product_fk_flag_fkey FOREIGN KEY (fk_flag) REFERENCES flags(pk);
+
+
+--
+-- Name: link_flag_product_fk_product_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY link_flag_product
+    ADD CONSTRAINT link_flag_product_fk_product_fkey FOREIGN KEY (fk_product) REFERENCES product(pk);
+
+
+--
+-- Name: pack_fk_product_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY pack
+    ADD CONSTRAINT pack_fk_product_fkey FOREIGN KEY (fk_product) REFERENCES product(pk);
+
+
+--
+-- Name: pbs_fk_product_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
+--
+
+ALTER TABLE ONLY pbs
+    ADD CONSTRAINT pbs_fk_product_fkey FOREIGN KEY (fk_product) REFERENCES product(pk);
+
+
+--
+-- Name: product_fk_form_fkey; Type: FK CONSTRAINT; Schema: drugs_old; Owner: -
 --
 
 ALTER TABLE ONLY product

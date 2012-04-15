@@ -314,6 +314,15 @@ SET search_path = clin_pregnancy, pg_catalog;
 SELECT pg_catalog.setval('lu_antenatal_venue_pk_seq', 1, false);
 
 
+SET search_path = clin_prescribing, pg_catalog;
+
+--
+-- Name: print_status_pk_seq; Type: SEQUENCE SET; Schema: clin_prescribing; Owner: -
+--
+
+SELECT pg_catalog.setval('print_status_pk_seq', 10, true);
+
+
 SET search_path = clin_procedures, pg_catalog;
 
 --
@@ -1838,6 +1847,26 @@ SET search_path = clin_pregnancy, pg_catalog;
 --
 
 COPY lu_antenatal_venue (pk, fk_branch) FROM stdin;
+\.
+
+
+SET search_path = clin_prescribing, pg_catalog;
+
+--
+-- Data for Name: lu_pbs_script_type; Type: TABLE DATA; Schema: clin_prescribing; Owner: -
+--
+
+COPY lu_pbs_script_type (pk, type) FROM stdin;
+1	PBS
+2	PBS AUTHORITY
+3	PBS AUTHORITY STREAMLINED
+4	RPBS
+5	PBS AUTHORITY
+6	RPBS AUTHORITY STREAMLINED
+7	PRIVATE
+8	SECTION 100
+9	PBS AUTHORITY INCREASED QUANTITY
+10	RPBS AUTHORITY INCREASED QUANTITY
 \.
 
 

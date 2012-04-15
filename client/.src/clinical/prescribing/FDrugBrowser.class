@@ -1,7 +1,7 @@
 ' Gambas class file
 
 Private brands As Collection
-Private brand As Collection
+Private brand As CRow
 Private Form_PDF As FPdf
 Private generics As Collection
 Private drug_forms As Collection
@@ -9,6 +9,7 @@ Private bKeyValid As Boolean
 Private bExit As Boolean  
 Private fk_form As Integer
 Private units_keys As Integer[]
+Private fk_clinic As Integer
 
 Public Sub Form_Open()
    
@@ -52,7 +53,7 @@ Public Sub Init()
       .btZoomIn.Visible = True
       .btZoomOut.Visible = True
       .BtPrint.Visible = True  
-      Try .Load_PDF(User.home &/ "Documents/alphamox.pdf")
+   '   Try .Load_PDF(User.home &/ "Documents/alphamox.pdf")
    End With
    cmbUnits.Add("mcg")
    cmbUnits.Add("mg")
@@ -62,6 +63,7 @@ Public Sub Init()
    cmbUnits.Add("mg/ml")
    cmbUnits.Add("mcg/ml")
    cmbUnits.Add("units")
+   fk_clinic = modDBConnect.currentUser!fk_clinic
    Reload()
    
 End Sub
@@ -84,6 +86,9 @@ Public Sub Brands_Show()
       cvwDrugs[brand!pk_view][0] = brand!brand
       cvwDrugs[brand!pk_view][1] = brand!generic
       cvwDrugs[brand!pk_view][2] = brand!strength & " " & brand!form
+      If Not IsNull(brand!product_information_filename) Then
+         cvwDrugs[brand!pk_view][3] = "PI available"
+      Endif
    Next
    If cvwDrugs.count = 1 Then
       cvwDrugs_Select()
@@ -104,7 +109,10 @@ Public Sub cvwDrugs_Select()
    txtGeneric.text = brands[cvwDrugs.Item.key]!generic
    txtStrength.text = brands[cvwDrugs.Item.key]!strength
    txtForm.text = brands[cvwDrugs.Item.key]!form
-   '  Print 
+   If Not IsNull(brands[cvwDrugs.Item.key]!product_information_filename) Then
+      Print modAdminDBI.Config_Get("product_information_directory", "", Null, fk_clinic)
+      Try Form_PDF.Load_PDF(modAdminDBI.Config_Get("product_information_directory", "", Null, fk_clinic) &/ brands[cvwDrugs.Item.key]!product_information_filename)
+   Endif
    
 End
 
@@ -113,12 +121,9 @@ Public Sub EditArea_Notify_Data_Change(flag As Boolean)
    If flag Then
       Vbox_EditArea_Outer.Padding = 1
       Vbox_EditArea_Outer.Background = Color.red
-      '  tbOk.Foreground = Color.Red
-      
-   Else
+    Else
       Vbox_EditArea_Outer.Padding = 0
       Vbox_EditArea_Outer.Background = Color.white
-      '  tbOk.Foreground = Color.black
    End If
    
 End
@@ -132,6 +137,7 @@ Public Sub Drug_New()
    cvwDrugs.Clear()
    ListView1.Clear()
    fk_form = 0
+   brand = New CRow
    txtBrand.SetFocus()
    
 End
@@ -169,10 +175,51 @@ End
 Public Sub Save()
    '-----------------------------
    'Save a new user defined drug
-   '-----------------------------   
+   ' CREATE TABLE drugs.brand
+   ' (
+   '   fk_product uuid NOT NULL,
+   '   fk_company character varying(3) NOT NULL,
+   '   brand character varying(100) NOT NULL,
+   '   price money, -- dispensed price for PBS drugs.
+   '   from_pbs boolean NOT NULL DEFAULT false, -- true if the brand comes from the PBS database, allows the list to be easily reloaded...
+   '   original_tga_text text, -- drugs imported from TGA database, the original label therein
+   '   original_tga_code character varying(12), -- drugs imported from TGA database, their TGA code
+   '   pk uuid NOT NULL DEFAULT uuid_generate_v4(),
+   '   product_information_filename text,
+   '   CONSTRAINT brand_pkey PRIMARY KEY (pk ),
+   '   CONSTRAINT brand_fk_company_fkey FOREIGN KEY (fk_company)
+   '       REFERENCES drugs.company (code) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT brand_fk_product_fkey FOREIGN KEY (fk_product)
+   '       REFERENCES drugs.product (pk) MATCH SIMPLE
+   '       ON UPDATE NO
+   ' CREATE TABLE drugs.pack
+   ' (
+   '   fk_product uuid,
+   '   amount double precision, -- the amount of drugs that have a fluid form
+   '   amount_unit integer,
+   '   pack_size integer DEFAULT 1, -- the number of identical units (bottles, vials, tablets, etc) within a pack
+   '   CONSTRAINT pack_fk_product_fkey FOREIGN KEY (fk_product)
+   '       REFERENCES drugs.product (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
    
-   If Vbox_EditArea_Outer.padding = 0 Then Return 
-   If Not Drug_Valid() Then Return 
+   '-----------------------------   
+   brand!strength = Trim(txtStrength.Text)
+   brand!fk_form = fk_form
+   brand!free_comment = Trim(txtComment.Text)
+   brand.Save("drugs.product", "fk_product")
+   'brand!brand = Trim(txtBrand.Text)
+   'brand!fk_company = fk_company
+  ' brand!fk_product = brand!fk_product ' looks stupid but forces save of this field
+   'brand!product_information_filename = 
+  ' brand.Save("drugs.brand", "fk_brand")
+   modDBConnect.CommitTrans()
+   'If Vbox_EditArea_Outer.padding = 0 Then Return 
+   'If Not Drug_Valid() Then Return 
    
    EditArea_TextBoxes_SetRead_Status(False)
    Reload()
@@ -288,8 +335,7 @@ Public Sub EditArea_TextBox_GotFocus()
    Last.BackGround = Color.rgb(95, 255, 175)   
    ListView2.Visible = False  
    Select Case Last.tag                         
-      Case "form"
-         
+      Case "form", "atc", "company"
          With listview2                        
             .top = Last.Parent.Parent.top + Last.Parent.height 
             .Left = Last.Parent.Left           

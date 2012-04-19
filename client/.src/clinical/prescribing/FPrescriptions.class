@@ -61,6 +61,8 @@ Private drug_Restriction As Collection
 Private Print_Status As String
 Private medications As Collection
 Private medication As Collection
+Private brands As Collection
+Private brand As Collection 
 Private fk_medication As Integer 
 Private script_items As Collection
 Private script_item As Collection
@@ -69,6 +71,7 @@ Private Instruction_Habits As Collection
 Private Prescribing_Habits As Collection 
 Private habit As Collection 
 Private Authority_Increased_Quantity_Reasons As Collection
+Private SpellChecker As ClskSpell
 
 Public Sub set_embedded(F As String)
    '----------------------------------------------------------
@@ -140,14 +143,22 @@ Public Sub Init(cons As CConsult)
       .Columns[9].text = "PBS status"
       .Columns[10].text = "Directions"
       .Columns[11].text = "Prescibed For"
-      
+   End With
+   '-------------------------------------------------------------------------------
+   'The spell checker works on a text editor, so in the change event for txtReason
+   'i.e EditArea_txtBox_Change() its text is set
+   '-------------------------------------------------------------------------------
+   With SpellChecker = New ClskSpell
+      .EditorControlToCheck = teForSpelling
+      .TempFileForSpelling = User.home &/ "myspelltemp.txt"
+      .TempFileForErrors = User.home &/ "myspellerrors.txt"
    End With
    cvwBrands.Columns.count = 1
    script_items = New Collection 'all those prescribed this consultation
    Settings_Load()
    MenuButton1.menu = "mnuHealthIssues"
    Reload()
- 
+   
 End
 
 Public Sub mnuHealthIssues_Click()
@@ -167,7 +178,7 @@ Public Sub mnuHealthIssues_Click()
          cProgressNote_Section = const.cSection_Referrals
    End Select
    EditArea_Notify_Data_Change(True)
-
+   
 End
 
 Public Sub Delete_script(del As String)
@@ -204,7 +215,7 @@ Public Sub Edit()
    txtdate.text = currentconsult!prescriptions_written[iCurrentScriptKey]!date_script_written
    txtClass.text = currentconsult!prescriptions_written[iCurrentScriptKey]!class
    txtGeneric.text = currentconsult!prescriptions_written[iCurrentScriptKey]!generic
-   txtDrug.text = currentconsult!prescriptions_written[iCurrentScriptKey]!brand
+   txtBrand.text = currentconsult!prescriptions_written[iCurrentScriptKey]!brand
    txtStrength.text = currentconsult!prescriptions_written[iCurrentScriptKey]!strength
    txtDirections.text = currentconsult!prescriptions_written[iCurrentScriptKey]!instruction
    TxtReason.text = currentconsult!prescriptions_written[iCurrentScriptKey]!prescribed_for
@@ -221,7 +232,7 @@ End
 Public Sub EditArea_TxtBox_KeyRelease()
    
    Select Case Last.tag
-      Case "drug"
+      Case "brand"
          Timer1.Enabled = True
          Inc timer_count
          bGenericSearch = False  
@@ -230,8 +241,8 @@ Public Sub EditArea_TxtBox_KeyRelease()
          Timer1.Enabled = True
          Inc timer_count
       Case "authority wording"
-         If Not IsNull(drug!quantity) And txtQuantity.text <> "" Then 
-            If drug!restrictionflag <> "A" And drug!quantity < Val(txtQuantity.text) Then
+         If Not IsNull(drug!quantity) And txtRepeats.text <> "" Then 
+            If drug!restrictionflag <> "A" And drug!quantity < Val(txtRepeats.text) Then
                Authority_Increased_Quantity_Reason_Get()
             End If   
          End If   
@@ -271,10 +282,10 @@ Public Sub EditArea_Clear()
    pnlcolumnview.Visible = False   
    cvwBrands.Clear()
    lblRestrictions.text = ""
-   lblDrug.text = "Drug"
+   lblDrug.text = "Brand"
    txtdate.text = Format(Now, "dd/mm/yyyy")
    bExit = False  
-
+   
 End
 
 Public Sub EditArea_Buttons_KeyPress()
@@ -308,28 +319,30 @@ Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) A
 End
 
 Public Sub Editarea_txtBox_KeyPress()
+   '--------------------------------------------------------------
+   'Validate the keypress according to the row on in the edit area
+   'If down key was pressed and the drugs columnview (containing
+   'either list of generics or brands is visible, then move the
+   'focus down to the first member of this list
+   '--------------------------------------------------------------   
    
    If Not EditAreaTextbox_ExcludeKeys(key.code, Last.tag) Then    'validate key input first
       Stop Event                                                  'no good? don't show key output
       Return
    End If
    Select Case Key.Code
-         
       Case Key.Down
-         'fixme there is a bug in here - somehow it is possible to have this visible without anything in the box
          If pnlcolumnview.Visible Then
             With columnview1
-               .MoveFirst()
-               .SetFocus()
-               Try .Item.Selected = True
+               .MoveFirst()                                       'move to first drug
+               .SetFocus()                                        'make marquee visible
+               Try .Item.Selected = True                          'select it > this loads the brands
             End With
-            
          Endif
       Case Key.Return, Key.Tab
-         
          Select Case Last.tag
             Case "date"
-               txtDrug.SetFocus()
+               txtBrand.SetFocus()
             Case "directions"
                TxtReason.SetFocus()
             Case "reason"
@@ -343,21 +356,20 @@ Public Sub Editarea_txtBox_KeyPress()
                         txtApprovalNumber.SetFocus()
                      Endif
                   Endif
-                  
                Else
                   tbOk.SetFocus()
                End If   
             Case "approval number"
                If lblRestrictions.text = "PBS AUTHORITY (Inc Qty)" Or lblRestrictions.text = "rpbs AUTHORITY (Inc Qty)" Then
-                  If Not (Val(txtQuantity.text) > drug!quantity) Then
-                     txtQuantity.SetFocus()
+                  If Not (Val(txtRepeats.text) > drug!quantity) Then
+                     txtRepeats.SetFocus()
                   End If   
                Endif
             Case "quantity"
                txtRepeats.SetFocus()
             Case "repeats"
                If Not IsNull(drug!quantity) Then  
-                  If (Val(txtQuantity.text) > drug!quantity) Then
+                  If (Val(txtRepeats.text) > drug!quantity) Then
                      If Trim(txtReason.text) = "" Then
                         txtReason.SetFocus()
                      Else
@@ -376,7 +388,7 @@ Public Sub Editarea_txtBox_KeyPress()
                   Endif
                Else
                   If Last.text <> "" Then
-                     If txtQuantity.text <> "" Then
+                     If txtRepeats.text <> "" Then
                         tbOk.SetFocus()
                      Endif
                   Endif
@@ -418,8 +430,11 @@ Public Sub EditArea_TxtBox_LostFocus()
                bExit = False   
             End If
          End If
-      Case "drug"
+      Case "brand"
          Timer1.stop()
+      Case "reason"
+         SpellChecker.init(txtReason)
+         SpellChecker.StartSpelling()
    End Select
    
    Last.pos = 0
@@ -430,7 +445,7 @@ Public Sub EditArea_TxtBox_Change()
    
    If bexit Then Return 
    Select Case Last.tag
-      Case "drug", "generic"
+      Case "brand", "generic"
          If Trim(Last.text) = "" Then
             Drug_New()
          Endif
@@ -453,14 +468,14 @@ Public Sub EditArea_TxtBox_Change()
          If iPBS_Script_Type <> const.pbs_script_type_pbs_authority Or iPBS_Script_Type <> const.pbs_script_type_rpbs_authority Then
             
             Drug_Show_Restriction()
-            If Val(txtQuantity.text) > drug!quantity Then
+            If Val(txtRepeats.text) > drug!quantity Then
                iPBS_Script_Type = const.pbs_script_type_pbs_authority_increased_quantity
             Endif
          End If  
       Case "quantity"
          'User is changing the quantity, is this increased quantity or PBS item
-         If Not IsNull(drug!quantity) And txtQuantity.text <> "" Then         'private drugs seem to have no quantity
-            If Val(txtQuantity.text) > drug!quantity Then
+         If Not IsNull(drug!quantity) And txtRepeats.text <> "" Then         'private drugs seem to have no quantity
+            If Val(txtRepeats.text) > drug!quantity Then
                If drug!restrictionflag <> "A" And (drug!restrictionflag = "U" Or drug!restrictionflag = "R") Then             'not a pbs authority
                   iPBS_Script_Type = const.pbs_script_type_pbs_authority_increased_quantity
                   Drug_Show_Restriction()
@@ -474,11 +489,12 @@ Public Sub EditArea_TxtBox_Change()
       Case "authority wording"
          If Trim(Last.text) = "" Then
             pnlcolumnview.Visible = False 
-            
          Endif
+      Case "reason"
+         teForSpelling.Text = txtReason.text
    End Select
    EditArea_Notify_Data_Change(True)
-
+   
 End
 
 Public Sub Drug_Show_Restriction() 
@@ -519,6 +535,8 @@ Public Sub EditArea_TxtBox_GotFocus()
    
    If Last.tag <> "restriction" Then Last.BackGround = Color.rgb(95, 255, 175)
    columnview1.clear
+  
+   
    Select Case Last.tag
          
       Case "reason"
@@ -533,7 +551,8 @@ Public Sub EditArea_TxtBox_GotFocus()
          If Trim(Last.text) = "" Then
             PrescribedFor_Habits_Get()
          Endif
-      Case "generic"
+      teForSpelling.text = txtReason.Text
+      Case "generic", "brand"
          With pnlcolumnview
             .top = Vbox_EditArea_Inner.top + Last.parent.parent.top + Last.parent.height
             .left = Last.parent.Left
@@ -541,27 +560,24 @@ Public Sub EditArea_TxtBox_GotFocus()
             .Visible = False
             .Raise
          End With
-         cvwBrands.Visible = True   
+         If Last.tag = "generic" Then 
+            cvwBrands.Visible = True   
+         Else
+            cvwBrands.Visible = False  
+         End If   
    End Select
    
 End
 
 Public Sub PrescribedFor_Habits_Get()
    
+   If IsNull(drug!medication!fk_generic_product) Then Return 
    Prescribing_Habits = modPrescribingDBI.PrescribedFor_Habits_Get(drug!medication!fk_generic_product)
    For Each habit In Prescribing_Habits
       TxtReason.text = habit!prescribed_for
       tbOk.SetFocus()
       Break
    Next
-   
-End
-
-Public Sub columnview1_KeyPress()
-   
-   If Key.code = Key.return Then
-      columnview1_DblClick()
-   Endif
    
 End
 
@@ -602,11 +618,53 @@ Public Sub Restrictions_Show()
    Dim sep As Separator
    
    Drug_Restrictions = New Collection
-   
- '  currentDrug = drugs[columnview1.Item.key]         'drug showing in the columview
+   Print drugs
+   drug = drugs[columnview1.Item.key]                  'set drug collection   
    pbscode = drug!pbscode 
    lcRestrictions.Clear()
-   For Each drug In drugs                           'All drugs in the collectioni
+   For Each drug In drugs                             'All drugs in the collectioni
+      If Not IsNull(drug!restriction) Then            'If drug has a restrciotn
+         If drug!pbscode = pbscode Then                'if the pbscode = same as that we are showing
+            If Not Drug_Restrictions.Exist(drug!restriction) Then  'if not already in the collection 
+               With lbl = New TextLabel(lcRestrictions) As "Restrictions"  'add it, and to the list container
+                  .text = drug!restriction           'This is what will be sent to the printer (minus html tags)
+                  .tag = drug!restriction_code       'This will be saved to the database, if the row is selected
+                  .Foreground = Color.DarkGray
+                  .AutoResize = True
+                  .font = Font["Arial,9"]
+               End With
+               With sep = New Separator(lcRestrictions)
+                  .Height = 3
+                  .Foreground = Color.Black
+               End With
+               Drug_Restrictions.Add(drug!restriction, drug!restriction)
+               Inc row
+            Endif
+         End If    
+         
+      End If 
+   Next
+   
+End
+
+Public Sub Restrictions_Show_old()
+   '--------------------------------------------------------------------------
+   'As user clicks on a columnview row, show all restrictions for that pbscode
+   'Show a drugs restriction details, these can be just restrictions of use
+   'or authority indications, uses the pbscode (restriction.pbscode)
+   '--------------------------------------------------------------------------
+   
+   Dim row As Integer = 0
+   Dim pbscode As String 
+   Dim lbl As TextLabel
+   Dim sep As Separator
+   
+   Drug_Restrictions = New Collection
+   
+   '  currentDrug = drugs[columnview1.Item.key]         'drug showing in the columview
+   pbscode = drug!pbscode 
+   lcRestrictions.Clear()
+   For Each drug In drugs                             'All drugs in the collectioni
       If Not IsNull(drug!restriction) Then            'If drug has a restrciotn
          If drug!pbscode = pbscode Then                'if the pbscode = same as that we are showing
             If Not Drug_Restrictions.Exist(drug!restriction) Then  'if not already in the collection 
@@ -632,7 +690,7 @@ Public Sub Restrictions_Show()
    
 End
 
-Public Sub PBS_Show(drug As Collection)
+Public Function PBS_Show(drug As Collection) As String 
    '-----------------------------------------------------------
    'Shows the PBS status of the currently selected drug
    'Not until user selects an authority wording can we show
@@ -660,7 +718,6 @@ Public Sub PBS_Show(drug As Collection)
       Case "OTR"
          lblRestrictions.text = "PBS OPTOMETRIST RESTRICTED"
          iPBS_Script_Type = const.pbs_script_type_pbs
-         
       Case "GEU"
          lblRestrictions.text = "PBS UNRESTRICTED"
          iPBS_Script_Type = const.pbs_script_type_pbs
@@ -695,27 +752,49 @@ Public Sub PBS_Show(drug As Collection)
             iPBS_Script_Type = const.pbs_script_type_rpbs_authority_streamlined
             bAuthority = True
          End If
-      Case Else
+      Case Else 'fixme (NOT true eg HS =section 100 .... etc etc  FIX ME
          lblRestrictions.text = "PRIVATE SCRIPT"
          iPBS_Script_Type = const.pbs_script_type_private
    End Select  
    bExit = False  
+   Return lblRestrictions.Text
+   
+End
+
+Public Sub columnview1_KeyPress()
+   
+   Select Case key.Code
+      Case key.Right
+         If cvwBrands.count And cvwBrands.visible Then
+            cvwBrands.SetFocus()
+         End If   
+      Case key.Return
+         columnview1_DblClick()
+   End Select 
    
 End
 
 Public Sub columnview1_Select()
+   '------------------------------------------------------------------------
+   'Either set in code by EditArea_txtBox_Keypress, the user having hit
+   'the down arrow key and scrolled onto the list, or by the user clicking
+   'directly on the columnview. If restrictions or authority wording applies
+   'then show appropriate text
+   '------------------------------------------------------------------------
    
-   columnview1.MoveCurrent()
-   Restrictions_Show()         'show which restrictions apply to this drug/generic or brand
-   PBS_Show(drugs[columnview1.Item.key])
-   Brands_For_Generic_Show() 
+   columnview1.MoveCurrent()              'move internal cursor
+   Restrictions_Show()                    'show which restrictions apply to this drug/generic or brand
+   PBS_Show(drugs[columnview1.Item.key])  'shown PBS type eg PBS STREAMLINED
+   Brands_For_Generic_Show()              'get the brands for this generic, show these
    
 End
 
 Public Sub Brands_For_Generic_Show()
-   
-   Dim brands As Collection
-   Dim brand As Collection
+   '--------------------------------------------------------------------------------
+   'Fetch list of brands corresponding to the generic shown in the popup columnview1
+   'from drugs.vwDistinctBrandsForGenericProduct, set marquee to the first one in the
+   'list. cvwBrands.item.key = pk_view = drugs.brands.pk
+   '--------------------------------------------------------------------------------   
    
    brands = modPrescribingDBI.Brands_For_Generic_Get(drugs[columnview1.Item.key]!generic, drugs[columnview1.Item.key]!fk_product)
    cvwBrands.Clear
@@ -723,13 +802,24 @@ Public Sub Brands_For_Generic_Show()
       cvwBrands.Add(brand!pk_view, 0)
       cvwBrands[brand!pk_view][0] = Left(brand!brand) & Lower(Right(brand!brand, Len(brand!brand) - 1))
    Next
+   If brands.count Then
+      With cvwBrands
+         .MoveFirst()
+         .Item.Selected = True
+      End With
+   Endif
    
 End
 
 Public Sub columnview1_DblClick()
+   '------------------------------------------------------------------------
+   'User has double clicked (or pressed enter see columnview1_keypress(0
+   'According to whether we've searched on a brand or generic, transfer
+   'the drug to the editing area, then remove the panel with the columnview
+   '------------------------------------------------------------------------   
    
    Select Case columnview1.tag.tag 'don't make me 'last'
-      Case "drug"
+      Case "brand"
          Drug_Select()
       Case "generic"
          Generic_Select()
@@ -737,42 +827,51 @@ Public Sub columnview1_DblClick()
          Authority_Increased_Quantity_Reasons_Select()
    End Select
    pnlColumnView.visible = False 
+   
 End
 
 Public Sub Generics_Get()
+   '-------------------------------------------------------------------
+   'User has typed in txtGenerics, i.e wishes to search by generic name
+   'Pop up the columnview with generic name + strength + form + repeats
+   'at the end of this routine a list of drugs may be showing, but the
+   'cursor remains on the txtGeneric textbox unless user then arrows
+   'down to this list, or clicks on it.
+   '-------------------------------------------------------------------  
    
    Dim last_drug As String 'drug+quantity+repeats
    
-   Timer1.Stop()
-   With columnview1
+   Timer1.Stop()                                                  'stop searching
+   With columnview1                                               'clear the popup columnview
       .Clear()
       .Columns.count = 5
+      .Columns[0].width = 100
    End With
-   cvwBrands.Clear()
+   cvwBrands.Clear()                                              'clear the brands for generic
    If Trim(txtGeneric.text) = "" Then Return 
-   drugs = modPrescribingDBI.Generics_Get(Trim(txtGeneric.text))
-   If drugs.count Then
-      For Each drug In drugs
+   drugs = modPrescribingDBI.Generics_Get(Trim(txtGeneric.text))  'ok, get all matching generics from vwDrugs
+   If drugs.count Then                                            'found some?
+      For Each drug In drugs                                      'then put into the columnview
          If last_drug <> drug!generic & drug!pbscode Then 
             last_drug = drug!generic & drug!pbscode
-            '  If last_drug <> drug!drug & Str(drug!quantity) & Str(drug!max_rpt) Then 
-            '              last_drug = drug!drug & Str(drug!quantity) & Str(drug!max_rpt)
-            ' 
-            
-            ColumnView1.add(drug!pk_view, 0)
-            columnview1[drug!pk_view][0] = drug!generic
-            If InStr(drug!strength, "ml") Then
-               columnview1[drug!pk_view][1] = modPrescribingDBI.ConvertTo5mls(drug!strength)
-            Else
-               columnview1[drug!pk_view][1] = drug!strength
+            If drug!chapter = "GE" Or Drug!chapter = "R1" Then 
+               ColumnView1.add(drug!pk_view, 0)                       'pk_view = string(brand.pk + pbs_code + restriction_code)
+               columnview1[drug!pk_view][0] = drug!generic            'show the generic name in the columnview
+               If InStr(drug!strength, "ml") Then                     'is a liquid? then make up to per 5mls strength
+                  columnview1[drug!pk_view][1] = modPrescribingDBI.ConvertTo5mls(drug!strength)
+               Else
+                  columnview1[drug!pk_view][1] = drug!strength
+               End If   
+               columnview1[drug!pk_view][2] = drug!form          
+               columnview1[drug!pk_view][3] = Str(drug!quantity) & " Rpt:" & drug!max_rpt 
+               columnview1[drug!pk_view][4] = PBS_Show(drug)
             End If   
-            columnview1[drug!pk_view][2] = drug!form
-            columnview1[drug!pk_view][3] = Str(drug!quantity) & " Rpt:" & drug!max_rpt  
          End If   
       Next
-      pnlcolumnview.Visible = True  
-      cvwBrands.visible = True
-      columnview1.tag = txtDrug 
+      columnview1.Columns[0].width = 100
+      pnlcolumnview.Visible = True                                'Now show the list of generics 
+      cvwBrands.visible = True                                    'show the brands list (still empty)
+      columnview1.tag = txtBrand 
       
    Endif
    
@@ -785,34 +884,71 @@ Public Sub Generic_Select()
 End
 
 Public Sub Brands_Get()
-   ' 
-   ' Return 
-   ' Timer1.Stop()
-   ' With columnview1
-   '    .Clear()
-   '    .Columns.count = 4
-   ' End With
-   ' If Trim(txtDrug.text) = "" Then Return 
-   ' brands = modPrescribingDBI.Brands_Get(Trim(txtDrug.text))
-   ' If brands.count Then
-   '    For Each brand In brands
-   '       
-   '       ColumnView1.add(brand!pk_view, 0)
-   '       columnview1[brand!pk_view][0] = brand!brand
-   '       columnview1[brand!pk_view][1] = brand!generic
-   '       If InStr(brand!strength, "ml") Then
-   '          columnview1[brand!pk_view][2] = modPrescribingDBI.ConvertTo5mls(brand!strength)
-   '       Else
-   '          columnview1[brand!pk_view][2] = brand!strength
-   '       End If   
-   '       columnview1[brand!pk_view][3] = brand!form
-   '    Next
-   '    pnlcolumnview.Visible = True  
-   '    cvwBrands.Visible = False   
-   '    columnview1.tag = txtDrug 
-   '    
-   ' Endif
-   ' 
+   
+   Dim last_drug As String 'drug+quantity+repeats
+   
+   Timer1.Stop()                                                  'stop searching
+   With columnview1                                               'clear the popup columnview
+      .Clear()
+      .Columns.count = 6
+      .Columns[0].width = 100
+   End With
+   cvwBrands.Visible = False                                          'clear the brands for generic
+   If Trim(txtBrand.text) = "" Then Return 
+   drugs = modPrescribingDBI.Brands_Get_RT(Trim(txtbrand.text))  'ok, get all matching generics from vwDrugs
+   If drugs.count Then                                            'found some?
+      For Each drug In drugs                                      'then put into the columnview
+         If last_drug <> drug!generic & drug!pbscode Then 
+            last_drug = drug!generic & drug!pbscode
+            If drug!chapter = "GE" Or Drug!chapter = "R1" Then 
+               ColumnView1.add(drug!pk_view, 0)                       'pk_view = string(brand.pk + pbs_code + restriction_code)
+               columnview1[drug!pk_view][0] = drug!brand  
+               columnview1[drug!pk_view][1] = drug!generic            'show the generic name in the columnview
+               If InStr(drug!strength, "ml") Then                     'is a liquid? then make up to per 5mls strength
+                  columnview1[drug!pk_view][2] = modPrescribingDBI.ConvertTo5mls(drug!strength)
+               Else
+                  columnview1[drug!pk_view][2] = drug!strength
+               End If   
+               columnview1[drug!pk_view][3] = drug!form          
+               columnview1[drug!pk_view][4] = Str(drug!quantity) & " Rpt:" & drug!max_rpt 
+               columnview1[drug!pk_view][5] = PBS_Show(drug)
+            End If   
+         End If   
+      Next
+      columnview1.Columns[0].width = 100
+      pnlcolumnview.Visible = True                                'Now show the list of generics 
+      columnview1.tag = txtBrand 
+      
+   Endif  
+   
+End
+
+Public Sub Brands_Get_old()
+   
+   Timer1.Stop()
+   With columnview1
+      .Clear()
+      .Columns.count = 4
+   End With
+   If Trim(txtBrand.text) = "" Then Return 
+   brands = modPrescribingDBI.Brands_Get_RT(Trim(txtBrand.text))
+   If brands.count Then
+      For Each brand In brands
+         ColumnView1.add(brand!pk_view, 0)
+         columnview1[brand!pk_view][0] = brand!brand
+         columnview1[brand!pk_view][1] = brand!generic
+         If InStr(brand!strength, "ml") Then
+            columnview1[brand!pk_view][2] = modPrescribingDBI.ConvertTo5mls(brand!strength)
+         Else
+            columnview1[brand!pk_view][2] = brand!strength
+         End If   
+         columnview1[brand!pk_view][3] = brand!form
+      Next
+      pnlcolumnview.Visible = True  
+      cvwBrands.Visible = False   
+      columnview1.tag = txtBrand 
+      
+   Endif
    
 End
 
@@ -833,37 +969,51 @@ Public Sub Drug_Print()
 End
 
 Public Sub Drug_Select()
-   '-------------------------------------------------
+   '----------------------------------------------------------------------
    'User is picking a drug from the popup columnview
    'FIXME REMOVE VARIABLES ONLY LOAD ONES FOR DISPLAY
-   'LEAVE IN DRUG
-   '------------------------------------------------
+   'the drug collection consists of this:
+   'drugs!med whose data will be saved to clin_prescibing.medications
+   'drugs!prescibed whose data will be saved to clin_prescribing.prescibed
+   'drugs!fields = all fields for the drug, mainly used for display
+   'Fill the edit area with the drugs details, the brand selected (or if 
+   'none - the first brand on the list
+   'try and auto-fill the instruction from the habits table and then put
+   'cursor onto the directions textbox. This will the auto-fill in the
+   'directions for the drug if previously described (or the best guess)
+   '-----------------------------------------------------------------------
    
-   Dim pbs_script_type As String                   'chapter + restrictionflag - selects how to print script
-   Dim med As CRow
+   Dim pbs_script_type As String                       'chapter + restrictionflag - selects how to print script
+   Dim med As CRow                                     'cRow allows eg Med.Save(..)
    
-   columnview1.MoveCurrent                         'set the key
-   drug = drugs[columnview1.Item.key]            'set drug collection   
-   med = New CRow
+   columnview1.MoveCurrent                             'set the key so it matches drugs collection
+   drug = drugs[columnview1.Item.key]                  'set drug collection   
+   med = New CRow                                      'this will be saved in drug_save()
    med!fk_generic_product = drug!fk_product
    med!pbscode = drug!pbscode
-   med!fk_brand = drug!fk_brand
+   
    drug!medication = med    
    bexit = True
-   txtGeneric.text = drug!generic
-   txtDrug.text = drug!brand 'won't be showing if user config configuration to hide this is set (not done yet FIXME)
-   txtDrug.pos = 1
-   txtClass.text = drug!class   'fixme
-   If InStr(drug!strength, "ml") Then
+   txtGeneric.text = drug!generic                      'e.g atenolol
+   txtGeneric.pos = 1                                  'make sure stem of generic showing
+   If cvwBrands.Visible Then 
+      txtBrand.text = brands[cvwBrands.Item.key]!brand    'e.g tenormin
+      med!fk_brand = cvwBrands.Item.key                   'match the brand key to the cvwBrands list
+   Else
+      txtBrand.text = drug!brand
+      med!fk_brand = drug!fk_brand                   'match the brand key to the cvwBrands list
+   End If   
+   txtBrand.pos = 1                                    'make sure stem of brand showing
+   txtClass.text = drug!class                          'fixme
+   If InStr(drug!strength, "ml") Then                  'if liquid, then show per 5ml volume
       txtStrength.text = modPrescribingDBI.ConvertTo5mls(drug!strength)
    Else
-      txtStrength.text = drug!strength & " " & drug!form
+      txtStrength.text = drug!strength & " " & drug!form 'show the formulation e.g tablet
    End If
    txtStrength.pos = 1
    Try txtRepeats.text = drug!max_rpt
    Try txtQuantity.text = drug!quantity
-   
-   PBS_Show(drug)
+   PBS_Show(drug)                                      'e.g PBS STREAMLINED or PRIVATE
    Instruction_Habits = modPrescribingDBI.Instruction_Habits_Get(drug!fk_product)
    If Instruction_Habits.count Then
       For Each Habit In Instruction_Habits
@@ -875,121 +1025,6 @@ Public Sub Drug_Select()
       txtDirections.SetFocus()
    Endif
    bexit = False 
-   
-End
-Public Sub Drug_Select_old()
-  '  '-------------------------------------------------
-  '  'User is picking a drug from the popup columnview
-  '  'FIXME REMOVE VARIABLES ONLY LOAD ONES FOR DISPLAY
-  '  'LEAVE IN DRUG
-  '  '------------------------------------------------
-  '  
-  '  Dim pbs_script_type As String                   'chapter + restrictionflag - selects how to print script
-  '  
-  '  columnview1.MoveCurrent                         'set the key
-  '  drug = drugs[columnview1.Item.key]            'set drug collection   
-  '  'ian dosn't want any variables
-  '  fk_company = drug!fk_company                   'if not null points to drug.drug using fk_generic_product
-  '  fk_generic_product = Public Sub Drug_Select()
-  '  '-------------------------------------------------
-  '  'User is picking a drug from the popup columnview
-  '  'FIXME REMOVE VARIABLES ONLY LOAD ONES FOR DISPLAY
-  '  'LEAVE IN DRUG
-  '  '------------------------------------------------
-  '  
-  '  Dim pbs_script_type As String                   'chapter + restrictionflag - selects how to print script
-  '  
-  '  columnview1.MoveCurrent                         'set the key
-  '  drug = drugs[columnview1.Item.key]            'set drug collection   
-  '  'ian dosn't want any variables
-  '  fk_company = drug!fk_company                   'if not null points to drug.drug using fk_generic_product
-  '  fk_generic_product = drug!fk_product      'never null eg points to amoxycillin 250mg capsules
-  '  restriction_code = drug!fk_restriction         'may be null, if not = drugs restriction or authority details
-  ' pbscode = drug!pbscode                         'may be null if not pbs
-  '  ' currentMedication = New CRow
-  '  ' currentMedication!generic = drug!generic
-  '  ' currentMedication!fk_generic_product = drug!fk_product
-  '  '  currentMedication!pbscode = drug!pbs_code   
-  '  '   currentMedication!brand = drug!brand
-  '  '    currentMedication!class = drug!class
-  '  '     currentMedication!strength = drug!strength
-  '      
-  '  bexit = True
-  '  txtGeneric.text = drug!generic
-  '  txtDrug.text = drug!brand 'won't be showing if user config configuration to hide this is set (not done yet FIXME)
-  '  txtDrug.pos = 1
-  '  txtClass.text = drug!class   'fixme
-  '  If InStr(drug!strength, "ml") Then
-  '     txtStrength.text = modPrescribingDBI.ConvertTo5mls(drug!strength)
-  '  Else
-  '     txtStrength.text = drug!strength & " " & drug!form
-  '  End If
-  '  txtStrength.pos = 1
-  '  Try txtRepeats.text = drug!max_rpt
-  '  Try txtQuantity.text = drug!quantity
-  '  
-  '  PBS_Show prescribed = New Collection
-  '  prescribed!fk_item_prescribed = Script_item!fk_item_prescribed
-  '  prescribed!date_on_script = Script_item!date_on_script
-  '  prescribed!fk_consult = Script_item!fk_consult
-  '  prescribed!reg24 = Script_item!reg24 
-  '  prescribed!authority_script_number = Script_item!authority_script_number
-  '  prescribed!authority_approval_number = Script_item!authority_approval_number
-  '  prescribed!authority_post_to_patient = Script_item!authority_post_to_patient
-  '  prescribed!script_number = Script_item!script_number
-  '  ' prescribed! = concession_details : these three not yet implemented
-  '  ' prescribed! = brand_substitution : do not remove this code
-  '  ' prescribed! = fk_progress_note(drug)
-  '  Instruction_Habits = modPrescribingDBI.Instruction_Habits_Get(drug!fk_product)
-  '  If Instruction_Habits.count Then
-  '     For Each Habit In Instruction_Habits
-  '        txtDirections.text = Habit!instruction
-  '        TxtReason.SetFocus()
-  '        Break
-  '     Next  
-  '  Else 
-  '     txtDirections.SetFocus()
-  '  Endif
-  '  bexit = False 
-   
-' End
-' drug!fk_product      'never null eg points to amoxycillin 250mg capsules
-'    restriction_code = drug!fk_restriction         'may be null, if not = drugs restriction or authority details
-'   pbscode = drug!pbscode                         'may be null if not pbs
-'    ' currentMedication = New CRow
-'    ' currentMedication!generic = drug!generic
-'    ' currentMedication!fk_generic_product = drug!fk_product
-'    '  currentMedication!pbscode = drug!pbs_code   
-'    '   currentMedication!brand = drug!brand
-'    '    currentMedication!class = drug!class
-'    '     currentMedication!strength = drug!strength
-'        
-'    bexit = True
-'    txtGeneric.text = drug!generic
-'    txtDrug.text = drug!brand 'won't be showing if user config configuration to hide this is set (not done yet FIXME)
-'    txtDrug.pos = 1
-'    txtClass.text = drug!class   'fixme
-'    If InStr(drug!strength, "ml") Then
-'       txtStrength.text = modPrescribingDBI.ConvertTo5mls(drug!strength)
-'    Else
-'       txtStrength.text = drug!strength & " " & drug!form
-'    End If
-'    txtStrength.pos = 1
-'    Try txtRepeats.text = drug!max_rpt
-'    Try txtQuantity.text = drug!quantity
-'    
-'    PBS_Show(drug)
-'    Instruction_Habits = modPrescribingDBI.Instruction_Habits_Get(drug!fk_product)
-'    If Instruction_Habits.count Then
-'       For Each Habit In Instruction_Habits
-'          txtDirections.text = Habit!instruction
-'          TxtReason.SetFocus()
-'          Break
-'       Next  
-'    Else 
-'       txtDirections.SetFocus()
-'    Endif
-'    bexit = False 
    
 End
 
@@ -1015,9 +1050,18 @@ Public Sub EditArea_Buttons_Click()
       Case "print"
          Save()
          ' Drug_Print()
-      Case "pi"
-         
+      Case "product information"
+         Product_Information_Full_Show(drug!product_information_filename, drug!brand)
    End Select
+   
+End
+
+Public Sub Product_Information_Full_Show(filename As String, drug_name As String)
+   
+   Try FClinical.Editor_ShowPage_External("pdf file", drug_name, modAdminDBI.Config_Get("product_information_directory", "", Null, modDBConnect.currentUser!fk_clinic) &/ filename)
+   If Error Then
+      Message.Info("No product information was found for this drug")
+   Endif
    
 End
 
@@ -1031,15 +1075,17 @@ Public Sub Drug_Add() As Boolean
    
    Dim x As Integer 'for readability
    'don't allow a 'double hit' on this button.
-  ' If Not Drug_Valid() Then Return
-  ' If Drug_Duplicated() Then Return 
+   ' If Not Drug_Valid() Then Return
+   ' If Drug_Duplicated() Then Return 
    
    script_item = New Collection
    If fk_item_prescribed Then Script_item!fk_item_prescribed = fk_item_prescribed
    If fk_medication Then script_item!fk_medication = fk_medication
    '  If fk_increased_quantity_authority_reason Then script_item!fk_increased_quantity_authority_reason
    script_item!med = drug!medication
+   script_item!med!fk_brand = drug!fk_brand
    script_item!prescribed = New CRow
+   script_item!date_script_written = Now()
    script_item!prescribed!date_on_script = Val(txtdate.text)
    script_item!prescribed!fk_consult = currentconsult.GetPK()
    script_item!date_script_written = Now()
@@ -1047,13 +1093,23 @@ Public Sub Drug_Add() As Boolean
    script_item!generic = drug!generic ' for display
    script_item!strength = drug!strength ' for display only
    script_item!form = drug!form
+   script_item!product_information_filename = drug!product_information_filename
    script_item!med!quantity = Val(txtQuantity.text)
    script_item!med!repeats = Val(txtRepeats.text)
    script_item!pbs_script_type = lblRestrictions.Text
    script_item!instruction = Trim(txtDirections.text) ' FIXME: convert to the PK here??
    script_item!prescribed_for = Trim(txtReason.text)  ' FIXME: convert to the PK here ??
    script_item!med!fk_instruction = modPrescribingDBI.Instruction_Get_PK(script_item!instruction)
+   'now, save any habits
+   
+   modPrescribingDBI.Instructions_Save_Habit(script_item)
+   modDBConnect.CommitTrans()
+   
    script_item!med!fk_prescribed_for = modPrescribingDBI.PrescribedFor_Get_Pk(script_item!prescribed_for)
+   
+   modPrescribingDBI.Prescribed_For_Save_Habit(script_item)
+   modDBConnect.CommitTrans()
+   
    Script_item!med!restriction_code = restriction_code
    script_item!med!suppress_reason = False   'fixme implement me
    Script_item!med!fk_lu_pbs_script_type = iPBS_Script_Type
@@ -1067,7 +1123,7 @@ Public Sub Drug_Add() As Boolean
    Script_Item!prescribed!script_number = modPrescribingDBI.Script_Number_Get_Next()
    Script_item!authority_indication = Trim(txtAuthorityWording.Text) 'could be a PBS description or our own for increased authority
    script_items.Add(script_item, script_items.count)
-     ' prescribed! = concession_details : these three not yet implemented
+   ' prescribed! = concession_details : these three not yet implemented
    ' prescribed! = brand_substitution : do not remove this code
    ' prescribed! = fk_progress_note
    cvwPrescriptions_Refresh(script_items)
@@ -1087,13 +1143,15 @@ Public Sub Save()
    '-----------------------------------------------------------
    
    For Each script_item In script_items 
-      Drug_Save(script_item)
-      If IsNull(script_item!printed) Then script_item!printed = False 
+      If IsNull(script_item!printed) Then 
+         Drug_Save(script_item)
+         script_item!printed = False 
+      End If  
    Next
    
- '  Print_Script_Items(script_items)
- '  FClinical.Refresh_Section(const.cSection_Prescriptions)    'refresh lists on main screen FClinical
-  ' FClinical.Refresh_AllPreviousNotes()
+   '  Print_Script_Items(script_items)
+   '  FClinical.Refresh_Section(const.cSection_Prescriptions)    'refresh lists on main screen FClinical
+   ' FClinical.Refresh_AllPreviousNotes()
    Reload()
    
 End
@@ -1105,7 +1163,8 @@ Public Sub Drug_Save(script_item As Collection) As Integer
    '------------------------------------------------------------------
    
    Dim prescribed As CRow
-
+   
+   'save
    script_item!med.Save("clin_prescribing.medications", "fk_medication")
    '----------------------------------------------------------------------------------------------
    '   Table: clin_prescibring.prescibed
@@ -1117,19 +1176,20 @@ Public Sub Drug_Save(script_item As Collection) As Integer
    '   authority_script_number integer, -- the pbs requires a unique script number for an authority item, pretty stupid, but a number that...
    '   authority_approval_number text, -- either the steamlined authority number or the phone approval number obtained from a pbs operator
    '   authority_post_to_patient boolean DEFAULT false,
-   '   script_number integer,
+   '   script_number integer,Script_Items_Written
    '   concession_details text,
    '   brand_substitution boolean DEFAULT true,
    '   fk_progress_note integer,
    '   deleted boolean DEFAULT false,
    '----------------------------------------------------------------------------------------------
    script_item!prescribed!fk_medication = script_item!med!fk_medication
-    script_item!prescribed.Save("clin_prescribing.prescribed", "fk_item_prescribed")
+   script_item!prescribed.Save("clin_prescribing.prescribed", "fk_item_prescribed")
    
    modDBConnect.CommitTrans()
    Return fk_item_prescribed
    
 End
+
 Public Sub Drug_Save_old(script_item As Collection) As Integer
    '------------------------------------------------------------------  
    'Save a single script item to the backend.
@@ -1140,7 +1200,7 @@ Public Sub Drug_Save_old(script_item As Collection) As Integer
    Dim prescribed As CRow
    
    medication = New CRow
-  
+   
    medication!fk_generic_product = script_item!fk_generic_product
    medication!fk_brand = script_item!fk_brand
    medication!instruction = script_item!instruction 
@@ -1191,6 +1251,7 @@ Public Sub Drug_Save_old(script_item As Collection) As Integer
    Return fk_item_prescribed
    
 End
+
 Public Function cvwPrescriptions_Refresh(Script_Items_Written As Collection)
    '------------------------------------------------------------------------------
    'CALLED BY: Reload()   in which case loads only previously printed
@@ -1215,8 +1276,8 @@ Public Function cvwPrescriptions_Refresh(Script_Items_Written As Collection)
       Else 
          cvwPrescriptions.Add(x, "", pic_printed)
       Endif
-      If script_item!prescribed.Exist("date_script_written") Then
-        cvwPrescriptions[x][1] = Format(script_item!prescribed!date_script_written, "dd/mm/yyyy")
+      If Not IsNull(script_item!date_script_written) Then
+         cvwPrescriptions[x][1] = Format(script_item!date_script_written, "dd/mm/yyyy")
       Else
          cvwPrescriptions[x][1] = ""
       Endif
@@ -1229,7 +1290,7 @@ Public Function cvwPrescriptions_Refresh(Script_Items_Written As Collection)
       cvwPrescriptions[x][8] = script_item!med!repeats 
       cvwPrescriptions[x][9] = script_item!pbs_script_type
       cvwPrescriptions[x][10] = script_item!instruction  
-      cvwPrescriptions[x][11] = script_item!prescribedfor   
+      cvwPrescriptions[x][11] = script_item!prescribed_for   
       
    Next
    
@@ -1278,12 +1339,12 @@ Public Function Drug_Valid() As Boolean
       txtGeneric.SetFocus()
       Return
    Endif
-   If txtQuantity.text = "" Then
-      txtQuantity.SetFocus()
+   If txtRepeats.text = "" Then
+      txtRepeats.SetFocus()
       Return 
    Endif
-   If txtRepeats.Text = "" Then
-      txtRepeats.SetFocus
+   If txtQuantity.Text = "" Then
+      txtQuantity.SetFocus
       Return
    Endif
    
@@ -1309,7 +1370,7 @@ Public Function Drug_Valid() As Boolean
       
    Endif
    If iPBS_Script_Type = const.pbs_script_type_pbs_authority_increased_quantity Then
-      If Not (Val(txtQuantity.text) > drug!quantity) Then
+      If Not (Val(txtRepeats.text) > drug!quantity) Then
          sMsg = "You have prescibed a non-authority drug as an authority\n\n"
          "It would be usual to increase the supplied quantity and/or repeats for this drug."
          Message.Info(smsg)
@@ -1346,20 +1407,20 @@ Public Sub Print_Script_Items(items As Collection)
             Select script_item!med!fk_lu_pbs_script_type
                Case const.pbs_script_type_pbs
                   If pbs_scripts.count = 3 Then 
-                          Print_Script(pbs_scripts, const.pbs_script_type_pbs)
+                     Print_Script(pbs_scripts, const.pbs_script_type_pbs)
                      pbs_scripts = New Collection
                   End If   
                   pbs_scripts.Add(script_item, pbs_scripts.count) 
                   
                Case const.pbs_script_type_private
                   If private_scripts.count = 3 Then
-                        Print_Script(private_scripts, const.pbs_script_type_private)
+                     Print_Script(private_scripts, const.pbs_script_type_private)
                      private_scripts = New Collection
                   Endif
                   private_scripts.Add(script_item, private_scripts.Count)  
                Case const.pbs_script_type_rpbs  
                   If rpbs_scripts.count = 3 Then 
-                        Print_Script(rpbs_scripts, const.pbs_script_type_rpbs)
+                     Print_Script(rpbs_scripts, const.pbs_script_type_rpbs)
                      rpbs_scripts = New Collection
                   Endif
                   rpbs_scripts.Add(script_item, rpbs_scripts.count)
@@ -1372,8 +1433,8 @@ Public Sub Print_Script_Items(items As Collection)
    'Probably bad......... stupid........ way to do this but
    'Any 'left over' after lots of three printed (except if three only), print them
    '------------------------------------------------------------------------------
-    If pbs_scripts.count Then Print_Script(pbs_scripts, const.pbs_script_type_pbs)
-    If private_scripts.count Then Print_Script(private_scripts, const.pbs_script_type_private)
+   If pbs_scripts.count Then Print_Script(pbs_scripts, const.pbs_script_type_pbs)
+   If private_scripts.count Then Print_Script(private_scripts, const.pbs_script_type_private)
    If rpbs_scripts.count Then Print_Script(rpbs_scripts, const.pbs_script_type_rpbs)  
    
 End
@@ -1430,6 +1491,7 @@ Public Sub ScriptForm_Construct_Authority(auth_item As Collection, templ As CTem
    Dim Drug As String
    Dim drugs As String 
    Dim script_item As Collection = Auth_item[0]
+   
    templ.Subst_common(currentconsult)
    
    templ.Subst("authority_heading_authority_script_number", const.pbs_script_types[script_item!fk_pbs_script_type] & " SCRIPT NO. " & script_item!authority_script_number) 
@@ -1459,16 +1521,16 @@ Public Sub ScriptForm_Construct_Authority(auth_item As Collection, templ As CTem
    Endif
    templ.Subst("authority_script_number", Script_Item!authority_script_number)
    If Script_item!streamlined = True Then
-     script_item!restriction = Replace(script_item!restriction, "<p>", "")
-     script_item!restriction = Replace(script_item!restriction, "</p>", "")
-     script_item!restriction = Replace(script_item!restriction, "<br/>", "")
-     templ.Subst("authority_indication", "[" & script_item!restriction_code & "]" & script_item!restriction)   
+      script_item!restriction = Replace(script_item!restriction, "<p>", "")
+      script_item!restriction = Replace(script_item!restriction, "</p>", "")
+      script_item!restriction = Replace(script_item!restriction, "<br/>", "")
+      templ.Subst("authority_indication", "[" & script_item!restriction_code & "]" & script_item!restriction)   
       
    Else
-     script_item!restriction = Replace(script_item!restriction, "<p>", "")
-     script_item!restriction = Replace(script_item!restriction, "</p>", "")
-     script_item!restriction = Replace(script_item!restriction, "<br/>", "")
-     templ.Subst("authority_indication", script_item!restriction)         
+      script_item!restriction = Replace(script_item!restriction, "<p>", "")
+      script_item!restriction = Replace(script_item!restriction, "</p>", "")
+      script_item!restriction = Replace(script_item!restriction, "<br/>", "")
+      templ.Subst("authority_indication", script_item!restriction)         
    End If   
    templ.Subst("authority_approval_number", script_item!authority_approval_number)
    templ.Subst("quantity_repeats", script_item!strength & " " & script_item!quantity & "'s Rpt " & script_item!repeats)
@@ -1487,7 +1549,11 @@ Public Sub Drug_New()
    chkActive.value = True
    Drug = New Collection 
    EditArea_Notify_Data_Change(False)
-   txtGeneric.SetFocus()
+   If chkLockBrandPrescribing.Value = True Then
+      txtBrand.SetFocus()
+   Else
+      txtGeneric.SetFocus()
+   Endif
    
 End
 
@@ -1535,14 +1601,15 @@ Public Sub mnuPrescriptions_Click()
          Drug_Print_Single(cvwPrescriptions.Item.key)       'prints a single script
          ' cvwPrescriptions[cvwPrescriptions.Item.key].Picture = pic_printed
       Case "print all"
-           For Each item In script_items
-              item!printed = False
-           Next
-           Print_Script_Items(script_items)
+         For Each item In script_items
+            item!printed = False
+         Next
+         Print_Script_Items(script_items)
       Case "print selected"
-       
+         
       Case "brief pi"
       Case "full pi"
+         Product_Information_Full_Show(script_items[cvwPrescriptions.Item.key]!product_information_filename, script_items[cvwPrescriptions.Item.key]!brand)
       Case "fonts"
          modUtil.Columnview_SetFont(cvwPrescriptions, "Prescriptions_" & Embedded_In_Form)
       Case "help"   
@@ -1601,5 +1668,41 @@ Public Sub HSplit_EditArea_Inner_Resize()
    If pnlcolumnview.Visible Then
       pnlcolumnview.width = txtAuthorityWording.Width
    Endif
+   
+End
+
+Public Sub cvwBrands_KeyPress()
+   '----------------------------------------------------------------------------
+   'the brands for generic list is visible
+   'if user hits the left arrow key, just move focus back to the generics list
+   'if user hits the enter key then trigger selection of the selected generic
+   '----------------------------------------------------------------------------
+   
+   Select Case key.Code
+      Case key.Left
+         If columnview1.Visible And columnview1.count Then
+            columnview1.SetFocus()
+         Endif
+      Case key.Return
+         cvwBrands_DblClick()
+   End Select
+   
+End
+
+Public Sub cvwBrands_DblClick()
+   '---------------------------------------------------------------------------   
+   'the brands for generic list is visible
+   'set internal cvwbrands cursor to reflect the
+   'underlying brands collection, then trigger selection of the selected generic
+   '----------------------------------------------------------------------------
+   
+   cvwBrands.MoveCurrent()          
+   columnview1_DblClick()
+   
+End
+
+Public Sub chkLockBrandPrescribing_Click()
+   
+   '  Drug_New()
    
 End

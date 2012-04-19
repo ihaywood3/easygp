@@ -46,6 +46,7 @@ GRANT ALL ON TABLE clin_measurements.vwmeasurements TO staff;
 GRANT ALL ON TABLE clin_measurements.vwmeasurementtypes TO staff;
 GRANT ALL ON TABLE clin_measurements.vwpatientsdefaults TO staff;
 GRANT ALL ON TABLE clin_prescribing.medications TO staff;
+GRANT ALL ON TABLE clin_prescribing.instruction_habits to staff;
 GRANT ALL on table clin_prescribing.vwInstructionHabits to staff;
 GRANT ALL ON TABLE clin_prescribing.vwPrescribedForHabits to staff;
 GRANT ALL ON TABLE clin_procedures.link_images_procedures TO staff;
@@ -462,4 +463,15 @@ grant select on drugs.form to staff;
 grant all on drugs.product to staff;
 grant all on drugs.pack to staff;
 grant all on drugs.brand to staff;
-grant all on clin_prescribing.prescribed_pk_seq to staff;
+
+
+GRANT all ON TABLE clin_prescribing.authority_number TO staff;
+GRANT all ON TABLE clin_prescribing.increased_quantity_authority_reasons_pk_seq TO staff;
+GRANT all ON TABLE clin_prescribing.instruction_habits_pk_seq TO staff;
+GRANT all ON TABLE clin_prescribing.prescribed_for_pk_seq TO staff;
+GRANT all ON TABLE clin_prescribing.instructions_pk_seq TO staff;
+GRANT all ON TABLE clin_prescribing.medications_pk_seq TO staff;
+GRANT all ON TABLE clin_prescribing.prescribed_for_habits_pk_seq TO staff;
+GRANT all ON TABLE clin_prescribing.prescribed_pk_seq  TO staff;
+GRANT all ON TABLE clin_prescribing.print_status_pk_seq TO staff;
+GRANT all ON TABLE clin_prescribing.script_number TO staff;

@@ -7,7 +7,6 @@
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
 ' (at your option) any later version.
-
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY; without even the implied warranty of
 ' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -36,7 +35,8 @@ Private Script_Items_This_Consultation As Collection
 Private Script As Collection
 Private fk_pasthistory As Integer
 Private fk_item_prescribed As Integer
-Private pk_view As Integer
+Private pk_view As String
+
 Private fk_company As String 
 Private fk_generic_product As String
 Private fk_prescribed_for As Integer
@@ -485,7 +485,11 @@ Public Sub EditArea_TxtBox_Change()
             Endif
          End If
       Case "directions"
+         If InStr(Last.text, "bd") Or InStr(Last.text, "twice daily") Then
+            
+         Endif
          Directions_Expand_Text(Last)
+         
       Case "authority wording"
          If Trim(Last.text) = "" Then
             pnlcolumnview.Visible = False 
@@ -534,25 +538,13 @@ End
 Public Sub EditArea_TxtBox_GotFocus()
    
    If Last.tag <> "restriction" Then Last.BackGround = Color.rgb(95, 255, 175)
+   pnlcolumnview.Visible = False                           'user could have clicked on textbox whilst this list was showing
    columnview1.clear
-  
    
    Select Case Last.tag
          
       Case "reason"
          cvwBrands.Visible = False 
-         With pnlcolumnview
-            .top = Vbox_EditArea_Inner.top + Last.parent.top + Last.parent.height
-            .left = Last.Left
-            .width = txtAuthorityWording.width
-            .Visible = False
-            .Raise
-         End With
-         If Trim(Last.text) = "" Then
-            PrescribedFor_Habits_Get()
-         Endif
-      teForSpelling.text = txtReason.Text
-      Case "generic", "brand"
          With pnlcolumnview
             .top = Vbox_EditArea_Inner.top + Last.parent.parent.top + Last.parent.height
             .left = Last.parent.Left
@@ -560,24 +552,87 @@ Public Sub EditArea_TxtBox_GotFocus()
             .Visible = False
             .Raise
          End With
-         If Last.tag = "generic" Then 
-            cvwBrands.Visible = True   
+         
+         If Trim(TxtReason.text) = "" Then
+            PrescribedFor_Habits_Get()
          Else
-            cvwBrands.Visible = False  
-         End If   
+            If Prescribing_Habits.count Then   
+               With columnview1
+                  .clear
+                  .Columns.count = 1
+                  .tag = txtReason
+               End With
+               For Each habit In Prescribing_Habits
+                  columnview1.Add(habit!pk_prescibed_for_habit, 0)
+                  columnview1[habit!pk_prescibed_for_habit][0] = habit!prescribed_for
+               Next
+               pnlcolumnview.Visible = True
+            End If  
+         Endif
+         teForSpelling.text = txtReason.Text
+      Case "generic"
+         With pnlcolumnview
+            .top = Vbox_EditArea_Inner.top + Last.parent.parent.top + Last.parent.height
+            .left = Last.parent.Left
+            .width = txtAuthorityWording.width
+            .Visible = False
+            .Raise
+         End With
+         With cvwBrands
+            Try .Reparent(HSplit_DrugDisplay)
+            .width = 180 'FIXME
+            .Visible = True
+         End With
+         Wait
+      Case "brand"
+         With pnlcolumnview
+            .top = Vbox_EditArea_Inner.top + Last.parent.parent.top + Last.parent.height
+            .left = Last.parent.Left
+            .width = txtAuthorityWording.width
+            .Visible = False
+            .Raise
+         End With   
+         If Last.text <> "" Then
+            With cvwBrands
+               .Reparent(Vbox_EditArea_Inner)
+               If .count Then .Visible = True
+               .top = pnlcolumnview.Top
+               .Visible = True
+               .left = pnlcolumnview.Left
+               .width = txtAuthorityWording.Width
+               .Raise
+            End With
+            
+         Endif
    End Select
    
 End
 
 Public Sub PrescribedFor_Habits_Get()
+   'Gets a collection of the way this drug was prescribed
+   'this is returned sorted descending, i.e the most common way it was prescribed on top
+   'so just auto insert this into the textbox   
    
    If IsNull(drug!medication!fk_generic_product) Then Return 
    Prescribing_Habits = modPrescribingDBI.PrescribedFor_Habits_Get(drug!medication!fk_generic_product)
+   
    For Each habit In Prescribing_Habits
       TxtReason.text = habit!prescribed_for
       tbOk.SetFocus()
       Break
    Next
+   
+End
+
+Public Sub Prescibed_For_Habits_Select()
+   '--------------------------------------------------------------------------------------
+   'User is selecting a reason for the prescription form the Prescribing_Habits collection
+   '-------------------------------------------------------------------------------------- 
+
+   columnview1.MoveCurrent
+   txtReason.text = Prescribing_Habits[columnview1.Item.key]!prescribed_for
+   tbOk.SetFocus()   
+   pnlcolumnview.Visible = False
    
 End
 
@@ -631,7 +686,7 @@ Public Sub Restrictions_Show()
                   .tag = drug!restriction_code       'This will be saved to the database, if the row is selected
                   .Foreground = Color.DarkGray
                   .AutoResize = True
-                  .font = Font["Arial,9"]
+                  .font = Font["Arial,7"]
                End With
                With sep = New Separator(lcRestrictions)
                   .Height = 3
@@ -647,48 +702,7 @@ Public Sub Restrictions_Show()
    
 End
 
-Public Sub Restrictions_Show_old()
-   '--------------------------------------------------------------------------
-   'As user clicks on a columnview row, show all restrictions for that pbscode
-   'Show a drugs restriction details, these can be just restrictions of use
-   'or authority indications, uses the pbscode (restriction.pbscode)
-   '--------------------------------------------------------------------------
-   
-   Dim row As Integer = 0
-   Dim pbscode As String 
-   Dim lbl As TextLabel
-   Dim sep As Separator
-   
-   Drug_Restrictions = New Collection
-   
-   '  currentDrug = drugs[columnview1.Item.key]         'drug showing in the columview
-   pbscode = drug!pbscode 
-   lcRestrictions.Clear()
-   For Each drug In drugs                             'All drugs in the collectioni
-      If Not IsNull(drug!restriction) Then            'If drug has a restrciotn
-         If drug!pbscode = pbscode Then                'if the pbscode = same as that we are showing
-            If Not Drug_Restrictions.Exist(drug!restriction) Then  'if not already in the collection 
-               With lbl = New TextLabel(lcRestrictions) As "Restrictions"  'add it, and to the list container
-                  .text = drug!restriction           'This is what will be sent to the printer (minus html tags)
-                  .tag = drug!restriction_code       'This will be saved to the database, if the row is selected
-                  .Foreground = Color.DarkGray
-                  .AutoResize = True
-                  .font = Font["Arial,9"]
-                  
-               End With
-               With sep = New Separator(lcRestrictions)
-                  .Height = 3
-                  .Foreground = Color.Black
-               End With
-               Drug_Restrictions.Add(drug!restriction, drug!restriction)
-               Inc row
-            Endif
-         End If    
-         
-      End If 
-   Next
-   
-End
+
 
 Public Function PBS_Show(drug As Collection) As String 
    '-----------------------------------------------------------
@@ -711,6 +725,7 @@ Public Function PBS_Show(drug As Collection) As String
    
    '-----------------------------------------------------------
    bexit = True
+   txtApprovalNumber.text = ""
    Select Case drug!chapter & drug!restrictionflag     ' & drug!restriction_flag = "U", "R" or "A"
       Case "OTU"
          lblRestrictions.text = "PBS OPTOMETRIST"
@@ -783,10 +798,14 @@ Public Sub columnview1_Select()
    '------------------------------------------------------------------------
    
    columnview1.MoveCurrent()              'move internal cursor
-   Restrictions_Show()                    'show which restrictions apply to this drug/generic or brand
-   PBS_Show(drugs[columnview1.Item.key])  'shown PBS type eg PBS STREAMLINED
-   Brands_For_Generic_Show()              'get the brands for this generic, show these
-   
+   pk_view = columnview1.Item.key       
+   Select Case Last.tag.tag
+      Case "generic", "brand"
+         Restrictions_Show()                    'show which restrictions apply to this drug/generic or brand
+         PBS_Show(drugs[columnview1.Item.key])  'shown PBS type eg PBS STREAMLINED
+         Brands_For_Generic_Show()              'get the brands for this generic, show these
+   End Select
+
 End
 
 Public Sub Brands_For_Generic_Show()
@@ -825,6 +844,8 @@ Public Sub columnview1_DblClick()
          Generic_Select()
       Case "authority wording"
          Authority_Increased_Quantity_Reasons_Select()
+      Case "reason"
+         Prescibed_For_Habits_Select()
    End Select
    pnlColumnView.visible = False 
    
@@ -872,7 +893,7 @@ Public Sub Generics_Get()
       pnlcolumnview.Visible = True                                'Now show the list of generics 
       cvwBrands.visible = True                                    'show the brands list (still empty)
       columnview1.tag = txtBrand 
-      
+      Wait
    Endif
    
 End
@@ -986,8 +1007,7 @@ Public Sub Drug_Select()
    Dim pbs_script_type As String                       'chapter + restrictionflag - selects how to print script
    Dim med As CRow                                     'cRow allows eg Med.Save(..)
    
-   columnview1.MoveCurrent                             'set the key so it matches drugs collection
-   drug = drugs[columnview1.Item.key]                  'set drug collection   
+   drug = drugs[pk_view]                               'set drug collection pk_view set by columnview1_select()  
    med = New CRow                                      'this will be saved in drug_save()
    med!fk_generic_product = drug!fk_product
    med!pbscode = drug!pbscode
@@ -1149,7 +1169,7 @@ Public Sub Save()
       End If  
    Next
    
-   '  Print_Script_Items(script_items)
+   Print_Script_Items(script_items)
    '  FClinical.Refresh_Section(const.cSection_Prescriptions)    'refresh lists on main screen FClinical
    ' FClinical.Refresh_AllPreviousNotes()
    Reload()
@@ -1494,37 +1514,37 @@ Public Sub ScriptForm_Construct_Authority(auth_item As Collection, templ As CTem
    
    templ.Subst_common(currentconsult)
    
-   templ.Subst("authority_heading_authority_script_number", const.pbs_script_types[script_item!fk_pbs_script_type] & " SCRIPT NO. " & script_item!authority_script_number) 
+   templ.Subst("authority_heading_authority_script_number", const.pbs_script_types[script_item!med!fk_lu_pbs_script_type] & " SCRIPT NO. " & script_item!prescribed!authority_script_number) 
    templ.Subst("patientaddress", Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town & " " & currentconsult!patient!postcode)
    templ.Subst("medicarenumber", currentconsult!patient!medicare_number)
    templ.Subst("doctorname", modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename)
    templ.Subst("prescribernumber", modDBConnect.currentUser!prescriber_number)
    templ.Subst("patientname", currentconsult!patient!title & " " & currentconsult!patient!firstname & " " & currentconsult!patient!surname)
-   templ.Subst("script_date", Format(script_item!date_script_written, "dd/mm/yyyy"))
-   templ.Subst("script_number", script_item!script_number)
-   If InStr(script_item!pbs_print_status, "PBS") Then  
+   templ.Subst("script_date", Format(script_item!prescribed!date_on_script, "dd/mm/yyyy")) 'strictly speaking illegal
+   templ.Subst("script_number", script_item!prescribed!script_number)
+   If InStr(script_item!pbs_script_type, "PBS") Then  
       templ.Subst("pbs_script", "X")
    Else
       templ.Checkbox("pbs_script", "")
    End If
-   If InStr(script_item!pbs_print_status, "rpbs") Then   'and check against patients actual rpbs entitlements FIXME SHOULD DO THIS BACK IN PRESRIBING.
+   If InStr(script_item!pbs_script_type, "rpbs") Then   'and check against patients actual rpbs entitlements FIXME SHOULD DO THIS BACK IN PRESRIBING.
       templ.Subst("rpbs_script", "X")
    Else
       templ.Subst("rpbs_script", "")
    End If
    templ.Checkbox("previous_authority_yes_checkbox", True)
    templ.Checkbox("previous_authority_no_checkbox", False)
-   If script_item!authority_post_to_patient = True Then
+   If script_item!prescribed!authority_post_to_patient = True Then
       templ.Checkbox("sendtopatient_checkbox", True)
    Else
       templ.Checkbox("sendtopatient_checkbox", False)
    Endif
-   templ.Subst("authority_script_number", Script_Item!authority_script_number)
-   If Script_item!streamlined = True Then
-      script_item!restriction = Replace(script_item!restriction, "<p>", "")
-      script_item!restriction = Replace(script_item!restriction, "</p>", "")
-      script_item!restriction = Replace(script_item!restriction, "<br/>", "")
-      templ.Subst("authority_indication", "[" & script_item!restriction_code & "]" & script_item!restriction)   
+   templ.Subst("authority_script_number", Script_Item!prescribed!authority_script_number)
+   If Script_item!prescribed!streamlined = True Then
+      script_item!authority_indication = Replace(script_item!authority_indication, "<p>", "")
+      script_item!authority_indication = Replace(script_item!authority_indication, "</p>", "")
+      script_item!authority_indication = Replace(script_item!authority_indication, "<br/>", "")
+      templ.Subst("authority_indication", "[" & script_item!restriction_code & "]" & script_item!authority_indication)   
       
    Else
       script_item!restriction = Replace(script_item!restriction, "<p>", "")
@@ -1548,6 +1568,8 @@ Public Sub Drug_New()
    txtdate.text = Format(Now, "dd/mm/yyyy")
    chkActive.value = True
    Drug = New Collection 
+   Prescribing_Habits = New Collection
+   Instruction_Habits = New Collection
    EditArea_Notify_Data_Change(False)
    If chkLockBrandPrescribing.Value = True Then
       txtBrand.SetFocus()
@@ -1680,7 +1702,7 @@ Public Sub cvwBrands_KeyPress()
    
    Select Case key.Code
       Case key.Left
-         If columnview1.Visible And columnview1.count Then
+         If pnlcolumnview.Visible And columnview1.count Then
             columnview1.SetFocus()
          Endif
       Case key.Return
@@ -1698,11 +1720,12 @@ Public Sub cvwBrands_DblClick()
    
    cvwBrands.MoveCurrent()          
    columnview1_DblClick()
+   cvwBrands.Visible = False  
    
 End
 
 Public Sub chkLockBrandPrescribing_Click()
    
-   '  Drug_New()
+   Drug_New()
    
 End

@@ -191,6 +191,9 @@ Public Sub Delete_Undo()
 End
 
 Public Sub timer1_Timer()
+   '------------------------------------------------------------------------------
+   'If the timer is running, user is typing in either the brand or generic textbox
+   '------------------------------------------------------------------------------   
    
    If timer_count > 3 Then
       If bGenericSearch Then
@@ -285,7 +288,7 @@ Public Sub EditArea_Clear()
    lblRestrictions.text = ""
    lblDrug.text = "Brand"
    txtdate.text = Format(Now, "dd/mm/yyyy")
-
+   
    bExit = False  
    
 End
@@ -640,31 +643,60 @@ Public Sub Prescibed_For_Habits_Select()
 End
 
 Public Sub lcRestrictions_Click()
-   
+   '-----------------------------------------------------------------------------------------------
+   'Not sure why, but clicking on the textlabel in the lcREstrictions dosn't detect its click event
+   'ie resctrictions_Click
+   '-----------------------------------------------------------------------------------------------   
+
+   If drug!restrictionflag <> "A" And chkAuthority.value = False Then Return 
+   If chkAuthority.value = True And lcRestrictions.Count = 0 Then Return 
    Restrictions_Click()
+   
+End
+
+Public Sub lcRestrictions_Keypress()
+   '-------------------------------------------------------------------------------------
+   'If user hits the <enter> key whilst the restrictions list has focus, then select this
+   'restriction and the highlighted drug
+   '-------------------------------------------------------------------------------------
+
+   If drug!restrictionflag <> "A" Then Return 
+   If key.code = key.return Then 
+      Restrictions_dblclick()
+   End If
+   
+End 
+
+Public Sub Restrictions_dblclick()
+   '----------------------------------------------------------------------------
+   'User has double clicked on one of the text labels in the lcRestrictions list
+   '----------------------------------------------------------------------------  
+
+   If drug!restrictionflag <> "A" Then Return  
+   Restrictions_Click()
+   If pnlcolumnview.Visible Then columnview1_DblClick()
    
 End
 
 Public Sub Restrictions_Click()
    '-------------------------------------------------------------------------------------
    'User has clicked on one of the textlabel controls embedded in the lcRestrictions list
-   'set restriction code and text
+   'display the restriction text and restriction code if streamlined authority 
    '-------------------------------------------------------------------------------------
    
    Dim tec As TextLabel
    
    tec = lcRestrictions.children[lcRestrictions.index]
    restriction_code = lcRestrictions.children[lcRestrictions.index].tag     
-   '  restriction_code = Last.children[Last.index].tag     
-   ' textEdit1.richtext = Last.children[Last.index].text
    textEdit1.richtext = tec.Text
    restriction = textEdit1.Text
    txtAuthorityWording.text = textEdit1.Text
    txtAuthorityWording.pos = 0
    bexit = True   
-   txtApprovalNumber.text = restriction_code
+   If drug!streamlined Then   
+         txtApprovalNumber.text = restriction_code
+   End If   
    bExit = False  
-   ' If pnlcolumnview.Visible Then columnview1_DblClick()
    
 End
 
@@ -844,10 +876,8 @@ Public Sub columnview1_DblClick()
    '------------------------------------------------------------------------   
    
    Select Case columnview1.tag.tag 'don't make me 'last'
-      Case "brand"
+      Case "brand", "generic"
          Drug_Select()
-      Case "generic"
-         Generic_Select()
       Case "authority wording"
          Authority_Increased_Quantity_Reasons_Select()
       Case "reason"
@@ -872,7 +902,6 @@ Public Sub Generics_Get()
    With columnview1                                               'clear the popup columnview
       .Clear()
       .Columns.count = 5
-      .Columns[0].width = 100
    End With
    cvwBrands.Clear()                                              'clear the brands for generic
    If Trim(txtGeneric.text) = "" Then Return 
@@ -895,18 +924,11 @@ Public Sub Generics_Get()
             End If   
          End If   
       Next
-      columnview1.Columns[0].width = 100
       pnlcolumnview.Visible = True                                'Now show the list of generics 
       cvwBrands.visible = True                                    'show the brands list (still empty)
       columnview1.tag = txtBrand 
       Wait
    Endif
-   
-End
-
-Public Sub Generic_Select()
-   
-   Drug_Select()
    
 End
 
@@ -950,13 +972,12 @@ Public Sub Brands_Get()
    
 End
 
-Public Sub DP(c As Collection)
-   
-End
-
 Public Sub Print_Content()
-   
-   Print_Script_Items(script_items)
+   '----------------------------------------------------------------------------------
+   'Differs from other forms in that scripts are not saved to back-end before printing
+   '----------------------------------------------------------------------------------   
+
+   Save()
    
 End
 
@@ -1050,9 +1071,9 @@ Public Sub EditArea_Buttons_Click()
          
       Case "print"
          Save()
-         ' Drug_Print()
+         
       Case "product information"
-         Product_Information_Full_Show(drug!product_information_filename, drug!brand)
+         If drug.count Then Product_Information_Full_Show(drug!product_information_filename, drug!brand)
    End Select
    
 End
@@ -1156,7 +1177,7 @@ Public Sub Save()
 End
 
 Public Sub FClinical_Refresh()
-
+   
    FClinical.Refresh_Section(const.cSection_Prescriptions)    'refresh lists on main screen FClinical
    FClinical.Refresh_AllPreviousNotes()
    
@@ -1273,6 +1294,9 @@ Public Function Drug_Valid() As Boolean
    
    Dim sMsg As String 
    
+   If Not drug.Count Then Return
+   If IsNull(drug!medication) Then Return  
+   
    If Not IsDate(txtdate.text) Then
       txtdate.SetFocus()
       Return
@@ -1356,7 +1380,7 @@ Public Sub Print_Script_Items(items As Collection)
             templ = New CTemplate("authority-script", "tex")
             authority_scripts = New Collection 
             authority_scripts.Add(script_item, 0)
-            modPrinting.Print_latex(ScriptForm_Construct_Authority(authority_scripts, templ).GetData(), const.Paper_Script)
+            modPrinting.Print_latex(Script_Construct_Authority_LaTeX(authority_scripts, templ).GetData(), const.Paper_Script)
             script_item!printed = True
          Else
             Select script_item!med!fk_lu_pbs_script_type
@@ -1411,7 +1435,6 @@ Public Sub Script_Construct_LaTex(items As Collection, templ As CTemplate, pbs_s
    'Construct the laTex for a non-authority script, max of three items on a script
    '------------------------------------------------------------------------------    
    
-   Print modUtil.Medicare_Number_Format(currentconsult!patient!medicare_number)
    templ.Subst_common(currentconsult)
    templ.Subst("patientaddress", Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town & " " & currentconsult!patient!postcode)
    templ.Subst("medicarenumber", currentconsult!patient!medicare_number)
@@ -1419,7 +1442,7 @@ Public Sub Script_Construct_LaTex(items As Collection, templ As CTemplate, pbs_s
    templ.Subst("prescribernumber", modDBConnect.currentUser!prescriber_number)
    templ.Subst("patientname", currentconsult!patient!title & " " & currentconsult!patient!firstname & " " & currentconsult!patient!surname)
    templ.Subst("script-date", Format(script_item!date_script_written, "dd/mm/yyyy"))
-   templ.Subst("script_number", script_item!script_number)
+   templ.Subst("script-number", script_item!prescribed!script_number)
    '-----------------------
    'set PBS RPBS or Private
    '-----------------------
@@ -1442,7 +1465,7 @@ Public Sub Script_Construct_LaTex(items As Collection, templ As CTemplate, pbs_s
    
 End
 
-Public Sub ScriptForm_Construct_Authority(auth_item As Collection, templ As CTemplate) As CTemplate
+Public Sub Script_Construct_Authority_LaTeX(auth_item As Collection, templ As CTemplate) As CTemplate
    
    Dim Drug As String
    Dim drugs As String 
@@ -1455,7 +1478,6 @@ Public Sub ScriptForm_Construct_Authority(auth_item As Collection, templ As CTem
    templ.Subst("patientaddress", Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town & " " & currentconsult!patient!postcode)
    templ.Subst("medicarenumber", currentconsult!patient!medicare_number)
    templ.Subst("doctorname", modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename)
-   templ.Subst("prescribernumber", modDBConnect.currentUser!prescriber_number)
    templ.Subst("patientname", currentconsult!patient!title & " " & currentconsult!patient!firstname & " " & currentconsult!patient!surname)
    templ.Subst("script-date", Format(script_item!prescribed!date_on_script, "dd/mm/yyyy")) 'strictly speaking illegal
    templ.Subst("script-number", script_item!prescribed!script_number)
@@ -1476,7 +1498,7 @@ Public Sub ScriptForm_Construct_Authority(auth_item As Collection, templ As CTem
    Else
       templ.Checkbox("sendtopatient-checkbox", False)
    Endif
-   templ.Subst("authority-script-number", Script_Item!prescribed!authority_script_number)
+   templ.Subst("authority-approval-number", Script_Item!prescribed!authority_approval_number)
    If InStr(Lower(Script_item!pbs_script_type), "streamlined") Then 
       script_item!authority_indication = Replace(script_item!authority_indication, "<p>", "")
       script_item!authority_indication = Replace(script_item!authority_indication, "</p>", "")
@@ -1489,26 +1511,35 @@ Public Sub ScriptForm_Construct_Authority(auth_item As Collection, templ As CTem
       script_item!restriction = Replace(script_item!restriction, "<br/>", "")
       templ.Subst("authority-indication", script_item!restriction)         
    End If   
-   templ.Subst("authority-approval-number", script_item!authority_approval_number)
-   templ.Subst("quantity-repeats", script_item!strength & " " & script_item!quantity & "'s Rpt " & script_item!repeats)
+   templ.Subst("quantity-repeats", script_item!strength & " " & script_item!med!quantity & "'s Rpt " & script_item!med!repeats)
    templ.Subst_Drugs(auth_item, True) 
    Return templ
    
 End 
 
-Public Sub Drug_New()
+Public Sub New_Entry()
+   '------------------------------------------------------------------------------------------------------
+   'This is called from the main toolbar in FClinical and here for consistant nomenclature between modules
+   '------------------------------------------------------------------------------------------------------   
    
-   EditArea_Clear()
-   Reset_Flags()
-   'fixme put in option so that focus on either generic or brand
-   'txtDrug.SetFocus()
-   txtdate.text = Format(Now, "dd/mm/yyyy")
-   chkActive.value = True
-   Drug = New Collection 
+   Drug_New() 
+   
+End
+
+Public Sub Drug_New()
+   '----------------------------------------
+   'User has decided to prescript a new drug
+   '----------------------------------------   
+   
+   EditArea_Clear()                                  'Clear the edit area (the input area)
+   Reset_Flags()                                     'Reset all keys and flags
+   txtdate.text = Format(Now, "dd/mm/yyyy")          'Default to today's date, this can be over-ridden by user
+   chkActive.value = True                            'Assume this will be an active (in current use) medication
+   Drug = New Collection                             'reset all the collections
    Prescribing_Habits = New Collection
    Instruction_Habits = New Collection
    EditArea_Notify_Data_Change(False)
-   If rbBrandPrescribing.value = True Then
+   If rbBrandPrescribing.value = True Then           'set to users default (or current default) prescibring mode
       txtBrand.SetFocus()
    Else
       txtGeneric.SetFocus()
@@ -1517,6 +1548,10 @@ Public Sub Drug_New()
 End
 
 Public Sub cvwPrescriptions_Menu()
+   '-----------------------------------------------------------------------------
+   'User has clicked over the drugs which have been placed on the prescribed list
+   'Show the popup menu
+   '-----------------------------------------------------------------------------   
    
    If Last.count Then
       mnuPrescriptions.Popup()
@@ -1525,6 +1560,9 @@ Public Sub cvwPrescriptions_Menu()
 End
 
 Public Sub cvwPrescriptions_Click()
+   '------------------------------------------------------------------------------
+   'User has clicked on the list of prescribed drugs, set internal cursor to match
+   '------------------------------------------------------------------------------   
    
    cvwPrescriptions.MoveCurrent
    iCurrentScriptKey = Last.item.key
@@ -1687,21 +1725,44 @@ Public Sub cvwBrands_DblClick()
 End
 
 Public Sub EditArea_RadioButtons_Click()
-
+   
    If Bexit Then Return 
    Drug_New()
    
 End
 
 Public Sub slAuthorityFontsize_Change()
-  Dim lbl As TextLabel
-  Dim ctrl As Control
-  For Each ctrl In lcRestrictions.Children
-     If ctrl Is TextLabel Then
-        lbl = ctrl
-        lbl.Font.Size = Last.value
-     Endif
-  Next
    
+   Dim lbl As TextLabel
+   Dim ctrl As Control
+   
+   For Each ctrl In lcRestrictions.Children
+      If ctrl Is TextLabel Then
+         lbl = ctrl
+         lbl.Font.Size = Last.value
+      Endif
+   Next
+   
+End
+
+Public Sub chkEditArea_Click()
+
+   Select Case Last.tag
+      Case "authority"
+         '-----------------------------------------------------------------
+         'if not an authority drug, the user is making it an authority drug
+         '-----------------------------------------------------------------
+         If drug!restrictionflag <> "A" Then
+            If lcRestrictions.count Then
+                If lcRestrictions.count = 1 Then 
+                      lcRestrictions.index = 0
+                      lcRestrictions_Click()
+                Else
+                   lcRestrictions.SetFocus()
+                End If  
+            Endif
+         Endif
+      
+         End Select
 
 End

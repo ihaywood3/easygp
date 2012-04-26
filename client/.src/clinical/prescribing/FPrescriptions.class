@@ -19,6 +19,7 @@
 '         prescribed! = concession_details: these three Not yet implemented
 '         prescribed! = brand_substitution: Do Not remove this code
 '        prescribed! = fk_progress_note
+'        lu_pbs_script_type FIXME RENAME IN BACK END TO lu_script_type and adjust queries accordingly 
 'BUGS    After ipbs_script_type is set by the generic, finding the 
 '        brands for the brand list is over-riding this ?does it matter
 '        ie are all the brands for this product the same ipbs_script_type
@@ -36,7 +37,7 @@ Private Script As Collection
 Private fk_pasthistory As Integer
 Private fk_item_prescribed As Integer
 Private pk_view As String
-
+Private script_types As Collection
 Private fk_company As String 
 Private fk_generic_product As String
 Private fk_prescribed_for As Integer
@@ -68,7 +69,7 @@ Private script_items As Collection
 Private script_item As Collection
 Private view_items As Collection       'all the items from the view of script items written this consultation
 Private Instruction_Habits As Collection
-Private Prescribing_Habits As Collection 
+Private Prescibed_For_Habits As Collection 
 Private habit As Collection 
 Private Authority_Increased_Quantity_Reasons As Collection
 Private SpellChecker As ClskSpell
@@ -144,6 +145,9 @@ Public Sub Init(cons As CConsult)
       .Columns[10].text = "Directions"
       .Columns[11].text = "Prescibed For"
    End With
+   lblMeasure.text = "RPBS AUTHORITY INCREASED QUANTITY    "
+   cmbScriptTypes.width = lblMeasure.Width
+   script_types = modUtil.LoadCombo(cmbScriptTypes, modPrescribingDBI.Script_Types_Get(), "type")
    '-------------------------------------------------------------------------------
    'The spell checker works on a text editor, so in the change event for txtReason
    'i.e EditArea_txtBox_Change() its text is set
@@ -288,6 +292,7 @@ Public Sub EditArea_Clear()
    lblRestrictions.text = ""
    lblDrug.text = "Brand"
    txtdate.text = Format(Now, "dd/mm/yyyy")
+   cmbScriptTypes.index = -1
    
    bExit = False  
    
@@ -456,7 +461,7 @@ Public Sub EditArea_TxtBox_Change()
             Drug_New()
          Endif
       Case "approval number"
-         chkAuthority.value = True
+         ' chkAuthority.value = True
          '------------------------------------------------------
          'Drug should be already showing in the edit area
          'If user typing in an approval number, this should be
@@ -468,6 +473,7 @@ Public Sub EditArea_TxtBox_Change()
          'If user fails to do this, Drug_Valid() will pick it up
          'and throw them back to the quantity box
          '------------------------------------------------------
+         If Not drug.count Then Return   
          bexit = True
          Last.text = UCase(Last.text)
          bexit = False
@@ -480,20 +486,25 @@ Public Sub EditArea_TxtBox_Change()
          End If  
       Case "quantity"
          'User is changing the quantity, is this increased quantity or PBS item
-         If Not IsNull(drug!quantity) And txtRepeats.text <> "" Then         'private drugs seem to have no quantity
-            If Val(txtRepeats.text) > drug!quantity Then
-               If drug!restrictionflag <> "A" And (drug!restrictionflag = "U" Or drug!restrictionflag = "R") Then             'not a pbs authority
-                  iPBS_Script_Type = const.pbs_script_type_pbs_authority_increased_quantity
-                  Drug_Show_Restriction()
-               Else
-                  
+         If Not IsNull(drug!quantity) Then         
+            '   If Val(txtRepeats.text) > drug!quantity Then
+            '---------------------------------------------------------------------------------
+            'If not already an authority item and is on the pbs/rpbs restricted or unrestricted
+            '----------------------------------------------------------------------------------
+            If drug!restrictionflag <> "A" And (drug!restrictionflag = "U" Or drug!restrictionflag = "R") Then             'not a pbs authority
+               If Trim(Last.text) <> "" Then 
+                  If Val(Last.text) > drug!quantity Then 
+                     iPBS_Script_Type = const.pbs_script_type_pbs_authority_increased_quantity
+                     bExit = True   
+                     cmbScriptTypes.index = iPBS_Script_Type - 1
+                     bExit = False  
+                     Drug_Show_Restriction()
+                  End If   
                End If
-            Endif
+            End If
+            '  Endif
          End If
       Case "directions"
-         If InStr(Last.text, "bd") Or InStr(Last.text, "twice daily") Then
-            
-         Endif
          Directions_Expand_Text(Last)
          
       Case "authority wording"
@@ -549,6 +560,32 @@ Public Sub EditArea_TxtBox_GotFocus()
    
    Select Case Last.tag
          
+      Case "directions"
+         cvwBrands.Visible = False 
+         With pnlcolumnview
+            .top = Vbox_EditArea_Inner.top + Last.parent.parent.top + Last.parent.height
+            .left = Last.parent.Left
+            .width = txtAuthorityWording.width
+            .Visible = False
+            .Raise
+         End With
+         
+         If Trim(txtDirections.text) = "" Then
+            Try Instruction_Habits_Get() 'bombs if drug null
+         Else
+            If Instruction_Habits.count Then
+               With columnview1
+                  .clear
+                  .Columns.count = 1
+                  .tag = txtDirections
+               End With  
+               For Each habit In Instruction_Habits
+                    columnview1.Add(habit!pk_instruction_habit, 0)
+                    columnview1[habit!pk_instruction_habit][0] = habit!instruction
+               Next
+                pnlcolumnview.Visible = True
+            Endif
+         End If  
       Case "reason"
          cvwBrands.Visible = False 
          With pnlcolumnview
@@ -560,15 +597,15 @@ Public Sub EditArea_TxtBox_GotFocus()
          End With
          
          If Trim(TxtReason.text) = "" Then
-            PrescribedFor_Habits_Get()
+            Try PrescribedFor_Habits_Get() 'bombs if drug null
          Else
-            If Prescribing_Habits.count Then   
+            If Prescibed_For_Habits.count Then   
                With columnview1
                   .clear
                   .Columns.count = 1
                   .tag = txtReason
                End With
-               For Each habit In Prescribing_Habits
+               For Each habit In Prescibed_For_Habits
                   columnview1.Add(habit!pk_prescibed_for_habit, 0)
                   columnview1[habit!pk_prescibed_for_habit][0] = habit!prescribed_for
                Next
@@ -614,29 +651,61 @@ Public Sub EditArea_TxtBox_GotFocus()
    
 End
 
+Public Sub Instruction_Habits_Get()
+   '------------------------------------------------------------------------
+   'Gets a collection of the users instructions for this drug
+   'this is returned sorted descending, i.e the most common direction on top
+   'so just auto insert this highest ranking one into the textbox   
+   '------------------------------------------------------------------------
+   
+   Instruction_Habits = modPrescribingDBI.Instruction_Habits_Get(drug!fk_product)
+   For Each Habit In Instruction_Habits
+      bExit = True
+      txtDirections.text = Habit!instruction
+      bExit = False  
+      TxtReason.SetFocus()
+      Break
+   Next  
+   
+End
+
+Public Sub Instruction_Habits_Select()
+   '----------------------------------------------------------------------------------------
+   'User is selecting a reason for the prescription form the Prescibed_For_Habits collection
+   '---------------------------------------------------------------------------------------- 
+   
+   columnview1.MoveCurrent
+   txtDirections.text = InStruction_Habits[columnview1.Item.key]!instruction
+   tbOk.SetFocus()   
+   pnlcolumnview.Visible = False
+   
+End
 Public Sub PrescribedFor_Habits_Get()
+   '------------------------------------------------------------------------------------
    'Gets a collection of the way this drug was prescribed
    'this is returned sorted descending, i.e the most common way it was prescribed on top
-   'so just auto insert this into the textbox   
+   'so just auto insert this highest ranking one into the textbox   
+   '------------------------------------------------------------------------------------
    
-   If IsNull(drug!medication!fk_generic_product) Then Return 
-   Prescribing_Habits = modPrescribingDBI.PrescribedFor_Habits_Get(drug!medication!fk_generic_product)
+   Prescibed_For_Habits = modPrescribingDBI.PrescribedFor_Habits_Get(drug!medication!fk_generic_product)
    
-   For Each habit In Prescribing_Habits
+   For Each habit In Prescibed_For_Habits
+      bExit = True
       TxtReason.text = habit!prescribed_for
+      bExit = False  
       tbOk.SetFocus()
       Break
    Next
    
 End
 
-Public Sub Prescibed_For_Habits_Select()
-   '--------------------------------------------------------------------------------------
-   'User is selecting a reason for the prescription form the Prescribing_Habits collection
-   '-------------------------------------------------------------------------------------- 
+Public Sub Prescribed_For_Habits_Select()
+   '----------------------------------------------------------------------------------------
+   'User is selecting a reason for the prescription form the Prescibed_For_Habits collection
+   '---------------------------------------------------------------------------------------- 
    
    columnview1.MoveCurrent
-   txtReason.text = Prescribing_Habits[columnview1.Item.key]!prescribed_for
+   txtReason.text = Prescibed_For_Habits[columnview1.Item.key]!prescribed_for
    tbOk.SetFocus()   
    pnlcolumnview.Visible = False
    
@@ -647,9 +716,9 @@ Public Sub lcRestrictions_Click()
    'Not sure why, but clicking on the textlabel in the lcREstrictions dosn't detect its click event
    'ie resctrictions_Click
    '-----------------------------------------------------------------------------------------------   
-
-   If drug!restrictionflag <> "A" And chkAuthority.value = False Then Return 
-   If chkAuthority.value = True And lcRestrictions.Count = 0 Then Return 
+   
+   If drug!restrictionflag <> "A" And Not InStr(cmbScriptTypes.Text, "AUTHORITY") Then Return 
+   If InStr(cmbScriptTypes.Text, "AUTHORITY") And lcRestrictions.Count = 0 Then Return 
    Restrictions_Click()
    
 End
@@ -659,7 +728,7 @@ Public Sub lcRestrictions_Keypress()
    'If user hits the <enter> key whilst the restrictions list has focus, then select this
    'restriction and the highlighted drug
    '-------------------------------------------------------------------------------------
-
+   
    If drug!restrictionflag <> "A" Then Return 
    If key.code = key.return Then 
       Restrictions_dblclick()
@@ -671,7 +740,7 @@ Public Sub Restrictions_dblclick()
    '----------------------------------------------------------------------------
    'User has double clicked on one of the text labels in the lcRestrictions list
    '----------------------------------------------------------------------------  
-
+   
    If drug!restrictionflag <> "A" Then Return  
    Restrictions_Click()
    If pnlcolumnview.Visible Then columnview1_DblClick()
@@ -694,7 +763,7 @@ Public Sub Restrictions_Click()
    txtAuthorityWording.pos = 0
    bexit = True   
    If drug!streamlined Then   
-         txtApprovalNumber.text = restriction_code
+      txtApprovalNumber.text = restriction_code
    End If   
    bExit = False  
    
@@ -809,6 +878,8 @@ Public Function PBS_Show(drug As Collection) As String
          lblRestrictions.text = "PRIVATE SCRIPT"
          iPBS_Script_Type = const.pbs_script_type_private
    End Select  
+   
+   cmbScriptTypes.index = iPBS_Script_Type - 1
    bExit = False  
    Return lblRestrictions.Text
    
@@ -881,7 +952,9 @@ Public Sub columnview1_DblClick()
       Case "authority wording"
          Authority_Increased_Quantity_Reasons_Select()
       Case "reason"
-         Prescibed_For_Habits_Select()
+         Prescribed_For_Habits_Select()
+      Case "directions"
+         Instruction_Habits_Select()
    End Select
    pnlColumnView.visible = False 
    
@@ -976,7 +1049,7 @@ Public Sub Print_Content()
    '----------------------------------------------------------------------------------
    'Differs from other forms in that scripts are not saved to back-end before printing
    '----------------------------------------------------------------------------------   
-
+   
    Save()
    
 End
@@ -1036,17 +1109,8 @@ Public Sub Drug_Select()
       lcRestrictions.index = 0
       Restrictions_Click()
    End If   
-   Instruction_Habits = modPrescribingDBI.Instruction_Habits_Get(drug!fk_product)
-   If Instruction_Habits.count Then
-      For Each Habit In Instruction_Habits
-         txtDirections.text = Habit!instruction
-         TxtReason.SetFocus()
-         Break
-      Next  
-   Else 
-      txtDirections.SetFocus()
-   Endif
-   bexit = False 
+   Try Instruction_Habits_Get()                        'get commonest direction, set focus to txtReason
+   If Error Then txtDirections.SetFocus()
    
 End
 
@@ -1536,7 +1600,7 @@ Public Sub Drug_New()
    txtdate.text = Format(Now, "dd/mm/yyyy")          'Default to today's date, this can be over-ridden by user
    chkActive.value = True                            'Assume this will be an active (in current use) medication
    Drug = New Collection                             'reset all the collections
-   Prescribing_Habits = New Collection
+   Prescibed_For_Habits = New Collection
    Instruction_Habits = New Collection
    EditArea_Notify_Data_Change(False)
    If rbBrandPrescribing.value = True Then           'set to users default (or current default) prescibring mode
@@ -1743,26 +1807,4 @@ Public Sub slAuthorityFontsize_Change()
       Endif
    Next
    
-End
-
-Public Sub chkEditArea_Click()
-
-   Select Case Last.tag
-      Case "authority"
-         '-----------------------------------------------------------------
-         'if not an authority drug, the user is making it an authority drug
-         '-----------------------------------------------------------------
-         If drug!restrictionflag <> "A" Then
-            If lcRestrictions.count Then
-                If lcRestrictions.count = 1 Then 
-                      lcRestrictions.index = 0
-                      lcRestrictions_Click()
-                Else
-                   lcRestrictions.SetFocus()
-                End If  
-            Endif
-         Endif
-      
-         End Select
-
 End

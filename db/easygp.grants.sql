@@ -352,7 +352,7 @@ GRANT usage on SEQUENCE clin_mentalhealth.lu_risk_to_others_pk_seq TO staff;
 GRANT usage on SEQUENCE clin_mentalhealth.mentalhealth_plan_pk_seq TO staff;
 GRANT usage on SEQUENCE clin_mentalhealth.team_care_members_pk_seq TO staff;
 GRANT usage on SEQUENCE clin_pregnancy.lu_antenatal_venue_pk_seq TO staff;
- GRANT USAGE ON SEQUENCE clin_prescribing.medications_pk_seq TO staff;
+ 
  GRANT USAGE ON SEQUENCE clin_procedures.link_images_procedures_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE clin_procedures.lu_anaesthetic_agent_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE clin_procedures.lu_complications_pk_seq TO staff;
@@ -457,11 +457,12 @@ grant select on drugs.vwDrugs to staff;
 grant select on drugs.vwdistinctbrandsforgenericproduct to staff;
 grant usage on schema drugs to staff;
 grant select on drugs.form to staff;
-grant all on drugs.product to staff;
-grant all on drugs.pack to staff;
-grant all on drugs.brand to staff;
-
-
+grant all on TABLE drugs.product to staff;
+grant all on TABLE drugs.pack to staff;
+grant all on TABLE drugs.brand to staff;
+GRANT ALL ON TABLE drugs.company TO staff;
+GRANT ALL ON TABLE drugs.atc to staff;
+GRANT ALL ON TABLE drugs.schedules to staff;
 GRANT all ON TABLE clin_prescribing.authority_number TO staff;
 GRANT all ON TABLE clin_prescribing.increased_quantity_authority_reasons_pk_seq TO staff;
 GRANT all ON TABLE clin_prescribing.instruction_habits_pk_seq TO staff;
@@ -477,3 +478,5 @@ GRANT ALL ON TABLE clin_prescribing.medications TO staff;
 GRANT ALL ON TABLE clin_prescribing.instruction_habits to staff;
 GRANT ALL on table clin_prescribing.vwInstructionHabits to staff;
 GRANT ALL ON TABLE clin_prescribing.vwPrescribedForHabits to staff;
+
+GRANT USAGE ON SEQUENCE clin_prescribing.medications_pk_seq TO staff;

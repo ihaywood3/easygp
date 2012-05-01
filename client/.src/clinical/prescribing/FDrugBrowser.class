@@ -1,15 +1,103 @@
 ' Gambas class file
 
-Private brands As Collection
-Private brand As Collection 
-Private Form_PDF As FPdf
+' Copyright (C) 2008-2012 Dr. Richard Terry, Dr. Ian Haywood
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+' ------------------------------------------------------------------------------
+' A module to allow viewing of a drugs Product Information, or to add a new drug
+'------------------------------------------------------------------------------
+'
+'Anatomical Therapeutic Chemical Classification System:
+'See:http://en.wikipedia.org/wiki/Anatomical_Therapeutic_Chemical_Classification_System
+' First level
+' 
+' The first level of the code indicates the anatomical main group and consists of one letter. There are 14 main groups:[3]
+' Code    Contents
+' A    Alimentary tract and metabolism
+' B    Blood and blood forming organs
+' C    Cardiovascular system
+' D    Dermatologicals
+' G    Genito-urinary system and sex hormones
+' H    Systemic hormonal preparations, excluding sex hormones and insulins
+' J    Antiinfectives for systemic use
+' L    Antineoplastic and immunomodulating agents
+' M    Musculo-skeletal system
+' N    Nervous system
+' P    Antiparasitic products, insecticides and repellents
+' R    Respiratory system
+' S    Sensory organs
+' V    Various
+'
+' Second level
+' 
+' The second level of the code indicates the therapeutic main group and consists of two digits.
+' 
+' Example: C03 Diuretics
+' Third level
+' 
+' The third level of the code indicates the therapeutic/pharmacological subgroup and consists of one letter.
+' 
+' Example: C03C High-ceiling diuretics
+' Fourth level
+' 
+' The fourth level of the code indicates the chemical/therapeutic/pharmacological subgroup and consists of one letter.
+' 
+' Example: C03CA Sulfonamides
+' Fifth level
+' 
+' The fifth level of the code indicates the chemical substance and consists of two digits.
+' 
+' Example: C03CA01 Furosemide
+' 
+' FIXME: implement schedule/poison in save + edit_area_key_validate for eg numbers for packs
+'        check if can put numbers/decimal validation on txtvolume if if ever need et 1mg/100ml
+'----------------------------------------------------------------------------------------------------------------------
+Private schedules As Collection
+Private drugs As Collection
+Private drug As Collection
+Private brand As CRow 
+Private Pack As CRow 
+Private Product As CRow
+Private atccodes As Collection
+Private atccode As Collection
+Private pk_atccode As String
 Private generics As Collection
+Private generic As Collection
+Private Form_PDF As FPdf
 Private drug_forms As Collection
 Private bKeyValid As Boolean
 Private bExit As Boolean  
 Private fk_form As Integer
+Private fk_company As String
 Private units_keys As Integer[]
 Private fk_clinic As Integer
+Private Filenames As Collection
+Private Filename As Collection
+Private Product_Information_Dir As String
+Private companies As Collection
+Private company As Collection
+Private GridRows As Collection                    'A collection array to allow .delete and .add to re-order the collecton index automatically
+Private gridrow As Integer
+Private gridcol As Integer
+Private $hEditor As Object
+Private iTop As Integer
+Private form_help As FHtmlViewer
+Private Default_Zoom_Help As Integer
+Private Default_Zoom_PI As Integer
+Private Help_Dir As String
+Public units As Integer[]
 
 Public Sub Form_Open()
    
@@ -17,17 +105,11 @@ Public Sub Form_Open()
    
 End
 
-Public Sub Form_Close()
-   
-   Settings_Save() 
-   
-End
-
 Public Sub Settings_Save()
    
    '  Settings["Drugs/HSplit_EditArea.Layout"] = HSplit_EditArea.Layout
    Settings["Drugs/VSplit_DataEntry.Layout"] = VSplit_DataEntry.Layout
-   Settings["Drugs/HSplit1.Layout"] = HSplit1.Layout
+   Settings["Drugs/HSplit_DataEntry.Layout"] = HSplit_DataEntry.Layout
    Settings["Drugs/Form_PDF.Zoom"] = Form_PDF.CurrentZoom
    
 End
@@ -36,16 +118,24 @@ Private Sub Settings_Load()
    
    '  Try HSplit_EditArea.Layout = Settings["Drugs/HSplit_EditArea.Layout"]
    Try VSplit_DataEntry.Layout = Settings["Drugs/VSplit_DataEntry.Layout"]
-   Try HSplit1.Layout = Settings["Drugs/HSplit1.layout"]
+   Try HSplit_DataEntry.Layout = Settings["Drugs/HSplit_DataEntry.layout"]
    Try Form_PDF.CurrentZoom = Settings["Drugs/Form_PDF.Zoom"]
    
 End
 
 Public Sub Init()
    
-   lblMeasure.text = " Volume (Liquids only) "
-   modEditAreaHelpers.Resize_labels(Vbox_EditArea_Outer, lblMeasure)
+   lblMeasure.text = "   Volume (Liquids only)   "
+   modEditAreaHelpers.Resize_labels(VBox_EditArea_Inner, lblMeasure)
+   form_help = New FHtmlViewer(Vbox_Help)
+   modEditAreaHelpers.Help_Show("using-the-drug-browser.html", form_help)
    Try Settings_Load()
+   cmbUnits.Add("grams")
+   cmbUnits.Add("mls")
+   Units = New Integer[]
+   units.Add(const.Units_gram, 0)
+   units.Add(const.Units_millilitre, 1)
+   
    With cvwDrugs
       .Columns.count = 5
    End With
@@ -53,65 +143,397 @@ Public Sub Init()
       .btZoomIn.Visible = True
       .btZoomOut.Visible = True
       .BtPrint.Visible = True  
-   '   Try .Load_PDF(User.home &/ "Documents/alphamox.pdf")
    End With
-   cmbUnits.Add("mcg")
-   cmbUnits.Add("mg")
-   cmbUnits.Add("gm")
-   cmbUnits.Add("mg/g")
-   cmbUnits.Add("mcg/g")
-   cmbUnits.Add("mg/ml")
-   cmbUnits.Add("mcg/ml")
-   cmbUnits.Add("units")
-   fk_clinic = modDBConnect.currentUser!fk_clinic
+   ' cmbUnits.Add("mcg")
+   ' cmbUnits.Add("mg")
+   ' cmbUnits.Add("gm")
+   ' cmbUnits.Add("mg/g")
+   ' cmbUnits.Add("mcg/g")
+   ' cmbUnits.Add("mg/ml")
+   ' cmbUnits.Add("mcg/ml")
+   ' cmbUnits.Add("units")
+   With gridview1
+      .Columns.Count = 3
+      .Columns[0].width = (gridview1.width - 78) / 2
+      .Columns[1].width = (gridview1.width - 78) / 2
+      .Columns[2].width = 78
+      .Rows.count = 3
+   End With
+   schedules = modUtil.LoadCombo(cmbSchedules, modPrescribingDBI.Schedules_Get(), "schedule")
+   
+   fk_clinic = modDBConnect.currentUser!fk_clinic  
+   Product_Information_Dir = modAdminDBI.Config_Get("product_information_directory", "", Null, fk_clinic)
    Reload()
    
 End Sub
 
 Public Sub Reload()
    
-   brands = modPrescribingDBI.Brands_Get(Trim(txtSearch.text))
-   Brands_Show()
-   
+   drugs = modPrescribingDBI.Brands_Get(Trim(txtSearch.text)) 'FIXME RENAME
+   Drugs_Fill_List()
+   ' If cvwDrugs.count = 1 Then
+   '    cvwdrugs.SetFocus()
+   '    cvwDrugs.MoveFirst()
+   '    cvwDrugs.Item.Selected = True
+   ' Endif
 End
 
-Public Sub Brands_Show()
+Public Sub ACT_Codes_Get()
+   '---------------------------------------------------------------------------------------
+   'find an Anatomic Therapeutic Chemical(ATC)code, see the header of this file for details
+   '---------------------------------------------------------------------------------------
    
-   Dim x As Integer
-   
-   cvwDrugs.Clear()
-   
-   For Each brand In brands
-      cvwDrugs.Add(brand!pk_view, brand!brand)
-      cvwDrugs[brand!pk_view][0] = brand!brand
-      cvwDrugs[brand!pk_view][1] = brand!generic
-      cvwDrugs[brand!pk_view][2] = brand!strength & " " & brand!form
-      If Not IsNull(brand!product_information_filename) Then
-         cvwDrugs[brand!pk_view][3] = "PI available"
-      Endif
+   atccodes = modPrescribingDBI.ACT_Codes_Get(Trim(txtACTName.text))
+   listview2.Clear
+   For Each atccode In atccodes
+      listview2.add(atccode!pk, atccode!atcname)
    Next
-   If cvwDrugs.count = 1 Then
-      cvwDrugs_Select()
+   If listview2.Count Then
+      With listview2
+         .Visible = True
+         .Raise
+         .tag = txtACTName
+      End With
    Endif
    
 End
 
-Public Sub txtSearch_KeyRelease()
+Public Sub ACT_Code_Select()
    
-   Reload()
+   listview2.MoveCurrent
+   txtACTName.text = atccodes[listview2.Item.key]!atcname
+   drug!product!atccode = listview2.Item.key
+   drug!atcname = atccodes[listview2.Item.key]!atcname
+   pk_atccode = listview2.Item.key
+   txtForm.SetFocus()
    
 End
 
-Public Sub cvwDrugs_Select()
+Public Sub Company_Get()
+   '---------------------------------------------
+   'Gets a collection of pharmaceutical companies
+   '---------------------------------------------  
    
+   Companies = modPrescribingDBI.Companies_Get(Trim(txtCompany.text))
+   ListView2.Clear()
+   For Each company In companies
+      listview2.Add(company!code, company!company) 
+   Next
+   If listview2.count Then
+      With listview2 
+         .Visible = True   
+         .tag = txtCompany 
+      End With
+   Endif
+   
+End
+
+Public Sub Company_Select()
+   '--------------------------------------------------------
+   'User is selecting  a pharmaceutical company for the drug
+   '--------------------------------------------------------   
+   
+   listview2.MoveCurrent
+   txtCompany.text = companies[listview2.Item.Key]!company
+   fk_company = listview2.Item.Key  'fix me probably remove
+   drug!company = companies[listview2.Item.Key]!company
+   drug!brand!fk_company = listview2.Item.Key
+   txtFindGenericComponent.SetFocus()
+   
+End
+Public Sub Gridview1_Scroll()
+   
+   If gridview1.row = -1 Then Return 
+   Try Move_EditingTextBox
+   
+End
+
+Public Sub GridRows_Init()
+   '-----------------------------------------------
+   'fills the gridrows collection if generic exists
+   '------------------------------------------------ 
+   
+   
+End
+
+Public Sub Gridrows_Update()
+    Dim Generic_components As String[]
+    Dim generic_strengths As String[]
+    Dim arow As Collection
+    Dim component As String
+    Dim i As Integer
+    
+    If Not IsNull(drug!product!generic) Then
+       Generic_components = Split(drug!product!generic, ";")
+       generic_strengths = Split(drug!product!strength, "-")
+    Endif
+    GridRows = New Collection
+    For i = 0 To Generic_components.Count - 1
+         arow = New Collection
+         arow!generic = Generic_components[i]
+         arow!strength = generic_strengths[i]
+         GridRows.Add(arow, i)
+    Next
+   
+End
+
+Public Sub Gridview1_Refresh()
+   '-----------------------------------------------
+   'Refresh the grid showing the generic components
+   '-----------------------------------------------   
+   
+   Dim row_data As Collection
+   
+   txtGeneric.text = "" 'the is hidden when adding new drugs, the change event sets drug!product!generic
+   gridview1.rows.Count = GridRows.Count
+   gridrow = 0
+   For Each row_data In GridRows
+      gridview1[gridrow, 0].text = row_data!generic   
+      txtGeneric.text &= row_data!generic & ";"
+      gridview1[gridrow, 1].text = row_data!strength
+      Inc gridrow  
+   Next
+   txtGeneric.text = Left(txtGeneric.text, Len(txtGeneric.text) - 1)
+   drug!product!generic = txtGeneric.Text 'fixme remove me put in change event.
+   
+End
+
+Public Sub Gridview1_DblClick()
+   '-----------------------------------------------------
+   'User has double clicked on a cell in the grid to edit
+   '-------------------------------------------------------------------
+   
+   Dim i As Integer
+   Dim x As Integer
+   Dim bFoundSelected As Boolean
+   
+   gridcol = gridview1.Column
+   gridrow = gridview1.Row
+   x = Gridview1.Rows[gridrow].Height
+   itop = gridview1.top + (Gridview1.Rows[i].height * gridrow)
+   Show_EditingTextBox()
+   
+End
+
+
+Public Sub Show_EditingTextBox()
+   '--------------------------------------------------------------------------------------------
+   'Displays the editing textbox
+   'Copied some of this code from the gambas IDE so can't remmber reason for use of the hEditor   
+   '--------------------------------------------------------------------------------------------
+   
+   Dim sAppointment As String  'the contents of the grid column with patients 
+   Dim hEditor As Object 
+   
+   hEditor = txtEditGrid
+   $hEditor = hEditor
+   Try Move_EditingTextBox
+   $hEditor.Show
+   txtEditGrid.Visible = True 
+   $hEditor.SetFocus
+   $hEditor = txtEditGrid   
+   txtEditGrid.SelectAll
+   
+   ' If Not IsNull(gridrows[gridrow]!generic) Then
+   txtEditGrid.text = Gridview1[gridrow, gridcol].Text
+   ' Else
+   '    txtEditGrid.pos = Len(txtEditGrid.text) 
+   ' End If   
+   txtEditGrid.SetFocus()
+Catch
+   Return 
+   
+End
+
+Public Sub Move_EditingTextBox()
+   '---------------------------------------------------------------------------------
+   'Sub Move ( X As Integer, Y As Integer [ , Width As Integer, Height As Integer ] )
+   'here, height = ((iLastRow - iFirstRow) + 1) * irowheight + 5)
+   'If single slot selected and being edited then this could be equivalent of
+   '1 row = normal apptor multiple rows, so use the actual grid cell  height,
+   'otherwise calculate the textbox height on basis of selected rows.
+   '---------------------------------------------------------------------------------
+   
+   Dim iW As Integer
+   Dim iheight As Integer
+   Dim left_header_width As Integer 
+   Dim colpos As Integer
+   
+   colpos = gridview1.Columns[gridcol].Left
+   If IsNull($hEditor) Or gridview1.Row = -1 Then Return 'FIXME BAD BAD BUGFIX ?WHY GOING -1
+   
+   iheight = Gridview1.Rows[gridrow].height + 5
+   With gridview1[gridview1.Row, 1]
+      '  txtEditGrid.Move(gridview1.X + (gridview1.width - gridview1.Columns[0].width - gridview1.Columns[1].width - 3) - gridview1.ScrollX, gridview1.Y + itop + 1 - gridview1.ScrollY, .Width + 5, iheight)
+      txtEditGrid.Move(gridview1.X + colpos - gridview1.ScrollX, gridview1.Y + itop + 1 - gridview1.ScrollY, .Width + 5, iheight)
+      
+   End With
+   
+End
+
+
+Public Sub Generic_Names_Select()
+   
+   Dim Generic_components As String[] = Split(generics[ListView2.Item.key]!generic, ";")
+   Dim strengths As String[] = Split(generics[ListView2.Item.key]!strength, "-")
+   Dim new_row As Collection 
+   Dim generic As String
+   Dim i As Integer
+   
+   For Each generic In Generic_components
+      new_row = New Collection
+      new_row!generic = generic
+      Try new_row!strength = strengths[i] 'can be null
+      GridRows.Add(new_row, i)
+      Inc i
+   Next
+   bExit = True  
+   txtFindGenericComponent.text = ""
+   bExit = False 
+   Gridview1_Refresh() 
+   txtFindGenericComponent.SetFocus()
+   
+End
+
+Public Sub Generic_Delete()
+   '----------------------------------------------------------
+   'Deletes one of the generic components of a user-added drug
+   '---------------------------------------------------------- 
+   
+   gridrow = gridview1.row
+   GridRows.Remove(gridrow)
+   Gridview1_Refresh()
+   
+End
+
+Public Sub Generic_Names_Get()
+   
+   If Trim(txtFindGenericComponent.text) = "" Then Return 
+   
+   generics = modPrescribingDBI.Generic_Names_Get(Trim(txtFindGenericComponent.text))
+   ListView2.Clear
+   For Each generic In generics  
+      ListView2.Add(generic!pk, generic!generic & " " & generic!strength)
+   Next
+   If ListView2.count Then 
+      With ListView2
+         .Visible = True
+         .tag = txtFindGenericComponent
+      End With
+   Else
+      listview2.Visible = False  
+   End If   
+   
+End
+
+Public Sub Product_Information_Select()
+   
+   txtPIFile.text = ListView2.Item.text
+   
+   If Hbox_AddGeneric.Visible Then txtCompany.SetFocus()
+   
+End
+
+Public Sub Product_Information_Filename_Get()
+   
+   Dim sfile As String
+   
+   If Product_Information_Dir = "" Then
+      Message.Info("The product information directory could not be found.\n\nPlease check with your system adminstrator.")
+   Endif
+   listview2.Clear()
+   For Each sFile In Dir(Product_Information_Dir, "*.*")
+      Print "looking for " & txtPIFile.text, sFile
+      If InStr(Lower(sFile), Lower(Trim(txtPIFile.text))) Then
+         listview2.Add(ListView2.count, sFile)
+      Endif
+   Next
+   With listview2
+      If .count Then
+         .Visible = True
+         .tag = txtPIFile
+         .Raise
+      End If 
+   End With
+   Wait
+   
+End
+
+
+
+Public Sub Drugs_Fill_List()
+   
+   Dim x As Integer
+   Dim brand As Collection
+   
+   cvwDrugs.Clear()
+   
+   For Each brand In drugs
+      cvwDrugs.Add(brand!pk_view, 0)
+      cvwDrugs[brand!pk_view][0] = brand!brand!brand
+      cvwDrugs[brand!pk_view][1] = brand!product!generic
+      cvwDrugs[brand!pk_view][2] = brand!product!strength & " " & brand!form
+      If Not IsNull(brand!brand!product_information_filename) Then
+         cvwDrugs[brand!pk_view][3] = "PI available"
+      Endif
+   Next
+
+   
+End
+
+
+Public Sub cvwDrugs_Click()
+   
+     Drug_Show()
+End
+
+Public Sub Drug_Show()
+   
+   Dim unit As Integer
+   
+   Vbox_EditArea_Outer.Enabled = False 
+    bExit = True
+   EditArea_Clear()
+   EditArea_TextBoxes_SetReadOnly_Status(True)
    cvwDrugs.MoveCurrent
-   txtBrand.text = brands[cvwDrugs.Item.key]!brand
-   txtGeneric.text = brands[cvwDrugs.Item.key]!generic
-   txtStrength.text = brands[cvwDrugs.Item.key]!strength
-   txtForm.text = brands[cvwDrugs.Item.key]!form
-   If Not IsNull(brands[cvwDrugs.Item.key]!product_information_filename) Then
-      Print modAdminDBI.Config_Get("product_information_directory", "", Null, fk_clinic)
-      Try Form_PDF.Load_PDF(modAdminDBI.Config_Get("product_information_directory", "", Null, fk_clinic) &/ brands[cvwDrugs.Item.key]!product_information_filename)
+   Print "bExit is now", bexit
+   drug = drugs[cvwDrugs.Item.key]
+   txtBrand.text = drug!brand!brand
+   txtGeneric.text = drug!product!generic
+   txtACTName.text = drug!atcname  
+   txtStrength.text = drug!product!strength
+   txtForm.text = drug!form
+   Try txtCompany.text = drug!company
+   If Not IsNull(drug!brand!product_information_filename) Then
+      Product_Information_Show(drug!brand!product_information_filename)
+      txtPIFile.text = drug!brand!product_information_filename
+   Endif
+   Try txtVolume.text = drug!pack!amount 
+   If Not IsNull(drug!pack!amount_unit) Then
+      Select Case drug!pack!amount_unit
+         Case const.Units_gram
+            cmbUnits.index = 0
+         Case const.Units_millilitre
+            cmbUnits.Index = 1
+      End Select
+   Endif
+   If Not IsNull(drug!pack!pack_size) Then
+      txtPackSize.Text = drug!pack!pack_size 
+   Endif
+   bExit = False
+   
+End
+
+Public Sub Product_Information_Show(pdf_filename As String)
+   '------------------------------------------
+   'Attempt to show a product information PDF
+   '-----------------------------------------   
+   
+   Try Form_PDF.Load_PDF(Product_Information_Dir &/ pdf_filename)
+   If Error Then
+      Message.Error("The requested product information could not be found")
+   Else
+      TabStrip1.index = 1
    Endif
    
 End
@@ -121,28 +543,90 @@ Public Sub EditArea_Notify_Data_Change(flag As Boolean)
    If flag Then
       Vbox_EditArea_Outer.Padding = 1
       Vbox_EditArea_Outer.Background = Color.red
-    Else
+   Else
       Vbox_EditArea_Outer.Padding = 0
       Vbox_EditArea_Outer.Background = Color.white
    End If
    
 End
 
-Public Sub Drug_New()
+Public Sub EditArea_Clear()
+   
    
    modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Inner)   
    EditArea_Notify_Data_Change(False)
-   EditArea_TextBoxes_SetRead_Status(False)
-   HBox_Volume.Enabled = False   
+   
+   gridview1.Clear()
+   cmbUnits.index = -1
+   cmbUnits.Enabled = False 'only enabled if text in txtVolume
+   cmbSchedules.index = -1
+   cmbSchedules.enabled = False
+   With lblBrand
+      .foreground = Color.Black
+      .text = "Brand"
+   End With
+   
+End
+
+Public Sub Drug_New()
+   
+   EditArea_Clear()
+   modEditAreaHelpers.Help_Show("adding-a-new-drug.html", form_help)
+   EditArea_TextBoxes_SetReadOnly_Status(False)
    cvwDrugs.Clear()
-   ListView1.Clear()
    fk_form = 0
-   brand = New CRow
+   fk_company = ""
+   drug = New Collection 
+   drug!pack = New CRow
+   drug!product = New CRow
+   drug!brand = New CRow   
+   
+   companies = New Collection
+   Filenames = New Collection 
+   drug_forms = New Collection
+   generics = New Collection
+   Gridrows = New Collection
+   Hbox_Generics.Visible = False 
+   Hbox_AddGeneric.Visible = True  
+   HBox_GenericsGrid.Visible = True
+   cmbSchedules.enabled = True
+   With lblBrand
+      .foreground = Color.Red
+      .text = "Add Brand"
+   End With
    txtBrand.SetFocus()
    
 End
 
-Public Sub EditArea_TextBoxes_SetRead_Status(bflag As Boolean)
+Public Sub Drug_New_old()
+   
+   EditArea_Clear()
+   modEditAreaHelpers.Help_Show("adding-a-new-drug.html", form_help)
+   EditArea_TextBoxes_SetReadOnly_Status(False)
+   cvwDrugs.Clear()
+   fk_form = 0
+   fk_company = ""
+   brand = New CRow
+   Pack = New CRow
+   Product = New CRow
+   companies = New Collection
+   Filenames = New Collection 
+   drug_forms = New Collection
+   generics = New Collection
+   Gridrows = New Collection
+   Hbox_Generics.Visible = False 
+   Hbox_AddGeneric.Visible = True  
+   HBox_GenericsGrid.Visible = True
+   
+   With lblBrand
+      .foreground = Color.Red
+      .text = "Add Brand"
+   End With
+   txtBrand.SetFocus()
+   
+End
+
+Public Sub EditArea_TextBoxes_SetReadOnly_Status(bflag As Boolean)
    
    txtBrand.ReadOnly = bflag
    txtGeneric.ReadOnly = bflag   
@@ -150,10 +634,48 @@ Public Sub EditArea_TextBoxes_SetRead_Status(bflag As Boolean)
    txtStrength.ReadOnly = bflag  
    txtPackSize.ReadOnly = bflag  
    txtComment.ReadOnly = bflag
-   Hbox_Generics.Visible = bflag     
-   HBox_Strength.Visible = bflag  
-   Hbox_AddGeneric.Visible = Not bFlag   
-   HBox_GenericsList.Visible = Not bFlag
+   txtACTName.ReadOnly = bflag
+   txtVolume.ReadOnly = bflag
+  
+   ' Hbox_Generics.Visible = bflag   
+   ' Hbox_AddGeneric.Visible = Not bflag
+   ' HBox_GenericsGrid.Visible = Not bflag
+   ' HBox_Strength.Visible = bflag  
+   ' HBox_Volume.Enabled = Not bflag
+   
+End
+
+Public Sub Drug_Edit()
+   
+   Vbox_EditArea_Outer.Enabled = True  
+   EditArea_TextBoxes_SetReadOnly_Status(False)
+   HBox_AddGeneric.Visible = True
+   HBox_GenericsGrid.Visible = True 
+   Hbox_Generics.Visible = False 
+   Gridrows_Update()          'transfer the generics and strengths in the gridrows collection
+   Gridview1_Refresh()
+   
+End
+
+Public Sub Drug_Form_Select()
+   
+   txtForm.text = drug_forms[listview2.Item.key]!form
+   drug!form = txtForm.Text
+   drug!product!fk_form = listview2.Item.key
+   
+   fk_form = listview2.Item.key 
+   If txtForm.text = "injection" Then
+      txtVolume.SetFocus()
+   Else
+      txtPackSize.SetFocus()
+   Endif
+   ' If drug_forms[listview2.Item.key]!volume_amount_required Then
+   '    HBox_Volume.Enabled = True   
+   '    txtVolume.SetFocus()
+   ' Else
+   '    HBox_Volume.Enabled = False  
+   '    txtPackSize.SetFocus()
+   ' End If   
    
 End
 
@@ -167,12 +689,16 @@ Public Sub Drug_Forms_Get()
       listview2.Add(drug_form!pk, drug_form!form)
    Next
    If listview2.count Then
-      listview2.Visible = True
-   Endif 
+      With listview2
+         .Visible = True
+         .tag = txtForm
+      End With
+   End If   
    
 End
 
 Public Sub Save()
+   ' IAN PLEASE DO NOT CHANGE OR REMOVE, I KNOW IT IS ALL WRONG - DISCUSS WITH ME
    '-----------------------------
    'Save a new user defined drug
    ' CREATE TABLE drugs.brand
@@ -187,12 +713,12 @@ Public Sub Save()
    '   pk uuid NOT NULL DEFAULT uuid_generate_v4(),
    '   product_information_filename text,
    '   CONSTRAINT brand_pkey PRIMARY KEY (pk ),
-   '   CONSTRAINT brand_fk_company_fkey FOREIGN KEY (fk_company)
+   '  'brand!product_information_filename =    CONSTRAINT brand_fk_company_fkey FOREIGN KEY (fk_company)
    '       REFERENCES drugs.company (code) MATCH SIMPLE
    '       ON UPDATE NO ACTION ON DELETE NO ACTION,
    '   CONSTRAINT brand_fk_product_fkey FOREIGN KEY (fk_product)
    '       REFERENCES drugs.product (pk) MATCH SIMPLE
-   '       ON UPDATE NO
+   '       
    ' CREATE TABLE drugs.pack
    ' (
    '   fk_product uuid,
@@ -206,22 +732,164 @@ Public Sub Save()
    ' WITH (
    '   OIDS=FALSE
    ' );
+   '
+   '    Create TABLE drugs.product
+   ' (
+   '   pk uuid Not Null Default uuid_generate_v4(),
+   '   atccode character varying(8) Not Null,
+   '   generic text Not Null, - - full generic name In Lower - case.For compounds names separated by ";"
+   '   salt text, - - If Not normally part Of generic name, the adjuvant salt
+   '   fk_form integer Not Null, - - the form Of the drug
+   '   strength text, - - the strength As A number followed by a unit.For compounds...
+   '   salt_strength text, - - where a weight Of the full salt Is Listed(being heavier than the weight...
+   '   original_pbs_name text, - - For a drug imported From the PBS Yellow Book database, the original...
+   '   original_pbs_fs text, - - For a drug imported From the PBS Yellow Book database, the original...
+   '   free_comment text, - - a Free - text comment on properties Of the product.For example For complex packages...
+   '   updated_at timestamp without Time zone Default Now(),
+   '   fk_schedule integer,
+   '   shared boolean Default True, - - If True Then the user / surgery wants To share this drug With easygp - central
+   '   poison smallint Default 4,
+   ' 
+   '-----------------------------  
    
-   '-----------------------------   
-   brand!strength = Trim(txtStrength.Text)
-   brand!fk_form = fk_form
-   brand!free_comment = Trim(txtComment.Text)
-   brand.Save("drugs.product", "fk_product")
-   'brand!brand = Trim(txtBrand.Text)
-   'brand!fk_company = fk_company
-  ' brand!fk_product = brand!fk_product ' looks stupid but forces save of this field
-   'brand!product_information_filename = 
-  ' brand.Save("drugs.brand", "fk_brand")
+   Dim row_data As Collection
+   Dim Generics As String
+   Dim strengths As String
+   Dim fk_existing_product_key As String
+   Dim product As New CRow   
+   
+   'If Vbox_EditArea_Outer.paddiOLUME_IDENTIFIERng = 0 Then Return 
+   'If Not Drug_Valid() Then Return product!fk_product
+   '--------------------------------------------------------------------------------------------------
+   'First save the product to product table
+   'Saving a new drug has multiple nuances around the generic composition
+   'We must make the user choose from existing generics, sometimes, to get the composition of the drug
+   'the user could have taken two generics from the popup list and deleted one, then selected another
+   'from the popup list to make the compound generic in this new drug
+   'This compound generic may exist in the database linked to a particular form, so must test for this
+   '--------------------------------------------------------------------------------------------------
+   
+   Print drug
+   drug!product.Save("drugs.product", "fk_product")
+   drug!brand.Save("drugs.brand", "fk_brand")
+   drug!pack.Save("drugs.pack", "fk_pack")
+  
+ 
    modDBConnect.CommitTrans()
-   'If Vbox_EditArea_Outer.padding = 0 Then Return 
-   'If Not Drug_Valid() Then Return 
    
-   EditArea_TextBoxes_SetRead_Status(False)
+   EditArea_TextBoxes_SetReadOnly_Status(False)
+   Reload()
+   txtSearch.SetFocus
+   
+End
+
+Public Sub Save_old()
+   ' IAN PLEASE DO NOT CHANGE OR REMOVE, I KNOW IT IS ALL WRONG - DISCUSS WITH ME
+   ' I used this routine to save a drug and it worked.
+   '-----------------------------
+   'Save a new user defined drug
+   ' CREATE TABLE drugs.brand
+   ' (
+   '   fk_product uuid NOT NULL,
+   '   fk_company character varying(3) NOT NULL,
+   '   brand character varying(100) NOT NULL,
+   '   price money, -- dispensed price for PBS drugs.
+   '   from_pbs boolean NOT NULL DEFAULT false, -- true if the brand comes from the PBS database, allows the list to be easily reloaded...
+   '   original_tga_text text, -- drugs imported from TGA database, the original label therein
+   '   original_tga_code character varying(12), -- drugs imported from TGA database, their TGA code
+   '   pk uuid NOT NULL DEFAULT uuid_generate_v4(),
+   '   product_information_filename text,
+   '   CONSTRAINT brand_pkey PRIMARY KEY (pk ),
+   '  'brand!product_information_filename =    CONSTRAINT brand_fk_company_fkey FOREIGN KEY (fk_company)
+   '       REFERENCES drugs.company (code) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT brand_fk_product_fkey FOREIGN KEY (fk_product)
+   '       REFERENCES drugs.product (pk) MATCH SIMPLE
+   '       
+   ' CREATE TABLE drugs.pack
+   ' (
+   '   fk_product uuid,pk_viewpk_view
+   '   amount double precision, -- the amount of drugs that have a fluid form
+   '   amount_unit integer,
+   '   pack_size integer DEFAULT 1, -- the number of identical units (bottles, vials, tablets, etc) within a pack
+   '   CONSTRAINT pack_fk_product_fkey FOREIGN KEY (fk_product)
+   '       REFERENCES drugs.product (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   'pk_viewpk_view
+   '    Create TABLE drugs.product
+   ' (
+   '   pk uuid Not Null Default uuid_generate_v4(),
+   '   atccode character varying(8) Not Null,
+   '   generic text Not Null, - - full generic name In Lower - case.For compounds names separated by ";"
+   '   salt text, - - If Not normally part Of generic name, the adjuvant salt
+   '   fk_form integer Not Null, - - the form Of the drug
+   '   strength text, - - the strength As A number followed by a unit.For compounds...
+   '   salt_strength text, - - where a weight Of the full salt Is Listed(being heavier than the weight...
+   '   original_pbs_name text, - - For a drug imported From the PBS Yellow Book database, the original...
+   '   original_pbs_fs text, - - For a drug imported From the PBS Yellow Book database, the original...
+   '   free_comment text, - - a Free - text comment on properties Of the product.For example For complex packages...
+   '   updated_at timestamp without Time zone Default Now(),
+   '   fk_schedule integer,pk_view
+   '   shared boolean Default True, - - If True Then the user / surgery wants To share this drug With easygp - central
+   '   poison smallint Default 4,
+   ' 
+   '-------------drug----------------  
+   
+   Dim row_data As Collection
+   Dim Generics As String
+   Dim strengths As String
+   Dim fk_existing_product_key As String
+   Dim product As New CRow   
+   
+   'If Vbox_EditArea_Outer.paddiOLUME_IDENTIFIERng = 0 Then Repk_viewturn 
+   'If Not Drug_Valid() Then Return product!fk_product
+   '--------------------------------------------------------------------------------------------------
+   'First save the product to product table
+   'Saving a new drug has multiple nuances around the generic composition
+   'We must make the user choose from existing generics, sometimes, to get the composition of the drug
+   'the user could have taken two generics from the popup list and deleted one, then selected another
+   'from the popup list to make the compound generic in this new drug
+   'This compound generic may exist in the database linked to a particular form, so must test for this
+   '--------------------------------------------------------------------------------------------------
+   
+   product!atccode = pk_atccode
+   For Each row_data In GridRows
+      Generics &= row_data!generic & ";"
+      strengths &= row_data!strength & "-"
+   Next
+   Generics = Left(Generics, Len(Generics) - 1)
+   strengths = Left(strengths, Len(strengths) - 1)
+   product!generic = generics                                                        'will always have a generic name
+   If strengths <> "" Then product!strength = strengths                              'may not have a strength
+   product!fk_form = fk_form                                                         'will always have a fk_form
+   If Trim(txtComment.text) <> "" Then product!free_comment = Trim(txtComment.text)  'may not have a comment
+   fk_existing_product_key = modPrescribingDBI.Product_Check_Exists(pk_atccode, generics, strengths, fk_form)
+   If fk_existing_product_key = "" Then                                              'if not an existing product, then save it
+      product.Save("drugs.product", "fk_product")
+   Else
+      product!fk_product = fk_existing_product_key                                   'otherwise use existing key for other tables
+   End If   
+   'fixme put in schedule and poison
+   brand = New CRow  
+   brand!fk_product = product!fk_product 
+   If fk_company <> "" Then brand!fk_company = fk_company                           'may not have a company eg our own mixtures
+   brand!brand = Trim(txtBrand.text)                                                'must always have a brand or 'our brand'
+   If Trim(txtPIFile.text) <> "" Then brand!product_information_filename = Trim(txtPIFile.text) 'may not have PI
+   ' brand!fk_product = brand!fk_product ' looks stupid but forces save of this field - FORGET WHY IAN DID THIS
+   brand.Save("drugs.brand", "fk_brand")
+   pack = New CRow   
+   Pack!fk_product = brand!fk_product                                               'must always have an fk_product
+   If Trim(txtVolume.text) <> "" Then pack!amount = Trim(txtVolume.text)            'often dosen't have an amount
+   If cmbUnits.index <> -1 Then pack!amount_unit = Units[cmbUnits.Index]            'nor a common.fk_lu_units  FIXME change name in backend.
+   Pack!pack_size = Val(txtPackSize.text)                                           'must have a pack sizze
+   pack.Save("drugs.pack", "fk_pack")
+   modDBConnect.CommitTrans()
+   
+   EditArea_TextBoxes_SetReadOnly_Status(False)
    Reload()
    txtSearch.SetFocus
    
@@ -247,20 +915,77 @@ Public Sub EditArea_Buttons_Click()
    
 End
 
-Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+Public Sub EditArea_TextBox_Change()
    
-   Select Case tag
-      Case "pack size", "strength new"
-         bKeyValid = modUtil.AllowKeys(Const.AllowKeys_NumbersOnly, keycode)
-      Case Else  
-         bKeyValid = True  
-   End Select  
-   Return bKeyValid
+   If bExit Then Return 
+   If Trim(Last.text) = "" Then listview2.Visible = False 
+   Select Case Last.tag
+      Case "amount"
+         If Trim(Last.text) <> "" Then 
+         drug!pack!amount = Trim(Last.text)
+         cmbUnits.index = -1
+         cmbUnits.Enabled = True   
+      Else
+         cmbUnits.Enabled = False
+         drug!pack!amount = Null
+      Endif
+      
+   Case "brand"
+      bExit = True
+      Last.text = UCase(Last.text)
+      Try txtPIFile.text = Lower(Left(Replace(Last.text, "-", ""), Min(Len(Last.text), 4)))
+      drug!brand!brand = Last.text
+      bExit = False 
+   Case "product information"
+      drug!brand!product_information_filename = Trim(Last.text) 
+   Case "find generic component"
+      If Len(Last.text) = "" Then
+         listview2.Visible = False  
+      End If 
+   Case "strength"
+      drug!product!strength = Trim(Last.text)
+   Case "form"
+      drug!form = Trim(Last.text)
+   Case "pack size"
+      Try drug!pack!pack_size = Val(Last.text)    
+   Case "comment"
+      drug!product!free_comment = Trim(Last.text)
+End Select
+
+End
+
+Public Sub EditArea_TextBox_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)   
+   ListView2.Visible = False  
+   Select Case Last.tag                         
+      Case "form", "atc", "company", "find generic component", "product information"
+         With listview2                        
+            .top = Last.Parent.Parent.top + Last.Parent.height 
+            .Left = Last.Parent.Left + VBox_EditArea_Inner.padding
+            .width = Last.width   
+            .Visible = False         
+            .height = VBox_EditArea_Inner.height - Last.Parent.Parent.top - Last.height             
+            .Raise                             
+         End With  
+   End Select                                   
+   If Last.tag = "product information" Then
+      Product_Information_Filename_Get()
+   Endif
+   
+End  
+
+Public Sub EditArea_TextBox_LostFocus()
+   
+   Last.Background = Color.White
+   If Last.tag = "atc" Or Last.tag = "form" Or Last.tag = "product information" Or Last.tag = "company" Or Last.tag = "find generic component" Then Return 
+   ListView2.Visible = False  
    
 End
 
 Public Sub EditArea_TextBox_KeyPress()
    
+   If bexit Then Return 
    If Not EditAreaTextbox_ExcludeKeys(key.code, Last.tag) Then    'validate key input first
       Stop Event                                                  'no good? don't show key output
       Return
@@ -277,27 +1002,37 @@ Public Sub EditArea_TextBox_KeyPress()
          Select Case Last.tag
             Case "brand"
                If Hbox_AddGeneric.Visible Then
-                  txtGenericNew.SetFocus
-               Else
-                  txtGeneric.SetFocus
+                  txtPIFile.SetFocus()
                Endif
-            Case "generic"
-               txtStrength.SetFocus()
+            Case "edit grid"
+               txtFindGenericComponent.SetFocus()
+            Case "product information"
+               If Hbox_AddGeneric.Visible Then
+                  txtCompany.SetFocus()
+               Endif
+            Case "company"
+               If Hbox_AddGeneric.Visible Then
+                  txtFindGenericComponent.SetFocus()
+               Endif
+            Case "find generic component"
+               txtACTName.SetFocus()
             Case "strength"
                txtForm.SetFocus()
+            Case "amount"
+               cmbUnits.SetFocus()
             Case "form"
-               txtPackSize.SetFocus()
+               If Last.text = "injection" Then
+                  txtVolume.SetFocus()
+               Else
+                  txtPackSize.SetFocus()
+               Endif
+               
             Case "pack size"
                txtComment.SetFocus()
             Case "comment"
-               txtPIFile.SetFocus()   
-            Case "generic add"
-               If Trim(Last.text) = "" Then
-                  txtForm.SetFocus()
-               Else
-                  txtStrengthNew.SetFocus()
-               Endif
-               
+               tbSave.SetFocus()  
+            Case "atc"
+               txtPackSize.SetFocus() 
             Case "strength add"
                cmbUnits.SetFocus()
          End Select
@@ -305,6 +1040,35 @@ Public Sub EditArea_TextBox_KeyPress()
    End Select
    
 End Sub
+
+Public Sub EditArea_TextBox_KeyRelease()
+   
+   Select Case Last.tag
+      Case "find generic component"
+         Generic_Names_Get()
+      Case "form"
+         Drug_Forms_Get()    
+      Case "product information"
+         Product_Information_Filename_Get()
+      Case "company"
+         Company_Get()
+      Case "atc"
+         ACT_Codes_Get()
+   End Select
+   
+End
+
+Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   Select Case tag
+      Case "pack size", "strength new"
+         bKeyValid = modUtil.AllowKeys(Const.AllowKeys_NumbersOnly, keycode)
+      Case Else  
+         bKeyValid = True  
+   End Select  
+   Return bKeyValid
+   
+End
 
 Public Sub listview2_KeyPress()
    
@@ -314,58 +1078,36 @@ Public Sub listview2_KeyPress()
    
 End Sub
 
-Public Sub listview2_DblClick()
+Public Sub Listview2_Select()
    
-   listview2.MoveCurrent
-   txtForm.text = drug_forms[listview2.Item.key]!form
-   fk_form = listview2.Item.key 
-   listview2.Visible = False  
-   If drug_forms[listview2.Item.key]!volume_amount_required Then
-       HBox_Volume.Enabled = True   
-      txtVolume.SetFocus()
-   Else
-      HBox_Volume.Enabled = False  
-      txtPackSize.SetFocus()
-   End If   
-   
-End
-
-Public Sub EditArea_TextBox_GotFocus()
-   
-   Last.BackGround = Color.rgb(95, 255, 175)   
-   ListView2.Visible = False  
-   Select Case Last.tag                         
-      Case "form", "atc", "company"
-         With listview2                        
-            .top = Last.Parent.Parent.top + Last.Parent.height 
-            .Left = Last.Parent.Left           
-            .width = Last.width   
-            .Visible = False                   
-            .Raise                             
-         End With                              
-   End Select                                   
-   
-End  
-
-Public Sub EditArea_TextBox_KeyRelease()
-   
-   Select Case Last.tag
-      Case "form"
-         Drug_Forms_Get()
+   '-------------------------------------------------
+   'User has clicked on one row of the listview2 popup
+   'contains eg list of product information files
+   '--------------------------------------------------
+   Select Case Last.tag.tag
+      Case "product information"
+         Try Product_Information_Show(listview2.Item.Text)
    End Select
    
 End
 
-Public Sub EditArea_TextBox_LostFocus()
+Public Sub listview2_DblClick()
    
-   Last.Background = Color.White
-   If Last.tag <> "form" Then ListView2.Visible = False  
+   ListView2.MoveCurrent
    
-End
-
-Public Sub txtSearch_GotFocus()
-   
-   EditArea_TextBoxes_SetRead_Status(True)
+   Select Case Last.tag.tag
+      Case "form"
+         Drug_Form_Select()
+      Case "company"
+         Company_Select()
+      Case "find generic component"
+         Generic_Names_Select()
+      Case "product information"
+         Product_Information_Select()
+      Case "atc"
+         ACT_Code_Select()
+   End Select
+   listview2.Visible = False  
    
 End
 
@@ -381,8 +1123,7 @@ Public Sub mnuGenerics_Click()
       Case "edit"
          modUtil.NotImplemented("Editing a generic component")
       Case "delete"
-         modUtil.NotImplemented("Deleting a generic component")
-         
+         Generic_Delete()         
    End Select
    
 End
@@ -396,15 +1137,24 @@ Public Sub tbAddGeneric_KeyPress()
 End
 
 Public Sub tbAddGeneric_Click()
+   '---------------------------------------------------
+   'User is creating a new generic, not in the database
+   '---------------------------------------------------
    
-   ListView1.Add(ListView1.count, txtGenericNew.text & " " & txtStrengthNew.text & " " & cmbUnits.text)
-   txtGenericNew.Clear()
-   txtStrengthNew.Clear()
-   txtGenericNew.SetFocus()
+   Dim newrow As New Collection
+   
+   newrow!generic = Trim(txtFindGenericComponent.text)
+   GridRows.Add(newRow, GridRows.count)
+   Gridview1_Refresh() 
+   txtFindGenericComponent.Clear()
+   txtFindGenericComponent.SetFocus()
    
 End
 
 Public Sub txtSearch_KeyPress()
+   '---------------------------------------------------------------------------
+   'User searching for existing drugs ?wants to scroll down onto the drugs list
+   '---------------------------------------------------------------------------
    
    If key.code = key.down Then
       If cvwDrugs.count Then
@@ -416,10 +1166,87 @@ Public Sub txtSearch_KeyPress()
    
 End
 
+Public Sub txtSearch_KeyRelease()
+   '-----------------------------------------------
+   'Show all existing drugs for the txtSearch text
+   '-----------------------------------------------  
+   
+   Reload()
+   
+End
+
+Public Sub txtSearch_GotFocus()
+   '------------------------------------------------------------------------------------------
+   'User has clicked on the textbox to search for drug to view its details, i.e existing drugs
+   '------------------------------------------------------------------------------------------   
+   
+   EditArea_TextBoxes_SetReadOnly_Status(True)
+   With lblBrand
+      .foreground = Color.Black
+      .text = "Brand"
+   End With
+   
+End
+
 Public Sub EditArea_Combo_KeyPress()
    
-   If key.code = key.return Then
-      tbAddGeneric.SetFocus()
-   End If   
+   Select Case Last.tag
+      Case "units"
+         If key.code = key.return Then
+            txtPackSize.SetFocus()
+         End If   
+   End Select
+   
+End
 
+Public Sub HSplit_DataEntry_Resize()
+   
+   listview2.width = txtFindGenericComponent.Width
+   
+End
+
+Public Sub EditArea_Combo_Click()
+   
+   If bexit Then Return 
+   If Last.tag = "units" Then
+      drug!pack!amount_unit = units[Last.index]
+      txtPackSize.SetFocus()
+   Endif
+   
+End
+
+Public Sub EditArea_CheckBox_Click()
+   
+   Select Case Last.tag
+      Case "permitted in sport"
+      Case "share drug"
+         If Last.value = True Then 
+            drug!product!shared = True
+         Else 
+            drug!product!shared = False
+         End If   
+      Case "makes drowsy"
+         
+   End Select
+   
+End
+
+Public Sub cvwDrugs_Menu()
+
+   If Last.count Then mnuDrugs.Popup()
+
+End
+
+Public Sub mnuDrugs_Click()
+   
+  Select Case Last.tag
+  Case "edit"
+       Drug_Edit()
+  Case "delete"
+  modUtil.NotImplemented("Deleting a drug")
+  Case "change fonts"
+   modUtil.Columnview_SetFont(cvwDrugs, "Drugs")
+  End Select
+                
+   
 End

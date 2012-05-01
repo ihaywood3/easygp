@@ -18,6 +18,7 @@
 Private $hconn As Connection
 Private bTransaction As Boolean
 Private my_current_user As Collection
+Private pg_socket_file As Stream
 
 Property Read currentUser As Collection
 Property Read IsAdmin As Boolean
@@ -25,6 +26,11 @@ Property Read IsConnected As Boolean
 Property Read DbName As String
 Property Read DbHost As String
 
+Library "libpq:5"
+Extern PQnotifies(conn As Pointer) As Pointer
+Extern PQconsumeInput(conn As Pointer)
+Extern PQsocket(conn As Pointer) As Integer
+Extern PQfreemem(obj As Pointer)
 
 Private Function timeDiff(startTime As Float) As String
   
@@ -60,8 +66,11 @@ End
 
 Public Function currentUser_FullName() As String
   
+  If IsNull(my_current_user)
+      Return "The Admin User"
+  Else
    Return my_current_user!title & " " & my_current_user!wholename
-  
+  Endif
 End
 
 Public Function userName() As String
@@ -105,11 +114,38 @@ Public Function dbConnect_global(host As String, database As String, login As St
   CheckDBVersion()
   my_current_user = modConsultDBI.Staff_member_Get()
   DB.Current = $hconn
+  pg_socket_file = Open "." & PQsocket($hconn.Handle) For Read Watch
+  $hconn.Exec("LISTEN hello_gambas")
   Return "success"
 Catch
   Return DConv(Error.Text)
-
 End
+
+Public Sub File_Read()
+  Dim notifies As Pointer
+  Dim notifies2 As Pointer
+  Dim notify_string As String
+  Dim notify_pid As Integer
+  Dim notify_param As String
+   
+  PQconsumeInput($hconn.Handle)
+  notifies = PQnotifies($hconn.Handle)
+  If Not IsNull(notifies) Then
+     notifies2 = notifies
+     notify_string = String@(Pointer@(notifies))
+     notifies += SizeOf(gb.Pointer)
+     notify_pid = Integer@(notifies)
+     notifies += SizeOf(gb.Pointer) 'remember C structs are padded for speed to the larger type
+     notify_param = String@(Pointer@(notifies))
+     Debug "Hey, I received a notification!"
+     Debug "REL: "; notify_string
+     Debug "PID: "; notify_pid
+     Debug "PARAM: "; notify_param
+     PQfreemem(notifies2)
+  Endif
+  
+End
+
 
 Private Sub CheckDBVersion()
   Dim db_version As Collection
@@ -358,8 +394,7 @@ Public Function update(table As String, old_data As Collection, new_data As Coll
   Return False
 End
 
-'Public Sub update_array(tbl As String, old_pk As Integer, fields As String[], vals As Variant[])'
-Public Sub update_array(tbl As String, old_pk As Variant, fields As String[], vals As Variant[]) 'IAN SOME PRIMARY KEYS ARE STRINGS
+Public Sub update_array(tbl As String, old_pk As Variant, fields As String[], vals As Variant[])
 
   Dim i As Integer = 0
   Dim changes As New String[]
@@ -380,12 +415,7 @@ Public Sub update_array(tbl As String, old_pk As Variant, fields As String[], va
        changes.Push($hconn.Subst(fields[i] & " = &1", field))
     End If
   Next
-  'IAN FIX THIS, I've change it as some primary keys are strings eg most of the drug stuff
-  If TypeOf(old_pk) = gb.String Then
-     exec_query("UPDATE " & tbl & " SET " & changes.Join(",") & " WHERE pk = $$" & old_pk & "$$")
-  Else
-     exec_query("UPDATE " & tbl & " SET " & changes.Join(",") & " WHERE pk = " & old_pk)
-  Endif
+  exec_query($hconn.Subst("UPDATE " & tbl & " SET " & changes.Join(",") & " WHERE pk = &1 ", old_pk))
   
 End
 

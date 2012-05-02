@@ -32,27 +32,38 @@ Property Read Key As String
 ' allows database columns to be set as if this was a Collection
 ' so row!username = "John" sets field "username" to "John"
 Public Sub _put(value As Variant, field As String)
+   Dim old_val As Variant
+   Dim is_new As Boolean = False
    
-   coll[field] = value
-   allkeys = Null
-   If Not mychanged.Exist(field) Then mychanged.Add(field)
+   If coll.Exist(field) Then
+      old_val = _get(field)
+   Else 
+      is_new = True
+   Endif
+   Me.put_unchanged(value, field)
+   If Not mychanged.Exist(field) And If (old_val <> value Or is_new) Then mychanged.Add(field)
    
 End
 
+Public Sub put_unchanged(value As Variant, field As String)
+   
+   If IsNull(value) Then 
+      coll[field] = "$*~NUL&L*"
+   Else
+      coll[field] = value
+   Endif
+   
+End
 ' allows database columns to be accessed like a Collection, so
 ' row!username returns "John" after the _put command above
 Public Function _get(field As String) As Variant
    
   If coll.Exist(field) Then
+    If coll[field] = "$*~NUL&L*" Then Return Null
     Return coll[field]
   Else
-    If mychanged.Exist(field) Then
-      ' not in coll but was changed: ergo it is NULL
-      Return Null
-    Else
-      ' it never existed at all
-      Error.Raise("Key " & field & " does not exist") ' Python-style error
-    Endif
+    ' it never existed at all
+    Error.Raise("Key " & field & " does not exist") ' Python-style error
   Endif 
    
 End
@@ -71,7 +82,6 @@ End
 Public Function Exist(field As String) As Boolean
    
   If coll.Exist(field) Then Return True
-  If mychanged.Exist(field) Then Return True
   Return False 
    
 End
@@ -82,14 +92,16 @@ Private Function changed_Read() As String[]
 
 End
 
-Public Sub Save(table As String, pk_view_name As String)
+Public Sub Save(table As String, pk_view_name As String, Optional fields As String[])
    
   ' saves the changed fields to the backend database
   ' table: the name of the table to save to (including the schema)
   ' pk_view_name: the name of this table's pk in the view that
   ' the row may come from. If exists used as PK for UPDATE, if
   ' doesn't, INSERT is performed.   
+  ' fields: explicitly state the fields to save, otherwise use all changed fields
   Dim vals As New Variant[]
+  Dim changed_fields As New String[]
   Dim new_coll As Collection
   Dim s As String
   
@@ -97,30 +109,57 @@ Public Sub Save(table As String, pk_view_name As String)
   If coll.Exist(pk_view_name) Then
     ' old pk exists so do update
        ' create update string
-       For Each s In mychanged
-         vals.Add(coll[s]) 
-       Next
-       modDBConnect.update_array(table, coll[pk_view_name], mychanged, vals)
+       If IsNull(fields) Then
+          changed_fields = mychanged
+          For Each s In mychanged
+            vals.Add(_get(s)) 
+          Next
+       Else
+          For Each s In fields
+             If mychanged.Exist(s) Then
+               vals.Add(_get(s))
+               changed_fields.Add(s)
+             Endif
+          Next
+       Endif
+       modDBConnect.update_array(table, coll[pk_view_name], changed_fields, vals)
   Else
     ' insert
     new_coll = New Collection
-    For Each s In mychanged
-       new_coll.Add(coll[s], s)
-    Next
+    If IsNull(fields) Then
+       For Each s In mychanged
+         new_coll.Add(_get(s), s)
+       Next
+    Else
+       For Each s In fields
+          If mychanged.Exist(s) Then
+             new_coll.Add(_get(s), s)
+          Endif
+       Next
+    Endif
     coll[pk_view_name] = modDBConnect.insert(table, new_coll) 
   Endif
-  mychanged = New String[]
+  
+  If IsNull(fields) Then
+     mychanged = New String[]
+  Else
+     ' preserve changed status on fields we didn't save on this call.
+     changed_fields = New String[]
+     For Each s In mychanged
+        If Not fields.Exist(s) Then changed_fields.Add(s)
+     Next
+     mychanged = changed_fields
+  Endif
 End
 
 
 Static Public Sub UnitTest(form_main As FMain)
    Dim coll As Collection
    
-   
    coll = modDBConnect.exec_query_row("select * from contacts.data_persons where pk=1")
    Debug coll["1"]!memo
    coll["1"]!memo = Null
-   coll["1"].Save("contacts.data_persons", "pk")
+   coll["1"].Save("contacts.data_persons", "pk", ["memo"])
    
 End
 
@@ -140,9 +179,6 @@ Private Sub Recompute_Allkeys()
    Let allkeys = New String[]
    For Each v In coll
       allkeys.Add(coll.Key)
-   Next
-   For Each v In mychanged
-      If Not allkeys.Exist(v) Then allkeys.Add(v)
    Next
 
 End

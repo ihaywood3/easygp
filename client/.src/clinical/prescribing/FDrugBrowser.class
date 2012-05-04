@@ -118,7 +118,10 @@ Public Sub Init()
    cmbUnits.Add("mls")
    
    With cvwDrugs
-      .Columns.count = 5
+      .Columns.count = 2
+      .Columns[0].text = "Brand Name"
+      .Columns[1].text = "Generic Name"
+   
    End With
    With Form_PDF = New (FPDF, VBox_PDF)
       .btZoomIn.Visible = True
@@ -144,10 +147,12 @@ Public Sub Init()
 End Sub
 
 Public Sub Reload()
-   
-   drugs = modPrescribingDBI.Brands_Get(Trim(txtSearch.text)) 'FIXME RENAME
-   Drugs_Fill_List(drugs)
-   
+
+   If Trim(txtSearch.text) <> "" Then
+      drugs = modPrescribingDBI.Brands_Get(Trim(txtSearch.text)) 'FIXME RENAME
+      Drugs_Fill_List(drugs)
+   End If    
+
 End
 
 Public Sub ACT_Codes_Get()
@@ -254,18 +259,22 @@ Public Sub Gridview1_Load(generics As String, strengths As String)
    Dim gridrow As Integer
    Dim generic_components As String[]
    Dim generic_strengths As String[]
+   Dim iWidestGenericName As Integer
    
    gridview1.Columns.Count = 3
    If IsNull(generics) Then Return
    If generics = "" Then Return
    generic_components = Split(generics, ";")
    generic_strengths = Split(strengths, "-")
-   gridview1.rows.Count = generic_components.Count
+   gridview1.rows.Count = generic_components.Count 
    For gridrow = 0 To generic_components.Max
       gridview1[gridrow, 0].Text = generic_components[gridrow]
       Try gridview1[gridrow, 1].Text = generic_strengths[gridrow] 'there may be no strengths
+      lblMeasure.text = gridview1[gridrow, 0].text
+      iWidestGenericName = Max(lblMeasure.width, iWidestGenericName)    
    Next
-   
+   gridview1.Columns[0].width = iWidestGenericName
+
 End
 
 Public Sub Gridview1_DblClick()
@@ -340,56 +349,11 @@ Public Sub Move_EditingTextBox()
    
 End
 
-Public Sub Generic_Names_Select()
-
-   Dim irow As Integer
-   Dim generic As String
-   Dim generic_components As New String[]
-   Dim strength As String
-   Dim strengths As New String[]
-   Dim iExitingGenericsCount As Integer
-   Dim iWidestGenericName As Integer
-   
-   listview2.MoveCurrent()
-   bExit = True  
-   txtFindGenericComponent.text = ""
-   bExit = False 
-   If gridview1.Rows.count Then 
-      For irow = 0 To gridview1.rows.count - 1
-         If gridview1[irow, 0].text = Trim(txtFindGenericComponent.text) Then Return
-         Inc iExitingGenericsCount
-         lblMeasure.text = gridview1[irow, 0].text
-         iWidestGenericName = Max(lblMeasure.width, iWidestGenericName)
-      Next
-   End If
-   generic_components = Split(generics[ListView2.Item.key]!generic, ";")
-   strengths = Split(generics[ListView2.Item.key]!strength, "-")
-   
-   For irow = 0 To generic_components.count - 1
-      
-      gridview1.Rows.count = iExitingGenericsCount + 1
-      gridview1[iExitingGenericsCount, 0].text = generic_components[irow]
-      lblMeasure.text = gridview1[irow, 0].text
-      iWidestGenericName = Max(lblMeasure.width, iWidestGenericName)
-      If strengths.Count Then gridview1[iExitingGenericsCount, 1].text = strengths[irow]
-      HBox_GenericsGrid.Height = (txtEditGrid.height + 1) * gridview1.Rows.count
-      Inc iExitingGenericsCount
-   Next
-   Gridview1.columns[0].width = iWidestGenericName
-   txtFindGenericComponent.SetFocus()
-End
- 
-   
-Public Sub Generic_Delete()
-   '----------------------------------------------------------
-   'Deletes one of the generic components of a user-added drug
-   '----------------------------------------------------------   
-   
-   gridview1.Rows.Remove(onrow)
-End
-
 Public Sub Generic_Names_Get()
-   
+   '---------------------------------------------------------------------
+   'Searches the existing generics in the database, presents list to user
+   '---------------------------------------------------------------------  
+
    Dim generic As Collection
    
    If Trim(txtFindGenericComponent.text) = "" Then Return 
@@ -406,6 +370,58 @@ Public Sub Generic_Names_Get()
    Else
       listview2.Visible = False  
    End If   
+   
+End
+
+Public Sub Generic_Names_Select()
+   '---------------------------------------------------------------------------------------------
+   'User is selecting an existing generic, this may be compound e.g paracetamol;codeine phosphate
+   'Check through existing generics in the grid and don't insert a duplicated name
+   'otherwise, increment the grid rowcount, insert the new generic and/or strength
+   'set the generic name column to the widest generic name in the grid
+   '---------------------------------------------------------------------------------------------
+
+   Dim irow As Integer
+   Dim generic As String
+   Dim generic_components As New String[]
+   Dim strength As String
+   Dim strengths As New String[]
+   ' Dim iExitingGenericsCount As Integer
+   Dim iWidestGenericName As Integer
+   
+   listview2.MoveCurrent()
+   bExit = True  
+   txtFindGenericComponent.text = ""
+   bExit = False 
+   If gridview1.Rows.count Then                                                           'existing rows in grid?
+      For irow = 0 To gridview1.rows.count - 1                                            'check not duplicate
+         If gridview1[irow, 0].text = Trim(txtFindGenericComponent.text) Then Return
+         '  Inc iExitingGenericsCount
+         lblMeasure.text = gridview1[irow, 0].text                                        'start measuring the generic's width when displayed
+         iWidestGenericName = Max(lblMeasure.width, iWidestGenericName)
+      Next
+   End If
+   generic_components = Split(generics[ListView2.Item.key]!generic, ";")                  'split new components
+   strengths = Split(generics[ListView2.Item.key]!strength, "-")                          'and strengths
+   For irow = 0 To generic_components.count - 1                                           'for all the new generics
+      Inc gridview1.Rows.count
+      gridview1[gridview1.Rows.count - 1, 0].text = generic_components[irow]
+      lblMeasure.text = gridview1[irow, 0].text
+      iWidestGenericName = Max(lblMeasure.width, iWidestGenericName)
+      If strengths.Count Then gridview1[gridview1.Rows.count - 1, 1].text = strengths[irow]
+      HBox_GenericsGrid.Height = (txtEditGrid.height + 1) * gridview1.Rows.count
+   Next
+   Gridview1.columns[0].width = iWidestGenericName
+   txtFindGenericComponent.SetFocus()
+
+End
+
+Public Sub Generic_Delete()
+   '----------------------------------------------------------
+   'Deletes one of the generic components of a user-added drug
+   '----------------------------------------------------------   
+   
+   gridview1.Rows.Remove(onrow)
    
 End
 
@@ -457,11 +473,8 @@ Public Sub Drugs_Fill_List(drugs As Collection)
       cvwDrugs[brand!pk_view][0] = brand!brand
       cvwDrugs[brand!pk_view][1] = brand!generic
       cvwDrugs[brand!pk_view][2] = brand!strength & " " & brand!form
-      ' If Not IsNull(brand!product_information_filename) Then
-      '    cvwDrugs[brand!pk_view][3] = "PI available"
-      ' Endif
    Next
-   
+   cvwDRugs.Columns[0].Width = cvwDrugs.width / 2
 End
 
 Public Sub cvwDrugs_Select()
@@ -489,7 +502,6 @@ Public Sub Drug_Show()
    HBox_AddGeneric.Visible = False
    Gridview1.Mode = Select.None
    cvwDrugs.MoveCurrent
-   Print "bExit is now", bexit
    drug = drugs[cvwDrugs.Item.key]
    txtBrand.text = drug!brand
    txtACTName.text = drug!atcname  
@@ -563,10 +575,12 @@ Public Sub EditArea_Clear()
       .foreground = Color.Black
       .text = "Brand"
    End With
-   
+   listview2.Visible = False  
+   Form_PDF.PBox.Visible = False 
+
 End
 
-Private Sub Drug_New()
+Public Sub Drug_New()
    
    EditArea_Clear()
    modEditAreaHelpers.Help_Show("adding-a-new-drug.html", form_help)
@@ -588,6 +602,10 @@ Private Sub Drug_New()
    gridview1.Columns.count = 2
    HBox_GenericsGrid.Height = txtEditGrid.Height + 1
    txtBrand.SetFocus()
+   VBox_EditArea_Inner.Enabled = True
+   Vbox_EditArea_Outer.Enabled = True
+   
+   Wait
    
 End
 
@@ -599,7 +617,7 @@ Public Sub EditArea_TextBoxes_SetReadOnly_Status(bflag As Boolean)
    txtComment.ReadOnly = bflag
    txtACTName.ReadOnly = bflag
    txtVolume.ReadOnly = bflag
-
+   
 End
 
 Public Sub Drug_Edit()
@@ -819,6 +837,8 @@ Public Sub EditArea_Buttons_Click()
          Drug_New()
       Case "save"
          Save()
+      Case "refresh"
+         Reload()
    End Select
    
 End
@@ -1077,8 +1097,9 @@ Public Sub txtSearch_GotFocus()
    '------------------------------------------------------------------------------------------
    'User has clicked on the textbox to search for drug to view its details, i.e existing drugs
    '------------------------------------------------------------------------------------------   
-   
-   EditArea_TextBoxes_SetReadOnly_Status(True)
+   ' EditArea_Clear()
+   ' EditArea_TextBoxes_SetReadOnly_Status(True)
+
    With lblBrand
       .foreground = Color.Black
       .text = "Brand"

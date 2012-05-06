@@ -53,7 +53,7 @@
 ' Fourth level
 ' 
 ' The fourth level of the code indicates the chemical/therapeutic/pharmacological subgroup and consists of one letter.
-' 
+'   Select Case ActiveWindow_Get_Name() 
 ' Example: C03CA Sulfonamides
 ' Fifth level
 ' 
@@ -63,6 +63,8 @@
 ' 
 ' FIXME: implement schedule/poison in save + edit_area_key_validate for eg numbers for packs
 '        check if can put numbers/decimal validation on txtvolume if if ever need et 1mg/100ml
+' BUGS : Save() will crash if an generic exists
+'      : Gridview1_Load() iWidestGenericName not setting the column 0 to correct width
 '----------------------------------------------------------------------------------------------------------------------
 Private pic_pdf As Picture = Picture["icons/20/pdf2020.png"]
 Private empty_2020png As Picture = Picture["icons/20/empty2020.png"]
@@ -77,11 +79,13 @@ Private fk_brand As String
 Private fk_product As String
 Private fk_company As Variant
 Private fk_form As Integer
+Private fk_schedule As Integer
 Private atccode As String
 Private drugs As Collection
+Private schedules As Collection
+Private pregnancy_categories As Collection
 Private bExit As Boolean
 Private Form_PDF As FPdf
-'Private GridRows As Collection
 Private generics As Collection
 Private onrow As Integer
 
@@ -121,7 +125,7 @@ Public Sub Init()
       .Columns.count = 2
       .Columns[0].text = "Brand Name"
       .Columns[1].text = "Generic Name"
-   
+      
    End With
    With Form_PDF = New (FPDF, VBox_PDF)
       .btZoomIn.Visible = True
@@ -135,10 +139,13 @@ Public Sub Init()
       .Columns[3].width = 78
       .Rows.count = 1
    End With
-   modUtil.LoadCombo(cmbSchedules, modPrescribingDBI.Schedules_Get(), "schedule")
+   schedules = modPrescribingDBI.Schedules_Get()
+   modUtil.LoadCombo(cmbSchedules, Schedules, "schedule")
+   
    If Not modDBConnect.IsAdmin Then 
       Product_Information_Dir = modAdminDBI.Config_Get("product_information_directory", "", Null, modDBConnect.currentUser!fk_clinic)
    Endif
+   txtEditGrid.Height = txtBrand.Height
    bExit = True   
    Settings_Load() 'prevent the Hsplit1_resize event
    bExit = False  
@@ -147,12 +154,12 @@ Public Sub Init()
 End Sub
 
 Public Sub Reload()
-
+   
    If Trim(txtSearch.text) <> "" Then
       drugs = modPrescribingDBI.Brands_Get(Trim(txtSearch.text)) 'FIXME RENAME
       Drugs_Fill_List(drugs)
    End If    
-
+   
 End
 
 Public Sub ACT_Codes_Get()
@@ -274,7 +281,7 @@ Public Sub Gridview1_Load(generics As String, strengths As String)
       iWidestGenericName = Max(lblMeasure.width, iWidestGenericName)    
    Next
    gridview1.Columns[0].width = iWidestGenericName
-
+   HBox_GenericsGrid.height = gridview1.rows.Count * txtEditGrid.height + 5
 End
 
 Public Sub Gridview1_DblClick()
@@ -306,7 +313,7 @@ Public Sub Show_EditingTextBox()
    $hEditor = hEditor
    Try Move_EditingTextBox
    $hEditor.Show
-  
+   
    txtEditGrid.Visible = True 
    $hEditor.SetFocus
    $hEditor = txtEditGrid   
@@ -348,7 +355,7 @@ Public Sub Move_EditingTextBox()
    With gridview1[gridview1.Row, 1]
       '  txtEditGrid.Move(gridview1.X + (gridview1.width - gridview1.Columns[0].width - gridview1.Columns[1].width - 3) - gridview1.ScrollX, gridview1.Y + itop + 1 - gridview1.ScrollY, .Width + 5, iheight)
       txtEditGrid.Move(gridview1.X + colpos - gridview1.ScrollX, gridview1.Y + itop + 1 - gridview1.ScrollY, txtEditGrid.width + 5, iheight)
- 
+      
    End With
    
 End
@@ -357,7 +364,7 @@ Public Sub Generic_Names_Get()
    '---------------------------------------------------------------------
    'Searches the existing generics in the database, presents list to user
    '---------------------------------------------------------------------  
-
+   
    Dim generic As Collection
    
    If Trim(txtFindGenericComponent.text) = "" Then Return 
@@ -384,7 +391,7 @@ Public Sub Generic_Names_Select()
    'otherwise, increment the grid rowcount, insert the new generic and/or strength
    'set the generic name column to the widest generic name in the grid
    '---------------------------------------------------------------------------------------------
-
+   
    Dim irow As Integer
    Dim generic As String
    Dim generic_components As New String[]
@@ -417,7 +424,7 @@ Public Sub Generic_Names_Select()
    Next
    Gridview1.columns[0].width = iWidestGenericName
    txtFindGenericComponent.SetFocus()
-
+   
 End
 
 Public Sub Generic_Delete()
@@ -479,6 +486,7 @@ Public Sub Drugs_Fill_List(drugs As Collection)
       cvwDrugs[brand!pk_view][2] = brand!strength & " " & brand!form
    Next
    cvwDRugs.Columns[0].Width = cvwDrugs.width / 2
+
 End
 
 Public Sub cvwDrugs_Select()
@@ -529,11 +537,23 @@ Public Sub Drug_Show()
    If Not IsNull(drug!pack_size) Then
       txtPackSize.Text = drug!pack_size 
    Endif
+   If drug!shared = True Then
+      chkShareDrug.Value = True
+   Else
+      chkShareDrug.value = False 
+   Endif
+   If drug!fk_schedule <> 0 Then 
+      cmbSchedules.Index = drug!fk_schedule
+   Else
+      cmbSchedules.Index = -1
+   End If   
+   txtComment.text = drug!free_comment
    fk_product = drug!fk_product
-   fk_brand = drug!fk_drug
+   fk_brand = drug!fk_brand
    atccode = drug!atccode
    fk_company = drug!fk_company
    fk_form = drug!fk_form
+   fk_schedule = drug!fk_schedule
    EditArea_Notify_Data_Change(False)
    bExit = False
    
@@ -581,7 +601,7 @@ Public Sub EditArea_Clear()
    End With
    listview2.Visible = False  
    Form_PDF.PBox.Visible = False 
-
+   
 End
 
 Public Sub Drug_New()
@@ -595,6 +615,7 @@ Public Sub Drug_New()
    atccode = Null
    fk_product = Null
    fk_form = 0          'an integer can't be null
+   fk_schedule = 0
    Hbox_AddGeneric.Visible = True  
    Gridview1.Mode = Select.Single
    cmbSchedules.enabled = True
@@ -630,7 +651,8 @@ Public Sub Drug_Edit()
    EditArea_TextBoxes_SetReadOnly_Status(False)
    HBox_AddGeneric.Visible = True
    gridview1.Mode = Select.Single
-   
+   cmbSchedules.Enabled = True
+   cmbPregnancyCategory.Enabled = True
 End
 
 Public Sub Drug_Form_Select()
@@ -726,7 +748,7 @@ Public Sub Save()
    '-------------drug----------------  
    
    Dim generics As String
-   Dim strengths As String
+   Dim strengths As String 
    Dim fk_existing_product_key As String
    Dim fk_existing_brand_key As String
    Dim product As CRow
@@ -781,6 +803,12 @@ Public Sub Save()
    If Not IsNull(fk_existing_product_key) Then
       product.put_unchanged(fk_existing_product_key, "fk_product")
    Endif
+   If chkShareDrug.value = True Then
+      product!shared = True
+   Else
+      product!shared = False  
+   Endif
+   If fk_schedule <> 0 Then product!fk_schedule = fk_schedule
    product!generic = generics                                                   'will always have a generic name
    If strengths <> "" Then product!strength = strengths                              'may not have a strength
    product!fk_form = fk_form   
@@ -799,7 +827,7 @@ Public Sub Save()
    Endif
    If IsNull(fk_existing_brand_key) Then
       brand!brand = brandname
-      brand!fk_product = fk_existing_brand_key
+      brand!fk_product = fk_existing_product_key
    Else
       brand.put_unchanged(fk_existing_brand_key, "fk_brand")
    Endif
@@ -1106,7 +1134,7 @@ Public Sub txtSearch_GotFocus()
    '------------------------------------------------------------------------------------------   
    ' EditArea_Clear()
    ' EditArea_TextBoxes_SetReadOnly_Status(True)
-
+   
    With lblBrand
       .foreground = Color.Black
       .text = "Brand"
@@ -1134,11 +1162,17 @@ End
 
 Public Sub EditArea_Combo_Click()
    
-   If bexit Then Return 
+   If bexit = True Or Last.index = -1 Then Return 
+   Select Case Last.tag
+      Case "units"
+      Case "pregnancy category"
+      Case "schedule'"
+         fk_schedule = schedules[Last.Item.key]
+   End Select
    If Last.tag = "units" Then
       txtPackSize.SetFocus()
    Endif
-   
+   EditArea_Notify_Data_Change(True)
 End
 
 Public Sub EditArea_CheckBox_Click()
@@ -1148,7 +1182,7 @@ Public Sub EditArea_CheckBox_Click()
       Case "share drug"  
       Case "makes drowsy"
    End Select
-   
+   EditArea_Notify_Data_Change(True)
 End
 
 Public Sub cvwDrugs_Menu()
@@ -1174,4 +1208,16 @@ Public Sub Gridview1_Select()
    
    onrow = gridview1.row
    
+End
+
+Public Sub VSplit_DataEntry_Resize()
+   Dim i As Integer
+   
+   txtEditGrid.Height = txtBrand.Height
+   For i = 0 To gridview1.Rows.Count - 1
+      gridview1.Rows[i].height = txtEditGrid.Height
+   Next
+   HBox_GenericsGrid.Height = 5 + gridview1.Rows.count * txtEditGrid.Height
+  
+
 End

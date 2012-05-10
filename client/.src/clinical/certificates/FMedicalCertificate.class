@@ -17,8 +17,9 @@
 '--------------------------------------------------------------------------
 ' PURPOSE   A module to enter medical certificates
 '           See also FMedicalCertificates which manages/reviews all of them
-' TODOS     Insert health conditions menu/link certificate to this
-' FIXME     lblMeasure not resizing the internal labels in edit area
+' TODOS     Add Email certificate and electronic signature
+' BUGS      If user clicks preview from FClinical toolbar when certificate
+'           has been edited the preview does not reflect the changes
 '--------------------------------------------------------------------------
 
 Private bExit As Boolean                           'exit subroutines as needed
@@ -56,6 +57,15 @@ Public Sub Form_Show()
    '------------------------------------------------------------
    
    bSwitch_To_FClinical = True  
+   
+End
+
+Public Sub Form_Close()
+   '--------------------------------------------------------------------------------
+   'Save settings if closed by the user as opposed to FClinical saving tabs settings
+   '--------------------------------------------------------------------------------
+
+   Settings_Save()
    
 End
 
@@ -104,7 +114,7 @@ Private Sub Certificates_Nofity_Deleted()
    '------------------------------------------------------------------------------------------
    'Update the label at the top of the certificates list to show user if any have been deleted
    '------------------------------------------------------------------------------------------
-
+   
    Dim sMsg As String
    
    lblCertificatesThisConsultation.text = "Certificates This Consultation"
@@ -122,7 +132,10 @@ Private Sub Settings_Load()
 End
 
 Public Sub Settings_Save()
-   
+   '-----------------------------------------------------------
+   'Public because this may be called by FClinical closing down   
+   '-----------------------------------------------------------
+
    Settings["Medical Certificates/VSplit_Certificates.Layout"] = VSplit_Certificates.Layout 
    
 End
@@ -210,15 +223,15 @@ Public Sub mnuMedicalCertificates_Click()
    '------------------------------------------------------------------
    'When the certificates columnview was clicked on to show the menu
    'the  Certificate Collection  already exists as it has been filled
-   'by the user clicking on a particular row
+   'by the user clicking on a particular row. If user has deleted
+   'certificates then when the menu was popped up in the first place
+   'the 'undo delete' submenu's have as their tag the collection
+   'of the deleted certificate, hence the TypeOf test here.
    '------------------------------------------------------------------
    
    Dim MCert As Collection 
    
-   
-   
-   
-  If TypeOf(Last.tag) = gb.String Then 
+   If TypeOf(Last.tag) = gb.String Then 
       Select Case Last.tag
          Case "edit"
             Edit()
@@ -231,21 +244,24 @@ Public Sub mnuMedicalCertificates_Click()
                modPrinting.Print_latex(MCert!latex, const.Paper_Plain, 1)
             Next
          Case "help"
-            FClinical.Editor_ShowPage_External("browser", "Help", File.Load(Application.Path &/ "help/medical-certificates.html"))
+            FClinical.Editor_ShowPage_External("browser", "Help Medical Certificates", modEditAreaHelpers.Help_HTML_Fix_Image_Path("medical-certificates.html"))
          Case "preview"
             Certificate_Preview() 
          Case "change font"
             modUtil.Columnview_SetFont(cvwCertificates, "Medical Certificates")
-       End Select
+      End Select
    Else              'tag is a collection = the deleted certificate 
-         Delete_Undo(Last.tag)
-  
+      Delete_Undo(Last.tag)
+      
    End If   
-    
+   
 End
 
 Public Sub ListView1_KeyPress()
-   
+   '-------------------------------------------------
+   'the user's reasons for certficate list is showing
+   '-------------------------------------------------   
+
    If Key.code = Key.Return Then
       listview1_DblClick()
    End If
@@ -271,7 +287,6 @@ Public Sub EditAreaButtons_Click()
    Dim txtbox As TextBox
    
    Select Case Last.tag
-         
       Case "pick date"
          For Each Hctrl In Last.parent.children
             If hctrl Is Textbox Then
@@ -285,16 +300,17 @@ Public Sub EditAreaButtons_Click()
             .left = Last.Parent.left
             .Raise()
          End With     
-         
          DateChooser1.Parent.Visible = True 
          DateChooser1.Parent.Raise 
-         
    End Select
    
 End
 
 Public Sub DateChooser1_Activate()
-   
+   '------------------------------------------------
+   'User is selecting a date from the popup calander
+   '------------------------------------------------   
+
    Last.tag.text = Format(Last.value, "dd/mm/yyyy")
    HBox_Calander.Visible = False  
    Select Case Last.tag.tag
@@ -500,6 +516,61 @@ Public Sub Save()
    '--------------------------------------------  
    
    Dim sProgressNotes As String
+   Dim Certificate As CRow 
+   
+   If Vbox_EditArea_Outer.Padding = 0 Then Return 
+   If Not Valid_Certificate() Then Return
+   Vbox_EditArea_Outer.Enabled = False 
+   
+   Certificate = New CRow
+   If pk_view Then 
+      certificate.put_unchanged(pk_view, "pk_medicalcertificate")
+   End If 
+   If fk_progressnote = 0 Then fk_progressnote = -1               'not 0 if certificate being edited
+   
+   Certificate!reason = Trim(txtReason.Text)
+   If fk_coding_system <> 0 Then Certificate!fk_coding_system = fk_coding_system
+   If fk_code <> "" Then Certificate!fk_code = fk_code
+   Certificate!certificate_date = Val(txtdate.text) 'the actual date we want on certificate, may not be consult.date
+   Certificate!from_date = Val(txtDateFrom.text)
+   Try Certificate!to_date = Val(txtDateTo.text)
+   Certificate!notes = Trim(txtNotes.text)
+   Certificate!print_notes = CBool(chkPrintOnCertificate.value)
+   Certificate!fk_lu_illness_temporality = iFitness_Temporality
+   Certificate!fk_lu_fitness = iFitness
+   Certificate!fk_consult = currentconsult.GetPK()
+   Certificate!latex = MedicalCertificate_LaTex_Construct(Certificate).GetData()
+   sProgressNotes = Progress_Note_Construct()
+   modDBConnect.BeginTrans()
+   Certificate!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_MedicalCertificates, fk_progressnote, "Medical Certificates", 0, False)
+   Certificate.Save("clin_certificates.medical_certificates", "pk_medicalcertificate")
+   modPrinting.Print_latex(Certificate!latex, const.Paper_Plain, 1)
+   modDBConnect.CommitTrans()
+   Refresh_FClinical
+   Reload()
+   
+End
+
+'  
+Public Sub Save_Using_Collections()
+   '--------------------------------------------
+   'Saves the medical certificate to the backend FIXME REMOVE ME
+   '
+   '   fk_consult integer NOT NULL, -- foreign key to clin_consult.consult table identifies consult date and staff member
+   '   reason text,                 -- temporary concession to non-coders, the text reason for the certificate
+   '   fk_coding_system integer,    --  key To coding.lu_coding_system containing name Of coding system eg icpc, icd10
+   '   fk_code text,                -- the coded reason for the illness eg N18
+   '   fk_lu_illness_temporality integer NOT NULL, -- foreign key to fk_lu_illness_temporality table to tell temporal nature of the certificate...
+   '   from_date date NOT NULL,        -- Date from which the person was unwell or resuming workk
+   '   to_date date,                   -- Date to which the person will be unwell
+   '   deleted boolean DEFAULT false,  -- if true the record is marked as deleted
+   '   fk_lu_fitness integer,          -- fit or unfit
+   '   notes text                      -- optional notes
+   '   print_notes boolean             -- if true the the notes are printed on the certificate
+   '   date                            -- the actual date of certificate, may not be consult date
+   '--------------------------------------------  
+   
+   Dim sProgressNotes As String
    
    Certificate = New Collection 
    If Vbox_EditArea_Outer.Padding = 0 Then Return 
@@ -559,11 +630,11 @@ Public Sub Print()
    'Print the certificate and insert an annotation into the progress notes
    '----------------------------------------------------------------------
    
-   modPrinting.Print_latex(MedicalCertificate_LaTex_Construct().GetData(), const.Paper_Plain, 1)
+   modPrinting.Print_latex(certificate!latex, const.Paper_Plain, 1)
    
 End
 
-Public Sub MedicalCertificate_LaTex_Construct() As CTemplate
+Public Sub MedicalCertificate_LaTex_Construct(Certificate As CRow) As CTemplate
    
    Dim sName As String
    Dim sAddress As String
@@ -842,7 +913,10 @@ Public Sub Certificate_Preview()
    
    Dim filename As String 
    
-   Filename = modPrinting.Latex_To_PDF(MedicalCertificate_LaTex_Construct().GetData())
+   If IsNull(certificate) Then Return  
+   
+ 
+   Filename = modPrinting.Latex_To_PDF(certificate!latex)
    FClinical.Editor_ShowPage_External("pdf file", "MC:" & Format(Certificate!certificate_date, "dd/mm/yyyy"), filename)
    
 End
@@ -920,7 +994,7 @@ Public Sub Delete()
    '--------------------------------------------------------------------------------------
    
    bSwitch_To_FClinical = False  
-   If Message.Question("Are you sure you want to delete this certificate?\nThis action may not be reversable.", "Yes", "No") = 2 Then 
+   If Message.Question("Are you sure you want to delete this certificate?", "Yes", "No") = 2 Then 
       Return
    Else
       Deleted_Certificates.Add(certificate, certificate!pk_medicalcertificate)
@@ -940,10 +1014,11 @@ Public Sub Delete_Undo(Deleted_Certificate As Collection)
    '-----------------------------------------------
    'Undo a deleted certificate chosen from the menu
    '-----------------------------------------------
+
    Dim Commitresult As Result
    
    bSwitch_To_FClinical = False
- 
+   
    modDBConnect.update("clin_certificates.medical_certificates", Null, ["pk": Deleted_Certificate!pk_medicalcertificate, "deleted": False])
    modDBConnect.update("clin_consult.progressnotes", Null, ["pk": Deleted_Certificate!fk_progressnote, "deleted": False])
    Commitresult = modDBConnect.CommitTrans()

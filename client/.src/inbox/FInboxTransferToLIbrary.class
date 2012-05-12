@@ -1,0 +1,173 @@
+' Gambas class file
+
+Private Document As Collection
+Private Currentconsult As CConsult
+Private destination_dir As String
+Private sLibrary_Dir_Network As String
+Private sLibrary_Dir_Local As String
+Private sLibraryRootDir As String
+Private sDocumentDir As String
+Private bCopy As Boolean
+
+Public Sub Run() As Boolean
+   
+   Return Not Me.ShowModal()
+   
+End
+
+Public Sub Init(Doc As Collection, cons As CConsult, sMove_or_Copy As String)
+   
+   Dim mnuLibrary As Menu
+   Dim mnuWindow As Window
+   
+   Document = Doc
+   Currentconsult = cons
+   If InStr(sMove_or_Copy, "move") Then
+      btnOK.text = "Move to Library"
+      bCopy = False  
+   Else
+      btnOK.text = "Copy to Library"
+      bCopy = True
+   Endif
+   lblmeasure.text = "  Existing Filename  "
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
+   txtExistingFilename.text = Document!source_file
+   txtLibraryFolder.text = destination_dir
+   lblmeasure.text = "  Folders  "
+   lblfolders.Background = Me.Background
+   With mnuWindow = New Window(Hbox_Library)
+      .Background = Color.white
+      .Visible = True
+   End With
+   With mnuLibrary = New Menu(mnuWindow)
+      .tag = "the tag"
+      .text = "         "
+      .Visible = True
+      .Enabled = True
+      .Picture = Picture.Load("icons/16/checked.png")
+   End With
+   
+   sLibrary_Dir_Network = modAdminDBI.Config_Get("library_directory_network", "", Null, modDBConnect.currentUser!fk_clinic)
+   sLibrary_Dir_Local = modAdminDBI.Config_Get("library_directory_local", "", Null, modDBConnect.currentUser!fk_clinic)
+   sDocumentDir = modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") 
+   If IsDir(sLibrary_Dir_Network &/ Last.tag) Then  'if network not mounted then this will not exist
+      rbSiteNetwork.Enabled = True 
+      sLibraryRootDir = sLibrary_Dir_Network
+      lblfolders.text = " Select Network Folder:"
+   Else
+      rbSiteNetwork.Enabled = False 
+      If IsDir(sLibrary_Dir_Local) Then   
+         sLibraryRootDir = sLibrary_Dir_Local
+         lblfolders.text = "Select Local Folder"
+      End If   
+      
+   Endif
+   Make_Menu_Library(mnuLibrary, sLibraryRootDir)
+   
+End
+
+Public Sub mnuLibrary_Click()
+   
+   txtLibraryFolder.text = Last.tag
+   txtNewFilename.SetFocus()
+   
+End
+
+Public Sub btnOK_Click()
+   '----------------------------------------
+   'Validate the data, if ok, save and close
+   '----------------------------------------
+   '&/ SelectedDocument!source_file
+   
+   Dim dotpos As Integer
+   Dim fileExtension As String
+   Dim errMsg As String
+   Dim error_type As Integer
+   
+   fileExtension = File.Ext(sDocumentDir &/ Document!source_file)
+   If Right(txtNewFilename.text, Len(fileExtension)) <> fileExtension Then
+      Message.Info("Please correct the filename extension to match the orginal file before saving.")
+      Return
+   Endif
+   If IsDir(sDocumentDir) Then
+      If bCopy Then   
+         Try Copy sDocumentDir &/ Document!source_file To sLibraryRootDir &/ Trim(txtLibraryFolder.text) &/ Trim(txtNewFilename.text)
+         If Not Error Then
+            Message.Info("The file was successfully copied to your library.") 
+         Else
+            errMsg = "copied"
+            Goto FileTransfer_Error
+         Endif
+      Else
+         '----------------------------------------------------------------------------
+         'Try and move the document to the library, and mark it deleted in the backend
+         'Firstly, mark the document deleted in the backend
+         'Then lay down an audit trail - if this returns true, try moving the document
+         'If this fails > error message and roll back
+         'If succeeds then commit the transaction.
+         '----------------------------------------------------------------------------
+         modDBConnect.update("documents.documents", Null, ["pk": Document!pk_document, "deleted": True])
+         If modAudit.MakeAudit(Currentconsult, "moved to library", "documents.documents", Document!pk_document, const.cSection_Inbox, "moved to the users library") Then 
+            Try Move sDocumentDir &/ Document!source_file To sLibraryRootDir &/ Trim(txtLibraryFolder.text) &/ Trim(txtNewFilename.text)
+            If Not Error Then
+               modDBConnect.CommitTrans
+               Message.Info("The file was successfully moved to your library.") 
+            Else
+               modDBConnect.RollBack()
+               Goto FileTransfer_Error
+            End If   
+         Else
+            errMsg = "moved"
+            Goto FileTransfer_Error
+         Endif
+      Endif
+   End If 
+   Me.Close(True)   
+   Return 
+   
+FileTransfer_Error:
+   Message.Info("An error occurred - the file was not " & errMsg & " to your library.\n\n" & Error.text)
+Catch
+   Message.Info("An undefined error occurred")
+   
+End
+
+Public Sub btnCancel_Click()
+   
+   Me.Close
+   
+End
+
+Public Function Make_Menu_Library(ByRef mnuLibrary As Menu, sLibraryRootDir As String) As Menu
+   '--------------------------------------------------------------------
+   'Makes the library directory tree as a menu option
+   'Probably temporary, so I can save any circulars I want to my library
+   '--------------------------------------------------------------------
+   
+   Dim sDir As String           'hold a directory name
+   Dim sFile As String          'hold a file anme
+   Dim iKey As Integer
+   Dim iKey2 As Integer
+   Dim sKeyGenerated As String
+   Dim picTag As Picture
+   
+   Dim mnu As Menu
+   Dim dirs As New String[]
+   '   
+   For Each sDir In Dir(sLibraryRootDir)         'Get all the dir's and sort them
+      If IsDir(sLibraryRootDir &/ sDir) Then      'check if it is actually a directory 
+         dirs.Add(sDir, dirs.count)
+      End If   
+   Next
+   dirs.Sort(gb.IgnoreCase)
+   mnuLibrary.Children.Clear()
+   
+   '  ' mnuNonPatientDocuments_ToLIbrary.Children.Clear()   'remove all current child items
+   For Each sDir In Dirs                        'Add each directory to the menu if a directory
+      mnu = New Menu(mnuLibrary) As "mnuLibrary"
+      mnu.tag = sDir
+      mnu.caption = sDir
+   Next
+   '   
+   
+End

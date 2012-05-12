@@ -31,6 +31,7 @@
 '                  to remove the metadata form. Its event is over-ridden by FClinical
 '                  and the button will never be visible in Scanning  or Inbox
 '------------------------------------------------------------------------------------------
+Public StaffTypes As Collection              'eg 'medical', 'nursing'
 Public Contact_Type As Integer
 Private sLastSearchedFor As String           'last text user was looking for
 Public iDisplay_As As Integer 
@@ -101,8 +102,8 @@ Public Person As Collection   'do not make this private
 
 Public Sub Form_KeyPress()
    
-  ' Dim CtrlDown As Boolean
- '  Dim FnDown As Boolean
+   ' Dim CtrlDown As Boolean
+   '  Dim FnDown As Boolean
    'FIXME, i JUST WANT TO DETECT CTL + COMBINATION KEYS
    ' Select Case Key.Code
    '    Case key.F12
@@ -110,7 +111,6 @@ Public Sub Form_KeyPress()
    '       
    ' End Select
    
-    
 End 
 
 Public Sub Set_Comms(C As Collection)
@@ -220,7 +220,8 @@ Private Function SaveInScanning() As Boolean
    If Not Valid_Document() Then Return    'returns False
    
    Inc Application.Busy
-   If chkAllStaff.Value = True Then 
+   
+   If cmbStaffType.index <> -1 Then              'If document sent to one or more staff members, get all staff
       Staff_Members = modContactsDBI.Staff_Get() 'refresh the staff list,could have just employed someone!!!!!
    End If 
    d!fk_staff_filed_document = modDBConnect.currentUser!fk_staff
@@ -249,8 +250,9 @@ Private Function SaveInScanning() As Boolean
    modDBConnect.BeginTrans()
    
    If modAdminDBI.Config_Get("document_save_to_database", True) Then
+      Message.Info("STOP IMMEDIATELY: THIS CODE WILL NOT WORK D/W RICHARD")
       d!data = "BLOB:" & txtFilename.text
-      If chkAllStaff.Value = True Then 
+      If cmbStaffType.index <> -1 Then 
          For Each member In Staff_Members
             d!fk_staff_destination = member!fk_staff
             Try modArchiveDocumentsDBI.Save(d) ' BLOB saved the first time, re-uses fk_blob thereafter
@@ -267,28 +269,52 @@ Private Function SaveInScanning() As Boolean
          If Not Error Then bSuccess = True
       Endif
    Else
-      If chkAllStaff.Value = True Then
-         d!source_file = Document_Filename_Construct_AllStaff(d)
+      '------------------------------------------------------------------------------
+      'Send to any staff whose type eg general practitioner, matches the cmbstafftype
+      'If sending to all staff, have to make a copy of the document for all staff
+      'otherwise they can't action it e.g move to library etc as all will be
+      'operating on the same filename, and the first one who does something with it
+      'means its gone!
+      '------------------------------------------------------------------------------
+      If cmbStaffType.index <> -1 Then
          For Each member In Staff_Members
-            d!fk_staff_destination = member!fk_staff
-            pk_document = modArchiveDocumentsDBI.Save(d)
-            d.Remove("pk_document") 'don't want this key to force new copies
+            If member!fk_lu_staff_type = StaffTypes[cmbStaffType.index]!pk Then        
+               d!source_file = Replace(Document_Filename_Construct_AllStaff(d), "allstaff", member!logon_name)
+               d!fk_staff_destination = member!fk_staff
+               pk_document = modArchiveDocumentsDBI.Save(d)
+               d.Remove("pk_document") 'don't want this key to force new copies
+               Try Copy txtFilename.Text To modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ d!source_file
+               If Error Then
+                  Message.Info("Failed to copy this document to all staff members.\n\nPlease discuss with System Admin")
+                  modDBConnect.RollBack()
+                  Return   
+               Endif
+            End If  
          Next
+         Try Kill txtFilename.Text
+         If Not Error Then    
+            bSuccess = True
+         Else
+            modUtil.ReportError(Error.Text, Error.Backtrace)
+            modDBConnect.RollBack()
+            bSuccess = False  
+         End If 
       Else   
          pk_document = modArchiveDocumentsDBI.Save(d)
          ' chicken-and-egg issue: we need the PK to generate the filename but we need the filename to save the record
          d!source_file = Document_Filename_Construct(d)
          ' now "save twice": triggers a UPDATE carrying the filename
          modArchiveDocumentsDBI.Save(["pk_document": pk_document, "source_file": d!source_file])       
-      Endif
-      Try Move txtFilename.Text To modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ d!source_file
-      If Not Error Then
-         bSuccess = True
-      Else
-         modUtil.ReportError(Error.Text, Error.Backtrace)
-         modDBConnect.RollBack()
-         bSuccess = False  
-      Endif
+         
+         Try Move txtFilename.Text To modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ d!source_file
+         If Not Error Then
+            bSuccess = True
+         Else
+            modUtil.ReportError(Error.Text, Error.Backtrace)
+            modDBConnect.RollBack()
+            bSuccess = False  
+         Endif
+      End If   
    Endif
 Finally
    Dec Application.Busy
@@ -315,8 +341,9 @@ Private Function SaveNotInScanning() As Boolean
    
    If Not Valid_Document() Then Return
    Inc Application.Busy
-   If chkAllStaff.Value = True Then 
-      Staff_Members = modContactsDBI.Staff_Get() 'refresh the staff list,could have just employed someone!!!!!
+   If cmbStaffType.index <> -1 Then 
+        Message.Info("IF THIS IS SHOWING STOP AND CHECK WITH RICHARD")
+        Staff_Members = modContactsDBI.Staff_Get() 'refresh the staff list,could have just employed someone!!!!!
    End If 
    '-----------------------------------------------------------------------------------------------
    'This document has been previously saved to the backend via the clerical module, or incoming hl7
@@ -335,11 +362,14 @@ Private Function SaveNotInScanning() As Boolean
    '-----------------------------------------
    'Is this document being sent to all staff? FIXME THIS SECTION SHOULD BE REMOVED,ONLY NEEDED IN SCANNING
    '-----------------------------------------
-   If chkAllStaff.Value = True Then 
+   If cmbStaffType.index <> -1 Then 
+      Message.Info("IF THIS IS SHOWING STOP AND CHECK WITH RICHARD")
       For Each member In Staff_Members
-         d!fk_staff_destination = member!fk_staff
-         modArchiveDocumentsDBI.Save(d)
-         d.Remove("pk_document") 'don't want this key to force new copies
+         If member!fk_lu_staff_type = StaffTypes[cmbStaffType.index]!pk Then 
+            d!fk_staff_destination = member!fk_staff
+            modArchiveDocumentsDBI.Save(d)
+            d.Remove("pk_document") 'don't want this key to force new copies
+         End If   
       Next
    Else
       If bHas_sending_entity_fk_lu_request_type = False And rbDisplayAsResult.value = True Then 
@@ -351,6 +381,64 @@ Private Function SaveNotInScanning() As Boolean
    End If
    Dec Application.Busy
    Return bSuccess
+   
+End
+
+Private Function SaveNotInScanning_beforeRemovedchkAllStaff() As Boolean
+   '------------------------------------------------------------
+   'Saves changes to the currently displayed document's metadata
+   'documents = the old collection, set by form using this module
+   'Documents are never created in this module
+   'Returns true if successful
+   'if this save is from an exiting document:
+   '   documents = the collection of old documents
+   '   pk_document = key to the documents collection
+   '   only either new data or changes collected in collection d
+   'FIXME: put back in audit trail on document
+   '------------------------------------------------------------
+   ' 
+   ' Dim d As New Collection
+   ' Dim staff_members As Collection 
+   ' Dim bSuccess As Boolean = True               'if true the save succeeded
+   ' 
+   ' If Not Valid_Document() Then Return
+   ' Inc Application.Busy
+   ' If chkAllStaff.Value = True Then 
+   '    Staff_Members = modContactsDBI.Staff_Get() 'refresh the staff list,could have just employed someone!!!!!
+   ' End If 
+   ' '-----------------------------------------------------------------------------------------------
+   ' 'This document has been previously saved to the backend via the clerical module, or incoming hl7
+   ' 'so it is being concluded in some form
+   ' '-----------------------------------------------------------------------------------------------
+   ' d!concluded = True
+   ' d!pk_document = pk_document
+   ' d!fk_lu_display_as = Get_Display_Style()
+   ' d!html = Document_HTML             'not displayed in this form, but by parent see Document_HTML_Set()
+   ' d!tag_user = Trim(txtUserObservationName.text)
+   ' d!date_created = Val(txtDocumentDate.text)
+   ' If get_laterality() > const.LateralityNone Then
+   '    d!tag_user = Replace$(d!tag_user, ";", " (" & UCase(const.LateralityText[get_laterality()]) & ");") 'FIXME, NOT ACCURATE EG FOR xRAY PELVIS + xRAY hIP (RIGHT)
+   ' End If  
+   ' modDBConnect.BeginTrans()
+   ' '-----------------------------------------
+   ' 'Is this document being sent to all staff? FIXME THIS SECTION SHOULD BE REMOVED,ONLY NEEDED IN SCANNING
+   ' '-----------------------------------------
+   ' If chkAllStaff.Value = True Then 
+   '    For Each member In Staff_Members
+   '       d!fk_staff_destination = member!fk_staff
+   '       modArchiveDocumentsDBI.Save(d)
+   '       d.Remove("pk_document") 'don't want this key to force new copies
+   '    Next
+   ' Else
+   '    If bHas_sending_entity_fk_lu_request_type = False And rbDisplayAsResult.value = True Then 
+   '       modInboxDBI.SendingEntity_Set_fk_lu_request_type(document_types[cmbDocumentTypes.index]!pk, fk_sending_entity)
+   '    End If   
+   '    Document_SignOff(d)            'see documents.signed_off table > he who signed off this document
+   '    bSuccess = True   
+   '    d!pk_document = modArchiveDocumentsDBI.Save(d, documents[pk_document])
+   ' End If
+   ' Dec Application.Busy
+   ' Return bSuccess
    
 End
 
@@ -507,8 +595,14 @@ Public Sub Init(functionality As String)
          modEditAreaHelpers.Resize_labels(VBox_EditArea, lblMeasure)
          lblBirthdate.width = ChkLockStaffMember.width
          txtDocumentTag.ReadOnly = True
-         
-         EditArea_Clear()      
+         lblMeasure.text = " Information Technology   "
+         cmbStaffType.Width = lblmeasure.Width
+         HBox_AllStaff.Visible = True  
+         StaffTypes = modAdminDBI.Staff_Types_Get()
+         StaffTypes = modutil.Copy_Collection_Keyed_Sequentially(modAdminDBI.Staff_Types_Get())
+         modUtil.LoadCombo(cmbStaffType, StaffTypes, "type")
+         cmbStaffType.index = -1
+         EditArea_Clear()    
       Case "Allocated Documents"
          modEditAreaHelpers.EditArea_SetTextBoxes_ReadOnly(VBox_EditArea) 'easier to switch off than on
          Hbox_SenderType.visible = False 
@@ -516,17 +610,16 @@ Public Sub Init(functionality As String)
          HBox_SenderDetails.Visible = False   
          HBox_UserObservationName.visible = True
          HBox_Filename.Visible = False 
+         HBox_AllStaff.Visible = False 
          Hbox_DisplayDocumentAs.Visible = True  
          lblDocumentDate.text = "Date Collected"
          Hbox_Requested.Visible = True
-         chkAllStaff.Enabled = False  
          HBox_DocumentType.visible = True  
          txtComment.ReadOnly = True
          lblComment.text = "Notes on Form"
          lblMeasure.text = " Staff Responsible "
          txtUserObservationName.ReadOnly = False  
-         ' HBox_HealthIssue.Visible = True   
-         chkAllStaff.Visible = False  
+         cmbStaffType.index = -1
          chkLockStaffMember.Visible = False
          chkLockPatient.Visible = False
          Set_Embedded_Form_Name("Inbox")
@@ -651,6 +744,7 @@ Public Sub EditArea_Clear()
    If bStaffLocked = True And bPatientLocked = True And bSenderLocked = True Then
       txtDocumentDate.SetFocus()
    Endif
+   cmbStaffType.index = -1
    
 End
 
@@ -835,9 +929,7 @@ Public Sub Edit(old_documents As Collection, pk_view As Integer)
          .Font.bold = True
       End With
    End If
-   
-   ' If Documents[pk_view]!fk_patient Then mnuHealthIssues_Show()
-   chkAllStaff.Value = False
+   cmbStaffType.index = -1
    bExit = False  
    
 End
@@ -1011,8 +1103,8 @@ Public Sub Staff_Select()
    pk_view = columnview1.Item.Key
    Staff_Member = staff[pk_view]
    Staff_Destination_Member_Show(staff_member)
-   
    columnview1.Visible = False 
+   cmbStaffType.index = -1
    
 End
 
@@ -1033,7 +1125,7 @@ Public Sub Staff_Destination_Member_Show(staff_member As Collection)
 End
 
 Public Sub EditArea_TextBox_KeyRelease()
-  
+   
    Select Case Last.tag
          
       Case "find sender"
@@ -1151,7 +1243,7 @@ Public Sub RequestItem_Selection(action As String, txtbox As TextBox, Optional c
 End
 
 Public Sub EditArea_TextBox_KeyPress()
-  
+   
    If Not EditArea_Textbox_ExcludeKeys(key.code, Last.tag) Then 
       ' Stop Event
       Return
@@ -1221,6 +1313,7 @@ Public Sub EditArea_TextBox_GotFocus()
    
    Dim hctrl As Control
    Dim tb As Textbox
+   
    If bexit Then Return 
    If chkLockPatient.value = True Then Return 
    Last.BackGround = Color.rgb(95, 255, 175)  
@@ -1235,7 +1328,7 @@ Public Sub EditArea_TextBox_GotFocus()
             .raise
             .Tooltip = ""
          End With
-  
+         
       Case "user name", "staff member", "patient"
          With Columnview1
             .top = Last.parent.parent.top + Last.height
@@ -1254,8 +1347,8 @@ Public Sub EditArea_TextBox_GotFocus()
             .left = Last.Left + Last.parent.parent.padding
             .width = lblContactDetails.width
             If Last.tag = "user name" Then
-              .width = Last.width 
-              .height = Last.height * 5.5
+               .width = Last.width 
+               .height = Last.height * 5.5
             Endif
          End With
    End Select
@@ -1740,7 +1833,7 @@ Public Function Valid_Document() As Boolean
          Return 
       End If
    Endif
-   If fk_staff_destination = 0 And chkAllStaff.value = False Then
+   If fk_staff_destination = 0 And cmbStaffType.index = -1 Then
       txtRecipient.SetFocus()
       Return False   
    Endif
@@ -1827,7 +1920,8 @@ Private Function Document_Filename_Construct_AllStaff(document As Collection) As
    
 End
 
-
-
-
-
+Public Sub cmbStafftype_Click()
+   
+   txtRecipient.text = ""
+   
+End

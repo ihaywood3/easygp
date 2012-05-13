@@ -32,6 +32,19 @@ Private cTabWeb As Integer = 2
 Private cTabBookmarks As Integer = 3
 Private sLibDirLocal As String
 Private sLibDirNetwork As String
+Static Private form_library As FLibrary
+
+Static Public Sub Library_Trees_Refresh_External()
+   '--------------------------------------------------------------------
+   'Called example form FInbox, when a file is transfered to the library
+   'This will be called, but will crash if FLibrary has not yet been
+   'loaded, but no matter, the calling routine will use Try...
+   'so the error will be passed over.
+   '--------------------------------------------------------------------  
+
+   form_library.Library_Trees_Refresh
+   
+End
 
 Public Sub Form_Open()
    
@@ -41,6 +54,7 @@ End
 
 Public Sub Init()
    
+   form_library = Me                         'allow's external reference to static routines
    Try Settings_Load()
    Browser = New FBrowser(vbox_pdfviewer)
    Browser.Visible = False
@@ -64,9 +78,10 @@ Public Sub Init()
    cmbFilter.Add("*.rtf", 3)
    sLibDirLocal = modAdminDBI.Config_Get_Staff_Member("library_directory_local", "", Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) 
    sLibDirNetwork = modAdminDBI.Config_Get("library_directory_network", "", Null, modDBConnect.currentUser!fk_clinic)
-
+   
    TabStrip1.index = 0
    TabStrip1_Click()
+
 End
 
 Public Sub form_Close()
@@ -122,84 +137,57 @@ End
 
 Public Function Check_have_path() As Boolean
    
-    If modAdminDBI.Config_Get("library_directory_network", "", Null, modDBConnect.currentUser!fk_clinic) = "" Then
-       If modAdminDBI.Config_Get_Staff_Member("library_directory_local", "", Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) = "" Then
-          Message.info("Please set the location of the library files in the Admin and User Preferences Sections")
-          Return False 
-       Endif
-    Endif
+   If modAdminDBI.Config_Get("library_directory_network", "", Null, modDBConnect.currentUser!fk_clinic) = "" Then
+      If modAdminDBI.Config_Get_Staff_Member("library_directory_local", "", Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) = "" Then
+         Message.info("Please set the location of the library files in the Admin and User Preferences Sections")
+         Return False 
+      Endif
+   Endif
    
 End
-
 
 Public Sub Load_Library_Tree()
    '------------------------------------------------------------------
    'Loads the tree control with directories and files from the library
    'Tries server first, if fails falls back to local if available
    '------------------------------------------------------------------
+
    Dim sMsg As String
    
    If sLibDirNetwork <> "" Then  'have some sort of network path, use that first
-      If Not Load_Tree(tvLibrary, sLibDirNetwork, "network") Then         'failed to load network
+      If Not Load_Tree(tvLibrary, sLibDirNetwork &/ "library", "network") Then         'failed to load network
          If sLibDirLocal <> "" Then                                        'path exists for local
-            If Not Load_Tree(tvLibrary, sLibDirLocal, "local") Then     'try and load the tree ?fail
+            If Not Load_Tree(tvLibrary, sLibDirLocal &/ "library", "local") Then     'try and load the tree ?fail
                Goto Load_Library_error
             Else
-               sLibraryRootDir = sLibDirLocal & "/"
+               sLibraryRootDir = sLibDirLocal &/ "library"
                TabStrip1.Caption = "My Library (local filesystem)"        'success
             Endif
          Endif
       Else                                                                'success on the network path
-         If Not Load_Tree(tvLibrary, sLibDirNetwork, "network") Then     'If fails > error
-          Goto Load_Library_error
+         If Not Load_Tree(tvLibrary, sLibDirNetwork &/ "library", "network") Then     'If fails > error
+            Goto Load_Library_error
          Else                                                             'otherwise load tree
-           TabStrip1.Caption = "My Library (network filesystem)" 
-           sLibraryRootDir = sLibDirNetwork & "/"
+            TabStrip1.Caption = "My Library (network filesystem)" 
+            sLibraryRootDir = sLibDirNetwork &/ "library"
          Endif
       End If     
    Endif
- 
+   
    Return
    
 Load_Library_error:
-  
-     Message.Title = "Missing Path"
-     smsg = "The location of the library directory could not be found.\n\n"
-            "You should get the system adminstrator to set the networked pathway to this directory, "
-            "and you can set a local pathway in the Preferences section should the network not be available"
-     Message.info(sMsg)
-  ' 
+   
+   Message.Title = "Missing Path"
+   smsg = "The location of the library directory could not be found.\n\n"
+   "You should get the system adminstrator to set the networked pathway to this directory, "
+   "and you can set a local pathway in the Preferences section should the network not be available"
+   Message.info(sMsg)
+   ' 
+
 End
 
-Public Sub Load_Library_Tree_old()
-   '------------------------------------------------------------------
-   'Loads the tree control with directories and files from the library
-   'Tries server first, if fails falls back to local if available
-   '------------------------------------------------------------------
-   If modAdminDBI.Config_Get("library_directory_network", "", Null, modDBConnect.currentUser!fk_clinic) = "" Then          'network path not set
-       If modAdminDBI.Config_Get_Staff_Member("library_directory_local", "", Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) <> "" Then
-           sLibraryRootDir = modAdminDBI.Config_Get_Staff_Member("library_directory_local", "", Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) & "/"
-           If Load_Tree(tvLibrary, sLibraryRootDir, "local") Then
-                TabStrip1.Caption = "My Library (local filesystem)" 
-          Else
-               Goto Load_Library_error
-           End If  
-        Endif
-   Else
-     sLibraryRootDir = modAdminDBI.Config_Get("library_directory_network", "", Null, modDBConnect.currentUser!fk_clinic) & "/"
-       If Not Load_Tree(tvLibrary, sLibraryRootDir, "network") Then 
-          Goto Load_Library_error
-       Else
-           TabStrip1.Caption = "My Library (network filesystem)" 
-       Endif
-   Endif
- 
-   Return
-   
-Load_Library_error:
-   Message.Info("The path to the libary could not be found")
-  ' 
-End
+
 Public Function Load_Tree(trview As Treeview, sLibDir As String, sLocation As String) As Boolean
    '--------------------------------------------
    'Fills the tree with directories and files
@@ -233,7 +221,7 @@ Public Function Load_Tree(trview As Treeview, sLibDir As String, sLocation As St
                If Error Then
                End If
                iKey2 = iKey2 + 1
-             Next 
+            Next 
          Endif 
       Next 
    Endif 
@@ -242,7 +230,6 @@ Catch
    Message.Info("An error occurred whilst trying to find the library directory")
    
 End
-
 
 Public Sub Load_Handouts_Tree()
    
@@ -255,17 +242,20 @@ Public Sub Load_Handouts_Tree()
    Dim sMsg As String
    
    'loads defaults for inbox, as yet there are none so hard code
-   sHandoutRootDir = User.home & "/easygp/handouts/"
+   sHandoutRootDir = sLibDirNetwork &/ "handouts"
+   If Not IsDir(sHandoutRootDir) Then
+      sHandoutRootDir = sLibDirLocal &/ "handouts"
+   Endif
    tvHandOuts.Clear()
    If IsDir(sHandoutRootDir) Then 
       'Each sub file of a DIR will be a Directory or file
       'but in our structure there are no files in the rootdir
       For Each sDir In Dir(sHandoutRootDir)        'Add each directory to the tree
-         If IsDir(sHandoutRootDir & sDir) Then       'check if it is actually a directory
+         If IsDir(sHandoutRootDir &/ sDir) Then       'check if it is actually a directory
             tvHandOuts.Add(sDir, sDir) 'if yes, then add to tree as node
             ikey = ikey + 1
             
-            For Each sFile In Dir(sHandoutRootDir & sDir, "*.*")
+            For Each sFile In Dir(sHandoutRootDir &/ sDir, "*.*")
                If InStr(Lower(Sfile), ".pdf") Then
                   pictag = picPDF   
                Else
@@ -279,12 +269,14 @@ Public Sub Load_Handouts_Tree()
          Endif 
       Next 
    Else
-     Message.Title = "Missing Path"
-     smsg = "The location of the patient handouts directory could not be found.\n\n"
-            "You should get the system adminstrator to set the networked pathway to this directory, "
-            "and you can set a local pathway in the Preferences section should the network not be available"
-     Message.info(sMsg)
+      Message.Title = "Missing Path"
+      smsg = "The location of the patient handouts directory could not be found.\n\n"
+      "You should get the system adminstrator to set the networked pathway to this directory, "
+      "and you can set a local pathway in the Preferences section should the network not be available"
+      Message.info(sMsg)
    End If   
+Catch
+   Message.info("An error occurred whilst trying to load the handout's directory")
 End
 
 Public Sub Load_Bookmarks_Tree()
@@ -328,9 +320,18 @@ Public Sub ToolButtons_Click()
    
    Select Case Last.tag
       Case "refresh files"
-         Load_Library_Tree()
-         Load_Handouts_Tree()
+         Library_Trees_Refresh()
    End Select
+   
+End
+
+Public Sub Library_Trees_Refresh()
+   '--------------------------------------------------------------------
+   'Called from Toolbutton's click and  Library_Trees_Refresh_External()
+   '-------------------------------------------------------------------
+
+   Load_Library_Tree()
+   Load_Handouts_Tree()
    
 End
 
@@ -355,21 +356,21 @@ Public Sub Display_Item(tvw As Treeview, rootdir As String)
          Browser.Visible = False
          Fpdf.Visible = False
          Picturebox1.Visible = True
-         Picturebox1.Picture = Picture.Load(rootdir & sParentDir & "/" & sFilename)
+         Picturebox1.Picture = Picture.Load(rootdir &/ sParentDir &/ sFilename)
       Case "pdf"
          Browser.Visible = False
          Picturebox1.Visible = False
          Fpdf.Visible = True
-         Try Fpdf.hPdf.Open(rootdir & sParentDir & "/" & sFilename)
+         Try Fpdf.hPdf.Open(rootdir &/ sParentDir &/ sFilename)
          If Not Error Then
-            Fpdf.Set_Filename(sLibraryRootDir & sParentDir & "/" & sFilename)
+            Fpdf.Set_Filename(sLibraryRootDir &/ sParentDir &/ sFilename)
             Fpdf.Render_From_Another_Form()
          End If
       Case "html", "htm" 
          Fpdf.Visible = False
          Picturebox1.Visible = False
          Browser.Visible = True
-         Browser.$currenthview.url = rootdir & sParentDir & "/" & sFilename
+         Browser.$currenthview.url = rootdir &/ sParentDir &/ sFilename
       Case "avi", "mov", "wmv", "flv", "mpeg", "mpg", "asf"
          If IsNull(modUtil.FindProgram("mplayer", "mplayer")) Then 
             Message.Title("Missing Program")
@@ -381,7 +382,7 @@ Public Sub Display_Item(tvw As Treeview, rootdir As String)
          Browser.Visible = False 
          With media_player
             .Visible = True   
-            .Init(rootdir & sParentDir & "/" & sFilename)
+            .Init(rootdir &/ sParentDir &/ sFilename)
          End With
          
    End Select
@@ -425,7 +426,7 @@ Public Sub TabStrip1_Click()
 End
 
 Public Sub TreeView4_Menu()
-
+   
    mnuHandouts.popup()
-
+   
 End

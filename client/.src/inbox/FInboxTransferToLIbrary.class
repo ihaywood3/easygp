@@ -6,8 +6,12 @@ Private destination_dir As String
 Private sLibrary_Dir_Network As String
 Private sLibrary_Dir_Local As String
 Private sLibraryRootDir As String
+Private sHandout_Dir_Network As String
+Private sHandout_Dir_Local As String
 Private sDocumentDir As String
-Private bCopy As Boolean
+Private bcopy As Boolean
+Private bhandout As Boolean
+Private sDestination As String 'my library or patient handouts
 
 Public Sub Run() As Boolean
    
@@ -16,27 +20,39 @@ Public Sub Run() As Boolean
 End
 
 Public Sub Init(Doc As Collection, cons As CConsult, sMove_or_Copy As String)
+   '-------------------------------------------------------------------------------------------------
+   'sMove_or_copy can be:
+   '"move to my library", "copy to my library", "copy to patient handouts", "move to patient handouts"
+   '-------------------------------------------------------------------------------------------------- 
    
    Dim mnuLibrary As Menu
    Dim mnuWindow As Window
    
    Document = Doc
    Currentconsult = cons
-   If InStr(sMove_or_Copy, "move") Then
-      btnOK.text = "Move to Library"
-      bCopy = False  
-   Else
-      btnOK.text = "Copy to Library"
-      bCopy = True
-   Endif
+   sLibrary_Dir_Network = modAdminDBI.Config_Get("library_directory_network", "", Null, modDBConnect.currentUser!fk_clinic)
+   sLibrary_Dir_Local = modAdminDBI.Config_Get("library_directory_local", "", Null, modDBConnect.currentUser!fk_clinic)
+   sHandout_Dir_Network = sLibrary_Dir_Network &/ "handouts"
+   sHandout_Dir_Local = sLibrary_Dir_Local &/ "handouts"
+   sDocumentDir = modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") 
+   btnOK.text = modUtil.Ucase_Word_First_Letter(sMove_or_Copy)
+   If InStr(sMove_or_Copy, "copy") Then
+      bcopy = True
+   End If   
+   If InStr(sMove_or_Copy, "handout") Then 
+       bhandout = True
+      sDestination = "handouts"                              'otherwise is a patient handout document
+      lblDestinationFolder.text = "Handout Folder"
+  Else
+      sDestination = "library"                                       'must be for users library 
+      lblDestinationFolder.text = "Library Folder"
+   End If   
    lblmeasure.text = "  Existing Filename  "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
    txtExistingFilename.text = Document!source_file
-   txtLibraryFolder.text = destination_dir
+   'FIXME - THIS SCREEN DESIGN/FUNCTIONALITY IS SHIT
    lblmeasure.text = "  Folders  "
-   lblfolders.Background = Me.Background
-   With mnuWindow = New Window(Hbox_Library)
-      .Background = Color.white
+   With mnuWindow = New Window(Hbox_MenuWindow)
       .Visible = True
    End With
    With mnuLibrary = New Menu(mnuWindow)
@@ -46,23 +62,27 @@ Public Sub Init(Doc As Collection, cons As CConsult, sMove_or_Copy As String)
       .Enabled = True
       .Picture = Picture.Load("icons/16/checked.png")
    End With
-   
-   sLibrary_Dir_Network = modAdminDBI.Config_Get("library_directory_network", "", Null, modDBConnect.currentUser!fk_clinic)
-   sLibrary_Dir_Local = modAdminDBI.Config_Get("library_directory_local", "", Null, modDBConnect.currentUser!fk_clinic)
-   sDocumentDir = modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") 
-   If IsDir(sLibrary_Dir_Network &/ Last.tag) Then  'if network not mounted then this will not exist
+   '---------------------------------------------------
+   'The default library structure is 
+   'library/library  <- where the users files are
+   'library/handouts <- where patient handouts are kept
+   '---------------------------------------------------
+   If IsDir(sLibrary_Dir_Network &/ sDestination) Then  'if network not mounted then this will not exist
       rbSiteNetwork.Enabled = True 
       sLibraryRootDir = sLibrary_Dir_Network
-      lblfolders.text = " Select Network Folder:"
+      rbSiteNetwork.value = True
    Else
       rbSiteNetwork.Enabled = False 
+      rbsiteLocal.Value = True
       If IsDir(sLibrary_Dir_Local) Then   
          sLibraryRootDir = sLibrary_Dir_Local
-         lblfolders.text = "Select Local Folder"
       End If   
-      
    Endif
-   Make_Menu_Library(mnuLibrary, sLibraryRootDir)
+   If Not bhandout Then
+       Make_Menu_Library(mnuLibrary, sLibraryRootDir &/ "library")
+   Else
+      Make_Menu_Library(mnuLibrary, sLibraryRootDir &/ "handouts")
+   End If   
    
 End
 
@@ -77,7 +97,6 @@ Public Sub btnOK_Click()
    '----------------------------------------
    'Validate the data, if ok, save and close
    '----------------------------------------
-   '&/ SelectedDocument!source_file
    
    Dim dotpos As Integer
    Dim fileExtension As String
@@ -89,17 +108,25 @@ Public Sub btnOK_Click()
       Message.Info("Please correct the filename extension to match the orginal file before saving.")
       Return
    Endif
-   If IsDir(sDocumentDir) Then
-      If bCopy Then   
-         Try Copy sDocumentDir &/ Document!source_file To sLibraryRootDir &/ Trim(txtLibraryFolder.text) &/ Trim(txtNewFilename.text)
+   If IsDir(sDocumentDir) Then                                             'if document directory is valid
+      '-------------------------------------------------------------------------------------------------------
+      'If the user wants to copy the file, figure out if destination is handout or personal library, then copy
+      '-------------------------------------------------------------------------------------------------------
+      If bCopy Then                                                        'if copying a file
+         If Not bhandout Then                                              'and its not a handout
+            Try Copy sDocumentDir &/ Document!source_file To sLibraryRootDir &/ "library" &/ Trim(txtLibraryFolder.text) &/ Trim(txtNewFilename.text)
+         Else
+            Try Copy sDocumentDir &/ Document!source_file To sLibraryRootDir &/ "handouts" &/ Trim(txtLibraryFolder.text) &/ Trim(txtNewFilename.text)
+         End If   
          If Not Error Then
-            Message.Info("The file was successfully copied to your library.") 
+            Message.Info("The file was successfully copied to your " & sDestination)
          Else
             errMsg = "copied"
             Goto FileTransfer_Error
          Endif
       Else
          '----------------------------------------------------------------------------
+         'Otherwise - must be selecting to move the file
          'Try and move the document to the library, and mark it deleted in the backend
          'Firstly, mark the document deleted in the backend
          'Then lay down an audit trail - if this returns true, try moving the document
@@ -108,10 +135,15 @@ Public Sub btnOK_Click()
          '----------------------------------------------------------------------------
          modDBConnect.update("documents.documents", Null, ["pk": Document!pk_document, "deleted": True])
          If modAudit.MakeAudit(Currentconsult, "moved to library", "documents.documents", Document!pk_document, const.cSection_Inbox, "moved to the users library") Then 
-            Try Move sDocumentDir &/ Document!source_file To sLibraryRootDir &/ Trim(txtLibraryFolder.text) &/ Trim(txtNewFilename.text)
+            If Not bhandout Then  
+               Try Move sDocumentDir &/ Document!source_file To sLibraryRootDir &/ "library" &/ Trim(txtLibraryFolder.text) &/ Trim(txtNewFilename.text)
+            Else
+               Try Move sDocumentDir &/ Document!source_file To sLibraryRootDir &/ "handouts" &/ Trim(txtLibraryFolder.text) &/ Trim(txtNewFilename.text)
+            End If   
             If Not Error Then
                modDBConnect.CommitTrans
-               Message.Info("The file was successfully moved to your library.") 
+               Try FLibrary.Library_Trees_Refresh_External        'will not work if Flibary no instantiated, so try....
+               Message.Info("The file was successfully moved to your " & sDestination) 
             Else
                modDBConnect.RollBack()
                Goto FileTransfer_Error
@@ -126,7 +158,7 @@ Public Sub btnOK_Click()
    Return 
    
 FileTransfer_Error:
-   Message.Info("An error occurred - the file was not " & errMsg & " to your library.\n\n" & Error.text)
+   Message.Info("An error occurred - the file was not " & errMsg & " to your" & sDestination & ".\n\n" & Error.text)
 Catch
    Message.Info("An undefined error occurred")
    

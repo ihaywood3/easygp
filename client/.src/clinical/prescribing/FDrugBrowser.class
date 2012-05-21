@@ -88,6 +88,7 @@ Private bExit As Boolean
 Private Form_PDF As FPdf
 Private generics As Collection
 Private onrow As Integer
+Private Clone As Collection 
 
 Public Sub Form_Open()
    
@@ -155,10 +156,12 @@ End Sub
 
 Public Sub Reload()
    
+   Inc Application.Busy
    If Trim(txtSearch.text) <> "" Then
       drugs = modPrescribingDBI.Brands_Get(Trim(txtSearch.text)) 'FIXME RENAME
       Drugs_Fill_List(drugs)
    End If    
+   Dec Application.Busy
    
 End
 
@@ -268,7 +271,7 @@ Public Sub Gridview1_Load(generics As String, strengths As String)
    Dim generic_strengths As String[]
    Dim iWidestGenericName As Integer
    
-   gridview1.Columns.Count = 3
+   gridview1.Columns.Count = 2
    If IsNull(generics) Then Return
    If generics = "" Then Return
    generic_components = Split(generics, ";")
@@ -282,6 +285,7 @@ Public Sub Gridview1_Load(generics As String, strengths As String)
    Next
    gridview1.Columns[0].width = iWidestGenericName
    HBox_GenericsGrid.height = gridview1.rows.Count * txtEditGrid.height + 5
+   
 End
 
 Public Sub Gridview1_DblClick()
@@ -447,45 +451,71 @@ End
 Public Sub Product_Information_Filename_Get()
    
    Dim sfile As String
-   
+   Dim brand As String
+   ' /home/richard/ubuntu-server/product_information
    If Product_Information_Dir = "" Then
       Message.Info("The product information directory could not be found.\n\nPlease check with your system adminstrator.")
    Endif
+   Print product_Information_Dir
+   brand = Trim(Lower(txtBrand.Text))
+   If InStr(brand, " ") Then
+      brand = Left(brand, InStr(brand, " ") - 1)
+   Endif
+   If InStr(txtBrand.text, "-") Then
+      brand = Left(brand, InStr(brand, "-") - 1)
+   Endif
+   Print "looking for :" & brand
    listview2.Clear()
-   For Each sFile In Dir(Product_Information_Dir, "*.*")
-      Print "looking for " & txtPIFile.text, sFile
-      If InStr(Lower(sFile), Lower(Trim(txtPIFile.text))) Then
-         listview2.Add(ListView2.count, sFile)
-      Endif
-   Next
-   With listview2
-      If .count Then
-         .Visible = True
-         .tag = txtPIFile
-         .Raise
-      End If 
-   End With
-   Wait
-   
+   If Right(Trim(txtPIFile.text), 4) <> ".pdf" Then                          'if don't have an existing pdf
+      For Each sFile In Dir(Product_Information_Dir, "*.*")                  'list all files in PI directory like the brandname
+         If InStr(Lower(sFile), brand) Then
+            Print sFile
+            listview2.Add(ListView2.count, sFile)
+         Endif
+      Next
+      With listview2
+         If .count Then
+            .Visible = True
+            .tag = txtPIFile
+            .Raise
+         End If 
+      End With
+      Wait
+   End If   
+
 End
 
 Public Sub Drugs_Fill_List(drugs As Collection)
    
    Dim x As Integer
    Dim brand As Collection
+   Dim iDrugcount As Integer
    
    cvwDrugs.Clear()
    For Each brand In drugs
-      If Not IsNull(brand!product_information_filename) Then 
-         cvwDrugs.Add(brand!pk_view, 0, pic_pdf)
+      
+      If chkNOPDF.value = True Then 
+         If IsNull(brand!product_information_filename) Then
+            cvwDrugs.Add(brand!pk_view, 0, empty_2020png)
+            cvwDrugs[brand!pk_view][0] = brand!brand & " (" & brand!form & " - " & brand!strength & ")"
+            cvwDrugs[brand!pk_view][1] = brand!generic
+            cvwDrugs[brand!pk_view][2] = brand!strength & " " & brand!form
+            Inc iDrugcount
+         End If  
       Else
-         cvwDrugs.Add(brand!pk_view, 0, empty_2020png)
+         If Not IsNull(brand!product_information_filename) Then 
+            cvwDrugs.Add(brand!pk_view, 0, pic_pdf)
+         Else
+            cvwDrugs.Add(brand!pk_view, 0, empty_2020png)
+         End If   
+         cvwDrugs[brand!pk_view][0] = brand!brand & " (" & brand!form & " - " & brand!strength & ")"
+         cvwDrugs[brand!pk_view][1] = brand!generic
+         cvwDrugs[brand!pk_view][2] = brand!strength & " " & brand!form
+         Inc iDrugcount
       End If   
-      cvwDrugs[brand!pk_view][0] = brand!brand
-      cvwDrugs[brand!pk_view][1] = brand!generic
-      cvwDrugs[brand!pk_view][2] = brand!strength & " " & brand!form
    Next
    cvwDRugs.Columns[0].Width = cvwDrugs.width / 2
+   lblDrugCount.text = Str(iDrugcount) & " drugs found for current search criteria"
 
 End
 
@@ -604,18 +634,36 @@ Public Sub EditArea_Clear()
    
 End
 
+Public Sub Drug_Clone()
+   '-----------------------------------------------------------
+   'Clones an existing drug to make entering a new brand easier
+   '----------------------------------------------------------- 
+   
+   cvwDRugs.MoveCurrent()
+   Clone = drugs[cvwDrugs.Item.key]
+   fk_brand = Null
+   Drug_New()
+   
+End
+
 Public Sub Drug_New()
    
-   EditArea_Clear()
    modEditAreaHelpers.Help_Show("adding-a-new-drug.html", form_help)
+   If IsNull(Clone) Then  
+      EditArea_Clear()
+      fk_company = Null
+      fk_brand = Null
+      atccode = Null
+      fk_product = Null
+      fk_form = 0          'an integer can't be null
+      fk_schedule = 0
+      gridview1.Rows.count = 0
+      gridview1.Columns.count = 2
+      HBox_GenericsGrid.Height = txtBrand.Height
+      lblDrugCount.text = ""
+   End If   
    EditArea_TextBoxes_SetReadOnly_Status(False)
    cvwDrugs.Clear()
-   fk_company = Null
-   fk_brand = Null
-   atccode = Null
-   fk_product = Null
-   fk_form = 0          'an integer can't be null
-   fk_schedule = 0
    Hbox_AddGeneric.Visible = True  
    Gridview1.Mode = Select.Single
    cmbSchedules.enabled = True
@@ -623,9 +671,7 @@ Public Sub Drug_New()
       .foreground = Color.Red
       .text = "Add Brand"
    End With
-   gridview1.Rows.count = 0
-   gridview1.Columns.count = 2
-   HBox_GenericsGrid.Height = txtEditGrid.Height + 1
+   
    txtBrand.SetFocus()
    VBox_EditArea_Inner.Enabled = True
    Vbox_EditArea_Outer.Enabled = True
@@ -653,6 +699,7 @@ Public Sub Drug_Edit()
    gridview1.Mode = Select.Single
    cmbSchedules.Enabled = True
    cmbPregnancyCategory.Enabled = True
+   
 End
 
 Public Sub Drug_Form_Select()
@@ -712,7 +759,7 @@ Public Sub Save()
    '       REFERENCES drugs.company (code) MATCH SIMPLE
    '       ON UPDATE NO ACTION ON DELETE NO ACTION,
    '   CONSTRAINT brand_fk_product_fkey FOREIGN KEY (fk_product)
-   '       REFERENCES drugs.product (pk) MATCH SIMPLE
+   '       REFERENCES drugs.product(pk)MATCH SIMPLE
    '       
    ' CREATE TABLE drugs.pack
    ' (
@@ -794,18 +841,17 @@ Public Sub Save()
    Endif
    
    product = New CRow
-   If IsNull(fk_product) Then
-      fk_existing_product_key = modPrescribingDBI.Product_Check_Exists(atccode, generics_list, strengths_list, fk_form)
-      fk_brand = Null
-   Else
-      fk_existing_product_key = fk_product
-   Endif
+   '------------------------------------------------------------------------------------------------------------
+   'Current logic flaw here.
+   'User may have saved a product with certain generics > realised they made a mistake and go back to correct it
+   '------------------------------------------------------------------------------------------------------------
+   fk_existing_product_key = modPrescribingDBI.Product_Check_Exists(atccode, generics_list, strengths_list, fk_form)
    If Not IsNull(fk_existing_product_key) Then
       product.put_unchanged(fk_existing_product_key, "fk_product")
    Endif
    If chkShareDrug.value = True Then
       product!shared = True
-      modDBConnect.startStoring()
+      '   modDBConnect.startStoring()
    Else
       product!shared = False  
    Endif
@@ -824,13 +870,16 @@ Public Sub Save()
    If IsNull(fk_brand) Then
       fk_existing_brand_key = modPrescribingDBI.Brand_Check_Exists(fk_existing_product_key, brandname)
    Else
+      Print fk_brand 
       fk_existing_brand_key = fk_brand
    Endif
+   brand!brand = brandname
    If IsNull(fk_existing_brand_key) Then
-      brand!brand = brandname
+    
       brand!fk_product = fk_existing_product_key
    Else
       brand.put_unchanged(fk_existing_brand_key, "fk_brand")
+      brand!fk_product = fk_existing_product_key
    Endif
    If fk_company <> "" Then brand!fk_company = fk_company                           'may not have a company                                               'must always have a brand or 'our brand'
    If Trim(txtPIFile.text) <> "" Then brand!product_information_filename = Trim(txtPIFile.text) 'may not have PI
@@ -854,6 +903,7 @@ Public Sub Save()
    Endif
    modDBConnect.CommitTrans()
    EditArea_TextBoxes_SetReadOnly_Status(False)
+   EditArea_Notify_Data_Change(False)
    Reload()
    txtSearch.SetFocus
    
@@ -869,6 +919,7 @@ Public Sub EditArea_Buttons_Click()
    
    Select Case Last.tag
       Case "new"
+         Clone = Null
          Drug_New()
       Case "save"
          Save()
@@ -894,7 +945,7 @@ Public Sub EditArea_TextBox_Change()
       Case "brand"
          bExit = True
          Last.text = UCase(Last.text)
-         Try txtPIFile.text = Lower(Left(Replace(Last.text, "-", ""), Min(Len(Last.text), 4)))
+         ' Try txtPIFile.text = Lower(Left(Replace(Last.text, "-", ""), Min(Len(Last.text), 4)))
          bExit = False  
       Case "find generic component"
          If Len(Last.text) = "" Then
@@ -1003,7 +1054,7 @@ Public Sub EditArea_TextBox_KeyRelease()
       Case "form"
          Drug_Forms_Get()    
       Case "product information"
-        Try Product_Information_Filename_Get()
+         Try Product_Information_Filename_Get()
       Case "company"
          Company_Get()
       Case "atc"
@@ -1176,6 +1227,7 @@ Public Sub EditArea_Combo_Click()
       txtPackSize.SetFocus()
    Endif
    EditArea_Notify_Data_Change(True)
+   
 End
 
 Public Sub EditArea_CheckBox_Click()
@@ -1186,6 +1238,7 @@ Public Sub EditArea_CheckBox_Click()
       Case "makes drowsy"
    End Select
    EditArea_Notify_Data_Change(True)
+   
 End
 
 Public Sub cvwDrugs_Menu()
@@ -1203,6 +1256,8 @@ Public Sub mnuDrugs_Click()
          modUtil.NotImplemented("Deleting a drug")
       Case "change fonts"
          modUtil.Columnview_SetFont(cvwDrugs, "Drugs")
+      Case "clone"
+         Drug_Clone()
    End Select
    
 End
@@ -1214,6 +1269,7 @@ Public Sub Gridview1_Select()
 End
 
 Public Sub VSplit_DataEntry_Resize()
+   
    Dim i As Integer
    
    txtEditGrid.Height = txtBrand.Height
@@ -1221,6 +1277,15 @@ Public Sub VSplit_DataEntry_Resize()
       gridview1.Rows[i].height = txtEditGrid.Height
    Next
    HBox_GenericsGrid.Height = 5 + gridview1.Rows.count * txtEditGrid.Height
-  
+   
+End
 
+Public Sub chkNOPDF_Click()
+
+   If Trim(txtSearch.text) = "" Then
+      txtSearch.text = "%"
+   Endif
+   
+   Reload()
+   
 End

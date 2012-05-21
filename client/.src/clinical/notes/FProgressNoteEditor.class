@@ -87,7 +87,7 @@ Public Sub Init(cons As CConsult, notes As String, Optional heading As String) '
    Add_Shortcut("no vomiting ", ".nv", False, False, False)
    Add_Shortcut("afebrile ", ".af", False, False, False)
    Add_Shortcut("Review of Results ", ".rr", True, False, False)
-   Add_Shortcut("Travel Advice/Vaccination ", ".tva", True, False, False)
+   Add_Shortcut("Travel Advice/Vaccination ", ".tav", True, False, False)
    Add_Shortcut("Investigations ", ".in", True, False, False)
    Add_Shortcut("Complaints ", ".co", True, False, False)
    Add_Shortcut("Immunization ", ".imm", True, False, False)
@@ -873,31 +873,22 @@ Public Sub ParseText_Keyword(keyword As String)
    Dim sMeasurement As String
    Dim cp1 As Integer
    Dim cp2 As Integer
-   
+   Dim curpos As Integer
    CP1 = InStr(LCase(teNotes.RichText), keyword)
    cp2 = InStr(teNotes.RichText, "<", CP1)
    sMeasurement = Mid(teNotes.RichText, cp1, Cp2 - cp1)
    If Not (Right(sMeasurement, 1) = Chr(32)) Then 
       Return
    End If
-   'IsMeasurement(keyword, sMeasurement)
-   modMeasurements.IsMeasurement(teNotes, keyword, sMeasurement)
-   'I've left these here for the moment as FProgressNotes editor
-   'is a bit of a mess FIXME
-   ' If keyword = "h=" Then
-   '    sHeight = SS 
-   '     CalcBMI()
-   '  End If
-   '  If keyword = "w=" Then
-   '     sWeight = SS
-   '     CalcBMI()
-   '  Endif
-   '  Return True
    
+    modMeasurements.IsMeasurement(teNotes, keyword, sMeasurement, currentconsult)
+  
+ '  If keyword = "h=" Or keyword = "w=" Then CalcBMI 
+  ' tenotes.pos = curpos
 End
 
 Public Function IsMeasurement(keyword As String, sMeasurement As String) As Boolean
-   
+   'currently not used see modMeasurements.Ismeasurement (which is used)
    Dim Delimiter As String
    Dim charpos As Integer
    Dim SS As String
@@ -947,7 +938,55 @@ Public Function IsMeasurement(keyword As String, sMeasurement As String) As Bool
    
 End
 
-Public Function CalcBMI() As String
+Public Sub CalcBMI() 
+   '-------------------------------------------------------------------------
+   'Checks html to see if weight/height exist, if do > shows a calculated BMI
+   'and the weight range, and number of Kg's overweight
+   '-------------------------------------------------------------------------
+   
+   Dim sHeight As String
+   Dim sWeight As String
+   Dim Data As String[] 
+   Dim BMI As Float
+   Dim c As Collection 
+   Dim range As String 
+   Dim sMsgOverweight As String = "Patient is in overweight range of BMI"
+   Dim sMsgObese As String = "Patient is in obese range of BMI"
+   Dim sMsgUnderweight As String = "Patient is in the underweight range of BMI"
+   Dim sWeightMessage As String  
+   
+   
+   '---------------------------------------------------------------------------------
+   'Either, get height from these notes, or if none, check if we have an existing one
+   '---------------------------------------------------------------------------------
+    If InStr(Lower(teNotes.richtext), "height=") Then     
+       CP1 = InStr(LCase(teNotes.RichText), "height=")
+       cp2 = InStr(teNotes.RichText, "cm", CP1)
+      sHeight = Mid(teNotes.RichText, cp1, Cp2 - cp1 - 1)
+      sheight = Right(sheight, Len(sheight) - InStr(sheight, "="))
+    Else
+      c = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height)
+      Try sHeight = c!data
+      If Not Error Then
+         teNotes.Richtext &= "Last measured height  on " & c!date & " was " & sHeight & "<BR>"
+      Endif
+   Endif
+   If InStr(Lower(teNotes.richtext), "weight=") Then     
+       CP1 = InStr(LCase(teNotes.RichText), "weight=")
+       cp2 = InStr(teNotes.RichText, "kg", CP1)
+       sWeight = Mid(teNotes.RichText, cp1, Cp2 - cp1 - 1)
+       sweight = Right(sweight, Len(sweight) - InStr(sweight, "="))
+  End If 
+   If sHeight <> "" And sWeight <> "" Then 
+      BMI = Val(sweight) / ((sHeight / 100) * (sHeight / 100)) 
+      BMI = Val(Format(Str$(BMI), "##.#"))
+      teNotes.Insert("BMI=" & Str(BMI) & " \n(" & modDecisionSupport.BMI_DecSupp(sweight, sheight) & ")\n")
+   Else
+      '  message.Info("No height data recorded for this patient. To calculate the BMI automatically please enter eg h=180 and hit spacebar")
+   End If
+   
+End
+Public Function CalcBMI_old() As String
    '-------------------------------------------------------------------------
    'Checks html to see if weight/height exist, if do > shows a calculated BMI
    'and the weight range, and number of Kg's overweight
@@ -964,12 +1003,12 @@ Public Function CalcBMI() As String
    '---------------------------------------------------------------------------------
    'Either, get height from these notes, or if none, check if we have an existing one
    '---------------------------------------------------------------------------------
-   ' If InStr(Lower(teNotes.richtext), "height=") Then     
-   '    CP1 = InStr(LCase(teNotes.RichText), "height=")
-   '    cp2 = InStr(teNotes.RichText, "cm", CP1)
-   '    height = Mid(teNotes.RichText, cp1, Cp2 - cp1)
-   '    height = Right(Height, Len(Height) - InStr(Height, "="))
-   ' End If
+    If InStr(Lower(teNotes.richtext), "height=") Then     
+       CP1 = InStr(LCase(teNotes.RichText), "height=")
+       cp2 = InStr(teNotes.RichText, "cm", CP1)
+       height = Mid(teNotes.RichText, cp1, Cp2 - cp1)
+       height = Right(Height, Len(Height) - InStr(Height, "="))
+    End If
    If sHeight = "" 
       Data = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height), "|")
       Try sHeight = Data[0]
@@ -988,7 +1027,6 @@ Public Function CalcBMI() As String
       BMI = Val(sweight) / ((sHeight / 100) * (sHeight / 100)) 
       BMI = Val(Format(Str$(BMI), "##.#"))
       If BMI > 20 And BMI < 25 Then range = "normal" 
-      
       If BMI > 25 And BMI < 30 Then range = "overweight"
       If BMI > 30 Then range = "obese" 
       If BMI < 20 Then range = "underweight"

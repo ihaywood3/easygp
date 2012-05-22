@@ -89,6 +89,7 @@ Private Form_PDF As FPdf
 Private generics As Collection
 Private onrow As Integer
 Private Clone As Collection 
+Private CopyPDFName As String     'buffer to hold a copied pi file name see mnuDRugs_Click
 
 Public Sub Form_Open()
    
@@ -157,6 +158,10 @@ End Sub
 Public Sub Reload()
    
    Inc Application.Busy
+   lblDrugCount.text = ""
+   cvwDrugs.Clear()
+   EditArea_Clear()
+   Wait                       'force this label to clear
    If Trim(txtSearch.text) <> "" Then
       drugs = modPrescribingDBI.Brands_Get(Trim(txtSearch.text)) 'FIXME RENAME
       Drugs_Fill_List(drugs)
@@ -225,7 +230,7 @@ Public Sub Company_Select()
    listview2.MoveCurrent
    txtCompany.text = listview2.Item.Text
    fk_company = listview2.Item.Key
-   txtFindGenericComponent.SetFocus()
+   txtACTName.SetFocus()
    
 End
 
@@ -270,6 +275,7 @@ Public Sub Gridview1_Load(generics As String, strengths As String)
    Dim generic_components As String[]
    Dim generic_strengths As String[]
    Dim iWidestGenericName As Integer
+   Dim iWidestStrength As Integer
    
    gridview1.Columns.Count = 2
    If IsNull(generics) Then Return
@@ -280,10 +286,12 @@ Public Sub Gridview1_Load(generics As String, strengths As String)
    For gridrow = 0 To generic_components.Max
       gridview1[gridrow, 0].Text = generic_components[gridrow]
       Try gridview1[gridrow, 1].Text = generic_strengths[gridrow] 'there may be no strengths
-      lblMeasure.text = gridview1[gridrow, 0].text
-      iWidestGenericName = Max(lblMeasure.width, iWidestGenericName)    
+      lblMeasure.text = generic_components[gridrow]
+      Wait                                                  'no wait = no gui update, sorry....... the grid col widths won't change
+      Try iWidestGenericName = Max(lblMeasure.width, iWidestGenericName)  
    Next
    gridview1.Columns[0].width = iWidestGenericName
+   Wait                                             'no wait = no gui update, sorry....... the grid col widths won't change
    HBox_GenericsGrid.height = gridview1.rows.Count * txtEditGrid.height + 5
    
 End
@@ -449,22 +457,37 @@ Public Sub Product_Information_Select()
 End
 
 Public Sub Product_Information_Filename_Get()
+   '----------------------------------------------------
+   'Attempts to find a matching product information file
+   '----------------------------------------------------   
    
    Dim sfile As String
    Dim brand As String
-   ' /home/richard/ubuntu-server/product_information
+   
    If Product_Information_Dir = "" Then
       Message.Info("The product information directory could not be found.\n\nPlease check with your system adminstrator.")
    Endif
-   Print product_Information_Dir
    brand = Trim(Lower(txtBrand.Text))
+   '--------------------------------------------------------
+   'first try for a direct match e.g q-vax becomes q-vax.pdf
+   '--------------------------------------------------------
+   For Each sFile In Dir(Product_Information_Dir, "*.*") 
+      If Lower(sFile) = Lower(brand) & ".pdf" Then
+         Product_Information_Show(sfile)
+         txtPIFile.text = sFile
+         txtCompany.SetFocus()
+         Return
+      Endif
+   Next
+   '-----------------------------------------------
+   'ok, failed, try stripping out blanks and dashes
+   '-----------------------------------------------
    If InStr(brand, " ") Then
       brand = Left(brand, InStr(brand, " ") - 1)
    Endif
    If InStr(txtBrand.text, "-") Then
       brand = Left(brand, InStr(brand, "-") - 1)
    Endif
-   Print "looking for :" & brand
    listview2.Clear()
    If Right(Trim(txtPIFile.text), 4) <> ".pdf" Then                          'if don't have an existing pdf
       For Each sFile In Dir(Product_Information_Dir, "*.*")                  'list all files in PI directory like the brandname
@@ -482,7 +505,7 @@ Public Sub Product_Information_Filename_Get()
       End With
       Wait
    End If   
-
+   
 End
 
 Public Sub Drugs_Fill_List(drugs As Collection)
@@ -493,11 +516,10 @@ Public Sub Drugs_Fill_List(drugs As Collection)
    
    cvwDrugs.Clear()
    For Each brand In drugs
-      
       If chkNOPDF.value = True Then 
          If IsNull(brand!product_information_filename) Then
             cvwDrugs.Add(brand!pk_view, 0, empty_2020png)
-            cvwDrugs[brand!pk_view][0] = brand!brand & " (" & brand!form & " - " & brand!strength & ")"
+            cvwDrugs_Showbrand_details(brand)
             cvwDrugs[brand!pk_view][1] = brand!generic
             cvwDrugs[brand!pk_view][2] = brand!strength & " " & brand!form
             Inc iDrugcount
@@ -508,15 +530,30 @@ Public Sub Drugs_Fill_List(drugs As Collection)
          Else
             cvwDrugs.Add(brand!pk_view, 0, empty_2020png)
          End If   
-         cvwDrugs[brand!pk_view][0] = brand!brand & " (" & brand!form & " - " & brand!strength & ")"
+         cvwDrugs_Showbrand_details(brand)
          cvwDrugs[brand!pk_view][1] = brand!generic
          cvwDrugs[brand!pk_view][2] = brand!strength & " " & brand!form
          Inc iDrugcount
       End If   
    Next
-   cvwDRugs.Columns[0].Width = cvwDrugs.width / 2
+   cvwDRugs.Columns[0].Width = cvwDrugs.width / 2  'FIXME dosn't work ?why
    lblDrugCount.text = Str(iDrugcount) & " drugs found for current search criteria"
+   
+End
 
+Public Sub cvwDrugs_Showbrand_details(brand As Collection)
+   
+   cvwDrugs[brand!pk_view][0] = brand!brand
+   If brand!form <> "other" Then
+      cvwDrugs[brand!pk_view][0] &= " (" & brand!form
+      '  Endif
+      If Not IsNull(brand!strength) Then
+         cvwDrugs[brand!pk_view][0] &= " - " & brand!strength & ")"
+      Else
+         cvwDrugs[brand!pk_view][0] &= ")"
+      End If   
+   End If   
+   
 End
 
 Public Sub cvwDrugs_Select()
@@ -619,7 +656,6 @@ Public Sub EditArea_Clear()
    
    modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Inner)   
    EditArea_Notify_Data_Change(False)
-   
    gridview1.Clear()
    cmbUnits.index = -1
    cmbUnits.Enabled = False 'only enabled if text in txtVolume
@@ -839,7 +875,10 @@ Public Sub Save()
       txtPackSize.SetFocus()
       Return
    Endif
-   
+   EditArea_TextBoxes_SetReadOnly_Status(False)
+   EditArea_Notify_Data_Change(False)
+   Wait           'update the gui
+   Inc Application.Busy
    product = New CRow
    '------------------------------------------------------------------------------------------------------------
    'Current logic flaw here.
@@ -851,7 +890,7 @@ Public Sub Save()
    Endif
    If chkShareDrug.value = True Then
       product!shared = True
-      '   modDBConnect.startStoring()
+      modDBConnect.startStoring()
    Else
       product!shared = False  
    Endif
@@ -875,7 +914,7 @@ Public Sub Save()
    Endif
    brand!brand = brandname
    If IsNull(fk_existing_brand_key) Then
-    
+      
       brand!fk_product = fk_existing_product_key
    Else
       brand.put_unchanged(fk_existing_brand_key, "fk_brand")
@@ -902,8 +941,8 @@ Public Sub Save()
       modUtil.SendMailToDeveloper("new drug", modDBConnect.stopStoring())
    Endif
    modDBConnect.CommitTrans()
-   EditArea_TextBoxes_SetReadOnly_Status(False)
-   EditArea_Notify_Data_Change(False)
+   
+   Dec Application.Busy
    Reload()
    txtSearch.SetFocus
    
@@ -924,6 +963,7 @@ Public Sub EditArea_Buttons_Click()
       Case "save"
          Save()
       Case "refresh"
+         
          Reload()
    End Select
    
@@ -934,25 +974,76 @@ Public Sub EditArea_TextBox_Change()
    If bExit Then Return 
    If Trim(Last.text) = "" Then listview2.Visible = False 
    Select Case Last.tag
-      Case "amount"
+      Case "volume"
          If Trim(Last.text) <> "" Then 
             cmbUnits.index = -1
             cmbUnits.Enabled = True   
          Else
             cmbUnits.Enabled = False
          Endif
-         
       Case "brand"
          bExit = True
          Last.text = UCase(Last.text)
-         ' Try txtPIFile.text = Lower(Left(Replace(Last.text, "-", ""), Min(Len(Last.text), 4)))
          bExit = False  
       Case "find generic component"
          If Len(Last.text) = "" Then
             listview2.Visible = False  
          End If  
+      Case "edit grid"
+         gridview1[gridview1.row, gridview1.Column].text = txtEditGrid.Text
+         lblMeasure.text = Last.text & "  "
+         txtEditGrid.Width = lblMeasure.Width
    End Select
    EditArea_Notify_Data_Change(True)
+   
+End
+
+Public Sub EditArea_TextBox_Activate()
+   '------------------------------
+   'The enter key has been pressed
+   '------------------------------   
+   
+   Select Case Last.tag
+      Case "brand"
+         If Hbox_AddGeneric.Visible Then
+            txtPIFile.SetFocus()
+         Endif
+      Case "edit grid"
+         txtFindGenericComponent.Clear()
+         txtFindGenericComponent.SetFocus()
+         gridview1[gridview1.row, gridview1.Column].text = txtEditGrid.Text
+         Last.Visible = False 
+      Case "product information"
+         If Hbox_AddGeneric.Visible Then
+            txtCompany.SetFocus()
+         Endif
+      Case "company"
+         If Hbox_AddGeneric.Visible Then
+            txtACTName.SetFocus()
+         Endif
+      Case "find generic component"
+         If Last.text = "" Then
+            txtForm.SetFocus()
+         End If   
+      Case "strength"
+         txtForm.SetFocus()
+      Case "volume"
+         cmbUnits.SetFocus()
+      Case "form"
+         If Last.text = "injection" Then
+            txtVolume.SetFocus()
+         Else
+            txtPackSize.SetFocus()
+         Endif
+      Case "pack size"
+         cmbSchedules.SetFocus()
+      Case "comment"
+         tbSave.SetFocus()  
+      Case "atc"
+         txtPackSize.SetFocus() 
+      Case "strength add"
+         cmbUnits.SetFocus()
+   End Select
    
 End
 
@@ -965,9 +1056,9 @@ Public Sub EditArea_TextBox_GotFocus()
          With listview2                        
             .top = Last.Parent.Parent.top + Last.Parent.height 
             .Left = Last.Parent.Left + VBox_EditArea_Inner.padding
-            .width = Last.width   
+            .width = txtBrand.Width
             .Visible = False         
-            .height = VBox_EditArea_Inner.height - Last.Parent.Parent.top - Last.height            
+            .Height = 200      
             .Raise                             
          End With  
    End Select                                   
@@ -982,6 +1073,7 @@ Public Sub EditArea_TextBox_LostFocus()
    Last.Background = Color.White
    If Last.tag = "atc" Or Last.tag = "form" Or Last.tag = "product information" Or Last.tag = "company" Or Last.tag = "find generic component" Then Return 
    ListView2.Visible = False  
+   If Last.tag = "edit grid" Then Last.Visible = False   
    
 End
 
@@ -999,49 +1091,6 @@ Public Sub EditArea_TextBox_KeyPress()
             listview2.Item.Selected = True
             listview2.SetFocus()            
          End If 
-      Case key.Return, key.Tab
-         
-         Select Case Last.tag
-            Case "brand"
-               If Hbox_AddGeneric.Visible Then
-                  txtPIFile.SetFocus()
-               Endif
-            Case "edit grid"
-               txtFindGenericComponent.Clear()
-               txtFindGenericComponent.SetFocus()
-               gridview1[gridview1.row, gridview1.Column].text = txtEditGrid.Text
-               Last.Visible = False 
-            Case "product information"
-               If Hbox_AddGeneric.Visible Then
-                  txtCompany.SetFocus()
-               Endif
-            Case "company"
-               If Hbox_AddGeneric.Visible Then
-                  txtFindGenericComponent.SetFocus()
-               Endif
-            Case "find generic component"
-               txtACTName.SetFocus()
-            Case "strength"
-               txtForm.SetFocus()
-            Case "amount"
-               cmbUnits.SetFocus()
-            Case "form"
-               If Last.text = "injection" Then
-                  txtVolume.SetFocus()
-               Else
-                  txtPackSize.SetFocus()
-               Endif
-               
-            Case "pack size"
-               txtComment.SetFocus()
-            Case "comment"
-               tbSave.SetFocus()  
-            Case "atc"
-               txtPackSize.SetFocus() 
-            Case "strength add"
-               cmbUnits.SetFocus()
-         End Select
-         
    End Select
    
 End Sub
@@ -1070,6 +1119,8 @@ Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) A
    Select Case tag
       Case "pack size", "strength new"
          bKeyValid = modUtil.AllowKeys(Const.AllowKeys_NumbersOnly, keycode)
+      Case "volume"
+         bKeyvalid = modUtil.AllowKeys(const.AllowKeys_NumbersDecimal)
       Case Else  
          bKeyValid = True  
    End Select  
@@ -1147,15 +1198,26 @@ Public Sub tbAddGeneric_Click()
    '---------------------------------------------------
    'User is creating a new generic, not in the database
    '---------------------------------------------------
-   
+
+   Dim iWidestGenericName As Integer
+   Dim gridrow As Integer
+  
    If Trim(txtFindGenericComponent.text) = "" Then Return 
    Inc Gridview1.Rows.Count
    gridview1[Gridview1.Rows.Count - 1, 0].Text = Trim(txtFindGenericComponent.text)
    HBox_GenericsGrid.Height = (txtEditGrid.height + 1) * gridview1.Rows.count
+   
+   For gridrow = 0 To gridview1.rows.Count - 1
+      lblMeasure.text = gridview1[gridrow, 0].Text
+      Wait
+      iWidestGenericName = Max(lblMeasure.width, iWidestGenericName)
+   Next
+   gridview1.Columns[0].width = iWidestGenericName
+   Wait
    Gridview1.row = gridview1.Rows.count - 1
    Gridview1.column = 1
    Gridview1_DblClick()
-   
+
 End
 
 Public Sub txtSearch_KeyPress()
@@ -1196,21 +1258,25 @@ Public Sub txtSearch_GotFocus()
    
 End
 
-Public Sub EditArea_Combo_KeyPress()
-   
-   Select Case Last.tag
-      Case "units"
-         If key.code = key.return Then
-            txtPackSize.SetFocus()
-         End If   
-   End Select
-   
-End
-
 Public Sub HSplit_DataEntry_Resize()
    
    If bExit Then Return 
    listview2.width = txtFindGenericComponent.Width
+   
+End
+
+Public Sub EditArea_Combo_KeyPress()
+   
+   If key.code = key.return Then  
+      Select Case Last.tag
+         Case "schedule"
+            cmbPregnancyCategory.SetFocus()
+         Case "pregnancy category"
+            chkPermittedInSport.SetFocus()
+         Case "units"
+            txtPackSize.SetFocus()
+      End Select 
+   End If   
    
 End
 
@@ -1222,6 +1288,7 @@ Public Sub EditArea_Combo_Click()
       Case "pregnancy category"
       Case "schedule'"
          fk_schedule = schedules[Last.Item.key]
+         chkShareDrug.SetFocus()
    End Select
    If Last.tag = "units" Then
       txtPackSize.SetFocus()
@@ -1243,11 +1310,22 @@ End
 
 Public Sub cvwDrugs_Menu()
    
-   If Last.count Then mnuDrugs.Popup()
+   If Last.count Then
+      If CopyPDFName <> "" Then
+         mnuDrugs_Allocatepdfname.enabled = True
+         mnuDrugs_Allocatepdfname.text = "Copy pdf filename:" & CopyPDFName & " to selected drugs"
+      Else
+         mnuDrugs_Allocatepdfname.text = "Copy pdf filename"
+         mnuDrugs_Allocatepdfname.Enabled = False 
+      Endif
+      mnuDrugs.Popup()
+   End If   
    
 End
 
 Public Sub mnuDrugs_Click()
+   
+   Dim x As Integer
    
    Select Case Last.tag
       Case "edit"
@@ -1258,6 +1336,20 @@ Public Sub mnuDrugs_Click()
          modUtil.Columnview_SetFont(cvwDrugs, "Drugs")
       Case "clone"
          Drug_Clone()
+      Case "copy pdf name"
+         CopyPDFName = txtPIFile.Text
+      Case "allocate pdf name"
+         If Message.Question("Are you sure you want to allocate the product information file '" & CopyPDFName & "' to all the selected brands?", "Yes", "No") = 2 Then Return    
+         cvwDRugs.MoveFirst()
+         For x = 1 To cvwDRugs.count 
+            If cvwDRugs.Item.Selected = True Then
+               modDBConnect.exec_query("update drugs.brand set product_information_filename =$$" & CopyPDFName & "$$ WHERE pk=$$" & drugs[cvwDRugs.Item.key]!fk_brand & "$$")
+               '  modDBConnect.update("drugs.brand", Null, ["pk": drugs[cvwDRugs.Item.key]!fk_brand, "product_information_filename": CopyPDFName])    
+            Endif
+            cvwDrugs.MoveNext()
+         Next
+         modDBConnect.CommitTrans()
+         Reload
    End Select
    
 End
@@ -1281,11 +1373,41 @@ Public Sub VSplit_DataEntry_Resize()
 End
 
 Public Sub chkNOPDF_Click()
-
+   
    If Trim(txtSearch.text) = "" Then
       txtSearch.text = "%"
    Endif
    
    Reload()
+   
+End
+
+Public Sub EditArea_CheckBox_KeyPress()
+   
+   If key.Code = key.Return Then
+      Select Case Last.tag
+         Case "permitted in sport"
+            chkMakesDrowsy.SetFocus()
+         Case "makes drowsy"
+            chkShareDrug.SetFocus()
+      End Select
+   Endif
+   
+End
+
+Public Sub Form_KeyPress()
+   
+   If key.code = Key.f12 Then
+      Save()
+   Endif
+   
+End
+
+Public Sub txtSearch_Change()
+   
+   If Trim(Last.text) = "" Then
+      cvwDrugs.Clear
+      EditArea_Clear()
+   Endif
    
 End

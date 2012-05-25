@@ -23,7 +23,7 @@ Public Function Product_Check_Exists(atccode As String, generics As String, stre
    'We use the term to mean a dispensable form of a generic drug including strength, package size etc'
    'This routine checks if this combination exists and returns the key to the product table if it does
    '--------------------------------------------------------------------------------------------------
-
+   
    Dim sql As String
    Dim R As Result
    
@@ -44,7 +44,7 @@ Public Function Brand_Check_Exists(fk_product As String, brand As String) As Str
    '--------------------------------------------------------------------------------------------------
    ' checks if a brand already exists.
    '--------------------------------------------------------------------------------------------------
-
+   
    Dim sql As String
    Dim R As Result
    
@@ -63,10 +63,8 @@ Public Sub Save_Pack(pack As Collection)
    ' FIXME: this solution assumes one and only ever one packsize for a product, obviously neds to be fixed
    modDBConnect.exec_query("delete from drugs.pack where fk_product = &1", [pack!fk_product])
    modDBConnect.exec_query("insert into drugs.pack (fk_product, amount, amount_unit, pack_size) values (&1, &2, &3, &4)", [pack!fk_product, pack!amount, pack!amount_unit, pack!pack_size])
- 
    
 End
-
 
 Public Function Formulations_Get(formulation As String) As Collection
    
@@ -76,6 +74,7 @@ End
 
 Public Function Brands_Get_RT(brand As String) As Collection
    'IAN DON'T REMOVE THIS USED IN SCRIPTS AT THE MOMENT
+   
    Dim sql As String
    
    sql = "Select * from drugs.vwDrugs1 where brand ILIKE $$%" & brand & "%$$ AND chapter = 'GE' "
@@ -94,14 +93,13 @@ End
 
 Public Function Schedules_Get() As Collection
    
-  Return modDBConnect.exec_query_collection("Select * from  drugs.schedules") 'ORDER BY schedule") 
+   Return modDBConnect.exec_query_collection("Select * from  drugs.schedules") 'ORDER BY schedule") 
    
 End
 
 Public Function Brands_Get(sSearchText As String) As Collection
-
+   
    Return modDBConnect.exec_query_collection("Select * from drugs.vwDistinctBrandsForGenericProduct where brand ILIKE $$%" & sSearchText & "%$$ ORDER by brand")
-
    
 End
 
@@ -163,6 +161,37 @@ Public Function Instructions_Save_Habit(new_data As Collection) As Integer
    ' If new_data!fk_company Then
    '    sql &= " AND fk_company = $$" & new_data!fk_company & "$$"
    '  Endif
+   sql &= " AND fk_instruction =" & new_data!prescribed!fk_instruction
+   r = modDBConnect.exec_query(sql)
+   If r.count Then
+      modDBConnect.update("clin_prescribing.instruction_habits", Null, ["pk": r!pk, "weighting": r!weighting + 1])
+   Else
+      habit!fk_instruction = new_data!prescribed!fk_instruction
+      ' habit!fk_company = new_data!fk_company
+      habit!fk_generic_product = new_data!med!fk_generic_product
+      habit!fk_staff = modDBConnect.currentUser!fk_staff  
+      habit!weighting = 1
+      habit!pk = modDBConnect.insert("clin_prescribing.instruction_habits", habit)
+   Endif
+   Try Return habit!pk
+   If Error Then Return 1
+   
+End 
+
+Public Function Instructions_Save_Habit_old(new_data As Collection) As Integer
+   '-------------------------------------
+   'Save the habits for this staff member
+   '-------------------------------------
+   
+   Dim habit As New Collection 
+   Dim r As Result
+   Dim sql As String = "Select pk, weighting from clin_prescribing.instruction_habits"
+   
+   sql &= " WHERE fk_staff = " & modDBConnect.currentUser!fk_staff 
+   sql &= " AND fk_generic_product =$$" & new_data!med!fk_generic_product & "$$"
+   ' If new_data!fk_company Then
+   '    sql &= " AND fk_company = $$" & new_data!fk_company & "$$"
+   '  Endif
    sql &= " AND fk_instruction =" & new_data!med!fk_instruction
    r = modDBConnect.exec_query(sql)
    If r.count Then
@@ -181,6 +210,37 @@ Public Function Instructions_Save_Habit(new_data As Collection) As Integer
 End 
 
 Public Function Prescribed_For_Save_Habit(new_data As Collection) As Integer
+   '-------------------------------------
+   'Save the habits for this staff member
+   '-------------------------------------
+   
+   Dim habit As New Collection 
+   Dim r As Result
+   Dim sql As String = "Select pk, weighting from clin_prescribing.prescribed_for_habits"
+   
+   sql &= " WHERE   fk_staff = " & modDBConnect.currentUser!fk_staff
+   sql &= " AND fk_generic_product = $$" & new_data!med!fk_generic_product & "$$"
+   '  If new_data!fk_company Then
+   '    sql &= " AND fk_company = $$" & new_data!fk_company & "$$"
+   ' Endif
+   sql &= " AND fk_prescribed_for =" & new_data!prescribed!fk_prescribed_for
+   r = modDBConnect.exec_query(sql)
+   If r.count Then
+      modDBConnect.update("clin_prescribing.prescribed_for_habits", Null, ["pk": r!pk, "weighting": r!weighting + 1])
+   Else
+      habit!fk_prescribed_for = new_data!prescribed!fk_prescribed_for
+      ' habit!fk_company = new_data!fk_company
+      habit!fk_generic_product = new_data!med!fk_generic_product
+      habit!fk_staff = modDBConnect.currentUser!fk_staff  
+      habit!weighting = 1
+      habit!pk = modDBConnect.insert("clin_prescribing.prescribed_for_habits", habit)
+   Endif
+   Try Return habit!pk
+   If Error Then Return 1
+   
+End 
+
+Public Function Prescribed_For_Save_Habit_old(new_data As Collection) As Integer
    '-------------------------------------
    'Save the habits for this staff member
    '-------------------------------------
@@ -342,11 +402,218 @@ Public Function Medication_Delete(currentconsult As CConsult, medications As Col
    
 End
 
+Public Function Medication_Prescribed_Before(fk_patient As Integer, fk_generic_product As String) As Result 
+   '-----------------------------------------------------------------------------
+   'Checks if this generic medication has been prescribed before for this patient
+   '-----------------------------------------------------------------------------
+   
+   Return modDBConnect.exec_query("Select fk_medication, start_date from clin_prescribing.vwmedications_rt where fk_generic_product = $$" & fk_generic_product & "$$ AND fk_patient= " & fk_patient & " LIMIT 1")
+   
+End
+Public Function Medications_History_Construct_HTML(medications As Collection) As String
+   
+   Dim medication As CRow
+   Dim sHtml As String  
+   Dim sRow_Generic_Details As String  'a single row col1= generic name, col2= all the history of this drug
+   Dim sRow_Prescription_Details As String ' a single row for one prescription for this drug
+   Dim iLastMedication_key As Integer
+   Dim sLastGeneric As String 
+   Dim iRowcount As Integer
+   Dim sPresciption_items As String
+   
+   sRow_Generic_Details = ""
+     "<TR VALIGN=TOP>"
+     "<TD WIDTH=20%"
+     "<P><B>%generic%</B></P>"
+     "</TD>"
+     "<TD WIDTH=80%>"
+     "<P><B>Started</B>&nbsp;"
+     "%first_prescribed%<B>&nbsp;Last Prescribed</B>&nbsp;%last_prescribed%</P>"
+     '"<P><B>Scripts Written</B></P>"  'missing the last </TD> added later
+     
+   sRow_Prescription_Details = ""
+     "<TABLE WIDTH=100% BORDER=0 CELLPADDING=2 CELLSPACING=2>"
+     "<COL WIDTH=10%>"
+     "<COL WIDTH=20%>"
+     "<COL WIDTH=10%>"
+     "<COL WIDTH=18%>"
+     "<COL WIDTH=10%>"
+     "<COL WIDTH=2%>"
+     "<COL WIDTH=2%>"
+     "<COL WIDTH=10%>"
+     "<COL WIDTH=18%>"
+     "<TR VALIGN=TOP>"
+     "<TD WIDTH=10%>"
+     "<P>%date_on_script%</P>"
+     "</TD>"
+     "<TD WIDTH=20%>"
+     "<P>%brand%</P>"
+     "</TD>"
+     "<TD WIDTH=10%>"
+     "<P>%strength%</P>"
+     "</TD>"
+     "<TD WIDTH=18%>"
+     "<P>%instruction%</P>"
+     "</TD>"
+     "<TD WIDTH=10%>"
+     "<P>%prescribed_for%</P>"
+     "</TD>"
+     "<TD WIDTH=2%>"                              
+     "<P>%quantity%</P>"
+     "</TD>"
+     "<TD WIDTH=2%>"
+     "<P>%repeats%</P>"
+     "</TD>"
+     "<TD WIDTH=10%>"
+     "<P>%pbs_script_type%</P>"
+     "</TD>"
+     "<TD WIDTH=18%>"
+     "<P>%staff_prescribed_wholename%</P>"
+     "</TD>"
+     "</TR>"
+     "</TABLE>"
+    
+     
+      sHtml = "<HTML><BODY><TABLE  WIDTH=100% BORDER=1 CELLPADDING=2 CELLSPACING=0>"                                             'start html page and main table
+      For Each medication In medications
+          If iLastMedication_key <> medication!fk_medication Then                'for each new medication add new row to main table
+             iLastMedication_key = medication!fk_medication
+             If iRowcount Then shtml &= "</TR>"                                  'if at the end of the first medication row, terminate the row
+             sHtml &= sRow_Generic_Details                                       'first col generic  second col = table of details
+             sHtml = Replace(sHtml, "%generic%", medication!generic)             'first col now e.g atenolol
+             sHtml = Replace(sHtml, "%first_prescribed%", Format(medication!start_date, "dd/mm/yyyy")) 'First Prescibed = 01/01/2012
+             sHtml = Replace(sHtml, "%last_prescribed%", Format(medication!last_date, "dd/mm/yyyy"))   'Last Prescibed  = 30/03/2012
+             sHtml &= sRow_Prescription_Details                                  'at a table with 9 columns 
+             'sLastGeneric = medication!generic
+             sHtml = Replace(sHtml, "%date_on_script%", Format(medication!date_on_script, "dd/mm/yyyy"))
+             sHtml = Replace(sHtml, "%brand%", medication!brand)
+             sHtml = Replace(sHtml, "%strength%", medication!strength) 
+             sHtml = Replace(sHtml, "%instruction%", medication!instruction)
+             sHtml = Replace(sHtml, "%prescribed_for%", medication!prescribed_for)
+             sHtml = Replace(sHtml, "%quantity%", Str(medication!quantity)) 
+             sHtml = Replace(sHtml, "%repeats%", Str(medication!repeats))
+             sHtml = Replace(sHtml, "%pbs_script_type%", medication!pbs_script_type)
+             sHtml = Replace(sHtml, "%staff_prescribed_wholename%", medication!staff_prescribed_wholename)
+          Else
+             '----------------------------------------------  
+             'its still the same drug, just add another line 
+             '----------------------------------------------
+             sHtml &= sRow_Prescription_Details
+             'sLastGeneric = medication!generic
+             sHtml = Replace(sHtml, "%date_on_script%", Format(medication!date_on_script, "dd/mm/yyyy"))
+             sHtml = Replace(sHtml, "%brand%", medication!brand)
+             sHtml = Replace(sHtml, "%strength%", medication!strength) 
+             sHtml = Replace(sHtml, "%instruction%", medication!instruction)
+             sHtml = Replace(sHtml, "%prescribed_for%", medication!prescribed_for)
+             sHtml = Replace(sHtml, "%quantity%", Str(medication!quantity)) 
+             sHtml = Replace(sHtml, "%repeats%", Str(medication!repeats))
+             sHtml = Replace(sHtml, "%pbs_script_type%", medication!pbs_script_type)
+             sHtml = Replace(sHtml, "%staff_prescribed_wholename%", medication!staff_prescribed_wholename)
+          Endif
+          Inc iRowcount
+      Next
+     sHtml &= "</TABLE></BODY></HTML>" 'finalise the main outer table
+     Print shtml
+   Return sHtml
+End
+
+Public Function Medications_History_Construct_HTML_old(medications As Collection) As String
+   'just a temporary routine I'm using during development
+   '
+
+   Dim medication As CRow
+   Dim sHtml As String 
+   
+   sHtml = ""
+   "<HTML><BODY>"
+   "<P ALIGN=CENTER><B>Prescription History</B></P>"
+   "<P ALIGN=LEFT> "
+   "</P>"
+   "<TABLE WIDTH=100% BORDER=1 CELLPADDING=4 CELLSPACING=3>"
+   "<COL WIDTH=10%>"
+   "<COL WIDTH=10%>"
+   "<COL WIDTH=9%>"
+   "<COL WIDTH=16%>"
+   "<COL WIDTH=14%>"
+   "<COL WIDTH=3%>"
+   "<COL WIDTH=2%>"
+   "<COL WIDTH=4%>"
+   "<COL WIDTH=4%>"
+   "<COL WIDTH=13%>"
+    "<COL WIDTH=13%>"
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=10%>"
+   "<P ALIGN=LEFT><B>Medication</B></P>"
+   "</TD>"
+   "<TD WIDTH=10%>"
+   "<P ALIGN=LEFT><B>Brand</B></P>"
+   "</TD>"
+   "<TD WIDTH=9%>"
+   "<P ALIGN=LEFT><B>Strength</B></P>"
+   "</TD>"
+   "<TD WIDTH=16%>"
+   "<P ALIGN=LEFT><B>Instructions</B>"
+   "</P>"
+   "</TD>"
+   "<TD WIDTH=14%>"
+   "<P ALIGN=LEFT><B>prescribed for</B>"
+   "</P>"
+   "</TD>"
+   "<TD WIDTH=3%>"
+   "<P ALIGN=LEFT><B>quantity</B></P>"
+   "</TD>"
+   "<TD WIDTH=3%>"
+   "<P ALIGN=LEFT><B>repeats</B>"
+   "</P>"
+   "</TD>"
+   "<TD WIDTH=4%>"
+   "<P ALIGN=LEFT><B>start date</B></P>"
+   "</TD>"
+   "<TD WIDTH=4%>"
+   "<P ALIGN=LEFT><B>Last date</B></P>"
+   "</TD>"
+   "<TD WIDTH=13%>"
+   "<P ALIGN=LEFT><B>pbs</B></P>"
+   "</TD>"
+   "<TD WIDTH=13%>"
+   "<P ALIGN=LEFT>Prescribed By</P>"
+   "</TD>"
+   "</TR>"
+   
+   For Each medication In medications
+      sHtml &= Prescription_History_HTML_Row()
+      sHtml = Replace(sHtml, "%generic%", medication!generic)
+      sHtml = Replace(sHtml, "%brand%", medication!brand)
+      sHtml = Replace(sHtml, "%strength%", medication!strength)
+      sHtml = Replace(sHtml, "%instruction%", medication!instruction)
+      sHtml = Replace(sHtml, "%prescribed_for%", medication!prescribed_for)
+      sHtml = Replace(sHtml, "%quantity%", Str(medication!quantity))
+      sHtml = Replace(sHtml, "%repeats%", Str(medication!repeats))
+      sHtml = Replace(sHtml, "%start_date%", Format(medication!start_date, "dd/mm/yyyy"))
+      sHtml = Replace(sHtml, "%last_date%", Format(medication!last_date, "dd/mm/yyyy"))
+      sHtml = Replace(sHtml, "%pbs_script_type%", medication!pbs_script_type)
+      sHtml = Replace(sHtml, "%staff_prescribed_wholename%", medication!staff_prescribed_wholename)
+   Next
+   sHtml &= "</TABLE></BODY></HTML>" 
+   Return sHtml
+   
+End
+
 Public Function Medications_Get(fk_patient As Integer) As Collection
    
    Dim sql As String
    
-   sql = "Select * from clin_prescribing.vwMedications WHERE fk_patient=" & fk_patient & " ORDER BY " & FClinical.get_Medication_Sort_Order()
+   sql = "Select * from clin_prescribing.vwMedications_rt WHERE fk_patient=" & fk_patient & " ORDER BY " & FClinical.get_Medication_Sort_Order() & ", last_date"
+   
+   Return modDBConnect.exec_query_row(sql)
+   
+End
+
+Public Function Medications_Get_old(fk_patient As Integer) As Collection
+   
+   Dim sql As String
+   
+   sql = "Select * from clin_prescribing.vwMedications_rt WHERE fk_patient=" & fk_patient & " ORDER BY " & FClinical.get_Medication_Sort_Order()
    
    Return modDBConnect.exec_query_row(sql)
    
@@ -357,11 +624,44 @@ Public Function Prescription_Written(fk_item_prescribed As Integer) As Collectio
    'Returns a collection for a single drug prescribed 
    '-------------------------------------------------
    
-   Return modDBConnect.exec_query_first("Select * from clin_prescribing.vwPrescribedItems where fk_item_prescribed = " & fk_item_prescribed)
+   Return modDBConnect.exec_query_first("Select * from clin_prescribing.vwPrescribedItems_rt where fk_item_prescribed = " & fk_item_prescribed)
    
 End
 
+
 Public Function Prescriptions_Written_This_Consult(fk_consult As Integer) As Collection
+   '-----------------------------------------------------------------------------
+   'Returns collection of all the drugs prescribed during the current consulation
+   '-----------------------------------------------------------------------------
+   
+   Dim prescribeds As Collection
+   Dim result As New Collection
+   Dim i As CRow
+   Dim c As Collection
+   
+   prescribeds = modDBConnect.exec_query_row("Select * from clin_prescribing.vwprescribeditems_rt where fk_consult = &1 AND not prescribed_deleted", [fk_consult])
+
+  For Each i In prescribeds
+       c = New Collection
+       c!prescribed = New CRow(modDBConnect.exec_query_first("Select * from clin_prescribing.prescribed_rt where pk=" & i!fk_prescribed))
+       c!med = New CRow(modDBConnect.exec_query_first("select * from clin_prescribing.vwmedications_rt where fk_medication =  " & i!fk_medication))
+       c!pbs_script_type = i!pbs_script_type
+       c!date_script_written = i!date_script_written
+       c!generic = i!generic
+       c!strength = i!strength
+       c!product_information_filename = i!product_information_filename
+       c!form = i!form
+       c!brand = i!brand
+       c!instruction = i!instruction
+       c!prescribed_for = i!prescribed_for
+       result.Add(c, i!pk) 
+      
+   Next
+   Return result
+   
+End
+
+Public Function Prescriptions_Written_This_Consult_old(fk_consult As Integer) As Collection
    '-----------------------------------------------------------------------------
    'Returns collection of all the drugs prescribed during the current consulation
    '-----------------------------------------------------------------------------
@@ -467,6 +767,7 @@ Public Function prescribed_for(txt As String) As Collection
    Return modDBConnect.exec_query_collection("Select * from clin_prescribing.prescribed_for where prescibed_for ILIKE $$%" & txt & "%$$ order by prescribed_for")
    
 End
+
 Public Function ConvertTomls(strength As String, volume As Float) As String
    'IAN - This won't work FIXME OR I MEAN DISCUSS WITH ME.
    'e.g vaccines engerix b is 20ug/ml, engeric b paed is 0.5mls or 20ug/ml
@@ -577,7 +878,125 @@ Public Sub Companies_Get(company As String) As Collection
    'User is adding a new drug and wants a list of companies
    'note the pk of companies is the field 'code'
    '------------------------------------------------------- 
-
+   
    Return modDBConnect.exec_query_collection("Select company.code as pk, * from drugs.company where company ILIKE $$%" & company & "%$$ order by company")
+   
+End
 
+Public Function Prescription_History_HTML_Row() As String
+   'A temporary template for my use  
+
+   Return ""
+   
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=10%>"
+   "<P ALIGN=LEFT>%generic%"
+   "</P>"
+   "</TD>"
+   "<TD WIDTH=10%>"
+   "<P ALIGN=LEFT>%brand%"
+   "</P>"
+   "</TD>"
+   "<TD WIDTH=9%>"
+   "<P ALIGN=LEFT>%strength%"
+   "</P>"
+   "</TD>"
+   "<TD WIDTH=16%>"
+   "<P ALIGN=LEFT>%instruction%"
+   "</P>"
+   "</TD>"
+   "<TD WIDTH=14%>"
+   "<P ALIGN=LEFT>%prescribed_for%"
+   "</P>"
+   "</TD>"
+   "<TD WIDTH=3%>"
+   "<P ALIGN=LEFT>%quantity%"
+   "</P>"
+   "</TD>"
+   "<TD WIDTH=2%>"
+   "<P ALIGN=LEFT>%repeats%"
+   "</P>"
+   "</TD>"
+   "<TD WIDTH=4%>"
+   "<P ALIGN=LEFT>%start_date%"
+   "</P>"
+   "</TD>"
+   "<TD WIDTH=4%>"
+   "<P ALIGN=LEFT>%last_date%"
+   "</P>"
+   "</TD>"
+   "<TD WIDTH=13%>"
+   "<P ALIGN=LEFT>%pbs_script_type%"
+   "</P>"
+   "</TD>"
+   "<TD WIDTH=13%>"
+   "<P ALIGN=LEFT>%staff_prescribed_wholename%"
+   "</P>"
+   "</TD>"
+   "</TR>"
+   
+End
+
+Public Sub New_html() As String
+   
+  Return ""
+     "<HTML>"
+     "<BODY>"
+     "<TABLE WIDTH=100% BORDER=1 CELLPADDING=0 CELLSPACING=0 >"
+     "<COL WIDTH=20%>"
+     "<COL WIDTH=80%>"
+     "<TR VALIGN=TOP>"
+     "<TD WIDTH=20%"
+     "<P>%Generic%</P>"
+     "</TD>"
+     "<TD WIDTH=80%>"
+     "<P><B>First Prescribed</B><SPAN STYLE=\"font-weight: normal\">"
+     "%first_prescribed% </SPAN><B>Last Prescribed </B><SPAN STYLE=\"font-weight: normal\">%last_prescribed%</SPAN></P>"
+     "<P><B>Prescription History</B></P>"
+     "<TABLE WIDTH=899 BORDER=1 CELLPADDING=4 CELLSPACING=3>"
+     "<COL WIDTH=103>"
+     "<COL WIDTH=74>"
+     "<COL WIDTH=89>"
+     "<COL WIDTH=89>"
+     "<COL WIDTH=89>"
+     "<COL WIDTH=89>"
+     "<COL WIDTH=89>"
+     "<COL WIDTH=89>"
+     "<COL WIDTH=85>"
+     "<TR VALIGN=TOP>"
+     "<TD WIDTH=103>"
+     "<P>%prescribed_on%</P>"
+     "</TD>"
+     "<TD WIDTH=74>"
+     "<P>%brand%</P>"
+     "</TD>"
+     "<TD WIDTH=89>"
+     "<P>%strength%</P>"
+     "</TD>"
+     "<TD WIDTH=89>"
+     "<P>%instructions%</P>"
+     "</TD>"
+     "<TD WIDTH=89>"
+     "<P>%for%</P>"
+     "</TD>"
+     "<TD WIDTH=89>"
+     "<P>%quantity%</P>"
+     "</TD>"
+     "<TD WIDTH=89>"
+     "<P>%repeats%</P>"
+     "</TD>"
+     "<TD WIDTH=89>"
+     "<P>%pbs%</P>"
+     "</TD>"
+     "<TD WIDTH=85>"
+     "<P>%prescribed_by%</P>"
+     "</TD>"
+     "</TR>"
+     "</TABLE>"
+     "</TD>"
+     "</TR>"
+     "</TABLE>"
+     "</BODY>"
+     "</HTML>" 
+   
 End

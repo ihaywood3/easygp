@@ -69,7 +69,7 @@ Private GraphData As Collection                  'collection pertaining to curre
 Private MeasurementDefaults As Collection        'default measurements for patient eg INR/HBA1c
 Private consultationtypes As Collection          'eg at surgery, home, on phone
 Public EditorPages As Collection                 'all pages which are stuck onto the workspace
-Private Const cListPrescriptions As Integer = 0  'all these reference lists of tabstip_lists
+Private Const cListMedications As Integer = 0  'all these reference lists of tabstip_lists
 Private Const cListRequests As Integer = 1 
 Private Const clistReferrals As Integer = 2 
 Private Const clistRecalls As Integer = 3
@@ -518,7 +518,7 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
    Wait                                      'AND LOADING PATIENT IS IMPOSSIBLE
    cvwAllergies_Refresh()                    'Get all allergies, display on toolbar
    cvwRecalls_Refresh()                      'Display recalls on toolbar
-   cvwMedications_Refresh()                  'Get all meds, display current in list
+   cvwMedications_Refresh()              'Get all active meds, display current in list
    '-------------------------------------------------------------------------------
    'Show a list of outstanding tasks if any and show on main task bar to hightlight
    '-------------------------------------------------------------------------------
@@ -641,7 +641,7 @@ Public Sub Refresh_Section_Instance(section As Integer)
    Select Case section
       Case const.cSection_PastHistory
          pasthistory_refresh_lists()
-      Case const.cSection_Prescriptions
+      Case const.cSection_Medications
          cvwMedications_Refresh()
       Case const.cSection_Requests
          modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwRequests)
@@ -722,7 +722,7 @@ Public Sub Refresh_Section_Instance_old(section As Integer)
    Select Case section
       Case const.cSection_PastHistory
          pasthistory_refresh_lists()
-      Case const.cSection_Prescriptions
+      Case const.cSection_Medications
          cvwMedications_Refresh()
       Case const.cSection_Requests
          modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwRequests)
@@ -1005,6 +1005,7 @@ Public Sub cvwMedications_Refresh()
    'The medication list is looped through, the first occurrance of a generic medication is
    'used, all subsequent ones ignored
    '---------------------------------------------------------------------------------------   
+   
    Dim col_med As Integer = 0
    Dim col_strength As Integer = 1
    Dim col_instructions As Integer = 2
@@ -1019,8 +1020,13 @@ Public Sub cvwMedications_Refresh()
    Dim x As String
    Dim cvw As ColumnView
    Dim iLast_Medication_Key As Integer
+   Dim bActive As Boolean
    
- 
+   If lblMedications.tag = "active" Then 
+      bActive = True   
+   Else
+      bActive = False
+   End If   
    cvw = cvwMedications
    cvw.Clear()
    cvw.Columns.count = 10
@@ -1050,10 +1056,11 @@ Public Sub cvwMedications_Refresh()
       Print Currentconsult!medications 
       If iLast_Medication_Key <> medication!prescribed!fk_medication Then    '
          iLast_Medication_Key = medication!prescribed!fk_medication 
-         If medication!med!active = True Then
+         
+         If medication!med!active = bActive Then
             x = medication!prescribed!fk_brand
             cvw.Add(x, 0)
-         
+            
             If medication_sort_order = "brand" Then 
                cvw[x][col_med] = modUtil.Ucase_Word_First_Letter(medication!brand)
             Else  
@@ -1061,8 +1068,8 @@ Public Sub cvwMedications_Refresh()
             End If   
             cvw[x][col_strength] = medication!strength
             cvw[x][col_instructions] = medication!instruction
-            cvw[x][col_quantity] = medication!quantity 
-            cvw[x][col_repeats] = medication!repeats
+            cvw[x][col_quantity] = medication!prescribed!quantity 
+            cvw[x][col_repeats] = medication!prescribed!repeats
             cvw[x][col_start_date] = Format(medication!med!start_date, "dd/mm/yyyy")
             cvw[x][col_last_date] = Format(medication!med!last_date, "dd/mm/yyyy")
             cvw[x][col_pbs] = medication!pbs_script_type
@@ -1091,7 +1098,6 @@ Public Sub cvwMedications_Refresh_old_DONOTREMOVE()
    Dim cvw As ColumnView
    Dim iLast_Medication_Key As Integer
    
- 
    cvw = cvwMedications
    cvw.Clear()
    cvw.Columns.count = 10
@@ -1207,6 +1213,7 @@ Public Sub cvwMedications_Refresh_oldest_IANDONOTREMOVETHIS()
    Next
    
 End
+
 Public Sub cvwAllergies_Refresh()
    '---------------------------------------------
    'Fetch the patients allergies from the backend
@@ -1879,7 +1886,7 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
             Page.title = sPageName  
             EditorPages.Add(Form_Library, sPageName)
             Control_For_Focus = Form_Library.TreeView1
-           Case "Export File"
+         Case "Export File"
             page = New FLinkContainer  
             Export_Clinical = New FExportClinical(page.VBoxEditor) 
             Export_Clinical.Init(currentconsult)
@@ -2307,6 +2314,15 @@ Public Sub TabStrip_Lists_MouseUp()
    Endif
    
    Select Case TabStrip_Lists.Index
+      Case cListMedications
+         If lblMedications.tag = "active" Then
+            lblMedications.tag = "inactive"
+            lblMedications.text = "Inactive Medications"
+         Else
+            lblMedications.tag = "active"
+            lblMedications.text = "Active Medications"
+         Endif
+         cvwMedications_Refresh()
       Case cListRequests
          If cvwRequests.Visible Then                              'If showing requests made/ordered           
             TabStrip_Lists.ToolTip = "Display available results"  'show results received
@@ -2853,9 +2869,9 @@ Public Sub MainToolbar_Click()
          For Each page In WorkspaceEditor.Windows
             If page = WorkspaceEditor.ActiveWindow Then
                Try Object.Call(page.VBoxEditor.Children[0], Last.tag)
-             '  If Error Then
-              '    Message.Info(Error.Text)
-              ' Endif
+               '  If Error Then
+               '    Message.Info(Error.Text)
+               ' Endif
                Break
             End If   
          Next
@@ -3108,7 +3124,16 @@ Public Sub TabbedLists_Menu()
       Case "requests"
          If cvwrequests.count Then mnuTabbedListRequest.popup()
       Case "medications"
-         If cvwMedications.count Then mnuMedications.popup()
+         If cvwMedications.count Then
+            If lblMedications.tag = "active" Then
+               mnuMedications_MakeActive.Enabled = False 
+               mnuMedications_MakeInActive.Enabled = True
+            Else
+               mnuMedications_MakeActive.Enabled = True 
+               mnuMedications_MakeInActive.Enabled = False
+            Endif
+            mnuMedications.popup()
+         End If
       Case "measurements"
       Case "recalls"
          '------------------------------------------------------------------------
@@ -3585,6 +3610,7 @@ Public Sub tbPatientPicture_Menu()
 End
 
 Public Sub mnuMedications_Click()
+   
    Dim medication As Collection
    
    cvwMedications.MoveCurrent()
@@ -3597,21 +3623,29 @@ Public Sub mnuMedications_Click()
          '    cvwMedications_Refresh() 'refresh the collection and reshow the list
          ' End If
       Case "full product information"
-          cvwMedications.MoveCurrent()
-          If Not IsNull(medication!product_information_filename) Then
-             Try Editor_ShowPage("pdf file", medication!brand & " (" & medication!generic & ")", modAdminDBI.Config_Get("product_information_directory", "", Null, modDBConnect.currentUser!fk_clinic) &/ medication!product_information_filename)
-             If Error Then
-                Message.info("The product information could not be found")
-             Endif
-          Else
-              Message.info("The product information could not be found")
-          Endif
+         cvwMedications.MoveCurrent()
+         If Not IsNull(medication!product_information_filename) Then
+            Try Editor_ShowPage("pdf file", medication!brand & " (" & medication!generic & ")", modAdminDBI.Config_Get("product_information_directory", "", Null, modDBConnect.currentUser!fk_clinic) &/ medication!product_information_filename)
+            If Error Then
+               Message.info("The product information could not be found")
+            Endif
+         Else
+            Message.info("The product information could not be found")
+         Endif
+      Case "make active"
+         '  modDBConnect.update("clin_prescribing.medications_rt", Null, ["pk": medication!prescribed!fk_medication, "active": False])
+         modPrescribingDBI.Medication_MakeActiveOrInactive(medication!prescribed!fk_medication, True)
+         cvwMedications_Refresh()
+      Case "make inactive"
+         ' modDBConnect.update("clin_prescribing.medications_rt", Null, ["pk": medication!prescribed!fk_medication, "active": False])
+         modPrescribingDBI.Medication_MakeActiveOrInactive(medication!prescribed!fk_medication, False)
+         cvwMedications_Refresh()
       Case "brief product information"
          modUtil.NotImplemented("Brief Product Information")
       Case "view medication history"
       Case "view all medications history"
-            Print modPrescribingDBI.Medications_History_Construct_HTML(currentconsult!medications)
-            Editor_ShowPage("browser", "Medication history", modPrescribingDBI.Medications_History_Construct_HTML(currentconsult!medications))
+         Print modPrescribingDBI.Medications_History_Construct_HTML(currentconsult!medications)
+         Editor_ShowPage("browser", "Medication history", modPrescribingDBI.Medications_History_Construct_HTML(currentconsult!medications))
    End Select
    
 End
@@ -4178,6 +4212,7 @@ Public Sub Measurements_Make_Graph()
          
       Case "add"
          'Add to favourites, but first, is it already a favourite?
+         If IsNull(pbGraphName.Tag) Then Return 
          For Each MD In MeasurementDefaults 
             If Lower(Md!name) = Lower(pbGraphName.Tag!name) Then Return
          Next
@@ -4185,7 +4220,9 @@ Public Sub Measurements_Make_Graph()
             pbGraphName.tag!display_as_default = False
             Measurement_Favourites_Update()
          Endif
+         
       Case "remove"
+         If IsNull(pbGraphName.Tag) Then Return 
          If Message.Question("Do you wish to remove " & pbGraphName.Tag!name & " from the favourites?", "Yes", "No") = 1 Then
             modMeasurementsDBI.Measurement_Default_Mark_Deleted(pbGraphName.tag!pk)
             modDBConnect.CommitTrans()
@@ -4207,6 +4244,7 @@ Public Sub Measurements_Make_Graph()
          'pbGraphName.tag used to 'store' information about graph default
          'for want of a better place
          '---------------------------------------------------------------
+         If IsNull(pbGraphName.Tag) Then Return 
          Measurement_Graph(ActiveGraphButton.tag!loinc, ActiveGraphButton.tag!name)
          pbGraphName.tag = ActiveGraphButton.tag
          If ActiveGraphButton.tag!display_as_default = True Then
@@ -4412,7 +4450,7 @@ Public Sub tabstrip_lists_Click()
    
    If IsNull(currentconsult) Then Return 
    Select Case TabStrip_Lists.Index
-      Case cListPrescriptions
+      Case cListMedications
          TabStrip_Lists.ToolTip = "Prescriptions Written"          
       Case cListRequests
          
@@ -4747,7 +4785,6 @@ Public Sub HSplit_MeasurementLists_Resize()
    
 End
 
-
 Public Sub InboxResults_KeyRelease()
    '-----------------------------------------------------------------------
    'User has typed in one of the two textboxes underneath the results inbox
@@ -4770,7 +4807,7 @@ End
 
 Public Sub chkGraph_MakeDefault_Click()
    
-   If IsNull(currentconsult) Then Return
+   If IsNull(currentconsult) Or IsNull(pbGraphName.Tag) Then Return
    If Bexit Then Return 
    
    If Last.value = True Then
@@ -4912,7 +4949,7 @@ End
 Public Sub slGraphFontSize_Change()
    
    If IsNull(currentconsult) Then Return 
-   Measurement_Graph(pbGraphName.Tag!loinc, pbGraphName.Tag!name)
+   Try Measurement_Graph(pbGraphName.Tag!loinc, pbGraphName.Tag!name)   'tag can be null
    
 End
 
@@ -5358,9 +5395,8 @@ Public Sub rbMedications_Click()
    '------------------------------------------------------------
    'User has clicked on option button above the medication lists
    '------------------------------------------------------------
-
+   
    medication_sort_order = Last.tag
    cvwMedications_Refresh()
 
 End
-             

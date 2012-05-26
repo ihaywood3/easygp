@@ -1,7 +1,7 @@
 ' Gambas class file
 
 ' Gambas class file
-' Copyright (C) 2008,2011 Dr. Richard Terry
+' Copyright (C)2008-2012 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -19,6 +19,9 @@
 '         prescribed! = concession_details: these three Not yet implemented
 '         prescribed! = brand_substitution: Do Not remove this code
 '        prescribed! = fk_progress_note
+'        put the suppress reason checkbox in the gui
+'        implement brand substitution not permitted
+'        implement keep record of writing scripts in the progress note
 '        lu_pbs_script_type FIXME RENAME IN BACK END TO lu_script_type and adjust queries accordingly 
 'BUGS    After ipbs_script_type is set by the generic, finding the 
 '        brands for the brand list is over-riding this ?does it matter
@@ -75,6 +78,7 @@ Private Prescibed_For_Habits As Collection
 Private habit As Collection 
 Private Authority_Increased_Quantity_Reasons As Collection
 Private SpellChecker As ClskSpell
+Static Private form_prescriptions As FPrescriptions
 
 Public Sub set_embedded(F As String)
    '----------------------------------------------------------
@@ -95,10 +99,10 @@ Public Sub Reload()
    '-------------------------------------------------------------
    
    currentconsult.Refresh("prescriptions_written")
-   ' script_items = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!prescriptions_written)
-   ' For Each script_item In script_items
-   '    script_item!printed = True   
-   ' Next
+   script_items = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!prescriptions_written)
+   For Each script_item In script_items
+      script_item!printed = True   
+   Next
    cvwPrescriptions_Refresh(script_items)
    Drug_New()
    
@@ -123,6 +127,7 @@ End
 
 Public Sub Init(cons As CConsult)
    
+   form_prescriptions = Me
    currentconsult = cons
    lblMeasure.text = " Authority Wording  "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
@@ -189,7 +194,7 @@ Public Sub mnuHealthIssues_Click()
 End
 
 Public Sub Delete_script()
-
+   
    Dim x As Integer
    
    cvwPrescriptions.MoveFirst
@@ -203,7 +208,7 @@ Public Sub Delete_script()
    Next
    FClinical_Refresh()
    Reload()
-
+   
 End
 
 Public Sub Delete_Undo()
@@ -1339,18 +1344,13 @@ Public Sub Drug_Add() As Boolean
    script_item!instruction = Trim(txtInstructions.text) ' FIXME: convert to the PK here??
    script_item!prescribed_for = Trim(txtReason.text)  ' FIXME: convert to the PK here ??
    script_item!prescribed!fk_instruction = modPrescribingDBI.Instruction_Get_PK(script_item!instruction)
-   'now, save any habits
-   
-   modPrescribingDBI.Instructions_Save_Habit(script_item)
+   modPrescribingDBI.Instructions_Save_Habit(script_item) 'save instruction habit and pull back the key
    modDBConnect.CommitTrans()
-   
    script_item!prescribed!fk_prescribed_for = modPrescribingDBI.PrescribedFor_Get_Pk(script_item!prescribed_for)
-   
-   modPrescribingDBI.Prescribed_For_Save_Habit(script_item)
+   modPrescribingDBI.Prescribed_For_Save_Habit(script_item) ' save the prescribed for habit and pull back the key
    modDBConnect.CommitTrans()
-   
    Script_item!prescribed!restriction_code = restriction_code
-   script_item!prescribed!suppress_reason = False   'fixme implement me
+   script_item!prescribed!suppress_reason = False                  'fixme implement me put me in the gui
    Script_item!prescribed!fk_lu_pbs_script_type = iPBS_Script_Type
    Script_item!prescribed!reg24 = CBool(chkReg24.Value)
    script_item!med!active = CBool(chkActive.value)
@@ -1700,9 +1700,9 @@ Public Sub Print_Script_Items(items As Collection)
    
    For Each script_item In items 
       If script_item!printed = False Then 
-         Select Case script_item!med!fk_lu_pbs_script_type
+         Select Case script_item!prescribed!fk_lu_pbs_script_type
             Case const.pbs_script_type_pbs, const.pbs_script_type_private, const.pbs_script_type_rpbs
-               Select Case script_item!med!fk_lu_pbs_script_type
+               Select Case script_item!prescribed!fk_lu_pbs_script_type
                   Case const.pbs_script_type_pbs
                      If pbs_scripts.count = 3 Then 
                         Print_Script(pbs_scripts, const.pbs_script_type_pbs)
@@ -1782,7 +1782,7 @@ Public Sub Script_Construct_LaTex(items As Collection, templ As CTemplate, pbs_s
       Case const.pbs_script_type_private
          templ.Subst("rpbs-script", "")
          templ.Subst("pbs-script", "")
-         templ.Subst("wipe-pbs-rpbs", "XXXXXXXXXXXXXXX")
+         templ.Subst("wipe-pbs-rpbs", "XXXXXXXXXXXX")
    End Select
    templ.Subst_Drugs(items) 'build latex for up to 3 script items
    Return templ 
@@ -1797,7 +1797,7 @@ Public Sub Script_Construct_Authority_LaTeX(auth_item As Collection, templ As CT
    
    templ.Subst_common(currentconsult)
    
-   templ.Subst("authority-heading-authority-script-number", const.pbs_script_types[script_item!med!fk_lu_pbs_script_type] & " SCRIPT NO. " & script_item!prescribed!authority_script_number) 
+   templ.Subst("authority-heading-authority-script-number", const.pbs_script_types[script_item!prescribed!fk_lu_pbs_script_type] & " SCRIPT NO. " & script_item!prescribed!authority_script_number) 
    Print modUtil.Medicare_Number_Format(currentconsult!patient!medicare_number)
    templ.Subst("patientaddress", Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town & " " & currentconsult!patient!postcode)
    templ.Subst("medicarenumber", currentconsult!patient!medicare_number)
@@ -1835,7 +1835,7 @@ Public Sub Script_Construct_Authority_LaTeX(auth_item As Collection, templ As CT
       script_item!restriction = Replace(script_item!restriction, "<br/>", "")
       templ.Subst("authority-indication", script_item!restriction)         
    End If   
-   templ.Subst("quantity-repeats", script_item!strength & " " & script_item!med!quantity & "'s Rpt " & script_item!med!repeats)
+   templ.Subst("quantity-repeats", script_item!strength & " " & script_item!prescribed!quantity & "'s Rpt " & script_item!prescribed!repeats)
    templ.Subst_Drugs(auth_item, True) 
    Return templ
    
@@ -1899,6 +1899,7 @@ Public Sub mnuPrescriptions_Click()
    Dim fk_script_item As Integer 
    Dim item As Collection 
    Dim x As Integer
+   Dim SelectedItems As Collection
    
    cvwPrescriptions.MoveCurrent()
    Select Case Last.tag
@@ -1914,6 +1915,7 @@ Public Sub mnuPrescriptions_Click()
          'as the entire list hasn't been printed, the resultant collection
          'must be slotted back into the script_items collection
          '-----------------------------------------------------------------
+         
          ' If IsNull(script_items[cvwPrescriptions.Item.key]!fk_script_item) Then 
          '     script_items[cvwPrescriptions.Item.key]!fk_item_prescribed = Drug_Save(script_items[cvwPrescriptions.Item.key]) 'saves to backend and commits
          ' 'script_items.Remove(cvwPrescriptions.Item.key)
@@ -1928,7 +1930,18 @@ Public Sub mnuPrescriptions_Click()
          Next
          Print_Script_Items(script_items)
       Case "print selected"
-         
+         SelectedItems = New Collection 
+         cvwPrescriptions.MoveFirst
+         For x = 0 To cvwPrescriptions.count - 1
+            If cvwPrescriptions.Item.Selected = True Then
+               script_items[cvwPrescriptions.Item.key]!printed = False  
+               SelectedItems.Add(script_items[cvwPrescriptions.Item.key], SelectedItems.Count)
+            Endif
+            cvwPrescriptions.MoveNext() 
+         Next
+         Print_Script_Items(SelectedItems)
+         cvwPrescriptions.UnselectAll()
+         FClinical_Refresh()
       Case "save single no print"
          
          If IsNull(script_items[cvwPrescriptions.Item.key]!printed) Then
@@ -2077,6 +2090,7 @@ Public Sub cmbScriptTypes_Click()
          txtApprovalNumber.text = ""
          bexit = False   
          iPBS_Script_Type = const.pbs_script_type_private
+         lcRestrictions.Clear()
    End Select
    
 End

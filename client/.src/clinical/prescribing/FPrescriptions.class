@@ -23,10 +23,19 @@
 '        implement brand substitution not permitted
 '        implement keep record of writing scripts in the progress note
 '        lu_pbs_script_type FIXME RENAME IN BACK END TO lu_script_type and adjust queries accordingly 
+'        fix the problem of 'mixture' of printed (hence saved) and not printed (hence unsaved) scripts
+'        under the edit area and what happens with Reload()
+'        Do the code to edit a script item.
+'        Plus lots more I can't even think about
+'        Check/double check that the drug validation before save works
+'        fix the formatting on the medicare number in the latex preparation, dosn't work
+'        Implement duplication checking before landing something on the script pad
 'BUGS    After ipbs_script_type is set by the generic, finding the 
 '        brands for the brand list is over-riding this ?does it matter
 '        ie are all the brands for this product the same ipbs_script_type
 '        probably yes but check.
+'        If prescribe generically but also select brand the correct brand is shown in the edit area
+'        but the incorrect brand ends up on the scripts list.
 '--------------------------------------------------------------------
 Private pic_printed As Picture = Picture["icons/12/green_dot.png"]
 Private pic_not_printed As Picture = Picture["icons/12/red_dot.png"]
@@ -70,7 +79,7 @@ Private brands As Collection
 Private brand As Collection 
 Private fk_brand As String 
 Private fk_medication As Integer 
-Private script_items As Collection
+Public script_items As Collection
 Private script_item As Collection
 Private view_items As Collection       'all the items from the view of script items written this consultation
 Private Instruction_Habits As Collection
@@ -79,6 +88,25 @@ Private habit As Collection
 Private Authority_Increased_Quantity_Reasons As Collection
 Private SpellChecker As ClskSpell
 Static Private form_prescriptions As FPrescriptions
+
+Static Public Sub Script_Item_Re_Prescribe(item As Collection) 
+   '-------------------------------------------------
+   'Called from Fclinical.mnuMedications_Click()
+   'which puts a previously prescribed script item 
+   'into the scripts prescribed this consulation list
+   '-------------------------------------------------
+ form_prescriptions.Script_items_Update(item)
+
+End
+
+Public Sub Script_items_Update(item As Collection)
+   '------------------------------------------------------------
+   'Adds as previously prescribed script item to today's scripts
+   'and updates the list visually
+   '------------------------------------------------------------
+   script_Items.add(item, script_items.Count)
+   cvwPrescriptions_Refresh(script_items)
+End   
 
 Public Sub set_embedded(F As String)
    '----------------------------------------------------------
@@ -91,12 +119,12 @@ Public Sub set_embedded(F As String)
 End
 
 Public Sub Reload()
-   '--------------------------------------------------------------
+   '---------------------------------------------------------------
    'Display scripts written this consultation, am assuming
    'that if saved to backend they have been printed, however
    'could have been saved 'no print', so perhaps change this flag
-   'FIXME
-   '-------------------------------------------------------------
+   'FIXME THIS WON'T ALWAYS WORK - IT SETS AN UNPRINTED TO A PRINTED
+   '----------------------------------------------------------------
    
    currentconsult.Refresh("prescriptions_written")
    script_items = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!prescriptions_written)
@@ -127,7 +155,7 @@ End
 
 Public Sub Init(cons As CConsult)
    
-   form_prescriptions = Me
+   form_prescriptions = Me                                              'allow access of this instance from FClinical
    currentconsult = cons
    lblMeasure.text = " Authority Wording  "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
@@ -160,14 +188,13 @@ Public Sub Init(cons As CConsult)
    '-------------------------------------------------------------------------------
    With SpellChecker = New ClskSpell
       .EditorControlToCheck = teForSpelling
-      .TempFileForSpelling = User.home &/ "myspelltemp.txt"
+      .TempFileForSpelling = User.home &/ "myspelltemp.txt"  'FIXME 
       .TempFileForErrors = User.home &/ "myspellerrors.txt"
    End With
    cvwBrands.Columns.count = 1
    script_items = New Collection 'all those prescribed this consultation
    Settings_Load()
    MenuButton1.menu = "mnuHealthIssues"
-   
    Reload()
    
 End
@@ -176,6 +203,7 @@ Public Sub mnuHealthIssues_Click()
    '---------------------------------------------------
    'User wants to link a request form to a health issue
    'The menu tag = the pk_pasthistory
+   'currrently this is not used FIXME decide if should
    '---------------------------------------------------
    
    Select Case Last.tag
@@ -193,7 +221,10 @@ Public Sub mnuHealthIssues_Click()
 End
 
 Public Sub Delete_script()
-   
+   '--------------------------------------------------------------
+   'User has decided to delete something they have just prescribed
+   'FIXME if not saved yet this won't work.
+   '--------------------------------------------------------------   
    Dim x As Integer
    
    cvwPrescriptions.MoveFirst
@@ -236,6 +267,9 @@ Public Sub Edit()
    '---------------------------
    
    Dim script_item As Collection
+   
+   Message.Info("Sorry, at the moment you can't edit a script item")
+   Return   
    
    cvwPrescriptions.MoveCurrent
    fk_item_prescribed = currentconsult!prescriptions_written[iCurrentScriptKey]!fk_item_prescribed   
@@ -434,7 +468,10 @@ Public Sub Editarea_txtBox_KeyPress()
 End
 
 Public Sub EditArea_Notify_Data_Change(flag As Boolean)
-   
+'----------------------------------------------------
+'Hide or show the red outline around the editing area
+'red = there is data to be saved
+'----------------------------------------------------   
    If flag Then
       Vbox_EditArea.Padding = 1
       Vbox_EditArea.Background = Color.red
@@ -482,7 +519,6 @@ Public Sub EditArea_TxtBox_Change()
             Drug_New()
          Endif
       Case "approval number"
-         ' chkAuthority.value = True
          '------------------------------------------------------
          'Drug should be already showing in the edit area
          'If user typing in an approval number, this should be
@@ -499,7 +535,6 @@ Public Sub EditArea_TxtBox_Change()
          Last.text = UCase(Last.text)
          bexit = False
          If iPBS_Script_Type <> const.pbs_script_type_pbs_authority Or iPBS_Script_Type <> const.pbs_script_type_rpbs_authority Then
-            
             Drug_Show_Restriction()
             If Val(txtRepeats.text) > drug!quantity Then
                iPBS_Script_Type = const.pbs_script_type_pbs_authority_increased_quantity
@@ -508,7 +543,6 @@ Public Sub EditArea_TxtBox_Change()
       Case "quantity"
          'User is changing the quantity, is this increased quantity or PBS item
          If Not IsNull(drug!quantity) Then         
-            '   If Val(txtRepeats.text) > drug!quantity Then
             '---------------------------------------------------------------------------------
             'If not already an authority item and is on the pbs/rpbs restricted or unrestricted
             '----------------------------------------------------------------------------------
@@ -523,7 +557,6 @@ Public Sub EditArea_TxtBox_Change()
                   End If   
                End If
             End If
-            '  Endif
          End If
       Case "instructions"
          Instructions_Expand_Text(Last)
@@ -590,7 +623,6 @@ Public Sub EditArea_TxtBox_GotFocus()
             .Visible = False
             .Raise
          End With
-         
          If Trim(txtInstructions.text) = "" Then
             Try Instruction_Habits_Get() 'bombs if drug null
             If Error Then txtInstructions.SetFocus()
@@ -617,7 +649,6 @@ Public Sub EditArea_TxtBox_GotFocus()
             .Visible = False
             .Raise
          End With
-         
          If Trim(TxtReason.text) = "" Then
             Try PrescribedFor_Habits_Get() 'bombs if drug null
          Else
@@ -667,7 +698,6 @@ Public Sub EditArea_TxtBox_GotFocus()
                .width = txtAuthorityWording.Width
                .Raise
             End With
-            
          Endif
    End Select
    
@@ -902,7 +932,6 @@ Public Function PBS_Show(drug As Collection) As String
          lblRestrictions.text = "PRIVATE SCRIPT"
          iPBS_Script_Type = const.pbs_script_type_private
    End Select  
-   
    cmbScriptTypes.index = iPBS_Script_Type - 1
    bExit = False  
    Return lblRestrictions.Text
@@ -1044,11 +1073,9 @@ Public Sub Brands_Get()
    End With
    cvwBrands.Visible = False                                          'clear the brands for generic
    If Trim(txtBrand.text) = "" Then Return 
-   drugs = modPrescribingDBI.Brands_Get_RT(Trim(txtbrand.text))  'ok, get all matching generics from vwDrugs
+   drugs = modPrescribingDBI.Brands_Get(Trim(txtbrand.text))  'ok, get all matching generics from vwDrugs
    If drugs.count Then                                            'found some?
       For Each drug In drugs                                      'then put into the columnview
-         '  If last_drug <> drug!generic & drug!pbscode Then 
-         '   last_drug = drug!generic & drug!pbscode
          If drug!chapter = "GE" Or Drug!chapter = "R1" Or IsNull(Drug!chapter) Then 
             ColumnView1.add(drug!pk_view, 0)                       'pk_view = string(brand.pk + pbs_code + restriction_code)
             columnview1[drug!pk_view][0] = drug!brand  
@@ -1076,7 +1103,6 @@ Public Sub Brands_Get()
             End If   
             columnview1[drug!pk_view][5] = PBS_Show(drug)
          End If   
-         'End If   
       Next
       columnview1.Columns[0].width = 100
       pnlcolumnview.Visible = True                                'Now show the list of generics 
@@ -1088,10 +1114,13 @@ End
 
 Public Sub Print_Content()
    '----------------------------------------------------------------------------------
-   'Differs from other forms in that scripts are not saved to back-end before printing
+   'This is called from FClinical MainToolbar_Click()
+   'we can't call the print routine Print() as Print is a gambas keyword
+   'The behaviour of this differs from other forms as here, the drugs have to be 
+   'saved to the backend before printing
    '----------------------------------------------------------------------------------   
    
-   Save()
+   Save()   'Saves the drug to back end then prints
    
 End
 
@@ -1122,90 +1151,16 @@ Public Sub Drug_Select()
    drug = drugs[pk_view]                               'set drug collection pk_view set by columnview1_select()  
    med = New CRow                                      'this will be saved in drug_save()
    med!fk_generic_product = drug!fk_product
-   ' med!pbscode = drug!pbscode '
-   
    drug!medication = med    
    bexit = True
    txtGeneric.text = drug!generic                      'e.g atenolol
    txtGeneric.pos = 1                                  'make sure stem of generic showing
    If cvwBrands.Visible Then 
       txtBrand.text = brands[cvwBrands.Item.key]!brand    'e.g tenormin
-      ' med!fk_brand = cvwBrands.Item.key                   'match the brand key to the cvwBrands list
       fk_brand = cvwBrands.Item.key 
-      
    Else
       txtBrand.text = drug!brand
       fk_brand = drug!fk_brand    
-      '  med!fk_brand = drug!fk_brand                   'match the brand key to the cvwBrands list
-   End If   
-   txtBrand.pos = 1                                    'make sure stem of brand showing
-   txtClass.text = drug!class                          'fixme
-   If InStr(drug!strength, "ml") Then                  'if liquid, then show per 5ml volume
-      If drug!amount = 5 Then 
-         txtStrength.text = modPrescribingDBI.ConvertTo5mls(drug!strength)
-      Else
-         txtStrength.text = drug!strength
-      End If   
-   Else
-      txtStrength.text = drug!strength & " " & drug!form 'show the formulation e.g tablet
-   End If
-   txtStrength.pos = 1
-   If Not IsNull(drug!quantity) Then
-      txtQuantity.text = drug!quantity
-   Else
-      Try txtQuantity.text = drug!pack_size 'private drugs
-   End If   
-   If Not IsNull(drug!max_rpt) Then
-      txtRepeats.text = drug!max_rpt
-   Else
-      txtRepeats.text = 0
-   End If   
-   
-   PBS_Show(drug)                                      'e.g PBS STREAMLINED or PRIVATE
-   If drug!restrictionflag = "A" Then
-      lcRestrictions.index = 0
-      Restrictions_Click()
-   End If   
-   Try Instruction_Habits_Get()                        'get commonest direction, set focus to txtReason
-   If Trim(txtInstructions.text) = "" Then
-      txtInstructions.SetFocus()
-   Endif
-   
-End
-
-Public Sub Drug_Select_old()
-   '----------------------------------------------------------------------
-   'User is picking a drug from the popup columnview
-   'FIXME REMOVE VARIABLES ONLY LOAD ONES FOR DISPLAY
-   'the drug collection consists of this:
-   'drugs!med whose data will be saved to clin_prescibing.medications
-   'drugs!prescibed whose data will be saved to clin_prescribing.prescibed
-   'drugs!fields = all fields for the drug, mainly used for display
-   'Fill the edit area with the drugs details, the brand selected (or if 
-   'none - the first brand on the list
-   'try and auto-fill the instruction from the habits table and then put
-   'cursor onto the instructions textbox. This will the auto-fill in the
-   'instructions for the drug if previously described (or the best guess)
-   '-----------------------------------------------------------------------
-   
-   Dim pbs_script_type As String                       'chapter + restrictionflag - selects how to print script
-   Dim med As CRow                                     'cRow allows eg Med.Save(..)
-   
-   drug = drugs[pk_view]                               'set drug collection pk_view set by columnview1_select()  
-   med = New CRow                                      'this will be saved in drug_save()
-   med!fk_generic_product = drug!fk_product
-   med!pbscode = drug!pbscode '
-   
-   drug!medication = med    
-   bexit = True
-   txtGeneric.text = drug!generic                      'e.g atenolol
-   txtGeneric.pos = 1                                  'make sure stem of generic showing
-   If cvwBrands.Visible Then 
-      txtBrand.text = brands[cvwBrands.Item.key]!brand    'e.g tenormin
-      med!fk_brand = cvwBrands.Item.key                   'match the brand key to the cvwBrands list
-   Else
-      txtBrand.text = drug!brand
-      med!fk_brand = drug!fk_brand                   'match the brand key to the cvwBrands list
    End If   
    txtBrand.pos = 1                                    'make sure stem of brand showing
    txtClass.text = drug!class                          'fixme
@@ -1260,10 +1215,8 @@ Public Sub EditArea_Buttons_Click()
             Drug_New() 'valid drug added to list
          End If  
          tbOk.Enabled = True  
-         
       Case "print"
          Save()
-         
       Case "product information"
          If drug.count Then Product_Information_Full_Show(drug!product_information_filename, drug!brand)
    End Select
@@ -1285,7 +1238,7 @@ Public Sub Drug_Add() As Boolean
    'the user elects to do this - 3 items on a script for 'like' items
    'e.g if all pbs, all private
    'Returns true flag if sucessfully added to the list
-   ' CREATE TABLE clin_prescribing.prescribed_rt
+   ' CREATE TABLE clin_prescribing.prescribed
    ' (
    '   pk serial NOT NULL,
    ' x  fk_consult integer NOT NULL,
@@ -1324,14 +1277,13 @@ Public Sub Drug_Add() As Boolean
    If fk_medication Then script_item!fk_medication = fk_medication
    '  If fk_increased_quantity_authority_reason Then script_item!fk_increased_quantity_authority_reason
    script_item!med = drug!medication
-   script_item!med!Last_date = Now()
-   script_item!med!start_date = Now()
+   script_item!med!Last_date = Now() 
+   script_item!med!start_date = Now() 'won't always be true unless this is a new medication 
    script_item!prescribed = New CRow
    script_item!prescribed!fk_brand = drug!fk_brand
    script_item!date_script_written = Now()
    script_item!prescribed!date_on_script = Val(txtdate.text)
    script_item!prescribed!fk_consult = currentconsult.GetPK()
-   script_item!date_script_written = Now()
    script_item!brand = drug!brand ' for display only
    script_item!generic = drug!generic ' for display
    script_item!strength = drug!strength ' for display only
@@ -1365,7 +1317,7 @@ Public Sub Drug_Add() As Boolean
    ' prescribed! = brand_substitution : do not remove this code
    ' prescribed! = fk_progress_note
    cvwPrescriptions_Refresh(script_items)
-   tbOk.Enabled = True  
+   tbOk.Enabled = True   '??fixme whats this ?legac y
    Return True 
    
 End
@@ -1409,12 +1361,9 @@ Public Sub Drug_Add_IANs_Schema() As Boolean
    
    modPrescribingDBI.Instructions_Save_Habit(script_item)
    modDBConnect.CommitTrans()
-   
    script_item!med!fk_prescribed_for = modPrescribingDBI.PrescribedFor_Get_Pk(script_item!prescribed_for)
-   
    modPrescribingDBI.Prescribed_For_Save_Habit(script_item)
    modDBConnect.CommitTrans()
-   
    Script_item!med!restriction_code = restriction_code
    script_item!med!suppress_reason = False   'fixme implement me
    Script_item!med!fk_lu_pbs_script_type = iPBS_Script_Type
@@ -1453,7 +1402,6 @@ Public Sub Save()
          script_item!printed = False 
       End If  
    Next
-   
    Print_Script_Items(script_items)
    FClinical_Refresh()
    Reload()
@@ -1461,21 +1409,22 @@ Public Sub Save()
 End
 
 Public Sub FClinical_Refresh()
-   
-   FClinical.Refresh_Section(const.cSection_Prescriptions)    'refresh lists on main screen FClinical
+   '---------------------------------------------------------
+   'refresh lists and progress notes on main screen FClinical
+   '--------------------------------------------------------- 
+   FClinical.Refresh_Section(const.cSection_Prescriptions)    
    FClinical.Refresh_AllPreviousNotes()
    
 End
 
-Public Sub Drug_Save(script_item As Collection) As Integer
-   '------------------------------------------------------------------  
+Public Sub Drug_Save(script_item As Collection)
+   '---------------------------------------------------------------------  
    'Save a single script item to the backend.
-   'The 'core' features of a medication > clin_prescribing.medications
-   '------------------------------------------------------------------
+   'I think there is probably bad code/problems here though seems to work
+   '---------------------------------------------------------------------
    
    Dim prescribed As CRow
    Dim R As Result
-   'save
    '----------------------------------------
    'Has this product been prescribed before?
    '----------------------------------------
@@ -1484,56 +1433,11 @@ Public Sub Drug_Save(script_item As Collection) As Integer
       script_item!med.put_unchanged(R!fk_medication, "fk_medication")
       script_item!med!start_date = R!start_date   'IAN FIX THIS ?CAN JUST DELETE THE KEY SOMEHOW
    Endif
-   script_item!med.Save("clin_prescribing.medications_rt", "fk_medication")
+   script_item!med.Save("clin_prescribing.medications", "fk_medication")
    script_item!prescribed!fk_medication = script_item!med!fk_medication
-   script_item!prescribed.Save("clin_prescribing.prescribed_rt", "fk_item_prescribed")
+   script_item!prescribed.Save("clin_prescribing.prescribed", "fk_item_prescribed")
    modDBConnect.CommitTrans()
-   Return fk_item_prescribed  'fix  me wrong not needed
-   
-End
-
-Public Function cvwPrescriptions_Refresh_old(Script_Items_Written As Collection)
-   '------------------------------------------------------------------------------
-   'CALLED BY: Reload()   in which case loads only previously printed
-   '           Drug_Add() in which case the collection being added not yet saved
-   'Refresh the list of drugs prescribed this consulation
-   'script_items is 'mixed' - it will contain all those items prescribed and
-   'printed already (ie the script_item collection is a view) plus all thos
-   'prescribed via the edit area and not yet printed The collections
-   'associated with these will not have a !printed collection member
-   '------------------------------------------------------------------------------
-   
-   Dim x As Integer
-   
-   cvwPrescriptions.Clear()
-   
-   For Each script_item In Script_Items_Written
-      
-      x = cvwPrescriptions.Count
-      ' cvwPrescriptions.Add(x, 0)
-      If IsNull(script_item!printed) Then
-         cvwPrescriptions.Add(x, "", pic_not_printed)
-      Else 
-         cvwPrescriptions.Add(x, "", pic_printed)
-      Endif
-      If Not IsNull(script_item!date_script_written) Then
-         cvwPrescriptions[x][1] = Format(script_item!date_script_written, "dd/mm/yyyy")
-      Else
-         cvwPrescriptions[x][1] = ""
-      Endif
-      cvwPrescriptions[x][2] = Format(script_item!prescribed!date_on_script, "dd/mm/yyyy")
-      cvwPrescriptions[x][3] = script_item!brand
-      cvwPrescriptions[x][4] = script_item!generic
-      cvwPrescriptions[x][5] = script_item!strength
-      cvwPrescriptions[x][6] = script_item!form
-      cvwPrescriptions[x][7] = script_item!med!quantity
-      cvwPrescriptions[x][8] = script_item!med!repeats 
-      cvwPrescriptions[x][9] = script_item!pbs_script_type
-      cvwPrescriptions[x][10] = script_item!instruction  
-      cvwPrescriptions[x][11] = script_item!prescribed_for 
-      
-   Next
-   
+     
 End
 
 Public Function cvwPrescriptions_Refresh(Script_Items_Written As Collection)
@@ -1552,19 +1456,12 @@ Public Function cvwPrescriptions_Refresh(Script_Items_Written As Collection)
    cvwPrescriptions.Clear()
    
    For Each script_item In Script_Items_Written
-      
       x = cvwPrescriptions.Count
-      ' cvwPrescriptions.Add(x, 0)
       If IsNull(script_item!printed) Then
          cvwPrescriptions.Add(x, "", pic_not_printed)
       Else 
          cvwPrescriptions.Add(x, "", pic_printed)
       Endif
-      ' If Not IsNull(script_item!date_script_written) Then
-      '    cvwPrescriptions[x][1] = Format(script_item!date_script_written, "dd/mm/yyyy")
-      ' Else
-      '    cvwPrescriptions[x][1] = ""
-      ' Endif
       cvwPrescriptions[x][1] = Format(script_item!prescribed!date_on_script, "dd/mm/yyyy")
       cvwPrescriptions[x][2] = script_item!brand
       cvwPrescriptions[x][3] = script_item!generic
@@ -1575,7 +1472,6 @@ Public Function cvwPrescriptions_Refresh(Script_Items_Written As Collection)
       cvwPrescriptions[x][8] = script_item!pbs_script_type
       cvwPrescriptions[x][9] = script_item!instruction  
       cvwPrescriptions[x][10] = script_item!prescribed_for 
-      
    Next
    
 End
@@ -1588,6 +1484,7 @@ Public Function Drug_Duplicated() As Boolean
    'checks against:
    '  date of script which allows forward/backdating, illegal in AU
    '  generic via the generic code
+   '  FIXME NOT USED YET   
    '--------------------------------------------------------------------------
    
    Dim script_written As Collection
@@ -1789,15 +1686,16 @@ Public Sub Script_Construct_LaTex(items As Collection, templ As CTemplate, pbs_s
 End
 
 Public Sub Script_Construct_Authority_LaTeX(auth_item As Collection, templ As CTemplate) As CTemplate
-   
+   '----------------------------------------------
+   'Builds the Latex code for the authority script
+   '----------------------------------------------   
    Dim Drug As String
    Dim drugs As String 
    Dim script_item As Collection = Auth_item[0]
    
    templ.Subst_common(currentconsult)
-   
    templ.Subst("authority-heading-authority-script-number", const.pbs_script_types[script_item!prescribed!fk_lu_pbs_script_type] & " SCRIPT NO. " & script_item!prescribed!authority_script_number) 
-   Print modUtil.Medicare_Number_Format(currentconsult!patient!medicare_number)
+   Print modUtil.Medicare_Number_Format(currentconsult!patient!medicare_number)  'FIX ME THE MEDICARE FORMATTING DOSN'T WORK
    templ.Subst("patientaddress", Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town & " " & currentconsult!patient!postcode)
    templ.Subst("medicarenumber", currentconsult!patient!medicare_number)
    templ.Subst("doctorname", modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename)
@@ -1827,7 +1725,6 @@ Public Sub Script_Construct_Authority_LaTeX(auth_item As Collection, templ As CT
       script_item!authority_indication = Replace(script_item!authority_indication, "</p>", "")
       script_item!authority_indication = Replace(script_item!authority_indication, "<br/>", "")
       templ.Subst("authority-indication", "[" & script_item!restriction_code & "]" & script_item!authority_indication)   
-      
    Else
       script_item!restriction = Replace(script_item!restriction, "<p>", "")
       script_item!restriction = Replace(script_item!restriction, "</p>", "")
@@ -1878,6 +1775,14 @@ Public Sub cvwPrescriptions_Menu()
    '-----------------------------------------------------------------------------   
    
    If Last.count Then
+      cvwPrescriptions.MoveCurrent
+      If IsNull(script_items[cvwPrescriptions.Item.key]!product_information_filename) Then
+         mnuPrescriptions_FullPI.Enabled = False
+      Else
+         mnuPrescriptions_FullPI.Enabled = True   
+      Endif
+      mnuPrescriptions_BriefPI.Enabled = False         'project has none at the moment
+      mnuPrescriptions_Interactions.Enabled = False    'project has none at the moment
       mnuPrescriptions.Popup()
    Endif
    
@@ -1928,6 +1833,7 @@ Public Sub mnuPrescriptions_Click()
             item!printed = False
          Next
          Print_Script_Items(script_items)
+         Reload()
       Case "print selected"
          SelectedItems = New Collection 
          cvwPrescriptions.MoveFirst
@@ -1941,35 +1847,39 @@ Public Sub mnuPrescriptions_Click()
          Print_Script_Items(SelectedItems)
          cvwPrescriptions.UnselectAll()
          FClinical_Refresh()
+         Reload()
       Case "save single no print"
-         
-         If IsNull(script_items[cvwPrescriptions.Item.key]!printed) Then
-            script_items[cvwPrescriptions.Item.key]!fk_item_prescribed = Drug_Save(script_items[cvwPrescriptions.Item.key])
-            script_items[cvwPrescriptions.Item.key]!printed = True
-         Endif
-         cvwPrescriptions.UnselectAll()
-         FClinical_Refresh()
-      Case "save selected no print"
+      '    '-----------------------------------------------------------------
+      '    'Saves the selected drug to backend but does not print it on paper
+      '    '-----------------------------------------------------------------      
+      '    If IsNull(script_items[cvwPrescriptions.Item.key]!printed) Then
+      '       script_items[cvwPrescriptions.Item.key]!fk_item_prescribed = Drug_Save(script_items[cvwPrescriptions.Item.key])
+      '       script_items[cvwPrescriptions.Item.key]!printed = True
+      '    Endif
+      '    cvwPrescriptions.UnselectAll()
+      '    FClinical_Refresh()
+      ' Case "save selected no print", "save single no print"
          cvwPrescriptions.MoveFirst
          For x = 0 To cvwPrescriptions.count - 1
             If cvwPrescriptions.Item.Selected = True Then
                If IsNull(script_items[cvwPrescriptions.Item.key]!printed) Then
                   Drug_Save(script_items[cvwPrescriptions.Item.key])
                   script_items[cvwPrescriptions.Item.key]!printed = True
-                  '   cvwPrescriptions.
-               Endif
+                Endif
             Endif
             cvwPrescriptions.MoveNext()
          Next
          cvwPrescriptions.UnselectAll()
          FClinical_Refresh()
-         
+         Reload()
       Case "brief pi"
+           modUtil.NotImplemented("Brief product information is not available")
       Case "full pi"
          Product_Information_Full_Show(script_items[cvwPrescriptions.Item.key]!product_information_filename, script_items[cvwPrescriptions.Item.key]!brand)
       Case "fonts"
          modUtil.Columnview_SetFont(cvwPrescriptions, "Prescriptions_" & Embedded_In_Form)
       Case "help"   
+           modUtil.NotImplemented("Help for the prescription section has not been written")
    End Select
    
 End

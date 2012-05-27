@@ -1,5 +1,7 @@
 ' Gambas class file
 
+' Gambas class file
+
 ' Copyright (C) 2008-2012 Dr Richard TERRY
 
 ' This program is free software: you can redistribute it and/or modify
@@ -118,9 +120,7 @@ Static Public Sub RefreshExternal_ImageList()
    'and an image would have just been saved in the current progress note
    '-------------------------------------------------------------------------------  
    
-   '  If form_clinical.TabStrip_Lists.index = clistImages Then 
    form_clinical.Images_Refresh(True)
-   ' End If   
    
 End
 
@@ -641,7 +641,7 @@ Public Sub Refresh_Section_Instance(section As Integer)
    Select Case section
       Case const.cSection_PastHistory
          pasthistory_refresh_lists()
-      Case const.cSection_Medications
+      Case const.cSection_Prescriptions
          cvwMedications_Refresh()
       Case const.cSection_Requests
          modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwRequests)
@@ -1050,17 +1050,14 @@ Public Sub cvwMedications_Refresh()
    cvw.columns[8].text = "PBS"
    cvw.columns[9].text = "Prescribed by"
    
-   Currentconsult.Refresh("medications")
+   Currentconsult.Refresh("medications") 'actually=prescriptions written
    
    For Each medication In currentconsult!medications
-      Print Currentconsult!medications 
       If iLast_Medication_Key <> medication!prescribed!fk_medication Then    '
          iLast_Medication_Key = medication!prescribed!fk_medication 
-         
          If medication!med!active = bActive Then
-            x = medication!prescribed!fk_brand
+            x = medication!pk_view
             cvw.Add(x, 0)
-            
             If medication_sort_order = "brand" Then 
                cvw[x][col_med] = modUtil.Ucase_Word_First_Letter(medication!brand)
             Else  
@@ -2110,8 +2107,6 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
             EditorPages.Add(ReferralPage, "Referrals")
             Control_For_Focus = ReferralPage.txtName
          Case "Scripts"
-            '   Message.title = "PRESCRIPTION MODULE" 
-            '   Message.Warning("before loading this module please note:\n\nTHIS MODULE IS NOT FINISHED, IS INACCURATE AND CANNOT BE USED AND WILL PROBABLY CRASH.\n\nUse it at your own peril.")
             page = New FLinkContainer
             PrescriptionPage = New FPrescriptions(page.VBoxEditor)
             PrescriptionPage.set_embedded("FClinical")
@@ -3612,6 +3607,8 @@ End
 Public Sub mnuMedications_Click()
    
    Dim medication As Collection
+   Dim new_Prescription_item As Collection
+   Dim prescribed As CRow  
    
    cvwMedications.MoveCurrent()
    medication = currentconsult!medications[cvwMedications.Item.key]
@@ -3633,16 +3630,46 @@ Public Sub mnuMedications_Click()
             Message.info("The product information could not be found")
          Endif
       Case "make active"
-         '  modDBConnect.update("clin_prescribing.medications_rt", Null, ["pk": medication!prescribed!fk_medication, "active": False])
-         modPrescribingDBI.Medication_MakeActiveOrInactive(medication!prescribed!fk_medication, True)
-         cvwMedications_Refresh()
+          modPrescribingDBI.Medication_MakeActiveOrInactive(medication!prescribed!fk_medication, True)
+          cvwMedications_Refresh()
       Case "make inactive"
-         ' modDBConnect.update("clin_prescribing.medications_rt", Null, ["pk": medication!prescribed!fk_medication, "active": False])
          modPrescribingDBI.Medication_MakeActiveOrInactive(medication!prescribed!fk_medication, False)
          cvwMedications_Refresh()
       Case "brief product information"
          modUtil.NotImplemented("Brief Product Information")
       Case "view medication history"
+      Case "prescribe single"
+         Editor_ShowPage("Scripts")            'Ensure the script module is loaded and visible
+         new_Prescription_item = medication    'set all the display fields, are the same as the original, not saved
+         new_Prescription_item!date_script_written = Now()
+         new_Prescription_item!med.put_unchanged(medication!med!pk, "pk")
+         new_Prescription_item!med!active = True  'fixme ?this dosn't change
+         new_Prescription_item!med!last_date = Now()
+         'create a new prescribed cRow, don't put in authority approval etc even if an authority
+         prescribed = New CRow   
+         prescribed!fk_brand = medication!prescribed!fk_brand  
+         prescribed!fk_medication = medication!prescribed!fk_medication
+         prescribed!date_on_script = Now() 'FIXME ALLOW MENU DRIVEN DATE AHEAD OPTIONS
+         prescribed!fk_consult = currentconsult.GetPK()
+         prescribed!quantity = medication!prescribed!quantity
+         prescribed!repeats = medication!prescribed!repeats
+         prescribed!fk_instruction = medication!prescribed!fk_instruction
+         prescribed!fk_prescribed_for = medication!prescribed!fk_prescribed_for
+         prescribed!restriction_code = medication!prescribed!restriction_code
+         prescribed!suppress_reason = False                  'fixme implement me put me in the gui
+         prescribed!fk_lu_pbs_script_type = medication!prescribed!fk_lu_pbs_script_type
+         prescribed!reg24 = medication!prescribed!reg24
+         prescribed!script_number = modPrescribingDBI.Script_Number_Get_Next()
+         ' prescribed! = concession_details : these three not yet implemented
+         ' prescribed! = brand_substitution : do not remove this code
+         ' prescribed! = fk_progress_note
+        
+        
+         new_Prescription_item!prescribed = prescribed         'new cRow, otherwise the fields not changed IAN FIXME EASIER WAY
+         
+         FPrescriptions.Script_Item_Re_Prescribe(medication)
+      Case "prescribe all"
+         Editor_ShowPage("Scripts")
       Case "view all medications history"
          Print modPrescribingDBI.Medications_History_Construct_HTML(currentconsult!medications)
          Editor_ShowPage("browser", "Medication history", modPrescribingDBI.Medications_History_Construct_HTML(currentconsult!medications))
@@ -4334,13 +4361,6 @@ Public Sub TabbedLists_Click()
    
 End
 
-Public Sub cvwMedications_Menu()
-   
-   ' If cvwMedications.count Then
-   '    mnuPopupMedications.popup()
-   ' End If
-   
-End
 
 Public Sub mnuPopupMedications_Click()
    
@@ -5398,5 +5418,5 @@ Public Sub rbMedications_Click()
    
    medication_sort_order = Last.tag
    cvwMedications_Refresh()
-
+   
 End

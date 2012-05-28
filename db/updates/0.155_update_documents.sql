@@ -1,4 +1,4 @@
-alter table documents.documents add column fk_staff_permitted__access  integer default null;
+alter table documents.documents add column fk_staff_permitted_access  integer default null;
 comment on column documents.documents.fk_staff_permitted_access  is
 'the key of the staff member whose logon ID is required to view the file, or who must be 
 logged on to the patient to view the file - this can be over-ridden by the practice principal';

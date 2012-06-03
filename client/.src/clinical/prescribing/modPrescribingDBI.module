@@ -72,11 +72,13 @@ Public Function Formulations_Get(formulation As String) As Collection
    
 End
 
-Public Function Brands_Get(brand As String, Optional chapters As String[]) As Collection
-   '----------------------------------------------------
+Public Function Brands_Get(brand As String, Optional chapters As String[], Optional limit As Variant = Null, Optional bInstrSearch As Boolean = False) As Collection
+   '-------------------------------------------------------
    'Called by FDrugBrowser in which case chapters is null
    'or FPrescribing where it is never null
+   'if bInstrSearch as true then an instring search is done
    '-----------------------------------------------------   
+
    Dim sql As String
    Dim x As Integer
    Dim chapter As String
@@ -86,14 +88,19 @@ Public Function Brands_Get(brand As String, Optional chapters As String[]) As Co
       SQL &= "WHERE "
       For Each chapter In chapters
          If x = 0 Then
-             SQL &= " brand ILIKE $$%" & brand & "%$$  AND chapter =$$" & chapter & "$$ " 
+            SQL &= " brand ILIKE $$"
+            If bInstrSearch Then sql &= "%"
+            sql &= brand & "%$$  AND chapter =$$" & chapter & "$$ " 
          Else
-              sql &= "Or brand ILIKE $$" & brand & "%$$ And chapter  =$$" & chapter & "$$ " 
+            sql &= "Or brand ILIKE $$"
+            If bInstrSearch Then sql &= "%"
+            sql &= brand & "%$$ And chapter  =$$" & chapter & "$$ " 
          End If
          Inc x
       Next
-     Endif
-   sql &= " ORDER BY brand, form,strength,max_rpt"
+   Endif
+   sql &= " ORDER BY brand, generic,strength,max_rpt"
+   If Not IsNull(limit) Then sql &= " LIMIT " & limit
    Return modDBConnect.exec_query_collection(sql)
    
 End
@@ -123,9 +130,8 @@ Public Function Chapters_Get() As Collection
    ' "SZ";"Section 100 (Special Authority Items) - Public Hospitals"
    ' As of May 2012
    '------------------------------------------------------------------- 
-
-   Return modDBConnect.exec_query_collection("Select chapter as pk, * from drugs.chapters order by chapter_name") 
    
+   Return modDBConnect.exec_query_collection("Select chapter as pk, * from drugs.chapters order by chapter_name") 
    
 End
 
@@ -141,12 +147,36 @@ Public Function Schedules_Get() As Collection
    
 End
 
-Public Function Drugs_Search_By_Generic(generic As String) As Collection 
+Public Function Drugs_Search_By_Generic(generic As String, Optional chapters As String[], Optional limit As Variant = Null, Optional bInstrSearch As Boolean = True) As Collection
    '------------------------------------------------------------------------------------
    'Returns a list of drugs and and all associated data by searching on the generic name
+   'Generics defaults to an instring search, so many compound drugs.
    '------------------------------------------------------------------------------------   
+
+   Dim sql As String
+   Dim x As Integer
+   Dim chapter As String
    
-   Return modDBConnect.exec_query_collection("Select * from drugs.vwDrugs where generic ILIKE $$%" & Trim(generic) & "%$$ ORDER by pbscode")
+   sql = "Select * from drugs.vwDrugs " 
+   If Not IsNull(chapters) Then
+      SQL &= "WHERE "
+      For Each chapter In chapters
+         If x = 0 Then
+            SQL &= " generic ILIKE $$"
+            If bInstrSearch Then sql &= "%"
+            sql &= generic & "%$$  AND chapter =$$" & chapter & "$$ " 
+         Else
+            sql &= "Or generic ILIKE $$"
+            If bInstrSearch Then sql &= "%"
+            sql &= generic & "%$$ And chapter  =$$" & chapter & "$$ " 
+         End If
+         Inc x
+      Next
+   Endif
+   sql &= " ORDER BY  generic, pbscode, strength,max_rpt"
+   If Not IsNull(limit) Then sql &= " LIMIT " & limit
+   Return modDBConnect.exec_query_collection(sql)
+   '   Return modDBConnect.exec_query_collection("Select * from drugs.vwDrugs where generic ILIKE $$%" & Trim(generic) & "%$$ ORDER by pbscode")
    
 End
 
@@ -267,37 +297,6 @@ Public Function Prescribed_For_Save_Habit(new_data As Collection) As Integer
       modDBConnect.update("clin_prescribing.prescribed_for_habits", Null, ["pk": r!pk, "weighting": r!weighting + 1])
    Else
       habit!fk_prescribed_for = new_data!prescribed!fk_prescribed_for
-      ' habit!fk_company = new_data!fk_company
-      habit!fk_generic_product = new_data!med!fk_generic_product
-      habit!fk_staff = modDBConnect.currentUser!fk_staff  
-      habit!weighting = 1
-      habit!pk = modDBConnect.insert("clin_prescribing.prescribed_for_habits", habit)
-   Endif
-   Try Return habit!pk
-   If Error Then Return 1
-   
-End 
-
-Public Function Prescribed_For_Save_Habit_old(new_data As Collection) As Integer
-   '-------------------------------------
-   'Save the habits for this staff member
-   '-------------------------------------
-   
-   Dim habit As New Collection 
-   Dim r As Result
-   Dim sql As String = "Select pk, weighting from clin_prescribing.prescribed_for_habits"
-   
-   sql &= " WHERE   fk_staff = " & modDBConnect.currentUser!fk_staff
-   sql &= " AND fk_generic_product = $$" & new_data!med!fk_generic_product & "$$"
-   '  If new_data!fk_company Then
-   '    sql &= " AND fk_company = $$" & new_data!fk_company & "$$"
-   ' Endif
-   sql &= " AND fk_prescribed_for =" & new_data!med!fk_prescribed_for
-   r = modDBConnect.exec_query(sql)
-   If r.count Then
-      modDBConnect.update("clin_prescribing.prescribed_for_habits", Null, ["pk": r!pk, "weighting": r!weighting + 1])
-   Else
-      habit!fk_prescribed_for = new_data!med!fk_prescribed_for
       ' habit!fk_company = new_data!fk_company
       habit!fk_generic_product = new_data!med!fk_generic_product
       habit!fk_staff = modDBConnect.currentUser!fk_staff  
@@ -625,7 +624,7 @@ Public Function Prescriptions_Written_This_Consult(fk_consult As Integer) As Col
    Dim sql As String
    
    sql = "Select * from clin_prescribing.vwprescribeditems where fk_consult = " & fk_consult 
-   sql &= " AND NOT prescribed_deleted " ""
+   sql &= " AND NOT prescribed_deleted "
    
    prescribeds = modDBConnect.exec_query_collection(sql)
    For Each i In prescribeds
@@ -641,6 +640,7 @@ Public Function Prescriptions_Written_This_Consult(fk_consult As Integer) As Col
       c!brand = i!brand
       c!instruction = i!instruction
       c!prescribed_for = i!prescribed_for
+      c!printed = i!printed   
       c!staff_prescribed_wholename = i!staff_prescribed_wholename
       c!staff_prescribed_title = i!staff_prescribed_title   
       c!pk_view = i!pk_view
@@ -801,6 +801,9 @@ Public Function ConvertTo5mls(strength As String) As String
    Dim a As Float
    Dim re As New Regexp
    
+   If InStr(strength, "-") Then
+      strength = Replace(strength, "-", "/ml-")
+   Endif
    re.Compile("^([0-9.]+)([a-z]+)/ml$")
    array1 = Split(strength, "-") ' split into compound strengths
    For Each i In array1

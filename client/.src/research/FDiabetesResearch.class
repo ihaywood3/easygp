@@ -20,6 +20,8 @@ Private Lipid_Results As Result
 Private eGFR_Results As Result
 Private Form_Graph_Weight As FGraph
 Private iGraphFontSize As Integer 'applies to all graphs.
+Private DACCS_Overdue As Collection
+Private form_pdf As FPdf
 
 Public Sub Init()
    
@@ -39,6 +41,12 @@ Public Sub Init()
    cmbHba1cRange.Add(">8.0") 
    SEttings_Load()
    bExit = True   
+   With form_pdf = New FPdf(Vbox_PDF_Graph)
+         .visible = False  
+         .btZoomIn.Visible = True
+         .btZoomOut.Visible = True  
+         .BtPrint.Visible = True 
+   End With
    With Form_Graph_HBa1c = New FGraph(Hbox_GraphHba1c)
       .tbGraphRemove.Visible = False   
       .tbInboxResults_AddGraph.Visible = False  
@@ -49,7 +57,7 @@ Public Sub Init()
       .pbMeasurementGraph.Background = Color.White
       .slGraphFontSize.value = iGraphFontSize
    End With
-    With Form_Graph_Weight = New FGraph(Hbox_GraphWeight)
+   With Form_Graph_Weight = New FGraph(Hbox_GraphWeight)
       .tbGraphRemove.Visible = False   
       .tbInboxResults_AddGraph.Visible = False  
       .chkGraph_MakeDefault.Visible = False  
@@ -81,11 +89,12 @@ Public Sub Init()
    End With
    bExit = False 
    cvwPatients_Refresh(True)
-    If cvwPatients.count Then
+   If cvwPatients.count Then
       cvwPatients.MoveFirst
       cvwPatients.Item.Selected = True
       cvwPatients.SetFocus()
    Endif
+
 End
 
 Public Sub cvwPatients_Refresh(bRefresh As Boolean)                                           
@@ -100,6 +109,9 @@ Public Sub cvwPatients_Refresh(bRefresh As Boolean)
    Dim Latest As Collection
    Dim all_patients As Collection
    Dim key As Integer
+   Dim RDacc As Result
+   Dim bDaccOverdue As Boolean
+   Dim Latex As String
    
    Inc Application.Busy
    Gui_Clear()
@@ -111,7 +123,8 @@ Public Sub cvwPatients_Refresh(bRefresh As Boolean)
    Over8 = 0
    Latest_Results = New String[]
    If bRefresh Then
-      modDBConnect.exec_query("create temporary table patients_latest_hba1c (fk_patient integer, fk_person integer, pk_observations integer,\"surname\" text,\"firstname\" text,\"wholename\" text,\"birthdate\" date, age_display integer,\"observation_date\" date,value_numeric numeric,\"street1\" text,\"street2\" text,\"suburb\" text,\"postcode\" text,pk serial)")
+      
+      modDBConnect.exec_query("create temporary table patients_latest_hba1c (fk_patient integer, fk_person integer, pk_observations integer,\"surname\" text,\"firstname\" text,\"wholename\" text,\"birthdate\" date, age_display integer,\"observation_date\" date,value_numeric numeric,\"street1\" text,\"street2\" text,\"suburb\" text,\"postcode\" text,dacc_overdue boolean, \"latex\" text, pk serial)")
       patients = modResearchDBI.Patients_Get_Hba1cs()
    Endif
    For Each patient In patients  
@@ -136,44 +149,30 @@ Public Sub cvwPatients_Refresh(bRefresh As Boolean)
          If patient!value_numeric >= 7.0 And patient!value_numeric < 7.5 Then Inc Between7and7point5
          If patient!value_numeric >= 7.5 And patient!value_numeric < 8 Then Inc Between7point5and8
          If patient!value_numeric >= 8.0 Then Inc Over8
-         
+         bDaccOverdue = False                                                    'default to overdue DACC
+         Latex = ""                                                              'default to no Latex
+         RDacc = modResearchDBI.Patient_GetDaysSinceDACC(patient!fk_patient)     'get last DACC days/LaTex
+         If RDacc.count Then 
+            If Not IsNull(RDacc!days_since_dacc_done) Then
+               If RDacc!days_since_dacc_done > 365 Then
+                   bDaccOverdue = True  
+               Endif
+               latex = RDacc!latex
+            Endif
+         End If   
+
          If bRefresh Then
-            modDBConnect.insert("patients_latest_hba1c", ["fk_patient": patient!fk_patient, "fk_person": patient!fk_person, "pk_observations": patient!pk_observations, "firstname": patient!firstname, "surname": patient!surname, "wholename": patient!wholename, "birthdate": patient!birthdate, "age_display": patient!age_numeric, "street1": patient!street1, "street2": patient!street2, "suburb": patient!suburb, "postcode": patient!postcode, "observation_date": patient!observation_date, "value_numeric": patient!value_numeric])
+            modDBConnect.insert("patients_latest_hba1c", ["fk_patient": patient!fk_patient, "fk_person": patient!fk_person, "pk_observations": patient!pk_observations, "firstname": patient!firstname, "surname": patient!surname, "wholename": patient!wholename, "birthdate": patient!birthdate, "age_display": patient!age_numeric, "street1": patient!street1, "street2": patient!street2, "suburb": patient!suburb, "postcode": patient!postcode, "observation_date": patient!observation_date, "value_numeric": patient!value_numeric, "dacc_overdue": bDaccOverdue, "latex": latex])
          Endif
-      End If      
+      End If  
+      If Latex <> "" Then 
+       '  Message.Info(latex)
+      End If       
    Next
    modDBConnect.CommitTrans()
-   Print LessThan6 + Between6and7 + Between7and7point5 + Between7and7point5 + Over8
+   
    lblSearchResults.text = Str(iPatientCount) & " patients were found " 
-   
-   Dec Application.Busy
-   
-   Return 
-   ' modDBConnect.exec_query("create temporary table tg2 (\"month\" text, first float, second float, third float, pk serial)") 
-   'modDBConnect.insert("tg2", ["month": "Jan", "first": 20.2, "second": 30.4, "third": 14.7])
-   ' modDBConnect.exec_query("create temporary table graphhba1c (\"range\" text, amount integer, pk serial)") 
-   ' modDBConnect.insert("graphhba1c", ["range": "six6", "amount": youube galaxy 3LessThan6])
-   ' modDBConnect.insert("graphhba1c", ["range": "sixto7", "amount": Between6and7])
-   ' modDBConnect.insert("graphhba1c", ["range": "sevento75", "amount": Between7and7point5])
-   ' modDBConnect.insert("graphhba1c", ["range": "seven5to8", "amount": Between7point5and8])
-   ' modDBConnect.insert("graphhba1c", ["range": "over8", "amount": Over8])
-   ' modDBConnect.exec_query("create temporary table graphhba1c (\"< 6\" integer,\"6-7\" integer,\"7-7.5\" integer,\"7.5-8\" integer,\">8\" integer, pk serial)")
-   '  modDBConnect.exec_query("create temporary table graphhba1c (\"< 6\" integer,\"6-7\" integer,\"7-7.5\" integer,\"7.5-8\" integer,\">8\" integer, pk serial)")
-   ' modDBConnect.insert("graphhba1c", ["$$< 6$$": LessThan6, "$$6-7$$": Between6and7, "$$7-7.5$$": Between7and7point5, "$$7.5-8$$": Between7point5and8, "$$>8$$": Between7point5and8])
-   '   modDBConnect.exec_query("insert into graphhba1c(" < 6 ", " 6 - 7 ", " 7 - 7.5 ", " 7.5 - 8 ", " > 8 ")VALUES(LessThan6, Between6and7, Between7and7point5, Between7point5and8, Between7point5and8)"
-   modDBConnect.exec_query("create temporary table graphhba1c ( one integer, two integer, three integer, four integer, five integer, pk serial)")
-   modDBConnect.insert("graphhba1c", ["one": LessThan6, "two": Between6and7, "three": Between7and7point5, "four": Between7point5and8, "five": Between7point5and8])
-   modDBConnect.CommitTrans()
-   
-   R = modDBConnect.exec_query("select one,two,three, four,five from graphhba1c")
-   For Each R
-      Print R!one, R!two, R!three, R!four, R!five
-   Next
-   '   s = modPlot.Gnuplot_BoxGraph(R)
-   ' Print s
-   s = modPlot.Gnuplot_Run(500, 500, modPlot.Gnuplot_BoxGraph(r), r)
-   Print s
-   '  modPlot.TestGraph()
+   lblDACCOverdue.text = "Diabetes Cycle of Care Overdue: " & Str(modDBConnect.exec_query("Select count(dacc_overdue) as overdue from patients_latest_hba1c where dacc_overdue is true")!overdue) 
    Dec Application.Busy
    
 End
@@ -198,17 +197,18 @@ Public Sub mnuDiabeticPatients_Click()
    "\n\nAre you sure you wish to proceed?"
    
    Select Case Last.tag
-         ' Case "sort hba1c ascending"
-         '    
-         '     sHba1cSortOrder = "ASC"
-         '     bSortbyHba1c = True 
-         '     cvwPatients_Refresh()
-         '     bSortbyHba1c = False 
-         ' Case "sort hba1c descending"
-         '     sHba1cSortOrder = "DESC"
-         '     bSortbyHba1c = True 
-         '     Reload()
-         '     bSortbyHba1c = False   
+      Case "view last dacc"
+          cvwPatients.MoveCurrent()
+          patient = patients[cvwPatients.Item.Key]
+          If Not IsNull(patient!latex) Then
+              Vbox_Graph.visible = False
+              With form_pdf
+               .Load_PDF(modPrinting.Latex_To_PDF(patient!latex))
+               .Visible = True
+              End With
+          Else
+            Message.Info("Missing latex definition, sorry........")   
+          Endif
       Case "left practice"
          '------------------------------------------------
          'create appropriate message for 1 or more patient
@@ -295,10 +295,13 @@ Public Sub cvwPatients_Select()
    cvwPatients.MoveCurrent()
    patient = patients[cvwPatients.Item.Key]
    lblResultsFor.text = modStrings.CapitaliseWord(patient!wholename)
+   form_pdf.Visible = False   
+   Vbox_Graph.Visible = True  
    Hba1c_ShowGraph
    Lipids_ShowGraph
    EGFR_ShowGraph
    Weight_ShowGraph
+
 End
 
 Public Sub Weight_ShowGraph()
@@ -311,6 +314,7 @@ Public Sub Weight_ShowGraph()
    End With 
    
 End
+
 Public Sub Lipids_ShowGraph()
    
    Dim R As Result
@@ -321,6 +325,7 @@ Public Sub Lipids_ShowGraph()
    End With 
    
 End
+
 Public Sub EGFR_ShowGraph()
    
    With Form_Graph_EGFR
@@ -432,13 +437,13 @@ Public Sub txtSearch_KeyRelease()
    'Except in hospital won't have many patients
    'so not using timer - if you want one I'll put one in
    '----------------------------------------------------
-
+   
    If Not IsNull(patients) Then Patients_Reload()
    
 End
 
 Public Sub txtSearch_GotFocus()
-
+   
    txtSearch.text = ""  
    
 End
@@ -459,18 +464,19 @@ Private Sub SEttings_Load()
    
    Hsplit1.Layout = Settings["Research_" & Me.name & "/Hsplit1.layout"] 
    iGraphFontSize = Settings["Research_" & Me.name & "/graph_font.size", 3]
+
 End
 
 Public Sub Settings_Save()
    
    Settings["Research_" & Me.name & "/Hsplit1.layout"] = Hsplit1.Layout
    Settings["Research_" & Me.name & "/graph_font.size"] = iGraphFontSize
+
 End
 
-
-
 Public Sub SpinBox1_Change()
-  If bExit Then Return  
+
+   If bExit Then Return  
    SpinBox1.Refresh()
    SpinBox1.Enabled = False
    Inc Application.Busy
@@ -479,4 +485,5 @@ Public Sub SpinBox1_Change()
    Form_Graph_eGFR.slGraphFontSize.value = Last.value
    Dec Application.Busy
    SpinBox1.Enabled = True 
+
 End

@@ -1,0 +1,482 @@
+' Gambas class file
+
+Private bExit As Boolean
+Private patients As Collection
+Private Patient As Collection
+Private sSortOrder As String = "ASC"
+Private sHba1cSortOrder As String = "ASC"
+Private bSortbyHba1c As Boolean = False   
+Private Latest_Results As String[]
+Private LessThan6 As Integer
+Private Between6and7 As Integer
+Private Between7and7point5 As Integer
+Private Between7point5and8 As Integer
+Private Over8 As Integer
+Private Form_Graph_Hba1c As FGraph
+Private Form_Graph_Lipids As FGraph
+Private Form_Graph_eGFR As FGraph
+Private Hba1c_Results As Result
+Private Lipid_Results As Result
+Private eGFR_Results As Result
+Private Form_Graph_Weight As FGraph
+Private iGraphFontSize As Integer 'applies to all graphs.
+
+Public Sub Init()
+   
+   cvwPatients.Columns.count = 6
+   cvwPatients.Columns[4].Text = "Last Date" 'is column 5
+   cvwPatients.Columns[5].Text = "Hba1c"
+   cvwValues.Columns.count = 2
+   cvwValues.Columns[0].text = "Date"
+   cvwValues.Columns[1].text = "Hba1c"
+   cmbSortBy.Add("surname", 0)
+   cmbSortBy.Add("age", 1)
+   cmbSortBy.Add("hba1c")
+   cmbHba1cRange.Add("all")
+   cmbHba1cRange.Add("<6.0")
+   cmbHba1cRange.Add("6.0-7.0")
+   cmbHba1cRange.Add("7.0-8.0")
+   cmbHba1cRange.Add(">8.0") 
+   SEttings_Load()
+   bExit = True   
+   With Form_Graph_HBa1c = New FGraph(Hbox_GraphHba1c)
+      .tbGraphRemove.Visible = False   
+      .tbInboxResults_AddGraph.Visible = False  
+      .chkGraph_MakeDefault.Visible = False  
+      .HBox_Styletypes.Visible = False 
+      .Vbox_Left.visible = False
+      .VBox_Right.visible = False   
+      .pbMeasurementGraph.Background = Color.White
+      .slGraphFontSize.value = iGraphFontSize
+   End With
+    With Form_Graph_Weight = New FGraph(Hbox_GraphWeight)
+      .tbGraphRemove.Visible = False   
+      .tbInboxResults_AddGraph.Visible = False  
+      .chkGraph_MakeDefault.Visible = False  
+      .HBox_Styletypes.Visible = False 
+      .Vbox_Left.visible = False
+      .VBox_Right.visible = False   
+      .pbMeasurementGraph.Background = Color.White
+      .slGraphFontSize.value = iGraphFontSize
+   End With
+   With Form_Graph_Lipids = New FGraph(Hbox_GraphLipids)
+      .tbGraphRemove.Visible = False   
+      .tbInboxResults_AddGraph.Visible = False  
+      .chkGraph_MakeDefault.Visible = False
+      .HBox_Styletypes.Visible = False
+      .Vbox_Left.visible = False
+      .VBox_Right.visible = False   
+      .pbMeasurementGraph.Background = Color.White
+      .slGraphFontSize.value = iGraphFontSize
+   End With
+   With Form_Graph_eGFR = New FGraph(Hbox_GraphEGFR)
+      .tbGraphRemove.Visible = False   
+      .tbInboxResults_AddGraph.Visible = False  
+      .chkGraph_MakeDefault.Visible = False  
+      .HBox_Styletypes.Visible = False 
+      .Vbox_Left.visible = False
+      .VBox_Right.visible = False   
+      .pbMeasurementGraph.Background = Color.White
+      .slGraphFontSize.value = iGraphFontSize
+   End With
+   bExit = False 
+   cvwPatients_Refresh(True)
+    If cvwPatients.count Then
+      cvwPatients.MoveFirst
+      cvwPatients.Item.Selected = True
+      cvwPatients.SetFocus()
+   Endif
+End
+
+Public Sub cvwPatients_Refresh(bRefresh As Boolean)                                           
+   '----------------------------------------------------------
+   'Displays a list of separate patients with their last hab1c
+   '----------------------------------------------------------
+   
+   Dim fk_last_patient As Integer 
+   Dim iPatientCount As Integer
+   Dim R As Result
+   Dim s As String 
+   Dim Latest As Collection
+   Dim all_patients As Collection
+   Dim key As Integer
+   
+   Inc Application.Busy
+   Gui_Clear()
+   LessThan6 = 0 
+   Between6and7 = 0
+   Between7and7point5 = 0
+   Between7and7point5 = 0
+   Between7point5and8 = 0
+   Over8 = 0
+   Latest_Results = New String[]
+   If bRefresh Then
+      modDBConnect.exec_query("create temporary table patients_latest_hba1c (fk_patient integer, fk_person integer, pk_observations integer,\"surname\" text,\"firstname\" text,\"wholename\" text,\"birthdate\" date, age_display integer,\"observation_date\" date,value_numeric numeric,\"street1\" text,\"street2\" text,\"suburb\" text,\"postcode\" text,pk serial)")
+      patients = modResearchDBI.Patients_Get_Hba1cs()
+   Endif
+   For Each patient In patients  
+      If fk_last_patient <> patient!fk_patient Then
+         fk_last_patient = patient!fk_patient
+         Inc iPatientCount
+         If bRefresh Then
+            key = patient!pk_observations 
+         Else
+            key = patient!pk 
+         End If
+         cvwPatients.Add(key, 0)
+         cvwPatients[key][0] = patient!surname & "," & patient!firstname
+         cvwPatients[key][2] = Format(patient!birthdate, "dd/mm/yyyy")
+         cvwPatients[key][1] = patient!age_display
+         cvwPatients[key][3] = patient!street1 & Trim(" " & patient!street2) & " " & patient!suburb & " " & patient!postcode  
+         cvwPatients[key][4] = Format(patient!observation_date, "dd/mm/yyyy")
+         cvwPatients[key][5] = patient!value_numeric
+         
+         If patient!value_numeric < 6 Then Inc LessThan6
+         If patient!value_numeric >= 6 And patient!value_numeric < 7 Then Inc Between6and7
+         If patient!value_numeric >= 7.0 And patient!value_numeric < 7.5 Then Inc Between7and7point5
+         If patient!value_numeric >= 7.5 And patient!value_numeric < 8 Then Inc Between7point5and8
+         If patient!value_numeric >= 8.0 Then Inc Over8
+         
+         If bRefresh Then
+            modDBConnect.insert("patients_latest_hba1c", ["fk_patient": patient!fk_patient, "fk_person": patient!fk_person, "pk_observations": patient!pk_observations, "firstname": patient!firstname, "surname": patient!surname, "wholename": patient!wholename, "birthdate": patient!birthdate, "age_display": patient!age_numeric, "street1": patient!street1, "street2": patient!street2, "suburb": patient!suburb, "postcode": patient!postcode, "observation_date": patient!observation_date, "value_numeric": patient!value_numeric])
+         Endif
+      End If      
+   Next
+   modDBConnect.CommitTrans()
+   Print LessThan6 + Between6and7 + Between7and7point5 + Between7and7point5 + Over8
+   lblSearchResults.text = Str(iPatientCount) & " patients were found " 
+   
+   Dec Application.Busy
+   
+   Return 
+   ' modDBConnect.exec_query("create temporary table tg2 (\"month\" text, first float, second float, third float, pk serial)") 
+   'modDBConnect.insert("tg2", ["month": "Jan", "first": 20.2, "second": 30.4, "third": 14.7])
+   ' modDBConnect.exec_query("create temporary table graphhba1c (\"range\" text, amount integer, pk serial)") 
+   ' modDBConnect.insert("graphhba1c", ["range": "six6", "amount": youube galaxy 3LessThan6])
+   ' modDBConnect.insert("graphhba1c", ["range": "sixto7", "amount": Between6and7])
+   ' modDBConnect.insert("graphhba1c", ["range": "sevento75", "amount": Between7and7point5])
+   ' modDBConnect.insert("graphhba1c", ["range": "seven5to8", "amount": Between7point5and8])
+   ' modDBConnect.insert("graphhba1c", ["range": "over8", "amount": Over8])
+   ' modDBConnect.exec_query("create temporary table graphhba1c (\"< 6\" integer,\"6-7\" integer,\"7-7.5\" integer,\"7.5-8\" integer,\">8\" integer, pk serial)")
+   '  modDBConnect.exec_query("create temporary table graphhba1c (\"< 6\" integer,\"6-7\" integer,\"7-7.5\" integer,\"7.5-8\" integer,\">8\" integer, pk serial)")
+   ' modDBConnect.insert("graphhba1c", ["$$< 6$$": LessThan6, "$$6-7$$": Between6and7, "$$7-7.5$$": Between7and7point5, "$$7.5-8$$": Between7point5and8, "$$>8$$": Between7point5and8])
+   '   modDBConnect.exec_query("insert into graphhba1c(" < 6 ", " 6 - 7 ", " 7 - 7.5 ", " 7.5 - 8 ", " > 8 ")VALUES(LessThan6, Between6and7, Between7and7point5, Between7point5and8, Between7point5and8)"
+   modDBConnect.exec_query("create temporary table graphhba1c ( one integer, two integer, three integer, four integer, five integer, pk serial)")
+   modDBConnect.insert("graphhba1c", ["one": LessThan6, "two": Between6and7, "three": Between7and7point5, "four": Between7point5and8, "five": Between7point5and8])
+   modDBConnect.CommitTrans()
+   
+   R = modDBConnect.exec_query("select one,two,three, four,five from graphhba1c")
+   For Each R
+      Print R!one, R!two, R!three, R!four, R!five
+   Next
+   '   s = modPlot.Gnuplot_BoxGraph(R)
+   ' Print s
+   s = modPlot.Gnuplot_Run(500, 500, modPlot.Gnuplot_BoxGraph(r), r)
+   Print s
+   '  modPlot.TestGraph()
+   Dec Application.Busy
+   
+End
+
+Public Sub tbRefresh_Click()
+   
+   Patients_Reload()
+   
+End
+
+Public Sub mnuDiabeticPatients_Click()
+   '-----------------------------------------------------------------
+   'Popup the menu over the patient's list, allow cleaning up of data
+   '-----------------------------------------------------------------   
+   
+   Dim x As Integer
+   Dim icount As Integer
+   Dim sMsg As String
+   
+   sMsg = "You have selected to alter the status of %number%  %status%.\n\nThey will no longer appear in "
+   "the patients list or the clinical record, but will not actually be removed from the database."
+   "\n\nAre you sure you wish to proceed?"
+   
+   Select Case Last.tag
+         ' Case "sort hba1c ascending"
+         '    
+         '     sHba1cSortOrder = "ASC"
+         '     bSortbyHba1c = True 
+         '     cvwPatients_Refresh()
+         '     bSortbyHba1c = False 
+         ' Case "sort hba1c descending"
+         '     sHba1cSortOrder = "DESC"
+         '     bSortbyHba1c = True 
+         '     Reload()
+         '     bSortbyHba1c = False   
+      Case "left practice"
+         '------------------------------------------------
+         'create appropriate message for 1 or more patient
+         '------------------------------------------------
+         cvwPatients.MoveFirst
+         For x = 0 To cvwPatients.count - 1
+            If cvwPatients.Item.Selected = True Then
+               Inc icount 
+            End If    
+            cvwPatients.MoveNext
+         Next
+         If icount = 1 Then 
+            Message.Title = "Marking a Patient as Left The Practice"
+            sMsg = Replace(sMsg, "%number%", "a patient")
+            sMsg = Replace(sMsg, "%status%", "who has left the practice")  
+         Else If icount > 1 Then
+            Message.Title = "Marking Patients as Left The Practice"
+            sMsg = Replace(sMsg, "%number%", "a number of patients")
+            sMsg = Replace(sMsg, "%status%", "who have left the practice")
+         Endif
+         If Message.Question(sMsg, "Yes", "No") = 2 Then Return
+         '---------------------
+         'User wants to proceed
+         '---------------------
+         cvwPatients.MoveFirst
+         For x = 0 To cvwPatients.count - 1
+            If cvwPatients.Item.Selected = True Then
+               patient = patients[cvwPatients.Item.Key]
+               modDBConnect.exec_query("drop table patients_latest_hba1c") 
+               modDBConnect.update("clerical.data_patients", Null, ["pk": patient!fk_patient, "active_status": "i"])
+               
+               modDBConnect.CommitTrans()
+            Endif
+            cvwPatients.MoveNext 
+         Next    
+         cvwPatients_Refresh(True)
+      Case "mark deceased"
+         '------------------------------------------------
+         'create appropriate message for 1 or more patient
+         '------------------------------------------------
+         cvwPatients.MoveFirst
+         For x = 0 To cvwPatients.count - 1
+            If cvwPatients.Item.Selected = True Then
+               Inc icount 
+            End If    
+            cvwPatients.MoveNext
+         Next
+         If icount = 1 Then 
+            Message.Title = "Marking a Patient as Deceased"
+            sMsg = Replace(sMsg, "%number%", "a patient")
+            sMsg = Replace(sMsg, "%status%", "who has died")  
+         Else If icount > 1 Then
+            Message.Title = "Marking Patients as Deceased"
+            sMsg = Replace(sMsg, "%number%", "a number of patients")
+            sMsg = Replace(sMsg, "%status%", "who have died")
+         Endif
+         If Message.Question(sMsg, "Yes", "No") = 2 Then Return
+         '---------------------
+         'User wants to proceed
+         '---------------------
+         cvwPatients.MoveFirst
+         For x = 0 To cvwPatients.count - 1
+            If cvwPatients.Item.Selected = True Then
+               patient = patients[cvwPatients.Item.Key]
+               modDBConnect.update("contacts.data_persons", Null, ["pk": patient!fk_person, "deceased": True])
+               modDBConnect.CommitTrans()
+            Endif
+            cvwPatients.MoveNext
+         Next    
+         cvwPatients_Refresh(True)
+         
+   End Select 
+   
+End
+
+Public Sub cvwPatients_Menu()
+   
+   If Last.count Then mnuDiabeticPatients.popup()
+   
+End
+
+Public Sub cvwPatients_Select()
+   
+   cvwPatients.MoveCurrent()
+   patient = patients[cvwPatients.Item.Key]
+   lblResultsFor.text = modStrings.CapitaliseWord(patient!wholename)
+   Hba1c_ShowGraph
+   Lipids_ShowGraph
+   EGFR_ShowGraph
+   Weight_ShowGraph
+End
+
+Public Sub Weight_ShowGraph()
+   
+   Dim R As Result
+   
+   With Form_Graph_Weight
+      .Set_fk_Patient(Patient!fk_patient)
+      .Graph(Null, "", "weight")
+   End With 
+   
+End
+Public Sub Lipids_ShowGraph()
+   
+   Dim R As Result
+   
+   With Form_Graph_Lipids
+      .Set_fk_Patient(Patient!fk_patient)
+      .Graph(Null, const.Loinc_TotalCholesterol, "HDL")
+   End With 
+   
+End
+Public Sub EGFR_ShowGraph()
+   
+   With Form_Graph_EGFR
+      .Set_fk_Patient(Patient!fk_patient)
+      .Graph(Null, const.Loinc_EGFR, "eGFR")
+   End With 
+   
+End
+
+Public Sub Hba1c_ShowGraph()
+   
+   Dim R As Result
+   ' 
+   ' sql = "Select * from documents.vwObservations WHERE loinc =$$"
+   ' sql &= const.Loinc_HBA1c & "$$ AND fk_patient =" & patient!fk_patient & " order by observation_date Desc "
+   ' Hba1c_Results = modDBConnect.exec_query(sql) 
+   ' cvwValues.Clear()
+   ' For Each Hba1c_Results
+   '    cvwValues.Add(Hba1c_Results!pk, 0)
+   '    cvwValues[Hba1c_Results!pk][0] = Format(Hba1c_Results!observation_date, "dd/mm/yyyy")
+   '    cvwValues[Hba1c_Results!pk][1] = Hba1c_Results!value_numeric
+   ' Next
+   ' lblDate.width = cvwValues.Columns[0].Width
+   ' lblDate.text = "Date"
+   ' lblValues.text = "HbA1c"
+   ' lblValues.width = cvwValues.columns[1].width
+   With Form_Graph_HBA1c
+      .Set_fk_Patient(Patient!fk_patient)
+      .Graph(Null, const.Loinc_HBA1c, "Hba1c")
+   End With 
+   
+End
+
+Public Sub rbSortAscendingDescending_Click()
+   
+   sSortOrder = Last.tag   
+   Patients_Reload()   
+   
+End
+
+Public Sub cmbsortBy_Click()
+   
+   Patients_Reload()   
+   
+End
+
+Public Sub Patients_Reload()
+   
+   Dim fieldname As String
+   Dim sql As String
+   
+   Select Case cmbSortBy.text
+      Case "hba1c"
+         fieldname = "value_numeric"
+      Case "age"
+         fieldname = "age_display"
+      Case "surname"
+         fieldname = "surname"
+   End Select
+   sql = "Select * from patients_latest_hba1c "
+   Select Case cmbHba1cRange.Text
+      Case "<6.0"
+         sql &= "WHERE value_numeric < 6 "
+      Case "6.0-7.0"
+         sql &= " WHERE value_numeric between 6 and 7 "
+      Case "7.0-8.0"
+         sql &= " WHERE value_numeric between 7 and 8 "
+      Case ">8.0" 
+         sql &= " WHERE value_numeric > 8"
+   End Select
+   If Trim(txtSearch.text) <> "" Then
+      If InStr(sql, "value_numeric") Then
+         sql &= " AND "
+      Else
+         sql &= " WHERE "
+      End If   
+      sql &= "surname ILIKE $$%" & Trim(txtSearch.text) & "%$$"
+   Endif
+   Patients = modDBConnect.exec_query_collection(sql & " order by " & fieldname & " " & sSortOrder)
+   cvwPatients_Refresh(False)   
+   If cvwPatients.count And Trim(txtSearch.text) = "" Or cvwPatients.count = 1 Then
+      cvwPatients.MoveFirst
+      cvwPatients.Item.Selected = True
+      cvwPatients.SetFocus()
+      
+   Endif
+   
+End
+
+Public Sub cmbHba1cRange_Click()
+   
+   Patients_Reload()   
+   
+End
+
+Private Sub Gui_Clear()
+   
+   lblSearchResults.text = ""
+   cvwPatients.Clear 
+   cvwValues.Clear
+   Form_Graph_Hba1c.Measurement_Graph_Picture_Clear
+   Form_Graph_Lipids.Measurement_Graph_Picture_Clear
+   Form_Graph_EGfr.Measurement_Graph_Picture_Clear
+   
+End
+
+Public Sub txtSearch_KeyRelease()
+   '----------------------------------------------------
+   'Except in hospital won't have many patients
+   'so not using timer - if you want one I'll put one in
+   '----------------------------------------------------
+
+   If Not IsNull(patients) Then Patients_Reload()
+   
+End
+
+Public Sub txtSearch_GotFocus()
+
+   txtSearch.text = ""  
+   
+End
+
+Public Sub txtSearch_KeyPress()
+   
+   If key.code = key.down Then
+      If cvwPatients.count Then
+         cvwPatients.MoveFirst
+         cvwPatients.Item.Selected = True
+         cvwPatients.SetFocus()
+      End If
+   Endif
+   
+End
+
+Private Sub SEttings_Load()
+   
+   Hsplit1.Layout = Settings["Research_" & Me.name & "/Hsplit1.layout"] 
+   iGraphFontSize = Settings["Research_" & Me.name & "/graph_font.size", 3]
+End
+
+Public Sub Settings_Save()
+   
+   Settings["Research_" & Me.name & "/Hsplit1.layout"] = Hsplit1.Layout
+   Settings["Research_" & Me.name & "/graph_font.size"] = iGraphFontSize
+End
+
+
+
+Public Sub SpinBox1_Change()
+  If bExit Then Return  
+   SpinBox1.Refresh()
+   SpinBox1.Enabled = False
+   Inc Application.Busy
+   Form_Graph_Hba1c.slGraphFontSize.value = Last.value
+   Form_Graph_Lipids.slGraphFontSize.value = Last.value
+   Form_Graph_eGFR.slGraphFontSize.value = Last.value
+   Dec Application.Busy
+   SpinBox1.Enabled = True 
+End

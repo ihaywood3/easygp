@@ -46,11 +46,13 @@
 '        if do a delete or deleteall then the drug_delete dosn't work
 '        Spell checking on txtInstruction does not work.
 '--------------------------------------------------------------------    
+Private temp_drugs As Collection 
 Private unique_drugs As Collection
 Private pic_saved As Picture = Picture["icons/12/green_dot.png"]
 Private pic_not_saved As Picture = Picture["icons/12/red_dot.png"]
 Private pic_pdf As Picture = Picture["icons/20/pdf2020.png"]
 Private empty_2020png As Picture = Picture["icons/20/empty2020.png"]
+Private generic_brands_split_layout As String[]
 Public bExit As Boolean 'accessed from Fclinical Editor_SetPage
 Private bAuthority As Boolean       'If True the script item needs an authority.
 Private bKeyValid As Boolean
@@ -270,6 +272,7 @@ Public Sub Settings_Save()
    
    Settings["Prescriptions_" & Embedded_In_Form & "/HSplit_EditArea_Inner.Layout"] = HSplit_EditArea_Inner.Layout
    Settings["Prescriptions_" & embedded_in_form & "/HSplit_DrugDisplay.Layout"] = HSplit_DrugDisplay.Layout
+   
    ' Settings["Tasks_Embedded_" & Embedded_In_Form & "/HSplit_EditArea_Outer.Layout"] = HSplit_EditArea_Outer.Layout
    ' Settings["Tasks_Embedded_" & Embedded_In_Form & "/Vsplit_Script.Layout"] = Vsplit_Script.Layout
    Settings["Prescriptions_" & Embedded_In_Form & "/Vsplit_Script.Layout"] = Vsplit_Script.Layout
@@ -278,10 +281,11 @@ End
 
 Public Sub Settings_Load()
    
-   Try HSplit_DrugDisplay.Layout = Settings["Prescriptions_" & embedded_in_form & "/HSplit_DrugDisplay.Layout", "380,0,140"]
+   Try HSplit_DrugDisplay.Layout = Settings["Prescriptions_" & embedded_in_form & "/HSplit_DrugDisplay.Layout", "380,140"]
    Try Vsplit_Script.Layout = Settings["Prescriptions_" & embedded_in_form & "/Vsplit_Script.Layout"]
    Try HSplit_EditArea_Inner.Layout = Settings["Prescriptions_" & Embedded_In_Form & "/HSplit_EditArea_Inner.Layout"]
    Try cvwPrescriptions.Font = Font[Settings["Prescriptions_" & Embedded_In_Form & "/cvwPrescriptions.font"]]
+   Generic_brands_split_layout = HSplit_DrugDisplay.Layout
    
 End
 
@@ -439,6 +443,7 @@ Public Sub EditArea_Clear()
    teInteractions.Clear()
    lcRestrictions.Clear()
    pnlcolumnview.Visible = False 
+   columnview1.Visible = False  
    lblSearchResults.text = ""
    listview1.Visible = False    
    cvwBrands.Clear()
@@ -496,14 +501,23 @@ Public Sub Editarea_txtBox_KeyPress()
    End If
    Select Case Key.Code
       Case Key.Down
-         If pnlcolumnview.Visible And columnview1.visible Then
-            With columnview1
-               .MoveFirst()                                       'move to first drug
-               .SetFocus()                                        'make marquee visible
-               Try .Item.Selected = True                          'select it > this loads the brands
-            End With
-         End If
-         If pnlcolumnview.Visible And gridview1.Visible Then
+         If HSplit_DrugDisplay.Visible = False Then
+            If columnview1.count Then  
+               pnlcolumnview.Visible = True     
+               With columnview1
+                  .Visible = True   
+                  .MoveFirst()                                       'move to first drug
+                  .SetFocus()                                        'make marquee visible
+                  Try .Item.Selected = True                          'select it > this loads the brands
+               End With
+               Return 
+            End If 
+         End If   
+         Wait
+         '-------------------------------------------
+         'This will be when user searching for a drug
+         '-------------------------------------------
+         If pnlcolumnview.Visible And pnlDrugsGrid.Visible Then
             With Gridview1
                .row = 0
                .SetFocus()
@@ -751,12 +765,15 @@ Public Sub EditArea_TxtBox_GotFocus()
    
    If Last.tag <> "restriction" Then Last.BackGround = Color.rgb(95, 255, 175)
    pnlcolumnview.Visible = False                           'user could have clicked on textbox whilst this list was showing
-   gridview1.Clear()
-   columnview1.Clear()
+   With columnview1
+      .Clear()
+      .Visible = False  
+   End With
    Select Case Last.tag
          
       Case "instructions"
-         cvwBrands.Visible = False 
+         HSplit_DrugDisplay.Visible = False  
+         lblSearchResults.Visible = False 
          With pnlcolumnview
             .top = Vbox_EditArea_Inner.top + Last.parent.parent.top + Last.parent.height
             .left = Last.parent.Left
@@ -787,13 +804,12 @@ Public Sub EditArea_TxtBox_GotFocus()
                Next
                If Not bExists Then  
                   pnlcolumnview.Visible = True
-                  gridview1.visible = False 
                   columnview1.Visible = True 
                End If   
             Endif
          End If  
       Case "reason"
-         cvwBrands.Visible = False 
+         HSplit_DrugDisplay.Visible = False  
          With pnlcolumnview
             .top = Vbox_EditArea_Inner.top + Last.parent.parent.top + Last.parent.height
             .left = Last.parent.Left
@@ -819,7 +835,6 @@ Public Sub EditArea_TxtBox_GotFocus()
                Next
                If Not bexists Then  
                   pnlcolumnview.Visible = True
-                  gridview1.visible = False 
                   columnview1.Visible = True 
                End If  
             End If   
@@ -833,12 +848,7 @@ Public Sub EditArea_TxtBox_GotFocus()
             .Visible = False
             .Raise
          End With
-         With cvwBrands
-            Try .Reparent(HSplit_DrugDisplay)
-            .width = 180 'FIXME
-            .Visible = True
-         End With
-         Wait
+         HSplit_DrugDisplay.Visible = True   
       Case "brand"
          With pnlcolumnview
             .top = Vbox_EditArea_Inner.top + Last.parent.parent.top + Last.parent.height
@@ -847,17 +857,7 @@ Public Sub EditArea_TxtBox_GotFocus()
             .Visible = False
             .Raise
          End With   
-         ' If Last.text <> "" Then
-         '    With cvwBrands
-         '       .Reparent(Vbox_EditArea_Inner)
-         '       If .count Then .Visible = True
-         '       .top = pnlcolumnview.Top
-         '       .Visible = True
-         '       .left = pnlcolumnview.Left
-         '       .width = txtAuthorityWording.Width
-         '       .Raise
-         '    End With
-         ' Endif
+         HSplit_DrugDisplay.Visible = True   
    End Select
    
 End
@@ -1102,6 +1102,7 @@ Public Sub Gridview1_Keypress()
    
    Select Case key.Code
       Case key.Right
+         
          If cvwBrands.count And cvwBrands.visible Then
             cvwBrands.SetFocus()
          End If   
@@ -1111,8 +1112,38 @@ Public Sub Gridview1_Keypress()
    
 End
 
+Public Sub Gridview1_Select_RT()
+   
+   If gridview1.Column > 0 And cvwBrands.Visible Then 
+      gridview1.column = 0
+      cvwBrands.MoveFirst()
+      cvwBrands.Item.Selected = True
+      cvwBrands.SetFocus()
+      Return
+   End If 
+   HSplit_DrugDisplay.Layout = Generic_brands_split_layout
+   gridrow = gridview1.Row
+   pk_view = drugs[gridrow]!pk_view     
+   Select Case Last.tag.tag
+      Case "generic", "brand"
+         Restrictions_Show()                    'show which restrictions apply to this drug/generic or brand
+         If Last.tag.tag = "generic" Then 
+            Brands_For_Generic_Show()              'get the brands for this generic, show these
+         End If   
+   End Select
+   
+End
+
 Public Sub Gridview1_Select()
    
+   If gridview1.Column > 0 And cvwBrands.Visible Then 
+      gridview1.column = 0
+      cvwBrands.MoveFirst()
+      cvwBrands.Item.Selected = True
+      cvwBrands.SetFocus()
+      Return
+   End If 
+   HSplit_DrugDisplay.Layout = Generic_brands_split_layout
    gridrow = gridview1.Row
    pk_view = drugs[gridrow]!pk_view     
    Select Case Last.tag.tag
@@ -1142,7 +1173,6 @@ Public Sub Brands_For_Generic_Show()
    If brands.count Then
       With cvwBrands
          .MoveFirst()
-         .Item.Selected = True
          .Visible = True
       End With
    Endif
@@ -1172,7 +1202,7 @@ Public Sub Gridview1_DblClick()
    
 End
 
-Public Sub Generics_Get()
+Public Sub Generics_Get_RT()
    '-------------------------------------------------------------------
    'User has typed in txtGenerics, i.e wishes to search by generic name
    'Pop up the columnview with generic name + strength + form + repeats
@@ -1193,13 +1223,10 @@ Public Sub Generics_Get()
    Dim sString As String
    Dim sFontHeight As Integer = Gridview1.Font.Height
    Dim x As Integer   
-   Dim counter As Integer
    
    Timer1.Stop()                                                  'stop searching
    Drug_Display_Strengths = New String[]
    pnlcolumnview.Visible = False                                'holds the drug grid gridview1
-   columnview1.Visible = False   
-   cvwBrands.Visible = False     
    With gridview1                                               'clear the popup columnview
       .Clear()
       .Columns.count = 3                            
@@ -1208,26 +1235,23 @@ Public Sub Generics_Get()
       .Columns[2].Alignment = Align.TopLeft
       .Rows.count = 1
    End With 
-   cvwBrands.Clear()                                              'clear the brands for generic
+   With cvwBrands
+      .Clear()                                              'clear the brands for generic
+      .Visible = False  
+   End With
    lblSearchResults.text = ""
-   If Trim(txtGeneric.text) = "" Then Return 
+   If Len(Trim(txtGeneric.text)) < 3 Then Return 
    '-----------------------------------------------------------------------------------------------------------------------------------------------------
    'find the generics, heaps more rows for these than for brands
    ' Drugs_Search_By_Generic(generic As String, Optional chapters As String[], Optional limit As Variant = Null, Optional bInstrSearch As Boolean = True)
    '-----------------------------------------------------------------------------------------------------------------------------------------------------
    Inc Application.Busy
-   ' drugs = modPrescribingDBI.Drugs_Search_By_Generic(Trim(txtGeneric.text), drug_search_scope)  ' no limit ok, get all matching generics from vwDrugs
-   'drugs = modUtil.Copy_Collection_Keyed_Sequentially(modPrescribingDBI.Drugs_Search_By_Generic("sertraline", drug_search_scope, 100))  ' limit ok, get all matching generics from vwDrugs
    drugs = modUtil.Copy_Collection_Keyed_Sequentially(modPrescribingDBI.Drugs_Search_By_Generic(Trim(txtGeneric.text), drug_search_scope))  ' limit ok, get all matching generics from vwDrugs
-   
-   lblSearchResults.text = Str(drugs.count) & " drugs were found"
    unique_drugs = New Collection     
    If drugs.count Then                                            'found some?
       For Each drug In drugs                                      'then put into the columnview
          If last_drug <> drug!generic & drug!form & drug!strength & Str(drug!quantity) & Str(drug!max_rpt) & drug!restrictionflag Then 
             last_drug = drug!generic & drug!form & drug!strength & Str(drug!quantity) & Str(drug!max_rpt) & drug!restrictionflag
-            Print "last drug " & Str(counter), last_drug  
-            Inc counter 
             onrow = gridview1.Rows.count - 1
             unique_drugs.Add(drug, onrow)
             generics = Split(drug!generic, ";")                'get string array of generics 1>n, we will display these vertically in column 2
@@ -1303,6 +1327,7 @@ Public Sub Generics_Get()
                   End If   
                   Inc x
                Next
+               
             End If   
             
             If Right(gridview1[onrow, 0].richtext) = "<BR>" Then 
@@ -1340,12 +1365,174 @@ Public Sub Generics_Get()
       '--------------------------------------------------------------------------------
       If gridview1.Rows.Count Then  
          pnlcolumnview.Visible = True                               
-         columnview1.Visible = False  'fixme remove me once removed all references to this
          gridview1.Columns[0].width = iWidestGenericName  'the generic name
          gridview1.Columns[1].width = 60                  'quantity and repeats
          gridview1.Columns[2].width = iWidestPBStype      'pbs details
-         gridview1.Visible = True  
          gridview1.tag = txtGeneric
+         lblSearchResults.text = Str(drugs.count) & " drugs were found"
+      End If   
+   Endif
+   
+   lblSearchResults.text = Str(unique_drugs.count) & " drugs were found" 'ie grid rows
+   Dec Application.Busy
+   
+End
+
+Public Sub Generics_Get()
+   '-------------------------------------------------------------------
+   'User has typed in txtGenerics, i.e wishes to search by generic name
+   'Pop up the columnview with generic name + strength + form + repeats
+   'at the end of this routine a list of drugs may be showing, but the
+   'cursor remains on the txtGeneric textbox unless user then arrows
+   'down to this list, or clicks on it.
+   '-------------------------------------------------------------------  
+   
+   Dim last_drug As String 'drug+quantity+repeats
+   Dim onrow As Integer
+   Dim iWidestGenericName As Integer
+   Dim iWidestFormName As Integer
+   Dim iWidestPBStype As Integer
+   Dim generics As String[]
+   Dim strengths As String[]
+   Dim strength As String
+   Dim display_Strength As String
+   Dim sString As String
+   Dim sFontHeight As Integer = Gridview1.Font.Height
+   Dim x As Integer   
+   
+   Timer1.Stop()                                                  'stop searching
+   Drug_Display_Strengths = New String[]
+   pnlcolumnview.Visible = False                                'holds the drug grid gridview1
+   With gridview1                                               'clear the popup columnview
+      .Clear()
+      .Columns.count = 3                            
+      .Columns[0].Alignment = Align.TopLeft
+      .Columns[1].Alignment = Align.TopLeft
+      .Columns[2].Alignment = Align.TopLeft
+      .Rows.count = 1
+   End With 
+   With cvwBrands
+      .Clear()                                              'clear the brands for generic
+      .Visible = False  
+   End With
+   lblSearchResults.text = ""
+   If Len(Trim(txtGeneric.text)) < 3 Then Return 
+   '-----------------------------------------------------------------------------------------------------------------------------------------------------
+   'find the generics, heaps more rows for these than for brands
+   ' Drugs_Search_By_Generic(generic As String, Optional chapters As String[], Optional limit As Variant = Null, Optional bInstrSearch As Boolean = True)
+   '-----------------------------------------------------------------------------------------------------------------------------------------------------
+   Inc Application.Busy
+   temp_drugs = modPrescribingDBI.Drugs_Search_By_Generic(Trim(txtGeneric.text), drug_search_scope)  ' limit ok, get all matching generics from vwDrugs
+   drugs = modUtil.Copy_Collection_Keyed_Sequentially(temp_drugs)
+   unique_drugs = New Collection     
+   If drugs.count Then                                            'found some?
+      For Each drug In drugs                                 'then put into the columnview
+         If Not InStr(Lower(drug!restriction), " base-priced") Then
+            If drug!max_rpt <> 11 Then 
+               
+               If last_drug <> drug!generic & drug!form & drug!strength & Str(drug!quantity) & Str(drug!max_rpt) & drug!restrictionflag Then 
+                  last_drug = drug!generic & drug!form & drug!strength & Str(drug!quantity) & Str(drug!max_rpt) & drug!restrictionflag
+                  onrow = gridview1.Rows.count - 1
+                  unique_drugs.Add(drug, onrow)
+                  generics = Split(drug!generic, ";")                'get string array of generics 1>n, we will display these vertically in column 2
+                  Try strengths = Split(drug!strength, "-")          'if strengths exist get string array of those,display in column 2 with the generic
+                  '-----------------------------------------------------------------------------------------
+                  'Keep track of the width of the text we are displaying
+                  'later, gridview1 column1 width is set to the wider of the widest brand or the widest form
+                  '-----------------------------------------------------------------------------------------
+                  iWidestFormName = Max(gridview1.Font.TextWidth(drug!form) + 20, iWidestFormName)    'and the widest of all the forms eg 'tablet'
+                  '--------------------------------------------------------------------------------------------------------------
+                  'Now for column 2 which will contain one or more generics and/or their strength, stacked vertically for example
+                  'codeine phosphate 30mg
+                  'paracetamol 500mg       
+                  'note that there is no one on one match between  generics[] and strengths[] can have generic & no strength
+                  'or 3 generics and 1 strength (because we display stuff like test strips etc
+                  'Here we also work out which generic is the widest and adjust the whole col 2 to that width
+                  'and we roughly work out how high this particular row must be given the generic count
+                  'If there is only 1 generic, brand will still need roughly two rows (see above)
+                  '--------------------------------------------------------------------------------------------------------------
+                  gridview1[onrow, 0].Alignment = Align.TopLeft 'don't know why its needed here, but otherwise dosn't align 
+                  x = 0
+                  gridview1[onrow, 0].WordWrap = True
+                  display_Strength = ""
+                  If generics.count = 1 Then
+                     gridview1[onrow, 0].richtext &= "<B>" & modStrings.CapitaliseWord(generics[0]) & "</B>"
+                     If Not IsNull(drug!amount) Then       
+                        strength = modPrescribingDBI.ConvertTo5mls(drug!strength)
+                        gridview1[onrow, 0].richtext &= " " & strength
+                     Else
+                        gridview1[onrow, 0].richtext &= " " & drug!strength
+                        strength = drug!strength
+                     End If    
+                     display_Strength = strength  
+                     iWidestGenericName = Max(gridview1.Font.TextWidth(generics[0]) + gridview1.Font.TextWidth(strength) + 40, iWidestGenericName) 
+                  Else
+                     For Each sSTring In generics                                               'eg amoxycillin, clavulinate
+                        gridview1[onrow, 0].richtext &= "<B>" & modStrings.CapitaliseWord(sSTring) & "</B>"    'eg amoxycillin       
+                        If strengths.count Then    'if count=1 and x now 2 > will crash
+                           If x < strengths.count Then                                  
+                              If Not IsNull(drug!amount) Then                                   'if was a syrup then
+                                 strength = modPrescribingDBI.ConvertTo5mls(strengths[x]) 'make this eg 400mg/5ml
+                                 gridview1[onrow, 0].richtext &= " " & strength                 'row now amoxycillin 400mg/5ml
+                                 display_Strength = modPrescribingDBI.ConvertTo5mls(drug!strength)
+                              Else                                                              'not a syrup
+                                 Try gridview1[onrow, 0].richtext &= " " & strengths[x]
+                                 If x <> 0 Then display_Strength &= "-"
+                                 display_Strength &= strengths[x]
+                              End If
+                              iWidestGenericName = Max(gridview1.Font.TextWidth(sSTring & " ") + gridview1.Font.TextWidth(strengths[x]) + 40, iWidestGenericName) 
+                           End If        
+                           gridview1[onrow, 0].richtext &= "<BR>"                                 'start new row
+                        Else
+                           iWidestGenericName = Max(gridview1.Font.TextWidth(sSTring) + 10, iWidestGenericName)  
+                        End If   
+                        Inc x
+                     Next
+                     
+                  End If   
+                  
+                  If Right(gridview1[onrow, 0].richtext) = "<BR>" Then 
+                     gridview1[onrow, 0].richtext = Left(gridview1[onrow, 0].richtext, Len(gridview1[onrow, 0].richtext) - 4)
+                  End If   
+                  If generics.Count = 1 Then                                  'generic needs only 1 row height but
+                     gridview1.Rows[onrow].Height = sFontHeight * 2.2         'brand = Brand <BR> (form) which needs two with bit of space to spare
+                  Else
+                     gridview1.Rows[onrow].Height = sFontHeight * (generics.Count + 0.5)   'if > 1 generic, use this height for the entire row
+                  Endif                      
+                  '--------------------------
+                  'Column 1 = strength + quantity and repeats
+                  '--------------------------
+                  gridview1[onrow, 1].Alignment = Align.TopLeft
+                  If Not IsNull(drug!pbscode) Then       
+                     gridview1[onrow, 1].text = Str(drug!quantity) & " Rpt:" & drug!max_rpt 
+                  Else
+                     'it is a private drug
+                     gridview1[onrow, 1].text = Str(drug!pack_size) & " Rpt:0" 
+                  End If   
+                  gridview1[onrow, 2].Alignment = Align.TopLeft
+                  gridview1[onrow, 2].Richtext = drug!pbs_type
+                  iWidestPBStype = Max(gridview1.Font.TextWidth(drug!pbs_type) + 20, iWidestPBStype)
+                  Drug_Display_Strengths.Add(display_Strength, onrow) 'used when finally pick the drug
+                  If drug!form <> "other" Then
+                     gridview1[onrow, 0].Richtext &= "<BR>(" & drug!form & ")"
+                  End If
+                  iWidestGenericName = Max(iWidestFormName, iWidestGenericName)
+                  Inc gridview1.Rows.Count
+               End If   
+            End If
+         End If
+      Next
+      Dec Gridview1.Rows.Count 
+      '--------------------------------------------------------------------------------
+      'Finally if we have drugs, set the column widths for the grid and make it visible
+      '--------------------------------------------------------------------------------
+      If gridview1.Rows.Count Then  
+         pnlcolumnview.Visible = True                               
+         gridview1.Columns[0].width = iWidestGenericName  'the generic name
+         gridview1.Columns[1].width = 60                  'quantity and repeats
+         gridview1.Columns[2].width = iWidestPBStype      'pbs details
+         gridview1.tag = txtGeneric
+         lblSearchResults.text = Str(drugs.count) & " drugs were found"
       End If   
    Endif
    
@@ -1382,7 +1569,6 @@ Public Sub Brands_Get()
    Timer1.Stop()   'stop searching
    Drug_Display_Strengths = New String[]
    pnlcolumnview.Visible = False                                'holds the drug grid gridview1
-   columnview1.Visible = False   
    cvwBrands.Visible = False     
    With gridview1                                               'clear the popup columnview
       .Clear()
@@ -1397,123 +1583,110 @@ Public Sub Brands_Get()
    'brand search, no need for brands list
    If Trim(txtBrand.text) = "" Then Return 
    Inc Application.Busy
+   temp_drugs = modPrescribingDBI.Brands_Get(Trim(txtbrand.text), drug_search_scope)
    drugs = modUtil.Copy_Collection_Keyed_Sequentially(modPrescribingDBI.Brands_Get(Trim(txtbrand.text), drug_search_scope))  'ok, get all matching brands from vwDrugs
    unique_drugs = New Collection     
    If drugs.count Then  
       For Each drug In drugs                                      'then put into the columnview
-         If Not InStr(Lower(drug!restriction), " base-priced") Then 
-            If last_drug <> drug!brand & drug!form & drug!strength & Str(drug!quantity) & Str(drug!max_rpt) & drug!restrictionflag Then 
-               last_drug = drug!brand & drug!form & drug!strength & Str(drug!quantity) & Str(drug!max_rpt) & drug!restrictionflag
-               onrow = gridview1.Rows.count - 1
-               unique_drugs.Add(drug, onrow)
-               generics = Split(drug!generic, ";")                'get string array of generics 1>n, we will display these vertically in column 2
-               Try strengths = Split(drug!strength, "-")          'if strengths exist get string array of those,display in column 2 with the generic
-               '-----------------------------------------------------------------------------------------
-               'Keep track of the width of the text we are displaying
-               'later, gridview1 column1 width is set to the wider of the widest brand or the widest form
-               '-----------------------------------------------------------------------------------------
-               iWidestBrandName = Max(gridview1.Font.TextWidth(drug!brand) + 20, iWidestBrandName) 'keep the widest of all the brands
-               iWidestFormName = Max(gridview1.Font.TextWidth(drug!form) + 20, iWidestFormName)    'and the widest of all the forms eg 'tablet'
-               iWidestBrandName = Max(iWidestBrandName, iWidestFormName)                           'if form width > brand width 
-               '----------------------------------------------------
-               'the brand column = column 1 will now look like this:
-               ' Ceclor CD in bold text
-               ' (tablets) in normal text
-               ' ---------------------------------------------------
-               gridview1[onrow, 0].Richtext = "<B>" & modStrings.CapitaliseWord(drug!brand) & "</B><BR>"
-               If drug!form <> "other" Then
-                  gridview1[onrow, 0].Richtext &= "(" & drug!form & ")"
-               End If
-               gridview1[onrow, 0].Alignment = Align.TopLeft 'otherwise dosn't align
-               
-               '--------------------------------------------------------------------------------------------------------------
-               'Now for column 2 which will contain one or more generics and/or their strength, stacked vertically for example
-               'codeine phosphate 30mg
-               'paracetamol 500mg       
-               'note that there is no one on one match between  generics[] and strengths[] can have generic & no strength
-               'or 3 generics and 1 strength (because we display stuff like test strips etc
-               'Here we also work out which generic is the widest and adjust the whole col 2 to that width
-               'and we roughly work out how high this particular row must be given the generic count
-               'If there is only 1 generic, brand will still need roughly two rows (see above)
-               '--------------------------------------------------------------------------------------------------------------
-               gridview1[onrow, 1].Alignment = Align.TopLeft 'don't know why its needed here, but otherwise dosn't align 
-               x = 0
-               gridview1[onrow, 1].WordWrap = True
-               display_Strength = ""
-               If generics.count = 1 Then
-                  gridview1[onrow, 1].richtext &= modStrings.CapitaliseWord(generics[0])
-                  If Not IsNull(drug!amount) Then       
-                     If InStr(Lower(drug!original_pbs_fs), "per 5 ml") Then
-                        If Not InStr(drug!strength, "/ml") Then
-                           strength = modPrescribingDBI.ConvertTo5mls(drug!strength & "/ml")
-                        Else
-                           strength = modPrescribingDBI.ConvertTo5mls(drug!strength)
-                        End If   
-                     Else If InStr(Lower(drug!original_pbs_fs), "per ml") Then
-                        If Not InStr(drug!strength, "/ml") Then   'inconsistant data in the backend
-                           strength = drug!strength & "/ml" 
-                        End If  
-                     Else If InStr(Lower(drug!original_pbs_fs), "per g")  
-                        strength = drug!strength  
-                     End If  
-                     gridview1[onrow, 1].richtext &= " " & strength
-                  Else
-                     gridview1[onrow, 1].richtext &= " " & drug!strength
-                     strength = drug!strength
-                  End If    
-                  display_Strength = strength  
-                  iWidestGenericName = Max(gridview1.Font.TextWidth(generics[0]) + gridview1.Font.TextWidth(strength) + 20, iWidestGenericName) 
-               Else
-                  For Each sSTring In generics                                               'eg amoxycillin, clavulinate
-                     gridview1[onrow, 1].richtext &= modStrings.CapitaliseWord(sSTring)     'eg amoxycillin       
-                     If strengths.count Then                                     
-                        If Not IsNull(strengths[x]) Then                                   
-                           If Not IsNull(drug!amount) Then                                   'if was a syrup then
-                              If InStr(Lower(drug!original_pbs_fs), "per 5 ml") Then         'if per 5ml FIXME only 1 case scenario
-                                 strength = modPrescribingDBI.ConvertTo5mls(strengths[x] & "/ml") 'make this eg 400mg/5ml
-                              Else If InStr(Lower(drug!original_pbs_fs), "per ml") Then
-                                 strength = drug!strength & "/ml" 
-                              Endif
-                              gridview1[onrow, 1].richtext &= " " & strength                 'row now amoxycillin 400mg/5ml
-                              display_Strength = modPrescribingDBI.ConvertTo5mls(drug!strength & "/ml")
-                           Else                                                              'not a syrup
-                              Try gridview1[onrow, 1].richtext &= " " & strengths[x]
-                              If x <> 0 Then display_Strength &= "+"
-                              display_Strength &= strengths[x]
-                           End If
-                           iWidestGenericName = Max(gridview1.Font.TextWidth(sSTring & " ") + gridview1.Font.TextWidth(strengths[x]) + 20, iWidestGenericName) 
-                        End If        
-                        gridview1[onrow, 1].richtext &= "<BR>"                                 'start new row
+         If Not InStr(Lower(drug!restriction), " base-priced") Then
+            If drug!max_rpt <> 11 Then 
+               If last_drug <> drug!brand & drug!form & drug!strength & Str(drug!quantity) & Str(drug!max_rpt) & drug!restrictionflag Then 
+                  last_drug = drug!brand & drug!form & drug!strength & Str(drug!quantity) & Str(drug!max_rpt) & drug!restrictionflag
+                  onrow = gridview1.Rows.count - 1
+                  unique_drugs.Add(drug, onrow)
+                  generics = Split(drug!generic, ";")                'get string array of generics 1>n, we will display these vertically in column 2
+                  Try strengths = Split(drug!strength, "-")          'if strengths exist get string array of those,display in column 2 with the generic
+                  '-----------------------------------------------------------------------------------------
+                  'Keep track of the width of the text we are displaying
+                  'later, gridview1 column1 width is set to the wider of the widest brand or the widest form
+                  '-----------------------------------------------------------------------------------------
+                  iWidestBrandName = Max(gridview1.Font.TextWidth(drug!brand) + 20, iWidestBrandName) 'keep the widest of all the brands
+                  iWidestFormName = Max(gridview1.Font.TextWidth(drug!form) + 20, iWidestFormName)    'and the widest of all the forms eg 'tablet'
+                  iWidestBrandName = Max(iWidestBrandName, iWidestFormName)                           'if form width > brand width 
+                  '----------------------------------------------------
+                  'the brand column = column 1 will now look like this:
+                  ' Ceclor CD in bold text
+                  ' (tablets) in normal text
+                  ' ---------------------------------------------------
+                  gridview1[onrow, 0].Richtext = "<B>" & modStrings.CapitaliseWord(drug!brand) & "</B><BR>"
+                  If drug!form <> "other" Then
+                     gridview1[onrow, 0].Richtext &= "(" & drug!form & ")"
+                  End If
+                  gridview1[onrow, 0].Alignment = Align.TopLeft 'otherwise dosn't align
+                  
+                  '--------------------------------------------------------------------------------------------------------------
+                  'Now for column 2 which will contain one or more generics and/or their strength, stacked vertically for example
+                  'codeine phosphate 30mg
+                  'paracetamol 500mg       
+                  'note that there is no one on one match between  generics[] and strengths[] can have generic & no strength
+                  'or 3 generics and 1 strength (because we display stuff like test strips etc
+                  'Here we also work out which generic is the widest and adjust the whole col 2 to that width
+                  'and we roughly work out how high this particular row must be given the generic count
+                  'If there is only 1 generic, brand will still need roughly two rows (see above)
+                  '--------------------------------------------------------------------------------------------------------------
+                  gridview1[onrow, 1].Alignment = Align.TopLeft 'don't know why its needed here, but otherwise dosn't align 
+                  x = 0
+                  gridview1[onrow, 1].WordWrap = True
+                  display_Strength = ""
+                  If generics.count = 1 Then
+                     gridview1[onrow, 1].richtext &= modStrings.CapitaliseWord(generics[0])
+                     If Not IsNull(drug!amount) Then       
+                        strength = modPrescribingDBI.ConvertTo5mls(drug!strength)
+                        gridview1[onrow, 1].richtext &= " " & strength
                      Else
-                        iWidestGenericName = Max(gridview1.Font.TextWidth(sSTring) + 10, iWidestGenericName)  
-                     End If   
-                     Inc x
-                  Next
+                        gridview1[onrow, 1].richtext &= " " & drug!strength
+                        strength = drug!strength
+                     End If    
+                     display_Strength = strength  
+                     iWidestGenericName = Max(gridview1.Font.TextWidth(generics[0]) + gridview1.Font.TextWidth(strength) + 20, iWidestGenericName) 
+                  Else
+                     For Each sSTring In generics                                               'eg amoxycillin, clavulinate
+                        gridview1[onrow, 1].richtext &= modStrings.CapitaliseWord(sSTring)     'eg amoxycillin       
+                        If strengths.count Then                                     
+                           If Not IsNull(strengths[x]) Then                                   
+                              If Not IsNull(drug!amount) Then                                   'if was a syrup then
+                                 strength = modPrescribingDBI.ConvertTo5mls(strengths[x]) 'make this eg 400mg/5ml
+                                 gridview1[onrow, 1].richtext &= " " & strength                 'row now amoxycillin 400mg/5ml
+                                 display_Strength = modPrescribingDBI.ConvertTo5mls(drug!strength)
+                              Else                                                              'not a syrup
+                                 Try gridview1[onrow, 1].richtext &= " " & strengths[x]
+                                 If x <> 0 Then display_Strength &= "-"
+                                 display_Strength &= strengths[x]
+                              End If
+                              iWidestGenericName = Max(gridview1.Font.TextWidth(sSTring & " ") + gridview1.Font.TextWidth(strengths[x]) + 40, iWidestGenericName) 
+                           End If        
+                           gridview1[onrow, 1].richtext &= "<BR>"                                 'start new row
+                        Else
+                           iWidestGenericName = Max(gridview1.Font.TextWidth(sSTring) + 10, iWidestGenericName)  
+                        End If   
+                        Inc x
+                     Next
+                  End If   
+                  
+                  If Right(gridview1[onrow, 1].richtext) = "<BR>" Then 
+                     gridview1[onrow, 1].richtext = Left(gridview1[onrow, 1].richtext, Len(gridview1[onrow, 1].richtext) - 4)
+                  End If   
+                  If generics.Count = 1 Then                                  'generic needs only 1 row height but
+                     gridview1.Rows[onrow].Height = sFontHeight * 2.2         'brand = Brand <BR> (form) which needs two with bit of space to spare
+                  Else
+                     gridview1.Rows[onrow].Height = sFontHeight * (generics.Count + 0.5)   'if > 1 generic, use this height for the entire row
+                  Endif                      
+                  '--------------------------
+                  'Column 3 = strength + quantity and repeats
+                  '--------------------------
+                  gridview1[onrow, 2].Alignment = Align.TopLeft
+                  If Not IsNull(drug!pbscode) Then       
+                     gridview1[onrow, 2].text = Str(drug!quantity) & " Rpt:" & drug!max_rpt 
+                  Else
+                     'it is a private drug
+                     gridview1[onrow, 2].text = Str(drug!pack_size) & " Rpt:0" 
+                  End If   
+                  gridview1[onrow, 3].Alignment = Align.TopLeft
+                  gridview1[onrow, 3].Richtext = drug!pbs_type
+                  iWidestPBStype = Max(gridview1.Font.TextWidth(drug!pbs_type) + 20, iWidestPBStype)
+                  Drug_Display_Strengths.Add(display_Strength, onrow) 'used when finally pick the drug
+                  Inc gridview1.Rows.Count
                End If   
-               
-               If Right(gridview1[onrow, 1].richtext) = "<BR>" Then 
-                  gridview1[onrow, 1].richtext = Left(gridview1[onrow, 1].richtext, Len(gridview1[onrow, 1].richtext) - 4)
-               End If   
-               If generics.Count = 1 Then                                  'generic needs only 1 row height but
-                  gridview1.Rows[onrow].Height = sFontHeight * 2.2         'brand = Brand <BR> (form) which needs two with bit of space to spare
-               Else
-                  gridview1.Rows[onrow].Height = sFontHeight * (generics.Count + 0.5)   'if > 1 generic, use this height for the entire row
-               Endif                      
-               '--------------------------
-               'Column 3 = strength + quantity and repeats
-               '--------------------------
-               gridview1[onrow, 2].Alignment = Align.TopLeft
-               If Not IsNull(drug!pbscode) Then       
-                  gridview1[onrow, 2].text = Str(drug!quantity) & " Rpt:" & drug!max_rpt 
-               Else
-                  'it is a private drug
-                  gridview1[onrow, 2].text = Str(drug!pack_size) & " Rpt:0" 
-               End If   
-               gridview1[onrow, 3].Alignment = Align.TopLeft
-               gridview1[onrow, 3].Richtext = drug!pbs_type
-               iWidestPBStype = Max(gridview1.Font.TextWidth(drug!pbs_type) + 20, iWidestPBStype)
-               Drug_Display_Strengths.Add(display_Strength, onrow) 'used when finally pick the drug
-               Inc gridview1.Rows.Count
             End If   
          End If  
       Next
@@ -1521,17 +1694,26 @@ Public Sub Brands_Get()
       '--------------------------------------------------------------------------------
       'Finally if we have drugs, set the column widths for the grid and make it visible
       '--------------------------------------------------------------------------------
+      ' If gridview1.Rows.Count Then  
+      '    pnlcolumnview.Visible = True   
+      '    columnview1.Visible = False  'fixme remove me once removed all references to this
+      '    gridview1.Columns[0].width = iWidestBrandName    'the brand
+      '    gridview1.Columns[1].width = iWidestGenericName  'generic & strength stuff
+      '    gridview1.Columns[2].width = 60 
+      '    gridview1.Columns[3].width = iWidestPBStype      'pbs details
+      '    gridview1.tag = txtBrand
+      ' End If  
+      lblSearchResults.text = Str(unique_drugs.count) & " drugs were found" 'ie grid rows
       If gridview1.Rows.Count Then  
-         pnlcolumnview.Visible = True                               
+         pnlcolumnview.Visible = True   
          columnview1.Visible = False  'fixme remove me once removed all references to this
          gridview1.Columns[0].width = iWidestBrandName    'the brand
-         gridview1.Columns[1].width = iWidestGenericName  'generic & strength stuff
+         gridview1.Columns[1].width = Min(iWidestGenericName, 200) ' pnlcolumnview.width - 60 - iWidestPBStype 'generic & strength stuff
          gridview1.Columns[2].width = 60 
          gridview1.Columns[3].width = iWidestPBStype      'pbs details
-         gridview1.Visible = True  
          gridview1.tag = txtBrand
       End If  
-      lblSearchResults.text = Str(unique_drugs.count) & " drugs were found" 'ie grid rows
+      
    Endif  
    Dec Application.Busy
    
@@ -1568,27 +1750,31 @@ Public Sub Drug_Select()
    'try and auto-fill the instruction from the habits table and then put
    'cursor onto the instructions textbox. This will the auto-fill in the
    'instructions for the drug if previously described (or the best guess)
+   'fixme triggered by clicking on a brand for a generic, the wrong 
+   'underlying fk_product will be selected.
    '-----------------------------------------------------------------------
    
    Dim pbs_script_type As String                       'chapter + restrictionflag - selects how to print script
    Dim med As CRow                                     'cRow allows eg Med.Save(..)
    
    gridrow = gridview1.row
-   drug = unique_drugs[gridrow]                               'set drug collection pk_view set by columnview1_select()  
+   If cvwBrands.Visible Then 
+      cvwBrands.MoveCurrent()
+      txtBrand.text = brands[cvwBrands.Item.key]!brand    'e.g tenormin
+      fk_brand = cvwBrands.Item.key 
+      drug = temp_drugs[brands[cvwBrands.Item.key]!fk_view_vwdrugs]
+   Else
+      drug = unique_drugs[gridrow] 
+      txtBrand.text = drug!brand
+      fk_brand = drug!fk_brand    
+   End If   
+   Print drug
    med = New CRow                                      'this will be saved in drug_save()
    med!fk_generic_product = drug!fk_product
    drug!medication = med    
    bexit = True
    txtGeneric.text = drug!generic                      'e.g atenolol
    txtGeneric.pos = 1                                  'make sure stem of generic showing
-   If cvwBrands.Visible Then 
-      cvwBrands.MoveCurrent()
-      txtBrand.text = brands[cvwBrands.Item.key]!brand    'e.g tenormin
-      fk_brand = cvwBrands.Item.key 
-   Else
-      txtBrand.text = drug!brand
-      fk_brand = drug!fk_brand    
-   End If   
    txtBrand.pos = 1                                    'make sure stem of brand showing
    txtClass.text = drug!class                          'fixme
    txtStrength.text = Drug_Display_Strengths[gridrow] & " " & drug!form
@@ -1603,7 +1789,6 @@ Public Sub Drug_Select()
    Else
       txtRepeats.text = 0
    End If   
-   
    ' ----------------------------------------------------------------------------
    'If an authority drug, show the restrictions
    'when the user clicks on the restrictions list, if it is streamlined, then the
@@ -1833,6 +2018,7 @@ Public Sub Drug_Save(script_item As Collection)
    script_item!med.Save("clin_prescribing.medications", "fk_medication")
    script_item!prescribed!fk_medication = script_item!med!fk_medication
    script_item!prescribed.Save("clin_prescribing.prescribed", "fk_prescribed") 'wrong, fixme if editing.
+   'look at this if fk_prescribed is back ....
    modDBConnect.CommitTrans()
    
 End
@@ -1880,6 +2066,61 @@ Public Sub columnview1_Select()
    
 End
 
+Public Function cvwPrescriptions_Refresh_RT(Script_Items_Written As Collection)
+   '------------------------------------------------------------------------------
+   'CALLED BY: Reload()   in which case loads only previously printed
+   '           Drug_Add() in which case the collection being added not yet saved
+   '           Drug_Delete()
+   'Refresh the list of drugs prescribed this consulation
+   'script_items is 'mixed' - it will contain all those items prescribed and
+   'printed already (ie the script_item collection is a view) plus all thos
+   'prescribed via the edit area and not yet printed The collections
+   'associated with these will not have a !printed collection member
+   '------------------------------------------------------------------------------
+   
+   Dim x As Integer
+   
+   cvwPrescriptions.Clear()
+   '----------------------------------------------------------------------------------
+   'as this routine is called after Drug_Delete() and a deleted drug may not be saved
+   're-order the collection to be zero based and sequential as the key for each
+   'columnview row is zero based
+   '----------------------------------------------------------------------------------
+   Script_Items_Written = modUtil.Copy_Collection_Keyed_Sequentially(script_items_written)
+   For Each script_item In Script_Items_Written
+      x = cvwPrescriptions.Count  '
+      ' If Not script_item!prescribed.Exist("pk") Then                   
+      '    If Not script_item!prescribed.Exist("fk_prescribed") Then      'no primary key = not saved
+      '        cvwPrescriptions.Add(x, "", pic_not_saved)
+      '    Else
+      '       cvwPrescriptions.Add(x, "", pic_saved)
+      '    End If   
+      ' Else 
+      '    cvwPrescriptions.Add(x, "", pic_saved)
+      ' Endif
+      If script_item!prescribed.Exist("pk") = False Then                   
+         If script_item!prescribed.Exist("fk_prescribed") = True Then      'no primary key = not saved
+            cvwPrescriptions.Add(x, "", pic_saved)
+         Else
+            cvwPrescriptions.Add(x, "", pic_not_saved)
+         End If 
+      Else 
+         cvwPrescriptions.Add(x, "", pic_saved)
+      Endif
+      cvwPrescriptions[x][1] = Format(script_item!prescribed!date_on_script, "dd/mm/yyyy")
+      cvwPrescriptions[x][2] = script_item!brand
+      cvwPrescriptions[x][3] = script_item!generic
+      cvwPrescriptions[x][4] = script_item!strength
+      cvwPrescriptions[x][5] = script_item!form
+      cvwPrescriptions[x][6] = script_item!prescribed!quantity
+      cvwPrescriptions[x][7] = script_item!prescribed!repeats 
+      cvwPrescriptions[x][8] = script_item!pbs_script_type
+      cvwPrescriptions[x][9] = script_item!instruction  
+      cvwPrescriptions[x][10] = script_item!prescribed_for 
+   Next
+   
+End
+
 Public Function cvwPrescriptions_Refresh(Script_Items_Written As Collection)
    '------------------------------------------------------------------------------
    'CALLED BY: Reload()   in which case loads only previously printed
@@ -1902,9 +2143,22 @@ Public Function cvwPrescriptions_Refresh(Script_Items_Written As Collection)
    '----------------------------------------------------------------------------------
    Script_Items_Written = modUtil.Copy_Collection_Keyed_Sequentially(script_items_written)
    For Each script_item In Script_Items_Written
-      x = cvwPrescriptions.Count
-      If Not script_item!prescribed.Exist("pk") Then      'no primary key = not saved
-         cvwPrescriptions.Add(x, "", pic_not_saved)
+      x = cvwPrescriptions.Count  '
+      ' If Not script_item!prescribed.Exist("pk") Then                   
+      '    If Not script_item!prescribed.Exist("fk_prescribed") Then      'no primary key = not saved
+      '        cvwPrescriptions.Add(x, "", pic_not_saved)
+      '    Else
+      '       cvwPrescriptions.Add(x, "", pic_saved)
+      '    End If   
+      ' Else 
+      '    cvwPrescriptions.Add(x, "", pic_saved)
+      ' Endif
+      If script_item!prescribed.Exist("pk") = False Then                   
+         If script_item!prescribed.Exist("fk_prescribed") = True Then      'no primary key = not saved
+            cvwPrescriptions.Add(x, "", pic_saved)
+         Else
+            cvwPrescriptions.Add(x, "", pic_not_saved)
+         End If 
       Else 
          cvwPrescriptions.Add(x, "", pic_saved)
       Endif
@@ -2299,7 +2553,7 @@ Public Sub mnuPrescriptions_Click()
          Next
          Print_Script_Items(SelectedItems)
          cvwPrescriptions.UnselectAll()
-         cvwPrescriptions.Refresh()
+         cvwPrescriptions_Refresh()
          FClinical_Refresh()
          
       Case "save selected no print", "save all no print"
@@ -2386,8 +2640,9 @@ Public Sub cvwBrands_KeyPress()
    
    Select Case key.Code
       Case key.Left
-         If pnlcolumnview.Visible And columnview1.count Then
-            columnview1.SetFocus()
+         If pnlcolumnview.Visible And gridview1.Rows.count Then
+            cvwBrands.UnselectAll
+            gridview1.SetFocus()
          Endif
       Case key.Return
          cvwBrands_DblClick()

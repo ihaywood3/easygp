@@ -453,18 +453,122 @@ grant all on clerical.schedule to staff;
 grant all on clerical.prices to staff;
 grant select on clerical.lu_billing_type to staff;
 grant select on clerical.vwFees to staff;
+
+alter table drugs.vwDrugs owner to easygp;
+grant all on table drugs.vwDrugs to easygp;
 grant select on drugs.vwDrugs to staff;
+
+alter table drugs.vwdistinctbrandsforgenericproduct owner to easygp;
+grant all on table drugs.vwdistinctbrandsforgenericproduct to easygp;
 grant select on drugs.vwdistinctbrandsforgenericproduct to staff;
+
+ALTER TABLE drugs.vwpbs OWNER TO easygp;
+GRANT ALL ON TABLE drugs.vwpbs TO easygp;
+GRANT ALL ON TABLE drugs.vwpbs TO staff;
+
+ALTER TABLE drugs.vwGeneric OWNER TO easygp;
+GRANT ALL ON TABLE drugs.vwGeneric TO easygp;
+GRANT ALL ON TABLE drugs.vwGeneric TO staff;
+
+alter schema drugs owner to easygp;
 grant all on schema drugs to staff;
+
 grant select on drugs.form to staff;
+
+alter table drugs.form owner to easygp;
+grant all on table drugs.form to easygp;
+grant all on TABLE drugs.form to staff;
+
+
+alter table drugs.product owner to easygp;
+grant all on table drugs.product to easygp;
 grant all on TABLE drugs.product to staff;
-grant all on TABLE drugs.pack to staff;
+
+alter table drugs.brand owner to easygp;
+grant all on table drugs.brand to easygp;
 grant all on TABLE drugs.brand to staff;
-GRANT ALL ON TABLE drugs.company TO staff;
+
+alter table drugs.company owner to easygp;
+grant all on table drugs.company to easygp;
+grant all on TABLE drugs.company to staff;
+
+ALTER TABLE drugs.evidence_levels OWNER TO easygp;
+grant all on table drugs.evidence_levels to easygp;
+grant all on TABLE drugs.evidence_levels to staff;
+
+alter table drugs.atc owner to easygp;
+grant all on table drugs.atc to easygp;
 GRANT ALL ON TABLE drugs.atc to staff;
+
+alter table drugs.flags owner to easygp;
+grant all on table drugs.flags to easygp;
+GRANT ALL ON TABLE drugs.flags to staff;
+
+alter table drugs.info owner to easygp;
+grant all on table drugs.info to easygp;
+GRANT ALL ON TABLE drugs.info to staff;
+
+ALTER TABLE drugs.link_atc_info OWNER TO easygp;
+grant all on table drugs.link_atc_info to easygp;
+GRANT ALL ON TABLE drugs.link_atc_info to staff;
+
+
+ALTER TABLE drugs.link_category_info OWNER TO easygp;
+grant all on table drugs.link_category_info to easygp;
+GRANT ALL ON TABLE drugs.link_category_info to staff;
+
+
+ALTER TABLE drugs.link_flag_product OWNER TO easygp;
+grant all on table drugs.link_flag_product to easygp;
+GRANT ALL ON TABLE drugs.link_flag_product to staff;
+
+ALTER TABLE drugs.patient_categories OWNER TO easygp;
+grant all on table drugs.patient_categories to easygp;
+GRANT ALL ON TABLE drugs.patient_categories to staff;
+
+
+ALTER TABLE drugs.pharmacologic_mechanisms OWNER TO easygp;
+grant all on table drugs.pharmacologic_mechanisms to easygp;
+GRANT ALL ON TABLE drugs.pharmacologic_mechanisms to staff;
+
+ALTER TABLE drugs.severity_level OWNER TO easygp;
+grant all on table drugs.severity_level to easygp;
+GRANT ALL ON TABLE drugs.severity_level to staff;
+
+ALTER TABLE drugs.sources OWNER TO easygp;
+grant all on table drugs.sources to easygp;
+GRANT ALL ON TABLE drugs.sources to staff;
+
+ALTER TABLE drugs.topic OWNER TO easygp;
+grant all on table drugs.topic to easygp;
+GRANT ALL ON TABLE drugs.topic to staff;
+
+ALTER TABLE drugs.product_information_unmatched OWNER TO easygp;
+grant all on table drugs.product_information_unmatched to easygp;
+GRANT ALL ON TABLE drugs.product_information_unmatched to staff;
+
+ALTER TABLE drugs.pbs OWNER TO easygp;
+grant all on table drugs.pbs to easygp;
+GRANT ALL ON TABLE drugs.pbs to staff;
+
+alter table drugs.chapters owner to easygp;
+grant all on table drugs.chapters to easygp;
+GRANT ALL ON TABLE drugs.chapters to staff;
+
+ALTER TABLE drugs.clinical_effects OWNER TO easygp;
+grant all on table drugs.clinical_effects to easygp;
+GRANT ALL ON TABLE drugs.clinical_effects to staff;
+
+alter table drugs.restriction owner to easygp;
+grant all on table drugs.restriction to easygp;
+GRANT ALL ON TABLE drugs.restriction to staff;
+
+alter table drugs.schedules owner to easygp;
+grant all on table drugs.schedules to easygp;
 GRANT ALL ON TABLE drugs.schedules to staff;
+
+
 GRANT all ON TABLE clin_prescribing.authority_number TO staff;
-GRANT all ON TABLE clin_prescribing.increased_quantity_authority_reasons_pk_seq TO staff;
 GRANT all ON TABLE clin_prescribing.instruction_habits_pk_seq TO staff;
 GRANT all ON TABLE clin_prescribing.prescribed_for_pk_seq TO staff;
 GRANT all ON TABLE clin_prescribing.instructions_pk_seq TO staff;
@@ -478,5 +582,4 @@ GRANT ALL ON TABLE clin_prescribing.medications TO staff;
 GRANT ALL ON TABLE clin_prescribing.instruction_habits to staff;
 GRANT ALL on table clin_prescribing.vwInstructionHabits to staff;
 GRANT ALL ON TABLE clin_prescribing.vwPrescribedForHabits to staff;
-
 GRANT USAGE ON SEQUENCE clin_prescribing.medications_pk_seq TO staff;

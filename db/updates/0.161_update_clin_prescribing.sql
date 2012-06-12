@@ -33,6 +33,12 @@ COMMENT ON COLUMN clin_prescribing.medications.fk_generic_product IS
  this is the foreign key to the drugs.product table which gives then
  dispensable form of a generic drug including strength, package size etc';
 
+drop table clin_prescribing.pbs_script_type;
+
+create table clin_prescribing.lu_pbs_script_type (
+  pk serial primary key,
+  "type" text not null
+);
 
 DROP TABLE clin_prescribing.prescribed;
 

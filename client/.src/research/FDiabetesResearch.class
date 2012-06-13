@@ -1,12 +1,16 @@
 ' Gambas class file
 
 Private bExit As Boolean
+Private dacc_in_date As Picture = Picture["icons/12/green_dot.png"]
+Private dacc_out_of_date As Picture = Picture["icons/12/red_dot.png"]
+Private empty_2020png As Picture = Picture["icons/20/empty2020.png"]
+Private bShowPatient As Boolean
 Private patients As Collection
 Private Patient As Collection
+Private iTotalDataSetcount As Integer 
 Private sSortOrder As String = "ASC"
 Private sHba1cSortOrder As String = "ASC"
 Private bSortbyHba1c As Boolean = False   
-Private Latest_Results As String[]
 Private LessThan6 As Integer
 Private Between6and7 As Integer
 Private Between7and7point5 As Integer
@@ -15,18 +19,37 @@ Private Over8 As Integer
 Private Form_Graph_Hba1c As FGraph
 Private Form_Graph_Lipids As FGraph
 Private Form_Graph_eGFR As FGraph
+Private Form_Graph_Weight As FGraph
+Private Form_Graph_BP As FGraph
 Private Hba1c_Results As Result
 Private Lipid_Results As Result
 Private eGFR_Results As Result
-Private Form_Graph_Weight As FGraph
 Private iGraphFontSize As Integer 'applies to all graphs.
 Private DACCS_Overdue As Collection
 Private form_pdf As FPdf
 Private medications As Collection
 Private medications_display_by As String
+Private colours As Variant[]
+Private total_value As Float = 0
+Private values As New Float[]
+Private titles As String[]
+Private form_Progress_Notes As FProgressNotesViewer
+Private iCurrentTab As Integer
+Private cTab_Summary As Integer = 0
+Private cTab_LastDACC As Integer = 1
+Private cTab_ProgressNotes As Integer = 2
+Private cTab_CarePlanning As Integer = 3
+Private cTab_Recalls As Integer = 4
+Private cTab_StaffTasks As Integer = 5
+Private CurrentConsult As CConsult  
+Private Patients_Not_Diabetic As Collection
+Private form_recalls As FRecalls
+Private form_tasks As FStaffTasks
+Private egFRs As Collection
 
 Public Sub Init()
    
+   lblHba1cRange.width = lblFindPatient.Width
    cvwPatients.Columns.count = 4
    cvwPatients.Columns[2].Text = "Last Date" 'is column 5
    cvwPatients.Columns[3].Text = "Hba1c"
@@ -39,17 +62,26 @@ Public Sub Init()
    cmbHba1cRange.Add("all")
    cmbHba1cRange.Add("<6.0")
    cmbHba1cRange.Add("6.0-7.0")
-   cmbHba1cRange.Add("7.0-8.0")
+   cmbHba1cRange.Add("7.0-7.5")
+   cmbHba1cRange.Add("7.5-8.0")
    cmbHba1cRange.Add(">8.0") 
+   Colours = New Variant[]
+   colours.Add(Color.Blue)
+   colours.Add(Color.Red)
+   colours.Add(Color.Orange)
+   colours.Add(Color.Yellow)
+   colours.Add(Color.Green)
+   colours.Add(Color.Gray)
+   colours.Add(Color.Pink)
+   colours.Add(Color.Cyan)
+   colours.Add(Color.Magenta)
+   colours.Add(Color.DarkBlue)
+   colours.Add(Color.DarkGreen)
+   
    medications_display_by = "brand"
    SEttings_Load()
    bExit = True   
-   With form_pdf = New FPdf(Vbox_PDF_Graph)
-      .visible = False  
-      .btZoomIn.Visible = True
-      .btZoomOut.Visible = True  
-      .BtPrint.Visible = True 
-   End With
+   
    With Form_Graph_HBa1c = New FGraph(Hbox_GraphHba1c)
       .tbGraphRemove.Visible = False   
       .tbInboxResults_AddGraph.Visible = False  
@@ -74,7 +106,7 @@ Public Sub Init()
       .tbGraphRemove.Visible = False   
       .tbInboxResults_AddGraph.Visible = False  
       .chkGraph_MakeDefault.Visible = False
-      .HBox_Styletypes.Visible = False
+      .HBox_Styletypes.visible = False
       .Vbox_Left.visible = False
       .VBox_Right.visible = False   
       .pbMeasurementGraph.Background = Color.White
@@ -90,8 +122,19 @@ Public Sub Init()
       .pbMeasurementGraph.Background = Color.White
       .slGraphFontSize.value = iGraphFontSize
    End With
+   With Form_Graph_BP = New FGraph(Hbox_GraphBP)
+      .tbGraphRemove.Visible = False   
+      .tbInboxResults_AddGraph.Visible = False  
+      .chkGraph_MakeDefault.Visible = False  
+      .HBox_Styletypes.Visible = False 
+      .Vbox_Left.visible = False
+      .VBox_Right.visible = False   
+      .pbMeasurementGraph.Background = Color.White
+      .slGraphFontSize.value = iGraphFontSize
+   End With
    bExit = False 
-   cvwPatients_Refresh(True)
+   Reload()
+   cvwPatients_Refresh()
    If cvwPatients.count Then
       cvwPatients.MoveFirst
       cvwPatients.Item.Selected = True
@@ -100,51 +143,70 @@ Public Sub Init()
    
 End
 
-Public Sub cvwPatients_Refresh(bRefresh As Boolean)                                           
+Public Sub cvwPatients_Refresh()       'fixme remove flag                                     
    '----------------------------------------------------------
    'Displays a list of separate patients with their last hab1c
    '----------------------------------------------------------
    
-   Dim fk_last_patient As Integer 
-   Dim iPatientCount As Integer
-   Dim R As Result
-   Dim s As String 
-   Dim Latest As Collection
-   Dim all_patients As Collection
    Dim key As Integer
+   
+   Gui_Clear()
+   cvwPatients.Columns[0].width = 24
+   For Each patient In patients  
+      key = patient!pk 
+      If patient!date_last_dacc = "01/01/1900" Then
+         cvwPatients.Add(key, "", empty_2020png)
+      Else
+         If patient!dacc_overdue = True Then
+            cvwPatients.Add(key, "", dacc_out_of_date)
+         Else
+            cvwPatients.Add(key, "", dacc_in_date)
+         Endif
+      Endif
+      ' cvwPatients.Add(x, "", pic_saved)
+      cvwPatients[key][1] = patient!surname & "," & patient!firstname
+      cvwPatients[key][2] = patient!age_display
+      cvwPatients[key][3] = Format(patient!observation_date, "dd/mm/yyyy")
+      cvwPatients[key][4] = patient!value_numeric
+      Next
+   
+End
+
+Public Sub tbRefresh_Click()
+   
+   Patients_Reload()
+   
+End
+
+Public Sub Reload()
+   '------------------------------------------------------------------------------------
+   'Reloads the data for all unique patients with hba1c no ordering into temporary table
+   'The data is as yet incomplete, and unordered
+   'we will insert new information such as data of last DACC
+   '------------------------------------------------------------------------------------   
+   
    Dim RDacc As Result
    Dim bDaccOverdue As Boolean
    Dim Latex As String
    Dim date_last_dacc As Date
+   Dim iPatients_without_any_dacc As Integer
+   Dim seGFR As String  'eg > 90
+   Dim egFrAbnormal As Integer
+   Dim microalbuminuria_count As Integer
    
    Inc Application.Busy
    Gui_Clear()
    LessThan6 = 0 
    Between6and7 = 0
    Between7and7point5 = 0
-   Between7and7point5 = 0
    Between7point5and8 = 0
    Over8 = 0
-   Latest_Results = New String[]
-   If bRefresh Then
-      
-      modDBConnect.exec_query("create temporary table patients_latest_hba1c (fk_patient integer, fk_person integer, fk_image integer, pk_observations integer,\"surname\" text,\"firstname\" text,\"wholename\" text,\"birthdate\" date, age_display integer,\"observation_date\" date,value_numeric numeric,\"street1\" text,\"street2\" text,\"suburb\" text,\"postcode\" text, date_last_dacc date, dacc_overdue boolean, \"latex\" text, pk serial)")
-      patients = modResearchDBI.Patients_Get_Hba1cs()
-   Endif
+   Patients_Not_Diabetic = modResearchDBI.Patients_Not_Diabetic_Get()
+   modResearchDBI.Patients_With_Hba1c_Tempory_Table_Create()                  'create the table we will use
+   patients = modResearchDBI.Patients_Get_Hba1cs()                            'get unique & latest but unordered and incomplete data
+   egFRs = modResearchDBI.Patients_Get_EgfR()
    For Each patient In patients  
-      If fk_last_patient <> patient!fk_patient Then
-         fk_last_patient = patient!fk_patient
-         Inc iPatientCount
-         If bRefresh Then
-            key = patient!pk_observations 
-         Else
-            key = patient!pk 
-         End If
-         cvwPatients.Add(key, 0)
-         cvwPatients[key][0] = patient!surname & "," & patient!firstname
-         cvwPatients[key][1] = patient!age_display
-         cvwPatients[key][2] = Format(patient!observation_date, "dd/mm/yyyy")
-         cvwPatients[key][3] = patient!value_numeric
+      If Not Patients_Not_Diabetic.Exist(patient!fk_patient) Then 
          If patient!value_numeric < 6 Then Inc LessThan6
          If patient!value_numeric >= 6 And patient!value_numeric < 7 Then Inc Between6and7
          If patient!value_numeric >= 7.0 And patient!value_numeric < 7.5 Then Inc Between7and7point5
@@ -154,6 +216,9 @@ Public Sub cvwPatients_Refresh(bRefresh As Boolean)
          Latex = ""                                                              'default to no Latex
          date_last_dacc = Date(1900, 01, 01)
          RDacc = modResearchDBI.Patient_GetDaysSinceDACC(patient!fk_patient)     'get last DACC days/LaTex
+         If patient!fk_patient = 6831 Then
+            Print
+         Endif
          If RDacc.count Then 
             If Not IsNull(RDacc!days_since_dacc_done) Then
                If RDacc!days_since_dacc_done > 365 Then
@@ -161,28 +226,36 @@ Public Sub cvwPatients_Refresh(bRefresh As Boolean)
                Endif
                latex = RDacc!latex
                date_last_dacc = RDacc!date_completed
+            Else
+               Inc iPatients_without_any_dacc
             Endif
+         Else
+            Inc iPatients_without_any_dacc
          End If   
-         
-         If bRefresh Then
-            modDBConnect.insert("patients_latest_hba1c", ["fk_patient": patient!fk_patient, "fk_person": patient!fk_person, "fk_image": patient!fk_image, "pk_observations": patient!pk_observations, "firstname": patient!firstname, "surname": patient!surname, "wholename": patient!wholename, "birthdate": patient!birthdate, "age_display": patient!age_numeric, "street1": patient!street1, "street2": patient!street2, "suburb": patient!suburb, "postcode": patient!postcode, "observation_date": patient!observation_date, "value_numeric": patient!value_numeric, "date_last_dacc": date_last_dacc, "dacc_overdue": bDaccOverdue, "latex": latex])
+         If Not IsNull(egFRs[patient!fk_patient]) Then
+            seGFR = Str(egFRs[patient!fk_patient]!value_numeric) & egFRs[patient!fk_patient]!qualifier
+            If Not IsNull(egFRs[patient!fk_patient]!abnormal) Then
+               If egFRs[patient!fk_patient]!abnormal <> "N" Then 
+                    Inc egFrAbnormal
+                     Print "egfr:", seGFR, egFRs[patient!fk_patient]!abnormal
+               End If   
+            Endif
          Endif
-      End If  
-      If Latex <> "" Then 
-         '  Message.Info(latex)
-      End If       
+         modDBConnect.insert("patients_latest_hba1c", ["fk_patient": patient!fk_patient, "fk_person": patient!fk_person, "fk_image": patient!fk_image, "pk_observations": patient!pk_observations, "firstname": patient!firstname, "surname": patient!surname, "wholename": patient!wholename, "birthdate": patient!birthdate, "age_display": patient!age_numeric, "street1": patient!street1, "street2": patient!street2, "suburb": patient!suburb, "postcode": patient!postcode, "observation_date": patient!observation_date, "value_numeric": patient!value_numeric, "date_last_dacc": date_last_dacc, "dacc_overdue": bDaccOverdue, "latex": latex])
+      End If   
    Next
    modDBConnect.CommitTrans()
-   cvwPatients.Columns[0].text = Str(iPatientCount) & " patients were found" 
-   lblSearchResults.text = Str(iPatientCount) & " patients were found " 
-   lblDACCOverdue.text = "Diabetes Cycle of Care Overdue: " & Str(modDBConnect.exec_query("Select count(dacc_overdue) as overdue from patients_latest_hba1c where dacc_overdue is true")!overdue) 
+   cvwPatients.Columns[0].text = Str(patients.count) & " patients were found" 
+   lblDACCOverdue.text = Str(modDBConnect.exec_query("Select count(dacc_overdue) as overdue from patients_latest_hba1c where dacc_overdue is true")!overdue) & " patients with a previous Diabetes Cycle of Care are overdue review"
+   lblPieGraphHeading.text = "Practice Statistics (" & Str(patients.count) & " patients)"
+   iTotalDataSetcount = patients.Count
+   lblNeverHadDacc.text = As_Percent(iPatients_without_any_dacc) & " have no DACC recorded"
+   lblImpariedRenalFunction.text = As_Percent(egFrAbnormal) & " have impaired renal function"
+   Make_Pie()
+   
+   patients = modDBConnect.exec_query_collection("Select * from patients_latest_hba1c ORDER BY surname asc")
+   
    Dec Application.Busy
-   
-End
-
-Public Sub tbRefresh_Click()
-   
-   Patients_Reload()
    
 End
 
@@ -202,18 +275,6 @@ Public Sub mnuDiabeticPatients_Click()
    Select Case Last.tag
       Case "change font"
          modUtil.Columnview_SetFont(cvwPatients, "Research_" & Me.name)
-      Case "view last dacc"
-         cvwPatients.MoveCurrent()
-         patient = patients[cvwPatients.Item.Key]
-         If Not IsNull(patient!latex) Then
-            HSplit_PatientData.visible = False
-            With form_pdf
-               .Load_PDF(modPrinting.Latex_To_PDF(patient!latex))
-               .Visible = True
-            End With
-         Else
-            Message.Info("Missing latex definition, sorry........")   
-         Endif
       Case "left practice"
          '------------------------------------------------
          'create appropriate message for 1 or more patient
@@ -238,18 +299,40 @@ Public Sub mnuDiabeticPatients_Click()
          '---------------------
          'User wants to proceed
          '---------------------
+         modDBConnect.exec_query("drop table patients_latest_hba1c") 
          cvwPatients.MoveFirst
          For x = 0 To cvwPatients.count - 1
             If cvwPatients.Item.Selected = True Then
                patient = patients[cvwPatients.Item.Key]
-               modDBConnect.exec_query("drop table patients_latest_hba1c") 
                modDBConnect.update("clerical.data_patients", Null, ["pk": patient!fk_patient, "active_status": "i"])
-               
                modDBConnect.CommitTrans()
             Endif
             cvwPatients.MoveNext 
          Next    
-         cvwPatients_Refresh(True)
+         Reload()
+         cvwPatients_Refresh()
+         If cvwPatients.count Then
+            cvwPatients.MoveFirst
+            cvwPatients.Item.Selected = True
+            cvwPatients.SetFocus()
+         Else
+            'bumma none are left 
+            Gui_Clear()
+         Endif
+      Case "mark not diabetic"
+         modDBConnect.exec_query("drop table patients_latest_hba1c")   
+         modResearchDBI.Patient_Not_Diabetic_Mark(patient!fk_patient)
+         modDBConnect.CommitTrans()
+         Reload()
+         cvwPatients_Refresh()
+         If cvwPatients.count Then
+            cvwPatients.MoveFirst
+            cvwPatients.Item.Selected = True
+            cvwPatients.SetFocus()
+         Else
+            'bumma none are left 
+            Gui_Clear()
+         Endif
       Case "mark deceased"
          '------------------------------------------------
          'create appropriate message for 1 or more patient
@@ -274,17 +357,27 @@ Public Sub mnuDiabeticPatients_Click()
          '---------------------
          'User wants to proceed
          '---------------------
+         modDBConnect.exec_query("drop table patients_latest_hba1c")  'will have to be refreshed
          cvwPatients.MoveFirst
          For x = 0 To cvwPatients.count - 1
             If cvwPatients.Item.Selected = True Then
                patient = patients[cvwPatients.Item.Key]
-               modDBConnect.update("contacts.data_persons", Null, ["pk": patient!fk_person, "deceased": True])
+               
+               modDBConnect.update("contacts.data_persons", Null, ["pk": patient!fk_person, "deceased": True]) 'mark person deceased
                modDBConnect.CommitTrans()
             Endif
             cvwPatients.MoveNext
          Next    
-         cvwPatients_Refresh(True)
-         
+         Reload()
+         cvwPatients_Refresh()
+         If cvwPatients.count Then
+            cvwPatients.MoveFirst
+            cvwPatients.Item.Selected = True
+            cvwPatients.SetFocus()
+         Else
+            'bumma none are left 
+            Gui_Clear()
+         Endif
    End Select 
    
 End
@@ -296,17 +389,16 @@ Public Sub cvwPatients_Menu()
 End
 
 Public Sub cvwPatients_Select()
-
+   
    cvwPatients.MoveCurrent()
    patient = patients[cvwPatients.Item.Key]
-   Patient_Display_Summary()
+   Patient_Display()
    
 End
 
 Public Sub Patient_Display_Summary()
-   '-----------------------------------------------------
-   'display a summary of the patients diabetes parameters
-   '-----------------------------------------------------
+   
+   Consult_CheckStarted()
    pbPatientPicture.Picture = Null
    lblPatientName.text = modStrings.CapitaliseWord(patient!wholename)
    tlPatientDetails.text = ""
@@ -333,12 +425,75 @@ Public Sub Patient_Display_Summary()
    If Error Then
       label101.text = "NIL RECORDED"
    Endif
-   form_pdf.Visible = False   
-   HSplit_PatientData.Visible = True  
    Hba1c_ShowGraph
    Lipids_ShowGraph
    EGFR_ShowGraph
    Weight_ShowGraph
+   BP_ShowGraph '
+
+End
+
+Public Sub Patient_Display_Notes()
+   
+   Consult_CheckStarted()
+   If IsNull(form_Progress_Notes) Then 
+      form_Progress_Notes = New FProgressNotesViewer(VBox_ProgressNotes)
+   End If   
+   form_Progress_Notes.Init(currentconsult, modProgressNotes.AllProgressNotes_Construct_Html(currentconsult)) 
+   
+End
+
+Public Sub Patient_Display_DACC()
+   
+   If IsNull(form_pdf) Then
+      With form_pdf = New FPdf(VBox_DACC)
+         .visible = True  
+         .btZoomIn.Visible = True
+         .btZoomOut.Visible = True  
+         .BtPrint.Visible = True 
+      End With
+   Endif
+   Dacc_View_Last()
+   
+End
+
+Public Sub Patient_Recalls()
+   
+   Consult_CheckStarted()
+   If IsNull(form_recalls) Then
+      form_recalls = New FRecalls(Vbox_Recalls)
+      form_recalls.Init(CurrentConsult)
+   Endif
+   
+End
+
+Public Sub Patient_StaffTasks()
+   
+   Consult_CheckStarted()
+   If IsNull(form_tasks) Then
+      form_tasks = New FStaffTasks(Vbox_Staff_Tasks)
+      form_tasks.Init()
+   Endif
+   
+End
+
+Public Sub Patient_Display()
+   '-----------------------------------------------------
+   'display a summary of the patients diabetes parameters
+   '-----------------------------------------------------
+   'If bShowPatient = False Then Return    'if user is multi-selecting from the list
+   lblPatientName.text = patient!title & " " & patient!wholename
+   currentconsult = Null
+   Select Case iCurrentTab
+         
+      Case cTab_Summary
+         Patient_Display_Summary
+      Case cTab_ProgressNotes
+         Patient_Display_Notes
+      Case cTab_LastDACC
+         Patient_Recalls()
+   End Select
+   Return 
    
 End
 
@@ -369,6 +524,15 @@ Public Sub EGFR_ShowGraph()
    With Form_Graph_EGFR
       .Set_fk_Patient(Patient!fk_patient)
       .Graph(Null, const.Loinc_EGFR, "eGFR")
+   End With 
+   
+End
+
+Public Sub BP_ShowGraph()
+   
+   With Form_Graph_BP
+      .Set_fk_Patient(Patient!fk_patient)
+      .Graph(Null, "", "blood pressure")
    End With 
    
 End
@@ -414,6 +578,7 @@ Public Sub Patients_Reload()
    
    Dim fieldname As String
    Dim sql As String
+   Dim iNoPatient_In_Range As Integer
    
    Select Case cmbSortBy.text
       Case "hba1c"
@@ -426,11 +591,17 @@ Public Sub Patients_Reload()
    sql = "Select * from patients_latest_hba1c "
    Select Case cmbHba1cRange.Text
       Case "<6.0"
+         iNoPatient_In_Range = LessThan6
          sql &= "WHERE value_numeric < 6 "
       Case "6.0-7.0"
+         iNoPatient_In_Range = Between6and7
          sql &= " WHERE value_numeric between 6 and 7 "
-      Case "7.0-8.0"
-         sql &= " WHERE value_numeric between 7 and 8 "
+      Case "7.0-7.5"
+         iNoPatient_In_Range = Between7and7point5 
+         sql &= " WHERE value_numeric between 7 and 7.5 "
+      Case "7.5-8.0"  
+         iNoPatient_In_Range = Between7point5and8 
+         sql &= " WHERE value_numeric between 7.5 and 8 "
       Case ">8.0" 
          sql &= " WHERE value_numeric > 8"
    End Select
@@ -443,12 +614,15 @@ Public Sub Patients_Reload()
       sql &= "surname ILIKE $$%" & Trim(txtSearch.text) & "%$$"
    Endif
    Patients = modDBConnect.exec_query_collection(sql & " order by " & fieldname & " " & sSortOrder)
-   cvwPatients_Refresh(False)   
+   cvwPatients_Refresh()   
    If cvwPatients.count And Trim(txtSearch.text) = "" Or cvwPatients.count = 1 Then
       cvwPatients.MoveFirst
       cvwPatients.Item.Selected = True
       cvwPatients.SetFocus()
-      
+      cvwPatients.Columns[0].text = Str(patients.count)
+      If cmbHba1cRange.text <> "all" Then
+         cvwPatients.Columns[0].text &= " (" & As_Percent(iNoPatient_In_Range) & ")"
+      End If    
    Endif
    
 End
@@ -461,12 +635,13 @@ End
 
 Private Sub Gui_Clear()
    
-   lblSearchResults.text = ""
    cvwPatients.Clear 
    cvwValues.Clear
    Form_Graph_Hba1c.Measurement_Graph_Picture_Clear
    Form_Graph_Lipids.Measurement_Graph_Picture_Clear
    Form_Graph_EGfr.Measurement_Graph_Picture_Clear
+   Form_Graph_BP.Measurement_Graph_Picture_Clear
+   Form_Graph_Weight.Measurement_Graph_Picture_Clear
    
 End
 
@@ -504,7 +679,7 @@ Private Sub SEttings_Load()
    Hsplit_PatientData.Layout = Settings["Research_" & Me.name & "/Hsplit_PatientData.layout"] 
    iGraphFontSize = Settings["Research_" & Me.name & "/graph_font.size", 3]
    Try cvwPatients.Font = Font[Settings["Research_" & Me.name & "/cvwPatients.font"]]
-
+   
 End
 
 Public Sub Settings_Save()
@@ -530,14 +705,140 @@ Public Sub SpinBox1_Change()
 End
 
 Public Sub rbMedications_Click()
-
+   
    medications_display_by = Last.tag 
    modPrescribingDBI.Prescriptions_Fill_Columnview(cvwMedications, medications, medications_display_by, True) 'active meds
    
 End
 
-Public Sub lblPatientName_MouseDown()
-
+Public Function As_Percent(num As Integer) As String
    
+   Return Str(Round((num / iTotalDataSetcount) * 100)) & "%"
+   
+End
 
+Public Sub Make_Pie()
+   '----------------------------------------------- 
+   'Display the pie chart + labels with percentages
+   '-----------------------------------------------
+   
+   Dim tp As Integer = patients.Count
+   
+   Titles = New String[]
+   'Values = New Float[]
+   AddSlice("<6 (" & As_Percent(LessThan6) & ")", LessThan6)
+   AddSlice("6-7 (" & As_Percent(Between6and7) & ")", Between6and7)
+   AddSlice("7-7.5 (" & As_Percent(Between7and7point5) & ")", Between7and7point5)
+   AddSlice("7.5-8 (" & As_Percent(Between7point5and8) & ")", Between7point5and8)
+   AddSlice(">8 (" & As_Percent(Over8) & ")", Over8)
+   
+End
+
+Public Sub AddSlice(title As String, value As Float)
+   
+   If titles.Length >= 11 Then Error.Raise("Not enough colours for the pie chart")
+   total_value += value
+   values.Add(value)
+   titles.Add(title)
+   
+End
+
+Public Sub DrawingArea1_Draw()
+   
+   Dim i As Integer
+   Dim x2 As Integer = CInt(DrawingArea1.Width * 0.5) ' half: i.e. the midpoint
+   Dim y2 As Integer = CInt(DrawingArea1.Height * 0.5)
+   Dim mid_radians As Float ' middle of pie: angle for point of text
+   Dim text_x As Integer
+   Dim text_y As Integer  
+   Dim values_thus_far As Float = 0
+   
+   Draw.FillStyle = Fill.Solid
+   
+   For i = 0 To values.Max
+      Draw.FillColor = colours[i]
+      Draw.Ellipse(x2 / 2, y2 / 2, x2, y2, values_thus_far / total_value * 2 * Pi, (values_thus_far + values[i]) / total_value * 2 * Pi)
+      mid_radians = (values_thus_far + (values[i] / 2)) / total_value * 2 * Pi
+      text_x = CInt(x2 + (Cos(mid_radians) * x2 * 0.6))
+      text_y = CInt(y2 - (Sin(mid_radians) * y2 * 0.6))
+      If text_x < x2 Then ' it's to the left of the midline
+         text_x -= Draw.TextWidth(titles[i])
+      Endif
+      Draw.Text(titles[i], text_x, text_y)
+      values_thus_far += values[i]
+   Next
+   
+End
+
+Public Sub Dacc_View_Last()
+   '--------------------------------------------------------
+   'If it exists, then view the latex as pdf of the last DCC
+   '-------------------------------------------------------- 
+   
+   cvwPatients.MoveCurrent()
+   patient = patients[cvwPatients.Item.Key]
+   If Not IsNull(patient!latex) Then
+      With form_pdf
+         .Load_PDF(modPrinting.Latex_To_PDF(patient!latex))
+      End With
+   Else
+      TabStrip1.index = cTab_Summary
+      Message.Info("Missing latex definition, sorry........")   
+   Endif  
+   
+End
+
+Public Sub Consult_CheckStarted()
+   
+   If IsNull(currentconsult) Then  
+      currentconsult = New CConsult(Patient)           'Each patient has a new consult 
+      'there is no commit until the consult type is set
+      'currentconsult.Set(const.ConsultType_NotesPatientNotPresent, "diabetes audit") 
+   End If
+   
+End
+
+Public Sub TabStrip1_Click()
+   
+   iCurrentTab = Last.index
+   Select Case Last.Index
+      Case cTab_Summary
+         Patient_Display_Summary()
+      Case cTab_LastDACC
+         Patient_Display_DACC
+      Case cTab_ProgressNotes
+         Patient_Display_Notes()      
+      Case cTab_CarePlanning
+      Case cTab_StaffTasks 
+         Patient_StaffTasks  
+      Case cTab_Recalls
+         Patient_Recalls 
+   End Select
+   
+End
+
+Public Sub tbStats_Click()
+   
+   Dim sql As String
+   
+   Select Case Last.tag
+      Case "no dacc"
+         patients = modResearchDBI.Patients_Never_Had_DACC()  
+         cvwPatients.Columns[0].text = Str(patients.count) & " patients"  
+         cvwPatients_Refresh() 
+   End Select
+   
+End
+
+Public Sub Form_KeyPress()
+   
+   Dim ctrlDown As Boolean
+   
+   ' If CtrlDown = key.Control Then
+   '   bShowPatient = False 
+   '   Print "the ctrl key is down"
+   ' Else
+   '    bShowPatient = True  
+   ' Endif
+   
 End

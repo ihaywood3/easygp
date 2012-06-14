@@ -36,7 +36,7 @@ Private titles As String[]
 Private form_Progress_Notes As FProgressNotesViewer
 Private iCurrentTab As Integer
 Private cTab_Summary As Integer = 0
-Private cTab_LastDACC As Integer = 1
+Private cTab_LastDACC As Integer = 1 
 Private cTab_ProgressNotes As Integer = 2
 Private cTab_CarePlanning As Integer = 3
 Private cTab_Recalls As Integer = 4
@@ -45,14 +45,16 @@ Private CurrentConsult As CConsult
 Private Patients_Not_Diabetic As Collection
 Private form_recalls As FRecalls
 Private form_tasks As FStaffTasks
+Private form_dacc As FDACC
 Private egFRs As Collection
 
 Public Sub Init()
    
    lblHba1cRange.width = lblFindPatient.Width
-   cvwPatients.Columns.count = 4
-   cvwPatients.Columns[2].Text = "Last Date" 'is column 5
-   cvwPatients.Columns[3].Text = "Hba1c"
+   cvwPatients.Columns.count = 5
+   cvwPatients.Columns[2].Text = "Age"
+   cvwPatients.Columns[3].Text = "Last Date" 'is column 5
+   cvwPatients.Columns[4].Text = "Hba1c"
    cvwValues.Columns.count = 2
    cvwValues.Columns[0].text = "Date"
    cvwValues.Columns[1].text = "Hba1c"
@@ -168,7 +170,7 @@ Public Sub cvwPatients_Refresh()       'fixme remove flag
       cvwPatients[key][2] = patient!age_display
       cvwPatients[key][3] = Format(patient!observation_date, "dd/mm/yyyy")
       cvwPatients[key][4] = patient!value_numeric
-      Next
+   Next
    
 End
 
@@ -189,11 +191,12 @@ Public Sub Reload()
    Dim bDaccOverdue As Boolean
    Dim Latex As String
    Dim date_last_dacc As Date
-   Dim iPatients_without_any_dacc As Integer
    Dim seGFR As String  'eg > 90
    Dim egFrAbnormal As Integer
    Dim microalbuminuria_count As Integer
-   
+   Dim num_had_dacc_but_overdue As Integer
+   Dim num_without_dacc As Integer
+ 
    Inc Application.Busy
    Gui_Clear()
    LessThan6 = 0 
@@ -227,17 +230,17 @@ Public Sub Reload()
                latex = RDacc!latex
                date_last_dacc = RDacc!date_completed
             Else
-               Inc iPatients_without_any_dacc
+               Inc num_without_dacc
             Endif
          Else
-            Inc iPatients_without_any_dacc
+            Inc num_without_dacc
          End If   
          If Not IsNull(egFRs[patient!fk_patient]) Then
             seGFR = Str(egFRs[patient!fk_patient]!value_numeric) & egFRs[patient!fk_patient]!qualifier
             If Not IsNull(egFRs[patient!fk_patient]!abnormal) Then
                If egFRs[patient!fk_patient]!abnormal <> "N" Then 
-                    Inc egFrAbnormal
-                     Print "egfr:", seGFR, egFRs[patient!fk_patient]!abnormal
+                  Inc egFrAbnormal
+                  Print "egfr:", seGFR, egFRs[patient!fk_patient]!abnormal
                End If   
             Endif
          Endif
@@ -245,11 +248,13 @@ Public Sub Reload()
       End If   
    Next
    modDBConnect.CommitTrans()
-   cvwPatients.Columns[0].text = Str(patients.count) & " patients were found" 
-   lblDACCOverdue.text = Str(modDBConnect.exec_query("Select count(dacc_overdue) as overdue from patients_latest_hba1c where dacc_overdue is true")!overdue) & " patients with a previous Diabetes Cycle of Care are overdue review"
-   lblPieGraphHeading.text = "Practice Statistics (" & Str(patients.count) & " patients)"
    iTotalDataSetcount = patients.Count
-   lblNeverHadDacc.text = As_Percent(iPatients_without_any_dacc) & " have no DACC recorded"
+   cvwPatients.Columns[1].text = Str(patients.count) & " patients were found" 
+   lblNeverHadDacc.text = Str(num_without_dacc) & " patients (" & As_Percent(num_without_dacc) & ") have none recorded "
+   num_had_dacc_but_overdue = modDBConnect.exec_query("Select count(dacc_overdue) as overdue from patients_latest_hba1c where dacc_overdue is true")!overdue
+   lblDACCOverdue.text = Str(num_had_dacc_but_overdue) & " patients (" & As_Percent(num_had_dacc_but_overdue) & ") have had a previous DACC but are overdue"
+   lblDACCCurrent.text = Str(100 - num_without_dacc - num_had_dacc_but_overdue) & " patients (" & Str(100 - num_without_dacc - num_had_dacc_but_overdue) & "%) have completed a DACC In the Last 12 months"
+   
    lblImpariedRenalFunction.text = As_Percent(egFrAbnormal) & " have impaired renal function"
    Make_Pie()
    
@@ -412,7 +417,7 @@ Public Sub Patient_Display_Summary()
    Try pbPatientPicture.Picture = modContactsDBI.Person_Get_Photo(patient!fk_image)
    medications = modPrescribingDBI.Prescriptions_Written(patient!fk_patient)
    modPrescribingDBI.Prescriptions_Fill_Columnview(cvwMedications, medications, medications_display_by, True) 'active meds
-   
+   cvwMedications.Height = (cvwMedications.count + 1) * 18
    If Year(patient!date_last_dacc) = 1900 Then
       lbllastDacc.text = "NONE RECORDED"
    Else
@@ -430,7 +435,7 @@ Public Sub Patient_Display_Summary()
    EGFR_ShowGraph
    Weight_ShowGraph
    BP_ShowGraph '
-
+   
 End
 
 Public Sub Patient_Display_Notes()
@@ -445,15 +450,20 @@ End
 
 Public Sub Patient_Display_DACC()
    
-   If IsNull(form_pdf) Then
-      With form_pdf = New FPdf(VBox_DACC)
-         .visible = True  
-         .btZoomIn.Visible = True
-         .btZoomOut.Visible = True  
-         .BtPrint.Visible = True 
+   ' If IsNull(form_pdf) Then
+   '    With form_pdf = New FPdf(VBox_DACC)
+   '       .visible = True  
+   '       .btZoomIn.Visible = True
+   '       .btZoomOut.Visible = True  
+   '       .BtPrint.Visible = True 
+   '    End With
+   ' Endif
+      If IsNull(form_dacc) Then
+      With form_dacc = New FDacc(VBox_DACC)
+            .Init(currentconsult)
       End With
    Endif
-   Dacc_View_Last()
+ '  Dacc_View_Last()
    
 End
 
@@ -482,6 +492,7 @@ Public Sub Patient_Display()
    'display a summary of the patients diabetes parameters
    '-----------------------------------------------------
    'If bShowPatient = False Then Return    'if user is multi-selecting from the list
+   
    lblPatientName.text = patient!title & " " & patient!wholename
    currentconsult = Null
    Select Case iCurrentTab
@@ -725,7 +736,7 @@ Public Sub Make_Pie()
    Dim tp As Integer = patients.Count
    
    Titles = New String[]
-   'Values = New Float[]
+   values.Clear()
    AddSlice("<6 (" & As_Percent(LessThan6) & ")", LessThan6)
    AddSlice("6-7 (" & As_Percent(Between6and7) & ")", Between6and7)
    AddSlice("7-7.5 (" & As_Percent(Between7and7point5) & ")", Between7and7point5)
@@ -775,8 +786,7 @@ Public Sub Dacc_View_Last()
    'If it exists, then view the latex as pdf of the last DCC
    '-------------------------------------------------------- 
    
-   cvwPatients.MoveCurrent()
-   patient = patients[cvwPatients.Item.Key]
+  
    If Not IsNull(patient!latex) Then
       With form_pdf
          .Load_PDF(modPrinting.Latex_To_PDF(patient!latex))
@@ -818,15 +828,12 @@ Public Sub TabStrip1_Click()
 End
 
 Public Sub tbStats_Click()
-   
-   Dim sql As String
-   
-   Select Case Last.tag
-      Case "no dacc"
-         patients = modResearchDBI.Patients_Never_Had_DACC()  
-         cvwPatients.Columns[0].text = Str(patients.count) & " patients"  
-         cvwPatients_Refresh() 
-   End Select
+   '---------------------------------------------------------------------
+   'Filter diabetic cycle of care patients as "due", "overdue", "in date"
+   '---------------------------------------------------------------------
+   patients = modResearchDBI.Diabetic_Cycle_Of_Care_Status(Last.tag)  
+   cvwPatients.Columns[1].text = Str(patients.count) & "/" & Str(iTotalDataSetcount) & " " & Last.tag
+   cvwPatients_Refresh() 
    
 End
 
@@ -841,4 +848,22 @@ Public Sub Form_KeyPress()
    '    bShowPatient = True  
    ' Endif
    
+End
+
+Public Sub cvwMedications_Leave()
+   
+   Last.ScrollBar = Scroll.None
+   
+End
+
+Public Sub cvwMedications_Enter()
+   
+   If Last.count Then Last.ScrollBar = Scroll.Horizontal
+   
+End
+
+Public Sub tbReport_Click()
+
+   modUtil.NotImplemented("Generating the report")
+
 End

@@ -19,4 +19,8 @@ GRANT ALL ON TABLE drugs.vwdrugs TO richard;
 GRANT ALL ON TABLE drugs.vwdrugs TO staff;
 
 -- temporary fudge
-update drugs.product set fk_schedule = 4 where fk_schedule is null;
+-- update drugs.product set fk_schedule = 4 where fk_schedule is null;
+
+truncate db.lu_version;
+insert into db.lu_version (lu_major,lu_minor) values (0, 171);
+

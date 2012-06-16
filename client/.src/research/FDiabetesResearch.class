@@ -47,11 +47,16 @@ Private form_recalls As FRecalls
 Private form_tasks As FStaffTasks
 Private form_dacc As FDACC
 Private egFRs As Collection
+Private iDisplay_Subset As Integer
+Private Const cDisplaySubset_Any As Integer = 0
+Private Const cDisplaytype_Cholesterol_Not_At_Target As Integer = 1
+Private Const cDisplaytype_Cholesterol_Overdue As Integer = 2
+Private bTempory_Table_Exists As Boolean
 
 Public Sub Init()
    
    lblHba1cRange.width = lblFindPatient.Width
-   cvwPatients.Columns.count = 5
+   cvwPatients.Columns.count = 6
    cvwPatients.Columns[2].Text = "Age"
    cvwPatients.Columns[3].Text = "Last Date" 'is column 5
    cvwPatients.Columns[4].Text = "Hba1c"
@@ -160,11 +165,21 @@ Public Sub cvwPatients_Refresh()       'fixme remove flag
             cvwPatients.Add(key, "", dacc_in_date)
          Endif
       Endif
-      ' cvwPatients.Add(x, "", pic_saved)
       cvwPatients[key][1] = patient!surname & "," & patient!firstname
-      cvwPatients[key][2] = patient!age_display
-      cvwPatients[key][3] = Format(patient!observation_date, "dd/mm/yyyy")
-      cvwPatients[key][4] = patient!value_numeric
+      cvwPatients[key][2] = patient!age_numeric
+      Select Case iDisplay_Subset
+         Case cDisplaytype_Cholesterol_Not_At_Target, cDisplaytype_Cholesterol_Overdue
+            cvwPatients[key][3] = Format(patient!date_last_ldlcholesterol, "dd/mm/yyyy")
+            cvwPatients[key][4] = patient!ldl_cholesterol  'the cholesterol
+            cvwPatients.Columns[4].text = "LDL"
+            cvwPatients[key][5] = patient!ldl_cholesterol & " (" & patient!ldlcholesterol_reference_range & ")"
+            cvwPatients.Columns[5].text = "Range"
+         Case Else
+            cvwPatients[key][3] = Format(patient!observation_date, "dd/mm/yyyy")
+            cvwPatients[key][4] = patient!value_numeric  'the hba1c
+            cvwPatients.Columns[4].text = "HbA1c"
+            cvwPatients.Columns[5].text = ""
+      End Select
    Next
    
 End
@@ -203,6 +218,28 @@ Public Sub Reload()
    Dim eyereview_date As Date
    Dim beyereview_overdue As Boolean
    Dim num_eye_review_Overdue As Integer
+   Dim LatestBPs As Collection
+   Dim bBP_Overdue As Boolean
+   Dim Last_BP_Date As Date
+   Dim num_bp_overdue As Integer
+   Dim LatestWeights As Collection
+   Dim bweight_overdue As Boolean
+   Dim last_weight_date As Date
+   Dim num_weight_overdue As Integer
+   Dim LatestLDLCholesterols As Collection
+   Dim LDlCholesterol As Variant
+   Dim bLDLcholesterol_overdue As Boolean
+   Dim bLDLCholesterol_abnormal As Boolean
+   Dim bLDLCholesterol_not_at_target As Boolean
+   Dim LDLCholesterol_Reference_Range As String
+   Dim last_ldlcholesterol_date As Date
+   Dim num_ldlcholesterol_overdue As Integer
+   Dim num_ldlcholesterol_never_measured As Integer
+   Dim num_ldlcholesterol_not_at_target As Integer 
+   Dim ldl_upper_range As Variant
+   Dim data As Collection
+   
+   '  Dim ranges As String[]
    
    Inc Application.Busy
    Gui_Clear()
@@ -213,9 +250,20 @@ Public Sub Reload()
    Over8 = 0
    Patients_Not_Diabetic = modResearchDBI.Patients_Not_Diabetic_Get()
    modResearchDBI.Patients_With_Hba1c_Tempory_Table_Create()                  'create the table we will use
+   bTempory_Table_Exists = True
    patients = modResearchDBI.Patients_Get_Hba1cs()                            'get unique & latest but unordered and incomplete data
+   '----------------------------------------------------------------------------------------------------------
+   'this is a bug-fix I've not to date found why some measurements were not auto-parsed when a consult is save
+   'so this checks all the patients progress notes and saves back to the back-end FIXME find the bug
+   '-----------------------------------------------------------------------------------------------------------
+   ' For Each patient In patients
+   '    modMeasurementsDBI.Run_Measurement_Fix(modConsultDBI.progressnotes_get(patient!fk_patient), patient!fk_patient)
+   ' Next
    egFRs = modResearchDBI.Patients_Get_EgfR()                                 'get egFr's for all these patients.
    eyedocuments = modResearchDBI.Patients_Get_Most_Recent_Eye_Documents()
+   LatestBPs = modResearchDBI.Patients_Get_Most_Recent_BP()
+   LatestWeights = modResearchDBI.Patients_Get_Most_Recent_Weight()
+   LatestLDLCholesterols = modResearchDBI.Patients_Get_LDLCholesterol()
    For Each patient In patients  
       If Not Patients_Not_Diabetic.Exist(patient!fk_patient) Then 
          If patient!value_numeric <= 5.9 Then Inc LessThan6
@@ -227,6 +275,9 @@ Public Sub Reload()
          If DateDiff(patient!observation_date, Now(), gb.Month) > 6 Then
             Inc num_hba1c_older_than_6months
          Endif
+         '---------------------------------
+         'get the last DACC for the patient
+         '---------------------------------
          bDaccOverdue = False                                                    'default to overdue DACC
          Latex = ""                                                              'default to no Latex
          date_last_dacc = Date(1900, 01, 01)
@@ -246,7 +297,10 @@ Public Sub Reload()
             Endif
          Else
             Inc num_without_dacc
-         End If   
+         End If 
+         '------------------------------------------------
+         'get the last renal function egfr for the patient
+         '------------------------------------------------
          If Not IsNull(egFRs[patient!fk_patient]) Then
             seGFR = Str(egFRs[patient!fk_patient]!value_numeric) & egFRs[patient!fk_patient]!qualifier
             date_last_egfr = egFRs[patient!fk_patient]!observation_date
@@ -259,22 +313,144 @@ Public Sub Reload()
                End If   
             Endif
          Endif
+         '--------------------------------------------------------------------------
+         'get the last ldl cholesterol for the patient, also count how many too high
+         '--------------------------------------------------------------------------
+         bLDLcholesterol_overdue = True                                      'assume overdue
+         bLDLCholesterol_abnormal = False 
+         last_ldlcholesterol_date = Date(1900, 01, 01)                                           'default to having no cholesterol
+         If Not IsNull(LatestLDLCholesterols[patient!fk_patient]) Then                           'has had cholesterol done at some point
+            LDlCholesterol = LatestLDLCholesterols[patient!fk_patient]!value_numeric             ' & LatestLDLCholesterols[patient!fk_patient]!reference_range
+            last_ldlcholesterol_date = LatestLDLCholesterols[patient!fk_patient]!observation_date
+            If Not (DateDiff(Now, DateAdd(last_ldlcholesterol_date, gb.Year, 1), gb.day) <= 0) Then 'was it over  a year ago?
+               bLDLcholesterol_overdue = False                                                     'cholesterol date < 1yr, not overdue
+            Else
+               bLDLcholesterol_overdue = True                                                      'cholesterol > 1 year = ovedue
+               Inc num_ldlcholesterol_overdue
+            End If 
+            If patient!fk_patient = 90 Then
+               Print
+            Endif
+            'References ranges are a problem, some labs give eg n1-n2 others only the upper eg <n2
+            If Not IsNull(LatestLDLCholesterols[patient!fk_patient]!reference_range) Then          'do we have a reference range
+               LDLCholesterol_Reference_Range = LatestLDLCholesterols[patient!fk_patient]!reference_range
+               If InStr(LDLCholesterol_Reference_Range, "-") Then 
+                  ldl_upper_range = Val(Split(LatestLDLCholesterols[patient!fk_patient]!reference_range, "-")[1])
+               Else 
+                  If Left(LDLCholesterol_Reference_Range, 1) = "<" Then
+                     ldl_upper_range = Val(Right(LDLCholesterol_Reference_Range, Len(LDLCholesterol_Reference_Range) - 1))
+                  End If
+               End If   
+            Endif
+            
+            If Not IsNull(LatestLDLCholesterols[patient!fk_patient]!abnormal) Then                  'if  cholesterol flagged as abnormal
+               If LatestLDLCholesterols[patient!fk_patient]!abnormal <> "N" Then                    'some labs put a normal flag in this field
+                  If LatestLDLCholesterols[patient!fk_patient]!value_numeric > ldl_upper_range Then   'if over the top
+                     bLDLCholesterol_abnormal = True                                                'flag abnormal
+                     bLDLCholesterol_not_at_target = True
+                     Inc num_ldlcholesterol_not_at_target                                           'incremement the not at target count
+                  Else
+                     bLDLCholesterol_not_at_target = False
+                     bLDLCholesterol_abnormal = False  
+                  End If 
+               End If   
+            Else
+               bLDLCholesterol_not_at_target = False  
+            Endif
+         Else                                                                                        'never had ldl cholesterol measured.
+            Inc num_ldlcholesterol_overdue                                                        
+            Inc num_ldlcholesterol_never_measured
+         Endif
+         
+         '---------------------------------------
+         'get the last eye review for the patient
+         '---------------------------------------
          
          beyereview_overdue = True
          eyereview_date = Date(1900, 01, 01)
          If Not IsNull(eyedocuments[patient!fk_patient]) Then
+            eyereview_date = eyedocuments[patient!fk_patient]!date_created
             If Not (DateDiff(Now, DateAdd(eyedocuments[patient!fk_patient]!date_created, gb.Year, 2), gb.day) <= 0) Then
                beyereview_overdue = False
-               eyereview_date = eyedocuments[patient!fk_patient]!date_created
             Else
                Inc num_eye_review_Overdue
-               Print patient!firstname & " " & patient!surname  
             End If 
          Else
-            Print patient!firstname & " " & patient!surname  
             Inc num_eye_review_Overdue
          Endif
-         modDBConnect.insert("patients_latest_hba1c", ["fk_patient": patient!fk_patient, "fk_person": patient!fk_person, "fk_image": patient!fk_image, "pk_observations": patient!pk_observations, "firstname": patient!firstname, "surname": patient!surname, "wholename": patient!wholename, "birthdate": patient!birthdate, "age_display": patient!age_numeric, "street1": patient!street1, "street2": patient!street2, "suburb": patient!suburb, "postcode": patient!postcode, "observation_date": patient!observation_date, "value_numeric": patient!value_numeric, "date_last_dacc": date_last_dacc, "dacc_overdue": bDaccOverdue, "latex": latex, "date_last_egfr": date_last_egfr, "egfr_abnormal": beGFR_Abnormal, "egfr_reference_range": eGFR_Reference_Range, "date_last_eye_review": eyereview_date, "eye_review_overdue": beyereview_overdue])
+         '-------------------------------------------
+         'get the last BP measurement for the patient
+         '-------------------------------------------
+         bBP_Overdue = True
+         Last_BP_Date = Date(1900, 01, 01)
+         If Not IsNull(LatestBPs[patient!fk_patient]) Then
+            Last_BP_Date = LatestBPs[patient!fk_patient]!consult_date
+            If Not (DateDiff(Now, DateAdd(LatestBPs[patient!fk_patient]!consult_date, gb.Month, 6), gb.day) <= 0) Then
+               bBP_Overdue = False
+            Else
+               Inc num_bp_overdue
+            End If 
+         Else
+            Inc num_bp_overdue
+         Endif
+         '-----------------------------------------------
+         'get the last weight measurement for the patient
+         '-----------------------------------------------
+         bweight_overdue = True
+         last_weight_date = Date(1900, 01, 01)
+         If Not IsNull(LatestWeights[patient!fk_patient]) Then
+            last_weight_date = LatestWeights[patient!fk_patient]!consult_date
+            If Not (DateDiff(Now, DateAdd(LatestWeights[patient!fk_patient]!consult_date, gb.Month, 6), gb.day) <= 0) Then
+               bweight_overdue = False
+            Else
+               Inc num_weight_overdue
+            End If 
+         Else
+            Inc num_weight_overdue
+         Endif
+         data = New Collection 
+         data!fk_patient = patient!fk_patient
+         data!fk_person = patient!fk_person
+         data!fk_image = patient!fk_image
+         data!pk_observations = patient!pk_observations
+         data!firstname = patient!firstname
+         data!surname = patient!surname
+         data!wholename = patient!wholename
+         data!birthdate = patient!birthdate
+         data!age_numeric = patient!age_numeric
+         data!street1 = patient!street1
+         data!street2 = patient!street2
+         data!suburb = patient!town
+         data!postcode = patient!postcode
+         data!observation_date = patient!observation_date
+         data!value_numeric = patient!value_numeric
+         data!date_last_dacc = patient!date_last_dacc
+         data!dacc_overdue = patient!dacc_overdue
+         data!latex = patient!latex
+         data!date_last_egfr = date_last_egfr
+         data!last_egfr = seGFR
+         data!egfr_abnormal = beGFR_Abnormal
+         data!egfr_reference_range = eGFR_Reference_Range
+         data!date_last_eye_review = eyereview_date
+         data!eye_review_overdue = beyereview_overdue
+         data!date_last_bp = Last_BP_Date
+         data!bp_overdue = bBP_OverDue
+         data!date_last_weight = last_weight_date
+         data!weight_overdue = bweight_overdue
+         data!date_last_ldlcholesterol = last_ldlcholesterol_date
+         data!ldl_cholesterol = LDlCholesterol
+         data!ldlcholesterol_overdue = bLDLcholesterol_overdue
+         data!ldlcholesterol_not_at_target = bLDLCholesterol_not_at_target
+         data!ldlcholesterol_reference_range = LDLCholesterol_Reference_Range
+         modDBConnect.insert("patients_latest_hba1c", data)
+         ' modDBConnect.insert("patients_latest_hba1c", ["fk_patient": patient!fk_patient, "fk_person": patient!fk_person, "fk_image": patient!fk_image,
+         '  "pk_observations": patient!pk_observations, "firstname": patient!firstname, "surname": patient!surname, "wholename": patient!wholename, "birthdate": patient!birthdate,
+         '  ' "age_display": patient!age_numeric, "street1": patient!street1, "street2": patient!street2, "suburb": patient!suburb, "postcode": patient!postcode, 
+         '  '"observation_date": patient!observation_date, "value_numeric": patient!value_numeric, "date_last_dacc": date_last_dacc,'
+         '   "dacc_overdue": bDaccOverdue, "latex": latex, "date_last_egfr": date_last_egfr, "egfr_abnormal": beGFR_Abnormal, "egfr_reference_range": eGFR_Reference_Range,
+         '   ' "date_last_eye_review": eyereview_date, "eye_review_overdue": beyereview_overdue, "date_last_bp": Last_BP_Date, "bp_overdue": bBP_OverDue, "date_last_weight": last_weight_date,
+         '   ' "weight_overdue": bweight_overdue, "date_last_ldlcholesterol": last_ldlcholesterol_date,"ldl_cholesterol":LDlCholesterol,"ldlcholesterol_overdue:bLDLcholesterol_overdue,'
+         '   "ldlcholesterol_not_at_target": bLDLCholesterol_not_at_target
       End If   
    Next
    modDBConnect.CommitTrans()
@@ -289,10 +465,14 @@ Public Sub Reload()
    lblDACCCurrent.text = Str(num_had_dacc_in_date) & " patients (" & Str(num_had_dacc_in_date) & "%) have completed a DACC In the Last 12 months"
    lblHBa1cOutOfDate.text = Str(num_hba1c_older_than_6months) & " patients (" & As_Percent(num_hba1c_older_than_6months) & ") last hba1c is older than 6 months"
    lblImpairedRenalFunction.text = As_Percent(eGFR_Abnormal_count) & " have impaired renal function"
-   
-  
+   lblBPOverdue.text = Str(num_bp_overdue) & " patients (" & As_Percent(num_bp_overdue) & ") have not had BP measured in last 6 months"
+   lblWeightOverdue.text = Str(num_weight_overdue) & " patients (" & As_Percent(num_weight_overdue) & ") have not had weight measured in last 6 months"
+   lblCholesterolNeverMeasured.text = Str(num_ldlcholesterol_never_measured) & " patients (" & As_Percent(num_ldlcholesterol_never_measured) & ") have no ldl cholesterol result" 
+   lblCholesterolOverdue.text = Str(num_ldlcholesterol_overdue) & " patients (" & As_Percent(num_ldlcholesterol_overdue) & ") are overdue a cholesterol test" 
+   lblCholesterolNotAtTarget.text = Str(num_ldlcholesterol_not_at_target) & "patients (" & As_Percent(num_ldlcholesterol_not_at_target) & ") are above target ldl cholesterol levels"
    Make_Pie()
-    lblPatientsListHeading.Text = "Listing of all Patients" 
+   lblPatientsListHeading.Text = "Listing of all Patients" 
+   lblPieGraphHeading.text = "Statistics For Your Diabetic Patients (n=" & Str(iTotalDataSetcount) & ")"
    Dec Application.Busy
    
 End
@@ -451,6 +631,9 @@ Public Sub Patient_Display_Summary()
    medications = modPrescribingDBI.Prescriptions_Written(patient!fk_patient)
    modPrescribingDBI.Prescriptions_Fill_Columnview(cvwMedications, medications, medications_display_by, True) 'active meds
    cvwMedications.Height = (cvwMedications.count + 1) * 18
+   '------------------------------------------------------------------
+   'Display information about the DACC (diabetes annual cycle of care)
+   '------------------------------------------------------------------
    If Year(patient!date_last_dacc) = 1900 Then
       lbllastDacc.text = "NONE RECORDED"
    Else
@@ -472,7 +655,31 @@ Public Sub Patient_Display_Summary()
    Else
       lblLastEyecheck.text = "No letter found'"
    End If   
-   
+   '---------------------------------------------------------------------------
+   'The last BP date can never be null but if never done is arbitrarily 01/01/1900
+   '---------------------------------------------------------------------------
+   If patient!date_last_bp <> "01/01/1900" Then 
+      lbllastBP.text = Format(patient!date_last_bp, "dd/mm/yyyy")
+      If patient!bp_overdue = True Then
+         lbllastBP.text &= " [OVERDUE]"
+      Endif
+   Else
+      lbllastBP.text = "No BP found'"
+   End If  
+   '----------------------------------------------------------------------------------
+   'The last weight date can never be null but if never done is arbitrarily 01/01/1900
+   '----------------------------------------------------------------------------------
+   If patient!date_last_weight <> "01/01/1900" Then 
+      lblLastWeight.text = Format(patient!date_last_weight, "dd/mm/yyyy")
+      If patient!weight_overdue = True Then
+         lblLastWeight.text &= " [OVERDUE]"
+      Endif
+   Else
+      lblLastWeight.text = "No Weight found'"
+   End If  
+   '------------------------
+   'Finally graph everything
+   '------------------------
    Hba1c_ShowGraph
    Lipids_ShowGraph
    EGFR_ShowGraph
@@ -634,11 +841,12 @@ Public Sub Patients_Reload()
    Dim sql As String
    Dim iNoPatient_In_Range As Integer
    
+   iDisplay_Subset = cDisplaySubset_Any
    Select Case cmbSortBy.text
       Case "hba1c"
          fieldname = "value_numeric"
       Case "age"
-         fieldname = "age_display"
+         fieldname = "age_numeric"
       Case "surname"
          fieldname = "surname"
    End Select
@@ -874,7 +1082,21 @@ Public Sub tbStats_Click()
    'Filter diabetic cycle of care patients as "due", "overdue", "in date"
    '---------------------------------------------------------------------
    
+   iDisplay_Subset = cDisplaySubset_Any
+   
    Select Case Last.tag 
+      Case "cholesterol never measured"
+         patients = modResearchDBI.Patients_No_Cholesterol_Recorded()
+      Case "cholesterol overdue"
+         patients = modResearchDBI.Patients_OverDue_LDLCholesterol()
+         iDisplay_Subset = cDisplaytype_Cholesterol_Overdue
+      Case "cholesterol not at target"
+         patients = modResearchDBI.Patients_LDLCholesterol_NotAtTarget()
+         iDisplay_Subset = cDisplaytype_Cholesterol_Not_At_Target
+      Case "weight overdue"
+         patients = modResearchDBI.Patients_OverDue_Weight()
+      Case "bp overdue"
+         patients = modResearchDBI.Patients_OverDue_BP()
       Case "overdue", "in date", "no dacc"
          patients = modResearchDBI.Diabetic_Cycle_Of_Care_Status(Last.tag)  
          lblPatientsListHeading.Text = "Patients DACC Status:" & Last.tag  
@@ -918,19 +1140,16 @@ Public Sub cvwMedications_Enter()
    
 End
 
-Public Sub tbReport_Click()
-   
-   modUtil.NotImplemented("Generating the report")
-   
-End
-
-Public Sub tbAnalyse_Click()  
+Public Sub Analyse()  
    '-------------------------------------------------------------------------------
    'Do the basic data analysis
    'As this can take some time, it is not automatically started when the form loads
    'otherwise the gui just seems to freeze
    '-------------------------------------------------------------------------------
-   
+   If bTempory_Table_Exists Then
+      Try modDBConnect.exec_query("drop table patients_latest_hba1c") 
+       modDBConnect.CommitTrans()   'fixme could just truncate it
+   End If   
    Reload()                                        'create temporary table, load all data work out stats
    cvwPatients_Refresh()                           'fill the columnview to display the data
    If cvwPatients.count Then
@@ -939,9 +1158,33 @@ Public Sub tbAnalyse_Click()
       cvwPatients.SetFocus()                       'which shows the first patient's data summary   
    Endif  
    DrawingArea1.Refresh()
-
+   
 End
 
+Public Sub Generate_Report()
+   
+   modUtil.NotImplemented("Generating the report")
+   
+End
+
+Public Sub Save_Snapshot()
+   
+   modUtil.NotImplemented("Generating the report")
+   
+End
+
+Public Sub tbEditArea_Click()
+   
+   Select Case Last.tag
+      Case "analyse"
+         Analyse()
+      Case "generate report"
+         Generate_Report()
+      Case "save snapshot"
+         Save_Snapshot()
+   End Select
+   
+End
 ' sql = "create temporary table patients_latest_hba1c ("
 '  sql &= "fk_patient integer, fk_person integer, fk_image integer, pk_observations integer,"
 '  sql &= "\"surname\" text,\"firstname\" text,\"wholename\" text,\"birthdate\" date, age_display integer,"
@@ -949,5 +1192,9 @@ End
 '  sql &= "\"observation_date\" date,value_numeric numeric,"
 '  sql &= "date_last_dacc date, dacc_overdue boolean, \"latex\" text,"
 '  sql &= "date_last_egfr date, egfr_abnormal boolean,\"egfr_reference_range\" text,"
-'   sql &= "date_last_eye_review date,eye_review_overdue boolean,"
+'  sql &= "date_last_eye_review date, eye_review_overdue boolean,"
+'  sql &= "date_last_bp date, bp_overdue boolean,"
+'  sql &= "date_last_weight date, weight_overdue boolean,"
+'  sql &= "date_last_ldlcholesterol date, ldlcholesterol_overdue boolean,ldlcholesterol_not_at_target boolean,"
+'  sql &= "ldl_cholesterol numeric,\"ldlcholesterol_reference_range\" text,"
 '  sql &= "pk serial)"

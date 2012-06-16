@@ -125,7 +125,7 @@ Public Sub Init()
       .slGraphFontSize.value = iGraphFontSize
    End With
    With Form_Graph_BP = New FGraph(Hbox_GraphBP)
-      .tbGraphRemove.Visible = False   
+      .tbGraphRemove.Visible = False     
       .tbInboxResults_AddGraph.Visible = False  
       .chkGraph_MakeDefault.Visible = False  
       .HBox_Styletypes.Visible = False 
@@ -135,13 +135,8 @@ Public Sub Init()
       .slGraphFontSize.value = iGraphFontSize
    End With
    bExit = False 
-   Reload()
-   cvwPatients_Refresh()
-   If cvwPatients.count Then
-      cvwPatients.MoveFirst
-      cvwPatients.Item.Selected = True
-      cvwPatients.SetFocus()
-   Endif
+   lblMeasure.text = "Last Microalbumin   "  
+   modEditAreaHelpers.Resize_labels(VBox_LastMeasurements, lblMeasure)
    
 End
 
@@ -185,81 +180,119 @@ Public Sub Reload()
    'Reloads the data for all unique patients with hba1c no ordering into temporary table
    'The data is as yet incomplete, and unordered
    'we will insert new information such as data of last DACC
+   'Have checked the numbers, the ranges are ok
    '------------------------------------------------------------------------------------   
    
    Dim RDacc As Result
    Dim bDaccOverdue As Boolean
    Dim Latex As String
    Dim date_last_dacc As Date
+   Dim date_last_egfr As Date
    Dim seGFR As String  'eg > 90
-   Dim egFrAbnormal As Integer
+   Dim eGFR_Abnormal_count As Integer
+   Dim beGFR_Abnormal As Boolean
+   Dim eGFR_Reference_Range As String
    Dim microalbuminuria_count As Integer
    Dim num_had_dacc_but_overdue As Integer
    Dim num_without_dacc As Integer
- 
+   Dim num_had_dacc_in_date As Integer
+   Dim num_hba1c_older_than_6months As Integer
+   Dim sql As String
+   Dim eyereview As Result
+   Dim eyedocuments As Collection 
+   Dim eyereview_date As Date
+   Dim beyereview_overdue As Boolean
+   Dim num_eye_review_Overdue As Integer
+   
    Inc Application.Busy
    Gui_Clear()
    LessThan6 = 0 
    Between6and7 = 0
-   Between7and7point5 = 0
+   Between7and7point5 = 0  
    Between7point5and8 = 0
    Over8 = 0
    Patients_Not_Diabetic = modResearchDBI.Patients_Not_Diabetic_Get()
    modResearchDBI.Patients_With_Hba1c_Tempory_Table_Create()                  'create the table we will use
    patients = modResearchDBI.Patients_Get_Hba1cs()                            'get unique & latest but unordered and incomplete data
-   egFRs = modResearchDBI.Patients_Get_EgfR()
+   egFRs = modResearchDBI.Patients_Get_EgfR()                                 'get egFr's for all these patients.
+   eyedocuments = modResearchDBI.Patients_Get_Most_Recent_Eye_Documents()
    For Each patient In patients  
       If Not Patients_Not_Diabetic.Exist(patient!fk_patient) Then 
-         If patient!value_numeric < 6 Then Inc LessThan6
-         If patient!value_numeric >= 6 And patient!value_numeric < 7 Then Inc Between6and7
-         If patient!value_numeric >= 7.0 And patient!value_numeric < 7.5 Then Inc Between7and7point5
-         If patient!value_numeric >= 7.5 And patient!value_numeric < 8 Then Inc Between7point5and8
+         If patient!value_numeric <= 5.9 Then Inc LessThan6
+         If patient!value_numeric >= 6 And patient!value_numeric <= 6.9 Then Inc Between6and7
+         If patient!value_numeric >= 7.0 And patient!value_numeric <= 7.4 Then Inc Between7and7point5
+         If patient!value_numeric >= 7.5 And patient!value_numeric <= 7.9 Then Inc Between7point5and8
          If patient!value_numeric >= 8.0 Then Inc Over8
+         
+         If DateDiff(patient!observation_date, Now(), gb.Month) > 6 Then
+            Inc num_hba1c_older_than_6months
+         Endif
          bDaccOverdue = False                                                    'default to overdue DACC
          Latex = ""                                                              'default to no Latex
          date_last_dacc = Date(1900, 01, 01)
          RDacc = modResearchDBI.Patient_GetDaysSinceDACC(patient!fk_patient)     'get last DACC days/LaTex
-         If patient!fk_patient = 6831 Then
-            Print
-         Endif
          If RDacc.count Then 
             If Not IsNull(RDacc!days_since_dacc_done) Then
                If RDacc!days_since_dacc_done > 365 Then
                   bDaccOverdue = True  
+                  Inc num_had_dacc_but_overdue
+               Else
+                  Inc num_had_dacc_in_date
                Endif
                latex = RDacc!latex
                date_last_dacc = RDacc!date_completed
             Else
-               Inc num_without_dacc
+               Inc num_without_dacc 'these are partially completed DACC's
             Endif
          Else
             Inc num_without_dacc
          End If   
          If Not IsNull(egFRs[patient!fk_patient]) Then
             seGFR = Str(egFRs[patient!fk_patient]!value_numeric) & egFRs[patient!fk_patient]!qualifier
+            date_last_egfr = egFRs[patient!fk_patient]!observation_date
+            beGFR_Abnormal = False  
+            eGFR_Reference_Range = egFRs[patient!fk_patient]!reference_range
             If Not IsNull(egFRs[patient!fk_patient]!abnormal) Then
                If egFRs[patient!fk_patient]!abnormal <> "N" Then 
-                  Inc egFrAbnormal
-                  Print "egfr:", seGFR, egFRs[patient!fk_patient]!abnormal
+                  beGFR_Abnormal = True
+                  Inc eGFR_Abnormal_count
                End If   
             Endif
          Endif
-         modDBConnect.insert("patients_latest_hba1c", ["fk_patient": patient!fk_patient, "fk_person": patient!fk_person, "fk_image": patient!fk_image, "pk_observations": patient!pk_observations, "firstname": patient!firstname, "surname": patient!surname, "wholename": patient!wholename, "birthdate": patient!birthdate, "age_display": patient!age_numeric, "street1": patient!street1, "street2": patient!street2, "suburb": patient!suburb, "postcode": patient!postcode, "observation_date": patient!observation_date, "value_numeric": patient!value_numeric, "date_last_dacc": date_last_dacc, "dacc_overdue": bDaccOverdue, "latex": latex])
+         
+         beyereview_overdue = True
+         eyereview_date = Date(1900, 01, 01)
+         If Not IsNull(eyedocuments[patient!fk_patient]) Then
+            If Not (DateDiff(Now, DateAdd(eyedocuments[patient!fk_patient]!date_created, gb.Year, 2), gb.day) <= 0) Then
+               beyereview_overdue = False
+               eyereview_date = eyedocuments[patient!fk_patient]!date_created
+            Else
+               Inc num_eye_review_Overdue
+               Print patient!firstname & " " & patient!surname  
+            End If 
+         Else
+            Print patient!firstname & " " & patient!surname  
+            Inc num_eye_review_Overdue
+         Endif
+         modDBConnect.insert("patients_latest_hba1c", ["fk_patient": patient!fk_patient, "fk_person": patient!fk_person, "fk_image": patient!fk_image, "pk_observations": patient!pk_observations, "firstname": patient!firstname, "surname": patient!surname, "wholename": patient!wholename, "birthdate": patient!birthdate, "age_display": patient!age_numeric, "street1": patient!street1, "street2": patient!street2, "suburb": patient!suburb, "postcode": patient!postcode, "observation_date": patient!observation_date, "value_numeric": patient!value_numeric, "date_last_dacc": date_last_dacc, "dacc_overdue": bDaccOverdue, "latex": latex, "date_last_egfr": date_last_egfr, "egfr_abnormal": beGFR_Abnormal, "egfr_reference_range": eGFR_Reference_Range, "date_last_eye_review": eyereview_date, "eye_review_overdue": beyereview_overdue])
       End If   
    Next
    modDBConnect.CommitTrans()
-   iTotalDataSetcount = patients.Count
-   cvwPatients.Columns[1].text = Str(patients.count) & " patients were found" 
-   lblNeverHadDacc.text = Str(num_without_dacc) & " patients (" & As_Percent(num_without_dacc) & ") have none recorded "
-   num_had_dacc_but_overdue = modDBConnect.exec_query("Select count(dacc_overdue) as overdue from patients_latest_hba1c where dacc_overdue is true")!overdue
-   lblDACCOverdue.text = Str(num_had_dacc_but_overdue) & " patients (" & As_Percent(num_had_dacc_but_overdue) & ") have had a previous DACC but are overdue"
-   lblDACCCurrent.text = Str(100 - num_without_dacc - num_had_dacc_but_overdue) & " patients (" & Str(100 - num_without_dacc - num_had_dacc_but_overdue) & "%) have completed a DACC In the Last 12 months"
-   
-   lblImpariedRenalFunction.text = As_Percent(egFrAbnormal) & " have impaired renal function"
-   Make_Pie()
    
    patients = modDBConnect.exec_query_collection("Select * from patients_latest_hba1c ORDER BY surname asc")
+   iTotalDataSetcount = patients.Count
+   cvwPatients.Columns[1].text = Str(iTotalDataSetcount) & " patients were found" 
+   lblNeverHadDacc.text = Str(num_without_dacc) & " patients (" & As_Percent(num_without_dacc) & ") have no DACC recorded "
+   lblEyeReviewOverdue.text = Str(num_eye_review_Overdue) & " patients (" & As_Percent(num_eye_review_Overdue) & ") are overdue an eye examination"
+   '  num_had_dacc_but_overdue = modDBConnect.exec_query("Select count(dacc_overdue) as overdue from patients_latest_hba1c where dacc_overdue is true")!overdue
+   lblDACCOverdue.text = Str(num_had_dacc_but_overdue) & " patients (" & As_Percent(num_had_dacc_but_overdue) & ") have had a previous DACC but are overdue"
+   lblDACCCurrent.text = Str(num_had_dacc_in_date) & " patients (" & Str(num_had_dacc_in_date) & "%) have completed a DACC In the Last 12 months"
+   lblHBa1cOutOfDate.text = Str(num_hba1c_older_than_6months) & " patients (" & As_Percent(num_hba1c_older_than_6months) & ") last hba1c is older than 6 months"
+   lblImpairedRenalFunction.text = As_Percent(eGFR_Abnormal_count) & " have impaired renal function"
    
+  
+   Make_Pie()
+    lblPatientsListHeading.Text = "Listing of all Patients" 
    Dec Application.Busy
    
 End
@@ -426,10 +459,20 @@ Public Sub Patient_Display_Summary()
          lbllastDacc.text &= "  [OVERDUE]"
       Endif
    End If   
-   Try label101.text = Format(patient!observation_date, "dd/mm/yyyy")
-   If Error Then
-      label101.text = "NIL RECORDED"
-   Endif
+   Try lblLastHba1c.text = Format(patient!observation_date, "dd/mm/yyyy")
+   Try lblLasteGFR.text = Format(patient!date_last_egfr, "dd/mm/yyyy") & " " & patient!egfr_reference_range
+   '---------------------------------------------------------------------------
+   'The eye check can never be null but if never done is arbitrarily 01/01/1900
+   '---------------------------------------------------------------------------
+   If patient!date_last_eye_review <> "01/01/1900" Then 
+      lblLastEyecheck.text = Format(patient!date_last_eye_review, "dd/mm/yyyy")
+      If patient!eye_review_overdue = True Then
+         lblLastEyecheck.text &= " [OVERDUE]"
+      Endif
+   Else
+      lblLastEyecheck.text = "No letter found'"
+   End If   
+   
    Hba1c_ShowGraph
    Lipids_ShowGraph
    EGFR_ShowGraph
@@ -458,12 +501,12 @@ Public Sub Patient_Display_DACC()
    '       .BtPrint.Visible = True 
    '    End With
    ' Endif
-      If IsNull(form_dacc) Then
+   If IsNull(form_dacc) Then
       With form_dacc = New FDacc(VBox_DACC)
-            .Init(currentconsult)
+         .Init(currentconsult)
       End With
    Endif
- '  Dacc_View_Last()
+   '  Dacc_View_Last()
    
 End
 
@@ -603,18 +646,18 @@ Public Sub Patients_Reload()
    Select Case cmbHba1cRange.Text
       Case "<6.0"
          iNoPatient_In_Range = LessThan6
-         sql &= "WHERE value_numeric < 6 "
+         sql &= "WHERE value_numeric <= 5.9 "
       Case "6.0-7.0"
          iNoPatient_In_Range = Between6and7
-         sql &= " WHERE value_numeric between 6 and 7 "
+         sql &= " WHERE value_numeric between 6 and 6.9 "
       Case "7.0-7.5"
          iNoPatient_In_Range = Between7and7point5 
-         sql &= " WHERE value_numeric between 7 and 7.5 "
+         sql &= " WHERE value_numeric between 7 and 7.4 "
       Case "7.5-8.0"  
          iNoPatient_In_Range = Between7point5and8 
-         sql &= " WHERE value_numeric between 7.5 and 8 "
+         sql &= " WHERE value_numeric between 7.5 and 7.9 "
       Case ">8.0" 
-         sql &= " WHERE value_numeric > 8"
+         sql &= " WHERE value_numeric >= 8"
    End Select
    If Trim(txtSearch.text) <> "" Then
       If InStr(sql, "value_numeric") Then
@@ -684,7 +727,7 @@ Public Sub txtSearch_KeyPress()
    
 End
 
-Private Sub SEttings_Load()
+Private Sub Settings_Load()
    
    Hsplit1.Layout = Settings["Research_" & Me.name & "/Hsplit1.layout"] 
    Hsplit_PatientData.Layout = Settings["Research_" & Me.name & "/Hsplit_PatientData.layout"] 
@@ -786,7 +829,6 @@ Public Sub Dacc_View_Last()
    'If it exists, then view the latex as pdf of the last DCC
    '-------------------------------------------------------- 
    
-  
    If Not IsNull(patient!latex) Then
       With form_pdf
          .Load_PDF(modPrinting.Latex_To_PDF(patient!latex))
@@ -831,7 +873,21 @@ Public Sub tbStats_Click()
    '---------------------------------------------------------------------
    'Filter diabetic cycle of care patients as "due", "overdue", "in date"
    '---------------------------------------------------------------------
-   patients = modResearchDBI.Diabetic_Cycle_Of_Care_Status(Last.tag)  
+   
+   Select Case Last.tag 
+      Case "overdue", "in date", "no dacc"
+         patients = modResearchDBI.Diabetic_Cycle_Of_Care_Status(Last.tag)  
+         lblPatientsListHeading.Text = "Patients DACC Status:" & Last.tag  
+      Case "overdue hba1c"
+         patients = modResearchDBI.Patients_Last_HBA1C_Over_6Months()
+         lblPatientsListHeading.Text = "Patients not had HbA1C in last 6 months"
+      Case "renal impairment"
+         lblPatientsListHeading.Text = "Patients with Renal Impairment"
+      Case "eye review"
+         patients = modResearchDBI.Patients_OverDue_eye_Examination()
+         lblPatientsListHeading.Text = "Patients Overdue an Eye Examination"
+   End Select
+   
    cvwPatients.Columns[1].text = Str(patients.count) & "/" & Str(iTotalDataSetcount) & " " & Last.tag
    cvwPatients_Refresh() 
    
@@ -863,7 +919,35 @@ Public Sub cvwMedications_Enter()
 End
 
 Public Sub tbReport_Click()
-
+   
    modUtil.NotImplemented("Generating the report")
+   
+End
+
+Public Sub tbAnalyse_Click()  
+   '-------------------------------------------------------------------------------
+   'Do the basic data analysis
+   'As this can take some time, it is not automatically started when the form loads
+   'otherwise the gui just seems to freeze
+   '-------------------------------------------------------------------------------
+   
+   Reload()                                        'create temporary table, load all data work out stats
+   cvwPatients_Refresh()                           'fill the columnview to display the data
+   If cvwPatients.count Then
+      cvwPatients.MoveFirst
+      cvwPatients.Item.Selected = True             'trigger cvwPatients_Select()
+      cvwPatients.SetFocus()                       'which shows the first patient's data summary   
+   Endif  
+   DrawingArea1.Refresh()
 
 End
+
+' sql = "create temporary table patients_latest_hba1c ("
+'  sql &= "fk_patient integer, fk_person integer, fk_image integer, pk_observations integer,"
+'  sql &= "\"surname\" text,\"firstname\" text,\"wholename\" text,\"birthdate\" date, age_display integer,"
+'  sql &= "\"street1\" text,\"street2\" text,\"suburb\" text,\"postcode\" text,"
+'  sql &= "\"observation_date\" date,value_numeric numeric,"
+'  sql &= "date_last_dacc date, dacc_overdue boolean, \"latex\" text,"
+'  sql &= "date_last_egfr date, egfr_abnormal boolean,\"egfr_reference_range\" text,"
+'   sql &= "date_last_eye_review date,eye_review_overdue boolean,"
+'  sql &= "pk serial)"

@@ -23,29 +23,30 @@ Public Function Patient_GetDaysSinceDACC(fk_patient As Integer) As Result
    '----------------------------------------------
    'Get days since Last DACC return result (days + latex)
    '----------------------------------------------   
-  Dim R As Result
-  Dim sql As String
- 
-  sql = "SELECT latex,date_completed, "
-    "   date_part('days', now() - DACC.date_completed) as days_since_dacc_done "
-    "   FROM chronic_disease_management.diabetes_annual_cycle_of_care DACC "
-    "   JOIN clin_consult.consult ON DACC.fk_consult = consult.pk  "
-  sql &= "WHERE fk_patient= " & fk_patient & " AND deleted =  false ORDER BY date_completed desc limit 1"
-  Return modDBConnect.exec_query(sql)
 
+   Dim R As Result
+   Dim sql As String
+   
+   sql = "SELECT latex,date_completed, "
+   "   date_part('days', now() - DACC.date_completed) as days_since_dacc_done "
+   "   FROM chronic_disease_management.diabetes_annual_cycle_of_care DACC "
+   "   JOIN clin_consult.consult ON DACC.fk_consult = consult.pk  "
+   sql &= "WHERE fk_patient= " & fk_patient & " AND deleted =  false ORDER BY date_completed desc limit 1"
+   Return modDBConnect.exec_query(sql)
    
 End
+
 Public Sub Patients_Not_Diabetic_Get() As Collection
    
-     Sql = "Select fk_Patient as pk, fk_patient from chronic_disease_management.Diabetes_Hba1c_Not_Diabetic"
-     Return modDBConnect.exec_query_collection(sql) 
+   Sql = "Select fk_Patient as pk, fk_patient from chronic_disease_management.Diabetes_Hba1c_Not_Diabetic"
+   Return modDBConnect.exec_query_collection(sql) 
    
 End
 
 Public Sub Patient_Not_Diabetic_Mark(fk_patient As Integer)
    'fixme TRY this   '
- 
-  modDBConnect.exec_query("Insert into chronic_disease_management.Diabetes_Hba1c_Not_Diabetic (fk_patient) values (" & fk_patient & ")") 
+   
+   modDBConnect.exec_query("Insert into chronic_disease_management.Diabetes_Hba1c_Not_Diabetic (fk_patient) values (" & fk_patient & ")") 
    
 End
 
@@ -53,59 +54,92 @@ Public Function Diabetic_Cycle_Of_Care_Status(sStatus As String) As Collection
    '------------------------------------------------------------------------------------
    'Get status of DACC. I've used 01/01/1900=never had DACC when temporary table created
    '------------------------------------------------------------------------------------
-  Dim sql As String
+
+   Dim sql As String
    
-  sql = "select * from  patients_latest_hba1c where date_last_dacc "
-  Select Case sStatus
-     Case "overdue"
-        sql &= "<> $$" & Date(1900, 01, 01) & "$$ AND dacc_overdue = True"
-     Case "no dacc"
-        sql &= "= $$" & Date(1900, 01, 01) & "$$"
-     Case "in date"
-        sql &= "<> $$" & Date(1900, 01, 01) & "$$ AND dacc_overdue = False"
-  End Select
-  Return modDBConnect.exec_query_collection(sql)
+   sql = "select * from  patients_latest_hba1c where date_last_dacc "
+   Select Case sStatus
+      Case "overdue"
+         sql &= "<> $$" & Date(1900, 01, 01) & "$$ AND dacc_overdue = True"
+      Case "no dacc"
+         sql &= "= $$" & Date(1900, 01, 01) & "$$"
+      Case "in date"
+         sql &= "<> $$" & Date(1900, 01, 01) & "$$ AND dacc_overdue = False"
+   End Select
+   Return modDBConnect.exec_query_collection(sql)
    
 End
 
+Public Function Patients_OverDue_eye_Examination() As Collection
+   
+   Return modDBConnect.exec_query_collection("Select * from patients_latest_hba1c where eye_review_overdue is true order by surname, firstname")
+   
+End
 
-
+Public Function Patients_Last_HBA1C_Over_6Months() As Collection
+   
+   Return modDBConnect.exec_query_collection("Select * from patients_latest_hba1c where AGE(Now(), observation_date) >= INTERVAL '6 months'") 
+   
+End
 
 Public Function Patients_With_Hba1c_Tempory_Table_Create()
    
-   modDBConnect.exec_query("create temporary table patients_latest_hba1c (fk_patient integer, fk_person integer, fk_image integer, pk_observations integer,\"surname\" text,\"firstname\" text,\"wholename\" text,\"birthdate\" date, age_display integer,\"observation_date\" date,value_numeric numeric,\"street1\" text,\"street2\" text,\"suburb\" text,\"postcode\" text, date_last_dacc date, dacc_overdue boolean, \"latex\" text, pk serial)")
-    
+   Dim sql As String
+
+   sql = "create temporary table patients_latest_hba1c ("
+   sql &= "fk_patient integer, fk_person integer, fk_image integer, pk_observations integer,"
+   sql &= "\"surname\" text,\"firstname\" text,\"wholename\" text,\"birthdate\" date, age_display integer,"
+   sql &= "\"street1\" text,\"street2\" text,\"suburb\" text,\"postcode\" text,"
+   sql &= "\"observation_date\" date,value_numeric numeric,"
+   sql &= "date_last_dacc date, dacc_overdue boolean, \"latex\" text,"
+   sql &= "date_last_egfr date, egfr_abnormal boolean,\"egfr_reference_range\" text,"
+   sql &= "date_last_eye_review date, eye_review_overdue boolean,"
+   sql &= "pk serial)"
+   modDBConnect.exec_query(sql)
+   
+End
+
+Public Function Patients_Get_Most_Recent_Eye_Documents() As Collection
+   '----------------------------------------------------------------------------------------
+   'Returns the most recent eye document for **ALL** including non diabetic patients
+   'However as used in FDiabeticResearch, the primary key of this view pk_view = fk_patient
+   'so as in FDiabetic Research the patients collection = diabetic patients, 
+   'then collection[fk_patient] will return a document if one exists or null 
+   '----------------------------------------------------------------------------------------   
+
+   Return modDBConnect.exec_query_collection("Select * from Research.vwMostRecentEyeRelatedDocuments") '
    
 End
 
 Public Function Patients_Get_EgfR() As Collection
+   '------------------------------------------------------------------------------------------------
+   'Get the latest egfr for each patient in Research.vwdiabetes_patients_with_hba1c
+   'note as the fk_patient of the diabetes view is linked to the fk_patient of the observations view
+   'there is always a 1-1 match and this sql pulls in the latest egfr for each patient.
+   'excludes dead or patient's whose status are not active.
+   ' ------------------------------------------------------------------------------------------------
+
+   SQL = "select distinct on (fk_patient) * from Research.vwDiabeticsEGFR  WHERE deceased = false and active_status = 'a' "
+   sql &= "ORDER by fk_patient, observation_date DESC;"
+   Return modDBConnect.exec_query_collection(sql)
    
- 
-    SQL = "select distinct on (fk_patient) * from Research.vwDiabeticsEGFR  WHERE deceased = false and active_status = 'a' "
-    sql &= "ORDER by fk_patient, observation_date DESC;"
-    Return modDBConnect.exec_query_collection(sql)
-    
 End
 
 Public Function Patients_Total_With_Impaired_EGFR() As Integer
    
-  SQL = "select distinct on (fk_patient) * from Research.vwDiabeticsEGFR  WHERE deceased = false and active_status = 'a' "
-    sql &= "ORDER by fk_patient, observation_date DESC;"
- 
+   SQL = "select distinct on (fk_patient) * from Research.vwDiabeticsEGFR  WHERE deceased = false and active_status = 'a' "
+   sql &= "ORDER by fk_patient, observation_date DESC;"
    
 End
-
 
 Public Function Patients_Get_Hba1cs() As Collection   
    '------------------------------------------------------------------------------------------------------------------
    'Gets all active patients and all their hba1c's with the most recent for each patient the first occurrence for them
    '------------------------------------------------------------------------------------------------------------------   
-     
+   
    Dim sql As String 
-   ' SQL = "select * from research.vwdiabetes_patients_with_hba1c "
-   ' sql &= "WHERE deceased = false and active_status = 'a' "
-   ' SQL &= "ORDER BY surname, firstname, fk_patient ASC, observation_date DESC"  'so will always be the most recent.
- SQL = "select distinct on (fk_patient) * from "
+
+   SQL = "select distinct on (fk_patient) * from "
    "research.vwdiabetes_patients_with_hba1c "
    " WHERE deceased = false and active_status = 'a' "
    "ORDER by fk_patient, observation_date DESC;"
@@ -137,10 +171,12 @@ Public Function Grouper_Select(txt As TextBox, lv As Listview) As Collection
    ' displays grouper description in popup listbox
    ' adds tag of calling textbox as the listbox tag
    '------------------------------------------------------------- 
+
    Dim KeywordGrouper As CICPCKeywordGrouper
    Dim KeywordGroupers As Collection                 
+
    sql = "Select * From coding.vwIcpcKeywordGroupers "
-         "WHERE keyword ILIKE $$"
+   "WHERE keyword ILIKE $$"
    sql &= Trim(txt.text) & "%$$"
    lv.Clear()
    KeywordGroupers = New Collection
@@ -152,251 +188,255 @@ Public Function Grouper_Select(txt As TextBox, lv As Listview) As Collection
             .keyword = $Result!Keyword
             .grouper = $Result!grouper
             .grouper_description = $Result!grouper_description
-        End With
+         End With
          KeywordGroupers.Add(KeywordGrouper, lv.count)
-        lv.Add(lv.count, $Result!grouper_description)
-       
+         lv.Add(lv.count, $Result!grouper_description)
+         
       Next
       lv.tag = txt 'the textbox becomes the tag
       lv.Raise()
       lv.Visible = True
    End If
    Return KeywordGroupers
-  
+   
 End
 
 Public Function Patients_Get_For_Grouper(grouper As String, cv As ColumnView) As Collection
-'   '   Gets all patients with a grouper eg G40 = all diabetics
-'   Dim patients As Collection
-'   Dim patient As cPatient
-'   Dim iAddressOnlyRow As Integer                  'counter for address only row
-'  
-'   Dim iRow As Integer
-'   Dim icols As Integer                            'column counter for cvpatients list
-'   Dim strKey As String                            'hold data_patients.pk
-'   Dim $AddressResult As Result                    'Result object for addresses
-'   Dim $CommsResult As Result                    'Result object for addresses
-' '  DIM $ResultPatients AS result                   
-'   Dim i As Integer
-'   Dim address As cAddress
-'   Dim comm As cComm
-'   Dim irowcounter As Integer
-'   Dim iLastPatient_pk As Integer
-'   Dim iAddressCount As Integer
-'    Dim firstname As Integer = 0
-'   Dim surname As Integer = 1
-'   Dim sex As Integer = 2
-'   Dim Birthdate As Integer = 3
-'   Dim age As Integer = 4
-'   Dim street As Integer = 7
-'   Dim phone As Integer = 9
-'    Dim health_issue As Integer = 10
-'   sql = "Select * from research.vwHealthIssues_Groupers where grouper = $$"
-'   sql &= grouper & "$$ ORDER BY surname,firstname"
-''   patients = New collectionmodparse
-'   cv.Clear()
-'  With cv
-'    .columns.Count = 11
-'    .Columns[firstname].width = 100
-'    .Columns[surname].width = 100
-'    .Columns[sex].width = 20
-'    .Columns[Birthdate].width = 20
-'     .Columns[street].width = 50
-'     '.columns[health_issue].width = 200
-'   End With
-'   
-'   $Result = modDBConnect.exec_query(sql)
-'   If $Result.count Then                           'If patients exist
-'           For Each $Result   
-'                     'for each patient record add the person to the persons list
-'                    ' strKey = Str$(irowcounter) & "_" & Str$($Result!pk)     'key for cvpatient.current.key
-'                   '  strKey = Str$($Result!pk_person)
-''              'This below essentially equates to the logic
-'              'If this current patients recordset is a new patient then
-'              'add a new row to the cvpatients list with
-'              'patients name/sex + first address they have
-'               If $Result!pk_person <> iLastPatient_pk Then
-'                     iLastPatient_pk = $Result!pk_person
-'                     iAddressCount = 0
-'                  
-'                     strKey = Str$($Result!pk_person & "_" & Str$(iAddressCount))
-'                    cv.Add(strKey, 0)     'add new row, key = data_patients.pk
-'                    cv[strKey][0] = $Result!surname   'add field to each column   
-'                    cv[strKey][1] = $Result!firstname 'note nothing put into
-'                    cv[strKey][2] = $Result!sex       'column 5 (use as spacer)
-'                    cv[strKey][3] = $Result!Birthdate
-'                    cv[strKey][10] = $Result!combined_term_code
-'                     'Finally fill the patient class
-'                     '***NB: patient.key = data_patient.pk = cvpatients.current.key
-'                     'that way later when a user clicks on a row in the persons
-'                     'list, we read the key, and then the correct record from the
-'                     'patients array
-'                     patient = New cPatient         'create a new patient 
-'                     '
-'                     patient.pk_patient = $Result!pk_patient
-'                     '
-'                     patient.Firstname = $Result!firstname
-'                     patient.Surname = $Result!Surname
-'                     patient.Birthdate = $Result!Birthdate
-'                     patient.occupation = $Result!occupation
-'                     patient.country = $Result!country
-'                     patient.ethnicity = $Result!ethnicity
-'                     patient.language = $Result!language
-'                     '
-'                     ' If Not IsNull($Result!fk_country_birth) Then
-'                     '           patient.fk_country_birth = $Result!fk_country_birthmodparse
-'                     ' End If
-'                     ' If Not IsNull($Result!fk_language) Then
-'                     '           patient.fk_language = $Result!fk_language
-'                     ' End If
-'                     ' 
-'                     ' If Not IsNull($Result!fk_ethnicity) Then
-'                     '           patient.fk_ethnicity = $Result!fk_ethnicity
-'                     ' End If
-'                     ' 
-'                     ' If Not IsNull($Result!fk_marital) Then
-'                     '   patient.fk_marital = $Result!fk_marital 
-'                     ' Else 
-'                     '   patient.fk_marital = 1 'unkown 
-'                     ' End If
-'                     ' patient.Marital = $Result!Marital & " "
-'                     patient.sex = $Result!Sex
-'                    ' patient.Salutation = $Result!Salutation
-'                     patient.Title = $Result!title
-'                   '  If Not IsNull($Result!fk_title) Then
-'                    '           patient.fk_title = $Result!fk_title
-'                   '  End If
-'                   '  If Not IsNull($Result!fk_sex) Then
-'                   '            patient.fk_sex = $Result!fk_sex
-'                   '  End If
-'                     '-----------------------------------------
-'                     'now get all the comms for each patient
-'                     'If an comms exists for this patient 
-'                     'show preferred contact method in next column
-'                     '-----------------------------------------
-'                     ' patient.Comms = New collection
-'                     ' $CommsResult = modContactsDBI.person_comms_get($Result!pk_person)
-'                     ' If $CommsResult.Count Then 
-'                     '           For i = 0 To $CommsResult.count - 1 
-'                     '                     comm = New cComm
-'                     '                     comm.pk = $CommsResult!pk
-'                     '                     comm.comm_value = $CommsResult!value
-'                     '                     comm.note = $CommsResult!note
-'                     '                     comm.fk_type = $CommsResult!fk_type
-'                     '                     comm.comm_type = $CommsResult!comm_type
-'                     '                     comm.preferred_method = $CommsResult!preferred_method
-'                     '                     comm.confidential = $CommsResult!confidential
-                     '                    cv[strKey][8] = cv[strKey][8] & "    " & $CommsResult!comm_type & ": " & $CommsResult!value
-'                     '                     patient.Comms.Add(comm, i)
-'                     '                     $CommsResult.MoveNext
-'                     '           Next 
-'                     ' Else modparsemodparse
-'                     '           ' comm = NEW cComm
-'                     '           ' patient.Comms.Add(comm, 0)
-'                     ' End If                            
-'                     '-----------------------------------------
-'                     'now get all the addresses for each patient
-'                     'If an address exists for this patient 
-'                     'If only one, show on same row as name
-'                     'otherwise create a new row under the name, but show only address
-'                     'FIXME ADD ADDRESS TO THE patient ARRAY
-'                     '-----------------------------------------
-'                     patient.Address = New collection
-'                     $AddressResult = modContactsDBI.person_addresses_get($Result!pk_person)
-'                     If $AddressResult.Count Then  
-'                                'FIXME figure out how to address address array
-'                                'to person object
-'                                'Add the first row to the same row as name
-'                                
-'                                address = New cAddress
-'                                address.pk = $AddressResult!pk
-'                                address.fk_town = $AddressResult!fk_town
-'                                address.country_code = $AddressResult!country_code
-'                                address.fk_type = $AddressResult!fk_type
-'                                address.geolocation = $AddressResult!geolocation
-'                                address.head_office = $AddressResult!head_office
-'                                address.postal_address = $AddressResult!postal_address
-'                                address.postcode = $AddressResult!postcode
-'                                address.preferred_address = $AddressResult!preferred_address
-'                                address.state = $AddressResult!state
-'                                address.street = $AddressResult!street
-'                                address.suburb = $AddressResult!town
-'                                patient.Address.Add(address, 0)
-'                               cv[strKey][6] = $AddressResult!Street & " " & $AddressResult!Town & " " & $AddressResult!Postcode
-'                                'If any more exist,add them to subsequent rows
-'                                'making columns 0 to 3 empty strings
-'                                 For icols = 1 To $AddressResult.Count - 1
-'                                         $AddressResult.MoveNext    'move to next record
-'                                         address = New cAddress
-'                                         address.pk = $AddressResult!pk
-'                                         address.fk_town = $AddressResult!fk_town
-'                                         address.country_code = $AddressResult!country_code
-'                                         address.fk_type = $AddressResult!fk_type
-'                                         address.geolocation = $AddressResult!geolocation
-'                                         address.head_office = $AddressResult!head_office
-'                                         address.postal_address = $AddressResult!postal_address
-'                                         address.postcode = $AddressResult!postcode
-'                                         address.preferred_address = $AddressResult!preferred_address
-'                                         address.state = $AddressResult!state
-'                                         address.street = $AddressResult!street
-'                                         address.suburb = $AddressResult!town
-'                                         patient.Address.Add(address, icols)
-'                                         'This row also has the patientspk as identifier
-'                                         'though it contains no patient data
-'                                         'later used to keep track of who belongs to what data
-'                                         'in cvpatients_select()
-'                                         Inc iAddressCount
-'                                         'removed 10feb8pm, put back if dosn't work
-'                                         strKey = Str$($Result!pk_person) & "_" & Str$(iAddressCount) 
-'                                        
-'                                          'fixme icols is ambiguous, should be row
-'                                         'cv.Add(iAddressOnlyRow, 0)
-'                                         cv.Add(strKey, 0)
-'                                         cv[strKey][0] = "" 
-'                                         cv[strKey][1] = ""
-'                                         cv[strKey][2] = ""
-'                                         cv[strKey][3] = ""
-'                                         cv[strKey][4] = ""
-'                                         cv[strKey][5] = ""
-'                                         cv[strKey][6] = $AddressResult!Street & " " & $AddressResult!Town & " " & $AddressResult!Postcode
-'                                          'INC iAddressOnlyRow
-'                                    
-'                                 Next
-'                       End If
-'             patients.Add(patient, Str$($Result!pk_person))
-'   
-'             End If        
-'             Next 
-'  End If
-'    cv.Enabled = True                       'enable list for clicking on 
-'    Return patients
+   '   '   Gets all patients with a grouper eg G40 = all diabetics
+   '   Dim patients As Collection
+   '   Dim patient As cPatient
+   '   Dim iAddressOnlyRow As Integer                  'counter for address only row
+   '  
+   '   Dim iRow As Integer
+   '   Dim icols As Integer                            'column counter for cvpatients list
+   '   Dim strKey As String                            'hold data_patients.pk
+   '   Dim $AddressResult As Result                    'Result object for addresses
+   '   Dim $CommsResult As Result                    'Result object for addresses
+   ' '  DIM $ResultPatients AS result                   
+   '   Dim i As Integer
+   '   Dim address As cAddress
+   '   Dim comm As cComm
+   '   Dim irowcounter As Integer
+   '   Dim iLastPatient_pk As Integer
+   '   Dim iAddressCount As Integer
+   '    Dim firstname As Integer = 0
+   '   Dim surname As Integer = 1
+   '   Dim sex As Integer = 2
+   '   Dim Birthdate As Integer = 3
+   '   Dim age As Integer = 4
+   '   Dim street As Integer = 7
+   '   Dim phone As Integer = 9
+   '    Dim health_issue As Integer = 10
+   '   sql = "Select * from research.vwHealthIssues_Groupers where grouper = $$"
+   '   sql &= grouper & "$$ ORDER BY surname,firstname"
+   ''   patients = New collectionmodparse
+   '   cv.Clear()
+   '  With cv
+   '    .columns.Count = 11
+   '    .Columns[firstname].width = 100
+   '    .Columns[surname].width = 100
+   '    .Columns[sex].width = 20
+   '    .Columns[Birthdate].width = 20
+   '     .Columns[street].width = 50
+   '     '.columns[health_issue].width = 200
+   '   End With
+   '   
+   '   $Result = modDBConnect.exec_query(sql)
+   '   If $Result.count Then                           'If patients exist
+   '           For Each $Result   
+   '                     'for each patient record add the person to the persons list
+   '                    ' strKey = Str$(irowcounter) & "_" & Str$($Result!pk)     'key for cvpatient.current.key
+   '                   '  strKey = Str$($Result!pk_person)
+   ''              'This below essentially equates to the logic
+   '              'If this current patients recordset is a new patient then
+   '              'add a new row to the cvpatients list with
+   '              'patients name/sex + first address they have
+   '               If $Result!pk_person <> iLastPatient_pk Then
+   '                     iLastPatient_pk = $Result!pk_person
+   '                     iAddressCount = 0
+   '                  
+   '                     strKey = Str$($Result!pk_person & "_" & Str$(iAddressCount))
+   '                    cv.Add(strKey, 0)     'add new row, key = data_patients.pk
+   '                    cv[strKey][0] = $Result!surname   'add field to each column   
+   '                    cv[strKey][1] = $Result!firstname 'note nothing put into
+   '                    cv[strKey][2] = $Result!sex       'column 5 (use as spacer)
+   '                    cv[strKey][3] = $Result!Birthdate
+   '                    cv[strKey][10] = $Result!combined_term_code
+   '                     'Finally fill the patient class
+   '                     '***NB: patient.key = data_patient.pk = cvpatients.current.key
+   '                     'that way later when a user clicks on a row in the persons
+   '                     'list, we read the key, and then the correct record from the
+   '                     'patients array
+   '                     patient = New cPatient         'create a new patient 
+   '                     '
+   '                     patient.pk_patient = $Result!pk_patient
+   '                     '
+   '                     patient.Firstname = $Result!firstname
+   '                     patient.Surname = $Result!Surname
+   '                     patient.Birthdate = $Result!Birthdate
+   '                     patient.occupation = $Result!occupation
+   '                     patient.country = $Result!country
+   '                     patient.ethnicity = $Result!ethnicity
+   '                     patient.language = $Result!language
+   '                     '
+   '                     ' If Not IsNull($Result!fk_country_birth) Then
+   '                     '           patient.fk_country_birth = $Result!fk_country_birthmodparse
+   '                     ' End If
+   '                     ' If Not IsNull($Result!fk_language) Then
+   '                     '           patient.fk_language = $Result!fk_language
+   '                     ' End If
+   '                     ' 
+   '                     ' If Not IsNull($Result!fk_ethnicity) Then
+   '                     '           patient.fk_ethnicity = $Result!fk_ethnicity
+   '                     ' End If
+   '                     ' 
+   '                     ' If Not IsNull($Result!fk_marital) Then
+   '                     '   patient.fk_marital = $Result!fk_marital 
+   '                     ' Else 
+   '                     '   patient.fk_marital = 1 'unkown 
+   '                     ' End If
+   '                     ' patient.Marital = $Result!Marital & " "
+   '                     patient.sex = $Result!Sex
+   '                    ' patient.Salutation = $Result!Salutation
+   '                     patient.Title = $Result!title
+   '                   '  If Not IsNull($Result!fk_title) Then
+   '                    '           patient.fk_title = $Result!fk_title
+   '                   '  End If
+   '                   '  If Not IsNull($Result!fk_sex) Then
+   '                   '            patient.fk_sex = $Result!fk_sex
+   '                   '  End If
+   '                     '-----------------------------------------
+   '                     'now get all the comms for each patient
+   '                     'If an comms exists for this patient 
+   '                     'show preferred contact method in next column
+   '                     '-----------------------------------------
+   '                     ' patient.Comms = New collection
+   '                     ' $CommsResult = modContactsDBI.person_comms_get($Result!pk_person)
+   '                     ' If $CommsResult.Count Then 
+   '                     '           For i = 0 To $CommsResult.count - 1 
+   '                     '                     comm = New cComm
+   '                     '                     comm.pk = $CommsResult!pk
+   '                     '                     comm.comm_value = $CommsResult!value
+   '                     '                     comm.note = $CommsResult!note
+   '                     '                     comm.fk_type = $CommsResult!fk_type
+   '                     '                     comm.comm_type = $CommsResult!comm_type
+   '                     '                     comm.preferred_method = $CommsResult!preferred_method
+   '                     '                     comm.confidential = $CommsResult!confidential
+   '                    cv[strKey][8] = cv[strKey][8] & "    " & $CommsResult!comm_type & ": " & $CommsResult!value
+   '                     '                     patient.Comms.Add(comm, i)
+   '                     '                     $CommsResult.MoveNext
+   '                     '           Next 
+   '                     ' Else modparsemodparse
+   '                     '           ' comm = NEW cComm
+   '                     '           ' patient.Comms.Add(comm, 0)
+   '                     ' End If                            
+   '                     '-----------------------------------------
+   '                     'now get all the addresses for each patient
+   '                     'If an address exists for this patient 
+   '                     'If only one, show on same row as name
+   '                     'otherwise create a new row under the name, but show only address
+   '                     'FIXME ADD ADDRESS TO THE patient ARRAY
+   '                     '-----------------------------------------
+   '                     patient.Address = New collection
+   '                     $AddressResult = modContactsDBI.person_addresses_get($Result!pk_person)
+   '                     If $AddressResult.Count Then  
+   '                                'FIXME figure out how to address address array
+   '                                'to person object
+   '                                'Add the first row to the same row as name
+   '                                
+   '                                address = New cAddress
+   '                                address.pk = $AddressResult!pk
+   '                                address.fk_town = $AddressResult!fk_town
+   '                                address.country_code = $AddressResult!country_code
+   '                                address.fk_type = $AddressResult!fk_type
+   '                                address.geolocation = $AddressResult!geolocation
+   '                                address.head_office = $AddressResult!head_office
+   '                                address.postal_address = $AddressResult!postal_address
+   '                                address.postcode = $AddressResult!postcode
+   '                                address.preferred_address = $AddressResult!preferred_address
+   '                                address.state = $AddressResult!state
+   '                                address.street = $AddressResult!street
+   '                                address.suburb = $AddressResult!town
+   '                                patient.Address.Add(address, 0)
+   '                               cv[strKey][6] = $AddressResult!Street & " " & $AddressResult!Town & " " & $AddressResult!Postcode
+   '                                'If any more exist,add them to subsequent rows
+   '                                'making columns 0 to 3 empty strings
+   '                                 For icols = 1 To $AddressResult.Count - 1
+   '                                         $AddressResult.MoveNext    'move to next record
+   '                                         address = New cAddress
+   '                                         address.pk = $AddressResult!pk
+   '                                         address.fk_town = $AddressResult!fk_town
+   '                                         address.country_code = $AddressResult!country_code
+   '                                         address.fk_type = $AddressResult!fk_type
+   '                                         address.geolocation = $AddressResult!geolocation
+   '                                         address.head_office = $AddressResult!head_office
+   '                                         address.postal_address = $AddressResult!postal_address
+   '                                         address.postcode = $AddressResult!postcode
+   '                                         address.preferred_address = $AddressResult!preferred_address
+   '                                         address.state = $AddressResult!state
+   '                                         address.street = $AddressResult!street
+   '                                         address.suburb = $AddressResult!town
+   '                                         patient.Address.Add(address, icols)
+   '                                         'This row also has the patientspk as identifier
+   '                                         'though it contains no patient data
+   '                                         'later used to keep track of who belongs to what data
+   '                                         'in cvpatients_select()
+   '                                         Inc iAddressCount
+   '                                         'removed 10feb8pm, put back if dosn't work
+   '                                         strKey = Str$($Result!pk_person) & "_" & Str$(iAddressCount) 
+   '                                        
+   '                                          'fixme icols is ambiguous, should be row
+   '                                         'cv.Add(iAddressOnlyRow, 0)
+   '                                         cv.Add(strKey, 0)
+   '                                         cv[strKey][0] = "" 
+   '                                         cv[strKey][1] = ""
+   '                                         cv[strKey][2] = ""
+   '                                         cv[strKey][3] = ""
+   '                                         cv[strKey][4] = ""
+   '                                         cv[strKey][5] = ""
+   '                                         cv[strKey][6] = $AddressResult!Street & " " & $AddressResult!Town & " " & $AddressResult!Postcode
+   '                                          'INC iAddressOnlyRow
+   '                                    
+   '                                 Next
+   '                       End If
+   '             patients.Add(patient, Str$($Result!pk_person))
+   '   
+   '             End If        
+   '             Next 
+   '  End If
+   '    cv.Enabled = True                       'enable list for clicking on 
+   '    Return patients
+
 End
 
 Public Function Get_Loinc_Codes(system As String, Optional component As String = "", Optional limit As Integer = 50) As Collection
-  Dim sql As String
+
+   Dim sql As String
+
    sql = "Select * from coding.lu_loinc_abbrev WHERE system ILIKE $$%"
-  If system Then
-       sql &= system
-  End If
-  sql &= "%$$ "
-  If component Then
-    sql &= " AND component ILIKE $$%" & component & "%$$ LIMIT " & limit
-  End If 
-  Return modDBConnect.exec_query_collection(sql)
-  
-  
+   If system Then
+      sql &= system
+   End If
+   sql &= "%$$ "
+   If component Then
+      sql &= " AND component ILIKE $$%" & component & "%$$ LIMIT " & limit
+   End If 
+   Return modDBConnect.exec_query_collection(sql)
+   
 End
 
 Public Function Loinc_Systems_Get(Optional system As String) As Collection
-  Dim C As New Collection
-  Dim systems As New Collection 
-  Dim r As Result
-  R = modDBConnect.exec_query("Select distinct system from coding.lu_loinc_abbrev order by system")
- For Each R
-    c = New Collection 
-    c!system = R!system
-    systems.Add(c, systems.count)
-  Next
-  Return systems
-End
 
+   Dim C As New Collection
+   Dim systems As New Collection 
+   Dim r As Result
+
+   R = modDBConnect.exec_query("Select distinct system from coding.lu_loinc_abbrev order by system")
+   For Each R
+      c = New Collection 
+      c!system = R!system
+      systems.Add(c, systems.count)
+   Next
+   Return systems
+
+End

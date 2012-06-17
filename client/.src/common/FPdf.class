@@ -38,6 +38,8 @@ Private bExit As Boolean
 Private pdf_path As String 
 Private Embedded_In_Form As String
 Private currentconsult As CConsult
+Private currentSearchResult As Short = 0 'Contains the information which of the search results on this page is marked
+Private NumberOfSearchResults As Integer
 
 Public Sub Init(Optional cons As CConsult)
    
@@ -76,10 +78,10 @@ Public Sub Render_From_Another_Form()
    
    tvIndex.Clear()
    If hPdf.HasIndex Then 
-       tvIndex.Visible = True 
+      tvIndex.Visible = True 
       AddIndex(0, "")
    Else 
-       tvIndex.Visible = False 
+      tvIndex.Visible = False 
    End If
    
 End
@@ -178,26 +180,26 @@ Public Sub BtOpen_Click()
 End
 
 Public Function AddIndex(nItem As Integer, pItem As String) As Integer 
-  
-  Dim pR As String  
-  Dim iPage As Integer
-  
-  Do
-    iPage = 1
-    Try iPage = hPdf.Index.Data.Page
-    If Error Then Print Error.Text
-    pR = nItem & "-" & iPage
-    tvIndex.Add(nItem & "-" & iPage, hPdf.Index.Title, Null, pItem)
-    Inc nItem
-    If hPdf.Index.HasChildren Then 
-     hPdf.Index.MoveChild()
-     nItem = AddIndex(nItem + 1, pR)
-     hPdf.Index.MoveParent()
-    End If
-  Loop Until hPdf.Index.MoveNext()
-  
-  Return nItem
-  
+   
+   Dim pR As String  
+   Dim iPage As Integer
+   
+   Do
+      iPage = 1
+      Try iPage = hPdf.Index.Data.Page
+      If Error Then Print Error.Text
+      pR = nItem & "-" & iPage
+      tvIndex.Add(nItem & "-" & iPage, hPdf.Index.Title, Null, pItem)
+      Inc nItem
+      If hPdf.Index.HasChildren Then 
+         hPdf.Index.MoveChild()
+         nItem = AddIndex(nItem + 1, pR)
+         hPdf.Index.MoveParent()
+      End If
+   Loop Until hPdf.Index.MoveNext()
+   
+   Return nItem
+   
 End
 
 Public Sub tvIndex_Click()
@@ -208,7 +210,7 @@ Public Sub tvIndex_Click()
    If CurrentPage = 1 Then BtPrev.Enabled = False 
    If CurrentPage = hPdf.Count Then BtNext.Enabled = False 
    RenderPage() 
- 
+   
 End
 
 Public Sub RenderPage()
@@ -222,30 +224,29 @@ Public Sub RenderPage()
       Message.Error("Can't set zoom to " & CurrentZoom, "OK")
       Log.ErrorMsg("Tried to set PDF zoom to " & CurrentZoom)
    Endif
+   
    LblInfo.Text = " of" & " " & hPdf.Count  
    txtGotoPage.text = CurrentPage
    ViewPort.Scroll(0, 0)
    hPic = hPdf[CurrentPage].Image.Picture
    
-   If TxtFind.Text <> "" Then 
-      
+   If currentSearchResult > 0 Then        ' resets the mark on the current search result
       hPdf[CurrentPage].Find(TxtFind.Text)
       Draw.Begin(hPic)
-      Draw.FillColor = Color.Red 
-      Draw.FillStyle = Fill.Dense50
-      For Bc = 0 To hPdf[CurrentPage].Result.Count - 1
-         Draw.Rect(hPdf[CurrentPage].Result[Bc].Left, hPdf[CurrentPage].Result[Bc].Top, hPdf[CurrentPage].Result[Bc].Width, hPdf[CurrentPage].Result[Bc].Height)
-      Next 
+      Draw.FillColor = Color.Red
+      Draw.FillStyle = Fill.Dense12
+      Draw.Rect(hPdf[CurrentPage].Result[currentSearchResult - 1].Left, hPdf[CurrentPage].Result[currentSearchResult - 1].Top, hPdf[CurrentPage].Result[currentSearchResult - 1].Width, hPdf[CurrentPage].Result[currentSearchResult - 1].Height)
       Draw.End()
-      
-   End If
+      PBox.Picture = hPic 
+   Endif
    
    PBox.Picture = hPic 
    PBox.Resize(hPdf[CurrentPage].Width, hPdf[CurrentPage].Height)
    Form_Resize()
    If CurrentPage = hPdf.Count Then BtPrev.SetFocus()
- Catch
+Catch
    Message.Info("An error occurred whilst trying to view the document.\n\nIf this persists please report this problem.")
+   
 End
 
 Public Sub Form_Resize()
@@ -264,6 +265,7 @@ End
 Public Sub BtNext_Click()
    
    Inc CurrentPage
+   currentSearchResult = 0
    If CurrentPage = hPdf.Count Then BtNext.Enabled = False 
    BtPrev.Enabled = True 
    RenderPage()
@@ -273,6 +275,7 @@ End
 Public Sub BtPrev_Click()
    
    Dec CurrentPage
+   currentSearchResult = 0
    If CurrentPage = 1 Then BtPrev.Enabled = False 
    BtNext.Enabled = True 
    RenderPage()
@@ -339,17 +342,20 @@ End
 '    RenderPage()
 '    
 ' End
-
-Public Sub TxtFind_Change()
-   
-   If Bexit Then Return 
-   RenderPage()
-   
-End
+' 
+'  Public Sub TxtFind_Change()
+'    
+'    If Bexit Then Return 
+'    RenderPage()
+'    
+' End
 
 Public Sub txtGotoPage_Change()
    
    If Bexit Or Last.text = "" Then Return
+   BtSearchNext.Enabled = False
+   BtSearchPrev.Enabled = False
+   currentSearchResult = 0
    If Val(Last.text) > hPdf.Count Or Val(Last.text) = hPdf.Count Then 
       bExit = True
       txtGotoPage.text = hPdf.Count
@@ -465,5 +471,176 @@ End
 Public Sub tbSave_Click()
    
    Save_PDF()
+   
+End
+
+Public Sub TxtFind_KeyPress()
+   
+   If Key.Code = "16777220" Then
+      If Bexit Then Return 
+      If TxtFind.Text <> "" Then 
+         If currentSearchResult > 0 Then
+            If currentSearchResult = NumberOfSearchResults Then      
+               If currentpage = hPdf.Count Then
+                  CurrentPage = 1
+               Else
+                  CurrentPage = CurrentPage + 1
+               Endif
+               FindNext()
+            Else
+               currentSearchResult = currentSearchResult + 1
+               RenderPage()
+            Endif
+         Else
+            FindNext()
+         Endif
+         
+      End If
+   Endif
+
+End
+
+Private Sub FindNext()
+   
+   Dim hPic As Picture 
+   Dim Bc As Integer 
+   Dim currentSearchPage As Short = CurrentPage ' contains the information on which page the search funktion searched the last time
+   Dim LastPageToSearch As Short                ' contains the information which page is the last page for the find function
+   
+   If CurrentPage = 1 Then
+      LastPageToSearch = 1
+   Else
+      LastPageToSearch = CurrentPage 
+      
+   Endif
+   
+   currentSearchResult = 0
+   BtSearchNext.Enabled = False
+   BtSearchPrev.Enabled = False
+   LbSearchInfo.Visible = True
+   Repeat 
+      hPic = hPdf[currentSearchPage].Image.Picture
+      hPdf[currentSearchPage].Find(TxtFind.Text, False)
+      
+      If hPdf[currentSearchPage].Result.Count > 0 Then
+         CurrentPage = currentsearchPage 
+         currentSearchResult = 1
+      Else
+         If currentSearchPage = hPdf.Count Then 
+            currentSearchPage = 1
+         Else
+            currentSearchPage = currentSearchPage + 1
+         Endif
+      Endif
+   Until currentSearchResult <> 0 Or currentSearchPage = LastPageToSearch 
+   If hPdf[currentSearchPage].Result.Count > 0 Then
+      CurrentPage = currentSearchPage
+      
+      txtGotoPage.text = CurrentPage
+      currentSearchResult = 1
+      NumberOfSearchResults = hPdf[currentSearchPage].Result.Count
+      BtSearchNext.Enabled = True
+      BtSearchPrev.Enabled = True
+      
+      RenderPage()
+      
+   Else
+      TxtFind.Background = Color.Lighter(16711680)   '16711680 = Red
+      RenderPage()  
+      
+   Endif
+   
+Catch
+   Message.Info("An error occurred whilst trying to view the document.\n\nIf this persists please report this problem.")
+   
+End
+
+Private Sub FindPrevious()
+   
+   Dim hPic As Picture 
+   Dim Bc As Integer 
+   Dim currentSearchPage As Short = CurrentPage ' contains the information on which page the search funktion searched the last time
+   Dim LastPageToSearch As Short                ' contains the information which page is the last page for the find function
+   
+   If CurrentPage = hPdf.Count Then
+      LastPageToSearch = 0
+   Else
+      LastPageToSearch = CurrentPage 
+   Endif
+   
+   currentSearchResult = 0
+   BtSearchNext.Enabled = False
+   BtSearchPrev.Enabled = False
+   
+   Repeat 
+      hPic = hPdf[currentSearchPage].Image.Picture
+      hPdf[currentSearchPage].Find(TxtFind.Text, False)
+      If hPdf[currentSearchPage].Result.Count > 0 Then
+         CurrentPage = currentsearchPage 
+         currentSearchResult = 1
+      Else
+         If currentSearchPage = 1 Then 
+            currentSearchPage = hPdf.Count
+         Else
+            currentSearchPage = currentSearchPage - 1
+         Endif
+      Endif
+   Until currentSearchResult <> 0 Or currentSearchPage = LastPageToSearch 
+   
+   If hPdf[currentSearchPage].Result.Count > 0 Then
+      CurrentPage = currentSearchPage
+      
+      txtGotoPage.text = CurrentPage
+      currentSearchResult = 1
+      currentSearchResult = hPdf[currentSearchPage].Result.Count
+      NumberOfSearchResults = hPdf[currentSearchPage].Result.Count
+      BtSearchNext.Enabled = True
+      BtSearchPrev.Enabled = True
+      RenderPage()
+   Endif
+   
+Catch
+   Message.Info("An error occurred whilst trying to view the document.\n\nIf this persists please report this problem.")
+   
+End
+
+Public Sub BtSearchNext_Click()
+   
+   If currentSearchResult = NumberOfSearchResults Then      
+      If currentpage = hPdf.Count Then
+         CurrentPage = 1
+      Else
+         CurrentPage = CurrentPage + 1
+      Endif
+      FindNext()
+   Else
+      currentSearchResult = currentSearchResult + 1
+      RenderPage()
+   Endif
+   
+End
+
+Public Sub BtSearchPrev_Click()
+   
+   If currentSearchResult = 1 Then
+      If currentpage = 1 Then
+         currentpage = hPdf.Count
+      Else
+         CurrentPage = CurrentPage - 1
+      Endif
+      FindPrevious()
+   Else
+      currentSearchResult = currentSearchResult - 1
+      RenderPage()
+   Endif
+   
+End
+
+Public Sub TxtFind_Change()
+   
+   If TxtFind.Background = Color.Lighter(16711680) Then
+      TxtFind.Background = Color.White
+      RenderPage()
+   Endif
    
 End

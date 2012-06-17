@@ -1,5 +1,5 @@
 -- these views may or may not exist in your database, don't fret if if error messages you
-DROP VIEW research.vwdiabetes_patients_with_hba1c;
+DROP VIEW research.vwdiabetes_patients_with_hba1c cascade;
 
 CREATE OR REPLACE VIEW research.vwdiabetes_patients_with_hba1c AS 
  SELECT DISTINCT vwgraphableobservations.pk_observations, vwgraphableobservations.observation_date, 
@@ -52,7 +52,6 @@ data that pk_view = fk_patient
 ';
 
 
-DROP VIEW research.vwdiabeticsegfr;
 
 CREATE OR REPLACE VIEW research.vwdiabeticsegfr AS 
  SELECT vwdiabetes_patients_with_hba1c.fk_patient AS pk_view, 

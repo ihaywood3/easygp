@@ -14,13 +14,70 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+' 
+' logic
+' 1) Search Ucase main
+' 2) Fails Ucase synonym
+' 3) Fails lower case main
+' 4) fails lower cas synonym
+'--------------------------------------
+' PHARMACOLOGY
+'  - synonym  PHARMACOKINETICS
+' CLINICAL TRIALS
+' -----------------------------------
+' 
+' INDICATIONS
+' CONTRAINDICATIONS
+' PRECAUTIONS
+' DOSE AND ADMINISTRATION
+' - synonym = DOSAGE And ADMINISTRATION
+' ADVERSE EFFECTS 
+' - synonym ADVERSE REACTIONS
+' INTERACTIONS
+' - some comes as lower case 
+' - synonym INTERACTIONS WITH OTHER MEDICINES
+' OVERDOSAGE
+' POISONS SCHEDULE
+'  - poison schedule or
+'  - poinsons schedule of the medicine
+' - 'poisons schedule of tPrivate pic_pdf As Picture = Picture["icons/20/pdf2020.png"]
+' PRESENTATION AND STORAGE
+' -------------------------------------
+' USE IN PREGNANCY
+' USE IN LACTATION
+' USE IN CHILDREN
+' - synonym paediatric use
+' USE IN ADOLESCENTS
+' USE IN RENAL IMPAIRMENT
+' - keywords 'impaired renal function'
+' - or use in renal and hepatic impairment
+' USE IN LIVER IMPAIRMENT
+' USE IN THE ELDERLY
+' USE IN DIABETES
+' USE IN PRE-MENOPAUSAL WOMEN
+' -----------------------------------------
+
+' REFERENCES
+' NAME AND ADRESS OF (THE) SPONSOR (AKA MANUFACTURER)
+' - 
+' - manufacturer DOSE AND ADMINISTRATION
+' - name and address of sponsor (most common)
+' - name and address of the sponsor
+' - manufactured by)
+
 '----------------------------------------------------------------------
 ' PURPOSE      A module to view extended Product information
 '----------------------------------------------------------------------
 Private Form_PDF As FPdf
 Private Drugs_Dir As String
+Private Product_Information_Dir As String
 Private picPDF As Picture
 Private picHMTL As Picture
+Private timer_count As Integer
+Private Drugs As Collection
+Private pic_pdf As Picture = Picture["icons/20/pdf2020.png"]
+Private empty_2020png As Picture = Picture["icons/20/empty2020.png"]
+Private Synonyms As String[]
 
 Public Sub Form_Open()
    
@@ -34,29 +91,42 @@ Public Sub Init()
    Dim sfile As String 
    Dim picTag As Picture
    
+   synonyms = New String[20]
+   synonyms[6] = "DOSAGE AND ADMINISTRATION"
+   
    With Form_PDF = New FPdf(VBox_PDF)
       .Visible = False  
    End With
    Settings_Load()
    picPDF = Picture["icons/20/pdf2020.png"]
    picHMTL = Picture["icon:/22/html"]
-   Drugs_Dir = User.home &/ "easygp/drug_product_information/"
    
-   For Each sFile In Dir(Drugs_Dir, "*")
-      If InStr(Lower(Sfile), ".pdf") Then
-         pictag = picPDF   
-      Else
-         picTag = picHMTL
-      End If
-      cvwDrugs.Add(x, 0)
-      cvwDrugs[x][0] = sFile
-      Inc x
-   Next 
+   If Not modDBConnect.IsAdmin Then 
+      Product_Information_Dir = modAdminDBI.Config_Get("product_information_directory", "", Null, modDBConnect.currentUser!fk_clinic)
+   Endif
    
-Catch
-   Message.info("Sorry, there is no drug data available on this computer.\n\nPlease discuss this with the system adminstrator") 
-   Me.Close()  
+   listview1.Add(0, "Pharmacology")
+   listview1.Add(1, "Clinical Trials")
+   listview1.Add(2, "--------------")
+   listview1.Add(3, "Indications")
+   listview1.Add(4, "Contraindications") 
+   listview1.Add(5, "Precautions")
+   listview1.Add(6, "Dose & Administration")
+   listview1.Add(7, "Contraindications") 
+   listview1.Add(8, "Precautions")
+   
+End
 
+Public Sub timer1_Timer()
+   '------------------------------------------------------------------------------
+   'If the timer is running, user is typing in either the brand or generic textbox
+   '------------------------------------------------------------------------------   
+   
+   Inc timer_count
+   If timer_count > 3 Then
+      Reload()
+   Endif
+   
 End
 
 Public Sub Settings_Save()
@@ -77,9 +147,48 @@ Public Sub cvwDrugs_DblClick()
    '----------------------------------------
    
    cvwDrugs.MoveCurrent
-   Form_PDF.Load_PDF(Drugs_dir &/ cvwDrugs.Item.Text)
+   Form_PDF.Load_PDF(Product_Information_Dir &/ drugs[cvwDrugs.Item.key]!product_information_filename)
    cvwDrugs.Visible = False   
    Form_PDF.Visible = True 
+   
+End
+
+Public Sub txtSearch_KeyPress()
+   '---------------------------------------------------------------------------
+   'User searching for existing drugs ?wants to scroll down onto the drugs list
+   '---------------------------------------------------------------------------
+   
+   If key.code = key.down Then
+      If cvwDrugs.count Then
+         cvwDrugs.MoveFirst
+         cvwdrugs.SetFocus
+         
+      Endif
+   Endif
+   
+End
+
+Public Sub txtSearch_KeyRelease()
+   '-----------------------------------------------
+   'Show all existing drugs for the txtSearch text
+   '-----------------------------------------------  
+   
+   Timer1.Enabled = True
+   timer_count = 0
+   
+End
+
+Public Sub txtSearch_GotFocus_old()
+   '------------------------------------------------------------------------------------------
+   'User has clicked on the textbox to search for drug to view its details, i.e existing drugs
+   '------------------------------------------------------------------------------------------   
+   ' EditArea_Clear()
+   ' EditArea_TextBoxes_SetReadOnly_Status(True)
+   
+   ' With lblBrand
+   '    .foreground = Color.Black
+   '    .text = "Brand"
+   ' End With
    
 End
 
@@ -87,6 +196,61 @@ Public Sub txtSearch_GotFocus()
    
    Form_PDF.Visible = False   
    cvwDrugs.Visible = True 
+   
+End
+
+Public Sub Reload()
+   
+   Inc Application.Busy
+   Timer1.Stop
+   ' lblDrugCount.text = ""
+   cvwDrugs.Clear()
+   
+   Wait                       'force this label to clear
+   If Trim(txtSearch.text) <> "" Then
+      drugs = modPrescribingDBI.Brands_Get(Trim(txtSearch.text), Null, 100) 'FIXME RENAME
+      Drugs_Fill_List(drugs)
+   End If    
+   Dec Application.Busy
+   
+End
+
+Public Sub Drugs_Fill_List(drugs As Collection)
+   
+   Dim x As Integer
+   Dim brand As Collection
+   Dim iDrugcount As Integer
+   
+   cvwDrugs.Clear()
+   For Each brand In drugs
+      If IsNull(brand!product_information_filename) Then
+         cvwDrugs.Add(brand!pk_view, 0, empty_2020png)
+      Else
+         cvwDrugs.Add(brand!pk_view, 0, pic_pdf)
+      End If   
+      cvwDrugs_Showbrand_details(brand)
+      cvwDrugs[brand!pk_view][1] = brand!generic
+      cvwDrugs[brand!pk_view][2] = brand!strength & " " & brand!form
+      Inc iDrugcount
+      
+   Next
+   cvwDRugs.Columns[0].Width = cvwDrugs.width / 2  'FIXME dosn't work ?why
+   ' lblDrugCount.text = Str(iDrugcount) & " drugs found for current search criteria"
+   
+End
+
+Public Sub cvwDrugs_Showbrand_details(brand As Collection)
+   
+   cvwDrugs[brand!pk_view][0] = brand!brand
+   If brand!form <> "other" Then
+      cvwDrugs[brand!pk_view][0] &= " (" & brand!form
+      '  Endif
+      If Not IsNull(brand!strength) Then
+         cvwDrugs[brand!pk_view][0] &= " - " & brand!strength & ")"
+      Else
+         cvwDrugs[brand!pk_view][0] &= ")"
+      End If   
+   End If   
    
 End
 
@@ -102,4 +266,16 @@ Public Sub toolbuttons_Click()
       End Select
    End If   
    
+End
+
+Public Sub ListView1_Click()
+
+   Form_PDF.JumpTo(listview1.Item.text, 1, synonyms[listview1.Item.key])
+
+End
+
+Public Sub cvwDrugs_Click()
+
+   
+
 End

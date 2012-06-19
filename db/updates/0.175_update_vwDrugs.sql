@@ -1,5 +1,7 @@
 -- someone or somehow or some gremlin in SVN removed the display fields for company and ATCname
 
+drop view drugs.vwDrugs;
+
 CREATE OR REPLACE VIEW drugs.vwdrugs AS 
  SELECT (brand.pk || COALESCE(vwpbs.pbscode, ''::character varying)::text) || COALESCE(vwpbs.restriction_code, ''::character varying)::text AS pk_view, 
  brand.fk_product, brand.fk_company, brand.brand, brand.pk AS fk_brand, brand.price, brand.from_pbs,

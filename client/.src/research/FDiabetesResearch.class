@@ -53,6 +53,19 @@ Private Const cDisplaytype_Cholesterol_Not_At_Target As Integer = 1
 Private Const cDisplaytype_Cholesterol_Overdue As Integer = 2
 Private Const cdisplayType_EGFR As Integer = 3
 Private bTempory_Table_Exists As Boolean
+'Same order as in FDACC display
+Private iGridRow_DACC As Integer = 0
+Private iGridRow_Hba1c As Integer = 1
+Private iGridRow_Eyes As Integer = 2
+Private iGridRow_BP As Integer = 3
+Private iGridRow_Weight As Integer = 4
+Private iGridRow_Cholesterol As Integer = 5
+Private iGridRow_Microalbumin As Integer = 6
+Private iGridRow_RenalFunction As Integer = 7
+Private cNotDone As Integer = 0
+Private cOverdue As Integer = 1
+Private cAbnormal As Integer = 2
+Private cInDate As Integer = 3
 
 Public Sub Init()
    
@@ -143,6 +156,7 @@ Public Sub Init()
    bExit = False 
    lblMeasure.text = "Last Microalbumin   "  
    modEditAreaHelpers.Resize_labels(VBox_LastMeasurements, lblMeasure)
+   Gridview1_Init()
    
 End
 
@@ -204,54 +218,69 @@ Public Sub Reload()
    'Have checked the numbers, the ranges are ok
    '------------------------------------------------------------------------------------   
    
-   Dim RDacc As Result
-   Dim bDaccOverdue As Boolean
-   Dim Latex As String
-   Dim date_last_dacc As Date
-   Dim date_last_egfr As Date
-   Dim seGFR As String  'eg > 90
-   Dim vEgFR As Variant    'don't make me an integer, must be able to be null
-   Dim eGFR_Abnormal_count As Integer
-   Dim beGFR_Abnormal As Boolean
-   Dim eGFR_Reference_Range As String
-   Dim bEgfr_Not_recorded As Boolean
-   
+   Dim sql As String
+   Dim data As Collection
+   '------------------------------------ 
+   Dim num_microalbumin_abnormal As Integer
+   Dim num_microalbumin_in_date As Integer    
    Dim num_microalbumin_overdue As Integer
-   Dim bMicroalbumin_overdue As Boolean
    Dim num_microalbumin_not_recorded As Integer
+   Dim bMicroalbumin_overdue As Boolean
    Dim LatestMicroalbumins As Collection
    Dim bmicroalbumin_not_recorded As Boolean 'per patient
    Dim bMicroalbumin_abnormal As Boolean     'per patient
    Dim date_last_microalbumin As Date
    Dim microalbumin_reference_range As String   
    Dim vMicroalbumin As Variant
-   Dim num_microalbumin_abnormal As Integer
-   
+   '------------------------------------  
    Dim num_had_dacc_but_overdue As Integer
    Dim num_without_dacc As Integer
    Dim num_had_dacc_in_date As Integer
    Dim num_hba1c_older_than_6months As Integer
+   Dim num_hba1c_in_date As Integer
+   Dim RDacc As Result
+   Dim bDaccOverdue As Boolean
+   Dim Latex As String
+   Dim date_last_dacc As Date
+   '------------------------------------  
+   Dim date_last_egfr As Date
+   Dim seGFR As String  'eg > 90
+   Dim vEgFR As Variant    'don't make me an integer, must be able to be null
+   Dim beGFR_Abnormal As Boolean
+   Dim eGFR_Reference_Range As String
+   Dim bEgfr_Not_recorded As Boolean
    Dim num_egfr_not_recorded As Integer
+   Dim num_egfr_abnormal As Integer
+   Dim num_egfr_in_date As Integer
+   Dim num_egfr_overdue As Integer
+   '------------------------------------ 
    Dim num_eye_review_not_recorded As Integer
    Dim num_eye_review_Overdue As Integer
-   Dim num_bp_not_recorded As Integer
-   Dim num_weight_not_recorded As Integer
-   Dim sql As String
+   Dim num_eye_review_in_date As Integer
    Dim eyereview As Result
    Dim eyedocuments As Collection 
    Dim eyereview_date As Date
    Dim beyereview_overdue As Boolean
    Dim beyereview_not_recorded As Boolean
+   '------------------------------------ 
    Dim LatestBPs As Collection
    Dim bBP_Overdue As Boolean
    Dim bBP_Not_Recorded As Boolean
    Dim Last_BP_Date As Date
    Dim num_bp_overdue As Integer
+   Dim num_bp_in_date As Integer
+   Dim num_bp_not_recorded As Integer
+   Dim num_bp_abnormal As Integer
+   '------------------------------------ 
    Dim LatestWeights As Collection
    Dim bweight_overdue As Boolean
    Dim bweight_not_recorded As Boolean
    Dim last_weight_date As Date
    Dim num_weight_overdue As Integer
+   Dim num_weight_not_recorded As Integer
+   Dim num_weight_abnormal As Integer 'abnormal BMI
+   Dim num_weight_in_date As Integer
+   '------------------------------------ 
    Dim LatestLDLCholesterols As Collection
    Dim LDlCholesterol As Variant
    Dim bLDLcholesterol_overdue As Boolean
@@ -260,10 +289,10 @@ Public Sub Reload()
    Dim LDLCholesterol_Reference_Range As String
    Dim last_ldlcholesterol_date As Date
    Dim num_ldlcholesterol_overdue As Integer
-   Dim num_ldlcholesterol_never_measured As Integer
+   Dim num_ldlcholesterol_not_recorded As Integer
    Dim num_ldlcholesterol_not_at_target As Integer 
+   Dim num_ldlcholesterol_in_date As Integer
    Dim ldl_upper_range As Variant
-   Dim data As Collection
    
    Inc Application.Busy
    Gui_Clear()
@@ -291,14 +320,18 @@ Public Sub Reload()
    LatestMicroAlbumins = modResearchDBI.Patients_Microalbumins_Get()
    For Each patient In patients  
       If Not Patients_Not_Diabetic.Exist(patient!fk_patient) Then 
+         '------------------------------------------------------------------------
+         'Increment the counts for the hba1c ranges, work out if hba1c out of date
+         '------------------------------------------------------------------------
          If patient!value_numeric <= 5.9 Then Inc LessThan6
          If patient!value_numeric >= 6 And patient!value_numeric <= 6.9 Then Inc Between6and7
          If patient!value_numeric >= 7.0 And patient!value_numeric <= 7.4 Then Inc Between7and7point5
          If patient!value_numeric >= 7.5 And patient!value_numeric <= 7.9 Then Inc Between7point5and8
          If patient!value_numeric >= 8.0 Then Inc Over8
-         
          If DateDiff(patient!observation_date, Now(), gb.Month) > 6 Then
             Inc num_hba1c_older_than_6months 
+         Else
+            Inc num_hba1c_in_date
          Endif
          '---------------------------------
          'get the last DACC for the patient
@@ -331,7 +364,6 @@ Public Sub Reload()
          vEgFR = Null
          If Not IsNull(egFRs[patient!fk_patient]) Then
             If Not IsNull(egFRs[patient!fk_patient]!value_numeric)
-               ' seGFR = Str(egFRs[patient!fk_patient]!value_numeric) & egFRs[patient!fk_patient]!qualifier
                seGFR = Str(egFRs[patient!fk_patient]!value_numeric) & egFRs[patient!fk_patient]!qualifier
                vEgFR = egFRs[patient!fk_patient]!value_numeric
                date_last_egfr = egFRs[patient!fk_patient]!observation_date
@@ -341,9 +373,14 @@ Public Sub Reload()
                If Not IsNull(egFRs[patient!fk_patient]!abnormal) Then
                   If egFRs[patient!fk_patient]!abnormal <> "N" Then 
                      beGFR_Abnormal = True
-                     Inc eGFR_Abnormal_count
+                     Inc num_egfr_abnormal
                   End If   
                Endif
+               If Not (DateDiff(Now, DateAdd(date_last_egfr, gb.Year, 1), gb.day) <= 0) Then 'was it over  a year ago?
+                  Inc num_egfr_in_date
+               Else
+                  Inc num_egfr_overdue
+               End If   
             Else
                bEgfr_Not_recorded = True 
                beGFR_Abnormal = False   
@@ -370,11 +407,12 @@ Public Sub Reload()
                microalbumin_reference_range = Replace(microalbumin_reference_range, ")", "") 'some cretins do, HAPS I think
                If Not (DateDiff(Now, DateAdd(date_last_microalbumin, gb.Year, 1), gb.day) <= 0) Then 'was it over  a year ago?
                   bMicroalbumin_overdue = False                                                     'microalbumin date < 1yr, not overdue
+                  Inc num_microalbumin_in_date
                Else
                   bMicroalbumin_overdue = True                                                      'microalbumin > 1 year = ovedue
                   Inc num_microalbumin_overdue
                End If 
-                If Not IsNull(Latestmicroalbumins[patient!fk_patient]!abnormal) Then     'but if is abnormal
+               If Not IsNull(Latestmicroalbumins[patient!fk_patient]!abnormal) Then     'but if is abnormal
                   If Latestmicroalbumins[patient!fk_patient]!abnormal <> "N" Then       'some vendors of hl7 put a normal flag in this field
                      bMicroalbumin_abnormal = True
                      Inc num_microalbumin_abnormal
@@ -401,6 +439,7 @@ Public Sub Reload()
             last_ldlcholesterol_date = LatestLDLCholesterols[patient!fk_patient]!observation_date
             If Not (DateDiff(Now, DateAdd(last_ldlcholesterol_date, gb.Year, 1), gb.day) <= 0) Then 'was it over  a year ago?
                bLDLcholesterol_overdue = False                                                     'cholesterol date < 1yr, not overdue
+               Inc num_ldlcholesterol_in_date
             Else
                bLDLcholesterol_overdue = True                                                      'cholesterol > 1 year = ovedue
                Inc num_ldlcholesterol_overdue
@@ -436,7 +475,7 @@ Public Sub Reload()
             Endif
          Else                                                                                        'never had ldl cholesterol measured.
             Inc num_ldlcholesterol_overdue                                                        
-            Inc num_ldlcholesterol_never_measured
+            Inc num_ldlcholesterol_not_recorded
          Endif
          '---------------------------------------
          'get the last eye review for the patient
@@ -446,6 +485,7 @@ Public Sub Reload()
             beyereview_not_recorded = False  
             If Not (DateDiff(Now, DateAdd(eyedocuments[patient!fk_patient]!date_created, gb.Year, 2), gb.day) <= 0) Then
                beyereview_overdue = False
+               Inc num_eye_review_in_date
             Else
                Inc num_eye_review_Overdue
                beyereview_overdue = True
@@ -463,6 +503,7 @@ Public Sub Reload()
             bBP_Not_Recorded = False 
             If Not (DateDiff(Now, DateAdd(LatestBPs[patient!fk_patient]!consult_date, gb.Month, 6), gb.day) <= 0) Then
                bBP_Overdue = False
+               Inc num_bp_in_date
             Else
                Inc num_bp_overdue
                bBP_Overdue = True
@@ -480,6 +521,7 @@ Public Sub Reload()
             bweight_not_recorded = False
             If Not (DateDiff(Now, DateAdd(LatestWeights[patient!fk_patient]!consult_date, gb.Month, 6), gb.day) <= 0) Then
                bweight_overdue = False
+               Inc num_weight_in_date
             Else
                Inc num_weight_overdue
                bweight_overdue = True
@@ -501,7 +543,7 @@ Public Sub Reload()
          data!age_numeric = patient!age_numeric
          data!street1 = patient!street1
          data!street2 = patient!street2
-         data!suburb = patient!town
+         data!town = patient!town
          data!postcode = patient!postcode
          data!observation_date = patient!observation_date
          data!value_numeric = patient!value_numeric
@@ -538,32 +580,75 @@ Public Sub Reload()
       End If   
    Next
    modDBConnect.CommitTrans()
-   
+   '------------------------------------------------
+   'Now, reload the genuine diabetics for future use
+   'put up the headings and fill the statistics grid
+   'iTotalDataSetcount
+   '------------------------------------------------
    patients = modDBConnect.exec_query_collection("Select * from patients_latest_hba1c ORDER BY surname asc")
    iTotalDataSetcount = patients.Count
-   cvwPatients.Columns[1].text = Str(iTotalDataSetcount) & " patients were found" 
-   lblNeverHadDacc.text = Str(num_without_dacc) & " patients (" & As_Percent(num_without_dacc) & ") have no DACC recorded "
-   lblEyeReviewOverdue.text = Str(num_eye_review_Overdue) & " patients (" & As_Percent(num_eye_review_Overdue) & ") are overdue an eye examination"
-   lblEyesNotRecorded.text = Str(num_eye_review_not_recorded) & " patients (" & As_Percent(num_eye_review_not_recorded) & ") have no record of an eye examination"
-   lblDACCOverdue.text = Str(num_had_dacc_but_overdue) & " patients (" & As_Percent(num_had_dacc_but_overdue) & ") have had a previous DACC but are overdue"
-   lblDACCCurrent.text = Str(num_had_dacc_in_date) & " patients (" & Str(num_had_dacc_in_date) & "%) have completed a DACC In the Last 12 months"
-   lblHBa1cOutOfDate.text = Str(num_hba1c_older_than_6months) & " patients (" & As_Percent(num_hba1c_older_than_6months) & ") last hba1c is older than 6 months"
-   lblRenalFunctionNotRecorded.text = Str(num_egfr_not_recorded) & " patients (" & As_Percent(num_egfr_not_recorded) & ") have no renal function recorded"
-   lblImpairedRenalFunction.text = Str(eGFR_Abnormal_count) & " patients (" & As_Percent(eGFR_Abnormal_count) & " have impaired renal function"
-   lblBPOverdue.text = Str(num_bp_overdue) & " patients (" & As_Percent(num_bp_overdue) & ") have not had BP measured in last 6 months"
-   lblBPNotRecorded.text = Str(num_bp_not_recorded) & " patients (" & As_Percent(num_bp_not_recorded) & ") have not had BP recorded at all"
-   lblWeightOverdue.text = Str(num_weight_overdue) & " patients (" & As_Percent(num_weight_overdue) & ") have not had weight measured in last 6 months"
-   lblWeightNotRecorded.text = Str(num_weight_not_recorded) & " patients (" & As_Percent(num_weight_not_recorded) & ") have no record of a weight measurement"
-   lblCholesterolNeverMeasured.text = Str(num_ldlcholesterol_never_measured) & " patients (" & As_Percent(num_ldlcholesterol_never_measured) & ") have no ldl cholesterol result" 
-   lblCholesterolOverdue.text = Str(num_ldlcholesterol_overdue) & " patients (" & As_Percent(num_ldlcholesterol_overdue) & ") are overdue a cholesterol test" 
-   lblCholesterolNotAtTarget.text = Str(num_ldlcholesterol_not_at_target) & " patients (" & As_Percent(num_ldlcholesterol_not_at_target) & ") are above target ldl cholesterol levels"
-   tbMicroalbumin_never.text = "Missing: " & Str(num_microalbumin_not_recorded) & " (" & As_Percent(num_microalbumin_not_recorded) & ")" 
-   tbMicroalbumin_indate.text = "In Date: " & Str(Latestmicroalbumins.count - num_microalbumin_overdue) & " (" & As_Percent(Latestmicroalbumins.count - num_microalbumin_overdue) & ")"
-   tbMicroalbumin_overdue.text = "Overdue: " & Str(num_microalbumin_overdue) & " (" & As_Percent(num_microalbumin_overdue) & ")"
-   tbMicroalbumin_abnormal.text = "Abnormal: " & Str(num_microalbumin_abnormal) & " " & As_Percent(num_microalbumin_overdue) & ")"
-   Make_Pie()
    lblPatientsListHeading.Text = "Listing of all Patients" 
-   lblPieGraphHeading.text = "Statistics For Your Diabetic Patients (n=" & Str(iTotalDataSetcount) & ")"
+   tlPieLabel.text = "<P><B> (n=" & Str(iTotalDataSetcount) & ")</B></P>"
+   cvwPatients.Columns[1].text = Str(iTotalDataSetcount) & " patients were found" 
+   '-----------
+   'Cholesterol
+   '-----------
+   Gridview1[iGridRow_Cholesterol, cNotDone].text = Str(num_ldlcholesterol_not_recorded) & " (" & As_Percent(num_ldlcholesterol_not_recorded) & ")"
+   Gridview1[iGridRow_Cholesterol, cOverdue].text = Str(num_ldlcholesterol_overdue) & " (" & As_Percent(num_ldlcholesterol_overdue) & ")"
+   Gridview1[iGridRow_Cholesterol, cAbnormal].text = Str(num_ldlcholesterol_not_at_target) & " (" & As_Percent(num_ldlcholesterol_not_at_target) & ")"
+   Gridview1[iGridRow_Cholesterol, cInDate].text = Str(num_ldlcholesterol_in_date) & " (" & As_Percent(num_ldlcholesterol_in_date) & ")"
+   '--------------
+   'Cycle of Care    
+   '------------
+   Gridview1[iGridRow_DACC, cNotDone].text = Str(num_without_dacc) & " (" & As_Percent(num_without_dacc) & ")"
+   Gridview1[iGridRow_DACC, cOverdue].text = Str(num_had_dacc_but_overdue) & " (" & As_Percent(num_had_dacc_but_overdue) & ")"
+   Gridview1[iGridRow_DACC, cInDate].text = Str(num_had_dacc_in_date) & " (" & As_Percent(num_had_dacc_in_date) & ")"
+   Gridview1[iGridRow_DACC, cAbnormal].text = "N/A"
+   '----------
+   'Eye Review 
+   '----------
+   Gridview1[iGridRow_Eyes, cNotDone].text = Str(num_eye_review_not_recorded) & " (" & As_Percent(num_eye_review_not_recorded) & ")"
+   Gridview1[iGridRow_Eyes, cOverdue].text = Str(num_eye_review_Overdue) & " (" & As_Percent(num_eye_review_Overdue) & ")"
+   Gridview1[iGridRow_Eyes, cInDate].text = Str(num_eye_review_in_date) & " (" & As_Percent(num_eye_review_in_date) & ")"
+   '---------------
+   'Blood Pressure   
+   '---------------
+   Gridview1[iGridRow_BP, cNotDone].text = Str(num_bp_not_recorded) & " (" & As_Percent(num_bp_not_recorded) & ")"
+   Gridview1[iGridRow_BP, cOverdue].text = Str(num_bp_overdue) & " (" & As_Percent(num_bp_overdue) & ")"
+   Gridview1[iGridRow_BP, cInDate].text = Str(num_bp_in_date) & " (" & As_Percent(num_bp_in_date) & ")"
+   Gridview1[iGridRow_BP, cAbnormal].text = Str(num_bp_abnormal) & " (" & As_Percent(num_bp_abnormal) & ")"
+   '------------------------------------------------
+   'Hba1c, arbitrarily selecting good control as < 7
+   '------------------------------------------------
+   Gridview1[iGridRow_Hba1c, cNotDone].text = Str(0) & " (" & As_Percent(0) & ")" 'by definition will change once work on coded diagnoses for diabetes.
+   Gridview1[iGridRow_Hba1c, cOverdue].text = Str(num_hba1c_older_than_6months) & " (" & As_Percent(num_hba1c_older_than_6months) & ")"
+   Gridview1[iGridRow_Hba1c, cAbnormal].text = ">7 = " & Str(Between7and7point5 + Between7point5and8 + Over8) & " (" & As_Percent(Between7and7point5 + Between7point5and8 + Over8) & ")"
+   Gridview1[iGridRow_Hba1c, cInDate].text = Str(num_hba1c_in_date) & " (" & As_Percent(num_hba1c_in_date) & ")"
+   '--------------
+   'Microalbumin    
+   '------------
+   Gridview1[iGridRow_Microalbumin, cNotDone].text = Str(num_microalbumin_not_recorded) & " (" & As_Percent(num_microalbumin_not_recorded) & ")"
+   Gridview1[iGridRow_Microalbumin, cOverdue].text = Str(num_microalbumin_overdue) & " (" & As_Percent(num_microalbumin_overdue) & ")"
+   Gridview1[iGridRow_Microalbumin, cAbnormal].text = Str(num_microalbumin_abnormal) & " (" & As_Percent(num_microalbumin_abnormal) & ")"
+   Gridview1[iGridRow_Microalbumin, cInDate].text = Str(num_microalbumin_in_date) & " (" & As_Percent(num_microalbumin_in_date) & ")"
+   '------
+   'Weight    
+   '------
+   Gridview1[iGridRow_Weight, cNotDone].text = Str(num_weight_not_recorded) & " (" & As_Percent(num_weight_not_recorded) & ")"
+   Gridview1[iGridRow_Weight, cOverdue].text = Str(num_weight_overdue) & " (" & As_Percent(num_weight_overdue) & ")"
+   Gridview1[iGridRow_Weight, cAbnormal].text = Str(num_weight_abnormal) & " (" & As_Percent(num_weight_abnormal) & ")"
+   Gridview1[iGridRow_Weight, cInDate].text = Str(num_microalbumin_in_date) & " (" & As_Percent(num_microalbumin_in_date) & ")"
+   '------
+   'eGFR    
+   '------
+   Gridview1[iGridRow_RenalFunction, cNotDone].text = Str(num_egfr_not_recorded) & " (" & As_Percent(num_egfr_not_recorded) & ")"
+   Gridview1[iGridRow_RenalFunction, cOverdue].text = Str(num_egfr_overdue) & " (" & (num_egfr_overdue) & ")"
+   Gridview1[iGridRow_RenalFunction, cAbnormal].text = Str(num_egfr_abnormal) & " (" & As_Percent(num_egfr_abnormal) & ")"
+   Gridview1[iGridRow_RenalFunction, cInDate].text = Str(num_egfr_in_date) & " (" & As_Percent(num_egfr_in_date) & ")"
+   '---------------------------
+   'Finally, make the pie chart
+   '---------------------------
+   Make_Pie()
    Dec Application.Busy
    
 End
@@ -710,10 +795,38 @@ Public Sub cvwPatients_Select()
 End
 
 Public Sub Patient_Display_Summary()
-   
+   '------------------------------------------------------------------------
+   'Display a summary of the patient's diabetic data
+   '  - Their picture, with red/green or white outline as per the convention
+   '  - summary of when last components done and if overdue
+   '  - a list of their medications
+   '------------------------------------------------------------------------
+
+   Vbox_PictureFrame.Background = Vbox_PictureFrame.Parent.Background
+   pbPatientPicture.Picture = Null
+   '------------------------------------------------------------------
+   'Display information about the DACC (diabetes annual cycle of care)
+   '------------------------------------------------------------------
+   If Year(patient!date_last_dacc) = 1900 Then
+      lblsummaryheading.text = "No Diabetes Cycle of Care Recorded"
+   Else
+      If patient!dacc_overdue = True Then
+         lblsummaryheading.text = "Overdue Diabetes Cycle of Care - Last " & Format(patient!date_last_dacc, "dd/mm/yyyy")
+      Else
+         lblsummaryheading.text = "Current Diabetes Cycle of Care - Due " & Format(DateAdd(patient!date_last_dacc, gb.year, 1), "dd/mm/yyyy")
+      Endif
+   End If   
+   Try pbPatientPicture.Picture = modContactsDBI.Person_Get_Photo(patient!fk_image)
+   If Year(patient!date_last_dacc) = 1900 Then
+      Vbox_PictureFrame.Background = Color.White
+   Else If patient!dacc_overdue = True Then
+      Vbox_PictureFrame.background = Color.Red
+   Else
+      Vbox_PictureFrame.Background = Color.Green
+   End If 
+   Wait                                                              'update the gui.
    VBox_Summary.visible = True
    Consult_CheckStarted()
-   pbPatientPicture.Picture = Null
    lblPatientName.text = modStrings.CapitaliseWord(patient!wholename)
    tlPatientDetails.text = ""
    tlPatientDetails.text &= "Age:" & patient!age_display & "<BR>"
@@ -723,21 +836,10 @@ Public Sub Patient_Display_Summary()
       tlPatientDetails.text &= Patient!street2 & "<BR>"
    Endif
    tlPatientDetails.text &= Patient!town & " " & patient!postcode & "<BR><BR>"
-   Try pbPatientPicture.Picture = modContactsDBI.Person_Get_Photo(patient!fk_image)
    medications = modPrescribingDBI.Prescriptions_Written(patient!fk_patient)
    modPrescribingDBI.Prescriptions_Fill_Columnview(cvwMedications, medications, medications_display_by, True) 'active meds
    cvwMedications.Height = (cvwMedications.count + 1) * 18
-   '------------------------------------------------------------------
-   'Display information about the DACC (diabetes annual cycle of care)
-   '------------------------------------------------------------------
-   If Year(patient!date_last_dacc) = 1900 Then
-      lbllastDacc.text = "NONE RECORDED"
-   Else
-      lbllastDacc.text = Format(patient!date_last_dacc, "dd/mm/yyyy")
-      If patient!dacc_overdue = True Then
-         lbllastDacc.text &= "  [OVERDUE]"
-      Endif
-   End If   
+   
    Try lblLastHba1c.text = Format(patient!observation_date, "dd/mm/yyyy")
    Try lblLasteGFR.text = Format(patient!date_last_egfr, "dd/mm/yyyy") & " " & patient!last_egfr & " (" & patient!egfr_reference_range & ")"
    '---------------------------------------------------------------------------
@@ -1326,19 +1428,6 @@ Public Sub tbEditArea_Click()
    End Select
    
 End
-' sql = "create temporary table patients_latest_hba1c ("
-'  sql &= "fk_patient integer, fk_person integer, fk_image integer, pk_observations integer,"
-'  sql &= "\"surname\" text,\"firstname\" text,\"wholename\" text,\"birthdate\" date, age_display integer,"
-'  sql &= "\"street1\" text,\"street2\" text,\"suburb\" text,\"postcode\" text,"
-'  sql &= "\"observation_date\" date,value_numeric numeric,"
-'  sql &= "date_last_dacc date, dacc_overdue boolean, \"latex\" text,"
-'  sql &= "date_last_egfr date, egfr_abnormal boolean,\"egfr_reference_range\" text,"
-'  sql &= "date_last_eye_review date, eye_review_overdue boolean,"
-'  sql &= "date_last_bp date, bp_overdue boolean,"
-'  sql &= "date_last_weight date, weight_overdue boolean,"
-'  sql &= "date_last_ldlcholesterol date, ldlcholesterol_overdue boolean,ldlcholesterol_not_at_target boolean,"
-'  sql &= "ldl_cholesterol numeric,\"ldlcholesterol_reference_range\" text,"
-'  sql &= "pk serial)"
 
 Public Sub Hbox_Stats_Leave()
    
@@ -1354,4 +1443,31 @@ Public Sub Hbox_Stats_Enter()
    
    Last.background = Color.SetRGB(210, 210, 210)
    
+End
+
+Public Sub Gridview1_Init()
+   
+   With Gridview1 
+      .Rows.count = 8
+      .Rows[iGridRow_DACC].text = "Cycle of Care  "
+      .Rows[iGridRow_Hba1c].text = "Hba1c  "
+      .Rows[iGridRow_BP].text = "Blood Pressure  "
+      .Rows[iGridRow_Weight].text = "Weight"
+      .Rows[iGridRow_RenalFunction].text = "Renal Function  "
+      .Rows[iGridRow_Microalbumin].text = "Microalbumin"
+      .Rows[iGridRow_Cholesterol].text = "Cholesterol"
+      .Rows[iGridRow_Eyes].text = "Eye Review"
+      .Columns.count = 4
+      .Columns[0].text = "  Not Done  "
+      .Columns[1].text = "  Overdue   " 
+      .Columns[2].text = "  Abnormal      "
+      .Columns[3].text = "  In Date   "
+   End With
+   
+End
+
+Public Sub GridView1_Click()
+
+   
+
 End

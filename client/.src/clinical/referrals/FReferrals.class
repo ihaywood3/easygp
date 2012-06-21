@@ -88,6 +88,12 @@ Static Public Sub Show_Datachanged_CopyList(f As Boolean)
    
 End
 
+Static Public Sub Refresh_Referrals_Written_Today()
+   
+   form_referral.Reload()
+   
+End
+
 Public Sub set_embedded(flag As Boolean)
    '--------------------------------------------------
    'If this form is embeded from another form set flag
@@ -102,13 +108,17 @@ Public Sub Init(cons As CConsult)
    'Do all the form initialisation stuff like adding stuff to 
    'combo's, setting numbers of columns in lists
    '---------------------------------------------------------
-   
+   form_referral = Me
    currentconsult = Cons                       'set current consult
-   cvwLetters.Columns.Count = 4                
+   cvwLetters.Columns.Count = 6                
    cvwLetters.Columns[0].width = 80            'date
    cvwLetters.Columns[1].width = 120           'Who to
    cvwLetters.Columns[2].width = 150           'type of referral
    cvwLetters.Columns[3].width = 200           'referral tag
+   cvwLetters.Columns[4].width = 80            'if include_careplan is true = 'Care Plan'
+   cvwLetters.Columns[5].width = 100            'if include_summary  is true = 'Health Summary'
+   
+   
    referral_types = modUtil.LoadCombo(cmbReferralTypes, modReferralsDBI.Referral_Get_Types(), "type")
    lblmeasure.text = " Provider Category "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
@@ -195,6 +205,7 @@ Public Sub Save()
    Dim Accompanying_Documents As New Collection
    Dim bDoNotPrintInclusionsForCCD As Boolean       
    
+   
    If VBox_Letters.Padding = 0 Then Return  'no padding, nothing to save
    If Not Valid_Referral() Then Return
    ' -----------------------------------------------------------
@@ -264,10 +275,7 @@ Public Sub Reload()
    'Reload any letters written this consultation
    'Reload all inclusions for the patients only this consult, this is the True flag in the Inclusions_Get below
    '-----------------------------------------------------------------------------------------------------------
-   '  FClinical.Refresh_Section(const.cSection_Referrals)                    'Refresh lists on main screen FClinical
-   '  FClinical.Refresh_AllPreviousNotes()                      'Refresh progress notes in Fclinical
-   
-   currentconsult.Refresh("referrals_written_this_consult")               'Delete key = force a refresh
+   currentconsult.Refresh("referrals_written_this_consult")                  'Delete key = force a refresh
    Inclusions_Referrals_This_Consult = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False, True) 'fk_patient, deleted, only this consult
    Referrals_This_consult_Show()                                          'Update list under edit area
    Referral_New()                                                         'clear for next condition
@@ -1067,6 +1075,13 @@ Public Sub Referrals_This_Consult_Show()
       Endif
       cvwletters[x][2] = referral!type
       cvwletters[x][3] = referral!tag
+      If referral!include_careplan = True Then
+         cvwletters[x][4] = " + Care Plan"
+      End If
+      If referral!include_healthsummary = True Then
+         cvwletters[x][5] = " + Health Summary"
+      End If
+   
    Next
    If cvwLetters.count Then
       cvwLetters.MoveFirst
@@ -1301,14 +1316,14 @@ Public Sub mnuReferralsThisconsult_Click()
       Case "preview"
          Referral_Edit()  
          Referral_Preview()
-      Case "re-print", "re-print all", "re-print with inclusions"
+      Case "re-print no inclusions", "re-print all", "re-print with inclusions", "re-print all with inclusions"
          ReferralsList_Print(Last.tag) 'fixme not implemented
    End Select
    
 End
 
 Public Sub ReferralsList_Help()
-   
+      modUtil.NotImplemented("Showing help for Referrals")
 End
 
 Public Sub ReferralsList_Delete()
@@ -1326,7 +1341,7 @@ Public Sub ReferralsList_Delete()
    If Message.Question("Are you sure you want to delete this referral?", "Yes", "No") = 2 Then Return 
    referral = referrals_written_this_consult[pk_referral]
    referral!deleted = True
-   For Each inclusion In Inclusions_Referral_This_consult
+   For Each inclusion In Inclusions_Referral_This_consult  'these are the inclusions just for one referral
       inclusion!deleted = True 
    Next
    modDBConnect.BeginTrans()
@@ -1367,14 +1382,14 @@ Public Sub ReferralsList_Print(print_type As String)
    
    Select Case print_type
       Case "re-print no inclusions"   're-prints including inclusions
-         modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], True) 
+          modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], False, False)
          'FIXME change me back to referral_print once latex template ok
       Case "re-print with inclusions"
-         modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], True, Inclusions_Referral_This_Consult) 
+         modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], False, True, Inclusions_Referral_This_Consult) 
       Case "re-print all with inclusions" '  're-prints all with the inclusions
          cvwLetters.MoveFirst
          For x = 0 To cvwLetters.count - 1
-            modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], True, Inclusions_Referral_This_Consult) 
+            modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], False, True, Inclusions_Referral_This_Consult) 
             'FIXME change me back to referral_print once latex template ok
             cvwLetters.MoveNext()
          Next
@@ -1384,14 +1399,14 @@ Public Sub ReferralsList_Print(print_type As String)
       Case "re-print all"  're-prints all letters but not the inclusions
          cvwLetters.MoveFirst
          For x = 0 To cvwLetters.count - 1
-            modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], True) 
+            modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], False, False)
             'FIXME change me back to referral_print once latex template ok
             cvwLetters.MoveNext()
          Next
          cvwLetters.MoveFirst()
          cvwLetters.Item.Selected = True
    End Select
-   
+   cvwletters.UnselectAll()
 End
 
 Public Sub Referral_Edit()

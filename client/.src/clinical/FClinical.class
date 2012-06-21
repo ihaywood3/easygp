@@ -1050,12 +1050,14 @@ Public Sub cvwMedications_Refresh()
    Dim x As String
    Dim cvw As ColumnView
    Dim bActive As Boolean
-   
+
    If lblMedications.tag = "active" Then 
+      lblMedications.text = "Active Medications"
       bActive = True   
    Else
       bActive = False
-   End If   
+      lblMedications.text = "Inactive Medications"
+   End If    
    cvw = cvwMedications
    cvw.Clear()
    cvw.Columns.count = 10
@@ -1107,7 +1109,9 @@ Public Sub cvwMedications_Refresh()
          Endif
       End If   
    Next
-   
+   If bActive = True Then
+     If cvw.count Then lblMedications.text &= " (" & Str(cvw.count) & ")"
+   End If   
 End
 
 
@@ -1319,9 +1323,8 @@ Public Sub Gui_Clear()
    cvwProblemsSignificant.Clear()
    cvwProblemsInActive.Clear()
    cvwProblemsMajor.Clear()
+   lblMedications.text = "Medications"         'remove the count  
    Vbox_Notifications.Background = Color.RGB(237, 239, 235)
-   'checked to this point bexit still is true
-   
    cmbConsultationType.index = cmbConsultationType.Find("At consulting rooms")
    ScratchPad.Clear()
    Try BMICalc.EditArea_Clear()
@@ -3321,26 +3324,33 @@ Public Sub Referral_UnDelete()
    Dim fk_referral As Integer
    Dim pn As Collection
    Dim charpos As Integer
-   
-   ' modUtil.NotImplemented("Undelete referral is buggy.... sorry")
-   '   Return 
+
    fk_progressnote = deleted_referral!fk_progressnote
    fk_referral = deleted_referral!pk_referral    
    sHtml = deleted_referral!letter_html
    For Each PN In currentconsult!progress_notes
       If PN!pk_progressnote = fk_progressnote Then
-         charpos = InStr(pn!notes, "</TABLE>")
-         pn!notes = Left(pn!notes, charpos + 7)
-         pn!notes = Replace$(pn!notes, "BGCOLOR='#CFCFCF'", "")
-         pn!notes = Replace$(pn!notes, "<strike>", "")
-         pn!notes = Replace$(pn!notes, "</strike>", "")
-         pn!notes = "<P>" & pn!notes & "</P>"
-         modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
-         modDBConnect.update("clin_referrals.referrals", Null, ["pk": fk_referral, "deleted": False])
+         If PN!fk_consult = currentconsult.GetPK() Then           'undelete the progress note of the letter
+            modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "deleted": False])
+         Else                                                     'more complex, remove the strikethrough
+               charpos = InStr(pn!notes, "</TABLE>")
+               pn!notes = Left(pn!notes, charpos + 7)
+               pn!notes = Replace$(pn!notes, "BGCOLOR='#CFCFCF'", "")
+               pn!notes = Replace$(pn!notes, "<strike>", "")
+               pn!notes = Replace$(pn!notes, "</strike>", "")
+               pn!notes = "<P>" & pn!notes & "</P>"
+               modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
+          End If  
+          modDBConnect.update("clin_referrals.referrals", Null, ["pk": fk_referral, "deleted": False])
+         'Mark the inclusions as un-deleted,
+         ' could be inaccurate for example they may have marked one as deleted when letter written
+         '  FIXME IN THIS CASE PERMANANTLY REMOVE FROM THE BACKEND IN FREFERRALS.DELETE ROUTINES
+         modDBConnect.exec_query("update clin_referrals.inclusions set deleted = False WHERE fk_referral = " & fk_referral)
          modDBConnect.CommitTrans()
          Deleted_Referral = New Collection
          Refresh_AllPreviousNotes() 
          Refresh_Section(const.cSection_Referrals)
+         Try FReferrals.Refresh_Referrals_Written_Today()
          Break
       Endif
    Next
@@ -3348,7 +3358,9 @@ Public Sub Referral_UnDelete()
 End
 
 Public Sub Referral_Delete()
-   
+   '-------------------------------------------------------------------------------------
+   'User has clicked on a letter over the tabbed list referral's and decided to delete it
+   '-------------------------------------------------------------------------------------   
    Dim sHtml As String
    Dim referral As New Collection
    Dim fk_progressnote As Integer
@@ -3365,20 +3377,30 @@ Public Sub Referral_Delete()
    sHtml = referral!letter_html
    For Each PN In currentconsult!progress_notes
       If PN!pk_progressnote = fk_progressnote Then
-         pn!notes = Replace$(pn!notes, "<TABLE", "<TABLE BGCOLOR='#CFCFCF' ") 
-         pn!notes = Replace$(pn!notes, "<small>", "<strike><small>", gb.IgnoreCase)
-         pn!notes = Replace$(pn!notes, "</small>", "</strike></small>", gb.IgnoreCase)
-         Faudit.Init(": Delete Referral Letter", "clin_consult.progressnotes/clin_referrals.referrals", "Letter summary:" & referral!tag)
-         fk_reason = FAudit.ShowModal() 
-         modDBConnect.CommitTrans()  'otherwise if a new reason it won't have been comitted
-         reason = modAudit.Get_Reason_Using_pk(fk_reason)
-         pn!notes = Replace(pn!notes, "</TABLE>", "</TABLE><small><B><I>Audit note:</B> this referral letter was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small>")
-         modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
+         '---------------------------------------------------------
+         'if this progress note was put in today, just mark deleted
+         '----------------------------------------------------------
+         If PN!fk_consult = currentconsult.GetPK() Then           'probabably a reversal, don't need to audit just visually remove from the notes
+            modDBConnect.update("clin_consult.progressnotes", Null, ["pk": referral!fk_progressnote, "deleted": True])
+          Else
+            pn!notes = Replace$(pn!notes, "<TABLE", "<TABLE BGCOLOR='#CFCFCF' ") 
+            pn!notes = Replace$(pn!notes, "<small>", "<strike><small>", gb.IgnoreCase)
+            pn!notes = Replace$(pn!notes, "</small>", "</strike></small>", gb.IgnoreCase)
+            Faudit.Init(": Delete Referral Letter", "clin_consult.progressnotes/clin_referrals.referrals", "Letter summary:" & referral!tag)
+            fk_reason = FAudit.ShowModal() 
+            modDBConnect.CommitTrans()  'otherwise if a new reason it won't have been comitted
+            reason = modAudit.Get_Reason_Using_pk(fk_reason)
+            pn!notes = Replace(pn!notes, "</TABLE>", "</TABLE><small><B><I>Audit note:</B> this referral letter was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small>")
+            modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
+         End If     
          modDBConnect.update("clin_referrals.referrals", Null, ["pk": fk_referral, "deleted": True])
+         'Mark the inclusions as deleted
+         modDBConnect.exec_query("update clin_referrals.inclusions set deleted = True WHERE fk_referral = " & fk_referral)
          modDBConnect.CommitTrans() 
          Deleted_Referral = referral
          Refresh_AllPreviousNotes() 
          Refresh_Section(const.cSection_Referrals)
+         Try FReferrals.Refresh_Referrals_Written_Today() 'this will bomb if a null object.
          Break
       Endif
    Next

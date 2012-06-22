@@ -1,5 +1,42 @@
 ' Gambas class file
 
+' Public Sub RenderPage()
+'   
+'   Dim hPic As Picture 
+'   Dim Bc As Integer 
+'   
+'   hPdf.Zoom = CurrentZoom
+'   LblInfo.Text = CurrentPage & " " & ("From") & " " & hPdf.Count  
+'   
+'   ViewPort.Scroll(0, 0)
+'   hPic = hPdf[CurrentPage].Image.Picture
+' 
+'   If TxtFind.Text <> "" Then 
+'   
+'     hPdf[CurrentPage].Find(TxtFind.Text)
+'     Paint.Begin(hPic)
+'     Paint.Brush = Paint.Color(Color.RGB(0, 0, 255, 192))
+'     For Bc = 0 To hPdf[CurrentPage].Result.Count - 1
+'       Paint.Rectangle(hPdf[CurrentPage].Result[Bc].Left, hPdf[CurrentPage].Result[Bc].Top, hPdf[CurrentPage].Result[Bc].Width, hPdf[CurrentPage].Result[Bc].Height)
+'     Next 
+'     Paint.Fill
+'     Paint.End
+'   
+'   End If
+' 
+'   PBox.Picture = hPic 
+'   PBox.Resize(hPdf[CurrentPage].Width, hPdf[CurrentPage].Height)
+'   Form_Resize()
+'   
+' Catch
+' 
+'   Balloon.Error(Error.Text, TxtFind)
+'   300
+' End
+
+
+' Gambas class file
+
 '***************************************************************************
 '
 '  FMain.class
@@ -25,11 +62,11 @@
 '  GNU General Public License for more details.
 '
 '  You should have received a copy of the GNU General Public License
-'  along with this program; if not, write to the Free Software
+'  along with this progRenderPage(FoundText)ram; if not, write to the Free Software
 '  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 '
 '***************************************************************************
-
+Private timer_count As Integer
 Public hPdf As New PdfDocument
 Public cIndex As Integer 
 Public CurrentPage As Integer 
@@ -40,18 +77,7 @@ Private Embedded_In_Form As String
 Private currentconsult As CConsult
 Private currentSearchResult As Short = 0 'Contains the information which of the search results on this page is marked
 Private NumberOfSearchResults As Integer
-Private searchtext As String
-Private startpos As Integer
-Private search_synonyms As String
- 
-Public Function JumpTo(txt As String, sp As Integer, syn As String)
-   
-   searchtext = txt
-   CurrentPage = sp  
-   search_synonyms = syn
-   FindNext()
-End
-
+Private currentSearchResultSynonyms As Short = 0
 
 Public Sub Init(Optional cons As CConsult)
    
@@ -225,7 +251,7 @@ Public Sub tvIndex_Click()
    
 End
 
-Public Sub RenderPage()
+Public Sub RenderPage(Optional FoundText As String)
    
    Dim hPic As Picture 
    Dim Bc As Integer 
@@ -239,16 +265,31 @@ Public Sub RenderPage()
    
    LblInfo.Text = " of" & " " & hPdf.Count  
    txtGotoPage.text = CurrentPage
-   ViewPort.Scroll(0, 0)
+   If currentSearchResult = 0 And currentSearchResultSynonyms = 0 Then
+      ViewPort.Scroll(0, 0)
+   Endif
+   
    hPic = hPdf[CurrentPage].Image.Picture
    
-   If currentSearchResult > 0 Then        ' resets the mark on the current search result
-      hPdf[CurrentPage].Find(TxtFind.Text)
+   If currentSearchResult > 0 And FoundText <> "" Then        ' resets the mark on the current search result
+      hPdf[CurrentPage].Find(FoundText)
       Draw.Begin(hPic)
-    
       Draw.FillColor = Color.Red
-     Draw.FillStyle = Fill.Dense12
+      Draw.FillStyle = Fill.Dense12
       Draw.Rect(hPdf[CurrentPage].Result[currentSearchResult - 1].Left, hPdf[CurrentPage].Result[currentSearchResult - 1].Top, hPdf[CurrentPage].Result[currentSearchResult - 1].Width, hPdf[CurrentPage].Result[currentSearchResult - 1].Height)
+      ViewPort.ScrollY = ViewPort.ScrollHeight * (hPdf[CurrentPage].Result[currentSearchResult - 1].Top / Draw.Height) 
+      Draw.End()
+      PBox.Picture = hPic 
+   Endif
+   
+   If currentSearchResultSynonyms > 0 And FoundText <> "" Then        ' resets the mark on the current search result for synonyms
+      hPdf[CurrentPage].Find(FoundText)
+      Draw.Begin(hPic)
+      Draw.FillColor = Color.Red
+      Draw.FillStyle = Fill.Dense12
+      Draw.Rect(hPdf[CurrentPage].Result[currentSearchResultSynonyms - 1].Left, hPdf[CurrentPage].Result[currentSearchResultSynonyms - 1].Top, hPdf[CurrentPage].Result[currentSearchResultSynonyms - 1].Width, hPdf[CurrentPage].Result[currentSearchResultSynonyms - 1].Height)
+      ViewPort.ScrollY = ViewPort.ScrollHeight * (hPdf[CurrentPage].Result[currentSearchResultSynonyms - 1].Top / Draw.Height) 
+      
       Draw.End()
       PBox.Picture = hPic 
    Endif
@@ -256,9 +297,9 @@ Public Sub RenderPage()
    PBox.Picture = hPic 
    PBox.Resize(hPdf[CurrentPage].Width, hPdf[CurrentPage].Height)
    Form_Resize()
-   If CurrentPage = hPdf.Count Then BtPrev.SetFocus()
-'Catch
- '  Message.Info("An error occurred whilst trying to view the document.\n\nIf this persists please report this problem.")
+   
+Catch
+   Message.Info("An error occurred whilst trying to view the document.\n\nIf this persists please report this problem.")
    
 End
 
@@ -279,6 +320,7 @@ Public Sub BtNext_Click()
    
    Inc CurrentPage
    currentSearchResult = 0
+   currentSearchResultSynonyms = 0
    If CurrentPage = hPdf.Count Then BtNext.Enabled = False 
    BtPrev.Enabled = True 
    RenderPage()
@@ -289,6 +331,7 @@ Public Sub BtPrev_Click()
    
    Dec CurrentPage
    currentSearchResult = 0
+   currentSearchResultSynonyms = 0
    If CurrentPage = 1 Then BtPrev.Enabled = False 
    BtNext.Enabled = True 
    RenderPage()
@@ -486,9 +529,16 @@ Public Sub tbSave_Click()
    
 End
 
-Public Sub TxtFind_KeyPress()
+Public Sub TxtFind_Activate()
    
-   If Key.Code = "16777220" Then
+   Find_Text()
+   
+End
+
+Public Sub Find_Text()
+   
+   
+     ' Timer1.stop
       If Bexit Then Return 
       If TxtFind.Text <> "" Then 
          If currentSearchResult > 0 Then
@@ -498,18 +548,85 @@ Public Sub TxtFind_KeyPress()
                Else
                   CurrentPage = CurrentPage + 1
                Endif
+               
                FindNext()
             Else
                currentSearchResult = currentSearchResult + 1
-               RenderPage()
+               RenderPage(TxtFind.Text)
             Endif
          Else
             FindNext()
          Endif
          
       End If
-   Endif
 
+End
+
+
+Public Function FindSynonymeFromArray(SynonymeArray As String[], Position As Integer) As Boolean
+   
+   Dim hPic As Picture 
+   Dim Bc As Integer 
+   Dim currentSearchPage As Short = 1 ' contains the information on which page the search funktion searched the last time
+   Dim count2 As Integer = 0
+   
+   currentSearchResultSynonyms = 0
+   currentSearchResult = 0
+   BtSearchNext.Enabled = False
+   BtSearchPrev.Enabled = False
+   
+   Repeat
+      
+      Repeat 
+         hPic = hPdf[currentSearchPage].Image.Picture
+         hPdf[currentSearchPage].Find(SynonymeArray[Position, count2], True)
+         If hPdf[currentSearchPage].Result.Count > 0 Then
+            currentSearchResultSynonyms = 1
+         Else
+            currentSearchPage = currentSearchPage + 1
+         Endif
+      Until currentSearchResultSynonyms <> 0 Or currentSearchPage = hPdf.count 
+      If currentSearchResultSynonyms = 0 Then 
+         Inc count2
+         currentsearchPage = 1
+      Endif
+      
+   Until currentSearchResultSynonyms = 1 Or SynonymeArray[Position, count2 + 1] = "!" 
+   
+   If currentSearchResultSynonyms = 0 Then
+      count2 = 0
+      Repeat
+         Repeat 
+            hPic = hPdf[currentSearchPage].Image.Picture
+            hPdf[currentSearchPage].Find(SynonymeArray[Position, count2], False)
+            If hPdf[currentSearchPage].Result.Count > 0 Then
+               currentSearchResultSynonyms = 1
+            Else
+               currentSearchPage = currentSearchPage + 1
+            Endif
+         Until currentSearchResultSynonyms <> 0 Or currentSearchPage = hPdf.count 
+         If currentSearchResultSynonyms = 0 Then 
+            Inc count2
+            currentsearchPage = 1
+         Endif
+      Until currentSearchResultSynonyms = 1 Or SynonymeArray[Position, count2 + 1] = "!" 
+      
+   Endif
+   
+   If hPdf[currentSearchPage].Result.Count > 0 Then
+      
+      CurrentPage = currentSearchPage
+      txtGotoPage.text = CurrentPage
+      currentSearchResultSynonyms = hPdf[currentSearchPage].Result.Count
+      RenderPage(SynonymeArray[position, count2])
+      Return True
+   Else
+      Return False
+   Endif
+   
+Catch
+   Message.Info("An error occurred whilst trying to view the document.\n\nIf this persists please report this problem.")
+   
 End
 
 Private Sub FindNext()
@@ -525,15 +642,14 @@ Private Sub FindNext()
       LastPageToSearch = CurrentPage 
       
    Endif
-  
+   currentSearchResultSynonyms = 0
    currentSearchResult = 0
    BtSearchNext.Enabled = False
    BtSearchPrev.Enabled = False
-   LbSearchInfo.Visible = True
    Repeat 
       hPic = hPdf[currentSearchPage].Image.Picture
-    '  hPdf[currentSearchPage].Find(TxtFind.Text, False)
-      hPdf[currentSearchPage].Find(searchtext, False)
+      hPdf[currentSearchPage].Find(TxtFind.Text, False)
+      
       If hPdf[currentSearchPage].Result.Count > 0 Then
          CurrentPage = currentsearchPage 
          currentSearchResult = 1
@@ -554,7 +670,7 @@ Private Sub FindNext()
       BtSearchNext.Enabled = True
       BtSearchPrev.Enabled = True
       
-      RenderPage()
+      RenderPage(TxtFind.Text)
       
    Else
       TxtFind.Background = Color.Lighter(16711680)   '16711680 = Red
@@ -579,7 +695,7 @@ Private Sub FindPrevious()
    Else
       LastPageToSearch = CurrentPage 
    Endif
-   
+   currentSearchResultSynonyms = 0
    currentSearchResult = 0
    BtSearchNext.Enabled = False
    BtSearchPrev.Enabled = False
@@ -603,12 +719,11 @@ Private Sub FindPrevious()
       CurrentPage = currentSearchPage
       
       txtGotoPage.text = CurrentPage
-      currentSearchResult = 1
       currentSearchResult = hPdf[currentSearchPage].Result.Count
       NumberOfSearchResults = hPdf[currentSearchPage].Result.Count
       BtSearchNext.Enabled = True
       BtSearchPrev.Enabled = True
-      RenderPage()
+      RenderPage(TxtFind.Text)
    Endif
    
 Catch
@@ -627,7 +742,7 @@ Public Sub BtSearchNext_Click()
       FindNext()
    Else
       currentSearchResult = currentSearchResult + 1
-      RenderPage()
+      RenderPage(TxtFind.Text)
    Endif
    
 End
@@ -643,7 +758,7 @@ Public Sub BtSearchPrev_Click()
       FindPrevious()
    Else
       currentSearchResult = currentSearchResult - 1
-      RenderPage()
+      RenderPage(TxtFind.Text)
    Endif
    
 End
@@ -652,13 +767,29 @@ Public Sub TxtFind_Change()
    
    If TxtFind.Background = Color.Lighter(16711680) Then
       TxtFind.Background = Color.White
-      RenderPage()
+      
    Endif
-   searchtext = Trim(Last.text)
+   
+   currentSearchResult = 0
+   currentSearchResultSynonyms = 0
+   BtSearchNext.Enabled = False
+   BtSearchPrev.Enabled = False
+   
+   RenderPage()
+
 End
 
-Public Sub TxtFind_Activate()
+Public Sub TxtFind_KeyRelease()
+   ' Timer1.Start
+   ' timer_count = 0
+    
+End
 
+Public Sub Timer1_Timer()
    
-
+  ' Inc timer_count
+  ' If timer_Count > 3 Then
+  '    Find_Text()
+  ' End If  
+   
 End

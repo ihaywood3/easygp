@@ -48,7 +48,7 @@ Private bExit As Boolean                                    'Used to prevent re-
 Private bKeyValid As Boolean                                'Used in EditAreaTextBox routines to ensure valid data entry
 Private PersonWritingTo As Collection                       'Person for whom the letter is intended
 Private specialists As Collection
-Private specialist As Collection 
+Private specialist As Collection
 Private Branches As Collection
 Private branch As Collection 
 Private Comms As Collection
@@ -78,6 +78,7 @@ Private pk_deleted_progressnote As Integer                     'if not 0 then it
 Private Form_Copy_To As FCopyTo
 Private referrals_written_this_consult As Collection 
 Private SpellChecker As ClskSpell
+Private bHaveSpellChecked As Boolean                        'if true have at least attempted to spell check once (see Save())
 Public Paragraph_At As Integer
 Public character_at As Integer 
 Static Private form_referral As FReferrals
@@ -108,6 +109,7 @@ Public Sub Init(cons As CConsult)
    'Do all the form initialisation stuff like adding stuff to 
    'combo's, setting numbers of columns in lists
    '---------------------------------------------------------
+   
    form_referral = Me
    currentconsult = Cons                       'set current consult
    cvwLetters.Columns.Count = 6                
@@ -117,7 +119,6 @@ Public Sub Init(cons As CConsult)
    cvwLetters.Columns[3].width = 200           'referral tag
    cvwLetters.Columns[4].width = 80            'if include_careplan is true = 'Care Plan'
    cvwLetters.Columns[5].width = 100            'if include_summary  is true = 'Health Summary'
-   
    
    referral_types = modUtil.LoadCombo(cmbReferralTypes, modReferralsDBI.Referral_Get_Types(), "type")
    lblmeasure.text = " Provider Category "
@@ -205,8 +206,11 @@ Public Sub Save()
    Dim Accompanying_Documents As New Collection
    Dim bDoNotPrintInclusionsForCCD As Boolean       
    
-   
    If VBox_Letters.Padding = 0 Then Return  'no padding, nothing to save
+   If Not bHaveSpellChecked Then 
+      Spelling_Check()
+   Endif
+   
    If Not Valid_Referral() Then Return
    ' -----------------------------------------------------------
    ' Now load a fresh collection with data from the widgets
@@ -275,6 +279,7 @@ Public Sub Reload()
    'Reload any letters written this consultation
    'Reload all inclusions for the patients only this consult, this is the True flag in the Inclusions_Get below
    '-----------------------------------------------------------------------------------------------------------
+   
    currentconsult.Refresh("referrals_written_this_consult")                  'Delete key = force a refresh
    Inclusions_Referrals_This_Consult = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False, True) 'fk_patient, deleted, only this consult
    Referrals_This_consult_Show()                                          'Update list under edit area
@@ -692,7 +697,7 @@ Public Sub Referral_Preview()
    '--------------------------------------------------------------------
    
    FClinical.Editor_ShowPage_External("browser", "Referral Preview", Referral_LetterHTML_Construct(Copyto_Html_Construct(Form_Copy_To.Get_CopyTo_Data()!copyto), Inclusions_Construct_HTML(Inclusions_EditArea)))
-  
+   
 End
 
 Public Function Valid_Referral() As Boolean
@@ -904,6 +909,7 @@ Public Sub EditArea_Clear()
    cProgressNote_Section = const.cSection_GeneralNotes
    txtHealthIssue.text = "general notes"
    chkDontPrintCCd.value = True
+   bHaveSpellChecked = False  
    bExit = False
    Form_Copy_To.Reset() 'clears the copyto lists.
    If HSplitEditArea_Communications.Visible = False Then
@@ -1081,7 +1087,7 @@ Public Sub Referrals_This_Consult_Show()
       If referral!include_healthsummary = True Then
          cvwletters[x][5] = " + Health Summary"
       End If
-   
+      
    Next
    If cvwLetters.count Then
       cvwLetters.MoveFirst
@@ -1323,7 +1329,9 @@ Public Sub mnuReferralsThisconsult_Click()
 End
 
 Public Sub ReferralsList_Help()
-      modUtil.NotImplemented("Showing help for Referrals")
+   
+   modUtil.NotImplemented("Showing help for Referrals")
+   
 End
 
 Public Sub ReferralsList_Delete()
@@ -1382,7 +1390,7 @@ Public Sub ReferralsList_Print(print_type As String)
    
    Select Case print_type
       Case "re-print no inclusions"   're-prints including inclusions
-          modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], False, False)
+         modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], False, False)
          'FIXME change me back to referral_print once latex template ok
       Case "re-print with inclusions"
          modReferralsDBI.Referral_Print_AS_HTML(currentconsult, currentconsult!referrals_written_this_consult[pk_referral], False, True, Inclusions_Referral_This_Consult) 
@@ -1407,6 +1415,7 @@ Public Sub ReferralsList_Print(print_type As String)
          cvwLetters.Item.Selected = True
    End Select
    cvwletters.UnselectAll()
+   
 End
 
 Public Sub Referral_Edit()
@@ -1567,8 +1576,8 @@ Public Sub lvwInclusions_Saved_Refresh()
             'we have a problem - the progress notes which contain the previously saved
             'letter refer to an inclusion that no longer exists
             '-------------------------------------------------------------------------
-           ' Referral_ProgressNoteHTML_Construct(
-           Print currentconsult!referrals_written_this_consult[pk_referral]
+            ' Referral_ProgressNoteHTML_Construct(
+            Print currentconsult!referrals_written_this_consult[pk_referral]
          End If
       End If   
    Next 
@@ -2266,9 +2275,23 @@ Public Sub EditorButtons_Click()
    
    Select Case Last.tag
       Case "spell"
-         SpellChecker.init()
-         SpellChecker.StartSpelling()
+         Spelling_Check()
    End Select
+   
+End
+
+Public Sub Spelling_Check()
+   '--------------------------------------------------------------------------------------------------
+   'Check the letters spelling
+   'called by EditorButtons_Click() and Save()
+   'bHaveSpellChecked is set so as not to bug a user who has already spell checked when they save
+   'This is not perfect but pragmatic, i.e they could have introduced errors after their initial check
+   'but then hey, that's their problem
+   '--------------------------------------------------------------------------------------------------
+   
+   SpellChecker.init()
+   SpellChecker.StartSpelling()
+   bHaveSpellChecked = True   
    
 End
 
@@ -2296,7 +2319,7 @@ Public Sub teLetter_Menu()
 End
 
 Public Sub mnuLetter_Click()
-
+   
    Select Case Last.tag
       Case "paste image"
          Insert_Picture("clipboard")
@@ -2305,7 +2328,7 @@ Public Sub mnuLetter_Click()
             teLetter.Insert(Clipboard.Text) 
          End If 
    End Select
-
+   
 End
 
 Public Sub Insert_Picture(sSource As String)
@@ -2314,7 +2337,7 @@ Public Sub Insert_Picture(sSource As String)
    'from either a cut/paste/import or from the
    'draw 
    'Creates an event observer.   
-
+   
    'this will bug out if user clicks save in  Fdraw 
    'without selecting image
    '--------------------------------------------------

@@ -25,6 +25,8 @@ Private To_Patient As Collection
 Private To_Patient_Row As CPatientSelectRow
 Private fk_consult As Integer
 Private patients As Collection 
+Private timer_count As Integer 
+Private From_patient_Progress_Notes As Collection
 
 Public Sub Run() As Boolean
    
@@ -38,41 +40,39 @@ Public Sub Form_Open()
       .Center
       .Title = "TRANSFER CLINICAL NOTES"
    End With
-
+   
 End
 
-Public Sub Init(fp As Collection, Notes As String, consult_fk As Integer)
+Public Sub Init(fp As Collection, Notes As String, fppn As Collection)
+   'Public Sub Init(fp As Collection, Notes As String, consult_fk As Integer)
    '-------------------------------------------------------------------------
    'fp is patient transfering the notes from
-   'notes = the richtext of the notes
-   'fk_consult = the fk_consult in clin_consult.consult for this progress note
+   'notes = the richtext of the notes with any images re-inserted
+   'fk_consult = the fk_consult in clin_consult.consult for this progress note NOTE: WORK IN PROGRESS ?NO LONGER USE.
    'this row in clin_consult.consult current as fp!fk_patient = source patient
    '--------------------------------------------------------------------------   
-
+   
    Dim FPR As CPatientSelectRow
    
+   From_patient_Progress_Notes = fppn  
    WebView1.HTML = Notes
    From_Patient = fp 
-   FPR = New CPatientSelectRow(ListContainer1, fp)
+   FPR = New CPatientSelectRow(ListContainer1, From_Patient)
    With cvwPatients
       .Columns.count = 3 
    End With
-   fk_consult = consult_fk 
+   ' fk_consult = consult_fk 
+   fk_consult = From_patient_Progress_Notes!fk_consult 
    cvwPatients.Columns.count = 6
-
+   
 End
 
 Public Sub btnOK_Click()
-   '------------------------------------------------------------------
-   'User has decided to transfer the notes from one patient to another
-   'Give them a change to back out
-   '------------------------------------------------------------------
-
-   If Message.Warning("Please confirm transfer - this cannot be undone.", "Yes - transfer notes", "Cancel") = 2 Then Return 
-   modDBConnect.update("clin_consult.consult", Null, ["pk": fk_consult, "fk_patient": To_Patient!fk_patient])
-   modDBConnect.CommitTrans()
+   '---------------------------------------------------
+   'User has decided to go ahead and transfer the notes
+   '---------------------------------------------------
+   Transfer()
    Me.Close(True)
-   
 End
 
 Public Sub btnCancel_Click()
@@ -81,13 +81,9 @@ Public Sub btnCancel_Click()
    
 End
 
-Public Sub EditAreaTextBox_GotFocus()
-   '------------------------------------------------------
-   'User has clicked on the search for patient textbox
-   'clear it, and ensure patient list columnview is visible
-   '--------------------------------------------------------   
-
-   With Last
+Public Sub EditArea_Clear()
+   
+   With txtFindPatient
       .BackGround = Color.rgb(95, 255, 175)
       .Clear()
    End With
@@ -97,10 +93,23 @@ Public Sub EditAreaTextBox_GotFocus()
    End With 
    ListContainer2.Visible = False   
    btnOK.Enabled = False  
+   
+End
 
+Public Sub EditAreaTextBox_GotFocus()
+   '------------------------------------------------------
+   'User has clicked on the search for patient textbox
+   'clear it, and ensure patient list columnview is visible
+   '--------------------------------------------------------   
+   
+   EditArea_Clear()
+   
 End
 
 Public Sub Patients_Find() 
+   '----------------------------------------------------------
+   'User is searching for a patient to transfer the records to
+   '----------------------------------------------------------   
    
    Dim patient As Collection
    Dim sql_in_english As String
@@ -108,7 +117,7 @@ Public Sub Patients_Find()
    Dim bPhotoConfirmed As Boolean = False 
    
    Inc Application.Busy
-   
+   Timer1.Enabled = False  
    Patients = modContactsDBI.patients_get_firstname_surname(Trim(txtFindPatient.text))
    sql_in_english = Patients!sql_in_english
    Patients.Remove("sql_in_english")
@@ -136,11 +145,11 @@ Public Sub Patients_Find()
             cvwPatients[patient!pk_view][4] = patient!sex
             cvwPatients[patient!pk_view][5] = Trim(patient!street1 & " " & patient!street2) & " " & patient!town 
          Next
-         With cvwPatients
-            .MoveFirst
-            .SetFocus
-            .Item.Selected = True    
-         End With
+         ' With cvwPatients
+         '    .MoveFirst
+         '    .SetFocus
+         '    .Item.Selected = True    
+         ' End With
       Endif
    End If   
    Dec application.Busy
@@ -151,13 +160,13 @@ Public Sub Patient_Show(Patient As Collection)
    '-----------------------------------------------------------------------------
    'shows patient details + photo in the list container to make it really obvious
    '----------------------------------------------------------------------------- 
-
+   
    cvwPatients.Visible = False    
    With ListContainer2
       .Visible = True 
       .Clear()
    End With
-   To_Patient_Row = New CPatientSelectRow(ListContainer2, Patient)
+   To_Patient_Row = New CPatientSelectRow(ListContainer2, Patient) As "Patient_Row"
    
 End
 
@@ -165,7 +174,7 @@ Public Sub cvwPatients_KeyPress()
    '-------------------------------------------------------------
    'User has hit the enter key on the patients list, show details
    '-------------------------------------------------------------   
-
+   
    If Key.code = Key.Return Then cvwPatients_DblClick() 
    
 End
@@ -174,12 +183,12 @@ Public Sub cvwPatients_DblClick()
    '-----------------------------------------------------------
    'User has selected a patient = show expanded details + photo
    '-----------------------------------------------------------   
-
+   
    cvwPatients.MoveCurrent()
    To_Patient = Patients[cvwPatients.Item.Key]
    Patient_Show(To_Patient)
    btnOK.Enabled = True 
-
+   
 End
 
 Public Sub EditAreaTextBox_Activate()
@@ -187,6 +196,162 @@ Public Sub EditAreaTextBox_Activate()
    'If user hits <enter> key, search for the patient
    '------------------------------------------------  
    
-   Patients_Find()
+   '   Patients_Find()
+   
+End
+
+Public Sub EditAreaTextBox_KeyRelease()
+   
+   Timer1.Enabled = True
+   timer_count = 0
+   
+End
+
+Public Sub timer1_Timer()
+   '------------------------------------------------------------------------------
+   'If the timer is running, user is typing in either the brand or generic textbox
+   '------------------------------------------------------------------------------   
+   
+   Inc timer_count
+   If timer_count > 3 Then
+      Patients_Find()
+   Endif
+   
+End
+
+Public Sub EditAreaTextBox_KeyPress()
+   
+   If Key.code = Key.down Then
+      If Patients.count Then
+         With cvwPatients
+            .MoveFirst
+            .SetFocus
+            .Item.Selected = True    
+         End With   
+      Endif
+   Endif
+   
+End
+
+Public Sub EditAreaTextBox_Change()
+   
+   If Trim(Last.text) = "" Then
+      EditArea_Clear()
+   Endif
+   
+End
+
+Public Sub Patient_Row_Click()
+   '--------------------------------------
+   'user has clicked on list container row
+   '--------------------------------------   
+   
+   btnOK.Enabled = True 
+   
+End
+
+Public Sub Transfer()
+   
+   '------------------------------------------------------------------
+   'User has decided to transfer the notes from one patient to another, this is complicated
+   'Examples
+   '1) I've written in the wrong patient's notes a complete consultation
+   '   - in this scenario I want to transfer the whole fk_consult
+   '2) I've actually written part of a consultation into the wrong patients notes
+   '   - ? how could this happen you say, well visualise this scenario
+   '   - a patient comes in for an INR, I just print out the form, and don't print anything in the general notes
+   '     In this situation the progress notes get an entry for this fk_referral.
+   '   - I then forget to change patients. The next patient comes in, sits down, and I write in the general notes and save this.
+   '     without looking back at the previous notes tab.
+   '   - some time later I discover the mixup - ie parts of two consulations in the one notes. I'm able to identify which is which
+   '   - and want to transfer.
+   'Give them a change to back out
+   ' i) first check if there was > 1 progress note (pk_progressnote) for the patient on that day
+   '    if yes, then "do you want the entire consultation transfered"
+   ' 
+   ' (may need dto put up other notes on the day the user hasn't selected, under the one they did)
+   '    if no, then
+   '       -> search... did the destination patient have a consult that day
+   '          yes? then its ok, can just use that fk_consult
+   '         if no, then have to create  a new fk_consult, with the data of the transferred consultattion and appropridate audit)\
+   ' FIXME PUT IN AN AUDIT TRAIL
+   '-------------------------------------------------------------------------------------------------------
+   Dim iCount_progress_note_keys As Integer
+   Dim sql As String
+   Dim other_notes As Collection
+   Dim R As Result
+   Dim sMsg As String
+   Dim fk_consult_destination As Integer                                'if exists, the destination patients fk_consult on same date
+   Dim New_consult As Collection    
+   
+   '----------------------------------------------------------------------------------------------------------------------
+   'Firstly, did the patient we are transferring from, have more than one progress note for that day
+   'e.g if you wrote notes + printed a letter + printed a request there would be three keys in cin_consult.progress_notes
+   'if so, we can't just swap fk_patient into that fk_consult.
+   '----------------------------------------------------------------------------------------------------------------------
+   other_notes = modDBConnect.exec_query_collection("Select * from clin_consult.progressnotes where fk_consult = " & fk_consult)
+   If other_notes.count <> 1 Then
+      sMsg = "EasyGP notes that you are only transferring part of a patients consultation notes.\n\n"
+      sMsg &= "Do you wish to proceed"
+      If Message.Question(sMsg, "Yes", "No") = 2 Then Return
+       '---------------------------------------------------------------------------------
+      'did the patient we are trying to transfer to, have a consultation on the same day
+      'This would seem possible if the user has typed in the wrong notes, but they 
+      'still could have attended and we just had no entry.
+      'If they did, we can just swap this progress note to their existing fk_consult
+      '---------------------------------------------------------------------------------
+    
+      sql = "Select * from clin_consult.consult where fk_patient =" & To_Patient!fk_patient 
+      sql &= " And consult_date::date = $$" & Format(From_patient_Progress_Notes!consult_date, "yyyy-mm-dd") & "$$"
+      Print sql
+      R = modDBConnect.exec_query(sql)
+      If R.count Then
+         '-----------------------------------
+         'Yes, there is a consult key already
+         '-----------------------------------
+        fk_consult_destination = r!pk
+        sMsg = "EasyGP has determined that the destination patient did have a consultation on the same day as the patient "
+        sMsg &= "from whose progress notes you are transferring these notes.\n\n"
+        sMsg &= "Proceed with the transfer?"
+        If Message.Question(smsg, "Yes - transfer the notes", "No") = 2 Then Return
+           Goto Transfer_Progress_Note
+      Else
+         sMsg = "EasyGP has determined that the destination patient has no consultation recorded for the same day.\n\n"
+         sMsg &= "You will need to confirm that you just have written in the wrong notes, an audit trail will be created "
+         sMsg &= "and the progress note you have requested to move will be transferred."
+         If Message.Question(smsg, "Confirm - create new consultation", "Cancel") = 2 Then Return 
+           Goto Create_Consult
+      Endif
+    
+   Else
+      '--------------------------------------------------------------------------------------------------------------------
+      'There is only 1 consultation note on the day in the from patient's notes, so just swap the patient key in fk_consult
+      'i.e effectively transfer's the whole consultation
+      '--------------------------------------------------------------------------------------------------------------------
+      If Message.Warning("Please confirm transfer of the entire consultation - this cannot be undone.", "Yes - transfer consultation notes", "Cancel") = 2 Then Return 
+      Goto Transfer_Consult
+   End If   
+  
+
+   Create_Consult:
+   Print From_patient_Progress_Notes
+   New_consult = New Collection
+   New_consult!fk_patient = To_Patient!fk_patient
+   New_consult!consult_date = From_patient_Progress_Notes!consult_date
+   New_consult!fk_staff = From_patient_Progress_Notes!fk_staff
+   New_consult!fk_type = From_patient_Progress_Notes!fk_type
+   New_consult!summary = From_patient_Progress_Notes!summary
+   modDBConnect.insert("clin_consult.consult", New_consult)
+   modDBConnect.CommitTrans()
+   Return 
+   
+   Transfer_Consult:
+   modDBConnect.update("clin_consult.consult", Null, ["pk": fk_consult, "fk_patient": To_Patient!fk_patient])
+   modDBConnect.CommitTrans()
+   
+   Return   
+   Transfer_Progress_Note:
+   modDBConnect.update("clin_consult.progressnotes", Null, ["pk": From_patient_Progress_Notes!pk_progressnote, "fk_consult": fk_consult_destination])
+   modDBConnect.CommitTrans()   
    
 End

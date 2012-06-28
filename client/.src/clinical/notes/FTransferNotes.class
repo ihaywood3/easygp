@@ -18,7 +18,8 @@
 'PURPOSE          Allow transfer of a progress note to another persons file
 '                 with appropriate audit trail.
 '                 This allows for the situation where one writes in the wrong file
-'FIXME            Put in the audit trail
+'TODO             Put in the audit trail
+'                 in the calling module put up menu item "transfer whole consult"
 '---------------------------------------------------------------------------------
 Private From_Patient As Collection
 Private To_Patient As Collection
@@ -27,10 +28,17 @@ Private fk_consult As Integer
 Private patients As Collection 
 Private timer_count As Integer 
 Private From_patient_Progress_Notes As Collection
+Private bTransferComplete As Boolean
 
 Public Sub Run() As Boolean
    
    Return Not Me.ShowModal()
+   
+End
+
+Public Sub Form_Close()
+   
+  FProgressNotesViewer.Edit_Mode_Remove(bTransferComplete)
    
 End
 
@@ -252,11 +260,13 @@ End
 
 Public Sub Transfer()
    
-   '------------------------------------------------------------------
+   '-----------------------------------------------------------------------------------------------------------------------------
    'User has decided to transfer the notes from one patient to another, this is complicated
    'Examples
    '1) I've written in the wrong patient's notes a complete consultation
    '   - in this scenario I want to transfer the whole fk_consult
+   '   - if the destination patient did have a consultation that day that I wrote in, use that fk_consult
+   '   - otherwise, will have to create a new consult.pk to use
    '2) I've actually written part of a consultation into the wrong patients notes
    '   - ? how could this happen you say, well visualise this scenario
    '   - a patient comes in for an INR, I just print out the form, and don't print anything in the general notes
@@ -265,11 +275,11 @@ Public Sub Transfer()
    '     without looking back at the previous notes tab.
    '   - some time later I discover the mixup - ie parts of two consulations in the one notes. I'm able to identify which is which
    '   - and want to transfer.
-   'Give them a change to back out
-   ' i) first check if there was > 1 progress note (pk_progressnote) for the patient on that day
-   '    if yes, then "do you want the entire consultation transfered"
-   ' 
-   ' (may need dto put up other notes on the day the user hasn't selected, under the one they did)
+   '------------------------------------------------------------------------------------------------------------------------------  
+   ' As we progress along -- give them a change to back out
+   ' i) first check if there was > 1 progress note (pk_progressnote) for the patient **from whose notes we are transfering ***
+   ' on that day in question  if yes, then make sure they only want part of the consultation transfered
+   ' Suggestion: fixme - (may need dto put up other notes on the day the user hasn't selected, under the one they did)
    '    if no, then
    '       -> search... did the destination patient have a consult that day
    '          yes? then its ok, can just use that fk_consult
@@ -283,17 +293,18 @@ Public Sub Transfer()
    Dim sMsg As String
    Dim fk_consult_destination As Integer                                'if exists, the destination patients fk_consult on same date
    Dim New_consult As Collection    
-   
+   Dim bTransferSingleProgressNote As Boolean
    '----------------------------------------------------------------------------------------------------------------------
    'Firstly, did the patient we are transferring from, have more than one progress note for that day
    'e.g if you wrote notes + printed a letter + printed a request there would be three keys in cin_consult.progress_notes
-   'if so, we can't just swap fk_patient into that fk_consult.
-   '----------------------------------------------------------------------------------------------------------------------
+   'if so, we can't just swap    ' FIXME PUT IN AN AUDIT TRAIL
+    '----------------------------------------------------------------------------------------------------------------------
    other_notes = modDBConnect.exec_query_collection("Select * from clin_consult.progressnotes where fk_consult = " & fk_consult)
    If other_notes.count <> 1 Then
       sMsg = "EasyGP notes that you are only transferring part of a patients consultation notes.\n\n"
       sMsg &= "Do you wish to proceed"
       If Message.Question(sMsg, "Yes", "No") = 2 Then Return
+      bTransferSingleProgressNote = True  
        '---------------------------------------------------------------------------------
       'did the patient we are trying to transfer to, have a consultation on the same day
       'This would seem possible if the user has typed in the wrong notes, but they 
@@ -303,7 +314,6 @@ Public Sub Transfer()
     
       sql = "Select * from clin_consult.consult where fk_patient =" & To_Patient!fk_patient 
       sql &= " And consult_date::date = $$" & Format(From_patient_Progress_Notes!consult_date, "yyyy-mm-dd") & "$$"
-      Print sql
       R = modDBConnect.exec_query(sql)
       If R.count Then
          '-----------------------------------
@@ -332,7 +342,6 @@ Public Sub Transfer()
       Goto Transfer_Consult
    End If   
   
-
    Create_Consult:
    Print From_patient_Progress_Notes
    New_consult = New Collection
@@ -341,18 +350,21 @@ Public Sub Transfer()
    New_consult!fk_staff = From_patient_Progress_Notes!fk_staff
    New_consult!fk_type = From_patient_Progress_Notes!fk_type
    New_consult!summary = From_patient_Progress_Notes!summary
-   modDBConnect.insert("clin_consult.consult", New_consult)
-   Goto Transfer_Progress_Note
- 
+   fk_consult_destination = modDBConnect.insert("clin_consult.consult", New_consult)
+   If bTransferSingleProgressNote Then
+      Goto Transfer_Progress_Note
+   Else
+      Goto Transfer_Consult
+   Endif
    Return 
    
    Transfer_Consult: 
    modDBConnect.update("clin_consult.consult", Null, ["pk": fk_consult, "fk_patient": To_Patient!fk_patient])
    modDBConnect.CommitTrans()
-   
+   bTransferComplete = True   
    Return   
    Transfer_Progress_Note:
    modDBConnect.update("clin_consult.progressnotes", Null, ["pk": From_patient_Progress_Notes!pk_progressnote, "fk_consult": fk_consult_destination])
    modDBConnect.CommitTrans()   
-   
+   bTransferComplete = True   
 End

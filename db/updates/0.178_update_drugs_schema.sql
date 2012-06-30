@@ -2,6 +2,7 @@
 -- a function to display strengths properly
 -- use like this: drugs.format_strength(strength) as display_strength
 
+
 CREATE OR REPLACE FUNCTION drugs.format_strength(text)
   RETURNS text AS
 $BODY$

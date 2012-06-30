@@ -4,9 +4,10 @@
 
 SET statement_timeout = 0;
 SET client_encoding = 'UTF8';
-SET standard_conforming_strings = on;
+SET standard_conforming_strings = off;
 SET check_function_bodies = false;
 SET client_min_messages = warning;
+SET escape_string_warning = off;
 
 --
 -- Name: admin; Type: SCHEMA; Schema: -; Owner: -
@@ -279,31 +280,10 @@ CREATE SCHEMA research;
 
 
 --
--- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: -
+-- Name: plpgsql; Type: PROCEDURAL LANGUAGE; Schema: -; Owner: -
 --
 
-CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
-
-
---
--- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
-
-
---
--- Name: uuid-ossp; Type: EXTENSION; Schema: -; Owner: -
---
-
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
-
-
---
--- Name: EXTENSION "uuid-ossp"; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON EXTENSION "uuid-ossp" IS 'generate universally unique identifiers (UUIDs)';
+CREATE PROCEDURAL LANGUAGE plpgsql;
 
 
 SET search_path = clerical, pg_catalog;
@@ -411,26 +391,113 @@ COMMENT ON FUNCTION erase_data() IS '**********************
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: strength_sort_value(text); Type: FUNCTION; Schema: drugs; Owner: -
+-- Name: display_strength(text, double precision, integer); Type: FUNCTION; Schema: drugs; Owner: -
 --
 
-CREATE FUNCTION strength_sort_value(text) RETURNS double precision
+CREATE FUNCTION display_strength(text, double precision, integer) RETURNS text
     LANGUAGE plpgsql
     AS $_$
 DECLARE
-  matches text[];
-  amount float;
+  i text;
+  a text[];
+  r text;
+  u text;
+  q float;
 BEGIN
-  matches := regexp_matches($1,'^([0-9\.]+)(mg|mcg|g)');
-  amount := matches[1]::float;
-  if matches[2] = 'mcg' then
-    amount := amount/1000;
+  -- do the ml -> 5ml conversion;
+  for i in select strength from regexp_split_to_table($1,E'-') as strength loop
+    u := i;
+    a := regexp_matches(i,E'^([0-9\\.]+)([a-z\\/]+)$');
+    if not a is null then
+      if a[2] = 'mg/ml' or a[2] = 'mcg/ml' then
+        q := a[1]::float;
+        q := q*5;
+        u := q::text || replace(a[2],'/ml','/5ml');
+      else
+        u := i;
+      end if;
+    else
+      u := i;
+    end if;
+    IF r is null THEN
+      r := u;
+    ELSE
+      r := r || '-' || u;
+    END IF;
+  end loop;
+RETURN r;
+END;
+$_$;
+
+
+--
+-- Name: format_packsize(double precision, integer, integer); Type: FUNCTION; Schema: drugs; Owner: -
+--
+
+CREATE FUNCTION format_packsize(double precision, integer, integer) RETURNS text
+    LANGUAGE plpgsql
+    AS $_$
+declare
+  r text;
+  i text;
+begin
+  r := '';
+  -- now add amount and amount_unit
+  if not $1 is null then
+    select into i abbrev_text from common.lu_units where pk = $2;
+    r := $1 || i;
   end if;
-  if matches[2] = 'g' then
-    amount := amount*1000;
+  if $3 <> 1 then
+    i := $3::text;
+    if r <> '' then
+      r:= r || ' x ' || i;
+    else
+      r := i;
+    end if;
   end if;
-  return amount;
-END
+  RETURN r;
+END;
+$_$;
+
+
+--
+-- Name: format_strength(text); Type: FUNCTION; Schema: drugs; Owner: -
+--
+
+CREATE FUNCTION format_strength(text) RETURNS text
+    LANGUAGE plpgsql
+    AS $_$
+DECLARE
+  i text;
+  a text[];
+  r text;
+  u text;
+  q float;
+BEGIN
+  -- do the ml -> 5ml conversion;
+  for i in select strength from regexp_split_to_table($1,E'-') as
+strength loop
+    u := i;
+    a := regexp_matches(i,E'^([0-9\\.]+)([a-z\\/]+)$');
+    if not a is null then
+      if a[2] = 'mg/ml' or a[2] = 'mcg/ml' then
+        q := a[1]::float;
+        q := q*5;
+        u := q::text || replace(a[2],'/ml','/5ml');
+      else
+        u := i;
+      end if;
+    else
+      u := i;
+    end if;
+    IF r is null THEN
+      r := u;
+    ELSE
+      r := r || '-' || u;
+    END IF;
+  end loop;
+  return r;
+end;
 $_$;
 
 
@@ -472,6 +539,136 @@ CREATE FUNCTION invoice_total(integer) RETURNS money
     select sum(patient_charge) from clerical.items_billed where fk_invoice=$1; $_$;
 
 
+--
+-- Name: new_uuid(uuid, integer); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION new_uuid(uuid, integer) RETURNS uuid
+    LANGUAGE plpgsql
+    AS $_$
+DECLARE
+  x integer;
+BEGIN
+   select "count" into x from multiple_packsize where fk_product = $1;
+   if x = 1 then
+       return $1;
+   else 
+       return  uuid_generate_v5(uuid_ns_url(),'http://easygp.net/new-uuids/' || $1 || '/' || $2);
+   end if;
+END
+$_$;
+
+
+--
+-- Name: new_uuid(uuid, double precision); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION new_uuid(uuid, double precision) RETURNS uuid
+    LANGUAGE plpgsql
+    AS $_$
+DECLARE
+  x integer;
+BEGIN
+   select count(*) into x from new_product where new_uuid = $1;
+   if x = 1 then
+       return $1;
+   else 
+       return  uuid_generate_v5(uuid_ns_url(),'http://easygp.net/new-uuids2/' || $1 || '/' || $2);
+   end if;
+END
+$_$;
+
+
+--
+-- Name: uuid_generate_v1(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION uuid_generate_v1() RETURNS uuid
+    LANGUAGE c STRICT
+    AS '$libdir/uuid-ossp', 'uuid_generate_v1';
+
+
+--
+-- Name: uuid_generate_v1mc(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION uuid_generate_v1mc() RETURNS uuid
+    LANGUAGE c STRICT
+    AS '$libdir/uuid-ossp', 'uuid_generate_v1mc';
+
+
+--
+-- Name: uuid_generate_v3(uuid, text); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION uuid_generate_v3(namespace uuid, name text) RETURNS uuid
+    LANGUAGE c IMMUTABLE STRICT
+    AS '$libdir/uuid-ossp', 'uuid_generate_v3';
+
+
+--
+-- Name: uuid_generate_v4(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION uuid_generate_v4() RETURNS uuid
+    LANGUAGE c STRICT
+    AS '$libdir/uuid-ossp', 'uuid_generate_v4';
+
+
+--
+-- Name: uuid_generate_v5(uuid, text); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION uuid_generate_v5(namespace uuid, name text) RETURNS uuid
+    LANGUAGE c IMMUTABLE STRICT
+    AS '$libdir/uuid-ossp', 'uuid_generate_v5';
+
+
+--
+-- Name: uuid_nil(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION uuid_nil() RETURNS uuid
+    LANGUAGE c IMMUTABLE STRICT
+    AS '$libdir/uuid-ossp', 'uuid_nil';
+
+
+--
+-- Name: uuid_ns_dns(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION uuid_ns_dns() RETURNS uuid
+    LANGUAGE c IMMUTABLE STRICT
+    AS '$libdir/uuid-ossp', 'uuid_ns_dns';
+
+
+--
+-- Name: uuid_ns_oid(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION uuid_ns_oid() RETURNS uuid
+    LANGUAGE c IMMUTABLE STRICT
+    AS '$libdir/uuid-ossp', 'uuid_ns_oid';
+
+
+--
+-- Name: uuid_ns_url(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION uuid_ns_url() RETURNS uuid
+    LANGUAGE c IMMUTABLE STRICT
+    AS '$libdir/uuid-ossp', 'uuid_ns_url';
+
+
+--
+-- Name: uuid_ns_x500(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION uuid_ns_x500() RETURNS uuid
+    LANGUAGE c IMMUTABLE STRICT
+    AS '$libdir/uuid-ossp', 'uuid_ns_x500';
+
+
 SET search_path = admin, pg_catalog;
 
 --
@@ -505,8 +702,8 @@ COMMENT ON COLUMN clinics.fk_branch IS 'foreign key to contacts.branches table';
 CREATE SEQUENCE clinic_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -558,8 +755,8 @@ COMMENT ON COLUMN clinic_rooms.fk_clinic IS 'foreign key to admin.clinics table'
 CREATE SEQUENCE clinic_rooms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -597,8 +794,8 @@ COMMENT ON COLUMN global_preferences.fk_staff IS 'if not null, then this is a st
 CREATE SEQUENCE global_preferences_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -627,8 +824,8 @@ CREATE TABLE link_staff_clinics (
 CREATE SEQUENCE link_staff_clinics_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -664,8 +861,8 @@ COMMENT ON TABLE lu_clinical_modules IS 'modules which could be available clinic
 CREATE SEQUENCE lu_clinical_modules_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -701,8 +898,8 @@ COMMENT ON TABLE lu_staff_roles IS 'Type of role in the organisation
 CREATE SEQUENCE lu_staff_roles_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -739,8 +936,8 @@ COMMENT ON TABLE lu_staff_status IS 'Working status of staff member
 CREATE SEQUENCE lu_staff_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -785,8 +982,8 @@ COMMENT ON TABLE lu_staff_type IS 'Type of staff:
 CREATE SEQUENCE lu_staff_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -852,8 +1049,8 @@ COMMENT ON TABLE staff_clinical_toolbar IS 'Links staff member to a toolbar butt
 CREATE SEQUENCE staff_clinical_toolbar_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -871,8 +1068,8 @@ ALTER SEQUENCE staff_clinical_toolbar_pk_seq OWNED BY staff_clinical_toolbar.pk;
 CREATE SEQUENCE staff_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -1289,8 +1486,8 @@ CREATE TABLE blobs (
 CREATE SEQUENCE blobs_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -1308,8 +1505,8 @@ ALTER SEQUENCE blobs_pk_seq OWNED BY blobs.pk;
 CREATE SEQUENCE images_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -1472,8 +1669,8 @@ COMMENT ON TABLE diabetes_annual_cycle_of_care_notes IS 'as a cycle_of_care may 
 CREATE SEQUENCE diabetes_annual_cycle_of_care_notes_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -1491,8 +1688,8 @@ ALTER SEQUENCE diabetes_annual_cycle_of_care_notes_pk_seq OWNED BY diabetes_annu
 CREATE SEQUENCE diabetes_annual_cycle_of_care_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -1501,6 +1698,23 @@ CREATE SEQUENCE diabetes_annual_cycle_of_care_pk_seq
 --
 
 ALTER SEQUENCE diabetes_annual_cycle_of_care_pk_seq OWNED BY diabetes_annual_cycle_of_care.pk;
+
+
+--
+-- Name: diabetes_patients_excluded_from_cdm; Type: TABLE; Schema: chronic_disease_management; Owner: -; Tablespace: 
+--
+
+CREATE TABLE diabetes_patients_excluded_from_cdm (
+    fk_patient integer NOT NULL
+);
+
+
+--
+-- Name: TABLE diabetes_patients_excluded_from_cdm; Type: COMMENT; Schema: chronic_disease_management; Owner: -
+--
+
+COMMENT ON TABLE diabetes_patients_excluded_from_cdm IS 'table containing keys to clerical.fk_patient where someone has ordered 
+ a hba1c on somone who is not diabetic in fact.';
 
 
 --
@@ -1530,8 +1744,8 @@ COMMENT ON TABLE epc_link_provider_form IS 'links the core EPC referral details 
 CREATE SEQUENCE epc_link_provider_form_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -1600,8 +1814,8 @@ COMMENT ON COLUMN epc_referral.fk_electronic_signature IS 'if not null, an image
 CREATE SEQUENCE epc_referral_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -1638,8 +1852,8 @@ COMMENT ON TABLE lu_allied_health_type IS 'describes the type of allied health p
 CREATE SEQUENCE lu_allied_health_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -1682,8 +1896,8 @@ COMMENT ON COLUMN lu_dacc_components.fk_component IS 'key to chronic_disease_man
 CREATE SEQUENCE lu_dacc_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -1721,8 +1935,8 @@ COMMENT ON TABLE team_care_arrangements IS 'the team care arrangements table';
 CREATE SEQUENCE team_care_arrangements_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -1873,8 +2087,8 @@ COMMENT ON TABLE bookings IS 'list of all bookings past and future. Note fk_pati
 CREATE SEQUENCE bookings_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -1902,8 +2116,8 @@ CREATE TABLE data_families (
 CREATE SEQUENCE data_families_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -1932,8 +2146,8 @@ CREATE TABLE data_family_members (
 CREATE SEQUENCE data_family_members_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2037,8 +2251,8 @@ COMMENT ON COLUMN data_patients.pk_legacy IS 'the key from the legacy database f
 CREATE SEQUENCE data_patients_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2073,8 +2287,8 @@ CREATE TABLE invoices (
 CREATE SEQUENCE invoices_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2104,8 +2318,8 @@ CREATE TABLE items_billed (
 CREATE SEQUENCE items_billed_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2141,8 +2355,8 @@ COMMENT ON TABLE lu_appointment_icons IS 'a table holding path to icons to use a
 CREATE SEQUENCE lu_appointment_icons_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2177,8 +2391,8 @@ COMMENT ON TABLE lu_appointment_status IS 'the status of the appointment as it a
 CREATE SEQUENCE lu_appointment_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2223,8 +2437,8 @@ COMMENT ON TABLE lu_task_types IS 'the type of task e.g ring the patient';
 CREATE SEQUENCE lu_task_types_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2255,8 +2469,8 @@ CREATE TABLE payments_received (
 CREATE SEQUENCE payments_received_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2347,8 +2561,8 @@ COMMENT ON COLUMN schedule.gst_rate IS 'the goods and services tax rate';
 CREATE SEQUENCE schedule_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2366,8 +2580,8 @@ ALTER SEQUENCE schedule_pk_seq OWNED BY schedule.pk;
 CREATE SEQUENCE sessions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2407,8 +2621,8 @@ COMMENT ON COLUMN task_component_notes.note IS 'notes about the component as the
 CREATE SEQUENCE task_component_notes_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2523,8 +2737,8 @@ COMMENT ON COLUMN task_components.fk_role IS 'foreign key to admin.lu_staff_role
 CREATE SEQUENCE task_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2596,8 +2810,8 @@ COMMENT ON COLUMN tasks.fk_role_can_finalise IS 'if not null, then a staff membe
 CREATE SEQUENCE tasks_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2718,13 +2932,13 @@ SET search_path = clin_allergies, pg_catalog;
 
 CREATE TABLE allergies (
     pk integer NOT NULL,
-    fk_consult integer NOT NULL,
+    fk_consult integer,
     brand text,
-    generic_specific boolean NOT NULL,
-    fk_reaction integer NOT NULL,
-    deleted boolean NOT NULL,
-    atc text NOT NULL,
-    date_reaction date
+    generic text,
+    generic_specific boolean,
+    fk_type integer NOT NULL,
+    fk_reaction text NOT NULL,
+    deleted boolean
 );
 
 
@@ -2735,8 +2949,8 @@ CREATE TABLE allergies (
 CREATE SEQUENCE allergies_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2764,8 +2978,8 @@ CREATE TABLE lu_reaction (
 CREATE SEQUENCE lu_reaction_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2774,6 +2988,35 @@ CREATE SEQUENCE lu_reaction_pk_seq
 --
 
 ALTER SEQUENCE lu_reaction_pk_seq OWNED BY lu_reaction.pk;
+
+
+--
+-- Name: lu_type; Type: TABLE; Schema: clin_allergies; Owner: -; Tablespace: 
+--
+
+CREATE TABLE lu_type (
+    pk integer NOT NULL,
+    type text
+);
+
+
+--
+-- Name: lu_type_pk_seq; Type: SEQUENCE; Schema: clin_allergies; Owner: -
+--
+
+CREATE SEQUENCE lu_type_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+
+--
+-- Name: lu_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_allergies; Owner: -
+--
+
+ALTER SEQUENCE lu_type_pk_seq OWNED BY lu_type.pk;
 
 
 SET search_path = clin_careplans, pg_catalog;
@@ -2839,8 +3082,8 @@ COMMENT ON COLUMN careplan_pages.summary IS 'a complete html page which is the c
 CREATE SEQUENCE careplan_pages_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2899,8 +3142,8 @@ COMMENT ON COLUMN careplans.fk_consult IS 'foreigh key to the clin_consult.consu
 CREATE SEQUENCE careplans_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -2949,8 +3192,8 @@ COMMENT ON COLUMN component_task_due."interval" IS 'temporary field containg e.g
 CREATE SEQUENCE component_task_due_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3002,8 +3245,8 @@ COMMENT ON COLUMN link_careplanpage_advice.fk_advice IS 'foreign key to lu_advic
 CREATE SEQUENCE link_careplanpage_advice_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3039,8 +3282,8 @@ COMMENT ON TABLE link_careplanpage_components IS ' links a  careplan page to its
 CREATE SEQUENCE link_careplanpage_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3090,8 +3333,8 @@ COMMENT ON COLUMN link_careplanpages_careplan.fk_careplanpage IS 'key to clin_ca
 CREATE SEQUENCE link_careplanpages_careplan_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3133,8 +3376,8 @@ COMMENT ON COLUMN lu_advice.advice IS 'advice printed on care plan e.g ring if c
 CREATE SEQUENCE lu_advice_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3162,8 +3405,8 @@ CREATE TABLE lu_aims (
 CREATE SEQUENCE lu_aims_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3200,8 +3443,8 @@ COMMENT ON TABLE lu_components IS 'A component is a part of a care plan describi
 CREATE SEQUENCE lu_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3253,8 +3496,8 @@ this is confusing and ambiguous because of reasons in the care plan schema';
 CREATE SEQUENCE lu_conditions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3289,8 +3532,8 @@ COMMENT ON COLUMN lu_education.education IS 'text of education e.g all about hyp
 CREATE SEQUENCE lu_education_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3327,8 +3570,8 @@ COMMENT ON TABLE lu_responsible IS 'the person responsible for implementing a co
 CREATE SEQUENCE lu_responsible_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3366,8 +3609,8 @@ COMMENT ON TABLE lu_tasks IS 'A task is something that needs to be done to achei
 CREATE SEQUENCE lu_tasks_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3424,8 +3667,8 @@ COMMENT ON TABLE certificate_reasons IS 'A table to keep reasons a particular do
 CREATE SEQUENCE certificate_reasons_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3453,8 +3696,8 @@ CREATE TABLE lu_fitness (
 CREATE SEQUENCE lu_fitness_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3497,8 +3740,8 @@ COMMENT ON COLUMN lu_illness_temporality.temporality IS 'text contents: is - was
 CREATE SEQUENCE lu_illness_temporality_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3634,8 +3877,8 @@ COMMENT ON COLUMN medical_certificates.print_notes IS 'if true then the notes wi
 CREATE SEQUENCE medical_certificate_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3775,8 +4018,8 @@ COMMENT ON TABLE annual_checkup IS 'Describes a persons annual checkup';
 CREATE SEQUENCE annual_checkup_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3826,8 +4069,8 @@ COMMENT ON COLUMN lu_nutrition_questions.red_flag_text IS 'the question translat
 CREATE SEQUENCE lu_nutrition_questions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3869,8 +4112,8 @@ COMMENT ON COLUMN lu_state_of_health.state_of_health IS 'excellent, very good, g
 CREATE SEQUENCE lu_state_of_health_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -3986,8 +4229,8 @@ COMMENT ON COLUMN over75.fk_lu_earcanal_status IS 'references common.lu_normalit
 CREATE SEQUENCE over75_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4007,8 +4250,8 @@ SET search_path = clin_consult, pg_catalog;
 CREATE SEQUENCE consult_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4037,8 +4280,8 @@ CREATE TABLE images (
 CREATE SEQUENCE images_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4056,8 +4299,8 @@ ALTER SEQUENCE images_pk_seq OWNED BY images.pk;
 CREATE SEQUENCE lu_actions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4075,8 +4318,8 @@ ALTER SEQUENCE lu_actions_pk_seq OWNED BY lu_audit_actions.pk;
 CREATE SEQUENCE lu_audit_reasons_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4094,8 +4337,8 @@ ALTER SEQUENCE lu_audit_reasons_pk_seq OWNED BY lu_audit_reasons.pk;
 CREATE SEQUENCE lu_consult_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4148,8 +4391,8 @@ COMMENT ON COLUMN lu_progressnote_templates.template IS 'html for a letter templ
 CREATE SEQUENCE lu_progressnote_templates_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4167,8 +4410,8 @@ ALTER SEQUENCE lu_progressnote_templates_pk_seq OWNED BY lu_progressnote_templat
 CREATE SEQUENCE lu_progressnotes_sections_pk_seq
     START WITH 20
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4208,8 +4451,8 @@ e.g outstanding
 CREATE SEQUENCE lu_scratchpad_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4227,8 +4470,8 @@ ALTER SEQUENCE lu_scratchpad_status_pk_seq OWNED BY lu_scratchpad_status.pk;
 CREATE SEQUENCE progressnotes_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4267,8 +4510,8 @@ COMMENT ON COLUMN scratchpad.fk_progressnote IS 'foreign key to clin_consult.pro
 CREATE SEQUENCE scratchpad_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4406,8 +4649,8 @@ COMMENT ON COLUMN care_plan_components_due.due IS 'date the comment is due to be
 CREATE SEQUENCE care_plan_components_due_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4425,8 +4668,8 @@ ALTER SEQUENCE care_plan_components_due_pk_seq OWNED BY care_plan_components_due
 CREATE SEQUENCE care_plan_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4457,8 +4700,8 @@ CREATE TABLE data_recreational_drugs (
 CREATE SEQUENCE data_recreational_drugs_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4510,8 +4753,8 @@ COMMENT ON COLUMN family_conditions.fk_code IS 'foreign key to coding.generic_te
 CREATE SEQUENCE family_conditions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4541,8 +4784,8 @@ CREATE TABLE family_links (
 CREATE SEQUENCE family_links_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4585,8 +4828,8 @@ COMMENT ON COLUMN family_members.fk_person IS 'I put this in in-case it was need
 CREATE SEQUENCE family_members_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4625,8 +4868,8 @@ COMMENT ON TABLE hospitalisations IS 'if specialist exists in contacts use pk_pe
 CREATE SEQUENCE hospitalisations_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4668,8 +4911,8 @@ COMMENT ON COLUMN lu_careplan_components.component IS 'a component of a care pla
 CREATE SEQUENCE lu_careplan_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4714,8 +4957,8 @@ COMMENT ON COLUMN lu_dacc_components.fk_component IS 'key to clin_history.lu_car
 CREATE SEQUENCE lu_dacc_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4760,8 +5003,8 @@ COMMENT ON COLUMN lu_exposures.fk_decision_support IS '
 CREATE SEQUENCE lu_exposures_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4850,8 +5093,8 @@ COMMENT ON COLUMN occupational_history.fk_progressnote IS 'key to clin_consult.p
 CREATE SEQUENCE occupational_history_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4920,8 +5163,8 @@ COMMENT ON COLUMN occupations_exposures.exposure_duration_units IS 'foreign key 
 CREATE SEQUENCE occupations_exposures_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -4985,8 +5228,8 @@ COMMENT ON COLUMN past_history.fk_progressnote IS 'foreign key to clin_consult.p
 CREATE SEQUENCE past_history_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -5004,8 +5247,8 @@ ALTER SEQUENCE past_history_pk_seq OWNED BY past_history.pk;
 CREATE SEQUENCE pk_view_familyhistory
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -5088,8 +5331,8 @@ COMMENT ON COLUMN social_history.responsible_person_contacts IS 'one or more typ
 CREATE SEQUENCE social_history_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -5132,8 +5375,8 @@ COMMENT ON TABLE team_care_members IS 'links a past history item to team care me
 CREATE SEQUENCE team_care_members_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -5494,8 +5737,8 @@ SET search_path = common, pg_catalog;
 CREATE SEQUENCE lu_appointment_length_pk_seq
     START WITH 0
     INCREMENT BY 1
-    MINVALUE 0
     MAXVALUE 100
+    MINVALUE 0
     CACHE 1;
 
 
@@ -5659,8 +5902,8 @@ SET search_path = contacts, pg_catalog;
 CREATE SEQUENCE vworganisations_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -5669,7 +5912,7 @@ CREATE SEQUENCE vworganisations_pk_seq
 --
 
 CREATE VIEW vworganisationsemployees AS
-    SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, employees.memo, branches.fk_category, NULL::character varying AS category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, employees.pk AS fk_employee, CASE WHEN (employees.pk > 0) THEN (((title.title || ' '::text) || (persons.firstname || ' '::text)) || persons.surname) ELSE 'Nothing'::text END AS wholename, employees.fk_occupation, employees.fk_status, employee_status.status AS employee_status, employees.deleted AS employee_deleted, occupations.occupation, persons.pk AS fk_person, persons.firstname, persons.surname, persons.salutation, persons.birthdate, persons.deceased, persons.date_deceased, persons.retired, persons.fk_ethnicity, persons.fk_language, persons.fk_marital, persons.fk_title, persons.fk_sex, sex.sex, title.title FROM (((((((((((data_employees employees JOIN data_branches branches ON ((employees.fk_branch = branches.pk))) LEFT JOIN lu_employee_status employee_status ON ((employees.fk_status = employee_status.pk))) JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN common.lu_occupations occupations ON ((employees.fk_occupation = occupations.pk))) LEFT JOIN data_persons persons ON ((employees.fk_person = persons.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) WHERE (employees.fk_person IS NOT NULL) UNION SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, 0 AS fk_employee, ((organisations.organisation || ' '::text) || branches.branch) AS wholename, 0 AS fk_occupation, 0 AS fk_status, NULL::text AS employee_status, false AS employee_deleted, NULL::text AS occupation, 0 AS fk_person, NULL::text AS firstname, NULL::text AS surname, NULL::text AS salutation, NULL::date AS birthdate, false AS deceased, NULL::date AS date_deceased, false AS retired, 0 AS fk_ethnicity, 0 AS fk_language, 0 AS fk_marital, 0 AS fk_title, 0 AS fk_sex, NULL::text AS sex, NULL::text AS title FROM ((((((data_branches branches JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) ORDER BY 1, 3, 4, 29, 28;
+    SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, employees.memo, branches.fk_category, NULL::unknown AS category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, employees.pk AS fk_employee, CASE WHEN (employees.pk > 0) THEN (((title.title || ' '::text) || (persons.firstname || ' '::text)) || persons.surname) ELSE 'Nothing'::text END AS wholename, employees.fk_occupation, employees.fk_status, employee_status.status AS employee_status, employees.deleted AS employee_deleted, occupations.occupation, persons.pk AS fk_person, persons.firstname, persons.surname, persons.salutation, persons.birthdate, persons.deceased, persons.date_deceased, persons.retired, persons.fk_ethnicity, persons.fk_language, persons.fk_marital, persons.fk_title, persons.fk_sex, sex.sex, title.title FROM (((((((((((data_employees employees JOIN data_branches branches ON ((employees.fk_branch = branches.pk))) LEFT JOIN lu_employee_status employee_status ON ((employees.fk_status = employee_status.pk))) JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN common.lu_occupations occupations ON ((employees.fk_occupation = occupations.pk))) LEFT JOIN data_persons persons ON ((employees.fk_person = persons.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) WHERE (employees.fk_person IS NOT NULL) UNION SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, 0 AS fk_employee, ((organisations.organisation || ' '::text) || branches.branch) AS wholename, 0 AS fk_occupation, 0 AS fk_status, NULL::unknown AS employee_status, false AS employee_deleted, NULL::unknown AS occupation, 0 AS fk_person, NULL::unknown AS firstname, NULL::unknown AS surname, NULL::unknown AS salutation, NULL::unknown AS birthdate, false AS deceased, NULL::unknown AS date_deceased, false AS retired, 0 AS fk_ethnicity, 0 AS fk_language, 0 AS fk_marital, 0 AS fk_title, 0 AS fk_sex, NULL::unknown AS sex, NULL::unknown AS title FROM ((((((data_branches branches JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) ORDER BY 1, 3, 4, 29, 28;
 
 
 --
@@ -5692,7 +5935,7 @@ SET search_path = clin_history, pg_catalog;
 --
 
 CREATE VIEW vwteamcaremembers AS
-    SELECT team_care_members.pk, team_care_members.fk_pasthistory, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_branch, vworganisationsemployees.fk_person, vworganisationsemployees.fk_employee, CASE WHEN (vworganisationsemployees.fk_employee = 0) THEN vworganisationsemployees.branch ELSE (((vworganisationsemployees.title || ' '::text) || (vworganisationsemployees.firstname || ' '::text)) || vworganisationsemployees.surname) END AS wholename, (((vworganisationsemployees.organisation || ' '::text) || (vworganisationsemployees.branch || ' '::text)) || CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN ''::text ELSE ((((vworganisationsemployees.street1 || ' '::text) || vworganisationsemployees.town) || ' '::text) || (vworganisationsemployees.postcode)::text) END) AS summary, team_care_members.responsibility FROM (team_care_members LEFT JOIN contacts.vworganisationsemployees ON (((team_care_members.fk_branch = vworganisationsemployees.fk_branch) AND (team_care_members.fk_employee = vworganisationsemployees.fk_employee)))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_branch > 0)) UNION SELECT team_care_members.pk, team_care_members.fk_pasthistory, NULL::integer AS fk_organisation, NULL::integer AS fk_branch, vwpersonsincludingpatients.fk_person, NULL::integer AS fk_employee, vwpersonsincludingpatients.wholename, ((((vwpersonsincludingpatients.street1 || ' '::text) || vwpersonsincludingpatients.town) || ' '::text) || (vwpersonsincludingpatients.postcode)::text) AS summary, team_care_members.responsibility FROM ((team_care_members JOIN contacts.vwpersonsincludingpatients ON ((team_care_members.fk_person = vwpersonsincludingpatients.fk_person))) LEFT JOIN contacts.vworganisationsemployees ON ((team_care_members.fk_person = vworganisationsemployees.fk_person))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_employee = 0)) ORDER BY 2;
+    SELECT team_care_members.pk, team_care_members.fk_pasthistory, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_branch, vworganisationsemployees.fk_person, vworganisationsemployees.fk_employee, CASE WHEN (vworganisationsemployees.fk_employee = 0) THEN vworganisationsemployees.branch ELSE (((vworganisationsemployees.title || ' '::text) || (vworganisationsemployees.firstname || ' '::text)) || vworganisationsemployees.surname) END AS wholename, (((vworganisationsemployees.organisation || ' '::text) || (vworganisationsemployees.branch || ' '::text)) || CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN ''::text ELSE ((((vworganisationsemployees.street1 || ' '::text) || vworganisationsemployees.town) || ' '::text) || (vworganisationsemployees.postcode)::text) END) AS summary, team_care_members.responsibility FROM (team_care_members LEFT JOIN contacts.vworganisationsemployees ON (((team_care_members.fk_branch = vworganisationsemployees.fk_branch) AND (team_care_members.fk_employee = vworganisationsemployees.fk_employee)))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_branch > 0)) UNION SELECT team_care_members.pk, team_care_members.fk_pasthistory, NULL::unknown AS fk_organisation, NULL::unknown AS fk_branch, vwpersonsincludingpatients.fk_person, NULL::unknown AS fk_employee, vwpersonsincludingpatients.wholename, ((((vwpersonsincludingpatients.street1 || ' '::text) || vwpersonsincludingpatients.town) || ' '::text) || (vwpersonsincludingpatients.postcode)::text) AS summary, team_care_members.responsibility FROM ((team_care_members JOIN contacts.vwpersonsincludingpatients ON ((team_care_members.fk_person = vwpersonsincludingpatients.fk_person))) LEFT JOIN contacts.vworganisationsemployees ON ((team_care_members.fk_person = vworganisationsemployees.fk_person))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_employee = 0)) ORDER BY 2;
 
 
 SET search_path = clin_measurements, pg_catalog;
@@ -5808,8 +6051,8 @@ COMMENT ON COLUMN lu_type.fk_plotting_method IS 'foreign key for lu_plotting met
 CREATE SEQUENCE lu_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -5885,8 +6128,8 @@ COMMENT ON COLUMN measurements.comment IS 'comment on this measurement e.g resti
 CREATE SEQUENCE measurements_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -5955,8 +6198,8 @@ COMMENT ON COLUMN patients_defaults.deleted IS 'If True, then this record is mar
 CREATE SEQUENCE patients_defaults_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -5976,6 +6219,36 @@ CREATE VIEW vwmeasurements AS
 
 
 --
+-- Name: vwbpmostrecent; Type: VIEW; Schema: clin_measurements; Owner: -
+--
+
+CREATE VIEW vwbpmostrecent AS
+    SELECT DISTINCT ON (vwmeasurements.fk_patient) vwmeasurements.fk_patient AS pk_view, vwmeasurements.consult_date, vwmeasurements.measurement FROM vwmeasurements WHERE ((vwmeasurements.deleted = false) AND (vwmeasurements.fk_type = 1)) ORDER BY vwmeasurements.fk_patient, vwmeasurements.consult_date DESC;
+
+
+--
+-- Name: VIEW vwbpmostrecent; Type: COMMENT; Schema: clin_measurements; Owner: -
+--
+
+COMMENT ON VIEW vwbpmostrecent IS ' the latest BP measurement for all patients, pk_view = fk_patient';
+
+
+--
+-- Name: vwheightmostrecent; Type: VIEW; Schema: clin_measurements; Owner: -
+--
+
+CREATE VIEW vwheightmostrecent AS
+    SELECT DISTINCT ON (vwmeasurements.fk_patient) vwmeasurements.fk_patient AS pk_view, vwmeasurements.consult_date, vwmeasurements.measurement FROM vwmeasurements WHERE ((vwmeasurements.deleted = false) AND (vwmeasurements.fk_type = 4)) ORDER BY vwmeasurements.fk_patient, vwmeasurements.consult_date DESC;
+
+
+--
+-- Name: VIEW vwheightmostrecent; Type: COMMENT; Schema: clin_measurements; Owner: -
+--
+
+COMMENT ON VIEW vwheightmostrecent IS ' the latest Height measurement for all patients, pk_view = fk_patient';
+
+
+--
 -- Name: vwmeasurementtypes; Type: VIEW; Schema: clin_measurements; Owner: -
 --
 
@@ -5989,6 +6262,21 @@ CREATE VIEW vwmeasurementtypes AS
 
 CREATE VIEW vwpatientsdefaults AS
     SELECT patients_defaults.fk_patient, patients_defaults.pk AS pk_patients_defaults, patients_defaults.fk_lu_type, lu_type.name_abbreviated, lu_type.code, lu_type.input_key_restriction, lu_type.name_full, lu_type.input_mask, lu_type.fk_unit, lu_type.unit_qualifier, lu_type.upper_limit, lu_type.lower_limit, lu_type.fk_decision_support, lu_type.fk_plotting_method, lu_units.full_text, lu_units.abbrev_text FROM ((patients_defaults JOIN lu_type ON ((patients_defaults.fk_lu_type = lu_type.pk))) LEFT JOIN common.lu_units ON ((lu_type.fk_unit = lu_units.pk))) ORDER BY patients_defaults.fk_patient;
+
+
+--
+-- Name: vwweightmostrecent; Type: VIEW; Schema: clin_measurements; Owner: -
+--
+
+CREATE VIEW vwweightmostrecent AS
+    SELECT DISTINCT ON (vwmeasurements.fk_patient) vwmeasurements.fk_patient AS pk_view, vwmeasurements.consult_date, vwmeasurements.measurement FROM vwmeasurements WHERE ((vwmeasurements.deleted = false) AND (vwmeasurements.fk_type = 2)) ORDER BY vwmeasurements.fk_patient, vwmeasurements.consult_date DESC;
+
+
+--
+-- Name: VIEW vwweightmostrecent; Type: COMMENT; Schema: clin_measurements; Owner: -
+--
+
+COMMENT ON VIEW vwweightmostrecent IS ' the latest Weight measurement for all patients, pk_view = fk_patient';
 
 
 SET search_path = clin_mentalhealth, pg_catalog;
@@ -6012,8 +6300,8 @@ CREATE TABLE k10_results (
 CREATE SEQUENCE k10_results_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6050,8 +6338,8 @@ COMMENT ON TABLE lu_assessment_tools IS 'table containing names of assessment to
 CREATE SEQUENCE lu_assessment_tools_pk_tool_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6094,8 +6382,8 @@ COMMENT ON COLUMN lu_component_help.care_plan_component IS 'the components of a 
 CREATE SEQUENCE lu_component_help_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6123,8 +6411,8 @@ CREATE TABLE lu_depression_degree (
 CREATE SEQUENCE lu_depression_degree_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6152,8 +6440,8 @@ CREATE TABLE lu_k10_components (
 CREATE SEQUENCE lu_k10_components_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6181,8 +6469,8 @@ CREATE TABLE lu_plan_type (
 CREATE SEQUENCE lu_plan_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6210,8 +6498,8 @@ CREATE TABLE lu_risk_to_others (
 CREATE SEQUENCE lu_risk_to_others_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6322,8 +6610,8 @@ COMMENT ON COLUMN mentalhealth_plan.fk_progressnote IS 'foreign key to clin_cons
 CREATE SEQUENCE mentalhealth_plan_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6366,8 +6654,8 @@ COMMENT ON TABLE team_care_members IS 'links a mental health plan to team care m
 CREATE SEQUENCE team_care_members_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6399,7 +6687,7 @@ CREATE VIEW vwmentalhealthplans AS
 --
 
 CREATE VIEW vwteamcaremembers AS
-    SELECT team_care_members.pk, team_care_members.fk_plan, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_branch, vworganisationsemployees.fk_person, CASE WHEN (vworganisationsemployees.fk_employee = 0) THEN vworganisationsemployees.branch ELSE (((vworganisationsemployees.title || ' '::text) || (vworganisationsemployees.firstname || ' '::text)) || vworganisationsemployees.surname) END AS wholename, (((vworganisationsemployees.organisation || ' '::text) || (vworganisationsemployees.branch || ' '::text)) || CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN ''::text ELSE ((((vworganisationsemployees.street1 || ' '::text) || vworganisationsemployees.town) || ' '::text) || (vworganisationsemployees.postcode)::text) END) AS summary, team_care_members.responsibility FROM (team_care_members LEFT JOIN contacts.vworganisationsemployees ON (((team_care_members.fk_branch = vworganisationsemployees.fk_branch) AND (team_care_members.fk_employee = vworganisationsemployees.fk_employee)))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_branch > 0)) UNION SELECT team_care_members.pk, team_care_members.fk_plan, NULL::integer AS fk_organisation, NULL::integer AS fk_branch, vwpersonsincludingpatients.fk_person, vwpersonsincludingpatients.wholename, ((((vwpersonsincludingpatients.street1 || ' '::text) || vwpersonsincludingpatients.town) || ' '::text) || (vwpersonsincludingpatients.postcode)::text) AS summary, team_care_members.responsibility FROM ((team_care_members JOIN contacts.vwpersonsincludingpatients ON ((team_care_members.fk_person = vwpersonsincludingpatients.fk_person))) LEFT JOIN contacts.vworganisationsemployees ON ((team_care_members.fk_person = vworganisationsemployees.fk_person))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_employee IS NULL)) ORDER BY 2;
+    SELECT team_care_members.pk, team_care_members.fk_plan, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_branch, vworganisationsemployees.fk_person, CASE WHEN (vworganisationsemployees.fk_employee = 0) THEN vworganisationsemployees.branch ELSE (((vworganisationsemployees.title || ' '::text) || (vworganisationsemployees.firstname || ' '::text)) || vworganisationsemployees.surname) END AS wholename, (((vworganisationsemployees.organisation || ' '::text) || (vworganisationsemployees.branch || ' '::text)) || CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN ''::text ELSE ((((vworganisationsemployees.street1 || ' '::text) || vworganisationsemployees.town) || ' '::text) || (vworganisationsemployees.postcode)::text) END) AS summary, team_care_members.responsibility FROM (team_care_members LEFT JOIN contacts.vworganisationsemployees ON (((team_care_members.fk_branch = vworganisationsemployees.fk_branch) AND (team_care_members.fk_employee = vworganisationsemployees.fk_employee)))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_branch > 0)) UNION SELECT team_care_members.pk, team_care_members.fk_plan, NULL::unknown AS fk_organisation, NULL::unknown AS fk_branch, vwpersonsincludingpatients.fk_person, vwpersonsincludingpatients.wholename, ((((vwpersonsincludingpatients.street1 || ' '::text) || vwpersonsincludingpatients.town) || ' '::text) || (vwpersonsincludingpatients.postcode)::text) AS summary, team_care_members.responsibility FROM ((team_care_members JOIN contacts.vwpersonsincludingpatients ON ((team_care_members.fk_person = vwpersonsincludingpatients.fk_person))) LEFT JOIN contacts.vworganisationsemployees ON ((team_care_members.fk_person = vworganisationsemployees.fk_person))) WHERE ((team_care_members.deleted = false) AND (team_care_members.fk_employee IS NULL)) ORDER BY 2;
 
 
 SET search_path = clin_pregnancy, pg_catalog;
@@ -6428,8 +6716,8 @@ COMMENT ON TABLE lu_antenatal_venue IS 'available venues for attendance for preg
 CREATE SEQUENCE lu_antenatal_venue_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6449,8 +6737,8 @@ SET search_path = clin_prescribing, pg_catalog;
 CREATE SEQUENCE authority_number
     START WITH 1
     INCREMENT BY 11
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6486,8 +6774,8 @@ COMMENT ON TABLE instruction_habits IS 'allow auto-completion of a script for th
 CREATE SEQUENCE instruction_habits_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6536,8 +6824,8 @@ COMMENT ON COLUMN instructions.fk_lu_units IS 'key to common.lu_units = day, mon
 CREATE SEQUENCE instructions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6635,8 +6923,8 @@ COMMENT ON COLUMN medications.fk_generic_product IS 'the last date the medicatio
 CREATE SEQUENCE medications_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6838,8 +7126,8 @@ COMMENT ON TABLE prescribed_for_habits IS 'used to auto-complete a script on a p
 CREATE SEQUENCE prescribed_for_habits_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6857,8 +7145,8 @@ ALTER SEQUENCE prescribed_for_habits_pk_seq OWNED BY prescribed_for_habits.pk;
 CREATE SEQUENCE prescribed_for_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6876,8 +7164,8 @@ ALTER SEQUENCE prescribed_for_pk_seq OWNED BY prescribed_for.pk;
 CREATE SEQUENCE prescribed_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6895,8 +7183,8 @@ ALTER SEQUENCE prescribed_pk_seq OWNED BY prescribed.pk;
 CREATE SEQUENCE print_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6914,8 +7202,8 @@ ALTER SEQUENCE print_status_pk_seq OWNED BY lu_pbs_script_type.pk;
 CREATE SEQUENCE script_number
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -6933,6 +7221,246 @@ CREATE VIEW vwinstructionhabits AS
 
 CREATE VIEW vwprescribedforhabits AS
     SELECT prescribed_for.prescribed_for, prescribed_for.fk_code, prescribed_for_habits.pk AS pk_prescibed_for_habit, prescribed_for_habits.fk_prescribed_for, prescribed_for_habits.fk_brand, prescribed_for_habits.fk_generic_product, prescribed_for_habits.fk_staff, prescribed_for_habits.weighting FROM prescribed_for, prescribed_for_habits WHERE (prescribed_for_habits.fk_prescribed_for = prescribed_for.pk);
+
+
+SET search_path = drugs, pg_catalog;
+
+--
+-- Name: brand; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
+--
+
+CREATE TABLE brand (
+    fk_product uuid NOT NULL,
+    fk_company character varying(3) NOT NULL,
+    brand character varying(100) NOT NULL,
+    price money,
+    from_pbs boolean DEFAULT false NOT NULL,
+    original_tga_text text,
+    original_tga_code character varying(12),
+    pk uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    product_information_filename text
+);
+
+
+--
+-- Name: TABLE brand; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON TABLE brand IS 'many to many pivot table linking drug products and manufacturers';
+
+
+--
+-- Name: COLUMN brand.price; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN brand.price IS 'dispensed price for PBS drugs.';
+
+
+--
+-- Name: COLUMN brand.from_pbs; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN brand.from_pbs IS 'true if the brand comes from the PBS database, allows the list to be easily reloaded
+with new PBS data. False means data we added ourselves.';
+
+
+--
+-- Name: COLUMN brand.original_tga_text; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN brand.original_tga_text IS 'drugs imported from TGA database, the original label therein';
+
+
+--
+-- Name: COLUMN brand.original_tga_code; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN brand.original_tga_code IS 'drugs imported from TGA database, their TGA code';
+
+
+--
+-- Name: form; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
+--
+
+CREATE TABLE form (
+    pk integer NOT NULL,
+    form text NOT NULL,
+    volume_amount_required boolean DEFAULT false
+);
+
+
+--
+-- Name: product; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
+--
+
+CREATE TABLE product (
+    pk uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    atccode character varying(8) NOT NULL,
+    generic text NOT NULL,
+    salt text,
+    fk_form integer NOT NULL,
+    strength text,
+    salt_strength text,
+    original_pbs_name text,
+    original_pbs_fs text,
+    free_comment text,
+    updated_at timestamp without time zone DEFAULT now(),
+    fk_schedule integer,
+    shared boolean DEFAULT true,
+    pack_size integer DEFAULT 1,
+    amount double precision,
+    amount_unit integer
+);
+
+
+--
+-- Name: TABLE product; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON TABLE product IS 'dispensable form of a generic drug including strength, package size etc';
+
+
+--
+-- Name: COLUMN product.generic; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN product.generic IS 'full generic name in lower-case. For compounds names separated by ";"';
+
+
+--
+-- Name: COLUMN product.salt; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN product.salt IS 'if not normally part of generic name, the adjuvant salt';
+
+
+--
+-- Name: COLUMN product.fk_form; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN product.fk_form IS 'the form of the drug';
+
+
+--
+-- Name: COLUMN product.strength; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN product.strength IS 'the strength as a number followed by a unit. For compounds
+strengths are separated by "-", in the same order as the names of the consitituents in the generic name';
+
+
+--
+-- Name: COLUMN product.salt_strength; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN product.salt_strength IS 'where a weight of the full salt is listed (being heavier than the weight 
+of the solid drug. Must be in same unit';
+
+
+--
+-- Name: COLUMN product.original_pbs_name; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN product.original_pbs_name IS 'for a drug imported from the PBS Yellow Book database, the original 
+generic name as there listed, otherwise NULL';
+
+
+--
+-- Name: COLUMN product.original_pbs_fs; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN product.original_pbs_fs IS 'for a drug imported from the PBS Yellow Book database, the original 
+form-and-strength field as there listed, otherwise NULL';
+
+
+--
+-- Name: COLUMN product.free_comment; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN product.free_comment IS 'a free-text comment on properties of the product. For example for complex packages
+with tablets lof differing strengths';
+
+
+--
+-- Name: COLUMN product.shared; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN product.shared IS 'if true then the user/surgery wants to share this drug with easygp-central';
+
+
+--
+-- Name: restriction; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
+--
+
+CREATE TABLE restriction (
+    pbscode character varying(10) NOT NULL,
+    restriction text NOT NULL,
+    restriction_type character(1) DEFAULT '3'::bpchar NOT NULL,
+    code character varying(10) NOT NULL,
+    streamlined boolean DEFAULT false NOT NULL
+);
+
+
+--
+-- Name: TABLE restriction; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON TABLE restriction IS 'list of PBS restrictions and authority warnings';
+
+
+--
+-- Name: COLUMN restriction.restriction; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN restriction.restriction IS 'the actual text of the authority requirement, in basic HTML';
+
+
+--
+-- Name: COLUMN restriction.restriction_type; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN restriction.restriction_type IS '1=only applies to increased quantities/repeats, 2=only to normal amounts, 3=to both';
+
+
+--
+-- Name: COLUMN restriction.code; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN restriction.code IS 'the authority code number, for doing streamlined authorities';
+
+
+--
+-- Name: COLUMN restriction.streamlined; Type: COMMENT; Schema: drugs; Owner: -
+--
+
+COMMENT ON COLUMN restriction.streamlined IS 'true if this is a "streamlined" Authority';
+
+
+--
+-- Name: schedules; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
+--
+
+CREATE TABLE schedules (
+    pk integer,
+    schedule text
+);
+
+
+SET search_path = clin_prescribing, pg_catalog;
+
+--
+-- Name: vwprescribeditems; Type: VIEW; Schema: clin_prescribing; Owner: -
+--
+
+CREATE VIEW vwprescribeditems AS
+    SELECT prescribed.pk AS pk_view, medications.pk AS fk_medication, medications.start_date, medications.last_date, medications.active, medications.deleted AS medication_deleted, medications.fk_generic_product, consult.pk AS fk_consult, consult.consult_date AS date_script_written, consult.fk_patient, product.generic, brand.brand, product.strength, drugs.format_strength(product.strength) AS display_strength, product.fk_form, product.fk_schedule, product.salt_strength, drugs.format_packsize(product.amount, product.amount_unit, product.pack_size) AS display_packsize, form.form, brand.pk AS fk_brand, brand.product_information_filename, prescribed.pk AS fk_prescribed, prescribed.repeats, prescribed.date_on_script, prescribed.quantity, prescribed_for.prescribed_for, prescribed.deleted AS prescribed_deleted, prescribed.authority_reason, prescribed.print_reason, instructions.instruction, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, vwstaff.provider_number, product.atccode, product.salt, prescribed.fk_instruction, prescribed.fk_prescribed_for, prescribed.pbscode, prescribed.fk_lu_pbs_script_type, prescribed.restriction_code, prescribed.fk_code, lu_pbs_script_type.type AS pbs_script_type, restriction.streamlined, restriction.restriction, restriction.restriction_type, schedules.schedule FROM (((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN prescribed ON ((consult.pk = prescribed.fk_consult))) JOIN medications medications ON ((prescribed.fk_medication = medications.pk))) JOIN prescribed_for ON ((prescribed.fk_prescribed_for = prescribed_for.pk))) JOIN instructions ON ((prescribed.fk_instruction = instructions.pk))) JOIN lu_pbs_script_type ON ((prescribed.fk_lu_pbs_script_type = lu_pbs_script_type.pk))) LEFT JOIN drugs.restriction ON (((prescribed.pbscode = (restriction.pbscode)::text) AND (prescribed.restriction_code = (restriction.code)::text)))) LEFT JOIN drugs.brand ON ((prescribed.fk_brand = brand.pk))) JOIN drugs.product ON ((medications.fk_generic_product = product.pk))) LEFT JOIN drugs.schedules ON ((product.fk_schedule = schedules.pk))) JOIN drugs.form ON ((product.fk_form = form.pk)));
+
+
+--
+-- Name: VIEW vwprescribeditems; Type: COMMENT; Schema: clin_prescribing; Owner: -
+--
+
+COMMENT ON VIEW vwprescribeditems IS 'This view contains every single drug prescribed for all patients';
 
 
 SET search_path = clin_procedures, pg_catalog;
@@ -6984,8 +7512,8 @@ COMMENT ON COLUMN link_images_procedures.deleted IS 'if true then the image is m
 CREATE SEQUENCE link_images_procedures_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7021,8 +7549,8 @@ COMMENT ON COLUMN lu_anaesthetic_agent.fk_lu_route_administration IS 'foreign ke
 CREATE SEQUENCE lu_anaesthetic_agent_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7050,8 +7578,8 @@ CREATE TABLE lu_complications (
 CREATE SEQUENCE lu_complications_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7086,8 +7614,8 @@ COMMENT ON TABLE lu_procedure_type IS 'the type of excision eg ellipse, graft, f
 CREATE SEQUENCE lu_excision_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7123,8 +7651,8 @@ COMMENT ON TABLE lu_last_surgical_pack IS 'the last pack used - probably close t
 CREATE SEQUENCE lu_pack_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7152,8 +7680,8 @@ CREATE TABLE lu_repair_type (
 CREATE SEQUENCE lu_repair_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7181,8 +7709,8 @@ CREATE TABLE lu_skin_preparation (
 CREATE SEQUENCE lu_skin_preparation_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7217,8 +7745,8 @@ COMMENT ON TABLE lu_suture_site IS 'the site the suture is used eg subcutaneous,
 CREATE SEQUENCE lu_suture_site_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7254,8 +7782,8 @@ COMMENT ON TABLE lu_suture_type IS 'type of sutures, could extend this table to 
 CREATE SEQUENCE lu_suture_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7472,8 +8000,8 @@ At each exicision, the user can put in free-hand  clinical notes';
 CREATE SEQUENCE skin_procedures_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7525,8 +8053,8 @@ COMMENT ON COLUMN staff_skin_procedure_defaults.fk_user_provider_defaults IS 'ke
 CREATE SEQUENCE staff_skin_procedure_defaults_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7565,8 +8093,8 @@ COMMENT ON TABLE surgical_packs IS 'info about each surgical pack sterilized';
 CREATE SEQUENCE surgical_packs_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7770,8 +8298,8 @@ COMMENT ON TABLE forms IS 'embryonic table, will contain all data to create form
 CREATE SEQUENCE forms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7821,8 +8349,8 @@ COMMENT ON COLUMN links_forms.fk_form IS 'foreign key to forms table';
 CREATE SEQUENCE links_forms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7840,8 +8368,8 @@ ALTER SEQUENCE links_forms_pk_seq OWNED BY links_forms.pk;
 CREATE SEQUENCE lu_reasons_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7859,8 +8387,8 @@ ALTER SEQUENCE lu_reasons_pk_seq OWNED BY lu_reasons.pk;
 CREATE SEQUENCE lu_recall_intervals_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7878,8 +8406,8 @@ ALTER SEQUENCE lu_recall_intervals_pk_seq OWNED BY lu_recall_intervals.pk;
 CREATE SEQUENCE lu_templates_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7897,8 +8425,8 @@ ALTER SEQUENCE lu_templates_pk_seq OWNED BY lu_templates.pk;
 CREATE SEQUENCE recalls_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7916,8 +8444,8 @@ ALTER SEQUENCE recalls_pk_seq OWNED BY recalls.pk;
 CREATE SEQUENCE sent_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -7988,8 +8516,8 @@ COMMENT ON COLUMN inclusions.deleted IS 'if deleted is true then the inclusion i
 CREATE SEQUENCE inclusions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8027,8 +8555,8 @@ COMMENT ON TABLE lu_type IS 'List of types of referral eg required by medicare s
 CREATE SEQUENCE lu_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8173,8 +8701,8 @@ COMMENT ON COLUMN referrals.copyto IS 'a Pipe delimated list of entities receivi
 CREATE SEQUENCE referrals_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8222,8 +8750,7 @@ CREATE TABLE documents (
     copy_to text,
     staff_intended_for_unknown boolean DEFAULT false,
     fk_lu_display_as integer,
-    fk_lu_request_type integer,
-    fk_staff_permitted_access integer
+    fk_lu_request_type integer
 );
 
 
@@ -8323,14 +8850,6 @@ COMMENT ON COLUMN documents.fk_lu_request_type IS ' - key to clin_requests.lu_re
    a given sender of messages, but may not be correct all the time';
 
 
---
--- Name: COLUMN documents.fk_staff_permitted_access; Type: COMMENT; Schema: documents; Owner: -
---
-
-COMMENT ON COLUMN documents.fk_staff_permitted_access IS 'the key of the staff member whose logon ID is required to view the file, or who must be 
-logged on to the patient to view the file - this can be over-ridden by the practice principal';
-
-
 SET search_path = clin_referrals, pg_catalog;
 
 --
@@ -8369,8 +8888,8 @@ SET search_path = clin_requests, pg_catalog;
 CREATE SEQUENCE forms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8447,8 +8966,8 @@ COMMENT ON COLUMN forms_requests.request_result_html IS ' the entire html of a s
 CREATE SEQUENCE forms_requests_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8466,8 +8985,8 @@ ALTER SEQUENCE forms_requests_pk_seq OWNED BY forms_requests.pk;
 CREATE SEQUENCE inbox_oru_unresolved_temp_patient_id_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8489,8 +9008,8 @@ CREATE TABLE link_forms_requests_requests_results (
 CREATE SEQUENCE link_forms_requests_requests_results_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8526,8 +9045,8 @@ COMMENT ON TABLE lu_copyto_type IS 'The type of contact that is being sent a cop
 CREATE SEQUENCE lu_copyto_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8593,8 +9112,8 @@ who may or who has made a claim under the scheme.';
 CREATE SEQUENCE lu_form_header_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8644,8 +9163,8 @@ The clothing you wear is important.<P>
 CREATE SEQUENCE lu_instructions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8676,8 +9195,8 @@ CREATE TABLE lu_link_provider_user_requests (
 CREATE SEQUENCE lu_link_provider_user_requests_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8719,8 +9238,8 @@ COMMENT ON COLUMN lu_request_type.type IS 'the type of request e.g radiology, pa
 CREATE SEQUENCE lu_request_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8795,8 +9314,8 @@ COMMENT ON COLUMN lu_requests.fk_instruction IS 'foreign key to lu_instructions 
 CREATE SEQUENCE lu_requests_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8843,8 +9362,8 @@ COMMENT ON COLUMN notes.fk_lu_type IS 'key to lu_type table, ie pathology/radiol
 CREATE SEQUENCE notes_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8887,8 +9406,8 @@ COMMENT ON TABLE request_providers IS 'table which points to those persons, orga
 CREATE SEQUENCE request_providers_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8906,8 +9425,8 @@ ALTER SEQUENCE request_providers_pk_seq OWNED BY request_providers.pk;
 CREATE SEQUENCE results_requests_episode_key
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -8959,8 +9478,8 @@ COMMENT ON COLUMN user_default_type.fk_lu_type IS 'key to lu_type table ie type 
 CREATE SEQUENCE user_default_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -9017,8 +9536,8 @@ COMMENT ON COLUMN user_provider_defaults.fk_default_branch IS 'key to contacts.b
 CREATE SEQUENCE user_provider_defaults_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -9036,8 +9555,8 @@ ALTER SEQUENCE user_provider_defaults_pk_seq OWNED BY user_provider_defaults.pk;
 CREATE SEQUENCE vwforms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -9069,7 +9588,7 @@ SET search_path = clin_requests, pg_catalog;
 --
 
 CREATE VIEW vwrequestproviders AS
-    SELECT request_providers.pk AS pk_request_provider, lu_request_type.type, request_providers.fk_headoffice_branch, request_providers.fk_default_branch, request_providers.fk_employee, request_providers.fk_person, request_providers.fk_lu_request_type, request_providers.deleted AS request_provider_deleted, data_organisations.organisation, lu_categories.category, data_branches.branch AS headoffice_branch, data_branches.fk_organisation, data_branches.deleted AS headoffice_branch_deleted, data_addresses.street1 AS headoffice_street1, data_addresses.street2 AS headoffice_street2, data_addresses.deleted AS headoffice_address_deleted, lu_towns.postcode AS headoffice_postcode, lu_towns.town AS headoffice_town, lu_towns.state AS headoffice_state, NULL::text AS wholename, NULL::text AS firstname, NULL::text AS surname, NULL::text AS salutation, 0 AS fk_title, NULL::text AS title, 0 AS fk_sex, NULL::text AS sex, 0 AS fk_occupation, NULL::text AS occupation, data_branches1.branch AS default_branch, data_addresses1.street1 AS default_branch_street1, data_addresses1.street2 AS default_branch_street2, lu_towns1.postcode AS default_branch_postcode, lu_towns1.town AS default_branch_town, lu_towns1.state AS default_branch_state FROM (((((((((request_providers JOIN contacts.data_branches ON ((request_providers.fk_headoffice_branch = data_branches.pk))) JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) JOIN contacts.lu_categories ON ((data_branches.fk_category = lu_categories.pk))) JOIN lu_request_type ON ((request_providers.fk_lu_request_type = lu_request_type.pk))) LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) JOIN contacts.data_branches data_branches1 ON ((request_providers.fk_default_branch = data_branches1.pk))) LEFT JOIN contacts.data_addresses data_addresses1 ON ((data_branches1.fk_address = data_addresses1.pk))) LEFT JOIN contacts.lu_towns lu_towns1 ON ((data_addresses1.fk_town = lu_towns1.pk))) WHERE ((request_providers.fk_employee = 0) AND (request_providers.fk_person = 0)) UNION SELECT request_providers.pk AS pk_request_provider, lu_request_type.type, request_providers.fk_headoffice_branch, request_providers.fk_default_branch, request_providers.fk_employee, request_providers.fk_person, request_providers.fk_lu_request_type, request_providers.deleted AS request_provider_deleted, NULL::text AS organisation, NULL::character varying AS category, 'HEAD OFFICE'::text AS headoffice_branch, 0 AS fk_organisation, NULL::boolean AS headoffice_branch_deleted, vwpersons.street1 AS headoffice_street1, vwpersons.street2 AS headoffice_street2, NULL::boolean AS headoffice_address_deleted, vwpersons.postcode AS headoffice_postcode, vwpersons.town AS headoffice_town, vwpersons.state AS headoffice_state, vwpersons.wholename, vwpersons.firstname, vwpersons.surname, vwpersons.salutation, vwpersons.fk_title, vwpersons.title, vwpersons.fk_sex, vwpersons.sex, vwpersons.fk_occupation, vwpersons.occupation, NULL::text AS default_branch, vwpersons.street1 AS default_branch_street1, vwpersons.street2 AS default_branch_street2, vwpersons.postcode AS default_branch_postcode, vwpersons.town AS default_branch_town, vwpersons.state AS default_branch_state FROM ((request_providers JOIN lu_request_type ON ((request_providers.fk_lu_request_type = lu_request_type.pk))) JOIN contacts.vwpersons ON ((request_providers.fk_person = vwpersons.fk_person))) WHERE (request_providers.fk_person <> 0) ORDER BY 7;
+    SELECT request_providers.pk AS pk_request_provider, lu_request_type.type, request_providers.fk_headoffice_branch, request_providers.fk_default_branch, request_providers.fk_employee, request_providers.fk_person, request_providers.fk_lu_request_type, request_providers.deleted AS request_provider_deleted, data_organisations.organisation, lu_categories.category, data_branches.branch AS headoffice_branch, data_branches.fk_organisation, data_branches.deleted AS headoffice_branch_deleted, data_addresses.street1 AS headoffice_street1, data_addresses.street2 AS headoffice_street2, data_addresses.deleted AS headoffice_address_deleted, lu_towns.postcode AS headoffice_postcode, lu_towns.town AS headoffice_town, lu_towns.state AS headoffice_state, NULL::unknown AS wholename, NULL::unknown AS firstname, NULL::unknown AS surname, NULL::unknown AS salutation, 0 AS fk_title, NULL::unknown AS title, 0 AS fk_sex, NULL::unknown AS sex, 0 AS fk_occupation, NULL::unknown AS occupation, data_branches1.branch AS default_branch, data_addresses1.street1 AS default_branch_street1, data_addresses1.street2 AS default_branch_street2, lu_towns1.postcode AS default_branch_postcode, lu_towns1.town AS default_branch_town, lu_towns1.state AS default_branch_state FROM (((((((((request_providers JOIN contacts.data_branches ON ((request_providers.fk_headoffice_branch = data_branches.pk))) JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) JOIN contacts.lu_categories ON ((data_branches.fk_category = lu_categories.pk))) JOIN lu_request_type ON ((request_providers.fk_lu_request_type = lu_request_type.pk))) LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) JOIN contacts.data_branches data_branches1 ON ((request_providers.fk_default_branch = data_branches1.pk))) LEFT JOIN contacts.data_addresses data_addresses1 ON ((data_branches1.fk_address = data_addresses1.pk))) LEFT JOIN contacts.lu_towns lu_towns1 ON ((data_addresses1.fk_town = lu_towns1.pk))) WHERE ((request_providers.fk_employee = 0) AND (request_providers.fk_person = 0)) UNION SELECT request_providers.pk AS pk_request_provider, lu_request_type.type, request_providers.fk_headoffice_branch, request_providers.fk_default_branch, request_providers.fk_employee, request_providers.fk_person, request_providers.fk_lu_request_type, request_providers.deleted AS request_provider_deleted, NULL::unknown AS organisation, NULL::unknown AS category, 'HEAD OFFICE' AS headoffice_branch, 0 AS fk_organisation, NULL::unknown AS headoffice_branch_deleted, vwpersons.street1 AS headoffice_street1, vwpersons.street2 AS headoffice_street2, NULL::unknown AS headoffice_address_deleted, vwpersons.postcode AS headoffice_postcode, vwpersons.town AS headoffice_town, vwpersons.state AS headoffice_state, vwpersons.wholename, vwpersons.firstname, vwpersons.surname, vwpersons.salutation, vwpersons.fk_title, vwpersons.title, vwpersons.fk_sex, vwpersons.sex, vwpersons.fk_occupation, vwpersons.occupation, NULL::unknown AS default_branch, vwpersons.street1 AS default_branch_street1, vwpersons.street2 AS default_branch_street2, vwpersons.postcode AS default_branch_postcode, vwpersons.town AS default_branch_town, vwpersons.state AS default_branch_state FROM ((request_providers JOIN lu_request_type ON ((request_providers.fk_lu_request_type = lu_request_type.pk))) JOIN contacts.vwpersons ON ((request_providers.fk_person = vwpersons.fk_person))) WHERE (request_providers.fk_person <> 0) ORDER BY 7;
 
 
 --
@@ -9102,6 +9621,204 @@ CREATE VIEW vwrequestnames AS
 --
 
 COMMENT ON VIEW vwrequestnames IS 'a view of everything which is orderable, including lateralisation eg Xray wrist (LEFT), Xray wrist (RIGHT) or Xray Wrist (BOTH)';
+
+
+SET search_path = contacts, pg_catalog;
+
+--
+-- Name: vworganisations; Type: VIEW; Schema: contacts; Owner: -
+--
+
+CREATE VIEW vworganisations AS
+    SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state FROM ((((((data_branches branches JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) ORDER BY nextval('vworganisations_pk_seq'::regclass), organisations.organisation, organisations.deleted;
+
+
+SET search_path = documents, pg_catalog;
+
+--
+-- Name: lu_message_display_style; Type: TABLE; Schema: documents; Owner: -; Tablespace: 
+--
+
+CREATE TABLE lu_message_display_style (
+    pk integer NOT NULL,
+    style text NOT NULL
+);
+
+
+--
+-- Name: lu_message_standard; Type: TABLE; Schema: documents; Owner: -; Tablespace: 
+--
+
+CREATE TABLE lu_message_standard (
+    pk integer NOT NULL,
+    type text NOT NULL,
+    version text
+);
+
+
+--
+-- Name: TABLE lu_message_standard; Type: COMMENT; Schema: documents; Owner: -
+--
+
+COMMENT ON TABLE lu_message_standard IS 'hl7 or pit version not yet implemented';
+
+
+--
+-- Name: sending_entities; Type: TABLE; Schema: documents; Owner: -; Tablespace: 
+--
+
+CREATE TABLE sending_entities (
+    pk integer NOT NULL,
+    fk_lu_request_type integer,
+    msh_sending_entity text NOT NULL,
+    msh_transmitting_entity text,
+    fk_lu_message_display_style integer NOT NULL,
+    fk_branch integer,
+    fk_employee integer,
+    fk_person integer,
+    fk_lu_message_standard integer NOT NULL,
+    exclude_ft_report boolean DEFAULT false,
+    exclude_pit boolean DEFAULT false,
+    abnormals_foreground_color integer DEFAULT 16711680,
+    abnormals_background_color integer DEFAULT 16777215,
+    deleted boolean DEFAULT false
+);
+
+
+--
+-- Name: TABLE sending_entities; Type: COMMENT; Schema: documents; Owner: -
+--
+
+COMMENT ON TABLE sending_entities IS 'Sending entities and the parameters to define how to handle incoming hl7 messages 
+on a per-provider basis.Note these messages can be in form of various hl7 standards or old style PIT (sequential numbered text lines eg 100, 110 120 etc This table
+defines the file type hl7 or pit, who is sending it, where to put it, which segments of the message to exclude when displaying in html';
+
+
+--
+-- Name: COLUMN sending_entities.fk_lu_request_type; Type: COMMENT; Schema: documents; Owner: -
+--
+
+COMMENT ON COLUMN sending_entities.fk_lu_request_type IS 'The type of provider eg pathology provider, radiology provider';
+
+
+--
+-- Name: COLUMN sending_entities.msh_sending_entity; Type: COMMENT; Schema: documents; Owner: -
+--
+
+COMMENT ON COLUMN sending_entities.msh_sending_entity IS 'the entity sending, could be unintelligable eg a NATA/number or a recognizable name eg Hunter Radiology, however often bears no relationship to a real person or company';
+
+
+--
+-- Name: COLUMN sending_entities.msh_transmitting_entity; Type: COMMENT; Schema: documents; Owner: -
+--
+
+COMMENT ON COLUMN sending_entities.msh_transmitting_entity IS 'could be the sending entity or third party transmitter eg Medical Objects, or the name of a computer program generating the hl7';
+
+
+--
+-- Name: COLUMN sending_entities.fk_lu_message_display_style; Type: COMMENT; Schema: documents; Owner: -
+--
+
+COMMENT ON COLUMN sending_entities.fk_lu_message_display_style IS 'display as letter or result style
+ - Public Const Document_Display_As_Letter As Integer = 1 
+ - Public Const Document_Display_As_Result As Integer = 2
+ 
+ Note: though this attribute is kept for each document in document.documents
+       at the time the document is signed off by the user,
+       we need to know what the default display type is for each message sender -
+ defaults to 1 = letter, because, though pathology companies are far more
+ common, they will have been set to display as a result in the configuration of
+ message senders. Scanned documents however will not by default, so we assume
+ (sometimes wrongly) that they are usually letters
+ ';
+
+
+--
+-- Name: COLUMN sending_entities.fk_lu_message_standard; Type: COMMENT; Schema: documents; Owner: -
+--
+
+COMMENT ON COLUMN sending_entities.fk_lu_message_standard IS 'hl7 or pit';
+
+
+--
+-- Name: COLUMN sending_entities.exclude_ft_report; Type: COMMENT; Schema: documents; Owner: -
+--
+
+COMMENT ON COLUMN sending_entities.exclude_ft_report IS 'if true then no free text segments will be shown';
+
+
+--
+-- Name: COLUMN sending_entities.exclude_pit; Type: COMMENT; Schema: documents; Owner: -
+--
+
+COMMENT ON COLUMN sending_entities.exclude_pit IS 'if contains PIT segments if true these will not be shown (often duplicated the hl7 data itself)';
+
+
+--
+-- Name: unmatched_patients; Type: TABLE; Schema: documents; Owner: -; Tablespace: 
+--
+
+CREATE TABLE unmatched_patients (
+    pk integer NOT NULL,
+    surname text NOT NULL,
+    firstname text,
+    birthdate date,
+    sex text,
+    title text,
+    comment text,
+    fk_real_patient integer,
+    street text,
+    town text,
+    postcode text,
+    state text
+);
+
+
+--
+-- Name: COLUMN unmatched_patients.comment; Type: COMMENT; Schema: documents; Owner: -
+--
+
+COMMENT ON COLUMN unmatched_patients.comment IS 'other data about the patient to help matching';
+
+
+--
+-- Name: unmatched_staff; Type: TABLE; Schema: documents; Owner: -; Tablespace: 
+--
+
+CREATE TABLE unmatched_staff (
+    pk integer NOT NULL,
+    surname text NOT NULL,
+    firstname text,
+    title text,
+    provider_number text,
+    fk_real_staff integer
+);
+
+
+--
+-- Name: vwsendingentities; Type: VIEW; Schema: documents; Owner: -
+--
+
+CREATE VIEW vwsendingentities AS
+    ((SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, NULL::unknown AS branch, NULL::unknown AS organisation, false AS organisation_deleted, NULL::unknown AS fk_organisation, false AS branch_deleted, NULL::unknown AS fk_address_organisation, NULL::unknown AS fk_category_organisation, NULL::unknown AS organisation_category, NULL::unknown AS organisation_street1, NULL::unknown AS organisation_street2, NULL::unknown AS fk_town_organisation, NULL::unknown AS organisation_postal_address, NULL::unknown AS organisation_head_office, NULL::unknown AS organisation_postcode, NULL::unknown AS organisation_town, NULL::unknown AS organisation_state, vwpersons.firstname, vwpersons.surname, vwpersons.title, vwpersons.occupation AS person_occupation, vwpersons.sex, vwpersons.fk_address AS fk_address_person, vwpersons.postcode AS person_postcode, vwpersons.street1 AS person_street1, vwpersons.street2 AS person_street2, vwpersons.fk_town AS fk_town_person, vwpersons.town AS person_town, vwpersons.state AS person_state FROM ((((sending_entities JOIN contacts.vwpersons ON ((sending_entities.fk_person = vwpersons.fk_person))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE (((vwpersons.deleted = false) AND (sending_entities.fk_branch = 0)) AND (sending_entities.fk_employee = 0)) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, vworganisations.branch, vworganisations.organisation, vworganisations.organisation_deleted, vworganisations.fk_organisation, vworganisations.branch_deleted, vworganisations.fk_address AS fk_address_organisation, vworganisations.fk_category AS fk_category_organisation, vworganisations.category AS organisation_category, vworganisations.street1 AS organisation_street1, vworganisations.street2 AS organisation_street2, vworganisations.fk_town AS fk_town_organisation, vworganisations.postal_address AS organisation_postal_address, vworganisations.head_office AS organisation_head_office, vworganisations.postcode AS organisation_postcode, vworganisations.town AS organisation_town, vworganisations.state AS organisation_state, NULL::unknown AS firstname, NULL::unknown AS surname, NULL::unknown AS title, NULL::unknown AS person_occupation, NULL::unknown AS sex, NULL::unknown AS fk_address_person, NULL::unknown AS person_postcode, NULL::unknown AS person_street1, NULL::unknown AS person_street2, NULL::unknown AS fk_town_person, NULL::unknown AS person_town, NULL::unknown AS person_state FROM ((((sending_entities JOIN contacts.vworganisations ON ((sending_entities.fk_branch = vworganisations.fk_branch))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE (((vworganisations.branch_deleted = false) AND (sending_entities.fk_employee = 0)) AND (sending_entities.fk_person = 0))) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, vworganisations.branch, vworganisations.organisation, vworganisations.organisation_deleted, vworganisations.fk_organisation, vworganisations.branch_deleted, vworganisations.fk_address AS fk_address_organisation, vworganisations.fk_category AS fk_category_organisation, vworganisations.category AS organisation_category, vworganisations.street1 AS organisation_street1, vworganisations.street2 AS organisation_street2, vworganisations.fk_town AS fk_town_organisation, vworganisations.postal_address AS organisation_postal_address, vworganisations.head_office AS organisation_head_office, vworganisations.postcode AS organisation_postcode, vworganisations.town AS organisation_town, vworganisations.state AS organisation_state, vwpersons.firstname, vwpersons.surname, vwpersons.title, vwpersons.occupation AS person_occupation, vwpersons.sex, vwpersons.fk_address AS fk_address_person, vwpersons.postcode AS person_postcode, vwpersons.street1 AS person_street1, vwpersons.street2 AS person_street2, vwpersons.fk_town AS fk_town_person, vwpersons.town AS person_town, vwpersons.state AS person_state FROM ((((((sending_entities JOIN contacts.vworganisations ON ((sending_entities.fk_branch = vworganisations.fk_branch))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) JOIN contacts.data_employees ON ((sending_entities.fk_employee = data_employees.pk))) JOIN contacts.vwpersons ON ((data_employees.fk_person = vwpersons.fk_person))) WHERE ((vwpersons.deleted = false) AND (data_employees.deleted = false))) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, NULL::unknown AS branch, NULL::unknown AS organisation, NULL::unknown AS organisation_deleted, NULL::unknown AS fk_organisation, NULL::unknown AS branch_deleted, NULL::unknown AS fk_address_organisation, NULL::unknown AS fk_category_organisation, NULL::unknown AS organisation_category, NULL::unknown AS organisation_street1, NULL::unknown AS organisation_street2, NULL::unknown AS fk_town_organisation, false AS organisation_postal_address, false AS organisation_head_office, NULL::unknown AS organisation_postcode, NULL::unknown AS organisation_town, NULL::unknown AS organisation_state, NULL::unknown AS firstname, NULL::unknown AS surname, NULL::unknown AS title, NULL::unknown AS person_occupation, NULL::unknown AS sex, NULL::unknown AS fk_address_person, NULL::unknown AS person_postcode, NULL::unknown AS person_street1, NULL::unknown AS person_street2, NULL::unknown AS fk_town_person, NULL::unknown AS person_town, NULL::unknown AS person_state FROM (((sending_entities LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE (((sending_entities.fk_branch IS NULL) AND (sending_entities.fk_employee IS NULL)) AND (sending_entities.fk_person IS NULL));
+
+
+--
+-- Name: vwdocuments; Type: VIEW; Schema: documents; Owner: -
+--
+
+CREATE VIEW vwdocuments AS
+    SELECT documents.pk AS pk_document, documents.source_file, documents.fk_sending_entity, documents.imported_time, documents.date_requested, documents.date_created, documents.fk_patient, documents.fk_staff_filed_document, documents.originator, documents.originator_reference, documents.copy_to, documents.provider_of_service_reference, documents.internal_reference, documents.copies_to, documents.fk_staff_destination, documents.comment_on_document, documents.patient_access, documents.concluded, documents.deleted, documents.fk_lu_urgency, documents.tag, documents.tag_user, documents.md5sum, documents.html, documents.fk_unmatched_staff, documents.fk_referral, documents.fk_request, documents.fk_unmatched_patient, documents.fk_lu_display_as, documents.fk_lu_request_type, lu_request_type.type AS request_type, vwsendingentities.fk_lu_request_type AS sending_entity_fk_lu_request_type, vwsendingentities.request_type AS sending_entity_request_type, vwsendingentities.style, vwsendingentities.message_type, vwsendingentities.message_version, vwsendingentities.msh_sending_entity, vwsendingentities.msh_transmitting_entity, vwsendingentities.fk_lu_message_display_style, vwsendingentities.fk_branch AS fk_sender_branch, vwsendingentities.fk_employee AS fk_employee_branch, vwsendingentities.fk_person AS fk_sender_person, vwsendingentities.fk_lu_message_standard, vwsendingentities.exclude_ft_report, vwsendingentities.abnormals_foreground_color, vwsendingentities.abnormals_background_color, vwsendingentities.exclude_pit, vwsendingentities.person_occupation, vwsendingentities.organisation, vwsendingentities.organisation_category, vwpatients.fk_person AS patient_fk_person, vwpatients.firstname AS patient_firstname, vwpatients.surname AS patient_surname, vwpatients.birthdate AS patient_birthdate, vwpatients.sex AS patient_sex, vwpatients.age_numeric AS patient_age, vwpatients.title AS patient_title, vwpatients.street1 AS patient_street1, vwpatients.street2 AS patient_street2, vwpatients.town AS patient_town, vwpatients.state AS patient_state, vwpatients.postcode AS patient_postcode, vwstaff.wholename AS staff_destination_wholename, vwstaff.title AS staff_destination_title, unmatched_patients.surname AS unmatched_patient_surname, unmatched_patients.firstname AS unmatched_patient_firstname, unmatched_patients.birthdate AS unmatched_patient_birthdate, unmatched_patients.sex AS unmatched_patient_sex, unmatched_patients.title AS unmatched_patient_title, unmatched_patients.street AS unmatched_patient_street, unmatched_patients.town AS unmatched_patient_town, unmatched_patients.postcode AS unmatched_patient_postcode, unmatched_patients.state AS unmatched_patient_state, unmatched_staff.surname AS unmatched_staff_surname, unmatched_staff.firstname AS unmatched_staff_firstname, unmatched_staff.title AS unmatched_staff_title, unmatched_staff.provider_number AS unmatched_staff_provider_number FROM ((((((documents JOIN vwsendingentities ON ((documents.fk_sending_entity = vwsendingentities.pk_sending_entities))) LEFT JOIN clin_requests.lu_request_type ON ((documents.fk_lu_request_type = lu_request_type.pk))) LEFT JOIN contacts.vwpatients ON ((documents.fk_patient = vwpatients.fk_patient))) LEFT JOIN admin.vwstaff ON ((documents.fk_staff_destination = vwstaff.fk_staff))) LEFT JOIN unmatched_patients ON ((documents.fk_unmatched_patient = unmatched_patients.pk))) LEFT JOIN unmatched_staff ON ((documents.fk_unmatched_staff = unmatched_staff.pk))) ORDER BY documents.fk_patient, documents.date_created;
+
+
+SET search_path = clin_requests, pg_catalog;
+
+--
+-- Name: vwrequestsordered; Type: VIEW; Schema: clin_requests; Owner: -
+--
+
+CREATE VIEW vwrequestsordered AS
+    SELECT ((forms.pk || '-'::text) || forms_requests.pk) AS pk_view, forms.fk_lu_request_type, lu_request_type.type, forms.fk_consult, consult.consult_date, consult.fk_patient, data_persons.firstname, data_persons.surname, data_persons.birthdate, data_persons.fk_sex, forms_requests.fk_form, forms.requests_summary, forms_requests.pk AS fk_forms_requests, lu_requests.item, forms.date, forms_requests.request_result_html, forms.fk_progressnote, forms_requests.fk_lu_request, forms_requests.deleted AS request_deleted, lu_requests.fk_laterality, lu_requests.fk_decision_support, lu_requests.fk_instruction, forms.fk_request_provider AS fk_branch, forms.notes_summary, forms.medications_summary, forms.copyto, forms.deleted, forms.copyto_patient, forms.urgent, forms.bulk_bill, forms.fasting, forms.phone, forms.fax, forms.include_medications, forms.pk_image AS fk_image, forms.fk_pasthistory, past_history.description, lu_title.title AS staff_title, staff.pk AS fk_staff, data_persons1.firstname AS staff_firstname, data_persons1.surname AS staff_surname, data_branches.branch, data_branches.fk_organisation, data_organisations.organisation, vwdocuments.html FROM (((((((((((((forms JOIN forms_requests ON ((forms.pk = forms_requests.fk_form))) JOIN lu_requests ON ((forms_requests.fk_lu_request = lu_requests.pk))) JOIN lu_request_type ON ((lu_requests.fk_lu_request_type = lu_request_type.pk))) JOIN clin_consult.consult ON ((forms.fk_consult = consult.pk))) JOIN clerical.data_patients ON ((consult.fk_patient = data_patients.pk))) JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) JOIN admin.staff ON ((consult.fk_staff = staff.pk))) JOIN contacts.data_persons data_persons1 ON ((staff.fk_person = data_persons1.pk))) LEFT JOIN contacts.data_branches ON ((forms.fk_request_provider = data_branches.pk))) LEFT JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) LEFT JOIN clin_history.past_history ON ((forms.fk_pasthistory = past_history.pk))) LEFT JOIN documents.vwdocuments ON ((forms_requests.pk = vwdocuments.fk_request))) WHERE ((forms.deleted = false) AND (forms_requests.deleted = false)) ORDER BY consult.fk_patient, forms.date DESC, forms_requests.fk_form, lu_requests.item;
 
 
 --
@@ -9165,8 +9882,8 @@ COMMENT ON TABLE lu_formulation IS 'probably temporary table, until drugs.form s
 CREATE SEQUENCE lu_formulation_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -9249,8 +9966,8 @@ COMMENT ON COLUMN lu_schedules.notes IS 'any additional notes, eg the NSW 12-13y
 CREATE SEQUENCE lu_schedules_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -9294,8 +10011,8 @@ COMMENT ON TABLE lu_vaccines IS 'A Table to hold all vaccines.
 CREATE SEQUENCE lu_vaccines_descriptions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -9326,8 +10043,8 @@ CREATE TABLE lu_vaccines_in_schedule (
 CREATE SEQUENCE lu_vaccines_in_schedule_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -9345,8 +10062,8 @@ ALTER SEQUENCE lu_vaccines_in_schedule_pk_seq OWNED BY lu_vaccines_in_schedule.p
 CREATE SEQUENCE lu_vaccines_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -9416,8 +10133,8 @@ can have several vaccines and one may not be given - we need to know why';
 CREATE SEQUENCE vaccinations_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -9454,8 +10171,8 @@ COMMENT ON TABLE vaccine_serial_numbers IS 'last used batch number to make it ea
 CREATE SEQUENCE vaccine_serial_numbers_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -9637,8 +10354,8 @@ COMMENT ON COLUMN claims.deleted IS 'if true the claim is marked as deleted';
 CREATE SEQUENCE claims_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -9673,8 +10390,8 @@ COMMENT ON TABLE lu_caused_by_employment IS 'degree of certainty that the workco
 CREATE SEQUENCE lu_caused_by_employment_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -9716,8 +10433,8 @@ COMMENT ON COLUMN lu_visit_type.type IS 'Initial Progress or Final or Initial an
 CREATE SEQUENCE lu_visit_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -9880,8 +10597,8 @@ COMMENT ON COLUMN visits.deleted IS 'if true the visit is marked as deleted';
 CREATE SEQUENCE visits_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -9891,18 +10608,6 @@ CREATE SEQUENCE visits_pk_seq
 
 ALTER SEQUENCE visits_pk_seq OWNED BY visits.pk;
 
-
-SET search_path = contacts, pg_catalog;
-
---
--- Name: vworganisations; Type: VIEW; Schema: contacts; Owner: -
---
-
-CREATE VIEW vworganisations AS
-    SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state FROM ((((((data_branches branches JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) ORDER BY nextval('vworganisations_pk_seq'::regclass), organisations.organisation, organisations.deleted;
-
-
-SET search_path = clin_workcover, pg_catalog;
 
 --
 -- Name: vwworkcover; Type: VIEW; Schema: clin_workcover; Owner: -
@@ -10002,8 +10707,8 @@ CREATE TABLE lu_loinc_abbrev (
 CREATE SEQUENCE lu_loinc_abbrev_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10021,8 +10726,8 @@ ALTER SEQUENCE lu_loinc_abbrev_pk_seq OWNED BY lu_loinc_abbrev.pk;
 CREATE SEQUENCE lu_systems_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10040,8 +10745,8 @@ ALTER SEQUENCE lu_systems_pk_seq OWNED BY lu_systems.pk;
 CREATE SEQUENCE user_terms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10065,8 +10770,8 @@ CREATE TABLE usr_codes_weighting (
 CREATE SEQUENCE usr_codes_weighting_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10112,8 +10817,8 @@ CREATE TABLE lu_aboriginality (
 CREATE SEQUENCE lu_aboriginality_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10141,8 +10846,8 @@ CREATE TABLE lu_anatomical_localisation (
 CREATE SEQUENCE lu_anatomical_location_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10160,8 +10865,8 @@ ALTER SEQUENCE lu_anatomical_location_pk_seq OWNED BY lu_anatomical_localisation
 CREATE SEQUENCE lu_anatomical_site_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10179,8 +10884,8 @@ ALTER SEQUENCE lu_anatomical_site_pk_seq OWNED BY lu_anatomical_site.pk;
 CREATE SEQUENCE lu_anterior_posterior_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10208,8 +10913,8 @@ CREATE TABLE lu_companion_status (
 CREATE SEQUENCE lu_companion_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10227,8 +10932,8 @@ ALTER SEQUENCE lu_companion_status_pk_seq OWNED BY lu_companion_status.pk;
 CREATE SEQUENCE lu_countries_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10246,8 +10951,8 @@ ALTER SEQUENCE lu_countries_pk_seq OWNED BY lu_countries.pk;
 CREATE SEQUENCE lu_ethnicity_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10265,8 +10970,8 @@ ALTER SEQUENCE lu_ethnicity_pk_seq OWNED BY lu_ethnicity.pk;
 CREATE SEQUENCE lu_family_relationships_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10294,8 +10999,8 @@ CREATE TABLE lu_formulation (
 CREATE SEQUENCE lu_formulation_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10323,8 +11028,8 @@ CREATE TABLE lu_hearing_aid_status (
 CREATE SEQUENCE lu_hearing_aid_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10342,8 +11047,8 @@ ALTER SEQUENCE lu_hearing_aid_status_pk_seq OWNED BY lu_hearing_aid_status.pk;
 CREATE SEQUENCE lu_languages_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10361,8 +11066,8 @@ ALTER SEQUENCE lu_languages_pk_seq OWNED BY lu_languages.pk;
 CREATE SEQUENCE lu_laterality_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10397,8 +11102,8 @@ COMMENT ON TABLE lu_medicolegal IS ' list of medicolegal things eg - patient inf
 CREATE SEQUENCE lu_medicolegal_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10426,8 +11131,8 @@ CREATE TABLE lu_motion (
 CREATE SEQUENCE lu_motion_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10455,8 +11160,8 @@ CREATE TABLE lu_normality (
 CREATE SEQUENCE lu_normality_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10474,8 +11179,8 @@ ALTER SEQUENCE lu_normality_pk_seq OWNED BY lu_normality.pk;
 CREATE SEQUENCE lu_occupations_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10503,8 +11208,8 @@ CREATE TABLE lu_proximal_distal (
 CREATE SEQUENCE lu_proximal_distal_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10532,8 +11237,8 @@ CREATE TABLE lu_recreationaldrugs (
 CREATE SEQUENCE lu_recreationaldrugs_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10569,8 +11274,8 @@ COMMENT ON TABLE lu_religions IS 'The -core- religions eg christiantity, the sub
 CREATE SEQUENCE lu_religions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10588,8 +11293,8 @@ ALTER SEQUENCE lu_religions_pk_seq OWNED BY lu_religions.pk;
 CREATE SEQUENCE lu_route_administration_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10607,8 +11312,8 @@ ALTER SEQUENCE lu_route_administration_pk_seq OWNED BY lu_route_administration.p
 CREATE SEQUENCE lu_seasons_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10626,8 +11331,8 @@ ALTER SEQUENCE lu_seasons_pk_seq OWNED BY lu_seasons.pk;
 CREATE SEQUENCE lu_site_administration_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10655,8 +11360,8 @@ CREATE TABLE lu_smoking_status (
 CREATE SEQUENCE lu_smoking_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10684,8 +11389,8 @@ CREATE TABLE lu_social_support (
 CREATE SEQUENCE lu_social_support_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10721,8 +11426,8 @@ COMMENT ON TABLE lu_sub_religions IS 'The eg christiantity may be Baptist, Metho
 CREATE SEQUENCE lu_sub_religions_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10740,8 +11445,8 @@ ALTER SEQUENCE lu_sub_religions_pk_seq OWNED BY lu_sub_religions.pk;
 CREATE SEQUENCE lu_units_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10759,8 +11464,8 @@ ALTER SEQUENCE lu_units_pk_seq OWNED BY lu_units.pk;
 CREATE SEQUENCE lu_urgency_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10788,8 +11493,8 @@ CREATE TABLE lu_whisper_test (
 CREATE SEQUENCE lu_whisper_test_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10817,8 +11522,8 @@ SET search_path = contacts, pg_catalog;
 CREATE SEQUENCE data_addresses_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10836,8 +11541,8 @@ ALTER SEQUENCE data_addresses_pk_seq OWNED BY data_addresses.pk;
 CREATE SEQUENCE data_branches_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10870,8 +11575,8 @@ CREATE TABLE data_communications (
 CREATE SEQUENCE data_communications_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10889,8 +11594,8 @@ ALTER SEQUENCE data_communications_pk_seq OWNED BY data_communications.pk;
 CREATE SEQUENCE data_employees_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10908,8 +11613,8 @@ ALTER SEQUENCE data_employees_pk_seq OWNED BY data_employees.pk;
 CREATE SEQUENCE data_organisations_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10927,8 +11632,8 @@ ALTER SEQUENCE data_organisations_pk_seq OWNED BY data_organisations.pk;
 CREATE SEQUENCE data_persons_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10946,8 +11651,8 @@ ALTER SEQUENCE data_persons_pk_seq OWNED BY data_persons.pk;
 CREATE SEQUENCE images_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -10977,8 +11682,8 @@ CREATE TABLE links_branches_comms (
 CREATE SEQUENCE links_branches_comms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11008,8 +11713,8 @@ CREATE TABLE links_employees_comms (
 CREATE SEQUENCE links_employees_comms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11027,8 +11732,8 @@ ALTER SEQUENCE links_employees_comms_pk_seq OWNED BY links_employees_comms.pk;
 CREATE SEQUENCE links_persons_addresses_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11058,8 +11763,8 @@ CREATE TABLE links_persons_comms (
 CREATE SEQUENCE links_persons_comms_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11077,8 +11782,8 @@ ALTER SEQUENCE links_persons_comms_pk_seq OWNED BY links_persons_comms.pk;
 CREATE SEQUENCE lu_address_types_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11096,8 +11801,8 @@ ALTER SEQUENCE lu_address_types_pk_seq OWNED BY lu_address_types.pk;
 CREATE SEQUENCE lu_categories_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11115,8 +11820,8 @@ ALTER SEQUENCE lu_categories_pk_seq OWNED BY lu_categories.pk;
 CREATE SEQUENCE lu_contact_type_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11134,8 +11839,8 @@ ALTER SEQUENCE lu_contact_type_pk_seq OWNED BY lu_contact_type.pk;
 CREATE SEQUENCE lu_employee_status_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11165,8 +11870,8 @@ CREATE TABLE lu_firstnames (
 CREATE SEQUENCE lu_firstnames_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11184,8 +11889,8 @@ ALTER SEQUENCE lu_firstnames_pk_seq OWNED BY lu_firstnames.pk;
 CREATE SEQUENCE lu_marital_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11223,8 +11928,8 @@ COMMENT ON TABLE lu_misspelt_towns IS 'When patient demographics is imported, th
 CREATE SEQUENCE lu_mismatched_towns_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11242,8 +11947,8 @@ ALTER SEQUENCE lu_mismatched_towns_pk_seq OWNED BY lu_misspelt_towns.pk;
 CREATE SEQUENCE lu_sex_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11271,8 +11976,8 @@ CREATE TABLE lu_surnames (
 CREATE SEQUENCE lu_surnames_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11290,8 +11995,8 @@ ALTER SEQUENCE lu_surnames_pk_seq OWNED BY lu_surnames.pk;
 CREATE SEQUENCE lu_title_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11309,8 +12014,8 @@ ALTER SEQUENCE lu_title_pk_seq OWNED BY lu_title.pk;
 CREATE SEQUENCE lu_towns_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11361,8 +12066,8 @@ CREATE VIEW vworganisationsbycategory AS
 CREATE SEQUENCE vwpatients_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11387,7 +12092,7 @@ CREATE VIEW vwpersonsexcludingpatients AS
 --
 
 CREATE VIEW vwpersonsandemployeesaddresses AS
-    SELECT vworganisationsemployees.fk_address, CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN (vworganisationsemployees.fk_person || '-0'::text) ELSE ((vworganisationsemployees.fk_person || '-'::text) || (vworganisationsemployees.fk_address)::text) END AS pk_view, vworganisationsemployees.fk_branch, vworganisationsemployees.branch, vworganisationsemployees.organisation, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_person, vworganisationsemployees.firstname, vworganisationsemployees.surname, vworganisationsemployees.title, vworganisationsemployees.occupation, vworganisationsemployees.street1, vworganisationsemployees.street2, vworganisationsemployees.town, vworganisationsemployees.state, vworganisationsemployees.postcode FROM vworganisationsemployees WHERE (vworganisationsemployees.fk_person <> 0) UNION SELECT vwpersonsexcludingpatients.fk_address, CASE WHEN (vwpersonsexcludingpatients.fk_address IS NULL) THEN (vwpersonsexcludingpatients.fk_person || '-0'::text) ELSE ((vwpersonsexcludingpatients.fk_person || '-'::text) || (vwpersonsexcludingpatients.fk_address)::text) END AS pk_view, NULL::integer AS fk_branch, NULL::text AS branch, NULL::text AS organisation, NULL::integer AS fk_organisation, vwpersonsexcludingpatients.fk_person, vwpersonsexcludingpatients.firstname, vwpersonsexcludingpatients.surname, vwpersonsexcludingpatients.title, vwpersonsexcludingpatients.occupation, vwpersonsexcludingpatients.street1, vwpersonsexcludingpatients.street2, vwpersonsexcludingpatients.town, vwpersonsexcludingpatients.state, vwpersonsexcludingpatients.postcode FROM vwpersonsexcludingpatients WHERE ((vwpersonsexcludingpatients.fk_person <> 0) AND (vwpersonsexcludingpatients.fk_address IS NOT NULL)) ORDER BY 6, 12;
+    SELECT vworganisationsemployees.fk_address, CASE WHEN (vworganisationsemployees.fk_address IS NULL) THEN (vworganisationsemployees.fk_person || '-0'::text) ELSE ((vworganisationsemployees.fk_person || '-'::text) || (vworganisationsemployees.fk_address)::text) END AS pk_view, vworganisationsemployees.fk_branch, vworganisationsemployees.branch, vworganisationsemployees.organisation, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_person, vworganisationsemployees.firstname, vworganisationsemployees.surname, vworganisationsemployees.title, vworganisationsemployees.occupation, vworganisationsemployees.street1, vworganisationsemployees.street2, vworganisationsemployees.town, vworganisationsemployees.state, vworganisationsemployees.postcode FROM vworganisationsemployees WHERE (vworganisationsemployees.fk_person <> 0) UNION SELECT vwpersonsexcludingpatients.fk_address, CASE WHEN (vwpersonsexcludingpatients.fk_address IS NULL) THEN (vwpersonsexcludingpatients.fk_person || '-0'::text) ELSE ((vwpersonsexcludingpatients.fk_person || '-'::text) || (vwpersonsexcludingpatients.fk_address)::text) END AS pk_view, NULL::unknown AS fk_branch, NULL::unknown AS branch, NULL::unknown AS organisation, NULL::unknown AS fk_organisation, vwpersonsexcludingpatients.fk_person, vwpersonsexcludingpatients.firstname, vwpersonsexcludingpatients.surname, vwpersonsexcludingpatients.title, vwpersonsexcludingpatients.occupation, vwpersonsexcludingpatients.street1, vwpersonsexcludingpatients.street2, vwpersonsexcludingpatients.town, vwpersonsexcludingpatients.state, vwpersonsexcludingpatients.postcode FROM vwpersonsexcludingpatients WHERE ((vwpersonsexcludingpatients.fk_person <> 0) AND (vwpersonsexcludingpatients.fk_address IS NOT NULL)) ORDER BY 6, 12;
 
 
 --
@@ -11449,8 +12154,8 @@ CREATE TABLE lu_version (
 CREATE SEQUENCE db_version_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11500,8 +12205,8 @@ COMMENT ON COLUMN hl7_inboxes.destination IS 'where the hl7 message is routed to
 CREATE SEQUENCE hl7_message_destination_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11608,8 +12313,8 @@ COMMENT ON COLUMN incoming_message_handling.fk_blob IS 'sample file data';
 CREATE SEQUENCE incoming_message_handling_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11645,8 +12350,8 @@ COMMENT ON TABLE lu_link_printer_task IS 'Links a printer on a host = linux host
 CREATE SEQUENCE lu_link_printer_task_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11674,8 +12379,8 @@ CREATE TABLE lu_message_display_style (
 CREATE SEQUENCE lu_message_display_style_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11711,8 +12416,8 @@ COMMENT ON TABLE lu_message_standard IS 'hl7 or pit version not yet implemented'
 CREATE SEQUENCE lu_message_standard_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11749,8 +12454,8 @@ COMMENT ON TABLE lu_printer_host IS 'keeps a list of which printers live in whic
 CREATE SEQUENCE lu_printer_host_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11778,8 +12483,8 @@ CREATE TABLE lu_printer_task (
 CREATE SEQUENCE lu_printer_task_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11841,8 +12546,8 @@ COMMENT ON TABLE script_coordinates IS 'keeps the paper positions x-y for printi
 CREATE SEQUENCE script_coordinates_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11870,8 +12575,8 @@ CREATE TABLE temp (
 CREATE SEQUENCE temp_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11899,8 +12604,8 @@ SET search_path = documents, pg_catalog;
 CREATE SEQUENCE documents_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11935,8 +12640,8 @@ COMMENT ON TABLE lu_archive_site IS 'sites documents are archived eg filesystem,
 CREATE SEQUENCE lu_archive_site_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11964,8 +12669,8 @@ CREATE TABLE lu_display_as (
 CREATE SEQUENCE lu_display_as_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -11977,24 +12682,14 @@ ALTER SEQUENCE lu_display_as_pk_seq OWNED BY lu_display_as.pk;
 
 
 --
--- Name: lu_message_display_style; Type: TABLE; Schema: documents; Owner: -; Tablespace: 
---
-
-CREATE TABLE lu_message_display_style (
-    pk integer NOT NULL,
-    style text NOT NULL
-);
-
-
---
 -- Name: lu_message_display_style_pk_seq; Type: SEQUENCE; Schema: documents; Owner: -
 --
 
 CREATE SEQUENCE lu_message_display_style_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -12006,32 +12701,14 @@ ALTER SEQUENCE lu_message_display_style_pk_seq OWNED BY lu_message_display_style
 
 
 --
--- Name: lu_message_standard; Type: TABLE; Schema: documents; Owner: -; Tablespace: 
---
-
-CREATE TABLE lu_message_standard (
-    pk integer NOT NULL,
-    type text NOT NULL,
-    version text
-);
-
-
---
--- Name: TABLE lu_message_standard; Type: COMMENT; Schema: documents; Owner: -
---
-
-COMMENT ON TABLE lu_message_standard IS 'hl7 or pit version not yet implemented';
-
-
---
 -- Name: lu_message_standard_pk_seq; Type: SEQUENCE; Schema: documents; Owner: -
 --
 
 CREATE SEQUENCE lu_message_standard_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -12108,8 +12785,8 @@ COMMENT ON COLUMN observations.value_numeric_qualifier IS 'numerical qualifier e
 CREATE SEQUENCE observations_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -12121,94 +12798,19 @@ ALTER SEQUENCE observations_pk_seq OWNED BY observations.pk;
 
 
 --
--- Name: sending_entities; Type: TABLE; Schema: documents; Owner: -; Tablespace: 
+-- Name: vwgraphableobservations; Type: VIEW; Schema: documents; Owner: -
 --
 
-CREATE TABLE sending_entities (
-    pk integer NOT NULL,
-    fk_lu_request_type integer,
-    msh_sending_entity text NOT NULL,
-    msh_transmitting_entity text,
-    fk_lu_message_display_style integer NOT NULL,
-    fk_branch integer,
-    fk_employee integer,
-    fk_person integer,
-    fk_lu_message_standard integer NOT NULL,
-    exclude_ft_report boolean DEFAULT false,
-    exclude_pit boolean DEFAULT false,
-    abnormals_foreground_color integer DEFAULT 16711680,
-    abnormals_background_color integer DEFAULT 16777215,
-    deleted boolean DEFAULT false
-);
+CREATE VIEW vwgraphableobservations AS
+    SELECT observations.pk AS pk_observations, lu_loinc_abbrev.component, observations.loinc, observations.fk_document, observations.identifier, observations.reference_range, observations.units, observations.abnormal, observations.observation_date, observations.value, observations.value_numeric, observations.value_numeric_qualifier, documents.fk_patient FROM coding.lu_loinc_abbrev, observations, documents WHERE ((((observations.loinc = lu_loinc_abbrev.loinc_num) AND (observations.fk_document = documents.pk)) AND (observations.identifier <> ''::text)) AND (observations.loinc <> '15418-7'::text)) ORDER BY observations.pk;
 
 
 --
--- Name: TABLE sending_entities; Type: COMMENT; Schema: documents; Owner: -
+-- Name: patientshba1cover75; Type: VIEW; Schema: documents; Owner: -
 --
 
-COMMENT ON TABLE sending_entities IS 'Sending entities and the parameters to define how to handle incoming hl7 messages 
-on a per-provider basis.Note these messages can be in form of various hl7 standards or old style PIT (sequential numbered text lines eg 100, 110 120 etc This table
-defines the file type hl7 or pit, who is sending it, where to put it, which segments of the message to exclude when displaying in html';
-
-
---
--- Name: COLUMN sending_entities.fk_lu_request_type; Type: COMMENT; Schema: documents; Owner: -
---
-
-COMMENT ON COLUMN sending_entities.fk_lu_request_type IS 'The type of provider eg pathology provider, radiology provider';
-
-
---
--- Name: COLUMN sending_entities.msh_sending_entity; Type: COMMENT; Schema: documents; Owner: -
---
-
-COMMENT ON COLUMN sending_entities.msh_sending_entity IS 'the entity sending, could be unintelligable eg a NATA/number or a recognizable name eg Hunter Radiology, however often bears no relationship to a real person or company';
-
-
---
--- Name: COLUMN sending_entities.msh_transmitting_entity; Type: COMMENT; Schema: documents; Owner: -
---
-
-COMMENT ON COLUMN sending_entities.msh_transmitting_entity IS 'could be the sending entity or third party transmitter eg Medical Objects, or the name of a computer program generating the hl7';
-
-
---
--- Name: COLUMN sending_entities.fk_lu_message_display_style; Type: COMMENT; Schema: documents; Owner: -
---
-
-COMMENT ON COLUMN sending_entities.fk_lu_message_display_style IS 'display as letter or result style
- - Public Const Document_Display_As_Letter As Integer = 1 
- - Public Const Document_Display_As_Result As Integer = 2
- 
- Note: though this attribute is kept for each document in document.documents
-       at the time the document is signed off by the user,
-       we need to know what the default display type is for each message sender -
- defaults to 1 = letter, because, though pathology companies are far more
- common, they will have been set to display as a result in the configuration of
- message senders. Scanned documents however will not by default, so we assume
- (sometimes wrongly) that they are usually letters
- ';
-
-
---
--- Name: COLUMN sending_entities.fk_lu_message_standard; Type: COMMENT; Schema: documents; Owner: -
---
-
-COMMENT ON COLUMN sending_entities.fk_lu_message_standard IS 'hl7 or pit';
-
-
---
--- Name: COLUMN sending_entities.exclude_ft_report; Type: COMMENT; Schema: documents; Owner: -
---
-
-COMMENT ON COLUMN sending_entities.exclude_ft_report IS 'if true then no free text segments will be shown';
-
-
---
--- Name: COLUMN sending_entities.exclude_pit; Type: COMMENT; Schema: documents; Owner: -
---
-
-COMMENT ON COLUMN sending_entities.exclude_pit IS 'if contains PIT segments if true these will not be shown (often duplicated the hl7 data itself)';
+CREATE VIEW patientshba1cover75 AS
+    SELECT DISTINCT vwgraphableobservations.fk_patient FROM vwgraphableobservations WHERE ((vwgraphableobservations.loinc = '4548-4'::text) AND (vwgraphableobservations.value_numeric > 7.5));
 
 
 --
@@ -12218,8 +12820,8 @@ COMMENT ON COLUMN sending_entities.exclude_pit IS 'if contains PIT segments if t
 CREATE SEQUENCE sending_entities_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -12250,8 +12852,8 @@ CREATE TABLE signed_off (
 CREATE SEQUENCE signed_off_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -12263,41 +12865,14 @@ ALTER SEQUENCE signed_off_pk_seq OWNED BY signed_off.pk;
 
 
 --
--- Name: unmatched_patients; Type: TABLE; Schema: documents; Owner: -; Tablespace: 
---
-
-CREATE TABLE unmatched_patients (
-    pk integer NOT NULL,
-    surname text NOT NULL,
-    firstname text,
-    birthdate date,
-    sex text,
-    title text,
-    comment text,
-    fk_real_patient integer,
-    street text,
-    town text,
-    postcode text,
-    state text
-);
-
-
---
--- Name: COLUMN unmatched_patients.comment; Type: COMMENT; Schema: documents; Owner: -
---
-
-COMMENT ON COLUMN unmatched_patients.comment IS 'other data about the patient to help matching';
-
-
---
 -- Name: unmatched_patients_pk_seq; Type: SEQUENCE; Schema: documents; Owner: -
 --
 
 CREATE SEQUENCE unmatched_patients_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -12309,28 +12884,14 @@ ALTER SEQUENCE unmatched_patients_pk_seq OWNED BY unmatched_patients.pk;
 
 
 --
--- Name: unmatched_staff; Type: TABLE; Schema: documents; Owner: -; Tablespace: 
---
-
-CREATE TABLE unmatched_staff (
-    pk integer NOT NULL,
-    surname text NOT NULL,
-    firstname text,
-    title text,
-    provider_number text,
-    fk_real_staff integer
-);
-
-
---
 -- Name: unmatched_staff_pk_seq; Type: SEQUENCE; Schema: documents; Owner: -
 --
 
 CREATE SEQUENCE unmatched_staff_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -12342,27 +12903,11 @@ ALTER SEQUENCE unmatched_staff_pk_seq OWNED BY unmatched_staff.pk;
 
 
 --
--- Name: vwsendingentities; Type: VIEW; Schema: documents; Owner: -
+-- Name: vwhba1cover75; Type: VIEW; Schema: documents; Owner: -
 --
 
-CREATE VIEW vwsendingentities AS
-    ((SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, NULL::text AS branch, NULL::text AS organisation, false AS organisation_deleted, NULL::integer AS fk_organisation, false AS branch_deleted, NULL::integer AS fk_address_organisation, NULL::integer AS fk_category_organisation, NULL::character varying AS organisation_category, NULL::text AS organisation_street1, NULL::text AS organisation_street2, NULL::integer AS fk_town_organisation, NULL::boolean AS organisation_postal_address, NULL::boolean AS organisation_head_office, NULL::character varying AS organisation_postcode, NULL::text AS organisation_town, NULL::character varying AS organisation_state, vwpersons.firstname, vwpersons.surname, vwpersons.title, vwpersons.occupation AS person_occupation, vwpersons.sex, vwpersons.fk_address AS fk_address_person, vwpersons.postcode AS person_postcode, vwpersons.street1 AS person_street1, vwpersons.street2 AS person_street2, vwpersons.fk_town AS fk_town_person, vwpersons.town AS person_town, vwpersons.state AS person_state FROM ((((sending_entities JOIN contacts.vwpersons ON ((sending_entities.fk_person = vwpersons.fk_person))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE (((vwpersons.deleted = false) AND (sending_entities.fk_branch = 0)) AND (sending_entities.fk_employee = 0)) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, vworganisations.branch, vworganisations.organisation, vworganisations.organisation_deleted, vworganisations.fk_organisation, vworganisations.branch_deleted, vworganisations.fk_address AS fk_address_organisation, vworganisations.fk_category AS fk_category_organisation, vworganisations.category AS organisation_category, vworganisations.street1 AS organisation_street1, vworganisations.street2 AS organisation_street2, vworganisations.fk_town AS fk_town_organisation, vworganisations.postal_address AS organisation_postal_address, vworganisations.head_office AS organisation_head_office, vworganisations.postcode AS organisation_postcode, vworganisations.town AS organisation_town, vworganisations.state AS organisation_state, NULL::text AS firstname, NULL::text AS surname, NULL::text AS title, NULL::text AS person_occupation, NULL::text AS sex, NULL::integer AS fk_address_person, NULL::character varying AS person_postcode, NULL::text AS person_street1, NULL::text AS person_street2, NULL::integer AS fk_town_person, NULL::text AS person_town, NULL::character varying AS person_state FROM ((((sending_entities JOIN contacts.vworganisations ON ((sending_entities.fk_branch = vworganisations.fk_branch))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE (((vworganisations.branch_deleted = false) AND (sending_entities.fk_employee = 0)) AND (sending_entities.fk_person = 0))) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, vworganisations.branch, vworganisations.organisation, vworganisations.organisation_deleted, vworganisations.fk_organisation, vworganisations.branch_deleted, vworganisations.fk_address AS fk_address_organisation, vworganisations.fk_category AS fk_category_organisation, vworganisations.category AS organisation_category, vworganisations.street1 AS organisation_street1, vworganisations.street2 AS organisation_street2, vworganisations.fk_town AS fk_town_organisation, vworganisations.postal_address AS organisation_postal_address, vworganisations.head_office AS organisation_head_office, vworganisations.postcode AS organisation_postcode, vworganisations.town AS organisation_town, vworganisations.state AS organisation_state, vwpersons.firstname, vwpersons.surname, vwpersons.title, vwpersons.occupation AS person_occupation, vwpersons.sex, vwpersons.fk_address AS fk_address_person, vwpersons.postcode AS person_postcode, vwpersons.street1 AS person_street1, vwpersons.street2 AS person_street2, vwpersons.fk_town AS fk_town_person, vwpersons.town AS person_town, vwpersons.state AS person_state FROM ((((((sending_entities JOIN contacts.vworganisations ON ((sending_entities.fk_branch = vworganisations.fk_branch))) LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) JOIN contacts.data_employees ON ((sending_entities.fk_employee = data_employees.pk))) JOIN contacts.vwpersons ON ((data_employees.fk_person = vwpersons.fk_person))) WHERE ((vwpersons.deleted = false) AND (data_employees.deleted = false))) UNION SELECT sending_entities.pk AS pk_sending_entities, sending_entities.fk_lu_request_type, lu_request_type.type AS request_type, sending_entities.msh_sending_entity, sending_entities.msh_transmitting_entity, sending_entities.fk_lu_message_display_style, sending_entities.fk_branch, sending_entities.fk_employee, sending_entities.fk_person, sending_entities.fk_lu_message_standard, lu_message_standard.type AS message_type, lu_message_standard.version AS message_version, lu_message_display_style.style, sending_entities.exclude_ft_report, sending_entities.exclude_pit, sending_entities.abnormals_foreground_color, sending_entities.abnormals_background_color, sending_entities.deleted, NULL::text AS branch, NULL::text AS organisation, NULL::boolean AS organisation_deleted, NULL::integer AS fk_organisation, NULL::boolean AS branch_deleted, NULL::integer AS fk_address_organisation, NULL::integer AS fk_category_organisation, NULL::character varying AS organisation_category, NULL::text AS organisation_street1, NULL::text AS organisation_street2, NULL::integer AS fk_town_organisation, false AS organisation_postal_address, false AS organisation_head_office, NULL::character varying AS organisation_postcode, NULL::text AS organisation_town, NULL::character varying AS organisation_state, NULL::text AS firstname, NULL::text AS surname, NULL::text AS title, NULL::text AS person_occupation, NULL::text AS sex, NULL::integer AS fk_address_person, NULL::character varying AS person_postcode, NULL::text AS person_street1, NULL::text AS person_street2, NULL::integer AS fk_town_person, NULL::text AS person_town, NULL::character varying AS person_state FROM (((sending_entities LEFT JOIN clin_requests.lu_request_type ON ((sending_entities.fk_lu_request_type = lu_request_type.pk))) JOIN lu_message_display_style ON ((sending_entities.fk_lu_message_display_style = lu_message_display_style.pk))) JOIN lu_message_standard ON ((sending_entities.fk_lu_message_standard = lu_message_standard.pk))) WHERE (((sending_entities.fk_branch IS NULL) AND (sending_entities.fk_employee IS NULL)) AND (sending_entities.fk_person IS NULL));
-
-
---
--- Name: vwdocuments; Type: VIEW; Schema: documents; Owner: -
---
-
-CREATE VIEW vwdocuments AS
-    SELECT documents.pk AS pk_document, documents.source_file, documents.fk_sending_entity, documents.imported_time, documents.date_requested, documents.date_created, documents.fk_patient, documents.fk_staff_filed_document, documents.originator, documents.originator_reference, documents.copy_to, documents.provider_of_service_reference, documents.internal_reference, documents.copies_to, documents.fk_staff_destination, documents.comment_on_document, documents.patient_access, documents.concluded, documents.deleted, documents.fk_lu_urgency, documents.tag, documents.tag_user, documents.md5sum, documents.html, documents.fk_unmatched_staff, documents.fk_referral, documents.fk_request, documents.fk_unmatched_patient, documents.fk_lu_display_as, documents.fk_lu_request_type, lu_request_type.type AS request_type, documents.fk_staff_permitted_access, vwsendingentities.fk_lu_request_type AS sending_entity_fk_lu_request_type, vwsendingentities.request_type AS sending_entity_request_type, vwsendingentities.style, vwsendingentities.message_type, vwsendingentities.message_version, vwsendingentities.msh_sending_entity, vwsendingentities.msh_transmitting_entity, vwsendingentities.fk_lu_message_display_style, vwsendingentities.fk_branch AS fk_sender_branch, vwsendingentities.fk_employee AS fk_employee_branch, vwsendingentities.fk_person AS fk_sender_person, vwsendingentities.fk_lu_message_standard, vwsendingentities.exclude_ft_report, vwsendingentities.abnormals_foreground_color, vwsendingentities.abnormals_background_color, vwsendingentities.exclude_pit, vwsendingentities.person_occupation, vwsendingentities.organisation, vwsendingentities.organisation_category, vwpatients.fk_person AS patient_fk_person, vwpatients.firstname AS patient_firstname, vwpatients.surname AS patient_surname, vwpatients.birthdate AS patient_birthdate, vwpatients.sex AS patient_sex, vwpatients.age_numeric AS patient_age, vwpatients.title AS patient_title, vwpatients.street1 AS patient_street1, vwpatients.street2 AS patient_street2, vwpatients.town AS patient_town, vwpatients.state AS patient_state, vwpatients.postcode AS patient_postcode, vwstaff.wholename AS staff_destination_wholename, vwstaff.title AS staff_destination_title, unmatched_patients.surname AS unmatched_patient_surname, unmatched_patients.firstname AS unmatched_patient_firstname, unmatched_patients.birthdate AS unmatched_patient_birthdate, unmatched_patients.sex AS unmatched_patient_sex, unmatched_patients.title AS unmatched_patient_title, unmatched_patients.street AS unmatched_patient_street, unmatched_patients.town AS unmatched_patient_town, unmatched_patients.postcode AS unmatched_patient_postcode, unmatched_patients.state AS unmatched_patient_state, unmatched_staff.surname AS unmatched_staff_surname, unmatched_staff.firstname AS unmatched_staff_firstname, unmatched_staff.title AS unmatched_staff_title, unmatched_staff.provider_number AS unmatched_staff_provider_number FROM ((((((documents JOIN vwsendingentities ON ((documents.fk_sending_entity = vwsendingentities.pk_sending_entities))) LEFT JOIN clin_requests.lu_request_type ON ((documents.fk_lu_request_type = lu_request_type.pk))) LEFT JOIN contacts.vwpatients ON ((documents.fk_patient = vwpatients.fk_patient))) LEFT JOIN admin.vwstaff ON ((documents.fk_staff_destination = vwstaff.fk_staff))) LEFT JOIN unmatched_patients ON ((documents.fk_unmatched_patient = unmatched_patients.pk))) LEFT JOIN unmatched_staff ON ((documents.fk_unmatched_staff = unmatched_staff.pk))) ORDER BY documents.fk_patient, documents.date_created;
-
-
---
--- Name: vwgraphableobservations; Type: VIEW; Schema: documents; Owner: -
---
-
-CREATE VIEW vwgraphableobservations AS
-    SELECT observations.pk AS pk_observations, lu_loinc_abbrev.component, observations.loinc, observations.fk_document, observations.identifier, observations.reference_range, observations.units, observations.abnormal, observations.observation_date, observations.value, observations.value_numeric, observations.value_numeric_qualifier, documents.fk_patient FROM coding.lu_loinc_abbrev, observations, documents WHERE ((((observations.loinc = lu_loinc_abbrev.loinc_num) AND (observations.fk_document = documents.pk)) AND (observations.identifier <> ''::text)) AND (observations.loinc <> '15418-7'::text)) ORDER BY observations.pk;
+CREATE VIEW vwhba1cover75 AS
+    SELECT DISTINCT vwgraphableobservations.fk_patient FROM vwgraphableobservations WHERE ((vwgraphableobservations.loinc = '4548-4'::text) AND (vwgraphableobservations.value_numeric > 7.5));
 
 
 --
@@ -12378,7 +12923,7 @@ CREATE VIEW vwhl7filesimported AS
 --
 
 CREATE VIEW vwinboxstaff AS
-    SELECT vwstaffinclinics.pk_view, vwstaffinclinics.title, vwstaffinclinics.fk_staff, vwstaffinclinics.wholename, vwstaffinclinics.surname, NULL::integer AS fk_unmatched_staff FROM admin.vwstaffinclinics UNION SELECT ((unmatched_staff.pk || '-'::text) || 'unmatched'::text) AS pk_view, unmatched_staff.title, unmatched_staff.fk_real_staff AS fk_staff, ((unmatched_staff.firstname || ' '::text) || (unmatched_staff.surname || ' [Unkown]'::text)) AS wholename, unmatched_staff.surname, unmatched_staff.pk AS fk_unmatched_staff FROM unmatched_staff WHERE (unmatched_staff.fk_real_staff IS NULL) ORDER BY 5;
+    SELECT vwstaffinclinics.pk_view, vwstaffinclinics.title, vwstaffinclinics.fk_staff, vwstaffinclinics.wholename, vwstaffinclinics.surname, NULL::unknown AS fk_unmatched_staff FROM admin.vwstaffinclinics UNION SELECT ((unmatched_staff.pk || '-'::text) || 'unmatched'::text) AS pk_view, unmatched_staff.title, unmatched_staff.fk_real_staff AS fk_staff, ((unmatched_staff.firstname || ' '::text) || (unmatched_staff.surname || ' [Unkown]'::text)) AS wholename, unmatched_staff.surname, unmatched_staff.pk AS fk_unmatched_staff FROM unmatched_staff WHERE (unmatched_staff.fk_real_staff IS NULL) ORDER BY 5;
 
 
 --
@@ -12415,59 +12960,6 @@ CREATE TABLE atc (
 --
 
 COMMENT ON TABLE atc IS 'table associating drug names and Anatomic Therapeutic Chemical (ATC) codes';
-
-
---
--- Name: brand; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
---
-
-CREATE TABLE brand (
-    fk_product uuid NOT NULL,
-    fk_company character varying(3) NOT NULL,
-    brand character varying(100) NOT NULL,
-    price money,
-    from_pbs boolean DEFAULT false NOT NULL,
-    original_tga_text text,
-    original_tga_code character varying(12),
-    pk uuid DEFAULT public.uuid_generate_v4() NOT NULL,
-    product_information_filename text
-);
-
-
---
--- Name: TABLE brand; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON TABLE brand IS 'many to many pivot table linking drug products and manufacturers';
-
-
---
--- Name: COLUMN brand.price; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN brand.price IS 'dispensed price for PBS drugs.';
-
-
---
--- Name: COLUMN brand.from_pbs; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN brand.from_pbs IS 'true if the brand comes from the PBS database, allows the list to be easily reloaded
-with new PBS data. False means data we added ourselves.';
-
-
---
--- Name: COLUMN brand.original_tga_text; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN brand.original_tga_text IS 'drugs imported from TGA database, the original label therein';
-
-
---
--- Name: COLUMN brand.original_tga_code; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN brand.original_tga_code IS 'drugs imported from TGA database, their TGA code';
 
 
 --
@@ -12508,8 +13000,8 @@ too long for a pick list) and confirm with users if they want to create a new en
 CREATE SEQUENCE clinical_effects_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -12617,8 +13109,8 @@ COMMENT ON TABLE flags IS 'flags for adjuvants such as ''gluten-free'', ''paedia
 CREATE SEQUENCE flags_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -12627,17 +13119,6 @@ CREATE SEQUENCE flags_pk_seq
 --
 
 ALTER SEQUENCE flags_pk_seq OWNED BY flags.pk;
-
-
---
--- Name: form; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
---
-
-CREATE TABLE form (
-    pk integer NOT NULL,
-    form text NOT NULL,
-    volume_amount_required boolean DEFAULT false
-);
 
 
 --
@@ -12681,8 +13162,8 @@ COMMENT ON COLUMN info.comment IS 'the drug product information in HTML format';
 CREATE SEQUENCE info_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -12818,169 +13299,12 @@ CREATE TABLE pharmacologic_mechanisms (
 
 
 --
--- Name: product; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
---
-
-CREATE TABLE product (
-    pk uuid DEFAULT public.uuid_generate_v4() NOT NULL,
-    atccode character varying(8) NOT NULL,
-    generic text NOT NULL,
-    salt text,
-    fk_form integer NOT NULL,
-    strength text,
-    salt_strength text,
-    original_pbs_name text,
-    original_pbs_fs text,
-    free_comment text,
-    updated_at timestamp without time zone DEFAULT now(),
-    fk_schedule integer,
-    shared boolean DEFAULT true,
-    pack_size integer DEFAULT 1,
-    amount double precision,
-    amount_unit integer
-);
-
-
---
--- Name: TABLE product; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON TABLE product IS 'dispensable form of a generic drug including strength, package size etc';
-
-
---
--- Name: COLUMN product.generic; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN product.generic IS 'full generic name in lower-case. For compounds names separated by ";"';
-
-
---
--- Name: COLUMN product.salt; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN product.salt IS 'if not normally part of generic name, the adjuvant salt';
-
-
---
--- Name: COLUMN product.fk_form; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN product.fk_form IS 'the form of the drug';
-
-
---
--- Name: COLUMN product.strength; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN product.strength IS 'the strength as a number followed by a unit. For compounds
-strengths are separated by "-", in the same order as the names of the consitituents in the generic name';
-
-
---
--- Name: COLUMN product.salt_strength; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN product.salt_strength IS 'where a weight of the full salt is listed (being heavier than the weight 
-of the solid drug. Must be in same unit';
-
-
---
--- Name: COLUMN product.original_pbs_name; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN product.original_pbs_name IS 'for a drug imported from the PBS Yellow Book database, the original 
-generic name as there listed, otherwise NULL';
-
-
---
--- Name: COLUMN product.original_pbs_fs; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN product.original_pbs_fs IS 'for a drug imported from the PBS Yellow Book database, the original 
-form-and-strength field as there listed, otherwise NULL';
-
-
---
--- Name: COLUMN product.free_comment; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN product.free_comment IS 'a free-text comment on properties of the product. For example for complex packages
-with tablets lof differing strengths';
-
-
---
--- Name: COLUMN product.shared; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN product.shared IS 'if true then the user/surgery wants to share this drug with easygp-central';
-
-
---
 -- Name: product_information_unmatched; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
 --
 
 CREATE TABLE product_information_unmatched (
     brand text NOT NULL,
     product_information_filename text NOT NULL
-);
-
-
---
--- Name: restriction; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
---
-
-CREATE TABLE restriction (
-    pbscode character varying(10) NOT NULL,
-    restriction text NOT NULL,
-    restriction_type character(1) DEFAULT '3'::bpchar NOT NULL,
-    code character varying(10) NOT NULL,
-    streamlined boolean DEFAULT false NOT NULL
-);
-
-
---
--- Name: TABLE restriction; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON TABLE restriction IS 'list of PBS restrictions and authority warnings';
-
-
---
--- Name: COLUMN restriction.restriction; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN restriction.restriction IS 'the actual text of the authority requirement, in basic HTML';
-
-
---
--- Name: COLUMN restriction.restriction_type; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN restriction.restriction_type IS '1=only applies to increased quantities/repeats, 2=only to normal amounts, 3=to both';
-
-
---
--- Name: COLUMN restriction.code; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN restriction.code IS 'the authority code number, for doing streamlined authorities';
-
-
---
--- Name: COLUMN restriction.streamlined; Type: COMMENT; Schema: drugs; Owner: -
---
-
-COMMENT ON COLUMN restriction.streamlined IS 'true if this is a "streamlined" Authority';
-
-
---
--- Name: schedules; Type: TABLE; Schema: drugs; Owner: -; Tablespace: 
---
-
-CREATE TABLE schedules (
-    pk integer,
-    schedule text
 );
 
 
@@ -13061,6 +13385,14 @@ COMMENT ON COLUMN topic.target IS 'the target of this information: h=health prof
 
 
 --
+-- Name: vwdistinctbrandsforgenericproduct; Type: VIEW; Schema: drugs; Owner: -
+--
+
+CREATE VIEW vwdistinctbrandsforgenericproduct AS
+    SELECT DISTINCT brand.pk AS pk_view, brand.fk_product, product.generic, brand.brand, brand.product_information_filename, brand.pk AS fk_brand FROM (brand JOIN product ON ((product.pk = brand.fk_product)));
+
+
+--
 -- Name: vwpbs; Type: VIEW; Schema: drugs; Owner: -
 --
 
@@ -13101,7 +13433,15 @@ SZ Section 100 (Special Authority Items) - Public Hospitals
 --
 
 CREATE VIEW vwdrugs AS
-    SELECT ((brand.pk || (COALESCE(vwpbs.pbscode, ''::character varying))::text) || (COALESCE(vwpbs.restriction_code, ''::character varying))::text) AS pk_view, brand.fk_product, brand.fk_company, brand.brand, brand.pk AS fk_brand, brand.price, brand.from_pbs, product.atccode, product.generic, product.salt, product.fk_form, product.strength, product.salt_strength, product.free_comment, product.updated_at, product.pack_size, product.amount, product.amount_unit, form.form, brand.product_information_filename, vwpbs.quantity, vwpbs.max_rpt, vwpbs.pbscode, vwpbs.chapter, vwpbs.restrictionflag, vwpbs.pbs_type, vwpbs.restriction, vwpbs.restriction_type, vwpbs.restriction_code, vwpbs.streamlined FROM (((brand brand JOIN product ON ((brand.fk_product = product.pk))) JOIN form ON ((product.fk_form = form.pk))) LEFT JOIN vwpbs ON ((product.pk = vwpbs.fk_product)));
+    SELECT ((brand.pk || (COALESCE(vwpbs.pbscode, ''::character varying))::text) || (COALESCE(vwpbs.restriction_code, ''::character varying))::text) AS pk_view, brand.fk_product, brand.fk_company, brand.brand, brand.pk AS fk_brand, brand.price, brand.from_pbs, product.atccode, product.generic, product.salt, product.fk_form, product.strength, format_strength(product.strength) AS display_strength, format_packsize(product.amount, product.amount_unit, product.pack_size) AS display_packsize, product.salt_strength, product.free_comment, product.fk_schedule, product.updated_at, product.pack_size, product.amount, product.amount_unit, form.form, brand.product_information_filename, vwpbs.quantity, vwpbs.max_rpt, vwpbs.pbscode, vwpbs.chapter, atc.atcname, company.company, vwpbs.restrictionflag, vwpbs.pbs_type, vwpbs.restriction, vwpbs.restriction_type, vwpbs.restriction_code, vwpbs.streamlined FROM (((((brand brand JOIN product ON ((brand.fk_product = product.pk))) JOIN form ON ((product.fk_form = form.pk))) JOIN atc ON (((product.atccode)::text = atc.atccode))) JOIN company ON (((company.code)::text = (brand.fk_company)::text))) LEFT JOIN vwpbs ON ((product.pk = vwpbs.fk_product)));
+
+
+--
+-- Name: vwdrugs1; Type: VIEW; Schema: drugs; Owner: -
+--
+
+CREATE VIEW vwdrugs1 AS
+    SELECT ((brand.pk || (COALESCE(vwpbs.pbscode, ''::character varying))::text) || (COALESCE(vwpbs.restriction_code, ''::character varying))::text) AS pk_view, brand.fk_product, brand.fk_company, brand.brand, brand.pk AS fk_brand, brand.price, brand.from_pbs, product.atccode, product.generic, product.salt, product.fk_form, product.strength, product.salt_strength, product.free_comment, product.fk_schedule, product.updated_at, product.pack_size, product.amount, product.amount_unit, form.form, brand.product_information_filename, vwpbs.quantity, vwpbs.max_rpt, vwpbs.pbscode, vwpbs.chapter, atc.atcname, vwpbs.restrictionflag, vwpbs.pbs_type, vwpbs.restriction, vwpbs.restriction_type, vwpbs.restriction_code, vwpbs.streamlined FROM ((((brand brand JOIN product ON ((brand.fk_product = product.pk))) JOIN form ON ((product.fk_form = form.pk))) JOIN atc ON (((product.atccode)::text = atc.atccode))) LEFT JOIN vwpbs ON ((product.pk = vwpbs.fk_product)));
 
 
 --
@@ -13159,8 +13499,8 @@ COMMENT ON TABLE lu_demographics_field_templates IS 'demographic details importe
 CREATE SEQUENCE lu_demographics_field_templates_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -13195,8 +13535,8 @@ COMMENT ON TABLE lu_source_program IS 'source program for imported data either c
 CREATE SEQUENCE lu_source_program_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -13224,8 +13564,8 @@ SET search_path = public, pg_catalog;
 CREATE SEQUENCE authority_number
     START WITH 1
     INCREMENT BY 11
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -13250,129 +13590,6 @@ CREATE TABLE forms1 (
 
 
 --
--- Name: increased_quantity_authority_reasons; Type: TABLE; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE TABLE increased_quantity_authority_reasons (
-    pk integer NOT NULL,
-    reason text NOT NULL
-);
-
-
---
--- Name: increased_quantity_authority_reasons_pk_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE increased_quantity_authority_reasons_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: increased_quantity_authority_reasons_pk_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE increased_quantity_authority_reasons_pk_seq OWNED BY increased_quantity_authority_reasons.pk;
-
-
---
--- Name: instruction_habits; Type: TABLE; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE TABLE instruction_habits (
-    pk integer NOT NULL,
-    fk_instruction integer NOT NULL,
-    fk_generic_product uuid NOT NULL,
-    fk_staff integer NOT NULL,
-    weighting integer NOT NULL,
-    fk_brand uuid
-);
-
-
---
--- Name: TABLE instruction_habits; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TABLE instruction_habits IS 'allow auto-completion of a script for the commonest instruction
- a particular staff member uses for a particular drug. 
-	-If fk_company and fk_generic product are not null,
-	then this points  to a brand name in drugs.brand
-	-If fk_company is null, then this is a generically prescribed drug';
-
-
---
--- Name: instruction_habits_pk_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE instruction_habits_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: instruction_habits_pk_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE instruction_habits_pk_seq OWNED BY instruction_habits.pk;
-
-
---
--- Name: instructions; Type: TABLE; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE TABLE instructions (
-    pk integer NOT NULL,
-    instruction text,
-    fk_lu_units integer,
-    am integer,
-    lunch integer,
-    pm integer,
-    bed integer,
-    prn integer
-);
-
-
---
--- Name: TABLE instructions; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TABLE instructions IS 'A lookup table for instructions and hopefully with a bit of intelligence
- allow printing out of medications charts';
-
-
---
--- Name: COLUMN instructions.fk_lu_units; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN instructions.fk_lu_units IS 'key to common.lu_units = day, month, week or year = frequency of the medication';
-
-
---
--- Name: instructions_pk_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE instructions_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: instructions_pk_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE instructions_pk_seq OWNED BY instructions.pk;
-
-
---
 -- Name: lu_modes; Type: TABLE; Schema: public; Owner: -; Tablespace: 
 --
 
@@ -13383,113 +13600,14 @@ CREATE TABLE lu_modes (
 
 
 --
--- Name: lu_pbs_script_type; Type: TABLE; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE TABLE lu_pbs_script_type (
-    pk integer NOT NULL,
-    type text NOT NULL
-);
-
-
---
--- Name: TABLE lu_pbs_script_type; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TABLE lu_pbs_script_type IS 'The various ways a script can be printed as for example:
-	- PBS AUTHORITY, RPBS AUTHORITY, PBS STREAMLINED AUTHORITY
-	  PBS, RPBS,  PRIVATE';
-
-
---
--- Name: medications; Type: TABLE; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE TABLE medications (
-    pk integer NOT NULL,
-    active boolean DEFAULT false,
-    deleted boolean DEFAULT false,
-    start_date date DEFAULT now() NOT NULL,
-    last_date date DEFAULT now() NOT NULL,
-    fk_generic_product uuid NOT NULL
-);
-
-
---
--- Name: TABLE medications; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TABLE medications IS 'The medications table holds a list of unique medications for each patient';
-
-
---
--- Name: COLUMN medications.active; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN medications.active IS '
-If true, the medication is on the patients active medication list';
-
-
---
--- Name: COLUMN medications.deleted; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN medications.deleted IS 'if true the record is marked deleted, e.g could have been prescribed for the
- wrong patient, but has been deleted by the user, hence this record remains
- part of an audit trail';
-
-
---
--- Name: COLUMN medications.start_date; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN medications.start_date IS 'the date the medication was started';
-
-
---
--- Name: COLUMN medications.last_date; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN medications.last_date IS 'the last date the medication was prescibed';
-
-
---
--- Name: COLUMN medications.fk_generic_product; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN medications.fk_generic_product IS 'the last date the medication was prescibed
- this is the foreign key to the drugs.product table which gives then
- dispensable form of a generic drug including strength, package size etc';
-
-
---
--- Name: medications_pk_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE medications_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: medications_pk_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE medications_pk_seq OWNED BY medications.pk;
-
-
---
 -- Name: pbsconvert_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE pbsconvert_id_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -13508,244 +13626,6 @@ CREATE TABLE pbsconvert (
     form text,
     comment text
 );
-
-
---
--- Name: prescribed; Type: TABLE; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE TABLE prescribed (
-    pk integer NOT NULL,
-    fk_consult integer NOT NULL,
-    fk_medication integer NOT NULL,
-    fk_brand uuid,
-    date_on_script date NOT NULL,
-    repeats integer DEFAULT 0 NOT NULL,
-    quantity integer NOT NULL,
-    fk_instruction integer NOT NULL,
-    fk_prescribed_for integer,
-    pbscode text,
-    restriction_code text,
-    reg24 boolean DEFAULT false,
-    authority_script_number integer,
-    authority_approval_number text,
-    authority_post_to_patient boolean DEFAULT false,
-    script_number integer,
-    fk_code text,
-    suppress_reason boolean,
-    concession_details text,
-    brand_substitution boolean DEFAULT true,
-    fk_increased_quantity_authority_reason integer,
-    fk_lu_pbs_script_type integer,
-    fk_progress_note integer,
-    deleted boolean DEFAULT false
-);
-
-
---
--- Name: TABLE prescribed; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TABLE prescribed IS 'Every single item prescribed has an entry here
-	 this table gives us
-	- the doctor who prescribed (via fk_consult)
-	- the date prescription was issued consult.date
-	- the actual date on the script (script_date)
-	  which could be foreward or back dated mmm.. illegal?
-	- the medication details (fk_medication) of start data, last date and product via medications.fk_generic_product)
-	- stuff which could be unique for this prescription
-	  such as pbs details, quantity, repeats, reg 25, s8
-	- print_status is pbs or rpbs or priv
-	- the pack details for this drug on this occasion.';
-
-
---
--- Name: COLUMN prescribed.fk_consult; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN prescribed.fk_consult IS 'foreign key to clin_consult.consult table';
-
-
---
--- Name: COLUMN prescribed.date_on_script; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN prescribed.date_on_script IS '
-The actual date on the script may not be the consulation date, can be back/forwarded dated,
-without this ability GP''s may as well pack up and go
-home though illegal in theory';
-
-
---
--- Name: COLUMN prescribed.repeats; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN prescribed.repeats IS '
-The actual number of repeats
-may not be the max repeats allowed
-by the pbs accessed by fk_pbs';
-
-
---
--- Name: COLUMN prescribed.quantity; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN prescribed.quantity IS '
-The quantity on the script
-May not be the actual quanitity allowed on the pbs
-e.g sometimes we may prescribe diazepam in small quantities';
-
-
---
--- Name: COLUMN prescribed.reg24; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN prescribed.reg24 IS '
-If true reg24 allows us to tell the
-pharmacist to dispense the script and all 
-its repeats at once';
-
-
---
--- Name: COLUMN prescribed.authority_script_number; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN prescribed.authority_script_number IS 'the pbs requires a unique script number for an authority item, pretty stupid, but a number that
- increments by 11. This is distinct from the streamlined approval number or phone approval number';
-
-
---
--- Name: COLUMN prescribed.authority_approval_number; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN prescribed.authority_approval_number IS 'either the steamlined authority number or the phone approval number obtained from a pbs operator';
-
-
---
--- Name: COLUMN prescribed.fk_code; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON COLUMN prescribed.fk_code IS 'foreign key to references coding.generic_terms, if not null then the reason for using script
-   is coded';
-
-
---
--- Name: prescribed_for; Type: TABLE; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE TABLE prescribed_for (
-    pk integer NOT NULL,
-    prescribed_for text NOT NULL,
-    fk_code text
-);
-
-
---
--- Name: TABLE prescribed_for; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TABLE prescribed_for IS 'keeps list of things prescribed for
-  If fk_code is not null it has been coded
-  referenced by items_prescibed.fk_prescibed_for';
-
-
---
--- Name: prescribed_for_habits; Type: TABLE; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE TABLE prescribed_for_habits (
-    pk integer NOT NULL,
-    fk_prescribed_for integer NOT NULL,
-    fk_generic_product uuid NOT NULL,
-    fk_staff integer NOT NULL,
-    weighting integer NOT NULL,
-    fk_brand uuid
-);
-
-
---
--- Name: TABLE prescribed_for_habits; Type: COMMENT; Schema: public; Owner: -
---
-
-COMMENT ON TABLE prescribed_for_habits IS 'used to auto-complete a script on a per-staff member, to
- display the commonest reason a particular generic +/- brand
- was prescribed for';
-
-
---
--- Name: prescribed_for_habits_pk_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE prescribed_for_habits_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: prescribed_for_habits_pk_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE prescribed_for_habits_pk_seq OWNED BY prescribed_for_habits.pk;
-
-
---
--- Name: prescribed_for_pk_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE prescribed_for_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: prescribed_for_pk_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE prescribed_for_pk_seq OWNED BY prescribed_for.pk;
-
-
---
--- Name: prescribed_pk_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE prescribed_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: prescribed_pk_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE prescribed_pk_seq OWNED BY prescribed.pk;
-
-
---
--- Name: print_status_pk_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE print_status_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: print_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE print_status_pk_seq OWNED BY lu_pbs_script_type.pk;
 
 
 --
@@ -13791,25 +13671,9 @@ CREATE TABLE rawpbs (
 CREATE SEQUENCE script_number
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
-
-
---
--- Name: vwinstructionhabits; Type: VIEW; Schema: public; Owner: -
---
-
-CREATE VIEW vwinstructionhabits AS
-    SELECT instruction_habits.pk AS pk_instruction_habit, instruction_habits.fk_instruction, instruction_habits.fk_brand, instruction_habits.fk_generic_product, instruction_habits.fk_staff, instruction_habits.weighting, instructions.instruction FROM instruction_habits, instructions WHERE (instruction_habits.fk_instruction = instructions.pk);
-
-
---
--- Name: vwprescribedforhabits; Type: VIEW; Schema: public; Owner: -
---
-
-CREATE VIEW vwprescribedforhabits AS
-    SELECT prescribed_for.prescribed_for, prescribed_for.fk_code, prescribed_for_habits.pk AS pk_prescibed_for_habit, prescribed_for_habits.fk_prescribed_for, prescribed_for_habits.fk_brand, prescribed_for_habits.fk_generic_product, prescribed_for_habits.fk_staff, prescribed_for_habits.weighting FROM prescribed_for, prescribed_for_habits WHERE (prescribed_for_habits.fk_prescribed_for = prescribed_for.pk);
 
 
 --
@@ -13819,8 +13683,8 @@ CREATE VIEW vwprescribedforhabits AS
 CREATE SEQUENCE web_pk_seq
     START WITH 1
     INCREMENT BY 1
-    NO MINVALUE
     NO MAXVALUE
+    NO MINVALUE
     CACHE 1;
 
 
@@ -13862,18 +13726,142 @@ CREATE VIEW diabetes_patients_latest_hba1c AS
 
 
 --
+-- Name: diabetes_patients_with_hba1c; Type: VIEW; Schema: research; Owner: -
+--
+
+CREATE VIEW diabetes_patients_with_hba1c AS
+    SELECT DISTINCT vwgraphableobservations.observation_date, vwgraphableobservations.loinc, vwgraphableobservations.value_numeric, vwpatients.firstname, vwpatients.wholename, vwpatients.age_display, vwpatients.sex, vwpatients.title, vwpatients.street1, vwpatients.street2, vwpatients.town, vwpatients.state, vwpatients.occupation, vwpatients.postcode, vwpatients.surname, vwpatients.birthdate, vwpatients.age_numeric, vwpatients.marital FROM contacts.vwpatients, documents.vwgraphableobservations WHERE ((vwgraphableobservations.fk_patient = vwpatients.fk_patient) AND (vwgraphableobservations.loinc = '4548-4'::text));
+
+
+--
+-- Name: patientsnameshba1cover75; Type: VIEW; Schema: research; Owner: -
+--
+
+CREATE VIEW patientsnameshba1cover75 AS
+    SELECT DISTINCT vwpatients.wholename, vwpatients.age_display, vwpatients.sex FROM contacts.vwpatients, documents.patientshba1cover75 WHERE (patientshba1cover75.fk_patient = vwpatients.fk_patient);
+
+
+--
 -- Name: vwdiabetes_patients_with_hba1c; Type: VIEW; Schema: research; Owner: -
 --
 
 CREATE VIEW vwdiabetes_patients_with_hba1c AS
-    SELECT DISTINCT vwgraphableobservations.pk_observations, vwgraphableobservations.observation_date, vwgraphableobservations.loinc, vwgraphableobservations.value_numeric, vwpatients.fk_patient, vwpatients.firstname, vwpatients.wholename, vwpatients.age_display, vwpatients.sex, vwpatients.title, vwpatients.street1, vwpatients.street2, vwpatients.town, vwpatients.state, vwpatients.occupation, vwpatients.postcode, vwpatients.surname, vwpatients.fk_image, vwpatients.birthdate, vwpatients.age_numeric, vwpatients.marital, vwpatients.fk_person, vwpatients.deceased, vwpatients.active_status FROM contacts.vwpatients, documents.vwgraphableobservations WHERE ((vwgraphableobservations.fk_patient = vwpatients.fk_patient) AND (vwgraphableobservations.loinc = '4548-4'::text));
+    SELECT DISTINCT vwgraphableobservations.pk_observations, vwgraphableobservations.observation_date, vwgraphableobservations.loinc, vwgraphableobservations.value_numeric, vwpatients.fk_patient, vwpatients.firstname, vwpatients.surname, vwpatients.wholename, vwpatients.age_display, vwpatients.sex, vwpatients.title, vwpatients.occupation, vwpatients.fk_image, vwpatients.birthdate, vwpatients.age_numeric, vwpatients.marital, vwpatients.fk_person, vwpatients.deceased, vwpatients.active_status, vwpatients.street1, vwpatients.street2, vwpatients.town, vwpatients.state, vwpatients.postcode FROM contacts.vwpatients, documents.vwgraphableobservations WHERE ((vwgraphableobservations.fk_patient = vwpatients.fk_patient) AND (vwgraphableobservations.loinc = '4548-4'::text));
 
 
 --
 -- Name: VIEW vwdiabetes_patients_with_hba1c; Type: COMMENT; Schema: research; Owner: -
 --
 
-COMMENT ON VIEW vwdiabetes_patients_with_hba1c IS 'all patients and all their hba1''s, including deceased and those left the practice';
+COMMENT ON VIEW vwdiabetes_patients_with_hba1c IS 'all patients and all their hba1''s, including deceased and those left the practice
+ this view could also contain patients who are not diabetic if someone has done
+ their hab1c without good cause or logic - mind you there is a push to make
+ hba1c a diagnostic tool heaven forbid
+ The GUI layer must use  chronic_disease_management.diabetes_hba1c_not_diabetic
+ to filter these non-diabetics out of stats - or at least that is how I''ve done it';
+
+
+--
+-- Name: vwdiabetics_with_ldlcholesterol; Type: VIEW; Schema: research; Owner: -
+--
+
+CREATE VIEW vwdiabetics_with_ldlcholesterol AS
+    SELECT vwdiabetes_patients_with_hba1c.fk_patient AS pk_view, vwgraphableobservations.loinc, vwgraphableobservations.value_numeric, vwgraphableobservations.value_numeric_qualifier, vwdiabetes_patients_with_hba1c.fk_patient, vwdiabetes_patients_with_hba1c.deceased, vwdiabetes_patients_with_hba1c.active_status, vwgraphableobservations.identifier, vwgraphableobservations.observation_date, vwgraphableobservations.reference_range, vwgraphableobservations.abnormal FROM vwdiabetes_patients_with_hba1c, documents.vwgraphableobservations WHERE ((vwdiabetes_patients_with_hba1c.fk_patient = vwgraphableobservations.fk_patient) AND (vwgraphableobservations.loinc = '22748-8'::text));
+
+
+--
+-- Name: VIEW vwdiabetics_with_ldlcholesterol; Type: COMMENT; Schema: research; Owner: -
+--
+
+COMMENT ON VIEW vwdiabetics_with_ldlcholesterol IS 'a view of all diabetes and their LDL Cholesterol Levels
+ note as the fk_patient of the diabetes view is linked to the fk_patient of the observations view
+ there is always a 1-1 relationship between these views
+ this view could also contain patients who are not diabetic if someone has done
+ their hab1c without good cause or logic 
+ The GUI layer must use  chronic_disease_management.diabetes_hba1c_not_diabetic
+ to filter these non-diabetics out of stats - or at least that is how I''ve done it';
+
+
+--
+-- Name: vwmicroalbuminuria; Type: VIEW; Schema: research; Owner: -
+--
+
+CREATE VIEW vwmicroalbuminuria AS
+    ((SELECT vwobservations.fk_patient, vwobservations.pk AS pk_observation, vwobservations.identifier, vwobservations.observation_date, vwobservations.value_numeric, vwobservations.value_numeric_qualifier, vwobservations.units, vwobservations.reference_range, vwobservations.abnormal, vwobservations.loinc FROM documents.vwobservations WHERE ((vwobservations.loinc = '14959-1'::text) AND (vwobservations.value_numeric IS NOT NULL)) UNION SELECT vwobservations.fk_patient, vwobservations.pk AS pk_observation, vwobservations.identifier, vwobservations.observation_date, vwobservations.value_numeric, vwobservations.value_numeric_qualifier, vwobservations.units, vwobservations.reference_range, vwobservations.abnormal, vwobservations.loinc FROM documents.vwobservations WHERE ((vwobservations.loinc = '2890-2'::text) AND (vwobservations.value_numeric IS NOT NULL))) UNION SELECT vwobservations.fk_patient, vwobservations.pk AS pk_observation, vwobservations.identifier, vwobservations.observation_date, vwobservations.value_numeric, vwobservations.value_numeric_qualifier, vwobservations.units, vwobservations.reference_range, vwobservations.abnormal, vwobservations.loinc FROM documents.vwobservations WHERE ((vwobservations.loinc = '14957-5'::text) AND (vwobservations.value_numeric IS NOT NULL))) UNION SELECT vwobservations.fk_patient, vwobservations.pk AS pk_observation, vwobservations.identifier, vwobservations.observation_date, vwobservations.value_numeric, vwobservations.value_numeric_qualifier, vwobservations.units, vwobservations.reference_range, vwobservations.abnormal, vwobservations.loinc FROM documents.vwobservations WHERE ((vwobservations.loinc = '14956-7'::text) AND (vwobservations.value_numeric IS NOT NULL)) ORDER BY 1, 4;
+
+
+--
+-- Name: VIEW vwmicroalbuminuria; Type: COMMENT; Schema: research; Owner: -
+--
+
+COMMENT ON VIEW vwmicroalbuminuria IS 'a view containing all microalbumins for all patients';
+
+
+--
+-- Name: vwdiabetics_with_microalbumins; Type: VIEW; Schema: research; Owner: -
+--
+
+CREATE VIEW vwdiabetics_with_microalbumins AS
+    SELECT vwmicroalbuminuria.identifier, vwmicroalbuminuria.observation_date, vwmicroalbuminuria.value_numeric, vwmicroalbuminuria.value_numeric_qualifier, vwmicroalbuminuria.units, vwmicroalbuminuria.reference_range, vwmicroalbuminuria.abnormal, vwmicroalbuminuria.loinc, vwdiabetes_patients_with_hba1c.fk_patient, vwdiabetes_patients_with_hba1c.fk_patient AS pk_view, vwdiabetes_patients_with_hba1c.deceased, vwdiabetes_patients_with_hba1c.active_status FROM vwmicroalbuminuria, vwdiabetes_patients_with_hba1c WHERE (vwmicroalbuminuria.fk_patient = vwdiabetes_patients_with_hba1c.fk_patient) ORDER BY vwdiabetes_patients_with_hba1c.fk_patient, vwmicroalbuminuria.observation_date;
+
+
+--
+-- Name: VIEW vwdiabetics_with_microalbumins; Type: COMMENT; Schema: research; Owner: -
+--
+
+COMMENT ON VIEW vwdiabetics_with_microalbumins IS 'A view of all patient''s with hab1c''s who also have had some sort of microalbumnin test (4 different LOINC''s
+ Note the pk_view does not have to be unique we only pull out a single record for each patient when used (our collections must have unique keys)';
+
+
+--
+-- Name: vwdiabeticsegfr; Type: VIEW; Schema: research; Owner: -
+--
+
+CREATE VIEW vwdiabeticsegfr AS
+    SELECT vwdiabetes_patients_with_hba1c.fk_patient AS pk_view, vwgraphableobservations.loinc, vwgraphableobservations.value_numeric, vwgraphableobservations.value_numeric_qualifier, vwdiabetes_patients_with_hba1c.fk_patient, vwdiabetes_patients_with_hba1c.deceased, vwdiabetes_patients_with_hba1c.active_status, vwgraphableobservations.identifier, vwgraphableobservations.observation_date, vwgraphableobservations.reference_range, vwgraphableobservations.abnormal FROM vwdiabetes_patients_with_hba1c, documents.vwgraphableobservations WHERE ((vwdiabetes_patients_with_hba1c.fk_patient = vwgraphableobservations.fk_patient) AND (vwgraphableobservations.loinc = '33914-3'::text));
+
+
+--
+-- Name: VIEW vwdiabeticsegfr; Type: COMMENT; Schema: research; Owner: -
+--
+
+COMMENT ON VIEW vwdiabeticsegfr IS 'a view of all diabetes and their egfr''s
+ note as the fk_patient of the diabetes view is linked to the fk_patient of the observations view
+ there is always a 1-1 relationship between these views
+ this view could also contain patients who are not diabetic if someone has done
+ their hab1c without good cause or logic 
+ The GUI layer must use  chronic_disease_management.diabetes_hba1c_not_diabetic
+ to filter these non-diabetics out of stats - or at least that is how I''ve done it';
+
+
+--
+-- Name: vwldh; Type: VIEW; Schema: research; Owner: -
+--
+
+CREATE VIEW vwldh AS
+    SELECT vwpatients.wholename, vwpatients.fk_patient, vwobservations.value_numeric, vwobservations.abnormal FROM contacts.vwpatients, documents.vwobservations WHERE (((vwobservations.identifier ~~* '%LDH%'::text) AND (vwobservations.fk_patient = vwpatients.fk_patient)) AND (vwobservations.abnormal IS NOT NULL)) ORDER BY vwobservations.value_numeric;
+
+
+--
+-- Name: vwmostrecenteyerelateddocuments; Type: VIEW; Schema: research; Owner: -
+--
+
+CREATE VIEW vwmostrecenteyerelateddocuments AS
+    SELECT DISTINCT ON (vwdocuments.fk_patient) vwdocuments.fk_patient AS pk_view, vwdocuments.fk_patient, vwdocuments.pk_document AS fk_document, vwdocuments.date_created, vwdocuments.deleted FROM documents.vwdocuments WHERE ((((((vwdocuments.organisation_category)::text ~~* '%ophthal%'::text) OR ((vwdocuments.organisation_category)::text ~~* '%optom%'::text)) OR (vwdocuments.person_occupation ~~* '%ophthal%'::text)) OR (vwdocuments.person_occupation ~~* '%optom%'::text)) AND (vwdocuments.deleted = false)) ORDER BY vwdocuments.fk_patient, vwdocuments.date_created DESC;
+
+
+--
+-- Name: VIEW vwmostrecenteyerelateddocuments; Type: COMMENT; Schema: research; Owner: -
+--
+
+COMMENT ON VIEW vwmostrecenteyerelateddocuments IS '
+This is a view of the most recent eye related document found in the database.
+Quite dependant on the user allocating an eye-related category.
+Though not specific to diabetics, it is currently only used in FDiabetesResearch 
+The view key pk_view=fk_patient so once we have all diabetic patients, the view 
+yields their eye documents. I put in fk_patient only to remind anyone viewing the
+data that pk_view = fk_patient
+';
 
 
 SET search_path = admin, pg_catalog;
@@ -14136,6 +14124,13 @@ ALTER TABLE allergies ALTER COLUMN pk SET DEFAULT nextval('allergies_pk_seq'::re
 --
 
 ALTER TABLE lu_reaction ALTER COLUMN pk SET DEFAULT nextval('lu_reaction_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: clin_allergies; Owner: -
+--
+
+ALTER TABLE lu_type ALTER COLUMN pk SET DEFAULT nextval('lu_type_pk_seq'::regclass);
 
 
 SET search_path = clin_careplans, pg_catalog;
@@ -15514,64 +15509,6 @@ ALTER TABLE lu_demographics_field_templates ALTER COLUMN pk SET DEFAULT nextval(
 ALTER TABLE lu_source_program ALTER COLUMN pk SET DEFAULT nextval('lu_source_program_pk_seq'::regclass);
 
 
-SET search_path = public, pg_catalog;
-
---
--- Name: pk; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE increased_quantity_authority_reasons ALTER COLUMN pk SET DEFAULT nextval('increased_quantity_authority_reasons_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE instruction_habits ALTER COLUMN pk SET DEFAULT nextval('instruction_habits_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE instructions ALTER COLUMN pk SET DEFAULT nextval('instructions_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE lu_pbs_script_type ALTER COLUMN pk SET DEFAULT nextval('print_status_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE medications ALTER COLUMN pk SET DEFAULT nextval('medications_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE prescribed ALTER COLUMN pk SET DEFAULT nextval('prescribed_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE prescribed_for ALTER COLUMN pk SET DEFAULT nextval('prescribed_for_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE prescribed_for_habits ALTER COLUMN pk SET DEFAULT nextval('prescribed_for_habits_pk_seq'::regclass);
-
-
 SET search_path = admin, pg_catalog;
 
 --
@@ -15908,6 +15845,14 @@ ALTER TABLE ONLY allergies
 
 ALTER TABLE ONLY lu_reaction
     ADD CONSTRAINT lu_reaction_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: lu_type_pkey; Type: CONSTRAINT; Schema: clin_allergies; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_type
+    ADD CONSTRAINT lu_type_pkey PRIMARY KEY (pk);
 
 
 SET search_path = clin_careplans, pg_catalog;
@@ -17615,38 +17560,6 @@ ALTER TABLE ONLY lu_source_program
 SET search_path = public, pg_catalog;
 
 --
--- Name: increased_quantity_authority_reasons_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY increased_quantity_authority_reasons
-    ADD CONSTRAINT increased_quantity_authority_reasons_pkey PRIMARY KEY (pk);
-
-
---
--- Name: instruction_habits_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY instruction_habits
-    ADD CONSTRAINT instruction_habits_pkey PRIMARY KEY (pk);
-
-
---
--- Name: instructions_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY instructions
-    ADD CONSTRAINT instructions_pkey PRIMARY KEY (pk);
-
-
---
--- Name: medications_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY medications
-    ADD CONSTRAINT medications_pkey PRIMARY KEY (pk);
-
-
---
 -- Name: pbsconvert_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
 --
 
@@ -17660,38 +17573,6 @@ ALTER TABLE ONLY pbsconvert
 
 ALTER TABLE ONLY web
     ADD CONSTRAINT pk_uniq UNIQUE (pk);
-
-
---
--- Name: prescribed_for_habits_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY prescribed_for_habits
-    ADD CONSTRAINT prescribed_for_habits_pkey PRIMARY KEY (pk);
-
-
---
--- Name: prescribed_for_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY prescribed_for
-    ADD CONSTRAINT prescribed_for_pkey PRIMARY KEY (pk);
-
-
---
--- Name: prescribed_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY prescribed
-    ADD CONSTRAINT prescribed_pkey PRIMARY KEY (pk);
-
-
---
--- Name: print_status_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 
---
-
-ALTER TABLE ONLY lu_pbs_script_type
-    ADD CONSTRAINT print_status_pkey PRIMARY KEY (pk);
 
 
 SET search_path = blobs, pg_catalog;
@@ -17800,22 +17681,6 @@ CREATE INDEX staff_destination_idx ON documents USING btree (fk_staff_destinatio
 --
 
 CREATE INDEX tag_idx ON documents USING btree (tag);
-
-
-SET search_path = public, pg_catalog;
-
---
--- Name: instructions_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE INDEX instructions_idx ON instructions USING btree (instruction);
-
-
---
--- Name: prescribed_for_idx; Type: INDEX; Schema: public; Owner: -; Tablespace: 
---
-
-CREATE INDEX prescribed_for_idx ON prescribed_for USING btree (prescribed_for);
 
 
 SET search_path = clerical, pg_catalog;
@@ -17930,24 +17795,6 @@ ALTER TABLE ONLY sessions
 
 ALTER TABLE ONLY sessions
     ADD CONSTRAINT sessions_fk_staff_fkey FOREIGN KEY (fk_staff) REFERENCES admin.staff(pk);
-
-
-SET search_path = clin_allergies, pg_catalog;
-
---
--- Name: allergies_fk_consult; Type: FK CONSTRAINT; Schema: clin_allergies; Owner: -
---
-
-ALTER TABLE ONLY allergies
-    ADD CONSTRAINT allergies_fk_consult FOREIGN KEY (fk_consult) REFERENCES clin_consult.consult(pk);
-
-
---
--- Name: allergies_fk_reaction; Type: FK CONSTRAINT; Schema: clin_allergies; Owner: -
---
-
-ALTER TABLE ONLY allergies
-    ADD CONSTRAINT allergies_fk_reaction FOREIGN KEY (fk_reaction) REFERENCES lu_reaction(pk);
 
 
 SET search_path = clin_consult, pg_catalog;
@@ -18184,16 +18031,6 @@ ALTER TABLE ONLY product
 
 ALTER TABLE ONLY restriction
     ADD CONSTRAINT restriction_pbscode_fkey FOREIGN KEY (pbscode) REFERENCES pbs(pbscode);
-
-
-SET search_path = public, pg_catalog;
-
---
--- Name: prescribed_fk_lu_pbs_script_type_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY prescribed
-    ADD CONSTRAINT prescribed_fk_lu_pbs_script_type_fkey FOREIGN KEY (fk_lu_pbs_script_type) REFERENCES lu_pbs_script_type(pk);
 
 
 --

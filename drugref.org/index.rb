@@ -199,26 +199,3 @@ end
 get '/' do
   haml :welcome
 end
-
-__END__
-
-@@ layout
-%html
-  %head
-    %title DrugRef
-    %script{:type=>"text/javascript",:src=>"/autocomplete.js"}
-    %link{:rel=>"stylesheet",:type=>"text/css",:href=>"/style.css"}
-  %body
-    = yield
-
-@@ atcs
-%form{:method=>'get',:action=>'/search_atc'}
-  %p
-    Search:
-    %input{:type=>'text',:name=>'q'}
-%table
-  - @atcs.each do |a|
-    %tr
-      %td= a['atccode']
-      %td
-        %a{:href=>'/show/'+a['atccode']}= a['atcname']

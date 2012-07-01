@@ -136,7 +136,7 @@ function getWord(widget,beginning){
   	{// code for IE6, IE5
   		xhr=new ActiveXObject("Microsoft.XMLHTTP");
   	}
-	xhr.open("GET","http://127.0.0.1:4567"+query+"?xhr=1&q="+beginning,false);
+	xhr.open("GET",query+"?xhr=1&q="+beginning,false);
 	xhr.send(null);
 	if (xhr.responseText.length < 3) return [];
 	return xhr.responseText.split("\n");	

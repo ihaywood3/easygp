@@ -240,7 +240,7 @@ Public Sub Init()
       .slGraphFontSize.value = iGraphFontSize
    End With
    bExit = False 
-   lblMeasure.text = "Last Microalbumin   "  
+   lblMeasure.text = "Last Total cholesterol"
    modEditAreaHelpers.Resize_labels(VBox_LastMeasurements, lblMeasure)
    Gridview1_Init()
    
@@ -429,6 +429,21 @@ Public Sub Reload()
    Dim num_ldlcholesterol_not_at_target As Integer 
    Dim num_ldlcholesterol_in_date As Integer
    Dim ldl_upper_range As Variant
+   '--------------------------------------------------
+   'only examined for patients with high triglycerides
+   '--------------------------------------------------
+   Dim LatestTotalCholesterols As Collection 
+   Dim TotalCholesterol As Variant
+   Dim bTotalCholesterol_overdue As Boolean
+   Dim bTotalCholesterol_abnormal As Boolean
+   Dim bTotalCholesterol_not_at_target As Boolean
+   Dim last_totalcholesterol_date As Date
+   Dim TotalCholesterol_Reference_Range As String
+   Dim num_TotalCholesterol_overdue As Integer
+   Dim num_TotalCholesterol_not_recorded As Integer
+   Dim num_TotalCholesterol_not_at_target As Integer 
+   Dim num_TotalCholesterol_in_date As Integer
+   Dim totalcholesterol_upper_range As Variant
    
    Inc Application.Busy
    Gui_Clear()
@@ -457,7 +472,8 @@ Public Sub Reload()
    LatestBPs = modResearchDBI.Patients_Get_Most_Recent_BP()
    LatestWeights = modResearchDBI.Patients_Get_Most_Recent_Weight()
    LatestHeights = modResearchDBI.Patients_Get_Most_Recent_Height()
-   LatestLDLCholesterols = modResearchDBI.Patients_Get_LDLCholesterol()
+   LatestLDLCholesterols = modResearchDBI.Patients_Get_LDLCholesterol()   'all patients not just diabetes
+   LatestTotalCholesterols = modResearchDBI.Patients_Get_TotalCholesterol()
    LatestMicroAlbumins = modResearchDBI.Patients_Microalbumins_Get()
    For Each patient In patients  
       If Not Patients_Not_Diabetic.Exist(patient!fk_patient) Then 
@@ -636,6 +652,57 @@ Public Sub Reload()
             bLDLCholesterol_not_at_target = False  
             last_ldlcholesterol_date = Date(1900, 01, 01)                                           'default to having no cholesterol
             
+         Endif
+         '-----------------------------------------------------------------------------
+         'get the last total cholesterol for the patient
+         'This is a fallback position for those with high trig's and can't measure LDL
+         '-----------------------------------------------------------------------------
+         bTotalCholesterol_overdue = True                                      'assume overdue
+         bTotalCholesterol_abnormal = False 
+         TotalCholesterol = ""
+         TotalCholesterol_Reference_Range = ""
+         last_TotalCholesterol_date = Date(1900, 01, 01)                                             'default to having no cholesterol
+         If Not IsNull(LatestTotalCholesterols[patient!fk_patient]) Then                             'has had cholesterol done at some point
+            TotalCholesterol = LatestTotalCholesterols[patient!fk_patient]!value_numeric             ' & LatestTotalCholesterols[patient!fk_patient]!reference_range
+            last_TotalCholesterol_date = LatestTotalCholesterols[patient!fk_patient]!observation_date
+            If Not (DateDiff(Now, DateAdd(last_TotalCholesterol_date, gb.Year, 1), gb.day) <= 0) Then 'was it over  a year ago?
+               bTotalCholesterol_overdue = False                                                      'cholesterol date < 1yr, not overdue
+               Inc num_TotalCholesterol_in_date
+            Else
+               bTotalCholesterol_overdue = True                                                       'cholesterol > 1 year = ovedue
+               Inc num_TotalCholesterol_overdue
+            End If 
+            'References ranges are a problem, some labs give eg n1-n2 others only the upper eg <n2
+            If Not IsNull(LatestTotalCholesterols[patient!fk_patient]!reference_range) Then           'do we have a reference range
+               TotalCholesterol_Reference_Range = LatestTotalCholesterols[patient!fk_patient]!reference_range
+               If InStr(TotalCholesterol_Reference_Range, "-") Then 
+                  totalcholesterol_upper_range = Val(Split(LatestTotalCholesterols[patient!fk_patient]!reference_range, "-")[1])
+               Else 
+                  If Left(TotalCholesterol_Reference_Range, 1) = "<" Then
+                     totalcholesterol_upper_range = Val(Right(TotalCholesterol_Reference_Range, Len(TotalCholesterol_Reference_Range) - 1))
+                  End If
+               End If   
+            Endif
+            
+            If Not IsNull(LatestTotalCholesterols[patient!fk_patient]!abnormal) Then                   'if  cholesterol flagged as abnormal
+               If LatestTotalCholesterols[patient!fk_patient]!abnormal <> "N" Then                     'some labs put a normal flag in this field
+                  If LatestTotalCholesterols[patient!fk_patient]!value_numeric > totalcholesterol_upper_range Then  'if over the top
+                     bTotalCholesterol_abnormal = True                                                 'flag abnormal
+                     bTotalCholesterol_not_at_target = True
+                     Inc num_TotalCholesterol_not_at_target                                            'incremement the not at target count
+                  Else
+                     bTotalCholesterol_not_at_target = False
+                     bTotalCholesterol_abnormal = False  
+                  End If 
+               End If   
+            Else
+               bTotalCholesterol_not_at_target = False  
+            Endif
+         Else                                                                                        'never had ldl cholesterol measured.
+            Inc num_TotalCholesterol_not_recorded
+            bTotalCholesterol_overdue = False  
+            bTotalCholesterol_not_at_target = False  
+            last_TotalCholesterol_date = Date(1900, 01, 01)                                           'default to having no cholesterol
          Endif
          '-------------------------------------------------------
          'get the last eye review for the patient
@@ -826,6 +893,13 @@ Public Sub Reload()
          data!ldlcholesterol_overdue = bLDLcholesterol_overdue
          data!ldlcholesterol_not_at_target = bLDLCholesterol_not_at_target
          data!ldlcholesterol_reference_range = LDLCholesterol_Reference_Range
+         
+         data!date_last_totalcholesterol = last_totalcholesterol_date
+         data!total_cholesterol = totalCholesterol
+         data!totalcholesterol_overdue = btotalcholesterol_overdue
+         data!totalcholesterol_not_at_target = btotalCholesterol_not_at_target
+         data!totalcholesterol_reference_range = totalCholesterol_Reference_Range
+         
          data!last_microalbumin = vMicroalbumin                   'variant can be set to null
          data!date_last_microalbumin = date_last_microalbumin
          data!microalbumin_abnormal = bMicroalbumin_abnormal
@@ -1081,7 +1155,7 @@ Public Sub Patient_Display_Summary()
    lbllastBP.Foreground = Color.Black
    lblLastBMI.Foreground = Color.Black
    lblLasteGFR.Foreground = Color.Black
-   lblLastCholesterol.Foreground = Color.Black
+   lblLastTotalCholesterol.Foreground = Color.Black
    lblLastEyecheck.Background = Color.Background
    lblLastheight.Foreground = Color.Black
    lblLastWeight.Foreground = Color.Black
@@ -1109,6 +1183,7 @@ Public Sub Patient_Display_Summary()
    Wait                                                              'update the gui.
    VBox_Summary.visible = True
    Consult_CheckStarted()
+   lblpatientID.text = "ID=" & Str(patient!fk_patient)
    lblPatientName.text = modStrings.CapitaliseWord(patient!wholename)
    tlPatientDetails.text = ""
    tlPatientDetails.text &= "Age:" & patient!age_numeric & "<BR>"
@@ -1206,20 +1281,38 @@ Public Sub Patient_Display_Summary()
    Else
       lblLastWeight.text = "No Weight found"
    End If  
-   
    '----------------------------------------------------------------------------------
    'The last cholesterol date can never be null but if never done is arbitrarily 01/01/1900
    '----------------------------------------------------------------------------------
-   If patient!date_last_ldlcholesterol <> "01/01/1900" Then 
-      lblLastCholesterol.text = Format(patient!date_last_ldlcholesterol, "dd/mm/yyyy") & " " & patient!ldl_cholesterol
-      If patient!ldlcholesterol_overdue = True Then
-         lblLastCholesterol.text &= " [OVERDUE]"
+   If patient!date_last_totalcholesterol <> "01/01/1900" Then 
+      lblLastTotalCholesterol.text = Format(patient!date_last_totalcholesterol, "dd/mm/yyyy") & " " & Format(patient!total_cholesterol, "#.0")
+      If patient!totalcholesterol_overdue = True Then
+         lblLastTotalCholesterol.text &= " [OVERDUE]"
       Endif
-      If patient!ldlcholesterol_not_at_target Then
-         lblLastCholesterol.Foreground = Color.Red
+      If patient!totalcholesterol_not_at_target Then
+         lblLastTotalCholesterol.Foreground = Color.Red
       Endif
    Else
-      lblLastCholesterol.text = "No cholesterol found'"
+      lblLastTotalCholesterol.text = "No total cholesterol found'"
+   End If  
+ 
+   '----------------------------------------------------------------------------------
+   'The last ldlcholesterol date can never be null but if never done is arbitrarily 01/01/1900
+   '----------------------------------------------------------------------------------
+   If patient!date_last_ldlcholesterol <> "01/01/1900" Then 
+      lblLastLDLCholesterol.text = Format(patient!date_last_ldlcholesterol, "dd/mm/yyyy") & " " & Format(patient!ldl_cholesterol, "#.0")
+      If patient!ldlcholesterol_overdue = True Then
+        
+         lblLastLDLCholesterol.text &= " [OVERDUE]"
+         If Not IsNull(patient!total_cholesterol) Then
+               lblLastLDLCholesterol.text &= " ?measured ?triglycerides high"
+         Endif
+      Endif
+      If patient!ldlcholesterol_not_at_target Then
+         lblLastLDLCholesterol.Foreground = Color.Red
+      Endif
+   Else
+      lblLastLDLCholesterol.text = "No ldl cholesterol found"
    End If  
    '----------------------------------------------------------------------------------
    'The last microalbumin date can never be null but if never done is arbitrarily 01/01/1900
@@ -1840,7 +1933,7 @@ Public Sub Gridview1_Init()
       .Rows[iGridRow_Weight].text = "Weight"
       .Rows[iGridRow_RenalFunction].text = "Renal Function  "
       .Rows[iGridRow_Microalbumin].text = "Microalbumin"
-      .Rows[iGridRow_Cholesterol].text = "Cholesterol"
+      .Rows[iGridRow_Cholesterol].text = "LDL Cholesterol"
       .Rows[iGridRow_Eyes].text = "Eye Review"
       .Columns.count = 4
       .Columns[0].text = "  Not Done  "
@@ -1903,7 +1996,7 @@ Public Sub Gridview1_Init()
    tbstat_tag.Add("an abnormal eGFR", 2)
    tbstat_tag.Add("an eGFR in date", 3)
    tbstats_tags.Add(tbstat_tag, 8)
-
+   
 End
 
 Public Sub Show_StatsButton()
@@ -1925,12 +2018,13 @@ Public Sub GridView1_Click()
 End
 
 Public Sub Button1_Click()
-
+   
    Dim key As Integer
-   If IsNull(patients) Then Return
-  
-   cvwPatientsHighRisk.Clear()
 
+   If IsNull(patients) Then Return
+   
+   cvwPatientsHighRisk.Clear()
+   
    cvwPatientsHighRisk.Columns.count = 4
    patients = modResearchDBI.Diabetes_High_Risk_Patients()
    For Each patient In patients
@@ -1941,5 +2035,5 @@ Public Sub Button1_Click()
       cvwPatientsHighRisk[key][1] = patient!age_numeric
       
    Next
-
+   
 End

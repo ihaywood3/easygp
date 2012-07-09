@@ -101,6 +101,39 @@ Public Sub Form_Open()
    
 End
 
+Public Sub Form_KeyPress()
+   
+   Dim CtrlDown As Boolean
+   Dim FnDown As Boolean
+   Dim ShiftDown As Boolean
+   Dim AltDown As Boolean
+   
+   If key.code = Key.f12 Then
+      Save()
+   Endif
+   
+   Try CtrlDown = Key.Control
+   If CtrlDown Then
+      Select Case Key.code
+         Case Asc("=") 
+            If TabStrip1.index = 0 Then
+               Try form_help.Zoom_In()
+            Else
+               Try Form_PDF.Zoom_In()
+            Endif
+            
+         Case Asc("-")
+            If TabStrip1.index = 0 Then
+               Try form_help.Zoom_Out
+            Else
+               Try Form_PDF.Zoom_Out()
+            Endif
+            
+      End Select
+   End If   
+   
+End
+
 Public Sub Settings_Save()
    
    If VSplit_DataEntry.Layout[1] <> 0 Then 'only one control in the split
@@ -208,14 +241,14 @@ Public Sub Reload()
    lblDrugCount.text = ""
    cvwDrugs.Clear()
    EditArea_Clear()
-    Print bexit, "1: is bexit flag"
+   Print bexit, "1: is bexit flag"
    Wait                       'force this label to clear
    If Trim(txtSearch.text) <> "" Then
       drugs = modPrescribingDBI.Brands_Get(Trim(modUtil.StripExtraBlanks(txtSearch.text)), Null, 100) 'FIXME RENAME
       Drugs_Fill_List(drugs)
    End If    
    Dec Application.Busy
-  
+   
 End
 
 Public Sub ACT_Codes_Get()
@@ -574,7 +607,7 @@ Public Sub Drugs_Fill_List(drugs As Collection)
    If drugs.count = 0 Then Return 
    cvwDrugs.Clear()
    For Each brand In drugs
-      If chkNOPDF.value = True Then 
+      If rbDrugsNoPI.value = True Then 
          If IsNull(brand!product_information_filename) Then
             cvwDrugs.Add(brand!pk_view, 0, empty_2020png)
             cvwDrugs_Showbrand_details(brand)
@@ -616,7 +649,8 @@ End
 
 Public Sub cvwDrugs_Click()
    
-   If Not cvwDRugs.count Then Return 
+   Print "drug count = " & cvwdrugs.Count 
+   If cvwDRugs.count = 0 Then Return 
    Drug_Show() 
    
 End
@@ -649,6 +683,7 @@ Public Sub Drug_Show()
    End If   
    If sProductInformationFilename <> "" Then    
       Form_PDF.PBox.Visible = True  
+      Print "in Drugs show - trying to show the pi file", sProductInformationFilename
       Product_Information_Show(sProductInformationFilename)
       txtPIFile.text = sProductInformationFilename
    Endif
@@ -691,6 +726,7 @@ Public Sub Product_Information_Show(pdf_filename As String)
    'Attempt to show a product information PDF
    '-----------------------------------------   
    
+   Print "trying to show the pdf"
    Try Form_PDF.Load_PDF(Product_Information_Dir &/ pdf_filename)
    
    If Error Then
@@ -715,6 +751,7 @@ Public Sub EditArea_Notify_Data_Change(flag As Boolean)
 End
 
 Public Sub EditArea_Clear()
+   
    Print "at start of Edit ARea clear bexit is ", bExit
    modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Inner)   
    EditArea_Notify_Data_Change(False)
@@ -898,7 +935,7 @@ Public Sub Save()
    '   poison smallint Default 4,
    ' 
    '----------------------------  
-
+   
    Dim sMsg As String
    Dim generics_list As String
    Dim strengths_list As String 
@@ -1030,8 +1067,8 @@ Public Sub Save()
    If Message.Question(sMsg & "\n\nAre you sure this is accurate?", "Yes", "Cancel") = 2 Then Return   
    Print modDBConnect.stopStoring()
    If chkShareDrug.Value Then
-     
-  '    modUtil.SendMailToDeveloper("new drug", modDBConnect.stopStoring())
+      
+      '    modUtil.SendMailToDeveloper("new drug", modDBConnect.stopStoring())
    End If
    If bUserPIFile Then
       modDBConnect.update("drugs.brand", Null, ["pk": brand!fk_brand, "product_information_filename_user": Trim(txtPIFile.text)])
@@ -1058,6 +1095,28 @@ Public Sub Link_PI_Brand(bEmailDevelopers As Boolean)
    Dim sMsg As String
    Dim sPIfilename As String                                   'the current product information filename showing
    Dim bNotOurs As Boolean                                     'true if the pdf being viewed dosn't comes from the guild
+   Dim bHaveDrug As Boolean
+   Dim bHavepdf As Boolean
+   
+   cvwDrugs.MoveFirst
+   For x = 0 To cvwDRugs.count - 1
+      If cvwDRugs.Item.Selected = True Then
+         bHaveDrug = True
+         Break
+      Endif
+      cvwdrugs.MoveNext()
+   Next
+   cvwUnallocatedPDFs.MoveFirst()
+   For x = 0 To cvwUnallocatedPDFs.count - 1
+      If cvwUnallocatedPDFs.Item.Selected = True Then
+         bHavePDF = True
+         Break
+      Endif
+      cvwUnallocatedPDFs.MoveNext()
+   Next
+   If cvwdrugs.count = 0 Or bHaveDrug = False Or bHavepdf = False Then
+      Goto HavingTrouble
+   End If  
    
    cvwUnallocatedPDFs.MoveCurrent()                            'set internal cursor otherwise lose the proper text
    sPIfilename = cvwUnallocatedPDFs.Item.Text                  'get the pdf filename
@@ -1073,7 +1132,7 @@ Public Sub Link_PI_Brand(bEmailDevelopers As Boolean)
       bNotOurs = True                                           'not ours, keep flag
    Endif
    cvwDrugs.MoveFirst                                          
-   For x = 1 To cvwDRugs.count 
+   For x = 0 To cvwDRugs.count - 1 
       If cvwDRugs.Item.Selected = True Then                     'check which of the drug brands the user has selected
          modDBConnect.startStoring                              'store the text of the query for later emailing to Ian
          brand = New CRow
@@ -1105,6 +1164,12 @@ Public Sub Link_PI_Brand(bEmailDevelopers As Boolean)
       cvwUnallocatedPDFs_Click()
    Endif
    Dec Application.Busy
+   Return
+HavingTrouble:
+   Message.Title = "Allocating a PDF to a Drug"
+   sMsg = "You seem to be having trouble figuring out how to allocate a pdf name to a drug.\n\n"
+   "Please read the help file on the Help tab and try again."
+   Message.Info(sMsg)    
    
 End 
 
@@ -1134,7 +1199,7 @@ Public Sub EditArea_Buttons_Click()
          Link_PI_Brand(True)
       Case "link pdf local database"
          Link_PI_Brand(False)
-      Case "show unlinked pdfs"
+      Case "allocate unlinked pdfs"
          modEditAreaHelpers.Help_Show("linking-product-information-pdf-to-drugs.html", form_help)
          If IsDir(Product_Information_Dir) Then    
             ShowUnlinkedPDFs(VBox_UnallocatedPDFs.Visible)
@@ -1538,23 +1603,20 @@ Public Sub VSplit_DataEntry_Resize()
    
 End
 
-Public Sub chkNOPDF_Click()
-   
-   If Trim(txtSearch.text) = "" Then
-      txtSearch.text = "%"
-   Endif
-   
-   Reload()
-   
-End
-
-Public Sub Form_KeyPress()
-   
-   If key.code = Key.f12 Then
-      Save()
-   Endif
-   
-End
+' Public Sub chkNOPDF_Click()
+'    
+'    If Last.value = True Then
+'       chkNOPDF.text = "Show All Drugs"
+'    Else
+'       chkNOPDF.tex t = "Show Drugs with no PI PDF"
+'    Endif
+'    If Trim(txtSearch.text) = "" Then
+'       txtSearch.text = "%"
+'    Endif
+'    
+'    Reload()
+'    
+' End
 
 Public Sub txtSearch_Change()
    
@@ -1564,6 +1626,7 @@ Public Sub txtSearch_Change()
       EditArea_Clear()
    End If
    bexit = False  
+   
 End
 
 Public Sub timer1_Timer()
@@ -1603,27 +1666,32 @@ End
 Public Sub ShowUnlinkedPDFs(bFlag As Boolean)
    
    If Bflag Then
+      
+      tbUnlinkedPDF.text = "Allocate PDFs"
       HSplit1.settings = [1, 0]
       VBox_EditArea.Visible = True 
       tbLinkPDFEmailDevelopers.Enabled = False
       tbAddDrug.enabled = True
       tbSave.Enabled = True  
-      With chkNOPDF
-         .Value = False
-         .Enabled = True   
-      End With
+      bExit = True   
+      
+      rbAllDrugs.value = True
+      bexit = False  
+      lblDisplaytype.text = "Drugs"
+      VBox_UnallocatedPDFs.Visible = False
    Else
+      tbUnlinkedPDF.text = "Show Normal View"
       HSplit1.Settings = [1, 1]
       VBox_EditArea.Visible = False
       tbLinkPDFEmailDevelopers.Enabled = True
       tbAddDrug.enabled = False
       tbSave.Enabled = False  
-      With chkNOPDF
-         .value = True
-         .Enabled = False  
-      End With
+      bexit = True
+      rbDrugsNoPI.value = True
+      bExit = False  
       PDFs_Without_Brand_Display()
       Form_PDF.Init_Drugs_Browser()
+      lblDisplaytype.text = "PDF Files which are not allocated to existing drugs"
    Endif
    
 End
@@ -1642,5 +1710,23 @@ End
 Public Sub txtFilterFilename_KeyRelease()
    
    PDFs_Without_Brand_Display()
+   
+End
+
+Public Sub editArea_RadioButtons_Click()
+
+   If bexit Then Return 
+   Select Case Last.tag
+      Case "all drugs"
+         If VBox_UnallocatedPDFs.Visible = True Then 
+            ShowUnlinkedPDFs(VBox_UnallocatedPDFs.Visible) 'toggle off
+         Endif
+         
+   End Select
+   If Trim(txtSearch.text) = "" Then
+      txtSearch.text = "%"
+   Endif
+   
+   Reload()
    
 End

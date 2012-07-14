@@ -47,6 +47,32 @@ Public Sub Button1_Click()
    Dim possible_companies As New Collection 
    
    '  hFile = Open "/home/richard/horst_json.txt" For Read
+   hFile = Open "/home/richard/horst/patients_json.txt" For Read
+   While Not Eof(hFile)
+      Line Input #hFile, sOneLine
+               json_lines.Add(soneline, contacts.count)
+               contacts.Add(JSON.decode(sOneLIne), contacts.count)
+   Wend
+   Close #hFile
+  
+   Import(contacts, json_lines) '
+   Print JSON
+   
+End
+
+Public Sub Button2_Click()
+   
+   Dim sOneLine As String 
+   Dim hFile As File
+   Dim apatient As Collection
+   Dim contacts As New Collection
+   Dim json_lines As New Collection 
+   Dim x As Integer
+   Dim last_line As String
+   Dim duplicate_line_count As Integer
+   Dim possible_companies As New Collection 
+   
+   '  hFile = Open "/home/richard/horst_json.txt" For Read
    hFile = Open "/home/richard/horst_json_rejected.txt" For Read
    While Not Eof(hFile)
       Line Input #hFile, sOneLine
@@ -93,12 +119,12 @@ Public Sub Button1_Click()
    Close #hFile
    
    Import(contacts, json_lines) '
-   Print JSON
+ 
    
 End
 
 Public Sub Import(contacts As Collection, json_lines As Collection)
-   
+   Dim bits As String[]
    Dim person As CRow
    Dim persons As New Collection
    Dim address_Link As CRow
@@ -123,10 +149,12 @@ Public Sub Import(contacts As Collection, json_lines As Collection)
    Dim communication_row As String
    Dim communication As CRow  
    Dim Town As String
-   
+   Dim icounter As Integer
    missing_towns = New Collection
    
    For Each contact In contacts
+      Inc icounter
+      Print icounter
       
       brejected = False
       person = New CRow
@@ -144,6 +172,15 @@ Public Sub Import(contacts As Collection, json_lines As Collection)
          person!fk_sex = const.cSexUnknown
       Endif
       person!surname = contact!person!surname
+      If Not IsNull(contact!person!birthdate) Then 
+         person!birthdate = contact!person!birthdate
+      Else
+         Message.Info("Missing birthdate! - your programming skills are fucked")
+         person!birthdate = "1900-01-01"
+      End If
+      If Not IsNull(contact!person!retired) Then
+          person!retired = True  
+      Endif
       Select Case Lower(Replace(contact!person!title, ".", ""))
          Case "dr"
             fk_title = const.ctitleDr
@@ -162,50 +199,63 @@ Public Sub Import(contacts As Collection, json_lines As Collection)
          Case Else 
             Select Case person!fk_sex
                Case const.cSexMale
-                  fk_title = const.ctitleMr
+                    bits = Split(person!birthdate, "-")
+                   If DateDiff(Now, Date(Val(bits[0]), Val(bits[1]), Val(bits[2])), gb.year) > 15 Then
+                      fk_title = const.ctitleMr
+                   Else
+                      fk_title = const.ctitleMaster
+                   End If  
                Case const.cSexFemale
-                  fk_title = const.ctitleMs
+                    bits = Split(person!birthdate, "-")
+                    If DateDiff(Now, Date(Val(bits[0]), Val(bits[1]), Val(bits[2])), gb.year) > 15 Then
+                        fk_title = const.ctitleMiss
+                    Else
+                        fk_title = const.ctitleMs
+                    End If 
             End Select
-            If fk_title <> const.ctitleMr Or fk_title <> const.ctitleMs Then
-               fk_title = const.ctitleUnKnown
-               smsg = "Firstname:" & contact!person!firstname & "\n"
-               smsg &= "Surname:" & contact!person!surname & "\n\n"
-               Select Case Message.question(sMsg & "\n\nTitle is missing.\n\nPlease confirm this is a person, they will be given title 'unknown'", "Confirm - is a person", "No - not a person")
-                  Case 2 
-                     Notpersons.Add(contact, Notpersons.count)
-                     brejected = True
-                     rejected_records.Add(json_lines[x], rejected_records.count)
-               End Select
-            End If   
+            ' If fk_title <> const.ctitleMr Or fk_title <> const.ctitleMs Or fk_title <> const.ctitleMaster Or fk_title <> const.ctitlemiss Then
+            '   fk_title = const.ctitleUnKnown
+            '    smsg = "Firstname:" & contact!person!firstname & "\n"
+            '    smsg &= "Surname:" & contact!person!surname & "\n\n"
+            '    Select Case Message.question(sMsg & "\n\nTitle is missing.\n\nPlease confirm this is a person, they will be given title 'unknown'", "Confirm - is a person", "No - not a person")
+            '       Case 2 
+            '          Notpersons.Add(contact, Notpersons.count)
+            '          brejected = True
+            '          rejected_records.Add(json_lines[x], rejected_records.count)
+            '    End Select
+            ' End If   
       End Select
       If Not brejected Then   
          person!fk_title = fk_title 
          bOddOccupation = False   
-         R = modDBConnect.exec_query("Select * from common.lu_occupations where occupation ILIKE $$" & Trim(Lower(contact!occupation)) & "$$")
-         If R.count Then
-            person!fk_occupation = R!pk
-         Else           
-            If Not oddoccupations.Exist(Trim(Lower(contact!occupation))) Then 
-               Select Case Message.Question("Occupation not found:\n\n" & contact!occupation, "Save As New Occupation", "Do Not save")
-                  Case 1 
-                     person!fk_occupation = modContactsDBI.Occupation_Save(Trim(Lower(contact!occupation)))
-                     modDBConnect.CommitTrans
-                  Case 2
-                     bOddOccupation = True        
-                     oddoccupations.Add(Trim(Lower(contact!occupation)), oddoccupations.count)    
-               End Select
-            Else 
-               bOddOccupation = True   
-               
-            End If   
-         Endif
-         If bOddOccupation = False Then
-            persons.Add(person, persons.count)
-         Else
-            OddRecords.Add(person, OddRecords.count)
-            brejected = True 
-            rejected_records.Add(json_lines[x], rejected_records.count)
-         End If   
+         If Not IsNull(Trim(Lower(contact!person!occupation))) Then 
+            If Not InStr(Trim(Lower(contact!person!occupation)), "/") Then       
+               R = modDBConnect.exec_query("Select * from common.lu_occupations where occupation ILIKE $$" & Trim(Lower(contact!person!occupation)) & "$$")
+               If R.count Then
+                  person!fk_occupation = R!pk
+               Else           
+                  If Not oddoccupations.Exist(Trim(Lower(contact!person!occupation))) Then 
+                     Select Case Message.Question("Occupation not found:\n\n" & contact!person!occupation, "Save As New Occupation", "Do Not save")
+                        Case 1 
+                           person!fk_occupation = modContactsDBI.Occupation_Save(Trim(Lower(contact!person!occupation)))
+                           modDBConnect.CommitTrans
+                        Case 2
+                           bOddOccupation = True        
+                           oddoccupations.Add(Trim(Lower(contact!person!occupation)), oddoccupations.count)    
+                     End Select
+                  Else 
+                     bOddOccupation = True   
+                  End If   
+               Endif
+               If bOddOccupation = False Then
+                  persons.Add(person, persons.count)
+               Else
+                  OddRecords.Add(person, OddRecords.count)
+                  brejected = True 
+                  rejected_records.Add(json_lines[x], rejected_records.count)
+               End If 
+            End If
+         End If     
       End If  
       
       '---------------------------------

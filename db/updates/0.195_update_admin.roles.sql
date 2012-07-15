@@ -1,12 +1,22 @@
 insert into admin.lu_staff_type(type) values('student');
 
 -- add new staff roles
+delete from admin.lu_staff_roles;
 
-update  admin.lu_staff_roles  set role = 'registered nurse' where pk=5;
-insert into admin.lu_staff_roles (role) values ('counselor');
-insert into  admin.lu_staff_roles (role) values ('enrolled nurse');
-insert into  admin.lu_staff_roles (role) values ('dietitian');
-insert into  admin.lu_staff_roles (role) values ('psychologist');
+insert into admin.lu_staff_roles (pk,role) values (0,'sysadmin');
+insert into  admin.lu_staff_roles (pk,role) values (1,'doctor');
+insert into  admin.lu_staff_roles (pk,role) values (2,'dentist');
+insert into  admin.lu_staff_roles (pk,role) values (3,'locum"');
+insert into admin.lu_staff_roles (pk,role) values (4,'student');
+insert into admin.lu_staff_roles (pk,role) values (5,'registered nurse');
+insert into  admin.lu_staff_roles (pk,role) values (6,'practice manager');
+insert into  admin.lu_staff_roles (pk,role) values (7,'secretary');
+insert into  admin.lu_staff_roles (pk,role) values (8,'information technology');
+insert into admin.lu_staff_roles (pk,role) values (9,'counselor');
+insert into  admin.lu_staff_roles (pk,role) values (10,'enrolled nurse');
+insert into  admin.lu_staff_roles (pk,role) values (11,'dietitian');
+insert into  admin.lu_staff_roles (pk,role) values (12,'psychologist');
+alter SEQUENCE "admin".lu_staff_roles_pk_seq restart 12;
 
 -- add persons qualifications to the staff table and update the view
 alter table admin.staff add column qualifications text default null;

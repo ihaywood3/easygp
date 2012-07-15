@@ -11,6 +11,11 @@ GRANT ALL ON TABLE admin.vwstaffinclinics TO staff;
 ALTER TABLE "admin".staff_clinical_toolbar OWNER TO easygp;
 GRANT ALL ON TABLE "admin".staff_clinical_toolbar TO easygp;
 GRANT ALL ON TABLE "admin".staff_clinical_toolbar TO staff;
+
+ALTER TABLE admin.vwstafftoolbarbuttons owner to easygp;
+GRANT ALL ON TABLE admin.vwstafftoolbarbuttons to easygp;
+GRANT ALL ON TABLE admin.vwstafftoolbarbuttons to staff;
+
 GRANT ALL ON TABLE admin.vwstaff TO staff;
 GRANT ALL ON TABLE clerical.data_families TO staff;
 GRANT ALL ON TABLE clerical.data_family_members TO staff;

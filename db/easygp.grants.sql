@@ -54,6 +54,22 @@ GRANT ALL ON TABLE clin_measurements.vwmeasurements TO staff;
 GRANT ALL ON TABLE clin_measurements.vwmeasurementtypes TO staff;
 GRANT ALL ON TABLE clin_measurements.vwpatientsdefaults TO staff;
 
+GRANT ALL ON TABLE clin_consult.vwpatientconsults TO staff;
+GRANT ALL ON TABLE clin_consult.vwpatientconsults TO staff;
+GRANT ALL ON TABLE clin_consult.vwpatientconsults TO staff;
+
+ALTER TABLE "admin".global_preferences OWNER TO easygp;
+GRANT ALL ON TABLE "admin".global_preferences TO easygp;
+GRANT ALL ON TABLE "admin".global_preferences TO staff;
+
+ALTER sequence "admin".global_preferences_pk_seq OWNER TO easygp;
+GRANT ALL ON TABLE "admin".global_preferences_pk_seq TO easygp;
+GRANT ALL ON TABLE "admin".global_preferences_pk_seq TO staff;
+
+ALTER TABLE "admin".lu_clinical_modules OWNER TO easygp;
+GRANT ALL ON TABLE "admin".lu_clinical_modules TO easygp;
+GRANT ALL ON TABLE "admin".lu_clinical_modules TO easygp;
+
 GRANT ALL ON TABLE clin_procedures.link_images_procedures TO staff;
 GRANT ALL ON TABLE clin_procedures.lu_last_surgical_pack TO staff;
 GRANT ALL ON TABLE clin_procedures.lu_procedure_type TO staff;

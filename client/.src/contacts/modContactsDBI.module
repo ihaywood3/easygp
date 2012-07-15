@@ -40,7 +40,9 @@ Public Function Town_state_postcode_get() As Collection
    '-------------------------------------------------------------------------------------------------
    'gets collection of single field joined townstatepostcode, used in importing or updating postcodes
    '------------------------------------------------------------------------------------------------- 
-    Return modDBConnect.exec_query_collection("SELECT lu_towns.town || lu_towns.state::text || lu_towns.postcode AS pk_view  FROM contacts.lu_towns")
+
+   Return modDBConnect.exec_query_collection("SELECT lu_towns.town || lu_towns.state::text || lu_towns.postcode AS pk_view  FROM contacts.lu_towns")
+
 End
 
 Public Function firstname_add(firstname As String, sex As String) As Integer
@@ -267,6 +269,62 @@ Public Function Staff_Exists() As Boolean
    
 End
 
+Public Function Staff_Create_Postgres_User(old_data As Collection, pk_view As Integer, staff As Crow) As Boolean
+   '-------------------------------------------------------------------
+   'Creates or changes a postgres user returns True if succeeds
+   'any validation of existing user must be done my the calling routine
+   '------------------------------------------------------------------- 
+
+   Dim $Result As Result
+   Dim sql As String
+   Dim role As String
+   'this is temporary IAN FIXME.
+   Select Case staff!fk_role
+      Case const.StaffRole_SysAdmin
+         role = "easygp"
+      Case Else
+         role = "staff"
+   End Select
+   
+   If Not staff.Exist("fk_staff") Then 
+      '----------------------------------------------------
+      'New staff member? add as user with selected password
+      '----------------------------------------------------
+      If Not modDBConnect.Role_Check_If_Exists(staff!logon_name) Then
+         sql = "CREATE USER  \"" & staff!logon_name & "\" PASSWORD $$" & staff!password & "$$ IN ROLE " & role
+         If Not (IsNull(staff!logon_date_to)) Then
+            sql &= " VALID UNTIL '" & Format$(staff!logon_date_to, "dd/mm/yyyy") & "'"
+         End If   
+         $Result = modDBConnect.exec_query(sql)
+         sql = "GRANT staff to \"" & staff!logon_name & "\""
+         $Result = modDBConnect.exec_query(sql)
+      Else
+            Return 'a false flag = fail
+      End If
+   Else
+      '------------------------------------------------------------
+      'An existing user
+      '------------------------------------------------------------
+      If staff!logon_name <> old_data[pk_view]!logon_name Then
+         sql = "ALTER ROLE \"&1\" RENAME TO \"&2\""
+         sql = Subst$(sql, old_data[pk_view]!logon_name, staff!logon_name)
+         modDBConnect.exec_query(sql)
+      Endif 
+      If staff!logon_date_to <> old_data[pk_view]!logon_date_to Then
+         sql = "ALTER ROLE \"&1\" VALID UNTIL '&2'"
+         sql = Subst$(sql, staff!logon_name, Format$(staff!logon_date_to, "dd/mm/yyyy"))
+         modDBConnect.exec_query(sql)
+      Endif
+      If staff.Exist("password") And If staff!password <> "" Then
+         sql = "ALTER ROLE \"&1\" WITH PASSWORD '&2'"
+         sql = Subst$(sql, staff!logon_name, staff!password)
+         modDBConnect.exec_query(sql)
+      Endif
+   End If
+   Return True
+   
+End
+
 Public Function Staff_Member_Save(old_data As Collection, pk_view As String, staff As Collection, employees_place_of_work As Collection) As Integer
    '----------------------------------------------------
    'Saves or changes a staff member with particular role
@@ -433,6 +491,7 @@ Public Function Person_Save(old_data As Collection, old_pk As String, person As 
 End
 
 Public Function Person_Get_Photo(fk_image As Integer) As Picture
+
    Dim P As Picture
    Dim R As Result
    
@@ -455,7 +514,7 @@ Public Function Patient_Save(old_data_patient As Collection, old_pk As String, p
    Dim comm As Collection 
    Dim family As Collection 
    Dim collection_to_return As New Collection 
- 
+   
    '-------------------------------
    'A Patient is firstly a person
    '------------------------------
@@ -1152,6 +1211,7 @@ Public Function patients_get_firstname_surname(searchtext2 As String, Optional b
    'fixme put in optional limit
    'first attempt at searching by query criteria FIXME UP
    '-----------------------------------------------------
+
    Dim sql As String
    Dim clauses As New String[]
    Dim tables As New String[]
@@ -1455,32 +1515,32 @@ Public Function Occupation_Get(occupation As String, Optional bDistinct As Boole
    '------------------------------------------------------
    'Fetch a list of occupations from common.lu_occupations
    '------------------------------------------------------
+
    Dim sql As String
    
    sql = "Select * From common.lu_occupations WHERE occupation ILIKE $$"
    If bDistinct Then
-         sql &= occupation 
+      sql &= occupation 
    Else
       sql &= "%" & occupation & "%"
    Endif
    sql &= "$$"
    If bDistinct = False Then
-       sql &= " LIMIT 20 " 
+      sql &= " LIMIT 20 " 
    Else
-       sql &= " LIMIT 1" 'shouldn't be needed but due to early bugs (and I've not cleaned up the data) and no constraints duplicates exist
+      sql &= " LIMIT 1" 'shouldn't be needed but due to early bugs (and I've not cleaned up the data) and no constraints duplicates exist
    End If 
-      
+   
    Return modDBConnect.exec_query_collection(sql)
    
 End
 
 Public Function Occupation_Save(occupation As String) As Integer
-      'does not validate if currently exists, your calling routine must do that
-      Return modDBConnect.insert("common.lu_occupations", ["occupation": occupation])
-    
+   'does not validate if currently exists, your calling routine must do that
+
+   Return modDBConnect.insert("common.lu_occupations", ["occupation": occupation])
    
 End
-
 
 Public Function Occupations_Get(occupation As String) As Result
    
@@ -1491,7 +1551,6 @@ Public Function Occupations_Get(occupation As String) As Result
    Return modDBConnect.exec_query(sql)
    
 End
-
 
 Public Sub Employee_Delete(fk_person As Integer, fk_branch As Integer)
    
@@ -1819,8 +1878,7 @@ Public Function Misspelt_towns_Get(town As String) As Collection
    'Called by FImportPatients.PatientCreate if a suburb match fails
    'This may have occurred previously
    '---------------------------------------------------------------
- 
- 
+   
    Return modDBConnect.exec_query_first("select * from contacts.lu_misspelt_towns where town_misspelt ILIKE $$" & town & "$$")
    
 End

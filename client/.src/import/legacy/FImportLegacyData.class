@@ -17,8 +17,11 @@
 '-------------------------------------------------------------------
 ' PURPOSE        To import legacy data
 ' TODO           Just about everything this is only just started
+'                check are getting all the comm types
 ' BUGS           Millions, in practice this module won't work at all
 ' ------------------------------------------------------------------
+Private oddoccupations As String[] 
+Private OddRecords As Collection
 Private rejected_records As Collection
 Private patients As Collection 
 Private patient As Collection 
@@ -35,7 +38,6 @@ Private FICPC As FICPCBrowser
 Private Form_directorychooser As FDirectoryChooser
 Private Form_Help As FHtmlViewer 
 Private help_dir As String
-
 Private json_string As String
 Private skipped_towns As Collection 
 Private skipped_town As Collection 
@@ -46,12 +48,13 @@ Private misspelt_town As Collection
 Private bSkipTown As Boolean
 Public fk_town As Integer
 Private Corrected_Town As Collection
+Private hLog_file As File
 
-Static Private Form_Import As FImportLegacyData
+Static Private Form_Legacy_Data_Import As FImportLegacyData
 
 Static Public Sub Corrected_Towns_Set(Town As Collection)
    
-   Form_Import.Set_Corrected_Town(town)
+   Form_Legacy_Data_Import.Set_Corrected_Town(town)
    
 End
 
@@ -71,7 +74,7 @@ End
 
 Public Sub init()
    
-   Form_Import = Me
+   Form_Legacy_Data_Import = Me
    With Form_Help = New FHtmlViewer(Vbox_Help)
       .tbWebBrowserZoomIn.Visible = True
       .tbWebBrowserZoomOut.Visible = True  
@@ -90,7 +93,7 @@ Public Sub init()
    lblmeasure.text = "  Import Patient Demographics  "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
    txtImportDirectory.text = "/home/richard/horst/MEDIBASE_EXPORT/" 'FIXME REMOVE ME
-
+   
 End
 
 Public Sub Settings_Save()
@@ -1049,22 +1052,51 @@ Public Sub EditArea_Buttons_Click()
    
 End
 
-Public Sub Import_Medibase()
+Public Sub Medibase_Import()
    
    Dim bNothingChosen As Boolean = True
+   Dim starttime As Date
+   Dim endtime As Date
+   Dim sOneline As String
    
+   starttime = Now()
+   hLog_file = Open Trim(txtImportDirectory.text) &/ "staff_json_import_log.txt" For Write Create
+   Print #hLog_file, "Started Medidbase import :" & Format(Now, "dd/mm/yyy:hh:nn")
+   If chkImportStaff.value = True Then
+      bNothingChosen = False  
+      Print #hLog_file, "Starting staff import"
+      Medibase_Import_Staff()
+      Print #hLog_file, "Ending staff import"
+   Endif
+   If chkImportPatients.value = True Then
+      bNothingChosen = False
+      Print #hLog_file, "Starting patient import"
+      Medibase_Import_Patients()
+      Print #hLog_file, "Ending patient import"
+   Endif
    If chkImportProgressNotes.value = True Then
-      
       bNothingChosen = False 
-      Import_Medibase_Progress_Notes()
+      Medibase_Import_Progress_Notes()
    End If
    If bNothingChosen Then
       Message.Info("Please select the type of data you wish to import")
    Endif
+   endtime = Now()
+   Print #hLog_file, "Finished import of medibase records"
+   Print #hLog_file, "Total time:" & Str(DateDiff(starttime, Endtime, gb.Minute)) & " minutes"
+   Close #hLog_file
+   
+   hFile = Open Trim(txtImportDirectory.text) &/ "staff_json_import_log.txt" For Read
+   
+   While Not Eof(hFile)
+      Line Input #hFile, sOneLine
+      lvwLog.Add(lvwLog.count, sOneline)
+   Wend
+   '  Close #hLog_file  'BUG HERE, why can't close
 
 End
 
-Public Sub Import_Medibase_Progress_Notes()
+Public Sub Medibase_Import_Progress_Notes()
    '----------------------------------------------------
    'Expected directory structure
    'PATIENTNAME/PROGRESSNOTES
@@ -1102,6 +1134,7 @@ Public Sub Import_Medibase_Progress_Notes()
    
    rejected_records = New Collection
    sRootdir = Trim(txtImportDirectory.text)
+   '   sRootdir = "/home/richard/horst/progress_notes_bugs_out"
    If IsDir(sRootdir) Then                             'eg "/home/user/MEDIBASE_EXPORT/"
       For Each sFile In Dir(sRootdir)                 
          If IsDir(sRootdir &/ Sfile) Then             
@@ -1173,27 +1206,34 @@ Public Sub Import_Medibase_Progress_Notes()
                         '  Print metadata!notes   
                         '  
                         ' Endif
+                        Print "starting ", txtImportPatient.text, fk_patient, MetaData!date, MetaData!time
                         fk_staff = modImportDBI.Staff_Get_Using_Firstname_Lastname(metadata)
                         datebits = Split(MetaData!date, "-")
                         timebits = Split(MetaData!time, ":")
-                        If datebits.count = 0 Or timebits.count = 0 Then
-                           rejected_records.Add(sFile, rejected_records.count)
-                        Else  
-                           consult = New CRow 
-                           consult!consult_date = Make_Date_time(datebits, timebits)
-                           consult!fk_patient = fk_patient
-                           consult!fk_staff = fk_staff
-                           consult!fk_type = const.consult_type_at_Surgery
-                           consult!summary = "Imported from MediBase" & Format(Now, "dd/mm/yyyy")
-                           consult.Save("clin_consult.consult", "fk_consult")
-                           Progressnote = New CRow
-                           Progressnote!fk_consult = consult!fk_consult
-                           Progressnote!fk_audit_action = const.cAuditAction_FileImport
-                           Progressnote!notes = metadata!notes
-                           Progressnote!fk_section = 0 'general notes
-                           Progressnote!fk_problem = 0 'no problem
-                           progressNote.Save("clin_consult.progressnotes", "fk_progressnote")
-                        End If   
+                        
+                        ' If datebits.count = 0 Or timebits.count = 0 Then
+                        '   rejected_records.Add(sFile, rejected_records.count)
+                        '  Else  
+                        consult = New CRow 
+                        consult!consult_date = Make_Date_time(datebits, timebits)
+                        consult!consult_date = Make_Date_time(datebits, timebits)
+                        consult!fk_patient = fk_patient
+                        consult!fk_staff = fk_staff
+                        consult!fk_type = const.consult_type_at_Surgery
+                        consult!summary = "Imported from MediBase" & Format(Now, "dd/mm/yyyy")
+                        Print "Saving consult: " & sRootdir &/ sPatientDir &/ sNotesDir &/ sFile
+                        consult.Save("clin_consult.consult", "fk_consult")
+                        Print "after saving consult"
+                        Progressnote = New CRow
+                        Progressnote!fk_consult = consult!fk_consult
+                        Progressnote!fk_audit_action = const.cAuditAction_FileImport
+                        Progressnote!notes = metadata!notes
+                        Progressnote!fk_section = 0 'general notes
+                        Progressnote!fk_problem = 0 'no problem
+                        Print "Saving progressnote:" & sRootdir &/ sPatientDir &/ sNotesDir &/ sFile
+                        progressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+                        Print "after progress note save"
+                        '  End If   
                      Endif
                      Inc x 
                   Next
@@ -1219,7 +1259,10 @@ Public Sub Import_Medibase_Progress_Notes()
       Message.Info("Some records could not be processed.\n\nA list may be found in this file:\n\n" & sRootdir &/ "progress_notes_rejected.txt")
       
    End If   
-
+Catch
+   Print sRootdir &/ sPatientDir &/ sNotesDir &/ sFile
+   Print 
+   
 End
 
 Public Sub Import_Select_Dir()
@@ -1246,7 +1289,7 @@ Public Sub Import_Select_Dir()
 End
 
 Public Sub Import()
-
+   
    If Not IsDir(Trim(txtImportDirectory.text)) Then
       Message.Info("Please select a valid directory before proceeding")
       txtImportDirectory.BackGround = Color.rgb(95, 255, 175)
@@ -1255,9 +1298,9 @@ Public Sub Import()
    Endif
    Select Case cmbMedicalProgram.text
       Case "Medibase"
-         Import_Medibase()
+         Medibase_Import()
    End Select
-
+   
 End
 
 Public Sub btnImportDemographics_Click()
@@ -1280,7 +1323,7 @@ Public Sub btnImportDemographics_Click()
    Wend
    Close #hFile
    
-   Import_Patients(contacts, json_lines) '
+   Medibase_Import_Patients(contacts, json_lines) '
    
 End
 
@@ -1343,7 +1386,7 @@ Public Sub button2_Click()
    
 End
 
-Public Sub Import_patients(contacts As Collection, json_lines As Collection)
+Public Sub Medibase_Import_Patients()
    
    Dim bits As String[]
    Dim person As CRow
@@ -1361,7 +1404,6 @@ Public Sub Import_patients(contacts As Collection, json_lines As Collection)
    Dim sMsg As String
    Dim bOddOccupation As Boolean
    Dim OddRecords As New Collection 
-   Dim oddoccupations As New String[]
    Dim Notpersons As New Collection 
    Dim rejected_records As New Collection
    Dim hFile As File
@@ -1372,274 +1414,54 @@ Public Sub Import_patients(contacts As Collection, json_lines As Collection)
    Dim Town As String
    Dim icounter As Integer
    Dim patient As CRow  
+   Dim sOneLine As String 
+   Dim oldpatient As Collection 
+   Dim apatient As Collection
+   Dim last_line As String
+   Dim duplicate_line_count As Integer
+   Dim sRootdir As String
+   Dim json_lines As Collection
    
-   missing_towns = New Collection
-   
-   For Each contact In contacts
+   json_lines = New Collection
+   patients = New Collection
+   sRootdir = Trim(txtImportDirectory.text)
+   hFile = Open sRootdir &/ "patients_json.txt" For Read
+   While Not Eof(hFile)
+      Line Input #hFile, sOneLine
+      json_lines.Add(soneline, patients.count)
+      patients.Add(JSON.decode(sOneLIne), patients.count)
+   Wend
+   Close #hFile
+   'message for horst  - need standardisation of eg communications[] or staight colleciton
+   For Each oldpatient In patients
       Inc icounter
       Print icounter
-      
-      brejected = False
-      person = New CRow
-      person!firstname = contact!person!firstname
-      R = modDBConnect.exec_query("Select sex from contacts.lu_firstnames where firstname ILIKE $$" & Trim(person!firstname) & "$$")
-      If R.count Then
-         Select Case R!sex                
-            Case "m"
-               person!fk_sex = const.cSexMale
-            Case "f"
-               person!fk_sex = const.cSexFemale
-         End Select
-         
-      Else
-         person!fk_sex = const.cSexUnknown
+      If icounter = 590 Then
+         Print
       Endif
-      person!surname = contact!person!surname
-      If Not IsNull(contact!person!birthdate) Then 
-         person!birthdate = contact!person!birthdate
-      Else
-         Message.Info("Missing birthdate! - your programming skills are fucked")
-         person!birthdate = "1900-01-01"
-      End If
-      If Not IsNull(contact!person!retired) Then
-         person!retired = True  
-      Endif
-      Select Case Lower(Replace(contact!person!title, ".", ""))
-         Case "dr"
-            fk_title = const.ctitleDr
-         Case "mr"
-            fk_title = const.ctitleMr
-         Case "mrs"
-            fk_title = const.ctitleMrs
-         Case "ms"
-            fk_title = const.ctitleMs
-         Case "master"
-            fk_title = const.ctitleMaster
-         Case "miss"
-            fk_title = const.ctitleMiss
-         Case "prof"
-            fk_title = const.ctitleProf
-         Case Else 
-            Select Case person!fk_sex
-               Case const.cSexMale
-                  bits = Split(person!birthdate, "-")
-                  If DateDiff(Now, Date(Val(bits[0]), Val(bits[1]), Val(bits[2])), gb.year) > 15 Then
-                     fk_title = const.ctitleMr
-                  Else
-                     fk_title = const.ctitleMaster
-                  End If  
-               Case const.cSexFemale
-                  bits = Split(person!birthdate, "-")
-                  If DateDiff(Now, Date(Val(bits[0]), Val(bits[1]), Val(bits[2])), gb.year) > 15 Then
-                     fk_title = const.ctitleMiss
-                  Else
-                     fk_title = const.ctitleMs
-                  End If 
-            End Select
-            ' If fk_title <> const.ctitleMr Or fk_title <> const.ctitleMs Or fk_title <> const.ctitleMaster Or fk_title <> const.ctitlemiss Then
-            '   fk_title = const.ctitleUnKnown
-            '    smsg = "Firstname:" & contact!person!firstname & "\n"
-            '    smsg &= "Surname:" & contact!person!surname & "\n\n"
-            '    Select Case Message.question(sMsg & "\n\nTitle is missing.\n\nPlease confirm this is a person, they will be given title 'unknown'", "Confirm - is a person", "No - not a person")
-            '       Case 2 
-            '          Notpersons.Add(contact, Notpersons.count)
-            '          brejected = True
-            '          rejected_records.Add(json_lines[x], rejected_records.count)
-            '    End Select
-            ' End If   
-      End Select
-      If Not brejected Then   
-         person!fk_title = fk_title 
-         bOddOccupation = False   
-         If Not IsNull(Trim(Lower(contact!person!occupation))) Then 
-            If Not InStr(Trim(Lower(contact!person!occupation)), "/") Then       
-               R = modDBConnect.exec_query("Select * from common.lu_occupations where occupation ILIKE $$" & Trim(Lower(contact!person!occupation)) & "$$")
-               If R.count Then
-                  person!fk_occupation = R!pk
-               Else           
-                  If Not oddoccupations.Exist(Trim(Lower(contact!person!occupation))) Then 
-                     Select Case Message.Question("Occupation not found:\n\n" & contact!person!occupation, "Save As New Occupation", "Do Not save")
-                        Case 1 
-                           person!fk_occupation = modContactsDBI.Occupation_Save(Trim(Lower(contact!person!occupation)))
-                           modDBConnect.CommitTrans
-                        Case 2
-                           bOddOccupation = True        
-                           oddoccupations.Add(Trim(Lower(contact!person!occupation)), oddoccupations.count)    
-                     End Select
-                  Else 
-                     bOddOccupation = True   
-                  End If   
-               Endif
-               If bOddOccupation = False Then
-                  persons.Add(person, persons.count)
-               Else
-                  OddRecords.Add(person, OddRecords.count)
-                  brejected = True 
-                  rejected_records.Add(json_lines[x], rejected_records.count)
-               End If 
-            End If
-         End If     
-      End If  
-      
-      '---------------------------------
-      'At this point have a valid person
-      'now lets go for the address, Horst data is very very dirty
-      'examples
-      'town field could have town + postcode
-      'the town could be ok, but the state missing
-      'the town could be ok but the postcode is wrong
-      '----------------------------------------------------
-      If Not brejected And Not IsNull(contact!addresses) Then
-         address = New CRow
-         '-------------------------------------------------------------
-         'first, lets go for a unique australian town.
-         'town_Cleanup(contact!addresses!town)cleanup crap in the names
-         '-------------------------------------------------------------
-         sql = "Select * from contacts.lu_towns where town ilike $$" & town_Cleanup(contact!addresses!town) & "$$ AND comment is null"
-         R = modDBConnect.exec_query(sql)
-         If r.count = 1 Then
-            address = town_Make(R, contact)
-         Else      
-            '-----------------------------------------------------------------------------------------------------
-            'ok, bombed on that, there could be none or > 1, try town + state as I've noted postcodes can be wrong
-            '-----------------------------------------------------------------------------------------------------
-            If Not IsNull(contact!addresses!state) Then 
-               sql = "Select * from contacts.lu_towns where town ilike $$" & town_Cleanup(contact!addresses!town) & "$$ AND comment is null "        
-               sql &= " AND state = $$" & Trim(contact!addresses!state) & "$$"
-               R = modDBConnect.exec_query(sql)
-               If R.count = 1 Then  
-                  address = town_Make(R, contact)
-               Endif
-            Else   
-               '----------------------------------
-               'ok, no state, try town + postcode
-               '-----------------------------------
-               If Not IsNull(contact!addresses!postcode) Then  
-                  sql = "Select * from contacts.lu_towns where town ilike $$" & town_Cleanup(contact!addresses!town) & "$$ AND comment is null "     
-                  sql &= " AND postcode = $$" & Trim(contact!addresses!postcode) & "$$"
-                  R = modDBConnect.exec_query(sql)
-                  If R.count = 1 Then
-                     address = town_Make(R, contact)
-                  End If
-               End If 
-            End If  
-            If Not address.count Then    
-               '----------------------------------------------------
-               'At this point we have not town, need user input
-               'ok, failed, use popup and get use to add the town
-               'We'll look first in previously saved mis-spelt town
-               '----------------------------------------------------
-               If Not IsNull(contact!addresses!town) Then 
-                  misspelt_town = modContactsDBI.Misspelt_towns_Get(contact!addresses!town) 
-                  If Not IsNull(misspelt_town) Then 
-                     address = New CRow
-                     address!fk_town = misspelt_town!fk_town
-                     address!street1 = contact!addresses!street1 
-                     address!street2 = contact!addresses!street2
-                     address!fk_lu_address_type = const.AddressType_Work
-                  End If   
-                  If address.count = 0 And Not IsNull(contact!addresses!town) Then
-                     '------------------- Endif---------------------------------------------------------
-                     'not previously encoutered it, ok give user the popup dialog let them find it
-                     '----------------------------------------------------------------------------
-                     
-                     '   If IsNull(misspelt_towns)
-                     ' bSkipTown = False    'First check if we have encountered this town previously this sesion, found no equivalent, and marked to skip
-                     ' For Each skipped_town In skipped_towns
-                     '   If Lower(skipped_town) = Lower(contact!addresses!town) Then
-                     '       bSkipTown = True
-                     '       Break
-                     '   Endif
-                     ' Next
-                     '    If bSkipTown = False Then       'this is a new one  popup the dialog, let user choose             
-                     fk_town = 0
-                     misspelt_town = New Collection  
-                     misspelt_town!town_misspelt = contact!addresses!town
-                     FSelectTown.txtNotFound.text = contact!addresses!town
-                     FSelectTown.txtFirstname.text = person!firstname
-                     FSelectTown.txtSurname.text = person!surname
-                     FSelectTown.txtstreet1.text = contact!addresses!street1
-                     FSelectTown.txtstreet2.text = contact!addresses!street2
-                     FSelectTown.Init(contact!addresses)
-                     Dec Application.Busy
-                     FSelectTown.ShowModal()                         'get the data,if user did allocate valid town, fk_town > 0
-                     Inc Application.Busy
-                     If fk_town Then
-                        '------------------------------------------------------------------------------------------   
-                        'if the user allocated a town, fill the address collection
-                        'then save the misspelt town to the backend, along with the correct key to the correct town
-                        '------------------------------------------------------------------------------------------
-                        address = New CRow
-                        address!fk_town = fk_town
-                        address!street1 = contact!addresses!street1
-                        address!street2 = contact!addresses!street2
-                        address!fk_lu_address_type = const.AddressType_Work
-                        misspelt_town!fk_town = fk_town             'the real town
-                        misspelt_town!town = Corrected_Town!town 
-                        misspelt_town!town_misspelt = contact!addresses!town 'the mis-spelt town
-                        modDBConnect.BeginTrans
-                        modDBConnect.insert("contacts.lu_misspelt_towns", misspelt_town)
-                        modDBConnect.CommitTrans
-                     Else
-                        person!memo = contact!addresses!street1 & " " & contact!addresses!street2 & contact!addresses!town
-                     End If
-                  Else  'null town.
-                     brejected = True  
-                     rejected_records.Add(json_lines[x], rejected_records.count)
-                  End If
-                  If address.count = 0 Then
-                     brejected = True  
-                     rejected_records.Add(json_lines[x], rejected_records.count)
-                  End If 
-               End If
-            End If     
+      Person = New CRow                                                          
+      Person = Person_Create(oldpatient)                                        'create new person row
+      If Not IsNull(person) Then                                                 'is ok?
+         If Not IsNull(oldpatient!communications) Then                       'if have comms
+            Communications = Comms_Create(oldpatient!communications) 'add their comms
          Endif
-         
-      End If  
-      If Not brejected And Not IsNull(contact!communications) Then 
-         communications = New Collection
-         If Not IsNull(contact!communications!phone_business) Then
-            communication = New CRow
-            communication!fk_type = const.CommModalityWork
-            communication!value = contact!communications!phone_business
-            communications.Add(communication, communications.count)
+         If Not IsNull(oldpatient!addresses) Then                       'if have an address
+            Address = Address_Create(oldpatient!addresses, person, const.AddressType_Home)             'add their address
          Endif
-         If Not IsNull(contact!communications!phone_afterhours) Then
-            communication = New CRow
-            communication!fk_type = const.CommModalityPhoneAfterHours
-            communication!value = contact!communications!phone_afterhours
-            communications.Add(communication, communications.count)
-         Endif
-         If Not IsNull(contact!communications!fax_no) Then
-            communication = New CRow
-            communication!fk_type = const.CommModalityFax
-            communication!value = contact!communications!fax_no
-            communications.Add(communication, communications.count)
-         Endif
-         If Not IsNull(contact!communications!web) Then
-            communication = New CRow 
-            communication!fk_type = const.CommModalityWeb
-            communication!value = contact!communications!web
-            communications.Add(communication, communications.count)
-         Endif
-         If Not IsNull(contact!communications!email) Then
-            communication = New CRow
-            communication!fk_type = const.CommModalityEmail
-            communication!value = contact!communications!email 
-            communications.Add(communication, communications.count)
-         Endif
-      Endif
-      If Not brejected Then
          '---------------
          'save the record 
          '---------------
          person.Save("contacts.data_persons", "fk_person")
-         If address.count Then 
+       '  If Not IsNull(address) Then 
+            
+         If address.count <> 0 Then 
             address.Save("contacts.data_addresses", "fk_address")
             address_link = New CRow   
             address_link!fk_person = person!fk_person
             address_link!fk_address = address!fk_address
             address_link.Save("contacts.links_persons_addresses", "fk_link_person_address")
+         Else
+            Print
          End If   
          For Each communication In communications
             communication.Save("contacts.data_communications", "fk_comm")
@@ -1650,32 +1472,30 @@ Public Sub Import_patients(contacts As Collection, json_lines As Collection)
          Next
          patient = New CRow
          patient!fk_person = person!fk_person
-         patient!file_chart_status = contact!patient!file_chart_status
-         patient!medicare_number = contact!patient!medicare_number
-         If Len(contact!patient!medicare_number) > 10 Then
+         patient!file_chart_status = oldpatient!patient!file_chart_status
+         patient!medicare_number = oldpatient!patient!medicare_number
+         If Len(oldpatient!patient!medicare_number) > 10 Then
             Message.Info("medicare number too long")
          Endif
-         patient!medicare_ref_number = contact!patient!medicare_ref_number
-         patient!atsi = contact!patient!atsi
-         patient!active_status = contact!patient!active_status
-         patient!veteran_number = contact!patient!veteran_number
-         patient!veteran_card_type = contact!patient!veteran_card_type 
-         patient!pk_legacy = contact!patient!pk_legacy
+         patient!medicare_ref_number = oldpatient!patient!medicare_ref_number
+         patient!atsi = oldpatient!patient!atsi
+         patient!active_status = oldpatient!patient!active_status
+         patient!veteran_number = oldpatient!patient!veteran_number
+         patient!veteran_card_type = oldpatient!patient!veteran_card_type 
+         patient!pk_legacy = oldpatient!patient!pk_legacy
          patient.Save("clerical.data_patients", "fk_patient")
+      Else
+         rejected_records.Add(json_lines[x], rejected_records.count)
       Endif
       Inc x
-      ' If rejected_records.count = 2 Then
-      ' 
-      '  Print x
-      '  Print person
-      '  Break
-      ' End If   
    Next
    If Message.Question("Happy?", "Yes", "No") = 1 Then 
       modDBConnect.CommitTrans
+   Else
+      Print #hLog_file, "Patient Import was cancelled by the user."
    End If   
    
-   hFile = Open "/home/richard/horst_json_rejected.txt" For Write Create
+   hFile = Open sRootdir &/ "medibase_patients_rejected.txt" For Write Create 
    For x = 0 To rejected_records.count - 1
       Print #hfile, rejected_records[x]
    Next
@@ -1692,14 +1512,18 @@ Public Sub town_Cleanup(town As String) As String
    
 End
 
-Public Sub town_Make(R As Result, contact As Collection) As CRow
+Public Sub Town_Make(R As Result, data As Collection, fk_address_type As Integer) As CRow
    
    Dim address As New CRow
    
+   If IsNull(r!pk) Or r!pk = 0 Then
+      Message.Info("missing-fk_town")
+      Print
+   Endif
    address!fk_town = r!pk
-   address!street1 = contact!addresses!street1
-   address!street1 = contact!addresses!street2
-   address!fk_lu_address_type = const.AddressType_Work
+   address!street1 = data!street1
+   address!street2 = data!street2
+   address!fk_lu_address_type = fk_address_type
    Return address
    
 End
@@ -1749,305 +1573,23 @@ End
 
 Public Sub btnImportStaff_Click()
    
-   Dim sOneLine As String 
-   Dim hFile As File
-   Dim staff As New Collection
-   Dim json_lines As New Collection 
-   Dim x As Integer
-   Dim last_line As String
-   
-   '  hFile = Open "/home/richard/horst_json.txt" For Read
-   hFile = Open "/home/richard/horst/staff_json.txt" For Read
-   While Not Eof(hFile)
-      Line Input #hFile, sOneLine
-      json_lines.Add(soneline, staff.count)
-      staff.Add(JSON.decode(sOneLIne), staff.count)
-   Wend
-   Close #hFile
-   
-   Import_staff(staff, json_lines) '
-   
-End
-
-Public Sub Import_staff(staff As Collection, json_lines As Collection)
-   
-   Dim logon_suffix As Integer   'if logon_name exists increment this tag on end 
-   Dim bits As String[]
-   Dim person As CRow
-   Dim persons As New Collection
-   Dim address_Link As CRow
-   Dim link_person_comm As CRow
-   Dim address As CRow
-   Dim sql As String
-   Dim contact As Collection
-   Dim x As Integer
-   Dim fk_occupation As Integer
-   Dim occupation As Collection
-   Dim R As Result
-   Dim fk_title As Integer
-   Dim sMsg As String
-   Dim bOddOccupation As Boolean
-   Dim OddRecords As New Collection 
-   Dim oddoccupations As New String[]
-   Dim Notpersons As New Collection 
-   Dim rejected_records As New Collection
-   Dim hFile As File
-   Dim brejected As Boolean
-   Dim communications As Collection
-   Dim communication_row As String
-   Dim communication As CRow  
-   Dim Town As String
-   Dim icounter As Integer
-   Dim patient As CRow  
-   Dim staffmember As Collection
-   Dim newstaff As New CRow   
-   Dim link_staff_clinic As New CRow   
-   Dim employee As New CRow   
-   
-   missing_towns = New Collection
-   
-   For Each staffmember In staff
-      Inc icounter
-      Print icounter
-      
-      brejected = False
-      person = New CRow
-      person!firstname = staffmember!person!firstname
-      R = modDBConnect.exec_query("Select sex from contacts.lu_firstnames where firstname ILIKE $$" & Trim(person!firstname) & "$$")
-      If R.count Then
-         Select Case R!sex                
-            Case "m"
-               person!fk_sex = const.cSexMale
-            Case "f"
-               person!fk_sex = const.cSexFemale
-         End Select
-         
-      Else
-         person!fk_sex = const.cSexUnknown
-      Endif
-      person!surname = staffmember!person!surname
-      If Not IsNull(staffmember!person!birthdate) Then 
-         person!birthdate = staffmember!person!birthdate
-      Else
-         Message.Info("Missing birthdate! - your programming skills are fucked")
-         person!birthdate = "1900-01-01"
-      End If
-      If Not IsNull(staffmember!person!retired) Then
-         person!retired = True  
-      Endif
-      Select Case Lower(Replace(staffmember!person!title, ".", ""))
-         Case "dr"
-            fk_title = const.ctitleDr
-         Case "mr"
-            fk_title = const.ctitleMr
-         Case "mrs"
-            fk_title = const.ctitleMrs
-         Case "ms"
-            fk_title = const.ctitleMs
-         Case "master"
-            fk_title = const.ctitleMaster
-         Case "miss"
-            fk_title = const.ctitleMiss
-         Case "prof"
-            fk_title = const.ctitleProf
-         Case Else 
-            Select Case person!fk_sex
-               Case const.cSexMale
-                  bits = Split(person!birthdate, "-")
-                  If DateDiff(Now, Date(Val(bits[0]), Val(bits[1]), Val(bits[2])), gb.year) > 15 Then
-                     fk_title = const.ctitleMr
-                  Else
-                     fk_title = const.ctitleMaster
-                  End If  
-               Case const.cSexFemale
-                  bits = Split(person!birthdate, "-")
-                  If DateDiff(Now, Date(Val(bits[0]), Val(bits[1]), Val(bits[2])), gb.year) > 15 Then
-                     fk_title = const.ctitleMiss
-                  Else
-                     fk_title = const.ctitleMs
-                  End If 
-            End Select
-      End Select
-      If Not brejected Then   
-         person!fk_title = fk_title 
-         bOddOccupation = False   
-         If Not IsNull(Trim(Lower(staffmember!person!occupation))) Then 
-            If Not InStr(Trim(Lower(staffmember!person!occupation)), "/") Then       
-               R = modDBConnect.exec_query("Select * from common.lu_occupations where occupation ILIKE $$" & Trim(Lower(staffmember!person!occupation)) & "$$")
-               If R.count Then
-                  person!fk_occupation = R!pk
-               Else           
-                  If Not oddoccupations.Exist(Trim(Lower(staffmember!person!occupation))) Then 
-                     Select Case Message.Question("Occupation not found:\n\n" & staffmember!person!occupation, "Save As New Occupation", "Do Not save")
-                        Case 1 
-                           person!fk_occupation = modContactsDBI.Occupation_Save(Trim(Lower(staffmember!person!occupation)))
-                           modDBConnect.CommitTrans
-                        Case 2
-                           bOddOccupation = True        
-                           oddoccupations.Add(Trim(Lower(staffmember!person!occupation)), oddoccupations.count)    
-                     End Select
-                  Else 
-                     bOddOccupation = True   
-                  End If   
-               Endif
-               If bOddOccupation = False Then
-                  persons.Add(person, persons.count)
-               Else
-                  OddRecords.Add(person, OddRecords.count)
-                  brejected = True 
-                  rejected_records.Add(json_lines[x], rejected_records.count)
-               End If 
-            End If
-         End If     
-      End If  
-      
-      If Not brejected And Not IsNull(staffmember!communications[0]) Then 
-         communications = New Collection
-         If Not IsNull(staffmember!communications[0]!phone_business) Then
-            communication = New CRow
-            communication!fk_type = const.CommModalityWork
-            communication!value = staffmember!communications[0]!phone_business
-            communications.Add(communication, communications.count)
-         Endif
-         If Not IsNull(staffmember!communications[0]!phone_afterhours) Then
-            communication = New CRow
-            communication!fk_type = const.CommModalityPhoneAfterHours
-            communication!value = staffmember!communications[0]!phone_afterhours
-            communications.Add(communication, communications.count)
-         Endif
-         If Not IsNull(staffmember!communications[0]!fax_no) Then
-            communication = New CRow
-            communication!fk_type = const.CommModalityFax
-            communication!value = staffmember!communications[0]!fax_no
-            communications.Add(communication, communications.count)
-         Endif
-         If Not IsNull(staffmember!communications[0]!web) Then
-            communication = New CRow 
-            communication!fk_type = const.CommModalityWeb
-            communication!value = staffmember!communications[0]!web
-            communications.Add(communication, communications.count)
-         Endif
-         If Not IsNull(staffmember!communications[0]!email) Then
-            communication = New CRow
-            communication!fk_type = const.CommModalityEmail
-            communication!value = staffmember!communications[0]!email 
-            communications.Add(communication, communications.count)
-         Endif
-      Endif
-      If Not brejected Then
-         '---------------------------------------
-         'save the record, does the person exist?
-         '---------------------------------------
-         bits = Split(person!birthdate, "-")
-         Print person!firstname & " " & person!surname & " " & Format(Date(Val(bits[0]), Val(bits[1]), Val(bits[2])), "dd/mm/yyyy") 
-         sql = "Select * from contacts.data_persons where "
-         sql &= "Firstname ILIKE $$" & person!firstname & "$$ AND surname ILIKE $$" & person!surname & "$$ "
-         sql &= " AND birthdate = $$" & person!birthdate & "$$"
-         R = modDBConnect.exec_query(sql)
-         If R.Count Then
-            Message.title = "Duplicate Record"
-            sMsg = " The name:" & person!firstname & " " & person!surname & " " & Format(Date(Val(bits[0]), Val(bits[1]), Val(bits[2])), "dd/mm/yyyy")
-            sMsg &= " already exists in the database.\n\n"
-            If R.count > 1 Then
-               sMsg &= "In fact, the same person and date of birth exist  " & Str(R.count) & " times.\n\n"
-               sMsg &= "This record cannot be processed and will be added to a list in the log file ."
-               Message.Info(sMsg)
-               brejected = True  
-               rejected_records.Add(json_lines[x], rejected_records.count)
-            Else
-               sMsg &= "Continue processing?"
-               If Message.Question(sMsg, "Yes", "No") = 2 Then
-                  brejected = True  
-                  rejected_records.Add(json_lines[x], rejected_records.count)
-               Endif
-            End If   
-         Endif
-      End If
-      
-      If Not brejected Then
-         '----------------------------------------------------------------------------------------
-         'If not rejected, try and add the postgres user first with default password of 'password'
-         'If this fails, we won't add the person
-         '----------------------------------------------------------------------------------------
-         Newstaff = New CRow
-         Newstaff!password = "password"
-         Newstaff!fk_role = staffmember!fk_role
-         Newstaff!fk_status = staffmember!fk_status
-         If modDBConnect.Role_Check_If_Exists(staffmember!logon_name) Then 
-            Inc logon_suffix
-            Message.title = "Database User Name"
-            smsg = "Each user of EasyGP must have a unique logon name.\n\n"
-            smsg &= "Your choice: " & staffmember!logon_name & "is already in use in your system.\n\n"
-            smsg &= "This logon will now become: " & staffmember!logon_name & Str(logon_suffix)
-            Message.Info(sMsg, "Ok")        
-            Newstaff!logon_name = staffmember!logon_name & Str(logon_suffix)
-         Else
-            Newstaff!logon_name = staffmember!logon_name 
-         End If 
-         Newstaff!provider_number = staffmember!provider_number
-         Newstaff!prescriber_number = staffmember!prescriber_number
-         Newstaff!logon_date_From = Now()
-         Newstaff!logon_date_to = DateAdd(Now(), gb.Year, 2)
-         Select Case staffmember!fk_role
-            Case 1, 3 'doctor
-               Newstaff!fk_lu_staff_type = 9 'general practitioners
-            Case 2
-               Newstaff!fk_lu_staff_type = 3
-            Case 4
-               Newstaff!fk_lu_staff_type = 13
-            Case 5
-               Newstaff!fk_lu_staff_type = 7 'general nursing
-            Case 6, 7
-               Newstaff!fk_lu_staff_type = 12
-            Case 8
-               Newstaff!fk_lu_staff_type = 4
-            Case 9, 11, 12
-               Newstaff!fk_lu_staff_type = 2
-            Case 10
-               Newstaff!fk_lu_staff_type = 6
-         End Select   
-         If Not (modContactsDBI.Staff_Create_Postgres_User(Null, 0, newstaff)) Then
-            rejected_records.Add(json_lines[x])
-         Else
-            person.Save("contacts.data_persons", "fk_person")
-            For Each communication In communications
-               communication.Save("contacts.data_communications", "fk_comm")
-               link_person_comm = New CRow 
-               link_person_comm!fk_person = person!fk_person
-               link_person_comm!fk_comm = communication!fk_comm
-               link_person_comm.Save("contacts.links_persons_comms", "fk_link_person_comm")
-            Next
-         Endif
-         newstaff.Remove("password")
-         Print person!fk_person
-         
-         Newstaff!fk_person = person!fk_person   'put in the person key
-         Newstaff.Save("admin.staff", "fk_staff")
-         employee = New CRow
-         employee!fk_branch = modDBConnect.currentUser!fk_branch
-         employee!fk_status = staffmember!fk_status
-         employee!fk_occupation = person!fk_occupation
-         employee!fk_person = person!fk_person
-         employee.Save("contacts.data_employees", "fk_employee")
-         link_staff_clinic = New CRow 
-         link_staff_clinic!fk_staff = Newstaff!fk_staff
-         link_staff_clinic!fk_clinic = modDBConnect.currentUser!fk_clinic
-         link_staff_clinic.Save("admin.link_staff_clinics", "fk_link_staff_clinics")
-      Endif
-      Inc x
-   Next
-   If Message.Question("Happy?", "Yes", "No") = 1 Then 
-      modDBConnect.CommitTrans
-   End If   
-   Print persons
-   Print OddRecords
-   Print Notpersons
-   
-   hFile = Open "/home/richard/horst_staff_rejected.txt" For Write Create
-   For x = 0 To rejected_records.count - 1
-      Print #hfile, rejected_records[x]
-   Next
-   Close #hfile
+   ' Dim sOneLine As String 
+   ' Dim hFile As File
+   ' Dim staff As New Collection
+   ' Dim json_lines As New Collection 
+   ' Dim x As Integer
+   ' Dim last_line As String
+   ' 
+   ' '  hFile = Open "/home/richard/horst_json.txt" For Read
+   ' hFile = Open "/home/richard/horst/staff_json.txt" For Read
+   ' While Not Eof(hFile)
+   '    Line Input #hFile, sOneLine
+   '    json_lines.Add(soneline, staff.count)
+   '    staff.Add(JSON.decode(sOneLIne), staff.count)
+   ' Wend
+   ' Close #hFile
+   ' 
+   ' Import_staff(staff, json_lines) '
    
 End
 
@@ -2080,7 +1622,7 @@ Public Sub tbImportProgressNotes_Click()
    Dim RightString As String
    Dim iPatientCount As Integer  
    
-   Dialog.Title = "Select Path to Progress Notes"
+   ' Dialog.Title = "Select Path to Progress Notes"
    
    '   If Dialog.SelectDirectory() Then Return 
    '  Print Dialog.Path
@@ -2190,6 +1732,461 @@ Public Sub tbImportProgressNotes_Click()
    
 End
 
+Public Sub Medibase_Import_Staff()
+   
+   Dim logon_suffix As Integer   'if logon_name exists increment this tag on end 
+   Dim person As CRow
+   Dim link_person_comm As CRow
+   Dim x As Integer
+   Dim R As Result
+   Dim sMsg As String
+   Dim rejected_records As New Collection
+   Dim hFile As File
+   Dim communications As Collection
+   Dim communication As CRow  
+   Dim icounter As Integer
+   Dim staffmember As Collection
+   Dim staff As Collection
+   Dim newstaff As New CRow   
+   Dim link_staff_clinic As New CRow   
+   Dim employee As New CRow   
+   Dim sOneline As String
+   Dim sRootdir As String
+   Dim json_lines As Collection 
+   
+   '---------------------------------------------
+   'Open the staff file, create a json collection
+   '---------------------------------------------
+   sRootdir = Trim(txtImportDirectory.text)
+   staff = New Collection
+   json_lines = New Collection 
+   oddoccupations = New String[]
+   hFile = Open sRootdir &/ "staff_json.txt" For Read
+   While Not Eof(hFile)
+      Line Input #hFile, sOneLine
+      json_lines.Add(soneline, staff.count)
+      staff.Add(JSON.decode(sOneLIne), staff.count)
+   Wend
+   Close #hFile
+   For Each staffmember In staff
+      Inc icounter
+      Print icounter
+      '----------------------------------------------------------------------
+      'First, try and create a person
+      'This will fail for example if duplicate exists in the database already
+      'but ajson_lines[x] log file will  be created of this FIXME DO THIS
+      '----------------------------------------------------------------------
+      Person = New CRow                                                          
+      Person = Person_Create(staffmember)                                        'create new person row
+      If Not IsNull(person) Then                                                 'is ok?
+         If Not IsNull(staffmember!communications[0]) Then                       'if have comms
+            Communications = Comms_Create(staffmember!communications[0]) 'add their comms
+         Endif
+         '----------------------------------------------------------------------------------------
+         'If not rejected, try and add the postgres user first with default password of 'password'
+         '----------------------------------------------------------------------------------------
+         Newstaff = New CRow
+         Newstaff!password = "password"
+         Newstaff!fk_role = staffmember!fk_role
+         Newstaff!fk_status = staffmember!fk_status
+         If modDBConnect.Role_Check_If_Exists(staffmember!logon_name) Then 
+            Inc logon_suffix
+            Message.title = "Database User Name"
+            smsg = "Each user of EasyGP must have a unique logon name.\n\n"
+            smsg &= "Your choice: " & staffmember!logon_name & "is already in use in your system.\n\n"
+            smsg &= "This logon will now become: " & staffmember!logon_name & Str(logon_suffix)
+            Message.Info(sMsg, "Ok")        
+            Newstaff!logon_name = staffmember!logon_name & Str(logon_suffix)
+         Else
+            Newstaff!logon_name = staffmember!logon_name 
+         End If 
+         Newstaff!provider_number = staffmember!provider_number
+         Newstaff!prescriber_number = staffmember!prescriber_number
+         Newstaff!logon_date_From = Now()
+         Newstaff!logon_date_to = DateAdd(Now(), gb.Year, 2)
+         Newstaff!qualifications = staffmember!qualifications
+         Select Case staffmember!fk_role
+            Case 1, 3 'doctor
+               Newstaff!fk_lu_staff_type = 9 'general practitioners
+            Case 2
+               Newstaff!fk_lu_staff_type = 3
+            Case 4
+               Newstaff!fk_lu_staff_type = 13
+            Case 5
+               Newstaff!fk_lu_staff_type = 7 'general nursing
+            Case 6, 7
+               Newstaff!fk_lu_staff_type = 12
+            Case 8
+               Newstaff!fk_lu_staff_type = 4
+            Case 9, 11, 12
+               Newstaff!fk_lu_staff_type = 2
+            Case 10
+               Newstaff!fk_lu_staff_type = 6
+         End Select   
+         If Not (modContactsDBI.Staff_Create_Postgres_User(Null, 0, newstaff)) Then
+            rejected_records.Add(json_lines[x])
+         Else
+            person.Save("contacts.data_persons", "fk_person")
+            For Each communication In communications
+               communication.Save("contacts.data_communications", "fk_comm")
+               link_person_comm = New CRow 
+               link_person_comm!fk_person = person!fk_person
+               link_person_comm!fk_comm = communication!fk_comm
+               link_person_comm.Save("contacts.links_persons_comms", "fk_link_person_comm")
+            Next
+         Endif
+         newstaff.Remove("password")
+         Newstaff!fk_person = person!fk_person   'put in the person key
+         Newstaff.Save("admin.staff", "fk_staff")
+         employee = New CRow
+         employee!fk_branch = modDBConnect.currentUser!fk_branch
+         employee!fk_status = staffmember!fk_status
+         If person.Exist("fk_occupation") Then
+            employee!fk_occupation = person!fk_occupation
+         Else
+            Message.Info("no occupation")
+         End If
+         employee!fk_person = person!fk_person
+         employee.Save("contacts.data_employees", "fk_employee")
+         link_staff_clinic = New CRow 
+         link_staff_clinic!fk_staff = Newstaff!fk_staff
+         link_staff_clinic!fk_clinic = modDBConnect.currentUser!fk_clinic
+         link_staff_clinic.Save("admin.link_staff_clinics", "fk_link_staff_clinics")        
+      Else
+         rejected_records.Add(json_lines[x], rejected_records.count)
+      End If   
+      Inc x
+      
+   Next
+   If Message.Question("Happy?", "Yes", "No") = 1 Then 
+      modDBConnect.CommitTrans
+   Else
+      Print #hLog_file, "Staff Import was cancelled by the user."
+   End If   
+   If rejected_records.count Then
+      Print #hLog_file, "There were " & Str(rejected_records.count) & " records rejected details in the file " & sRootdir &/ "medibase_staff_rejected/txt"
+   End If
+   hFile = Open sRootdir &/ "medibase_staff_rejected.txt" For Write Create 
+   For x = 0 To rejected_records.count - 1
+      Print #hfile, rejected_records[x]
+   Next
+   Close #hfile
+   
+End
+
+Public Sub Person_Create(data As Collection) As CRow
+   '------------------------------------------------------------------------------------
+   'creates a person, if not valid the return cRow is null
+   'If person exists in the contacts database with same name/DOB then considered invalid
+   'however will write to  a log file FIXME to keep record of this
+   '------------------------------------------------------------------------------------
+   
+   Dim R As Result  
+   Dim brejected As Boolean
+   Dim bOddOccupation As Boolean
+   Dim fk_title As Integer
+   Dim bits As String[]
+   Dim Person As New CRow
+   Dim sql As String
+   Dim sMsg As String
+   
+   person!firstname = data!person!firstname
+   R = modDBConnect.exec_query("Select sex from contacts.lu_firstnames where firstname ILIKE $$" & Trim(person!firstname) & "$$")
+   If R.count Then
+      Select Case R!sex                
+         Case "m"
+            person!fk_sex = const.cSexMale
+         Case "f"
+            person!fk_sex = const.cSexFemale
+      End Select
+   Else
+      person!fk_sex = const.cSexUnknown
+   Endif
+   person!surname = data!person!surname
+   If Not IsNull(data!person!birthdate) Then 
+      person!birthdate = data!person!birthdate
+   Else
+      Message.Info("Missing birthdate! - your programming skills are fucked")
+      person!birthdate = "1900-01-01"
+   End If
+   If Not IsNull(data!person!retired) Then
+      person!retired = True  
+   Endif
+   Select Case Lower(Replace(data!person!title, ".", ""))
+      Case "dr"
+         fk_title = const.ctitleDr
+      Case "mr"
+         fk_title = const.ctitleMr
+      Case "mrs"
+         fk_title = const.ctitleMrs
+      Case "ms"
+         fk_title = const.ctitleMs
+      Case "master"
+         fk_title = const.ctitleMaster
+      Case "miss"
+         fk_title = const.ctitleMiss
+      Case "prof"
+         fk_title = const.ctitleProf
+      Case Else 
+         Select Case person!fk_sex
+            Case const.cSexMale
+               bits = Split(person!birthdate, "-")
+               If DateDiff(Now, Date(Val(bits[0]), Val(bits[1]), Val(bits[2])), gb.year) > 15 Then
+                  fk_title = const.ctitleMr
+               Else
+                  fk_title = const.ctitleMaster
+               End If  
+            Case const.cSexFemale
+               bits = Split(person!birthdate, "-")
+               If DateDiff(Now, Date(Val(bits[0]), Val(bits[1]), Val(bits[2])), gb.year) > 15 Then
+                  fk_title = const.ctitleMiss
+               Else
+                  fk_title = const.ctitleMs
+               End If 
+         End Select
+   End Select
+   person!fk_title = fk_title 
+   bOddOccupation = False   
+   If Not IsNull(Trim(Lower(data!person!occupation))) Then 
+      If Not InStr(Trim(Lower(data!person!occupation)), "/") Then       
+         R = modDBConnect.exec_query("Select * from common.lu_occupations where occupation ILIKE $$" & Trim(Lower(data!person!occupation)) & "$$")
+         If R.count Then
+            person!fk_occupation = R!pk
+         Else           
+            If Not oddoccupations.Exist(Trim(Lower(data!person!occupation))) Then 
+               Select Case Message.Question("Occupation not found:\n\n" & data!person!occupation, "Save As New Occupation", "Do Not save")
+                  Case 1 
+                     person!fk_occupation = modContactsDBI.Occupation_Save(Trim(Lower(data!person!occupation)))
+                     modDBConnect.CommitTrans
+                  Case 2
+                     bOddOccupation = True        
+                     oddoccupations.Add(Trim(Lower(data!person!occupation)), oddoccupations.count)    
+               End Select
+            Else 
+               bOddOccupation = True   
+            End If   
+         Endif
+      End If
+   End If  
+   '-------------------------------------------------------
+   'Does the person already exist in the person's database?
+   '-------------------------------------------------------  
+   bits = Split(person!birthdate, "-")
+   sql = "Select * from contacts.data_persons where "
+   sql &= "Firstname ILIKE $$" & person!firstname & "$$ AND surname ILIKE $$" & person!surname & "$$ "
+   sql &= " AND birthdate = $$" & person!birthdate & "$$"
+   R = modDBConnect.exec_query(sql)
+   If R.Count Then
+      'fixme write to logfile
+      ' Message.title = "Duplicate Record" 'fixme write to a logfile
+      ' sMsg = " The name:" & person!firstname & " " & person!surname & " " & Format(Date(Val(bits[0]), Val(bits[1]), Val(bits[2])), "dd/mm/yyyy")
+      ' sMsg &= " already exists in the database.\n\n"
+      ' If R.count > 1 Then
+      '    sMsg &= "In fact, the same person and date of birth exist  " & Str(R.count) & " times.\n\n"
+      '    sMsg &= "This record cannot be processed and will be added to a list in the log file ."
+      '    Message.Info(sMsg)
+      ' End If   
+      person = Null
+   Endif 
+   Return Person 
+   
+End
+
+Public Sub Comms_Create(data As Collection) As Collection 
+   '----------------------------------------------------------------------
+   'Creates a collection of persons comms null collection returned if none
+   '----------------------------------------------------------------------
+   
+   Dim communications As New Collection
+   Dim communication As CRow
+   
+   communications = New Collection
+   If Not IsNull(data!phone_business) Then
+      communication = New CRow
+      communication!fk_type = const.CommModalityWork
+      communication!value = data!phone_business
+      communications.Add(communication, communications.count)
+   Endif
+   If Not IsNull(data!phone_afterhours) Then
+      communication = New CRow
+      communication!fk_type = const.CommModalityPhoneAfterHours
+      communication!value = data!phone_afterhours
+      communications.Add(communication, communications.count)
+   Endif
+   If Not IsNull(data!fax_no) Then
+      communication = New CRow
+      communication!fk_type = const.CommModalityFax
+      communication!value = data!fax_no
+      communications.Add(communication, communications.count)
+   Endif
+   If Not IsNull(data!web) Then
+      communication = New CRow 
+      communication!fk_type = const.CommModalityWeb
+      communication!value = data!web
+      communications.Add(communication, communications.count)
+   Endif
+   If Not IsNull(data!email) Then
+      communication = New CRow
+      communication!fk_type = const.CommModalityEmail
+      communication!value = data!email 
+      communications.Add(communication, communications.count)
+   Endif
+     If Not IsNull(data!phone_mobile) Then
+      communication = New CRow 
+      communication!fk_type = const.CommModalityMobile
+      communication!value = data!phone_mobile
+      communications.Add(communication, communications.count)
+   Endif
+     If Not IsNull(data!phone_home) Then
+      communication = New CRow 
+      communication!fk_type = const.CommModalityHome
+      communication!value = data!phone_home
+      communications.Add(communication, communications.count)
+   Endif
+   Return communications
+   
+End
+
+Public Function Address_Create(data As Collection, person As CRow, fk_lu_address_type As Integer) As CRow
+   '--------------------------------------------------------------------------------
+   'Attempt to create an address, however much of the data to import is very 'dirty'
+   'as a good many legacy databases had no proper town/postcode data input method
+   'and relied on secretarial typing.... many spello's and non-existant towns
+   'We will try various things, if they fail we will prompt the user for help
+   'town field could have town + postcode
+   'the town could be ok, but the state missing
+   'the town could be ok but the postcode is wrong
+   '---------------------------------------------------------------------------------
+
+   Dim address As New CRow
+   Dim sql As String
+   Dim R As Result
+   
+   
+   '-------------------------------------------------------------
+   'first, lets go for a unique australian town.
+   'town_Cleanup(data!town)cleanup crap in the names
+   '-------------------------------------------------------------
+   If Not data.count Then
+      Return address
+   Endif
+   If person!firstname = "Kylea" Then
+      Print 
+   Endif
+   sql = "Select * from contacts.lu_towns where town ilike $$" & town_Cleanup(data!town) & "$$ AND comment is null"
+   R = modDBConnect.exec_query(sql)
+   If r.count = 1 Then
+      address = town_Make(R, data, fk_lu_address_type)
+   Else      
+      '-----------------------------------------------------------------------------------------------------
+      'ok, bombed on that, there could be none or > 1, try town + state as I've noted postcodes can be wrong
+      '-----------------------------------------------------------------------------------------------------
+      If Not IsNull(data!state) Then 
+         sql = "Select * from contacts.lu_towns where town ilike $$" & town_Cleanup(data!town) & "$$ AND comment is null "        
+         sql &= " AND state = $$" & Trim(data!state) & "$$"
+         R = modDBConnect.exec_query(sql)
+         If R.count = 1 Then  
+            address = town_Make(R, data, fk_lu_address_type)
+         Endif
+      Else   
+         '----------------------------------
+         'ok, no state, try town + postcode
+         '-----------------------------------
+         If Not IsNull(data!postcode) Then  
+            sql = "Select * from contacts.lu_towns where town ilike $$" & town_Cleanup(data!town) & "$$ AND comment is null "     
+            sql &= " AND postcode = $$" & Trim(data!postcode) & "$$"
+            R = modDBConnect.exec_query(sql)
+            If R.count = 1 Then
+               address = town_Make(R, data, fk_lu_address_type)
+            End If
+         End If 
+      End If  
+      If Not address.count Then    
+         '----------------------------------------------------
+         'At this point we have not town, need user input
+         'ok, failed, use popup and get use to add the town
+         'We'll look first in previously saved mis-spelt town
+         '----------------------------------------------------
+         If Not IsNull(data!town) Then 
+            misspelt_town = modContactsDBI.Misspelt_towns_Get(data!town) 
+            If Not IsNull(misspelt_town) Then 
+               address = New CRow
+               address!fk_town = misspelt_town!fk_town
+               address!street1 = data!street1 
+               address!street2 = data!street2
+               address!fk_lu_address_type = const.AddressType_Work
+               Return address
+            End If   
+            If address.count = 0 And Not IsNull(data!town) Then
+               '------------------- Endif---------------------------------------------------------
+               'not previously encoutered it, ok give user the popup dialog let them find it
+               '----------------------------------------------------------------------------
+               
+               '   If IsNull(misspelt_towns)
+               ' bSkipTown = False    'First check if we have encountered this town previously this sesion, found no equivalent, and marked to skip
+               ' For Each skipped_town In skipped_towns
+               '   If Lower(skipped_town) = Lower(data!town) Then
+               '       bSkipTown = True
+               '       Break
+               '   Endif
+               ' Next
+               '    If bSkipTown = False Then       'this is a new one  popup the dialog, let user choose             
+               fk_town = 0
+               misspelt_town = New Collection  
+               misspelt_town!town_misspelt = data!town
+               FSelectTown.txtNotFound.text = data!town
+               FSelectTown.txtFirstname.text = person!firstname
+               FSelectTown.txtSurname.text = person!surname
+               FSelectTown.txtstreet1.text = data!street1
+               FSelectTown.txtstreet2.text = data!street2
+               FSelectTown.Init(data)
+               Dec Application.Busy
+               FSelectTown.ShowModal()                         'get the data,if user did allocate valid town, fk_town > 0
+               Inc Application.Busy
+               If fk_town Then
+                  '------------------------------------------------------------------------------------------   
+                  'if the user allocated a town, fill the address collection
+                  'then save the misspelt town to the backend, along with the correct key to the correct town
+                  '------------------------------------------------------------------------------------------
+                  address = New CRow
+                  If fk_town = 0 Then 'should never be trying to find bug
+                    Message.Info("fk_town is zero")
+                    Print
+                  End If
+                  address!fk_town = fk_town
+                  address!street1 = data!street1
+                  address!street2 = data!street2
+                  address!fk_lu_address_type = fk_lu_address_type
+                  misspelt_town!fk_town = fk_town             'the real town
+                  misspelt_town!town = Corrected_Town!town 
+                  misspelt_town!town_misspelt = data!town 'the mis-spelt town
+                  modDBConnect.BeginTrans
+                  modDBConnect.insert("contacts.lu_misspelt_towns", misspelt_town)
+                  modDBConnect.CommitTrans
+               Else
+               '--------------------------------------------------------
+               ' Not town, but still should have an address of some sort
+               ' -------------------------------------------------------
+                  address = New CRow   
+                  address!street1 = data!street1
+                  address!street2 = data!town
+                  address!fk_lu_address_type = fk_lu_address_type
+                  Return address
+               End If
+            Else  'null town.
+               Print 
+            End If
+         End If
+       End If  
+   End If
+   If address.count = 0 Then
+      Print
+   Endif
+   
+   Return address 
+
+End
+
 Public Function Make_Date(bits As String[]) As Date
    
    If bits.count <> 3 Then
@@ -2202,6 +2199,11 @@ End
 
 Public Function Make_Date_time(datebits As String[], timebits As String[]) As Date
    
+   Dim x As Integer
+   
+   For x = timebits.count To 2
+      timebits.Add("0")
+   Next
    If timebits.count = 2 Then
       timebits.Add("0")
    Endif

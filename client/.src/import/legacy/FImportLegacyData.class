@@ -1093,10 +1093,10 @@ Public Sub Medibase_Import()
       lvwLog.Add(lvwLog.count, sOneline)
    Wend
    '  Close #hLog_file  'BUG HERE, why can't close
-
+   
 End
 
-Public Sub Medibase_Import_Progress_Notes()
+Public Sub Medibase_Import_Progress_Notes_remove()
    '----------------------------------------------------
    'Expected directory structure
    'PATIENTNAME/PROGRESSNOTES
@@ -1139,22 +1139,85 @@ Public Sub Medibase_Import_Progress_Notes()
       For Each sFile In Dir(sRootdir)                 
          If IsDir(sRootdir &/ Sfile) Then             
             sPatientDir = sFile
-            fk_patient = modImportDBI.Patient_Get_pk_Using_pk_Legacy(sPatientDir)
-            For Each Patient In modContactsDBI.Patient_Get_Using_PK(fk_patient)
-               ' Try lblProgress.text = Patient!wholename
-               Try txtImportPatient.text 
-            Next
-            '   txtImportPatient.text = lblProgress.text
-            Wait
+            
             For Each sFile In Dir(sRootdir &/ sPatientDir)
-               sNotesDir = sFile
+               
                If Not InStr(sNotesDir, "DOCUMENTS") Then  
                   x = 0 
                   For Each sFile In Dir(sRootdir &/ sPatientDir &/ sNotesDir)
-                     ProgressNotes = New Collection
-                     MetaData = New Collection 
+                     If Not InStr(sRootdir &/ sPatientDir &/ sNotesDir, ".DS_STORE") Then  
+                        Print sFile
+                     Else
+                        Message.Info("DSSTORE found")
+                     Endif
+                  Next
+               Else 
+                  'import the documents
+                  '   Print "document folder", sNotesDir
+               End If
+            Next
+            '   Print "patient key:", fk_patient 
+         Endif
+         Inc iPatientCount
+         '     If iPatientCount = 5 Then Break
+         Print "Patient:", iPatientCount
+      Next
+   End If
+   
+End
+'''
+
+Public Sub Medibase_Import_Progress_Notes()
+   '----------------------------------------------------
+   'Expected directory structure
+   'PATIENTNAME/PROGRESSNOTES
+   '  file.html
+   '  file.meta which contains
+   ' {"pk_legacy": "MCLEJAMEA", "staff_firstname": "Peter", "staff_lastname": "Wong", "time": "17:33:58", "date": "2000-07-18", "problem": null, "pk_staff_legacy": "1"}
+   '-----------------------------------------------------
+   
+   Dim sFile As String
+   Dim sDir As String
+   Dim sRootdir As String
+   Dim fk_patient As Integer
+   Dim sNotesDir As String
+   Dim sPatientDir As String
+   Dim ProgressNotes As Collection
+   Dim MetaData As Collection
+   Dim x As Integer
+   Dim bits As String[]
+   Dim hfile As File
+   Dim sOneLine As String
+   Dim fk_staff As Integer
+   Dim consult As CRow
+   Dim progressNote As CRow
+   Dim datebits As String[]
+   Dim timebits As String[]
+   Dim metadata_filename_path As String
+   Dim html_filename_path As String 
+   Dim notes As String 
+   Dim charpos As Integer
+   Dim sString As String
+   Dim bpString As String
+   Dim LeftString As String
+   Dim RightString As String
+   Dim iPatientCount As Integer  
+   
+   rejected_records = New Collection
+   sRootdir = Trim(txtImportDirectory.text)
+   If IsDir(sRootdir) Then                             'eg "/home/user/MEDIBASE_EXPORT/"
+      For Each sFile In Dir(sRootdir)                 
+         If IsDir(sRootdir &/ Sfile) Then             
+            sPatientDir = sFile
+            fk_patient = modImportDBI.Patient_Get_pk_Using_pk_Legacy(sPatientDir)
+            For Each sFile In Dir(sRootdir &/ sPatientDir)
+               If sFile = "PROGRESSNOTES" Then 
+                  x = 0 
+                  For Each sFile In Dir(sRootdir &/ sPatientDir &/ sNotesDir &/ "PROGRESSNOTES")
                      If File.Ext(sRootdir &/ sPatientDir &/ sNotesDir &/ sFile) = "meta" Then
-                        metadata_filename_path = sRootdir &/ sPatientDir &/ sNotesDir &/ sFile
+                        ProgressNotes = New Collection
+                        MetaData = New Collection 
+                        metadata_filename_path = sRootdir &/ sPatientDir &/ sNotesDir &/ "PROGRESSNOTES" &/ sFile
                         hFile = Open metadata_filename_path For Read
                         While Not Eof(hFile)
                            Line Input #hFile, sOneLine
@@ -1206,14 +1269,10 @@ Public Sub Medibase_Import_Progress_Notes()
                         '  Print metadata!notes   
                         '  
                         ' Endif
-                        Print "starting ", txtImportPatient.text, fk_patient, MetaData!date, MetaData!time
+                        '   Print "starting ", txtImportPatient.text, fk_patient, MetaData!date, MetaData!time
                         fk_staff = modImportDBI.Staff_Get_Using_Firstname_Lastname(metadata)
                         datebits = Split(MetaData!date, "-")
                         timebits = Split(MetaData!time, ":")
-                        
-                        ' If datebits.count = 0 Or timebits.count = 0 Then
-                        '   rejected_records.Add(sFile, rejected_records.count)
-                        '  Else  
                         consult = New CRow 
                         consult!consult_date = Make_Date_time(datebits, timebits)
                         consult!consult_date = Make_Date_time(datebits, timebits)
@@ -1221,32 +1280,22 @@ Public Sub Medibase_Import_Progress_Notes()
                         consult!fk_staff = fk_staff
                         consult!fk_type = const.consult_type_at_Surgery
                         consult!summary = "Imported from MediBase" & Format(Now, "dd/mm/yyyy")
-                        Print "Saving consult: " & sRootdir &/ sPatientDir &/ sNotesDir &/ sFile
                         consult.Save("clin_consult.consult", "fk_consult")
-                        Print "after saving consult"
                         Progressnote = New CRow
                         Progressnote!fk_consult = consult!fk_consult
                         Progressnote!fk_audit_action = const.cAuditAction_FileImport
                         Progressnote!notes = metadata!notes
                         Progressnote!fk_section = 0 'general notes
                         Progressnote!fk_problem = 0 'no problem
-                        Print "Saving progressnote:" & sRootdir &/ sPatientDir &/ sNotesDir &/ sFile
                         progressNote.Save("clin_consult.progressnotes", "fk_progressnote")
-                        Print "after progress note save"
-                        '  End If   
                      Endif
                      Inc x 
                   Next
-               Else 
-                  'import the documents
-                  Print "document folder", sNotesDir
-               End If  
+               End If
             Next
-            '   Print "patient key:", fk_patient 
          Endif
          Inc iPatientCount
-         '     If iPatientCount = 5 Then Break
-         Print "Patient:", iPatientCount
+         Print iPatientCount
       Next
    End If
    modDBConnect.CommitTrans 
@@ -1257,11 +1306,7 @@ Public Sub Medibase_Import_Progress_Notes()
       Next
       Close #hfile
       Message.Info("Some records could not be processed.\n\nA list may be found in this file:\n\n" & sRootdir &/ "progress_notes_rejected.txt")
-      
    End If   
-Catch
-   Print sRootdir &/ sPatientDir &/ sNotesDir &/ sFile
-   Print 
    
 End
 
@@ -1452,8 +1497,8 @@ Public Sub Medibase_Import_Patients()
          'save the record 
          '---------------
          person.Save("contacts.data_persons", "fk_person")
-       '  If Not IsNull(address) Then 
-            
+         '  If Not IsNull(address) Then 
+         
          If address.count <> 0 Then 
             address.Save("contacts.data_addresses", "fk_address")
             address_link = New CRow   
@@ -2031,13 +2076,13 @@ Public Sub Comms_Create(data As Collection) As Collection
       communication!value = data!email 
       communications.Add(communication, communications.count)
    Endif
-     If Not IsNull(data!phone_mobile) Then
+   If Not IsNull(data!phone_mobile) Then
       communication = New CRow 
       communication!fk_type = const.CommModalityMobile
       communication!value = data!phone_mobile
       communications.Add(communication, communications.count)
    Endif
-     If Not IsNull(data!phone_home) Then
+   If Not IsNull(data!phone_home) Then
       communication = New CRow 
       communication!fk_type = const.CommModalityHome
       communication!value = data!phone_home
@@ -2057,11 +2102,10 @@ Public Function Address_Create(data As Collection, person As CRow, fk_lu_address
    'the town could be ok, but the state missing
    'the town could be ok but the postcode is wrong
    '---------------------------------------------------------------------------------
-
+   
    Dim address As New CRow
    Dim sql As String
    Dim R As Result
-   
    
    '-------------------------------------------------------------
    'first, lets go for a unique australian town.
@@ -2118,19 +2162,6 @@ Public Function Address_Create(data As Collection, person As CRow, fk_lu_address
                Return address
             End If   
             If address.count = 0 And Not IsNull(data!town) Then
-               '------------------- Endif---------------------------------------------------------
-               'not previously encoutered it, ok give user the popup dialog let them find it
-               '----------------------------------------------------------------------------
-               
-               '   If IsNull(misspelt_towns)
-               ' bSkipTown = False    'First check if we have encountered this town previously this sesion, found no equivalent, and marked to skip
-               ' For Each skipped_town In skipped_towns
-               '   If Lower(skipped_town) = Lower(data!town) Then
-               '       bSkipTown = True
-               '       Break
-               '   Endif
-               ' Next
-               '    If bSkipTown = False Then       'this is a new one  popup the dialog, let user choose             
                fk_town = 0
                misspelt_town = New Collection  
                misspelt_town!town_misspelt = data!town
@@ -2150,8 +2181,8 @@ Public Function Address_Create(data As Collection, person As CRow, fk_lu_address
                   '------------------------------------------------------------------------------------------
                   address = New CRow
                   If fk_town = 0 Then 'should never be trying to find bug
-                    Message.Info("fk_town is zero")
-                    Print
+                     Message.Info("fk_town is zero")
+                     Print
                   End If
                   address!fk_town = fk_town
                   address!street1 = data!street1
@@ -2164,27 +2195,21 @@ Public Function Address_Create(data As Collection, person As CRow, fk_lu_address
                   modDBConnect.insert("contacts.lu_misspelt_towns", misspelt_town)
                   modDBConnect.CommitTrans
                Else
-               '--------------------------------------------------------
-               ' Not town, but still should have an address of some sort
-               ' -------------------------------------------------------
+                  '--------------------------------------------------------
+                  ' Not town, but still should have an address of some sort
+                  ' -------------------------------------------------------
                   address = New CRow   
                   address!street1 = data!street1
                   address!street2 = data!town
                   address!fk_lu_address_type = fk_lu_address_type
                   Return address
                End If
-            Else  'null town.
-               Print 
             End If
          End If
-       End If  
+      End If  
    End If
-   If address.count = 0 Then
-      Print
-   Endif
-   
    Return address 
-
+   
 End
 
 Public Function Make_Date(bits As String[]) As Date
@@ -2198,7 +2223,7 @@ Public Function Make_Date(bits As String[]) As Date
 End
 
 Public Function Make_Date_time(datebits As String[], timebits As String[]) As Date
-   
+   'some records missing time in part or whole
    Dim x As Integer
    
    For x = timebits.count To 2

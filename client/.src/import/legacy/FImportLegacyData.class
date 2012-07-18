@@ -1078,6 +1078,12 @@ Public Sub Medibase_Import()
       bNothingChosen = False 
       Medibase_Import_Progress_Notes()
    End If
+   If chkImportDocuments.value = True Then
+      bNothingChosen = False 
+       Print #hLog_file, "Starting document import"
+      Medibase_Import_Documents()
+       Print #hLog_file, "ending document import"
+   End If
    If bNothingChosen Then
       Message.Info("Please select the type of data you wish to import")
    Endif
@@ -1096,14 +1102,7 @@ Public Sub Medibase_Import()
    
 End
 
-Public Sub Medibase_Import_Progress_Notes_remove()
-   '----------------------------------------------------
-   'Expected directory structure
-   'PATIENTNAME/PROGRESSNOTES
-   '  file.html
-   '  file.meta which contains
-   ' {"pk_legacy": "MCLEJAMEA", "staff_firstname": "Peter", "staff_lastname": "Wong", "time": "17:33:58", "date": "2000-07-18", "problem": null, "pk_staff_legacy": "1"}
-   '-----------------------------------------------------
+Public Sub Medibase_Import_Documents()
    
    Dim sFile As String
    Dim sDir As String
@@ -1111,7 +1110,7 @@ Public Sub Medibase_Import_Progress_Notes_remove()
    Dim fk_patient As Integer
    Dim sNotesDir As String
    Dim sPatientDir As String
-   Dim ProgressNotes As Collection
+   Dim Documents As Collection
    Dim MetaData As Collection
    Dim x As Integer
    Dim bits As String[]
@@ -1123,7 +1122,7 @@ Public Sub Medibase_Import_Progress_Notes_remove()
    Dim datebits As String[]
    Dim timebits As String[]
    Dim metadata_filename_path As String
-   Dim html_filename_path As String 
+   Dim pdf_filename_path As String 
    Dim notes As String 
    Dim charpos As Integer
    Dim sString As String
@@ -1131,41 +1130,106 @@ Public Sub Medibase_Import_Progress_Notes_remove()
    Dim LeftString As String
    Dim RightString As String
    Dim iPatientCount As Integer  
+   Dim Document As CRow
+   Dim pdf_filename_original As String 'the original name exported we will clean up later
+   Dim pdf_filename_modified As String 'the orginal name minus the crud
+   Dim fk_lu_display_as As Integer
    
+  ' sRootdir = "/home/richard/horst/test"
+   '   fk_patient = modImportDBI.Patient_Get_pk_Using_pk_Legacy("YOUNDEBBA")
    rejected_records = New Collection
    sRootdir = Trim(txtImportDirectory.text)
-   '   sRootdir = "/home/richard/horst/progress_notes_bugs_out"
    If IsDir(sRootdir) Then                             'eg "/home/user/MEDIBASE_EXPORT/"
       For Each sFile In Dir(sRootdir)                 
          If IsDir(sRootdir &/ Sfile) Then             
             sPatientDir = sFile
-            
+            fk_patient = modImportDBI.Patient_Get_pk_Using_pk_Legacy(sPatientDir)
             For Each sFile In Dir(sRootdir &/ sPatientDir)
-               
-               If Not InStr(sNotesDir, "DOCUMENTS") Then  
+               If sFile = "DOCUMENTS" Then 
                   x = 0 
-                  For Each sFile In Dir(sRootdir &/ sPatientDir &/ sNotesDir)
-                     If Not InStr(sRootdir &/ sPatientDir &/ sNotesDir, ".DS_STORE") Then  
-                        Print sFile
-                     Else
-                        Message.Info("DSSTORE found")
+                  For Each sFile In Dir(sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS")
+                     If File.Ext(sRootdir &/ sPatientDir &/ sNotesDir &/ sFile) = "meta" Then
+                        Documents = New Collection
+                        MetaData = New Collection 
+                        metadata_filename_path = sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ sFile
+                        hFile = Open metadata_filename_path For Read
+                        While Not Eof(hFile)
+                           Line Input #hFile, sOneLine
+                        Wend  
+                        Close #hfile
+                        MetaData = JSON.Decode(sOneline)
+                        pdf_filename_original = Replace(sFile, ".meta", "")         'this is the pdf name
+                        pdf_filename_modified = modUtil.Filename_Protect(pdf_filename_original) & ".pdf"                                            'create a new name which won't crash 
+                        fk_staff = modImportDBI.Staff_Get_Using_Firstname_Lastname(metadata)
+                       '------------------------------------------------------------------------------------------------
+                       'Insert the document
+                       'the fk_sending_entity = the practice importing the data, ie wherever this program is being run
+                       'const.Document_Display_As_Letter not of relevance
+                       '------------------------------------------------------------------------------------------------
+                        Document = New CRow
+                        Document!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(const.Document_Display_As_Letter, "", modDBConnect.currentUser!fk_branch)
+                        If Not File.Ext(pdf_filename_modified) = ".pdf" Then
+                           Message.Info(pdf_filename_modified, " is not ok")
+                        Endif
+                        Document!source_file = pdf_filename_modified
+                        Document!imported_time = Now()
+                        Document!date_created = MetaData!document_date
+                        Document!originator = "sender unknown"
+                        Document!fk_patient = fk_patient
+                        Document!fk_staff_filed_document = modDBConnect.currentUser!fk_staff
+                        Document!fk_staff_destination = modDBConnect.currentUser!fk_staff
+                        Document!concluded = True
+                        Document!fk_lu_urgency = const.UrgencyLevelRoutine
+                        Document!tag = "Sender Unknown - scanned letter"
+                        Document!tag_user = MetaData!description
+                        '------------------------------------------------------
+                        'Can sometimes work out if a request result or a letter
+                        'HORST/IAN FIXME: replace this long line with a better logic
+                        'symbion
+                        '   s & n
+                         'pulmonary function test
+                        '------------------------------------------------------
+                        fk_lu_display_as = const.Document_Display_As_Letter  
+                        If InStr(Lower(metadata!description), "pathology") Or InStr(Lower(metadata!description), "path") Or InStr(Lower(metadata!description), "radiology") Or InStr(Lower(metadata!description), "s&n") Or InStr(Lower(metadata!description), "symbion") Or InStr(Lower(metadata!description), "pulmonary function test") Then
+                           fk_lu_display_as = const.Document_Display_As_Result
+                        Endif
+                        Document!fk_lu_display_as = fk_lu_display_as
+                        Document!md5sum = modUtil.MD5Sum(sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original)
+                        Try Copy sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original To modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ pdf_filename_modified 'copy to our documents dir.
+                        If Not Error Then
+                           Document.Save("documents.documents", "fk_document")
+                      '      Message.Info("file copied ok")
+                        '   Try Kill sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original
+                         '  If Error Then
+                         '     Message.info("problem killing the original file")
+                        '   Endif
+                        Else
+                       '    Print "copy " & sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original & " To " & modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ pdf_filename_modified 'copy to our documents dir.
+                           rejected_records.Add(sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original, rejected_records.count)
+                 
+                        Endif
+                        
                      Endif
+                     Inc x 
                   Next
-               Else 
-                  'import the documents
-                  '   Print "document folder", sNotesDir
                End If
             Next
-            '   Print "patient key:", fk_patient 
          Endif
          Inc iPatientCount
-         '     If iPatientCount = 5 Then Break
-         Print "Patient:", iPatientCount
-      Next
+         Print iPatientCount, "fk-patient:", fk_patient
+         Next
    End If
+   modDBConnect.CommitTrans 
+   If rejected_records.count Then   
+      hFile = Open sRootdir &/ "documents_rejected.txt" For Write Create
+      For x = 0 To rejected_records.count - 1
+         Print #hfile, rejected_records[x]
+      Next
+      Close #hfile
+      Message.Info("Some records could not be processed.\n\nA list may be found in this file:\n\n" & sRootdir &/ "documents_rejected.txt")
+   End If   
    
 End
-'''
 
 Public Sub Medibase_Import_Progress_Notes()
    '----------------------------------------------------
@@ -1279,7 +1343,7 @@ Public Sub Medibase_Import_Progress_Notes()
                         consult!fk_patient = fk_patient
                         consult!fk_staff = fk_staff
                         consult!fk_type = const.consult_type_at_Surgery
-                        consult!summary = "Imported from MediBase" & Format(Now, "dd/mm/yyyy")
+                        consult!summary = "Imported progress note from MediBase" & Format(Now, "dd/mm/yyyy")
                         consult.Save("clin_consult.consult", "fk_consult")
                         Progressnote = New CRow
                         Progressnote!fk_consult = consult!fk_consult
@@ -2224,6 +2288,7 @@ End
 
 Public Function Make_Date_time(datebits As String[], timebits As String[]) As Date
    'some records missing time in part or whole
+   
    Dim x As Integer
    
    For x = timebits.count To 2
@@ -2247,3 +2312,68 @@ Public Sub EditArea_TextBox_GotFocus()
    Last.BackGround = Color.rgb(95, 255, 175)
    
 End
+
+' pk serial Not Null,
+'    fk_lu_request_type integer, - - The type Of provider eg pathology provider, radiology provider
+' msh_sending_entity text Not Null, - - the entity sending, could be unintelligable eg a NATA / number Or a recognizable name eg Hunter Radiology, however often bears no relationship To a real person Or company
+' msh_transmitting_entity text, - - could be the sending entity Or third party transmitter eg Medical Objects, Or the name Of a computer program generating the hl7
+' fk_lu_message_display_style integer Not Null, - - display As Letter Or result style...
+'    fk_branch integer,
+'    fk_employee integer,
+'    fk_person integer,
+'    fk_lu_message_standard integer Not Null, - - hl7 Or pit
+' exclude_ft_report boolean Default False, - - If True Then no Free text segments will be shown
+' exclude_pit boolean Default False, - - If contains PIT segments If True these will Not be shown(often duplicated the hl7 data itself)
+' abnormals_foreground_color integer Default 16711680,
+'    abnormals_background_color integer Default 16777215,
+'    deleted boolean Default False,
+'    CONSTRAINT sending_entities_pkey PRIMARY KEY(pk)
+' )
+' With (
+'       OIDS = False
+'    );
+'    ALTER TABLE documents.sending_entities
+'    OWNER To richard;
+'    GRANT ALL On TABLE documents.sending_entities To richard;
+'    GRANT ALL On TABLE documents.sending_entities To easygp;
+'    GRANT ALL On TABLE documents.sending_entities To staff;
+'    COMMENT On TABLE documents.sending_entities
+'    Is 'Sending entities and the parameters to define how to handle incoming hl7 messages 
+'       On a per - provider basis.Note these messages can be In form Of various hl7 standards Or old style PIT(sequential numbered text lines eg 100, 110 120 etc This table
+'    defines the file type hl7 Or pit, who Is Sending it, where To put it, which segments Of the message To exclude when displaying In Html ';
+'    COMMENT On COLUMN documents.sending_entities.fk_lu_request_type Is 'The type of provider eg pathology provider, radiology provider';
+'       COMMENT On COLUMN documents.sending_entities.msh_sending_entity Is 'the entity sending, could be unintelligable eg a NATA/number or a recognizable name eg Hunter Radiology, however often bears no relationship to a real person or company';
+'       COMMENT On COLUMN documents.sending_entities.msh_transmitting_entity Is 'could be the sending entity or third party transmitter eg Medical Objects, or the name of a computer program generating the hl7';
+'       COMMENT On COLUMN documents.sending_entities.fk_lu_message_display_style Is 'display as letter or result style
+'       - Public Const Document_Display_As_Letter As Integer = 1 
+'    - Public Const Document_Display_As_Result As Integer = 2
+'    
+'    Note: though this attribute Is Kept For Each document In document.documents
+'    at the Time the document Is Signed off by the user,
+'       we need To know what the Default display type Is For Each message sender -
+'       defaults To 1 = letter, because, though pathology companies are far more
+'    common, they will have been set To display As A result In the configuration Of
+'    message senders.Scanned documents however will Not by Default , so we assume
+'    (sometimes wrongly)that they are usually letters
+'    ';
+'    COMMENT On COLUMN documents.sending_entities.fk_lu_message_standard Is 'hl7 or pit';
+'       COMMENT On COLUMN documents.sending_entities.exclude_ft_report Is 'if true then no free text segments will be shown';
+'       COMMENT On COLUMN documents.sending_entities.exclude_pit Is 'if contains PIT segments if true these will not be shown (often duplicated the hl7 data itself)';
+'    
+'   originator text,
+'   originator_reference text,
+'   comment_on_document text, - - additional comment e.g NAD etc
+' COMMENT On COLUMN documents.documents.comment_on_document Is 'additional comment e.g NAD etc';
+' COMMENT On COLUMN documents.documents.staff_intended_for_unknown Is 'Sometimes despite all efforts it is not possible to determine from the hl7 who the message was
+'  intended for.In this situation EasyGP has a Default staff member who Is Allocated the
+'  orphaned messages.If so, Then this field will be True
+'  If this Is Sorted out, Then this field will be re - set To False the fk_staff_destination set
+'  To the correct fk_staff, however these changes will be logged ';
+' COMMENT On COLUMN documents.documents.fk_lu_display_as Is 'How to display the document 1 as a result 2 as a letter';
+' COMMENT On COLUMN documents.documents.fk_lu_request_type Is ' - key to clin_requests.lu_request_type table which contains the types
+'     Of requests e.g Pathology Radiology Vascular. 
+'   - note this field over - rides the 
+'    fk_lu_request_type Of a given documents.sending_entities.fk_lu_request_type
+'    which Is There To aid FDocumentMetadata guess the likely type Of request For
+'    a given sender Of messages, but may Not be correct all the Time ';
+' 

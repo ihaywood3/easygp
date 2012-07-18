@@ -13,5 +13,5 @@ update drugs.product set fk_schedule=8 where atccode = 'N05CD03';
  -- Rohypnol
 
 truncate db.lu_version;
-insert into db.lu_version (lu_major,lu_minor) values (0, 195);
+insert into db.lu_version (lu_major,lu_minor) values (0, 196);
 

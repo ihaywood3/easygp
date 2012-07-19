@@ -13,14 +13,14 @@
 ' TODOS        Implement Accompanying Forms
 '
 ' BUGS         email rterry@internode.on.net or rterry@pacific.net.au
-
+'-----------------------------------------------------------------------------
 Private bEmbedded As Boolean               'If true this form is embedded elsewhere than as a main tab
 Public Embedded_form As String            'Name of the form or place it is embedded eg Inbox
-Public Recalls As Collection              'Set by embedding form
 Public AccompanyingForms As Collection
 Public RecallReasons As Collection
-Private currentrecall As Collection 
-Public currentReason As Collection
+Public RecallsThisConsult As Collection              'Set by embedding form
+Private CurrentRecallThisConsult As Collection 
+Private ExistingRecall As Collection
 Private bExit As Boolean
 Private bEditing As Boolean
 Private bKeyValid As Boolean
@@ -45,6 +45,7 @@ Private fk_table_row As Integer        'fixme fim my name = e.g fk_document
 Private schema As String
 Private table As String 
 Private Inclusions_EditArea As Collection
+
 
 Public Sub set_embedded(flag As Boolean, embeddedinform As String)
    '--------------------------------------------------
@@ -100,9 +101,11 @@ End
 Public Sub ReLoad()
    
    Recalls_This_Consult_Show()   'show recalls ordered this consult
+   If Embedded_form <> "FClinical" Then Recalls_Outstanding_Show()
    New_Entry()                  'clear the editing area, default to new recall
    
 End
+
 
 Public Sub EditArea_Clear()
 
@@ -261,20 +264,6 @@ Public Sub Save()
     Application.Busy = 0
 End
 
-Public Sub Refresh_Lists()
-   '-------------------------------------
-   'Updates the lists the user is viewing
-   '-------------------------------------
-   'user ian's u as collection fixthis
-   ' sPerson = gvar.staff_member!Title & " " & gvar.staff_member!wholename
-   ' cvwRecalls.Add(pk_recall, 0)
-   ' cvwRecalls[pk_recall][0] = Format(currentRecall!due, "dd/mm/yyyy")
-   ' cvwRecalls[pk_recall][1] = currentRecall!reason
-   ' cvwRecalls[pk_recall][2] = "Contact method: " & currentRecall!contact_method
-   ' cvwRecalls[pk_recall][3] = "To see: " & sPerson
-   ' 
-   
-End
 
 Public Sub mnuHealthIssues_Click()
    '---------------------------------------------------
@@ -305,12 +294,13 @@ Public Sub Settings_Save()
       '-----------------------------------------------------------------
       Settings["Recalls_Embedded_" & Embedded_form & "/VSplit_EditArea"] = VSplit_EditArea.layout
       Settings["Recalls_Embedded_" & Embedded_form & "/HSplit_EditArea"] = HSplit_EditArea.Layout
+      Settings["Recalls_Embedded_" & Embedded_form & "/VSplit_Recalls"] = VSplit_Recalls.Layout
       Settings["Recalls_Embedded_" & Embedded_form & "/HSplit_AdditionalNotes"] = HSplit_AdditionalNotes.Layout
    Else
       Settings["Recalls/VSplit_EditArea"] = VSplit_EditArea.layout
       Settings["Recalls/HSplit_EditArea"] = HSplit_EditArea.Layout
       Settings["Recalls/HSplit_AdditionalNotes"] = HSplit_AdditionalNotes.Layout
-      
+      Settings["Recalls/VSplit_Recalls"] = VSplit_Recalls.Layout
    End If
    
 End
@@ -371,7 +361,7 @@ Public Sub Layout_Controls()
    
    Dim lbl As Label
    
-   cvwRecalls.Columns.count = 6 'recall for|due date|contact method|Person to see|additional notes
+   cvwRecallsLoggedThisConsult.Columns.count = 6 'recall for|due date|contact method|Person to see|additional notes
    cmbSeeAnyone.Add("", 0) 'fixme unhard code me
    cmbSeeAnyone.Add("General Practitioner", 1) 'fixme unhard code me
    cmbSeeAnyone.Add("Nurse", 2)
@@ -501,7 +491,7 @@ Public Sub EditArea_GotFocus()
          
       Case "recall for"
          With listview1
-            .top = VSplit_EditArea.top + Last.Parent.top + Last.Parent.height
+            .top = VSplit_EditArea.top + Last.Parent.top + Last.Parent.height + lbl101.height
             .left = Last.Parent.Left
             .width = txtRecallFor.Width
          End With
@@ -802,8 +792,8 @@ Public Sub Edit()
    Dim recall As Collection
    Dim sString As String
    
-   cvwRecalls.MoveCurrent   
-   pk_recall = cvwRecalls.Item.Key
+   cvwRecallsLoggedThisConsult.MoveCurrent   
+   pk_recall = cvwRecallsLoggedThisConsult.Item.Key
    recall = currentconsult!recalls_this_consult[pk_recall]
    bExit = True  
    fk_progressnote = -1 'default to new progressnote
@@ -870,9 +860,9 @@ Public Sub Delete()
    ' The menu tag is const.cAuditAction_Delete
    '-----------------------------------------------------------
    
-   cvwRecalls.MoveCurrent
-   currentrecall = Recalls[cvwRecalls.Item.key]
-   modRecallsMenu.Process(currentrecall, Last.tag, currentconsult)
+   cvwRecallsLoggedThisConsult.MoveCurrent
+   CurrentRecallThisConsult = RecallsThisConsult[cvwRecallsLoggedThisConsult.Item.key]
+   modRecallsMenu.Process(CurrentRecallThisConsult, Last.tag, currentconsult)
    ReLoad()
    FClinical.Refresh_AllPreviousNotes()
    
@@ -924,7 +914,6 @@ Public Function Valid_Recall() As Boolean
       MenuButton1.SetFocus()
       Return False
    End If
-   
    Return True
    
 End
@@ -935,28 +924,24 @@ Public Sub Recalls_This_Consult_Show()
    'the collection of recalls. Puts red line around the
    'list if unsaved data
    '-----------------------------------------------------
-   
    Dim recall As Collection
    Dim x As Integer
    Dim bDataChanged As Boolean
    Dim sPerson As String
    
    currentconsult.Refresh("recalls_this_consult") ' all recalls
-   Recalls = currentconsult!recalls_this_consult
-   cvwRecalls.Clear()           'clear the list    
-   cvwRecalls.Columns.Count = 5
-   For Each recall In recalls 
+   RecallsThisconsult = currentconsult!recalls_this_consult
+   cvwRecallsLoggedThisConsult.Clear()           'clear the list    
+   cvwRecallsLoggedThisConsult.Columns.Count = 5
+   For Each recall In RecallsThisconsult 
       x = recall!pk_recall
       sPerson = recall!title & " "
       sPerson &= recall!wholename
-      
-      cvwRecalls.Add(x, 0)
-      cvwRecalls[x][0] = Format(Recall!due, "dd/mm/yyyy")
-      ' cvwRecalls[x][1] = Recall.reason
-      cvwRecalls[x][1] = Recall!reason
-      cvwRecalls[x][2] = "Contact method: " & Recall!contact_by
-      cvwRecalls[x][3] = "To see: " & sPerson
-      
+      cvwRecallsLoggedThisConsult.Add(x, 0)
+      cvwRecallsLoggedThisConsult[x][0] = Format(Recall!due, "dd/mm/yyyy")
+      cvwRecallsLoggedThisConsult[x][1] = Recall!reason
+      cvwRecallsLoggedThisConsult[x][2] = "Contact method: " & Recall!contact_by
+      cvwRecallsLoggedThisConsult[x][3] = "To see: " & sPerson
       Inc x
    Next
    '------------------------------------------------------
@@ -964,11 +949,10 @@ Public Sub Recalls_This_Consult_Show()
    'remove the padding (and the red colour)
    'otherwise, show outstanding data to be saved
    '------------------------------------------------------
-   If cvwRecalls.count = 0 Then
+   If cvwRecallsLoggedThisConsult.count = 0 Then
       VBox_EditArea.Padding = 0
    Else
       EditArea_Notify_DataChange(bDataChanged)
-      
    End If  
    
 End
@@ -1166,7 +1150,7 @@ Public Sub txtAdditionalNotes_KeyPress()
    
 End
 
-Public Sub cvwRecalls_Select()
+Public Sub cvwRecallsLoggedThisConsult_Select()
    
    EditArea_Clear()
    
@@ -1184,7 +1168,7 @@ Public Sub Patient_ShowContactDetails()
    
 End
 
-Public Sub mnuRecalls_Click()
+Public Sub mnuRecallsThisConsult_Click()
    '--------------------------------------------------
    'user has clicked on a menu option in the popupmenu
    'over columnview recalls
@@ -1199,14 +1183,14 @@ Public Sub mnuRecalls_Click()
    
 End
 
-Public Sub cvwRecalls_Menu()
+Public Sub cvwRecallsLoggedThisConsult_Menu()
    '---------------------------------------------------
    'If recalls exist for current consultation, show the
    'popup menu to allow delete or edit
    '---------------------------------------------------
    
-   If cvwRecalls.count Then
-      mnuRecalls.Popup()
+   If cvwRecallsLoggedThisConsult.count Then
+      mnuRecallsThisconsult.Popup()
    End If 
    
 End
@@ -1351,3 +1335,69 @@ Public Function Inclusions_Construct_HTML(Inclusions As Collection) As String
   Return sHtml 
 End
 
+Public Sub Recalls_Outstanding_Show()
+   '------------------------------------------------------------
+   'This routine is only used when FClinical is not the parent
+   'eg. FRecalls embeddedd in the FInbox
+   '------------------------------------------------------------
+    modRecallsDBI.cvwRecalls_Refresh(cvwRecalls, currentconsult)
+   
+End
+
+Public Sub mnuTabbedListRecalls_click()
+   '-----------------------------------------------------------------
+   'User has clicked on the recalls list, execute the various options
+   'e.g delete the recall, mark it completed, reschedule etc
+   'FIXME rename me and in the form menu - the night I did this
+   'the videocard on machine using wasn't working to update screen
+   'in some weird way
+   '-----------------------------------------------------------------
+   
+   Select Case Last.tag
+      Case "print"
+         modUtil.NotImplemented("Print the recall")
+      Case "email"
+         modUtil.NotImplemented("Email the recall")
+      Case "notify front desk"
+         modUtil.NotImplemented("Notify front desk about the recall")
+      Case "view recall history", "view audit trail"
+       '  Recalls_Audit_Trail(Last.tag)
+      Case "adjust column widths"
+         ' modUtil.NotImplemented("Adjust the column widths")
+        ' cvwrecalls.Header = True
+        ' cvwRecalls.Resizable = True
+      Case "fonts"
+         modUtil.Columnview_SetFont(cvwRecalls, "TabbedLists")
+      Case Else
+         modRecallsMenu.Process(ExistingRecall, Last.tag, currentconsult)
+         Recalls_Outstanding_Show()
+   End Select
+   
+End
+
+Public Sub cvwRecalls_Menu()
+   '-------------------------------------------------------
+   'This columnview not visible in FClinical
+   'Visible in forms like FInbox when this form is embedded
+   '-------------------------------------------------------
+
+   If cvwRecalls.count Then 
+      mnuTabbedListRecalls_ViewRecallHistory.enabled = False
+      mnuTabbedListRecalls.viewAuditTrail.enabled = False
+      mnuTabbedListRecalls.Popup()
+   Endif
+
+End
+
+
+Public Sub cvwRecalls_Select()
+   '-------------------------------------------------------
+   'This columnview not visible in FClinical
+   'Visible in forms like FInbox when this form is embedded
+   '-------------------------------------------------------
+
+    If Not cvwRecalls.count Then Return 
+    cvwRecalls.MoveCurrent()
+    ExistingRecall = currentconsult!recalls_logged[cvwRecalls.Item.key]
+
+End

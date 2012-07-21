@@ -25,7 +25,7 @@
 '-------------------------------------------------------------------------------
 Private currentconsult As CConsult
 Private bEmbedded As Boolean             'If true the form is embedded in a frmConsultNotes editor
-
+Private SpellChecker As ClskSpell
 Private embedded_form As String          'the form this form is embedded in
 Private bKeyValid As Boolean            'used in textbox routines
 Private iAgeinMonths As Integer         'currentconsult.patients age in months
@@ -35,8 +35,7 @@ Private Terms As Collection
 Private Term As Collection 
 Private currentPastHistory As Collection
 Private currentTerm As Collection
-Private pk_pasthistory As Integer
-Public iProblemKey As Integer   'see problemlists_Select
+Public pk_pasthistory As Integer
 Private bExit As Boolean
 Private bEditing As Boolean 'True if we are editing an existing saved or unsaved record.
 Private collection_members As Collection
@@ -44,14 +43,12 @@ Private collection_member As Collection
 Private TeamCareMember_SearchBy_Criteria As Integer
 Private obs As Observer
 Private iAgeOnsetUnits As Integer 
-Private fk_pastHistory As Integer
 Private fk_progressnote As Integer
 Private fk_laterality As Integer
 Private fk_significance As Integer
 Private fk_code As String
 Private fk_coding_system As Integer
 Private fk_consult As Integer 
-
 Private sSearchLimit As Integer = 20 'default to only get 20 terms
 'fixme make me configurable
 '-----------------------------------------------------
@@ -94,12 +91,14 @@ Public Sub set_embedded(flag As Boolean, embeddedinform As String)
    embedded_in_form = embeddedinform
    
 End
+
 Public Sub set_fk_progressNote(key As Integer)
    '-------------------------------------------------------
    'As this forms Save() is called from FProgressnotesPage
    'when user is writing notes on a health issue and has
    'update the aim/historical summary/management plan
    '-------------------------------------------------------
+   
    fk_progressnote = key
    
 End
@@ -144,7 +143,6 @@ Public Function pk_pasthistory_set(fk_ph As Integer)
    '---------------------------------------------------
    
    pk_pasthistory = fk_ph
-   iProblemKey = fk_ph
    
 End
 
@@ -172,33 +170,33 @@ End
 
 Public Sub Init(Cons As CConsult)
    '----------------------------------------------------------
-   'PURPOSE    :Basic initialiseation
-   'CALLED BY  :calling form e.g FrmClinical.Editor_ShowPage()
-   ' Load the problem lists, create observors etc.
+   'PURPOSE      - Basic initialiseation
+   'CALLED BY    - calling form e.g FrmClinical.Editor_ShowPage()
+   'PURPOSE      - Load the problem lists, create observors etc.
    '----------------------------------------------------------
    
    form_pasthistory = Me
    currentconsult = cons         'set current consult on this form
-   
    With Form_Terms = New FCodedTermSelector(Me)
       .Ignore = True
       .Visible = False   
       .Height = 200
    End With
-   
    With ProblemLists = New FPastHistoryProblemLists(VBox_ProblemLists)
       .Init(currentconsult, "Past History") 
    End With
    obs = New Observer(Problemlists.cvwProblemsActive) As "ProblemLists"
    obs = New Observer(Problemlists.cvwProblemsMajor) As "ProblemLists"
    obs = New Observer(Problemlists.cvwProblemsInActive) As "ProblemLists"
-   ' obs = New Observer(ProblemLists.mnuProblemLists) As "mnuProblemLists"
-   ' Object.Attach(ProblemLists.mnuProblemLists, Me, "mnuProblemLists")
    Try Settings_Load()               'set splits, font sizes etc
    lblMeasure.text = "  Management Summary  "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
-   modEditAreaHelpers.Resize_label(lblButtonBar, lblMeasure)
-   obs = New Observer(Form_Terms.ColumnView1) As "Columnview1"
+   obs = New Observer(Form_Terms.ColumnView1) As "cvwTerms"
+   With SpellChecker = New ClskSpell
+      .EditorControlToCheck = teForSpelling
+      .TempFileForSpelling = User.home &/ "myspelltemp.txt"
+      .TempFileForErrors = User.home &/ "myspellerrors.txt"
+   End With
    HealthIssue_New()
    
 End
@@ -215,7 +213,6 @@ Public Sub Form_Close()
    '----------------------------------------------
    
    Settings_Save()  
-   ' Save()
    
 End
 
@@ -256,17 +253,14 @@ Public Sub EditArea_YearOnset_CheckValid()
    End Select    
    
    If bDateValid = False Or DateDiff(currentconsult!patient!birthdate, STempYear, gb.year) < 0 Then
-      ' lblYearOnsetInvalid.Text = "<<Invalid: try mm/yyyy e.g 12/2002 or" 
-      ' lblYearOnsetInvalid.Foreground = Color.red
-      ' lblYearOnsetInvalid.Visible = True   
       txtYearOnset.text = ""
    Else 
-      '  lblWarning.Foreground = Color.white
-      'calculate age this came on using months, so end up with mm/yyyy
       txtAgeOnset.text = DateDiff(currentconsult!patient!birthdate, STempYear, gb.year)
    End If
    
-End
+End      '  lblWarning.Foreground = Color.white
+      'calculate age this came on using months, so end up with mm/yyyy
+
 
 Public Function EditArea_AgeOnset_CheckValid() As Boolean
    '---------------------------------------------------------------
@@ -275,19 +269,13 @@ Public Function EditArea_AgeOnset_CheckValid() As Boolean
    
    If Trim(txtAgeOnset.text) <> "" Then 
       If Val((Trim(txtAgeOnset.text))) > currentconsult!patient!age_numeric Then
-         '    lblWarning.text = "<<Invalid age " & Trim(txtAgeOnset.text) & " is older than current age of " & currentconsult!patient!age_numeric
-         '  lblWarning.Visible = True   
-         
-         Return False
-         '  txtAgeOnset.SetFocus
+         Return
       Else
-         '    lblWarning.Visible = False
          txtYearOnset.text = Year(currentconsult!patient!birthdate) + Val(txtAgeOnset.text)
-         txtHistoricalSummary.SetFocus()
+         txtAim.SetFocus()
          Return True
       End If
    End If
-   Return False
    
 End
 
@@ -346,7 +334,9 @@ Public Sub EditArea_TxtBox_GotFocus()
                .Set_SearchText(Trim(Last.text))
             End If     
          End With
-         
+      Case "historical summary"
+         txtHistoricalSummary.Background = Color.rgb(95, 255, 175)
+         Print "I should be green now"
    End Select 
    
 End
@@ -363,6 +353,16 @@ Public Sub EditArea_TxtBox_LostFocus()
          EditArea_AgeOnset_CheckValid()
       Case "coded term"
          Form_Terms.Timer1.Stop()
+      Case "aim of plan"
+         bExit = True   
+         SpellChecker.init(txtAim) 'can't use last because invoking spell checker > recursive lost_focus()
+         SpellChecker.StartSpelling()
+         bExit = False  
+      Case "problem"
+         bExit = True   
+         SpellChecker.init(txtCondition) 'can't use last because invoking spell checker > recursive lost_focus()
+         SpellChecker.StartSpelling()
+         bExit = False  
    End Select    
    
 End
@@ -374,12 +374,12 @@ Public Sub HealthIssue_Delete()
    'and converts all the text to strike through
    'Checks if this health is is currently open on a tab and removes the tab
    '-----------------------------------------------------------------------
-   
+   Return 
    If Message.Warning("Are you sure you want to delete the current health issue?\n\n" & currentPastHistory!description, "Yes", "No") = 2 Then Return 
    modDBConnect.BeginTrans()
    modPastHistoryDBI.HealthIssue_Delete(currentconsult, pk_pasthistory, currentPastHistory)
    modDBConnect.CommitTrans()
-   FClinical.Editor_RemovePage(iProblemKey)
+   FClinical.Editor_RemovePage(pk_pasthistory)
    Reload()
    
 End
@@ -391,20 +391,20 @@ Public Sub HealthIssue_Edit()
 End
 
 Public Sub HealthIssue_Display()
-   '----------------------------------------------------------
+   '--------------------------------------------------------------------------------
    'Place the contents of currentProblem into the editing area
    'When this data is placed into the textboxes and checkboxes
    'the change event in those controls will also be triggered
    'so must set bExit to true whilst loading the data
-   'Note: cannot do:currentPastHistory = currentconsult!past_history[pk_pasthistory]
-   '----------------------------------------------------------
+   'pk_past history is set when user clicks on list in the form  ProblemLists
+   'The click event on this form is over-ridden in this from by ProblemLists_Click()
+   '--------------------------------------------------------------------------------
    
-   Dim PH_From_View As Collection    'for easy of readability = member of the view selected
+   Dim PH_From_View As Collection                            'for easy of readability = member of the view selected
    
-   EditArea_Clear()  'clear boxes, create new currentPastHistory also clears pk_pasthistory fixme
+   EditArea_Clear()                                          'clear boxes resets all keys
    bEditing = True
-   pk_pasthistory = iProblemKey 'set when user clicked on list see problemlists_select 
-   PH_From_View = currentconsult!past_history[pk_pasthistory]
+   PH_From_View = currentconsult!past_history[pk_pasthistory] 'for easier reading
    '-------------------------------------------------------------------
    'set a couple of keys, the rest of the members of currentPastHistory
    'will be set by the change events in the edit area
@@ -419,7 +419,7 @@ Public Sub HealthIssue_Display()
    'is no fk_progress note yet
    'FIXME: What if a different user is doing this? Must put in some auditing here
    '-----------------------------------------------------------------------------
-   fk_progressnote = -1
+   fk_progressnote = 0
    If PH_From_View!fk_progressnote <> 0 Then
       If Format(Now, "dd/mm/yyyy") = Format(PH_From_View!date_noted, "dd/mm/yyyy") Then 
          fk_progressnote = PH_From_View!fk_progressnote
@@ -485,7 +485,7 @@ Public Sub ProblemLists_Click()
          ProblemLists.cvwProblemsInActive.UnselectAll()
    End Select
    Last.MoveCurrent
-   iProblemKey = Last.Item.key
+   pk_pasthistory = Last.Item.key
    HealthIssue_Display()
    
 End
@@ -535,10 +535,6 @@ Public Sub EditArea_Clear()
    '----------------------------------------------------------------------
    EditArea_Notify_DataChange(False)
    listview2.Visible = False  
-   pk_pasthistory = 0
-   fk_coding_system = 0
-   fk_code = 0
-   fk_progressnote = -1
    fk_laterality = const.LateralityNone
    fk_significance = const.healthIssue_Major
    rbMajor.Value = True 
@@ -552,14 +548,23 @@ Public Sub EditArea_Clear()
    
 End
 
+Public Sub Reset_Keys()
+   
+   pk_pasthistory = 0
+   fk_coding_system = 0
+   fk_code = ""
+   fk_progressnote = 0
+   
+End
+
 Public Sub New_Entry()
    '----------------------------------------------------------------------
    'Called from FClinical where the button tag is a generic 'New Entry'
    'I've left the orginal nomenclature here for easier reading of the code
    '----------------------------------------------------------------------   
-
+   
    HealthIssue_New()
-
+   
 End
 
 Public Sub HealthIssue_New()
@@ -571,6 +576,7 @@ Public Sub HealthIssue_New()
    'lists (ie remove the marque line)
    '-----------------------------------------------------
    EditArea_Clear()
+   Reset_Keys()
    With ProblemLists
       .cvwProblemsActive.UnselectAll()
       .cvwProblemsInActive.UnselectAll()
@@ -581,32 +587,11 @@ Public Sub HealthIssue_New()
       .text = "New Health Issue" 
    End With
    Vbox_EditingArea.Enabled = True
+   EditArea_Notify_DataChange(False)
    txtCodedTerm.SetFocus()
    
 End
 
-Public Sub EditAreaButtons_Click()
-   '---------------------------------------------------
-   'User has clicked on either the accept or ok buttons
-   'at the bottom of the editing area
-   '----------------------------------------------------
-   
-   Select Case Last.tag
-      Case "help"
-         If bEmbedded = False Then FClinical.Help_Show(Application.Path &/ "help/health-issues.html", "Help:Health Issues", True)
-      Case "accept"
-         '---------------------------------------------------
-         'Accept everything in editing area either to its
-         'existing spot in PH collection ie
-         'modglobal.clinicalform.currentcurrentconsult.patient!past_history
-         'of add to collection if a new problem
-         '---------------------------------------------------
-         Save()
-      Case "new problem"
-         HealthIssue_New() 
-   End Select
-   
-End
 
 Public Sub Reload()
    
@@ -617,19 +602,18 @@ Public Sub Reload()
       FClinical.Refresh_Section(const.cSection_PastHistory)    'refresh lists on main screen FClinical
       FClinical.Refresh_AllPreviousNotes() 
    End If   
-   EditArea_Clear()                                         'clear for next condition
-   txtCodedTerm.SetFocus()
    ProblemLists.Reload(True)   'refresh the lists                             'reload lists on embedded form
+   HealthIssue_New()
    
 End
 
-Public Function ProgressNotes_Summary() As String
+Public Function ProgressNotes_Summary(PH As CRow) As String
    '---------------------------------------------------------------------
    'Note this is sort-of-duplicated in FClinical.Care_Plan_construct_html
    'so probably should change design and combine
    '---------------------------------------------------------------------
    
-   Dim PH As Collection = currentPastHistory 'for ease of typing
+   '  Dim PH As Collection = currentPastHistory 'for ease of typing
    Dim sText As String
    Dim sCumulative_html_forPlan As String
    Dim sResponsible_Table_start As String = ""
@@ -656,26 +640,25 @@ Public Function ProgressNotes_Summary() As String
    
    sText = "<BR><B>" & UCase(PH!description) & "</B><BR>"
    sText &= "- noted at age " & PH!age_onset
-   If PH!operation = True Then
+   If PH!operation = True Then                  'will always exist
       sText &= " (operation)"
    End If
-   If PH!major Then
+   If Ph.Exist("major") Then                    'may not exist
       sText &= " considered to be a major problem"
-   Else If PH!active Then
-      sText &= " considered to be a significant problem"
-   Else If PH!inactive Then
-      sText &= " considered to be a inactive problem"
+   Else If PH.Exist("active") Then              'may not exist
+        If ph!active = True Then sText &= " considered to be a significant problem"
+   Else If PH.Exists("inactive") Then           'may not exist
+        If PH!inactive Then sText &= " considered to be a inactive problem"
    End If
-   
-   If PH!risk_factor Then
-      stext &= " and a risk factor "
+   If PH!risk_factor Then                  'will always exist
+      stext &= " and a risk factor "      
    End If
    stext &= "."
-   If PH!condition_summary Then
+   If PH!condition_summary Then           'will always exist even if "" string
       sText &= "<BR>- " 
       sText &= LCase(Left(PH!condition_summary)) & Right(PH!condition_summary, Len(PH!condition_summary) - 1)
    End If      
-   If PH!aim_of_plan Then
+   If PH!aim_of_plan Then                 'will always exist even if "" string
       sText &= "<BR>- the aim of management is to "
       '-------------------------------------------------------
       'Ucase first letter, preserve internal caps in sentance.
@@ -685,8 +668,7 @@ Public Function ProgressNotes_Summary() As String
          sText = Trim(sText) & "."
       End If  
    End If
-   
-   If PH!management_summary Then
+   If PH!management_summary Then          'will always exist even if "" string   
       sText &= "<BR>- the management plan is to "
       sText &= LCase(Left(PH!management_summary)) & Right(PH!management_summary, Len(PH!management_summary) - 1)
    End If
@@ -729,86 +711,112 @@ Public Sub Save() 'called from FProgressNotesPage.Save also
    '   aim_of_plan text,
    '   fk_progressnote integer,
    
+   '   clin_consult.ProgressNote:
+   '   pk serial NOT NULL,
+   '   fk_consult integer,
+   '   notes text,
+   '   fk_section integer,
+   '   fk_code bigint,
+   '   problem text,
+   '   fk_problem integer,
+   '   fk_audit_action integer DEFAULT 1, fk_code 
+   '   linked_table regclass,
+   '   fk_row integer,
+   '   fk_audit_reason integer,sString 
+   '   deleted boolean DEFAULT false,
+   
    '--------------------------------------------------
    
    Dim member As Collection 
    Dim Lastpk_pastHistory As Integer
    Dim sProgressNotes As String 
-   Dim bNewPastHistoryItem As Boolean
+   Dim PastHistory As CRow
+   Dim ProgressNote As CRow
    
    If Vbox_EditingArea.Padding = 0 Then
       Return  'the outer vbox if no padding = no change of data
-   End If   
+   End If 
    If Not Valid_EditArea_Contents() Then
       Return 
    End If
-   
-   currentPastHistory = New Collection
-   If pk_pasthistory <> 0 
-      currentPastHistory!pk_pasthistory = pk_pasthistory
+   PastHistory = New CRow
+   If pk_pasthistory <> 0 Then 
+      PastHistory.put_unchanged(pk_pasthistory, "pk_pasthistory")
    End If   
    If fk_consult <> 0 Then
-      currentPastHistory!fk_consult = fk_consult
+      PastHistory!fk_consult = fk_consult
    Else
-      currentPastHistory!fk_consult = currentconsult.GetPK()
+      PastHistory!fk_consult = currentconsult.GetPK()
    End If 
-   currentPastHistory!age_onset = Val(txtAgeOnset.text) 'CHECK THIS IS VALIDATED ABOVE
-   currentPastHistory!age_onset_units = iAgeOnsetUnits
-   currentPastHistory!description = Trim(txtCondition.text)
-   currentPastHistory!fk_laterality = fk_laterality
-   currentPastHistory!year_onset = Trim(txtYearOnset.text) 'eg could be 1993 or 08/1993 
+   PastHistory!age_onset = Val(txtAgeOnset.text) 'CHECK THIS IS VALIDATED ABOVE
+   PastHistory!age_onset_units = iAgeOnsetUnits
+   PastHistory!description = modUtil.Ucase_Words_First_Letter(Trim(txtCondition.text))
+   PastHistory!fk_laterality = fk_laterality
+   PastHistory!year_onset = Trim(txtYearOnset.text) 'eg could be 1993 or 08/1993 
    Select Case fk_significance
       Case const.healthIssue_Major
-         currentPastHistory!major = True
+         PastHistory!major = True
       Case const.healthIssue_Significant
-         currentPastHistory!active = True
+         PastHistory!active = True
       Case Else
-         'these both default to false in the backend
+         PastHistory!major = False 'yes, the backend would default but sProgressNote code more difficult
    End Select
    If chkOperation.Value = True Then 
-      currentPastHistory!operation = True
+      PastHistory!operation = True
    Else
-      currentPastHistory!operation = False
+      PastHistory!operation = False
    End If
    If chkCauseOfDeath.Value = True Then
-      currentPastHistory!cause_of_death = True
+      PastHistory!cause_of_death = True
    Else
-      currentPastHistory!cause_of_death = False
+      PastHistory!cause_of_death = False
    Endif 
    If rbConfidentialYes.value Then 
-      currentPastHistory!confidential = True
+      PastHistory!confidential = True
    Else
-      currentPastHistory!confidential = False
+      PastHistory!confidential = False
    End If
-   currentPastHistory!management_summary = Trim(txtManagementSummary.text)     
-   currentPastHistory!condition_summary = Trim(txtHistoricalSummary.text) 
+   PastHistory!management_summary = Trim(txtManagementSummary.text)     
+   PastHistory!condition_summary = Trim(txtHistoricalSummary.text) 
    If chkRiskFactor.value = True Then 
-      currentPastHistory!risk_factor = True
+      PastHistory!risk_factor = True
    Else
-      currentPastHistory!risk_factor = False
+      PastHistory!risk_factor = False
    End If    
-   currentPastHistory!aim_of_plan = Trim(txtAim.text)
-   currentPastHistory!fk_coding_system = fk_coding_system
-   currentPastHistory!fk_code = fk_code 
-   sProgressNotes = ProgressNotes_Summary()     'don't move this out of order or will lose team members names
-   If pk_pasthistory = -1 Then bNewPastHistoryItem = True  '?what was this for 
+   PastHistory!aim_of_plan = Trim(txtAim.text)
+   PastHistory!fk_coding_system = fk_coding_system
+   PastHistory!fk_code = fk_code
+   sProgressNotes = ProgressNotes_Summary(PastHistory)     
    modDBConnect.BeginTrans()
-   pk_pastHistory = modPastHistoryDBI.Save(currentconsult, pk_pasthistory, currentPastHistory) 
-   Print fk_progressnote
-   fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_PastHistory, fk_progressnote, "Past History", pk_pasthistory, False)
+   PastHistory.Save("clin_history.past_history", "pk_pasthistory")
+   '----------------------
+   'Save the progress note
+   '----------------------
+   ProgressNote = New CRow 
+   If fk_progressnote Then
+      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")
+   Endif
+   ProgressNote!fk_consult = PastHistory!fk_consult 
+   ProgressNote!notes = sProgressNotes
+   ProgressNote!fk_section = const.cSection_Pasthistory 
+   '  ProgressNote!fk_code = fk_code  FIXME Fix THE VWPROGRESSNOTES And UNCOMMENT THIS Line
+   ProgressNote!problem = "Past History"
+   ProgressNote!fk_problem = PastHistory!pk_pasthistory
+   ProgressNote!fk_audit_action = const.cAuditAction_Insert
+   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
    '-----------------------------------------------------------------------------------------------
    'difficult - the fk_progressnote can't exist until this is saved as it needs the pk_past history
    'so as an interim stupid solution I've re-saved it after the progress note is saved.
    '-----------------------------------------------------------------------------------------------
-   
-   modPastHistoryDBI.Link_To_ProgressNote(pk_pasthistory, fk_progressnote)
+   modPastHistoryDBI.Link_To_ProgressNote(PastHistory!pk_pasthistory, ProgressNote!fk_progressnote)
    modDBConnect.CommitTrans()
    FClinical.Refresh_AllPreviousNotes()
    FClinical.Refresh_Section(const.cSection_HealthSummary)    'check if health summary showing, if so update it as it has occupations on it
-
    Reload()
    
 End
+
+
 
 Public Function Valid_EditArea_Contents() As Boolean 
    '--------------------------------------------------------------------
@@ -821,12 +829,10 @@ Public Function Valid_EditArea_Contents() As Boolean
       txtCondition.SetFocus()
       Return
    End If
-   
    If fk_code = "" Or fk_coding_system = 0 Then  'remember fk_code is string see coding schema for details
       txtCodedTerm.SetFocus() 
       Return
    End If
-   
    If Len(Trim(txtAgeOnset.text)) = 0 Then
       txtAgeOnset.SetFocus()
       Return False
@@ -835,7 +841,6 @@ Public Function Valid_EditArea_Contents() As Boolean
       txtAgeOnset.SetFocus()
       Return 
    End If
-   
    If Trim(txtManagementSummary.text) <> "" Then
       If txtAim.text = "" Then
          txtAim.SetFocus()
@@ -873,28 +878,24 @@ Public Sub EditArea_TxtBox_Change()
    
    Select Case Last.tag
       Case "problem"
-         If Len(Trim(Last.text)) Then
-            '     currentPastHistory!description = Trim(Last.text)
-         Else
-            '  currentPastHistory!description = ""
-         End If   
+          teForSpelling.Text = Last.text
+          Print teForSpelling.Text
       Case "coded term"  
          If Trim(Last.text) = "" Then
             Form_Terms.Visible = False 
          End If
-         
       Case "historical summary"
-         
+          teForSpelling.Text = Last.text
          If InStr(Last.text, "\n\n") Then
             Last.text = Replace(Last.text, "\n\n", "")
             txtAim.SetFocus()
          End If 
       Case "aim of plan"
+          teForSpelling.Text = Last.text
          If InStr(Last.text, "\n\n") Then
             Last.text = Replace(Last.text, "\n\n", "")
             txtManagementSummary.SetFocus()
          End If 
-         
       Case "age onset"
          '----------------------------------------
          'Sets or removes currentproblem!age_onset
@@ -903,13 +904,12 @@ Public Sub EditArea_TxtBox_Change()
          If Len(Trim(txtAgeOnset.text)) = 0 Then
             txtYearOnset.text = ""
          End If
-         
       Case "year onset"
          If Len(Trim(txtYearOnset.text)) = 0 Then
             txtAgeOnset.text = ""
          End If
-         
-      Case "management plan"  
+      Case "management plan" 
+         teForSpelling.Text = Last.text 
          If InStr(Last.text, "\n\n") Then
             Last.text = Replace(Last.text, "\n\n", "")
          End If
@@ -920,20 +920,11 @@ End
 
 Public Sub EditArea_Notify_DataChange(flag As Boolean)
    
-   If flag Then 
+   If flag = True Then 
       vbox_EditingArea.Padding = 1
-      With tbAccept
-         .Foreground = Color.Red
-         .Enabled = True   
-      End With
-      
    Else
-      vbox_EditingArea.Padding = 0
-      With tbaccept
-         .Foreground = Color.black
-         .Enabled = False  
-      End With
-   End If
+      VBox_EditArea.Padding = 0
+   Endif
    
 End
 
@@ -955,80 +946,10 @@ Public Sub EditArea_ChkBoxes_Click()
    
    If bexit Then Return 
    EditArea_AgeOnset_CheckValid()
-   
    '-----------------------------------------------
    'Deals with all the check boxes in the edit area
    '-----------------------------------------------
    If bExit Then Return
-   flag = Abs(Last.value)
-   
-   Select Case Last.tag
-         
-      Case "patient"
-         'Patient becomes a team member for this problem
-         '     If flag Then
-         '        TeamCareMember_AddPatient()
-         '     Else
-         '     End If   
-         ' Case "operation"
-         
-         ' Case "confidential"
-         '    currentPastHistory!confidential = flag
-         ' Case "major"
-         '    currentPastHistory!major = flag
-         '    If currentPastHistory!major = True Then
-         '       chkActive.Value = Not flag
-         '       chkInactive.Value = Not flag
-         '       currentPastHistory!active = False 
-         '    End If
-         ' Case "risk factor"
-         '    currentPastHistory!risk_factor = flag
-         ' Case "active"
-         '    '--------------------------------------------------
-         '    'Flip on/off the active value. Make sure that if you
-         '    'make the problem significant and active then
-         '    'switch off the major checkbox
-         '    '---------------------------------------------------
-         '    currentPastHistory!active = flag
-         '    If chkActive.Value = True Then
-         '       chkMajor.Value = Not flag
-         '       chkInactive.value = Not flag
-         '       currentPastHistory!major = False
-         '    End If
-         ' Case "inactive"
-         '    
-         '    If chkInActive.Value = True Then
-         '       chkMajor.Value = Not flag
-         '       chkActive.value = Not flag
-         '       currentPastHistory!major = False
-         '       currentPastHistory!active = False   
-         '    End If
-      Case "left"
-         ' If chkLateralityLeft.value = True Then
-         '    currentPastHistory!fk_laterality = const.LateralityLeft
-         '    
-         '    chkLateralityRight.value = False
-         '    chkLateralityBoth.Value = False
-         ' End If
-      Case "right"
-         ' If chkLateralityRight.value = True Then
-         '    currentPastHistory!fk_laterality = const.LateralityRight
-         ' End If
-         ' chkLateralityLeft.value = False
-         ' chkLateralityBoth.Value = False
-      Case "both"
-         ' If chkLateralityBoth.value = True Then
-         '    currentPastHistory!fk_laterality = const.LateralityBoth
-         ' End If
-         ' chkLateralityLeft.value = False
-         ' chkLateralityRight.value = False
-      Case "cause of death"
-         '  currentPastHistory!cause_of_death = chkCauseOfDeath.Value
-   End Select
-   'If chkLateralityLeft.value = False And chkLateralityRight.value = False And chkLateralityBoth.value = False Then
-   ' currentPastHistory!fk_laterality = const.LateralityNone
-   '  End If
-   
    EditArea_Notify_DataChange(True)  'give visual message to user data has changed
    
 End 
@@ -1089,7 +1010,6 @@ Public Sub EditArea_TxtBox_KeyPress()
                         txtCondition.text = listview1.Item.Text
                         HBox_Problem.Padding = 0
                         txtHistoricalSummary.setfocus
-                        
                         Break
                      End If
                      listview1.MoveNext
@@ -1098,20 +1018,27 @@ Public Sub EditArea_TxtBox_KeyPress()
                listview1.Visible = False
                txtCodedTerm.SetFocus()
             Case "coded term"
-               ' txtAgeOnset.SetFocus()
-               ' chkMajor.SetFocus()
-            Case "historical summary"
-               txtAim.SetFocus() 
+               If fk_code <> "" Then
+                  txtAgeOnset.SetFocus()
+               End If            
                
             Case "age onset"
                If Not EditArea_AgeOnset_CheckValid() Then
-                  txtYearOnset.SetFocus()
+                  txtAgeOnset.SetFocus()
                End If   
             Case "year onset"
                EditArea_YearOnset_CheckValid()
-               txtHistoricalSummary.SetFocus()
+               txtAim.SetFocus()
             Case "aim of plan"
-               txtManagementSummary.SetFocus()
+               txtHistoricalsummary.SetFocus()
+            Case "historical summary"
+               txtManagementSummary.SetFocus() 
+            Case "management plan"
+               If Trim(txtManagementSummary.text) = "" Then
+                  txtManagementSummary.text = ""
+                  Last.pos = 0
+               Endif
+               txtManagementSummary.SetFocus() 'Stay where you are
          End Select
          
       Case Key.Down
@@ -1141,7 +1068,7 @@ End
 
 Public Sub EditArea_ChkBoxes_KeyPress()
    'FIXME - THE TABBING TO EXCLUDE STUFF
-
+   
    Select Case Key.Code
       Case key.Return
          Select Case Last.tag
@@ -1153,17 +1080,13 @@ Public Sub EditArea_ChkBoxes_KeyPress()
                '  chkMajor.SetFocus
             Case "major"
                txtAgeOnset.SetFocus()
-            Case "active"
-               tbaccept.SetFocus
-            Case "cause of death" 'excluded usually because hopefully most currentconsult.patients don't die.
-               tbAccept.SetFocus
          End Select
          
    End Select
    
 End
 
-Public Sub Columnview1_KeyPress()
+Public Sub cvwTerms_KeyPress()
    '------------------------------------------------------------------
    'Act only on the <ENTER> key display what is in list in the textbox
    'This event occurs of Form_Terms and is over-ridden by this observer
@@ -1171,17 +1094,21 @@ Public Sub Columnview1_KeyPress()
    
    If Key.code = Key.Return Then 
       ' Stop Event                    'stop event on Form_Terms 
-      Columnview1_DblClick()
+      cvwTerms_DblClick()
    End If
    
 End
 
-Public Sub Columnview1_DblClick()
+Public Sub cvwTerms_DblClick()
+   '-----------------------------------------------------------------
+   'This is an observer event on  Form_Terms.ColumnView1 - see Init()
+   '----------------------------------------------------------------
    
    Stop Event
    
    Coded_Term_Select() 
    Form_Terms.Visible = False 
+   rbMajor.SetFocus()
    
 End
 
@@ -1278,5 +1205,21 @@ End
 Public Sub rbSignificance_Click()
    
    fk_significance = Last.tag
+   
+End
+
+
+Public Sub Spelling_Check()
+   '--------------------------------------------------------------------------------------------------
+   'Check the letters spelling
+   'called by EditorButtons_Click() and Save()
+   'bHaveSpellChecked is set so as not to bug a user who has already spell checked when they save
+   'This is not perfect but pragmatic, i.e they could have introduced errors after their initial check
+   'but then hey, that's their problem
+   '--------------------------------------------------------------------------------------------------
+   
+   SpellChecker.init()
+   SpellChecker.StartSpelling()
+  ' bHaveSpellChecked = True   
    
 End

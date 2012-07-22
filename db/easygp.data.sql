@@ -4,10 +4,9 @@
 
 SET statement_timeout = 0;
 SET client_encoding = 'UTF8';
-SET standard_conforming_strings = off;
+SET standard_conforming_strings = on;
 SET check_function_bodies = false;
 SET client_min_messages = warning;
-SET escape_string_warning = off;
 
 SET search_path = admin, pg_catalog;
 
@@ -22,7 +21,7 @@ SELECT pg_catalog.setval('lu_clinical_modules_pk_seq', 18, true);
 -- Name: lu_staff_roles_pk_seq; Type: SEQUENCE SET; Schema: admin; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_staff_roles_pk_seq', 8, false);
+SELECT pg_catalog.setval('lu_staff_roles_pk_seq', 12, false);
 
 
 --
@@ -36,7 +35,7 @@ SELECT pg_catalog.setval('lu_staff_status_pk_seq', 4, true);
 -- Name: lu_staff_type_pk_seq; Type: SEQUENCE SET; Schema: admin; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_staff_type_pk_seq', 12, true);
+SELECT pg_catalog.setval('lu_staff_type_pk_seq', 13, true);
 
 
 SET search_path = chronic_disease_management, pg_catalog;
@@ -85,13 +84,6 @@ SET search_path = clin_allergies, pg_catalog;
 --
 
 SELECT pg_catalog.setval('lu_reaction_pk_seq', 1, false);
-
-
---
--- Name: lu_type_pk_seq; Type: SEQUENCE SET; Schema: clin_allergies; Owner: -
---
-
-SELECT pg_catalog.setval('lu_type_pk_seq', 2, true);
 
 
 SET search_path = clin_careplans, pg_catalog;
@@ -190,7 +182,7 @@ SELECT pg_catalog.setval('lu_actions_pk_seq', 35, true);
 -- Name: lu_audit_reasons_pk_seq; Type: SEQUENCE SET; Schema: clin_consult; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 407, true);
+SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 415, true);
 
 
 --
@@ -388,14 +380,14 @@ SET search_path = clin_recalls, pg_catalog;
 -- Name: lu_reasons_pk_seq; Type: SEQUENCE SET; Schema: clin_recalls; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_reasons_pk_seq', 57, true);
+SELECT pg_catalog.setval('lu_reasons_pk_seq', 58, true);
 
 
 --
 -- Name: lu_recall_intervals_pk_seq; Type: SEQUENCE SET; Schema: clin_recalls; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_recall_intervals_pk_seq', 57, true);
+SELECT pg_catalog.setval('lu_recall_intervals_pk_seq', 58, true);
 
 
 --
@@ -441,7 +433,7 @@ SELECT pg_catalog.setval('lu_instructions_pk_seq', 1, false);
 -- Name: lu_link_provider_user_requests_pk_seq; Type: SEQUENCE SET; Schema: clin_requests; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_link_provider_user_requests_pk_seq', 1680, true);
+SELECT pg_catalog.setval('lu_link_provider_user_requests_pk_seq', 1705, true);
 
 
 --
@@ -455,7 +447,7 @@ SELECT pg_catalog.setval('lu_request_type_pk_seq', 14, true);
 -- Name: lu_requests_pk_seq; Type: SEQUENCE SET; Schema: clin_requests; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_requests_pk_seq', 1800, true);
+SELECT pg_catalog.setval('lu_requests_pk_seq', 1805, true);
 
 
 SET search_path = clin_vaccination, pg_catalog;
@@ -738,14 +730,14 @@ SELECT pg_catalog.setval('lu_address_types_pk_seq', 6, true);
 -- Name: lu_categories_pk_seq; Type: SEQUENCE SET; Schema: contacts; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_categories_pk_seq', 401, true);
+SELECT pg_catalog.setval('lu_categories_pk_seq', 403, true);
 
 
 --
 -- Name: lu_contact_type_pk_seq; Type: SEQUENCE SET; Schema: contacts; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_contact_type_pk_seq', 10, true);
+SELECT pg_catalog.setval('lu_contact_type_pk_seq', 11, true);
 
 
 --
@@ -801,7 +793,7 @@ SELECT pg_catalog.setval('lu_title_pk_seq', 8, true);
 -- Name: lu_towns_pk_seq; Type: SEQUENCE SET; Schema: contacts; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_towns_pk_seq', 11503, true);
+SELECT pg_catalog.setval('lu_towns_pk_seq', 15726, true);
 
 
 SET search_path = db, pg_catalog;
@@ -810,7 +802,7 @@ SET search_path = db, pg_catalog;
 -- Name: db_version_pk_seq; Type: SEQUENCE SET; Schema: db; Owner: -
 --
 
-SELECT pg_catalog.setval('db_version_pk_seq', 164, true);
+SELECT pg_catalog.setval('db_version_pk_seq', 183, true);
 
 
 SET search_path = defaults, pg_catalog;
@@ -912,7 +904,6 @@ COPY lu_clinical_modules (pk, name, icon_path) FROM stdin;
 9	Occupational History	icon:/small/tools
 11	Vaccinations	icons/20/syringe2020.png
 12	Pregnancy	icons/20/pregnancy.png
-13	Allergy	icons/20/allergy2020.png
 14	Skin Excision	icons/24/glove-scalple_2424.png
 15	Diabetes Cycle of Care	icons/20/united_nations_diabetes_icon.png
 16	Psycho-Social History	icons/misc/no_photo.png
@@ -921,6 +912,7 @@ COPY lu_clinical_modules (pk, name, icon_path) FROM stdin;
 10	Family History	icons/22/tim_people_2222.png
 18	Medical Certificates	icons/24/centigrade_person_list2424.png
 17	Care Planning	icons/20/careplan2020_1.png
+13	Allergies	icons/20/allergy2020.png
 \.
 
 
@@ -930,14 +922,18 @@ COPY lu_clinical_modules (pk, name, icon_path) FROM stdin;
 
 COPY lu_staff_roles (pk, role) FROM stdin;
 0	sysadmin
-3	locum
-4	student
-5	nurse
-7	secretary
-6	practice manager
-2	dentist
-8	information technology
 1	doctor
+2	dentist
+3	locum"
+4	student
+5	registered nurse
+6	practice manager
+7	secretary
+8	information technology
+9	counselor
+10	enrolled nurse
+11	dietitian
+12	psychologist
 \.
 
 
@@ -970,6 +966,7 @@ COPY lu_staff_type (pk, type) FROM stdin;
 10	medical specialist
 11	surgical specialist
 12	secretarial
+13	student
 \.
 
 
@@ -1094,16 +1091,12 @@ SET search_path = clin_allergies, pg_catalog;
 --
 
 COPY lu_reaction (pk, reaction) FROM stdin;
-\.
-
-
---
--- Data for Name: lu_type; Type: TABLE DATA; Schema: clin_allergies; Owner: -
---
-
-COPY lu_type (pk, type) FROM stdin;
-1	allergy
-2	sensitivity
+1	anaphalaxis
+2	generalised rash with wheeze
+3	generalised rash
+4	localised rash
+5	nausea/vomiting
+6	unknown/uncertain
 \.
 
 
@@ -1624,6 +1617,14 @@ COPY lu_audit_reasons (pk, fk_staff, reason) FROM stdin;
 405	1	has had prostatic biopsy
 406	1	reviewed and will follow up
 407	1	referred to Dr Osborne
+408	1	done elsewhere
+409	1	has attended
+410	1	referred fir endoscopy
+411	1	booked for endoscopy
+412	1	miss
+413	1	explained and organised GTT
+414	1	mi
+415	1	says her optometrist checks this yearly and no change
 \.
 
 
@@ -2106,6 +2107,7 @@ COPY lu_reasons (pk, reason) FROM stdin;
 55	Vascular Review
 56	Femoral Pulse
 57	microalbumin
+58	Aclasta Infusion
 \.
 
 
@@ -2170,6 +2172,7 @@ COPY lu_recall_intervals (pk, fk_reason, fk_staff, "interval", fk_interval_unit)
 55	55	1	12	8
 56	56	1	2	8
 57	57	1	12	8
+58	58	1	12	8
 \.
 
 
@@ -3915,6 +3918,31 @@ COPY lu_link_provider_user_requests (pk, fk_lu_request, provider_request_name, l
 1678	737	X031	0	f
 1679	213	17OHP	0	f
 1680	643	MAMMOGRAPHY	3	f
+1681	89	X024	0	f
+1682	642	X016	0	f
+1683	1270	GMC2	0	f
+1684	1281	Hip Left XR	1	f
+1685	359	APTT	0	f
+1686	1801	SOMATOMEDIN (SOM-0)	0	f
+1687	654	Lupus	0	f
+1688	1625	Left Hand, Wrist and Forearm X-ray	1	f
+1689	1328	Leg Right Arterial Doppler US	2	f
+1690	1802	E HISTOLICA AB (EHA-0)	0	f
+1691	1803	CTA Cardiac/Coronary/Heart	2	f
+1692	623	.ProtC	0	f
+1693	918	.ProtS	0	f
+1694	1804	.APCR	0	f
+1695	906	General Serology	0	f
+1696	442	Electrophoresis	0	f
+1697	212	MRI Gadolinium	0	f
+1698	917	PAPPA	0	f
+1699	1805	HEPATITIS SEROLOGY (HEP-0)	0	f
+1700	1486	X017	0	f
+1701	1297	ULTRASOUND NECK/THYROID	1	f
+1702	656	B12, FOLATE, R.C.FOLATE (VBF-0)	0	f
+1703	700	D039	0	f
+1704	1694	THYROID AUTOANTIBODIES (TAA-0)	0	f
+1705	1746	X014	0	f
 \.
 
 
@@ -4153,7 +4181,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 213	1	17 Hydroxyprogesterone	0	0	0	f
 214	4	Transoesophageal Echocardiography	0	0	0	f
 215	1	FTA Abs - IF	0	0	0	f
-867	1	Caeruloplasmin	0	0	0	f
 217	1	Anti-cardiolipin antibody	0	0	0	f
 218	1	24Hr BP Monitor	0	0	0	f
 219	1	Sulthiame	0	0	0	f
@@ -4360,7 +4387,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 431	1	Body fluids including cyst fluids, peritoneal, pleural, bladder, other	0	0	0	f
 432	1	Hepatitis A post vaccination titre	0	0	0	f
 433	1	Glucose - CSF	0	0	0	f
-868	1	Bronchus biopsy	0	0	0	f
 434	1	T3 (Resin) Uptake	0	0	0	f
 435	4	Carotid Ultrasound	0	0	0	f
 436	2	Thyroid Ultrasound	0	0	0	f
@@ -4465,7 +4491,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 536	1	GTT	0	0	0	f
 538	1	Amino acids - quantitative	0	0	0	f
 539	1	N-acetyl Procainamide	0	0	0	f
-976	1	Citrate	0	0	0	f
 540	1	Donath landsteiner antibody - direct and indirect	0	0	0	f
 541	1	Cord blood study for possible blood group compatibility	0	0	0	f
 542	1	TPHA - haemagglutination	0	0	0	f
@@ -4764,6 +4789,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 843	1	Catecholamines	0	0	0	f
 844	4	Color Doppler Echocardiography (includes 2D Echo)	0	0	0	f
 845	1	APTT Mixing	0	0	0	f
+950	1	Androstenedione	0	0	0	f
 847	2	Duplex scan lower limb arteries with pressures	0	0	0	f
 848	1	Calcium	0	0	0	f
 849	2	radiolabelled leucocyte study	0	0	0	f
@@ -4784,6 +4810,8 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 864	1	Quinine	0	0	0	f
 865	1	Testis and adjacent structures - vas deferens sterilisation	0	0	0	f
 866	1	Herpes simplex virus - EIA IgG IgM	0	0	0	f
+867	1	Caeruloplasmin	0	0	0	f
+868	1	Bronchus biopsy	0	0	0	f
 869	1	Kidney biopsy incl transplant	0	0	0	f
 870	2	Ultrasound of occiput	0	0	0	f
 871	1	Anti-skin intracellular substance antibody	0	0	0	f
@@ -4862,7 +4890,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 947	1	Uterus +/- adnexa malignant tumour all specimen types NOS	0	0	0	f
 948	1	OD 450	0	0	0	f
 949	5	Duplex Scan Aortic Endoluminal Graft	0	0	0	f
-950	1	Androstenedione	0	0	0	f
 951	1	Adrenal resection tumour	0	0	0	f
 952	1	Thiocyanate	0	0	0	f
 953	1	CASA	0	0	0	f
@@ -4887,6 +4914,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 973	1	Normetanephrine	0	0	0	f
 974	1	White Cell Enzymes Studies unclassified	0	0	0	f
 975	1	Kleihauer test	0	0	0	f
+976	1	Citrate	0	0	0	f
 977	1	Aldosterone	0	0	0	f
 978	1	Prorenin	0	0	0	f
 979	1	Bicarbonate (not on U&E profile)	0	0	0	f
@@ -5711,6 +5739,11 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1798	6	Deep Brain Stimulation Parameters	0	0	0	f
 1799	1	Diabetes Summary (Result)	0	0	0	f
 1800	1	Pleural fluid c&s for AFB	0	0	0	f
+1801	1	Somatomedin C	0	0	0	f
+1802	1	Entamoeba histolytica antibody	0	0	0	f
+1803	2	CT coronary angiography	2	0	0	f
+1804	1	Activated Protein C Resistance	0	0	0	f
+1805	1	Hepatitis B virus core Ab	0	0	0	f
 \.
 
 
@@ -11840,7 +11873,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 5637	15010-2	Aldosterone	Urine
 5638	15011-0	Aldosterone^supine	Ser/Plas
 5639	15012-8	Aldosterone^upright	Ser/Plas
-6159	17830-1	Centromere Ab	Body fld
 5640	15013-6	Alkaline phosphatase.bone/Alkaline phosphatase.total	Ser/Plas
 6161	17832-7	5-Fluorocytosine	Isolate
 5641	15014-4	Alkaline phosphatase.intestinal/Alkaline phosphatase.total	Ser/Plas
@@ -12362,6 +12394,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 6156	17828-5	Cells.CD16/100 cells	Body fld
 6157	17829-3	Cells.CD19/100 cells	Body fld
 6158	1783-0	Alkaline phosphatase	Bld
+6159	17830-1	Centromere Ab	Body fld
 6160	17831-9	5-Fluorocytosine	Isolate
 6162	17833-5	Basophils/100 leukocytes	Synv fld
 6163	17834-3	Eosinophils/100 leukocytes	Synv fld
@@ -12989,7 +13022,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 6784	17016-7	Influenza virus B Ab.IgM	Ser
 6785	17017-5	Insulin^10M post XXX challenge	Ser/Plas
 6786	17018-3	Insulin^20M post XXX challenge	Ser/Plas
-7122	16291-7	Herpes simplex virus 1	XXX
 6787	17019-1	Insulin-Like growth factor-I^2H post XXX challenge	Ser/Plas
 6788	1702-0	Acetoacetate	Urine
 6789	17020-9	Intercellular substance Ab	Ser
@@ -13324,6 +13356,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 7119	16288-3	Monosialoganglioside GM1 Ab.IgG+IgM	Ser
 7120	16289-1	Monosialoganglioside GM1 Ab	Ser
 7121	16290-9	Neutrophils	Stool
+7122	16291-7	Herpes simplex virus 1	XXX
 7123	16292-5	1,4-Dioxane	Urine
 7124	16293-3	11-Deoxycorticosteroids	Plas
 7125	16294-1	11-Deoxycorticosterone^post XXX challenge	Ser/Plas
@@ -17074,7 +17107,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 10872	19851-5	Capacity.inspiratory	Respiratory system
 10873	19852-3	Capacity.inspiratory	Respiratory system
 11457	20467-7	Blood bank alert	^Patient
-11458	20468-5	Thiamine	Ser/Plas
 10874	19853-1	Capacity.inspiratory.bs/Capacity.inspiratory.preop	Respiratory system
 10875	19854-9	Capacity.inspiratory.bs/Capacity.inspiratory.preop	Respiratory system
 10876	19855-6	Capacity.inspiratory.measured/Capacity.inspiratory.predicted	Respiratory system
@@ -17658,6 +17690,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 11454	20464-4	Toxoplasma gondii Ab	Ser
 11455	20465-1	Choriogonadotropin	Ser/Plas
 11456	20466-9	Estriol.unconjugated	Ser/Plas
+11458	20468-5	Thiamine	Ser/Plas
 11459	20469-3	Acetone	Ser/Plas
 11460	20470-1	Ethanol	Ser/Plas
 11461	20471-9	Isopropanol	Ser/Plas
@@ -21913,7 +21946,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 15710	24215-6	Influenza virus A Ab^1st specimen	Ser
 15711	2421-6	Histidine	Ser/Plas
 15712	24216-4	Influenza virus A Ab^2nd specimen	Ser
-15816	2434-9	Homovanillate	CSF
 15713	24217-2	Influenza virus B Ab^1st specimen	Ser
 15714	24218-0	Influenza virus B Ab^2nd specimen	Ser
 15715	24219-8	Parainfluenza virus 1 Ab^1st specimen	Ser
@@ -22018,6 +22050,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 15813	24346-9	Parathyrin.intact & Calcium panel	Ser/Plas
 15814	24347-7	Parathyrin.mid molecule & Calcium panel	Ser/Plas
 15815	24348-5	Free T4 & TSH panel	Ser/Plas
+15816	2434-9	Homovanillate	CSF
 15817	24349-3	Drugs of abuse 5 panel	Urine
 15818	24350-1	Volatiles panel	Urine
 15819	24351-9	Protein electrophoresis panel	Ser/Plas
@@ -25739,7 +25772,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 19534	27736-8	Author ID	Respiratory therapy treatment plan
 19535	27737-6	Diagnosis.primary	Respiratory therapy treatment
 19536	27738-4	Start date	Hospitalization leading to respiratory therapy treatment
-19963	28192-3	Polypharmacy	^Patient
 19537	27739-2	End date	Hospitalization leading to respiratory therapy treatment
 19538	277-4	Hetacillin	Isolate+Ser
 19539	27740-0	Diagnosis.primary	Respiratory therapy treatment
@@ -25832,7 +25864,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 19625	27872-1	Insulin^6H post 75 g glucose PO	Ser/Plas
 19626	27873-9	Insulin^post CFst	Ser/Plas
 19627	27874-7	Insulin^5th specimen post XXX challenge	Ser/Plas
-20072	28306-9	Neglect.knowledge	^Patient
 19628	27875-4	Insulin^6th specimen post XXX challenge	Ser/Plas
 19629	27876-2	Cells.CD14+CD11b+/100 cells	Bld
 19630	27877-0	Cells.CD33+CD11b+/100 cells	Bld
@@ -26168,6 +26199,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 19960	28190-7	Physical regulation alteration	^Patient
 19961	2819-1	Potassium	CSF
 19962	28191-5	Poisoning risk	^Patient
+19963	28192-3	Polypharmacy	^Patient
 19964	28193-1	Post-trauma response	^Patient
 19965	28194-9	Powerlessness	^Patient
 19966	28195-6	Protection alteration	Immune system
@@ -26277,6 +26309,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20069	28303-6	Interpersonal relationship.knowledge	^Patient
 20070	28304-4	Interpersonal relationship.status	^Patient
 20071	28305-1	Neglect.behavior	^Patient
+20072	28306-9	Neglect.knowledge	^Patient
 20073	28307-7	Neglect.status	^Patient
 20074	2830-8	Potassium renal clearance	Urine+Ser/Plas
 20075	28308-5	Neighborhood &or workplace safety.behavior	^Patient
@@ -26500,7 +26533,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 21288	2939-7	Serotonin	Bld
 20293	28491-9	Genito-urinary function.status	^Family
 20294	28492-7	Antepartum &or postpartum.behavior	^Family
-20411	28665-8	Axis distance	Eye.right
 20295	28493-5	Antepartum &or postpartum.status	^Family
 20296	28494-3	Antepartum &or postpartum.knowledge	^Family
 20297	28495-0	Nutrition.behavior	^Family
@@ -26618,6 +26650,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20408	28662-5	Refraction comment	Eye
 20409	28663-3	Sphere distance	Eye.right
 20410	28664-1	Cylinder distance	Eye.right
+20411	28665-8	Axis distance	Eye.right
 20412	28666-6	HSA distance	Eye.right
 20413	28667-4	Visual acuity distance	Eye.right
 20414	28668-2	Sphere distance	Eye.left
@@ -26741,7 +26774,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20536	28785-4	SBM sphere distance	LM glasses.lens.left
 20537	28786-2	Cylinder distance	LM glasses.lens.left
 20538	2878-7	Protein	Amnio fld
-20643	30118-4	Lymphocytes.IgA	WBC
 20539	28787-0	Axis distance	LM glasses.lens.left
 20540	28788-8	Prism base distance	LM glasses.lens.left
 20541	28789-6	Pupillary distance	LM glasses.lens.left
@@ -26846,6 +26878,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20640	30115-0	Lymphocytes.kappa	Bld
 20641	30116-8	Cells.terminal deoxyribonucleotidyl transferase/100 cells	CSF
 20642	30117-6	Cells.terminal deoxyribonucleotidyl transferase/100 cells	XXX
+20643	30118-4	Lymphocytes.IgA	WBC
 20644	30341-2	Erythrocyte sedimentation rate	Bld
 20645	30342-0	Extractable nuclear Ab	Ser
 20646	30343-8	Glomerular basement membrane Ab.IgG	Ser
@@ -40247,7 +40280,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 34043	43458-9	Multisection^W & WO contrast IV	Orbit vessels
 34044	43459-7	Views^during electroconvulsive shock treatment	Brain
 34045	43460-5	Views^during electroconvulsive shock treatment	Heart
-34155	41019-1	Beta endorphin	Ser/Plas
 34046	40908-6	Streptococcus pneumoniae 4 Ab.IgG	Ser
 34156	4102-0	5-Fluorocytosine	Dose
 34047	40909-4	Streptococcus pneumoniae 4 Ab.IgG^1st specimen	Ser
@@ -40357,6 +40389,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 34152	41016-7	Bilirubin	Urine
 34153	41017-5	Protoporphyrin	RBC
 34154	41018-3	Testosterone.bioavailable	Ser/Plas
+34155	41019-1	Beta endorphin	Ser/Plas
 34157	41020-9	Flunitrazepam	Urine
 34158	41021-7	Cocaine	Hair
 34159	41022-5	Citrate	Urine
@@ -45091,7 +45124,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 38887	45430-6	Goes out 1 or more days a week	^Patient
 38888	45431-4	Stays busy with hobbies, reading or fixed daily routine	^Patient
 38889	45432-2	Spends most time alone or watching TV	^Patient
-39569	46063-4	Programs	^Patient
 38890	45433-0	Moves independently indoors	^Patient
 38891	45434-8	Use of tobacco products at least daily	^Patient
 38892	4543-5	Haptoglobin	Ser/Plas
@@ -45771,6 +45803,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 39566	46060-0	Special treatments, procedures and programs	^Patient
 39567	46061-8	Special care	^Patient
 39568	46062-6	Treatments	^Patient
+39569	46063-4	Programs	^Patient
 39570	46064-2	Therapies	^Patient
 39571	46065-9	Intervention programs for mood, behavior and cognitive loss	^Patient
 39573	46067-5	Devices and restraints	^Patient
@@ -47055,7 +47088,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 40852	4716-7	HLA-A11	Bld
 40853	47167-2	Norepinephrine^4th specimen post XXX challenge	Plas
 40854	47168-0	Norepinephrine^4th specimen post XXX challenge	Urine
-41056	47375-1	Views 1 or 2	Knee.right
 40855	47169-8	Norepinephrine^5th specimen post XXX challenge	Plas
 40856	47170-6	Norepinephrine^5th specimen post XXX challenge	Urine
 40857	47171-4	Norepinephrine^6th specimen post XXX challenge	Plas
@@ -47258,6 +47290,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 41053	4737-3	HLA-A32(w19)	Bld
 41054	47373-6	Views 1 or 2	Knee.left
 41055	47374-4	Views GE 4	Knee.left
+41056	47375-1	Views 1 or 2	Knee.right
 41057	47376-9	Views GE 4	Knee.right
 41058	47377-7	Views LE 4	Knee.right
 41059	47378-5	Multisection blood pool^W radionuclide IV	Liver
@@ -50507,7 +50540,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 44304	50301-1	Adipoylcarnitine+Methylglutarylcarnitine (C6-DC)	Urine
 44305	5030-2	Parvovirus B19 RNA	Bld
 44306	50758-2	Herpes simplex virus 1 Ab.IgM	Ser
-44415	50340-9	Eosinophils	Nose
 44307	50759-0	Beta-N-acetylhexosaminidase.A	WBC
 44413	50338-3	Cannabinoids	Dial fld
 44417	50342-5	Ependymal+Choroid plexus cells/100 leukocytes	CSF
@@ -50617,6 +50649,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 44411	50336-7	Beta cortolone/Cortisol	Urine
 44412	50337-5	Carbamazepine free & total & 10,11-Epoxide panel	Ser/Plas
 44414	50339-1	Cholesterol	Bld
+44415	50340-9	Eosinophils	Nose
 44416	50341-7	Eosinophils	Sputum
 44419	5034-4	Streptococcus agalactiae rRNA	XXX
 44420	50344-1	Parvovirus B19 DNA	Body fld
@@ -51044,7 +51077,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 44840	50718-6	11-Deoxycortisol^5th specimen post XXX challenge	Ser/Plas
 44841	50719-4	11-Deoxycortisol^4th specimen post XXX challenge	Ser/Plas
 44842	50720-2	11-Deoxycortisol^3rd specimen post XXX challenge	Ser/Plas
-45082	50940-6	Zinc/Creatinine	Urine
 44843	50721-0	11-Deoxycortisol^1st specimen post XXX challenge	Ser/Plas
 44844	50722-8	VKORC1 gene mutation analysis	Bld/Tiss
 44845	50723-6	Cells.CD38+Lambda+	Bld
@@ -51283,6 +51315,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 45079	50937-2	Vanadium	Urine
 45080	50938-0	Vancomycin	Body fld
 45081	50939-8	Zinc	Hair
+45082	50940-6	Zinc/Creatinine	Urine
 45083	50941-4	Mycobacterium sp	XXX
 45084	50942-2	Acarboxyprothrombin	Ser
 45085	50943-0	Reasons for assessment (full)	^Patient
@@ -52635,7 +52668,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 46426	52203-7	Past medical history	Cardiac rehabilitation treatment plan
 46427	52204-5	Level of function	Cardiac rehabilitation treatment plan
 46428	52205-2	Prior level of function	Cardiac rehabilitation treatment plan
-47594	5331-4	Rubella virus Ab	Ser
 46429	52206-0	Current level of function	Cardiac rehabilitation treatment plan
 46430	52207-8	Assessment information	Cardiac rehabilitation treatment plan
 46596	52399-3	Prior level of function	Speech therapy treatment plan
@@ -52897,7 +52929,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 46686	52481-9	Vital signs CARE panel	^Patient
 46687	52482-7	Laboratory	^Patient
 46688	52483-5	Other	^Patient
-47595	53314-1	Tyrosine crystals	Urine
 46689	52484-3	Arterial Blood Gases (ABGs)	^Patient
 46690	52485-0	Pulmonary Function Tests	^Patient
 46691	52486-8	Volume^at 2.0 s post forced expiration/Volume.forced expiration.total	Respiratory system
@@ -53798,6 +53829,8 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 47590	53310-9	Leucine crystals	Urine
 47591	53311-7	Urate crystals	Urine
 47592	53312-5	Calcium carbonate crystals	Urine
+47594	5331-4	Rubella virus Ab	Ser
+47595	53314-1	Tyrosine crystals	Urine
 47596	53315-8	Urinalysis microscopic panel	Urine
 47597	53316-6	Leukocytes	Urine
 47598	53317-4	Leukocyte clumps	Urine
@@ -53904,7 +53937,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 47699	5342-1	Salmonella paratyphi B O Ab	Ser
 47700	53421-4	Fibroblast growth factor 23.intact ^3rd specimen post XXX challenge	Plas
 47701	53429-7	Fibroblast growth factor 23 ^4th specimen post XXX challenge	Plas
-48237	55697-7	Oxolinate	Isolate
 47702	53430-5	Fibroblast growth factor 23 ^5th specimen post XXX challenge	Plas
 47703	53431-3	Fibroblast growth factor 23 ^6th specimen post XXX challenge	Plas
 47704	53432-1	Gamma glutamyl transferase	Dial fld
@@ -54329,7 +54361,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 48126	53827-2	History of neural tube defect	^Patient
 48127	53828-0	Cyclosporine^trough	Bld
 48128	53829-8	Casein Ab.IgG	Ser
-48238	55698-5	Oxolinate	Isolate
 48129	53830-6	Granulocytes.CD55 deficient/100 cells	Bld
 48130	53831-4	Granulocytes.CD59 deficient/100 cells	Bld
 48131	53832-2	Erythrocytes.CD55 deficient/100 erythrocytes	Bld
@@ -54438,6 +54469,8 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 48234	55694-4	Ornidazole	Isolate
 48235	55695-1	Oxolinate	Isolate
 48236	55696-9	Oxolinate	Isolate
+48237	55697-7	Oxolinate	Isolate
+48238	55698-5	Oxolinate	Isolate
 48239	5569-9	Acetone	Urine
 48240	55699-3	Oxytetracycline	Isolate
 48241	55700-9	Paromomycin	Isolate
@@ -55090,7 +55123,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 48887	55048-3	Physical restraints used in chair or out of bed - trunk restraint	^Patient
 48888	55049-1	Physical restraints used in chair or out of bed - limb restraint	^Patient
 48889	54714-1	Primary respondent for daily and activity preferences	^Patient
-48991	56358-5	Ananas comosus Ab.IgG4	Ser
 48890	54715-8	Staff assessment of daily and activity preferences should be conducted	^Patient
 48891	54716-6	Resident prefers choosing clothes to wear	^Patient
 48892	54717-4	Resident prefers caring for personal belongings	^Patient
@@ -55191,6 +55223,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 48988	56339-5	Dactylis glomerata Ab.IgG4	Ser
 48989	56340-3	Origanum vulgare Ab.IgG4	Ser
 48990	5635-8	Cyanide	Ser/Plas
+48991	56358-5	Ananas comosus Ab.IgG4	Ser
 48992	56359-3	Bean pinto Ab.IgG4	Ser
 48993	56360-1	Pistacia vera Ab.IgG4	Ser
 48994	56361-9	Prunus domestica Ab.IgG4	Ser
@@ -55725,7 +55758,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 49520	54986-5	Antidepressant received in last 7D or since admission &or reentry if less than 7D	^Patient
 49521	54987-3	Hypnotic received in last 7D or since admission &or reentry if less than 7D	^Patient
 49614	55075-6	Version code	Specifications
-49615	55076-4	Production or test indicator	Submission
 49522	54988-1	Anticoagulant received in last 7D or since admission &or reentry if less than 7D	^Patient
 49523	54989-9	Medications received - none of the above were received in last 7D or since admission &or reentry if less than 7D	^Patient
 49524	54990-7	Special treatments and procedures	^Patient
@@ -55818,6 +55850,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 49611	55072-3	Insurance case mix - RUG version code	^Patient
 49612	55073-1	Tissue type	Ulcer.Largest at most advanced stage
 49613	55074-9	Participation in assessment	^Family or significant other
+49615	55076-4	Production or test indicator	Submission
 49616	55077-2	State assigned facility submission ID	^Facility
 49617	55078-0	Federal employer tax ID	Software vendor
 49618	5507-9	CD58	WBC
@@ -57402,7 +57435,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 51200	56572-1	Somatotropin^20H post XXX challenge	Ser/Plas
 51533	57153-9	Referral note	{Setting}
 51201	56573-9	Renin^30M post XXX challenge	Plas
-51535	57155-4	Referral note	{Setting}
 51202	56574-7	Renin^1H post XXX challenge	Plas
 51203	56575-4	17-Hydroxyprogesterone^15M post XXX challenge	Ser/Plas
 51204	56576-2	17-Hydroxyprogesterone^45M post XXX challenge	Ser/Plas
@@ -57735,6 +57767,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 51531	57151-3	Referral note	{Setting}
 51532	57152-1	Referral note	{Setting}
 51534	57154-7	Referral note	{Setting}
+51535	57155-4	Referral note	{Setting}
 51536	57156-2	Referral note	{Setting}
 51537	57157-0	Referral note	{Setting}
 51538	5715-8	Platinum	Urine
@@ -58160,7 +58193,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 51956	5726-5	Selenium	Urine
 51957	57265-1	Supervision and safety	^Patient
 51958	57266-9	Advocacy or facilitation of patient participation	^Patient
-52075	57385-7	Urea	Urine
 51959	57267-7	ADL or IADL assistance from any caregiver	^Patient
 51960	57268-5	Therapy need	^Patient
 51961	57269-3	Patient-specific parameters for notifying physician of changes	^Patient
@@ -58276,6 +58308,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 52071	5738-0	Strychnine	Ser/Plas
 52072	57380-8	Potassium	Urine
 52073	57382-4	Sodium	Urine
+52075	57385-7	Urea	Urine
 52076	57386-5	Urate	Urine
 52077	57387-3	Urate	Urine
 52079	57389-9	Urea	Urine
@@ -58488,7 +58521,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 52285	57524-1	17-Ketogenic steroids^pre dose dexamethasone	Urine
 52286	57525-8	17-Ketogenic steroids^2D post dose dexamethasone	Urine
 52287	57526-6	17-Hydroxycorticosteroids^pre high dose dexamethasone	Urine
-52661	57857-5	Chlorpheniramine	XXX
 52288	57527-4	17-Hydroxycorticosteroids^2D post high dose dexamethasone	Urine
 52289	57528-2	17-Hydroxycorticosteroids^pre dose dexamethasone	Urine
 52290	57529-0	17-Hydroxycorticosteroids^2D post dose dexamethasone	Urine
@@ -58863,6 +58895,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 52658	57854-2	Thyrotropin^5M post XXX challenge	Ser/Plas
 52659	57855-9	Atenolol	XXX
 52660	57856-7	Carisoprodol	XXX
+52661	57857-5	Chlorpheniramine	XXX
 52662	57858-3	Normaprotiline	XXX
 52663	57859-1	Dextromethorphan	XXX
 52664	57860-9	Diethylamine	XXX
@@ -65825,6 +65858,8 @@ COPY lu_categories (pk, category) FROM stdin;
 399	Arthritis Support Group
 400	Employment Service
 401	Public Education - Training
+402	Timber Fabrication
+403	Retail - Public Liability
 \.
 
 
@@ -65843,6 +65878,7 @@ COPY lu_contact_type (pk, type) FROM stdin;
 1	Work
 8	Toll Free
 9	Letter
+11	Phone After Hours
 \.
 
 
@@ -85247,6 +85283,4229 @@ COPY lu_towns (pk, postcode, town, state, comment) FROM stdin;
 11501	9726	GOLD COAST MC	QLD	PO Boxes
 11502	4000	BRISBANE CITY	QLD	\N
 11503	4000	PETRIE TERRACE	QLD	\N
+11504	0822	WURRUMIYANGA	NT	\N
+11505	0834	VIRGINIA	NT	\N
+11506	0872	WANNAN	WA	WANNAN COMMUNITY
+11507	0873	HEAVITREE GAP CPA	NT	PO Boxes
+11508	1350	WOOLLAHRA	NSW	PO Boxes
+11509	2068	WILLOUGHBY NORTH	NSW	PO Boxes
+11510	2082	BEROWRA CREEK	NSW	\N
+11511	2083	COGRA BAY	NSW	\N
+11512	2089	KURRABA POINT	NSW	\N
+11513	2097	COLLAROY PLATEAU	NSW	\N
+11514	2105	MCCARRS CREEK	NSW	\N
+11515	2107	BILGOLA BEACH	NSW	\N
+11516	2107	BILGOLA PLATEAU	NSW	\N
+11517	2107	CLAREVILLE	NSW	\N
+11518	2107	WHALE BEACH	NSW	\N
+11519	2108	COASTERS RETREAT	NSW	\N
+11520	2108	CURRAWONG BEACH	NSW	\N
+11521	2108	GREAT MACKEREL BEACH	NSW	\N
+11522	2157	FOREST GLEN	NSW	\N
+11523	2171	CARNES HILL	NSW	\N
+11524	2171	ELIZABETH HILLS	NSW	\N
+11525	2171	LEN WATERS ESTATE	NSW	\N
+11526	2200	BANKSTOWN AERODROME	NSW	\N
+11527	2230	GREENHILLS BEACH	NSW	\N
+11528	2250	GLENWORTH VALLEY	NSW	\N
+11529	2250	GREENGROVE	NSW	\N
+11530	2250	MANGROVE CREEK	NSW	\N
+11531	2250	MOONEY MOONEY CREEK	NSW	\N
+11532	2250	TEN MILE HOLLOW	NSW	\N
+11533	2250	UPPER MANGROVE	NSW	\N
+11534	2251	BOUDDI	NSW	\N
+11535	2256	LITTLE WOBBY	NSW	\N
+11536	2256	WONDABYNE	NSW	\N
+11537	2257	BOX HEAD	NSW	\N
+11538	2259	BUSHELLS RIDGE	NSW	\N
+11539	2259	CRANGAN BAY	NSW	\N
+11540	2259	FRAZER PARK	NSW	\N
+11541	2259	FREEMANS	NSW	\N
+11542	2259	KIAR	NSW	\N
+11543	2259	LITTLE JILLIBY	NSW	\N
+11544	2259	MOONEE	NSW	\N
+11545	2259	POINT WOLSTONCROFT	NSW	\N
+11546	2259	WYBUNG	NSW	\N
+11547	2262	BUDGEWOI PENINSULA	NSW	\N
+11548	2262	COLONGRA	NSW	\N
+11549	2264	MYUNA BAY	NSW	\N
+11550	2281	LITTLE PELICAN	NSW	\N
+11551	2281	PINNY BEACH	NSW	\N
+11552	2283	RYHOPE	NSW	\N
+11553	2310	HUNTER REGION MC	NSW	PO Boxes
+11554	2311	BINGLEBURRA	NSW	\N
+11555	2311	CARRABOLLA	NSW	\N
+11556	2311	ECCLESTON	NSW	\N
+11557	2311	HALTON	NSW	\N
+11558	2311	LEWINSBROOK	NSW	\N
+11559	2311	MOUNT RIVERS	NSW	\N
+11560	2311	UPPER ALLYN	NSW	\N
+11561	2318	CAMPVALE	NSW	\N
+11562	2318	FERODALE	NSW	\N
+11563	2318	OYSTER COVE	NSW	\N
+11564	2319	TILLIGERRY CREEK	NSW	\N
+11565	2320	ALLANDALE	NSW	\N
+11566	2320	ANAMBAH	NSW	\N
+11567	2320	GOSFORTH	NSW	\N
+11568	2320	MINDARIBBA	NSW	\N
+11569	2320	MOUNT DEE	NSW	\N
+11570	2320	ROSEBROOK	NSW	\N
+11571	2321	HARPERS HILL	NSW	\N
+11572	2321	OSWALD	NSW	\N
+11573	2321	PHOENIX PARK	NSW	\N
+11574	2321	WINDERMERE	NSW	\N
+11575	2322	LENAGHAN	NSW	\N
+11576	2322	STOCKRINGTON	NSW	\N
+11577	2323	BUTTAI	NSW	\N
+11578	2323	PITNACREE	NSW	\N
+11579	2323	RICHMOND VALE	NSW	\N
+11580	2324	BALICKERA	NSW	\N
+11581	2325	BELLBIRD HEIGHTS	NSW	\N
+11582	2325	CORRABARE	NSW	\N
+11583	2325	GRETA MAIN	NSW	\N
+11584	2325	MORUBEN	NSW	\N
+11585	2325	OLNEY	NSW	\N
+11586	2325	PAYNES CROSSING	NSW	\N
+11587	2325	SWEETMANS CREEK	NSW	\N
+11588	2328	BUREEN	NSW	\N
+11589	2328	DALSWINTON	NSW	\N
+11590	2328	HOLLYDEEN	NSW	\N
+11591	2328	KERRABEE	NSW	\N
+11592	2328	MANGOOLA	NSW	\N
+11593	2328	MARTINDALE	NSW	\N
+11594	2328	WIDDEN	NSW	\N
+11595	2328	YARRAWA	NSW	\N
+11596	2329	UARBRY	NSW	\N
+11597	2330	BIG RIDGE	NSW	\N
+11598	2330	BIG YENGO	NSW	\N
+11599	2330	BOWMANS CREEK	NSW	\N
+11600	2330	BRIDGMAN	NSW	\N
+11601	2330	CLYDESDALE	NSW	\N
+11602	2330	COMBO	NSW	\N
+11603	2330	DOYLES CREEK	NSW	\N
+11604	2330	FALBROOK	NSW	\N
+11605	2330	FERN GULLY	NSW	\N
+11606	2330	FORDWICH	NSW	\N
+11607	2330	GARLAND VALLEY	NSW	\N
+11608	2330	GLENDON	NSW	\N
+11609	2330	GLENNIES CREEK	NSW	\N
+11610	2330	GOORANGOOLA	NSW	\N
+11611	2330	GOULDSVILLE	NSW	\N
+11612	2330	HAMBLEDON HILL	NSW	\N
+11613	2330	HEBDEN	NSW	\N
+11614	2330	HOWICK	NSW	\N
+11615	2330	LEMINGTON	NSW	\N
+11616	2330	MAISON DIEU	NSW	\N
+11617	2330	MIDDLE FALBROOK	NSW	\N
+11618	2330	MIRANNIE	NSW	\N
+11619	2330	MOUNT ROYAL	NSW	\N
+11620	2330	OBANVALE	NSW	\N
+11621	2330	RIXS CREEK	NSW	\N
+11622	2330	ROUGHIT	NSW	\N
+11623	2330	SCOTTS FLAT	NSW	\N
+11624	2330	WARKWORTH	NSW	\N
+11625	2330	WESTBROOK	NSW	Singleton
+11626	2330	WOLLEMI	NSW	\N
+11627	2330	WYLIES FLAT	NSW	\N
+11628	2333	BAERAMI	NSW	\N
+11629	2333	BAERAMI CREEK	NSW	\N
+11630	2333	BENGALLA	NSW	\N
+11631	2333	CASTLE ROCK	NSW	\N
+11632	2333	EDDERTON	NSW	\N
+11633	2333	KAYUGA	NSW	\N
+11634	2333	LIDDELL	NSW	\N
+11635	2333	MANOBALAI	NSW	\N
+11636	2333	MCCULLYS GAP	NSW	\N
+11637	2333	MUSCLE CREEK	NSW	\N
+11638	2335	LECONFIELD	NSW	\N
+11639	2336	ROSSGOLE	NSW	\N
+11640	2336	ROUCHEL BROOK	NSW	\N
+11641	2336	UPPER DARTBROOK	NSW	\N
+11642	2337	BELLTREES	NSW	\N
+11643	2337	BRAWBOY	NSW	\N
+11644	2337	DRY CREEK	NSW	\N
+11645	2337	GLENBAWN	NSW	\N
+11646	2337	GLENROCK	NSW	\N
+11647	2337	MOOBI	NSW	\N
+11648	2337	MURULLA	NSW	\N
+11649	2337	OMADALE	NSW	\N
+11650	2337	OWENS GAP	NSW	\N
+11651	2337	PAGES CREEK	NSW	\N
+11652	2337	STEWARTS BROOK	NSW	\N
+11653	2337	TOMALLA	NSW	\N
+11654	2337	WOOLOOMA	NSW	\N
+11655	2338	ARDGLEN	NSW	\N
+11656	2338	BLANDFORD	NSW	\N
+11657	2338	CRAWNEY	NSW	\N
+11658	2338	GREEN CREEK	NSW	\N
+11659	2338	PAGES RIVER	NSW	\N
+11660	2338	SCOTTS CREEK	NSW	\N
+11661	2338	TIMOR	NSW	\N
+11662	2339	BIG JACKS CREEK	NSW	\N
+11663	2339	BRAEFIELD	NSW	\N
+11664	2339	CATTLE CREEK	NSW	\N
+11665	2339	CHILCOTTS CREEK	NSW	\N
+11666	2339	LITTLE JACKS CREEK	NSW	\N
+11667	2339	MACDONALDS CREEK	NSW	\N
+11668	2339	PARRAWEENA	NSW	\N
+11669	2339	WARRAH	NSW	\N
+11670	2339	WARRAH CREEK	NSW	\N
+11671	2340	APPLEBY	NSW	\N
+11672	2340	BARRY	NSW	Tamworth
+11673	2340	BOWLING ALLEY POINT	NSW	\N
+11674	2340	DUNCANS CREEK	NSW	\N
+11675	2340	GAROO	NSW	\N
+11676	2340	GIDLEY	NSW	\N
+11677	2340	GOONOO GOONOO	NSW	\N
+11678	2340	HANGING ROCK	NSW	Tamworth
+11679	2340	KEEPIT	NSW	\N
+11680	2340	OGUNBIL	NSW	\N
+11681	2340	WALLAMORE	NSW	\N
+11682	2340	WEABONGA	NSW	\N
+11683	2343	BLACKVILLE	NSW	\N
+11684	2343	BORAMBIL	NSW	\N
+11685	2343	BUNDELLA	NSW	\N
+11686	2343	COLLY BLUE	NSW	\N
+11687	2343	COOMOO COOMOO	NSW	\N
+11688	2343	PINE RIDGE	NSW	\N
+11689	2343	QUIPOLLY	NSW	\N
+11690	2343	WARRAH RIDGE	NSW	\N
+11691	2343	WINDY	NSW	\N
+11692	2343	YANNERGEE	NSW	\N
+11693	2343	YARRAMAN	NSW	\N
+11694	2346	BORAH CREEK	NSW	\N
+11695	2346	KLORI	NSW	\N
+11696	2346	NAMOI RIVER	NSW	\N
+11697	2346	NEW MEXICO	NSW	\N
+11698	2346	RUSHES CREEK	NSW	\N
+11699	2346	UPPER MANILLA	NSW	\N
+11700	2346	WARRABAH	NSW	\N
+11701	2346	WIMBORNE	NSW	\N
+11702	2346	WONGO CREEK	NSW	\N
+11703	2347	BANOON	NSW	\N
+11704	2347	COBBADAH	NSW	\N
+11705	2347	GULF CREEK	NSW	\N
+11706	2347	GUNDAMULDA	NSW	\N
+11707	2347	IRONBARK	NSW	\N
+11708	2347	LINDESAY	NSW	\N
+11709	2347	LONGARM	NSW	\N
+11710	2347	MAYVALE	NSW	\N
+11711	2347	THIRLDENE	NSW	\N
+11712	2347	UPPER HORTON	NSW	\N
+11713	2347	WOODSREEF	NSW	\N
+11714	2350	ABINGTON	NSW	\N
+11715	2350	BOOROLONG	NSW	\N
+11716	2350	PUDDLEDOCK	NSW	\N
+11717	2350	WARDS MISTAKE	NSW	\N
+11718	2352	LIMBRI	NSW	\N
+11719	2352	MULLA CREEK	NSW	\N
+11720	2354	WALCHA ROAD	NSW	\N
+11721	2354	WOLLUN	NSW	\N
+11722	2355	RETREAT	NSW	\N
+11723	2357	BOX RIDGE	NSW	\N
+11724	2357	BUGALDIE	NSW	\N
+11725	2357	DANDRY	NSW	\N
+11726	2357	GOWANG	NSW	\N
+11727	2357	ROCKY GLEN	NSW	\N
+11728	2357	TANNABAR	NSW	\N
+11729	2357	WATTLE SPRINGS	NSW	\N
+11730	2358	GOSTWYCK	NSW	\N
+11731	2358	MIHI	NSW	\N
+11732	2358	SALISBURY PLAINS	NSW	\N
+11733	2359	CAMERONS CREEK	NSW	\N
+11734	2360	BRODIES PLAINS	NSW	\N
+11735	2360	CHERRY TREE HILL	NSW	\N
+11736	2360	COPETON	NSW	\N
+11737	2360	HOWELL	NSW	\N
+11738	2360	NEWSTEAD	NSW	\N
+11739	2360	PARADISE	NSW	\N
+11740	2360	ROB ROY	NSW	\N
+11741	2360	SAPPHIRE	NSW	\N
+11742	2360	SPRING MOUNTAIN	NSW	\N
+11743	2360	STANBOROUGH	NSW	\N
+11744	2360	SWANBROOK	NSW	\N
+11745	2360	WANDERA	NSW	\N
+11746	2361	ATHOLWOOD	NSW	\N
+11747	2361	LIMESTONE	NSW	\N
+11748	2361	PINDAROI	NSW	\N
+11749	2365	BACKWATER	NSW	\N
+11750	2365	BALD BLAIR	NSW	\N
+11751	2365	BALDERSLEIGH	NSW	\N
+11752	2365	BASSENDEAN	NSW	\N
+11753	2365	BRIARBROOK	NSW	\N
+11754	2365	BROCKLEY	NSW	\N
+11755	2365	BRUSHY CREEK	NSW	\N
+11756	2365	FALCONER	NSW	\N
+11757	2365	GEORGES CREEK	NSW	\N
+11758	2365	GLEN NEVIS	NSW	\N
+11759	2365	MAYBOLE	NSW	\N
+11760	2365	NEW VALLEY	NSW	\N
+11761	2365	OBAN	NSW	\N
+11762	2365	SOUTH GUYRA	NSW	\N
+11763	2365	TENTERDEN	NSW	\N
+11764	2365	THE BASIN	NSW	\N
+11765	2365	THE GULF	NSW	\N
+11766	2365	TUBBAMURRA	NSW	\N
+11767	2369	OLD MILL	NSW	\N
+11768	2370	BALD NOB	NSW	\N
+11769	2370	DIEHARD	NSW	\N
+11770	2370	GIBRALTAR RANGE	NSW	\N
+11771	2370	GLEN ELGIN	NSW	\N
+11772	2370	KINGSGATE	NSW	\N
+11773	2370	KOOKABOOKRA	NSW	\N
+11774	2370	MOGGS SWAMP	NSW	\N
+11775	2370	MOOGEM	NSW	\N
+11776	2370	PINKETT	NSW	\N
+11777	2370	RANGERS VALLEY	NSW	\N
+11778	2370	YARROWFORD	NSW	\N
+11779	2371	CAPOOMPETA	NSW	\N
+11780	2371	WELLINGTON VALE	NSW	\N
+11781	2371	YELLOW DAM	NSW	\N
+11782	2372	BOOKOOKOORARA	NSW	\N
+11783	2372	BOOROOK	NSW	\N
+11784	2372	CARROLLS CREEK	NSW	\N
+11785	2372	CULLENDORE	NSW	\N
+11786	2372	DUMARESQ VALLEY	NSW	\N
+11787	2372	FOREST LAND	NSW	\N
+11788	2372	RIVERTREE	NSW	\N
+11789	2372	SANDY HILL	NSW	\N
+11790	2372	SILENT GROVE	NSW	\N
+11791	2372	TARBAN	NSW	\N
+11792	2372	TIMBARRA	NSW	\N
+11793	2372	WILLSONS DOWNFALL	NSW	\N
+11794	2379	GOOLHI	NSW	\N
+11795	2379	NAPIER LANE	NSW	\N
+11796	2379	NOMBI	NSW	\N
+11797	2380	BLUE VALE	NSW	\N
+11798	2380	GHOOLENDAADI	NSW	\N
+11799	2380	MARYS MOUNT	NSW	\N
+11800	2380	RANGARI	NSW	\N
+11801	2382	WEAN	NSW	\N
+11802	2386	DRILDOOL	NSW	\N
+11803	2386	NOWLEY	NSW	\N
+11804	2387	BULYEROI	NSW	\N
+11805	2388	BOOLCARROLL	NSW	\N
+11806	2388	SPRING PLAINS	NSW	\N
+11807	2388	THE PILLIGA	NSW	\N
+11808	2390	BERRIGAL	NSW	\N
+11809	2390	BULLAWA CREEK	NSW	\N
+11810	2390	COURADDA	NSW	\N
+11811	2390	EULAH CREEK	NSW	\N
+11812	2390	HARPARARY	NSW	\N
+11813	2390	KAPUTAR	NSW	\N
+11814	2395	ROPERS ROAD	NSW	\N
+11815	2396	BARWON	NSW	\N
+11816	2396	GOORIANAWA	NSW	\N
+11817	2397	JEWS LAGOON	NSW	\N
+11818	2397	MILLIE	NSW	\N
+11819	2399	BINIGUY	NSW	\N
+11820	2400	BULLARAH	NSW	\N
+11821	2400	CROOBLE	NSW	\N
+11822	2400	MALLOWA	NSW	\N
+11823	2400	TERRY HIE HIE	NSW	\N
+11824	2400	TULLOONA	NSW	\N
+11825	2402	BALFOURS PEAK	NSW	\N
+11826	2403	GRAGIN	NSW	\N
+11827	2403	MYALL CREEK	NSW	\N
+11828	2404	BANGHEET	NSW	\N
+11829	2404	ELCOMBE	NSW	\N
+11830	2404	GINEROI	NSW	\N
+11831	2404	KEERA	NSW	\N
+11832	2404	PALLAL	NSW	\N
+11833	2404	UPPER BINGARA	NSW	\N
+11834	2406	WEEMELAH	NSW	\N
+11835	2408	BLUE NOBBY	NSW	\N
+11836	2408	YALLAROI	NSW	\N
+11837	2409	BOONAL	NSW	\N
+11838	2410	TWIN RIVERS	NSW	\N
+11839	2415	NOOROO	NSW	\N
+11840	2415	UPPER KARUAH RIVER	NSW	\N
+11841	2415	WEISMANTELS	NSW	\N
+11842	2420	CAMBRA	NSW	\N
+11843	2420	CHICHESTER	NSW	\N
+11844	2420	FLAT TOPS	NSW	\N
+11845	2420	HANLEYS CREEK	NSW	\N
+11846	2420	STROUD HILL	NSW	\N
+11847	2420	SUGARLOAF	NSW	\N
+11848	2420	TABBIL CREEK	NSW	\N
+11849	2420	UNDERBANK	NSW	\N
+11850	2420	WALLARINGA	NSW	\N
+11851	2420	WIRRAGULLA	NSW	\N
+11852	2421	FISHERS HILL	NSW	\N
+11853	2421	TOCAL	NSW	\N
+11854	2421	WEBBERS CREEK	NSW	\N
+11855	2422	BARRINGTON TOPS	NSW	\N
+11856	2422	BAXTERS RIDGE	NSW	\N
+11857	2422	BERRICO	NSW	\N
+11858	2422	BINDERA	NSW	\N
+11859	2422	BOWMAN FARM	NSW	\N
+11860	2422	BRETTI	NSW	\N
+11861	2422	BULLIAC	NSW	\N
+11862	2422	CALLAGHANS CREEK	NSW	\N
+11863	2422	COBARK	NSW	\N
+11864	2422	CONEAC	NSW	\N
+11865	2422	CRAVEN PLATEAU	NSW	\N
+11866	2422	CURRICABARK	NSW	\N
+11867	2422	DEWITT	NSW	\N
+11868	2422	GANGAT	NSW	\N
+11869	2422	GIRO	NSW	\N
+11870	2422	GLEN WARD	NSW	\N
+11871	2422	GLOUCESTER TOPS	NSW	\N
+11872	2422	INVERGORDON	NSW	\N
+11873	2422	KIA ORA	NSW	\N
+11874	2422	MARES RUN	NSW	\N
+11875	2422	MERNOT	NSW	\N
+11876	2422	MOGRANI	NSW	\N
+11877	2422	MOPPY	NSW	\N
+11878	2422	RAWDON VALE	NSW	\N
+11879	2422	ROOKHURST	NSW	\N
+11880	2422	TERREEL	NSW	\N
+11881	2422	TIBBUC	NSW	\N
+11882	2422	TITAATEE CREEK	NSW	\N
+11883	2422	TUGRABAKH	NSW	\N
+11884	2422	WALLANBAH	NSW	\N
+11885	2422	WOKO	NSW	\N
+11886	2423	BOMBAH POINT	NSW	\N
+11887	2423	CRAWFORD RIVER	NSW	\N
+11888	2423	MAYERS FLAT	NSW	\N
+11889	2423	MUNGO BRUSH	NSW	\N
+11890	2423	MYALL LAKE	NSW	\N
+11891	2423	TOPI TOPI	NSW	\N
+11892	2423	VIOLET HILL	NSW	\N
+11893	2423	WARRANULLA	NSW	\N
+11894	2423	WILLINA	NSW	\N
+11895	2423	YAGON	NSW	\N
+11896	2424	COOPLACURRIPA	NSW	\N
+11897	2424	CUNDLE FLAT	NSW	\N
+11898	2424	KNORRIT FOREST	NSW	\N
+11899	2424	NUMBER ONE	NSW	\N
+11900	2424	TIRI	NSW	\N
+11901	2428	BOOTI BOOTI	NSW	\N
+11902	2428	SANDBAR	NSW	\N
+11903	2428	SHALLOW BAY	NSW	\N
+11904	2428	TIONA	NSW	\N
+11905	2428	WALLINGAT	NSW	\N
+11906	2428	WALLIS LAKE	NSW	\N
+11907	2429	BOORGANNA	NSW	\N
+11908	2429	BULGA FOREST	NSW	\N
+11909	2429	DINGO FOREST	NSW	\N
+11910	2429	DOLLYS FLAT	NSW	\N
+11911	2429	INNES VIEW	NSW	\N
+11912	2429	KARAAK FLAT	NSW	\N
+11913	2429	KHATAMBUHL	NSW	\N
+11914	2429	KIPPAXS	NSW	\N
+11915	2429	STRATHCEDAR	NSW	\N
+11916	2429	THE BIGHT	NSW	\N
+11917	2429	YARRATT FOREST	NSW	\N
+11918	2430	CROKI	NSW	\N
+11919	2430	DUMARESQ ISLAND	NSW	\N
+11920	2430	GHINNI GHINNI	NSW	\N
+11921	2430	JONES ISLAND	NSW	\N
+11922	2430	KIWARRAK	NSW	\N
+11923	2430	LANSDOWNE FOREST	NSW	\N
+11924	2430	SALTWATER	NSW	\N
+11925	2439	BATAR CREEK	NSW	\N
+11926	2439	KEREWONG	NSW	\N
+11927	2439	ROSSGLEN	NSW	\N
+11928	2439	SWANS CROSSING	NSW	\N
+11929	2440	ALDAVILLA	NSW	\N
+11930	2440	BURNT BRIDGE	NSW	\N
+11931	2440	CARRAI	NSW	\N
+11932	2440	COLLOMBATTI	NSW	\N
+11933	2440	CORANGULA	NSW	\N
+11934	2440	HAMPDEN HALL	NSW	\N
+11935	2440	MOONEBA	NSW	\N
+11936	2440	MOPARRABAH	NSW	\N
+11937	2440	OLD STATION	NSW	\N
+11938	2440	POLA CREEK	NSW	\N
+11939	2440	RAINBOW REACH	NSW	\N
+11940	2440	SEVEN OAKS	NSW	\N
+11941	2440	SKILLION FLAT	NSW	\N
+11942	2440	SUMMER ISLAND	NSW	\N
+11943	2440	TOOROOKA	NSW	\N
+11944	2440	TURNERS FLAT	NSW	\N
+11945	2440	VERGES CREEK	NSW	\N
+11946	2440	WILLI WILLI	NSW	\N
+11947	2440	YESSABAH	NSW	\N
+11948	2441	BRIL BRIL	NSW	\N
+11949	2441	BRINERVILLE	NSW	\N
+11950	2441	GRASSY HEAD	NSW	\N
+11951	2441	HACKS FERRY	NSW	\N
+11952	2441	KIPPARA	NSW	\N
+11953	2443	DEAUVILLE	NSW	\N
+11954	2443	DIAMOND HEAD	NSW	\N
+11955	2443	MIDDLE BROTHER	NSW	\N
+11956	2443	NORTH BROTHER	NSW	\N
+11957	2444	THE HATCH	NSW	\N
+11958	2445	GRANTS BEACH	NSW	\N
+11959	2445	JOLLY NOSE	NSW	\N
+11960	2446	BAGO	NSW	\N
+11961	2446	BANDA BANDA	NSW	\N
+11962	2446	BIRDWOOD	NSW	\N
+11963	2446	CAIRNCROSS	NSW	\N
+11964	2446	DEBENHAM	NSW	\N
+11965	2446	DOYLES RIVER	NSW	\N
+11966	2446	FORBES RIVER	NSW	\N
+11967	2446	GEARYS FLAT	NSW	\N
+11968	2446	HARTYS PLAINS	NSW	\N
+11969	2446	HOLLISDALE	NSW	\N
+11970	2446	HUNTINGDON	NSW	\N
+11971	2446	HYNDMANS CREEK	NSW	\N
+11972	2446	LOWER PAPPINBARRA	NSW	\N
+11973	2446	MARLO MERRICAN	NSW	\N
+11974	2446	MOUNT SEAVIEW	NSW	\N
+11975	2446	PAPPINBARRA	NSW	\N
+11976	2446	PIPECLAY	NSW	\N
+11977	2446	RAWDON ISLAND	NSW	\N
+11978	2446	TOMS CREEK	NSW	\N
+11979	2446	UPPER PAPPINBARRA	NSW	\N
+11980	2446	WERRIKIMBE	NSW	\N
+11981	2446	YARRAS	NSW	Wauchope
+11982	2447	BURRAPINE	NSW	\N
+11983	2447	DONNELLYVILLE	NSW	\N
+11984	2447	THUMB CREEK	NSW	\N
+11985	2449	BUCKRA BENDINNI	NSW	\N
+11986	2449	KENNAICLE CREEK	NSW	\N
+11987	2449	KILLIEKRANKIE	NSW	\N
+11988	2449	TEWINGA	NSW	\N
+11989	2450	BONVILLE	NSW	\N
+11990	2453	BILLYS CREEK	NSW	\N
+11991	2453	CASCADE	NSW	\N
+11992	2453	CLOUDS CREEK	NSW	\N
+11993	2453	MARENGO	NSW	\N
+11994	2453	MOONPAR	NSW	\N
+11995	2453	NEVER NEVER	NSW	\N
+11996	2453	TALLOWWOOD RIDGE	NSW	\N
+11997	2453	WILD CATTLE CREEK	NSW	\N
+11998	2454	BUNDAGEN	NSW	\N
+11999	2454	SPICKETTS CREEK	NSW	\N
+12000	2456	DIRTY CREEK	NSW	\N
+12001	2460	ALUMY CREEK	NSW	\N
+12002	2460	BARCOONGERE	NSW	\N
+12003	2460	BARRETTS CREEK	NSW	\N
+12004	2460	BOM BOM	NSW	\N
+12005	2460	BOOKRAM	NSW	\N
+12006	2460	BUCCARUMBI	NSW	\N
+12007	2460	CALAMIA	NSW	\N
+12008	2460	CARNHAM	NSW	\N
+12009	2460	CARRS ISLAND	NSW	\N
+12010	2460	CARRS PENINSULAR	NSW	\N
+12011	2460	CHAELUNDI	NSW	\N
+12012	2460	CLIFDEN	NSW	\N
+12013	2460	COLLUM COLLUM	NSW	\N
+12014	2460	COOMBADJHA	NSW	\N
+12015	2460	CROWTHER ISLAND	NSW	\N
+12016	2460	DALMORTON	NSW	\N
+12017	2460	DILKOON	NSW	\N
+12018	2460	DUMBUDGERY	NSW	\N
+12019	2460	EIGHTEEN MILE	NSW	\N
+12020	2460	FINE FLOWER	NSW	\N
+12021	2460	FORTIS CREEK	NSW	\N
+12022	2460	HEIFER STATION	NSW	\N
+12023	2460	KOOLKHAN	NSW	\N
+12024	2460	KYARRAN	NSW	\N
+12025	2460	LEVENSTRATH	NSW	\N
+12026	2460	LILYDALE	NSW	\N
+12027	2460	LIONSVILLE	NSW	\N
+12028	2460	MALABUGILMAH	NSW	\N
+12029	2460	MOLEVILLE CREEK	NSW	\N
+12030	2460	MYLNEFORD	NSW	\N
+12031	2460	NEWBOLD	NSW	\N
+12032	2460	PULGANBAR	NSW	\N
+12033	2460	RUSHFORTH	NSW	\N
+12034	2460	SANDY CROSSING	NSW	\N
+12035	2460	SHANNONDALE	NSW	\N
+12036	2460	SOUTHAMPTON	NSW	\N
+12037	2460	STOCKYARD CREEK	NSW	\N
+12038	2460	THE PINNACLES	NSW	\N
+12039	2460	TOWALLUM	NSW	\N
+12040	2460	UPPER COPMANHURST	NSW	\N
+12041	2460	UPPER FINE FLOWER	NSW	\N
+12042	2460	WARRAGAI CREEK	NSW	\N
+12043	2460	WATERVIEW	NSW	\N
+12044	2460	WINEGROVE	NSW	\N
+12045	2460	WOMBAT CREEK	NSW	\N
+12046	2462	CALLIOPE	NSW	\N
+12047	2462	COLDSTREAM	NSW	\N
+12048	2462	DIGGERS CAMP	NSW	\N
+12049	2462	GILLETTS RIDGE	NSW	\N
+12050	2462	LAKE HIAWATHA	NSW	\N
+12051	2462	LAVADIA	NSW	\N
+12052	2463	ASHBY ISLAND	NSW	\N
+12053	2463	JACKY BULBIN FLAT	NSW	\N
+12054	2463	SANDON	NSW	\N
+12055	2463	SHARK CREEK	NSW	\N
+12056	2463	TALOUMBI	NSW	\N
+12057	2463	THE SANDON	NSW	\N
+12058	2464	FREEBURN ISLAND	NSW	\N
+12059	2464	MICALO ISLAND	NSW	\N
+12060	2464	YURAYGIR	NSW	\N
+12061	2466	THE FRESHWATER	NSW	\N
+12062	2466	WOODY HEAD	NSW	\N
+12063	2469	ALICE	NSW	\N
+12064	2469	BANYABBA	NSW	\N
+12065	2469	BEAN CREEK	NSW	\N
+12066	2469	BINGEEBEEBRA CREEK	NSW	\N
+12067	2469	BOTTLE CREEK	NSW	\N
+12068	2469	BULLDOG	NSW	\N
+12069	2469	BUSBYS FLAT	NSW	\N
+12070	2469	CAMBRIDGE PLATEAU	NSW	\N
+12071	2469	CAMIRA	NSW	\N
+12072	2469	CAPEEN CREEK	NSW	\N
+12073	2469	CLEARFIELD	NSW	\N
+12074	2469	CULMARAN CREEK	NSW	\N
+12075	2469	DUCK CREEK	NSW	\N
+12076	2469	GOODWOOD ISLAND	NSW	\N
+12077	2469	GORGE CREEK	NSW	\N
+12078	2469	HAYSTACK	NSW	\N
+12079	2469	HOGARTH RANGE	NSW	\N
+12080	2469	JACKSONS FLAT	NSW	\N
+12081	2469	JOES BOX	NSW	\N
+12082	2469	KEYBARBIN	NSW	\N
+12083	2469	KIPPENDUFF	NSW	\N
+12084	2469	LOUISA CREEK	NSW	\N
+12085	2469	LOWER BOTTLE CREEK	NSW	\N
+12086	2469	LOWER DUCK CREEK	NSW	\N
+12087	2469	LOWER PEACOCK	NSW	\N
+12088	2469	MOOKIMA WYBRA	NSW	\N
+12089	2469	MORORO	NSW	\N
+12090	2469	MOUNT MARSH	NSW	\N
+12091	2469	PAGANS FLAT	NSW	\N
+12092	2469	PEACOCK CREEK	NSW	\N
+12093	2469	PIKAPENE	NSW	\N
+12094	2469	SANDILANDS	NSW	\N
+12095	2469	SIMPKINS CREEK	NSW	\N
+12096	2469	SIX MILE SWAMP	NSW	\N
+12097	2469	THERESA CREEK	NSW	\N
+12098	2469	TUNGLEBUNG	NSW	\N
+12099	2469	UPPER DUCK CREEK	NSW	\N
+12100	2469	WARREGAH ISLAND	NSW	\N
+12101	2469	WHIPORIE	NSW	\N
+12102	2469	WYAN	NSW	\N
+12103	2469	YABBRA	NSW	\N
+12104	2470	BABYL CREEK	NSW	\N
+12105	2470	COOMBELL	NSW	\N
+12106	2470	LOWER DYRAABA	NSW	\N
+12107	2470	NAUGHTONS GAP	NSW	\N
+12108	2470	TOMKI	NSW	\N
+12109	2470	UPPER MONGOGARIE	NSW	\N
+12110	2470	WOOLNERS ARM	NSW	\N
+12111	2471	CODRINGTON	NSW	\N
+12112	2471	EAST CORAKI	NSW	\N
+12113	2471	GREEN FOREST	NSW	\N
+12114	2471	GREENRIDGE	NSW	\N
+12115	2471	NORTH WOODBURN	NSW	\N
+12116	2471	WEST BUNGAWALBIN	NSW	\N
+12117	2471	WEST CORAKI	NSW	\N
+12118	2472	BUCKENDOON	NSW	\N
+12119	2472	ESK	NSW	\N
+12120	2472	KILGIN	NSW	\N
+12121	2472	MOONEM	NSW	\N
+12122	2472	NEW ITALY	NSW	\N
+12123	2472	TABBIMOBLE	NSW	\N
+12124	2472	TRUSTUMS HILL	NSW	\N
+12125	2473	BUNDJALUNG	NSW	\N
+12126	2473	DOONBAH	NSW	\N
+12127	2473	IRON GATES	NSW	\N
+12128	2473	SOUTH EVANS HEAD	NSW	\N
+12129	2474	AFTERLEE	NSW	\N
+12130	2474	BORDER RANGES	NSW	\N
+12131	2474	CEDAR POINT	NSW	\N
+12132	2474	COUGAL	NSW	\N
+12133	2474	DAIRY FLAT	NSW	\N
+12134	2474	EDENVILLE	NSW	\N
+12135	2474	FAWCETTS PLAIN	NSW	\N
+12136	2474	FINDON CREEK	NSW	\N
+12137	2474	GHINNI GHI	NSW	\N
+12138	2474	GRADYS CREEK	NSW	\N
+12139	2474	HOMELEIGH	NSW	\N
+12140	2474	HORSE STATION CREEK	NSW	\N
+12141	2474	HORSESHOE CREEK	NSW	\N
+12142	2474	IRON POT CREEK	NSW	\N
+12143	2474	KILGRA	NSW	\N
+12144	2474	LITTLE BACK CREEK	NSW	\N
+12145	2474	LOADSTONE	NSW	\N
+12146	2474	OLD GREVILLIA	NSW	\N
+12147	2474	SAWPIT CREEK	NSW	\N
+12148	2474	TERRACE CREEK	NSW	\N
+12149	2474	UNUMGAR	NSW	\N
+12150	2474	UPPER EDEN CREEK	NSW	\N
+12151	2474	UPPER HORSESHOE CREEK	NSW	\N
+12152	2474	WADEVILLE	NSW	\N
+12153	2474	WARRAZAMBIL CREEK	NSW	\N
+12154	2474	WEST WIANGAREE	NSW	\N
+12155	2474	WYNEDEN	NSW	\N
+12156	2475	TOOLOOM	NSW	\N
+12157	2475	UPPER TOOLOOM	NSW	\N
+12158	2476	ACACIA CREEK	NSW	\N
+12159	2476	BOOMI CREEK	NSW	\N
+12160	2476	BRUMBY PLAINS	NSW	\N
+12161	2476	LINDESAY CREEK	NSW	\N
+12162	2476	LOWER ACACIA CREEK	NSW	\N
+12163	2476	MULI MULI	NSW	\N
+12164	2476	THE GLEN	NSW	\N
+12165	2477	BAGOTVILLE	NSW	\N
+12166	2477	GOAT ISLAND	NSW	\N
+12167	2477	PEARCES CREEK	NSW	\N
+12168	2478	PATCHS BEACH	NSW	\N
+12169	2478	PIMLICO ISLAND	NSW	\N
+12170	2478	SOUTH BALLINA	NSW	\N
+12171	2479	MCLEODS SHOOT	NSW	\N
+12172	2480	BLUE KNOB	NSW	\N
+12173	2480	BUNGABBEE	NSW	\N
+12174	2480	CLOVASS	NSW	\N
+12175	2480	COFFEE CAMP	NSW	\N
+12176	2480	DUNGARUBBA	NSW	\N
+12177	2480	FERNSIDE	NSW	\N
+12178	2480	HOWARDS GRASS	NSW	\N
+12179	2480	KEERRONG	NSW	\N
+12180	2480	LAGOON GRASS	NSW	\N
+12181	2480	LEYCESTER	NSW	\N
+12182	2480	LOFTVILLE	NSW	\N
+12183	2480	MAROM CREEK	NSW	\N
+12184	2480	MOUNTAIN TOP	NSW	\N
+12185	2480	NIGHTCAP	NSW	\N
+12186	2480	REPENTANCE CREEK	NSW	\N
+12187	2480	RUTHVEN	NSW	\N
+12188	2480	STONY CHUTE	NSW	\N
+12189	2480	TERANIA CREEK	NSW	\N
+12190	2480	TUCKI TUCKI	NSW	\N
+12191	2480	TUCKURIMBA	NSW	\N
+12192	2480	TULLERA	NSW	\N
+12193	2480	TUNCESTER	NSW	\N
+12194	2480	TUNTABLE CREEK	NSW	\N
+12195	2480	WOODLAWN	NSW	\N
+12196	2481	HAYTERS HILL	NSW	\N
+12197	2481	SKINNERS SHOOT	NSW	\N
+12198	2481	TALOFA	NSW	\N
+12199	2482	KOONYUM RANGE	NSW	\N
+12200	2482	MONTECOLLUM	NSW	\N
+12201	2482	PALMWOODS	NSW	\N
+12202	2482	UPPER COOPERS CREEK	NSW	\N
+12203	2482	UPPER MAIN ARM	NSW	\N
+12204	2482	UPPER WILSONS CREEK	NSW	\N
+12205	2482	WANGANUI	NSW	\N
+12206	2483	MIDDLE POCKET	NSW	\N
+12207	2483	THE POCKET	NSW	\N
+12208	2483	WOOYUNG	NSW	\N
+12209	2484	BYRRILL CREEK	NSW	\N
+12210	2484	CHOWAN CREEK	NSW	\N
+12211	2484	COMMISSIONERS CREEK	NSW	\N
+12212	2484	KUNGHUR CREEK	NSW	\N
+12213	2484	MEBBIN	NSW	\N
+12214	2484	MIDGINBIL	NSW	\N
+12215	2484	MOUNT WARNING	NSW	\N
+12216	2484	PALMVALE	NSW	\N
+12217	2484	WARDROP VALLEY	NSW	\N
+12218	2484	ZARA	NSW	\N
+12219	2486	COBAKI LAKES	NSW	\N
+12220	2486	DUROBY	NSW	\N
+12221	2486	GLENGARRIE	NSW	\N
+12222	2487	KINGS FOREST	NSW	\N
+12223	2487	STOTTS CREEK	NSW	\N
+12224	2488	TANGLEWOOD	NSW	\N
+12225	2500	WOLLONGONG DC	NSW	PO Boxes
+12226	2500	WOLLONGONG WEST	NSW	PO Boxes
+12227	2508	LILYVALE	NSW	\N
+12228	2508	MADDENS PLAINS	NSW	\N
+12229	2508	WORONORA DAM	NSW	\N
+12230	2518	CORRIMAL EAST	NSW	PO Boxes
+12231	2526	CORDEAUX	NSW	\N
+12232	2527	CROOM	NSW	\N
+12233	2527	NORTH MACQUARIE	NSW	\N
+12234	2530	CLEVELAND	NSW	\N
+12235	2530	DOMBARTON	NSW	\N
+12236	2533	CURRAMORE	NSW	\N
+12237	2533	SADDLEBACK MOUNTAIN	NSW	\N
+12238	2535	BACK FOREST	NSW	\N
+12239	2535	BERRY MOUNTAIN	NSW	\N
+12240	2535	BROGERS CREEK	NSW	\N
+12241	2535	BUNDEWALLAH	NSW	\N
+12242	2535	WOODHILL	NSW	\N
+12243	2536	DEPOT BEACH	NSW	\N
+12244	2536	PEBBLY BEACH	NSW	\N
+12245	2537	WAMBAN	NSW	\N
+12246	2538	BROOMAN	NSW	\N
+12247	2538	MOGOOD	NSW	\N
+12248	2538	MORTON	NSW	\N
+12249	2538	PORTERS CREEK	NSW	\N
+12250	2538	WOODBURN	NSW	Milton
+12251	2539	COCKWHY	NSW	\N
+12252	2539	CROOBYAR	NSW	\N
+12253	2539	MOUNT KINGIMAN	NSW	\N
+12254	2539	POINTER MOUNTAIN	NSW	\N
+12255	2539	YADBORO	NSW	\N
+12256	2540	BARRINGELLA	NSW	\N
+12257	2540	BEECROFT PENINSULA	NSW	\N
+12258	2540	BEWONG	NSW	\N
+12259	2540	BOOLIJAH	NSW	\N
+12260	2540	BREAM BEACH	NSW	\N
+12261	2540	BROWNS MOUNTAIN	NSW	\N
+12262	2540	BUANGLA	NSW	\N
+12263	2540	CAMBEWARRA VILLAGE	NSW	\N
+12264	2540	COMBERTON	NSW	\N
+12265	2540	COMERONG ISLAND	NSW	\N
+12266	2540	ETTREMA	NSW	\N
+12267	2540	ILLAROO	NSW	\N
+12268	2540	JERRAWANGALA	NSW	\N
+12269	2540	KINGHORNE	NSW	\N
+12270	2540	LONGREACH	NSW	\N
+12271	2540	MONDAYONG	NSW	\N
+12272	2540	MOOLLATTOO	NSW	\N
+12273	2540	MUNDAMIA	NSW	\N
+12274	2540	NOWRA NAVAL PO	NSW	PO Boxes
+12275	2540	TALLOWAL	NSW	\N
+12276	2540	TULLARWALLA	NSW	\N
+12277	2540	TWELVE MILE PEG	NSW	\N
+12278	2540	WATERSLEIGH	NSW	\N
+12279	2540	WOLLUMBOOLA	NSW	\N
+12280	2540	WRECK BAY	ACT	\N
+12281	2540	YERRIYONG	NSW	\N
+12282	2541	NOWRA NORTH	NSW	PO Boxes
+12283	2545	BELOWRA	NSW	\N
+12284	2545	CADGEE	NSW	\N
+12285	2546	CORUNNA	NSW	\N
+12286	2548	MIRADOR	NSW	\N
+12287	2548	YELLOW PINCH	NSW	\N
+12288	2550	CHINNOCK	NSW	\N
+12289	2550	COOLANGUBRA	NSW	\N
+12290	2550	DEVILS HOLE	NSW	\N
+12291	2550	FROGS HOLLOW	NSW	\N
+12292	2550	JELLAT JELLAT	NSW	\N
+12293	2550	KAMERUKA	NSW	\N
+12294	2550	KANOONA	NSW	\N
+12295	2550	MOGILLA	NSW	\N
+12296	2550	MYRTLE MOUNTAIN	NSW	\N
+12297	2550	NEW BUILDINGS	NSW	\N
+12298	2550	PERICOE	NSW	\N
+12299	2550	REEDY SWAMP	NSW	\N
+12300	2550	SOUTH WOLUMLA	NSW	\N
+12301	2550	YAMBULLA	NSW	\N
+12302	2550	YANKEES CREEK	NSW	\N
+12303	2551	EDROM	NSW	\N
+12304	2551	GREEN CAPE	NSW	\N
+12305	2551	NADGEE	NSW	\N
+12306	2551	NARRABARBA	NSW	\N
+12307	2551	NULLICA	NSW	\N
+12308	2551	NUNGATTA	NSW	\N
+12309	2551	NUNGATTA SOUTH	NSW	\N
+12310	2551	TIMBILLICA	NSW	\N
+12311	2551	WONBOYN NORTH	NSW	\N
+12312	2557	GLEDSWOOD HILLS	NSW	\N
+12313	2560	CATARACT	NSW	\N
+12314	2570	BICKLEY VALE	NSW	\N
+12315	2570	GLENMORE	NSW	\N
+12316	2570	ORAN PARK	NSW	\N
+12317	2571	MALDON	NSW	\N
+12318	2571	MOWBRAY PARK	NSW	\N
+12319	2574	AVON	NSW	\N
+12320	2575	ALPINE	NSW	\N
+12321	2575	BULLIO	NSW	\N
+12322	2575	GOODMANS FORD	NSW	\N
+12323	2575	HIGH RANGE	NSW	\N
+12324	2575	JOADJA	NSW	\N
+12325	2575	MANDEMAR	NSW	\N
+12326	2575	MOUNT LINDSEY	NSW	\N
+12327	2575	RENWICK	NSW	\N
+12328	2575	WATTLE RIDGE	NSW	\N
+12329	2576	EAST KANGALOON	NSW	\N
+12330	2576	GLENQUARRY	NSW	\N
+12331	2577	BARREN GROUNDS	NSW	\N
+12332	2577	BELANGLO	NSW	\N
+12333	2577	BUDGONG	NSW	\N
+12334	2577	CARRINGTON FALLS	NSW	\N
+12335	2577	KNIGHTS HILL	NSW	\N
+12336	2577	MANCHESTER SQUARE	NSW	\N
+12337	2577	MERYLA	NSW	\N
+12338	2577	MOUNT MURRAY	NSW	\N
+12339	2577	RED ROCKS	NSW	Moss Vale
+12340	2577	UPPER KANGAROO RIVER	NSW	\N
+12341	2577	UPPER KANGAROO VALLEY	NSW	\N
+12342	2577	WERAI	NSW	\N
+12343	2579	BRAYTON	NSW	\N
+12344	2580	BAW BAW	NSW	\N
+12345	2580	BOXERS CREEK	NSW	\N
+12346	2580	BRISBANE GROVE	NSW	\N
+12347	2580	CARRICK	NSW	\N
+12348	2580	CHATSBURY	NSW	\N
+12349	2580	CURRAWEELA	NSW	\N
+12350	2580	GREENWICH PARK	NSW	\N
+12351	2580	JERRONG	NSW	\N
+12352	2580	LOWER BORO	NSW	\N
+12353	2580	MOUNT FAIRY	NSW	\N
+12354	2580	MYRTLEVILLE	NSW	\N
+12355	2580	POMEROY	NSW	\N
+12356	2580	RICHLANDS	NSW	\N
+12357	2580	STONEQUARRY	NSW	\N
+12358	2580	WIARBOROUGH	NSW	\N
+12359	2581	BEVENDALE	NSW	\N
+12360	2581	BIALA	NSW	\N
+12361	2581	BLAKNEY CREEK	NSW	\N
+12362	2581	BROADWAY	NSW	\N
+12363	2581	CULLERIN	NSW	\N
+12364	2581	GURRUNDAH	NSW	\N
+12365	2581	LADE VALE	NSW	\N
+12366	2581	LAKE GEORGE	NSW	\N
+12367	2581	MERRILL	NSW	\N
+12368	2581	OOLONG	NSW	\N
+12369	2581	WOLLOGORANG	NSW	\N
+12370	2582	BANGO	NSW	\N
+12371	2582	BERREMANGRA	NSW	\N
+12372	2582	BOAMBOLO	NSW	\N
+12373	2582	CAVAN	NSW	\N
+12374	2582	GOOD HOPE	NSW	\N
+12375	2582	JEIR	NSW	\N
+12376	2582	KANGIARA	NSW	\N
+12377	2582	LAVERSTOCK	NSW	\N
+12378	2582	MANTON	NSW	\N
+12379	2582	MARCHMONT	NSW	\N
+12380	2582	MULLION	NSW	\N
+12381	2582	NARRANGULLEN	NSW	\N
+12382	2582	WOOLGARLO	NSW	\N
+12383	2582	YASS RIVER	NSW	\N
+12384	2583	LOST RIVER	NSW	\N
+12385	2583	NARRAWA	NSW	\N
+12386	2583	PEJAR	NSW	\N
+12387	2583	WHEEO	NSW	\N
+12388	2587	BEGGAN BEGGAN	NSW	\N
+12389	2587	CUNNINGAR	NSW	\N
+12390	2587	MCMAHONS REEF	NSW	\N
+12391	2587	NUBBA	NSW	\N
+12392	2594	BARWANG	NSW	\N
+12393	2594	BERTHONG	NSW	\N
+12394	2594	BULLA CREEK	NSW	\N
+12395	2594	KIKIAMAH	NSW	\N
+12396	2594	MAIMURU	NSW	\N
+12397	2594	MEMAGONG	NSW	\N
+12398	2594	THUDDUNGRA	NSW	\N
+12399	2594	TUBBUL	NSW	\N
+12400	2594	WEEDALLION	NSW	\N
+12401	2600	CAPITAL HILL	ACT	\N
+12402	2609	CANBERRA AIRPORT	ACT	PO Boxes
+12403	2611	BIMBERI	NSW	\N
+12404	2611	COOLEMAN	NSW	\N
+12405	2611	COOMBS	ACT	\N
+12406	2611	COREE	ACT	\N
+12407	2611	STROMLO	ACT	\N
+12408	2611	WRIGHT	ACT	\N
+12409	2617	BELCONNEN DC	ACT	PO Boxes
+12410	2620	BEARD	ACT	\N
+12411	2620	CLEAR RANGE	NSW	\N
+12412	2620	ENVIRONA	NSW	\N
+12413	2620	KOWEN	ACT	\N
+12414	2620	PADDYS RIVER	ACT	\N
+12415	2620	QUEANBEYAN DC	NSW	PO Boxes
+12416	2620	THE ANGLE	NSW	\N
+12417	2620	TINDERRY	NSW	\N
+12418	2620	TRALEE	NSW	\N
+12419	2620	YARROW	NSW	\N
+12420	2621	ANEMBO	NSW	\N
+12421	2621	FORBES CREEK	NSW	\N
+12422	2621	PRIMROSE VALLEY	NSW	\N
+12423	2621	ROSSI	NSW	\N
+12424	2622	BENDOURA	NSW	\N
+12425	2622	BERLANG	NSW	\N
+12426	2622	BOMBAY	NSW	\N
+12427	2622	BUDAWANG	NSW	\N
+12428	2622	BULEE	NSW	\N
+12429	2622	CHARLEYS FOREST	NSW	\N
+12430	2622	COOLUMBURRA	NSW	\N
+12431	2622	CORANG	NSW	\N
+12432	2622	DURRAN DURRA	NSW	\N
+12433	2622	ENDRICK	NSW	\N
+12434	2622	FARRINGDON	NSW	\N
+12435	2622	HAROLDS CROSS	NSW	\N
+12436	2622	HEREFORD HALL	NSW	\N
+12437	2622	JERRABATTGULLA	NSW	\N
+12438	2622	JINDEN	NSW	\N
+12439	2622	JINGERA	NSW	\N
+12440	2622	KINDERVALE	NSW	\N
+12441	2622	KRAWARREE	NSW	\N
+12442	2622	LARBERT	NSW	\N
+12443	2622	MANAR	NSW	\N
+12444	2622	MARLOWE	NSW	\N
+12445	2622	MERRICUMBENE	NSW	\N
+12446	2622	MULLOON	NSW	\N
+12447	2622	MURRENGENBURG	NSW	\N
+12448	2622	NERINGLA	NSW	\N
+12449	2622	NORTHANGERA	NSW	\N
+12450	2622	OALLEN	NSW	\N
+12451	2622	PALERANG	NSW	Braidwood
+12452	2622	QUIERA	NSW	\N
+12453	2622	SASSAFRAS	NSW	\N
+12454	2622	SNOWBALL	NSW	\N
+12455	2622	ST GEORGE	NSW	\N
+12456	2622	TIANJARA	NSW	\N
+12457	2622	TOLWONG	NSW	\N
+12458	2622	TOMBOYE	NSW	\N
+12459	2622	TOUGA	NSW	\N
+12460	2622	WARRI	NSW	\N
+12461	2622	WOG WOG	NSW	Braidwood
+12462	2622	WYANBENE	NSW	\N
+12463	2626	BUMBALONG	NSW	\N
+12464	2626	COLINTON	NSW	\N
+12465	2627	GROSSES PLAIN	NSW	\N
+12466	2627	KOSCIUSZKO	NSW	\N
+12467	2627	KOSCIUSZKO NATIONAL PARK	NSW	\N
+12468	2627	PILOT WILDERNESS	NSW	\N
+12469	2628	BELOKA	NSW	\N
+12470	2628	BYADBO WILDERNESS	NSW	\N
+12471	2628	NIMMO	NSW	\N
+12472	2628	PAUPONG	NSW	\N
+12473	2628	ROCKY PLAIN	NSW	\N
+12474	2628	SNOWY PLAIN	NSW	\N
+12475	2629	BOLARO	NSW	\N
+12476	2629	PROVIDENCE PORTAL	NSW	\N
+12477	2629	TANTANGARA	NSW	\N
+12478	2630	ARABLE	NSW	\N
+12479	2630	BADJA	NSW	\N
+12480	2630	BILLILINGRA	NSW	\N
+12481	2630	BOBUNDARA	NSW	\N
+12482	2630	BUCKENDERRA	NSW	\N
+12483	2630	CARLAMINDA	NSW	\N
+12484	2630	COOLRINGDON	NSW	\N
+12485	2630	COUNTEGANY	NSW	\N
+12486	2630	DANGELONG	NSW	\N
+12487	2630	DRY PLAIN	NSW	\N
+12488	2630	FRYING PAN	NSW	\N
+12489	2630	GLEN FERGUS	NSW	\N
+12490	2630	IRONMUNGY	NSW	\N
+12491	2630	JIMENBUEN	NSW	\N
+12492	2630	MAFFRA	NSW	\N
+12493	2630	MIDDLE FLAT	NSW	\N
+12494	2630	MIDDLINGBANK	NSW	\N
+12495	2630	MURRUMBUCCA	NSW	\N
+12496	2630	MYALLA	NSW	\N
+12497	2630	PINE VALLEY	NSW	\N
+12498	2630	POLO FLAT	NSW	\N
+12499	2630	RHINE FALLS	NSW	\N
+12500	2630	THE BROTHERS	NSW	\N
+12501	2630	TUROSS	NSW	\N
+12502	2630	WAMBROOK	NSW	\N
+12503	2631	BOCO	NSW	\N
+12504	2631	CREEWAH	NSW	\N
+12505	2631	GLEN ALLEN	NSW	\N
+12506	2631	HOLTS FLAT	NSW	\N
+12507	2631	JINCUMBILLY	NSW	\N
+12508	2631	KYBEYAN	NSW	\N
+12509	2631	MOUNT COOPER	NSW	\N
+12510	2631	STEEPLE FLAT	NSW	\N
+12511	2631	WINIFRED	NSW	\N
+12512	2632	BONDI FOREST	NSW	\N
+12513	2632	BUKALONG	NSW	\N
+12514	2632	CAMBALONG	NSW	\N
+12515	2632	COOLUMBOOKA	NSW	\N
+12516	2632	GUNNINGRAH	NSW	\N
+12517	2632	LORDS HILL	NSW	\N
+12518	2632	MERRIANGAAH	NSW	\N
+12519	2632	MOUNT DARRAGH	NSW	\N
+12520	2632	PALARANG	NSW	Bombala
+12521	2632	QUIDONG	NSW	\N
+12522	2632	ROCKTON	NSW	\N
+12523	2632	ROSEMEATH	NSW	\N
+12524	2633	CORROWONG	NSW	\N
+12525	2633	TOMBONG	NSW	\N
+12526	2640	BUNGOWANNAH	NSW	\N
+12527	2640	ETTAMOGAH	NSW	\N
+12528	2640	MOORWATHA	NSW	\N
+12529	2640	OURNIE	NSW	\N
+12530	2640	WYMAH	NSW	\N
+12531	2641	HAMILTON VALLEY	NSW	\N
+12532	2642	BIDGEEMIA	NSW	\N
+12533	2642	GEEHI	NSW	\N
+12534	2642	GLENELLEN	NSW	\N
+12535	2642	GREG GREG	NSW	\N
+12536	2642	INDI	NSW	\N
+12537	2642	JAGUMBA	NSW	\N
+12538	2642	JAGUNGAL WILDERNESS	NSW	\N
+12539	2642	MURRAY GORGE	NSW	\N
+12540	2642	WELAREGANG	NSW	\N
+12541	2642	WRATHALL	NSW	\N
+12542	2644	COPPABELLA	NSW	\N
+12543	2644	LANKEYS CREEK	NSW	\N
+12544	2644	LITTLE BILLABONG	NSW	\N
+12545	2644	WANTAGONG	NSW	\N
+12546	2644	YARARA	NSW	\N
+12547	2645	CULLIVEL	NSW	\N
+12548	2646	COLLENDINA	NSW	\N
+12549	2646	COREEN	NSW	\N
+12550	2646	GOOMBARGANA	NSW	\N
+12551	2646	HOPEFIELD	NSW	\N
+12552	2646	NYORA	NSW	\N
+12553	2646	REDLANDS	NSW	\N
+12554	2646	RINGWOOD	NSW	\N
+12555	2646	SANGER	NSW	\N
+12556	2648	ANABRANCH NORTH	NSW	\N
+12557	2648	ANABRANCH SOUTH	NSW	\N
+12558	2648	MOORARA	NSW	\N
+12559	2648	PAN BAN	NSW	\N
+12560	2648	PARA	NSW	\N
+12561	2648	PINE CAMP	NSW	\N
+12562	2648	POMONA	NSW	\N
+12563	2648	RUFUS	NSW	\N
+12564	2648	SCOTIA	NSW	\N
+12565	2649	NURENMERENMONG	NSW	\N
+12566	2650	BELFRAYDEN	NSW	\N
+12567	2650	BULGARY	NSW	\N
+12568	2650	BURRANDANA	NSW	\N
+12569	2650	GALORE	NSW	\N
+12570	2650	HILLGROVE	NSW	Wagga Wagga
+12571	2650	KYEAMBA	NSW	\N
+12572	2650	MAXWELL	NSW	\N
+12573	2650	MOORONG	NSW	\N
+12574	2650	ROWAN	NSW	\N
+12575	2650	WALLACETOWN	NSW	\N
+12576	2650	YATHELLA	NSW	\N
+12577	2652	BOORGA	NSW	\N
+12578	2652	COWABBIE	NSW	\N
+12579	2652	LANDERVALE	NSW	\N
+12580	2652	MURRULEBALE	NSW	\N
+12581	2653	MARAGLE	NSW	\N
+12582	2653	MUNDEROO	NSW	\N
+12583	2653	TARADALE	NSW	\N
+12584	2653	WILLIGOBUNG	NSW	\N
+12585	2655	TOOTOOL	NSW	\N
+12586	2656	BROOKONG	NSW	\N
+12587	2656	FARGUNYAH	NSW	\N
+12588	2656	OSBORNE	NSW	\N
+12589	2658	MUNYABLA	NSW	\N
+12590	2659	ALMA PARK	NSW	\N
+12591	2663	ERIN VALE	NSW	\N
+12592	2663	EURONGILLY	NSW	\N
+12593	2663	MARINNA	NSW	\N
+12594	2663	WANTIOOL	NSW	\N
+12595	2665	QUANDARY	NSW	\N
+12596	2665	TARA	NSW	\N
+12597	2665	WALLEROOBIE	NSW	\N
+12598	2666	DIRNASEER	NSW	\N
+12599	2666	JUNEE REEFS	NSW	\N
+12600	2666	MORANGARELL	NSW	\N
+12601	2666	PUCAWAN	NSW	\N
+12602	2669	MELBERGEN	NSW	\N
+12603	2671	ALLEENA	NSW	\N
+12604	2671	LAKE COWAL	NSW	\N
+12605	2671	NORTH YALGOGRIN	NSW	\N
+12606	2672	CURLEW WATERS	NSW	\N
+12607	2672	MURRIN BRIDGE	NSW	\N
+12608	2675	LAKE BREWSTER	NSW	\N
+12609	2675	MONIA GAP	NSW	\N
+12610	2675	WALLANTHERY	NSW	\N
+12611	2680	GRIFFITH DC	NSW	PO Boxes
+12612	2680	KOOBA	NSW	\N
+12613	2680	WARBURN	NSW	\N
+12614	2680	WARRAWIDGEE	NSW	\N
+12615	2681	MYALL PARK	NSW	\N
+12616	2700	BUNDURE	NSW	\N
+12617	2700	COLINROOBIE	NSW	\N
+12618	2700	CUDGEL	NSW	\N
+12619	2700	EUROLEY	NSW	\N
+12620	2700	GILLENBAH	NSW	\N
+12621	2700	SANDIGO	NSW	\N
+12622	2701	BERRY JERRY	NSW	\N
+12623	2701	METHUL	NSW	\N
+12624	2701	RANNOCK	NSW	\N
+12625	2705	BROBENAH	NSW	\N
+12626	2705	GOGELDRIE	NSW	\N
+12627	2710	BARRATTA	NSW	\N
+12628	2710	BIRGANBIGIL	NSW	\N
+12629	2710	BOOROORBAN	NSW	\N
+12630	2710	BULLATALE	NSW	\N
+12631	2710	CALIMO	NSW	\N
+12632	2710	COREE	NSW	\N
+12633	2710	HARTWOOD	NSW	\N
+12634	2710	LINDIFFERON	NSW	\N
+12635	2710	MOONBRIA	NSW	\N
+12636	2710	MORAGO	NSW	\N
+12637	2710	PRETTY PINE	NSW	\N
+12638	2710	STEAM PLAINS	NSW	\N
+12639	2710	STUD PARK	NSW	\N
+12640	2710	WANDOOK	NSW	\N
+12641	2710	WILLURAH	NSW	\N
+12642	2711	CLARE	NSW	\N
+12643	2711	CORRONG	NSW	\N
+12644	2711	HAY SOUTH	NSW	\N
+12645	2711	KERI KERI	NSW	\N
+12646	2711	ONE TREE	NSW	\N
+12647	2711	WAUGORAH	NSW	\N
+12648	2711	YANGA	NSW	\N
+12649	2713	MYRTLE PARK	NSW	\N
+12650	2714	ARATULA	NSW	\N
+12651	2714	PINE LODGE	NSW	\N
+12652	2714	TUPPAL	NSW	\N
+12653	2715	ARUMPO	NSW	\N
+12654	2715	KYALITE	NSW	\N
+12655	2715	MUNGO	NSW	\N
+12656	2716	FOUR CORNERS	NSW	\N
+12657	2716	GALA VALE	NSW	\N
+12658	2716	MAIRJIMMY	NSW	\N
+12659	2717	DARETON	NSW	\N
+12660	2720	ARGALONG	NSW	\N
+12661	2720	BLOWERING	NSW	\N
+12662	2720	BOGONG PEAKS WILDERNESS	NSW	\N
+12663	2720	BOMBOWLEE CREEK	NSW	\N
+12664	2720	BUDDONG	NSW	\N
+12665	2720	COURAGAGO	NSW	\N
+12666	2720	GADARA	NSW	\N
+12667	2720	GOCUP	NSW	\N
+12668	2720	GOOBARRAGANDRA	NSW	\N
+12669	2720	JONES BRIDGE	NSW	\N
+12670	2720	KILLIMICAT	NSW	\N
+12671	2720	LITTLE RIVER	NSW	Tumut
+12672	2720	MINJARY	NSW	\N
+12673	2720	PINBEYAN	NSW	\N
+12674	2720	TUMORRAMA	NSW	\N
+12675	2720	TUMUT PLAINS	NSW	\N
+12676	2720	WEREBOLDERA	NSW	\N
+12677	2720	WERMATONG	NSW	\N
+12678	2720	WINDOWIE	NSW	\N
+12679	2720	WYANGLE	NSW	\N
+12680	2720	YARRANGOBILLY	NSW	\N
+12681	2721	BLAND	NSW	\N
+12682	2722	BRUNGLE CREEK	NSW	\N
+12683	2722	BURRA CREEK	NSW	\N
+12684	2722	DARBALARA	NSW	\N
+12685	2722	JONES CREEK	NSW	Gundagai
+12686	2726	COONEYS CREEK	NSW	\N
+12687	2727	GOBARRALONG	NSW	\N
+12688	2729	BANGADANG	NSW	\N
+12689	2729	CALIFAT	NSW	\N
+12690	2729	DARLOW	NSW	\N
+12691	2729	MOUNT ADRAH	NSW	\N
+12692	2729	MUNDARLO	NSW	\N
+12693	2729	SANDY GULLY	NSW	\N
+12694	2729	SHARPS CREEK	NSW	\N
+12695	2729	WESTWOOD	NSW	\N
+12696	2729	YAVEN CREEK	NSW	\N
+12697	2730	LOWER BAGO	NSW	\N
+12698	2731	TANTONAN	NSW	\N
+12699	2731	THYRA	NSW	\N
+12700	2732	BURRABOI	NSW	\N
+12701	2732	COBRAMUNGA	NSW	\N
+12702	2732	GONN	NSW	\N
+12703	2732	NOORONG	NSW	\N
+12704	2732	THULE	NSW	\N
+12705	2732	TULLAKOOL	NSW	\N
+12706	2733	DHURAGOON	NSW	\N
+12707	2733	NIEMUR	NSW	\N
+12708	2734	CUNNINYEUK	NSW	\N
+12709	2734	DILPURRA	NSW	\N
+12710	2734	MELLOOL	NSW	\N
+12711	2734	MOOLPA	NSW	\N
+12712	2734	STONY CROSSING	NSW	\N
+12713	2734	TOORANIE	NSW	\N
+12714	2734	WETUPPA	NSW	\N
+12715	2735	SPEEWA	NSW	\N
+12716	2738	MALLEE	NSW	\N
+12717	2738	PARINGI	NSW	\N
+12718	2738	TRENTHAM CLIFFS	NSW	\N
+12719	2739	BOEILL CREEK	NSW	\N
+12720	2739	MOURQUONG	NSW	\N
+12721	2747	CADDENS	NSW	\N
+12722	2747	JORDAN SPRINGS	NSW	\N
+12723	2750	PENRITH PLAZA	NSW	PO Boxes
+12724	2750	PENRITH SOUTH	NSW	PO Boxes
+12725	2756	CENTRAL COLO	NSW	\N
+12726	2756	MELLONG	NSW	\N
+12727	2756	UPPER COLO	NSW	\N
+12728	2756	WOMERAH	NSW	\N
+12729	2758	THE DEVILS WILDERNESS	NSW	\N
+12730	2758	WHEENY CREEK	NSW	\N
+12731	2760	ST MARYS EAST	NSW	PO Boxes
+12732	2761	COLEBEE	NSW	\N
+12733	2767	BUNGARRIBEE	NSW	\N
+12734	2775	FERNANCES	NSW	\N
+12735	2775	HIGHER MACDONALD	NSW	\N
+12736	2775	LEETS VALE	NSW	\N
+12737	2775	MARLOW	NSW	\N
+12738	2775	MOGO CREEK	NSW	\N
+12739	2775	PERRYS CROSSING	NSW	\N
+12740	2775	SINGLETONS MILL	NSW	\N
+12741	2775	WRIGHTS CREEK	NSW	\N
+12742	2780	KATOOMBA DC	NSW	PO Boxes
+12743	2785	MEGALONG VALLEY	NSW	\N
+12744	2787	CHATHAM VALLEY	NSW	\N
+12745	2787	ESSINGTON	NSW	\N
+12746	2787	GURNANG	NSW	\N
+12747	2787	JAUNTER	NSW	\N
+12748	2787	KANANGRA	NSW	\N
+12749	2787	MOUNT WERONG	NSW	\N
+12750	2787	MOZART	NSW	\N
+12751	2787	NORWAY	NSW	\N
+12752	2787	THE MEADOWS	NSW	\N
+12753	2790	BEN BULLEN	NSW	\N
+12754	2790	BLACKMANS FLAT	NSW	\N
+12755	2790	CORNEY TOWN	NSW	\N
+12756	2790	DOCTORS GAP	NSW	\N
+12757	2790	GANBENANG	NSW	\N
+12758	2790	GOOD FOREST	NSW	\N
+12759	2790	HASSANS WALLS	NSW	\N
+12760	2790	HERMITAGE FLAT	NSW	\N
+12761	2790	JENOLAN	NSW	\N
+12762	2790	KANIMBLA	NSW	\N
+12763	2790	LITTLETON	NSW	\N
+12764	2790	MCKELLARS PARK	NSW	\N
+12765	2790	MORTS ESTATE	NSW	\N
+12766	2790	MOUNT LAMBIE	NSW	\N
+12767	2790	NEWNES	NSW	\N
+12768	2790	NEWNES PLATEAU	NSW	\N
+12769	2790	OAKY PARK	NSW	\N
+12770	2790	POTTERY ESTATE	NSW	\N
+12771	2790	SHEEDYS GULLY	NSW	\N
+12772	2790	SOUTH LITTLETON	NSW	\N
+12773	2790	SPRINGVALE	NSW	Lithgow
+12774	2790	STATE MINE GULLY	NSW	\N
+12775	2790	VALE OF CLWYDD	NSW	\N
+12776	2790	WOLGAN VALLEY	NSW	\N
+12777	2790	WOLLANGAMBE	NSW	\N
+12778	2792	BURNT YARDS	NSW	\N
+12779	2793	ROSEBERG	NSW	\N
+12780	2794	HOVELLS CREEK	NSW	\N
+12781	2794	MOUNT COLLINS	NSW	\N
+12782	2795	ABERCROMBIE RIVER	NSW	\N
+12783	2795	ARKELL	NSW	\N
+12784	2795	ARKSTONE	NSW	\N
+12785	2795	BATHAMPTON	NSW	\N
+12786	2795	BATHURST WEST	NSW	PO Boxes
+12787	2795	BRUINBUN	NSW	\N
+12788	2795	CHARLTON	NSW	\N
+12789	2795	COPPERHANNIA	NSW	\N
+12790	2795	CURRAGH	NSW	\N
+12791	2795	DOG ROCKS	NSW	\N
+12792	2795	FITZGERALDS VALLEY	NSW	\N
+12793	2795	FOREST GROVE	NSW	\N
+12794	2795	FOSTERS VALLEY	NSW	\N
+12795	2795	GILMANDYKE	NSW	\N
+12796	2795	GOWAN	NSW	\N
+12797	2795	JEREMY	NSW	\N
+12798	2795	KILLONGBUTTA	NSW	\N
+12799	2795	KIRKCONNELL	NSW	\N
+12800	2795	LAFFING WATERS	NSW	\N
+12801	2795	MILKERS FLAT	NSW	\N
+12802	2795	MILLAH MURRAH	NSW	\N
+12803	2795	MITCHELL	NSW	\N
+12804	2795	MOORILDA	NSW	\N
+12805	2795	MOUNT PANORAMA	NSW	\N
+12806	2795	ORTON PARK	NSW	\N
+12807	2795	PALMERS OAKY	NSW	\N
+12808	2795	ROCKLEY MOUNT	NSW	\N
+12809	2795	SOUTH BATHURST	NSW	\N
+12810	2795	STEWARTS MOUNT	NSW	\N
+12811	2795	TANNAS MOUNT	NSW	\N
+12812	2795	TWENTY FORESTS	NSW	\N
+12813	2795	UPPER TURON	NSW	\N
+12814	2795	WATTON	NSW	\N
+12815	2795	WIAGDON	NSW	\N
+12816	2795	WINBURNDALE	NSW	\N
+12817	2795	YARRAS	NSW	Bathurst
+12818	2798	GUYONG	NSW	\N
+12819	2799	FITZGERALDS MOUNT	NSW	\N
+12820	2800	CADIA	NSW	\N
+12821	2800	FOUR MILE CREEK	NSW	Orange
+12822	2800	KANGAROOBIE	NSW	\N
+12823	2800	KERRS CREEK	NSW	\N
+12824	2800	LOWER LEWIS PONDS	NSW	\N
+12825	2800	OPHIR	NSW	\N
+12826	2800	ORANGE DC	NSW	PO Boxes
+12827	2800	PANUARA	NSW	\N
+12828	2800	SHADFORTH	NSW	\N
+12829	2800	WALDEGRAVE	NSW	\N
+12830	2800	WINDERA	NSW	\N
+12831	2804	NYRANG CREEK	NSW	\N
+12832	2810	GLENELG	NSW	\N
+12833	2810	PINEY RANGE	NSW	\N
+12834	2810	PINNACLE	NSW	\N
+12835	2810	WARRADERRY	NSW	\N
+12836	2818	GEURIE	NSW	\N
+12837	2818	NUBINGERIE	NSW	\N
+12838	2818	PONTO	NSW	\N
+12839	2818	TERRABELLA	NSW	\N
+12840	2820	COMOBELLA	NSW	\N
+12841	2820	LAKE BURRENDONG	NSW	\N
+12842	2820	MOOKERAWA	NSW	\N
+12843	2820	MOUNT AQUILA	NSW	\N
+12844	2820	SUNTOP	NSW	\N
+12845	2820	WUULUMAN	NSW	\N
+12846	2820	YARRAGAL	NSW	\N
+12847	2821	BURROWAY	NSW	\N
+12848	2823	BUNDEMAR	NSW	\N
+12849	2823	CATHUNDRAL	NSW	\N
+12850	2823	DANDALOO	NSW	\N
+12851	2823	GIN GIN	NSW	\N
+12852	2824	BEEMUNNEL	NSW	\N
+12853	2824	BULLAGREEN	NSW	\N
+12854	2824	EENAWEENA	NSW	\N
+12855	2824	MARTHAGUY	NSW	\N
+12856	2824	MOUNT FOSTER	NSW	\N
+12857	2824	MOUNT HARRIS	NSW	\N
+12858	2824	MUMBLEBONE PLAIN	NSW	\N
+12859	2824	PIGEONBAH	NSW	\N
+12860	2824	PINE CLUMP	NSW	\N
+12861	2824	SNAKES PLAIN	NSW	\N
+12862	2824	TENANDRA	NSW	\N
+12863	2825	BABINDA	NSW	\N
+12864	2825	BUDDABADAH	NSW	\N
+12865	2825	HONEYBUGLE	NSW	\N
+12866	2825	MULLA	NSW	\N
+12867	2825	MURRAWOMBIE	NSW	\N
+12868	2825	PANGEE	NSW	\N
+12869	2826	BOGAN	NSW	\N
+12870	2826	NEVERTIRE	NSW	\N
+12871	2827	BEARBONG	NSW	\N
+12872	2827	BIDDON	NSW	\N
+12873	2827	BREELONG	NSW	\N
+12874	2827	MERRIGAL	NSW	\N
+12875	2828	ARMATREE	NSW	\N
+12876	2828	BLACK HOLLOW	NSW	\N
+12877	2828	BOURBAH	NSW	\N
+12878	2828	MOUNT TENANDRA	NSW	\N
+12879	2828	QUANDA	NSW	\N
+12880	2829	BILLEROY	NSW	\N
+12881	2829	CONIMBIA	NSW	\N
+12882	2829	GILGOOMA	NSW	\N
+12883	2829	MAGOMETON	NSW	\N
+12884	2829	NEBEA	NSW	\N
+12885	2829	PINE GROVE	NSW	\N
+12886	2829	TERIDGERIE	NSW	\N
+12887	2829	URAWILKIE	NSW	\N
+12888	2829	WINGADEE	NSW	\N
+12889	2830	BENALONG	NSW	\N
+12890	2830	BENI	NSW	\N
+12891	2830	BOOTHENBA	NSW	\N
+12892	2830	BRUAH	NSW	\N
+12893	2830	BUNGLEGUMBIE	NSW	\N
+12894	2830	BURRABADINE	NSW	\N
+12895	2830	BUTLERS FALLS	NSW	\N
+12896	2830	COOLBAGGIE	NSW	\N
+12897	2830	CUMBOOGLE	NSW	\N
+12898	2830	ESCHOL	NSW	\N
+12899	2830	EULOMOGO	NSW	\N
+12900	2830	GLENGERRA	NSW	\N
+12901	2830	GOONOO FOREST	NSW	\N
+12902	2830	KICKABIL	NSW	\N
+12903	2830	MURONBUNG	NSW	\N
+12904	2830	MURRUMBIDGERIE	NSW	\N
+12905	2830	RAWSONVILLE	NSW	\N
+12906	2830	TERRAMUNGAMINE	NSW	\N
+12907	2830	TOONGI	NSW	\N
+12908	2830	WAMBANGALANG	NSW	\N
+12909	2830	YARRABAR	NSW	\N
+12910	2831	MACQUARIE MARSHES	NSW	\N
+12911	2831	THE MARRA	NSW	\N
+12912	2831	WESTELLA	NSW	\N
+12913	2834	ANGLEDOOL	NSW	\N
+12914	2835	BULLA	NSW	\N
+12915	2835	CANBELEGO	NSW	\N
+12916	2835	CUBBA	NSW	\N
+12917	2835	GILGUNNIA	NSW	\N
+12918	2835	IRYMPLE	NSW	\N
+12919	2835	KERRIGUNDI	NSW	\N
+12920	2835	KULWIN	NSW	\N
+12921	2835	NOONA	NSW	\N
+12922	2835	TINDAREY	NSW	\N
+12923	2838	GOODOOGA	NSW	\N
+12924	2839	COLLERINA	NSW	\N
+12925	2839	GONGOLGON	NSW	\N
+12926	2839	NARRAN LAKE	NSW	\N
+12927	2839	TALAWANTA	NSW	\N
+12928	2840	GUMBALIE	NSW	\N
+12929	2840	GUNDERBOOKA	NSW	\N
+12930	2840	HUNGERFORD	NSW	\N
+12931	2840	NORTH BOURKE	NSW	\N
+12932	2842	MOLLYAN	NSW	\N
+12933	2842	YARRAGRIN	NSW	\N
+12934	2846	ROUND SWAMP	NSW	\N
+12935	2848	BROGANS CREEK	NSW	\N
+12936	2849	BOGEE	NSW	\N
+12937	2849	BREAKFAST CREEK	NSW	\N
+12938	2849	BUDDEN	NSW	\N
+12939	2849	CAMBOON	NSW	\N
+12940	2849	CARWELL	NSW	\N
+12941	2849	COGGAN	NSW	\N
+12942	2849	COXS CREEK	NSW	\N
+12943	2849	COXS CROWN	NSW	\N
+12944	2849	DABEE	NSW	\N
+12945	2849	DUNGEREE	NSW	\N
+12946	2849	DUNVILLE LOOP	NSW	\N
+12947	2849	GINGHI	NSW	\N
+12948	2849	GLEN ALICE	NSW	\N
+12949	2849	GROWEE	NSW	\N
+12950	2849	KELGOOLA	NSW	\N
+12951	2849	LEE CREEK	NSW	\N
+12952	2849	MOUNT MARSDEN	NSW	\N
+12953	2849	MURRUMBO	NSW	\N
+12954	2849	NULLO MOUNTAIN	NSW	\N
+12955	2849	OLINDA	NSW	\N
+12956	2849	PINNACLE SWAMP	NSW	\N
+12957	2849	PYANGLE	NSW	\N
+12958	2849	UPPER BYLONG	NSW	\N
+12959	2849	UPPER GROWEE	NSW	\N
+12960	2849	UPPER NILE	NSW	\N
+12961	2849	WIRRABA	NSW	\N
+12962	2850	AARONS PASS	NSW	\N
+12963	2850	AVISFORD	NSW	\N
+12964	2850	BARA	NSW	\N
+12965	2850	BARIGAN	NSW	\N
+12966	2850	BOTOBOLAR	NSW	\N
+12967	2850	BUCKAROO	NSW	\N
+12968	2850	BURRUNDULLA	NSW	\N
+12969	2850	CAERLEON	NSW	\N
+12970	2850	CANADIAN LEAD	NSW	\N
+12971	2850	CARCALGONG	NSW	\N
+12972	2850	COLLINGWOOD	NSW	\N
+12973	2850	CROSS ROADS	NSW	\N
+12974	2850	CUDGEGONG	NSW	\N
+12975	2850	CULLENBONE	NSW	\N
+12976	2850	CUMBO	NSW	\N
+12977	2850	ERUDGERE	NSW	\N
+12978	2850	FROG ROCK	NSW	\N
+12979	2850	GALAMBINE	NSW	\N
+12980	2850	GREEN GULLY	NSW	\N
+12981	2850	HAYES GAP	NSW	\N
+12982	2850	HOME RULE	NSW	\N
+12983	2850	KAINS FLAT	NSW	\N
+12984	2850	LINBURN	NSW	\N
+12985	2850	MAITLAND BAR	NSW	\N
+12986	2850	MENAH	NSW	\N
+12987	2850	MEROO	NSW	\N
+12988	2850	MILROY	NSW	Mudgee
+12989	2850	MONIVAE	NSW	\N
+12990	2850	MOOLARBEN	NSW	\N
+12991	2850	MOUNT FROME	NSW	\N
+12992	2850	MOUNT KNOWLES	NSW	\N
+12993	2850	MULLAMUDDY	NSW	\N
+12994	2850	MUNGHORN	NSW	\N
+12995	2850	PIAMBONG	NSW	\N
+12996	2850	PYRAMUL	NSW	\N
+12997	2850	QUEENS PINCH	NSW	\N
+12998	2850	RIVERLEA	NSW	\N
+12999	2850	SALLYS FLAT	NSW	\N
+13000	2850	SPRING FLAT	NSW	\N
+13001	2850	TICHULAR	NSW	\N
+13002	2850	TOTNES VALLEY	NSW	\N
+13003	2850	TRIAMBLE	NSW	\N
+13004	2850	ULLAMALLA	NSW	\N
+13005	2850	WILPINJONG	NSW	\N
+13006	2850	WORLDS END	NSW	\N
+13007	2850	YARRABIN	NSW	\N
+13008	2852	BARNEYS REEF	NSW	\N
+13009	2852	BERYL	NSW	\N
+13010	2852	BUNGABA	NSW	\N
+13011	2852	COPE	NSW	\N
+13012	2852	CUMBANDRY	NSW	\N
+13013	2852	GUNTAWANG	NSW	\N
+13014	2852	MEBUL	NSW	\N
+13015	2852	MEROTHERIE	NSW	\N
+13016	2852	STUBBO	NSW	\N
+13017	2852	TWO MILE FLAT	NSW	\N
+13018	2864	BOWAN PARK	NSW	\N
+13019	2865	BOCOBRA	NSW	\N
+13020	2865	GUMBLE	NSW	\N
+13021	2866	AMAROO	NSW	\N
+13022	2866	BOOMEY	NSW	\N
+13023	2866	CUNDUMBUL	NSW	\N
+13024	2867	EURIMBLA	NSW	\N
+13025	2867	LOOMBAH	NSW	\N
+13026	2867	YULLUNDRY	NSW	\N
+13027	2868	BOURNEWOOD	NSW	\N
+13028	2868	UPPER OBLEY	NSW	\N
+13029	2870	BUMBERRY	NSW	\N
+13030	2870	COOKS MYALLS	NSW	\N
+13031	2870	DAROOBALGIE	NSW	\N
+13032	2871	BEDGERABONG	NSW	\N
+13033	2871	CORINELLA	NSW	\N
+13034	2871	FAIRHOLME	NSW	\N
+13035	2871	GUNNING GAP	NSW	\N
+13036	2871	JEMALONG	NSW	\N
+13037	2871	MULYANDRY	NSW	\N
+13038	2871	OOMA	NSW	\N
+13039	2871	PAYTENS BRIDGE	NSW	\N
+13040	2871	WARROO	NSW	\N
+13041	2873	FIVE WAYS	NSW	\N
+13042	2873	MIAMLEY	NSW	\N
+13043	2875	BRUIE PLAINS	NSW	\N
+13044	2875	YARRABANDAI	NSW	\N
+13045	2877	BOBADAH	NSW	\N
+13046	2877	BOONA MOUNT	NSW	\N
+13047	2877	EREMERANG	NSW	\N
+13048	2877	EUABALONG WEST	NSW	\N
+13049	2877	KIACATOO	NSW	\N
+13050	2877	MULGUTHRIE	NSW	\N
+13051	2880	BROUGHAMS GATE	NSW	\N
+13052	2880	FOWLERS GAP	NSW	\N
+13053	2880	LITTLE TOPAR	NSW	\N
+13054	2880	MILPARINKA	NSW	\N
+13055	2880	MUTAWINTJI	NSW	\N
+13056	2880	PACKSADDLE	NSW	\N
+13057	2911	CRACE	ACT	\N
+13058	2913	KINLYSIDE	ACT	\N
+13059	2914	BONNER	ACT	\N
+13060	3004	MELBOURNE	VIC	St Kilda Rd Business District
+13061	3024	MAMBOURIN	VIC	\N
+13062	3030	COCOROC	VIC	\N
+13063	3030	QUANDONG	VIC	\N
+13064	3037	CALDER PARK	VIC	\N
+13065	3097	WATSONS CREEK	VIC	\N
+13066	3103	DEEPDENE	VIC	\N
+13067	3139	BEENAK	VIC	\N
+13068	3212	POINT WILSON	VIC	\N
+13069	3213	ANAKIE	VIC	\N
+13070	3213	BATESFORD	VIC	\N
+13071	3213	LOVELY BANKS	VIC	\N
+13072	3213	MOORABOOL	VIC	\N
+13073	3217	ARMSTRONG CREEK	VIC	\N
+13074	3217	CHARLEMONT	VIC	\N
+13075	3217	FRESHWATER CREEK	VIC	\N
+13076	3217	MOUNT DUNEED	VIC	\N
+13077	3218	FYANSFORD	VIC	\N
+13078	3218	MURGHEBOLUC	VIC	\N
+13079	3218	STONEHAVEN	VIC	\N
+13080	3222	WALLINGTON	VIC	\N
+13081	3223	BELLARINE	VIC	\N
+13082	3224	MOOLAP	VIC	\N
+13083	3225	SWAN ISLAND	VIC	\N
+13084	3233	CAPE OTWAY	VIC	\N
+13085	3233	PETTICOAT CREEK	VIC	\N
+13086	3233	SKENES CREEK NORTH	VIC	\N
+13087	3234	GREY RIVER	VIC	\N
+13088	3234	KENNETT RIVER	VIC	\N
+13089	3234	SEPARATION CREEK	VIC	\N
+13090	3234	SUGARLOAF	VIC	\N
+13091	3234	WONGARRA	VIC	\N
+13092	3234	WYE RIVER	VIC	\N
+13093	3235	BENWERRIN	VIC	\N
+13094	3235	BOONAH	VIC	\N
+13095	3236	MOUNT SABINE	VIC	\N
+13096	3237	AIRE VALLEY	VIC	\N
+13097	3237	FERGUSON	VIC	\N
+13098	3237	WATTLE HILL	VIC	\N
+13099	3237	WEEAPROINAH	VIC	\N
+13100	3243	WHOOREL	VIC	\N
+13101	3249	BALINTORE	VIC	\N
+13102	3249	POMBORNEIT EAST	VIC	\N
+13103	3249	TANYBRYN	VIC	\N
+13104	3251	CUNDARE	VIC	\N
+13105	3260	BOSTOCKS CREEK	VIC	\N
+13106	3260	CHOCOLYN	VIC	\N
+13107	3260	KARIAH	VIC	\N
+13108	3260	KOALLAH	VIC	\N
+13109	3260	LESLIE MANOR	VIC	\N
+13110	3260	SKIBO	VIC	\N
+13111	3260	TANDAROOK	VIC	\N
+13112	3260	TESBURY	VIC	\N
+13113	3265	FRAMLINGHAM EAST	VIC	\N
+13114	3265	LAANG	VIC	\N
+13115	3265	NOORAT EAST	VIC	\N
+13116	3265	TAROON	VIC	\N
+13117	3266	BULLAHARRE	VIC	\N
+13118	3266	ELINGAMITE NORTH	VIC	\N
+13119	3266	NAROGHID	VIC	\N
+13120	3268	AYRFORD	VIC	\N
+13121	3268	COWLEYS CREEK	VIC	\N
+13122	3268	CURDIES RIVER	VIC	\N
+13123	3268	HEYTESBURY LOWER	VIC	\N
+13124	3268	NEWFIELD	VIC	\N
+13125	3268	NIRRANDA EAST	VIC	\N
+13126	3268	NULLAWARRE NORTH	VIC	\N
+13127	3268	PAARATTE	VIC	\N
+13128	3268	THE COVE	VIC	\N
+13129	3268	TIMBOON WEST	VIC	\N
+13130	3269	WAARRE	VIC	\N
+13131	3276	MINJAH	VIC	\N
+13132	3277	MEPUNGA EAST	VIC	\N
+13133	3278	PURNIM WEST	VIC	\N
+13134	3279	BALLANGEICH	VIC	\N
+13135	3283	TARRONE	VIC	\N
+13136	3283	WARRONG	VIC	\N
+13137	3283	WILLATOOK	VIC	\N
+13138	3283	YANGERY	VIC	\N
+13139	3283	YARPTURK	VIC	\N
+13140	3285	CODRINGTON	VIC	\N
+13141	3285	TYRENDARRA EAST	VIC	\N
+13142	3286	CONDAH SWAMP	VIC	\N
+13143	3286	KNEBSWORTH	VIC	\N
+13144	3286	WARRABKOOK	VIC	\N
+13145	3289	GAZETTE	VIC	\N
+13146	3289	GERRIGERRUP	VIC	\N
+13147	3289	PURDEET	VIC	\N
+13148	3289	TABOR	VIC	\N
+13149	3293	NAREEB	VIC	\N
+13150	3294	KARABEAL	VIC	\N
+13151	3294	MIRRANATWA	VIC	\N
+13152	3294	VICTORIA POINT	VIC	\N
+13153	3294	WOODHOUSE	VIC	\N
+13154	3301	BOCHARA	VIC	\N
+13155	3301	BUCKLEY SWAMP	VIC	\N
+13156	3301	CROXTON EAST	VIC	\N
+13157	3301	HENSLEY PARK	VIC	\N
+13158	3301	MORGIANA	VIC	\N
+13159	3301	MOUNT NAPIER	VIC	\N
+13160	3301	STRATHKELLAR	VIC	\N
+13161	3301	TAHARA	VIC	\N
+13162	3301	WANNON	VIC	\N
+13163	3301	WARRAYURE	VIC	\N
+13164	3301	YATCHAW	VIC	\N
+13165	3301	YULECART	VIC	\N
+13166	3302	GRASSDALE	VIC	\N
+13167	3303	BREAKAWAY CREEK	VIC	\N
+13168	3303	HOTSPUR	VIC	\N
+13169	3303	LAKE CONDAH	VIC	\N
+13170	3304	DRIK DRIK	VIC	\N
+13171	3304	GREENWALD	VIC	\N
+13172	3304	HOMERTON	VIC	\N
+13173	3304	LYONS	VIC	\N
+13174	3304	MILLTOWN	VIC	\N
+13175	3304	MYAMYN	VIC	\N
+13176	3305	DUTTON WAY	VIC	\N
+13177	3305	MOUNT RICHMOND	VIC	\N
+13178	3310	TAHARA WEST	VIC	\N
+13179	3311	CORNDALE	VIC	\N
+13180	3312	BAHGALLAH	VIC	\N
+13181	3312	BRIMBOAL	VIC	\N
+13182	3312	CARAPOOK	VIC	\N
+13183	3312	DERGHOLM	VIC	\N
+13184	3312	DORODONG	VIC	\N
+13185	3312	DUNROBIN	VIC	\N
+13186	3312	LAKE MUNDI	VIC	\N
+13187	3312	LINDSAY	VIC	\N
+13188	3312	NANGEELA	VIC	\N
+13189	3312	POOLAIJELO	VIC	\N
+13190	3312	POWERS CREEK	VIC	\N
+13191	3312	WANDO BRIDGE	VIC	\N
+13192	3312	WARROCK	VIC	\N
+13193	3314	BULART	VIC	\N
+13194	3314	GLENISLA	VIC	\N
+13195	3314	GRAMPIANS	VIC	\N
+13196	3314	MOORALLA	VIC	\N
+13197	3315	BRIT BRIT	VIC	\N
+13198	3315	CLOVER FLAT	VIC	\N
+13199	3315	COOJAR	VIC	\N
+13200	3315	CULLA	VIC	\N
+13201	3315	GRINGEGALGONA	VIC	\N
+13202	3315	GRITJURK	VIC	\N
+13203	3315	HILGAY	VIC	\N
+13204	3315	KONONGWOOTONG	VIC	\N
+13205	3315	MELVILLE FOREST	VIC	\N
+13206	3315	MUNTHAM	VIC	\N
+13207	3315	PASCHENDALE	VIC	\N
+13208	3315	TAHARA BRIDGE	VIC	\N
+13209	3315	TARRAYOUKYAN	VIC	\N
+13210	3315	TARRENLEA	VIC	\N
+13211	3315	WOOTONG VALE	VIC	\N
+13212	3318	CHARAM	VIC	\N
+13213	3318	CONNEWIRRICOO	VIC	\N
+13214	3318	KADNOOK	VIC	\N
+13215	3318	PATYAH	VIC	\N
+13216	3318	ULLSWATER	VIC	\N
+13217	3319	BENAYEO	VIC	\N
+13218	3319	BRINGALBERT	VIC	\N
+13219	3321	HESSE	VIC	\N
+13220	3321	WINGEEL	VIC	\N
+13221	3323	DUVERNEY	VIC	\N
+13222	3323	FOXHOW	VIC	\N
+13223	3324	MINGAY	VIC	\N
+13224	3324	MOUNT BUTE	VIC	\N
+13225	3325	LARRALEA	VIC	\N
+13226	3325	VITE VITE	VIC	\N
+13227	3325	VITE VITE NORTH	VIC	\N
+13228	3329	BARUNAH PARK	VIC	\N
+13229	3329	BARUNAH PLAINS	VIC	\N
+13230	3331	RUSSELLS BRIDGE	VIC	\N
+13231	3331	STEIGLITZ	VIC	\N
+13232	3333	BAMGANIE	VIC	\N
+13233	3334	BUNGAL	VIC	\N
+13234	3334	CARGERIE	VIC	\N
+13235	3340	GLENMORE	VIC	\N
+13236	3340	STAUGHTON VALE	VIC	\N
+13237	3341	PENTLAND HILLS	VIC	\N
+13238	3342	BUNDING	VIC	\N
+13239	3342	COLBROOK	VIC	\N
+13240	3342	DURDIDWARRAH	VIC	\N
+13241	3342	FISKVILLE	VIC	\N
+13242	3342	INGLISTON	VIC	\N
+13243	3351	BO PEEP	VIC	\N
+13244	3351	MOUNT EMU	VIC	\N
+13245	3351	PIGGOREET	VIC	\N
+13246	3351	PITFIELD	VIC	\N
+13247	3351	SPRINGDALLAH	VIC	\N
+13248	3351	STAFFORDSHIRE REEF	VIC	\N
+13249	3351	WALLINDUC	VIC	\N
+13250	3352	BREWSTER	VIC	\N
+13251	3352	CHAPEL FLAT	VIC	\N
+13252	3352	CLARETOWN	VIC	\N
+13253	3352	ERCILDOUNE	VIC	\N
+13254	3352	GARIBALDI	VIC	\N
+13255	3352	GLEN PARK	VIC	\N
+13256	3352	GLENBRAE	VIC	\N
+13257	3352	GONG GONG	VIC	\N
+13258	3352	GRENVILLE	VIC	\N
+13259	3352	LAMPLOUGH	VIC	\N
+13260	3352	LANGI KAL KAL	VIC	\N
+13261	3352	MOUNT BOLTON	VIC	\N
+13262	3352	MOUNT MERCER	VIC	\N
+13263	3352	SCOTCHMANS LEAD	VIC	\N
+13264	3352	WATTLE FLAT	VIC	\N
+13265	3360	MANNIBADAR	VIC	\N
+13266	3360	PITTONG	VIC	\N
+13267	3360	WILLOWVALE	VIC	\N
+13268	3361	BRADVALE	VIC	\N
+13269	3363	CRESWICK NORTH	VIC	\N
+13270	3363	GLENDARUEL	VIC	\N
+13271	3363	LANGDONS HILL	VIC	\N
+13272	3363	MOUNT BECKWORTH	VIC	\N
+13273	3363	TOURELLO	VIC	\N
+13274	3364	BALD HILLS	VIC	\N
+13275	3364	CABBAGE TREE	VIC	Creswick
+13276	3364	GLENDONALD	VIC	\N
+13277	3364	JOYCES CREEK	VIC	\N
+13278	3364	KOOROOCHEANG	VIC	\N
+13279	3364	LAWRENCE	VIC	\N
+13280	3364	MOUNT PROSPECT	VIC	\N
+13281	3364	NEWLYN NORTH	VIC	\N
+13282	3364	SMOKEYTOWN	VIC	\N
+13283	3364	STRATHLEA	VIC	\N
+13284	3364	WERONA	VIC	\N
+13285	3370	GLENGOWER	VIC	\N
+13286	3370	MOUNT CAMERON	VIC	\N
+13287	3371	BURNBANK	VIC	\N
+13288	3371	CARALULUP	VIC	\N
+13289	3371	DUNACH	VIC	\N
+13290	3371	LILLICUR	VIC	\N
+13291	3373	CHUTE	VIC	\N
+13292	3373	CROSS ROADS	VIC	\N
+13293	3373	LAKE GOLDSMITH	VIC	\N
+13294	3373	LAKE WONGAN	VIC	\N
+13295	3373	MAIN LEAD	VIC	\N
+13296	3373	MENA PARK	VIC	\N
+13297	3373	NERRING	VIC	\N
+13298	3373	STOCKYARD HILL	VIC	\N
+13299	3373	STONELEIGH	VIC	\N
+13300	3373	WATERLOO	VIC	\N
+13301	3375	BALLYROGAN	VIC	\N
+13302	3375	MIDDLE CREEK	VIC	\N
+13303	3377	ARMSTRONG	VIC	\N
+13304	3377	BULGANA	VIC	\N
+13305	3377	DENICULL CREEK	VIC	\N
+13306	3377	DOBIE	VIC	\N
+13307	3377	DUNNEWORTHY	VIC	\N
+13308	3377	EVERSLEY	VIC	\N
+13309	3377	LANGI LOGAN	VIC	\N
+13310	3377	MOUNT COLE	VIC	\N
+13311	3377	MOUNT COLE CREEK	VIC	\N
+13312	3377	NORVAL	VIC	\N
+13313	3377	RHYMNEY	VIC	\N
+13314	3377	ROCKY POINT	VIC	\N
+13315	3377	ROSSBRIDGE	VIC	\N
+13316	3377	SHAYS FLAT	VIC	\N
+13317	3378	YALLA-Y-POORA	VIC	\N
+13318	3379	BORNES HILL	VIC	\N
+13319	3379	MAFEKING	VIC	\N
+13320	3379	WILLAURA NORTH	VIC	\N
+13321	3381	BELLELLEN	VIC	\N
+13322	3381	BLACK RANGE	VIC	\N
+13323	3381	FYANS CREEK	VIC	\N
+13324	3381	ILLAWARRA	VIC	\N
+13325	3381	LAKE FYANS	VIC	\N
+13326	3381	LAKE LONSDALE	VIC	\N
+13327	3381	MOKEPILLY	VIC	\N
+13328	3381	MOUNT DRYDEN	VIC	\N
+13329	3384	BARKLY	VIC	\N
+13330	3384	FRENCHMANS	VIC	\N
+13331	3384	JOEL JOEL	VIC	\N
+13332	3384	JOEL SOUTH	VIC	\N
+13333	3384	LANDSBOROUGH WEST	VIC	\N
+13334	3384	TULKARA	VIC	\N
+13335	3384	WATTLE CREEK	VIC	\N
+13336	3385	LEDCOURT	VIC	\N
+13337	3385	LUBECK	VIC	\N
+13338	3385	RIACHELLA	VIC	\N
+13339	3385	ROSES GAP	VIC	\N
+13340	3385	WAL WAL	VIC	\N
+13341	3387	BOLANGUM	VIC	\N
+13342	3387	CALLAWADDA	VIC	\N
+13343	3387	CAMPBELLS BRIDGE	VIC	\N
+13344	3387	GERMANIA	VIC	\N
+13345	3387	GREENS CREEK	VIC	\N
+13346	3387	KANYA	VIC	\N
+13347	3387	MARNOO WEST	VIC	\N
+13348	3387	MORRL MORRL	VIC	\N
+13349	3387	WALLALOO	VIC	\N
+13350	3387	WALLALOO EAST	VIC	\N
+13351	3390	KEWELL	VIC	\N
+13352	3392	BOOLITE	VIC	\N
+13353	3393	AUBREY	VIC	\N
+13354	3393	BANGERANG	VIC	\N
+13355	3393	CANNUM	VIC	\N
+13356	3393	CRYMELON	VIC	\N
+13357	3393	KELLALAC	VIC	\N
+13358	3393	LAH	VIC	\N
+13359	3393	WILKUR	VIC	\N
+13360	3393	WILLENABRINA	VIC	\N
+13361	3395	KENMARE	VIC	\N
+13362	3395	REEDY DAM	VIC	\N
+13363	3395	ROSEBERY	VIC	\N
+13364	3401	BLACKHEATH	VIC	\N
+13365	3401	BUNGALALLY	VIC	\N
+13366	3401	CHERRYPOOL	VIC	\N
+13367	3401	KALKEE	VIC	\N
+13368	3401	KANAGULK	VIC	\N
+13369	3401	LONGERENONG	VIC	\N
+13370	3401	MOCKINYA	VIC	\N
+13371	3401	MURRA WARRA	VIC	\N
+13372	3401	NURCOUNG	VIC	\N
+13373	3401	NURRABIEL	VIC	\N
+13374	3401	ST HELENS PLAINS	VIC	\N
+13375	3401	WAIL	VIC	\N
+13376	3401	ZUMSTEINS	VIC	\N
+13377	3407	ENGLEFIELD	VIC	\N
+13378	3407	PIGEON PONDS	VIC	\N
+13379	3409	ARAPILES	VIC	\N
+13380	3409	CLEAR LAKE	VIC	\N
+13381	3409	DUCHEMBEGARRA	VIC	\N
+13382	3409	GRASS FLAT	VIC	\N
+13383	3409	JILPANGER	VIC	\N
+13384	3409	MIGA LAKE	VIC	\N
+13385	3409	TOOAN	VIC	\N
+13386	3418	BROUGHTON	VIC	\N
+13387	3418	GLENLEE	VIC	\N
+13388	3418	LITTLE DESERT	VIC	\N
+13389	3418	LORQUON	VIC	\N
+13390	3420	TELOPEA DOWNS	VIC	\N
+13391	3424	ALBACUTYA	VIC	\N
+13392	3434	CHEROKEE	VIC	\N
+13393	3435	GOLDIE	VIC	\N
+13394	3442	CADELLO	VIC	\N
+13395	3442	COBAW	VIC	\N
+13396	3442	WOODEND NORTH	VIC	\N
+13397	3444	BARFOLD	VIC	\N
+13398	3444	BAYNTON	VIC	\N
+13399	3444	BAYNTON EAST	VIC	\N
+13400	3444	EDGECOMBE	VIC	\N
+13401	3444	GLENHOPE	VIC	\N
+13402	3444	GREENHILL	VIC	\N
+13403	3444	KYNETON SOUTH	VIC	\N
+13404	3444	LANGLEY	VIC	\N
+13405	3444	LAURISTON	VIC	\N
+13406	3444	LYAL	VIC	\N
+13407	3444	METCALFE EAST	VIC	\N
+13408	3444	PASTORIA	VIC	\N
+13409	3444	PASTORIA EAST	VIC	\N
+13410	3444	SIDONIA	VIC	\N
+13411	3444	TYLDEN SOUTH	VIC	\N
+13412	3451	GLENLUCE	VIC	\N
+13413	3451	GOWER	VIC	\N
+13414	3451	IRISHTOWN	VIC	\N
+13415	3451	TARILTA	VIC	\N
+13416	3451	VAUGHAN	VIC	\N
+13417	3453	RAVENSWOOD SOUTH	VIC	\N
+13418	3458	BARRYS REEF	VIC	\N
+13419	3458	NORTH BLACKWOOD	VIC	\N
+13420	3460	BASALT	VIC	\N
+13421	3461	BULLARTO SOUTH	VIC	\N
+13422	3461	DRY DIGGINGS	VIC	\N
+13423	3461	ELEVATED PLAINS	VIC	\N
+13424	3461	HEPBURN	VIC	\N
+13425	3461	LEONARDS HILL	VIC	\N
+13426	3461	MOUNT FRANKLIN	VIC	\N
+13427	3461	SAILORS HILL	VIC	\N
+13428	3461	SHEPHERDS FLAT	VIC	\N
+13429	3461	SPARGO CREEK	VIC	\N
+13430	3461	STRANGWAYS	VIC	\N
+13431	3461	YANDOIT HILLS	VIC	\N
+13432	3462	GREEN GULLY	VIC	\N
+13433	3462	SANDON	VIC	\N
+13434	3463	BARINGHUP WEST	VIC	\N
+13435	3463	BRADFORD	VIC	\N
+13436	3463	EASTVILLE	VIC	\N
+13437	3463	NEEREMAN	VIC	\N
+13438	3463	NUGGETTY	VIC	\N
+13439	3463	TARRENGOWER	VIC	\N
+13440	3465	BUNG BONG	VIC	\N
+13441	3465	COTSWOLD	VIC	\N
+13442	3465	FLAGSTAFF	VIC	\N
+13443	3465	HOMEBUSH	VIC	\N
+13444	3465	MOOLORT	VIC	\N
+13445	3465	RATHSCAR WEST	VIC	\N
+13446	3465	TIMOR	VIC	\N
+13447	3469	GLENLOFTY	VIC	\N
+13448	3469	GLENLOGIE	VIC	\N
+13449	3469	GLENPATRICK	VIC	\N
+13450	3469	NOWHERE CREEK	VIC	\N
+13451	3472	BROMLEY	VIC	\N
+13452	3472	MCINTYRE	VIC	\N
+13453	3472	MOUNT HOOGHLY	VIC	\N
+13454	3475	ARCHDALE	VIC	\N
+13455	3475	ARCHDALE JUNCTION	VIC	\N
+13456	3475	BURKES FLAT	VIC	\N
+13457	3475	COCHRANES CREEK	VIC	\N
+13458	3477	AVON PLAINS	VIC	\N
+13459	3477	BEAZLEYS BRIDGE	VIC	\N
+13460	3477	CARAPOOEE	VIC	\N
+13461	3477	CARAPOOEE WEST	VIC	\N
+13462	3477	COONOOER BRIDGE	VIC	\N
+13463	3477	COONOOER WEST	VIC	\N
+13464	3477	DALYENONG	VIC	\N
+13465	3477	GOOROC	VIC	\N
+13466	3477	GOWAR EAST	VIC	\N
+13467	3477	GRAYS BRIDGE	VIC	\N
+13468	3477	GRE GRE	VIC	\N
+13469	3477	GRE GRE NORTH	VIC	\N
+13470	3477	GRE GRE SOUTH	VIC	\N
+13471	3477	KOOREH	VIC	\N
+13472	3477	MARNOO EAST	VIC	\N
+13473	3477	MOOLERR	VIC	\N
+13474	3477	MOYREISK	VIC	\N
+13475	3477	PARADISE	VIC	\N
+13476	3477	ROSTRON	VIC	\N
+13477	3477	SLATY CREEK	VIC	\N
+13478	3477	ST ARNAUD EAST	VIC	\N
+13479	3477	ST ARNAUD NORTH	VIC	\N
+13480	3477	SUTHERLAND	VIC	\N
+13481	3477	SWANWATER	VIC	\N
+13482	3477	TOTTINGTON	VIC	\N
+13483	3477	TRAYNORS LAGOON	VIC	\N
+13484	3477	WINJALLOK	VIC	\N
+13485	3477	YORK PLAINS	VIC	\N
+13486	3478	DOOBOOBETIC	VIC	\N
+13487	3478	PERCYDALE	VIC	\N
+13488	3478	TANWOOD	VIC	\N
+13489	3478	WARRENMANG	VIC	\N
+13490	3478	YAWONG HILLS	VIC	\N
+13491	3480	CARRON	VIC	\N
+13492	3480	COPE COPE	VIC	\N
+13493	3480	CORACK EAST	VIC	\N
+13494	3480	GIL GIL	VIC	\N
+13495	3480	JEFFCOTT	VIC	\N
+13496	3480	JEFFCOTT NORTH	VIC	\N
+13497	3480	LAEN	VIC	\N
+13498	3480	LAEN EAST	VIC	\N
+13499	3480	LAEN NORTH	VIC	\N
+13500	3480	LAWLER	VIC	\N
+13501	3480	RICH AVON	VIC	\N
+13502	3480	RICH AVON EAST	VIC	\N
+13503	3480	RICH AVON WEST	VIC	\N
+13504	3480	SWANWATER WEST	VIC	\N
+13505	3482	MASSEY	VIC	\N
+13506	3482	MORTON PLAINS	VIC	\N
+13507	3482	WARMUR	VIC	\N
+13508	3482	WATCHEM WEST	VIC	\N
+13509	3483	BALLAPUR	VIC	\N
+13510	3483	BIRCHIP WEST	VIC	\N
+13511	3483	CURYO	VIC	\N
+13512	3483	JIL JIL	VIC	\N
+13513	3483	KARYRIE	VIC	\N
+13514	3483	KINNABULLA	VIC	\N
+13515	3483	MARLBED	VIC	\N
+13516	3483	NARRAPORT	VIC	\N
+13517	3483	WHIRILY	VIC	\N
+13518	3485	BANYAN	VIC	\N
+13519	3485	WILLANGIE	VIC	\N
+13520	3488	TURRIFF	VIC	\N
+13521	3488	TURRIFF EAST	VIC	\N
+13522	3490	BIG DESERT	VIC	\N
+13523	3490	BOINKA	VIC	\N
+13524	3490	KULWIN	VIC	\N
+13525	3490	MITTYACK	VIC	\N
+13526	3490	MURRAY-SUNSET	VIC	\N
+13527	3490	TORRITA	VIC	\N
+13528	3490	TUTYE	VIC	\N
+13529	3496	LINDSAY POINT	VIC	\N
+13530	3496	MERRINEE	VIC	\N
+13531	3496	NEDS CORNER	VIC	\N
+13532	3501	HATTAH	VIC	\N
+13533	3505	WARGAN	VIC	\N
+13534	3509	LINGA	VIC	\N
+13535	3512	CARINA	VIC	\N
+13536	3512	PANITYA	VIC	\N
+13537	3515	WILSONS HILL	VIC	\N
+13538	3516	BRIDGEWATER NORTH	VIC	\N
+13539	3516	YARRABERB	VIC	\N
+13540	3517	BEARS LAGOON	VIC	\N
+13541	3517	BRENANAH	VIC	\N
+13542	3517	GLENALBYN	VIC	\N
+13543	3517	KINGOWER	VIC	\N
+13544	3517	KURTING	VIC	\N
+13545	3517	POWLETT PLAINS	VIC	\N
+13546	3517	RHEOLA	VIC	\N
+13547	3518	FENTONS CREEK	VIC	\N
+13548	3518	FIERY FLAT	VIC	\N
+13549	3518	KURRACA	VIC	\N
+13550	3518	KURRACA WEST	VIC	\N
+13551	3518	NINE MILE	VIC	\N
+13552	3518	RICHMOND PLAINS	VIC	\N
+13553	3518	WEDDERBURN JUNCTION	VIC	\N
+13554	3518	WEHLA	VIC	\N
+13555	3518	WOOSANG	VIC	\N
+13556	3520	KINYPANIAL	VIC	\N
+13557	3522	GLENHOPE EAST	VIC	\N
+13558	3525	BARRAKEE	VIC	\N
+13559	3525	BUCKRABANYULE	VIC	\N
+13560	3525	CHIRRIP	VIC	\N
+13561	3525	GRANITE FLAT	VIC	\N
+13562	3525	LAKE MARMAL	VIC	\N
+13563	3525	NAREEWILLOCK	VIC	\N
+13564	3525	TERRAPPEE	VIC	\N
+13565	3525	WOOROONOOK	VIC	\N
+13566	3525	WYCHITELLA NORTH	VIC	\N
+13567	3525	YEUNGROON	VIC	\N
+13568	3525	YEUNGROON EAST	VIC	\N
+13569	3527	BUNGULUKE	VIC	\N
+13570	3527	DUMOSA	VIC	\N
+13571	3527	GLENLOTH	VIC	\N
+13572	3527	GLENLOTH EAST	VIC	\N
+13573	3527	JERUK	VIC	\N
+13574	3527	TEDDYWADDY	VIC	\N
+13575	3527	TEDDYWADDY WEST	VIC	\N
+13576	3527	THALIA	VIC	\N
+13577	3527	TOWANINNY	VIC	\N
+13578	3527	TOWANINNY SOUTH	VIC	\N
+13579	3527	WYCHEPROOF SOUTH	VIC	\N
+13580	3529	KALPIENUNG	VIC	\N
+13581	3530	SUTTON	VIC	\N
+13582	3530	WANGIE	VIC	\N
+13583	3530	WARNE	VIC	\N
+13584	3531	BOIGBEAT	VIC	\N
+13585	3533	BIMBOURIE	VIC	\N
+13586	3533	LAKE TYRRELL	VIC	\N
+13587	3533	NINDA	VIC	\N
+13588	3533	NYARRIN	VIC	\N
+13589	3533	PIER MILAN	VIC	\N
+13590	3533	STRATEN	VIC	\N
+13591	3533	TYENNA	VIC	\N
+13592	3533	TYRRELL	VIC	\N
+13593	3533	TYRRELL DOWNS	VIC	\N
+13594	3537	BARRAPORT	VIC	\N
+13595	3537	BARRAPORT WEST	VIC	\N
+13596	3537	CATUMNAL	VIC	\N
+13597	3537	LEAGHUR	VIC	\N
+13598	3537	MINMINDIE	VIC	\N
+13599	3537	YANDO	VIC	\N
+13600	3540	OAKVALE	VIC	\N
+13601	3542	COKUM	VIC	\N
+13602	3542	TITTYBONG	VIC	\N
+13603	3544	CHINANGIN	VIC	\N
+13604	3544	GOWANFORD	VIC	\N
+13605	3544	MURNUNGIN	VIC	\N
+13606	3544	ULTIMA EAST	VIC	\N
+13607	3546	COCAMBA	VIC	\N
+13608	3546	GERAHMIN	VIC	\N
+13609	3546	TUROAR	VIC	\N
+13610	3546	WINNAMBOOL	VIC	\N
+13611	3549	ANNUELLO	VIC	\N
+13612	3549	BANNERTON	VIC	\N
+13613	3549	LIPAROO	VIC	\N
+13614	3549	ROBINVALE IRRIGATION DISTRICT SECTION B	VIC	\N
+13615	3549	ROBINVALE IRRIGATION DISTRICT SECTION C	VIC	\N
+13616	3549	ROBINVALE IRRIGATION DISTRICT SECTION D	VIC	\N
+13617	3549	ROBINVALE IRRIGATION DISTRICT SECTION E	VIC	\N
+13618	3549	TOL TOL	VIC	\N
+13619	3549	WANDOWN	VIC	\N
+13620	3549	WEMEN	VIC	\N
+13621	3551	ARNOLD WEST	VIC	\N
+13622	3551	BAGSHOT NORTH	VIC	\N
+13623	3551	CORNELLA	VIC	\N
+13624	3551	HUNTLY NORTH	VIC	\N
+13625	3551	LAKE EPPALOCK	VIC	\N
+13626	3551	MYOLA	VIC	\N
+13627	3551	MYRTLE CREEK	VIC	\N
+13628	3551	WAANYARRA	VIC	\N
+13629	3556	EAGLEHAWK NORTH	VIC	\N
+13630	3556	WHIPSTICK	VIC	\N
+13631	3557	MUSKERRY	VIC	\N
+13632	3558	BURNEWANG	VIC	\N
+13633	3559	AVONMORE	VIC	\N
+13634	3559	BURRAMBOOT	VIC	\N
+13635	3559	GOBARUP	VIC	\N
+13636	3561	BONN	VIC	\N
+13637	3564	BAMAWM EXTENSION	VIC	\N
+13638	3564	ROSLYNMEAD	VIC	\N
+13639	3567	HORFIELD	VIC	\N
+13640	3568	BURKES BRIDGE	VIC	\N
+13641	3568	CULLEN	VIC	\N
+13642	3568	DALTONS BRIDGE	VIC	\N
+13643	3568	GANNAWARRA	VIC	\N
+13644	3568	KEELY	VIC	\N
+13645	3568	MACORNA NORTH	VIC	\N
+13646	3568	MCMILLANS	VIC	\N
+13647	3568	MEAD	VIC	\N
+13648	3568	MINCHA WEST	VIC	\N
+13649	3568	WEE WEE RUP	VIC	\N
+13650	3570	DRUMMARTIN	VIC	\N
+13651	3571	POMPAPIEL	VIC	\N
+13652	3573	PINE GROVE	VIC	\N
+13653	3573	TERRICK TERRICK EAST	VIC	\N
+13654	3575	GLADFIELD	VIC	\N
+13655	3575	JUNGABURRA	VIC	\N
+13656	3575	LODDON VALE	VIC	\N
+13657	3575	MOLOGA	VIC	\N
+13658	3575	SYLVATERRE	VIC	\N
+13659	3575	TERRICK TERRICK	VIC	\N
+13660	3579	APPIN	VIC	\N
+13661	3579	APPIN SOUTH	VIC	\N
+13662	3579	BAEL BAEL	VIC	\N
+13663	3579	BEAUCHAMP	VIC	\N
+13664	3579	BENJEROOP	VIC	\N
+13665	3579	BUDGERUM EAST	VIC	\N
+13666	3579	CAPELS CROSSING	VIC	\N
+13667	3579	FAIRLEY	VIC	\N
+13668	3579	GONN CROSSING	VIC	\N
+13669	3579	KERANG EAST	VIC	\N
+13670	3579	KOROOP	VIC	\N
+13671	3579	LAKE MERAN	VIC	\N
+13672	3579	MILNES BRIDGE	VIC	\N
+13673	3579	MURRABIT WEST	VIC	\N
+13674	3579	NORMANVILLE	VIC	\N
+13675	3579	PINE VIEW	VIC	\N
+13676	3579	REEDY LAKE	VIC	\N
+13677	3579	SANDHILL LAKE	VIC	\N
+13678	3579	TEAL POINT	VIC	\N
+13679	3579	TRAGOWEL	VIC	\N
+13680	3579	WANDELLA	VIC	\N
+13681	3579	WESTBY	VIC	\N
+13682	3584	TRESCO WEST	VIC	\N
+13683	3585	CASTLE DONNINGTON	VIC	\N
+13684	3585	CHILLINGOLLAH	VIC	\N
+13685	3585	FISH POINT	VIC	\N
+13686	3585	GOSCHEN	VIC	\N
+13687	3585	KUNAT	VIC	\N
+13688	3585	MEATIAN	VIC	\N
+13689	3585	NOWIE	VIC	\N
+13690	3585	NYRRABY	VIC	\N
+13691	3585	PIRA	VIC	\N
+13692	3585	POLISBET	VIC	\N
+13693	3585	SPEEWA	VIC	\N
+13694	3585	SWAN HILL WEST	VIC	\N
+13695	3585	WINLATON	VIC	\N
+13696	3586	BULGA	VIC	\N
+13697	3586	MURRAWEE	VIC	\N
+13698	3586	MURRAYDALE	VIC	\N
+13699	3589	WOORINEN NORTH	VIC	\N
+13700	3596	MIRALIE	VIC	\N
+13701	3596	TOWAN	VIC	\N
+13702	3597	KENLEY	VIC	\N
+13703	3597	KOOLOONONG	VIC	\N
+13704	3597	LAKE POWELL	VIC	\N
+13705	3597	NARRUNG	VIC	\N
+13706	3597	NATYA	VIC	\N
+13707	3608	MITCHELLSTOWN	VIC	\N
+13708	3608	WIRRATE	VIC	\N
+13709	3610	MOORILIM	VIC	\N
+13710	3610	MURCHISON EAST	VIC	\N
+13711	3612	WHROO	VIC	\N
+13712	3616	MOOROOPNA NORTH WEST	VIC	\N
+13713	3616	WARANGA	VIC	\N
+13714	3620	ST GERMAINS	VIC	\N
+13715	3623	CARAG CARAG	VIC	\N
+13716	3623	STANHOPE SOUTH	VIC	\N
+13717	3631	COSGROVE SOUTH	VIC	\N
+13718	3631	KARRAMOMUS	VIC	\N
+13719	3634	MARIONVALE	VIC	\N
+13720	3636	DRUMANURE	VIC	\N
+13721	3639	LOWER MOIRA	VIC	\N
+13722	3639	PICOLA WEST	VIC	\N
+13723	3641	MYWEE	VIC	\N
+13724	3641	ULUPNA	VIC	\N
+13725	3646	MOUNT MAJOR	VIC	\N
+13726	3646	NALINGA	VIC	\N
+13727	3646	WAGGARANDALL	VIC	\N
+13728	3646	YABBA SOUTH	VIC	\N
+13729	3649	KATAMATITE EAST	VIC	\N
+13730	3658	TYAAK	VIC	\N
+13731	3660	DROPMORE	VIC	\N
+13732	3660	HILLDENE	VIC	\N
+13733	3662	PUCKAPUNYAL	VIC	\N
+13734	3664	UPTON HILL	VIC	\N
+13735	3666	KELVIN VIEW	VIC	\N
+13736	3666	MOGLONEMBY	VIC	\N
+13737	3666	MOLKA	VIC	\N
+13738	3666	PRANJIP	VIC	\N
+13739	3666	RIGGS CREEK	VIC	\N
+13740	3666	SHEANS CREEK	VIC	\N
+13741	3666	TARCOMBE	VIC	\N
+13742	3669	BOHO	VIC	\N
+13743	3669	EARLSTON	VIC	\N
+13744	3669	MARRAWEENEY	VIC	\N
+13745	3669	TAMLEUGH NORTH	VIC	\N
+13746	3669	UPOTIPOTPON	VIC	\N
+13747	3670	TARNOOK	VIC	\N
+13748	3673	BROKEN CREEK	VIC	\N
+13749	3673	GOOMALIBEE	VIC	\N
+13750	3673	MOORNGAG	VIC	\N
+13751	3673	SAMARIA	VIC	\N
+13752	3673	UPPER RYANS CREEK	VIC	\N
+13753	3673	WINTON NORTH	VIC	\N
+13754	3675	BOWEYA	VIC	\N
+13755	3675	BOWEYA NORTH	VIC	\N
+13756	3675	MOUNT BRUNO	VIC	\N
+13757	3675	TAMINICK	VIC	\N
+13758	3678	BOBINAWARRAH	VIC	\N
+13759	3678	BOORHAMAN EAST	VIC	\N
+13760	3678	BOWSER	VIC	\N
+13761	3678	CARBOOR	VIC	\N
+13762	3678	CHESHUNT SOUTH	VIC	\N
+13763	3678	DOCKERS PLAINS	VIC	\N
+13764	3678	EAST WANGARATTA	VIC	\N
+13765	3678	MEADOW CREEK	VIC	\N
+13766	3678	OXLEY FLATS	VIC	\N
+13767	3678	PEECHELBA EAST	VIC	\N
+13768	3678	ROSE RIVER	VIC	\N
+13769	3678	WABONGA	VIC	\N
+13770	3678	WHITLANDS	VIC	\N
+13771	3682	BORALMA	VIC	\N
+13772	3683	CHILTERN VALLEY	VIC	\N
+13773	3683	CORNISHTOWN	VIC	\N
+13774	3685	BRIMIN	VIC	\N
+13775	3685	CARLYLE	VIC	\N
+13776	3691	BUNGIL	VIC	\N
+13777	3691	CASTLE CREEK	VIC	\N
+13778	3691	CORAL BANK	VIC	\N
+13779	3691	GATEWAY ISLAND	VIC	\N
+13780	3691	HUON CREEK	VIC	\N
+13781	3691	KANCOONA	VIC	\N
+13782	3691	KERGUNYAH SOUTH	VIC	\N
+13783	3691	MONGANS BRIDGE	VIC	\N
+13784	3691	RUNNING CREEK	VIC	\N
+13785	3691	THOLOGOLONG	VIC	\N
+13786	3691	UPPER GUNDOWRING	VIC	\N
+13787	3699	NELSE	VIC	\N
+13788	3700	BULLIOH	VIC	\N
+13789	3700	GEORGES CREEK	VIC	\N
+13790	3700	JARVIS CREEK	VIC	\N
+13791	3700	TALLANGATTA EAST	VIC	\N
+13792	3701	OLD TALLANGATTA	VIC	\N
+13793	3707	TOM GROGGIN	VIC	\N
+13794	3707	TOWONG UPPER	VIC	\N
+13795	3709	PINE MOUNTAIN	VIC	\N
+13796	3713	LAKE EILDON	VIC	\N
+13797	3714	DEVILS RIVER	VIC	\N
+13798	3723	ARCHERTON	VIC	\N
+13799	3723	DELATITE	VIC	\N
+13800	3723	ENOCHS POINT	VIC	\N
+13801	3723	GAFFNEYS CREEK	VIC	\N
+13802	3723	HOWES CREEK	VIC	\N
+13803	3723	HOWQUA	VIC	\N
+13804	3723	HOWQUA HILLS	VIC	\N
+13805	3723	KNOCKWOOD	VIC	\N
+13806	3723	MACS COVE	VIC	\N
+13807	3723	MOUNTAIN BAY	VIC	\N
+13808	3723	PIRIES	VIC	\N
+13809	3725	MAJOR PLAINS	VIC	\N
+13810	3726	BUNGEET WEST	VIC	\N
+13811	3727	ALMONDS	VIC	\N
+13812	3727	PELLUEBLA	VIC	\N
+13813	3728	BOOMAHNOOMOONAH	VIC	\N
+13814	3728	YOUARANG	VIC	\N
+13815	3730	BATHUMI	VIC	\N
+13816	3730	BOOSEY	VIC	\N
+13817	3730	BUNDALONG SOUTH	VIC	\N
+13818	3730	BURRAMINE SOUTH	VIC	\N
+13819	3730	ESMOND	VIC	\N
+13820	3730	YARRAWONGA SOUTH	VIC	\N
+13821	3735	WHOROULY SOUTH	VIC	\N
+13822	3737	ABBEYARD	VIC	\N
+13823	3737	BARWIDGEE	VIC	\N
+13824	3737	HAVILAH	VIC	\N
+13825	3737	MERRIANG	VIC	\N
+13826	3737	MERRIANG SOUTH	VIC	\N
+13827	3737	NUG NUG	VIC	\N
+13828	3737	SELWYN	VIC	\N
+13829	3737	WONNANGATTA	VIC	\N
+13830	3741	GERMANTOWN	VIC	\N
+13831	3741	SMOKO	VIC	\N
+13832	3749	BRUARONG	VIC	\N
+13833	3756	CHINTIN	VIC	\N
+13834	3764	FORBES	VIC	\N
+13835	3764	HIGH CAMP	VIC	\N
+13836	3764	MORANDING	VIC	\N
+13837	3764	TANTARABOO	VIC	\N
+13838	3775	TARRAWARRA	VIC	\N
+13839	3777	MOUNT TOOLEBEWONG	VIC	\N
+13840	3778	FERNSHAW	VIC	\N
+13841	3779	CAMBARVILLE	VIC	\N
+13842	3781	MOUNT BURNETT	VIC	\N
+13843	3781	NANGANA	VIC	\N
+13844	3799	BIG PATS CREEK	VIC	\N
+13845	3808	DEWHURST	VIC	\N
+13846	3809	OFFICER SOUTH	VIC	\N
+13847	3810	RYTHDALE	VIC	\N
+13848	3812	NAR NAR GOON NORTH	VIC	\N
+13849	3813	TYNONG NORTH	VIC	\N
+13850	3814	GARFIELD NORTH	VIC	\N
+13851	3815	BUNYIP NORTH	VIC	\N
+13852	3820	BONA VISTA	VIC	\N
+13853	3820	LILLICO	VIC	\N
+13854	3821	BRAVINGTON	VIC	\N
+13855	3821	LARDNER	VIC	\N
+13856	3821	TETOORA ROAD	VIC	\N
+13857	3821	TORWOOD	VIC	\N
+13858	3821	WARRAGUL WEST	VIC	\N
+13859	3822	GAINSBOROUGH	VIC	\N
+13860	3823	ALLAMBEE	VIC	\N
+13861	3825	AMOR	VIC	\N
+13862	3825	BOOLA	VIC	\N
+13863	3825	CARINGAL	VIC	\N
+13864	3825	COOPERS CREEK	VIC	\N
+13865	3825	FUMINA	VIC	\N
+13866	3825	FUMINA SOUTH	VIC	\N
+13867	3825	JACOB CREEK	VIC	\N
+13868	3825	JERICHO	VIC	\N
+13869	3825	TANJIL	VIC	\N
+13870	3825	THALLOO	VIC	\N
+13871	3825	TOOMBON	VIC	\N
+13872	3825	WALHALLA EAST	VIC	\N
+13873	3825	YALLOURN	VIC	\N
+13874	3832	NAYOOK	VIC	\N
+13875	3832	NEERIM NORTH	VIC	\N
+13876	3833	ADA	VIC	\N
+13877	3833	BAW BAW	VIC	\N
+13878	3833	BAW BAW VILLAGE	VIC	\N
+13879	3833	GENTLE ANNIE	VIC	\N
+13880	3833	ICY CREEK	VIC	\N
+13881	3833	LOCH VALLEY	VIC	\N
+13882	3833	PIEDMONT	VIC	\N
+13883	3833	TANJIL BREN	VIC	\N
+13884	3833	TOORONGO	VIC	\N
+13885	3833	VESPER	VIC	\N
+13886	3840	DRIFFIELD	VIC	\N
+13887	3840	HAZELWOOD SOUTH	VIC	\N
+13888	3840	JEERALANG JUNCTION	VIC	\N
+13889	3840	MARYVALE	VIC	\N
+13890	3844	BLACKWARRY	VIC	\N
+13891	3844	CALLIGNEE NORTH	VIC	\N
+13892	3844	CALLIGNEE SOUTH	VIC	\N
+13893	3844	CARRAJUNG LOWER	VIC	\N
+13894	3844	CARRAJUNG SOUTH	VIC	\N
+13895	3844	FLYNNS CREEK	VIC	\N
+13896	3844	LOY YANG	VIC	\N
+13897	3844	MOUNT TASSIE	VIC	\N
+13898	3847	HIAMDALE	VIC	\N
+13899	3847	WILLUNG SOUTH	VIC	\N
+13900	3851	CLYDEBANK	VIC	\N
+13901	3851	DUTSON	VIC	\N
+13902	3851	DUTSON DOWNS	VIC	\N
+13903	3851	FLAMINGO BEACH	VIC	\N
+13904	3851	FULHAM	VIC	\N
+13905	3851	GIFFARD	VIC	\N
+13906	3851	GIFFARD WEST	VIC	\N
+13907	3851	GLOMAR BEACH	VIC	\N
+13908	3851	LAKE WELLINGTON	VIC	\N
+13909	3851	MONTGOMERY	VIC	\N
+13910	3851	PEARSONDALE	VIC	\N
+13911	3851	SEACOMBE	VIC	\N
+13912	3851	THE HEART	VIC	\N
+13913	3851	THE HONEYSUCKLES	VIC	\N
+13914	3858	ARBUCKLE	VIC	\N
+13915	3858	BILLABONG	VIC	\N
+13916	3858	BURAGWONDUC	VIC	\N
+13917	3858	CROOKAYAN	VIC	\N
+13918	3858	DAWSON	VIC	\N
+13919	3858	GILLUM	VIC	\N
+13920	3858	GLENFALLOCH	VIC	\N
+13921	3858	HOWITT PLAINS	VIC	\N
+13922	3858	LICOLA NORTH	VIC	\N
+13923	3858	REYNARD	VIC	\N
+13924	3858	SARGOOD	VIC	\N
+13925	3858	TAMBORITHA	VIC	\N
+13926	3858	WINNINDOO	VIC	\N
+13927	3858	WORROWING	VIC	\N
+13928	3858	YANGOURA	VIC	\N
+13929	3859	MAFFRA WEST UPPER	VIC	\N
+13930	3859	TINAMBA WEST	VIC	\N
+13931	3860	BUSHY PARK	VIC	\N
+13932	3860	KOOROOL	VIC	\N
+13933	3860	MONOMAK	VIC	\N
+13934	3860	MOROKA	VIC	\N
+13935	3860	NAP NAP MARRA	VIC	\N
+13936	3860	RIVERSLEA	VIC	\N
+13937	3860	TOOLOME	VIC	\N
+13938	3860	WOOLENOOK	VIC	\N
+13939	3860	WRATHUNG	VIC	\N
+13940	3860	WRIXON	VIC	\N
+13941	3862	BUDGEE BUDGEE	VIC	\N
+13942	3862	COBBANNAH	VIC	\N
+13943	3862	COWA	VIC	\N
+13944	3862	CROOKED RIVER	VIC	\N
+13945	3862	HAWKHURST	VIC	\N
+13946	3862	HOLLANDS LANDING	VIC	\N
+13947	3862	LLOWALONG	VIC	\N
+13948	3862	MIOWERA	VIC	\N
+13949	3862	MOORNAPA	VIC	\N
+13950	3862	PERRY BRIDGE	VIC	\N
+13951	3862	STOCKDALE	VIC	\N
+13952	3862	WONGUNGARRA	VIC	\N
+13953	3864	GLENALADALE	VIC	\N
+13954	3870	BOOLARRA SOUTH	VIC	\N
+13955	3870	GRAND RIDGE	VIC	\N
+13956	3871	ALLAMBEE SOUTH	VIC	\N
+13957	3871	DELBURN	VIC	\N
+13958	3871	DOLLAR	VIC	\N
+13959	3874	WOODSIDE NORTH	VIC	\N
+13960	3875	BANKSIA PENINSULA	VIC	\N
+13961	3875	BROADLANDS	VIC	\N
+13962	3875	BULLUMWAAL	VIC	\N
+13963	3875	DEPTFORD	VIC	\N
+13964	3875	FLAGGY CREEK	VIC	\N
+13965	3875	IGUANA CREEK	VIC	\N
+13966	3875	MARTHAVALE	VIC	\N
+13967	3875	MELWOOD	VIC	\N
+13968	3875	RYANS	VIC	\N
+13969	3875	TABBERABBERA	VIC	\N
+13970	3875	WATERHOLES	VIC	\N
+13971	3875	WENTWORTH	VIC	\N
+13972	3875	WOODGLEN	VIC	\N
+13973	3880	BOOLE POOLE	VIC	\N
+13974	3880	OCEAN GRANGE	VIC	\N
+13975	3885	BRUMBY	VIC	\N
+13976	3885	MURRINDAL	VIC	\N
+13977	3885	SUGGAN BUGGAN	VIC	\N
+13978	3885	TIMBARRA	VIC	\N
+13979	3885	WULGULMERANG EAST	VIC	\N
+13980	3885	WULGULMERANG WEST	VIC	\N
+13981	3885	YALMY	VIC	\N
+13982	3888	BETE BOLONG NORTH	VIC	\N
+13983	3888	CAPE CONRAN	VIC	\N
+13984	3888	CORRINGLE	VIC	\N
+13985	3888	DEDDICK VALLEY	VIC	\N
+13986	3888	DELEGATE RIVER	VIC	\N
+13987	3888	GOONGERAH	VIC	\N
+13988	3888	NURRAN	VIC	\N
+13989	3888	SIMPSONS CREEK	VIC	\N
+13990	3888	TOSTAREE	VIC	\N
+13991	3888	WAYGARA	VIC	\N
+13992	3888	WOMBAT CREEK	VIC	\N
+13993	3889	BELLBIRD CREEK	VIC	\N
+13994	3889	ERRINUNDRA	VIC	\N
+13995	3889	MANORINA	VIC	\N
+13996	3890	BULDAH	VIC	\N
+13997	3890	CHANDLERS CREEK	VIC	\N
+13998	3890	NOORINBEE NORTH	VIC	\N
+13999	3890	TAMBOON	VIC	\N
+14000	3890	TONGHI CREEK	VIC	\N
+14001	3891	MARAMINGO CREEK	VIC	\N
+14002	3891	WALLAGARAUGH	VIC	\N
+14003	3891	WANGARABELL	VIC	\N
+14004	3891	WINGAN RIVER	VIC	\N
+14005	3891	WROXHAM	VIC	\N
+14006	3893	DOUBLE BRIDGES	VIC	\N
+14007	3893	STIRLING	VIC	\N
+14008	3895	DOCTORS FLAT	VIC	\N
+14009	3895	REEDY FLAT	VIC	\N
+14010	3896	BROOKVILLE	VIC	\N
+14011	3896	NUNNIONG	VIC	\N
+14012	3898	ANGLERS REST	VIC	\N
+14013	3898	BINGO MUNJIE	VIC	\N
+14014	3898	BUNDARA	VIC	\N
+14015	3898	CASSILIS	VIC	\N
+14016	3898	GLEN VALLEY	VIC	\N
+14017	3898	GLEN WILLS	VIC	\N
+14018	3898	HINNOMUNJIE	VIC	\N
+14019	3898	OMEO VALLEY	VIC	\N
+14020	3898	SHANNONVALE	VIC	\N
+14021	3900	COBBERAS	VIC	\N
+14022	3909	NYERIMILANG	VIC	\N
+14023	3921	FRENCH ISLAND	VIC	\N
+14024	3922	SUMMERLANDS	VIC	\N
+14025	3925	CHURCHILL ISLAND	VIC	\N
+14026	3950	WHITELAW	VIC	\N
+14027	3951	FAIRBANK	VIC	\N
+14028	3951	MOYARRA	VIC	\N
+14029	3951	RANCEBY	VIC	\N
+14030	3953	BOOROOL	VIC	\N
+14031	3953	KOOROOMAN	VIC	\N
+14032	3953	MOUNT ECCLES	VIC	\N
+14033	3953	MOUNT ECCLES SOUTH	VIC	\N
+14034	3953	TRIDA	VIC	\N
+14035	3953	WILD DOG VALLEY	VIC	\N
+14036	3953	WOOREEN	VIC	\N
+14037	3956	DUMBALK NORTH	VIC	\N
+14038	3956	MIDDLE TARWIN	VIC	\N
+14039	3960	BOOLARONG	VIC	\N
+14040	3960	GUNYAH	VIC	\N
+14041	3960	TURTONS CREEK	VIC	\N
+14042	3960	WILSONS PROMONTORY	VIC	\N
+14043	3960	WONGA	VIC	\N
+14044	3960	WOORARRA WEST	VIC	\N
+14045	3962	WONYIP	VIC	\N
+14046	3962	WOORARRA EAST	VIC	\N
+14047	3966	HAZEL PARK	VIC	\N
+14048	3971	CALROSSIE	VIC	\N
+14049	3971	HIAWATHA	VIC	\N
+14050	3971	HUNTERSTON	VIC	\N
+14051	3971	LANGSBOROUGH	VIC	\N
+14052	3971	MADALYA	VIC	\N
+14053	3971	SNAKE ISLAND	VIC	\N
+14054	3971	STACEYS BRIDGE	VIC	\N
+14055	3971	TARRA VALLEY	VIC	\N
+14056	3977	BOTANIC RIDGE	VIC	\N
+14057	3981	KOO WEE RUP NORTH	VIC	\N
+14058	3984	ADAMS ESTATE	VIC	\N
+14059	3984	LANG LANG EAST	VIC	\N
+14060	3984	QUEENSFERRY	VIC	\N
+14061	3988	POOWONG EAST	VIC	\N
+14062	3992	WEST CREEK	VIC	\N
+14063	3995	ANDERSON	VIC	\N
+14064	3995	LANCE CREEK	VIC	\N
+14065	3995	ST CLAIR	VIC	\N
+14066	4005	TENERIFFE	QLD	\N
+14067	4006	FORTITUDE VALLEY BC	QLD	PO Boxes
+14068	4007	HAMILTON CENTRAL	QLD	PO Boxes
+14069	4008	BRISBANE AIRPORT	QLD	\N
+14070	4010	ALBION BC	QLD	PO Boxes
+14071	4010	ALBION DC	QLD	PO Boxes
+14072	4014	VIRGINIA BC	QLD	PO Boxes
+14073	4017	BRIGHTON EVENTIDE	QLD	PO Boxes
+14074	4017	BRIGHTON NATHAN STREET	QLD	PO Boxes
+14075	4017	SANDGATE DC	QLD	\N
+14076	4019	CLONTARF BEACH	QLD	PO Boxes
+14077	4019	CLONTARF DC	QLD	PO Boxes
+14078	4020	REDCLIFFE NORTH	QLD	PO Boxes
+14079	4032	CHERMSIDE CENTRE	QLD	PO Boxes
+14080	4032	CHERMSIDE SOUTH	QLD	PO Boxes
+14081	4053	STAFFORD DC	QLD	PO Boxes
+14082	4055	FERNY HILLS DC	QLD	PO Boxes
+14083	4060	ASHGROVE EAST	QLD	PO Boxes
+14084	4060	ASHGROVE WEST	QLD	PO Boxes
+14085	4064	MILTON BC	QLD	PO Boxes
+14086	4066	TOOWONG DC	QLD	PO Boxes
+14087	4067	ST LUCIA SOUTH	QLD	PO Boxes
+14088	4068	INDOOROOPILLY CENTRE	QLD	PO Boxes
+14089	4069	KENMORE DC	QLD	\N
+14090	4069	KENMORE EAST	QLD	PO Boxes
+14091	4077	INALA EAST	QLD	PO Boxes
+14092	4077	INALA HEIGHTS	QLD	PO Boxes
+14093	4101	SOUTH BRISBANE BC	QLD	PO Boxes
+14094	4103	FAIRFIELD GARDENS	QLD	PO Boxes
+14095	4107	SALISBURY EAST	QLD	PO Boxes
+14096	4108	ARCHERFIELD BC	QLD	PO Boxes
+14097	4109	SUNNYBANK SOUTH	QLD	PO Boxes
+14098	4110	HEATHWOOD DF	QLD	\N
+14099	4121	HOLLAND PARK EAST	QLD	PO Boxes
+14100	4122	MANSFIELD BC	QLD	PO Boxes
+14101	4122	MANSFIELD DC	QLD	\N
+14102	4124	LYONS	QLD	\N
+14103	4124	NEW BEITH	QLD	\N
+14104	4125	PARK RIDGE SOUTH	QLD	\N
+14105	4129	LOGANHOLME DC	QLD	PO Boxes
+14106	4151	COORPAROO DC	QLD	PO Boxes
+14107	4157	CAPALABA DC	QLD	PO Boxes
+14108	4163	CLEVELAND DC	QLD	PO Boxes
+14109	4165	VICTORIA POINT WEST	QLD	PO Boxes
+14110	4178	WYNNUM PLAZA	QLD	PO Boxes
+14111	4183	NORTH STRADBROKE ISLAND	QLD	\N
+14112	4207	YARRABILBA	QLD	\N
+14113	4207	YATALA DC	QLD	PO Boxes
+14114	4211	BINNA BURRA	QLD	\N
+14115	4211	LOWER BEECHMONT	QLD	\N
+14116	4211	NERANG DC	QLD	PO Boxes
+14117	4214	ASHMORE CITY	QLD	PO Boxes
+14118	4215	AUSTRALIA FAIR	QLD	PO Boxes
+14119	4215	SOUTHPORT BC	QLD	PO Boxes
+14120	4215	SOUTHPORT PARK	QLD	PO Boxes
+14121	4220	BURLEIGH DC	QLD	\N
+14122	4226	ROBINA DC	QLD	PO Boxes
+14123	4275	BENOBBLE	QLD	\N
+14124	4275	BIDDADDABA	QLD	\N
+14125	4275	BOYLAND	QLD	\N
+14126	4275	FERNY GLEN	QLD	\N
+14127	4275	FLYING FOX	QLD	\N
+14128	4275	ILLINBAH	QLD	\N
+14129	4275	SARABAH	QLD	\N
+14130	4280	NORTH MACLEAN	QLD	\N
+14131	4280	SOUTH MACLEAN	QLD	\N
+14132	4280	STOCKLEIGH	QLD	\N
+14133	4285	ALLENVIEW	QLD	\N
+14134	4285	BROMELTON	QLD	\N
+14135	4285	CAINBABLE	QLD	\N
+14136	4285	CHINGHEE CREEK	QLD	\N
+14137	4285	CHRISTMAS CREEK	QLD	\N
+14138	4285	CRYNA	QLD	\N
+14139	4285	DARLINGTON	QLD	\N
+14140	4285	GLENEAGLE	QLD	\N
+14141	4285	HILLVIEW	QLD	\N
+14142	4285	INNISPLAIN	QLD	\N
+14143	4285	JOSEPHVILLE	QLD	\N
+14144	4285	KAGARU	QLD	\N
+14145	4285	KERRY	QLD	\N
+14146	4285	KNAPP CREEK	QLD	\N
+14147	4285	LAMINGTON	QLD	\N
+14148	4285	LARAVALE	QLD	\N
+14149	4285	MOUNT GIPPS	QLD	\N
+14150	4285	MUNDOOLUN	QLD	\N
+14151	4285	NINDOOINBAH	QLD	\N
+14152	4285	OAKY CREEK	QLD	\N
+14153	4285	TABOOBA	QLD	\N
+14154	4285	TABRAGALBA	QLD	\N
+14155	4285	TAMROOKUM	QLD	\N
+14156	4285	TAMROOKUM CREEK	QLD	\N
+14157	4285	UNDULLAH	QLD	\N
+14158	4285	VERESDALE	QLD	\N
+14159	4285	VERESDALE SCRUB	QLD	\N
+14160	4285	WOODHILL	QLD	\N
+14161	4287	BARNEY VIEW	QLD	\N
+14162	4287	MOUNT BARNEY	QLD	\N
+14163	4287	RUNNING CREEK	QLD	\N
+14164	4304	BOOVAL FAIR	QLD	PO Boxes
+14165	4306	DUNDAS	QLD	\N
+14166	4306	ENGLAND CREEK	QLD	\N
+14167	4306	GLAMORGAN VALE	QLD	\N
+14168	4306	KARRABIN	QLD	\N
+14169	4306	LARK HILL	QLD	\N
+14170	4306	MOUNT MARROW	QLD	\N
+14171	4306	PURGA	QLD	\N
+14172	4306	SPLIT YARD CREEK	QLD	\N
+14173	4306	SWANBANK	QLD	\N
+14174	4306	TAROMEO	QLD	\N
+14175	4306	VERNOR	QLD	\N
+14176	4306	WANORA	QLD	\N
+14177	4306	WHITE ROCK	QLD	Ipswich
+14178	4306	WIVENHOE POCKET	QLD	\N
+14179	4307	COLEYVILLE	QLD	\N
+14180	4307	MUTDAPILLY	QLD	\N
+14181	4307	RADFORD	QLD	\N
+14182	4307	SILVERDALE	QLD	\N
+14183	4307	WARRILL VIEW	QLD	\N
+14184	4307	WILSONS PLAINS	QLD	\N
+14185	4309	CHARLWOOD	QLD	\N
+14186	4309	CLUMBER	QLD	\N
+14187	4309	FASSIFERN	QLD	\N
+14188	4309	FASSIFERN VALLEY	QLD	\N
+14189	4309	KENTS LAGOON	QLD	\N
+14190	4309	KULGUN	QLD	\N
+14191	4309	MILORA	QLD	\N
+14192	4309	MOOGERAH	QLD	\N
+14193	4309	MORWINCHA	QLD	\N
+14194	4309	MOUNT EDWARDS	QLD	\N
+14195	4309	MUNBILLA	QLD	\N
+14196	4309	OBUM OBUM	QLD	\N
+14197	4309	TAROME	QLD	\N
+14198	4309	TEVIOTVILLE	QLD	\N
+14199	4310	ALLANDALE	QLD	\N
+14200	4310	ANTHONY	QLD	\N
+14201	4310	BLANTYRE	QLD	\N
+14202	4310	BUNBURRA	QLD	\N
+14203	4310	BUNJURGEN	QLD	\N
+14204	4310	BURNETT CREEK	QLD	\N
+14205	4310	CANNON CREEK	QLD	Scenic Rim
+14206	4310	CARNEYS CREEK	QLD	\N
+14207	4310	COOCHIN	QLD	\N
+14208	4310	COULSON	QLD	\N
+14209	4310	CROFTBY	QLD	\N
+14210	4310	DUGANDAN	QLD	\N
+14211	4310	FRENCHES CREEK	QLD	\N
+14212	4310	HOYA	QLD	\N
+14213	4310	KENTS POCKET	QLD	\N
+14214	4310	MAROON	QLD	\N
+14215	4310	MILBONG	QLD	\N
+14216	4310	MILFORD	QLD	\N
+14217	4310	MOUNT ALFORD	QLD	\N
+14218	4310	MOUNT FRENCH	QLD	\N
+14219	4310	TEMPLIN	QLD	\N
+14220	4310	WALLACES CREEK	QLD	\N
+14221	4310	WOOLOOMAN	QLD	\N
+14222	4310	WYARALONG	QLD	\N
+14223	4311	ATKINSONS DAM	QLD	\N
+14224	4311	BRIGHTVIEW	QLD	\N
+14225	4311	BUARABA	QLD	\N
+14226	4311	CLARENDON	QLD	\N
+14227	4311	COOLANA	QLD	\N
+14228	4311	MOUNT TARAMPA	QLD	\N
+14229	4311	PRENZLAU	QLD	\N
+14230	4311	RIFLE RANGE	QLD	\N
+14231	4311	TARAMPA	QLD	\N
+14232	4312	COAL CREEK	QLD	\N
+14233	4312	ESKDALE	QLD	\N
+14234	4312	MOOMBRA	QLD	\N
+14235	4312	MOUNT HALLEN	QLD	\N
+14236	4312	MURRUMBA	QLD	\N
+14237	4313	BIARRA	QLD	\N
+14238	4313	CRESSBROOK	QLD	\N
+14239	4313	GREGORS CREEK	QLD	\N
+14240	4313	IVORY CREEK	QLD	\N
+14241	4313	MOUNT BEPPO	QLD	\N
+14242	4340	ASHWELL	QLD	\N
+14243	4340	CALVERT	QLD	\N
+14244	4340	EBENEZER	QLD	\N
+14245	4340	MOORANG	QLD	\N
+14246	4340	MOUNT FORBES	QLD	\N
+14247	4340	MOUNT WALKER	QLD	\N
+14248	4340	ROSEVALE	QLD	\N
+14249	4340	WOOLSHED	QLD	\N
+14250	4341	BLENHEIM	QLD	\N
+14251	4341	HATTON VALE	QLD	\N
+14252	4341	KENTVILLE	QLD	\N
+14253	4341	LAIDLEY SOUTH	QLD	\N
+14254	4341	MOUNT BERRYMAN	QLD	\N
+14255	4341	MULGOWIE	QLD	\N
+14256	4341	REGENCY DOWNS	QLD	\N
+14257	4341	SUMMERHOLM	QLD	\N
+14258	4341	THORNTON	QLD	\N
+14259	4342	CROWLEY VALE	QLD	\N
+14260	4342	LOCKROSE	QLD	\N
+14261	4344	IREDALE	QLD	\N
+14262	4350	BLUE MOUNTAIN HEIGHTS	QLD	\N
+14263	4350	CHARLTON	QLD	\N
+14264	4350	CLIFFORD GARDENS	QLD	PO Boxes
+14265	4350	COTSWOLD HILLS	QLD	\N
+14266	4350	DRAYTON NORTH	QLD	PO Boxes
+14267	4350	GOWRIE MOUNTAIN	QLD	\N
+14268	4350	TOOWOOMBA CITY	QLD	\N
+14269	4350	TOOWOOMBA DC	QLD	\N
+14270	4350	TOOWOOMBA VILLAGE FAIR	QLD	PO Boxes
+14271	4350	TORRINGTON	QLD	\N
+14272	4352	CAWDOR	QLD	\N
+14273	4352	COALBANK	QLD	\N
+14274	4352	GLENCOE	QLD	\N
+14275	4352	GOWRIE JUNCTION	QLD	\N
+14276	4352	HAMPTON	QLD	\N
+14277	4352	HODGSON VALE	QLD	\N
+14278	4352	SILVER RIDGE	QLD	\N
+14279	4354	KILBIRNIE	QLD	\N
+14280	4355	ANDURAMBA	QLD	\N
+14281	4355	EMU CREEK	QLD	\N
+14282	4355	JONES GULLY	QLD	\N
+14283	4355	MOUNTAIN CAMP	QLD	\N
+14284	4355	PINELANDS	QLD	\N
+14285	4355	PLAINBY	QLD	\N
+14286	4355	UPPER PINELANDS	QLD	\N
+14287	4359	HIRSTGLEN	QLD	\N
+14288	4361	BACK PLAINS	QLD	\N
+14289	4361	PILTON	QLD	\N
+14290	4361	UPPER PILTON	QLD	\N
+14291	4362	BERAT	QLD	\N
+14292	4362	ELLINTHORP	QLD	\N
+14293	4362	HENDON	QLD	\N
+14294	4362	TALGAI	QLD	\N
+14295	4370	ALLAN	QLD	\N
+14296	4370	BONY MOUNTAIN	QLD	\N
+14297	4370	CANNINGVALE	QLD	\N
+14298	4370	CHERRY GULLY	QLD	\N
+14299	4370	CLINTONVALE	QLD	\N
+14300	4370	CUNNINGHAM	QLD	\N
+14301	4370	DANDEROO	QLD	\N
+14302	4370	ELBOW VALLEY	QLD	\N
+14303	4370	FREESTONE	QLD	\N
+14304	4370	GLADFIELD	QLD	\N
+14305	4370	GLENGALLAN	QLD	\N
+14306	4370	GREYMARE	QLD	\N
+14307	4370	JUNABEE	QLD	\N
+14308	4370	LESLIE	QLD	\N
+14309	4370	LESLIE DAM	QLD	\N
+14310	4370	LOCH LOMOND	QLD	\N
+14311	4370	MASSIE	QLD	\N
+14312	4370	MONTROSE	QLD	Southern Downs
+14313	4370	MORGAN PARK	QLD	\N
+14314	4370	MOUNT COLLIERY	QLD	\N
+14315	4370	MOUNT STURT	QLD	\N
+14316	4370	MOUNT TABOR	QLD	\N
+14317	4370	MURRAYS BRIDGE	QLD	\N
+14318	4370	NORTH BRANCH	QLD	Southern Downs
+14319	4370	PRATTEN	QLD	\N
+14320	4370	RODGERS CREEK	QLD	\N
+14321	4370	ROSEHILL	QLD	\N
+14322	4370	ROSENTHAL HEIGHTS	QLD	\N
+14323	4370	SILVERWOOD	QLD	\N
+14324	4370	SLADEVALE	QLD	\N
+14325	4370	SWAN CREEK	QLD	\N
+14326	4370	THANE	QLD	\N
+14327	4370	THANES CREEK	QLD	\N
+14328	4370	THE GLEN	QLD	\N
+14329	4370	THE HERMITAGE	QLD	\N
+14330	4370	TOOLBURRA	QLD	\N
+14331	4370	TREGONY	QLD	\N
+14332	4370	UPPER FREESTONE	QLD	\N
+14333	4370	UPPER WHEATVALE	QLD	\N
+14334	4370	WHEATVALE	QLD	\N
+14335	4370	WILDASH	QLD	\N
+14336	4370	WILLOWVALE	QLD	\N
+14337	4370	WIYARRA	QLD	\N
+14338	4370	WOMINA	QLD	\N
+14339	4371	SWANFELS	QLD	\N
+14340	4373	THE FALLS	QLD	\N
+14341	4373	THE HEAD	QLD	\N
+14342	4375	COTTONVALE	NSW	\N
+14343	4375	FLEURBAIX	QLD	\N
+14344	4377	GLEN NIVEN	QLD	\N
+14345	4380	AMOSFIELD	NSW	\N
+14346	4380	BROADWATER	QLD	\N
+14347	4380	CANNON CREEK	QLD	Southern Downs
+14348	4380	DALCOUTH	QLD	\N
+14349	4380	EUKEY	QLD	\N
+14350	4380	GLENLYON	QLD	\N
+14351	4380	GREENLANDS	QLD	\N
+14352	4380	MINGOOLA	NSW	\N
+14353	4380	MINGOOLA	QLD	\N
+14354	4380	MOUNT TULLY	QLD	\N
+14355	4380	NUNDUBBERMERE	QLD	\N
+14356	4380	PIKEDALE	QLD	\N
+14357	4380	PIKES CREEK	QLD	\N
+14358	4380	RUBY CREEK	NSW	\N
+14359	4380	SPRINGDALE	QLD	\N
+14360	4380	STORM KING	QLD	\N
+14361	4380	SUGARLOAF	QLD	Southern Downs
+14362	4380	THORNDALE	QLD	\N
+14363	4380	UNDERCLIFFE	NSW	\N
+14364	4382	SOMME	QLD	\N
+14365	4382	WYBERBA	QLD	\N
+14366	4385	TEXAS	NSW	\N
+14367	4401	AUBIGNY	QLD	\N
+14368	4401	BIDDESTON	QLD	\N
+14369	4405	BLAXLAND	QLD	\N
+14370	4405	DUCKLO	QLD	\N
+14371	4405	PIRRINUAN	QLD	\N
+14372	4405	RANGES BRIDGE	QLD	\N
+14373	4405	ST RUTH	QLD	\N
+14374	4406	SOUTHWOOD	QLD	\N
+14375	4413	BAKING BOARD	QLD	\N
+14376	4413	BOONARGA	QLD	\N
+14377	4413	BURNCLUITH	QLD	\N
+14378	4413	CANAGA	QLD	\N
+14379	4413	CHANCES PLAIN	QLD	\N
+14380	4413	MONTROSE	QLD	Dalby
+14381	4415	COLUMBOOLA	QLD	\N
+14382	4415	DALWOGON	QLD	\N
+14383	4417	NOORINDOO	QLD	\N
+14384	4417	OBERINA	QLD	\N
+14385	4417	PARKNOOK	QLD	\N
+14386	4417	WARKON	QLD	\N
+14387	4417	WELLESLEY	QLD	\N
+14388	4417	WERIBONE	QLD	\N
+14389	4420	SPRING CREEK	QLD	Banana
+14390	4422	COOMRITH	QLD	\N
+14391	4422	FLINTON	QLD	\N
+14392	4422	INGLESTONE	QLD	\N
+14393	4422	WESTMAR	QLD	\N
+14394	4423	TEELBA	QLD	\N
+14395	4425	BOGANDILLA	QLD	\N
+14396	4427	CLIFFORD	QLD	\N
+14397	4455	BALLAROO	QLD	\N
+14398	4455	WYCOMBE	QLD	\N
+14399	4465	DUNKELD	QLD	\N
+14400	4465	FORESTVALE	QLD	\N
+14401	4465	V GATE	QLD	\N
+14402	4465	WOMALILLA	QLD	\N
+14403	4467	REDFORD	QLD	\N
+14404	4468	CLARA CREEK	QLD	\N
+14405	4470	LANGLO	QLD	\N
+14406	4477	UPPER WARREGO	QLD	\N
+14407	4487	BEGONIA	QLD	\N
+14408	4500	BRENDALE BC	QLD	PO Boxes
+14409	4500	STRATHPINE CENTRE	QLD	PO Boxes
+14410	4505	BURPENGARY DC	QLD	\N
+14411	4505	BURPENGARY EAST	QLD	\N
+14412	4506	MOORINA	QLD	\N
+14413	4510	BELLMERE	QLD	\N
+14414	4510	MELDALE	QLD	\N
+14415	4510	MOODLU	QLD	\N
+14416	4510	ROCKSBERG	QLD	\N
+14417	4510	UPPER CABOOLTURE	QLD	\N
+14418	4514	BELLTHORPE	QLD	\N
+14419	4514	CEDARTON	QLD	\N
+14420	4514	DELANEYS CREEK	QLD	\N
+14421	4514	NEURUM	QLD	\N
+14422	4514	STANMORE	QLD	\N
+14423	4514	VILLENEUVE	QLD	\N
+14424	4515	GLENFERN	QLD	\N
+14425	4515	KINGAHAM	QLD	\N
+14426	4515	MOUNT KILCOY	QLD	\N
+14427	4515	ROYSTON	QLD	\N
+14428	4515	SANDY CREEK	QLD	\N
+14429	4515	SHEEP STATION CREEK	QLD	\N
+14430	4515	WINYA	QLD	\N
+14431	4515	WOOLMAR	QLD	\N
+14432	4520	SAMFORD VALLEY	QLD	\N
+14433	4520	SAMFORD VILLAGE	QLD	\N
+14434	4521	CAMPBELLS POCKET	QLD	\N
+14435	4550	MOUNT MELLUM	QLD	\N
+14436	4551	CALOUNDRA DC	QLD	PO Boxes
+14437	4551	MERIDAN PLAINS	QLD	\N
+14438	4552	BALD KNOB	QLD	\N
+14439	4552	REESVILLE	QLD	\N
+14440	4552	WITTA	QLD	\N
+14441	4553	GLENVIEW	QLD	\N
+14442	4553	MOOLOOLAH VALLEY	QLD	\N
+14443	4555	CHEVALLUM	QLD	\N
+14444	4555	LANDERS SHOOT	QLD	\N
+14445	4556	FOREST GLEN	QLD	\N
+14446	4556	MONS	QLD	\N
+14447	4558	KULUIN	QLD	\N
+14448	4559	WEST WOOMBYE	QLD	\N
+14449	4560	BURNSIDE	QLD	\N
+14450	4560	COES CREEK	QLD	\N
+14451	4560	COOLOOLABIN	QLD	\N
+14452	4560	FLAXTON	QLD	\N
+14453	4560	HIGHWORTH	QLD	\N
+14454	4560	IMAGE FLAT	QLD	\N
+14455	4560	KIAMBA	QLD	\N
+14456	4560	KULANGOOR	QLD	\N
+14457	4560	KUREELPA	QLD	\N
+14458	4560	NAMBOUR DC	QLD	\N
+14459	4560	NAMBOUR WEST	QLD	PO Boxes
+14460	4560	PARKLANDS	QLD	\N
+14461	4560	ROSEMOUNT	QLD	\N
+14462	4560	SUNSHINE COAST MC	QLD	PO Boxes
+14463	4560	TOWEN MOUNTAIN	QLD	\N
+14464	4561	BRIDGES	QLD	\N
+14465	4561	NINDERRY	QLD	\N
+14466	4561	NORTH ARM	QLD	\N
+14467	4561	VALDORA	QLD	\N
+14468	4561	YANDINA CREEK	QLD	\N
+14469	4562	BELLI PARK	QLD	\N
+14470	4562	DOONAN	QLD	\N
+14471	4562	EERWAH VALE	QLD	\N
+14472	4562	VERRIERDALE	QLD	\N
+14473	4562	WEYBA DOWNS	QLD	\N
+14474	4563	BLACK MOUNTAIN	QLD	\N
+14475	4563	CARTERS RIDGE	QLD	\N
+14476	4563	RIDGEWOOD	QLD	\N
+14477	4566	NOOSAVILLE DC	QLD	PO Boxes
+14478	4570	BELLS BRIDGE	QLD	\N
+14479	4570	BROOLOO	QLD	\N
+14480	4570	CALICO CREEK	QLD	\N
+14481	4570	CEDAR POCKET	QLD	\N
+14482	4570	CHATSWORTH	QLD	\N
+14483	4570	COONDOO	QLD	\N
+14484	4570	DAGUN	QLD	\N
+14485	4570	EAST DEEP CREEK	QLD	\N
+14486	4570	GLASTONBURY	QLD	\N
+14487	4570	GOOMBOORIAN	QLD	\N
+14488	4570	GYMPIE DC	QLD	PO Boxes
+14489	4570	KYBONG	QLD	\N
+14490	4570	LAGOON POCKET	QLD	\N
+14491	4570	LANGSHAW	QLD	\N
+14492	4570	LOWER WONGA	QLD	\N
+14493	4570	MOTHAR MOUNTAIN	QLD	\N
+14494	4570	NEERDIE	QLD	\N
+14495	4570	PIE CREEK	QLD	\N
+14496	4570	SOUTHSIDE	QLD	\N
+14497	4570	TAMAREE	QLD	\N
+14498	4570	TANDUR	QLD	\N
+14499	4570	THE DAWN	QLD	\N
+14500	4570	THE PALMS	QLD	\N
+14501	4570	THEEBINE	QLD	\N
+14502	4570	TRAVESTON	QLD	\N
+14503	4570	TUCHEKOI	QLD	\N
+14504	4570	TWO MILE	QLD	\N
+14505	4570	VETERAN	QLD	\N
+14506	4570	VICTORY HEIGHTS	QLD	\N
+14507	4570	WALLU	QLD	\N
+14508	4570	WIDGEE	QLD	\N
+14509	4570	WILSONS POCKET	QLD	\N
+14510	4570	WOLVI	QLD	\N
+14511	4570	WOONDUM	QLD	\N
+14512	4571	COMO	QLD	\N
+14513	4573	POINT ARKWRIGHT	QLD	\N
+14514	4574	COOLABINE	QLD	\N
+14515	4574	GHEERULLA	QLD	\N
+14516	4574	KIDAMAN CREEK	QLD	\N
+14517	4574	OBI OBI	QLD	\N
+14518	4581	FRASER ISLAND	QLD	\N
+14519	4600	CINNABAR	QLD	\N
+14520	4605	BYEE	QLD	\N
+14521	4605	CROWNTHORPE	QLD	\N
+14522	4605	MANYUNG	QLD	\N
+14523	4605	WINDERA	QLD	\N
+14524	4606	FICKS CROSSING	QLD	\N
+14525	4606	GREENVIEW	QLD	\N
+14526	4608	CUSHNIE	QLD	\N
+14527	4610	CRAWFORD	QLD	\N
+14528	4610	ELLESMERE	QLD	\N
+14529	4610	MEMERAMBI	QLD	\N
+14530	4613	BRIGOODA	QLD	\N
+14531	4613	KINLEYMORE	QLD	\N
+14532	4613	SPEEDWELL	QLD	\N
+14533	4613	STALWORTH	QLD	\N
+14534	4615	BROOKLANDS	QLD	\N
+14535	4615	ELGIN VALE	QLD	\N
+14536	4615	SOUTH NANANGO	QLD	\N
+14537	4620	ARAMARA	QLD	\N
+14538	4621	COALSTOUN LAKES	QLD	\N
+14539	4621	DALLARNIL	QLD	\N
+14540	4621	LAKESIDE	QLD	\N
+14541	4625	BINJOUR	QLD	\N
+14542	4625	BYRNESTOWN	QLD	\N
+14543	4625	GOOROOLBA	QLD	\N
+14544	4626	GURGEENA	QLD	\N
+14545	4626	O'BIL BIL	QLD	\N
+14546	4630	BANCROFT	QLD	\N
+14547	4630	DALGA	QLD	\N
+14548	4630	MOONFORD	QLD	\N
+14549	4630	MUNGUNGO	QLD	\N
+14550	4630	RAWBELLE	QLD	\N
+14551	4650	ALDERSHOT	QLD	\N
+14552	4650	BIDWILL	QLD	\N
+14553	4650	ISLAND PLANTATION	QLD	\N
+14554	4650	MAAROOM	QLD	\N
+14555	4650	MAGNOLIA	QLD	\N
+14556	4650	MARYBOROUGH DC	QLD	PO Boxes
+14557	4650	MARYBOROUGH WEST	QLD	\N
+14558	4650	PALLAS STREET MARYBOROUGH	QLD	PO Boxes
+14559	4650	POONA	QLD	\N
+14560	4650	PRAWLE	QLD	\N
+14561	4650	TINNANBAR	QLD	\N
+14562	4650	TUAN	QLD	\N
+14563	4650	YERRA	QLD	\N
+14564	4655	CRAIGNISH	QLD	\N
+14565	4655	DUNDOWRAN	QLD	\N
+14566	4655	RIVER HEADS	QLD	\N
+14567	4655	TAKURA	QLD	\N
+14568	4655	TOOGOOM	QLD	\N
+14569	4660	APPLE TREE CREEK	QLD	\N
+14570	4660	DOOLBI	QLD	\N
+14571	4660	FARNSFIELD	QLD	\N
+14572	4660	NORTH ISIS	QLD	\N
+14573	4660	REDRIDGE	QLD	\N
+14574	4660	SOUTH ISIS	QLD	\N
+14575	4670	BUCCA	QLD	\N
+14576	4670	COONARR	QLD	\N
+14577	4670	FAIRYMEAD	QLD	\N
+14578	4670	GOOBURRUM	QLD	\N
+14579	4670	INNES PARK	QLD	\N
+14580	4670	MON REPOS	QLD	\N
+14581	4670	OAKWOOD	QLD	\N
+14582	4670	PINE CREEK	QLD	\N
+14583	4670	WINFIELD	QLD	\N
+14584	4670	WOONGARRA	QLD	\N
+14585	4671	BULLYARD	QLD	\N
+14586	4671	BUNGADOO	QLD	\N
+14587	4678	TURKEY BEACH	QLD	\N
+14588	4680	BEECHER	QLD	\N
+14589	4680	BURUA	QLD	\N
+14590	4680	GLADSTONE BC	QLD	PO Boxes
+14591	4680	GLADSTONE CENTRAL	QLD	\N
+14592	4680	GLADSTONE DC	QLD	\N
+14593	4680	GLADSTONE HARBOUR	QLD	\N
+14594	4680	SOUTH END	QLD	\N
+14595	4680	WURDONG HEIGHTS	QLD	\N
+14596	4694	TARGINNIE	QLD	\N
+14597	4695	AMBROSE	QLD	\N
+14598	4700	DEPOT HILL	QLD	\N
+14599	4700	ROCKHAMPTON CITY	QLD	\N
+14600	4700	ROCKHAMPTON HOSPITAL	QLD	PO Boxes
+14601	4701	IRONPOT	QLD	Rockhampton
+14602	4701	LAKES CREEK	QLD	\N
+14603	4701	NERIMBERA	QLD	\N
+14604	4701	ROCKHAMPTON DC	QLD	\N
+14605	4702	ALTON DOWNS	QLD	\N
+14606	4702	BOOLBURRA	QLD	\N
+14607	4702	CAWARRAL	QLD	\N
+14608	4702	CONSUELO	QLD	\N
+14609	4702	GINDIE	QLD	\N
+14610	4702	KABRA	QLD	\N
+14611	4702	KUNWARARA	QLD	\N
+14612	4702	MARMOR	QLD	\N
+14613	4702	MILMAN	QLD	\N
+14614	4702	THE CAVES	QLD	\N
+14615	4702	WILLOWS	QLD	\N
+14616	4703	BONDOOLA	QLD	\N
+14617	4703	BUNGUNDARRA	QLD	\N
+14618	4703	FARNBOROUGH	QLD	\N
+14619	4703	KINKA BEACH	QLD	\N
+14620	4703	WOODBURY	QLD	\N
+14621	4714	STRUCK OIL	QLD	\N
+14622	4714	WALTERHALL	QLD	\N
+14623	4715	MOUNT MURCHISON	QLD	\N
+14624	4715	VALENTINE PLAINS	QLD	\N
+14625	4720	YAMALA	QLD	\N
+14626	4721	ELGIN	QLD	\N
+14627	4721	FRANKFIELD	QLD	\N
+14628	4721	GEMINI MOUNTAINS	QLD	\N
+14629	4721	KILCUMMIN	QLD	\N
+14630	4721	LAGLAN	QLD	\N
+14631	4721	MISTAKE CREEK	QLD	\N
+14632	4721	THERESA CREEK	QLD	\N
+14633	4721	WINCHESTER	QLD	\N
+14634	4721	WOLFANG	QLD	\N
+14635	4722	BUCKLAND	QLD	\N
+14636	4722	CAIRDBEIGN	QLD	\N
+14637	4722	CONA CREEK	QLD	\N
+14638	4722	NANDOWRIE	QLD	\N
+14639	4722	ORION	QLD	\N
+14640	4723	RETRO	QLD	\N
+14641	4724	DRUMMONDSLOPE	QLD	\N
+14642	4724	SURBITON	QLD	\N
+14643	4726	GALILEE	QLD	\N
+14644	4728	DUNROBIN	QLD	\N
+14645	4728	GARFIELD	QLD	\N
+14646	4728	MEXICO	QLD	\N
+14647	4737	SUNNYSIDE	QLD	Mackay
+14648	4738	ILBILBIE	QLD	\N
+14649	4740	CHELONA	QLD	\N
+14650	4740	CREMORNE	QLD	\N
+14651	4740	DUMBLETON	QLD	\N
+14652	4740	MACKAY CANELAND	QLD	PO Boxes
+14653	4740	MACKAY DC	QLD	\N
+14654	4740	MACKAY HARBOUR	QLD	\N
+14655	4740	MACKAY NORTH	QLD	PO Boxes
+14656	4740	MACKAY SOUTH	QLD	PO Boxes
+14657	4741	BALL BAY	QLD	\N
+14658	4741	CLAIRVIEW	QLD	\N
+14659	4741	NORTH ETON	QLD	\N
+14660	4741	OAKENDEN	QLD	\N
+14661	4741	ORKABIE	QLD	\N
+14662	4741	YALBOROO	QLD	\N
+14663	4751	PALMYRA	QLD	\N
+14664	4798	ST HELENS BEACH	QLD	\N
+14665	4799	MIDGE POINT	QLD	\N
+14666	4800	CANNON VALLEY	QLD	\N
+14667	4800	CONWAY	QLD	\N
+14668	4800	DINGO BEACH	QLD	\N
+14669	4800	MOUNT JULIAN	QLD	\N
+14670	4800	MOUNT MARLOW	QLD	\N
+14671	4800	RIORDANVALE	QLD	\N
+14672	4800	STRATHDICKIE	QLD	\N
+14673	4802	JUBILEE POCKET	QLD	\N
+14674	4805	GUMLU	QLD	\N
+14675	4807	CLAREDALE	QLD	PO Boxes
+14676	4807	RITA ISLAND	QLD	\N
+14677	4810	CAPE CLEVELAND	QLD	\N
+14678	4810	TOWNSVILLE CITY	QLD	\N
+14679	4810	TOWNSVILLE DC	QLD	\N
+14680	4810	TOWNSVILLE MC	QLD	\N
+14681	4812	HYDE PARK CASTLETOWN	QLD	PO Boxes
+14682	4814	GARBUTT EAST	QLD	PO Boxes
+14683	4815	GUMLOW	QLD	\N
+14684	4816	BALGAL BEACH	QLD	\N
+14685	4816	CALCIUM	QLD	\N
+14686	4816	CARRUCHAN	QLD	\N
+14687	4816	MAJORS CREEK	QLD	\N
+14688	4816	REID RIVER	QLD	\N
+14689	4816	THE CAPE	QLD	\N
+14690	4816	TOOMULLA	QLD	\N
+14691	4816	TOONPAN	QLD	\N
+14692	4817	RANGEWOOD	QLD	\N
+14693	4818	BURDELL	QLD	\N
+14694	4818	JENSEN	QLD	\N
+14695	4818	MOUNT LOW	QLD	\N
+14696	4818	SHAW	QLD	\N
+14697	4820	BASALT	QLD	\N
+14698	4820	BREDDAN	QLD	\N
+14699	4820	BROUGHTON	QLD	\N
+14700	4820	CAMPASPE	QLD	\N
+14701	4820	SEVENTY MILE	QLD	\N
+14702	4821	TANGORIN	QLD	\N
+14703	4822	MAXWELTON	QLD	\N
+14704	4822	SAXBY	QLD	\N
+14705	4822	WOOLGAR	QLD	\N
+14706	4825	DUCHESS	QLD	\N
+14707	4825	GUNPOWDER	QLD	\N
+14708	4825	LAWN HILL	QLD	\N
+14709	4825	MOUNT ISA DC	QLD	PO Boxes
+14710	4825	MOUNT ISA EAST	QLD	PO Boxes
+14711	4850	BEMERSIDE	QLD	\N
+14712	4850	BLACKROCK	QLD	\N
+14713	4850	BRAEMEADOWS	QLD	\N
+14714	4850	CORDELIA	QLD	\N
+14715	4850	DALRYMPLE CREEK	QLD	\N
+14716	4850	FORREST BEACH	QLD	\N
+14717	4850	LANNERCOST	QLD	\N
+14718	4850	LONG POCKET	QLD	\N
+14719	4850	PEACOCK SIDING	QLD	\N
+14720	4850	TOOBANNA	QLD	\N
+14721	4850	TREBONNE	QLD	\N
+14722	4850	VICTORIA ESTATE	QLD	PO Boxes
+14723	4850	YURUGA	QLD	\N
+14724	4852	CARMOO	QLD	\N
+14725	4854	BILYANA	QLD	\N
+14726	4854	BIRKALLA	QLD	\N
+14727	4854	BULGUN	QLD	\N
+14728	4854	FELUGA	QLD	\N
+14729	4854	HULL HEADS	QLD	\N
+14730	4854	JARRA CREEK	QLD	\N
+14731	4854	LOWER TULLY	QLD	\N
+14732	4854	MERRYBURN	QLD	\N
+14733	4854	MURRIGAL	QLD	\N
+14734	4854	ROCKINGHAM	QLD	\N
+14735	4854	SILKY OAK	QLD	\N
+14736	4854	TULLY HEADS	QLD	\N
+14737	4856	JAPOONVALE	QLD	\N
+14738	4856	NO. 4 BRANCH	QLD	\N
+14739	4856	NO. 5 BRANCH	QLD	\N
+14740	4859	NO. 6 BRANCH	QLD	\N
+14741	4865	GREEN HILL	QLD	\N
+14742	4865	LITTLE MULGRAVE	QLD	\N
+14743	4865	PACKERS CAMP	QLD	\N
+14744	4870	CAIRNS CITY	QLD	\N
+14745	4870	CAIRNS DC	QLD	PO Boxes
+14746	4870	PORTSMITH	QLD	\N
+14747	4871	BELLEVUE	QLD	\N
+14748	4871	BRAMSTON BEACH	QLD	\N
+14749	4871	CRYSTALBROOK	QLD	\N
+14750	4871	DESAILLY	QLD	\N
+14751	4871	GAMBOOLA	QLD	\N
+14752	4871	LAKELAND	QLD	\N
+14753	4871	MIRRIWINNI	QLD	\N
+14754	4871	MOUNT MULLIGAN	QLD	\N
+14755	4871	NYCHUM	QLD	\N
+14756	4871	PETFORD	QLD	\N
+14757	4871	SOUTHEDGE	QLD	\N
+14758	4871	THORNBOROUGH	QLD	\N
+14759	4871	WAUGH POCKET	QLD	\N
+14760	4871	WOOPEN CREEK	QLD	\N
+14761	4873	BONNIE DOON	QLD	\N
+14762	4873	CAPE TRIBULATION	QLD	\N
+14763	4873	CASSOWARY	QLD	\N
+14764	4873	COOYA BEACH	QLD	\N
+14765	4873	COW BAY	QLD	\N
+14766	4873	FINLAYVALE	QLD	\N
+14767	4873	FOREST CREEK	QLD	\N
+14768	4873	KIMBERLEY	QLD	\N
+14769	4873	LOWER DAINTREE	QLD	\N
+14770	4873	MIALLO	QLD	\N
+14771	4873	ROCKY POINT	QLD	Cairns
+14772	4873	SHANNONVALE	QLD	\N
+14773	4873	THORNTON BEACH	QLD	\N
+14774	4874	MAPOON	QLD	\N
+14775	4874	MISSION RIVER	QLD	\N
+14776	4874	NAPRANUM	QLD	\N
+14777	4875	BOIGU ISLAND	QLD	\N
+14778	4875	COCONUT ISLAND	QLD	PO Boxes
+14779	4875	DAUAN ISLAND	QLD	\N
+14780	4875	ERUB	QLD	\N
+14781	4875	HORN ISLAND	QLD	\N
+14782	4875	MOA ISLAND	QLD	\N
+14783	4875	MURRAY ISLAND	QLD	\N
+14784	4875	SAIBAI ISLAND	QLD	\N
+14785	4875	WARRABER ISLAND	QLD	\N
+14786	4875	YORKE ISLAND	QLD	\N
+14787	4876	INJINOO	QLD	\N
+14788	4876	NEW MAPOON	QLD	\N
+14789	4876	SEISIA	QLD	\N
+14790	4876	UMAGICO	QLD	\N
+14791	4877	CRAIGLIE	QLD	\N
+14792	4877	KILLALOE	QLD	\N
+14793	4877	MOWBRAY	QLD	\N
+14794	4877	OAK BEACH	QLD	\N
+14795	4877	WANGETTI	QLD	\N
+14796	4880	ARRIGA	QLD	\N
+14797	4880	BIBOOHRA	QLD	\N
+14798	4880	CHEWKO	QLD	\N
+14799	4880	GLEN RUSSELL	QLD	\N
+14800	4880	PADDYS GREEN	QLD	\N
+14801	4881	KOAH	QLD	\N
+14802	4881	MONA MONA	QLD	\N
+14803	4881	SPEEWAH	QLD	\N
+14804	4884	LAKE BARRINE	QLD	\N
+14805	4884	LAKE EACHAM	QLD	\N
+14806	4885	BUTCHERS CREEK	QLD	\N
+14807	4885	GLEN ALLYN	QLD	\N
+14808	4885	JAGGAN	QLD	\N
+14809	4885	KUREEN	QLD	\N
+14810	4885	NORTH JOHNSTONE	QLD	\N
+14811	4885	PEERAMON	QLD	\N
+14812	4885	TARZALI	QLD	\N
+14813	4885	TOPAZ	QLD	\N
+14814	4886	BEATRICE	QLD	\N
+14815	4886	ELLINJAA	QLD	\N
+14816	4886	MAALAN	QLD	\N
+14817	4886	MIDDLEBROOK	QLD	\N
+14818	4886	MINBUN	QLD	\N
+14819	4886	MOREGATTA	QLD	\N
+14820	4886	MUNGALLI	QLD	\N
+14821	4895	BLOOMFIELD	QLD	\N
+14822	4895	HOPE VALE	QLD	\N
+14823	4895	ROSSVILLE	QLD	\N
+14824	4895	WUJAL WUJAL	QLD	\N
+14825	5113	EDINBURGH NORTH	SA	\N
+14826	5137	MARBLE HILL	SA	\N
+14827	5141	HORSNELL GULLY	SA	\N
+14828	5152	CLELAND	SA	\N
+14829	5153	CHAPEL HILL	SA	\N
+14830	5153	GREEN HILLS RANGE	SA	\N
+14831	5153	JUPITER CREEK	SA	\N
+14832	5157	BULL CREEK	SA	\N
+14833	5157	DORSET VALE	SA	\N
+14834	5157	MCHARG CREEK	SA	\N
+14835	5171	BLEWITT SPRINGS	SA	\N
+14836	5171	TATACHILLA	SA	\N
+14837	5172	DINGABLEDINGA	SA	\N
+14838	5172	HOPE FOREST	SA	\N
+14839	5172	KUITPO	SA	\N
+14840	5172	KUITPO COLONY	SA	\N
+14841	5172	KYEEMA	SA	\N
+14842	5172	MONTARRA	SA	\N
+14843	5172	PAGES FLAT	SA	\N
+14844	5172	THE RANGE	SA	\N
+14845	5172	WILLUNGA HILL	SA	\N
+14846	5201	BLACKFELLOWS CREEK	SA	\N
+14847	5201	PARIS CREEK	SA	\N
+14848	5203	BALD HILLS	SA	\N
+14849	5203	PARAWA	SA	\N
+14850	5203	TORRENS VALE	SA	\N
+14851	5203	TUNKALILLA	SA	\N
+14852	5203	WATTLE FLAT	SA	\N
+14853	5204	DEEP CREEK	SA	\N
+14854	5204	HAY FLAT	SA	\N
+14855	5204	SILVERTON	SA	\N
+14856	5204	WIRRINA COVE	SA	\N
+14857	5210	MOUNT MAGNIFICENT	SA	\N
+14858	5210	NANGKITA	SA	\N
+14859	5211	WILLOW CREEK	SA	\N
+14860	5214	MOSQUITO HILL	SA	\N
+14861	5214	MUNDOO ISLAND	SA	\N
+14862	5221	BALLAST HEAD	SA	\N
+14863	5221	MUSTON	SA	\N
+14864	5222	AMERICAN BEACH	SA	\N
+14865	5222	ANTECHAMBER BAY	SA	\N
+14866	5222	BAUDIN BEACH	SA	\N
+14867	5222	CUTTLEFISH BAY	SA	\N
+14868	5222	DUDLEY EAST	SA	\N
+14869	5222	DUDLEY WEST	SA	\N
+14870	5222	IRONSTONE	SA	\N
+14871	5222	ISLAND BEACH	SA	\N
+14872	5222	KANGAROO HEAD	SA	\N
+14873	5222	PELICAN LAGOON	SA	\N
+14874	5222	PORKY FLAT	SA	\N
+14875	5222	SAPPHIRETOWN	SA	\N
+14876	5222	WILLOUGHBY	SA	\N
+14877	5222	WILLSON RIVER	SA	\N
+14878	5223	BAY OF SHOALS	SA	\N
+14879	5223	BIRCHMORE	SA	\N
+14880	5223	BROWNLOW KI	SA	\N
+14881	5223	CAPE BORDA	SA	\N
+14882	5223	CASSINI	SA	\N
+14883	5223	CYGNET RIVER	SA	\N
+14884	5223	D'ESTREES BAY	SA	\N
+14885	5223	DE MOLE RIVER	SA	\N
+14886	5223	DUNCAN	SA	\N
+14887	5223	EMU BAY	SA	\N
+14888	5223	FLINDERS CHASE	SA	\N
+14889	5223	GOSSE	SA	\N
+14890	5223	HAINES	SA	\N
+14891	5223	KARATTA	SA	\N
+14892	5223	KOHINOOR	SA	\N
+14893	5223	MACGILLIVRAY	SA	\N
+14894	5223	MENZIES	SA	\N
+14895	5223	MIDDLE RIVER	SA	\N
+14896	5223	NEPEAN BAY	SA	\N
+14897	5223	NEWLAND	SA	\N
+14898	5223	NORTH CAPE	SA	\N
+14899	5223	SEAL BAY	SA	\N
+14900	5223	SEDDON	SA	\N
+14901	5223	STOKES BAY	SA	\N
+14902	5223	STUN'SAIL BOOM	SA	\N
+14903	5223	VIVONNE BAY	SA	\N
+14904	5223	WESTERN RIVER	SA	\N
+14905	5223	WISANGER	SA	\N
+14906	5231	CHAIN OF PONDS	SA	\N
+14907	5231	MILLBROOK	SA	\N
+14908	5233	FORRESTON	SA	\N
+14909	5235	CROMER	SA	\N
+14910	5235	FLAXMAN VALLEY	SA	\N
+14911	5235	TAUNTON	SA	\N
+14912	5237	APAMURRA	SA	\N
+14913	5237	MILENDELLA	SA	\N
+14914	5238	ANGAS VALLEY	SA	\N
+14915	5238	BIG BEND	SA	\N
+14916	5238	BOLTO	SA	\N
+14917	5238	CAURNAMONT	SA	\N
+14918	5238	CLAYPANS	SA	\N
+14919	5238	FIVE MILES	SA	\N
+14920	5238	FORSTER	SA	\N
+14921	5238	FRAHNS	SA	\N
+14922	5238	FRAYVILLE	SA	\N
+14923	5238	JULANKA HOLDINGS	SA	\N
+14924	5238	LAKE CARLET	SA	\N
+14925	5238	OLD TEAL FLAT	SA	\N
+14926	5238	PELLARING FLAT	SA	\N
+14927	5238	POMPOOTA	SA	\N
+14928	5238	PONDE	SA	\N
+14929	5238	PURNONG	SA	\N
+14930	5238	ROCKY POINT	SA	\N
+14931	5238	TEAL FLAT	SA	\N
+14932	5238	YOUNGHUSBAND HOLDINGS	SA	\N
+14933	5245	PAECHTOWN	SA	\N
+14934	5246	WOODHOUSE	SA	\N
+14935	5251	MOUNT BARKER JUNCTION	SA	\N
+14936	5251	MOUNT BARKER SPRINGS	SA	\N
+14937	5251	MOUNT BARKER SUMMIT	SA	\N
+14938	5252	HAY VALLEY	SA	\N
+14939	5252	ST IVES	SA	\N
+14940	5253	AVOCA DELL	SA	\N
+14941	5253	BRINKLEY	SA	\N
+14942	5253	BURDETT	SA	\N
+14943	5253	CHAPMAN BORE	SA	\N
+14944	5253	ETTRICK	SA	\N
+14945	5253	GREENBANKS	SA	\N
+14946	5253	MOBILONG	SA	\N
+14947	5253	MONTEITH	SA	\N
+14948	5253	MURRAWONG	SA	\N
+14949	5253	MURRAY BRIDGE NORTH	SA	\N
+14950	5253	RIVERGLEN	SA	\N
+14951	5253	TOORA	SA	\N
+14952	5253	WILLOW BANKS	SA	\N
+14953	5254	CALOOTE	SA	\N
+14954	5254	PALLAMANA	SA	\N
+14955	5254	PETWOOD	SA	\N
+14956	5254	ROCKLEIGH	SA	\N
+14957	5254	ROCKY GULLY	SA	\N
+14958	5254	TEPKO	SA	\N
+14959	5254	WALL FLAT	SA	\N
+14960	5254	WHITE HILL	SA	\N
+14961	5254	WOODLANE	SA	\N
+14962	5254	ZADOWS LANDING	SA	\N
+14963	5255	ANGAS PLAINS	SA	\N
+14964	5255	BELVIDERE	SA	\N
+14965	5255	BLETCHLEY	SA	\N
+14966	5255	GEMMELLS	SA	\N
+14967	5255	LAKE PLAINS	SA	\N
+14968	5255	MOUNT OBSERVATION	SA	\N
+14969	5255	MULGUNDAWA	SA	\N
+14970	5255	NALPA	SA	\N
+14971	5255	RED CREEK	SA	\N
+14972	5255	SALEM	SA	\N
+14973	5255	SANDERGROVE	SA	\N
+14974	5256	NURRAGI	SA	\N
+14975	5256	POINT STURT	SA	\N
+14976	5256	TOLDEROL	SA	\N
+14977	5259	ASHVILLE	SA	\N
+14978	5259	KEPA	SA	\N
+14979	5259	MALINONG	SA	\N
+14980	5259	NATURI	SA	\N
+14981	5259	POLTALLOCH	SA	\N
+14982	5260	ELWOMPLE	SA	\N
+14983	5264	COORONG	SA	\N
+14984	5264	MENINGIE EAST	SA	\N
+14985	5264	MENINGIE WEST	SA	\N
+14986	5264	WALTOWA	SA	\N
+14987	5265	FIELD	SA	\N
+14988	5266	BUNBURY	SA	\N
+14989	5266	COLEBATCH	SA	\N
+14990	5266	DEEPWATER	SA	\N
+14991	5267	BRIMBAGO	SA	\N
+14992	5267	COOMBE	SA	\N
+14993	5267	LAFFER	SA	\N
+14994	5267	MAKIN	SA	\N
+14995	5267	MCCALLUM	SA	\N
+14996	5267	MOUNT CHARLES	SA	\N
+14997	5267	PETHERICK	SA	\N
+14998	5267	SHAUGH	SA	\N
+14999	5267	SHERWOOD	SA	\N
+15000	5267	WILLALOOKA	SA	\N
+15001	5267	WIRREGA	SA	\N
+15002	5268	BANGHAM	SA	\N
+15003	5268	BORDERTOWN SOUTH	SA	\N
+15004	5268	CANNAWIGARA	SA	\N
+15005	5268	LOWAN VALE	SA	\N
+15006	5268	POOGINAGORIC	SA	\N
+15007	5268	SENIOR	SA	\N
+15008	5268	WESTERN FLAT	SA	\N
+15009	5269	CUSTON	SA	\N
+15010	5269	PINE HILL	SA	\N
+15011	5270	BUCKINGHAM	SA	\N
+15012	5270	CAREW	SA	\N
+15013	5270	KONGAL	SA	\N
+15014	5270	MUNDULLA WEST	SA	\N
+15015	5270	SWEDE FLAT	SA	\N
+15016	5271	BOOL LAGOON	SA	\N
+15017	5271	CADGEE	SA	\N
+15018	5271	JOANNA	SA	\N
+15019	5271	KEPPOCH	SA	\N
+15020	5271	KOPPAMURRA	SA	\N
+15021	5271	LAURIE PARK	SA	\N
+15022	5271	LOCHABER	SA	\N
+15023	5271	MARCOLLAT	SA	\N
+15024	5271	MOUNT LIGHT	SA	\N
+15025	5271	MOYHALL	SA	\N
+15026	5271	SPENCE	SA	\N
+15027	5271	STEWART RANGE	SA	\N
+15028	5271	STRUAN	SA	\N
+15029	5271	THE GAP	SA	\N
+15030	5271	WILD DOG VALLEY	SA	\N
+15031	5271	WRATTONBULLY	SA	\N
+15032	5272	COLES	SA	\N
+15033	5272	CONMURRA	SA	\N
+15034	5272	FOX	SA	\N
+15035	5272	WOOLUMBOOL	SA	\N
+15036	5275	BLACKFORD	SA	\N
+15037	5275	BOATSWAIN POINT	SA	\N
+15038	5275	CAPE JAFFA	SA	\N
+15039	5275	KEILIRA	SA	\N
+15040	5275	MOUNT BENSON	SA	\N
+15041	5275	PINKS BEACH	SA	\N
+15042	5275	REEDY CREEK	SA	\N
+15043	5275	ROSETOWN	SA	\N
+15044	5275	SANDY GROVE	SA	\N
+15045	5275	TARATAP	SA	\N
+15046	5275	TILLEY SWAMP	SA	\N
+15047	5275	WANGOLINA	SA	\N
+15048	5275	WEST RANGE	SA	\N
+15049	5275	WYOMI	SA	\N
+15050	5276	BRAY	SA	\N
+15051	5276	NORA CREINA	SA	\N
+15052	5277	COMAUM	SA	\N
+15053	5277	GLENROY	SA	\N
+15054	5277	MAAOUPE	SA	\N
+15055	5277	MONBULLA	SA	\N
+15056	5277	PLEASANT PARK	SA	\N
+15057	5278	KRONGART	SA	\N
+15058	5278	MOERLONG	SA	\N
+15059	5278	WEPAR	SA	\N
+15060	5279	KOORINE	SA	\N
+15061	5279	MOUNT MCINTYRE	SA	\N
+15062	5279	SHORT	SA	\N
+15063	5279	TRIHI	SA	\N
+15064	5279	WATTLE RANGE EAST	SA	\N
+15065	5280	CANUNDA	SA	\N
+15066	5280	CLAY WELLS	SA	\N
+15067	5280	FURNER	SA	\N
+15068	5280	GERMAN FLAT	SA	\N
+15069	5280	HATHERLEIGH	SA	\N
+15070	5280	KANGAROO INN	SA	\N
+15071	5280	MAGAREY	SA	\N
+15072	5280	ROCKY CAMP	SA	\N
+15073	5280	SEBASTOPOL	SA	\N
+15074	5280	THORNLEA	SA	\N
+15075	5280	WATTLE RANGE	SA	\N
+15076	5291	BLACKFELLOWS CAVES	SA	\N
+15077	5291	BURRUNGULE	SA	\N
+15078	5291	CAPE DOUGLAS	SA	\N
+15079	5291	CAROLINE	SA	\N
+15080	5291	CAVETON	SA	\N
+15081	5291	GERMAN CREEK	SA	\N
+15082	5291	GLENCOE WEST	SA	\N
+15083	5291	MINGBOOL	SA	\N
+15084	5291	NENE VALLEY	SA	\N
+15085	5291	PELICAN POINT	SA	\N
+15086	5291	SQUARE MILE	SA	\N
+15087	5291	WANDILO	SA	\N
+15088	5291	WYE	SA	\N
+15089	5301	CARCUMA	SA	\N
+15090	5301	NETHERTON	SA	\N
+15091	5301	WILKAWATT	SA	\N
+15092	5302	NGARKAT	SA	\N
+15093	5307	KARTE	SA	\N
+15094	5308	MERCUNDA	SA	\N
+15095	5308	PERPONDA	SA	\N
+15096	5311	BILLIATT	SA	\N
+15097	5320	BEATTY	SA	\N
+15098	5320	BEAUMONTS	SA	\N
+15099	5320	BRENDA PARK	SA	\N
+15100	5320	BUNDEY	SA	\N
+15101	5320	EBA	SA	\N
+15102	5320	LINDLEY	SA	\N
+15103	5320	MAUDE	SA	\N
+15104	5320	MORPHETTS FLAT	SA	\N
+15105	5320	NORTH WEST BEND	SA	\N
+15106	5320	STUART	SA	\N
+15107	5320	WOMBATS REST	SA	\N
+15108	5321	CADELL LAGOON	SA	\N
+15109	5330	OVERLAND CORNER	SA	\N
+15110	5330	WIGLEY FLAT	SA	\N
+15111	5340	MUNDIC CREEK	SA	\N
+15112	5340	MURTHO	SA	\N
+15113	5340	PIKE RIVER	SA	\N
+15114	5340	WONUARRA	SA	\N
+15115	5340	YAMBA	SA	\N
+15116	5341	CHAFFEY	SA	\N
+15117	5341	CRESCENT	SA	\N
+15118	5341	OLD CALPERUM	SA	\N
+15119	5341	RENMARK WEST	SA	\N
+15120	5343	GURRA GURRA	SA	\N
+15121	5343	KATARAPKO	SA	\N
+15122	5345	SPECTACLE LAKE	SA	\N
+15123	5351	BAROSSA GOLDFIELDS	SA	\N
+15124	5352	GOMERSAL	SA	\N
+15125	5352	VINE VALE	SA	\N
+15126	5353	LANGS LANDING	SA	\N
+15127	5353	MARKS LANDING	SA	\N
+15128	5353	PUNYELROO	SA	\N
+15129	5353	SUNNYDALE	SA	\N
+15130	5354	BAKARA	SA	\N
+15131	5354	FISHER	SA	\N
+15132	5355	EBENEZER	SA	\N
+15133	5355	MOPPA	SA	\N
+15134	5356	ANNADALE	SA	\N
+15135	5356	DUTTON	SA	\N
+15136	5356	DUTTON EAST	SA	\N
+15137	5356	SANDLETON	SA	\N
+15138	5356	ST KITTS	SA	\N
+15139	5356	STEINFELD	SA	\N
+15140	5357	MCBEAN POUND	SA	\N
+15141	5371	MORN HILL	SA	\N
+15142	5373	ALLENDALE NORTH	SA	\N
+15143	5373	BAGOT WELL	SA	\N
+15144	5373	FORDS	SA	\N
+15145	5373	ST JOHNS	SA	\N
+15146	5374	AUSTRALIA PLAINS	SA	\N
+15147	5374	BROWNLOW	SA	\N
+15148	5374	BUCHANAN	SA	\N
+15149	5374	FRANKTON	SA	\N
+15150	5374	HANSBOROUGH	SA	\N
+15151	5374	JULIA	SA	\N
+15152	5374	MOUNT MARY	SA	\N
+15153	5374	NEALES FLAT	SA	\N
+15154	5374	PEEP HILL	SA	\N
+15155	5381	BRADY CREEK	SA	\N
+15156	5381	BRIGHT	SA	\N
+15157	5381	EMU DOWNS	SA	\N
+15158	5381	GERANIUM PLAINS	SA	\N
+15159	5381	HALLELUJAH HILLS	SA	\N
+15160	5381	ROCKY PLAIN	SA	\N
+15161	5381	WORLDS END	SA	\N
+15162	5400	WOOLSHEDS	SA	\N
+15163	5411	GILES CORNER	SA	\N
+15164	5412	WOOLSHED FLAT	SA	\N
+15165	5413	APOINGA	SA	\N
+15166	5413	BLACK SPRINGS	SA	\N
+15167	5413	STEELTON	SA	\N
+15168	5413	TARNMA	SA	\N
+15169	5413	TOTHILL BELT	SA	\N
+15170	5413	TOTHILL CREEK	SA	\N
+15171	5415	STANLEY	SA	\N
+15172	5416	PORTER LAGOON	SA	\N
+15173	5417	BALDINA	SA	\N
+15174	5417	BURRA EASTERN DISTRICTS	SA	\N
+15175	5417	GUM CREEK	SA	\N
+15176	5417	HANSON	SA	\N
+15177	5417	KOONOONA	SA	\N
+15178	5417	LEIGHTON	SA	\N
+15179	5417	MONGOLATA	SA	\N
+15180	5417	NORTH BOOBOROWIE	SA	\N
+15181	5418	COLLINSVILLE	SA	\N
+15182	5419	CANOWIE	SA	\N
+15183	5419	MOUNT BRYAN EAST	SA	\N
+15184	5419	PINE CREEK	SA	\N
+15185	5419	ULOOLOO	SA	\N
+15186	5419	WILLALO	SA	\N
+15187	5419	WONNA	SA	\N
+15188	5420	CANOWIE BELT	SA	\N
+15189	5421	FRANKLYN	SA	\N
+15190	5422	CAVENAGH	SA	\N
+15191	5422	DAWSON	SA	\N
+15192	5422	ERSKINE	SA	\N
+15193	5422	HARDY	SA	\N
+15194	5422	MANNANARIE	SA	\N
+15195	5422	MINVALARA	SA	\N
+15196	5422	OODLA WIRRA	SA	\N
+15197	5422	PARATOO	SA	\N
+15198	5422	PARNAROO	SA	\N
+15199	5422	SUNNYBRAE	SA	\N
+15200	5422	UCOLTA	SA	\N
+15201	5431	AMYTON	SA	\N
+15202	5431	BLACK ROCK	SA	\N
+15203	5431	COOMOOROO	SA	\N
+15204	5431	EURELIA	SA	\N
+15205	5431	JOHNBURGH	SA	\N
+15206	5431	MINBURRA	SA	\N
+15207	5431	WALLOWAY	SA	\N
+15208	5431	YALPARA	SA	\N
+15209	5432	BELTON	SA	\N
+15210	5432	MOOCKRA	SA	\N
+15211	5432	YANYARRIE	SA	\N
+15212	5433	BRUCE	SA	\N
+15213	5433	SALTIA	SA	\N
+15214	5433	STEPHENSTON	SA	\N
+15215	5433	WILLOCHRA	SA	\N
+15216	5433	YARRAH	SA	\N
+15217	5434	BARNDIOOTA	SA	\N
+15218	5434	KANYAKA	SA	\N
+15219	5440	MINGARY	SA	\N
+15220	5440	WAUKARINGA	SA	\N
+15221	5451	UNDALYA	SA	\N
+15222	5452	LEASINGHAM	SA	\N
+15223	5453	ARMAGH	SA	\N
+15224	5453	BARINIA	SA	\N
+15225	5453	BENBOURNIE	SA	\N
+15226	5453	BOCONNOC PARK	SA	\N
+15227	5453	EMU FLAT	SA	\N
+15228	5453	GILLENTOWN	SA	\N
+15229	5453	HILL RIVER	SA	\N
+15230	5453	POLISH HILL RIVER	SA	\N
+15231	5453	SPRING FARM	SA	\N
+15232	5453	SPRING GULLY	SA	\N
+15233	5453	STANLEY FLAT	SA	\N
+15234	5454	ANDREWS	SA	\N
+15235	5454	BROUGHTON RIVER VALLEY	SA	\N
+15236	5454	EUROMINA	SA	\N
+15237	5454	HACKLINS CORNER	SA	\N
+15238	5454	MAYFIELD	SA	\N
+15239	5454	WASHPOOL	SA	\N
+15240	5460	STOCKYARD CREEK	SA	\N
+15241	5461	BOWILLIA	SA	\N
+15242	5461	DALKEY	SA	\N
+15243	5461	ERITH	SA	\N
+15244	5461	EVERARD CENTRAL	SA	\N
+15245	5461	GOYDER	SA	\N
+15246	5461	HALBURY	SA	\N
+15247	5461	HOSKIN CORNER	SA	\N
+15248	5461	MOUNT TEMPLETON	SA	\N
+15249	5461	SAINTS	SA	\N
+15250	5461	STOW	SA	\N
+15251	5461	WATCHMAN	SA	\N
+15252	5464	ANAMA	SA	\N
+15253	5464	BUNGAREE	SA	\N
+15254	5464	CONDOWIE	SA	\N
+15255	5464	HART	SA	\N
+15256	5464	MAROLA	SA	\N
+15257	5464	ROCHESTER	SA	\N
+15258	5480	STONE HUT	SA	\N
+15259	5481	BANGOR	SA	\N
+15260	5481	WONGYARRA	SA	\N
+15261	5482	WEPOWIE	SA	\N
+15262	5490	CALTOWIE NORTH	SA	\N
+15263	5490	CALTOWIE WEST	SA	\N
+15264	5491	BELALIE EAST	SA	\N
+15265	5491	BELALIE NORTH	SA	\N
+15266	5491	BUNDALEER GARDENS	SA	\N
+15267	5491	BUNDALEER NORTH	SA	\N
+15268	5491	HORNSDALE	SA	\N
+15269	5491	WEST BUNDALEER	SA	\N
+15270	5495	BAROOTA	SA	\N
+15271	5495	GERMEIN BAY	SA	\N
+15272	5495	NECTAR BROOK	SA	\N
+15273	5501	WEBB BEACH	SA	\N
+15274	5502	FISCHER	SA	\N
+15275	5502	GRACE PLAINS	SA	\N
+15276	5520	BARUNGA GAP	SA	\N
+15277	5520	BUMBUNGA	SA	\N
+15278	5520	BURNSFIELD	SA	\N
+15279	5520	WOKURNA	SA	\N
+15280	5522	WARD HILL	SA	\N
+15281	5523	BEETALOO	SA	\N
+15282	5523	CLEMENTS GAP	SA	\N
+15283	5523	HUDDLESTON	SA	\N
+15284	5523	NARRIDY	SA	\N
+15285	5523	NUROM	SA	\N
+15286	5523	WANDEARAH	SA	\N
+15287	5523	WANDEARAH EAST	SA	\N
+15288	5523	WANDEARAH WEST	SA	\N
+15289	5540	BUNGAMA	SA	\N
+15290	5540	COONAMIA	SA	\N
+15291	5540	LOWER BROUGHTON	SA	\N
+15292	5540	NELSHABY	SA	\N
+15293	5540	PIRIE EAST	SA	\N
+15294	5540	PORT DAVIS	SA	\N
+15295	5540	TELOWIE	SA	\N
+15296	5550	BEAUFORT	SA	\N
+15297	5550	INKERMAN	SA	\N
+15298	5550	KALLORA	SA	\N
+15299	5550	PROOF RANGE	SA	\N
+15300	5550	SOUTH HUMMOCKS	SA	\N
+15301	5552	KAINTON	SA	\N
+15302	5552	KULPARA	SA	\N
+15303	5552	MELTON	SA	\N
+15304	5552	PORT ARTHUR	SA	\N
+15305	5552	SUNNYVALE	SA	\N
+15306	5552	THRINGTON	SA	\N
+15307	5554	BOORS PLAIN	SA	\N
+15308	5554	CUNLIFFE	SA	\N
+15309	5554	THOMAS PLAIN	SA	\N
+15310	5554	WILLAMULKA	SA	\N
+15311	5555	COLLINSFIELD	SA	\N
+15312	5555	HOPE GAP	SA	\N
+15313	5556	WALLAROO PLAIN	SA	\N
+15314	5556	WARBURTO	SA	\N
+15315	5560	NINNES	SA	\N
+15316	5570	CLINTON CENTRE	SA	\N
+15317	5570	WINULTA	SA	\N
+15318	5571	BLACK POINT	SA	\N
+15319	5571	CUNNINGHAM	SA	\N
+15320	5571	DOWLINGVILLE	SA	\N
+15321	5571	JAMES WELL	SA	\N
+15322	5571	PETERSVILLE	SA	\N
+15323	5571	ROGUES POINT	SA	\N
+15324	5571	SANDILANDS	SA	\N
+15325	5573	CHINAMAN WELLS	SA	\N
+15326	5573	WAURALTEE	SA	\N
+15327	5573	YORKE VALLEY	SA	\N
+15328	5575	BLUFF BEACH	SA	\N
+15329	5575	KOOLYWURTIE	SA	\N
+15330	5575	RAMSAY	SA	\N
+15331	5575	WHITE HUT	SA	\N
+15332	5576	HONITON	SA	\N
+15333	5576	PORT MOOROWIE	SA	\N
+15334	5577	COUCH BEACH	SA	\N
+15335	5577	FOUL BAY	SA	\N
+15336	5577	INNESTON	SA	\N
+15337	5577	POINT SOUTTAR	SA	\N
+15338	5577	THE PINES	SA	\N
+15339	5580	PORT JULIA	SA	\N
+15340	5581	SHEAOAK FLAT	SA	\N
+15341	5582	PORT GILES	SA	\N
+15342	5600	WHYALLA DC	SA	\N
+15343	5601	BACKY POINT	SA	\N
+15344	5601	COWLEDS LANDING	SA	\N
+15345	5601	CULTANA	SA	\N
+15346	5601	DOUGLAS POINT	SA	\N
+15347	5601	DOUGLAS POINT SOUTH	SA	\N
+15348	5601	FALSE BAY	SA	\N
+15349	5601	FITZGERALD BAY	SA	\N
+15350	5601	IRON BARON	SA	\N
+15351	5601	MULLAQUANA	SA	\N
+15352	5601	POINT LOWLY	SA	\N
+15353	5601	POINT LOWLY NORTH	SA	\N
+15354	5601	PORT BONYTHON	SA	\N
+15355	5602	LUCKY BAY	SA	\N
+15356	5602	MANGALO	SA	\N
+15357	5602	MIDGEE	SA	\N
+15358	5602	MILTALIE	SA	\N
+15359	5602	MINBRIE	SA	\N
+15360	5602	MITCHELLVILLE	SA	\N
+15361	5602	PORT GIBBON	SA	\N
+15362	5603	HINCKS	SA	\N
+15363	5603	VERRAN	SA	\N
+15364	5607	BOSTON	SA	\N
+15365	5607	BROOKER	SA	\N
+15366	5607	CHARLTON GULLY	SA	\N
+15367	5607	COOMUNGA	SA	\N
+15368	5607	DUCK PONDS	SA	\N
+15369	5607	FARM BEACH	SA	\N
+15370	5607	FOUNTAIN	SA	\N
+15371	5607	GREEN PATCH	SA	\N
+15372	5607	HAWSON	SA	\N
+15373	5607	KELLIDIE BAY	SA	\N
+15374	5607	KIANA	SA	\N
+15375	5607	KOPPIO	SA	\N
+15376	5607	LINCOLN NATIONAL PARK	SA	\N
+15377	5607	LIPSON	SA	\N
+15378	5607	LITTLE DOUGLAS	SA	\N
+15379	5607	MOODY	SA	\N
+15380	5607	MOUNT DRUMMOND	SA	\N
+15381	5607	MOUNT DUTTON BAY	SA	\N
+15382	5607	MOUNT HOPE	SA	\N
+15383	5607	PEARLAH	SA	\N
+15384	5607	POINT BOSTON	SA	\N
+15385	5607	POONINDIE	SA	\N
+15386	5607	SHERINGA	SA	\N
+15387	5607	SLEAFORD	SA	\N
+15388	5607	TIATUKIA	SA	\N
+15389	5607	TOOLIGIE	SA	\N
+15390	5607	TOOTENILLA	SA	\N
+15391	5607	TULKA	SA	\N
+15392	5607	ULEY	SA	\N
+15393	5607	WHITES FLAT	SA	\N
+15394	5607	WHITES RIVER	SA	\N
+15395	5607	YALLUNDA FLAT	SA	\N
+15396	5632	KARKOO	SA	\N
+15397	5632	MITCHELL	SA	\N
+15398	5633	BOONERDO	SA	\N
+15399	5640	CAMPOONA	SA	\N
+15400	5640	JAMIESON	SA	\N
+15401	5640	WADDIKEE	SA	\N
+15402	5641	BARNA	SA	\N
+15403	5641	CARALUE	SA	\N
+15404	5641	CORTLINYE	SA	\N
+15405	5641	CUNYARIE	SA	\N
+15406	5641	KELLY	SA	\N
+15407	5641	MOSELEY	SA	\N
+15408	5641	PANITYA	SA	\N
+15409	5641	PINKAWILLINIE	SA	\N
+15410	5641	SOLOMON	SA	\N
+15411	5641	WILCHERRY	SA	\N
+15412	5641	YALANDA	SA	\N
+15413	5642	HAMBIDGE	SA	\N
+15414	5642	MURLONG	SA	\N
+15415	5650	COOTRA	SA	\N
+15416	5650	KOONGAWA	SA	\N
+15417	5652	PANEY	SA	\N
+15418	5654	COCATA	SA	\N
+15419	5654	KARCULTABY	SA	\N
+15420	5654	MOUNT DAMPER	SA	\N
+15421	5655	BOCKELBERG	SA	\N
+15422	5655	KALDOONERA	SA	\N
+15423	5655	PYGERY	SA	\N
+15424	5660	CHILPENUNDA	SA	\N
+15425	5661	KOOLGERA	SA	\N
+15426	5661	PIMBAACLA	SA	\N
+15427	5661	WALLALA	SA	\N
+15428	5661	YANTANABIE	SA	\N
+15429	5670	BRAMFIELD	SA	\N
+15430	5670	COLTON	SA	\N
+15431	5670	COOLILLIE	SA	\N
+15432	5670	KAPPAWANTA	SA	\N
+15433	5670	MOUNT JOY	SA	\N
+15434	5670	MOUNT WEDGE	SA	\N
+15435	5670	PALKAGEE	SA	\N
+15436	5670	POLDA	SA	\N
+15437	5670	TALIA	SA	\N
+15438	5670	ULYERRA	SA	\N
+15439	5671	BAIRD BAY	SA	\N
+15440	5671	COLLEY	SA	\N
+15441	5671	MORTANA	SA	\N
+15442	5671	MOUNT COOPER	SA	\N
+15443	5671	TYRINGA	SA	\N
+15444	5671	WITERA	SA	\N
+15445	5680	CARAWA	SA	\N
+15446	5680	CHANDADA	SA	\N
+15447	5680	CHINBINGINA	SA	\N
+15448	5680	EBA ANCHORAGE	SA	\N
+15449	5680	INKSTER	SA	\N
+15450	5680	LAURA BAY	SA	\N
+15451	5680	MARYVALE	SA	\N
+15452	5680	MUDAMUCKLA	SA	\N
+15453	5680	NUNJIKOMPITA	SA	\N
+15454	5680	PERLUBIE	SA	\N
+15455	5680	PETINA	SA	\N
+15456	5680	PIEDNIPPIE	SA	\N
+15457	5680	PUNTABIE	SA	\N
+15458	5680	PUREBA	SA	\N
+15459	5680	SCEALE BAY	SA	\N
+15460	5680	WESTALL	SA	\N
+15461	5680	YANERBIE	SA	\N
+15462	5690	BOOKABIE	SA	\N
+15463	5690	CHARRA	SA	\N
+15464	5690	DENIAL BAY	SA	\N
+15465	5690	KALANBI	SA	\N
+15466	5690	MALTEE	SA	\N
+15467	5690	MERGHINY	SA	\N
+15468	5690	NADIA	SA	\N
+15469	5690	UWORRA	SA	\N
+15470	5690	WANDANA	SA	\N
+15471	5690	WATRABA	SA	\N
+15472	5690	WHITE WELL CORNER	SA	\N
+15473	5700	COMMISSARIAT POINT	SA	\N
+15474	5700	MIRANDA	SA	\N
+15475	5700	MUNDALLIO	SA	\N
+15476	5700	PORT PATERSON	SA	\N
+15477	5700	WAMI KATA	SA	\N
+15478	5700	WINNINOWIE	SA	\N
+15479	5701	ARKAROOLA VILLAGE	SA	\N
+15480	5701	COOK	SA	\N
+15481	5701	GLENDAMBO	SA	\N
+15482	5701	KINGOONYA	SA	\N
+15483	5701	PORT AUGUSTA	SA	PO Bags
+15484	5701	TARCOOLA	SA	\N
+15485	5701	WOOLUNDUNGA	SA	\N
+15486	5720	PIMBA	SA	\N
+15487	5731	COOPERS CREEK	SA	\N
+15488	5731	INNAMINCKA	SA	\N
+15489	5732	NEPABUNNA	SA	\N
+15490	5733	FARINA	SA	\N
+15491	6000	CITY DELIVERY CENTRE	WA	\N
+15492	6000	PERTH GPO	WA	\N
+15493	6001	PERTH	WA	GPO Locked Bags
+15494	6008	SUBIACO EAST	WA	\N
+15495	6009	NEDLANDS DC	WA	\N
+15496	6017	OSBORNE PARK DC	WA	\N
+15497	6018	GWELUP DC	WA	\N
+15498	6027	JOONDALUP DC	WA	\N
+15499	6055	BRABHAM	WA	\N
+15500	6055	DAYTON	WA	\N
+15501	6063	BENNETT SPRINGS	WA	\N
+15502	6065	WANGARA DC	WA	\N
+15503	6073	MUNDARING DC	WA	\N
+15504	6082	BAILUP	WA	\N
+15505	6084	AVON VALLEY NATIONAL PARK	WA	\N
+15506	6084	WALYUNGA NATIONAL PARK	WA	\N
+15507	6101	CARLISLE NORTH	WA	\N
+15508	6101	CARLISLE SOUTH	WA	\N
+15509	6102	BENTLEY DC	WA	\N
+15510	6102	BENTLEY SOUTH	WA	\N
+15511	6107	EAST CANNINGTON	WA	\N
+15512	6111	KELMSCOTT DC	WA	\N
+15513	6151	SOUTH PERTH ANGELO ST	WA	PO Boxes
+15514	6155	CANNING VALE DC	WA	\N
+15515	6157	PALMYRA DC	WA	\N
+15516	6163	BIBRA LAKE DC	WA	\N
+15517	6168	ROCKINGHAM BEACH	WA	PO Boxes
+15518	6168	ROCKINGHAM DC	WA	\N
+15519	6210	MANDURAH DC	WA	\N
+15520	6260	BEEDELUP	WA	\N
+15521	6260	CALLCUP	WA	\N
+15522	6260	CHANNYBEARUP	WA	\N
+15523	6260	COLLINS	WA	\N
+15524	6260	YEAGARUP	WA	\N
+15525	6262	BOORARA BROOK	WA	\N
+15526	6262	CROWEA	WA	\N
+15527	6262	MEERUP	WA	\N
+15528	6262	SHANNON	WA	\N
+15529	6262	WINDY HARBOUR	WA	\N
+15530	6421	WARRALAKIN	WA	\N
+15531	6431	WARBURTON	WA	\N
+15532	6530	HOUTMAN ABROLHOS	WA	\N
+15533	6532	CARRARANG	WA	\N
+15534	6532	COBURN	WA	\N
+15535	6532	MEADOW	WA	\N
+15536	6532	NERREN NERREN	WA	\N
+15537	6532	TAMALA	WA	\N
+15538	6532	TOOLONGA	WA	\N
+15539	6537	DIRK HARTOG ISLAND	WA	\N
+15540	6537	FRANCOIS PERON NATIONAL PARK	WA	\N
+15541	6537	SHARK BAY	WA	\N
+15542	6701	GILROYD	WA	\N
+15543	6701	TALISKER	WA	\N
+15544	6701	WOODLEIGH	WA	\N
+15545	6701	YALARDY	WA	\N
+15546	6711	THEVENARD ISLAND	WA	\N
+15547	6728	CAMBALLIN	WA	\N
+15548	6728	GEEGULLY CREEK	WA	\N
+15549	6728	KIMBOLTON	WA	\N
+15550	6728	KING LEOPOLD RANGES	WA	\N
+15551	6728	MEDA	WA	\N
+15552	6728	ST GEORGE RANGES	WA	\N
+15553	6728	WILLARE	WA	\N
+15554	6731	COCKATOO ISLAND	WA	\N
+15555	6743	CAMBRIDGE GULF	WA	\N
+15556	6743	DURACK	WA	\N
+15557	6765	MOUNT HARDMAN	WA	\N
+15558	7000	QUEENS DOMAIN	TAS	\N
+15559	7005	LOWER SANDY BAY	TAS	PO Boxes
+15560	7009	WEST MOONAH	TAS	\N
+15561	7017	RISDON	TAS	\N
+15562	7019	OAKDOWNS	TAS	\N
+15563	7030	ARTHURS LAKE	TAS	\N
+15564	7030	CRAMPS BAY	TAS	\N
+15565	7030	FLINTSTONE	TAS	\N
+15566	7030	HERDSMANS COVE	TAS	\N
+15567	7030	HERMITAGE	TAS	\N
+15568	7030	LAKE SORELL	TAS	\N
+15569	7030	LIAWENEE	TAS	\N
+15570	7030	MILLERS BLUFF	TAS	\N
+15571	7030	MORASS BAY	TAS	\N
+15572	7030	TODS CORNER	TAS	\N
+15573	7030	WILBURVILLE	TAS	\N
+15574	7054	LOWER SNUG	TAS	\N
+15575	7054	WELLINGTON PARK	TAS	\N
+15576	7109	IDA BAY	TAS	\N
+15577	7109	LOWER WATTLE GROVE	TAS	\N
+15578	7109	RECHERCHE	TAS	\N
+15579	7109	SOUTHPORT LAGOON	TAS	\N
+15580	7112	CHARLOTTE COVE	TAS	\N
+15581	7116	BROOKS BAY	TAS	\N
+15582	7116	SURVEYORS BAY	TAS	\N
+15583	7120	SWANSTON	TAS	\N
+15584	7140	FLORENTINE	TAS	\N
+15585	7140	LAWITTA	TAS	\N
+15586	7140	LITTLE PINE LAGOON	TAS	\N
+15587	7140	LONDON LAKES	TAS	\N
+15588	7140	MEADOWBANK	TAS	\N
+15589	7140	STYX	TAS	\N
+15590	7150	APOLLO BAY	TAS	\N
+15591	7150	NORTH BRUNY	TAS	\N
+15592	7150	SOUTH BRUNY	TAS	\N
+15593	7173	CARLTON RIVER	TAS	\N
+15594	7177	BOOMER BAY	TAS	\N
+15595	7182	FORTESCUE	TAS	\N
+15596	7184	WHITE BEACH	TAS	\N
+15597	7186	SLOPING MAIN	TAS	\N
+15598	7190	DOLPHIN SANDS	TAS	\N
+15599	7190	PONTYPOOL	TAS	\N
+15600	7190	RHEBAN	TAS	\N
+15601	7190	ROCKY HILLS	TAS	\N
+15602	7209	TOOMS LAKE	TAS	\N
+15603	7212	BEN LOMOND	TAS	\N
+15604	7212	UPPER BLESSINGTON	TAS	\N
+15605	7215	FREYCINET	TAS	\N
+15606	7215	FRIENDLY BEACHES	TAS	\N
+15607	7215	UPPER SCAMANDER	TAS	\N
+15608	7216	THE GARDENS	TAS	\N
+15609	7250	BLACKSTONE HEIGHTS	TAS	\N
+15610	7252	STONY HEAD	TAS	\N
+15611	7253	LONG REACH	TAS	\N
+15612	7255	LEEKA	TAS	\N
+15613	7255	STRZELECKI	TAS	\N
+15614	7255	WINGAROO	TAS	\N
+15615	7256	BUNGAREE	TAS	\N
+15616	7256	LOORANA	TAS	\N
+15617	7256	LYMWOOD	TAS	\N
+15618	7256	NARACOOPA	TAS	\N
+15619	7256	NUGARA	TAS	\N
+15620	7256	PEARSHAPE	TAS	\N
+15621	7256	PEGARAH	TAS	\N
+15622	7256	REEKARA	TAS	\N
+15623	7256	SEA ELEPHANT	TAS	\N
+15624	7256	SURPRISE BAY	TAS	\N
+15625	7256	WICKHAM	TAS	\N
+15626	7256	YAMBACOONA	TAS	\N
+15627	7256	YARRA CREEK	TAS	\N
+15628	7260	CUCKOO	TAS	\N
+15629	7260	FORESTER	TAS	\N
+15630	7260	KAMONA	TAS	\N
+15631	7260	NORTH SCOTTSDALE	TAS	\N
+15632	7260	SOUTH SPRINGFIELD	TAS	\N
+15633	7260	WEST SCOTTSDALE	TAS	\N
+15634	7261	WARRENTINNA	TAS	\N
+15635	7263	ALBERTON	TAS	\N
+15636	7263	TALAWA	TAS	\N
+15637	7263	TRENAH	TAS	\N
+15638	7264	BOOBYALLA	TAS	\N
+15639	7264	EDDYSTONE	TAS	\N
+15640	7264	RUSHY LAGOON	TAS	\N
+15641	7264	TELITA	TAS	\N
+15642	7265	BANCA	TAS	\N
+15643	7267	LOWER TURNERS MARSH	TAS	\N
+15644	7270	BADGER HEAD	TAS	\N
+15645	7270	YORK TOWN	TAS	\N
+15646	7275	SWAN POINT	TAS	\N
+15647	7292	QUAMBY BEND	TAS	\N
+15648	7303	CLUAN	TAS	\N
+15649	7303	OAKS	TAS	\N
+15650	7303	OSMASTON	TAS	\N
+15651	7304	BRANDUM	TAS	\N
+15652	7304	CENTRAL PLATEAU	TAS	\N
+15653	7304	DOCTORS POINT	TAS	\N
+15654	7304	LIENA	TAS	\N
+15655	7304	QUAMBY BROOK	TAS	\N
+15656	7304	REYNOLDS NECK	TAS	\N
+15657	7306	CETHANA	TAS	\N
+15658	7306	LOWER BARRINGTON	TAS	\N
+15659	7306	LOWER BEULAH	TAS	\N
+15660	7306	MIDDLESEX	TAS	\N
+15661	7306	NOWHERE ELSE	TAS	\N
+15662	7306	PROMISED LAND	TAS	\N
+15663	7306	WEST KENTISH	TAS	\N
+15664	7307	BAKERS BEACH	TAS	\N
+15665	7307	SQUEAKING POINT	TAS	\N
+15666	7310	AMBLESIDE	TAS	\N
+15667	7310	EAST DEVONPORT	TAS	\N
+15668	7310	FORTHSIDE	TAS	\N
+15669	7310	LOWER WILMOT	TAS	\N
+15670	7310	SOUTH SPREYTON	TAS	\N
+15671	7310	STONY RISE	TAS	\N
+15672	7310	TARLETON	TAS	\N
+15673	7310	TUGRAH	TAS	\N
+15674	7315	CASTRA	TAS	\N
+15675	7315	LOONGANA	TAS	\N
+15676	7315	SOUTH NIETTA	TAS	\N
+15677	7315	SOUTH PRESTON	TAS	\N
+15678	7315	WEST ULVERSTONE	TAS	\N
+15679	7320	ACTON	TAS	Burnie
+15680	7320	CAMDALE	TAS	\N
+15681	7320	DOWNLANDS	TAS	\N
+15682	7320	EMU HEIGHTS	TAS	\N
+15683	7320	OCEAN VISTA	TAS	\N
+15684	7320	PARK GROVE	TAS	\N
+15685	7320	PARKLANDS	TAS	\N
+15686	7320	ROUND HILL	TAS	\N
+15687	7320	SHOREWELL PARK	TAS	\N
+15688	7320	SOUTH BURNIE	TAS	\N
+15689	7320	UPPER BURNIE	TAS	\N
+15690	7321	CHASM CREEK	TAS	\N
+15691	7321	CORINNA	TAS	\N
+15692	7321	COWRIE POINT	TAS	\N
+15693	7321	CRAYFISH CREEK	TAS	\N
+15694	7321	DETENTION	TAS	\N
+15695	7321	EAST CAM	TAS	\N
+15696	7321	EAST RIDGLEY	TAS	\N
+15697	7321	EDGCUMBE BEACH	TAS	\N
+15698	7321	GUILDFORD	TAS	\N
+15699	7321	HELLYER	TAS	\N
+15700	7321	LUINA	TAS	\N
+15701	7321	MONTUMANA	TAS	\N
+15702	7321	MOOREVILLE	TAS	\N
+15703	7321	PORT LATTA	TAS	\N
+15704	7321	TEWKESBURY	TAS	\N
+15705	7321	UPPER NATONE	TAS	\N
+15706	7321	UPPER STOWPORT	TAS	\N
+15707	7321	WEST MOOREVILLE	TAS	\N
+15708	7321	WEST RIDGLEY	TAS	\N
+15709	7321	WILTSHIRE	TAS	\N
+15710	7325	HENRIETTA	TAS	\N
+15711	7325	OONAH	TAS	\N
+15712	7325	WEST TAKONE	TAS	\N
+15713	7330	BROADMEADOWS	TAS	\N
+15714	7330	COUTA ROCKS	TAS	\N
+15715	7330	NELSON BAY	TAS	\N
+15716	7330	ROGER RIVER	TAS	\N
+15717	7330	SCOPUS	TAS	\N
+15718	7330	SCOTCHTOWN	TAS	\N
+15719	7330	SOUTH FOREST	TAS	\N
+15720	7330	TEMMA	TAS	\N
+15721	7330	WEST MONTAGU	TAS	\N
+15722	7466	GORMANSTON	TAS	\N
+15723	7467	LAKE MARGARET	TAS	\N
+15724	7468	MACQUARIE HEADS	TAS	\N
+15725	7469	GRANVILLE HARBOUR	TAS	\N
+15726	7469	TRIAL HARBOUR	TAS	\N
 \.
 
 
@@ -85257,7 +89516,7 @@ SET search_path = db, pg_catalog;
 --
 
 COPY lu_version (pk, lu_major, lu_minor) FROM stdin;
-164	0	179
+183	0	198
 \.
 
 

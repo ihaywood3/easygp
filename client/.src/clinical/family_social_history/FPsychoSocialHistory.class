@@ -1,5 +1,29 @@
 ' Gambas class file
 
+' Copyright (C) 2008-2012 Dr. Richard Terry
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+' ---------------------------------------------------------------------------
+' PURPOSE     - A pretty rudimentry module to allow entering social history
+'             - As per the name it needs the 'psycho' part done
+' NOTES       - As we often won't know exactly where a relative lives
+'               the backend allows free text for the suburb so oversea;s
+'               addresses can be kept
+'               in Clin_History.vwSocialHistory if fk_responsible_person
+'               is not null, then the responsible person exists in our DB
+'               then the corresponding fields are person_responsible
+'               otherwise the resonsible_person fields contain text
+' BUGS        - probably - just mail me rterry@internode.on.net
+' --------------------------------------------------------------------------
 Private currentConsult As CConsult
 Private bExit As Boolean
 Private pk_socialhistory As Integer
@@ -13,10 +37,13 @@ Private town As Collection
 Private fk_town As Integer
 Private timer_count As Integer
 Private country_code As String
+Private fk_consult As Integer
 
 Public Sub Init(cons As CConsult)
    
    currentConsult = cons
+   timer1.Enabled = True   
+   timer1.stop
    lblMeasure.text = "Search Patient Database   "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
    modEditAreaHelpers.Resize_labels(Vbox_ResponsiblePerson, lblMeasure)
@@ -40,6 +67,11 @@ End
 Public Sub Save()
    '-----------------------------------------------------------------------
    'Save components of psycho-social history, currently there is no psycho!
+     'responsible person stuff arbitrary at the moment
+   'basically if user has found the responsible person from the patient's list then
+   'the patient pk is kept as fk_responsible patient
+   'if not, then the name/adress are just kept in text fields
+
    '   pk serial NOT NULL,
    '   fk_consult integer NOT NULL,
    '   history text,
@@ -54,43 +86,46 @@ Public Sub Save()
    '   responsible_person_notes text,
    '-----------------------------------------------------------------------
    
-   Dim socialhistory As New Collection
+   Dim socialhistory As CRow
    
    If Vbox_EditArea.padding = 0 Then Return 
+   If Not Valid_Responsible_person() Then Return
    
-   If Vbox_EditArea.padding = 0 Then Return 
-   If pk_socialhistory <> -1 Then         'if is =-1 then is a new record
-      socialhistory!pk_socialhistory = pk_socialhistory 
+   socialhistory = New CRow
+   If pk_socialhistory <> 0 Then         'if is =-1 then is a new record
+      socialhistory.put_unchanged(pk_socialhistory, "pk_socialhistory")
    End If
-   socialhistory!history = Trim(teSocialHistory.text)
-   '-------------------------------------------------------------------------------
-   'responsible person stuff arbitrary at the moment
-   'basically if user has found the responsible person from the patient's list then
-   'the patient pk is kept as fk_responsible patient
-   'if not, then the name/adress are just kept in text fields
-   '--------------------------------------------------------------------------------
-   If fk_responsible_person Then   'if non zero, have retreived from the backend
-      socialhistory!fk_responsible_person = fk_responsible_person
-      socialhistory!responsible_person = "" 'when use cRow fixme
+   If fk_consult = 0 Then
+       socialhistory!fk_consult = currentconsult.GetPK()
    Else
-      socialhistory!fk_responsible_person = 0 'may have been removed
+       socialhistory!fk_consult = fk_consult 
+   Endif
+   socialhistory!history = Trim(teSocialHistory.text)
+   If fk_responsible_person Then                                   'if non zero, have retreived from the backend
+      socialhistory!fk_responsible_person = fk_responsible_person
+      socialhistory!responsible_person = ""                         
+   Else
+      socialhistory!fk_responsible_person = 0                      'may have been removed
       socialhistory!responsible_person = Trim(txtResponsiblePerson.Text)
       socialhistory!responsible_person_street1 = Trim(txtStreet1.text)
       socialhistory!responsible_person_street2 = Trim(txtStreet2.text)
       socialhistory!responsible_person_town = Trim(txtTown.text)
       socialhistory!responsible_person_state = Trim(txtState.text)  
       socialhistory!responsible_person_postcode = Trim(txtPostcode.text)
-      socialhistory!country_code = country_code    'defaults to 'AU'
+      socialhistory!country_code = country_code                    'defaults to 'AU' in backend
    Endif
    socialhistory!responsible_person_notes = Trim(teResponsiblePersonNotes.text)
    socialhistory!responsible_person_contacts = Trim(txtContactNumber.text)
-   pk_socialhistory = modSocialHistoryDBI.Save(currentconsult, pk_socialhistory, socialhistory) 
+   socialhistory.Save("clin_history.social_history", "pk_socialhistory")
    modDBConnect.CommitTrans()                  
    FClinical.Refresh_Section(const.cSection_HealthSummary)    'check if health summary showing, if so update it
-   currentconsult.Refresh("social_history")  
+  
    Reload()  
    
 End
+
+
+
 
 Public Sub Fesponsible_Person_Save()
    
@@ -132,15 +167,14 @@ Public Sub Reload()
    
    Dim SH As Collection
    
-   fk_responsible_person = 0  'defaults 
-   pk_socialhistory = -1
-   country_code = "AU"         'the default
-   EditArea_Notify_Data_Change(False)
-   bExit = True 
-   For Each SH In currentconsult!social_history 'there is only one
+   currentconsult.Refresh("social_history")  
+  
+   EditArea_Clear()
+   bExit = True   
+   For Each SH In currentconsult!social_history             'there is only one
       pk_socialhistory = SH!pk_socialhistory
       fk_responsible_person = SH!fk_responsible_person
-      
+      fk_consult = SH!fk_consult 
       If fk_responsible_person <> 0 Then
          txtResponsiblePerson.text = SH!person_responsible_title & " " & SH!person_responsible_firstname & " " & SH!person_responsible_surname
          txtStreet1.text = SH!person_responsible_street1
@@ -174,7 +208,6 @@ Public Sub responsible_person_Find()
    
    If Trim(txtSearch.text) = "" Then Return
    timer1.Stop()
-   timer_count = 0
    With columnview1
       .Visible = False  
       .clear()
@@ -193,36 +226,9 @@ Public Sub responsible_person_Find()
       End With
    Endif
    Dec Application.Busy
-  ' timer1.Start
-   
+    
 End
-Public Sub responsible_person_Find_old()
-   '-----------------------------------------------------------------------
-   'Search for (amongst the patients) a person who will be the next of kin
-   'aka, now-a-days as the 'responsible person
-   '---------------------------------------------------------------------- 
-   
-   If Trim(txtSearch.text) = "" Then Return
-   timer1.Stop()
-   timer_count = 0
-   With Listview1
-      .Visible = False  
-      .clear()
-   End With
-   Responsible_Persons = modContactsDBI.Person_Get(Trim(txtSearch.text), const.contacttype_PersonsAndPatients)
-   Responsible_Persons.Remove("sql_in_english")
-   If responsible_persons.count Then
-      For Each responsible_person In Responsible_Persons
-         Listview1.Add(responsible_person!pk_view, responsible_person!surname & " " & responsible_person!firstname & " " & Trim(responsible_person!street1 & " " & responsible_person!street2) & " " & responsible_person!town)
-      Next
-      With Listview1
-         .Visible = True   
-         .Raise
-      End With
-   Endif
-   timer1.Start
-   
-End
+
 Public Sub Responsible_Person_Select()
    '-----------------------------------------------------------------------------
    'User has clicked on a name in the list, accept this as the responsible person
@@ -245,28 +251,7 @@ Public Sub Responsible_Person_Select()
   
    
 End
-Public Sub Responsible_Person_Select_old()
-   '-----------------------------------------------------------------------------
-   'User has clicked on a name in the list, accept this as the responsible person
-   '-----------------------------------------------------------------------------  
-   
-   Listview1.MoveCurrent
-   pk_view_responsible_persons = Listview1.Item.key
-   bexit = True
-   txtSearch.text = ""
-   txtResponsiblePerson.text = responsible_persons[pk_view_responsible_persons]!wholename
-   txtStreet1.text = responsible_persons[pk_view_responsible_persons]!street1
-   txtStreet2.text = responsible_persons[pk_view_responsible_persons]!street2
-   txtTown.text = responsible_persons[pk_view_responsible_persons]!town
-   txtState.text = responsible_persons[pk_view_responsible_persons]!state
-   txtPostcode.text = responsible_persons[pk_view_responsible_persons]!postcode
-   Listview1.Visible = False 
-   fk_responsible_person = responsible_persons[pk_view_responsible_persons]!fk_person
-   bexit = False  
-   txtContactNumber.SetFocus()
-   timer1.stop
-   
-End
+
 Public Sub Columnview1_KeyPress()
 
    If Key.code = Key.Return Then 
@@ -310,21 +295,25 @@ Public Sub listview1_DblClick()
    
 End
 
-Public Sub EditArea_Buttons_Click()
-   
-   Select Case Last.tag
-      Case "save"  
-         Save()
-      Case "responsible person"
-   End Select
+Public Sub EditArea_Clear()
+ 
+   bExit = True 
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_inner)
+   fk_responsible_person = 0  'defaults 
+   pk_socialhistory = 0
+   fk_consult = 0
+   country_code = "AU"         'the default
+   bExit = False  
+   EditArea_Notify_Data_Change(False)
    
 End
 
 Public Sub EditArea_TextBox_KeyRelease()
-   
+ 
    Select Case Last.tag
-      Case "responsible person"
+      Case "search"
        timer_count = 0 
+        timer1.Start()
       Case "suburb"
          Suburb_get()
       Case "country"
@@ -336,7 +325,7 @@ End
 Public Sub Timer1_Timer()
    
    Inc timer_count          'constantly being zero'd by editarea_keypress until user pauses typign
-   If timer_count > 3 Then 'arbitary should be user configured depending on typing speed FIXME
+   If timer_count > 3 Then  'arbitary should be user configured depending on typing speed FIXME
       responsible_person_Find()
    End If 
    
@@ -417,7 +406,7 @@ Public Sub EditArea_TextBox_GotFocus()
    
    Last.BackGround = Color.rgb(95, 255, 175)
    Select Case Last.tag
-      Case "search", "country"
+      Case "search", "country", "suburb"
          With ListView1
             .top = Last.Parent.Parent.top + Last.Parent.height
             .left = Last.Parent.Left
@@ -433,9 +422,7 @@ Public Sub EditArea_TextBox_GotFocus()
             .tag = Last 
          End With
    End Select
-   If Last.tag = "search" Then 
-      timer1.Start()
-   End If   
+  
    
 End
 
@@ -516,4 +503,87 @@ Public Sub Country_Select()
    Listview1.Visible = False  
    bExit = False    
    
+End
+
+   ' 
+   ' PastHistory = New CRow
+   ' If pk_pasthistory <> 0 Then 
+   '    PastHistory.put_unchanged(pk_pasthistory, "pk_pasthistory")
+   ' End If   
+   ' If fk_consult <> 0 Then
+   '    PastHistory!fk_consult = fk_consult
+   ' Else
+   '    PastHistory!fk_consult = currentconsult.GetPK()
+   ' End If 
+   ' PastHistory!age_onset = Val(txtAgeOnset.text) 'CHECK THIS IS VALIDATED ABOVE
+   ' PastHistory!age_onset_units = iAgeOnsetUnits
+   ' PastHistory!description = modUtil.Ucase_Words_First_Letter(Trim(txtCondition.text))
+   ' PastHistory!fk_laterality = fk_laterality
+   ' PastHistory!year_onset = Trim(txtYearOnset.text) 'eg could be 1993 or 08/1993 
+   ' Select Case fk_significance
+   '    Case const.healthIssue_Major
+   '       PastHistory!major = True
+   '    Case const.healthIssue_Significant
+   '       PastHistory!active = True
+   '    Case Else
+   '       PastHistory!major = False 'yes, the backend would default but sProgressNote code more difficult
+   ' End Select
+   ' If chkOperation.Value = True Then 
+   '    PastHistory!operation = True
+   ' Else
+   '    PastHistory!operation = False
+   ' End If
+   ' If chkCauseOfDeath.Value = True Then
+   '    PastHistory!cause_of_death = True
+   ' Else
+   '    PastHistory!cause_of_death = False
+   ' Endif 
+   ' If rbConfidentialYes.value Then 
+   '    PastHistory!confidential = True
+   ' Else
+   '    PastHistory!confidential = False
+   ' End If
+   ' PastHistory!management_summary = Trim(txtManagementSummary.text)     
+   ' PastHistory!condition_summary = Trim(txtHistoricalSummary.text) 
+   ' If chkRiskFactor.value = True Then 
+   '    PastHistory!risk_factor = True
+   ' Else
+   '    PastHistory!risk_factor = False
+   ' End If    
+   ' PastHistory!aim_of_plan = Trim(txtAim.text)
+   ' PastHistory!fk_coding_system = fk_coding_system
+   ' PastHistory!fk_code = fk_code
+   ' sProgressNotes = ProgressNotes_Summary(PastHistory)     
+   ' modDBConnect.BeginTrans()
+   ' PastHistory.Save("clin_history.past_history", "pk_pasthistory")
+   ' '----------------------
+   ' 'Save the progress note
+   ' '----------------------
+   ' ProgressNote = New CRow 
+   ' If fk_progressnote Then
+   '    ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")
+   ' Endif
+   ' ProgressNote!fk_consult = PastHistory!fk_consult 
+   ' ProgressNote!notes = sProgressNotes
+   ' ProgressNote!fk_section = const.cSection_Pasthistory 
+   ' '  ProgressNote!fk_code = fk_code  FIXME Fix THE VWPROGRESSNOTES And UNCOMMENT THIS Line
+   ' ProgressNote!problem = "Past History"
+   ' ProgressNote!fk_problem = PastHistory!pk_pasthistory
+   ' ProgressNote!fk_audit_action = const.cAuditAction_Insert
+   ' ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+   ' '-----------------------------------------------------------------------------------------------
+   ' 'difficult - the fk_progressnote can't exist until this is saved as it needs the pk_past history
+   ' 'so as an interim stupid solution I've re-saved it after the progress note is saved.
+   ' '-----------------------------------------------------------------------------------------------
+   ' modPastHistoryDBI.Link_To_ProgressNote(PastHistory!pk_pasthistory, ProgressNote!fk_progressnote)
+   ' modDBConnect.CommitTrans()
+   ' FClinical.Refresh_AllPreviousNotes()
+   ' FClinical.Refresh_Section(const.cSection_HealthSummary)    'check if health summary showing, if so update it as it has occupations on it
+   ' Reload()
+   
+
+Public Sub Form_Leave()
+
+   timer1.Enabled = False  
+
 End

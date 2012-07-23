@@ -1295,7 +1295,8 @@ CREATE TABLE data_persons (
     deleted boolean DEFAULT false,
     deceased boolean DEFAULT false,
     date_deceased date,
-    language_problems boolean DEFAULT false
+    language_problems boolean DEFAULT false,
+    surname_normalised text
 );
 
 
@@ -1340,7 +1341,7 @@ SET search_path = admin, pg_catalog;
 --
 
 CREATE VIEW vwstaff AS
-    SELECT roles.role, staff.fk_person, staff.logon_name, staff.fk_role, staff.pk, staff.pk AS fk_staff, staff.provider_number, staff.prescriber_number, persons.firstname, persons.surname, ((persons.firstname || ' '::text) || persons.surname) AS wholename, persons.salutation, persons.fk_title, lu_title.title, staff.qualifications FROM (((staff staff JOIN lu_staff_roles roles ON ((staff.fk_role = roles.pk))) JOIN contacts.data_persons persons ON ((staff.fk_person = persons.pk))) JOIN contacts.lu_title ON ((persons.fk_title = lu_title.pk)));
+    SELECT roles.role, staff.fk_person, staff.logon_name, staff.fk_role, staff.pk, staff.pk AS fk_staff, staff.provider_number, staff.prescriber_number, persons.firstname, persons.surname, ((persons.firstname || ' '::text) || persons.surname) AS wholename, persons.salutation, persons.fk_title, lu_title.title, staff.qualifications, persons.surname_normalised FROM (((staff staff JOIN lu_staff_roles roles ON ((staff.fk_role = roles.pk))) JOIN contacts.data_persons persons ON ((staff.fk_person = persons.pk))) JOIN contacts.lu_title ON ((persons.fk_title = lu_title.pk)));
 
 
 SET search_path = blobs, pg_catalog;
@@ -1505,7 +1506,7 @@ SET search_path = admin, pg_catalog;
 --
 
 CREATE VIEW vwstaffinclinics AS
-    SELECT ((staff.pk || '-'::text) || data_addresses.pk) AS pk_view, ((data_persons.firstname || ' '::text) || data_persons.surname) AS wholename, staff.fk_person, staff.fk_role, staff.fk_status, staff.logon_name, staff.provider_number, staff.prescriber_number, staff.fk_lu_staff_type, staff.logon_date_from, staff.logon_date_to, link_staff_clinics1.fk_staff, link_staff_clinics1.fk_clinic, clinics.fk_branch, data_branches.branch, data_branches.fk_organisation, data_branches.fk_address, data_branches.memo AS branch_memo, data_branches.fk_category AS branch_category, data_branches.deleted AS branch_deleted, data_employees.pk AS fk_employee, data_employees.fk_occupation, data_employees.memo AS employee_memo, data_employees.deleted AS employee_deleted, data_persons.firstname, data_persons.surname, data_persons.salutation, data_persons.birthdate, data_persons.fk_ethnicity, data_persons.fk_language, data_persons.memo AS person_memo, data_persons.fk_marital, data_persons.fk_title, data_persons.fk_sex, data_persons.country_code AS person_country_code, data_persons.fk_image, data_persons.retired, data_persons.deleted AS person_deleted, data_persons.deceased, data_persons.date_deceased, lu_title.title, lu_marital.marital, lu_sex.sex, lu_occupations.occupation, lu_ethnicity.ethnicity, lu_languages.language, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image, images.deleted AS image_deleted, lu_staff_roles.role, lu_staff_type.type AS staff_type, lu_employee_status.status, data_organisations.organisation, data_organisations.deleted AS organisation_deleted, data_addresses.street1, data_addresses.street2, data_addresses.fk_town, lu_address_types.type AS address_type, data_addresses.preferred_address, data_addresses.postal_address, data_addresses.head_office, data_addresses.geolocation, data_addresses.country_code, data_addresses.fk_lu_address_type, data_addresses.deleted AS address_deleted, lu_towns.postcode, lu_towns.town, lu_towns.state, link_staff_clinics1.pk AS fk_link_staff_clinic, staff.qualifications FROM (((((((((((((((((((staff JOIN link_staff_clinics link_staff_clinics1 ON ((staff.pk = link_staff_clinics1.fk_staff))) JOIN clinics ON ((link_staff_clinics1.fk_clinic = clinics.pk))) JOIN contacts.data_employees ON (((staff.fk_person = data_employees.fk_person) AND (clinics.fk_branch = data_employees.fk_branch)))) JOIN contacts.data_branches ON ((clinics.fk_branch = data_branches.pk))) JOIN contacts.data_persons ON ((data_employees.fk_person = data_persons.pk))) JOIN lu_staff_type ON ((staff.fk_lu_staff_type = lu_staff_type.pk))) LEFT JOIN contacts.lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN contacts.lu_marital ON ((data_persons.fk_marital = lu_marital.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN common.lu_occupations ON ((data_employees.fk_occupation = lu_occupations.pk))) LEFT JOIN common.lu_ethnicity ON ((data_persons.fk_ethnicity = lu_ethnicity.pk))) LEFT JOIN common.lu_languages ON ((data_persons.fk_language = lu_languages.pk))) LEFT JOIN blobs.images ON ((data_persons.fk_image = images.pk))) JOIN lu_staff_roles ON ((staff.fk_role = lu_staff_roles.pk))) JOIN contacts.lu_employee_status ON ((staff.fk_status = lu_employee_status.pk))) JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) LEFT JOIN contacts.lu_address_types ON ((data_addresses.fk_lu_address_type = lu_address_types.pk))) ORDER BY data_branches.branch, data_persons.surname;
+    SELECT ((staff.pk || '-'::text) || data_addresses.pk) AS pk_view, ((data_persons.firstname || ' '::text) || data_persons.surname) AS wholename, staff.fk_person, staff.fk_role, staff.fk_status, staff.logon_name, staff.provider_number, staff.prescriber_number, staff.fk_lu_staff_type, staff.logon_date_from, staff.logon_date_to, link_staff_clinics1.fk_staff, link_staff_clinics1.fk_clinic, clinics.fk_branch, data_branches.branch, data_branches.fk_organisation, data_branches.fk_address, data_branches.memo AS branch_memo, data_branches.fk_category AS branch_category, data_branches.deleted AS branch_deleted, data_employees.pk AS fk_employee, data_employees.fk_occupation, data_employees.memo AS employee_memo, data_employees.deleted AS employee_deleted, data_persons.firstname, data_persons.surname, data_persons.salutation, data_persons.birthdate, data_persons.fk_ethnicity, data_persons.fk_language, data_persons.memo AS person_memo, data_persons.fk_marital, data_persons.fk_title, data_persons.fk_sex, data_persons.country_code AS person_country_code, data_persons.fk_image, data_persons.retired, data_persons.deleted AS person_deleted, data_persons.deceased, data_persons.date_deceased, lu_title.title, lu_marital.marital, lu_sex.sex, lu_occupations.occupation, lu_ethnicity.ethnicity, lu_languages.language, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image, images.deleted AS image_deleted, lu_staff_roles.role, lu_staff_type.type AS staff_type, lu_employee_status.status, data_organisations.organisation, data_organisations.deleted AS organisation_deleted, data_addresses.street1, data_addresses.street2, data_addresses.fk_town, lu_address_types.type AS address_type, data_addresses.preferred_address, data_addresses.postal_address, data_addresses.head_office, data_addresses.geolocation, data_addresses.country_code, data_addresses.fk_lu_address_type, data_addresses.deleted AS address_deleted, lu_towns.postcode, lu_towns.town, lu_towns.state, link_staff_clinics1.pk AS fk_link_staff_clinic, staff.qualifications, data_persons.surname_normalised FROM (((((((((((((((((((staff JOIN link_staff_clinics link_staff_clinics1 ON ((staff.pk = link_staff_clinics1.fk_staff))) JOIN clinics ON ((link_staff_clinics1.fk_clinic = clinics.pk))) JOIN contacts.data_employees ON (((staff.fk_person = data_employees.fk_person) AND (clinics.fk_branch = data_employees.fk_branch)))) JOIN contacts.data_branches ON ((clinics.fk_branch = data_branches.pk))) JOIN contacts.data_persons ON ((data_employees.fk_person = data_persons.pk))) JOIN lu_staff_type ON ((staff.fk_lu_staff_type = lu_staff_type.pk))) LEFT JOIN contacts.lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN contacts.lu_marital ON ((data_persons.fk_marital = lu_marital.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN common.lu_occupations ON ((data_employees.fk_occupation = lu_occupations.pk))) LEFT JOIN common.lu_ethnicity ON ((data_persons.fk_ethnicity = lu_ethnicity.pk))) LEFT JOIN common.lu_languages ON ((data_persons.fk_language = lu_languages.pk))) LEFT JOIN blobs.images ON ((data_persons.fk_image = images.pk))) JOIN lu_staff_roles ON ((staff.fk_role = lu_staff_roles.pk))) JOIN contacts.lu_employee_status ON ((staff.fk_status = lu_employee_status.pk))) JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) LEFT JOIN contacts.lu_address_types ON ((data_addresses.fk_lu_address_type = lu_address_types.pk))) ORDER BY data_branches.branch, data_persons.surname;
 
 
 --
@@ -2218,28 +2219,23 @@ CREATE TABLE data_patients (
     fk_next_of_kin integer,
     fk_payer integer,
     fk_family integer,
-    active_status character(1) DEFAULT 'a'::bpchar,
     medicare_number character varying(10),
     medicare_ref_number text,
     medicare_expiry_date date,
     veteran_number character varying(10),
     veteran_card_type character(1),
     veteran_specific_condition text,
-    concession_card_name text,
-    concession_type character(1),
-    concession_number text,
-    concession_expiry_date date,
-    file_paper_number text,
-    file_racgp_format boolean,
-    file_chart_status character(1),
-    private_billing_concession integer,
-    private_insurance text,
+    concession_card_number text,
+    concession_card_expiry_date date,
     memo text,
     pk_legacy text,
     atsi integer,
-    CONSTRAINT data_patients_active_status_check CHECK (((((active_status)::text = 'a'::text) OR ((active_status)::text = 'i'::text)) OR ((active_status)::text = 'v'::text))),
-    CONSTRAINT data_patients_concession_type_check CHECK (((((((concession_type)::text = 'a'::text) OR ((concession_type)::text = 'd'::text)) OR ((concession_type)::text = 'h'::text)) OR ((concession_type)::text = 's'::text)) OR ((concession_type)::text IS NULL))),
-    CONSTRAINT data_patients_file_chart_status_check CHECK ((((file_chart_status = 'c'::bpchar) OR (file_chart_status = 'a'::bpchar)) OR (file_chart_status IS NULL))),
+    fk_lu_veteran_card_type integer,
+    fk_lu_active_status integer,
+    fk_lu_centrelink_card_type integer,
+    fk_lu_billing_type integer,
+    fk_lu_private_health_fund integer,
+    private_insurance boolean,
     CONSTRAINT data_patients_veteran_card_type_check CHECK ((((((veteran_card_type)::text = 'g'::text) OR ((veteran_card_type)::text = 'l'::text)) OR ((veteran_card_type)::text = 's'::text)) OR (veteran_card_type IS NULL)))
 );
 
@@ -2253,10 +2249,38 @@ sector only';
 
 
 --
--- Name: COLUMN data_patients.active_status; Type: COMMENT; Schema: clerical; Owner: -
+-- Name: COLUMN data_patients.fk_person; Type: COMMENT; Schema: clerical; Owner: -
 --
 
-COMMENT ON COLUMN data_patients.active_status IS 'a=active i=inactive v=????-fixme';
+COMMENT ON COLUMN data_patients.fk_person IS 'foreign key to contacts.data_persons table';
+
+
+--
+-- Name: COLUMN data_patients.fk_doctor; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON COLUMN data_patients.fk_doctor IS 'if not null this is the patients perferred doctor';
+
+
+--
+-- Name: COLUMN data_patients.fk_next_of_kin; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON COLUMN data_patients.fk_next_of_kin IS 'if not null points to person in the database who is the next of kin';
+
+
+--
+-- Name: COLUMN data_patients.fk_payer; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON COLUMN data_patients.fk_payer IS 'foreign key to data_patients ie he or she who pays the bill';
+
+
+--
+-- Name: COLUMN data_patients.fk_family; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON COLUMN data_patients.fk_family IS 'foriegn key to clerical.data_families - links patients to a family unit';
 
 
 --
@@ -2270,20 +2294,10 @@ COMMENT ON COLUMN data_patients.veteran_card_type IS 'Veteran cards can be:
 
 
 --
--- Name: COLUMN data_patients.concession_card_name; Type: COMMENT; Schema: clerical; Owner: -
+-- Name: COLUMN data_patients.veteran_specific_condition; Type: COMMENT; Schema: clerical; Owner: -
 --
 
-COMMENT ON COLUMN data_patients.concession_card_name IS 'Non Veterans concession cards can be:
-              Pension - type age or disability ie a or d
-              Health Care Card  h
-              Seniors health Card s ';
-
-
---
--- Name: COLUMN data_patients.file_chart_status; Type: COMMENT; Schema: clerical; Owner: -
---
-
-COMMENT ON COLUMN data_patients.file_chart_status IS 'a = Archived c = current';
+COMMENT ON COLUMN data_patients.veteran_specific_condition IS 'the condition the veteran is entitled to if limited benefit';
 
 
 --
@@ -2291,6 +2305,48 @@ COMMENT ON COLUMN data_patients.file_chart_status IS 'a = Archived c = current';
 --
 
 COMMENT ON COLUMN data_patients.pk_legacy IS 'the key from the legacy database for the patient';
+
+
+--
+-- Name: COLUMN data_patients.fk_lu_veteran_card_type; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON COLUMN data_patients.fk_lu_veteran_card_type IS 'the type of card 1 = full (gold) 2= specific entitlement (white)  3=war widow (lilac)';
+
+
+--
+-- Name: COLUMN data_patients.fk_lu_active_status; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON COLUMN data_patients.fk_lu_active_status IS 'key to clerical.lu_active_status 1= active 2 = inactive';
+
+
+--
+-- Name: COLUMN data_patients.fk_lu_centrelink_card_type; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON COLUMN data_patients.fk_lu_centrelink_card_type IS 'key to clerial.lu_centrelink_card_type - the 3 card types in Australia';
+
+
+--
+-- Name: COLUMN data_patients.fk_lu_billing_type; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON COLUMN data_patients.fk_lu_billing_type IS 'the billing level eg 1 = standard';
+
+
+--
+-- Name: COLUMN data_patients.fk_lu_private_health_fund; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON COLUMN data_patients.fk_lu_private_health_fund IS 'foreign key to clerical.lu_private_health_fund table listing nearly 40 private health funds';
+
+
+--
+-- Name: COLUMN data_patients.private_insurance; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON COLUMN data_patients.private_insurance IS 'boolean value if true the patient has private insurance';
 
 
 --
@@ -2380,6 +2436,42 @@ ALTER SEQUENCE items_billed_pk_seq OWNED BY items_billed.pk;
 
 
 --
+-- Name: lu_active_status; Type: TABLE; Schema: clerical; Owner: -; Tablespace: 
+--
+
+CREATE TABLE lu_active_status (
+    pk integer NOT NULL,
+    status text
+);
+
+
+--
+-- Name: TABLE lu_active_status; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON TABLE lu_active_status IS 'determines if the patient is an active patient or not 1- active 2 - inactive';
+
+
+--
+-- Name: lu_active_status_pk_seq; Type: SEQUENCE; Schema: clerical; Owner: -
+--
+
+CREATE SEQUENCE lu_active_status_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: lu_active_status_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: -
+--
+
+ALTER SEQUENCE lu_active_status_pk_seq OWNED BY lu_active_status.pk;
+
+
+--
 -- Name: lu_appointment_icons; Type: TABLE; Schema: clerical; Owner: -; Tablespace: 
 --
 
@@ -2463,6 +2555,81 @@ CREATE TABLE lu_billing_type (
 
 
 --
+-- Name: lu_centrelink_card_type; Type: TABLE; Schema: clerical; Owner: -; Tablespace: 
+--
+
+CREATE TABLE lu_centrelink_card_type (
+    pk integer NOT NULL,
+    type text NOT NULL
+);
+
+
+--
+-- Name: TABLE lu_centrelink_card_type; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON TABLE lu_centrelink_card_type IS 'The different types of australian government centrelink entitlement cards';
+
+
+--
+-- Name: lu_centrelink_card_type_pk_seq; Type: SEQUENCE; Schema: clerical; Owner: -
+--
+
+CREATE SEQUENCE lu_centrelink_card_type_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: lu_centrelink_card_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: -
+--
+
+ALTER SEQUENCE lu_centrelink_card_type_pk_seq OWNED BY lu_centrelink_card_type.pk;
+
+
+--
+-- Name: lu_private_health_funds; Type: TABLE; Schema: clerical; Owner: -; Tablespace: 
+--
+
+CREATE TABLE lu_private_health_funds (
+    pk integer NOT NULL,
+    fund text NOT NULL,
+    name_abbrev text NOT NULL,
+    availability text NOT NULL,
+    states_available text NOT NULL
+);
+
+
+--
+-- Name: TABLE lu_private_health_funds; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON TABLE lu_private_health_funds IS 'a listing of private health funds available in australila http://www.privatehealth.gov.au/dynamic/healthfundlist.aspx accurate as of 22July12';
+
+
+--
+-- Name: lu_private_health_funds_pk_seq; Type: SEQUENCE; Schema: clerical; Owner: -
+--
+
+CREATE SEQUENCE lu_private_health_funds_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: lu_private_health_funds_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: -
+--
+
+ALTER SEQUENCE lu_private_health_funds_pk_seq OWNED BY lu_private_health_funds.pk;
+
+
+--
 -- Name: lu_task_types; Type: TABLE; Schema: clerical; Owner: -; Tablespace: 
 --
 
@@ -2496,6 +2663,42 @@ CREATE SEQUENCE lu_task_types_pk_seq
 --
 
 ALTER SEQUENCE lu_task_types_pk_seq OWNED BY lu_task_types.pk;
+
+
+--
+-- Name: lu_veteran_card_type; Type: TABLE; Schema: clerical; Owner: -; Tablespace: 
+--
+
+CREATE TABLE lu_veteran_card_type (
+    pk integer NOT NULL,
+    type text NOT NULL
+);
+
+
+--
+-- Name: TABLE lu_veteran_card_type; Type: COMMENT; Schema: clerical; Owner: -
+--
+
+COMMENT ON TABLE lu_veteran_card_type IS 'The different types of veteran entitlement cards';
+
+
+--
+-- Name: lu_veteran_card_type_pk_seq; Type: SEQUENCE; Schema: clerical; Owner: -
+--
+
+CREATE SEQUENCE lu_veteran_card_type_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: lu_veteran_card_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: -
+--
+
+ALTER SEQUENCE lu_veteran_card_type_pk_seq OWNED BY lu_veteran_card_type.pk;
 
 
 --
@@ -2944,7 +3147,7 @@ CREATE TABLE links_persons_addresses (
 --
 
 CREATE VIEW vwpatients AS
-    SELECT CASE WHEN (addresses.pk IS NULL) THEN (patients.pk || '-0'::text) ELSE ((patients.pk || '-'::text) || addresses.pk) END AS pk_view, patients.pk AS fk_patient, addresses.pk AS fk_address, patients.fk_person, (((title.title || ' '::text) || (persons.firstname || ' '::text)) || (persons.surname || ' '::text)) AS wholename, persons.firstname, persons.surname, persons.salutation, persons.birthdate, public.age_display(age((persons.birthdate)::timestamp with time zone)) AS age_display, date_part('year'::text, age((persons.birthdate)::timestamp with time zone)) AS age_numeric, persons.language_problems, marital.marital, sex.sex, title.title, countries.country, languages.language, ethnicity.ethnicity, occupation.occupation, addresses.street1, addresses.street2, towns.town, towns.state, towns.postcode, addresses.fk_town, lu_address_types.type AS address_type, addresses.fk_lu_address_type, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.geolocation, addresses.country_code, addresses.deleted AS address_deleted, persons.fk_ethnicity, persons.fk_language, persons.memo, persons.fk_marital, persons.fk_title, persons.fk_sex, persons.fk_occupation, persons.retired, persons.country_code AS country_code_birth, countries1.country AS country_birth, persons.deceased, persons.date_deceased, patients.fk_doctor, patients.fk_next_of_kin, patients.fk_payer, patients.fk_family, patients.active_status, patients.medicare_number, patients.medicare_ref_number, patients.medicare_expiry_date, patients.veteran_number, patients.veteran_card_type, patients.veteran_specific_condition, patients.concession_card_name, patients.concession_type, patients.concession_number, patients.concession_expiry_date, patients.file_paper_number, patients.atsi, patients.file_racgp_format, patients.file_chart_status, patients.private_billing_concession, patients.private_insurance, patients.memo AS patient_memo, images.pk AS fk_image, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image FROM ((((((((((((((data_persons persons LEFT JOIN links_persons_addresses link_person_address ON ((persons.pk = link_person_address.fk_person))) LEFT JOIN data_addresses addresses ON ((link_person_address.fk_address = addresses.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_marital marital ON ((persons.fk_marital = marital.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN blobs.images ON ((persons.fk_image = images.pk))) LEFT JOIN common.lu_ethnicity ethnicity ON ((persons.fk_ethnicity = ethnicity.pk))) LEFT JOIN common.lu_languages languages ON ((persons.fk_language = languages.pk))) LEFT JOIN common.lu_countries countries1 ON ((persons.country_code = (countries1.country_code)::text))) LEFT JOIN common.lu_countries countries ON ((addresses.country_code = countries.country_code))) JOIN clerical.data_patients patients ON ((persons.pk = patients.fk_person))) LEFT JOIN common.lu_occupations occupation ON ((persons.fk_occupation = occupation.pk)));
+    SELECT CASE WHEN (addresses.pk IS NULL) THEN (patients.pk || '-0'::text) ELSE ((patients.pk || '-'::text) || addresses.pk) END AS pk_view, patients.pk AS fk_patient, link_person_address.fk_address, patients.fk_person, (((title.title || ' '::text) || (persons.firstname || ' '::text)) || (persons.surname || ' '::text)) AS wholename, patients.fk_doctor, patients.fk_next_of_kin, patients.fk_payer, patients.fk_family, patients.medicare_number, patients.medicare_ref_number, patients.medicare_expiry_date, patients.veteran_number, patients.veteran_specific_condition, patients.concession_card_number, patients.concession_card_expiry_date, patients.memo AS patient_memo, patients.pk_legacy, patients.atsi, patients.fk_lu_veteran_card_type, patients.fk_lu_active_status, patients.fk_lu_centrelink_card_type, patients.fk_lu_billing_type, patients.fk_lu_private_health_fund, patients.private_insurance, lu_active_status.status AS active_status, lu_veteran_card_type.type AS veteran_card_type, lu_centrelink_card_type.type AS concession_card_type, lu_private_health_funds.fund, persons.firstname, persons.surname, persons.salutation, persons.birthdate, public.age_display(age((persons.birthdate)::timestamp with time zone)) AS age_display, date_part('year'::text, age((persons.birthdate)::timestamp with time zone)) AS age_numeric, persons.fk_ethnicity, persons.fk_language, persons.memo AS person_memo, persons.fk_marital, persons.fk_title, persons.fk_sex, persons.country_code AS country_birth_country_code, persons.fk_image, persons.retired, persons.fk_occupation, persons.deleted AS person_deleted, persons.deceased, persons.date_deceased, persons.language_problems, persons.surname_normalised, country_birth.country AS country_birth, lu_ethnicity.ethnicity, lu_languages.language, lu_occupations.occupation, lu_marital.marital, title.title, lu_sex.sex, lu_sex.sex_text, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image, link_person_address.pk AS fk_link_persons_address, addresses.street1, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.geolocation, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted, addresses.street2, address_country.country, link_person_address.deleted AS address_deleted, lu_address_types.type AS address_type, lu_towns.postcode, lu_towns.town, lu_towns.state FROM ((((((((((((((((((clerical.data_patients patients JOIN clerical.lu_active_status lu_active_status ON ((patients.fk_lu_active_status = lu_active_status.pk))) LEFT JOIN clerical.lu_centrelink_card_type ON ((patients.fk_lu_centrelink_card_type = lu_centrelink_card_type.pk))) LEFT JOIN clerical.lu_veteran_card_type ON ((patients.fk_lu_veteran_card_type = lu_veteran_card_type.pk))) LEFT JOIN clerical.lu_private_health_funds ON ((patients.fk_lu_private_health_fund = lu_private_health_funds.pk))) JOIN data_persons persons ON ((patients.fk_person = persons.pk))) LEFT JOIN common.lu_ethnicity ON ((persons.fk_ethnicity = lu_ethnicity.pk))) LEFT JOIN common.lu_languages ON ((persons.fk_language = lu_languages.pk))) LEFT JOIN common.lu_occupations ON ((persons.fk_occupation = lu_occupations.pk))) LEFT JOIN lu_marital ON ((persons.fk_marital = lu_marital.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN lu_sex ON ((persons.fk_sex = lu_sex.pk))) LEFT JOIN blobs.images images ON ((persons.fk_image = images.pk))) LEFT JOIN links_persons_addresses link_person_address ON ((persons.pk = link_person_address.fk_person))) LEFT JOIN data_addresses addresses ON ((link_person_address.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns ON ((addresses.fk_town = lu_towns.pk))) LEFT JOIN common.lu_countries country_birth ON ((persons.country_code = (country_birth.country_code)::text))) LEFT JOIN common.lu_countries address_country ON ((addresses.country_code = address_country.country_code)));
 
 
 SET search_path = clerical, pg_catalog;
@@ -4580,6 +4783,14 @@ CREATE VIEW vwpatientconsults AS
 
 
 --
+-- Name: vwprogressnotes1; Type: VIEW; Schema: clin_consult; Owner: -
+--
+
+CREATE VIEW vwprogressnotes1 AS
+    SELECT "CONSULT".fk_patient, progressnotes.pk AS pk_progressnote, "CONSULT".consult_date, "CONSULT_TYPE".type AS consult_type, "SECTION".section, progressnotes.problem, progressnotes.notes, "CONSULT".summary, progressnotes.fk_consult, progressnotes.fk_section, progressnotes.fk_code, progressnotes.fk_problem, progressnotes.fk_audit_action, progressnotes.deleted, "CONSULT".fk_staff, "CONSULT".fk_type, data_persons.firstname, data_persons.surname, lu_title.title, lu_audit_actions.action AS audit_action, progressnotes.linked_table, progressnotes.fk_audit_reason, lu_audit_reasons.reason AS audit_reason, progressnotes.fk_row, lu_audit_actions.insist_reason, lu_staff_roles.role FROM (((((((((consult "CONSULT" LEFT JOIN lu_consult_type "CONSULT_TYPE" ON (("CONSULT".fk_type = "CONSULT_TYPE".pk))) JOIN admin.staff ON (("CONSULT".fk_staff = staff.pk))) JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk))) JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) JOIN progressnotes ON (("CONSULT".pk = progressnotes.fk_consult))) JOIN lu_progressnotes_sections "SECTION" ON ((progressnotes.fk_section = "SECTION".pk))) JOIN lu_audit_actions ON ((progressnotes.fk_audit_action = lu_audit_actions.pk))) JOIN admin.lu_staff_roles ON ((staff.fk_role = lu_staff_roles.pk))) LEFT JOIN lu_audit_reasons ON ((progressnotes.fk_audit_reason = lu_audit_reasons.pk))) WHERE ("CONSULT_TYPE".pk < 10) ORDER BY "CONSULT".fk_patient, "CONSULT".consult_date, "CONSULT".fk_staff, "SECTION".pk, progressnotes.fk_problem;
+
+
+--
 -- Name: vwscratchpad; Type: VIEW; Schema: clin_consult; Owner: -
 --
 
@@ -5903,7 +6114,7 @@ SET search_path = contacts, pg_catalog;
 --
 
 CREATE VIEW vwpersonsincludingpatients AS
-    SELECT persons.pk AS fk_person, CASE WHEN (addresses.pk > 0) THEN COALESCE(((persons.pk || '-'::text) || addresses.pk)) ELSE (persons.pk || '-0'::text) END AS pk_view, addresses.pk AS fk_address, (((title.title || ' '::text) || (persons.firstname || ' '::text)) || (persons.surname || ' '::text)) AS wholename, persons.firstname, persons.surname, persons.salutation, persons.birthdate, date_part('year'::text, age((persons.birthdate)::timestamp with time zone)) AS age, marital.marital, sex.sex, title.title, countries.country, languages.language, countries1.country AS country_birth, ethnicity.ethnicity, addresses.street1, addresses.street2, towns.town, towns.state, towns.postcode, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.geolocation, addresses.country_code, addresses.fk_lu_address_type AS fk_address_type, addresses.deleted AS address_deleted, persons.fk_ethnicity, persons.fk_language, persons.language_problems, persons.memo, persons.fk_marital, persons.country_code AS country_birth_country_code, persons.fk_title, persons.deceased, persons.date_deceased, persons.fk_sex, images.pk AS fk_image, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image FROM ((((((((((((data_persons persons LEFT JOIN clerical.data_patients ON ((persons.pk = data_patients.pk))) LEFT JOIN links_persons_addresses ON ((persons.pk = links_persons_addresses.fk_person))) LEFT JOIN lu_marital marital ON ((persons.fk_marital = marital.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN common.lu_languages languages ON ((persons.fk_language = languages.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN common.lu_ethnicity ethnicity ON ((persons.fk_ethnicity = ethnicity.pk))) LEFT JOIN blobs.images ON ((persons.fk_image = images.pk))) LEFT JOIN common.lu_countries countries ON ((persons.country_code = (countries.country_code)::text))) JOIN data_addresses addresses ON ((links_persons_addresses.fk_address = addresses.pk))) JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN common.lu_countries countries1 ON ((addresses.country_code = countries1.country_code)));
+    SELECT persons.pk AS fk_person, CASE WHEN (addresses.pk > 0) THEN COALESCE(((persons.pk || '-'::text) || addresses.pk)) ELSE (persons.pk || '-0'::text) END AS pk_view, addresses.pk AS fk_address, (((title.title || ' '::text) || (persons.firstname || ' '::text)) || (persons.surname || ' '::text)) AS wholename, persons.firstname, persons.surname, persons.salutation, persons.birthdate, date_part('year'::text, age((persons.birthdate)::timestamp with time zone)) AS age, marital.marital, sex.sex, title.title, countries.country, languages.language, countries1.country AS country_birth, ethnicity.ethnicity, addresses.street1, addresses.street2, towns.town, towns.state, towns.postcode, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.geolocation, addresses.country_code, addresses.fk_lu_address_type AS fk_address_type, addresses.deleted AS address_deleted, persons.fk_ethnicity, persons.fk_language, persons.language_problems, persons.memo, persons.fk_marital, persons.country_code AS country_birth_country_code, persons.fk_title, persons.deceased, persons.date_deceased, persons.fk_sex, images.pk AS fk_image, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image, persons.surname_normalised FROM ((((((((((((data_persons persons LEFT JOIN clerical.data_patients ON ((persons.pk = data_patients.pk))) LEFT JOIN links_persons_addresses ON ((persons.pk = links_persons_addresses.fk_person))) LEFT JOIN lu_marital marital ON ((persons.fk_marital = marital.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN common.lu_languages languages ON ((persons.fk_language = languages.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN common.lu_ethnicity ethnicity ON ((persons.fk_ethnicity = ethnicity.pk))) LEFT JOIN blobs.images ON ((persons.fk_image = images.pk))) LEFT JOIN common.lu_countries countries ON ((persons.country_code = (countries.country_code)::text))) JOIN data_addresses addresses ON ((links_persons_addresses.fk_address = addresses.pk))) JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN common.lu_countries countries1 ON ((addresses.country_code = countries1.country_code)));
 
 
 --
@@ -5953,7 +6164,7 @@ CREATE SEQUENCE vworganisations_pk_seq
 --
 
 CREATE VIEW vworganisationsemployees AS
-    SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, employees.memo, branches.fk_category, NULL::character varying AS category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, employees.pk AS fk_employee, CASE WHEN (employees.pk > 0) THEN (((title.title || ' '::text) || (persons.firstname || ' '::text)) || persons.surname) ELSE 'Nothing'::text END AS wholename, employees.fk_occupation, employees.fk_status, employee_status.status AS employee_status, employees.deleted AS employee_deleted, occupations.occupation, persons.pk AS fk_person, persons.firstname, persons.surname, persons.salutation, persons.birthdate, persons.deceased, persons.date_deceased, persons.retired, persons.fk_ethnicity, persons.fk_language, persons.fk_marital, persons.fk_title, persons.fk_sex, sex.sex, title.title FROM (((((((((((data_employees employees JOIN data_branches branches ON ((employees.fk_branch = branches.pk))) LEFT JOIN lu_employee_status employee_status ON ((employees.fk_status = employee_status.pk))) JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN common.lu_occupations occupations ON ((employees.fk_occupation = occupations.pk))) LEFT JOIN data_persons persons ON ((employees.fk_person = persons.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) WHERE (employees.fk_person IS NOT NULL) UNION SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, 0 AS fk_employee, ((organisations.organisation || ' '::text) || branches.branch) AS wholename, 0 AS fk_occupation, 0 AS fk_status, NULL::text AS employee_status, false AS employee_deleted, NULL::text AS occupation, 0 AS fk_person, NULL::text AS firstname, NULL::text AS surname, NULL::text AS salutation, NULL::date AS birthdate, false AS deceased, NULL::date AS date_deceased, false AS retired, 0 AS fk_ethnicity, 0 AS fk_language, 0 AS fk_marital, 0 AS fk_title, 0 AS fk_sex, NULL::text AS sex, NULL::text AS title FROM ((((((data_branches branches JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) ORDER BY 1, 3, 4, 29, 28;
+    SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, employees.memo, branches.fk_category, NULL::character varying AS category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, employees.pk AS fk_employee, CASE WHEN (employees.pk > 0) THEN (((title.title || ' '::text) || (persons.firstname || ' '::text)) || persons.surname) ELSE 'Nothing'::text END AS wholename, employees.fk_occupation, employees.fk_status, employee_status.status AS employee_status, employees.deleted AS employee_deleted, occupations.occupation, persons.pk AS fk_person, persons.firstname, persons.surname, persons.salutation, persons.birthdate, persons.deceased, persons.date_deceased, persons.retired, persons.fk_ethnicity, persons.fk_language, persons.fk_marital, persons.fk_title, persons.fk_sex, sex.sex, title.title, persons.surname_normalised FROM (((((((((((data_employees employees JOIN data_branches branches ON ((employees.fk_branch = branches.pk))) LEFT JOIN lu_employee_status employee_status ON ((employees.fk_status = employee_status.pk))) JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN common.lu_occupations occupations ON ((employees.fk_occupation = occupations.pk))) LEFT JOIN data_persons persons ON ((employees.fk_person = persons.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) WHERE (employees.fk_person IS NOT NULL) UNION SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, 0 AS fk_employee, ((organisations.organisation || ' '::text) || branches.branch) AS wholename, 0 AS fk_occupation, 0 AS fk_status, NULL::text AS employee_status, false AS employee_deleted, NULL::text AS occupation, 0 AS fk_person, NULL::text AS firstname, NULL::text AS surname, NULL::text AS salutation, NULL::date AS birthdate, false AS deceased, NULL::date AS date_deceased, false AS retired, 0 AS fk_ethnicity, 0 AS fk_language, 0 AS fk_marital, 0 AS fk_title, 0 AS fk_sex, NULL::text AS sex, NULL::text AS title, NULL::text AS surname_normalised FROM ((((((data_branches branches JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) ORDER BY 1, 3, 4, 29, 28;
 
 
 --
@@ -9670,7 +9881,7 @@ CREATE TABLE images (
 --
 
 CREATE VIEW vwpersons AS
-    SELECT data_persons.pk AS fk_person, CASE WHEN ("Addresses".pk > 0) THEN COALESCE(((data_persons.pk || '-'::text) || "Addresses".pk)) ELSE (data_persons.pk || '-0'::text) END AS pk_view, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename, data_persons.firstname, data_persons.surname, data_persons.salutation, data_persons.birthdate, data_persons.fk_ethnicity, data_persons.fk_language, data_persons.language_problems, data_persons.memo, data_persons.fk_marital, data_persons.fk_title, data_persons.fk_sex, data_persons.fk_image, data_persons.fk_occupation, data_persons.retired, data_persons.deceased, data_persons.date_deceased, data_persons.deleted, lu_sex.sex, lu_sex.sex_text, lu_title.title, lu_marital.marital, lu_occupations.occupation, lu_languages.language, lu_countries.country, links_persons_addresses.pk AS fk_link_address, links_persons_addresses.fk_address, lu_towns.postcode, lu_towns.town, lu_towns.state, data_persons.country_code, "Addresses".street1, "Addresses".street2, "Addresses".fk_town, "Addresses".fk_lu_address_type, lu_address_types.type AS address_type, "Addresses".preferred_address, "Addresses".postal_address, "Addresses".head_office, "Addresses".geolocation, "Addresses".deleted AS address_deleted, images.image FROM (((((((((((data_persons LEFT JOIN lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN lu_marital ON ((data_persons.fk_marital = lu_marital.pk))) LEFT JOIN common.lu_occupations ON ((data_persons.fk_occupation = lu_occupations.pk))) LEFT JOIN common.lu_languages ON ((data_persons.fk_language = lu_languages.pk))) LEFT JOIN images ON ((data_persons.fk_image = images.pk))) LEFT JOIN links_persons_addresses ON ((data_persons.pk = links_persons_addresses.fk_person))) LEFT JOIN common.lu_countries ON ((data_persons.country_code = (lu_countries.country_code)::text))) LEFT JOIN data_addresses "Addresses" ON ((links_persons_addresses.fk_address = "Addresses".pk))) LEFT JOIN lu_address_types ON (("Addresses".fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns ON (("Addresses".fk_town = lu_towns.pk))) ORDER BY data_persons.pk, links_persons_addresses.fk_address;
+    SELECT data_persons.pk AS fk_person, CASE WHEN ("Addresses".pk > 0) THEN COALESCE(((data_persons.pk || '-'::text) || "Addresses".pk)) ELSE (data_persons.pk || '-0'::text) END AS pk_view, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename, data_persons.firstname, data_persons.surname, data_persons.salutation, data_persons.birthdate, data_persons.fk_ethnicity, data_persons.fk_language, data_persons.language_problems, data_persons.memo, data_persons.fk_marital, data_persons.fk_title, data_persons.fk_sex, data_persons.fk_image, data_persons.fk_occupation, data_persons.retired, data_persons.deceased, data_persons.date_deceased, data_persons.deleted, lu_sex.sex, lu_sex.sex_text, lu_title.title, lu_marital.marital, lu_occupations.occupation, lu_languages.language, lu_countries.country, links_persons_addresses.pk AS fk_link_address, links_persons_addresses.fk_address, lu_towns.postcode, lu_towns.town, lu_towns.state, data_persons.country_code, "Addresses".street1, "Addresses".street2, "Addresses".fk_town, "Addresses".fk_lu_address_type, lu_address_types.type AS address_type, "Addresses".preferred_address, "Addresses".postal_address, "Addresses".head_office, "Addresses".geolocation, "Addresses".deleted AS address_deleted, images.image, data_persons.surname_normalised FROM (((((((((((data_persons LEFT JOIN lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN lu_marital ON ((data_persons.fk_marital = lu_marital.pk))) LEFT JOIN common.lu_occupations ON ((data_persons.fk_occupation = lu_occupations.pk))) LEFT JOIN common.lu_languages ON ((data_persons.fk_language = lu_languages.pk))) LEFT JOIN images ON ((data_persons.fk_image = images.pk))) LEFT JOIN links_persons_addresses ON ((data_persons.pk = links_persons_addresses.fk_person))) LEFT JOIN common.lu_countries ON ((data_persons.country_code = (lu_countries.country_code)::text))) LEFT JOIN data_addresses "Addresses" ON ((links_persons_addresses.fk_address = "Addresses".pk))) LEFT JOIN lu_address_types ON (("Addresses".fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns ON (("Addresses".fk_town = lu_towns.pk))) ORDER BY data_persons.pk, links_persons_addresses.fk_address;
 
 
 SET search_path = clin_requests, pg_catalog;
@@ -12140,7 +12351,7 @@ CREATE VIEW vwbranchescomms AS
 --
 
 CREATE VIEW vwemployees AS
-    SELECT data_employees.pk AS fk_employee, data_employees.fk_person, lu_title.title, data_persons.firstname, data_persons.surname, data_persons.birthdate, data_employees.fk_occupation, lu_occupations.occupation, data_employees.memo AS employee_memo, data_employees.deleted AS employee_deleted, data_employees.fk_status, data_employees.fk_branch, data_branches.branch, data_organisations.organisation, data_branches.fk_organisation, data_branches.fk_address, data_branches.memo AS fk_address_organisation, data_branches.fk_category AS fk_category_organisation, lu_categories.category AS category_organisation, data_persons.salutation, data_persons.fk_ethnicity, data_persons.fk_language, data_persons.memo, data_persons.fk_marital, data_persons.fk_title, data_persons.fk_sex, data_persons.country_code, data_persons.fk_image, data_persons.retired, data_persons.deleted AS person_deleted, data_persons.deceased, data_persons.date_deceased, lu_sex.sex, data_addresses.street1, data_addresses.street2, data_addresses.fk_town, data_addresses.preferred_address, data_addresses.postal_address, data_addresses.head_office, lu_towns.postcode, lu_towns.town, lu_towns.state, data_addresses.deleted AS organisation_address_deleted FROM (((((((((data_employees JOIN data_branches ON ((data_employees.fk_branch = data_branches.pk))) JOIN data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) JOIN lu_categories ON ((data_branches.fk_category = lu_categories.pk))) JOIN data_persons ON ((data_employees.fk_person = data_persons.pk))) LEFT JOIN lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN common.lu_occupations ON ((data_employees.fk_occupation = lu_occupations.pk))) LEFT JOIN lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) WHERE (data_employees.deleted = false) ORDER BY data_persons.surname, data_persons.firstname;
+    SELECT data_employees.pk AS fk_employee, data_employees.fk_person, lu_title.title, data_persons.firstname, data_persons.surname, data_persons.birthdate, data_employees.fk_occupation, lu_occupations.occupation, data_employees.memo AS employee_memo, data_employees.deleted AS employee_deleted, data_employees.fk_status, data_employees.fk_branch, data_branches.branch, data_organisations.organisation, data_branches.fk_organisation, data_branches.fk_address, data_branches.memo AS fk_address_organisation, data_branches.fk_category AS fk_category_organisation, lu_categories.category AS category_organisation, data_persons.salutation, data_persons.fk_ethnicity, data_persons.fk_language, data_persons.memo, data_persons.fk_marital, data_persons.fk_title, data_persons.fk_sex, data_persons.country_code, data_persons.fk_image, data_persons.retired, data_persons.deleted AS person_deleted, data_persons.deceased, data_persons.date_deceased, lu_sex.sex, data_addresses.street1, data_addresses.street2, data_addresses.fk_town, data_addresses.preferred_address, data_addresses.postal_address, data_addresses.head_office, lu_towns.postcode, lu_towns.town, lu_towns.state, data_addresses.deleted AS organisation_address_deleted, data_persons.surname_normalised FROM (((((((((data_employees JOIN data_branches ON ((data_employees.fk_branch = data_branches.pk))) JOIN data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) JOIN lu_categories ON ((data_branches.fk_category = lu_categories.pk))) JOIN data_persons ON ((data_employees.fk_person = data_persons.pk))) LEFT JOIN lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN common.lu_occupations ON ((data_employees.fk_occupation = lu_occupations.pk))) LEFT JOIN lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) WHERE (data_employees.deleted = false) ORDER BY data_persons.surname, data_persons.firstname;
 
 
 --
@@ -12176,7 +12387,7 @@ CREATE VIEW vwpersonsaddresses AS
 --
 
 CREATE VIEW vwpersonsexcludingpatients AS
-    SELECT vwpersons.fk_person, vwpersons.pk_view, vwpersons.wholename, vwpersons.firstname, vwpersons.surname, vwpersons.salutation, vwpersons.birthdate, vwpersons.fk_ethnicity, vwpersons.fk_language, vwpersons.language_problems, vwpersons.memo, vwpersons.fk_marital, vwpersons.fk_title, vwpersons.fk_sex, vwpersons.fk_image, vwpersons.fk_occupation, vwpersons.retired, vwpersons.deceased, vwpersons.date_deceased, vwpersons.sex, vwpersons.sex_text, vwpersons.title, vwpersons.marital, vwpersons.occupation, vwpersons.language, vwpersons.country, vwpersons.fk_link_address, vwpersons.fk_address, vwpersons.postcode, vwpersons.town, vwpersons.state, vwpersons.country_code, vwpersons.street1, vwpersons.street2, vwpersons.fk_town, vwpersons.fk_lu_address_type, vwpersons.address_type, vwpersons.preferred_address, vwpersons.postal_address, vwpersons.head_office, vwpersons.address_deleted, vwpersons.image, vwpersons.deleted FROM ((vwpersons LEFT JOIN clerical.data_patients ON ((vwpersons.fk_person = data_patients.fk_person))) LEFT JOIN blobs.images ON ((vwpersons.fk_image = images.pk))) WHERE (data_patients.pk IS NULL) ORDER BY vwpersons.fk_person, vwpersons.fk_address;
+    SELECT vwpersons.fk_person, vwpersons.pk_view, vwpersons.wholename, vwpersons.firstname, vwpersons.surname, vwpersons.salutation, vwpersons.birthdate, vwpersons.fk_ethnicity, vwpersons.fk_language, vwpersons.language_problems, vwpersons.memo, vwpersons.fk_marital, vwpersons.fk_title, vwpersons.fk_sex, vwpersons.fk_image, vwpersons.fk_occupation, vwpersons.retired, vwpersons.deceased, vwpersons.date_deceased, vwpersons.sex, vwpersons.sex_text, vwpersons.title, vwpersons.marital, vwpersons.occupation, vwpersons.language, vwpersons.country, vwpersons.fk_link_address, vwpersons.fk_address, vwpersons.postcode, vwpersons.town, vwpersons.state, vwpersons.country_code, vwpersons.street1, vwpersons.street2, vwpersons.fk_town, vwpersons.fk_lu_address_type, vwpersons.address_type, vwpersons.preferred_address, vwpersons.postal_address, vwpersons.head_office, vwpersons.address_deleted, vwpersons.image, vwpersons.deleted, vwpersons.surname_normalised FROM ((vwpersons LEFT JOIN clerical.data_patients ON ((vwpersons.fk_person = data_patients.fk_person))) LEFT JOIN blobs.images ON ((vwpersons.fk_image = images.pk))) WHERE (data_patients.pk IS NULL) ORDER BY vwpersons.fk_person, vwpersons.fk_address;
 
 
 --
@@ -12207,7 +12418,7 @@ CREATE VIEW vwpersonscomms AS
 --
 
 CREATE VIEW vwpersonsemployeesbyoccupation AS
-    SELECT DISTINCT ((vwpersonsexcludingpatients.fk_person || '-'::text) || (COALESCE(vwpersonsexcludingpatients.fk_address, 0))::text) AS pk_view, vwpersonsexcludingpatients.fk_person, vwpersonsexcludingpatients.title, vwpersonsexcludingpatients.surname, vwpersonsexcludingpatients.firstname, vwpersonsexcludingpatients.occupation, vwpersonsexcludingpatients.sex, vwpersonsexcludingpatients.salutation, NULL::text AS organisation, NULL::text AS branch, 0 AS fk_organisation, 0 AS fk_branch, vwpersonsexcludingpatients.fk_address, 0 AS fk_employee, vwpersonsexcludingpatients.street1, vwpersonsexcludingpatients.street2, vwpersonsexcludingpatients.town, vwpersonsexcludingpatients.state, vwpersonsexcludingpatients.postcode, vwpersonsexcludingpatients.wholename FROM vwpersonsexcludingpatients WHERE (((((vwpersonsexcludingpatients.retired IS FALSE) AND (vwpersonsexcludingpatients.deceased IS FALSE)) AND (vwpersonsexcludingpatients.fk_address IS NOT NULL)) AND ((vwpersonsexcludingpatients.address_deleted IS FALSE) OR (vwpersonsexcludingpatients.address_deleted IS NULL))) AND (vwpersonsexcludingpatients.deleted = false)) UNION SELECT DISTINCT ((vwemployees.fk_person || '-'::text) || (COALESCE(vwemployees.fk_address, 0))::text) AS pk_view, vwemployees.fk_person, vwemployees.title, vwemployees.surname, vwemployees.firstname, vwemployees.occupation, vwemployees.sex, vwemployees.salutation, vwemployees.organisation, vwemployees.branch, vwemployees.fk_organisation, vwemployees.fk_branch, vwemployees.fk_address, vwemployees.fk_employee, vwemployees.street1, vwemployees.street2, vwemployees.town, vwemployees.state, vwemployees.postcode, ((((vwemployees.title || ' '::text) || vwemployees.firstname) || ' '::text) || vwemployees.surname) AS wholename FROM vwemployees WHERE ((((((vwemployees.employee_deleted = false) AND (vwemployees.person_deleted = false)) AND (vwemployees.deceased = false)) AND (vwemployees.retired = false)) AND ((vwemployees.organisation_address_deleted = false) OR (vwemployees.organisation_address_deleted IS NULL))) AND (vwemployees.fk_status <> 2)) ORDER BY 6, 4, 5;
+    SELECT DISTINCT ((vwpersonsexcludingpatients.fk_person || '-'::text) || (COALESCE(vwpersonsexcludingpatients.fk_address, 0))::text) AS pk_view, vwpersonsexcludingpatients.fk_person, vwpersonsexcludingpatients.title, vwpersonsexcludingpatients.surname, vwpersonsexcludingpatients.firstname, vwpersonsexcludingpatients.occupation, vwpersonsexcludingpatients.sex, vwpersonsexcludingpatients.salutation, NULL::text AS organisation, NULL::text AS branch, 0 AS fk_organisation, 0 AS fk_branch, vwpersonsexcludingpatients.fk_address, 0 AS fk_employee, vwpersonsexcludingpatients.street1, vwpersonsexcludingpatients.street2, vwpersonsexcludingpatients.town, vwpersonsexcludingpatients.state, vwpersonsexcludingpatients.postcode, vwpersonsexcludingpatients.wholename, vwpersonsexcludingpatients.surname_normalised FROM vwpersonsexcludingpatients WHERE (((((vwpersonsexcludingpatients.retired IS FALSE) AND (vwpersonsexcludingpatients.deceased IS FALSE)) AND (vwpersonsexcludingpatients.fk_address IS NOT NULL)) AND ((vwpersonsexcludingpatients.address_deleted IS FALSE) OR (vwpersonsexcludingpatients.address_deleted IS NULL))) AND (vwpersonsexcludingpatients.deleted = false)) UNION SELECT DISTINCT ((vwemployees.fk_person || '-'::text) || (COALESCE(vwemployees.fk_address, 0))::text) AS pk_view, vwemployees.fk_person, vwemployees.title, vwemployees.surname, vwemployees.firstname, vwemployees.occupation, vwemployees.sex, vwemployees.salutation, vwemployees.organisation, vwemployees.branch, vwemployees.fk_organisation, vwemployees.fk_branch, vwemployees.fk_address, vwemployees.fk_employee, vwemployees.street1, vwemployees.street2, vwemployees.town, vwemployees.state, vwemployees.postcode, ((((vwemployees.title || ' '::text) || vwemployees.firstname) || ' '::text) || vwemployees.surname) AS wholename, vwemployees.surname_normalised FROM vwemployees WHERE ((((((vwemployees.employee_deleted = false) AND (vwemployees.person_deleted = false)) AND (vwemployees.deceased = false)) AND (vwemployees.retired = false)) AND ((vwemployees.organisation_address_deleted = false) OR (vwemployees.organisation_address_deleted IS NULL))) AND (vwemployees.fk_status <> 2)) ORDER BY 6, 4, 5;
 
 
 --
@@ -14159,6 +14370,13 @@ ALTER TABLE ONLY items_billed ALTER COLUMN pk SET DEFAULT nextval('items_billed_
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
+ALTER TABLE ONLY lu_active_status ALTER COLUMN pk SET DEFAULT nextval('lu_active_status_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
+--
+
 ALTER TABLE ONLY lu_appointment_icons ALTER COLUMN pk SET DEFAULT nextval('lu_appointment_icons_pk_seq'::regclass);
 
 
@@ -14173,7 +14391,28 @@ ALTER TABLE ONLY lu_appointment_status ALTER COLUMN pk SET DEFAULT nextval('lu_a
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
 --
 
+ALTER TABLE ONLY lu_centrelink_card_type ALTER COLUMN pk SET DEFAULT nextval('lu_centrelink_card_type_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
+--
+
+ALTER TABLE ONLY lu_private_health_funds ALTER COLUMN pk SET DEFAULT nextval('lu_private_health_funds_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
+--
+
 ALTER TABLE ONLY lu_task_types ALTER COLUMN pk SET DEFAULT nextval('lu_task_types_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: clerical; Owner: -
+--
+
+ALTER TABLE ONLY lu_veteran_card_type ALTER COLUMN pk SET DEFAULT nextval('lu_veteran_card_type_pk_seq'::regclass);
 
 
 --
@@ -15834,6 +16073,14 @@ ALTER TABLE ONLY items_billed
 
 
 --
+-- Name: lu_active_status_pkey; Type: CONSTRAINT; Schema: clerical; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_active_status
+    ADD CONSTRAINT lu_active_status_pkey PRIMARY KEY (pk);
+
+
+--
 -- Name: lu_appointment_icons_pkey; Type: CONSTRAINT; Schema: clerical; Owner: -; Tablespace: 
 --
 
@@ -15866,11 +16113,35 @@ ALTER TABLE ONLY lu_billing_type
 
 
 --
+-- Name: lu_centrelink_card_type_pkey; Type: CONSTRAINT; Schema: clerical; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_centrelink_card_type
+    ADD CONSTRAINT lu_centrelink_card_type_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: lu_private_health_funds_pkey; Type: CONSTRAINT; Schema: clerical; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_private_health_funds
+    ADD CONSTRAINT lu_private_health_funds_pkey PRIMARY KEY (pk);
+
+
+--
 -- Name: lu_task_types_pkey; Type: CONSTRAINT; Schema: clerical; Owner: -; Tablespace: 
 --
 
 ALTER TABLE ONLY lu_task_types
     ADD CONSTRAINT lu_task_types_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: lu_veteran_card_type_pkey; Type: CONSTRAINT; Schema: clerical; Owner: -; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_veteran_card_type
+    ADD CONSTRAINT lu_veteran_card_type_pkey PRIMARY KEY (pk);
 
 
 --
@@ -17815,6 +18086,30 @@ ALTER TABLE ONLY bookings
 
 ALTER TABLE ONLY data_patients
     ADD CONSTRAINT data_patients_fk_family_fkey FOREIGN KEY (fk_family) REFERENCES data_families(pk);
+
+
+--
+-- Name: data_patients_fk_lu_active_status_fkey; Type: FK CONSTRAINT; Schema: clerical; Owner: -
+--
+
+ALTER TABLE ONLY data_patients
+    ADD CONSTRAINT data_patients_fk_lu_active_status_fkey FOREIGN KEY (fk_lu_active_status) REFERENCES lu_active_status(pk);
+
+
+--
+-- Name: data_patients_fk_lu_centrelink_card_type_fkey; Type: FK CONSTRAINT; Schema: clerical; Owner: -
+--
+
+ALTER TABLE ONLY data_patients
+    ADD CONSTRAINT data_patients_fk_lu_centrelink_card_type_fkey FOREIGN KEY (fk_lu_centrelink_card_type) REFERENCES lu_centrelink_card_type(pk);
+
+
+--
+-- Name: data_patients_fk_lu_veteran_card_type_fkey; Type: FK CONSTRAINT; Schema: clerical; Owner: -
+--
+
+ALTER TABLE ONLY data_patients
+    ADD CONSTRAINT data_patients_fk_lu_veteran_card_type_fkey FOREIGN KEY (fk_lu_veteran_card_type) REFERENCES lu_veteran_card_type(pk);
 
 
 --

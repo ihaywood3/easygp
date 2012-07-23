@@ -57,6 +57,13 @@ SELECT pg_catalog.setval('lu_dacc_components_pk_seq', 1, false);
 SET search_path = clerical, pg_catalog;
 
 --
+-- Name: lu_active_status_pk_seq; Type: SEQUENCE SET; Schema: clerical; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_active_status_pk_seq', 2, true);
+
+
+--
 -- Name: lu_appointment_icons_pk_seq; Type: SEQUENCE SET; Schema: clerical; Owner: -
 --
 
@@ -71,10 +78,31 @@ SELECT pg_catalog.setval('lu_appointment_status_pk_seq', 6, true);
 
 
 --
+-- Name: lu_centrelink_card_type_pk_seq; Type: SEQUENCE SET; Schema: clerical; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_centrelink_card_type_pk_seq', 3, true);
+
+
+--
+-- Name: lu_private_health_funds_pk_seq; Type: SEQUENCE SET; Schema: clerical; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_private_health_funds_pk_seq', 37, true);
+
+
+--
 -- Name: lu_task_types_pk_seq; Type: SEQUENCE SET; Schema: clerical; Owner: -
 --
 
 SELECT pg_catalog.setval('lu_task_types_pk_seq', 17, true);
+
+
+--
+-- Name: lu_veteran_card_type_pk_seq; Type: SEQUENCE SET; Schema: clerical; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_veteran_card_type_pk_seq', 3, true);
 
 
 SET search_path = clin_allergies, pg_catalog;
@@ -182,7 +210,7 @@ SELECT pg_catalog.setval('lu_actions_pk_seq', 35, true);
 -- Name: lu_audit_reasons_pk_seq; Type: SEQUENCE SET; Schema: clin_consult; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 415, true);
+SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 416, true);
 
 
 --
@@ -802,7 +830,7 @@ SET search_path = db, pg_catalog;
 -- Name: db_version_pk_seq; Type: SEQUENCE SET; Schema: db; Owner: -
 --
 
-SELECT pg_catalog.setval('db_version_pk_seq', 183, true);
+SELECT pg_catalog.setval('db_version_pk_seq', 184, true);
 
 
 SET search_path = defaults, pg_catalog;
@@ -1005,6 +1033,16 @@ COPY lu_dacc_components (pk, fk_component) FROM stdin;
 SET search_path = clerical, pg_catalog;
 
 --
+-- Data for Name: lu_active_status; Type: TABLE DATA; Schema: clerical; Owner: -
+--
+
+COPY lu_active_status (pk, status) FROM stdin;
+1	active
+2	inactive
+\.
+
+
+--
 -- Data for Name: lu_appointment_icons; Type: TABLE DATA; Schema: clerical; Owner: -
 --
 
@@ -1060,6 +1098,62 @@ Pensioner	14
 
 
 --
+-- Data for Name: lu_centrelink_card_type; Type: TABLE DATA; Schema: clerical; Owner: -
+--
+
+COPY lu_centrelink_card_type (pk, type) FROM stdin;
+1	Commonwealth Seniors Health Card
+2	Health Care Card
+3	Pensioner Concession Card
+\.
+
+
+--
+-- Data for Name: lu_private_health_funds; Type: TABLE DATA; Schema: clerical; Owner: -
+--
+
+COPY lu_private_health_funds (pk, fund, name_abbrev, availability, states_available) FROM stdin;
+1	No Fund	No Fund	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+2	ACA Health Benefits Fund	ACA	Restricted	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+3	ahm Health Insurance	AHM	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+4	Australian Unity Health Limited	AUF	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+5	Bupa Australia Pty Ltd	BUP	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+6	CBHS Health Fund Limited	CBH	Restricted	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+7	CDH Benefits Fund	CDH	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+8	Central West Health Cover	CWH	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+9	CUA Health Limited	CPS	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+10	Defence Health Limited	AHB	Restricted	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+11	GMF Health	GMF	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+12	GMHBA Limited	GMH	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+13	Grand United Corporate Health	FAI	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+14	HBF Health Limited	HBF	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+15	HCF	HCF	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+16	Health Care Insurance Limited	HCI	Restricted	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+17	Health Insurance Fund of Australia Limited	HIF	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+18	Health Partners	SPS	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+19	health.com.au	HEA	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+20	Latrobe Health Services	LHS	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+21	Medibank Private Limited	MBP	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+22	Mildura District Hospital Fund Ltd	MDH	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+23	National Health Benefits Australia Pty Ltd (onemedifund)	OMF	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+24	Navy Health Ltd	NHB	Restricted	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+25	NIB Health Funds Ltd	NIB	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+26	Peoplecare Health Insurance	LHM	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+27	Phoenix Health Fund Limited	PWA	Restricted	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+28	Police Health	SPE	Restricted	QLD, SA, TAS, WA, NT
+29	Queensland Country Health Fund Ltd	QCH	Open	QLD
+30	Railway and Transport Health Fund Limited	RTE	Restricted	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+31	Reserve Bank Health Society Ltd	RBH	Restricted	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+32	St.Lukes Health	SLM	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+33	Teachers Health Fund	NTF	Restricted	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+34	Teachers Union Health	QTU	Restricted	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+35	The Doctors Health Fund	AMA	Restricted	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+36	Transport Health Pty Ltd	TFS	Restricted	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+37	Westfund Ltd	WFD	Open	ACT, NSW, QLD, SA, TAS, VIC, WA, NT
+\.
+
+
+--
 -- Data for Name: lu_task_types; Type: TABLE DATA; Schema: clerical; Owner: -
 --
 
@@ -1081,6 +1175,17 @@ COPY lu_task_types (pk, type) FROM stdin;
 16	Obtain Old Records
 8	Specific Task
 17	Nursing Home Task
+\.
+
+
+--
+-- Data for Name: lu_veteran_card_type; Type: TABLE DATA; Schema: clerical; Owner: -
+--
+
+COPY lu_veteran_card_type (pk, type) FROM stdin;
+1	Gold - full entitlement
+2	White - specific entitlement
+3	Lilac - war-widow
 \.
 
 
@@ -1625,6 +1730,7 @@ COPY lu_audit_reasons (pk, fk_staff, reason) FROM stdin;
 413	1	explained and organised GTT
 414	1	mi
 415	1	says her optometrist checks this yearly and no change
+416	1	wrong spelling
 \.
 
 
@@ -89516,7 +89622,7 @@ SET search_path = db, pg_catalog;
 --
 
 COPY lu_version (pk, lu_major, lu_minor) FROM stdin;
-183	0	198
+184	0	199
 \.
 
 

@@ -415,9 +415,11 @@ alter table clerical.data_patients drop column concession_card_name;
 alter table clerical.data_patients drop column concession_type;
 alter table clerical.data_patients add column fk_lu_centrelink_card_type integer default null 
 references clerical.lu_centrelink_card_type;
+alter table clerical.data_patients add column fk_lu_aboriginality integer default null references common.lu_aboriginality;
 alter table clerical.data_patients rename column concession_number to concession_card_number;
 alter table clerical.data_patients rename column concession_expiry_date to concession_card_expiry_date;
 alter table clerical.data_patients drop column veteran_card_type;
+alter table clerical.data_patients drop column atsi;
 alter table clerical.data_patients drop column file_paper_number;
 alter table clerical.data_patients drop column file_racgp_format;
 alter table clerical.data_patients drop column file_chart_status;
@@ -465,7 +467,7 @@ CREATE OR REPLACE VIEW contacts.vwpatients AS
  patients.fk_doctor, patients.fk_next_of_kin, patients.fk_payer, patients.fk_family, patients.medicare_number, 
  patients.medicare_ref_number, patients.medicare_expiry_date, patients.veteran_number, 
  patients.veteran_specific_condition, patients.concession_card_number, patients.concession_card_expiry_date, 
- patients.memo AS patient_memo, patients.pk_legacy, patients.atsi, patients.fk_lu_veteran_card_type, 
+ patients.memo AS patient_memo, patients.pk_legacy, patients.fk_lu_aboriginality, patients.fk_lu_veteran_card_type, 
  patients.fk_lu_active_status, patients.fk_lu_centrelink_card_type, patients.fk_lu_billing_type, patients.fk_lu_private_health_fund, 
  patients.private_insurance, lu_active_status.status AS active_status, lu_veteran_card_type.type AS veteran_card_type, 
  lu_centrelink_card_type.type AS concession_card_type, lu_private_health_funds.fund, persons.firstname, persons.surname, 
@@ -474,7 +476,7 @@ CREATE OR REPLACE VIEW contacts.vwpatients AS
  persons.fk_language, persons.memo AS person_memo, persons.fk_marital, persons.fk_title, persons.fk_sex, 
  persons.country_code AS country_birth_country_code, persons.fk_image, persons.retired, persons.fk_occupation,
  persons.deleted AS person_deleted, persons.deceased, persons.date_deceased, persons.language_problems, 
- persons.surname_normalised,
+ persons.surname_normalised, lu_aboriginality.aboriginality,
  country_birth.country AS country_birth, lu_ethnicity.ethnicity, lu_languages.language, lu_occupations.occupation, 
  lu_marital.marital, title.title, lu_sex.sex, lu_sex.sex_text, 
  images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image, 
@@ -486,6 +488,7 @@ CREATE OR REPLACE VIEW contacts.vwpatients AS
    FROM clerical.data_patients patients
    JOIN clerical.lu_active_status lu_active_status ON patients.fk_lu_active_status = lu_active_status.pk
    LEFT JOIN clerical.lu_centrelink_card_type ON patients.fk_lu_centrelink_card_type = lu_centrelink_card_type.pk
+   LEFT JOIN common.lu_aboriginality ON patients.fk_lu_aboriginality = lu_aboriginality.pk
    LEFT JOIN clerical.lu_veteran_card_type ON patients.fk_lu_veteran_card_type = lu_veteran_card_type.pk
    LEFT JOIN clerical.lu_private_health_funds ON patients.fk_lu_private_health_fund = lu_private_health_funds.pk
    JOIN contacts.data_persons persons ON patients.fk_person = persons.pk

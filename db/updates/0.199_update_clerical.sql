@@ -417,6 +417,7 @@ alter table clerical.data_patients add column fk_lu_centrelink_card_type integer
 references clerical.lu_centrelink_card_type;
 alter table clerical.data_patients rename column concession_number to concession_card_number;
 alter table clerical.data_patients rename column concession_expiry_date to concession_card_expiry_date;
+alter table clerical.data_patients drop column veteran_card_type;
 alter table clerical.data_patients drop column file_paper_number;
 alter table clerical.data_patients drop column file_racgp_format;
 alter table clerical.data_patients drop column file_chart_status;

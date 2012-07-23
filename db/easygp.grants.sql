@@ -16,6 +16,10 @@ ALTER TABLE admin.vwstafftoolbarbuttons owner to easygp;
 GRANT ALL ON TABLE admin.vwstafftoolbarbuttons to easygp;
 GRANT ALL ON TABLE admin.vwstafftoolbarbuttons to staff;
 
+alter table clerical.lu_veteran_card_type owner to easygp;
+grant all on table clerical.lu_veteran_card_type to easygp;
+grant all on table clerical.lu_veteran_card_type to staff;
+
 GRANT ALL ON TABLE admin.vwstaff TO staff;
 GRANT ALL ON TABLE clerical.data_families TO staff;
 GRANT ALL ON TABLE clerical.data_family_members TO staff;
@@ -98,12 +102,20 @@ GRANT ALL ON TABLE clin_requests.lu_requests TO staff;
 GRANT ALL ON TABLE clin_requests.notes TO staff;
 GRANT ALL ON TABLE clin_requests.user_default_type TO staff;
 GRANT ALL ON TABLE clin_requests.user_provider_defaults TO staff;
-
-
-
 GRANT ALL ON TABLE clin_requests.vwrequestforms TO staff;
 
-
+ALTER TABLE documents.vwhl7filesimported   OWNER TO easygp;
+GRANT ALL ON TABLE documents.vwhl7filesimported TO easygp;
+GRANT SELECT ON TABLE documents.vwhl7filesimported TO staff;
+ALTER TABLE research.vwmostrecenteyerelateddocuments   OWNER TO easygp;
+GRANT ALL ON TABLE research.vwmostrecenteyerelateddocuments TO easygp;
+GRANT ALL ON TABLE research.vwmostrecenteyerelateddocuments TO staff;
+ALTER TABLE research.diabetes_patients_with_hba1c   OWNER TO easygo;
+GRANT ALL ON TABLE research.diabetes_patients_latest_hba1c TO easygp;
+GRANT SELECT ON TABLE research.diabetes_patients_latest_hba1c TO staff;
+ALTER TABLE research.diabetes_patients_latest_hba1c  OWNER TO easygp;
+GRANT ALL ON TABLE research.diabetes_patients_latest_hba1c TO easygp;
+GRANT SELECT ON TABLE research.diabetes_patients_latest_hba1c TO staff;
 
 
 
@@ -188,7 +200,11 @@ grant select on clerical.vwtaskscomponents to staff;
 grant select on clin_recalls.vwrecallsdue to staff;
 grant select on clin_requests.lu_request_type to staff;
 grant select on clin_requests.vwrequestproviders to staff;
-grant select on clin_requests.vwrequestsordered to staff;
+
+ALTER TABLE clin_requests.vwrequestsordered   OWNER TO easygp;
+GRANT ALL ON TABLE clin_requests.vwrequestsordered TO easygp;
+GRANT SELECT ON TABLE clin_requests.vwrequestsordered TO staff;
+
 grant select on coding.lu_loinc_abbrev to staff;
 grant select on coding.lu_loinc to staff;
 grant select on coding.vwcodesweighted to staff;
@@ -279,7 +295,10 @@ GRANT select ON TABLE db.lu_version TO staff;
 GRANT select ON TABLE documents.lu_archive_site TO staff;
 GRANT select ON TABLE documents.lu_message_display_style TO staff;
 GRANT select ON TABLE documents.lu_message_standard TO staff;
-GRANT select ON TABLE documents.vwdocuments TO staff;
+ALTER TABLE documents.vwdocuments   OWNER TO easygp;
+GRANT ALL ON TABLE documents.vwdocuments TO easygp;
+GRANT SELECT ON TABLE documents.vwdocuments TO staff;
+
 GRANT select ON TABLE documents.vwgraphableobservations TO staff;
 GRANT select ON TABLE documents.vwinboxstaff TO staff;
 GRANT select ON TABLE documents.vwobservations TO staff;
@@ -607,3 +626,24 @@ GRANT ALL ON TABLE clin_prescribing.instruction_habits to staff;
 GRANT ALL on table clin_prescribing.vwInstructionHabits to staff;
 GRANT ALL ON TABLE clin_prescribing.vwPrescribedForHabits to staff;
 GRANT USAGE ON SEQUENCE clin_prescribing.medications_pk_seq TO staff;
+ALTER TABLE research.patientsnameshba1cover75   OWNER TO easygp;
+GRANT ALL ON TABLE research.patientsnameshba1cover75 TO easygp;
+GRANT SELECT ON TABLE research.patientsnameshba1cover75 TO staff;
+ALTER TABLE research.vwdiabetes_patients_with_hba1c   OWNER TO easygp;
+GRANT ALL ON TABLE research.vwdiabetes_patients_with_hba1c TO easygp;
+GRANT ALL ON TABLE research.vwdiabetes_patients_with_hba1c TO staff;
+ALTER TABLE research.vwdiabetics_with_ldlcholesterol  OWNER TO easygp;
+GRANT ALL ON TABLE research.vwdiabetics_with_ldlcholesterol TO easygp;
+GRANT SELECT ON TABLE research.vwdiabetics_with_ldlcholesterol TO staff;
+ALTER TABLE research.vwdiabetics_with_microalbumins   OWNER TO easygp;
+GRANT ALL ON TABLE research.vwdiabetics_with_microalbumins TO easygp;
+GRANT ALL ON TABLE research.vwdiabetics_with_microalbumins TO staff;
+ALTER TABLE research.vwdiabeticsegfr   OWNER TO easygp;
+GRANT ALL ON TABLE research.vwdiabeticsegfr TO easygp;
+GRANT SELECT ON TABLE research.vwdiabeticsegfr TO staff;
+ALTER TABLE research.vwldh   OWNER TO easygp;
+GRANT ALL ON TABLE research.vwldh TO easygp;
+GRANT ALL ON TABLE research.vwldh TO staff;
+alter table clerical.lu_active_status owner to easygp;
+grant all on table clerical.lu_active_status to easygp;
+grant all on table clerical.lu_active_status to staff;

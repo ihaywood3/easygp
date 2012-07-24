@@ -17,6 +17,7 @@
 ' ------------------------------------------------------------------------
 ' PURPOSE         A module to save patient specific information to do with 
 '                 billing and general practice
+' TODO            Put in an admin general option for the default doctor
 '-------------------------------------------------------------------------
 Private doctors As Collection
 Private fk_person As Collection
@@ -27,13 +28,13 @@ Private health_insurance_companies As Collection
 Private billing_types As Collection
 Private bExit As Boolean
 Private bkeyvalid As Boolean
+Private FPersons_Vbox_EditArea As VBox
 
-' Public Function Active_Status() As Integer
-'    
-'    If rbActiveYes.value = True Then Return const.PatientStatus_Active
-'    Return Const.PatientStatus_Inactive
-'    
-' End
+Public Function Preferred_Doctor() As Integer
+   
+   Return doctors[cmbPreferredDoctor.index]!fk_staff
+   
+End
 
 Public Function Medicare_Number() As String
    
@@ -64,8 +65,9 @@ Public Function Veteran_Card_Type() As Integer
    'return clerical.lu_veteran_card_type
    '1= gold, 2=lilac, 3= specific condition
    '---------------------------------------
-   If cmbVeteranCardTypes.Index <> -1 Then Return veteran_card_types[cmbVeteranCardTypes.Index]!pk
-   
+   If cmbVeteranCardTypes.Index <> 0 Then
+     Return veteran_card_types[cmbVeteranCardTypes.Index]!pk
+   End If      
 End
 
 Public Function veteran_specific_condition() As String
@@ -95,19 +97,16 @@ Public Function Concession_Card_Expiry_Date() As String
    
 End
 
-Public Function Patient_Memo() As String
-   
-   Return Trim(txtMemo.text) 
-   
-End
 
 Public Function Billing_type() As Integer
-   If cmbBillingTypes.index <> -1 Then Return billing_types[cmbBillingTypes.index]!pk
+   If cmbBillingTypes.index <> -1 Then 
+      Return billing_types[cmbBillingTypes.index]!pk
+   End If   
 
 End
-
+ 
 Public Function Centrelink_Card_Type() As Integer
-   If cmbCentreLinkCardTypes.index <> -1 Then Return centrelink_card_types[cmbCentreLinkCardTypes.index]!pk 
+   If cmbCentreLinkCardTypes.index <> 0 Then Return centrelink_card_types[cmbCentreLinkCardTypes.index]!pk 
    
 End
 
@@ -116,14 +115,14 @@ Public Function Private_Health_Fund() As Integer
    
 End
 
-Public Sub Init()
+Public Sub Init(VB As VBox)
    '-----------------------------------------------------------------------------------------------------------
    'note that modUtil.Copy_Collection_Keyed_Sequentially gives the collection keys 0>n to match the combo index
    '-----------------------------------------------------------------------------------------------------------   
-   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
+   FPersons_Vbox_EditArea = VB
    lblMeasure.text = "  Concession Card Name  "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
-   doctors = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get_Per_Role(const.StaffRole_Doctor))
+   doctors = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get_With_Provider_Number())
    modUtil.LoadCombo(cmbPreferredDoctor, doctors, "wholename")
    veteran_card_types = modUtil.Copy_Collection_Keyed_Sequentially(modBilling.Veteran_Card_Types_Get())
    modUtil.LoadCombo(cmbVeteranCardTypes, veteran_card_types, "type")
@@ -144,16 +143,61 @@ Public Sub Init()
    
 End
 
+Public Sub EditArea_Clear()
+    
+    bExit = True
+    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
+    Veteran_Data_Entry_Enable(False)
+    Concession_Card_Enable(False)
+    bExit = False
+    
+End
+
+Public Sub Concession_Card_Enable(flag As Boolean)
+   
+    txtConcessionExpiryDate.Enabled = flag  
+    txtConcessionNumber.Enabled = flag   
+    If Not Flag Then
+        txtConcessionExpiryDate.text = ""
+         txtConcessionNumber.text = ""
+    Endif
+End
+
+
+Public Sub Veteran_Data_Entry_Enable(flag As Boolean)
+   
+    txtVeteranNumber.Enabled = flag   
+    txtVeteranSpecificCondition.Enabled = flag 
+   If Not Flag Then
+      txtVeteranNumber.text = ""
+      txtVeteranSpecificCondition.text = ""
+   Endif
+End
+
 Public Sub Display_Patient_Data(P As Collection)
    
+   EditArea_Clear()
    patient = P
+   bExit = True
    Try txtMedicareNumber.text = P!medicare_number
    Try txtMedicareReferenceNumber.text = P!medicare_ref_number
    Try txtMedicareCardExpiryDate.text = Format(P!medicare_expiry_date, "dd/mm/yyyy")
+   cmbVeteranCardTypes.index = cmbVeteranCardTypes.Find(P!veteran_card_type)
+   If Not IsNull(P!veteran_card_type) Then
+      Veteran_Data_Entry_Enable(True)
+   Endif
    Try txtVeteranNumber.text = P!veteran_number
    Try txtVeteranSpecificCondition.text = P!veteran_specific_condition
+   Try cmbCentreLinkCardTypes.Find(P!concesssion_card_type)
+   If Not IsNull(P!concesssion_card_type) Then
+      Concession_Card_Enable(True)
+      Try txtConcessionExpiryDate.text = P!concesssion_card_type
+      Try txtConcessionNumber = P!concession_card_number 
+   Endif
+   Try cmbBillingTypes.index = cmbBillingTypes.Find(P!billing_type)
+   Try cmbPrivateInsuranceCompany.index = cmbPrivateInsuranceCompany.Find(P!fund)
    Try txtlegacyFileNumber.text = P!pk_legacy
-   
+   bExit = False  
 End
 
 Public Function EditArea_ExcludeKeys(keycode As Integer, tag As String) As Boolean
@@ -178,6 +222,11 @@ Public Function EditArea_ExcludeKeys(keycode As Integer, tag As String) As Boole
    Return bKeyValid
    
 End
+Public Sub EditArea_Notify_DataChange(flag As Boolean)
+   
+  FPersons_Vbox_EditArea.padding = 1 
+   
+End
 
 Public Sub EditArea_TextBox_Activate()
    
@@ -190,23 +239,21 @@ Public Sub EditArea_TextBox_Activate()
       Case "medicare card expiry date"
          cmbBillingTypes.SetFocus()
       Case "veteran number"
-         cmbVeteranCardTypes.SetFocus()
+         txtVeteranSpecificCondition.SetFocus()
       Case "veteran condition"
-         txtMemo.SetFocus()
+         txtFindNextOfKin.SetFocus()
       Case "Concession number"
          txtConcessionExpiryDate.SetFocus()
       Case "concession expiry date"
          cmbBillingTypes.SetFocus()
       Case "responsible payer"
          cmbPrivateInsuranceCompany.SetFocus()
-      Case "memo"
-         txtFindNextOfKin.SetFocus()
    End Select
    
 End
 
 Public Sub EditArea_TextBox_Keypress()
-   
+   If bExit Then Return 
    bkeyvalid = EditArea_ExcludeKeys(key.code, Last.tag)
    If bkeyvalid = False Then
       Stop Event
@@ -221,28 +268,38 @@ Public Sub EditArea_TextBox_Keypress()
             End With
          Endif
    End Select
-   
+   EditArea_Notify_DataChange(True)
 End
 
 Public Sub EditArea_Combo_Click()
-   
+   If Bexit Then Return
    Select Case Last.tag
       Case "veteran card type"
-         If Last.index = const.Veteran_Entitlement_Specific Then
-            txtVeteranSpecificCondition.Text.SetFocus()
-         Else
-            txtMemo.SetFocus()
-         Endif
-      Case "centrelink card type"
+         Select Case Last.index + 1                'the types are 1 based
+            Case const.Veteran_Entitlement_None
+               Veteran_Data_Entry_Enable(False)
+                txtFindNextOfKin.SetFocus()
+            Case const.Veteran_Entitlement_Full
+                 Veteran_Data_Entry_Enable(True)
+                  txtVeteranNumber.SetFocus()
+            Case const.Veteran_Entitlement_Specific 
+               Veteran_Data_Entry_Enable(True)
+               txtVeteranSpecificCondition.SetFocus()
+         End Select
+        Case "centrelink card type"
+          If Last.index + 1 = const.Concession_Entitlement_None Then
+             Concession_Card_Enable(False)
+            txtFindNextOfKin.SetFocus()
+          Else
+             Concession_Card_Enable(True)
+             txtConcessionNumber.SetFocus()
+          Endif
       Case "private insurance company"
          cmbPreferredDoctor.SetFocus()
       Case "preferred doctor"
-         txtMemo.SetFocus()
-         
-      Case "billing type"
-         
+        txtFindNextOfKin.SetFocus()
    End Select
-   
+   EditArea_Notify_DataChange(True)
 End
 
 Public Sub Next_Of_Kin_Get()
@@ -279,3 +336,4 @@ Public Sub EditArea_Combo_Keypress()
    End If  
 
 End
+

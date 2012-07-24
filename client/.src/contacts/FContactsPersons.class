@@ -165,7 +165,7 @@ Public Sub Init()
    Else
       chkLeftPractice.Visible = True   
       With form_billing = New FPatientBillingCards(VBox_Billing)
-         .Init()
+         .Init(Vbox_EditArea)
       End With
    End If
    bExit = False
@@ -328,15 +328,12 @@ Public Sub Person_Display()
    If cvwPersons.Count = 0 Then Return  
    Check_For_Unsaved_Data()
    cvwPersons.MoveCurrent()
-   
    pk_view = cvwPersons.Current.Key
    row_in_view = rows_in_view[cvwPersons.Current.Key]
-   
    EditArea_Clear()   'clear the display fields and the patients picture
    bExit = True  
    fk_person = row_in_view!fk_person
    Try fk_patient = row_in_view!fk_patient 'missing if a person
-   
    country_code = row_in_view!country_code
    country_code_birth = row_in_view!country_code_birth
    Try fk_ethnicity = row_in_view!fk_ethnicity
@@ -388,7 +385,7 @@ Public Sub Person_Display()
    cmbTitle.Index = row_in_view!fk_title
    Try cmbSex.index = row_in_view!fk_sex 
    chkRetired.value = row_in_view!retired   
-   Select Case row_in_view!atsi
+   Select Case row_in_view!fk_lu_aboriginality
       Case 0
          rbAboriginalityNone.value = True
       Case 1
@@ -400,9 +397,7 @@ Public Sub Person_Display()
    address = New Collection
    addresses = New Collection
    Views_addresses = New Collection 
-   
    For Each row_in_view In rows_in_view
-      
       If Not IsNull(row_in_view!fk_address) Then
          Views_addresses.Add(row_in_view, row_in_view!fk_address)
          If row_in_view!fk_person = fk_person Then
@@ -421,12 +416,13 @@ Public Sub Person_Display()
             address!state = row_in_view!state
             address!postcode = row_in_view!postcode
             addresses.Add(address, cvwAddresses.count)
-            cvwAddresses.Add(cvwAddresses.count, Trim(address!street1 & " " & address!street2) & " " & UCase(address!town) & " " & address!postcode)
+         '   cvwAddresses.Add(cvwAddresses.count, Trim(address!street1 & " " & address!street2) & " " & UCase(address!town) & " " & address!postcode)
          Else
             If bFoundPerson Then Break
          End If
       End If
    Next
+   Addresses_FillList()
    Communications_Reload()  'Finally show the communications in the list
    Communication_New()
    BExit = True   
@@ -693,6 +689,7 @@ Public Sub Save()
    Dim person As CRow
    Dim patient As CRow
    Dim address As CRow
+   Dim address_link As CRow
    Dim Coll As Collection
    Dim communication As CRow
    Dim link_person_comm As New CRow
@@ -703,21 +700,10 @@ Public Sub Save()
    If fk_town <> 0 Then 
       Address_Accept()                          'if user has left in the address editing area > to the list   End If
    End If     
-   For Each Coll In addresses
-      Coll.Remove("type")
-      Coll.Remove("town")
-      Coll.Remove("state")
-      Coll.Remove("postcode")
-   Next
-   For Each Coll In comms
-      Try Coll.Remove("comm_type")
-   Next
-   If isection = cSection_Patients Then
+  If isection = cSection_Patients Then
       patient = New CRow
       If fk_patient Then
          patient.put_unchanged(fk_patient, "fk_patient")
-      Else
-         patient!fk_patient = fk_patient
       End If
       If rbAboriginalityNone.value = True Then
          patient!fk_lu_aboriginality = Const.aboriginality_none
@@ -759,14 +745,13 @@ Public Sub Save()
       Else
          patient!private_insurance = False  
       Endif
+      patient!fk_doctor = form_billing.Preferred_Doctor()  
    End If   
    '--------------------------------------------------------------------------------------
    'Now save the person before we save the patient in case need the fk_person for cPatient
    '--------------------------------------------------------------------------------------
    person = New CRow
-   If fk_person = 0 Then
-      person!fk_person = fk_person
-   Else
+   If fk_person Then
       person.put_unchanged(fk_person, "fk_person")
    End If
    person!firstname = Trim(txtFirstname.text)
@@ -807,24 +792,24 @@ Public Sub Save()
    If PersonPicture!path Then
       person!fk_image = modContactsDBI.Image_Save(PersonPicture)
    End If  
-   Print patient
-   Print person
    person.Save("contacts.data_persons", "fk_person")
    For Each Coll In Comms
       communication = New CRow
       If Coll!pk Then
-         communication.put_unchanged(Coll!fk_comm, "pk")
+         communication.put_unchanged(Coll!pk, "pk")
       Endif
       communication!fk_type = Coll!fk_type
       communication!value = Coll!value
       communication!note = Coll!note
       communication!preferred_method = Coll!preferred_method
       communication!confidential = Coll!confidential
-      communication.Save("contacts.data_communications", "fk_comm")
-      link_person_comm = New CRow 
-      link_person_comm!fk_person = person!fk_person
-      link_person_comm!fk_comm = communication!fk_comm
-      ' '     link_person_comm.Save("contacts.links_persons_comms", "fk_link_person_comm") Next
+      communication.Save("contacts.data_communications", "pk")
+      If IsNull(Coll!pk) Then 
+         link_person_comm = New CRow 
+         link_person_comm!fk_person = person!fk_person
+         link_person_comm!fk_comm = communication!pk
+         link_person_comm.Save("contacts.links_persons_comms", "fk_link_person_comm") 
+      End If   
    Next  
    For Each coll In Addresses
       address = New CRow
@@ -839,32 +824,29 @@ Public Sub Save()
       address!postal_address = coll!postal_address
       address!preferred_address = coll!postal_address
       address.Save("contacts.data_addresses", "fk_address")
-      
-      ' address_link = New CRow   
-      '  If IsNull(coll!fk_address) Then
-      '       address_link!fk_person = person!fk_person
-      '       address_link!fk_address = address!fk_address
-      '  Else
-      '      address_link.put_unchanged(
-      '  End If  
-      ' address_link.Save("contacts.links_persons_addresses", "fk_link_person_address")
+      If IsNull(coll!fk_address) Then 
+       address_link = New CRow   
+       address_link!fk_person = person!fk_person
+       address_link!fk_address = address!fk_address
+       address_link.Save("contacts.links_persons_addresses", "fk_link_person_address")
+      End If   
+       Print address
+       
    Next
    If Isection = cSection_Patients Then
       patient!fk_person = person!fk_person
       patient.Save("clerical.data_patients", "fk_patient")
-      '   patient!fk_patient = modContactsDBI.Patient_Save(rows_in_view, pk_view, patient) ', person, comms, views_comms)
    End If
-   '  modDBConnect.CommitTrans()
+   modDBConnect.CommitTrans()
    
    EditArea_Notify_DataChange(False)
    
    If Isection = cSection_Patients Then
-      If fk_patient > 0 And person.Exist("fk_image") Then
+      If patient!fk_patient And person.Exist("fk_image") Then
          If person!fk_image > 0 And If FClinical.IsSamePatient(fk_patient) Then
             FClinical.Patient_Picture_Refresh(personpicture!path)
             FClinical.Patient_Demographics_Refresh()
          End If
-         
       End If
       rows_in_view = modContactsDBI.Patient_Get_Using_Pk(patient!fk_patient)
    Else

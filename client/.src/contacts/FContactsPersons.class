@@ -499,27 +499,190 @@ Public Function Valid_Data() As Boolean
    If Not check_field_valid(txtsurname) Then Return False               'always have a surname
    If Not check_field_valid(txtFirstname) Then Return False             'always have a firstname   
    If iSection = cSection_Patients Then                                
-      If Not check_field_valid(txtBirthdate) Then 
-         Return False                                                   'patients must have valid birthdate
-      End If
+      If Not IsDate(txtBirthdate.text) Then                             'patient must have a birthdate
+         txtBirthdate.SetFocus()
+         Return                                    
+      End If   
+      If form_billing.txtMedicareCardExpiryDate.text <> "" Then              'only validate if user has entered something
+         If Not IsDate(form_billing.txtMedicareCardExpiryDate.text) Then
+            form_billing.txtMedicareCardExpiryDate.SetFocus()
+            Return 
+         Endif
+      Endif
+      If form_billing.txtConcessionExpiryDate.text <> "" Then                 'only validate if user has entered something
+         If Not IsDate(form_billing.txtConcessionExpiryDate.text) Then
+            form_billing.txtConcessionExpiryDate.SetFocus()
+            Return
+         Endif
+      Endif
    End If  
    
    If iSection = cSection_Persons Then                                  'insist on occupation for a person
       If Not check_field_valid(txtOccupation) Then
          Return False   
       End If
-      If Trim(txtBirthdate.text) <> "" Then
-         If Not check_field_valid(txtBirthdate) Then                    'not mandetory but must be valid if present
+      If Trim(txtBirthdate.text) <> "" Then                             'not mandatory but if present must be valid
+         If Not IsDate(Trim(txtBirthdate.text)) Then 
+            txtBirthdate.SetFocus()
             Return False                                                 
          Endif
       End If
    End If
    If Trim(txtDateDeceased.text) <> "" Then
-      If Not check_field_valid(txtDateDeceased) Then
+      If Not IsDate(Trim(txtDateDeceased.Text)) Then   
+         txtDateDeceased.SetFocus()
          Return False
       Endif
    Endif
+   
    Return True  
+   
+End
+
+Public Sub Save_fucked()
+   
+   Dim Returned_collection As Collection
+   Dim x As Integer 
+   Dim person As CRow
+   Dim address As CRow
+   Dim Patient As CRow
+   
+   If Vbox_EditArea.Padding = 0 Then Return                     'no padding = no data
+   If Not Valid_Data() Then Return 
+   
+   If fk_town <> 0 Then 
+      Address_Accept() 'if not already accepted
+   End If
+   For Each address In addresses
+      address.Remove("type")
+      address.Remove("town")
+      address.Remove("state")
+      address.Remove("postcode")
+   Next
+   
+   If isection = cSection_Patients Then
+      patient = New CRow
+      If fk_patient Then
+         patient.put_unchanged(fk_patient, "fk_patient")
+      End If
+      If rbAboriginalityNone.value = True Then
+         patient!fk_lu_aboriginality = Const.aboriginality_none
+      End If
+      If rbAboriginalityAboriginal.value = True Then
+         patient!fk_lu_aboriginality = Const.aboriginality_aboriginal
+      End If
+      If rbAboriginalityTSI.value = True Then
+         patient!fk_lu_aboriginality = Const.aboriginality_Torres_Strait_Islander
+      End If
+      If chkLeftPractice.value = True Then
+         patient!fk_lu_active_status = "i"
+      Else
+         patient!fk_lu_active_status = "a"
+      Endif
+      
+   End If   
+   
+   person = New Collection 
+   If fk_person <> 0 Then
+      person!fk_person = fk_person
+   End If
+   person!firstname = Trim(txtFirstname.text)
+   person!surname = Trim(txtSurname.text)
+   person!salutation = Trim(txtSalutation.text)
+   Try person!birthdate = Format(Val(txtBirthdate.text), "dd/mm/yyyy")
+   person!fk_title = cmbTitle.index
+   person!fk_sex = cmbSex.index
+   person!fk_marital = cmbMarital.index
+   If chkRetired.value Then
+      person!retired = True
+   Else
+      person!retired = False 
+   End If  
+   If chkDeceased.value = True Then
+      person!deceased = True
+   Else
+      person!deceased = False   
+   Endif
+   Try person!date_deceased = Format(Val(txtDateDeceased.text), "dd/mm/yyyy")
+   
+   person!memo = Trim(txtMemo.text)
+   
+   person!country_code = country_code_birth
+   person!fk_ethnicity = fk_ethnicity
+   
+   person!fk_occupation = fk_occupation
+   If fk_occupation <> 0 Then  
+      
+      person!fk_occupation = fk_occupation
+      Try person.Remove("occupation")
+   Else
+      
+      If Not IsNull(rows_in_view) Then
+         If rows_in_view[pk_view]!fk_occupation = 0 Or IsNull(rows_in_view[pk_view]!fk_occupation) Then 'the original data had no occupation
+            person.Remove("fk_occupation")
+            person!occupation = Trim(txtOccupation.text)
+         Else
+            
+            If fk_occupation = 0 Then
+               If Trim(txtOccupation.text) <> "" Then
+                  person.Remove("fk_occupation")
+                  person!occupation = Trim(txtOccupation.text)
+               Else
+                  person!fk_occupation = 0
+               End If
+            End If
+         End If  
+      End If   
+   End If            
+   
+   person!fk_language = fk_language
+   If chkLanguageProblems.value = True Then
+      person!language_problems = True
+   Else
+      person!language_problems = False
+   End If
+   
+   For Each comm In comms
+      Try comm.Remove("comm_type")
+   Next
+   
+   modDBConnect.BeginTrans()
+   
+   If PersonPicture!path Then
+      person!fk_image = modContactsDBI.Image_Save(PersonPicture)
+   End If  
+   person!fk_person = modContactsDBI.Person_Save(rows_in_view, pk_view, person, comms, views_comms)
+   modContactsDBI.Person_Addresses_Save(views_addresses, pk_view, addresses, person)
+   
+   If Isection = cSection_Patients Then
+      patient!fk_person = person!fk_person
+      patient!fk_patient = modContactsDBI.Patient_Save(rows_in_view, pk_view, patient) ', person, comms, views_comms)
+   End If
+   modDBConnect.CommitTrans()
+   
+   EditArea_Notify_DataChange(False)
+   
+   If Isection = cSection_Patients Then
+      
+      If fk_patient > 0 And person.Exist("fk_image") Then
+         If person!fk_image > 0 And If FClinical.IsSamePatient(fk_patient) Then
+            FClinical.Patient_Picture_Refresh(personpicture!path)
+            FClinical.Patient_Demographics_Refresh()
+         End If
+         
+      End If
+      
+      rows_in_view = modContactsDBI.Patient_Get_Using_Pk(patient!fk_patient)
+   Else
+      
+      rows_in_view = modContactsDBI.Person_Get_Using_PK(person!fk_person)
+   End If   
+   Persons_List_Fill()
+   If cvwPersons.Count > 0 Then
+      cvwPersons.MoveFirst
+      cvwPersons.Item.Selected = True
+      cvwPersons_Select()
+   End If
    
 End
 
@@ -527,45 +690,84 @@ Public Sub Save()
    
    Dim Returned_collection As Collection
    Dim x As Integer 
+   Dim person As CRow
+   Dim patient As CRow
+   Dim address As CRow
+   Dim Coll As Collection
+   Dim communication As CRow
+   Dim link_person_comm As New CRow
    
    If Vbox_EditArea.Padding = 0 Then Return     'no padding = no data
    If Not Valid_Data() Then Return 
    
    If fk_town <> 0 Then 
-      Address_Accept() 'if not already accepted
-   End If
-   For Each address In addresses
-      address.Remove("type")
-      address.Remove("town")
-      address.Remove("state")
-      address.Remove("postcode")
+      Address_Accept()                          'if user has left in the address editing area > to the list   End If
+   End If     
+   For Each Coll In addresses
+      Coll.Remove("type")
+      Coll.Remove("town")
+      Coll.Remove("state")
+      Coll.Remove("postcode")
    Next
-   
+   For Each Coll In comms
+      Try Coll.Remove("comm_type")
+   Next
    If isection = cSection_Patients Then
-      patient = New Collection 
+      patient = New CRow
       If fk_patient Then
+         patient.put_unchanged(fk_patient, "fk_patient")
+      Else
          patient!fk_patient = fk_patient
       End If
       If rbAboriginalityNone.value = True Then
-         patient!atsi = Const.aboriginality_none
+         patient!fk_lu_aboriginality = Const.aboriginality_none
       End If
       If rbAboriginalityAboriginal.value = True Then
-         patient!atsi = Const.aboriginality_aboriginal
+         patient!fk_lu_aboriginality = Const.aboriginality_aboriginal
       End If
       If rbAboriginalityTSI.value = True Then
-         patient!atsi = Const.aboriginality_Torres_Strait_Islander
+         patient!fk_lu_aboriginality = Const.aboriginality_Torres_Strait_Islander
       End If
       If chkLeftPractice.value = True Then
-         patient!active_status = "i"
+         patient!fk_lu_active_status = const.PatientStatus_Inactive
       Else
-         patient!active_status = "a"
+         patient!fk_lu_active_status = const.PatientStatus_Active
       Endif
-      
+      patient!medicare_number = form_billing.Medicare_Number()
+      patient!medicare_ref_number = form_billing.Medicare_Reference_number()
+      patient!medicare_expiry_date = form_billing.Medicare_Card_Expiry_Date()
+      patient!veteran_number = form_billing.Veteran_Card_Number()
+      If patient!veteran_number <> "" Then 
+         patient!fk_lu_veteran_card_type = form_billing.Veteran_Card_Type()
+         patient!veteran_specific_condition = form_billing.veteran_specific_condition()
+      Else
+         patient!fk_lu_veteran_card_type = Null
+         patient!veteran_specific_condition = Null
+      End If  
+      patient!concession_card_number = form_billing.Concession_Card_Number()
+      If patient!concession_card_number <> "" Then
+         patient!concession_card_expiry_date = form_billing.Concession_Card_Expiry_Date()
+         patient!fk_lu_centrelink_card_type = form_billing.Centrelink_Card_Type()
+      Else
+         patient!concession_card_expiry_date = Null
+         patient!fk_lu_centrelink_card_type = Null
+      Endif
+      patient!fk_lu_billing_type = form_billing.Billing_type()
+      patient!fk_lu_private_health_fund = form_billing.Private_Health_Fund()
+      If patient!fk_lu_private_health_fund <> const.PrivateHealthFund_None Then
+         patient!private_insurance = True
+      Else
+         patient!private_insurance = False  
+      Endif
    End If   
-   
-   person = New Collection 
-   If fk_person <> 0 Then
+   '--------------------------------------------------------------------------------------
+   'Now save the person before we save the patient in case need the fk_person for cPatient
+   '--------------------------------------------------------------------------------------
+   person = New CRow
+   If fk_person = 0 Then
       person!fk_person = fk_person
+   Else
+      person.put_unchanged(fk_person, "fk_person")
    End If
    person!firstname = Trim(txtFirstname.text)
    person!surname = Trim(txtSurname.text)
@@ -585,211 +787,78 @@ Public Sub Save()
       person!deceased = False   
    Endif
    Try person!date_deceased = Format(Val(txtDateDeceased.text), "dd/mm/yyyy")
-   
    person!memo = Trim(txtMemo.text)
-   
    person!country_code = country_code_birth
    person!fk_ethnicity = fk_ethnicity
-   
-   person!fk_occupation = fk_occupation
-   If fk_occupation <> 0 Then  
-      
+   If fk_occupation <> 0 Then                            'fk_occupation exists = an existing occupation
       person!fk_occupation = fk_occupation
-      Try person.Remove("occupation")
    Else
-      
-      If Not IsNull(rows_in_view) Then
-         If rows_in_view[pk_view]!fk_occupation = 0 Or IsNull(rows_in_view[pk_view]!fk_occupation) Then 'the original data had no occupation
-            person.Remove("fk_occupation")
-            person!occupation = Trim(txtOccupation.text)
-         Else
-            
-            If fk_occupation = 0 Then
-               If Trim(txtOccupation.text) <> "" Then
-                  person.Remove("fk_occupation")
-                  person!occupation = Trim(txtOccupation.text)
-               Else
-                  person!fk_occupation = 0
-               End If
-            End If
-         End If  
-      End If   
+      If Trim(txtOccupation.text) <> "" Then             'have an occupation but no key - is a new occupation
+         person!fk_occupation = modContactsDBI.Occupation_Save(Lower(Trim(txtOccupation.text)))
+      End If  
    End If            
-   
    person!fk_language = fk_language
    If chkLanguageProblems.value = True Then
       person!language_problems = True
    Else
       person!language_problems = False
    End If
-   
-   For Each comm In comms
-      Try comm.Remove("comm_type")
-   Next
-   
    modDBConnect.BeginTrans()
-   
    If PersonPicture!path Then
       person!fk_image = modContactsDBI.Image_Save(PersonPicture)
    End If  
-   person!fk_person = modContactsDBI.Person_Save(rows_in_view, pk_view, person, comms, views_comms)
-   modContactsDBI.Person_Addresses_Save(views_addresses, pk_view, addresses, person)
-   
-   If Isection = cSection_Patients Then
-      patient!fk_person = person!fk_person
-      patient!fk_patient = modContactsDBI.Patient_Save(rows_in_view, pk_view, patient) ', person, comms, views_comms)
-   End If
-   modDBConnect.CommitTrans()
-   
-   EditArea_Notify_DataChange(False)
-   
-   If Isection = cSection_Patients Then
-      
-      If fk_patient > 0 And person.Exist("fk_image") Then
-         If person!fk_image > 0 And If FClinical.IsSamePatient(fk_patient) Then
-            FClinical.Patient_Picture_Refresh(personpicture!path)
-            FClinical.Patient_Demographics_Refresh()
-         End If
-         
-      End If
-      
-      rows_in_view = modContactsDBI.Patient_Get_Using_Pk(patient!fk_patient)
-   Else
-      
-      rows_in_view = modContactsDBI.Person_Get_Using_PK(person!fk_person)
-   End If   
-   Persons_List_Fill()
-   If cvwPersons.Count > 0 Then
-      cvwPersons.MoveFirst
-      cvwPersons.Item.Selected = True
-      cvwPersons_Select()
-   End If
-   
-End
-
-
-Public Sub Save_old()
-   
-   Dim Returned_collection As Collection
-   Dim x As Integer 
-   
-   If Vbox_EditArea.Padding = 0 Then Return     'no padding = no data
-   If Not Valid_Data() Then Return 
-   
-   If fk_town <> 0 Then 
-      Address_Accept() 'if not already accepted
-   End If
-   For Each address In addresses
-      address.Remove("type")
-      address.Remove("town")
-      address.Remove("state")
-      address.Remove("postcode")
-   Next
-   
-   If isection = cSection_Patients Then
-      patient = New Collection 
-      If fk_patient Then
-         patient!fk_patient = fk_patient
-      End If
-      If rbAboriginalityNone.value = True Then
-         patient!atsi = Const.aboriginality_none
-      End If
-      If rbAboriginalityAboriginal.value = True Then
-         patient!atsi = Const.aboriginality_aboriginal
-      End If
-      If rbAboriginalityTSI.value = True Then
-         patient!atsi = Const.aboriginality_Torres_Strait_Islander
-      End If
-      If chkLeftPractice.value = True Then
-         patient!active_status = "i"
-      Else
-         patient!active_status = "a"
+   Print patient
+   Print person
+   person.Save("contacts.data_persons", "fk_person")
+   For Each Coll In Comms
+      communication = New CRow
+      If Coll!pk Then
+         communication.put_unchanged(Coll!fk_comm, "pk")
       Endif
+      communication!fk_type = Coll!fk_type
+      communication!value = Coll!value
+      communication!note = Coll!note
+      communication!preferred_method = Coll!preferred_method
+      communication!confidential = Coll!confidential
+      communication.Save("contacts.data_communications", "fk_comm")
+      link_person_comm = New CRow 
+      link_person_comm!fk_person = person!fk_person
+      link_person_comm!fk_comm = communication!fk_comm
+      ' '     link_person_comm.Save("contacts.links_persons_comms", "fk_link_person_comm") Next
+   Next  
+   For Each coll In Addresses
+      address = New CRow
+      If coll!fk_address Then
+         address.put_unchanged(coll!fk_address, "fk_address")
+      Endif
+      address!fk_town = coll!fk_town
+      address!street1 = coll!street1 
+      address!street2 = coll!street2
+      address!fk_lu_address_type = coll!fk_lu_address_type 
+      address!country_code = coll!country_code
+      address!postal_address = coll!postal_address
+      address!preferred_address = coll!postal_address
+      address.Save("contacts.data_addresses", "fk_address")
       
-   End If   
-   
-   person = New Collection 
-   If fk_person <> 0 Then
-      person!fk_person = fk_person
-   End If
-   person!firstname = Trim(txtFirstname.text)
-   person!surname = Trim(txtSurname.text)
-   person!salutation = Trim(txtSalutation.text)
-   Try person!birthdate = Format(Val(txtBirthdate.text), "dd/mm/yyyy")
-   person!fk_title = cmbTitle.index
-   person!fk_sex = cmbSex.index
-   person!fk_marital = cmbMarital.index
-   If chkRetired.value Then
-      person!retired = True
-   Else
-      person!retired = False 
-   End If  
-   If chkDeceased.value = True Then
-      person!deceased = True
-   Else
-      person!deceased = False   
-   Endif
-   Try person!date_deceased = Format(Val(txtDateDeceased.text), "dd/mm/yyyy")
-   
-   person!memo = Trim(txtMemo.text)
-   
-   person!country_code = country_code_birth
-   person!fk_ethnicity = fk_ethnicity
-   
-   person!fk_occupation = fk_occupation
-   If fk_occupation <> 0 Then  
-      
-      person!fk_occupation = fk_occupation
-      Try person.Remove("occupation")
-   Else
-      
-      If Not IsNull(rows_in_view) Then
-         If rows_in_view[pk_view]!fk_occupation = 0 Or IsNull(rows_in_view[pk_view]!fk_occupation) Then 'the original data had no occupation
-            person.Remove("fk_occupation")
-            person!occupation = Trim(txtOccupation.text)
-         Else
-            
-            If fk_occupation = 0 Then
-               If Trim(txtOccupation.text) <> "" Then
-                  person.Remove("fk_occupation")
-                  person!occupation = Trim(txtOccupation.text)
-               Else
-                  person!fk_occupation = 0
-               End If
-            End If
-         End If  
-      End If   
-   End If            
-   
-   person!fk_language = fk_language
-   If chkLanguageProblems.value = True Then
-      person!language_problems = True
-   Else
-      person!language_problems = False
-   End If
-   
-   For Each comm In comms
-      Try comm.Remove("comm_type")
+      ' address_link = New CRow   
+      '  If IsNull(coll!fk_address) Then
+      '       address_link!fk_person = person!fk_person
+      '       address_link!fk_address = address!fk_address
+      '  Else
+      '      address_link.put_unchanged(
+      '  End If  
+      ' address_link.Save("contacts.links_persons_addresses", "fk_link_person_address")
    Next
-   
-   modDBConnect.BeginTrans()
-   
-   If PersonPicture!path Then
-      person!fk_image = modContactsDBI.Image_Save(PersonPicture)
-   End If  
-   person!fk_person = modContactsDBI.Person_Save(rows_in_view, pk_view, person, comms, views_comms)
-   modContactsDBI.Person_Addresses_Save(views_addresses, pk_view, addresses, person)
-   
    If Isection = cSection_Patients Then
       patient!fk_person = person!fk_person
-      patient!fk_patient = modContactsDBI.Patient_Save(rows_in_view, pk_view, patient) ', person, comms, views_comms)
+      patient.Save("clerical.data_patients", "fk_patient")
+      '   patient!fk_patient = modContactsDBI.Patient_Save(rows_in_view, pk_view, patient) ', person, comms, views_comms)
    End If
-   modDBConnect.CommitTrans()
+   '  modDBConnect.CommitTrans()
    
    EditArea_Notify_DataChange(False)
    
    If Isection = cSection_Patients Then
-      
       If fk_patient > 0 And person.Exist("fk_image") Then
          If person!fk_image > 0 And If FClinical.IsSamePatient(fk_patient) Then
             FClinical.Patient_Picture_Refresh(personpicture!path)
@@ -797,10 +866,8 @@ Public Sub Save_old()
          End If
          
       End If
-      
       rows_in_view = modContactsDBI.Patient_Get_Using_Pk(patient!fk_patient)
    Else
-      
       rows_in_view = modContactsDBI.Person_Get_Using_PK(person!fk_person)
    End If   
    Persons_List_Fill()
@@ -811,7 +878,6 @@ Public Sub Save_old()
    End If
    
 End
-
 
 Public Sub Reset_Gui()
    
@@ -2252,7 +2318,7 @@ Public Sub cvwContacts_Select()
 End
 
 Public Sub Surname_Duplicates_Selection(action As String, Optional calling_control As String) 
-
+   
    Dim sMsg As String
    
    Select Case action
@@ -2315,3 +2381,25 @@ Public Sub txtLimit_KeyRelease()
    Timer1.start()
    
 End
+' pk serial NOT NULL,
+'   fk_person integer NOT NULL, -- foreign key to contacts.data_persons table
+'   fk_doctor integer, -- if not null this is the patients perferred doctor
+'   fk_next_of_kin integer, -- if not null points to person in the database who is the next of kin
+'   fk_payer integer, -- foreign key to data_patients ie he or she who pays the bill
+'   fk_family integer, -- foriegn key to clerical.data_families - links patients to a family unit
+'   medicare_number character varying(10),
+'   medicare_ref_number text,
+'   medicare_expiry_date date,
+'   veteran_number character varying(10),
+'   veteran_specific_condition text, -- the condition the veteran is entitled to if limited benefit
+'   concession_card_number text,
+'   concession_card_expiry_date date,
+'   memo text,
+'   pk_legacy text, -- the key from the legacy database for the patient
+'   fk_lu_veteran_card_type integer, -- the type of card 1 = full (gold) 2= specific entitlement (white)  3=war widow (lilac)
+'   fk_lu_active_status integer, -- key to clerical.lu_active_status 1= active 2 = inactive
+'   fk_lu_centrelink_card_type integer, -- key to clerial.lu_centrelink_card_type - the 3 card types in Australia
+'   fk_lu_aboriginality integer,
+'   fk_lu_billing_type integer, -- the billing level eg 1 = standard
+'   fk_lu_private_health_fund integer, -- foreign key to clerical.lu_private_health_fund table listing nearly 40 private health funds
+'   private_insurance boolean, -- boolean value if true the patient has private insurance

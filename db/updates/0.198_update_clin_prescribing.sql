@@ -1,6 +1,6 @@
 -- an update to add a function to create a proper authority number
 
-alter table clin_prescribing.authority_script_number drop column fk_clinic;
+-- alter table clin_prescribing.authority_script_number drop column fk_clinic;
 -- delete any existing number for a staff - it will be wrong.
 delete from clin_prescribing.authority_script_number;
 
@@ -13,7 +13,7 @@ AS $function$
 declare
   script_no integer;
   check_digit integer;
-ebegin
+begin
   select into script_no authority_script_number from
 clin_prescribing.authority_script_number where fk_staff = $1 limit 1;
   if not found then -- doctor has never done an Authority script on this system

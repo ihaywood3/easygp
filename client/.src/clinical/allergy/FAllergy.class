@@ -18,214 +18,723 @@
 Private currentconsult As CConsult
 Private the_allergy As CRow
 Private bExit As Boolean
+Private bKeyValid As Boolean
 Private widget_running As String
 Private generics_to_atc As Collection
 Private brands_to_atc As Collection
+Private Terms As Collection
+Private Term As Collection 
+Private fk_code As String
+Private fk_coding_system As Integer
+Private fk_consult As Integer 
+Private fk_allergy As Integer
+Private fk_brand As String 
+Private brands As Collection
+Private generics As Collection 
+Private obs As Observer
+Private Form_Terms As FCodedTermSelector
+Private sSearchLimit As Integer = 20 'default to only get 20 terms
+Private iCodingSystem As Integer  
+Private currentTerm As Collection
+Private SpellChecker As ClskSpell
+Private timer_count As Integer
+Private bGenericSearch As Boolean
+Private drugs As Collection
+Private atccode As String
 
 Public Sub Init(cons As CConsult)
-'   '--------------------------------
-'   'Do all the initialization things
-'   '--------------------------------
-    Try Settings_Load()
-'   EditArea_Set_Label_widths()
-'   EditArea_Clear()
+   '   '--------------------------------
+   '   'Do all the initialization things
+   '   '--------------------------------
+   
+   Try Settings_Load()
    currentconsult = cons  
-   the_allergy = New CRow
- 
+   lblMeasure.text = "  Reaction Free Text  "
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
+   With Form_Terms = New FCodedTermSelector(Me)
+      .Ignore = True
+      .Visible = False   
+      .Height = 200
+   End With
+   obs = New Observer(Form_Terms.ColumnView1) As "cvwTerms"
+   With SpellChecker = New ClskSpell
+      .EditorControlToCheck = teForSpelling
+      .TempFileForSpelling = User.home &/ "myspelltemp.txt"
+      .TempFileForErrors = User.home &/ "myspellerrors.txt"
+   End With
+   With SpellChecker = New ClskSpell
+      .EditorControlToCheck = teForSpelling
+      .TempFileForSpelling = User.home &/ "myspelltemp.txt"
+      .TempFileForErrors = User.home &/ "myspellerrors.txt"
+   End With
+   Reload()
+   Allergy_New()
+   
+End
+
+Public Sub Save()
+   '-------------------------------------------------------------
+   ' Save the allergy
+   ' ------------------------------------------------------------
+   ' TABLE clin_allergies.allergies
+   ' 
+   '   pk serial NOT NULL,
+   '   fk_consult integer NOT NULL,
+   '   fk_brand as integer,
+   '   generic_specific boolean NOT NULL,
+   '   fk_reaction integer NOT NULL,
+   '   deleted boolean NOT NULL,
+   '   atc text NOT NULL,
+   '   date_reaction date,
+   '---------------------------------------------------------------
+   
+   Dim allergy As CRow
+   
+   If Vbox_EditArea_Outer.Padding = 0 Then Return  
+   If Not Valid_Allergy() Then Return 
+   allergy = New CRow
+   If fk_allergy Then
+      allergy.put_unchanged(fk_allergy, "fk_allergy")
+   Endif
+   '   allergy.Save()
+   ' modDBConnect.CommitTrans()
+   Reload()
+   
+End
+
+Public Sub Allergy_New()
+   
+   EditArea_Clear()
+   Reset_Keys() 
+   
+End
+
+Public Function Progress_Notes_Create() As String
+   '-----------------------------------------------------------------------
+   'Creates html for the allergy just noted to insert in the progress notes
+   '-----------------------------------------------------------------------  
+   
+   Dim pn As String
+   
+   Return pn 
+   
+End
+
+Public Sub Reload()
+   '------------------------------
+   'display any existing allergies
+   '------------------------------ 
+   
+   Return 
+   currentconsult.Refresh("allergies")                   'remove key from cache > later forces a reload
+   FClinical.Refresh_Section(const.cSection_Allergies)    'refresh lists on main screen FClinical
+   FClinical.Refresh_AllPreviousNotes() 
    
 End
 
 Public Sub form_Close()
-  
+
+   timer1_Stop()
    Settings_Save()
-  
+   
 End
 
-
 Public Sub Form_Save()
-  
+   
    FClinical.Refresh_AllPreviousNotes()
-  
+   
 End
 
 Public Sub Settings_Save()
-
-Settings["Allergies/VSplit_Allergies.Layout"] = VSplit_Allergies.layout
- 
+   
+   Settings["Allergies/VSplit_Allergies.Layout"] = VSplit_Allergies.layout
+   
 End
 
 Public Sub Settings_Load()
-
-     VSplit_Allergies.layout = Settings["Allergies/VSplit_Allergies.Layout"]
-
+   
+   VSplit_Allergies.layout = Settings["Allergies/VSplit_Allergies.Layout"]
+   
 End
- 
+
 Public Sub EditArea_Clear()
-    'Clear the editing area, re-set current Allergy
-     bExit = True                                      'stop re-entrance into change routines
-     Vbox_EditArea.BackGround = Color.White             'remove red outline around edit area  ?remove colour leave red
-     Vbox_EditArea.Padding = 0                         
-     listview1.Visible = False                         'remove popup list if showing
-     txtDate.text = ""                            'clear the text boxes
-     txtBrand.text = ""
-     txtGeneric.text = "" 
-     listview1.Clear()
-     listview1.Visible = False
-     chkGenericSpecific.Value = False
-     txtDate.text = Format(Now, "dd/mm/yyyy")
-     txtBrand.SetFocus()
-     bExit = False
-     the_allergy = New CRow
+   'Clear the editing area, re-set current Allergy
+   
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
+   bExit = True                                      'stop re-entrance into change routines
+   EditArea_Notify_DataChange(False)
+   listview1.Visible = False                         'remove popup list if showing
+   listview1.Clear()
+   listview1.Visible = False
+   chkGenericSpecific.Value = False
+   txtDate.text = Format(Now, "dd/mm/yyyy")
+   txtBrand.SetFocus()
+   bExit = False
+   
 End
- 
-Public Sub txtEditArea_GotFocus()
- 
- Last.BackGround = Color.rgb(95, 255, 175)
 
+Public Sub Reset_Keys()
+   
+   fk_code = ""
+   fk_coding_system = 0
+   fk_allergy = 0
+   fk_brand = 0 
+   
+End
+
+Public Sub txtEditArea_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   
 End
 
 Public Sub txtEditArea_LostFocus()
- 
+   
    Last.BackGround = Color.White 
+   
 End
-
 
 Public Sub listview1_KeyPress()
    
-      If Key.code = Key.return Then
-        listview1_DblClick()
-      End If
+   If Key.code = Key.return Then
+      listview1_DblClick()
+   End If
    
 End
 
 Public Sub listview1_DblClick()
-      Select Case widget_running
-      
+   
+   Select Case Last.tag.tag
       Case "brand"
          Brand_Select()
       Case "generic"
          Generic_Select()
       Case "class"
       Case "reaction"
-      End Select
-        
+   End Select
+   
 End
 
 Public Sub Brand_Select()
-     listview1.MoveCurrent
-     txtBrand.text = listview1.Item.Text
-     the_allergy!brand = listview1.Item.Text
-     the_allergy!atccode = brands_to_atc[listview1.Item.Text]
-     ListView1.Visible = False
+   
+   listview1.MoveCurrent()
+   txtBrand.text = listview1.Item.Text
+   atccode = brands[listview1.Item.key]!atccode
+   txtGeneric.text = brands[listview1.Item.key]!generic
+   txtATCName.text = brands[listview1.Item.key]!atcname
+   ListView1.Visible = False
+   txtCodedTerm.SetFocus()
+   
+End
+
+Public Sub Brand_Select_ian()
+   
+   listview1.MoveCurrent
+   txtBrand.text = listview1.Item.Text
+   atccode = brands_to_atc[listview1.Item.Text]
+   ListView1.Visible = False
    
 End
 
 Public Sub Generic_Select()
-     listview1.MoveCurrent
-     txtGeneric.text = listview1.Item.Text
-     the_allergy!atccode = generics_to_atc[listview1.Item.Text]
-     ListView1.Visible = False
+   
+   listview1.MoveCurrent
+   txtGeneric.text = listview1.Item.Text
+   atccode = generics_to_atc[listview1.Item.Text]
+   ListView1.Visible = False
+   
 End
 
-
-
 Public Sub Editarea_KeyPress()
-    Select Case Key.Code
-    Case Key.Down
-       If listview1.Visible Then
+   
+   Select Case Key.Code
+      Case Key.Down
+         If listview1.Visible Then
             listview1.MoveFirst
             listview1.Item.Selected = True
             listview1.setfocus
-       End If
-    Case Key.Return
-    End Select
-    If Last.tag = "generic" Or Last.tag = "brand" Then
-       Timer1.Enabled = True
-       widget_running = Last.tag
-    Endif
+         End If
+      Case Key.Return
+   End Select
+   If Last.tag = "generic" Or Last.tag = "brand" Then
+      '    Timer1.Enabled = True
+      widget_running = Last.tag
+   Endif
+   
 End
- 
+
 Public Sub EditArea_GotFocus()
- 
-  Select Case Last.tag
-     Case "brand"
-       With listview1
-         .left = txtBrand.Left
-         .top = HBox_Product.top + hBox_Product.Height
-         .width = HBox_Product.width / 2
-       End With
-     Case "generic"
-       With listview1
-         .left = txtBrand.Left
-         .top = HBox_Generic.top + hBox_Generic.Height
-         .width = HBox_Generic.width / 2
-       End With  
-  End Select
+   
+   Select Case Last.tag
+      Case "brand"
+         With listview1
+            '    .left = txtBrand.Left
+            '    .top = HBox_Product.top + hBox_Product.Height
+            '    .width = HBox_Product.width / 2
+         End With
+      Case "generic"
+         With listview1
+            ' .left = txtBrand.Left
+            ' .top = HBox_Generic.top + hBox_Generic.Height
+            ' .width = HBox_Generic.width / 2
+         End With  
+   End Select
+   
+End
+
+Public Sub EditArea_Notify_DataChange(flag As Boolean)
+   
+   If flag = True Then 
+      Vbox_EditArea_Outer.Padding = 1
+   Else
+      VBox_EditArea_outer.Padding = 0
+   Endif
+   
+End
+
+Public Function EditArea_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   '----------------------------------------------------------
+   'PURPOSE       Restrict key presses for validation purposes
+   'HOW IT WORKS  see routines names
+   'FIXME         Ian would do this much simpler I'm sure
+   '-----------------------------------------------------------
+   
+   Select Case Last.Tag
+      Case "brand", "allergen", "coded term", "free text reaction", "generic", "date reaction", "coded term"
+         bKeyValid = True
+         
+   End Select
+   Return bKeyValid
    
 End
 
 Public Sub Timer1_Timer()
-   
-  If bExit Then Return
-  Select Case widget_running
-    Case "brand"
-       Brands_Get(txtBrand.Text)
-    Case "generic"
-       Generics_Get(txtGeneric.Text)
-  End Select
-  listview1.Visible = True
-  Timer1.Enabled = False
+   '------------------------------------------------------------------------------
+   'If the timer is running, user is typing in either the brand or generic textbox
+   '------------------------------------------------------------------------------   
+
+   If bExit Then Return
+   Inc timer_count
+   If timer_count > 3 Then
+      If bGenericSearch Then
+         Generics_Get(Trim(txtGeneric.text))
+      Else
+         Brands_Get()
+      End If  
+   Endif
    
 End
 
-Private Sub Brands_Get(brand As String)
+Private Sub Brands_Get()
+   
+   Dim brand As Collection 
+
+   Timer1.Stop
+   
+   listview1.Clear()
+   Let brands_to_atc = New Collection
+   brands = modPrescribingDBI.Brands_Get_Basic(Trim(txtBrand.text))
+   If brands.count Then    
+      For Each brand In brands
+         listview1.Add(brand!pk, brand!brand)
+         
+      Next
+      With listview1
+         .tag = txtBrand
+         .Visible = True
+      End With 
+   End If   
+   
+End
+
+Private Sub Brands_Get_ian(brand As String)
+   
    Dim r As Result
    
+   Timer1.Stop
    listview1.Clear()
    Let brands_to_atc = New Collection
    r = modPrescribingDBI.Brands_Get_Basic(brand)
    For Each r
       listview1.Add(r!brand, r!brand)
       Let brands_to_atc[r!brand] = r!atccode
+      listview1.tag = txtBrand
    Next
    listview1.Visible = True
    
 End
 
 Private Sub Generics_Get(generic As String)
-   Dim r As Result
    
+   Dim r As Result
+
+   Timer1.Stop
    listview1.Clear()
    generics_to_atc = New Collection
    Let r = modPrescribingDBI.Generics_Get_Basic(generic)
    For Each r
       Try listview1.Add(r!generic, r!generic)
       Let generics_to_atc[r!generic] = r!atccode
+      listview1.tag = txtGeneric
    Next
    listview1.Visible = True
    
 End
 
+Public Function Valid_Allergy() As Boolean
+   '-------------------------------------------------------------------
+   'Returns true if the information in the edit area is a valid allergy
+   '------------------------------------------------------------------- 
+   
+   Return True
+   
+End
 
-Public Sub Form_Open()
+Public Sub Button1_Click()
+   
+   Dim sql As String
+   Dim generics As Collection
+   Dim generic As Collection
+   Dim distinct_generics As Collection
+   Dim dg As CRow 
+   
+   sql = "Select distinct  generic, atccode from drugs.product order by generic "
+   Generics = modDBConnect.exec_query_collection(sql)
+   For Each generic In generics
+      If Not InStr(generic, ";") Then
+         dg = New CRow  
+         dg!generic = generic!generic
+         dg!atccode = generic!atccode
+         distinct_generics.Add(generic, distinct_generics.count)
+      Endif
+   Next
+   
+End 
 
-  
+Public Sub EditArea_TxtBox_GotFocus()
+   
+   Listview1.Visible = False
+   Last.BackGround = Color.rgb(95, 255, 175)
+   Select Case Last.tag
+      Case "something"
+   End Select
+   
+End 
+
+Public Sub EditArea_TextBox_Change()
+   
+   If bExit Then
+      Return
+   End If   
+   
+End
+
+Public Sub EditArea_TextBox_LostFocus()
+   
+   Last.BackGround = Color.White
+   
+End
+
+Public Sub EditArea_TextBox_KeyRelease()
+   
+   If bExit Then Return 
+   
+   Select Case Last.tag
+      Case "coded term"
+         Form_Terms.Set_SearchText(Trim(Last.text))
+      Case "something"
+      Case "brand"
+         Timer1.Enabled = True
+         timer_count = 0
+         bGenericSearch = False  
+      Case "generic"
+         bGenericSearch = True
+         Timer1.Enabled = True
+         timer_count = 0
+   End Select
+   
+End
+
+Public Sub EditArea_TextBox_KeyPress()
+   
+   bkeyvalid = EditArea_ExcludeKeys(key.code, Last.tag)
+   
+   If bkeyvalid = False Then
+      Stop Event
+      Return
+   End If
+   Select Case key.Code
+      Case key.Down
+         If listview1.Visible Then 
+            listview1.SetFocus
+            listview1.MoveFirst
+            listview1.Item.Selected = True
+            Return
+         End If
+         If Form_Terms.visible Then 
+            With Form_Terms.ColumnView1 
+               .SetFocus
+               .MoveFirst
+               .Item.selected = True
+            End With
+            Return
+         End If    
+   End Select
+   
+End
+
+Public Sub Coded_Term_Select()
+   '-------------------------------------------
+   'User has chosen a term from popup listview1
+   'Display this in the txtCodedTerm Textbox
+   'Set currentProblem!fk_code to the pk_term
+   '-------------------------------------------
+   
+   CurrentTerm = Form_Terms.Get_Term()
+   '-----------------------------------------------------------------------
+   'We allow free text in the health issue = past history problem
+   'so, if user has typed something in there like ** very bad diabetes**
+   '(bad example I know), then we keep this as the health issue but it
+   'will be coded back to the appropriate icpc2+ term
+   'However if they havn't typed anything in here, put the natural language
+   'term in the txtConditon text box and the coded term in the coded textbox
+   'e.g Diabetes;Type1 (T89002) or something similar
+   '------------------------------------------------------------------------
+   
+   txtCodedTerm.text = CurrentTerm!term & " (" & CurrentTerm!code & ")"
+   fk_code = CurrentTerm!code
+   fk_coding_system = CurrentTerm!fk_coding_system
+   
+End
+
+Public Sub cvwTerms_KeyPress()
+   '------------------------------------------------------------------
+   'Act only on the <ENTER> key display what is in list in the textbox
+   'This event occurs of Form_Terms and is over-ridden by this observer
+   '------------------------------------------------------------------
+   
+   If Key.code = Key.Return Then 
+      ' Stop Event                    'stop event on Form_Terms 
+      cvwTerms_DblClick()
+   End If
+   
+End
+
+Public Sub cvwTerms_DblClick()
+   '-----------------------------------------------------------------
+   'This is an observer event on  Form_Terms.ColumnView1 - see Init()
+   '----------------------------------------------------------------
+   
+   Stop Event
+   
+   Coded_Term_Select() 
+   Form_Terms.Visible = False 
+   rbReactionTypeAllergy.SetFocus()
 
 End
 
-
-Public Sub mnuHealthIssues_Click()
-   '---------------------------------------------------
-   'User wants to link a request form to a health issue
-   'The menu tag = the pk_pasthistory
-   '---------------------------------------------------
-  
-  Select Case Last.tag
-  Case "general notes", "remove link"
-    txtHealthIssue.text = "General Notes"
-  Case Else
-    txtHealthIssue.text = currentconsult!past_history[Last.tag]!description
-  End Select
+Public Sub Terms_Get()
+   '-------------------------------------------------------------------------------------
+   'Gets list of diagnostic terms
+   'Cannot set default if count is one because must  be able to add new occupations
+   'can't remove the label because it needs to occupy space to keep textbox correct width
+   '-------------------------------------------------------------------------------------
+   
+   Dim term As Collection 
+   Dim key As String
+   
+   If Trim(txtCodedTerm.text) = "" Then
+      fk_code = ""
+      fk_coding_system = 0
+      Return
+   End If
+   Timer1.Enabled = False  
+   Form_Terms.Get_Terms()
+   
 End
 
+' Don't fret Ian, I'll remove this when I put the update query in svn.
+' Create table clin_allergies.lu_reaction_type
+' (pk serial primary key,
+'  type text not null);
+' 
+'  insert into clin_allergies.lu_reaction_type(type) values ('allergy');
+'  insert into clin_allergies.lu_reaction_type(type) values ('sensitivity');
+' 
+' drop table clin_allergies.allergies cascade;
+' 
+'   CREATE TABLE clin_allergies.allergies
+' (
+'   pk serial  primary key,
+'   fk_consult integer NOT NULL,
+'   fk_brand uuid default null,
+'   allergen text default null,
+'   generic_specific boolean default null,
+'   fk_lu_reaction integer NOT NULL,
+'   fk_lu_reaction_type integer not null ,
+'   fk_coding_system integer default null,
+'   fk_code text default null,
+'   confirmed boolean default true,
+'   deleted boolean default false,
+'   atc text default null,
+'   date_reaction text default null,
+'   CONSTRAINT allergies_fk_consult_fkey FOREIGN KEY (fk_consult)
+'       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'  CONSTRAINT allergies_fk_brand_fkey FOREIGN KEY (fk_brand)
+'       REFERENCES drugs.brand (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'  CONSTRAINT allergies_atc_fkey FOREIGN KEY (atc)
+'       REFERENCES drugs.atc (atccode) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'  CONSTRAINT allergies_fk_lu_reaction_fkey FOREIGN KEY (fk_lu_reaction)
+'       REFERENCES clin_allergies.lu_reaction (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'  CONSTRAINT allergies_fk_lu_reaction_type_key FOREIGN KEY (fk_lu_reaction_type)
+'       REFERENCES clin_allergies.lu_reaction_type (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'  CONSTRAINT allergies_fk_coding_system_key FOREIGN KEY (fk_coding_system)
+'       REFERENCES coding.lu_systems (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION 
+'  );
+'  
+' ALTER TABLE clin_allergies.allergies  OWNER TO easygp;
+' GRANT ALL ON TABLE clin_allergies.allergies TO easygp;
+' GRANT ALL ON TABLE clin_allergies.allergies TO staff;
+' 
+' 
+' 
+' COMMENT ON COLUMN clin_allergies.allergies.fk_brand is
+' 'if not null key to drugs.brand table points to brand with which this allergy was noted';
+' COMMENT ON COLUMN clin_allergies.allergies.allergen is
+' 'if not null then the substance that the person was allergic or sensitive to, eg could be bee or cedar';
+' COMMENT ON COLUMN clin_allergies.allergies.generic_specific is
+' 'if true and the allergan was a drug then the reaction was generic specific not class specific
+' for example someone can be nauseous on one nsaid but not another';
+' COMMENT ON COLUMN clin_allergies.allergies.fk_lu_reaction is
+' 'key to clin_allergies.lu_reaction which is a free text representation of the reaction';
+' COMMENT ON COLUMN clin_allergies.allergies.fk_lu_reaction_type is
+' 'foreign key to allergies.lu_reaction_type 1=allergy 2=sensitivity';
+' COMMENT ON COLUMN clin_allergies.allergies.fk_coding_system IS 
+' 'key to coding.lu_coding_system containing name of coding system   that this allergy is linked to';
+' COMMENT ON COLUMN clin_allergies.allergies.fk_code is 
+' 'the text of the code references coding.generic_terms.code';
+' COMMENT ON COLUMN clin_allergies.allergies.confirmed is 
+' 'if true (the default) then the allergy has been confirmed';
+' COMMENT ON COLUMN clin_allergies.allergies.deleted is '
+' if true then this record is marked as deleted';
+' COMMENT ON COLUMN clin_allergies.allergies.date_reaction  is '
+' the date of reaction, could be date, could be year, could be null';
 
+Public Sub EditArea_TextBox_Activate()
+   
+   Select Case Last.tag
+      Case "date reaction"
+         txtBrand.SetFocus()
+      Case "brand"
+         txtReaction.SetFocus()
+      Case "generic"
+         txtReaction.SetFocus()
+      Case "reaction"
+         txtCodedTerm.SetFocus()
+      Case "coded term"
+         rbReactionTypeAllergy.SetFocus()
+   End Select
+   
+End
+
+Public Sub EditArea_RadioButtons_KeyPress()
+   
+   Select Case key.code
+      Case key.tab, key.Return
+         Select Case Last.tag
+            Case 1
+               If Last.value = False Then
+                  rbReactionSensitivity.SetFocus()
+               Else
+                  rbConfirmedYes.SetFocus()
+               Endif
+            Case 2
+               
+         End Select
+   End Select
+   
+End
+
+Public Sub timer1_Stop()
+   
+   With Timer1
+      .Stop
+      .Enabled = False
+   End With 
+   
+End
+
+Public Sub Form_Leave()
+   
+   timer1_Stop()
+   
+End
+
+Public Sub Brands_Get_rt()
+   ' Dim drug As Collection
+   ' Dim last_drug As String
+   ' 
+   ' listview1.Clear()
+   ' drugs = modUtil.Copy_Collection_Keyed_Sequentially(modPrescribingDBI.Brands_Get(Trim(txtbrand.text))  'ok, get all matching brands from vwDrugs
+   ' For Each drug In drugs
+   '     If last_drug <> drug.brand Then   
+   '        listview1.Add(drug!brand)
+   '        last_drug = brand
+   '     End If 
+   ' Next
+   ' If drugs.count Then
+   '    With listview1
+   '       .tag = txtBrand
+   '       .Visible = True  
+   '       .Raise
+   ' 
+   '    End With
+   ' Endif
+
+End
+
+Public Sub New_Entry()
+   '------------------------------------------------------------------------------------------------------
+   'This is called from the main toolbar in FClinical and here for consistant nomenclature between modules
+   '------------------------------------------------------------------------------------------------------   
+
+   Allergy_New()
+   
+End 
+
+Public Sub Refresh()
+
+   Reload() 
+   
+End
+
+Public Sub EditArea_TextBox_GotFocus()
+   
+   Select Case Last.tag
+      Case "coded term"
+         With Form_Terms
+            .top = Last.Parent.Parent.Top + Last.Parent.Height + Vsplit_Allergies.top 
+            .width = txtCodedTerm.Width
+            .Left = Last.Parent.Left + VBox1.padding
+            .Raise 
+            .Visible = False  
+            If Trim(Last.text) <> "" Then
+               .Set_SearchText(Trim(Last.text))
+            End If   
+         End With    
+      Case "brand", "generic"
+         With listview1
+            .top = Last.Parent.Parent.top + Last.Height
+            .width = Last.Parent.width / 2
+            .left = Last.Parent.Left
+            .Raise()
+         End With
+   End Select
+   
+End

@@ -31,7 +31,7 @@
 '   ========
 '   load a module, document or html  onto a tab from within Fclinical                  : Editor_ShowPage(....)
 '   - for an example see FClinical.Inbox_showResult()
-'   load a module, document or html  onto a tab from outside of FClinical      : Editor_ShowPage_External(....)
+'   load a module, document or html  onto a tab from ou
 '   load a pdf document from outside FClinical which is  a document             :Editor_ShowPage("pdf document",...)
 '   load a pdf document from outside FClinical which is not a document from EasyGP :Editor_ShowPage_External("pdf file",...)
 '   for an example see FProgressNotesViews.Preview()
@@ -111,8 +111,13 @@ End
 
 Static Public Function Enable_Edit_Button(flag As Boolean)
    
-  form_clinical.tbEdit.Enabled = flag
+   form_clinical.tbEdit.Enabled = flag
    
+End
+
+Static Public Function Enable_Save_Button(flag As Boolean)
+   
+   form_clinical.tbSave.Enabled = flag
    
 End
 
@@ -477,7 +482,9 @@ Public Sub Init()
    obs = New Observer(FMetaData.txtUserObservationName) As "FMetaData_txtUserObservationName"  
    obs = New Observer(FMetaData.tbClose) As "FMetaData_tbClose"    'Let FClinical handle the save event"
    obs = New Observer(Form_Decision_Support.tbWebBrowserClose) As "FDecision_Support_tbClose"
-   
+   With gvAllergies
+      .Columns.count = 1
+   End With
    Layout_Form()
    Try Settings_Load()
    synonyms = const.Synonyms()
@@ -530,7 +537,7 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
    Editor_ShowPage("New General Notes")      'Default to general notes tab.
    WorkspaceEditor.Unlock()                  'OR THE GUI WILL RE-SET ITSELF
    Wait                                      'AND LOADING PATIENT IS IMPOSSIBLE
-   cvwAllergies_Refresh()                    'Get all allergies, display on toolbar
+   Allergies_Refresh()                    'Get all allergies, display on toolbar
    cvwRecalls_Refresh()                      'Display recalls on toolbar
    cvwMedications_Refresh()              'Get all active meds, display current in list
    '-------------------------------------------------------------------------------
@@ -663,6 +670,8 @@ Public Sub Refresh_Section_Instance(section As Integer)
       Case const.cSection_Referrals
          currentconsult.Refresh("referrals_written")  
          cvwReferrals_Fill()
+      Case const.cSection_allergies
+         Allergies_Refresh()
       Case const.cSection_Images
          Images_Refresh(True) 
       Case Const.cSection_Recalls
@@ -710,83 +719,6 @@ Public Sub Refresh_Section_Instance(section As Integer)
                      End Select
                End Select
                ' End If        
-            Next
-         Next      
-   End Select
-   
-End
-
-Public Sub Refresh_Section_Instance_old(section As Integer)
-   '-------------------------------------------------------------------------
-   'Refreshs lists, progress note pages when another section alters something
-   'If not a list being refreshed, refresh all progress notes pages contained
-   'in the workspace, this way e.g if you have added new management plans or
-   'historial summaries in past history, and have a progress note page
-   'open entering notes for that problem, next time you switch to it those
-   'summaries will have been updated
-   '-------------------------------------------------------------------------
-   
-   Dim hCtrl As Control
-   Dim frmConsult As FProgressNotePage
-   Dim Page As FLinkContainer
-   Dim Container As FLinkContainer
-   Dim HTMLViewer As FHtmlViewer
-   
-   If IsNull(currentconsult) Then Return 
-   
-   Select Case section
-      Case const.cSection_PastHistory
-         pasthistory_refresh_lists()
-      Case const.cSection_Medications
-         cvwMedications_Refresh()
-      Case const.cSection_Requests
-         modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwRequests)
-      Case const.cSection_Referrals
-         currentconsult.Refresh("referrals_written")  
-         cvwReferrals_Fill()
-      Case const.cSection_Images
-         Images_Refresh(True) 
-      Case Const.cSection_Recalls
-         cvwRecalls_Refresh()
-      Case Const.cSection_Workcover
-         Workcover_Certificates_Refresh()
-      Case Const.cSection_MedicalCertificates
-         Certificates_Medical_Refresh
-      Case Else
-         '-------------------------------------------------
-         'Not a list to update must be a progress note page
-         'Update this whether active or not
-         'or care plan or health summary
-         '-------------------------------------------------
-         For Each page In WorkspaceEditor.Windows
-            Container = page
-            For Each hctrl In page.VBoxEditor.Children     
-               Print hctrl.Name 
-               If hctrl Is FProgressNotePage Then
-                  Select Case hctrl.Name
-                     Case "FProgressNotePage"
-                        frmConsult = hctrl       
-                        If section <> Const.cSection_GeneralNotes Then
-                           If frmConsult.Get_pk_pasthistory() Then
-                              frmConsult.Health_Issue_Reload()
-                              page.title = frmConsult.HealthIssue_GetName()
-                           End If
-                        End If
-                        Break
-                        
-                  End Select
-                  ' Else If hctrl Is FPDF And section = const.cSection_HealthSummary Then
-                  '        Print "here"
-                  '     End If  
-                  ' Else 
-                  '    If hctrl Is FHtmlViewer And section = const.cSection_CarePlan Then
-                  '       If Page.caption = "Care Plan" Then
-                  '          HTMLViewer = hctrl
-                  '          HTMLViewer.WebView1.HTML = modProgressNotes.Care_Plan_Construct_html(Currentconsult)
-                  '          Break
-                  '       Endif
-                  '    End If   
-               End If        
             Next
          Next      
    End Select
@@ -1015,6 +947,7 @@ Public Sub Medications_DisplayActiveInactive()
    '--------------------------------------------
    'Switches the display from active <> inactive
    '--------------------------------------------
+
    If lblMedications.tag = "active" Then
       lblMedications.tag = "inactive"
       lblMedications.text = "Inactive Medications"
@@ -1058,7 +991,7 @@ Public Sub cvwMedications_Refresh()
    Dim x As String
    Dim cvw As ColumnView
    Dim bActive As Boolean
-
+   
    If lblMedications.tag = "active" Then 
       lblMedications.text = "Active Medications"
       bActive = True   
@@ -1092,9 +1025,8 @@ Public Sub cvwMedications_Refresh()
    Currentconsult.Refresh("medications") 'actually=prescriptions written
    active_medications = New Collection
    
-
    For Each medication In currentconsult!medications
-    If fk_generic_product_keys.Find(medication!prescribed!fk_medication) = True Then 'true= not found
+      If fk_generic_product_keys.Find(medication!prescribed!fk_medication) = True Then 'true= not found
          fk_generic_product_keys.Add(medication!prescribed!fk_medication, fk_generic_product_keys.count)
          If medication!med!active = bActive Then
             active_medications.Add(medication, medication!pk_view)
@@ -1118,23 +1050,42 @@ Public Sub cvwMedications_Refresh()
       End If   
    Next
    If bActive = True Then
-     If cvw.count Then lblMedications.text &= " (" & Str(cvw.count) & ")"
+      If cvw.count Then lblMedications.text &= " (" & Str(cvw.count) & ")"
    End If   
+
 End
 
-
-
-Public Sub cvwAllergies_Refresh()
-   '---------------------------------------------
-   'Fetch the patients allergies from the backend
-   '---------------------------------------------
+Public Sub Allergies_Refresh()
+   '---------------------------------------------------------------
+   'Fetch the patients allergies and sensitivities from the backend
+   'Display only the allergies
+   '---------------------------------------------------------------
    
    Dim allergy As Collection
-   'For Each i In currentconsult!allergies
-   ' FIXME: load the widget 
-   'Next
-   ' cvwAllergies.Add(0, "Allergies:Nil Recorded")
+   Dim x As Integer
+   Dim allergies As Collection 
    
+   With gvAllergies
+      .Clear()
+      .Rows.count = 0
+      .Rows.Height = -1
+   End With
+   currentconsult.Refresh("allergies") 
+   allergies = currentconsult!allergies
+   If allergies.count Then    
+      For Each allergy In currentconsult!allergies
+         If allergy!fk_lu_reaction_type = const.ReactionType_Allergy Then    
+            Inc gvAllergies.Rows.Count
+            With gvAllergies[gvAllergies.Rows.Count - 1, 0]
+               .Text = Trim(allergy!class_name & " " & allergy!allergen) 'only one will appear
+               .Foreground = Color.Red
+               
+               .WordWrap = True  
+            End With 
+         End If  
+      Next
+   End If   
+
 End
 
 Public Sub cvwReferrals_Fill()
@@ -1215,8 +1166,8 @@ Public Sub Patient_Demographics_Display()
    cmbSearch.pos = 0
    txtAge.text = "Age " & currentconsult!patient!age_display & " " 
    If Not IsNull(currentconsult!patient!occupation) Then
-       txtOccupation.Text = UCase(Left(currentconsult!patient!occupation, 1)) & Right(currentconsult!patient!occupation, Len(currentconsult!patient!occupation) - 1)
-        If currentconsult!patient!retired Then
+      txtOccupation.Text = UCase(Left(currentconsult!patient!occupation, 1)) & Right(currentconsult!patient!occupation, Len(currentconsult!patient!occupation) - 1)
+      If currentconsult!patient!retired Then
          txtOccupation.text &= " (Retired)"
          txtOccupation.pos = 0
       End If  
@@ -1235,7 +1186,7 @@ Public Sub Patient_Demographics_Display()
    '---------------------------------------------
    currentconsult.Refresh("comms") 'refreshed because can be called from outside of this module eg FPersons
    tlPatientComms.text = ""
-    For Each com In currentconsult!comms
+   For Each com In currentconsult!comms
       tlPatientComms.text &= const.CommModalityTextBrief[com!fk_type] & ":" & currentconsult!comms[currentconsult!comms.key]!value & "<BR>"
    Next
    If tlPatientComms.text = "" Then tlPatientComms.text = "Contact Numbers"
@@ -1307,7 +1258,7 @@ Public Sub Gui_Clear()
    cmbSearch.text = "" 
    txtAge.text = ""
    lblID.text = ""
-   tlAllergies.text = ""
+   gvAllergies.Clear()
    tlReminders.text = ""
    tlPatientComms.text = ""
    lblBirthdate.text = ""
@@ -1817,7 +1768,7 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
             EditorPages.Add(MC, sPageName)
             Control_For_Focus = MC.txtReason
          Case "pdf file"
-          page = New FLinkContainer 
+            page = New FLinkContainer 
             With PDF = New FPDF(page.VBoxEditor) 
                .Init(currentconsult)
                .Load_PDF(page_data)
@@ -1999,7 +1950,7 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
             page.Title = "Allergies"
             WorkspaceEditor.Add(page)
             EditorPages.Add(AllergyPage, "Allergies")
-           ' Control_For_Focus = AllergyPage.tbNewAllergy
+            ' Control_For_Focus = AllergyPage.tbNewAllergy
          Case "webpage"
             page = New FLinkContainer
             Page.tag = txtURL.text
@@ -2077,7 +2028,7 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
             WorkspaceEditor.Add(page)
             VaccinationPage.Init(currentconsult)
             EditorPages.Add(VaccinationPage, "Vaccinations")
-           ' Control_For_Focus = VaccinationPage.tbNewVaccine
+            ' Control_For_Focus = VaccinationPage.tbNewVaccine
          Case "Workcover"
             page = New FLinkContainer
             WorkcoverPage = New FWorkCover(page.VBoxEditor)
@@ -2774,9 +2725,9 @@ Public Sub MainToolbar_Click()
          For Each page In WorkspaceEditor.Windows
             If page = WorkspaceEditor.ActiveWindow Then
                Try Object.Call(page.VBoxEditor.Children[0], Last.tag)
-                 If Error Then
-                   Message.Info(Error.Text)
-                 Endif
+               If Error Then
+                  Message.Info(Error.Text)
+               Endif
                Break
             End If   
          Next
@@ -2836,6 +2787,7 @@ Public Sub Zoom(zoom As String)
    Try Object.Call(i, zoom)
 Catch
    Return 
+
 End
 
 Public Sub Zoom_Out()
@@ -3350,7 +3302,7 @@ Public Sub Referral_UnDelete()
    Dim fk_referral As Integer
    Dim pn As Collection
    Dim charpos As Integer
-
+   
    fk_progressnote = deleted_referral!fk_progressnote
    fk_referral = deleted_referral!pk_referral    
    sHtml = deleted_referral!letter_html
@@ -3359,15 +3311,15 @@ Public Sub Referral_UnDelete()
          If PN!fk_consult = currentconsult.GetPK() Then           'undelete the progress note of the letter
             modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "deleted": False])
          Else                                                     'more complex, remove the strikethrough
-               charpos = InStr(pn!notes, "</TABLE>")
-               pn!notes = Left(pn!notes, charpos + 7)
-               pn!notes = Replace$(pn!notes, "BGCOLOR='#CFCFCF'", "")
-               pn!notes = Replace$(pn!notes, "<strike>", "")
-               pn!notes = Replace$(pn!notes, "</strike>", "")
-               pn!notes = "<P>" & pn!notes & "</P>"
-               modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
-          End If  
-          modDBConnect.update("clin_referrals.referrals", Null, ["pk": fk_referral, "deleted": False])
+            charpos = InStr(pn!notes, "</TABLE>")
+            pn!notes = Left(pn!notes, charpos + 7)
+            pn!notes = Replace$(pn!notes, "BGCOLOR='#CFCFCF'", "")
+            pn!notes = Replace$(pn!notes, "<strike>", "")
+            pn!notes = Replace$(pn!notes, "</strike>", "")
+            pn!notes = "<P>" & pn!notes & "</P>"
+            modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
+         End If  
+         modDBConnect.update("clin_referrals.referrals", Null, ["pk": fk_referral, "deleted": False])
          'Mark the inclusions as un-deleted,
          ' could be inaccurate for example they may have marked one as deleted when letter written
          '  FIXME IN THIS CASE PERMANANTLY REMOVE FROM THE BACKEND IN FREFERRALS.DELETE ROUTINES
@@ -3387,6 +3339,7 @@ Public Sub Referral_Delete()
    '-------------------------------------------------------------------------------------
    'User has clicked on a letter over the tabbed list referral's and decided to delete it
    '-------------------------------------------------------------------------------------   
+
    Dim sHtml As String
    Dim referral As New Collection
    Dim fk_progressnote As Integer
@@ -3408,7 +3361,7 @@ Public Sub Referral_Delete()
          '----------------------------------------------------------
          If PN!fk_consult = currentconsult.GetPK() Then           'probabably a reversal, don't need to audit just visually remove from the notes
             modDBConnect.update("clin_consult.progressnotes", Null, ["pk": referral!fk_progressnote, "deleted": True])
-          Else
+         Else
             pn!notes = Replace$(pn!notes, "<TABLE", "<TABLE BGCOLOR='#CFCFCF' ") 
             pn!notes = Replace$(pn!notes, "<small>", "<strike><small>", gb.IgnoreCase)
             pn!notes = Replace$(pn!notes, "</small>", "</strike></small>", gb.IgnoreCase)
@@ -3580,7 +3533,7 @@ Public Sub mnuMedications_Click()
       Case "make inactive"
          modPrescribingDBI.Medication_MakeActiveOrInactive(medication!prescribed!fk_medication, False)
          cvwMedications_Refresh()
-        
+         
       Case "view inactive medications", "view active medications"
          Medications_DisplayActiveInactive
       Case "brief product information"
@@ -3588,13 +3541,13 @@ Public Sub mnuMedications_Click()
       Case "view medication history"
          
       Case "view medication as printed"
-            '------------------------------------------------------------------------------------------------------------------------------
-            'If a Latex defination exists (which it should, except for myself who used this in beta form before this feature was available)
-            'show the actual script as printed (could contain 1-3 drugs)
-            '------------------------------------------------------------------------------------------------------------------------------
-             If Not IsNull(medication!prescribed!latex) Then 
-                  Editor_ShowPage("pdf file", medication!brand, modPrinting.Latex_To_PDF(medication!prescribed!latex))
-             End If  
+         '------------------------------------------------------------------------------------------------------------------------------
+         'If a Latex defination exists (which it should, except for myself who used this in beta form before this feature was available)
+         'show the actual script as printed (could contain 1-3 drugs)
+         '------------------------------------------------------------------------------------------------------------------------------
+         If Not IsNull(medication!prescribed!latex) Then 
+            Editor_ShowPage("pdf file", medication!brand, modPrinting.Latex_To_PDF(medication!prescribed!latex))
+         End If  
       Case "prescribe selected", "prescribe all"
          If Last.tag = "prescribe all" Then
             cvwMedications.SelectAll()
@@ -3608,20 +3561,20 @@ Public Sub mnuMedications_Click()
                new_Prescription_item!date_script_written = Now()
                new_Prescription_item!med!last_date = Now()
                prescribed = medication!prescribed.Clone()         'create a new prescribed cRow, don't put in authority approval etc even if an authority
-             '  prescribed.Remove("fk_prescribed")                 ' make cRow save a new row
+               '  prescribed.Remove("fk_prescribed")                 ' make cRow save a new row
                prescribed.Remove("pk")                 ' make cRow save a new row
                prescribed!date_on_script = Now()                  'FIXME ALLOW MENU DRIVEN DATE AHEAD OPTIONS
                prescribed!fk_consult = currentconsult.GetPK()
                prescribed!script_number = modPrescribingDBI.Script_Number_Get_Next()
                prescribed!latex = Null
                If Not IsNull(prescribed!authority_reason) Then 
-                    prescribed!authority_script_number = modPrescribingDBI.Authority_Number_Get_Next(modDBConnect.currentUser!fk_staff)
+                  prescribed!authority_script_number = modPrescribingDBI.Authority_Number_Get_Next(modDBConnect.currentUser!fk_staff)
                Endif
                ' prescribed! = concession_details : these three not yet implemented
                ' prescribed! = brand_substitution : do not remove this code
                ' prescribed! = fk_progress_note
                new_Prescription_item!prescribed = prescribed         'new cRow, otherwise the fields not changed IAN FIXME EASIER WAY
-              
+               
                FPrescriptions.Script_Item_Re_Prescribe(new_Prescription_item)
             End If   
             cvwMedications.MoveNext()
@@ -3925,7 +3878,7 @@ Public Sub Document_Display(documents As Collection, document_key As Integer)
          Case "pdf"
             Editor_ShowPage("pdf document", documents[document_key]!tag_user, filename)
          Case "jpg", "png", "bmp", "jpeg", "tiff"
-             Editor_ShowPage("image", documents[document_key]!tag_user, documents[document_key]!source_file, "An Extra Tag")
+            Editor_ShowPage("image", documents[document_key]!tag_user, documents[document_key]!source_file, "An Extra Tag")
          Case Else 'must be html
             Editor_ShowPage("browser", documents[document_key]!tag_user, documents[document_key]!html, documents[document_key]!originator)
       End Select
@@ -4397,7 +4350,7 @@ Public Sub tbSections_Click()
    If Not currentconsult Then Return
    ' WorkspaceEditor.Lock()
    If const.Clinical_Toolbuttons.Exist(Last.tag) Then
-     Editor_ShowPage(const.Clinical_Toolbuttons[Last.tag]!name)
+      Editor_ShowPage(const.Clinical_Toolbuttons[Last.tag]!name)
    Else
       If Last.tag = "health summary" Then 
          '    modProgressNotes.Health_Summary_Construct_html(currentconsult) 
@@ -5393,4 +5346,3 @@ Public Sub rbMedications_Click()
    cvwMedications_Refresh()
    
 End
-

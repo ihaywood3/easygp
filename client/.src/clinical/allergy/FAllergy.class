@@ -19,6 +19,8 @@
 ' TODO      Check accuracy
 '           Implement help and delete
 '           Check save works for previously created allergies
+'           Implement search on generics alone
+'           Write somethingin the progress notes
 '----------------------------------------------------------------------
 
 Private currentconsult As CConsult
@@ -33,10 +35,10 @@ Private fk_code As String
 Private fk_coding_system As Integer
 Private fk_consult As Integer 
 Private fk_allergy As Integer
-Private fk_brand As String 
+Private fk_brand As String    'if not null the key to drugs.brands
+Private fk_product As String 'if not null the key to drugs.products
 Private atccode As String
 Private atccodes As Collection
-
 Private brands As Collection
 Private generics As Collection
 Private obs As Observer
@@ -55,15 +57,17 @@ Public Sub Init(cons As CConsult)
    '--------------------------------
    'Do all the initialization things
    '--------------------------------
-   
+   Message.info("Stop:This module won't work without the 0.202 update.\n\nThis has not been committed to SVN.\n\nYou can build the schema from the commented text at the end of this file.")
+    
    Try Settings_Load()
    currentconsult = cons  
-   lblMeasure.text = "  Non Drug Allergies  "
+   lblMeasure.text = "  Generic Specific Reaction  "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
    With Form_Terms = New FCodedTermSelector(Me)
       .Ignore = True
       .Visible = False   
-      .Height = 200
+      .Height = 200    
+      .Timer1.Enabled = False 
    End With
    obs = New Observer(Form_Terms.columnview1) As "cvwTerms"
    With SpellChecker = New ClskSpell
@@ -77,14 +81,12 @@ Public Sub Init(cons As CConsult)
       .TempFileForErrors = User.home &/ "myspellerrors.txt"
    End With
    With cvwAllergies
-      .Columns.count = 7
+      .Columns.count = 5
       .Columns[0].text = "Date Noted"
-      .Columns[1].text = "Allergen"  'either drug or other substance
-      .Columns[2].text = ""          'brand if a drug
-      .Columns[3].text = "ACT Class"
-      .Columns[4].text = "Type"
-      .Columns[5].text = "Details"
-      .Columns[6].text = "Confirmed"
+      .Columns[1].text = "ACT Class or Allergen"
+      .Columns[2].text = "Type"
+      .Columns[3].text = "Details"
+      .Columns[4].text = "Confirmed"
    End With
    Reload()
    
@@ -98,30 +100,30 @@ Public Sub Save()
    '  or
    '2) A drug, a drug it must must have an ATCcode
    'Plus: description Of the reaction optionally coded
-   '
-   'clin_allergies.Allergies:
-   '    pk serial primary key,
-   '   fk_consult integer NOT NULL,
-   '   fk_brand uuid, -- if not null key to drugs.brand table points to brand with which this allergy was noted
-   '   allergen text, -- if not null then the substance that the person was allergic or sensitive to, eg could be bee or cedar
-   '   generic_specific boolean, -- if true and the allergan was a drug then the reaction was generic specific not class specific...
-   '   fk_lu_reaction integer NOT NULL, -- key to clin_allergies.lu_reaction which is a free text representation of the reaction
-   '   fk_lu_reaction_type integer NOT NULL, -- foreign key to allergies.lu_reaction_type 1=allergy 2=sensitivity
-   '   fk_coding_system integer, -- key to coding.lu_coding_system containing name of coding system   that this allergy is linked to
-   '   fk_code text, -- the text of the code references coding.generic_terms.code
-   '   confirmed boolean DEFAULT true, -- if true (the default) then the allergy has been confirmed
-   '   deleted boolean DEFAULT false, -- If True Then this record Is Marked As Deleted
-   '   atccode text,
-   '   date_reaction text, -- the Date Of reaction, could be Date, could be Year, could be Null
-   ' 
-   
+   '  Clin_allergies.allergies:
+   '   (pk serial primary key,
+   '   fk_consult integer Not Null,
+   '   fk_brand uuid Default Null, 
+   '   fk_product uuid Default Null,
+   '   allergen text default null, 
+   '   specificity char(1) default null, 
+   '   details text Not Null,
+   '   fk_lu_reaction_type integer Not Null,
+   '   fk_coding_system integer,
+   '   fk_code text default null, 
+   '   confirmed boolean Default True, 
+   '   deleted boolean Default False, 
+   '   date_reaction text default null, 
    '---------------------------------------------------------------
    
    Dim allergy As CRow
    Dim R As Result
    
-   If Vbox_EditArea_Outer.Padding = 0 Then Return  
-   If Not Valid_Allergy() Then Return 
+   FClinical.Enable_Save_Button(False)  'stop clicking twice FIXME does not work
+   If Vbox_EditArea_Outer.Padding = 0 Then Goto Enable_Save   
+   If Not Valid_Allergy() Then Goto Enable_Save   
+   
+   Inc Application.Busy
    allergy = New CRow
    If fk_allergy Then
       allergy.put_unchanged(fk_allergy, "fk_allergy")
@@ -136,17 +138,33 @@ Public Sub Save()
    Else
       allergy!fk_brand = Null
    Endif
+   If fk_product <> "" Then
+      allergy!fk_product = fk_product  
+   Else
+      allergy!fk_brand = Null
+   Endif
    If Trim(txtAllergen.text) <> "" Then 
       allergy!allergen = modUtil.StripExtraBlanks(txtAllergen.text)
+      allergy!specificity = Null 
    Else
-      allergy!allergen = Null 
+      allergy!allergen = Null    '
+   ' 
+   
+
    End If   
-   If chkDrugSpecific.value = True Then
-      allergy!generic_specific = True
-   Else
-      allergy!generic_specific = False 
-   Endif
-   allergy!fk_lu_reaction = modAllergyDBI.Reaction_save(modUtil.StripExtraBlanks(txtReaction.text))
+   If IsNull(allergy!allergen) Then  
+      If chkDrugSpecific.value = True Then
+         allergy!specificity = "d"       'the allergy/sensitivity is specific to the generic drug
+      Endif
+      
+      If chkBrandSpecific.value = True Then
+         allergy!specificity = "b"     'the allergy/sensitivity is brand specific
+      Endif
+      If chkBrandSpecific.value = False And chkDrugSpecific.Value = False And txtAllergen.text = "" Then
+         allergy!specificity = "c"    'class specific if not dealing with an allergen.
+      Endif
+   End If   
+   allergy!details = Trim(txtDetails.text) 
    If fk_coding_system <> 0 Then
       allergy!fk_coding_system = fk_coding_system
       allergy!fk_code = fk_code       'string value
@@ -160,14 +178,25 @@ Public Sub Save()
       allergy!confirmed = False  
    Endif
    allergy!fk_lu_reaction_type = iReactionType
-   allergy!atccode = atccode
-   ' If modAllergyDBI.Atc_Code_Exists(Left(atccode, 4)) Then 
-   '    allergy!atccode_class = Left(atccode, 4)
-   ' Endif
    allergy!date_reaction = modUtil.StripExtraBlanks(txtDate.text)
    allergy.Save("clin_allergies.allergies", "fk_allergy")
    modDBConnect.CommitTrans()
+   Refresh_FClinical() 
    Reload()
+   Goto Enable_Save
+   
+   ' 
+Enable_Save:
+   
+   FClinical.Enable_Save_Button(True)
+   Dec Application.Busy
+   
+End
+
+Public Sub Refresh_FClinical()
+   
+   FClinical.Refresh_Section(const.cSection_Allergies)    'refresh lists on main screen FClinical
+   FClinical.Refresh_AllPreviousNotes() 
    
 End
 
@@ -177,20 +206,21 @@ Public Sub Allergy_New()
    Reset_Keys() 
    Vbox_EditArea.Enabled = True  
    txtBrand.SetFocus()
-
+   
 End
 
 Public Sub Allergy_Edit()
    
    Vbox_EditArea.Enabled = True
    txtDate.SetFocus()
+
 End
 
 Public Sub Allergy_Display()
    '-----------------------------------------
    'Display the currently highlighted allergy
    '------------------------------------------
-
+   
    Dim allergy As Collection
    
    cvwAllergies.MoveCurrent()
@@ -204,6 +234,7 @@ Public Sub Allergy_Display()
    If Not IsNull(allergy!fk_code) Then fk_code = allergy!fk_code
    fk_consult = allergy!fk_consult  
    Try fk_brand = allergy!fk_brand
+   Try fk_product = allergy!fk_product
    fk_allergy = allergy!pk
    '----------------------------------------------
    'Now fill the gui - textboxes, radiobuttons etc
@@ -213,9 +244,12 @@ Public Sub Allergy_Display()
    Try txtBrand.text = allergy!brand
    Try txtGeneric.text = allergy!generic
    Try txtAllergen.text = allergy!allergen 
-   Try txtATCName.text = allergy!atcname
-   Try txtCodedTerm.text = allergy!term & " (" & allergy!fk_code & ")"
-   Try txtATCClass.text = allergy!atc_class  
+   Try txtATCName.text = allergy!product_atcname
+   atccode = allergy!product_atccode
+   If Not IsNull(allergy!term) Then 
+      txtCodedTerm.text = allergy!term & " (" & allergy!fk_code & ")"
+   End If   
+   Try txtATCClass.text = allergy!class_name
    If allergy!confirmed Then
       rbConfirmedYes.value = True
    Else
@@ -228,10 +262,10 @@ Public Sub Allergy_Display()
       rbReactionSensitivity.value = True
       iReactionType = const.ReactionType_Sensitivity
    Endif
-   txtReaction.text = allergy!reaction
+   txtDetails.text = allergy!details
    bExit = False  
    txtDate.SetFocus()
-
+   
 End
 
 Public Function Progress_Notes_Create() As String
@@ -246,32 +280,30 @@ Public Function Progress_Notes_Create() As String
 End
 
 Public Sub Reload()
-   '------------------------------
-   'display any existing allergies
-   '------------------------------ 
+   '--------------------------------------------------------------------------
+   'Reload data from backend - display any existing allergies or sensitivities
+   '-------------------------------------------------------------------------- 
    
    Dim allergy As Collection
-   
-   FClinical.Refresh_Section(const.cSection_Allergies)    'refresh lists on main screen FClinical
-   FClinical.Refresh_AllPreviousNotes() 
+
+   EditArea_Clear()
    currentconsult.Refresh("allergies")                   'remove key from cache > later forces a reload
    allergies = currentconsult!allergies
    cvwAllergies.Clear()
    For Each allergy In allergies
       cvwAllergies.Add(allergy!pk, 0)
       cvwAllergies[allergy!pk][0] = allergy!date_reaction 'could be free text
-    '  cvwAllergies[allergy!pk][1] = allergy!generic
-    '  cvwAllergies[allergy!pk][2] = allergy!brand
-      cvwAllergies[allergy!pk][3] = allergy!atc_class
-      cvwAllergies[allergy!pk][4] = allergy!reaction_type
-      cvwAllergies[allergy!pk][5] = allergy!reaction
+      cvwAllergies[allergy!pk][1] = Trim(allergy!class_name & " " & allergy!allergen) 'will be only one
+      cvwAllergies[allergy!pk][2] = allergy!reaction_type
+      cvwAllergies[allergy!pk][3] = allergy!details
       If allergy!confirmed Then
-         cvwAllergies[allergy!pk][6] = "Yes"
+         cvwAllergies[allergy!pk][4] = "Yes"
       Else
-         cvwAllergies[allergy!pk][6] = "No"
+         cvwAllergies[allergy!pk][4] = "No"
       Endif
    Next
-   cvwAllergies.SetFocus()
+   EditArea_Clear()
+   button1.SetFocus 'hidden button
 
 End
 
@@ -284,7 +316,7 @@ End
 
 Public Sub Form_Save()
    
-   FClinical.Refresh_AllPreviousNotes()
+  ' FClinical.Refresh_AllPreviousNotes()
    
 End
 
@@ -301,12 +333,13 @@ Public Sub Settings_Load()
 End
 
 Public Sub EditArea_Clear()
-   'Clear the editing area, re-set current Allergy
-
+   '-------------------------------------------------------------
+   'Clear the editing area, re-set current Allergy or sensitivity
+   '-------------------------------------------------------------
+   
    Vbox_EditArea.Enabled = False 
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
    bExit = True                                      'stop re-entrance into change routines
-   EditArea_Notify_DataChange(False)
    listview1.Visible = False                         'remove popup list if showing
    listview1.Clear()
    listview1.Visible = False
@@ -316,8 +349,8 @@ Public Sub EditArea_Clear()
    rbReactionAllergy.value = True
    rbConfirmedYes.Value = True 
    bExit = False
-   Print Vbox_EditArea.Enabled
-
+   EditArea_Notify_DataChange(False)
+   
 End
 
 Public Sub Reset_Keys()
@@ -327,6 +360,7 @@ Public Sub Reset_Keys()
    fk_allergy = 0
    fk_consult = 0
    fk_brand = ""
+   fk_product = ""
    iReactionType = const.ReactionType_Allergy
    
 End
@@ -346,12 +380,7 @@ Public Sub listview1_DblClick()
          Brand_Select()
       Case "generic"
          Generic_Select()
-      Case "atc name"
-         Print atccodes
-         ATCName_Select()
-      Case "reaction"
-         
-   End Select
+    End Select
    
 End
 
@@ -369,13 +398,12 @@ Public Function EditArea_txtBox_ExcludeKeys(keycode As Integer, tag As String) A
    '----------------------------------------------------------
    'PURPOSE       Restrict key presses for validation purposes
    'HOW IT WORKS  see routines names
-   'actually not implemented here
+   'actually not implemented here FIXME
    '-----------------------------------------------------------
    
    Select Case Last.Tag
       Case "brand", "allergen", "coded term", "free text reaction", "generic", "date reaction", "coded term", "atc name"
          bKeyValid = True
-         
    End Select
    Return bKeyValid
    
@@ -398,51 +426,23 @@ Public Sub Timer1_Timer()
    
 End
 
-Private Sub ATCName_Select()
-   
-   listview1.MoveCurrent()
-   atccode = atccodes[listview1.Item.key]!atccode
-   txtATCName.text = atccodes[listview1.Item.key]!atcname
-   listview1.Visible = False  
-   txtCodedTerm.SetFocus()
-   
-End
 
-Private Sub ATCName_Get()
-   '--------------------------------------------------------------------------
-   'Get list of ATCNames e.g user may not know brand or care about the generic
-   '--------------------------------------------------------------------------   
-   
-   Dim atccode As Collection
-
-   listview1.Clear()
-   atccodes = modAllergyDBI.ATC_Get(Trim(txtATCName.text))
-   If atccodes.count <> 0 Then   
-      For Each atccode In atccodes 
-         listview1.Add(atccode!atccode, atccode!atcname)
-      Next  
-      With listview1 
-         .Visible = True   
-         .tag = txtATCName
-      End With
-   End If
-   Print atccodes
-   
-End
 
 Public Sub Brand_Select()
-   Dim atcclass As Collection 
+
+   Dim R As Result
    
    listview1.MoveCurrent()
    bExit = True
    txtBrand.text = listview1.Item.Text
    atccode = brands[listview1.Item.key]!atccode
-   atcclass = modAllergyDBI.ATC_Code_Get_Class(Left(atccode, 4))
-   Try txtATCClass.text = atcclass!atcname
+   R = modAllergyDBI.ATC_Code_Get_Class(Left(atccode, 4))
+   Try txtATCClass.text = R!atcname
    txtGeneric.text = brands[listview1.Item.key]!generic
    txtATCName.text = brands[listview1.Item.key]!atcname
    bExit = False  
    fk_brand = brands[listview1.Item.key]!pk
+   fk_product = brands[listview1.Item.key]!fk_product
    ListView1.Visible = False
    txtCodedTerm.SetFocus()
    
@@ -453,7 +453,6 @@ Private Sub Brands_Get()
    Dim brand As Collection 
    
    Timer1.Stop
-   
    listview1.Clear()
    brands = modPrescribingDBI.Brands_Get_Basic(Trim(txtBrand.text))
    If brands.count Then    
@@ -506,72 +505,46 @@ Public Function Valid_Allergy() As Boolean
    '    plus
    '    date of reaction
    '------------------------------------------------------------------- 
-
-   If Trim(txtDate.text) = "" Then
-      txtDate.Background = Color.rgb(95, 255, 175)
-      txtDate.SetFocus()
-      Return 
+   If txtBrand.text <> "" Then 
+      If atccode = "" Then
+         Message.Info("Please select a valid generic or brand.")
+         txtBrand.Background = Color.rgb(95, 255, 175)
+         txtBrand.SetFocus()
+         Return 
+      Endif
+   End If   
+   If txtGeneric.text <> "" Then
+      If atccode = "" Then
+         Message.Info("Please select a valid generic or brand.")
+         txtGeneric.Background = Color.rgb(95, 255, 175)
+         txtGeneric.SetFocus()
+         Return 
+      Endif
    Endif
-   If txtATCName.text = "" Then
-      txtATCName.Background = Color.rgb(95, 255, 175)
-      txtATCName.SetFocus
-      Return
-   Endif
-   If atccode = "" Then
-      txtATCName.Background = Color.rgb(95, 255, 175)
-      txtATCName.SetFocus
-      Return
-   Else
-      
-      Goto Check_Have_Allergy_Details
-   End If
-   If Trim(txtAllergen.text) <> "" Then
-      Goto Check_Have_Allergy_Details
-   Else
-      txtAllergen.Background = Color.rgb(95, 255, 175)
-      txtAllergen.SetFocus
-      Return
-   Endif
+   If atccode = "" Then       'user not entering a drug
+      If Trim(txtAllergen.text) <> "" Then
+         Goto Check_Have_Allergy_Details
+      Else
+         txtAllergen.Background = Color.rgb(95, 255, 175)
+         txtAllergen.SetFocus
+         Return
+      Endif
+   End If   
    
 Check_Have_Allergy_Details:
-   
-   If fk_code = "" Then
-      
-      txtCodedTerm.Background = Color.rgb(95, 255, 175)
-      txtCodedTerm.SetFocus()
+   If Trim(txtDetails.text) = "" Then
+      Message.Info("Please enter some details about the reaction for this allergen or drug.")
+      txtDetails.Background = Color.rgb(95, 255, 175)
+      txtDetails.setfocus()
       Return
-   Endif
-   If Trim(txtReaction.text) = "" Then
-      txtReaction.Background = Color.rgb(95, 255, 175)
-      txtReaction.Text.setfocus()
    Endif
    Return True
    
 End
 
-Public Sub Button1_Click()
-   
-   Dim sql As String
-   Dim generics As Collection
-   Dim generic As Collection
-   Dim distinct_generics As Collection
-   Dim dg As CRow 
-   
-   sql = "Select distinct  generic, atccode from drugs.product order by generic "
-   Generics = modDBConnect.exec_query_collection(sql)
-   For Each generic In generics
-      If Not InStr(generic, ";") Then
-         dg = New CRow  
-         dg!generic = generic!generic
-         dg!atccode = generic!atccode
-         distinct_generics.Add(generic, distinct_generics.count)
-      Endif
-   Next
-   
-End 
-
 Public Sub EditArea_TxtBox_GotFocus()
-   
+
+   Timer1.Enabled = False  
    Listview1.Visible = False
    Last.BackGround = Color.rgb(95, 255, 175)
    
@@ -583,10 +556,35 @@ Public Sub EditArea_TextBox_Change()
       Return
    End If   
    Select Case Last.tag
+      Case "allergen"
+         If Trim(txtAllergen.text) <> "" Then
+            'user entering an allergen - can't have drug stuff
+            txtBrand.text = ""
+            txtGeneric.text = ""
+            txtATCClass.text = ""
+            txtATCName.text = ""
+            chkBrandSpecific.value = False   
+            chkDrugSpecific.value = False 
+            fk_brand = 0
+            fk_product = 0
+            atccode = ""
+         Endif
       Case "brand"
-         If Trim(txtBrand.text) = "" Then fk_brand = 0
+         If Trim(txtBrand.text) = "" Then 
+            fk_brand = 0
+         Else
+            txtAllergen.text = ""
+         End If   
+      Case "generic"
+         If Trim(txtBrand.text) <> "" Then 
+            txtAllergen.text = ""
+         Endif
       Case "atc name"
-         If Trim(txtATCName.TEXT) = "" Then atccode = ""
+         If Trim(txtATCName.TEXT) = "" Then 
+            atccode = ""
+         Else
+            txtAllergen.text = ""
+         End If   
       Case "coded term"
          If Trim(txtCodedTerm.TEXT) = "" Then 
             fk_code = ""
@@ -608,11 +606,9 @@ Public Sub EditArea_TextBox_KeyRelease()
    If bExit Then Return 
    
    Select Case Last.tag
-      Case "coded term"
-         Form_Terms.Set_SearchText(Trim(Last.text))
-      Case "atc name"
-      '   ATCName_Get()
-      Case "brand"
+      Case "coded term"   
+         Terms_Get()
+       Case "brand"
          Timer1.Enabled = True
          timer_count = 0
          bGenericSearch = False  
@@ -698,7 +694,7 @@ Public Sub cvwTerms_DblClick()
    
    Coded_Term_Select() 
    Form_Terms.Visible = False 
-   txtReaction.SetFocus()
+   txtDetails.SetFocus()
    
 End
 
@@ -717,99 +713,24 @@ Public Sub Terms_Get()
       fk_coding_system = 0
       Return
    End If
-   Timer1.Enabled = False  
+   Form_Terms.Set_SearchText(Trim(Last.text))
    Form_Terms.Get_Terms()
    
 End
-
-' Don't fret Ian, I'll remove this when I put the update query in svn.
-' Create table clin_allergies.lu_reaction_type
-' (pk serial primary key,
-'  type text Not Null);
-' 
-'  insert into clin_allergies.lu_reaction_type(type)values( 'allergy');
-'  insert into clin_allergies.lu_reaction_type(type)values( 'sensitivity');
-' 
-' drop table clin_allergies.allergies cascade;
-' 
-'   Create TABLE clin_allergies.allergies
-' (
-'   pk serial primary key,
-'   fk_consult integer Not Null,
-'   fk_brand uuid Default Null,
-'   allergen text Default Null,
-'   generic_specific boolean Default Null,
-'   fk_lu_reaction integer Not Null,
-'   fk_lu_reaction_type integer Not Null,
-'   fk_coding_system integer Default Null,
-'   fk_code text Default Null,
-'   confirmed boolean Default True,
-'   deleted boolean Default False,
-'   atc text Default Null,
-'   date_reaction text Default Null,
-'   CONSTRAINT allergies_fk_consult_fkey FOREIGN KEY(fk_consult)
-'       REFERENCES clin_consult.consult(pk)MATCH SIMPLE
-'       ON UPDATE NO ACTION ON DELETE NO ACTION,
-'  CONSTRAINT allergies_fk_brand_fkey FOREIGN KEY(fk_brand)
-'       REFERENCES drugs.brand(pk)MATCH SIMPLE
-'       ON UPDATE NO ACTION ON DELETE NO ACTION,
-'  CONSTRAINT allergies_atc_fkey FOREIGN KEY(atc)
-'       REFERENCES drugs.atc(atccode)MATCH SIMPLE
-'       ON UPDATE NO ACTION ON DELETE NO ACTION,
-'  CONSTRAINT allergies_fk_lu_reaction_fkey FOREIGN KEY(fk_lu_reaction)
-'       REFERENCES clin_allergies.lu_reaction(pk)MATCH SIMPLE
-'       ON UPDATE NO ACTION ON DELETE NO ACTION,
-'  CONSTRAINT allergies_fk_lu_reaction_type_key FOREIGN KEY(fk_lu_reaction_type)
-'       REFERENCES clin_allergies.lu_reaction_type(pk)MATCH SIMPLE
-'       ON UPDATE NO ACTION ON DELETE NO ACTION,
-'  CONSTRAINT allergies_fk_coding_system_key FOREIGN KEY(fk_coding_system)
-'       REFERENCES coding.lu_systems(pk)MATCH SIMPLE
-'       ON UPDATE NO ACTION ON DELETE NO ACTION 
-'  );
-'  
-' ALTER TABLE clin_allergies.allergies OWNER To easygp;
-' GRANT ALL ON TABLE clin_allergies.allergies To easygp;
-' GRANT ALL ON TABLE clin_allergies.allergies To staff;
-' 
-' 
-' 
-' COMMENT ON COLUMN clin_allergies.allergies.fk_brand Is
-' 'if not null key to drugs.brand table points to brand with which this allergy was noted';
-' COMMENT ON COLUMN clin_allergies.allergies.allergen Is
-' 'if not null then the substance that the person was allergic or sensitive to, eg could be bee or cedar';
-' COMMENT ON COLUMN clin_allergies.allergies.generic_specific Is
-' 'if true and the allergan was a drug then the reaction was generic specific not class specific
-' For example someone can be nauseous on one nsaid but Not another ';
-' COMMENT ON COLUMN clin_allergies.allergies.fk_lu_reaction Is
-' 'key to clin_allergies.lu_reaction which is a free text representation of the reaction';
-' COMMENT ON COLUMN clin_allergies.allergies.fk_lu_reaction_type Is
-' 'foreign key to allergies.lu_reaction_type 1=allergy 2=sensitivity';
-' COMMENT ON COLUMN clin_allergies.allergies.fk_coding_system Is 
-' 'key to coding.lu_coding_system containing name of coding system   that this allergy is linked to';
-' COMMENT ON COLUMN clin_allergies.allergies.fk_code Is 
-' 'the text of the code references coding.generic_terms.code';
-' COMMENT ON COLUMN clin_allergies.allergies.confirmed Is 
-' 'if true (the default) then the allergy has been confirmed';
-' COMMENT ON COLUMN clin_allergies.allergies.deleted Is '
-' If True Then this record Is Marked As Deleted ';
-' COMMENT ON COLUMN clin_allergies.allergies.date_reaction Is '
-' the Date Of reaction, could be Date, could be Year, could be Null ';
 
 Public Sub EditArea_TextBox_Activate()
    
    Select Case Last.tag
       Case "allergen"
-         txtReaction.SetFocus()
+         txtDetails.SetFocus()
       Case "date reaction"
          txtBrand.SetFocus()
       Case "brand"
-         txtReaction.SetFocus()
+         txtCodedTerm.SetFocus()
       Case "generic"
-         txtReaction.SetFocus()
-      Case "reaction"
          txtCodedTerm.SetFocus()
       Case "coded term"
-         txtReaction.SetFocus()
+         txtDetails.SetFocus()
    End Select
    
 End
@@ -857,7 +778,9 @@ Public Sub New_Entry()
 End 
 
 Public Sub Refresh()
-   
+   '--------------------------------
+   'Called from toolbar in FClinical
+   '--------------------------------  
    Reload() 
    
 End
@@ -878,7 +801,7 @@ Public Sub EditArea_TextBox_GotFocus()
                .Set_SearchText(Trim(Last.text))
             End If   
          End With    
-      Case "brand", "generic", "atc name"
+      Case "brand", "generic"
          With listview1
             .top = Last.Parent.Parent.top + Last.Height
             .width = Last.Parent.width / 2
@@ -912,9 +835,9 @@ Public Sub cvwAllergies_Select()
    '-------------------------------------------------------------
    'User has clicked on the allergies list - display in edit area
    '-------------------------------------------------------------  
-
+   
    Allergy_Display()
-
+   
 End
 
 Public Sub cvwAllergies_Menu()
@@ -929,13 +852,136 @@ Public Sub mnuAllergies_Click()
    
    Select Case Last.tag
       Case "edit"
-            Allergy_Edit()
+         Allergy_Edit()
       Case "delete"
-          modUtil.NotImplemented("Delete allergy")
+         modUtil.NotImplemented("Delete allergy")
       Case "font"
          modUtil.Columnview_SetFont(cvwAllergies, "Allergies")
       Case "help"
          modUtil.NotImplemented("Help for allergies")
    End Select
-
+   
 End
+' Drop schema clin_allergies cascade;
+' 
+' Create schema clin_allergies;
+' 
+' GRANT ALL ON SCHEMA clin_allergies TO easygp;
+' GRANT ALL ON SCHEMA clin_allergies TO easygp;
+' GRANT USAGE ON SCHEMA clin_allergies TO staff;
+' 
+' Create table clin_allergies.lu_reaction_type
+' (pk serial primary key,
+'  type text not null);
+'  
+' ALTER TABLE clin_allergies.lu_reaction_type  OWNER TO easygp;
+' GRANT ALL ON TABLE clin_allergies.lu_reaction_type TO easygp;
+' GRANT ALL ON TABLE clin_allergies.lu_reaction_type TO staff;
+' 
+' insert into clin_allergies.lu_reaction_type(type) values ('allergy');
+' insert into clin_allergies.lu_reaction_type(type) values ('sensitivity');
+' 
+' Create table clin_allergies.allergies
+'   (pk serial primary key,
+'   fk_consult integer Not Null,
+'   fk_brand uuid Default Null, 
+'   fk_product uuid Default Null,
+'   allergen text default null, 
+'   specificity char(1) default null, 
+'   details text Not Null,
+'   fk_lu_reaction_type integer Not Null,
+'   fk_coding_system integer,
+'   fk_code text default null, 
+'   confirmed boolean Default True, 
+'   deleted boolean Default False, 
+'   date_reaction text default null, 
+'  CONSTRAINT allergies_fk_consult_fkey FOREIGN KEY (fk_consult)
+'       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'  CONSTRAINT allergies_fk_brand_fkey FOREIGN KEY (fk_brand)
+'       REFERENCES drugs.brand (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'  CONSTRAINT allergies_fk_product_fkey FOREIGN KEY (fk_product)
+'       REFERENCES drugs.product (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'  CONSTRAINT allergies_specificity_check 
+'       CHECK (specificity::text = 'c'::text OR specificity = 'b'::text OR specificity = 'd'::text OR specificity IS NULL),
+'  CONSTRAINT allergies_fk_lu_reaction_type_key FOREIGN KEY (fk_lu_reaction_type)
+'       REFERENCES clin_allergies.lu_reaction_type (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'  );
+'  
+' ALTER TABLE clin_allergies.allergies  OWNER TO easygp;
+' GRANT ALL ON TABLE clin_allergies.allergies TO easygp;
+' GRANT ALL ON TABLE clin_allergies.allergies TO staff;
+' 
+' 
+' COMMENT ON COLUMN clin_allergies.allergies.fk_consult is
+' 'key to clin_consult.consult table > points to consult created and patient details';
+' COMMENT ON COLUMN clin_allergies.allergies.fk_brand Is
+' 'if not null key to drugs.brand table points to brand with which this allergy was noted';
+' COMMENT ON COLUMN clin_allergies.allergies.fk_product Is
+' 'if not null key to drugs.product table points to product (generic) with which this allergy was noted';
+' COMMENT ON COLUMN clin_allergies.allergies.allergen Is
+' 'if not null then the substance that the person was allergic or sensitive to, eg could be bee or cedar';
+' COMMENT ON COLUMN clin_allergies.allergies.specificity Is
+' 'the degree of specificity of the allergy c= class effect eg non-steroidals b= brand specific e.g could be a coloring agent in a tablet or g=generic specific eg naproxen but hence not all nsaids';
+' COMMENT ON COLUMN clin_allergies.allergies.details Is
+' 'free text representation of the reaction, could be say anaphlyaxis of ''gets diarrhoea''';
+' COMMENT ON COLUMN clin_allergies.allergies.fk_lu_reaction_type Is
+' 'foreign key to allergies.lu_reaction_type 1=allergy 2=sensitivity';
+' COMMENT ON COLUMN clin_allergies.allergies.fk_coding_system Is 
+' 'key to coding.lu_coding_system containing name of coding system   that this allergy is linked to';
+' COMMENT ON COLUMN clin_allergies.allergies.fk_code Is 
+' 'the text of the code references coding.generic_terms.code';
+' COMMENT ON COLUMN clin_allergies.allergies.confirmed Is 
+' 'if true (the default) then the allergy has been confirmed';
+' COMMENT ON COLUMN clin_allergies.allergies.deleted Is '
+' If True Then this record Is Marked As Deleted ';
+' COMMENT ON COLUMN clin_allergies.allergies.date_reaction Is '
+' the Date Of reaction, could be Date, could be Year ';
+' 
+' reate or replace view clin_allergies.vwAllergies as
+' SELECT 
+'   clin_allergies.allergies.pk,
+'   clin_allergies.allergies.fk_consult,
+'   clin_allergies.allergies.fk_brand,
+'   clin_allergies.allergies.fk_product,
+'   clin_allergies.allergies.allergen,
+'   clin_allergies.allergies.specificity,
+'   clin_allergies.allergies.details,
+'   clin_allergies.allergies.fk_lu_reaction_type,
+'   lu_reaction_type.type as reaction_type, 
+'   clin_allergies.allergies.fk_coding_system,
+'   clin_allergies.allergies.fk_code,
+'   clin_allergies.allergies.confirmed,
+'   clin_allergies.allergies.deleted,
+'   clin_allergies.allergies.date_reaction,
+'   clin_consult.consult.fk_patient,
+'   clin_consult.consult.consult_date,
+'   clin_consult.consult.fk_staff as fk_staff_logged_allergy,
+'   drugs.atc.atccode as product_atccode,
+'   drugs.atc.atcname as product_atcname,
+'   coding.generic_terms.term,
+'   coding.lu_systems.system as coding_system,
+'   drugs.product.generic, atc1.atccode as class_code, atc1.atcname as class_name,
+'   drugs.brand.brand
+' FROM
+'   clin_allergies.allergies
+'   JOIN clin_allergies.lu_reaction_type ON (clin_allergies.allergies.fk_lu_reaction_type = clin_allergies.lu_reaction_type.pk)
+'   JOIN clin_consult.consult ON (clin_allergies.allergies.fk_consult = clin_consult.consult.pk)
+'   lEFT JOIN drugs.brand ON (clin_allergies.allergies.fk_brand = drugs.brand.pk)
+'   lEFT JOIN drugs.product ON (clin_allergies.allergies.fk_product = drugs.product.pk)
+'   lEFT JOIN drugs.atc ON (drugs.product.atccode = drugs.atc.atccode)
+'   lEFT JOIN coding.generic_terms ON (clin_allergies.allergies.fk_code = coding.generic_terms.code)
+'   lEFT JOIN coding.lu_systems ON (clin_allergies.allergies.fk_coding_system = coding.lu_systems.pk)
+'   lEFT JOIN drugs.atc atc1 on substring(drugs.product.atccode For 4) = atc1.atccode
+'   
+' 
+' ALTER TABLE clin_allergies.vwallergies OWNER TO easygp;
+' GRANT ALL ON TABLE clin_allergies.vwallergies TO easygp;
+' GRANT ALL ON TABLE clin_allergies.vwallergies TO staff;
+' 
+' truncate db.lu_version;
+' insert into db.lu_version (lu_major,lu_minor) values (0, 202);
+' 

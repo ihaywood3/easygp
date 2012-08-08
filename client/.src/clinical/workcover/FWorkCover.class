@@ -47,18 +47,22 @@ Private branch As Collection
 Private branches As Collection
 Private occupation As Collection
 Private occupations As Collection 
-Private Claims_Forms As Collection 'of forms for a claim as yet is unused
-Private iCurrentKey As Integer
 Private currentconsult As CConsult
+Private currentvisit As Collection
 Private bClaimLoaded As Integer
 Private bVisitLoaded As Integer
 Private fk_claim As Integer
+Private fk_caused_by_employment As Integer 
+Private fk_lu_visit_type As Integer
+Private fk_consult_claim As Integer
+Private fk_consult_visit As Integer
 Private fk_visit As Integer
 Private fk_occupation As Integer 'key to common.lu_occupations = workers occupation
 Private fk_branch As Integer
 Private fk_person As Integer
 Private fk_town As Integer
 Private fk_organisation As Integer
+Private visit_types As String[]
 Private pk_view_claim As Integer
 Private pk_view_visits As Integer
 Private fk_code As String  'see coding.generic_terms table
@@ -66,10 +70,8 @@ Private fk_coding_system As Integer 'e.g 1 = icpc2Plus 2 = icd10
 Private Contact_Type As Integer
 Private fk_pasthistory As Integer
 Private fk_progressnote As Integer
-Private hObs As Observer
 Private terms As Collection 
 Private comms As Collection                                             'of comms for the branch
-Private printer_name As String 
 Private Sole_Traders As Collection
 Private Sole_Trader As Collection
 Private Deleted_WorkcoverVisit As Collection
@@ -109,28 +111,21 @@ Public Sub Init(cons As CConsult)
    cvwVisits.Columns[2].width = 150  'diagnosis
    cvwVisits.Columns[3].width = 150  'management
    ColumnView2.Columns.count = 4
-   columnview1.Columns.count = 2       
+   columnview1.Columns.count = 2    
+   visit_types = New String[5]
+   visit_types[1] = "Initial"
+   visit_types[2] = "Progress"
+   visit_types[3] = "Final"
+   visit_types[4] = "Initial and Final"
+   
    bexit = True
    modEditAreaHelpers.Set_ICD10(chkicd10, lblCodingSystem)
    bexit = False
    Reload()                                                                'Refresh claims list and visits list
    
 End
-Public Sub Save_New()
-   'work in progress to swap to cRow
-    'Save the workcover claim and visit
-   '----------------------------------   
-   
-   Dim sProgressNotes As String
-   
-   '---------------------------------------------
-   'Do some validation/prompt for missing printer
-   '---------------------------------------------
-   If VBox_EditArea_Outer.padding = 0 Then Return
-   If Not EditArea_Contents_Valid() Then Return 
-   
-End   
-Public Sub Save()
+
+Public Sub Save_old()
    '----------------------------------
    'Save the workcover claim and visit
    '----------------------------------   
@@ -204,6 +199,128 @@ Public Sub Save()
    
 End
 
+Public Sub Save()
+   '----------------------------------
+   'Save the workcover claim and visit
+   '----------------------------------   
+   
+   Dim sProgressNotes As String
+   Dim claim As CRow
+   Dim visit As CRow 
+   Dim ProgressNote As CRow   
+   '---------------------------------------------
+   'Do some validation/prompt for missing printer
+   '---------------------------------------------
+   If VBox_EditArea_Outer.padding = 0 Then Return
+   If Not EditArea_Contents_Valid() Then Return 
+   '-----------------------------
+   ' first the visit
+   ' pk serial Not Null,
+   ' fk_consult integer Not Null,
+   ' claim_number text,
+   ' fk_occupation integer,
+   ' fk_branch integer,
+   ' hours_week_worked integer,
+   ' mechanism_of_injury text,
+   ' date_injury text Not Null,
+   ' contact_person text, 
+   ' memo text,
+   ' identifier text Not Null,
+   ' fk_person integer, 
+   ' accepted boolean,
+   ' deleted boolean Default False
+   '---------------
+   claim = New CRow
+   If fk_claim Then
+      claim.put_unchanged(fk_claim, "fk_claim")
+   Else
+      claim!fk_consult = currentconsult.GetPK()
+   Endif
+   claim!claim_number = Trim(txtClaim.text)
+   If fk_occupation <> 0 Then                              'fk_occupation exists = an existing occupation
+      claim!fk_occupation = fk_occupation
+   Else
+      If Trim(txtOccupation.text) <> "" Then             'have an occupation but no key - is a new occupation
+         claim!fk_occupatio const.cSection_Workcovern = modContactsDBI.Occupation_Save(Lower(Trim(txtOccupation.text)))
+      End If  
+   End If            
+   claim!fk_branch = fk_branch
+   If fk_person <> 0 Then claim!fk_person = fk_person
+   claim!hours_week_worked = Null
+   If Trim(txtHoursWorked.text) <> "" Then
+      Try claim!hours_week_worked = Val(txtHoursWorked.text)
+   Endif
+   claim!mechanism_of_injury = Trim(txtMechanismInjury.text)
+   claim!date_injury = Trim(txtDateInjury.text)
+   claim!contact_person = Trim(txtContactPerson.text)
+   claim!memo = Trim(txtMemo.text)
+   claim!identifier = Trim(txtIdentifier.text)
+   claim!accepted = CBool(chkClaimAccepted.value)
+   claim.Save("clin_workcover.claims", "fk_claim")
+   '--------------
+   'next the visit
+   '--------------
+   Visit = New CRow  
+   If fk_visit <> 0 Then
+      visit.put_unchanged(fk_visit, "fk_visit")
+   Endif
+   If fk_consult_visit <> 0 Then
+      visit!fk_consult = fk_consult_visit
+   Else
+      visit!fk_consult = currentconsult.GetPK()
+   Endif
+   visit!fk_lu_visit_type = fk_lu_visit_type
+   visit!fk_claim = claim!fk_claim
+   visit!diagnosis = Trim(txtDiagnosis.text)
+   visit!fk_code = fk_code  'fk_code is string, if "" will set this to null
+   If fk_coding_system <> 0 Then visit!fk_coding_system = fk_coding_system
+   visit!management_plan = Trim(txtManagementPlan.text)
+   Try visit!review_date = Trim(txtReviewDate.text)
+   Try visit!hours_capable = Val(txtCanWork_HrsPerDay.text)
+   Try visit!days_capable = Val(txtCanWork_DaysPerWeek.Text)
+   visit!restrictions = Trim(txtRestrictions.text)
+   visit!capabilities = Trim(txtCapabilities.text)
+   Try visit!certificate_date = Val(txtCertificateDate.text)
+   Try visit!fitness_preinjury_from = Val(txtPreInjury_From.text)
+   Try visit!fitness_suitable_from = Val(txtSuitable_From.text)
+   Try visit!fitness_suitable_to = Val(txtSuitable_To.text)
+   Try visit!fitness_unfit_from = Val(txtUnfit_From.text)
+   Try visit!fitness_unfit_to = Val(txtUnfit_To.text)
+   Try visit!fitness_perm_mod_duties_from = Val(txtPermModDuties_From.text)
+   If rbAssessWorkplaceYes.value = True Then
+      visit!assessworkplace = True
+   Else
+      visit!assessworkplace = False 
+   End If   
+   visit!fk_caused_by_employment = fk_caused_by_employment
+   visit!doctor_consented = CBool(chkAgreeToTreat_Doctor.value)
+   visit!worker_consented = CBool(chkAgreeToTreat_Worker.value)
+   '-------------------------------------
+   'add or edit an existing progress note
+   '--------------------------------------
+   ProgressNote = New CRow 
+   ' sProgressNotes = Claim_Construct_ProgressNotes_structured_HTML().GetData()
+   ProgressNote!notes = Claim_Construct_ProgressNotes_structured_HTML(visit).GetData()
+   If fk_progressnote Then  
+      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")            'am editing todays progress note
+   End If   
+   ProgressNote!fk_audit_action = const.cAuditAction_Insert                  'is an insert
+   ProgressNote!fk_consult = visit!fk_consult
+   ProgressNote!fk_section = const.cSection_Workcover
+   ProgressNote!problem = "Workcover"
+   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+   visit!fk_progressNote = progressnote!fk_progressnote
+   visit!latex = WorkcoverForm_LaTeX_Construct(visit).GetData()
+   visit.Save("clin_workcover.visits", "fk_visit")
+   '  modDBConnect.CommitTrans()
+   EditArea_Notify_Datachanged(False)
+   modPrinting.Print_latex(visit!latex, const.Paper_Plain, 2)
+   FClinical.Refresh_AllPreviousNotes()
+   FClinical.Refresh_Section(const.cSection_Workcover)
+   Reload()
+   
+End
+
 Public Sub New_Entry()
    '--------------------------------------
    'Called from the main Fclinical Toolbar
@@ -213,18 +330,33 @@ Public Sub New_Entry()
    
 End
 
-Public Sub Reload()
+Public Sub Reset_Keys()
    
-   Claims_Refresh()                  'refresh currentconsult!workcover_claims collection
+   fk_occupation = 0
+   fk_person = 0
+   fk_branch = 0
+   fk_claim = 0
+   fk_visit = 0
+   fk_lu_visit_type = 0
+   fk_code = ""
+   fk_coding_system = 0
+   fk_consult_visit = 0
+   fk_consult_claim = 0
+   fk_caused_by_employment = const.Workcover_CausedByEmployment_Yes
+   
+End
+
+Public Sub Reload()
+   '-------------------------------------
+   'Reloads all current claims and visits
+   '-------------------------------------   
+   
+   Claims_Refresh()                  'refresh workcover_claims collection, fill the claims list
    If lvwClaims.count Then           'and show in the list
       lvwClaims.MoveLast()           'move to the latest claim
-      lvwClaims.Item.Selected = True 'highlight that row with marquee
-      Claim_Display()                'show (disabled) the details of last claim
-      Visits_Refresh()               'now show all visits for that claim
+      lvwClaims.Item.Selected = True 'highlight that row with marquee, this loads the visits
       cvwVisits.MoveFirst()           'move to last first visit = the most recent
-      cvwVisits.Item.Selected = True 'highlight with  marquee 
-      lvwClaims_Select()             'setspkviewclaim, load claim collection
-      Visit_Display()                'show (disabled) details of last visit)             
+      cvwVisits.Item.Selected = True 'highlight with  marquee  and show last visit
    End If           
    VBox_EditArea.Enabled = False 
    HBox_Visit_Type.Enabled = False  
@@ -400,12 +532,12 @@ Public Sub AssessWorkplace_Click()
    
    HBox_Calander.Visible = False  
    If bExit Then Return
-   Select Case Last.tag
-      Case "yes"
-         visit!assessworkplace = True
-      Case "no"
-         visit!assessworkplace = False
-   End Select
+   ' Select Case Last.tag
+   '    Case "yes"
+   '       visit!assessworkplace = True
+   '    Case "no"
+   '       visit!assessworkplace = False
+   ' End Select
    EditArea_Notify_Datachanged(True)
    
 End
@@ -424,114 +556,14 @@ Public Sub rbDueEmployment_Click()
    HBox_Calander.Visible = False  
    Select Case Last.tag
       Case "yes"
-         visit!fk_caused_by_employment = const.Workcover_CausedByEmployment_Yes
+         fk_caused_by_employment = const.Workcover_CausedByEmployment_Yes
       Case "no"
-         visit!fk_caused_by_employment = const.Workcover_CausedByEmployment_No
+         fk_caused_by_employment = const.Workcover_CausedByEmployment_No
       Case "uncertain"
-         visit!fk_caused_by_employment = const.Workcover_CausedByEmployment_Uncertain
+         fk_caused_by_employment = const.Workcover_CausedByEmployment_Uncertain
    End Select
-   visit!caused_by_employment = Last.tag
+   fk_caused_by_employment = Last.tag
    EditArea_Notify_Datachanged(True)
-   
-End
-
-Public Sub visit_New_cRow()
-   
-   'temporary whilst I convert to cRow
-  Dim lastvisit As New CRow
-  Dim sMsg As String
-   
-
-   lastvisit!pk_visit = visit!pk_visit
-   lastvisit!visit_date = visit!visit_date
-   lastvisit!fk_claim = visit!fk_claim
-   lastvisit!fk_code = visit!fk_code  'could be empty string
-   Try lastvisit!fk_coding_system = visit!fk_coding_system 'could be null
-   lastvisit!fk_lu_visit_type = visit!fk_lu_visit_type
-   lastvisit!visit_type = visit!visit_type
-   lastvisit!diagnosis = visit!diagnosis
-   lastvisit!diagnosis_code = visit!diagnosis_code
-   lastvisit!management_plan = visit!management_plan
-   lastvisit!review_date = visit!review_date
-   lastvisit!assessworkplace = visit!assessworkplace
-   lastvisit!hours_capable = visit!hours_capable
-   lastvisit!days_capable = visit!days_capable
-   lastvisit!restrictions = visit!restrictions
-   lastvisit!fk_caused_by_employment = visit!fk_caused_by_employment
-   lastvisit!doctor_consented = visit!doctor_consented
-   lastvisit!worker_consented = visit!worker_consented
-   lastvisit!fitness_preinjury_from = visit!fitness_preinjury_from
-   lastvisit!fitness_suitable_from = visit!fitness_suitable_from
-   lastvisit!fitness_suitable_to = visit!fitness_suitable_to
-   lastvisit!fitness_unfit_from = visit!fitness_unfit_from
-   lastvisit!fitness_unfit_to = visit!fitness_unfit_to
-   lastvisit!fitness_perm_mod_duties = visit!fitness_perm_mod_duties_from
-   lastvisit!form_html = visit!form_html
-   lastvisit!latex = visit!latex
-   If lastvisit!fitness_preinjury_from <> Null Then
-      sMsg = "Pre-injury from:" & Format(lastvisit!fitness_preinjury_from, "dd/mm/yyyy") & " " 
-   Endif
-   If lastvisit!fitness_suitable_from <> Null Then
-      sMsg &= "Suitable Duties from " & Format(lastvisit!fitness_suitable_from, "dd/mm/yyyy") & " to " & Format(lastvisit!fitness_suitable_to, "dd/mm/yyyy") & " " 
-   Endif
-   If lastvisit!fitness_unfit_from <> Null Then
-       sMsg &= "Suitable Duties from " & Format(lastvisit!fitness_unfit_from, "dd/mm/yyyy") & " to " & Format(lastvisit!fitness_unfit_to, "dd/mm/yyyy") & " "
-   Endif
-   If lastvisit!fitness_perm_mod_duties_from <> Null Then
-       smsg &= "Permanantly modified Duties from " & Format(lastvisit!fitness_perm_mod_duties_from, "dd/mm/yyyy")
-   Endif
-   If visit!hours_capable <> Null Then
-      sMsg &= Str(visit!hours_capable) & "hours/day"
-      If visit!days_capable <> Null Then
-         smsg &= " " & Str(visit!days_capable) & " per week"
-      Endif
-   Endif
-   EditArea_Visit_Clear()                    'Clear all the input area for a visit
-   lblLastCertificateDetails.text = "DATES ON LAST CERTIFICATE:" & smsg
-   bNewVisit = True  
-   visit = New Collection 
-   fk_progressnote = -1
-   If cvwVisits.count <> 0 Then
-      bExit = True  
-      visit!diagnosis = lastvisit!diagnosis                         'assume diagnosis stays the same
-      txtDiagnosis.text = lastvisit!diagnosis           
-      visit!fk_lu_visit_type = const.Workcover_VisitType_Progress   'asssume progress visit
-      txtManagementPlan.text = lastvisit!management_plan            'assume management plan same
-      txtRestrictions.text = lastvisit!restrictions                 'assume restrictions same
-      rbWorkcoverConsultTypeProgress.value = True                   'etc     
-      visit!assessworkplace = lastvisit!assessworkplace            
-      visit!fk_caused_by_employment = lastvisit!fk_caused_by_employment 
-      visit!worker_consented = lastvisit!worker_consented 
-      visit!doctor_consented = lastvisit!doctor_consented
-      If IsNull(lastvisit!fk_claim) Then
-         Message.Info("Richard the fk_claim Null bug...the gui will Stop at the Next Line , please check the collection contents ")
-         Error.Raise("an error")
-      Endif
-       
-      fk_claim = lastvisit!fk_claim  'FIXME BUG HERE.
-      fk_coding_system = lastvisit!fk_coding_system
-      fk_code = lastvisit!fk_code   
-      txtCertificateDate.text = Format(Now, "dd/mm/yyyy")
-      visit!certificate_date = Format(Now, "dd/mm/yyyy")
-      bexit = False
-   Else 
-      
-      visit!fk_lu_visit_type = const.Workcover_VisitType_Initial
-      rbWorkcoverConsultTypeInitial.Value = True
-      visit!fk_caused_by_employment = const.Workcover_CausedByEmployment_Yes
-      visit!assessworkplace = False
-      visit!worker_consented = True
-      visit!doctor_consented = True
-      fk_claim = 0
-      fk_code = ""
-      fk_coding_system = 0
-   End If
-   lblWorkcover.text = "NEW VISIT " & UCase(Trim(txtIdentifier.text))
-   bexit = False   
-   bNewClaim = False 
-   VBox_EditArea.Enabled = True
-   HBox_Visit_Type.Enabled = True   
-   txtReviewDate.SetFocus()    
    
 End
 
@@ -540,7 +572,78 @@ Public Sub Visit_New()
    Dim lastvisit As New Collection 
    Dim sMsg As String
    
+   fk_visit = 0
+   fk_consult_visit = 0
+   fk_progressnote = 0
+   If visit!fitness_preinjury_from <> Null Then
+      sMsg = "Pre-injury from:" & Format(visit!fitness_preinjury_from, "dd/mm/yyyy") & " " 
+   Endif
+   If visit!fitness_suitable_from <> Null Then
+      sMsg &= "Suitable Duties from " & Format(visit!fitness_suitable_from, "dd/mm/yyyy") & " to " & Format(visit!fitness_suitable_to, "dd/mm/yyyy") & " " 
+   Endif
+   If visit!fitness_unfit_from <> Null Then
+      sMsg &= "Suitable Duties from " & Format(visit!fitness_unfit_from, "dd/mm/yyyy") & " to " & Format(visit!fitness_unfit_to, "dd/mm/yyyy") & " "
+   Endif
+   If visit!fitness_perm_mod_duties_from <> Null Then
+      smsg &= "Permanantly modified Duties from " & Format(visit!fitness_perm_mod_duties_from, "dd/mm/yyyy")
+   Endif
+   If visit!hours_capable <> Null Then
+      sMsg &= Str(visit!hours_capable) & "hours/day"
+      If visit!days_capable <> Null Then
+         smsg &= " " & Str(visit!days_capable) & " per week"
+      Endif
+   Endif
+   EditArea_Visit_Clear()                    'Clear all the input area for a visit
+   lblLastCertificateDetails.text = "DATES ON LAST CERTIFICATE:" & smsg
+   bNewVisit = True  
+   If cvwVisits.count <> 0 Then
+      '--------------------------------------------------------------------------------
+      'if visits already exist for this claim add some basic data likely to be the same
+      '--------------------------------------------------------------------------------
+      bExit = True  
+      txtDiagnosis.text = visit!diagnosis    
+      fk_lu_visit_type = const.Workcover_VisitType_Progress     'asssume progress visit
+      txtManagementPlan.text = visit!management_plan            'assume management plan same
+      txtRestrictions.text = visit!restrictions                 'assume restrictions same
+      rbWorkcoverConsultTypeProgress.value = True   
+      If visit!assessworkplace Then
+         rbAssessWorkplaceYes.value = True
+      Else
+         rbAssessWorkplaceNo.Value = False   
+      End If    
+      If IsNull(visit!fk_claim) Then
+         Message.Info("Richard the fk_claim Null bug...the gui will Stop at the Next Line , please check the collection contents ")
+         Error.Raise("an error")
+      Endif
+      fk_claim = visit!fk_claim  'FIXME BUG HERE.
+      fk_coding_system = visit!fk_coding_system
+      fk_code = visit!fk_code   
+      txtCertificateDate.text = Format(Now, "dd/mm/yyyy")
+      visit!certificate_date = Format(Now, "dd/mm/yyyy")
+      bexit = False
+   Else 
+      '--------------------------------------
+      'this is the first visit for this claim
+      '--------------------------------------
+      visit!fk_lu_visit_type = const.Workcover_VisitType_Initial
+      rbWorkcoverConsultTypeInitial.Value = True
+      fk_caused_by_employment = const.Workcover_CausedByEmployment_Yes
+      fk_code = ""
+      fk_coding_system = 0
+   End If
+   lblWorkcover.text = "NEW VISIT " & UCase(Trim(txtIdentifier.text))
+   bexit = False   
+   VBox_EditArea.Enabled = True
+   HBox_Visit_Type.Enabled = True   
+   txtReviewDate.SetFocus()
+   
+End
 
+Public Sub Visit_New_old()
+   
+   Dim lastvisit As New Collection 
+   Dim sMsg As String
+   
    lastvisit!pk_visit = visit!pk_visit
    lastvisit!visit_date = visit!visit_date
    lastvisit!fk_claim = visit!fk_claim
@@ -574,10 +677,10 @@ Public Sub Visit_New()
       sMsg &= "Suitable Duties from " & Format(lastvisit!fitness_suitable_from, "dd/mm/yyyy") & " to " & Format(lastvisit!fitness_suitable_to, "dd/mm/yyyy") & " " 
    Endif
    If lastvisit!fitness_unfit_from <> Null Then
-       sMsg &= "Suitable Duties from " & Format(lastvisit!fitness_unfit_from, "dd/mm/yyyy") & " to " & Format(lastvisit!fitness_unfit_to, "dd/mm/yyyy") & " "
+      sMsg &= "Suitable Duties from " & Format(lastvisit!fitness_unfit_from, "dd/mm/yyyy") & " to " & Format(lastvisit!fitness_unfit_to, "dd/mm/yyyy") & " "
    Endif
    If lastvisit!fitness_perm_mod_duties_from <> Null Then
-       smsg &= "Permanantly modified Duties from " & Format(lastvisit!fitness_perm_mod_duties_from, "dd/mm/yyyy")
+      smsg &= "Permanantly modified Duties from " & Format(lastvisit!fitness_perm_mod_duties_from, "dd/mm/yyyy")
    Endif
    If visit!hours_capable <> Null Then
       sMsg &= Str(visit!hours_capable) & "hours/day"
@@ -589,7 +692,7 @@ Public Sub Visit_New()
    lblLastCertificateDetails.text = "DATES ON LAST CERTIFICATE:" & smsg
    bNewVisit = True  
    visit = New Collection 
-   fk_progressnote = -1
+   fk_progressnote = 0
    If cvwVisits.count <> 0 Then
       bExit = True  
       visit!diagnosis = lastvisit!diagnosis                         'assume diagnosis stays the same
@@ -606,7 +709,7 @@ Public Sub Visit_New()
          Message.Info("Richard the fk_claim Null bug...the gui will Stop at the Next Line , please check the collection contents ")
          Error.Raise("an error")
       Endif
-       
+      
       fk_claim = lastvisit!fk_claim  'FIXME BUG HERE.
       fk_coding_system = lastvisit!fk_coding_system
       fk_code = lastvisit!fk_code   
@@ -661,6 +764,7 @@ Public Sub Claims_Refresh()
          iLastClaim = claim!fk_claim
       End If
    Next
+   'the last claim is now in the collection claim
    
 End
 
@@ -705,7 +809,7 @@ Public Sub Claim_Collect_Data()
    
 End
 
-Public Function WorkcoverForm_LaTeX_Construct() As CTemplate
+Public Function WorkcoverForm_LaTeX_Construct(visit As CRow) As CTemplate
    
    Dim sEmployer As String
    Dim sAssess_Workplace As String = "   No"
@@ -853,7 +957,7 @@ Public Function WorkcoverForm_LaTeX_Construct() As CTemplate
    
 End
 
-Public Function Claim_Construct_Progressnotes_Structured_HTML() As CTemplate
+Public Function Claim_Construct_Progressnotes_Structured_HTML_old() As CTemplate
    '-------------------------------
    'HTML to put into progress notes
    '-------------------------------   
@@ -1028,62 +1132,180 @@ Public Function Claim_Construct_Progressnotes_Structured_HTML() As CTemplate
    Return templ
    
 End
-Public Sub claim_cRow()
-   
-   'Temporary whilst I convert to cRow
-    '----------------------------------------------------------
-   'User wants to start a new claim
-   'Give them chance to re-consider in case this is accidental
-   '----------------------------------------------------------   
 
-   If VBox_EditArea_Outer.padding = 1 Then
-      If EditArea_Contents_Valid() Then
-         If Message.Question("Wipe current workcover form?", "Yes", "No") = 2 Then Return 
-      End If   
-   Endif
-   Editarea_Claim_Clear()
-   EditArea_Visit_Clear()
-   Try lvwClaims.UnselectAll()
-   Try cvwVisits.UnselectAll()
-   bNewclaim = True
-   bClaimLoaded = False 
-   bVisitLoaded = False
-   bExit = True
-   claim = New CRow
-   visit = New CRow
-   branch = New Collection
-   pk_view_claim = -1
-   fk_occupation = 0
-   fk_person = 0
-   fk_branch = 0
-   fk_claim = 0
-   fk_visit = 0
-   pk_view_visits = -1
-   fk_progressnote = -1
-   rbWorkcoverConsultTypeInitial.value = True  
-   visit!fk_lu_visit_type = const.Workcover_VisitType_Initial   
-   visit!visit_type = "Initial"
-   lblWorkcover.text = "New Workcover Claim"
-   rbDueEmploymentYes.Value = True
-   visit!fk_caused_by_employment = Const.Workcover_CausedByEmployment_Yes
-   chkAgreeToTreat_Doctor.value = True
-   chkAgreeToTreat_Worker.value = True 
-   visit!doctor_consented = True
-   visit!worker_consented = True    
-   chkClaimAccepted.value = False   
-   rbAssessWorkplaceNo.value = True
-   visit!assessworkplace = False
-   bExit = False  
-   tbNewVisit.Enabled = False 
-   rbOrganisation.value = True
-   Contact_Type = const.contacttype_organisation
-   EditArea_Notify_Datachanged(False)
-   HBox_Visit_Type.Enabled = True   
-   VBox_EditArea.Enabled = True 
-   tbPreview.Enabled = True
-   txtCertificateDate.text = Format(Now, "dd/mm/yyyy")
-   txtIdentifier.SetFocus()
+Public Function Claim_Construct_Progressnotes_Structured_HTML(visit As CRow) As CTemplate
+   '-------------------------------
+   'HTML to put into progress notes
+   '-------------------------------   
    
+   Dim templ As CTemplate
+   Dim sAssess_Workplace As String = "No"
+   Dim sName As String
+   Dim sAddress As String
+   Dim sString As String
+   Dim sCausedBy As String = ""
+   
+   If visit!assessworkplace = True Then
+      sAssess_Workplace = "   Yes"
+   End If
+   Select Case visit!fk_caused_by_employment 
+      Case Const.Workcover_CausedByEmployment_Yes
+         sCausedBy = "yes"
+      Case Const.Workcover_CausedByEmployment_No
+         sCausedBy = "no"
+      Case Const.Workcover_CausedByEmployment_Uncertain
+         sCausedBy = "uncertain"
+   End Select
+   templ = New CTemplate(modHTML.workcover_progressnotes_structured_html) 
+   templ.Subst_common(currentconsult)
+   templ.Subst("visit_type", UCase(visit_types[visit!fk_lu_visit_type]))
+   templ.Subst("claim", Trim(txtClaim.text))
+   templ.Subst("employer", Trim(txtEmployer.text))
+   templ.Subst("workaddress", Trim(txtAddress.text))
+   templ.Subst("contact_person", Trim(txtContactPerson.text) & " " & Trim(txtMemo.text))
+   templ.Subst("occupation", txtOccupation.Text)
+   templ.Subst("hours_worked", txtHoursWorked.Text)
+   templ.Subst("injury_how_occurred", txtMechanismInjury.text)
+   templ.Subst("injury_date", txtDateInjury.text)
+   templ.Subst("diagnosis", txtDiagnosis.text)
+   templ.Subst("caused_by_employment", sCausedBy)
+   templ.Subst("management_plan", txtManagementPlan.text)
+   templ.Subst("assess_workplace", sAssess_Workplace)
+   templ.Subst("reviewdate", txtReviewDate.text)
+   
+   sString = ""
+   " <TABLE WIDTH=100%>"
+   "    <COL WIDTH=45%>"
+   "    <COL WIDTH=15%>"
+   "    <COL WIDTH=10%>"
+   "    <COL WIDTH=30%>"
+   
+   If Trim(txtPreInjury_From.text) <> "" Then
+      sstring &= ""  
+      " <TR VALIGN=TOP>"
+      "<TD WIDTH=45%>"
+      "<P><FONT SIZE=2>Pre-injury duties from</FONT></P>"
+      "</TD>"
+      "<TD WIDTH=15%><P ALIGN=LEFT><FONT SIZE=2>"
+      "<P>%from_date</FONT></P>"
+      sstring = Replace(sSTring, "%from_date", Format(Val(txtPreInjury_From.text), " dd/mm/yyyy ")) 
+      sstring &= "</TD>"
+      "<TD WIDTH=10%>"
+      "<P></P>"
+      "</TD>"
+      "<TD WIDTH=30%>"
+      "<P></P>"
+      "</TD>"
+      "</TR>"
+   End If
+   
+   If Trim(txtunfit_From.text) Then
+      sstring &= ""  
+      " <TR VALIGN=TOP>"
+      "<TD WIDTH=45%>"
+      "<P><FONT SIZE=2>Unfit From</FONT></P>"
+      "</TD>"
+      "<TD WIDTH=15%><FONT SIZE=2>"
+      "<P>%from_date</FONT></P>"
+      sstring = Replace(sSTring, "%from_date", Format(Val(txtunfit_From.text), " dd/mm/yyyy ")) 
+      sstring &= "</TD>"
+      "<TD WIDTH=10%>"
+      "<P ALIGN=CENTER><FONT SIZE=2>To</FONT></P>"
+      "</TD>"
+      "<TD WIDTH=30%><FONT SIZE=2>"
+      "<P><FONT SIZE=2>%to_date</FONT></P>"
+      "</TD>"
+      sstring = Replace(sSTring, "%to_date", Format(Val(txtUnfit_To.text), "dd/mm/yyyy")) 
+      sstring &= "</TR>"
+   End If
+   
+   If Trim(txtSuitable_From.text) Then
+      sstring &= ""  
+      " <TR VALIGN=TOP>"
+      "<TD WIDTH=45%>"
+      "<P><FONT SIZE=2>Suitable duties from</FONT></P>"
+      "</TD>"
+      "<TD WIDTH=15%>" ""
+      "<P><FONT SIZE=2>%from_date</FONT></P>"
+      sstring = Replace(sSTring, "%from_date", Format(Val(txtSuitable_From.text), "dd/mm/yyyy"))
+      sstring &= "</TD>"
+      "<TD WIDTH=10%>"
+      "<P ALIGN=CENTER><FONT SIZE=2>To</FONT></P>"
+      "</TD>"
+      "<TD WIDTH=30%>"
+      "<P><FONT SIZE=2>%to_date</FONT></P>"
+      "</TD>"
+      sstring = Replace(sSTring, "%to_date", Format(Val(txtSuitable_To.text), "dd/mm/yyyy")) 
+      sstring &= "</TR>"
+   End If
+   
+   If Trim(txtPermModDuties_From.text) <> "" Then
+      sstring &= ""  
+      " <TR VALIGN=TOP>"
+      "<TD WIDTH=45%>"
+      "<P><FONT SIZE=2>Permanantly modified duties from</FONT></P>"
+      "</TD>"
+      "<TD WIDTH=15%><FONT SIZE=2>" 
+      "<P>%from_date</FONT></P>"
+      sstring = Replace(sSTring, "%from_date", Format(Val(txtPermModDuties_From.text), " dd/mm/yyyy ")) 
+      sstring &= "</TD>"
+      "<TD WIDTH=10%>"
+      "<P></P>"
+      "</TD>"
+      "<TD WIDTH=30%>"
+      "<P></P>"
+      "</TD>"
+      "</TR>"
+   End If
+   sSTring &= "</TABLE>"
+   
+   If sSTring <> "" Then
+      templ.subst_html("fitness", sString)
+   Else
+      templ.Subst("fitness", "")
+   End If
+   
+   sString = ""
+   If Trim(txtCanWork_HrsPerDay.text) <> "" Then
+      sString = Trim(txtCanWork_HrsPerDay.text) & " hours per day, "
+   End If
+   
+   If Trim(txtCanWork_DaysPerWeek.text) Then 
+      sstring &= Trim(txtCanWork_DaysPerWeek.text) & " days per week"
+   Else
+      sSTring = Left(sSTring, Len(sSTring) - 1) 'chop off the  ','
+   End If
+   
+   If sString <> "" Then
+      templ.Subst("hours_capable", sString)
+   Else
+      templ.Subst("hours_capable", "")
+   End If
+   
+   If Trim(txtRestrictions.text) <> "" Then
+      templ.Subst("restrictions", txtRestrictions.text)
+   Else
+      templ.Subst("restrictions", "")
+   End If
+   If Trim(txtCapabilities.text) <> "" Then
+      templ.Subst("capabilities", txtCapabilities.text)
+   Else
+      templ.Subst("capabilities", "")
+   End If
+   
+   If visit!doctor_consented Then
+      sString = "yes"
+   Else
+      sString = "No"
+   End If
+   templ.Subst("doctor_consented", sString)
+   If visit!worker_consented Then
+      sSTring = "yes"
+   Else
+      sstring = "no"
+   End If
+   templ.Subst("worker_consented", sString)
+   Return templ
    
 End
 
@@ -1092,7 +1314,7 @@ Public Sub Claim_New()
    'User wants to start a new claim
    'Give them chance to re-consider in case this is accidental
    '----------------------------------------------------------   
-
+   
    If VBox_EditArea_Outer.padding = 1 Then
       If EditArea_Contents_Valid() Then
          If Message.Question("Wipe current workcover form?", "Yes", "No") = 2 Then Return 
@@ -1110,26 +1332,19 @@ Public Sub Claim_New()
    visit = New Collection
    branch = New Collection
    pk_view_claim = -1
-   fk_occupation = 0
-   fk_person = 0
-   fk_branch = 0
-   fk_claim = 0
-   fk_visit = 0
+   Reset_Keys()
    pk_view_visits = -1
-   fk_progressnote = -1
+   fk_progressnote = 0
    rbWorkcoverConsultTypeInitial.value = True  
-   visit!fk_lu_visit_type = const.Workcover_VisitType_Initial   
-   visit!visit_type = "Initial"
+   fk_lu_visit_type = const.Workcover_VisitType_Initial 
+   fk_lu_visit_type = const.Workcover_VisitType_Initial  
    lblWorkcover.text = "New Workcover Claim"
    rbDueEmploymentYes.Value = True
-   visit!fk_caused_by_employment = Const.Workcover_CausedByEmployment_Yes
+   fk_caused_by_employment = Const.Workcover_CausedByEmployment_Yes
    chkAgreeToTreat_Doctor.value = True
    chkAgreeToTreat_Worker.value = True 
-   visit!doctor_consented = True
-   visit!worker_consented = True    
    chkClaimAccepted.value = False   
    rbAssessWorkplaceNo.value = True
-   visit!assessworkplace = False
    bExit = False  
    tbNewVisit.Enabled = False 
    rbOrganisation.value = True
@@ -1144,52 +1359,44 @@ Public Sub Claim_New()
 End
 
 Public Sub lvwClaims_Select()
-   
-   lvwClaims.MoveCurrent
-   fk_person = 0
-   fk_branch = 0
-   fk_organisation = 0
+   '------------------------------------------------------------------------------
+   'Either user has clicked on the claims list or set programmatically in Reload()
+   '------------------------------------------------------------------------------
+
+   If Not lvwClaims.count Then Return 
+   Reset_Keys()
+   lvwClaims.MoveCurrent                                             'sets the lvwClaims key
+   claim = New Collection    'make it easier to read 
    pk_view_claim = lvwClaims.Item.Key
-   
-   claim = New Collection
-   claim!fk_consult = currentconsult!workcover_claims[pk_view_claim]!fk_consult_claim
-   claim!fk_claim = currentconsult!workcover_claims[pk_view_claim]!fk_claim
+   claim = currentconsult!workcover_claims[lvwClaims.Item.Key]
    fk_claim = claim!fk_claim
-   
-   claim!identifier = currentconsult!workcover_claims[pk_view_claim]!identifier
-   claim!claim_number = currentconsult!workcover_claims[pk_view_claim]!claim_number
-   claim!date_injury = currentconsult!workcover_claims[pk_view_claim]!date_injury
-   claim!mechanism_of_injury = currentconsult!workcover_claims[pk_view_claim]!mechanism_of_injury
-   claim!fk_occupation = currentconsult!workcover_claims[pk_view_claim]!fk_occupation
-   claim!occupation = currentconsult!workcover_claims[pk_view_claim]!occupation
-   claim!hours_week_worked = currentconsult!workcover_claims[pk_view_claim]!hours_week_worked
-   claim!fk_branch = currentconsult!workcover_claims[pk_view_claim]!fk_branch
-   claim!contact_person = currentconsult!workcover_claims[pk_view_claim]!contact_person
-   Claim!memo = currentconsult!workcover_claims[pk_view_claim]!memo
-   claim!accepted = currentconsult!workcover_claims[pk_view_claim]!accepted
-   claim!start_date = currentconsult!workcover_claims[pk_view_claim]!start_date
+   Print "claim fk_progress notes:", claim!fk_progressnote
+   fk_consult_claim = claim!fk_consult_claim
    branch = New Collection 
-   Try fk_branch = currentconsult!workcover_claims[pk_view_claim]!fk_branch
-   Try fk_organisation = currentconsult!workcover_claims[pk_view_claim]!fk_organisation '?needed
+   Try fk_branch = claim!fk_branch
+   Try fk_organisation = claim!fk_organisation '?needed
    branch!fk_branch = fk_branch
-   branch!organisation = currentconsult!workcover_claims[pk_view_claim]!organisation
-   branch!branch = currentconsult!workcover_claims[pk_view_claim]!branch
-   branch!street1 = currentconsult!workcover_claims[pk_view_claim]!branch_street1
-   branch!street2 = currentconsult!workcover_claims[pk_view_claim]!branch_street2
-   branch!town = currentconsult!workcover_claims[pk_view_claim]!branch_town
-   branch!postcode = currentconsult!workcover_claims[pk_view_claim]!branch_postcode
+   branch!organisation = claim!organisation
+   branch!branch = claim!branch
+   branch!street1 = claim!branch_street1
+   branch!street2 = claim!branch_street2
+   branch!town = claim!branch_town
+   branch!postcode = claim!branch_postcode
    Sole_Trader = New Collection
-   claim!fk_person = currentconsult!workcover_claims[pk_view_claim]!fk_person
-   Try fk_person = currentconsult!workcover_claims[pk_view_claim]!fk_person
-   Sole_Trader!fk_person = currentconsult!workcover_claims[pk_view_claim]!fk_person
-   Sole_Trader!firstname = currentconsult!workcover_claims[pk_view_claim]!soletrader_firstname
-   Sole_Trader!surname = currentconsult!workcover_claims[pk_view_claim]!soletrader_surname
-   Sole_Trader!wholename = currentconsult!workcover_claims[pk_view_claim]!soletrader_wholename
-   Sole_Trader!title = currentconsult!workcover_claims[pk_view_claim]!soletrader_title
-   Sole_Trader!street1 = currentconsult!workcover_claims[pk_view_claim]!soletrader_street1
-   Sole_Trader!street2 = currentconsult!workcover_claims[pk_view_claim]!soletrader_street2
-   Sole_Trader!town = currentconsult!workcover_claims[pk_view_claim]!soletrader_town
-   Sole_Trader!postcode = currentconsult!workcover_claims[pk_view_claim]!soletrader_postcode
+   Try fk_person = claim!fk_person
+   Sole_Trader!fk_person = claim!fk_person
+   Sole_Trader!firstname = claim!soletrader_firstname
+   Sole_Trader!surname = claim!soletrader_surname
+   Sole_Trader!wholename = claim!soletrader_wholename
+   Sole_Trader!title = claim!soletrader_title
+   Sole_Trader!street1 = claim!soletrader_street1
+   Sole_Trader!street2 = claim!soletrader_street2
+   Sole_Trader!town = claim!soletrader_town
+   Sole_Trader!postcode = claim!soletrader_postcode
+   Claim_Display()                'display the core claim details
+   Visits_Refresh()               'get the visits for that claim
+   cvwVisits.MoveFirst()          'Show the first visit in the list
+   cvwVisits.Item.Selected = True 'highlight the marquee and shows last vitis
    
 End
 
@@ -1199,86 +1406,40 @@ Public Sub Timer1_Timer()
    
 End
 
-Public Sub lvwClaims_Click()
-   
-   lvwClaims_Select()
-   Claim_Display()                'display the core claim details
-   Visits_Refresh()               'get the visits for that claim
-   cvwVisits.MoveFirst()          'Show the first visit in the list
-   cvwVisits.Item.Selected = True 'highlight the marquee 
-   Visit_Display()
-   
-End
-
 Public Sub cvwVisits_Click()
-   
-   If bClaimLoaded = False Then
-      lvwClaims_Select()
-      Claim_Display()
-   End If
-   cvwVisits_Select()
-   Visit_Display()
-   EditArea_Notify_Datachanged(False)
-   VBox_EditArea.Enabled = False
-   HBox_Visit_Type.Enabled = False  
+   ' 
+   ' If bClaimLoaded = False Then
+   '    lvwClaims_Select()
+   '    Claim_Display()
+   ' End If
+   ' cvwVisits_Select()
+   ' Visit_Display()
+   ' EditArea_Notify_Datachanged(False)
+   ' VBox_EditArea.Enabled = False
+   ' HBox_Visit_Type.Enabled = False  
    
 End
 
 Public Sub cvwVisits_Select()
    
-   pk_view_visits = cvwVisits.Item.key
-   cvwVisits.MoveCurrent()
-   visit = New Collection 
-   visit!fk_visit = currentconsult!workcover_claims[pk_view_visits]!fk_visit
-   visit!visit_date = currentconsult!workcover_claims[pk_view_visits]!visit_date
-   visit!certificate_date = currentconsult!workcover_claims[pk_view_visits]!certificate_date
-   visit!fk_claim = currentconsult!workcover_claims[pk_view_visits]!fk_claim 
-   visit!fk_lu_visit_type = currentconsult!workcover_claims[pk_view_visits]!fk_lu_visit_type
-   visit!visit_type = currentconsult!workcover_claims[pk_view_visits]!visit_type
-   visit!diagnosis = currentconsult!workcover_claims[pk_view_visits]!diagnosis
-   Try visit!fk_code = currentconsult!workcover_claims[pk_view_visits]!fk_code
-   Try visit!coded_term = currentconsult!workcover_claims[pk_view_visits]!coded_term
-   Try visit!fk_coding_system = currentconsult!workcover_claims[pk_view_visits]!fk_coding_system
-   Try visit!coding_system = currentconsult!workcover_claims[pk_view_visits]!coding_system
-   visit!management_plan = currentconsult!workcover_claims[pk_view_visits]!management_plan
-   visit!review_date = currentconsult!workcover_claims[pk_view_visits]!review_date
-   visit!assessworkplace = currentconsult!workcover_claims[pk_view_visits]!assessworkplace
-   visit!hours_capable = currentconsult!workcover_claims[pk_view_visits]!hours_capable
-   visit!days_capable = currentconsult!workcover_claims[pk_view_visits]!days_capable
-   visit!restrictions = currentconsult!workcover_claims[pk_view_visits]!restrictions
-   visit!capabilities = currentconsult!workcover_claims[pk_view_visits]!capabilities
-   visit!fk_caused_by_employment = currentconsult!workcover_claims[pk_view_visits]!fk_caused_by_employment
-   visit!doctor_consented = currentconsult!workcover_claims[pk_view_visits]!doctor_consented
-   visit!worker_consented = currentconsult!workcover_claims[pk_view_visits]!worker_consented
-   visit!fitness_preinjury_from = currentconsult!workcover_claims[pk_view_visits]!fitness_preinjury_from
-   visit!fitness_suitable_from = currentconsult!workcover_claims[pk_view_visits]!fitness_suitable_from
-   visit!fitness_suitable_to = currentconsult!workcover_claims[pk_view_visits]!fitness_suitable_to
-   visit!fitness_unfit_from = currentconsult!workcover_claims[pk_view_visits]!fitness_unfit_from
-   visit!fitness_unfit_to = currentconsult!workcover_claims[pk_view_visits]!fitness_unfit_to
-   visit!fitness_perm_mod_duties_from = currentconsult!workcover_claims[pk_view_visits]!fitness_perm_mod_duties_from
-   visit!latex = currentconsult!workcover_claims[pk_view_visits]!latex
-   visit!fk_progressnote = currentconsult!workcover_claims[pk_view_visits]!fk_progressnote
-   'Editing a pre-existing claim - really need to allow editing of th progress note
-   ' but later FIXME put in an audit-trail to show what was changed
-   fk_progressnote = -1  'new unless editing a visit
-   If Not IsNull(currentconsult!workcover_claims[pk_view_visits]!fk_progressnote) Then
-      fk_progressnote = currentconsult!workcover_claims[pk_view_visits]!fk_progressnote
-   End If 
+   Visit_Display()
    
 End
 
 Public Sub Claim_Display()
-   '------------------------------------
+   '----------------------------------------------------------
    'Display the 'core' claim details
    'Note the injury date is a text field
-   '------------------------------------   
+   'the collection 'claim' is filled in either claims_refresh
+   'of by user clicking on the lvClaims list
+   '----------------------------------------------------------   
    
    EditArea_Claim_Clear()
    bExit = True
    lblWorkcover.Text = "Existing Claim for " & claim!identifier
    txtClaim.text = claim!claim_number
    txtIdentifier.text = claim!identifier
-   If fk_person Then
+   If claim!fk_person Then
       rbSoleTrader.value = True
       txtemployer.text = Sole_Trader!wholename
       txtAddress.text = Trim(Sole_Trader!street1 & " " & Sole_Trader!street2) & " " & Sole_Trader!town & " " & Sole_Trader!postcode  
@@ -1390,16 +1551,11 @@ Public Sub Visit_Delete()
       Endif
    Next
    Reload()
-
+   
 End
 
 Public Sub Visit_Edit()
    
-   If bClaimLoaded = False Then
-      lvwClaims_Select()
-      Claim_Display()
-   End If  
-   Visit_Display()
    lblWorkcover.text = "Edit Exiting Visit"
    VBox_EditArea.Enabled = True
    HBox_Visit_Type.Enabled = True   
@@ -1412,6 +1568,50 @@ Public Sub Visit_Display()
    '----------------------------------------   
    
    EditArea_Visit_Clear()        'just clear textboxes etc, dosn't affect the keys
+   VBox_EditArea.Enabled = False
+   HBox_Visit_Type.Enabled = False  
+   cvwVisits.MoveCurrent()
+   fk_visit = cvwVisits.Item.key  'primary key of vwWorkcover = cin_workcover.visits.pk
+   visit = New Collection 
+   fk_consult_visit = currentconsult!workcover_claims[fk_visit]!fk_consult
+   visit!fk_consult = currentconsult!workcover_claims[fk_visit]!fk_consult
+   visit!fk_visit = currentconsult!workcover_claims[fk_visit]!fk_visit
+   visit!visit_date = currentconsult!workcover_claims[fk_visit]!visit_date
+   visit!certificate_date = currentconsult!workcover_claims[fk_visit]!certificate_date
+   visit!fk_claim = currentconsult!workcover_claims[fk_visit]!fk_claim 
+   visit!fk_lu_visit_type = currentconsult!workcover_claims[fk_visit]!fk_lu_visit_type
+   fk_lu_visit_type = currentconsult!workcover_claims[fk_visit]!fk_lu_visit_type
+   visit!visit_type = currentconsult!workcover_claims[fk_visit]!visit_type
+   visit!diagnosis = currentconsult!workcover_claims[fk_visit]!diagnosis
+   Try visit!fk_code = currentconsult!workcover_claims[fk_visit]!fk_code
+   Try visit!coded_term = currentconsult!workcover_claims[fk_visit]!coded_term
+   Try visit!fk_coding_system = currentconsult!workcover_claims[fk_visit]!fk_coding_system
+   Try visit!coding_system = currentconsult!workcover_claims[fk_visit]!coding_system
+   visit!management_plan = currentconsult!workcover_claims[fk_visit]!management_plan
+   visit!review_date = currentconsult!workcover_claims[fk_visit]!review_date
+   visit!assessworkplace = currentconsult!workcover_claims[fk_visit]!assessworkplace
+   visit!hours_capable = currentconsult!workcover_claims[fk_visit]!hours_capable
+   visit!days_capable = currentconsult!workcover_claims[fk_visit]!days_capable
+   visit!restrictions = currentconsult!workcover_claims[fk_visit]!restrictions
+   visit!capabilities = currentconsult!workcover_claims[fk_visit]!capabilities
+   visit!fk_caused_by_employment = currentconsult!workcover_claims[fk_visit]!fk_caused_by_employment
+   visit!doctor_consented = currentconsult!workcover_claims[fk_visit]!doctor_consented
+   visit!worker_consented = currentconsult!workcover_claims[fk_visit]!worker_consented
+   visit!fitness_preinjury_from = currentconsult!workcover_claims[fk_visit]!fitness_preinjury_from
+   visit!fitness_suitable_from = currentconsult!workcover_claims[fk_visit]!fitness_suitable_from
+   visit!fitness_suitable_to = currentconsult!workcover_claims[fk_visit]!fitness_suitable_to
+   visit!fitness_unfit_from = currentconsult!workcover_claims[fk_visit]!fitness_unfit_from
+   visit!fitness_unfit_to = currentconsult!workcover_claims[fk_visit]!fitness_unfit_to
+   visit!fitness_perm_mod_duties_from = currentconsult!workcover_claims[fk_visit]!fitness_perm_mod_duties_from
+   visit!latex = currentconsult!workcover_claims[fk_visit]!latex
+   visit!fk_progressnote = currentconsult!workcover_claims[fk_visit]!fk_progressnote
+   'Editing a pre-existing claim - really need to allow editing of th progress note
+   ' but later FIXME put in an audit-trail to show what was changed
+   fk_progressnote = 0  'new unless editing a visit
+   If Not IsNull(currentconsult!workcover_claims[fk_visit]!fk_progressnote) Then
+      fk_progressnote = currentconsult!workcover_claims[fk_visit]!fk_progressnote
+      Print "visit fk_progressNote:", fk_progressnote
+   End If 
    bExit = True
    Select Case visit!fk_lu_visit_type
       Case Const.Workcover_VisitType_Initial
@@ -1450,13 +1650,13 @@ Public Sub Visit_Display()
       chkFitness_Unfit.Value = True 
    End If   
    If Not IsNull(visit!fitness_unfit_to) Then txtUnfit_To.text = modUtil.Format_Date(visit!fitness_unfit_to)
-   
    txtCanWork_HrsPerDay.text = visit!hours_capable
    txtCanWork_DaysPerWeek.text = visit!days_capable
    txtRestrictions.text = visit!restrictions
    txtCapabilities.text = visit!capabilities
    chkAgreeToTreat_Doctor.Value = visit!doctor_consented
    chkAgreeToTreat_Worker.value = visit!worker_consented
+   fk_caused_by_employment = visit!fk_caused_by_employment
    Select Case visit!fk_caused_by_employment
       Case const.Workcover_CausedByEmployment_No
          rbDueEmploymentNo.value = True
@@ -1476,10 +1676,14 @@ Public Sub Visit_Display()
 End
 
 Public Sub Visits_Refresh()
+   '------------------------------------------------------------------
+   'Refresh the visits for the claim
+   'pk_view_claim is set when lvClaim_Select() called
+   'either programatically in Reload() or user clicking on claims list
+   '------------------------------------------------------------------
    
    fk_claim = currentconsult!workcover_claims[pk_view_claim]!fk_claim
    cvwVisits.Clear()           'clear the list  
-   Claims_Forms = New Collection 
    For Each visit In currentconsult!workcover_claims
       If visit!fk_claim = fk_claim Then
          cvwVisits.Add(visit!fk_visit, 0)
@@ -1487,7 +1691,6 @@ Public Sub Visits_Refresh()
          cvwVisits[visit!fk_visit][1] = visit!visit_type
          cvwVisits[visit!fk_visit][2] = visit!diagnosis
          cvwVisits[visit!fk_visit][3] = visit!management_plan
-         Claims_Forms.Add(visit!latex, cvwVisits.count)
       End If
    Next
    
@@ -1542,6 +1745,7 @@ Public Sub EditArea_Visit_Clear()
    bExit = False
    bNewVisit = False 
    lblLastCertificateDetails.text = ""
+   
 End
 
 Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
@@ -1592,22 +1796,17 @@ Public Sub chkFitness_Click()
    Select Case Last.tag
       Case "pre-injury"
          If Last.value = False Then
-            
             txtPreInjury_From.text = "" 
-            visit!fitness_preinjury_from = Null
+            ' visit!fitness_preinjury_from = Null
          End If
       Case "unfit"
          If Last.value = False Then
             
             txtunfit_From.text = "" 
-            visit!fitness_unfit_from = Null
-            visit!fitness_unfit_to = Null
+            ' visit!fitness_unfit_from = Null
+            '     visit!fitness_unfit_to = Null
          Endif
    End Select
-   
-End
-
-Public Sub schkFitness_Click()
    
 End
 
@@ -1626,12 +1825,6 @@ Public Sub chkFitness_KeyPress()
                txtPermModDuties_From.SetFocus()
          End Select
    End Select
-   
-End
-
-Public Sub ColumnView2_Select()
-   
-   iCurrentKey = ColumnView2.Item.Key 
    
 End
 
@@ -1761,47 +1954,35 @@ Public Sub occupation_Selection(action As String, Optional calling_control As St
    
    Select Case action
       Case "get"
-         
          If Trim(txtoccupation.text) = "" Then Return 
          occupations = modCommonDBI.occupations_get(Trim(txtoccupation.text))
          Listview1.Clear()
-         
          If occupations.count Then 
             For Each occupation In occupations
                listview1.Add(occupation!pk, occupation!occupation)
             Next 
-            
             Listview1.Visible = True
             Listview1.Raise
             Listview1.tag = txtOccupation
             Return 
          Else
-            
             listview1.Visible = False  
          End If
-         
       Case "accept"
-         
          Select Case calling_control
             Case "textbox"
-               
                If listview1.Visible Then
                   listview1.MoveFirst
                   Do Until listview1.MoveNext()
                      If Lower(Trim(txtoccupation.text)) = Lower(listview1.item.text) Then
                         Occupation_Selection("accept", "list")
-                        
                         Return
                      End If
                   Loop
-                  
                Else
-                  
                   fk_occupation = 0
                End If
-               
             Case "list"
-               
                bExit = True
                Listview1.MoveCurrent   'set internal cursor to match marquee
                txtoccupation.text = occupations[Listview1.Item.key]!occupation 
@@ -1839,7 +2020,6 @@ Public Sub EditAreaTextBox_KeyRelease()
          occupation_Selection("get")
       Case "coded diagnosis"
          Timer1.Start()       'see timer1_timer which gets the terms
-         
    End Select
    
 End
@@ -1924,7 +2104,6 @@ Public Sub EditAreaTextBox_Change()
          If Len(Last.text) = 0 Then
             fk_occupation = 0
          End If   
-         
       Case "management plan"
          If InStr(Last.text, "\n\n") Then
             Last.text = Replace(Last.text, "\n\n", "")
@@ -2000,7 +2179,6 @@ Public Sub EditAreaTextBox_LostFocus()
       Case "coded diagnosis"
          Timer1.Stop() '
       Case "certificate date", "permanantly modified duties", "suitable duties to", "review date", "pre-injury from", "suitable duties from", "unfit from", "unfit to"
-         
          If Last.text <> "" Then
             hasText = True
             If Not modEditAreaHelpers.Valid_Date(Last) Then
@@ -2014,7 +2192,6 @@ Public Sub EditAreaTextBox_LostFocus()
          End If
          
    End Select
-   
    Last.pos = 0
    
 End
@@ -2055,17 +2232,14 @@ Public Sub EditAreaTextBox_KeyPress()
             Case "coded diagnosis"
                txtManagementPlan.SetFocus()
             Case "management plan"
-               
                If Last.pos <> Len(Last.text) + 1 Then
                   Stop Event
                End If
                txtReviewDate.SetFocus()
             Case "review date"
                modEditAreaHelpers.Calculate_Date_From_Interval(txtReviewDate)
-               
                rbDueEmploymentYes.SetFocus()
             Case "pre-injury from"
-               
                txtUnfit_From.SetFocus()
             Case "unfit from"
                txtUnfit_To.SetFocus()
@@ -2083,7 +2257,6 @@ Public Sub EditAreaTextBox_KeyPress()
                txtCapabilities.SetFocus()
             Case "work capabilities"
                txtRestrictions.SetFocus()
-               
          End Select
       Case key.Down
          Select Case Last.tag
@@ -2123,15 +2296,14 @@ Public Sub rbWorkCoverConsultType_Click()
    If bExit Then Return 
    Select Case Last.tag
       Case "initial"
-         visit!fk_lu_visit_type = Const.Workcover_VisitType_Initial
+         fk_lu_visit_type = Const.Workcover_VisitType_Initial
       Case "progress"
-         visit!fk_lu_visit_type = Const.Workcover_VisitType_Progress
+         fk_lu_visit_type = Const.Workcover_VisitType_Progress
       Case "final"
-         visit!fk_lu_visit_type = Const.Workcover_VisitType_Final
+         fk_lu_visit_type = Const.Workcover_VisitType_Final
       Case "initial and final"
-         visit!fk_lu_visit_type = Const.Workcover_VisitType_InitialAndFinal
+         fk_lu_visit_type = Const.Workcover_VisitType_InitialAndFinal
    End Select
-   visit!visit_type = Last.text
    EditArea_Notify_Datachanged(True)
    
 End
@@ -2212,7 +2384,6 @@ Public Sub EditAreaCheckBox_Click()
             txtCapabilities.text = ""
             txtRestrictions.text = ""
          End If
-         
       Case "suitable"
          If Last.value = False Then
             txtSuitable_To.text = ""
@@ -2312,21 +2483,12 @@ Public Sub cvwVisits_Menu()
    
 End
 
-Public Sub EditAreaButtons_KeyPress()
-   
-   If key.code = key.enter Then 
-      Save()
-   Endif
-   
-End
-
 Public Sub rbTypeEmployer_Click()
    
    If bExit Then Return 
    columnview2.Visible = False 
    Listview1.Visible = False  
    txtAddress.text = ""
-   
    If Last.tag = "organisation" Then 
       Contact_Type = const.contacttype_organisation
    Else

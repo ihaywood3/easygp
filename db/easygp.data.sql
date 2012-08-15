@@ -4,9 +4,10 @@
 
 SET statement_timeout = 0;
 SET client_encoding = 'UTF8';
-SET standard_conforming_strings = on;
+SET standard_conforming_strings = off;
 SET check_function_bodies = false;
 SET client_min_messages = warning;
+SET escape_string_warning = off;
 
 SET search_path = admin, pg_catalog;
 
@@ -81,7 +82,21 @@ SELECT pg_catalog.setval('lu_appointment_status_pk_seq', 6, true);
 -- Name: lu_centrelink_card_type_pk_seq; Type: SEQUENCE SET; Schema: clerical; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_centrelink_card_type_pk_seq', 3, true);
+SELECT pg_catalog.setval('lu_centrelink_card_type_pk_seq', 4, true);
+
+
+--
+-- Name: lu_inventory_categories_pk_seq; Type: SEQUENCE SET; Schema: clerical; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_inventory_categories_pk_seq', 13, true);
+
+
+--
+-- Name: lu_inventory_items_pk_seq; Type: SEQUENCE SET; Schema: clerical; Owner: -
+--
+
+SELECT pg_catalog.setval('lu_inventory_items_pk_seq', 1, false);
 
 
 --
@@ -102,16 +117,16 @@ SELECT pg_catalog.setval('lu_task_types_pk_seq', 17, true);
 -- Name: lu_veteran_card_type_pk_seq; Type: SEQUENCE SET; Schema: clerical; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_veteran_card_type_pk_seq', 3, true);
+SELECT pg_catalog.setval('lu_veteran_card_type_pk_seq', 4, true);
 
 
 SET search_path = clin_allergies, pg_catalog;
 
 --
--- Name: lu_reaction_pk_seq; Type: SEQUENCE SET; Schema: clin_allergies; Owner: -
+-- Name: lu_reaction_type_pk_seq; Type: SEQUENCE SET; Schema: clin_allergies; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_reaction_pk_seq', 1, false);
+SELECT pg_catalog.setval('lu_reaction_type_pk_seq', 2, true);
 
 
 SET search_path = clin_careplans, pg_catalog;
@@ -210,7 +225,7 @@ SELECT pg_catalog.setval('lu_actions_pk_seq', 35, true);
 -- Name: lu_audit_reasons_pk_seq; Type: SEQUENCE SET; Schema: clin_consult; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 416, true);
+SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 430, true);
 
 
 --
@@ -224,7 +239,7 @@ SELECT pg_catalog.setval('lu_consult_type_pk_seq', 12, true);
 -- Name: lu_progressnote_templates_pk_seq; Type: SEQUENCE SET; Schema: clin_consult; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_progressnote_templates_pk_seq', 12, true);
+SELECT pg_catalog.setval('lu_progressnote_templates_pk_seq', 13, true);
 
 
 --
@@ -408,14 +423,14 @@ SET search_path = clin_recalls, pg_catalog;
 -- Name: lu_reasons_pk_seq; Type: SEQUENCE SET; Schema: clin_recalls; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_reasons_pk_seq', 58, true);
+SELECT pg_catalog.setval('lu_reasons_pk_seq', 60, true);
 
 
 --
 -- Name: lu_recall_intervals_pk_seq; Type: SEQUENCE SET; Schema: clin_recalls; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_recall_intervals_pk_seq', 58, true);
+SELECT pg_catalog.setval('lu_recall_intervals_pk_seq', 60, true);
 
 
 --
@@ -461,7 +476,7 @@ SELECT pg_catalog.setval('lu_instructions_pk_seq', 1, false);
 -- Name: lu_link_provider_user_requests_pk_seq; Type: SEQUENCE SET; Schema: clin_requests; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_link_provider_user_requests_pk_seq', 1705, true);
+SELECT pg_catalog.setval('lu_link_provider_user_requests_pk_seq', 1722, true);
 
 
 --
@@ -475,7 +490,7 @@ SELECT pg_catalog.setval('lu_request_type_pk_seq', 14, true);
 -- Name: lu_requests_pk_seq; Type: SEQUENCE SET; Schema: clin_requests; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_requests_pk_seq', 1805, true);
+SELECT pg_catalog.setval('lu_requests_pk_seq', 1826, true);
 
 
 SET search_path = clin_vaccination, pg_catalog;
@@ -491,7 +506,7 @@ SELECT pg_catalog.setval('lu_formulation_pk_seq', 5, true);
 -- Name: lu_schedules_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_schedules_pk_seq', 73, true);
+SELECT pg_catalog.setval('lu_schedules_pk_seq', 74, true);
 
 
 --
@@ -505,7 +520,7 @@ SELECT pg_catalog.setval('lu_vaccines_descriptions_pk_seq', 41, true);
 -- Name: lu_vaccines_in_schedule_pk_seq; Type: SEQUENCE SET; Schema: clin_vaccination; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_vaccines_in_schedule_pk_seq', 200, true);
+SELECT pg_catalog.setval('lu_vaccines_in_schedule_pk_seq', 201, true);
 
 
 --
@@ -658,7 +673,7 @@ SELECT pg_catalog.setval('lu_normality_pk_seq', 2, true);
 -- Name: lu_occupations_pk_seq; Type: SEQUENCE SET; Schema: common; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_occupations_pk_seq', 368, true);
+SELECT pg_catalog.setval('lu_occupations_pk_seq', 369, true);
 
 
 --
@@ -758,7 +773,7 @@ SELECT pg_catalog.setval('lu_address_types_pk_seq', 6, true);
 -- Name: lu_categories_pk_seq; Type: SEQUENCE SET; Schema: contacts; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_categories_pk_seq', 403, true);
+SELECT pg_catalog.setval('lu_categories_pk_seq', 406, true);
 
 
 --
@@ -793,7 +808,7 @@ SELECT pg_catalog.setval('lu_marital_pk_seq', 7, true);
 -- Name: lu_mismatched_towns_pk_seq; Type: SEQUENCE SET; Schema: contacts; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_mismatched_towns_pk_seq', 207, true);
+SELECT pg_catalog.setval('lu_mismatched_towns_pk_seq', 344, true);
 
 
 --
@@ -830,7 +845,7 @@ SET search_path = db, pg_catalog;
 -- Name: db_version_pk_seq; Type: SEQUENCE SET; Schema: db; Owner: -
 --
 
-SELECT pg_catalog.setval('db_version_pk_seq', 184, true);
+SELECT pg_catalog.setval('db_version_pk_seq', 197, true);
 
 
 SET search_path = defaults, pg_catalog;
@@ -1102,9 +1117,39 @@ Pensioner	14
 --
 
 COPY lu_centrelink_card_type (pk, type) FROM stdin;
-1	Commonwealth Seniors Health Card
-2	Health Care Card
-3	Pensioner Concession Card
+1	None
+2	Commonwealth Seniors Health Card
+3	Health Care Card
+4	Pensioner Concession Card
+\.
+
+
+--
+-- Data for Name: lu_inventory_categories; Type: TABLE DATA; Schema: clerical; Owner: -
+--
+
+COPY lu_inventory_categories (pk, category) FROM stdin;
+1	office - fixture
+2	office - furniture
+3	stationary
+4	medical supplies
+5	electronic equipment
+6	books
+7	kitchen equipment
+8	gym equipment
+9	cleaning
+10	medical equipment
+11	building fixtures
+12	gardening equipment
+13	toys
+\.
+
+
+--
+-- Data for Name: lu_inventory_items; Type: TABLE DATA; Schema: clerical; Owner: -
+--
+
+COPY lu_inventory_items (pk, fk_lu_inventory_category, item) FROM stdin;
 \.
 
 
@@ -1183,25 +1228,22 @@ COPY lu_task_types (pk, type) FROM stdin;
 --
 
 COPY lu_veteran_card_type (pk, type) FROM stdin;
-1	Gold - full entitlement
-2	White - specific entitlement
-3	Lilac - war-widow
+1	None
+2	Gold - full entitlement
+3	White - specific entitlement
+4	Lilac - war-widow
 \.
 
 
 SET search_path = clin_allergies, pg_catalog;
 
 --
--- Data for Name: lu_reaction; Type: TABLE DATA; Schema: clin_allergies; Owner: -
+-- Data for Name: lu_reaction_type; Type: TABLE DATA; Schema: clin_allergies; Owner: -
 --
 
-COPY lu_reaction (pk, reaction) FROM stdin;
-1	anaphalaxis
-2	generalised rash with wheeze
-3	generalised rash
-4	localised rash
-5	nausea/vomiting
-6	unknown/uncertain
+COPY lu_reaction_type (pk, type) FROM stdin;
+1	allergy
+2	sensitivity
 \.
 
 
@@ -1731,6 +1773,20 @@ COPY lu_audit_reasons (pk, fk_staff, reason) FROM stdin;
 414	1	mi
 415	1	says her optometrist checks this yearly and no change
 416	1	wrong spelling
+417	1	Referred for colonoscopy to Dr Santhanam
+418	1	needs to be repeated
+419	1	prescription quantity error notified patient 26April12 - she is takign the correct dose of 2/day
+420	1	did discuss this and alter his meds
+421	1	discussed - does not fit into any treatable categories as per guidelines
+422	1	discussed, not at a subsidizable level
+423	1	told needs a gTT
+424	1	repeat organised
+425	1	neds un-joining
+426	1	not a clinical document
+427	1	un-needed referral
+428	1	patient passed away
+429	1	Had a hysterectomy
+430	1	should be nextpath
 \.
 
 
@@ -1771,6 +1827,7 @@ COPY lu_progressnote_templates (pk, fk_staff, shared, name, deleted, template) F
 10	1	f	Skin Curettage	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:8pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Curettage</span> </p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Site</span> </p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Anesthetic </span>- adrenaline/xylocaine</p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p></body></html>
 11	1	f	12 Month Checkup Immunizations Male	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:8pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">12 Month Checkup and Immunizations</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Parental Questionaire</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Measurements &amp; Eyes &amp; Testes</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Feeding</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p></body></html>
 12	1	f	12 Months Immunizations & Checkup Female	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:8pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">12 Month Checkup and Immunizations</span></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Parental Questionaire</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Measurements &amp; Eyes </span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Feeding</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; font-weight:600;"></p></body></html>
+13	1	f	Repair of Laceration	f	<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">\n<html><head><meta name="qrichtext" content="1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><style type="text/css">\np, li { white-space: pre-wrap; }\n</style></head><body style=" font-family:'Arial'; font-size:9pt; font-weight:400; font-style:normal;">\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Repair of Laceration</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Mechanism of Injury</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Site</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Anaesthetic</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">Sutures</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><span style=" font-weight:600;">ROS</span></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p>\n<p style="-qt-paragraph-type:empty; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"></p></body></html>
 \.
 
 
@@ -2214,6 +2271,8 @@ COPY lu_reasons (pk, reason) FROM stdin;
 56	Femoral Pulse
 57	microalbumin
 58	Aclasta Infusion
+59	Total Knee Replacement Review
+60	Eye Review
 \.
 
 
@@ -2279,6 +2338,8 @@ COPY lu_recall_intervals (pk, fk_reason, fk_staff, "interval", fk_interval_unit)
 56	56	1	2	8
 57	57	1	12	8
 58	58	1	12	8
+59	59	1	2	9
+60	60	1	12	8
 \.
 
 
@@ -4049,6 +4110,23 @@ COPY lu_link_provider_user_requests (pk, fk_lu_request, provider_request_name, l
 1703	700	D039	0	f
 1704	1694	THYROID AUTOANTIBODIES (TAA-0)	0	f
 1705	1746	X014	0	f
+1706	408	BMD - No Rebate	1	f
+1707	1124	CT Sinuses	0	f
+1708	1385	SHOULDER OR UPPER ARM MUSCULOSKELETA, SELF DETERMINED, LT SHOULDER OR SCAPULA	1	f
+1709	534	MANDIBLE, SELF DETERMINED, ORTHOPANTOMOGRAPHY	1	f
+1710	914	Abdominal Wall US	0	f
+1711	1649	Immuno G Urine	0	f
+1712	260	Anaemia Screening	0	f
+1713	1809	Viral PCR panel	0	f
+1714	1811	X018	0	f
+1715	1812	X018	0	f
+1716	1813	X018	0	f
+1717	1814	X018	0	f
+1718	1815	X018	0	f
+1719	1772	SENSITIVE OESTRADIOL (E2S-0)	0	f
+1720	1650	Alpha Globulin, Urine	0	f
+1721	65	2 Leg DVT Lower Limb:(no iliacs)	3	f
+1722	708	Derangement Left Knee or Supporting Structures	1	f
 \.
 
 
@@ -4287,6 +4365,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 213	1	17 Hydroxyprogesterone	0	0	0	f
 214	4	Transoesophageal Echocardiography	0	0	0	f
 215	1	FTA Abs - IF	0	0	0	f
+867	1	Caeruloplasmin	0	0	0	f
 217	1	Anti-cardiolipin antibody	0	0	0	f
 218	1	24Hr BP Monitor	0	0	0	f
 219	1	Sulthiame	0	0	0	f
@@ -4493,6 +4572,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 431	1	Body fluids including cyst fluids, peritoneal, pleural, bladder, other	0	0	0	f
 432	1	Hepatitis A post vaccination titre	0	0	0	f
 433	1	Glucose - CSF	0	0	0	f
+868	1	Bronchus biopsy	0	0	0	f
 434	1	T3 (Resin) Uptake	0	0	0	f
 435	4	Carotid Ultrasound	0	0	0	f
 436	2	Thyroid Ultrasound	0	0	0	f
@@ -4597,6 +4677,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 536	1	GTT	0	0	0	f
 538	1	Amino acids - quantitative	0	0	0	f
 539	1	N-acetyl Procainamide	0	0	0	f
+976	1	Citrate	0	0	0	f
 540	1	Donath landsteiner antibody - direct and indirect	0	0	0	f
 541	1	Cord blood study for possible blood group compatibility	0	0	0	f
 542	1	TPHA - haemagglutination	0	0	0	f
@@ -4895,7 +4976,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 843	1	Catecholamines	0	0	0	f
 844	4	Color Doppler Echocardiography (includes 2D Echo)	0	0	0	f
 845	1	APTT Mixing	0	0	0	f
-950	1	Androstenedione	0	0	0	f
 847	2	Duplex scan lower limb arteries with pressures	0	0	0	f
 848	1	Calcium	0	0	0	f
 849	2	radiolabelled leucocyte study	0	0	0	f
@@ -4916,8 +4996,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 864	1	Quinine	0	0	0	f
 865	1	Testis and adjacent structures - vas deferens sterilisation	0	0	0	f
 866	1	Herpes simplex virus - EIA IgG IgM	0	0	0	f
-867	1	Caeruloplasmin	0	0	0	f
-868	1	Bronchus biopsy	0	0	0	f
 869	1	Kidney biopsy incl transplant	0	0	0	f
 870	2	Ultrasound of occiput	0	0	0	f
 871	1	Anti-skin intracellular substance antibody	0	0	0	f
@@ -4996,6 +5074,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 947	1	Uterus +/- adnexa malignant tumour all specimen types NOS	0	0	0	f
 948	1	OD 450	0	0	0	f
 949	5	Duplex Scan Aortic Endoluminal Graft	0	0	0	f
+950	1	Androstenedione	0	0	0	f
 951	1	Adrenal resection tumour	0	0	0	f
 952	1	Thiocyanate	0	0	0	f
 953	1	CASA	0	0	0	f
@@ -5020,7 +5099,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 973	1	Normetanephrine	0	0	0	f
 974	1	White Cell Enzymes Studies unclassified	0	0	0	f
 975	1	Kleihauer test	0	0	0	f
-976	1	Citrate	0	0	0	f
 977	1	Aldosterone	0	0	0	f
 978	1	Prorenin	0	0	0	f
 979	1	Bicarbonate (not on U&E profile)	0	0	0	f
@@ -5033,7 +5111,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 986	1	Factor VIII inhibitor assay	0	0	0	f
 987	1	Amylase - total	0	0	0	f
 988	2	Xray Ribs	3	0	0	f
-989	1	CA 19.9	0	0	0	f
 990	1	IGG	0	0	0	f
 991	1	THINPREP	0	0	0	f
 993	1	Phosphate - serum, plasma	0	0	0	f
@@ -5093,6 +5170,7 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1046	1	Leucocyte phenotyping marrow	0	0	0	f
 1003	2	Intravenous pyelogram (IVP)	0	0	0	f
 972	2	Xray Toe(s)	3	0	0	f
+989	1	CA 19-9	0	0	0	f
 1048	2	Head CT	0	0	0	f
 1049	2	Ankle Ultrasound	3	0	0	f
 1050	1	Bone femoral head	0	0	0	f
@@ -5718,7 +5796,6 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1678	1	Heterophile antibody	0	0	0	f
 1679	1	chromosome analysis	0	0	0	f
 1680	1	Testosterone.free	0	0	0	f
-1739	1	CA19.9 tumour marker	0	0	0	f
 1681	1	Bordetella Pertussis IGA	0	0	0	f
 1682	1	Serum crosslinked fibrin (XDP)	0	0	0	f
 1683	1	Q Fever Phase 2 IgG (IFA)	0	0	0	f
@@ -5850,6 +5927,28 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1803	2	CT coronary angiography	2	0	0	f
 1804	1	Activated Protein C Resistance	0	0	0	f
 1805	1	Hepatitis B virus core Ab	0	0	0	f
+1806	2	cranial ultrasound	0	0	0	f
+1807	1	Insure bowel screening test	0	0	0	f
+1808	1	FBC Cumulative	0	0	0	f
+1809	1	Viral PCR panel	0	0	0	f
+1810	1	24Hr BP Recording Records	0	0	0	f
+1811	1	Ena	0	0	0	f
+1812	1	ss-a	0	0	0	f
+1813	1	ss-b	0	0	0	f
+1814	1	scl-70	0	0	0	f
+1815	1	Jo-1	0	0	0	f
+1816	2	Ultrasounds ribs/sternum	3	0	0	f
+1817	10	Renal Artery Scan - Diagram	3	0	0	f
+1818	5	Renal Artery Duplex Scan - Diagram	3	0	0	f
+1739	1	CA 19-9 tumour marker	0	0	0	f
+1819	1	Timed Urine Microalbumin	0	0	0	f
+1820	1	Influenza A IgA (EIA)	0	0	0	f
+1821	1	Influenza B IgA (EIA)	0	0	0	f
+1822	1	VLDL Cholesterol	0	0	0	f
+1823	1	High Vaginal swab c&s	0	0	0	f
+1824	1	Lipids & HDL Cholesterol	0	0	0	f
+1825	1	Red blood cell antibody screen	0	0	0	f
+1826	9	arterial doppler foot	3	0	0	f
 \.
 
 
@@ -5987,6 +6086,7 @@ COPY lu_schedules (pk, age_due_from_months, age_due_to_months, schedule, female_
 71	\N	\N	Haemophilus Influenza Type B (HIB)	f	f	\N	f	\N	f	f	\N
 72	\N	\N	Tetanus Diptheria Pertussus Polio	f	f	\N	f	\N	f	f	\N
 73	\N	\N	tetanus diphtheria pertussis	f	f	\N	f	\N	f	f	\N
+74	\N	\N	Meales Mumps Rubella	f	f	\N	f	\N	f	f	\N
 \.
 
 
@@ -6296,6 +6396,7 @@ COPY lu_vaccines_in_schedule (pk, fk_vaccine, fk_schedule, atsi_only, date_inact
 198	189	72	f	\N
 199	128	73	f	\N
 200	191	73	f	\N
+201	111	74	f	\N
 \.
 
 
@@ -11979,6 +12080,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 5637	15010-2	Aldosterone	Urine
 5638	15011-0	Aldosterone^supine	Ser/Plas
 5639	15012-8	Aldosterone^upright	Ser/Plas
+6159	17830-1	Centromere Ab	Body fld
 5640	15013-6	Alkaline phosphatase.bone/Alkaline phosphatase.total	Ser/Plas
 6161	17832-7	5-Fluorocytosine	Isolate
 5641	15014-4	Alkaline phosphatase.intestinal/Alkaline phosphatase.total	Ser/Plas
@@ -12500,7 +12602,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 6156	17828-5	Cells.CD16/100 cells	Body fld
 6157	17829-3	Cells.CD19/100 cells	Body fld
 6158	1783-0	Alkaline phosphatase	Bld
-6159	17830-1	Centromere Ab	Body fld
 6160	17831-9	5-Fluorocytosine	Isolate
 6162	17833-5	Basophils/100 leukocytes	Synv fld
 6163	17834-3	Eosinophils/100 leukocytes	Synv fld
@@ -13128,6 +13229,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 6784	17016-7	Influenza virus B Ab.IgM	Ser
 6785	17017-5	Insulin^10M post XXX challenge	Ser/Plas
 6786	17018-3	Insulin^20M post XXX challenge	Ser/Plas
+7122	16291-7	Herpes simplex virus 1	XXX
 6787	17019-1	Insulin-Like growth factor-I^2H post XXX challenge	Ser/Plas
 6788	1702-0	Acetoacetate	Urine
 6789	17020-9	Intercellular substance Ab	Ser
@@ -13462,7 +13564,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 7119	16288-3	Monosialoganglioside GM1 Ab.IgG+IgM	Ser
 7120	16289-1	Monosialoganglioside GM1 Ab	Ser
 7121	16290-9	Neutrophils	Stool
-7122	16291-7	Herpes simplex virus 1	XXX
 7123	16292-5	1,4-Dioxane	Urine
 7124	16293-3	11-Deoxycorticosteroids	Plas
 7125	16294-1	11-Deoxycorticosterone^post XXX challenge	Ser/Plas
@@ -17213,6 +17314,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 10872	19851-5	Capacity.inspiratory	Respiratory system
 10873	19852-3	Capacity.inspiratory	Respiratory system
 11457	20467-7	Blood bank alert	^Patient
+11458	20468-5	Thiamine	Ser/Plas
 10874	19853-1	Capacity.inspiratory.bs/Capacity.inspiratory.preop	Respiratory system
 10875	19854-9	Capacity.inspiratory.bs/Capacity.inspiratory.preop	Respiratory system
 10876	19855-6	Capacity.inspiratory.measured/Capacity.inspiratory.predicted	Respiratory system
@@ -17796,7 +17898,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 11454	20464-4	Toxoplasma gondii Ab	Ser
 11455	20465-1	Choriogonadotropin	Ser/Plas
 11456	20466-9	Estriol.unconjugated	Ser/Plas
-11458	20468-5	Thiamine	Ser/Plas
 11459	20469-3	Acetone	Ser/Plas
 11460	20470-1	Ethanol	Ser/Plas
 11461	20471-9	Isopropanol	Ser/Plas
@@ -22052,6 +22153,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 15710	24215-6	Influenza virus A Ab^1st specimen	Ser
 15711	2421-6	Histidine	Ser/Plas
 15712	24216-4	Influenza virus A Ab^2nd specimen	Ser
+15816	2434-9	Homovanillate	CSF
 15713	24217-2	Influenza virus B Ab^1st specimen	Ser
 15714	24218-0	Influenza virus B Ab^2nd specimen	Ser
 15715	24219-8	Parainfluenza virus 1 Ab^1st specimen	Ser
@@ -22156,7 +22258,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 15813	24346-9	Parathyrin.intact & Calcium panel	Ser/Plas
 15814	24347-7	Parathyrin.mid molecule & Calcium panel	Ser/Plas
 15815	24348-5	Free T4 & TSH panel	Ser/Plas
-15816	2434-9	Homovanillate	CSF
 15817	24349-3	Drugs of abuse 5 panel	Urine
 15818	24350-1	Volatiles panel	Urine
 15819	24351-9	Protein electrophoresis panel	Ser/Plas
@@ -25878,6 +25979,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 19534	27736-8	Author ID	Respiratory therapy treatment plan
 19535	27737-6	Diagnosis.primary	Respiratory therapy treatment
 19536	27738-4	Start date	Hospitalization leading to respiratory therapy treatment
+19963	28192-3	Polypharmacy	^Patient
 19537	27739-2	End date	Hospitalization leading to respiratory therapy treatment
 19538	277-4	Hetacillin	Isolate+Ser
 19539	27740-0	Diagnosis.primary	Respiratory therapy treatment
@@ -25970,6 +26072,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 19625	27872-1	Insulin^6H post 75 g glucose PO	Ser/Plas
 19626	27873-9	Insulin^post CFst	Ser/Plas
 19627	27874-7	Insulin^5th specimen post XXX challenge	Ser/Plas
+20072	28306-9	Neglect.knowledge	^Patient
 19628	27875-4	Insulin^6th specimen post XXX challenge	Ser/Plas
 19629	27876-2	Cells.CD14+CD11b+/100 cells	Bld
 19630	27877-0	Cells.CD33+CD11b+/100 cells	Bld
@@ -26305,7 +26408,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 19960	28190-7	Physical regulation alteration	^Patient
 19961	2819-1	Potassium	CSF
 19962	28191-5	Poisoning risk	^Patient
-19963	28192-3	Polypharmacy	^Patient
 19964	28193-1	Post-trauma response	^Patient
 19965	28194-9	Powerlessness	^Patient
 19966	28195-6	Protection alteration	Immune system
@@ -26415,7 +26517,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20069	28303-6	Interpersonal relationship.knowledge	^Patient
 20070	28304-4	Interpersonal relationship.status	^Patient
 20071	28305-1	Neglect.behavior	^Patient
-20072	28306-9	Neglect.knowledge	^Patient
 20073	28307-7	Neglect.status	^Patient
 20074	2830-8	Potassium renal clearance	Urine+Ser/Plas
 20075	28308-5	Neighborhood &or workplace safety.behavior	^Patient
@@ -26639,6 +26740,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 21288	2939-7	Serotonin	Bld
 20293	28491-9	Genito-urinary function.status	^Family
 20294	28492-7	Antepartum &or postpartum.behavior	^Family
+20411	28665-8	Axis distance	Eye.right
 20295	28493-5	Antepartum &or postpartum.status	^Family
 20296	28494-3	Antepartum &or postpartum.knowledge	^Family
 20297	28495-0	Nutrition.behavior	^Family
@@ -26756,7 +26858,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20408	28662-5	Refraction comment	Eye
 20409	28663-3	Sphere distance	Eye.right
 20410	28664-1	Cylinder distance	Eye.right
-20411	28665-8	Axis distance	Eye.right
 20412	28666-6	HSA distance	Eye.right
 20413	28667-4	Visual acuity distance	Eye.right
 20414	28668-2	Sphere distance	Eye.left
@@ -26880,6 +26981,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20536	28785-4	SBM sphere distance	LM glasses.lens.left
 20537	28786-2	Cylinder distance	LM glasses.lens.left
 20538	2878-7	Protein	Amnio fld
+20643	30118-4	Lymphocytes.IgA	WBC
 20539	28787-0	Axis distance	LM glasses.lens.left
 20540	28788-8	Prism base distance	LM glasses.lens.left
 20541	28789-6	Pupillary distance	LM glasses.lens.left
@@ -26984,7 +27086,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 20640	30115-0	Lymphocytes.kappa	Bld
 20641	30116-8	Cells.terminal deoxyribonucleotidyl transferase/100 cells	CSF
 20642	30117-6	Cells.terminal deoxyribonucleotidyl transferase/100 cells	XXX
-20643	30118-4	Lymphocytes.IgA	WBC
 20644	30341-2	Erythrocyte sedimentation rate	Bld
 20645	30342-0	Extractable nuclear Ab	Ser
 20646	30343-8	Glomerular basement membrane Ab.IgG	Ser
@@ -40386,6 +40487,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 34043	43458-9	Multisection^W & WO contrast IV	Orbit vessels
 34044	43459-7	Views^during electroconvulsive shock treatment	Brain
 34045	43460-5	Views^during electroconvulsive shock treatment	Heart
+34155	41019-1	Beta endorphin	Ser/Plas
 34046	40908-6	Streptococcus pneumoniae 4 Ab.IgG	Ser
 34156	4102-0	5-Fluorocytosine	Dose
 34047	40909-4	Streptococcus pneumoniae 4 Ab.IgG^1st specimen	Ser
@@ -40495,7 +40597,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 34152	41016-7	Bilirubin	Urine
 34153	41017-5	Protoporphyrin	RBC
 34154	41018-3	Testosterone.bioavailable	Ser/Plas
-34155	41019-1	Beta endorphin	Ser/Plas
 34157	41020-9	Flunitrazepam	Urine
 34158	41021-7	Cocaine	Hair
 34159	41022-5	Citrate	Urine
@@ -45230,6 +45331,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 38887	45430-6	Goes out 1 or more days a week	^Patient
 38888	45431-4	Stays busy with hobbies, reading or fixed daily routine	^Patient
 38889	45432-2	Spends most time alone or watching TV	^Patient
+39569	46063-4	Programs	^Patient
 38890	45433-0	Moves independently indoors	^Patient
 38891	45434-8	Use of tobacco products at least daily	^Patient
 38892	4543-5	Haptoglobin	Ser/Plas
@@ -45909,7 +46011,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 39566	46060-0	Special treatments, procedures and programs	^Patient
 39567	46061-8	Special care	^Patient
 39568	46062-6	Treatments	^Patient
-39569	46063-4	Programs	^Patient
 39570	46064-2	Therapies	^Patient
 39571	46065-9	Intervention programs for mood, behavior and cognitive loss	^Patient
 39573	46067-5	Devices and restraints	^Patient
@@ -47194,6 +47295,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 40852	4716-7	HLA-A11	Bld
 40853	47167-2	Norepinephrine^4th specimen post XXX challenge	Plas
 40854	47168-0	Norepinephrine^4th specimen post XXX challenge	Urine
+41056	47375-1	Views 1 or 2	Knee.right
 40855	47169-8	Norepinephrine^5th specimen post XXX challenge	Plas
 40856	47170-6	Norepinephrine^5th specimen post XXX challenge	Urine
 40857	47171-4	Norepinephrine^6th specimen post XXX challenge	Plas
@@ -47396,7 +47498,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 41053	4737-3	HLA-A32(w19)	Bld
 41054	47373-6	Views 1 or 2	Knee.left
 41055	47374-4	Views GE 4	Knee.left
-41056	47375-1	Views 1 or 2	Knee.right
 41057	47376-9	Views GE 4	Knee.right
 41058	47377-7	Views LE 4	Knee.right
 41059	47378-5	Multisection blood pool^W radionuclide IV	Liver
@@ -50646,6 +50747,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 44304	50301-1	Adipoylcarnitine+Methylglutarylcarnitine (C6-DC)	Urine
 44305	5030-2	Parvovirus B19 RNA	Bld
 44306	50758-2	Herpes simplex virus 1 Ab.IgM	Ser
+44415	50340-9	Eosinophils	Nose
 44307	50759-0	Beta-N-acetylhexosaminidase.A	WBC
 44413	50338-3	Cannabinoids	Dial fld
 44417	50342-5	Ependymal+Choroid plexus cells/100 leukocytes	CSF
@@ -50755,7 +50857,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 44411	50336-7	Beta cortolone/Cortisol	Urine
 44412	50337-5	Carbamazepine free & total & 10,11-Epoxide panel	Ser/Plas
 44414	50339-1	Cholesterol	Bld
-44415	50340-9	Eosinophils	Nose
 44416	50341-7	Eosinophils	Sputum
 44419	5034-4	Streptococcus agalactiae rRNA	XXX
 44420	50344-1	Parvovirus B19 DNA	Body fld
@@ -51183,6 +51284,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 44840	50718-6	11-Deoxycortisol^5th specimen post XXX challenge	Ser/Plas
 44841	50719-4	11-Deoxycortisol^4th specimen post XXX challenge	Ser/Plas
 44842	50720-2	11-Deoxycortisol^3rd specimen post XXX challenge	Ser/Plas
+45082	50940-6	Zinc/Creatinine	Urine
 44843	50721-0	11-Deoxycortisol^1st specimen post XXX challenge	Ser/Plas
 44844	50722-8	VKORC1 gene mutation analysis	Bld/Tiss
 44845	50723-6	Cells.CD38+Lambda+	Bld
@@ -51421,7 +51523,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 45079	50937-2	Vanadium	Urine
 45080	50938-0	Vancomycin	Body fld
 45081	50939-8	Zinc	Hair
-45082	50940-6	Zinc/Creatinine	Urine
 45083	50941-4	Mycobacterium sp	XXX
 45084	50942-2	Acarboxyprothrombin	Ser
 45085	50943-0	Reasons for assessment (full)	^Patient
@@ -52774,6 +52875,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 46426	52203-7	Past medical history	Cardiac rehabilitation treatment plan
 46427	52204-5	Level of function	Cardiac rehabilitation treatment plan
 46428	52205-2	Prior level of function	Cardiac rehabilitation treatment plan
+47594	5331-4	Rubella virus Ab	Ser
 46429	52206-0	Current level of function	Cardiac rehabilitation treatment plan
 46430	52207-8	Assessment information	Cardiac rehabilitation treatment plan
 46596	52399-3	Prior level of function	Speech therapy treatment plan
@@ -53035,6 +53137,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 46686	52481-9	Vital signs CARE panel	^Patient
 46687	52482-7	Laboratory	^Patient
 46688	52483-5	Other	^Patient
+47595	53314-1	Tyrosine crystals	Urine
 46689	52484-3	Arterial Blood Gases (ABGs)	^Patient
 46690	52485-0	Pulmonary Function Tests	^Patient
 46691	52486-8	Volume^at 2.0 s post forced expiration/Volume.forced expiration.total	Respiratory system
@@ -53935,8 +54038,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 47590	53310-9	Leucine crystals	Urine
 47591	53311-7	Urate crystals	Urine
 47592	53312-5	Calcium carbonate crystals	Urine
-47594	5331-4	Rubella virus Ab	Ser
-47595	53314-1	Tyrosine crystals	Urine
 47596	53315-8	Urinalysis microscopic panel	Urine
 47597	53316-6	Leukocytes	Urine
 47598	53317-4	Leukocyte clumps	Urine
@@ -54043,6 +54144,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 47699	5342-1	Salmonella paratyphi B O Ab	Ser
 47700	53421-4	Fibroblast growth factor 23.intact ^3rd specimen post XXX challenge	Plas
 47701	53429-7	Fibroblast growth factor 23 ^4th specimen post XXX challenge	Plas
+48237	55697-7	Oxolinate	Isolate
 47702	53430-5	Fibroblast growth factor 23 ^5th specimen post XXX challenge	Plas
 47703	53431-3	Fibroblast growth factor 23 ^6th specimen post XXX challenge	Plas
 47704	53432-1	Gamma glutamyl transferase	Dial fld
@@ -54467,6 +54569,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 48126	53827-2	History of neural tube defect	^Patient
 48127	53828-0	Cyclosporine^trough	Bld
 48128	53829-8	Casein Ab.IgG	Ser
+48238	55698-5	Oxolinate	Isolate
 48129	53830-6	Granulocytes.CD55 deficient/100 cells	Bld
 48130	53831-4	Granulocytes.CD59 deficient/100 cells	Bld
 48131	53832-2	Erythrocytes.CD55 deficient/100 erythrocytes	Bld
@@ -54575,8 +54678,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 48234	55694-4	Ornidazole	Isolate
 48235	55695-1	Oxolinate	Isolate
 48236	55696-9	Oxolinate	Isolate
-48237	55697-7	Oxolinate	Isolate
-48238	55698-5	Oxolinate	Isolate
 48239	5569-9	Acetone	Urine
 48240	55699-3	Oxytetracycline	Isolate
 48241	55700-9	Paromomycin	Isolate
@@ -55229,6 +55330,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 48887	55048-3	Physical restraints used in chair or out of bed - trunk restraint	^Patient
 48888	55049-1	Physical restraints used in chair or out of bed - limb restraint	^Patient
 48889	54714-1	Primary respondent for daily and activity preferences	^Patient
+48991	56358-5	Ananas comosus Ab.IgG4	Ser
 48890	54715-8	Staff assessment of daily and activity preferences should be conducted	^Patient
 48891	54716-6	Resident prefers choosing clothes to wear	^Patient
 48892	54717-4	Resident prefers caring for personal belongings	^Patient
@@ -55329,7 +55431,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 48988	56339-5	Dactylis glomerata Ab.IgG4	Ser
 48989	56340-3	Origanum vulgare Ab.IgG4	Ser
 48990	5635-8	Cyanide	Ser/Plas
-48991	56358-5	Ananas comosus Ab.IgG4	Ser
 48992	56359-3	Bean pinto Ab.IgG4	Ser
 48993	56360-1	Pistacia vera Ab.IgG4	Ser
 48994	56361-9	Prunus domestica Ab.IgG4	Ser
@@ -55864,6 +55965,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 49520	54986-5	Antidepressant received in last 7D or since admission &or reentry if less than 7D	^Patient
 49521	54987-3	Hypnotic received in last 7D or since admission &or reentry if less than 7D	^Patient
 49614	55075-6	Version code	Specifications
+49615	55076-4	Production or test indicator	Submission
 49522	54988-1	Anticoagulant received in last 7D or since admission &or reentry if less than 7D	^Patient
 49523	54989-9	Medications received - none of the above were received in last 7D or since admission &or reentry if less than 7D	^Patient
 49524	54990-7	Special treatments and procedures	^Patient
@@ -55956,7 +56058,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 49611	55072-3	Insurance case mix - RUG version code	^Patient
 49612	55073-1	Tissue type	Ulcer.Largest at most advanced stage
 49613	55074-9	Participation in assessment	^Family or significant other
-49615	55076-4	Production or test indicator	Submission
 49616	55077-2	State assigned facility submission ID	^Facility
 49617	55078-0	Federal employer tax ID	Software vendor
 49618	5507-9	CD58	WBC
@@ -57541,6 +57642,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 51200	56572-1	Somatotropin^20H post XXX challenge	Ser/Plas
 51533	57153-9	Referral note	{Setting}
 51201	56573-9	Renin^30M post XXX challenge	Plas
+51535	57155-4	Referral note	{Setting}
 51202	56574-7	Renin^1H post XXX challenge	Plas
 51203	56575-4	17-Hydroxyprogesterone^15M post XXX challenge	Ser/Plas
 51204	56576-2	17-Hydroxyprogesterone^45M post XXX challenge	Ser/Plas
@@ -57873,7 +57975,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 51531	57151-3	Referral note	{Setting}
 51532	57152-1	Referral note	{Setting}
 51534	57154-7	Referral note	{Setting}
-51535	57155-4	Referral note	{Setting}
 51536	57156-2	Referral note	{Setting}
 51537	57157-0	Referral note	{Setting}
 51538	5715-8	Platinum	Urine
@@ -58299,6 +58400,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 51956	5726-5	Selenium	Urine
 51957	57265-1	Supervision and safety	^Patient
 51958	57266-9	Advocacy or facilitation of patient participation	^Patient
+52075	57385-7	Urea	Urine
 51959	57267-7	ADL or IADL assistance from any caregiver	^Patient
 51960	57268-5	Therapy need	^Patient
 51961	57269-3	Patient-specific parameters for notifying physician of changes	^Patient
@@ -58414,7 +58516,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 52071	5738-0	Strychnine	Ser/Plas
 52072	57380-8	Potassium	Urine
 52073	57382-4	Sodium	Urine
-52075	57385-7	Urea	Urine
 52076	57386-5	Urate	Urine
 52077	57387-3	Urate	Urine
 52079	57389-9	Urea	Urine
@@ -58627,6 +58728,7 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 52285	57524-1	17-Ketogenic steroids^pre dose dexamethasone	Urine
 52286	57525-8	17-Ketogenic steroids^2D post dose dexamethasone	Urine
 52287	57526-6	17-Hydroxycorticosteroids^pre high dose dexamethasone	Urine
+52661	57857-5	Chlorpheniramine	XXX
 52288	57527-4	17-Hydroxycorticosteroids^2D post high dose dexamethasone	Urine
 52289	57528-2	17-Hydroxycorticosteroids^pre dose dexamethasone	Urine
 52290	57529-0	17-Hydroxycorticosteroids^2D post dose dexamethasone	Urine
@@ -59001,7 +59103,6 @@ COPY lu_loinc_abbrev (pk, loinc_num, component, system) FROM stdin;
 52658	57854-2	Thyrotropin^5M post XXX challenge	Ser/Plas
 52659	57855-9	Atenolol	XXX
 52660	57856-7	Carisoprodol	XXX
-52661	57857-5	Chlorpheniramine	XXX
 52662	57858-3	Normaprotiline	XXX
 52663	57859-1	Dextromethorphan	XXX
 52664	57860-9	Diethylamine	XXX
@@ -65293,6 +65394,7 @@ COPY lu_occupations (pk, occupation) FROM stdin;
 366	Business Owner
 367	Asphalter
 368	Head Teacher
+369	pharmacy assistant
 \.
 
 
@@ -65966,6 +66068,9 @@ COPY lu_categories (pk, category) FROM stdin;
 401	Public Education - Training
 402	Timber Fabrication
 403	Retail - Public Liability
+404	Deaf and Blind Institute
+405	child and adolescent services
+406	speedway
 \.
 
 
@@ -71384,6 +71489,143 @@ COPY lu_misspelt_towns (pk, fk_town, town, town_misspelt) FROM stdin;
 205	540	WINSTON HILLS	WINSTON HILL
 206	1001	GATESHEAD	GATESHEAD DC
 207	1001	GATESHEAD	GATESHEAD WEST
+208	11990	BILLYS CREEK	Billys Ck
+209	1736	DUNDURRABIN	Dunduuabin
+210	10131	NORTHAM	Northam WA
+211	1736	DUNDURRABIN	Dundurrabbin
+212	1733	DEER VALE	Deervale, Nsw,
+213	938	JEWELLS	Jewels
+214	1734	DORRIGO	Dorrigo, Nsw,
+215	12734	FERNANCES	Glenfernaigh
+216	11990	BILLYS CREEK	Billy's Creek
+217	1732	BOSTOBRICK	Bostbrick
+218	3464	FORBES	Forbes
+219	1734	DORRIGO	Dorrigo, Nsw
+220	1734	DORRIGO	Dorriigo
+221	1713	COFFS HARBOUR	Coffs Harbour, Nsw,
+222	1729	SAWTELL	Sawtell, Nsw,
+223	6461	GOONDIWINDI	Goodiwindi
+224	1712	BUCCA	Central Bucca
+225	1389	ROCKY CREEK	Rocky Creek Road
+226	6461	GOONDIWINDI	Goondawindi
+227	1753	VALERY	Velery
+228	7961	WHITFIELD	Whitield
+229	3751	HAWTHORN	 
+230	5646	WONTHAGGI	Woothaggi
+231	1736	DUNDURRABIN	Dunburrabin
+232	171	CAMPERDOWN	Camperdown
+233	392	BEROWRA HEIGHTS	Berowra Hts
+234	1747	GLENIFFER	Glenifer
+235	302	ANNANDALE	Annandale
+236	916	BRIGHTWATERS	Brightwaters, Nsw,
+237	6666	MORAYFIELD	Morayfield Rd
+238	5767	SINNAMON PARK	Sinnamon
+239	1717	GLENREAGH	Genreagh
+240	6416	WARWICK	Warwick 4370
+241	1711	BROOKLANA	Upper Boba
+242	1907	MEERSCHAUM VALE	Meershaum Vale
+243	3637	CARLTON NORTH	Nort Carlton
+244	1732	BOSTOBRICK	BOSTOBRICK VIA Dorrigo 
+245	1720	LOWANNA	Lowann
+246	1747	GLENIFFER	Glennifer
+247	1734	DORRIGO	Dorrigoq
+248	3514	GORDON	Gordon ACT
+249	2483	BUNDANOON	Bundanoon
+250	1738	FERNBROOK	Frenbrook
+251	587	DURAL	Dural
+252	7846	BURKETOWN	Bourketown
+253	10904	ROSETTA	Rosetta TAS
+254	1301	ARMIDALE	Armidale, Nsw,
+255	9511	ERSKINE	Erskine WA
+256	14559	POONA	 Poona Bay
+257	5942	MOUNT WARREN PARK	Mt Warren
+258	2631	HAWKER	Hawker
+259	1832	ILUKA	Iluka
+260	3817	MALVERN	Malvern
+261	68	DRIVER	Driver Palmerston
+262	844	OURIMBAH	Ourimbah, Nsw,
+263	1734	DORRIGO	Hernani Dorrigo
+264	1734	DORRIGO	Leigh
+265	506	NEWINGTON	Newington
+266	5743	THE GAP	The Gap
+267	5995	SOUTHPORT	Southport
+268	1734	DORRIGO	Dorrigo,
+269	1734	DORRIGO	Dorigo
+270	2275	SANCTUARY POINT	Sanctuary Point NSW
+271	1728	BOAMBEE EAST	East Boambee
+272	1736	DUNDURRABIN	Old Grafton Rd Dundurrabin
+273	5942	MOUNT WARREN PARK	Mt Warren Park
+274	5708	KEDRON	115 Turner Rd Kedron 
+275	5252	NARRE WARREN SOUTH	Narrewarren South
+276	2059	TWEED HEADS SOUTH	Twed Heads South
+277	482	WEST RYDE	West Ride
+278	1734	DORRIGO	P O Box 282  Dorrigo
+279	1711	BROOKLANA	Brooklanan
+280	1752	THORA	Thora 2454
+281	559	KINGS LANGLEY	Kings Langley, Nsw,
+282	1734	DORRIGO	Meldrum
+283	3166	MAYFIELD	Mayfield
+284	7109	HERVEY BAY	Hervey Bay
+285	1373	TINGHA	Tinghga
+286	1989	MULLUMBIMBY	Mullimbimby
+287	2614	DUFFY	Doffy
+288	3345	DUBBO	Dobbo
+289	1724	SAPPHIRE BEACH	Sapphire 
+290	5710	CHERMSIDE WEST	Chernside West
+291	1605	GLADSTONE	Gladstone
+292	1739	HERNANI	Hernie
+293	1754	URUNGA	Urnga
+294	2623	WESTON	Western   ACT
+295	3127	MOUNT RIVERVIEW	Riverview
+296	8331	PROSPECT	Prospect
+297	1734	DORRIGO	Dorrigp
+298	1702	NAMBUCCA HEADS	Nambuca Heads
+299	11990	BILLYS CREEK	Billys Creel
+300	1742	TYRINGHAM	1829 Tyringham Rd
+301	1737	EBOR	Ebor, Nsw,
+302	840	UMINA BEACH	Umina
+303	1741	NORTH DORRIGO	Nrth Dorrigo
+304	1150	RAYMOND TERRACE	Raymond Terraceq
+305	1702	NAMBUCCA HEADS	Nambucca
+306	3522	PALMERSTON	Palmerston
+307	5999	PARADISE POINT	Paradise Waters
+308	1625	BONVILLE	Bonville
+309	1742	TYRINGHAM	Tyringham, Nsw,
+310	3910	BRIGHTON	Brighton
+311	1715	COFFS HARBOUR PLAZA	Coffs Harbour Plaza
+312	1737	EBOR	Guy Fawkes
+313	11990	BILLYS CREEK	Billys Creeks
+314	3104	DOONSIDE	Huntington Heights
+315	1761	SAFETY BEACH	Safety Beach
+316	1743	BELLINGEN	Bellingen, Nsw,
+317	6213	UPPER TENTHILL	Upper Tent Hill
+318	1102	CLARENCE TOWN	Clarencetown
+319	1734	DORRIGO	Dorriogo
+320	5780	SHERWOOD	Sherwood
+321	1711	BROOKLANA	Lower Bobo
+322	1726	ULONG	Eulong
+323	5717	BRIDGEMAN DOWNS	Bridgenan
+324	15493	PERTH	Perth
+325	1737	EBOR	Ebor, Nsw
+326	1734	DORRIGO	EVES CREEK
+327	996	KOTARA	Kottara
+328	1736	DUNDURRABIN	Dundurrabin, Nsw
+329	1727	UPPER ORARA	Dairyville
+330	1170	MILLFIELD	Mullfield, Nsw,
+331	811	WYOMING	Wyoming
+332	348	ST LEONARDS	St Leonards
+333	1734	DORRIGO	Cascade Via Dorrigo
+334	6050	BIRNAM	Birnam
+335	1742	TYRINGHAM	Tryingham
+336	1742	TYRINGHAM	Tyringham  Po Box 488 Dorrigo
+337	1635	TELEGRAPH POINT	Telegraph Rd
+338	8150	WEST BEACH	West Beach South Australia
+339	1747	GLENIFFER	Gordonville
+340	1734	DORRIGO	West Dorrigo
+341	1742	TYRINGHAM	Tyrigham
+342	1734	DORRIGO	Deerville
+343	1830	YAMBA	Yamba
+344	1734	DORRIGO	Dorrio
 \.
 
 
@@ -89622,7 +89864,7 @@ SET search_path = db, pg_catalog;
 --
 
 COPY lu_version (pk, lu_major, lu_minor) FROM stdin;
-184	0	199
+197	0	211
 \.
 
 

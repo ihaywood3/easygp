@@ -407,5 +407,50 @@ End
 Public Function Document_Get_By_pk(fk_document As Integer) As Collection
    
   Return modDBConnect.exec_query_first("Select * from documents.documents where pk=" & fk_document)
+End
+
+' returns information about the referrer of the patient
+' [obviously only makes sense for specialist users)
+' returns NULL if no referral found
+' if found returns a Collection containing
+'      name: referrer's full name
+'      provider_number: referrer's provider number
+'      date: date of referral
+'      months: duration of referral in months, -1 for indefinite
+'      address: address of referrer 
+
+Public Function Referrer_Get(pk_patient As Integer) As Collection
+   Dim sql As String
+   Dim ret As New Collection
    
+   sql = "select person_occupation, title, firstname, surname, person_street1, person_street2, person_postcode, "
+   sql &= "person_town, organisation_street1, organisation_street2, organisation_postcode, organisation_town, "
+   sql &= "(tag ilike '%indefinite%' or tag_user ilike '%indefinite%') as indefinite, "
+   sql &= "documents.date_created as \"date\" from documents.documents, documents.vwsendingentities where "
+   sql &= "documents.fk_sending_entity = vwsendingentities.pk_sending_entities and documents.incoming_referral  and "
+   sql &= "documents.fk_patient = " & pk_patient
+   sql &= " order by indefinite desc, documents.date_created desc limit 1"
+   ret = modDBConnect.exec_query_first(sql)
+   If ret!person_street1 Then
+      ret!address = ret!person_street1
+      If ret!person_street2 Then
+         ret!address &= " " & ret!person_street2
+      Endif
+      ret!address &= " " & ret!person_town & " " & ret!person_postcode
+   Else
+      ret!address = ret!organisation_street1
+      If ret!organisation_street2 Then
+         ret!address &= " " & ret!organisation_street2
+      Endif
+      ret!address &= " " & ret!organisation_town & " " & ret!organisation_postcode
+   Endif
+   ret!name = ret!title & " " & ret!firstname & " " & ret!surname
+   If ret!person_occupation = "general practitioner" Then
+      ret!months = 12
+   Else
+      ret!months = 3
+   Endif
+   If ret!indefinite Then ret!months = -1
+   
+   Return ret
 End

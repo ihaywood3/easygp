@@ -110,7 +110,7 @@ GRANT SELECT ON TABLE documents.vwhl7filesimported TO staff;
 ALTER TABLE research.vwmostrecenteyerelateddocuments   OWNER TO easygp;
 GRANT ALL ON TABLE research.vwmostrecenteyerelateddocuments TO easygp;
 GRANT ALL ON TABLE research.vwmostrecenteyerelateddocuments TO staff;
-ALTER TABLE research.diabetes_patients_with_hba1c   OWNER TO easygo;
+ALTER TABLE research.diabetes_patients_with_hba1c   OWNER TO easygp;
 GRANT ALL ON TABLE research.diabetes_patients_latest_hba1c TO easygp;
 GRANT SELECT ON TABLE research.diabetes_patients_latest_hba1c TO staff;
 ALTER TABLE research.diabetes_patients_latest_hba1c  OWNER TO easygp;

@@ -54,11 +54,11 @@ WITH (
 COMMENT ON TABLE coding.icd10_subchapters IS 'subchapters of ICD10';
 
 grant select on coding.icd10_subchapters to staff;
-
+\cd coding
 \copy coding.icd10 from 'icd10.txt'  delimiter '|' NULL AS ''
 \copy coding.icd10_chapters from 'icd10_chapters.txt'  delimiter '|' NULL AS ''
 \copy coding.icd10_subchapters from 'icd10_subchapters.txt'  delimiter '|' NULL AS ''
-
+\cd ..
 update coding.lu_systems set preferred='f';
 update coding.lu_systems set preferred='t' where pk=2;
 

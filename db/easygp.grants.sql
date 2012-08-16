@@ -1,6 +1,8 @@
 -- in case grants info gets clobbered on database update
 -- this is a grants table
 -- we have it here
+grant all on table blobs.images to staff, easygp;
+GRANT ALL ON TABLE "blobs".images_pk_seq TO easygp, staff;
 grant all on coding.usr_codes_weighting_pk_seq to staff;
 grant all on coding.usr_codes_weighting to staff;
 GRANT ALL ON TABLE admin.clinics TO staff;

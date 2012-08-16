@@ -64,6 +64,10 @@ GRANT ALL ON TABLE "clin_requests".inbox_oru_unresolved_temp_patient_id_seq TO e
 GRANT ALL ON TABLE "clin_requests".lu_request_type_pk_seq TO easygp, staff;
 GRANT ALL ON TABLE "clin_requests".request_providers_pk_seq TO easygp, staff;
 
+GRANT ALL ON TABLE "clin_recalls".vwtemplates TO easygp, staff;
+GRANT ALL ON TABLE "clin_recalls".forms_pk_seq TO easygp, staff;
+GRANT ALL ON TABLE "clin_recalls".forms TO easygp, staff;
+
 grant all on coding.usr_codes_weighting_pk_seq to staff;
 grant all on coding.usr_codes_weighting to staff;
 GRANT ALL ON TABLE admin.clinics TO staff;

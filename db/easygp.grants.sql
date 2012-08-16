@@ -51,6 +51,12 @@ GRANT ALL ON TABLE "clerical".schedule_pk_seq TO easygp, staff;
 GRANT ALL ON TABLE "clerical".task_component_notes_pk_seq TO easygp, staff;
 GRANT ALL ON TABLE "clerical".task_components_pk_seq TO easygp, staff;
 GRANT ALL ON TABLE "clerical".tasks_pk_seq TO easygp, staff;
+GRANT ALL ON TABLE "drugs".vwdrugs TO easygp, staff;
+GRANT ALL ON TABLE "drugs".vwdrugs1 TO easygp, staff;
+GRANT ALL ON TABLE "drugs".clinical_effects_pk_seq TO easygp, staff;
+GRANT ALL ON TABLE "drugs".flags_pk_seq TO easygp, staff;
+GRANT ALL ON TABLE "drugs".info_pk_seq TO easygp, staff;
+
 grant all on coding.usr_codes_weighting_pk_seq to staff;
 grant all on coding.usr_codes_weighting to staff;
 GRANT ALL ON TABLE admin.clinics TO staff;

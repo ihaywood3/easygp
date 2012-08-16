@@ -4,6 +4,12 @@
 grant all on table blobs.images to staff, easygp;
 GRANT ALL ON TABLE "blobs".images_pk_seq TO easygp, staff;
 GRANT ALL ON TABLE "clerical".lu_appointment_icons TO easygp, staff;
+GRANT ALL ON TABLE "clin_vaccination".vwvaccinesinschedule TO easygp, staff;
+GRANT ALL ON TABLE "clin_vaccination".vwvaccinesgiven TO easygp, staff;
+GRANT ALL ON TABLE "clin_vaccination".vwvaccines TO easygp, staff;
+GRANT ALL ON TABLE "clin_vaccination".vwvaccineroutesadministration TO easygp, staff;
+
+
 grant all on coding.usr_codes_weighting_pk_seq to staff;
 grant all on coding.usr_codes_weighting to staff;
 GRANT ALL ON TABLE admin.clinics TO staff;

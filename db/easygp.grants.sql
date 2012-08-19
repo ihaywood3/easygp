@@ -714,3 +714,5 @@ GRANT ALL ON TABLE research.vwldh TO staff;
 alter table clerical.lu_active_status owner to easygp;
 grant all on table clerical.lu_active_status to easygp;
 grant all on table clerical.lu_active_status to staff;
+
+grant USAGE on table contacts.lu_mismatched_towns_pk_seq to staff, easygp;

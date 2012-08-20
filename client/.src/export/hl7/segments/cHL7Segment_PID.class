@@ -35,60 +35,123 @@ Public VeteransMilitaryStatus_CE_Opt As New CHL7Datatype_CE
 Public Nationality_CE_Opt As New CHL7Datatype_CE
 Public PatientDeathDateAndTime_TS_Opt As New CHL7Datatype_TS
 Public PatientDeathIndicator_ID_Opt As String
+' 
+' Private Function FindTheRightPhoneNumber(cc As CConsult) As String
+'    
+'    Dim p As Collection
+'    Dim anyphone As String
+'    Dim right_types As String[] = ["Mobile  Phone", "Home", "Work", "Phone", "VOIP"]
+' 
+'    For Each p In cc!comms
+'       If right_types.Exist(p!type) Then
+'          anyphone = p!value
+'          If p!preferred_method Then  'if this contact number is the preferred number set this as Phone number 
+'             Return p!value
+'          End If
+'       Endif
+'    Next
+'    Return anyphone
+' End
 
-Private Function FindTheRightPhoneNumber(cc As CConsult) As String
+Private Function FindTheRightPhoneNumber(Fk_Patient As Integer) As String
    
-   Dim p As Collection
-   Dim anyphone As String
-   Dim right_types As String[] = ["Mobile  Phone", "Home", "Work", "Phone", "VOIP"]
-
-   For Each p In cc!comms
-      If right_types.Exist(p!type) Then
-         anyphone = p!value
-         If p!preferred_method Then  'if this contact number is the preferred number set this as Phone number 
-            Return p!value
+   Dim P As Collection
+   Dim Contacts As Collection
+   Dim Mobile As Integer
+   Dim Home As Integer
+   Dim Work As Integer
+   Dim VOIP As Integer
+   
+   Contacts = modContactsDBI.person_comms_get(Fk_Patient)
+   
+   For Each p In Contacts
+      If P["type"] = "Mobile  Phone" Or P["type"] = "Home" Or P["type"] = "Work" Or P["type"] = "Phone" Or P["type"] = "VOIP" Then 
+         
+         If P["preferred_method"] = True Then  'if this contact number is the preferred number set this as Phone number 
+            Return P["value"]
          End If
+         
+         ' If P["type"] = "Mobile" Then
+         '    If Mobile <> "" Then
+         '    Else
+         '       Mobile = P["value"]
+         '    Endif
+         ' Endif
+         
       Endif
+      
+      ' PID.PhoneNumberHome_TN_Opt = 
+      ' PID.Public PhoneNumberBusiness_TN_Opt = 
    Next
-   Return anyphone
-End
-
-
-
-
-Public Sub Populate(cc As CConsult)
-   
-   SetIDPatientID_SI_Opt = 1
-   PatientName_PN_Req.GivenName = cc!patient!firstname
-   PatientName_PN_Req.FamilyName = cc!patient!surname
-   DateTimeOfBirth_TS_Opt.mydate = cc!patient!birthdate
-   Sex_Is_Opt = cc!patient!sex
-   PatientAddress_AD_Opt.City = cc!patient!town
-   PatientAddress_AD_Opt.StateOrProvince = cc!patient!state
-   PatientAddress_AD_Opt.StreetAdress = cc!patient!street1 & cc!patient!street2
-   PatientAddress_AD_Opt.PostCode = cc!patient!postcode
-   PrimaryLanguage_CE_Opt.Text = cc!patient!language
-   ' FIXME: need to form ID list according to Aussie-specific standards
-' 4009887514 ^ ^ ^ AUSHIC ^ MC
-'  Medicare Number
-' QX321 ^ ^ ^ ^ DVA
-'  DVA Number
-' 1200340 ^ ^ ^ ^ MSN
-'  Military Service Number
-' JONESF00863 ^ ^ ^ ^ SR   
-   EthnicGroup_Is_Opt = cc!patient!ethnicity 
-   PhoneNumberHome_TN_Opt = FindTheRightPhoneNumber(cc)
-End
-
-
-Public Sub Emit(dest As Stream)
-   
- modHL7Emitter.Emit("|", dest, ["PID", SetIDPatientID_SI_Opt, PatientIDExternalID_CX_Opt, PatientIDInternalID_CX_Req, AlternatePatientID_CX_Opt, PatientName_PN_Req, 
- MothersMaidenName_PN_Opt, DateTimeOfBirth_TS_Opt, Sex_Is_Opt, PatientAlias_PN_Opt, Race_Is_Opt, PatientAddress_AD_Opt, CountryCode_Is_Opt, PhoneNumberHome_TN_Opt,
- PhoneNumberBusiness_TN_Opt, PrimaryLanguage_CE_Opt, MaritalStatus_Is_Opt, Religion_Is_Opt, PatientAccountNumber_CX_Opt, Null,
- DriversLicenseNumberPatient_ST_Opt, MothersIdentifier_CX_Opt, EthnicGroup_Is_Opt, BirthPlace_ST_Opt, MultipleBirthIndicator_ID_Opt,
- BirthOrder_NM_Opt, Citizenship_Is_Opt, VeteransMilitaryStatus_CE_Opt, Nationality_CE_Opt, PatientAccountNumber_CX_Opt,
- PatientDeathDateAndTime_TS_Opt, PatientDeathIndicator_ID_Opt])
    
 End
 
+Public Sub FillWithData(P As Collection)
+
+   Dim TempStringArray As String[]
+   
+   ' For Each p In Patient         'this is just to access to the Patient array in the collection but there will never be more than one patient in this collection
+      
+      SegmentID_ID_Req = "PID"
+      SetIDPatientID_SI_Opt = 1
+      PatientName_PN_Req.GivenName = P["firstname"]
+      PatientName_PN_Req.FamilyName = P["surname"]
+      PatientName_PN_Req.Prefix = P["titel"]         'contains stuff like Mr. Dr. Mis ....
+      
+      MaritalStatus_Is_Opt = modDBConnect.exec_query("Select marital From contacts.lu_marital where pk = " & p["fk_marital"] & ";")!marital
+      'storing the birthdate in a different format
+      TempStringArray = Split(P["birthdate"], "/", " ")
+      DateTimeOfBirth_TS_Opt.Day = TempStringArray[0]
+      DateTimeOfBirth_TS_Opt.Month = TempStringArray[1]
+      DateTimeOfBirth_TS_Opt.Year = TempStringArray[2]
+      
+      Sex_Is_Opt = P["sex"]
+      PatientAddress_AD_Opt.City = P["town"]
+      PatientAddress_AD_Opt.StateOrProvince = p["state"]
+      PatientAddress_AD_Opt.StreetAdress = p["street1"] & p["street2"]
+      PatientAddress_AD_Opt.PostCode = p["postcode"]
+      PatientAddress_AD_Opt.AddressTypeID = p["address_type"]
+      PatientAddress_AD_Opt.CountryID = p["country_code"]
+      
+      PrimaryLanguage_CE_Opt.Text = p["language"]
+      
+      PatientIDExternalID_CX_Opt.ID = p["medicare_number"]     
+      PatientIDExternalID_CX_Opt.IdentifierTypeCode = "AUSHIC"
+      
+      '       
+      '       
+      ' Public MaritalStatus_Is_Opt As String
+      ' PID.Religion_Is_Opt As String
+      ' Public PatientAccountNumber_CX_Opt As New CHL7Datatype_CX
+      
+      ' Public DriversLicenseNumberPatient_ST_Opt As String
+      ' Public MothersIdentifier_CX_Opt As New CHL7Datatype_CX
+      
+      EthnicGroup_Is_Opt = p["ethnicity"] 
+      
+      ' Public BirthPlace_ST_Opt As String
+      ' Public VeteransMilitaryStatus_CE_Opt As New CHL7Datatype_CE
+      ' Public Nationality_CE_Opt As New CHL7Datatype_CE
+      PhoneNumberHome_TN_Opt = FindTheRightPhoneNumber(p["fk_patient"])
+'    Next
+   
+
+   
+End
+
+Public Function GetString(PIDSegment As CHL7Segment_PID) As String
+   
+   Return "PID|1||" & PIDSegment.PatientIDExternalID_CX_Opt.ID & "^^^" & PIDSegment.PatientIDExternalID_CX_Opt.IdentifierTypeCode & "^" & "^^^" & PIDSegment.PatientName_PN_Req.FamilyName & "^" & PIDSegment.PatientName_PN_Req.Prefix & "||" & PIDSegment.PatientName_PN_Req.FamilyName & "^" & PIDSegment.PatientName_PN_Req.GivenName & "||" & PIDSegment.DateTimeOfBirth_TS_Opt.Year & PIDSegment.DateTimeOfBirth_TS_Opt.Month & PIDSegment.DateTimeOfBirth_TS_Opt.Day & "000000+1000" & "|" & PIDSegment.Sex_Is_Opt & "|||" & PIDSegment.PatientAddress_AD_Opt.StreetAdress & "^" & PIDSegment.PatientAddress_AD_Opt.OtherDesignation & "^" & PIDSegment.PatientAddress_AD_Opt.City & " ^ " & PIDSegment.PatientAddress_AD_Opt.StateOrProvince & " ^ " & PIDSegment.PatientAddress_AD_Opt.PostCode & " ^ " & PIDSegment.PatientAddress_AD_Opt.CountryID & " ^ " & PIDSegment.PatientAddress_AD_Opt.AddressTypeID & "||^^^^^^" & PIDSegment.PhoneNumberHome_TN_Opt & "||" & PIDSegment.PrimaryLanguage_CE_Opt.Text & "|" & PIDSegment.MaritalStatus_Is_Opt & 
+      "|" & PIDSegment.Religion_Is_Opt & "||21713530223"
+   
+End
+' Public Sub Emit(dest As Stream)
+'    
+'  modHL7Emitter.Emit("|", dest, ["PID", SetIDPatientID_SI_Opt, PatientIDExternalID_CX_Opt, PatientIDInternalID_CX_Req, AlternatePatientID_CX_Opt, PatientName_PN_Req, 
+'  MothersMaidenName_PN_Opt, DateTimeOfBirth_TS_Opt, Sex_Is_Opt, PatientAlias_PN_Opt, Race_Is_Opt, PatientAddress_AD_Opt, CountryCode_Is_Opt, PhoneNumberHome_TN_Opt,
+'  PhoneNumberBusiness_TN_Opt, PrimaryLanguage_CE_Opt, MaritalStatus_Is_Opt, Religion_Is_Opt, PatientAccountNumber_CX_Opt, Null,
+'  DriversLicenseNumberPatient_ST_Opt, MothersIdentifier_CX_Opt, EthnicGroup_Is_Opt, BirthPlace_ST_Opt, MultipleBirthIndicator_ID_Opt,
+'  BirthOrder_NM_Opt, Citizenship_Is_Opt, VeteransMilitaryStatus_CE_Opt, Nationality_CE_Opt, PatientAccountNumber_CX_Opt,
+'  PatientDeathDateAndTime_TS_Opt, PatientDeathIndicator_ID_Opt])
+'    
+' End

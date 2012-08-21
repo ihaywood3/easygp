@@ -42,6 +42,7 @@
 '    cmbSearch_Activate()  don't remove the cmbSearch.enabled = False otherwise quick typers send 
 '                          enter keypresses in quick succession. 
 '--------------------------------------------------------------------------------------------------------
+Private pic_script_authority As Picture = Picture["icons/12/authority_script_12x12.png"]
 Private BMICalc As FBMICalc
 Private PregCalc As FPregCalc
 Private Calculator As FCalculator
@@ -806,15 +807,9 @@ End
 Private Sub Settings_Load()
    
    Dim i As Object
+  
    
    Try HSplitClinical_Main.Layout = Settings["Main/HsplitClinical_Main"]
-   If Not IsNull(FMetaData) Then
-      If FMetaData.Visible = True Then
-         Try VsplitClinical_RightPane.Layout = Settings["Main/VsplitClinical_RightPane_Metadata"] 
-      Else
-         Try VsplitClinical_RightPane.Layout = Settings["Main/VsplitClinical_RightPane"] 
-      End If
-   End If 
    Try VSplit1.Layout = Settings["Clinical/Vsplit1.Layout"]   
    Try cvwRecalls.Font = Font[Settings["TabbedLists/cvwRecalls.font"]]
    Try cvwRequests.Font = Font[Settings["TabbedLists/cvwRequests.font"]]
@@ -826,11 +821,53 @@ Private Sub Settings_Load()
    Try Hsplit_ToolBar.Layout = Settings["Main/Hsplit_Toolbar.Layout", "1,2"]
    Try HSplit1_Patient_And_Buttons.Layout = Settings["Main/HSplit1_Patient_And_Buttons.Layout"]
    Try HSplit_MeasurementLists.Layout = Settings["Clinical/HSplit_MeasurementLists.Layout"]
-   Try VSplit_TabbedListsGraph.Layout = Settings["Clinical/VSplit_TabbedListsGraph.Layout"] 
+   '-------------------------------------------------------------------------------------------
+   'We can't afford to have split contents on the main right side of the screen 'go missing'
+   'i.e if user has 'disappeared the splits e.g made the script list big and removed the graph
+   'they are probably going to get confused 'Where the f*** is it?
+   'so, assume 2/3 1/3 optimum
+   '-------------------------------------------------------------------------------------------
+    Layout_Right_Side_Screen
    Try modUtil.columnSizes_Set(Settings["TabbedLists/cvwResults.columns"], cvwResults)
    Try modUtil.columnSizes_Set(Settings["TabbedLists/cvwRequests.columns"], cvwRequests)
    
 End Sub
+
+Public Sub Layout_Right_Side_Screen()
+   '------------------------------------------------------------------------------------------
+   'We can't afford to have split contents on the main right side of the screen 'go missing'
+   'i.e if user has 'disappeared the splits e.g made the script list big and removed the graph
+   'they are probably going to get confused 'Where the f*** is it?
+   'so, assume 2/3 1/3 optimum
+   'Called by Settings_load at init() and any time patient is reloaded.
+   '------------------------------------------------------------------------------------------
+    Dim layout_vals As New Integer[]
+   
+   layout_vals = [2, 1]
+   Try layout_vals = Settings["Clinical/VSplit_TabbedListsGraph.Layout"]  'get the layout vals if exist
+   If layout_vals[0] = 0 Or layout_vals[1] = 0 Then
+      VSplit_TabbedListsGraph.Layout = [2, 1]
+   Else
+       Try VSplit_TabbedListsGraph.Layout = Settings["Clinical/VSplit_TabbedListsGraph.Layout", [1, 2]] 
+   Endif
+   '----------------------------------------------------------------
+   'Now, layout the tasks and problem lists bottom part on the right
+   '----------------------------------------------------------------
+   If Not IsNull(FMetaData) Then
+      If FMetaData.Visible = True Then
+         Try VsplitClinical_RightPane.Layout = Settings["Main/VsplitClinical_RightPane_Metadata"] 
+      Else
+         layout_vals = [5, 1, 5]
+         Try VsplitClinical_RightPane.Layout = Settings["Main/VsplitClinical_RightPane"] 
+         If layout_vals[0] = 0 Or layout_vals[1] = 0 Or layout_vals[2] = 0 Then
+            VsplitClinical_RightPane.Layout = [5, 1, 5]
+         Else
+            Try VsplitClinical_RightPane.Layout = Settings["Main/VsplitClinical_RightPane"] 
+         Endif
+      End If
+   End If 
+
+End
 
 Public Sub Consult_Save()
    '-----------------------------------------------
@@ -1029,7 +1066,11 @@ Public Sub cvwMedications_Refresh()
          If medication!med!active = bActive Then
             active_medications.Add(medication, medication!pk_view)
             x = medication!pk_view
-            cvw.Add(x, 0)
+            If Not IsNull(medication!prescribed!authority_script_number) Then    
+             cvw.Add(x, "", pic_script_authority)
+            Else  
+                cvw.Add(x, 0)
+            End If   
             If medication_sort_order = "brand" Then 
                cvw[x][col_med] = modUtil.Ucase_Word_First_Letter(medication!brand)
             Else  
@@ -1311,7 +1352,7 @@ Public Sub Gui_Clear()
    txtConsultDate.text = Format(Now, "dd/mm/yyyy") 
    application.busy = 0                        'ensure have no hourglass
    iCertificatetype = const.certificate_type_medical
-   
+   Layout_Right_Side_Screen
 End
 
 Public Sub cmbSearch_GotFocus()
@@ -2929,6 +2970,7 @@ Public Sub TabbedLists_Menu()
    Dim x As Integer
    Dim menuitem As Menu
    Dim Document As Collection 
+   Dim medication As Collection
    
    If Not currentconsult Then Return 
    Select Case Last.tag
@@ -2985,6 +3027,8 @@ Public Sub TabbedLists_Menu()
       Case "requests"
          If cvwrequests.count Then mnuTabbedListRequest.popup()
       Case "medications"
+         cvwMedications.MoveCurrent()
+         medication = currentconsult!medications[cvwMedications.Item.key]
          If cvwMedications.count Then
             If lblMedications.tag = "active" Then
                mnuMedications_MakeActive.Enabled = False 
@@ -2996,6 +3040,11 @@ Public Sub TabbedLists_Menu()
                mnuMedications_MakeActiveWithComment.Enabled = True 
                mnuMedications_MakeInActive.Enabled = False
                mnuMedications_MakeInActiveWithComment.Enabled = False   
+            Endif
+            If Not IsNull(medication!product_information_filename) Or Not IsNull(medication!product_information_filename_user) Then
+               mnuMedications_FullProductInformation.Enabled = True
+            Else
+               mnuMedications_FullProductInformation.Enabled = False 
             Endif
             mnuMedications.popup()
          End If
@@ -3551,8 +3600,8 @@ Public Sub mnuMedications_Click()
          If Not IsNull(medication!prescribed!latex) Then 
             Editor_ShowPage("pdf file", medication!brand, modPrinting.Latex_To_PDF(medication!prescribed!latex))
          End If  
-      Case "prescribe selected", "prescribe all"
-         If Last.tag = "prescribe all" Then
+      Case "prescribe selected", "prescribe all", "prescribe selected reg24", "prescribe all reg24"
+         If Last.tag = "prescribe all" Or Last.tag = "prescribe all reg24" Then
             cvwMedications.SelectAll()
          Endif
          Editor_ShowPage("Scripts")            'Ensure the script module is loaded and visible
@@ -3564,8 +3613,12 @@ Public Sub mnuMedications_Click()
                new_Prescription_item!date_script_written = Now()
                new_Prescription_item!med!last_date = Now()
                prescribed = medication!prescribed.Clone()         'create a new prescribed cRow, don't put in authority approval etc even if an authority
-               '  prescribed.Remove("fk_prescribed")                 ' make cRow save a new row
-               prescribed.Remove("pk")                 ' make cRow save a new row
+               prescribed.Remove("pk")                            ' make cRow save a new row
+               If InStr(Last.tag, "24") Then
+                  prescribed!reg24 = True
+               Else
+                  prescribed!reg24 = False   
+               Endif
                prescribed!date_on_script = Now()                  'FIXME ALLOW MENU DRIVEN DATE AHEAD OPTIONS
                prescribed!fk_consult = currentconsult.GetPK()
                prescribed!script_number = modPrescribingDBI.Script_Number_Get_Next()
@@ -3577,13 +3630,11 @@ Public Sub mnuMedications_Click()
                ' prescribed! = brand_substitution : do not remove this code
                ' prescribed! = fk_progress_note
                new_Prescription_item!prescribed = prescribed         'new cRow, otherwise the fields not changed IAN FIXME EASIER WAY
-               
                FPrescriptions.Script_Item_Re_Prescribe(new_Prescription_item)
             End If   
             cvwMedications.MoveNext()
          Next
          cvwMedications.UnselectAll()
-         
       Case "view all medications history"
          Print modPrescribingDBI.Medications_History_Construct_HTML(currentconsult!medications)
          Editor_ShowPage("browser", "Medication history", modPrescribingDBI.Medications_History_Construct_HTML(currentconsult!medications))

@@ -716,3 +716,20 @@ grant all on table clerical.lu_active_status to easygp;
 grant all on table clerical.lu_active_status to staff;
 
 grant USAGE on table contacts.lu_mismatched_towns_pk_seq to staff, easygp;
+
+grant all on table "clin_allergies".vwallergies to easygp, staff;
+grant all on table "clin_allergies".allergies to easygp, staff;
+grant all on table "clin_allergies".lu_reaction_type to easygp, staff;
+grant usage on table "clin_allergies".allergies_pk_seq to easygp, staff;
+grant usage on table "clin_allergies".lu_reaction_type_pk_seq to easygp, staff;
+
+grant all on table "clin_consult".lu_progressnote_templates to easygp, staff;
+grant usage on table "clin_consult".lu_actions_pk_seq to easygp, staff;
+grant usage on table "clin_consult".lu_audit_reasons_pk_seq to easygp, staff;
+grant usage on table "clin_consult".lu_consult_type_pk_seq to easygp, staff;
+grant usage on table "clin_consult".lu_progressnote_templates_pk_seq to easygp, staff;
+grant select, insert on table "clin_consult".lu_audit_actions to easygp, staff;
+grant select, insert on table "clin_consult".lu_audit_reasons to easygp, staff;
+grant all on table "clin_consult".vwprogressnotes1 to easygp, staff;
+
+

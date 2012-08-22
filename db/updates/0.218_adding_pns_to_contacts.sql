@@ -6,8 +6,11 @@ create table contacts.data_numbers (
 );
 
 insert into contacts.data_numbers(fk_person,fk_branch,provider_number,prescriber_number) 
-select fk_person,fk_branch,provider_number,prescriber_number from admin.vwstaffinclinics 
- where provider_number not is null:
+select fk_person,fk_branch,provider_number,prescriber_number from admin.vwstaffinclinics  where provider_number not is null:
+
+ALTER TABLE contacts.data_numbers OWNER TO easygp;
+GRANT ALL ON TABLE contacts.data_numbers TO easygp;
+GRANT ALL ON TABLE contacts.data_numbers TO staff;
 
 comment on table contacts.data_numbers is 'table for Medicare provider numbers and prescriber numbers. Used to be in admin.staff, but now here because we need to record provider numbers for external contacts too.';
 comment on column contacts.data_numbers.fk_branch is 'can be NULL for individuals in solo practices who aren''t part of an ''organisation'' in our system.';
@@ -36,8 +39,9 @@ data_numbers.provider_number, data_numbers.prescriber_number
    LEFT JOIN contacts.data_numbers on (data_numbers.fk_person = contacts.data_employees.fk_person AND data_numbers.fk_branch = contacts.data_employees.fk_branch)
   WHERE not data_employees.deleted;
 
-
-
+ALTER TABLE contacts.vwemployees OWNER TO easygp;
+GRANT ALL ON TABLE contacts.vwemployees TO easygp;
+GRANT ALL ON TABLE contacts.vwemployees TO staff;
 
 create view 
 contacts.vwpersonsemployeesbyoccupation as
@@ -82,7 +86,12 @@ UNION
    LEFT JOIN contacts.lu_towns towns ON addresses.fk_town = towns.pk
    LEFT JOIN admin.clinics ON branches.pk = clinics.fk_branch;
 
-  
+ALTER TABLE contacts.vwpersonsemployeesbyoccupation OWNER TO easygp;
+GRANT ALL ON TABLE contacts.vwpersonsemployeesbyoccupation TO easygp;
+GRANT ALL ON TABLE contacts.vwpersonsemployeesbyoccupation TO staff;
+
+
+
 create view clin_mentalhealth.vwteamcaremembers as
        SELECT team_care_members.pk, team_care_members.fk_plan, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_branch, vworganisationsemployees.fk_person, 
                 CASE
@@ -103,9 +112,9 @@ UNION
    LEFT JOIN contacts.vworganisationsemployees ON team_care_members.fk_person = vworganisationsemployees.fk_person
   WHERE team_care_members.deleted = false AND team_care_members.fk_employee IS NULL;
 
-
-
-
+ALTER TABLE clin_mentalhealth.vwteamcaremembers OWNER TO easygp;
+GRANT ALL ON TABLE clin_mentalhealth.vwteamcaremembers TO easygp;
+GRANT ALL ON TABLE clin_mentalhealth.vwteamcaremembers TO staff;
 
 create view clin_history.vwteamcaremembers as
          SELECT team_care_members.pk, team_care_members.fk_pasthistory, vworganisationsemployees.fk_organisation, vworganisationsemployees.fk_branch, vworganisationsemployees.fk_person, vworganisationsemployees.fk_employee, 
@@ -127,6 +136,9 @@ UNION
    LEFT JOIN contacts.vworganisationsemployees ON team_care_members.fk_person = vworganisationsemployees.fk_person
   WHERE team_care_members.deleted = false AND team_care_members.fk_employee = 0;
 
+ALTER TABLE clin_history.vwteamcaremembers OWNER TO easygp;
+GRANT ALL ON TABLE clin_history.vwteamcaremembers TO easygp;
+GRANT ALL ON TABLE clin_history.vwteamcaremembers TO staff;
 
 create view contacts.vwpersonsandemployeesaddresses as
       SELECT vworganisationsemployees.fk_address, 
@@ -144,6 +156,10 @@ UNION
                 END AS pk_view, NULL::integer AS fk_branch, NULL::text AS branch, NULL::text AS organisation, NULL::integer AS fk_organisation, vwpersonsexcludingpatients.fk_person, vwpersonsexcludingpatients.firstname, vwpersonsexcludingpatients.surname, vwpersonsexcludingpatients.title, vwpersonsexcludingpatients.occupation, vwpersonsexcludingpatients.street1, vwpersonsexcludingpatients.street2, vwpersonsexcludingpatients.town, vwpersonsexcludingpatients.state, vwpersonsexcludingpatients.postcode
            FROM contacts.vwpersonsexcludingpatients
           WHERE vwpersonsexcludingpatients.fk_person <> 0 AND vwpersonsexcludingpatients.fk_address IS NOT NULL;
+
+ALTER TABLE contacts.vwpersonsandemployeesaddresses OWNER TO easygp;
+GRANT ALL ON TABLE contacts.vwpersonsandemployeesaddresses TO easygp;
+GRANT ALL ON TABLE contacts.vwpersonsandemployeesaddresses TO staff;
 
 create view clin_referrals.vwreferrals as
  (SELECT DISTINCT referrals.pk AS pk_referral, referrals.date_referral, referrals.fk_consult, referrals.fk_person, referrals.fk_type, lu_type.type, referrals.tag, referrals.deleted, referrals.body_html, referrals.letter_html, referrals.fk_pasthistory, referrals.fk_progressnote, referrals.include_careplan, referrals.include_healthsummary, referrals.fk_branch, referrals.fk_employee, referrals.fk_address, referrals.copyto, vworganisationsemployees.street1, vworganisationsemployees.street2, vworganisationsemployees.town, vworganisationsemployees.state, vworganisationsemployees.postcode, vworganisationsemployees.organisation, vworganisationsemployees.branch, vworganisationsemployees.wholename, vworganisationsemployees.occupation, vworganisationsemployees.firstname, vworganisationsemployees.surname, vworganisationsemployees.salutation, vworganisationsemployees.sex, vworganisationsemployees.title, consult.consult_date, consult.fk_patient, consult.fk_staff, vwstaff.provider_number as staff_provider_number, vwstaff.firstname AS staff_firstname, vwstaff.wholename AS staff_wholename, vwstaff.salutation AS staff_salutation, vwstaff.title AS staff_title, past_history.description, 
@@ -173,6 +189,9 @@ UNION
    LEFT JOIN clin_history.past_history ON referrals.fk_pasthistory = past_history.pk
   WHERE referrals.fk_person IS NULL;
 
+ALTER TABLE clin_referrals.vwreferrals OWNER TO easygp;
+GRANT ALL ON TABLE clin_referrals.vwreferrals TO easygp;
+GRANT ALL ON TABLE clin_referrals.vwreferrals TO staff;
 
 truncate table db.lu_version;
 insert into db.lu_version (lu_major,lu_minor) values (0, 218);

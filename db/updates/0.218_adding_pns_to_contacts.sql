@@ -6,7 +6,8 @@ create table contacts.data_numbers (
 );
 
 insert into contacts.data_numbers(fk_person,fk_branch,provider_number,prescriber_number) 
-select fk_person,fk_branch,provider_number,prescriber_number from admin.vwstaffinclinics ;
+select fk_person,fk_branch,provider_number,prescriber_number from admin.vwstaffinclinics 
+ where provider_number not is null:
 
 comment on table contacts.data_numbers is 'table for Medicare provider numbers and prescriber numbers. Used to be in admin.staff, but now here because we need to record provider numbers for external contacts too.';
 comment on column contacts.data_numbers.fk_branch is 'can be NULL for individuals in solo practices who aren''t part of an ''organisation'' in our system.';
@@ -174,4 +175,4 @@ UNION
 
 
 truncate table db.lu_version;
-insert into db.lu_version (lu_major,lu_minor) values (0, 216);
+insert into db.lu_version (lu_major,lu_minor) values (0, 218);

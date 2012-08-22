@@ -732,4 +732,6 @@ grant select, insert on table "clin_consult".lu_audit_actions to easygp, staff;
 grant select, insert on table "clin_consult".lu_audit_reasons to easygp, staff;
 grant all on table "clin_consult".vwprogressnotes1 to easygp, staff;
 
-
+ALTER TABLE contacts.data_numbers OWNER TO easygp;
+GRANT ALL ON TABLE contacts.data_numbers TO easygp;
+GRANT ALL ON TABLE contacts.data_numbers TO staff;

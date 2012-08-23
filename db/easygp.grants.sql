@@ -678,7 +678,7 @@ grant all on table drugs.schedules to easygp;
 GRANT ALL ON TABLE drugs.schedules to staff;
 
 
-GRANT all ON TABLE clin_prescribing.authority_number TO staff;
+GRANT all ON TABLE clin_prescribing.authority_script_number TO staff;
 GRANT all ON TABLE clin_prescribing.instruction_habits_pk_seq TO staff;
 GRANT all ON TABLE clin_prescribing.prescribed_for_pk_seq TO staff;
 GRANT all ON TABLE clin_prescribing.instructions_pk_seq TO staff;
@@ -693,6 +693,14 @@ GRANT ALL ON TABLE clin_prescribing.instruction_habits to staff;
 GRANT ALL on table clin_prescribing.vwInstructionHabits to staff;
 GRANT ALL ON TABLE clin_prescribing.vwPrescribedForHabits to staff;
 GRANT USAGE ON SEQUENCE clin_prescribing.medications_pk_seq TO staff;
+GRANT USAGE ON SEQUENCE clin_prescribing.increased_quantity_authority_reasons_pk_seq TO staff;
+GRANT ALL ON TABLE clin_prescribing.increased_quantity_authority_reasons to staff;
+GRANT ALL ON TABLE clin_prescribing.instructions to staff;
+GRANT ALL ON TABLE clin_prescribing.lu_pbs_script_type to staff;
+GRANT ALL ON TABLE clin_prescribing.prescribed to staff;
+GRANT ALL ON TABLE clin_prescribing.prescribed_for to staff;
+
+
 ALTER TABLE research.patientsnameshba1cover75   OWNER TO easygp;
 GRANT ALL ON TABLE research.patientsnameshba1cover75 TO easygp;
 GRANT SELECT ON TABLE research.patientsnameshba1cover75 TO staff;
@@ -732,6 +740,6 @@ grant select, insert on table "clin_consult".lu_audit_actions to easygp, staff;
 grant select, insert on table "clin_consult".lu_audit_reasons to easygp, staff;
 grant all on table "clin_consult".vwprogressnotes1 to easygp, staff;
 
-ALTER TABLE contacts.data_numbers OWNER TO easygp;
-GRANT ALL ON TABLE contacts.data_numbers TO easygp;
-GRANT ALL ON TABLE contacts.data_numbers TO staff;
+grant all on table blobs.vwpatientimages to staff;
+
+

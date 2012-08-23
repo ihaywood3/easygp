@@ -6,7 +6,7 @@ create table contacts.data_numbers (
 );
 
 insert into contacts.data_numbers(fk_person,fk_branch,provider_number,prescriber_number) 
-select fk_person,fk_branch,provider_number,prescriber_number from admin.vwstaffinclinics  where provider_number not is null:
+select fk_person,fk_branch,provider_number,prescriber_number from admin.vwstaffinclinics  where provider_number is not null;
 
 ALTER TABLE contacts.data_numbers OWNER TO easygp;
 GRANT ALL ON TABLE contacts.data_numbers TO easygp;

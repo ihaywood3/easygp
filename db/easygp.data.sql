@@ -225,7 +225,7 @@ SELECT pg_catalog.setval('lu_actions_pk_seq', 35, true);
 -- Name: lu_audit_reasons_pk_seq; Type: SEQUENCE SET; Schema: clin_consult; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 430, true);
+SELECT pg_catalog.setval('lu_audit_reasons_pk_seq', 436, true);
 
 
 --
@@ -476,7 +476,7 @@ SELECT pg_catalog.setval('lu_instructions_pk_seq', 1, false);
 -- Name: lu_link_provider_user_requests_pk_seq; Type: SEQUENCE SET; Schema: clin_requests; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_link_provider_user_requests_pk_seq', 1722, true);
+SELECT pg_catalog.setval('lu_link_provider_user_requests_pk_seq', 1789, true);
 
 
 --
@@ -490,7 +490,7 @@ SELECT pg_catalog.setval('lu_request_type_pk_seq', 14, true);
 -- Name: lu_requests_pk_seq; Type: SEQUENCE SET; Schema: clin_requests; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_requests_pk_seq', 1826, true);
+SELECT pg_catalog.setval('lu_requests_pk_seq', 1838, true);
 
 
 SET search_path = clin_vaccination, pg_catalog;
@@ -673,7 +673,7 @@ SELECT pg_catalog.setval('lu_normality_pk_seq', 2, true);
 -- Name: lu_occupations_pk_seq; Type: SEQUENCE SET; Schema: common; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_occupations_pk_seq', 369, true);
+SELECT pg_catalog.setval('lu_occupations_pk_seq', 437, true);
 
 
 --
@@ -808,7 +808,7 @@ SELECT pg_catalog.setval('lu_marital_pk_seq', 7, true);
 -- Name: lu_mismatched_towns_pk_seq; Type: SEQUENCE SET; Schema: contacts; Owner: -
 --
 
-SELECT pg_catalog.setval('lu_mismatched_towns_pk_seq', 344, true);
+SELECT pg_catalog.setval('lu_mismatched_towns_pk_seq', 345, true);
 
 
 --
@@ -845,7 +845,7 @@ SET search_path = db, pg_catalog;
 -- Name: db_version_pk_seq; Type: SEQUENCE SET; Schema: db; Owner: -
 --
 
-SELECT pg_catalog.setval('db_version_pk_seq', 197, true);
+SELECT pg_catalog.setval('db_version_pk_seq', 203, true);
 
 
 SET search_path = defaults, pg_catalog;
@@ -1787,6 +1787,12 @@ COPY lu_audit_reasons (pk, fk_staff, reason) FROM stdin;
 428	1	patient passed away
 429	1	Had a hysterectomy
 430	1	should be nextpath
+431	1	is 70 years of age
+432	1	did b12, folate and tsh
+433	1	wrong anatomical location in report
+434	1	multiple patients - just a communication
+435	1	wrong date on document
+436	1	wrong drug information
 \.
 
 
@@ -4127,6 +4133,73 @@ COPY lu_link_provider_user_requests (pk, fk_lu_request, provider_request_name, l
 1720	1650	Alpha Globulin, Urine	0	f
 1721	65	2 Leg DVT Lower Limb:(no iliacs)	3	f
 1722	708	Derangement Left Knee or Supporting Structures	1	f
+1723	1738	Brain CT	3	f
+1724	1012	Stress Echocardiogram (G OLDFIELD)	0	f
+1725	408	BMD - Over 70	2	f
+1726	476	RT LOWER LEG	2	f
+1727	1827	VITAMIN B6 (VB6-0)	0	f
+1728	795	KNEE MUSCULOSKELETAL ULTRASOUND	2	f
+1729	140	Hormone Testing	0	f
+1730	140	Hormone Testing	0	f
+1731	140	Hormone Testing	0	f
+1732	140	Hormone Testing	0	f
+1733	1830	Misc.Chemistry	0	f
+1734	1830	Misc.Chemistry	0	f
+1735	1417	SERUM CHEMISTRY (MBA-0)	0	f
+1736	1823	Microbiology Culture	0	f
+1737	838	Panel Serology	0	f
+1738	1829	Microbiology Culture	0	f
+1739	1823	Microbiology Culture	0	f
+1740	1825	Blood Bank	0	f
+1741	1825	Blood Bank	0	f
+1742	1825	Blood Bank	0	f
+1743	1825	Blood Bank	0	f
+1744	1825	Blood Bank	0	f
+1745	1825	Blood Bank	0	f
+1746	359	Coagulation Tests	0	f
+1747	359	Coagulation Tests	0	f
+1748	359	Coagulation Tests	0	f
+1749	359	Coagulation Tests	0	f
+1750	359	Coagulation Tests	0	f
+1751	359	Coagulation Tests	0	f
+1752	359	Coagulation Tests	0	f
+1753	359	Coagulation Tests	0	f
+1754	359	Coagulation Tests	0	f
+1755	359	Coagulation Tests	0	f
+1756	359	Coagulation Tests	0	f
+1757	359	Coagulation Tests	0	f
+1758	359	Coagulation Tests	0	f
+1759	960	X156	0	f
+1760	960	X156	0	f
+1761	960	X156	0	f
+1762	619	X013	0	f
+1763	619	X013	0	f
+1764	619	X013	0	f
+1765	619	X013	0	f
+1766	619	X013	0	f
+1767	619	X013	0	f
+1768	619	X013	0	f
+1769	619	X013	0	f
+1770	619	X013	0	f
+1771	619	X013	0	f
+1772	1076	X013	0	f
+1773	1076	X038	0	f
+1774	1184	X025	0	f
+1775	814	TP-CTPCR	0	f
+1776	1838	GMC1	0	f
+1777	1823	GENITAL MICRO / CULTURE (GMC-0)	0	f
+1778	1828	GMC1	0	f
+1779	962	X049	0	f
+1780	856	X049	0	f
+1781	962	X049	0	f
+1782	1039	X020	0	f
+1783	1225	B12/Folate/Ferritin	0	f
+1784	1225	B12/Folate/Ferritin	0	f
+1785	1225	B12/Folate/Ferritin	0	f
+1786	1225	B12/Folate/Ferritin	0	f
+1787	1225	B12/Folate/Ferritin	0	f
+1788	952	THIOCYANATE (TCY-0)	0	f
+1789	1816	Skin US	2	f
 \.
 
 
@@ -5949,6 +6022,18 @@ COPY lu_requests (pk, fk_lu_request_type, item, fk_laterality, fk_decision_suppo
 1824	1	Lipids & HDL Cholesterol	0	0	0	f
 1825	1	Red blood cell antibody screen	0	0	0	f
 1826	9	arterial doppler foot	3	0	0	f
+1827	1	Vitamin B6	0	0	0	f
+1828	1	Vulval swab c&s	0	0	0	f
+1829	1	Low vaginal swab c&s	0	0	0	f
+1830	1	Sweat conductivity	0	0	0	f
+1831	1	RAST - Latex	0	0	0	f
+1832	1	Virus Culture	0	0	0	f
+1833	1	Red Cell Antibody Screen	0	0	0	f
+1834	1	Parvovirus	0	0	0	f
+1835	1	EBV	0	0	0	f
+1836	1	Kryptopyrroles Urine	0	0	0	f
+1837	1	Urine Copper/Creatinine Ratio	0	0	0	f
+1838	1	Perineal Swab c&s	0	0	0	f
 \.
 
 
@@ -65027,374 +65112,414 @@ COPY lu_normality (pk, normality) FROM stdin;
 -- Data for Name: lu_occupations; Type: TABLE DATA; Schema: common; Owner: -
 --
 
-COPY lu_occupations (pk, occupation) FROM stdin;
-182	medical practitioner
-183	Gynaecological Oncologist
-184	Paediatrician
-185	gynaecologist
-186	Paediatrician - Behaviour
-187	Paediatrician - General
-188	Plant Operator
-189	psychologist
-190	psychologist
-191	Plant Fitter
-192	Roof Tiler
-193	Service Supervisor
-194	Ophthalmologist & Plastic Surgeon
-195	Fitter Machinist
-196	Radiation Oncology
-197	Paediatric Allergist and Immunologist
-198	Transplant Surgeon
-1	drover
-2	teacher
-3	painter
-4	nurse
-5	haematologist
-6	counsellor
-7	dental nurse
-8	farmer
-9	dietitian
-10	colono-rectal surgeon
-11	endocrinologist
-12	diabetologist
-13	sheep drover
-14	roof tiler
-15	nuclear physician
-16	home duties
-17	project officer
-18	cheif executive officer
-19	medical student
-20	general practitioner
-21	database manager
-22	artist
-23	it consultant
-24	cardiologist - interventional
-25	prime minister
-26	secretary
-27	accountant
-28	medical practitioner
-29	boiler maker
-30	sex worker
-31	seamstress
-32	psychiatrist
-33	podiatrist
-34	cartoon character
-35	roofer
-36	mine worker
-37	cardiologist
-38	bank manager
-39	teacher - primary school
-40	cleaner
-41	rheumatologist
-42	ent surgeon
-43	unknown
-44	police officer
-45	gynaecologist
-46	builder
-47	radio operator
-48	physiotherapist
-49	fish monger
-50	office manager
-51	clinical psychologist
-52	sales representative
-53	dentist
-54	rocket scientist
-55	businessman
-56	practice manager
-57	gardiner
-58	gas controller
-59	cane cutter
-60	general surgeon
-61	psychiatry registrar
-62	liason officer
-63	butcher
-64	spectum manager
-65	medical secretary
-66	nurses aid
-67	geriatrician
-68	sailor
-69	information technology manager
-70	respiratory physician
-71	dancer
-72	radiologist
-73	gastroenterologist
-74	sex therapist
-75	pantry maid
-76	general and oncological surgeon
-77	teacher - high school
-78	child minder
-79	bowel surgeon
-80	tailor
-81	plumber
-82	primary school teacher
-83	doctor
-84	psychologist
-85	taxi driver
-86	night watchman
-87	soldier
-88	speech therapist
-89	it manager
-90	immunologist
-91	solicitor
-92	minister of religion
-93	engineer
-94	tunnel borer
-95	school counsellor
-96	coal miner
-97	truck driver
-98	hair dresser
-99	labourer
-100	electrician
-101	strip club dancer
-102	carpenter
-103	security guard
-104	orthopaedic surgeon
-105	dermatologist
-106	drug representative
-107	obstetrician and gynaecologist
-108	marketing manager
-109	gastroenterologist and hepatologist
-110	physician
-111	paediatric neurologist
-112	radiation oncologist
-113	registrar - radiation oncology
-114	colorectal and general surgeon
-115	emergency physician
-116	case manager
-117	vascular & endovascular surgeon
-118	medical oncologist (trainee)
-119	directory rehabilitation medicine
-120	pain medicine specialist
-121	plastic surgeon
-122	ophthalmic surgeon
-123	acute case manager
-124	cosmetic plastic surgeon
-125	shoulder physician
-126	workcover assessor
-127	occupational therapist
-128	staff specialist medical oncology
-129	neurologist - adult
-130	nephrologist
-131	orthopaedic surgeon - upper limb
-132	cardiologist and physician
-133	general and abdominal surgeon
-134	vascular surgeon
-135	registered psychologist
-136	urologist
-137	neonatal paediatrician
-138	orthopaedic registrar
-139	physician & allergist
-140	orthopaedic surgeon - hand
-141	research co-ordinator
-142	physician - general
-143	neurosurgeon
-144	cardiologist - electrophysiologist
-145	surgeon - breast
-146	haematology registrar
-147	physician - infectious disease
-148	general & laparoscopic surgeon
-149	spinal & orthopaedic surgeon
-150	physician - renal
-151	chiropractor
-152	audiologist
-153	physican - geriatric
-154	hand therapist
-155	phlebolgist
-156	anaesthetist & intensivist
-157	physician - rehabilitation
-158	diabetes educator
-159	optometrist
-160	orthopaedic surgeon - general
-161	physician - muskuloskeletal
-162	physician - breast
-163	tyre fitter
-164	orthopaedic surgeon -  paediatric
-165	ent registrar
-166	massage therapist
-167	neonatologist
-168	surgeon
-169	student - high school
-170	paediatric urology
-171	neurosurgery
-172	consultant - pain medicine
-173	rheumatology
-174	orthopaedic surgeons - paediatric
-175	oral surgery
-176	general manager
-177	occupational physician
-178	urology
-179	surgeon - thoracic
-180	cardiology
-181	ent surgeron
-199	Landscaper
-200	Labourer
-201	ent surgeon - paediatric
-202	crew member
-203	Deli Assistant
-204	Pest controller
-205	Sergeant of Police
-206	Sports physician
-207	Store Manger
-210	personal assistant
-211	steel fixer
-212	Senior Firefighter
-213	Chef
-214	Chef
-215	Catchment Officer
-216	Machine Operator
-217	Air Conditioning Mechanic
-218	orthopaedic surgeon - Hip & Knee
-219	career medical officer
-220	Bistro Assistant
-221	Scaffolder
-222	Carpenter
-223	Counselling Psychogist
-224	respiratory & sleep physician
-225	Merchandiser
-226	Cardiothoracic Surgeon
-227	Exercise Physiologist
-228	Customer Service Assistant
-229	Apprentice Boilermaker
-230	Paediatrician
-231	Audiometrist
-232	Orthpaedic Surgeon - Upper Limb
-233	Falls Intake Coordinator
-234	Booking Officer
-235	Process Worker
-236	Medical Oncology Registrar
-237	Horticulturalist Supervisor
-238	Stevadore
-239	Rehabilitation Paediatrician
-240	Paediatric Surgeon
-241	Rheumatologist
-242	vascular surgeon
-243	Dietitian
-244	Orthodontist
-245	Resident Medical Officer
-246	staff specialist diabetic clinic
-247	Speech Pathologist
-248	podiatrist
-249	Oral & Maxillofacial Surgeon
-250	Clinic Research Data Manager
-251	Geotechnician
-252	Assistant In Nursing
-253	Physician - Emergency
-254	Supervisor
-255	Truck Driver
-256	Plastic, Reconstructive & Hand Surgeon
-257	School Learning Support Officer
-258	Return to Work Co-Ordinator
-259	Medical Oncologist
-260	Locum Cardiologist
-261	gastroenterologist and hepatologist - paediatric
-262	Forensic Phychologist
-263	Counselling Bereavement adult
-264	Rehabilitation and Pain Medicine consultant
-265	coal miner
-266	Epidemiologist
-267	General work
-268	Laundry Worker
-269	Senior Staff Specialist Addiction Medicine
-270	Wardsperson
-271	Hepatopancreatobilliary & Upper GI Surgeon
-272	Farm Hand
-273	rehabilitation consultant
-274	Psychogeriiatrician
-275	Occupational Medical Consultant
-276	Clinical Nurse Consultant
-277	Registered Nurse
-278	Purchasing Officer
-279	Cook
-280	Rehabilitation Medicine Physician
-281	House Keeper
-282	Consultant Psychologist
-283	clerk
-284	PE Teacher
-285	Urology Registrar
-286	Delivery Driver
-287	Manager
-288	Account Manager
-289	Sales Assistant
-290	Registrar - neurosurgery
-291	Registrar - Surgery
-292	Child care worker
-293	Surgeon - GIT and General
-294	registrar
-295	Rheumatology Clinical Nurse Specialist
-296	General Assistant
-297	LIfeguard
-298	Doorman
-299	Clerical Support Staff
-300	Community Worker
-301	Storeman
-302	Neck and General Surgeon
-303	Sales and Service Co-ordinator
-304	Haematology Advanced Trainee
-305	Advanced Medical Oncology Trainee
-306	anaesthetist
-307	nurse - psychiatry
-308	Sheet Metal Worker
-309	Surgical Registrar
-310	Sandblaster
-311	Occupation Unknown
-312	Assistant Director
-313	Boiler Maker
-314	Hospital Assistant
-315	Forklift driver- booking officer
-316	Installer
-317	Customer Contact Officer (Fines)
-318	Registrar - medical
-319	Fitter
-320	Engineer - Mechanical
-321	Teacher - Trades
-322	Territory Manager
-323	Exercise Therapist
-324	truck driver/operator
-325	Welder
-326	Mine Deputy
-327	Sales Manager
-328	Arial And Satellite Installation
-329	Traffic Facilitator
-330	Chartered Accountant
-331	Insurance Operator
-332	Customer Service Officer
-333	Apprentice Carpenter
-334	Fireman
-335	Student
-336	Support Learning Officer
-337	Ent - Head & Neck Surgeon
-338	Legal Support Officer
-339	Paediatric Oncologist
-340	Hospitality
-341	Sound Technician
-342	Free Lance Stylist
-343	Pastry Cook
-344	Mail Courier
-345	Motor Mechanic
-346	Joiner
-347	Packing Team Leader
-348	Occupation?
-349	Surveyor
-350	Carpenter Site Supervisor
-351	Carpenter Site Supervisor
-352	Bricklayer
-353	Trainee Train Driver
-354	
-355	Storeperson
-356	Meter Reader
-357	Pharmaceutical Representative
-358	Concretor
-359	Teacher Primary School
-360	Teacher Primary School
-361	Boilermaker
-362	Neuropsychologist
-363	Teacher High School Special Ed
-364	Teacher High School Special Ed
-365	Allergist & Immunologist
-366	Business Owner
-367	Asphalter
-368	Head Teacher
-369	pharmacy assistant
+COPY lu_occupations (pk, occupation, referrer_type) FROM stdin;
+186	paediatrician - behaviour	o
+187	paediatrician - general	o
+188	plant operator	o
+191	plant fitter	o
+192	roof tiler	o
+193	service supervisor	o
+195	fitter machinist	o
+1	drover	o
+2	teacher	o
+3	painter	o
+4	nurse	o
+6	counsellor	o
+7	dental nurse	o
+8	farmer	o
+9	dietitian	o
+13	sheep drover	o
+14	roof tiler	o
+16	home duties	o
+17	project officer	o
+19	medical student	o
+21	database manager	o
+22	artist	o
+23	it consultant	o
+25	prime minister	o
+26	secretary	o
+27	accountant	o
+29	boiler maker	o
+30	sex worker	o
+31	seamstress	o
+33	podiatrist	o
+34	cartoon character	o
+35	roofer	o
+36	mine worker	o
+38	bank manager	o
+39	teacher - primary school	o
+40	cleaner	o
+43	unknown	o
+44	police officer	o
+46	builder	o
+47	radio operator	o
+48	physiotherapist	o
+49	fish monger	o
+50	office manager	o
+51	clinical psychologist	o
+52	sales representative	o
+53	dentist	o
+54	rocket scientist	o
+55	businessman	o
+56	practice manager	o
+20	general practitioner	g
+28	medical practitioner	g
+18	chief executive officer	o
+57	gardener	o
+183	gynaecological oncologist	s
+185	gynaecologist	s
+194	ophthalmologist & plastic surgeon	s
+197	paediatric allergist and immunologist	s
+198	transplant surgeon	s
+5	haematologist	s
+10	colono-rectal surgeon	s
+11	endocrinologist	s
+12	diabetologist	s
+24	cardiologist - interventional	s
+37	cardiologist	s
+42	ent surgeon	s
+45	gynaecologist	s
+41	rheumatologist	s
+15	nuclear medicine physician	s
+184	paediatrician	s
+32	psychiatrist	s
+58	gas controller	o
+59	cane cutter	o
+63	butcher	o
+64	spectum manager	o
+65	medical secretary	o
+66	nurses aid	o
+68	sailor	o
+69	information technology manager	o
+71	dancer	o
+74	sex therapist	o
+75	pantry maid	o
+77	teacher - high school	o
+78	child minder	o
+80	tailor	o
+81	plumber	o
+82	primary school teacher	o
+84	psychologist	o
+85	taxi driver	o
+86	night watchman	o
+87	soldier	o
+88	speech therapist	o
+89	it manager	o
+91	solicitor	o
+92	minister of religion	o
+93	engineer	o
+94	tunnel borer	o
+95	school counsellor	o
+96	coal miner	o
+97	truck driver	o
+98	hair dresser	o
+99	labourer	o
+100	electrician	o
+101	strip club dancer	o
+102	carpenter	o
+103	security guard	o
+106	drug representative	o
+108	marketing manager	o
+116	case manager	o
+123	acute case manager	o
+126	workcover assessor	o
+127	occupational therapist	o
+135	registered psychologist	o
+141	research co-ordinator	o
+151	chiropractor	o
+152	audiologist	o
+154	hand therapist	o
+155	phlebolgist	o
+158	diabetes educator	o
+159	optometrist	o
+163	tyre fitter	o
+166	massage therapist	o
+169	student - high school	o
+171	neurosurgery	o
+176	general manager	o
+199	landscaper	o
+200	labourer	o
+202	crew member	o
+203	deli assistant	o
+204	pest controller	o
+205	sergeant of police	o
+207	store manger	o
+210	personal assistant	o
+211	steel fixer	o
+212	senior firefighter	o
+213	chef	o
+215	catchment officer	o
+216	machine operator	o
+217	air conditioning mechanic	o
+220	bistro assistant	o
+221	scaffolder	o
+118	medical oncology registrar	g
+67	geriatrician	s
+83	doctor	g
+61	psychiatry registrar	g
+138	orthopaedic registrar	g
+146	haematology registrar	g
+165	ent registrar	g
+219	career medical officer	g
+113	radiation oncology registrar	g
+137	neonatal paediatrician	s
+156	anaesthetist & intensivist	s
+62	liaison officer	o
+60	general surgeon	s
+70	respiratory physician	s
+72	radiologist	s
+73	gastroenterologist	s
+76	general and oncological surgeon	s
+79	bowel surgeon	s
+90	immunologist	s
+104	orthopaedic surgeon	s
+105	dermatologist	s
+107	obstetrician and gynaecologist	s
+109	gastroenterologist and hepatologist	s
+110	physician	s
+222	carpenter	o
+225	merchandiser	o
+228	customer service assistant	o
+229	apprentice boilermaker	o
+231	audiometrist	o
+233	falls intake coordinator	o
+234	booking officer	o
+235	process worker	o
+237	horticulturalist supervisor	o
+238	stevadore	o
+243	dietitian	o
+244	orthodontist	o
+248	podiatrist	o
+250	clinic research data manager	o
+251	geotechnician	o
+252	assistant in nursing	o
+254	supervisor	o
+255	truck driver	o
+257	school learning support officer	o
+258	return to work co-ordinator	o
+265	coal miner	o
+267	general work	o
+268	laundry worker	o
+270	wardsperson	o
+272	farm hand	o
+276	clinical nurse consultant	o
+277	registered nurse	o
+278	purchasing officer	o
+279	cook	o
+281	house keeper	o
+283	clerk	o
+284	pe teacher	o
+286	delivery driver	o
+287	manager	o
+288	account manager	o
+289	sales assistant	o
+292	child care worker	o
+295	rheumatology clinical nurse specialist	o
+296	general assistant	o
+297	lifeguard	o
+298	doorman	o
+299	clerical support staff	o
+300	community worker	o
+301	storeman	o
+303	sales and service co-ordinator	o
+307	nurse - psychiatry	o
+308	sheet metal worker	o
+310	sandblaster	o
+312	assistant director	o
+313	boiler maker	o
+314	hospital assistant	o
+315	forklift driver- booking officer	o
+316	installer	o
+317	customer contact officer (fines)	o
+319	fitter	o
+320	engineer - mechanical	o
+321	teacher - trades	o
+322	territory manager	o
+323	exercise therapist	o
+324	truck driver/operator	o
+325	welder	o
+326	mine deputy	o
+327	sales manager	o
+328	arial and satellite installation	o
+329	traffic facilitator	o
+330	chartered accountant	o
+331	insurance operator	o
+332	customer service officer	o
+333	apprentice carpenter	o
+334	fireman	o
+335	student	o
+336	support learning officer	o
+338	legal support officer	o
+340	hospitality	o
+341	sound technician	o
+342	free lance stylist	o
+343	pastry cook	o
+344	mail courier	o
+345	motor mechanic	o
+346	joiner	o
+347	packing team leader	o
+348	occupation?	o
+349	surveyor	o
+350	carpenter site supervisor	o
+351	carpenter site supervisor	o
+352	bricklayer	o
+353	trainee train driver	o
+354		o
+355	storeperson	o
+356	meter reader	o
+357	pharmaceutical representative	o
+358	concretor	o
+359	teacher primary school	o
+360	teacher primary school	o
+361	boilermaker	o
+362	neuropsychologist	o
+363	teacher high school special ed	o
+245	resident medical officer	g
+290	registrar - neurosurgery	g
+309	surgical registrar	g
+285	urology registrar	g
+294	registrar	g
+304	haematology registrar	g
+230	paediatrician	s
+306	anaesthetist	s
+223	counselling psychologist	o
+263	bereavement counsellor - adult	o
+239	rehabilitation paediatrician	s
+269	addiction medicine specialist	s
+318	medical registrar	g
+262	forensic psychologist	o
+224	respiratory & sleep physician	s
+226	cardiothoracic surgeon	s
+227	exercise physiologist	s
+232	orthpaedic surgeon - upper limb	s
+240	paediatric surgeon	s
+249	oral & maxillofacial surgeon	s
+256	plastic, reconstructive & hand surgeon	s
+260	locum cardiologist	s
+266	epidemiologist	s
+274	psychogeriatrician	s
+246	staff specialist diabetic clinic	s
+247	speech pathologist	o
+364	teacher high school special ed	o
+366	business owner	o
+367	asphalter	o
+368	head teacher	o
+369	pharmacy assistant	o
+111	paediatric neurologist	s
+114	colorectal and general surgeon	s
+115	emergency physician	s
+117	vascular & endovascular surgeon	s
+121	plastic surgeon	s
+122	ophthalmic surgeon	s
+124	cosmetic plastic surgeon	s
+125	shoulder physician	s
+129	neurologist - adult	s
+130	nephrologist	s
+131	orthopaedic surgeon - upper limb	s
+133	general and abdominal surgeon	s
+134	vascular surgeon	s
+136	urologist	s
+139	physician & allergist	s
+140	orthopaedic surgeon - hand	s
+142	physician - general	s
+143	neurosurgeon	s
+144	cardiologist - electrophysiologist	s
+145	surgeon - breast	s
+147	physician - infectious disease	s
+148	general & laparoscopic surgeon	s
+149	spinal & orthopaedic surgeon	s
+150	physician - renal	s
+160	orthopaedic surgeon - general	s
+162	physician - breast	s
+164	orthopaedic surgeon -  paediatric	s
+167	neonatologist	s
+168	surgeon	s
+177	occupational physician	s
+179	surgeon - thoracic	s
+201	ent surgeon - paediatric	s
+206	sports physician	s
+218	orthopaedic surgeon - hip & knee	s
+170	paediatric urologist	s
+112	radiation oncologist	s
+175	oral surgeon	s
+161	physician - musculoskeletal	s
+261	gastroenterologist and hepatologist - paediatric	s
+271	hepatopancreatobilliary & upper gi surgeon	s
+280	rehabilitation medicine physician	s
+302	neck and general surgeon	s
+337	ent - head & neck surgeon	s
+339	paediatric oncologist	s
+259	medical oncologist	s
+264	pain physician	s
+365	allergist & immunologist	s
+370	rheumatology registrar	g
+371	cardiology registrar	g
+372	child psychiatrist	s
+373	child psychiatry registrar	g
+374	general practice registrar	g
+375	intern	g
+376	court registrar	o
+377	urogynaecologist	s
+378	forensic psychiatrist	s
+379	sexual health physician	s
+380	public health physician	s
+381	ivf specialist	s
+382	clinical geneticist	s
+383	paediatric cardiologist	s
+384	paediatric emergency physician	s
+385	paediatric endocrinologist	s
+386	paediatric haematologist	s
+387	paediatric infectious diseases physician	s
+388	paediatric oncologist	s
+389	paediatric nephrologist	s
+390	paediatric nuclear medicine physician	s
+391	paediatric palliative care physician	s
+392	paediatric respiratory physician	s
+393	paediatric rheumatologist	s
+394	forensic pathologist	s
+395	pathologist	s
+396	chemical pathologist	s
+397	anatomical pathologist	s
+398	microbiologist	s
+399	clinical pharmacologist	s
+400	pathology registrar	g
+401	obstetric registrar	g
+402	gynaecology registrar	g
+403	paediatric registrar	g
+404	psychogeriatric registrar	g
+405	geriatric registrar	g
+406	addiction medicine registrar	g
+407	paliative care registrar	g
+408	palliative care physician	s
+409	anaesthesic registrar	g
+410	dermatology registrar	g
+411	emergency registrar	g
+412	icu registrar	g
+413	medical administrator	s
+414	occupational medicine registrar	g
+415	ophthalmology registrar	g
+416	pain medicine registrar	g
+417	clinical genetics registrar	g
+418	clinical pharmacology registrar	g
+419	endocrinology registrar	g
+420	gastroenterology registrar	g
+421	renal registrar	g
+422	immunology registrar	g
+423	infectious diseases registrar	g
+424	neurology registrar	g
+425	nuclear medicine registrar	g
+426	respiratory registrar	g
+427	public health registrar	g
+428	medical administration registrar	g
+429	radiology registrar	g
+430	rehabilitation registrar	g
+431	sexual health registrar	g
+432	sports medicine registrar	g
+433	cardio-thoracic registrar	g
+434	maxillo-facial registrar	g
+435	paediatric surgical registrar	g
+436	plastics registrar	g
+437	vascular registrar	g
 \.
 
 
@@ -71626,6 +71751,7 @@ COPY lu_misspelt_towns (pk, fk_town, town, town_misspelt) FROM stdin;
 342	1734	DORRIGO	Deerville
 343	1830	YAMBA	Yamba
 344	1734	DORRIGO	Dorrio
+345	1504	MOUNT GEORGE	Mt George
 \.
 
 
@@ -89864,7 +89990,7 @@ SET search_path = db, pg_catalog;
 --
 
 COPY lu_version (pk, lu_major, lu_minor) FROM stdin;
-197	0	211
+203	0	219
 \.
 
 

@@ -225,7 +225,6 @@ GRANT ALL ON TABLE defaults.script_coordinates TO staff;
 GRANT ALL ON TABLE defaults.temp TO staff;
 GRANT ALL ON TABLE defaults.vwprinterstasks TO staff;
 GRANT select, insert ON TABLE blobs.blobs TO staff;
-GRANT select, insert ON TABLE clin_allergies.lu_reaction TO staff;
 GRANT select, insert ON TABLE clin_careplans.lu_advice TO staff;
 GRANT select, insert ON TABLE clin_careplans.lu_aims TO staff;
 GRANT select, insert ON TABLE clin_careplans.lu_components TO staff;
@@ -284,7 +283,6 @@ GRANT select ON TABLE admin.lu_staff_type TO staff;
 GRANT select ON TABLE admin.vwclinicrooms TO staff;
 
 
-GRANT select ON TABLE clin_allergies.lu_type TO staff;
 GRANT select ON TABLE clin_certificates.lu_illness_temporality TO staff;
 GRANT select ON TABLE clin_certificates.vwmedicalcertificates TO staff;
 GRANT select ON TABLE clin_checkups.lu_nutrition_questions TO staff;
@@ -404,14 +402,15 @@ grant usage on schema research to staff;
  GRANT USAGE ON SEQUENCE admin.staff_pk_seq TO staff;
 
 
+ALTER TABLE clin_allergies.lu_reaction_type OWNER TO easygp;
+GRANT ALL ON TABLE clin_allergies.lu_reaction_type TO easygp;
+GRANT ALL ON TABLE clin_allergies.lu_reaction_type TO staff;
 
 GRANT USAGE ON SEQUENCE blobs.blobs_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE clerical.data_families_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE clerical.data_family_members_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE clerical.data_patients_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE clin_allergies.allergies_pk_seq TO staff;
- GRANT USAGE ON SEQUENCE clin_allergies.lu_reaction_pk_seq TO staff;
- GRANT USAGE ON SEQUENCE clin_allergies.lu_type_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE clin_careplans.careplan_pages_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE clin_careplans.careplans_pk_seq TO staff;
  GRANT USAGE ON SEQUENCE clin_careplans.component_task_due_pk_seq TO staff;

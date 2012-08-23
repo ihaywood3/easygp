@@ -55,6 +55,11 @@ vwemployees.provider_number, vwemployees.prescriber_number
            FROM contacts.vwemployees
           WHERE vwemployees.employee_deleted = false AND vwemployees.person_deleted = false AND vwemployees.deceased = false AND vwemployees.retired = false AND (vwemployees.organisation_address_deleted = false OR vwemployees.organisation_address_deleted IS NULL) AND vwemployees.fk_status <> 2;
 
+ALTER TABLE contacts.vwpersonsemployeesbyoccupation OWNER TO easygp;
+GRANT ALL ON TABLE contacts.vwpersonsemployeesbyoccupation TO easygp;
+GRANT ALL ON TABLE contacts.vwpersonsemployeesbyoccupation TO staff;
+
+
 create view contacts.vworganisationsemployees as
          select organisations.pk || '-' || branches.pk || '-' || employees.pk AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, employees.memo, branches.fk_category, NULL::character varying AS category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, employees.pk AS fk_employee, 
                 CASE
@@ -86,9 +91,9 @@ UNION
    LEFT JOIN contacts.lu_towns towns ON addresses.fk_town = towns.pk
    LEFT JOIN admin.clinics ON branches.pk = clinics.fk_branch;
 
-ALTER TABLE contacts.vwpersonsemployeesbyoccupation OWNER TO easygp;
-GRANT ALL ON TABLE contacts.vwpersonsemployeesbyoccupation TO easygp;
-GRANT ALL ON TABLE contacts.vwpersonsemployeesbyoccupation TO staff;
+ALTER TABLE contacts.vworganisationsemployees OWNER TO easygp;
+GRANT ALL ON TABLE contacts.vworganisationsemployees TO easygp;
+GRANT ALL ON TABLE contacts.vworganisationsemployees TO staff;
 
 
 

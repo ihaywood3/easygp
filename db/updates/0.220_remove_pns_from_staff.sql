@@ -27,8 +27,9 @@ SELECT (staff.pk || '-'::text) || data_addresses.pk AS pk_view, (data_persons.fi
 
 
 drop view admin.vwstaff cascade;
---alter table admin.staff drop column provider_number;
---alter table admin.staff drop column prescriber_number;
+
+alter table admin.staff drop column provider_number;
+alter table admin.staff drop column prescriber_number;
 
 
 create view admin.vwstaff as 
@@ -292,7 +293,6 @@ SET search_path = clin_requests, pg_catalog;
 -- Name: vwrequestsordered; Type: ACL; Schema: clin_requests; Owner: ian
 --
 
-REVOKE ALL ON TABLE vwrequestsordered FROM PUBLIC;
 GRANT SELECT ON TABLE vwrequestsordered TO staff;
 
 
@@ -302,9 +302,6 @@ SET search_path = documents, pg_catalog;
 -- Name: vwhl7filesimported; Type: ACL; Schema: documents; Owner: ian
 --
 
-REVOKE ALL ON TABLE vwhl7filesimported FROM PUBLIC;
-REVOKE ALL ON TABLE vwhl7filesimported FROM easygp;
-GRANT ALL ON TABLE vwhl7filesimported TO easygp;
 GRANT SELECT ON TABLE vwhl7filesimported TO staff;
 
 
@@ -314,10 +311,7 @@ SET search_path = research, pg_catalog;
 -- Name: vwmostrecenteyerelateddocuments; Type: ACL; Schema: research; Owner: ian
 --
 
-REVOKE ALL ON TABLE vwmostrecenteyerelateddocuments FROM PUBLIC;
-REVOKE ALL ON TABLE vwmostrecenteyerelateddocuments FROM easygp;
-GRANT ALL ON TABLE vwmostrecenteyerelateddocuments TO easygp;
-GRANT ALL ON TABLE vwmostrecenteyerelateddocuments TO staff;
+GRANT select ON TABLE vwmostrecenteyerelateddocuments TO staff;
 
 
 --

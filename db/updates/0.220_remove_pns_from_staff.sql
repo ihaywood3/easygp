@@ -234,7 +234,7 @@ CREATE VIEW vwstafftoolbarbuttons AS
     SELECT lu_clinical_modules.pk AS pk_module, staff_clinical_toolbar.pk AS fk_staff_clinical_toolbar, staff_clinical_toolbar.display_order, lu_clinical_modules.name, lu_clinical_modules.icon_path, staff_clinical_toolbar.fk_staff, staff_clinical_toolbar.deleted FROM staff_clinical_toolbar, vwstaff, lu_clinical_modules WHERE ((staff_clinical_toolbar.fk_staff = vwstaff.fk_staff) AND (staff_clinical_toolbar.fk_module = lu_clinical_modules.pk)) ORDER BY staff_clinical_toolbar.fk_staff, staff_clinical_toolbar.display_order;
 
 
-ALTER TABLE admin.vwstafftoolbarbuttons OWNER TO ian;
+ALTER TABLE admin.vwstafftoolbarbuttons OWNER TO easygp;
 
 SET search_path = clin_requests, pg_catalog;
 
@@ -246,7 +246,7 @@ CREATE VIEW vwrequestsordered AS
     SELECT ((forms.pk || '-'::text) || forms_requests.pk) AS pk_view, forms.fk_lu_request_type, lu_request_type.type, forms.fk_consult, consult.consult_date, consult.fk_patient, data_persons.firstname, data_persons.surname, data_persons.birthdate, data_persons.fk_sex, forms_requests.fk_form, forms.requests_summary, forms_requests.pk AS fk_forms_requests, lu_requests.item, forms.date, forms_requests.request_result_html, forms.fk_progressnote, forms_requests.fk_lu_request, forms_requests.deleted AS request_deleted, lu_requests.fk_laterality, lu_requests.fk_decision_support, lu_requests.fk_instruction, forms.fk_request_provider AS fk_branch, forms.notes_summary, forms.medications_summary, forms.copyto, forms.deleted, forms.copyto_patient, forms.urgent, forms.bulk_bill, forms.fasting, forms.phone, forms.fax, forms.include_medications, forms.pk_image AS fk_image, forms.fk_pasthistory, past_history.description, lu_title.title AS staff_title, staff.pk AS fk_staff, data_persons1.firstname AS staff_firstname, data_persons1.surname AS staff_surname, data_branches.branch, data_branches.fk_organisation, data_organisations.organisation, vwdocuments.html FROM (((((((((((((forms JOIN forms_requests ON ((forms.pk = forms_requests.fk_form))) JOIN lu_requests ON ((forms_requests.fk_lu_request = lu_requests.pk))) JOIN lu_request_type ON ((lu_requests.fk_lu_request_type = lu_request_type.pk))) JOIN clin_consult.consult ON ((forms.fk_consult = consult.pk))) JOIN clerical.data_patients ON ((consult.fk_patient = data_patients.pk))) JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) JOIN admin.staff ON ((consult.fk_staff = staff.pk))) JOIN contacts.data_persons data_persons1 ON ((staff.fk_person = data_persons1.pk))) LEFT JOIN contacts.data_branches ON ((forms.fk_request_provider = data_branches.pk))) LEFT JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) LEFT JOIN clin_history.past_history ON ((forms.fk_pasthistory = past_history.pk))) LEFT JOIN documents.vwdocuments ON ((forms_requests.pk = vwdocuments.fk_request))) WHERE ((forms.deleted = false) AND (forms_requests.deleted = false)) ORDER BY consult.fk_patient, forms.date DESC, forms_requests.fk_form, lu_requests.item;
 
 
-ALTER TABLE clin_requests.vwrequestsordered OWNER TO ian;
+ALTER TABLE clin_requests.vwrequestsordered OWNER TO easygp;
 
 SET search_path = documents, pg_catalog;
 
@@ -258,7 +258,7 @@ CREATE VIEW vwhl7filesimported AS
     SELECT DISTINCT vwdocuments.source_file FROM vwdocuments WHERE (vwdocuments.md5sum IS NULL) ORDER BY vwdocuments.source_file;
 
 
-ALTER TABLE documents.vwhl7filesimported OWNER TO ian;
+ALTER TABLE documents.vwhl7filesimported OWNER TO easygp;
 
 SET search_path = research, pg_catalog;
 
@@ -270,7 +270,7 @@ CREATE VIEW vwmostrecenteyerelateddocuments AS
     SELECT DISTINCT ON (vwdocuments.fk_patient) vwdocuments.fk_patient AS pk_view, vwdocuments.fk_patient, vwdocuments.pk_document AS fk_document, vwdocuments.date_created, vwdocuments.deleted FROM documents.vwdocuments WHERE ((((((vwdocuments.organisation_category)::text ~~* '%ophthal%'::text) OR ((vwdocuments.organisation_category)::text ~~* '%optom%'::text)) OR (vwdocuments.person_occupation ~~* '%ophthal%'::text)) OR (vwdocuments.person_occupation ~~* '%optom%'::text)) AND (vwdocuments.deleted = false)) ORDER BY vwdocuments.fk_patient, vwdocuments.date_created DESC;
 
 
-ALTER TABLE research.vwmostrecenteyerelateddocuments OWNER TO ian;
+ALTER TABLE research.vwmostrecenteyerelateddocuments OWNER TO easygp;
 
 --
 -- Name: VIEW vwmostrecenteyerelateddocuments; Type: COMMENT; Schema: research; Owner: ian
@@ -293,8 +293,6 @@ SET search_path = clin_requests, pg_catalog;
 --
 
 REVOKE ALL ON TABLE vwrequestsordered FROM PUBLIC;
-REVOKE ALL ON TABLE vwrequestsordered FROM ian;
-GRANT ALL ON TABLE vwrequestsordered TO ian;
 GRANT SELECT ON TABLE vwrequestsordered TO staff;
 
 
@@ -305,8 +303,8 @@ SET search_path = documents, pg_catalog;
 --
 
 REVOKE ALL ON TABLE vwhl7filesimported FROM PUBLIC;
-REVOKE ALL ON TABLE vwhl7filesimported FROM ian;
-GRANT ALL ON TABLE vwhl7filesimported TO ian;
+REVOKE ALL ON TABLE vwhl7filesimported FROM easygp;
+GRANT ALL ON TABLE vwhl7filesimported TO easygp;
 GRANT SELECT ON TABLE vwhl7filesimported TO staff;
 
 
@@ -317,8 +315,8 @@ SET search_path = research, pg_catalog;
 --
 
 REVOKE ALL ON TABLE vwmostrecenteyerelateddocuments FROM PUBLIC;
-REVOKE ALL ON TABLE vwmostrecenteyerelateddocuments FROM ian;
-GRANT ALL ON TABLE vwmostrecenteyerelateddocuments TO ian;
+REVOKE ALL ON TABLE vwmostrecenteyerelateddocuments FROM easygp;
+GRANT ALL ON TABLE vwmostrecenteyerelateddocuments TO easygp;
 GRANT ALL ON TABLE vwmostrecenteyerelateddocuments TO staff;
 
 

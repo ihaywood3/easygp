@@ -139,7 +139,7 @@ GRANT ALL ON TABLE "admin".global_preferences_pk_seq TO staff;
 
 ALTER TABLE "admin".lu_clinical_modules OWNER TO easygp;
 GRANT ALL ON TABLE "admin".lu_clinical_modules TO easygp;
-GRANT ALL ON TABLE "admin".lu_clinical_modules TO easygp;
+GRANT ALL ON TABLE "admin".lu_clinical_modules TO staff;
 
 GRANT ALL ON TABLE clin_procedures.link_images_procedures TO staff;
 GRANT ALL ON TABLE clin_procedures.lu_last_surgical_pack TO staff;

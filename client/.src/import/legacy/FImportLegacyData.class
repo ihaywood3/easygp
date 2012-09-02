@@ -1105,6 +1105,14 @@ Public Sub Medibase_Import()
    
 End
 
+Public Function Get_Possible_Request_Tags() As Collection
+   '------------------------
+   'Gets likely request tags
+   '------------------------   
+    Return modDBConnect.exec_query_collection("Select * from import_export.lu_misspelt_user_request_tags")
+   
+End
+
 Public Sub Medibase_Import_Documents()
    
    Dim sFile As String
@@ -1137,9 +1145,14 @@ Public Sub Medibase_Import_Documents()
    Dim pdf_filename_original As String 'the original name exported we will clean up later
    Dim pdf_filename_modified As String 'the orginal name minus the crud
    Dim fk_lu_display_as As Integer
-   
+   Dim msh_sending_entity As String
+   Dim request_tags As Collection = Get_Possible_Request_Tags()
+   Dim request_tag As Collection
+
   ' sRootdir = "/home/richard/horst/test"
    '   fk_patient = modImportDBI.Patient_Get_pk_Using_pk_Legacy("YOUNDEBBA")
+   lblImport.text = "Importing Documents"
+   lblProgress.text = ""
    rejected_records = New Collection
    sRootdir = Trim(txtImportDirectory.text) &/ "MEDIBASE_EXPORT/"
    If IsDir(sRootdir) Then                             'eg "/home/user/MEDIBASE_EXPORT/"
@@ -1168,9 +1181,29 @@ Public Sub Medibase_Import_Documents()
                        'Insert the document
                        'the fk_sending_entity = the practice importing the data, ie wherever this program is being run
                        'const.Document_Display_As_Letter not of relevance
-                       '------------------------------------------------------------------------------------------------
+                       '---------------------------------------- --------------------------------------------------------
                         Document = New CRow
-                        Document!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(const.Document_Display_As_Letter, "", modDBConnect.currentUser!fk_branch)
+                        '------------------------------------------------------------
+                        'Can sometimes work out if a request result or a letter
+                        'HORST/IAN FIXME: replace this long line with a better logic
+                        'e.g symbion s & n, 'Holter' etc
+                        'Default to assuming it is a letter
+                        '------------------------------------------------------------
+                        Document!tag_user = MetaData!description
+                        fk_lu_display_as = const.Document_Display_As_Letter 
+                        Document!tag = "Sender Unknown - scanned letter"
+                        
+                        If Not InStr(Document!tag_user, "Dr ") Then   
+                           For Each request_tag In request_tags                           'loaded from import_export.lu_misspelt_user_request_tags
+                              If InStr(Lower(MetaData!description), Lower(request_tag!tag)) Then
+                                  fk_lu_display_as = const.Document_Display_As_Result
+                                  Document!tag = "Sender Unknown - scanned result"
+                                  Break
+                              End If   
+                             Next
+                        End If   
+                        msh_sending_entity = modDBConnect.currentUser!organisation & "." & modDBConnect.currentUser!branch
+                        Document!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(fk_lu_display_as, msh_sending_entity, modDBConnect.currentUser!fk_branch)
                         If Not File.Ext(pdf_filename_modified) = ".pdf" Then
                            Message.Info(pdf_filename_modified, " is not ok")
                         Endif
@@ -1182,36 +1215,19 @@ Public Sub Medibase_Import_Documents()
                         Document!fk_staff_filed_document = modDBConnect.currentUser!fk_staff
                         Document!fk_staff_destination = modDBConnect.currentUser!fk_staff
                         Document!concluded = True
-                        Document!fk_lu_urgency = const.UrgencyLevelRoutine
-                        Document!tag = "Sender Unknown - scanned letter"
-                        Document!tag_user = MetaData!description
-                        '------------------------------------------------------
-                        'Can sometimes work out if a request result or a letter
-                        'HORST/IAN FIXME: replace this long line with a better logic
-                        'symbion
-                        '   s & n
-                         'pulmonary function test
-                        '------------------------------------------------------
-                        fk_lu_display_as = const.Document_Display_As_Letter  
-                        If InStr(Lower(metadata!description), "pathology") Or InStr(Lower(metadata!description), "path") Or InStr(Lower(metadata!description), "radiology") Or InStr(Lower(metadata!description), "s&n") Or InStr(Lower(metadata!description), "symbion") Or InStr(Lower(metadata!description), "pulmonary function test") Then
-                           fk_lu_display_as = const.Document_Display_As_Result
-                        Endif
                         Document!fk_lu_display_as = fk_lu_display_as
+                        Document!fk_lu_urgency = const.UrgencyLevelRoutine
                         Document!md5sum = modUtil.Calc_md5sum_File(sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original)
                         Try Copy sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original To modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ pdf_filename_modified 'copy to our documents dir.
                         If Not Error Then
                            Document.Save("documents.documents", "fk_document")
-                      '      Message.Info("file copied ok")
                         '   Try Kill sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original
                          '  If Error Then
                          '     Message.info("problem killing the original file")
                         '   Endif
                         Else
-                       '    Print "copy " & sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original & " To " & modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ pdf_filename_modified 'copy to our documents dir.
                            rejected_records.Add(sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original, rejected_records.count)
-                 
                         Endif
-                        
                      Endif
                      Inc x 
                   Next
@@ -1219,7 +1235,8 @@ Public Sub Medibase_Import_Documents()
             Next
          Endif
          Inc iPatientCount
-         Print iPatientCount, "fk-patient:", fk_patient
+         lblProgress.text = "total patients processed:" & Str(iPatientCount)
+         Wait 
          Next
    End If
    modDBConnect.CommitTrans 
@@ -1270,6 +1287,8 @@ Public Sub Medibase_Import_Progress_Notes()
    Dim RightString As String
    Dim iPatientCount As Integer  
    
+   lblImport.text = "Importing progress notes"
+   lblProgress.text = ""
    rejected_records = New Collection
    sRootdir = Trim(txtImportDirectory.text) &/ "MEDIBASE_EXPORT/"
    If IsDir(sRootdir) Then                             'eg "/home/user/MEDIBASE_EXPORT/"
@@ -1363,9 +1382,11 @@ Public Sub Medibase_Import_Progress_Notes()
          Endif
          Inc iPatientCount
          Print iPatientCount
+         lblProgress.text = "Total patients with imported notes:" & Str(iPatientCount)
+         Wait
       Next
    End If
-   Message.Info("Commit Progress Notes?")
+  ' Message.Info("Commit Progress Notes?")
    modDBConnect.CommitTrans() 
    If rejected_records.count Then   
       hFile = Open sRootdir &/ "progress_notes_rejected.txt" For Write Create
@@ -1518,7 +1539,7 @@ Public Sub Medibase_Import_Patients()
    Dim sMsg As String
    Dim bOddOccupation As Boolean
    Dim OddRecords As New Collection 
-   Dim Notpersons As New Collection 
+   Dim Notpersons As New Collection
    Dim rejected_records As New Collection
    Dim hFile As File
    Dim brejected As Boolean
@@ -1536,6 +1557,8 @@ Public Sub Medibase_Import_Patients()
    Dim sRootdir As String
    Dim json_lines As Collection
    
+   lblImport.text = "Importing patient"
+   lblProgress.text = ""
    json_lines = New Collection
    patients = New Collection
    sRootdir = Trim(txtImportDirectory.text)
@@ -1599,22 +1622,23 @@ Public Sub Medibase_Import_Patients()
                patient!fk_lu_active_status = const.PatientStatus_Inactive
             Case Else
                Message.Info("was active status i don't know")
-            
          End Select
          patient!veteran_number = oldpatient!patient!veteran_number                'ok
          patient!fk_lu_veteran_card_type = oldpatient!patient!veteran_card_type    'ok
          patient!fk_legacy = oldpatient!patient!pk_legacy                          'ok
+         lblProgress.text = person!firstname & " " & person!surname
+         Wait
          patient.Save("clerical.data_patients", "fk_patient")
       Else
          rejected_records.Add(json_lines[x], rejected_records.count)
       Endif
       Inc x
    Next
-   If Message.Question("Would you like to commit the transaction to the database?", "Yes", "No") = 1 Then 
+   ' If Message.Question("Would you like to commit the transaction to the database?", "Yes", "No") = 1 Then 
       modDBConnect.CommitTrans
-   Else
-      Print #hLog_file, "Patient Import was cancelled by the user."
-   End If   
+   ' Else
+   '    Print #hLog_file, "Patient Import was cancelled by the user."
+   ' End If   
    
    hFile = Open sRootdir &/ "medibase_patients_rejected.txt" For Write Create 
    For x = 0 To rejected_records.count - 1
@@ -1875,7 +1899,10 @@ Public Sub Medibase_Import_Staff()
    Dim sOneline As String
    Dim sRootdir As String
    Dim json_lines As Collection 
+   Dim data_numbers As CRow
    
+   lblImport.text = "Importing Staff"
+   lblProgress.text = ""
    '---------------------------------------------
    'Open the staff file, create a json collection
    '---------------------------------------------
@@ -1913,17 +1940,10 @@ Public Sub Medibase_Import_Staff()
          Newstaff!fk_status = staffmember!fk_status
          If modDBConnect.Role_Check_If_Exists(staffmember!logon_name) Then 
             Inc logon_suffix
-            ' Message.title = "Database User Name"
-            ' smsg = "Each user of EasyGP must have a unique logon name.\n\n"
-            ' smsg &= "Your choice: " & staffmember!logon_name & "is already in use in your system.\n\n"
-            ' smsg &= "This logon will now become: " & staffmember!logon_name & Str(logon_suffix)
-            ' Message.Info(sMsg, "Ok")        
             Newstaff!logon_name = staffmember!logon_name & Str(logon_suffix)
          Else
             Newstaff!logon_name = staffmember!logon_name 
          End If 
-         Newstaff!provider_number = staffmember!provider_number
-         Newstaff!prescriber_number = staffmember!prescriber_number
          Newstaff!logon_date_From = Now()
          Newstaff!logon_date_to = DateAdd(Now(), gb.Year, 2)
          Newstaff!qualifications = staffmember!qualifications
@@ -1947,7 +1967,6 @@ Public Sub Medibase_Import_Staff()
          End Select   
          If Not (modContactsDBI.Staff_Create_Postgres_User(Null, 0, newstaff)) Then
             rejected_records.Add(json_lines[x], rejected_records.count)
-           
          Else
             person.Save("contacts.data_persons", "fk_person")
             For Each communication In communications
@@ -1966,26 +1985,28 @@ Public Sub Medibase_Import_Staff()
          employee!fk_status = staffmember!fk_status
          If person.Exist("fk_occupation") Then
             employee!fk_occupation = person!fk_occupation
-         Else
-           ' Message.Info("no occupation")
          End If
          employee!fk_person = person!fk_person
          employee.Save("contacts.data_employees", "fk_employee")
          link_staff_clinic = New CRow 
          link_staff_clinic!fk_staff = Newstaff!fk_staff
          link_staff_clinic!fk_clinic = modDBConnect.currentUser!fk_clinic
-         link_staff_clinic.Save("admin.link_staff_clinics", "fk_link_staff_clinics")        
+         link_staff_clinic.Save("admin.link_staff_clinics", "fk_link_staff_clinics") 
+         If Not IsNull(staffmember!provider_number) Then 
+            modContactsDBI.Set_Numbers(person!fk_person, modDBConnect.currentUser!fk_branch, staffmember!provider_number, staffmember!presciber_number)
+         End If  
+         lblProgress.text = "Adding " & person!firstname & " " & person!surname 
+         Wait
       Else
          rejected_records.Add(json_lines[x], rejected_records.count)
       End If   
       Inc x
-      
    Next
-   If Message.Question("Would you like to commit the transaction to the database?", "Yes", "No") = 1 Then 
-      modDBConnect.CommitTrans
-   Else
-      Print #hLog_file, "Staff Import was cancelled by the user."
-   End If   
+   ' If Message.Question("Would you like to commit the transaction to the database?", "Yes", "No") = 1 Then 
+       modDBConnect.CommitTrans
+   ' Else
+   '    Print #hLog_file, "Staff Import was cancelled by the user."
+   ' End If   
    If rejected_records.count Then
       Print #hLog_file, "There were " & Str(rejected_records.count) & " records rejected details in the file " & sRootdir &/ "medibase_staff_rejected/txt"
    End If

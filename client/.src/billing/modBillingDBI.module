@@ -14,7 +14,7 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'----------------------------------------------------------------------
+'--------------------- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ' Billing Stuff
 '-------------------------------------------------------------------------------
 
@@ -23,6 +23,34 @@
 ' OR a umber: gets by Medicare item number
 ' OR letters and numbers together: searches by AMA item number
 ' use_vwfees: true if uses vwfees view (recommended for most uses below)
+' 
+
+Public Function Responsible_Payer_Get(fk_patient As Integer) As Collection
+  'fixme this is temporary, only works if the patient has another patient as responsible person
+  'just doing this for development stuff
+   Dim R As Result
+   
+   R = modDBConnect.exec_query("Select * from clerical.data_patients where pk = " & fk_patient)
+   If r.count Then
+      If r!fk_payer Then
+         Return modContactsDBI.Patient_Get_Using_PK(r!fk_payer)
+      End If   
+   End If   
+    
+   
+   
+End
+
+Public Function Consultations_UnBilled_Get() As Collection
+   'returns a collection of all unbilled consultations
+   
+   Dim sql As String
+   
+   sql = "Select * from clerical.vwAppointments where invoiced = false and did_not_attend = false and fk_patient is not null"
+   Return modDBConnect.exec_query_collection(sql)
+   
+End
+
 ' 
 Public Function Veteran_Card_Types_Get() As Collection
    
@@ -48,6 +76,11 @@ Public Function Billing_Types_Get() As Collection
    
 End
 
+Public Function Payment_Methods_Get() As Collection
+   
+  Return modDBConnect.exec_query_collection("Select * from clerical.lu_payment_method") 
+   
+End
 
 Public Function Descriptors_Get(descriptor As String, Optional include_ama As Boolean = True, use_vwfees As Boolean = True, Optional limit As Integer = 500) As Collection
    
@@ -65,21 +98,21 @@ Public Function Descriptors_Get(descriptor As String, Optional include_ama As Bo
    sql = "Select * from " & sql & " where "
    r = New Regexp(descriptor, "^[0-9]+$")
    If r.Offset <> -1 Then 
-     sql &= "mbs_item = '" & descriptor & "'"
+      sql &= "mbs_item = '" & descriptor & "'"
    Else 
       r = New Regexp(descriptor, "^[a-z]+[0-9]+$", Regexp.Caseless)
       If r.Offset <> -1 And include_ama Then
-        sql &= "ama_item = '" & descriptor & "'"
+         sql &= "ama_item = '" & descriptor & "'"
       Else
-        searchcomponents = Split(descriptor, ",")
-        For i = 0 To searchcomponents.Max
-          searchcomponents[i] = "descriptor ILIKE $$%" & Trim$(searchcomponents[i]) & "%$$"
-        Next
-        sql &= searchcomponents.Join(" AND ")
+         searchcomponents = Split(descriptor, ",")
+         For i = 0 To searchcomponents.Max
+            searchcomponents[i] = "descriptor ILIKE $$%" & Trim$(searchcomponents[i]) & "%$$"
+         Next
+         sql &= searchcomponents.Join(" AND ")
       End If
    End If
    If Not include_ama Then
-     sql &= " and not mbs_item is null"
+      sql &= " and not mbs_item is null"
    End If
    sql &= " order by cast(mbs_item as int), descriptor   LIMIT " & limit
    Return modDBConnect.exec_query_collection(sql)
@@ -100,25 +133,26 @@ End
 ' returns a list of all fee types
 Public Function Fee_Types_Get() As Collection
    
-  Return modDBConnect.exec_query_collection("Select * from clerical.lu_billing_type") 
+   Return modDBConnect.exec_query_collection("Select * from clerical.lu_billing_type") 
    
 End
 
-
 ' returns schedule entries searching by brief descriptor 
 Public Function Descriptors_Brief_Get(searchtext As String, Optional limit As Integer = 100) As Collection 
+
    Dim sql As String
    
    sql = "Select * from clerical.schedule where descriptor_brief ILIKE $$%" & searchtext
    sql &= "%$$ order by cast(mbs_item as int), descriptor LIMIT " & limit
    Return modDBConnect.exec_query_collection(sql)
-
+   
 End
 
 Public Function Items_Get(item As String, Optional fk_lu_billing_type As Integer = -1) As Collection
    '---------------------------------------------
    'Gets list of item numbers and associated fees
    '---------------------------------------------
+
    Dim sql As String
    
    sql = "select * From clerical.vwFees WHERE (mbs_item = $$" & item & "$$ or ama_item = $$" & item & "$$)"
@@ -141,23 +175,23 @@ End
 ' returns the PK of the new invoice
 
 Public Sub Make_Invoice(pk_patient As Integer, items As Collection[], fk_lu_billing_type As Integer, Optional notes As String, fk_staff As Integer = 0) As Integer
-  Dim invoice As New Collection
-  Dim i As Collection
-  Dim new_item As Collection
-  
-  invoice!fk_lu_billing_type = fk_lu_billing_type
-  invoice!fk_patient = pk_patient
-  If fk_staff = 0 Then
-     fk_staff = modDBConnect.currentUser!fk_staff
-  Endif
-  invoice!fk_doctor_raising = fk_staff
-  invoice!notes = notes
-  invoice!pk = modDBConnect.insert("clerical.invoices", invoice)
-  Save_Items(invoice!pk, items, False)
-  Return invoice!pk
-  
-End
 
+   Dim invoice As New Collection
+   Dim i As Collection
+   Dim new_item As Collection
+   
+   invoice!fk_lu_billing_type = fk_lu_billing_type
+   invoice!fk_patient = pk_patient
+   If fk_staff = 0 Then
+      fk_staff = modDBConnect.currentUser!fk_staff
+   Endif
+   invoice!fk_doctor_raising = fk_staff
+   invoice!notes = notes
+   invoice!pk = modDBConnect.insert("clerical.invoices", invoice)
+   Save_Items(invoice!pk, items, False)
+   Return invoice!pk
+   
+End
 
 ' saves a list of items to an existing invoice
 ' delete_preexisting is a flag to delete any pre-existing items on that invoice
@@ -169,32 +203,32 @@ End
 ' - fk_schedule: link to clerical.schedule
 ' 
 Public Sub Save_Items(fk_invoice As Integer, items As Collection[], Optional delete_preexisting As Boolean = True)
-  Dim i As Collection
-  Dim new_item As Collection
 
-  If delete_preexisting Then modDBConnect.exec_query("delete from clerical.items_billed where fk_invoice = &1", [fk_invoice])
-  For Each i In items
-    new_item = New Collection
-    new_item!fk_invoice = fk_invoice
-    new_item!fk_schedule = i!fk_schedule
-    If i.Exist("patient_charge") Then
-       new_item!patient_charge = i!patient_charge
-    Else
-       new_item!patient_charge = i!price
-       i!patient_charge = i!price
-    Endif
-    i!pk_item = modDBConnect.insert("clerical.items_billed", new_item)
-  Next 
+   Dim i As Collection
+   Dim new_item As Collection
+   
+   If delete_preexisting Then modDBConnect.exec_query("delete from clerical.items_billed where fk_invoice = &1", [fk_invoice])
+   For Each i In items
+      new_item = New Collection
+      new_item!fk_invoice = fk_invoice
+      new_item!fk_schedule = i!fk_schedule
+      If i.Exist("patient_charge") Then
+         new_item!patient_charge = i!patient_charge
+      Else
+         new_item!patient_charge = i!price
+         i!patient_charge = i!price
+      Endif
+      i!pk_item = modDBConnect.insert("clerical.items_billed", new_item)
+   Next 
    
 End
 
 ' returns a Collection of all invoices for this patient, most recent first
 Public Function Invoices_Get(pk_patient As Integer, Optional limit As Integer = 100) As Collection
    
-  Return modDBConnect.exec_query_row("select * from clerical.invoices where fk_patient = &1 order by raised desc limit &2", [pk_patient, limit]) 
+   Return modDBConnect.exec_query_row("select * from clerical.invoices where fk_patient = &1 order by raised desc limit &2", [pk_patient, limit]) 
    
 End
-
 
 ' finds a referral for this patient
 ' returns NULL if they have no referral
@@ -203,131 +237,135 @@ End
 ' and "indefinite" flag true if indefinite referral
 ' 
 Public Function Find_Referrer(fk_patient As Integer) As Collection
+
    Dim sql As String
    
    sql = "with base as (select title, firstname, surname, provider_number, street1, street2, town, state, postcode, date_created, "
-           "comment_on_document ~ 'indefin[ia]te' as indefinite, "
-           "coalesce(substring(comment_on_document from '([0-9]+) month')::integer,12) as months "
-           "from contacts.vwpersonsemployeesbyoccupation vpe, documents.vwdocuments vd"
-           " where vd.fk_sender_person = vpe.fk_person and (vd.fk_sender_branch = vpe.fk_branch or (vpe.fk_branch is null and vd.fk_sender_branch is null)) and "
-           " vd.fk_patient = &1 and incoming_referral) "
-           "select *,date_created+(months*interval '1 month') as expiry from base order by indefinite desc, expiry desc limit 1 "
+   "comment_on_document ~ 'indefin[ia]te' as indefinite, "
+   "coalesce(substring(comment_on_document from '([0-9]+) month')::integer,12) as months "
+   "from contacts.vwpersonsemployeesbyoccupation vpe, documents.vwdocuments vd"
+   " where vd.fk_sender_person = vpe.fk_person and (vd.fk_sender_branch = vpe.fk_branch or (vpe.fk_branch is null and vd.fk_sender_branch is null)) and "
+   " vd.fk_patient = &1 and incoming_referral) "
+   "select *,date_created+(months*interval '1 month') as expiry from base order by indefinite desc, expiry desc limit 1 "
    Return modDBConnect.exec_query_first(sql, [fk_patient]) 
-
+   
 End
 
 ' returns a list of billed items for a given invoice, as Collections
 Public Function Get_Billed_Items(invoice As Crow) As Collection
-  Dim sql As String
+
+   Dim sql As String
    
-  sql = "select coalesce(mbs_item,ama_item) as common_item, "
-        " left(coalesce(descriptor_brief,descriptor),400) as descriptor_display, "
-        " * from clerical.items_billed i, clerical.schedule s where i.fk_schedule = s.pk and i.fk_invoice = &1"
-  Return modDBConnect.exec_query_collection(sql, [invoice!pk, invoice!fk_lu_billing_type])
+   sql = "select coalesce(mbs_item,ama_item) as common_item, "
+   " left(coalesce(descriptor_brief,descriptor),400) as descriptor_display, "
+   " * from clerical.items_billed i, clerical.schedule s where i.fk_schedule = s.pk and i.fk_invoice = &1"
+   Return modDBConnect.exec_query_collection(sql, [invoice!pk, invoice!fk_lu_billing_type])
    
 End
-
-
 
 ' takes a CRow from clerical.invoices, from either from Make_Invoice or Invoices_Get, and prints it
 ' also updates the row on the DB as appropriate
 ' ' cc is the current consult object. If not provided a new one will be loaded using th invoices's fk_patient.
 Public Sub Print_Invoice(invoice As Crow, Optional cc As Cconsult)
-  Dim sql As String
-  Dim items As Collection
-  Dim templ As CTemplate
-  Dim doctor As Collection
-  Dim i As Collection
-  Dim referrer_type As String
-  
-  If IsNull(cc) Then cc = New CConsult(modContactsDBI.Patient_Get_Using_PK(invoice!fk_patient))
-  items = Get_Billed_Items(invoice)
-  sql = "select referrer_type, s.* from common.lu_occupations o, admin.vwstaffinclinics s "
-        "where o.pk = s.fk_occupation and s.fk_staff = &1 limit 1"
-  doctor = modDBConnect.exec_query_first(sql, [invoice!fk_doctor_raising])
-  referrer_type = doctor!referrer_type
-  If invoice!fk_lu_billing_type = const.Billingtype_Concession Then
-    ' cue scary music: patient is being bulk-billed
-     ' FIXME: use HIC PDFs to print vouchers
-  Else
-    If referrer_type = "s" Then
-       ' specialist's account: need to grab referrer's details first
-       templ = New CTemplate("templates/invoice-specialist.tex", "tex")
-       Load_Template_Specialist(templ, invoice)
-    Else
-       templ = New CTemplate("templates/invoice-gp.tex", "tex")
-    Endif
-    Load_Template_GP(templ, doctor, items, cc)
-    templ.Subst("date-raised", invoice!raised)
-    modPrinting.Print_latex(templ.GetData(), const.Paper_Plain, 1)
-  Endif
-  sql = "update clerical.invoices set fk_who_printed=&1, when_printed=now() where pk=&2"
-  modDBConnect.exec_query(sql, [modDBConnect.currentUser!fk_staff, invoice!pk])
-End
 
+   Dim sql As String
+   Dim items As Collection
+   Dim templ As CTemplate
+   Dim doctor As Collection
+   Dim i As Collection
+   Dim referrer_type As String
+   
+   If IsNull(cc) Then cc = New CConsult(modContactsDBI.Patient_Get_Using_PK(invoice!fk_patient))
+   items = Get_Billed_Items(invoice)
+   sql = "select referrer_type, s.* from common.lu_occupations o, admin.vwstaffinclinics s "
+   "where o.pk = s.fk_occupation and s.fk_staff = &1 limit 1"
+   doctor = modDBConnect.exec_query_first(sql, [invoice!fk_doctor_raising])
+   referrer_type = doctor!referrer_type
+   If invoice!fk_lu_billing_type = const.Billingtype_Concession Then
+      ' cue scary music: patient is being bulk-billed
+      ' FIXME: use HIC PDFs to print vouchers
+   Else
+      If referrer_type = "s" Then
+         ' specialist's account: need to grab referrer's details first
+         templ = New CTemplate("templates/invoice-specialist.tex", "tex")
+         Load_Template_Specialist(templ, invoice)
+      Else
+         templ = New CTemplate("templates/invoice-gp.tex", "tex")
+      Endif
+      Load_Template_GP(templ, doctor, items, cc)
+      templ.Subst("date-raised", invoice!raised)
+      modPrinting.Print_latex(templ.GetData(), const.Paper_Plain, 1)
+   Endif
+   sql = "update clerical.invoices set fk_who_printed=&1, when_printed=now() where pk=&2"
+   modDBConnect.exec_query(sql, [modDBConnect.currentUser!fk_staff, invoice!pk])
+
+End
 
 ' loads info about specialist rinvoices (i.e. info about the referral)
 Private Sub Load_Template_Specialist(templ As Ctemplate, invoice As Crow) 
-  Dim referrer As Collection
-     
-  referrer = Find_Referrer(invoice!fk_patient)
-  If IsNull(referrer) Then
-    ' uh-oh, we can't find a referral for this patient
-    templ.Subst("referrer-name", templ.Bold("NONE"))
-    templ.Subst("referrer-street1", templ.Bold("As no referrer there can be NO rebate on this account"))
-    templ.Subst("referrer-street2", "")
-    templ.Subst("referrer-town", "")
-    templ.Subst("referrer-postcode", "")
-    templ.Subst("referrer-provider-number", templ.Bold("NONE"))
-    templ.Subst("referral-duration", "")
-    templ.Subst("referral-date", "")
-  Else
-    templ.Subst("referrer-name", referrer!title & " " & referrer!firstname & " " & referrer!surname)
-    templ.Subst("referrer-street1", referrer!street1)
-    templ.Subst("referrer-street2", referrer!street2)
-    templ.Subst("referrer-town", referrer!town)
-    templ.Subst("referrer-postcode", referrer!postcode)
-    templ.Subst("referrer-provider-number", referrer!provider_number)
-    If referrer!indefinite Then
-      templ.Subst("referral-duration", "indefinite duration")
-    Else
-      templ.Subst("referral-duration", referrer!months & " months")
-    Endif
-    templ.Subst("referral-date", referrer!date_created)
-  Endif
+
+   Dim referrer As Collection
+   
+   referrer = Find_Referrer(invoice!fk_patient)
+   If IsNull(referrer) Then
+      ' uh-oh, we can't find a referral for this patient
+      templ.Subst("referrer-name", templ.Bold("NONE"))
+      templ.Subst("referrer-street1", templ.Bold("As no referrer there can be NO rebate on this account"))
+      templ.Subst("referrer-street2", "")
+      templ.Subst("referrer-town", "")
+      templ.Subst("referrer-postcode", "")
+      templ.Subst("referrer-provider-number", templ.Bold("NONE"))
+      templ.Subst("referral-duration", "")
+      templ.Subst("referral-date", "")
+   Else
+      templ.Subst("referrer-name", referrer!title & " " & referrer!firstname & " " & referrer!surname)
+      templ.Subst("referrer-street1", referrer!street1)
+      templ.Subst("referrer-street2", referrer!street2)
+      templ.Subst("referrer-town", referrer!town)
+      templ.Subst("referrer-postcode", referrer!postcode)
+      templ.Subst("referrer-provider-number", referrer!provider_number)
+      If referrer!indefinite Then
+         templ.Subst("referral-duration", "indefinite duration")
+      Else
+         templ.Subst("referral-duration", referrer!months & " months")
+      Endif
+      templ.Subst("referral-date", referrer!date_created)
+   Endif
+
 End
 
 ' prepares the template with stuff for GP-type invoices (actually common to specialists too)    
 Private Function Load_Template_GP(templ As CTemplate, doctor As Collection, items As Collection, cc As CConsult)
-  Dim i As Collection
-  
-  templ.Subst("doctor-name", doctor!title & " " & doctor!firstname & " " & doctor!surname)
-  templ.Subst("doctor-street1", doctor!street1)
-  templ.Subst("doctor-street2", doctor!street2)
-  templ.Subst("doctor-town", doctor!town)
-  templ.Subst("doctor-postcode", doctor!postcode)
-  templ.Subst("doctor-provider-number", doctor!provider_number)
-  templ.Subst("current-time", Format$(Now, "dd/mm/yy hh:nn"))
-  ' now do the actual items
-  For Each i In items
-     templ.Row(i!common_item, i!descriptor_display, i!patient_charge)
-  Next
-  templ.Table("items")
-  templ.Subst_common(cc)
-            
-End
 
-Public Sub UnitTest(main_form As Form)
-  Dim r As Collection
-  Dim invoice As CRow
-  Dim item As Collection
-  
-  item = modUtil.Get_One(Descriptors_Get("306", True, True))
-  'modDBConnect.exec_query("truncate clerical.invoices cascade")
-  Make_Invoice(1, [item], 1, "fake invoice", 1)
-  invoice = modUtil.Get_One(Invoices_Get(1, 1))
-  Get_Billed_Items(invoice)
-  Print_Invoice(invoice)
+   Dim i As Collection
+   
+   templ.Subst("doctor-name", doctor!title & " " & doctor!firstname & " " & doctor!surname)
+   templ.Subst("doctor-street1", doctor!street1)
+   templ.Subst("doctor-street2", doctor!street2)
+   templ.Subst("doctor-town", doctor!town)
+   templ.Subst("doctor-postcode", doctor!postcode)
+   templ.Subst("doctor-provider-number", doctor!provider_number)
+   templ.Subst("current-time", Format$(Now, "dd/mm/yy hh:nn"))
+   ' now do the actual items
+   For Each i In items
+      templ.Row(i!common_item, i!descriptor_display, i!patient_charge)
+   Next
+   templ.Table("items")
+   templ.Subst_common(cc)
    
 End
 
+Public Sub UnitTest(main_form As Form)
+
+   Dim r As Collection
+   Dim invoice As CRow
+   Dim item As Collection
+   
+   item = modUtil.Get_One(Descriptors_Get("306", True, True))
+   'modDBConnect.exec_query("truncate clerical.invoices cascade")
+   Make_Invoice(1, [item], 1, "fake invoice", 1)
+   invoice = modUtil.Get_One(Invoices_Get(1, 1))
+   Get_Billed_Items(invoice)
+   Print_Invoice(invoice)
+   
+End

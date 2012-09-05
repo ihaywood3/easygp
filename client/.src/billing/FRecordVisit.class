@@ -42,6 +42,13 @@ Private form_appointments As FDayList
 Private appointment_icons As Collection   
 Private staff As Collection
 Private Staff_Member As Collection
+Private Unbilled_Consultations As Collection 
+Private Unbilled_consultation As Collection
+Private payers As Collection
+Private payer As Collection   'could be patient/organisation etc
+Private cGridColumn_ItemNumber As Integer = 0
+Private cGridColumn_BriefDescriptor As Integer = 1
+Private Payment_Methods As Collection
 
 
 Public Sub Init() '(cons As CConsult)
@@ -59,13 +66,14 @@ Public Sub Init() '(cons As CConsult)
    With cvwUnBilled
       .Columns.count = 2
    End With
-   dummy_data_add
+   lblmeasure.text = "  Payment Method "
+   modEditAreaHelpers.Resize_labels(VBox_EditArea_Inner, lblmeasure)
+   Payment_methods = modUtil.LoadCombo(cmbPaymentMethods, modBillingDBI.Payment_Methods_Get(), "method")
    staff = modUtil.LoadCombo(cmbStaff, modContactsDBI.Staff_Get(), "wholename")  
    cmbStaff.index = 0
-   
+   cvwUnBilled_Refresh  
    Gridview1_Init()
-   lblmeasure.text = "  Invoice To  "
-   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
+
    Me.Center()
    Try Settings_Load()         'load settings for this form
    GridRows = New Collection
@@ -74,18 +82,40 @@ Public Sub Init() '(cons As CConsult)
    columnview1.Columns.count = 3
 End
 
-Public Sub dummy_data_add()
-  Dim x As Integer
-  
-  cvwUnBilled.Clear
-  cvwUnBilled.Add(x, 0) 
-  cvwUnBilled[0][0] = "Bailey,Peter"
- ''  cvwRecallsLoggedThisConsult.Add(x, 0)
-  '    cvwRecallsLoggedThisConsult[x][0] = Format(Recall!due, "dd/mm/yyyy") 
+Public Sub EditArea_Clear()
+   bExit = True
+ ' fk_payer = 0
+  modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Inner) 
+  textlabelPayer.text = ""
+  bexit = False
+   
 End
+
+Public Sub cvwUnBilled_Refresh()
+   '------------------------------------------------------------------------
+   'Display a list of all unbilled consultations ordered by appointment date
+   '-------------------------------------------------------------------------
+    
+    Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get()
+    cvwUnBilled.Clear()
+    For Each Unbilled_consultation In Unbilled_Consultations
+        cvwUnBilled.Add(Unbilled_consultation!pk, 0)
+        cvwUnBilled[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
+        cvwUnBilled[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
+    Next
+End
+
+
 
 Public Sub Gridview1_Init()
     Dim x As Integer
+      ' With gridview2
+      '    .Rows.count = 1
+      '    .Columns.count = 5
+      '    .Columns[1].Alignment = Align.Right
+      '    .height = 24
+      ' End With
+      ' gridview2[0, 1].Text = "Total "
       With gridview1
      .Rows.H = 20 
      .Columns.Count = 5
@@ -93,8 +123,15 @@ Public Sub Gridview1_Init()
      For x = 0 To 4
        If x <> 1 Then 
          .Columns[x].Width = 100
+         label101.width = 100
+          lblInvoiceTotal.width = 100
+           label104.width = 100
+            label105.width = 100
+       '  gridview2.Columns[x].width = 100
        Else
          .Columns[1].width = gridview1.width - 400
+         label200.width = gridview1.width - 400
+       '  gridview2.Columns[x].Width = gridview1.width - 400
        End If
      Next
      .Columns[0].text = "Item"
@@ -104,6 +141,7 @@ Public Sub Gridview1_Init()
      .Columns[4].text = "GST"
     
    End With
+     gridview1.height = 100
    
 End
 
@@ -211,6 +249,7 @@ Public Sub Textbox1_KeyRelease()
   '  '--------------------------------------------
   '  
    columnview1.Clear
+   If Trim(TextBox1.text) = "" Then Return   
    items = modBillingDBI.Descriptors_Get(Last.text)
    
    For Each item In items  
@@ -279,6 +318,59 @@ End
 
 Public Sub cvwUnBilled_Click()
 
-   txtpatient.text = Last.item.text
+   EditArea_Clear()
+   cvwUnBilled.MoveCurrent()
+   txtpatient.text = Unbilled_Consultations[cvwUnBilled.Item.key]!wholename
+   txtDate.text = Format(Unbilled_Consultations[cvwUnBilled.Item.key]!begin, "dd/mm/yyyy")
+   'temp code get the responsible person FIXME  body code only whilst developin
+   'need more inclusive way of getting the payer - eg might not be a patient
+   payer = modBillingDBI.Responsible_Payer_Get(Unbilled_Consultations[cvwUnBilled.Item.key]!fk_patient)
+   Try textlabelPayer.text = payer!wholename & "<BR>" & Trim(payer!street1 & " " & payer!street2) & " " & payer!town & " " & payer!postcode
+End
+
+Public Sub TextBox1_Activate()
+
+   Print "column is:" & gridview1.Column
+   Select Case gridview1.Column
+      Case cGridColumn_ItemNumber
+          gridview1[gridview1.row, 0].Text = TextBox1.text
+          TextBox1.Visible = False  
+          Get_Items(TextBox1.text)
+         
+   End Select
+
+End
+
+Public Sub Get_Items(txt As String)
+     Items = modBillingDBI.Items_Get(Trim(txt))
+     If items.count = 1 Then
+        For Each item In items 'fixme ?proper way of doing this
+           gridview1[gridview1.row, 1].Text = item!descriptor_brief
+           gridview1[gridview1.row, 2].Text = item!price
+        Next
+     Endif
+     gridview1.row = gridview1.row + 1
+     Invoice_Calculate_Total()
+     gridview1.SetFocus()
+     GridView1_DblClick()
+End
+
+Public Sub Invoice_Calculate_Total()
+    Dim x As Integer
+    Dim total As Float
+    
+    For x = 0 To gridview1.Rows.Count - 1
+        If gridview1[x, 2].text = "" Then Break
+        total = total + CFloat(Val(Replace(gridview1[x, 2].text, "$", "")))
+    Next
+   
+    lblInvoiceTotal.text = "  " & Format$(total, "$,#.###")
+  
+End
+
+
+Public Sub rbInvoiceTo_Click()
+
+   textlabelPayer.text = ""
 
 End

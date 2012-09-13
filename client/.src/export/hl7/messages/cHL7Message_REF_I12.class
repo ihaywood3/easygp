@@ -28,18 +28,23 @@
 ' 5: OBX(Observation segment)Optional repeating
 '
 
-
-Public Sub CreateHL7Message_REF_I12(ConsultingDoctor_XCN As CHL7Datatype_XCN, ReceivingFacility_HD As CHL7Datatype_HD, ToTransferPatient_fk_Patient As Integer, ObservationResultStatus As String, Optional Attachments As String[], Optional AdmissionType As String, Optional PatientClass As String)
+Public Sub CreateHL7Message_REF_I12(ConsultingDoctor_XCN As CHL7Datatype_XCN, ReceivingFacility_HD As CHL7Datatype_HD, ToTransferPatient_fk_Patient As Integer, ObservationResultStatus As String, ReferralStatus As String, ReferralPriority As String, ReferralType As String, ReferralDisposition As String, ReferralReason As String, Optional Attachments As String[], Optional OriginatingReferralIdentifier_EI As CHL7Datatype_EI, Optional AdmissionType As String)
    '----------------------------------------------------------------------
    'This Function fills all required fields for the message and prints them to a File
    'Variables:
-   '-ConsultingDoctor_XCN: Needs to be a object of the cHL7Datatype_XCN class and contains the information of the receiving doctor 
-   '-ReceivingFacility_HD: Needs to be a object of the cHL7Datatype_HD class and contains the information of the receiving facility 
-   '-ToTransferPatient_fk_Patient: Needs to be an integer and contains the foreign key which gives the information were the data of the to reffering patient is storred in the DB
-   '-Attachments: this is a string array and caintains sings such a letter text a pdf or a picture as a sting ( be carefull to convert the attachments into the right format before calling this function
-   '-ObservationResultStatus: Needs to be a string which is coded according to the HL7 table 85 
-   '-AdmissionType(optional): Needs to be a string which is coded according to the HL7 user table 7
-   '-PatientClass(optional): Needs to be a string which is coded according to the HL7 user table 4
+   '- ConsultingDoctor_XCN: Needs to be a object of the cHL7Datatype_XCN class and contains the information of the receiving doctor 
+   '- ReceivingFacility_HD: Needs to be a object of the cHL7Datatype_HD class and contains the information of the receiving facility 
+   '- ToTransferPatient_fk_Patient: Needs to be an integer and contains the foreign key which gives the information were the data of the to reffering patient is storred in the DB
+   '- ObservationResultStatus: Needs to be a string which is coded according to the HL7 table 85 
+   '- ReferralStatus is a String and needs to be coded according to the hl7 table 0283 Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
+   '- OriginatingReferralIdentifier(Optional) is a hl7 EI datatype and contains the global universal identifyer of this referral message (GUID) it can be passed to this function if this is a answer to a previos referral message otherwise a GUID will be generated from this function
+   '- ReferralPriority is a hl7 datatype EI and needs to be coded according to the hl7 table 0280 (conditional) With highest priority = 'S' As soon as possible = 'A' Urgent = 'U' Early = 'E' Routine = 'R'
+   '- ReferralType is a hl7 Datatype EI and needs to be coded according to the hl7 table 0281 (conditional) General referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
+   '- ReferralDisposition is a hl7 datatype CE and needs to be coded according to hl7 table 0282 and says what is expected of the receiver (Optional) (Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI’)
+   '- ReferralReason is a hl7 datatype CE and must be coded according to the hl7 table 0336 (Second opinion = ‘S’ Patient preference = ‘P’ Provider ordered = ‘O’ Work load = ‘W’ ‘S’ = Provide second, third or other oppinion    Notification(FYI) = ‘F’ Event summary = ‘E’
+   '- Attachments(optional): this is a string array and caintains sings such a letter text a pdf or a picture as a sting ( be carefull to convert the attachments into the right format before calling this function
+   '- AdmissionType(optional): Needs to be a string which is coded according to the HL7 user table 7
+   '- PatientClass(optional): Needs to be a string which is coded according to the HL7 user table 4
    '----------------------------------------------------------------------
    
    ' Variable declaration
@@ -51,28 +56,67 @@ Public Sub CreateHL7Message_REF_I12(ConsultingDoctor_XCN As CHL7Datatype_XCN, Re
    Dim ORC As CHL7Segment_ORC
    Dim OBR As CHL7Segment_OBR
    Dim OBX1 As CHL7Segment_OBX
-   Dim EVN As CHL7Segment_EVN
    
-   Dim ObservationIdentifier As New CHL7Datatype_CE ' needed for the creation of a OBX segment
+   Dim ObservationIdentifier_CE As New CHL7Datatype_CE ' needed for the creation of a OBX segment
+   Dim ReferralStatus_CE As New CHL7Datatype_CE
    Dim UserInformation As New Collection   ' collection which later contains the information of the current user which is then used as sender
    Dim Patient As Collection ' collection which later ontains the information of the patient which that is going to be referred
+   Dim MessageGUID_EI As New CHL7Datatype_EI
+   Dim ReferralPriority_EI As New CHL7Datatype_EI
+   Dim PrimaryKey As Integer
    
    UserInformation = modDBConnect.currentUser ' reads the information of the current user out of the DB
    Patient = modContactsDBI.Patient_Get_Using_PK(ToTransferPatient_fk_Patient) ' reads the information of the to referring patient out of the DB 
    
-   MSH = New CHL7Segment_MSH(ReceivingFacility_HD, "ADT", "A02") 'creates a new MSH segment with all the underlaying datatypes
-   RF1 = New CHL7Segment_RF1() 'creates a new RF1 segment with all the underlaying datatypes
-   PRD1 = New CHL7Segment_PRD() 'creates a new EVN segment with all the underlaying datatypes
-   PRD2 = New CHL7Segment_PRD() 'creates a new EVN segment with all the underlaying datatypes
-   PRD3 = New CHL7Segment_PRD() 'creates a new EVN segment with all the underlaying datatypes
-   PID = New CHL7Segment_PID(Patient) 'creates a new PID segment with all the underlaying datatypes
-OBR
-OBX
+   ' if a GUID is passed to this function make your own
+   If OriginatingReferralIdentifier_EI.Identifier = "" Then
+      PrimaryKey = modDBConnect.exec_query("Select nextval('documents.hl7_messages_pk_seq') as Pk;")!Pk   'gets the a unique value for the table were the massege will be strored an this value is also used to create a universalID
+      OriginatingReferralIdentifier_EI.Identifier = Format(Now, "yymmddhhnnss") & "-" & PrimaryKey 'creates the unique message identifyer 
+      OriginatingReferralIdentifier_EI.AssigningAuthority.UniversalIDType = "GUID"
+   Endif
+
+' fills the rest of the referralstatus according to the parameter 
+   Select Case ReferralStatus = "A"
+      ReferralStatus.AssigningAuthority.ApplicationIdentifier = "Accepted"
+      Case ReferralStatus = "P"
+      ReferralStatus.AssigningAuthority.ApplicationIdentifier = "Pending"
+      Case ReferralStatus = "R"
+      ReferralStatus.AssigningAuthority.ApplicationIdentifier = "Rejected"
+      Case ReferralStatus = "E"
+      ReferralStatus.AssigningAuthority.ApplicationIdentifier = "Expired"
+   End Select
+   ReferralStatus.Identifier = ReferralStatus
+   ReferralStatus.AssigningAuthority.UniversalID = "HL70283"
+         
+         
+
+   Select Case ReferralPriority = "S"
+      ReferralPriority_EI.AssigningAuthority.ApplicationIdentifier = "With highest priority"
+      Case ReferralPriority = "A"
+         ReferralPriority_EI.AssigningAuthority.ApplicationIdentifier = "As soon as possible"
+      Case ReferralPriority = "U"
+         ReferralPriority_EI.AssigningAuthority.ApplicationIdentifier = "Urgent"
+      Case ReferralPriority = "E"
+         ReferralPriority_EI.AssigningAuthority.ApplicationIdentifier = "Early"
+      Case ReferralPriority = "R"
+         ReferralPriority_EI.AssigningAuthority.ApplicationIdentifier = "Routine"
+   End Select
+   ReferralPriority_EI.Identifier = ReferralPriority
+   ReferralPriority_EI.AssigningAuthority.UniversalID = "HL70280"
+   
+   MSH = New CHL7Segment_MSH(ReceivingFacility_HD, "REF", "I12", OriginatingReferralIdentifier_EI.Identifier) 'creates a new MSH segment with all the underlaying datatypes
+   RF1 = New CHL7Segment_RF1(ReferralStatus, OriginatingReferralIdentifier_EI, ReferralPriority_EI) 'creates a new RF1 segment with all the underlaying datatypes
+   ' PRD1 = New CHL7Segment_PRD() 'creates a new EVN segment with all the underlaying datatypes
+   ' PRD2 = New CHL7Segment_PRD() 'creates a new EVN segment with all the underlaying datatypes
+   ' PRD3 = New CHL7Segment_PRD() 'creates a new EVN segment with all the underlaying datatypes
+   ' PID = New CHL7Segment_PID(Patient) 'creates a new PID segment with all the underlaying datatypes
+   ' OBR = New CHL7Segment_OBR()
+   ' OBX
    If ReferralLetterText <> "" Then ' When a referrel letter is included create and fill the a OBX Segment wiht Data
-      ObservationIdentifier.Identifier = "LETTER"
-      ObservationIdentifier.Text = "LETTER"
-      ObservationIdentifier.NameOfCodingSystem = "L"
-      OBX1 = New CHL7Segment_OBX(1, "FT", ObservationIdentifier, ObservationResultStatus, ReferralLetterText) ' "FT" means FORMATTED TEXT
+      ObservationIdentifier_CE.Identifier = "LETTER"
+      ObservationIdentifier_CE.Text = "LETTER"
+      ObservationIdentifier_CE.NameOfCodingSystem = "L"
+      OBX1 = New CHL7Segment_OBX(1, "FT", ObservationIdentifier_CE, ObservationResultStatus, ReferralLetterText) ' "FT" means FORMATTED TEXT
    Endif
    
    If Exist(Application.path & "/file.txt") Then  'links the hFile file to a path and ceates the file.txt if the file is not already existing 

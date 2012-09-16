@@ -6,30 +6,39 @@
 # Check their answer.
 db_get easygp-server/password
 PASSWORD=$RET
-CONN="host=localhost dbname=easygp user=easygp password=$PASSWORD"
 
 db_reset easygp-server/password
 
 if [ "$PASSWORD" = "not-set" ] ; then
   echo "Password not set, so no database initialisation performed"
 else
-  cd /usr/share/easygp-server
-  if su postgres -c "psql -l" | grep -q easygp ; then
+  cd /usr/share/easygp-server/
+  if su postgres -c "psql -l" | grep '^ easygp '; then
      # database already exists, so run updates
-     ./update-server.sh "$CONN"
+     cd updates
+     MAJOR=`su postgres -c "psql -tA -c \"select lu_major from db.lu_version\" easygp"`
+     MINOR=`su postgres -c "psql -tA -c \"select lu_minor from db.lu_version\" easygp"`
+     i=$(($MINOR+1))
+
+     while [ -f $MAJOR.$i*.sql ] ; do
+       su postgres -c "psql -f $MAJOR.$i*.sql easygp"
+       i=$(($i+1))
+     done
+
    else
      # make database from scratch
      (
        echo CREATE USER easygp CREATEUSER PASSWORD \'$PASSWORD\'\;
-       echo CREATE DATABASE easygp OWNER easygp\;
        echo CREATE ROLE staff NOLOGIN\;
-       echo \\q
-     ) | su postgres -c "psql template1"
-     (
-        echo \\i easygp.schema.sql
-        echo \\i easygp.data.sql
-        echo \\i easygp.grants.sql
-        echo \\i coding/icd10_import_gambas.sql
-     ) | psql "$CONN"
+       echo '\\set ON_ERROR_STOP 1'
+       echo CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"\;
+       echo CREATE DATABASE easygp OWNER easygp\;
+       echo '\\c easygp'
+       echo '\\i easygp.schema.sql'
+       echo '\\i easygp.data.sql'
+       echo '\\i coding/icd10_import_gambas.sql'
+     ) | su postgres -c "psql template1" > /dev/null
   fi
 fi
+
+#DEBHELPER#

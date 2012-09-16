@@ -24,10 +24,145 @@
 ' OR letters and numbers together: searches by AMA item number
 ' use_vwfees: true if uses vwfees view (recommended for most uses below)
 ' 
+Public Function Fee_Schedule_Import_From_Pracsoft()
+   
+   'only used by richard during development
+   ' 
+   'ItemNo|Description|OpRule|DerivedFee|Deleted|TaxRate|ReportGroup|SchedFee|Rebate85|Rebate75|VetFee|VetLMO|AMAFee|User1|User2|User3|User4|User5|User6|User7|User8|User9|User10|User11|User12|User13|User14|ID
+   ' 0            1     2        3        4        5        6           7        8        9        10    11    12       13 
+   ' field 16 is private
+   ' CREATE TABLE billing.prices
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_fee_schedule integer NOT NULL,
+   '   price money NOT NULL DEFAULT '$0.00'::money, -- the price to the patient
+   '   fk_lu_billing_type integer NOT NULL,
+   '   notes text,
+   '   CONSTRAINT prices_pkey PRIMARY KEY (pk ),
+   '   CONSTRAINT prices_fk_fee_schedule_fkey FOREIGN KEY (fk_fee_schedule)
+   '       REFERENCES billing.fee_schedule (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT prices_fk_lu_billing_type_fkey FOREIGN KEY (fk_lu_billing_type)
+   '       REFERENCES billing.lu_billing_type (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   
+   ' Public Const Billingtype_AMA As Integer = 1
+   ' Public Const Billingtype_DVA_Non_LM0 As Integer = 2
+   ' Public Const Billingtype_DVA_LM0 As Integer = 3
+   ' Public Const Billingtype_Health_Care_Card_Concession As Integer = 4
+   ' Public Const Billingtype_Pensioner_Concession As Integer = 5
+   ' Public Const Billingtype_Private As Integer = 6
+   ' Public Const  set"Billingtype_Transport_Accident_Commision_Victoria As Integer = 7
+   ' Public Const Billingtype_Scheduled_Fee As Integer = 8
+   ' 
+   
+   Dim hFile As File
+   Dim soneline As String
+   Dim Fee_Info As String[]
+   Dim all_Fees As New Collection
+   Dim Fields As String[]
+   Dim x As Integer
+   Dim y As Integer
+   Dim item As New CRow  
+   Dim sql As String
+   Dim R As Result
+   Dim price As CRow
+   Dim fk_fee_schedule As Integer
+   Dim unsaved_fees As New Collection 
+   Dim sql_insert As String
+   Dim hSqlFile As File
+   
+   hFile = Open "/home/richard/FEES.txt" For Read
+   hSqlFile = Open "/home/richard/fee_update.sql" For Write Create
+   While Not Eof(hFile)
+      Line Input #hFile, sOneLine
+      If x = 0 Then
+         Fields = Split(sOneLine, " |")
+      Else   
+         Fee_Info = Split(sOneLine, "|")
+         Item!number = Fee_info[0]
+         sql = "Select * from billing.fee_schedule where mbs_item = $$" & Trim(Fee_info[0]) & "$$"
+         R = modDBConnect.exec_query(sql)
+         If R.count Then
+            fk_fee_schedule = R!pk
+            Item!description = Fee_info[1]
+            Item!deleted = Fee_info[4]
+            Item!gst = Fee_info[5]
+            Item!vet_fee_non_lmo = Fee_info[10]
+            Item!vet_fee_lmo = Fee_info[11]
+            item!private_fee = Fee_info[16]
+            If Fee_Info[0] = 23 Then
+               Print Fee_Info
+               item!private_fee = Fee_info[16]
+            Endif  
+            '--------------------------
+            'Save the private fee level
+            '--------------------------
+            If Not IsNull(item!private_fee) Then 
+               price = New CRow  
+               price!fk_fee_schedule = fk_fee_schedule
+               price!price = item!private_fee
+               price!fk_lu_billing_type = const.Billingtype_Private
+               price.Save("billing.prices", "fk_price")
+               sql = "Insert into billing.prices (fk_fee_schedule, price, fk_lu_billing_type) values("
+               sql &= Subst$("'&1',$$&2$$,'&3'", fk_fee_schedule, item!private_fee, const.Billingtype_Private) & ");"
+               Print #hSqlFile, sql
+            End If   
+            '------------------------------
+            'Save the dva non LMO fee level
+            '------------------------------
+            If Not IsNull(Item!vet_fee_non_lmo) Then 
+               price = New CRow  
+               price!fk_fee_schedule = fk_fee_schedule
+               price!price = Item!vet_fee_non_lmo
+               price!fk_lu_billing_type = const.Billingtype_DVA_Non_LM0
+               price.Save("billing.prices", "fk_price")
+               sql = "Insert into billing.prices (fk_fee_schedule, price, fk_lu_billing_type) values("
+               sql &= Subst$("'&1',$$&2$$,'&3'", fk_fee_schedule, Item!vet_fee_non_lmo, const.Billingtype_DVA_Non_LM0) & ");"
+               Print #hSqlFile, sql
+            End If  
+            '--------------------------
+            'Save the dva LMO fee level
+            '--------------------------
+            If Not IsNull(Item!vet_fee_lmo) Then 
+               price = New CRow  
+               price!fk_fee_schedule = fk_fee_schedule
+               price!price = Item!vet_fee_lmo
+               price!fk_lu_billing_type = const.Billingtype_DVA_LM0
+               price.Save("billing.prices", "fk_price")
+               sql = "Insert into billing.prices (fk_fee_schedule, price, fk_lu_billing_type) values("
+               sql &= Subst$("'&1',$$&2$$,'&3'", fk_fee_schedule, Item!vet_fee_lmo, const.Billingtype_DVA_LM0) & ");"
+               Print #hSqlFile, sql
+            End If   
+         Else
+            unsaved_fees.Add(Fee_Info, unsaved_fees.count)
+            sql_insert = "insert into billing.fee_schedule (descriptor, mbs_item, group) values ($$"
+            sql_insert &= Fee_info[1] & "$$,$$" & 3 & "$$,$$" & "$$A1$$)"
+            ' insert into billing.prices (fk_fee_schedule, price, fk_lu_billing_type) values (currval('billing.fee_schedule_pk_seq'),'16.30',3);
+            ' 
+            
+         End If  
+      End If 
+      all_Fees.Add(Fee_Info, all_Fees.count)
+      Inc x
+   Wend
+   Print unsaved_fees
+   ' modDBConnect.CommitTrans()
+   Message.Info("Finished")
+   Close #hFile
+   Close #HsqlFile
+   Print all_Fees
+   
+End
 
 Public Function Responsible_Payer_Get(fk_patient As Integer) As Collection
-  'fixme this is temporary, only works if the patient has another patient as responsible person
-  'just doing this for development stuff
+   'fixme this is temporary, only works if the patient has another patient as responsible person
+   'just doing this for development stuff
+   
    Dim R As Result
    
    R = modDBConnect.exec_query("Select * from clerical.data_patients where pk = " & fk_patient)
@@ -36,17 +171,23 @@ Public Function Responsible_Payer_Get(fk_patient As Integer) As Collection
          Return modContactsDBI.Patient_Get_Using_PK(r!fk_payer)
       End If   
    End If   
-    
-   
    
 End
 
 Public Function Consultations_UnBilled_Get() As Collection
+   '--------------------------------------------------------------------
    'returns a collection of all unbilled consultations
+   'A consultation is is determined as unbilled if
+   'a) The appointment is marked completed in the waiting room list and
+   'b) The invoiced flag is false
+   'c) They actually did attend
+   '--------------------------------------------------------------------
    
    Dim sql As String
    
-   sql = "Select * from clerical.vwAppointments where invoiced = false and did_not_attend = false and fk_patient is not null"
+   sql = "Select * from clerical.vwAppointments where invoiced = false and did_not_attend = false "
+   sql &= "And fk_patient Is Not Null "
+   sql &= "And fk_lu_appointment_status = " & const.Appointment_Status_Completed
    Return modDBConnect.exec_query_collection(sql)
    
 End
@@ -72,13 +213,28 @@ End
 
 Public Function Billing_Types_Get() As Collection
    
-   Return modDBConnect.exec_query_collection("Select * from clerical.lu_billing_type")
+   Return modDBConnect.exec_query_collection("Select * from billing.lu_billing_type")
+   
+End
+
+Public Function Billing_Level_Get() As Collection
+   '-------------------------------------------------------------------------------
+   'The levels of billing available for a patient eg bulk bill, private, concession
+   '-------------------------------------------------------------------------------  
+   
+   Return modDBConnect.exec_query_collection("Select * from billing.lu_default_billing_level order by level")
    
 End
 
 Public Function Payment_Methods_Get() As Collection
    
-  Return modDBConnect.exec_query_collection("Select * from clerical.lu_payment_method") 
+   Return modDBConnect.exec_query_collection("Select * from billing.lu_payment_method") 
+   
+End
+
+Public Function Invoice_Comments_Get() As Collection
+   
+   Return modDBConnect.exec_query_collection("Select * from billing.lu_invoice_comments order by comment") 
    
 End
 
@@ -91,9 +247,9 @@ Public Function Descriptors_Get(descriptor As String, Optional include_ama As Bo
    Dim r As Regexp
    
    If use_vwfees Then
-      sql = "clerical.vwfees"
+      sql = "billing.vwfees"
    Else
-      sql = "clerical.schedule"
+      sql = "billing.fee_schedule"
    Endif
    sql = "Select * from " & sql & " where "
    r = New Regexp(descriptor, "^[0-9]+$")
@@ -118,33 +274,81 @@ Public Function Descriptors_Get(descriptor As String, Optional include_ama As Bo
    Return modDBConnect.exec_query_collection(sql)
    
 End
-
 ' saves a changed schedule descriptor
+
 Public Function Descriptors_Save(old_data As Collection, pk_descriptor As Integer, new_data As Collection)
    
    If pk_descriptor = -1 Then
       
    Else
-      modDBConnect.update("clerical.schedule", old_data[pk_descriptor], new_data)
+      modDBConnect.update("billing.fee_schedule", old_data[pk_descriptor], new_data)
    End If  
+   
+End
+
+Public Function Fees_Get_For_Descriptor(fk_fee_schedule As Integer) As Collection
+   
+   Dim sql As String
+   
+   sql = "Select * from billing.vwFees where fk_fee_schedule=" & fk_fee_schedule
+   Return modDBConnect.exec_query_collection(sql) 
    
 End
 
 ' returns a list of all fee types
 Public Function Fee_Types_Get() As Collection
    
-   Return modDBConnect.exec_query_collection("Select * from clerical.lu_billing_type") 
+   Return modDBConnect.exec_query_collection("Select * from billing.lu_billing_type order by type")  'fixme fix schema to be type
+   
+End
+
+Public Function fk_fee_shedule_Get_For_Item_Number(item As String) As Integer
+   'this is temporary and will need trashing
+    Dim R As Result
+    Dim sql As String
+    
+    sql = "Select * From billing.fee_schedule where mbs_item =$$" & item & "$$"
+    R = modDBConnect.exec_query(sql)
+    If R.count Then
+       Return R!pk
+    Else
+       Message.Info("This should never happen - couldn't find the item numbers primary key")
+       
+    Endif
+    
    
 End
 
 ' returns schedule entries searching by brief descriptor 
 Public Function Descriptors_Brief_Get(searchtext As String, Optional limit As Integer = 100) As Collection 
-
+   
    Dim sql As String
    
-   sql = "Select * from clerical.schedule where descriptor_brief ILIKE $$%" & searchtext
+   sql = "Select * from billing.fee_schedule where descriptor_brief ILIKE $$%" & searchtext
    sql &= "%$$ order by cast(mbs_item as int), descriptor LIMIT " & limit
    Return modDBConnect.exec_query_collection(sql)
+   
+End
+
+' Public Function Scheduled_Fee_Get(item As String) As Collection
+'    '-----------------------------------------------------------------------------------------------
+'    'Returns just the scheduled fee to allow display of the gap's when various fee levels are chosen
+'    '-----------------------------------------------------------------------------------------------
+'    Dim sql As String
+'    
+'    sql = "select * From billing.vwFees WHERE (mbs_item = $$" & item & "$$ or ama_item = $$" & item & "$$)" 
+'    sql &= " and fk_lu_billing_type = " & const.Billingtype_Scheduled_Fee
+'    Return modDBConnect.exec_query_first(sql)
+'    
+' End
+
+Public Function Fee_Get_For_Item_And_Billing_Type(item As String, fk_lu_billing_type As Integer) As Collection
+   'Returns the billing.price for a particular item number for a particular billing type e.g Private
+    Dim sql As String
+   
+   sql = "select * From billing.vwFees WHERE (mbs_item = $$" & item & "$$ or ama_item = $$" & item & "$$)" 
+   sql &= " and fk_lu_billing_type = " & fk_lu_billing_type
+   Return modDBConnect.exec_query_first(sql)
    
 End
 
@@ -152,10 +356,10 @@ Public Function Items_Get(item As String, Optional fk_lu_billing_type As Integer
    '---------------------------------------------
    'Gets list of item numbers and associated fees
    '---------------------------------------------
-
+   
    Dim sql As String
    
-   sql = "select * From clerical.vwFees WHERE (mbs_item = $$" & item & "$$ or ama_item = $$" & item & "$$)"
+   sql = "select * From billing.vwFees WHERE (mbs_item = $$" & item & "$$ or ama_item = $$" & item & "$$)"
    If fk_lu_billing_type <> -1 Then
       sql &= " and fk_lu_billing_type = " & fk_lu_billing_type
    Endif
@@ -168,57 +372,88 @@ End
 ' what gets spit out at the end is technically a "account receipt" for private billing and 
 ' a "voucher" when bulk-billing
 ' also saves also the items billed
-' items: array of Collections. Collections should orginate from clerical.vwfees (must have a fk_schedule and price fields)
+' items: array of Collections. Collections should orginate from billing.vwFees (must have a fk_fee_schedule and price fields)
 ' if price is changed from what's in the schedule can add a patient_charge field too
 ' if fk_staff is zero uses current logged in staff as the billing doctor
 ' fk_lu_billing_type is the billing type (some values in const)
 ' returns the PK of the new invoice
 
-Public Sub Make_Invoice(pk_patient As Integer, items As Collection[], fk_lu_billing_type As Integer, Optional notes As String, fk_staff As Integer = 0) As Integer
-
-   Dim invoice As New Collection
-   Dim i As Collection
-   Dim new_item As Collection
-   
-   invoice!fk_lu_billing_type = fk_lu_billing_type
-   invoice!fk_patient = pk_patient
-   If fk_staff = 0 Then
-      fk_staff = modDBConnect.currentUser!fk_staff
-   Endif
-   invoice!fk_doctor_raising = fk_staff
-   invoice!notes = notes
-   invoice!pk = modDBConnect.insert("clerical.invoices", invoice)
-   Save_Items(invoice!pk, items, False)
-   Return invoice!pk
-   
-End
+' Public Sub Make_Invoice(pk_patient As Integer, items As Collection[], fk_lu_billing_type As Integer, date_printed As Date Default Null, fk_staff As Integer = 0, Optional notes As String) As Integer
+'    ' CREATE TABLE billing.invoices
+'    ' (
+'    '   pk serial NOT NULL,
+'    '   fk_staff_invoicing integer NOT NULL, -- the staff member raising the invoice
+'    '   date_printed timestamp without time zone,
+'    '   notes text,
+'    '   fk_lu_billing_type integer NOT NULL,
+'    '   fk_staff_provided_service integer NOT NULL, -- the staff member who provider the service on which the invoice is based
+'    '   fk_patient integer,
+'    '   date_invoiced timestamp without time zone NOT NULL DEFAULT now(),
+'    '   paid boolean NOT NULL DEFAULT false,
+'    '   CONSTRAINT invoices_pkey PRIMARY KEY (pk ),
+'    '   CONSTRAINT invoices_fk_doctor_raising_fkey FOREIGN KEY (fk_staff_provided_service)
+'    '       REFERENCES admin.staff (pk) MATCH SIMPLE
+'    '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'    '   CONSTRAINT invoices_fk_lu_billing_type_fkey FOREIGN KEY (fk_lu_billing_type)
+'    '       REFERENCES billing.lu_billing_type (pk) MATCH SIMPLE
+'    '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'    '   CONSTRAINT invoices_fk_patient_fkey FOREIGN KEY (fk_patient)
+'    '       REFERENCES clerical.data_patients (pk) MATCH SIMPLE
+'    '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'    '   CONSTRAINT invoices_fk_staff_invoicing_fkey FOREIGN KEY (fk_staff_invoicing)
+'    '       REFERENCES admin.staff (pk) MATCH SIMPLE
+'    '       ON UPDATE NO ACTION ON DELETE NO ACTION
+'    ' )
+'    ' WITH (
+'    '   OIDS=FALSE
+'    ' );
+'    
+'    Dim invoice As New Collection
+'    Dim i As Collection
+'    Dim new_item As Collection
+'    
+'    If fk_staff = 0 Then
+'       fk_staff = modDBConnect.currentUser!fk_staff
+'    Endif
+'    If Not IsNull(date_printed) Then
+'       invoice!date_printed = date_printed 
+'    Endif
+'    invoice!fk_staff_invoicing = fk_staff
+'    invoice!notes = notes
+'    invoice!fk_lu_billing_type = fk_lu_billing_type
+'    invoice!fk_patient = pk_patient
+'    invoice!pk = modDBConnect.insert("billing.invoices", invoice)
+'    Save_Items(invoice!pk, items, False)
+'    Return invoice!pk
+'    
+' End
 
 ' saves a list of items to an existing invoice
 ' delete_preexisting is a flag to delete any pre-existing items on that invoice
 ' useful if saving from an invoice editor
 ' items is a list of Collections that must have the following members
 ' - patient_charge: the amont to charge the patient
-' (if doesn't exist will use "price" instead, such as when collections come from clerical.vwfees in search
+' (if doesn't exist will use "price" instead, such as when collections come from billing.vwFees in search
 ' functions above)
-' - fk_schedule: link to clerical.schedule
+' - fk_fee_schedule: link to billing.fee_schedule
 ' 
 Public Sub Save_Items(fk_invoice As Integer, items As Collection[], Optional delete_preexisting As Boolean = True)
-
+   
    Dim i As Collection
    Dim new_item As Collection
    
-   If delete_preexisting Then modDBConnect.exec_query("delete from clerical.items_billed where fk_invoice = &1", [fk_invoice])
+   If delete_preexisting Then modDBConnect.exec_query("delete from billing.items_billed where fk_invoice = &1", [fk_invoice])
    For Each i In items
       new_item = New Collection
       new_item!fk_invoice = fk_invoice
-      new_item!fk_schedule = i!fk_schedule
+      new_item!fk_fee_schedule = i!fk_fee_schedule
       If i.Exist("patient_charge") Then
          new_item!patient_charge = i!patient_charge
       Else
          new_item!patient_charge = i!price
          i!patient_charge = i!price
       Endif
-      i!pk_item = modDBConnect.insert("clerical.items_billed", new_item)
+      i!pk_item = modDBConnect.insert("billing.items_billed", new_item)
    Next 
    
 End
@@ -226,7 +461,7 @@ End
 ' returns a Collection of all invoices for this patient, most recent first
 Public Function Invoices_Get(pk_patient As Integer, Optional limit As Integer = 100) As Collection
    
-   Return modDBConnect.exec_query_row("select * from clerical.invoices where fk_patient = &1 order by raised desc limit &2", [pk_patient, limit]) 
+   Return modDBConnect.exec_query_row("select * from billing.invoices where fk_patient = &1 order by raised desc limit &2", [pk_patient, limit]) 
    
 End
 
@@ -237,7 +472,7 @@ End
 ' and "indefinite" flag true if indefinite referral
 ' 
 Public Function Find_Referrer(fk_patient As Integer) As Collection
-
+   
    Dim sql As String
    
    sql = "with base as (select title, firstname, surname, provider_number, street1, street2, town, state, postcode, date_created, "
@@ -253,21 +488,21 @@ End
 
 ' returns a list of billed items for a given invoice, as Collections
 Public Function Get_Billed_Items(invoice As Crow) As Collection
-
+   
    Dim sql As String
    
    sql = "select coalesce(mbs_item,ama_item) as common_item, "
    " left(coalesce(descriptor_brief,descriptor),400) as descriptor_display, "
-   " * from clerical.items_billed i, clerical.schedule s where i.fk_schedule = s.pk and i.fk_invoice = &1"
+   " * from billing.items_billed i,billing.fee_schedule s where i.fk_fee_schedule = s.pk and i.fk_invoice = &1"
    Return modDBConnect.exec_query_collection(sql, [invoice!pk, invoice!fk_lu_billing_type])
    
 End
 
-' takes a CRow from clerical.invoices, from either from Make_Invoice or Invoices_Get, and prints it
+' takes a CRow from billing.invoices, from either from Make_Invoice or Invoices_Get, and prints it
 ' also updates the row on the DB as appropriate
 ' ' cc is the current consult object. If not provided a new one will be loaded using th invoices's fk_patient.
 Public Sub Print_Invoice(invoice As Crow, Optional cc As Cconsult)
-
+   
    Dim sql As String
    Dim items As Collection
    Dim templ As CTemplate
@@ -275,6 +510,8 @@ Public Sub Print_Invoice(invoice As Crow, Optional cc As Cconsult)
    Dim i As Collection
    Dim referrer_type As String
    
+   Message.Info("printing an invoice won't work at all")
+   Return
    If IsNull(cc) Then cc = New CConsult(modContactsDBI.Patient_Get_Using_PK(invoice!fk_patient))
    items = Get_Billed_Items(invoice)
    sql = "select referrer_type, s.* from common.lu_occupations o, admin.vwstaffinclinics s "
@@ -296,14 +533,14 @@ Public Sub Print_Invoice(invoice As Crow, Optional cc As Cconsult)
       templ.Subst("date-raised", invoice!raised)
       modPrinting.Print_latex(templ.GetData(), const.Paper_Plain, 1)
    Endif
-   sql = "update clerical.invoices set fk_who_printed=&1, when_printed=now() where pk=&2"
+   sql = "updatebilling.invoices set fk_who_printed=&1, when_printed=now() where pk=&2"
    modDBConnect.exec_query(sql, [modDBConnect.currentUser!fk_staff, invoice!pk])
-
+   
 End
 
 ' loads info about specialist rinvoices (i.e. info about the referral)
 Private Sub Load_Template_Specialist(templ As Ctemplate, invoice As Crow) 
-
+   
    Dim referrer As Collection
    
    referrer = Find_Referrer(invoice!fk_patient)
@@ -331,12 +568,12 @@ Private Sub Load_Template_Specialist(templ As Ctemplate, invoice As Crow)
       Endif
       templ.Subst("referral-date", referrer!date_created)
    Endif
-
+   
 End
 
 ' prepares the template with stuff for GP-type invoices (actually common to specialists too)    
 Private Function Load_Template_GP(templ As CTemplate, doctor As Collection, items As Collection, cc As CConsult)
-
+   
    Dim i As Collection
    
    templ.Subst("doctor-name", doctor!title & " " & doctor!firstname & " " & doctor!surname)
@@ -356,16 +593,16 @@ Private Function Load_Template_GP(templ As CTemplate, doctor As Collection, item
 End
 
 Public Sub UnitTest(main_form As Form)
-
-   Dim r As Collection
-   Dim invoice As CRow
-   Dim item As Collection
-   
-   item = modUtil.Get_One(Descriptors_Get("306", True, True))
-   'modDBConnect.exec_query("truncate clerical.invoices cascade")
-   Make_Invoice(1, [item], 1, "fake invoice", 1)
-   invoice = modUtil.Get_One(Invoices_Get(1, 1))
-   Get_Billed_Items(invoice)
-   Print_Invoice(invoice)
+   ' 
+   ' Dim r As Collection
+   ' Dim invoice As CRow
+   ' Dim item As Collection
+   ' 
+   ' item = modUtil.Get_One(Descriptors_Get("306", True, True))
+   ' 'modDBConnect.exec_query("truncatebilling.invoices cascade")
+   ' Make_Invoice(1, [item], 1, "fake invoice", 1)
+   ' invoice = modUtil.Get_One(Invoices_Get(1, 1))
+   ' Get_Billed_Items(invoice)
+   ' Print_Invoice(invoice)
    
 End

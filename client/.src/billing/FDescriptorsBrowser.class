@@ -2,6 +2,7 @@
 
 Private Descriptors As Collection
 Private Descriptor As Collection
+Private Descriptor_Fees As Collection 
 Private bExit As Boolean
 Private lcRow As CDescriptorRow
 Private timer_count As Integer 
@@ -22,6 +23,10 @@ Private iLeft As Integer
 Private iTop As Integer
 Private timercount As Integer = 0
 Private ama_mbs_or_both As String
+Private bEditBillingType As Boolean                'If True we can edit the user-defined billing types
+Private sAmount_Before_Edit As String              'the fee amount before user edited the grid cell
+Private bKeyValid As Boolean
+Private Existing_Fee_keys As Collection              'the fees keys for each item.
 
 Public Sub Init()
    
@@ -29,16 +34,20 @@ Public Sub Init()
    modEditAreaHelpers.Resize_labels(Vbox_Editarea, lblmeasure)
    modEditAreaHelpers.Resize_label(lblSearch, lblMeasure)
    modEditAreaHelpers.Resize_label(lblItemTypes, lblMeasure)
-   modEditAreaHelpers.Resize_label(lblButtons, lblMeasure)
-   ' cmbSearchFor.Add("MBS Item Number")
-   ' cmbSearchFor.Add("AMA Item Number")
-   ' cmbSearchFor.Add("Description")
-   ' cmbSearchFor.Add("Brief Description")
-   ' cmbSearchFor.Add("Group")
    Gridview1_Init()
    ama_mbs_or_both = "mbs"
    Try Settings_Load()
-   Reload() 
+   
+End
+
+Public Sub Gridview1_ClearFees()
+   
+   Dim x As Integer
+   
+   For x = 0 To gridview1.Rows.count - 1
+      gridview1[x, 1].text = ""
+      '    gridview1[x, 2].text = ""
+   Next
    
 End
 
@@ -48,9 +57,9 @@ Public Sub Gridview1_Init()
    Dim columnwidth As Integer
    Dim lastwidth As Integer = 100
    
-   Billingtypes = modBillingDBI.Fee_types_Get()
+   Billingtypes = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Fee_types_Get())
    For Each BillingType In BillingTypes
-      lblmeasure.text = BillingType!name 
+      lblmeasure.text = BillingType!type 
       If lblmeasure.width + 2 > lastwidth Then
          lastwidth = lblmeasure.width + 2
       Endif
@@ -59,37 +68,33 @@ Public Sub Gridview1_Init()
    With gridview1
       .Rows.H = 20 
       .Columns.Count = 2
+      .Columns[0].Width = Max(lastwidth, gridview1.width - 100)
+      .Columns[1].width = 100
+      ' .Columns[2].width = 1
       .Rows.count = Billingtypes.Count
-      For x = 0 To 1
-         If x <> 1 Then 
-            .Columns[x].Width = lastwidth 
-         Else
-            .Columns[1].width = gridview1.width - 400
-         End If
-      Next
       .Columns[0].text = "Type"
       .Columns[1].text = "Fee"
    End With
    x = 0
    For Each Billingtype In Billingtypes
       gridview1.row = x 
-      gridview1[x, 0].text = Billingtype!name
+      gridview1[x, 0].text = Billingtype!type
       Inc x
    Next
-   ' Hbox_FeeList.height = (Billingtypes.count + 2) * 20
    
 End
 
 Public Sub Reload()
    
-  ' Timer1.enabled = False
-  ' lcDescriptors.Clear()
-  ' Descriptors = modBillingDBI.Descriptors_Get(Trim(txtFilterDescriptor.text), sbLimit.value)
+   Inc Application.Busy
+   Timer1.enabled = False
+   lcDescriptors.Clear()
+   Descriptors = modBillingDBI.Descriptors_Get(Trim(txtMBSItemNumber.text), True, False)
    
-   ' For Each Descriptor In Descriptors
-   '    lcRow = New CDescriptorRow(lcDescriptors, descriptor)
-   ' Next    
-   ' Timer1.Enabled = True   
+   For Each Descriptor In Descriptors
+      lcRow = New CDescriptorRow(lcDescriptors, descriptor)
+   Next    
+   Dec Application.Busy
    
 End
 
@@ -97,7 +102,6 @@ Public Sub Search()
    '-------------------------------------------------------------------
    ' Once timercount = 3 then search 'fixme make this user configurable
    ' ------------------------------------------------------------------
-  
    
    Timer1.Stop          'stop timer hence stop timercount incrementing
    timercount = 0       'until another keyrelease in txtsearch
@@ -111,42 +115,162 @@ Public Sub Search()
       lcRow = New CDescriptorRow(lcDescriptors, descriptor)
    Next
    Dec Application.Busy
-   
+   If lcDescriptors.Count = 1 Then
+      Display()
+   Endif    
+
 End
-
-
 
 Public Sub Save()
    '--------------------------
    'Save a modified descriptor
    '--------------------------
    
-   Dim Descriptor As New Collection
-   
+   Dim Descriptor As New CRow
+   Dim cPrice As New CRow
+   Dim billing_type As Collection
+   Dim row As Integer
+   Dim fee As Collection 
+   Dim sSql As String
+   Dim hSql_File As File
    If VBox_EditArea_Outer.padding = 0 Then Return
+   '------------------------------------------------------------------------  
+   'Check if any fees have been changed, added or deleted
+   'For each row in the grid - check first if we have an existing fee
+   'If we do, then compare this to the amount we first loaded into the grid
+   '------------------------------------------------------------------------
+   For row = 0 To gridview1.rows.count - 1                              'for each row in the grid
+      If Not IsNull(Existing_Fee_keys[row]) Then 
+         If Descriptor_Fees.Exist(Existing_Fee_keys[row]) Then     'existing entry in clerical.prices
+            Print Descriptor_Fees[Existing_Fee_keys[row]]
+            fee = Descriptor_Fees[Existing_Fee_keys[row]]
+            If fee!price <> gridview1[row, 1].Text Then            'if price has changed, save it
+               Print "changed price"
+               cPrice = New CRow
+               cPrice.put_unchanged(fee!fk_price, "fk_price")
+               cPrice!price = gridview1[row, 1].Text
+               cPrice.Save("billing.prices", "fk_price")
+            Endif
+         Endif
+      Else
+         '----------------------------------------------------------------------------
+         'There is no existing fee amount for this grid row
+         'so if the amounts column of grid has a fee, create new row in billing.prices
+         '----------------------------------------------------------------------------
+        
+         If Trim(gridview1[row, 1].Text) <> "" Then
+            Print "new fee amount"
+            cPrice = New CRow
+            cPrice!price = gridview1[row, 1].Text
+            cPrice!fk_fee_schedule = fee!fk_fee_schedule
+            cPrice!fk_lu_billing_type = Billingtypes[row]!pk
+            cPrice.Save("billing.prices", "fk_price") 
+         Endif
+      End If
+   Next
    
-   Descriptor!pk = pk_descriptor
-   Descriptor!descriptor_Brief = Trim(txtDescriptorBrief.text)
-   modDBConnect.BeginTrans()
-   modBillingDBI.Descriptors_Save(Descriptors, pk_descriptor, descriptor)
+   If pk_descriptor <> 0 Then 
+      Descriptor.put_unchanged(pk_descriptor, "fk_descriptor")
+   Else
+      Descriptor!pk = pk_descriptor
+   Endif
+   hSql_File = Open "/home/richard/descriptors_update.sql" For Write Append
+   Descriptor!descriptor_brief = Trim(txtDescriptorBrief.text)
+   Descriptor!descriptor = Trim(txtDescriptor.text)
+   Descriptor.Save("billing.fee_schedule", "fk_descriptor")
+   ssql = "Update billing.fee_schedule "
+   ssql &= "Set descriptor_brief = $$" & Descriptor!descriptor_brief & "$$ "
+   ssql &= "WHERE  pk = " & pk_descriptor
+   Print #hSql_File, ssql
    modDBConnect.CommitTrans() 
    EditArea_Notify_Datachange(False)
    Reload()
+   Close #hSql_File
+
+End
+
+Public Sub Save_old()
+   '--------------------------
+   'Save a modified descriptor
+   '--------------------------
    
+   Dim Descriptor As New CRow
+   Dim cPrice As New CRow
+   Dim billing_type As Collection
+   Dim row As Integer
+   Dim fee As Collection 
+   Dim sSql As String
+   Dim hSql_File As File
+   
+   For row = 0 To gridview1.rows.count - 1                        'for each row in the grid
+      If Descriptor_Fees.Exist(gridview1[row, 2].Text) Then     'existing entry in clerical.prices
+         Print Descriptor_Fees[gridview1[row, 2].Text]
+         fee = Descriptor_Fees[gridview1[row, 2].Text]
+         If fee!price <> gridview1[row, 1].Text Then            'if price has changed, save it
+            Print "changed price"
+            cPrice = New CRow
+            cPrice.put_unchanged(fee!fk_price, "fk_price")
+            cPrice!price = gridview1[row, 1].Text
+            cPrice.Save("billing.prices", "fk_price")
+         Endif
+      Else
+         Print "new fee amount"
+         If Trim(gridview1[row, 1].Text) <> "" Then
+            cPrice = New CRow
+            cPrice!price = gridview1[row, 1].Text
+            cPrice!fk_fee_schedule = fee!fk_fee_schedule
+            cPrice!fk_lu_billing_type = Billingtypes[row]!pk
+            cPrice.Save("billing.prices", "fk_price") 
+         Endif
+      Endif
+      '  For Each billing_type In Descriptor_Fees                  'see if we have a matching existing fee
+      '  If gridview1[row, 0].Text = billing_type!name Then         'see if there is a matching existing fee entry
+      '    If billing_type!price <> gridview1[row, 1].Text Then    'if there is, and the price has change
+      '       If gridview1[row, 1].Text <> "" Then 
+      '        cPrice = New CRow                                    'save it
+      '        cPrice.put_unchanged(billing_type!pk, "fk_price")
+      '        Break   
+      '       End If 
+      '   Endif
+      ' Endif
+      
+      '  Next 
+   Next
+   
+   If VBox_EditArea_Outer.padding = 0 Then Return
+   
+   If pk_descriptor <> 0 Then 
+      Descriptor.put_unchanged(pk_descriptor, "fk_descriptor")
+   Else
+      Descriptor!pk = pk_descriptor
+   Endif
+   hSql_File = Open "/home/richard/descriptors_update.sql" For Write Append
+   Descriptor!descriptor_brief = Trim(txtDescriptorBrief.text)
+   Descriptor!descriptor = Trim(txtDescriptor.text)
+   Descriptor.Save("billing.fee_schedule", "fk_descriptor")
+   ssql = "Update billing.fee_schedule "
+   ssql &= "Set descriptor_brief = $$" & Descriptor!descriptor_brief & "$$ "
+   ssql &= "WHERE  pk = " & pk_descriptor
+   Print #hSql_File, ssql
+   modDBConnect.CommitTrans() 
+   EditArea_Notify_Datachange(False)
+   Reload()
+   Close #hSql_File
+
 End
 
 Public Sub Settings_Save()
    
    Settings["Billing_Descriptors/VSplit_Main.Layout"] = Vsplit_Main.Layout
    Settings["Billing_Descriptors/HSplit_EditArea.Layout"] = HSplit_EditArea.Layout
-
+   
 End
 
 Private Sub Settings_Load()
    
    Try Vsplit_Main.Layout = Settings["Billing_Descriptors/VSplit_Main.Layout"]
    Try HSplit_EditArea.Layout = Settings["Billing_Descriptors/HSplit_EditArea.Layout"] 
-
+   
 End
 
 ' Public Sub Timer1_Timer()
@@ -173,7 +297,16 @@ End
 
 Public Sub EditArea_Clear()
    
-   modEditAreaHelpers.EditArea_Clear(Vbox_Editarea) 
+   modEditAreaHelpers.EditArea_Clear(Vbox_Editarea)   'clear the input area
+   bEditBillingType = False                           'not in fee edit mode
+   With txtFee                                        'disappear the fee textbox
+      .Visible = False 
+      .text = ""
+   End With
+   VBox_EditArea.Enabled = False
+   Gridview1_ClearFees
+   ' lcDescriptors.Clear()
+   pk_descriptor = 0
    
 End
 
@@ -191,9 +324,31 @@ Public Sub Display()
    txtDescriptorBrief.text = descriptor!descriptor_brief
    Try txtDateceased = Format(descriptor!ceased_date, "dd/mm/yyyy")
    txtGroup.text = descriptor!group
-   
+   Fee_Schedules_Show(pk_descriptor)
    bexit = False  
+   VBox_EditArea.Enabled = True  
    
+End
+
+Public Sub Fee_Schedules_Show(pk_descriptor As Integer)
+   
+   Dim row As Integer
+   Dim D As Collection
+   Dim A As String[]
+   
+   Descriptor_Fees = modBillingDBI.Fees_Get_For_Descriptor(pk_descriptor)
+   Existing_Fee_keys = New Collection
+   For row = 0 To gridview1.rows.Count - 1
+      For Each D In Descriptor_Fees
+         If gridview1[row, 0].text = D!fee_type Then
+            gridview1[row, 1].text = D!price
+            Existing_Fee_keys.Add(D!fk_price, row)
+            Break
+         Endif
+      Next
+   Next
+   Print Existing_Fee_Keys
+
 End
 
 Public Sub lcDescriptors_Click()
@@ -243,14 +398,14 @@ Public Sub EditAreaTextBox_GotFocus()
    '-----------------------------------------------------------------------
    'User clicks on search textbox, start the time which controls the search
    '-----------------------------------------------------------------------
-
+   
    If Last.tag = "search" Then 
       Timer1.Start
       Timercount = 0
    Else
       Timer1.Stop
    End If    
-
+   
 End
 
 Public Sub EditAreaTextBox_Change()
@@ -258,10 +413,12 @@ Public Sub EditAreaTextBox_Change()
    If bexit Then Return
    If Last.tag <> "search" Then 
       EditArea_Notify_Datachange(True)
-   Else
-      EditArea_Clear()
-      EditArea_Notify_Datachange(False)
    End If 
+   Select Case Last.tag
+      Case "mbs item number", "search"
+         EditArea_Clear()
+         EditArea_Notify_Datachange(False)
+   End Select
    
 End
 
@@ -270,58 +427,55 @@ Public Sub EditAreaTextBox_KeyRelease()
    If Last.tag = "search" Then
       timercount = 0
       Timer1.start
-      Print "zeroing timer"
-      Print Timer1.Enabled, "enabled"
-      Print "count:", timercount
    End If   
    
 End
 
 Public Sub GridView1_Click()
-
-   Print "on row" & gridview1.Row
-   Print "on col" & gridview1.Column
+   
    onrow = gridview1.Row
    OnCol = gridview1.Column
    
 End
 
 Public Sub GridView1_DblClick()
-
+   'bEditBillingType
+   
    Dim i As Integer
    Dim iSlotCount As Integer
    
-   TextBox1.text = ""                              'clear search textbox
+   If oncol = 0 Then Return                        'Cannot edit billing type unless in edit mode
+   If lcDescriptors.count = 0 Then Return
+   If IsNull(descriptor) Then Return 
+   
+   txtFee.text = ""                              'clear search textbox
+   
    bFoundFirst = False  
    
-   Print "The first was ", iFirstRow
-   Print "The last was ", iLastRow
-   For i = 0 To gridview1.rows.count - 1           'figure out which rows are selected
-      
-      If gridview1.rows[i].selected = True Then
-         If bfoundfirst = False Then
-            bfoundfirst = True
-            ifirstrow = i
-         End If 
-         ilastrow = i
-         Print "row " & i & " is selected"
-      End If 
-      '  If bfoundfirst = False Then 
-      '     islotcount += gridrows[i]!slots
-      '  Endif
-   Next   
-   Print gridview1.Rows.Select
-   Print gridview1.Rows.height 
+   ' For i = 0 To gridview1.rows.count - 1           'figure out which rows are selected
+   '    If gridview1.rows[i].selected = True Then
+   '       If bfoundfirst = False Then
+   '          bfoundfirst = True
+   '          ifirstrow = i
+   '       End If 
+   '       ilastrow = i
+   '       Print "row " & i & " is selected"
+   '    End If 
+   ' Next   
    onrow = gridview1.Row 
-'   iLeft = gridview1[onrow, oncol].Left
-   iTop = ((onrow + 1) * 20) + 1  'iSlotCount * 20
-   TextBox1.left = iLeft + 2
-   TextBox1.top = iTop
-   TextBox1.width = gridview1.Columns[oncol].Width + 4
-   ' TextBox1.top = gridview1.ScreenX
-   TextBox1.Height = ((iLastRow - iFirstRow) + 1) * gridview1.Rows[0].Height + 5
-   TextBox1.Visible = True
-   TextBox1.SetFocus()
+   iLeft = gridview1[onrow, oncol].Left
+   iTop = ((onrow + 1) * 20) + 3  'iSlotCount * 20
+   With txtFee
+      .left = iLeft + 1
+      .top = iTop
+      .width = gridview1.Columns[oncol].Width + 3
+      .Height = ((iLastRow - iFirstRow) + 1) * gridview1.Rows[0].Height + 4
+      .Visible = True
+      .SetFocus()
+      .text = gridview1[onrow, oncol].Text
+      
+   End With
+   sAmount_Before_Edit = gridview1[onrow, oncol].Text   
    
 End
 
@@ -331,30 +485,64 @@ Public Sub Timer1_Timer()
    'once users pauses in the keystrokes, the timer will increment
    'to over 3 and search will begin.
    '--------------------------------------------------------------
-
+   
    Inc timercount
-   Print "in timer:", timercount
    If timercount > 3 Then
       If Trim(txtSearch.text) <> "" Then Search() 
    Endif
    
 End
 
-Public Sub TextBox1_Activate()
+Public Sub txtFee_Activate()
    
+   'fix me get IAN to do proper money validation input/display
+   If Left(Last.text) <> "$" Then
+      Last.text = "$" & Last.text
+   Endif
    gridview1[onrow, oncol].text = Last.text
+   If sAmount_Before_Edit <> gridview1[onrow, oncol].text Then
+      EditArea_Notify_Datachange(True)
+   Endif
    Last.Visible = False 
    
 End
 
-Public Sub VBox1_MouseDown()
+Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean  
+   
+   Select Case tag
+      Case "fee"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_NumbersDecimal, keycode)
+      Case Else
+         bKeyValid = True
+   End Select
+   Return bKeyValid
    
 End
 
 Public Sub rbEditArea_Click()
-
+   
    ama_mbs_or_both = Last.tag
    EditArea_Clear()
    Search()
+   
+End
 
+Public Sub txtFee_KeyPress()
+   
+   If bexit Then Return 
+   bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code, Last.tag)
+   If bkeyvalid = False Then
+      Stop Event
+      Return
+   End If
+   
+End
+
+Public Sub VBox5_Leave()
+   '-------------------------------------------------------------------
+   'If mouse leaves the gridview1 container then remove the fee textbox
+   '-------------------------------------------------------------------
+
+   txtFee.Visible = False   
+   
 End

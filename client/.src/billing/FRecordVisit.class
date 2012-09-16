@@ -15,14 +15,16 @@
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '
-' A Form to record the patients visit and raise the item number
+' A class to record the patients visit and raise the invoice
 '----------------------------------------------------------------------
 'THIS FORM WILL NOT WORK IT IS VERY MUCH PROTOTYPE PRE-ALPHA ONLY
-'ONLY FOR PROOF OF CONCEPT
-'FIX ME APPOINTMENT ICONS SPREAD OVER Frecordvisit, FMakeAppointments and ModAppointmentsDBI -FIXME
+'ONLY FOR PROOF OF CONCEPT, much of the code is really bad
+'many routines are redundant/duplicated
+'many of the database calls are redundant duplicated
 '-----------------------------------------------------------------
 Private currentconsult As CConsult
 Private bexit As Boolean
+Private timer_count As Integer
 Private OnRow As Integer
 Private OnCol As Integer
 Private GridData As Collection 
@@ -38,56 +40,78 @@ Private clinic As Collection
 Private clinics As Collection
 Private items As Collection 
 Private item As Collection
+Private Scheduled_Fee As Collection
+Private consult_item_number As String 
+Private iBilling_Category As Integer
+Private Const cBilling_Category_Private As Integer = 0
+Private Const cBilling_Category_Medicare As Integer = 1
+Private Const cBilling_Category_Veteran As Integer = 2
+Private Const cBilling_Category_Other As Integer = 3
 Private form_appointments As FDayList
 Private appointment_icons As Collection   
 Private staff As Collection
 Private Staff_Member As Collection
+Private fk_staff As Integer                  'whichever staff saw the patient
 Private Unbilled_Consultations As Collection 
 Private Unbilled_consultation As Collection
 Private payers As Collection
 Private payer As Collection   'could be patient/organisation etc
 Private cGridColumn_ItemNumber As Integer = 0
 Private cGridColumn_BriefDescriptor As Integer = 1
+Private cGridColumn_Fee As Integer = 2
+Private cGridColumn_FeeType As Integer = 4
 Private Payment_Methods As Collection
+Private InvoiceComments As Collection
+Private InvoiceComment As Collection
+Private FeeTypes As Collection
+Private FeeType As Collection
+Private Duration As Integer                           'the duration of the appointment - at least what they were booked in for
+Private Descriptors_Brief As Collection
+Private descriptor_brief As Collection
 
-
-Public Sub Init() '(cons As CConsult)
+Public Sub Init() 
    '---------------------------------------------------------
    'Do all the form initialisation stuff like adding stuff to 
    'combo's, setting numbers of columns in lists, displaying
    'the patients contact details
    '---------------------------------------------------------
+   
    Dim x As Integer
-   'currentconsult = Cons         'set current consult
-   Appointment_Icons = Appointment_icons_Get_Picture(modAppointmentsDBI.Appointment_icons_get())
-    With form_appointments = New FDayList(Vbox_Appointments)
-     '  .Init(Staff_Member, Now(), modDBConnect.currentUser!fk_clinic, Appointment_Icons)
+
+   With form_appointments = New FDayList(Vbox_Appointments)
+      '  .Init(Staff_Member, Now(), modDBConnect.currentUser!fk_clinic, Appointment_Icons)
    End With
    With cvwUnBilled
       .Columns.count = 2
    End With
-   lblmeasure.text = "  Payment Method "
+   lblmeasure.text = "  Payment By "
    modEditAreaHelpers.Resize_labels(VBox_EditArea_Inner, lblmeasure)
-   Payment_methods = modUtil.LoadCombo(cmbPaymentMethods, modBillingDBI.Payment_Methods_Get(), "method")
+   Payment_methods = modUtil.LoadCombo(cmbPaymentMethods, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Payment_Methods_Get()), "method")
+   InvoiceComments = modUtil.LoadCombo(cmbInvoiceComments, modBillingDBI.Invoice_Comments_Get(), "comment")
+   FeeTypes = modUtil.LoadCombo(cmbFeeType, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Fee_Types_Get()), "type") 'fixme
    staff = modUtil.LoadCombo(cmbStaff, modContactsDBI.Staff_Get(), "wholename")  
    cmbStaff.index = 0
-   cvwUnBilled_Refresh  
+   cmbInvoiceComments.index = -1
    Gridview1_Init()
-
    Me.Center()
    Try Settings_Load()         'load settings for this form
    GridRows = New Collection
    seenBy = modUtil.LoadCombo(cmbSeenBy, modInboxDBI.Inbox_Staff_Get(), "wholename")
    clinics = modUtil.LoadCombo(cmbLocation, modAdminDBI.Clinics_Get(), "branch")
-   columnview1.Columns.count = 3
+   columnview1.Columns.count = 4
+   
 End
 
 Public Sub EditArea_Clear()
+   
    bExit = True
- ' fk_payer = 0
-  modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Inner) 
-  textlabelPayer.text = ""
-  bexit = False
+   ' fk_payer = 0
+   modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Inner) 
+   textlabelPayer.text = ""
+   Unbilled_consultation = Null
+   gridview1.Clear
+   cmbFeeType.Visible = False 
+   bexit = False
    
 End
 
@@ -95,91 +119,202 @@ Public Sub cvwUnBilled_Refresh()
    '------------------------------------------------------------------------
    'Display a list of all unbilled consultations ordered by appointment date
    '-------------------------------------------------------------------------
-    
-    Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get()
-    cvwUnBilled.Clear()
-    For Each Unbilled_consultation In Unbilled_Consultations
-        cvwUnBilled.Add(Unbilled_consultation!pk, 0)
-        cvwUnBilled[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
-        cvwUnBilled[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
-    Next
+   
+   Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get()
+   cvwUnBilled.Clear()
+   For Each Unbilled_consultation In Unbilled_Consultations
+      cvwUnBilled.Add(Unbilled_consultation!pk, 0)
+      cvwUnBilled[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
+      cvwUnBilled[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
+   Next
+   If cvwUnBilled.count Then
+      cvwUnBilled.MoveFirst()
+      cvwUnBilled.Item.Selected = True
+      cvwUnBilled_Click()
+   Endif
 End
 
+Public Sub cvwUnBilled_Click()
+   '------------------------------------------------------------------------------
+   'User has clicked on one of the unbilled patients in the left hand list
+   'Display their details in the edit area, match staff combo to whoever saw them
+   'assume a standard consultation FIXME make this user configureable
+   '------------------------------------------------------------------------------
+   
+   cvwUnBilled.MoveCurrent()
+   EditArea_Clear()
+   Unbilled_consultation = Unbilled_Consultations[cvwUnBilled.Item.key]
+   txtpatient.text = Unbilled_consultation!wholename
+   txtDate.text = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
+   Try Payer_Get()
+   fk_staff = Unbilled_consultation!fk_staff 
+   For Each Staff_Member In staff
+      If Staff_Member!fk_staff = fk_staff Then
+         cmbSeenBy.index = cmbSeenBy.Find(Staff_Member!wholename)
+      Endif
+   Next
+   duration = Val(Split(Unbilled_consultation!duration, ":")[1]) + Val(Split(Unbilled_consultation!duration, ":")[0]) * 60        ' e.g 10, 20, 30, 50, 60, 70 .... etc!
+   txtDuration.text = Str(duration) & " minutes"
+   Select Case duration
+      Case 1 To 19
+         consult_item_number = "23"
+      Case 20 To 40
+         consult_item_number = "36"
+      Case 40 To 100
+         
+   End Select
+   
+   VBox_EditArea_Outer.Enabled = True 
+   GridView1.Enabled = True 
+   
+End
 
+Public Sub Payer_Get()
+   'temp code get the responsible person FIXME  body code only whilst developin
+   'need more inclusive way of getting the payer - eg might not be a patient
+   
+   bExit = True   
+   cvwUnBilled.MoveCurrent()
+   payer = modBillingDBI.Responsible_Payer_Get(Unbilled_Consultations[cvwUnBilled.Item.key]!fk_patient)
+   If Not IsNull(Payer) Then  
+      If Unbilled_Consultations[cvwUnBilled.Item.key]!fk_patient <> payer!fk_patient Then
+         rbInvoiceToOther.value = True 
+      Endif
+      Try textlabelPayer.text = payer!wholename & "<BR>" & Trim(payer!street1 & " " & payer!street2) & " " & payer!town & " " & payer!postcode
+   End If  
+   bExit = False   
+   
+End
 
 Public Sub Gridview1_Init()
-    Dim x As Integer
-      ' With gridview2
-      '    .Rows.count = 1
-      '    .Columns.count = 5
-      '    .Columns[1].Alignment = Align.Right
-      '    .height = 24
-      ' End With
-      ' gridview2[0, 1].Text = "Total "
-      With gridview1
-     .Rows.H = 20 
-     .Columns.Count = 5
-     .Rows.count = 5
-     For x = 0 To 4
-       If x <> 1 Then 
-         .Columns[x].Width = 100
-         label101.width = 100
-          lblInvoiceTotal.width = 100
-           label104.width = 100
-            label105.width = 100
-       '  gridview2.Columns[x].width = 100
-       Else
-         .Columns[1].width = gridview1.width - 400
-         label200.width = gridview1.width - 400
-       '  gridview2.Columns[x].Width = gridview1.width - 400
-       End If
-     Next
-     .Columns[0].text = "Item"
-     .Columns[1].text = "Description"
-     .Columns[2].text = "Fee"
-     .Columns[3].text = "Rate"
-     .Columns[4].text = "GST"
-    
+   
+   Dim x As Integer
+   
+   With gridview1
+      .Rows.H = 20 
+      .Columns.Count = 6
+      .Rows.count = 5
+      For x = 0 To 5
+         If x <> 1 And x <> 4 Then 
+            .Columns[x].Width = 75
+            label101.width = 75
+            lblInvoiceTotal.width = 75
+            label104.width = 750
+            label105.width = 75
+         Else
+            .Columns[1].width = gridview1.width - 500
+            label200.width = gridview1.width - 500
+            .Columns[4].width = 200
+         End If
+      Next
+      .Columns[0].text = "Item"
+      .Columns[1].text = "Description"
+      .Columns[2].text = "Fee"
+      .Columns[3].text = "Gap"
+      .Columns[4].text = "Rate"
+      .Columns[5].text = "GST"
+      
    End With
-     gridview1.height = 100
+   ' With cmbFeeType
+   '    .width = gridview1.Columns[onCol].Width
+   '    .height = gridview1.Rows[onrow].Height + 5
+   '    .left = gridview1[onrow, oncol].Left + 2
+   '    .top = ((onrow + 1) * 20) + 2
+   ' End With
+   gridview1.height = 100
    
 End
 
 Public Sub Gridview1_Rebuild(data As Collection)
    
-  Dim i As Integer
-  
-  gridview1.Clear()
-  gridview1.Rows.count = data.count
-  For i = 0 To data.count - 1
+   Dim i As Integer
+   
+   gridview1.Clear()
+   gridview1.Rows.count = data.count
+   For i = 0 To data.count - 1
       gridview1[i, 0].text = data[i]!time
       gridview1[i, 1].picture = data[i]!picture
       gridview1[i, 2].text = data[i]!name
       gridview1.Rows[i].height = data[i]!slots * 20
-      
-    '  gridview1[i, 1].Picture = pic
-  Next
+   Next
    
 End
+
+Public Sub GridView1_Menu()
+   '-------------------------------------------------------------
+   'if any of the cells in the grid have text then popup the menu
+   '-------------------------------------------------------------
+   
+   Dim row As Integer
+   Dim col As Integer
+   Dim bHaveText As Boolean
+   
+   For row = 0 To gridview1.Rows.count - 1
+      For col = 0 To 4
+         If gridview1[row, col].Text <> "" Then
+            mnuInvoices.Popup
+            bHaveText = True
+            Break
+         Endif
+      Next
+      If bHaveText Then Break
+   Next  
+   
+End
+
+Public Sub Gridview1_Delete_Row(onrow As Integer)
+   
+   Dim col As Integer
+   
+   For col = 0 To 4
+      gridview1[onrow, col].text = ""
+   Next
+   HBox_Descriptor.Visible = False  
+   columnview1.Visible = False   
+   Invoice_Calculate_Total()
+   
+End
+
 Public Sub GridView1_Click()
    
-   Print "on row" & gridview1.Row
-   Print "on col" & gridview1.Column
+   If txtpatient.text = "" Then
+      Message.Info("Please select a patient to invoice, either by clicking on the patients list, or searching for a patient.")
+      Return 
+   End If   
    onrow = gridview1.Row
    OnCol = gridview1.Column
+   Select Case oncol
+      Case cGridColumn_FeeType
+         With cmbFeeType
+            .width = gridview1.Columns[onCol].Width
+            .height = gridview1.Rows[onrow].Height + 5
+            .left = gridview1[onrow, oncol].Left + 2
+            .top = ((onrow + 1) * 20) + 2
+            If gridview1[onrow, 0].text <> "" Then 
+               .Visible = True  
+            Else
+               .Visible = False  
+            End If
+         End With
+      Case Else
+         
+         cmbFeeType.Visible = False   
+         
+   End Select
+   
 End
 
 Public Sub GridView1_DblClick()
+   
    Dim i As Integer
    Dim iSlotCount As Integer
    
+   If oncol = 4 Or If txtpatient.text = "" Then Return
+   If gridview1[onrow, oncol].text <> "" Then Return
    TextBox1.text = ""                              'clear search textbox
    bFoundFirst = False  
-
-   Print "The first was ", iFirstRow
-   Print "The last was ", iLastRow
-    For i = 0 To gridview1.rows.count - 1           'figure out which rows are selected
-       
+   
+   For i = 0 To gridview1.rows.count - 1           'figure out which rows are selected
       If gridview1.rows[i].selected = True Then
          If bfoundfirst = False Then
             bfoundfirst = True
@@ -188,24 +323,28 @@ Public Sub GridView1_DblClick()
          ilastrow = i
          Print "row " & i & " is selected"
       End If 
-    '  If bfoundfirst = False Then 
-    '     islotcount += gridrows[i]!slots
-    '  Endif
    Next   
    Print gridview1.Rows.Select
    Print gridview1.Rows.height 
+   Select Case oncol
+      Case 1 'the brief descriptor, allow searching
+         Try txtDescriptor.text = item!descriptor
+         If Not Error Then
+            txtDescriptor.Pos = 0
+            HBox_Descriptor.Visible = True   
+         Endif
+      Case Else
+   End Select
    onrow = gridview1.Row 
    iLeft = gridview1[onrow, oncol].Left
-  ' iTop = onrow * gridview1.Rows.height 
-   iTop = ((onrow + 1) * 20) + 1 'iSlotCount * 20
- ' iTop = iFirstRow * gridview1.Rows.height 
+   iTop = ((onrow + 1) * 20) + 2 'iSlotCount * 20
    TextBox1.left = iLeft + 2
    TextBox1.top = iTop
    TextBox1.width = gridview1.Columns[oncol].Width + 4
-  ' TextBox1.top = gridview1.ScreenX
    TextBox1.Height = ((iLastRow - iFirstRow) + 1) * gridview1.Rows[0].Height + 5
    TextBox1.Visible = True
    TextBox1.SetFocus()
+   Print "should have set focus"
    
 End
 
@@ -214,94 +353,275 @@ Public Sub GridView1_Select()
    TextBox1.Visible = False   
    
 End
+
 Public Sub gridview_Keypress()
-    If bExit Then Return 
-   ' bexit = True
-   ' GridView1_DblClick()
-   ' TextBox1.text = Asc(gridview1.Key.code)
+   
+   If bExit Then Return 
+   If key.code = key.return Then
+      oncol = 0
+      onrow = 0
+      GridView1_DblClick()
+   Endif
+
 End
 
 Public Sub cmbEditArea_Click()
    
-  ' Dim window1 As Window
+   If bExit Then Return 
    
    Select Case Last.tag
       Case "staff"
-      '   For Each window1 In Workspace1.windows
+         '   For Each window1 In Workspace1.windows
          '   If window1.Caption = staff[cmbstaff.index]!wholename & " from " & Format(Now, gb.LongDate) Then
-          '     Workspace1.ActiveWindow = Window1
-          '     Workspace1.Tag = Staff_Member
-           '    Return
-          '  Endif
-       '  Next
+         '     Workspace1.ActiveWindow = Window1
+         '     Workspace1.Tag = Staff_Member
+         '    Return
+         '  Endif
+         '  Next
          Staff_Member = staff[cmbStaff.Index]
          form_appointments.Init(Staff_Member, Now(), modDBConnect.currentUser!fk_clinic, Appointment_Icons)
-
-       '  Generate_WeekList(Now)
-       '  cmbStaff.index = -1
-     ' Case "location" 
+      Case "fee type"
+         'User is changing the fee type
+         gridview1[onrow, 4].text = cmbFeeType.Text
+         Print FeeTypes[cmbFeeType.index]
+         gridview1[onrow, 2].text = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(gridview1[onrow, 0].text, FeeTypes[cmbFeeType.index]!pk)!price
+         Invoice_Calculate_Total
    End Select
    
 End
-Public Sub Textbox1_KeyRelease()
-  '  '--------------------------------------------
-  '  'First, rebuild the array of appointment times
-  '  '--------------------------------------------
-  '  
-   columnview1.Clear
-   If Trim(TextBox1.text) = "" Then Return   
-   items = modBillingDBI.Descriptors_Get(Last.text)
-   
-   For Each item In items  
-      
-   Next
 
+Public Sub TextBox1_GotFocus()
+   '-----------------------------------------------------
+   'If searching for brief descriptor then activate timer
+   '-----------------------------------------------------   
+   
+   If oncol = cGridColumn_BriefDescriptor Then
+      With columnview1
+         .top = Hbox_InvoiceGrid.top + TextBox1.top + TextBox1.height
+         .left = VBox_InvoiceGrid.Left + TextBox1.Left
+         .width = TextBox1.Width
+         .Visible = False  
+      End With
+      With HBox_Descriptor
+         .top = columnview1.Top
+         .Width = columnview1.Width
+         .left = columnview1.left
+         .Height = VBox_InvoiceGrid.height - TextBox1.top - textbox1.height
+         If Last.text = "" And gridview1[onrow, 0].text <> "" Then .Visible = True 
+      End With
+   Endif
    
 End
 
-Public Sub GridView1_Menu()
+Public Sub TextBox1_Activate()
+   
+   If bexit Then Return 
+   Print "textbox1_activate", oncol, " is the column we are in"
+   Select Case oncol
+      Case cGridColumn_ItemNumber
+         gridview1[gridview1.row, 0].Text = TextBox1.text
+         TextBox1.Visible = False  
+         Get_Items(TextBox1.text)
+      Case cGridColumn_Fee
+         gridview1[gridview1.row, 2].text = "$" & Trim(TextBox1.text)
+         TextBox1.Visible = False   
+         gridview1.SetFocus()
+      Case cGridColumn_BriefDescriptor
+         If IsNull(item) Then Return 
+         If IsNull(item!descriptor_brief) Then
+            Message.Title = "Brief Descriptors"
+            gridview1[gridview1.row, 1].Text = Trim(TextBox1.text)
+            If Message.question("Do you want to save this brief descriptor?", "Yes", "No") = 1 Then
+               modDBConnect.update("billing.fee_schedule", Null, ["pk": item!fk_fee_schedule, "descriptor_brief": gridview1[gridview1.row, 1].Text])   
+               item!descriptor_brief = gridview1[gridview1.row, 1].Text
+               modDBConnect.CommitTrans()
+               TextBox1.Visible = False   
+               HBox_Descriptor.Visible = False 
+               txtDescriptor.text = "" 
+               gridview1.SetFocus()
+            Endif
+         Endif
+   End Select
+   
+End
 
-  ' mnuRecordVisit.popup()
+Public Sub textbox1_KeyPress()
+   
+   Select Case key.Code
+      Case key.Down
+         If oncol = cGridColumn_BriefDescriptor Then
+            If columnview1.Visible Then
+               With columnview1
+                  .MoveFirst
+                  .Item.Selected = True 
+                  .SetFocus()
+               End With
+            End If 
+         End If      
+   End Select
+   
+End
 
+Public Sub Textbox1_KeyRelease()
+   '--------------------------------------------------------------------
+   'if user searching for brief descriptor zero the timer count
+   'then once they stop typing and timer_count which is incremented by
+   'Timer1_Timer > 3 the search is triggered see   Descriptors_Brief_Get
+   '--------------------------------------------------------------------
+   
+   If Trim(TextBox1.text) = "" Then Return  
+   timer_count = 0
+   If oncol = cGridColumn_BriefDescriptor Then
+      timer1.Enabled = True   
+      timer1.Start
+   Else
+      timer1.Enabled = False  
+      timer1.Stop
+   Endif
+   
 End
 
 Public Sub Form_Close()
    
-  Settings_Save() 
+   Settings_Save() 
+   
+End
+
+Public Sub Form_Show()
+   
+   cvwUnBilled_Refresh()
    
 End
 
 Private Sub Settings_Load()
-     Try Vsplit_Main.layout = Settings["Billing_RecordVisit/VSplit_Main.Layout"]
    
+   Try Vsplit_Main.layout = Settings["Billing_RecordVisit/VSplit_Main.Layout"]
+   Try Settings["Billing_RecordVisit/HSplit_Main.Layout"] = Hsplit_Main.Layout
    
 End
 
 Public Sub Settings_Save()
    
    Settings["Billing_RecordVisit/VSplit_Main.Layout"] = Vsplit_Main.Layout
+   Settings["Billing_RecordVisit/HSplit_Main.Layout"] = Hsplit_Main.Layout
    
 End
 
-Public Sub Save()
+Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean = False, Optional bPaid As Boolean = False)
+   ' Public Sub Make_Invoice(pk_patient As Integer, items As Collection[], fk_lu_billing_type As Integer, date_printed As Date Default Null, fk_staff As Integer = 0, Optional notes As String = "") As Integer
+   ' CREATE TABLE billing.invoices
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_staff_invoicing integer NOT NULL, -- the staff member raising the invoice
+   '   date_printed timestamp without time zone,
+   '   notes text,
+   '   fk_staff_provided_service integer NOT NULL, -- the staff member who provider the service on which the invoice is based
+   '   fk_patient integer,
+   '   date_invoiced timestamp without time zone NOT NULL DEFAULT now(),
+   '   paid boolean NOT NULL DEFAULT false,
+   '   CONSTRAINT invoices_pkey PRIMARY KEY (pk ),
+   '   CONSTRAINT invoices_fk_doctor_raising_fkey FOREIGN KEY (fk_staff_provided_service)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_lu_billing_type_fkey FOREIGN KEY (fk_lu_billing_type)
+   '       REFERENCES billing.lu_billing_type (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_patient_fkey FOREIGN KEY (fk_patient)
+   '       REFERENCES clerical.data_patients (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT invoices_fk_staff_invoicing_fkey FOREIGN KEY (fk_staff_invoicing)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   ' CREATE TABLE billing.items_billed
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_fee_schedule integer NOT NULL,
+   '   amount money NOT NULL,
+   '   fk_invoice integer NOT NULL,
+   '   fk_lu_billing_type integer NOT NULL,
+   '   CONSTRAINT items_billed_pkey PRIMARY KEY (pk ),
+   '   CONSTRAINT items_billed_fk_fee_schedule_fkey FOREIGN KEY (fk_fee_schedule)
+   '       REFERENCES billing.fee_schedule (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT items_billed_fk_invoice_fkey FOREIGN KEY (fk_invoice)
+   '       REFERENCES billing.invoices (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+
+   Dim invoice As New CRow
+   Dim i As Collection
+   Dim new_item As Collection
+   Dim items As New Collection
+   Dim item As CRow
+   Dim row As Integer
+   '------------------
+   'Create the invoice
+   '------------------
+   invoice!fk_staff_invoicing = modDBConnect.currentUser!fk_staff
+   If bPrint Then 
+      invoice!date_printed = Now()
+   Endif
+   invoice!notes = cmbInvoiceComments.Text
+   invoice!fk_staff_provided_service = Unbilled_consultation!fk_staff
+   invoice!fk_patient = Unbilled_consultation!fk_patient 
+   If bPaid Then invoice!paid = True     
+   invoice.Save("billing.invoices", "fk_invoice")
+   '------------------------------------
+   'Get the items from the grid and save
+   'FIXME - will later keep the underlying grid data in an array of some sort
+   'and dispose of some of these backend calls
+   '------------------------------------
+   For row = 0 To gridview1.Rows.count - 1  'fixme check all necessary data is in grids cells
+      If gridview1[row, cGridColumn_ItemNumber].Text <> "" Then  
+         item = New CRow
+         item!fk_fee_schedule = modBillingDBI.fk_fee_shedule_Get_For_Item_Number(gridview1[row, cGridColumn_ItemNumber].Text)
+         item!amount = gridview1[row, cGridColumn_Fee].Text
+         item!fk_invoice = invoice!fk_invoice
+         item!fk_lu_billing_type = Billing_Type_Get_Pk(gridview1[row, cGridColumn_FeeType].Text)
+         item.Save("billing.items_billed", "fk_item_billed")
+      End If   
+   Next
+   '------------------------------------------
+   'finally mark this appointment as invoiced
+   '-----------------------------------------
+   modDBConnect.update("clerical.bookings", Null, ["pk": Unbilled_consultation!pk, "invoiced": True])  
+   modBillingDBI.Print_Invoice(invoice) 
+   modDBConnect.CommitTrans
+   cvwUnBilled_Refresh()
    
+End 
+
+Public Sub Billing_Type_Get_Pk(txt As String) As Integer
    
-   
+   Dim type As Collection
+
+   For Each type In FeeTypes
+      If type!type = txt Then
+         Return type!pk
+      Endif
+   Next 
+
 End
-
-
 
 Public Sub Form_Resize()
-
+   
    Gridview1_Init()
-
+   
 End
 
 Public Sub EditArea_TextBox_GotFocus()
-
+   
    rbInvoiceToOther.value = True
-
+   
 End
+
 Public Sub Appointment_icons_Get_Picture(Appointment_Icons As Collection) As Collection 
    '-----------------------------------------------------------------------------------------
    'Loads the actual picture of the appointment icon into the collection got from the backend
@@ -316,63 +636,255 @@ Public Sub Appointment_icons_Get_Picture(Appointment_Icons As Collection) As Col
    
 End
 
-Public Sub cvwUnBilled_Click()
-
-   EditArea_Clear()
-   cvwUnBilled.MoveCurrent()
-   txtpatient.text = Unbilled_Consultations[cvwUnBilled.Item.key]!wholename
-   txtDate.text = Format(Unbilled_Consultations[cvwUnBilled.Item.key]!begin, "dd/mm/yyyy")
-   'temp code get the responsible person FIXME  body code only whilst developin
-   'need more inclusive way of getting the payer - eg might not be a patient
-   payer = modBillingDBI.Responsible_Payer_Get(Unbilled_Consultations[cvwUnBilled.Item.key]!fk_patient)
-   Try textlabelPayer.text = payer!wholename & "<BR>" & Trim(payer!street1 & " " & payer!street2) & " " & payer!town & " " & payer!postcode
-End
-
-Public Sub TextBox1_Activate()
-
-   Print "column is:" & gridview1.Column
-   Select Case gridview1.Column
-      Case cGridColumn_ItemNumber
-          gridview1[gridview1.row, 0].Text = TextBox1.text
-          TextBox1.Visible = False  
-          Get_Items(TextBox1.text)
-         
-   End Select
-
+Public Sub Descriptors_Brief_Get()
+   
+   If Trim(TextBox1.text) = "" Then Return  
+   timer1.Stop
+   With columnview1
+      .Clear
+      .Visible = False
+   End With
+   Descriptors_Brief = modBillingDBI.Descriptors_Brief_Get(Trim(TextBox1.text))
+   If Descriptors_Brief.count Then
+      For Each Descriptor_Brief In Descriptors_Brief  
+         columnview1.Add(Descriptor_Brief!pk, 0)
+         columnview1[Descriptor_Brief!pk][0] = Descriptor_Brief!mbs_item
+         columnview1[Descriptor_Brief!pk][1] = Descriptor_Brief!descriptor_brief
+      Next
+      With columnview1
+         .Raise
+         .Visible = True   
+      End With
+   Else
+      
+   End If
+   
 End
 
 Public Sub Get_Items(txt As String)
-     Items = modBillingDBI.Items_Get(Trim(txt))
-     If items.count = 1 Then
-        For Each item In items 'fixme ?proper way of doing this
-           gridview1[gridview1.row, 1].Text = item!descriptor_brief
-           gridview1[gridview1.row, 2].Text = item!price
-        Next
-     Endif
-     gridview1.row = gridview1.row + 1
-     Invoice_Calculate_Total()
-     gridview1.SetFocus()
-     GridView1_DblClick()
+   'developmental prototype only doesn't just get items.
+   'A patient may have a default 'billing_level' eg. private or health care concession
+   ' "1";"Bulk Bill"
+   ' "2";"Private"
+   ' "3";"Health Care Card Concession"
+   ' "4";"Pensioner Concession"
+   ' "5";"Medico-Legal"
+   'however these billing_levels are not the same as the concept of billing_types in the backend
+   ' "1";"AMA Fee"
+   ' "2";"DVA (Non LMO rate)"
+   ' "3";"DVA (LMO rate)"
+   ' "4";"Health Care Card Concession"
+   ' "5";"Pensioner Concession"
+   ' "6";"Private Fee"
+   ' "7";"TAC (Transport Accident Commission)"
+   ' "8";"Schedule Fee"
+   ' For example a patient may be bulk billed as either medicare or veteran (for some things) or both
+   ' or a practice may bill privately at the AMA rate, or privately at a concession rate
+
+   Dim fk_lu_billing_type As Integer
+   Dim bMissingBriefDescriptor As Boolean
+   Dim billing_type As String
+   
+   txtDescriptor.text = ""
+   bExit = True
+   Select Case Unbilled_consultation!fk_lu_default_billing_level        'set that
+      Case const.Billing_Default_Level_BulkBill
+         fk_lu_billing_type = const.Billingtype_Scheduled_Fee
+         billing_type = "Schedule Fee"
+      Case const.Billing_Default_Level_PensionerConcession
+         fk_lu_billing_type = const.Billingtype_Pensioner_Concession
+         billing_type = "Pensioner Concession"
+      Case const.Billing_Default_Level_HealthCareCardConcession
+         fk_lu_billing_type = const.Billingtype_Health_Care_Card_Concession
+         billing_type = "Health Care Card Concession"
+      Case const.Billing_Default_Level_Private
+         fk_lu_billing_type = const.Billingtype_Private
+         billing_type = "Private Fee"
+      Case const.Billing_Default_Level_MedicoLegal
+         fk_lu_billing_type = const.Billingtype_Private
+         billing_type = "Private Fee" 'fixme
+      Case Else 'is null
+         fk_lu_billing_type = const.Billingtype_Private                         'default to private billing
+         billing_type = "Private Fee"
+   End Select
+   
+   If IsNull(Unbilled_consultation!fk_lu_default_billing_level) Then
+      cmbFeeType.index = cmbFeeType.Find("Private Fee")
+      gridview1[gridview1.row, 4].Text = "Private Fee"
+   Else
+      cmbFeeType.index = cmbFeeType.Find(billing_type)
+      gridview1[gridview1.row, 4].Text = billing_type
+   Endif
+   Scheduled_Fee = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(Trim(txt), const.Billingtype_Scheduled_Fee)
+   Items = modBillingDBI.Items_Get(Trim(txt), fk_lu_billing_type)
+   If items.count Then
+      For Each item In items 'fixme ?proper way of doing this
+         If IsNull(item!descriptor_brief) Then
+            bMissingBriefDescriptor = True   
+         Endif
+         gridview1[gridview1.row, 1].Text = item!descriptor_brief
+         gridview1[gridview1.row, 2].Text = item!price
+         gridview1[gridview1.row, 3].Text = Format(Str(CFloat(Val(Replace(item!price, "$", ""))) - CFloat(Val(Replace(Scheduled_Fee!price, "$", "")))), "$#.###")
+         Break
+      Next
+      bExit = False 
+      Invoice_Calculate_Total()
+      If bMissingBriefDescriptor = False Then gridview1.row = gridview1.row + 1
+   Else
+      item = Null 
+      
+   Endif
+   If bMissingBriefDescriptor = True Then
+      oncol = 1
+      textbox1.SetFocus()
+      Wait
+      GridView1_DblClick()
+      Return
+   End If  
+   oncol = 0
+   ' gridview1.SetFocus()
+   bExit = True
+   GridView1_DblClick()
+   gridview1.SetFocus()
+   bExit = False  
+   
+End
+
+Public Sub columnview1_KeyPress()
+   
+   If key.code = key.return Then
+      columnview1_DblClick
+   End If  
+   
+End
+
+Public Sub columnview1_DblClick()
+   
+   columnview1.MoveCurrent()
+   columnview1.Visible = False   
+   Descriptor_Brief = Descriptors_Brief[columnview1.Item.key]
+   If Not IsNull(Descriptor_Brief!mbs_item) Then
+      gridview1[onrow, 0].text = Descriptor_Brief!mbs_item 'double done in get_items, prototype only fixme
+   End If
+   If Not IsNull(Descriptor_Brief!ama_item) Then
+      gridview1[onrow, 0].text = Descriptor_Brief!ama_item
+   End If
+   If Not IsNull(Descriptor_Brief!user_item) Then
+      gridview1[onrow, 0].text = Descriptor_Brief!user_item
+   End If
+   Get_Items(gridview1[onrow, 0].text) 'duplication in a way 'see note in subroutine
+   textbox1.Visible = False   
+   gridview1.SetFocus()
+
+End
+
+Public Sub mnuInvoices_Click()
+   
+   Dim x As Integer
+   
+   Select Case Last.tag
+      Case "delete item"
+         Gridview1_Delete_Row(onrow)
+         
+      Case "delete all items"
+         Gridview1_Clear()
+   End Select 
+   
+End
+
+Public Sub Gridview1_Clear()
+   
+   gridview1.Clear()
+   item = Null
+   oncol = 0
+   onrow = 0
+   
 End
 
 Public Sub Invoice_Calculate_Total()
-    Dim x As Integer
-    Dim total As Float
-    
-    For x = 0 To gridview1.Rows.Count - 1
-        If gridview1[x, 2].text = "" Then Break
-        total = total + CFloat(Val(Replace(gridview1[x, 2].text, "$", "")))
-    Next
    
-    lblInvoiceTotal.text = "  " & Format$(total, "$,#.###")
-  
+   Dim x As Integer
+   Dim total As Float
+   
+   For x = 0 To gridview1.Rows.Count - 1
+      If gridview1[x, 2].text = "" Then Break
+      total = total + CFloat(Val(Replace(gridview1[x, 2].text, "$", "")))
+   Next
+   
+   lblInvoiceTotal.text = "  " & Format$(total, "$,#.###")
+   
 End
-
 
 Public Sub rbInvoiceTo_Click()
-
+   'fixme put integer as tag
+   
+   If bExit Then Return 
    textlabelPayer.text = ""
-
+   Select Case Last.tag
+      Case "other"
+         Try Payer_Get()
+      Case "medicare"
+         iBilling_Category = cBilling_Category_Private
+      Case "veteran"
+         iBilling_Category = cBilling_Category_Private
+         
+      Case "patient"
+         iBilling_Category = cBilling_Category_Other   
+         
+   End Select
+   
 End
 
+Public Sub Items_Refresh()
+   
+   Select Case iBilling_Category
+      Case cBilling_Category_Medicare
+         
+      Case cBilling_Category_Veteran
+         
+      Case cBilling_Category_Private
+         
+      Case cBilling_Category_Other
+         
+   End Select
+   
+End
 
+Public Sub Button1_Click()
+   
+   HBox_Descriptor.Visible = False  
+   'modBillingDBI.Fee_Schedule_Import_From_Pracsoft()
+   
+End
+
+Public Sub timer1_Timer()
+   
+   Inc timer_count
+   Print timer_count
+   If timer_count > 3 Then
+      Descriptors_Brief_Get
+   Endif
+   
+End
+
+Public Sub VBox_InvoiceGrid_Leave()
+   
+   TextBox1.Visible = False  
+   timer1.Enabled = False   
+   
+End
+
+Public Sub MainToolbar_Click()
+   
+   Select Last.tag
+      Case "new receipt"
+         Gridview1_Clear()
+      Case "print receipt"
+         Save(True, False, True)
+      Case "save without printing"
+         Save(False, True)
+      Case "print account"
+         Save(True, True)
+   End Select
+   
+End

@@ -1,9 +1,6 @@
 #!/usr/bin/ruby
 
 $output = nil
-$index = File.new('index.txt.in','w')
-$toc = File.new('toc.txt','w')
-$latex = File.new('easygp.tex','w')
 $section = nil
 $subsection = nil
 $subsubsection = nil
@@ -64,7 +61,11 @@ def new_html_file(key,title,file)
     $output.close
   end
   title = esc(title)
-  $output = File.new(key+".html",'w')
+  if $debian
+    $output = File.new("build/"+key+".html",'w')
+  else
+    $output = File.new(key+".html",'w')
+  end
   $output.write("<html><head><title>%s</title></head><body>\n" % title)
   if file
     $output.write("<img src=\"%s\" />\n" % file)
@@ -245,16 +246,32 @@ EOF
 )
 else
   fd = File.new(ARGV[0])
+  $latex = File.new('easygp.tex','w')
   $latex.write File.open("intro.tex") {|f| f.read }
+  if ARGV[1] == '--debian'
+    system 'mkdir -p build'
+    $debian = true
+    $index = File.new('build/index.txt.in','w')
+    $toc = File.new('build/toc.txt','w')
+  else
+    $debian = false
+    $index = File.new('index.txt.in','w')
+    $toc = File.new('toc.txt','w')
+  end
+
   process_file(fd)
   $output.write("\n</body></html>\n")
   $output.close
   $toc.close
   $index.close
+  Dir.chdir("build") if $debian
+  system "sort -u < index.txt.in > index.txt"
+  system "rm index.txt.in"
+  Dir.chdir("..") if $debian
+  system "find -type d \\( \\! -path \"*.svn*\" \\) \\( \\! -path \"*build*\" \\) -exec mkdir -p build/\\{} \\;"
+  system "find -name *.png \\! -path '*build*' -exec cp \\{} build/\\{} \\;"
   $latex.write File.open("gpl-3.0.tex") {|f| f.read}
   $latex.write("\n\\end{document}\n")
   $latex.close
-  system "sort -u < index.txt.in > index.txt"
-  system "rm index.txt.in"
   #system "pdflatex easygp.tex"
 end

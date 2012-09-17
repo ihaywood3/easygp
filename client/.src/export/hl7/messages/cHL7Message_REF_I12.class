@@ -28,11 +28,13 @@
 ' 5: OBX(Observation segment)Optional repeating
 '
 
-Public Sub CreateHL7Message_REF_I12(ConsultingDoctor_XCN As CHL7Datatype_XCN, ProviderRole_ST As String, ReceivingFacility_HD As CHL7Datatype_HD, ToTransferPatient_fk_Patient As Integer, ObservationResultStatus As String, ReferralStatus As String, ReferralPriority As String, ReferralType As String, ReferralDisposition As String, ReferralReason As String, Optional Attachments As String[], Optional OriginatingReferralIdentifier_EI As CHL7Datatype_EI, Optional AdmissionType As String)
+Public Sub CreateHL7Message_REF_I12(Optional ConsultingProvider As Collection, ReferredToProvider As Collection, Optional PrimaryCareProvider As Collection, ReceivingFacility_HD As CHL7Datatype_HD, ToTransferPatient_fk_Patient As Integer, ObservationResultStatus As String, ReferralStatus As String, ReferralPriority As String, ReferralType As String, ReferralDisposition As String, ReferralReason As String, Optional Attachments As String[], Optional OriginatingReferralIdentifier_EI As CHL7Datatype_EI, Optional AdmissionType As String)
    '----------------------------------------------------------------------
    'This Function fills all required fields for the message and prints them to a File
    'Variables:
-   '- ConsultingDoctor_XCN: Needs to be a object of the cHL7Datatype_XCN class and contains the information of the receiving doctor 
+   '- ConsultingProvider(Optional): Needs to be a collection and contains the information of the consulted doctor 
+   '- ReferredToProvider: Needs to be a collection and contains the information of the Receiving doctor
+   '- PrimaryCareProvider(Optional): Needs to be a collection and contains the information of the primary doctor of the patient
    '- ProviderRole_ST:  needs to be a string and contains the information what role the cunsulting doctor has in this referral message that is coded according to the hl7 table 0286 Referring Provider = 'RP' Primary Care Provider = 'PP' Consulting Provider = 'CP' Referred To Provider = 'RT'
    '- ReceivingFacility_HD: Needs to be a object of the cHL7Datatype_HD class and contains the information of the receiving facility 
    '- ToTransferPatient_fk_Patient: Needs to be an integer and contains the foreign key which gives the information were the data of the to reffering patient is storred in the DB
@@ -58,7 +60,10 @@ Public Sub CreateHL7Message_REF_I12(ConsultingDoctor_XCN As CHL7Datatype_XCN, Pr
    Dim OBR As CHL7Segment_OBR
    Dim OBX As CHL7Segment_OBX
    Dim RF1 As CHL7Segment_RF1
-   Dim PRD As CHL7segment_PRD
+   Dim PRD1 As CHL7segment_PRD
+   Dim PRD2 As CHL7segment_PRD
+   Dim PRD3 As CHL7segment_PRD
+   Dim PRD4 As CHL7segment_PRD
    
    Dim ObservationIdentifier_CE As New CHL7Datatype_CE ' needed for the creation of a OBX segment
    Dim OriginatingReferralIdentifier_CE As New CHL7Datatype_CE
@@ -72,7 +77,6 @@ Public Sub CreateHL7Message_REF_I12(ConsultingDoctor_XCN As CHL7Datatype_XCN, Pr
    Dim PrimaryKey As Integer
    Dim ReferralType_CE As New CHL7Datatype_CE
    Dim ProviderRole_CE As New CHL7Datatype_CE
-   Dim ConsultingProvider As Collection
    Dim UniversalServiceID_CE As New CHL7Datatype_CE
    Dim Attachment1 As String
    
@@ -84,8 +88,8 @@ Public Sub CreateHL7Message_REF_I12(ConsultingDoctor_XCN As CHL7Datatype_XCN, Pr
       OriginatingReferralIdentifier_EI = New CHL7Datatype_EI
       PrimaryKey = modDBConnect.exec_query("Select nextval('documents.hl7_messages_pk_seq') as Pk;")!Pk   'gets the a unique value for the table were the massege will be strored an this value is also used to create a universalID
       OriginatingReferralIdentifier_EI.Identifier = Format(Now, "yymmddhhnnss") & "-" & PrimaryKey 'creates the unique message identifyer 
+      OriginatingReferralIdentifier_EI.AssigningAuthority.ApplicationIdentifier = "EasyGP "
       OriginatingReferralIdentifier_EI.AssigningAuthority.UniversalIDType = "GUID"
-      
    Endif
    
    ' fills the rest of the referralstatus according to the parameter 
@@ -170,47 +174,41 @@ Public Sub CreateHL7Message_REF_I12(ConsultingDoctor_XCN As CHL7Datatype_XCN, Pr
    ReferralReason_CE.Identifier = ReferralReason
    ReferralReason_CE.NameOfCodingSystem = "HL70336"
    
-   Select ProviderRole_ST 
-      Case "CP"
-         ProviderRole_CE.Text = "Consulting Provider"
-      Case "PP"
-         ProviderRole_CE.Text = "Primary Care Provider"
-      Case "RP"
-         ProviderRole_CE.Text = "Referring Provider"
-      Case "RT"
-         ProviderRole_CE.Text = "Referred To Provider"
-   End Select
-   ProviderRole_CE.Identifier = ProviderRole_ST
-   ProviderRole_CE.NameOfCodingSystem = "HL70286"
-   
-   ConsultingProvider = modDBConnect.currentUser
-   
    MSH = New CHL7Segment_MSH(ReceivingFacility_HD, "REF", "I12", OriginatingReferralIdentifier_EI.Identifier) 'creates a new MSH segment with all the underlaying datatypes
    RF1 = New CHL7Segment_RF1(ReferralStatus_CE, OriginatingReferralIdentifier_EI, ReferralPriority_CE, ReferralType_CE, ReferralDisposition_CE, ReferralReason_CE) 'creates a new RF1 segment with all the underlaying datatypes
-   PRD = New CHL7Segment_PRD(ProviderRole_CE, ConsultingProvider) 'creates a new EVN segment with all the underlaying datatypes
-   ' PRD2 = New CHL7Segment_PRD() 'creates a new EVN segment with all the underlaying datatypes
-   ' PRD3 = New CHL7Segment_PRD() 'creates a new EVN segment with all the underlaying datatypes
+   
+
+   PRD1 = New CHL7Segment_PRD("RP", modDBConnect.currentUser) 'creates a new EVN segment with all the underlaying datatypes
+   PRD2 = New CHL7Segment_PRD("RT", ReferredToProvider) 'creates a new EVN segment with all the underlaying datatypes
+  
+   If Not IsNull(ConsultingProvider) Then
+      PRD3 = New CHL7Segment_PRD("CP", ConsultingProvider) 'creates a new EVN segment with all the underlaying datatypes
+   Endif
+
+  
+   If Not IsNull(PrimaryCareProvider) Then
+      PRD4 = New CHL7Segment_PRD("PP", PrimaryCareProvider) 'creates a new EVN segment with all the underlaying datatypes
+   Endif
+   
    PID = New CHL7Segment_PID(Patient) 'creates a new PID segment with all the underlaying datatypes
    UniversalServiceID_CE.Identifier = "GRL"
    UniversalServiceID_CE.Text = "General referral letter"
    UniversalServiceID_CE.NameOfCodingSystem = "EasyGp " & Application.Version
    OBR = New CHL7Segment_OBR(1, UniversalServiceID_CE, OriginatingReferralIdentifier_EI)
-
-'    OBX ||FT|HTML^Display format in HTML^AUSPDI||...
-' OBX ||FT|XML^Display format in XML^AUSPDI||...
-' OBX ||FT|TXT^Display format in text^AUSPDI||...
-' OBX ||ED|RTF^Display format in RTF^AUSPDI||...
-' OBX ||ED|PDF^Display format in PDF^AUSPDI||...*
-' OBX ||ED|JPG^Display format in JPG^AUSPDI||...*
-' OBX ||ED|TIFF^Display format in TIFF^AUSPDI||...*
-' * NOTE: Special Format required For OBX - 5 when using ED data type.
-
-
-      ObservationIdentifier_CE.Identifier = "Txt"
-      ObservationIdentifier_CE.Text = "Display format in text"
-      ObservationIdentifier_CE.NameOfCodingSystem = "AUSPDI"
-      OBX = New CHL7Segment_OBX(1, "FT", ObservationIdentifier_CE, ObservationResultStatus, Attachments[0]) ' "FT" means FORMATTED TEXT
-
+   
+   '    OBX ||FT|HTML^Display format in HTML^AUSPDI||...
+   ' OBX ||FT|XML^Display format in XML^AUSPDI||...
+   ' OBX ||FT|TXT^Display format in text^AUSPDI||...
+   ' OBX ||ED|RTF^Display format in RTF^AUSPDI||...
+   ' OBX ||ED|PDF^Display format in PDF^AUSPDI||...*
+   ' OBX ||ED|JPG^Display format in JPG^AUSPDI||...*
+   ' OBX ||ED|TIFF^Display format in TIFF^AUSPDI||...*
+   ' * NOTE: Special Format required For OBX - 5 when using ED data type.
+   
+   ObservationIdentifier_CE.Identifier = "Txt"
+   ObservationIdentifier_CE.Text = "Display format in text"
+   ObservationIdentifier_CE.NameOfCodingSystem = "AUSPDI"
+   OBX = New CHL7Segment_OBX(1, "FT", ObservationIdentifier_CE, ObservationResultStatus, Attachments[0]) ' "FT" means FORMATTED TEXT
    
    If Exist(Application.path & "/file.txt") Then  'links the hFile file to a path and ceates the file.txt if the file is not already existing 
       hFile = Open "/home/bernd/svn/" & "/file.txt" For Write Append 
@@ -222,7 +220,7 @@ Public Sub CreateHL7Message_REF_I12(ConsultingDoctor_XCN As CHL7Datatype_XCN, Pr
    '    modHL7Emitter.Emit("\r", hFile, [MSH, EVN, PID, PV1, OBX1])    'NOTE: separator here should be \ r, but To be visible In a UNIX terminal use \ n"
    ' Else
    ' 
-   modHL7Emitter.Emit("\r", hFile, [MSH, RF1, PRD, PID, OBR, OBX])   'NOTE: separator here should be \ r, but To be visible In a UNIX terminal use \ n
+   modHL7Emitter.Emit("\r", hFile, [MSH, RF1, PRD1, PRD2, PRD3, PRD4, PID, OBR, OBX])   'NOTE: separator here should be \ r, but To be visible In a UNIX terminal use \ n
    '    Endif
    Print #hFile, "\r"; 'prints a carriage return at the end of the last segment because every segment mussed be followed by one
    

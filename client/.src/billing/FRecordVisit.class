@@ -47,7 +47,8 @@ Private Const cBilling_Category_Private As Integer = 0
 Private Const cBilling_Category_Medicare As Integer = 1
 Private Const cBilling_Category_Veteran As Integer = 2
 Private Const cBilling_Category_Other As Integer = 3
-Private form_appointments As FDayList
+'Private form_appointments As FDayList
+Private form_billingcards As FPatientBillingCards
 Private appointment_icons As Collection   
 Private staff As Collection
 Private Staff_Member As Collection
@@ -77,15 +78,22 @@ Public Sub Init()
    '---------------------------------------------------------
    
    Dim x As Integer
-
-   With form_appointments = New FDayList(Vbox_Appointments)
-      '  .Init(Staff_Member, Now(), modDBConnect.currentUser!fk_clinic, Appointment_Icons)
+   
+    With form_billingcards = New FPatientBillingCards(Vbox_PatientBillingCards)
+      .Init(VBox_EditArea_Outer)
+      .HBox_NextOfKin.Visible = False   
+      .Hbox_LegacyFileNumber.Visible = False  
+      .HBox_FindNextOfKin.Visible = False  
+      .HBox_ResponsiblePayer.Visible = False  
    End With
    With cvwUnBilled
       .Columns.count = 2
    End With
+   cmbShowItems.Add("Paid Items")
+   cmbShowItems.Add("Unpaid Items")
    lblmeasure.text = "  Payment By "
    modEditAreaHelpers.Resize_labels(VBox_EditArea_Inner, lblmeasure)
+   modEditAreaHelpers.Resize_label(lblItems, lblmeasure)
    Payment_methods = modUtil.LoadCombo(cmbPaymentMethods, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Payment_Methods_Get()), "method")
    InvoiceComments = modUtil.LoadCombo(cmbInvoiceComments, modBillingDBI.Invoice_Comments_Get(), "comment")
    FeeTypes = modUtil.LoadCombo(cmbFeeType, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Fee_Types_Get()), "type") 'fixme
@@ -132,6 +140,7 @@ Public Sub cvwUnBilled_Refresh()
       cvwUnBilled.Item.Selected = True
       cvwUnBilled_Click()
    Endif
+   
 End
 
 Public Sub cvwUnBilled_Click()
@@ -163,7 +172,7 @@ Public Sub cvwUnBilled_Click()
       Case 40 To 100
          
    End Select
-   
+   form_billingcards.Display_Patient_Data(Unbilled_consultation) 
    VBox_EditArea_Outer.Enabled = True 
    GridView1.Enabled = True 
    
@@ -180,7 +189,7 @@ Public Sub Payer_Get()
       If Unbilled_Consultations[cvwUnBilled.Item.key]!fk_patient <> payer!fk_patient Then
          rbInvoiceToOther.value = True 
       Endif
-      Try textlabelPayer.text = payer!wholename & "<BR>" & Trim(payer!street1 & " " & payer!street2) & " " & payer!town & " " & payer!postcode
+      Try textlabelPayer.text = payer!wholename & "<BR>" & Trim(payer!street1 & " " & payer!street2) & "<BR>" & payer!town & " " & payer!postcode
    End If  
    bExit = False   
    
@@ -281,8 +290,11 @@ Public Sub GridView1_Click()
       Message.Info("Please select a patient to invoice, either by clicking on the patients list, or searching for a patient.")
       Return 
    End If   
+ 
    onrow = gridview1.Row
    OnCol = gridview1.Column
+   If textbox1.Visible = False Then HBox_Descriptor.Visible = False  
+   If Oncol <> cGridColumn_BriefDescriptor Then HBox_Descriptor.Visible = False   
    Select Case oncol
       Case cGridColumn_FeeType
          With cmbFeeType
@@ -324,8 +336,6 @@ Public Sub GridView1_DblClick()
          Print "row " & i & " is selected"
       End If 
    Next   
-   Print gridview1.Rows.Select
-   Print gridview1.Rows.height 
    Select Case oncol
       Case 1 'the brief descriptor, allow searching
          Try txtDescriptor.text = item!descriptor
@@ -337,7 +347,7 @@ Public Sub GridView1_DblClick()
    End Select
    onrow = gridview1.Row 
    iLeft = gridview1[onrow, oncol].Left
-   iTop = ((onrow + 1) * 20) + 2 'iSlotCount * 20
+   iTop = ((onrow + 1) * 20) + 4 'iSlotCount * 20
    TextBox1.left = iLeft + 2
    TextBox1.top = iTop
    TextBox1.width = gridview1.Columns[oncol].Width + 4
@@ -362,7 +372,7 @@ Public Sub gridview_Keypress()
       onrow = 0
       GridView1_DblClick()
    Endif
-
+   
 End
 
 Public Sub cmbEditArea_Click()
@@ -378,16 +388,16 @@ Public Sub cmbEditArea_Click()
          '    Return
          '  Endif
          '  Next
-         Staff_Member = staff[cmbStaff.Index]
-         form_appointments.Init(Staff_Member, Now(), modDBConnect.currentUser!fk_clinic, Appointment_Icons)
+       '  Staff_Member = staff[cmbStaff.Index]
+       '  form_appointments.Init(Staff_Member, Now(), modDBConnect.currentUser!fk_clinic, Appointment_Icons)
       Case "fee type"
          'User is changing the fee type
          gridview1[onrow, 4].text = cmbFeeType.Text
          Print FeeTypes[cmbFeeType.index]
-        Try gridview1[onrow, 2].text = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(gridview1[onrow, 0].text, FeeTypes[cmbFeeType.index]!pk)!price
-        If Error Then
-           Message.info("No fee's exist for the billing level you selected")
-        Endif
+         Try gridview1[onrow, 2].text = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(gridview1[onrow, 0].text, FeeTypes[cmbFeeType.index]!pk)!price
+         If Error Then
+            Message.info("No fee's exist for the billing level you selected")
+         Endif
          Invoice_Calculate_Total
    End Select
    
@@ -491,7 +501,7 @@ Public Sub Form_Close()
 End
 
 Public Sub Form_Show()
-   
+   Settings_Load
    cvwUnBilled_Refresh()
    
 End
@@ -499,7 +509,8 @@ End
 Private Sub Settings_Load()
    
    Try Vsplit_Main.layout = Settings["Billing_RecordVisit/VSplit_Main.Layout"]
-   Try Settings["Billing_RecordVisit/HSplit_Main.Layout"] = Hsplit_Main.Layout
+   Try Hsplit_Main.Layout = Settings["Billing_RecordVisit/HSplit_Main.Layout"] 
+   Hsplit_EditArea.Layout = Settings["Billing_RecordVisit/HSplit_EditArea.Layout", [2, 1]]  
    
 End
 
@@ -507,6 +518,7 @@ Public Sub Settings_Save()
    
    Settings["Billing_RecordVisit/VSplit_Main.Layout"] = Vsplit_Main.Layout
    Settings["Billing_RecordVisit/HSplit_Main.Layout"] = Hsplit_Main.Layout
+   Settings["Billing_RecordVisit/HSplit_EditArea.Layout"] = Hsplit_EditArea.Layout
    
 End
 
@@ -557,7 +569,7 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    ' WITH (
    '   OIDS=FALSE
    ' );
-
+   
    Dim invoice As New CRow
    Dim i As Collection
    Dim new_item As Collection
@@ -604,13 +616,13 @@ End
 Public Sub Billing_Type_Get_Pk(txt As String) As Integer
    
    Dim type As Collection
-
+   
    For Each type In FeeTypes
       If type!type = txt Then
          Return type!pk
       Endif
    Next 
-
+   
 End
 
 Public Sub Form_Resize()
@@ -683,7 +695,7 @@ Public Sub Get_Items(txt As String)
    ' "8";"Schedule Fee"
    ' For example a patient may be bulk billed as either medicare or veteran (for some things) or both
    ' or a practice may bill privately at the AMA rate, or privately at a concession rate
-
+   
    Dim fk_lu_billing_type As Integer
    Dim bMissingBriefDescriptor As Boolean
    Dim billing_type As String
@@ -778,7 +790,7 @@ Public Sub columnview1_DblClick()
    Get_Items(gridview1[onrow, 0].text) 'duplication in a way 'see note in subroutine
    textbox1.Visible = False   
    gridview1.SetFocus()
-
+   
 End
 
 Public Sub mnuInvoices_Click()
@@ -889,5 +901,20 @@ Public Sub MainToolbar_Click()
       Case "print account"
          Save(True, True)
    End Select
+   
+End
+
+Public Sub cvwUnBilled_Menu()
+
+   If Last.count Then mnuUnBIlled.Popup()
+
+End
+
+Public Sub mnuUnbilled_Click()
+   
+  Select Case Last.tag
+  Case "font"
+       modUtil.Columnview_SetFont(cvwUnBilled, "Billing_RecordVisit")
+  End Select 
    
 End

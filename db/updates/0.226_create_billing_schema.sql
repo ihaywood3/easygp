@@ -1,8 +1,7 @@
-﻿
 -- transfer/re-creation of billing stuff from clerical to new billing schema
 -- only just so I have all tables for this logically in the same area
 
-CREATE SCHEMA billing;
+CREATE SCHEMA billing authorization richard;
 
 GRANT ALL ON SCHEMA billing to easygp;
 GRANT USAGE ON SCHEMA 	billing to staff;

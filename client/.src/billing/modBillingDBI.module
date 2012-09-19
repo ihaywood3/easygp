@@ -486,23 +486,33 @@ Public Function Find_Referrer(fk_patient As Integer) As Collection
    
 End
 
-' returns a list of billed items for a given invoice, as Collections
+
 Public Function Get_Billed_Items(invoice As Crow) As Collection
-   
+   '-------------------------------------------------------------------
+   ' returns a list of billed items for a given invoice, as Collections
+   ' CREATE TABLE billing.items_billed
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_fee_schedule integer NOT NULL,
+   '   amount money NOT NULL,
+   '   fk_invoice integer NOT NULL,
+   '   fk_lu_billing_type integer NOT NULL);
+   '   ?? we already have this, so why recall from the backend, why not just pass?
+   '-------------------------------------------------------------------
    Dim sql As String
    
    sql = "select coalesce(mbs_item,ama_item) as common_item, "
    " left(coalesce(descriptor_brief,descriptor),400) as descriptor_display, "
    " * from billing.items_billed i,billing.fee_schedule s where i.fk_fee_schedule = s.pk and i.fk_invoice = &1"
-   Return modDBConnect.exec_query_collection(sql, [invoice!pk, invoice!fk_lu_billing_type])
+   Return modDBConnect.exec_query_collection(sql, [invoice!fk_invoice])
    
 End
 
 ' takes a CRow from billing.invoices, from either from Make_Invoice or Invoices_Get, and prints it
 ' also updates the row on the DB as appropriate
 ' ' cc is the current consult object. If not provided a new one will be loaded using th invoices's fk_patient.
-Public Sub Print_Invoice(invoice As Crow, Optional cc As Cconsult)
-   
+Public Sub Print_Invoice(invoice As Crow, Optional bBulkBIll As Boolean = False, Optional cc As Cconsult)
+   '
    Dim sql As String
    Dim items As Collection
    Dim templ As CTemplate
@@ -510,15 +520,15 @@ Public Sub Print_Invoice(invoice As Crow, Optional cc As Cconsult)
    Dim i As Collection
    Dim referrer_type As String
    
-   Message.Info("printing an invoice won't work at all")
-   Return
+  ' Message.Info("printing an invoice won't work at all")
+ 
    If IsNull(cc) Then cc = New CConsult(modContactsDBI.Patient_Get_Using_PK(invoice!fk_patient))
    items = Get_Billed_Items(invoice)
    sql = "select referrer_type, s.* from common.lu_occupations o, admin.vwstaffinclinics s "
    "where o.pk = s.fk_occupation and s.fk_staff = &1 limit 1"
-   doctor = modDBConnect.exec_query_first(sql, [invoice!fk_doctor_raising])
+   doctor = modDBConnect.exec_query_first(sql, [invoice!fk_staff_provided_service])
    referrer_type = doctor!referrer_type
-   If invoice!fk_lu_billing_type = const.Billingtype_Concession Then
+   If bBulkBIll Then 
       ' cue scary music: patient is being bulk-billed
       ' FIXME: use HIC PDFs to print vouchers
    Else
@@ -528,13 +538,13 @@ Public Sub Print_Invoice(invoice As Crow, Optional cc As Cconsult)
          Load_Template_Specialist(templ, invoice)
       Else
          templ = New CTemplate("templates/invoice-gp.tex", "tex")
-      Endif
-      Load_Template_GP(templ, doctor, items, cc)
-      templ.Subst("date-raised", invoice!raised)
+         Load_Template_GP(templ, doctor, items, cc)
+      End If   
+      templ.Subst("date-raised", invoice!date_printed) 'FIXME change backend ?back to date_invoiced.
       modPrinting.Print_latex(templ.GetData(), const.Paper_Plain, 1)
    Endif
-   sql = "updatebilling.invoices set fk_who_printed=&1, when_printed=now() where pk=&2"
-   modDBConnect.exec_query(sql, [modDBConnect.currentUser!fk_staff, invoice!pk])
+   'sql = "updatebilling.invoices set fk_who_printed=&1, when_printed=now() where pk=&2"
+ '  modDBConnect.exec_query(sql, [modDBConnect.currentUser!fk_staff, invoice!pk])
    
 End
 

@@ -79,7 +79,7 @@ Public Sub Init()
    
    Dim x As Integer
    
-    With form_billingcards = New FPatientBillingCards(Vbox_PatientBillingCards)
+   With form_billingcards = New FPatientBillingCards(Vbox_PatientBillingCards)
       .Init(VBox_EditArea_Outer)
       .HBox_NextOfKin.Visible = False   
       .Hbox_LegacyFileNumber.Visible = False  
@@ -101,6 +101,19 @@ Public Sub Init()
    cmbStaff.index = 0
    cmbInvoiceComments.index = -1
    Gridview1_Init()
+   With cvwInvoices
+      .Columns.count = 10
+      .Columns[0].text = "Patient"
+      .Columns[1].text = "Seen By"
+      .Columns[2].text = "Location"
+      .Columns[3].text = "Visit Date"
+      .Columns[4].text = "Item"
+      .Columns[5].text = "Fee"
+      .Columns[6].text = "GST"
+      .Columns[7].text = "Due"
+      .Columns[8].text = "Paid"
+      .Columns[9].text = "Rebate"
+   End With
    Me.Center()
    Try Settings_Load()         'load settings for this form
    GridRows = New Collection
@@ -120,6 +133,14 @@ Public Sub EditArea_Clear()
    gridview1.Clear
    cmbFeeType.Visible = False 
    bexit = False
+   
+End
+
+Public Sub cvwInvoices_Menu()
+   
+   If cvwInvoices.count Then
+      mnuInvoices.Popup()
+   End If    
    
 End
 
@@ -175,18 +196,18 @@ Public Sub cvwUnBilled_Select()
    bExit = True    
    Select Case Unbilled_consultation!fk_lu_default_billing_level
       Case const.Billing_Default_Level_BulkBill
-            cmbFeeType.Enabled = False 
-            If Unbilled_consultation!veteran_number <> "" Then
-               rbInvoiceToVeterans.value = True
-            Else
-               rbInvoiceToMedicare.value = True
-            Endif
+         cmbFeeType.Enabled = False 
+         If Unbilled_consultation!veteran_number <> "" Then
+            rbInvoiceToVeterans.value = True
+         Else
+            rbInvoiceToMedicare.value = True
+         Endif
       Case const.Billing_Default_Level_Private
-             rbInvoiceToPatient.value = True
+         rbInvoiceToPatient.value = True
       Case const.Billing_Default_Level_HealthCareCardConcession
       Case const.Billing_Default_Level_PensionerConcession
       Case const.Billing_Default_Level_MedicoLegal 
-
+         
    End Select
    bExit = False  
    form_billingcards.Display_Patient_Data(Unbilled_consultation) 
@@ -308,7 +329,7 @@ Public Sub GridView1_Click()
       Message.Info("Please select a patient to invoice, either by clicking on the patients list, or searching for a patient.")
       Return 
    End If   
- 
+   
    onrow = gridview1.Row
    OnCol = gridview1.Column
    If textbox1.Visible = False Then HBox_Descriptor.Visible = False  
@@ -406,8 +427,8 @@ Public Sub cmbEditArea_Click()
          '    Return
          '  Endif
          '  Next
-       '  Staff_Member = staff[cmbStaff.Index]
-       '  form_appointments.Init(Staff_Member, Now(), modDBConnect.currentUser!fk_clinic, Appointment_Icons)
+         '  Staff_Member = staff[cmbStaff.Index]
+         '  form_appointments.Init(Staff_Member, Now(), modDBConnect.currentUser!fk_clinic, Appointment_Icons)
       Case "fee type"
          'User is changing the fee type
          gridview1[onrow, 4].text = cmbFeeType.Text
@@ -519,6 +540,7 @@ Public Sub Form_Close()
 End
 
 Public Sub Form_Show()
+
    Settings_Load
    cvwUnBilled_Refresh()
    
@@ -529,7 +551,7 @@ Private Sub Settings_Load()
    Try Vsplit_Main.layout = Settings["Billing_RecordVisit/VSplit_Main.Layout"]
    Try Hsplit_Main.Layout = Settings["Billing_RecordVisit/HSplit_Main.Layout"] 
    Hsplit_EditArea.Layout = Settings["Billing_RecordVisit/HSplit_EditArea.Layout", [2, 1]]  
-   
+   Try cvwInvoices.Font = Font[Settings["Billing_RecordVisit/cvwInvoices.font"]] 
 End
 
 Public Sub Settings_Save()
@@ -571,18 +593,18 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    ' );
    ' CREATE TABLE billing.items_billed
    ' (
-   '   pk serial NOT NULL,
-   '   fk_fee_schedule integer NOT NULL,
-   '   amount money NOT NULL,
-   '   fk_invoice integer NOT NULL,
-   '   fk_lu_billing_type integer NOT NULL,
-   '   CONSTRAINT items_billed_pkey PRIMARY KEY (pk ),
-   '   CONSTRAINT items_billed_fk_fee_schedule_fkey FOREIGN KEY (fk_fee_schedule)
-   '       REFERENCES billing.fee_schedule (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   '   CONSTRAINT items_billed_fk_invoice_fkey FOREIGN KEY (fk_invoice)
-   '       REFERENCES billing.invoices (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' pk serial NOT NULL,
+   '   fk_staff_invoicing integer NOT NULL, -- the staff member raising the invoice
+   '   date_printed timestamp without time zone,
+   '   notes text,
+   '   fk_staff_provided_service integer NOT NULL, -- the staff member who provider the service on which the invoice is based
+   '   fk_patient integer,
+   '   date_invoiced timestamp without time zone NOT NULL DEFAULT now(),
+   '   paid boolean NOT NULL DEFAULT false,
+   '   fk_payer_person integer,
+   '   fk_payer_branch integer,
+   '   latex text,
+   
    ' )
    ' WITH (
    '   OIDS=FALSE
@@ -625,7 +647,8 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    'finally mark this appointment as invoiced
    '-----------------------------------------
    modDBConnect.update("clerical.bookings", Null, ["pk": Unbilled_consultation!pk, "invoiced": True])  
-   modBillingDBI.Print_Invoice(invoice) 
+   invoice!latex = modBillingDBI.Print_Invoice(invoice) 
+   modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex])
    modDBConnect.CommitTrans
    cvwUnBilled_Refresh()
    
@@ -811,17 +834,26 @@ Public Sub columnview1_DblClick()
    
 End
 
-Public Sub mnuInvoices_Click()
+Public Sub mnuItems_Click()
    
    Dim x As Integer
    
    Select Case Last.tag
       Case "delete item"
          Gridview1_Delete_Row(onrow)
-         
       Case "delete all items"
          Gridview1_Clear()
    End Select 
+   
+End
+
+Public Sub mnuInvoices_Click()
+   
+  Select Case Last.tag
+  Case "font"
+     modUtil.Columnview_SetFont(cvwInvoices, "Billing_RecordVisit")
+
+  End Select 
    
 End
 
@@ -856,13 +888,13 @@ Public Sub rbInvoiceTo_Click()
    Select Case Last.tag
       Case "other"
          Try Payer_Get()
-      ' Case "medicare"
-      '    iBilling_Category = cBilling_Category_Private
-      ' Case "veteran"
-      '    iBilling_Category = cBilling_Category_Private
-      '    
-      ' Case "patient"
-      '    iBilling_Category = cBilling_Category_Other   
+         ' Case "medicare"
+         '    iBilling_Category = cBilling_Category_Private
+         ' Case "veteran"
+         '    iBilling_Category = cBilling_Category_Private
+         '    
+         ' Case "patient"
+         '    iBilling_Category = cBilling_Category_Other   
          
    End Select
    
@@ -923,16 +955,16 @@ Public Sub MainToolbar_Click()
 End
 
 Public Sub cvwUnBilled_Menu()
-
+   
    If Last.count Then mnuUnBIlled.Popup()
-
+   
 End
 
 Public Sub mnuUnbilled_Click()
    
-  Select Case Last.tag
-  Case "font"
-       modUtil.Columnview_SetFont(cvwUnBilled, "Billing_RecordVisit")
-  End Select 
+   Select Case Last.tag
+      Case "font"
+         modUtil.Columnview_SetFont(cvwUnBilled, "Billing_RecordVisit")
+   End Select 
    
 End

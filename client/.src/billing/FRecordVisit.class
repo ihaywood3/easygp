@@ -71,6 +71,11 @@ Private Descriptors_Brief As Collection
 Private descriptor_brief As Collection
 Private invoices As Collection
 Private invoice As Collection
+Private iTimer_Search_Mode As Integer
+Private cTimer_SearchMode_Patient As Integer = 0
+Private cTimer_SearchMode_Descriptor As Integer = 1
+Private Patients As Collection
+Private Patient As Collection
 
 Public Sub Init() 
    '---------------------------------------------------------
@@ -102,8 +107,10 @@ Public Sub Init()
    staff = modUtil.LoadCombo(cmbStaff, modContactsDBI.Staff_Get(), "wholename")  
    cmbStaff.index = 0
    cmbInvoiceComments.index = -1
-   picturebox1.Picture = picture.Load("/home/richard/patient_screen.png")
-   Gridview1_Init()
+   Gridview1_Init()  
+   With cvwPatients
+      .Columns.count = 2
+   End With
    With cvwInvoices
       .Columns.count = 11
       .Columns[0].text = "Patient"
@@ -154,7 +161,8 @@ Public Sub cvwUnBilled_Refresh()
    '------------------------------------------------------------------------
    'Display a list of all unbilled consultations ordered by appointment date
    '-------------------------------------------------------------------------
-   
+
+   EditArea_Clear()
    Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get()
    cvwUnBilled.Clear()
    For Each Unbilled_consultation In Unbilled_Consultations
@@ -183,7 +191,7 @@ Public Sub cvwUnBilled_Select()
    Unbilled_consultation = Unbilled_Consultations[cvwUnBilled.Item.key]
    txtpatient.text = Unbilled_consultation!wholename
    txtDate.text = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
-   Try Payer_Get()
+   Try Payer_Get(Unbilled_consultation)
    fk_staff = Unbilled_consultation!fk_staff 
    For Each Staff_Member In staff
       If Staff_Member!fk_staff = fk_staff Then
@@ -220,19 +228,19 @@ Public Sub cvwUnBilled_Select()
    form_billingcards.Display_Patient_Data(Unbilled_consultation) 
    VBox_EditArea_Outer.Enabled = True 
    GridView1.Enabled = True 
-   cvwInvoices_Refresh
+   cvwInvoices_Refresh(Unbilled_consultation!fk_patient)
    Print cmbFeeType.Enabled
    
 End
 
-Public Sub cvwInvoices_Refresh()
+Public Sub cvwInvoices_Refresh(fk_patient As Integer)
    'Refresh all previous invoices
    'just developmental
    
    Dim item As String
-
+   
    cvwInvoices.Clear
-   invoices = modBillingDBI.Invoices_Get(Unbilled_consultation!fk_patient)
+   invoices = modBillingDBI.Invoices_Get(fk_patient)
    For Each invoice In invoices
       cvwInvoices.Add(invoice!pk_items_billed, 0)
       cvwInvoices[invoice!pk_items_billed][0] = invoice!patient_firstname
@@ -243,7 +251,7 @@ Public Sub cvwInvoices_Refresh()
       If Not IsNull(invoice!ama_item) Then item = invoice!ama_item
       If Not IsNull(invoice!user_item) Then item = invoice!user_item
       cvwInvoices[invoice!pk_items_billed][4] = item
-       cvwInvoices[invoice!pk_items_billed][5] = invoice!descriptor_brief
+      cvwInvoices[invoice!pk_items_billed][5] = invoice!descriptor_brief
       cvwInvoices[invoice!pk_items_billed][6] = invoice!amount
       
       '   cvwInvoices[invoice!pk_items_billed][6 ] =FIXME ADD THE GST
@@ -258,15 +266,15 @@ Public Sub cvwInvoices_Refresh()
    
 End
 
-Public Sub Payer_Get()
+Public Sub Payer_Get(patient As Collection)
    'temp code get the responsible person FIXME  body code only whilst developin
    'need more inclusive way of getting the payer - eg might not be a patient
    
    bExit = True   
    cvwUnBilled.MoveCurrent()
-   payer = modBillingDBI.Responsible_Payer_Get(Unbilled_Consultations[cvwUnBilled.Item.key]!fk_patient)
+   payer = modBillingDBI.Responsible_Payer_Get(Patient!fk_patient)
    If Not IsNull(Payer) Then  
-      If Unbilled_Consultations[cvwUnBilled.Item.key]!fk_patient <> payer!fk_patient Then
+      If Patient!fk_patient <> payer!fk_patient Then
          rbInvoiceToOther.value = True 
       Endif
       Try textlabelPayer.text = payer!wholename & "<BR>" & Trim(payer!street1 & " " & payer!street2) & "<BR>" & payer!town & " " & payer!postcode
@@ -502,6 +510,7 @@ Public Sub TextBox1_GotFocus()
          .Height = VBox_InvoiceGrid.height - TextBox1.top - textbox1.height
          If Last.text = "" And gridview1[onrow, 0].text <> "" Then .Visible = True 
       End With
+      iTimer_Search_Mode = cTimer_SearchMode_Descriptor
    Endif
    
 End
@@ -608,7 +617,7 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    ' Public Sub Make_Invoice(pk_patient As Integer, items As Collection[], fk_lu_billing_type As Integer, date_printed As Date Default Null, fk_staff As Integer = 0, Optional notes As String = "") As Integer
    ' CREATE TABLE billing.invoices
    ' (
-   '   pk serial NOT NULL,
+   '  pk serial NOT NULL,
    '   fk_staff_invoicing integer NOT NULL, -- the staff member raising the invoice
    '   date_printed timestamp without time zone,
    '   notes text,
@@ -616,42 +625,17 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    '   fk_patient integer,
    '   date_invoiced timestamp without time zone NOT NULL DEFAULT now(),
    '   paid boolean NOT NULL DEFAULT false,
-   '   CONSTRAINT invoices_pkey PRIMARY KEY (pk ),
-   '   CONSTRAINT invoices_fk_doctor_raising_fkey FOREIGN KEY (fk_staff_provided_service)
-   '       REFERENCES admin.staff (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   '   CONSTRAINT invoices_fk_lu_billing_type_fkey FOREIGN KEY (fk_lu_billing_type)
-   '       REFERENCES billing.lu_billing_type (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   '   CONSTRAINT invoices_fk_patient_fkey FOREIGN KEY (fk_patient)
-   '       REFERENCES clerical.data_patients (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-   '   CONSTRAINT invoices_fk_staff_invoicing_fkey FOREIGN KEY (fk_staff_invoicing)
-   '       REFERENCES admin.staff (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   '   fk_payer_person integer, -- if not null then the key to the person who pays the bill
+   '   fk_payer_branch integer, -- if not null then payer is an organisation/branch
+   '   latex text NOT NULL, -- the LaTeX definition of the invoice generated
+   '   fk_branch integer NOT NULL, -- The branch at which the patient was provided with the service
+   '   visit_date date, -- The date time of the patient visit - may be null because the invoice could be raised not in relation to a visit
    ' )
    ' WITH (
    '   OIDS=FALSE
    ' );
    ' CREATE TABLE billing.items_billed
-   ' (
-   ' pk serial NOT NULL,
-   '   fk_staff_invoicing integer NOT NULL, -- the staff member raising the invoice
-   '   date_printed timestamp without time zone,
-   '   notes text,
-   '   fk_staff_provided_service integer NOT NULL, -- the staff member who provider the service on which the invoice is based
-   '   fk_patient integer,
-   '   date_invoiced timestamp without time zone NOT NULL DEFAULT now(),
-   '   paid boolean NOT NULL DEFAULT false,
-   '   fk_payer_person integer,
-   '   fk_payer_branch integer,
-   '   latex text,
-   
-   ' )
-   ' WITH (
-   '   OIDS=FALSE
-   ' );
-   
+
    Dim invoice As New CRow
    Dim i As Collection
    Dim new_item As Collection
@@ -668,6 +652,9 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    invoice!notes = cmbInvoiceComments.Text
    invoice!fk_staff_provided_service = Unbilled_consultation!fk_staff
    invoice!fk_patient = Unbilled_consultation!fk_patient 
+   invoice!date_invoiced = Now()
+   invoice!fk_branch = modDBConnect.currentUser!fk_branch   
+   invoice!visit_date = Unbilled_consultation!begin
    If bPaid Then invoice!paid = True     
    invoice.Save("billing.invoices", "fk_invoice")
    '------------------------------------
@@ -717,7 +704,9 @@ End
 Public Sub EditArea_TextBox_GotFocus()
    
    rbInvoiceToOther.value = True
-   
+   If Last.tag = "find patient" Then
+        iTimer_Search_Mode = cTimer_SearchMode_Patient
+   End If
 End
 
 Public Sub Appointment_icons_Get_Picture(Appointment_Icons As Collection) As Collection 
@@ -756,6 +745,24 @@ Public Sub Descriptors_Brief_Get()
    Else
       
    End If
+   
+End
+
+Public Sub Patients_Get()
+                      
+   timer1.Stop
+   timer1.Enabled = False  
+   cvwPatients.Clear
+   patients = modContactsDBI.patients_get_firstname_surname(Trim(txtFindPatient.text))       
+   patients.Remove("sql_in_english")
+   If patients.count Then
+      For Each patient In patients
+         cvwPatients.Add(patient!pk_view, 0)
+         cvwPatients[patient!pk_view][0] = patient!wholename
+         cvwPatients[patient!pk_view][1] = Format(patient!birthdate, "dd/mm/yyyy")
+      Next
+   Endif
+   
    
 End
 
@@ -929,7 +936,7 @@ Public Sub rbInvoiceTo_Click()
    textlabelPayer.text = ""
    Select Case Last.tag
       Case "other"
-         Try Payer_Get()
+      '   Try Payer_Get(Patient)
          ' Case "medicare"
          '    iBilling_Category = cBilling_Category_Private
          ' Case "veteran"
@@ -969,7 +976,13 @@ Public Sub timer1_Timer()
    Inc timer_count
    Print timer_count
    If timer_count > 3 Then
-      Descriptors_Brief_Get
+      Select Case iTimer_Search_Mode
+         Case cTimer_SearchMode_Patient
+            Patients_Get
+         Case cTimer_SearchMode_Descriptor
+            Descriptors_Brief_Get
+      End Select
+      
    Endif
    
 End
@@ -991,7 +1004,7 @@ Public Sub MainToolbar_Click()
          End With
          EditArea_Clear()
          txtpatient.SetFocus
-      
+         
       Case "new receipt"
          Gridview1_Clear()
       Case "print receipt"
@@ -1019,10 +1032,8 @@ Public Sub mnuUnbilled_Click()
    
 End
 
-
-
 Public Sub rbDisplayMode_Click()
-
+   
    ' If Last.tag = "pay account" Then
    '    '   picturebox1.visible = True
    '       VBox_EditArea_Inner.Visible = False   
@@ -1036,16 +1047,38 @@ Public Sub rbDisplayMode_Click()
    '       HBox_InvoiceGrid.Visible = True
    '       Hsplit_EditArea2.Visible = False 
    ' Endif
+   
+End
 
+Public Sub EditArea_Textbox_KeyRelease()
+   
+  If Last.tag = "find patient" Then
+    timer_count = 0      
+    timer1.Enabled = True
+    timer1.Start         
+  End If  
+   
 End
 
 Public Sub EditArea_TextBox_Change()
-
+   
    If Last.tag = "patient" Then
       If Trim(Last.text) = "" Then
          EditArea_Clear()
          txtpatient.SetFocus()
       Endif
    Endif
+   
+End
 
+Public Sub cvwPatients_Select()
+   EditArea_Clear()
+   cvwPatients.MoveCurrent
+   Patient = patients[cvwPatients.Item.Key]
+   form_billingcards.Display_Patient_Data(Patient)
+   txtpatient.text = Patient!wholename  
+   Try Payer_Get(Patient)    
+  VBox_EditArea_Outer.Enabled = True 
+ GridView1.Enabled = True           
+ cvwInvoices_Refresh(patient!fk_patient)                
 End

@@ -1,4 +1,7 @@
 Delete from billing.invoices;
+Alter table billing.invoices add column reference text default null;
+comment on column billing.invoices.reference is
+'any reference text for the invoice typically used in workcover';
 
 Alter table billing.invoices add column fk_payer_person integer default null;
 COMMENT ON COLUMN billing.invoices.fk_payer_person IS 'if not null then the key to the person who pays the bill';
@@ -26,6 +29,8 @@ Alter table billing.invoices add CONSTRAINT invoices_fk_branch_fkey FOREIGN KEY 
 
 Alter table billing.invoices add column visit_date date default null;
 COMMENT ON COLUMN billing.invoices.visit_date IS 'The date time of the patient visit - may be null because the invoice could be raised not in relation to a visit';
+COMMENT ON COLUMN billing.invoices.notes IS 
+'Any notes to be printed on the invoice such as ''not usual after-care'' not the same as a the reference field';
 
 --DROP VIEW billing.vwitemsbilled;
 
@@ -37,7 +42,7 @@ invoices.notes, invoices.fk_staff_provided_service, invoices.fk_patient,
 vwpatients.firstname AS patient_firstname, vwpatients.surname AS patient_surname, 
 vwpatients.title AS patient_title, vwpatients.fk_sex AS patient_fk_sex, vwpatients.sex AS patient_sex, 
 vwpatients.wholename AS patient_wholename, invoices.fk_payer_person, invoices.fk_payer_branch, 
-invoices.date_invoiced, invoices.paid, invoices.latex, invoices.visit_date, 
+invoices.date_invoiced, invoices.paid, invoices.latex, invoices.visit_date, invoices.reference,
 vwstaffinclinics1.provider_number AS staff_provided_service_provider_number, 
 vwstaffinclinics1.firstname AS staff_provided_service_firstname, 
 vwstaffinclinics1.surname AS staff_provided_service_surname, 

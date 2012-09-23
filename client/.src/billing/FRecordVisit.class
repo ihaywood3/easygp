@@ -42,17 +42,19 @@ Private items As Collection
 Private item As Collection
 Private Scheduled_Fee As Collection
 Private consult_item_number As String 
+Private fk_lu_default_billing_level As Integer
 Private iBilling_Category As Integer
 Private Const cBilling_Category_Private As Integer = 0
 Private Const cBilling_Category_Medicare As Integer = 1
 Private Const cBilling_Category_Veteran As Integer = 2
 Private Const cBilling_Category_Other As Integer = 3
-'Private form_appointments As FDayList
+Private iAccountDisplayMode As Integer  'const.Billing_Accounts_Paid,  Billing_Accounts_UnPaid, Billing_Accounts_All
 Private form_billingcards As FPatientBillingCards
 Private appointment_icons As Collection   
 Private staff As Collection
 Private Staff_Member As Collection
 Private fk_staff As Integer                  'whichever staff saw the patient
+Private fk_patient As Integer
 Private Unbilled_Consultations As Collection 
 Private Unbilled_consultation As Collection
 Private payers As Collection
@@ -98,19 +100,16 @@ Public Sub Init()
    With cvwUnBilled
       .Columns.count = 2
    End With
-   cmbShowItems.Add("Paid Items")
-   cmbShowItems.Add("Unpaid Items")
    lblmeasure.text = "  Payment By "
    modEditAreaHelpers.Resize_labels(VBox_EditArea_Inner, lblmeasure)
    modEditAreaHelpers.Resize_label(lblItems, lblmeasure)
+    modEditAreaHelpers.Resize_label(lblDisplayAccounts, lblmeasure)
    Payment_methods = modUtil.LoadCombo(cmbPaymentMethods, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Payment_Methods_Get()), "method")
    InvoiceComments = modUtil.LoadCombo(cmbInvoiceComments, modBillingDBI.Invoice_Comments_Get(), "comment")
    FeeTypes = modUtil.LoadCombo(cmbFeeType, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Fee_Types_Get()), "type") 'fixme
- '  staff = modUtil.LoadCombo(cmbStaff, modContactsDBI.Staff_Get(), "wholename")  
-    staff = modContactsDBI.Staff_Get()  
-  ' cmbStaff.index = 0
-   cmbInvoiceComments.index = -1
-   Gridview1_Init()  
+   staff = modUtil.LoadCombo(cmbStaff, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get()), "wholename")  
+   seenBy = modUtil.LoadCombo(cmbSeenBy, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get()), "wholename")  
+   clinics = modUtil.LoadCombo(cmbLocation, modAdminDBI.Clinics_Get(), "branch")
    With cvwPatients
       .Columns.count = 2
    End With
@@ -127,30 +126,41 @@ Public Sub Init()
       .Columns[8].text = "Due"
       .Columns[9].text = "Paid"
       .Columns[10].text = "Rebate"
-      
    End With
    Me.Center()
    Try Settings_Load()         'load settings for this form
+   cvwUnBilled_Refresh()
    GridRows = New Collection
-   seenBy = modUtil.LoadCombo(cmbSeenBy, modInboxDBI.Inbox_Staff_Get(), "wholename")
-   clinics = modUtil.LoadCombo(cmbLocation, modAdminDBI.Clinics_Get(), "branch")
    columnview1.Columns.count = 4
+   cmbInvoiceComments.index = -1
+   Gridview1_Init()  
    
 End
 
 Public Sub EditArea_Clear() 
    
    bExit = True
-   ' fk_payer = 0
+  
    modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Inner) 
    textlabelPayer.text = ""
    Unbilled_consultation = Null
    gridview1.Clear
+   ' fk_payer = 0
+   fk_lu_default_billing_level = const.Billing_Default_Level_Private
+   fk_patient = 0
    cmbFeeType.Visible = False 
    cvwItemsBilled.Clear()
    Items_Billed = New Collection
    Item_Billed = New Collection
+   iAccountDisplayMode = const.Billing_Accounts_Unpaid
+   rbAccountsDisplayUnPaid.value = True
+   EditArea_Notify_Data_Change(False)
    bexit = False
+   
+End
+
+Public Sub Reset_Keys()
+  
    
 End
 
@@ -186,14 +196,19 @@ End
 
 Public Sub cvwUnBilled_Select()
    '------------------------------------------------------------------------------
-   'User has clicked on one of the unbilled patients in the left hand list
+   'User ha  If Bexit Then Return s clicked on one of the unbilled patients in the left hand list
    'Display their details in the edit area, match staff combo to whoever saw them
    'assume a standard consultation FIXME make this user configureable
    '------------------------------------------------------------------------------
    
    cvwUnBilled.MoveCurrent()
    EditArea_Clear()
+  
    Unbilled_consultation = Unbilled_Consultations[cvwUnBilled.Item.key]
+   Try fk_lu_default_billing_level = Unbilled_consultation!fk_lu_default_billing_level
+   If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private
+   fk_patient = Unbilled_consultation!fk_patient
+    bExit = True   
    txtpatient.text = Unbilled_consultation!wholename
    txtDate.text = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
    Try Payer_Get(Unbilled_consultation)
@@ -213,8 +228,8 @@ Public Sub cvwUnBilled_Select()
       Case 40 To 100
    End Select
    cmbFeeType.Enabled = True  
-   bExit = True    
-   Select Case Unbilled_consultation!fk_lu_default_billing_level
+   
+   Select Case fk_lu_default_billing_level
       Case const.Billing_Default_Level_BulkBill
          cmbFeeType.Enabled = False 
          If Unbilled_consultation!veteran_number <> "" Then
@@ -233,12 +248,12 @@ Public Sub cvwUnBilled_Select()
    form_billingcards.Display_Patient_Data(Unbilled_consultation) 
    VBox_EditArea_Outer.Enabled = True 
    GridView1.Enabled = True 
-   cvwItemsBilled_Refresh(Unbilled_consultation!fk_patient)
+   cvwItemsBilled_Refresh()
    Print cmbFeeType.Enabled
    
 End
 
-Public Sub cvwItemsBilled_Refresh(fk_patient As Integer)
+Public Sub cvwItemsBilled_Refresh()
    '-----------------------------------------------------------------------------------------------------
    'Refresh all previous items billed for the patient E.g a single row could be Item 23 standard consult
    'Display in columnview, if more than 1 item per invoice, only display name/dr/date once
@@ -248,7 +263,7 @@ Public Sub cvwItemsBilled_Refresh(fk_patient As Integer)
    Dim fk_last_invoice As Integer
    
    cvwItemsBilled.Clear
-   Items_Billed = modBillingDBI.Items_Billed_Get(fk_patient)
+   Items_Billed = modBillingDBI.Items_Billed_Get(fk_patient, iAccountDisplayMode)
    For Each Item_Billed In Items_Billed
       
       cvwItemsBilled.Add(Item_Billed!pk_items_billed, 0)
@@ -261,7 +276,7 @@ Public Sub cvwItemsBilled_Refresh(fk_patient As Integer)
          cvwItemsBilled[Item_Billed!pk_items_billed][0] = ""
          
       End If   
-    
+      
       If Not IsNull(Item_Billed!mbs_item) Then item = Item_Billed!mbs_item
       If Not IsNull(Item_Billed!ama_item) Then item = Item_Billed!ama_item
       If Not IsNull(Item_Billed!user_item) Then item = Item_Billed!user_item
@@ -270,11 +285,11 @@ Public Sub cvwItemsBilled_Refresh(fk_patient As Integer)
       cvwItemsBilled[Item_Billed!pk_items_billed][6] = Item_Billed!amount
       cvwItemsBilled[Item_Billed!pk_items_billed][7] = Item_Billed!gst_amount
       If Item_Billed!paid = True Then
-          cvwItemsBilled[Item_Billed!pk_items_billed][8] = "$0.0"
-          cvwItemsBilled[Item_Billed!pk_items_billed][9] = Item_Billed!amount
+         cvwItemsBilled[Item_Billed!pk_items_billed][8] = "$0.0"
+         cvwItemsBilled[Item_Billed!pk_items_billed][9] = Item_Billed!amount
       Else
-          cvwItemsBilled[Item_Billed!pk_items_billed][8] = Item_Billed!amount
-          cvwItemsBilled[Item_Billed!pk_items_billed][9] = "$0.0"
+         cvwItemsBilled[Item_Billed!pk_items_billed][8] = Item_Billed!amount
+         cvwItemsBilled[Item_Billed!pk_items_billed][9] = "$0.0"
       Endif
       fk_last_invoice = Item_Billed!fk_invoice  
       '   cvwItems_Billed[Item_Billed!pk_items_billed][6 ] =FIXME ADD THE GST
@@ -315,16 +330,9 @@ Public Sub cvwItemsBilled_Select()
       If cvwItemsBilled.MoveNext() Then Break
    Loop
    
-   ' Items = New Collection
-   ' item = New Collection
-   ' item!item = columnview1.Columns[4].Text
-   ' item!descriptor_brief = Columns[5].Text
-   ' item!fee = Columns[5].Text
-   ' items.Add(item)
-   
 End
 
-Public Sub Payer_Get(patient As Collection)
+Public Sub Payer_Get(patient As Collection) 'fix me to fk_patient
    'temp code get the responsible person FIXME  body code only whilst developin
    'need more inclusive way of getting the payer - eg might not be a patient
    
@@ -647,13 +655,6 @@ Public Sub Form_Close()
    
 End
 
-Public Sub Form_Show()
-   
-   Settings_Load
-   cvwUnBilled_Refresh()
-   
-End
-
 Private Sub Settings_Load()
    
    Try Vsplit_Main.layout = Settings["Billing_RecordVisit/VSplit_Main.Layout"]
@@ -672,6 +673,82 @@ Public Sub Settings_Save()
 End
 
 Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean = False, Optional bPaid As Boolean = False)
+   ' Public Sub Make_Invoice(pk_patient As Integer, items As Collection[], fk_lu_billing_type As Integer, date_printed As Date Default Null, fk_staff As Integer = 0, Optional notes As String = "") As Integer
+   ' CREATE TABLE billing.invoices
+   ' (
+   '  pk serial NOT NULL,
+   '   fk_staff_invoicing integer NOT NULL, -- the staff member raising the invoice
+   '   date_printed timestamp without time zone,
+   '   notes text,
+   '   reference text,
+   '   fk_staff_provided_service integer NOT NULL, -- the staff member who provider the service on which the invoice is based
+   '   fk_patient integer,
+   '   date_invoiced timestamp without time zone NOT NULL DEFAULT now(),
+   '   paid boolean NOT NULL DEFAULT false,
+   '   fk_payer_person integer, -- if not null then the key to the person who pays the bill
+   '   fk_payer_branch integer, -- if not null then payer is an organisation/branch
+   '   latex text NOT NULL, -- the LaTeX definition of the invoice generated
+   '   fk_branch integer NOT NULL, -- The branch at which the patient was provided with the service
+   '   visit_date date, -- The date time of the patient visit - may be null because the invoice could be raised not in relation to a visit
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   ' CREATE TABLE billing.items_billed
+   
+   Dim invoice As New CRow
+   Dim i As Collection
+   Dim new_item As Collection
+   Dim items As New Collection
+   Dim item As CRow
+   Dim row As Integer
+   '------------------
+   'Create the invoice
+   '------------------
+   invoice!fk_staff_invoicing = modDBConnect.currentUser!fk_staff
+   If bPrint Then 
+      invoice!date_printed = Now()
+   Endif
+   invoice!notes = cmbInvoiceComments.Text
+   invoice!reference = Trim(txtReferenceDetails.text)
+   '  invoice!fk_staff_provided_service = Unbilled_consultation!fk_staff
+   If cmbSeenBy.Index <> -1 Then    
+      invoice!fk_staff_provided_service = staff[cmbSeenBy.index]!fk_staff
+   End If   
+   ' invoice!fk_patient = Unbilled_consultation!fk_patient 
+   Try invoice!fk_patient = fk_patient 'may not be for a patient
+   invoice!date_invoiced = Now()
+   invoice!fk_branch = modDBConnect.currentUser!fk_branch   
+   invoice!visit_date = Val(txtDate.text)
+   If bPaid Then invoice!paid = True     
+   invoice.Save("billing.invoices", "fk_invoice")
+   '------------------------------------
+   'Get the items from the grid and save
+   'FIXME - will later keep the underlying grid data in an array of some sort
+   'and dispose of some of these backend calls
+   '------------------------------------
+   For row = 0 To gridview1.Rows.count - 1  'fixme check all necessary data is in grids cells
+      If gridview1[row, cGridColumn_ItemNumber].Text <> "" Then  
+         item = New CRow
+         item!fk_fee_schedule = modBillingDBI.fk_fee_shedule_Get_For_Item_Number(gridview1[row, cGridColumn_ItemNumber].Text)
+         item!amount = gridview1[row, cGridColumn_Fee].Text
+         item!fk_invoice = invoice!fk_invoice
+         item!fk_lu_billing_type = Billing_Type_Get_Pk(gridview1[row, cGridColumn_FeeType].Text)
+         item.Save("billing.items_billed", "fk_item_billed")
+      End If   
+   Next
+   '------------------------------------------
+   'finally mark this appointment as invoiced
+   '-----------------------------------------
+   modDBConnect.update("clerical.bookings", Null, ["pk": Unbilled_consultation!pk, "invoiced": True])  
+   invoice!latex = modBillingDBI.Print_Invoice(invoice) 
+   modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex])
+   modDBConnect.CommitTrans
+   cvwUnBilled_Refresh()
+   
+End 
+
+Public Sub Save_old(Optional bPrint As Boolean = True, Optional bAccount As Boolean = False, Optional bPaid As Boolean = False)
    ' Public Sub Make_Invoice(pk_patient As Integer, items As Collection[], fk_lu_billing_type As Integer, date_printed As Date Default Null, fk_staff As Integer = 0, Optional notes As String = "") As Integer
    ' CREATE TABLE billing.invoices
    ' (
@@ -812,6 +889,8 @@ End
 
 Public Sub Patients_Get()
    
+   Inc Application.Busy
+   Wait
    timer1.Stop
    timer1.Enabled = False  
    cvwPatients.Clear
@@ -823,8 +902,17 @@ Public Sub Patients_Get()
          cvwPatients[patient!pk_view][0] = patient!wholename
          cvwPatients[patient!pk_view][1] = Format(patient!birthdate, "dd/mm/yyyy")
       Next
+      If patients.count = 1 Then
+         With cvwPatients
+            .SetFocus()
+            .MoveFirst
+            .Item.Selected = True
+         End With
+         cvwPatients_Select()
+      Endif
    Endif
-   
+   Dec Application.Busy
+
 End
 
 Public Sub Get_Items(txt As String)
@@ -853,7 +941,7 @@ Public Sub Get_Items(txt As String)
    
    txtDescriptor.text = ""
    bExit = True
-   Select Case Unbilled_consultation!fk_lu_default_billing_level        'set that
+   Select Case fk_lu_default_billing_level     
       Case const.Billing_Default_Level_BulkBill
          fk_lu_billing_type = const.Billingtype_Scheduled_Fee
          billing_type = "Schedule Fee"
@@ -874,7 +962,7 @@ Public Sub Get_Items(txt As String)
          billing_type = "Private Fee"
    End Select
    
-   If IsNull(Unbilled_consultation!fk_lu_default_billing_level) Then
+   If IsNull(fk_lu_default_billing_level) Then
       cmbFeeType.index = cmbFeeType.Find("Private Fee")
       gridview1[gridview1.row, 4].Text = "Private Fee"
    Else
@@ -913,7 +1001,7 @@ Public Sub Get_Items(txt As String)
    GridView1_DblClick()
    gridview1.SetFocus()
    bExit = False  
-   
+   EditArea_Notify_Data_Change(True)
 End
 
 Public Sub columnview1_KeyPress()
@@ -979,7 +1067,7 @@ Public Sub Gridview1_Load()
    '------------------------------------------------------------ 
    'Takes items for an invoice and puts them back into the grid 
    '------------------------------------------------------------ 
-
+   
 End
 
 Public Sub Invoice_Calculate_Total()
@@ -1071,7 +1159,6 @@ Public Sub MainToolbar_Click()
          End With
          EditArea_Clear()
          txtpatient.SetFocus
-         
       Case "new receipt"
          Gridview1_Clear()
       Case "print receipt"
@@ -1099,26 +1186,20 @@ Public Sub mnuUnbilled_Click()
    
 End
 
-Public Sub rbDisplayMode_Click()
-   
-   ' If Last.tag = "pay account" Then
-   '    '   picturebox1.visible = True
-   '       VBox_EditArea_Inner.Visible = False   
-   '       Vbox_PatientBillingCards.Visible = False  
-   '       HBox_InvoiceGrid.Visible = False 
-   '       Hsplit_EditArea2.Visible = True
-   ' Else
-   '   '  picturebox1.visible = False 
-   '       VBox_EditArea_Inner.Visible = True   
-   '       Vbox_PatientBillingCards.Visible = True  
-   '       HBox_InvoiceGrid.Visible = True
-   '       Hsplit_EditArea2.Visible = False 
-   ' Endif
+
+
+Private Sub EditArea_Notify_Data_Change(bFlag As Boolean)
+ 
+   If bFlag Then
+      VBox_EditArea_Outer.Padding = 1
+   Else
+      VBox_EditArea_Outer.Padding = 0
+   End If   
    
 End
 
 Public Sub EditArea_Textbox_KeyRelease()
-   
+   If bExit Then Return 
    If Last.tag = "find patient" Then
       timer_count = 0      
       timer1.Enabled = True
@@ -1129,13 +1210,15 @@ End
 
 Public Sub EditArea_TextBox_Change()
    
+   If Bexit Then Return
    If Last.tag = "patient" Then
       If Trim(Last.text) = "" Then
          EditArea_Clear()
          txtpatient.SetFocus()
       Endif
    Endif
-   
+   EditArea_Notify_Data_Change(True)
+
 End
 
 Public Sub cvwPatients_Select()
@@ -1152,16 +1235,21 @@ Public Sub cvwPatients_Select()
    ' have fk_invoice, billing_type, fk_lu_billing_type, mbs_item etc, descriptor & descriptor_brief, gst_rate, percentage_fee_rule
    ' also have fk_staff_invoicing and associate datae., patient details, but not the medicare numbers etc.
    
+   If cvwPatients.count = 0 Then Return
    EditArea_Clear()
    cvwPatients.MoveCurrent
    Patient = patients[cvwPatients.Item.Key]
+   fk_patient = Patient!fk_patient  
+   Try fk_lu_default_billing_level = patient!fk_lu_default_billing_level
+   If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private 
+   bExit = True   
    form_billingcards.Display_Patient_Data(Patient)
    txtpatient.text = Patient!wholename  
    Try Payer_Get(Patient)    
    VBox_EditArea_Outer.Enabled = True 
    GridView1.Enabled = True           
-   cvwItemsBilled_Refresh(patient!fk_patient)                
-   
+   cvwItemsBilled_Refresh()                
+   bExit = False  
 End
 
 Public Sub Item_Billed_Display()
@@ -1174,13 +1262,34 @@ Public Sub TabStripPatients_Click()
    'the unbilled patients already seen or the tab to allow
    'staff to search for a patient's accounts
    '-------------------------------------------------------
-Select Case Last.index
-   Case cTabPatientsUnbilled
-        cvwUnBilled.SetFocus()
-   Case cTabPatientsAccounts
+
+   Select Case Last.index
+      Case cTabPatientsUnbilled
+         cvwUnBilled.SetFocus()
+      Case cTabPatientsAccounts
          txtFindPatient.SetFocus() 'and clear the edit area
          
-End Select
+   End Select
    
+End
 
+Public Sub tbRefreshUnbilled_Click()
+   
+   cvwUnBilled_Refresh()
+   
+End
+
+
+Public Sub rbAccounts_Click()
+   '-------------------------------------------------------------------------
+   'User has clicked on the radiobuttons above the invoices/billed items list
+   'The tags are:
+   'const.Billing_Accounts_Unpaid = 0
+   'const.Billing_Accounts_Paid = 1
+   'const.Billing_Accounts_All = 2
+   '-------------------------------------------------------------------------
+  If bExit Then Return  
+ 
+  iAccountDisplayMode = Last.tag 
+  cvwItemsBilled_Refresh()       
 End

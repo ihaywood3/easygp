@@ -304,18 +304,18 @@ End
 
 Public Function fk_fee_shedule_Get_For_Item_Number(item As String) As Integer
    'this is temporary and will need trashing
-    Dim R As Result
-    Dim sql As String
-    
-    sql = "Select * From billing.fee_schedule where mbs_item =$$" & item & "$$"
-    R = modDBConnect.exec_query(sql)
-    If R.count Then
-       Return R!pk
-    Else
-       Message.Info("This should never happen - couldn't find the item numbers primary key")
-       
-    Endif
-    
+
+   Dim R As Result
+   Dim sql As String
+   
+   sql = "Select * From billing.fee_schedule where mbs_item =$$" & item & "$$"
+   R = modDBConnect.exec_query(sql)
+   If R.count Then
+      Return R!pk
+   Else
+      Message.Info("This should never happen - couldn't find the item numbers primary key")
+      
+   Endif
    
 End
 
@@ -344,7 +344,8 @@ End
 
 Public Function Fee_Get_For_Item_And_Billing_Type(item As String, fk_lu_billing_type As Integer) As Collection
    'Returns the billing.price for a particular item number for a particular billing type e.g Private
-    Dim sql As String
+
+   Dim sql As String
    
    sql = "select * From billing.vwFees WHERE (mbs_item = $$" & item & "$$ or ama_item = $$" & item & "$$)" 
    sql &= " and fk_lu_billing_type = " & fk_lu_billing_type
@@ -458,11 +459,23 @@ Public Sub Save_Items(fk_invoice As Integer, items As Collection[], Optional del
    
 End
 
-' returns a Collection of all invoices for this patient, most recent first
-Public Function Items_Billed_Get(fk_patient As Integer, Optional limit As Integer = 100) As Collection
+Public Function Items_Billed_Get(fk_patient As Integer, iAccount_Display_Mode As Integer, Optional limit As Integer = 100) As Collection
+   '-----------------------------------------------------------------------------------------------------------------------------------------
+   ' returns a Collection of all invoices for this patient, most recent first, ordered by display mode (see const.Billing_Accounts constants)
+   ' ----------------------------------------------------------------------------------------------------------------------------------------
+
+   Dim sql As String
    
-   Return modDBConnect.exec_query_collection("select * from billing.vwItemsBilled where fk_patient = " & fk_patient & " ORDER BY date_invoiced desc") ' limit &2", [pk_patient, limit]) 
-   
+   sql = "select * from billing.vwItemsBilled where fk_patient = " & fk_patient
+   Select Case iAccount_Display_Mode
+      Case const.Billing_Accounts_Unpaid
+         sql &= " AND paid = false "
+      Case const.Billing_Accounts_Paid
+         sql &= " AND paid = true "
+   End Select
+   sql &= " ORDER BY date_invoiced desc "
+   Return modDBConnect.exec_query_collection(sql)
+
 End
 
 ' finds a referral for this patient
@@ -486,7 +499,6 @@ Public Function Find_Referrer(fk_patient As Integer) As Collection
    
 End
 
-
 Public Function Get_Billed_Items(invoice As Crow) As Collection
    '-------------------------------------------------------------------
    ' returns a list of billed items for a given invoice, as Collections
@@ -499,6 +511,7 @@ Public Function Get_Billed_Items(invoice As Crow) As Collection
    '   fk_lu_billing_type integer NOT NULL);
    '   ?? we already have this, so why recall from the backend, why not just pass?
    '-------------------------------------------------------------------
+
    Dim sql As String
    ' " left(coalesce(descriptor_brief,descriptor),400) as descriptor_display, "
    sql = "select coalesce(mbs_item,ama_item) as common_item, "
@@ -513,6 +526,7 @@ End
 ' ' cc is the current consult object. If not provided a new one will be loaded using th invoices's fk_patient.
 Public Sub Print_Invoice(invoice As Crow, Optional bBulkBIll As Boolean = False, Optional cc As Cconsult) As String
    '
+
    Dim sql As String
    Dim items As Collection
    Dim templ As CTemplate
@@ -520,7 +534,7 @@ Public Sub Print_Invoice(invoice As Crow, Optional bBulkBIll As Boolean = False,
    Dim i As Collection
    Dim referrer_type As String
    Dim latex As String
- 
+   
    If IsNull(cc) Then cc = New CConsult(modContactsDBI.Patient_Get_Using_PK(invoice!fk_patient))
    items = Get_Billed_Items(invoice)
    sql = "select referrer_type, s.* from common.lu_occupations o, admin.vwstaffinclinics s "
@@ -539,13 +553,13 @@ Public Sub Print_Invoice(invoice As Crow, Optional bBulkBIll As Boolean = False,
          templ = New CTemplate("templates/invoice-gp.tex", "tex")
          Load_Template_GP(templ, doctor, items, cc)
       End If   
-      templ.Subst("date-raised", invoice!date_printed) 'FIXME change backend ?back to date_invoiced.
+      templ.Subst("date-raised", invoice!visit_date) 'FIXME change backend ?back to date_invoiced or what if the invoice is for a non-visit related service
       latex = templ.GetData()
       modPrinting.Print_latex(latex, const.Paper_Plain, 1)
       Return latex   
    Endif
    'sql = "updatebilling.invoices set fk_who_printed=&1, when_printed=now() where pk=&2"
- '  modDBConnect.exec_query(sql, [modDBConnect.currentUser!fk_staff, invoice!pk])
+   '  modDBConnect.exec_query(sql, [modDBConnect.currentUser!fk_staff, invoice!pk])
    
 End
 
@@ -553,7 +567,6 @@ End
 Private Sub Load_Template_Specialist(templ As Ctemplate, invoice As Crow) 
    
    Dim referrer As Collection
-
    
    referrer = Find_Referrer(invoice!fk_patient)
    If IsNull(referrer) Then

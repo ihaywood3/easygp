@@ -32,7 +32,7 @@ authority_script_number=script_no where fk_staff=$1;
   check_digit := check_digit % 9;
   return script_no::text || check_digit::text;
 end;
-$function$
+$function$;
 
 
 truncate db.lu_version;

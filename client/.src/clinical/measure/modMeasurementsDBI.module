@@ -5,8 +5,7 @@
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
-' (at your option) any later version.
-
+' (at your option) any later version
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY; without even the implied warranty of
 ' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -14,6 +13,14 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Private progressnote_searches As Collection[] = [["re1": "bp ?[=:;] ?([0-9]{2,3}/[0-9]{2,3})", "pretty": "blood pressure: &1 mmHg ", 
+                                                  "re2": "blood pressure: ?([0-9]{2,3})/([0-9]{2,3})", "pk": 1], 
+      ["re1": "h ?[=:;] ?([0-9]{1,4})", "pretty": "height: &1 cm ", "re2": "height: ?([0-9]{1,4})", "pk": 4],
+      ["re1": "\\bw ?[=:;] ?([0-9\\.]{1,4})", "pretty": "weight: &1 kg ", "re2": "[^\\-]weight: ?([0-9\\.]{1,4})", "pk": 2],
+      ["re1": "pf ?[=:;] ?([0-9]{1,4})", "pretty": "peak flow: &1 L/min ", "re2": "peak flow: ?([0-9]{1,4})", "pk": 3]]
+      '["re1": "bsl ?[=:;] ?([0-9\\.]{1,4})[^0-9]", "pretty": "<b>blood sugar: &1 mM</b>", "re2": "blood sugar: ?([0-9\\.]{1,4})[^0-9]", "pk": ?],
+
 
 Public Sub Measurement_Default_Save(currentconsult As Cconsult, measurement_default As Collection) As Integer
    
@@ -72,7 +79,6 @@ Public Function Make_Graph(fk_patient As Integer, loinc As String, heading As St
    'Creates a graph - currrently just returns the picture
    '------------------------------------------------------
    
-   Dim x As Integer
    Dim Graph_Data As Collection 
    
    Graph_Data = modPlot.Graph_And_Values_Get(fk_patient, loinc, heading, H, W, font_size, line_type, number_months)
@@ -178,7 +184,6 @@ Public Function Measurement_Get_Latest(measurements As Collection, fk_type As In
    
    Dim M As Collection
    Dim m2 As Collection
-   Dim m3 As Collection
    
    If measurements.Count = 0 Then Return Null
    For Each m In measurements
@@ -210,19 +215,39 @@ Public Function BP_Format(M As Variant) As String
    'number = systolic *1000 + diastolic
    '--------------------------------------------
    
-   Dim tempstr As String
    Dim systolic As Integer
    Dim diastolic As Variant
    Dim sysd As Integer = M
    
    systolic = sysd Div 1000
    diastolic = sysd Mod 1000
-   tempstr = Str$(Systolic) & "/" & Str$(Diastolic)
-   Return Tempstr 
+   Return Str$(Systolic) & "/" & Str$(Diastolic) 
    
 End
 
-Public Sub ProgressNote_Parse_For_Measurement(cons As CConsult, notes As String)
+Public Sub ProgressNote_Parse_For_Measurement_Keypress(notes As String) As String
+  'Parse progressnote for measurements "the first time" i.e. as the user is typing
+  'Makes the measurements bold and expands some of the abbrevations
+  'However does NOT do any backend saving
+  Dim re As Regexp
+  Dim s1 As String
+  Dim i As Collection
+  
+  For Each i In progressnote_searches
+     re = New Regexp(notes, i!re1, Regexp.Caseless)
+     If re.Offset > -1 Then
+        s1 = Replace$(i!pretty, "&1", re.SubMatches[1].Text)
+        Return Left$(notes, re.Offset) & s1 & Right$(notes, - (re.Offset + Len(re.Text)))
+     Endif
+  Next
+  Return notes
+
+End
+
+
+
+
+Public Sub ProgressNote_Parse_For_Measurement_Save(cons As CConsult, notes As String)
    '----------------------------------------------------------------------------
    'Parse progress note for any measurements, extract these, and save to backend
    'look for eg 'blood pressure=' then the next ascii 32 after that
@@ -239,53 +264,31 @@ Public Sub ProgressNote_Parse_For_Measurement(cons As CConsult, notes As String)
    'to user invervention - eg actively pressing F12 or clicking save
    'check the measurement is not already saved during this consultation.
    '---------------------------------------------------------------------------------- 
+   Dim i As Collection
+   Dim re As Regexp
+   Dim remain As String
+   Dim measurements As New Collection
+   Dim measurement As Collection
    
-   Dim x As Integer
-   Dim charpos As Integer
-   Dim sPattern As String
-   Dim MT As Collection  
-   Dim slashpos As Integer
-   Dim systolic As String
-   Dim diastolic As String
-   Dim measurement As Collection 
-   Dim measurements As New Collection 
-   Dim measurement$ As String
-   Dim sHtml As String 
-   
-   For Each MT In const.Measurement_Types
-      '------------------------------------------------------------
-      'For each type of measurement, the key = eg BP, BSL, Height 
-      'as represented by const.measurement_type
-      'e.g  const_measurement_BSL
-      '------------------------------------------------------------
-      sHtml = notes
-      x = MT!pk
-      sPattern = ">" & MT!name_full & "="
-      charpos = -1
-      '----------------------------------------------------------
-      'Now, loop through the entire html in the progress note for
-      'just the single type of measurement
-      '-----------------------------------------------------------
-      Do Until charpos = 0
-         charpos = InStr(shtml, sPattern)  
-         If charpos Then
-            sHtml = Right(shtml, Len(shtml) - charpos - Len(sPattern) + 1)
-            charpos = InStr(shtml, " ")             'found the space after measurement
-            measurement$ = Left(shtml, charpos - 1)  'the measurement
-            measurement = New Collection 
-            measurement!fk_type = MT!pk
-            If measurement!fk_type = const.Measurement_BP Then
-               slashpos = InStr(measurement$, "/")
-               systolic = Left(measurement$, slashpos - 1) & "000" 'now e.g 180000
-               diastolic = Right(measurement$, Len(measurement$) - slashpos)
-               measurement!measurement = Val(systolic) + Val(diastolic)
-            Else
-               measurement!measurement = Val(measurement$)
-            End If
-            measurements.Add(measurement, x)
+   For Each i In progressnote_searches
+      remain = notes
+      re = New Regexp(remain, i!re2, Regexp.Caseless)
+      Do Until re.Offset = -1
+         Debug "found: " & re.Text & " at " & re.Offset
+         measurement = New Collection 
+         measurement!fk_type = i!pk
+         If measurement!fk_type = const.Measurement_BP Then
+           ' BPs are encoded into a single value by multiplying systolic by 1000 and adding diastolic
+           measurement!measurement = (Val(re.SubMatches[1].Text) * 1000) + Val(re.SubMatches[2].Text)
+         Else
+           measurement!measurement = Val(re.SubMatches[1].Text)
          End If
+         measurements.Add(measurement, i!pk)
+         remain = Right$(remain, - (re.Offset + Len(re.Text)))
+         re = New Regexp(remain, i!re2, Regexp.Caseless)
       Loop
-   Next 
+   Next
+   Debug notes
    Measurements_Save(cons, measurements)
    
 End

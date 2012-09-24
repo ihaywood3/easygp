@@ -55,6 +55,9 @@ Private FTermSelector As FCodedTermSelector
 Private obs As Observer
 Private VSplit_Layout As Integer[]
 Private ParentForm As FProgressNotePage
+Private Last_Key_Numeric As Boolean
+
+
 Public Sub Set_Copy_of_Editor_text(sText As String)
    
    copy_of_Editor_text = sText  
@@ -77,6 +80,7 @@ Public Sub Init(cons As CConsult, notes As String, Optional heading As String, O
    Dim R As Result
    Dim sString As String 
    
+   Last_Key_Numeric = False
    ParentForm = F                            'Fixme, clumbsy but then accesses FprogressNotePage.Save() see spell checker this module
    currentconsult = cons
    tenotes.RichText = notes
@@ -480,6 +484,9 @@ Public Sub tenotes_KeyPress()
             
       End Select
    End If
+   Let Last_Key_Numeric = False
+   If Key.Code >= Key["0"] And If Key.Code <= Key["9"] Then Last_Key_Numeric = True
+   If Key.Code = Key["."] Then Last_Key_Numeric = True
    ' If key.code = key.down And FTermSelector.Visible Then 
    '    With FTermSelector.ColumnView1
    '       .SetFocus()
@@ -526,6 +533,7 @@ Public Sub teNotes_KeyRelease()
    
    Dim s As Collection
    Dim re As Regexp
+   Dim notes As String
    
    If bExit Then 
       Return 
@@ -545,77 +553,11 @@ Public Sub teNotes_KeyRelease()
          If InStr(teNotes.Text, s!abbrev, 0, gb.IgnoreCase) Then Auto_Text(s)
       End If 
    Next
-   ' If InStr(teNotes.text, "Coded Diagnosis") Then
-   '    FTermSelector.Visible = True 
-   '    Terms_Get()
-   ' Endif
-   ' If InStr(teNotes.text, ".mc") Then
-   '    teNotes.text = Replace(teNotes.text, ".mc", "")
-   '    FClinical.Editor_ShowPage_External("Medical Certificates", "Medical Certificates", "")
-   ' End If  
-   ' 
-   ' If InStr(teNotes.text, ".rq") Then
-   '    teNotes.text = Replace(teNotes.text, ".rq", "")
-   '    Inc Application.Busy 
-   '    FClinical.Add_Tab("Requests") 
-   '    Dec Application.Busy
-   '    Return 
-   '    
-   ' Endif
-   ' If InStr(teNotes.text, ".ref") Then
-   '    
-   '    teNotes.text = Replace(teNotes.text, ".ref", "")
-   '    Inc Application.Busy 
-   '    FClinical.Add_Tab("Referrals") 
-   '    Dec Application.Busy
-   '    Return 
-   ' Endif
-   ' If InStr(teNotes.text, ".wcf") Then
-   '    teNotes.text = Replace(teNotes.text, ".wcf", "")
-   '    Inc Application.Busy 
-   '    FClinical.Add_Tab("Workcover") 
-   '    Dec Application.Busy
-   '    Return 
-   ' Endif
-   '-s!abbrev-----------------------------
-   'Now parse for any measurements
-   'rich text would be <p>BP=120/70_</p>
-   'where _ here represents what is 
-   'actually an ascii 32 character
-   '------------------------------
-   If InStr(LCase(teNotes.RichText), "bp=") Then
-      ParseText_Keyword("bp=")
-   End If
-   If InStr(LCase(teNotes.RichText), "bsl=") Then  'FIXME MAKE THIS CASE INSENSITIVE
-      ParseText_Keyword("bsl=")
-   End If
-   If InStr(LCase(teNotes.RichText), "h=") Then  'FIXME MAKE THIS CASE INSENSITIVE
-      ParseText_Keyword("h=")
-   End If
-   If InStr(LCase(teNotes.RichText), "w=") Then  'FIXME MAKE THIS CASE INSENSITIVE
-      ParseText_Keyword("w=")
-   End If
-  Catch
-  Return 
-End
 
-Public Function Validate_BSL() As Boolean
-   
-   Dim charpos As Integer
-   Dim aString As String
-   
-   Charpos = InStr(teNotes.text, "BSL=")
-   Try astring = Mid$(teNotes.text, charpos + 4, 4)
-   If Len(astring) < 3 Then Return
-   Try Val(astring)
-   If Error Then
-      Return False
-   Else
-      teNotes.RichText = Replace$(teNotes.RichText, "BSL=" & astring, "<A HREF='" & Str$(const.Measurement_BSL) & "'>blood sugar=" & astring & "</A><BR>")
-      teNotes.pos = InStr(teNotes.text, "blood sugar=" & astring) + Len("blood sugar=" & astring)
-      
-   End If  
-   Return True
+   If Not Last_Key_Numeric Then
+     notes = modMeasurementsDBI.ProgressNote_Parse_For_Measurement_Keypress(teNotes.RichText)
+     If notes <> teNotes.RichText Then teNotes.RichText = notes ' only replace when there is a change
+   Endif
    
 End
 
@@ -806,107 +748,8 @@ Public Sub Insert_Picture(sSource As String)
    
 End
 
-Public Sub ParseText_Keyword(keyword As String)
-   '--------------------------------------------------------------
-   'Tries to convert any BP=nnn/nn or nnn/nnn contained
-   'in the background HTML to a valid BP If unsuccessful, then
-   'no formatted html is inserted, so the user immediately knows
-   'they have typed something wrong.
-   '
-   'Example as user types in teNotes BP=120/70 the html looks like
-   'this. Note that this routine is not triggered until a ascii 32
-   'appears after the 120/70:
-   '
-   ' <html><head><meta name="qrichtext" content="1" /></head>
-   '<body style="font-size:9pt;font-family:Bitstream Vera Sans">
-   ' <p>BP=120/70 </p>
-   ' </body></html>
-   '
-   'After this routine, the resultant html looks like this:
-   '
-   ' <html><head><meta name="qrichtext" content="1" /></head>
-   '<body style="font-size:9pt;font-family:Bitstream Vera Sans">
-   ' <p><a href="Bloodpressure">Blood Pressure=120/70 </a><br /></p>
-   ' </body></html>
-   '
-   'and the cursor is moved on to the next line.
-   
-   'The resultant hmtl is parsed and the values extracted when the
-   ' progress note is later saved
-   '
-   'FIXME: NO CODE YET TO RE-CONSTRUCT THE HTML IF THE USER
-   'PARTIALY DELETES THE FORMATTED TEXT AFTER IT HAS BEEN INSERTED
-   '--------------------------------------------------------------
-   Dim sMeasurement As String
-   Dim cp1 As Integer
-   Dim cp2 As Integer
-   Dim curpos As Integer = tenotes.Pos
-   
-   CP1 = InStr(LCase(teNotes.RichText), keyword)
-   cp2 = InStr(teNotes.RichText, "<", CP1)
-   sMeasurement = Mid(teNotes.RichText, cp1, Cp2 - cp1)
-   If Not (Right(sMeasurement, 1) = Chr(32)) Then 
-      Return
-   End If
-   
-   modMeasurements.IsMeasurement(teNotes, keyword, sMeasurement, currentconsult, curpos)
-   
-
-   tenotes.SetFocus()
-    End
 
 
-Public Function IsMeasurement(keyword As String, sMeasurement As String) As Boolean
-   'currently not used see modMeasurements.Ismeasurement (which is used)
-   
-   Dim Delimiter As String
-   Dim charpos As Integer
-   Dim SS As String
-   Dim html_aref_tag As String
-   Dim html_text As String
-   Dim sUnits As String
-   
-   Select Case keyword
-      Case "bp="
-         Delimiter = "/"
-         html_text = "blood pressure"
-         html_aref_tag = "blood pressure"
-         sUnits = "mmhg"
-      Case "h="
-         Delimiter = "."
-         html_text = "height"
-         html_aref_tag = "height"
-         sUnits = "cm"
-      Case "w="
-         Delimiter = "."
-         html_text = "weight"
-         html_aref_tag = "weight"
-         sUnits = "kg"
-      Case "bsl="
-         Delimiter = "."
-         html_text = "blood Sugar"
-         html_aref_tag = "blood Sugar"
-         sUnits = "mmole"
-   End Select
-   SS = Right(sMeasurement, Len(sMeasurement) - InStr(sMeasurement, "="))
-   charpos = InStr(SS, delimiter)
-   Try Val(Left(SS, charpos - 1))
-   If Error Then Return False
-   Try Right(SS, Len(SS) - charpos)
-   If Error Then Return False
-   teNotes.RichText = Replace$(LCase(teNotes.RichText), keyword & SS, "<A HREF='" & html_aref_tag & "'>" & html_text & "=" & SS & sUnits & "</A><BR>")
-   teNotes.pos = InStr(teNotes.text, html_text & "=" & SS & sunits) + Len(html_text & " = " & SS & sUnits)
-   If keyword = "h=" Then
-      sHeight = SS 
-      '  CalcBMI()
-   End If
-   If keyword = "w=" Then
-      sWeight = SS
-      '  CalcBMI()
-   Endif
-   Return True
-   
-End
 
 Public Sub CalcBMI() 
    '-------------------------------------------------------------------------
@@ -956,91 +799,7 @@ Public Sub CalcBMI()
    
 End
 
-Public Function CalcBMI_old() As String
-   '-------------------------------------------------------------------------
-   'Checks html to see if weight/height exist, if do > shows a calculated BMI
-   'and the weight range, and number of Kg's overweight
-   '-------------------------------------------------------------------------
-   
-   Dim Height As String
-   Dim Data As String[] 
-   Dim BMI As Float
-   Dim range As String 
-   Dim sMsgOverweight As String = "Patient is in overweight range of BMI"
-   Dim sMsgObese As String = "Patient is in obese range of BMI"
-   Dim sMsgUnderweight As String = "Patient is in the underweight range of BMI"
-   Dim sWeightMessage As String  
-   '---------------------------------------------------------------------------------
-   'Either, get height from these notes, or if none, check if we have an existing one
-   '---------------------------------------------------------------------------------
-   If InStr(Lower(teNotes.richtext), "height=") Then     
-      CP1 = InStr(LCase(teNotes.RichText), "height=")
-      cp2 = InStr(teNotes.RichText, "cm", CP1)
-      height = Mid(teNotes.RichText, cp1, Cp2 - cp1)
-      height = Right(Height, Len(Height) - InStr(Height, "="))
-   End If
-   If sHeight = "" 
-      Data = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height), "|")
-      Try sHeight = Data[0]
-      If Not Error Then
-         teNotes.Richtext &= "Last measured height  on " & Data[1] & " was " & sHeight & "<BR>"
-      Endif
-   Endif
-   If sWeight = "" Then
-      Data = Split(modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Weight), "|")
-      Try sWeight = Data[0]
-      If Not Error Then
-         teNotes.Richtext &= "Last measured weight on " & Data[1] & " was " & sWeight & "<BR>"
-      Endif
-   Endif
-   If sHeight <> "" And sWeight <> "" Then 
-      BMI = Val(sweight) / ((sHeight / 100) * (sHeight / 100)) 
-      BMI = Val(Format(Str$(BMI), "##.#"))
-      If BMI > 20 And BMI < 25 Then range = "normal" 
-      If BMI > 25 And BMI < 30 Then range = "overweight"
-      If BMI > 30 Then range = "obese" 
-      If BMI < 20 Then range = "underweight"
-      Select Case range
-         Case "underweight"
-            If Not (InStr(tlsuggestions.text, sMsgUnderweight)) Then
-               If Trim(tlsuggestions.text) = "" Then
-                  tlsuggestions.text = sMsgUnderweight   
-               Else
-                  tlsuggestions.text &= "<BR>" & sMsgUnderweight
-               End If
-            End If
-            sWeightMessage = sMsgUnderweight
-         Case "overweight"
-            If Not (InStr(tlsuggestions.text, sMsgOverweight)) Then
-               If Trim(tlsuggestions.text) = "" Then
-                  tlsuggestions.text = sMsgOverweight   
-               Else
-                  tlsuggestions.text &= "<BR>" & sMsgOverweight
-               End If
-            End If
-            sWeightMessage = sMsgOverweight
-         Case "obese"
-            If Not (InStr(tlsuggestions.text, sMsgObese)) Then
-               If Trim(tlsuggestions.text) = "" Then
-                  tlsuggestions.text = sMsgObese   
-               Else
-                  tlsuggestions.text &= "<BR>" & sMsgObese
-               End If
-            End If
-            sWeightMessage = sMsgOverweight
-      End Select
-      teNotes.Richtext &= "<A HREF='" & "BMI=" & " '>" & "BMI=" & Str(BMI) & "</A>"
-      If sWeightMessage Then
-         teNotes.Richtext &= " <small>(" & sWeightMessage & ")</small><BR>"
-      Endif
-      
-      Return Format(BMI, "##.#")
-   Else
-      '  message.Info("No height data recorded for this patient. To calculate the BMI automatically please enter eg h=180 and hit spacebar")
-      Return "" 
-   End If
-   
-End
+
 
 Public Sub mnuNotes_Click()
    

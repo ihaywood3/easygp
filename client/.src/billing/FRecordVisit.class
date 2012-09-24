@@ -23,6 +23,7 @@
 'many of the database calls are redundant duplicated
 '-----------------------------------------------------------------
 Private currentconsult As CConsult
+Private last_Fee_type As String
 Private bexit As Boolean
 Private timer_count As Integer
 Private OnRow As Integer
@@ -55,6 +56,8 @@ Private staff As Collection
 Private Staff_Member As Collection
 Private fk_staff As Integer                  'whichever staff saw the patient
 Private fk_patient As Integer
+Private fk_payer_branch As Integer                 'if non zero the invoice is to an organisation at branch level
+Private fk_payer_person As Integer                 'if non zero the invoice is to a person
 Private Unbilled_Consultations As Collection 
 Private Unbilled_consultation As Collection
 Private payers As Collection
@@ -76,10 +79,13 @@ Private Item_Billed As Collection
 Private iTimer_Search_Mode As Integer
 Private cTimer_SearchMode_Patient As Integer = 0
 Private cTimer_SearchMode_Descriptor As Integer = 1
+Private cTimer_SearchMode_Payer As Integer = 2
 Private Patients As Collection
 Private Patient As Collection
 Private Const cTabPatientsUnbilled As Integer = 0
 Private Const cTabPatientsAccounts As Integer = 1
+Private branches As Collection
+Private branch As Collection
 
 Public Sub Init() 
    '---------------------------------------------------------
@@ -103,7 +109,7 @@ Public Sub Init()
    lblmeasure.text = "  Payment By "
    modEditAreaHelpers.Resize_labels(VBox_EditArea_Inner, lblmeasure)
    modEditAreaHelpers.Resize_label(lblItems, lblmeasure)
-    modEditAreaHelpers.Resize_label(lblDisplayAccounts, lblmeasure)
+   modEditAreaHelpers.Resize_label(lblDisplayAccounts, lblmeasure)
    Payment_methods = modUtil.LoadCombo(cmbPaymentMethods, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Payment_Methods_Get()), "method")
    InvoiceComments = modUtil.LoadCombo(cmbInvoiceComments, modBillingDBI.Invoice_Comments_Get(), "comment")
    FeeTypes = modUtil.LoadCombo(cmbFeeType, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Fee_Types_Get()), "type") 'fixme
@@ -140,7 +146,7 @@ End
 Public Sub EditArea_Clear() 
    
    bExit = True
-  
+   
    modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Inner) 
    textlabelPayer.text = ""
    Unbilled_consultation = Null
@@ -148,12 +154,15 @@ Public Sub EditArea_Clear()
    ' fk_payer = 0
    fk_lu_default_billing_level = const.Billing_Default_Level_Private
    fk_patient = 0
+   fk_payer_branch = 0
+   fk_payer_person = 0
    cmbFeeType.Visible = False 
    cvwItemsBilled.Clear()
    Items_Billed = New Collection
    Item_Billed = New Collection
    iAccountDisplayMode = const.Billing_Accounts_Unpaid
    rbAccountsDisplayUnPaid.value = True
+   rbInvoiceOther.value = True 'switches off rbInvoiceOrganisation and rbInvoicePerson
    lblInvoiceTotal.text = ""
    EditArea_Notify_Data_Change(False)
    bexit = False
@@ -161,7 +170,6 @@ Public Sub EditArea_Clear()
 End
 
 Public Sub Reset_Keys()
-  
    
 End
 
@@ -204,12 +212,12 @@ Public Sub cvwUnBilled_Select()
    
    cvwUnBilled.MoveCurrent()
    EditArea_Clear()
-  
+   
    Unbilled_consultation = Unbilled_Consultations[cvwUnBilled.Item.key]
    Try fk_lu_default_billing_level = Unbilled_consultation!fk_lu_default_billing_level
    If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private
    fk_patient = Unbilled_consultation!fk_patient
-    bExit = True   
+   bExit = True   
    txtpatient.text = Unbilled_consultation!wholename
    txtDate.text = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
    Try Payer_Get(Unbilled_consultation)
@@ -342,11 +350,15 @@ Public Sub Payer_Get(patient As Collection) 'fix me to fk_patient
    payer = modBillingDBI.Responsible_Payer_Get(Patient!fk_patient)
    If Not IsNull(Payer) Then  
       If Patient!fk_patient <> payer!fk_patient Then
-         rbInvoiceToOther.value = True 
-      Endif
-      Try textlabelPayer.text = payer!wholename & "<BR>" & Trim(payer!street1 & " " & payer!street2) & "<BR>" & payer!town & " " & payer!postcode
+         bexit = False  
+         rbInvoiceOrganisation.value = True 
+     
+      Else
+           Try textlabelPayer.text = payer!wholename & "<BR>" & Trim(payer!street1 & " " & payer!street2) & "<BR>" & payer!town & " " & payer!postcode
+            bExit = False  
+      End If   
    End If  
-   bExit = False   
+   
    
 End
 
@@ -530,6 +542,14 @@ Public Sub gridview_Keypress()
    
 End
 
+Public Sub cmbEditArea_Enter()
+
+   last_Fee_Type = cmbFeeType.text
+   Print "Last type:", last_Fee_type
+   
+
+End
+
 Public Sub cmbEditArea_Click()
    
    If bExit Then Return 
@@ -552,6 +572,7 @@ Public Sub cmbEditArea_Click()
          Try gridview1[onrow, 2].text = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(gridview1[onrow, 0].text, FeeTypes[cmbFeeType.index]!pk)!price
          If Error Then
             Message.info("No fee's exist for the billing level you selected")
+            cmbFeeType.index = cmbFeeType.Find(last_Fee_type)
          Endif
          Invoice_Calculate_Total
    End Select
@@ -586,6 +607,7 @@ Public Sub TextBox1_Activate()
    
    If bexit Then Return 
    Print "textbox1_activate", oncol, " is the column we are in"
+   Print fk_lu_default_billing_level  
    Select Case oncol
       Case cGridColumn_ItemNumber
          gridview1[gridview1.row, 0].Text = TextBox1.text
@@ -712,14 +734,14 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    Endif
    invoice!notes = cmbInvoiceComments.Text
    invoice!reference = Trim(txtReferenceDetails.text)
-   '  invoice!fk_staff_provided_service = Unbilled_consultation!fk_staff
    If cmbSeenBy.Index <> -1 Then    
       invoice!fk_staff_provided_service = staff[cmbSeenBy.index]!fk_staff
-   End If   
-   ' invoice!fk_patient = Unbilled_consultation!fk_patient 
-   Try invoice!fk_patient = fk_patient 'may not be for a patient
+   End If 
+   If fk_patient <> 0 Then invoice!fk_patient = fk_patient              'may not be for a patient
    invoice!date_invoiced = Now()
-   invoice!fk_branch = modDBConnect.currentUser!fk_branch   
+   invoice!fk_branch = modDBConnect.currentUser!fk_branch      'branch at which service was provided
+   If fk_payer_branch <> 0 Then invoice!fk_payer_branch = fk_payer_branch
+   If fk_payer_person <> 0 Then invoice!fk_payer_person = fk_payer_person
    invoice!visit_date = Val(txtDate.text)
    If bPaid Then invoice!paid = True     
    invoice.Save("billing.invoices", "fk_invoice")
@@ -742,6 +764,7 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    'finally mark this appointment as invoiced
    '-----------------------------------------
    Try modDBConnect.update("clerical.bookings", Null, ["pk": Unbilled_consultation!pk, "invoiced": True])  'may not have an appt.
+   'fixme won't always be printed.
    invoice!latex = modBillingDBI.Print_Invoice(invoice) 
    modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex])
    modDBConnect.CommitTrans
@@ -839,16 +862,6 @@ Public Sub Form_Resize()
    
 End
 
-Public Sub EditArea_TextBox_GotFocus()
-   
-   rbInvoiceToOther.value = True
-   If Last.tag = "find patient" Then
-      EditArea_Clear()
-      iTimer_Search_Mode = cTimer_SearchMode_Patient
-   End If
-   
-End
-
 Public Sub Appointment_icons_Get_Picture(Appointment_Icons As Collection) As Collection 
    '-----------------------------------------------------------------------------------------
    'Loads the actual picture of the appointment icon into the collection got from the backend
@@ -913,7 +926,7 @@ Public Sub Patients_Get()
       Endif
    Endif
    Dec Application.Busy
-
+   
 End
 
 Public Sub Get_Items(txt As String)
@@ -971,7 +984,12 @@ Public Sub Get_Items(txt As String)
       gridview1[gridview1.row, 4].Text = billing_type
    Endif
    Scheduled_Fee = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(Trim(txt), const.Billingtype_Scheduled_Fee)
-   Items = modBillingDBI.Items_Get(Trim(txt), fk_lu_billing_type)
+   'bad bad developmental patch whilst developing workcover fixme
+   If textlabelPayer.text <> "" Then
+       Items = modBillingDBI.Items_Get(Trim(txt))
+   Else
+          Items = modBillingDBI.Items_Get(Trim(txt), fk_lu_billing_type)
+   End If   
    If items.count Then
       For Each item In items 'fixme ?proper way of doing this
          If IsNull(item!descriptor_brief) Then
@@ -1003,6 +1021,7 @@ Public Sub Get_Items(txt As String)
    gridview1.SetFocus()
    bExit = False  
    EditArea_Notify_Data_Change(True)
+   
 End
 
 Public Sub columnview1_KeyPress()
@@ -1016,20 +1035,26 @@ End
 Public Sub columnview1_DblClick()
    
    columnview1.MoveCurrent()
-   columnview1.Visible = False   
-   Descriptor_Brief = Descriptors_Brief[columnview1.Item.key]
-   If Not IsNull(Descriptor_Brief!mbs_item) Then
-      gridview1[onrow, 0].text = Descriptor_Brief!mbs_item 'double done in get_items, prototype only fixme
-   End If
-   If Not IsNull(Descriptor_Brief!ama_item) Then
-      gridview1[onrow, 0].text = Descriptor_Brief!ama_item
-   End If
-   If Not IsNull(Descriptor_Brief!user_item) Then
-      gridview1[onrow, 0].text = Descriptor_Brief!user_item
-   End If
-   Get_Items(gridview1[onrow, 0].text) 'duplication in a way 'see note in subroutine
-   textbox1.Visible = False   
-   gridview1.SetFocus()
+   Select Case Last.tag.tag
+         
+      Case "something"
+         
+         Descriptor_Brief = Descriptors_Brief[columnview1.Item.key]
+         If Not IsNull(Descriptor_Brief!mbs_item) Then
+            gridview1[onrow, 0].text = Descriptor_Brief!mbs_item 'double done in get_items, prototype only fixme
+         End If
+         If Not IsNull(Descriptor_Brief!ama_item) Then
+            gridview1[onrow, 0].text = Descriptor_Brief!ama_item
+         End If
+         If Not IsNull(Descriptor_Brief!user_item) Then
+            gridview1[onrow, 0].text = Descriptor_Brief!user_item
+         End If
+         Get_Items(gridview1[onrow, 0].text) 'duplication in a way 'see note in subroutine
+         textbox1.Visible = False   
+         gridview1.SetFocus()
+      Case "payer search"
+         Organisation_Select()
+   End Select
    
 End
 
@@ -1091,7 +1116,11 @@ Public Sub rbInvoiceTo_Click()
    If bExit Then Return 
    textlabelPayer.text = ""
    Select Case Last.tag
-      Case "other"
+       Case "other"
+      '    With txtSearch
+      '       .Enabled = True   
+      '       .SetFocus()
+      '    End With
          '   Try Payer_Get(Patient)
          ' Case "medicare"
          '    iBilling_Category = cBilling_Category_Private
@@ -1137,6 +1166,8 @@ Public Sub timer1_Timer()
             Patients_Get
          Case cTimer_SearchMode_Descriptor
             Descriptors_Brief_Get
+         Case cTimer_SearchMode_Payer
+            Organisations_Get()
       End Select
       
    Endif
@@ -1187,10 +1218,8 @@ Public Sub mnuUnbilled_Click()
    
 End
 
-
-
 Private Sub EditArea_Notify_Data_Change(bFlag As Boolean)
- 
+   
    If bFlag Then
       VBox_EditArea_Outer.Padding = 1
    Else
@@ -1199,27 +1228,66 @@ Private Sub EditArea_Notify_Data_Change(bFlag As Boolean)
    
 End
 
+Public Sub EditArea_TextBox_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+  ' rbInvoiceToOther.value = True
+   Select Case Last.tag
+      Case "find patient" 
+         EditArea_Clear()
+         iTimer_Search_Mode = cTimer_SearchMode_Patient
+      Case "payer search"
+         bExit = True
+         If rbInvoiceOther.value = True Then rbInvoiceOrganisation.value = True  
+         bExit = False  
+         iTimer_Search_Mode = cTimer_SearchMode_Payer
+         With columnview1
+            .top = Last.Parent.parent.top + Last.height
+            .left = Last.Parent.left
+            .width = textlabelPayer.Width
+            .Visible = False  
+            .Columns.count = 4
+         End With
+   End Select
+   
+End
+
+Public Sub EditArea_TextBox_LostFocus()
+   
+   Last.BackGround = Color.White
+   
+End
+
 Public Sub EditArea_Textbox_KeyRelease()
+   
    If bExit Then Return 
-   If Last.tag = "find patient" Then
-      timer_count = 0      
-      timer1.Enabled = True
-      timer1.Start         
-   End If  
+   Select Case Last.tag
+      Case "find patient", "payer search"
+         timer_count = 0      
+         timer1.Enabled = True
+         timer1.Start         
+   End Select
    
 End
 
 Public Sub EditArea_TextBox_Change()
    
    If Bexit Then Return
-   If Last.tag = "patient" Then
-      If Trim(Last.text) = "" Then
-         EditArea_Clear()
-         txtpatient.SetFocus()
-      Endif
-   Endif
+   Select Case Last.tag
+      Case "patient"
+         If Trim(Last.text) = "" Then
+            EditArea_Clear()
+            txtpatient.SetFocus()
+         Endif
+      Case "payer search"
+         If Trim(Last.text) = "" Then
+            fk_payer_branch = 0
+            fk_payer_person = 0
+            textlabelPayer.text = "" 
+         Endif
+   End Select
    EditArea_Notify_Data_Change(True)
-
+   
 End
 
 Public Sub cvwPatients_Select()
@@ -1251,6 +1319,7 @@ Public Sub cvwPatients_Select()
    GridView1.Enabled = True           
    cvwItemsBilled_Refresh()                
    bExit = False  
+   
 End
 
 Public Sub Item_Billed_Display()
@@ -1263,7 +1332,7 @@ Public Sub TabStripPatients_Click()
    'the unbilled patients already seen or the tab to allow
    'staff to search for a patient's accounts
    '-------------------------------------------------------
-
+   
    Select Case Last.index
       Case cTabPatientsUnbilled
          cvwUnBilled.SetFocus()
@@ -1280,6 +1349,49 @@ Public Sub tbRefreshUnbilled_Click()
    
 End
 
+Public Sub Organisations_Get()
+   '-----------------------------------------------------------------
+   'User is typing in search textbox, first try and find organisation
+   '-----------------------------------------------------------------   
+   timer1.Stop
+   If Trim(txtSearch.text) = "" Then 
+      columnview1.Visible = False   
+      Return 
+   End If   
+   branches = modContactsDBI.Organisations_Get(Trim(txtSearch.text))
+   If Not branches.count Then Return 
+   columnview1.Clear
+   For Each branch In branches
+      Columnview1.Add(branch!pk_view, 0)
+      Columnview1[branch!pk_view][0] = Branch!organisation
+      Columnview1[branch!pk_view][1] = Branch!branch
+      Columnview1[branch!pk_view][2] = Trim(Branch!street1 & " " & Branch!street2)
+      Columnview1[branch!pk_view][3] = Branch!suburb & " " & Branch!postcode
+   Next 
+   With Columnview1
+      .Visible = True
+      .Raise
+      .tag = txtSearch
+   End With
+   
+End Sub
+
+Public Sub Organisation_Select()
+   'Really a branch select FIXME consistancy throughout entire project   
+
+   columnview1.MoveCurrent()
+   bexit = True   
+   textlabelPayer.text = branches[columnview1.Item.key]!organisation & "<BR>"
+   textlabelPayer.text &= branches[columnview1.Item.key]!branch & "<BR>"
+   textlabelPayer.text &= Trim(branches[columnview1.Item.key]!street1 & " " & branches[columnview1.Item.key]!street2) & "<BR>"
+   textlabelPayer.text &= branches[columnview1.Item.key]!town & " " & branches[columnview1.Item.key]!postcode
+   columnview1.Visible = False 
+   txtSearch.text = ""  
+   fk_payer_branch = branches[columnview1.Item.key]!fk_branch
+   txtReferenceDetails.SetFocus()
+   bExit = False  
+   
+End
 
 Public Sub rbAccounts_Click()
    '-------------------------------------------------------------------------
@@ -1289,8 +1401,26 @@ Public Sub rbAccounts_Click()
    'const.Billing_Accounts_Paid = 1
    'const.Billing_Accounts_All = 2
    '-------------------------------------------------------------------------
-  If bExit Then Return  
- 
-  iAccountDisplayMode = Last.tag 
-  cvwItemsBilled_Refresh()       
+   
+   If bExit Then Return  
+   
+   iAccountDisplayMode = Last.tag 
+   cvwItemsBilled_Refresh()       
+   
 End
+
+Public Sub EditArea_TextBox_KeyPress()
+   If bexit Then Return
+   If key.code = key.down And columnview1.Visible Then
+      bexit = True   
+      With columnview1
+         .MoveFirst
+         .Item.Selected = True   
+         .SetFocus()
+      End With
+      bexit = False  
+   Endif
+   
+End
+
+

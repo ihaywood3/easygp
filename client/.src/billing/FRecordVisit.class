@@ -45,10 +45,6 @@ Private Scheduled_Fee As Collection
 Private consult_item_number As String 
 Private fk_lu_default_billing_level As Integer
 Private iBilling_Category As Integer
-Private Const cBilling_Category_Private As Integer = 0
-Private Const cBilling_Category_Medicare As Integer = 1
-Private Const cBilling_Category_Veteran As Integer = 2
-Private Const cBilling_Category_Other As Integer = 3
 Private iAccountDisplayMode As Integer  'const.Billing_Accounts_Paid,  Billing_Accounts_UnPaid, Billing_Accounts_All
 Private form_billingcards As FPatientBillingCards
 Private appointment_icons As Collection   
@@ -163,7 +159,7 @@ Public Sub EditArea_Clear()
    Item_Billed = New Collection
    iAccountDisplayMode = const.Billing_Accounts_Unpaid
    rbAccountsDisplayUnPaid.value = True
-   rbInvoiceOther.value = True 'switches off rbInvoiceOrganisation and rbInvoicePerson
+   rbPayerNotUsed.value = True 'switches off rbInvoiceOrganisation and rbInvoicePerson
    lblInvoiceTotal.text = ""
    EditArea_Notify_Data_Change(False)
    bexit = False
@@ -293,12 +289,12 @@ Public Sub cvwItemsBilled_Refresh()
       cvwItemsBilled[Item_Billed!pk_items_billed][4] = item
       cvwItemsBilled[Item_Billed!pk_items_billed][5] = Item_Billed!descriptor_brief
       cvwItemsBilled[Item_Billed!pk_items_billed][6] = Item_Billed!amount
-      cvwItemsBilled[Item_Billed!pk_items_billed][7] = Item_Billed!gst_amount
+      cvwItemsBilled[Item_Billed!pk_items_billed][7] = Item_Billed!amount_gst
       If Item_Billed!paid = True Then
          cvwItemsBilled[Item_Billed!pk_items_billed][8] = "$0.0"
-         cvwItemsBilled[Item_Billed!pk_items_billed][9] = Item_Billed!amount
+         cvwItemsBilled[Item_Billed!pk_items_billed][9] = Item_Billed!amount 'FIXME ADD UP
       Else
-         cvwItemsBilled[Item_Billed!pk_items_billed][8] = Item_Billed!amount
+         cvwItemsBilled[Item_Billed!pk_items_billed][8] = Item_Billed!amount 'FIXME ADD UP AMOUNT
          cvwItemsBilled[Item_Billed!pk_items_billed][9] = "$0.0"
       Endif
       fk_last_invoice = Item_Billed!fk_invoice  
@@ -317,14 +313,25 @@ End
 Public Sub cvwItemsBilled_Select()
    '--------------------------------------------------------------------
    'User has clicked on the list of items billed for the current patient
+   'unfinished
    '--------------------------------------------------------------------   
-   
+   bexit = True
    cvwItemsBilled.MoveCurrent
    Item_Billed = Items_Billed[cvwItemsBilled.Item.key] 
    txtDate.text = Item_Billed!visit_date
    txtReferenceDetails.text = Item_Billed!reference
    cmbSeenBy.index = cmbSeenBy.Find(Item_Billed!staff_provided_service_wholename)
    cmbLocation.index = cmbLocation.Find(Item_Billed!branch)
+   rbInvoiceToNotUsed.value = True
+   Try fk_payer_branch = Item_Billed!fk_payer_branch
+   If Not Error Then
+      rbInvoiceOrganisation.Value = True  
+   Endif
+   Try fk_payer_person = Item_Billed!fk_payer_person
+   If Not Error Then
+      rbInvoicePerson.Value = True
+   Endif
+   Try textlabelPayer.text = Item_Billed!payer_details
    '---------------------------------------------------------
    'now create an items collection to load back into the grid
    '---------------------------------------------------------
@@ -335,11 +342,11 @@ Public Sub cvwItemsBilled_Select()
       gridview1[onrow, 1].text = Items_Billed[cvwItemsBilled.Item.key]!descriptor_brief
       gridview1[onrow, 2].text = Items_Billed[cvwItemsBilled.Item.key]!amount
       gridview1[onrow, 4].text = Items_Billed[cvwItemsBilled.Item.key]!billing_type
-      gridview1[onrow, 5].text = Items_Billed[cvwItemsBilled.Item.key]!gst_rate
+      Try gridview1[onrow, 5].text = Items_Billed[cvwItemsBilled.Item.key]!amount_gst
       Inc onrow
       If cvwItemsBilled.MoveNext() Then Break
    Loop
-   
+   Invoice_Calculate_Total
 End
 
 Public Sub Payer_Get(patient As Collection) 'fix me to fk_patient
@@ -649,7 +656,7 @@ Public Sub textbox1_KeyPress()
                   .SetFocus()
                End With
             End If 
-         End If      
+         End If 
    End Select
    
 End
@@ -758,8 +765,8 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
          item!amount = gridview1[row, cGridColumn_Fee].Text
          item!fk_invoice = invoice!fk_invoice
          item!fk_lu_billing_type = Billing_Type_Get_Pk(gridview1[row, cGridColumn_FeeType].Text)
-         item.Save("billing.items_billed", "fk_item_billed")
          item!amount_gst = gridview1[row, cGridColumn_gst_amount].Text
+         item.Save("billing.items_billed", "fk_item_billed")
       End If   
    Next
    '------------------------------------------
@@ -774,77 +781,7 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    
 End 
 
-Public Sub Save_old(Optional bPrint As Boolean = True, Optional bAccount As Boolean = False, Optional bPaid As Boolean = False)
-   ' Public Sub Make_Invoice(pk_patient As Integer, items As Collection[], fk_lu_billing_type As Integer, date_printed As Date Default Null, fk_staff As Integer = 0, Optional notes As String = "") As Integer
-   ' CREATE TABLE billing.invoices
-   ' (
-   '  pk serial NOT NULL,
-   '   fk_staff_invoicing integer NOT NULL, -- the staff member raising the invoice
-   '   date_printed timestamp without time zone,
-   '   notes text,
-   '   reference text,
-   '   fk_staff_provided_service integer NOT NULL, -- the staff member who provider the service on which the invoice is based
-   '   fk_patient integer,
-   '   date_invoiced timestamp without time zone NOT NULL DEFAULT now(),
-   '   paid boolean NOT NULL DEFAULT false,
-   '   fk_payer_person integer, -- if not null then the key to the person who pays the bill
-   '   fk_payer_branch integer, -- if not null then payer is an organisation/branch
-   '   latex text NOT NULL, -- the LaTeX definition of the invoice generated
-   '   fk_branch integer NOT NULL, -- The branch at which the patient was provided with the service
-   '   visit_date date, -- The date time of the patient visit - may be null because the invoice could be raised not in relation to a visit
-   ' )
-   ' WITH (
-   '   OIDS=FALSE
-   ' );
-   ' CREATE TABLE billing.items_billed
-   
-   Dim invoice As New CRow
-   Dim i As Collection
-   Dim new_item As Collection
-   Dim items As New Collection
-   Dim item As CRow
-   Dim row As Integer
-   '------------------
-   'Create the invoice
-   '------------------
-   invoice!fk_staff_invoicing = modDBConnect.currentUser!fk_staff
-   If bPrint Then 
-      invoice!date_printed = Now()
-   Endif
-   invoice!notes = cmbInvoiceComments.Text
-   invoice!reference = Trim(txtReferenceDetails.text)
-   invoice!fk_staff_provided_service = Unbilled_consultation!fk_staff
-   invoice!fk_patient = Unbilled_consultation!fk_patient 
-   invoice!date_invoiced = Now()
-   invoice!fk_branch = modDBConnect.currentUser!fk_branch   
-   invoice!visit_date = Unbilled_consultation!begin
-   If bPaid Then invoice!paid = True     
-   invoice.Save("billing.invoices", "fk_invoice")
-   '------------------------------------
-   'Get the items from the grid and save
-   'FIXME - will later keep the underlying grid data in an array of some sort
-   'and dispose of some of these backend calls
-   '------------------------------------
-   For row = 0 To gridview1.Rows.count - 1  'fixme check all necessary data is in grids cells
-      If gridview1[row, cGridColumn_ItemNumber].Text <> "" Then  
-         item = New CRow
-         item!fk_fee_schedule = modBillingDBI.fk_fee_shedule_Get_For_Item_Number(gridview1[row, cGridColumn_ItemNumber].Text)
-         item!amount = gridview1[row, cGridColumn_Fee].Text
-         item!fk_invoice = invoice!fk_invoice
-         item!fk_lu_billing_type = Billing_Type_Get_Pk(gridview1[row, cGridColumn_FeeType].Text)
-         item.Save("billing.items_billed", "fk_item_billed")
-      End If   
-   Next
-   '------------------------------------------
-   'finally mark this appointment as invoiced
-   '-----------------------------------------
-   modDBConnect.update("clerical.bookings", Null, ["pk": Unbilled_consultation!pk, "invoiced": True])  
-   invoice!latex = modBillingDBI.Print_Invoice(invoice) 
-   modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex])
-   modDBConnect.CommitTrans
-   cvwUnBilled_Refresh()
-   
-End 
+
 
 Public Sub Billing_Type_Get_Pk(txt As String) As Integer
    
@@ -988,8 +925,8 @@ Public Sub Get_Items(txt As String)
    Endif
    Scheduled_Fee = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(Trim(txt), const.Billingtype_Scheduled_Fee)
    'bad bad developmental patch whilst developing workcover fixme
-   If textlabelPayer.text <> "" Then
-       Items = modBillingDBI.Items_Get(Trim(txt))
+   If textlabelPayer.text <> "" Then                'assumes a bill to non patient, veteran or medicare is workcover
+       Items = modBillingDBI.Items_Get(Trim(txt), const.Billingtype_Workcover)
    Else
           Items = modBillingDBI.Items_Get(Trim(txt), fk_lu_billing_type)
    End If   
@@ -1002,6 +939,8 @@ Public Sub Get_Items(txt As String)
          gridview1[gridview1.row, 1].Text = item!descriptor_brief
          gridview1[gridview1.row, 2].Text = item!price
          Try gridview1[gridview1.row, 3].Text = Format(Str(CFloat(Val(Replace(item!price, "$", ""))) - CFloat(Val(Replace(Scheduled_Fee!price, "$", "")))), "$#.###")
+         gridview1[onrow, 4].text = item!fee_type
+         last_Fee_type = item!fee_type
          If Not IsNull(item!gst_rate) And item!gst_rate <> 0 Then 'FIX ME ?CONVERT BACKEND TO NULL IN THIS FIELD NOT ZERO.
              gridview1[gridview1.row, 5].Text = modUtil.Format_Money(price / item!gst_rate)
          Endif
@@ -1145,17 +1084,17 @@ Public Sub rbInvoiceTo_Click()
 End
 
 Public Sub Items_Refresh()
-   
-   Select Case iBilling_Category
-      Case cBilling_Category_Medicare
-         
-      Case cBilling_Category_Veteran
-         
-      Case cBilling_Category_Private
-         
-      Case cBilling_Category_Other
-         
-   End Select
+   ' 
+   ' Select Case iBilling_Category
+   '    Case cBilling_Category_Medicare
+   '       
+   '    Case cBilling_Category_Veteran
+   '       
+   '    Case cBilling_Category_Private
+   '       
+   '    Case cBilling_Category_Other
+   '       
+   ' End Select
    
 End
 
@@ -1241,14 +1180,18 @@ End
 Public Sub EditArea_TextBox_GotFocus()
    
    Last.BackGround = Color.rgb(95, 255, 175)
-  ' rbInvoiceToOther.value = True
    Select Case Last.tag
       Case "find patient" 
          EditArea_Clear()
          iTimer_Search_Mode = cTimer_SearchMode_Patient
       Case "payer search"
+         'user has clicked on the textbox where you can search for a payer (organisation or person)
          bExit = True
-         If rbInvoiceOther.value = True Then rbInvoiceOrganisation.value = True  
+         textlabelPayer.text = ""
+         fk_payer_branch = 0                            'zero keys
+         fk_payer_person = 0
+         rbInvoiceToNotUsed.value = True                'switches off radio buttons for patient, medicare and veterans
+         rbInvoiceOrganisation.value = True  
          bExit = False  
          iTimer_Search_Mode = cTimer_SearchMode_Payer
          With columnview1
@@ -1378,12 +1321,16 @@ Public Sub Organisations_Get()
       Columnview1[branch!pk_view][2] = Trim(Branch!street1 & " " & Branch!street2)
       Columnview1[branch!pk_view][3] = Branch!suburb & " " & Branch!postcode
    Next 
-   With Columnview1
-      .Visible = True
-      .Raise
-      .tag = txtSearch
-   End With
-   
+   If branches.count > 1 Then 
+      With Columnview1
+         .Visible = True
+         .Raise
+         .tag = txtSearch
+      End With
+    Else
+        Organisation_Select()
+    End If  
+    
 End Sub
 
 Public Sub Organisation_Select()
@@ -1399,6 +1346,7 @@ Public Sub Organisation_Select()
    txtSearch.text = ""  
    fk_payer_branch = branches[columnview1.Item.key]!fk_branch
    txtReferenceDetails.SetFocus()
+   
    bExit = False  
    
 End
@@ -1421,15 +1369,24 @@ End
 
 Public Sub EditArea_TextBox_KeyPress()
    If bexit Then Return
-   If key.code = key.down And columnview1.Visible Then
-      bexit = True   
-      With columnview1
-         .MoveFirst
-         .Item.Selected = True   
-         .SetFocus()
-      End With
-      bexit = False  
-   Endif
+   Select Case key.Code
+    Case key.down
+      If columnview1.Visible Then
+         bexit = True   
+         With columnview1
+            .MoveFirst
+            .Item.Selected = True   
+            .SetFocus()
+         End With
+         bexit = False  
+      End If   
+   Case key.return
+       If Last.tag = "reference details" Then
+         gridview1.row = 0
+         gridview1.Column = 0
+         GridView1_DblClick()
+       End If  
+  End Select
    
 End
 

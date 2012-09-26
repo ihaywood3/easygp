@@ -25,6 +25,7 @@
 Private currentconsult As CConsult
 Private last_Fee_type As String
 Private bexit As Boolean
+Private bKeyValid As Integer
 Private timer_count As Integer
 Private OnRow As Integer
 Private OnCol As Integer
@@ -315,6 +316,7 @@ Public Sub cvwItemsBilled_Select()
    'User has clicked on the list of items billed for the current patient
    'unfinished
    '--------------------------------------------------------------------   
+   
    bexit = True
    cvwItemsBilled.MoveCurrent
    Item_Billed = Items_Billed[cvwItemsBilled.Item.key] 
@@ -347,6 +349,7 @@ Public Sub cvwItemsBilled_Select()
       If cvwItemsBilled.MoveNext() Then Break
    Loop
    Invoice_Calculate_Total
+   
 End
 
 Public Sub Payer_Get(patient As Collection) 'fix me to fk_patient
@@ -360,13 +363,12 @@ Public Sub Payer_Get(patient As Collection) 'fix me to fk_patient
       If Patient!fk_patient <> payer!fk_patient Then
          bexit = False  
          rbInvoiceOrganisation.value = True 
-     
+         
       Else
-           Try textlabelPayer.text = payer!wholename & "<BR>" & Trim(payer!street1 & " " & payer!street2) & "<BR>" & payer!town & " " & payer!postcode
-            bExit = False  
+         Try textlabelPayer.text = payer!wholename & "<BR>" & Trim(payer!street1 & " " & payer!street2) & "<BR>" & payer!town & " " & payer!postcode
+         bExit = False  
       End If   
    End If  
-   
    
 End
 
@@ -551,11 +553,10 @@ Public Sub gridview_Keypress()
 End
 
 Public Sub cmbEditArea_Enter()
-
+   
    last_Fee_Type = cmbFeeType.text
    Print "Last type:", last_Fee_type
    
-
 End
 
 Public Sub cmbEditArea_Click()
@@ -781,8 +782,6 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    
 End 
 
-
-
 Public Sub Billing_Type_Get_Pk(txt As String) As Integer
    
    Dim type As Collection
@@ -926,9 +925,9 @@ Public Sub Get_Items(txt As String)
    Scheduled_Fee = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(Trim(txt), const.Billingtype_Scheduled_Fee)
    'bad bad developmental patch whilst developing workcover fixme
    If textlabelPayer.text <> "" Then                'assumes a bill to non patient, veteran or medicare is workcover
-       Items = modBillingDBI.Items_Get(Trim(txt), const.Billingtype_Workcover)
+      Items = modBillingDBI.Items_Get(Trim(txt), const.Billingtype_Workcover)
    Else
-          Items = modBillingDBI.Items_Get(Trim(txt), fk_lu_billing_type)
+      Items = modBillingDBI.Items_Get(Trim(txt), fk_lu_billing_type)
    End If   
    If items.count Then
       For Each item In items 'fixme ?proper way of doing this
@@ -942,7 +941,7 @@ Public Sub Get_Items(txt As String)
          gridview1[onrow, 4].text = item!fee_type
          last_Fee_type = item!fee_type
          If Not IsNull(item!gst_rate) And item!gst_rate <> 0 Then 'FIX ME ?CONVERT BACKEND TO NULL IN THIS FIELD NOT ZERO.
-             gridview1[gridview1.row, 5].Text = modUtil.Format_Money(price / item!gst_rate)
+            gridview1[gridview1.row, 5].Text = modUtil.Format_Money(price / item!gst_rate)
          Endif
          Break
       Next
@@ -1065,11 +1064,11 @@ Public Sub rbInvoiceTo_Click()
    If bExit Then Return 
    textlabelPayer.text = ""
    Select Case Last.tag
-       Case "other"
-      '    With txtSearch
-      '       .Enabled = True   
-      '       .SetFocus()
-      '    End With
+      Case "other"
+         '    With txtSearch
+         '       .Enabled = True   
+         '       .SetFocus()
+         '    End With
          '   Try Payer_Get(Patient)
          ' Case "medicare"
          '    iBilling_Category = cBilling_Category_Private
@@ -1134,12 +1133,13 @@ Public Sub MainToolbar_Click()
    
    Select Last.tag
       Case "new invoice"
-         With cvwUnBilled
-            .UnselectAll()
-            .Foreground = Color.LightGray
-         End With
-         EditArea_Clear()
-         txtpatient.SetFocus
+         ' With cvwUnBilled
+         '    .UnselectAll()
+         '    .Foreground = Color.LightGray
+         ' End With
+         ' EditArea_Clear()
+         ' txtpatient.SetFocus
+         Invoice_New()
       Case "new receipt"
          Gridview1_Clear()
       Case "print receipt"
@@ -1149,6 +1149,28 @@ Public Sub MainToolbar_Click()
       Case "print account"
          Save(True, True)
    End Select
+   
+End
+
+Public Sub Invoice_New()
+   '--------------------------------------------- 
+   'Clear the editing area, keep patient id's etc
+   'Code assumes the patient had been loaded via
+   'clicking on the cvwpatients list
+   '--------------------------------------------- 
+   
+   Unbilled_consultation = Null
+   gridview1.Clear
+   fk_payer_branch = 0
+   fk_payer_person = 0
+   cmbFeeType.Visible = False 
+   cvwItemsBilled.Clear()
+   Items_Billed = New Collection
+   Item_Billed = New Collection
+   rbPayerNotUsed.value = True 'switches off rbInvoiceOrganisation and rbInvoicePerson
+   lblInvoiceTotal.text = ""
+   EditArea_Notify_Data_Change(False)
+   txtDate.SetFocus()
    
 End
 
@@ -1208,7 +1230,15 @@ End
 Public Sub EditArea_TextBox_LostFocus()
    
    Last.BackGround = Color.White
-   
+   If Last.tag = "date" And Trim(Last.text) <> "" Then
+      If IsDate(Last.text) Then
+         Message.Info("Please supply a valid date")    
+         bexit = True
+         Last.text = ""
+         bexit = False
+      End If   
+   End If   
+
 End
 
 Public Sub EditArea_Textbox_KeyRelease()
@@ -1218,7 +1248,8 @@ Public Sub EditArea_Textbox_KeyRelease()
       Case "find patient", "payer search"
          timer_count = 0      
          timer1.Enabled = True
-         timer1.Start         
+         timer1.Start     
+         
    End Select
    
 End
@@ -1306,6 +1337,7 @@ Public Sub Organisations_Get()
    '-----------------------------------------------------------------
    'User is typing in search textbox, first try and find organisation
    '-----------------------------------------------------------------   
+   
    timer1.Stop
    If Trim(txtSearch.text) = "" Then 
       columnview1.Visible = False   
@@ -1327,15 +1359,15 @@ Public Sub Organisations_Get()
          .Raise
          .tag = txtSearch
       End With
-    Else
-        Organisation_Select()
-    End If  
-    
+   Else
+      Organisation_Select()
+   End If  
+   
 End Sub
 
 Public Sub Organisation_Select()
    'Really a branch select FIXME consistancy throughout entire project   
-
+   
    columnview1.MoveCurrent()
    bexit = True   
    textlabelPayer.text = branches[columnview1.Item.key]!organisation & "<BR>"
@@ -1368,26 +1400,45 @@ Public Sub rbAccounts_Click()
 End
 
 Public Sub EditArea_TextBox_KeyPress()
+   
    If bexit Then Return
    Select Case key.Code
-    Case key.down
-      If columnview1.Visible Then
-         bexit = True   
-         With columnview1
-            .MoveFirst
-            .Item.Selected = True   
-            .SetFocus()
-         End With
-         bexit = False  
-      End If   
-   Case key.return
-       If Last.tag = "reference details" Then
-         gridview1.row = 0
-         gridview1.Column = 0
-         GridView1_DblClick()
-       End If  
-  End Select
+      Case key.down
+         If columnview1.Visible Then
+            bexit = True   
+            With columnview1
+               .MoveFirst
+               .Item.Selected = True   
+               .SetFocus()
+            End With
+            bexit = False  
+         End If   
+      Case key.return
+         If Last.tag = "reference details" Then
+            gridview1.row = 0
+            gridview1.Column = 0
+            GridView1_DblClick()
+         End If  
+   End Select
    
 End
 
+Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   bKeyValid = True
+   Select Case Tag
+      Case "date"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_Date_DWMY, keycode)
+      Case "notes", "payer search", "reference details"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_SQLCrash, keycode) 
+   End Select
+   Return bKeyValid
+   
+End
 
+Public Sub EditAreaTextBox_KeyPress()
+   
+   If bexit Then Return 
+   bkeyvalid = EditAreaTextBox_ExcludeKeys(key.code, Last.tag)
+   
+End

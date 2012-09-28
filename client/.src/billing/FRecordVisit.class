@@ -26,6 +26,7 @@ Private currentconsult As CConsult
 Private last_Fee_type As String
 Private bexit As Boolean
 Private bKeyValid As Integer
+Private bPayingInvoice As Boolean
 Private timer_count As Integer
 Private onrow_items As Integer
 Private OnCol_Items As Integer
@@ -55,6 +56,7 @@ Private fk_staff As Integer                  'whichever staff saw the patient
 Private fk_patient As Integer
 Private fk_payer_branch As Integer                 'if non zero the invoice is to an organisation at branch level
 Private fk_payer_person As Integer                 'if non zero the invoice is to a person
+Private fk_invoice As Integer                      'if non zero then key to billing.invoices table
 Private Unbilled_Consultations As Collection 
 Private Unbilled_consultation As Collection
 Private payers As Collection
@@ -116,7 +118,11 @@ Public Sub Init()
    modEditAreaHelpers.Resize_labels(VBox_EditArea_Inner, lblmeasure)
    modEditAreaHelpers.Resize_label(lblItems, lblmeasure)
    modEditAreaHelpers.Resize_label(lblDisplayAccounts, lblmeasure)
-   Payment_methods = modUtil.LoadCombo(cmbPaymentMethods, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Payment_Methods_Get()), "method")
+   modEditAreaHelpers.Resize_label(lblPayment, lblmeasure)
+   modEditAreaHelpers.Resize_label(lblComment, lblmeasure)
+   '  Payment_methods = modUtil.LoadCombo(cmbPaymentMethods, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Payment_Methods_Get(3)), "method") 'show on top 3 methods
+   Payment_methods = modUtil.LoadCombo(cmbPaymentMethods, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Payment_Methods_Get()), "method") 'show on top 3 methods
+   
    InvoiceComments = modUtil.LoadCombo(cmbInvoiceComments, modBillingDBI.Invoice_Comments_Get(), "comment")
    FeeTypes = modUtil.LoadCombo(cmbFeeType, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Fee_Types_Get()), "type") 'fixme
    staff = modUtil.LoadCombo(cmbStaff, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get()), "wholename")  
@@ -174,7 +180,8 @@ Public Sub EditArea_Clear()
    rbPayerNotUsed.value = True 'switches off rbInvoiceOrganisation and rbInvoicePerson
    lblInvoiceTotal.text = ""
    EditArea_Notify_Data_Change(False)
-  
+   '  HBox_RecieptPayment.Visible = False 
+   ' Hbox_Invoice_Comment.Visible = True 
    bexit = False
    
 End
@@ -214,7 +221,7 @@ Public Sub cvwUnBilled_Select()
    
    cvwUnBilled.MoveCurrent()
    EditArea_Clear()
-   
+   bPayingInvoice = True
    Unbilled_consultation = Unbilled_Consultations[cvwUnBilled.Item.key]
    Try fk_lu_default_billing_level = Unbilled_consultation!fk_lu_default_billing_level
    If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private
@@ -287,7 +294,6 @@ End
 Public Sub gvwReceipts_Init()
    
    With gvwReceipts
-      .Visible = False
       .Rows.count = 1
       .Rows.H = 20 
       .Columns.count = 6
@@ -307,76 +313,95 @@ Public Sub gvwReceipts_Init()
    End With
    
 End
+Public Sub gvwReceipts_GotFocus()
+   
+     With cmbPaymentMethods
+            .width = gvwReceipts.Columns[OnCol_Receipts].Width
+            .height = gvwReceipts.Rows[onrow_receipts].Height + 5
+            .left = gvwReceipts.left + gvwReceipts[onrow_receipts, cGridColumnReceipts_PaymentType].Left + 2
+            .top = ((onrow_receipts + 1) * 20) + 2
+            .Visible = False  
+    End With
+   
+End
 
 Public Sub gvwReceipts_Click()
    '----------------------------------------
    'User has clicked on the receipt gridview
    '----------------------------------------  
-   HBox_PaymentBy.Visible = False    
+   
+   Print bExit
+   
+   If gvwReceipts.row = -1 Then Return
    onrow_receipts = gvwReceipts.Row
    OnCol_Receipts = gvwReceipts.Column
-    Select Case OnCol_Receipts
+   Select Case OnCol_Receipts
       Case cGridColumnReceipts_PaymentType
-         With cmbReceiptPaymentType
+         With cmbPaymentMethods
             .width = gvwReceipts.Columns[OnCol_Receipts].Width
             .height = gvwReceipts.Rows[onrow_receipts].Height + 5
-            .left = gvwReceipts[onrow_receipts, OnCol_Receipts].Left + 2
+            .left = gvwReceipts.left + gvwReceipts[onrow_receipts, cGridColumnReceipts_PaymentType].Left + 2
             .top = ((onrow_receipts + 1) * 20) + 2
             If gvwReceipts[onrow_receipts, 0].text <> "" Then 
-                
                .Visible = True  
             Else
                .Visible = False  
-                OnCol_Receipts = 0
-                 gvwReceipts_DblClick()
+               OnCol_Receipts = 0
+               gvwReceipts_DblClick()
             End If
          End With
       Case Else
-        cmbReceiptPaymentType.Visible = False   
+         cmbPaymentMethods.Visible = False   
    End Select
    
 End
+
 Public Sub gvwReceipts_DblClick()
    
    Dim i As Integer
    Dim iSlotCount As Integer
    
- '  If OnCol_Receipts = 4 Or If txtpatient.text = "" Then Return
-   If gvwReceipts[onrow_receipts, OnCol_Receipts].text <> "" Then Return
+   '  If OnCol_Receipts = 4 Or If txtpatient.text = "" Then Return
+   If gvwReceipts[onrow_receipts, OnCol_Receipts].text <> "" Then
+      Return
+   End If   
+   If OnCol_Receipts = cGridColumnReceipts_PaymentType Then Return 
    TextBox2.text = ""                              'clear search textbox
    bFoundFirst = False  
-   
-   For i = 0 To gvwReceipts.rows.count - 1           'figure out which rows are selected
-      If gvwReceipts.rows[i].selected = True Then
-         If bfoundfirst = False Then
-            bfoundfirst = True
-            ifirstrow = i
-         End If 
-         ilastrow = i
-         Print "row " & i & " is selected"
-      End If 
-    Next   
-   ' Select Case OnCol_Receipts
-   '    Case 1 'the brief descriptor, allow searching
-   '       Try txtDescriptor.text = item!descriptor
-   '       If Not Error Then
-   '          txtDescriptor.Pos = 0
-   '          HBox_Descriptor.Visible = True   
-   '       Endif
-   '    Case Else
-   ' End Select
    onrow_receipts = gvwReceipts.Row 
-   iLeft = gvwReceipts[onrow_receipts, OnCol_Receipts].Left
-   iTop = ((onrow_receipts + 2) * 20) + 6 
+   iLeft = gvwReceipts[onrow_receipts, OnCol_Receipts].Left + gvwReceipts.Left
+   iTop = ((onrow_receipts + 1) * 20) + 2 
    TextBox2.left = iLeft + 2
    TextBox2.top = iTop
-   TextBox2.width = gvwReceipts.Columns[OnCol_Receipts].Width + 4
-   TextBox2.Height = ((iLastRow - iFirstRow) + 1) * gvwReceipts.Rows[0].Height + 5
+   TextBox2.width = gvwReceipts.Columns[OnCol_Receipts].Width + 2
+   TextBox2.Height = gvwReceipts.Rows[0].Height + 5
    TextBox2.Visible = True
    TextBox2.SetFocus()
    Print "should have set focus"
    
 End
+
+Public Sub textbox2_Activate()
+   '----------------------------------------------------------------------------
+   'User has hit <enter> key whilst typing in the textbox over the receipts grid
+   '----------------------------------------------------------------------------
+   
+   If bexit Then Return 
+   Select Case OnCol_Receipts
+      Case cGridColumnReceipts_Amount
+         gvwReceipts[gvwReceipts.row, 0].Text = modUtil.Format_Money(TextBox2.text)
+         If gvwReceipts[gvwReceipts.row, 1].Text = "" Then
+            cmbPaymentMethods.Visible = True  
+         Endif
+      Case cGridColumnReceipts_PaymentType
+         gvwReceipts[gvwReceipts.row, 1].Text = cmbPaymentMethods.Text
+      Case Else
+         gvwReceipts[gvwReceipts.row, OnCol_Receipts].Text = Trim(TextBox2.Text)
+   End Select 
+   TextBox2.Visible = False   
+   
+End
+
 Public Sub Gridview1_Init()
    
    Dim x As Integer
@@ -401,7 +426,7 @@ Public Sub Gridview1_Init()
             label105.width = 75
          Else
             .Columns[1].width = gridview1.width - 500
-            label200.width = gridview1.width - 500
+            lblTotalType.width = gridview1.width - 500
             .Columns[4].width = 200
          End If
       Next
@@ -441,6 +466,7 @@ Public Sub GridView1_Menu()
    Dim col As Integer
    Dim bHaveText As Boolean
    
+   If bPayingInvoice Then Return 
    For row = 0 To gridview1.Rows.count - 1
       For col = 0 To 4
          If gridview1[row, col].Text <> "" Then
@@ -457,7 +483,8 @@ End
 Public Sub Gridview1_Delete_Row(onrow_items As Integer)
    
    Dim col As Integer
-   
+
+   If bPayingInvoice Then Return 
    For col = 0 To 5
       gridview1[onrow_items, col].text = ""
    Next
@@ -469,11 +496,14 @@ End
 
 Public Sub GridView1_Click()
    
+   If bPayingInvoice Then Return 
    If txtpatient.text = "" Then
       Message.Info("Please select a patient to invoice, either by clicking on the patients list, or searching for a patient.")
       Return 
    End If   
-   
+   If gridview1.Row > 0 And gridview1[0, 0].text = "" Then 'fixme crap 
+        gridview1.row = 0
+   Endif
    onrow_items = gridview1.Row
    OnCol_Items = gridview1.Column
    If textbox1.Visible = False Then HBox_Descriptor.Visible = False  
@@ -504,21 +534,21 @@ Public Sub GridView1_DblClick()
    Dim i As Integer
    Dim iSlotCount As Integer
    
-   If OnCol_Items = 4 Or If txtpatient.text = "" Then Return
+   If OnCol_Items = 4 Or If txtpatient.text = "" Or bPayingInvoice Then Return
    If gridview1[onrow_items, OnCol_Items].text <> "" Then Return
    TextBox1.text = ""                              'clear search textbox
    bFoundFirst = False  
    
-   For i = 0 To gridview1.rows.count - 1           'figure out which rows are selected
-      If gridview1.rows[i].selected = True Then
-         If bfoundfirst = False Then
-            bfoundfirst = True
-            ifirstrow = i
-         End If 
-         ilastrow = i
-         Print "row " & i & " is selected"
-      End If 
-   Next   
+   ' For i = 0 To gridview1.rows.count - 1           'figure out which rows are selected
+   '    If gridview1.rows[i].selected = True Then
+   '       If bfoundfirst = False Then
+   '          bfoundfirst = True
+   '          ifirstrow = i
+   '       End If 
+   '       ilastrow = i
+   '       Print "row " & i & " is selected"
+   '    End If 
+   ' Next   
    Select Case OnCol_Items
       Case 1 'the brief descriptor, allow searching
          Try txtDescriptor.text = item!descriptor
@@ -535,6 +565,7 @@ Public Sub GridView1_DblClick()
    TextBox1.top = iTop
    TextBox1.width = gridview1.Columns[OnCol_Items].Width + 4
    TextBox1.Height = ((iLastRow - iFirstRow) + 1) * gridview1.Rows[0].Height + 5
+   TextBox1.Height = gridview1.Rows[0].Height + 5
    TextBox1.Visible = True
    TextBox1.SetFocus()
    Print "should have set focus"
@@ -549,7 +580,7 @@ End
 
 Public Sub gridview_Keypress()
    
-   If bExit Then Return 
+   If bExit Or bPayingInvoice Then Return 
    If key.code = key.return Then
       OnCol_Items = 0
       onrow_items = 0
@@ -590,8 +621,11 @@ Public Sub cmbEditArea_Click()
             cmbFeeType.index = cmbFeeType.Find(last_Fee_type)
          Endif
          Invoice_Calculate_Total
+      Case "payment method"
+         gvwReceipts[onrow_receipts, cGridColumnReceipts_PaymentType].Text = cmbPaymentMethods.Text
+         cmbPaymentMethods.Visible = False   
    End Select
-   
+   EditArea_Notify_Data_Change(True)
 End
 
 Public Sub TextBox1_GotFocus()
@@ -740,9 +774,13 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    Dim items As New Collection
    Dim item As CRow
    Dim row As Integer
-   '------------------
-   'Create the invoice
-   '------------------
+   
+   If VBox_EditArea_Outer.Padding = 0 Then Return
+   If Not Invoice_Valid() Then Return  
+   '--------------------------
+   'Create or edit the invoice
+   '--------------------------
+   If fk_invoice Then invoice.put_unchanged(fk_invoice, "fk_invoice")
    invoice!fk_staff_invoicing = modDBConnect.currentUser!fk_staff
    If bPrint Then 
       invoice!date_printed = Now()
@@ -765,23 +803,28 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    'FIXME - will later keep the underlying grid data in an array of some sort
    'and dispose of some of these backend calls
    '------------------------------------
-   For row = 0 To gridview1.Rows.count - 1  'fixme check all necessary data is in grids cells
-      If gridview1[row, cGridColumnItem_ItemNumber].Text <> "" Then  
-         item = New CRow
-         item!fk_fee_schedule = modBillingDBI.fk_fee_shedule_Get_For_Item_Number(gridview1[row, cGridColumnItem_ItemNumber].Text)
-         item!amount = gridview1[row, cGridColumnItem_Fee].Text
-         item!fk_invoice = invoice!fk_invoice
-         item!fk_lu_billing_type = Billing_Type_Get_Pk(gridview1[row, cGridColumnItem_FeeType].Text)
-         item!amount_gst = gridview1[row, cGridColumnItem_gst_amount].Text
-         item.Save("billing.items_billed", "fk_item_billed")
-      End If   
-   Next
+   If fk_invoice = 0 Then  'FIXME MAY HAVE TO ALLOW EDITING OF THIS
+      For row = 0 To gridview1.Rows.count - 1  'fixme check all necessary data is in grids cells
+         If gridview1[row, cGridColumnItem_ItemNumber].Text <> "" Then  
+            item = New CRow
+            item!fk_fee_schedule = modBillingDBI.fk_fee_shedule_Get_For_Item_Number(gridview1[row, cGridColumnItem_ItemNumber].Text)
+            item!amount = gridview1[row, cGridColumnItem_Fee].Text
+            item!fk_invoice = invoice!fk_invoice
+            item!fk_lu_billing_type = Billing_Type_Get_Pk(gridview1[row, cGridColumnItem_FeeType].Text)
+            item!amount_gst = gridview1[row, cGridColumnItem_gst_amount].Text
+            item.Save("billing.items_billed", "fk_item_billed")
+         End If   
+      Next
+   End If   
    '------------------------------------------
    'finally mark this appointment as invoiced
+   'fixme only update  this on first pass
+   'fime  misnomer invoice or reciept
    '-----------------------------------------
+   
    Try modDBConnect.update("clerical.bookings", Null, ["pk": Unbilled_consultation!pk, "invoiced": True])  'may not have an appt.
    'fixme won't always be printed.
-   invoice!latex = modBillingDBI.Print_Invoice(invoice) 
+   invoice!latex = modBillingDBI.Print_Invoice(invoice, bPrint) 
    modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex])
    modDBConnect.CommitTrans
    If TabStripPatients.index = 0 Then 
@@ -1090,7 +1133,11 @@ Public Sub Invoice_Calculate_Total()
    Next
    
    lblInvoiceTotal.text = "  " & modUtil.Format_Money(total)
-   
+   With lblTotalType
+      .text = "Invoice Total"
+      .Font.Bold = False   
+      .Foreground = Color.Black
+   End With
 End
 
 Public Sub rbInvoiceTo_Click()
@@ -1197,17 +1244,22 @@ Public Sub Invoice_New()
    
    Unbilled_consultation = Null
    gridview1.Clear
+   HBox_Comment.Visible = True   
    tbAccount.Enabled = True  
    tbVoucher.Enabled = True  
    tbSaveNoPrint.Enabled = True
    lblEditAreaHeading.text = "New Invoice"
-   HBox_PaymentBy.Visible = True 
+   bPayingInvoice = False 
    fk_payer_branch = 0
    fk_payer_person = 0
+   fk_invoice = 0
+   gvwReceipts.clear
    cmbFeeType.Visible = False 
    rbPayerNotUsed.value = True 'switches off rbInvoiceOrganisation and rbInvoicePerson
    lblInvoiceTotal.text = ""
    EditArea_Notify_Data_Change(False)
+   Hbox_InvoiceGrid.Enabled = True 
+   HBox99.Enabled = True   
    txtDate.SetFocus()
    
 End
@@ -1275,9 +1327,9 @@ Public Sub cvwItemsBilled_Select()
    
    If cvwItemsBilled.count = 0 Then Return   
    bexit = True
-   lblEditAreaHeading.text = "Existing Invoice"
+   lblEditAreaHeading.text = "Pay Invoice"
    cvwItemsBilled.MoveCurrent
-   
+   HBox_Comment.Visible = False  
    If cvwItemsBilled[cvwItemsBilled.Item.key][0] = "" Then
       Do Until cvwItemsBilled[cvwItemsBilled.Item.key][0] <> ""
          Print "moving previous"
@@ -1287,11 +1339,12 @@ Public Sub cvwItemsBilled_Select()
       
    Endif
    Item_Billed = Items_Billed[cvwItemsBilled.Item.key] 
+   fk_invoice = Item_Billed!fk_invoice 
    If Not Item_Billed!paid Then
       tbAccount.Enabled = False  
       tbVoucher.Enabled = False  
       tbSaveNoPrint.Enabled = False 
-      gvwReceipts.Visible = True 
+      ' gvwReceipts.Visible = True 
    Endif
    txtDate.text = Format(Item_Billed!visit_date, "dd/mm/yyyy")
    txtReferenceDetails.text = Item_Billed!reference
@@ -1322,10 +1375,18 @@ Public Sub cvwItemsBilled_Select()
       If cvwItemsBilled.MoveNext() Then Break
    Loop
    gridview1.Rows.count = onrow_items
-   gvwReceipts.Rows.count = onrow_items
+   gvwReceipts.Rows.count = onrow_items + 2 'to allow payment by eg cash + cheque for medicare items.
    Invoice_Calculate_Total
+     With lblTotalType
+      .text = "Total Owing"
+      .Font.Bold = False   
+      .Foreground = lblEditAreaHeading.Foreground
+   End With
    EditArea_Notify_Data_Change(False)       
-   HBox_RecieptPayment.Visible = True
+   Hbox_InvoiceGrid.Enabled = False 
+   HBox99.Enabled = False   
+   bexit = False  
+   
 End
 
 Public Sub cvwUnBilled_Menu()
@@ -1610,5 +1671,17 @@ Public Sub EditAreaTextBox_KeyPress()
    
    If bexit Then Return 
    bkeyvalid = EditAreaTextBox_ExcludeKeys(key.code, Last.tag)
+   
+End
+
+Public Sub HBox_ReceiptPayment_leave()
+   
+   cmbPaymentMethods.Visible = False  
+   
+End
+
+Public Function Invoice_Valid() As Boolean
+
+Return True 'for the moment! 
    
 End

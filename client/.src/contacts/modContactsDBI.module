@@ -18,6 +18,8 @@
 Public sSubroutineName As String
 Private searchtext As String
 Private regex As Regexp
+Private staff As Collection
+Private clinics As Collection
 
 Public Sub Communication_UnDelete(pk As Integer)
    'Un-deletes a communication, returns non-zero if succeeded
@@ -244,20 +246,6 @@ Public Function Employee_Get_With_Memo_Like(surname As String, memo As String, O
    
 End
 
-Public Function Clinic_Save(clinic As Collection) As Integer   
-   '-------------------------------
-   'save branch address as a clinic
-   '-------------------------------
-   
-   If IsNull(clinic!fk_clinic) Then
-      clinic!fk_clinic = modDBConnect.insert("admin.clinics", clinic)
-   Else
-   End If
-   modDBConnect.CommitTrans()
-   Return clinic!fk_clinic
-   
-End
-
 Public Function Staff_Exists(logon_name As String) As Boolean
    Dim sql As String
    Dim r As Result
@@ -335,6 +323,7 @@ Public Function Staff_Member_Save(old_data As Collection, pk_view As String, sta
       modDBConnect.update("admin.staff", old_data[pk_view], staff, "fk_staff")
       modDBConnect.update("admin.link_staff_clinics", old_data[pk_view], employees_place_of_work, "fk_link_staff_clinic")
    End If
+   Staff_Cache_Wipe()
    Return staff!fk_staff
    
 End
@@ -572,8 +561,10 @@ Public Function Clinics_Get() As Collection
    '---------------------------------------------------
    'Returns a collection of clinics in our organisation
    '---------------------------------------------------
-   
-   Return modDBConnect.exec_query_collection("Select * from admin.vwClinics")
+   If IsNull(clinics) Then
+     Let clinics = modDBConnect.exec_query_collection("Select * from admin.vwClinics")
+   Endif
+   Return clinics
    
 End
 
@@ -582,19 +573,31 @@ Public Function Staff_Get(Optional surname As String = "", Optional fk_staff_typ
    'Return a collection of staff(or member)  in our organisation. This is not the same
    'as employees in an organisation but specific to the practice running EasyGP
    '----------------------------------------------------------------------------------
+   ' this query gets done a lot: so cache in RAM and query on the cache
+   Dim coll As New Collection
+   Dim i As Collection
    
-   Dim sql As String
+   If IsNull(staff) Then
+      staff = modDBConnect.exec_query_collection("select * from admin.vwstaffinclinics")
+   Endif
    
-   sql = "Select * from admin.vwStaffInClinics "
-   If surname Then
-      sql &= " WHERE surname ILIKE $$%" & surname & "%$$"
-   Endif
-   If fk_staff_type Then
-      sql &= " AND fk_staff_type = " & fk_staff_type
-   Endif
-   Return modDBConnect.exec_query_collection(sql)
+   For Each i In staff
+      If fk_staff_type = 0 Or If fk_staff_type = i!fk_staff_type Then
+         If surname = "" Or If Left$(Lower$(i!surname), Len(surname)) = Lower$(surname) Then
+            coll[staff.Key] = i
+         Endif
+      Endif
+   Next
+   
+   Return coll
    
 End 
+
+Public Sub Staff_Cache_Wipe()
+
+  clinics = Null
+  staff = Null
+End
 
 Public Function Staff_Get_Per_Role(fk_role As Integer, Optional fk_clinic As Integer) As Collection
    '-----------------------------------------------------------------------------------
@@ -626,11 +629,16 @@ Public Function Staff_Get_Per_Role(fk_role As Integer, Optional fk_clinic As Int
 End
 
 Public Function Staff_Get_With_Provider_Number() As Collection 
-   'Temporary routine to find doctors till we sort out the mess with roles FIXME
-   ' nurses I guess will have PN so this will be wrong.
-   Return modDBConnect.exec_query_collection("Select * from admin.vwStaffInClinics where provider_number is not null")
-   
-   
+
+  Dim i As Collection
+  Dim coll As New Collection
+  
+  For Each i In Staff_Get()
+     If Not IsNull(i!provider_number) Then
+        coll[i!pk_view] = i
+     Endif
+  Next
+  Return coll 
 End
 
 Public Function Unmatched_Staff_Get() As Collection

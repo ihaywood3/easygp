@@ -57,7 +57,7 @@ end
 
 def new_html_file(key,title,file)
   if $output
-    $output.write("</body></html>")
+    $output.write("<!--FTR-->></body></html>")
     $output.close
   end
   title = esc(title)
@@ -66,7 +66,7 @@ def new_html_file(key,title,file)
   else
     $output = File.new(key+".html",'w')
   end
-  $output.write("<html><head><title>%s</title></head><body>\n" % title)
+  $output.write("<html><head><title>%s</title><!--HDR--></head><body>\n" % title)
   if file
     $output.write("<img src=\"%s\" />\n" % file)
   end
@@ -84,6 +84,7 @@ end
 
 def latex_esc(str)
   s2 = str.gsub('\\', '\\\\')
+  s2.gsub!('/','\\slash ')
   s2.gsub!('$', '\\$')
   s2.gsub!('%', '\\%')
   s2.gsub!('&', '\\&')
@@ -96,6 +97,7 @@ def process_file(fd)
   fd.each_line  do |line|
     case line
     when /^\.include (.*)/
+      $latex.write(latex_esc("\n\n\\texttt{[File %s]}\n\n" % $1))
       process_file(File.new($1))
     when /^\.section (.*)/
       title, file = parse_name($1)

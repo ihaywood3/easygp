@@ -1,4 +1,5 @@
 ' Gambas module file
+
 ' a simple caching system for read-only lookup tables
 ' Copyright (C) 2010 Dr. Ian Haywood
 
@@ -39,7 +40,7 @@ Public Function Get(table As String, Optional v As Variant, field As String) As 
   Dim i As Collection
   Dim j As Variant
   
-  Let t = GetTable(table)
+  Let t = Query(table, "select * from " & table)
   If IsNull(v) Then
     Return t
   Else
@@ -47,7 +48,7 @@ Public Function Get(table As String, Optional v As Variant, field As String) As 
       Return t[v]
     Else
       For Each i In t
-        If i[field] = v Then Return i!pk
+        If i[field] = v Then Return i
       Next
     Endif
   Endif
@@ -56,14 +57,17 @@ Public Function Get(table As String, Optional v As Variant, field As String) As 
   
 End
 
-Private Function GetTable(tbl As String) As Collection
+Public Function Query(tbl As String, query As String) As Collection
   Dim data As Collection
   Dim f As File
   Dim fname As String
   Dim i As String
   
-  If cache_ram.Exist(tbl) Then Return cache_ram[tbl]
-  Let fname = "/usr/lib/easygp/cache" &/ db_version &/ tbl
+  If cache_ram.Exist(tbl) Then
+    Log.InfoMsg("Hit cache on " & tbl)
+    Return cache_ram[tbl]
+  Endif
+  Let fname = "/var/lib/easygp/cache" &/ db_version &/ tbl
   If Access(fname) Then
     Let f = Open fname For Read
     Read #f, data
@@ -75,13 +79,16 @@ Private Function GetTable(tbl As String) As Collection
       Read #f, data
       Close #f
     Else
-      Let data = modDBConnect.exec_query_collection("select * from " & tbl)
-      If file_error Then Return data
+      Let data = modDBConnect.exec_query_collection(query)
+      If file_error Then 
+        cache_ram[tbl] = data
+        Return data
+      Endif
       For Each i In [".cache", ".cache/easygp", ".cache/easygp" &/ db_version]
         If Not Access(User.Home &/ i) Then
           Try Mkdir User.Home &/ i
           If Error Then 
-            Message.Error("Can't create directory: " & User.Home &/ i & " (" & Error.Text & ")")
+            Log.ErrorMsg("Can't create directory: " & User.Home &/ i & " (" & Error.Text & ")")
             file_error = True
             Return data
           Endif
@@ -89,7 +96,7 @@ Private Function GetTable(tbl As String) As Collection
       Next
       Try f = Open fname For Write Create
       If Error Then 
-        Message.Error("Can't create file: " & User.Home &/ i & " (" & Error.Text & ")")
+        Log.ErrorMsg("Can't create file: " & User.Home &/ i & " (" & Error.Text & ")")
         file_error = True
         Return data
       Endif

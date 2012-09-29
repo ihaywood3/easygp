@@ -120,9 +120,9 @@ Public Sub Init()
    modEditAreaHelpers.Resize_label(lblDisplayAccounts, lblmeasure)
    modEditAreaHelpers.Resize_label(lblPayment, lblmeasure)
    modEditAreaHelpers.Resize_label(lblComment, lblmeasure)
-   '  Payment_methods = modUtil.LoadCombo(cmbPaymentMethods, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Payment_Methods_Get(3)), "method") 'show on top 3 methods
-   Payment_methods = modUtil.LoadCombo(cmbPaymentMethods, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Payment_Methods_Get()), "method") 'show on top 3 methods
-   
+   Payment_methods = modBillingDBI.Payment_Methods_Get()
+  'fix this duplication but check save to see why I did it.
+   modUtil.LoadCombo(cmbPaymentMethods, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Payment_Methods_Get()), "method") 'show on top 3 methods
    InvoiceComments = modUtil.LoadCombo(cmbInvoiceComments, modBillingDBI.Invoice_Comments_Get(), "comment")
    FeeTypes = modUtil.LoadCombo(cmbFeeType, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Fee_Types_Get()), "type") 'fixme
    staff = modUtil.LoadCombo(cmbStaff, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get()), "wholename")  
@@ -309,6 +309,7 @@ Public Sub gvwReceipts_Init()
       .Columns[4].width = 100
       .Columns[5].text = "Branch"
       .Columns[5].width = 100
+     
       'keeps information of last checque in back end
    End With
    
@@ -316,7 +317,7 @@ End
 Public Sub gvwReceipts_GotFocus()
    
      With cmbPaymentMethods
-            .width = gvwReceipts.Columns[OnCol_Receipts].Width
+            .width = gvwReceipts.Columns[cGridColumnReceipts_PaymentType].Width
             .height = gvwReceipts.Rows[onrow_receipts].Height + 5
             .left = gvwReceipts.left + gvwReceipts[onrow_receipts, cGridColumnReceipts_PaymentType].Left + 2
             .top = ((onrow_receipts + 1) * 20) + 2
@@ -389,7 +390,7 @@ Public Sub textbox2_Activate()
    If bexit Then Return 
    Select Case OnCol_Receipts
       Case cGridColumnReceipts_Amount
-         gvwReceipts[gvwReceipts.row, 0].Text = modUtil.Format_Money(TextBox2.text)
+         gvwReceipts[gvwReceipts.row, 0].Text = modUtil.Money_Format(TextBox2.text)
          If gvwReceipts[gvwReceipts.row, 1].Text = "" Then
             cmbPaymentMethods.Visible = True  
          Endif
@@ -596,6 +597,13 @@ Public Sub cmbEditArea_Enter()
    
 End
 
+Public Sub cmbEditArea_KeyPress()
+
+   If key.code = key.return And Last.tag = "payment method" Then
+      cmbEditArea_Click()
+   Endif
+
+End
 Public Sub cmbEditArea_Click()
    
    If bExit Then Return 
@@ -774,28 +782,34 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    Dim items As New Collection
    Dim item As CRow
    Dim row As Integer
+   Dim payment As CRow
+   Dim x As Integer
    
    If VBox_EditArea_Outer.Padding = 0 Then Return
    If Not Invoice_Valid() Then Return  
-   '--------------------------
+   '-----------------------------------------------------------------------------
    'Create or edit the invoice
-   '--------------------------
-   If fk_invoice Then invoice.put_unchanged(fk_invoice, "fk_invoice")
-   invoice!fk_staff_invoicing = modDBConnect.currentUser!fk_staff
-   If bPrint Then 
+   'If editing (e.g paying) then user will not have been able to change
+   'any of the core invoice details, ie date originally invoiced, who invoiced it
+   '-----------------------------------------------------------------------------
+   If fk_invoice Then                                                   'existing invoice
+      invoice.put_unchanged(fk_invoice, "fk_invoice")                   'edit the record
+   Else
+      invoice!fk_staff_invoicing = modDBConnect.currentUser!fk_staff    'new - then current user is doing the invoicing
+      invoice!date_invoiced = Now()
       invoice!date_printed = Now()
-   Endif
-   invoice!notes = cmbInvoiceComments.Text
-   invoice!reference = Trim(txtReferenceDetails.text)
-   If cmbSeenBy.Index <> -1 Then    
-      invoice!fk_staff_provided_service = staff[cmbSeenBy.index]!fk_staff
-   End If 
-   If fk_patient <> 0 Then invoice!fk_patient = fk_patient     'may not be for a patient
-   invoice!date_invoiced = Now()
-   invoice!fk_branch = modDBConnect.currentUser!fk_branch      'branch at which service was provided
-   If fk_payer_branch <> 0 Then invoice!fk_payer_branch = fk_payer_branch
-   If fk_payer_person <> 0 Then invoice!fk_payer_person = fk_payer_person
-   invoice!visit_date = Val(txtDate.text)
+      invoice!notes = cmbInvoiceComments.Text
+      invoice!reference = Trim(txtReferenceDetails.text)
+      If cmbSeenBy.Index <> -1 Then    
+         invoice!fk_staff_provided_service = staff[cmbSeenBy.index]!fk_staff
+      End If 
+      If fk_patient <> 0 Then invoice!fk_patient = fk_patient     'may not be for a patient
+     
+      invoice!fk_branch = modDBConnect.currentUser!fk_branch      'branch at which service was provided
+      If fk_payer_branch <> 0 Then invoice!fk_payer_branch = fk_payer_branch
+      If fk_payer_person <> 0 Then invoice!fk_payer_person = fk_payer_person
+      invoice!visit_date = Val(txtDate.text)
+   End If   
    If bPaid Then invoice!paid = True     
    invoice.Save("billing.invoices", "fk_invoice")
    '------------------------------------
@@ -816,6 +830,27 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
          End If   
       Next
    End If   
+   '--------------------------------
+   'Now, is this invoice being paid?
+   '--------------------------------
+   If bPaid Then
+      '  pk serial NOT NULL,
+      '   fk_invoice integer NOT NULL,
+      '   amount money NOT NULL,
+      '   fk_lu_payment_method integer,
+      '   date_paid timestamp without time zone NOT NULL DEFAULT now(),
+      For x = 0 To gvwReceipts.Rows.count - 1
+         If gvwReceipts[x, cGridColumnReceipts_Amount].Text <> "" Then 
+            payment = New CRow
+            payment!fk_invoice = invoice!fk_invoice  
+            payment!amount = gvwReceipts[x, cGridColumnReceipts_Amount].Text
+            payment!fk_lu_payment_method = Payment_Methods[gvwReceipts[x, cGridColumnReceipts_PaymentType].text]!fk_lu_payment_method  
+            payment!date_paid = Now()
+            payment!fk_staff_receipted = modDBConnect.currentUser!fk_staff
+            payment.Save("billing.payments_received", "fk_payment")
+         End If   
+      Next
+   Endif
    '------------------------------------------
    'finally mark this appointment as invoiced
    'fixme only update  this on first pass
@@ -824,8 +859,8 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    
    Try modDBConnect.update("clerical.bookings", Null, ["pk": Unbilled_consultation!pk, "invoiced": True])  'may not have an appt.
    'fixme won't always be printed.
-   invoice!latex = modBillingDBI.Print_Invoice(invoice, bPrint) 
-   modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex])
+   'invoice!latex = modBillingDBI.Print_Invoice(invoice, bPrint) 
+  ' modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex])
    modDBConnect.CommitTrans
    If TabStripPatients.index = 0 Then 
       cvwUnBilled_Refresh()
@@ -994,7 +1029,7 @@ Public Sub Get_Items(txt As String)
          gridview1[onrow_items, 4].text = item!fee_type
          last_Fee_type = item!fee_type
          If Not IsNull(item!gst_rate) And item!gst_rate <> 0 Then 'FIX ME ?CONVERT BACKEND TO NULL IN THIS FIELD NOT ZERO.
-            gridview1[gridview1.row, 5].Text = modUtil.Format_Money(price / item!gst_rate)
+            gridview1[gridview1.row, 5].Text = modUtil.Money_Format(price / item!gst_rate)
          Endif
          Break
       Next
@@ -1132,7 +1167,7 @@ Public Sub Invoice_Calculate_Total()
       Endif
    Next
    
-   lblInvoiceTotal.text = "  " & modUtil.Format_Money(total)
+   lblInvoiceTotal.text = "  " & modUtil.Money_Format(total)
    With lblTotalType
       .text = "Invoice Total"
       .Font.Bold = False   
@@ -1224,7 +1259,8 @@ Public Sub MainToolbar_Click()
          Invoice_New()
       Case "new receipt"
          Gridview1_Clear()
-      Case "receipt"
+         
+      Case "print receipt"
          'if
          Save(True, False, True)
       Case "save without printing"
@@ -1327,7 +1363,7 @@ Public Sub cvwItemsBilled_Select()
    
    If cvwItemsBilled.count = 0 Then Return   
    bexit = True
-   lblEditAreaHeading.text = "Pay Invoice"
+  
    cvwItemsBilled.MoveCurrent
    HBox_Comment.Visible = False  
    If cvwItemsBilled[cvwItemsBilled.Item.key][0] = "" Then
@@ -1339,12 +1375,17 @@ Public Sub cvwItemsBilled_Select()
       
    Endif
    Item_Billed = Items_Billed[cvwItemsBilled.Item.key] 
+   
    fk_invoice = Item_Billed!fk_invoice 
    If Not Item_Billed!paid Then
       tbAccount.Enabled = False  
       tbVoucher.Enabled = False  
       tbSaveNoPrint.Enabled = False 
-      ' gvwReceipts.Visible = True 
+      lblEditAreaHeading.text = "Pay Invoice"
+      VBox5.Enabled = True 
+   Else
+      lblEditAreaHeading.text = "Paid Invoice"
+      VBox5.Enabled = False  
    Endif
    txtDate.text = Format(Item_Billed!visit_date, "dd/mm/yyyy")
    txtReferenceDetails.text = Item_Billed!reference
@@ -1681,7 +1722,11 @@ Public Sub HBox_ReceiptPayment_leave()
 End
 
 Public Function Invoice_Valid() As Boolean
-
+   'Validates invoice is valid
+   'notes for me
+   'if bPaid true make sure the totals add up
 Return True 'for the moment! 
    
 End
+
+

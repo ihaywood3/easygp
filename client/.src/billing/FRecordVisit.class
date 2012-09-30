@@ -25,6 +25,15 @@
 Private currentconsult As CConsult
 Private last_Fee_type As String
 Private bexit As Boolean
+'save flags for readability
+Private bBulkBill_Yes As Boolean = True
+Private bBulkBill_No As Boolean = False
+Private bPrint_Yes As Boolean = True
+Private bPrint_No As Boolean = False
+Private bAccount_Yes As Boolean = True
+Private bAccount_No As Boolean = False
+Private bPaid_Yes As Boolean = True
+Private bPaid_No As Boolean = False 
 Private VSplitMain_Layout As Integer[]
 Private bKeyValid As Integer
 Private bPayingInvoice As Boolean
@@ -223,15 +232,16 @@ Public Sub cvwUnBilled_Refresh()
 End
 
 Public Sub cvwUnBilled_Select()
-   '------------------------------------------------------------------------------
-   'User ha  If Bexit Then Return s clicked on one of the unbilled patients in the left hand list
+   '-------------------------------------------------------------------------------------
+   'User has clicked on the list of patients seen and mared as 'gone' in appointment book
    'Display their details in the edit area, match staff combo to whoever saw them
-   'assume a standard consultation FIXME make this user configureable
-   '------------------------------------------------------------------------------
+   'assume a standard consultation 
+   'Ian going to bypass some of this by parsing consult item numbers in the consult
+   '-------------------------------------------------------------------------------------
    
    cvwUnBilled.MoveCurrent()
-   EditArea_Clear()
-   bPayingInvoice = True
+   EditArea_Clear()                                                                    'clear input area
+   ' bPayingInvoice = True
    Unbilled_consultation = Unbilled_Consultations[cvwUnBilled.Item.key]
    Try fk_lu_default_billing_level = Unbilled_consultation!fk_lu_default_billing_level
    If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private
@@ -400,8 +410,6 @@ Public Sub txtPayment_Activate()
             cmbPaymentMethods.Visible = True  
          Endif
          Payment_Calculate_Total
-         ' Case cGridColumnPayments_PaymentType
-         '    gvwPayments[gvwPayments.row, 1].Text = cmbPaymentMethods.Text
       Case Else
          gvwPayments[gvwPayments.row, oncol_payments].Text = Trim(txtPayment.Text)
    End Select 
@@ -556,7 +564,8 @@ Public Sub gvwItemsBIlled_Select()
    
 End
 
-Public Sub gridview_Keypress()
+Public Sub gvwItems_Keypress()
+   'FIXME ?NOT USED AT ALL NOW
    
    If bExit Or bPayingInvoice Then Return 
    If key.code = key.return Then
@@ -583,26 +592,45 @@ End
 
 Public Sub cmbEditArea_LostFocus()
    
-   Last.visible = False 
+   Select Case Last.tag
+      Case "fee type", "payment method"
+         Last.visible = False 
+   End Select
+   
+End
+
+Public Sub cmbFeeType_Click()
+   
+   'User is changing the fee type
+   gvwItemsBIlled[onrow_items, cGridColumnItem_FeeType].text = cmbFeeType.Text
+   If gvwItemsBIlled[onrow_items, 0].text <> "" Then  
+      Try gvwItemsBIlled[onrow_items, cGridColumnItem_Fee].text = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(gvwItemsBIlled[onrow_items, 0].text, FeeTypes[cmbFeeType.index]!pk)!price
+      If Error Then
+         Message.info("No fee's exist for the billing level you selected")
+         cmbFeeType.index = cmbFeeType.Find(last_Fee_type)
+      Endif
+   End If   
+   Invoice_Calculate_Total
+   EditArea_Notify_Data_Change(True)
    
 End
 
 Public Sub cmbEditArea_Click()
    
    Dim chequedetails As Collection 
-    
+   
    If bExit Then Return 
    
    Select Case Last.tag
       Case "fee type"
-         'User is changing the fee type
-         gvwItemsBIlled[onrow_items, 4].text = cmbFeeType.Text
-         Try gvwItemsBIlled[onrow_items, 2].text = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(gvwItemsBIlled[onrow_items, 0].text, FeeTypes[cmbFeeType.index]!pk)!price
-         If Error Then
-            Message.info("No fee's exist for the billing level you selected")
-            cmbFeeType.index = cmbFeeType.Find(last_Fee_type)
-         Endif
-         Invoice_Calculate_Total
+         ' 'User is changing the fee type
+         ' gvwItemsBIlled[onrow_items, cGridColumnItem_FeeType].text = cmbFeeType.Text
+         ' Try gvwItemsBIlled[onrow_items, cGridColumnItem_Fee].text = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(gvwItemsBIlled[onrow_items, 0].text, FeeTypes[cmbFeeType.index]!pk)!price
+         ' If Error Then
+         '    Message.info("No fee's exist for the billing level you selected")
+         '    cmbFeeType.index = cmbFeeType.Find(last_Fee_type)
+         ' Endif
+         ' Invoice_Calculate_Total
       Case "payment method"
          gvwPayments[onrow_payments, cGridColumnPayments_PaymentType].Text = cmbPaymentMethods.Text
          If InStr(cmbPaymentMethods.Text, "Cheque") Then  
@@ -618,23 +646,23 @@ Public Sub cmbEditArea_Click()
                   '---------------------------------------------------
                   chequedetails = modBillingDBI.Cheque_Details_Get(fk_patient)
                   If Not IsNull(chequedetails) Then
-                      gvwPayments[onrow_payments, cGridColumnPayments_Bank].Text = chequedetails!bank
-                      gvwPayments[onrow_payments, cGridColumnPayments_Branch].text = chequedetails!branch
-                      oncol_payments = cGridColumnPayments_ChequeNumber
-                      gvwPayments_DblClick()
+                     gvwPayments[onrow_payments, cGridColumnPayments_Bank].Text = chequedetails!bank
+                     gvwPayments[onrow_payments, cGridColumnPayments_Branch].text = chequedetails!branch
+                     oncol_payments = cGridColumnPayments_ChequeNumber
+                     gvwPayments_DblClick()
                   Endif
             End Select
             cmbPaymentMethods.Visible = False
             gvwPayments.Column = 2   'anything but cGridColumnPayments_PaymentType otherwise combo won't disappear
             gvwPayments.SetFocus() 
          Else
-             gvwPayments[onrow_payments, cGridColumnPayments_Bank].Text = ""
-             gvwPayments[onrow_payments, cGridColumnPayments_Branch].text = ""
-             gvwPayments[onrow_payments, cGridColumnPayments_ChequeNumber].text = ""
+            gvwPayments[onrow_payments, cGridColumnPayments_Bank].Text = ""
+            gvwPayments[onrow_payments, cGridColumnPayments_Branch].text = ""
+            gvwPayments[onrow_payments, cGridColumnPayments_ChequeNumber].text = ""
          End If   
-      End Select
-      EditArea_Notify_Data_Change(True)
-      
+   End Select
+   EditArea_Notify_Data_Change(True)
+   
 End
 
 Public Sub TextBox1_GotFocus()
@@ -751,7 +779,7 @@ Public Sub Settings_Save()
    
 End
 
-Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean = False, Optional bPaid As Boolean = False)
+Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optional bAccount As Boolean = False, Optional bPaid As Boolean = False)
    ' Public Sub Make_Invoice(pk_patient As Integer, items As Collection[], fk_lu_billing_type As Integer, date_printed As Date Default Null, fk_staff As Integer = 0, Optional notes As String = "") As Integer
    ' CREATE TABLE billing.invoices
    ' (
@@ -783,11 +811,13 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    Dim row As Integer
    Dim payment As CRow
    Dim x As Integer
+   Dim payment_method As Collection  
    
    If VBox_EditArea_Outer.Padding = 0 Then Return           'no data change no save
    If Not Valid_Invoice_Items() Then Return 
-   If bPaid And Not Valid_Payment() Then Return                
-   
+   If bPaid Then
+      If Not Valid_Payment() Then Return                
+   End If 
    '-----------------------------------------------------------------------------
    'Create or edit the invoice
    'If editing (e.g paying) then user will not have been able to change
@@ -848,7 +878,14 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
             payment = New CRow
             payment!fk_invoice = invoice!fk_invoice  
             payment!amount = gvwPayments[x, cGridColumnPayments_Amount].Text
-            payment!fk_lu_payment_method = Payment_Methods[gvwPayments[x, cGridColumnPayments_PaymentType].text]!fk_lu_payment_method  
+            For Each payment_method In Payment_Methods
+               If payment_method!method = gvwPayments[x, cGridColumnPayments_PaymentType].text Then
+                  payment!fk_lu_payment_method = payment_method!pk
+                  Break
+               Endif
+            Next
+            'this simple way screwed by ians smart changes.
+            '   payment!fk_lu_payment_method = Payment_Methods[gvwPayments[x, cGridColumnPayments_PaymentType].text]!fk_lu_payment_method  
             payment!date_paid = Now()
             payment!fk_staff_receipted = modDBConnect.currentUser!fk_staff
             payment.Save("billing.payments_received", "fk_payment")
@@ -863,8 +900,8 @@ Public Sub Save(Optional bPrint As Boolean = True, Optional bAccount As Boolean 
    
    Try modDBConnect.update("clerical.bookings", Null, ["pk": Unbilled_consultation!pk, "invoiced": True])  'may not have an appt.
    'fixme won't always be printed.
-   'invoice!latex = modBillingDBI.Print_Invoice(invoice, bPrint) 
-   ' modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex])
+   invoice!latex = modBillingDBI.Print_Invoice(invoice, bPrint, bBulkBill) 
+   modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex])
    modDBConnect.CommitTrans
    If TabStripPatients.index = 0 Then 
       cvwUnBilled_Refresh()
@@ -953,7 +990,6 @@ Public Sub Patients_Get()
             .MoveFirst
             .Item.Selected = True  'trigger cvwPatients_Select()
          End With
-         cvwPatients_Select()
       Endif
    Endif
    
@@ -1198,26 +1234,25 @@ Public Sub Payment_Calculate_Total()
 End
 
 Public Sub rbInvoiceTo_Click()
-   'fixme put integer as tag
+   '----------------------------------------------------------------
+   'If user changes billing level, change data in grid appropriately
+   '----------------------------------------------------------------
+   
+   Dim row As Integer
    
    If bExit Then Return 
    textlabelPayer.text = ""
-   Select Case Last.tag
-      Case "other"
-         '    With txtSearch
-         '       .Enabled = True   
-         '       .SetFocus()
-         '    End With
-         '   Try Payer_Get(Patient)
-         ' Case "medicare"
-         '    iBilling_Category = cBilling_Category_Private
-         ' Case "veteran"
-         '    iBilling_Category = cBilling_Category_Private
-         '    
-         ' Case "patient"
-         '    iBilling_Category = cBilling_Category_Other   
-         
-   End Select
+   
+   gvwItemsBIlled.row = 0
+   For row = 0 To gvwItemsBIlled.Rows.Max
+      If gvwItemsBIlled[row, cGridColumnItem_ItemNumber].Text <> "" Then
+         If gvwItemsBIlled[row, cGridColumnItem_FeeType].text <> Last.tag Then
+            cmbFeeType.index = cmbFeeType.Find(Last.tag)
+            onrow_items = row
+            cmbFeeType_Click()
+         End If  
+      End If 
+   Next
    
 End
 
@@ -1246,6 +1281,9 @@ End
 
 Public Sub VBox_InvoiceGrid_Leave()
    
+   onrow_items = gvwItemsBIlled.Row
+   'gvwItemsBIlled_Click()
+  ' Wait
    If textbox1.Visible Then
       If OnCol_Items = cGridColumnItem_ItemNumber Then
          If gvwItemsBIlled[onrow_items, cGridColumnItem_BriefDescriptor].text = "" Then
@@ -1266,36 +1304,35 @@ Public Sub MainToolbar_Click()
    
    Select Last.tag
       Case "new invoice"
+         Unbilled_consultation = Null  'the invoice is not being raised from appointment list
          Invoice_New()
       Case "new receipt"
          gvwItemsBIlled_Clear()
-         
+      Case "print voucher"
+         'medicare/veterans vouchers never paid on the day
+         Save(bBulkBill_Yes, bPrint_Yes, bAccount_No, bPaid_No)
       Case "print receipt"
-         Save(True, False, True)
-      Case "save without printing"
-         Save(False, True)
+         Save(bBulkBill_No, bPrint_Yes, bAccount_No, bPaid_Yes)
+      Case "receipt no print"
+         Save(bBulkBill_No, bPrint_No, bAccount_Yes)
       Case "print account"
-         Save(True, True)
+         Save(bBulkBill_No, bPrint_Yes, bAccount_Yes)
    End Select
    
 End
 
 Public Sub Invoice_New()
    '--------------------------------------------- 
-   'Clear the editing area, keep patient id's etc
-   'Code assumes the patient had been loaded via
-   'clicking on the cvwpatients list
+   'patient loaded either from the unbilled appointment list
+   'Or searching via accounts
    '--------------------------------------------- 
    
-   Unbilled_consultation = Null
    gvwItemsBIlled.Clear
-   HBox_Comment.Visible = True   
-   tbAccount.Enabled = True  
-   tbVoucher.Enabled = True  
-   tbSaveNoPrint.Enabled = True
+   tbAccount.Enabled = True                    'new invoice can take account
+   tbVoucher.Enabled = True                    'new invoice can take be bulk billed
+   tbSaveNoPrint.Enabled = True                ''new invoice can be saved (either paid/unpaid) without printing
    lblEditAreaHeading.text = "New Invoice"
    bPayingInvoice = False 
-   gvwItemsBIlled.Clear
    fk_payer_branch = 0
    fk_payer_person = 0
    fk_invoice = 0
@@ -1303,9 +1340,9 @@ Public Sub Invoice_New()
    cmbFeeType.Visible = False 
    rbPayerNotUsed.value = True 'switches off rbInvoiceOrganisation and rbInvoicePerson
    lblInvoiceTotal.text = ""
+   lblPaymentTotal.text = ""
    EditArea_Notify_Data_Change(False)
    Hbox_InvoiceGrid.Enabled = True 
-   HBox99.Enabled = True   
    txtDate.SetFocus()
    
 End
@@ -1352,18 +1389,20 @@ Public Sub cvwItemsBilled_Refresh()
 End
 
 Public Sub cvwItemsBilled_Select()
-   '-----------------------------------------------------------------------
-   'unfinished experimental code
-   'User has clicked on the list of items billed for the current patient
-   'If they click on a row without the patient name, move back to the row
-   'with the patient's name - ie start of th invoice, so that this routine
-   'will load the edit area with all items
-   '-----------------------------------------------------------------------   
+   '-------------------------------------------------------------------------------------------
+   'cvwItemsBilled:This is the list of items on invoices which have been billed to the
+   'patient and already saved - either accounts or receipts for visits
+   'Items in this list may be single - ie only one per invoice or multiple - many on an invoice
+   'If they click on a row without the patient name showing on the list - then that row will be
+   'an item one a multi-item invoice. Move back To the row with the patient's name on it
+   'ie start of the invoice, so that this routine will load the edit area with all items from
+   'this point in the list until the fk_invoice changes
+   '--------------------------------------------------------------------------------------------   
    
    If cvwItemsBilled.count = 0 Then Return   
    bexit = True
    cvwItemsBilled.MoveCurrent
-   HBox_Comment.Visible = False  
+   HBox_InvoiceCommentS.Visible = False  
    If cvwItemsBilled[cvwItemsBilled.Item.key][0] = "" Then
       Do Until cvwItemsBilled[cvwItemsBilled.Item.key][0] <> ""
          cvwItemsBilled.MovePrevious()
@@ -1420,7 +1459,7 @@ Public Sub cvwItemsBilled_Select()
    End With
    EditArea_Notify_Data_Change(False)       
    Hbox_InvoiceGrid.Enabled = False 
-   HBox99.Enabled = False   
+   HBox_InvoiceComments.Enabled = False   
    bexit = False  
    
 End
@@ -1530,14 +1569,16 @@ End
 
 Public Sub cvwPatients_Click()
    
-   cvwPatients_Select()
-   
 End
 
 Public Sub cvwPatients_Select()
+   '----------------------------------------------------------------------------------------
+   ' cvwPatients:
+   ' This is the list of patient's which user has searched for on the accounts tab
+   ' the underlying collection patients[cvwPatients.Item.Key] gives us this stuff:
    ' patient name (have this) and hence fk_patient
    ' date as visit_date
-   ' duration (not kept at this point)
+   ' duration (not displayed)
    ' seen by (dr combo) as staff_provider_service_title, wholename match combo text
    ' location combo as branch (match combo text)
    ' Invoice to (patient/medicare/veteran/other)
@@ -1545,24 +1586,28 @@ Public Sub cvwPatients_Select()
    ' Reference (not yet in the back end)
    ' Items: item/description/fee/gap/rate/gst
    ' fk_item_billed (is there as pk_items_billed)
-   ' have fk_invoice, billing_type, fk_lu_billing_type, mbs_item etc, descriptor & descriptor_brief, gst_rate, percentage_fee_rule
-   ' also have fk_staff_invoicing and associate datae., patient details, but not the medicare numbers etc.
+   ' have fk_invoice, billing_type, fk_lu_billing_type, mbs_item etc, descriptor 
+   ' & descriptor_brief, gst_rate, percentage_fee_rule
+   ' also have fk_staff_invoicing and associated datae, patient details,
+   ' but not the medicare numbers etc.
+   '-----------------------------------------------------------------------------------------
    
-   cvwPatients.MoveCurrent
-   If cvwPatients.count = 0 Or fk_patient = Patient!fk_patient Then Return
+   Print "selecting the patient"
+   If cvwPatients.count = 0 Then Return 'Or fk_patient = Patient!fk_patient Then Return
+   cvwPatients.MoveCurrent()                                                          'set internal index
    EditArea_Clear()
    Patient = patients[cvwPatients.Item.Key]
-   fk_patient = Patient!fk_patient  
-   Try fk_lu_default_billing_level = patient!fk_lu_default_billing_level
-   If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private 
-   bExit = True   
-   form_billingcards.Display_Patient_Data(Patient)
+   fk_patient = Patient!fk_patient                                                 
+   Try fk_lu_default_billing_level = patient!fk_lu_default_billing_level            'if no billling level in backend
+   If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private  'default to private $$
+   bExit = True                                                                     'prevent textbox events firing
+   form_billingcards.Display_Patient_Data(Patient)                                  'load billing defaults into embedded form
    txtpatient.text = Patient!wholename  
-   Try Payer_Get(Patient)    
+   Try Payer_Get(Patient)                                                           'show payer if exists 
    VBox_EditArea_Outer.Enabled = True 
    gvwItemsBIlled.Enabled = True   
    iAccountDisplayMode = const.Billing_Accounts_Unpaid       
-   cvwItemsBilled_Refresh()  
+   cvwItemsBilled_Refresh()                                                         'show this patients owing's
    Invoice_New()  
    bExit = False  
    
@@ -1782,7 +1827,7 @@ Public Sub Valid_Payment() As Boolean
       If gvwPayments[row, cGridColumnPayments_Amount].Text = "" Then 
          gvwPayments.Row = 0
          gvwPayments.Column = 0
-         Message.Info("Please enter amount of payment/\n\n")
+         Message.Info("Please enter amount of payment.\n\n")
          gvwPayments_DblClick()
          Return False   
       End If  
@@ -1798,7 +1843,7 @@ Public Sub Valid_Payment() As Boolean
    '------------------------------------------------------------
    'finally if being paid, does the paid amount match the total?
    '------------------------------------------------------------
-   If modUtil.Money_Format(total) <> lblInvoiceTotal.text Then  'IAN FIXME
+   If modUtil.Money_Format(total) <> Right(lblInvoiceTotal.text, Len(lblInvoiceTotal.text) - InStr(lblInvoiceTotal.text, " $")) Then  'IAN FIXME
       sMsg = "The invoice amount and amount paid do not match.\n\n"
       "Do you wish to accept part payment of this invoice?\n\n"
       If Message.Question(sMsg, "Yes - accept part payment", "No") = 2 Then Return
@@ -1815,11 +1860,60 @@ Public Sub VBox_PaymentGrid_Leave()
             txtPayment_Activate()
          Endif
       Endif
-      gvwPayments[onrow_payments, OnCol_Items].text = Trim(textbox1.text)
+      gvwPayments[onrow_payments, oncol_payments].text = Trim(txtPayment.text)
    Endif
    If cmbPaymentMethods.Visible Then
-      gvwPayments[onrow_items, cGridColumnPayments_PaymentType].text = cmbPaymentMethods.Text
+      gvwPayments[onrow_payments, cGridColumnPayments_PaymentType].text = cmbPaymentMethods.Text
    Endif
    txtPayment.Visible = False  
+   
+End
+
+Public Sub pnlToolButtons_Leave()
+   
+   tbVoucher.Enabled = True
+   tbAccount.Enabled = True 
+   tbReceipt.Enabled = True  
+   tbSaveNoPRint.Enabled = True 
+   tbNewInvoice.Enabled = True  
+   
+End
+
+Public Sub pnlToolButtons_Enter()
+   '---------------------------------------------------------------------
+   'Enable or disable buttons appropriately as per the edit area contents
+   '---------------------------------------------------------------------
+   
+   Dim fee As String
+   Dim payment As String
+   
+   fee = Right(lblInvoiceTotal.text, Len(lblInvoiceTotal.text) - InStr(lblInvoiceTotal.text, " $"))
+   payment = Right(lblPaymentTotal.text, Len(lblPaymentTotal.text) - InStr(lblPaymentTotal.text, " $"))
+   If fee = payment And fee <> "" And payment <> "" Then
+      tbVoucher.Enabled = False
+      tbAccount.Enabled = False 
+      tbReceipt.Enabled = True  
+      tbSaveNoPRint.Enabled = True 
+   Endif
+   If fee = "" And payment = "" Then
+      tbVoucher.Enabled = False
+      tbAccount.Enabled = False 
+      tbReceipt.Enabled = False  
+      tbSaveNoPRint.Enabled = False 
+      tbNewInvoice.Enabled = True  
+   Endif
+   If fee <> "" And payment = "" Then
+      If rbInvoiceToMedicare.value = True Or rbInvoiceToVeterans.value = True Then
+         tbVoucher.Enabled = True
+         tbAccount.Enabled = False 
+         tbReceipt.Enabled = False  
+         tbSaveNoPRint.Enabled = False 
+      Else
+         tbVoucher.Enabled = False
+         tbAccount.Enabled = True 
+         tbReceipt.Enabled = False  
+         tbSaveNoPRint.Enabled = False  
+      End If   
+   Endif
    
 End

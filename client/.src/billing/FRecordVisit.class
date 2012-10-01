@@ -615,6 +615,7 @@ Public Sub cmbFeeType_Click()
    
 End
 
+
 Public Sub cmbEditArea_Click()
    
    Dim chequedetails As Collection 
@@ -970,10 +971,10 @@ End
 
 Public Sub Patients_Get()
    
+  
+   If Trim(txtFindPatient.text) = "" Then Return 
    Inc Application.Busy
-   Wait
    timer1.Stop
-   timer1.Enabled = False  
    cvwPatients.Clear
    patients = modContactsDBI.patients_get_firstname_surname(Trim(txtFindPatient.text))       
    patients.Remove("sql_in_english")
@@ -985,14 +986,13 @@ Public Sub Patients_Get()
          cvwPatients[patient!pk_view][1] = Format(patient!birthdate, "dd/mm/yyyy")
       Next
       If patients.count = 1 Then
-         With cvwPatients
+          With cvwPatients
             .SetFocus()
             .MoveFirst
             .Item.Selected = True  'trigger cvwPatients_Select()
          End With
       Endif
    Endif
-   
 End
 
 Public Sub Get_Items(txt As String)
@@ -1234,38 +1234,51 @@ Public Sub Payment_Calculate_Total()
 End
 
 Public Sub rbInvoiceTo_Click()
-   '----------------------------------------------------------------
+   '-------------------------------------------------------------------
    'If user changes billing level, change data in grid appropriately
-   '----------------------------------------------------------------
-   
+   ' loop variable must be local but want onrow_items set to the row
+   ' so that when cmbFeeType.index = cmbFeeType.Find(Last.tag) triggers
+   ' cmbFeeType_Click we are on the correct row
+   '-------------------------------------------------------------------
    Dim row As Integer
+  
    
    If bExit Then Return 
    textlabelPayer.text = ""
    
    gvwItemsBIlled.row = 0
+   gvwItemsBIlled.Select
    For row = 0 To gvwItemsBIlled.Rows.Max
+      onrow_items = row                           
       If gvwItemsBIlled[row, cGridColumnItem_ItemNumber].Text <> "" Then
          If gvwItemsBIlled[row, cGridColumnItem_FeeType].text <> Last.tag Then
             cmbFeeType.index = cmbFeeType.Find(Last.tag)
-            onrow_items = row
-            cmbFeeType_Click()
          End If  
       End If 
    Next
    
 End
 
-Public Sub Button1_Click()
-   
-   HBox_Descriptor.Visible = False  
-   'modBillingDBI.Fee_Schedule_Import_From_Pracsoft()
-   
-End
-
 Public Sub timer1_Timer()
+   '-----------------------------------------------------------------------
+   ' How this works for example
+   ' EditArea_TextBox_GotFocus()   - enables the timer
+   '                               - turns on the timer
+   ' iTimer_Search_Mode            - set to  cTimer_SearchMode_Patient
+   '                
+   ' EditArea_Textbox_KeyRelease() - zeros timer_count to 0
+   '                               - when user stops typing timer_count > 3
+   '                                 and the search starts
+   ' Whichever routine is searching eg Patients_Get() - stops timer
+   ' VBox_PatientsList_Leave() - disables and turns off timer
+   ' Note that EditArea_TextBox_LostFocus() is not used for this
+   ' because it is a unreliable event - does not always trigger
+   ' depends on which control after the textbox receives focus!
+   ' ----------------------------------------------------------------------
    
+ 
    Inc timer_count
+   Print "timer running...."
    If timer_count > 3 Then
       Select Case iTimer_Search_Mode
          Case cTimer_SearchMode_Patient
@@ -1488,7 +1501,47 @@ Private Sub EditArea_Notify_Data_Change(bFlag As Boolean)
    End If   
    
 End
+Public Sub EditArea_TextBox_KeyPress()
+   
+   If bexit Then Return
+   If Not EditAreaTextBox_ExcludeKeys(key.code, Last.tag) Then
+      Stop Event
+      Return 
+   End If   
+   Select Case key.Code
+      Case key.down
+         If columnview1.Visible Then
+            bexit = True   
+            With columnview1
+               .MoveFirst
+               .Item.Selected = True   
+               .SetFocus()
+            End With
+            bexit = False  
+         End If   
+      Case key.return
+         Select Case Last.tag
+            Case "reference details", "date"
+               gvwItemsBIlled.row = 0
+               gvwItemsBIlled.Column = 0
+               gvwItemsBIlled_DblClick()
+         End Select
+   End Select
+   
+End
 
+Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   bKeyValid = True
+   Select Case Tag
+      Case "date"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
+      Case "notes", "payer search", "reference details"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_SQLCrash, keycode) 
+   End Select
+   Return bKeyValid
+   
+End
 Public Sub EditArea_TextBox_GotFocus()
    
    Last.BackGround = Color.rgb(95, 255, 175)
@@ -1496,7 +1549,11 @@ Public Sub EditArea_TextBox_GotFocus()
       Case "find patient" 
          EditArea_Clear()
          iTimer_Search_Mode = cTimer_SearchMode_Patient
-      Case "payer search"
+         With timer1
+               .Enabled = True
+               .Start
+         End With
+       Case "payer search"
          'user has clicked on the textbox where you can search for a payer (organisation or person)
          bExit = True
          textlabelPayer.text = ""
@@ -1537,10 +1594,9 @@ Public Sub EditArea_Textbox_KeyRelease()
    If bExit Then Return 
    Select Case Last.tag
       Case "find patient", "payer search"
-         timer_count = 0      
-         timer1.Enabled = True
-         timer1.Start     
-         
+         timer_count = 0 
+         timer1.Start    
+         Print "timer enabled:", timer1.Enabled 
    End Select
    
 End
@@ -1568,7 +1624,7 @@ Public Sub EditArea_TextBox_Change()
 End
 
 Public Sub cvwPatients_Click()
-   
+ 
 End
 
 Public Sub cvwPatients_Select()
@@ -1594,7 +1650,7 @@ Public Sub cvwPatients_Select()
    
    Print "selecting the patient"
    If cvwPatients.count = 0 Then Return 'Or fk_patient = Patient!fk_patient Then Return
-   cvwPatients.MoveCurrent()                                                          'set internal index
+                                                       'set internal index
    EditArea_Clear()
    Patient = patients[cvwPatients.Item.Key]
    fk_patient = Patient!fk_patient                                                 
@@ -1705,47 +1761,7 @@ Public Sub rbAccounts_Click()
    
 End
 
-Public Sub EditArea_TextBox_KeyPress()
-   
-   If bexit Then Return
-   If Not EditAreaTextBox_ExcludeKeys(key.code, Last.tag) Then
-      Stop Event
-      Return 
-   End If   
-   Select Case key.Code
-      Case key.down
-         If columnview1.Visible Then
-            bexit = True   
-            With columnview1
-               .MoveFirst
-               .Item.Selected = True   
-               .SetFocus()
-            End With
-            bexit = False  
-         End If   
-      Case key.return
-         Select Case Last.tag
-            Case "reference details", "date"
-               gvwItemsBIlled.row = 0
-               gvwItemsBIlled.Column = 0
-               gvwItemsBIlled_DblClick()
-         End Select
-   End Select
-   
-End
 
-Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
-   
-   bKeyValid = True
-   Select Case Tag
-      Case "date"
-         bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
-      Case "notes", "payer search", "reference details"
-         bKeyValid = modUtil.AllowKeys(const.AllowKeys_SQLCrash, keycode) 
-   End Select
-   Return bKeyValid
-   
-End
 
 Public Sub HBox_ReceiptPayment_leave()
    
@@ -1916,4 +1932,12 @@ Public Sub pnlToolButtons_Enter()
       End If   
    Endif
    
+End
+
+
+Public Sub VBox_PatientsList_Leave()
+
+    timer1.Enabled = False  
+    timer1.Stop
+
 End

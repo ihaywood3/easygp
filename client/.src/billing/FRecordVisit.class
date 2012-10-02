@@ -158,13 +158,13 @@ Public Sub Init()
    VSplitMain_Layout = VSplitMain_Layout  
    Me.Center()
    Try Settings_Load()         'load settings for this form
-   cvwUnBilled_Refresh()
+  
    GridRows = New Collection
    columnview1.Columns.count = 4
    cmbInvoiceComments.index = -1
    gvwItemsBIlled_Init()  
    gvwPayments_Init()
-   
+    cvwUnBilled_Refresh()
 End
 
 Public Sub EditArea_Clear() 
@@ -488,76 +488,63 @@ Public Sub gvwItemsBIlled_Delete_Row(onrow_items As Integer)
    Next
    HBox_Descriptor.Visible = False  
    columnview1.Visible = False   
-   Invoice_Calculate_Total()
+   Invoice_Calculate_Total("Invoice Total")
    
 End
 
 Public Sub gvwItemsBIlled_Click()
-   
-   If bPayingInvoice Then Return 
-   If txtpatient.text = "" Then
-      Message.Info("Please select a patient to invoice, either by clicking on the patients list, or searching for a patient.")
-      Return 
-   End If   
-   If gvwItemsBIlled.Row > 0 And gvwItemsBIlled[0, 0].text = "" Then 'fixme crap 
-      gvwItemsBIlled.row = 0
-   Endif
+
+   If gvwItemsBIlled.column = cGridColumnItem_FeeType Then 
+      With cmbFeeType
+         .width = gvwItemsBIlled.Columns[cGridColumnItem_FeeType].Width
+         .height = gvwItemsBIlled.Rows[0].Height + 5
+         .left = gvwItemsBIlled[0, cGridColumnItem_FeeType].Left + 2
+         .top = ((gvwItemsBIlled.row + 1) * 20) + 2
+         .Visible = True
+      End With
+   Else
+      cmbFeeType.Visible = False   
+   Endif 
    onrow_items = gvwItemsBIlled.Row
    OnCol_Items = gvwItemsBIlled.Column
-   If textbox1.Visible = False Then HBox_Descriptor.Visible = False  
-   If OnCol_Items <> cGridColumnItem_BriefDescriptor Then HBox_Descriptor.Visible = False   
-   Select Case OnCol_Items
-      Case cGridColumnItem_FeeType
-         With cmbFeeType
-            .width = gvwItemsBIlled.Columns[OnCol_Items].Width
-            .height = gvwItemsBIlled.Rows[onrow_items].Height + 5
-            .left = gvwItemsBIlled[onrow_items, OnCol_Items].Left + 2
-            .top = ((onrow_items + 1) * 20) + 2
-            If gvwItemsBIlled[onrow_items, 0].text <> "" Then 
-               .Visible = True  
-            Else
-               .Visible = False  
-            End If
-         End With
-      Case Else
-         cmbFeeType.Visible = False   
-   End Select
-   
+
 End
+
 
 Public Sub gvwItemsBilled_DblClick()
    
    Dim i As Integer
    Dim iSlotCount As Integer
    
-   If bexit Then Return
-   If OnCol_Items = 4 Or If txtpatient.text = "" Or bPayingInvoice Then Return
-   If gvwItemsBIlled[onrow_items, OnCol_Items].text <> "" Then Return
-   TextBox1.text = ""                              'clear search textbox
-   bFoundFirst = False  
-   Select Case OnCol_Items
-      Case 1 'the brief descriptor, allow searching
-         Try txtDescriptor.text = item!descriptor
-         If Not Error Then
-            txtDescriptor.Pos = 0
-            HBox_Descriptor.Visible = True   
-         Endif
-      Case Else
-   End Select
-   onrow_items = gvwItemsBIlled.Row 
+   If bPayingInvoice Or bexit Or OnCol_Items = 4 Or txtpatient.text = "" Or gvwItemsBIlled[onrow_items, OnCol_Items].text <> "" Then Return 
+   If gvwItemsBIlled.Row > 0 And gvwItemsBIlled[0, 0].text = "" Then 'if user clicks on row and row above not filled in move back FIXME THIS CODE DOES NOT DO THIS
+      onrow_items = 0
+      gvwItemsBIlled.row = 0
+   Endif
+   If textbox1.Visible = False Then HBox_Descriptor.Visible = False  
+   If OnCol_Items <> cGridColumnItem_BriefDescriptor Then HBox_Descriptor.Visible = False   
+   
+   TextBox1.text = ""                                  'clear search textbox
+   If gvwItemsBIlled.column = 1 Then  'the brief descriptor, allow searching
+      Try txtDescriptor.text = item!descriptor
+      If Not Error Then
+         txtDescriptor.Pos = 0
+         HBox_Descriptor.Visible = True   
+      Endif
+   End If  
    iLeft = gvwItemsBIlled[onrow_items, OnCol_Items].Left
    iTop = ((onrow_items + 1) * 20) + 4 'iSlotCount * 20
    With TextBox1
       .left = iLeft + 2
       .top = iTop
       .width = gvwItemsBIlled.Columns[OnCol_Items].Width + 4
-      '.Height = ((iLastRow - iFirstRow) + 1) * gvwItemsBIlled.Rows[0].Height + 5
       .Height = gvwItemsBIlled.Rows[0].Height + 5
       .Visible = True
       .SetFocus()
    End With
-   
+
 End
+
 
 Public Sub gvwItemsBIlled_Select()
    
@@ -611,9 +598,9 @@ Public Sub cmbFeeType_Click()
          cmbFeeType.index = cmbFeeType.Find(last_Fee_type)
       Endif
    End If   
-   Invoice_Calculate_Total
+   Invoice_Calculate_Total("Invoice Total")
    EditArea_Notify_Data_Change(True)
-   
+
 End
 
 Public Sub cmbEditArea_Click()
@@ -720,6 +707,7 @@ Public Sub TextBox1_Activate()
    End Select
    
 End
+
 
 Public Sub textbox1_KeyPress()
    
@@ -901,8 +889,10 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
    
    Try modDBConnect.update("clerical.bookings", Null, ["pk": Unbilled_consultation!pk, "invoiced": True])  'may not have an appt.
    'fixme won't always be printed.
-   invoice!latex = modBillingDBI.Print_Invoice(invoice, bPrint, bBulkBill) 
-   modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex])
+   If fk_invoice = 0 And Not bpaid Then 
+      invoice!latex = modBillingDBI.Print_Invoice(invoice, bPrint, bBulkBill) 
+      modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex])
+   End If   
    modDBConnect.CommitTrans
    If TabStripPatients.index = 0 Then 
       cvwUnBilled_Refresh()
@@ -1019,7 +1009,7 @@ Public Sub Get_Items(txt As String)
    Dim bMissingBriefDescriptor As Boolean
    Dim billing_type As String
    Dim price As Variant
-   
+
    txtDescriptor.text = ""
    bExit = True
    Select Case fk_lu_default_billing_level     
@@ -1043,20 +1033,26 @@ Public Sub Get_Items(txt As String)
          billing_type = "Private Fee"
    End Select
    
-   If IsNull(fk_lu_default_billing_level) Then
-      cmbFeeType.index = cmbFeeType.Find("Private Fee")
-      gvwItemsBIlled[gvwItemsBIlled.row, 4].Text = "Private Fee"
-   Else
-      cmbFeeType.index = cmbFeeType.Find(billing_type)
-      gvwItemsBIlled[gvwItemsBIlled.row, 4].Text = billing_type
-   Endif
+   ' If IsNull(fk_lu_default_billing_level) Then
+   '    cmbFeeType.index = cmbFeeType.Find("Private Fee")
+   '    gvwItemsBIlled[gvwItemsBIlled.row, 4].Text = "Private Fee"
+   ' Else
+   '    cmbFeeType.index = cmbFeeType.Find(billing_type)
+   '    gvwItemsBIlled[gvwItemsBIlled.row, 4].Text = billing_type
+   ' Endif
    Scheduled_Fee = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(Trim(txt), const.Billingtype_Scheduled_Fee)
-   'bad bad developmental patch whilst developing workcover fixme
-   If textlabelPayer.text <> "" Then                'assumes a bill to non patient, veteran or medicare is workcover
-      Items = modBillingDBI.Items_Get(Trim(txt), const.Billingtype_Workcover)
-   Else
-      Items = modBillingDBI.Items_Get(Trim(txt), fk_lu_billing_type)
-   End If   
+   'Look in ordinary items first,if fail and we have a non-patient payer - try workcover
+   Items = modBillingDBI.Items_Get(Trim(txt), fk_lu_billing_type)
+   If items.count = 0 And textlabelPayer.text <> "" Then 
+        Items = modBillingDBI.Items_Get(Trim(txt), const.Billingtype_Workcover)
+   End If
+   If items.count = 0 Then 
+      Message.Info("The item number was not found")
+      gvwItemsBIlled_Delete_Row(gvwItemsBIlled.row)
+      bExit = False  
+      Return
+   End If  
+   
    If items.count Then
       For Each item In items 'fixme ?proper way of doing this
          If IsNull(item!descriptor_brief) Then
@@ -1066,7 +1062,7 @@ Public Sub Get_Items(txt As String)
          gvwItemsBIlled[gvwItemsBIlled.row, 1].Text = item!descriptor_brief
          gvwItemsBIlled[gvwItemsBIlled.row, 2].Text = item!price
          Try gvwItemsBIlled[gvwItemsBIlled.row, 3].Text = Format(Str(CFloat(Val(Replace(item!price, "$", ""))) - CFloat(Val(Replace(Scheduled_Fee!price, "$", "")))), "$#.###")
-         gvwItemsBIlled[onrow_items, 4].text = item!fee_type
+         gvwItemsBIlled[gvwItemsBIlled.row, 4].text = item!fee_type
          last_Fee_type = item!fee_type
          If Not IsNull(item!gst_rate) And item!gst_rate <> 0 Then 'FIX ME ?CONVERT BACKEND TO NULL IN THIS FIELD NOT ZERO.
             gvwItemsBIlled[gvwItemsBIlled.row, 5].Text = modUtil.Money_Format(price / item!gst_rate)
@@ -1074,8 +1070,8 @@ Public Sub Get_Items(txt As String)
          Break
       Next
       bExit = False 
-      Invoice_Calculate_Total()
-      If bMissingBriefDescriptor = False Then gvwItemsBIlled.row = gvwItemsBIlled.row + 1
+      Invoice_Calculate_Total("Invoice Total")
+      ' If bMissingBriefDescriptor = False Then gvwItemsBIlled.row = gvwItemsBIlled.row + 1
    Else
       item = Null 
       
@@ -1094,7 +1090,6 @@ Public Sub Get_Items(txt As String)
       .SetFocus()
    End With
    bExit = False  
-   
 End
 
 Public Sub columnview1_KeyPress()
@@ -1188,7 +1183,7 @@ Public Sub gvwItemsBIlled_Clear()
    
 End
 
-Public Sub Invoice_Calculate_Total()
+Public Sub Invoice_Calculate_Total(sTotalType As String)
    '----------------------------------------------------------------
    'Calculates the total amount of all items billed for this invoice
    '----------------------------------------------------------------   
@@ -1204,7 +1199,7 @@ Public Sub Invoice_Calculate_Total()
       Endif
    Next
    With lblInvoiceTotal
-      .text = "Invoice Total  " & modUtil.Money_Format(total)
+      .text = sTotalType & "  " & modUtil.Money_Format(total)
       .Font.Bold = False   
       .Foreground = Color.Black
       .Border = Border.Plain
@@ -1277,7 +1272,6 @@ Public Sub timer1_Timer()
    ' ----------------------------------------------------------------------
    
    Inc timer_count
-   Print "timer running...."
    If timer_count > 3 Then
       Select Case iTimer_Search_Mode
          Case cTimer_SearchMode_Patient
@@ -1293,7 +1287,7 @@ End
 
 Public Sub VBox_InvoiceGrid_Leave()
    
-   onrow_items = gvwItemsBIlled.Row
+   ' onrow_items = gvwItemsBIlled.Row
    'gvwItemsBIlled_Click()
    ' Wait
    If textbox1.Visible Then
@@ -1306,6 +1300,7 @@ Public Sub VBox_InvoiceGrid_Leave()
    Endif
    If cmbFeeType.Visible Then
       gvwItemsBIlled[onrow_items, cGridColumnItem_FeeType].text = cmbFeeType.Text
+      cmbFeeType.Visible = False 
    Endif
    TextBox1.Visible = False  
    timer1.Enabled = False   
@@ -1458,7 +1453,6 @@ Public Sub cvwItemsBilled_Refresh()
    Dim item As String
    Dim fk_last_invoice As Integer
    
-   Print "refreshing previously billed"
    cvwItemsBilled.Clear
    Items_Billed = modBillingDBI.Items_Billed_Get(fk_patient, iAccountDisplayMode)
    For Each Item_Billed In Items_Billed
@@ -1552,13 +1546,9 @@ Public Sub cvwItemsBilled_Select()
       If cvwItemsBilled.MoveNext() Then Break
    Loop
    gvwItemsBIlled.Rows.count = onrow_items
+   gvwPayments.Clear()
    gvwPayments.Rows.count = onrow_items + 2 'to allow payment by eg cash + cheque for medicare items.
-   Invoice_Calculate_Total
-   With lblInvoiceTotal
-      .text = "Total Owing"
-      .Font.Bold = False   
-      .Foreground = lblEditAreaHeading.Foreground
-   End With
+   Invoice_Calculate_Total("Total Owing")
    EditArea_Notify_Data_Change(False)       
    Hbox_InvoiceGrid.Enabled = False 
    HBox_InvoiceComments.Enabled = False   
@@ -1926,22 +1916,26 @@ Public Sub Valid_Payment() As Boolean
    
    Message.Title = "Payment of Invoice"   
    For row = 0 To gvwPayments.Rows.Max
-      If gvwPayments[row, cGridColumnPayments_Amount].Text = "" Then 
+      If gvwPayments[row, cGridColumnPayments_Amount].Text <> "" Then            'if have an amount
+         If gvwPayments[row, cGridColumnPayments_PaymentType].text = "" Then
+            gvwPayments.Row = row
+            gvwPayments.Column = cGridColumnPayments_PaymentType
+            Message.Info("Please enter type of payment.\n\n")
+            gvwPayments_Click()
+            Return
+         Endif
+         total = total + CFloat(Val(Replace(gvwPayments[row, cGridColumnPayments_Amount].text, "$", ""))) 
+      Else
+         If row = 0 Then   
          gvwPayments.Row = 0
          gvwPayments.Column = 0
          Message.Info("Please enter amount of payment.\n\n")
          gvwPayments_DblClick()
-         Return False   
-      End If  
-      If gvwPayments[row, cGridColumnPayments_PaymentType].text = "" Then
-         gvwPayments.Row = 0
-         gvwPayments.Column = cGridColumnPayments_PaymentType
-         Message.Info("Please enter type of payment.\n\n")
-         gvwPayments_Click()
          Return
-      Endif
-      total = total + CFloat(Val(Replace(gvwPayments[row, cGridColumnPayments_Amount].text, "$", "")))
-   Next
+      End If
+     
+      End If  
+    Next
    '------------------------------------------------------------
    'finally if being paid, does the paid amount match the total?
    '------------------------------------------------------------
@@ -2025,4 +2019,16 @@ Public Sub VBox_PatientsList_Leave()
    timer1.Enabled = False  
    timer1.Stop
    
+End
+
+Public Sub txtPayment_Change()
+   
+
+End
+
+Public Sub txtPayment_KeyPress()
+
+   If Not modUtil.AllowKeys(const.allowkeys_money, key.code) Then
+      Stop Event
+   End If  
 End

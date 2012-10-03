@@ -158,13 +158,14 @@ Public Sub Init()
    VSplitMain_Layout = VSplitMain_Layout  
    Me.Center()
    Try Settings_Load()         'load settings for this form
-  
+   
    GridRows = New Collection
    columnview1.Columns.count = 4
    cmbInvoiceComments.index = -1
    gvwItemsBIlled_Init()  
    gvwPayments_Init()
-    cvwUnBilled_Refresh()
+   cvwUnBilled_Refresh()
+
 End
 
 Public Sub EditArea_Clear() 
@@ -172,6 +173,7 @@ Public Sub EditArea_Clear()
    bExit = True
    
    modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Inner) 
+   form_billingcards.EditArea_Clear()
    lblEditAreaHeading.text = ""
    textlabelPayer.text = ""
    Unbilled_consultation = Null
@@ -493,7 +495,7 @@ Public Sub gvwItemsBIlled_Delete_Row(onrow_items As Integer)
 End
 
 Public Sub gvwItemsBIlled_Click()
-
+   
    If gvwItemsBIlled.column = cGridColumnItem_FeeType Then 
       With cmbFeeType
          .width = gvwItemsBIlled.Columns[cGridColumnItem_FeeType].Width
@@ -507,9 +509,8 @@ Public Sub gvwItemsBIlled_Click()
    Endif 
    onrow_items = gvwItemsBIlled.Row
    OnCol_Items = gvwItemsBIlled.Column
-
+   
 End
-
 
 Public Sub gvwItemsBilled_DblClick()
    
@@ -542,9 +543,8 @@ Public Sub gvwItemsBilled_DblClick()
       .Visible = True
       .SetFocus()
    End With
-
+   
 End
-
 
 Public Sub gvwItemsBIlled_Select()
    
@@ -600,7 +600,7 @@ Public Sub cmbFeeType_Click()
    End If   
    Invoice_Calculate_Total("Invoice Total")
    EditArea_Notify_Data_Change(True)
-
+   
 End
 
 Public Sub cmbEditArea_Click()
@@ -707,7 +707,6 @@ Public Sub TextBox1_Activate()
    End Select
    
 End
-
 
 Public Sub textbox1_KeyPress()
    
@@ -960,6 +959,12 @@ Public Sub Descriptors_Brief_Get()
 End
 
 Public Sub Patients_Get()
+   '-------------------------------------------------------------------
+   'Get patients ILIKE txtFindPatient
+   'Note as this returns multiple lines if there are multiple addresses
+   'keep only one instance of the patient
+   '-------------------------------------------------------------------
+   Dim last_fk_patient As Integer
    
    If Trim(txtFindPatient.text) = "" Then Return 
    Inc Application.Busy
@@ -970,9 +975,12 @@ Public Sub Patients_Get()
    Dec Application.Busy
    If patients.count Then
       For Each patient In patients
-         cvwPatients.Add(patient!pk_view, 0)
-         cvwPatients[patient!pk_view][0] = patient!wholename
-         cvwPatients[patient!pk_view][1] = Format(patient!birthdate, "dd/mm/yyyy")
+         If last_fk_patient <> patient!fk_patient Then   
+            cvwPatients.Add(patient!pk_view, 0)
+            cvwPatients[patient!pk_view][0] = patient!wholename
+            cvwPatients[patient!pk_view][1] = Format(patient!birthdate, "dd/mm/yyyy")
+            last_fk_patient = patient!fk_patient   
+         End If   
       Next
       If patients.count = 1 Then
          With cvwPatients
@@ -1009,7 +1017,7 @@ Public Sub Get_Items(txt As String)
    Dim bMissingBriefDescriptor As Boolean
    Dim billing_type As String
    Dim price As Variant
-
+   
    txtDescriptor.text = ""
    bExit = True
    Select Case fk_lu_default_billing_level     
@@ -1044,7 +1052,7 @@ Public Sub Get_Items(txt As String)
    'Look in ordinary items first,if fail and we have a non-patient payer - try workcover
    Items = modBillingDBI.Items_Get(Trim(txt), fk_lu_billing_type)
    If items.count = 0 And textlabelPayer.text <> "" Then 
-        Items = modBillingDBI.Items_Get(Trim(txt), const.Billingtype_Workcover)
+      Items = modBillingDBI.Items_Get(Trim(txt), const.Billingtype_Workcover)
    End If
    If items.count = 0 Then 
       Message.Info("The item number was not found")
@@ -1090,6 +1098,7 @@ Public Sub Get_Items(txt As String)
       .SetFocus()
    End With
    bExit = False  
+
 End
 
 Public Sub columnview1_KeyPress()
@@ -1314,6 +1323,7 @@ Public Sub Billing_Defaults_Save()
    
    Dim patient_billing_data As New CRow
    
+   If Not form_billingcards.Valid_Data() Then Return 
    patient_billing_data.put_unchanged(fk_patient, "fk_patient")
    If form_billingcards.Responsible_Payer_Get_fk_Patient() = 0 Then
       patient_billing_data!fk_payer = Null
@@ -1322,7 +1332,7 @@ Public Sub Billing_Defaults_Save()
    Endif
    patient_billing_data!medicare_number = form_billingcards.Medicare_Number()
    patient_billing_data!medicare_ref_number = form_billingcards.Medicare_Reference_number()
-   patient_billing_data!medicare_expiry_date = form_billingcards.Medicare_Card_Expiry_Date()
+   patient_billing_data!medicare_expiry_date = modUtil.Medicare_Create_Expiry_date(form_billingcards.Medicare_Card_Expiry_Date())
    patient_billing_data!veteran_number = form_billingcards.Veteran_Card_Number()
    If patient_billing_data!veteran_number <> "" Then 
       patient_billing_data!fk_lu_veteran_card_type = form_billingcards.Veteran_Card_Type()
@@ -1376,6 +1386,28 @@ Public Sub Billing_Defaults_Save()
       ' Endif
       ' patients[cvwPatients.Item.key]!fk_doctor = patient_billing_data!fk_doctor 
    Endif
+   
+End
+
+Public Function Billing_Defaults_Valid() As Boolean
+   '--------------------------------------------------------------------------
+   'Validates dates in the embedded form of patients card and billing defaults
+   'returns true if ok
+   '--------------------------------------------------------------------------   
+
+   If form_billingcards.txtMedicareCardExpiryDate.text <> "" Then              'only validate if user has entered something
+      If Not IsDate(modUtil.Medicare_Create_Expiry_date(form_billingcards.txtMedicareCardExpiryDate.text)) Then
+         form_billingcards.txtMedicareCardExpiryDate.SetFocus()
+         Return 
+      Endif
+   Endif
+   If form_billingcards.txtConcessionExpiryDate.text <> "" Then                 'only validate if user has entered something
+      If Not IsDate(form_billingcards.txtConcessionExpiryDate.text) Then
+         form_billingcards.txtConcessionExpiryDate.SetFocus()
+         Return
+      Endif
+   Endif
+   Return True
    
 End
 
@@ -1927,15 +1959,15 @@ Public Sub Valid_Payment() As Boolean
          total = total + CFloat(Val(Replace(gvwPayments[row, cGridColumnPayments_Amount].text, "$", ""))) 
       Else
          If row = 0 Then   
-         gvwPayments.Row = 0
-         gvwPayments.Column = 0
-         Message.Info("Please enter amount of payment.\n\n")
-         gvwPayments_DblClick()
-         Return
-      End If
-     
+            gvwPayments.Row = 0
+            gvwPayments.Column = 0
+            Message.Info("Please enter amount of payment.\n\n")
+            gvwPayments_DblClick()
+            Return
+         End If
+         
       End If  
-    Next
+   Next
    '------------------------------------------------------------
    'finally if being paid, does the paid amount match the total?
    '------------------------------------------------------------
@@ -2023,11 +2055,10 @@ End
 
 Public Sub txtPayment_Change()
    
-
 End
 
 Public Sub txtPayment_KeyPress()
-
+   
    If Not modUtil.AllowKeys(const.allowkeys_money, key.code) Then
       Stop Event
    End If  

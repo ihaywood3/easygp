@@ -1241,6 +1241,7 @@ Public Sub Payment_Calculate_Total()
    
 End
 
+
 Public Sub rbInvoiceTo_Click()
    '-------------------------------------------------------------------
    'If user changes billing level, change data in grid appropriately
@@ -2076,10 +2077,11 @@ Public Sub TabStrip1_Click()
          If IsNull(form_html_viewer) Then
             With form_html_viewer = New FHtmlViewer(Vbox_DaysTakings)
                .WebView1.HTML = Days_Takings_Create_HTML()
+               .tbWebBrowserPrint.Visible = True   
+               .tbWebBrowserZoomIn.Visible = True  
+               .tbWebBrowserZoomOut.Visible = True
             End With
-            
          Endif
-         
    End Select
    
 End
@@ -2093,6 +2095,8 @@ Public Sub Days_Takings_Create_HTML(Optional for_date As Date = Now()) As String
    Dim amount As Collection
    Dim Payment_Methods As Collection
    Dim payment_method As Collection
+   Dim payment_totals As New Float[7] 'use 1>6 = billing.lu_payment_method keys
+   Dim x As Integer
    
    payment_methods = modBillingDBI.Payment_Methods_Get()
    monies_received = modBillingDBI.Receipts_Get_For_Day(for_date)
@@ -2101,7 +2105,7 @@ Public Sub Days_Takings_Create_HTML(Optional for_date As Date = Now()) As String
       Return
    Endif
    sHtml = "<HTML><BODY><P><B>Summary of Receipts Taken on " & Format(for_date, "dd/mm/yyyy") & "</B></P>"
-   sHtml &= "<TABLE WIDTH=100% CELLPADDING=4 CELLSPACING=1 STYLE=\"page-break-inside: avoid\">"
+   sHtml &= "<TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=0>"
    "<COL WIDTH=43*>"
    "<COL WIDTH=43*>"
    "<COL WIDTH=43*>"
@@ -2112,33 +2116,49 @@ Public Sub Days_Takings_Create_HTML(Optional for_date As Date = Now()) As String
    'now add a row for each money recieved
    'receipt no|Payer|payment type|Cheque Drawer|Amount|Tax
    '------------------------------------------------------
+   sHtml &= "<TR VALIGN=TOP>" & takings_html_row_template() & "</TR>"
+   shtml = Replace(shtml, "%receipt_no%", "<B>Receipt</B>")
+   shtml = Replace(shtml, "%payer%", "<B>Payer</B>")
+   shtml = Replace(shtml, "%payment type%", "<B>Type</B>")
+   shtml = Replace(shtml, "%drawer%", "<B>Cheque Drawer</B>")
+   shtml = Replace(shtml, "%amount%", "<B>Amount</B>") 
+   shtml = Replace(shtml, "%tax%", "<B>Tax</B>") 
    For Each amount In monies_received
       sHtml &= "<TR VALIGN=TOP>" & takings_html_row_template()
-      sHtml = Replace(sHtml, "%receipt_no%", Str$(amount!pk_payment_received))
+      sHtml = Replace(sHtml, "%receipt_no%", Str$(amount!pk_payments_received))
       If Not IsNull(amount!payer_details) Then 
-       sHtml = Replace(sHtml, "%payer%", amount!payer_details)
+         If Not IsNull(amount!fk_payer_branch) Then 
+            
+          sHtml = Replace(sHtml, "%payer%", amount!payer_organisation & " " & amount!payer_branch)
+         End If
+         If Not IsNull(amount!fk_payer_person) Then 
+           sHtml = Replace(sHtml, "%payer%", amount!payer_person_wholename) 
+         End If   
       Else
-        sHtml = Replace(sHtml, "%payer%", amount!patient_wholename) 
+          sHtml = Replace(sHtml, "%payer%", amount!patient_wholename) 
       End If   
       sHtml = Replace(sHtml, "%payment type%", amount!payment_method)
       sHtml = Replace(sHtml, "%drawer%", " ") 'FIXME
-      sHtml = Replace(sHtml, "%amount%", amount!amount_paid)
+      sHtml = Replace(sHtml, "%amount%", modUtil.Money_Format(amount!amount_paid))
       sHtml = Replace(sHtml, "%tax%", " ") 'FIXME put in gst
       sHtml &= "</TR>"
+      payment_totals[amount!fk_lu_payment_method] = payment_totals[amount!fk_lu_payment_method] + CFloat(Replace(amount!amount_paid, "$", ""))
    Next 
    shtml &= "</TABLE>"
    '---------------------------------------------------------------------------------------
    'Now add a table which summarizes amounts for Cash, Cheques, EFPos or EFT (direct debit)
    '---------------------------------------------------------------------------------------
    sHtml &= "<P><B>Totals</B></P>"
-   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 STYLE=\"page-break-inside: avoid\">"
+   sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
    "<COL WIDTH=212>"
    "<COL WIDTH=208>"
    
    For Each payment_method In payment_methods
+      Inc x                                  'billing.lu_payment_method keys 1>6
       shtml &= "<TR VALIGN=TOP>"
       shtml &= totals_html_row_template()
       shtml = Replace(shtml, "%payment_method%", payment_method!method)
+      shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(payment_totals[x]))
       sHtml &= "</TR>"
    Next
    sHtml &= "</TABLE></BODY></HTML>" 
@@ -2150,29 +2170,29 @@ End
 
 Public Sub DateChooser1_Activate()
 
-  form_html_viewer.WebView.html = Days_Takings_Create_HTML(Last.value)
+  form_html_viewer.WebView1.html = Days_Takings_Create_HTML(Last.value)
   
 End
 
 Public Function takings_html_row_template() As String
    
    Return ""
-   "<TD WIDTH=17%>"
+   "<TD WIDTH=8%>"
    "   <P>%receipt_no%</P>"
    "</TD>"
-   "<TD WIDTH=17%>"
+   "<TD WIDTH=30%>"
    "   <P>%payer%</P>"
    "</TD>"
-   "<TD WIDTH=17%>"
+   "<TD WIDTH=15%>"
    "   <P>%payment type%</P>"
    "</TD>"
-   "<TD WIDTH=17%>"
+   "<TD WIDTH=20%>"
    "   <P>%drawer%</P>"
    "</TD>"
-   "<TD WIDTH=17%>"
+   "<TD WIDTH=10%>"
    "   <P>%amount%</P>"
    "</TD>"
-   "<TD WIDTH=17%>"
+   "<TD WIDTH=10%>"
    "   <P>%tax%</P>"
    "</TD>"
    
@@ -2181,12 +2201,10 @@ End
 Public Function totals_html_row_template() As String
    Return ""
    "<TD WIDTH=212>"
-   "<P>%payment_method%>"
-   "</P>"
+   "<P>%payment_method%</P>"
    "</TD>"
-   "<TD WIDTH=208" > ""
-   "<P%total_amount%>"
-   "</P>"
+   "<TD WIDTH=208>"
+   "<P>%total_amount%</P>"
    "</TD>"
    
 End

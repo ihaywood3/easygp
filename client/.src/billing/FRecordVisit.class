@@ -105,6 +105,10 @@ Private Const cTabPatientsAccounts As Integer = 1
 Private branches As Collection
 Private branch As Collection
 Private form_html_viewer As FHtmlViewer
+Private Const cTab_Invoices As Integer = 0
+Private Const cTab_Takings As Integer = 1
+Private Const cTab_Batching As Integer = 2
+Private Const cTab_Banking As Integer = 3
 
 Public Sub Init() 
    '---------------------------------------------------------
@@ -520,6 +524,45 @@ Public Sub gvwItemsBilled_DblClick()
    Dim i As Integer
    Dim iSlotCount As Integer
    
+   Print "onrow_itmes, oncol_items", onrow_items, OnCol_Items
+   Print "gvwBilled.row", gvwItemsBIlled.Row
+   Print "bexit is", bexit
+   If bPayingInvoice Or bexit Or gvwItemsBIlled.Column = 4 Or txtpatient.text = "" Or gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column].text <> "" Then Return 
+   If gvwItemsBIlled.Row > 0 And gvwItemsBIlled[0, 0].text = "" Then 'if user clicks on row and row above not filled in move back FIXME THIS CODE DOES NOT DO THIS
+      onrow_items = 0
+      gvwItemsBIlled.row = 0
+   Endif
+   If textbox1.Visible = False Then HBox_Descriptor.Visible = False  
+   If gvwItemsBIlled.Column <> cGridColumnItem_BriefDescriptor Then HBox_Descriptor.Visible = False   
+   
+   TextBox1.text = ""                                  'clear search textbox
+   If gvwItemsBIlled.column = 1 Then  'the brief descriptor, allow searching
+      Try txtDescriptor.text = item!descriptor
+      If Not Error Then
+         txtDescriptor.Pos = 0
+         HBox_Descriptor.Visible = True   
+      Endif
+   End If  
+   iLeft = gvwItemsBIlled[gvwItemsBIlled.row, gvwItemsBIlled.Column].Left
+   iTop = ((gvwItemsBIlled.row + 1) * 20) + 4 'iSlotCount * 20
+   With TextBox1
+      .left = iLeft + 2
+      .top = iTop
+      .width = gvwItemsBIlled.Columns[gvwItemsBIlled.Column].Width + 4
+      .Height = gvwItemsBIlled.Rows[0].Height + 5
+      .Visible = True
+      .SetFocus()
+   End With
+   
+End
+Public Sub gvwItemsBilled_DblClick_old()
+   
+   Dim i As Integer
+   Dim iSlotCount As Integer
+   
+   Print "onrow_itmes, oncol_items", onrow_items, OnCol_Items
+   Print "gvwBilled.row", gvwItemsBIlled.Row
+   Print "bexit is", bexit
    If bPayingInvoice Or bexit Or OnCol_Items = 4 Or txtpatient.text = "" Or gvwItemsBIlled[onrow_items, OnCol_Items].text <> "" Then Return 
    If gvwItemsBIlled.Row > 0 And gvwItemsBIlled[0, 0].text = "" Then 'if user clicks on row and row above not filled in move back FIXME THIS CODE DOES NOT DO THIS
       onrow_items = 0
@@ -770,7 +813,7 @@ Public Sub Settings_Save()
    
 End
 
-Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optional bAccount As Boolean = False, Optional bPaid As Boolean = False)
+Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optional bAccount As Boolean = False) ', Optional bPaid As Boolean = False)
    ' Public Sub Make_Invoice(pk_patient As Integer, items As Collection[], fk_lu_billing_type As Integer, date_printed As Date Default Null, fk_staff As Integer = 0, Optional notes As String = "") As Integer
    ' CREATE TABLE billing.invoices
    ' (
@@ -799,17 +842,63 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
    Dim new_item As Collection
    Dim items As New Collection
    Dim item As CRow
-   Dim row As Integer
    Dim payment As CRow
    Dim x As Integer
    Dim payment_method As Collection  
-   
+   Dim payment_total As Variant
+   Dim bPaid As Boolean = False
+   Dim grid_row As Integer
+   Dim total_paid As Float
+   Dim invoice_total As Float
+   Dim sMsg As String
+
    If VBox_EditArea_Outer.Padding = 0 Then Return           'no data change no save
-   If Not Valid_Invoice_Items() Then Return 
-   If bPaid Then
-      If Not Valid_Payment() Then Return                
-   End If 
+   If Not Valid_Invoice_Items() Then Return                 'items invalid no save
+   '-----------------------------------------------------
+   'Now, work out if being paid, if so ?all, is it valid?
+   '-----------------------------------------------------
+   If lblPaymentTotal.text <> "" Then  
+      Message.Title = "Payment of Invoice"   
+      For grid_row = 0 To gvwPayments.Rows.Max
+         If gvwPayments[grid_row, cGridColumnPayments_Amount].Text <> "" Then            'if have an amount
+            If gvwPayments[grid_row, cGridColumnPayments_PaymentType].text = "" Then
+               gvwPayments.Row = grid_row
+               gvwPayments.Column = cGridColumnPayments_PaymentType
+               Message.Info("Please enter type of payment.\n\n")
+               gvwPayments_Click()
+               Return
+            Endif
+            total_paid = total_paid + CFloat(Val(Replace(gvwPayments[grid_row, cGridColumnPayments_Amount].text, "$", ""))) 
+         Else
+            If grid_row = 0 Then   
+               gvwPayments.Row = 0
+               gvwPayments.Column = 0
+               Message.Info("Please enter amount of payment.\n\n")
+               gvwPayments_DblClick()
+               Return
+            End If
+         End If  
+      Next
+   End If   
+   '------------------------------------------------------------
+   'finally if being paid, does the paid amount match the total?
+   '------------------------------------------------------------
+   invoice_total = CFloat(Val(Right(lblInvoiceTotal.text, Len(lblInvoiceTotal.text) - InStr(lblInvoiceTotal.text, " $") - 1)))
+   If total_paid <> 0 Then 
+      If total_paid < invoice_total Then  
+         sMsg = "The invoice amount and amount paid do not match.\n\n"
+         "Do you wish to accept part payment of this invoice?\n\n"
+         If Message.Question(sMsg, "Yes - accept part payment", "No") = 2 Then Return
+      Else
+         If total_paid > invoice_total Then 
+            Message.Info("The amount being paid is greater than the invoice total.")
+            Return
+         Endif
+       
+      Endif
+   End If   
    '-----------------------------------------------------------------------------
+   'At this point validation finished total_paid 0 or amount <= invoice total
    'Create or edit the invoice
    'If editing (e.g paying) then user will not have been able to change
    'any of the core invoice details, ie date originally invoiced, who invoiced it
@@ -826,7 +915,6 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
          invoice!fk_staff_provided_service = staff[cmbSeenBy.index]!fk_staff
       End If 
       If fk_patient <> 0 Then invoice!fk_patient = fk_patient     'may not be for a patient
-      
       invoice!fk_branch = modDBConnect.currentUser!fk_branch      'branch at which service was provided
       If fk_payer_branch <> 0 Then invoice!fk_payer_branch = fk_payer_branch
       If fk_payer_person <> 0 Then invoice!fk_payer_person = fk_payer_person
@@ -835,8 +923,11 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
    '----------------------------------
    'has the invoice been paid in full?- fix this code
    '----------------------------------
-    If Right(lblPaymentTotal.text, Len(lblPaymentTotal.text) - InStr(lblPaymentTotal.text, " $")) = Right(lblInvoiceTotal.text, Len(lblInvoiceTotal.text) - InStr(lblInvoiceTotal.text, " $")) Then  'IAN FIXME
+    If invoice_total = total_paid Then 
        invoice!paid = True  
+       bpaid = True
+    Else
+       bpaid = False 
     End If  
    invoice.Save("billing.invoices", "fk_invoice")
    '------------------------------------
@@ -845,38 +936,38 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
    'and dispose of some of these backend calls
    '------------------------------------
    If fk_invoice = 0 Then  'FIXME MAY HAVE TO ALLOW EDITING OF THIS
-      For row = 0 To gvwItemsBIlled.Rows.count - 1  'fixme check all necessary data is in grids cells
-         If gvwItemsBIlled[row, cGridColumnItem_ItemNumber].Text <> "" Then  
+      For grid_row = 0 To gvwItemsBIlled.Rows.count - 1  'fixme check all necessary data is in grids cells
+         If gvwItemsBIlled[grid_row, cGridColumnItem_ItemNumber].Text <> "" Then  
             item = New CRow
-            item!fk_fee_schedule = modBillingDBI.fk_fee_shedule_Get_For_Item_Number(gvwItemsBIlled[row, cGridColumnItem_ItemNumber].Text)
-            item!amount = gvwItemsBIlled[row, cGridColumnItem_Fee].Text
+            item!fk_fee_schedule = modBillingDBI.fk_fee_shedule_Get_For_Item_Number(gvwItemsBIlled[grid_row, cGridColumnItem_ItemNumber].Text)
+            item!amount = gvwItemsBIlled[grid_row, cGridColumnItem_Fee].Text
             item!fk_invoice = invoice!fk_invoice
-            item!fk_lu_billing_type = Billing_Type_Get_Pk(gvwItemsBIlled[row, cGridColumnItem_FeeType].Text)
-            item!amount_gst = gvwItemsBIlled[row, cGridColumnItem_gst_amount].Text
+            item!fk_lu_billing_type = Billing_Type_Get_Pk(gvwItemsBIlled[grid_row, cGridColumnItem_FeeType].Text)
+            item!amount_gst = gvwItemsBIlled[grid_row, cGridColumnItem_gst_amount].Text
             item.Save("billing.items_billed", "fk_item_billed")
          End If   
       Next
    End If   
-   '--------------------------------
-   'Now, is this invoice being paid?
-   '--------------------------------
-   If bPaid Then
+   '----------------------------------------------------
+   'Now, is this invoice being paid? in part or in full?
+   '----------------------------------------------------
+   If total_paid > 0 Then
       '  pk serial NOT NULL,
       '   fk_invoice integer NOT NULL,
       '   amount money NOT NULL,
       '   fk_lu_payment_method integer,
       '   date_paid timestamp without time zone NOT NULL DEFAULT now(),
-      For x = 0 To gvwPayments.Rows.count - 1
-         If gvwPayments[x, cGridColumnPayments_Amount].Text <> "" Then 
+      For grid_row = 0 To gvwPayments.Rows.count - 1
+         If gvwPayments[grid_row, cGridColumnPayments_Amount].Text <> "" Then 
             payment = New CRow
             payment!fk_invoice = invoice!fk_invoice  
-            payment!amount = gvwPayments[x, cGridColumnPayments_Amount].Text
+            payment!amount = gvwPayments[grid_row, cGridColumnPayments_Amount].Text
             For Each payment_method In Payment_Methods
-               If payment_method!method = gvwPayments[x, cGridColumnPayments_PaymentType].text Then
+               If payment_method!method = gvwPayments[grid_row, cGridColumnPayments_PaymentType].text Then
                   payment!fk_lu_payment_method = payment_method!pk
                   Break
                Endif
-            Next
+           Next
             'this simple way screwed by ians smart changes.
             '   payment!fk_lu_payment_method = Payment_Methods[gvwPayments[x, cGridColumnPayments_PaymentType].text]!fk_lu_payment_method  
             payment!date_paid = Now()
@@ -905,6 +996,8 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
    End If 
    
 End 
+
+
 
 Public Sub Billing_Type_Get_Pk(txt As String) As Integer
    
@@ -1243,6 +1336,11 @@ Public Sub Payment_Calculate_Total()
    
 End
 
+Public Function Money_Add(monies As Variant[]) As String
+  'IAN FIXME I NEED FUNCTION TO ADD UP MONEY 
+   
+   
+End
 
 Public Sub rbInvoiceTo_Click()
    '-------------------------------------------------------------------
@@ -1440,13 +1538,13 @@ Public Sub MainToolbar_Click()
                Goto Missing_MedicareNumber
             Endif
          Endif
-         Save(bBulkBill_Yes, bPrint_Yes, bAccount_No, bPaid_No)
+         Save(bBulkBill_Yes, bPrint_Yes, bAccount_No) ', bPaid_No)
       Case "print receipt"
-         Save(bBulkBill_No, bPrint_Yes, bAccount_No, bPaid_Yes)
+         Save(bBulkBill_No, bPrint_Yes, bAccount_No) ', bPaid_Yes)
       Case "receipt no print"
-          Save(bBulkBill_No, bPrint_No, bAccount_No, bPaid_Yes)
+          Save(bBulkBill_No, bPrint_No, bAccount_No) ', bPaid_Yes)
       Case "print account"
-         Save(bBulkBill_No, bPrint_Yes, bAccount_Yes, bPaid_No)
+         Save(bBulkBill_No, bPrint_Yes, bAccount_Yes) ', bPaid_No)
    End Select
    Return   
    
@@ -1491,6 +1589,8 @@ Public Sub cvwItemsBilled_Refresh()
    
    Dim item As String
    Dim fk_last_invoice As Integer
+   Dim total As Float
+   Dim monies As Variant[]
    
    cvwItemsBilled.Clear
    Items_Billed = modBillingDBI.Items_Billed_Get(fk_patient, iAccountDisplayMode)
@@ -1512,12 +1612,16 @@ Public Sub cvwItemsBilled_Refresh()
       cvwItemsBilled[Item_Billed!pk_items_billed][6] = Item_Billed!amount
       cvwItemsBilled[Item_Billed!pk_items_billed][7] = Item_Billed!amount_gst
       If Item_Billed!paid = True Then
-         cvwItemsBilled[Item_Billed!pk_items_billed][8] = "$0.0"
-         cvwItemsBilled[Item_Billed!pk_items_billed][9] = Item_Billed!amount 'FIXME ADD UP
+         cvwItemsBilled[Item_Billed!pk_items_billed][8] = "$0.0" 'amount due column
       Else
-         cvwItemsBilled[Item_Billed!pk_items_billed][8] = Item_Billed!amount 'FIXME ADD UP AMOUNT
-         cvwItemsBilled[Item_Billed!pk_items_billed][9] = "$0.0"
-      Endif
+          cvwItemsBilled[Item_Billed!pk_items_billed][9] = Item_Billed!total_paid    
+      End If 
+       cvwItemsBilled[Item_Billed!pk_items_billed][8] = Item_Billed!total_owing  
+        'FIXME ADD UP
+     ' Else
+     '    cvwItemsBilled[Item_Billed!pk_items_billed][8] = Item_Billed!amount 'FIXME ADD UP AMOUNT
+      '   cvwItemsBilled[Item_Billed!pk_items_billed][9] = Item_Billed!amount_paid 
+    '  Endif
       fk_last_invoice = Item_Billed!fk_invoice  
    Next
    
@@ -1947,24 +2051,23 @@ Public Sub Valid_Payment() As Boolean
    'the invoice is being paid off - prompt the user.
    '---------------------------------------------------------   
    
-   Dim row As Integer
-   Dim item As Collection
+   Dim grid_row As Integer
    Dim total As Float
    Dim sMsg As String
    
    Message.Title = "Payment of Invoice"   
-   For row = 0 To gvwPayments.Rows.Max
-      If gvwPayments[row, cGridColumnPayments_Amount].Text <> "" Then            'if have an amount
-         If gvwPayments[row, cGridColumnPayments_PaymentType].text = "" Then
-            gvwPayments.Row = row
+   For grid_row = 0 To gvwPayments.Rows.Max
+      If gvwPayments[grid_row, cGridColumnPayments_Amount].Text <> "" Then            'if have an amount
+         If gvwPayments[grid_row, cGridColumnPayments_PaymentType].text = "" Then
+            gvwPayments.Row = grid_row
             gvwPayments.Column = cGridColumnPayments_PaymentType
             Message.Info("Please enter type of payment.\n\n")
             gvwPayments_Click()
             Return
          Endif
-         total = total + CFloat(Val(Replace(gvwPayments[row, cGridColumnPayments_Amount].text, "$", ""))) 
+         total = total + CFloat(Val(Replace(gvwPayments[grid_row, cGridColumnPayments_Amount].text, "$", ""))) 
       Else
-         If row = 0 Then   
+         If grid_row = 0 Then   
             gvwPayments.Row = 0
             gvwPayments.Column = 0
             Message.Info("Please enter amount of payment.\n\n")
@@ -2210,9 +2313,124 @@ Public Function totals_html_row_template() As String
    "</TD>"
    
 End
+' CREATE OR REPLACE FUNCTION billing.total_paid(integer)
+'   RETURNS money AS
+' $BODY$
+' DECLARE
+'   total_paid money;
+'   total numeric;
+'   payment numeric;
+' BEGIN
+'  -- get the amounts paid
+'   for payment in select amount::numeric from billing.payments_received where fk_invoice = $1 loop
+'     total := payment;
+'   end loop;
+'   if total = 0 then 
+'    total_paid = null;
+'    else
+'      total_paid := total::money;
+'    end if;
+'   return total_paid;
+' end;
+' $BODY$
+'   LANGUAGE plpgsql VOLATILE
+'   COST 100;
+' ALTER FUNCTION billing.total_paid(integer)
+'   OWNER TO richard;
+' 
 
-Public Sub DateChooser1_MouseUp()
-
-   Print "mouse was up"
-
-End
+' -- View: billing.vwitemsbilled
+' 
+' DROP VIEW billing.vwitemsbilled cascade;
+' 
+' CREATE OR REPLACE VIEW billing.vwitemsbilled AS 
+'  SELECT items_billed.pk AS pk_items_billed, vwstaffinclinics.firstname AS staff_invoiced_firstname, 
+'  vwstaffinclinics.surname AS staff_invoiced_surname, vwstaffinclinics.wholename AS staff_invoiced_wholename, 
+'  vwstaffinclinics.title AS staff_invoiced_title, invoices.fk_staff_invoicing, invoices.date_printed, 
+'  invoices.notes, invoices.fk_staff_provided_service, invoices.fk_patient, vwpatients.firstname AS patient_firstname, 
+'  vwpatients.surname AS patient_surname, vwpatients.title AS patient_title, vwpatients.fk_sex AS patient_fk_sex, 
+'  vwpatients.sex AS patient_sex, vwpatients.wholename AS patient_wholename, invoices.fk_payer_person, invoices.fk_payer_branch, 
+'  invoices.date_invoiced, invoices.paid, invoices.latex, invoices.visit_date, invoices.reference, 
+'  vwstaffinclinics1.provider_number AS staff_provided_service_provider_number, 
+'  vwstaffinclinics1.firstname AS staff_provided_service_firstname, vwstaffinclinics1.surname AS staff_provided_service_surname, 
+'  vwstaffinclinics1.wholename AS staff_provided_service_wholename, vwstaffinclinics1.title AS staff_provided_service_title, 
+'  data_branches.branch, items_billed.fk_fee_schedule, items_billed.amount, 
+'  items_billed.amount_gst, items_billed.fk_invoice, 
+'  billing.total_paid(items_billed.fk_invoice) as total_paid,
+'  case 
+'    when billing.total_paid(items_billed.fk_invoice) is not null then 
+'    case 
+'        when items_billed.amount_gst is not null  then (items_billed.amount  + items_billed.amount_gst)- billing.total_paid(items_billed.fk_invoice)
+'        else items_billed.amount - billing.total_paid(items_billed.fk_invoice)
+'             end   
+'         else 
+'            case 
+'       when items_billed.amount_gst is not null then items_billed.amount + items_billed.amount_gst
+'       else items_billed.amount
+'       end   
+'  end
+'  as total_owing,
+'  items_billed.fk_lu_billing_type, 
+'  lu_billing_type.type AS billing_type, fee_schedule.item, fee_schedule.mbs_item, fee_schedule.user_item, 
+'  fee_schedule.ama_item, fee_schedule.descriptor, fee_schedule.descriptor_brief, fee_schedule.gst_rate, 
+'  fee_schedule.percentage_fee_rule, 
+'         CASE
+'             WHEN invoices.fk_payer_branch IS NOT NULL THEN (((((vworganisations.organisation || '<BR>'::text) || (vworganisations.branch || '<BR>'::text)) || COALESCE(vworganisations.street1 || ' '::text, vworganisations.street2)) || '<BR>'::text) || (vworganisations.town || ' '::text)) || (vworganisations.postcode::text || ' '::text)
+'             WHEN invoices.fk_payer_person IS NOT NULL THEN ((((vwpersonsincludingpatients.wholename || '<BR>'::text) || COALESCE(vwpersonsincludingpatients.street1 || ' '::text, vwpersonsincludingpatients.street2)) || '<BR>'::text) || (vwpersonsincludingpatients.town || ' '::text)) || (vwpersonsincludingpatients.postcode::text || ' '::text)
+'             ELSE NULL::text
+'         END AS payer_details, vworganisations.branch AS payer_branch, vworganisations.organisation AS payer_organisation, 
+'         vworganisations.street1 AS payer_branch_street1, vworganisations.street2 AS payer_branch_street2, 
+'         vworganisations.postcode AS payer_branch_postcode, vworganisations.town AS payer_branch_town, 
+'         vworganisations.state AS payer_branch_state, vwpersonsincludingpatients.street1 AS payer_person_street1, 
+'         vwpersonsincludingpatients.street2 AS payer_person_street2, vwpersonsincludingpatients.town AS payer_person_town, 
+'         vwpersonsincludingpatients.state AS payer_person_state, vwpersonsincludingpatients.postcode AS payer_person_postcode, 
+'         vwpersonsincludingpatients.wholename AS payer_person_wholename, vwpersonsincludingpatients.title AS payer_person_title
+'    FROM billing.invoices
+'    JOIN admin.vwstaffinclinics ON invoices.fk_staff_invoicing = vwstaffinclinics.fk_staff
+'    JOIN admin.vwstaffinclinics vwstaffinclinics1 ON invoices.fk_staff_provided_service = vwstaffinclinics1.fk_staff
+'    JOIN billing.items_billed ON invoices.pk = items_billed.fk_invoice
+'    JOIN billing.lu_billing_type ON items_billed.fk_lu_billing_type = lu_billing_type.pk
+'    JOIN billing.fee_schedule ON items_billed.fk_fee_schedule = fee_schedule.pk
+'    JOIN contacts.data_branches ON invoices.fk_branch = data_branches.pk
+'    LEFT JOIN contacts.vworganisations ON invoices.fk_payer_branch = vworganisations.fk_branch
+'    LEFT JOIN contacts.vwpersonsincludingpatients ON invoices.fk_payer_person = vwpersonsincludingpatients.fk_person
+'    LEFT JOIN contacts.vwpatients ON invoices.fk_patient = vwpatients.fk_patient;
+' 
+' ALTER TABLE billing.vwitemsbilled
+'   OWNER TO easygp;
+' GRANT ALL ON TABLE billing.vwitemsbilled TO easygp;
+' GRANT ALL ON TABLE billing.vwitemsbilled TO staff;
+' 
+' CREATE OR REPLACE VIEW billing.vwpayments AS 
+'  SELECT payments_received.pk AS pk_payments_received, payments_received.fk_invoice, payments_received.amount AS amount_paid, 
+'  lu_payment_method.method AS payment_method, payments_received.date_paid, payments_received.fk_staff_receipted, 
+'  payments_received.fk_lu_payment_method, vwitemsbilled.pk_items_billed AS fk_items_billed, vwitemsbilled.staff_invoiced_firstname, 
+'  vwitemsbilled.staff_invoiced_surname, vwitemsbilled.staff_invoiced_wholename, vwitemsbilled.staff_invoiced_title, 
+'  vwitemsbilled.fk_staff_invoicing, vwitemsbilled.date_printed, vwitemsbilled.notes AS invoice_notes, 
+'  vwitemsbilled.fk_staff_provided_service, vwitemsbilled.fk_patient, vwitemsbilled.patient_firstname, 
+'  vwitemsbilled.patient_surname, vwitemsbilled.patient_title, vwitemsbilled.patient_fk_sex, vwitemsbilled.patient_sex, 
+'  vwitemsbilled.patient_wholename, vwitemsbilled.fk_payer_person, vwitemsbilled.fk_payer_branch, 
+'  vwitemsbilled.date_invoiced, vwitemsbilled.paid AS invoice_paid, vwitemsbilled.latex AS invoice_latex, 
+'  vwitemsbilled.visit_date, vwitemsbilled.reference AS invoice_reference, vwitemsbilled.staff_provided_service_provider_number, 
+'  vwitemsbilled.staff_provided_service_firstname, vwitemsbilled.staff_provided_service_surname, 
+'  vwitemsbilled.staff_provided_service_wholename, vwitemsbilled.staff_provided_service_title, 
+'  vwitemsbilled.branch, vwitemsbilled.fk_fee_schedule, vwitemsbilled.amount AS item_billed_amount, 
+'  vwitemsbilled.amount_gst AS item_billed_amount_gst, vwitemsbilled.fk_lu_billing_type, 
+'  vwitemsbilled.billing_type, vwitemsbilled.item, vwitemsbilled.mbs_item, vwitemsbilled.user_item, 
+'  vwitemsbilled.ama_item, vwitemsbilled.descriptor, vwitemsbilled.descriptor_brief, 
+'  vwitemsbilled.gst_rate, vwitemsbilled.percentage_fee_rule, vwitemsbilled.payer_details, 
+'  vwitemsbilled.payer_branch, vwitemsbilled.payer_organisation, vwitemsbilled.payer_branch_street1, 
+'  vwitemsbilled.payer_branch_street2, vwitemsbilled.payer_branch_postcode, vwitemsbilled.payer_branch_town, 
+'  vwitemsbilled.payer_branch_state, vwitemsbilled.payer_person_street1, vwitemsbilled.payer_person_street2, 
+'  vwitemsbilled.payer_person_town, vwitemsbilled.payer_person_state, vwitemsbilled.payer_person_postcode, 
+'  vwitemsbilled.payer_person_wholename, vwitemsbilled.payer_person_title
+'    FROM billing.payments_received
+'    JOIN billing.lu_payment_method ON payments_received.fk_lu_payment_method = lu_payment_method.pk
+'    JOIN billing.vwitemsbilled ON payments_received.fk_invoice = vwitemsbilled.fk_invoice;
+' 
+' ALTER TABLE billing.vwpayments
+'   OWNER TO richard;
+' 
+' 
+' 
+' 

@@ -21,6 +21,11 @@
 'ONLY FOR PROOF OF CONCEPT, much of the code is really bad
 'many routines are redundant/duplicated
 'many of the database calls are redundant duplicated
+'fix this constraint in back end which is named wrong.
+' CONSTRAINT invoices_fk_doctor_raising_fkey FOREIGN KEY (fk_staff_provided_service)
+'       REFERENCES admin.staff (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+
 '-----------------------------------------------------------------
 Private currentconsult As CConsult
 Private last_Fee_type As String
@@ -109,6 +114,7 @@ Private Const cTab_Invoices As Integer = 0
 Private Const cTab_Takings As Integer = 1
 Private Const cTab_Batching As Integer = 2
 Private Const cTab_Banking As Integer = 3
+Private form_batching As FBulkBillBatching
 
 Public Sub Init() 
    '---------------------------------------------------------
@@ -149,18 +155,19 @@ Public Sub Init()
       .Columns.count = 2
    End With
    With cvwItemsBilled
-      .Columns.count = 11
+      .Columns.count = 12
       .Columns[0].text = "Patient"
       .Columns[1].text = "Seen By"
       .Columns[2].text = "Location"
       .Columns[3].text = "Visit Date"
       .Columns[4].text = "Item"
       .Columns[5].text = "Descriptor"
-      .Columns[6].text = "Fee"
-      .Columns[7].text = "GST"
-      .Columns[8].text = "Due"
-      .Columns[9].text = "Paid"
-      .Columns[10].text = "Rebate"
+      .Columns[6].text = "Invoice To"
+      .Columns[7].text = "Fee"
+      .Columns[8].text = "GST"
+      .Columns[9].text = "Due"
+      .Columns[10].text = "Paid"
+      .Columns[11].text = "Rebate"
    End With
    VSplitMain_Layout = VSplitMain_Layout  
    Me.Center()
@@ -527,6 +534,10 @@ Public Sub gvwItemsBilled_DblClick()
    Print "onrow_itmes, oncol_items", onrow_items, OnCol_Items
    Print "gvwBilled.row", gvwItemsBIlled.Row
    Print "bexit is", bexit
+   If gvwItemsBIlled.row = - 1 Then
+      gvwItemsBIlled.SetFocus()
+      Return
+   Endif
    If bPayingInvoice Or bexit Or gvwItemsBIlled.Column = 4 Or txtpatient.text = "" Or gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column].text <> "" Then Return 
    If gvwItemsBIlled.Row > 0 And gvwItemsBIlled[0, 0].text = "" Then 'if user clicks on row and row above not filled in move back FIXME THIS CODE DOES NOT DO THIS
       onrow_items = 0
@@ -911,6 +922,10 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
       invoice!date_printed = Now()
       invoice!notes = cmbInvoiceComments.Text
       invoice!reference = Trim(txtReferenceDetails.text)
+      If bBulkBill Then
+         If rbInvoiceToMedicare.value = True Then invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare
+         If rbInvoiceToVeterans.value = True Then invoice!fk_lu_bulk_billing_type = const.BulkBilling_Type_Veteran
+      Endif
       If cmbSeenBy.Index <> -1 Then    
          invoice!fk_staff_provided_service = staff[cmbSeenBy.index]!fk_staff
       End If 
@@ -1243,6 +1258,10 @@ Public Sub mnuItems_Click()
          gvwItemsBIlled_Delete_Row(onrow_items)
       Case "delete all items"
          gvwItemsBIlled_Clear()
+      Case "add item"
+         Inc gvwItemsBIlled.Rows.count
+         gvwItemsBIlled.row = gvwItemsBIlled.Rows.Max
+         gvwItemsBilled_DblClick()
    End Select 
    
 End
@@ -1538,7 +1557,7 @@ Public Sub MainToolbar_Click()
                Goto Missing_MedicareNumber
             Endif
          Endif
-         Save(bBulkBill_Yes, bPrint_Yes, bAccount_No) ', bPaid_No)
+         Save(bBulkBill_Yes, bPrint_No, bAccount_No) ', bPaid_No) 'FIXME TO bPrint_Yes to print
       Case "print receipt"
          Save(bBulkBill_No, bPrint_Yes, bAccount_No) ', bPaid_Yes)
       Case "receipt no print"
@@ -1609,14 +1628,31 @@ Public Sub cvwItemsBilled_Refresh()
       If Not IsNull(Item_Billed!user_item) Then item = Item_Billed!user_item
       cvwItemsBilled[Item_Billed!pk_items_billed][4] = item
       cvwItemsBilled[Item_Billed!pk_items_billed][5] = Item_Billed!descriptor_brief
-      cvwItemsBilled[Item_Billed!pk_items_billed][6] = Item_Billed!amount
-      cvwItemsBilled[Item_Billed!pk_items_billed][7] = Item_Billed!amount_gst
+      '------------------------------
+      'work out who the invoice is to
+      '------------------------------
+      If Not IsNull(Item_Billed!fk_lu_bulk_billing_type) Then
+         If Item_Billed!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
+             cvwItemsBilled[Item_Billed!pk_items_billed][6] = "Medicare"
+         Else
+             cvwItemsBilled[Item_Billed!pk_items_billed][6] = "Veterans"
+         Endif
+      Endif
+      If Not IsNull(Item_Billed!payer_organisation) Then
+         cvwItemsBilled[Item_Billed!pk_items_billed][6] = Item_Billed!payer_organisation
+      Endif
+      If Not IsNull(Item_Billed!payer_person_wholename) Then
+         cvwItemsBilled[Item_Billed!pk_items_billed][6] = Item_Billed!payer_person_wholename
+      Endif
+      cvwItemsBilled[Item_Billed!pk_items_billed][7] = Item_Billed!amount
+      cvwItemsBilled[Item_Billed!pk_items_billed][8] = Item_Billed!amount_gst
       If Item_Billed!paid = True Then
-         cvwItemsBilled[Item_Billed!pk_items_billed][8] = "$0.0" 'amount due column
+         cvwItemsBilled[Item_Billed!pk_items_billed][9] = "$0.0" 'amount due column
       Else
-          cvwItemsBilled[Item_Billed!pk_items_billed][9] = Item_Billed!total_paid    
-      End If 
-       cvwItemsBilled[Item_Billed!pk_items_billed][8] = Item_Billed!total_owing  
+         cvwItemsBilled[Item_Billed!pk_items_billed][9] = Item_Billed!total_owing  
+      End If
+      cvwItemsBilled[Item_Billed!pk_items_billed][10] = Item_Billed!total_paid   
+         
         'FIXME ADD UP
      ' Else
      '    cvwItemsBilled[Item_Billed!pk_items_billed][8] = Item_Billed!amount 'FIXME ADD UP AMOUNT
@@ -2187,6 +2223,12 @@ Public Sub TabStrip1_Click()
                .tbWebBrowserZoomOut.Visible = True
             End With
          Endif
+      Case 2
+         If IsNull(form_batching) Then 
+            With form_batching = New FBulkBillBatching(Vbox_Batching)
+               .Init(staff, clinics)
+            End With
+         Endif
    End Select
    
 End
@@ -2338,7 +2380,6 @@ End
 ' ALTER FUNCTION billing.total_paid(integer)
 '   OWNER TO richard;
 ' 
-
 ' -- View: billing.vwitemsbilled
 ' 
 ' DROP VIEW billing.vwitemsbilled cascade;
@@ -2346,45 +2387,57 @@ End
 ' CREATE OR REPLACE VIEW billing.vwitemsbilled AS 
 '  SELECT items_billed.pk AS pk_items_billed, vwstaffinclinics.firstname AS staff_invoiced_firstname, 
 '  vwstaffinclinics.surname AS staff_invoiced_surname, vwstaffinclinics.wholename AS staff_invoiced_wholename, 
-'  vwstaffinclinics.title AS staff_invoiced_title, invoices.fk_staff_invoicing, invoices.date_printed, 
-'  invoices.notes, invoices.fk_staff_provided_service, invoices.fk_patient, vwpatients.firstname AS patient_firstname, 
-'  vwpatients.surname AS patient_surname, vwpatients.title AS patient_title, vwpatients.fk_sex AS patient_fk_sex, 
-'  vwpatients.sex AS patient_sex, vwpatients.wholename AS patient_wholename, invoices.fk_payer_person, invoices.fk_payer_branch, 
-'  invoices.date_invoiced, invoices.paid, invoices.latex, invoices.visit_date, invoices.reference, 
-'  vwstaffinclinics1.provider_number AS staff_provided_service_provider_number, 
-'  vwstaffinclinics1.firstname AS staff_provided_service_firstname, vwstaffinclinics1.surname AS staff_provided_service_surname, 
+'  vwstaffinclinics.title AS staff_invoiced_title, invoices.fk_staff_invoicing, invoices.date_printed, invoices.notes, 
+'  invoices.fk_lu_bulk_billing_type, invoices.fk_staff_provided_service, invoices.fk_patient, invoices.fk_branch,
+'  vwpatients.firstname AS patient_firstname, vwpatients.surname AS patient_surname, vwpatients.title AS patient_title, 
+'  vwpatients.fk_sex AS patient_fk_sex, vwpatients.sex AS patient_sex, vwpatients.wholename AS patient_wholename, 
+'  invoices.fk_payer_person, invoices.fk_payer_branch, invoices.date_invoiced, invoices.paid, invoices.latex, 
+'  invoices.visit_date, invoices.reference, vwstaffinclinics1.provider_number AS staff_provided_service_provider_number, 
+'  vwstaffinclinics1.firstname AS staff_provided_service_firstname, 
+'  vwstaffinclinics1.surname AS staff_provided_service_surname, 
 '  vwstaffinclinics1.wholename AS staff_provided_service_wholename, vwstaffinclinics1.title AS staff_provided_service_title, 
-'  data_branches.branch, items_billed.fk_fee_schedule, items_billed.amount, 
-'  items_billed.amount_gst, items_billed.fk_invoice, 
-'  billing.total_paid(items_billed.fk_invoice) as total_paid,
-'  case 
-'    when billing.total_paid(items_billed.fk_invoice) is not null then 
-'    case 
-'        when items_billed.amount_gst is not null  then (items_billed.amount  + items_billed.amount_gst)- billing.total_paid(items_billed.fk_invoice)
-'        else items_billed.amount - billing.total_paid(items_billed.fk_invoice)
-'             end   
-'         else 
-'            case 
-'       when items_billed.amount_gst is not null then items_billed.amount + items_billed.amount_gst
-'       else items_billed.amount
-'       end   
-'  end
-'  as total_owing,
-'  items_billed.fk_lu_billing_type, 
-'  lu_billing_type.type AS billing_type, fee_schedule.item, fee_schedule.mbs_item, fee_schedule.user_item, 
-'  fee_schedule.ama_item, fee_schedule.descriptor, fee_schedule.descriptor_brief, fee_schedule.gst_rate, 
-'  fee_schedule.percentage_fee_rule, 
+'  data_branches.branch, items_billed.fk_fee_schedule, items_billed.amount, items_billed.amount_gst, 
+'  billing.total_paid(items_billed.fk_invoice) AS total_paid_invoice, items_billed.fk_invoice, 
+'         CASE
+'             WHEN invoices.paid IS TRUE THEN 
+'             CASE
+'                 WHEN items_billed.amount_gst IS NOT NULL THEN items_billed.amount + items_billed.amount_gst
+'                 ELSE items_billed.amount
+'             END
+'             ELSE billing.total_paid(items_billed.fk_invoice)
+'         END AS total_paid, 
+'         CASE
+'             WHEN invoices.paid IS FALSE THEN 
+'             CASE
+'                 WHEN billing.total_paid(items_billed.fk_invoice) IS NOT NULL THEN 
+'                 CASE
+'                     WHEN items_billed.amount_gst IS NOT NULL THEN items_billed.amount + items_billed.amount_gst - billing.total_paid(items_billed.fk_invoice)
+'                     ELSE items_billed.amount - billing.total_paid(items_billed.fk_invoice)
+'                 END
+'                 ELSE 
+'                 CASE
+'                     WHEN items_billed.amount_gst IS NOT NULL THEN items_billed.amount + items_billed.amount_gst
+'                     ELSE items_billed.amount
+'                 END
+'             END
+'             ELSE NULL::money
+'         END AS total_owing, items_billed.fk_lu_billing_type, lu_billing_type.type AS billing_type, 
+'         fee_schedule.item, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, 
+'         fee_schedule.descriptor, fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule, 
 '         CASE
 '             WHEN invoices.fk_payer_branch IS NOT NULL THEN (((((vworganisations.organisation || '<BR>'::text) || (vworganisations.branch || '<BR>'::text)) || COALESCE(vworganisations.street1 || ' '::text, vworganisations.street2)) || '<BR>'::text) || (vworganisations.town || ' '::text)) || (vworganisations.postcode::text || ' '::text)
 '             WHEN invoices.fk_payer_person IS NOT NULL THEN ((((vwpersonsincludingpatients.wholename || '<BR>'::text) || COALESCE(vwpersonsincludingpatients.street1 || ' '::text, vwpersonsincludingpatients.street2)) || '<BR>'::text) || (vwpersonsincludingpatients.town || ' '::text)) || (vwpersonsincludingpatients.postcode::text || ' '::text)
 '             ELSE NULL::text
-'         END AS payer_details, vworganisations.branch AS payer_branch, vworganisations.organisation AS payer_organisation, 
-'         vworganisations.street1 AS payer_branch_street1, vworganisations.street2 AS payer_branch_street2, 
-'         vworganisations.postcode AS payer_branch_postcode, vworganisations.town AS payer_branch_town, 
-'         vworganisations.state AS payer_branch_state, vwpersonsincludingpatients.street1 AS payer_person_street1, 
-'         vwpersonsincludingpatients.street2 AS payer_person_street2, vwpersonsincludingpatients.town AS payer_person_town, 
-'         vwpersonsincludingpatients.state AS payer_person_state, vwpersonsincludingpatients.postcode AS payer_person_postcode, 
-'         vwpersonsincludingpatients.wholename AS payer_person_wholename, vwpersonsincludingpatients.title AS payer_person_title
+'         END AS payer_details, vworganisations.branch AS payer_branch, 
+'         vworganisations.organisation AS payer_organisation, vworganisations.street1 AS payer_branch_street1, 
+'         vworganisations.street2 AS payer_branch_street2, vworganisations.postcode AS payer_branch_postcode, 
+'         vworganisations.town AS payer_branch_town, vworganisations.state AS payer_branch_state, 
+'         vwpersonsincludingpatients.street1 AS payer_person_street1, 
+'         vwpersonsincludingpatients.street2 AS payer_person_street2, 
+'         vwpersonsincludingpatients.town AS payer_person_town, vwpersonsincludingpatients.state AS payer_person_state, 
+'         vwpersonsincludingpatients.postcode AS payer_person_postcode, 
+'         vwpersonsincludingpatients.wholename AS payer_person_wholename, 
+'         vwpersonsincludingpatients.title AS payer_person_title
 '    FROM billing.invoices
 '    JOIN admin.vwstaffinclinics ON invoices.fk_staff_invoicing = vwstaffinclinics.fk_staff
 '    JOIN admin.vwstaffinclinics vwstaffinclinics1 ON invoices.fk_staff_provided_service = vwstaffinclinics1.fk_staff
@@ -2402,35 +2455,15 @@ End
 ' GRANT ALL ON TABLE billing.vwitemsbilled TO staff;
 ' 
 ' CREATE OR REPLACE VIEW billing.vwpayments AS 
-'  SELECT payments_received.pk AS pk_payments_received, payments_received.fk_invoice, payments_received.amount AS amount_paid, 
-'  lu_payment_method.method AS payment_method, payments_received.date_paid, payments_received.fk_staff_receipted, 
-'  payments_received.fk_lu_payment_method, vwitemsbilled.pk_items_billed AS fk_items_billed, vwitemsbilled.staff_invoiced_firstname, 
-'  vwitemsbilled.staff_invoiced_surname, vwitemsbilled.staff_invoiced_wholename, vwitemsbilled.staff_invoiced_title, 
-'  vwitemsbilled.fk_staff_invoicing, vwitemsbilled.date_printed, vwitemsbilled.notes AS invoice_notes, 
-'  vwitemsbilled.fk_staff_provided_service, vwitemsbilled.fk_patient, vwitemsbilled.patient_firstname, 
-'  vwitemsbilled.patient_surname, vwitemsbilled.patient_title, vwitemsbilled.patient_fk_sex, vwitemsbilled.patient_sex, 
-'  vwitemsbilled.patient_wholename, vwitemsbilled.fk_payer_person, vwitemsbilled.fk_payer_branch, 
-'  vwitemsbilled.date_invoiced, vwitemsbilled.paid AS invoice_paid, vwitemsbilled.latex AS invoice_latex, 
-'  vwitemsbilled.visit_date, vwitemsbilled.reference AS invoice_reference, vwitemsbilled.staff_provided_service_provider_number, 
-'  vwitemsbilled.staff_provided_service_firstname, vwitemsbilled.staff_provided_service_surname, 
-'  vwitemsbilled.staff_provided_service_wholename, vwitemsbilled.staff_provided_service_title, 
-'  vwitemsbilled.branch, vwitemsbilled.fk_fee_schedule, vwitemsbilled.amount AS item_billed_amount, 
-'  vwitemsbilled.amount_gst AS item_billed_amount_gst, vwitemsbilled.fk_lu_billing_type, 
-'  vwitemsbilled.billing_type, vwitemsbilled.item, vwitemsbilled.mbs_item, vwitemsbilled.user_item, 
-'  vwitemsbilled.ama_item, vwitemsbilled.descriptor, vwitemsbilled.descriptor_brief, 
-'  vwitemsbilled.gst_rate, vwitemsbilled.percentage_fee_rule, vwitemsbilled.payer_details, 
-'  vwitemsbilled.payer_branch, vwitemsbilled.payer_organisation, vwitemsbilled.payer_branch_street1, 
-'  vwitemsbilled.payer_branch_street2, vwitemsbilled.payer_branch_postcode, vwitemsbilled.payer_branch_town, 
-'  vwitemsbilled.payer_branch_state, vwitemsbilled.payer_person_street1, vwitemsbilled.payer_person_street2, 
-'  vwitemsbilled.payer_person_town, vwitemsbilled.payer_person_state, vwitemsbilled.payer_person_postcode, 
-'  vwitemsbilled.payer_person_wholename, vwitemsbilled.payer_person_title
+'  SELECT payments_received.pk AS pk_payments_received, payments_received.fk_invoice, payments_received.amount AS amount_paid, lu_payment_method.method AS payment_method, payments_received.date_paid, payments_received.fk_staff_receipted, payments_received.fk_lu_payment_method, vwitemsbilled.pk_items_billed AS fk_items_billed, vwitemsbilled.staff_invoiced_firstname, vwitemsbilled.staff_invoiced_surname, vwitemsbilled.staff_invoiced_wholename, vwitemsbilled.staff_invoiced_title, vwitemsbilled.fk_staff_invoicing, vwitemsbilled.date_printed, vwitemsbilled.notes AS invoice_notes, vwitemsbilled.fk_staff_provided_service, vwitemsbilled.fk_patient, vwitemsbilled.patient_firstname, vwitemsbilled.patient_surname, vwitemsbilled.patient_title, vwitemsbilled.patient_fk_sex, vwitemsbilled.patient_sex, vwitemsbilled.patient_wholename, vwitemsbilled.fk_payer_person, vwitemsbilled.fk_payer_branch, vwitemsbilled.date_invoiced, vwitemsbilled.paid AS invoice_paid, vwitemsbilled.latex AS invoice_latex, vwitemsbilled.visit_date, v
 '    FROM billing.payments_received
 '    JOIN billing.lu_payment_method ON payments_received.fk_lu_payment_method = lu_payment_method.pk
 '    JOIN billing.vwitemsbilled ON payments_received.fk_invoice = vwitemsbilled.fk_invoice;
 ' 
 ' ALTER TABLE billing.vwpayments
-'   OWNER TO richard;
+'   OWNER TO easygp;
+' GRANT ALL ON TABLE billing.vwpayments TO easygp;
+' GRANT ALL ON TABLE billing.vwpayments TO staff;
 ' 
 ' 
-' 
-' 
+

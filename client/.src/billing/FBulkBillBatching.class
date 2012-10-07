@@ -1,14 +1,35 @@
 ' Gambas class file
 
-Private staff As Collection
-Private clinics As Collection
-Private fk_staff As Integer
-Private fk_branch As Integer
+' Copyright (C) 2008-2012 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'
+' A class to record the save and manipulate medicare/veteran bulk bill claims
+'-----------------------------------------------------------------------------
+'TODO: just about everything
+'      Investigate how medclaims work to lodge electronically
+'-----------------------------------------------------------------------------     
+Private staff As Collection                              'all staff loaded into staff combo
+Private clinics As Collection                            'all clinics in the location combo
+Private fk_staff As Integer                              'the current user 
+Private fk_branch As Integer                             'the current branch
 Private vouchers As Collection
 Private voucher As Collection
-Private fk_lu_bulk_billing_type As Integer
+Private fk_lu_bulk_billing_type As Integer               'const.BulkBilling_Type_Medicare/Veteran
 Private bExit As Boolean
 Private bKeyValid As Boolean
+Private fk_claim As Integer                              'key to billing.bulk_billing_claims
 
 Public Sub init(s As Collection, c As Collection)
    
@@ -33,22 +54,32 @@ Public Sub init(s As Collection, c As Collection)
    cmbClinic.index = 0
    cmbStaff.Index = 0
    rbBulkBillMedicare.value = True 'set fk_lu_bulk_billing_type
-   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
+   modEditAreaHelpers.Resize_labels(VBox_EditArea_Inner, lblMeasure)
    cvwVouchers_Refresh()
    bExit = False  
    
 End
 
+Public Sub EditArea_Clear()
+   
+   modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Inner)
+   VBox_EditArea_Outer.Padding = 0
+   txtNumberOfVouchers.text = 50
+   cvwVouchers.Clear      
+   vouchers = New Collection  
+   
+End
 
 Public Sub cvwVouchers_Refresh()
-   
+   '---------------------------------------------
+   'Refresh the list of vouchers in current claim
+   '---------------------------------------------   
+
    Dim grand_total As Variant
    Dim fk_last_invoice As Integer
    Dim invoice_count As Integer
    
-   lblGrandtotal.text = ""
-   lblVoucherCount.text = ""
-   cvwVouchers.Clear
+   EditArea_Clear()
    If bexit Then Return
    Vouchers = modBillingDBI.Bulk_Bill_Batching_Get_Vouchers(fk_staff, fk_branch, fk_lu_bulk_billing_type, Val(txtNumberOfVouchers.text))
    For Each voucher In Vouchers
@@ -70,8 +101,9 @@ Public Sub cvwVouchers_Refresh()
    Next
    If vouchers.count Then
       grand_total = modBillingDBI.Bulk_Bill_Batching_Get_Vouchers_Total(fk_staff, fk_branch, fk_lu_bulk_billing_type)
-      lblGrandtotal.text = modUtil.Money_Format(grand_total)
-      lblVoucherCount.Text = Str(invoice_count) & " vouchers"
+      txtClaimTotal.text = modUtil.Money_Format(grand_total)
+      txtActualVouchers.Text = Str(invoice_count) & " vouchers"
+      VBox_EditArea_Outer.Padding = 1
    Endif
    
 End
@@ -125,7 +157,7 @@ Public Sub MainToolbar_Click()
    Select Case Last.tag
       Case "print"
          claim_print()
-      Case "lodge"
+      Case "process"
          claim_lodge()
    End Select
    
@@ -135,10 +167,13 @@ Public Sub claim_print()
    '----------------------------------------------------------------------------------
    'prints html of the claim if staff so desire to cross reference to vouchers (paper)
    '---------------------------------------------------------------------------------- 
+   If Not Claim_Valid() Then Return    
    modPrinting.PrintHtml(Claim_HTML())
+   
 End
 
 Public Sub claim_lodge()
+   ' Save the claim to be lodged
    ' create table billing.link_invoice_bulk_bill_claim 
    ' (pk serial primary key,
    ' fk_claim integer not null,
@@ -148,8 +183,6 @@ Public Sub claim_lodge()
    '       ON UPDATE NO ACTION ON DELETE NO ACTION
    ' );
    ' 
-   ' COMMENT ON TABLE billing.link_invoice_bulk_bill_claim  IS
-   ' 'links each bulk billing claim back to the invoice hence items billed';
    ' 
    ' create table billing.bulk_billing_claims
    ' (pk serial primary key,
@@ -161,7 +194,6 @@ Public Sub claim_lodge()
    '  fk_branch integer not null,
    '  fk_medclaim integer default null,
    '  fk_lu_bulk_billing_type integer not null,
-   '  fk_link_invoice_bulk_bill_claim integer not null,
    '  fk_staff_provided_service integer not null,
    '  fk_staff_processed integer NOT NULL,
    '  html text NOT null,
@@ -180,37 +212,66 @@ Public Sub claim_lodge()
    ' CONSTRAINT bulk_billing_claims_fk_doctor_provided_service_fkey FOREIGN KEY (fk_staff_provided_service)
    '       REFERENCES admin.staff (pk) MATCH SIMPLE
    '       ON UPDATE NO ACTION ON DELETE NO ACTION
-   '   )
-   '   ;
-   ' 
-   '   COMMENT ON TABLE billing.bulk_billing_claims is
-   '   'Contains informaton about batching of bulk billing claims';
-   '   
-   '  comment on column billing.bulk_billing_claims.claim_id is
-   '  'The medicare issued coverslip number which accompanies the claim';
-   '  comment on column billing.bulk_billing_claims.claim_date is
-   '  'The date on which the claim was processed (paper) or lodged (medclaims)';
-   '  comment on column billing.bulk_billing_claims.voucher_count is
-   '  'the number of vouchers in the claim';
-   '  comment on column billing.bulk_billing_claims.fk_lu_bulk_billing_type  is
-   '   'key to billing.fk_lu_bulk_billing_type 1=medicare 2=veterans';
-   '  comment on column billing.bulk_billing_claims.fk_link_invoice_bulk_bill_claim is
-   '   'links a bulk bill claim to the original invoice AKA voucher details';
-   '  comment on column billing.bulk_billing_claims.fk_staff_processed is
-   '  'key to admin.staff table = staff member who processed this claim';
-   ' comment on column billing.bulk_billing_claims.html is
-   ' 'html summary of the bulk billing claim';
-   ' 
-   '   Alter table billing.link_invoice_bulk_bill_claim 
-   ' ADD CONSTRAINT link_invoice_bulk_bill_claim_fk_claim_fkey FOREIGN KEY (fk_claim)
-   '       REFERENCES billing.bulk_billing_claims (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION;
-   '       
+   
+   Dim claim As New CRow
+   Dim link_invoice_claim As CRow
+   Dim fk_last_invoice As Integer
+   
+   If VBox_EditArea_Inner.Padding = 0 Then Return ' no changes no claim
+   If Not Claim_Valid() Then Return
+   
+   If fk_claim Then
+      claim.put_unchanged(fk_claim, "fk_claim") 'currently cannot edit a claim
+   Else
+      claim!claim_date = Now()
+      claim!claim_amount = txtClaimTotal.Text
+      claim!claim_id = Trim(txtClaimIDNumber.text)
+      claim!voucher_count = Val(txtActualVouchers.text)
+      claim!fk_branch = modDBConnect.currentUser!fk_branch
+      If rbBulkBillMedicare.value = True Then 
+         claim!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare
+      Else
+         claim!fk_lu_bulk_billing_type = const.BulkBilling_Type_Veteran
+      Endif
+      claim!fk_staff_Provided_service = staff[cmbStaff.Index]!fk_staff
+      claim!fk_staff_processed = modDBConnect.currentUser!fk_staff
+      claim!html = Claim_HTML()
+   Endif
+   claim.Save("billing.bulk_billing_claims", "fk_claim")
+   For Each voucher In vouchers
+      If fk_last_invoice <> voucher!fk_invoice Then
+         fk_last_invoice = voucher!fk_invoice  
+         link_invoice_claim = New CRow   
+         link_invoice_claim!fk_invoice = voucher!fk_invoice
+         link_invoice_claim!fk_claim = claim!fk_claim
+         link_invoice_claim.Save("billing.link_invoice_bulk_bill_claim", "fk_link_invoice_bulk_bill_claim")
+      End If   
+   Next
+   modDBConnect.CommitTrans()
+   EditArea_Clear
    
 End
 
-Public Sub Claim_HTML() As String
-   'creates html table of a days takings
+Public Function Claim_Valid() As Boolean
+   '----------------------------------------------------------
+   'returns true if enough information to claim these vouchers
+   '----------------------------------------------------------   
+
+   If vouchers.count Then
+      If Trim(txtClaimIDNumber.text) = "" Then
+         txtClaimIDNumber.BackGround = Color.rgb(95, 255, 175)
+         txtClaimIDNumber.SetFocus()
+         Return
+      End If   
+   Endif
+   Return cvwVouchers.Count
+   
+End
+
+Public Function Claim_HTML() As String
+   '------------------------------------------------------------
+   'creates html table of a invoices(aka vouchers) being claimed
+   '------------------------------------------------------------
    
    Dim sHtml As String
    Dim sRow As String
@@ -224,22 +285,54 @@ Public Sub Claim_HTML() As String
       sBulkBillType = "Veterans"
    Endif
    
+   ' sHtml = "<HTML><BODY>"
+   ' shtml &= "<P><B>" & modDBConnect.currentUser!organisation & " " & modDBConnect.currentUser!branch & " Bulk Bill Claim</B></P>"
+   ' shtml &= "<P><B>Claim Type:</B>" & sBulkbillType & "<BR>" 
+   ' shtml &= "<B>Claim No.:</B>" & Trim(txtClaimIDNumber.text) & "<BR>" 
+   ' sHtml &= "<B>Staff Member:</B>" & cmbStaff.Text & "<BR>"
+   ' sHtml &= "<B>Location:</B>" & cmbClinic.Text & "<BR>"
+   ' sHtml &= "<B>Process Date:</B>" & Format(Now, "dd/mm/yyyy") & "<BR>" 
+   ' sHtml &= "<B>Processed By:</B>" & modDBConnect.currentUser!wholename & "<BR>" 
+   ' sHtml &= "<B>Vouchers:</B>" & Replace(txtActualVouchers.text, "vouchers", "") & "<BR>" 
+   ' sHtml &= "<B>Claim Total:</B>" & txtClaimTotal.text & "<BR></P><HR>" 
+   
    sHtml = "<HTML><BODY>"
-   shtml &= "<P><B>" & modDBConnect.currentUser!organisation & " " & modDBConnect.currentUser!branch & "</B><P>"
-   shtml &= "<P><B>Type of Claim:</B>" & sBulkbillType & "<BR>" 
-   sHtml &= "<B>Staff Member:</B>" & cmbStaff.Text & "<BR>"
-   sHtml &= "<B>Location:</B>" & cmbClinic.Text & "<BR>"
-   sHtml &= "<B>Process Date:</B>" & Format(Now, "dd/mm/yyyy") & "<BR>" 
-   sHtml &= "<B>Processed By:</B>" & modDBConnect.currentUser!wholename & "<BR>" 
-   sHtml &= "<B>Vouchers:</B>" & Replace(lblVoucherCount.Text, "vouchers", "") & "<BR>" 
-   sHtml &= "<B>Claim Total:</B>" & lblGrandtotal.Text & "<BR></P><HR>" 
+   shtml &= "<P><B>" & modDBConnect.currentUser!organisation & " " & modDBConnect.currentUser!branch & " Bulk Bill Claim</B></P>"
+   sHtml &= "<TABLE WIDTH=100% CELLPADDING=1 CELLSPACING=0>"
+   "<COL WIDTH=20%>"
+   "<COL WIDTH=80%>"
+   sHtml &= Bulk_Bill_Html_heading_Row_Template() 
+   shtml = Replace(shtml, "%heading%", "Claim Type")
+   shtml = Replace(shtml, "%value%", sBulkbillType)
+   sHtml &= Bulk_Bill_Html_heading_Row_Template()
+   shtml = Replace(shtml, "%heading%", "Claim Number")
+   shtml = Replace(shtml, "%value%", Trim(txtClaimIDNumber.text))
+   sHtml &= Bulk_Bill_Html_heading_Row_Template()
+   shtml = Replace(shtml, "%heading%", "Staff Member")
+   shtml = Replace(shtml, "%value%", cmbStaff.Text)
+   sHtml &= Bulk_Bill_Html_heading_Row_Template()
+   shtml = Replace(shtml, "%heading%", "Location")
+   shtml = Replace(shtml, "%value%", cmbClinic.Text)
+   sHtml &= Bulk_Bill_Html_heading_Row_Template()
+   shtml = Replace(shtml, "%heading%", "Process Date")
+   shtml = Replace(shtml, "%value%", Format(Now, "dd/mm/yyyy"))
+   sHtml &= Bulk_Bill_Html_heading_Row_Template() 
+   shtml = Replace(shtml, "%heading%", "Processed By")
+   shtml = Replace(shtml, "%value%", modDBConnect.currentUser!wholename)
+   sHtml &= Bulk_Bill_Html_heading_Row_Template()
+   shtml = Replace(shtml, "%heading%", "Total Vouchers")
+   shtml = Replace(shtml, "%value%", Replace(txtActualVouchers.text, "vouchers", ""))
+   sHtml &= Bulk_Bill_Html_Heading_Row_Template()
+   shtml = Replace(shtml, "%heading%", "Claim Total")
+   shtml = Replace(shtml, "%value%", txtClaimTotal.text)
+   sHtml &= "</TABLE><HR>"
    sHtml &= "<TABLE WIDTH=100% CELLPADDING=1 CELLSPACING=0>"
    "<COL WIDTH=43*>"
    "<COL WIDTH=43*>"
    "<COL WIDTH=43*>"
    "<COL WIDTH=43*>"
    "<COL WIDTH=43*>"
-    '------------------------------------------------------
+   '------------------------------------------------------
    'now add a row for each money recieved
    'receipt no|Payer|payment type|Cheque Drawer|Amount|Tax
    '------------------------------------------------------
@@ -249,7 +342,6 @@ Public Sub Claim_HTML() As String
    shtml = Replace(shtml, "%date_visit%", "<B>Visit Date</B>")
    shtml = Replace(shtml, "%item%", "<B>Item</B>")
    shtml = Replace(shtml, "%amount%", "<B>Amount</B>") 
-   
    For Each voucher In Vouchers
       sHtml &= "<TR VALIGN=TOP>" & Bulk_Bill_Html_Row_Template()
       If fk_last_invoice <> voucher!fk_invoice Then
@@ -293,10 +385,34 @@ Public Function Bulk_Bill_Html_Row_Template() As String
    
 End
 
-Public Sub pnlToolButtons_Enter()
+Public Function Bulk_Bill_Html_Heading_Row_Template() As String
+   
+   Return ""
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=20%>"
+   "   <P<B>%heading%</B></P>"
+   "</TD>"
+   "<TD WIDTH=80%>"
+   "   <P>%value%</P>"
+   "</TD>"
+   "</TR>"
+End
 
-       tbPrintClaim.Enabled = cvwVouchers.count
-       tbProcessClaim.Enabled = cvwVouchers.count
- 
+Public Sub pnlToolButtons_Enter()
+   
+   tbPrintClaim.Enabled = cvwVouchers.count
+   tbProcessClaim.Enabled = cvwVouchers.count
+   
+End
+
+Public Sub EditArea_TextBox_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   
+End
+
+Public Sub EditArea_TextBox_Lost_Focus()
+   
+    Last.BackGround = Color.White
 
 End

@@ -25,7 +25,8 @@
 ' CONSTRAINT invoices_fk_doctor_raising_fkey FOREIGN KEY (fk_staff_provided_service)
 '       REFERENCES admin.staff (pk) MATCH SIMPLE
 '       ON UPDATE NO ACTION ON DELETE NO ACTION,
-
+' NOTE:  Ian - don't get hung up on all the inappriopriate names
+'        for columnviews and controls - work in progress - will fix
 '-----------------------------------------------------------------
 Private currentconsult As CConsult
 Private last_Fee_type As String
@@ -76,6 +77,10 @@ Private Unbilled_Consultations As Collection
 Private Unbilled_consultation As Collection
 Private payers As Collection
 Private payer As Collection   'could be patient/organisation etc
+Private Bulk_Billed_Consultations As Collection
+Private Bulk_Billed_Consultation As Collection
+Private Bulk_Billed_Claims As Collection
+Private Bulk_Billed_Claim As Collection
 Private cGridColumnItem_ItemNumber As Integer = 0
 Private cGridColumnItem_BriefDescriptor As Integer = 1
 Private cGridColumnItem_Fee As Integer = 2
@@ -110,11 +115,14 @@ Private Const cTabPatientsAccounts As Integer = 1
 Private branches As Collection
 Private branch As Collection
 Private form_html_viewer As FHtmlViewer
+'the main (large) tabstrip - tabstrip1
 Private Const cTab_Invoices As Integer = 0
 Private Const cTab_Takings As Integer = 1
 Private Const cTab_Batching As Integer = 2
 Private Const cTab_Banking As Integer = 3
 Private form_batching As FBulkBillBatching
+
+Static Private Form_Billing As FRecordVisit
 
 Public Sub Init() 
    '---------------------------------------------------------
@@ -125,6 +133,7 @@ Public Sub Init()
    
    Dim x As Integer
    
+   Form_Billing = Me
    With form_billingcards = New FPatientBillingCards(Vbox_PatientBillingCards)
       .Init(VBox_EditArea_Outer)
       .HBox_NextOfKin.Visible = False   
@@ -231,20 +240,34 @@ Public Sub cvwUnBilled_Refresh()
    'Display a list of all unbilled consultations ordered by appointment date
    '-------------------------------------------------------------------------
    
-   EditArea_Clear()
-   Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get()
-   cvwUnBilled.Clear()
-   For Each Unbilled_consultation In Unbilled_Consultations
-      cvwUnBilled.Add(Unbilled_consultation!pk, 0)
-      cvwUnBilled[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
-      cvwUnBilled[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
-   Next
-   If cvwUnBilled.count Then
-      cvwUnBilled.MoveFirst()
-      cvwUnBilled.Item.Selected = True
-      cvwUnBilled_Select()
-      
-   Endif
+   Select Case TabStrip1.Index
+      Case cTab_Invoices                 'generate and save invoice/receipt
+         EditArea_Clear()
+         Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get()
+         cvwUnBilled.Clear()
+         For Each Unbilled_consultation In Unbilled_Consultations
+            cvwUnBilled.Add(Unbilled_consultation!pk, 0)
+            cvwUnBilled[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
+            cvwUnBilled[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
+         Next
+         If cvwUnBilled.count Then
+            cvwUnBilled.MoveFirst()
+            cvwUnBilled.Item.Selected = True
+            cvwUnBilled_Select()
+         Endif
+      Case cTab_Batching                  'medicare and veteran batching tab
+         cvwUnBilled.Clear()
+         Bulk_Billed_Claims = modBillingDBI.Bulk_Bill_Batching_Get_Claims()
+         For Each Bulk_Billed_Claim In Bulk_Billed_Claims
+            cvwUnBilled.Add(Bulk_Billed_Claim!pk, 0)
+            cvwUnBilled[Bulk_Billed_Claim!pk][0] = Format(Bulk_Billed_Claim!claim_date, "dd/mm/yyyy")
+            cvwUnBilled[Bulk_Billed_Claim!pk][1] = Bulk_Billed_Claim!claim_id
+         Next
+         If Bulk_Billed_Claims.count Then
+            cvwUnBilled.MoveFirst()
+            cvwUnBilled.Item.Selected = True  
+         Endif
+   End Select
    
 End
 
@@ -255,54 +278,60 @@ Public Sub cvwUnBilled_Select()
    'assume a standard consultation 
    'Ian going to bypass some of this by parsing consult item numbers in the consult
    '-------------------------------------------------------------------------------------
-   TabStrip1.index = 0
-   cvwUnBilled.MoveCurrent()
-   EditArea_Clear()                                                                    'clear input area
-   ' bPayingInvoice = True
-   Unbilled_consultation = Unbilled_Consultations[cvwUnBilled.Item.key]
-   Try fk_lu_default_billing_level = Unbilled_consultation!fk_lu_default_billing_level
-   If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private
-   fk_patient = Unbilled_consultation!fk_patient
-   bExit = True   
-   txtpatient.text = Unbilled_consultation!wholename
-   txtDate.text = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
-   Try Payer_Get(Unbilled_consultation)
-   fk_staff = Unbilled_consultation!fk_staff 
-   For Each Staff_Member In staff
-      If Staff_Member!fk_staff = fk_staff Then
-         cmbSeenBy.index = cmbSeenBy.Find(Staff_Member!wholename)
-      Endif
-   Next
-   duration = Val(Split(Unbilled_consultation!duration, ":")[1]) + Val(Split(Unbilled_consultation!duration, ":")[0]) * 60        ' e.g 10, 20, 30, 50, 60, 70 .... etc!
-   txtDuration.text = Str(duration) & " minutes"
-   Select Case duration
-      Case 1 To 19
-         consult_item_number = "23"
-      Case 20 To 40
-         consult_item_number = "36"
-      Case 40 To 100
+
+   Select Case TabStrip1.Index
+      Case cTab_Invoices
+         TabStrip1.index = 0
+         cvwUnBilled.MoveCurrent()
+         EditArea_Clear()                                                                    'clear input area
+         ' bPayingInvoice = True
+         Unbilled_consultation = Unbilled_Consultations[cvwUnBilled.Item.key]
+         Try fk_lu_default_billing_level = Unbilled_consultation!fk_lu_default_billing_level
+         If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private
+         fk_patient = Unbilled_consultation!fk_patient
+         bExit = True   
+         txtpatient.text = Unbilled_consultation!wholename
+         txtDate.text = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
+         Try Payer_Get(Unbilled_consultation)
+         fk_staff = Unbilled_consultation!fk_staff 
+         For Each Staff_Member In staff
+            If Staff_Member!fk_staff = fk_staff Then
+               cmbSeenBy.index = cmbSeenBy.Find(Staff_Member!wholename)
+            Endif
+         Next
+         duration = Val(Split(Unbilled_consultation!duration, ":")[1]) + Val(Split(Unbilled_consultation!duration, ":")[0]) * 60        ' e.g 10, 20, 30, 50, 60, 70 .... etc!
+         txtDuration.text = Str(duration) & " minutes"
+         Select Case duration
+            Case 1 To 19
+               consult_item_number = "23"
+            Case 20 To 40
+               consult_item_number = "36"
+            Case 40 To 100
+         End Select
+         cmbFeeType.Enabled = True  
+         
+         Select Case fk_lu_default_billing_level
+            Case const.Billing_Default_Level_BulkBill
+               cmbFeeType.Enabled = False 
+               If Unbilled_consultation!veteran_number <> "" Then
+                  rbInvoiceToVeterans.value = True
+               Else
+                  rbInvoiceToMedicare.value = True
+               Endif
+            Case const.Billing_Default_Level_Private
+               rbInvoiceToPatient.value = True
+            Case const.Billing_Default_Level_HealthCareCardConcession
+            Case const.Billing_Default_Level_PensionerConcession
+            Case const.Billing_Default_Level_MedicoLegal 
+         End Select
+         bExit = False  
+         form_billingcards.Display_Patient_Data(Unbilled_consultation) 
+         VBox_EditArea_Outer.Enabled = True 
+         gvwItemsBIlled.Enabled = True 
+         cvwItemsBilled_Refresh()
+      Case cTab_Batching
+          form_batching.Claim_Display(cvwUnBilled.Item.key)
    End Select
-   cmbFeeType.Enabled = True  
-   
-   Select Case fk_lu_default_billing_level
-      Case const.Billing_Default_Level_BulkBill
-         cmbFeeType.Enabled = False 
-         If Unbilled_consultation!veteran_number <> "" Then
-            rbInvoiceToVeterans.value = True
-         Else
-            rbInvoiceToMedicare.value = True
-         Endif
-      Case const.Billing_Default_Level_Private
-         rbInvoiceToPatient.value = True
-      Case const.Billing_Default_Level_HealthCareCardConcession
-      Case const.Billing_Default_Level_PensionerConcession
-      Case const.Billing_Default_Level_MedicoLegal 
-   End Select
-   bExit = False  
-   form_billingcards.Display_Patient_Data(Unbilled_consultation) 
-   VBox_EditArea_Outer.Enabled = True 
-   gvwItemsBIlled.Enabled = True 
-   cvwItemsBilled_Refresh()
    
 End
 
@@ -566,6 +595,7 @@ Public Sub gvwItemsBilled_DblClick()
    End With
    
 End
+
 Public Sub gvwItemsBilled_DblClick_old()
    
    Dim i As Integer
@@ -862,7 +892,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
    Dim total_paid As Float
    Dim invoice_total As Float
    Dim sMsg As String
-
+   
    If VBox_EditArea_Outer.Padding = 0 Then Return           'no data change no save
    If Not Valid_Invoice_Items() Then Return                 'items invalid no save
    '-----------------------------------------------------
@@ -905,7 +935,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
             Message.Info("The amount being paid is greater than the invoice total.")
             Return
          Endif
-       
+         
       Endif
    End If   
    '-----------------------------------------------------------------------------
@@ -938,12 +968,12 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
    '----------------------------------
    'has the invoice been paid in full?- fix this code
    '----------------------------------
-    If invoice_total = total_paid Then 
-       invoice!paid = True  
-       bpaid = True
-    Else
-       bpaid = False 
-    End If  
+   If invoice_total = total_paid Then 
+      invoice!paid = True  
+      bpaid = True
+   Else
+      bpaid = False 
+   End If  
    invoice.Save("billing.invoices", "fk_invoice")
    '------------------------------------
    'Get the items from the grid and save
@@ -982,7 +1012,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
                   payment!fk_lu_payment_method = payment_method!pk
                   Break
                Endif
-           Next
+            Next
             'this simple way screwed by ians smart changes.
             '   payment!fk_lu_payment_method = Payment_Methods[gvwPayments[x, cGridColumnPayments_PaymentType].text]!fk_lu_payment_method  
             payment!date_paid = Now()
@@ -1004,15 +1034,13 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
       modDBConnect.update("billing.invoices", Null, ["pk": invoice!fk_invoice, "latex": invoice!latex])
    End If   
    modDBConnect.CommitTrans
-   If TabStripPatients.index = 0 Then 
+   If TabStripBilling.index = 0 Then 
       cvwUnBilled_Refresh()
    Else
       cvwItemsBilled_Refresh()  
    End If 
    
 End 
-
-
 
 Public Sub Billing_Type_Get_Pk(txt As String) As Integer
    
@@ -1356,8 +1384,7 @@ Public Sub Payment_Calculate_Total()
 End
 
 Public Function Money_Add(monies As Variant[]) As String
-  'IAN FIXME I NEED FUNCTION TO ADD UP MONEY 
-   
+   'IAN FIXME I NEED FUNCTION TO ADD UP MONEY 
    
 End
 
@@ -1561,7 +1588,7 @@ Public Sub MainToolbar_Click()
       Case "print receipt"
          Save(bBulkBill_No, bPrint_Yes, bAccount_No) ', bPaid_Yes)
       Case "receipt no print"
-          Save(bBulkBill_No, bPrint_No, bAccount_No) ', bPaid_Yes)
+         Save(bBulkBill_No, bPrint_No, bAccount_No) ', bPaid_Yes)
       Case "print account"
          Save(bBulkBill_No, bPrint_Yes, bAccount_Yes) ', bPaid_No)
    End Select
@@ -1633,9 +1660,9 @@ Public Sub cvwItemsBilled_Refresh()
       '------------------------------
       If Not IsNull(Item_Billed!fk_lu_bulk_billing_type) Then
          If Item_Billed!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
-             cvwItemsBilled[Item_Billed!pk_items_billed][6] = "Medicare"
+            cvwItemsBilled[Item_Billed!pk_items_billed][6] = "Medicare"
          Else
-             cvwItemsBilled[Item_Billed!pk_items_billed][6] = "Veterans"
+            cvwItemsBilled[Item_Billed!pk_items_billed][6] = "Veterans"
          Endif
       Endif
       If Not IsNull(Item_Billed!payer_organisation) Then
@@ -1652,12 +1679,12 @@ Public Sub cvwItemsBilled_Refresh()
          cvwItemsBilled[Item_Billed!pk_items_billed][9] = Item_Billed!total_owing  
       End If
       cvwItemsBilled[Item_Billed!pk_items_billed][10] = Item_Billed!total_paid   
-         
-        'FIXME ADD UP
-     ' Else
-     '    cvwItemsBilled[Item_Billed!pk_items_billed][8] = Item_Billed!amount 'FIXME ADD UP AMOUNT
+      
+      'FIXME ADD UP
+      ' Else
+      '    cvwItemsBilled[Item_Billed!pk_items_billed][8] = Item_Billed!amount 'FIXME ADD UP AMOUNT
       '   cvwItemsBilled[Item_Billed!pk_items_billed][9] = Item_Billed!amount_paid 
-    '  Endif
+      '  Endif
       fk_last_invoice = Item_Billed!fk_invoice  
    Next
    
@@ -1675,7 +1702,7 @@ Public Sub cvwItemsBilled_Select()
    '--------------------------------------------------------------------------------------------   
    
    If cvwItemsBilled.count = 0 Then Return  
-
+   
    bexit = True
    cvwItemsBilled.MoveCurrent
    HBox_InvoiceCommentS.Visible = False  
@@ -1882,7 +1909,6 @@ Public Sub EditArea_TextBox_Change()
    
 End
 
-
 Public Sub cvwPatients_Select()
    '----------------------------------------------------------------------------------------
    ' cvwPatients:
@@ -1929,15 +1955,17 @@ Public Sub Item_Billed_Display()
    
 End
 
-Public Sub TabStripPatients_Click()
+Public Sub TabStripBilling_Click()
    '-------------------------------------------------------
    'User has clicked on the tabstip containing either 
    'the unbilled patients already seen or the tab to allow
    'staff to search for a patient's accounts
    '-------------------------------------------------------
    
+   If BExit Then Return 
    Select Case Last.index
       Case cTabPatientsUnbilled
+         
          cvwUnBilled.SetFocus()
       Case cTabPatientsAccounts
          txtFindPatient.SetFocus() 'and clear the edit area
@@ -2214,7 +2242,17 @@ Public Sub TabStrip1_Click()
    
    Select Case TabStrip1.index
       Case 0
+         bExit = True   
+         TabStripBilling.index = 1
+         TabStripBilling.text = "Existing Accounts"
+         TabStripBilling.index = 0
+         TabStripBilling.text = "UnBilled"
+         chkTodayOnly.Visible = True   
+         bExit = False  
+         cvwUnBilled_Refresh
+         TabStripBilling.index = 0 
       Case 1
+         
          If IsNull(form_html_viewer) Then
             With form_html_viewer = New FHtmlViewer(Vbox_DaysTakings)
                .WebView1.HTML = Days_Takings_Create_HTML()
@@ -2223,12 +2261,21 @@ Public Sub TabStrip1_Click()
                .tbWebBrowserZoomOut.Visible = True
             End With
          Endif
+         
       Case 2
+         bExit = True
          If IsNull(form_batching) Then 
             With form_batching = New FBulkBillBatching(Vbox_Batching)
                .Init(staff, clinics)
             End With
          Endif
+         TabStripBilling.index = 1
+         TabStripBilling.text = "Paid Claims"
+         TabStripBilling.index = 0
+         TabStripBilling.text = "Upaid Claim"
+         chkTodayOnly.Visible = False 
+         cvwUnBilled_Refresh() 
+         bExit = False  
    End Select
    
 End
@@ -2276,13 +2323,13 @@ Public Sub Days_Takings_Create_HTML(Optional for_date As Date = Now()) As String
       If Not IsNull(amount!payer_details) Then 
          If Not IsNull(amount!fk_payer_branch) Then 
             
-          sHtml = Replace(sHtml, "%payer%", amount!payer_organisation & " " & amount!payer_branch)
+            sHtml = Replace(sHtml, "%payer%", amount!payer_organisation & " " & amount!payer_branch)
          End If
          If Not IsNull(amount!fk_payer_person) Then 
-           sHtml = Replace(sHtml, "%payer%", amount!payer_person_wholename) 
+            sHtml = Replace(sHtml, "%payer%", amount!payer_person_wholename) 
          End If   
       Else
-          sHtml = Replace(sHtml, "%payer%", amount!patient_wholename) 
+         sHtml = Replace(sHtml, "%payer%", amount!patient_wholename) 
       End If   
       sHtml = Replace(sHtml, "%payment type%", amount!payment_method)
       sHtml = Replace(sHtml, "%drawer%", " ") 'FIXME
@@ -2313,12 +2360,10 @@ Public Sub Days_Takings_Create_HTML(Optional for_date As Date = Now()) As String
    
 End
 
-
-
 Public Sub DateChooser1_Activate()
-
-  form_html_viewer.WebView1.html = Days_Takings_Create_HTML(Last.value)
-  
+   
+   form_html_viewer.WebView1.html = Days_Takings_Create_HTML(Last.value)
+   
 End
 
 Public Function takings_html_row_template() As String
@@ -2346,6 +2391,7 @@ Public Function takings_html_row_template() As String
 End
 
 Public Function totals_html_row_template() As String
+   
    Return ""
    "<TD WIDTH=212>"
    "<P>%payment_method%</P>"
@@ -2466,4 +2512,48 @@ End
 ' GRANT ALL ON TABLE billing.vwpayments TO staff;
 ' 
 ' 
-
+'  grant all On billing.vwclaims To staff;
+'  
+' drop view billing.vwClaims;
+' Create or replace view billing.vwClaims as
+' SELECT 
+'   billing.bulk_billing_claims.pk || '-'::text || billing.link_invoice_bulk_bill_claim.fk_invoice::text as pk_view,
+'   billing.bulk_billing_claims.pk AS fk_bulk_billing_claim,
+'   billing.bulk_billing_claims.claim_id,
+'   billing.bulk_billing_claims.claim_date,
+'   billing.bulk_billing_claims.claim_amount,
+'   billing.bulk_billing_claims.voucher_count,
+'   billing.bulk_billing_claims.finalised,
+'   billing.bulk_billing_claims.fk_branch,
+'   billing.bulk_billing_claims.fk_medclaim,
+'   billing.bulk_billing_claims.fk_lu_bulk_billing_type,
+'   billing.bulk_billing_claims.fk_staff_provided_service,
+'   billing.bulk_billing_claims.fk_staff_processed,
+'   billing.bulk_billing_claims.html,
+'   billing.lu_bulk_billing_type.type AS bulk_billing_type,
+'   admin.vwstaffinclinics.wholename AS staff_provided_service_wholename,
+'   admin.vwstaffinclinics.branch,
+'   billing.link_invoice_bulk_bill_claim.fk_invoice,
+'   billing.invoices.latex AS invoice_latex,
+'   billing.invoices.fk_patient,
+'   contacts.vwpatients.wholename AS patient_wholename,
+'   billing.invoices.visit_date,
+'   billing.fee_schedule.mbs_item,
+'   billing.items_billed.amount,
+'   vwstaffinclinics1.wholename AS staff_processed_wholename
+'   
+' FROM
+'   billing.bulk_billing_claims
+'   INNER JOIN billing.lu_bulk_billing_type ON (billing.bulk_billing_claims.fk_lu_bulk_billing_type = billing.lu_bulk_billing_type.pk)
+'   INNER JOIN billing.link_invoice_bulk_bill_claim ON (billing.bulk_billing_claims.pk = billing.link_invoice_bulk_bill_claim.fk_claim)
+'   INNER JOIN billing.invoices ON (billing.link_invoice_bulk_bill_claim.fk_invoice = billing.invoices.pk)
+'   INNER JOIN contacts.vwpatients ON (billing.invoices.fk_patient = contacts.vwpatients.fk_patient)
+'   INNER JOIN billing.items_billed ON (billing.invoices.pk = billing.items_billed.fk_invoice)
+'   INNER JOIN admin.vwstaffinclinics ON (billing.bulk_billing_claims.fk_staff_provided_service = admin.vwstaffinclinics.fk_staff)
+'   INNER JOIN billing.fee_schedule ON (billing.items_billed.fk_fee_schedule = billing.fee_schedule.pk)
+'   INNER JOIN admin.vwstaffinclinics vwstaffinclinics1 ON (billing.bulk_billing_claims.fk_staff_processed = vwstaffinclinics1.fk_staff)
+'   ;
+' 
+'   alter  table billing.vwclaims owner to easygp;
+'   grant all on billing.vwclaims to easygp;
+'   grant all on billing.vwclaims to staff;

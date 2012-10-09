@@ -164,7 +164,7 @@ Public Sub Init()
       .Columns.count = 2
    End With
    With cvwItemsBilled
-      .Columns.count = 12
+      .Columns.count = 13
       .Columns[0].text = "Patient"
       .Columns[1].text = "Seen By"
       .Columns[2].text = "Location"
@@ -174,9 +174,10 @@ Public Sub Init()
       .Columns[6].text = "Invoice To"
       .Columns[7].text = "Fee"
       .Columns[8].text = "GST"
-      .Columns[9].text = "Due"
+      .Columns[9].text = "Total"
       .Columns[10].text = "Paid"
-      .Columns[11].text = "Rebate"
+      .Columns[11].text = "Owing"
+      .Columns[12].text = "Rebate"
    End With
    VSplitMain_Layout = VSplitMain_Layout  
    Me.Center()
@@ -284,8 +285,10 @@ Public Sub cvwUnBilled_Select()
    'assume a standard consultation 
    'Ian going to bypass some of this by parsing consult item numbers in the consult
    '-------------------------------------------------------------------------------------
-
+  
    Select Case TabStrip1.Index
+      Case cTab_Takings
+           TabStrip1.index = cTab_Invoices
       Case cTab_Invoices
          TabStrip1.index = 0
          cvwUnBilled.MoveCurrent()
@@ -344,19 +347,23 @@ End
 Public Sub Payer_Get(patient As Collection) 'fix me to fk_patient
    'temp code get the responsible person FIXME  body code only whilst developin
    'need more inclusive way of getting the payer - eg might not be a patient
-   
+   'fixme put in code for responsible party as a branch (must be put in contacts first)
    bExit = True   
    cvwUnBilled.MoveCurrent()
-   payer = modBillingDBI.Responsible_Payer_Get(Patient!fk_patient)
+   If Not IsNull(patient!fk_payer_person) Then 
+          payer = modContactsDBI.Person_Including_Patients_Get_Using_Pk(patient!fk_payer_person)
+   End If   
    If Not IsNull(Payer) Then  
-      If Patient!fk_patient <> payer!fk_patient Then
-         bexit = False  
-         rbInvoiceOrganisation.value = True 
+     ' If Patient!fk_patient <> payer!fk_patient Then
+      '   bexit = False  
+       '  rbInvoiceOrganisation.value = True 
          
-      Else
+     ' Else
+         rbInvoiceToNotUsed.value = True
+         rbInvoicePerson.value = True
          Try textlabelPayer.text = payer!wholename & "<BR>" & Trim(payer!street1 & " " & payer!street2) & "<BR>" & payer!town & " " & payer!postcode
          bExit = False  
-      End If   
+    '  End If   
    End If  
    
 End
@@ -1624,7 +1631,7 @@ Public Sub Invoice_New()
    fk_invoice = 0
    gvwPayments.clear
    cmbFeeType.Visible = False 
-   rbPayerNotUsed.value = True 'switches off rbInvoiceOrganisation and rbInvoicePerson
+ '  rbPayerNotUsed.value = True 'switches off rbInvoiceOrganisation and rbInvoicePerson
    lblInvoiceTotal.text = ""
    lblPaymentTotal.text = ""
    EditArea_Notify_Data_Change(False)
@@ -1641,21 +1648,26 @@ Public Sub cvwItemsBilled_Refresh()
    
    Dim item As String
    Dim fk_last_invoice As Integer
-   Dim total As Float
+   Dim total_due As Float
+   Dim amount_owing As Float
    Dim monies As Variant[]
+   Dim items_on_invoice As Integer
    
    cvwItemsBilled.Clear
    Items_Billed = modBillingDBI.Items_Billed_Get(fk_patient, iAccountDisplayMode)
    For Each Item_Billed In Items_Billed
       cvwItemsBilled.Add(Item_Billed!pk_items_billed, 0)
-      If fk_last_invoice <> Item_Billed!fk_invoice Then  
+      If fk_last_invoice <> Item_Billed!fk_invoice Then 
+         items_on_invoice = 1 
          cvwItemsBilled[Item_Billed!pk_items_billed][0] = Item_Billed!patient_firstname
          cvwItemsBilled[Item_Billed!pk_items_billed][1] = Item_Billed!staff_provided_service_wholename
          cvwItemsBilled[Item_Billed!pk_items_billed][2] = Item_Billed!branch
          cvwItemsBilled[Item_Billed!pk_items_billed][3] = Format(Item_Billed!visit_date, "dd/mm/yyyy")
       Else
          cvwItemsBilled[Item_Billed!pk_items_billed][0] = ""
+         Inc items_on_invoice
       End If   
+      
       If Not IsNull(Item_Billed!mbs_item) Then item = Item_Billed!mbs_item
       If Not IsNull(Item_Billed!ama_item) Then item = Item_Billed!ama_item
       If Not IsNull(Item_Billed!user_item) Then item = Item_Billed!user_item
@@ -1679,12 +1691,15 @@ Public Sub cvwItemsBilled_Refresh()
       Endif
       cvwItemsBilled[Item_Billed!pk_items_billed][7] = Item_Billed!amount
       cvwItemsBilled[Item_Billed!pk_items_billed][8] = Item_Billed!amount_gst
-      If Item_Billed!paid = True Then
-         cvwItemsBilled[Item_Billed!pk_items_billed][9] = "$0.0" 'amount due column
-      Else
-         cvwItemsBilled[Item_Billed!pk_items_billed][9] = Item_Billed!total_owing  
+      total_due = modUtil.MoneyToFloat(Item_Billed!amount) + modUtil.MoneyToFloat(Item_Billed!amount_gst)
+      amount_owing = total_due - modUtil.MoneyToFloat(Item_Billed!total_paid)                'only works if 1 item on invoice
+      cvwItemsBilled[Item_Billed!pk_items_billed][9] = modUtil.Money_Format(total_due)       'total + gst = total due
+      If Item_Billed!paid = True Then                                                        'is item paid in full?
+         cvwItemsBilled[Item_Billed!pk_items_billed][10] = modUtil.Money_Format(total_due)   'Yes:paid=total due
+      Else                                                                                   'not paid or part paid 
+         cvwItemsBilled[Item_Billed!pk_items_billed][10] = Item_Billed!total_paid             'will only work if 1 item on invoice FIXME   
+         cvwItemsBilled[Item_Billed!pk_items_billed][11] = modUtil.Money_Format(amount_owing)
       End If
-      cvwItemsBilled[Item_Billed!pk_items_billed][10] = Item_Billed!total_paid   
       
       'FIXME ADD UP
       ' Else
@@ -1929,6 +1944,7 @@ Public Sub cvwPatients_Select()
    '-----------------------------------------------------------------------------------------
    
    If cvwPatients.count = 0 Then Return 'Or fk_patient = Patient!fk_patient Then Return
+ 
    TabStrip1.index = 0
    cvwPatients.Movecurrent()                                                    'set internal index
    EditArea_Clear()
@@ -1937,6 +1953,7 @@ Public Sub cvwPatients_Select()
    Try fk_lu_default_billing_level = patient!fk_lu_default_billing_level            'if no billling level in backend
    If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private  'default to private $$
    bExit = True                                                                     'prevent textbox events firing
+   txtFindPatient.text = ""
    form_billingcards.Display_Patient_Data(Patient)                                  'load billing defaults into embedded form
    txtpatient.text = Patient!wholename  
    Try Payer_Get(Patient)                                                           'show payer if exists 
@@ -2250,7 +2267,7 @@ Public Sub TabStrip1_Click()
          cvwUnBilled_Refresh
          TabStripBilling.index = 0 
       Case 1
-         
+         'the days takings tab
          If IsNull(form_html_viewer) Then
             With form_html_viewer = New FHtmlViewer(Vbox_DaysTakings)
                .WebView1.HTML = Days_Takings_Create_HTML()
@@ -2288,6 +2305,9 @@ Public Sub Days_Takings_Create_HTML(Optional for_date As Date = Now()) As String
    Dim Payment_Methods As Collection
    Dim payment_method As Collection
    Dim payment_totals As New Float[7] 'use 1>6 = billing.lu_payment_method keys
+   Dim running_total_gst As Float
+   Dim running_total As Float
+   
    Dim x As Integer
    
    payment_methods = modBillingDBI.Payment_Methods_Get()
@@ -2335,6 +2355,12 @@ Public Sub Days_Takings_Create_HTML(Optional for_date As Date = Now()) As String
       sHtml = Replace(sHtml, "%tax%", " ") 'FIXME put in gst
       sHtml &= "</TR>"
       payment_totals[amount!fk_lu_payment_method] = payment_totals[amount!fk_lu_payment_method] + CFloat(Replace(amount!amount_paid, "$", ""))
+      running_total += modUtil.MoneyToFloat(amount!amount_paid)
+      If amount!invoice_paid = True Then
+         If Not IsNull(amount!item_billed_amount_gst) Then
+            running_total_gst += modUtil.MoneyToFloat(amount!item_billed_amount_gst)
+         Endif
+      Endif
    Next 
    shtml &= "</TABLE>"
    '---------------------------------------------------------------------------------------
@@ -2353,6 +2379,22 @@ Public Sub Days_Takings_Create_HTML(Optional for_date As Date = Now()) As String
       shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(payment_totals[x]))
       sHtml &= "</TR>"
    Next
+   sHtml &= "</TABLE></BODY></HTML>"
+   '------------------------------------
+   'Now show the totals for GST and Cash
+   '------------------------------------
+   sHtml &= "<BR>"
+    sHtml &= "<TABLE WIDTH=441 CELLPADDING=0 CELLSPACING=1 >"
+   "<COL WIDTH=212>"
+   "<COL WIDTH=208>"
+   sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
+   shtml = Replace(shtml, "%payment_method%", "TOTAL GST")
+   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total_gst) & "<BR><BR>")
+   sHtml &= "</TR>"
+   sHtml &= "<TR VALIGN=TOP>" & totals_html_row_template()
+   shtml = Replace(shtml, "%payment_method%", "<B>TOTAL (Including GST)</B>")
+   shtml = Replace(shtml, "%total_amount%", modUtil.Money_Format(running_total))
+   sHtml &= "</TR>"
    sHtml &= "</TABLE></BODY></HTML>" 
    Return shtml
    

@@ -25,17 +25,14 @@
 ' 3: PRD(Provider data segment)repeting
 ' 3: PID(Patient Identification)
 ' 4: OBR( Observation result segment)Optional
-' 5: OBX(Observation segment)Optional repeating
+' 5: OBX(Observation segment)Optional repeating (there can be more than one acording to the number of referral letters, pdfś or jpgś taht are attadched to this hl7 message
 '
 
-Public Sub CreateHL7Message_REF_I12(Optional ConsultingProvider As Collection, ReferredToProvider As Collection, Optional PrimaryCareProvider As Collection, Optional ReceivingFacility_HD As CHL7Datatype_HD, ToTransferPatient_fk_Patient As Integer, ObservationResultStatus As String, ReferralStatus As String, ReferralPriority As String, ReferralType As String, ReferralDisposition As String, ReferralReason As String, Optional Attachments As String[], Optional OriginatingReferralIdentifier_EI As CHL7Datatype_EI, Optional AdmissionType As String)
+Public Sub CreateHL7Message_REF_I12(ReferredToProvider As Collection, ToTransferPatient_fk_Patient As Integer, ObservationResultStatus As String, ReferralStatus As String, ReferralPriority As String, ReferralType As String, ReferralDisposition As String, ReferralReason As String, Optional Attachments As String[], Optional ConsultingProvider As Collection, Optional PrimaryCareProvider As Collection, Optional ReceivingFacility_HD As CHL7Datatype_HD, Optional OriginatingReferralIdentifier_EI As CHL7Datatype_EI, Optional PlacerOrderNumber As CHL7Datatype_EI, Optional AdmissionType As String)
    '----------------------------------------------------------------------
    'This Function fills all required fields for the message and prints them to a File
    'Variables:
-   '- ConsultingProvider(Optional): Needs to be a collection and contains the information of the consulted doctor 
    '- ReferredToProvider: Needs to be a collection and contains the information of the Receiving doctor
-   '- PrimaryCareProvider(Optional): Needs to be a collection and contains the information of the primary doctor of the patient
-   '- ReceivingFacility_HD(optional): Needs to be a object of the cHL7Datatype_HD class and contains the information of the receiving facility 
    '- ToTransferPatient_fk_Patient: Needs to be an integer and contains the foreign key which gives the information were the data of the to reffering patient is storred in the DB
    '- ObservationResultStatus: Needs to be a string which is coded according to the HL7 table 85 
    '- ReferralStatus is a String and needs to be coded according to the hl7 table 0283 Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
@@ -44,9 +41,12 @@ Public Sub CreateHL7Message_REF_I12(Optional ConsultingProvider As Collection, R
    '- ReferralDisposition is a string and needs to be coded according to hl7 table 0282 and says what is expected of the receiver (Optional) (Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI’)
    '- ReferralReason is a string and must be coded according to the hl7 table 0336 (Second opinion = ‘S’ Patient preference = ‘P’ Provider ordered = ‘O’ Work load = ‘W’ 
    '- Attachments(optional): this is a string array and caintains sings such a letter text a pdf or a picture as a sting ( be carefull to convert the attachments into the right format before calling this function
+   '- ConsultingProvider(Optional): Needs to be a collection and contains the information of the consulted doctor 
+   '- PrimaryCareProvider(Optional): Needs to be a collection and contains the information of the primary doctor of the patient
+   '- ReceivingFacility_HD(optional): Needs to be a object of the cHL7Datatype_HD class and contains the information of the receiving facility 
    '- OriginatingReferralIdentifier(Optional) is a hl7 EI datatype and contains the global universal identifyer of this referral message (GUID) it can be passed to this function if this is a answer to a previos referral message otherwise a GUID will be generated from this function
+   '- PlacerOrderNumber(Opional) is a chl7datatype_EI  and in case this is a answer to a referral the .Identifyer value has to contain the filler order number of the first referrel message
    '- AdmissionType(optional): Needs to be a string which is coded according to the HL7 user table 7
-   '- PatientClass(optional): Needs to be a string which is coded according to the HL7 user table 4
    '----------------------------------------------------------------------
    
    ' Variable declaration
@@ -63,10 +63,11 @@ Public Sub CreateHL7Message_REF_I12(Optional ConsultingProvider As Collection, R
    Dim PRD2 As CHL7segment_PRD
    Dim PRD3 As CHL7segment_PRD
    Dim PRD4 As CHL7segment_PRD
-   Dim ObjectArray As New Variant[]
    
+   Dim ObjectArray As New Variant[]
+   Dim FillerOrderNumber_EI As New CHL7Datatype_EI
+   Dim PlacerOrderNumber_EI As New CHL7Datatype_EI
    Dim ObservationIdentifier_CE As New CHL7Datatype_CE ' needed for the creation of a OBX segment
-   Dim OriginatingReferralIdentifier_CE As New CHL7Datatype_CE
    Dim ReferralStatus_CE As New CHL7Datatype_CE
    Dim ReferralDisposition_CE As New CHL7Datatype_CE
    Dim ReferralReason_CE As New CHL7Datatype_CE
@@ -86,12 +87,13 @@ Public Sub CreateHL7Message_REF_I12(Optional ConsultingProvider As Collection, R
    UserInformation = modDBConnect.currentUser ' reads the information of the current user out of the DB
    Patient = modContactsDBI.Patient_Get_Using_PK(ToTransferPatient_fk_Patient) ' reads the information of the to referring patient out of the DB 
    
-   ' if a GUID is passed to this function make your own
+   ' if no GUID is passed to this function make your own
    If IsNull(OriginatingReferralIdentifier_EI) Then
       OriginatingReferralIdentifier_EI = New CHL7Datatype_EI
       PrimaryKey = modDBConnect.exec_query("Select nextval('documents.hl7_messages_pk_seq') as Pk;")!Pk   'gets the a unique value for the table were the massege will be strored an this value is also used to create a universalID
       OriginatingReferralIdentifier_EI.Identifier = Format(Now, "yymmddhhnnss") & "-" & PrimaryKey 'creates the unique message identifyer 
-      OriginatingReferralIdentifier_EI.AssigningAuthority.ApplicationIdentifier = "EasyGP "
+      '       OriginatingReferralIdentifier_EI.AssigningAuthority.UniversalID = 'here a unique identifyer of ordering facility has to be inserted
+      OriginatingReferralIdentifier_EI.AssigningAuthority.ApplicationIdentifier = "EasyGP v" & Application.Version
       OriginatingReferralIdentifier_EI.AssigningAuthority.UniversalIDType = "GUID"
    Endif
    
@@ -187,10 +189,13 @@ Public Sub CreateHL7Message_REF_I12(Optional ConsultingProvider As Collection, R
    
    RF1 = New CHL7Segment_RF1(ReferralStatus_CE, OriginatingReferralIdentifier_EI, ReferralPriority_CE, ReferralType_CE, ReferralDisposition_CE, ReferralReason_CE) 'creates a new RF1 segment with all the underlaying datatypes
    ObjectArray.Add(RF1)
+   
    PRD1 = New CHL7Segment_PRD("RP", modDBConnect.currentUser) 'creates a new EVN segment with all the underlaying datatypes
    ObjectArray.Add(PRD1)
+   
    PRD2 = New CHL7Segment_PRD("RT", ReferredToProvider) 'creates a new EVN segment with all the underlaying datatypes
    ObjectArray.Add(PRD2)
+   
    If Not IsNull(ConsultingProvider) Then
       PRD3 = New CHL7Segment_PRD("CP", ConsultingProvider) 'creates a new EVN segment with all the underlaying datatypes
       ObjectArray.Add(PRD3)
@@ -207,7 +212,13 @@ Public Sub CreateHL7Message_REF_I12(Optional ConsultingProvider As Collection, R
    UniversalServiceID_CE.Identifier = "GR"
    UniversalServiceID_CE.Text = "Referral"
    UniversalServiceID_CE.NameOfCodingSystem = "EasyGp " & Application.Version
-   OBR = New CHL7Segment_OBR(1, UniversalServiceID_CE, OriginatingReferralIdentifier_EI)
+   FillerOrderNumber_EI.Identifier = OriginatingReferralIdentifier_EI.Identifier
+   
+   If IsNull(PlacerOrderNumber) Then 
+      OBR = New CHL7Segment_OBR(1, UniversalServiceID_CE, OriginatingReferralIdentifier_EI)
+   Else
+      OBR = New CHL7Segment_OBR(1, UniversalServiceID_CE, OriginatingReferralIdentifier_EI, PlacerOrderNumber)
+   Endif
    ObjectArray.Add(OBR)
    
    ' OBX ||FT|HTML^Display format in HTML^AUSPDI||...
@@ -220,28 +231,68 @@ Public Sub CreateHL7Message_REF_I12(Optional ConsultingProvider As Collection, R
    ' * NOTE: Special Format required For OBX - 5 when using ED data type.
    ' 
    For Each Attachment In Attachments
+      hFile = Null
       If Left$(attachment) = "/" Then
          Try hFile = Open attachment For Read
          If Not IsNull(hFile) Then
-            While Not Eof(hFile)
-               Line Input #hFile, sLine
-               TempString = TempString & sLine
-            Wend
-            If Right$(attachment, 4) = ".pdf" Then
-               ObservationIdentifier_CE.Identifier = "PDF"
-               ObservationIdentifier_CE.Text = "Display format in PDF"
-               ObservationIdentifier_CE.NameOfCodingSystem = "AUSPDI"
-               OBX = New CHL7Segment_OBX(1, "ED", ObservationIdentifier_CE, ObservationResultStatus, Base64(TempString)) 
-               ObjectArray.Add(OBX)
-            Else 
-               If Right$(attachment, 4) = ".jpg" Or Right$(attachment, 4) = ".JPG" Then
+            
+            Select Case Right$(attachment, 4)
+                  
+               Case ".txt", ".TXT"
+                  While Not Eof(hFile)
+                     Line Input #hFile, sLine
+                     TempString = TempString & sLine & "\n"
+                  Wend
+                  ObservationIdentifier_CE.Identifier = "Txt"
+                  ObservationIdentifier_CE.Text = "Display format in text"
+                  ObservationIdentifier_CE.NameOfCodingSystem = "AUSPDI"
+                  OBX = New CHL7Segment_OBX(1, "FT", ObservationIdentifier_CE, ObservationResultStatus, TempString) ' "FT" means FORMATTED TEXT
+                  ObjectArray.Add(OBX)
+                  
+               Case ".rtf", ".RTF"
+                  While Not Eof(hFile)
+                     Line Input #hFile, sLine
+                     TempString = TempString & sLine
+                  Wend
+                  ObservationIdentifier_CE.Identifier = "RTF"
+                  ObservationIdentifier_CE.Text = "Display format in RTF"
+                  ObservationIdentifier_CE.NameOfCodingSystem = "AUSPDI"
+                  OBX = New CHL7Segment_OBX(1, "ED", ObservationIdentifier_CE, ObservationResultStatus, Base64(TempString)) 
+                  ObjectArray.Add(OBX)
+                  
+               Case ".pdf", ".PDF"
+                  While Not Eof(hFile)
+                     Line Input #hFile, sLine
+                     TempString = TempString & sLine
+                  Wend
+                  ObservationIdentifier_CE.Identifier = "PDF"
+                  ObservationIdentifier_CE.Text = "Display format in PDF"
+                  ObservationIdentifier_CE.NameOfCodingSystem = "AUSPDI"
+                  OBX = New CHL7Segment_OBX(1, "ED", ObservationIdentifier_CE, ObservationResultStatus, Base64(TempString)) 
+                  ObjectArray.Add(OBX)
+                  
+               Case ".jpg", ".JPG"
+                  While Not Eof(hFile)
+                     Line Input #hFile, sLine
+                     TempString = TempString & sLine
+                  Wend
                   ObservationIdentifier_CE.Identifier = "JPG"
                   ObservationIdentifier_CE.Text = "Display format in JPG"
                   ObservationIdentifier_CE.NameOfCodingSystem = "AUSPDI"
                   OBX = New CHL7Segment_OBX(1, "ED", ObservationIdentifier_CE, ObservationResultStatus, Base64(TempString)) 
                   ObjectArray.Add(OBX)
-               Endif
-            Endif
+                  
+               Case Else
+                  Select Case Message.Warning(attachment & " was opened but is not matching with one of these formats( .txt, .pdf, .jpg)", "Send HL7 message without file", " Abort sending") 'raises an error if the file dose not have the right ending
+                     Case 2
+                        Return
+                  End Select
+            End Select
+         Else
+            Select Case Message.Warning(attachment & " could not be opened", "Send HL7 message without file", " Abort sending") 'raises an error if the file dose not have the right ending
+               Case 2
+                  Return
+            End Select
          Endif
       Else
          ObservationIdentifier_CE.Identifier = "Txt"
@@ -258,12 +309,7 @@ Public Sub CreateHL7Message_REF_I12(Optional ConsultingProvider As Collection, R
       hFile = Open "/home/bernd/svn/" & "/file.txt" For Write Create
    Endif 
    
-   ' If ReferralLetterText <> "" Then ' When a referrel letter is included the OBX segment has to be included
-   '    modHL7Emitter.Emit("\r", hFile, [MSH, EVN, PID, PV1, OBX1])    'NOTE: separator here should be \ r, but To be visible In a UNIX terminal use \ n"
-   ' Else
-   ' 
    modHL7Emitter.Emit("\r", hFile, ObjectArray)   'NOTE: separator here should be \ r, but To be visible In a UNIX terminal use \ n
-   '    Endif
    Print #hFile, "\r"; 'prints a carriage return at the end of the last segment because every segment mussed be followed by one
    
 End

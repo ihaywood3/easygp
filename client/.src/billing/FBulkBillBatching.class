@@ -31,11 +31,13 @@ Private bExit As Boolean
 Private bKeyValid As Boolean
 Private fk_claim As Integer                              'key to billing.bulk_billing_claims
 Private claim As Collection                              'the currently selected claim (i.e already batched and saved claim)
+
 Public Sub init(s As Collection, c As Collection)
    '------------------------------------------------
    'Initialise form
    'clear editing area, default to medicare batching
    '------------------------------------------------   
+
    staff = s
    clinics = c
    modUtil.LoadCombo(cmbStaff, staff, "wholename")    
@@ -54,14 +56,13 @@ Public Sub init(s As Collection, c As Collection)
       .Columns[4].text = "Amount"
    End With
    bExit = True   
-   cmbClinic.index = 0
-   cmbStaff.Index = 0
+   cmbClinic.index = -1
+   cmbStaff.Index = -1
    rbBulkBillMedicare.value = True 'set fk_lu_bulk_billing_type
    modEditAreaHelpers.Resize_labels(VBox_EditArea_Inner, lblMeasure)
    bExit = False  
    
 End
-
 
 Public Sub EditArea_Clear()
    
@@ -77,7 +78,7 @@ Public Sub cvwVouchers_Refresh()
    '---------------------------------------------
    'Refresh the list of vouchers in current claim
    '---------------------------------------------   
-
+   
    Dim grand_total As Variant
    Dim fk_last_invoice As Integer
    Dim invoice_count As Integer
@@ -113,14 +114,29 @@ End
 
 Public Sub cmbEditArea_Click()
    
+   If bexit Then Return    
    Select Case Last.tag
       Case "staff"
          fk_staff = staff[cmbStaff.index]!fk_staff 
       Case "clinic"
          fk_branch = clinics[cmbClinic.Index]!fk_branch
    End Select
-   cvwVouchers_Refresh()
+   If cmbStaff.index <> -1 Then  
+      If cmbClinic.Index <> -1 Then claim_new()
+      Return 
+   Else
+     cmbClinic.SetFocus()
+     Return 
+   End If   
    
+   If cmbClinic.index <> -1 Then
+      If cmbStaff.Index <> -1 Then claim_New()
+      Return 
+   Else
+      cmbClinic.SetFocus()
+      Return
+   End If   
+      
 End
 
 Public Sub rbBulkBillType_Click()
@@ -159,7 +175,7 @@ Public Sub MainToolbar_Click()
    
    Select Case Last.tag
       Case "new claim"
-          cvwVouchers_Refresh()
+         claim_New()
       Case "print"
          claim_print()
       Case "process"
@@ -168,10 +184,31 @@ Public Sub MainToolbar_Click()
    
 End
 
+Public Sub claim_New()
+   
+   Dim smsg As String
+   
+   Message.Title = "Medicare & Veteran Batching"
+   If cmbStaff.index = -1 Or cmbClinic.index = -1 Then
+      Message.Info("You must select both a staff member and a branch to be able to start the batching.")
+      Return  
+   End If
+   lblHeading.text = "New Claim"
+   cvwVouchers_Refresh()
+   If cvwVouchers.count = 0 Then
+      Message.Title = "Prepare Claim"
+      Message.info("There are no outstanding vouchers for this doctor and branch")
+      lblHeading.text = ""
+      Return
+   Endif
+   txtClaimIDNumber.SetFocus()
+End
+
 Public Sub claim_print()
    '----------------------------------------------------------------------------------
    'prints html of the claim if staff so desire to cross reference to vouchers (paper)
    '---------------------------------------------------------------------------------- 
+
    If Not Claim_Valid() Then Return    
    modPrinting.PrintHtml(Claim_HTML())
    
@@ -179,32 +216,72 @@ End
 
 Public Sub Claim_Display(fk_claim As Integer)
    
-  Dim invoice As Collection
-  Dim fk_last_invoice As Integer
-  
-  'display processed claim - loaded from FRecordVisit 
-  bexit = True
-  Inc Application.Busy 
-  cvwVouchers.Clear()
-   claim = modBillingDBI.Bulk_Bill_Batching_Get_Claim(fk_claim)
-   For Each invoice In claim
-    For Each voucher In claim
-      cvwVouchers.Add(invoice!pk_view, 0)
-      If fk_last_invoice <> voucher!fk_invoice Then
-         fk_last_invoice = voucher!fk_invoice
-         cvwVouchers[invoice!pk_view][0] = Str(voucher!fk_invoice)
-         cvwVouchers[invoice!pk_view][1] = voucher!patient_wholename
-         cvwVouchers[invoice!pk_view][2] = Format(voucher!visit_date, "dd/mm/yyyy")
-      Else
-         cvwVouchers[invoice!pk_view][0] = ""
-         cvwVouchers[invoice!pk_view][1] = ""
-         cvwVouchers[voucher!pk_view][2] = ""
-      Endif
-      
-      cvwVouchers[voucher!pk_view][3] = voucher!mbs_item
-      cvwVouchers[voucher!pk_view][4] = modUtil.Money_Format(voucher!amount_paid)
-   Next
+   Dim invoice As Collection
+   Dim fk_last_invoice As Integer
    
+   'display processed claim - loaded from FRecordVisit 
+   bexit = True
+   Inc Application.Busy 
+    lblHeading.text = "Reconcile Existing Claim"
+   cvwVouchers.Clear()  'fixme this view and code below is wrong just temporary
+   claim = modBillingDBI.Bulk_Bill_Batching_Get_Claim_vouchers(fk_claim)
+      For Each voucher In claim
+         cvwVouchers.Add(voucher!pk_view, 0)
+         If fk_last_invoice <> voucher!fk_invoice Then
+            fk_last_invoice = voucher!fk_invoice
+            cvwVouchers[voucher!pk_view][0] = Str(voucher!fk_invoice)
+            cvwVouchers[voucher!pk_view][1] = voucher!patient_wholename
+            cvwVouchers[voucher!pk_view][2] = Format(voucher!visit_date, "dd/mm/yyyy")
+         Else
+            cvwVouchers[voucher!pk_view][0] = ""
+            cvwVouchers[voucher!pk_view][1] = ""
+            cvwVouchers[voucher!pk_view][2] = ""
+         Endif
+         cvwVouchers[voucher!pk_view][3] = voucher!mbs_item
+         cvwVouchers[voucher!pk_view][4] = modUtil.Money_Format(voucher!amount_paid)
+   Next
+   cmbStaff.index = cmbStaff.Find(voucher!staff_provided_service_wholename)
+   cmbClinic.index = cmbClinic.Find(voucher!branch)
+   txtClaimIDNumber.text = voucher!claim_id
+   txtActualVouchers.text = voucher!voucher_count   
+   If voucher!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
+      rbBulkBillMedicare.value = True
+   Else
+      rbBulkBillVeteran.Value = True  
+   Endif
+   
+   Dec Application.Busy
+
+End
+
+Public Sub Claim_Display_old(fk_claim As Integer)
+   
+   Dim invoice As Collection
+   Dim fk_last_invoice As Integer
+   
+   'display processed claim - loaded from FRecordVisit 
+   bexit = True
+   Inc Application.Busy 
+   cvwVouchers.Clear()  'fixme this view and code below is wrong just temporary
+   claim = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Bulk_Bill_Batching_Get_Claim(fk_claim))
+   For Each invoice In claim
+      For Each voucher In claim
+         cvwVouchers.Add(invoice!pk_view, 0)
+         If fk_last_invoice <> voucher!fk_invoice Then
+            fk_last_invoice = voucher!fk_invoice
+            cvwVouchers[invoice!pk_view][0] = Str(voucher!fk_invoice)
+            cvwVouchers[invoice!pk_view][1] = voucher!patient_wholename
+            cvwVouchers[invoice!pk_view][2] = Format(voucher!visit_date, "dd/mm/yyyy")
+         Else
+            cvwVouchers[invoice!pk_view][0] = ""
+            cvwVouchers[invoice!pk_view][1] = ""
+            cvwVouchers[voucher!pk_view][2] = ""
+         Endif
+         
+         cvwVouchers[voucher!pk_view][3] = voucher!mbs_item
+         cvwVouchers[voucher!pk_view][4] = modUtil.Money_Format(voucher!amount_paid)
+      Next
+      
    Next
    cmbStaff.index = cmbStaff.Find(voucher!staff_provided_service_wholename)
    cmbClinic.index = cmbClinic.Find(voucher!branch)
@@ -217,6 +294,7 @@ Public Sub Claim_Display(fk_claim As Integer)
    Endif
    
    Dec Application.Busy
+
 End
 
 Public Sub claim_lodge()
@@ -303,7 +381,7 @@ Public Function Claim_Valid() As Boolean
    '----------------------------------------------------------
    'returns true if enough information to claim these vouchers
    '----------------------------------------------------------   
-
+   
    If vouchers.count Then
       If Trim(txtClaimIDNumber.text) = "" Then
          txtClaimIDNumber.BackGround = Color.rgb(95, 255, 175)
@@ -443,6 +521,7 @@ Public Function Bulk_Bill_Html_Heading_Row_Template() As String
    "   <P>%value%</P>"
    "</TD>"
    "</TR>"
+
 End
 
 Public Sub pnlToolButtons_Enter()

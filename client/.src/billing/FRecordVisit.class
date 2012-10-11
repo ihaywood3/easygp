@@ -84,6 +84,7 @@ Private Bulk_Billed_Claim As Collection
 Private cGridColumnItem_ItemNumber As Integer = 0
 Private cGridColumnItem_BriefDescriptor As Integer = 1
 Private cGridColumnItem_Fee As Integer = 2
+Private cGridColumnItem_Gap As Integer = 3
 Private cGridColumnItem_FeeType As Integer = 4
 Private cGridColumnItem_gst_amount As Integer = 5
 Private oncol_payments As Integer
@@ -698,14 +699,26 @@ Public Sub cmbEditArea_LostFocus()
 End
 
 Public Sub cmbFeeType_Click()
-   
-   'User is changing the fee type
+   '-------------------------------------------------------------------------------------------
+   'Change the fee type re-calculate the columns
+   'This event is raised by either user clicking on the combo or medicare/veteran radio buttons
+   're-calculate the gap payment or set to zero if this is veterans patient.
+   '-------------------------------------------------------------------------------------------
+   Dim gap_payment As Float
+
    gvwItemsBIlled[onrow_items, cGridColumnItem_FeeType].text = cmbFeeType.Text
    If gvwItemsBIlled[onrow_items, 0].text <> "" Then  
       Try gvwItemsBIlled[onrow_items, cGridColumnItem_Fee].text = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(gvwItemsBIlled[onrow_items, 0].text, FeeTypes[cmbFeeType.index]!pk)!price
       If Error Then
          Message.info("No fee's exist for the billing level you selected")
          cmbFeeType.index = cmbFeeType.Find(last_Fee_type)
+      Else
+         gap_payment = modUtil.MoneyToFloat(gvwItemsBIlled[onrow_items, cGridColumnItem_Fee].text) - modUtil.MoneyToFloat(scheduled_fee!price) 
+         If gap_payment = 0 Or rbInvoiceToVeterans.value = True Then
+            gvwItemsBIlled[onrow_items, cGridColumnItem_Gap].text = "$0.0"
+         Else
+          gvwItemsBIlled[onrow_items, cGridColumnItem_Gap].text = modUtil.Money_Format(gap_payment)
+         End If    
       Endif
    End If   
    Invoice_Calculate_Total("Invoice Total")
@@ -1185,6 +1198,9 @@ Public Sub Get_Items(txt As String)
    
    txtDescriptor.text = ""
    bExit = True
+    If rbInvoiceToMedicare.Value = True Or rbInvoiceToVeterans.value = True Then
+       fk_lu_default_billing_level = const.Billing_Default_Level_BulkBill
+    Endif
    Select Case fk_lu_default_billing_level     
       Case const.Billing_Default_Level_BulkBill
          fk_lu_billing_type = const.Billingtype_Scheduled_Fee
@@ -1234,7 +1250,7 @@ Public Sub Get_Items(txt As String)
          price = Replace(item!price, "$", "") 
          gvwItemsBIlled[gvwItemsBIlled.row, 1].Text = item!descriptor_brief
          gvwItemsBIlled[gvwItemsBIlled.row, 2].Text = item!price
-         Try gvwItemsBIlled[gvwItemsBIlled.row, 3].Text = Format(Str(CFloat(Val(Replace(item!price, "$", ""))) - CFloat(Val(Replace(Scheduled_Fee!price, "$", "")))), "$#.###")
+         Try gvwItemsBIlled[gvwItemsBIlled.row, 3].Text = modUtil.Money_Format(Str(CFloat(Val(Replace(item!price, "$", ""))) - CFloat(Val(Replace(Scheduled_Fee!price, "$", "")))))
          gvwItemsBIlled[gvwItemsBIlled.row, 4].text = item!fee_type
          last_Fee_type = item!fee_type
          If Not IsNull(item!gst_rate) And item!gst_rate <> 0 Then 'FIX ME ?CONVERT BACKEND TO NULL IN THIS FIELD NOT ZERO.
@@ -1430,7 +1446,7 @@ Public Sub rbInvoiceTo_Click()
       onrow_items = row                           
       If gvwItemsBIlled[row, cGridColumnItem_ItemNumber].Text <> "" Then
          If gvwItemsBIlled[row, cGridColumnItem_FeeType].text <> Last.tag Then
-            cmbFeeType.index = cmbFeeType.Find(Last.tag)
+            cmbFeeType.index = cmbFeeType.Find(Last.tag) 'triggers cmbFeeType_Click
          End If  
       End If 
    Next
@@ -2632,3 +2648,11 @@ End
 '   alter table billing.vwclaims owner To easygp;
 '   grant all on billing.vwclaims To easygp;
 '   grant all on billing.vwclaims To staff;
+
+Public Sub gvwItemsBIlled_KeyPress()
+
+    If Key.code = Key.return Then 
+            gvwItemsBIlled_DblClick()
+      End If   
+
+End

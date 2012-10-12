@@ -64,8 +64,7 @@ Private consult_item_number As String
 Private fk_lu_default_billing_level As Integer
 Private iBilling_Category As Integer
 Private iAccountDisplayMode As Integer  'const.Billing_Accounts_Paid,  Billing_Accounts_UnPaid, Billing_Accounts_All
-Private form_billingcards As FPatientBillingCards
-Private form_reports As FBillingReports   
+
 Private appointment_icons As Collection   
 Private staff As Collection
 Private Staff_Member As Collection
@@ -117,13 +116,16 @@ Private Const cTabPatientsAccounts As Integer = 1
 Private branches As Collection
 Private branch As Collection
 Private form_html_viewer As FHtmlViewer
+Private form_billingcards As FPatientBillingCards
+Private form_batching As FBulkBillBatching
+Private form_reports As FBillingReports   
 'the main (large) tabstrip - tabstrip1
 Private Const cTab_Invoices As Integer = 0
 Private Const cTab_Takings As Integer = 1
 Private Const cTab_Batching As Integer = 2
 Private Const cTab_Banking As Integer = 3
 Private Const cTab_Reports As Integer = 5
-Private form_batching As FBulkBillBatching
+
 
 Static Private Form_Billing As FRecordVisit
 
@@ -142,7 +144,7 @@ Public Sub Init()
       .HBox_NextOfKin.Visible = False   
       .Hbox_LegacyFileNumber.Visible = False  
       .HBox_FindNextOfKin.Visible = False  
-      .HBox_ResponsiblePayer.Visible = False  
+    '  .HBox_ResponsiblePayer.Visible = False  
    End With
    With cvwUnBilled
       .Columns.count = 2
@@ -354,6 +356,9 @@ Public Sub cvwUnBilled_Select()
          End Select
          bExit = False  
          form_billingcards.Display_Patient_Data(Unbilled_consultation) 
+         If Not IsNull(Unbilled_consultation!fk_payer_person) Then
+            fk_payer_person = Unbilled_consultation!fk_payer_person
+         Endif
          VBox_EditArea_Outer.Enabled = True 
          gvwItemsBIlled.Enabled = True 
          cvwItemsBilled_Refresh()
@@ -1010,6 +1015,9 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
       If fk_payer_branch <> 0 Then invoice!fk_payer_branch = fk_payer_branch
       If fk_payer_person <> 0 Then invoice!fk_payer_person = fk_payer_person
       invoice!visit_date = Val(txtDate.text)
+      If Not IsNull(Unbilled_consultation) Then
+         invoice!fk_appointment = Unbilled_consultation!pk
+      Endif
    End If   
    '----------------------------------
    'has the invoice been paid in full?- fix this code
@@ -2504,6 +2512,14 @@ Public Sub chkTodayOnly_Click()
    
 End
 
+Public Sub gvwItemsBIlled_KeyPress()
+   
+   If Key.code = Key.return Then 
+      gvwItemsBIlled_DblClick()
+   End If   
+   
+End
+
 ' Create Or Replace FUNCTION billing.total_paid(integer)
 '   RETURNS money As
 ' $BODY$
@@ -2529,151 +2545,147 @@ End
 ' ALTER FUNCTION billing.total_paid(integer)
 '   OWNER To richard;
 ' 
-' - - View: billing.vwitemsbilled
+' --alter table billing.invoices add column fk_appointment integer default null;
+' DROP VIEW clerical.vwappointments;
 ' 
-' DROP VIEW billing.vwitemsbilled cascade;
+' CREATE OR REPLACE VIEW clerical.vwappointments AS 
+'  SELECT bookings.pk, bookings.fk_patient, bookings.fk_staff, bookings.begin, bookings.duration, bookings.notes,
+'   bookings.fk_staff_booked, bookings.fk_clinic, bookings.fk_lu_appointment_icon, 
+'   bookings.fk_lu_appointment_status, bookings.deleted, data_patients.fk_payer_person, data_patients.fk_payer_branch,
+'   data_patients.fk_doctor, data_patients.fk_lu_default_billing_level, data_patients.medicare_number, 
+'   data_patients.medicare_ref_number, data_patients.medicare_expiry_date, lu_veteran_card_type.type AS veteran_card_type, 
+'   data_patients.veteran_number, data_patients.veteran_specific_condition, data_patients.concession_card_number, 
+'   data_patients.concession_card_expiry_date, lu_centrelink_card_type.type AS concession_card_type, lu_private_health_funds.fund, 
+'   lu_default_billing_level.level AS billing_level, data_persons.firstname, data_persons.surname, 
+'   data_persons.birthdate, lu_sex.sex, lu_title.title, 
+'   ((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text) AS wholename, 
+'   bookings.invoiced, bookings.did_not_attend
+'    FROM clerical.bookings
+'    LEFT JOIN clerical.data_patients ON bookings.fk_patient = data_patients.pk
+'    LEFT JOIN clerical.lu_centrelink_card_type ON data_patients.fk_lu_centrelink_card_type = lu_centrelink_card_type.pk
+'    LEFT JOIN clerical.lu_private_health_funds ON data_patients.fk_lu_private_health_fund = lu_private_health_funds.pk
+'    LEFT JOIN clerical.lu_veteran_card_type ON data_patients.fk_lu_veteran_card_type = lu_veteran_card_type.pk
+'    LEFT JOIN contacts.data_persons ON data_patients.fk_person = data_persons.pk
+'    LEFT JOIN contacts.lu_sex ON data_persons.fk_sex = lu_sex.pk
+'    LEFT JOIN billing.lu_default_billing_level ON data_patients.fk_lu_default_billing_level = lu_default_billing_level.pk
+'    LEFT JOIN contacts.lu_title ON data_persons.fk_title = lu_title.pk
+'   ORDER BY bookings.begin;
 ' 
-' Create Or Replace VIEW billing.vwitemsbilled As 
-'  Select items_billed.pk As Pk_items_billed, vwstaffinclinics.firstname As Staff_invoiced_firstname, 
-'  vwstaffinclinics.surname As Staff_invoiced_surname, vwstaffinclinics.wholename As Staff_invoiced_wholename, 
-'  vwstaffinclinics.title As Staff_invoiced_title, invoices.fk_staff_invoicing, invoices.date_printed, invoices.notes, 
-'  invoices.fk_lu_bulk_billing_type, invoices.fk_staff_provided_service, invoices.fk_patient, invoices.fk_branch,
-'  vwpatients.firstname As Patient_firstname, vwpatients.surname As Patient_surname, vwpatients.title As Patient_title, 
-'  vwpatients.fk_sex As Patient_fk_sex, vwpatients.sex As Patient_sex, vwpatients.wholename As Patient_wholename, 
-'  invoices.fk_payer_person, invoices.fk_payer_branch, invoices.date_invoiced, invoices.paid, invoices.latex, 
-'  invoices.visit_date, invoices.reference, vwstaffinclinics1.provider_number As Staff_provided_service_provider_number, 
-'  vwstaffinclinics1.firstname As Staff_provided_service_firstname, 
-'  vwstaffinclinics1.surname As Staff_provided_service_surname, 
-'  vwstaffinclinics1.wholename As Staff_provided_service_wholename, vwstaffinclinics1.title As Staff_provided_service_title, 
-'  data_branches.branch, items_billed.fk_fee_schedule, items_billed.amount, items_billed.amount_gst, 
-'  billing.total_paid(items_billed.fk_invoice) As Total_paid_invoice, items_billed.fk_invoice, 
-'         Case
-'             WHEN invoices.paid Is TRUE Then 
-'             Case
-'                 WHEN items_billed.amount_gst Is NOT Null Then items_billed.amount + items_billed.amount_gst
-'                 Else items_billed.amount
-'             End
-'             Else billing.total_paid(items_billed.fk_invoice)
-'         End As Total_paid, 
-'         Case
-'             WHEN invoices.paid Is FALSE Then 
-'             Case
-'                 WHEN billing.total_paid(items_billed.fk_invoice) Is NOT Null Then 
-'                 Case
-'                     WHEN items_billed.amount_gst Is NOT Null Then items_billed.amount + items_billed.amount_gst - billing.total_paid(items_billed.fk_invoice)
-'                     Else items_billed.amount - billing.total_paid(items_billed.fk_invoice)
-'                 End
-'                 Else 
-'                 Case
-'                     WHEN items_billed.amount_gst Is NOT Null Then items_billed.amount + items_billed.amount_gst
-'                     Else items_billed.amount
-'                 End
-'             End
-'             Else NULL:: money
-'         End As Total_owing, items_billed.fk_lu_billing_type, lu_billing_type.type As Billing_type, 
-'         fee_schedule.item, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, 
-'         fee_schedule.descriptor, fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule, 
-'         Case
-'             WHEN invoices.fk_payer_branch Is NOT Null Then (((((vworganisations.organisation || '<BR>'::text) || (vworganisations.branch || '<BR>'::text)) || COALESCE(vworganisations.street1 || ' '::text, vworganisations.street2)) || '<BR>'::text) || (vworganisations.town || ' '::text)) || (vworganisations.postcode::text || ' '::text)
-'             WHEN invoices.fk_payer_person Is NOT Null Then ((((vwpersonsincludingpatients.wholename || '<BR>'::text) || COALESCE(vwpersonsincludingpatients.street1 || ' '::text, vwpersonsincludingpatients.street2)) || '<BR>'::text) || (vwpersonsincludingpatients.town || ' '::text)) || (vwpersonsincludingpatients.postcode::text || ' '::text)
-'             Else NULL:: text
-'         End As Payer_details, vworganisations.branch As Payer_branch, 
-'         vworganisations.organisation As Payer_organisation, vworganisations.street1 As Payer_branch_street1, 
-'         vworganisations.street2 As Payer_branch_street2, vworganisations.postcode As Payer_branch_postcode, 
-'         vworganisations.town As Payer_branch_town, vworganisations.state As Payer_branch_state, 
-'         vwpersonsincludingpatients.street1 As Payer_person_street1, 
-'         vwpersonsincludingpatients.street2 As Payer_person_street2, 
-'         vwpersonsincludingpatients.town As Payer_person_town, vwpersonsincludingpatients.state As Payer_person_state, 
-'         vwpersonsincludingpatients.postcode As Payer_person_postcode, 
-'         vwpersonsincludingpatients.wholename As Payer_person_wholename, 
-'         vwpersonsincludingpatients.title As Payer_person_title
-'    From billing.invoices
-'    JOIN admin.vwstaffinclinics ON invoices.fk_staff_invoicing = vwstaffinclinics.fk_staff
-'    JOIN admin.vwstaffinclinics vwstaffinclinics1 ON invoices.fk_staff_provided_service = vwstaffinclinics1.fk_staff
-'    JOIN billing.items_billed ON invoices.pk = items_billed.fk_invoice
+' ALTER TABLE clerical.vwappointments
+'   OWNER TO richard;
+' GRANT ALL ON TABLE clerical.vwappointments TO richard;
+' GRANT ALL ON TABLE clerical.vwappointments TO easygp;
+' GRANT ALL ON TABLE clerical.vwappointments TO staff;
+' 
+'  DROP VIEW billing.vwinvoices_pre cascade;
+' 
+' CREATE OR REPLACE VIEW billing.vwinvoices_pre AS 
+'  SELECT invoices.pk AS pk_invoice, invoices.fk_staff_invoicing, invoices.date_printed, invoices.notes, 
+'  invoices.fk_staff_provided_service, invoices.fk_patient, invoices.date_invoiced, invoices.paid, 
+'  invoices.fk_payer_person, invoices.fk_payer_branch, invoices.latex, invoices.fk_branch, invoices.visit_date, invoices.fk_appointment, 
+'  bookings.begin as appointment_time,
+'  invoices.reference, invoices.fk_lu_bulk_billing_type, invoice_total(invoices.pk) AS total_bill, invoice_received(invoices.pk) AS total_paid
+'    FROM billing.invoices
+'    LEFT JOIN clerical.bookings on billing.invoices.fk_appointment = clerical.bookings.pk;
+' 
+' ALTER TABLE billing.vwinvoices_pre
+'   OWNER TO richard;
+' GRANT ALL ON TABLE billing.vwinvoices_pre TO richard;
+' GRANT ALL ON TABLE billing.vwinvoices_pre TO easygp;
+' GRANT ALL ON TABLE billing.vwinvoices_pre TO staff;
+' 
+' 
+' CREATE OR REPLACE VIEW billing.vwinvoices AS 
+'  SELECT vwinvoices_pre.pk_invoice, vwinvoices_pre.fk_staff_invoicing, vwinvoices_pre.date_printed, vwinvoices_pre.notes, 
+'  vwinvoices_pre.fk_staff_provided_service, vwinvoices_pre.fk_patient, vwinvoices_pre.date_invoiced, vwinvoices_pre.paid, 
+'  vwinvoices_pre.fk_payer_person, vwinvoices_pre.fk_payer_branch, vwinvoices_pre.latex, vwinvoices_pre.fk_branch, 
+'  vwinvoices_pre.fk_appointment,vwinvoices_pre.appointment_time,
+'  vwinvoices_pre.visit_date, vwinvoices_pre.reference, vwinvoices_pre.fk_lu_bulk_billing_type, 
+'  vwinvoices_pre.total_bill, vwinvoices_pre.total_paid, vwinvoices_pre.total_paid >= vwinvoices_pre.total_bill AS paid_by_maths
+'    FROM billing.vwinvoices_pre;
+' 
+' ALTER TABLE billing.vwinvoices
+'   OWNER TO richard;
+' GRANT ALL ON TABLE billing.vwinvoices TO richard;
+' GRANT ALL ON TABLE billing.vwinvoices TO easygp;
+' GRANT ALL ON TABLE billing.vwinvoices TO staff;
+' 
+' 
+' CREATE OR REPLACE VIEW billing.vwitemsbilled AS 
+'  SELECT items_billed.pk AS pk_items_billed, vwstaffinclinics.firstname AS staff_invoiced_firstname, vwstaffinclinics.surname AS staff_invoiced_surname, 
+'  vwstaffinclinics.wholename AS staff_invoiced_wholename, vwstaffinclinics.title AS staff_invoiced_title, vwinvoices.fk_staff_invoicing, 
+'  vwinvoices.date_printed, vwinvoices.notes, vwinvoices.fk_lu_bulk_billing_type, vwinvoices.fk_staff_provided_service, vwinvoices.fk_patient, 
+'  vwinvoices.fk_branch, vwinvoices.fk_appointment, vwinvoices.appointment_time,
+'  vwpatients.firstname AS patient_firstname, vwpatients.surname AS patient_surname, 
+'  vwpatients.title AS patient_title, vwpatients.fk_sex AS patient_fk_sex, vwpatients.sex AS patient_sex, 
+'  vwpatients.wholename AS patient_wholename, vwinvoices.fk_payer_person, vwinvoices.fk_payer_branch, 
+'  vwinvoices.date_invoiced, vwinvoices.paid, vwinvoices.latex, vwinvoices.visit_date, vwinvoices.total_bill, 
+'  vwinvoices.total_paid, vwinvoices.paid_by_maths, vwinvoices.reference, vwstaffinclinics1.provider_number AS staff_provided_service_provider_number, 
+'  vwstaffinclinics1.firstname AS staff_provided_service_firstname, vwstaffinclinics1.surname AS staff_provided_service_surname, 
+'  vwstaffinclinics1.wholename AS staff_provided_service_wholename, vwstaffinclinics1.title AS staff_provided_service_title, 
+'  data_branches.branch, items_billed.fk_fee_schedule, items_billed.amount, items_billed.amount_gst, items_billed.fk_invoice, 
+'  items_billed.fk_lu_billing_type, lu_billing_type.type AS billing_type, fee_schedule.item, fee_schedule.mbs_item, 
+'  fee_schedule.user_item, fee_schedule.ama_item, fee_schedule.descriptor, fee_schedule.descriptor_brief, 
+'  fee_schedule.gst_rate, fee_schedule.percentage_fee_rule, 
+'         CASE
+'             WHEN vwinvoices.fk_payer_branch IS NOT NULL 
+'             THEN (((((vworganisations.organisation || ' '::text) || (vworganisations.branch || '<BR>'::text)) || COALESCE(vworganisations.street1 || ' '::text, vworganisations.street2)) || ' '::text) || (vworganisations.town || ' '::text)) || (vworganisations.postcode::text || ' '::text)
+'             WHEN vwinvoices.fk_payer_person IS NOT NULL 
+'             THEN ((((vwpersonsincludingpatients.wholename || '<BR>'::text) || COALESCE(vwpersonsincludingpatients.street1 || ' '::text, vwpersonsincludingpatients.street2)) || ' '::text) || (vwpersonsincludingpatients.town || ' '::text)) || (vwpersonsincludingpatients.postcode::text || ' '::text)
+'             ELSE NULL::text
+'         END AS payer_details, vworganisations.branch AS payer_branch, vworganisations.organisation AS payer_organisation, 
+'         vworganisations.street1 AS payer_branch_street1, vworganisations.street2 AS payer_branch_street2, vworganisations.postcode AS payer_branch_postcode, 
+'         vworganisations.town AS payer_branch_town, vworganisations.state AS payer_branch_state, vwpersonsincludingpatients.street1 AS payer_person_street1, 
+'         vwpersonsincludingpatients.street2 AS payer_person_street2, vwpersonsincludingpatients.town AS payer_person_town, 
+'         vwpersonsincludingpatients.state AS payer_person_state, vwpersonsincludingpatients.postcode AS payer_person_postcode, 
+'         vwpersonsincludingpatients.wholename AS payer_person_wholename, vwpersonsincludingpatients.title AS payer_person_title
+'    FROM billing.vwinvoices
+'    JOIN admin.vwstaffinclinics ON vwinvoices.fk_staff_invoicing = vwstaffinclinics.fk_staff
+'    JOIN admin.vwstaffinclinics vwstaffinclinics1 ON vwinvoices.fk_staff_provided_service = vwstaffinclinics1.fk_staff
+'    JOIN billing.items_billed ON vwinvoices.pk_invoice = items_billed.fk_invoice
 '    JOIN billing.lu_billing_type ON items_billed.fk_lu_billing_type = lu_billing_type.pk
 '    JOIN billing.fee_schedule ON items_billed.fk_fee_schedule = fee_schedule.pk
-'    JOIN contacts.data_branches ON invoices.fk_branch = data_branches.pk
-'    Left JOIN contacts.vworganisations ON invoices.fk_payer_branch = vworganisations.fk_branch
-'    Left JOIN contacts.vwpersonsincludingpatients ON invoices.fk_payer_person = vwpersonsincludingpatients.fk_person
-'    Left JOIN contacts.vwpatients ON invoices.fk_patient = vwpatients.fk_patient;
+'    JOIN contacts.data_branches ON vwinvoices.fk_branch = data_branches.pk
+'    LEFT JOIN contacts.vworganisations ON vwinvoices.fk_payer_branch = vworganisations.fk_branch
+'    LEFT JOIN contacts.vwpersonsincludingpatients ON vwinvoices.fk_payer_person = vwpersonsincludingpatients.fk_person
+'    LEFT JOIN contacts.vwpatients ON vwinvoices.fk_patient = vwpatients.fk_patient;
 ' 
 ' ALTER TABLE billing.vwitemsbilled
-'   OWNER To easygp;
-' GRANT ALL ON TABLE billing.vwitemsbilled To easygp;
-' GRANT ALL ON TABLE billing.vwitemsbilled To staff;
+'   OWNER TO richard;
+' GRANT ALL ON TABLE billing.vwitemsbilled TO richard;
+' GRANT ALL ON TABLE billing.vwitemsbilled TO easygp;
+' GRANT ALL ON TABLE billing.vwitemsbilled TO staff;
 ' 
-' Create Or Replace VIEW billing.vwpayments As 
-'  Select payments_received.pk As Pk_payments_received, payments_received.fk_invoice, payments_received.amount As Amount_paid, 
-'  lu_payment_method.method As Payment_method, payments_received.date_paid, payments_received.fk_staff_receipted,
-'   payments_received.fk_lu_payment_method, vwitemsbilled.pk_items_billed As Fk_items_billed, vwitemsbilled.staff_invoiced_firstname,
-'    vwitemsbilled.staff_invoiced_surname, vwitemsbilled.staff_invoiced_wholename, vwitemsbilled.staff_invoiced_title,
-'     vwitemsbilled.fk_staff_invoicing, vwitemsbilled.date_printed, vwitemsbilled.notes As Invoice_notes, 
-'     vwitemsbilled.fk_staff_provided_service, vwitemsbilled.fk_patient, vwitemsbilled.patient_firstname, 
-'     vwitemsbilled.patient_surname, vwitemsbilled.patient_title, vwitemsbilled.patient_fk_sex, 
-'     vwitemsbilled.patient_sex, vwitemsbilled.patient_wholename, vwitemsbilled.fk_payer_person, 
-'     vwitemsbilled.fk_payer_branch, vwitemsbilled.date_invoiced, vwitemsbilled.paid As Invoice_paid, 
-'     vwitemsbilled.latex As Invoice_latex, vwitemsbilled.visit_date, v
-'    From billing.payments_received
+' 
+' 
+' 
+' CREATE OR REPLACE VIEW billing.vwpayments AS 
+'  SELECT payments_received.pk AS pk_payments_received, payments_received.fk_invoice, payments_received.amount AS amount_paid, 
+'  lu_payment_method.method AS payment_method, payments_received.date_paid, payments_received.fk_staff_receipted, 
+'  payments_received.fk_lu_payment_method, vwitemsbilled.pk_items_billed AS fk_items_billed, vwitemsbilled.staff_invoiced_firstname, 
+'  vwitemsbilled.staff_invoiced_surname, vwitemsbilled.staff_invoiced_wholename, vwitemsbilled.staff_invoiced_title, 
+'  vwitemsbilled.fk_staff_invoicing, vwitemsbilled.date_printed, vwitemsbilled.notes AS invoice_notes, 
+'  vwitemsbilled.fk_staff_provided_service, vwitemsbilled.fk_patient, vwitemsbilled.patient_firstname, 
+'  vwitemsbilled.patient_surname, vwitemsbilled.patient_title, vwitemsbilled.patient_fk_sex, vwitemsbilled.patient_sex, 
+'  vwitemsbilled.patient_wholename, vwitemsbilled.fk_payer_person, vwitemsbilled.fk_payer_branch, vwitemsbilled.date_invoiced, 
+'  vwitemsbilled.paid AS invoice_paid, vwitemsbilled.latex AS invoice_latex, vwitemsbilled.visit_date, 
+'  vwitemsbilled.fk_appointment, vwitemsbilled.appointment_time,
+'  vwitemsbilled.reference AS invoice_reference, vwitemsbilled.staff_provided_service_provider_number, 
+'  vwitemsbilled.staff_provided_service_firstname, vwitemsbilled.staff_provided_service_surname, 
+'  vwitemsbilled.staff_provided_service_wholename, vwitemsbilled.staff_provided_service_title, vwitemsbilled.branch, 
+'  vwitemsbilled.fk_fee_schedule, vwitemsbilled.amount AS item_billed_amount, vwitemsbilled.amount_gst AS item_billed_amount_gst, 
+'  vwitemsbilled.fk_lu_billing_type, vwitemsbilled.billing_type, vwitemsbilled.item, vwitemsbilled.mbs_item, vwitemsbilled.user_item, 
+'  vwitemsbilled.ama_item, vwitemsbilled.descriptor, vwitemsbilled.descriptor_brief, vwitemsbilled.gst_rate, vwitemsbilled.percentage_fee_rule, 
+'  vwitemsbilled.payer_details, vwitemsbilled.payer_branch, vwitemsbilled.payer_organisation, vwitemsbilled.payer_branch_street1, 
+'  vwitemsbilled.payer_branch_street2, vwitemsbilled.payer_branch_postcode, vwitemsbilled.payer_branch_town, vwitemsbilled.payer_branch_state, 
+'  vwitemsbilled.payer_person_street1, vwitemsbilled.payer_person_street2, vwitemsbilled.payer_person_town, vwitemsbilled.payer_person_state, 
+'  vwitemsbilled.payer_person_postcode, vwitemsbilled.payer_person_wholename, vwitemsbilled.payer_person_title
+'    FROM billing.payments_received
 '    JOIN billing.lu_payment_method ON payments_received.fk_lu_payment_method = lu_payment_method.pk
 '    JOIN billing.vwitemsbilled ON payments_received.fk_invoice = vwitemsbilled.fk_invoice;
 ' 
 ' ALTER TABLE billing.vwpayments
-'   OWNER To easygp;
-' GRANT ALL ON TABLE billing.vwpayments To easygp;
-' GRANT ALL ON TABLE billing.vwpayments To staff;
+'   OWNER TO easygp;
+' GRANT ALL ON TABLE billing.vwpayments TO easygp;
+' GRANT ALL ON TABLE billing.vwpayments TO staff;
 ' 
-' 
-'  grant all On billing.vwclaims To staff;
-'  
-' drop view billing.vwClaims;
-' Create Or Replace view billing.vwClaims As
-' Select 
-'   billing.bulk_billing_claims.pk || '-'::text || billing.link_invoice_bulk_bill_claim.fk_invoice::text as pk_view,
-'   billing.bulk_billing_claims.pk As Fk_bulk_billing_claim,
-'   billing.bulk_billing_claims.claim_id,
-'   billing.bulk_billing_claims.claim_date,
-'   billing.bulk_billing_claims.claim_amount,
-'   billing.bulk_billing_claims.voucher_count,
-'   billing.bulk_billing_claims.finalised,
-'   billing.bulk_billing_claims.fk_branch,
-'   billing.bulk_billing_claims.fk_medclaim,
-'   billing.bulk_billing_claims.fk_lu_bulk_billing_type,
-'   billing.bulk_billing_claims.fk_staff_provided_service,
-'   billing.bulk_billing_claims.fk_staff_processed,
-'   billing.bulk_billing_claims.html,
-'   billing.lu_bulk_billing_type.type As Bulk_billing_type,
-'   admin.vwstaffinclinics.wholename As Staff_provided_service_wholename,
-'   admin.vwstaffinclinics.branch,
-'   billing.link_invoice_bulk_bill_claim.fk_invoice,
-'   billing.invoices.latex As Invoice_latex,
-'   billing.invoices.fk_patient,
-'   contacts.vwpatients.wholename As Patient_wholename,
-'   billing.invoices.visit_date,
-'   billing.fee_schedule.mbs_item,
-'   billing.items_billed.amount,
-'   vwstaffinclinics1.wholename As Staff_processed_wholename
-'   
-' From
-'   billing.bulk_billing_claims
-'   INNER JOIN billing.lu_bulk_billing_type ON(billing.bulk_billing_claims.fk_lu_bulk_billing_type = billing.lu_bulk_billing_type.pk)
-'   INNER JOIN billing.link_invoice_bulk_bill_claim ON(billing.bulk_billing_claims.pk = billing.link_invoice_bulk_bill_claim.fk_claim)
-'   INNER JOIN billing.invoices ON(billing.link_invoice_bulk_bill_claim.fk_invoice = billing.invoices.pk)
-'   INNER JOIN contacts.vwpatients ON(billing.invoices.fk_patient = contacts.vwpatients.fk_patient)
-'   INNER JOIN billing.items_billed ON(billing.invoices.pk = billing.items_billed.fk_invoice)
-'   INNER JOIN admin.vwstaffinclinics ON(billing.bulk_billing_claims.fk_staff_provided_service = admin.vwstaffinclinics.fk_staff)
-'   INNER JOIN billing.fee_schedule ON(billing.items_billed.fk_fee_schedule = billing.fee_schedule.pk)
-'   INNER JOIN admin.vwstaffinclinics vwstaffinclinics1 ON(billing.bulk_billing_claims.fk_staff_processed = vwstaffinclinics1.fk_staff)
-'   ;
-' 
-'   alter table billing.vwclaims owner To easygp;
-'   grant all on billing.vwclaims To easygp;
-'   grant all on billing.vwclaims To staff;
-
-Public Sub gvwItemsBIlled_KeyPress()
-   
-   If Key.code = Key.return Then 
-      gvwItemsBIlled_DblClick()
-   End If   
-   
-End

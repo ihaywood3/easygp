@@ -65,6 +65,7 @@ Private fk_lu_default_billing_level As Integer
 Private iBilling_Category As Integer
 Private iAccountDisplayMode As Integer  'const.Billing_Accounts_Paid,  Billing_Accounts_UnPaid, Billing_Accounts_All
 Private form_billingcards As FPatientBillingCards
+Private form_reports As FBillingReports   
 Private appointment_icons As Collection   
 Private staff As Collection
 Private Staff_Member As Collection
@@ -121,6 +122,7 @@ Private Const cTab_Invoices As Integer = 0
 Private Const cTab_Takings As Integer = 1
 Private Const cTab_Batching As Integer = 2
 Private Const cTab_Banking As Integer = 3
+Private Const cTab_Reports As Integer = 5
 Private form_batching As FBulkBillBatching
 
 Static Private Form_Billing As FRecordVisit
@@ -241,7 +243,7 @@ Public Sub cvwUnBilled_Refresh()
    '------------------------------------------------------------------------
    'Display a list of all unbilled consultations ordered by appointment date
    '-------------------------------------------------------------------------
-
+   
    Dim single_day As Date
    
    Select Case TabStrip1.Index
@@ -275,16 +277,23 @@ Public Sub cvwUnBilled_Refresh()
          If Bulk_Billed_Claims.count Then
             Batching_Show_Vouchers_In_Claim()
          Endif
+      Case cTab_Reports
+         If IsNull(form_reports) Then
+            With form_reports = New FBillingReports(Vbox_Reports)
+               .Init()
+            End With
+         Endif
    End Select
    
 End
+
 Public Sub cvwUnBilled_Click()
    
-  Select Case TabStrip1.Index 
-  Case 2
-     cvwUnBilled.MoveCurrent()
-      form_batching.Claim_Display(cvwUnBilled.Item.key)
-  End Select 
+   Select Case TabStrip1.Index 
+      Case 2
+         cvwUnBilled.MoveCurrent()
+         form_batching.Claim_Display(cvwUnBilled.Item.key)
+   End Select 
    
 End
 
@@ -358,7 +367,7 @@ Public Sub Payer_Get(patient As Collection) 'fix me to fk_patient
    'temp code get the responsible person FIXME  body code only whilst developin
    'need more inclusive way of getting the payer - eg might not be a patient
    'fixme put in code for responsible party as a branch (must be put in contacts first)
-
+   
    bExit = True   
    cvwUnBilled.MoveCurrent()
    If Not IsNull(patient!fk_payer_person) Then 
@@ -704,8 +713,9 @@ Public Sub cmbFeeType_Click()
    'This event is raised by either user clicking on the combo or medicare/veteran radio buttons
    're-calculate the gap payment or set to zero if this is veterans patient.
    '-------------------------------------------------------------------------------------------
-   Dim gap_payment As Float
 
+   Dim gap_payment As Float
+   
    gvwItemsBIlled[onrow_items, cGridColumnItem_FeeType].text = cmbFeeType.Text
    If gvwItemsBIlled[onrow_items, 0].text <> "" Then  
       Try gvwItemsBIlled[onrow_items, cGridColumnItem_Fee].text = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(gvwItemsBIlled[onrow_items, 0].text, FeeTypes[cmbFeeType.index]!pk)!price
@@ -717,7 +727,7 @@ Public Sub cmbFeeType_Click()
          If gap_payment = 0 Or rbInvoiceToVeterans.value = True Then
             gvwItemsBIlled[onrow_items, cGridColumnItem_Gap].text = "$0.0"
          Else
-          gvwItemsBIlled[onrow_items, cGridColumnItem_Gap].text = modUtil.Money_Format(gap_payment)
+            gvwItemsBIlled[onrow_items, cGridColumnItem_Gap].text = modUtil.Money_Format(gap_payment)
          End If    
       Endif
    End If   
@@ -1198,14 +1208,19 @@ Public Sub Get_Items(txt As String)
    
    txtDescriptor.text = ""
    bExit = True
-    If rbInvoiceToMedicare.Value = True Or rbInvoiceToVeterans.value = True Then
-       fk_lu_default_billing_level = const.Billing_Default_Level_BulkBill
-    Endif
+   If rbInvoiceToMedicare.Value = True Or rbInvoiceToVeterans.value = True Then
+      fk_lu_default_billing_level = const.Billing_Default_Level_BulkBill
+   Endif
    Select Case fk_lu_default_billing_level     
       Case const.Billing_Default_Level_BulkBill
-         fk_lu_billing_type = const.Billingtype_Scheduled_Fee
-         billing_type = "Schedule Fee"
-      Case const.Billing_Default_Level_PensionerConcession
+         If rbInvoiceToMedicare.Value = True Then 
+            fk_lu_billing_type = const.Billingtype_Scheduled_Fee
+            billing_type = "Schedule Fee"
+         Else
+             fk_lu_billing_type = const.Billingtype_DVA_LM0    'fixme in config file put in dvo lmo or non lmo rate
+             billing_type = "DVA (LMO rate)" 
+         End If   
+       Case const.Billing_Default_Level_PensionerConcession
          fk_lu_billing_type = const.Billingtype_Pensioner_Concession
          billing_type = "Pensioner Concession"
       Case const.Billing_Default_Level_HealthCareCardConcession
@@ -1221,14 +1236,6 @@ Public Sub Get_Items(txt As String)
          fk_lu_billing_type = const.Billingtype_Private                         'default to private billing
          billing_type = "Private Fee"
    End Select
-   
-   ' If IsNull(fk_lu_default_billing_level) Then
-   '    cmbFeeType.index = cmbFeeType.Find("Private Fee")
-   '    gvwItemsBIlled[gvwItemsBIlled.row, 4].Text = "Private Fee"
-   ' Else
-   '    cmbFeeType.index = cmbFeeType.Find(billing_type)
-   '    gvwItemsBIlled[gvwItemsBIlled.row, 4].Text = billing_type
-   ' Endif
    Scheduled_Fee = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(Trim(txt), const.Billingtype_Scheduled_Fee)
    'Look in ordinary items first,if fail and we have a non-patient payer - try workcover
    Items = modBillingDBI.Items_Get(Trim(txt), fk_lu_billing_type)
@@ -1603,6 +1610,8 @@ End
 
 Public Sub MainToolbar_Click()
    
+   Dim sCardType As String
+   
    Select Last.tag
       Case "save billing defaults"
          Billing_Defaults_Save()
@@ -1614,15 +1623,21 @@ Public Sub MainToolbar_Click()
       Case "print voucher"
          'medicare/veterans vouchers never paid on the day, currently only do medicare
          If Not IsNull(patient) Then
-            If IsNull(patient!medicare_number) Then
-               Goto Missing_MedicareNumber
+            If IsNull(patient!medicare_number) And IsNull(patient!veteran_number) Then
+               sCardType = "medicare"
+               Goto Missing_CardNumber
+            Endif
+            If rbInvoiceToVeterans.value = True And IsNull(patient!veteran_numnber) Then
+                sCardType = "veteran"
+               Goto Missing_CardNumber
             Endif
          Endif
-         If Not IsNull(Unbilled_consultation) Then
-            If IsNull(Unbilled_consultation!medicare_number) Then
-               Goto Missing_MedicareNumber
-            Endif
-         Endif
+      
+         ' If Not IsNull(Unbilled_consultation) Then
+         '    If IsNull(Unbilled_consultation!medicare_number) Then
+         '       Goto Missing_MedicareNumber
+         '    Endif
+         ' Endif
          Save(bBulkBill_Yes, bPrint_No, bAccount_No) ', bPaid_No) 'FIXME TO bPrint_Yes to print
       Case "print receipt"
          Save(bBulkBill_No, bPrint_Yes, bAccount_No) ', bPaid_Yes)
@@ -1633,9 +1648,9 @@ Public Sub MainToolbar_Click()
    End Select
    Return   
    
-Missing_MedicareNumber:
-   Message.title = "Medicare Numbers"
-   Message.Info("This patient's medicare number is not recorded.\n\nPlease update their record before proceeding.")
+Missing_CardNumber:
+   Message.title = modUtil.Ucase_Word_First_Letter(sCardType) & " Numbers "
+   Message.Info("This patient's " & sCardType & " number is not recorded.\n\nPlease update their record before proceeding.")
    Return
    
 End
@@ -1752,7 +1767,7 @@ Public Sub cvwItemsBilled_Select()
    
    Select Case TabStrip1.Index
       Case cTab_Invoices  
-          bexit = True
+         bexit = True
          cvwItemsBilled.MoveCurrent
          HBox_InvoiceCommentS.Visible = False  
          If cvwItemsBilled[cvwItemsBilled.Item.key][0] = "" Then
@@ -1809,8 +1824,8 @@ Public Sub cvwItemsBilled_Select()
          Hbox_InvoiceGrid.Enabled = False 
          HBox_InvoiceComments.Enabled = False   
          bexit = False  
-    End Select
-
+   End Select
+   
 End
 
 Public Sub Batching_Show_Vouchers_In_Claim()
@@ -2326,6 +2341,12 @@ Public Sub TabStrip1_Click()
          chkTodayOnly.Visible = False 
          cvwUnBilled_Refresh() 
          bExit = False  
+      Case cTab_Reports
+         If IsNull(form_reports) Then
+            With form_reports = New FBillingReports(Vbox_Reports)
+               .Init()
+            End With
+         Endif
    End Select
    
 End
@@ -2650,9 +2671,9 @@ End
 '   grant all on billing.vwclaims To staff;
 
 Public Sub gvwItemsBIlled_KeyPress()
-
-    If Key.code = Key.return Then 
-            gvwItemsBIlled_DblClick()
-      End If   
-
+   
+   If Key.code = Key.return Then 
+      gvwItemsBIlled_DblClick()
+   End If   
+   
 End

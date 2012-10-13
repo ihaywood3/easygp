@@ -30,6 +30,10 @@ Public Sub Day_list_Show(the_date As Date)
    Dim item As String
    Dim x As Integer
    Dim num_visits As Integer 'may not be same as individual patients seen
+   Dim num_visits_bb_have_concession_card As Integer
+   Dim num_visits_bb_no_concession_card As Integer
+   Dim num_visits_veteran As Integer
+   Dim num_visits_private As Integer
    Dim fk_Last_invoice As Integer
    Dim total_billed As Float
    Dim total_paid As Float
@@ -41,10 +45,18 @@ Public Sub Day_list_Show(the_date As Date)
    Dim payments_for_invoice As Collection
    Dim payment_for_invoice As Collection
    Dim payment_count As Integer
+   Dim centrelink_card_types As Collection
+   Dim concession_card_none_total As Integer
+   Dim num_concession_card_pensioner As Integer
+   Dim num_concession_card_healthcare As Integer
+   Dim num_concession_card_seniors As Integer
+   Dim num_private_patients_bulk_billed As Integer
+   Inc Application.Busy
    payment_methods = modBillingDBI.Payment_Methods_Get()
    monies_received = modBillingDBI.Receipts_Get_For_Day(the_date)
+  ' centrelink_card_types = modBillingDBI.Centrelink_Card_Types_Get() 'clerical.lu_centrelink_card_type
    visits = modBillingDBI.Day_List_Get(the_date, modDBConnect.currentUser!fk_branch, modDBConnect.currentUser!fk_staff)
-  
+   tlDaySummary.text = ""
    With columnview1
       .Clear 
       For x = 0 To .Columns.Count - 1
@@ -56,7 +68,7 @@ Public Sub Day_list_Show(the_date As Date)
       If fk_Last_invoice <> visit!fk_invoice Then                                             'for each distinct invoice
          If Not IsNull(visit!appointment_time) Then                                           'if exists, show appointment time
             columnview1[visit!pk_items_billed][0] = Format(visit!appointment_time, "hh:nn")   ' eg. 09:00 FIXME PUT IN AM/PM
-         Else
+         Else 
             columnview1[visit!pk_items_billed][0] = ""                                        'this may not exist if billed without appointment in book  
          Endif
          columnview1[visit!pk_items_billed][1] = visit!patient_wholename
@@ -64,9 +76,27 @@ Public Sub Day_list_Show(the_date As Date)
          If Not IsNull(visit!fk_lu_bulk_billing_type) Then
             If visit!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
                Payer = "Medicare"
+               If Not IsNull(visit!fk_lu_centrelink_card_type) Then
+                  If visit!fk_lu_centrelink_card_type > 1 Then '1=none
+                     Inc num_visits_bb_have_concession_card
+                     Select Case visit!fk_lu_centrelink_card_type
+                        Case const.Centrelink_Concession_Card_Health_Care_Card
+                           Inc num_concession_card_healthcare
+                        Case const.Centrelink_concession_card_seniors_Health_Card
+                           Inc num_concession_card_seniors
+                        Case const.Centrelink_concession_card_pensioner_concession_card
+                           Inc num_concession_card_pensioner
+                     End Select
+                  End If
+               Else
+                     Inc num_visits_bb_no_concession_card
+               End If   
             Else
                Payer = "Veterans"
+               Inc num_visits_veteran
             Endif
+         Else
+            Inc num_visits_private 
          Endif
          If payer = "" Then 
             If IsNull(visit!fk_payer_person) And IsNull(visit!fk_payer_branch) Then 
@@ -98,7 +128,7 @@ Public Sub Day_list_Show(the_date As Date)
       If Not IsNull(visit!total_paid) Then
          'get payment method.
          payments_for_invoice = modBillingDBI.Invoice_Payments_For_Get(visit!fk_invoice)
-         If payments_for_invoice.count Then 'BUG HERE SHOULD NEVER HAPPEN IE INPUT BUG
+         If payments_for_invoice.count Then 'BUG HERE SHOULD NEVER HAPPEN IE INPUT/sve BUG has created this
            payment_count = 0
             For Each payment_for_invoice In payments_for_invoice
                 If payment_count = 1 Then 
@@ -112,7 +142,6 @@ Public Sub Day_list_Show(the_date As Date)
                 End If  
                 Inc payment_count
             Next   
-                
          End If   
       Else
          columnview1[visit!pk_items_billed][7] = "$0.0"
@@ -133,9 +162,22 @@ Public Sub Day_list_Show(the_date As Date)
    'construct a bit of a summary
    '----------------------------
    tlDaySummary.text &= "<P><B>Summary</B><P>"
-   tlDaySummary.text &= "<B>Patients seen:</B>" & num_visits 'put reason patient not seen and print under here
-   tlDaySummary.text &= "<B>Patients billed:</B>" & num_visits
-   tlDaySummary.text &= "<B>Bulk Billed Medicare:</B>"
+   tlDaySummary.text &= "<B>Patients seen:</B>" & num_visits & "<BR>" 'put reason patient not seen and print under here
+   tlDaySummary.text &= "<B>Patients billed:</B>" & num_visits & "<BR>"
+   tlDaySummary.text &= "<B>Bulk Billed on concession card:</B>" & num_visits_bb_have_concession_card & "<BR>"
+   If num_concession_card_healthcare Then
+      tlDaySummary.text &= "- Health care card holders:" & Str(num_concession_card_healthcare) & "<BR>"
+   Endif
+   If num_concession_card_pensioner Then
+      tlDaySummary.text &= "- Pensioner card holders:" & Str(num_concession_card_pensioner) & "<BR>"
+   Endif
+    If num_concession_card_seniors Then
+       tlDaySummary.text &= "- Sensiors health card total:" & Str(num_concession_card_seniors) & "<BR>"
+    Endif
+   tlDaySummary.text &= "<B>Bulk Billed no concession card:</B>" & num_visits_bb_no_concession_card & "<BR>" & "<BR>"
+   tlDaySummary.text &= "<B>Bulk Billed Veteran:</B>" & num_visits_veteran & "<BR>"
+   tlDaySummary.text &= "<B>Private Billing:</B>" & num_visits_private & "<BR>"
+   Dec Application.Busy
    
 End
 

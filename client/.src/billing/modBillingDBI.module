@@ -589,11 +589,18 @@ Public Function Get_Billed_Items(invoice As Crow) As Collection
    Dim sql As String
    ' " left(coalesce(descriptor_brief,descriptor),400) as descriptor_display, "
    sql = "select coalesce(mbs_item,ama_item,user_item) as common_item, "
-   "  descriptor_brief As Descriptor_display, "
+   "  descriptor_brief As descriptor_display, "
    " * from billing.items_billed i,billing.fee_schedule s where i.fk_fee_schedule = s.pk and i.fk_invoice = &1"
    Return modDBConnect.exec_query_collection(sql, [invoice!fk_invoice])
    
 End
+
+Public Function Get_Payments(invoice As Crow) As Collection
+   
+  Return modDBConnect.exec_query_collection("select p.*, m.method from billing.payments_received p, billing.lu_payment_method m where p.fk_invoice = &1 and m.pk = p.fk_lu_payment_method", [invoice!fk_invoice]) 
+   
+End
+
 
 Private Sub Load_FDF_Specialist(fdf As String, invoice As CRow) As String
    
@@ -744,11 +751,12 @@ End
 ' takes a CRow from billing.invoices, from either from Make_Invoice or Invoices_Get, and prints it
 ' also updates the row on the DB as appropriate
 ' ' cc is the current consult object. If not provided a new one will be loaded using th invoices's fk_patient.
-Public Sub Print_Invoice(invoice As Crow, bPrint As Boolean, Optional bBulkBIll As Boolean = False, Optional cc As Cconsult) As String
+Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBulkBIll As Boolean = False, Optional cc As Cconsult) As String
    '
    
    Dim sql As String
    Dim items As Collection
+   Dim payments As Collection
    Dim templ As CTemplate
    Dim doctor As Collection
    Dim i As Collection
@@ -758,14 +766,22 @@ Public Sub Print_Invoice(invoice As Crow, bPrint As Boolean, Optional bBulkBIll 
    Dim fdf As String
    Dim tmpfile As String
    Dim pdftk_path As String
+   Dim invoice As CRow
+   
+   If TypeOf(invoice_in) = gb.Integer Then
+      invoice = modUtil.Get_One(modDBConnect.exec_query_row("select * from billing.vwinvoices where fk_invoice = &1", [invoice_in]))
+   Else
+      invoice = invoice_in
+   Endif
    
    If IsNull(cc) Then cc = New CConsult(modContactsDBI.Patient_Get_Using_PK(invoice!fk_patient))
    items = Get_Billed_Items(invoice)
+   payments = Get_Payments(invoice)
    sql = "select referrer_type, s.* from common.lu_occupations o, admin.vwstaffinclinics s "
    "where o.pk = s.fk_occupation and s.fk_staff = &1 limit 1"
    doctor = modDBConnect.exec_query_first(sql, [invoice!fk_staff_provided_service])
    referrer_type = doctor!referrer_type
-   If bBulkBIll = True Then 
+   If bBulkBIll Then 
       ' cue scary music: patient is being bulk-billed
       If referrer_type = "s" Then
          pdfname = "db2-gp"
@@ -785,16 +801,16 @@ Public Sub Print_Invoice(invoice As Crow, bPrint As Boolean, Optional bBulkBIll 
       Try Kill tmpfile & ".fdf"
       Return Null
    Else
-      If referrer_type = "s" Then
+      If False Then ' referrer_type = "s" Then  DONT USE SPECIALIST INVOICE FOR A BIT
          ' specialist's account: need to grab referrer's details first
          templ = New CTemplate("templates/invoice-specialist.tex", "tex")
          Load_Template_Specialist(templ, invoice)
       Else
          templ = New CTemplate("templates/invoice-gp.tex", "tex")
       End If   
-      Load_Template_GP(templ, doctor, items, cc)
-      templ.Subst("date-raised", invoice!visit_date) 'FIXME change backend ?back to date_invoiced or what if the invoice is for a non-visit related service
+      Load_Template_GP(invoice, templ, doctor, items, payments, cc)
       latex = templ.GetData()
+      Print latex
       If bPrint Then modPrinting.Print_latex(latex, const.Paper_Plain, 1)
       Return latex   
    Endif
@@ -835,7 +851,7 @@ Private Sub Load_Template_Specialist(templ As Ctemplate, invoice As Crow)
 End
 
 ' prepares the template with stuff for GP-type invoices (actually common to specialists too)    
-Private Function Load_Template_GP(templ As CTemplate, doctor As Collection, items As Collection, cc As CConsult)
+Private Function Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As Collection, items As Collection, payments As Collection, cc As CConsult)
    
    Dim i As Collection
    
@@ -848,9 +864,22 @@ Private Function Load_Template_GP(templ As CTemplate, doctor As Collection, item
    templ.Subst("current-time", Format$(Now, "dd/mm/yy hh:nn"))
    ' now do the actual items
    For Each i In items
-      templ.Row(i!common_item, i!descriptor_display, i!amount)
+      templ.Row(Format$(invoice!date_invoiced, "dd/mm/yy"), i!common_item, "\\multicolumn{2}{l}{" & i!descriptor_display & "}", i!amount, "")
    Next
-   templ.Table("items")
+   If Not IsNull(payments) Then
+     For Each i In payments 
+        templ.Row(Format$(i!date_paid, "dd/mm/yy"), "", "\\multicolumn{2}{l}{Payment: " & i!method & " " & i!referent & "}", "", i!amount)
+     Next
+   Endif
+   templ.Table("accounts-table")
+   templ.Subst("due", invoice!due)
+   templ.Subst("gst", invoice!total_gst)
+   templ.Subst("total", invoice!total_bill)
+   If invoice!total_gst = invoice!total_bill Then
+      templ.Subst("invoice-name", "Patient Account")
+   Else
+      templ.Subst("invoice-name", "Tax Invoice")
+   Endif
    templ.Subst_common(cc)
    
 End
@@ -877,7 +906,7 @@ Public Sub UnitTest(main_form As Form)
    Dim item1 As Collection
    Dim item2 As Collection
    
-   item1 = modUtil.Get_One(Descriptors_Get("36", True, True))
+   item1 = modUtil.Get_One(Descriptors_Get("23", True, True))
    item2 = modUtil.Get_One(Descriptors_Get("308", True, True))
    modDBConnect.exec_query("truncate billing.invoices cascade")
    invoice!fk_patient = 1
@@ -887,7 +916,8 @@ Public Sub UnitTest(main_form As Form)
    invoice!date_invoiced = Now
    invoice.Save("billing.invoices", "fk_invoice")
    Save_Items(invoice!fk_invoice, [item1, item2], False)
-   Print_Invoice(invoice, True)
+   modDBConnect.exec_query("insert into billing.payments_received(fk_lu_payment_method, amount, fk_invoice) values (1,'$100.00', &1)", [invoice!fk_invoice])
+   Print_Invoice(invoice!fk_invoice, True)
    
 End
 

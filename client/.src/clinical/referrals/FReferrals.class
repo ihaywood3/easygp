@@ -22,7 +22,7 @@
 '                 Occupation     e.g surgeon
 '                 Name           e.g Smith,p
 '                 Organisation   e.g Newcastle cardiac services
-'                 Branch         e.g of an organisation
+'                 Branch         e.g ofProcessProcess an organisation
 '                 Typing in the appropriate textbox will popup pick lists in columnview1
 ' BACKEND TABLES  See schema clin_referrals
 '                 Each letter must have a 'tag' which is what is displayed in the
@@ -42,7 +42,7 @@
 '                 occupation of employee not showing up in the view.
 '----------------------------------------------------------------------------------
 
-Private bEmbedded As Boolean                                'True if this form is embedded e.g in the inbox
+Private bEmbedded As Boolean                      'True if this form is embedded e.g in the inbox
 Private bEditing As Boolean                                 'True if editing an existing referral written this consultation
 Private bExit As Boolean                                    'Used to prevent re-entry into subroutines
 Private bKeyValid As Boolean                                'Used in EditAreaTextBox routines to ensure valid data entry
@@ -82,7 +82,7 @@ Private bHaveSpellChecked As Boolean                        'if true have at lea
 Public Paragraph_At As Integer
 Public character_at As Integer 
 Private form_hl7_attributes As FTestHL7Referral
-
+Private priority_types As Collection                        'degree of priority or urgency
 Static Private form_referral As FReferrals
 
 Static Public Sub Show_Datachanged_CopyList(f As Boolean)
@@ -121,10 +121,9 @@ Public Sub Init(cons As CConsult)
    cvwLetters.Columns[3].width = 200           'referral tag
    cvwLetters.Columns[4].width = 80            'if include_careplan is true = 'Care Plan'
    cvwLetters.Columns[5].width = 100            'if include_summary  is true = 'Health Summary'
-   With form_hl7_attributes = New FTestHL7Referral(Vbox_Hl7)
-      .Init()
-   End With
+   
    referral_types = modUtil.LoadCombo(cmbReferralTypes, modReferralsDBI.Referral_Get_Types(), "type")
+   priority_types = modUtil.LoadCombo(cmbPriorityTypes, modReferralsDBI.Priority_Get(), "urgency")
    lblmeasure.text = " Provider Category "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
    lblSpacerLeftOfButtons.width = lblmeasure.width
@@ -200,7 +199,7 @@ Public Sub Save()
    '   fk_branch integer DEFAULT null,
    '   fk_employee integer default null,
    '   fk_address integer default null,
-   '--------------------------------------------------------------
+   '-------------------------Priority e.g 'Urgent'Priority e.g 'Urgent'-------------------------------------
    
    Dim referral As New Collection
    Dim inclusion As Collection
@@ -238,14 +237,15 @@ Public Sub Save()
    Else
       referral!include_healthsummary = False 
    End If  
+   referral!fk_lu_urgency = priority_types[cmbPriorityTypes.index]!pk
    referral!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto 'FIXME, I'VE LEFT it as collection till I sort using this in FRequests
    sHtml_CopyTo = Copyto_Html_Construct(referral!copyto)
    sHtml_Inclusions = Inclusions_Construct_HTML(Inclusions_EditArea)
-   
+  ' referral!letter_hl7 = BERND TO ADD STUFF HERE
    referral!body_html = Referral_BodyHTML_Construct()
    referral!letter_html = Referral_LetterHTML_Construct(sHtml_CopyTo, sHtml_Inclusions)
+   Print referral!letter_html 
    referral!fk_type = referral_types[cmbReferralTypes.index]!pk                                            'e.g opinion and management
-   ' referral!fk_pasthistory = fk_pasthistory '0 = general notes > 0 = key to clin_history.past_history table
    '-------------------------------------------------
    'Construct the text to embed in the progress notes
    '-------------------------------------------------
@@ -843,7 +843,7 @@ Public Sub EditAreaTextBox_Change()
          End If   
       Case "referral for"
          If Trim(cmbReferralTypes.text) = "" Then
-         '   lblReferralType_Missing.Visible = True
+            '   lblReferralType_Missing.Visible = True
             cmbReferralTypes.SetFocus
          End If
       Case "tag"
@@ -890,7 +890,7 @@ Public Sub EditArea_Clear()
    '------------------------------------
    'Remove labels which could be showing
    '------------------------------------
-  ' lblReferralType_Missing.Visible = False
+   ' lblReferralType_Missing.Visible = False
    lblLetter_Missing.Visible = False
    '-----------
    'Clear lists
@@ -2431,3 +2431,221 @@ Public Sub teLetter_Drop()
    
 End
 
+Public Sub btSendAsHL7_Click()
+   
+   'Save the current edit area recall and updates the recalls list
+   'Need this amount of info to save
+   'For table clin_referrals.referrals
+   ' pk serial NOT NULL,
+   ' fk_consult integer NOT NULL, -- key to the main clin_consult.consult table which is the master table of the database
+   ' fk_person integer, -- if not null key to contacts.data_persons table ie person referred to
+   ' fk_referral_recipient integer, -- key to clin_referrals.referral_recipients table
+   ' fk_type integer, -- key to lu_referral_type table ie type of referral e.g opinion or management
+   ' letter_html text NOT NULL, -- html which is the letter itself
+   ' tag text, -- A description of the letter eg 'heart failure'
+   ' deleted boolean DEFAULT false,
+   ' body_html text, -- Contains the html of the body of the letter
+   ' fk_pasthistory integer DEFAULT 0, -- if not 0 = general notes, then is the key to clin_history.past_history table
+   ' fk_progressnote integer, -- key to clin_consult.progress notes table - points to the progress note of a letter during the...
+   ' include_careplan boolean DEFAULT false,
+   ' include_healthsummary boolean DEFAULT false,
+   ' fk_branch integer DEFAULT null,
+   ' fk_employee integer default null,
+   ' fk_address integer default null,
+   '--------------------------------------------------------------
+   
+   Dim message As New CHL7Message_REF_I12
+   Dim ReceivingFacility As New CHL7Datatype_HD
+   Dim ConsultingProvider As Collection
+   Dim ReferredtoProvider As Collection
+   Dim PrimaryCareProvider As Collection
+   Dim ReferralLetterText As String
+   Dim TempFile As File 'just for testing
+   Dim sLine As String 'just for testing
+   Dim AdmissionType As String
+   Dim ObservationResultStatus As String
+   Dim AttachmentsArray As New String[]
+   Dim ReferralStatus As String
+   Dim ReferralPriority As String
+   Dim ReferralType As String
+   Dim ReferralDisposition As String
+   Dim ReferralReason As String
+   Dim Brnach As Collection
+   '
+   ' If Not bHaveSpellChecked Then
+   ' Spelling_Check()
+   ' Endif
+   '
+   ' If Not Valid_Referral() Then Return
+   
+   ' If chkIncludeCarePlan.value = True Then
+   ' referral!include_careplan = True
+   ' Else
+   ' referral!include_careplan = False
+   ' End If
+   ' If chkIncludehealthSummary.value = True Then
+   ' referral!include_healthsummary = True
+   ' Else
+   ' referral!include_healthsummary = False
+   ' End If
+   '
+   ' Referral_BodyHTML_Construct()
+   ' Referral_LetterHTML_Construct(sHtml_CopyTo, sHtml_Inclusions)
+   ' referral_types[cmbReferralTypes.index]!pk 'e.g opinion and management
+   '
+   '
+   '
+   ' Reload() 'Default to a new letter, reload controls
+   '
+   
+   ' form_hl7_attributes.SendHl7ReferralMessage()
+   Select Case cmbPriorityTypes.Current.Text
+      Case "Routine"
+         ReferralPriority = "R" 'With highest priority = 'S' As soon as possible = 'A' Urgent = 'U' Early = 'E' Routine = 'R'
+      Case "Semi-Urgent"
+         ReferralPriority = "E" 'With highest priority = 'S' As soon as possible = 'A' Urgent = 'U' Early = 'E' Routine = 'R'
+      Case "Urgent"
+         ReferralPriority = "A" 'With highest priority = 'S' As soon as possible = 'A' Urgent = 'U' Early = 'E' Routine = 'R'
+   End Select
+   
+   Select Case cmbReferralTypes.Current.Text
+      Case "opinion"
+         ReferralReason = "S" 'Second opinion = ‘S’ Patient preference = ‘P’ Provider ordered = ‘O’ Work load = ‘W’
+         ReferralType = "GRF" 'General referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
+         
+         ReferralStatus = "P" 'Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
+         ReferralDisposition = "SO" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
+         
+      Case "Opinion and Management"
+         ReferralReason = "S" 'Second opinion = ‘S’ Patient preference = ‘P’ Provider ordered = ‘O’ Work load = ‘W’
+         ReferralType = "GRF" 'General referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
+         
+         ReferralStatus = "P" 'Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
+         ReferralDisposition = "AM" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
+         
+      Case "Indefinate Referral"
+         
+         ReferralReason = "S"
+         ReferralType = "GRF" 'General referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
+         
+         ReferralStatus = "P" 'Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
+         ReferralDisposition = "AM" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
+         
+      Case "Imediate Treatment"
+         ReferralReason = "S"
+         ReferralType = "GRF" 'General referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
+         ReferralStatus = "P" 'Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
+         ReferralDisposition = "AM" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
+         
+      Case "Admission"
+         
+         ReferralReason = "S"
+         ReferralType = "GRF" 'General referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
+         ReferralStatus = "P" 'Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
+         ReferralDisposition = "AM" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
+         
+      Case "Request for investigation"
+         
+         ReferralReason = "O"
+         ReferralType = "GRF" 'General referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
+         ReferralStatus = "P" 'Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
+         ReferralDisposition = "WR" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
+         
+      Case "Management"
+         
+         ReferralType = "GRF" 'General referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
+         ReferralStatus = "P" 'Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
+         ReferralDisposition = "AM" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
+         
+      Case "Feedback"
+         
+         ObservationResultStatus = "F"
+         ReferralStatus = "A" 'Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
+         ReferralDisposition = "UCP" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
+         
+      Case Else
+         ' message.warning(cmbReferralTypes.Current.Text & " is not supported")
+         
+   End Select
+   
+   Branch = modDBConnect.exec_query_first("Select * From contacts.vworganisations;")
+   
+   ReceivingFacility.ApplicationIdentifier = Branch["organisation"]
+   
+   'possiblilities for the observation result status
+   ' C RECORD COMING OVER Is A CORRECTION And THUS REPLACES A RESULT 338
+   ' D DELETES THE OBX RECORD 339
+   '
+   ' F FINAL RESULTS; CAN ONLY BE CHANGED With A CORRECTED RESULT.340
+   '
+   ' I SPECIMEN In LAB; RESULTS PENDING 341
+   ' P PRELIMINARY RESULTS 342
+   ' R RESULTS ENTERED - - Not VERIFIED 343
+   ' S PARTIAL RESULTS 344
+   ' U RESULTS STATUS CHANGE To FINAL.RESULTS DID Not CHANGE(DON 'T TRANSMIT TEST). 346
+   ' X RESULTS CANNOT BE OBTAINED For THIS OBSERVATION 345
+   ' ObservationResultStatus = "S"
+   
+   ' AdmissionType = "R" 'A = ACCIDENT E = EMERGENCY L = LABOR R = ROUTINE
+   
+   'this reads a letter from a text file
+   
+   'mal sehen wo man das noch gebrauchen kann ...
+   
+   ' txtReferralDate.text 'datum der überweisung
+   ' Trim(txtTag.text) 'so eine art überschrift der überweisung
+   ' referral!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto 'FIXME, I'VE LEFT it as collection till I sort using this in FRequests
+   ' sHtml_CopyTo = Copyto_Html_Construct(referral!copyto)
+   ' sHtml_Inclusions = Inclusions_Construct_HTML(Inclusions_EditArea)
+   '
+   '
+   
+   ' AttachmentsArray.Add("/home/bernd/svn/easygp/referraltext.txt", 1)
+   AttachmentsArray.Add(GetLetterText(), 1)
+   AttachmentsArray.Add("/home/bernd/svn/test.pdf", 2)
+   AttachmentsArray.Add("/home/bernd/svn/test.JPG", 3)
+   message.createHL7Message_REF_I12(fk_person, fk_employee, ReferralStatus, ReferralPriority, ReferralType, ReferralDisposition, ReferralReason, AttachmentsArray, ObservationResultStatus, ConsultingProvider, PrimaryCareProvider,,,, AdmissionType)
+   
+   '- ReferredToProvider: Needs to be a collection and contains the information of the Receiving doctor
+   '- ToTransferPatient_fk_Patient: Needs to be an integer and contains the foreign key which gives the information were the data of the to reffering patient is storred in the DB
+   '- ObservationResultStatus: Needs to be a string which is coded according to the HL7 table 85
+   '- ReferralStatus is a String and needs to be coded according to the hl7 table 0283 Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
+   '- ReferralPriority is a string and needs to be coded according to the hl7 table 0280 (conditional) With highest priority = 'S' As soon as possible = 'A' Urgent = 'U' Early = 'E' Routine = 'R'
+   '- ReferralType is a hl7 Datatype sting and needs to be coded according to the hl7 table 0281 (conditional) General referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
+   '- ReferralDisposition is a string and needs to be coded according to hl7 table 0282 and says what is expected of the receiver (Optional) (Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI’)
+   '- ReferralReason is a string and must be coded according to the hl7 table 0336 (Second opinion = ‘S’ Patient preference = ‘P’ Provider ordered = ‘O’ Work load = ‘W’
+   '- Attachments(optional): this is a string array and caintains sings such a letter text a pdf or a picture as a sting ( be carefull to convert the attachments into the right format before calling this function
+   '- ConsultingProvider(Optional): Needs to be a collection and contains the information of the consulted doctor
+   '- PrimaryCareProvider(Optional): Needs to be a collection and contains the information of the primary doctor of the patient
+   '- ReceivingFacility_HD(optional): Needs to be a object of the cHL7Datatype_HD class and contains the information of the receiving facility
+   '- OriginatingReferralIdentifier(Optional) is a hl7 EI datatype and contains the global universal identifyer of this referral message (GUID) it can be passed to this function if this is a answer to a previos referral message otherwise a GUID will be generated from this function
+   '- AdmissionType(optional): Needs to be a string which is coded according to the HL7 user table 7
+   
+End
+
+Private Function GetLetterText() As String
+   
+   Dim ProviderInformation As Collection
+   Dim TempLetter As String
+   Dim StreetAdress As String
+   Dim Patient As Collection
+   
+   Patient = modContactsDBI.Patient_Get_Using_PK(fk_employee)
+   ProviderInformation = modDBConnect.currentUser ' reads the information of the current user out of the DB
+   If ProviderInformation["street2"] <> "" Then
+      StreetAdress = ProviderInformation["street1"] & "\n" & ProviderInformation["street2"]
+   Else
+      StreetAdress = ProviderInformation["street1"]
+   Endif
+   ' Adressblock of the sending provider
+   TempLetter = ProviderInformation["surname"] & ProviderInformation["firstname"] & ProviderInformation["title"] & "\n" &
+      StreetAdress & "\n" & ProviderInformation["town"] & ProviderInformation["postcode"] & "\n" &
+      ProviderInformation["state"] & "\n\n" &
+      "__________________________________________________________________________________" & "\n\n" &
+      txtReferralDate.text & "\n\n" &
+      "Dear " & Patient["title"] & " " & Patient["surname"] & "\n\n" &
+      teLetter.Text & "\n\n" & "Kind Regards " & ProviderInformation["surname"] & ProviderInformation["firstname"]
+   
+   Return TempLetter
+   
+End 

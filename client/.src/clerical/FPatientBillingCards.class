@@ -18,6 +18,7 @@
 ' PURPOSE         A module to save patient specific information to do with 
 '                 billing and general practice
 ' TODO            Put in an admin general option for the default doctor
+'                 FIX fk_payer_branch
 '-------------------------------------------------------------------------
 Private doctors As Collection
 Private fk_person As Collection
@@ -29,7 +30,8 @@ Private health_insurance_companies As Collection
 Private bExit As Boolean
 Private bkeyvalid As Boolean
 Private ParentForm_Vbox_EditArea As VBox
-Private fk_payer As Integer      'if not 0 then key to clerical.data_patients = he/she who pays the patients bills
+Private fk_payer_person As Integer      'if not 0 then key to contacts.data_persons = he/she who pays the patients bills, may or may not be a patient.
+Private fk_payer_branch As Integer      'if not 0 then key to contacts.data_brances = organisation/branch who pays the bills for the patient 
 Private Payers As Collection
 Private Payer As Collection
 Private billing_levels As Collection
@@ -42,7 +44,7 @@ Public Function Preferred_Doctor() As Variant
    Else
       Return Null
    Endif
-
+   
 End
 
 Public Function Medicare_Number() As String
@@ -51,9 +53,15 @@ Public Function Medicare_Number() As String
    
 End
 
-Public Function Responsible_Payer_Get_fk_Patient() As Integer
+Public Function Responsible_Payer_Get_fk_person() As Integer
    
-   Return fk_payer    'could be 0
+   Return fk_payer_person    'could be 0
+   
+End
+
+Public Function Responsible_Payer_Get_fk_branch() As Integer
+   
+   Return fk_payer_branch    'could be 0
    
 End
 
@@ -175,7 +183,8 @@ Public Sub EditArea_Clear()
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
    Veteran_Data_Entry_Enable(False)
    Concession_Card_Enable(False)
-   fk_payer = 0
+   fk_payer_person = 0
+   fk_payer_branch = 0
    bExit = False
    
 End
@@ -203,7 +212,7 @@ Public Sub Veteran_Data_Entry_Enable(flag As Boolean)
 End
 
 Public Sub Display_Patient_Data(P As Collection)
-
+   
    Dim doctor As Collection
    Dim x As Integer
    
@@ -228,11 +237,14 @@ Public Sub Display_Patient_Data(P As Collection)
    Try cmbBIllingLevel.index = cmbBIllingLevel.Find(P!billing_level)
    Try cmbPrivateInsuranceCompany.index = cmbPrivateInsuranceCompany.Find(P!fund)
    Try txtlegacyFileNumber.text = P!pk_legacy
-   If Not IsNull(P!fk_payer) Then 
-      Payer = modContactsDBI.Patient_Get_Using_PK(P!fk_payer)
+   If Not IsNull(P!fk_payer_person) Then 
+      Payer = modContactsDBI.Person_Including_Patients_Get_Using_Pk(P!fk_payer_person)
       txtPayer.text = Payer!wholename & " " & Payer_Display_Address(Payer)
       txtPayer.pos = 0  
-      fk_payer = P!fk_payer   
+      fk_payer_person = P!fk_payer_person   
+   Endif
+   If Not IsNull(P!fk_payer_branch) Then
+      'FIXME NOT IMPLEMENTED
    Endif
    For Each doctor In doctors
       If doctor!fk_staff = P!fk_doctor Then
@@ -350,7 +362,8 @@ Public Sub EditArea_Combo_Click()
       Case "billing level"
          If cmbBIllingLevel.text = "Bulk Bill" Then
             txtPayer.text = ""
-            fk_payer = 0
+            fk_payer_person = 0
+            fk_payer_branch = 0
          Endif
    End Select
    EditArea_Notify_DataChange(True)
@@ -382,7 +395,7 @@ Public Sub EditArea_TextBox_LostFocus()
    Last.BackGround = Color.white
    If Last.tag = "medicare number" And Trim(Last.text) <> "" Then
       bExit = True
-   '   txtMedicareNumber.text = modUtil.Medicare_Number_Check(Last.text)
+      '   txtMedicareNumber.text = modUtil.Medicare_Number_Check(Last.text)
       bExit = False
    Endif
    
@@ -415,11 +428,12 @@ End
 Public Sub Responsible_Payer_Find()
    '----------------------------------------------------------------
    'Find responsible payer - at the moment can only choose a patient
+   'fixme - put in for payer as branch of organisation
    '----------------------------------------------------------------   
    
-   If Trim(txtPayer.text) = "" Or fk_payer <> 0 Then Return
+   If Trim(txtPayer.text) = "" Or fk_payer_person <> 0 Then Return
    columnview1.Clear()
-   Payers = modContactsDBI.patients_get_firstname_surname(Trim(Lower(txtPayer.text)))
+   Payers = modContactsDBI.Person_Get(Trim(Lower(txtPayer.text)), const.contacttype_PersonsAndPatients)
    Payers.Remove("sql_in_english")
    For Each payer In Payers
       columnview1.Add(Payer!pk_view, 0)
@@ -460,11 +474,11 @@ Public Sub Responsible_Payer_Select()
    columnview1.MoveCurrent
    bExit = False 
    txtPayer.text = Payers[columnview1.Item.key]!wholename & " " & columnview1[columnview1.Item.key][1]
-   fk_payer = Payers[columnview1.Item.key]!fk_patient   
+   fk_payer_person = Payers[columnview1.Item.key]!fk_person
    txtPayer.pos = 0 
    columnview1.Visible = False 
    bExit = False 
-   Print fk_payer   
+   Print fk_payer_person   
    
 End
 
@@ -473,7 +487,8 @@ Public Sub EditArea_TextBox_Change()
    If bexit Then Return 
    Select Case Last.tag
       Case "responsible payer" 'is only set once user selects from list, then bexit = true
-         fk_payer = 0
+         fk_payer_person = 0
+         fk_payer_branch = 0
    End Select
    
 End
@@ -485,12 +500,24 @@ Public Function Valid_Data() As Boolean
    'Both those forms have this form embedded
    'fixme add vaidating the medicare card number
    '------------------------------------------------------
-
+   If Trim(txtMedicareNumber.text) <> "" Then
+    '  If modUtil.Medicare_Number_Check(Trim(txtMedicareNumber.text)) = "*INVALID*" Then
+       '  Message.Info("Invalid medicare number")
+      '   Return
+     ' Endif
+   Endif
    If txtMedicareCardExpiryDate.text <> "" Then              'only validate if user has entered something
       If Not IsDate(modUtil.Medicare_Create_Expiry_date(txtMedicareCardExpiryDate.text)) Then
          txtMedicareCardExpiryDate.SetFocus()
          Return 
       Endif
+   Endif
+   If cmbCentreLinkCardTypes.index > 0 Then 'allow none or -1
+      If txtConcessionNumber.text = "" Then
+         Message.info("Please supply a concession card number before saving")
+         txtConcessionNumber.SetFocus()
+         Return 
+      End If   
    Endif
    If txtConcessionExpiryDate.text <> "" Then                 'only validate if user has entered something
       If Not IsDate(txtConcessionExpiryDate.text) Then
@@ -499,4 +526,5 @@ Public Function Valid_Data() As Boolean
       Endif
    Endif
    Return True
+
 End

@@ -244,7 +244,7 @@ End
 
 Public Function Invoice_Payments_For_Get(fk_invoice As Integer) As Collection
    
-  Return modDBConnect.exec_query_collection("Select * from billing.vwPayments where fk_invoice = " & fk_invoice) 
+   Return modDBConnect.exec_query_collection("Select * from billing.vwPayments where fk_invoice = " & fk_invoice) 
    
 End
 
@@ -474,13 +474,20 @@ Public Sub Save_Items(fk_invoice As Integer, items As Collection[], Optional del
    
 End
 
-Public Function Bulk_Bill_Batching_Get_Claims(Optional limit As Integer = 50) As Collection 
+Public Function Bulk_Bill_Batching_Get_Claims(fk_lu_bulk_billing_type As Integer, Optional limit As Integer = 50) As Collection 
    '-----------------------------------------------------------------------------------------------------
    'Gets a list of all claims (single table simple list) to be display in billing form for user to select
    '-----------------------------------------------------------------------------------------------------
+
    Dim sql As String
    
-   Return modDBConnect.exec_query_collection("SELECT * from billing.bulk_billing_claims ORDER BY claim_date DESC LIMIT " & limit)
+   sql = "SELECT * from billing.bulk_billing_claims "
+   If fk_lu_bulk_billing_type Then
+      sql &= " WHERE fk_lu_bulk_billing_type = " & fk_lu_bulk_billing_type
+   Endif
+   sql &= " ORDER BY claim_date DESC LIMIT " & limit
+   Return modDBConnect.exec_query_collection(sql)
+  
    
 End
 
@@ -490,22 +497,30 @@ Public Function Bulk_Bill_Batching_Get_Claim_Vouchers(fk_claim As Integer) As Co
    '--------------------------------------------------------------------   
    
    Dim sql As String
+
    sql = "Select * from billing.vwClaims where fk_bulk_billing_claim=" & fk_claim & " ORDER BY fk_invoice"
    Return modDBConnect.exec_query_collection(sql)
    
 End
 
-Public Function Bulk_Bill_Batching_Get_Vouchers(fk_staff As Integer, fk_branch As Integer, Optional fk_lu_bulk_billing_type As Integer = const.BulkBilling_Type_Medicare, Optional limit As Integer = 50) As Collection
+Public Function Bulk_Bill_Batching_Get_Vouchers(fk_staff As Integer, fk_branch As Integer, Optional fk_lu_bulk_billing_type As Integer = const.BulkBilling_Type_Medicare, Optional fk_claim As Integer = 0, Optional limit As Integer = 50) As Collection
    '-------------------------------------------------------------------------------------
    'Returns a list of invoices (vouchers in this case) for a doctor and bulk billing type
    'const.BulkBilling_Type_Medicare or const.BulkBilling_Type_Veteran 
+   'if fk_claim is null then the medicare or veteran vouchers have not been claimed.
    '-------------------------------------------------------------------------------------
    
    Dim sql As String
    
-   sql = "select pk_items_billed, fk_invoice,patient_wholename, date_invoiced as visit_date, mbs_item,amount  from billing.vwItemsBilled "
-   sql &= " where fk_lu_bulk_billing_type = " & fk_lu_bulk_billing_type & " AND fk_staff_provided_service =" & fk_staff
-   sql &= " AND fk_branch = " & fk_branch & " and paid = false order by fk_invoice,visit_date LIMIT " & limit  
+   sql = "SELECT pk_items_billed, fk_invoice,patient_wholename, date_invoiced as visit_date, mbs_item,amount  from billing.vwItemsBilled "
+   sql &= " WHERE fk_lu_bulk_billing_type = " & fk_lu_bulk_billing_type & " AND fk_staff_provided_service =" & fk_staff
+   sql &= " AND fk_branch = " & fk_branch & " and paid = false" 
+   If fk_claim = 0 Then 
+      sql &= " AND fk_claim is null "
+   End If
+   sql &= " ORDER BY fk_invoice, visit_date LIMIT " & limit
+   Print sql
+   
    Return modDBConnect.exec_query_collection(sql)
    
 End
@@ -518,18 +533,19 @@ Public Function Bulk_Bill_Batching_Get_Vouchers_Total(fk_staff As Integer, fk_br
    sql &= " AND fk_staff_provided_service =" & fk_staff
    sql &= "  AND fk_branch = " & fk_branch & " AND paid = false LIMIT " & limit 
    Return modDBConnect.exec_query(sql)!grand_total
-
+   
 End   
 
 Public Function Day_List_Get(date_seen As Date, fk_branch As Integer, fk_staff As Integer) As Collection
    
-       Dim sql As String
-       sql = "Select * from billing.vwItemsBIlled where visit_date ='" & Format(date_seen, "dd/mm/yyyy") & "' "
-       sql &= " AND fk_branch= " & fk_branch
-       sql &= " AND  fk_staff_provided_service = " & fk_staff  
-       sql &= " ORDER BY appointment_time ASC"
-       Print sql
-       Return modDBConnect.exec_query_collection(sql)
+   Dim sql As String
+
+   sql = "Select * from billing.vwItemsBIlled where visit_date ='" & Format(date_seen, "dd/mm/yyyy") & "' "
+   sql &= " AND fk_branch= " & fk_branch
+   sql &= " AND  fk_staff_provided_service = " & fk_staff  
+   sql &= " ORDER BY appointment_time ASC"
+   Print sql
+   Return modDBConnect.exec_query_collection(sql)
    
 End
 
@@ -597,10 +613,9 @@ End
 
 Public Function Get_Payments(invoice As Crow) As Collection
    
-  Return modDBConnect.exec_query_collection("select p.*, m.method from billing.payments_received p, billing.lu_payment_method m where p.fk_invoice = &1 and m.pk = p.fk_lu_payment_method", [invoice!fk_invoice]) 
+   Return modDBConnect.exec_query_collection("select p.*, m.method from billing.payments_received p, billing.lu_payment_method m where p.fk_invoice = &1 and m.pk = p.fk_lu_payment_method", [invoice!fk_invoice]) 
    
 End
-
 
 Private Sub Load_FDF_Specialist(fdf As String, invoice As CRow) As String
    
@@ -618,7 +633,7 @@ Private Sub Load_FDF_GP(fdf As String, doctor As Collection, items As Collection
    If IsNull(cc!patient!medicare_number) Then 
       cc!patient!medicare_number = "0000000000" 'FIXME PUT THIS IN UNTIL REPAT STUFF SORTED
    End If   
-  ' Error.Raise("Medicare number can't be NULL here")
+   ' Error.Raise("Medicare number can't be NULL here")
    fdf = Replace$(fdf, "MA1", Mid$(cc!patient!medicare_number, 1, 1))
    fdf = Replace$(fdf, "MA2", Mid$(cc!patient!medicare_number, 2, 1))
    fdf = Replace$(fdf, "MA3", Mid$(cc!patient!medicare_number, 3, 1))
@@ -863,19 +878,19 @@ Private Function Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As
    templ.Subst("doctor-provider-number", doctor!provider_number)
    templ.Subst("current-time", Format$(Now, "dd/mm/yy hh:nn"))
    If Not IsNull(invoice!account_to_name) Then
-         Templ.Subst("account-to-name", invoice!account_to_name)
+      Templ.Subst("account-to-name", invoice!account_to_name)
    Else
-        templ.Subst("account-to-name", "\\relax")
+      templ.Subst("account-to-name", "\\relax")
    End If
    If Not IsNull(invoice!account_to_branch) Then
-         Templ.Subst("account-to-branch", invoice!account_to_branch)
+      Templ.Subst("account-to-branch", invoice!account_to_branch)
    Else
-        templ.Subst("account-to-branch", "\\relax")
+      templ.Subst("account-to-branch", "\\relax")
    End If
    If Not IsNull(invoice!account_to_street) Then
       templ.Subst("account-to-street", invoice!account_to_street)
    Else
-        templ.Subst("account-to-street", "\\relax")
+      templ.Subst("account-to-street", "\\relax")
    Endif
    If Not IsNull(invoice!account_to_town_postcode) Then
       templ.Subst("account-to-town-postcode", invoice!account_to_town_postcode)
@@ -887,9 +902,9 @@ Private Function Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As
       templ.Row(Format$(invoice!date_invoiced, "dd/mm/yy"), i!common_item, "\\multicolumn{2}{l}{" & i!descriptor_display & "}", i!amount, "")
    Next
    If Not IsNull(payments) Then
-     For Each i In payments 
-        templ.Row(Format$(i!date_paid, "dd/mm/yy"), "", "\\multicolumn{2}{l}{Payment: " & i!method & " " & i!referent & "}", "", i!amount)
-     Next
+      For Each i In payments 
+         templ.Row(Format$(i!date_paid, "dd/mm/yy"), "", "\\multicolumn{2}{l}{Payment: " & i!method & " " & i!referent & "}", "", i!amount)
+      Next
    Endif
    
    templ.Table("accounts-table")
@@ -909,6 +924,7 @@ Public Sub Receipts_Get_For_Day(D As Date) As Collection
    '----------------------------------------------------------------------
    'Gets receipts for the day (currently all doctors) fixme subdivide this
    '----------------------payments------------------------------------------------   
+
    Dim sql As String
    
    ' sql = "select pk_payments_received, fk_invoice, payer_details, patient_wholename,method as payment_method, amount as amount_paid, "

@@ -36,6 +36,7 @@ Public Sub init(s As Collection, c As Collection)
    '------------------------------------------------
    'Initialise form
    'clear editing area, default to medicare batching
+   'check this but I think staff, clinics are zero based.
    '------------------------------------------------   
 
    staff = s
@@ -60,6 +61,7 @@ Public Sub init(s As Collection, c As Collection)
    cmbStaff.Index = -1
    rbBulkBillMedicare.value = True 'set fk_lu_bulk_billing_type
    modEditAreaHelpers.Resize_labels(VBox_EditArea_Inner, lblMeasure)
+   EditArea_Clear()
    bExit = False  
    
 End
@@ -85,7 +87,8 @@ Public Sub cvwVouchers_Refresh()
    
    EditArea_Clear()
    If bexit Then Return
-   Vouchers = modBillingDBI.Bulk_Bill_Batching_Get_Vouchers(fk_staff, fk_branch, fk_lu_bulk_billing_type, Val(txtNumberOfVouchers.text))
+   Inc Application.Busy
+   Vouchers = modBillingDBI.Bulk_Bill_Batching_Get_Vouchers(fk_staff, fk_branch, fk_lu_bulk_billing_type, fk_claim, Val(txtNumberOfVouchers.text))
    For Each voucher In Vouchers
       cvwVouchers.Add(voucher!pk_items_billed, 0)
       If fk_last_invoice <> voucher!fk_invoice Then
@@ -99,7 +102,6 @@ Public Sub cvwVouchers_Refresh()
          cvwVouchers[voucher!pk_items_billed][1] = ""
          cvwVouchers[voucher!pk_items_billed][2] = ""
       Endif
-      
       cvwVouchers[voucher!pk_items_billed][3] = voucher!mbs_item
       cvwVouchers[voucher!pk_items_billed][4] = modUtil.Money_Format(voucher!amount)
    Next
@@ -109,7 +111,7 @@ Public Sub cvwVouchers_Refresh()
       txtActualVouchers.Text = Str(invoice_count) & " vouchers"
       VBox_EditArea_Outer.Padding = 1
    Endif
-   
+   Dec Application.Busy 
 End
 
 Public Sub cmbEditArea_Click()
@@ -185,8 +187,11 @@ Public Sub MainToolbar_Click()
 End
 
 Public Sub claim_New()
-   
+   '---------------------------------------------------------
+   'Prepare a new claim for lodging with Medicare or Veterans
+   '---------------------------------------------------------   
    Dim smsg As String
+   
    
    Message.Title = "Medicare & Veteran Batching"
    If cmbStaff.index = -1 Or cmbClinic.index = -1 Then
@@ -194,6 +199,14 @@ Public Sub claim_New()
       Return  
    End If
    lblHeading.text = "New Claim"
+   fk_staff = staff[cmbStaff.index]!fk_staff
+   fk_branch = clinics[cmbClinic.Index]!fk_branch
+   fk_claim = 0
+   If rbBulkBillMedicare.value = True Then
+      fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare
+   Else
+      fk_lu_bulk_billing_type = const.BulkBilling_Type_Veteran
+   Endif
    cvwVouchers_Refresh()
    If cvwVouchers.count = 0 Then
       Message.Title = "Prepare Claim"
@@ -215,11 +228,12 @@ Public Sub claim_print()
 End
 
 Public Sub Claim_Display(fk_claim As Integer)
-   
+   '--------------------------------------------------
+   'display processed claim - loaded from FRecordVisit 
+   '--------------------------------------------------
    Dim invoice As Collection
    Dim fk_last_invoice As Integer
    
-   'display processed claim - loaded from FRecordVisit 
    bexit = True
    Inc Application.Busy 
     lblHeading.text = "Reconcile Existing Claim"
@@ -251,51 +265,9 @@ Public Sub Claim_Display(fk_claim As Integer)
    Endif
    
    Dec Application.Busy
-
+   bExit = False  
 End
 
-Public Sub Claim_Display_old(fk_claim As Integer)
-   
-   Dim invoice As Collection
-   Dim fk_last_invoice As Integer
-   
-   'display processed claim - loaded from FRecordVisit 
-   bexit = True
-   Inc Application.Busy 
-   cvwVouchers.Clear()  'fixme this view and code below is wrong just temporary
-   claim = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Bulk_Bill_Batching_Get_Claim(fk_claim))
-   For Each invoice In claim
-      For Each voucher In claim
-         cvwVouchers.Add(invoice!pk_view, 0)
-         If fk_last_invoice <> voucher!fk_invoice Then
-            fk_last_invoice = voucher!fk_invoice
-            cvwVouchers[invoice!pk_view][0] = Str(voucher!fk_invoice)
-            cvwVouchers[invoice!pk_view][1] = voucher!patient_wholename
-            cvwVouchers[invoice!pk_view][2] = Format(voucher!visit_date, "dd/mm/yyyy")
-         Else
-            cvwVouchers[invoice!pk_view][0] = ""
-            cvwVouchers[invoice!pk_view][1] = ""
-            cvwVouchers[voucher!pk_view][2] = ""
-         Endif
-         
-         cvwVouchers[voucher!pk_view][3] = voucher!mbs_item
-         cvwVouchers[voucher!pk_view][4] = modUtil.Money_Format(voucher!amount_paid)
-      Next
-      
-   Next
-   cmbStaff.index = cmbStaff.Find(voucher!staff_provided_service_wholename)
-   cmbClinic.index = cmbClinic.Find(voucher!branch)
-   txtClaimIDNumber = voucher!claim_id
-   txtActualVouchers = voucher!voucher_count   
-   If voucher!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
-      rbBulkBillMedicare.value = True
-   Else
-      rbBulkBillVeteran.Value = True  
-   Endif
-   
-   Dec Application.Busy
-
-End
 
 Public Sub claim_lodge()
    ' Save the claim to be lodged

@@ -124,6 +124,13 @@ Private Const cTab_Batching As Integer = 2
 Private Const cTab_Banking As Integer = 3
 Private Const cTab_Reports As Integer = 5
 Private form_batching As FBulkBillBatching
+Private cInvoiceDisplayMode_UnbilledAll As Integer = 0
+Private cInvoiceDisplayMode_UnbilledToday As Integer = 1
+Private cInvoiceDisplayMode_Overdue_1Month As Integer = 2
+Private cInvoiceDisplayMode_Overdue_2Month As Integer = 3
+Private cInvoiceDisplayMode_Overdue_Over3Months As Integer = 4
+Private cInvoiceDisplayMode_InstitutionalAccounts As Integer = 5
+
 
 Static Private Form_Billing As FRecordVisit
 
@@ -155,8 +162,9 @@ Public Sub Init()
    combobox1.Add("All Unbilled Consultations", 0)
    combobox1.Add("Unbilled  Consultations Today", 1)
    combobox1.Add("Accounts Overdue 1 Month", 2)
-   
-    combobox1.Add("Accounts Overdue 2 Month", 3)
+   combobox1.Add("Accounts Overdue 2 Month", 3)
+   combobox1.Add("Accounts Overdue > 3 Months", 4)
+   combobox1.Add("Accounts - Institutional Payers", 5)
    Form_Billing = Me
    With form_billingcards = New FPatientBillingCards(Vbox_PatientBillingCards)
       .Init(VBox_EditArea_Outer)
@@ -257,6 +265,111 @@ Public Sub EditArea_Clear()
 End
 
 Public Sub Reset_Keys()
+   
+End
+Public Sub columnview99_Refresh()
+   
+     Select Case combobox1.Index
+        Case cInvoiceDisplayMode_UnbilledAll
+          
+        Case cInvoiceDisplayMode_UnbilledToday
+             Unbilled_refresh(Now())
+        Case cInvoiceDisplayMode_Overdue_1Month
+        Case cInvoiceDisplayMode_Overdue_2Month
+        Case cInvoiceDisplayMode_Overdue_Over3Months
+        Case cInvoiceDisplayMode_InstitutionalAccounts
+           
+     End Select
+   
+End
+Public Sub Unbilled_refresh(Optional single_day As Date = Null)
+   
+        EditArea_Clear()
+      With columnview99
+      .Clear
+      .Columns.count = 13
+      .Columns[0].text = "Patient"
+      .Columns[1].text = "Seen By"
+      .Columns[2].text = "Locatio  single_day = Now()n"
+      .Columns[3].text = "Visit Date"
+      .Columns[4].text = "Item"
+      .Columns[5].text = "Descriptor"
+      .Columns[6].text = "Invoice To"
+      .Columns[7].text = "Fee"
+      .Columns[8].text = "GST"
+      .Columns[9].text = "Total"
+      .Columns[10].text = "Paid"
+      .Columns[11].text = "Owing"
+      .Columns[12].text = "Rebate"
+   End With 
+   
+         Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get(single_day)
+         For Each Unbilled_consultation In Unbilled_Consultations
+            columnview99.Add(Unbilled_consultation!pk, 0)
+            columnview99[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
+            columnview99[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
+         Next
+         If columnview99.count Then
+            columnview99.MoveFirst()
+            columnview99.Item.Selected = True
+            columnview99_Select()
+         Endif
+ 
+   
+End
+Public Sub columnview99_Select()
+    Select Case TabStrip1.Index
+    
+    Case cTab_Invoices
+         TabStrip1.index = 0
+         columnview99.MoveCurrent()
+         EditArea_Clear()                                                                    'clear input area
+         ' bPayingInvoice = True
+         Unbilled_consultation = Unbilled_Consultations[columnview99.Item.key]
+         Try fk_lu_default_billing_level = Unbilled_consultation!fk_lu_default_billing_level
+         If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private
+         fk_patient = Unbilled_consultation!fk_patient
+         bExit = True   
+         txtpatient.text = Unbilled_consultation!wholename
+         txtDate.text = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
+         Try Payer_Get(Unbilled_consultation)
+         fk_staff = Unbilled_consultation!fk_staff 
+         For Each Staff_Member In staff
+            If Staff_Member!fk_staff = fk_staff Then
+               cmbSeenBy.index = cmbSeenBy.Find(Staff_Member!wholename)
+            Endif
+         Next
+         duration = Val(Split(Unbilled_consultation!duration, ":")[1]) + Val(Split(Unbilled_consultation!duration, ":")[0]) * 60        ' e.g 10, 20, 30, 50, 60, 70 .... etc!
+         txtDuration.text = Str(duration) & " minutes"
+         Select Case duration
+            Case 1 To 19
+               consult_item_number = "23"
+            Case 20 To 40
+               consult_item_number = "36"
+            Case 40 To 100
+         End Select
+         cmbFeeType.Enabled = True  
+         
+         Select Case fk_lu_default_billing_level
+            Case const.Billing_Default_Level_BulkBill
+               cmbFeeType.Enabled = False 
+               If Unbilled_consultation!veteran_number <> "" Then
+                  rbInvoiceToVeterans.value = True
+               Else
+                  rbInvoiceToMedicare.value = True
+               Endif
+            Case const.Billing_Default_Level_Private
+               rbInvoiceToPatient.value = True
+            Case const.Billing_Default_Level_HealthCareCardConcession
+            Case const.Billing_Default_Level_PensionerConcession
+            Case const.Billing_Default_Level_MedicoLegal 
+         End Select
+         bExit = False  
+         form_billingcards.Display_Patient_Data(Unbilled_consultation) 
+         VBox_EditArea_Outer.Enabled = True 
+         gvwItemsBIlled.Enabled = True 
+         cvwItemsBilled_Refresh() 
+    End Select
    
 End
 

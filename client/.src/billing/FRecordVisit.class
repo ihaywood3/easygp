@@ -652,6 +652,7 @@ Public Sub Payer_Get(patient As Collection) 'fix me to fk_patient
       rbInvoiceToNotUsed.value = True
       rbInvoicePerson.value = True
       Try textlabelPayer.text = payer!wholename & "<BR>" & Trim(payer!street1 & " " & payer!street2) & "<BR>" & payer!town & " " & payer!postcode
+       fk_payer_person = payer!fk_person  
       bExit = False  
       '  End If   
    End If  
@@ -1985,6 +1986,7 @@ Public Sub Invoice_New()
    lblPaymentTotal.text = ""
    EditArea_Notify_Data_Change(False)
    Hbox_InvoiceGrid.Enabled = True 
+   txtDate.ReadOnly = False
    ' txtDate.SetFocus()
    
 End
@@ -2003,7 +2005,7 @@ Public Sub cvwItemsBilled_Refresh()
    Dim items_on_invoice As Integer
    
    cvwItemsBilled.Clear
-   Items_Billed = modBillingDBI.Items_Billed_Get(fk_patient, iAccountDisplayMode)
+   Items_Billed = modBillingDBI.Items_Invoices_Get(fk_patient, iAccountDisplayMode) 'was items_Billed_get
    For Each Item_Billed In Items_Billed
       cvwItemsBilled.Add(Item_Billed!pk_items_billed, 0)
       If fk_last_invoice <> Item_Billed!fk_invoice Then 
@@ -3471,3 +3473,139 @@ End
 '     JOIN billing.fee_schedule ON ((items_billed.fk_fee_schedule = fee_schedule.pk))) 
 '     JOIN admin.vwstaffinclinics vwstaffinclinics1 ON ((bulk_billing_claims.fk_staff_processed = vwstaffinclinics1.fk_staff)));
 ' 
+' drop view billing.vwinvoices cascade;
+' 
+' CREATE OR REPLACE VIEW billing.vwinvoices AS
+'  SELECT invoices.pk AS pk_invoice, invoices.pk AS fk_invoice,
+' invoices.notes, invoices.fk_staff_invoicing, invoices.fk_patient,
+'  invoices.date_printed, invoices.fk_staff_provided_service,
+' invoices.date_invoiced, invoices.paid, invoices.fk_payer_person,
+'  invoices.fk_payer_branch, COALESCE(vworganisations.organisation,
+' vwpersonsincludingpatients.wholename) AS account_to_name,
+'  COALESCE(vworganisations.branch, NULL::text) AS account_to_branch,
+' COALESCE(COALESCE(vworganisations.street1 || ' '::text,
+' vworganisations.street2 || ' '::text),
+'  COALESCE(vwpersonsincludingpatients.street1 || ' '::text,
+' vwpersonsincludingpatients.street2 || ' '::text)) AS
+' account_to_street,
+'  COALESCE((vworganisations.town || ' '::text) ||
+' vworganisations.postcode::text, (vwpersonsincludingpatients.town || '
+' '::text) || vwpersonsincludingpatients.postcode::text) AS
+' account_to_town_postcode,
+'  invoices.latex, invoices.fk_branch, invoices.visit_date,
+' invoices.fk_appointment, bookings.begin AS appointment_time,
+' bookings.duration, invoices.reference,
+' invoices.fk_lu_bulk_billing_type,
+'  invoices.total_bill, invoices.total_paid, invoices.total_gst,
+' invoices.total_gst - invoices.total_paid AS due,
+' staff_invoicing.wholename AS staff_invoicing_wholename,
+'  staff_provider.wholename AS staff_provided_service_wholename,
+' staff_provider.provider_number AS staff_provided_service_provider_number,
+' staff_provider.australian_business_number,
+'  vwpatients.firstname AS patient_firstname, vwpatients.surname AS
+' patient_surname, vwpatients.title AS patient_title, vwpatients.fk_sex
+' AS patient_fk_sex, vwpatients.sex AS patient_sex,
+'  vwpatients.wholename AS patient_wholename,
+' vwpatients.fk_lu_centrelink_card_type,
+' vwpatients.fk_lu_default_billing_level,vworganisations1.branch
+'    FROM billing.invoices
+'    JOIN admin.vwstaff staff_invoicing ON invoices.fk_staff_invoicing =  staff_invoicing.fk_staff
+'    JOIN admin.vwstaff staff_provider ON invoices.fk_staff_provided_service = staff_provider.fk_staff
+'    join contacts.vworganisations vwOrganisations1 on invoices.fk_branch = vworganisations1.fk_branch
+'    LEFT JOIN clerical.bookings ON invoices.fk_appointment = bookings.pk
+'    LEFT JOIN contacts.vworganisations ON invoices.fk_payer_branch = vworganisations.fk_branch
+'    
+'    LEFT JOIN contacts.vwpersonsincludingpatients ON invoices.fk_payer_person = vwpersonsincludingpatients.fk_person
+'    LEFT JOIN contacts.vwpatients ON invoices.fk_patient = vwpatients.fk_patient;
+' 
+' ALTER TABLE billing.vwinvoices
+'   OWNER TO easygp; 
+' GRANT ALL ON TABLE billing.vwinvoices TO easygp;
+' GRANT SELECT ON TABLE billing.vwinvoices TO staff;
+' 
+' QUERIERS NOT COMMITED TO SVN BUT CURRENT AS OF 21OCT12 10PM.
+' drop view billing.vwitemsbilled cascade;
+' 
+' CREATE VIEW billing.vwitemsbilled AS
+'     SELECT items_billed.pk AS pk_items_billed,
+' items_billed.fk_fee_schedule,
+' items_billed.amount,
+' items_billed.amount_gst,
+' items_billed.fk_invoice,
+' items_billed.fk_lu_billing_type,
+' lu_billing_type.type AS billing_type,
+' fee_schedule.item,
+' fee_schedule.mbs_item,
+' fee_schedule.user_item,
+' fee_schedule.ama_item,
+' fee_schedule.descriptor,
+' fee_schedule.descriptor_brief,
+' fee_schedule.gst_rate,
+' fee_schedule.percentage_fee_rule
+'  FROM
+' billing.items_billed, billing.lu_billing_type, billing.fee_schedule
+' where
+'    lu_billing_type.pk = items_billed.fk_lu_billing_type and
+'    items_billed.fk_fee_schedule = fee_schedule.pk;
+' 
+' grant select on billing.vwitemsbilled to staff;
+' 
+' create or replace view billing.vwitemsandinvoices as select
+'    vwitemsbilled.pk_items_billed,
+'    vwitemsbilled.fk_fee_schedule,
+'    vwitemsbilled.amount,
+'    vwitemsbilled.amount_gst,
+'    vwitemsbilled.fk_lu_billing_type, 
+'    billing_type, item, mbs_item,
+' user_item, ama_item, descriptor, descriptor_brief, gst_rate,
+'    percentage_fee_rule,
+' vwInvoices.fk_invoice,
+' vwInvoices.notes, 
+' vwInvoices.fk_staff_invoicing, 
+' vwInvoices.fk_patient,
+'  vwInvoices.date_printed, 
+'  vwInvoices.fk_staff_provided_service,
+' vwInvoices.date_invoiced, 
+' vwInvoices.paid, 
+' vwInvoices.fk_payer_person,
+'  vwInvoices.fk_payer_branch,
+'  vwInvoices.account_to_name,
+'  vwInvoices.account_to_branch,
+' vwInvoices.account_to_street,
+' vwInvoices.account_to_town_postcode,
+'  vwInvoices.latex, 
+'  vwInvoices.fk_branch, 
+'  vwInvoices.visit_date,
+' vwInvoices.fk_appointment, 
+' vwInvoices.appointment_time,
+' vwInvoices.duration, 
+' vwInvoices.reference,
+' vwInvoices.fk_lu_bulk_billing_type,
+'  vwInvoices.total_bill, 
+'  vwInvoices.total_paid, 
+'  vwInvoices.total_gst,
+' vwInvoices.due,
+' vwInvoices.staff_invoicing_wholename,
+'  vwInvoices.staff_provided_service_wholename,
+' vwInvoices.staff_provided_service_provider_number,
+' vwInvoices.australian_business_number,
+' vwInvoices.patient_firstname, 
+' vwInvoices.patient_surname, 
+' vwInvoices.patient_title, 
+' vwInvoices.patient_fk_sex, 
+' vwInvoices.patient_sex,
+' vwInvoices.patient_wholename,
+' vwInvoices.fk_lu_centrelink_card_type,
+' vwInvoices.fk_lu_default_billing_level,
+' vwInvoices.branch
+' from billing.vwitemsbilled, billing.vwinvoices where
+'        vwinvoices.fk_invoice = vwitemsbilled.fk_invoice;
+' 
+' grant select on billing.vwitemsandinvoices to staff;
+' 
+
+Public Sub Button1_Click()
+
+   Print Payer
+   Print fk_payer_person
+End

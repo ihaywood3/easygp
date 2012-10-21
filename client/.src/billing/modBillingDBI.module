@@ -563,6 +563,27 @@ Public Function Day_List_Get(date_seen As Date, fk_branch As Integer, fk_staff A
    
 End
 
+Public Function Items_Invoices_Get(fk_patient As Integer, iAccount_Display_Mode As Integer, Optional limit As Integer = 100) As Collection
+   
+     Dim sql As String
+     Dim c As Collection
+     
+   sql = "select * from billing.vwitemsandinvoices where fk_patient = " & fk_patient
+   Select Case iAccount_Display_Mode
+      Case const.Billing_Accounts_Unpaid
+         sql &= " AND paid = false "
+      Case const.Billing_Accounts_Paid
+         sql &= " AND paid = true "
+   End Select
+   sql &= " ORDER BY date_invoiced desc "
+   c = modDBConnect.exec_query_collection(sql)
+   Print sql
+   Return c
+   Return modDBConnect.exec_query_collection(sql)
+   
+   
+End
+
 Public Function Items_Billed_Get(fk_patient As Integer, iAccount_Display_Mode As Integer, Optional limit As Integer = 100) As Collection
    '-----------------------------------------------------------------------------------------------------------------------------------------
    ' returns a Collection of all invoices for this patient, most recent first, ordered by display mode (see const.Billing_Accounts constants)
@@ -885,6 +906,65 @@ Private Function Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As
    Dim i As Collection
    
    templ.Subst("doctor-name", doctor!title & " " & doctor!firstname & " " & doctor!surname)
+   templ.Subst("doctor-address-line1", doctor!street1)
+   If IsNull(doctor!street2) Then
+       templ.Subst("doctor-address-line2", doctor!town & " " & doctor!postcode)
+       templ.Subst("doctor-address-line3", "\\relax")
+   Else
+      templ.Subst("doctor-address-line2", doctor!street2)
+      templ.Subst("doctor-address-line2", doctor!town & " " & doctor!postcode)
+   Endif
+   templ.Subst("doctor-provider-number", doctor!provider_number)
+   templ.Subst("current-time", Format$(Now, "dd/mm/yy hh:nn"))
+   If IsNull(invoice!account_to_name) Then
+       templ.Subst("account-to-name", "\\relax")
+       Templ.Subst("account-to-address-line1", "\\relax")
+       Templ.Subst("account-to-address-line2", "\\relax") 
+       Templ.Subst("account-to-address-line3", "\\relax")
+      
+   Else
+      Templ.Subst("account-to-name", invoice!account_to_name)
+      'have a name - payer could be person/street1/street2/town + postcode
+      'have a name - payer could be organisation/branch/street1/street2/town+postcode
+      If Not IsNull(invoice!account_to_branch) Then
+         Templ.Subst("account-to-address-line1", invoice!account_to_branch)
+         Templ.Subst("account-to-address-line2", invoice!account_to_street)
+         Templ.Subst("account-to-address-line3", invoice!account_to_town_postcode) 
+      Else 'must be a person
+         Templ.Subst("account-to-address-line1", invoice!account_to_street)
+         Templ.Subst("account-to-address-line2", invoice!account_to_town_postcode)
+         Templ.Subst("account-to-address-line3", "\\relax")
+      End If   
+   Endif
+
+
+   ' now do the actual items
+   For Each i In items
+      templ.Row(Format$(invoice!date_invoiced, "dd/mm/yy"), i!common_item, "\\multicolumn{2}{l}{" & i!descriptor_display & "}", i!amount, "")
+   Next
+   If Not IsNull(payments) Then
+      For Each i In payments 
+         templ.Row(Format$(i!date_paid, "dd/mm/yy"), "", "\\multicolumn{2}{l}{Payment: " & i!method & " " & i!referent & "}", "", i!amount)
+      Next
+   Endif
+   
+   templ.Table("accounts-table")
+   templ.Subst("due", invoice!due)
+   templ.Subst("gst", invoice!total_gst)
+   templ.Subst("total", invoice!total_bill)
+   If invoice!total_gst = invoice!total_bill Then
+      templ.Subst("invoice-name", "Patient Account")
+   Else
+      templ.Subst("invoice-name", "Tax Invoice")
+   Endif
+   templ.Subst_common(cc)
+   
+End
+Private Function Load_Template_GP_old(invoice As Crow, templ As CTemplate, doctor As Collection, items As Collection, payments As Collection, cc As CConsult)
+   
+   Dim i As Collection
+   
+   templ.Subst("doctor-name", doctor!title & " " & doctor!firstname & " " & doctor!surname)
    templ.Subst("doctor-street1", doctor!street1)
    templ.Subst("doctor-street2", doctor!street2)
    templ.Subst("doctor-town", doctor!town)
@@ -933,7 +1013,6 @@ Private Function Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As
    templ.Subst_common(cc)
    
 End
-
 Public Sub Receipts_Get_For_Day(D As Date) As Collection 
    '----------------------------------------------------------------------
    'Gets receipts for the day (currently all doctors) fixme subdivide this

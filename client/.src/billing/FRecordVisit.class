@@ -28,10 +28,43 @@
 ' NOTE:  Ian - don't get hung up on all the inappriopriate names
 '        for columnviews and controls - work in progress - will fix
 '         table to save how the patient usually pays > to auto-put it into the grid
-'-----------------------------------------------------------------
+' BULK BILL RECONCILIATION WORK-FLOW   - goes something like this
+' 1) Practice receives notification of EFT depost to nominated account
+' 2) Electronic notification or paper printout in mail displays columnised data:
+' -----------------------------------------------------------------------------------------------
+' Claim Num: PatientName: MedicareNumber DateSeen Item_Number Assigned$ Payable$ ExplanationCode
+'  U1892     Peter patient 2111111111    10 July 12   31265    150.90    0.00        374
+'  
+'     bla bla
+'                                                TOTAL eft aMOUNT Paid             3838.00
+'  Explanation of codes
+'  374 Old card issue used - benefit not payable - also refer @ (whatever the @ means I don't know)
+'  
+'  Sometimes they may include **NB:medicare number issued**, providing us with a new number
+'  
+'  The secretarial work flow is hence.
+'  1) Examine the printout - this money has already been put into the doctors/practice account
+'  2) Where **NB:medicare number issued** under item > update the patients file
+'  3) - Select the Claim coverslip number from the GUI
+'     - Receipt the cheque for the amount received
+'     - reconcile the voucher list
+'     - for each voucher that has not been paid > set its fee amount to 0.00 (i.e decrement batch total%)
+'     - If EFTRecieved now = reduced total from what we claimed all is well
+'     - If not there can be 'hidden' amounts in the batch where the medicare girls keying in the data
+'       actually make a mistake and miss stuff, or they put it through for incorrect patient name eg
+'       another family member eg we may have claimed 23 + 10991, they forget to put the 10991, so that
+'       item on the batch vocher list has to be reduced to 00.00 and the voucher re-submitted.
+'      - once the two balances match > click as matched
+'    4) Then the program will need to aggegate these zero'd vouchers into a new batch to send off and re-claim
+'       or to give the user the chance to write off the debt.
+'       e.g girls may have charged a consultation wrongly if it was aftercare. (i.e staff mistake)
+'       Sometimes Medicare "miss" entire vouchers - maybe this won't happen when done electronically
+'       
+'-----------------------------------------------------------------------------------------------
 Private currentconsult As CConsult
 Private last_Fee_type As String
-Private bexit As Boolean
+Private bexit As Boolean  
+Private $hEditor As Object
 'save flags for readability
 Private bBulkBill_Yes As Boolean = True
 Private bBulkBill_No As Boolean = False
@@ -194,6 +227,8 @@ Public Sub Init()
    
    Dim x As Integer
    
+   Message.Info("Don't even try and run this it's pointless - will do some work tomorrow")
+   Quit
    lblSearchAccounts.Foreground = Color.LightGray
    comboBox1_Load()
    Form_Billing = Me
@@ -418,7 +453,7 @@ Public Sub Patient_Unbilled_Consultation_Display()
    cmbFeeType.Enabled = True  
    Select Case fk_lu_default_billing_level
       Case const.Billing_Default_Level_BulkBill
-         cmbFeeType.Enabled = False 
+         '  cmbFeeType.Enabled = False 
          If Unbilled_consultation!veteran_number <> "" Then
             rbInvoiceToVeterans.value = True
          Else
@@ -652,7 +687,7 @@ Public Sub Payer_Get(patient As Collection) 'fix me to fk_patient
       rbInvoiceToNotUsed.value = True
       rbInvoicePerson.value = True
       Try textlabelPayer.text = payer!wholename & "<BR>" & Trim(payer!street1 & " " & payer!street2) & "<BR>" & payer!town & " " & payer!postcode
-       fk_payer_person = payer!fk_person  
+      fk_payer_person = payer!fk_person  
       bExit = False  
       '  End If   
    End If  
@@ -711,67 +746,10 @@ Public Sub gvwPayments_Enter()
 End
 
 Public Function Item_Number_Selected() As Boolean
-     
-    If gvwItemsBIlled[0, cGridColumnItem_ItemNumber].Text <> "" Then
-       Return True
-    Endif
    
-End
-
-Public Sub gvwPayments_Click()
-   '----------------------------------------
-   'User has clicked on the payment gridview
-   '----------------------------------------  
-   ' 
-   
-   If gvwPayments.column = cGridColumnPayments_PaymentType Then
-      If gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].Text <> "" Then    
-         cmbPaymentMethods.Visible = True
-      Else
-         cmbPaymentMethods.Visible = False   
-      End If   
-   Else
-      cmbPaymentMethods.Visible = False   
+   If gvwItemsBIlled[0, cGridColumnItem_ItemNumber].Text <> "" Then
+      Return True
    Endif
-   
-End
-
-Public Sub gvwPayments_DblClick()
-   '------------------------------------------------------------------------------
-   'User has clicked on the payments grid, to make a payment record
-   'User will be physically unable to click on column 2 (payment type)
-   'as the payment type combo appears via gvwPayments_Enter) and overlays the grid
-   '------------------------------------------------------------------------------  
-   
-   Dim i As Integer
-   Dim iSlotCount As Integer
-   
-   If gvwPayments.Enabled = False Then 
-        Print "gvwPayments is not enabled"
-          Return   'god knows why this responds to the events if disabled   
-   Else
-        Print "gvwPayments is enabled"
-   End If   
-   oncol_payments = gvwPayments.Column
-   onrow_payments = gvwPayments.Row
-   If gvwPayments[gvwPayments.row, gvwPayments.Column].text = "" Then
-      If Item_Number_Selected() Then
-        txtPayment.text = Trim(Replace(lblInvoiceTotal.Text, "Invoice Total", ""))
-      Endif
-   Else
-       txtPayment.text = gvwPayments[gvwPayments.row, gvwPayments.Column].text
-   End If   
-   If oncol_payments = cGridColumnPayments_PaymentType Then Return 
-   bFoundFirst = False  
-   onrow_payments = gvwPayments.Row 
-   iLeft = gvwPayments[onrow_payments, oncol_payments].Left + gvwPayments.Left
-   iTop = ((onrow_payments + 1) * 20) + 2 
-   txtPayment.left = iLeft + 2
-   txtPayment.top = iTop
-   txtPayment.width = gvwPayments.Columns[oncol_payments].Width + 2
-   txtPayment.Height = gvwPayments.Rows[0].Height + 5
-   txtPayment.Visible = True
-   txtPayment.SetFocus()
    
 End
 
@@ -785,13 +763,13 @@ Public Sub txtPayment_Activate()
       Case cGridColumnPayments_Amount
          gvwPayments[gvwPayments.row, 0].Text = modUtil.Money_Format(txtPayment.text)                       'format money correctly
          If gvwPayments[gvwPayments.row, 1].Text = "" And gvwPayments[gvwPayments.row, 0].Text <> "" Then   'if have no payment method but have money 
-             gvwPayments[gvwPayments.row, cGridColumnPayments_PaymentType].text = "EFPos" 'FIXME WHEN BACKEND TABLE FIXED TO EFTPos
+            gvwPayments[gvwPayments.row, cGridColumnPayments_PaymentType].text = "EFPos" 'FIXME WHEN BACKEND TABLE FIXED TO EFTPos
             
-           ' cmbPaymentMethods.Visible = True  
+            ' cmbPaymentMethods.Visible = True  
          Endif
          Payment_Calculate_Total
       Case Else
-          gvwPayments[gvwPayments.row, oncol_payments].Text = Trim(txtPayment.Text)
+         gvwPayments[gvwPayments.row, oncol_payments].Text = Trim(txtPayment.Text)
    End Select 
    txtPayment.Visible = False   
    EditArea_Notify_Data_Change(True)
@@ -830,7 +808,88 @@ Public Sub gvwItemsBIlled_Init()
       lblInvoiceTotal.width = lblPaymentTotal.Width
       lblInvoiceLeft.width = lblPaymentLeft.Width
       lblInvoiceRight.width = lblPaymentRight.Width 
+      With lblcol1
+         .width = gvwItemsBIlled.Columns[0].Width
+         .text = "Item"
+      End With
+      With lblcol2
+         .width = gvwItemsBIlled.Columns[1].Width
+         .text = "Brief Descriptor"
+      End With
+      With lblcol3
+         .width = gvwItemsBIlled.Columns[2].Width
+         .text = "Fee"
+      End With
+      With lblcol4
+         .width = gvwItemsBIlled.Columns[3].Width
+         .text = "Gap"
+      End With
+      With lblcol5
+         .width = gvwItemsBIlled.Columns[4].Width
+         .text = "Rate"
+      End With
+           With lblcol6
+         .width = gvwItemsBIlled.Columns[4].Width
+         .text = "GST"
+      End With
    End With
+   
+End
+
+Public Sub gvwPayments_Click()
+   '----------------------------------------
+   'User has clicked on the payment gridview
+   '----------------------------------------  
+   ' 
+   
+   If gvwPayments.column = cGridColumnPayments_PaymentType Then
+      If gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].Text <> "" Then    
+         cmbPaymentMethods.Visible = True
+      Else
+         cmbPaymentMethods.Visible = False   
+      End If   
+   Else
+      cmbPaymentMethods.Visible = False   
+   Endif
+   
+End
+
+Public Sub gvwPayments_DblClick()
+   '------------------------------------------------------------------------------
+   'User has clicked on the payments grid, to make a payment record
+   'User will be physically unable to click on column 2 (payment type)
+   'as the payment type combo appears via gvwPayments_Enter) and overlays the grid
+   '------------------------------------------------------------------------------  
+   
+   Dim i As Integer
+   Dim iSlotCount As Integer
+   
+   If gvwPayments.Enabled = False Then 
+      Print "gvwPayments is not enabled"
+      Return   'god knows why this responds to the events if disabled   
+   Else
+      Print "gvwPayments is enabled"
+   End If   
+   oncol_payments = gvwPayments.Column
+   onrow_payments = gvwPayments.Row
+   If gvwPayments[gvwPayments.row, gvwPayments.Column].text = "" Then
+      If Item_Number_Selected() Then
+         txtPayment.text = Trim(Replace(lblInvoiceTotal.Text, "Invoice Total", ""))
+      Endif
+   Else
+      txtPayment.text = gvwPayments[gvwPayments.row, gvwPayments.Column].text
+   End If   
+   If oncol_payments = cGridColumnPayments_PaymentType Then Return 
+   bFoundFirst = False  
+   onrow_payments = gvwPayments.Row 
+   iLeft = gvwPayments[onrow_payments, oncol_payments].Left + gvwPayments.Left
+   iTop = ((onrow_payments + 1) * 20) + 2 
+   txtPayment.left = iLeft + 2
+   txtPayment.top = iTop
+   txtPayment.width = gvwPayments.Columns[oncol_payments].Width + 2
+   txtPayment.Height = gvwPayments.Rows[0].Height + 5
+   txtPayment.Visible = True
+   txtPayment.SetFocus()
    
 End
 
@@ -871,8 +930,78 @@ Public Sub gvwItemsBIlled_Delete_Row(onrow_items As Integer)
    
 End
 
+Private Sub MoveProperty()
+   ' Dim heading_height As Integer = (gvwItemsBIlled.Height - gvwItemsBIlled.ScrollHeight) / gvwItemsBIlled.Rows.count - 1  
+   
+   If IsNull($hEditor) Then Return
+   Print gvwItemsBIlled
+   
+   With gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column]
+      
+      panEditor.Move(gvwItemsBIlled.X + .X - gvwItemsBIlled.ScrollX, gvwItemsBIlled.Y + .Y - gvwItemsBIlled.ScrollY, .Width, .Height)
+      ' panEditor.Move(gvwItemsBIlled.X + .X - gvwItemsBIlled.ScrollX, gvwItemsBIlled.Y + .Y - gvwItemsBIlled.ScrollY + heading_height, .Width, .Height)
+      panEditor.Raise
+      
+   End With
+   
+End
+
+Public Sub gvwItemsBIlled_MouseUp()
+   
+   ShowProperty
+   
+End
+
+Public Sub gvwItemsBIlled_Scroll()
+   
+   MoveProperty
+   
+End
+
+Public Sub ShowProperty()
+   '------------------------------------------
+   'nicked from the gambas IDE FProperty.class
+   '------------------------------------------   
+
+   Dim sProp As String  'contents of the grid cell
+   Dim hEditor As Object
+   
+   textbox1.Hide
+   cmbFeeType.Hide
+   panEditor.Hide
+   sProp = gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column].Text
+   
+   Select Case gvwItemsBIlled.column
+      Case cGridColumnItem_FeeType
+         cmbFeeType.Index = cmbFeeType.Find(sProp)
+         hEditor = cmbFeeType
+      Case Else
+         textbox1.text = sProp 
+         hEditor = textbox1
+   End Select
+   
+   $hEditor = hEditor
+   MoveProperty
+   
+   $hEditor.Show
+   panEditor.Show
+   
+   $hEditor.SetFocus 
+   
+End
+
+Public Sub gvwItemsBIlled_Clear()
+   
+   gvwItemsBIlled.Clear()
+   item = Null
+   OnCol_Items = 0
+   onrow_items = 0
+   
+End
+
 Public Sub gvwItemsBIlled_Click()
    
+   Return 
    If gvwItemsBIlled.column = cGridColumnItem_FeeType Then 
       With cmbFeeType
          .width = gvwItemsBIlled.Columns[cGridColumnItem_FeeType].Width
@@ -894,6 +1023,7 @@ Public Sub gvwItemsBilled_DblClick()
    Dim i As Integer
    Dim iSlotCount As Integer
    
+   Return 
    Print "onrow_itmes, oncol_items", onrow_items, OnCol_Items
    Print "gvwBilled.row", gvwItemsBIlled.Row
    Print "bexit is", bexit
@@ -923,43 +1053,6 @@ Public Sub gvwItemsBilled_DblClick()
       .left = iLeft + 2
       .top = iTop
       .width = gvwItemsBIlled.Columns[gvwItemsBIlled.Column].Width + 4
-      .Height = gvwItemsBIlled.Rows[0].Height + 5
-      .Visible = True
-      .SetFocus()
-   End With
-   
-End
-
-Public Sub gvwItemsBilled_DblClick_old()
-   
-   Dim i As Integer
-   Dim iSlotCount As Integer
-   
-   Print "onrow_itmes, oncol_items", onrow_items, OnCol_Items
-   Print "gvwBilled.row", gvwItemsBIlled.Row
-   Print "bexit is", bexit
-   If bPayingInvoice Or bexit Or OnCol_Items = 4 Or txtpatient.text = "" Or gvwItemsBIlled[onrow_items, OnCol_Items].text <> "" Then Return 
-   If gvwItemsBIlled.Row > 0 And gvwItemsBIlled[0, 0].text = "" Then 'if user clicks on row and row above not filled in move back FIXME THIS CODE DOES NOT DO THIS
-      onrow_items = 0
-      gvwItemsBIlled.row = 0
-   Endif
-   If textbox1.Visible = False Then HBox_Descriptor.Visible = False  
-   If OnCol_Items <> cGridColumnItem_BriefDescriptor Then HBox_Descriptor.Visible = False   
-   
-   TextBox1.text = ""                                  'clear search textbox
-   If gvwItemsBIlled.column = 1 Then  'the brief descriptor, allow searching
-      Try txtDescriptor.text = item!descriptor
-      If Not Error Then
-         txtDescriptor.Pos = 0
-         HBox_Descriptor.Visible = True   
-      Endif
-   End If  
-   iLeft = gvwItemsBIlled[onrow_items, OnCol_Items].Left
-   iTop = ((onrow_items + 1) * 20) + 4 'iSlotCount * 20
-   With TextBox1
-      .left = iLeft + 2
-      .top = iTop
-      .width = gvwItemsBIlled.Columns[OnCol_Items].Width + 4
       .Height = gvwItemsBIlled.Rows[0].Height + 5
       .Visible = True
       .SetFocus()
@@ -1017,22 +1110,23 @@ Public Sub cmbFeeType_Click()
    
    Dim gap_payment As Float
    
-   gvwItemsBIlled[onrow_items, cGridColumnItem_FeeType].text = cmbFeeType.Text
-   If gvwItemsBIlled[onrow_items, 0].text <> "" Then  
-      Try gvwItemsBIlled[onrow_items, cGridColumnItem_Fee].text = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(gvwItemsBIlled[onrow_items, 0].text, FeeTypes[cmbFeeType.index]!pk)!price
+   gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_FeeType].text = cmbFeeType.Text
+   If gvwItemsBIlled[gvwItemsBIlled.row, 0].text <> "" Then  
+      Try gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Fee].text = modBillingDBI.Fee_Get_For_Item_And_Billing_Type(gvwItemsBIlled[gvwItemsBIlled.row, 0].text, FeeTypes[cmbFeeType.index]!pk)!price
       If Error Then
          Message.info("No fee's exist for the billing level you selected")
          cmbFeeType.index = cmbFeeType.Find(last_Fee_type)
       Else
-         gap_payment = modUtil.MoneyToFloat(gvwItemsBIlled[onrow_items, cGridColumnItem_Fee].text) - modUtil.MoneyToFloat(scheduled_fee!price) 
+         gap_payment = modUtil.MoneyToFloat(gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Fee].text) - modUtil.MoneyToFloat(scheduled_fee!price) 
          If gap_payment = 0 Or rbInvoiceToVeterans.value = True Then
-            gvwItemsBIlled[onrow_items, cGridColumnItem_Gap].text = "$0.0"
+            gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Gap].text = "$0.0"
          Else
-            gvwItemsBIlled[onrow_items, cGridColumnItem_Gap].text = modUtil.Money_Format(gap_payment)
+            gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Gap].text = modUtil.Money_Format(gap_payment)
          End If    
       Endif
    End If   
    Invoice_Calculate_Total("Invoice Total")
+   panEditor.Visible = False  
    EditArea_Notify_Data_Change(True)
    
 End
@@ -1114,6 +1208,7 @@ End
 Public Sub TextBox1_Activate()
    
    If bexit Then Return 
+   panEditor.Hide
    Select Case OnCol_Items
       Case cGridColumnItem_ItemNumber
          gvwItemsBIlled[gvwItemsBIlled.row, 0].Text = TextBox1.text
@@ -1402,8 +1497,9 @@ End
 
 Public Sub Form_Resize()
    
-   gvwItemsBIlled_Init()
-   
+   ' gvwItemsBIlled_Init()
+   MoveProperty
+
 End
 
 Public Sub Appointment_icons_Get_Picture(Appointment_Icons As Collection) As Collection 
@@ -1681,15 +1777,6 @@ Public Sub Invoice_Delete_Item(i As Collection)
    
 End
 
-Public Sub gvwItemsBIlled_Clear()
-   
-   gvwItemsBIlled.Clear()
-   item = Null
-   OnCol_Items = 0
-   onrow_items = 0
-   
-End
-
 Public Sub Invoice_Calculate_Total(sTotalType As String)
    '----------------------------------------------------------------
    'Calculates the total amount of all items billed for this invoice
@@ -1803,7 +1890,7 @@ Public Sub VBox_InvoiceGrid_Leave()
    
    ' onrow_items = gvwItemsBIlled.Row
    'gvwItemsBIlled_Click()
-   ' Wait
+   Return 
    If textbox1.Visible Then
       If OnCol_Items = cGridColumnItem_ItemNumber Then
          If gvwItemsBIlled[onrow_items, cGridColumnItem_BriefDescriptor].text = "" Then
@@ -2718,7 +2805,7 @@ Public Sub TabStrip1_Click()
          Hbox_Calender.visible = True
          columnview99_Refresh()
       Case cTab_ScheduleFees
-      If IsNull(form_feeschedule) Then
+         If IsNull(form_feeschedule) Then
             With form_feeschedule = New FDescriptorsBrowser(Vbox_FeeSchedule)   
                .Init() 
             End With
@@ -3234,7 +3321,7 @@ End
 
 Public Sub DateChooser2_Activate()
    'Don't substitute Last here please
-
+   
    form_reports.Day_list_Show(DateChooser2.value)
    
 End
@@ -3244,12 +3331,13 @@ Public Sub VBox_PaymentGrid_Enter()
    'Enable the payments grid if there is something to pay
    'fixme use ian's yet to be written IsMoney()
    '-----------------------------------------------------
+
    If gvwItemsBIlled[0, 0].text <> "" And modUtil.IsMoney(gvwItemsBIlled[0, 0].text) Then
       gvwPayments.Enabled = True
    Else
       gvwPayments.Enabled = False   
    Endif
-
+   
 End
 'latest:19oct12-2326pm:
 ' drop view billing.vwinvoices cascade;
@@ -3605,7 +3693,11 @@ End
 ' 
 
 Public Sub Button1_Click()
-
+   
    Print Payer
    Print fk_payer_person
+   Print "gvwItems.height", gvwItemsBIlled.ClientH
+   Print "gvwItems.totalheight", gvwItemsBIlled.height
+   Print "hence header is ", gvwItemsBIlled.height - gvwItemsBIlled.ClientH
+   Print "scroll height", gvwItemsBIlled.scrollh
 End

@@ -64,7 +64,8 @@
 Private currentconsult As CConsult
 Private last_Fee_type As String
 Private bexit As Boolean  
-Private $hEditor As Object
+Private $hEditor_gvwItems As Object
+Private $hEditor_gvwPayments As Object
 'save flags for readability
 Private bBulkBill_Yes As Boolean = True
 Private bBulkBill_No As Boolean = False
@@ -126,7 +127,7 @@ Private oncol_payments As Integer
 Private onrow_payments As Integer 
 Private cGridColumnPayments_Amount As Integer = 0
 Private cGridColumnPayments_PaymentType As Integer = 1
-Private cGridColumnPayments_Drawer As Integer = 2
+Private cGridColumnPayments0_Drawer As Integer = 2
 Private cGridColumnPayments_ChequeNumber As Integer = 3
 Private cGridColumnPayments_Bank As Integer = 4
 Private cGridColumnPayments_Branch As Integer = 5
@@ -226,6 +227,7 @@ Public Sub Init()
    '---------------------------------------------------------
    
    Dim x As Integer
+   Message.Info("Ian, don't try and use this - you can probably print/save an account but the payments grid won't work +  lots of the tabs")
    
    lblSearchAccounts.Foreground = Color.LightGray
    comboBox1_Load()
@@ -279,7 +281,7 @@ Public Sub Init()
    cmbInvoiceComments.index = -1
    gvwItemsBIlled_Init()  
    gvwPayments_Init()
-   txtDateFilter.text = Format(Now, "dd/mm/yyyy")
+   txtDateFilter.text = "23/10/2012" ' Format(Now, "dd/mm/yyyy")
    Reload()                      
    
 End
@@ -705,21 +707,46 @@ Public Sub gvwPayments_Init()
       .Rows.count = 1
       .Rows.H = 20 
       .Columns.count = 6
-      .Columns[0].text = "Amount"
+      ' .Columns[0].text = "Amount"
       .Columns[0].width = 75
       lblmeasure.text = "Medicare Cheque  "
-      .Columns[1].text = "Payment Type"
+      ' .Columns[1].text = "Payment Type"
       .Columns[1].width = lblmeasure.Width
       lblmeasure.text = "Cheque Number"
-      .Columns[2].text = "Drawer on Cheque"
+      ' .Columns[2].text = "Drawer on Cheque"
       .Columns[2].width = 200
-      .Columns[3].text = "Cheque Number"
+      ' .Columns[3].text = "Cheque Number"
       .Columns[3].width = lblmeasure.Width
-      .Columns[4].text = "Bank"
+      ' .Columns[4].text = "Bank"
       .Columns[4].width = 100
-      .Columns[5].text = "Branch"
+      ' .Columns[5].text = "Branch"
       .Columns[5].width = 100
    End With
+   With gwPaymentLabel1
+      .text = "Amount"
+      .width = gvwPayments.Columns[0].Width
+   End With
+   
+   With gwPaymentLabel2
+      .text = "Payment Type"
+      .width = gvwPayments.Columns[1].Width
+   End With
+   With gwPaymentLabel3
+      .text = "Drawer on Cheque"
+      .width = gvwPayments.Columns[2].Width
+   End With
+   With gwPaymentLabel4
+      .text = "Cheque Number"
+      .width = gvwPayments.Columns[3].Width
+   End With
+   With gwPaymentLabel5
+      .text = "Bank"
+      .width = gvwPayments.Columns[4].Width
+   End With
+   With gwPaymentLabel6
+      .text = "Branch"
+      .width = gvwPayments.Columns[5].Width
+   End With 
    
 End
 
@@ -761,13 +788,13 @@ Public Sub txtPayment_Activate()
    '----------------------------------------------------------------------------
    
    If bexit Then Return 
+   panGvwPaymentsEditor.Hide
+   $hEditor_gvwPayments = Null   
    Select Case oncol_payments
       Case cGridColumnPayments_Amount
          gvwPayments[gvwPayments.row, 0].Text = modUtil.Money_Format(txtPayment.text)                       'format money correctly
          If gvwPayments[gvwPayments.row, 1].Text = "" And gvwPayments[gvwPayments.row, 0].Text <> "" Then   'if have no payment method but have money 
             gvwPayments[gvwPayments.row, cGridColumnPayments_PaymentType].text = "EFPos" 'FIXME WHEN BACKEND TABLE FIXED TO EFTPos
-            
-            ' cmbPaymentMethods.Visible = True  
          Endif
          Payment_Calculate_Total
       Case Else
@@ -775,6 +802,365 @@ Public Sub txtPayment_Activate()
    End Select 
    txtPayment.Visible = False   
    EditArea_Notify_Data_Change(True)
+   ' 
+
+End
+
+Public Sub gvwPayments_MouseUp()
+   '------------------------------------------------
+   'User has clicked on one of the cells in the grid
+   '------------------------------------------------
+   
+   If bPayingInvoice Or bexit Then Return                  'no-go if paying an invoice -can't change existing items 
+   If 
+   If gvwPayments.Row > 0 And gvwPayments[0, 0].text = "" Then 'if user clicks on row and row above not filled in move back FIXME THIS CODE DOES NOT DO THIS
+      gvwPayments.row = 0
+   Endif
+   Print "showing payments control"
+   gvwPayments_ShowProperty                                  'bad name but show the control we want to overlay a cell
+   
+End
+
+Public Sub gvwPayments_SaveProperty()
+   
+End
+
+Public Sub gvwPayments_HideProperty() As Boolean
+   
+   Print "should be hiding property in payments grid"
+   cmbPaymentMethods.Visible = False  
+   txtPayment.Visible = False 
+   panGvwItemsBilledEditor.Hide
+   gvwPayments_lblOverLay.Hide
+   $hEditor_gvwPayments = Null
+   
+End
+
+Public Sub gvwPayments_ShowProperty()
+   '--------------------------------------------------------------------------------
+   'nicked from the gambas IDE FProperty.class
+   'Shows the control we are using to 'edit' the grid cell aligned over that cell
+   'Maybe un-necessariily complex due to my simple brain but does this
+   'The panGvwItemsBilledEditor = a Hbox holding 3 controls
+   ' - a textbox for editing
+   ' - a combobox for choosing the fee levels
+   ' - a transparent label to let user click on something without entering edit mode
+   '   which is what happens in the gambas IDE - I didn't use this because then I
+   '   couldn't show a menu over the grid
+   '--------------------------------------------------------------------------------   
+   
+   Dim sProp As String  'contents of the grid cell
+   Dim hEditor As Object
+   
+   txtPayment.Hide
+   cmbPaymentMethods.Hide
+   gvwPayments_lblOverLay.Hide   
+   panGvwPaymentsEditor.Hide
+   
+   Select Case gvwPayments.column
+      Case cGridColumnPayments_PaymentType
+         cmbPaymentMethods.Index = cmbFeeType.Find(gvwPayments[gvwPayments.Row, gvwPayments.column].Text)
+         hEditor = cmbPaymentMethods
+       Case Else
+          hEditor = GvwPayments_lblOverLay
+   End Select
+   $hEditor_gvwPayments = hEditor
+   GvwPayments_MoveProperty        ' Move the Hbox panGvwItemsBilledEditor into position over the cell
+   $hEditor_gvwPayments.Show             ' Make transparent label "visible" or the combo box visible
+   pangvwPaymentsEditor.Show       ' Show the container, hence the  control
+   $hEditor_gvwPayments.SetFocus         ' give control focus > responded to key and click events
+   
+End
+
+Private Sub gvwPayments_MoveProperty()
+   '------------------------------------------------------------------------
+   'Move the editing Hbox control to match a grid cell co-ordinates and size
+   '------------------------------------------------------------------------ 
+   
+   If IsNull($hEditor_gvwPayments) Or gvwPayments.Row = - 1 Then Return
+   With gvwPayments[gvwPayments.Row, gvwPayments.column]
+      pangvwPaymentsEditor.Move(gvwPayments.X + .X - gvwPayments.ScrollX, gvwPayments.Y + .Y - gvwPayments.ScrollY, .Width, .Height)
+      panGvwPaymentsEditor.Raise
+   End With
+   
+End
+
+Public Sub gvwPayments_Click()
+   '----------------------------------------
+   'User has clicked on the payment gridview
+   '----------------------------------------  
+   ' 
+   Return 
+   If gvwPayments.column = cGridColumnPayments_PaymentType Then
+      If gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].Text <> "" Then    
+         cmbPaymentMethods.Visible = True
+      Else
+         cmbPaymentMethods.Visible = False   
+      End If   
+   Else
+      cmbPaymentMethods.Visible = False   
+   Endif
+   
+End
+
+Public Sub gvwPayments_lblOverLay_Menu()
+   '---------------------------------------------------------------
+   'The user has right mouse clicked on a grid row, but over a cell
+   'this means they clicked on the transparent menu
+   '---------------------------------------------------------------
+   
+   Dim row As Integer
+   Dim col As Integer
+   Dim bHaveText As Boolean
+   
+   bexit = True
+   If bPayingInvoice Then Return 
+   For row = 0 To gvwPayments.Rows.count - 1
+      For col = 0 To 4
+         If gvwPayments[row, col].Text <> "" Then
+            mnuPayments.Popup
+            bHaveText = True
+            Break
+         Endif
+      Next
+      If bHaveText Then Break
+   Next  
+   bexit = False  
+   
+End
+
+Public Sub gvwPayments_lblOverLay_DblClick()
+   '-------------------------------------------------------------
+   'Looks to use like double clicking on a grid row
+   'actually clicking on the transparent label over the grid cell
+   'remove this transparent label and enter 'edit mode'
+   '-------------------------------------------------------------
+   
+   gvwPayments_Cell_Overlay_Remove("")
+   
+End
+
+Public Sub gvwPayments_lblOverLay_KeyPress() 
+   '----------------------------------------------------------------
+   'This is a transparent label, "hiding" the editing textbox
+   'Pass the keypress character into the underlying textbox if empty
+   'and enter 'edit mode'
+   '----------------------------------------------------------------   
+   
+   gvwPayments_Cell_Overlay_Remove(key.Text)
+   
+End
+
+Public Sub gvwPayments_Cell_Overlay_Remove(char As String)
+   '----------------------------------------------------------------
+   'use the underlying cell text to either set the fee combox index
+   'or the textbox 1 editing textbox
+   'remove the label hiding the control in the grid to allow use
+   'either a combobox or a textbox
+   '-----------------------------------------------------------------  
+   ' Dim hEditor As Object
+  
+   Dim Cell_Text As String = gvwPayments[gvwPayments.Row, gvwPayments.column].Text
+   
+   If gvwPayments.column <> cGridColumnPayments_PaymentType Then 
+      txtPayment.text = Cell_Text
+      If txtPayment.text = "" Then
+         $hEditor_gvwPayments = txtPayment
+         txtPayment.text = char
+         gvwPayments_lblOverLay.Visible = False 
+      End If   
+   End If   
+   $hEditor_gvwPayments.visible = True
+   $hEditor_gvwPayments.SetFocus
+   
+Catch
+   Return   'fixme bug here.
+End
+
+Public Sub gvwPayments_DblClick()
+   '------------------------------------------------------------------------------
+   'User has clicked on the payments grid, to make a payment record
+   'User will be physically unable to click on column 2 (payment type)
+   'as the payment type combo appears via gvwPayments_Enter) and overlays the grid
+   '------------------------------------------------------------------------------  
+   
+   Dim i As Integer
+   Dim iSlotCount As Integer
+   
+   Return 
+   
+   If gvwPayments.Enabled = False Then 
+      Print "gvwPayments is not enabled"
+      Return   'god knows why this responds to the events if disabled   
+   Else
+      Print "gvwPayments is enabled"
+   End If   
+   oncol_payments = gvwPayments.Column
+   onrow_payments = gvwPayments.Row
+   If gvwPayments[gvwPayments.row, gvwPayments.Column].text = "" Then
+      If Item_Number_Selected() Then
+         txtPayment.text = Trim(Replace(lblInvoiceTotal.Text, "Invoice Total", ""))
+      Endif
+   Else
+      txtPayment.text = gvwPayments[gvwPayments.row, gvwPayments.Column].text
+   End If   
+   If oncol_payments = cGridColumnPayments_PaymentType Then Return 
+   bFoundFirst = False  
+   onrow_payments = gvwPayments.Row 
+   iLeft = gvwPayments[onrow_payments, oncol_payments].Left + gvwPayments.Left
+   iTop = ((onrow_payments + 1) * 20) + 2 
+   txtPayment.left = iLeft + 2
+   txtPayment.top = iTop
+   txtPayment.width = gvwPayments.Columns[oncol_payments].Width + 2
+   txtPayment.Height = gvwPayments.Rows[0].Height + 5
+   txtPayment.Visible = True
+   txtPayment.SetFocus()
+   
+End
+
+Public Sub gvwItemsBilled_HideProperty() As Boolean
+   ' If cmbFeeType.Visible Then
+   '  cmbFeeType.Visible = False  
+   ' Endif
+   
+   Print "should be hiding property in items grid"
+   cmbFeeType.Visible = False  
+   textbox1.Visible = False 
+   panGvwItemsBilledEditor.Hide
+   $hEditor_gvwItems = Null
+   
+End
+
+Public Sub gvwItemsBilled_SaveProperty()
+   
+   Print TypeOf($hEditor_gvwItems), " the type"
+   Select Case TypeOf($hEditor_gvwItems)
+      Case "text"
+   End Select
+   
+End
+
+Public Sub gvwItemsBilled_ShowProperty()
+   '--------------------------------------------------------------------------------
+   'nicked from the gambas IDE FProperty.class
+   'Shows the control we are using to 'edit' the grid cell aligned over that cell
+   'Maybe un-necessariily complex due to my simple brain but does this
+   'The panGvwItemsBilledEditor = a Hbox holding 3 controls
+   ' - a textbox for editing
+   ' - a combobox for choosing the fee levels
+   ' - a transparent label to let user click on something without entering edit mode
+   '   which is what happens in the gambas IDE - I didn't use this because then I
+   '   couldn't show a menu over the grid
+   '--------------------------------------------------------------------------------   
+   
+   Dim sProp As String  'contents of the grid cell
+   Dim hEditor As Object
+   
+   textbox1.Hide
+   cmbFeeType.Hide
+   gvwItemsBilled_lblOverLay.Hide   
+   panGvwItemsBilledEditor.Hide
+   
+   Select Case gvwItemsBIlled.column
+      Case cGridColumnItem_FeeType
+         cmbFeeType.Index = cmbFeeType.Find(gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column].Text)
+         hEditor = cmbFeeType
+      Case Else
+         hEditor = gvwItemsBilled_lblOverLay
+   End Select
+   $hEditor_gvwItems = hEditor
+   gvwItemsBilled_MoveProperty        ' Move the Hbox panGvwItemsBilledEditor into position over the cell
+   $hEditor_gvwItems.Show             ' Make transparent label "visible" or the combo box visible
+   panGvwItemsBilledEditor.Show       ' Show the container, hence the  control
+   $hEditor_gvwItems.SetFocus         ' give control focus > responded to key and click events
+   
+End
+
+Public Sub gvwItemsBIlled_Clear()
+   '----------------------------------------------------------
+   'Clear the grid which the staff use to type in item numbers
+   '----------------------------------------------------------   
+   
+   gvwItemsBIlled.Clear()
+   item = Null
+   OnCol_Items = 0
+   onrow_items = 0
+   
+End
+
+Public Sub gvwItemsBIlled_DblClick()
+   
+End
+
+Public Sub gvwItemsBilled_lblOverLay_KeyPress() 
+   '----------------------------------------------------------------
+   'This is a transparent label, "hiding" the editing textbox
+   'Pass the keypress character into the underlying textbox if empty
+   'and enter 'edit mode'
+   '----------------------------------------------------------------   
+   
+   gwItemsBilled_Cell_Overlay_Remove(key.Text)
+   
+End
+
+Public Sub gwItemsBilled_Cell_Overlay_Remove(char As String)
+   '----------------------------------------------------------------
+   'use the underlying cell text to either set the fee combox index
+   'or the textbox 1 editing textbox
+   'remove the label hiding the control in the grid to allow use
+   'either a combobox or a textbox
+   '-----------------------------------------------------------------  
+   ' Dim hEditor As Object
+   
+   Dim Cell_Text As String = gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column].Text
+   
+   If gvwItemsBIlled.column <> cGridColumnItem_FeeType Then 
+      textbox1.text = Cell_Text
+      If textbox1.text = "" Then
+         $hEditor_gvwItems = textbox1
+         textbox1.text = char
+         gvwItemsBilled_lblOverLay.Visible = False 
+      End If   
+   End If   
+   $hEditor_gvwItems.visible = True
+   $hEditor_gvwItems.SetFocus
+   
+End
+
+Public Sub gvwItemsBilled_lblOverLay_Menu()
+   '---------------------------------------------------------------
+   'The user has right mouse clicked on a grid row, but over a cell
+   'this means they clicked on the transparent menu
+   '---------------------------------------------------------------
+   
+   Dim row As Integer
+   Dim col As Integer
+   Dim bHaveText As Boolean
+   
+   bexit = True
+   If bPayingInvoice Then Return 
+   For row = 0 To gvwItemsBIlled.Rows.count - 1
+      For col = 0 To 4
+         If gvwItemsBIlled[row, col].Text <> "" Then
+            mnuItems.Popup
+            bHaveText = True
+            Break
+         Endif
+      Next
+      If bHaveText Then Break
+   Next  
+   bexit = False  
+   
+End
+
+Public Sub gvwItemsBilled_lblOverLay_DblClick()
+   '-------------------------------------------------------------
+   'Looks to use like double clicking on a grid row
+   'actually clicking on the transparent label over the grid cell
+   'remove this transparent label and enter 'edit mode'
+   '-------------------------------------------------------------
+   
+   gwItemsBilled_Cell_Overlay_Remove("")
    
 End
 
@@ -838,85 +1224,31 @@ Public Sub gvwItemsBIlled_Init()
    
 End
 
-Public Sub gvwPayments_Click()
-   '----------------------------------------
-   'User has clicked on the payment gridview
-   '----------------------------------------  
-   ' 
-   
-   If gvwPayments.column = cGridColumnPayments_PaymentType Then
-      If gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].Text <> "" Then    
-         cmbPaymentMethods.Visible = True
-      Else
-         cmbPaymentMethods.Visible = False   
-      End If   
-   Else
-      cmbPaymentMethods.Visible = False   
-   Endif
-   
-End
-
-Public Sub gvwPayments_DblClick()
-   '------------------------------------------------------------------------------
-   'User has clicked on the payments grid, to make a payment record
-   'User will be physically unable to click on column 2 (payment type)
-   'as the payment type combo appears via gvwPayments_Enter) and overlays the grid
-   '------------------------------------------------------------------------------  
-   
-   Dim i As Integer
-   Dim iSlotCount As Integer
-   
-   If gvwPayments.Enabled = False Then 
-      Print "gvwPayments is not enabled"
-      Return   'god knows why this responds to the events if disabled   
-   Else
-      Print "gvwPayments is enabled"
-   End If   
-   oncol_payments = gvwPayments.Column
-   onrow_payments = gvwPayments.Row
-   If gvwPayments[gvwPayments.row, gvwPayments.Column].text = "" Then
-      If Item_Number_Selected() Then
-         txtPayment.text = Trim(Replace(lblInvoiceTotal.Text, "Invoice Total", ""))
-      Endif
-   Else
-      txtPayment.text = gvwPayments[gvwPayments.row, gvwPayments.Column].text
-   End If   
-   If oncol_payments = cGridColumnPayments_PaymentType Then Return 
-   bFoundFirst = False  
-   onrow_payments = gvwPayments.Row 
-   iLeft = gvwPayments[onrow_payments, oncol_payments].Left + gvwPayments.Left
-   iTop = ((onrow_payments + 1) * 20) + 2 
-   txtPayment.left = iLeft + 2
-   txtPayment.top = iTop
-   txtPayment.width = gvwPayments.Columns[oncol_payments].Width + 2
-   txtPayment.Height = gvwPayments.Rows[0].Height + 5
-   txtPayment.Visible = True
-   txtPayment.SetFocus()
-   
-End
-
-Public Sub gvwItemsBIlled_Menu()
-   '-------------------------------------------------------------
-   'if any of the cells in the grid have text then popup the menu
-   '-------------------------------------------------------------
-   
-   Dim row As Integer
-   Dim col As Integer
-   Dim bHaveText As Boolean
-   
-   If bPayingInvoice Then Return 
-   For row = 0 To gvwItemsBIlled.Rows.count - 1
-      For col = 0 To 4
-         If gvwItemsBIlled[row, col].Text <> "" Then
-            mnuItems.Popup
-            bHaveText = True
-            Break
-         Endif
-      Next
-      If bHaveText Then Break
-   Next  
-   
-End
+' Public Sub gvwItemsBIlled_Menu()
+'    '-------------------------------------------------------------
+'    'if any of the cells in the grid have text then popup the menu
+'    '-------------------------------------------------------------
+'    
+'    Dim row As Integer
+'    Dim col As Integer
+'    Dim bHaveText As Boolean
+'    
+'    Print "trying to show menu"
+'    bexit = True
+'    If bPayingInvoice Then Return 
+'    For row = 0 To gvwItemsBIlled.Rows.count - 1
+'       For col = 0 To 4
+'          If gvwItemsBIlled[row, col].Text <> "" Then
+'             mnuItems.Popup
+'             bHaveText = True
+'             Break
+'          Endif
+'       Next
+'       If bHaveText Then Break
+'    Next  
+'    bexit = False  
+' 
+' End
 
 Public Sub gvwItemsBIlled_Delete_Row(onrow_items As Integer)
    
@@ -931,185 +1263,77 @@ Public Sub gvwItemsBIlled_Delete_Row(onrow_items As Integer)
    Invoice_Calculate_Total("Invoice Total")
    
 End
-Public Sub HideProperty() As Boolean
-  ' If cmbFeeType.Visible Then
-    '  cmbFeeType.Visible = False  
-  ' Endif
-   Print "should be hiding property"
-     cmbFeeType.Visible = False  
-     textbox1.Visible = False 
-   panEditor.Hide
-   $hEditor = Null
-  
-End
 
-Public Sub SaveProperty()
-   Print TypeOf($hEditor), " the type"
-   Select Case TypeOf($hEditor)
-      Case "text"
-   End Select
+Public Sub gvwItemsBIlled_Data_Valid() As Boolean
+   '-----------------------------------------------------------------------
+   'Checks the item data in the grid is value, start of row must be an item 
+   'number in the backend need at minimum item number,an amount and a type
+   'returns true if rows are valid
+   '-----------------------------------------------------------------------
    
-End
-
-Private Sub MoveProperty()
-   ' Dim heading_height As Integer = (gvwItemsBIlled.Height - gvwItemsBIlled.ScrollHeight) / gvwItemsBIlled.Rows.count - 1  
+   Dim row As Integer
+   Dim item As Collection
+   Dim bNoDAta As Boolean = True
    
-   If IsNull($hEditor) Or gvwItemsBIlled.Row = - 1 Then Return
-   Print gvwItemsBIlled
-   
-   With gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column]
-      
-      panEditor.Move(gvwItemsBIlled.X + .X - gvwItemsBIlled.ScrollX, gvwItemsBIlled.Y + .Y - gvwItemsBIlled.ScrollY, .Width, .Height)
-      ' panEditor.Move(gvwItemsBIlled.X + .X - gvwItemsBIlled.ScrollX, gvwItemsBIlled.Y + .Y - gvwItemsBIlled.ScrollY + heading_height, .Width, .Height)
-      panEditor.Raise
-      
-   End With
+   For row = 0 To gvwItemsBIlled.Rows.Max
+      If gvwItemsBIlled[row, cGridColumnItem_ItemNumber].Text <> "" Then 
+         item = modBillingDBI.Items_Get(gvwItemsBIlled[row, cGridColumnItem_ItemNumber].Text, -1, 1)   
+         If IsNull(item) Then Return 
+         If gvwItemsBIlled[row, cGridColumnItem_Fee].Text = "" Then
+            Return 
+         Endif
+         If gvwItemsBIlled[row, cGridColumnItem_FeeType].Text = "" Then
+            Return False
+         Endif
+         bNoDAta = False   
+      End If  
+   Next
+   If bNoDAta Then Return False
+   Return True
    
 End
 
 Public Sub gvwItemsBIlled_MouseUp()
+   '------------------------------------------------
+   'User has clicked on one of the cells in the grid
+   '------------------------------------------------
    
-   If bPayingInvoice Or bexit Then Return 
-  ' If bPayingInvoice Or bexit Or txtpatient.text = "" Or gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column].text <> "" Then 
-  '    Print "exit 1"
-  ''    Return 
-  ' End If   
+   If bPayingInvoice Or bexit Then Return                  'no-go if paying an invoice -can't change existing items 
    If gvwItemsBIlled.Row > 0 And gvwItemsBIlled[0, 0].text = "" Then 'if user clicks on row and row above not filled in move back FIXME THIS CODE DOES NOT DO THIS
-      Print "in 2"
       gvwItemsBIlled.row = 0
    Endif
    If textbox1.Visible = False Then HBox_Descriptor.Visible = False  
    If gvwItemsBIlled.Column <> cGridColumnItem_BriefDescriptor Then HBox_Descriptor.Visible = False   
-   Print "before show property"
-   ShowProperty
+   gvwItemsBilled_ShowProperty                              'bad name but show the control we want to overlay a cell
    
 End
 
 Public Sub gvwItemsBIlled_Scroll()
+   '------------------------------------------------------
+   'As the grid scrolls re-position the overlying control
+   '-----------------------------------------------------   
    
-   MoveProperty
+   gvwItemsBilled_MoveProperty
    
-End
-
-Public Sub ShowProperty()
-   '------------------------------------------
-   'nicked from the gambas IDE FProperty.class
-   '------------------------------------------   
-   
-   Dim sProp As String  'contents of the grid cell
-   Dim hEditor As Object
-   
-   textbox1.Hide
-   cmbFeeType.Hide
-   panEditor.Hide
-   sProp = gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column].Text
-   
-   Select Case gvwItemsBIlled.column
-      Case cGridColumnItem_FeeType
-         cmbFeeType.Index = cmbFeeType.Find(sProp)
-         hEditor = cmbFeeType
-         cmbFeeType.Show
-      Case Else
-         textbox1.text = sProp 
-         hEditor = textbox1
-         textbox1.Show
-   End Select
-   
-   $hEditor = hEditor
-   MoveProperty
-   
-   $hEditor.Show
-   panEditor.Show
-   
-   $hEditor.SetFocus 
-   
-End
-
-Public Sub gvwItemsBIlled_Clear()
-   
-   gvwItemsBIlled.Clear()
-   item = Null
-   OnCol_Items = 0
-   onrow_items = 0
-   
-End
-
-Public Sub gvwItemsBIlled_Click()
-   
-   Return 
-   ' If gvwItemsBIlled.column = cGridColumnItem_FeeType Then 
-   '    With cmbFeeType
-   '       .width = gvwItemsBIlled.Columns[cGridColumnItem_FeeType].Width
-   '       .height = gvwItemsBIlled.Rows[0].Height + 5
-   '       .left = gvwItemsBIlled[0, cGridColumnItem_FeeType].Left + 2
-   '       .top = ((gvwItemsBIlled.row + 1) * 20) + 2
-   '       .Visible = True
-   '    End With
-   ' Else
-   '    cmbFeeType.Visible = False   
-   ' Endif 
-   ' onrow_items = gvwItemsBIlled.Row
-   ' OnCol_Items = gvwItemsBIlled.Column
-   
-End
-
-Public Sub gvwItemsBilled_DblClick()
-   
-   ' Dim i As Integer
-   ' Dim iSlotCount As Integer
-   ' 
-   ' Return 
-   ' Print "onrow_itmes, oncol_items", onrow_items, OnCol_Items
-   ' Print "gvwBilled.row", gvwItemsBIlled.Row
-   ' Print "bexit is", bexit
-   ' If gvwItemsBIlled.row = - 1 Then
-   '    gvwItemsBIlled.SetFocus()
-   '    Return
-   ' Endif
-   ' If bPayingInvoice Or bexit Or gvwItemsBIlled.Column = 4 Or txtpatient.text = "" Or gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column].text <> "" Then Return 
-   ' If gvwItemsBIlled.Row > 0 And gvwItemsBIlled[0, 0].text = "" Then 'if user clicks on row and row above not filled in move back FIXME THIS CODE DOES NOT DO THIS
-   '    onrow_items = 0
-   '    gvwItemsBIlled.row = 0
-   ' Endif
-   ' If textbox1.Visible = False Then HBox_Descriptor.Visible = False  
-   ' If gvwItemsBIlled.Column <> cGridColumnItem_BriefDescriptor Then HBox_Descriptor.Visible = False   
-   ' 
-   ' TextBox1.text = ""                                  'clear search textbox
-   ' If gvwItemsBIlled.column = 1 Then  'the brief descriptor, allow searching
-   '    Try txtDescriptor.text = item!descriptor
-   '    If Not Error Then
-   '       txtDescriptor.Pos = 0
-   '       HBox_Descriptor.Visible = True   
-   '    Endif
-   ' End If  
-   ' iLeft = gvwItemsBIlled[gvwItemsBIlled.row, gvwItemsBIlled.Column].Left
-   ' iTop = ((gvwItemsBIlled.row + 1) * 20) + 4 'iSlotCount * 20
-   ' With TextBox1
-   '    .left = iLeft + 2
-   '    .top = iTop
-   '    .width = gvwItemsBIlled.Columns[gvwItemsBIlled.Column].Width + 4
-   '    .Height = gvwItemsBIlled.Rows[0].Height + 5
-   '    .Visible = True
-   '    .SetFocus()
-   ' End With
-   ' 
 End
 
 Public Sub gvwItemsBIlled_Select()
    
-   TextBox1.Visible = False   
+   onrow_items = gvwItemsBIlled.Row
+   Print "have selected so the onrow_items is now ", onrow_items
    
 End
 
-Public Sub gvwItems_Keypress()
-   'FIXME ?NOT USED AT ALL NOW
+Private Sub gvwItemsBilled_MoveProperty()
+   '------------------------------------------------------------------------
+   'Move the editing Hbox control to match a grid cell co-ordinates and size
+   '------------------------------------------------------------------------ 
    
-   If bExit Or bPayingInvoice Then Return 
-   If key.code = key.return Then
-      OnCol_Items = 0
-      onrow_items = 0
-      gvwItemsBIlled_DblClick()
-   Endif
+   If IsNull($hEditor_gvwItems) Or gvwItemsBIlled.Row = - 1 Then Return
+   With gvwItemsBIlled[gvwItemsBIlled.Row, gvwItemsBIlled.column]
+      panGvwItemsBilledEditor.Move(gvwItemsBIlled.X + .X - gvwItemsBIlled.ScrollX, gvwItemsBIlled.Y + .Y - gvwItemsBIlled.ScrollY, .Width, .Height)
+      panGvwItemsBilledEditor.Raise
+   End With
    
 End
 
@@ -1161,7 +1385,7 @@ Public Sub cmbFeeType_Click()
       Endif
    End If   
    Invoice_Calculate_Total("Invoice Total")
-   panEditor.Visible = False  
+   panGvwItemsBilledEditor.Visible = False  
    EditArea_Notify_Data_Change(True)
    
 End
@@ -1216,54 +1440,54 @@ Public Sub cmbEditArea_Click()
    
 End
 
-Public Sub TextBox1_GotFocus()
+Public Sub textbox1_GotFocus()
    '-----------------------------------------------------
    'If searching for brief descriptor then activate timer
    '-----------------------------------------------------   
    
-   If OnCol_Items = cGridColumnItem_BriefDescriptor Then
-      With columnview1
-         .top = Hbox_InvoiceGrid.top + TextBox1.top + TextBox1.height
-         .left = VBox_InvoiceGrid.Left + TextBox1.Left
-         .width = TextBox1.Width
-         .Visible = False  
-      End With
-      With HBox_Descriptor
-         .top = columnview1.Top
-         .Width = columnview1.Width
-         .left = columnview1.left
-         .Height = VBox_InvoiceGrid.height - TextBox1.top - textbox1.height
-         If Last.text = "" And gvwItemsBIlled[gvwItemsBIlled.row, 0].text <> "" Then .Visible = True 
-      End With
-      iTimer_Search_Mode = cTimer_SearchMode_Descriptor
-   Endif
+   ' If OnCol_Items = cGridColumnItem_BriefDescriptor Then
+   '    With columnview1
+   '       .top = Hbox_InvoiceGrid.top + txtPayment.top + txtPayment.height
+   '       .left = VBox_InvoiceGrid.Left + txtPayment.Left
+   '       .width = txtPayment.Width
+   '       .Visible = False  
+   '    End With
+   '    With HBox_Descriptor
+   '       .top = columnview1.Top
+   '       .Width = columnview1.Width
+   '       .left = columnview1.left
+   '       .Height = VBox_InvoiceGrid.height - txtPayment.top - txtPayment.height
+   '       If Last.text = "" And gvwItemsBIlled[gvwItemsBIlled.row, 0].text <> "" Then .Visible = True 
+   '    End With
+   '    iTimer_Search_Mode = cTimer_SearchMode_Descriptor
+   ' Endif
    
 End
 
-Public Sub TextBox1_Activate()
+Public Sub textbox1_Activate()
    
    If bexit Then Return 
-   panEditor.Hide
-   $hEditor = Null
+   panGvwItemsBilledEditor.Hide
+   $hEditor_gvwItems = Null
    Select Case OnCol_Items
       Case cGridColumnItem_ItemNumber
-         gvwItemsBIlled[gvwItemsBIlled.row, 0].Text = TextBox1.text
-         TextBox1.Visible = False  
-         Get_Items(TextBox1.text)
+         gvwItemsBIlled[gvwItemsBIlled.row, 0].Text = textbox1.text
+         textbox1.Visible = False  
+         Get_Items(textbox1.text)
       Case cGridColumnItem_Fee
-         gvwItemsBIlled[gvwItemsBIlled.row, 2].text = "$" & Trim(TextBox1.text)
-         TextBox1.Visible = False   
+         gvwItemsBIlled[gvwItemsBIlled.row, 2].text = "$" & Trim(textbox1.text)
+         textbox1.Visible = False   
          gvwItemsBIlled.SetFocus()
       Case cGridColumnItem_BriefDescriptor
          If IsNull(item) Then Return 
          If IsNull(item!descriptor_brief) Then
             Message.Title = "Brief Descriptors"
-            gvwItemsBIlled[gvwItemsBIlled.row, 1].Text = Trim(TextBox1.text)
+            gvwItemsBIlled[gvwItemsBIlled.row, 1].Text = Trim(textbox1.text)
             If Message.question("Do you want to save this brief descriptor?", "Yes", "No") = 1 Then
                modDBConnect.update("billing.fee_schedule", Null, ["pk": item!fk_fee_schedule, "descriptor_brief": gvwItemsBIlled[gvwItemsBIlled.row, 1].Text])   
                item!descriptor_brief = gvwItemsBIlled[gvwItemsBIlled.row, 1].Text
                modDBConnect.CommitTrans()
-               TextBox1.Visible = False   
+               textbox1.Visible = False   
                HBox_Descriptor.Visible = False 
                txtDescriptor.text = "" 
                gvwItemsBIlled.SetFocus()
@@ -1290,14 +1514,14 @@ Public Sub textbox1_KeyPress()
    
 End
 
-Public Sub Textbox1_KeyRelease()
+Public Sub textbox1_KeyRelease()
    '--------------------------------------------------------------------
    'if user searching for brief descriptor zero the timer count
    'then once they stop typing and timer_count which is incremented by
    'Timer1_Timer > 3 the search is triggered see   Descriptors_Brief_Get
    '--------------------------------------------------------------------
    
-   If Trim(TextBox1.text) = "" Then Return  
+   If Trim(textbox1.text) = "" Then Return  
    timer_count = 0
    If OnCol_Items = cGridColumnItem_BriefDescriptor Then
       timer1.Enabled = True   
@@ -1534,7 +1758,7 @@ End
 Public Sub Form_Resize()
    
    ' gvwItemsBIlled_Init()
-   MoveProperty
+   gvwItemsBilled_MoveProperty
    
 End
 
@@ -1554,13 +1778,13 @@ End
 
 Public Sub Descriptors_Brief_Get()
    
-   If Trim(TextBox1.text) = "" Then Return  
+   If Trim(textbox1.text) = "" Then Return  
    timer1.Stop
    With columnview1
       .Clear
       .Visible = False
    End With
-   Descriptors_Brief = modBillingDBI.Descriptors_Brief_Get(Trim(TextBox1.text))
+   Descriptors_Brief = modBillingDBI.Descriptors_Brief_Get(Trim(textbox1.text))
    If Descriptors_Brief.count Then
       For Each Descriptor_Brief In Descriptors_Brief  
          columnview1.Add(Descriptor_Brief!pk, 0)
@@ -1882,7 +2106,7 @@ Public Sub rbInvoiceTo_Click()
       onrow_items = row                           
       If gvwItemsBIlled[row, cGridColumnItem_ItemNumber].Text <> "" Then
          If gvwItemsBIlled[row, cGridColumnItem_FeeType].text <> Last.tag Then
-             gvwItemsBIlled.row = row 
+            gvwItemsBIlled.row = row 
             cmbFeeType.index = cmbFeeType.Find(Last.tag) 'triggers cmbFeeType_Click
          End If  
       End If 
@@ -1924,15 +2148,16 @@ Public Sub timer1_Timer()
 End
 
 Public Sub VBox_InvoiceGrid_Leave()
+   
    Print "should be leaving"
-   HideProperty
+   ' gvwItemsBilled_HideProperty
    Return 
-   SaveProperty
+   gvwItemsBilled_SaveProperty
    Return 
-   If Not IsNull($hEditor) Then
+   If Not IsNull($hEditor_gvwItems) Then
       If OnCol_Items = cGridColumnItem_ItemNumber Then
          If gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_BriefDescriptor].text = "" Then
-            TextBox1_Activate()
+            textbox1_Activate()
          Endif
       Endif
       gvwItemsBIlled[gvwItemsBIlled.row, gvwItemsBIlled.Column].text = Trim(textbox1.text)
@@ -1941,7 +2166,7 @@ Public Sub VBox_InvoiceGrid_Leave()
       gvwItemsBIlled[onrow_items, cGridColumnItem_FeeType].text = cmbFeeType.Text
       cmbFeeType.Visible = False 
    Endif
-   TextBox1.Visible = False  
+   textbox1.Visible = False  
    timer1.Enabled = False   
    
 End
@@ -2106,21 +2331,20 @@ Public Sub Invoice_New()
    fk_invoice = 0
    gvwPayments.clear
    cmbFeeType.Visible = False 
-   '  rbPayerNotUsed.value = True 'switches off rbInvoiceOrganisation and rbInvoicePerson
    lblInvoiceTotal.text = ""
    lblPaymentTotal.text = ""
    EditArea_Notify_Data_Change(False)
    Hbox_InvoiceGrid.Enabled = True 
    txtDate.ReadOnly = False
-   ' txtDate.SetFocus()
    
 End
 
 Public Sub cvwItemsBilled_Refresh()
-   '-----------------------------------------------------------------------------------------------------
-   'Refresh all previous items billed for the patient E.g a single row could be Item 23 standard consult
-   'Display in columnview, if more than 1 item per invoice, only display name/dr/date once
-   '----------------------------------------------------------------------------------------------------
+   '----------------------------------------------------------------
+   ' Refresh all previous items billed for the patient
+   ' E.g a single row could be Item 23 standard consult etc 
+   ' if more than 1 item per invoice, only display name/dr/date once
+   '----------------------------------------------------------------
    
    Dim item As String
    Dim fk_last_invoice As Integer
@@ -2199,67 +2423,63 @@ Public Sub cvwItemsBilled_Select()
    '--------------------------------------------------------------------------------------------   
    
    If cvwItemsBilled.count = 0 Then Return  
-   
-   Select Case TabStrip1.Index
-      Case cTab_Invoices  
-         bexit = True
-         cvwItemsBilled.MoveCurrent
-         HBox_InvoiceCommentS.Visible = False  
-         If cvwItemsBilled[cvwItemsBilled.Item.key][0] = "" Then
-            Do Until cvwItemsBilled[cvwItemsBilled.Item.key][0] <> ""
-               cvwItemsBilled.MovePrevious()
-            Loop
-            cvwItemsBilled.Item.Selected = True 'will re-enter
-         Endif
-         Item_Billed = Items_Billed[cvwItemsBilled.Item.key] 
-         fk_invoice = Item_Billed!fk_invoice 
-         If Not Item_Billed!paid Then
-            tbAccount.Enabled = False  
-            tbVoucher.Enabled = False  
-            tbSaveNoPrint.Enabled = False 
-            lblEditAreaHeading.text = "Pay Invoice"
-            VBox5.Enabled = True 
-         Else
-            lblEditAreaHeading.text = "Paid Invoice"
-            VBox5.Enabled = False  
-         Endif
-         txtDate.text = Format(Item_Billed!visit_date, "dd/mm/yyyy")
-         txtReferenceDetails.text = Item_Billed!reference
-         cmbSeenBy.index = cmbSeenBy.Find(Item_Billed!staff_provided_service_wholename)
-         cmbLocation.index = cmbLocation.Find(Item_Billed!branch)
-         rbInvoiceToNotUsed.value = True
-         Try fk_payer_branch = Item_Billed!fk_payer_branch
-         If Not Error Then
-            rbInvoiceOrganisation.Value = True  
-         Endif
-         Try fk_payer_person = Item_Billed!fk_payer_person
-         If Not Error Then
-            rbInvoicePerson.Value = True
-         Endif
-         Try textlabelPayer.text = Item_Billed!payer_details
-         '---------------------------------------------------------
-         'now create an items collection to load back into the grid
-         '---------------------------------------------------------
-         onrow_items = 0
-         gvwItemsBIlled.Clear()
-         Do Until Items_Billed[cvwItemsBilled.Item.key]!fk_invoice <> Item_Billed!fk_invoice
-            gvwItemsBIlled[onrow_items, 0].text = cvwItemsBilled[Items_Billed[cvwItemsBilled.Item.key]!pk_items_billed][4]
-            gvwItemsBIlled[onrow_items, 1].text = Items_Billed[cvwItemsBilled.Item.key]!descriptor_brief
-            gvwItemsBIlled[onrow_items, 2].text = Items_Billed[cvwItemsBilled.Item.key]!amount
-            gvwItemsBIlled[onrow_items, 4].text = Items_Billed[cvwItemsBilled.Item.key]!billing_type
-            Try gvwItemsBIlled[onrow_items, 5].text = Items_Billed[cvwItemsBilled.Item.key]!amount_gst
-            Inc onrow_items
-            If cvwItemsBilled.MoveNext() Then Break
-         Loop
-         gvwItemsBIlled.Rows.count = onrow_items
-         gvwPayments.Clear()
-         gvwPayments.Rows.count = onrow_items + 2 'to allow payment by eg cash + cheque for medicare items.
-         Invoice_Calculate_Total("Total Owing")
-         EditArea_Notify_Data_Change(False)       
-         Hbox_InvoiceGrid.Enabled = False 
-         HBox_InvoiceComments.Enabled = False   
-         bexit = False  
-   End Select
+   bexit = True
+   cvwItemsBilled.MoveCurrent
+   HBox_InvoiceCommentS.Visible = False  
+   If cvwItemsBilled[cvwItemsBilled.Item.key][0] = "" Then
+      Do Until cvwItemsBilled[cvwItemsBilled.Item.key][0] <> ""
+         cvwItemsBilled.MovePrevious()
+      Loop
+      cvwItemsBilled.Item.Selected = True 'will re-enter
+   Endif
+   Item_Billed = Items_Billed[cvwItemsBilled.Item.key] 
+   fk_invoice = Item_Billed!fk_invoice 
+   If Not Item_Billed!paid Then
+      tbAccount.Enabled = False  
+      tbVoucher.Enabled = False  
+      tbSaveNoPrint.Enabled = False 
+      lblEditAreaHeading.text = "Pay Invoice"
+      VBox5.Enabled = True 
+   Else
+      lblEditAreaHeading.text = "Paid Invoice"
+      VBox5.Enabled = False  
+   Endif
+   txtDate.text = Format(Item_Billed!visit_date, "dd/mm/yyyy")
+   txtReferenceDetails.text = Item_Billed!reference
+   cmbSeenBy.index = cmbSeenBy.Find(Item_Billed!staff_provided_service_wholename)
+   cmbLocation.index = cmbLocation.Find(Item_Billed!branch)
+   rbInvoiceToNotUsed.value = True
+   Try fk_payer_branch = Item_Billed!fk_payer_branch
+   If Not Error Then
+      rbInvoiceOrganisation.Value = True  
+   Endif
+   Try fk_payer_person = Item_Billed!fk_payer_person
+   If Not Error Then
+      rbInvoicePerson.Value = True
+   Endif
+   Try textlabelPayer.text = Item_Billed!payer_details
+   '---------------------------------------------------------
+   'now create an items collection to load back into the grid
+   '---------------------------------------------------------
+   onrow_items = 0
+   gvwItemsBIlled.Clear()
+   Do Until Items_Billed[cvwItemsBilled.Item.key]!fk_invoice <> Item_Billed!fk_invoice
+      gvwItemsBIlled[onrow_items, 0].text = cvwItemsBilled[Items_Billed[cvwItemsBilled.Item.key]!pk_items_billed][4]
+      gvwItemsBIlled[onrow_items, 1].text = Items_Billed[cvwItemsBilled.Item.key]!descriptor_brief
+      gvwItemsBIlled[onrow_items, 2].text = Items_Billed[cvwItemsBilled.Item.key]!amount
+      gvwItemsBIlled[onrow_items, 4].text = Items_Billed[cvwItemsBilled.Item.key]!billing_type
+      Try gvwItemsBIlled[onrow_items, 5].text = Items_Billed[cvwItemsBilled.Item.key]!amount_gst
+      Inc onrow_items
+      If cvwItemsBilled.MoveNext() Then Break
+   Loop
+   gvwItemsBIlled.Rows.count = onrow_items
+   gvwPayments.Clear()
+   gvwPayments.Rows.count = onrow_items + 2 'to allow payment by eg cash + cheque for medicare items.
+   Invoice_Calculate_Total("Total Owing")
+   EditArea_Notify_Data_Change(False)       
+   Hbox_InvoiceGrid.Enabled = False 
+   HBox_InvoiceComments.Enabled = False   
+   bexit = False  
    
 End
 
@@ -2575,36 +2795,7 @@ End
 
 Public Sub HBox_ReceiptPayment_leave()
    
-   cmbPaymentMethods.Visible = False  
-   
-End
-
-Public Sub gvwItemsBIlled_Data_Valid() As Boolean
-   '-----------------------------------------------------------------------
-   'Checks the item data in the grid is value, start of row must be an item 
-   'number in the backend need at minimum item number,an amount and a type
-   'returns true if rows are valid
-   '-----------------------------------------------------------------------
-   
-   Dim row As Integer
-   Dim item As Collection
-   Dim bNoDAta As Boolean = True
-   
-   For row = 0 To gvwItemsBIlled.Rows.Max
-      If gvwItemsBIlled[row, cGridColumnItem_ItemNumber].Text <> "" Then 
-         item = modBillingDBI.Items_Get(gvwItemsBIlled[row, cGridColumnItem_ItemNumber].Text, -1, 1)   
-         If IsNull(item) Then Return 
-         If gvwItemsBIlled[row, cGridColumnItem_Fee].Text = "" Then
-            Return 
-         Endif
-         If gvwItemsBIlled[row, cGridColumnItem_FeeType].Text = "" Then
-            Return False
-         Endif
-         bNoDAta = False   
-      End If  
-   Next
-   If bNoDAta Then Return False
-   Return True
+  ' cmbPaymentMethods.Visible = False  
    
 End
 
@@ -2683,6 +2874,7 @@ End
 
 Public Sub VBox_PaymentGrid_Leave()
    
+   Return 
    If txtPayment.Visible Then
       If oncol_payments = cGridColumnPayments_Amount Then
          If gvwPayments[onrow_payments, cGridColumnPayments_Amount].text = "" Then
@@ -2718,7 +2910,7 @@ Public Sub pnlToolButtons_Enter()
    
    fee = Right(lblInvoiceTotal.text, Len(lblInvoiceTotal.text) - InStr(lblInvoiceTotal.text, " $"))
    payment = Right(lblPaymentTotal.text, Len(lblPaymentTotal.text) - InStr(lblPaymentTotal.text, " $"))
-  
+   
    If fee = payment And fee <> "" And payment <> "" Then
       tbVoucher.Enabled = False
       tbAccount.Enabled = False 
@@ -2749,11 +2941,12 @@ Public Sub pnlToolButtons_Enter()
       End If  
    Endif
    If fee <> "" And Payment <> "" Then
-       tbVoucher.Enabled = False
-       tbAccount.Enabled = True
-       tbReceipt.Enabled = False
-       tbSaveNoPRint.Enabled = False 
-    End If   
+      tbVoucher.Enabled = False
+      tbAccount.Enabled = True
+      tbReceipt.Enabled = False
+      tbSaveNoPRint.Enabled = False 
+   End If   
+   
 End
 
 Public Sub VBox_PatientsList_Leave()
@@ -3040,14 +3233,6 @@ End
 '   OWNER To richard;
 ' 
 
-Public Sub gvwItemsBIlled_KeyPress()
-   
-   If Key.code = Key.return Then 
-      gvwItemsBIlled_DblClick()
-   End If   
-   
-End
-
 Public Sub rbPatientDisplay_Click()
    
    Select Case Last.tag
@@ -3058,8 +3243,6 @@ Public Sub rbPatientDisplay_Click()
    End Select
    
 End
-
-
 
 Public Sub DateChooser2_Activate()
    'Don't substitute Last here please
@@ -3082,7 +3265,6 @@ Public Sub VBox_PaymentGrid_Enter()
    
 End
 
-
 Public Sub Button1_Click()
    
    Print Payer
@@ -3091,14 +3273,24 @@ Public Sub Button1_Click()
    Print "gvwItems.totalheight", gvwItemsBIlled.height
    Print "hence header is ", gvwItemsBIlled.height - gvwItemsBIlled.ClientH
    Print "scroll height", gvwItemsBIlled.scrollh
-
+   Print "bexit is", bexit
 End
 
 Public Sub cmbFeeType_Leave()
-
+   
    cmbFeeType.Visible = False 
-
+   
 End
+' Public Sub panGvwItemsBilledEditor_KeyPress()
+' 
+'    Print "detecting keypress in paneditorbox"
+'    If key.code = key.return Then
+'       Print "hitting enter > now showing and setting focus"
+'       $hEditor_gvwItems.Show
+'       $hEditor_gvwItems.SetFocus 
+'    Endif
+'    
+' End
 
 ' drop view billing.vwinvoices cascade;
 ' drop view billing.vwinvoices_pre cascade;

@@ -24,7 +24,8 @@ Private bExit As Boolean                            'general flag to prevent re-
 Private bNewCommunication As Integer                'true if adding a new communication
 Private bEmployeeDisplayed As Boolean               'True if adding or displaying existing employee
 Private sLastSearchCriteria As String               'last criteria used to create the viewing list
-
+Private iTimer_count As Integer
+Private sSearchMode As String                       'search for e.g firstname, surname, category, occupation, organisation
 Private iCommunication As Integer
 Private age As Integer
 Private Branches As Collection                      'holds a collection of cBranch = 1 row in the viewing list 
@@ -70,7 +71,6 @@ Private Comm As Collection
 Private HtmlMessageBox As FGenericHTMLMessage
 Private bEmbedded As Boolean
 
-
 Public Sub set_embedded(flag As Boolean)
    
    bEmbedded = flag
@@ -87,6 +87,7 @@ Public Sub Init()
    
    Dim x As Integer
    Dim sMsg As String
+
    Try Settings_Load()
    combos_Load()
    cvOrganisations.columns.Count = 9
@@ -103,7 +104,7 @@ Public Sub Init()
    modEditAreaHelpers.Resize_labels(VBox_EditArea_Left_Inner, lblmeasure)
    cmbSearchType.index = 0 'default to search organisations and employees
    chkRetired.width = txtBirthdate.Width
-
+   
 End
 
 Public Sub Reset_Fonts(VB As Vbox)
@@ -172,7 +173,7 @@ Public Sub Settings_Save()
    
    Settings["Contacts_Organisations/HSplit_EditArea"] = HSplit_EditArea.Layout
    Settings["Contacts_Organisations/VSplit_DataEntry"] = VSplit_DataEntry.Layout
-  
+   
 End
 
 Private Sub Settings_Load()
@@ -234,12 +235,14 @@ End
 Public Sub Reset_Gui()
    
    bExit = True
+   timer1.Stop
+   iTimer_count = 0
+   sSearchMode = "general search"
    bEmployeeDisplayed = False
    VSplit_DataEntry.Visible = True
    Clearfields_Organisation()  'clear appropriate fields in either section
    tbSave.Picture = Picture.Load("icons/12/filesave.png")
    tbSave.Foreground = Color.black
- '  lblBranch.text = ""
    lblOrganisation.text = ""
    Vbox_Employee.Visible = False  
    VBox_EditArea_Left_Inner.Visible = True 
@@ -315,20 +318,45 @@ Public Sub Communication_Delete()
    
 End 
 
+Public Sub timer1_Timer()
+   
+   Inc itimer_Count
+   If itimer_count > 3 Then
+      timer1.stop
+      Select Case sSearchMode  
+            
+         Case "general search"
+              Organisations_Refresh()
+         Case "suburb"
+              Suburb_Selection("get")
+         Case "category"
+             Category_Selection("get")
+         Case "surname"
+            Surname_Duplicates_Selection("get")
+         Case "firstname"
+             Firstname_Selection("get")
+         Case "occupation"
+             Occupation_Selection("get")
+         Case "organisation"
+            Organisations_Show_Duplicates
+         Case "occupation"
+      End Select
+   End If   
+
+End
+
 Public Sub Surname_Duplicates_Selection(action As String, Optional calling_control As String) 
    
    Select Case action
       Case "get"
-         
-         The_Collection = modContactsDBI.employee_Get(Trim(txtEmployeesurname.text))
+         listview1.Clear
+         If Trim(txtEmployeesurname.text) = "" Then Return 
          The_Collection = modContactsDBI.Person_Get(Trim(txtEmployeesurname.text), const.contacttype_person)
          The_Collection.Remove("sql_in_english")
-         listview1.Clear
          If The_Collection.count Then 
             For Each Member In The_Collection
                listview1.Add(Member!pk_view, Member!firstname & " " & Member!surname & " (" & Member!occupation & ")")
             Next 
-            
             listview1.Visible = True
             listview1.Raise
             listview1.tag = txtEmployeesurname
@@ -338,9 +366,7 @@ Public Sub Surname_Duplicates_Selection(action As String, Optional calling_contr
       Case "accept"
          
          bExit = True
-         
          If listview1.Visible Then
-            
             listview1.MoveCurrent()             'match internal cursor to marquee
          End If
          txtEmployeesurname.text = The_Collection[listview1.Item.key]!surname
@@ -381,7 +407,7 @@ Public Sub Suburb_Selection(action As String, Optional calling_control As String
    
    Select Case action
       Case "get"
-         
+         If Trim$(txtSuburb.text) = "" Then Return 
          Towns = modContactsDBI.Get_Town(Lower(Trim$(txtSuburb.text)))
          listview1.Clear
          If Towns.count Then 
@@ -506,12 +532,13 @@ Public Sub Organisation_ClearInputArea()
    chkPostal.enabled = True
    chkCommunicationConfidential.Value = False
    chkPreferredCommunication.Value = False
- '  lblBranch.Text = ""
+   '  lblBranch.Text = ""
    
 End
 
 Public Sub Save()
    'this is very very very old code needs to be converted to cRow fixme
+
    Dim old_pk As Integer 
    Dim Returned_collection As Collection
    Dim fk_organisation_to_restore_to As Integer
@@ -579,22 +606,22 @@ Public Sub Save()
       
       Returned_collection = modContactsDBI.Org_Save(rows_in_view, old_pk, organisation, branch, address, comms, views_comms, clinic)
       'patch to put in organisation ABN, dosn't take into account employee with abn
-       'an existing organisation 
-         'patch first see if have existing ABN
-         R = modDBConnect.exec_query("Select * from contacts.data_numbers where fk_branch = " & Returned_collection!fk_branch & " AND australian_business_number is not null")
-         If R.count Then      'the organisation already has an ABN
-             data_numbers = New CRow
-             data_numbers.put_unchanged(R!pk, "fk_data_numbers")
-             data_numbers!australian_business_number = Trim(txtAustralianBusinessNumber.text) 'will revert to null
-             data_numbers.Save("contacts.data_numbers", "fk_data_numbers")
-         Else          'the organisation does not have an abn.
-             If Trim(txtAustralianBusinessNumber.text) <> "" Then      'is user has entered an ABN
-                data_numbers = New CRow
-                data_numbers!fk_branch = Returned_collection!fk_branch
-                data_numbers!australian_business_number = Trim(txtAustralianBusinessNumber.text)
-                data_numbers.Save("contacts.data_numbers", "fk_data_numbers")
-            Endif
-           End If   
+      'an existing organisation 
+      'patch first see if have existing ABN
+      R = modDBConnect.exec_query("Select * from contacts.data_numbers where fk_branch = " & Returned_collection!fk_branch & " AND australian_business_number is not null")
+      If R.count Then      'the organisation already has an ABN
+         data_numbers = New CRow
+         data_numbers.put_unchanged(R!pk, "fk_data_numbers")
+         data_numbers!australian_business_number = Trim(txtAustralianBusinessNumber.text) 'will revert to null
+         data_numbers.Save("contacts.data_numbers", "fk_data_numbers")
+      Else          'the organisation does not have an abn.
+         If Trim(txtAustralianBusinessNumber.text) <> "" Then      'is user has entered an ABN
+            data_numbers = New CRow
+            data_numbers!fk_branch = Returned_collection!fk_branch
+            data_numbers!australian_business_number = Trim(txtAustralianBusinessNumber.text)
+            data_numbers.Save("contacts.data_numbers", "fk_data_numbers")
+         Endif
+      End If   
       modDBConnect.CommitTrans()
       rows_in_view = modContactsDBI.Organisations_Employees_Get_By_Keys(Returned_collection["fk_organisation"])
       
@@ -657,7 +684,7 @@ Public Sub Save()
    
    Vbox_EditArea.Padding = 0
    tbSave.foreground = Color.Black  
- '  lblBranch.text = "Branch"
+   '  lblBranch.text = "Branch"
    
 End
 
@@ -694,7 +721,7 @@ Public Sub Organisation_Add()
    Vbox_EditArea.Enabled = True    
    Hbox_Occupation.Visible = False             
    txtOrganisation.SetFocus  
-  ' lblBranch.text = "New Organisation"
+   ' lblBranch.text = "New Organisation"
    lblOrganisation.text = "New Organisation"
    bEmployeeDisplayed = False 
    bExit = False
@@ -737,7 +764,7 @@ Public Sub Branch_Add()
    txtSuburb.Enabled = True
    txtPostcode.Enabled = True
    txtState.Enabled = True
- '  lblBranch.text = "Add new branch to the organisation"
+   '  lblBranch.text = "Add new branch to the organisation"
    lblOrganisation.text = "Add new branch to the organisation"
    txtBranch.Visible = True 
    txtBranch.Enabled = True
@@ -793,7 +820,7 @@ Public Function Valid_Organisation() As Boolean
       Goto MissingData
    End If 
    Return True
-   MissingData:
+MissingData:
    Message.Info(sMsg)
    Return False
    
@@ -818,8 +845,6 @@ Public Function Valid_Person() As Boolean
          Return False
       End If
    End If
-   
- 
    
    Return True
    
@@ -880,7 +905,7 @@ Public Sub Employee_Add()
    'lblBranch.Text = "Site"
    chkHeadOffice.Enabled = False
    chkPostal.Enabled = False
- '  lblEmployeeDetails.text = "Add Employee to: " & txtBranch.Text
+   '  lblEmployeeDetails.text = "Add Employee to: " & txtBranch.Text
    lblOrganisation.text = "Add Employee to: " & txtBranch.Text
    VBox_EditArea_Left_Inner.Visible = False
    vbox_employee.Visible = True
@@ -892,7 +917,7 @@ Public Sub Employee_Add()
    Hbox_Occupation.Visible = True
    Hbox_Provider_Number.Visible = True
    lblOccupation.Visible = True
-  ' lblOccupationspacer.Visible = True
+   ' lblOccupationspacer.Visible = True
    txtEmployeeoccupation.Visible = True
    Comms = New Collection
    listview1.Visible = False  
@@ -906,6 +931,7 @@ End
 Public Sub Organisations_Refresh()
    
    If bExit Then Return 
+   If Trim(txtSearch.text) = "" Then Return 
    Select Case cmbSearchType.Index
       Case 0 'organisations together with employee's
          rows_in_view = modContactsDBI.organisations_employees_get("%" & Trim(txtSearch.text))
@@ -922,6 +948,7 @@ End
 
 Public Sub Organisations_Show_Duplicates()
    
+   If Trim(txtOrganisation.text) = "" Then Return 
    The_Collection = modContactsDBI.Organisations_Get(Trim(txtOrganisation.text))
    listview1.Clear
    If The_Collection.count Then 
@@ -1003,7 +1030,7 @@ Public Sub Display_Contacts()
             sTemp = " -- " & row_in_view!firstname & " " & row_in_view!surname & Space$(Max(35 - Len(Trim(row_in_view!firstname & " " & row_in_view!surname)), 1))
             cvOrganisations[pk_view][1] = sTemp & "(" & row_in_view!occupation & ")"
             If row_in_view!fk_status = const.StaffStatus_LeftOrganisation Then
-                  cvOrganisations[pk_view][4] = "*** NO LONGER AT THIS ADDRESS *** "
+               cvOrganisations[pk_view][4] = "*** NO LONGER AT THIS ADDRESS *** "
             End If   
             If row_in_view!retired = True Then
                If Left(cvOrganisations[pk_view][4], 3) <> "***" Then
@@ -1012,7 +1039,7 @@ Public Sub Display_Contacts()
                   cvOrganisations[pk_view][4] &= " RETIRED ***"
                End If   
             End If   
-        
+            
          Else
             cvOrganisations[pk_view][4] = Trim(row_in_view!street1 & " " & row_in_view!street2) & " " & row_in_view!town & " " & row_in_view!postcode
          End If
@@ -1039,6 +1066,7 @@ Public Sub Organisation_Display()
    '----------------------------------------------------------------------------------------------
    'Displays a row in the columnview according to whether it is an organisation or an employee row
    '----------------------------------------------------------------------------------------------   
+
    Dim i As Integer
    Dim x As Integer
    
@@ -1101,7 +1129,7 @@ Public Sub Organisation_Display()
       vbox_employee.Visible = False
       lblOccupation.visible = False
       txtEmployeeoccupation.Visible = False 
-     ' lblOccupationspacer.Visible = False
+      ' lblOccupationspacer.Visible = False
       views_comms = New Collection
       views_comms = modContactsDBI.Branch_Comms_Get(row_in_view!fk_branch)
    Else
@@ -1668,7 +1696,9 @@ Public Sub EditArea_KeyPress()
 End
 
 Public Sub Editarea_GotFocus()
-   
+
+   sSearchMode = Last.tag
+   timer1.start   
    Last.BackGround = Color.rgb(95, 255, 175)
    Select Case Last.tag
       Case "suburb"
@@ -1692,7 +1722,6 @@ Public Sub Editarea_GotFocus()
             .raise
          End With 
       Case "surname"
-         
          With listview1
             .left = Vbox_Employee.left + txtEmployeeSurname.Left + Vbox_Employee.padding 
             .width = txtEmployeeSurname.Width
@@ -1701,7 +1730,6 @@ Public Sub Editarea_GotFocus()
          End With 
       Case "occupation"
          With listview1
-            
             .left = VBox_EditArea_Right.left + Last.parent.left + txtEmployeeOccupation.Left + Vbox_Employee.padding 
             .width = txtEmployeeOccupation.Width
             .top = Last.parent.parent.top + txtEmployeeOccupation.Height ' + VBox_EditArea_Right.padding
@@ -1722,16 +1750,22 @@ End
 Public Sub EditArea_Change()
    
    If bexit Then Return 
+   If Trim(Last.text) = "" Then
+            listview1.Visible = False  
+   End If    
    Select Case Last.tag
       Case "suburb"
-         
          If Trim(txtSuburb.text) = "" Then  
             txtState.Text = ""
             txtPostcode.text = ""
             fk_town = 0
+           ' listview1.Visible = False  
             Return
          End If
-         
+      Case "organisation"
+         ' If Trim(Last.text) = "" Then
+         '    listview1.Visible = False  
+         ' End If    
       Case "surname"
          
       Case "firstname"
@@ -1751,7 +1785,7 @@ Public Sub EditArea_Change()
       Case "occupation"
          If Trim(Last.text) = "" Then 'Or Trim(Last.text) = "" And Listview1.Visible = False Then
             fk_occupation = 0
-            listview1.Visible = False 'could be showing if user backspaced
+          '  listview1.Visible = False 'could be showing if user backspaced
          End If  
       Case "employee memo", "memo branch"
          If InStr(Last.text, "\n\n") Then
@@ -1775,15 +1809,6 @@ Public Sub EditArea_Change()
          Else If InStr(Last.text, "1800") Then
             cmbCommunicationType.index = Const.CommModalityTollFree
          End If
-         ' If InStr(Lower(Last.text), "f") Then
-         '    If cmbCommunicationType.text <> "Fax" Then
-         '       cmbCommunicationType.index = cmbCommunicationType.Find("Fax")
-         '    End If
-         '    bExit = True
-         '    Last.text = Trim(Replace(Last.text, "f", "")) 'don't allow one or more 'f's
-         '    bExit = False
-         ' End If
-         
          If Trim(Last.text) = "" Then
             tbBrowseWeb.Visible = False 'could have become visible, so always need to remove
          End If
@@ -1797,30 +1822,31 @@ End
 Public Sub EditArea_LostFocus()
    
    Last.BackGround = Color.White
-   
+   timer1.stop
    Last.pos = 0
    
 End
 
 Public Sub EditArea_KeyRelease()
    
+   iTimer_count = 0
+   timer1.start
    Select Case Last.tag
       Case "surname"
-         
-         Surname_Duplicates_Selection("get")
+        ' Surname_Duplicates_Selection("get")
       Case "firstname" 
-         Firstname_Selection("get")
+       '  Firstname_Selection("get")
       Case "organisation"
-         Organisations_Show_Duplicates()
+      '   Organisations_Show_Duplicates
       Case "occupation"
-         Occupation_Selection("get")
+       '  Occupation_Selection("get")
          
       Case "salutation"
          
       Case "suburb"
-         Suburb_Selection("get")
+        ' Suburb_Selection("get")
       Case "category"
-         Category_Selection("get")
+        ' Category_Selection("get")
          
    End Select 
    
@@ -2052,7 +2078,9 @@ End
 
 Public Sub txtSearch_KeyRelease()
    
-   Organisations_Refresh()
+   iTimer_count = 0
+   Timer1.start
+ 
    
 End
 
@@ -2068,6 +2096,14 @@ Public Sub cmbSearchType_Click()
    
 End
 
+Public Sub Form_Leave()
+   
+   timer1.Stop
+   timer1.Enabled = False  
+End
 
+Public Sub Form_Enter()
 
+   Timer1.enabled = True
 
+End

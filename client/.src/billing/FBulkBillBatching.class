@@ -31,6 +31,8 @@ Private bExit As Boolean
 Private bKeyValid As Boolean
 Private fk_claim As Integer                              'key to billing.bulk_billing_claims
 Private claim As Collection                              'the currently selected claim (i.e already batched and saved claim)
+Private bVouchersPaid As Boolean = True
+Private bVouchersUnpaid As Boolean = False   
 
 Public Sub init(s As Collection, c As Collection)
    '------------------------------------------------
@@ -76,6 +78,28 @@ Public Sub EditArea_Clear()
    
 End
 
+Public Function Staff_Member(fk_staff As Integer) As Collection
+   Dim c As Collection
+  'fixeme do something else and remove me
+   For Each c In staff
+      If c!fk_staff = fk_staff Then
+         Return c
+      Endif
+   Next
+   
+End
+
+Public Function Branch_Get_Name(fk_branch As Integer) As String
+  Dim c As Collection
+   
+  For Each c In clinics
+     If c!fk_branch = fk_branch Then
+        Return c!branch
+     Endif
+  Next
+   
+End
+
 Public Sub cvwVouchers_Refresh()
    '---------------------------------------------
    'Refresh the list of vouchers in current claim
@@ -84,11 +108,12 @@ Public Sub cvwVouchers_Refresh()
    Dim grand_total As Variant
    Dim fk_last_invoice As Integer
    Dim invoice_count As Integer
+   Dim running_total As Float
    
    EditArea_Clear()
    If bexit Then Return
    Inc Application.Busy
-   Vouchers = modBillingDBI.Bulk_Bill_Batching_Get_Vouchers(fk_staff, fk_branch, fk_lu_bulk_billing_type, fk_claim, Val(txtNumberOfVouchers.text))
+   Vouchers = modBillingDBI.Bulk_Bill_Batching_Get_Vouchers(fk_staff, fk_branch, bVouchersUnpaid, fk_lu_bulk_billing_type, fk_claim, Val(txtNumberOfVouchers.text))
    For Each voucher In Vouchers
       cvwVouchers.Add(voucher!pk_items_billed, 0)
       If fk_last_invoice <> voucher!fk_invoice Then
@@ -104,13 +129,13 @@ Public Sub cvwVouchers_Refresh()
       Endif
       cvwVouchers[voucher!pk_items_billed][3] = voucher!mbs_item
       cvwVouchers[voucher!pk_items_billed][4] = modUtil.Money_Format(voucher!amount)
+      running_total += modUtil.MoneyToFloat(voucher!amount)
    Next
-   If vouchers.count Then
-      grand_total = modBillingDBI.Bulk_Bill_Batching_Get_Vouchers_Total(fk_staff, fk_branch, fk_lu_bulk_billing_type)
-      txtClaimTotal.text = modUtil.Money_Format(grand_total)
-      txtActualVouchers.Text = Str(invoice_count) & " vouchers"
-      VBox_EditArea_Outer.Padding = 1
-   Endif
+    If vouchers.count Then
+       txtClaimTotal.text = modUtil.Money_Format(running_total)
+       txtActualVouchers.Text = Str(invoice_count) & " vouchers"
+       VBox_EditArea_Outer.Padding = 1
+    Endif
    Dec Application.Busy 
 End
 
@@ -227,37 +252,42 @@ Public Sub claim_print()
    
 End
 
-Public Sub Claim_Display(fk_claim As Integer)
+Public Sub Claim_Display(claim As Collection)
    '--------------------------------------------------
    'display processed claim - loaded from FRecordVisit 
    '--------------------------------------------------
    Dim invoice As Collection
    Dim fk_last_invoice As Integer
+   Dim vouchers As Collection
+   Dim staff_processed As Collection
    
    bexit = True
    Inc Application.Busy 
-    lblHeading.text = "Reconcile Existing Claim"
+   lblHeading.text = "Reconcile Existing Claim"
    cvwVouchers.Clear()  'fixme this view and code below is wrong just temporary
-   claim = modBillingDBI.Bulk_Bill_Batching_Get_Claim_vouchers(fk_claim)
-      For Each voucher In claim
-         cvwVouchers.Add(voucher!pk_view, 0)
+   vouchers = modBillingDBI.Bulk_Bill_Batching_Get_Claim_vouchers(claim!pk)
+      For Each voucher In vouchers
+         cvwVouchers.Add(voucher!pk_items_billed, 0)
          If fk_last_invoice <> voucher!fk_invoice Then
             fk_last_invoice = voucher!fk_invoice
-            cvwVouchers[voucher!pk_view][0] = Str(voucher!fk_invoice)
-            cvwVouchers[voucher!pk_view][1] = voucher!patient_wholename
-            cvwVouchers[voucher!pk_view][2] = Format(voucher!visit_date, "dd/mm/yyyy")
+            cvwVouchers[voucher!pk_items_billed][0] = Str(voucher!fk_invoice)
+            cvwVouchers[voucher!pk_items_billed][1] = voucher!patient_wholename
+            cvwVouchers[voucher!pk_items_billed][2] = Format(voucher!visit_date, "dd/mm/yyyy")
          Else
-            cvwVouchers[voucher!pk_view][0] = ""
-            cvwVouchers[voucher!pk_view][1] = ""
-            cvwVouchers[voucher!pk_view][2] = ""
+            cvwVouchers[voucher!pk_items_billed][0] = ""
+            cvwVouchers[voucher!pk_items_billed][1] = ""
+            cvwVouchers[voucher!pk_items_billed][2] = ""
          Endif
-         cvwVouchers[voucher!pk_view][3] = voucher!mbs_item
-         cvwVouchers[voucher!pk_view][4] = modUtil.Money_Format(voucher!amount_paid)
+         cvwVouchers[voucher!pk_items_billed][3] = voucher!mbs_item
+         cvwVouchers[voucher!pk_items_billed][4] = modUtil.Money_Format(voucher!amount_paid)
    Next
-   cmbStaff.index = cmbStaff.Find(voucher!staff_provided_service_wholename)
-   cmbClinic.index = cmbClinic.Find(voucher!branch)
-   txtClaimIDNumber.text = voucher!claim_id
-   txtActualVouchers.text = voucher!voucher_count   
+   cmbStaff.index = cmbStaff.Find(Staff_Member(claim!fk_staff_provided_service)!wholename)
+   cmbClinic.index = cmbClinic.Find(Branch_Get_Name(claim!fk_branch))
+   staff_processed = Staff_Member(claim!fk_staff_processed)
+   txtStaffLodged.text = staff_processed!title & " " & staff_processed!wholename
+   txtClaimIDNumber.text = claim!claim_id
+   txtClaimTotal.text = claim!claim_amount  
+   txtActualVouchers.text = claim!voucher_count   
    If voucher!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
       rbBulkBillMedicare.value = True
    Else
@@ -333,6 +363,7 @@ Public Sub claim_lodge()
       claim!fk_staff_Provided_service = staff[cmbStaff.Index]!fk_staff
       claim!fk_staff_processed = modDBConnect.currentUser!fk_staff
       claim!html = Claim_HTML()
+      Print claim!html
    Endif
    claim.Save("billing.bulk_billing_claims", "fk_claim")
    For Each voucher In vouchers
@@ -346,7 +377,7 @@ Public Sub claim_lodge()
    Next
    modDBConnect.CommitTrans()
    EditArea_Clear
-   
+   FRecordVisit.Bulk_Billing_Claims_Reload
 End
 
 Public Function Claim_Valid() As Boolean

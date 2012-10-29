@@ -705,27 +705,7 @@ Public Function Organisations_Employees_Get(organisation As String, Optional lim
    
 End 
 
-Public Function Organisations_Employees_Get_OLD_IANDONOTREMOVETHIS(organisation As String, Optional limit As Integer = 0) As Collection
-   '-----------------------------------------------------------
-   'PURPOSE    Get a list of organisations and their employee's
-   '-----------------------------------------------------------
-   
-   Dim sql As String
-   
-   sql = "SELECT * FROM contacts.vwOrganisationsEmployees "
-   "WHERE "
-   sql &= " Lower(vwOrganisationsEmployees.organisation) LIKE $$" & Lower$(organisation) & "%$$ "
-   sql &= " AND organisation_deleted = False And branch_deleted = False "
-   sql &= "And (employee_deleted = False Or employee_deleted Is null) "
-   sql &= " order by organisation ASC,  branch, surname DESC, firstname "
-   If limit <> 0 Then
-      sql &= " LIMIT " & limit
-   End If   
-   '   sql &= " order by organisation ASC, fk_branch, branch, surname DESC, firstname LIMIT " & limit
-   
-   Return modDBConnect.exec_query_collection(sql)
-   
-End 
+
 
 Public Function Organisations_Get_HeadOffice(organisation As String) As Collection
    
@@ -1176,10 +1156,9 @@ End
 Public Function Patient_Get_Using_PK(fk_patient As Integer) As Collection 
    'fixme or at least look at the implications globally, some patients have multiple addresses so without limit 1 this would bomb \
    'quick fix 05sept12 - put in limit1 whilst working on billing.
-   Dim p As Collection 
-   
-   p = modDBConnect.exec_query_first("Select * from contacts.vwPatients where fk_patient =" & fk_patient & " AND address_deleted is not true LIMIT 1")
-   Return p
+     
+   Return modDBConnect.exec_query_first("Select * from contacts.vwPatients where fk_patient =" & fk_patient & " AND address_deleted is not true LIMIT 1")
+ 
 End
 
 Public Function Patient_Get_pk_Using_Person_pk(fk_person As Integer) As Integer
@@ -1287,92 +1266,6 @@ Public Function patients_get_firstname_surname(searchtext2 As String, Optional b
    
 End
 
-Public Function patients_get_firstname_surname_old(searchtext2 As String, Optional bDeceased As Boolean = False) As Collection 
-   '-------------------------------------------------------
-   'Find a patient according to criteria
-   'if sql criteria, use that, otherwise firstname, surname
-   'fixme put in optional limit
-   '-------------------------------------------------------
-   
-   '-----------------------------------------------------
-   'first attempt at searching by query criteria FIXME UP
-   '-----------------------------------------------------
-   Dim sql As String
-   Dim clauses As New String[]
-   Dim tables As New String[]
-   Dim sql_in_english_array As New String[]
-   Dim $result As Collection
-   
-   searchtext = Lower$(searchtext2)
-   tables.Clear
-   clauses.Clear
-   sql_in_english_array.Clear
-   
-   tables.Add("contacts.vwpatients cvwp")
-   If test_regex(["(sex|gender) ?(:|=) ?(f|female|woman)"]) Then
-      clauses.Add("cvwp.sex = 'F'")
-      sql_in_english_array.Add("patient is female")
-   Endif
-   If test_regex(["(sex|gender) ?(:|=) ?(m|male|man)"]) Then
-      clauses.Add("cvwp.sex = 'M'")
-      sql_in_english_array.Add("patient is male")
-   Endif
-   
-   If test_regex(["([0-9]+) ?< ?age ?< ?([0-9]+)", "age ?> ?([0-9]+) ?< ?([0-9]+)", "age between ([0-9]+) and ([0-9]+)"]) Then
-      clauses.Add("age(cvwp.birthdate) < '" & regex.SubMatches[2].Text & " years'")
-      clauses.Add("age(cvwp.birthdate) > '" & regex.SubMatches[1].Text & " years'")
-      sql_in_english_array.Add("age is between " & regex.SubMatches[1].Text & " and " & regex.SubMatches[1].Text)
-   Endif
-   
-   If test_regex(["age ?> ?([0-9]+)"]) Then
-      clauses.Add("age(cvwp.birthdate) > '" & regex.SubMatches[1].Text & " years'")
-      sql_in_english_array.Add("older than " & regex.SubMatches[1].Text)
-   Endif
-   
-   If test_regex(["age ?< ?([0-9]+)"]) Then
-      clauses.Add("age(cvwp.birthdate) < '" & regex.SubMatches[1].Text & " years'")
-      sql_in_english_array.Add("younger than " & regex.SubMatches[1].Text)
-   Endif
-   
-   ' search in the form surname, firstname
-   If test_regex(["([a-z' \\-]+) ?, ?([a-z'\\-]+)"]) Then
-      clauses.Add("lower(cvwp.surname) like $$" & regex.SubMatches[1].Text & "%$$")
-      clauses.Add("lower(cvwp.firstname) like $$" & regex.SubMatches[2].Text & "%$$")
-      sql_in_english_array.Add("surname begins with \"" & regex.SubMatches[1].Text & "\"")
-      sql_in_english_array.Add("firstname begins with \"" & regex.SubMatches[2].Text & "\"")
-   Endif
-   
-   ' search in the form firstname surname
-   If test_regex(["([a-z'\\-]+) +([a-z'\\-]+)"]) Then
-      clauses.Add("lower(cvwp.surname) like $$" & regex.SubMatches[2].Text & "%$$")
-      clauses.Add("lower(cvwp.firstname) like $$" & regex.SubMatches[1].Text & "%$$")
-      sql_in_english_array.Add("surname begins with \"" & regex.SubMatches[2].Text & "\"")
-      sql_in_english_array.Add("firstname begins with \"" & regex.SubMatches[1].Text & "\"")
-   Endif
-   
-   If test_regex(["([a-z'\\-]+)"]) Then ' just the surname
-      clauses.Add("lower(cvwp.surname) like $$" & regex.SubMatches[1].text & "%$$")
-      sql_in_english_array.Add("surname begins with \"" & regex.SubMatches[1].Text & "\"")
-   Endif
-   'ian fixme quickndirty fix because if characters like *% entered in search > crashes (do need at least the wildcard
-   If clauses.count = 0 Then
-      sql = "SELECT cvwp.* FROM "
-      sql &= tables.Join(",")
-      sql &= " WHERE surname ILIKE $$%$$ "
-   Else
-      sql = "SELECT cvwp.* FROM "
-      sql &= tables.Join(",")
-      sql &= " WHERE address_deleted is not true AND " & clauses.Join(" AND ")
-   End If   
-   If bDeceased = False Then
-      sql &= " AND deceased = false " 
-   Endif
-   sql &= " ORDER BY surname, firstname ASC"
-   $result = modDBConnect.exec_query_collection(sql)
-   $result!sql_in_english = sql_in_english_array.Join(" and ")
-   Return $result
-   
-End
 
 
 Public Function Person_Get(searchtext2 As String, iSearchCriteria As Integer, Optional bDeceased As Boolean = False) As Collection 

@@ -49,7 +49,7 @@
 '     - Receipt the cheque for the amount received
 '     - reconcile the voucher list
 '     - for each voucher that has not been paid > set its fee amount to 0.00 (i.e decrement batch total%)
-'     - If EFTRecieved now = reduced total from what we claimed all is well
+'     - If EFTRecieved now = reducedUnbilled_Consultation total from what we claimed all is well
 '     - If not there can be 'hidden' amounts in the batch where the medicare girls keying in the data
 '       actually make a mistake and miss stuff, or they put it through for incorrect patient name eg
 '       another familVeteran Bulk Bill Claimsy member eg we may have claimed 23 + 10991, they forget to put the 10991, so that
@@ -106,7 +106,7 @@ Private staff As Collection
 Private Staff_Member As Collection
 Private fk_staff As Integer                  'whichever staff saw the patient
 Private fk_patient As Integer
-Private fk_payer_branch As Integer                 'if non zero the invoice is to an organisation at branch level
+Private fk_payer_branch As Integer  'if non zero the invoice is to an organisation at branch level
 Private fk_payer_person As Integer                 'if non zero the invoice is to a person
 Private fk_appointment As Integer
 Private fk_invoice As Integer                      'if non zero then key to billing.invoices table
@@ -251,10 +251,10 @@ Public Sub Init()
    InvoiceComments = modUtil.LoadCombo(cmbInvoiceComments, modBillingDBI.Invoice_Comments_Get(), "comment")
    FeeTypes = modUtil.LoadCombo(cmbFeeType, modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Billing_Types_Get()), "type") 'fixme
    staff = modUtil.LoadCombo(cmbStaff, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get()), "wholename")  
-  ' modUtil.LoadCombo(cmbstaff_Takings, staff, "wholename")
+   ' modUtil.LoadCombo(cmbstaff_Takings, staff, "wholename")
    seenBy = modUtil.LoadCombo(cmbSeenBy, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get()), "wholename")  
    clinics = modUtil.LoadCombo(cmbLocation, modContactsDBI.Clinics_Get(), "branch")
-  ' modUtil.LoadCombo(cmbLocationTakings, clinics, "branch")
+   ' modUtil.LoadCombo(cmbLocationTakings, clinics, "branch")
    With cvwItemsBilled  
       .Columns.count = 13
       .Columns[0].text = "Patient"
@@ -286,6 +286,7 @@ End
 Public Sub Reload()
    
    columnview99_Refresh()
+   Print "reloading........."
    
 End
 
@@ -298,13 +299,12 @@ Public Sub EditArea_Clear()
    form_billingcards.EditArea_Clear()
    lblEditAreaHeading.text = ""
    textlabelPayer.text = ""
-   Unbilled_consultation = Null
+   
    With gvwItemsBIlled
       .Clear
       .Rows.count = 2
-      '  .Parent.Height = gvwItemsBIlled.Height   
    End With
-   ' VsplitMain_layout = VSplit_Main.Layout 
+   HBox_InvoiceGrid.height = (gvwItemsBIlled.rows.count + 3) * gvwItemsBIlled.rows[0].height 
    fk_lu_default_billing_level = const.Billing_Default_Level_Private
    fk_patient = 0
    fk_payer_branch = 0
@@ -313,6 +313,8 @@ Public Sub EditArea_Clear()
    cvwItemsBilled.Clear()
    Items_Billed = New Collection
    Item_Billed = New Collection
+   Patient = Null
+   Unbilled_consultation = Null
    iAccountDisplayMode = const.Billing_Accounts_Unpaid
    rbAccountsDisplayUnPaid.value = True
    rbPayerNotUsed.value = True 'switches off rbInvoiceOrganisation and rbInvoicePerson
@@ -320,6 +322,17 @@ Public Sub EditArea_Clear()
       .text = ""
       .Border = Border.None
    End With
+   gvwPayments_Clear
+   EditArea_Notify_Data_Change(False)
+   bexit = False
+   
+End
+
+Public Sub gvwPayments_Clear()
+   '------------------------------------------
+   'Clears the payments grid and total showing
+   '------------------------------------------         
+
    With gvwPayments
       .clear
       .Enabled = False  
@@ -328,8 +341,6 @@ Public Sub EditArea_Clear()
       .text = ""
       .Border = Border.None
    End With
-   EditArea_Notify_Data_Change(False)
-   bexit = False
    
 End
 
@@ -368,37 +379,40 @@ Public Sub columnview99_Refresh()
    End Select
    
 End
+
 Public Sub Scheduled_Fees_Search()
+   
    Dim ScheduledFeeItems As Collection
    Dim FeeItem As Collection
    
    timer1.Stop
    ScheduledFeeItems = modBillingDBI.Descriptors_Get(txtSearch.Text, True, False) 
-  
-  With columnview99
+   
+   With columnview99
       .Clear
       .Columns.count = 2
    End With
    'ScheduledFeeItems = modBillingDBI.Fees_Get_With_Brief_Descriptor(item_number_Categories[combobox1.index])
-  ' ScheduledFeeItems = modBillingDBI.Descriptors_Get(ttxtFindPayerText, True, False) 
+   ' ScheduledFeeItems = modBillingDBI.Descriptors_Get(ttxtFindPayerText, True, False) 
    For Each FeeItem In ScheduledFeeItems
       columnview99.Add(FeeItem!pk, 0)
       If Not IsNull(FeeItem!mbs_item) Then columnview99[FeeItem!pk][0] = FeeItem!mbs_item  
       If Not IsNull(FeeItem!ama_item) Then columnview99[FeeItem!pk][0] = FeeItem!ama_item
       If Not IsNull(FeeItem!user_item) Then columnview99[FeeItem!pk][0] = FeeItem!user_item
       If Not IsNull(FeeItem!descriptor_brief) Then
-             columnview99[FeeItem!pk][1] = FeeItem!descriptor_brief
+         columnview99[FeeItem!pk][1] = FeeItem!descriptor_brief
       Else
-          columnview99[FeeItem!pk][1] = FeeItem!descriptor
+         columnview99[FeeItem!pk][1] = FeeItem!descriptor
       End If   
    Next
+   
 End
 
 Public Sub Scheduled_Fees_Brief_Descriptors_Refresh()
    
    Dim ScheduledFeeItems As Collection
    Dim FeeItem As Collection
-  
+   
    timer1.Stop
    With columnview99
       .Clear
@@ -565,6 +579,7 @@ End
 
 Public Sub columnview99_Select()
    
+   columnview99.MoveCurrent
    Select Case TabStrip1.Index
          
       Case cTab_Invoices
@@ -587,7 +602,7 @@ Public Sub columnview99_Select()
          form_batching.Claim_Display(Bulk_Billed_Claims[columnview99.Item.key]) 
       Case cTab_Reports
          ' form_reports.Report_Show(Report_Titles[columnview99.Item.key], DateChooser2.value)
-         DateChooser2_Activate()
+         ' DateChooser2_Activate()
       Case cTab_ScheduleFees
          With form_feeschedule
             .TxtSearch.text = columnview99[columnview99.item.key][0]
@@ -597,130 +612,6 @@ Public Sub columnview99_Select()
    End Select
    
 End
-
-Public Sub cvwUnBilled_Refresh()
-   '------------------------------------------------------------------------
-   'Display a list of all unbilled consultations ordered by appointment date
-   '-------------------------------------------------------------------------
-   
-   ' Dim single_day As Date
-   ' 
-   ' Select Case TabStrip1.Index
-   '    Case cTab_Invoices                 'generate and save invoice/receipt
-   '       EditArea_Clear()
-   '       If chkTodayOnly.value = True Then
-   '          single_day = Now()
-   '       Else
-   '          single_day = Null
-   '       Endif
-   '       Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get(single_day)
-   '       cvwUnBilled.Clear()
-   '       For Each Unbilled_consultation In Unbilled_Consultations
-   '          cvwUnBilled.Add(Unbilled_consultation!pk, 0)
-   '          cvwUnBilled[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
-   '          cvwUnBilled[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
-   '       Next
-   '       If cvwUnBilled.count Then
-   '          cvwUnBilled.MoveFirst()
-   '          cvwUnBilled.Item.Selected = True
-   '          cvwUnBilled_Select()
-   '       Endif
-   '    Case cTab_Batching                  'medicare and veteran batching tab
-   '       cvwUnBilled.Clear()
-   '       Bulk_Billed_Claims = modBillingDBI.Bulk_Bill_Batching_Get_Claims()
-   '       For Each Bulk_Billed_Claim In Bulk_Billed_Claims
-   '          cvwUnBilled.Add(Bulk_Billed_Claim!pk, 0)
-   '          cvwUnBilled[Bulk_Billed_Claim!pk][0] = Format(Bulk_Billed_Claim!claim_date, "dd/mm/yyyy")
-   '          cvwUnBilled[Bulk_Billed_Claim!pk][1] = Bulk_Billed_Claim!claim_id
-   '       Next
-   '       If Bulk_Billed_Claims.count Then
-   '          Batching_Show_Vouchers_In_Claim()
-   '       Endif
-   '    Case cTab_Reports
-   '       If IsNull(form_reports) Then
-   '          With form_reports = New FBillingReports(Vbox_Reports)
-   '             .Init()
-   '          End With
-   '       Endif
-   ' End Select
-   ' 
-End
-
-Public Sub cvwUnBilled_Click()
-   
-   Select Case TabStrip1.Index 
-      Case 2
-         '    cvwUnBilled.MoveCurrent()
-         ' form_batching.Claim_Display(cvwUnBilled.Item.key)
-   End Select 
-   
-End
-
-' Sub columnview99_Select()
-'-------------------------------------------------------------------------------------
-'User has clicked on the list of patients seen and mared as 'gone' in appointment book
-'Display their details in the edit area, match staff combo to whoever saw them
-'assume a standard consultation 
-'Ian going to bypass some of this by parsing consult item numbers in the consult
-'-------------------------------------------------------------------------------------
-' 
-' Select Case TabStrip1.Index
-'    Case cTab_Takings
-'       TabStrip1.index = cTab_Invoices
-'    Case cTab_Invoices
-'       TabStrip1.index = 0
-'       cvwUnBilled.MoveCurrent()
-'       EditArea_Clear()                                                                    'clear input area
-'       ' bPayingInvoice = True
-'       Unbilled_consultation = Unbilled_Consultations[cvwUnBilled.Item.key]
-'       Try fk_lu_default_billing_level = Unbilled_consultation!fk_lu_default_billing_level
-'       If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private
-'       fk_patient = Unbilled_consultation!fk_patient
-'       bExit = True   
-'       txtpatient.text = Unbilled_consultation!wholename
-'       txtDate.text = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
-'       Try Payer_Get(Unbilled_consultation)
-'       fk_staff = Unbilled_consultation!fk_staff 
-'       For Each Staff_Member In staff
-'          If Staff_Member!fk_staff = fk_staff Then
-'             cmbSeenBy.index = cmbSeenBy.Find(Staff_Member!wholename)
-'          Endif
-'       Next
-'       duration = Val(Split(Unbilled_consultation!duration, ":")[1]) + Val(Split(Unbilled_consultation!duration, ":")[0]) * 60        ' e.g 10, 20, 30, 50, 60, 70 .... etc!
-'       txtDuration.text = Str(duration) & " minutes"
-'       Select Case duration
-'          Case 1 To 19
-'             consult_item_number = "23"
-'          Case 20 To 40
-'             consult_item_number = "36"
-'          Case 40 To 100
-'       End Select
-'       cmbFeeType.Enabled = True  
-'       
-'       Select Case fk_lu_default_billing_level
-'          Case const.Billing_Default_Level_BulkBill
-'             cmbFeeType.Enabled = False 
-'             If Unbilled_consultation!veteran_number <> "" Then
-'                rbInvoiceToVeterans.value = True
-'             Else
-'                rbInvoiceToMedicare.value = True
-'             Endif
-'          Case const.Billing_Default_Level_Private
-'             rbInvoiceToPatient.value = True
-'          Case const.Billing_Default_Level_HealthCareCardConcession
-'          Case const.Billing_Default_Level_PensionerConcession
-'          Case const.Billing_Default_Level_MedicoLegal 
-'       End Select
-'       bExit = False  
-'       form_billingcards.Display_Patient_Data(Unbilled_consultation) 
-'       VBox_EditArea_Outer.Enabled = True 
-'       gvwItemsBIlled.Enabled = True 
-'       cvwItemsBilled_Refresh()
-'    Case cTab_Batching
-'      ' form_batching.Claim_Display(cvwUnBilled.Item.key)
-' End Select
-
-'End
 
 Public Sub Payer_Get(patient As Collection) 'fix me to fk_patient
    'temp code get the responsible person FIXME  body code only whilst developin
@@ -746,7 +637,7 @@ Public Sub Payer_Get(patient As Collection) 'fix me to fk_patient
       '  End If   
    End If  
    bExit = False  
-
+   
 End
 
 Public Sub gvwPayments_Init()
@@ -761,16 +652,11 @@ Public Sub gvwPayments_Init()
       lblmeasure.text = " Amount "
       .Columns[0].width = lblmeasure.Width
       lblmeasure.text = "Medicare Cheque  "
-      ' .Columns[1].text = "Payment Type"
       .Columns[1].width = lblmeasure.Width
       lblmeasure.text = "Cheque Number"
-      ' .Columns[2].text = "Drawer on Cheque"
       .Columns[2].width = 200
-      ' .Columns[3].text = "Cheque Number"
       .Columns[3].width = lblmeasure.Width
-      ' .Columns[4].text = "Bank"
       .Columns[4].width = 100
-      ' .Columns[5].text = "Branch"
       .Columns[5].width = 100
    End With
    With gwPaymentLabel1
@@ -860,9 +746,10 @@ End
 Public Sub gvwPayments_MouseUp()
    '------------------------------------------------
    'User has clicked on one of the cells in the grid
+   'Don't know why this responds to a disabled grid
    '------------------------------------------------
    
-   If bPayingInvoice Or bexit Or (Not gvwItemsBIlled_Data_Valid()) Then Return                  'no-go if paying an invoice -can't change existing items 
+   If bPayingInvoice Or bexit Or (Not gvwItemsBIlled_Data_Valid()) Or gvwPayments.Enabled = False Then Return                  'no-go if paying an invoice -can't change existing items 
    
    If gvwPayments.Row > 0 And gvwPayments[0, 0].text = "" Then 'if user clicks on row and row above not filled in move back FIXME THIS CODE DOES NOT DO THIS
       gvwPayments.row = 0
@@ -1142,9 +1029,6 @@ Public Sub gvwItemsBIlled_Clear()
    
 End
 
-Public Sub gvwItemsBIlled_DblClick()
-   
-End
 
 Public Sub gvwItemsBilled_lblOverLay_KeyPress() 
    '----------------------------------------------------------------
@@ -1311,7 +1195,6 @@ End
 Public Sub gvwItemsBIlled_Select()
    
    onrow_items = gvwItemsBIlled.Row
-   Print "have selected so the onrow_items is now ", onrow_items
    
 End
 
@@ -2008,14 +1891,6 @@ Public Sub Get_Items(txt As String)
          If fk_lu_default_billing_level = const.Billing_Default_Level_BulkBill Then
             'if child <12 months eg e.g 4m20d hence defaults to patient_age_in_years = 0
             If txtAge.text <> "" And InStr(txtAge.text, "y") Then patient_age_in_years = Val(Split(txtAge.text, "y")[0])
-            ' If form_billingcards.Veteran_Card_Type() > 0 Then     'they must be an entitled veteran in some capacity
-            '     bEntitledVeteran = True                                  
-            '    If form_billingcards.Veteran_Card_Type() = const.Veteran_Entitlement_Specific Then
-            '       sMsg = "The Veteran is listed for specific entitlements only.\n\n"
-            '              "Was the consultation for one of their listed entitlements?"
-            '       If Message.Question(sMsg, "Yes", "No") = 2 Then bEntitledVeteran = False  
-            '     Endif
-            ' Endif
             If bEntitledVeteran Or patient_age_in_years < 16 Or form_billingcards.Centrelink_Card_Type() = const.Centrelink_Concession_Card_Health_Care_Card Or form_billingcards.Centrelink_Card_Type() = const.Centrelink_Concession_Card_Pensioner_concession_card Then 
                AreaOfNeed_Item = modBillingDBI.Area_Of_Need_Fee("10991", fk_lu_billing_type)
                If Not IsNull(AreaOfNeed_Item) Then
@@ -2039,6 +1914,7 @@ Public Sub Get_Items(txt As String)
       .Row = onrow_items
       .SetFocus()
    End With
+   HBox_InvoiceGrid.height = (gvwItemsBIlled.rows.count + 3) * gvwItemsBIlled.rows[0].height 
    bExit = False  
    
 End
@@ -2109,7 +1985,8 @@ Public Sub mnuItems_Click()
       Case "add item"
          Inc gvwItemsBIlled.Rows.count
          gvwItemsBIlled.row = gvwItemsBIlled.Rows.Max
-         gvwItemsBilled_DblClick()
+         HBox_InvoiceGrid.height = (gvwItemsBIlled.rows.count + 3) * gvwItemsBIlled.rows[0].height 
+         Vsplit_Main.layout = [Vsplit_Main.layout[0] + 20, VSplit_Main.layout[1] - 20]
    End Select 
    
 End
@@ -2265,31 +2142,14 @@ End
 
 Public Sub VBox_InvoiceGrid_Leave()
    
-   Print "should be leaving"
-   ' gvwItemsBilled_HideProperty
-   Return 
-   gvwItemsBilled_SaveProperty
-   Return 
-   If Not IsNull($hEditor_gvwItems) Then
-      If OnCol_Items = cGridColumnItem_ItemNumber Then
-         If gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_BriefDescriptor].text = "" Then
-            textbox1_Activate()
-         Endif
-      Endif
-      gvwItemsBIlled[gvwItemsBIlled.row, gvwItemsBIlled.Column].text = Trim(textbox1.text)
-   Endif
-   If cmbFeeType.Visible Then
-      gvwItemsBIlled[onrow_items, cGridColumnItem_FeeType].text = cmbFeeType.Text
-      cmbFeeType.Visible = False 
-   Endif
-   textbox1.Visible = False  
-   timer1.Enabled = False   
+   gvwItemsBilled_HideProperty() '?flag
    
 End
 
 Public Sub Billing_Defaults_Save()
    '-----------------------------------------------------------------
    'Save the billing defaults from the embedded FPatientBillingCards
+   'Updating the collection in use appropriately
    '-----------------------------------------------------------------
    
    Dim patient_billing_data As New CRow
@@ -2331,67 +2191,39 @@ Public Sub Billing_Defaults_Save()
    patient_billing_data!fk_doctor = form_billingcards.Preferred_Doctor()   
    patient_billing_data.Save("clerical.data_patients", "fk_patient")
    modDBConnect.CommitTrans()
-   'now update the already loaded data
-   Print "Now - end of saving billing the flag bexit is", bexit
+   '-----------------------------------------------------------------------------------
+   'Update the current patient collection by re-loading it from the backend
+   'Insert it back into the appropriate spot in its collection 
+   'First get the correct key for either patients or unbilled_consultations collection
+   '-----------------------------------------------------------------------------------
+   columnview99.MoveCurrent  
    If Not IsNull(patient) Then
-      patients[columnview99.Item.key]!fk_payer = patient_billing_data!fk_payer_person
-      Payer_Get(patients[columnview99.Item.key])
-      patients[columnview99.Item.key]!medicare_number = patient_billing_data!medicare_number
-      patients[columnview99.Item.key]!medicare_ref_number = patient_billing_data!medicare_ref_number
-      patients[columnview99.Item.key]!medicare_expiry_date = patient_billing_data!medicare_expiry_date
-      patients[columnview99.Item.key]!veteran_number = patient_billing_data!veteran_number
-      If patient_billing_data!veteran_number <> "" Then 
-         patients[columnview99.Item.key]!fk_lu_veteran_card_type = patient_billing_data!fk_lu_veteran_card_type 
-         patients[columnview99.Item.key]!veteran_specific_condition = patient_billing_data!veteran_specific_condition
-      End If
-      patients[columnview99.Item.key]!Concession_Card_Number = patient_billing_data!concession_card_number 
-      If patient_billing_data!concession_card_number <> "" Then
-         patients[columnview99.Item.key]!concession_card_expiry_date = patient_billing_data!concession_card_expiry_date
-         patients[columnview99.Item.key]!fk_lu_centrelink_card_type = patient_billing_data!fk_lu_centrelink_card_type
-      End If
-      patients[columnview99.Item.key]!fk_lu_default_billing_level = patient_billing_data!fk_lu_default_billing_level 
-      patients[columnview99.Item.key]!fk_lu_private_health_fund = patient_billing_data!fk_lu_private_health_fund
-      If patient_billing_data!fk_lu_private_health_fund <> const.PrivateHealthFund_None Then
-         patients[columnview99.Item.key]!private_insurance = True
-      Else
-         patients[columnview99.Item.key]!private_insurance = False  
-      Endif
-      patients[columnview99.Item.key]!fk_doctor = patient_billing_data!fk_doctor 
+      patients[columnview99.Item.Key] = modContactsDBI.Patient_Get_Using_PK(patients[columnview99.Item.Key]!fk_patient)
+      patient = patients[columnview99.Item.Key]
    Endif
    If Not IsNull(Unbilled_consultation) Then
-      Unbilled_consultation!fk_payer = patient_billing_data!fk_payer_person
-      Print "before payer - bexit is", bexit
-      Payer_Get(Unbilled_consultation)
-      Print "after payer  - bexit is", bexit
-      Unbilled_consultation!medicare_number = patient_billing_data!medicare_number
-      Unbilled_consultation!medicare_ref_number = patient_billing_data!medicare_ref_number
-      Unbilled_consultation!medicare_expiry_date = patient_billing_data!medicare_expiry_date
-      Unbilled_consultation!veteran_number = patient_billing_data!veteran_number
-      If patient_billing_data!veteran_number <> "" Then 
-         Unbilled_consultation!fk_lu_veteran_card_type = patient_billing_data!fk_lu_veteran_card_type 
-         Unbilled_consultation!veteran_specific_condition = patient_billing_data!veteran_specific_condition
-      End If
-      Unbilled_consultation!Concession_Card_Number = patient_billing_data!concession_card_number 
-      If patient_billing_data!concession_card_number <> "" Then
-         Unbilled_consultation!concession_card_expiry_date = patient_billing_data!concession_card_expiry_date
-         Unbilled_consultation!fk_lu_centrelink_card_type = patient_billing_data!fk_lu_centrelink_card_type
-      End If
-      Unbilled_consultation!fk_lu_default_billing_level = patient_billing_data!fk_lu_default_billing_level 
-      If Unbilled_consultation!fk_lu_default_billing_level = const.Billing_Default_Level_BulkBill Then
-         If Unbilled_consultation!veteran_number <> "" Then
+      Unbilled_Consultations[columnview99.Item.key] = modBillingDBI.Consultation_Ubilled_Get(columnview99.Item.key)
+      Unbilled_consultation = Unbilled_Consultations[columnview99.Item.key]
+   Endif
+   '------------------------------------------------------------------------------
+   'finally update any billing data already in the edit area, this may only update 
+   'the radiobuttons, but if items in the grid will update these
+   '------------------------------------------------------------------------------
+   
+   With form_billingcards
+      If .cmbBIllingLevel.text = "Bulk Bill" Then
+         If .txtVeteranNumber.text <> "" Then
             rbInvoiceToVeterans.value = True
          Else
-            rbInvoiceToMedicare.Value = True  'this will update the billing grid.
+            rbInvoiceToMedicare.Value = True   
+         Endif
+         gvwPayments_Clear 
+      Else
+         If textlabelPayer.text = "" Then
+            rbInvoiceToPatient.value = True 'fixme what if payer=person
          Endif
       Endif
-      Unbilled_consultation!fk_lu_private_health_fund = patient_billing_data!fk_lu_private_health_fund
-      If patient_billing_data!fk_lu_private_health_fund <> const.PrivateHealthFund_None Then
-         Unbilled_consultation!private_insurance = True
-      Else
-         Unbilled_consultation!private_insurance = False   
-      Endif
-      Unbilled_consultation!fk_doctor = patient_billing_data!fk_doctor 
-   Endif
+   End With
    
 End
 
@@ -2421,6 +2253,7 @@ Public Sub MainToolbar_Click()
    
    Dim sCardType As String
    
+   pnlToolButtons.Enabled = False   
    Select Last.tag
       Case "save billing defaults"
          Billing_Defaults_Save()
@@ -2442,12 +2275,6 @@ Public Sub MainToolbar_Click()
                Goto Missing_CardNumber
             Endif
          Endif
-         
-         ' If Not IsNull(Unbilled_consultation) Then
-         '    If IsNull(Unbilled_consultation!medicare_number) Then
-         '       Goto Missing_MedicareNumber
-         '    Endif
-         ' Endif
          Save(bBulkBill_Yes, bPrint_No, bAccount_No) ', bPaid_No) 'FIXME TO bPrint_Yes to print
       Case "print receipt"
          Save(bBulkBill_No, bPrint_Yes, bAccount_No) ', bPaid_Yes)
@@ -2456,11 +2283,13 @@ Public Sub MainToolbar_Click()
       Case "print account"
          Save(bBulkBill_No, bPrint_Yes, bAccount_Yes) ', bPaid_No)
    End Select
+   pnlToolButtons.Enabled = True
    Return   
    
 Missing_CardNumber:
    Message.title = modUtil.Ucase_Word_First_Letter(sCardType) & " Numbers "
    Message.Info("This patient's " & sCardType & " number is not recorded.\n\nPlease update their record before proceeding.")
+   pnlToolButtons.Enabled = True 
    Return
    
 End
@@ -2651,7 +2480,7 @@ Public Sub txtSearch_GotFocus()
    
    Last.BackGround = Color.rgb(95, 255, 175) 
    lblSearchAccounts.Foreground = Color.Black
-  
+   
    With columnview99
       .clear
       .Columns.count = 2
@@ -2721,7 +2550,7 @@ Public Sub EditArea_TextBox_KeyPress()
             Case "reference details", "date"
                gvwItemsBIlled.row = 0
                gvwItemsBIlled.Column = 0
-               gvwItemsBIlled_DblClick()
+              
          End Select
    End Select
    
@@ -2885,8 +2714,6 @@ End
 
 Public Sub tbRefreshUnbilled_Click()
    
-   cvwUnBilled_Refresh()
-   
 End
 
 Public Sub Organisations_Get()
@@ -3036,19 +2863,20 @@ End
 
 Public Sub VBox_PaymentGrid_Leave()
    
-   Return 
-   If txtPayment.Visible Then
-      If oncol_payments = cGridColumnPayments_Amount Then
-         If gvwPayments[onrow_payments, cGridColumnPayments_Amount].text = "" Then
-            txtPayment_Activate()
-         Endif
-      Endif
-      gvwPayments[onrow_payments, oncol_payments].text = Trim(txtPayment.text)
-   Endif
-   If cmbPaymentMethods.Visible Then
-      gvwPayments[onrow_payments, cGridColumnPayments_PaymentMethod].text = cmbPaymentMethods.Text
-   Endif
-   txtPayment.Visible = False  
+   gvwPayments_HideProperty
+   
+   ' If txtPayment.Visible Then
+   '    If oncol_payments = cGridColumnPayments_Amount Then
+   '       If gvwPayments[onrow_payments, cGridColumnPayments_Amount].text = "" Then
+   '          txtPayment_Activate()
+   '       Endif
+   '    Endif
+   '    gvwPayments[onrow_payments, oncol_payments].text = Trim(txtPayment.text)
+   ' Endif
+   ' If cmbPaymentMethods.Visible Then
+   '    gvwPayments[onrow_payments, cGridColumnPayments_PaymentMethod].text = cmbPaymentMethods.Text
+   ' Endif
+   ' txtPayment.Visible = False  
    
 End
 
@@ -3181,7 +3009,7 @@ Public Sub TabStrip1_Click()
          combobox1.Visible = True
          HBox_Search.Visible = True   
          lblColumnviewHeading.Visible = False  
-          Reload()
+         Reload()
       Case cTab_Batching
          '-----------------------------------------------------------------------
          'User has clicked on the medicare batching tab
@@ -3210,8 +3038,8 @@ Public Sub TabStrip1_Click()
                .Init(report_titles)
             End With
          Endif
-          DateChooser1.visible = True
-          combobox1.Visible = False 
+         DateChooser1.visible = True
+         combobox1.Visible = False 
          HBox_Search.Visible = False   
          lblColumnviewHeading.Visible = False 
          columnview99_Refresh()
@@ -3337,8 +3165,9 @@ End
 
 Public Sub DateChooser1_Activate()
    
- '  form_html_viewer.WebView1.html = Days_Takings_Create_HTML(Last.value)
-      form_reports.Day_list_Show(DateChooser1.value)
+   '  form_html_viewer.WebView1.html = Days_Takings_Create_HTML(Last.value)
+   form_reports.Day_list_Show(DateChooser1.value)
+   
 End
 
 Public Function takings_html_row_template() As String
@@ -3377,56 +3206,6 @@ Public Function totals_html_row_template() As String
    
 End
 
-Public Sub chkTodayOnly_Click()
-   
-   cvwUnBilled_Refresh()
-   
-End
-
-' Create Or Replace FUNCTION billing.total_paid(integer)
-'   RETURNS money As
-' $BODY$
-' DECLARE
-'   total_paid money;
-'   total numeric;
-'   payment numeric;
-' BEGIN
-'  - - get the amounts paid
-'   For payment In Select amount:: numeric From billing.payments_received where fk_invoice = $1 Loop
-'     total: = payment;
-'   End Loop ;
-'   If total = 0 Then 
-'    total_paid = Null;
-'    Else
-'      total_paid: = total:: money;
-'    End If ;
-'   Return total_paid;
-' End ;
-' $BODY$
-'   LANGUAGE plpgsql VOLATILE
-'   COST 100;
-' ALTER FUNCTION billing.total_paid(integer)
-'   OWNER To richard;
-' 
-
-Public Sub rbPatientDisplay_Click()
-   
-   Select Case Last.tag
-      Case "unbilled"
-         '  columnview99.Visible = False   
-         '  cvwUnBilled.Visible = True 
-         ' cvwUnBilled_Refresh
-   End Select
-   
-End
-
-Public Sub DateChooser2_Activate()
-   'Don't substitute Last here please
-   
- '  form_reports.Day_list_Show(DateChooser1.value)
-   
-End
-
 Public Sub VBox_PaymentGrid_Enter()
    '-----------------------------------------------------
    'Enable the payments grid if there is something to pay
@@ -3434,6 +3213,10 @@ Public Sub VBox_PaymentGrid_Enter()
    '-----------------------------------------------------
    
    If gvwItemsBIlled[0, 0].text <> "" And gvwItemsBIlled[0, 0].text <> "" Then
+      If rbInvoiceToMedicare.value = True Or rbInvoiceToVeterans.value = True Then
+         gvwPayments.Enabled = False 
+         Return 
+      End If 
       gvwPayments.Enabled = True
       gvwPayments.row = 0
       If rbInvoiceToPatient.value = True Or rbInvoicePerson.Value = True Then
@@ -3451,6 +3234,9 @@ End
 
 Public Sub Button1_Click()
    
+   columnview99.MoveCurrent()
+   Print "columnview99.item.key", columnview99.item.key, columnview99[columnview99.item.key][1]
+   
    Print Payer
    Print fk_payer_person
    Print "gvwItems.height", gvwItemsBIlled.ClientH
@@ -3464,736 +3250,20 @@ Public Sub Button1_Click()
    Print "cmbPayments.visible=", cmbPaymentMethods.visible
    Print "panGvwPaymentsEditor.Visible = ", panGvwPaymentsEditor.Visible
    Print "payments row,col", gvwPayments.row, gvwPayments.Column
-   
+   Print "gvwPayments.enabled", gvwPayments.Enabled 
+
 End
 
 Public Sub cmbFeeType_Leave()
    
-   'cmbFeeType.Visible = False 
    gvwItemsBilled_HideProperty()
    
 End
-' Public Sub panGvwItemsBilledEditor_KeyPress()
-' 
-'    Print "detecting keypress in paneditorbox"
-'    If key.code = key.return Then
-'       Print "hitting enter > now showing and setting focus"
-'       $hEditor_gvwItems.Show
-'       $hEditor_gvwItems.SetFocus 
-'    Endif
-'    
-' End
-
-' drop view billing.vwinvoices cascade;
-' drop view billing.vwinvoices_pre cascade;
-' drop view billing.vwfees;
-' 
-' 
-' DROP VIEW clerical.vwappointments;
-' 
-' Create Or Replace VIEW clerical.vwappointments As 
-'  Select bookings.pk, bookings.fk_patient, bookings.fk_staff, bookings.begin, bookings.duration, 
-'  bookings.notes, bookings.fk_staff_booked, bookings.fk_clinic, bookings.fk_lu_appointment_icon, 
-'  bookings.fk_lu_appointment_status, bookings.deleted, data_patients.fk_payer_person, 
-'  data_patients.fk_payer_branch, data_patients.fk_doctor, data_patients.fk_lu_default_billing_level, 
-'  data_patients.medicare_number, data_patients.medicare_ref_number, data_patients.medicare_expiry_date, 
-'  lu_veteran_card_type.type As Veteran_card_type, data_patients.veteran_number, 
-'  data_patients.veteran_specific_condition, data_patients.concession_card_number, 
-'  data_patients.concession_card_expiry_date, lu_centrelink_card_type.type As Concession_card_type, 
-'  lu_private_health_funds.fund, lu_default_billing_level.level As Billing_level, data_persons.firstname, 
-'  data_persons.surname, data_persons.birthdate, lu_sex.sex, lu_title.title, 
-'  ((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text) AS wholename, 
-'  bookings.invoiced, bookings.did_not_attend
-'    From clerical.bookings
-'    Left JOIN clerical.data_patients ON bookings.fk_patient = data_patients.pk
-'    Left JOIN clerical.lu_centrelink_card_type ON data_patients.fk_lu_centrelink_card_type = lu_centrelink_card_type.pk
-'    Left JOIN clerical.lu_private_health_funds ON data_patients.fk_lu_private_health_fund = lu_private_health_funds.pk
-'    Left JOIN clerical.lu_veteran_card_type ON data_patients.fk_lu_veteran_card_type = lu_veteran_card_type.pk
-'    Left JOIN contacts.data_persons ON data_patients.fk_person = data_persons.pk
-'    Left JOIN contacts.lu_sex ON data_persons.fk_sex = lu_sex.pk
-'    Left JOIN billing.lu_default_billing_level ON data_patients.fk_lu_default_billing_level = lu_default_billing_level.pk
-'    Left JOIN contacts.lu_title ON data_persons.fk_title = lu_title.pk
-'   ORDER BY bookings.begin;
-' ' 
-' ALTER TABLE clerical.vwappointments OWNER To easygp;
-' GRANT ALL ON TABLE clerical.vwappointments To easygp;
-' GRANT ALL ON TABLE clerical.vwappointments To staff;
-' 
-' 
-' CREATE OR REPLACE VIEW billing.vwfees AS 
-'  SELECT prices.pk AS pk_view, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, fee_schedule.descriptor, 
-'  fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule, fee_schedule.ceased_date, fee_schedule."group", 
-'  fee_schedule.derived_fee, prices.fk_fee_schedule, prices.pk AS fk_price, 
-'  prices.price, prices.fk_lu_billing_type, prices.notes, lu_billing_type.type AS fee_type
-'    FROM billing.fee_schedule
-'    JOIN billing.prices ON fee_schedule.pk = prices.fk_fee_schedule
-'    JOIN billing.lu_billing_type ON prices.fk_lu_billing_type = lu_billing_type.pk
-'   ORDER BY fee_schedule.mbs_item::integer;
-' 
-' ALTER TABLE billing.vwfees   OWNER TO easygp;
-' GRANT ALL ON TABLE billing.vwfees TO easygp;
-' GRANT SELECT ON TABLE billing.vwfees TO staff;
-' 
-' 
-' CREATE OR REPLACE FUNCTION billing.invoice_gst(integer)
-'  RETURNS money
-'  LANGUAGE sql
-' AS $function$
-'    select coalesce(sum(i.amount*((coalesce(f.gst_rate,0)+100)/100)),'$0.00'::money) 
-'            from billing.items_billed i, billing.fee_schedule f 
-'     where i.fk_invoice=$1
-'        and
-'           i.fk_fee_schedule = f.pk; 
-' $function$;
-' 
-' 
-' CREATE OR REPLACE VIEW billing.vwinvoices_pre AS 
-'  SELECT invoices.pk AS pk_invoice, invoices.pk AS  fk_invoice, invoices.notes, invoices.fk_staff_invoicing, invoices.fk_patient,invoices.date_printed,  
-'  invoices.fk_staff_provided_service, invoices.date_invoiced, invoices.paid, 
-'  invoices.fk_payer_person, invoices.fk_payer_branch, 
-'  
-'  coalesce (vworganisations.organisation || ' '::text || (vworganisations.branch || ' '::text), vwpersonsincludingpatients.wholename)
-'           as account_to_name,
-'  Coalesce(COALESCE(vworganisations.street1 || ' '::text, vworganisations.street2 || ' '::text), 
-'           COALESCE(vwpersonsincludingpatients.street1 || ' '::text, vwpersonsincludingpatients.street2 || ' '::text))
-'           as account_to_street, 
-'   coalesce ((vworganisations.town || ' '::text || vworganisations.postcode),
-'             (vwpersonsincludingpatients.town || ' '::text || vwpersonsincludingpatients.postcode))
-' 
-'   as account_to_town_postcode,
-'  invoices.latex, invoices.fk_branch, invoices.visit_date, invoices.fk_appointment, 
-'  bookings.begin as appointment_time,
-'  invoices.reference, invoices.fk_lu_bulk_billing_type, invoice_total(invoices.pk) AS total_bill, invoice_received(invoices.pk) AS total_paid,
-'  billing.invoice_gst(invoices.pk) as total_gst,
-'  link_invoice_bulk_bill_claim.fk_claim
-'    FROM billing.invoices
-'    LEFT JOIN clerical.bookings on billing.invoices.fk_appointment = clerical.bookings.pk
-'    LEFT JOIN contacts.vworganisations ON invoices.fk_payer_branch = vworganisations.fk_branch
-'    LEFT JOIN contacts.vwpersonsincludingpatients ON invoices.fk_payer_person = vwpersonsincludingpatients.fk_person
-'    LEFT JOIN billing.link_invoice_bulk_bill_claim ON invoices.pk = link_invoice_bulk_bill_claim.fk_invoice;
-' 
-' ALTER TABLE billing.vwinvoices_pre   OWNER TO easygp;
-' GRANT ALL ON TABLE billing.vwinvoices_pre TO easygp;
-' GRANT ALL ON TABLE billing.vwinvoices_pre TO staff;
-' 
-' 
-' 
-' CREATE OR REPLACE VIEW billing.vwinvoices AS 
-'  SELECT vwinvoices_pre.pk_invoice, vwinvoices_pre.fk_invoice,vwinvoices_pre.fk_staff_invoicing, vwinvoices_pre.date_printed, vwinvoices_pre.notes, 
-'  vwinvoices_pre.fk_staff_provided_service, vwinvoices_pre.fk_patient, vwinvoices_pre.date_invoiced, vwinvoices_pre.paid, 
-'  vwinvoices_pre.fk_payer_person, vwinvoices_pre.fk_payer_branch, vwinvoices_pre.latex, vwinvoices_pre.fk_branch, vwinvoices_pre.account_to_name,
-'   vwinvoices_pre.account_to_street,  vwinvoices_pre.account_to_town_postcode,
-'  vwinvoices_pre.fk_appointment,vwinvoices_pre.appointment_time,  
-'  vwinvoices_pre.visit_date, vwinvoices_pre.reference, vwinvoices_pre.fk_lu_bulk_billing_type, 
-'  vwinvoices_pre.total_bill, 
-'  vwinvoices_pre.total_paid, 
-'  vwinvoices_pre.total_gst,
-'  vwinvoices_pre.total_paid >= vwinvoices_pre.total_bill AS paid_by_maths,
-'  vwinvoices_pre.total_gst-vwinvoices_pre.total_paid as due,
-'  vwinvoices_pre.fk_claim
-'    FROM billing.vwinvoices_pre;
-' 
-' ALTER TABLE billing.vwinvoices   OWNER TO easygp;
-' GRANT ALL ON TABLE billing.vwinvoices TO easygp;
-' GRANT ALL ON TABLE billing.vwinvoices TO staff;
-' 
-' 
-' 
-' CREATE OR REPLACE VIEW billing.vwitemsbilled AS 
-'  SELECT items_billed.pk AS pk_items_billed, vwstaffinclinics.firstname AS staff_invoiced_firstname, vwstaffinclinics.surname AS staff_invoiced_surname, 
-'  vwstaffinclinics.wholename AS staff_invoiced_wholename, vwstaffinclinics.title AS staff_invoiced_title, vwinvoices.fk_staff_invoicing, 
-'  vwinvoices.date_printed, vwinvoices.notes, vwinvoices.fk_lu_bulk_billing_type, vwinvoices.fk_staff_provided_service, vwinvoices.fk_patient, 
-'  vwinvoices.fk_branch, vwinvoices.fk_appointment, vwinvoices.appointment_time, vwpatients.firstname AS patient_firstname, 
-'  vwpatients.surname AS patient_surname, vwpatients.title AS patient_title, vwpatients.fk_sex AS patient_fk_sex, vwpatients.sex AS patient_sex, 
-'  vwpatients.wholename AS patient_wholename,vwPatients.fk_lu_centrelink_card_type, vwPatients.fk_lu_default_billing_level,
-'  vwinvoices.fk_payer_person, vwinvoices.fk_payer_branch, vwinvoices.date_invoiced, vwinvoices.paid, 
-'  vwinvoices.latex, vwinvoices.visit_date, vwinvoices.total_bill, vwinvoices.total_paid, vwinvoices.paid_by_maths, vwinvoices.reference, vwinvoices.fk_claim,
-'  vwstaffinclinics1.provider_number AS staff_provided_service_provider_number, vwstaffinclinics1.firstname AS staff_provided_service_firstname, 
-'  vwstaffinclinics1.surname AS staff_provided_service_surname, vwstaffinclinics1.wholename AS staff_provided_service_wholename, 
-'  vwstaffinclinics1.title AS staff_provided_service_title, data_branches.branch, items_billed.fk_fee_schedule, items_billed.amount, 
-'  items_billed.amount_gst, items_billed.fk_invoice, items_billed.fk_lu_billing_type, lu_billing_type.type AS billing_type, 
-'  fee_schedule.item, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, fee_schedule.descriptor, 
-'  fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule,
-'  CASE
-'             WHEN vwinvoices.fk_payer_branch IS NOT NULL THEN (((((vworganisations.organisation || ' '::text) || (vworganisations.branch || '<BR>'::text)) || COALESCE(vworganisations.street1 || ' '::text, 
-'             vworganisations.street2)) || ' '::text) || (vworganisations.town || ' '::text)) || (vworganisations.postcode::text || ' '::text)
-'             WHEN vwinvoices.fk_payer_person IS NOT NULL THEN ((((vwpersonsincludingpatients.wholename || '<BR>'::text) || COALESCE(vwpersonsincludingpatients.street1 || ' '::text, 
-'             vwpersonsincludingpatients.street2)) || ' '::text) || (vwpersonsincludingpatients.town || ' '::text)) || (vwpersonsincludingpatients.postcode::text || ' '::text)
-'             ELSE NULL::text
-'         END AS payer_details, 
-'         vworganisations.branch AS payer_branch, vworganisations.organisation AS payer_organisation, 
-'         vworganisations.street1 AS payer_branch_street1, vworganisations.street2 AS payer_branch_street2, vworganisations.postcode AS payer_branch_postcode, 
-'         vworganisations.town AS payer_branch_town, vworganisations.state AS payer_branch_state, vwpersonsincludingpatients.street1 AS payer_person_street1, 
-'         vwpersonsincludingpatients.street2 AS payer_person_street2, vwpersonsincludingpatients.town AS payer_person_town, 
-'         vwpersonsincludingpatients.state AS payer_person_state, vwpersonsincludingpatients.postcode AS payer_person_postcode, 
-'         vwpersonsincludingpatients.wholename AS payer_person_wholename, vwpersonsincludingpatients.title AS payer_person_title
-'    FROM billing.vwinvoices
-'    JOIN admin.vwstaffinclinics ON vwinvoices.fk_staff_invoicing = vwstaffinclinics.fk_staff
-'    JOIN admin.vwstaffinclinics vwstaffinclinics1 ON vwinvoices.fk_staff_provided_service = vwstaffinclinics1.fk_staff
-'    JOIN billing.items_billed ON vwinvoices.pk_invoice = items_billed.fk_invoice
-'    JOIN billing.lu_billing_type ON items_billed.fk_lu_billing_type = lu_billing_type.pk
-'    JOIN billing.fee_schedule ON items_billed.fk_fee_schedule = fee_schedule.pk
-'    JOIN contacts.data_branches ON vwinvoices.fk_branch = data_branches.pk
-'    LEFT JOIN contacts.vworganisations ON vwinvoices.fk_payer_branch = vworganisations.fk_branch
-'    LEFT JOIN contacts.vwpersonsincludingpatients ON vwinvoices.fk_payer_person = vwpersonsincludingpatients.fk_person
-'    LEFT JOIN contacts.vwpatients ON vwinvoices.fk_patient = vwpatients.fk_patient
-'    LEFT JOIN billing.payments_received on items_billed.fk_invoice = billing.payments_received.fk_invoice;
-'  
-' ALTER TABLE billing.vwitemsbilled   OWNER TO richard;
-' GRANT ALL ON TABLE billing.vwitemsbilled TO richard;
-' GRANT ALL ON TABLE billing.vwitemsbilled TO easygp;
-' GRANT ALL ON TABLE billing.vwitemsbilled TO staff;
-' 
-' 
-' 
-' CREATE OR REPLACE VIEW billing.vwpayments AS 
-'  SELECT payments_received.pk AS pk_payments_received, payments_received.fk_invoice, payments_received.amount AS amount_paid, 
-'  lu_payment_method.method AS payment_method, payments_received.date_paid, payments_received.fk_staff_receipted, 
-'  payments_received.fk_lu_payment_method, vwitemsbilled.pk_items_billed AS fk_items_billed, vwitemsbilled.staff_invoiced_firstname, 
-'  vwitemsbilled.staff_invoiced_surname, vwitemsbilled.staff_invoiced_wholename, vwitemsbilled.staff_invoiced_title, 
-'  vwitemsbilled.fk_staff_invoicing, vwitemsbilled.date_printed, vwitemsbilled.notes AS invoice_notes, 
-'  vwitemsbilled.fk_staff_provided_service, vwitemsbilled.fk_patient, vwitemsbilled.patient_firstname, 
-'  vwitemsbilled.patient_surname, vwitemsbilled.patient_title, vwitemsbilled.patient_fk_sex, vwitemsbilled.patient_sex, 
-'  vwitemsbilled.patient_wholename, vwitemsbilled.fk_payer_person, vwitemsbilled.fk_payer_branch, vwitemsbilled.date_invoiced, 
-'  vwitemsbilled.paid AS invoice_paid, vwitemsbilled.latex AS invoice_latex, vwitemsbilled.visit_date, vwitemsbilled.fk_claim,
-'  vwitemsbilled.fk_appointment, vwitemsbilled.appointment_time,
-'  vwitemsbilled.reference AS invoice_reference, vwitemsbilled.staff_provided_service_provider_number, 
-'  vwitemsbilled.staff_provided_service_firstname, vwitemsbilled.staff_provided_service_surname, 
-'  vwitemsbilled.staff_provided_service_wholename, vwitemsbilled.staff_provided_service_title, vwitemsbilled.branch, 
-'  vwitemsbilled.fk_fee_schedule, vwitemsbilled.amount AS item_billed_amount, vwitemsbilled.amount_gst AS item_billed_amount_gst, 
-'  vwitemsbilled.fk_lu_billing_type, vwitemsbilled.billing_type, vwitemsbilled.item, vwitemsbilled.mbs_item, vwitemsbilled.user_item, 
-'  vwitemsbilled.ama_item, vwitemsbilled.descriptor, vwitemsbilled.descriptor_brief, vwitemsbilled.gst_rate, vwitemsbilled.percentage_fee_rule, 
-'  vwitemsbilled.payer_details, vwitemsbilled.payer_branch, vwitemsbilled.payer_organisation, vwitemsbilled.payer_branch_street1, 
-'  vwitemsbilled.payer_branch_street2, vwitemsbilled.payer_branch_postcode, vwitemsbilled.payer_branch_town, vwitemsbilled.payer_branch_state, 
-'  vwitemsbilled.payer_person_street1, vwitemsbilled.payer_person_street2, vwitemsbilled.payer_person_town, vwitemsbilled.payer_person_state, 
-'  vwitemsbilled.payer_person_postcode, vwitemsbilled.payer_person_wholename, vwitemsbilled.payer_person_title
-'    FROM billing.payments_received
-'    JOIN billing.lu_payment_method ON payments_received.fk_lu_payment_method = lu_payment_method.pk
-'    JOIN billing.vwitemsbilled ON payments_received.fk_invoice = vwitemsbilled.fk_invoice;
-
-' ALTER TABLE billing.vwpayments
-'   OWNER TO easygp;
-' GRANT ALL ON TABLE billing.vwpayments TO easygp;
-' GRANT ALL ON TABLE billing.vwpayments TO staff;
-' 
-' grant select on billing.vwfees to staff;
-' grant select on billing.vwinvoices to staff;
-' grant select on billing.vwinvoices_pre to staff;
-' grant all on function billing.invoice_gst(integer) to staff;
-' grant all on billing.payments_received_pk_seq to staff;
-' 
-' Create table billing.lu_reasons_not_billed
-' (pk serial primary key,
-'  reason text Not Null);
-' 
-' insert into billing.lu_reasons_not_billed(reason)values( 'Aftercare - Suture Removal');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Aftercare - Dressings');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Doctor''s choice - Not Charged');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Doctor''s choice - Difficult Consultation');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Non-Medicare Visit - Not Charged');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Insurance Form - Not Charged');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Oversea''s Vistor Not Insured');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Relative Attended in Lieu of Patient');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Patient Did Not Attend');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Patient Name Entered in Error');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Appointment Slot Comment');
-' 
-' drop view clerical.vwappointments;
-' 
-' alter table clerical.bookings add column fk_lu_reason_not_billed integer Default Null;
-' 
-' Comment On column clerical.bookings.fk_lu_reason_not_billed Is
-' 'key to billing.lu_reasons_not_billed e.g ''aftercare''';
-' 
-' 
-' Create Or Replace VIEW clerical.vwappointments As 
-'  Select bookings.pk, bookings.fk_patient, bookings.fk_staff, bookings.begin, bookings.duration, 
-'  bookings.notes, bookings.fk_staff_booked, bookings.fk_clinic, bookings.fk_lu_appointment_icon, 
-'  bookings.fk_lu_appointment_status, bookings.deleted, bookings.invoiced, bookings.did_not_attend,
-'   bookings.fk_lu_reason_not_billed,
-'  data_patients.fk_payer_person, 
-'  data_patients.fk_payer_branch, data_patients.fk_doctor, data_patients.fk_lu_default_billing_level, 
-'  data_patients.medicare_number, data_patients.medicare_ref_number, data_patients.medicare_expiry_date, 
-'  lu_veteran_card_type.type As Veteran_card_type, data_patients.veteran_number, 
-'  data_patients.veteran_specific_condition, data_patients.concession_card_number, 
-'  data_patients.concession_card_expiry_date, lu_centrelink_card_type.type As Concession_card_type, 
-'  lu_private_health_funds.fund, lu_default_billing_level.level As Billing_level, data_persons.firstname, 
-'  data_persons.surname, data_persons.birthdate, lu_sex.sex, lu_title.title, 
-'  ((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text) AS wholename
-'  
-'    From clerical.bookings
-'    Left JOIN clerical.data_patients On bookings.fk_patient = data_patients.pk
-'    Left JOIN clerical.lu_centrelink_card_type On data_patients.fk_lu_centrelink_card_type = lu_centrelink_card_type.pk
-'    Left JOIN clerical.lu_private_health_funds On data_patients.fk_lu_private_health_fund = lu_private_health_funds.pk
-'    Left JOIN clerical.lu_veteran_card_type On data_patients.fk_lu_veteran_card_type = lu_veteran_card_type.pk
-'    Left JOIN contacts.data_persons On data_patients.fk_person = data_persons.pk
-'    Left JOIN contacts.lu_sex On data_persons.fk_sex = lu_sex.pk
-'    Left JOIN billing.lu_default_billing_level On data_patients.fk_lu_default_billing_level = lu_default_billing_level.pk
-'    Left JOIN contacts.lu_title On data_persons.fk_title = lu_title.pk
-'   ORDER BY bookings.begin;
-' 
-' ALTER TABLE clerical.vwappointments OWNER To easygp;
-' GRANT ALL On TABLE clerical.vwappointments To easygp;
-' GRANT ALL On TABLE clerical.vwappointments To staff;
-' 
-' drop view clerical.vwappointments;
-' 
-' Alter table clerical.bookings drop column fk_lu_reason_no_charge;
-' alter table clerical.bookings add column fk_lu_reason_not_billed integer Default Null;
-' 
-' Create Or Replace VIEW clerical.vwappointments As 
-'  Select bookings.pk, bookings.fk_patient, bookings.fk_staff, bookings.begin, bookings.duration, 
-'  bookings.notes, bookings.fk_staff_booked, bookings.fk_clinic, bookings.fk_lu_appointment_icon, 
-'  bookings.fk_lu_appointment_status, bookings.deleted, bookings.invoiced, bookings.did_not_attend,
-'   bookings.fk_lu_reason_not_billed,
-'  data_patients.fk_payer_person, 
-'  data_patients.fk_payer_branch, data_patients.fk_doctor, data_patients.fk_lu_default_billing_level, 
-'  data_patients.medicare_number, data_patients.medicare_ref_number, data_patients.medicare_expiry_date, 
-'  lu_veteran_card_type.type As Veteran_card_type, data_patients.veteran_number, 
-'  data_patients.veteran_specific_condition, data_patients.concession_card_number, 
-'  data_patients.concession_card_expiry_date, lu_centrelink_card_type.type As Concession_card_type, 
-'  lu_private_health_funds.fund, lu_default_billing_level.level As Billing_level, data_persons.firstname, 
-'  data_persons.surname, data_persons.birthdate, lu_sex.sex, lu_title.title, 
-'  ((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text) AS wholename
-'  
-'    From clerical.bookings
-'    Left JOIN clerical.data_patients On bookings.fk_patient = data_patients.pk
-'    Left JOIN clerical.lu_centrelink_card_type On data_patients.fk_lu_centrelink_card_type = lu_centrelink_card_type.pk
-'    Left JOIN clerical.lu_private_health_funds On data_patients.fk_lu_private_health_fund = lu_private_health_funds.pk
-'    Left JOIN clerical.lu_veteran_card_type On data_patients.fk_lu_veteran_card_type = lu_veteran_card_type.pk
-'    Left JOIN contacts.data_persons On data_patients.fk_person = data_persons.pk
-'    Left JOIN contacts.lu_sex On data_persons.fk_sex = lu_sex.pk
-'    Left JOIN billing.lu_default_billing_level On data_patients.fk_lu_default_billing_level = lu_default_billing_level.pk
-'    Left JOIN contacts.lu_title On data_persons.fk_title = lu_title.pk
-'   ORDER BY bookings.begin;
-' 
-' ALTER TABLE clerical.vwappointments OWNER To easygp;
-' GRANT ALL On TABLE clerical.vwappointments To easygp;
-' GRANT ALL On TABLE clerical.vwappointments To staff;
-' 
-' truncate db.lu_version;
-' insert into db.lu_version(lu_major, lu_minor)values(0, 236);
-' 
-' Create table billing.lu_reasons_not_billed
-' (pk serial primary key,
-'  reason text Not Null);
-' 
-' insert into billing.lu_reasons_not_billed(reason)values( 'Aftercare - Suture Removal');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Aftercare - Dressings');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Doctor''s choice - Not Charged');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Doctor''s choice - Difficult Consultation');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Non-Medicare Visit - Not Charged');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Insurance Form - Not Charged');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Oversea''s Vistor Not Insured');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Relative Attended in Lieu of Patient');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Patient Did Not Attend');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Patient Name Entered in Error');
-' insert into billing.lu_reasons_not_billed(reason)values( 'Appointment Slot Comment');
-' 
-
-'latest:19oct12-2326pm:
-' drop view billing.vwinvoices cascade;
-' drop view billing.vwinvoices_pre cascade;
-' drop view billing.vwfees;
-' 
-' 
-' DROP VIEW clerical.vwappointments;
-' 
-' Create Or Replace VIEW clerical.vwappointments As 
-'  Select bookings.pk, bookings.fk_patient, bookings.fk_staff, bookings.begin, bookings.duration, 
-'  bookings.notes, bookings.fk_staff_booked, bookings.fk_clinic, bookings.fk_lu_appointment_icon, 
-'  bookings.fk_lu_appointment_status, bookings.deleted, bookings.invoiced, bookings.did_not_attend,
-'  bookings.fk_lu_reason_not_billed,
-'  data_patients.fk_payer_person, 
-'  data_patients.fk_payer_branch, data_patients.fk_doctor, data_patients.fk_lu_default_billing_level, 
-'  data_patients.medicare_number, data_patients.medicare_ref_number, data_patients.medicare_expiry_date, 
-'  lu_veteran_card_type.type As Veteran_card_type, data_patients.veteran_number, 
-'  data_patients.veteran_specific_condition, data_patients.concession_card_number, 
-'  data_patients.concession_card_expiry_date, lu_centrelink_card_type.type As Concession_card_type, 
-'  lu_private_health_funds.fund, lu_default_billing_level.level As Billing_level, data_persons.firstname, 
-'  data_persons.surname, data_persons.birthdate, lu_sex.sex, lu_title.title, 
-'  ((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text) AS wholename
-'  
-'    From clerical.bookings
-'    Left JOIN clerical.data_patients On bookings.fk_patient = data_patients.pk
-'    Left JOIN clerical.lu_centrelink_card_type On data_patients.fk_lu_centrelink_card_type = lu_centrelink_card_type.pk
-'    Left JOIN clerical.lu_private_health_funds On data_patients.fk_lu_private_health_fund = lu_private_health_funds.pk
-'    Left JOIN clerical.lu_veteran_card_type On data_patients.fk_lu_veteran_card_type = lu_veteran_card_type.pk
-'    Left JOIN contacts.data_persons On data_patients.fk_person = data_persons.pk
-'    Left JOIN contacts.lu_sex On data_persons.fk_sex = lu_sex.pk
-'    Left JOIN billing.lu_default_billing_level On data_patients.fk_lu_default_billing_level = lu_default_billing_level.pk
-'    Left JOIN contacts.lu_title On data_persons.fk_title = lu_title.pk
-'   ORDER BY bookings.begin;
-' 
-' ALTER TABLE clerical.vwappointments OWNER To easygp;
-' GRANT ALL On TABLE clerical.vwappointments To easygp;
-' GRANT ALL On TABLE clerical.vwappointments To staff;
-' 
-' 
-' CREATE OR REPLACE VIEW billing.vwfees AS 
-'  SELECT prices.pk AS pk_view, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, fee_schedule.descriptor, 
-'  fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule, fee_schedule.ceased_date, fee_schedule."group", 
-'  fee_schedule.derived_fee, prices.fk_fee_schedule, prices.pk AS fk_price, 
-'  prices.price, prices.fk_lu_billing_type, prices.notes, lu_billing_type.type AS fee_type
-'    FROM billing.fee_schedule
-'    JOIN billing.prices ON fee_schedule.pk = prices.fk_fee_schedule
-'    JOIN billing.lu_billing_type ON prices.fk_lu_billing_type = lu_billing_type.pk
-'   ORDER BY fee_schedule.mbs_item::integer;
-' 
-' ALTER TABLE billing.vwfees   OWNER TO easygp;
-' GRANT ALL ON TABLE billing.vwfees TO easygp;
-' GRANT SELECT ON TABLE billing.vwfees TO staff;
-' 
-' 
-' CREATE OR REPLACE FUNCTION billing.invoice_gst(integer)
-'  RETURNS money
-'  LANGUAGE sql
-' AS $function$
-'    select coalesce(sum(i.amount*((coalesce(f.gst_rate,0)+100)/100)),'$0.00'::money) 
-'            from billing.items_billed i, billing.fee_schedule f 
-'     where i.fk_invoice=$1
-'        and
-'           i.fk_fee_schedule = f.pk; 
-' $function$;
-' 
-' 
-' CREATE OR REPLACE VIEW billing.vwinvoices_pre AS 
-'  SELECT invoices.pk AS pk_invoice, invoices.pk AS  fk_invoice, invoices.notes, invoices.fk_staff_invoicing, invoices.fk_patient,invoices.date_printed,  
-'  invoices.fk_staff_provided_service, invoices.date_invoiced, invoices.paid, 
-'  invoices.fk_payer_person, invoices.fk_payer_branch, 
-'  
-'  coalesce (vworganisations.organisation || ' '::text || (vworganisations.branch || ' '::text), vwpersonsincludingpatients.wholename)
-'           as account_to_name,
-'  Coalesce(COALESCE(vworganisations.street1 || ' '::text, vworganisations.street2 || ' '::text), 
-'           COALESCE(vwpersonsincludingpatients.street1 || ' '::text, vwpersonsincludingpatients.street2 || ' '::text))
-'           as account_to_street, 
-'   coalesce ((vworganisations.town || ' '::text || vworganisations.postcode),
-'             (vwpersonsincludingpatients.town || ' '::text || vwpersonsincludingpatients.postcode))
-' 
-'   as account_to_town_postcode,
-'  invoices.latex, invoices.fk_branch, invoices.visit_date, invoices.fk_appointment, 
-'  bookings.begin as appointment_time,
-'  invoices.reference, invoices.fk_lu_bulk_billing_type, invoice_total(invoices.pk) AS total_bill, invoice_received(invoices.pk) AS total_paid,
-'  billing.invoice_gst(invoices.pk) as total_gst,
-'  link_invoice_bulk_bill_claim.fk_claim
-'    FROM billing.invoices
-'    LEFT JOIN clerical.bookings on billing.invoices.fk_appointment = clerical.bookings.pk
-'    LEFT JOIN contacts.vworganisations ON invoices.fk_payer_branch = vworganisations.fk_branch
-'    LEFT JOIN contacts.vwpersonsincludingpatients ON invoices.fk_payer_person = vwpersonsincludingpatients.fk_person
-'    LEFT JOIN billing.link_invoice_bulk_bill_claim ON invoices.pk = link_invoice_bulk_bill_claim.fk_invoice;
-' 
-' ALTER TABLE billing.vwinvoices_pre   OWNER TO easygp;
-' GRANT ALL ON TABLE billing.vwinvoices_pre TO easygp;
-' GRANT ALL ON TABLE billing.vwinvoices_pre TO staff;
-' 
-' 
-' 
-
-' 
-' 
-' 
-' CREATE OR REPLACE VIEW billing.vwitemsbilled AS 
-'  SELECT items_billed.pk AS pk_items_billed, vwstaffinclinics.firstname AS staff_invoiced_firstname, vwstaffinclinics.surname AS staff_invoiced_surname, 
-'  vwstaffinclinics.wholename AS staff_invoiced_wholename, vwstaffinclinics.title AS staff_invoiced_title, vwinvoices.fk_staff_invoicing, 
-'  vwinvoices.date_printed, vwinvoices.notes, vwinvoices.fk_lu_bulk_billing_type, vwinvoices.fk_staff_provided_service, vwinvoices.fk_patient, 
-'  vwinvoices.fk_branch, vwinvoices.fk_appointment, vwinvoices.appointment_time, vwpatients.firstname AS patient_firstname, 
-'  vwpatients.surname AS patient_surname, vwpatients.title AS patient_title, vwpatients.fk_sex AS patient_fk_sex, vwpatients.sex AS patient_sex, 
-'  vwpatients.wholename AS patient_wholename,vwPatients.fk_lu_centrelink_card_type, vwPatients.fk_lu_default_billing_level,
-'  vwinvoices.fk_payer_person, vwinvoices.fk_payer_branch, vwinvoices.date_invoiced, vwinvoices.paid, 
-'  vwinvoices.latex, vwinvoices.visit_date, vwinvoices.total_bill, vwinvoices.total_paid, vwinvoices.paid_by_maths, vwinvoices.reference, vwinvoices.fk_claim,
-'  vwstaffinclinics1.provider_number AS staff_provided_service_provider_number, vwstaffinclinics1.firstname AS staff_provided_service_firstname, 
-'  vwstaffinclinics1.surname AS staff_provided_service_surname, vwstaffinclinics1.wholename AS staff_provided_service_wholename, 
-'  vwstaffinclinics1.title AS staff_provided_service_title, data_branches.branch, items_billed.fk_fee_schedule, items_billed.amount, 
-'  items_billed.amount_gst, items_billed.fk_invoice, items_billed.fk_lu_billing_type, lu_billing_type.type AS billing_type, 
-'  fee_schedule.item, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, fee_schedule.descriptor, 
-'  fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule,
-'  CASE
-'             WHEN vwinvoices.fk_payer_branch IS NOT NULL THEN (((((vworganisations.organisation || ' '::text) || (vworganisations.branch || '<BR>'::text)) || COALESCE(vworganisations.street1 || ' '::text, 
-'             vworganisations.street2)) || ' '::text) || (vworganisations.town || ' '::text)) || (vworganisations.postcode::text || ' '::text)
-'             WHEN vwinvoices.fk_payer_person IS NOT NULL THEN ((((vwpersonsincludingpatients.wholename || '<BR>'::text) || COALESCE(vwpersonsincludingpatients.street1 || ' '::text, 
-'             vwpersonsincludingpatients.street2)) || ' '::text) || (vwpersonsincludingpatients.town || ' '::text)) || (vwpersonsincludingpatients.postcode::text || ' '::text)
-'             ELSE NULL::text
-'         END AS payer_details, 
-'         vworganisations.branch AS payer_branch, vworganisations.organisation AS payer_organisation, 
-'         vworganisations.street1 AS payer_branch_street1, vworganisations.street2 AS payer_branch_street2, vworganisations.postcode AS payer_branch_postcode, 
-'         vworganisations.town AS payer_branch_town, vworganisations.state AS payer_branch_state, vwpersonsincludingpatients.street1 AS payer_person_street1, 
-'         vwpersonsincludingpatients.street2 AS payer_person_street2, vwpersonsincludingpatients.town AS payer_person_town, 
-'         vwpersonsincludingpatients.state AS payer_person_state, vwpersonsincludingpatients.postcode AS payer_person_postcode, 
-'         vwpersonsincludingpatients.wholename AS payer_person_wholename, vwpersonsincludingpatients.title AS payer_person_title
-'    FROM billing.vwinvoices
-'    JOIN admin.vwstaffinclinics ON vwinvoices.fk_staff_invoicing = vwstaffinclinics.fk_staff
-'    JOIN admin.vwstaffinclinics vwstaffinclinics1 ON vwinvoices.fk_staff_provided_service = vwstaffinclinics1.fk_staff
-'    JOIN billing.items_billed ON vwinvoices.pk_invoice = items_billed.fk_invoice
-'    JOIN billing.lu_billing_type ON items_billed.fk_lu_billing_type = lu_billing_type.pk
-'    JOIN billing.fee_schedule ON items_billed.fk_fee_schedule = fee_schedule.pk
-'    JOIN contacts.data_branches ON vwinvoices.fk_branch = data_branches.pk
-'    LEFT JOIN contacts.vworganisations ON vwinvoices.fk_payer_branch = vworganisations.fk_branch
-'    LEFT JOIN contacts.vwpersonsincludingpatients ON vwinvoices.fk_payer_person = vwpersonsincludingpatients.fk_person
-'    LEFT JOIN contacts.vwpatients ON vwinvoices.fk_patient = vwpatients.fk_patient
-'    LEFT JOIN billing.payments_received on items_billed.fk_invoice = billing.payments_received.fk_invoice;
-'  
-' ALTER TABLE billing.vwitemsbilled   OWNER TO richard;
-' GRANT ALL ON TABLE billing.vwitemsbilled TO richard;
-' GRANT ALL ON TABLE billing.vwitemsbilled TO easygp;
-' GRANT ALL ON TABLE billing.vwitemsbilled TO staff;
-' 
-' 
-' 
-' CREATE OR REPLACE VIEW billing.vwpayments AS 
-'  SELECT payments_received.pk AS pk_payments_received, payments_received.fk_invoice, payments_received.amount AS amount_paid, 
-'  lu_payment_method.method AS payment_method, payments_received.date_paid, payments_received.fk_staff_receipted, 
-'  payments_received.fk_lu_payment_method, vwitemsbilled.pk_items_billed AS fk_items_billed, vwitemsbilled.staff_invoiced_firstname, 
-'  vwitemsbilled.staff_invoiced_surname, vwitemsbilled.staff_invoiced_wholename, vwitemsbilled.staff_invoiced_title, 
-'  vwitemsbilled.fk_staff_invoicing, vwitemsbilled.date_printed, vwitemsbilled.notes AS invoice_notes, 
-'  vwitemsbilled.fk_staff_provided_service, vwitemsbilled.fk_patient, vwitemsbilled.patient_firstname, 
-'  vwitemsbilled.patient_surname, vwitemsbilled.patient_title, vwitemsbilled.patient_fk_sex, vwitemsbilled.patient_sex, 
-'  vwitemsbilled.patient_wholename, vwitemsbilled.fk_payer_person, vwitemsbilled.fk_payer_branch, vwitemsbilled.date_invoiced, 
-'  vwitemsbilled.paid AS invoice_paid, vwitemsbilled.latex AS invoice_latex, vwitemsbilled.visit_date, vwitemsbilled.fk_claim,
-'  vwitemsbilled.fk_appointment, vwitemsbilled.appointment_time,
-'  vwitemsbilled.reference AS invoice_reference, vwitemsbilled.staff_provided_service_provider_number, 
-'  vwitemsbilled.staff_provided_service_firstname, vwitemsbilled.staff_provided_service_surname, 
-'  vwitemsbilled.staff_provided_service_wholename, vwitemsbilled.staff_provided_service_title, vwitemsbilled.branch, 
-'  vwitemsbilled.fk_fee_schedule, vwitemsbilled.amount AS item_billed_amount, vwitemsbilled.amount_gst AS item_billed_amount_gst, 
-'  vwitemsbilled.fk_lu_billing_type, vwitemsbilled.billing_type, vwitemsbilled.item, vwitemsbilled.mbs_item, vwitemsbilled.user_item, 
-'  vwitemsbilled.ama_item, vwitemsbilled.descriptor, vwitemsbilled.descriptor_brief, vwitemsbilled.gst_rate, vwitemsbilled.percentage_fee_rule, 
-'  vwitemsbilled.payer_details, vwitemsbilled.payer_branch, vwitemsbilled.payer_organisation, vwitemsbilled.payer_branch_street1, 
-'  vwitemsbilled.payer_branch_street2, vwitemsbilled.payer_branch_postcode, vwitemsbilled.payer_branch_town, vwitemsbilled.payer_branch_state, 
-'  vwitemsbilled.payer_person_street1, vwitemsbilled.payer_person_street2, vwitemsbilled.payer_person_town, vwitemsbilled.payer_person_state, 
-'  vwitemsbilled.payer_person_postcode, vwitemsbilled.payer_person_wholename, vwitemsbilled.payer_person_title
-'    FROM billing.payments_received
-'    JOIN billing.lu_payment_method ON payments_received.fk_lu_payment_method = lu_payment_method.pk
-'    JOIN billing.vwitemsbilled ON payments_received.fk_invoice = vwitemsbilled.fk_invoice;
-' 
-' ALTER TABLE billing.vwpayments
-'   OWNER TO easygp;
-' GRANT ALL ON TABLE billing.vwpayments TO easygp;
-' GRANT ALL ON TABLE billing.vwpayments TO staff;
-' 
-' grant select on billing.vwfees to staff;
-' grant select on billing.vwinvoices to staff;
-' grant select on billing.vwinvoices_pre to staff;
-' grant all on function billing.invoice_gst(integer) to staff;
-' grant all on billing.payments_received_pk_seq to staff;
-' 
-' CREATE VIEW billing.vwclaims AS
-'     SELECT items_billed.pk AS pk_view, bulk_billing_claims.pk AS fk_bulk_billing_claim, 
-'     bulk_billing_claims.claim_id, bulk_billing_claims.claim_date, bulk_billing_claims.claim_amount, 
-'     bulk_billing_claims.voucher_count, bulk_billing_claims.finalised, bulk_billing_claims.fk_branch, 
-'     bulk_billing_claims.fk_medclaim, bulk_billing_claims.fk_lu_bulk_billing_type, 
-'     bulk_billing_claims.fk_staff_provided_service, bulk_billing_claims.fk_staff_processed, bulk_billing_claims.html, 
-'     lu_bulk_billing_type.type AS bulk_billing_type, vwstaffinclinics.wholename AS staff_provided_service_wholename, 
-'     vwstaffinclinics.branch, link_invoice_bulk_bill_claim.fk_invoice, invoices.latex AS invoice_latex, 
-'     invoices.fk_patient, vwpatients.wholename AS patient_wholename, invoices.visit_date, fee_schedule.mbs_item, 
-'     items_billed.amount, 
-'     vwstaffinclinics1.wholename AS staff_processed_wholename 
-'     FROM ((((((((billing.bulk_billing_claims 
-'     JOIN billing.lu_bulk_billing_type ON ((bulk_billing_claims.fk_lu_bulk_billing_type = lu_bulk_billing_type.pk))) 
-'     JOIN billing.link_invoice_bulk_bill_claim ON ((bulk_billing_claims.pk = link_invoice_bulk_bill_claim.fk_claim))) 
-'     JOIN billing.invoices ON ((link_invoice_bulk_bill_claim.fk_invoice = invoices.pk))) 
-'     JOIN contacts.vwpatients ON ((invoices.fk_patient = vwpatients.fk_patient))) 
-'     JOIN billing.items_billed ON ((invoices.pk = items_billed.fk_invoice))) 
-'     JOIN admin.vwstaffinclinics ON ((bulk_billing_claims.fk_staff_provided_service = vwstaffinclinics.fk_staff))) 
-'     JOIN billing.fee_schedule ON ((items_billed.fk_fee_schedule = fee_schedule.pk))) 
-'     JOIN admin.vwstaffinclinics vwstaffinclinics1 ON ((bulk_billing_claims.fk_staff_processed = vwstaffinclinics1.fk_staff)));
-' 
-' drop view billing.vwinvoices cascade;
-' 
-' Create Or Replace VIEW billing.vwinvoices As
-'  Select invoices.pk As Pk_invoice, invoices.pk As Fk_invoice,
-' invoices.notes, invoices.fk_staff_invoicing, invoices.fk_patient,
-'  invoices.date_printed, invoices.fk_staff_provided_service,
-' invoices.date_invoiced, invoices.paid, invoices.fk_payer_person,
-'  invoices.fk_payer_branch, COALESCE(vworganisations.organisation,
-' vwpersonsincludingpatients.wholename) As Account_to_name,
-' vworganisations.branch As Account_to_branch,
-' COALESCE(COALESCE(vworganisations.street1 || ' '::text,
-' vworganisations.street2 || ' '::text),
-'  COALESCE(vwpersonsincludingpatients.street1 || ' '::text,
-' vwpersonsincludingpatients.street2 || ' '::text)) AS
-' account_to_street,
-'  COALESCE((vworganisations.town || ' '::text) ||
-' vworganisations.postcode:: text, (vwpersonsincludingpatients.town || '
-' '::text) || vwpersonsincludingpatients.postcode::text) AS
-' account_to_town_postcode,
-'  invoices.latex, invoices.fk_branch, invoices.visit_date,
-' invoices.fk_appointment, bookings.begin As Appointment_time,
-' bookings.duration, invoices.reference,
-' invoices.fk_lu_bulk_billing_type,
-'  invoices.total_bill, invoices.total_paid, invoices.total_gst,
-' invoices.total_gst - invoices.total_paid As Due,
-' staff_invoicing.wholename As Staff_invoicing_wholename,
-'  staff_provider.wholename As Staff_provided_service_wholename,
-' staff_provider.provider_number As Staff_provided_service_provider_number,
-' staff_provider.australian_business_number,
-'  vwpatients.firstname As Patient_firstname, vwpatients.surname As
-' patient_surname, vwpatients.title As Patient_title, vwpatients.fk_sex
-' As Patient_fk_sex, vwpatients.sex As Patient_sex,
-'  vwpatients.wholename As Patient_wholename,
-' vwpatients.fk_lu_centrelink_card_type,
-' vwpatients.fk_lu_default_billing_level, vworganisations1.branch
-'    From billing.invoices
-'    JOIN admin.vwstaff staff_invoicing ON invoices.fk_staff_invoicing = staff_invoicing.fk_staff
-'    JOIN admin.vwstaff staff_provider ON invoices.fk_staff_provided_service = staff_provider.fk_staff
-'    join contacts.vworganisations vwOrganisations1 on invoices.fk_branch = vworganisations1.fk_branch
-'    Left JOIN clerical.bookings ON invoices.fk_appointment = bookings.pk
-'    Left JOIN contacts.vworganisations ON invoices.fk_payer_branch = vworganisations.fk_branch
-'    
-'    Left JOIN contacts.vwpersonsincludingpatients ON invoices.fk_payer_person = vwpersonsincludingpatients.fk_person
-'    Left JOIN contacts.vwpatients ON invoices.fk_patient = vwpatients.fk_patient;
-' 
-' ALTER TABLE billing.vwinvoices
-'   OWNER To easygp; 
-' GRANT ALL ON TABLE billing.vwinvoices To easygp;
-' GRANT Select ON TABLE billing.vwinvoices To staff;
-' 
-' QUERIERS NOT COMMITED TO SVN BUT CURRENT AS OF 21OCT12 10PM.
-' drop view billing.vwitemsbilled cascade;
-' 
-' Create VIEW billing.vwitemsbilled As
-'     Select items_billed.pk As Pk_items_billed,
-' items_billed.fk_fee_schedule,
-' items_billed.amount,
-' items_billed.amount_gst,
-' items_billed.fk_invoice,
-' items_billed.fk_lu_billing_type,
-' lu_billing_type.type As Billing_type,
-' fee_schedule.item,
-' fee_schedule.mbs_item,
-' fee_schedule.user_item,
-' fee_schedule.ama_item,
-' fee_schedule.descriptor,
-' fee_schedule.descriptor_brief,
-' fee_schedule.gst_rate,
-' fee_schedule.percentage_fee_rule
-'  From
-' billing.items_billed, billing.lu_billing_type, billing.fee_schedule
-' where
-'    lu_billing_type.pk = items_billed.fk_lu_billing_type And
-'    items_billed.fk_fee_schedule = fee_schedule.pk;
-' 
-' grant Select on billing.vwitemsbilled To staff;
-' 
-' Create Or Replace view billing.vwitemsandinvoices As Select
-'    vwitemsbilled.pk_items_billed,
-'    vwitemsbilled.fk_fee_schedule,
-'    vwitemsbilled.amount,
-'    vwitemsbilled.amount_gst,
-'    vwitemsbilled.fk_lu_billing_type, 
-'    billing_type, item, mbs_item,
-' user_item, ama_item, descriptor, descriptor_brief, gst_rate,
-'    percentage_fee_rule,
-' vwInvoices.fk_invoice,
-' vwInvoices.notes, 
-' vwInvoices.fk_staff_invoicing, 
-' vwInvoices.fk_patient,
-'  vwInvoices.date_printed, 
-'  vwInvoices.fk_staff_provided_service,
-' vwInvoices.date_invoiced, 
-' vwInvoices.paid, 
-' vwInvoices.fk_payer_person,
-'  vwInvoices.fk_payer_branch,
-'  vwInvoices.account_to_name,
-'  vwInvoices.account_to_branch,
-' vwInvoices.account_to_street,
-' vwInvoices.account_to_town_postcode,
-'  vwInvoices.latex, 
-'  vwInvoices.fk_branch, 
-'  vwInvoices.visit_date,
-' vwInvoices.fk_appointment, 
-' vwInvoices.appointment_time,
-' vwInvoices.duration, 
-' vwInvoices.reference,
-' vwInvoices.fk_lu_bulk_billing_type,
-'  vwInvoices.total_bill, 
-'  vwInvoices.total_paid, 
-'  vwInvoices.total_gst,
-' vwInvoices.due,
-' vwInvoices.staff_invoicing_wholename,
-'  vwInvoices.staff_provided_service_wholename,
-' vwInvoices.staff_provided_service_provider_number,
-' vwInvoices.australian_business_number,
-' vwInvoices.patient_firstname, 
-' vwInvoices.patient_surname, 
-' vwInvoices.patient_title, 
-' vwInvoices.patient_fk_sex, 
-' vwInvoices.patient_sex,
-' vwInvoices.patient_wholename,
-' vwInvoices.fk_lu_centrelink_card_type,
-' vwInvoices.fk_lu_default_billing_level,
-' vwInvoices.branch
-' From billing.vwitemsbilled, billing.vwinvoices where
-'        vwinvoices.fk_invoice = vwitemsbilled.fk_invoice;
-' 
-' grant Select on billing.vwitemsandinvoices To staff;
-' 
-' Create Or Replace FUNCTION billing.update_invoice_payment()
-'   RETURNS trigger As
-' $BODY$
-'     DECLARE
-'        pk_invoice iNTEGER;
-'     BEGIN
-'         If (TG_OP = 'DELETE') THEN
-'       pk_invoice = OLD.fk_invoice;
-'    Else
-'       pk_invoice = New .fk_invoice;
-'    End If ;
-'         update billing.invoices set total_paid = billing.invoice_received(pk)where pk = pk_invoice;
-'    update billing.invoices set paid = (total_paid >= total_gst + total_bill)where pk = pk_invoice;
-'         Return Null; - - result Is Ignored since this Is An AFTER trigger
-'     End ;
-' $BODY$
-'   LANGUAGE plpgsql VOLATILE
-'   COST 100;
-' ALTER FUNCTION billing.update_invoice_payment()OWNER To easygp;
-' grant all on function billing.update_invoice_payment() To easygp;
-' grant all on function billing.update_invoice_payment() To staff;
-' 
-
-' CREATE OR REPLACE VIEW billing.vwpayments AS 
-'  SELECT payments_received.pk AS pk_payments_received, payments_received.fk_invoice, 
-'  payments_received.amount AS amount_paid, lu_payment_method.method AS payment_method, 
-'  payments_received.date_paid, payments_received.fk_staff_receipted, payments_received.fk_lu_payment_method, 
-'  vwitemsbilled.pk_items_billed AS fk_items_billed, vwitemsbilled.staff_invoiced_firstname, 
-'  vwitemsbilled.staff_invoiced_surname, vwitemsbilled.staff_invoiced_wholename, 
-'  vwitemsbilled.staff_invoiced_title, vwitemsbilled.fk_staff_invoicing, 
-'  vwitemsbilled.date_printed, vwitemsbilled.notes AS invoice_notes, 
-'  vwitemsbilled.fk_staff_provided_service, vwitemsbilled.fk_patient, 
-'  vwitemsbilled.patient_firstname, vwitemsbilled.patient_surname, 
-'  vwitemsbilled.patient_title, vwitemsbilled.patient_fk_sex, 
-'  vwitemsbilled.patient_sex, vwitemsbilled.patient_wholename, 
-'  vwitemsbilled.fk_payer_person, vwitemsbilled.fk_payer_branch, 
-'  vwitemsbilled.date_invoiced, vwitemsbilled.paid AS invoice_paid, 
-'  vwitemsbilled.latex AS invoice_latex, vwitemsbilled.visit_date, 
-'  vwitemsbilled.fk_appointment, vwitemsbilled.appointment_time,
-'  vwitemsbilled.reference AS invoice_reference, vwitemsbilled.staff_provided_service_provider_number, 
-'  vwitemsbilled.staff_provided_service_firstname, vwitemsbilled.staff_provided_service_surname, 
-'  vwitemsbilled.staff_provided_service_wholename, vwitemsbilled.staff_provided_service_title, 
-' 
-'  vwitemsbilled.branch, vwitemsbilled.fk_fee_schedule, vwitemsbilled.amount AS item_billed_amount, 
-'  vwitemsbilled.amount_gst AS item_billed_amount_gst, vwitemsbilled.fk_lu_billing_type, 
-'  vwitemsbilled.billing_type, vwitemsbilled.item, vwitemsbilled.mbs_item, vwitemsbilled.user_item,
-'   vwitemsbilled.ama_item, vwitemsbilled.descriptor, vwitemsbilled.descriptor_brief, vwitemsbilled.gst_rate, 
-'   vwitemsbilled.percentage_fee_rule, vwitemsbilled.payer_details, vwitemsbilled.payer_branch, 
-'   vwitemsbilled.payer_organisation, vwitemsbilled.payer_branch_street1, vwitemsbilled.payer_branch_street2,
-'    vwitemsbilled.payer_branch_postcode, vwitemsbilled.payer_branch_town, 
-'    vwitemsbilled.payer_branch_state, vwitemsbilled.payer_person_street1, 
-'    vwitemsbilled.payer_person_street2, vwitemsbilled.payer_person_town, vwitemsbilled.payer_person_state, 
-'    vwitemsbilled.payer_person_postcode, vwitemsbilled.payer_person_wholename, vwitemsbilled.payer_person_title
-'    FROM billing.payments_received
-'    
-'    JOIN billing.lu_payment_method ON payments_received.fk_lu_payment_method = lu_payment_method.pk
-'    JOIN billing.vwitemsbilled ON payments_received.fk_invoice = vwitemsbilled.fk_invoice;
-' 
-' ALTER TABLE billing.vwpayments
-'   OWNER TO richard;
-' GRANT ALL ON TABLE billing.vwpayments TO richard;
-' GRANT ALL ON TABLE billing.vwpayments TO easygp;
-' GRANT ALL ON TABLE billing.vwpayments TO staff;
-' 
-' 
 
 Public Sub txtDateFilter_Activate()
    
    Reload()
    
 End
+
+

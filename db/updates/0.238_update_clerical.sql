@@ -2,6 +2,33 @@
 -- update the clerical.data_patients table and make everyone not a nursing home patient
 -- update the appointments view for billing to include nursing_home_patient flag (for area-of-need billing)
 -- update contacts.vwPatients for the new gui control chkNursingHomeResident
+alter table clerical.bookings add column fk_lu_reason_not_billed integer default null;
+
+CREATE TABLE billing.lu_reasons_not_billed
+(
+  pk serial NOT NULL,
+  reason text NOT NULL,
+  CONSTRAINT lu_reasons_not_billed_pkey PRIMARY KEY (pk)
+)
+WITH (
+  OIDS=FALSE
+);
+ALTER TABLE billing.lu_reasons_not_billed OWNER TO easygp;
+GRANT ALL ON TABLE billing.lu_reasons_not_billed TO easygp;
+GRANT ALL ON TABLE billing.lu_reasons_not_billed TO staff;
+
+
+INSERT INTO billing.lu_reasons_not_billed (reason) VALUES ('Aftercare - Suture Removal');
+INSERT INTO billing.lu_reasons_not_billed (reason) VALUES ('Aftercare - Dressings');
+INSERT INTO billing.lu_reasons_not_billed (reason) VALUES ('Non-Medicare Visit - Not Charged');
+INSERT INTO billing.lu_reasons_not_billed (reason) VALUES ('Insurance Form - Not Charged');
+INSERT INTO billing.lu_reasons_not_billed (reason) VALUES ('Doctor''s choice - Not Charged');
+INSERT INTO billing.lu_reasons_not_billed (reason) VALUES ('Doctor''s choice -  Failed Consultation');
+INSERT INTO billing.lu_reasons_not_billed (reason) VALUES ('Oversea''s Vistor - Not Insured');
+INSERT INTO billing.lu_reasons_not_billed (reason) VALUES ('Relative Attended in Lieu of Patient');
+INSERT INTO billing.lu_reasons_not_billed (reason) VALUES ('Patient Did Not Attend');
+INSERT INTO billing.lu_reasons_not_billed (reason) VALUES ('Appointment Slot Comment');
+INSERT INTO billing.lu_reasons_not_billed (reason) VALUES ('Patient Name Entered In Error');
 
 alter table clerical.data_patients add column nursing_home_resident boolean default false;
 comment on column clerical.data_patients.nursing_home_resident is

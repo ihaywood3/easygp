@@ -18,6 +18,22 @@ CREATE SCHEMA admin;
 ALTER SCHEMA admin OWNER TO easygp;
 
 --
+-- Name: billing; Type: SCHEMA; Schema: -; Owner: easygp
+--
+
+CREATE SCHEMA billing;
+
+
+ALTER SCHEMA billing OWNER TO easygp;
+
+--
+-- Name: SCHEMA billing; Type: COMMENT; Schema: -; Owner: easygp
+--
+
+COMMENT ON SCHEMA billing IS 'Contains anything to do with billing or receiving payments for the patient services';
+
+
+--
 -- Name: blobs; Type: SCHEMA; Schema: -; Owner: easygp
 --
 
@@ -490,7 +506,7 @@ begin
   select into script_no authority_script_number from
 clin_prescribing.authority_script_number where fk_staff = $1 limit 1;
   if not found then -- doctor has never done an Authority script on this system
-    select into script_no prescriber_number from admin.staff where  pk = $1;
+    select into script_no n.prescriber_number from admin.staff s, contacts.data_numbers n where  s.pk = $1 and s.fk_person = n.fk_person limit 1;
     if not found then
       raise exception 'no such staff member';
     end if;
@@ -636,7 +652,7 @@ ALTER FUNCTION public.age_display(interval) OWNER TO easygp;
 CREATE FUNCTION invoice_received(integer) RETURNS money
     LANGUAGE sql
     AS $_$
-    select sum(amount) from clerical.payments_received where fk_invoice=$1;$_$;
+    select sum(amount) from billing.payments_received where fk_invoice=$1;$_$;
 
 
 ALTER FUNCTION public.invoice_received(integer) OWNER TO easygp;
@@ -648,7 +664,7 @@ ALTER FUNCTION public.invoice_received(integer) OWNER TO easygp;
 CREATE FUNCTION invoice_total(integer) RETURNS money
     LANGUAGE sql
     AS $_$
-    select sum(patient_charge) from clerical.items_billed where fk_invoice=$1; $_$;
+   select sum(amount) from billing.items_billed where fk_invoice=$1; $_$;
 
 
 ALTER FUNCTION public.invoice_total(integer) OWNER TO easygp;
@@ -1520,7 +1536,8 @@ CREATE TABLE data_numbers (
     fk_person integer NOT NULL,
     fk_branch integer,
     provider_number text NOT NULL,
-    prescriber_number text
+    prescriber_number text,
+    australian_business_number text
 );
 
 
@@ -1613,6 +1630,458 @@ CREATE VIEW vwstafftoolbarbuttons AS
 
 
 ALTER TABLE admin.vwstafftoolbarbuttons OWNER TO easygp;
+
+SET search_path = billing, pg_catalog;
+
+--
+-- Name: fee_schedule; Type: TABLE; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE fee_schedule (
+    pk integer NOT NULL,
+    item text,
+    mbs_item text,
+    user_item text,
+    ama_item text,
+    descriptor text NOT NULL,
+    ceased_date date,
+    "group" text,
+    derived_fee text,
+    descriptor_brief text,
+    gst_rate integer DEFAULT 0,
+    percentage_fee_rule boolean DEFAULT false,
+    CONSTRAINT schedule_check CHECK ((((NOT (mbs_item IS NULL)) OR (NOT (ama_item IS NULL))) OR (NOT (user_item IS NULL))))
+);
+
+
+ALTER TABLE billing.fee_schedule OWNER TO easygp;
+
+--
+-- Name: TABLE fee_schedule; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON TABLE fee_schedule IS 'the Schedule of Fees this may be medicare benefit schedule or added by the user';
+
+
+--
+-- Name: COLUMN fee_schedule.mbs_item; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON COLUMN fee_schedule.mbs_item IS 'the item number in the Medicare Benefits Schedule or user schedule, NULL only if only appears on AMA Schedule';
+
+
+--
+-- Name: COLUMN fee_schedule.user_item; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON COLUMN fee_schedule.user_item IS 'if the item is defined by the user';
+
+
+--
+-- Name: COLUMN fee_schedule.ama_item; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON COLUMN fee_schedule.ama_item IS 'the item number in the AMA version of the schedule, if used, otherwise NULL';
+
+
+--
+-- Name: COLUMN fee_schedule.descriptor_brief; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON COLUMN fee_schedule.descriptor_brief IS 'a brief description of a long descriptor';
+
+
+--
+-- Name: COLUMN fee_schedule.gst_rate; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON COLUMN fee_schedule.gst_rate IS 'the goods and services tax rate';
+
+
+--
+-- Name: fee_schedule_pk_seq; Type: SEQUENCE; Schema: billing; Owner: easygp
+--
+
+CREATE SEQUENCE fee_schedule_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE billing.fee_schedule_pk_seq OWNER TO easygp;
+
+--
+-- Name: fee_schedule_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
+--
+
+ALTER SEQUENCE fee_schedule_pk_seq OWNED BY fee_schedule.pk;
+
+
+--
+-- Name: invoices; Type: TABLE; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE invoices (
+    pk integer NOT NULL,
+    fk_staff_invoicing integer NOT NULL,
+    date_printed timestamp without time zone,
+    notes text,
+    fk_staff_provided_service integer NOT NULL,
+    fk_patient integer,
+    date_invoiced timestamp without time zone DEFAULT now() NOT NULL,
+    paid boolean DEFAULT false NOT NULL
+);
+
+
+ALTER TABLE billing.invoices OWNER TO easygp;
+
+--
+-- Name: TABLE invoices; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON TABLE invoices IS 'any invoices generated';
+
+
+--
+-- Name: COLUMN invoices.fk_staff_invoicing; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON COLUMN invoices.fk_staff_invoicing IS 'the staff member raising the invoice';
+
+
+--
+-- Name: COLUMN invoices.fk_staff_provided_service; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON COLUMN invoices.fk_staff_provided_service IS 'the staff member who provider the service on which the invoice is based';
+
+
+--
+-- Name: invoices_pk_seq; Type: SEQUENCE; Schema: billing; Owner: easygp
+--
+
+CREATE SEQUENCE invoices_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE billing.invoices_pk_seq OWNER TO easygp;
+
+--
+-- Name: invoices_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
+--
+
+ALTER SEQUENCE invoices_pk_seq OWNED BY invoices.pk;
+
+
+--
+-- Name: items_billed; Type: TABLE; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE items_billed (
+    pk integer NOT NULL,
+    fk_fee_schedule integer NOT NULL,
+    amount money NOT NULL,
+    fk_invoice integer NOT NULL,
+    fk_lu_billing_type integer NOT NULL
+);
+
+
+ALTER TABLE billing.items_billed OWNER TO easygp;
+
+--
+-- Name: TABLE items_billed; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON TABLE items_billed IS 'contains all the items as per shedule billed on the invoice';
+
+
+--
+-- Name: items_billed_pk_seq; Type: SEQUENCE; Schema: billing; Owner: easygp
+--
+
+CREATE SEQUENCE items_billed_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE billing.items_billed_pk_seq OWNER TO easygp;
+
+--
+-- Name: items_billed_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
+--
+
+ALTER SEQUENCE items_billed_pk_seq OWNED BY items_billed.pk;
+
+
+--
+-- Name: lu_billing_type; Type: TABLE; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE lu_billing_type (
+    pk integer NOT NULL,
+    type text NOT NULL
+);
+
+
+ALTER TABLE billing.lu_billing_type OWNER TO easygp;
+
+--
+-- Name: TABLE lu_billing_type; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON TABLE lu_billing_type IS 'the various types of billing eg AMA, Schedule Fee, Private etc.';
+
+
+--
+-- Name: lu_billing_type_pk_seq; Type: SEQUENCE; Schema: billing; Owner: easygp
+--
+
+CREATE SEQUENCE lu_billing_type_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE billing.lu_billing_type_pk_seq OWNER TO easygp;
+
+--
+-- Name: lu_billing_type_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
+--
+
+ALTER SEQUENCE lu_billing_type_pk_seq OWNED BY lu_billing_type.pk;
+
+
+--
+-- Name: lu_default_billing_level; Type: TABLE; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE lu_default_billing_level (
+    pk integer NOT NULL,
+    level text NOT NULL
+);
+
+
+ALTER TABLE billing.lu_default_billing_level OWNER TO easygp;
+
+--
+-- Name: TABLE lu_default_billing_level; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON TABLE lu_default_billing_level IS ' the default level of billing that a practice decides to give to a patient/client
+ eg bulk bill (either medicare or veterans) private or concession of some type';
+
+
+--
+-- Name: lu_default_billing_level_pk_seq; Type: SEQUENCE; Schema: billing; Owner: easygp
+--
+
+CREATE SEQUENCE lu_default_billing_level_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE billing.lu_default_billing_level_pk_seq OWNER TO easygp;
+
+--
+-- Name: lu_default_billing_level_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
+--
+
+ALTER SEQUENCE lu_default_billing_level_pk_seq OWNED BY lu_default_billing_level.pk;
+
+
+--
+-- Name: lu_invoice_comments; Type: TABLE; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE lu_invoice_comments (
+    pk integer NOT NULL,
+    comment text NOT NULL
+);
+
+
+ALTER TABLE billing.lu_invoice_comments OWNER TO easygp;
+
+--
+-- Name: TABLE lu_invoice_comments; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON TABLE lu_invoice_comments IS 'Comments added to the invoice e.g ''not usual aftercare''';
+
+
+--
+-- Name: lu_invoice_comments_pk_seq; Type: SEQUENCE; Schema: billing; Owner: easygp
+--
+
+CREATE SEQUENCE lu_invoice_comments_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE billing.lu_invoice_comments_pk_seq OWNER TO easygp;
+
+--
+-- Name: lu_invoice_comments_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
+--
+
+ALTER SEQUENCE lu_invoice_comments_pk_seq OWNED BY lu_invoice_comments.pk;
+
+
+--
+-- Name: lu_payment_method; Type: TABLE; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE lu_payment_method (
+    pk integer NOT NULL,
+    method text NOT NULL
+);
+
+
+ALTER TABLE billing.lu_payment_method OWNER TO easygp;
+
+--
+-- Name: TABLE lu_payment_method; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON TABLE lu_payment_method IS 'the method of paying the invoice';
+
+
+--
+-- Name: lu_payment_method_pk_seq; Type: SEQUENCE; Schema: billing; Owner: easygp
+--
+
+CREATE SEQUENCE lu_payment_method_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE billing.lu_payment_method_pk_seq OWNER TO easygp;
+
+--
+-- Name: lu_payment_method_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
+--
+
+ALTER SEQUENCE lu_payment_method_pk_seq OWNED BY lu_payment_method.pk;
+
+
+--
+-- Name: payments_received; Type: TABLE; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE payments_received (
+    pk integer NOT NULL,
+    fk_invoice integer NOT NULL,
+    referent text,
+    amount money NOT NULL,
+    fk_lu_payment_method integer,
+    date_paid timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE billing.payments_received OWNER TO easygp;
+
+--
+-- Name: payments_received_pk_seq; Type: SEQUENCE; Schema: billing; Owner: easygp
+--
+
+CREATE SEQUENCE payments_received_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE billing.payments_received_pk_seq OWNER TO easygp;
+
+--
+-- Name: payments_received_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
+--
+
+ALTER SEQUENCE payments_received_pk_seq OWNED BY payments_received.pk;
+
+
+--
+-- Name: prices; Type: TABLE; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE prices (
+    pk integer NOT NULL,
+    fk_fee_schedule integer NOT NULL,
+    price money DEFAULT '$0.00'::money NOT NULL,
+    fk_lu_billing_type integer NOT NULL,
+    notes text
+);
+
+
+ALTER TABLE billing.prices OWNER TO easygp;
+
+--
+-- Name: COLUMN prices.price; Type: COMMENT; Schema: billing; Owner: easygp
+--
+
+COMMENT ON COLUMN prices.price IS 'the price to the patient';
+
+
+--
+-- Name: prices_pk_seq; Type: SEQUENCE; Schema: billing; Owner: easygp
+--
+
+CREATE SEQUENCE prices_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE billing.prices_pk_seq OWNER TO easygp;
+
+--
+-- Name: prices_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
+--
+
+ALTER SEQUENCE prices_pk_seq OWNED BY prices.pk;
+
+
+--
+-- Name: vwfees; Type: VIEW; Schema: billing; Owner: easygp
+--
+
+CREATE VIEW vwfees AS
+    SELECT prices.pk AS pk_view, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, fee_schedule.descriptor, fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule, fee_schedule.ceased_date, fee_schedule."group", fee_schedule.derived_fee, prices.fk_fee_schedule, prices.pk AS fk_price, prices.price, prices.fk_lu_billing_type, prices.notes, lu_billing_type.type AS fee_type FROM ((fee_schedule JOIN prices ON ((fee_schedule.pk = prices.fk_fee_schedule))) JOIN lu_billing_type ON ((prices.fk_lu_billing_type = lu_billing_type.pk))) ORDER BY (fee_schedule.mbs_item)::integer;
+
+
+ALTER TABLE billing.vwfees OWNER TO easygp;
+
+--
+-- Name: vwinvoices; Type: VIEW; Schema: billing; Owner: easygp
+--
+
+CREATE VIEW vwinvoices AS
+    SELECT invoices.pk AS pk_invoice, invoices.notes, invoices.fk_staff_invoicing, invoices.fk_patient, invoices.date_printed, invoices.date_invoiced, invoices.fk_staff_provided_service, public.invoice_total(invoices.pk) AS total, public.invoice_received(invoices.pk) AS paid FROM invoices;
+
+
+ALTER TABLE billing.vwinvoices OWNER TO easygp;
 
 SET search_path = blobs, pg_catalog;
 
@@ -2396,7 +2865,7 @@ CREATE TABLE data_patients (
     fk_person integer NOT NULL,
     fk_doctor integer,
     fk_next_of_kin integer,
-    fk_payer integer,
+    fk_payer_person integer,
     fk_family integer,
     medicare_number character varying(10),
     medicare_ref_number text,
@@ -2411,9 +2880,10 @@ CREATE TABLE data_patients (
     fk_lu_active_status integer,
     fk_lu_centrelink_card_type integer,
     fk_lu_aboriginality integer,
-    fk_lu_billing_type integer,
     fk_lu_private_health_fund integer,
-    private_insurance boolean
+    private_insurance boolean,
+    fk_lu_default_billing_level integer,
+    fk_payer_branch integer
 );
 
 
@@ -2449,10 +2919,10 @@ COMMENT ON COLUMN data_patients.fk_next_of_kin IS 'if not null points to person 
 
 
 --
--- Name: COLUMN data_patients.fk_payer; Type: COMMENT; Schema: clerical; Owner: easygp
+-- Name: COLUMN data_patients.fk_payer_person; Type: COMMENT; Schema: clerical; Owner: easygp
 --
 
-COMMENT ON COLUMN data_patients.fk_payer IS 'foreign key to data_patients ie he or she who pays the bill';
+COMMENT ON COLUMN data_patients.fk_payer_person IS 'if the patient does not pay, this is the key to contacts.persons table this could be another patient, or a non-patient in the persons table';
 
 
 --
@@ -2498,13 +2968,6 @@ COMMENT ON COLUMN data_patients.fk_lu_centrelink_card_type IS 'key to clerial.lu
 
 
 --
--- Name: COLUMN data_patients.fk_lu_billing_type; Type: COMMENT; Schema: clerical; Owner: easygp
---
-
-COMMENT ON COLUMN data_patients.fk_lu_billing_type IS 'the billing level eg 1 = standard';
-
-
---
 -- Name: COLUMN data_patients.fk_lu_private_health_fund; Type: COMMENT; Schema: clerical; Owner: easygp
 --
 
@@ -2516,6 +2979,20 @@ COMMENT ON COLUMN data_patients.fk_lu_private_health_fund IS 'foreign key to cle
 --
 
 COMMENT ON COLUMN data_patients.private_insurance IS 'boolean value if true the patient has private insurance';
+
+
+--
+-- Name: COLUMN data_patients.fk_lu_default_billing_level; Type: COMMENT; Schema: clerical; Owner: easygp
+--
+
+COMMENT ON COLUMN data_patients.fk_lu_default_billing_level IS 'the default billing level eg private';
+
+
+--
+-- Name: COLUMN data_patients.fk_payer_branch; Type: COMMENT; Schema: clerical; Owner: easygp
+--
+
+COMMENT ON COLUMN data_patients.fk_payer_branch IS 'if the patient does not pay, then the branch of the organisation in data_branches (e.g could be head office) is the payer';
 
 
 --
@@ -2695,81 +3172,6 @@ ALTER SEQUENCE inventory_pk_seq OWNED BY inventory.pk;
 
 
 --
--- Name: invoices; Type: TABLE; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE invoices (
-    pk integer NOT NULL,
-    fk_who_printed integer,
-    when_printed timestamp without time zone,
-    notes text,
-    fk_lu_billing_type integer NOT NULL,
-    fk_doctor_raising integer NOT NULL,
-    fk_patient integer NOT NULL,
-    raised timestamp without time zone DEFAULT now() NOT NULL,
-    paid boolean DEFAULT false NOT NULL
-);
-
-
-ALTER TABLE clerical.invoices OWNER TO easygp;
-
---
--- Name: invoices_pk_seq; Type: SEQUENCE; Schema: clerical; Owner: easygp
---
-
-CREATE SEQUENCE invoices_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE clerical.invoices_pk_seq OWNER TO easygp;
-
---
--- Name: invoices_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
---
-
-ALTER SEQUENCE invoices_pk_seq OWNED BY invoices.pk;
-
-
---
--- Name: items_billed; Type: TABLE; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE items_billed (
-    pk bigint NOT NULL,
-    fk_schedule integer NOT NULL,
-    patient_charge money NOT NULL,
-    fk_invoice integer NOT NULL
-);
-
-
-ALTER TABLE clerical.items_billed OWNER TO easygp;
-
---
--- Name: items_billed_pk_seq; Type: SEQUENCE; Schema: clerical; Owner: easygp
---
-
-CREATE SEQUENCE items_billed_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE clerical.items_billed_pk_seq OWNER TO easygp;
-
---
--- Name: items_billed_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
---
-
-ALTER SEQUENCE items_billed_pk_seq OWNED BY items_billed.pk;
-
-
---
 -- Name: lu_active_status; Type: TABLE; Schema: clerical; Owner: easygp; Tablespace: 
 --
 
@@ -2889,18 +3291,6 @@ ALTER TABLE clerical.lu_appointment_status_pk_seq OWNER TO easygp;
 
 ALTER SEQUENCE lu_appointment_status_pk_seq OWNED BY lu_appointment_status.pk;
 
-
---
--- Name: lu_billing_type; Type: TABLE; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE lu_billing_type (
-    name text NOT NULL,
-    pk integer NOT NULL
-);
-
-
-ALTER TABLE clerical.lu_billing_type OWNER TO easygp;
 
 --
 -- Name: lu_centrelink_card_type; Type: TABLE; Schema: clerical; Owner: easygp; Tablespace: 
@@ -3033,46 +3423,6 @@ ALTER SEQUENCE lu_inventory_items_pk_seq OWNED BY lu_inventory_items.pk;
 
 
 --
--- Name: lu_payment_method; Type: TABLE; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE lu_payment_method (
-    pk integer NOT NULL,
-    method text NOT NULL
-);
-
-
-ALTER TABLE clerical.lu_payment_method OWNER TO easygp;
-
---
--- Name: TABLE lu_payment_method; Type: COMMENT; Schema: clerical; Owner: easygp
---
-
-COMMENT ON TABLE lu_payment_method IS 'the method of paying the invoice';
-
-
---
--- Name: lu_payment_method_pk_seq; Type: SEQUENCE; Schema: clerical; Owner: easygp
---
-
-CREATE SEQUENCE lu_payment_method_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE clerical.lu_payment_method_pk_seq OWNER TO easygp;
-
---
--- Name: lu_payment_method_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
---
-
-ALTER SEQUENCE lu_payment_method_pk_seq OWNED BY lu_payment_method.pk;
-
-
---
 -- Name: lu_private_health_funds; Type: TABLE; Schema: clerical; Owner: easygp; Tablespace: 
 --
 
@@ -3193,140 +3543,6 @@ ALTER TABLE clerical.lu_veteran_card_type_pk_seq OWNER TO easygp;
 --
 
 ALTER SEQUENCE lu_veteran_card_type_pk_seq OWNED BY lu_veteran_card_type.pk;
-
-
---
--- Name: payments_received; Type: TABLE; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE payments_received (
-    pk bigint NOT NULL,
-    fk_invoice integer NOT NULL,
-    referent text,
-    amount money NOT NULL,
-    "when" timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
-ALTER TABLE clerical.payments_received OWNER TO easygp;
-
---
--- Name: payments_received_pk_seq; Type: SEQUENCE; Schema: clerical; Owner: easygp
---
-
-CREATE SEQUENCE payments_received_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE clerical.payments_received_pk_seq OWNER TO easygp;
-
---
--- Name: payments_received_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
---
-
-ALTER SEQUENCE payments_received_pk_seq OWNED BY payments_received.pk;
-
-
---
--- Name: prices; Type: TABLE; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE prices (
-    fk_schedule integer NOT NULL,
-    price money DEFAULT '$0.00'::money NOT NULL,
-    fk_lu_billing_type integer NOT NULL,
-    notes text
-);
-
-
-ALTER TABLE clerical.prices OWNER TO easygp;
-
---
--- Name: COLUMN prices.price; Type: COMMENT; Schema: clerical; Owner: easygp
---
-
-COMMENT ON COLUMN prices.price IS 'the price to the patient';
-
-
---
--- Name: schedule; Type: TABLE; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE schedule (
-    pk integer NOT NULL,
-    mbs_item text,
-    ama_item text,
-    descriptor text NOT NULL,
-    ceased_date date,
-    "group" text,
-    derived_fee text,
-    descriptor_brief text,
-    gst_rate integer DEFAULT 0,
-    percentage_fee_rule boolean DEFAULT false,
-    CONSTRAINT schedule_check CHECK (((NOT (mbs_item IS NULL)) OR (NOT (ama_item IS NULL))))
-);
-
-
-ALTER TABLE clerical.schedule OWNER TO easygp;
-
---
--- Name: TABLE schedule; Type: COMMENT; Schema: clerical; Owner: easygp
---
-
-COMMENT ON TABLE schedule IS 'the Schedule of Fees';
-
-
---
--- Name: COLUMN schedule.mbs_item; Type: COMMENT; Schema: clerical; Owner: easygp
---
-
-COMMENT ON COLUMN schedule.mbs_item IS 'the item number in the Medicare Benefits Schedule, NULL only if only appears on AMA Schedule';
-
-
---
--- Name: COLUMN schedule.ama_item; Type: COMMENT; Schema: clerical; Owner: easygp
---
-
-COMMENT ON COLUMN schedule.ama_item IS 'the item number in the AMA version of the schedule, if used, otherwise NULL';
-
-
---
--- Name: COLUMN schedule.descriptor_brief; Type: COMMENT; Schema: clerical; Owner: easygp
---
-
-COMMENT ON COLUMN schedule.descriptor_brief IS 'a brief description of a long descriptor';
-
-
---
--- Name: COLUMN schedule.gst_rate; Type: COMMENT; Schema: clerical; Owner: easygp
---
-
-COMMENT ON COLUMN schedule.gst_rate IS 'the goods and services tax rate';
-
-
---
--- Name: schedule_pk_seq; Type: SEQUENCE; Schema: clerical; Owner: easygp
---
-
-CREATE SEQUENCE schedule_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE clerical.schedule_pk_seq OWNER TO easygp;
-
---
--- Name: schedule_pk_seq; Type: SEQUENCE OWNED BY; Schema: clerical; Owner: easygp
---
-
-ALTER SEQUENCE schedule_pk_seq OWNED BY schedule.pk;
 
 
 --
@@ -3597,20 +3813,10 @@ ALTER SEQUENCE tasks_pk_seq OWNED BY tasks.pk;
 --
 
 CREATE VIEW vwappointments AS
-    SELECT bookings.pk, bookings.fk_patient, bookings.fk_staff, bookings.begin, bookings.duration, bookings.notes, bookings.fk_staff_booked, bookings.fk_clinic, bookings.fk_lu_appointment_icon, bookings.fk_lu_appointment_status, bookings.deleted, data_patients.fk_person, data_persons.firstname, data_persons.surname, data_persons.birthdate, lu_sex.sex, lu_title.title, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename, bookings.invoiced, bookings.did_not_attend FROM ((((bookings LEFT JOIN data_patients ON ((bookings.fk_patient = data_patients.pk))) LEFT JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) ORDER BY bookings.begin;
+    SELECT bookings.pk, bookings.fk_patient, bookings.fk_staff, bookings.begin, bookings.duration, bookings.notes, bookings.fk_staff_booked, bookings.fk_clinic, bookings.fk_lu_appointment_icon, bookings.fk_lu_appointment_status, bookings.deleted, data_patients.fk_person, data_patients.fk_doctor, data_patients.fk_lu_default_billing_level, data_patients.medicare_number, data_patients.medicare_ref_number, data_patients.medicare_expiry_date, lu_veteran_card_type.type AS veteran_card_type, data_patients.veteran_number, data_patients.veteran_specific_condition, data_patients.concession_card_number, data_patients.concession_card_expiry_date, lu_centrelink_card_type.type AS concession_card_type, lu_private_health_funds.fund, lu_default_billing_level.level AS billing_level, data_persons.firstname, data_persons.surname, data_persons.birthdate, lu_sex.sex, lu_title.title, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename, bookings.invoiced, bookings.did_not_attend FROM ((((((((bookings LEFT JOIN data_patients ON ((bookings.fk_patient = data_patients.pk))) LEFT JOIN lu_centrelink_card_type ON ((data_patients.fk_lu_centrelink_card_type = lu_centrelink_card_type.pk))) LEFT JOIN lu_private_health_funds ON ((data_patients.fk_lu_private_health_fund = lu_private_health_funds.pk))) LEFT JOIN lu_veteran_card_type ON ((data_patients.fk_lu_veteran_card_type = lu_veteran_card_type.pk))) LEFT JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN billing.lu_default_billing_level ON ((data_patients.fk_lu_default_billing_level = lu_default_billing_level.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) ORDER BY bookings.begin;
 
 
 ALTER TABLE clerical.vwappointments OWNER TO easygp;
-
---
--- Name: vwfees; Type: VIEW; Schema: clerical; Owner: easygp
---
-
-CREATE VIEW vwfees AS
-    SELECT schedule.pk, schedule.mbs_item, schedule.ama_item, schedule.descriptor, schedule.descriptor_brief, schedule.gst_rate, schedule.percentage_fee_rule, schedule.ceased_date, schedule."group", schedule.derived_fee, prices.fk_schedule, prices.price, prices.fk_lu_billing_type, prices.notes, lu_billing_type.name FROM ((schedule JOIN prices ON ((schedule.pk = prices.fk_schedule))) JOIN lu_billing_type ON ((prices.fk_lu_billing_type = lu_billing_type.pk)));
-
-
-ALTER TABLE clerical.vwfees OWNER TO easygp;
 
 --
 -- Name: vwinventory; Type: VIEW; Schema: clerical; Owner: easygp
@@ -3621,16 +3827,6 @@ CREATE VIEW vwinventory AS
 
 
 ALTER TABLE clerical.vwinventory OWNER TO easygp;
-
---
--- Name: vwinvoices; Type: VIEW; Schema: clerical; Owner: easygp
---
-
-CREATE VIEW vwinvoices AS
-    SELECT invoices.pk AS pk_invoice, invoices.notes, invoices.fk_lu_billing_type, invoices.fk_patient, invoices.when_printed, invoices.fk_who_printed, public.invoice_total(invoices.pk) AS total, public.invoice_received(invoices.pk) AS paid FROM invoices;
-
-
-ALTER TABLE clerical.vwinvoices OWNER TO easygp;
 
 SET search_path = common, pg_catalog;
 
@@ -3699,7 +3895,7 @@ ALTER TABLE contacts.links_persons_addresses OWNER TO easygp;
 --
 
 CREATE VIEW vwpatients AS
-    SELECT CASE WHEN (addresses.pk IS NULL) THEN (patients.pk || '-0'::text) ELSE ((patients.pk || '-'::text) || addresses.pk) END AS pk_view, patients.pk AS fk_patient, link_person_address.fk_address, patients.fk_person, (((title.title || ' '::text) || (persons.firstname || ' '::text)) || (persons.surname || ' '::text)) AS wholename, patients.fk_doctor, patients.fk_next_of_kin, patients.fk_payer, patients.fk_family, patients.medicare_number, patients.medicare_ref_number, patients.medicare_expiry_date, patients.veteran_number, patients.veteran_specific_condition, patients.concession_card_number, patients.concession_card_expiry_date, patients.memo AS patient_memo, patients.fk_legacy, patients.fk_lu_aboriginality, patients.fk_lu_veteran_card_type, patients.fk_lu_active_status, patients.fk_lu_centrelink_card_type, patients.fk_lu_billing_type, patients.fk_lu_private_health_fund, patients.private_insurance, lu_active_status.status AS active_status, lu_veteran_card_type.type AS veteran_card_type, lu_centrelink_card_type.type AS concession_card_type, lu_private_health_funds.fund, persons.firstname, persons.surname, persons.salutation, persons.birthdate, public.age_display(age((persons.birthdate)::timestamp with time zone)) AS age_display, date_part('year'::text, age((persons.birthdate)::timestamp with time zone)) AS age_numeric, persons.fk_ethnicity, persons.fk_language, persons.memo AS person_memo, persons.fk_marital, persons.fk_title, persons.fk_sex, persons.country_code AS country_birth_country_code, persons.fk_image, persons.retired, persons.fk_occupation, persons.deleted AS person_deleted, persons.deceased, persons.date_deceased, persons.language_problems, persons.surname_normalised, lu_aboriginality.aboriginality, country_birth.country AS country_birth, lu_ethnicity.ethnicity, lu_languages.language, lu_occupations.occupation, lu_marital.marital, title.title, lu_sex.sex, lu_sex.sex_text, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image, link_person_address.pk AS fk_link_persons_address, addresses.street1, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.geolocation, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, addresses.street2, address_country.country, link_person_address.deleted AS link_address_deleted, lu_address_types.type AS address_type, lu_towns.postcode, lu_towns.town, lu_towns.state, lu_billing_type.name AS billing_type FROM ((((((((((((((((((((clerical.data_patients patients JOIN clerical.lu_active_status lu_active_status ON ((patients.fk_lu_active_status = lu_active_status.pk))) LEFT JOIN clerical.lu_centrelink_card_type ON ((patients.fk_lu_centrelink_card_type = lu_centrelink_card_type.pk))) LEFT JOIN common.lu_aboriginality ON ((patients.fk_lu_aboriginality = lu_aboriginality.pk))) LEFT JOIN clerical.lu_veteran_card_type ON ((patients.fk_lu_veteran_card_type = lu_veteran_card_type.pk))) LEFT JOIN clerical.lu_private_health_funds ON ((patients.fk_lu_private_health_fund = lu_private_health_funds.pk))) LEFT JOIN clerical.lu_billing_type ON ((patients.fk_lu_billing_type = lu_billing_type.pk))) JOIN data_persons persons ON ((patients.fk_person = persons.pk))) LEFT JOIN common.lu_ethnicity ON ((persons.fk_ethnicity = lu_ethnicity.pk))) LEFT JOIN common.lu_languages ON ((persons.fk_language = lu_languages.pk))) LEFT JOIN common.lu_occupations ON ((persons.fk_occupation = lu_occupations.pk))) LEFT JOIN lu_marital ON ((persons.fk_marital = lu_marital.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN lu_sex ON ((persons.fk_sex = lu_sex.pk))) LEFT JOIN blobs.images images ON ((persons.fk_image = images.pk))) LEFT JOIN links_persons_addresses link_person_address ON ((persons.pk = link_person_address.fk_person))) LEFT JOIN data_addresses addresses ON ((link_person_address.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns ON ((addresses.fk_town = lu_towns.pk))) LEFT JOIN common.lu_countries country_birth ON ((persons.country_code = (country_birth.country_code)::text))) LEFT JOIN common.lu_countries address_country ON ((addresses.country_code = address_country.country_code)));
+    SELECT CASE WHEN (addresses.pk IS NULL) THEN (patients.pk || '-0'::text) ELSE ((patients.pk || '-'::text) || addresses.pk) END AS pk_view, patients.pk AS fk_patient, link_person_address.fk_address, patients.fk_person, (((title.title || ' '::text) || (persons.firstname || ' '::text)) || (persons.surname || ' '::text)) AS wholename, patients.fk_doctor, patients.fk_next_of_kin, patients.fk_payer_person, patients.fk_payer_branch, patients.fk_family, patients.medicare_number, patients.medicare_ref_number, patients.medicare_expiry_date, patients.veteran_number, patients.veteran_specific_condition, patients.concession_card_number, patients.concession_card_expiry_date, patients.memo AS patient_memo, patients.fk_legacy, patients.fk_lu_aboriginality, patients.fk_lu_veteran_card_type, patients.fk_lu_active_status, patients.fk_lu_centrelink_card_type, patients.fk_lu_private_health_fund, patients.private_insurance, lu_active_status.status AS active_status, lu_veteran_card_type.type AS veteran_card_type, lu_centrelink_card_type.type AS concession_card_type, lu_private_health_funds.fund, persons.firstname, persons.surname, persons.salutation, persons.birthdate, public.age_display(age((persons.birthdate)::timestamp with time zone)) AS age_display, date_part('year'::text, age((persons.birthdate)::timestamp with time zone)) AS age_numeric, persons.fk_ethnicity, persons.fk_language, persons.memo AS person_memo, persons.fk_marital, persons.fk_title, persons.fk_sex, persons.country_code AS country_birth_country_code, persons.fk_image, persons.retired, persons.fk_occupation, persons.deleted AS person_deleted, persons.deceased, persons.date_deceased, persons.language_problems, persons.surname_normalised, lu_aboriginality.aboriginality, country_birth.country AS country_birth, lu_ethnicity.ethnicity, lu_languages.language, lu_occupations.occupation, lu_marital.marital, title.title, lu_sex.sex, lu_sex.sex_text, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image, link_person_address.pk AS fk_link_persons_address, addresses.street1, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.geolocation, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, addresses.street2, address_country.country, link_person_address.deleted AS link_address_deleted, lu_address_types.type AS address_type, lu_towns.postcode, lu_towns.town, lu_towns.state, patients.fk_lu_default_billing_level, lu_default_billing_level.level AS billing_level FROM ((((((((((((((((((((clerical.data_patients patients JOIN clerical.lu_active_status lu_active_status ON ((patients.fk_lu_active_status = lu_active_status.pk))) LEFT JOIN clerical.lu_centrelink_card_type ON ((patients.fk_lu_centrelink_card_type = lu_centrelink_card_type.pk))) LEFT JOIN common.lu_aboriginality ON ((patients.fk_lu_aboriginality = lu_aboriginality.pk))) LEFT JOIN clerical.lu_veteran_card_type ON ((patients.fk_lu_veteran_card_type = lu_veteran_card_type.pk))) LEFT JOIN clerical.lu_private_health_funds ON ((patients.fk_lu_private_health_fund = lu_private_health_funds.pk))) LEFT JOIN billing.lu_default_billing_level ON ((patients.fk_lu_default_billing_level = lu_default_billing_level.pk))) JOIN data_persons persons ON ((patients.fk_person = persons.pk))) LEFT JOIN common.lu_ethnicity ON ((persons.fk_ethnicity = lu_ethnicity.pk))) LEFT JOIN common.lu_languages ON ((persons.fk_language = lu_languages.pk))) LEFT JOIN common.lu_occupations ON ((persons.fk_occupation = lu_occupations.pk))) LEFT JOIN lu_marital ON ((persons.fk_marital = lu_marital.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN lu_sex ON ((persons.fk_sex = lu_sex.pk))) LEFT JOIN blobs.images images ON ((persons.fk_image = images.pk))) LEFT JOIN links_persons_addresses link_person_address ON ((persons.pk = link_person_address.fk_person))) LEFT JOIN data_addresses addresses ON ((link_person_address.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns ON ((addresses.fk_town = lu_towns.pk))) LEFT JOIN common.lu_countries country_birth ON ((persons.country_code = (country_birth.country_code)::text))) LEFT JOIN common.lu_countries address_country ON ((addresses.country_code = address_country.country_code)));
 
 
 ALTER TABLE contacts.vwpatients OWNER TO easygp;
@@ -9848,7 +10044,7 @@ ALTER TABLE clin_recalls.vwreasons OWNER TO easygp;
 --
 
 CREATE VIEW vwrecallsdue AS
-    SELECT recalls.pk AS pk_recall, recalls.fk_consult, recalls.due, (recalls.due - date(now())) AS days_due, recalls.fk_reason, recalls.fk_contact_method, recalls.fk_urgency, recalls.fk_appointment_length, recalls.fk_staff, recalls.active, recalls.additional_text, recalls.deleted, recalls."interval", recalls.fk_interval_unit, recalls.fk_progressnote, recalls.fk_pasthistory, recalls.fk_sent, recalls.num_reminders, sent.latex, sent.date AS date_reminder_sent, lu_units.abbrev_text, vwpatients.fk_person, vwpatients.wholename, vwpatients.firstname, vwpatients.surname, vwpatients.salutation, vwpatients.birthdate, vwpatients.age_numeric, vwpatients.sex, vwpatients.title, vwpatients.street1, vwpatients.street2, vwpatients.town, vwpatients.state, vwpatients.postcode, vwpatients.language_problems, vwpatients.language, consult.fk_patient, vwstaff.firstname AS staff_to_see_firstname, vwstaff.surname AS staff_to_see_surname, vwstaff.wholename AS staff_to_see_wholename, vwstaff.title AS staff_to_see_title, lu_reasons.reason, lu_urgency.urgency, lu_contact_type.type AS contact_method, lu_appointment_length.length AS appointment_length, consult.consult_date, recalls.fk_template, lu_appointment_length1.length, lu_templates.name, lu_templates.template FROM (((((((((((recalls JOIN clin_consult.consult ON ((recalls.fk_consult = consult.pk))) JOIN contacts.vwpatients ON ((consult.fk_patient = vwpatients.fk_patient))) JOIN admin.vwstaff ON ((recalls.fk_staff = vwstaff.fk_staff))) JOIN lu_reasons ON ((recalls.fk_reason = lu_reasons.pk))) JOIN common.lu_urgency ON ((recalls.fk_urgency = lu_urgency.pk))) JOIN contacts.lu_contact_type ON ((recalls.fk_contact_method = lu_contact_type.pk))) JOIN common.lu_appointment_length ON ((recalls.fk_appointment_length = lu_appointment_length.pk))) LEFT JOIN common.lu_units ON ((recalls.fk_interval_unit = lu_units.pk))) LEFT JOIN lu_templates ON ((recalls.fk_template = lu_templates.pk))) LEFT JOIN common.lu_appointment_length lu_appointment_length1 ON ((lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk))) LEFT JOIN sent ON ((recalls.fk_sent = sent.pk))) WHERE (NOT recalls.deleted);
+    SELECT recalls.pk AS pk_recall, recalls.fk_consult, recalls.due, (recalls.due - date(now())) AS days_due, recalls.fk_reason, recalls.fk_contact_method, recalls.fk_urgency, recalls.fk_appointment_length, recalls.fk_staff, recalls.active, recalls.additional_text, recalls.deleted, recalls."interval", recalls.fk_interval_unit, recalls.fk_progressnote, recalls.fk_pasthistory, recalls.fk_sent, recalls.num_reminders, sent.latex, sent.date AS date_reminder_sent, lu_units.abbrev_text, vwpatients.fk_person, vwpatients.wholename, vwpatients.firstname, vwpatients.surname, vwpatients.salutation, vwpatients.birthdate, vwpatients.age_numeric, vwpatients.sex, vwpatients.title, vwpatients.street1, vwpatients.street2, vwpatients.town, vwpatients.state, vwpatients.postcode, vwpatients.language_problems, vwpatients.language, consult.fk_patient, vwstaff.firstname AS staff_to_see_firstname, vwstaff.surname AS staff_to_see_surname, vwstaff.wholename AS staff_to_see_wholename, vwstaff.title AS staff_to_see_title, lu_reasons.reason, lu_urgency.urgency, lu_contact_type.type AS contact_method, lu_appointment_length.length AS appointment_length, consult.consult_date, recalls.fk_template, lu_appointment_length1.length, lu_templates.name, lu_templates.template FROM (((((((((((recalls JOIN clin_consult.consult ON ((recalls.fk_consult = consult.pk))) JOIN contacts.vwpatients ON ((consult.fk_patient = vwpatients.fk_patient))) JOIN admin.vwstaff ON ((recalls.fk_staff = vwstaff.fk_staff))) JOIN lu_reasons ON ((recalls.fk_reason = lu_reasons.pk))) JOIN common.lu_urgency ON ((recalls.fk_urgency = lu_urgency.pk))) JOIN contacts.lu_contact_type ON ((recalls.fk_contact_method = lu_contact_type.pk))) JOIN common.lu_appointment_length ON ((recalls.fk_appointment_length = lu_appointment_length.pk))) LEFT JOIN common.lu_units ON ((recalls.fk_interval_unit = lu_units.pk))) LEFT JOIN lu_templates ON ((recalls.fk_template = lu_templates.pk))) LEFT JOIN common.lu_appointment_length lu_appointment_length1 ON ((lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk))) LEFT JOIN sent ON ((recalls.fk_sent = sent.pk))) WHERE (recalls.deleted = false) ORDER BY (recalls.due - date(now())), consult.fk_patient;
 
 
 ALTER TABLE clin_recalls.vwrecallsdue OWNER TO easygp;
@@ -9921,7 +10117,8 @@ ALTER SEQUENCE inclusions_pk_seq OWNED BY inclusions.pk;
 
 CREATE TABLE lu_type (
     pk integer NOT NULL,
-    type text NOT NULL
+    type text NOT NULL,
+    display boolean DEFAULT true
 );
 
 
@@ -9935,6 +10132,13 @@ COMMENT ON TABLE lu_type IS 'List of types of referral eg required by medicare s
   opinion
   ongoing management
   indefinate referral etc';
+
+
+--
+-- Name: COLUMN lu_type.display; Type: COMMENT; Schema: clin_referrals; Owner: easygp
+--
+
+COMMENT ON COLUMN lu_type.display IS 'when true, the column will be available on the combo list in the referral''s gui';
 
 
 --
@@ -9959,6 +10163,39 @@ ALTER SEQUENCE lu_type_pk_seq OWNED BY lu_type.pk;
 
 
 --
+-- Name: lu_urgency; Type: TABLE; Schema: clin_referrals; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE lu_urgency (
+    pk integer NOT NULL,
+    urgency text NOT NULL
+);
+
+
+ALTER TABLE clin_referrals.lu_urgency OWNER TO easygp;
+
+--
+-- Name: lu_urgency_pk_seq; Type: SEQUENCE; Schema: clin_referrals; Owner: easygp
+--
+
+CREATE SEQUENCE lu_urgency_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE clin_referrals.lu_urgency_pk_seq OWNER TO easygp;
+
+--
+-- Name: lu_urgency_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_referrals; Owner: easygp
+--
+
+ALTER SEQUENCE lu_urgency_pk_seq OWNED BY lu_urgency.pk;
+
+
+--
 -- Name: referrals; Type: TABLE; Schema: clin_referrals; Owner: easygp; Tablespace: 
 --
 
@@ -9979,7 +10216,9 @@ CREATE TABLE referrals (
     fk_progressnote integer,
     include_careplan boolean DEFAULT false,
     include_healthsummary boolean DEFAULT false,
-    copyto text
+    copyto text,
+    fk_lu_urgency integer DEFAULT 1,
+    letter_hl7 text
 );
 
 
@@ -10085,6 +10324,14 @@ COMMENT ON COLUMN referrals.copyto IS 'a Pipe delimated list of entities receivi
  e.g Mr Joe Blogs
      John Hunter hospital, Lookout Rd New Lambton Heights
      any free text or constructed text is acceptable';
+
+
+--
+-- Name: COLUMN referrals.letter_hl7; Type: COMMENT; Schema: clin_referrals; Owner: easygp
+--
+
+COMMENT ON COLUMN referrals.letter_hl7 IS ' the hl7 of the letter ** minus ** the inclusions OBX segments
+   the hl7 file sent can be ''re-constituted'' by accessing the referrals.inclusions table';
 
 
 --
@@ -10265,7 +10512,7 @@ ALTER TABLE clin_referrals.vwinclusions OWNER TO easygp;
 --
 
 CREATE VIEW vwreferrals AS
-    (SELECT DISTINCT referrals.pk AS pk_referral, referrals.date_referral, referrals.fk_consult, referrals.fk_person, referrals.fk_type, lu_type.type, referrals.tag, referrals.deleted, referrals.body_html, referrals.letter_html, referrals.fk_pasthistory, referrals.fk_progressnote, referrals.include_careplan, referrals.include_healthsummary, referrals.fk_branch, referrals.fk_employee, referrals.fk_address, referrals.copyto, vworganisationsemployees.street1, vworganisationsemployees.street2, vworganisationsemployees.town, vworganisationsemployees.state, vworganisationsemployees.postcode, vworganisationsemployees.organisation, vworganisationsemployees.branch, vworganisationsemployees.wholename, vworganisationsemployees.occupation, vworganisationsemployees.firstname, vworganisationsemployees.surname, vworganisationsemployees.salutation, vworganisationsemployees.sex, vworganisationsemployees.title, consult.consult_date, consult.fk_patient, consult.fk_staff, vwstaff.firstname AS staff_firstname, vwstaff.wholename AS staff_wholename, vwstaff.salutation AS staff_salutation, vwstaff.title AS staff_title, past_history.description, vworganisationsemployees.provider_number AS contact_provider_number FROM (((((referrals JOIN contacts.vworganisationsemployees ON (((referrals.fk_employee = vworganisationsemployees.fk_employee) AND (referrals.fk_branch = vworganisationsemployees.fk_branch)))) JOIN clin_consult.consult ON ((referrals.fk_consult = consult.pk))) JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN lu_type ON ((referrals.fk_type = lu_type.pk))) LEFT JOIN clin_history.past_history ON ((referrals.fk_pasthistory = past_history.pk))) UNION SELECT DISTINCT referrals.pk AS pk_referral, referrals.date_referral, referrals.fk_consult, referrals.fk_person, referrals.fk_type, lu_type.type, referrals.tag, referrals.deleted, referrals.body_html, referrals.letter_html, referrals.fk_pasthistory, referrals.fk_progressnote, referrals.include_careplan, referrals.include_healthsummary, referrals.fk_branch, referrals.fk_employee, referrals.fk_address, referrals.copyto, vwpersonsincludingpatients.street1, vwpersonsincludingpatients.street2, vwpersonsincludingpatients.town, vwpersonsincludingpatients.state, vwpersonsincludingpatients.postcode, NULL::text AS organisation, NULL::text AS branch, vwpersonsincludingpatients.wholename, NULL::text AS occupation, vwpersonsincludingpatients.firstname, vwpersonsincludingpatients.surname, vwpersonsincludingpatients.salutation, vwpersonsincludingpatients.sex, vwpersonsincludingpatients.title, consult.consult_date, consult.fk_patient, consult.fk_staff, vwstaff.firstname AS staff_firstname, vwstaff.wholename AS staff_wholename, vwstaff.salutation AS staff_salutation, vwstaff.title AS staff_title, past_history.description, NULL::text AS contact_provider_number FROM (((((referrals LEFT JOIN contacts.vwpersonsincludingpatients ON (((referrals.fk_person = vwpersonsincludingpatients.fk_person) AND (referrals.fk_address = vwpersonsincludingpatients.fk_address)))) JOIN clin_consult.consult ON ((referrals.fk_consult = consult.pk))) JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN lu_type ON ((referrals.fk_type = lu_type.pk))) LEFT JOIN clin_history.past_history ON ((referrals.fk_pasthistory = past_history.pk))) WHERE ((referrals.fk_branch IS NULL) AND (referrals.fk_employee IS NULL))) UNION SELECT DISTINCT referrals.pk AS pk_referral, referrals.date_referral, referrals.fk_consult, referrals.fk_person, referrals.fk_type, lu_type.type, referrals.tag, referrals.deleted, referrals.body_html, referrals.letter_html, referrals.fk_pasthistory, referrals.fk_progressnote, referrals.include_careplan, referrals.include_healthsummary, referrals.fk_branch, referrals.fk_employee, referrals.fk_address, referrals.copyto, vworganisationsemployees.street1, vworganisationsemployees.street2, vworganisationsemployees.town, vworganisationsemployees.state, vworganisationsemployees.postcode, vworganisationsemployees.organisation, vworganisationsemployees.branch, NULL::text AS wholename, NULL::text AS occupation, NULL::text AS firstname, NULL::text AS surname, NULL::text AS salutation, NULL::text AS sex, NULL::text AS title, consult.consult_date, consult.fk_patient, consult.fk_staff, vwstaff.firstname AS staff_firstname, vwstaff.wholename AS staff_wholename, vwstaff.salutation AS staff_salutation, vwstaff.title AS staff_title, past_history.description, NULL::text AS contact_provider_number FROM (((((referrals JOIN contacts.vworganisationsemployees ON ((referrals.fk_branch = vworganisationsemployees.fk_branch))) JOIN clin_consult.consult ON ((referrals.fk_consult = consult.pk))) JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN lu_type ON ((referrals.fk_type = lu_type.pk))) LEFT JOIN clin_history.past_history ON ((referrals.fk_pasthistory = past_history.pk))) WHERE (referrals.fk_person IS NULL);
+    (SELECT DISTINCT referrals.pk AS pk_referral, referrals.date_referral, referrals.fk_consult, referrals.fk_person, referrals.fk_type, lu_type.type, referrals.tag, referrals.deleted, referrals.body_html, referrals.letter_html, referrals.letter_hl7, referrals.fk_pasthistory, referrals.fk_progressnote, referrals.include_careplan, referrals.include_healthsummary, referrals.fk_branch, referrals.fk_employee, referrals.fk_address, referrals.copyto, referrals.fk_lu_urgency, lu_urgency.urgency, vworganisationsemployees.street1, vworganisationsemployees.street2, vworganisationsemployees.town, vworganisationsemployees.state, vworganisationsemployees.postcode, vworganisationsemployees.organisation, vworganisationsemployees.branch, vworganisationsemployees.wholename, vworganisationsemployees.occupation, vworganisationsemployees.firstname, vworganisationsemployees.surname, vworganisationsemployees.salutation, vworganisationsemployees.sex, vworganisationsemployees.title, consult.consult_date, consult.fk_patient, consult.fk_staff, vwstaff.firstname AS staff_firstname, vwstaff.wholename AS staff_wholename, vwstaff.salutation AS staff_salutation, vwstaff.title AS staff_title, past_history.description, vworganisationsemployees.provider_number AS contact_provider_number FROM ((((((referrals JOIN contacts.vworganisationsemployees ON (((referrals.fk_employee = vworganisationsemployees.fk_employee) AND (referrals.fk_branch = vworganisationsemployees.fk_branch)))) JOIN clin_consult.consult ON ((referrals.fk_consult = consult.pk))) JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN lu_type ON ((referrals.fk_type = lu_type.pk))) LEFT JOIN clin_history.past_history ON ((referrals.fk_pasthistory = past_history.pk))) JOIN lu_urgency ON ((referrals.fk_lu_urgency = lu_urgency.pk))) UNION SELECT DISTINCT referrals.pk AS pk_referral, referrals.date_referral, referrals.fk_consult, referrals.fk_person, referrals.fk_type, lu_type.type, referrals.tag, referrals.deleted, referrals.body_html, referrals.letter_html, referrals.letter_hl7, referrals.fk_pasthistory, referrals.fk_progressnote, referrals.include_careplan, referrals.include_healthsummary, referrals.fk_branch, referrals.fk_employee, referrals.fk_address, referrals.copyto, referrals.fk_lu_urgency, lu_urgency.urgency, vwpersonsincludingpatients.street1, vwpersonsincludingpatients.street2, vwpersonsincludingpatients.town, vwpersonsincludingpatients.state, vwpersonsincludingpatients.postcode, NULL::text AS organisation, NULL::text AS branch, vwpersonsincludingpatients.wholename, NULL::text AS occupation, vwpersonsincludingpatients.firstname, vwpersonsincludingpatients.surname, vwpersonsincludingpatients.salutation, vwpersonsincludingpatients.sex, vwpersonsincludingpatients.title, consult.consult_date, consult.fk_patient, consult.fk_staff, vwstaff.firstname AS staff_firstname, vwstaff.wholename AS staff_wholename, vwstaff.salutation AS staff_salutation, vwstaff.title AS staff_title, past_history.description, NULL::text AS contact_provider_number FROM ((((((referrals LEFT JOIN contacts.vwpersonsincludingpatients ON (((referrals.fk_person = vwpersonsincludingpatients.fk_person) AND (referrals.fk_address = vwpersonsincludingpatients.fk_address)))) JOIN clin_consult.consult ON ((referrals.fk_consult = consult.pk))) JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN lu_type ON ((referrals.fk_type = lu_type.pk))) LEFT JOIN clin_history.past_history ON ((referrals.fk_pasthistory = past_history.pk))) JOIN lu_urgency ON ((referrals.fk_lu_urgency = lu_urgency.pk))) WHERE ((referrals.fk_branch IS NULL) AND (referrals.fk_employee IS NULL))) UNION SELECT DISTINCT referrals.pk AS pk_referral, referrals.date_referral, referrals.fk_consult, referrals.fk_person, referrals.fk_type, lu_type.type, referrals.tag, referrals.deleted, referrals.body_html, referrals.letter_html, referrals.letter_hl7, referrals.fk_pasthistory, referrals.fk_progressnote, referrals.include_careplan, referrals.include_healthsummary, referrals.fk_branch, referrals.fk_employee, referrals.fk_address, referrals.copyto, referrals.fk_lu_urgency, lu_urgency.urgency, vworganisationsemployees.street1, vworganisationsemployees.street2, vworganisationsemployees.town, vworganisationsemployees.state, vworganisationsemployees.postcode, vworganisationsemployees.organisation, vworganisationsemployees.branch, NULL::text AS wholename, NULL::text AS occupation, NULL::text AS firstname, NULL::text AS surname, NULL::text AS salutation, NULL::text AS sex, NULL::text AS title, consult.consult_date, consult.fk_patient, consult.fk_staff, vwstaff.firstname AS staff_firstname, vwstaff.wholename AS staff_wholename, vwstaff.salutation AS staff_salutation, vwstaff.title AS staff_title, past_history.description, NULL::text AS contact_provider_number FROM ((((((referrals JOIN contacts.vworganisationsemployees ON ((referrals.fk_branch = vworganisationsemployees.fk_branch))) JOIN clin_consult.consult ON ((referrals.fk_consult = consult.pk))) JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN lu_type ON ((referrals.fk_type = lu_type.pk))) JOIN lu_urgency ON ((referrals.fk_lu_urgency = lu_urgency.pk))) LEFT JOIN clin_history.past_history ON ((referrals.fk_pasthistory = past_history.pk))) WHERE (referrals.fk_person IS NULL);
 
 
 ALTER TABLE clin_referrals.vwreferrals OWNER TO easygp;
@@ -11293,7 +11540,7 @@ ALTER TABLE documents.vwsendingentities OWNER TO easygp;
 --
 
 CREATE VIEW vwdocuments AS
-    SELECT documents.pk AS pk_document, documents.source_file, documents.fk_sending_entity, documents.imported_time, documents.date_requested, documents.date_created, documents.fk_patient, documents.fk_staff_filed_document, documents.originator, documents.originator_reference, documents.copy_to, documents.provider_of_service_reference, documents.internal_reference, documents.copies_to, documents.fk_staff_destination, documents.comment_on_document, documents.patient_access, documents.concluded, documents.deleted, documents.fk_lu_urgency, documents.tag, documents.tag_user, documents.md5sum, documents.html, documents.fk_unmatched_staff, documents.fk_referral, documents.fk_request, documents.fk_unmatched_patient, documents.fk_lu_display_as, documents.fk_lu_request_type, lu_request_type.type AS request_type, vwsendingentities.fk_lu_request_type AS sending_entity_fk_lu_request_type, vwsendingentities.request_type AS sending_entity_request_type, vwsendingentities.style, vwsendingentities.message_type, vwsendingentities.message_version, vwsendingentities.msh_sending_entity, vwsendingentities.msh_transmitting_entity, vwsendingentities.fk_lu_message_display_style, vwsendingentities.fk_branch AS fk_sender_branch, vwsendingentities.fk_employee AS fk_employee_branch, vwsendingentities.fk_person AS fk_sender_person, vwsendingentities.fk_lu_message_standard, vwsendingentities.exclude_ft_report, vwsendingentities.abnormals_foreground_color, vwsendingentities.abnormals_background_color, vwsendingentities.exclude_pit, vwsendingentities.person_occupation, vwsendingentities.organisation, vwsendingentities.organisation_category, vwpatients.fk_person AS patient_fk_person, vwpatients.firstname AS patient_firstname, vwpatients.surname AS patient_surname, vwpatients.birthdate AS patient_birthdate, vwpatients.sex AS patient_sex, vwpatients.age_numeric AS patient_age, vwpatients.title AS patient_title, vwpatients.street1 AS patient_street1, vwpatients.street2 AS patient_street2, vwpatients.town AS patient_town, vwpatients.state AS patient_state, vwpatients.postcode AS patient_postcode, vwstaff.wholename AS staff_destination_wholename, vwstaff.title AS staff_destination_title, unmatched_patients.surname AS unmatched_patient_surname, unmatched_patients.firstname AS unmatched_patient_firstname, unmatched_patients.birthdate AS unmatched_patient_birthdate, unmatched_patients.sex AS unmatched_patient_sex, unmatched_patients.title AS unmatched_patient_title, unmatched_patients.street AS unmatched_patient_street, unmatched_patients.town AS unmatched_patient_town, unmatched_patients.postcode AS unmatched_patient_postcode, unmatched_patients.state AS unmatched_patient_state, unmatched_staff.surname AS unmatched_staff_surname, unmatched_staff.firstname AS unmatched_staff_firstname, unmatched_staff.title AS unmatched_staff_title, unmatched_staff.provider_number AS unmatched_staff_provider_number, documents.incoming_referral FROM ((((((documents JOIN vwsendingentities ON ((documents.fk_sending_entity = vwsendingentities.pk_sending_entities))) LEFT JOIN clin_requests.lu_request_type ON ((documents.fk_lu_request_type = lu_request_type.pk))) LEFT JOIN contacts.vwpatients ON ((documents.fk_patient = vwpatients.fk_patient))) LEFT JOIN admin.vwstaff ON ((documents.fk_staff_destination = vwstaff.fk_staff))) LEFT JOIN unmatched_patients ON ((documents.fk_unmatched_patient = unmatched_patients.pk))) LEFT JOIN unmatched_staff ON ((documents.fk_unmatched_staff = unmatched_staff.pk)));
+    SELECT documents.pk AS pk_document, documents.source_file, documents.fk_sending_entity, documents.imported_time, documents.date_requested, documents.date_created, documents.fk_patient, documents.fk_staff_filed_document, documents.originator, documents.originator_reference, documents.copy_to, documents.provider_of_service_reference, documents.internal_reference, documents.copies_to, documents.fk_staff_destination, documents.comment_on_document, documents.patient_access, documents.concluded, documents.deleted, documents.fk_lu_urgency, documents.tag, documents.tag_user, documents.md5sum, documents.html, documents.fk_unmatched_staff, documents.fk_referral, documents.fk_request, documents.fk_unmatched_patient, documents.fk_lu_display_as, documents.fk_lu_request_type, lu_request_type.type AS request_type, vwsendingentities.fk_lu_request_type AS sending_entity_fk_lu_request_type, vwsendingentities.request_type AS sending_entity_request_type, vwsendingentities.style, vwsendingentities.message_type, vwsendingentities.message_version, vwsendingentities.msh_sending_entity, vwsendingentities.msh_transmitting_entity, vwsendingentities.fk_lu_message_display_style, vwsendingentities.fk_branch AS fk_sender_branch, vwsendingentities.fk_employee AS fk_employee_branch, vwsendingentities.fk_person AS fk_sender_person, vwsendingentities.fk_lu_message_standard, vwsendingentities.exclude_ft_report, vwsendingentities.abnormals_foreground_color, vwsendingentities.abnormals_background_color, vwsendingentities.exclude_pit, vwsendingentities.person_occupation, vwsendingentities.organisation, vwsendingentities.organisation_category, vwpatients.fk_person AS patient_fk_person, vwpatients.firstname AS patient_firstname, vwpatients.surname AS patient_surname, vwpatients.birthdate AS patient_birthdate, vwpatients.sex AS patient_sex, vwpatients.age_numeric AS patient_age, vwpatients.title AS patient_title, vwpatients.street1 AS patient_street1, vwpatients.street2 AS patient_street2, vwpatients.town AS patient_town, vwpatients.state AS patient_state, vwpatients.postcode AS patient_postcode, vwstaff.wholename AS staff_destination_wholename, vwstaff.title AS staff_destination_title, unmatched_patients.surname AS unmatched_patient_surname, unmatched_patients.firstname AS unmatched_patient_firstname, unmatched_patients.birthdate AS unmatched_patient_birthdate, unmatched_patients.sex AS unmatched_patient_sex, unmatched_patients.title AS unmatched_patient_title, unmatched_patients.street AS unmatched_patient_street, unmatched_patients.town AS unmatched_patient_town, unmatched_patients.postcode AS unmatched_patient_postcode, unmatched_patients.state AS unmatched_patient_state, unmatched_staff.surname AS unmatched_staff_surname, unmatched_staff.firstname AS unmatched_staff_firstname, unmatched_staff.title AS unmatched_staff_title, unmatched_staff.provider_number AS unmatched_staff_provider_number FROM ((((((documents JOIN vwsendingentities ON ((documents.fk_sending_entity = vwsendingentities.pk_sending_entities))) LEFT JOIN clin_requests.lu_request_type ON ((documents.fk_lu_request_type = lu_request_type.pk))) LEFT JOIN contacts.vwpatients ON ((documents.fk_patient = vwpatients.fk_patient))) LEFT JOIN admin.vwstaff ON ((documents.fk_staff_destination = vwstaff.fk_staff))) LEFT JOIN unmatched_patients ON ((documents.fk_unmatched_patient = unmatched_patients.pk))) LEFT JOIN unmatched_staff ON ((documents.fk_unmatched_staff = unmatched_staff.pk))) ORDER BY documents.fk_patient, documents.date_created;
 
 
 ALTER TABLE documents.vwdocuments OWNER TO easygp;
@@ -15751,6 +15998,71 @@ ALTER TABLE ONLY staff ALTER COLUMN pk SET DEFAULT nextval('staff_pk_seq'::regcl
 ALTER TABLE ONLY staff_clinical_toolbar ALTER COLUMN pk SET DEFAULT nextval('staff_clinical_toolbar_pk_seq'::regclass);
 
 
+SET search_path = billing, pg_catalog;
+
+--
+-- Name: pk; Type: DEFAULT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY fee_schedule ALTER COLUMN pk SET DEFAULT nextval('fee_schedule_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY invoices ALTER COLUMN pk SET DEFAULT nextval('invoices_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY items_billed ALTER COLUMN pk SET DEFAULT nextval('items_billed_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY lu_billing_type ALTER COLUMN pk SET DEFAULT nextval('lu_billing_type_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY lu_default_billing_level ALTER COLUMN pk SET DEFAULT nextval('lu_default_billing_level_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY lu_invoice_comments ALTER COLUMN pk SET DEFAULT nextval('lu_invoice_comments_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY lu_payment_method ALTER COLUMN pk SET DEFAULT nextval('lu_payment_method_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY payments_received ALTER COLUMN pk SET DEFAULT nextval('payments_received_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY prices ALTER COLUMN pk SET DEFAULT nextval('prices_pk_seq'::regclass);
+
+
 SET search_path = blobs, pg_catalog;
 
 --
@@ -15873,20 +16185,6 @@ ALTER TABLE ONLY inventory_locations ALTER COLUMN pk SET DEFAULT nextval('invent
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: easygp
 --
 
-ALTER TABLE ONLY invoices ALTER COLUMN pk SET DEFAULT nextval('invoices_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: clerical; Owner: easygp
---
-
-ALTER TABLE ONLY items_billed ALTER COLUMN pk SET DEFAULT nextval('items_billed_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: clerical; Owner: easygp
---
-
 ALTER TABLE ONLY lu_active_status ALTER COLUMN pk SET DEFAULT nextval('lu_active_status_pk_seq'::regclass);
 
 
@@ -15929,13 +16227,6 @@ ALTER TABLE ONLY lu_inventory_items ALTER COLUMN pk SET DEFAULT nextval('lu_inve
 -- Name: pk; Type: DEFAULT; Schema: clerical; Owner: easygp
 --
 
-ALTER TABLE ONLY lu_payment_method ALTER COLUMN pk SET DEFAULT nextval('lu_payment_method_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: clerical; Owner: easygp
---
-
 ALTER TABLE ONLY lu_private_health_funds ALTER COLUMN pk SET DEFAULT nextval('lu_private_health_funds_pk_seq'::regclass);
 
 
@@ -15951,20 +16242,6 @@ ALTER TABLE ONLY lu_task_types ALTER COLUMN pk SET DEFAULT nextval('lu_task_type
 --
 
 ALTER TABLE ONLY lu_veteran_card_type ALTER COLUMN pk SET DEFAULT nextval('lu_veteran_card_type_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: clerical; Owner: easygp
---
-
-ALTER TABLE ONLY payments_received ALTER COLUMN pk SET DEFAULT nextval('payments_received_pk_seq'::regclass);
-
-
---
--- Name: pk; Type: DEFAULT; Schema: clerical; Owner: easygp
---
-
-ALTER TABLE ONLY schedule ALTER COLUMN pk SET DEFAULT nextval('schedule_pk_seq'::regclass);
 
 
 --
@@ -16649,6 +16926,13 @@ ALTER TABLE ONLY inclusions ALTER COLUMN pk SET DEFAULT nextval('inclusions_pk_s
 --
 
 ALTER TABLE ONLY lu_type ALTER COLUMN pk SET DEFAULT nextval('lu_type_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: clin_referrals; Owner: easygp
+--
+
+ALTER TABLE ONLY lu_urgency ALTER COLUMN pk SET DEFAULT nextval('lu_urgency_pk_seq'::regclass);
 
 
 --
@@ -17483,6 +17767,104 @@ ALTER TABLE ONLY staff
     ADD CONSTRAINT staff_pkey PRIMARY KEY (pk);
 
 
+SET search_path = billing, pg_catalog;
+
+--
+-- Name: fee_schedule_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY fee_schedule
+    ADD CONSTRAINT fee_schedule_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: invoices_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY invoices
+    ADD CONSTRAINT invoices_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: items_billed_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY items_billed
+    ADD CONSTRAINT items_billed_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: lu_billing_type_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_billing_type
+    ADD CONSTRAINT lu_billing_type_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: lu_billing_type_type_key; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_billing_type
+    ADD CONSTRAINT lu_billing_type_type_key UNIQUE (type);
+
+
+--
+-- Name: lu_default_billing_level_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_default_billing_level
+    ADD CONSTRAINT lu_default_billing_level_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: lu_invoice_comments_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_invoice_comments
+    ADD CONSTRAINT lu_invoice_comments_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: lu_payment_method_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_payment_method
+    ADD CONSTRAINT lu_payment_method_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: payments_received_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY payments_received
+    ADD CONSTRAINT payments_received_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: prices_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY prices
+    ADD CONSTRAINT prices_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: schedule_ama_item_key; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY fee_schedule
+    ADD CONSTRAINT schedule_ama_item_key UNIQUE (ama_item);
+
+
+--
+-- Name: schedule_item_key; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY fee_schedule
+    ADD CONSTRAINT schedule_item_key UNIQUE (item);
+
+
 SET search_path = blobs, pg_catalog;
 
 --
@@ -17626,22 +18008,6 @@ ALTER TABLE ONLY inventory
 
 
 --
--- Name: invoices_pkey; Type: CONSTRAINT; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY invoices
-    ADD CONSTRAINT invoices_pkey PRIMARY KEY (pk);
-
-
---
--- Name: items_billed_pkey; Type: CONSTRAINT; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY items_billed
-    ADD CONSTRAINT items_billed_pkey PRIMARY KEY (pk);
-
-
---
 -- Name: lu_active_status_pkey; Type: CONSTRAINT; Schema: clerical; Owner: easygp; Tablespace: 
 --
 
@@ -17663,22 +18029,6 @@ ALTER TABLE ONLY lu_appointment_icons
 
 ALTER TABLE ONLY lu_appointment_status
     ADD CONSTRAINT lu_appointment_status_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_billing_type_name_key; Type: CONSTRAINT; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_billing_type
-    ADD CONSTRAINT lu_billing_type_name_key UNIQUE (name);
-
-
---
--- Name: lu_billing_type_pkey; Type: CONSTRAINT; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_billing_type
-    ADD CONSTRAINT lu_billing_type_pkey PRIMARY KEY (pk);
 
 
 --
@@ -17706,14 +18056,6 @@ ALTER TABLE ONLY lu_inventory_items
 
 
 --
--- Name: lu_payment_method_pkey; Type: CONSTRAINT; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_payment_method
-    ADD CONSTRAINT lu_payment_method_pkey PRIMARY KEY (pk);
-
-
---
 -- Name: lu_private_health_funds_pkey; Type: CONSTRAINT; Schema: clerical; Owner: easygp; Tablespace: 
 --
 
@@ -17735,38 +18077,6 @@ ALTER TABLE ONLY lu_task_types
 
 ALTER TABLE ONLY lu_veteran_card_type
     ADD CONSTRAINT lu_veteran_card_type_pkey PRIMARY KEY (pk);
-
-
---
--- Name: payments_received_pkey; Type: CONSTRAINT; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY payments_received
-    ADD CONSTRAINT payments_received_pkey PRIMARY KEY (pk);
-
-
---
--- Name: schedule_ama_item_key; Type: CONSTRAINT; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY schedule
-    ADD CONSTRAINT schedule_ama_item_key UNIQUE (ama_item);
-
-
---
--- Name: schedule_mbs_item_key; Type: CONSTRAINT; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY schedule
-    ADD CONSTRAINT schedule_mbs_item_key UNIQUE (mbs_item);
-
-
---
--- Name: schedule_pkey; Type: CONSTRAINT; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY schedule
-    ADD CONSTRAINT schedule_pkey PRIMARY KEY (pk);
 
 
 --
@@ -18537,6 +18847,14 @@ ALTER TABLE ONLY inclusions
 
 ALTER TABLE ONLY lu_type
     ADD CONSTRAINT lu_type_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: lu_urgency_pkey; Type: CONSTRAINT; Schema: clin_referrals; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_urgency
+    ADD CONSTRAINT lu_urgency_pkey PRIMARY KEY (pk);
 
 
 --
@@ -19661,6 +19979,80 @@ CREATE INDEX staff_destination_idx ON documents USING btree (fk_staff_destinatio
 CREATE INDEX tag_idx ON documents USING btree (tag);
 
 
+SET search_path = billing, pg_catalog;
+
+--
+-- Name: invoices_fk_doctor_raising_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY invoices
+    ADD CONSTRAINT invoices_fk_doctor_raising_fkey FOREIGN KEY (fk_staff_provided_service) REFERENCES admin.staff(pk);
+
+
+--
+-- Name: invoices_fk_patient_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY invoices
+    ADD CONSTRAINT invoices_fk_patient_fkey FOREIGN KEY (fk_patient) REFERENCES clerical.data_patients(pk);
+
+
+--
+-- Name: invoices_fk_staff_invoicing_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY invoices
+    ADD CONSTRAINT invoices_fk_staff_invoicing_fkey FOREIGN KEY (fk_staff_invoicing) REFERENCES admin.staff(pk);
+
+
+--
+-- Name: items_billed_fk_fee_schedule_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY items_billed
+    ADD CONSTRAINT items_billed_fk_fee_schedule_fkey FOREIGN KEY (fk_fee_schedule) REFERENCES fee_schedule(pk);
+
+
+--
+-- Name: items_billed_fk_invoice_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY items_billed
+    ADD CONSTRAINT items_billed_fk_invoice_fkey FOREIGN KEY (fk_invoice) REFERENCES invoices(pk);
+
+
+--
+-- Name: payments_received_fk_invoice_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY payments_received
+    ADD CONSTRAINT payments_received_fk_invoice_fkey FOREIGN KEY (fk_invoice) REFERENCES invoices(pk);
+
+
+--
+-- Name: prices_fk_fee_schedule_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY prices
+    ADD CONSTRAINT prices_fk_fee_schedule_fkey FOREIGN KEY (fk_fee_schedule) REFERENCES fee_schedule(pk);
+
+
+--
+-- Name: prices_fk_lu_billing_type_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY prices
+    ADD CONSTRAINT prices_fk_lu_billing_type_fkey FOREIGN KEY (fk_lu_billing_type) REFERENCES lu_billing_type(pk);
+
+
+--
+-- Name: prices_fk_lu_billing_type_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY items_billed
+    ADD CONSTRAINT prices_fk_lu_billing_type_fkey FOREIGN KEY (fk_lu_billing_type) REFERENCES lu_billing_type(pk);
+
+
 SET search_path = clerical, pg_catalog;
 
 --
@@ -19765,78 +20157,6 @@ ALTER TABLE ONLY inventory_lent
 
 ALTER TABLE ONLY inventory_locations
     ADD CONSTRAINT inventory_locations_fk_clinic_fkey FOREIGN KEY (fk_clinic) REFERENCES admin.clinics(pk);
-
-
---
--- Name: invoices_fk_doctor_raising_fkey; Type: FK CONSTRAINT; Schema: clerical; Owner: easygp
---
-
-ALTER TABLE ONLY invoices
-    ADD CONSTRAINT invoices_fk_doctor_raising_fkey FOREIGN KEY (fk_doctor_raising) REFERENCES admin.staff(pk);
-
-
---
--- Name: invoices_fk_lu_billing_type_fkey; Type: FK CONSTRAINT; Schema: clerical; Owner: easygp
---
-
-ALTER TABLE ONLY invoices
-    ADD CONSTRAINT invoices_fk_lu_billing_type_fkey FOREIGN KEY (fk_lu_billing_type) REFERENCES lu_billing_type(pk);
-
-
---
--- Name: invoices_fk_patient_fkey; Type: FK CONSTRAINT; Schema: clerical; Owner: easygp
---
-
-ALTER TABLE ONLY invoices
-    ADD CONSTRAINT invoices_fk_patient_fkey FOREIGN KEY (fk_patient) REFERENCES data_patients(pk);
-
-
---
--- Name: invoices_fk_who_printed_fkey; Type: FK CONSTRAINT; Schema: clerical; Owner: easygp
---
-
-ALTER TABLE ONLY invoices
-    ADD CONSTRAINT invoices_fk_who_printed_fkey FOREIGN KEY (fk_who_printed) REFERENCES admin.staff(pk);
-
-
---
--- Name: items_billed_fk_invoice_fkey; Type: FK CONSTRAINT; Schema: clerical; Owner: easygp
---
-
-ALTER TABLE ONLY items_billed
-    ADD CONSTRAINT items_billed_fk_invoice_fkey FOREIGN KEY (fk_invoice) REFERENCES invoices(pk);
-
-
---
--- Name: items_billed_fk_schedule_fkey; Type: FK CONSTRAINT; Schema: clerical; Owner: easygp
---
-
-ALTER TABLE ONLY items_billed
-    ADD CONSTRAINT items_billed_fk_schedule_fkey FOREIGN KEY (fk_schedule) REFERENCES schedule(pk);
-
-
---
--- Name: payments_received_fk_invoice_fkey; Type: FK CONSTRAINT; Schema: clerical; Owner: easygp
---
-
-ALTER TABLE ONLY payments_received
-    ADD CONSTRAINT payments_received_fk_invoice_fkey FOREIGN KEY (fk_invoice) REFERENCES invoices(pk);
-
-
---
--- Name: prices_fk_lu_billing_type_fkey; Type: FK CONSTRAINT; Schema: clerical; Owner: easygp
---
-
-ALTER TABLE ONLY prices
-    ADD CONSTRAINT prices_fk_lu_billing_type_fkey FOREIGN KEY (fk_lu_billing_type) REFERENCES lu_billing_type(pk);
-
-
---
--- Name: prices_fk_schedule_fkey; Type: FK CONSTRAINT; Schema: clerical; Owner: easygp
---
-
-ALTER TABLE ONLY prices
-    ADD CONSTRAINT prices_fk_schedule_fkey FOREIGN KEY (fk_schedule) REFERENCES schedule(pk);
 
 
 --
@@ -20168,6 +20488,16 @@ GRANT USAGE ON SCHEMA admin TO staff;
 
 
 --
+-- Name: billing; Type: ACL; Schema: -; Owner: easygp
+--
+
+REVOKE ALL ON SCHEMA billing FROM PUBLIC;
+REVOKE ALL ON SCHEMA billing FROM easygp;
+GRANT ALL ON SCHEMA billing TO easygp;
+GRANT USAGE ON SCHEMA billing TO staff;
+
+
+--
 -- Name: blobs; Type: ACL; Schema: -; Owner: easygp
 --
 
@@ -20447,6 +20777,30 @@ REVOKE ALL ON TABLE sessions FROM PUBLIC;
 REVOKE ALL ON TABLE sessions FROM easygp;
 GRANT ALL ON TABLE sessions TO easygp;
 GRANT ALL ON TABLE sessions TO staff;
+
+
+SET search_path = public, pg_catalog;
+
+--
+-- Name: invoice_received(integer); Type: ACL; Schema: public; Owner: easygp
+--
+
+REVOKE ALL ON FUNCTION invoice_received(integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION invoice_received(integer) FROM easygp;
+GRANT ALL ON FUNCTION invoice_received(integer) TO easygp;
+GRANT ALL ON FUNCTION invoice_received(integer) TO PUBLIC;
+GRANT ALL ON FUNCTION invoice_received(integer) TO staff;
+
+
+--
+-- Name: invoice_total(integer); Type: ACL; Schema: public; Owner: easygp
+--
+
+REVOKE ALL ON FUNCTION invoice_total(integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION invoice_total(integer) FROM easygp;
+GRANT ALL ON FUNCTION invoice_total(integer) TO easygp;
+GRANT ALL ON FUNCTION invoice_total(integer) TO PUBLIC;
+GRANT ALL ON FUNCTION invoice_total(integer) TO staff;
 
 
 SET search_path = admin, pg_catalog;
@@ -20817,6 +21171,118 @@ GRANT ALL ON TABLE vwstafftoolbarbuttons TO easygp;
 GRANT ALL ON TABLE vwstafftoolbarbuttons TO staff;
 
 
+SET search_path = billing, pg_catalog;
+
+--
+-- Name: fee_schedule; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON TABLE fee_schedule FROM PUBLIC;
+REVOKE ALL ON TABLE fee_schedule FROM easygp;
+GRANT ALL ON TABLE fee_schedule TO easygp;
+GRANT ALL ON TABLE fee_schedule TO staff;
+
+
+--
+-- Name: invoices; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON TABLE invoices FROM PUBLIC;
+REVOKE ALL ON TABLE invoices FROM easygp;
+GRANT ALL ON TABLE invoices TO easygp;
+GRANT ALL ON TABLE invoices TO staff;
+
+
+--
+-- Name: items_billed; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON TABLE items_billed FROM PUBLIC;
+REVOKE ALL ON TABLE items_billed FROM easygp;
+GRANT ALL ON TABLE items_billed TO easygp;
+GRANT ALL ON TABLE items_billed TO staff;
+
+
+--
+-- Name: lu_billing_type; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_billing_type FROM PUBLIC;
+REVOKE ALL ON TABLE lu_billing_type FROM easygp;
+GRANT ALL ON TABLE lu_billing_type TO easygp;
+GRANT ALL ON TABLE lu_billing_type TO staff;
+
+
+--
+-- Name: lu_default_billing_level; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_default_billing_level FROM PUBLIC;
+REVOKE ALL ON TABLE lu_default_billing_level FROM easygp;
+GRANT ALL ON TABLE lu_default_billing_level TO easygp;
+GRANT ALL ON TABLE lu_default_billing_level TO staff;
+
+
+--
+-- Name: lu_invoice_comments; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_invoice_comments FROM PUBLIC;
+REVOKE ALL ON TABLE lu_invoice_comments FROM easygp;
+GRANT ALL ON TABLE lu_invoice_comments TO easygp;
+GRANT ALL ON TABLE lu_invoice_comments TO staff;
+
+
+--
+-- Name: lu_payment_method; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_payment_method FROM PUBLIC;
+REVOKE ALL ON TABLE lu_payment_method FROM easygp;
+GRANT ALL ON TABLE lu_payment_method TO easygp;
+GRANT ALL ON TABLE lu_payment_method TO staff;
+
+
+--
+-- Name: payments_received; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON TABLE payments_received FROM PUBLIC;
+REVOKE ALL ON TABLE payments_received FROM easygp;
+GRANT ALL ON TABLE payments_received TO easygp;
+GRANT ALL ON TABLE payments_received TO staff;
+
+
+--
+-- Name: prices; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON TABLE prices FROM PUBLIC;
+REVOKE ALL ON TABLE prices FROM easygp;
+GRANT ALL ON TABLE prices TO easygp;
+GRANT ALL ON TABLE prices TO staff;
+
+
+--
+-- Name: vwfees; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON TABLE vwfees FROM PUBLIC;
+REVOKE ALL ON TABLE vwfees FROM easygp;
+GRANT ALL ON TABLE vwfees TO easygp;
+GRANT SELECT ON TABLE vwfees TO staff;
+
+
+--
+-- Name: vwinvoices; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON TABLE vwinvoices FROM PUBLIC;
+REVOKE ALL ON TABLE vwinvoices FROM easygp;
+GRANT ALL ON TABLE vwinvoices TO easygp;
+GRANT ALL ON TABLE vwinvoices TO staff;
+
+
 SET search_path = blobs, pg_catalog;
 
 --
@@ -21090,46 +21556,6 @@ GRANT ALL ON SEQUENCE inventory_pk_seq TO staff;
 
 
 --
--- Name: invoices; Type: ACL; Schema: clerical; Owner: easygp
---
-
-REVOKE ALL ON TABLE invoices FROM PUBLIC;
-REVOKE ALL ON TABLE invoices FROM easygp;
-GRANT ALL ON TABLE invoices TO easygp;
-GRANT ALL ON TABLE invoices TO staff;
-
-
---
--- Name: invoices_pk_seq; Type: ACL; Schema: clerical; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE invoices_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE invoices_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE invoices_pk_seq TO easygp;
-GRANT ALL ON SEQUENCE invoices_pk_seq TO staff;
-
-
---
--- Name: items_billed; Type: ACL; Schema: clerical; Owner: easygp
---
-
-REVOKE ALL ON TABLE items_billed FROM PUBLIC;
-REVOKE ALL ON TABLE items_billed FROM easygp;
-GRANT ALL ON TABLE items_billed TO easygp;
-GRANT ALL ON TABLE items_billed TO staff;
-
-
---
--- Name: items_billed_pk_seq; Type: ACL; Schema: clerical; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE items_billed_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE items_billed_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE items_billed_pk_seq TO easygp;
-GRANT ALL ON SEQUENCE items_billed_pk_seq TO staff;
-
-
---
 -- Name: lu_active_status; Type: ACL; Schema: clerical; Owner: easygp
 --
 
@@ -21187,16 +21613,6 @@ REVOKE ALL ON SEQUENCE lu_appointment_status_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_appointment_status_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_appointment_status_pk_seq TO easygp;
 GRANT ALL ON SEQUENCE lu_appointment_status_pk_seq TO staff;
-
-
---
--- Name: lu_billing_type; Type: ACL; Schema: clerical; Owner: easygp
---
-
-REVOKE ALL ON TABLE lu_billing_type FROM PUBLIC;
-REVOKE ALL ON TABLE lu_billing_type FROM easygp;
-GRANT ALL ON TABLE lu_billing_type TO easygp;
-GRANT SELECT ON TABLE lu_billing_type TO staff;
 
 
 --
@@ -21260,16 +21676,6 @@ GRANT ALL ON SEQUENCE lu_inventory_items_pk_seq TO staff;
 
 
 --
--- Name: lu_payment_method; Type: ACL; Schema: clerical; Owner: easygp
---
-
-REVOKE ALL ON TABLE lu_payment_method FROM PUBLIC;
-REVOKE ALL ON TABLE lu_payment_method FROM easygp;
-GRANT ALL ON TABLE lu_payment_method TO easygp;
-GRANT ALL ON TABLE lu_payment_method TO staff;
-
-
---
 -- Name: lu_private_health_funds; Type: ACL; Schema: clerical; Owner: easygp
 --
 
@@ -21327,56 +21733,6 @@ REVOKE ALL ON SEQUENCE lu_veteran_card_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_veteran_card_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_veteran_card_type_pk_seq TO easygp;
 GRANT ALL ON SEQUENCE lu_veteran_card_type_pk_seq TO staff;
-
-
---
--- Name: payments_received; Type: ACL; Schema: clerical; Owner: easygp
---
-
-REVOKE ALL ON TABLE payments_received FROM PUBLIC;
-REVOKE ALL ON TABLE payments_received FROM easygp;
-GRANT ALL ON TABLE payments_received TO easygp;
-GRANT ALL ON TABLE payments_received TO staff;
-
-
---
--- Name: payments_received_pk_seq; Type: ACL; Schema: clerical; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE payments_received_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE payments_received_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE payments_received_pk_seq TO easygp;
-GRANT ALL ON SEQUENCE payments_received_pk_seq TO staff;
-
-
---
--- Name: prices; Type: ACL; Schema: clerical; Owner: easygp
---
-
-REVOKE ALL ON TABLE prices FROM PUBLIC;
-REVOKE ALL ON TABLE prices FROM easygp;
-GRANT ALL ON TABLE prices TO easygp;
-GRANT ALL ON TABLE prices TO staff;
-
-
---
--- Name: schedule; Type: ACL; Schema: clerical; Owner: easygp
---
-
-REVOKE ALL ON TABLE schedule FROM PUBLIC;
-REVOKE ALL ON TABLE schedule FROM easygp;
-GRANT ALL ON TABLE schedule TO easygp;
-GRANT ALL ON TABLE schedule TO staff;
-
-
---
--- Name: schedule_pk_seq; Type: ACL; Schema: clerical; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE schedule_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE schedule_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE schedule_pk_seq TO easygp;
-GRANT ALL ON SEQUENCE schedule_pk_seq TO staff;
 
 
 --
@@ -21460,16 +21816,6 @@ GRANT ALL ON TABLE vwappointments TO staff;
 
 
 --
--- Name: vwfees; Type: ACL; Schema: clerical; Owner: easygp
---
-
-REVOKE ALL ON TABLE vwfees FROM PUBLIC;
-REVOKE ALL ON TABLE vwfees FROM easygp;
-GRANT ALL ON TABLE vwfees TO easygp;
-GRANT SELECT ON TABLE vwfees TO staff;
-
-
---
 -- Name: vwinventory; Type: ACL; Schema: clerical; Owner: easygp
 --
 
@@ -21477,16 +21823,6 @@ REVOKE ALL ON TABLE vwinventory FROM PUBLIC;
 REVOKE ALL ON TABLE vwinventory FROM easygp;
 GRANT ALL ON TABLE vwinventory TO easygp;
 GRANT ALL ON TABLE vwinventory TO staff;
-
-
---
--- Name: vwinvoices; Type: ACL; Schema: clerical; Owner: easygp
---
-
-REVOKE ALL ON TABLE vwinvoices FROM PUBLIC;
-REVOKE ALL ON TABLE vwinvoices FROM easygp;
-GRANT ALL ON TABLE vwinvoices TO easygp;
-GRANT ALL ON TABLE vwinvoices TO staff;
 
 
 SET search_path = common, pg_catalog;
@@ -21562,7 +21898,7 @@ GRANT SELECT ON TABLE vwtaskscomponents TO staff;
 REVOKE ALL ON TABLE vwtaskscomponentsandnotes FROM PUBLIC;
 REVOKE ALL ON TABLE vwtaskscomponentsandnotes FROM easygp;
 GRANT ALL ON TABLE vwtaskscomponentsandnotes TO easygp;
-GRANT ALL ON TABLE vwtaskscomponentsandnotes TO staff;
+GRANT SELECT ON TABLE vwtaskscomponentsandnotes TO staff;
 
 
 --
@@ -23748,7 +24084,7 @@ GRANT ALL ON TABLE vwreasons TO staff;
 REVOKE ALL ON TABLE vwrecallsdue FROM PUBLIC;
 REVOKE ALL ON TABLE vwrecallsdue FROM easygp;
 GRANT ALL ON TABLE vwrecallsdue TO easygp;
-GRANT SELECT ON TABLE vwrecallsdue TO staff;
+GRANT ALL ON TABLE vwrecallsdue TO staff;
 
 
 --
@@ -23781,6 +24117,16 @@ REVOKE ALL ON SEQUENCE lu_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_type_pk_seq TO easygp;
 GRANT USAGE ON SEQUENCE lu_type_pk_seq TO staff;
+
+
+--
+-- Name: lu_urgency; Type: ACL; Schema: clin_referrals; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_urgency FROM PUBLIC;
+REVOKE ALL ON TABLE lu_urgency FROM easygp;
+GRANT ALL ON TABLE lu_urgency TO easygp;
+GRANT ALL ON TABLE lu_urgency TO staff;
 
 
 --

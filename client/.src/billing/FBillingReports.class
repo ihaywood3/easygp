@@ -6,8 +6,9 @@ Private Report_Titles As Collection
 Private fk_report As Integer 'fixme changeme remove me only developmental
 
 Public Sub init(rt As Collection)
+   
    Report_Titles = rt   
-
+   
    With columnview1
       .Columns.Count = 10
       
@@ -27,9 +28,9 @@ End
 
 Public Sub Report_Show(col As Collection, Optional cal_date As Date = Now())
    
-     If col!report_title = "Day list" Then
-        Day_list_Show(cal_date)
-     Endif
+   If col!report_title = "Day List" Then
+      Day_list_Show(cal_date)
+   Endif
    
 End
 
@@ -60,11 +61,12 @@ Public Sub Day_list_Show(the_date As Date)
    Dim num_concession_card_healthcare As Integer
    Dim num_concession_card_seniors As Integer
    Dim num_private_patients_bulk_billed As Integer
-
+    
    Inc Application.Busy
    payment_methods = modBillingDBI.Payment_Methods_Get()
-  ' monies_received = modBillingDBI.Receipts_Get_For_Day(the_date)
-  monies_received = New Collection  
+   
+   ' monies_received = modBillingDBI.Receipts_Get_For_Day(the_date)
+   monies_received = New Collection  
    ' centrelink_card_types = modBillingDBI.Centrelink_Card_Types_Get() 'clerical.lu_centrelink_card_type
    visits = modBillingDBI.Day_List_Get(the_date, modDBConnect.currentUser!fk_branch, modDBConnect.currentUser!fk_staff)
    tlDaySummary.text = ""
@@ -75,67 +77,80 @@ Public Sub Day_list_Show(the_date As Date)
       Next
    End With
    For Each visit In visits
-      columnview1.Add(visit!pk_items_billed, 0)
-      If fk_Last_invoice <> visit!fk_invoice Then                                             'for each distinct invoice
-         If Not IsNull(visit!appointment_time) Then                                           'if exists, show appointment time
-            columnview1[visit!pk_items_billed][0] = Format(visit!appointment_time, "hh:nn")   ' eg. 09:00 FIXME PUT IN AM/PM
-         Else 
-            columnview1[visit!pk_items_billed][0] = ""                                        'this may not exist if billed without appointment in book  
-         Endif
-         columnview1[visit!pk_items_billed][1] = visit!patient_wholename
-         payer = ""
-         If Not IsNull(visit!fk_lu_bulk_billing_type) Then
-            If visit!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
-               Payer = "Medicare"
-               If Not IsNull(visit!fk_lu_centrelink_card_type) Then
-                  If visit!fk_lu_centrelink_card_type > 1 Then '1=none
-                     Inc num_visits_bb_have_concession_card
-                     Select Case visit!fk_lu_centrelink_card_type
-                        Case const.Centrelink_Concession_Card_Health_Care_Card
-                           Inc num_concession_card_healthcare
-                        Case const.Centrelink_concession_card_seniors_Health_Card
-                           Inc num_concession_card_seniors
-                        Case const.Centrelink_concession_card_pensioner_concession_card
-                           Inc num_concession_card_pensioner
-                     End Select
-                  End If
-               Else
-                  Inc num_visits_bb_no_concession_card
-               End If   
-            Else
-               Payer = "Veterans"
-               Inc num_visits_veteran
+      columnview1.Add(visit!pk_view, 0)
+      If IsNull(visit!fk_lu_reason_not_billed) Then                                         'if visit was billed
+         If fk_Last_invoice <> visit!fk_invoice Then                                        'for each distinct invoice
+            If Not IsNull(visit!appointment_date) Then                                      'if exists, show appointment time (always the first time slot
+               columnview1[visit!pk_view][0] = Format(visit!appointment_date, "hh:nn")             ' eg. 09:00 FIXME PUT IN AM/PM
             Endif
-         Else
-            Inc num_visits_private 
-         Endif
-         If payer = "" Then 
-            If IsNull(visit!fk_payer_person) And IsNull(visit!fk_payer_branch) Then 
-               payer = "Patient"
-            Else
-               If Not IsNull(visit!payer_organisation) Then
-                  payer = visit!payer_organisation128
+            columnview1[visit!pk_view][1] = visit!wholename
+            payer = ""
+            '------------------------------
+            'get some stats on bulk billing
+            '------------------------------
+            If Not IsNull(visit!fk_lu_bulk_billing_type) Then
+               payer = visit!bulk_billing_type                                               'bulk bill type medicare or veteran
+               If visit!fk_lu_bulk_billing_type = const.BulkBilling_Type_Medicare Then
+                  If Not IsNull(visit!fk_lu_centrelink_card_type) Then
+                     If visit!fk_lu_centrelink_card_type > 1 Then '1=none
+                        Inc num_visits_bb_have_concession_card
+                        Select Case visit!fk_lu_centrelink_card_type
+                           Case const.Centrelink_Concession_Card_Health_Care_Card
+                              Inc num_concession_card_healthcare
+                           Case const.Centrelink_concession_card_seniors_Health_Card
+                              Inc num_concession_card_seniors
+                           Case const.Centrelink_concession_card_pensioner_concession_card
+                              Inc num_concession_card_pensioner
+                        End Select
+                     End If
+                  Else
+                     Inc num_visits_bb_no_concession_card
+                  End If   
                Else
-                  payer = visit!payer_person_wholename
-               End If   
-            End If
-         End If   
-         columnview1[visit!pk_items_billed][2] = payer
-         fk_Last_invoice = visit!fk_invoice
-         Inc num_visits
-      Else                                                                                     
-         columnview1[visit!pk_items_billed][0] = ""                                          'suppress duplicates
-         columnview1[visit!pk_items_billed][1] = "" 
-         columnview1[visit!pk_items_billed][2] = ""
-      Endif
-      columnview1[visit!pk_items_billed][3] = Trim(visit!mbs_item & " " & visit!ama_item & " " & visit!user_item)
-      columnview1[visit!pk_items_billed][4] = visit!descriptor_brief
-      columnview1[visit!pk_items_billed][5] = visit!amount
-      If Not IsNull(visit!amount_gst) Then
-         columnview1[visit!pk_items_billed][6] = visit!amount_gst
+                  Payer = "Veterans"
+                  Inc num_visits_veteran
+               Endif
+            Else
+               Inc num_visits_private 
+            Endif
+            If payer = "" Then 
+               If IsNull(visit!fk_payer_person) And IsNull(visit!fk_payer_branch) Then 
+                  payer = "Patient"
+               Else
+                  payer = visit!account_to_name
+               End If
+            End If   
+            columnview1[visit!pk_view][2] = payer
+            fk_Last_invoice = visit!fk_invoice
+            Inc num_visits
+         Else                                                                                     
+            columnview1[visit!pk_view][0] = ""                                          'suppress duplicates
+            columnview1[visit!pk_view][1] = "" 
+            columnview1[visit!pk_view][2] = ""
+         Endif
+         columnview1[visit!pk_view][3] = visit!item 'coalesced ama_item,mbs_item, user_item
+         columnview1[visit!pk_view][4] = visit!descriptor_brief
+         columnview1[visit!pk_view][5] = visit!amount
+         If Not IsNull(visit!amount_gst) Then
+            columnview1[visit!pk_view][6] = visit!amount_gst
+         Else
+            columnview1[visit!pk_view][6] = "$0.0"
+         Endif
+          columnview1[visit!pk_view][7] = visit!total_paid
+        ' If visit!paid = True Then 'will only be TRUE if total bill paid
+         '     columnview1[visit!pk_view][9].text = "$0.00"
+       '  Else
+             columnview1[visit!pk_view][9] = modUtil.Money_Format(modUtil.MoneyToFloat(visit!total_bill) - modUtil.MoneyToFloat(visit!total_paid))
+       '  Endif
       Else
-         columnview1[visit!pk_items_billed][6] = "$0.0"
-      Endif
+         columnview1[visit!pk_view][0] = Format(visit!appointment_date, "hh:nn") 
+          columnview1[visit!pk_view][1] = visit!wholename
+          columnview1[visit!pk_view][2] = "-"
+          columnview1[visit!pk_view][3] = "n/a"
+          columnview1[visit!pk_view][5] = "$0.00"
+         columnview1[visit!pk_view][4] = visit!reason_not_billed
+      End If 
+    
       ' If Not IsNull(visit!total_paid) Then
       '    'get payment method.
       '    payments_for_invoice = modBillingDBI.Invoice_Payments_For_Get(visit!fk_invoice)
@@ -146,7 +161,7 @@ Public Sub Day_list_Show(the_date As Date)
       '          If payment_count = 1 Then 
       '             columnview1.Add(visit!pk_items_billed & "-" & Str(payment_count), 0)
       '             columnview1[visit!pk_items_billed & "-" & Str(payment_count)][0] = "" 
-      '             columnview1[visit!pk_items_billed & "-" & Str(payment_count)][7] = payment_for_invoice!amount_paid 
+      '             columnview1visit!reason[visit!pk_items_billed & "-" & Str(payment_count)][7] = payment_for_invoice!amount_paid 
       '             columnview1[visit!pk_items_billed & "-" & Str(payment_count)][8] = payment_for_invoice!payment_method   
       '          Else
       '             columnview1[visit!pk_items_billed][7] = payment_for_invoice!amount_paid      
@@ -207,11 +222,7 @@ Public Sub Day_list_Show(the_date As Date)
    
 End
 
-Public Sub DateChooser1_Activate()
-   
-   Day_list_Show(Last.value)
-   
-End
+
 
 Public Function Day_List_Receipts_Summary_HTML() As String
    

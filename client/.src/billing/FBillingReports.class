@@ -5,6 +5,7 @@ Private visit As Collection
 Private Report_Titles As Collection
 Private fk_report As Integer 'fixme changeme remove me only developmental
 Private fk_staff As Integer
+Private form_html_viewer As FHtmlViewer
 
 Public Sub init(rt As Collection)
    
@@ -24,12 +25,18 @@ Public Sub init(rt As Collection)
       .Columns[8].text = "Paid By"
       .Columns[9].text = "Owing"
    End With   
+   With form_html_viewer = New FHtmlViewer(VBox_HTML_Viewer)
+      .tbWebBrowserZoomIn.Visible = True  
+      .tbWebBrowserPrint.Visible = True   
+      .tbWebBrowserZoomOut.Visible = True 
+   End With
    
 End
 
 Public Sub Report_Show(col As Collection, Optional cal_date As Date = Now(), Optional fk_staff As Integer = 0)
    
    If col!report_title = "Day List" Then
+      lblReportHeading.text = "Day List Summary"
       fk_staff = fk_staff
       Day_list_Show(cal_date, fk_staff)
    Endif
@@ -63,7 +70,8 @@ Public Sub Day_list_Show(the_date As Date, fk_staff As Integer)
    Dim num_concession_card_healthcare As Integer
    Dim num_concession_card_seniors As Integer
    Dim num_private_patients_bulk_billed As Integer
-    
+   Dim sHtml As String
+   
    Inc Application.Busy
    payment_methods = modBillingDBI.Payment_Methods_Get()
    
@@ -71,7 +79,7 @@ Public Sub Day_list_Show(the_date As Date, fk_staff As Integer)
    monies_received = New Collection  
    ' centrelink_card_types = modBillingDBI.Centrelink_Card_Types_Get() 'clerical.lu_centrelink_card_type
    visits = modBillingDBI.Day_List_Get(the_date, modDBConnect.currentUser!fk_branch, fk_staff)
-   tlDaySummary.text = ""
+   sHtml = ""
    With columnview1
       .Clear 
       For x = 0 To .Columns.Count - 1
@@ -138,103 +146,72 @@ Public Sub Day_list_Show(the_date As Date, fk_staff As Integer)
          Else
             columnview1[visit!pk_view][6] = "$0.0"
          Endif
-          columnview1[visit!pk_view][7] = visit!total_paid
-        ' If visit!paid = True Then 'will only be TRUE if total bill paid
+         columnview1[visit!pk_view][7] = visit!payment_amount 'fixme take into account multiple payments
+         columnview1[visit!pk_view][8] = visit!payment_method
+         ' If visit!paid = True Then 'will only be TRUE if total bill paid
          '     columnview1[visit!pk_view][9].text = "$0.00"
-       '  Else
-             columnview1[visit!pk_view][9] = modUtil.Money_Format(modUtil.MoneyToFloat(visit!total_bill) - modUtil.MoneyToFloat(visit!total_paid))
-       '  Endif
+         '  Else
+         If IsNull(visit!payment_amount) Then
+             columnview1[visit!pk_view][9] = visit!amount
+         Else
+            columnview1[visit!pk_view][9] = modUtil.Money_Format(modUtil.MoneyToFloat(visit!amount) - modUtil.MoneyToFloat(visit!payment_amount))
+         Endif
+         'columnview1[visit!pk_view][9] = modUtil.Money_Format(modUtil.MoneyToFloat(visit!total_bill) - modUtil.MoneyToFloat(visit!total_paid))
+         '  Endif
       Else
          columnview1[visit!pk_view][0] = Format(visit!appointment_date, "hh:nn") 
-          columnview1[visit!pk_view][1] = visit!wholename
-          columnview1[visit!pk_view][2] = "-"
-          columnview1[visit!pk_view][3] = "n/a"
-          columnview1[visit!pk_view][5] = "$0.00"
+         columnview1[visit!pk_view][1] = visit!wholename
+         columnview1[visit!pk_view][2] = "-"
+         columnview1[visit!pk_view][3] = "n/a"
+         columnview1[visit!pk_view][5] = "$0.00"
          columnview1[visit!pk_view][4] = visit!reason_not_billed
       End If 
-    
-      ' If Not IsNull(visit!total_paid) Then
-      '    'get payment method.
-      '    payments_for_invoice = modBillingDBI.Invoice_Payments_For_Get(visit!fk_invoice)
-      '   payment_for_invoice = New Collection 
-      '    If payments_for_invoice.count Then 'BUG HERE SHOULD NEVER HAPPEN IE INPUT/sve BUG has created this
-      '       payment_count = 0
-      '       For Each payment_for_invoice In payments_for_invoice
-      '          If payment_count = 1 Then 
-      '             columnview1.Add(visit!pk_items_billed & "-" & Str(payment_count), 0)
-      '             columnview1[visit!pk_items_billed & "-" & Str(payment_count)][0] = "" 
-      '             columnview1visit!reason[visit!pk_items_billed & "-" & Str(payment_count)][7] = payment_for_invoice!amount_paid 
-      '             columnview1[visit!pk_items_billed & "-" & Str(payment_count)][8] = payment_for_invoice!payment_method   
-      '          Else
-      '             columnview1[visit!pk_items_billed][7] = payment_for_invoice!amount_paid      
-      '             columnview1[visit!pk_items_billed][8] = payment_for_invoice!payment_method 
-      '          End If  
-      '          Inc payment_count
-      '       Next   
-      '    End If   
-      ' Else
-      '    columnview1[visit!pk_items_billed][7] = "$0.0"
-      ' End If
-      '  If Not IsNull(visit!payment_method) Then
-      
-      ' Endif
-      ' payment_totals[visit!fk_lu_payment_method] = payment_totals[visit!fk_lu_payment_method] + CFloat(Replace(visit!amount_paid, "$", ""))
-      ' running_total += modUtil.MoneyToFloat(visit!amount_paid)
-      ' If visit!invoice_paid = True Then
-      '    If Not IsNull(visit!item_billed_amount_gst) Then128
-      '       running_total_gst += modUtil.MoneyToFloat(visit!item_billed_amount_gst)
-      '    Endif
-      ' Endif
-      
    Next
    '----------------------------
    'construct a bit of a summary
    '----------------------------
-   tlDaySummary.text &= "<P><B>Summary</B><P>"
-   tlDaySummary.text &= "<B>Patients seen:</B>" & num_visits & "<BR>" 'put reason patient not seen and print under here
-   tlDaySummary.text &= "<B>Patients billed:</B>" & num_visits & "<BR>"
-   tlDaySummary.text &= "<B>Bulk Billed on concession card:</B>" & num_visits_bb_have_concession_card & "<BR>"
+   sHtml = "<HTML><BODY>"
+   sHtml &= "<P><B>Summary</B><P>"
+   sHtml &= "<B>Patients seen:</B>" & num_visits & "<BR>" 'put reason patient not seen and print under here
+   sHtml &= "<B>Patients billed:</B>" & num_visits & "<BR>"
+   sHtml &= "<B>Bulk Billed on concession card:</B>" & num_visits_bb_have_concession_card & "<BR>"
    If num_concession_card_healthcare Then
-      tlDaySummary.text &= "- Health care card holders:" & Str(num_concession_card_healthcare) & "<BR>"
+      sHtml &= "- Health care card holders:" & Str(num_concession_card_healthcare) & "<BR>"
    Endif
    If num_concession_card_pensioner Then
-      tlDaySummary.text &= "- Pensioner card holders:" & Str(num_concession_card_pensioner) & "<BR>"
+      sHtml &= "- Pensioner card holders:" & Str(num_concession_card_pensioner) & "<BR>"
    Endif
    If num_concession_card_seniors Then
-      tlDaySummary.text &= "- Sensiors health card total:" & Str(num_concession_card_seniors) & "<BR>"
+      sHtml &= "- Sensiors health card total:" & Str(num_concession_card_seniors) & "<BR>"
    Endif
-   tlDaySummary.text &= "<B>Bulk Billed no concession card:</B>" & num_visits_bb_no_concession_card & "<BR>" & "<BR>"
-   tlDaySummary.text &= "<B>Bulk Billed Veteran:</B>" & num_visits_veteran & "<BR>"
-   tlDaySummary.text &= "<B>Private Billing:</B>" & num_visits_private & "<BR>"
-   tlDaySummary.text = Replace(tlDaySummary.text, "%seen%", Str(num_visits))
-   tlDaySummary.text = Replace(tlDaySummary.text, "%billed%", Str(num_visits))
-   '   tlDaySummary.text = Replace(tlDaySummary.text, "%seen%", num_visits)
-   tlDaySummary.text = Day_List_Receipts_Summary_HTML()
-   tlDaySummary.text = Replace(tlDaySummary.text, "%seen%", Str(num_visits))
-   tlDaySummary.text = Replace(tlDaySummary.text, "%billed%", Str(num_visits))
-   tlDaySummary.text = Replace(tlDaySummary.text, "%numHCC%", Str(num_concession_card_healthcare))
-   tlDaySummary.text = Replace(tlDaySummary.text, "%pensioner%", Str(num_concession_card_pensioner))
-   tlDaySummary.text = Replace(tlDaySummary.text, "%seniors%", Str(num_concession_card_seniors))
-   tlDaySummary.text = Replace(tlDaySummary.text, "%no-card%", Str(num_visits_bb_no_concession_card))
-   tlDaySummary.text = Replace(tlDaySummary.text, "%bbillmc%", Str(num_concession_card_seniors))
-   tlDaySummary.text = Replace(tlDaySummary.text, "%bbvet%", Str(num_visits_veteran))
-   tlDaySummary.text = Replace(tlDaySummary.text, "%privbill%", Str(num_visits_private))
-   webview1.HTML = tlDaySummary.text
+   sHtml &= "<B>Bulk Billed no concession card:</B>" & num_visits_bb_no_concession_card & "<BR>" & "<BR>"
+   sHtml &= "<B>Bulk Billed Veteran:</B>" & num_visits_veteran & "<BR>"
+   sHtml &= "<B>Private Billing:</B>" & num_visits_private & "<BR>"
+   sHtml = Replace(sHtml, "%seen%", Str(num_visits))
+   sHtml = Replace(sHtml, "%billed%", Str(num_visits))
+   '  sHtml = Replace(sHtml, "%seen%", num_visits)
+   sHtml = Day_List_Receipts_Summary_HTML()
+   sHtml = Replace(sHtml, "%seen%", Str(num_visits))
+   sHtml = Replace(sHtml, "%billed%", Str(num_visits))
+   sHtml = Replace(sHtml, "%numHCC%", Str(num_concession_card_healthcare))
+   sHtml = Replace(sHtml, "%pensioner%", Str(num_concession_card_pensioner))
+   sHtml = Replace(sHtml, "%seniors%", Str(num_concession_card_seniors))
+   sHtml = Replace(sHtml, "%no-card%", Str(num_visits_bb_no_concession_card))
+   sHtml = Replace(sHtml, "%bbillmc%", Str(num_concession_card_seniors))
+   sHtml = Replace(sHtml, "%bbvet%", Str(num_visits_veteran))
+   sHtml = Replace(sHtml, "%privbill%", Str(num_visits_private))
+   sHtml &= "</BODY>/<HTML>"
+   form_html_viewer.WebView1.HTML = sHtml
    Dec Application.Busy
    
 End
 
-
-
 Public Function Day_List_Receipts_Summary_HTML() As String
    
    Return ""
-   "<HTML>"
-   ""
-   "<BODY>"
-   "<TABLE WIDTH=" & Str$(tlDaySummary.width) & " CELLPADDING=0 BORDER = 1 CELLSPACING=0 >"
-   " <COL WIDTH=50%>"
-   " <COL WIDTH=50%>"
+   "<TABLE WIDTH=100% BORDER=1 CELLPADDING=0 CELLSPACING=0 >"
+   "<COL WIDTH=128*>"
+   "<COL WIDTH=128*>"
    " <TR VALIGN=TOP>"
    "  <TD WIDTH=50% >"
    "   <P ALIGN=CENTER><B>Billing Summary</B></P>"
@@ -245,7 +222,7 @@ Public Function Day_List_Receipts_Summary_HTML() As String
    " </TR>"
    " <TR VALIGN=TOP>"
    "  <TD WIDTH=50% >"
-   "   <TABLE WIDTH=650 CELLPADDING=0 CELLSPACING=0 >"
+   "   <TABLE WIDTH=100% CELLPADDING=0 CELLSPACING=0 >"
    "    <COL WIDTH=553>"
    "    <COL WIDTH=76>"
    "    <TR VALIGN=TOP>"
@@ -430,9 +407,5 @@ Public Function Day_List_Receipts_Summary_HTML() As String
    "  </TD>"
    " </TR>"
    "</TABLE>"
-   "<P><BR><BR>"
-   "</P>"
-   "</BODY>"
-   "</HTML>" 
    
 End

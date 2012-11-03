@@ -20,7 +20,7 @@
 ' TODO - fix the method of displaying txtFee's as per FRecordVisit
 '        or the gambas IDE.
 '----------------------------------------------------------------------
-
+Private $hEditor_gridview1 As Object
 Private Descriptors As Collection
 Private Descriptor As Collection
 Private Descriptor_Fees As Collection 
@@ -35,6 +35,8 @@ Private cSearchDescriptor_Brief As Integer = 3
 Private cSearchGroup As Integer = 4
 Private Billingtypes As Collection
 Private BillingType As Collection
+Private cGridColumn_ItemFee_Level As Integer = 0
+Private cGridColumn_Fee As Integer = 1
 Private OnRow As Integer
 Private OnCol As Integer
 Private bFoundFirst As Integer
@@ -55,6 +57,8 @@ Public Sub Init()
    modEditAreaHelpers.Resize_labels(Vbox_Editarea, lblmeasure)
    modEditAreaHelpers.Resize_label(lblSearch, lblMeasure)
    modEditAreaHelpers.Resize_label(lblItemTypes, lblMeasure)
+   Billingtypes = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Billing_Types_Get())
+
    Gridview1_Init()
    ama_mbs_or_both = "mbs"
    Try Settings_Load()
@@ -67,7 +71,6 @@ Public Sub Gridview1_ClearFees()
    
    For x = 0 To gridview1.Rows.count - 1
       gridview1[x, 1].text = ""
-      '    gridview1[x, 2].text = ""
    Next
    
 End
@@ -78,23 +81,20 @@ Public Sub Gridview1_Init()
    Dim columnwidth As Integer
    Dim lastwidth As Integer = 100
    
-   Billingtypes = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Billing_Types_Get())
-   For Each BillingType In BillingTypes
-      lblmeasure.text = BillingType!type 
-      If lblmeasure.width + 2 > lastwidth Then
-         lastwidth = lblmeasure.width + 2
-      Endif
-   Next
+   ' For Each BillingType In BillingTypes
+   '    lblmeasure.text = BillingType!type 
+   '    If lblmeasure.width + 2 > lastwidth Then
+   '       lastwidth = lblmeasure.width + 2
+   '    Endif
+   ' Next
    
    With gridview1
       .Rows.H = 20 
       .Columns.Count = 2
-      .Columns[0].Width = Max(lastwidth, gridview1.width - 120)
-      .Columns[1].width = 100
-      ' .Columns[2].width = 1
+  '    .Columns[0].Width = Max(lastwidth, gridview1.width - 120)
+   '   .Columns[1].width = 100
       .Rows.count = Billingtypes.Count
-      .Columns[0].text = "Type"
-      .Columns[1].text = "Fee"
+     
    End With
    x = 0
    For Each Billingtype In Billingtypes
@@ -102,6 +102,56 @@ Public Sub Gridview1_Init()
       gridview1[x, 0].text = Billingtype!type
       Inc x
    Next
+   
+End
+
+Public Sub gridview1_lblOverLay_KeyPress() 
+   '----------------------------------------------------------------
+   'This is a transparent label, "hiding" the editing textbox
+   'Pass the keypress character into the underlying textbox if empty
+   'and enter 'edit mode'
+   '----------------------------------------------------------------   
+   
+   gridview1_Cell_Overlay_Remove(key.Text)
+   
+End
+
+Public Sub gridview1_lblOverLay_DblClick()
+   '-------------------------------------------------------------
+   'Looks to use like double clicking on a grid row
+   'actually clicking on the transparent label over the grid cell
+   'remove this transparent label and enter 'edit mode'
+   '-------------------------------------------------------------
+   
+   gridview1_Cell_Overlay_Remove("")
+   
+End
+
+Public Sub gridview1_Cell_Overlay_Remove(char As String)
+   '----------------------------------------------------------------
+   'use the underlying cell text to either set the fee combox index
+   'or the textbox 1 editing textbox
+   'remove the label hiding the control in the grid to allow use
+   'either a combobox or a textbox
+   '-----------------------------------------------------------------  
+   ' Dim hEditor As Object
+   
+   Dim Cell_Text As String
+   
+   If gridview1.Row = -1 Then Return 
+   cell_text = gridview1[gridview1.Row, gridview1.column].Text
+   Print "removing the cell overlay"
+   If gridview1.column <> cGridColumn_ItemFee_Level Then 
+      If cell_text = "" Then
+         txtFee.text = char   
+      Else
+         txtFee.text = Cell_Text
+      End If   
+      $hEditor_gridview1 = txtFee
+      gridview1_lblOverLay.Visible = False 
+   End If   
+   $hEditor_gridview1.visible = True
+   $hEditor_gridview1.SetFocus
    
 End
 
@@ -139,7 +189,7 @@ Public Sub Search()
    If lcDescriptors.Count = 1 Then
       Display()
    Endif    
-
+   
 End
 
 Public Sub Save()
@@ -154,6 +204,7 @@ Public Sub Save()
    Dim fee As Collection 
    Dim sSql As String
    Dim hSql_File As File
+
    If VBox_EditArea_Outer.padding = 0 Then Return
    '------------------------------------------------------------------------  
    'Check if any fees have been changed, added or deleted
@@ -178,7 +229,7 @@ Public Sub Save()
          'There is no existing fee amount for this grid row
          'so if the amounts column of grid has a fee, create new row in billing.prices
          '----------------------------------------------------------------------------
-        
+         
          If Trim(gridview1[row, 1].Text) <> "" Then
             Print "new fee amount"
             cPrice = New CRow
@@ -207,10 +258,8 @@ Public Sub Save()
    EditArea_Notify_Datachange(False)
    Reload()
    Close #hSql_File
-
+   
 End
-
-
 
 Public Sub Settings_Save()
    
@@ -271,11 +320,12 @@ Public Sub Display()
    Try txtDateceased = Format(descriptor!ceased_date, "dd/mm/yyyy")
    txtGroup.text = descriptor!group
    If descriptor!gst_rate > 0 Then 
-       txtGSTRate.text = descriptor!gst_rate & "%"
+      txtGSTRate.text = descriptor!gst_rate & "%"
    End If
    Fee_Schedules_Show(pk_descriptor)
    bexit = False  
    VBox_EditArea.Enabled = True  
+   HSplit_EditArea.Enabled = True  
    
 End
 
@@ -297,7 +347,7 @@ Public Sub Fee_Schedules_Show(pk_descriptor As Integer)
       Next
    Next
    Print Existing_Fee_Keys
-
+   
 End
 
 Public Sub lcDescriptors_Click()
@@ -380,6 +430,74 @@ Public Sub EditAreaTextBox_KeyRelease()
    
 End
 
+Public Sub Gridview1_MouseUp()
+   
+   If gridview1.column = cGridColumn_ItemFee_Level Then Return
+   
+   Gridview1_ShowProperty       
+   
+End
+
+Public Sub gridview1_ShowProperty()
+   '--------------------------------------------------------------------------------
+   'nicked from the gambas IDE FProperty.class
+   'Shows the control we are using to 'edit' the grid cell aligned over that cell
+   'Maybe un-necessariily complex due to my simple brain but does this
+   'The pangridview1BilledEditor = a Hbox holding 3 controls
+   ' - a textbox for editing
+   ' - a combobox for choosing the fee levels
+   ' - a transparent label to let user click on something without entering edit mode
+   '   which is what happens in the gambas IDE - I didn't use this because then I
+   '   couldn't show a menu over the grid
+   '--------------------------------------------------------------------------------   
+   
+   Dim hEditor As Object
+   
+   txtfee.Hide
+   
+   gridview1_lblOverLay.Hide   
+   pangridview1Editor.Hide
+   
+   hEditor = gridview1_lblOverLay
+   $hEditor_gridview1 = hEditor
+   gridview1_MoveProperty        ' Move the Hbox pangridview1BilledEditor into position over the cell
+   $hEditor_gridview1.Show             ' Make transparent label "visible" or the combo box visible
+   pangridview1Editor.Show       ' Show the container, hence the  control
+   $hEditor_gridview1.SetFocus         ' give control focus > responded to key and click events
+   Print "have set focus in gridview1"
+   
+End
+
+Public Sub Gridview1_Scroll()
+   '------------------------------------------------------
+   'As the grid scrolls re-position the overlying control
+   '-----------------------------------------------------   
+   
+   Gridview1_MoveProperty
+   
+End
+
+Private Sub Gridview1_HideProperty()
+
+   txtFee.Visible = False 
+   pangridview1Editor.Hide
+   gridview1_lblOverLay.Hide
+
+End 
+
+Private Sub Gridview1_MoveProperty()
+   '------------------------------------------------------------------------
+   'Move the editing Hbox control to match a grid cell co-ordinates and size
+   '------------------------------------------------------------------------ 
+   
+   If IsNull($hEditor_gridview1) Or gridview1.Row = - 1 Then Return
+   With gridview1[gridview1.Row, gridview1.column]
+      pangridview1Editor.Move(gridview1.X + .X - gridview1.ScrollX, gridview1.Y + .Y - gridview1.ScrollY, .Width, .Height)
+      pangridview1Editor.Raise
+   End With
+   
+End
+
 Public Sub GridView1_Click()
    
    onrow = gridview1.Row
@@ -388,33 +506,33 @@ Public Sub GridView1_Click()
 End
 
 Public Sub GridView1_DblClick()
-   'bEditBillingType
-   
-   Dim i As Integer
-   Dim iSlotCount As Integer
-   
-   If oncol = 0 Then Return                        'Cannot edit billing type unless in edit mode
-   If lcDescriptors.count = 0 Then Return
-   If IsNull(descriptor) Then Return 
-   
-   txtFee.text = ""                              'clear search textbox
-   
-   bFoundFirst = False  
-
-   onrow = gridview1.Row 
-   iLeft = gridview1[onrow, oncol].Left
-   iTop = ((onrow + 1) * 20) + 3  'iSlotCount * 20
-   With txtFee
-      .left = iLeft + 1
-      .top = iTop
-      .width = gridview1.Columns[oncol].Width + 3
-      .Height = ((iLastRow - iFirstRow) + 1) * gridview1.Rows[0].Height + 4
-      .Visible = True
-      .SetFocus()
-      .text = gridview1[onrow, oncol].Text
-      
-   End With
-   sAmount_Before_Edit = gridview1[onrow, oncol].Text   
+   ' 'bEditBillingType
+   ' 
+   ' Dim i As Integer
+   ' Dim iSlotCount As Integer
+   ' 
+   ' If oncol = 0 Then Return                        'Cannot edit billing type unless in edit mode
+   ' If lcDescriptors.count = 0 Then Return
+   ' If IsNull(descriptor) Then Return 
+   ' 
+   ' txtFee.text = ""                              'clear search textbox
+   ' 
+   ' bFoundFirst = False  
+   ' 
+   ' onrow = gridview1.Row 
+   ' iLeft = gridview1[onrow, oncol].Left
+   ' iTop = ((onrow + 1) * 20) + 3  'iSlotCount * 20
+   ' With txtFee
+   '    .left = iLeft + 1
+   '    .top = iTop
+   '    .width = gridview1.Columns[oncol].Width + 3
+   '    .Height = ((iLastRow - iFirstRow) + 1) * gridview1.Rows[0].Height + 4
+   '    .Visible = True
+   '    .SetFocus()
+   '    .text = gridview1[onrow, oncol].Text
+   '    
+   ' End With
+   ' sAmount_Before_Edit = gridview1[onrow, oncol].Text   
    
 End
 
@@ -481,7 +599,53 @@ Public Sub VBox5_Leave()
    '-------------------------------------------------------------------
    'If mouse leaves the gridview1 container then remove the fee textbox
    '-------------------------------------------------------------------
-
-   txtFee.Visible = False   
    
+   Gridview1_HideProperty
+   
+End
+
+Public Sub Resize_Grids()
+   
+    Dim lastwidth As Integer
+    
+    For Each BillingType In BillingTypes
+      lblmeasure.text = BillingType!type 
+      If lblmeasure.width + 2 > lastwidth Then
+         lastwidth = lblmeasure.width + 2
+      Endif
+    Next
+    'lblmeasure.width = "$1000.00 "
+      With gridview1
+      .Columns[0].Width = Max(lastwidth, gridview1.width - 120)
+      .Columns[1].width = 100
+     End With
+     With lblcol1
+         .text = "Type"
+         .width = gridview1.Columns[0].Width
+      End With
+      With lblcol2
+         .text = "Fee"
+         .Width = gridview1.Columns[1].width
+      End With
+  
+   
+End
+
+Public Sub Form_Resize()
+   Try Resize_Grids()
+   gridview1_MoveProperty
+   
+End
+
+Public Sub Form_Leave()
+   
+  ' HSplit_EditArea.Enabled = False  
+   Gridview1_HideProperty
+
+End
+
+Public Sub Form_Show()
+
+   Try Resize_Grids()
+
 End

@@ -264,7 +264,7 @@ Public Sub Init()
    ' modUtil.LoadCombo(cmbstaff_Takings, staff, "wholename")
    seenBy = modUtil.LoadCombo(cmbSeenBy, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get()), "wholename")  
    clinics = modUtil.LoadCombo(cmbLocation, modContactsDBI.Clinics_Get(), "branch")
-   ' modUtil.LoadCombo(cmbLocationTakings, clinics, "branch")
+   ' modUtil.LoadCombo(cmbLocationTakings, clinics, "brFalseanch")
    With cvwItemsBilled  
       .Columns.count = 13
       .Columns[0].text = "Patient"
@@ -279,8 +279,14 @@ Public Sub Init()
       .Columns[9].text = "Invoice Total"
       .Columns[10].text = "Paid"
       .Columns[11].text = "Owing"
-      .Columns[12].text = "Rebate"
+      .Columns[12].text = "Comment"
    End With
+   cmbInvoices.Add("All Unbilled Consultations", 0)
+   cmbInvoices.Add("Unbilled  Consultations Today", 1)
+   cmbInvoices.Add("Accounts Overdue 1 Month", 2)
+   cmbInvoices.Add("Accounts Overdue 2 Month", 3)
+   cmbInvoices.Add("Accounts Overdue > 3 Months", 4)
+   cmbInvoices.Add("Accounts - Institutional Payers", 5) 
    bAreaOfNeed = modAdminDBI.Config_Get("area_of_need", False)
    Try Settings_Load()         'load settings for this form
    GridRows = New Collection
@@ -289,7 +295,8 @@ Public Sub Init()
    gvwItemsBIlled_Init()  
    gvwPayments_Init()
    ' txtDateFilter.text = Format(Now, "dd/mm/yyyy")
-   Reload()                      
+   ' Reload()                      
+   Accounts_Reload()
    
 End
 
@@ -336,6 +343,7 @@ Public Sub EditArea_Clear()
       .Border = Border.None
    End With
    gvwPayments_Clear
+   '  gvwPayments_HideProperty()
    EditArea_Notify_Data_Change(False)
    bexit = False
    
@@ -366,23 +374,23 @@ Public Sub columnview99_Refresh()
    Select Case TabStrip1.Index
          
       Case cTab_Invoices
-         With columnview99
-            .Columns.count = 2
-            .clear
-            .Header = False   
-         End With
-         Select Case combobox1.Index
-            Case cInvoiceDisplayMode_UnbilledAll
-               Unbilled_refresh(Null)
-            Case cInvoiceDisplayMode_UnbilledToday
-               Unbilled_refresh(Now())
-            Case cInvoiceDisplayMode_Overdue_1Month
-            Case cInvoiceDisplayMode_Overdue_2Month
-            Case cInvoiceDisplayMode_Overdue_Over3Months
-            Case cInvoiceDisplayMode_InstitutionalAccounts
-               
-         End Select
-         columnview99.SetFocus()
+         ' With columnview99
+         '    .Columns.count = 2
+         '    .clear
+         '    .Header = False   
+         ' End With
+         ' Select Case combobox1.Index
+         '    Case cInvoiceDisplayMode_UnbilledAll
+         '       Unbilled_refresh(Null)
+         '    Case cInvoiceDisplayMode_UnbilledToday
+         '       Unbilled_refresh(Now())
+         '    Case cInvoiceDisplayMode_Overdue_1Month
+         '    Case cInvoiceDisplayMode_Overdue_2Month
+         '    Case cInvoiceDisplayMode_Overdue_Over3Months
+         '    Case cInvoiceDisplayMode_InstitutionalAccounts
+         
+         '  End Select
+         '   columnview99.SetFocus()
       Case cTab_Batching
          
       Case cTab_Reports
@@ -482,6 +490,27 @@ End
 Public Sub Unbilled_refresh(Optional single_day As Date = Null)
    
    EditArea_Clear()
+   If Trim(txtFilterAccounts.text) <> "" And IsDate(Trim(txtFilterAccounts.text)) Then
+      single_day = Val(txtFilterAccounts.text)
+   Endif
+   Unbilled_Consultations = modBillingDBI.Consultations_UnBilled_Get(single_day)
+   For Each Unbilled_consultation In Unbilled_Consultations
+      cvwAccounts.Add(Unbilled_consultation!pk, 0)
+      cvwAccounts[Unbilled_consultation!pk][0] = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
+      cvwAccounts[Unbilled_consultation!pk][1] = Unbilled_consultation!wholename
+   Next
+   If cvwAccounts.count Then
+      cvwAccounts.MoveFirst()
+      Print bExit
+      cvwAccounts.Item.Selected = True
+      
+   Endif
+   
+End
+
+Public Sub Unbilled_refresh_old(Optional single_day As Date = Null)
+   
+   EditArea_Clear()
    If Trim(txtFilter.text) <> "" And IsDate(Trim(txtFilter.text)) Then
       single_day = Val(txtFilter.text)
    Endif
@@ -506,8 +535,76 @@ Public Sub Patient_Unbilled_Consultation_Display()
    'Display the patient and consultation details in the editing area
    '----------------------------------------------------------------------------------   
    
+   cvwAccounts.MoveCurrent()
+   EditArea_Clear()                                                                    'clear input area
+   bPayingInvoice = False  
+   txtpatient.ReadOnly = True
+   txtDate.ReadOnly = True 
+   Unbilled_consultation = Unbilled_Consultations[cvwAccounts.Item.key]
+   Try fk_lu_default_billing_level = Unbilled_consultation!fk_lu_default_billing_level
+   If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private
+   fk_patient = Unbilled_consultation!fk_patient
+   fk_appointment = Unbilled_consultation!pk
+   bExit = True   
+   With txtpatient
+      .text = Unbilled_consultation!wholename
+      .pos = 0
+   End With
+   txtAge.text = Unbilled_consultation!age_display
+   txtDate.text = Format(Unbilled_consultation!begin, "dd/mm/yyyy")
+   fk_staff = Unbilled_consultation!fk_staff 
+   For Each Staff_Member In staff
+      If Staff_Member!fk_staff = fk_staff Then
+         cmbSeenBy.index = cmbSeenBy.Find(Staff_Member!wholename)
+         Break
+      Endif
+   Next
+   duration = Val(Split(Unbilled_consultation!duration, ":")[1]) + Val(Split(Unbilled_consultation!duration, ":")[0]) * 60        ' e.g 10, 20, 30, 50, 60, 70 .... etc!
+   txtDuration.text = Str(duration) & " minutes"
+   Select Case duration
+      Case 1 To 19
+         consult_item_number = "23"
+      Case 20 To 40
+         consult_item_number = "36"
+      Case 40 To 100
+   End Select
+   cmbFeeType.Enabled = True  
+   Try Payer_Get(Unbilled_consultation)
+   Select Case fk_lu_default_billing_level
+      Case const.Billing_Default_Level_BulkBill
+         If Unbilled_consultation!veteran_number <> "" Then
+            rbInvoiceToVeterans.value = True
+         Else
+            rbInvoiceToMedicare.value = True
+         Endif
+      Case const.Billing_Default_Level_Private
+         rbInvoiceToPatient.value = True
+      Case const.Billing_Default_Level_HealthCareCardConcession
+         rbInvoiceToPatient.value = True
+      Case const.Billing_Default_Level_PensionerConcession
+         rbInvoiceToPatient.value = True
+      Case const.Billing_Default_Level_MedicoLegal 
+         rbInvoiceToPatient.value = True
+   End Select
+   bExit = False  
+   form_billingcards.Display_Patient_Data(Unbilled_consultation) 
+   VBox_EditArea_Outer.Enabled = True 
+   gvwItemsBIlled.Enabled = True 
+   cvwItemsBilled_Refresh() 
+   EditArea_Notify_Data_Change(False)
+   VBox_EditArea_Inner.Enabled = True  
+   
+End
+
+Public Sub Patient_Unbilled_Consultation_Display_old()
+   '----------------------------------------------------------------------------------
+   'User has selected to show unbilled consultations and has clicked on a patient name
+   'Display the patient and consultation details in the editing area
+   '----------------------------------------------------------------------------------   
+   
    columnview99.MoveCurrent()
    EditArea_Clear()                                                                    'clear input area
+   bPayingInvoice = False  
    txtpatient.ReadOnly = True
    txtDate.ReadOnly = True 
    Unbilled_consultation = Unbilled_Consultations[columnview99.Item.key]
@@ -579,17 +676,17 @@ Public Sub Columnview99_Menu()
    If columnview99.count = 0 Then Return 
    Select Case TabStrip1.Index
       Case cTab_Invoices
-         Select Case combobox1.Index
-            Case cInvoiceDisplayMode_UnbilledAll, cInvoiceDisplayMode_UnbilledToday
-               mnuUnBIlled_Mark_Not_Billed.Children.Clear
-               For Each reason In Reasons_not_billed
-                  With mnu = New Menu(mnuUnBIlled_Mark_Not_Billed) As "mnuUnbilled"
-                     .Caption = reason!reason
-                     .tag = reason!pk
-                  End With
-               Next
-               mnuUnBIlled.Popup()
-         End Select
+         '    Select Case combobox1.Index
+         '       Case cInvoiceDisplayMode_UnbilledAll, cInvoiceDisplayMode_UnbilledToday
+         '          mnuUnBIlled_Mark_Not_Billed.Children.Clear
+         '          For Each reason In Reasons_not_billed
+         '             With mnu = New Menu(mnuUnBIlled_Mark_Not_Billed) As "mnuUnbilled"
+         '                .Caption = reason!reason
+         '                .tag = reason!pk
+         '             End With
+         '          Next
+         '          mnuUnBIlled.Popup()
+         '    End Select
    End Select
    
 End
@@ -598,7 +695,7 @@ Public Sub mnuUnbilled_Click()
    
    Select Case Last.tag
       Case "font"
-         modUtil.Columnview_SetFont(Columnview99, "Billing_RecordVisit")
+         modUtil.Columnview_SetFont(cvwAccounts, "Billing_RecordVisit")
       Case Else   'tag is a number = reason not billed key to billing.lu_reasons_not_billed table
          If Message.Question("Mark this patient not to be charged?", "Yes", "No") = 2 Then Return 
          modDBConnect.update("clerical.bookings", Null, ["pk": Unbilled_consultation!pk, "fk_lu_reason_not_billed": Last.tag])
@@ -614,17 +711,17 @@ Public Sub columnview99_Select()
    Select Case TabStrip1.Index
          
       Case cTab_Invoices
-         Select Case combobox1.Index
-            Case cInvoiceDisplayMode_InstitutionalAccounts
-               Account_Institutional_Display()
-               LblEditAreaHeading.text = "Institutional Account:"
-            Case cInvoiceDisplayMode_UnbilledAll, cInvoiceDisplayMode_UnbilledToday
-               Patient_Unbilled_Consultation_Display()
-               LblEditAreaHeading.text = " Raise Invoice for UnBilled Consultation"
-            Case Else
-               Account_Patient_Display()
-               LblEditAreaHeading.text = "Account Details for " & patient!Wholename
-         End Select
+         ' Select Case combobox1.Index
+         '    Case cInvoiceDisplayMode_InstitutionalAccounts
+         '       Account_Institutional_Display()
+         '       LblEditAreaHeading.text = "Institutional Account:"
+         '    Case cInvoiceDisplayMode_UnbilledAll, cInvoiceDisplayMode_UnbilledToday
+         '       Patient_Unbilled_Consultation_Display()
+         '       LblEditAreaHeading.text = " Raise Invoice for UnBilled Consultation"
+         '    Case Else
+         '       Account_Patient_Display()
+         '       LblEditAreaHeading.text = "Account Details for " & patient!Wholename
+         ' End Select
       Case cTab_Batching
          form_batching.Claim_Display(Bulk_Billed_Claims[columnview99.Item.key]) 
       Case cTab_Reports
@@ -742,7 +839,12 @@ Public Sub gvwPayments_MouseUp()
    'Don't know why this responds to a disabled grid
    '------------------------------------------------
    
-   If bexit Or (Not gvwItemsBIlled_Data_Valid()) Or gvwPayments.Enabled = False Then Return                  'no-go if paying an invoice -can't change existing items 
+   Print "In gvwPayments_Mouseup()"
+   If bexit Or (Not gvwItemsBIlled_Data_Valid()) Or gvwPayments.Enabled = False Then
+      
+      Print "exiting from gvwPayments_MouseUp()" 
+      Return                  'no-go if paying an invoice -can't change existing items 
+   End If   
    If gvwPayments.Row > 0 And gvwPayments[0, 0].text = "" Then 'if user clicks on row and row above not filled in move back FIXME THIS CODE DOES NOT DO THIS
       gvwPayments.row = 0
    Endif
@@ -779,6 +881,7 @@ Public Sub gvwPayments_ShowProperty()
    Dim sProp As String  'contents of the grid cell
    Dim hEditor As Object
    
+   Print "attempting to show gvwPayments_ShowProperty"
    txtPayment.Hide
    cmbPaymentMethods.Hide
    gvwPayments_lblOverLay.Hide   
@@ -817,6 +920,7 @@ Public Sub gvwPayments_MouseDown()
    'fixme use ian's yet to be written IsMoney()
    '-----------------------------------------------------
    
+   Print "in gvwPayments_MouseDown()" 
    If gvwItemsBIlled[0, 0].text <> "" And gvwItemsBIlled[0, 0].text <> "" Then
       If rbInvoiceToMedicare.value = True Or rbInvoiceToVeterans.value = True Then
          gvwPayments.Enabled = False 
@@ -882,6 +986,7 @@ Public Sub gvwPayments_lblOverLay_KeyPress()
    'and enter 'edit mode'
    '----------------------------------------------------------------   
    
+   Print "in gvwPayments_lblOverLay_KeyPress"
    gvwPayments_Cell_Overlay_Remove(key.Text)
    
 End
@@ -914,7 +1019,7 @@ Public Sub gvwPayments_Cell_Overlay_Remove(char As String)
 End
 
 Public Sub gvwItemsBilled_HideProperty() As Boolean
-
+   
    cmbFeeType.Visible = False  
    textbox1.Visible = False 
    gvwItemsBilled_lblOverLay.Visible = False 
@@ -925,7 +1030,7 @@ End
 
 Public Sub gvwItemsBilled_SaveProperty()
    
-    Select Case TypeOf($hEditor_gvwItems)
+   Select Case TypeOf($hEditor_gvwItems)
       Case "text"
    End Select
    
@@ -1199,7 +1304,7 @@ Public Sub cmbFeeType_Click()
             Else
                gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Gap].text = modUtil.Money_Format(gap_payment)
             End If
-          End If   
+         End If   
       Endif
    End If   
    Invoice_Calculate_Total("Total Owing")
@@ -1325,7 +1430,8 @@ Private Sub Settings_Load()
    Try Hsplit_Main.Layout = Settings["Billing_RecordVisit/HSplit_Main.Layout", [1, 4]] 
    Hsplit_EditArea.Layout = Settings["Billing_RecordVisit/HSplit_EditArea.Layout", [2, 1]]  
    Try cvwItemsBilled.Font = Font[Settings["Billing_RecordVisit/cvwItemsBilled.font"]] 
-   
+   Try cvwAccounts.Font = Font[Settings["Billing_RecordVisit/cvwAccounts.font"]] 
+
 End
 
 Public Sub Settings_Save()
@@ -1502,7 +1608,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
    'fixme only update  this on first pass
    'fime  misnomer invoice or reciept
    '-----------------------------------------
-   If combobox1.index = cInvoiceDisplayMode_UnbilledAll Or combobox1.index = cInvoiceDisplayMode_UnbilledToday Then  
+   If cmbInvoices.index = cInvoiceDisplayMode_UnbilledAll Or cmbInvoices.index = cInvoiceDisplayMode_UnbilledToday Then  
       modDBConnect.update("clerical.bookings", Null, ["pk": Unbilled_consultation!pk, "invoiced": True])  'may not have an appt.
    End If   
    'fixme won't always be printed.
@@ -1513,7 +1619,7 @@ Public Sub Save(bBulkBill As Boolean, Optional bPrint As Boolean = True, Optiona
    End If   
    modDBConnect.CommitTrans
    EditArea_Notify_Data_Change(False)
-   Reload() 
+   Accounts_Reload() 
    
 End 
 
@@ -1631,35 +1737,35 @@ End
 
 Public Sub Patients_Get()
    '-------------------------------------------------------------------
-   'Get patients ILIKE txtFindPatient
+   'Get patients ILIKE txtSearchInvoices
    'Note as this returns multiple lines if there are multiple addresses
    'keep only one instance of the patient
    '-------------------------------------------------------------------
    
    Dim last_fk_patient As Integer
    
-   If Trim(txtSearch.text) = "" Then Return 
+   If Trim(txtSearchInvoices.text) = "" Then Return 
    Inc Application.Busy
    Print "getting patients"
    timer1.Stop
-   columnview99.Clear
-   patients = modContactsDBI.patients_get_firstname_surname(Trim(txtSearch.text))       
+   cvwAccounts.Clear
+   patients = modContactsDBI.patients_get_firstname_surname(Trim(txtSearchInvoices.text))       
    patients.Remove("sql_in_english")
    Dec Application.Busy
    If patients.count Then
       For Each patient In patients
          If last_fk_patient <> patient!fk_patient Then   
-            columnview99.Add(patient!pk_view, 0)
-            columnview99[patient!pk_view][0] = patient!wholename
-            columnview99[patient!pk_view][1] = Format(patient!birthdate, "dd/mm/yyyy")
+            cvwAccounts.Add(patient!pk_view, 0)
+            cvwAccounts[patient!pk_view][0] = patient!wholename
+            cvwAccounts[patient!pk_view][1] = Format(patient!birthdate, "dd/mm/yyyy")
             last_fk_patient = patient!fk_patient   
          End If   
       Next
       If patients.count = 1 Then
-         With columnview99
+         With cvwAccounts
             .SetFocus()
             .MoveFirst
-            .Item.Selected = True  'trigger columnview99_Select()
+            .Item.Selected = True  'trigger cvwAccounts_Select()
          End With
       Endif
    Endif
@@ -1935,7 +2041,8 @@ Public Sub Invoice_Calculate_Total(sTotalType As String)
       ' Endif
       
    Next
-   
+   If invoice_total <> 0 Then gvwPayments.Enabled = True 
+   HBox_InvoiceGrid.enabled = True
    With lblInvoiceOwing
       .text = sTotalType & "  " & modUtil.Money_Format(Invoice_total - amount_paid)
       .Font.Bold = False   
@@ -2251,6 +2358,8 @@ Public Sub cvwItemsBilled_Refresh()
          cvwItemsBilled[Item_Billed!pk_items_billed][9] = modUtil.Money_Format(Item_Billed!total_bill)
          cvwItemsBilled[Item_Billed!pk_items_billed][10] = modUtil.Money_Format(Item_Billed!total_paid)
          cvwItemsBilled[Item_Billed!pk_items_billed][11] = modUtil.Money_Format(Item_Billed!due)
+         cvwItemsBilled[Item_Billed!pk_items_billed][12] = Item_Billed!notes
+         
       Else
          cvwItemsBilled[Item_Billed!pk_items_billed][0] = ""
          Inc items_on_invoice
@@ -2299,7 +2408,6 @@ Public Sub cvwItemsBilled_Select()
    bexit = True
    lblInvoiceTotalAndPaid.Visible = False  
    bPayingInvoice = True   
-   HBox_InvoiceComments.Visible = False  
    VBox_EditArea_Inner.Enabled = False   
    cvwItemsBilled.MoveCurrent()
    If cvwItemsBilled[cvwItemsBilled.Item.key][0] = "" Then       'user has clicked on row with no patient name
@@ -2337,6 +2445,7 @@ Public Sub cvwItemsBilled_Select()
    If Item_Billed!fk_lu_billing_type = const.Billingtype_Private Then
       rbInvoiceToPatient.value = True  
    Endif
+   cmbInvoiceComments.text = Item_Billed!notes
    '---------------------------------------------------------
    'now create an items collection to load back into the grid
    '---------------------------------------------------------
@@ -2397,14 +2506,14 @@ Public Sub txtSearch_GotFocus()
    End With
    Select Case TabStrip1.Index   
       Case cTab_Invoices
-         combobox1.index = -1
-         ' Select Case combobox1.Index
-         '   Case cInvoiceDisplayMode_InstitutionalAccounts
-         '       iTimer_Search_Mode = cTimer_SearchMode_Institutional_Account
-         '   Case Else
-         iTimer_Search_Mode = cTimer_SearchMode_Patient
-         '  End Select
-         EditArea_Clear()
+         ' combobox1.index = -1
+         ' ' Select Case combobox1.Index
+         ' '   Case cInvoiceDisplayMode_InstitutionalAccounts
+         ' '       iTimer_Search_Mode = cTimer_SearchMode_Institutional_Account
+         ' '   Case Else
+         ' iTimer_Search_Mode = cTimer_SearchMode_Patient
+         ' '  End Select
+         ' EditArea_Clear()
       Case cTab_Batching
       Case cTab_ScheduleFees
          iTimer_Search_Mode = cTimer_SearchMode_FeeSchedule
@@ -2553,9 +2662,9 @@ End
 
 Public Sub Account_Patient_Display()
    '----------------------------------------------------------------------------------------
-   ' columnview99:
+   ' cvwAccounts:
    ' This is the list of patient's which user has searched for on the accounts tab
-   ' the underlying collection patients[columnview99.Item.Key] gives us this stuff:
+   ' the underlying collection patients[cvwAccounts.Item.Key] gives us this stuff:
    ' patient name (have this) and hence fk_patient
    ' date as visit_date
    ' duration (not displayed)
@@ -2572,17 +2681,17 @@ Public Sub Account_Patient_Display()
    ' but not the medicare numbers etc.
    '-----------------------------------------------------------------------------------------
    
-   If columnview99.count = 0 Then Return 'Or fk_patient = Patient!fk_patient Then Return
+   If cvwAccounts.count = 0 Then Return 'Or fk_patient = Patient!fk_patient Then Return
    
-   TabStrip1.index = 0
-   columnview99.Movecurrent()                                                    'set internal index
+  ' TabStrip1.index = 0
+   cvwAccounts.Movecurrent()                                                    'set internal index
    EditArea_Clear()
-   Patient = patients[columnview99.Item.Key]
+   Patient = patients[cvwAccounts.Item.Key]
    fk_patient = Patient!fk_patient                                                 
    Try fk_lu_default_billing_level = patient!fk_lu_default_billing_level            'if no billling level in backend
    If Error Then fk_lu_default_billing_level = const.Billing_Default_Level_Private  'default to private $$
    bExit = True                                                                     'prevent textbox events firing
-   txtSearch.text = ""
+   txtSearchInvoices.text = ""
    form_billingcards.Display_Patient_Data(Patient)                                  'load billing defaults into embedded form
    txtAge.text = Patient!age_display   
    With txtpatient
@@ -2887,12 +2996,20 @@ Public Sub TabStrip1_Click()
    txtSearch.text = ""
    Select Case TabStrip1.index
       Case cTab_Invoices
-         DateChooser1.visible = False  
-         combobox1.Visible = True
-         lblFilter.Text = "Filter Date "
-         HBox_Search.Visible = True   
-         lblColumnviewHeading.Visible = False  
-         Reload()
+         VBox_Invoices.Visible = True  
+         vBox8.Visible = False   
+         ' DateChooser1.visible = False  
+         '  combobox1.Visible = True
+         '  lblFilter.Text = "Filter Date "
+         'HBox_Search.Visible = True   
+         ' lblColumnviewHeading.Visible = False  
+         '  Reload()
+         '  Accounts_Reload()
+         bexit = True
+         '   cvwAccounts.MoveCurrent
+         ' cvwAccounts.Item.Selected = True
+         bexit = False  
+         Return  
       Case cTab_Batching
          '-----------------------------------------------------------------------
          'User has clicked on the medicare batching tab
@@ -2940,6 +3057,8 @@ Public Sub TabStrip1_Click()
          End If     
          columnview99_Refresh()
    End Select
+   VBox_Invoices.Visible = False  
+   vBox8.Visible = True   
    
 End
 
@@ -3093,7 +3212,7 @@ End
 Public Sub Button1_Click()
    
    columnview99.MoveCurrent()
-   Print "columnview99.item.key", columnview99.item.key, columnview99[columnview99.item.key][1]
+   Print "cvwAccounts.item.key", cvwAccounts.item.key, cvwAccounts[cvwAccounts.item.key][1]
    
    Print Payer
    Print fk_payer_person
@@ -3268,5 +3387,96 @@ Public Sub txtFilter_GotFocus()
    '    Case cTab_ScheduleFees
    '         iTimer_Search_Mode = cTimer_SearchMode_FeeSchedule
    ' End Select
+   
+End
+
+Public Sub cmbInvoices_Click()
+   
+   lblSearchAccounts.Foreground = Color.LightGray
+   Accounts_Reload()
+   
+End
+
+Public Sub Accounts_Reload()
+   
+   With cvwAccounts
+      .Columns.count = 2
+      .clear
+      .Header = False   
+   End With
+   Select Case cmbInvoices.Index
+      Case cInvoiceDisplayMode_UnbilledAll
+         Unbilled_refresh(Null)
+      Case cInvoiceDisplayMode_UnbilledToday
+         Unbilled_refresh(Now())
+      Case cInvoiceDisplayMode_Overdue_1Month
+      Case cInvoiceDisplayMode_Overdue_2Month
+      Case cInvoiceDisplayMode_Overdue_Over3Months
+      Case cInvoiceDisplayMode_InstitutionalAccounts
+   End Select
+   cvwAccounts.SetFocus()
+   
+End
+
+Public Sub cvwAccounts_Select()
+   
+   If bexit Then Return 
+   Select Case cmbInvoices.Index
+      Case cInvoiceDisplayMode_InstitutionalAccounts
+         Account_Institutional_Display()
+         LblEditAreaHeading.text = "Institutional Account:"
+      Case cInvoiceDisplayMode_UnbilledAll, cInvoiceDisplayMode_UnbilledToday
+         Patient_Unbilled_Consultation_Display()
+         LblEditAreaHeading.text = " Raise Invoice for UnBilled Consultation"
+      Case Else
+         Account_Patient_Display()
+         LblEditAreaHeading.text = "Account Details for " & patient!Wholename
+   End Select
+   
+End
+
+Public Sub cvwAccounts_Menu()
+   
+   Dim mnu As Menu
+   Dim reason As Collection
+   
+   If cvwAccounts.count = 0 Then Return
+   cvwAccounts.MoveCurrent()
+   Select Case cmbInvoices.Index
+      Case cInvoiceDisplayMode_UnbilledAll, cInvoiceDisplayMode_UnbilledToday
+         mnuUnBIlled_Mark_Not_Billed.Children.Clear
+         For Each reason In Reasons_not_billed
+            With mnu = New Menu(mnuUnBIlled_Mark_Not_Billed) As "mnuUnbilled"
+               .Caption = reason!reason
+               .tag = reason!pk
+            End With
+         Next
+         mnuUnBIlled.Popup()
+   End Select
+   
+End
+
+Public Sub txtSearchInvoices_KeyRelease()
+   
+   timer_count = 0
+   timer1.Enabled = True
+   timer1.Start
+   
+End
+
+Public Sub txtSearchInvoices_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175) 
+   cmbInvoices.index = -1
+   cvwAccounts.Clear
+   iTimer_Search_Mode = cTimer_SearchMode_Patient
+   EditArea_Clear()
+   
+End
+
+Public Sub txtSearchInvoices_LostFocus()
+   
+   Last.BackGround = Color.White
+   timer1.stop
    
 End

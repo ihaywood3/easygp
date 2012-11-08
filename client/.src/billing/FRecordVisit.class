@@ -101,6 +101,7 @@ Private clinics As Collection
 Private items As Collection 
 Private item As Collection
 Private Scheduled_Fee As Collection
+'Private Scheduled_Fees As Collection 
 Private consult_item_number As String 
 Private fk_lu_default_billing_level As Integer
 Private iBilling_Category As Integer
@@ -296,8 +297,7 @@ Public Sub Init()
    cmbInvoiceComments.index = -1
    gvwItemsBIlled_Init()  
    gvwPayments_Init()
-   ' txtDateFilter.text = Format(Now, "dd/mm/yyyy")
-   ' Reload()                      
+   txtFilterAccounts.text = Format(Now, "dd/mm/yyyy")
    Accounts_Reload()
    
 End
@@ -361,11 +361,13 @@ Public Sub gvwPayments_Clear()
    With gvwPayments
       .clear
       .Enabled = False  
+      .Rows.count = 1
    End With   
    With lblPaymentTotal
       .text = ""
       .Border = Border.None
    End With
+   Vbox_PaymentGrid.height = (gvwPayments.rows.count + 3) * gvwPayments.rows[0].height 
    
 End
 
@@ -377,24 +379,6 @@ Public Sub columnview99_Refresh()
    
    Select Case TabStrip1.Index
          
-      Case cTab_Invoices
-         ' With columnview99
-         '    .Columns.count = 2
-         '    .clear
-         '    .Header = False   
-         ' End With
-         ' Select Case combobox1.Index
-         '    Case cInvoiceDisplayMode_UnbilledAll
-         '       Unbilled_refresh(Null)
-         '    Case cInvoiceDisplayMode_UnbilledToday
-         '       Unbilled_refresh(Now())
-         '    Case cInvoiceDisplayMode_Overdue_1Month
-         '    Case cInvoiceDisplayMode_Overdue_2Month
-         '    Case cInvoiceDisplayMode_Overdue_Over3Months
-         '    Case cInvoiceDisplayMode_InstitutionalAccounts
-         
-         '  End Select
-         '   columnview99.SetFocus()
       Case cTab_Batching
          
       Case cTab_Reports
@@ -412,6 +396,7 @@ Public Sub Scheduled_Fees_Reload()
    '----------------------------------------------------   
    
    Dim bskip As Boolean
+   Dim num_patients As String = "" 
    
    With columnview99
       .Clear
@@ -426,8 +411,12 @@ Public Sub Scheduled_Fees_Reload()
          Endif
       End If   
       If Not bskip Then
+         num_patients = ""
+         If Not IsNull(FeeItem!number_of_patients) Then 
+            num_patients = "/" & Str(FeeItem!number_of_patients)
+         Endif
          columnview99.Add(FeeItem!pk, 0)
-         columnview99[FeeItem!pk][0] = Trim(FeeItem!mbs_item & " " & FeeItem!ama_item & " " & FeeItem!user_item)
+         columnview99[FeeItem!pk][0] = Trim(FeeItem!mbs_item & " " & FeeItem!ama_item & " " & FeeItem!user_item) & num_patients
          If Not IsNull(FeeItem!descriptor_brief) Then
             columnview99[FeeItem!pk][1] = FeeItem!descriptor_brief
          Else
@@ -456,9 +445,9 @@ End
 
 Public Sub Scheduled_Fees_Brief_Descriptors_Refresh()
    
-   Dim ScheduledFeeItems As Collection
    Dim FeeItem As Collection
-   
+   Dim num_patients As String = ""
+
    timer1.Stop
    With columnview99
       .Clear
@@ -468,7 +457,11 @@ Public Sub Scheduled_Fees_Brief_Descriptors_Refresh()
    ScheduledFeeItems = modBillingDBI.Fees_Get_With_Brief_Descriptor(item_number_Categories[combobox1.index])
    For Each FeeItem In ScheduledFeeItems
       columnview99.Add(FeeItem!pk, 0)
-      If Not IsNull(FeeItem!mbs_item) Then columnview99[FeeItem!pk][0] = FeeItem!mbs_item  
+      num_patients = ""
+      If Not IsNull(FeeItem!number_of_patients) Then 
+         num_patients = "/" & Str(FeeItem!number_of_patients)
+      Endif
+      If Not IsNull(FeeItem!mbs_item) Then columnview99[FeeItem!pk][0] = FeeItem!mbs_item & num_patients  
       If Not IsNull(FeeItem!ama_item) Then columnview99[FeeItem!pk][0] = FeeItem!ama_item
       If Not IsNull(FeeItem!user_item) Then columnview99[FeeItem!pk][0] = FeeItem!user_item
       columnview99[FeeItem!pk][1] = FeeItem!descriptor_brief
@@ -512,7 +505,6 @@ Public Sub Unbilled_refresh(Optional single_day As Date = Null)
    
 End
 
-
 Public Sub Patient_Unbilled_Consultation_Display()
    '----------------------------------------------------------------------------------
    'User has selected to show unbilled consultations and has clicked on a patient name
@@ -552,12 +544,11 @@ Public Sub Patient_Unbilled_Consultation_Display()
    EditArea_Notify_Data_Change(False)
    VBox_EditArea_Inner.Enabled = True  
    HBox_InvoiceGrid.Enabled = True
-  VBox_InvoiceGrid.Enabled = True  
-     Print "HBox_InvoiceGrid.enabled", HBox_InvoiceGrid.Enabled
+   VBox_InvoiceGrid.Enabled = True  
+   Print "HBox_InvoiceGrid.enabled", HBox_InvoiceGrid.Enabled
    Print "VBox_InvoiceGrid.enabled", VBox_InvoiceGrid.Enabled
    
 End
-
 
 Public Sub Columnview99_Menu()
    '-----------------------------------------------------------------------
@@ -591,14 +582,13 @@ Public Sub columnview99_Select()
    
    columnview99.MoveCurrent
    Select Case TabStrip1.Index
-       Case cTab_Batching
+      Case cTab_Batching
          form_batching.Claim_Display(Bulk_Billed_Claims[columnview99.Item.key]) 
       Case cTab_Reports
          form_reports.Report_Show(Report_Titles[columnview99.Item.key], DateChooser1.value, staff[combobox1.index]!fk_staff)
       Case cTab_ScheduleFees
          With form_feeschedule
-            .TxtSearch.text = columnview99[columnview99.item.key][0]
-            .Search
+            .Display(ScheduledFeeItems[columnview99.item.key])
          End With
    End Select
    
@@ -678,6 +668,7 @@ Public Function Item_Number_Selected() As Boolean
    Endif
    
 End
+
 Public Sub txtPayment_LostFocus()
    
    gvwPayments_SaveProperty
@@ -728,28 +719,27 @@ Public Sub gvwPayments_MouseUp()
 End
 
 Public Sub gvwPayments_SaveProperty()
-
+   
    If IsNull($hEditor_gvwPayments) Then Return
    
-   'panGvwPaymentsEditor.Hide
-  '
-  '  $hEditor_gvwPayments = Null   
-  '  
    Select Case oncol_payments
       Case cGridColumnPayments_Amount
          gvwPayments[gvwPayments.row, 0].Text = modUtil.Money_Format(txtPayment.text)                       'format money correctly
          If gvwPayments[gvwPayments.row, 1].Text = "" And gvwPayments[gvwPayments.row, 0].Text <> "" Then   'if have no payment method but have money 
-            gvwPayments[gvwPayments.row, cGridColumnPayments_PaymentMethod].text = "EFPos" 'FIXME WHEN BACKEND TABLE FIXED TO EFTPos
+            gvwPayments[gvwPayments.row, cGridColumnPayments_PaymentMethod].text = "EFTPos" 
          Endif
          Payment_Calculate_Total
+      Case cGridColumnPayments_PaymentMethod
+         cmbPaymentMethods.index = cmbPaymentMethods.Find(gvwPayments[gvwPayments.row, oncol_payments].Text)
       Case Else
          gvwPayments[gvwPayments.row, oncol_payments].Text = Trim(txtPayment.Text)
+         
    End Select 
-  ' txtPayment.Visible = False   
    EditArea_Notify_Data_Change(True) 
    gvwPayments_HideProperty()
-End
    
+End
+
 Public Sub gvwPayments_HideProperty() As Boolean
    
    cmbPaymentMethods.Visible = False  
@@ -776,6 +766,7 @@ Public Sub gvwPayments_ShowProperty()
    Dim hEditor As Object
    
    Print "attempting to show gvwPayments_ShowProperty"
+   Print gvwPayments.row, gvwPayments.Column, "are the gvp row and column"
    txtPayment.Hide
    cmbPaymentMethods.Hide
    gvwPayments_lblOverLay.Hide   
@@ -783,6 +774,7 @@ Public Sub gvwPayments_ShowProperty()
    Select Case gvwPayments.column
       Case cGridColumnPayments_PaymentMethod
          cmbPaymentMethods.Index = cmbPaymentMethods.Find(gvwPayments[gvwPayments.Row, gvwPayments.column].Text)
+         Print "COMBO SHOULD BE READING:", gvwPayments[gvwPayments.Row, gvwPayments.column].Text
          hEditor = cmbPaymentMethods
       Case Else
          hEditor = GvwPayments_lblOverLay
@@ -809,30 +801,46 @@ Private Sub gvwPayments_MoveProperty()
 End
 
 Public Sub gvwPayments_MouseDown()
-   '-----------------------------------------------------
-   'Enable the payments grid if there is something to pay
-   'fixme use ian's yet to be written IsMoney()
-   '-----------------------------------------------------
+   '---------------------------------------------------------------------------
+   'Enable the payments grid if there is something to pay and not bulk billing
+   'Auto-insert the probable amount of money being payed
+   'default to EFTPos which is the  most common method
+   '--------------------------------------------------------------------------
    
-   Print "in gvwPayments_MouseDown()" 
-   If gvwItemsBIlled[0, 0].text <> "" And gvwItemsBIlled[0, 0].text <> "" Then
-      If rbInvoiceToMedicare.value = True Or rbInvoiceToVeterans.value = True Then
+   Dim row As Integer
+   Dim paid_to_date As Float
+   
+   If gvwItemsBIlled[0, 0].text <> "" And gvwItemsBIlled[0, 0].text <> "" Then        'if we have an item we have added to invoice
+      If rbInvoiceToMedicare.value = True Or rbInvoiceToVeterans.value = True Then    'disable the payments grid if this is bulk billed item
          gvwPayments.Enabled = False 
          Return 
       End If 
-      gvwPayments.Enabled = True
-      gvwPayments.row = 0
-      If rbInvoiceToPatient.value = True Or rbInvoicePerson.Value = True Then
-         If gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].text = "" Then   
-            gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].text = modUtil.Money_Format(invoice_total - Amount_Paid)
-            gvwPayments[gvwPayments.row, cGridColumnPayments_PaymentMethod].text = "EFPos"
-            Payment_Calculate_Total 
-            EditArea_Notify_Data_Change(True)   
-         End If   
-      Endif
-   Else
-      gvwPayments.Enabled = False   
+   Else                                                                               'nothing in the items billed grid
+      gvwPayments.Enabled = False                                                     ' don't let them pay
+      Return 
    Endif
+   gvwPayments.Enabled = True                                                         'otherwise, enable the payments grid
+   For row = 0 To gvwPayments.Rows.Max
+      If gvwPayments[row, cGridColumnPayments_Amount].text <> "" Then
+         paid_to_date += modUtil.MoneyToFloat(gvwPayments[row, cGridColumnPayments_Amount].text)
+      Else
+         Break
+      Endif
+   Next
+   '  If (rbInvoiceToPatient.value = True Or rbInvoicePerson.Value = True) Then      
+   '    If gvwPayments.row = 0 Then   
+   If gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].text = "" Then    'if not re-clicking on a filled in row
+      gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].text = modUtil.Money_Format(invoice_total - paid_to_date) 
+      gvwPayments[gvwPayments.row, cGridColumnPayments_PaymentMethod].text = "EFTPos"
+      Payment_Calculate_Total 
+      EditArea_Notify_Data_Change(True)  
+      '  Else                                                                          'not on row 0, work out how much money left to pay
+      '     If gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].text = "" Then 
+      '      gvwPayments[gvwPayments.row, cGridColumnPayments_Amount].text = 
+      '    Next
+   End If
+   '  End If      
+   '  Endif
    
 End
 
@@ -859,6 +867,35 @@ Public Sub gvwPayments_lblOverLay_Menu()
       If bHaveText Then Break
    Next  
    bexit = False  
+   
+End
+
+Public Sub gvwPayments_Add_Row()
+   
+   Dim rows As Integer
+   
+   For rows = 0 To gvwPayments.rows.Max
+      If gvwPayments[rows, 0].text = "" Then
+         Return
+      Endif
+   Next
+   Inc gvwPayments.Rows.Count
+   HBox_PaymentGrid.height = (gvwPayments.rows.count + 3) * gvwPayments.rows[0].height 
+   Vsplit_Main.layout = [Vsplit_Main.layout[0] + 20, VSplit_Main.layout[1] - 20]
+   
+End
+
+Public Sub gvwPayments_Delete_Row()
+   '------------------------------------------------------------
+   'Called by mnuPayments_Click - delete the current payment row
+   '------------------------------------------------------------   
+   
+   Dim col As Integer
+   
+   For col = 0 To 5
+      gvwPayments[gvwPayments.row, col].text = ""
+   Next
+   Payment_Calculate_Total()
    
 End
 
@@ -924,9 +961,9 @@ End
 
 Public Sub gvwItemsBilled_SaveProperty()
    
-   Select Case TypeOf($hEditor_gvwItems)
-      Case "text"
-   End Select
+   ' Select Case TypeOf($hEditor_gvwItems)
+   '    Case "text"
+   ' End Select
    
 End
 
@@ -1071,7 +1108,7 @@ Public Sub gvwItemsBIlled_Init()
    
 End
 
-Public Sub gvwItemsBIlled_Delete_Row(onrow_items As Integer)
+Public Sub gvwItemsBIlled_Delete_Row()
    
    Dim col As Integer
    
@@ -1190,7 +1227,7 @@ Public Sub cmbFeeType_Click()
          'User has selected a new billing level
          '-------------------------------------
          If gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Fee].text = "$0.00" Then
-            gvwItemsBIlled_Delete_Row(gvwItemsBIlled.Row)
+            gvwItemsBIlled_Delete_Row()
          Else
             gap_payment = modUtil.MoneyToFloat(gvwItemsBIlled[gvwItemsBIlled.row, cGridColumnItem_Fee].text) - modUtil.MoneyToFloat(scheduled_fee!price) 
             If gap_payment = 0 Or rbInvoiceToVeterans.value = True Then
@@ -1204,6 +1241,12 @@ Public Sub cmbFeeType_Click()
    Invoice_Calculate_Total("Total Owing")
    gvwItemsBilled_HideProperty
    EditArea_Notify_Data_Change(True)
+   
+End
+
+Public Sub cmbPaymentMethods_Menu()
+   
+   gvwPayments_lblOverLay_Menu()
    
 End
 
@@ -1241,6 +1284,12 @@ Public Sub cmbPaymentMethods_Click()
    EditArea_Notify_Data_Change(True)
    gvwPayments_HideProperty
    
+End
+
+Public Sub textbox1_LostFocus()
+   
+   '  gvwItemsBilled_SaveProperty()
+   '  textbox1_Activate()
 End
 
 Public Sub textbox1_Activate()
@@ -1751,7 +1800,7 @@ Public Sub Get_Items(txt As String)
    End If
    If items.count = 0 Then 
       Message.Info("The item number was not found")
-      gvwItemsBIlled_Delete_Row(gvwItemsBIlled.row)
+      gvwItemsBIlled_Delete_Row()
       bExit = False  
       Return
    End If  
@@ -1807,6 +1856,19 @@ Public Sub Get_Items(txt As String)
    End With
    HBox_InvoiceGrid.height = (gvwItemsBIlled.rows.count + 3) * gvwItemsBIlled.rows[0].height 
    bExit = False  
+   
+End
+
+Public Sub gvwItemsBIlled_Add_Row()
+   '--------------------------------------------------------
+   'Add a row to the items billed grid
+   'force the main split to enlarge so user can see all rows
+   '--------------------------------------------------------
+
+   Inc gvwItemsBIlled.Rows.count
+   gvwItemsBIlled.row = gvwItemsBIlled.Rows.Max
+   HBox_InvoiceGrid.height = (gvwItemsBIlled.rows.count + 3) * gvwItemsBIlled.rows[0].height 
+   Vsplit_Main.layout = [Vsplit_Main.layout[0] + 20, VSplit_Main.layout[1] - 20]
    
 End
 
@@ -1873,8 +1935,11 @@ Public Sub mnuPayments_Click()
    
    Select Case Last.tag
       Case "add payment"
+         gvwPayments_Add_Row
       Case "delete payment"
+         gvwPayments_Delete_Row
       Case "delete all payments"
+         gvwPayments.Clear
    End Select 
    
 End
@@ -1883,17 +1948,14 @@ Public Sub mnuItemsBilled_Click()
    '------------------------------------------------------------------
    'This is the popup menu over the gvwItemsBilled in the editing area
    '------------------------------------------------------------------  
-
+   
    Select Case Last.tag
       Case "delete item"
-         gvwItemsBIlled_Delete_Row(onrow_items)
+         gvwItemsBIlled_Delete_Row()
       Case "delete all items"
          gvwItemsBIlled_Clear()
       Case "add item"
-         Inc gvwItemsBIlled.Rows.count
-         gvwItemsBIlled.row = gvwItemsBIlled.Rows.Max
-         HBox_InvoiceGrid.height = (gvwItemsBIlled.rows.count + 3) * gvwItemsBIlled.rows[0].height 
-         Vsplit_Main.layout = [Vsplit_Main.layout[0] + 20, VSplit_Main.layout[1] - 20]
+         gvwItemsBIlled_Add_Row
    End Select 
    
 End
@@ -1902,7 +1964,7 @@ Public Sub mnuInvoices_Click()
    '--------------------------------------------------------------------------------------
    'this is the popup menu over the the invoices for the account holder, usually a patient
    '--------------------------------------------------------------------------------------
-
+   
    cvwInvoices.MoveCurrent()
    Item_Billed = Items_Billed[cvwInvoices.Item.key] 
    Select Case Last.tag
@@ -1936,9 +1998,9 @@ Public Sub cvwInvoices_Menu()
 End
 
 Public Sub Invoice_Delete_Item(i As Collection)
-
+   
    modUtil.NotImplemented("Deleting an item from an  invoice")
-
+   
 End
 
 Public Sub Invoice_Calculate_Total(sTotalType As String)
@@ -2006,7 +2068,7 @@ Public Sub Payment_Calculate_Total()
       tbUniversal.Enabled = True 
       tbSaveNoPRint.Enabled = False 
    Endif
-
+   
 End
 
 Public Sub rbInvoiceTo_Click()
@@ -2812,7 +2874,7 @@ Public Sub Valid_Payment() As Boolean
    
 End
 
-Public Sub HBox_Payments_Leave()
+Public Sub HBox_PaymentGrid_Leave()
    
    gvwPayments_HideProperty
    
@@ -2826,7 +2888,7 @@ Public Sub pnlToolButtons_Leave()
    '  tbSaveNoPRint.Enabled = True 
    '  tbNewInvoice.Enabled = True  
    tbUniversal.Enabled = False   
-
+   
 End
 
 Public Sub Invoice_To_Set_Billing_To_Details(patient_collection As Collection)
@@ -3486,12 +3548,31 @@ Public Sub txtSearchInvoices_LostFocus()
 End
 
 Public Sub txtFilterAccounts_Activate()
-
-    Accounts_Reload()
-
+   
+   Accounts_Reload()
+   
 End
-
+' DROP VIEW billing.vwfees;
+' 
+' CREATE OR REPLACE VIEW billing.vwfees AS 
+'  SELECT prices.pk AS pk_view, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, fee_schedule.descriptor, 
+'  fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule, fee_schedule.ceased_date, 
+'  fee_schedule."group", fee_schedule.derived_fee, fee_schedule.number_of_patients,
+'  prices.fk_fee_schedule, prices.pk AS fk_price, prices.price, prices.fk_lu_billing_type, 
+'  prices.notes, lu_billing_type.type AS fee_type
+'    FROM billing.fee_schedule
+'    JOIN billing.prices ON fee_schedule.pk = prices.fk_fee_schedule
+'    JOIN billing.lu_billing_type ON prices.fk_lu_billing_type = lu_billing_type.pk
+'   ORDER BY fee_schedule.mbs_item::integer;
+' 
+' ALTER TABLE billing.vwfees
+'   OWNER TO richard;
+' GRANT ALL ON TABLE billing.vwfees TO richard;
+' GRANT ALL ON TABLE billing.vwfees TO easygp;
+' GRANT SELECT ON TABLE billing.vwfees TO staff;
+' 
 
 ' insert into billing.lu_payment_method(method) values ('Medicare Cheque');
 ' insert into billing.lu_payment_method(method) values ('EFT');
 ' 
+'"insert into billing.fee_schedule (descriptor, descriptor_brief, mbs_item, \"group\") values ($$professional attendance by a general practitioner (not being an attendance at consulting rooms or a residential aged care facility and not being a service to which any other item in this table applies), lasting less than 20 minutes and including any of the following that are clinically relevant:(a) taking a patient history;(b) performing a clinical examination;(c) arranging any necessary investigation;(d) implementing a management plan;(e) providing appropriate preventive health care;for 1 or more health-related issues, with appropriate documentation - an attendance on 1 or more patients at 1 place on 1 occasion - each patient$$,'Home Visit 2 Patients','24','A1');"

@@ -195,6 +195,30 @@ End
 Public Sub Save()
    '--------------------------
    'Save a modified descriptor
+   'CREATE TABLE billing.fee_schedule
+   ' (
+   '   pk serial NOT NULL,
+   '   item text,
+   '   mbs_item text, -- the item number in the Medicare Benefits Schedule or user schedule, NULL only if only appears on AMA Schedule
+   '   user_item text, -- if the item is defined by the user
+   '   ama_item text, -- the item number in the AMA version of the schedule, if used, otherwise NULL
+   '   descriptor text NOT NULL,
+   '   ceased_date date,
+   '   "group" text,
+   '   derived_fee text,
+   '   descriptor_brief text, -- a brief description of a long descriptor
+   '   gst_rate integer DEFAULT 0, -- the goods and services tax rate
+   '   percentage_fee_rule boolean DEFAULT false,
+   '   number_of_patients integer DEFAULT 1, -- the number of patients to which this item applies, usually 1, but e.g nursing homes or group therapy sessions can be up to 7
+   '   CONSTRAINT fee_schedule_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT schedule_ama_item_key UNIQUE (ama_item),
+   '   CONSTRAINT schedule_item_key UNIQUE (item),
+   '   CONSTRAINT schedule_check CHECK (NOT mbs_item IS NULL OR NOT ama_item IS NULL OR NOT user_item IS NULL)
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   
    '--------------------------
    
    Dim Descriptor As New CRow
@@ -212,15 +236,27 @@ Public Sub Save()
    Endif
    Descriptor!descriptor_brief = Trim(txtDescriptorBrief.text)
    Descriptor!descriptor = Trim(txtDescriptor.text)
-   If User.Home &/ "descriptors_update.sql" Then
-      hSql_File = Open User.Home &/ "descriptors_update.sql" For Write Append
-      ssql = "Update billing.fee_schedule "
-      ssql &= "Set descriptor_brief = $$" & Descriptor!descriptor_brief & "$$ "
-      ssql &= "WHERE  pk = " & pk_descriptor
-      Print #hSql_File, ssql
-      Close #hSql_File
-   Endif
+   Descriptor!percentage_fee_rule = CBool(chkPercentageRuleApplies.value)
+   Descriptor!number_of_patients = Val(txtNumberOfPatients.text)
+   If pk_descriptor Then  
+      If User.Home &/ "descriptors_update.sql" Then
+         hSql_File = Open User.Home &/ "descriptors_update.sql" For Write Append
+         ssql = "Update billing.fee_schedule "
+         ssql &= "Set descriptor_brief = $$" & Descriptor!descriptor_brief & "$$ "
+         ssql &= "WHERE  pk = " & pk_descriptor
+         Print #hSql_File, ssql
+         Close #hSql_File
+      Endif
+  
+    Else
+      hSql_File = Open User.Home &/ "descriptors_new.sql" For Write Append
+      hSql_File = "Insert into billing.fee_schedule" 
+      hSql_File &= "(item, mbs_item,user_item, ama_item, descriptor, descriptor_brief, \"group\", percentage_fee_rule, number_of_patients)"
+      hsql_File &= " VALUES ("
+       hsql_File &= ""
+   End If
    Descriptor.Save("billing.fee_schedule", "fk_descriptor")
+  ' Descriptor.Save(
    '------------------------------------------------------------------------  
    'Check if any fees have been changed, added or deleted
    'For each row in the grid - check first if we have an existing fee
@@ -304,6 +340,14 @@ Public Sub EditArea_Clear()
    
 End
 
+Public Sub Descriptor_Clone()
+   
+       Dim clone As Collection
+       
+       pk_descriptor = 0
+   
+End
+
 Public Sub Display(descriptor As Collection)
    '------------------------------------------
    'Displays the currently selected descriptor
@@ -312,8 +356,11 @@ Public Sub Display(descriptor As Collection)
    Dim num_patients As String = ""
    EditArea_Clear()
    bexit = True
-   If Not IsNull(descriptor!number_of_patients) Then 
+   If descriptor!percentage_fee_rule Then 
       num_patients = "/" & Str(descriptor!number_of_patients)
+      chkPercentageRuleApplies.value = True
+   Else
+      chkPercentageRuleApplies.value = False 
    Endif
    txtMBSItemNumber.text = descriptor!mbs_item & num_patients  
    Try txtAMAItemNumber.text = descriptor!ama_item
@@ -335,32 +382,6 @@ Public Sub Display(descriptor As Collection)
    
 End
 
-Public Sub Display_old()
-   '------------------------------------------
-   'Displays the currently selected descriptor
-   '------------------------------------------ 
-   
-   EditArea_Clear()
-   bexit = True
-   txtMBSItemNumber.text = descriptor!mbs_item
-   Try txtAMAItemNumber.text = descriptor!ama_item
-   Try txtUserItemNumber.text = descriptor!user_item  
-   txtNumberOfPatients.text = descriptor!number_of_patients 
-   txtDescriptor.text = descriptor!descriptor
-   txtDescriptor.pos = 0
-   pk_descriptor = descriptor!pk
-   txtDescriptorBrief.text = descriptor!descriptor_brief
-   Try txtDateceased = Format(descriptor!ceased_date, "dd/mm/yyyy")
-   txtGroup.text = descriptor!group
-   If descriptor!gst_rate > 0 Then 
-      txtGSTRate.text = descriptor!gst_rate & "%"
-   End If
-   Fee_Schedules_Show(pk_descriptor)
-   bexit = False  
-   VBox_EditArea.Enabled = True  
-   HSplit_EditArea.Enabled = True  
-   
-End
 
 Public Sub Fee_Schedules_Show(pk_descriptor As Integer)
    
@@ -422,6 +443,8 @@ Public Sub EditArea_Buttons_Click()
    Select Case Last.tag
       Case "save"
          Save() 
+      Case "clone descriptor"
+         Descriptor_Clone()
    End Select
    
 End
@@ -703,5 +726,11 @@ Public Sub EditAreaTextBox_KeyPress()
       Stop Event
       Return 
    End If   
+
+End
+
+Public Sub chkPercentageRuleApplies_Click()
+
+   EditArea_Notify_Datachange(True)
 
 End

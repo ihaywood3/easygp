@@ -25,6 +25,7 @@ Private Fee_Schedule_Items As Collection
 Private Fee_Schedule_Item As Collection
 Private Fees_For_Item_Number As Collection 
 Private bExit As Boolean
+Private bCloning As Boolean                              'true if cloning an existing record
 Private lcRow As CDescriptorRow
 Private timer_count As Integer 
 Private pk_fee_schedule_item As Integer
@@ -58,13 +59,22 @@ Public Sub Init()
    
    lblMeasure.text = " Number of Patient's Included "
    modEditAreaHelpers.Resize_labels(Vbox_Editarea, lblmeasure)
- '  modEditAreaHelpers.Resize_label(lblSearch, lblMeasure)
+   '  modEditAreaHelpers.Resize_label(lblSearch, lblMeasure)
    modEditAreaHelpers.Resize_label(lblItemTypes, lblMeasure)
    Billingtypes = modUtil.Copy_Collection_Keyed_Sequentially(modBillingDBI.Billing_Types_Get())
    Gridview1_Init()
    ama_mbs_or_both = "mbs"
    Try Settings_Load()
    
+End
+
+Public Function Fee_Schedule_Item_Duplicated(item As String) As Boolean
+   
+   If modBillingDBI.Item_Exists(item) Then
+      Dec Application.Busy 
+      Message.Info("The item you are trying to add:" & item & " already exists in the fee schedule.")
+      Return True
+   End If   
 End
 
 Public Sub Fee_Schedule_Item_Set(fd As Collection)
@@ -167,6 +177,7 @@ Public Function EditArea_Set_Editable(bEditable As Boolean, Optional bNewItem As
    'we don't allow editing of any of this but the descriptor brief can always be edited
    'if truely a item, enable all textboxes and checkboxes except AMA + MBS
    '-----------------------------------------------------------------------------------
+
    If bEditable Then                          'we want to allow some editing to add or clone item number
       txtAMAItemNumber.ReadOnly = True 
       txtMBSItemNumber.ReadOnly = True 
@@ -174,7 +185,7 @@ Public Function EditArea_Set_Editable(bEditable As Boolean, Optional bNewItem As
       txtUserItemNumber.Enabled = True 
       txtDescriptor.ReadOnly = True   
       txtDescriptorBrief.ReadOnly = False   
-       txtDescriptorBrief.enabled = True   
+      txtDescriptorBrief.enabled = True   
       chkPercentageRuleApplies.Enabled = True   
       txtNumberOfPatients.ReadOnly = False   
    Else                                  'we don't want any editing bar the descriptor_brief
@@ -195,11 +206,13 @@ Public Function EditArea_Set_Editable(bEditable As Boolean, Optional bNewItem As
 End
 
 Public Function Fee_Schedule_Item_Valid() As Boolean
-  '-------------------------------------------- 
-  'returns True if edit area contents are valid
-  '-------------------------------------------- 
+   '-------------------------------------------- 
+   'returns True if edit area contents are valid
+   '-------------------------------------------- 
+
    Print
    Return 
+
 End
 
 ' Public Sub Reload()
@@ -277,24 +290,49 @@ Public Sub Save()
    Dim hSql_File As File
    
    If VBox_EditArea_Outer.padding = 0 Then Return
-'   If Not Fee_Schedule_Item_Valid() Then Return
+   '   If Not Fee_Schedule_Item_Valid() Then Return
    tbSave.Enabled = False  
    '---------------------------------------------------------------------------------------
    'We will never be saving the mbs-item or ama-item or descriptor as they are pre-supplied
-   'We can change the user defined breif descriptor
+   'We can change the user defined brief descriptor
    '----------------------------------------------------------------------------------------
+   Inc Application.Busy
    If pk_fee_schedule_item <> 0 Then 
       Schedule_Item.put_unchanged(pk_fee_schedule_item, "fk_descriptor") 'fixme align the nomenclature backend/front end
    Else
-      Schedule_Item = New CRow   
-      Schedule_Item!user_item = Trim(txtUserItemNumber.text)
-      Schedule_Item!descriptor = Trim(txtDescriptor.text)
-      Schedule_Item!group = Trim(txtGroup.text) 'if cloned will not be null
+      '--------------------------------------------------------------
+      ' Do another validation check - ensure user_item does not exist
+      '--------------------------------------------------------------
+       Schedule_Item = New CRow 
+      If Not bcloning Then 
+        If Fee_Schedule_Item_Duplicated(Trim(txtUserItemNumber.text)) Then 
+         tbSave.Enabled = True
+         Return
+        End If 
+      Else
+         If Fee_Schedule_Item_Duplicated(Trim(txtMBSItemNumber.text)) Then
+             tbSave.Enabled = True
+             Return
+         End If  
+         '---------------------------------------------------------------
+         'We have displayed the new item as eg 24/3 to make sense to user
+         'however we only want the 'core' item number
+         '---------------------------------------------------------------
+          Schedule_Item!mbs_item = Split(Trim(txtMBSItemNumber.text), "/")[0]
+      End If   
    Endif
+   Schedule_Item!user_item = Trim(txtUserItemNumber.text)
+   Schedule_Item!descriptor = Trim(txtDescriptor.text)
+   Schedule_Item!group = Trim(txtGroup.text) 'if cloned will not be null
    Schedule_Item!descriptor_brief = Trim(txtDescriptorBrief.text)
    Schedule_Item!percentage_fee_rule = CBool(chkPercentageRuleApplies.value)
    Schedule_Item!number_of_patients = Val(txtNumberOfPatients.text)
-   Schedule_Item!gst_rate = Val(Replace(txtGSTRate.text, "%", "")) 'fix me then can't remove it
+   If txtGSTRate.text = "" Then
+       Schedule_Item!gst_rate = 0
+   Else
+       Schedule_Item!gst_rate = Val(Replace(txtGSTRate.text, "%", "")) 'fix me then can't remove it
+   Endif
+  
    '--------------------------------------------------------------------------------------
    'if this fee schedule item already exists, then update, but only allow brief descriptor
    'as most of the schedule is pre-supplied.
@@ -334,7 +372,7 @@ Public Sub Save()
       ssql &= "$$" & Trim(txtDescriptor.text) & "$$,"
       ssql &= "$$" & Trim(txtDescriptorBrief.text) & "$$,"
       If Trim(txtGroup.text) <> "" Then   
-            ssql &= "$$" & Trim(txtGroup.text) & "$$,"
+         ssql &= "$$" & Trim(txtGroup.text) & "$$,"
       Else
          ssql &= "Null," 
       End If   
@@ -345,9 +383,9 @@ Public Sub Save()
       Endif
       ssql &= Val(txtNumberOfPatients.text) & ","
       If Trim(txtGSTRate.text) <> "" Then
-          ssql &= Val(txtGSTRate.text) 
+         ssql &= Val(txtGSTRate.text) 
       Else
-          ssql &= "NULL" 
+         ssql &= "NULL" 
       Endif
       ssql &= ")"
       Print ssql
@@ -388,23 +426,23 @@ Public Sub Save()
          Endif
       End If
    Next
-   
    modDBConnect.CommitTrans() 
+   Dec Application.Busy
    EditArea_Notify_Datachange(False)
    FRecordVisit.Fee_Schedule_Reload_Static() 'reload the fee schedules columnview
-   
+  
 End
 
 Public Sub Settings_Save()
    
    Settings["Billing_Descriptors/VSplit_Main.Layout"] = Vsplit_Main.Layout
-    
+   
 End
 
 Private Sub Settings_Load()
    
    Try Vsplit_Main.Layout = Settings["Billing_Descriptors/VSplit_Main.Layout"]
-     
+   
 End
 
 Public Sub txtFilterDescriptor_KeyRelease()
@@ -424,6 +462,7 @@ Public Sub EditArea_Clear()
    '---------------------------------
    'Clears the input or display area
    '---------------------------------   
+
    modEditAreaHelpers.EditArea_Clear(Vbox_Editarea)   'clear the input area
    bEditBillingType = False                           'not in fee edit mode
    With txtFee                                        'disappear the fee textbox
@@ -436,12 +475,15 @@ Public Sub EditArea_Clear()
    tbNew.Enabled = True 
    tbSave.Enabled = True
    pk_fee_schedule_item = 0
+   bCloning = False  
    
 End
+
 Public Sub Fee_Schedule_Item_New()  
    '----------------------------------------------------------------
    'user wants to add an entirely new item number to user_item field
    '----------------------------------------------------------------
+
    EditArea_Clear()
    lblEditArea.text = "Add New Item to Fee Schedule"
    tbClone.Enabled = False 
@@ -452,18 +494,30 @@ Public Sub Fee_Schedule_Item_New()
    VBox_EditArea.Enabled = True
    Existing_Fee_keys = New Collection  
    txtUserItemNumber.SetFocus()
-    
+   
 End
 
 Public Sub Fee_Schedule_Item_Clone()
-   
+   '-------------------------------------------------------------
+   'Clones the item number by removing the pk, for mbs-items only
+   '------------------------------------------------------------   
+
    Dim clone As Collection
    
-   lblEditArea.text = "Clone Existing Item Number"
+   If IsNull(Fee_Schedule_Item) Then Return  
    pk_fee_schedule_item = 0
    tbNew.Enabled = False   
-   EditArea_Set_Editable(True)
-   
+   If Not IsNull(Fee_Schedule_Item!user_item) Then
+      EditArea_Set_Editable(True, True)
+      lblEditArea.text = "Clone Existing User Defined Item"
+   Else
+      bexit = True   
+      EditArea_Set_Editable(True)
+      lblEditArea.text = "Clone Existing Item MBS or AMA Item Number"
+      txtUserItemNumber.Enabled = False  
+      bexit = False   
+   End If   
+   bCloning = True
 End
 
 Public Sub Fee_Schedule_Item_Display()
@@ -489,15 +543,20 @@ Public Sub Fee_Schedule_Item_Display()
    Try txtAMAItemNumber.text = Fee_Schedule_Item!ama_item
    Try txtUserItemNumber.text = Fee_Schedule_Item!user_item  
    txtNumberOfPatients.text = Fee_Schedule_Item!number_of_patients 
-   txtDescriptor.text = Fee_Schedule_Item!descriptor
-   txtDescriptor.pos = 0
+   With txtDescriptor
+      .text = Fee_Schedule_Item!descriptor
+      .pos = 0
+   End With
    pk_fee_schedule_item = Fee_Schedule_Item!pk
-   txtDescriptorBrief.text = Fee_Schedule_Item!descriptor_brief
+   With txtDescriptorBrief
+      .text = Fee_Schedule_Item!descriptor_brief
+      .pos = 0
+   End With
    Try txtDateceased = Format(Fee_Schedule_Item!ceased_date, "dd/mm/yyyy")
    txtGroup.text = Fee_Schedule_Item!group
-   If Fee_Schedule_Item!gst_rate > 0 Then 
+  ' If Fee_Schedule_Item!gst_rate > 0 Then 
       txtGSTRate.text = Fee_Schedule_Item!gst_rate & "%"
-   End If
+  ' End If
    Fees_For_Item_Number_Show(pk_fee_schedule_item)
    bexit = False  
    VBox_EditArea.Enabled = True  
@@ -567,7 +626,7 @@ Public Sub EditArea_Buttons_Click()
       Case "clone"
          Fee_Schedule_Item_Clone()
       Case "new"
-        Fee_Schedule_Item_New()   
+         Fee_Schedule_Item_New()   
    End Select
    
 End
@@ -576,7 +635,8 @@ Public Sub EditAreaTextBox_GotFocus()
    '-----------------------------------------------------------------------
    'User clicks on search textbox, start the time which controls the search
    '-----------------------------------------------------------------------
-    Last.BackGround = Color.rgb(95, 255, 175)
+
+   Last.BackGround = Color.rgb(95, 255, 175)
    ' If Last.tag = "search" Then 
    '    Timer1.Start
    '    Timercount = 0
@@ -592,10 +652,22 @@ Public Sub EditAreaTextBox_Change()
    If Last.tag <> "search" Then 
       EditArea_Notify_Datachange(True)
    End If 
+   Print "last tag = ", Last.tag
    Select Case Last.tag
-      Case "mbs item number", "search"
+      Case "mbs item number"
          EditArea_Clear()
          EditArea_Notify_Datachange(False)
+      Case "number of patients"
+         'could be cloning eg mbs_item = 24/1, user typed num patiest = 2, want 24/2 to display
+         If bCloning Then
+           bexit = True
+           If Trim(Last.text) = "" Then                              'number of patients removed
+              txtMBSItemNumber.text = Fee_Schedule_Item!mbs_item     'replace original item number
+           Else
+           txtMBSItemNumber.text = Split(txtMBSItemNumber.text, "/")[0] & "/" & Str(Last.text)
+           End If 
+            bexit = False
+         End If    
       Case "long description"
          If InStr(Last.text, "\n\n") Then
             bexit = True
@@ -734,6 +806,7 @@ Public Sub Timer1_Timer()
    '    If Trim(txtSearch.text) <> "" Then Search() 
    ' Endif
    ' 
+
 End
 
 Public Sub txtFee_Activate()
@@ -859,13 +932,14 @@ Public Sub EditAreaTextBox_KeyPress()
    If key.Code = key.Return Then
       Select Case Last.tag
          Case "user item number"
-              txtDescriptorBrief.SetFocus
+            txtDescriptorBrief.SetFocus
          Case "brief description"
-              txtDescriptor.SetFocus
+            txtDescriptor.SetFocus
          Case "long description"
-              txtGSTRate.SetFocus
+            txtGSTRate.SetFocus
       End Select
    End If   
+
 End
 
 Public Sub chkPercentageRuleApplies_Click()

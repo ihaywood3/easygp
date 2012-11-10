@@ -70,6 +70,7 @@
 Private currentconsult As CConsult
 Private last_Fee_type As String
 Private bexit As Boolean  
+Private bHSplit_Resized As Boolean        'true if user has re-sized the main horizontal split
 Private $hEditor_gvwItems As Object
 Private $hEditor_gvwPayments As Object
 'save flags for readability
@@ -304,6 +305,7 @@ Public Sub Init()
    gvwItemsBIlled_Init()  
    gvwPayments_Init()
    txtFilterAccounts.text = Format(Now, "dd/mm/yyyy")
+   bHSplit_Resized = False 
    Accounts_Reload()
    
 End
@@ -412,9 +414,15 @@ Public Sub Scheduled_Fees_Reload()
    For Each FeeItem In ScheduledFeeItems
       bSkip = False  
       If txtFilter.text <> "" Then
-         If Not InStr(FeeItem!descriptor, Trim(txtFilter.text)) Then
-            bskip = True     
-         Endif
+         If Not IsNull(FeeItem!descriptor_brief) Then 
+            If Not InStr(Lower(FeeItem!descriptor_brief), Lower(Trim(txtFilter.text))) Then
+               bskip = True     
+            Endif
+         Else
+             If Not InStr(Lower(FeeItem!descriptor), Lower(Trim(txtFilter.text))) Then
+               bskip = True     
+            Endif
+         End If   
       End If   
       If Not bskip Then
          num_patients = ""
@@ -446,6 +454,17 @@ Public Sub Scheduled_Fees_Search()
    timer1.Stop
    ScheduledFeeItems = modBillingDBI.Descriptors_Get(txtSearch.Text, True, False) 
    Scheduled_Fees_Reload
+   
+End
+
+Public Sub Fee_Schedule_Edit()
+   
+   form_feeschedule.VBox_EditArea.Enabled = True   
+   form_feeschedule.lblEditArea.text = "Edit Item Number"
+   form_feeschedule.txtuserItemNumber.SetFocus()
+   If Not IsNull(ScheduledFeeItems[columnview99.item.key]!user_item) Then 
+      form_feeschedule.EditArea_Set_Editable(True, True)
+   End If   
    
 End
 
@@ -572,7 +591,7 @@ Public Sub Columnview99_Menu()
       Case cTab_Batching
       Case cTab_Reports
       Case cTab_ScheduleFees
-          mnuFeeSchedule.Popup()
+         mnuFeeSchedule.Popup()
    End Select
    
 End
@@ -1384,17 +1403,17 @@ End
 Private Sub Settings_Load()
    
    Try Vsplit_Main.layout = Settings["Billing_RecordVisit/VSplit_Main.Layout", [4, 1]]
-   Try Hsplit_Main.Layout = Settings["Billing_RecordVisit/HSplit_Main.Layout", [1, 4]] 
+ '  Try Hsplit_Main.Layout = Settings["Billing_RecordVisit/HSplit_Main.Layout", [1, 4]] 
    Hsplit_EditArea.Layout = Settings["Billing_RecordVisit/HSplit_EditArea.Layout", [2, 1]]  
    Try cvwInvoices.Font = Font[Settings["Billing_RecordVisit/cvwItemsBilled.font"]] 
    Try cvwAccounts.Font = Font[Settings["Billing_RecordVisit/cvwAccounts.font"]] 
-   
+   Try Hsplit_Main.Layout = Settings["Billing_RecordVisit/Tabstrip1_" & Str(TabStrip1.index) & ".HSplit_Main.Layout"] 
 End
 
 Public Sub Settings_Save()
    
    Settings["Billing_RecordVisit/VSplit_Main.Layout"] = Vsplit_Main.Layout
-   Settings["Billing_RecordVisit/HSplit_Main.Layout"] = Hsplit_Main.Layout
+  ' Settings["Billing_RecordVisit/HSplit_Main.Layout"] = Hsplit_Main.Layout
    Settings["Billing_RecordVisit/HSplit_EditArea.Layout"] = Hsplit_EditArea.Layout
    
 End
@@ -1613,8 +1632,13 @@ End
 
 Public Sub HSplit_Main_Resize()
    
-   Try Resize_Grids
-   
+   Select Case TabStrip1.Index
+      Case cTab_Invoices
+         Try Resize_Grids
+   End Select
+  
+   bHSplit_Resized = True
+   Settings["Billing_RecordVisit/Tabstrip1_" & Str(TabStrip1.index) & ".HSplit_Main.Layout"] = Hsplit_Main.Layout
 End
 
 Public Sub Resize_Grids()
@@ -1813,7 +1837,11 @@ Public Sub Get_Items(txt As String)
       Items = modBillingDBI.Items_Get(Trim(txt), const.Billingtype_Workcover)
    End If
    If items.count = 0 Then 
-      Message.Info("The item number was not found")
+      Message.title = "Fee Search"
+      sMsg = "Item:" & Trim(txt) & "\nFee Level:" & billing_type & "\n\n"
+      sMsg &= "Either no item number could be found, or the item number exists but there is no fee data for the billing level requested.\n\n" 
+      sMsg &= "Please check this in the Fee Schedule and try again"
+      Message.Info(sMsg)
       gvwItemsBIlled_Delete_Row()
       bExit = False  
       Return
@@ -1980,7 +2008,7 @@ Public Sub mnuFeeSchedule_Click()
       Case "change font"
          modUtil.Columnview_SetFont(columnview99, "Billing_FeeSchedule")
       Case "edit item number"
-         form_feeschedule.VBox_EditArea.Enabled = True   
+         Fee_Schedule_Edit
       Case "delete item number"
          modUtil.NotImplemented("Deleting an existing item number")
    End Select
@@ -2548,6 +2576,8 @@ Public Sub txtSearch_GotFocus()
          ' EditArea_Clear()
       Case cTab_Batching
       Case cTab_ScheduleFees
+         combobox1.index = -1
+         txtFilter.text = ""                                   'don't allow filter on the brief descriptor whilst searching
          iTimer_Search_Mode = cTimer_SearchMode_FeeSchedule
    End Select
    
@@ -3055,7 +3085,7 @@ Public Sub comboBox1_Load()
          modUtil.LoadCombo(combobox1, staff, "wholename")
          combobox1.index = cmbSeenBy.Index  'most likely want to report on the same doctor being billed.
       Case cTab_ScheduleFees
-         combobox1.Add("All Item Numbers", 0)
+         combobox1.Add("Brief Descriptors", 0)
          combobox1.Add("MBS Item Numbers", 1)
          combobox1.Add("AMA Item Numbers", 2)
          combobox1.Add("User Defined Item Numbers", 3)
@@ -3071,9 +3101,15 @@ Public Sub txtPayment_KeyPress()
    End If 
    
 End
+Public Sub TabStrip1_MouseDown()
+
+   Print "tabstrip mouse_down"
+
+End
 
 Public Sub TabStrip1_Click()
    
+   Try Hsplit_Main.Layout = Settings["Billing_RecordVisit/Tabstrip1_" & Str(TabStrip1.index) & ".HSplit_Main.Layout", [1, 4]]
    comboBox1_Load()
    txtSearch.text = ""
    Select Case TabStrip1.index
@@ -3137,7 +3173,7 @@ Public Sub TabStrip1_Click()
          DateChooser1.visible = False  
          combobox1.Visible = True
          HBox_Search.Visible = True   
-         lblFilter.Text = "Filter Descriptor  "
+         lblFilter.Text = "Filter "
          Try columnview99.font = Font[Settings["Billing_FeeSchedule/columnview99.font"]] 
          If IsNull(form_feeschedule) Then
             With form_feeschedule = New FDescriptorsBrowser(Vbox_FeeSchedule)   
@@ -3604,3 +3640,4 @@ End
 ' insert into billing.lu_payment_method(method) values ('EFT');
 ' 
 '"insert into billing.fee_schedule (descriptor, descriptor_brief, mbs_item, \"group\") values ($$professional attendance by a general practitioner (not being an attendance at consulting rooms or a residential aged care facility and not being a service to which any other item in this table applies), lasting less than 20 minutes and including any of the following that are clinically relevant:(a) taking a patient history;(b) performing a clinical examination;(c) arranging any necessary investigation;(d) implementing a management plan;(e) providing appropriate preventive health care;for 1 or more health-related issues, with appropriate documentation - an attendance on 1 or more patients at 1 place on 1 occasion - each patient$$,'Home Visit 2 Patients','24','A1');"
+

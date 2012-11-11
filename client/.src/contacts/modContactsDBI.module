@@ -1260,6 +1260,7 @@ Public Function patients_get_firstname_surname(searchtext2 As String, Optional b
       sql &= " AND deceased = false " 
    Endif
    sql &= " ORDER BY surname, firstname ASC LIMIT " & limit 
+   Print sql
    $result = modDBConnect.exec_query_collection(sql)
    $result!sql_in_english = sql_in_english_array.Join(" and ")
    Return $result
@@ -1269,6 +1270,95 @@ End
 
 
 Public Function Person_Get(searchtext2 As String, iSearchCriteria As Integer, Optional bDeceased As Boolean = False) As Collection 
+   '------------------------------------------------------------------------------
+   'Get a list of either only patients, only non-patients or persons who are both
+   '-----------------------------------------------------------------------------
+   
+   Dim sql As String
+   Dim clauses As New String[]
+   Dim tables As New String[]
+   Dim sql_in_english_array As New String[]
+   Dim Persons As Collection
+   
+   searchtext = Lower$(searchtext2)
+   tables.Clear
+   clauses.Clear
+   sql_in_english_array.Clear
+   Select Case iSearchCriteria
+      Case const.contacttype_patient
+         tables.Add("contacts.vwpatients cvwp")
+      Case const.contacttype_person
+         tables.Add("contacts.vwpersonsexcludingpatients cvwp")
+      Case Else
+         tables.Add("contacts.vwpersonsincludingpatients cvwp")
+   End Select 
+   
+   If test_regex(["(sex|gender) ?(:|=) ?(f|female|woman)"]) Then
+      clauses.Add("cvwp.sex = 'F'")
+      sql_in_english_array.Add("patient is female")
+   Endif
+   If test_regex(["(sex|gender) ?(:|=) ?(m|male|man)"]) Then
+      clauses.Add("cvwp.sex = 'M'")
+      sql_in_english_array.Add("patient is male")
+   Endif
+   
+   If test_regex(["([0-9]+) ?< ?age ?< ?([0-9]+)", "age ?> ?([0-9]+) ?< ?([0-9]+)", "age between ([0-9]+) and ([0-9]+)"]) Then
+      clauses.Add("age(cvwp.birthdate) < '" & regex.SubMatches[1].Text & " years'")
+      clauses.Add("age(cvwp.birthdate) > '" & regex.SubMatches[0].Text & " years'")
+      sql_in_english_array.Add("age is between " & regex.SubMatches[0].Text & " and " & regex.SubMatches[1].Text)
+   Endif
+   
+   If test_regex(["age ?> ?([0-9]+)"]) Then
+      clauses.Add("age(cvwp.birthdate) > '" & regex.SubMatches[0].Text & " years'")
+      sql_in_english_array.Add("older than " & regex.SubMatches[0].Text)
+   Endif
+   
+   If test_regex(["age ?< ?([0-9]+)"]) Then
+      clauses.Add("age(cvwp.birthdate) < '" & regex.SubMatches[0].Text & " years'")
+      sql_in_english_array.Add("younger than " & regex.SubMatches[0].Text)
+   Endif
+   
+   ' search in the form surname, firstname
+   If test_regex(["([a-z' \\-]+) ?, ?([a-z'\\-]+)"]) Then
+      clauses.Add("lower(cvwp.surname) like $$" & regex.SubMatches[1].Text & "%$$")
+      clauses.Add("lower(cvwp.firstname) like $$" & regex.SubMatches[2].Text & "%$$")
+      sql_in_english_array.Add("surname begins with \"" & regex.SubMatches[1].Text & "\"")
+      sql_in_english_array.Add("firstname begins with \"" & regex.SubMatches[2].Text & "\"")
+   Endif
+   
+   ' search in the form firstname surname
+   If test_regex(["([a-z'\\-]+) +([a-z'\\-]+)"]) Then
+      clauses.Add("lower(cvwp.surname) like $$" & regex.SubMatches[2].Text & "%$$")
+      clauses.Add("lower(cvwp.firstname) like $$" & regex.SubMatches[1].Text & "%$$")
+      sql_in_english_array.Add("surname begins with \"" & regex.SubMatches[2].Text & "\"")
+      sql_in_english_array.Add("firstname begins with \"" & regex.SubMatches[1].Text & "\"")
+   Endif
+   
+   If test_regex(["([a-z'\\-]+)"]) Then ' just the surname
+      clauses.Add("lower(cvwp.surname) like $$" & regex.SubMatches[1].text & "%$$")
+      sql_in_english_array.Add("surname begins with \"" & regex.SubMatches[1].Text & "\"")
+   Endif
+   'ian fixme quickndirty fix because if characters like *% entered in search > crashes (do need at least the wildcard
+   sql = "SELECT cvwp.* FROM "
+   sql &= tables.Join(",") & " WHERE "
+   If bDeceased Then
+      sql &= "deceased = True "
+   Else
+      sql &= "deceased = False "
+   Endif
+   
+   If clauses.count = 0 Then
+      sql &= " AND surname ILIKE $$%$$ "
+   Else
+      sql &= " AND " & clauses.Join(" AND ")
+   End If  
+   Persons = modDBConnect.exec_query_collection(sql)
+   Persons!sql_in_english = sql_in_english_array.Join(" AND ")
+   Return Persons
+   
+End
+
+Public Function Person_Get_old(searchtext2 As String, iSearchCriteria As Integer, Optional bDeceased As Boolean = False) As Collection 
    '------------------------------------------------------------------------------
    'Get a list of either only patients, only non-patients or persons who are both
    '-----------------------------------------------------------------------------

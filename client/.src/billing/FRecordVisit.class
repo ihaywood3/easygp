@@ -304,7 +304,8 @@ Public Sub Init()
    cmbInvoiceComments.index = -1
    gvwItemsBIlled_Init()  
    gvwPayments_Init()
-   txtFilterAccounts.text = Format(Now, "dd/mm/yyyy")
+  ' txtFilterAccounts.text = Format(Now, "dd/mm/yyyy")
+   txtFilterAccounts.text = "19/10/2012"
    bHSplit_Resized = False 
    Accounts_Reload()
    
@@ -344,6 +345,7 @@ Public Sub EditArea_Clear()
    cvwInvoices.Clear()
    Items_Billed = New Collection
    Item_Billed = New Collection
+   Payer = Null
    Patient = Null
    Unbilled_consultation = Null
    iAccountDisplayMode = const.Billing_Accounts_Unpaid
@@ -474,6 +476,9 @@ Public Sub Fee_Schedule_Reload()
    Dim num_patients As String = ""
    
    timer1.Stop
+   bexit = True  
+   combobox1.index = 0 'items with brief descriptor
+   bexit = False  
    With columnview99
       .Clear
       .Columns.count = 2
@@ -568,6 +573,7 @@ Public Sub Patient_Unbilled_Consultation_Display()
    cvwInvoices_Refresh() 
    EditArea_Notify_Data_Change(False)
    VBox_EditArea_Inner.Enabled = True  
+   VBox5.Enabled = True 
    HBox_InvoiceGrid.Enabled = True
    VBox_InvoiceGrid.Enabled = True  
    Print "HBox_InvoiceGrid.enabled", HBox_InvoiceGrid.Enabled
@@ -633,7 +639,6 @@ Public Sub Payer_Get(patient As Collection) 'fix me to fk_patient
    'fixme put in code for responsible party as a branch (must be put in contacts first)
    
    bExit = True   
-   columnview99.MoveCurrent()
    If Not IsNull(patient!fk_payer_person) Then 
       payer = modContactsDBI.Person_Including_Patients_Get_Using_Pk(patient!fk_payer_person)
    End If   
@@ -1870,7 +1875,7 @@ Public Sub Get_Items(txt As String)
       'Also a child <16yrs could be being bulk billed whose parents are not covered by health cards or pension
       '-------------------------------------------------------------------------------------------------------
       If bAreaOfNeed Then
-         If fk_lu_default_billing_level = const.Billing_Default_Level_BulkBill Then
+         If fk_lu_default_billing_level = const.Billing_Default_Level_BulkBill And item!mbs_item <> "10991" Then
             'if child <12 months eg e.g 4m20d hence defaults to patient_age_in_years = 0
             If txtAge.text <> "" And InStr(txtAge.text, "y") Then patient_age_in_years = Val(Split(txtAge.text, "y")[0])
             If bEntitledVeteran Or patient_age_in_years < 16 Or form_billingcards.Centrelink_Card_Type() = const.Centrelink_Concession_Card_Health_Care_Card Or form_billingcards.Centrelink_Card_Type() = const.Centrelink_Concession_Card_Pensioner_concession_card Then 
@@ -2040,6 +2045,8 @@ Public Sub mnuInvoices_Click()
          modPrinting.Print_latex(Item_Billed!latex)
       Case "font"
          modUtil.Columnview_SetFont(cvwInvoices, "Billing_RecordVisit")
+      Case "print account statement"
+         Accounts_Print_Statement
    End Select 
    
 End
@@ -2367,8 +2374,6 @@ Public Sub Invoice_New()
    bexit = True
    Unbilled_consultation = Null  'the invoice is not being raised from appointment list
    gvwItemsBIlled.Clear
-   ' tbAccount.Enabled = True                    'new invoice can take account
-   ' tbVoucher.Enabled = True                    'new invoice can take be bulk billed
    tbSaveNoPrint.Enabled = True                ''new invoice can be saved (either paid/unpaid) without printing
    lblEditAreaHeading.text = "New Invoice"
    bPayingInvoice = False 
@@ -2385,6 +2390,7 @@ Public Sub Invoice_New()
       .text = Format(Now, "dd/mm/yyyy")
    End With
    VBox_EditArea_Inner.Enabled = True  
+   VBox5.Enabled = True 
    bExit = False  
    
 End
@@ -2439,13 +2445,10 @@ Public Sub cvwInvoices_Refresh()
             cvwInvoices[Item_Billed!pk_items_billed][6] = "Veterans"
          Endif
       Endif
-      If Not IsNull(Item_Billed!payer_organisation) Then
-         cvwInvoices[Item_Billed!pk_items_billed][6] = Item_Billed!payer_organisation
+      If Not IsNull(Item_Billed!account_to_name) Then
+         cvwInvoices[Item_Billed!pk_items_billed][6] = Item_Billed!account_to_name
       Endif
-      If Not IsNull(Item_Billed!payer_person_wholename) Then
-         cvwInvoices[Item_Billed!pk_items_billed][6] = Item_Billed!payer_person_wholename
-      Endif
-      cvwInvoices[Item_Billed!pk_items_billed][7] = Item_Billed!amount
+       cvwInvoices[Item_Billed!pk_items_billed][7] = Item_Billed!amount
       cvwInvoices[Item_Billed!pk_items_billed][8] = Item_Billed!amount_gst
       fk_last_invoice = Item_Billed!fk_invoice  
    Next
@@ -2464,7 +2467,6 @@ Public Sub cvwInvoices_Select()
    '--------------------------------------------------------------------------------------------   
    
    If cvwInvoices.count = 0 Then Return  
-   Print Items_Billed
    bexit = True
    lblInvoiceTotalAndPaid.Visible = False  
    bPayingInvoice = True   
@@ -2479,8 +2481,6 @@ Public Sub cvwInvoices_Select()
    Item_Billed = Items_Billed[cvwInvoices.Item.key] 
    fk_invoice = Item_Billed!fk_invoice 
    If Not Item_Billed!paid Then
-      '    tbAccount.Enabled = False  
-      '   tbVoucher.Enabled = False  
       tbSaveNoPrint.Enabled = False 
       lblEditAreaHeading.text = "Pay Invoice"
       VBox5.Enabled = True 
@@ -2501,7 +2501,18 @@ Public Sub cvwInvoices_Select()
       fk_payer_person = Item_Billed!fk_payer_person
       rbInvoicePerson.Value = True
    Endif
-   Try textlabelPayer.text = Item_Billed!payer_details
+   If Not IsNull(Item_Billed!account_to_name) Then 
+      textlabelPayer.text = Item_Billed!account_to_name
+      If Not IsNull(Item_Billed!account_to_branch) Then
+         textlabelPayer.text &= "<BR>" & Item_Billed!account_to_branch
+      End If
+      If Not IsNull(Item_Billed!account_to_street) Then
+         textlabelPayer.text &= "<BR>" & Item_Billed!account_to_street
+      Endif
+      If Not IsNull(Item_Billed!account_to_town_postcode) Then
+         textlabelPayer.text &= " " & Item_Billed!account_to_town_postcode
+      Endif
+   Endif
    If Item_Billed!fk_lu_billing_type = const.Billingtype_Private Then
       rbInvoiceToPatient.value = True  
    Endif
@@ -3523,6 +3534,15 @@ Public Sub cmbInvoices_Click()
    lblSearchAccounts.Foreground = Color.LightGray
    Accounts_Reload()
    
+End
+
+Public Sub Accounts_Print_Statement()
+  '-----------------------------------------------
+  'Prints out all the patients invoice transactions
+  '------------------------------------------------ 
+  For Each item_billed In Items_Billed
+     
+  Next
 End
 
 Public Sub Accounts_Reload()

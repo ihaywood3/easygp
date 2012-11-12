@@ -65,7 +65,7 @@
 '       or to give the user the chance to write off the debt.
 '       e.g girls may have charged a consultation wrongly if it was aftercare. (i.e staff mistake)
 '       Sometimes Medicare "miss" entire vouchers - maybe this won't happen when done electronically
-'       
+'    fixme - put in code in cvwAccounts_select > get payer for branch as a payer   
 '-----------------------------------------------------------------------------------------------
 Private currentconsult As CConsult
 Private last_Fee_type As String
@@ -304,8 +304,8 @@ Public Sub Init()
    cmbInvoiceComments.index = -1
    gvwItemsBIlled_Init()  
    gvwPayments_Init()
-  ' txtFilterAccounts.text = Format(Now, "dd/mm/yyyy")
-   txtFilterAccounts.text = "19/10/2012"
+   txtFilterAccounts.text = Format(Now, "dd/mm/yyyy")
+  ' txtFilterAccounts.text = "19/10/2012"
    bHSplit_Resized = False 
    Accounts_Reload()
    
@@ -637,6 +637,7 @@ Public Sub Payer_Get(patient As Collection) 'fix me to fk_patient
    'temp code get the responsible person FIXME  body code only whilst developin
    'need more inclusive way of getting the payer - eg might not be a patient
    'fixme put in code for responsible party as a branch (must be put in contacts first)
+   'fixme put in fk_payer_branch code
    
    bExit = True   
    If Not IsNull(patient!fk_payer_person) Then 
@@ -848,6 +849,10 @@ Public Sub gvwPayments_MouseDown()
    Dim row As Integer
    Dim paid_to_date As Float
    
+   If gvwItemsBIlled.row = -1 Then 
+      Print "exiting from gvwPayments_MouseDown()", gvwItemsBIlled.row
+      Return
+   End If     
    If gvwItemsBIlled[0, 0].text <> "" And gvwItemsBIlled[0, 0].text <> "" Then        'if we have an item we have added to invoice
       If rbInvoiceToMedicare.value = True Or rbInvoiceToVeterans.value = True Then    'disable the payments grid if this is bulk billed item
          gvwPayments.Enabled = False 
@@ -1292,12 +1297,12 @@ Public Sub cmbPaymentMethods_Click()
    
    Dim chequedetails As Collection
    
-   gvwPayments[onrow_payments, cGridColumnPayments_PaymentMethod].Text = cmbPaymentMethods.Text
+   gvwPayments[gvwPayments.row, cGridColumnPayments_PaymentMethod].Text = cmbPaymentMethods.Text
    If InStr(cmbPaymentMethods.Text, "Cheque") Then  
       Select Case cmbPaymentMethods.Text
          Case "Medicare Cheque"
-            gvwPayments[onrow_payments, cGridColumnPayments_Bank].Text = "Reserve"
-            gvwPayments[onrow_payments, cGridColumnPayments_Branch].text = "Sydney"
+            gvwPayments[gvwPayments.row, cGridColumnPayments_Bank].Text = "Reserve"
+            gvwPayments[gvwPayments.row, cGridColumnPayments_Branch].text = "Sydney"
          Case "Veteran Cheque"
             
          Case "Cheque"
@@ -1306,8 +1311,8 @@ Public Sub cmbPaymentMethods_Click()
             '---------------------------------------------------
             chequedetails = modBillingDBI.Cheque_Details_Get(fk_patient)
             If Not IsNull(chequedetails) Then
-               gvwPayments[onrow_payments, cGridColumnPayments_Bank].Text = chequedetails!bank
-               gvwPayments[onrow_payments, cGridColumnPayments_Branch].text = chequedetails!branch
+               gvwPayments[gvwPayments.row, cGridColumnPayments_Bank].Text = chequedetails!bank
+               gvwPayments[gvwPayments.row, cGridColumnPayments_Branch].text = chequedetails!branch
                oncol_payments = cGridColumnPayments_ChequeNumber
             Endif
       End Select
@@ -1315,9 +1320,9 @@ Public Sub cmbPaymentMethods_Click()
       gvwPayments.Column = 2   'anything but cGridColumnPayments_PaymentMethod otherwise combo won't disappear
       gvwPayments.SetFocus() 
    Else
-      gvwPayments[onrow_payments, cGridColumnPayments_Bank].Text = ""
-      gvwPayments[onrow_payments, cGridColumnPayments_Branch].text = ""
-      gvwPayments[onrow_payments, cGridColumnPayments_ChequeNumber].text = ""
+      gvwPayments[gvwPayments.row, cGridColumnPayments_Bank].Text = ""
+      gvwPayments[gvwPayments.row, cGridColumnPayments_Branch].text = ""
+      gvwPayments[gvwPayments.row, cGridColumnPayments_ChequeNumber].text = ""
    End If   
    EditArea_Notify_Data_Change(True)
    gvwPayments_HideProperty
@@ -2377,8 +2382,6 @@ Public Sub Invoice_New()
    tbSaveNoPrint.Enabled = True                ''new invoice can be saved (either paid/unpaid) without printing
    lblEditAreaHeading.text = "New Invoice"
    bPayingInvoice = False 
-   fk_payer_branch = 0
-   fk_payer_person = 0
    fk_invoice = 0
    gvwPayments.clear
    lblInvoiceOwing.text = ""
@@ -2466,29 +2469,29 @@ Public Sub cvwInvoices_Select()
    'this point in the list until the fk_invoice changes
    '--------------------------------------------------------------------------------------------   
    
-   If cvwInvoices.count = 0 Then Return  
+   If cvwInvoices.count = 0 Then Return                   'exit if no invoices
    bexit = True
-   lblInvoiceTotalAndPaid.Visible = False  
-   bPayingInvoice = True   
-   VBox_EditArea_Inner.Enabled = False   
-   cvwInvoices.MoveCurrent()
-   If cvwInvoices[cvwInvoices.Item.key][0] = "" Then       'user has clicked on row with no patient name
-      Do Until cvwInvoices[cvwInvoices.Item.key][0] <> ""
+   lblInvoiceTotalAndPaid.Visible = False                 'don't know yet how much will be pain
+   bPayingInvoice = True                                  'set paying invoice flag
+   VBox_EditArea_Inner.Enabled = False                    'don't allow any access to the editing area input area
+   cvwInvoices.MoveCurrent()                              'align key with the columnview row
+   If cvwInvoices[cvwInvoices.Item.key][0] = "" Then      'user has clicked on row with no patient name
+      Do Until cvwInvoices[cvwInvoices.Item.key][0] <> "" 'so move backwards until on a patients name
          cvwInvoices.MovePrevious()
       Loop
    Endif
    cvwInvoices.MoveCurrent()
-   Item_Billed = Items_Billed[cvwInvoices.Item.key] 
-   fk_invoice = Item_Billed!fk_invoice 
-   If Not Item_Billed!paid Then
-      tbSaveNoPrint.Enabled = False 
+   Item_Billed = Items_Billed[cvwInvoices.Item.key]       'get the curren item billed collection (first of 1 or more on an invoice)
+   fk_invoice = Item_Billed!fk_invoice                    'gives us the key to billing.invoices table
+   If Not Item_Billed!paid Then                           'if this invoice is not paid
+      tbSaveNoPrint.Enabled = False                       'as are paying disable the save no print button
       lblEditAreaHeading.text = "Pay Invoice"
-      VBox5.Enabled = True 
+      VBox5.Enabled = True                                'contains the edit area (disabled) items grid and payement grid '   fixme
    Else
       lblEditAreaHeading.text = "Paid Invoice"
       VBox5.Enabled = False  
    Endif
-   txtDate.text = Format(Item_Billed!visit_date, "dd/mm/yyyy")
+   txtDate.text = Format(Item_Billed!visit_date, "dd/mm/yyyy")                    'now fill the edit area with the invoice data
    txtReferenceDetails.text = Item_Billed!reference
    cmbSeenBy.index = cmbSeenBy.Find(Item_Billed!staff_provided_service_wholename)
    cmbLocation.index = cmbLocation.Find(Item_Billed!branch)
@@ -2544,11 +2547,14 @@ Public Sub cvwInvoices_Select()
          Inc onrow_items
       Endif
    Next
-   gvwPayments.Clear()
-   gvwPayments.Rows.count = onrow_items + 2 'to allow payment by eg cash + cheque for medicare items.
-   EditArea_Notify_Data_Change(False)       
-   Hbox_InvoiceGrid.Enabled = False 
-   HBox_InvoiceComments.Enabled = False   
+   gvwPayments.Clear()                                                        'clear the payments grid
+   gvwPayments.Rows.count = 2                                                 'to allow payment by eg cash + cheque for medicare items.
+   EditArea_Notify_Data_Change(False)                                         'don't allow access to the invoice items grid
+   Hbox_InvoiceGrid.Enabled = False                                                
+  Print HBox_PaymentGrid.Enabled
+  Print VBox_PaymentGrid.Enabled
+  gvwPayments.Enabled = True  
+'  HBox_PaymentGrid.Enabled = True    
    bexit = False  
    
 End
@@ -2773,6 +2779,8 @@ Public Sub Account_Patient_Display()
       .text = Patient!wholename  
       .pos = 0
    End With
+   fk_payer_branch = 0
+   fk_payer_person = 0 
    Try Payer_Get(Patient)                                                           'show payer if exists 
    VBox_EditArea_Outer.Enabled = True 
    gvwItemsBIlled.Enabled = True   
@@ -3636,28 +3644,88 @@ Public Sub txtFilterAccounts_Activate()
    Accounts_Reload()
    
 End
-' DROP VIEW billing.vwfees;
-' 
-' Create Or Replace VIEW billing.vwfees As 
-'  Select prices.pk As Pk_view, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, fee_schedule.descriptor, 
-'  fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule, fee_schedule.ceased_date, 
-'  fee_schedule."group", fee_schedule.derived_fee, fee_schedule.number_of_patients,
-'  prices.fk_fee_schedule, prices.pk As Fk_price, prices.price, prices.fk_lu_billing_type, 
-'  prices.notes, lu_billing_type.type As Fee_type
-'    From billing.fee_schedule
-'    JOIN billing.prices ON fee_schedule.pk = prices.fk_fee_schedule
-'    JOIN billing.lu_billing_type ON prices.fk_lu_billing_type = lu_billing_type.pk
-'   ORDER BY fee_schedule.mbs_item:: integer;
-' 
-' ALTER TABLE billing.vwfees
-'   OWNER To richard;
-' GRANT ALL ON TABLE billing.vwfees To richard;
-' GRANT ALL ON TABLE billing.vwfees To easygp;
-' GRANT Select ON TABLE billing.vwfees To staff;
-' 
 
-' insert into billing.lu_payment_method(method) values ('Medicare Cheque');
-' insert into billing.lu_payment_method(method) values ('EFT');
+'insert into billing.reports(report_title)values( 'Payments Received');
+'
+' drop view billing.vwPaymentsReceived;
+' Create or replace view billing.vwPaymentsReceived as
+' SELECT 
+'   payments_received.pk as pk_view,
+'   payments_received.pk as fk_payment_received,
+'   payments_received.date_paid, 
+'   COALESCE(vworganisations.organisation, vwpersonsincludingpatients.wholename) AS account_to_name,
+'   ((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text) AS patient_wholename,
+'   payments_received.fk_invoice, 
+'   payments_received.referent, 
+'   payments_received.amount, 
+'   payments_received.fk_lu_payment_method, 
+'   payments_received.fk_staff_receipted, 
+'   lu_payment_method.method, 
+'   invoices.fk_patient, 
+'   invoices.fk_payer_person, 
+'   invoices.fk_payer_branch, 
+'   invoices.fk_staff_provided_service,
+'   invoices.fk_branch as fk_clinic_branch,
+'   invoices.visit_date as visit_date,
+'   invoices.latex,
+'   data_persons.firstname, 
+'   data_persons.surname, 
+'   lu_title.title
+'   
+' FROM 
+'   billing.payments_received
+'  JOIN billing.lu_payment_method on payments_received.fk_lu_payment_method = lu_payment_method.pk
+'   JOIN billing.invoices on payments_received.fk_invoice = invoices.pk
+'   LEFT JOIN   clerical.data_patients on invoices.fk_patient = data_patients.pk
+'   left join contacts.data_persons on clerical.data_patients.fk_person = data_persons.pk
+'   left join   contacts.lu_title on contacts.data_persons.fk_title = lu_title.pk
+'   LEFT JOIN contacts.vworganisations ON invoices.fk_payer_branch = vworganisations.fk_branch
+'    LEFT JOIN contacts.vwpersonsincludingpatients ON invoices.fk_payer_person = vwpersonsincludingpatients.fk_person
+'  ;  
 ' 
-'"insert into billing.fee_schedule (descriptor, descriptor_brief, mbs_item, \"group\") values ($$professional attendance by a general practitioner (not being an attendance at consulting rooms or a residential aged care facility and not being a service to which any other item in this table applies), lasting less than 20 minutes and including any of the following that are clinically relevant:(a) taking a patient history;(b) performing a clinical examination;(c) arranging any necessary investigation;(d) implementing a management plan;(e) providing appropriate preventive health care;for 1 or more health-related issues, with appropriate documentation - an attendance on 1 or more patients at 1 place on 1 occasion - each patient$$,'Home Visit 2 Patients','24','A1');"
+'  alter table billing.vwPaymentsReceived owner to easygp;
+'  GRANT ALL ON TABLE billing.vwPaymentsReceived TO easygp;
+' GRANT ALL ON TABLE billing.vwPaymentsReceived TO staff;
+' 
+' 
+' drop view billing.vwPaymentsReceived;
+' Create or replace view billing.vwPaymentsReceived as
+' SELECT 
+'   payments_received.pk as pk_view,
+'   payments_received.pk as fk_payment_received,
+'   payments_received.date_paid, 
+'   COALESCE(vworganisations.organisation, vwpersonsincludingpatients.wholename) AS account_to_name,
+'   ((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text) AS patient_wholename,
+'   payments_received.fk_invoice, 
+'   payments_received.referent, 
+'   payments_received.amount, 
+'   payments_received.fk_lu_payment_method, 
+'   payments_received.fk_staff_receipted, 
+'   lu_payment_method.method as payment_method, 
+'   invoices.fk_patient, 
+'   invoices.fk_payer_person, 
+'   invoices.fk_payer_branch, 
+'   invoices.fk_staff_provided_service,
+'   invoices.fk_branch as fk_clinic_branch,
+'   invoices.visit_date as visit_date,
+'   invoices.latex,
+'   data_persons.firstname, 
+'   data_persons.surname, 
+'   lu_title.title
+'   
+' FROM 
+'   billing.payments_received
+'  JOIN billing.lu_payment_method on payments_received.fk_lu_payment_method = lu_payment_method.pk
+'   JOIN billing.invoices on payments_received.fk_invoice = invoices.pk
+'   LEFT JOIN   clerical.data_patients on invoices.fk_patient = data_patients.pk
+'   left join contacts.data_persons on clerical.data_patients.fk_person = data_persons.pk
+'   left join   contacts.lu_title on contacts.data_persons.fk_title = lu_title.pk
+'   LEFT JOIN contacts.vworganisations ON invoices.fk_payer_branch = vworganisations.fk_branch
+'    LEFT JOIN contacts.vwpersonsincludingpatients ON invoices.fk_payer_person = vwpersonsincludingpatients.fk_person
+'  ;  
+' 
+'  alter table billing.vwPaymentsReceived owner to easygp;
+'  GRANT ALL ON TABLE billing.vwPaymentsReceived TO easygp;
+' GRANT ALL ON TABLE billing.vwPaymentsReceived TO staff;
+' 
 

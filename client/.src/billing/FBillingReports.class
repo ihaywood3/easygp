@@ -11,20 +11,6 @@ Public Sub init(rt As Collection)
    
    Report_Titles = rt   
    
-   With columnview1
-      .Columns.Count = 10
-      
-      .Columns[0].text = "Appt"
-      .Columns[1].text = "Patient"
-      .Columns[2].text = "   Bill To   "
-      .Columns[3].text = "Item"
-      .Columns[4].text = "Descriptor"
-      .Columns[5].text = "Amount"
-      .Columns[6].text = "GST"
-      .Columns[7].text = "Paid"
-      .Columns[8].text = "Paid By"
-      .Columns[9].text = "Owing"
-   End With   
    With form_html_viewer = New FHtmlViewer(VBox_HTML_Viewer)
       .tbWebBrowserZoomIn.Visible = True  
       .tbWebBrowserPrint.Visible = True   
@@ -35,12 +21,52 @@ End
 
 Public Sub Report_Show(col As Collection, Optional cal_date As Date = Now(), Optional fk_staff As Integer = 0)
    
-   If col!report_title = "Day List" Then
-      lblReportHeading.text = "Day List Summary"
-      fk_staff = fk_staff
-      Day_list_Show(cal_date, fk_staff)
-   Endif
+   lblReportHeading.text = col!report_title & " for " & Format(cal_date, "dd/mm/yyyy")
+   Select Case col!report_title
+      Case "Day List of Patients Seen" 
+         fk_staff = fk_staff
+         Day_list_Show(cal_date, fk_staff)
+      Case "Payments Received"
+         Payments_Received_Show(cal_date, fk_staff)
+   End Select
    
+End
+
+Public Sub Payments_Received_Show(the_date As Date, fk_staff As Integer)
+   
+   Dim Payment_Received As Collection
+   Dim Payments_received As Collection 
+   
+   With columnview1
+      .Clear
+      .Columns.Count = 7
+      .Columns[0].text = "Visit Date"
+      .Columns[0].width = 60
+      .Columns[1].text = "Patient"
+      .Columns[2].text = "Payer"
+      .Columns[3].text = "Payment Type   "
+      .Columns[4].text = "Drawer"
+      .Columns[5].text = "Amount"
+      .Columns[6].text = "GST"
+   End With   
+   Inc Application.Busy
+   Payments_Received = modBillingDBI.Payments_Recieved_Get_For_Date(the_date, modDBConnect.currentUser!fk_branch, fk_staff)
+   For Each Payment_Received In Payments_received
+      columnview1.Add(Payment_Received!pk_view, 0)  
+      columnview1[Payment_Received!pk_view][0] = Format(Payment_Received!visit_date, "dd/mm/yyyy")
+      columnview1[Payment_Received!pk_view][1] = Payment_Received!patient_wholename
+      If Not IsNull(Payment_Received!account_to_name) Then
+         columnview1[Payment_Received!pk_view][2] = Payment_Received!account_to_name
+      Else
+         columnview1[Payment_Received!pk_view][2] = ""
+      End If   
+     
+      columnview1[Payment_Received!pk_view][3] = Payment_Received!payment_method
+      '  columnview1[Payment_Received!pk_view][4] = Payment_Received!drawer fixme
+      columnview1[Payment_Received!pk_view][5] = modUtil.Money_Format(Payment_Received!amount)
+      ' columnview1[Payment_Received!pk_view][6] = Payment_Received!gst
+   Next
+  Dec Application.Busy
 End
 
 Public Sub Day_list_Show(the_date As Date, fk_staff As Integer)
@@ -72,20 +98,29 @@ Public Sub Day_list_Show(the_date As Date, fk_staff As Integer)
    Dim num_private_patients_bulk_billed As Integer
    Dim sHtml As String
    
-   Inc Application.Busy
-   payment_methods = modBillingDBI.Payment_Methods_Get()
-   
-   ' monies_received = modBillingDBI.Receipts_Get_For_Day(the_date)
-   monies_received = New Collection  
-   ' centrelink_card_types = modBillingDBI.Centrelink_Card_Types_Get() 'clerical.lu_centrelink_card_type
-   visits = modBillingDBI.Day_List_Get(the_date, modDBConnect.currentUser!fk_branch, fk_staff)
-   sHtml = ""
    With columnview1
+      .Columns.Count = 10
+      .Columns[0].text = "Appt"
+      .Columns[1].text = "Patient"
+      .Columns[2].text = "   Bill To   "
+      .Columns[3].text = "Item"
+      .Columns[4].text = "Descriptor"
+      .Columns[5].text = "Amount"
+      .Columns[6].text = "GST"
+      .Columns[7].text = "Paid"
+      .Columns[8].text = "Paid By"
+      .Columns[9].text = "Owing"
       .Clear 
       For x = 0 To .Columns.Count - 1
          .Columns[x].Alignment = Align.left
       Next
-   End With
+   End With   
+   Inc Application.Busy
+   payment_methods = modBillingDBI.Payment_Methods_Get()
+   monies_received = New Collection  
+   visits = modBillingDBI.Day_List_Get(the_date, modDBConnect.currentUser!fk_branch, fk_staff)
+   sHtml = ""
+   
    For Each visit In visits
       columnview1.Add(visit!pk_view, 0)
       If IsNull(visit!fk_lu_reason_not_billed) Then                                         'if visit was billed
@@ -152,7 +187,7 @@ Public Sub Day_list_Show(the_date As Date, fk_staff As Integer)
          '     columnview1[visit!pk_view][9].text = "$0.00"
          '  Else
          If IsNull(visit!payment_amount) Then
-             columnview1[visit!pk_view][9] = visit!amount
+            columnview1[visit!pk_view][9] = visit!amount
          Else
             columnview1[visit!pk_view][9] = modUtil.Money_Format(modUtil.MoneyToFloat(visit!amount) - modUtil.MoneyToFloat(visit!payment_amount))
          Endif

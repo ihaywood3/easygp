@@ -64,7 +64,6 @@ Private fk_town As Integer
 Private fk_organisation As Integer
 Private visit_types As String[]
 Private pk_view_claim As Integer
-Private pk_view_visits As Integer
 Private fk_code As String  'see coding.generic_terms table
 Private fk_coding_system As Integer 'e.g 1 = icpc2Plus 2 = icd10
 Private Contact_Type As Integer
@@ -125,79 +124,7 @@ Public Sub Init(cons As CConsult)
    
 End
 
-Public Sub Save_old()
-   '----------------------------------
-   'Save the workcover claim and visit
-   '----------------------------------   
-   
-   Dim sProgressNotes As String
-   '---------------------------------------------
-   'Do some validation/prompt for missing printer
-   '---------------------------------------------
-   If VBox_EditArea_Outer.padding = 0 Then Return
-   If Not EditArea_Contents_Valid() Then Return 
-   claim!claim_number = Trim(txtClaim.text)
-   claim!fk_occupation = fk_occupation
-   If fk_occupation = 0 Then
-      claim!occupation = Trim(txtOccupation.text) 'will be dropped later
-   Else
-      Try claim.Remove("occupation")
-   End If
-   claim!fk_branch = fk_branch
-   If fk_person <> 0 Then claim!fk_person = fk_person
-   Try claim!hours_week_worked = Val(txtHoursWorked.text)
-   claim!mechanism_of_injury = Trim(txtMechanismInjury.text)
-   claim!date_injury = Trim(txtDateInjury.text)
-   claim!contact_person = Trim(txtContactPerson.text)
-   claim!memo = Trim(txtMemo.text)
-   claim!identifier = Trim(txtIdentifier.text)
-   claim!accepted = CBool(chkClaimAccepted.value)
-   If fk_claim Then
-      visit!fk_claim = fk_claim
-   Endif
-   visit!diagnosis = Trim(txtDiagnosis.text)
-   visit!fk_code = fk_code  'fk_code is string, if "" will set this to null
-   If fk_coding_system <> 0 Then visit!fk_coding_system = fk_coding_system
-   visit!management_plan = Trim(txtManagementPlan.text)
-   Try visit!review_date = Trim(txtReviewDate.text)
-   Try visit!hours_capable = Val(txtCanWork_HrsPerDay.text)
-   Try visit!days_capable = Val(txtCanWork_DaysPerWeek.Text)
-   visit!restrictions = Trim(txtRestrictions.text)
-   visit!capabilities = Trim(txtCapabilities.text)
-   Try visit!certificate_date = Val(txtCertificateDate.text)
-   Try visit!fitness_preinjury_from = Val(txtPreInjury_From.text)
-   Try visit!fitness_suitable_from = Val(txtSuitable_From.text)
-   Try visit!fitness_suitable_to = Val(txtSuitable_To.text)
-   Try visit!fitness_unfit_from = Val(txtUnfit_From.text)
-   Try visit!fitness_unfit_to = Val(txtUnfit_To.text)
-   Try visit!fitness_perm_mod_duties_from = Val(txtPermModDuties_From.text)
-   If rbAssessWorkplaceYes.value = True Then
-      visit!assessworkplace = True
-   Else
-      visit!assessworkplace = False 
-   End If   
-   visit!doctor_consented = CBool(chkAgreeToTreat_Doctor.value)
-   visit!worker_consented = CBool(chkAgreeToTreat_Worker.value)
-   sProgressNotes = Claim_Construct_ProgressNotes_structured_HTML().GetData()
-   visit!latex = WorkcoverForm_LaTeX_Construct().GetData()
-   visit.remove("visit_type")
-   visit.remove("visit_date")
-   visit.remove("caused_by_employment")
-   visit.remove("worker_consented_text")
-   visit.remove("doctor_consented_text")
-   visit.remove("coded_term")
-   visit.remove("coding_system")
-   modDBConnect.BeginTrans()
-   visit!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_Workcover, fk_progressnote, "workcover", 0, False)
-   fk_claim = modWorkCoverDBI.Save(currentconsult, pk_view_visits, claim, visit) 
-   modDBConnect.CommitTrans()
-   EditArea_Notify_Datachanged(False)
-   modPrinting.Print_latex(visit!latex, const.Paper_Plain, 2)
-   FClinical.Refresh_AllPreviousNotes()
-   FClinical.Refresh_Section(const.cSection_Workcover)
-   Reload()
-   
-End
+
 
 Public Sub Save()
    '----------------------------------
@@ -309,7 +236,7 @@ Public Sub Save()
    ProgressNote!fk_section = const.cSection_Workcover
    ProgressNote!problem = "Workcover"
    ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
-   visit!fk_progressNote = progressnote!fk_progressnote
+   visit!fk_progressnote = progressnote!fk_progressnote
    visit!latex = WorkcoverForm_LaTeX_Construct(visit).GetData()
    visit.Save("clin_workcover.visits", "fk_visit")
    '  modDBConnect.CommitTrans()
@@ -786,8 +713,9 @@ Public Sub Claim_Preview()
    Dim Filename As String
    
    If bNewVisit Then Return 'currently can't preview a new form
-   filename = modPrinting.Latex_To_PDF(currentconsult!workcover_claims[pk_view_visits]!latex)
-   FClinical.Editor_ShowPage_External("pdf file", "Workcover Form " & Format(currentconsult!workcover_claims[pk_view_visits]!certificate_date, "dd/mm/yyyy"), filename)
+   cvwVisits.MoveCurrent()
+   filename = modPrinting.Latex_To_PDF(currentconsult!workcover_claims[fk_visit]!latex)  
+    FClinical.Editor_ShowPage_External("pdf file", "Workcover Form " & Format(currentconsult!workcover_claims[fk_visit]!certificate_date, "dd/mm/yyyy"), filename)
    
 End
 
@@ -1322,18 +1250,17 @@ Public Sub Claim_New()
    Endif
    Editarea_Claim_Clear()
    EditArea_Visit_Clear()
+   bexit = True     
    Try lvwClaims.UnselectAll()
    Try cvwVisits.UnselectAll()
    bNewclaim = True
    bClaimLoaded = False 
    bVisitLoaded = False
-   bExit = True
    claim = New Collection
    visit = New Collection
    branch = New Collection
    pk_view_claim = -1
    Reset_Keys()
-   pk_view_visits = -1
    fk_progressnote = 0
    rbWorkcoverConsultTypeInitial.value = True  
    fk_lu_visit_type = const.Workcover_VisitType_Initial 
@@ -1362,7 +1289,7 @@ Public Sub lvwClaims_Select()
    '------------------------------------------------------------------------------
    'Either user has clicked on the claims list or set programmatically in Reload()
    '------------------------------------------------------------------------------
-
+   If bexit Then Return 
    If Not lvwClaims.count Then Return 
    Reset_Keys()
    lvwClaims.MoveCurrent                                             'sets the lvwClaims key
@@ -1370,7 +1297,6 @@ Public Sub lvwClaims_Select()
    pk_view_claim = lvwClaims.Item.Key
    claim = currentconsult!workcover_claims[lvwClaims.Item.Key]
    fk_claim = claim!fk_claim
-   Print "claim fk_progress notes:", claim!fk_progressnote
    fk_consult_claim = claim!fk_consult_claim
    branch = New Collection 
    Try fk_branch = claim!fk_branch
@@ -1524,7 +1450,6 @@ Public Sub Visit_Delete()
       lvwClaims_Select()
       Claim_Display()
    End If  
-   Print visit, claim
    If Message.Question("Do you really want to delete this workcover form?", "Yes", "No") = 2 Then Return
    ' cvwVisits.MoveCurrent()
    For Each PN In currentconsult!progress_notes
@@ -1566,7 +1491,7 @@ Public Sub Visit_Display()
    '----------------------------------------
    'Display the details of the current visit
    '----------------------------------------   
-   
+   If bexit Then Return 
    EditArea_Visit_Clear()        'just clear textboxes etc, dosn't affect the keys
    VBox_EditArea.Enabled = False
    HBox_Visit_Type.Enabled = False  
@@ -1610,7 +1535,6 @@ Public Sub Visit_Display()
    fk_progressnote = 0  'new unless editing a visit
    If Not IsNull(currentconsult!workcover_claims[fk_visit]!fk_progressnote) Then
       fk_progressnote = currentconsult!workcover_claims[fk_visit]!fk_progressnote
-      Print "visit fk_progressNote:", fk_progressnote
    End If 
    bExit = True
    Select Case visit!fk_lu_visit_type

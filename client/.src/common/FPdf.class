@@ -40,6 +40,9 @@ Private NumberOfSearchResults As Integer
 Private currentSearchResultSynonyms As Short = 0
 Private Product_Information_Dir As String
 Private Synonyms As New String[20, 20]
+Private ScrollXPositionBeforeZoom As Float
+Private ScrollYPositionBeforeZoom As Float
+Private ControllKey As Boolean
 
 Public Sub Init(Optional cons As CConsult)
    
@@ -87,16 +90,17 @@ Public Sub Render_From_Another_Form()
 End
 
 'Public Sub Load_PDF(sPath As String)
-   'fixme, need better logging of bad pdf's for the INBOX/Display
+'fixme, need better logging of bad pdf's for the INBOX/Display
 Public Sub Load_PDF(sPath As String, Optional bDoNotShowErrorMessage As Boolean = False)
    
    Dim smsg As String
+   
    bExit = True 
    pdf_path = spath
    hPdf.Close()
    Try hPdf.Open(sPath)
    If Error Then 
-       If bDoNotShowErrorMessage = False Then  
+      If bDoNotShowErrorMessage = False Then  
          If Error.text = "File not found" Then
             sMsg = "The file you are trying to view was not found.\n\n"
             "There could be several causes, maybe the documents directory is not correctly mounted to your local machine.\n\n"
@@ -172,8 +176,9 @@ Catch
    Message.Info(Error.Text)
    
 End
-Public Sub Init_Drugs_Browser()
 
+Public Sub Init_Drugs_Browser()
+   
    Dim x As Integer
    Dim sfile As String 
    Dim picTag As Picture
@@ -184,12 +189,12 @@ Public Sub Init_Drugs_Browser()
    Dim WordGroups As New String[]
    Dim WordsSeperate As New String[]
    
-'   Hbox_Buttons.Visible = False
+   '   Hbox_Buttons.Visible = False
    combobox1.Visible = True   
    If Not modDBConnect.IsAdmin Then 
       Product_Information_Dir = modAdminDBI.Config_Get("product_information_directory", "", Null, modDBConnect.currentUser!fk_clinic)
    Endif
-    WordGroups = Split(Replace(file.load("clinical/prescribing/drugbrowsing_jumpto_synonyms"), "\n", ""), "/")
+   WordGroups = Split(Replace(file.load("clinical/prescribing/drugbrowsing_jumpto_synonyms"), "\n", ""), "/")
    For Each TextString In WordGroups
       WordsSeperate = Split(TextString, ",")
       For Each TextString2 In WordsSeperate
@@ -251,11 +256,19 @@ Public Sub RenderPage(Optional FoundText As String, Optional Casesensetivity As 
    'This function is called everytime something changed for example a new search result has to be displayed or the page 
    'has canged the parameters FoundText and Casesensetivity are only of interrest if the funktion is called from a search frunction
    '--------------------------------------------------------------------------
+   
    Dim hPic As Picture 
    Dim Bc As Integer 
    
-   If CurrentZoom > 0.0 Then 
-      hPdf.Zoom = CurrentZoom
+ If CurrentZoom > 0.0 Then 
+      If CurrentZoom <> hPdf.Zoom Then 
+         ScrollXPositionBeforeZoom = ViewPort.ScrollX / ViewPort.ScrollWidth
+         ScrollYPositionBeforeZoom = ViewPort.ScrollY / ViewPort.ScrollHeight
+         hPdf.Zoom = CurrentZoom
+         Else
+                     ScrollXPositionBeforeZoom = -1
+         ScrollYPositionBeforeZoom = -1
+      Endif
    Else
       Message.Error("Can't set zoom to " & CurrentZoom, "OK")
       Log.ErrorMsg("Tried to set PDF zoom to " & CurrentZoom)
@@ -281,7 +294,7 @@ Public Sub RenderPage(Optional FoundText As String, Optional Casesensetivity As 
       PBox.Picture = hPic 
    Endif
    
-      'here the synonym search result gets highlighted and the focus is set to the right position again if something has changed for example the zoomfactor 
+   'here the synonym search result gets highlighted and the focus is set to the right position again if something has changed for example the zoomfactor 
    If currentSearchResultSynonyms > 0 And FoundText <> "" Then        ' resets the mark on the current search result for synonyms
       hPdf[CurrentPage].Find(FoundText, Casesensetivity)
       Paint.Begin(hPic)
@@ -305,7 +318,11 @@ End
 Public Sub Form_Resize()
    
    If CurrentPage = 0 Then Return 
-   Try pBox.Left = (ViewPort.Width - hPdf[CurrentPage].Width) / 2
+   If ScrollXPositionBeforeZoom > 0 And ScrollYPositionBeforeZoom > 0 Then 
+      ViewPort.ScrollX = ScrollXPositionBeforeZoom * ViewPort.ScrollWidth
+   ViewPort.Scrolly = ScrollYPositionBeforeZoom * ViewPort.ScrollHeight
+   Endif
+
    
 End
 
@@ -356,7 +373,7 @@ Public Sub zoom_in()
    If CurrentZoom = 3 Then btZoomIn.Enabled = False 
    btZoomOut.Enabled = True 
    RenderPage()
-
+   
 End
 
 Public Sub btZoomOut_Click()
@@ -509,7 +526,6 @@ Public Sub btRotate_Click()
    
 End
 
-
 Public Sub tbSave_Click()
    
    Save_PDF()
@@ -527,7 +543,7 @@ Public Sub Find_Text()
    '---------------------------------------------------------------------------
    'This function is called if the user wants fo find the string inside the textbox "TxtFind" by hitting the enter key
    '--------------------------------------------------------------------------
-
+   
    If Bexit Then Return 
    If TxtFind.Text <> "" Then 
       If currentSearchResult > 0 Then
@@ -547,8 +563,6 @@ Public Sub Find_Text()
       Endif
    End If
    
-
-   
 End
 
 Private Sub VerifySearchResult(CurrentSearchPage As Integer, SynonymArray As String[], Position As Integer, Synonymcount As Integer, Casesensetivity As Boolean) As Integer
@@ -556,9 +570,7 @@ Private Sub VerifySearchResult(CurrentSearchPage As Integer, SynonymArray As Str
    'This function is called by the funktion FindSynonymeFromArray and gives back whether the result is a
    ' headline or not 
    '--------------------------------------------------------------------------
-
-
-      
+   
    Dim BufferArrayTop As Float[]    'these three arrays will contain the position of the search results which need to be verified
    Dim BufferArrayLeft As Float[]
    Dim BufferArrayWidth As Float[]
@@ -568,7 +580,6 @@ Private Sub VerifySearchResult(CurrentSearchPage As Integer, SynonymArray As Str
    BufferArrayTop = New Float[]
    BufferArrayLeft = New Float[]
    BufferArrayWidth = New Float[]
-   
    
    hPdf[CurrentSearchPage].Find(SynonymArray[Position, Synonymcount], Casesensetivity)    
    BufferArrayTop.resize(hPdf[CurrentSearchPage].Result.Count)
@@ -673,7 +684,7 @@ Private Sub VerifySearchResult(CurrentSearchPage As Integer, SynonymArray As Str
    
    'headlines never have a "," after it and this is checked here
    'if a result is maching this specification it gets removed from the arrays
-     If hPdf[CurrentSearchPage].Find(SynonymArray[Position, Synonymcount] & ",", Casesensetivity) = False Then 
+   If hPdf[CurrentSearchPage].Find(SynonymArray[Position, Synonymcount] & ",", Casesensetivity) = False Then 
       MultiCount = 0
       Repeat
          Repeat 
@@ -697,10 +708,10 @@ Private Sub VerifySearchResult(CurrentSearchPage As Integer, SynonymArray As Str
          
       Until Multicount = BufferArrayTop.Length  
    Endif
-  
+   
    'headlines never have a ")" after it and this is checked here
    'if a result is maching this specification it gets removed from the arrays
-     If hPdf[CurrentSearchPage].Find(SynonymArray[Position, Synonymcount] & ")", Casesensetivity) = False Then 
+   If hPdf[CurrentSearchPage].Find(SynonymArray[Position, Synonymcount] & ")", Casesensetivity) = False Then 
       MultiCount = 0
       Repeat
          Repeat 
@@ -750,6 +761,7 @@ Public Sub ComboBox1_Click()
    Dec Application.Busy
    
 End
+
 Public Function FindSynonymeFromArray(SynonymArray As String[], Position As Integer) As Boolean
    '---------------------------------------------------------------------------
    ' -this function is typically called from the outside of this form and needs as transfer parameters a multidimensionalarray containing a list
@@ -757,6 +769,7 @@ Public Function FindSynonymeFromArray(SynonymArray As String[], Position As Inte
    ' -the funktion tries to find a headline maching with one of the strings inside the SynonymArray beginning with the first 
    '  string in the array and the first page of the pdf 
    '---------------------------------------------------------------------------
+   
    Dim hPic As Picture 
    Dim TempStorage As Integer 
    Dim currentSearchPage As Short = 1 ' contains the information on which page the search funktion searched the last time
@@ -767,8 +780,8 @@ Public Function FindSynonymeFromArray(SynonymArray As String[], Position As Inte
    currentSearchResult = 0
    BtSearchNext.Enabled = False
    BtSearchPrev.Enabled = False
- 
-    If currentSearchResultSynonyms = 0 Then
+   
+   If currentSearchResultSynonyms = 0 Then
       count2 = 0
       Repeat
          Repeat 
@@ -813,6 +826,7 @@ Private Sub FindNext()
    '---------------------------------------------------------------------------
    '    This function finds the next string in the pdf matching the search string located after the current search result
    '---------------------------------------------------------------------------   
+   
    Dim hPic As Picture 
    Dim Bc As Integer 
    Dim currentSearchPage As Short = CurrentPage ' contains the information on which page the search funktion searched the last time
@@ -849,10 +863,9 @@ Private Sub FindNext()
       txtGotoPage.text = CurrentPage
       currentSearchResult = 1
       NumberOfSearchResults = hPdf[currentSearchPage].Result.Count
-
+      
       BtSearchNext.Enabled = True
       BtSearchPrev.Enabled = True
-
       
       RenderPage(TxtFind.Text)
       
@@ -871,6 +884,7 @@ Private Sub FindPrevious()
    '---------------------------------------------------------------------------
    '    This function finds the next string in the pdf matching the search string located before the current search result
    '---------------------------------------------------------------------------
+   
    Dim hPic As Picture 
    Dim Bc As Integer 
    Dim currentSearchPage As Short = CurrentPage ' contains the information on which page the search funktion searched the last time
@@ -919,8 +933,9 @@ End
 
 Public Sub BtSearchNext_Click()
    '---------------------------------------------------------------------------
-     'This funktion is highlighting the next seach string located after the current search string
+   'This funktion is highlighting the next seach string located after the current search string
    '---------------------------------------------------------------------------
+   
    If currentSearchResult = NumberOfSearchResults Then      
       If currentpage = hPdf.Count Then
          CurrentPage = 1
@@ -937,8 +952,9 @@ End
 
 Public Sub BtSearchPrev_Click()
    '---------------------------------------------------------------------------
-    'This funktion is highlighting the next seach string located before the current search string
+   'This funktion is highlighting the next seach string located before the current search string
    '---------------------------------------------------------------------------
+   
    If currentSearchResult > 0 Then
       If currentpage = 1 Then
          currentpage = hPdf.Count
@@ -952,6 +968,7 @@ Public Sub BtSearchPrev_Click()
    Endif
    
 End
+
 
 Public Sub TxtFind_Change()
    '---------------------------------------------------------------------------
@@ -973,4 +990,52 @@ Public Sub TxtFind_Change()
    
 End
 
+Public Sub ViewPort_KeyPress()
+   
+   If Key.Code = Key["f"] And Key.Control Then
+      TxtFind.SetFocus
+         ControllKey = False
+   Endif
+   If Key.Code = Key.F3 Then Find_Text()
+   If Key.Control Then ControllKey = Key.Control
+   
+End
+
+Public Sub PBox_KeyPress()
+   
+   If Key.Code = Key["f"] And Key.Control Then
+      TxtFind.SetFocus
+      ControllKey = False
+      
+   Endif
+   If Key.Code = Key.F3 Then Find_Text()
+   If Key.Control Then ControllKey = Key.Control
+   
+End
+
+Public Sub ViewPort_KeyRelease()
+   
+   If Key.Control Then ControllKey = False
+   
+End
+
+Public Sub PBox_KeyRelease()
+   
+   If Key.Control Then ControllKey = False
+   
+End
+
+Public Function PBox_MouseWheel()
+   
+   If ControllKey And Mouse.Delta > 0 Then zoom_in()
+   If ControllKey And Mouse.Delta < 0 Then zoom_out()
+   
+End
+
+Public Sub TxtFind_KeyPress()
+
+   If Key.Control Then ViewPort.SetFocus()
+   If Key.Code = Key.F3 Then Find_Text()
+   
+End
 

@@ -25,9 +25,7 @@ CREATE OR REPLACE VIEW clerical.vwappointments AS
    LEFT JOIN contacts.lu_title ON data_persons.fk_title = lu_title.pk
   ORDER BY bookings.begin;
 
-ALTER TABLE clerical.vwappointments
-  OWNER TO richard;
-GRANT ALL ON TABLE clerical.vwappointments TO richard;
+ALTER TABLE clerical.vwappointments to easygp;
 GRANT ALL ON TABLE clerical.vwappointments TO easygp;
 GRANT ALL ON TABLE clerical.vwappointments TO staff;
 

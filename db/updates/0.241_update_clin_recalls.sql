@@ -80,7 +80,7 @@ CREATE OR REPLACE VIEW clin_recalls.vwrecallsdue AS
   WHERE recalls.deleted = false
   ORDER BY recalls.due - date(now()), consult.fk_patient;
 
-ALTER TABLE clin_recalls.vwrecallsdue OWNER TO easygp
+ALTER TABLE clin_recalls.vwrecallsdue OWNER TO easygp;
 GRANT ALL ON TABLE clin_recalls.vwrecallsdue TO easygp;
 GRANT ALL ON TABLE clin_recalls.vwrecallsdue TO staff;
 

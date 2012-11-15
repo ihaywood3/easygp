@@ -22,6 +22,7 @@
 '----------------------------------------------------------------------
 Private recalls_due As Collection
 Private bexit As Boolean
+Private iTimer_Count As Integer = 0
 Private patient As Collection
 Private currentconsult As CConsult
 Private templates As Collection
@@ -30,6 +31,8 @@ Private Results As Collection
 Private Letters As Collection
 Private CurrentObservations As Collection
 Private synonyms As Collection
+Private template As Collection                     'currently selected template in templates list
+Private fk_template As Integer                     'if not zero = key to clin_recalls.lu_templates    
 
 Public Sub form_Open()
    
@@ -51,7 +54,6 @@ Public Sub Init()
       .Columns[7].Text = "Last Done"
       .Columns[8].Text = "# Sent"
       .Columns[9].Text = "Template"
-      
    End With
    With cvwRecallsPatient             
       .Clear()
@@ -73,7 +75,7 @@ Public Sub Consult_Check_Created()
    'probably should live elsewhere ?cConsult and pass parameters
    'see const for types of consult
    '------------------------------------------------------------
-
+   
    If IsNull(currentconsult) Then   
       CurrentConsult = New CConsult(patient)
       currentconsult.Set(const.cAuditAction_ReminderSent, "recall")
@@ -82,10 +84,10 @@ Public Sub Consult_Check_Created()
 End
 
 Public Sub cvwRecallsDue_Refresh(Optional days_due As Integer = 0, Optional bOverdue As Boolean = False)
-   '----------------------------
-   'Refresh the recalls due list
-   '----------------------------   
-
+   '-----------------------------------------------------------
+   'Refresh the recalls due list taking into account any filter
+   '-----------------------------------------------------------   
+   
    Dim x As Integer
    Dim recall As Collection
    
@@ -95,7 +97,14 @@ Public Sub cvwRecallsDue_Refresh(Optional days_due As Integer = 0, Optional bOve
    For Each recall In recalls_due
       If bOverdue Then
          If recall!days_due < 0 Then
-            cvwRecallsPatient_Add(recall)
+            
+            If Trim(txtRecallFilter.text) <> "" Then
+               If InStr(Lower(recall!reason), Trim(txtRecallFilter.text)) Then
+                  cvwRecallsPatient_Add(recall)
+               Endif
+            Else
+               cvwRecallsPatient_Add(recall)
+            Endif
          End If
       Else
          If recall!days_due < days_due And recall!days_due > 0 Then
@@ -129,8 +138,15 @@ Public Sub cmbRecallsDue_Click()
    '---------------------------------------------------------------
    'User has clicked the combo with options for time recalls due in
    '---------------------------------------------------------------   
+   
+   Reload()
+   
+End
 
-   Select Case cmbRecallsDue.Text
+Public Sub Reload()
+   
+     Timer1.Stop
+     Select Case cmbRecallsDue.Text
       Case "All Overdue Recalls"
          cvwRecallsDue_Refresh(0, True)
       Case "Due in 2 Weeks"
@@ -140,14 +156,14 @@ Public Sub cmbRecallsDue_Click()
       Case "Due in Next Month"
          cvwRecallsDue_Refresh(29, False)
    End Select
-   
+   cvwRecallsDue.SetFocus()
 End
 
 Public Sub Settings_Save()
    '-----------------------
    'Called from parent form
    '-----------------------   
-
+   
    Settings[Me.Name & "/Vsplit.Layout"] = Vsplit1.Layout
    Settings[Me.Name & "/Hsplit.Layout"] = Hsplit1.Layout
    
@@ -170,7 +186,7 @@ Public Sub mnuRecallManagement_Click()
    '----------------------------------------
    'The popup menu over the recalls due list
    '----------------------------------------   
-
+   
    Dim x As Integer
    
    Select Case Last.tag
@@ -179,9 +195,9 @@ Public Sub mnuRecallManagement_Click()
          modUtil.NotImplemented("Arranging by phone") 
          Return 
       Case "select all and print"
-          cvwRecallsDue.SelectAll()
-          Print()
-          Return 
+         cvwRecallsDue.SelectAll()
+         Print()
+         Return 
       Case "print for mailing"
          cvwRecallsDue.MoveFirst() 
          For x = 0 To cvwRecallsDue.count - 1
@@ -204,15 +220,50 @@ Public Sub mnuRecallManagement_Click()
          modRecallsMenu.Process(currentrecall, Last.tag, currentconsult)
    End Select
    cmbRecallsDue_Click()
+   
+End
 
+Public Sub mnuTemplates_Click()
+   
+    '---------------------------------------------------
+   'User wants to link one or more letter to a template
+   '---------------------------------------------------
+
+   Dim x As Integer
+   Dim pk_recall As Integer 
+   Dim fk_template As Integer = Last.tag
+   
+   Print recalls_due
+   cvwRecallsDue.MoveFirst()
+   For x = 0 To cvwRecallsDue.count - 1
+      If cvwRecallsDue.Item.Selected = True Then
+         pk_recall = recalls_due[cvwRecallsDue.Item.Key]!pk_recall
+         Recall_Link_To_Template(pk_recall, fk_template)
+      Endif
+      cvwRecallsDue.MoveNext()
+   Next
+   cvwRecallsDue.UnselectAll()
+   cvwRecallsDue_Refresh(0, True) 
+   
 End
 
 Public Sub cvwRecallsDue_Menu()
    '----------------------------------------
    'The popup menu over the recalls due list
+   'Populate the menu of available templates
    '----------------------------------------
 
+   Dim mnu As Menu
+   
    If Not Last.count Then Return
+   templates = modRecallsDBI.Templates_Get()
+   For Each template In Templates
+      If template!pk <> 1 'no template' 
+         mnu = New Menu(mnuRecallManagement_LinkToTemplate) As "mnuTemplates"
+         mnu.Text = template!name
+         mnu.tag = template!pk   
+      End If   
+   Next
    cvwRecallsDue.MoveCurrent()
    currentRecall = recalls_due[cvwRecallsDue.Item.Key]
    mnuRecallManagement_RepeatSameInterval.caption = "Mark Completed Repeat in " & currentrecall!interval & currentrecall!abbrev_text
@@ -232,11 +283,11 @@ Public Sub Print()
    '   fk_staff integer, -- key to admin.staff table staff member who prepared the letter
    '   memo text, -- memo added by staff at the time e.g could have called patient who said they would make appointment
    '---------------------------------------------------------------------------
-
+   
    Dim laTex As String                                                'LaTex definition of the letter
    Dim sent As New Collection
    Dim audit_notes As String
-  
+   
    currentRecall = recalls_due[cvwRecallsDue.Item.Key] 
    currentconsult = Null
    patient = currentRecall
@@ -310,11 +361,10 @@ Public Sub RecallLetter_LaTex_Construct() As CTemplate
       templ.Subst("consult_length", currentRecall!appointment_length) 
       templ.Subst("template", "\\relax") 
    Endif
-     templ.Subst("staff_logged_on", modDBConnect.currentUser_FullName())
+   templ.Subst("staff_logged_on", modDBConnect.currentUser_FullName())
    Return templ
    
 End
-
 
 Public Sub cvwRecallsDue_Select()
    '-------------------------------------------------------------------------------------
@@ -347,6 +397,7 @@ Public Sub cvwRecallsDue_Select()
 End
 
 Public Sub cvwRecallsPatient_Refresh()
+   
    Dim x As Integer
    
    currentconsult.Refresh("recalls_logged")
@@ -360,12 +411,14 @@ Public Sub cvwRecallsPatient_Refresh()
       cvwRecallsPatient[x][0] = Format(currentconsult!recalls_logged[x]!due, "dd/mm/yyyy")
       cvwRecallsPatient[x][1] = currentconsult!recalls_logged[x]!reason 
    Next
+   
 End
 
 Public Sub cvwResults_Refresh(Optional bRefresh As Boolean = False)
    '-------------------------------------------
    'Shows any results received for this patient
    '-------------------------------------------   
+   
    Dim x As Integer                      'for readability = key
    Dim results_received As Collection 
    Dim filter As String
@@ -385,7 +438,7 @@ Public Sub cvwResults_Refresh(Optional bRefresh As Boolean = False)
    With cvwResults
       .Columns.count = 3
       .Columns[0].width = 80
-    End With
+   End With
    For Each results_received In currentconsult!results_received
       result_received = ""
       If filter = "" And exclude = "" Then
@@ -532,6 +585,7 @@ Public Sub DocumentFilter_KeyRelease()
    '-------------------------------------------------------------------------
    'User wants to filter document on either tag or who sent them 'originator'
    '-------------------------------------------------------------------------
+   
    If IsNull(currentconsult) Or bExit Then Return 
    Select Case Last.tag
       Case "tag"
@@ -555,7 +609,7 @@ Public Sub InboxResults_KeyRelease()
          bExit = True
          txtInboxResults_filter.text = ""
          bexit = False
-      Case "filter"
+      Case "filter inbox results"
          bExit = True
          txtInboxResults_Exclude.text = ""
          bexit = False
@@ -565,7 +619,7 @@ Public Sub InboxResults_KeyRelease()
 End
 
 Public Sub cvwResults_Menu()
-      
+   
    If Last.count Then
       mnuResults.Popup() 
    Endif
@@ -612,4 +666,66 @@ Public Sub Letter_View()
    
    modUtil.NotImplemented("Viewing letters")
    
+End
+
+Public Sub Recall_Link_To_Template(pk_recall As Integer, fk_template As Integer)
+     
+   modDBConnect.update("clin_recalls.recalls", Null, ["pk": pk_recall, "fk_template": fk_template])
+   modDBConnect.CommitTrans()
+End
+
+Public Sub HBox_Recalls_Filters_Enter()
+
+   Timer1.Enabled = True   
+
+End
+
+Public Sub HBox_Recalls_Filters_Leave()
+
+   Timer1.Enabled = False   
+
+End
+
+Public Sub Timer1_Timer()
+   
+  Inc iTimer_Count
+  
+  If iTimer_Count > 3 And Trim(txtRecallFilter.text) <> "" Then
+     Reload()
+  End If  
+   
+End
+
+
+
+Public Sub InboxResults_GotFocus()
+
+  Last.BackGround = Color.rgb(95, 255, 175)
+
+End
+Public Sub InboxResults_LostFocus()
+
+  Last.BackGround = Color.white
+
+End
+Public Sub txtRecallFilter_GotFocus()
+
+    Last.BackGround = Color.rgb(95, 255, 175)
+    Timer1.Stop
+End
+
+Public Sub txtRecallFilterLostFocus()
+
+    Last.BackGround = Color.white
+    
+End
+
+Public Sub txtRecallFilter_KeyRelease()
+   '----------------------------------------------------------------
+   'User is typing on in the textbox to filter the reason for recall
+   'e.g find all PAP smears
+   '----------------------------------------------------------------
+    Timer1.Start
+    iTimer_Count = 0
+
 End

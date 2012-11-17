@@ -9,8 +9,10 @@ CREATE VIEW billing.vwfees AS
     fee_schedule.descriptor, fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule, 
     fee_schedule.ceased_date, fee_schedule."group", fee_schedule.derived_fee, fee_schedule.number_of_patients, 
     prices.fk_fee_schedule, prices.pk AS fk_price, prices.price, prices.fk_lu_billing_type, prices.notes, 
-    lu_billing_type.type AS fee_type FROM ((billing.fee_schedule JOIN billing.prices ON 
-    ((fee_schedule.pk = prices.fk_fee_schedule))) JOIN billing.lu_billing_type ON ((prices.fk_lu_billing_type = lu_billing_type.pk)));
+    lu_billing_type.type AS fee_type
+    FROM ((billing.fee_schedule
+    JOIN billing.prices ON   ((fee_schedule.pk = prices.fk_fee_schedule)))
+    JOIN billing.lu_billing_type ON ((prices.fk_lu_billing_type = lu_billing_type.pk)));
 
 alter view billing.vwfees owner to easygp;
 grant select on billing.vwfees to staff;

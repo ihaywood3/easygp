@@ -100,7 +100,7 @@ Public Sub Settings_Save()
    Settings["Legacy Data Import/HSplit_ImportLegacy.Layout"] = HSplit_ImportLegacy.Layout
    Settings["Legacy Data Import/VSplit_Legacy.Layout"] = VSplit_Legacy.layout
    Settings["Legacy Data Import/HSplit_Legacy.layout"] = HSplit_Legacy1.layout
-   
+   Settings["Legacy Data Import/import_file_dir"] = Trim(txtImportDirectory.text)
 End
 
 Private Sub Settings_Load()
@@ -108,7 +108,7 @@ Private Sub Settings_Load()
    Try HSplit_ImportLegacy.Layout = Settings["Legacy Data Import/HSplit_ImportLegacy.Layout"]
    Try VSplit_Legacy.layout = Settings["Legacy Data Import/VSplit_Legacy.Layout"]
    Try HSplit_Legacy1.layout = Settings["Legacy Data Import/HSplit_Legacy.Layout"]
-   
+   Try txtImportDirectory.text = Settings["Legacy Data Import/import_file_dir"]
 End
 
 Public Sub chkLegacyData_Click()
@@ -159,6 +159,7 @@ Public Sub tbSelectlegacyFile_Click()
    Dim hCtrl As Control
    Dim aTextbox As Textbox
    Dim x As Integer
+   
    'Dialog.Path = EasyGP.dir_root & "import/"
    '------------------------------
    'No file to process, then leave
@@ -1065,6 +1066,7 @@ Public Sub Medibase_Import()
       Medibase_Import_Staff()
       Print #hLog_file, "Ending staff import"
       chkImportStaff.value = False
+      FStaff.Staff_Refresh_External()
    Endif
    If chkImportPatients.value = True Then
       bNothingChosen = False
@@ -1170,7 +1172,7 @@ Public Sub Medibase_Import_Documents()
                If sFile = "DOCUMENTS" Then 
                   x = 0 
                   For Each sFile In Dir(sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS")
-                     If File.Ext(sRootdir &/ sPatientDir &/ sNotesDir &/ sFile) = "json" Then
+                     If File.Ext(sRootdir &/ sPatientDir &/ sNotesDir &/ sFile) = "meta" Then
                         Documents = New Collection
                         MetaData = New Collection 
                         metadata_filename_path = sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ sFile
@@ -1180,7 +1182,7 @@ Public Sub Medibase_Import_Documents()
                         Wend  
                         Close #hfile
                         MetaData = JSON.Decode(sOneline)
-                        pdf_filename_original = Replace(sFile, ".json", ".pdf")         'this is the pdf name
+                        pdf_filename_original = Replace(sFile, ".meta", "")         'this is the pdf name
                         pdf_filename_modified = modUtil.Filename_Protect(pdf_filename_original) & ".pdf"                                            'create a new name which won't crash 
                         fk_staff = modImportDBI.Staff_Get_Using_Firstname_Lastname(metadata)
                        '------------------------------------------------------------------------------------------------
@@ -1224,9 +1226,12 @@ Public Sub Medibase_Import_Documents()
                         Document!fk_lu_display_as = fk_lu_display_as
                         Document!fk_lu_urgency = const.UrgencyLevelRoutine
                         Document!md5sum = modUtil.Calc_md5sum_File(sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original)
+                        Print "cp " & sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original & " " & modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ pdf_filename_modified
                         Try Copy sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original To modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") &/ pdf_filename_modified 'copy to our documents dir.
+                        
                         If Not Error Then
                            Document.Save("documents.documents", "fk_document")
+                           modDBConnect.CommitTrans()
                         '   Try Kill sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original
                          '  If Error Then
                          '     Message.info("problem killing the original file")
@@ -1241,6 +1246,8 @@ Public Sub Medibase_Import_Documents()
             Next
          Endif
          Inc iPatientCount
+         Print "patient", iPatientCount
+      
          lblProgress.text = "total patients processed:" & Str(iPatientCount)
          Wait 
          Next
@@ -2579,6 +2586,7 @@ Public Sub Medibase_Import_Letters()
                         Referral!tag = metadata!tag
                         Referral!body_html = metadata!body_html
                         Referral.Save("clin_referrals.referrals", "fk_referral")
+                        modDBConnect.CommitTrans() 
                      Endif
                      Inc x 
                   Next
@@ -2591,8 +2599,7 @@ Public Sub Medibase_Import_Letters()
          Wait
       Next
    End If
-  ' Message.Info("Commit Progress Notes?")
-   modDBConnect.CommitTrans() 
+    modDBConnect.CommitTrans() 
    If rejected_records.count Then   
       hFile = Open sRootdir &/ "referral_letters_rejected.txt" For Write Create
       For x = 0 To rejected_records.count - 1

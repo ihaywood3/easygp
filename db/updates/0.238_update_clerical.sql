@@ -4,7 +4,6 @@
 -- update contacts.vwPatients for the new gui control chkNursingHomeResident
 alter table clerical.bookings add column fk_lu_reason_not_billed integer default null;
 
-drop table billing.lu_reasons_not_billed;
 CREATE TABLE billing.lu_reasons_not_billed
 (
   pk serial NOT NULL,

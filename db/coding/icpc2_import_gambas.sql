@@ -240,5 +240,5 @@ grant select on coding.vwicpckeywordgroupers to staff;
 update coding.lu_systems set preferred='f';
 update coding.lu_systems set preferred='t' where pk=1;
 
-\i icpc2_update.sql
+\i coding/icpc2_update.sql
 

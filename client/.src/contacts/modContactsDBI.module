@@ -257,7 +257,65 @@ Public Function Staff_Exists(logon_name As String) As Boolean
    
 End
 
+Public Function Staff_Create_Postgres_User(old_data As Collection, pk_view As Integer, staff As Crow) As Boolean
+   '-------------------------------------------------------------------
+   'Creates or changes a postgres user returns True if succeeds
+   'any validation of existing user must be done my the calling routine
+   'IAN PLEASE DO NOT REMOVE THIS AGAIN WITHOUT TALKING TO ME
+   'I DON'T MIND, BUT THERE WAS A SPECIFIC REASON TO TO WITH IMPORTING
+   'I'M SURE YOU HAVE A MORE ELEGANT SOLUTION, HAPPY WITH WHATEVER
+   'BUT IT CRIPPLES MY IMPORT OF HORSTS DATA
+   '------------------------------------------------------------------- 
 
+   Dim $Result As Result
+   Dim sql As String
+   Dim role As String
+   'this is temporary IAN FIXME.
+   Select Case staff!fk_role
+      Case const.StaffRole_SysAdmin
+         role = "easygp"
+      Case Else
+         role = "staff"
+   End Select
+   
+   If Not staff.Exist("fk_staff") Then 
+      '----------------------------------------------------
+      'New staff member? add as user with selected password
+      '----------------------------------------------------
+      If Not modDBConnect.Role_Check_If_Exists(staff!logon_name) Then
+         sql = "CREATE USER  \"" & staff!logon_name & "\" PASSWORD $$" & staff!password & "$$ IN ROLE " & role
+         If Not (IsNull(staff!logon_date_to)) Then
+            sql &= " VALID UNTIL '" & Format$(staff!logon_date_to, "dd/mm/yyyy") & "'"
+         End If   
+         $Result = modDBConnect.exec_query(sql)
+         sql = "GRANT staff to \"" & staff!logon_name & "\""
+         $Result = modDBConnect.exec_query(sql)
+      Else
+            Return 'a false flag = fail
+      End If
+   Else
+      '------------------------------------------------------------
+      'An existing user
+      '------------------------------------------------------------
+      If staff!logon_name <> old_data[pk_view]!logon_name Then
+         sql = "ALTER ROLE \"&1\" RENAME TO \"&2\""
+         sql = Subst$(sql, old_data[pk_view]!logon_name, staff!logon_name)
+         modDBConnect.exec_query(sql)
+      Endif 
+      If staff!logon_date_to <> old_data[pk_view]!logon_date_to Then
+         sql = "ALTER ROLE \"&1\" VALID UNTIL '&2'"
+         sql = Subst$(sql, staff!logon_name, Format$(staff!logon_date_to, "dd/mm/yyyy"))
+         modDBConnect.exec_query(sql)
+      Endif
+      If staff.Exist("password") And If staff!password <> "" Then
+         sql = "ALTER ROLE \"&1\" WITH PASSWORD '&2'"
+         sql = Subst$(sql, staff!logon_name, staff!password)
+         modDBConnect.exec_query(sql)
+      Endif
+   End If
+   Return True
+   
+End
 
 Public Function Staff_Member_Save(old_data As Collection, pk_view As String, staff As Collection, employees_place_of_work As Collection) As Integer
    '----------------------------------------------------

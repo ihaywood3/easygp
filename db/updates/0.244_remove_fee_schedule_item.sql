@@ -22,7 +22,7 @@ create view billing.vwitemsbilled as
 
 
 alter view billing.vwitemsbilled owner to easygp;
-grant select on billing.vwitembilled to staff;
+grant select on billing.vwitemsbilled to staff;
 
 
 create view billing.vwitemsandinvoices as

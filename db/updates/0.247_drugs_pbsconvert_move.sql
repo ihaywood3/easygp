@@ -1,4 +1,5 @@
 create table drugs.pbsconvert as table pbsconvert;
+alter table drugs.pbsconvert owner to easygp;
 drop table pbsconvert;
 
 --

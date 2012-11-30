@@ -14,10 +14,26 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+' FBC
+' Hepatitis B/C
+' VDRL
+' MSU
+' Varicella
+' Rubella
+' Syphilis
+' nuchal fold scan date
+' 18 week morphology scan date
+' Glucose Tolerance Test   * 50 *75
+' Drug Problem
+' Alcohol Problem
+' Social Problems
+' Smoking
+' 
 
 Private currentconsult As CConsult
 Private bExit As Boolean
-
+Private bKeyValid As Boolean
+Private fk_pregnancy As Integer
 Private member As Collection
 Private The_Collections As Collection
 Private currentPregnancy As Collection 
@@ -34,13 +50,24 @@ Private frmDemographics As FPregnancyDemographics
 Private frmFamilyandsocial As FFamilyHistory
 Private frmPregnancyHistory As FPregnancyHistory
 Private frmFirstVisitExamination As FPregnancyFirstExamination
-Private frmVisits As FPregnancyVisits
+Private form_visits As FPregnancyVisits
 Private frmInvestigations As FPregnancyInvestigations
 Private frmProgressNotes As FProgressNotePage
 Private frmPastHistory As FPastHistory
 Public FrmHTMLViewer As FHtmlViewer 
+Private pregnancies As Collection
+Private onset_labour_types As Collection
+Private delivery_types As Collection
+Private sex_types As Collection 
+Private bits As New String[]
 
 Public Sub init(cons As Cconsult)
+   
+   lblMeasure.text = "    Date for Anti D (If Rh -ve)    "
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
+   onset_labour_types = modUtil.LoadCombo(cmbOnsetLabour, modUtil.Copy_Collection_Keyed_Sequentially(modPregnancyDBI.Onset_Labour_Types_Get()), "type")
+   delivery_types = modUtil.LoadCombo(cmbDeliveryTypes, modUtil.Copy_Collection_Keyed_Sequentially(modPregnancyDBI.Delivery_Types_get()), "type")
+   sex_types = modUtil.LoadCombo(cmbBabySex, Sex_Types_Fill_Collection(), "type")
    '--------------------------
    'Load pages onto the wizard
    '--------------------------
@@ -48,8 +75,8 @@ Public Sub init(cons As Cconsult)
    currentconsult = cons
    Try Settings_Load()
    form_pregnancy = Me
-   With frmVisits = New FPregnancyVisits(VBox_AnteNatalVisits)
-   .Init(currentconsult)                       'loads any existing ante-natal visits for the current pregnancy
+   With form_visits = New FPregnancyVisits(VBox_AnteNatalVisits)
+      .Init(currentconsult)                       'loads any existing ante-natal visits for the current pregnancy
    End With 
    With frmDemographics = New FPregnancyDemographics(VBox_WizardPage)
       .Init(currentConsult)
@@ -72,28 +99,275 @@ Public Sub init(cons As Cconsult)
       .Visible = False  
       .Init(currentconsult)
    End With
+   With cvwPregnancies
+      .Columns.count = 7
+      .Columns[0].text = "Mth/year Delivery"
+      .Columns[1].text = "Gestational Age"
+      .Columns[2].text = "Onset of Labour"
+      .Columns[3].text = " Length labour "
+      .Columns[4].text = "Type of Delivery"
+      .Columns[5].text = " Sex "
+      .Columns[6].text = " Weight "
+   End With
+   
    lblHeading.TEXT = "DEMOGRAPHIC DETAILS"
    frmDemographics.visible = True 
-   Pregnancy_New()
+   lblEDC.width = rbNuchalFoldNormal.width 
+   Reload()
+   
 End
 
-Private Sub Settings_Save()
+Public Sub Settings_Save()
    
    '  Try frmDemographics.Settings_Save()
    '  Try frmFamilyandsocial.Settings_Save
    '  Try frmPastHistory.Settings_Save
    '  Try frmInvestigations.Settings_Save
-   ' ' Try frmVisits.Settings_Save
-   
+   ' ' Try form_visits.Settings_Save
+   Settings["FPregnancy/VSplit_Main.Layout"] = VSplit_Main.Layout  
+   form_visits.Settings_Save()
 End
 
 Private Sub Settings_Load()
    
+   VSplit_Main.Layout = Settings["FPregnancy/VSplit_Main.Layout", [3, 2]]
+   
+End
+
+Public Function Sex_Types_Fill_Collection() As Collection
+   '---------------------------------------------------------------
+   'these keys will correspond to the backend contacts.lu_sex table
+   '---------------------------------------------------------------
+   
+   Dim sex_type As Collection
+   Dim types As Collection 
+   
+   types = New Collection
+   sex_type = New Collection
+   sex_type!pk = 0
+   sex_type!type = "Male"          
+   types.Add(sex_type, 1)
+   sex_type = New Collection
+   sex_type!pk = 1
+   sex_type!type = "Female"         
+   types.Add(sex_type, 2)
+   sex_type = New Collection
+   sex_type!pk = 2
+   sex_type!type = "Unknown"         
+   types.Add(sex_type, 3)
+   Return types  
+   
 End
 
 Public Sub Save()
+   '----------------------------------
+   'Saves the details of the pregnancy and any child forms (not done)
+   '
+   ' CREATE TABLE clin_pregnancy.pregnancies
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_consult integer NOT NULL,
+   '   lmp text, -- the last period date if known, can be free text or null
+   '   edc date, -- the estimated date of confinement can initially be null
+   '   edc_revised boolean DEFAULT false, -- if true the edc has been revised
+   '   notes text, -- general notes on the pregnancy, could include summary of complications
+   '   gestation integer, -- the gestation in weeks
+   '   nuchal_fold_scan_date date,
+   '   morphology_scan_date date,
+   '   last_presentation text,
+   '   risk_factor_smoking boolean DEFAULT false,
+   '   risk_factor_smoking_details text,
+   '   risk_factor_alcohol boolean DEFAULT false,
+   '   risk_factor_alcohol_details text,
+   '   risk_factor_drugs boolean DEFAULT false,
+   '   risk_factor_drugs_details text,
+   '   risk_factor_social boolean DEFAULT false,
+   '   risk_factor_social_details text,
+   '   risk_factor_mental_health boolean DEFAULT false,
+   '   risk_factor__mental_health_details text,
+   '   date_delivery text, -- As we may be recording bare details about past pregnancies where dates are not known accept year or mm/yyyy or proper date
+   '   gestation_at_delivery integer,
+   '   fk_lu_onset_labour integer,
+   '   labour_hours numeric,
+   '   fk_lu_delivery_type integer,
+   '   complications text,
+   '   fk_lu_sex integer,
+   '   birthweight numeric,
+   '   baby_name text,
+   '   peurperium text, -- any complications after birth e.g problems with infant feeding, mothers mood, depression etc
+   '   CONSTRAINT pregnancies_pkey PRIMARY KEY (pk)
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
    
+   'Note: as we may know nothing about the pregnancy bar that the women is pregnant
+   'this table can be saved with no data
+   '-------------------------------------------------------------------------------
+   
+   Dim Pregnancy As CRow
+   
+   If HBox_EditArea.Padding = 0 Then Return 
+   If Not Pregnancy_Valid() Then Return
+   Pregnancy = New CRow 
+   If fk_pregnancy Then
+      Pregnancy.put_unchanged(fk_pregnancy, "fk_pregnancy")
+   End If   
+   Pregnancy!fk_consult = currentconsult.GetPK() 
+   Pregnancy!lmp = Trim(txtDateLMP.text)  'not kept as date could be 'uknown' or  'mid july'
+   Pregnancy!edc = Val(txtEDC.text)
+   pregnancy!gestation = Val(txtGestation.text) '?need this
+   Pregnancy!notes = Trim(txtNotes.text)
+   Pregnancy!nuchal_fold_scan_date = Val(txtDateNuchalFold.text)
+   Pregnancy!morphology_scan_date = Val(txtDateMorphologyScan.text)
+   Pregnancy!date_anti_d = Val(txtDateAntiD.text)
+   Pregnancy!date_gtt = Val(txtDateGTT.text)
+   Pregnancy!risk_factor_smoking = CBool(chkSmoking.value)
+   Pregnancy!risk_factor_alcohol = CBool(chkAlcohol.value)
+   Pregnancy!risk_factor_drugs = CBool(chkDrugs.value)
+   Pregnancy!risk_factor_social = CBool(chkSocial.value)
+   Pregnancy!risk_factor_mental_health = CBool(chkMentalHealth.value)
+   Pregnancy!risk_factor_smoking_details = Trim(txtRiskFactorsSmoking.text)
+   Pregnancy!risk_factor_alcohol_details = Trim(txtRiskFactorsAlcohol.text)
+   Pregnancy!risk_factor_drugs_details = Trim(txtRiskFactorsDrugs.text)
+   Pregnancy!risk_factor_social_details = Trim(txtRiskFactorsSocial.text)
+   Pregnancy!risk_factor_mental_health_details = Trim(txtRiskFactorsMentalHealth.text)
+   Pregnancy!complications = Trim(txtcomplications.text)
+   If txtDateDelivery.text <> "" Then
+      Pregnancy!date_delivery = Trim(txtDateDelivery.text) 'can be eg mm/yyyy kept as text   
+   Else
+      Pregnancy!date_delivery = ""
+   Endif
+   If Trim(txtGestationAtDelivery.text) <> "" Then
+      Pregnancy!gestation_at_delivery = Val(txtGestationAtDelivery.text)
+   Else
+      Pregnancy!gestation_at_delivery = Null
+   End If  
+   Pregnancy!fk_lu_onset_labour = onset_labour_types[cmbOnsetLabour.Index]!pk
+   Pregnancy!fk_lu_delivery_type = delivery_types[cmbDeliveryTypes.index]!pk
+   Pregnancy!labour_hours = Trim(txtHoursLabour.text)
+   If cmbBabySex.index <> -1 Then Pregnancy!fk_lu_sex = sex_types[cmbBabySex.index]!pk
+   If Trim(txtBirthweight.text) <> "" Then Pregnancy!birthweight = Val(txtBirthweight.text)
+   Pregnancy.Save("clin_pregnancy.pregnancies", "fk_pregnancy")
+   modDBConnect.CommitTrans()
    FClinical.Refresh_AllPreviousNotes()
+   Reload()
+   
+End
+
+Public Sub Reload()
+   '--------------------------------------------------------
+   'Load all previous or current pregnancies for the patient
+   'if one or more exist, display the most recent
+   '--------------------------------------------------------   
+   
+   Dim pregnancy As Collection
+   Dim x As Integer
+   
+   HBox_EditArea.Enabled = False 
+   EditArea_Clear()
+   EditArea_NotifyData_Change(False)
+   cvwPregnancies.Clear()
+   pregnancies = modPregnancyDBI.Pregnancies_Get(currentconsult!patient!fk_patient)
+   For Each pregnancy In pregnancies
+      cvwPregnancies.Add(pregnancy!pk, 0)
+      cvwPregnancies[pregnancy!pk][0] = pregnancy!date_delivery
+      cvwPregnancies[pregnancy!pk][1] = pregnancy!gestation_at_delivery & " wks"
+      cvwPregnancies[pregnancy!pk][2] = pregnancy!onset_labour_type
+      cvwPregnancies[pregnancy!pk][3] = pregnancy!labour_hours & " hours"
+      cvwPregnancies[pregnancy!pk][4] = pregnancy!delivery_type
+      cvwPregnancies[pregnancy!pk][5] = pregnancy!baby_sex
+      cvwPregnancies[pregnancy!pk][6] = pregnancy!birthweight & "Kg"
+   Next
+   If cvwPregnancies.count Then
+      cvwPregnancies.MoveFirst
+      For x = 0 To cvwPregnancies.count - 1
+         If IsNull(pregnancies[cvwPregnancies.Item.key]!date_delivery) Then
+            cvwPregnancies.MoveCurrent
+            Break
+         Endif
+         cvwPregnancies.MoveNext()
+      Next
+      cvwPregnancies.Item.Selected = True
+   Endif
+   
+End
+
+Public Sub cvwPregnancies_Select()
+   
+   Pregnancy_Display() 
+   
+End
+
+Public Sub Pregnancy_Display()
+   '--------------------------------------------------
+   'Display the pregnancy selected from the columnview
+   '--------------------------------------------------   
+
+   cvwPregnancies.MoveCurrent()
+   EditArea_Clear()
+   bExit = True    'prevent the auto-calculating of all the dates due
+   currentPregnancy = pregnancies[cvwPregnancies.Item.key]
+   fk_pregnancy = currentPregnancy!fk_pregnancy
+   If Not IsNull(currentPregnancy!lmp) Then
+      Try txtDateLMP.text = Format(currentPregnancy!lmp, "dd/mm/yyyy")
+      If Error Then
+         txtDateLMP.text = currentPregnancy!lmp
+      Endif
+   End If  
+   If Not IsNull(currentPregnancy!edc) Then
+      txtEDC.text = Format(currentPregnancy!edc, "dd/mm/yyyy")
+   Endif
+   'FIXME calculate current gestation in weeks
+   If Not IsNull(currentPregnancy!nuchal_fold_scan_date) Then
+      txtDateNuchalFold.text = Format(currentPregnancy!nuchal_fold_scan_date, "dd/mm/yyyy")
+   Endif
+   If Not IsNull(currentPregnancy!morphology_scan_date) Then
+      txtDateMorphologyScan.text = Format(currentPregnancy!morphology_scan_date, "dd/mm/yyyy")
+   Endif
+      If Not IsNull(currentPregnancy!date_anti_d) Then
+      txtDateAntiD.text = Format(currentPregnancy!date_anti_d, "dd/mm/yyyy")
+   Endif
+   If Not IsNull(currentPregnancy!date_gtt) Then
+      txtDateGTT.text = Format(currentPregnancy!date_gtt, "dd/mm/yyyy")
+   Endif
+   txtNotes.text = currentPregnancy!notes
+   chkSmoking.value = currentPregnancy!risk_factor_smoking
+   chkDrugs.value = currentPregnancy!risk_factor_drugs
+   chkAlcohol.value = currentPregnancy!risk_factor_alcohol
+   chkSocial.Value = currentPregnancy!risk_factor_social
+   chkMentalHealth.value = currentPregnancy!risk_factor_mental_health
+   txtRiskFactorsAlcohol.text = currentPregnancy!risk_factor_alcohol_details
+   txtRiskFactorsDrugs.text = currentPregnancy!risk_factor_drugs_details
+   txtRiskFactorsSocial.text = currentPregnancy!risk_factor_social_details
+   txtRiskFactorsSmoking.text = currentPregnancy!risk_factor_smoking_details
+   txtRiskFactorsMentalHealth.text = currentPregnancy!risk_factor_mental_health_details
+   txtNotes.text = currentPregnancy!notes 
+   txtDateDelivery.text = currentPregnancy!date_delivery
+   txtGestationAtDelivery.text = currentPregnancy!gestation_at_delivery
+   txtHoursLabour.text = currentPregnancy!labour_hours
+   Try cmbOnsetLabour.index = cmbOnsetLabour.Find(currentPregnancy!onset_labour_type)
+   Try cmbDeliveryTypes.index = cmbDeliveryTypes.Find(currentPregnancy!delivery_type)
+   Try cmbBabySex.Index = cmbBabySex.Find(currentPregnancy!baby_sex)
+   txtBirthweight.text = currentPregnancy!birthweight
+   txtcomplications.text = currentPregnancy!complications
+   If txtDateDelivery.text <> "" Then
+      lblEditAreaHeading.text = UCase("Previous delivery:" & txtDateDelivery.text)
+    Else
+      lblEditAreaHeading.text = "Current Pregnancy" 
+   Endif
+   bExit = False  
+   
+End
+
+Public Sub Pregnancy_Edit()
+   
+   HBox_EditArea.Enabled = True   
+   lblEditAreaHeading.text = "Edit Existing Pregnancy" 
+   
+End
+
+Public Sub Pregnancy_Delete()
    
 End
 
@@ -101,13 +375,25 @@ Public Sub Preview()
    
 End
 
-Public Sub Pregnancy_New()
-   '-----------------------------
-   'Start a new health assessment
-   '-----------------------------   
+Public Sub New_Entry()
+   '------------------------------------------------------------------
+   'see FClinical for explanation anyway, allow entry of new pregnancy
+   '------------------------------------------------------------------
+   
+   Pregnancy_New() 
+   
+End
 
+Public Sub Pregnancy_New()
+   '--------------------------------------------------
+   'Start a new pregnancy FIXME - clear all the forms
+   'none of this will work..... so far
+   'just ignore all the wizard stuff....
+   '--------------------------------------------------   
+   
    EditArea_Clear()
    currentPregnancy = New Collection 
+   fk_pregnancy = 0
    frmPregnancyHistory.Visible = False
    frmFirstVisitExamination.Visible = False  
    frmFirstVisitExamination.Visible = False  
@@ -119,10 +405,29 @@ Public Sub Pregnancy_New()
    form_name = "demographics"
    iWizardPageCount = 1
    WizardPage_Notify(1)
+   lblEditAreaHeading.text = "New Pregnancy"
+   HBox_EditArea.Enabled = True
+   EditArea_NotifyData_Change(True) 'can save a pregnancy without any data.
+   txtDateLMP.SetFocus()
+   
+End
 
+Public Sub EditArea_NotifyData_Change(bFlag As Boolean) As Boolean
+   
+   If bflag Then
+      HBox_EditArea.Padding = 1 
+   Else
+      HBox_EditArea.Padding = 0
+   End If    
+   
 End
 
 Public Sub EditArea_Clear()
+   
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
+   cmbDeliveryTypes.index = cmbDeliveryTypes.Find("n/a")
+   cmbOnsetLabour.index = cmbOnsetLabour.Find("n/a")
+   cmbBabySex.index = cmbBabySex.Find("Unknown")
    
 End
 
@@ -166,10 +471,10 @@ Public Sub EditAreaButtons_Click()
                
             Case "visits"
                currentForm = frmInvestigations
-               nextForm = frmVisits
+               nextForm = form_visits
                lblHeading.text = "INVESTIGATIONS"
             Case "progress notes"
-               currentForm = frmVisits
+               currentForm = form_visits
                nextForm = frmProgressNotes
                lBLHeading.TEXT = "ANTENATAL VISITS"
          End Select 
@@ -200,7 +505,7 @@ Public Sub EditAreaButtons_Click()
                nextForm = frmInvestigations
                lblHeading.text = "FIRST EXAMINATION"
             Case "investigations"
-               nextForm = frmVisits
+               nextForm = form_visits
                lblHeading.text = "INVESTIGATIONS"
             Case "visits"
                nextForm = frmProgressNotes
@@ -212,8 +517,565 @@ Public Sub EditAreaButtons_Click()
    End Select
    
 End
+
 Public Sub WizardPage_Notify(iPage As Integer)
-  
-  lblWizardPage.text = "  Page " & Str$(ipage) & " of 7  "
-  
+   
+   lblWizardPage.text = "  Page " & Str$(ipage) & " of 7  "
+   
 End
+
+Public Sub EditAreaTextBox_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   
+End
+
+Public Sub EditAreaTextBox_LostFocus()
+   
+   Last.BackGround = Color.White
+   
+End
+
+Public Sub tbDatePicker_ReviewDate_Click()
+   
+   Dim hCtrl As Control
+   Dim hTextbox As Textbox
+   
+   Select Case Last.tag
+      Case "pick date"
+         If HBox_Calander.Visible Then 
+            HBox_Calander.Visible = False
+            txtDateLMP.SetFocus()
+         Else
+            For Each hctrl In Last.parent.children
+               If hctrl Is TextBox Then
+                  hTextbox = hctrl
+                  DateChooser1.tag = hTextbox
+                  Break
+               End If
+            Next
+            With HBox_Calander
+               .top = Last.Parent.Parent.top + Last.Parent.Height + Vbox_EditArea.padding
+               .left = Last.Parent.left + Vbox_EditArea.padding
+               .width = 170
+               .height = 170
+               .Raise()
+            End With     
+            HBox_Calander.Visible = True 
+            DateChooser1.SetFocus()
+         End If
+      Case "insert"
+         
+   End Select 
+   
+End
+
+Public Sub DateChooser1_Activate()
+   
+   Last.tag.text = Format(Last.value, "dd/mm/yyyy")
+   HBox_Calander.Visible = False  
+   DateChooser1.tag.SetFocus()
+   
+End
+
+Public Sub DateChooser1_LostFocus()
+   
+   HBox_Calander.Visible = False  
+   
+End
+
+Public Sub EditAreaTextBox_KeyPress()
+   
+   bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code, Last.tag)
+   If bkeyvalid = False Then
+      Stop Event
+      Return
+   End If
+   Select Case key.Code
+      Case key.Return, key.Tab
+         Select Case Last.tag
+            Case "lmp"
+            Case "date of delivery"
+               txtGestationAtDelivery.SetFocus
+            Case "gestation at delivery"
+               cmbOnsetLabour.SetFocus
+            Case "hours labour"
+               cmbDeliveryTypes.SetFocus
+            Case "complications"
+               cmbBabySex.SetFocus
+            Case "birth weight"
+               txtNotes.SetFocus
+         End Select
+   End Select
+   
+End
+
+Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean  
+   
+   Select Case tag
+      Case "edc", "date nuchal fold scan", "date morphology scan", "lmp", "date gtt", "date anti-d"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
+      Case "date of delivery"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_Date_DWMY, keycode) 'eg mm/yy or full date
+      Case "duration", "fundal height", "gestation at delivery"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
+      Case "birth weight", "hours labour"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_NumbersDecimal, keycode)
+      Case "blood pressure"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_BP, keycode)
+      Case Else
+         bKeyValid = True
+   End Select
+   Return bKeyValid
+   
+End 
+
+Public Sub EditAreaTextBox_Change()
+   
+   If bexit Then Return
+   Select Case Last.tag
+      Case "lmp"
+         If IsDate(Last.text) Then
+            txtEDC.text = Format(DateAdd(Val(Last.text), gb.day, 280), "dd/mm/yyyy")
+            txtDateNuchalFold.text = Format(DateAdd(Val(Last.text), gb.week, 12), "dd/mm/yyyy")
+            txtDateMorphologyScan.text = Format(DateAdd(Val(Last.text), gb.week, 18), "dd/mm/yyyy")
+            ' txtMorphologyScanTo.text = Format(DateAdd(Val(Last.text), gb.week, 20), "dd/mm/yyyy")
+            txtGestation.text = (DateDiff(Val(txtDateLMP.text), Now, gb.day) Div 7) & " wks "
+            txtGestation.text &= (DateDiff(Val(txtDateLMP.text), Now, gb.day) Mod 7) & " days"
+            txtDateGTT.text = Format(DateAdd(Val(Last.text), gb.week, 28), "dd/mm/yyyy")
+            txtDateAntiD.text = txtDateGTT.Text
+         Endif
+      Case "date of delivery"
+         
+         If IsDate(Last.text) Then
+            
+            If Year(Val(Last.text)) < Year(Now) Then
+               lblEditAreaHeading.text = "Previous Delivery"
+            Endif
+         Else
+            '  Try bits = Split(Last.text, "/")
+            ' If bits.count = 3
+            ' If Len(Last.text) > 3 Then
+            '    
+            '    If Val(Right(Last.text, 4)) < Year(Now) Then
+            '       lblHeading.text = "Previous Delivery"
+            '    Endif
+            ' Endif
+         Endif
+         
+   End Select
+   EditArea_NotifyData_Change(True)
+   
+End
+
+Public Function Pregnancy_Valid() As Boolean
+   '------------------------------------------------------
+   'Return true if any data entered is valid
+   'Note that we need no data to save a pregnancy but what
+   'we do enter must be valid format
+   '------------------------------------------------------ 
+   
+   If Trim(txtDateLMP.text) <> "" Then
+      If Not IsDate(Trim(txtDateLMP.text)) Then
+         With txtDateLMP
+            .SetFocus()
+            .Background = Color.rgb(95, 255, 175)
+         End With  
+         Return
+      Endif
+   Endif
+   If Trim(txtEDC.text) <> "" Then
+      If Not IsDate(Trim(txtDateLMP.text)) Then
+         With txtDateLMP
+            .SetFocus()
+            .Background = Color.rgb(95, 255, 175)
+         End With
+         Return
+      Endif
+   End If   
+   Return True
+   
+End
+
+Public Sub chkEditArea_Click()
+   
+   If bexit Then Return
+   EditArea_NotifyData_Change(True)
+   
+End
+
+Public Sub cmbOnsetLabour_KeyPress()
+   
+   If key.code = key.return Or key.code = key.tab Then txtHoursLabour.SetFocus()
+   
+End
+
+Public Sub cmbDeliveryTypes_KeyPress()
+   
+   If key.code = key.return Or key.code = key.tab Then txtcomplications.SetFocus
+   
+End
+
+Public Sub cmbBabySex_KeyPress()
+   
+   If key.code = key.return Or key.code = key.tab Then txtBirthweight.SetFocus()
+   
+End
+
+Public Sub cvwPregnancies_Menu()
+   
+   If Not cvwPregnancies.count Then Return 
+   mnuPregnancies.Popup()
+   
+End
+
+Public Sub mnuPregnancies_Click()
+   
+   Select Case Last.tag
+      Case "edit"
+         Pregnancy_Edit
+      Case "delete"
+         Pregnancy_Delete
+      Case "font"
+         modUtil.Columnview_SetFont(cvwPregnancies, "FPregnancy")        'allow use to change the font, save to settings"
+   End Select 
+   
+End
+' drop schema clin_pregnancy cascade;
+' Create schema clin_pregnancy;
+' grant all on schema clin_pregnancy To easygp;
+' grant all on schema clin_pregnancy To staff;
+' 
+' - - Drop table clin_pregnancy.pregnancy;
+' - - drop table clin_pregnancy.previous_pregnancies;
+' - - drop table clin_pregnancy.edc;
+' - - drop table clin_pregnancy.ante_natal_visits cascade;
+' - - drop table clin_pregnancy.ante_natal_care_summary cascade;
+' - - drop table clin_pregnancy.scans;
+' Create table clin_pregnancy.lu_delivery_types
+' (pk serial primary key,
+' type text Not Null);
+' insert into clin_pregnancy.lu_delivery_types(type)values( 'n/a');
+' insert into clin_pregnancy.lu_delivery_types(type)values( 'vaginal - spontaneous');
+' insert into clin_pregnancy.lu_delivery_types(type)values( 'vaginal - forceps');
+' insert into clin_pregnancy.lu_delivery_types(type)values( 'vaginal - breech');
+' insert into clin_pregnancy.lu_delivery_types(type)values( 'caesarian section');
+' 
+' alter table clin_pregnancy.lu_delivery_types owner To easygp;
+' grant all on table clin_pregnancy.lu_delivery_types To easygp;
+' grant all on table clin_pregnancy.lu_delivery_types To staff;
+' 
+'  Create table clin_pregnancy.lu_presentations
+'   (pk serial primary key,
+'    presentation text Not Null);
+'    insert into clin_pregnancy.lu_presentations(presentation)values( 'n/a');
+'    insert into clin_pregnancy.lu_presentations(presentation)values( 'cephalic');
+'    insert into clin_pregnancy.lu_presentations(presentation)values( 'breech');
+'    insert into clin_pregnancy.lu_presentations(presentation)values( 'transverse');
+'    insert into clin_pregnancy.lu_presentations(presentation)values( 'unstable');
+'    ALTER TABLE clin_pregnancy.lu_presentations OWNER To easygp;
+' grant all on table clin_pregnancy.lu_presentations To easygp;
+' grant all on table clin_pregnancy.lu_presentations To staff;
+' 
+' Create TABLE clin_pregnancy.edc
+' (
+'   pk serial Not Null,
+'   edc Date Not Null,
+'   edc_comment text, 
+'   CONSTRAINT edc_pkey PRIMARY KEY(pk)
+' )
+' With (
+'   OIDS = False
+' );
+' ALTER TABLE clin_pregnancy.edc OWNER To easygp;
+' grant all on table clin_pregnancy.edc To easygp;
+' grant all on table clin_pregnancy.edc To staff;
+' 
+' COMMENT ON TABLE clin_pregnancy.edc
+'   Is 'The current date of confinement. We do not keep the edc in the primary pregnancy table
+'       because it can be constantly revised.This table keeps track Of the reasons ';
+' COMMENT ON COLUMN clin_pregnancy.edc.edc_comment Is 'any comment on the edc eg why the edc was revised';
+' 
+' 
+' 
+' Create table clin_pregnancy.pregnancies
+' (pk serial primary key,
+'  fk_consult integer Not Null,
+'  lmp text Default Null,
+'  edc Date Default Null,
+'  edc_revised boolean Default False,
+'  date_anti_d Date Default Null,
+'  anti_d_given boolean Default False,
+'  date_gtt Date Default Null,
+'  notes text Default Null,
+'  gestation integer Default Null,
+'  nuchal_fold_scan_date Date Default Null,
+'  morphology_scan_date Date Default Null,
+'  last_presentation text Default Null,
+'  risk_factor_smoking boolean Default False,
+'  risk_factor_smoking_details text Default Null,
+'  risk_factor_alcohol boolean Default False,
+'  risk_factor_alcohol_details text Default Null,
+'  risk_factor_drugs boolean Default False,
+'  risk_factor_drugs_details text Default Null,
+'  risk_factor_social boolean Default False,
+'  risk_factor_social_details text Default Null,
+'  risk_factor_mental_health boolean Default False,
+'  risk_factor_mental_health_details text Default Null,
+'   date_delivery text Default Null,
+'  gestation_at_delivery integer Default Null,
+'  fk_lu_onset_labour integer Default Null,
+'  labour_hours numeric Default Null,
+'  fk_lu_delivery_type integer Default Null,
+'  complications text Default Null,
+'   fk_lu_sex integer Default Null,
+'   birthweight numeric Default Null,
+'   baby_name text Default Null,
+'   peurperium text
+'  );
+' 
+' 
+' ALTER TABLE clin_pregnancy.pregnancies OWNER To easygp;
+' grant all on table clin_pregnancy.pregnancies To easygp;
+' grant all on table clin_pregnancy.pregnancies To staff;
+' 
+'  COMMENT ON TABLE clin_pregnancy.pregnancies Is
+'  'The ''core'' data about a pregnancy
+'   This table probably seems Odd, it may contain nothing but a primary key
+'   And say a Month / Year Or Date As Date_delivery, a baby_sex etc ';
+'  
+'  COMMENT ON COLUMN clin_pregnancy.pregnancies.date_delivery Is
+'  'As we may be recording bare details about past pregnancies where dates are not known accept year or mm/yyyy or proper date';
+'  
+'  COMMENT ON COLUMN clin_pregnancy.pregnancies.lmp Is
+'  'the last period date if known, can be free text or null';
+'  COMMENT ON COLUMN clin_pregnancy.pregnancies.edc Is
+'  'the estimated date of confinement can initially be null';
+'  COMMENT ON COLUMN clin_pregnancy.pregnancies.edc_revised Is 
+'  'if true the edc has been revised';
+'  COMMENT ON COLUMN clin_pregnancy.pregnancies.notes Is
+'  'general notes on the pregnancy, could include summary of complications';
+'  COMMENT ON COLUMN clin_pregnancy.pregnancies.gestation Is 
+'  'the gestation in weeks';
+' COMMENT ON COLUMN clin_pregnancy.pregnancies.peurperium Is 'any complications after birth e.g problems with infant feeding, mothers mood, depression etc';
+' 
+' Create TABLE clin_pregnancy.ante_natal_visits
+' (
+'   pk serial Not Null,
+'   fk_consult integer Not Null,
+'   fk_pregnancy integer Not Null,
+'   visit_date Date Not Null,
+'   duration_weeks integer Not Null,
+'   fundal_height integer Not Null,
+'   fk_lu_presentation integer Not Null,
+'   foetal_heart_heard boolean Default False,
+'   urinalysis text,
+'   bloodpressure text,
+'   weight numeric,
+'   foetal_movements_felt boolean Default False,
+'   notes text,
+'   CONSTRAINT ante_natal_visits_pkey PRIMARY KEY(pk),
+'   CONSTRAINT ante_natal_visits_fk_consult_fkey FOREIGN KEY(fk_consult)
+'       REFERENCES clin_consult.consult(pk)MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'   CONSTRAINT ante_natal_visits_fk_lu_presentation_fkey FOREIGN KEY(fk_lu_presentation)
+'       REFERENCES clin_pregnancy.lu_presentations(pk)MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'   CONSTRAINT ante_natal_visits_fk_pregnancies_fkey FOREIGN KEY(fk_pregnancy)
+'       REFERENCES clin_pregnancy.pregnancies(pk)MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION
+' )
+' With (
+'   OIDS = False
+' );
+' 
+' ALTER TABLE clin_pregnancy.ante_natal_visits OWNER To easygp;
+' grant all on table clin_pregnancy.ante_natal_visits To easygp;
+' grant all on table clin_pregnancy.ante_natal_visits To staff;
+' 
+' 
+'  Create TABLE clin_pregnancy.ante_natal_care_summary
+' (
+'   pk serial primary key,
+'   fk_consult integer Not Null,
+'   fk_progressnote integer Not Null,
+'   lmp Date,
+'   lmp_normal boolean Default True,
+'   lmp_sure boolean Default True,
+'   age_menarche integer,
+'   cycle_length integer,
+'   cycle_regular boolean Default True,
+'   pregnancy_planned boolean Default True,
+'   date_contraception_stopped Date,
+'   infertility_problems boolean Default False,
+'   prenatal_diagnosis_counselling boolean Default False,
+'   accommodation text, 
+'   family_doctor text,
+'   fk_staff_caring integer, 
+'   family_doctor_address text,
+'   family_doctor_town text,
+'   family_doctor_phone text,
+'   past_health_heart boolean Default False,
+'   past_health_back_problems boolean Default False,
+'   past_health_renal_uti boolean Default False,
+'   past_health_transfusioni boolean Default False,
+'   past_health_hypertension boolean Default False,
+'   past_health_asthma boolean Default False,
+'   past_health_mental_health boolean Default False,
+'   past_health_migraine boolean Default False,
+'   past_health_epilepsy boolean Default False,
+'   past_health_std boolean Default False,
+'   past_health_viral_illness boolean Default False,
+'   past_health_hepatitis_git boolean Default False,
+'   past_health_more_than_three_miscarriages boolean Default False,
+'   past_health_caesarians boolean Default False,
+'   allergy_latex boolean Default False,
+'   allergy_foods text,
+'   allergy_drugs text,
+'   family_history_summary text,
+'   family_history_hypertension boolean Default False,
+'   family_history_diabetes boolean Default False,
+'   family_history_tb boolean Default False,
+'   family_history_convulsions boolean Default False,
+'   family_history_birth_defects boolean Default False,
+'   family_history_genetic_disorders boolean Default False,
+'   family_history_depression boolean Default False,
+'   family_history_stillbirth boolean Default False,
+'   family_history_drugandalcohol boolean Default False,
+'   habits_smoking_number_per_day integer,
+'   habits_smoking_weeks_pregnancy_ceased integer,
+'   habits_alcohol_grams_per_day integer,
+'   household_smoker boolean Default False,
+'   habits_methadone boolean Default False,
+'   habits_thc boolean Default False,
+'   habits_vitamins boolean Default False,
+'   habits_heroin boolean Default False,
+'   habits_amphetamines boolean Default False,
+'   habits_herbal_meds boolean Default False,
+'   habits_nos text,
+'   edc Date Not Null,
+'   edc_revised boolean Default False,
+'   fk_staff_first_exam integer Not Null,
+'   first_exam_date Date Not Null,
+'   first_exam_gestation_weeks integer Not Null,
+'   first_exam_height numeric,
+'   first_exam_weight numeric,
+'   first_exam_bmi numeric,
+'   first_exam_pulse integer,
+'   first_exam_pulse_regular boolean Default True,
+'   first_exam_bp text,
+'   first_exam_heart_sounds text,
+'   first_exam_varicosities boolean Default False,
+'   first_exam_chest text,
+'   first_exam_breast text,
+'   first_exam_other_system text,
+'   first_exam_vaginal_exam boolean Default False,
+'   first_exam_vaginal_findings text,
+'   first_exam_cervix text,
+'   first_exam_pap_smear text,
+'   first_exam_urinalysis text,
+'   first_exam_abdomen text,
+'   first_exam_general_comments text,
+'   latex text, 
+'   CONSTRAINT pregnancy_first_exam_fk_staff_caring_fkey FOREIGN KEY(fk_staff_caring)
+'       REFERENCES admin.staff(pk)MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'   CONSTRAINT pregnancy_first_exam_fk_staff_fkey FOREIGN KEY(fk_staff_first_exam)
+'       REFERENCES admin.staff(pk)MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'   CONSTRAINT pregnancy_fk_consult_fkey FOREIGN KEY(fk_consult)
+'       REFERENCES clin_consult.consult(pk)MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'   CONSTRAINT pregnancy_fk_progressnote FOREIGN KEY(fk_progressnote)
+'       REFERENCES clin_consult.progressnotes(pk)MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION
+' );
+' 
+' ALTER TABLE clin_pregnancy.ante_natal_care_summary OWNER To easygp;
+' grant all on table clin_pregnancy.ante_natal_care_summary To easygp;
+' grant all on table clin_pregnancy.ante_natal_care_summary To staff;
+' 
+' COMMENT ON TABLE clin_pregnancy.ante_natal_care_summary
+'   Is 'mmm.... like it or not and you won''t this is the Hunter Area Health Service Ante-natal Care sheet, first draft';
+' COMMENT ON COLUMN clin_pregnancy.ante_natal_care_summary.accommodation Is 'the nature of the pregnant women''s accomodation';
+' COMMENT ON COLUMN clin_pregnancy.ante_natal_care_summary.fk_staff_caring Is 'if not null the staff member looking after the pregnancy';
+' COMMENT ON COLUMN clin_pregnancy.ante_natal_care_summary.latex Is 'the latex of the ante-natal record sheet';
+' 
+' Create TABLE clin_pregnancy.scans
+' (
+'   pk serial Not Null,
+'   fk_pregnancy integer Not Null,
+'   fk_document integer, 
+'   scan_date text Not Null, 
+'   fk_blob integer, 
+'   summary_findings text Not Null,
+'   CONSTRAINT scans_pkey PRIMARY KEY(pk),
+'   CONSTRAINT scans_fk_blob_fkey FOREIGN KEY(fk_blob)
+'       REFERENCES blobs.blobs(pk)MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'   CONSTRAINT scans_fk_document_fkey FOREIGN KEY(fk_document)
+'       REFERENCES documents.documents(pk)MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION,
+'   CONSTRAINT scans_fk_pregnancy_fkey FOREIGN KEY(fk_pregnancy)
+'       REFERENCES clin_pregnancy.ante_natal_care_summary(pk)MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION
+' )
+' With (
+'   OIDS = False
+' );
+' ALTER TABLE clin_pregnancy.scans OWNER To easygp;
+' grant all on table clin_pregnancy.scans To easygp;
+'   grant all on table clin_pregnancy.scans To staff; 
+' COMMENT ON TABLE clin_pregnancy.scans
+'   Is 'contains information about pregnancy scans';
+' COMMENT ON COLUMN clin_pregnancy.scans.fk_document Is 'if not null the scan is a document in our system key to documents.documents table';
+' COMMENT ON COLUMN clin_pregnancy.scans.scan_date Is 'this is a text field because patient may have had scan elsewhere, not know the date';
+' COMMENT ON COLUMN clin_pregnancy.scans.fk_blob Is 'if not null, the key to blobs.images table containing picture of the scan';
+' 
+' 
+' 
+'  Create Or Replace VIEW clin_pregnancy.vwantenatal_visits As 
+'   Select ante_natal_visits.pk As Pk_antenatal_visit, lu_presentations.presentation, ante_natal_visits.fk_consult, 
+'   consult.fk_patient, ante_natal_visits.fk_pregnancy, ante_natal_visits.visit_date, ante_natal_visits.duration_weeks, 
+'   ante_natal_visits.fundal_height, ante_natal_visits.fk_lu_presentation, ante_natal_visits.foetal_heart_heard, 
+'   ante_natal_visits.urinalysis, ante_natal_visits.bloodpressure, ante_natal_visits.weight, 
+'   ante_natal_visits.foetal_movements_felt, ante_natal_visits.notes, pregnancies.edc, pregnancies.edc_revised
+'     From clin_pregnancy.ante_natal_visits, clin_pregnancy.lu_presentations, clin_consult.consult, 
+'     clin_pregnancy.pregnancies
+'    WHERE ante_natal_visits.fk_lu_presentation = lu_presentations.pk 
+'    And ante_natal_visits.fk_consult = consult.pk And ante_natal_visits.fk_pregnancy = pregnancies.pk;
+'  
+'  ALTER TABLE clin_pregnancy.vwantenatal_visits OWNER To easygp;
+'  grant all on table clin_pregnancy.vwantenatal_visits To easygp;
+'   grant all on table clin_pregnancy.vwantenatal_visits To staff;
+' 
+' Create table clin_pregnancy.lu_onset_labour
+' (pk serial primary key,
+'  type text Not Null);
+'   ALTER TABLE clin_pregnancy.lu_onset_labour OWNER To easygp;
+'  grant all on table clin_pregnancy.lu_onset_labour To easygp;
+'   grant all on table clin_pregnancy.lu_onset_labour To staff;
+'   insert into clin_pregnancy.lu_onset_labour(type)values( 'n/a');
+'   insert into clin_pregnancy.lu_onset_labour(type)values( 'spontaneous');
+'     insert into clin_pregnancy.lu_onset_labour(type)values( 'induced');
+' 
+' 
+' - - DROP VIEW clin_pregnancy.vwpregnancies;
+' 
+' Create Or Replace VIEW clin_pregnancy.vwpregnancies As 
+' Select 
+'   consult.fk_patient, 
+'   pregnancies.pk As Fk_pregnancy,
+'   pregnancies. *,
+'   lu_delivery_types.type As Delivery_type,
+'   lu_onset_labour.type As Onset_labour_type,
+'   lu_sex.sex_text As Baby_sex
+' From clin_pregnancy.pregnancies
+' JOIN clin_consult.consult on pregnancies.fk_consult = consult.pk
+' Left JOIN clin_pregnancy.lu_onset_labour on pregnancies.fk_lu_onset_labour = lu_onset_labour.pk
+' Left JOIN clin_pregnancy.lu_delivery_types on pregnancies.fk_lu_delivery_type = lu_delivery_types.pk
+' Left JOIN contacts.lu_sex on pregnancies.fk_lu_sex = lu_sex.pk;
+' 
+' ALTER TABLE clin_pregnancy.vwpregnancies OWNER To easygp;
+' grant all on table clin_pregnancy.vwpregnancies To easygp;
+' grant all on table clin_pregnancy.vwpregnancies To staff;

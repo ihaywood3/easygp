@@ -31,7 +31,8 @@ Private cTableColumn_Notes As Integer = 9
 Private currentconsult As CConsult
 Private Presentations As Collection
 Private antenatal_visits As Collection
-Private fk_antenatal_visit As Integer 
+Private fk_visit As Integer 
+Private fk_pregnancy As Integer
 
 Public Sub Init(c As CConsult)
    
@@ -44,16 +45,84 @@ Public Sub Init(c As CConsult)
    modEditAreaHelpers.Resize_labels(VBox_EditArea, lblmeasure)
    
    rbFMF.width = rbFHH.width
+   Settings_Load  
    Tableview_Init()
    
+End
+
+Public Sub Pregnancy_Set_PK(key As Integer)
+   'set the pregnancy key from FPregnancy
+
+   fk_pregnancy = key
+
 End
 
 Public Sub Save()
    '-------------------------
    'Save the ante-natal sheet
+   '  pk serial NOT NULL,
+   '   fk_consult integer NOT NULL,
+   '   fk_pregnancy integer NOT NULL,
+   '   visit_date date NOT NULL,
+   '   duration_weeks integer NOT NULL,
+   '   fundal_height integer NOT NULL,
+   '   fk_lu_presentation integer NOT NULL,
+   '   foetal_heart_heard boolean DEFAULT false,
+   '   urinalysis text,
+   '   bloodpressure text,
+   '   weight numeric,
+   '   foetal_movements_felt boolean DEFAULT false,
+   '   notes text,
    '-------------------------
+
+   Dim visit As CRow
    
+   If HBox_EditArea.Padding = 0 Then Return
+   If Not Visit_Valid() Then Return 
+   Visit = New CRow  
+   If fk_visit <> 0 Then
+      visit.put_unchanged(fk_visit, "fk_visit")
+   Endif
+   visit!fk_consult = currentconsult.GetPK()
+   visit!fk_pregnancy = fk_pregnancy
+   visit!visit_date = Val(txtVisitDate.text)
+   visit!duration_weeks = Val(txtDuration.text)
+   visit!fundal_height = Val(txtFundalHeight.text)
+   visit!fk_lu_presentation = Presentations[cmbPresentation.index]!pk
+   If rbFHH.value = True Then 
+      visit!foetal_heart_heard = True
+   Else
+      visit!foetal_heart_heard = False
+   End If   
+   visit!urinalysis = Trim(txtUrinalysis.text)
+   visit!bloodpressure = Trim(txtBloodPressure.Text)
+   If rbFMF.value = True Then
+      visit!foetal_movements_felt = True
+   Else
+      visit!foetal_movements_felt = False
+   Endif
+   visit!notes = Trim(txtNotes.text)
+   visit.Save("clin_pregnancy.ante_natal_visits", "fk_visit")
+   modDBConnect.CommitTrans()
+   EditArea_Notify_DataChange(False)   
+   Reload()
 End 
+
+Public Function Visit_Valid() As Boolean
+   
+   If Trim(txtVisitDate.text) <> "" Then
+      If Not IsDate(Trim(txtVisitDate.text)) Then
+         With txtVisitDate
+            .SetFocus()
+            .Background = Color.rgb(95, 255, 175)
+         End With  
+         Return
+      Endif
+   Endif
+   
+   Return True
+   
+End
 
 Public Sub Print_Content()
    
@@ -93,8 +162,8 @@ Private Sub Reload()
    '---------------------------------
    'Display existing ante-natal rows
    '--------------------------------   
+   HBox_EditArea.Enabled = False 
    
-   Print 
    
 End
 
@@ -160,16 +229,16 @@ Public Sub EditArea_Clear()
    bExit = True
    modEditAreaHelpers.EditArea_Clear(VBox_EditArea)  'clear textboxes/combo's
    cmbPresentation.index = -1
-   fk_antenatal_visit = 0
+   fk_visit = 0
    EditArea_Notify_DataChange(False)
    bexit = False
-
+   
 End    
 
 Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean  
    
    Select Case tag
-      Case "date"
+      Case "visit date"
          bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
       Case "duration", "fundal height"
          bKeyValid = modUtil.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
@@ -181,7 +250,7 @@ Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) A
          bKeyValid = True
    End Select
    Return bKeyValid
-
+   
 End 
 
 Public Sub EditAreaTextBox_LostFocus()
@@ -192,11 +261,39 @@ End
 
 Public Sub EditAreaTextBox_Keypress()
    
+   If bexit Then Return
    bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code, Last.tag)
    If bkeyvalid = False Then
       Stop Event
       Return
    End If
+   If Key.code = Key.Return Or Key.Code = Key.tab Then
+      Select Case Last.tag
+         Case "visit date"
+            If Not IsDate(Last.text) Then
+               bexit = True
+               Last.text = ""
+               bexit = False  
+            Else
+               If DateDiff(Now, Val(Last.text), gb.day) > 0 Then
+                  bexit = True
+                  Last.text = ""
+                  bexit = False  
+               Endif
+            End If   
+            txtDuration.SetFocus()
+         Case "duration"
+            txtFundalHeight.SetFocus()
+         Case "fundal height"
+            cmbPresentation.SetFocus()
+         Case "urinalysis"
+            txtBloodPressure.SetFocus()
+         Case "blood pressure"
+            txtWeight.SetFocus()
+         Case "weight"
+            rbFMF.SetFocus
+      End Select
+   Endif
 
 End 
 
@@ -216,37 +313,6 @@ Public Sub EditArea_Notify_DataChange(bflag As Boolean)
    Else
       HBox_EditARea.padding = 0
    End If 
-   
-End
-
-Public Sub EditAreaTextBox_Activate()
-   
-   If Bexit Then Return    
-   Select Case Last.tag
-      Case "date"
-         If Not IsDate(Last.text) Then
-            bexit = True
-            Last.text = ""
-            bexit = False  
-         Else
-            If DateDiff(Now, Val(Last.text), gb.day) > 0 Then
-               bexit = True
-               Last.text = ""
-               bexit = False  
-            Endif
-         End If   
-         txtDuration.SetFocus()
-      Case "duration"
-         txtFundalHeight.SetFocus()
-      Case "fundal height"
-         cmbPresentation.SetFocus()
-      Case "urinalysis"
-         txtBloodPressure.SetFocus()
-      Case "blood pressure"
-         txtWeight.SetFocus()
-      Case "weight"
-         rbFMF.SetFocus
-   End Select
    
 End
 
@@ -272,10 +338,33 @@ Public Sub EditArea_RadioButtons_KeyPress()
             txtNotes.SetFocus()   
       End Select
    End If   
+   
 End
 
-
-Public Sub Vbox_EditArea_KeyPress()
+Private Sub Settings_Load()
    
+   Vsplit_Main.Layout = Settings["FPregnancyVisits/VSplit_Main.Layout", [1, 1]] 
+   
+End
+
+Public Sub Settings_Save()
+   
+   Settings["FPregnancyVisits/VSplit_Main.Layout"] = Vsplit_Main.Layout
+   
+End
+
+Public Sub New_Entry()
+   '------------------------------------------------------------------
+   'see FClinical for explanation anyway, allow entry of new pregnancy
+   '------------------------------------------------------------------
+   
+   AnteNatal_Visit_New() 
+   
+End
+
+Public Sub AnteNatal_Visit_New()
+   
+   EditArea_Clear()
+   txtVisitDate.SetFocus()
 
 End

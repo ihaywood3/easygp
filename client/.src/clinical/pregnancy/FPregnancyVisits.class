@@ -33,17 +33,17 @@ Private Presentations As Collection
 Private antenatal_visits As Collection
 Private fk_visit As Integer 
 Private fk_pregnancy As Integer
+Private currentPregnancy As Collection    
 
-Public Sub Init(c As CConsult)
+Public Sub Init(c As CConsult, cp As Collection)
    
    currentconsult = c  
+   currentPregnancy = cp
    Presentations = modPregnancyDBI.Presentations_Get()
-   modUtil.LoadCombo(cmbPresentation, presentations, "presentation")
-   
+   Presentations = modUtil.LoadCombo(cmbPresentation, modUtil.Copy_Collection_Keyed_Sequentially(modPregnancyDBI.Presentations_Get()), "presentation")
    antenatal_visits = currentconsult!antenatal_visits
    lblMeasure.text = "   Foetal Heart Sounds    "
    modEditAreaHelpers.Resize_labels(VBox_EditArea, lblmeasure)
-   
    rbFMF.width = rbFHH.width
    Settings_Load  
    Tableview_Init()
@@ -52,9 +52,9 @@ End
 
 Public Sub Pregnancy_Set_PK(key As Integer)
    'set the pregnancy key from FPregnancy
-
+   
    fk_pregnancy = key
-
+   
 End
 
 Public Sub Save()
@@ -74,7 +74,7 @@ Public Sub Save()
    '   foetal_movements_felt boolean DEFAULT false,
    '   notes text,
    '-------------------------
-
+   
    Dim visit As CRow
    
    If HBox_EditArea.Padding = 0 Then Return
@@ -86,7 +86,7 @@ Public Sub Save()
    visit!fk_consult = currentconsult.GetPK()
    visit!fk_pregnancy = fk_pregnancy
    visit!visit_date = Val(txtVisitDate.text)
-   visit!duration_weeks = Val(txtDuration.text)
+   visit!duration_weeks = txtDuration.text     'not keep as number but text
    visit!fundal_height = Val(txtFundalHeight.text)
    visit!fk_lu_presentation = Presentations[cmbPresentation.index]!pk
    If rbFHH.value = True Then 
@@ -96,6 +96,7 @@ Public Sub Save()
    End If   
    visit!urinalysis = Trim(txtUrinalysis.text)
    visit!bloodpressure = Trim(txtBloodPressure.Text)
+   visit!weight = Trim(txtWeight.text)
    If rbFMF.value = True Then
       visit!foetal_movements_felt = True
    Else
@@ -106,6 +107,7 @@ Public Sub Save()
    modDBConnect.CommitTrans()
    EditArea_Notify_DataChange(False)   
    Reload()
+   
 End 
 
 Public Function Visit_Valid() As Boolean
@@ -119,7 +121,51 @@ Public Function Visit_Valid() As Boolean
          Return
       Endif
    Endif
-   
+   If Trim(txtDuration.text) = "" Then
+      With txtDuration
+         .SetFocus()
+         .Background = Color.rgb(95, 255, 175)
+      End With  
+      Return
+   Endif
+   If Trim(txtFundalHeight.text) = "" Then
+      With txtFundalHeight
+         .SetFocus()
+         .Background = Color.rgb(95, 255, 175)
+      End With  
+      Return
+   Endif
+   If rbFHH.value = False And rbFHNotHeard.value = False Then
+      Message.info("Please decide about the foetal heart sounds.")
+      rbFHH.SetFocus
+      Return
+   Endif
+   If Trim(txtUrinalysis.text) = "" Then
+      With txtUrinalysis
+         .SetFocus()
+         .Background = Color.rgb(95, 255, 175)
+      End With  
+      Return
+   Endif
+   If Trim(txtBloodPressure.text) = "" Then
+      With txtBloodPressure
+         .SetFocus()
+         .Background = Color.rgb(95, 255, 175)
+      End With  
+      Return
+   Endif
+   If Trim(txtWeight.text) = "" Then
+      With txtWeight
+         .SetFocus()
+         .Background = Color.rgb(95, 255, 175)
+      End With  
+      Return
+   Endif
+   If rbFMF.value = False And rbFMNotFelt.value = False Then
+      Message.Info("Please ask if the patient has felt the foetal movements.")
+      rbFMF.SetFocus
+      Return
+   Endif
    Return True
    
 End
@@ -135,92 +181,124 @@ Private Sub Tableview_Init()
    'Init the tableview headers, default to single row
    '--------------------------------------------------   
    
-   With TableView1
+   With gridview1
       .Rows.count = antenatal_visits.Count + 1
       .Columns.count = 10
       .Columns[0].text = "     Date     "
       lblMeasure.text = "10/10/2013  "
-      .Columns[1].text = "Duration"
-      .Columns[2].text = "Fundus (cm)"
+      .Columns[1].text = "   Duration     "
+      .Columns[2].text = "Fundus"
       .Columns[3].text = "Presentation"
-      .Columns[4].text = " Foetal Heart "
+      .Columns[4].text = " FH  "
       .Columns[5].text = "Urine"
       .Columns[6].text = "BP"
       .Columns[7].text = "Weight"
-      .Columns[8].text = "Movements"
+      .Columns[8].text = "FM"
       .Columns[9].text = "Notes"
-      .Enabled = False  
    End With
    If antenatal_visits.count Then Reload()
-   ' TableView1[tableview1.Rows.max, cTableColumn_Date].text = Format(Now, "dd/mm/yyyy")
-   ' tableview1.column = cTableColumn_duration
-   ' tableview1_click()
+   ' gridview1[gridview1.Rows.max, cTableColumn_Date].text = Format(Now, "dd/mm/yyyy")
+   ' gridview1.column = cTableColumn_duration
+   ' gridview1_click()
    
 End
 
 Private Sub Reload()
    '---------------------------------
    'Display existing ante-natal rows
-   '--------------------------------   
+   '--------------------------------  
+
+   Dim antenatal_visit As Collection
+   Dim irow As Integer
+
    HBox_EditArea.Enabled = False 
-   
-   
+   With gridview1
+      .Clear()
+      .Rows.count = 1
+   End With
+   antenatal_visits = modPregnancyDBI.Antenatal_Visits_Get(currentconsult!patient!fk_patient)
+   For Each antenatal_visit In antenatal_visits
+      gridview1[irow, 0].Text = Format(antenatal_visit!visit_date, "dd/mm/yyyy")
+      gridview1[irow, 1].Text = antenatal_visit!duration_weeks
+      gridview1[irow, 1].Text = Replace(gridview1[irow, 1].Text, "Weeks", "W")
+      gridview1[irow, 1].Text = Replace(gridview1[irow, 1].Text, "Days", "D")
+      gridview1[irow, 2].Text = antenatal_visit!fundal_height & "cm"
+      gridview1[irow, 3].Text = Presentations[antenatal_visit!fk_lu_presentation]!presentation
+      If antenatal_visit!foetal_heart_heard = True Then
+         gridview1[irow, 4].Text = "FHH"
+      Else
+         gridview1[irow, 4].Text = " - "
+      End If  
+      gridview1[irow, 5].Text = antenatal_visit!urinalysis
+      gridview1[irow, 6].Text = antenatal_visit!bloodpressure
+      gridview1[irow, 7].Text = antenatal_visit!weight 
+      If antenatal_visit!foetal_movements_felt = True Then
+         gridview1[irow, 8].Text = "Felt"
+      Else
+         gridview1[irow, 8].Text = " - "
+      End If  
+      gridview1[irow, 9].Text = antenatal_visit!notes  
+     Inc irow 
+     Inc gridview1.Rows.count
+   Next
+
 End
 
-Public Sub TableView1_Click()
+Public Sub gridview1_Click()
    '-----------------------------------------------------------------------
    'User has clicked on a cell in the grid
    'set the edidtor to either a textbox (default) or provide combo-box data
    '-----------------------------------------------------------------------
-   
-   Select Case tableview1.column
-      Case cTableColumn_Presentation
-         TableView1.Edit(Presentations, True)
-      Case cTableColumn_FHS
-         TableView1.Edit(["Heard", "Not Heard"], True)
-      Case cTableColumn_FMF
-         TableView1.Edit(["Felt", "Not Felt"], True)
-      Case Else
-         tableview1.Edit()
-   End Select
+    EditArea_Clear()
+   ' Select Case gridview1.column
+   '    Case cTableColumn_Presentation
+   '       gridview1.Edit(Presentations, True)
+   '    Case cTableColumn_FHS
+   '       gridview1.Edit(["Heard", "Not Heard"], True)
+   '    Case cTableColumn_FMF
+   '       gridview1.Edit(["Felt", "Not Felt"], True)
+   '    Case Else
+   '     '  gridview1.Edit()
+   ' End Select
    
 End
 
-Public Sub TableView1_Save(Row As Integer, Column As Integer, Value As String)
+Public Sub gridview1_Save(Row As Integer, Column As Integer, Value As String)
    '------------------------------------------------------------------------
    'Move the data from the editing control back into the tableview grid cell
    '------------------------------------------------------------------------
    
-   TableView1[tableview1.row, TableView1.column].text = Value
+  ' gridview1[gridview1.row, gridview1.column].text = Value
    
 End
 
-Public Sub TableView1_Data(Row As Integer, Column As Integer)
+Public Sub gridview1_Data(Row As Integer, Column As Integer)
    
 End
 
-Public Sub TableView1_Insert()
+Public Sub gridview1_Insert()
    '--------------------------------------------------------------
    'User has pressed <ENTER> at the end of a row, insert a new one
    '--------------------------------------------------------------   
-   
-   Inc tableview1.Rows.count
-   tableview1.column = cTableColumn_Date
-   tableview1.row = tableview1.Rows.Max
-   TableView1_Click()
+   ' 
+   ' Inc gridview1.Rows.count
+   ' gridview1.column = cTableColumn_Date
+   ' gridview1.row = gridview1.Rows.Max
+   ' gridview1_Click()
    
 End
 
 Public Sub EditAreaTextBox_Change()
    
+   If bexit Then Return    
    Select Case Last.tag
-         
       Case "notes"
          If InStr(Last.text, "\n\n") Then
             Last.text = Replace(Last.text, "\n\n", "")
             lblForFocus.SetFocus()
          End If  
    End Select
+   EditArea_Notify_DataChange(True)
    
 End
 
@@ -228,7 +306,7 @@ Public Sub EditArea_Clear()
    
    bExit = True
    modEditAreaHelpers.EditArea_Clear(VBox_EditArea)  'clear textboxes/combo's
-   cmbPresentation.index = -1
+   cmbPresentation.index = 0 'n/a
    fk_visit = 0
    EditArea_Notify_DataChange(False)
    bexit = False
@@ -294,7 +372,7 @@ Public Sub EditAreaTextBox_Keypress()
             rbFMF.SetFocus
       End Select
    Endif
-
+   
 End 
 
 Public Sub EditAreaTextBox_GotFocus()
@@ -318,9 +396,11 @@ End
 
 Public Sub cmbPresentation_KeyPress()
    
+   If bExit Then Return
    If Key.code = Key.return Or Key.code = Key.Tab Then
       rbFHH.SetFocus()
    End If   
+   EditArea_Notify_DataChange(True)
    
 End
 
@@ -365,6 +445,38 @@ End
 Public Sub AnteNatal_Visit_New()
    
    EditArea_Clear()
-   txtVisitDate.SetFocus()
+   With txtVisitDate
+      .text = Format(Now, "dd/mm/yyyy")
+   End With
+   txtDuration.text = Calc_Gestation()
+   If txtDuration.text <> "" Then
+      txtFundalHeight.SetFocus
+   Else
+      txtDuration.SetFocus
+   Endif
+   fk_pregnancy = currentPregnancy!fk_pregnancy
+   HBox_EditArea.Enabled = True
+End
 
+Public Sub Calc_Gestation() As Variant
+   
+   Dim lmp As Date
+   Dim days As Integer
+   Dim weeks As Integer
+   
+   If currentPregnancy!edc_revised = False And Not IsNull(currentPregnancy!lmp) Then
+      If IsDate(currentPregnancy!lmp) Then 
+         days = DateDiff(Val(currentPregnancy!lmp), Now, gb.day) 'won't bug if LMP is proper date
+         weeks = days / 7
+         Return Str(weeks) & " Weeks " & Str(days Mod 7) & " Days"
+      End If  
+   Endif
+   
+End
+
+Public Sub EditArea_RadioButtons_Click()
+   
+   If bexit Then Return
+   EditArea_Notify_DataChange(True)
+   
 End

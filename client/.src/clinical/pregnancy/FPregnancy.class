@@ -60,6 +60,9 @@ Private onset_labour_types As Collection
 Private delivery_types As Collection
 Private sex_types As Collection 
 Private bits As New String[]
+Private Const ctabPregnancies As Integer = 0
+Private Const cTabAnteNatalVisits As Integer = 1
+Private Const cTabAnteNatalSheetWizard As Integer = 2
 
 Public Sub init(cons As Cconsult)
    
@@ -76,7 +79,7 @@ Public Sub init(cons As Cconsult)
    Try Settings_Load()
    form_pregnancy = Me
    With form_visits = New FPregnancyVisits(VBox_AnteNatalVisits)
-      .Init(currentconsult)                       'loads any existing ante-natal visits for the current pregnancy
+      '   .Init(currentconsult)                       'loads any existing ante-natal visits for the current pregnancy
    End With 
    With frmDemographics = New FPregnancyDemographics(VBox_WizardPage)
       .Init(currentConsult)
@@ -126,6 +129,7 @@ Public Sub Settings_Save()
    ' ' Try form_visits.Settings_Save
    Settings["FPregnancy/VSplit_Main.Layout"] = VSplit_Main.Layout  
    form_visits.Settings_Save()
+
 End
 
 Private Sub Settings_Load()
@@ -160,6 +164,18 @@ Public Function Sex_Types_Fill_Collection() As Collection
 End
 
 Public Sub Save()
+   
+   Select Case TabStripPregnancy.Index
+      Case ctabPregnancies
+         Save_Pregnancy()
+      Case cTabAnteNatalVisits
+         form_visits.Save()
+      Case cTabAnteNatalSheetWizard
+   End Select 
+   
+End
+
+Public Sub Save_Pregnancy()
    '----------------------------------
    'Saves the details of the pregnancy and any child forms (not done)
    '
@@ -250,8 +266,9 @@ Public Sub Save()
    If Trim(txtBirthweight.text) <> "" Then Pregnancy!birthweight = Val(txtBirthweight.text)
    Pregnancy.Save("clin_pregnancy.pregnancies", "fk_pregnancy")
    modDBConnect.CommitTrans()
-   FClinical.Refresh_AllPreviousNotes()
-   Reload()
+   FClinical.Pregnancy_Notify
+   FClinical.Refresh_AllPreviousNotes
+   Reload
    
 End
 
@@ -303,7 +320,7 @@ Public Sub Pregnancy_Display()
    '--------------------------------------------------
    'Display the pregnancy selected from the columnview
    '--------------------------------------------------   
-
+   
    cvwPregnancies.MoveCurrent()
    EditArea_Clear()
    bExit = True    'prevent the auto-calculating of all the dates due
@@ -325,7 +342,7 @@ Public Sub Pregnancy_Display()
    If Not IsNull(currentPregnancy!morphology_scan_date) Then
       txtDateMorphologyScan.text = Format(currentPregnancy!morphology_scan_date, "dd/mm/yyyy")
    Endif
-      If Not IsNull(currentPregnancy!date_anti_d) Then
+   If Not IsNull(currentPregnancy!date_anti_d) Then
       txtDateAntiD.text = Format(currentPregnancy!date_anti_d, "dd/mm/yyyy")
    Endif
    If Not IsNull(currentPregnancy!date_gtt) Then
@@ -353,7 +370,7 @@ Public Sub Pregnancy_Display()
    txtcomplications.text = currentPregnancy!complications
    If txtDateDelivery.text <> "" Then
       lblEditAreaHeading.text = UCase("Previous delivery:" & txtDateDelivery.text)
-    Else
+   Else
       lblEditAreaHeading.text = "Current Pregnancy" 
    Endif
    bExit = False  
@@ -379,9 +396,28 @@ Public Sub New_Entry()
    '------------------------------------------------------------------
    'see FClinical for explanation anyway, allow entry of new pregnancy
    '------------------------------------------------------------------
+
+   Select Case TabStripPregnancy.index
+      Case ctabPregnancies
+         Pregnancy_New() 
+      Case cTabAnteNatalVisits
+         AnteNatalVisit_New()
+      Case cTabAnteNatalSheetWizard
+   End Select
    
-   Pregnancy_New() 
-   
+End
+
+Public Sub AnteNatalVisit_New()
+
+   cvwPregnancies.MoveCurrent
+   currentPregnancy = pregnancies[cvwPregnancies.Item.key]
+   TabStripPregnancy.index = cTabAnteNatalVisits
+   TabStripPregnancy.text = "AnteNatal Visit: EDC- " & Format(currentPregnancy!edc, "dd/mm/yyyy")
+   With form_visits
+      .Init(currentconsult, currentPregnancy) 
+      .AnteNatal_Visit_New()
+   End With
+
 End
 
 Public Sub Pregnancy_New()
@@ -1079,3 +1115,21 @@ End
 ' ALTER TABLE clin_pregnancy.vwpregnancies OWNER To easygp;
 ' grant all on table clin_pregnancy.vwpregnancies To easygp;
 ' grant all on table clin_pregnancy.vwpregnancies To staff;
+
+Public Sub TabStripPregnancy_MouseDown() 
+   '------------------------------------------------------------
+   'To add an antenatal visit must be pregnant and not delivered
+   '------------------------------------------------------------
+   
+   If IsNull(currentPregnancy) Then
+      Stop Event
+      Return 
+   Else
+      If Not IsNull(currentPregnancy!date_delivery) Then 
+         Stop Event
+      Else
+         AnteNatalVisit_New()
+      Endif
+   End If   
+   
+End

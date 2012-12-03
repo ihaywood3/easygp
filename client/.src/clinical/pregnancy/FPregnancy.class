@@ -31,30 +31,14 @@
 ' 
 
 Private currentconsult As CConsult
+Private currentpregnancy As Collection
+
 Private bExit As Boolean
 Private bKeyValid As Boolean
 Private fk_pregnancy As Integer
 Private member As Collection
 Private The_Collections As Collection
-Private currentPregnancy As Collection 
-'----------------
-'The wizard pages
-'----------------
-Private iWizardPageCount As Integer 
-Public form_name As String
-Public currentForm As Object
-Public PreviousForm As Object
-Public nextForm As Object
-Static Private form_pregnancy As FPregnancy
-Private frmDemographics As FPregnancyDemographics
-Private frmFamilyandsocial As FFamilyHistory
-Private frmPregnancyHistory As FPregnancyHistory
-Private frmFirstVisitExamination As FPregnancyFirstExamination
-Private form_visits As FPregnancyVisits
-Private frmInvestigations As FPregnancyInvestigations
-Private frmProgressNotes As FProgressNotePage
-Private frmPastHistory As FPastHistory
-Public FrmHTMLViewer As FHtmlViewer 
+Private form_AnteNatal_CareSheet_Wizard As FAnteNatalCareSheetWizard
 Private pregnancies As Collection
 Private onset_labour_types As Collection
 Private delivery_types As Collection
@@ -63,6 +47,9 @@ Private bits As New String[]
 Private Const ctabPregnancies As Integer = 0
 Private Const cTabAnteNatalVisits As Integer = 1
 Private Const cTabAnteNatalSheetWizard As Integer = 2
+Private form_visits As FPregnancyVisits
+
+Static Private form_pregnancy As FPregnancy
 
 Public Sub init(cons As Cconsult)
    
@@ -78,30 +65,7 @@ Public Sub init(cons As Cconsult)
    currentconsult = cons
    Try Settings_Load()
    form_pregnancy = Me
-   With form_visits = New FPregnancyVisits(VBox_AnteNatalVisits)
-      '   .Init(currentconsult)                       'loads any existing ante-natal visits for the current pregnancy
-   End With 
-   With frmDemographics = New FPregnancyDemographics(VBox_WizardPage)
-      .Init(currentConsult)
-   End With
-   frmFamilyandsocial = New FFamilyHistory(VBox_WizardPage)
-   With frmFamilyandsocial
-      .Init(currentconsult)
-      .Visible = False  
-   End With
-   With frmPregnancyHistory = New FPregnancyHistory(VBox_WizardPage)
-      .Visible = False  
-   End With
-   With frmInvestigations = New FPregnancyInvestigations(VBox_WizardPage)
-      .Visible = False  
-   End With
-   With frmFirstVisitExamination = New FPregnancyFirstExamination(VBox_WizardPage)
-      .Visible = False
-   End With
-   With frmPastHistory = New FPastHistory(VBox_WizardPage)
-      .Visible = False  
-      .Init(currentconsult)
-   End With
+   ' form_visits = New FPregnancyVisits(VBox_AnteNatalVisits)
    With cvwPregnancies
       .Columns.count = 7
       .Columns[0].text = "Mth/year Delivery"
@@ -112,9 +76,6 @@ Public Sub init(cons As Cconsult)
       .Columns[5].text = " Sex "
       .Columns[6].text = " Weight "
    End With
-   
-   lblHeading.TEXT = "DEMOGRAPHIC DETAILS"
-   frmDemographics.visible = True 
    lblEDC.width = rbNuchalFoldNormal.width 
    Reload()
    
@@ -122,14 +83,14 @@ End
 
 Public Sub Settings_Save()
    
-   '  Try frmDemographics.Settings_Save()
-   '  Try frmFamilyandsocial.Settings_Save
-   '  Try frmPastHistory.Settings_Save
+   '  Try form_demographics.Settings_Save()
+   '  Try form_familyandsocial.Settings_Save
+   '  Try form_pasthistory.Settings_Save
    '  Try frmInvestigations.Settings_Save
    ' ' Try form_visits.Settings_Save
    Settings["FPregnancy/VSplit_Main.Layout"] = VSplit_Main.Layout  
    form_visits.Settings_Save()
-
+   
 End
 
 Private Sub Settings_Load()
@@ -171,6 +132,7 @@ Public Sub Save()
       Case cTabAnteNatalVisits
          form_visits.Save()
       Case cTabAnteNatalSheetWizard
+        form_AnteNatal_CareSheet_Wizard.Save()
    End Select 
    
 End
@@ -396,19 +358,24 @@ Public Sub New_Entry()
    '------------------------------------------------------------------
    'see FClinical for explanation anyway, allow entry of new pregnancy
    '------------------------------------------------------------------
-
+   
    Select Case TabStripPregnancy.index
       Case ctabPregnancies
          Pregnancy_New() 
       Case cTabAnteNatalVisits
          AnteNatalVisit_New()
       Case cTabAnteNatalSheetWizard
+         AnteNatal_Summary_New()
    End Select
    
 End
 
-Public Sub AnteNatalVisit_New()
+Public Sub AnteNatal_Summary_New()
+   
+End
 
+Public Sub AnteNatalVisit_New()
+   
    cvwPregnancies.MoveCurrent
    currentPregnancy = pregnancies[cvwPregnancies.Item.key]
    TabStripPregnancy.index = cTabAnteNatalVisits
@@ -417,7 +384,7 @@ Public Sub AnteNatalVisit_New()
       .Init(currentconsult, currentPregnancy) 
       .AnteNatal_Visit_New()
    End With
-
+   
 End
 
 Public Sub Pregnancy_New()
@@ -430,17 +397,7 @@ Public Sub Pregnancy_New()
    EditArea_Clear()
    currentPregnancy = New Collection 
    fk_pregnancy = 0
-   frmPregnancyHistory.Visible = False
-   frmFirstVisitExamination.Visible = False  
-   frmFirstVisitExamination.Visible = False  
-   frmFamilyandsocial.visible = False  
-   frmDemographics.Visible = True  
-   PreviousForm = frmDemographics
-   currentForm = frmDemographics
-   Nextform = frmFamilyandsocial
-   form_name = "demographics"
-   iWizardPageCount = 1
-   WizardPage_Notify(1)
+   
    lblEditAreaHeading.text = "New Pregnancy"
    HBox_EditArea.Enabled = True
    EditArea_NotifyData_Change(True) 'can save a pregnancy without any data.
@@ -476,87 +433,8 @@ Public Sub EditAreaButtons_Click()
          Save()
       Case "preview"
          Preview()
-      Case "previous"
-         'Go back a form
-         'At this point: current form = one we are viewing
-         'previous form = form before this one = one we want to view now as going back
-         currentForm.Visible = False 
-         form_name = currentForm.tag
-         Select Case form_name
-            Case "Family History"
-               currentForm = frmDemographics
-               nextForm = frmFamilyandsocial
-               lblHeading.text = "DEMOGRAPHIC DETAILS"
-            Case "Health Issues"
-               currentForm = frmFamilyandsocial
-               nextForm = frmPastHistory
-               lblHeading.text = "FAMILY AND SOCIAL HISTORY"
-            Case "pregnancy history"
-               currentForm = frmPastHistory
-               nextForm = frmPregnancyHistory
-               lblHeading.text = "PAST HISTORY - EXISTING HEALTH ISSUES"
-               frmPregnancyHistory.lblHiddenFocus.SetFocus()
-            Case "first examination"
-               currentForm = frmPregnancyHistory
-               nextForm = frmInvestigations
-               lblHeading.text = "THIS PREGNANCY - DATES & PREGNANCY SPECIFIC HEALTH ISSUES"
-            Case "investigations"
-               currentForm = frmFirstVisitExamination
-               nextForm = frmInvestigations
-               lblHeading.text = "FIRST EXAMINATION"
-               
-            Case "visits"
-               currentForm = frmInvestigations
-               nextForm = form_visits
-               lblHeading.text = "INVESTIGATIONS"
-            Case "progress notes"
-               currentForm = form_visits
-               nextForm = frmProgressNotes
-               lBLHeading.TEXT = "ANTENATAL VISITS"
-         End Select 
-         form_name = currentForm.tag
-         currentForm.Visible = True 
-         iWizardPageCount = Max(1, (iWizardPageCount - 1))
-         WizardPage_Notify(iWizardPageCount)
-      Case "next"
-         PreviousForm = currentForm              'form being viewed before change now is last form
-         PreviousForm.Visible = False 
-         currentForm = nextForm
-         currentForm.Visible = True 
-         form_name = currentForm.tag
-         Select Case form_name
-            Case "demographics"
-               nextForm = frmFamilyandsocial
-               lblHeading.text = "DEMOGRAPHIC DETAILS"
-            Case "Family History"
-               nextForm = frmPastHistory
-               lblHeading.text = "FAMILY And SOCIAL HISTORY"
-            Case "Health Issues"
-               nextForm = frmPregnancyHistory
-               lblHeading.text = "PAST HISTORY - EXISTING HEALTH ISSUES"
-            Case "pregnancy history"
-               nextForm = frmFirstVisitExamination
-               lblHeading.text = "THIS PREGNANCY - DATES & PREGNANCY SPECIFIC HEALTH ISSUES"
-            Case "first examination"
-               nextForm = frmInvestigations
-               lblHeading.text = "FIRST EXAMINATION"
-            Case "investigations"
-               nextForm = form_visits
-               lblHeading.text = "INVESTIGATIONS"
-            Case "visits"
-               nextForm = frmProgressNotes
-               
-         End Select 
-         iWizardPageCount = Min(7, (iWizardPageCount + 1))
-         WizardPage_Notify(iWizardPageCount)
          
    End Select
-   
-End
-
-Public Sub WizardPage_Notify(iPage As Integer)
-   
-   lblWizardPage.text = "  Page " & Str$(ipage) & " of 7  "
    
 End
 
@@ -1116,6 +994,28 @@ End
 ' grant all on table clin_pregnancy.vwpregnancies To easygp;
 ' grant all on table clin_pregnancy.vwpregnancies To staff;
 
+Public Sub TabStripPregnancy_Click()
+       Select Case TabStripPregnancy.Index
+         Case cTabAnteNatalVisits
+            If Not IsNull(currentPregnancy!date_delivery) Then 
+               Stop Event
+            Else
+               If IsNull(form_visits) Then
+                  form_visits = New FPregnancyVisits(VBox_AnteNatalVisits)
+               Endif
+               AnteNatalVisit_New()
+            Endif
+         Case cTabAnteNatalSheetWizard
+            If IsNull(form_AnteNatal_CareSheet_Wizard) Then
+               With form_AnteNatal_CareSheet_Wizard = New FAnteNatalCareSheetWizard(VBox_AnteNatal_CareSheet_Wizard)
+                  .init(currentconsult, currentPregnancy)
+               End With   
+            Endif
+      End Select 
+   
+   
+End
+
 Public Sub TabStripPregnancy_MouseDown() 
    '------------------------------------------------------------
    'To add an antenatal visit must be pregnant and not delivered
@@ -1124,12 +1024,25 @@ Public Sub TabStripPregnancy_MouseDown()
    If IsNull(currentPregnancy) Then
       Stop Event
       Return 
-   Else
-      If Not IsNull(currentPregnancy!date_delivery) Then 
-         Stop Event
-      Else
-         AnteNatalVisit_New()
-      Endif
+   ' Else
+   '    Select Case TabStripPregnancy.Index
+   '       Case cTabAnteNatalVisits
+   '          If Not IsNull(currentPregnancy!date_delivery) Then 
+   '             Stop Event
+   '          Else
+   '             If IsNull(form_visits) Then
+   '                form_visits = New FPregnancyVisits(VBox_AnteNatalVisits)
+   '             Endif
+   '             AnteNatalVisit_New()
+   '          Endif
+   '       Case cTabAnteNatalSheetWizard
+   '          If IsNull(form_AnteNatal_CareSheet_Wizard) Then
+   '             With form_AnteNatal_CareSheet_Wizard = New FAnteNatalCareSheetWizard(VBox_AnteNatal_CareSheet_Wizard)
+   '                .init(currentconsult, currentPregnancy)
+   '             End With   
+   '          Endif
+   '    End Select 
+   '    
    End If   
    
 End

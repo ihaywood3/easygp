@@ -36,6 +36,7 @@ Public Problemlists As FPastHistoryProblemLists
 Public ProblemList As ColumnView                      'the List last clicked on
 Public Obs As Observer
 Private bediting As Integer
+Private pk_recall As Integer
 Private fk_organisation As Integer
 Private fk_branch As Integer
 Private fk_person As Integer
@@ -89,7 +90,8 @@ Public Sub Init(cons As Cconsult)
    modEditAreaHelpers.Resize_labels(Vbox_CarePlanning, lblmeasure)
    Try Settings_Load()
    currentconsult.Refresh("past history")
- End
+
+End
 
 Public Sub HealthIssues_Click()
    '-------------------------------------------------------------------
@@ -208,6 +210,10 @@ Public Sub EditArea_Clear()
    TeamCareMember_SearchBy_Criteria = Const.contacttype_PersonsAndPatients 'fix me 
    rbSearchBy_person.value = True
    cmbContactMethod.Index = const.ContactMethodLetter
+   With lblcomponentMessage
+      .Visible = False 
+      .text = ""
+   End With
    bExit = False
    
 End
@@ -224,6 +230,89 @@ Public Sub Editarea_NotifyData_Change(flag As Boolean)
 End
 
 Public Sub Save()
+   '---------------------------------------------------------------
+   'Save the care plan for this past history item
+   'This could include changes to the past history item itself
+   'Unlike many editing areas, the underlying collection has been
+   'copied from the original at the time of display (see Display())
+   'this is because the ModPastHistoryDBI.Save(...) routine needs
+   'an intact collection to be able to write the description of
+   'any audit changes.
+   '---------------------------------------------------------------
+   
+   Dim Recall As Collection
+   Dim HealthIssue As CRow 
+   Dim TeamCareMember As CRow 
+   Dim member As Collection
+   
+   If Vbox_EditArea.padding = 0 Then Return
+   If Not Valid_CarePlan() Then Return 
+   '--------------------------------------------
+   'Save the health issues aka past history item
+   '---------------------------------------------
+   HealthIssue = New CRow  
+   HealthIssue.put_unchanged(pk_pasthistory, "pk_pasthistory")
+   HealthIssue!description = Trim(txtHealthIssue.text)
+   HealthIssue!management_summary = Trim(txtManagementSummary.text)     
+   HealthIssue!condition_summary = Trim(txtHistoricalSummary.text) 
+   HealthIssue!aim_of_plan = Trim(txtAim.text)
+   modDBConnect.BeginTrans()
+   HealthIssue.Save("clin_history.past_history", "pk_pasthistory")
+   '---------------------------------------------
+   'Save the team care members and responsibility
+   '--------------------------------------------
+   modPastHistoryDBI.Save_TeamCareMembers(TeamCareMembers_BeforeEdit, TeamCareMembers, pk_pasthistory)   
+   '------------------------------------------------------------------------------------------ 
+   'For each care plan component which the user wants to be included as a recall
+   'create and save the recall, the key of which is returned into the PlanComponent collection
+   '------------------------------------------------------------------------------------------ 
+   For Each PlanComponent In PlanComponents
+      If PlanComponent!recall = True Then
+         recall = New Collection  
+         recall!fk_urgency = const.UrgencyLevelRoutine
+         If Not IsNull(PlanComponent!fk_recall) Then
+            pk_recall = PlanComponent!fk_recall
+         Else
+            pk_recall = -1 
+         Endif
+         If Not IsNull(PlanComponent!fk_reason) Then
+            recall!fk_reason = PlanComponent!fk_reason
+         Else
+            recall!fk_reason = 0 
+         Endif
+         PlanComponent.Remove("fk_reason")
+         recall!reason = PlanComponent!component
+         recall!default_interval = default_interval 'work this out
+         recall!fk_default_interval_unit = fk_default_interval_unit
+         recall!fk_interval_unit = fk_interval_unit
+         recall!interval = interval 
+         recall!due = PlanComponent!due
+         recall!fk_contact_method = cmbContactMethod.Index
+         recall!fk_appointment_length = const.AppointmentLengthStandard
+         recall!active = True
+         recall!additional_text = ""
+         recall!fk_staff = modDBConnect.currentUser!fk_staff 
+         recall!fk_pasthistory = pk_pasthistory
+         PlanComponent!fk_recall = modRecallsDBI.Save(currentconsult, pk_recall, recall)
+         PlanComponent.Remove("recall") 'this was  a flag = true or false.
+         PlanComponent.Remove("fk_default_interval_unit") 'this was  a flag = true or false.
+         PlanComponent.Remove("fk_interval_unit")
+         PlanComponent.Remove("default_interval")
+         PlanComponent.Remove("interval") 
+      Endif
+   Next
+   '-------------------------------------
+   'finally save the care plan components
+   '-------------------------------------
+   modPastHistoryDBI.Save_CarePlanComponents(view_careplan_components, PlanComponents, pk_pasthistory)
+   modDBConnect.CommitTrans()
+   ProblemLists.Refresh()
+   FClinical.Refresh_Section(const.cSection_PastHistory)
+   FClinical.Refresh_Section(const.cSection_CarePlan)
+   
+End
+
+Public Sub Save_old()
    '---------------------------------------------------------------
    'Save the care plan for this past history item
    'This could include changes to the past history item itself
@@ -255,8 +344,8 @@ Public Sub Save()
    HealthIssue.Save("clin_history.past_history", "pk_pasthistory")
    
    For Each member In TeamCareMembers
-       TeamCareMember = New CRow
-        
+      TeamCareMember = New CRow
+      
    Next
    modPastHistoryDBI.Save_TeamCareMembers(TeamCareMembers_BeforeEdit, TeamCareMembers, pk_pasthistory)   
    '------------------------------------------------------------------------------------------ 
@@ -572,7 +661,6 @@ Public Sub TeamCareMembers_Add(member As Collection)
    
 End
 
-
 Public Sub TeamCareMembers_RefreshList()
    '-------------------------------------------
    'Refreshes the list of team care members
@@ -596,6 +684,7 @@ Public Sub TeamCareMembers_RefreshList()
    End If
    
 End
+
 Public Sub TeamCareMembers_RefreshCollection()
    '-----------------------------------------------------
    'When an item is removed from a collection, its count
@@ -706,7 +795,6 @@ Public Sub Person_Get()
    End If
    
 End
-
 
 Public Sub TeamCareMembers_MakeSummary(Collection_member As Collection) As String
    '---------------------------------------------------------------------------
@@ -915,12 +1003,29 @@ Public Function teamcare_member_check_duplicated(Member As Collection) As Boolea
       End Select
    Next  
    Return False
-   Reset:
+Reset:
    ListView1.Visible = False 
    txtTeamCareMembers.SetFocus()
    txtTeamCareMembers.Text = ""
    Message.Info(sMsg)  
    Return True 'ie is a duplicate
+   
+End
+
+Public Sub mnuComponents_Click()
+   
+   Select Case Last.tag
+      Case "edit"
+         CarePlan_Component_Edit
+      Case "delete"
+         CarePlan_Component_Delete
+      Case "undo delete"
+         CarePlan_Component_Undelete
+      Case "font"
+         
+      Case "help"
+         
+   End Select  
    
 End
 
@@ -1020,7 +1125,15 @@ Public Sub cvwTeamCareMembers_Select()
    
 End
 
-Public Sub cvwCareComponents_Click()
+Public Sub cvwCareComponents_menu()
+   
+   If cvwCareComponents.count Then
+      mnucomponents.Popup
+   Endif
+   
+End
+
+Public Sub CarePlan_Component_Edit()
    '-----------------------------------------------------------------------
    'edit the row highlighted, if not yet saved, remove from list at editing
    '-----------------------------------------------------------------------
@@ -1036,7 +1149,19 @@ Public Sub cvwCareComponents_Click()
       PlanComponents.Remove(cvwCareComponents.Item.key)
       cvwCareComponents_Refresh()
    End If
-   bExit = False
+   bExit = False 
+   
+End
+
+Public Sub CarePlan_Component_Delete()
+   
+End
+
+Public Sub CarePlan_Component_Undelete()
+   
+End
+
+Public Sub CarePlan_Component_Display()
    
 End
 
@@ -1108,8 +1233,7 @@ Public Sub CarePlan_Component_Select(Optional bSourceIsTextbox As Boolean = Fals
    End If 
    Goto SetRecall
    
-   SetRecall:
-   
+SetRecall:
    Listview1.MoveCurrent 
    SelectedReason = collection_members[listview1.Item.key]
    fk_recall_reason = listview1.Item.Key 
@@ -1121,9 +1245,11 @@ Public Sub CarePlan_Component_Select(Optional bSourceIsTextbox As Boolean = Fals
    'this is not a type-o fk_default_interval_unit will always be fk_interval_unit 
    'though the interval value may be different - see note in the recalls module
    'by searching for AT SOME STAGE RE-THINK THIS.
+   txtInterval.text = txtDefaultInterval.text
    fk_default_interval_unit = SelectedReason!fk_interval_unit '
-   Calculate_Recall_Date(txtDefaultInterval)
-   
+   If Not Recall_Check_If_Exists(listview1.Item.Text) Then 
+      Calculate_Recall_Date(txtDefaultInterval)
+   End If   
    Listview1.Visible = False 
    tbAcceptComponent.SetFocus()
    bExit = False    
@@ -1408,6 +1534,7 @@ Public Sub Careplan_Components_Accept()
    '-----------------------------------------------------------------------------------------------
    
    PlanComponent = New Collection
+   If pk_recall <> 0 Then PlanComponent!fk_recall = pk_recall
    PlanComponent!fk_reason = fk_recall_reason
    PlanComponent!component = Trim(txtComponent.text)
    PlanComponent!due = Val(txtdue.text)
@@ -1443,6 +1570,11 @@ Public Sub Careplan_Component_New()
    txtDefaultInterval.Clear
    txtInterval.Clear
    fk_recall_reason = 0
+   pk_recall = 0
+   With lblcomponentMessage
+      .Visible = False
+      .text = ""
+   End With
    ' bExit = False  
    
 End
@@ -1559,6 +1691,33 @@ Public Sub EditArea_TxtBox_Activate()
          CarePlan_Component_Select(True) 'if true - then this routine knows user hit enter on the textbox
    End Select
    
+End
+
+Public Function Recall_Check_If_Exists(recall_reason As String) As Boolean
+   '------------------------------------------------------------------
+   'when user goes to add a component check if a recall already exists
+   '------------------------------------------------------------------ 
+
+   Dim recall As Collection
+   
+   For Each recall In currentconsult!recalls_logged
+      If recall!reason = recall_reason Then
+         txtDue.Text = recall!due
+         pk_recall = recall!pk_recall  
+         txtInterval.text = recall!interval & recall!abbrev_text
+         fk_interval_unit = recall!fk_interval_unit
+         interval = recall!interval
+         lblcomponentMessage.text = "* RECALL ALREADY LOGGED "
+         If DateDiff(Now(), recall!due, GB.Day) < 0 Then
+             lblcomponentMessage.text &= "AND IS OVERDUE  "
+         Endif
+         lblcomponentMessage.Visible = True  
+         chkautoRecall.Value = True
+         Return True
+      End If
+   Next     
+   Return 
+
 End
 
 Public Sub Calculate_Recall_Date(txt As Textbox)
@@ -1742,53 +1901,53 @@ Public Sub EditAreaButtons_KeyPress()
    
 End
 
-  ' PastHistory = New CRow
-  '  If pk_pasthistory <> 0 Then 
-  '     PastHistory.put_unchanged(pk_pasthistory, "pk_pasthistory")
-  '  End If   
-  '  If fk_consult <> 0 Then
-  '     PastHistory!fk_consult = fk_consult
-  '  Else
-  '     PastHistory!fk_consult = currentconsult.GetPK()
-  '  End If 
-  '  PastHistory!age_onset = Val(txtAgeOnset.text) 'CHECK THIS IS VALIDATED ABOVE
-  '  PastHistory!age_onset_units = iAgeOnsetUnits
-  '  PastHistory!description = modUtil.Ucase_Words_First_Letter(Trim(txtCondition.text))
-  '  PastHistory!fk_laterality = fk_laterality
-  '  PastHistory!year_onset = Trim(txtYearOnset.text) 'eg could be 1993 or 08/1993 
-  '  Select Case fk_significance
-  '     Case const.healthIssue_Major
-  '        PastHistory!major = True
-  '     Case const.healthIssue_Significant
-  '        PastHistory!active = True
-  '     Case Else
-  '        PastHistory!major = False 'yes, the backend would default but sProgressNote code more difficult
-  '  End Select
-  '  If chkOperation.Value = True Then 
-  '     PastHistory!operation = True
-  '  Else
-  '     PastHistory!operation = False
-  '  End If
-  '  If chkCauseOfDeath.Value = True Then
-  '     PastHistory!cause_of_death = True
-  '  Else
-  '     PastHistory!cause_of_death = False
-  '  Endif 
-  '  If rbConfidentialYes.value Then 
-  '     PastHistory!confidential = True
-  '  Else
-  '     PastHistory!confidential = False
-  '  End If
-  '  PastHistory!management_summary = Trim(txtManagementSummary.text)     
-  '  PastHistory!condition_summary = Trim(txtHistoricalSummary.text) 
-  '  If chkRiskFactor.value = True Then 
-  '     PastHistory!risk_factor = True
-  '  Else
-  '     PastHistory!risk_factor = False
-  '  End If    
-  '  PastHistory!aim_of_plan = Trim(txtAim.text)
-  '  PastHistory!fk_coding_system = fk_coding_system
-  '  PastHistory!fk_code = fk_code
-  '  sProgressNotes = ProgressNotes_Summary(PastHistory)     
-  '  modDBConnect.BeginTrans()
-  '  PastHistory.Save("clin_history.past_history", "pk_pasthistory")
+' PastHistory = New CRow
+'  If pk_pasthistory <> 0 Then 
+'     PastHistory.put_unchanged(pk_pasthistory, "pk_pasthistory")
+'  End If   
+'  If fk_consult <> 0 Then
+'     PastHistory!fk_consult = fk_consult
+'  Else
+'     PastHistory!fk_consult = currentconsult.GetPK()
+'  End If 
+'  PastHistory!age_onset = Val(txtAgeOnset.text) 'CHECK THIS IS VALIDATED ABOVE
+'  PastHistory!age_onset_units = iAgeOnsetUnits
+'  PastHistory!description = modUtil.Ucase_Words_First_Letter(Trim(txtCondition.text))
+'  PastHistory!fk_laterality = fk_laterality
+'  PastHistory!year_onset = Trim(txtYearOnset.text) 'eg could be 1993 or 08/1993 
+'  Select Case fk_significance
+'     Case const.healthIssue_Major
+'        PastHistory!major = True
+'     Case const.healthIssue_Significant
+'        PastHistory!active = True
+'     Case Else
+'        PastHistory!major = False 'yes, the backend would default but sProgressNote code more difficult
+'  End Select
+'  If chkOperation.Value = True Then 
+'     PastHistory!operation = True
+'  Else
+'     PastHistory!operation = False
+'  End If
+'  If chkCauseOfDeath.Value = True Then
+'     PastHistory!cause_of_death = True
+'  Else
+'     PastHistory!cause_of_death = False
+'  Endif 
+'  If rbConfidentialYes.value Then 
+'     PastHistory!confidential = True
+'  Else
+'     PastHistory!confidential = False
+'  End If
+'  PastHistory!management_summary = Trim(txtManagementSummary.text)     
+'  PastHistory!condition_summary = Trim(txtHistoricalSummary.text) 
+'  If chkRiskFactor.value = True Then 
+'     PastHistory!risk_factor = True
+'  Else
+'     PastHistory!risk_factor = False
+'  End If    
+'  PastHistory!aim_of_plan = Trim(txtAim.text)
+'  PastHistory!fk_coding_system = fk_coding_system
+'  PastHistory!fk_code = fk_code
+'  sProgressNotes = ProgressNotes_Summary(PastHistory)     
+'  modDBConnect.BeginTrans()
+'  PastHistory.Save("clin_history.past_history", "pk_pasthistory")

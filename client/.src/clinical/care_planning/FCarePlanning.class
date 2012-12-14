@@ -90,7 +90,7 @@ Public Sub Init(cons As Cconsult)
    modEditAreaHelpers.Resize_labels(Vbox_CarePlanning, lblmeasure)
    Try Settings_Load()
    currentconsult.Refresh("past history")
-
+   
 End
 
 Public Sub HealthIssues_Click()
@@ -240,10 +240,13 @@ Public Sub Save()
    'any audit changes.
    '---------------------------------------------------------------
    
-   Dim Recall As Collection
+   Dim Recall As CRow
+   Dim RecallReason As CRow
+   Dim RecallInterval As CRow
    Dim HealthIssue As CRow 
    Dim TeamCareMember As CRow 
    Dim member As Collection
+   Dim sql As String
    
    If Vbox_EditArea.padding = 0 Then Return
    If Not Valid_CarePlan() Then Return 
@@ -267,25 +270,31 @@ Public Sub Save()
    'create and save the recall, the key of which is returned into the PlanComponent collection
    '------------------------------------------------------------------------------------------ 
    For Each PlanComponent In PlanComponents
-      If PlanComponent!recall = True Then
-         recall = New Collection  
+      If PlanComponent!recall = True Then                                'user wants component to be a recall
+         recall = New CRow                                               'new collection to save the recall
+         If Not IsNull(PlanComponent!fk_recall) Then                     'this may exist already 
+            recall.put_unchanged(PlanComponent!fk_recall, "fk_recall")
+         End If
+         If Not IsNull(PlanComponent!fk_reason) Then                     'the component reason = the recall reason
+            recall!fk_reason = PlanComponent!fk_reason                   'have used existing, keep key
+         Else                                                            'this is a new recall reason
+            ' fixme use reason_save() fix also in care planning save
+            RecallReason = New CRow
+            RecallReason!reason = PlanComponent!reason
+            recall!fk_reason = RecallReason.Save("clin_recalls.lu_reasons", "fk_reason")
+            RecallInterval = New CRow  
+            RecallInterval!fk_reason = RecallReason!fk_reason
+            RecallInterval!fk_staff = modDBConnect.currentUser!fk_staff 
+            RecallInterval!interval = PlanComponent!default_interval
+            RecallInterval!fk_interval_unit = PlanComponent!fk_default_interval_unit  
+            PlanComponent!fk_default_interval_unit = RecallInterval.Save("clin_recalls.lu_recall_intervals", "fk_interval_default")
+         End If
          recall!fk_urgency = const.UrgencyLevelRoutine
-         If Not IsNull(PlanComponent!fk_recall) Then
-            pk_recall = PlanComponent!fk_recall
-         Else
-            pk_recall = -1 
-         Endif
-         If Not IsNull(PlanComponent!fk_reason) Then
-            recall!fk_reason = PlanComponent!fk_reason
-         Else
-            recall!fk_reason = 0 
-         Endif
-         PlanComponent.Remove("fk_reason")
          recall!reason = PlanComponent!component
-         recall!default_interval = default_interval 'work this out
-         recall!fk_default_interval_unit = fk_default_interval_unit
-         recall!fk_interval_unit = fk_interval_unit
-         recall!interval = interval 
+         recall!default_interval = PlanComponent!default_interval
+         recall!fk_default_interval_unit = PlanComponent!fk_default_interval_unit  
+         recall!fk_interval_unit = PlanComponent!fk_interval_unit
+         recall!interval = PlanComponent!interval 
          recall!due = PlanComponent!due
          recall!fk_contact_method = cmbContactMethod.Index
          recall!fk_appointment_length = const.AppointmentLengthStandard
@@ -293,13 +302,15 @@ Public Sub Save()
          recall!additional_text = ""
          recall!fk_staff = modDBConnect.currentUser!fk_staff 
          recall!fk_pasthistory = pk_pasthistory
-         PlanComponent!fk_recall = modRecallsDBI.Save(currentconsult, pk_recall, recall)
-         PlanComponent.Remove("recall") 'this was  a flag = true or false.
-         PlanComponent.Remove("fk_default_interval_unit") 'this was  a flag = true or false.
-         PlanComponent.Remove("fk_interval_unit")
-         PlanComponent.Remove("default_interval")
-         PlanComponent.Remove("interval") 
-      Endif
+         PlanComponent!fk_recall = recall.Save("clin_recalls.recalls", "fk_recall")
+      End If 
+      PlanComponent.Remove("fk_reason")
+      PlanComponent.Remove("recall") 'this was  a flag = true or false.
+      PlanComponent.Remove("fk_default_interval_unit") 'this was  a flag = true or false.
+      PlanComponent.Remove("fk_interval_unit")
+      PlanComponent.Remove("default_interval")
+      PlanComponent.Remove("interval") 
+      
    Next
    '-------------------------------------
    'finally save the care plan components
@@ -1697,7 +1708,7 @@ Public Function Recall_Check_If_Exists(recall_reason As String) As Boolean
    '------------------------------------------------------------------
    'when user goes to add a component check if a recall already exists
    '------------------------------------------------------------------ 
-
+   
    Dim recall As Collection
    
    For Each recall In currentconsult!recalls_logged
@@ -1709,7 +1720,7 @@ Public Function Recall_Check_If_Exists(recall_reason As String) As Boolean
          interval = recall!interval
          lblcomponentMessage.text = "* RECALL ALREADY LOGGED "
          If DateDiff(Now(), recall!due, GB.Day) < 0 Then
-             lblcomponentMessage.text &= "AND IS OVERDUE  "
+            lblcomponentMessage.text &= "AND IS OVERDUE  "
          Endif
          lblcomponentMessage.Visible = True  
          chkautoRecall.Value = True
@@ -1717,7 +1728,7 @@ Public Function Recall_Check_If_Exists(recall_reason As String) As Boolean
       End If
    Next     
    Return 
-
+   
 End
 
 Public Sub Calculate_Recall_Date(txt As Textbox)

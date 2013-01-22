@@ -27,9 +27,20 @@
 '                   form and the resultant collection of a patient are passed back
 '                   to which ever embedded FDayList form called the logic
 '                   in the first place
-'------------------------------------------------------------------------------------
-
+'                   SPECIAL NOTE ON AUTO-REFRESHING OF APPOINTMENT AND TIMER1
+'                   - timer1 event will be prevented from auto-refreshing the appointments if
+'                     user's mouse leaves the form, or if any of the daylists are
+'                     manipulating the appointment tables (FIXME NOT YET DONE)
+'                     via the static routines in this class
+'                   - timer1 is enabled the first time appointments are loaded by the user
+'                     selecting a staff member from the combo box
+'                   - If mouse re-enters the form the appointments will immediately refresh
+'                   - the delay of the timer is shown in the gui.
+'---------------------------------------------------------------------------------------------
+Private bFormBeingUsed As Boolean  'True if this form is visible to the user
 Private bexit As Boolean
+Private bKeyValid As Boolean
+Public bAppointmentListsShowing As Boolean   'leave this public
 Private OnRow As Integer
 Private GridData As Collection 
 Private GridRows As Collection
@@ -59,8 +70,34 @@ Private iSlotCount As Integer
 Public AppointmentList As FDayList
 Private WeeksAppointments As Collection
 Private counter As Integer
+Private stop_timer As Integer = 0
+Private start_timer As Integer = 1
 
 Static Private Form_Make_Appointments As FMakeAppointments
+
+Static Public Sub Refresh_Appointments_External()
+   '----------------------------------------------------------------------------------
+   'Reloads appointments called if user clicks on FClerical.Appointments Tab
+   'or if the mouse cursor is over the left hand vertical menu bar of the main program
+   '---------------------------------------------------------------------------------- 
+   
+   If Form_Make_Appointments.bAppointmentListsShowing Then
+      Form_Make_Appointments.WeekList_Reload()
+   Endif
+   
+End
+
+Static Public Sub Timer1_Stop()
+   
+   Form_Make_Appointments.Timer1.Stop 
+   
+End
+
+Static Public Sub Timer1_Start()
+   
+   Form_Make_Appointments.Timer1.Start
+   
+End
 
 Static Public Sub patient_load_record_external(patient As Collection, bPhotoConfirmed As Boolean, P As Picture) 
    '------------------------------------------------------------------------------
@@ -90,21 +127,26 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
 End
 
 Public Sub Init()
-   '------------------------------------------------
+   '------------------------------------------------------------------------------
    'Initialise the appointment module from FClerical 
-   '------------------------------------------------
+   'No appointments will be loaded until the stafff member is explicitly selected
+   'See special note on refreshing apointments at top of form to
+   'understand how the timer1 interacts with all the daylist child forms
+   '------------------------------------------------------------------------------
    
    Dim Appointment_interval As Integer                                                 'interval in minutes for appointments
    Dim x As Integer
-   
    Dim iHour As Integer
    Dim iMinute As Integer
    Dim iStartHour As Integer = 8                                                       'fixme make me configurable
    Dim iStartMinute As Integer = 30
    
+   Timer1.Stop                                                                         'no auto-refresh until something to refresh
    Form_Make_Appointments = Me
-   staff = modUtil.LoadCombo(cmbStaff, modContactsDBI.Staff_Get(), "wholename")     'get all staff
-   clinics = modUtil.LoadCombo(cmbLocation, modContactsDBI.Clinics_Get(), "branch")       'get all branches
+   txtRefreshInterval.text = modAdminDBI.Config_Get("auto_refresh_appointments", 5, Null, modDBConnect.currentUser!fk_clinic)
+   Appointment_Refresh_Set_Delay()
+   staff = modUtil.LoadCombo(cmbStaff, modContactsDBI.Staff_Get(), "wholename")        'get all staff
+   clinics = modUtil.LoadCombo(cmbLocation, modContactsDBI.Clinics_Get(), "branch")    'get all branches
    tlLocation.text = clinics[cmbLocation.index]!organisation & "<BR>" & clinics[cmbLocation.index]!branch & "<BR>"
    tlLocation.text &= Trim(clinics[cmbLocation.index]!street1 & " " & clinics[cmbLocation.index]!street2) & "<BR>"
    tlLocation.text &= clinics[cmbLocation.index]!town
@@ -133,12 +175,23 @@ Public Sub Init()
    
 End
 
+Public Sub Appointment_Refresh_Set_Delay()
+   
+   If IsInteger(txtRefreshInterval.text) Then    
+      Timer1.Delay = Val(txtRefreshInterval.text) * 60000             'timer delay in minutes
+   Else
+      Timer1.Delay = 60000
+   End If 
+   
+End
+
 Static Public Sub Reload()
    '-------------------------------------------------------
    'This is called from any instance of FDayList
    'Reload the Weeklist to Now for staff member in cmbStaff
    '-------------------------------------------------------
    
+   Return 
    Form_Make_Appointments.DateChooser1.value = Now   
    Form_Make_Appointments.Workspace_Close_Windows()
    If Form_Make_Appointments.Workspace1.ActiveWindow.Caption <> Form_Make_Appointments.Staff_Member!wholename & " from " & Format(Now, gb.LongDate) Then 
@@ -203,7 +256,49 @@ Public Sub form_Resize()
    
 End
 
-Public Sub Generate_WeekList(startdate As Date)
+Public Sub WeekList_Reload()
+   '-----------------------------------------------------------------------------
+   'Reloads all the weeks appointment on the child daylist forms from the backend
+   '-----------------------------------------------------------------------------  
+   
+   Dim window1 As Window
+   Dim hCtrl As Control
+   Dim sv As ScrollView
+   Dim hb As HBox      
+   Dim FDL As FDayList
+   
+   Timer1.Stop                 'stop auto-refresh of week lists
+   
+   '  If bGenerateWeeksAppointments Then  
+   WeeksAppointments = modAppointmentsDBI.Appointments_GetWeek(Now, Staff_Member!fk_staff, clinics[cmbLocation.index]!fk_clinic)
+   '  End If   
+   
+   Inc Application.Busy 
+   For Each window1 In Workspace1.Windows
+      For Each hCtrl In window1.Children
+         If hctrl Is ScrollView Then
+            sv = hctrl
+            For Each hctrl In sv.Children
+               If hctrl Is HBox Then
+                  hb = hctrl
+                  For Each hctrl In hb.Children
+                     If hctrl Is Form Then 
+                        FDL = hctrl
+                        FDL.WeeksAppointments_Set(WeeksAppointments)
+                        FDL.Reload()
+                     End If 
+                  Next
+               Endif
+            Next
+         Endif
+      Next
+   Next
+   Timer1.Start                 'stop auto-refresh of week lists
+   Dec application.Busy
+   
+End
+
+Public Sub Generate_WeekList(startdate As Date, Optional bGenerateWeeksAppointments As Boolean = False)
    '-------------------------------------------
    'User has clicked on the staff members combo
    '-------------------------------------------  
@@ -214,8 +309,13 @@ Public Sub Generate_WeekList(startdate As Date)
    Dim HBox_Week As Hbox
    Dim daycount As Integer
    
-   Daylists = New Object[]
-   
+   Timer1.Stop                 'stop auto-refresh of week lists
+   If Not bAppointmentListsShowing Then 
+      Daylists = New Object[]
+   End If
+   If bGenerateWeeksAppointments Then  
+      WeeksAppointments = modAppointmentsDBI.Appointments_GetWeek(startdate, Staff_Member!fk_staff, clinics[cmbLocation.index]!fk_clinic)
+   End If   
    With DayListContainer = New Window
       .Arrangement = Arrange.Fill
       .Expand = True
@@ -255,7 +355,8 @@ Public Sub Generate_WeekList(startdate As Date)
          .width = (DayLists.count + 1) * Max(Me.width / 5, 350)    
       End With
       With AL = New FDayList(HB)
-         .Init(Staff_Member, thedate, clinics[cmbLocation.index]!fk_clinic, Appointment_Icons)
+         '  .Init(Staff_Member, thedate, clinics[cmbLocation.index]!fk_clinic, Appointment_Icons)
+         '  .Init(Staff_Member, thedate, clinics[cmbLocation.index]!fk_clinic, Appointment_Icons, WeeksAppointments)
          obs = New Observer(AL.Gridview1) As "AppointmentList"
          obs = New Observer(AL.txtAppointment) As "TxtFindPatient"
          .tag = daycount
@@ -264,6 +365,80 @@ Public Sub Generate_WeekList(startdate As Date)
       Inc counter
    Loop
    Dec application.Busy
+   bAppointmentListsShowing = True 
+   Timer1.Start                 'stop auto-refresh of week lists
+   
+End
+
+Public Sub Create_WeekList_GUI(startdate As Date, Optional bGenerateWeeksAppointments As Boolean = False)
+   '-------------------------------------------
+   'User has clicked on the staff members combo
+   '-------------------------------------------  
+   
+   Dim AL As FDayList
+   Dim x As Integer
+   Dim theDate As Date
+   Dim HBox_Week As Hbox
+   Dim daycount As Integer
+   
+   Timer1.Stop                 'stop auto-refresh of week lists
+   ' If Not bAppointmentListsShowing Then 
+   Daylists = New Object[]
+   '  End If
+   ' If bGenerateWeeksAppointments Then  
+   WeeksAppointments = modAppointmentsDBI.Appointments_GetWeek(startdate, Staff_Member!fk_staff, clinics[cmbLocation.index]!fk_clinic)
+   '  End If   
+   With DayListContainer = New Window
+      .Arrangement = Arrange.Fill
+      .Expand = True
+      If DateDiff(Now, startdate, gb.day) < 0 Or DateDiff(Now, startdate, gb.day) > 0 Then
+         .title = Staff_Member!wholename & " from " & Format(startdate, gb.LongDate) 
+      Else
+         .title = Staff_Member!wholename & " from " & Format(Now, gb.LongDate)
+      Endif
+      .tag = Staff_Member
+   End With
+   With sv = New ScrollView(DayListContainer)
+      .Expand = True
+      .Arrangement = Arrange.Horizontal
+      .Border = False
+   End With
+   With HB = New HBox(sv)
+      .Expand = False   
+      .Padding = 5
+   End With
+   
+   bExit = True  
+   Workspace1.Add(DayListContainer)
+   bExit = False  
+   Inc Application.Busy 
+   
+   counter = 0
+   '
+   Do Until DayLists.count = 7                                                         'accumulate 7 days FIX ME make me configurable
+      theDate = DateAdd(startdate, gb.day, counter)                                    'next logical date
+      If chkExcludeWeekends.value Then                                                 'do we want to exclude showing saturday/sunday
+         Do Until Not (WeekDay(theDate) = gb.Saturday Or WeekDay(theDate) = gb.Sunday) 'if so, keep looping until not a weekend day
+            Inc counter 
+            theDate = DateAdd(startdate, gb.day, counter)
+         Loop
+      Endif
+      With HB
+         .width = (DayLists.count + 1) * Max(Me.width / 5, 350)    
+      End With
+      With AL = New FDayList(HB)
+         '  .Init(Staff_Member, thedate, clinics[cmbLocation.index]!fk_clinic, Appointment_Icons)
+         .Init(Staff_Member, thedate, clinics[cmbLocation.index]!fk_clinic, Appointment_Icons, WeeksAppointments)
+         obs = New Observer(AL.Gridview1) As "AppointmentList"
+         obs = New Observer(AL.txtAppointment) As "TxtFindPatient"
+         .tag = daycount
+         DayLists.Add(AL)
+      End With
+      Inc counter
+   Loop
+   Dec application.Busy
+   bAppointmentListsShowing = True 
+   Timer1.Start                 'stop auto-refresh of week lists
    
 End
 
@@ -273,21 +448,21 @@ Public Sub cmbEditArea_Click()
    
    Select Case Last.tag
       Case "staff"
-        ' For Each window1 In Workspace1.windows
-          '  If window1.Caption = staff[cmbstaff.index]!wholename & " from " & Format(Now, gb.LongDate) Then
-          '     Workspace1.ActiveWindow = Window1
-           '    Workspace1.Tag = Staff_Member
-           '    Return
-          '  Endif
-        ' Next
+         ' For Each window1 In Workspace1.windows
+         '  If window1.Caption = staff[cmbstaff.index]!wholename & " from " & Format(Now, gb.LongDate) Then
+         '     Workspace1.ActiveWindow = Window1
+         '    Workspace1.Tag = Staff_Member
+         '    Return
+         '  Endif
+         ' Next
          Staff_Member = staff[cmbStaff.Index]
-         Generate_WeekList(Now)
+         '  Generate_WeekList(Now)
+         Create_WeekList_GUI(Now) 'gui + initial appointments
          cmbStaff.index = -1
       Case "location" 
    End Select
    
 End
-
 
 Static Public Function Get_DayLists() As Object[]
    
@@ -365,9 +540,9 @@ Public Sub Patients_Find(txtBox As Textbox, Optional fk_patient As Integer)
             patient = modUtil.Get_One(AllPatients)
          Endif
          If Not IsNull(patient!image.data) Then 
-           P = modGraphics.Blob_Convert_To_Picture(patient!image)!picture 
+            P = modGraphics.Blob_Convert_To_Picture(patient!image)!picture 
          Else
-           P = Picture.Load("icons/misc/no_photo.png")
+            P = Picture.Load("icons/misc/no_photo.png")
          End If   
          FConfirmPatient.Init(P, patient!wholename)
          If Not FConfirmPatient.ShowModal() Then 
@@ -429,16 +604,11 @@ Public Sub Workspace1_Activate()
    'User has clicked on a tab on the workspace
    '------------------------------------------
    
-   ' Staff_Member = Last.tag
-   ' Print Staff_Member!wholename  
    Dim page As Window
    
    If bExit Then Return 
-   Print "clicked on me"
    For Each page In Workspace1.Windows
       If page = Workspace1.ActiveWindow Then  
-         Print page.tag
-         Print page.Tag!wholename  
          Staff_Member = page.tag
       End If   
    Next
@@ -447,7 +617,7 @@ Public Sub Workspace1_Activate()
 End
 
 Public Sub DateChooser1_Activate()
-
+   
    Dim window1 As Window
    
    If bexit Or IsNull(Staff_Member) Then Return   
@@ -488,8 +658,86 @@ Public Sub DateBox1_Click()
    
 End
 
-Public Sub VBox1_Enter()
-
+Public Sub Form_Leave()
    
+   bFormBeingUsed = False  
+   
+End
+
+Public Sub Form_Enter()
+   '---------------------------------------------------------------- 
+   'Always refresh the appointments if this form is being re-entered
+   '----------------------------------------------------------------
+   
+   bFormBeingUsed = True          
+   If bAppointmentListsShowing Then
+      WeekList_Reload()
+   Endif
+   
+End
+
+Public Sub Timer1_Timer()
+   '-------------------------------------------------------------------------
+   'Fires every user defined interval (txtRefreshInterval.text)
+   'which is saved to backend as a config value  "auto_refresh_appointments"
+   '-------------------------------------------------------------------------
+   
+   If bAppointmentListsShowing And bFormBeingUsed Then 
+      WeekList_Reload()
+   End If   
+   
+End
+
+Public Sub ToolButton1_Click()
+
+   If bAppointmentListsShowing And bFormBeingUsed Then 
+      WeekList_Reload
+   End If 
+
+End
+
+Public Sub txtRefreshInterval_KeyPress()
+   
+   bkeyvalid = txtRefreshInterval_ExcludeKeys(key.code, Last.tag)
+   If bkeyvalid = False Then
+      Stop Event
+      Return
+   End If
+   
+End
+
+Public Sub txtRefreshInterval_Activate()
+   
+   Appointment_Refresh_Save_Delay
+   
+End
+
+Public Sub Appointment_Refresh_Save_Delay()
+   
+   modAdminDBI.Config_Save(modDBConnect.currentUser!fk_clinic, "auto_refresh_appointments", Val(txtRefreshInterval.text))
+   modDBConnect.CommitTrans()
+   Appointment_Refresh_Set_Delay() 
+   
+End
+
+Public Function txtRefreshInterval_ExcludeKeys(keycode As Integer, tag As String) As Boolean  
+   
+   Select Case tag
+      Case "interval"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
+   End Select
+   Return bKeyValid
+   
+End
+
+Public Sub txtRefreshInterval_LostFocus()
+   
+   Appointment_Refresh_Save_Delay()
+   
+End
+
+Public Sub txtRefreshInterval_Change()
+
+   If Val(txtRefreshInterval.text) = 0 Then txtRefreshInterval.text = 1
 
 End

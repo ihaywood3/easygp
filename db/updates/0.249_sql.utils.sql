@@ -7,5 +7,8 @@ create or replace function db.do_all_tables(cmd text,regex text,classes text) re
     END LOOP;
   END;
 $func$ language plpgsql;
+
+comment on function db.do_all_tables(text,text,text) is 'r = ordinary table, i = index, S = sequence, v = view, c = composite type, t = TOAST table, f = foreign table';
+
 truncate db.lu_version;
 insert into db.lu_version (lu_major,lu_minor) values (0, 249);

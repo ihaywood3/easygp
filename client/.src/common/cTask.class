@@ -1,0 +1,144 @@
+' Gambas class file
+
+' Copyright (C) 2008-2012 Dr. Richard Terry, Dr. Ian Haywood
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'
+' *********************************************************************
+' This is a class to run a background UNIX process and do something useful when 
+' it finishes, such as make an audit entry
+
+
+
+Private cmds As String[][]
+Private final_sql As String
+Private final_audit_note As String
+Private final_audit_action As String
+Private final_audit_consult As CConsult
+Private final_audit_section As Integer
+Private final_audit_table As String
+Private final_audit_pk As Integer
+Private pro As Process
+Private error_text As String
+Private todir As String
+Private destdir As String
+
+Public Sub _new()
+  cmds = []
+  final_audit_action = "no-audit"
+  final_audit_note = "" 
+  error_text = ""
+  destdir = User.Home
+  
+End
+
+Public Sub AddCmd(cmd As String[])
+   
+  cmds.Add(cmd) 
+   
+End
+
+
+' set an arbitrary SQL command to be run only if the task completes successfully
+Public Sub SetSql(sql2 As String)
+   final_sql = sql2
+   
+End
+
+' set an audit action on successful completion
+' call signature deliberately matches modAudit.MakeAudit
+Public Sub SetAudit(consult As CConsult, audit_action As String, tbl As String, fk_row As Integer, fk_section As Integer, Optional notes As String)
+   
+   final_audit_note = notes
+   final_audit_consult = consult
+   final_audit_table = tbl
+   final_audit_pk = fk_row
+   final_audit_section = fk_section
+   final_audit_action = audit_action
+   
+End
+
+Public Sub Run(Optional data As String)
+   Dim cmd As String[]
+   Dim olddir As String
+   Dim ptr As Pointer
+   
+   cmd = cmds.Extract(0, 1)[0]
+   pro = Exec cmd With ["PWD=" & destdir] For Read Write As "Process"
+   If Not IsNull(data) Then
+     Print #pro, data
+     Close #pro
+   Endif
+End
+
+Public Sub Process_Read()
+  Dim data As String
+   
+  data = Read #pro, Lof(pro)
+  final_audit_note &= data 
+   
+End
+
+Public Sub Process_Error(err As String)
+   
+   error_text &= err
+   
+End
+
+Public Sub Process_Kill()
+   
+  If pro.Value <> 0 Or If error_text <> "" Then
+    Message.Error(error_text, "OK")
+    Log.ErrorMsg(error_text)
+  Else
+     If cmds.Length > 0 Then
+        pro = Null
+        Run(Null)
+     Else
+        Debug final_audit_note
+        If Not IsNull(final_sql) Then
+          modDBConnect.exec_query(final_sql)
+          modDBConnect.CommitTrans()
+        Endif
+        If Not final_audit_action <> "no-audit" Then
+           modAudit.MakeAudit(final_audit_consult, final_audit_action, final_audit_table, final_audit_pk, final_audit_section, final_audit_note)
+        Endif
+     Endif
+  Endif 
+   
+End
+
+Static Public Sub Unit_Test()
+   
+  Dim t As CTask
+  Dim s As String
+  Dim c As CConsult
+  
+  s = "sleep 3\nprint \"hello from ruby!\"\n"
+  c = New CConsult(modContactsDBI.Patient_Get_Using_PK(38))
+  t = New CTask
+  t.AddCmd(["/usr/bin/ruby"])
+  t.AddCmd(["/bin/sh", "-c", "ls"])
+  t.SetAudit(c, "completed", "clin_referrals.referrals", 1, 14, "faxed referrals")
+  t.SetDir("/home")
+  t.Run(s)
+  
+End
+
+
+Public Sub SetDir(directory As String)
+   
+  destdir = directory 
+   
+End

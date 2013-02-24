@@ -45,6 +45,7 @@ def import_mnfr(t):
     ('%(code)s',$$%(company)s$$,$$%(address)s$$,'%(telephone)s')""" % m)
 
 def import_pbs(t):
+    updates_pbs.write("truncate drugs.pbs;\n")
     generics = {}
     for g in xml_generics_brands(t):
         generics[g["xml:id"]] = g
@@ -53,23 +54,22 @@ def import_pbs(t):
         item["mpp"] = g
         sct = g["sct"]
         r = c.query("select pk from drugs.product where sct='%s'" % sct)
-        print "%s\t%s\t%s" % (item["code"],sct,item["title"])
-        #if r.ntuples() == 0:
-        #    print >>sys.stderr, "WARNING: %r doesn't match on SCT" % item
-        #elif r.ntuples () > 1:
-        #    print >>sys.stderr, "WARNING: %r matches multiple products on SCT" % item
-        #else:
-        #    fk_product = r.getresult()[0][0]
-        #    if item["type"] == "streamlined" or item["type"] == "authority":
-        #        flag = "A"
-        #    elif item["type"] == "restricted":
-        #        flag = "R"
-        #    else:
-        #        flag = "U"
-        #    updates_pbs.write("""
-#insert into drugs.pbs (fk_product,pbscode,quantity,max_rpt,chapter,restrictionflag)
-#values ('%s','%s',%s,%s,'%s','%s');\n
-#""" % (fk_product,item['code'],item['quantity'],item['max_rpt'],item['chapter'],flag))
+        if r.ntuples() == 0:
+            print >>sys.stderr, "WARNING: %r doesn't match on SCT" % item
+        elif r.ntuples () > 1:
+            print >>sys.stderr, "WARNING: %r matches multiple products on SCT" % item
+        else:
+            fk_product = r.getresult()[0][0]
+            if item["type"] == "streamlined" or item["type"] == "authority":
+                flag = "A"
+            elif item["type"] == "restricted":
+                flag = "R"
+            else:
+                flag = "U"
+            updates_pbs.write("""
+insert into drugs.pbs (fk_product,pbscode,quantity,max_rpt,chapter,restrictionflag)
+values ('%s','%s',%s,%s,'%s','%s');\n
+""" % (fk_product,item['code'],item['quantity'],item['max_rpt'],item['chapter'],flag))
 
 
 def import_restricts(t):
@@ -232,14 +232,20 @@ insert into drugs.product (pk,atccode,sct,generic,fk_form,strength,original_pbs_
 
 def fix_packsize(t):
     cantmatch = set()
+    created = set()
     t = get_xml_etree()
     generics = {}
+    by_sct = {}
     for g in xml_generics_brands(t):
         generics[g["xml:id"]] = g
     for drug in xml_pbs_items(t):
         sct = generics[drug["mpp"]]["sct"]
+        by_sct[sct] = drug
+    for drug in xml_pbs_items(t):
+        sct = generics[drug["mpp"]]["sct"]
         pack_size = generics[drug["mpp"]]["pack_size"]
-        r = c.query("select product.pk,pack_size,sct,generic,fk_form,strength,free_comment,amount,amount_unit,units_per_pack from drugs.pbs,drugs.product where pbscode='%s' and product.pk = fk_product limit 1" % drug['code'])
+        #if drug["code"] == "1003T": pdb.set_trace()
+        r = c.query("select product.pk,pack_size,sct,generic,fk_form,strength,free_comment,amount,amount_unit,units_per_pack from drugs.pbs,drugs.product where pbscode='%s' and product.pk = fk_product limit 1" % drug["code"])
         if r.ntuples() == 1:
             row = r.getresult()[0]
             comment = row[6]
@@ -254,27 +260,45 @@ def fix_packsize(t):
             if amount_unit is None: amount_unit = 'NULL'
             if units_per_pack is None: units_per_pack = 'NULL'
             if sct == row[2] and str(pack_size) == str(row[1]):
-                print "--for PBS code %s pack-size and sct match" % drug['code']
+                print "--for PBS code %s packsize and sct match" % drug['code']
             elif sct == row[2]:
                 print "--for PBS code %s sct matches but packsize doesn't, correcting" % drug["code"]
                 print "update drugs.product set pack_size=%s where pk='%s';" % (pack_size,row[0])
             elif str(pack_size) == str(row[1]):
-                print "--for PBS code %s pack_size matches but SCT doesn't, correcting" % drug["code"]
-                print "update drugs.product set sct='%s' where pk='%s';" % (sct,row[0])
+                r = c.query("select 1 from drugs.product where sct='%s'" % sct)
+                if r.ntuples() == 1:
+                    print "-- SCT found in different row"
+                else:
+                    if not sct in created:
+                        print "--for PBS code %s pack_size matches but SCT doesn't" % drug["code"]
+                        print "-- existing SCT is %r %r, new drug is %r %r" % (generics[by_sct[row[2]]["mpp"]],by_sct[row[2]],generics[drug["mpp"]],drug)
+                        created.add(sct)
+                        r = c.query("select uuid_generate_v4()")
+                        pk = r.getresult()[0][0]
+                        print "insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values"
+                        print "('%s','%s',%s,'%s','','%s',$$%s$$,%s,'%s',%s,%s,%s);" % (pk,row[3],row[4],row[5],sct,drug['title'],pack_size,drug['atc'],amount,amount_unit,units_per_pack)
             else:
                 print "-- for PBS code %s neither sct nor pack-size matches" % drug["code"]
-                r = c.query("select pk from drugs.product where (pack_size=%s or pack_size is null) and generic='%s' and fk_form=%s and strength='%s' and amount is not distinct from %s and amount_unit is not distinct from %s and units_per_pack is not distinct from %s" % (pack_size,row[3],row[4],row[5],amount,amount_unit,units_per_pack))
+                r = c.query("select pk,sct,pack_size from drugs.product where (pack_size=%s or pack_size is null) and generic='%s' and fk_form=%s and strength='%s' and amount is not distinct from %s and amount_unit is not distinct from %s and units_per_pack is not distinct from %s" % (pack_size,row[3],row[4],row[5],amount,amount_unit,units_per_pack))
                 if r.ntuples () == 1:
-                    print "-- found an existing product of requiste pack-size, or NULL, setting SCT"
-                    pk = r.getresult()[0][0]
-                    print "update drugs.product set sct='%s',pack_size=%s,original_pbs_name=$$%s$$ where pk='%s';" % (sct,pack_size,drug['title'],pk)
+                    row2 = r.getresult()[0]
+                    new_sct = row2[1]
+                    if new_sct == sct and str(row2[2]) == pack_size:
+                        print "-- but existing product with correct SCT and pack size"
+                    else:
+                        print "-- old SCT is %s, old pk %s, new drug %r %r" % (row[2],row2[0],generics[drug["mpp"]],drug)
                 elif r.ntuples() == 0:
-                    print "-- no existing product, creating a new one"
-                    r = c.query("select uuid_generate_v4()")
-                    pk = r.getresult()[0][0]
- 
-                    print "insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values"
-                    print "('%s','%s',%s,'%s',%s,'%s',$$%s$$,%s,'%s',%s,%s,%s);" % (pk,row[3],row[4],row[5],comment,sct,drug['title'],pack_size,drug['atc'],amount,amount_unit,units_per_pack)
+                    if sct in created:
+                        print "-- SCT already created this session"
+                    else:
+                        print "-- no existing product, creating a new one"
+                        created.add(sct)
+                        r = c.query("select uuid_generate_v4()")
+                        pk = r.getresult()[0][0]
+                        print "insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values"
+                        print "('%s','%s',%s,'%s',%s,'%s',$$%s$$,%s,'%s',%s,%s,%s);" % (pk,row[3],row[4],row[5],comment,sct,drug['title'],pack_size,drug['atc'],amount,amount_unit,units_per_pack)
+                else:
+                    print "-- multiple matches for %r %r" % (generics[drug["mpp"]],drug)
                 
 def verify_brands(t):
     ms = {}

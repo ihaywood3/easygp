@@ -90,8 +90,8 @@ Public Sub init()
    txtPastHistoryPath.text = User.home &/ "easygp/import/Exported_PastHistory_small.txt" 'fixme
    lblmeasure.text = "  Import Patient Demographics  "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
-   txtImportDirectory.text = "/home/richard/horst/MEDIBASE_EXPORT2/"
- '  txtImportDirectory.text = "/home/richard/horst/MEDIBASE_EXPORT/" 'FIXME REMOVE ME
+   txtImportDirectory.text = "/home/richard/easygp/import"
+   '  txtImportDirectory.text = "/home/richard/horst/MEDIBASE_EXPORT/" 'FIXME REMOVE ME
    
 End
 
@@ -101,6 +101,7 @@ Public Sub Settings_Save()
    Settings["Legacy Data Import/VSplit_Legacy.Layout"] = VSplit_Legacy.layout
    Settings["Legacy Data Import/HSplit_Legacy.layout"] = HSplit_Legacy1.layout
    Settings["Legacy Data Import/import_file_dir"] = Trim(txtImportDirectory.text)
+
 End
 
 Private Sub Settings_Load()
@@ -109,6 +110,7 @@ Private Sub Settings_Load()
    Try VSplit_Legacy.layout = Settings["Legacy Data Import/VSplit_Legacy.Layout"]
    Try HSplit_Legacy1.layout = Settings["Legacy Data Import/HSplit_Legacy.Layout"]
    Try txtImportDirectory.text = Settings["Legacy Data Import/import_file_dir"]
+
 End
 
 Public Sub chkLegacyData_Click()
@@ -336,6 +338,7 @@ Public Sub SocialHistory_Import()
       Else
          If $Result.count > 1 Then
             Message.info("More than 1 patient found with same names and dob")
+            Print patient
             lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "duplicate name:" & patient!firstname & " " & patient!surname)
             Inc MissingPatients
             Wait
@@ -359,7 +362,7 @@ Public Sub SocialHistory_Import()
    
 End
 
-Public Sub PastHistory_Import()
+Public Sub DrsDesk_PastHistory_Import()
    '--------------------------------------------------------------
    ' Imports the patients past history initially only DrsDesk
    ' Adams|George|20/12/1925 0:00:00|M|289|1|35|7|Deafness||0|102008601|1960|0|0|0|1|0
@@ -381,7 +384,22 @@ Public Sub PastHistory_Import()
    ' confidential
    ' significant
    ' deleted
-   '--------------------------------------------------------------
+   '-----------------------------------------------------------------------------------------------
+   'From the ICPC-2 documentation:
+   '
+   ' After considering spelling, keyword length and term organisation if you
+   ' still can't find the term you want:-
+   ' In each software product, there should be a facility to enter the term in free text and apply a
+   ' temporary code - J99. The term you record should be retained in the database and
+   ' allocated a term code (so that the first time you use J99, the term you record will be saved
+   ' as term number J99-001 and so on.) Your software should allow you to view your list of
+   ' temporary terms. You could print out the list and post or fax it to the Family Medicine
+   ' Research Centre so that the terms can be allocated to the correct ICPC-2 code and added
+   ' to ICPC-2 PLUS with their term keys. The next upgrade you receive will therefore include the
+   ' term, the correct code and term code. Your software should allow you to alter your original
+   ' record to the correct code (of course always retaining the hidden audit trail of the change for
+   ' medico-legal purposes).
+   '-------------------------------------------------------------------------------------------------
    
    Dim $Result As Result
    Dim sql As String
@@ -390,6 +408,8 @@ Public Sub PastHistory_Import()
    Dim sfilename As String 
    Dim unmatchables As New Collection
    Dim Unmatchable As Collection 
+   Dim progressNote As String
+   Dim fk_progressNote As Integer
    ' Dim sex As Integer = 3
    'Dim ph_id As Integer = 4
    Dim active As Integer = 3
@@ -424,16 +444,20 @@ Public Sub PastHistory_Import()
    Dim sLastPatient As String
    Dim scurrentPatient As String
    Dim bValidPatient As Boolean
-   Dim PH As Collection 
+   Dim PH As CRow 
    Dim PastHistory As Collection 'of all PH
    Dim a_term As Collection 
    Dim icpc_terms As Collection
    Dim icd10_terms As Collection
+   Dim J_code_count As Integer 
+   Dim PN As CRow 
+   Dim import_count As Integer
    
    modDBConnect.BeginTrans()
    
    icpc_terms = modDBConnect.exec_query_collection("Select * from coding.icpc2_terms")
-   icd10_terms = modDBConnect.exec_query_collection("Select code as pk_code, term  from coding.lu_icd10")
+   ' icd10_terms = modDBConnect.exec_query_collection("Select code as pk_code, term  from coding.lu_icd10")
+   icd10_terms = modDBConnect.exec_query_collection("Select code as pk_code, term  from coding.generic_terms where fk_coding_system = 2")
    sql = ""
    "SELECT distinct"
    "  icpc2_terms.term as pk_view,"
@@ -446,10 +470,10 @@ Public Sub PastHistory_Import()
    "  coding.icpc2_drsdesk_term_mapper "
    "WHERE "
    "  icpc2_drsdesk_term_mapper.fk_term = icpc2_terms.pk;"
-   
+   import_dir = "/home/richard/easygp/import/"
    learntTerms = modDBConnect.exec_query(sql)  'Load mappable terms drsdesk to icpc
    ErrorFile = Open import_dir & "/pasthistory_import_errors.txt" For Write Create   'open an error file to log errors
-   Sfilename = Trim(txtPastHistoryPath.text)                                         'Insist on at least some sort Of attempt at a name
+   Sfilename = import_dir & "/" & Trim("Exported_PastHistory.txt")                                         'Insist on at least some sort Of attempt at a name
    If sFilename = "" Then 
       txtPastHistoryPath.SetFocus()
       Return
@@ -480,10 +504,14 @@ Public Sub PastHistory_Import()
          '----------------------------------------------------------------
          If past_history_item_count Then
             For Each PH In PastHistory
-               PH!fk_pasthistory = modPastHistoryDBI.Save(currentconsult, -1, PH)
+               PH!fk_progressnote = 0
+               PH.Save("clin_history.past_history", "fk_pasthistory")
             Next
-            past_history_item_count = 0
-            
+            past_history_item_count = 0                                              
+            Inc import_count
+          '  If import_count = 10 Then
+          '     Break
+          '  Endif
          End If
          bValidPatient = False 
          patient = Patient_Identify(bits)
@@ -517,7 +545,7 @@ Public Sub PastHistory_Import()
       '   condition_summary text DEFAULT ''::text,
       '   risk_factor boolean DEFAULT false,
       '   fk_coding_system integer NOT NULL, -- key to coding.lu_coding_system containing name of coding system ...
-      '   fk_code text,
+      '   fk_code text,  PH = New CRow
       '   aim_of_plan text,
       '   fk_progressnote integer, -- foreign key to clin_consult.progressnotes table, used only during each consultation...
       '------------------------------------------ ----------------------------------------------  
@@ -525,7 +553,7 @@ Public Sub PastHistory_Import()
       If bValidPatient Then
          
          Inc iTemporaryProblemKey
-         PH = New Collection 
+         PH = New CRow 
          PH!fk_consult = currentconsult.GetPK()
          ' PH!pk_pasthistory = iTemporaryProblemKey
          PH!age_onset = bits[age_onset]
@@ -564,7 +592,7 @@ Public Sub PastHistory_Import()
                Break
             End If
          Next
-         If IsNull(PH!fk_code) Then
+          If Not PH.Exist("fk_code") Then  
             For Each a_term In icd10_terms
                If Lower(PH!description) = Lower(a_term!term) Then
                   Ph!fk_coding_system = const.coding_icd10
@@ -574,7 +602,7 @@ Public Sub PastHistory_Import()
             Next
          End If
          
-         If IsNull(PH!fk_code) Then
+         If Not PH.Exist("fk_code") Then  
             For Each LearntTerms
                If Trim(Lower(PH!description)) = Trim(Lower(LearntTerms!drsdesk_free_text)) Then
                   Ph!fk_coding_system = const.coding_icpcPlus
@@ -583,7 +611,7 @@ Public Sub PastHistory_Import()
                End If
             Next
          End If
-         If IsNull(PH!fk_code) Then             
+         If Not PH.Exist("fk_code") Then              
             ' '-------------------------------------------
             ' 'We couldn't match the free text with an icpc
             ' 'natural language term, so, check if we have
@@ -630,7 +658,9 @@ Public Sub PastHistory_Import()
             '      Message.info("Not equated, will save as J term")
             '      PH!coded_health_issue.pk_term = 0
             '    End If
-            
+            Inc J_code_count
+            PH!fk_code = "J99-" & Format(J_code_count, "00#")
+            Ph!fk_coding_system = 1
          Else 
             
             '  .fk_reason = modCodingDBI.Condition_Match_Exact(.description)
@@ -642,10 +672,22 @@ Public Sub PastHistory_Import()
             Else
                PH!active = False
             End If
-            '.active = bits[active]
-            PH!operation = bits[operation]
-            PH!cause_of_death = bits[cause_death]
-            PH!confidential = bits[confidential]
+            
+            If bits[operation] = 1 Then 
+               PH!operation = True 
+            Else
+               PH!operation = False 
+            End If   
+            If bits[cause_death] = 1 Then
+                PH!cause_of_death = True   
+            Else
+               PH!cause_of_death = False   
+            End If 
+            If bits[confidential] = 1 Then
+               PH!confidential = True 
+            Else
+               confidential = False 
+            End If   
             '-------------------------------------
             'Now have to do some guessing, in Drs Desk things were either
             'inactive or active, now they can be major or significant or
@@ -672,7 +714,7 @@ Public Sub PastHistory_Import()
    lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "there were" & Str$(x) & "terms matched")
    lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "there were" & Str(unmatchables.count) & "terms not matched")
    Close #hfile
-   hfile = Open User.home &/ "home/richard/easygp/import/unmatched.txt" For Write Create
+   hfile = Open User.home &/ "easygp/import/unmatched.txt" For Write Create
    For Each unmatchable In unmatchables
       Print #hfile, Lower(unmatchable!description)
    Next
@@ -958,6 +1000,7 @@ Public Sub Patient_Identify(bits As String[]) As Collection
    
    Dim sql As String 
    Dim $Result As Result 
+   Dim sMsg As String
    
    patient = New Collection
    patient!firstname = bits[firstname]
@@ -965,20 +1008,15 @@ Public Sub Patient_Identify(bits As String[]) As Collection
    patient!birthdate = Val(bits[birthdate])
    If bits[firstname] = "" Then
       lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "no firstname:" & patient!firstname & " " & patient!surname)
-      
    End If
    If bits[surname] = "" Then
       lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "no surname:" & patient!firstname & " " & patient!surname)
-      
    End If
    If Year(patient!birthdate) = 0 Then
       lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "no birthdate:" & patient!firstname & " " & patient!surname)
       Wait
-      
       patient!birthdate = CDate("01/01/1901")
-      Wait
-      
-   End If
+    End If
    
    '--------------------------------------------------- 
    'Now match that patient to the demographic database
@@ -990,20 +1028,27 @@ Public Sub Patient_Identify(bits As String[]) As Collection
    $Result = modDBConnect.exec_query(sql)
    If $Result.count = 1 Then
       patient!fk_patient = $Result!fk_patient
-      '  lblImporting2.text = "Importing data for" & patient!firstname & " " & patient!surname 
+      lblImporting2.text = "Importing data for" & patient!firstname & " " & patient!surname 
       Wait
    Else
+      sMsg = ""
       If $Result.count > 1 Then
-         Message.info("More than 1 patient found with same names and dob")
-         lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "duplicate name:" & patient!firstname & " " & patient!surname)
-         patient!fk_patient = 0
-         Wait
+          patient!fk_patient = $Result!fk_patient
+        '  For Each $Result
+        '     sMsg &= $Result!firstname & " " & $Result!surname & " " & Format($Result!birthdate, "dd/mm/yyyy") & "\n"
+        '  Next
+        ' 
+        ' If Message.Question("More than 1 patient found with same name and dob\n\n" & sMsg & " Same patient?", "Yes", "No") = 2 Then 
+        '     patient!fk_patient = 0
+        '     lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "duplicate name:" & patient!firstname & " " & patient!surname)
+        '     Print patient
+        ' Endif
+        ' Wait
       End If
       If $Result.count = 0 Then
          lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "Not in Demographic Database:" & patient!firstname & " " & patient!surname)
          patient!fk_patient = 0
          Wait
-         
       End If
    End If
    patients.Add(patient, patients.count)    
@@ -1012,7 +1057,8 @@ Public Sub Patient_Identify(bits As String[]) As Collection
 End
 
 Public Sub Button1_Click()
-    Temp1
+
+   Temp1
    
 End
 
@@ -1050,6 +1096,12 @@ Public Sub EditArea_Buttons_Click()
    
 End
 
+Public Sub DrsDesk_Import()
+   
+   DrsDesk_PastHistory_Import
+   
+End
+
 Public Sub Medibase_Import()
    
    Dim bNothingChosen As Boolean = True
@@ -1075,14 +1127,14 @@ Public Sub Medibase_Import()
       Print #hLog_file, "Ending patient import"
       chkImportPatients.Value = False  
    Endif
-    If chkImportLetters.value = True Then
+   If chkImportLetters.value = True Then
       bNothingChosen = False 
       Print #hLog_file, "Starting letters import"
       Medibase_Import_Letters()
       Print #hLog_file, "Finished letters import"
       chkImportLetters.Value = False   
    End If
-  
+   
    If chkImportProgressNotes.value = True Then
       bNothingChosen = False 
       Medibase_Import_Progress_Notes()
@@ -1090,10 +1142,10 @@ Public Sub Medibase_Import()
    End If
    If chkImportDocuments.value = True Then
       bNothingChosen = False 
-       Print #hLog_file, "Starting document import"
+      Print #hLog_file, "Starting document import"
       Medibase_Import_Documents()
-       Print #hLog_file, "ending document import"
-       chkImportDocuments.Value = False  
+      Print #hLog_file, "ending document import"
+      chkImportDocuments.Value = False  
    End If
    If bNothingChosen Then
       Message.Info("Please select the type of data you wish to import")
@@ -1117,7 +1169,8 @@ Public Function Get_Possible_Request_Tags() As Collection
    '------------------------
    'Gets likely request tags
    '------------------------   
-    Return modDBConnect.exec_query_collection("Select * from import_export.lu_misspelt_user_request_tags")
+
+   Return modDBConnect.exec_query_collection("Select * from import_export.lu_misspelt_user_request_tags")
    
 End
 
@@ -1156,8 +1209,8 @@ Public Sub Medibase_Import_Documents()
    Dim msh_sending_entity As String
    Dim request_tags As Collection = Get_Possible_Request_Tags()
    Dim request_tag As Collection
-
-  ' sRootdir = "/home/richard/horst/test"
+   
+   ' sRootdir = "/home/richard/horst/test"
    '   fk_patient = modImportDBI.Patient_Get_pk_Using_pk_Legacy("YOUNDEBBA")
    lblImport.text = "Importing Documents"
    lblProgress.text = ""
@@ -1185,11 +1238,11 @@ Public Sub Medibase_Import_Documents()
                         pdf_filename_original = Replace(sFile, ".meta", "")         'this is the pdf name
                         pdf_filename_modified = modUtil.Filename_Protect(pdf_filename_original) & ".pdf"                                            'create a new name which won't crash 
                         fk_staff = modImportDBI.Staff_Get_Using_Firstname_Lastname(metadata)
-                       '------------------------------------------------------------------------------------------------
-                       'Insert the document
-                       'the fk_sending_entity = the practice importing the data, ie wherever this program is being run
-                       'const.Document_Display_As_Letter not of relevance
-                       '---------------------------------------- --------------------------------------------------------
+                        '------------------------------------------------------------------------------------------------
+                        'Insert the document
+                        'the fk_sending_entity = the practice importing the data, ie wherever this program is being run
+                        'const.Document_Display_As_Letter not of relevance
+                        '---------------------------------------- --------------------------------------------------------
                         Document = New CRow
                         '------------------------------------------------------------
                         'Can sometimes work out if a request result or a letter
@@ -1204,11 +1257,11 @@ Public Sub Medibase_Import_Documents()
                         If Not InStr(Document!tag_user, "Dr ") Then   
                            For Each request_tag In request_tags                           'loaded from import_export.lu_misspelt_user_request_tags
                               If InStr(Lower(MetaData!description), Lower(request_tag!tag)) Then
-                                  fk_lu_display_as = const.Document_Display_As_Result
-                                  Document!tag = "Sender Unknown - scanned result"
-                                  Break
+                                 fk_lu_display_as = const.Document_Display_As_Result
+                                 Document!tag = "Sender Unknown - scanned result"
+                                 Break
                               End If   
-                             Next
+                           Next
                         End If   
                         msh_sending_entity = modDBConnect.currentUser!organisation & "." & modDBConnect.currentUser!branch
                         Document!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(fk_lu_display_as, msh_sending_entity, modDBConnect.currentUser!fk_branch)
@@ -1232,10 +1285,10 @@ Public Sub Medibase_Import_Documents()
                         If Not Error Then
                            Document.Save("documents.documents", "fk_document")
                            modDBConnect.CommitTrans()
-                        '   Try Kill sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original
-                         '  If Error Then
-                         '     Message.info("problem killing the original file")
-                        '   Endif
+                           '   Try Kill sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original
+                           '  If Error Then
+                           '     Message.info("problem killing the original file")
+                           '   Endif
                         Else
                            rejected_records.Add(sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original, rejected_records.count)
                         Endif
@@ -1247,10 +1300,10 @@ Public Sub Medibase_Import_Documents()
          Endif
          Inc iPatientCount
          Print "patient", iPatientCount
-      
+         
          lblProgress.text = "total patients processed:" & Str(iPatientCount)
          Wait 
-         Next
+      Next
    End If
    modDBConnect.CommitTrans 
    If rejected_records.count Then   
@@ -1400,7 +1453,7 @@ Public Sub Medibase_Import_Progress_Notes()
          Wait
       Next
    End If
-  ' Message.Info("Commit Progress Notes?")
+   ' Message.Info("Commit Progress Notes?")
    modDBConnect.CommitTrans() 
    If rejected_records.count Then   
       hFile = Open sRootdir &/ "progress_notes_rejected.txt" For Write Create
@@ -1447,6 +1500,8 @@ Public Sub Import()
    Select Case cmbMedicalProgram.text
       Case "Medibase"
          Medibase_Import()
+      Case "DrsDesk"
+         DrsDesk_Import()
    End Select
    
 End
@@ -1464,7 +1519,7 @@ Public Sub btnImportDemographics_Click()
    Dim possible_companies As New Collection 
    
    hFile = Open "/home/richard/horst/patients_json.txt" For Read
-
+   
    While Not Eof(hFile)
       Line Input #hFile, sOneLine
       json_lines.Add(soneline, contacts.count)
@@ -1629,7 +1684,7 @@ Public Sub Medibase_Import_Patients()
          Endif
          patient!medicare_ref_number = oldpatient!patient!medicare_ref_number
          patient!fk_lu_aboriginality = oldpatient!patient!atsi
-            Select Case oldpatient!patient!active_status                           'ok
+         Select Case oldpatient!patient!active_status                           'ok
             Case "a"
                patient!fk_lu_active_status = const.PatientStatus_Active
             Case "i"
@@ -1649,7 +1704,7 @@ Public Sub Medibase_Import_Patients()
       Inc x
    Next
    ' If Message.Question("Would you like to commit the transaction to the database?", "Yes", "No") = 1 Then 
-      modDBConnect.CommitTrans
+   modDBConnect.CommitTrans
    ' Else
    '    Print #hLog_file, "Patient Import was cancelled by the user."
    ' End If   
@@ -2017,7 +2072,7 @@ Public Sub Medibase_Import_Staff()
       Inc x
    Next
    ' If Message.Question("Would you like to commit the transaction to the database?", "Yes", "No") = 1 Then 
-       modDBConnect.CommitTrans
+   modDBConnect.CommitTrans
    ' Else
    '    Print #hLog_file, "Staff Import was cancelled by the user."
    ' End If   
@@ -2427,6 +2482,7 @@ End
 '    a given sender Of messages, but may Not be correct all the Time ';
 ' 
 Public Sub Temp1()
+
    Dim hfile As File
    Dim destFile As File
    Dim sfile As String = "/home/richard/Downloads/pregdat/pregcatdata_AU.txt" 
@@ -2439,37 +2495,35 @@ Public Sub Temp1()
    Dim R As Result
    Dim iatccount As Integer
    
-  
    Try hfile = Open sfile For Input 
-    While Not Eof(hfile)
-        Line Input #hfile, sOneline
-        bits = Split(sOneline, "|")
-        R = modDBConnect.exec_query("Select * from drugs.atc where atcname ILIKE $$" & bits[0] & "$$")
-        pregdata = New CRow
-        If R.count Then
-                pregdata!atccode = R!atccode 
-                Inc iatccount  
-        End If
-        Try pregdata!generic = bits[0]
-        Try pregdata!fk_lu_pregnancy_category = bits[1]
-        Try pregdata!safety_information = bits[2]
-        Try pregdata!class1 = bits[3]
-        Try pregdata!class2 = bits[4]
-        Try pregdata!class3 = bits[5]
-        pregdata.Save("drugs.link_generic_pregcat_safety_info", "fk_link")
-        alldata.Add(pregdata, alldata.count)
-        Inc icounter
-        Print icounter
-      Wend
-    Print alldata, icounter, iatccount
-    modDBConnect.CommitTrans
-    
+   While Not Eof(hfile)
+      Line Input #hfile, sOneline
+      bits = Split(sOneline, "|")
+      R = modDBConnect.exec_query("Select * from drugs.atc where atcname ILIKE $$" & bits[0] & "$$")
+      pregdata = New CRow
+      If R.count Then
+         pregdata!atccode = R!atccode 
+         Inc iatccount  
+      End If
+      Try pregdata!generic = bits[0]
+      Try pregdata!fk_lu_pregnancy_category = bits[1]
+      Try pregdata!safety_information = bits[2]
+      Try pregdata!class1 = bits[3]
+      Try pregdata!class2 = bits[4]
+      Try pregdata!class3 = bits[5]
+      pregdata.Save("drugs.link_generic_pregcat_safety_info", "fk_link")
+      alldata.Add(pregdata, alldata.count)
+      Inc icounter
+      Print icounter
+   Wend
+   Print alldata, icounter, iatccount
+   modDBConnect.CommitTrans
    
 End
 
 Public Sub Medibase_Import_Letters()
    
-    '----------------------------------------------------
+   '----------------------------------------------------
    'Expected directory structure
    'PATIENTNAME/PROGRESSNOTES
    '  file.html
@@ -2599,7 +2653,7 @@ Public Sub Medibase_Import_Letters()
          Wait
       Next
    End If
-    modDBConnect.CommitTrans() 
+   modDBConnect.CommitTrans() 
    If rejected_records.count Then   
       hFile = Open sRootdir &/ "referral_letters_rejected.txt" For Write Create
       For x = 0 To rejected_records.count - 1
@@ -2610,3 +2664,74 @@ Public Sub Medibase_Import_Letters()
    End If   
    
 End
+'CLEARING THE DATABASE FOR PREVIOUSLY IMPORTED DATA JUST FOR RICHARD TERRY
+' Delete from  clin_consult.consult where "summary" ILIKE 'Past History Imported';
+' Delete from clin_history.past_history;
+' ALTER SEQUENCE clin_history.past_history_pk_seq
+'     INCREMENT 1  MINVALUE 1
+'     MAXVALUE 9223372036854775807  RESTART 1
+'     CACHE 1  NO CYCLE;
+' Delete from clin_history.team_care_members;
+' ALTER SEQUENCE clin_history.team_care_members_pk_seq
+'     INCREMENT 1  MINVALUE 1
+'     MAXVALUE 9223372036854775807  RESTART 1
+'     CACHE 1  NO CYCLE;
+' Delete from clin_history.care_plan_components;
+' ALTER SEQUENCE clin_history.care_plan_components_pk_seq
+'     INCREMENT 1  MINVALUE 1
+'     MAXVALUE 9223372036854775807  RESTART 1
+'     CACHE 1  NO CYCLE;
+' Delete from clin_history.care_plan_components_due;
+' ALTER SEQUENCE clin_history.care_plan_components_due_pk_seq
+'     INCREMENT 1  MINVALUE 1
+'     MAXVALUE 9223372036854775807  RESTART 1
+'     CACHE 1  NO CYCLE;
+' 
+' Delete from clin_history.family_conditions;
+' ALTER SEQUENCE clin_history.family_conditions_pk_seq
+'     INCREMENT 1  MINVALUE 1
+'     MAXVALUE 9223372036854775807  RESTART 1
+'     CACHE 1  NO CYCLE;
+' 
+' Delete from clin_history.family_links;
+' ALTER SEQUENCE clin_history.family_links_pk_seq
+'     INCREMENT 1  MINVALUE 1
+'     MAXVALUE 9223372036854775807  RESTART 1
+'     CACHE 1  NO CYCLE;
+' 
+' Delete from clin_history.family_members;
+' ALTER SEQUENCE clin_history.family_members_pk_seq
+'     INCREMENT 1  MINVALUE 1
+'     MAXVALUE 9223372036854775807  RESTART 1
+'     CACHE 1  NO CYCLE;
+' 
+' Delete from  clin_history.lu_exposures;
+' ALTER SEQUENCE clin_history.lu_exposures_pk_seq
+'     INCREMENT 1  MINVALUE 1
+'     MAXVALUE 9223372036854775807  RESTART 1
+'     CACHE 1  NO CYCLE;
+' 
+' Delete from  clin_history.occupational_history;
+' ALTER SEQUENCE clin_history.occupational_history_pk_seq
+'     INCREMENT 1  MINVALUE 1
+'     MAXVALUE 9223372036854775807  RESTART 1
+'     CACHE 1  NO CYCLE;
+' 
+' delete from clin_history.occupations_exposures;
+' ALTER SEQUENCE clin_history.occupations_exposures_pk_seq
+'     INCREMENT 1  MINVALUE 1
+'     MAXVALUE 9223372036854775807  RESTART 1
+'     CACHE 1  NO CYCLE;
+' 
+' delete from clin_history.lu_careplan_components;
+' ALTER SEQUENCE clin_history.lu_careplan_components_pk_seq
+'     INCREMENT 1  MINVALUE 1
+'     MAXVALUE 9223372036854775807  RESTART 1
+'     CACHE 1  NO CYCLE;
+' 
+' --1;3389 = fk_consults both owned by test_patient
+' --2;48015
+' 
+' --select * from clin_consult.consult where pk=127
+' --select distinct (fk_consult) from clin_history.past_history
+' 

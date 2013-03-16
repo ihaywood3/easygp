@@ -27258,3 +27258,5 @@ GRANT ALL ON TABLE vwmostrecenteyerelateddocuments TO staff;
 -- PostgreSQL database dump complete
 --
 
+
+grant select on table drugs.product_information_files to staff;

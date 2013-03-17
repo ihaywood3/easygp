@@ -130,18 +130,20 @@ End
 
 Public Sub Close_Listener()
    
+  event_listeners = Null
   Try Close #pg_socket_file 
    
 End
 
-' early demonstration code for event handling
+' process asynchronous notifications
 Public Sub File_Read()
   Dim notifies As Pointer
   Dim notifies2 As Pointer
   Dim notify_string As String
   Dim notify_pid As Integer
   Dim notify_param As String
-   
+  Dim i As Object
+  
   PQconsumeInput(Connection.Handle)
   notifies = PQnotifies(Connection.Handle)
   If Not IsNull(notifies) Then
@@ -155,9 +157,34 @@ Public Sub File_Read()
      Debug "REL: "; notify_string
      Debug "PID: "; notify_pid
      Debug "PARAM: "; notify_param
+     If event_listeners.Exist(notify_string) Then
+        For Each i In event_listeners[notify_string]
+           Try Object.Call(i, "Notify", [notify_pid, notify_param])
+           If Error Then
+              modUtil.ReportError(Error.Text, Error.Backtrace)
+           Endif
+        Next 
+     Endif
      PQfreemem(notifies2)
   Endif
   
+End
+
+Public Sub Register_Listener(evt As String, obj As Object)
+   
+   If Not event_listeners.Exist(evt) Then
+      exec_query("LISTEN " & evt)
+      event_listeners[evt] = New Collection
+   Endif
+   event_listeners[evt].Add(Str$(obj), obj)
+   
+End
+
+Public Sub Unregister_Listener(evt As String, obj As Object)
+   
+  If IsNull(event_listeners) Then Return
+  event_listeners[evt].Remove(Str$(obj)) 
+   
 End
 
 
@@ -235,7 +262,7 @@ Public Function CommitTrans() As Result
     Else
       Log.DebugMsg(" COMMIT ( took " & timeDiff(startTime) & "msec )")
     Endif 
-    ' FIXME: would look for notifications here: Try File_Read()
+    Try File_Read()
     Return $Result
   End If
 End
@@ -247,8 +274,7 @@ Public Function exec_query(sql As String, Optional params As Variant[]) As Resul
   Dim errtxt As String
   
   If Not IsNull(params) Then
-     params.Add(sql, 0)
-     sql = Object.Call($hconn, "subst", params)
+    sql = Me.Subst(sql, params)
   Endif
   If bStoring Then storedQueries &= sql & ";\n"
   prefix = Lower$(Left$(sql, 6))     
@@ -331,6 +357,20 @@ Public Function exec_query_first(sql As String, Optional params As Variant[]) As
   Return some_rows
 End
 
+Public Sub FormatBlob(fname As String) As String
+   
+  Return $hconn.FormatBlob(File.Load(fname)) 
+   
+End
+
+
+Public Sub Subst(sql As String, params As Variant[]) As String
+   
+   params.Add(sql, 0)
+   Return Object.Call($hconn, "subst", params)
+   
+End
+
 
 Public Sub insert(table As String, data As Collection, Optional pk_name As String = "pk") As Variant
    '--------------------------------------------------------------
@@ -341,19 +381,19 @@ Public Sub insert(table As String, data As Collection, Optional pk_name As Strin
    Dim valueslist As New String[]
    Dim returned_row As Result
    Dim field As Variant
+   Dim fname As String
+   
    For Each field In data
      fieldslist.Push("\"" & data.Key & "\"")
      If TypeOf(field) = gb.string Then
          If Left$(field, 5) = "BLOB:" Then
-           Print "field", field  'BLOB:src="/tmp/border.png
-           Print Right$(field, -5)
            'a fix till Ian fixes the regex
            If InStr(field, "src") Then
-                valueslist.Push($hconn.FormatBlob(File.Load(Right$(field, -10))) & "::bytea") 'ian this now works
+                fname = Right$(field, -10)
            Else
-                valueslist.Push($hconn.FormatBlob(File.Load(Right$(field, -5))) & "::bytea") 'ian this now works
-           End If 
-         '  valueslist.Push($hconn.FormatBlob(File.Load((Right$(field, -5)))) & "::bytea") 'orginal
+               fname = Right$(field, -5)    
+           End If
+           valueslist.Push($hconn.FormatBlob(File.Load(fname)) & "::bytea")
        Else
          valueslist.Push($hconn.Subst("&1", field))
        End If

@@ -239,12 +239,15 @@ Public Sub Save()
    End If  
    referral!fk_lu_urgency = priority_types[cmbPriorityTypes.index]!pk
    referral!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto 'FIXME, I'VE LEFT it as collection till I sort using this in FRequests
-   sHtml_CopyTo = Copyto_Html_Construct(referral!copyto)
-   sHtml_Inclusions = Inclusions_Construct_HTML(Inclusions_EditArea)
-  ' referral!letter_hl7 = BERND TO ADD STUFF HERE
    referral!body_html = Referral_BodyHTML_Construct()
-   referral!letter_html = Referral_LetterHTML_Construct(sHtml_CopyTo, sHtml_Inclusions)
-   Print referral!letter_html 
+   If modAdminDBI.Config_Get("referral_engine", "h") = "h" Then
+     referral!letter_html = Referral_LetterHTML_Construct(referral!copyto)
+   Else
+     ' do LaTeX letters
+     referral!letter_html = Referral_LetterLaTeX_Construct(referral!copyto)
+   Endif
+  ' referral!letter_hl7 = BERND TO ADD STUFF HERE
+
    referral!fk_type = referral_types[cmbReferralTypes.index]!pk                                            'e.g opinion and management
    '-------------------------------------------------
    'Construct the text to embed in the progress notes
@@ -266,9 +269,9 @@ Public Sub Save()
       bDoNotPrintInclusionsForCCD = True 
    Endif
    If chkReprintInclusions.Value = False Then 
-      modReferralsDBI.Referral_Print_AS_HTML(currentconsult, referral, True, bDoNotPrintInclusionsForCCD, Inclusions_EditArea) '
+      modReferralsDBI.Referral_Print(currentconsult, referral, True, bDoNotPrintInclusionsForCCD, Inclusions_EditArea) '
    Else
-      modReferralsDBI.Referral_Print_AS_HTML(currentconsult, referral, True, bDoNotPrintInclusionsForCCD) 'Print letter copy for copyto's but not the inclusions
+      modReferralsDBI.Referral_Print(currentconsult, referral, True, bDoNotPrintInclusionsForCCD) 'Print letter copy for copyto's but not the inclusions
    End If 
    FClinical.Refresh_AllPreviousNotes()
    FClinical.Refresh_Section(const.cSection_Referrals)
@@ -420,34 +423,19 @@ Public Sub SpinBox1_Change()
    
 End
 
-Public Function Copyto_Html_Construct(Optional copyto As String = "") As String
+Public Function Copyto_Construct(Optional copyto As String = "", templ As String, sSep As String) As String
    
-   Dim sHtml As String
-   
-   sHtml = ""
-   "<TABLE WIDTH=100%>"
-   "<COL WIDTH=6%>"
-   "<COL WIDTH=94%>"
-   "<TR VALIGN=TOP>"
-   "<TD WIDTH=6%>"
-   "<P><small><small>cc</small></small></P>"
-   "</TD>"
-   "<TD WIDTH=94%>"
-   "<P<small><small>%copyto%</small></small></P>"
-   "</TD>"
-   "</TR>"
-   "</TABLE>"   
-   
+   Dim ret As String 
    '-------------------------------------------------------------------------------------------------------------------
    'If there are one or more cc's then replace the table html with the appropriate data, otherwise wipe the copyto html
    '-------------------------------------------------------------------------------------------------------------------  
    If copyto <> "" Then 
-      copyto = Replace(copyto, "|", "<BR>")
-      sHtml = Replace(sHtml, "%copyto%", copyto)
+      ret = Replace(copyto, "|", sSep)
+      ret = Replace(templ, "%copyto%", ret)
    Else
-      sHtml = ""
+      ret = ""
    End If     
-   Return sHtml
+   Return ret
    
 End
 
@@ -458,6 +446,7 @@ Public Function Referral_ProgressNoteHTML_Construct(referral As Collection) As S
    '---------------------------------------------------------------------
    
    Dim sHtml As String
+   Dim sHtml2 As String
    
    sHtml &= "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0>"
    "<COL WIDTH=80%>"
@@ -481,48 +470,158 @@ Public Function Referral_ProgressNoteHTML_Construct(referral As Collection) As S
    "</TABLE>"
    shtml = Replace(shtml, "%letter_type%", Lower(referral_types[referral!fk_type - 1]!type))
    shtml = Replace$(shtml, "%letterbody%", referral!body_html)
-   shtml = Replace$(shtml, "%cc%", Copyto_Html_Construct(referral!copyto)) 
-   shtml = Replace$(shtml, "%inclusions%", Inclusions_Construct_HTML(Inclusions_EditArea))
+   sHtml2 = ""
+   "<TABLE WIDTH=100%>"
+   "<COL WIDTH=10%>"
+   "<COL WIDTH=90%>"
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=10%>"
+   "<P>cc</P>"
+   "</TD>"
+   "<TD WIDTH=90%>"
+   "<P>%copyto%</P>"
+   "</TD>"
+   "</TR>"
+   "</TABLE>"   
+   shtml = Replace$(shtml, "%cc%", Copyto_Construct(referral!copyto, sHtml2, "<BR>")) 
+   sHtml2 = ""
+   "<TABLE WIDTH=100%>"
+   "<COL WIDTH= 10%>"
+   "<COL WIDTH=90%>"
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=6%>"
+   "<P>Inclusions</P>"
+   "</TD>"
+   "<TD WIDTH=90%>"
+   "<P>%inclusions%</P>"
+   "</TD>"
+   "</TR>"
+   "</TABLE>"
+   shtml = Replace$(shtml, "%inclusions%", Inclusions_Construct(Inclusions_EditArea, sHtml2, "<BR>"))
    
    Return sHTml
    
 End
 
-Public Function Referral_LetterHTML_Construct(Optional sHtml_CopyTo As String = "", sHtml_Inclusions As String = "") As String
-   '-----------------------------------------------------------
-   'Construct Html of the referral letter, FIX ME USE cTemplate
-   '-----------------------------------------------------------  
+
+Private Function Referral_Letter_Construct_Common(textin As String, sSep As String) As String
    
-   Dim sType As String
-   Dim sLetterHtml As String
+  Dim ntext As String
+  Dim sType As String
+
    Dim charpos As Integer
    Dim sPatient As String = currentconsult!patient!firstname & " " & currentconsult!patient!surname & " " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2)
    Dim sPatient_Comms As String 'phone, etc for the patient
    Dim com As Collection 
-   Dim sCSS As String
-   Dim sHeader As String
-   '----------------------------------------------
-   'Replace the rest, patient name, who its to etc
-   '----------------------------------------------
-   spatient &= " " & currentconsult!patient!town & " " & currentconsult!patient!postcode & " DOB:" & Format(currentconsult!patient!birthdate, "dd/mm/yyyy")
+  
+  ntext = textin
+   
+  spatient &= " " & currentconsult!patient!town & " " & currentconsult!patient!postcode & " DOB:" & Format(currentconsult!patient!birthdate, "dd/mm/yyyy")
    If currentconsult!patient!age_numeric < 18 Then
       sPatient &= " Aged: " & currentconsult!patient!age_display 
    Else
       sPatient &= " Aged: " & Str(currentconsult!patient!age_numeric)
    End If
+   ntext = Replace(ntext, "%date%", txtReferralDate.text)
+   ntext = Replace(ntext, "%practitioner-name%", modDBConnect.currentUser!title & " " & modDBConnect.currentuser!wholename)
+   ntext = Replace(ntext, "%provider-no", modDBConnect.currentUser!provider_number)
+   ntext = Replace(ntext, "%clinic.name", modDBConnect.currentUser!organisation)  
+   ntext = Replace(ntext, "%clinic.branch", modDBConnect.currentUser!branch)
+   If Not IsNull(modDBConnect.currentUser!street2) Then
+      ntext = Replace(ntext, "%clinic.street", modDBConnect.currentUser!street1 & sSep & modDBConnect.currentUser!street2) 
+   Else
+      ntext = Replace(ntext, "%clinic.street", modDBConnect.currentUser!street1) 
+   Endif
+   ntext = Replace(ntext, "%clinic.suburb", modDBConnect.currentUser!town & " " & modDBConnect.currentuser!postcode)
+   
+   ntext = Replace$(ntext, "%referred-to%", txtName.text)
+   If txtOrganisation.text <> "" Then 
+      ntext = Replace$(ntext, "%organisation%", txtOrganisation.text & sSep)
+   Else
+      ntext = Replace$(ntext, "%organisation%", "")
+   End If
+   If Not IsNull(modDBConnect.currentUser!occupation) Then
+      ntext = Replace$(ntext, "%occupation%", modUtil.Ucase_Word_First_Letter(modDBConnect.currentUser!occupation))
+   Else
+      ntext = Replace$(ntext, "%occupation%", "")
+   Endif
+   If Not IsNull(modDBConnect.currentUser!qualifications) Then
+      ntext = Replace$(ntext, "%qualifications%", modDBConnect.currentUser!qualifications)
+   Else
+      ntext = Replace$(ntext, "%qualifications%", "")
+   Endif
+   If txtBranch.text <> "" Then
+      ntext = Replace$(ntext, "%branch%", txtBranch.text & sSep)
+   Else
+      ntext = Replace$(ntext, "%branch%", "")
+   End If
+   ntext = Replace$(ntext, "%address%", Trim(txtStreet1.text & " " & txtStreet2.text) & sSep)
+   ntext = Replace$(ntext, "%suburb%", txtSuburb.text & " " & txtPostcode.text & sSep)
+   
+   If Not IsNull(PersonWritingTo!firstname) Then
+      ntext = Replace$(ntext, "%firstname%", PersonWritingTo!firstname)
+   Else
+      ntext = Replace$(ntext, "%firstname%", "Sir/Madam")
+      ntext = Replace$(ntext, "Yours sincerely,", "Yours faithfully,")
+   End If   
+
+   ntext = Replace$(ntext, "%patient%", spatient)
+   'now the comms
+   If Not IsNull(comms) Then
+     For Each com In comms
+       If com!fk_type = const.CommModalityPhone Then
+         ntext = Replace$(ntext, "%recipient-phone%", "Phone:" & com!value & sSep)
+       Endif
+       If com!fk_type = const.CommModalityFax Then
+         ntext = Replace$(ntext, "%recipient-fax%", "Fax:" & com!value & sSep)
+       Endif
+       If com!fk_type = const.CommModalityTollFree Then
+         ntext = Replace$(ntext, "%tollfree%", "Toll Free:" & com!value & sSep)
+       Endif
+      Next
+   Endif
+   For Each com In currentconsult!comms
+      sPatient_Comms &= const.CommModalityTextFull[com!fk_type] & ":" & currentconsult!comms[currentconsult!comms.key]!value & sSep
+   Next
+   ntext = Replace$(ntext, "%comms%", sPatient_Comms)
+   For Each com In modDBConnect.currentUser!comms
+      If com!fk_type = 7 Then
+         ntext = Replace$(ntext, "%practitioner-telephone%", com!value)
+      Endif
+      If com!fk_type = 2 Then
+         ntext = Replace$(ntext, "%practitioner-fax%", com!value)
+      Endif
+   Next
+   ntext = Replace$(ntext, "%practitioner-telephone%", "")
+   ntext = Replace$(ntext, "%practitioner-fax%", "")  
+   Return ntext
+End
+
+
+Public Function Referral_LetterHTML_Construct(Optional CopyTos As String) As String
+   '-----------------------------------------------------------
+   'Construct Html of the referral letter, FIX ME USE cTemplate
+   '-----------------------------------------------------------  
+   
+   Dim sLetterHtml As String
+   Dim sHtml As String
+   Dim sCSS As String
+   Dim sHeader As String
+   '----------------------------------------------
+   'Replace the rest, patient name, who its to etc
+   '----------------------------------------------
    sLetterHtml = "<html><head><meta name='qrichtext' content='1' />"
    "%css"
    "</head><body>"
    "%header"
    "<hr>"
-   "<P>%referred_to%<BR>" 
+   "<P>%referred-to%<BR>" 
    "%organisation%"
    "%branch%"
    "%address%"
    "%suburb%"
-   "%phone%"
-   "%tollfree%"
-   "%fax%</P>"
+   "%recipient-phone%"
+   "%recipient-fax%</P>"
    "<p>Dear %firstname%,</p>"
    "<BR>"
    "<TABLE WIDTH=100%>"
@@ -546,10 +645,10 @@ Public Function Referral_LetterHTML_Construct(Optional sHtml_CopyTo As String = 
    "</TR>"
    "</TABLE>"  
    "%type%"
-   "<p>%body%</p>"
-   "<p>Yours Sincerely</p>"
+   "%body%"
+   "<p>Yours sincerely</p>"
    "<p><BR><BR></p>"
-   "<p>%practitioner_name %qualifications%</p>"
+   "<p>%practitioner-name% %qualifications%</p>"
    "%inclusions%"
    "%cc%"
    "</body></html>"
@@ -568,16 +667,16 @@ Public Function Referral_LetterHTML_Construct(Optional sHtml_CopyTo As String = 
    "<TD WIDTH=30%>"
    "<P>%clinic.street<BR>"
    "%clinic.suburb<BR>"
-   "%provider_no<BR>"
+   "%provider-no<BR>"
    "%date%"
    "</TD>"
    "<TD WIDTH=45% ALIGN=CENTER>"
-   "<P ALIGN=CENTER>%practitioner_name <BR>"
+   "<P ALIGN=CENTER>%practitioner-name% <BR>"
    "<SPAN CLASS=occupation>%occupation%</SPAN></P>"
    "<TD WIDTH=25% ALIGN=RIGHT>"
    "<P ALIGN=RIGHT>"
-   "Tel. %practitioner_telephone<BR>"
-   "Fax %practitioner_fax<BR>"
+   "Tel. %practitioner-telephone%<BR>"
+   "Fax. %practitioner-fax%<BR>"
    "</P>"
    "</TD>"
    "</TR>"
@@ -588,9 +687,9 @@ Public Function Referral_LetterHTML_Construct(Optional sHtml_CopyTo As String = 
    "<COL WIDTH=128*>"
    "<TR VALIGN=TOP>"
    "<TD WIDTH=50%>"
-   "<P>%practitioner_name<BR>"
+   "<P>%practitioner-name%<BR>"
    "%occupation%<BR>"
-   "%provider_no<BR>"
+   "%provider-no<BR>"
    "%date%"
    "</TD>"
    "<TD WIDTH=50%>"
@@ -604,89 +703,42 @@ Public Function Referral_LetterHTML_Construct(Optional sHtml_CopyTo As String = 
    Endif
    sLetterHtml = Replace$(sLetterHtml, "%header", sHeader)
    sLetterHtml = Replace$(sLetterHtml, "%css", sCSS)
-   sLetterHtml = Replace(sLetterHtml, "%date%", txtReferralDate.text)
-   sLetterHtml = Replace(sLetterHtml, "%inclusions%", Inclusions_Construct_HTML(Inclusions_EditArea))
-   sLetterHtml = Replace(sLetterHtml, "%cc%", sHtml_CopyTo)
-   sLetterHtml = Replace(sLetterHtml, "%practitioner_name", modDBConnect.currentUser!title & " " & modDBConnect.currentuser!wholename)
-   sLetterHtml = Replace(sLetterHtml, "%provider_no", modDBConnect.currentUser!provider_number)
-   sLetterHtml = Replace(sLetterHtml, "%clinic.name", modDBConnect.currentUser!organisation)  
-   sLetterHtml = Replace(sLetterHtml, "%clinic.branch", modDBConnect.currentUser!branch)
-   If Not IsNull(modDBConnect.currentUser!street2) Then
-      sLetterHtml = Replace(sLetterHtml, "%clinic.street", modDBConnect.currentUser!street1 & "<BR>" & modDBConnect.currentUser!street2) 
-   Else
-      sLetterHtml = Replace(sLetterHtml, "%clinic.street", modDBConnect.currentUser!street1) 
-   Endif
-   sLetterHtml = Replace(sLetterHtml, "%clinic.suburb", modDBConnect.currentUser!town & " " & modDBConnect.currentuser!postcode)
-   
-   sLetterHtml = Replace$(sLetterHtml, "%referred_to%", txtName.text)
-   If txtOrganisation.text <> "" Then 
-      sLetterHtml = Replace$(sLetterHtml, "%organisation%", txtOrganisation.text & "<BR>")
-   Else
-      sLetterHtml = Replace$(sLetterHtml, "%organisation%", "")
-   End If
-   If Not IsNull(modDBConnect.currentUser!occupation) Then
-      sLetterHtml = Replace$(sLetterHtml, "%occupation%", modUtil.Ucase_Word_First_Letter(modDBConnect.currentUser!occupation))
-   Else
-      sLetterHtml = Replace$(sLetterHtml, "%occupation%", "")
-   Endif
-   If Not IsNull(modDBConnect.currentUser!qualifications) Then
-      sLetterHtml = Replace$(sLetterHtml, "%qualifications%", modDBConnect.currentUser!qualifications)
-   Else
-      sLetterHtml = Replace$(sLetterHtml, "%qualifications%", "")
-   Endif
-   If txtBranch.text <> "" Then
-      sLetterHtml = Replace$(sLetterHtml, "%branch%", txtBranch.text & "<BR>")
-   Else
-      sLetterHtml = Replace$(sLetterHtml, "%branch%", "")
-   End If
-   sLetterHtml = Replace$(sLetterHtml, "%address%", Trim(txtStreet1.text & " " & txtStreet2.text) & "<BR>")
-   sLetterHtml = Replace$(sLetterHtml, "%suburb%", txtSuburb.text & " " & txtPostcode.text & "<BR>")
-   
-   If Not IsNull(PersonWritingTo!firstname) Then
-      sLetterHtml = Replace$(sLetterHtml, "%firstname%", PersonWritingTo!firstname)
-   Else
-      sLetterHtml = Replace$(sLetterHtml, "%firstname%", "Sir/Madam")
-   End If   
-   
-   If Not IsNull(comms) Then 
-      For Each comm In comms
-         If comm!fk_type = const.CommModalityPhone Then
-            sLetterHtml = Replace$(sLetterHtml, "%phone%", "Phone:" & comm!value & "<BR>")
-         Endif
-         If comm!fk_type = const.CommModalityFax Then
-            sLetterHtml = Replace$(sLetterHtml, "%fax%", "Fax:" & comm!value & "<BR>")
-         Endif
-         If comm!fk_type = const.CommModalityTollFree Then
-            sLetterHtml = Replace$(sLetterHtml, "%tollfree%", "Toll Free:" & comm!value & "<BR>")
-         Endif
-      Next
-   Endif
-   sLetterHtml = Replace$(sLetterHtml, "%phone%", "")
-   sLetterHtml = Replace$(sLetterHtml, "%fax%", "")
-   sLetterHtml = Replace$(sLetterHtml, "%tollfree%", "")
-   sLetterHtml = Replace$(sLetterHtml, "%patient%", spatient)
-   'now the comms
-   
-   For Each com In currentconsult!comms
-      sPatient_Comms &= const.CommModalityTextFull[com!fk_type] & ":" & currentconsult!comms[currentconsult!comms.key]!value & "<BR>"
-   Next
-   sLetterHtml = Replace$(sLetterHtml, "%comms%", sPatient_Comms)
-   For Each com In modDBConnect.currentUser!comms
-      If com!fk_type = 7 Then
-         sLetterHtml = Replace$(sLetterHtml, "%practitioner_telephone", com!value)
-      Endif
-      If com!fk_type = 2 Then
-         sLetterHtml = Replace$(sLetterHtml, "%practitioner_fax", com!value)
-      Endif
-   Next
-   sLetterHtml = Replace$(sLetterHtml, "%practitioner_telephone", "")
-   sLetterHtml = Replace$(sLetterHtml, "%practitioner_fax", "")
+   sHtml = ""
+   "<TABLE WIDTH=100%>"
+   "<COL WIDTH= 6%>"
+   "<COL WIDTH=94%>"
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=6%>"
+   "<P><small><small>Inclusions</small></small></P>"
+   "</TD>"
+   "<TD WIDTH=94%>"
+   "<P><small><small>%inclusions%</small></small></P>"
+   "</TD>"
+   "</TR>"
+   "</TABLE>" 
+   sLetterHtml = Replace(sLetterHtml, "%inclusions%", Inclusions_Construct(Inclusions_EditArea, sHtml, "<BR>"))
+   sHtml = ""
+   "<TABLE WIDTH=100%>"
+   "<COL WIDTH=6%>"
+   "<COL WIDTH=94%>"
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=6%>"
+   "<P><small><small>cc</small></small></P>"
+   "</TD>"
+   "<TD WIDTH=94%>"
+   "<P><small><small>%copyto%</small></small></P>"
+   "</TD>"
+   "</TR>"
+   "</TABLE>"   
+   sLetterHtml = Replace(sLetterHtml, "%cc%", CopyTo_Construct(CopyTos, sHtml, "<BR>"))
+ 
    If cmbReferralTypes.text <> "Non Medicare" Then 
-      sLetterHtml = Replace$(sLetterHtml, "%type%", "<p>TYPE OF REFERRAL: " & cmbReferralTypes.Text & "</P")
+      sLetterHtml = Replace$(sLetterHtml, "%type%", "<p>TYPE OF REFERRAL: " & cmbReferralTypes.Text & "</P>")
    Else
       sLetterHtml = Replace$(sLetterHtml, "%type%", "")
    End If
    sLetterHtml = Replace$(sLetterHtml, "%body%", Referral_BodyHTML_Construct())
+   sLetterHtml = Referral_Letter_Construct_Common(sLetterHtml, "<BR>")
    'Get rid of potentially empty strings
    sLetterHtml = Replace$(sLetterHtml, "%address%", "")
    sLetterHtml = Replace$(sLetterHtml, "%suburb%", "")
@@ -694,23 +746,30 @@ Public Function Referral_LetterHTML_Construct(Optional sHtml_CopyTo As String = 
    
 End
 
-Public Function Referral_BodyHTML_Construct_RT() As String
-   '-------------------------------------------------------------------------------------------
-   'extracts just the html for the body of the  letter
-   'IAN; the qt control has changed alot in how it handles html since I first implemented this
-   'this routine needs fixing. Its originally intent was to chop of everything bar the text
-   'of the letter. for some reason all blank lines in between paragraphs not being kept.
-   '--------------------------------------------------------------------------------------------
+Public Function Referral_LetterLaTeX_Construct(CopyTos As String) As String
    
-   Dim sBodyHTML As String
-   Dim charpos As Integer
-   
-   charpos = InStr(Lower(teLetter.RichText), "<p")
-   sBodyHTML = Right(teLetter.RichText, Len(teLetter.RichText) - charpos + 1)
-   charpos = InStr(sBodyHTML, "</body>")
-   sBodyHTML = Left(sBodyHTML, charpos - 1)
-   sBodyHTML = Replace(sBodyHTML, "</p>", "</p><BR>")
-   Return Trim(sBodyHTML)
+  Dim sLetterTeX As String
+  Dim sTeX As String
+  
+  sLetterTeX = modUtil.Find_File("templates/referral.tex")
+  sLetterTeX = File.Load(sLetterTeX)
+  sLetterTeX = Replace$(sLetterTeX, "!", "%")
+  If cmbReferralTypes.text <> "Non Medicare Related" Then 
+      sLetterTeX = Replace$(sLetterTeX, "%type%", "\\noindent Type Of Referral: " & cmbReferralTypes.Text & "\n\n")
+   Else
+      sLetterTeX = Replace$(sLetterTeX, "%type%", "")
+   End If
+   sLetterTeX = Replace$(sLetterTeX, "%body%", HTML_To_LaTeX(Referral_BodyHTML_Construct()))
+   sLetterTeX = Referral_Letter_Construct_Common(sLetterTeX, "\\\\ ")
+   sTeX = "\\noindent \\parbox[t]{10mm}{CC:} \\parbox[t]{140mm}{%copyto%}"
+   sLetterTeX = Replace(sLetterTeX, "%cc%", CopyTo_Construct(CopyTos, sTeX, "\\\\ "))
+   sTeX = "\\noindent \\parbox[t]{10mm}{Incl:} \\parbox[t]{140mm}{%inclusions%}"
+   sLetterTeX = Replace(sLetterTeX, "%inclusions%", Inclusions_Construct(Inclusions_EditArea, sTeX, "\\\\ "))
+   'Get rid of potentially empty strings
+   sLetterTeX = Replace$(sLetterTeX, "%address%", "")
+   sLetterTeX = Replace$(sLetterTeX, "%suburb%", "")
+   Return sLetterTeX
+  
    
 End
 
@@ -727,25 +786,105 @@ Public Function Referral_BodyHTML_Construct() As String
    sBodyHTML = Right(teLetter.RichText, Len(teLetter.RichText) - charpos + 1)
    charpos = InStr(sBodyHTML, "</body>")
    sBodyHTML = Left(sBodyHTML, charpos - 1)
-   Print sBodyHTML
-   sBodyHTML = Fix_HTML(sBodyHTML)
-   sBodyHTML = Replace$(sBodyHTML, "font-weight:600", "font-weight:bold")
-   Print sBodyHTML
+   Debug sBodyHTML
+   sBodyHTML = Fix_HTML(sBodyHTML, [])
+   Debug sBodyHTML
    Return Trim(sBodyHTML)
    
 End
 
-Private Function Fix_HTML(s As String) As String
+Private Function Fix_HTML(s As String, lastspan As String[]) As String
    
-   Dim r As New Regexp(s, "<p[^>]+>")
+   Dim r As Regexp
+   Dim newtag As String
    
+   If s = "" Then Return s
+   r = New Regexp(s, "<([^>]+)>")
    If r.Offset = -1 Then
       Return s
    Else
-      Return Left$(s, r.Offset) & "<p>" & Fix_HTML(Right$(s, - (r.Offset + Len(r.Text)))) 
+      newtag = Make_New_Tag(LCase$(r.SubMatches[1].Text), ByRef lastspan)
+      If IsNull(newtag) Or If newtag = "" Then
+         Return Left$(s, r.Offset) & Fix_HTML(Right$(s, - (r.Offset + Len(r.Text))), lastspan)
+      Else
+         Return Left$(s, r.Offset) & "<" & newtag & ">" & Fix_HTML(Right$(s, - (r.Offset + Len(r.Text))), lastspan)
+      Endif 
    Endif
    
 End
+
+Private Function Make_New_Tag(tag As String, ByRef lastspan As String[]) As String
+   
+  Dim r As Regexp
+  Dim tokens As New String[]
+  Dim tokens_close As New String[]
+  
+  r = New Regexp(tag, "^span.*")
+  If r.Offset = 0 Then
+    If InStr(tag, "font-weight:600") Then
+        tokens.Add("b")
+        tokens_close.Add("/b")
+    Endif
+    If InStr(tag, "font-style:italic") Then
+       tokens.Add("i")
+       tokens_close.Add("/i")
+    Endif
+    If InStr(tag, "text-decoration: underline") Then
+       tokens.Add("u")
+       tokens_close.Add("/u")
+    Endif
+    If tokens.Length > 0 Then
+      lastspan.Push(tokens_close.Join("><"))  ' calling code adds the final outer < >
+      Return tokens.Join("><")
+    Else  ' we didn't recognise anything in the span, so add nothing to the translated HTML stream
+      lastspan.Add("")
+      Return Null
+    Endif 
+  Endif
+  If tag = "/span" Then
+     If lastspan.Length > 0 Then
+        Return lastspan.Pop()
+     Else
+        Return Null
+     Endif
+  Endif
+  r = New Regexp(tag, "^p.*")
+  If r.Offset = 0 Then
+     Return "p"
+  Endif
+  If tag = "/p" Then
+     Return "/p"
+  Endif
+  Return Null
+End
+
+Private Function HTML_To_LaTeX(s As String) As String
+   
+      ' turns HTML into TeX 
+   s = Replace$(s, "<b>", "\\textbf{", gb.IgnoreCase)
+   s = Replace$(s, "</b>", "}", gb.IgnoreCase)
+   s = Replace$(s, "<i>", "\\emph{", gb.IgnoreCase)
+   s = Replace$(s, "</i>", "}", gb.IgnoreCase)
+   s = Replace$(s, "<u>", "\\underline{", gb.IgnoreCase)
+   s = Replace$(s, "</u>", "}", gb.IgnoreCase)
+   s = Replace$(s, "<p>", "\n\n", gb.IgnoreCase)
+   s = Replace$(s, "<p/>", "\n\n", gb.IgnoreCase)
+   s = Replace$(s, "</p>", "\n\n", gb.IgnoreCase)
+   s = Replace$(s, "<br>", "\\\\ ", gb.IgnoreCase)
+   s = Replace$(s, "<h1>", "\\section{", gb.IgnoreCase)
+   s = Replace$(s, "</h1>", "}", gb.IgnoreCase)
+   s = Replace$(s, "<h2>", "\\subsection{", gb.IgnoreCase)
+   s = Replace$(s, "</h2>", "}", gb.IgnoreCase)
+   s = Replace$(s, "$", "\\$")
+   s = Replace$(s, "&gt;", "$>$", gb.IgnoreCase)
+   s = Replace$(s, "&lt;", "$<$", gb.IgnoreCase)
+   s = Replace$(s, "&amp;", "\\&", gb.IgnoreCase)
+   s = Replace$(s, "%", "\\%")
+   Return Trim$(s)
+   
+End
+
+
 
 Public Sub Referral_Preview()
    '--------------------------------------------------------------------
@@ -755,7 +894,7 @@ Public Sub Referral_Preview()
    'letters written this consult list.
    '--------------------------------------------------------------------
    
-   FClinical.Editor_ShowPage_External("browser", "Referral Preview", Referral_LetterHTML_Construct(Copyto_Html_Construct(Form_Copy_To.Get_CopyTo_Data()!copyto), Inclusions_Construct_HTML(Inclusions_EditArea)))
+   FClinical.Editor_ShowPage_External("browser", "Referral Preview", Referral_LetterHTML_Construct(Form_Copy_To.Get_CopyTo_Data()!copyto))
    
 End
 
@@ -1094,8 +1233,10 @@ Public Sub EditAreaTextBox_KeyPress()
             Case "category", "organisation", "street1", "Suburb", "linkto", "name", "occupation"
                If columnview1.Visible Then
                   columnview1.MoveCurrent
-                  columnview1.Item.Selected = True
-                  columnview1.SetFocus()
+                  If Not IsNull(columnview1.Item) Then
+                    columnview1.Item.Selected = True
+                   Endif 
+                   columnview1.SetFocus()
                End If
          End Select
          
@@ -2006,27 +2147,29 @@ Public Sub Person_By_Occupation_Select()
    bExit = True
    If columnview1.Visible Then
       columnview1.MoveCurrent   'set internal cursor to match marquee
-      txtName.Text = specialists[columnview1.Item.key]!wholename
-      txtOccupation.text = specialists[columnview1.Item.key]!occupation
-      fk_person = specialists[columnview1.Item.key]!fk_person
-      Try fk_employee = specialists[columnview1.Item.key]!fk_employee
-      Try fk_organisation = specialists[columnview1.Item.key]!fk_organisation
-      Try fk_address = specialists[columnview1.Item.key]!fk_address
-      Try fk_branch = specialists[columnview1.Item.key]!fk_branch
-      PersonWritingTo!firstname = specialists[columnview1.Item.key]!firstname
-      PersonWritingTo!surname = specialists[columnview1.Item.key]!surname
-      PersonWritingTo!title = specialists[columnview1.Item.key]!title
-      Try txtOrganisation.text = specialists[columnview1.Item.key]!organisation
-      Try txtBranch.text = specialists[columnview1.Item.key]!branch
-      Try txtStreet1.text = specialists[columnview1.Item.key]!street1
-      Try txtStreet2.text = specialists[columnview1.Item.key]!street2
-      Try txtSuburb.text = specialists[columnview1.Item.key]!town
-      Try txtPostcode.text = specialists[columnview1.Item.key]!postcode 
-      'this is a bit arbitrary
-      If fk_branch Then Branch_Comms_Get()
-      If IsNull(comms) Then
-         If fk_person Then Person_Comms_Get()
-      End If   
+      If Not IsNull(columnview1.Item) Then
+        txtName.Text = specialists[columnview1.Item.key]!wholename
+        txtOccupation.text = specialists[columnview1.Item.key]!occupation
+        fk_person = specialists[columnview1.Item.key]!fk_person
+        Try fk_employee = specialists[columnview1.Item.key]!fk_employee
+        Try fk_organisation = specialists[columnview1.Item.key]!fk_organisation
+        Try fk_address = specialists[columnview1.Item.key]!fk_address
+        Try fk_branch = specialists[columnview1.Item.key]!fk_branch
+        PersonWritingTo!firstname = specialists[columnview1.Item.key]!firstname
+        PersonWritingTo!surname = specialists[columnview1.Item.key]!surname
+        PersonWritingTo!title = specialists[columnview1.Item.key]!title
+        Try txtOrganisation.text = specialists[columnview1.Item.key]!organisation
+        Try txtBranch.text = specialists[columnview1.Item.key]!branch
+        Try txtStreet1.text = specialists[columnview1.Item.key]!street1
+        Try txtStreet2.text = specialists[columnview1.Item.key]!street2
+        Try txtSuburb.text = specialists[columnview1.Item.key]!town
+        Try txtPostcode.text = specialists[columnview1.Item.key]!postcode 
+        'this is a bit arbitrary
+        If fk_branch Then Branch_Comms_Get()
+        If IsNull(comms) Then
+          If fk_person Then Person_Comms_Get()
+        End If
+      Endif   
       txtTag.SetFocus()
    End If
    bExit = False  
@@ -2267,29 +2410,16 @@ Public Sub Inclusion_In_List(inclusion As Collection) As Boolean
    
 End
 
-Public Function Inclusions_Construct_HTML(Inclusions As Collection) As String
+Public Function Inclusions_Construct(Inclusions As Collection, templ As String, sSep As String) As String
    '--------------------------------------------
    'Construct a string describing the inclusions
    '-------------------------------------------- 
    
-   Dim sHtml As String 
+   Dim ret As String 
    Dim sInclusions As String 
    Dim inclusion As Collection 
    Dim document As Collection
-   
-   sHtml = ""
-   "<TABLE WIDTH=100%>"
-   "<COL WIDTH= 6%>"
-   "<COL WIDTH=94%>"
-   "<TR VALIGN=TOP>"
-   "<TD WIDTH=6%>"
-   "<P><small><small>Inclusions</small></small></P>"
-   "</TD>"
-   "<TD WIDTH=94%>"
-   "<P<small><small>%inclusions%</small></small></P>"
-   "</TD>"
-   "</TR>"
-   "</TABLE>"   
+  
    
    If Inclusions.count = 0 Then Return ""
    
@@ -2310,11 +2440,11 @@ Public Function Inclusions_Construct_HTML(Inclusions As Collection) As String
             sInclusions &= "" & document!msh_sending_entity
          Endif
          sInclusions &= " - " & document!tag_user
-         sInclusions &= "<BR>"
+         sInclusions &= sSep
       Endif
    Next
-   sHtml = Replace(sHtml, "%inclusions%", sInclusions)
-   Return sHtml 
+   ret = Replace(templ, "%inclusions%", sInclusions)
+   Return ret
    
 End
 

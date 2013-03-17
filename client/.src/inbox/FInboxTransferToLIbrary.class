@@ -8,7 +8,6 @@ Private sLibrary_Dir_Local As String
 Private sLibraryRootDir As String
 Private sHandout_Dir_Network As String
 Private sHandout_Dir_Local As String
-Private sDocumentDir As String
 Private bcopy As Boolean
 Private bhandout As Boolean
 Private sDestination As String 'my library or patient handouts
@@ -34,7 +33,6 @@ Public Sub Init(Doc As Collection, cons As CConsult, sMove_or_Copy As String)
    sLibrary_Dir_Local = modAdminDBI.Config_Get("library_directory_local", "", Null, modDBConnect.currentUser!fk_clinic)
    sHandout_Dir_Network = sLibrary_Dir_Network &/ "handouts"
    sHandout_Dir_Local = sLibrary_Dir_Local &/ "handouts"
-   sDocumentDir = modAdminDBI.Config_Get("document_archiving_directory", "/var/easygp/documents/") 
    btnOK.text = modUtil.Ucase_Word_First_Letter(sMove_or_Copy)
    If InStr(sMove_or_Copy, "copy") Then
       bcopy = True
@@ -102,29 +100,33 @@ Public Sub btnOK_Click()
    Dim fileExtension As String
    Dim errMsg As String
    Dim error_type As Integer
+   Dim fname As String
+   Dim fname2 As String
    
-   fileExtension = File.Ext(sDocumentDir &/ Document!source_file)
+   fileExtension = File.Ext(Document!source_file)
    If Right(txtNewFilename.text, Len(fileExtension)) <> fileExtension Then
       Message.Info("Please correct the filename extension to match the orginal file before saving.")
       Return
    Endif
-   If IsDir(sDocumentDir) Then                                             'if document directory is valid
-      '-------------------------------------------------------------------------------------------------------
-      'If the user wants to copy the file, figure out if destination is handout or personal library, then copy
-      '-------------------------------------------------------------------------------------------------------
-      If bCopy Then                                                        'if copying a file
-         If Not bhandout Then                                              'and its not a handout
-            Try Copy sDocumentDir &/ Document!source_file To sLibraryRootDir &/ "library" &/ Trim(txtLibraryFolder.text) &/ Trim(txtNewFilename.text)
-         Else
-            Try Copy sDocumentDir &/ Document!source_file To sLibraryRootDir &/ "handouts" &/ Trim(txtLibraryFolder.text) &/ Trim(txtNewFilename.text)
-         End If   
-         If Not Error Then
-            Message.Info("The file was successfully copied to your " & sDestination)
-         Else
-            errMsg = "copied"
-            Goto FileTransfer_Error
-         Endif
+   If Not bhandout Then
+     fname = "library"                                              'and its not a handout
+   Else
+     fname = "handout"
+   Endif
+   fname2 = modFiles.Get("document_archiving_directory", Document!source_file)
+   fname = sLibraryRootDir &/ fname &/ Trim(txtLibraryFolder.text) &/ Trim(txtNewFilename.text)
+   '-------------------------------------------------------------------------------------------------------
+   'If the user wants to copy the file, figure out if destination is handout or personal library, then copy
+    '-------------------------------------------------------------------------------------------------------
+    If bCopy Then            
+      errMsg = "copied"                                            'if copying a file
+      If Left$(fname2, 5) = "/tmp/" Then
+         Move fname2 To fname
       Else
+         Copy fname2 To fname
+      Endif   
+      Message.Info("The file was successfully copied to your " & sDestination)
+    Else
          '----------------------------------------------------------------------------
          'Otherwise - must be selecting to move the file
          'Try and move the document to the library, and mark it deleted in the backend
@@ -133,35 +135,24 @@ Public Sub btnOK_Click()
          'If this fails > error message and roll back
          'If succeeds then commit the transaction.
          '----------------------------------------------------------------------------
+         errMsg = "moved"
          modDBConnect.update("documents.documents", Null, ["pk": Document!pk_document, "deleted": True])
          If modAudit.MakeAudit(Currentconsult, "moved to library", "documents.documents", Document!pk_document, const.cSection_Inbox, "moved to the users library") Then 
-            If Not bhandout Then  
-               Try Move sDocumentDir &/ Document!source_file To sLibraryRootDir &/ "library" &/ Trim(txtLibraryFolder.text) &/ Trim(txtNewFilename.text)
-            Else
-               Try Move sDocumentDir &/ Document!source_file To sLibraryRootDir &/ "handouts" &/ Trim(txtLibraryFolder.text) &/ Trim(txtNewFilename.text)
-            End If   
-            If Not Error Then
-               modDBConnect.CommitTrans
-               Try FLibrary.Library_Trees_Refresh_External        'will not work if Flibary no instantiated, so try....
-               Message.Info("The file was successfully moved to your " & sDestination) 
-            Else
-               modDBConnect.RollBack()
-               Goto FileTransfer_Error
-            End If   
+            Move fname2 To fname  
+            modDBConnect.CommitTrans
+            Try FLibrary.Library_Trees_Refresh_External        'will not work if Flibary no instantiated, so try....
+            Message.Info("The file was successfully moved to your " & sDestination) 
          Else
-            errMsg = "moved"
-            Goto FileTransfer_Error
-         Endif
-      Endif
-   End If 
-   Me.Close(True)   
-   Return 
-   
-FileTransfer_Error:
-   Message.Info("An error occurred - the file was not " & errMsg & " to your" & sDestination & ".\n\n" & Error.text)
+           modDBConnect.RollBack() ' user refused to give an audit reason
+         End If   
+      Endif   
+Finally
+   Me.Close(True)
 Catch
-   Message.Info("An undefined error occurred")
-   
+   modDBConnect.RollBack()
+   Log.ErrorMsg("FInboxToLibrary.btnOK_Click: " & Error.Text & Error.Backtrace)
+   Message.Info("An error occurred - the file was not " & errMsg & " to your" & sDestination & ".\n\n" & Error.text)
+
 End
 
 Public Sub btnCancel_Click()

@@ -30,25 +30,23 @@
 '                ; the up/down buttons to re-arrange order of pages to be joined
 '------------------------------------------------------------------------------------------
 Private obs As Observer
-Private RootDir As String 
 Private bExit As Boolean
 Private PDForm As FPdf
 Private FMetaData As FDocumentMetaData
 Private Default_Zoom As Float
+Private local_fname As String
+Private remote_fname As String
+
+
 Static Private Form_Document_Archive As FArchiveDocuments
 
 Public Sub Init()
 
    Form_Document_Archive = Me
-   rootdir = modAdminDBI.Config_Get("document_scanning_directory")
-   obs = New Observer(filechooser1.FileView) As "FileList"      'over-ride the menu on the file list with our own
-   
+   obs = New Observer(filechooser1) As "FileList"      'over-ride the menu on the file list with our own
    With FMetaData = New FDocumentMetaData(Vbox_Metadata)         
       .Set_Embedded_Form_Name("Scanning")
       .Init("UnAllocated Documents")                  'gui allows allocation to staff, patient, sender"
-   End With
-   With filechooser1                               'Don't want all the filechooser control bits showing
-      .root = rootdir                              'set the root directory then will auto-show all scanned files.
    End With
    With PDForm = New FPdf(Vbox_Viewer)
       .BtOpen.Visible = False                      'don't allow external files to be opened
@@ -61,12 +59,14 @@ Public Sub Init()
    End With
    obs = New Observer(FMetaData.txtDocumentDate) As "txtDocumentDate"      'detect when <enter> hit and file the document
    Try Settings_Load()
+   Reload_FileList()
 
 End
 
 Public Sub Form_Close()
    
-   Settings_Save()
+  modUtil.Kill_If_Temp(local_fname) 
+  Settings_Save()
    
 End
 
@@ -106,46 +106,41 @@ Private Sub Settings_Load()
    
 End
 
-Public Sub FileChooser1_Activate()
+Public Sub FileChooser1_Click()
    
-   Dim Filepath As String
-   
-   If FileChooser1.SelectedPaths.count Then
-      Return 
-   Else
-      FMetaData.EditArea_Clear()
-      Inc Application.Busy
-      Filepath = FileChooser1.SelectedPath
-      If File.Ext(Filepath) <> "" Then
-         Select Case LCase(File.Ext(Filepath))
-            Case "pdf"
-               Vbox_Images.Visible = False  
-               PDForm.Visible = True
-               PDForm.hPdf.Orientation = PdfDocument.Normal 'may have been rotated last time.
-               PDForm.PBox.Visible = True 
-               PDForm.CurrentZoom = Default_Zoom
-               PDForm.Load_PDF(FilePath)
-               
-            Case "png", "jpeg", "tiff", "gif", "jpg"
-               PDForm.Visible = False
-               Vbox_Images.Visible = True
-               pbox.Visible = True  
-               pbox.Picture = Picture.Load(filepath)
-            Case Else
-               Message.Info("Unknown file type")
+
+   FMetaData.EditArea_Clear()
+   Inc Application.Busy
+   If IsNull(filechooser1.Current) Then Return
+   remote_fname = filechooser1.Current.Text
+   modUtil.Kill_If_Temp(local_fname)
+   local_fname = modFiles.Get("document_scanning_directory", remote_fname)
+   If File.Ext(local_fname) <> "" Then
+      Select Case LCase(File.Ext(local_fname))
+         Case "pdf"
+            Vbox_Images.Visible = False  
+            PDForm.Visible = True
+            PDForm.hPdf.Orientation = PdfDocument.Normal 'may have been rotated last time.
+            PDForm.PBox.Visible = True 
+            PDForm.CurrentZoom = Default_Zoom
+            PDForm.Load_PDF(local_fname, False, False)
+         Case "png", "jpeg", "tiff", "gif", "jpg"
+            PDForm.Visible = False
+            Vbox_Images.Visible = True
+            pbox.Visible = True
+            pbox.Picture = Picture.Load(local_fname)
+         Case Else
+            Message.Info("Unknown file type")
          End Select
-         
-         FMetaData.SetFilename(filepath)
-         
+         FMetaData.SetFilename(local_fname)
       End If
-      Dec Application.Busy   
-   End If
+   Dec Application.Busy   
    
 End
 
-Public Sub FileChooser1_Change()
+Public Sub FileChooser1_Select()
    
-   FileChooser1_Activate()
+   FileChooser1_Click()
    
 End
 
@@ -183,10 +178,13 @@ End
 
 Public Sub tbMultiPagefiles_Click()
    
+   If IsNull(local_fname) Then Return
    Select Case Last.tag
       Case "add"
-         Try lvfilesToJoin.Add(FileChooser1.SelectedPath, File.Name(FileChooser1.SelectedPath))
-         lblFilesToJoin_UpdateCount()
+         If Not File.Ext(local_fname) = "pdf" Then
+           lvfilesToJoin.Add(local_fname, remote_fname)
+           lblFilesToJoin_UpdateCount()
+         Endif
       Case "remove"
          If lvFilestojoin.count = 0 Then Return 
          lvFilestojoin.MoveCurrent()
@@ -210,12 +208,7 @@ End
 Public Sub lvFilesToJoin_Select()
    
    lvFilestojoin.MoveCurrent()
-   Select Case LCase(File.Ext(Last.key))
-      Case "pdf"
-         PDForm.Load_PDF(Last.key)
-      Case "png", "jpeg", "tiff", "gif", "jpg"
-         
-   End Select
+   Try PDForm.Load_PDF(Last.key, False, False)
    
 End
 
@@ -227,7 +220,7 @@ Public Sub JoinPDF()
    Dim x As Integer
    
    If lvFilestojoin.count = 0 Then Return 
-   fname = File.Dir(FileChooser1.SelectedPath) & "/" & File.name(Temp$) & Format$(Now, "dd-mm-yyyy:hh:nn:ss")
+   fname = Temp$ & ".pdf"
    lvFilestojoin.MoveFirst
    For x = 0 To lvFilestojoin.count - 1
       pdf_files.Add(lvFilestojoin.Item.Key, pdf_files.count)
@@ -236,12 +229,16 @@ Public Sub JoinPDF()
    fname = modPrinting.Join_PDF(pdf_files, fname)  'join the files together
    lvFilestojoin.MoveFirst                         'then remove them from the HDD
    For x = 0 To lvFilestojoin.count - 1
-      Kill lvFilestojoin.Item.Key
+      Try Kill lvFilestojoin.Item.Key
+      modFiles.Delete("document_scanning_directory", lvFilestojoin.Item.Text)
       lvFilestojoin.MoveNext
    Next
    lvfilesToJoin.Clear()
    lblFilestoJoin.text = "Files to join"
-   FileChooser1.Reload()
+   local_fname = fname
+   remote_fname = Null
+   FMetaData.SetFilename(local_fname)
+   PDForm.Load_PDF(local_fname, False, False)
    
 End
 
@@ -249,30 +246,12 @@ Public Sub Split_pdf()
    
    modUtil.NotImplemented("Splitting PDF's is not implemented")
    Return
-   modPrinting.Split_PDF(FileChooser1.SelectedPath) 'IAN DOES NOT WORK.
    
 End
 
 Public Sub FileList_Menu()
-   Dim sFile As String
-   Dim mnu As Menu
    
-   Stop Event   
-   '----------------------------------------------
-   'First create list of subdirectories to move to
-   '----------------------------------------------
-   mnuFileChooser_MoveAll.Children.Clear                                 'remove any existing dirs on this
-  If filechooser1.Dir = rootdir And If Access(rootdir &/ "legacy", gb.Exec) Then                              'only allow this menu if transferring from root directory
-      mnuFileChooser_MoveAll.Enabled = True                       'enable it
-      For Each sFile In Dir(rootdir &/ "legacy")                  'add sub-menu's of all the other dirs
-         mnu = New Menu(mnuFileChooser_MoveAll) As "mnuFileChooser"  'and the event
-         mnu.name = sFile
-         mnu.caption = sFile
-         mnu.tag = rootdir &/ "legacy" &/ sFile
-       Next
-  Else
-     mnuFileChooser_MoveAll.Enabled = False  
-   End If   
+   Stop Event      
    mnuFileChooser.Popup 
 End
 
@@ -280,6 +259,8 @@ Public Sub mnuFileChooser_Click()
    Dim sFile As String
    
    Select Case Last.tag
+      Case "reload"
+         Reload_FileList()
       Case "delete single"
          File_Delete()
       Case "delete multiple"
@@ -293,47 +274,35 @@ Public Sub mnuFileChooser_Click()
          
       Case "split"
          Split_pdf()
-      Case Else
-         Try IsDir(Last.tag)
-         If Not Error Then
-            For Each sFile In Dir(rootdir)
-                If Not (IsDir(rootdir &/ sFile))
-                  If Not IsDir(sFile) Then  
-                     Move rootdir &/ sFile To Last.tag &/ sFile
-                  End If  
-                End If
-            Next
-         Endif
    End Select
-   FileChooser1.Reload()
    
 End
 
 Public Sub Rotate_And_Save(amount As Integer)
    
-   Dim Step1File As String = Temp$() & "1.pdf"
-   Dim Step2File As String = Temp$() & "2.pdf"
-   Dim BackupFile As String = Temp$() & ".backup.pdf"
-   Dim originalFileName As String = File.Name(FileChooser1.SelectedPath)
+   Dim Step1File As String = Temp$() & ".pdf"
+   Dim Step2File As String = Temp$() & ".pdf"
+   Dim BackupFile As String = Temp$() & ".pdf"
    Dim result As String
    Dim pdf90 As String
    
+   If File.Ext(local_fname) <> "pdf" Then Return
    pdf90 = modUtil.FindProgram("pdf90", "pdfjam")
    If IsNull(pdf90) Then Return
-   Copy rootdir &/ originalFileName To backupfile
+   Copy local_fname To backupfile
    Select Case amount
       Case 180
-         Exec [pdf90, "--outfile", Step1File, rootdir &/ originalFileName] To result
+         Exec [pdf90, "--outfile", Step1File, local_fname] To result
          Exec [pdf90, "--outfile", Step2File, Step1File] Wait
          If Access(Step2File) Then 
-            Kill rootdir &/ originalFileName
-            Copy Step2File To rootdir &/ originalFileName
+            Try Kill local_fname
+            Copy Step2File To local_fname
             If Not Error Then
                Kill Step1File
                Kill Step2File
                Kill backupfile
             Else
-               Copy backupfile To rootdir &/ originalFileName
+               Copy backupfile To local_fname
             End If   
          Else
             Log.ErrorMsg("pdf90 failed: " & result)
@@ -342,55 +311,53 @@ Public Sub Rotate_And_Save(amount As Integer)
          Endif
          Try Kill Step1File
       Case 90
-         Exec [pdf90, "--outfile", Step1File, rootdir &/ originalFileName] To result
+         Exec [pdf90, "--outfile", Step1File, local_fname] To result
          If Access(Step1File) Then
-            Kill rootdir &/ originalFileName 
-            Copy Step1File To rootdir & "/" & originalFileName
+            Kill local_fname
+            Copy Step1File To local_fname
             If Not Error Then
                Kill Step1File 
                Kill backupfile
             Else
-               Copy backupfile To rootdir &/ originalFileName 
+               Copy backupfile To local_fname 
             End If   
          Else
             Log.ErrorMsg("pdf90 failed: " & result)
             Message.Error("pdf90 failed to run: " & result)
          Endif
    End Select
+   PDForm.Load_PDF(local_fname, False, False)
 Catch
    modUtil.ReportError(Error.Text, Error.Backtrace)
 
 End
 
 Public Sub Reload()
-   
-   Dim hCtrl As Control
-   Dim cv As ColumnView
-   
-   FileChooser1.Reload()
-   For Each hctrl In filechooser1.FileView.Children
-      If hctrl Is ColumnView Then
-         cv = hctrl
-         If Not cv.MoveFirst() Then  'could be empty
-            cv.Item.Selected = True  
-            cv.SetFocus()
-            FileChooser1_Activate()  
-            '  FMetaData.txtPatient.SetFocus()
-            Break
-         Else
-            
-            FMetaData.EditArea_Clear()
-            PDForm.Visible = False
-            pbox.Visible = False
-            FMetaData.cmbStafftype.index = -1
-            FMetaData.chkLockPatient.value = False
-            FMetaData.chkLockSender.value = False
-            
-         End If
-      Endif
-   Next
+
+   FMetaData.EditArea_Clear()
+   PDForm.Visible = False
+   pbox.Visible = False
+   FMetaData.cmbStafftype.index = -1
+   FMetaData.chkLockPatient.value = False
+   FMetaData.chkLockSender.value = False
+   local_fname = Null
+   remote_fname = Null         
+   Reload_FileList()
+End
+
+Private Sub Reload_FileList()
+
+  Dim i As String
+  
+  filechooser1.Clear()
+  For Each i In modFiles.List("document_scanning_directory")
+    filechooser1.Add(i)
+  Next
    
 End
+
+
+
 
 Public Sub LibraryMenu_Construct()
    
@@ -417,11 +384,15 @@ End
 
 Public Sub File_Delete()
    
-   Try Kill filechooser1.SelectedPath
+   If IsNull(local_fname) Then Return
+   Try Kill local_fname
    If Error Then
       Message.Info("An error occurred whilst attempting to delete the file.")
    Endif
-   filechooser1.Reload()
+   If Not IsNull(remote_fname)
+     modFiles.Delete("document_scanning_directory", remote_fname)
+     Reload_FileList()
+   Endif
    PDForm.PBox.Visible = False   
    pbox.Visible = False 
    

@@ -17,9 +17,10 @@
 
 Private pro As Process
 Private host As String
-Private prompt_waiting As Boolean
 Private input_buf As String
 Private jobs As Collection[]
+Private current As Collection
+Private restarts As Integer
 
 Private Sub PrepareProcess()
   Dim prg As String
@@ -27,15 +28,15 @@ Private Sub PrepareProcess()
   If Not IsNull(pro) Then
     If pro.State <> Process.Running Then
        pro = Null
+       If restarts > 5 Then Error.Raise("too many restarts")
     Endif
   Endif
   If IsNull(pro) Then
      prg = modUtil.FindProgram("sftp", "ssh")
      If IsNull(prg) Then Return
-     pro = Exec [prg, "-b", "-", host] For Read Write As "Sftp" 
-     prompt_waiting = True
+     pro = Exec [prg, "-b", "-", host] For Read Write As "Sftp"
+     Inc restarts 
      input_buf = ""
-     jobs.Add(["cmd": "start"])
   Endif
   
 End
@@ -44,7 +45,8 @@ Public Sub _new(host1 As String)
    
   host = host1
   jobs = New Collection[]
-  prompt_waiting = False 
+  current = Null 
+  restarts = 0
   
 End
 
@@ -57,35 +59,46 @@ Public Sub Sftp_Read()
    input_buf &= Read #pro, Lof(pro)
    pos = InStr(input_buf, "sftp>")
    If pos >= 0 Then
-      prompt_waiting = False
       input_buf = Right$(input_buf, - (pos + 5))
-   Endif
-   If Not prompt_waiting Then
-      If jobs.Length > 0 Then
-         jobs.Delete(0)
+      If Not IsNull(current) And If current.Exist("callback") Then
+         Object.Call(current!callback, "Response", [current, input_buf])
+         restarts = 0
       Endif
+      current = Null
       If jobs.Length > 0 Then
-        ' StartJob()
+         current = jobs[0]
+         jobs.Delete(0)
+         StartJob()
       Endif
    Endif
 End
+
+Public Sub AddJob(job As Collection)
+   
+  If IsNull(current) Then
+    current = job
+    StartJob() 
+  Else
+     jobs.Add(job)
+  Endif
+End
+
 
 Public Sub Sftp_Error(err As String)
    
   Log.DebugMsg("Sftp Process wrote to standard error:" & err)
   pro = Null 
+  If Not IsNull(current) Then
+    Wait restarts + 1
+    StartJob()
+  Endif
    
 End
 
-Public Sub PutFile(local As String, remote As String)
+Private Sub StartJob()
    
-  jobs.Add(["local": local, "remote": remote, "cmd": "put"])
-  'If Not prompt_waiting Then StartJob()
+  PrepareProcess()
+  Print #pro, current!cmd 
    
 End
 
-Public Sub GetFile(remote As String)
-   
-   
-   
-End

@@ -1,0 +1,235 @@
+' Gambas class file
+
+Inherits CTask
+' Copyright (C) 2013 Dr. Ian Haywood
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'----------------------------------------------------------------------
+
+'  class to allow printing entirely in the background
+'  largely duplicates the functionality of modPrinting and should replace it...eventually
+
+Static Private file_num As Integer = 0
+
+
+Public Sub _new()
+  Dim s As String
+   
+  Super.Init("/bin/sh")
+  Me.Send("umask 077\n")
+  s = Temp$()
+  s = Left$(s, RInStr(s, "/"))
+  Me.Send("cd " & s & "\n") 
+
+End
+
+' create a unique temporary filename
+Static Public Sub Get_File(ending As String, Optional contents As String) As String
+   
+ Dim s As String
+ 
+ s = Temp$() & "." & ending
+ If Not IsNull(contents) Then File.Save(s, contents)
+   
+End
+
+Static Public Sub Change_Ending(fname As String, new_ending As String) As String
+  Dim i As Integer
+   
+  i = RInStr(fname, ".")
+  If i = 0 Then Return fname
+  Return Left$(fname, i) & new_ending
+   
+End
+
+Public Sub Latex_To_Pdf(latex As String) As String
+   
+   Dim stem As String = Temp$
+   Dim f As File 
+   Dim cmd As String
+   
+   f = Open stem & ".tex" For Write Create
+   Print #f, latex
+   Close #f
+   cmd = modUtil.FindProgram("pdflatex", "texlive-latex-base")
+   If IsNull(cmd) Then Return 
+   cmd &= " " & stem & ".tex\n"
+   Me.Send(cmd)
+   Return stem & ".pdf"
+End
+
+Public Sub Print_PDF(pdf_path As String, Optional printertype As Integer = const.Paper_Plain, number_copies As Integer = 1)
+   
+   Dim cmd As String
+   
+   If pdf_path = "" Then Return
+   cmd = modUtil.FindProgram("lpr", "cups")
+   If IsNull(cmd) Then Return
+   pdf_path = "'" & pdf_path & "'" 'fixes baulking on odd instring characters eg ( or )
+   cmd &= " " & GetOption(printertype)!lpr & " -# " & number_copies & " " & pdf_path & "\n"
+   Me.Send(cmd)
+   
+End
+
+Public Function Latex_To_Ps(latex As String, Optional printertype As Integer = const.Paper_Plain) As String
+   Dim stem As String
+   Dim f As File
+   Dim cmd As String
+   Dim coll As Collection
+   
+   stem = Temp$()
+   f = Open stem & ".tex" For Write Create
+   Print #f, latex
+   Close #f
+   cmd = modUtil.FindProgram("latex", "texlive-latex-base")
+   If IsNull(cmd) Then Return 
+   cmd &= " \\\\nonstopmode\\\\input " & stem & ".tex\n"
+   coll = GetOption(printertype)
+   cmd &= Subst$("dvips &1.dvi &2 -o &1.ps\n", stem, coll!dvips)
+   Log.DebugMsg("Printing using command " & cmd)
+   Me.Send(cmd)
+   Me.Send(Subst$("rm &1.tex\nrm &1.aux\nrm &1.dvi\nrm &1.log\n", stem))
+   Return stem & ".ps"
+   
+End
+
+Public Function Html_To_Pdf(sHtml As String) As String
+   '-----------------------------------------------------------------------------
+   'prints some html to a printer as a pdf using wkhtmltopdf to do the conversion
+   '-----------------------------------------------------------------------------
+   
+   Dim cmd As String
+   Dim wkhtmltopdf_options As String
+   Dim fname As String
+   
+   If sHtml = "" Then Return
+   cmd = modUtil.FindProgram("wkhtmltopdf", "wkhtmltopdf")
+   If IsNull(cmd) Then Return
+   wkhtmltopdf_options = modAdminDBI.Config_Get_Staff_Member("text_print_style", "standard")
+   Select wkhtmltopdf_options
+      Case "standard"
+         wkhtmltopdf_options = ""
+      Case "large"
+         wkhtmltopdf_options = "--margin-top 25 --margin-bottom 25 --margin-left 20 --margin-right 20 "
+   End Select
+   fname = Temp$()
+   File.Save(fname & ".html", sHtml)
+   cmd = Subst$("&1 &2 -q '&3.html' '&3.pdf'\n", cmd, wkhtmltopdf_options, fname)
+   Log.DebugMsg("HTML print command: " & cmd)
+   Me.Send(cmd)
+   Return fname & ".pdf"
+   
+End
+
+Public Function GetOption(printertype As Integer) As Collection
+   
+   Dim config_printer As String
+   Dim printername As String
+   Dim coll As New Collection
+   Dim printer_options As String
+   
+   Dim i As String
+   
+   config_printer = "Default"
+   Try config_printer = FMain.GetSelectedPrinter()
+   If config_printer = "" Then config_printer = "Default"
+   If config_printer <> "Default" Then
+      FMain.ResetPrinters()
+      Return Subst$("-P &1", config_printer)
+   Endif
+   Select Case printertype
+      Case const.Paper_Script
+         printername = "script"
+      Case const.Paper_Plain
+         printername = "plain"
+      Case const.Paper_Request
+         printername = "request"
+      Case const.Paper_Long
+         printername = "long"
+   End Select
+   config_printer = Settings[Subst$("Printers/&1", printername), "Default"]
+   printer_options = Settings[Subst$("Printers/&1_options", printername), "Default"]
+   If printer_options <> "Default" Then
+      coll = SplitOptions(printer_options)
+   Endif
+   If config_printer <> "Default" Then
+      coll!lpr &= Subst$(" -P &1", config_printer)
+   Endif
+   Return coll
+   
+End
+
+Public Function SplitOptions(opts As String) As Collection
+   
+   ' splits options string into dvips and lpr options strings
+   
+   Dim res As String[] = ["-O \\S+", "-T \\S+"]
+   Dim i As String
+   Dim re As Regexp
+   Dim dvips_opts As String
+   Dim lpr_opts As String
+   
+   dvips_opts = ""
+   For Each i In res
+      If opts = "" Then Break 
+      re = New Regexp(opts, i)
+      If re.Offset > -1 Then
+         dvips_opts &= " " & re.Text
+         opts = Left$(opts, re.Offset) & Right$(opts, Len(opts) - (re.Offset + Len(re.Text)))
+      End If
+   Next
+   
+   Return ["lpr": opts, "dvips": dvips_opts] 
+   
+End
+
+
+Public Function Pdf_Concat(pdfs As String[]) As String
+   
+  Dim stem As String
+  Dim cmd As String
+  Dim i As Integer
+  Dim s As String
+  
+  cmd = modUtil.FindProgram("pdftk", "pdftk")
+  If IsNull(cmd) Then Return
+  stem = Temp$()
+  For Each s In pdfs
+     cmd &= " '" & s & "'"
+  Next
+  cmd &= " cat output " & stem & ".pdf\n"
+  Return stem & ".pdf"
+   
+End
+
+
+Public Sub Send_Fax(fax As String, pdf_file As String)
+   Dim cmd As String
+   
+   
+   cmd = modUtil.FindProgram("mutt", "mutt")
+   If IsNull(cmd) Then Return
+   
+   Me.Send(Subst$("&1 -s 'fax message' -a '&2' -- &3@ozesms.com < /dev/null\n ", cmd, pdf_file, fax))
+   
+End
+
+
+
+Static Public Sub Unit_Test()
+   
+  Debug Change_Ending("foo.tmp.txt", "pdf") 
+   
+End
+

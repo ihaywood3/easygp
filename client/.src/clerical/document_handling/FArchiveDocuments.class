@@ -36,14 +36,30 @@ Private FMetaData As FDocumentMetaData
 Private Default_Zoom As Float
 Private local_fname As String
 Private remote_fname As String
-
+Private filechooser1 As FileChooser
+Private listbox1 As ListBox
 
 Static Private Form_Document_Archive As FArchiveDocuments
 
 Public Sub Init()
-
+   Dim d As String
+   
    Form_Document_Archive = Me
-   obs = New Observer(filechooser1) As "FileList"      'over-ride the menu on the file list with our own
+   d = modAdminDBI.Config_Get("document_scannning_directory", "/var/lib/easygp/incoming/", "Directories/scanning")
+   If Exist(d) Then
+      filechooser1 = New FileChooser(VBox8) As "FileChooser1"
+      With filechooser1
+         .Root = d
+         obs = New Observer(.FileView) As "FileList"      'over-ride the menu on the file list with our own
+         .Expand = True
+      End With
+      listbox1 = Null
+   Else
+      listbox1 = New ListBox(VBox8) As "ListBox1"
+      listbox1.Expand = True
+      FileChooser1 = Null
+      obs = New Observer(listbox1) As "FileList"      'over-ride the menu on the file list with our own
+   Endif
    With FMetaData = New FDocumentMetaData(Vbox_Metadata)         
       .Set_Embedded_Form_Name("Scanning")
       .Init("UnAllocated Documents")                  'gui allows allocation to staff, patient, sender"
@@ -67,7 +83,8 @@ Public Sub Form_Close()
    
   modUtil.Kill_If_Temp(local_fname) 
   Settings_Save()
-   
+  Form_Document_Archive = Null
+  
 End
 
 Public Sub txtDocumentDate_Activate()
@@ -106,15 +123,21 @@ Private Sub Settings_Load()
    
 End
 
-Public Sub FileChooser1_Click()
+Public Sub ListBox1_Click()
    
+   If IsNull(listbox1.Current) Then Return
+   remote_fname = listbox1.Current.Text
+   modUtil.Kill_If_Temp(local_fname)
+   local_fname = modFiles.Get("document_scanning_directory", remote_fname)
+   Common_Click()
+End   
+
+' this is the code point at which there is no difference between using a ListBox
+' or a FileChooser   
+Private Sub Common_Click()
 
    FMetaData.EditArea_Clear()
    Inc Application.Busy
-   If IsNull(filechooser1.Current) Then Return
-   remote_fname = filechooser1.Current.Text
-   modUtil.Kill_If_Temp(local_fname)
-   local_fname = modFiles.Get("document_scanning_directory", remote_fname)
    If File.Ext(local_fname) <> "" Then
       Select Case LCase(File.Ext(local_fname))
          Case "pdf"
@@ -138,11 +161,28 @@ Public Sub FileChooser1_Click()
    
 End
 
-Public Sub FileChooser1_Select()
+Public Sub FileChooser1_Activate()
    
-   FileChooser1_Click()
+  FileChooser1_Change() 
    
 End
+
+
+Public Sub ListBox1_Select()
+   
+   ListBox1_Click()
+   
+End
+
+Public Sub FileChooser1_Change()
+   
+   If IsNull(filechooser1.SelectedPath) Or If filechooser1.SelectedPath = "" Then Return
+   remote_fname = filechooser1.SelectedPath
+   local_fname = remote_fname ' local filesystem, so will always be the same
+   Common_Click()
+   
+End
+
 
 Public Sub btZoomIn_Click()
    
@@ -237,6 +277,7 @@ Public Sub JoinPDF()
    lblFilestoJoin.text = "Files to join"
    local_fname = fname
    remote_fname = Null
+   If Not IsNull(filechooser1) Then filechooser1.Reload()
    FMetaData.SetFilename(local_fname)
    PDForm.Load_PDF(local_fname, False, False)
    
@@ -349,10 +390,14 @@ Private Sub Reload_FileList()
 
   Dim i As String
   
-  filechooser1.Clear()
-  For Each i In modFiles.List("document_scanning_directory")
-    filechooser1.Add(i)
-  Next
+  If IsNull(listbox1) Then
+     filechooser1.Reload()
+  Else
+     listbox1.Clear()
+     For Each i In modFiles.List("document_scanning_directory")
+       listbox1.Add(i)
+     Next
+  Endif
    
 End
 
@@ -385,13 +430,14 @@ End
 Public Sub File_Delete()
    
    If IsNull(local_fname) Then Return
-   Try Kill local_fname
-   If Error Then
-      Message.Info("An error occurred whilst attempting to delete the file.")
-   Endif
-   If Not IsNull(remote_fname)
+   If Not IsNull(remote_fname) And remote_fname <> local_fname Then
      modFiles.Delete("document_scanning_directory", remote_fname)
      Reload_FileList()
+   Else
+      Try Kill local_fname
+   Endif
+   If Error Then
+      Message.Info("An error occurred whilst attempting to delete the file.")
    Endif
    PDForm.PBox.Visible = False   
    pbox.Visible = False 

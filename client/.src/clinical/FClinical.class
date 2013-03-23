@@ -1,6 +1,6 @@
 ' Gambas class file
 
-' Copyright (C) 2008-2012 Dr Richard TERRY
+' Copyright (C) 2008-2013 Dr Richard TERRY
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -2252,12 +2252,19 @@ Public Sub PastHistory_Delete()
    'the notes are kept in the system, just visible now as struck-through with 
    'an audit note written underneath
    '------------------------------------------------------------------------------ 
+   Dim sMsg As String
    
+   Message.Title = "Delete Health Issue Item"
+   sMsg = "You have chosen to delete a Health Issue.\n\n"
+          "Note that any actual progress notes associated with this health issue will not be visually removed from the progress notes "
+          "but will be 'struck through' and accompanied by an audit-trail annotation of who deleted this information and why.\n\n"
+          "Do you want to continue"
+  If Message.Question(sMsg, "Yes", "No") = 2 Then Return     
    modDBConnect.BeginTrans()
    modPastHistoryDBI.HealthIssue_Delete(currentconsult, currentPastHistory!pk_pasthistory, currentPastHistory)
    modDBConnect.CommitTrans()
    pasthistory_refresh_lists()
-   
+   Try FPastHistory.Reload_Lists()
 End
 
 Public Sub TabStrip_Lists_MouseUp() 
@@ -3845,7 +3852,9 @@ Public Sub popupMnu_ProblemList_Click()
    Dim PHPage As FPastHistory
    Dim datachanged As Boolean 
    Dim sHtml As String
+   Dim temp_coll As New Collection                      'temporary collection to hold changes before commit
    
+   temp_coll!pk_pasthistory = currentpasthistory!pk_pasthistory
    Select Case Last.tag  
       Case "add"
          Editor_ShowPage("Health Issues")
@@ -3865,53 +3874,47 @@ Public Sub popupMnu_ProblemList_Click()
          
       Case "view all previous notes"
           shtml = modProgressNotes.ConstructHTML_SingleProblem(currentconsult, currentpasthistory!pk_pasthistory, const.cSection_PastHistory)
-          Editor_ShowPage("Single Health Issue Notes", currentconsult!past_history[currentpasthistory!pk_pasthistory]!description & " (Previous)", shtml)
-         '  form_clinical.vBoxWebBrowser.Visible = True
-         '  form_clinical.vBoxWorkSpace.Visible = False 
-         '  lblWebBrowserNotes.Text = UCase(currentconsult!past_history[currentpasthistory!pk_pasthistory]!description)
-         '    Form_Html_Viewer.lblViewerCaption.text = UCase(currentconsult!past_history[currentpasthistory!pk_pasthistory]!description)
-         ' currentTemporaryWebbrowserHTMLFilename = modHTML.Display_HTML_Return_Filename(shtml, WebBrowserNotes, "progress_notes")
-         '   WebBrowserNotes.html = shtml
-         ' Form_Html_Viewer.WebView1.HTML = shtml
-         
+          Editor_ShowPage("Single Health Issue Notes", currentconsult!past_history[currentpasthistory!pk_pasthistory]!description & " (PREVIOUS NOTES)", shtml)
       Case "audit trail"
          PastHistory_Audit_Trail()
       Case "new notes"
          Editor_PastHistory_ProgressNotePage(currentpasthistory)
       Case "make significant"
-         currentconsult!past_history[CurrentPastHistoryList.Current.key]!active = True
-         currentconsult!past_history[CurrentPastHistoryList.Current.key]!major = False
+         temp_coll!active = True
+         temp_coll!major = False
          datachanged = True
-      Case "make significant with explanation"
-         
       Case "make major"
-         currentconsult!past_history[CurrentPastHistoryList.Current.key]!major = True
-         currentconsult!past_history[CurrentPastHistoryList.Current.key]!active = False
-         datachanged = True
-      Case "make major with explanation"
-         
+          temp_coll!major = True
+          datachanged = True
       Case "make inactive"
-         currentconsult!past_history[CurrentPastHistoryList.Current.key]!active = False
-         currentconsult!past_history[CurrentPastHistoryList.Current.key]!major = False
+         temp_coll!active = False
+         temp_coll!major = False
          datachanged = True
-      Case "make inactive with explanation"
-         
       Case "mark as operation" 
-         currentconsult!past_history[CurrentPastHistoryList.Current.key]!operation = True
+         If popupMnu_ProblemList_MarkAsOperation.Caption = "Mark as Not an Operation" Then
+         temp_coll!operation = False   
+         Else
+             temp_coll!operation = True
+         Endif
          datachanged = True  
       Case "mark as confidential"
-         currentconsult!past_history[CurrentPastHistoryList.Current.key]!confidential = True
+         If popupMnu_ProblemList_MarkAsConfidential.Caption = "Mark as Not Confidential" Then
+            temp_coll!confidential = False
+         Else
+             temp_coll!confidential = True
+         Endif
          datachanged = True  
       Case "delete"
          PastHistory_Delete
       Case "help"
          Help_Show("health-issues.html", "Health Issues", True)
-         
    End Select
    
    If datachanged Then
-      modPastHistoryDBI.Save(currentconsult, CurrentPastHistoryList.Current.key, currentconsult!past_history[CurrentPastHistoryList.Current.key])
+      modDBConnect.update("clin_history.past_history", currentconsult!past_history[CurrentPastHistoryList.Current.key], temp_coll, "pk_pasthistory")
+      modDBConnect.CommitTrans()
       Pasthistory_Refresh_Lists()
+      Try FPastHistory.Refresh_Problem(currentpasthistory!pk_pasthistory)  'the form may not be loaded, if is refresh the history item
    End If   
    popupMnu_ProblemList.hide()
    
@@ -3926,20 +3929,25 @@ Public Sub PastHistoryLists_Menu()
    With Last
       If .count Then
          .MoveCurrent
-         ' popupMnu_ProblemList.caption = currentpasthistory!description
-         '  popupMnu_ProblemList_NewNotes.caption = "Add new notes for " & currentpasthistory!description
-         popupMnu_ProblemList_title.caption = UCase(currentpasthistory!description)
+          popupMnu_ProblemList_title.caption = UCase(currentpasthistory!description)
          Select Case Last.tag
             Case "major"
                popupMnu_ProblemList_MakeMajor.Enabled = False  
-               popupMnu_ProblemList_MakeMajor_Explain.Enabled = False  
             Case "significant"
                popupMnu_ProblemList_MakeSignificant.Enabled = False  
-               popupMnu_ProblemList_MakeSignificant_Explain.Enabled = False  
-            Case "inactive" 
+             Case "inactive" 
                popupMnu_ProblemList_MakeInactive.Enabled = False   
-               popupMnu_ProblemList_MakeInactive_Explain.Enabled = False  
-         End Select
+          End Select
+          If currentpasthistory!confidential Then
+             popupMnu_ProblemList_MarkAsConfidential.Caption = "Mark as Not Confidential"
+          Else
+              popupMnu_ProblemList_MarkAsConfidential.Caption = "Mark as Confidential"
+          Endif
+          If currentpasthistory!operation Then
+             popupMnu_ProblemList_MarkAsOperation.Caption = "Mark as Not an Operation"
+          Else
+             popupMnu_ProblemList_MarkAsOperation.Caption = "Mark as Operation"
+          Endif
          popupMnu_ProblemList.Popup
       End If
    End With

@@ -1,6 +1,6 @@
 ' Gambas module file
 
-' Copyright (C) 2008-2012 Dr. Richard Terry
+' Copyright (C) 2008-2013 Dr. Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -360,37 +360,27 @@ Public Sub HealthIssue_Delete(currentconsult As Cconsult, pk_pasthistory As Inte
    '------------------------------------------------------------------
 
    Dim bNotesExist As Boolean
-   Dim audit As New Collection
+  ' Dim audit As New Collection
    Dim sAuditAnnotation As String 'audit annotation to insert into progress notes
    Dim sToday As String 'todays date as a string
    Dim progressnote As Collection
-   Dim bDeleted As Boolean 
+   Dim fk_reason As Integer
+   Dim reason As String
    
    sToday = Format(Now, "dd/mm/yyyy")
-   '-------------------------------------------------------------------
-   'First - popup the audit form and get reason for the deletion
-   'health issue could be deleted either during consulation 
-   'as we are allowed to change out mind within the consultation and
-   'don't need to give a reason for that
-   'or at a later date
-   '--------------------------------------------------------------------
-   audit!fk_row = currentPastHistory!pk_pasthistory
-   audit!fk_consult = currentconsult.GetPK()
-   audit!fk_section = const.cSection_PastHistory
-   audit!data_summary = currentPastHistory!description  
-   iAuditAction = const.cAuditAction_MarkDeleted
-   If currentPastHistory!fk_consult <> currentconsult.GetPK() Then
-      FAudit.Init(currentPastHistory, Const.cSection_PastHistory, iAuditAction, currentconsult)
-      If Not FAudit.ShowModal() Then Return 
-      audit!reason = "Delete" & ":<BR>- " & Lower(const.globalstring)
-      audit!reason = Lower(const.globalstring)
-      If iAuditAction = const.cAuditAction_Delete Then bDeleted = True   
-   Else
-      audit!reason = const.sAuditAction[const.cAuditAction_Reversal]
+   ' ----------------------------------------------------------------------------------------------------
+   ' If the consult this past history item was created = today, we can just reverse it no questions asked
+   ' otherwise popup up an audit trail dialog
+   ' ----------------------------------------------------------------------------------------------------
+   If currentPastHistory!fk_consult <> currentconsult.GetPK() Then            'if not the same consult - get reason for audit-trail
+      FAudit.Init("Delete Past History Item", "clin_history.past_history", currentPastHistory!description)
+      fk_reason = FAudit.ShowModal() 
+      modDBConnect.CommitTrans()                                              'otherwise if a new reason it won't have been comitted
+      reason = modAudit.Get_Reason_Using_pk(fk_reason)
    End If
-   bDeleted = True
-   
-   'Now if progress notes existed then update the database to reflect this
+   '---------------------------------------------------------------------------------------
+   'Now if progress notes existed for this problem then update the database to reflect this
+   '---------------------------------------------------------------------------------------
    For Each progressnote In currentconsult!progress_notes
       If progressnote!fk_problem = pk_pasthistory And progressnote!fk_section = const.cSection_PastHistory Then 
          '-------------------------------------------------------------------
@@ -398,18 +388,13 @@ Public Sub HealthIssue_Delete(currentconsult As Cconsult, pk_pasthistory As Inte
          '-------------------------------------------------------------------
          sAuditAnnotation = "<STRIKE><P><FONT COLOR='#b3b3b3'>" & progressnote!notes & "</STRIKE><p>"
          sAuditAnnotation &= "<P ALIGN=CENTER><I><B>Audit trail</B> : notes deleted by " & modDBConnect.currentUser!wholename & " on "
-         sAuditAnnotation &= sToday & " the reason given was: " & Lower(const.globalstring) & "</P></I></FONT><p>"
-         progressnote!notes = sAuditAnnotation
-         currentconsult!progress_notes[progressnote!pk_progressnote] = progressnote
+         sAuditAnnotation &= sToday & " the reason given was: " & Lower(reason) & "</P></I></FONT><p>"
+         modDBConnect.update("clin_consult.progressnotes", Null, ["pk": progressnote!pk_progressnote, "notes": sAuditAnnotation])
       End If
    Next 
-   
-   modConsultDBI.ProgressNotes_Edit(currentconsult!progress_notes, pk_pasthistory)
-   currentPastHistory!deleted = True
-   pk_pastHistory = modPastHistoryDBI.Save(currentconsult, pk_pasthistory, currentPastHistory) 
-   audit!fk_action = iAuditAction
-   modConsultDBI.Make_Audit(audit, "clin_history", "past_history")
-
+   modDBConnect.update("clin_history.past_history", Null, ["pk": pk_pasthistory, "deleted": True])
+   modDBConnect.CommitTrans()
+   FClinical.Refresh_AllPreviousNotes() 
 End
 
 Public Function TeamCareMembers_Get(fk_pasthistory As Integer) As Collection

@@ -22,8 +22,12 @@
 '              calender dosn't trigger reliably, leaving it poppup up at inopportune
 '              times.
 '              fk_code is a string because the database field in coding is a string
-'KNOWN BUGS     nil
-'
+'KNOWN BUGS    one known not quantified see this code:
+'  If IsNull(visit!fk_claim) Then
+'          Message.Info("Richard the fk_claim Null bug...the gui will Stop at the Next Line , please check the collection contents ")
+'          Error.Raise("an error")
+'       Endif
+
 ' TODO'S       Implement delete of visit/claim with audit trail
 '              Look at implications if you allow the user to change an existing diagnosis wording
 '              this should be allowable eg (could have made a spelling mistake etc, but need
@@ -127,6 +131,60 @@ End
 Public Sub Save()
    '----------------------------------
    'Save the workcover claim and visit
+   'Note those idiots at NSW workcover changed the whole damn form oct 2011
+   'and enforced not accepting them end of march!!!!!!
+   'i.e all the old forms may/may not save with this new routine
+   'may have to work out save on basis of date later
+   '  claim
+   '  pk serial NOT NULL,
+   '   fk_consult integer NOT NULL, -- fk to clin_consult.consult, gives date the claim was first logged. Note the first visit.fk_consult will be same as this, but no subsequent ones will. Last visit.fk_consult = day claim was finalised
+   '   claim_number text, -- claim number for this workcover claim
+   '   fk_occupation integer, -- foreign key to common.lu_occupations table...
+   '   fk_branch integer, -- foreign key to contacts.data.organisations table or contacts.data_persons table where the employer is a person and not a company
+   '   hours_week_worked integer,
+   '   mechanism_of_injury text,
+   '   date_injury text NOT NULL, -- if known, the date of injury ?how to handle vague dates here, so have made this text for now
+   '   contact_person text, -- A contact person for this claim...
+   '   memo text,
+   '   identifier text NOT NULL,
+   '   fk_person integer, -- key to contacts.data_persons table where employer is a person and not an organisation
+   '   accepted boolean, -- If True then the work cover claim as been accepted by the insurer
+   '   deleted boolean DEFAULT false, -- if true the claim is marked as deleted
+   '   date_first_seen date, -- the day on which the patient was first seen for this workcover injury
+   '   preexisting_factors text, -- any  pre-existing factors relevant to this workcover injury
+   '   consistant_with_cause boolean DEFAULT true,
+   '   VISIT
+   '   pk serial Not Null,
+   '   fk_claim integer NOT NULL, -- foreign key linking to claims table
+   '   fk_lu_visit_type integer NOT NULL, -- key to lu_visit_type table
+   '   diagnosis text NOT NULL, -- the diagnosis may be free text but could be coded
+   '   fk_code text, -- key to coding.generic_terms table
+   '   management_plan text, -- description of the managment plan
+   '   review_date date, -- Date the treatment plan will be reviewed
+   '   assessworkplace boolean NOT NULL DEFAULT false,
+   '   hours_capable integer, -- number of hours in the day capable
+   '   days_capable integer, -- number of days in a week capable of working
+   '   restrictions text,
+   '   fk_caused_by_employment integer NOT NULL,
+   '   doctor_consented boolean DEFAULT true, -- if true doctor consented. Note this is not in the ...
+   '   worker_consented boolean DEFAULT true, -- if true worker consented. Note this is not in the ...
+   '   fitness_preinjury_from date,
+   '   fitness_suitable_from date,
+   '   fitness_suitable_to date,
+   '   fitness_unfit_from date,
+   '   fitness_unfit_to date,
+   '   fitness_perm_mod_duties_from date,
+   '   fk_consult integer,
+   '   fk_progressnote integer, -- key to clin_consult.progressnotes points to last progress note associated with this visit
+   '   fk_coding_system integer, -- if not null this is the coding system used for the coded diagnosis
+   '   capabilities text, (OLD FIELD)
+   '   certificate_date date, -- The certificate date, usually now() but sometimes needs to be backdated, for example if...
+   '   latex text, -- the LaTex definition of the workcover form
+   '   deleted boolean DEFAULT false, -- if true the visit is marked as deleted
+   '   time_return_any_duties text,
+   '   factors_delaying_return text,
+   '   referrals_other_providers text, -- details of referrals to other health providers including...
+   
    '----------------------------------   
    
    Dim sProgressNotes As String
@@ -177,10 +235,21 @@ Public Sub Save()
    Endif
    claim!mechanism_of_injury = Trim(txtMechanismInjury.text)
    claim!date_injury = Trim(txtDateInjury.text)
+   claim!date_first_seen = Trim(txtDateFirstSeen.text)
    claim!contact_person = Trim(txtContactPerson.text)
+   claim!preexisting_factors = Trim(txtPreExistingFactors.text)
    claim!memo = Trim(txtMemo.text)
    claim!identifier = Trim(txtIdentifier.text)
    claim!accepted = CBool(chkClaimAccepted.value)
+   If rbInjuryConsistantWithHistoryYes.value = True Then
+     claim!consistant_with_cause = "yes"
+   End If
+   If rbInjuryConsistantWithHistoryNo.value = True Then
+     claim!consistant_with_cause = "no"
+   End If 
+   If rbInjuryConsistantWithHistoryuncertain.value = True Then
+     claim!consistant_with_cause = "uncertain"
+   End If
    claim.Save("clin_workcover.claims", "fk_claim")
    '--------------
    'next the visit
@@ -302,6 +371,10 @@ Public Function EditArea_Contents_Valid() As Boolean
    End If 
    If Not IsDate(txtCertificateDate.text) Then
       txtCertificateDate.SetFocus()
+      Return False   
+   Endif
+   If Not IsDate(txtDateFirstSeen.text) Then
+      txtDateFirstSeen.SetFocus()
       Return False   
    Endif
    If fk_branch = 0 And fk_person = 0 Then  'no branch or person
@@ -782,7 +855,8 @@ Public Function WorkcoverForm_LaTeX_Construct(visit As CRow) As CTemplate
    
    Print templ.GetData()
    modPrinting.Print_latex_tempRT(templ.GetData())  
-    Return templ
+   Return templ
+
 End
 
 Public Function WorkcoverForm_LaTeX_Construct_old(visit As CRow) As CTemplate
@@ -1337,7 +1411,7 @@ Public Sub lvwClaims_Select()
    '------------------------------------------------------------------------------
    'Either user has clicked on the claims list or set programmatically in Reload()
    '------------------------------------------------------------------------------
-
+   
    If bexit Then Return 
    If Not lvwClaims.count Then Return 
    Reset_Keys()
@@ -1540,7 +1614,7 @@ Public Sub Visit_Display()
    '----------------------------------------
    'Display the details of the current visit
    '----------------------------------------   
-
+   
    If bexit Then Return 
    EditArea_Visit_Clear()        'just clear textboxes etc, dosn't affect the keys
    VBox_EditArea.Enabled = False
@@ -1687,6 +1761,7 @@ Public Sub EditArea_Claim_Clear()
    txtCodedDiagnosis.text = ""
    bClaimLoaded = False 
    Contact_Type = const.contacttype_organisation 'default
+   rbInjuryConsistantWithHistoryYes.value = True 
    bExit = False
    
 End
@@ -1705,9 +1780,18 @@ Public Sub EditArea_Visit_Clear()
    txtUnfit_From.text = ""
    txtUnfit_To.text = ""
    txtRestrictions.text = ""
+   txtEstimatedTimeForAnyDuties.text = ""
+   txtDelayingFactors.text = ""
    txtPermModDuties_From.text = ""
    txtCanWork_HrsPerDay.text = ""
    txtCanWork_DaysPerWeek.text = ""
+   txtLifting.text = ""
+   txtPushing.text = ""
+   txtBendTwistSquat.text = ""
+   txtOtherCapability.text = ""
+   txtSitting.text = ""
+   txtStanding.text = ""
+   txtDriving.text = ""
    chkFitness_PermModDuties.value = False
    chkFitness_Unfit.value = False
    chkFitness_Suitable.value = False
@@ -1715,6 +1799,8 @@ Public Sub EditArea_Visit_Clear()
    rbAssessWorkplaceYes.value = False
    chkAgreeToTreat_Doctor.value = True
    chkAgreeToTreat_Worker.value = True
+   rbRehabProviderNo.Value = True  
+   rbCopyOfDutiesNo.value = True
    bVisitLoaded = False 
    bExit = False
    bNewVisit = False 
@@ -1863,10 +1949,6 @@ Public Sub Organisation_Selection(action As String, Optional calling_control As 
             ColumnView2[branch!pk_view][3] = Branch!suburb & " " & Branch!postcode
          Next 
          
-         If branches.count = 1 Then 
-            Organisation_Selection("accept")
-            Return  
-         End If
          ColumnView2.Visible = True
          ColumnView2.Raise
          ColumnView2.tag = txtEmployer
@@ -2152,7 +2234,7 @@ Public Sub EditAreaTextBox_LostFocus()
    Select Case Last.tag
       Case "coded diagnosis"
          Timer1.Stop() '
-      Case "certificate date", "permanantly modified duties", "suitable duties to", "review date", "pre-injury from", "suitable duties from", "unfit from", "unfit to"
+      Case "certificate date", "permanantly modified duties", "suitable duties to", "review date", "pre-injury from", "suitable duties from", "unfit from", "unfit to", "date first seen"
          If Last.text <> "" Then
             hasText = True
             If Not modEditAreaHelpers.Valid_Date(Last) Then
@@ -2471,5 +2553,3 @@ Public Sub rbTypeEmployer_Click()
    Employer_Find()
    
 End
-
-

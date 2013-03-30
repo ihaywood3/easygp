@@ -48,6 +48,7 @@ Private bSkipTown As Boolean
 Public fk_town As Integer
 Private Corrected_Town As Collection
 Private hLog_file As File
+Private last_fk_relationship As Integer
 
 Static Private Form_Legacy_Data_Import As FImportLegacyData
 
@@ -228,7 +229,7 @@ Public Sub DrsDesk_SocialHistory_Import()
    'Insist on at least some sort of attempt at a name
    '-------------------------------------------------
    import_dir = "/home/richard/easygp/import/"
-
+   
    Sfilename = import_dir & "/" & Trim("Exported_SocialHistory.txt")
    If sFilename = "" Then 
       txtSocialHistoryPath.SetFocus()
@@ -336,7 +337,7 @@ Public Sub DrsDesk_SocialHistory_Import()
          SH!fk_consult = currentconsult.GetPK()
          SH!history = bits[social_history]
          SH!fk_socialhistory = modDBConnect.insert("clin_history.social_history", SH)
-        
+         
       Else
          If $Result.count > 1 Then
             Message.info("More than 1 patient found with same names and dob")
@@ -363,82 +364,158 @@ Public Sub DrsDesk_SocialHistory_Import()
    Dec Application.busy
    
 End
-Public Sub DrskDesk_FamilyHistory_Import()
-  '-------------------------------------------------------------------------------
-  ' Imports the patients family history initially only DrsDesk  
-  ' Richard|Terry|19/1/53 0:00:00|Margaret|<birthdate>|1|Mother|-1|2|Osteoarthritis|55|0|
-  ' 0=surname
-  ' 1=firstname
-  ' 2=birthdate
-  ' 3=relations name
-  ' 4=relations birthdate
-  ' 5=relationship id = comon.lu_family_relationships.pk
-  ' 6=the relationship .eg motheer
-  ' 7=description (needs to be coded)
-  ' 8=age_death -1 or null = ?
-  ' 9=condition
-  ' 10=age_onset
-  ' 11=boolean cause of death
-  ' -----------------------------------------------------------------------------
-  ' These are the fields in EasygP vs those in DrsDesk
-  ' 1;"Mother"                                1
-  ' 2;"Grandmother - maternal"                11
-  ' 3;"Grandmother - paternal"                12
-  ' 4;"Grandfather - maternal"                13
-  ' 5;"Grandfather - paternal"                14
-  ' 6;"Great grandmother paternal"            42
-  ' 7;"Great grandmother maternal"            43 
-  ' 8;"Great grandfather maternal"            44
-  ' 9;"Great grandfather paternal"            45 
-  ' 10;"General Family History"               26
-  ' 11;"General History - paternal"           46
-  ' 12;"General History - maternal"           47
-  ' 13;"Wife"                                 15
-  ' 14;"Husband"                              16 
-  ' 15;"Defacto wife"                         41
-  ' 16;"Defacto husband"                      29 
-  ' 17;"Uncle - maternal"                     18
-  ' 18;"Uncle - paternal"                     19
-  ' 19;"Aunt - maternal"                       7
-  ' 20;"Aunt - paternal"                       8
-  ' 21;"Cousin maternal"                      27
-  ' 22;"Cousin paternal"                      28
-  ' 23;"Nephew - maternal"                    20 
-  ' 24;"Nephew - paternal"                    21 
-  ' 25;"Niece - paternal"                     10 
-  ' 26;"Niece - maternal"                      9 
-  ' 27;"Son"                                  22 
-  ' 28;"Step son"                             23
-  ' 29;"Daughter"                             24
-  ' 30;"Step daughter"                        25
-  ' 31;"Step mother"                           2 
-  ' 32;"Step father"                           4 
-  ' 33;"Uncle - side of family unknown"       30      
-  ' 34;"Aunt - side of family unknown"        31
-  ' 35;"Cousin side of family unknown"        32
-  ' 36;"Nephew - side of family unknown"
-  ' 37;"Grandmother side of family unknown"   33
-  ' 38;"Grandfather side of family unknown"   34
-  ' 39;"Grandaughter side of family unknown"  35
-  ' 40;"Grandson side of family unknown"      36
-  ' 41;"Adopted son"                          39
-  ' 42;"Adopted daughter"                     40
-  ' 43;"father"                                3
-  ' 
-  
-  ' ------------------------------------------------------------------------------
+
+Public Function DrskDesk_Fill_Relationship_ID_Array() As Integer[]
+   'ids[drsDesk]= key to common.lu_relationships in EasyGP
+   '
    
-   Dim patients As Collection
+   Dim ids As Integer[]
+   
+   ids = New Integer[48]
+   
+   ids[1] = 1     'x 1;"Mother"       
+   ids[2] = 31    'x 31;"Step mother"    
+   ids[3] = 43    'x 43;"father"  
+   ids[4] = 32    'x 32;"Step father" 
+   ids[5] = 44    'x  44;"Brother"    
+   ids[6] = 45    'x  45;"Sister"           
+   ids[7] = 19    'x 19;"Aunt - maternal"  
+   ids[8] = 20    'x 20;"Aunt - paternal"   
+   ids[9] = 26    'x 26;"Niece - maternal"     
+   ids[10] = 25    'x 25;"Niece - paternal"   
+   ids[11] = 2     'x 2;"Grandmother - maternal"   
+   ids[12] = 3     'x 3;"Grandmother - paternal"   
+   ids[13] = 4     'x 4;"Grandfather - maternal"   
+   ids[14] = 5     'x 5;"Grandfather - paternal" 
+   ids[15] = 13    'x 13;"Wife" 
+   ids[16] = 14    'x 14;"Husband"   
+   ' ids[17] = '  Defacto not used in EasyGP let it crash
+   ids[18] = 17    'x 17;"Uncle - maternal" 
+   ids[19] = 18    'x 18;"Uncle - paternal"  
+   ids[20] = 23    'x 23;"Nephew - maternal"    
+   ids[21] = 24    'x 24;"Nephew - paternal"     
+   ids[22] = 27    'x 27;"Son"               
+   ids[23] = 28    'x 28;"Step son"  
+   ids[24] = 29    'x 29;"Daughter"             
+   ids[25] = 30    'x 30;"Step daughter"                 
+   ids[26] = 10    'x 10;"General Family History"        
+   ids[27] = 21    'x 21;"Cousin maternal"       
+   ids[28] = 22    'x 22;"Cousin paternal"         
+   ids[29] = 16    'x 16;"Defacto husband"        
+   ids[30] = 33    'x 33;"Uncle - side of family unknown"   
+   ids[31] = 34    'x 34;"Aunt - side of family unknown"  
+   ids[32] = 35    'x 35;"Cousin side of family unknown"  
+   ids[33] = 37    'x 37;"Grandmother side of family unknown"
+   ids[34] = 38    'x 38;"Grandfather side of family unknown" 
+   ids[35] = 39    ' 39;"Grandaughter side of family unknown"  
+   ids[36] = 40    ' 40;"Grandson side of family unknown"     
+   ' ids[37] = was Adoptive Father in DrsDesk
+   ' ids[38] =  was Adoptive Mother in drsdesk
+   ids[39] = 41    ' 41;"Adopted son"     
+   ids[40] = 42    ' 42;"Adopted daughter"        
+   ids[41] = 15    ' 15;"Defacto wife"           
+   ids[42] = 6     'x 6;"Great grandmother paternal" 
+   ids[43] = 7     'x 7;"Great grandmother maternal"  
+   ids[44] = 8     'x 8;"Great grandfather maternal"       
+   ids[45] = 9     'x 9;"Great grandfather paternal"    
+   ids[46] = 11    'x 11;"General History - paternal"   
+   ids[47] = 12    'x 12;"General History - maternal" 
+   
+   Return ids
+   
+End
+
+Public Function DrsDesk_Leant_Terms_Refresh() As Result
+   '------------------------------------------------------------------------
+   'Returns a result object of terms the system has learnt to match to ICPC2
+   '------------------------------------------------------------------------   
+   
+   Dim sql As String = ""
+   
+   "SELECT distinct"
+   "  icpc2_terms.term as pk_view,"
+   "  icpc2_terms.term, "
+   "  icpc2_terms.term_code, "
+   "  icpc2_terms.icpc_code, "
+   "  icpc2_drsdesk_term_mapper.drsdesk_free_text "
+   "FROM "
+   "  coding.icpc2_terms, "
+   "  coding.icpc2_drsdesk_term_mapper "
+   "WHERE "
+   "  icpc2_drsdesk_term_mapper.fk_icpc2_term = icpc2_terms.pk;"
+   
+   Return modDBConnect.exec_query(sql)
+   
+End
+
+Public Sub DrsDesk_FamilyHistory_Import()
+   '-------------------------------------------------------------------------------
+   'todo - make the file surname/fistname
+   ' Imports the patients family history initially only DrsDesk  
+   ' Terry|Richard|19/1/53 0:00:00|Margaret|<birthdate relative>|1|Mother|-1|2|Osteoarthritis|55|0|a comment
+   '   0     1        2                3          4              5  6      7 8   9            10 11
+   ' 0=surname
+   ' 1=firstname
+   ' 2=birthdate
+   ' 3=relations name
+   ' 4=relations birthdate
+   ' 5=relationship id = comon.lu_family_relationships.pk
+   ' 6=the relationship .eg motheer
+   ' 7=age_deat icpc_terms = modDBConnect.exec_query_collection("Select * from coding.icpc2_terms") icpc_terms = modDBConnect.exec_query_collection("Select * from coding.icpc2_terms")h -1 or null = ?
+   ' 8=condition_id
+   ' 9=condition
+   ' 10=age_onset
+   ' 11=boolean cause of death
+   ' 12=comment
+   ' 13=member_id
+   
+   ' ------------------------------------------------------------------------------
+   Dim cRelationship_ID As Integer = 5
+   Dim cRelations_Name As Integer = 3
+   Dim cRelations_Birthdate As Integer = 4
+   Dim cAge_Death As Integer = 7
+   Dim cCondition As Integer = 9
+   Dim cCondition_Age_Onset As Integer = 10
+   Dim cCaused_Death As Integer = 11
+   Dim cCondition_Notes As Integer = 12
+   Dim J_code_count As Integer
+   Dim user_j_terms As Collection
+   Dim new_j_term As CRow 
    Dim sFilename As String
    Dim hfile As File
    Dim sFileError As String
+   Dim surname As Integer = 0
+   Dim firstname As Integer = 1
+   Dim birthdate As Integer = 2
+   Dim bits As String[]
+   Dim sLastPatient As String
+   Dim scurrentPatient As String
+   Dim FH_Link As CRow
+   Dim FH_Condition As CRow
+   Dim FH_Member As CRow
+   Dim Members As Collection
+   Dim conditions As Collection
+   Dim relationship_ids As Integer[]
+   Dim family_history_condition_count As Integer
+   Dim import_count As Integer
+   Dim FamilyHistory As Collection
+   Dim bValidPatient As Boolean
+   Dim learntTerms As Result
+   Dim ErrorFile As File
+   Dim icpc_terms As Collection
+   Dim icd10_terms As Collection
+   Dim a_term As Collection
+   Dim sql As String
+   Dim $Result As Result
    
-   
-   
-   
+   learntTerms = DrsDesk_Leant_Terms_Refresh()                                'Load mappable terms drsdesk to icpc as result
+   icd10_terms = modDBConnect.exec_query_collection("Select code as pk_code, term  from coding.generic_terms where fk_coding_system = 2")
+   icpc_terms = modDBConnect.exec_query_collection("Select * from coding.icpc2_terms")
+   relationship_ids = DrskDesk_Fill_Relationship_ID_Array()
    modDBConnect.BeginTrans()
    patients = New Collection 
-  Sfilename = import_dir & "/" & Trim("Exported_FamilylHistory.txt")
+   Sfilename = import_dir & "/" & Trim("Exported_FamilyHistory.txt")
+   '  Sfilename = import_dir & "/" & Trim("test_fh.txt")
    If sFilename = "" Then 
       txtImportDirectory.SetFocus()
       Return
@@ -453,16 +530,252 @@ Public Sub DrskDesk_FamilyHistory_Import()
       Message.Warning("Unable to open " & sFilename & "\n\n" & sFileError)
       Return
    End If
+   ErrorFile = Open import_dir & "/familyhistory_import_errors.txt" For Write Create   'open an error file to log errors
+   
    '-------------------------------------------------------------------
    'So far so good - hourglass to user to indicate we are go for import
    '-------------------------------------------------------------------
    Inc Application.Busy
    lvDataImportProgressMessages.Clear()
    lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "Starting family history import..............")
-    While Not Eof(hfile)
-       
-    Wend
-   
+   Patients = New Collection
+   While Not Eof(hfile)
+      '------------------------------------------
+      'Input each line and split at the delimeter
+      '------------------------------------------
+      Line Input #hfile, sLineInput           
+      bits = Split(sLineInput, "|")
+      scurrentPatient = bits[firstname] & bits[surname] & bits[birthdate]
+      If sLastPatient <> scurrentPatient Then
+         '------------------------------------------------------
+         'if line contains a new patient, find match in back end
+         'and reset keys
+         '------------------------------------------------------
+         Print "Imported patient number:" & import_count & " " & sLastPatient 
+         Print "committing data..............."
+         modDBConnect.CommitTrans()
+         Print "loading data for " & scurrentPatient
+         
+         family_history_condition_count = 0                                              
+         Inc import_count
+         '  End If
+         bValidPatient = False 
+         last_fk_relationship = 0
+         patient = Patient_Identify(bits)                                    'create the next patient.
+         If patient!fk_patient Then
+            sLastPatient = bits[firstname] & bits[surname] & bits[birthdate]
+            currentconsult = New CConsult(patient)
+            currentconsult.Set(const.ConsultType_DataImport, "Family History Imported")
+            bValidPatient = True
+         End If
+      End If  
+      If patient!surname = "Feketey" Then
+         Print
+      Endif
+      If bValidPatient Then 
+         '-----------------------------------------------------------------------------
+         ' At this point probably got a valid patient, save each family history item
+         ' CREATE TABLE clin_history.family_members
+         ' (
+         '   pk serial NOT NULL,
+         '   fk_relationship integer NOT NULL,
+         '   fk_person integer, -- I put this in in-case it was needed if we had imported family history from an person who exists in the easygp database.
+         '   "name" text,
+         '   birthdate date,
+         '   age_of_death integer,
+         '   fk_occupation integer,
+         '   fk_country_birth character(2),
+         '   deleted boolean DEFAULT false,
+         '   fk_consult integer,
+         '   
+         '   First - if the row of data contains a different relationship
+         '-----------------------------------------------------------------------------
+         If last_fk_relationship <> relationship_ids[bits[cRelationship_ID]] Then 
+            FH_Member = New CRow
+            FH_Member!fk_relationship = relationship_ids[bits[cRelationship_ID]]
+            FH_Member!name = bits[cRelations_Name]
+            Try FH_Member!birthdate = Val(bits[cRelations_Birthdate])
+            If bits[cAge_Death] <> -1 Then
+               FH_Member!age_of_death = bits[cAge_Death]
+            End If   
+            FH_Member!fk_consult = currentconsult.GetPK()
+            FH_Member.Save("clin_history.family_members", "fk_member")
+            last_fk_relationship = relationship_ids[bits[cRelationship_ID]]
+            '---------------------------------------------------
+            'Now link this family member to the patient
+            ' CREATE TABLE clin_history.family_links
+            ' (
+            '   pk serial NOT NULL,
+            '   fk_member integer NOT NULL,
+            '   fk_patient integer NOT NULL,
+            '   deleted boolean DEFAULT false,
+            '   CONSTRAINT family_links_pkey PRIMARY KEY (pk)
+            ' )
+            ' WITH (
+            '   OIDS=FALSE
+            ' );
+            '---------------------------------------------------
+            FH_Link = New CRow
+            FH_Link!fk_member = FH_Member!fk_member
+            FH_Link!fk_patient = patient!fk_patient 
+            FH_Link.Save("clin_history.family_links", "fk_link")
+         End If   
+      End If
+      'End If 
+      ' If bValidPatient Then 
+      '---------------------------------------------------------------------------------------------
+      'next the conditions for this patient
+      '' CREATE TABLE clin_history.family_conditions
+      ' (
+      '   pk serial NOT NULL,
+      '   fk_member integer NOT NULL,
+      '   condition text NOT NULL, -- note: the condition may NEVER exist in the coded database, ...
+      '   age_of_onset integer,
+      '   cause_of_death boolean DEFAULT false,
+      '   notes text,
+      '   deleted boolean DEFAULT false,
+      '   fk_consult integer,
+      '   contributed_to_death boolean,
+      '   fk_code text, -- foreign key to coding.generic_terms table. Note this key is a text string...
+      '---------------------------------------------------------------------------------------------
+      Inc family_history_condition_count
+      
+      FH_Condition = New CRow
+      FH_Condition!fk_member = FH_Member!fk_member
+      FH_Condition!condition = bits[cCondition]
+      If bits[cCondition_Age_Onset] Then
+         FH_Condition!age_of_onset = Trim(bits[cCondition_Age_Onset])
+      Endif
+      If Bits[cCaused_Death] <> 0 Then
+         FH_Condition!cause_of_death = True
+      Endif
+      FH_Condition!notes = Trim(Bits[cCondition_Notes])
+      FH_Condition!fk_consult = currentconsult.GetPK()
+      '------------------------------------------------------------------------------
+      'Now attempt to get code
+      'first by direct match For the condition To ICPC terms
+      'Now try and match this health_issue with an icpc
+      'natural_language_term. This is because I only
+      'used natural language terms. There are around
+      '4000/17000 terms in my database not equatable
+      'believe it or not things like NIDDM/IDDM for
+      'which ICPC has no equivalent.
+      'if can, equate to pk
+      'of coding.icpc2_terms, otherwise, when saved
+      'the natural_language_term will be added as a 
+      'J99-00n term or popup an option to search
+      '-------------------------------------------------
+      For Each a_term In icpc_terms                                            ' loop through all icpc2 terms
+         If Lower(FH_Condition!condition) = Lower(a_term!natural_language_term) Then   ' is there are match to my natural language?
+            '  PH!fk_coding_system = const.coding_icpcPlus                        'yes, then coding system = icpc2 plus
+            FH_Condition!fk_code = a_term!icpc_code & a_term!term_code                   ' the code = join of both codes = key to coding.generic_terms
+            Break
+         End If
+      Next
+      If Not FH_Condition.Exist("fk_code") Then                                          'we didn't find an icpc2 match
+         For Each a_term In icd10_terms                                        'try looking in icd10
+            If Lower(FH_Condition!condition) = Lower(a_term!term) Then                 'found a match?
+               '  PH!fk_coding_system = const.coding_icd10                        'save fields
+               FH_Condition!fk_code = a_term!pk_code                                     'coding.generic_terms.pk
+               Break
+            End If
+         Next
+      End If
+      If Not FH_Condition.Exist("fk_code") Then                                          'still not code?, see if we have learnt it
+         For Each LearntTerms
+            If Trim(Lower(FH_Condition!condition)) = Trim(Lower(LearntTerms!drsdesk_free_text)) Then  'Yes?
+               '   PH!fk_coding_system = const.coding_icpcPlus                                    'we only learn from icpc2 plus - my decision
+               FH_Condition!fk_code = LearntTerms!icpc_code & LearntTerms!term_code                     'save the code                  
+               Break
+            End If
+         Next
+      End If
+      'have we already allocate this to a j-code?
+      If Not FH_Condition.Exist("fk_code") Then                                          'still not code?, see if we have learnt it
+         user_j_terms = ICPC2_Get_J_Terms()                 'get all current j terms
+         For Each a_term In user_j_terms                    'try and find a match
+            If Lower(FH_Condition!condition) = Lower(a_term!natural_language_term) Then
+               FH_Condition!fk_code = a_term!icpc_code & a_term!term_code
+               '   PH!fk_coding_system = const.coding_icpcPlus
+               Break
+            Endif
+         Next
+      End If 
+      If Not FH_Condition.Exist("fk_code") Then                                           'ok, still have no code          
+         '-------------------------------------------
+         'We couldn't match the free text with an icpc
+         'natural language term, so, check if we have
+         're-allocated this one, if not popup a modal
+         'box to get the code.God this could take some
+         'time as there are nearly 4000 of these, so
+         'I should write these to the database.
+         '---------------------------------------------
+         Dec Application.Busy    
+         const.globalstring = ""         
+         FICPC = New FICPCBrowser
+         FICPC.txtTermToImport.text = FH_Condition!condition                           'term we are trying to match
+         FICPC.txtSearch.SetFocus()
+         FICPC.ShowModal()
+         '  If const.globalstring = "" Then
+         '     Message.Info("no term code retrieved")
+         '   Endif
+         Inc Application.busy
+         FH_Condition!fk_code = const.globalstring
+         ' PH!fk_coding_system = const.coding_icpcPlus
+         '-----------------------------------------------------
+         'If user (me) did allocate a term, save for future use
+         '-----------------------------------------------------
+         If FH_Condition!fk_code Then
+            sql = "INSERT INTO coding.icpc2_drsdesk_term_mapper("
+            "fk_icpc2_term, drsdesk_free_text) " 
+            "VALUES ("
+            sql &= FH_Condition!fk_code & ", $$"
+            sql &= FH_Condition!condition & "$$)"
+            $Result = modDBConnect.exec_query(sql)
+            modDBConnect.CommitTrans()
+            learntTerms = DrsDesk_Leant_Terms_Refresh() 'Load mappable terms drsdesk to icpc
+         Else
+            'still not term, have we saved before as a j term?
+            user_j_terms = ICPC2_Get_J_Terms()                 'get all current j terms
+            For Each a_term In user_j_terms                    'try and find a match
+               If Lower(FH_Condition!condition) = Lower(a_term!natural_language_term) Then
+                  FH_Condition!fk_code = a_term!icpc_code & a_term!term_code
+                  FH_Condition!fk_coding_system = const.coding_icpcPlus
+                  Break
+               Endif
+            Next
+         End If  
+         If Not FH_Condition.Exist("fk_code") Or IsNull(FH_Condition!fk_code) Then   
+            '    Message.Info("Create J code") 
+            Print "creating j-code"
+            J_code_count = modDBConnect.exec_query("SELECT CAST(coalesce(term_code, '0') AS integer) as last_j_code from coding.icpc2_user_terms order by term_code DESC limit 1")!last_j_code
+            FH_Condition!fk_code = "J99" & Format(J_code_count + 1, "00#")
+            '  FH_Condition!fk_coding_system = 1
+            '  pk integer,
+            '   term text,
+            '   natural_language_term text,
+            '   icpc_code text,
+            '   term_code text,
+            '   status text,
+            '   replacement text
+            
+            new_j_term = New CRow
+            new_j_term!term = "User;" & FH_Condition!condition
+            new_j_term!natural_language_term = FH_Condition!condition
+            new_j_term!icpc_code = "J99"
+            new_j_term!term_code = Str(J_code_count + 1)
+            new_j_term!status = "A"
+            new_j_term.Save("coding.icpc2_user_terms", "fk_new_j_term")
+            modDBConnect.CommitTrans()
+         End If   
+      End If 
+      Print "....saving condition:", FH_Condition!condition 
+      FH_Condition.Save("clin_history.family_conditions", "fk_condition")
+      'End If 
+   Wend  
+   modDBConnect.CommitTrans()
+   Dec Application.Busy
+
 End
 
 Public Sub DrsDesk_PastHistory_Import()
@@ -571,20 +884,8 @@ Public Sub DrsDesk_PastHistory_Import()
    
    icpc_terms = modDBConnect.exec_query_collection("Select * from coding.icpc2_terms")
    icd10_terms = modDBConnect.exec_query_collection("Select code as pk_code, term  from coding.generic_terms where fk_coding_system = 2")
-   sql = ""
-   "SELECT distinct"
-   "  icpc2_terms.term as pk_view,"
-   "  icpc2_terms.term, "
-   "  icpc2_terms.term_code, "
-   "  icpc2_terms.icpc_code, "
-   "  icpc2_drsdesk_term_mapper.drsdesk_free_text "
-   "FROM "
-   "  coding.icpc2_terms, "
-   "  coding.icpc2_drsdesk_term_mapper "
-   "WHERE "
-   "  icpc2_drsdesk_term_mapper.fk_icpc2_term = icpc2_terms.pk"
+   learntTerms = DrsDesk_Leant_Terms_Refresh()                                'Load mappable terms drsdesk to icpc as result
    import_dir = "/home/richard/easygp/import/"
-   learntTerms = modDBConnect.exec_query(sql)                                        'Load mappable terms drsdesk to icpc as result
    ErrorFile = Open import_dir & "/pasthistory_import_errors.txt" For Write Create   'open an error file to log errors
    Sfilename = import_dir & "/" & Trim("Exported_PastHistory.txt")                   'Insist on at least some sort Of attempt at a name
    If sFilename = "" Then 
@@ -757,19 +1058,7 @@ Public Sub DrsDesk_PastHistory_Import()
                sql &= PH!description & "$$)"
                $Result = modDBConnect.exec_query(sql)
                modDBConnect.CommitTrans()
-               sql = ""
-               "SELECT distinct"
-               "  icpc2_terms.term as pk_view,"
-               "  icpc2_terms.term, "
-               "  icpc2_terms.term_code, "
-               "  icpc2_terms.icpc_code, "
-               "  icpc2_drsdesk_term_mapper.drsdesk_free_text "
-               "FROM "
-               "  coding.icpc2_terms, "
-               "  coding.icpc2_drsdesk_term_mapper "
-               "WHERE "
-               "  icpc2_drsdesk_term_mapper.fk_icpc2_term = icpc2_terms.pk;"
-               learntTerms = modDBConnect.exec_query(sql)  'Load mappable terms drsdesk to icpc
+               learntTerms = DrsDesk_Leant_Terms_Refresh() 'Load mappable terms drsdesk to icpc
             Else
                'still not term, have we saved before as a j term?
                user_j_terms = ICPC2_Get_J_Terms()                 'get all current j terms
@@ -1248,14 +1537,17 @@ Public Sub EditArea_Buttons_Click()
 End
 
 Public Sub DrsDesk_Import()
-
+   
    If chkImportPastHistory.value = True Then 
       DrsDesk_PastHistory_Import
    End If   
    If chkImportSocialHIstory.value = True Then
       DrsDesk_SocialHistory_Import()
    End If   
-
+   If chkImportFamilyHistory.value Then
+      DrsDesk_FamilyHistory_Import  
+   Endif
+   
 End
 
 Public Sub Medibase_Import()

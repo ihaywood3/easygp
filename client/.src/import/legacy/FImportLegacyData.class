@@ -190,6 +190,225 @@ Public Sub txtLegacyImportPath_LostFocus()
    
 End
 
+Public Sub DrsDesk_Vaccinations_Import()
+   
+   ' Henderson|Carter|08/06/1990 0:00:00|25/09/2002|30|20|A1018|0|Hepatitis B vaccine|H-B-Vax II Paediatric Formulation|Injection|Hepatitis B|0|0
+   '  surname  firstn  birthdate         vax date         sno.    type vaccine            brand vaccine                 formulation|Schedule
+   '    0         1        2               3         4|5   6    7      8                        9                           10            11
+   '-------------------------------------------------------------------------------
+   ' 0=surname
+   ' 1=firstname
+   ' 2=birthdate
+   ' 3=date_vaccination
+   ' 4=
+   ' 5=
+   ' 6=serial number
+   ' 7=type of vaccine
+   ' 9=brand name
+   ' 10=formulation
+   ' ------------------------------------------------------------------------------
+   
+   Dim sFilename As String
+   Dim hfile As File
+   Dim sFileError As String
+   Dim surname As Integer = 0
+   Dim firstname As Integer = 1
+   Dim birthdate As Integer = 2
+   Dim vax_date As Integer = 3
+   Dim vax_serialno As Integer = 6
+   Dim vax_target_disease As Integer = 7
+   Dim vax_brand As Integer = 9
+   Dim vax_formulation As Integer = 10
+   Dim vax_schedule As Integer = 11
+   Dim bits As String[]
+   Dim sLastPatient As String
+   Dim scurrentPatient As String
+   Dim vaccine As Collection
+   Dim vaccines As Collection 
+   Dim bFoundVaccine As Boolean
+   Dim bFoundschedule As Boolean
+   Dim Vaccination As CRow
+   Dim vaccinations As Collection
+   Dim vaccination_count As Integer
+   Dim import_count As Integer
+   Dim bValidPatient As Boolean
+   Dim learntTerms As Result
+   Dim ErrorFile As File
+   Dim sql As String
+   Dim $Result As Result   
+   Dim total_vaccine_count As Integer
+   Dim schedule As Collection
+   Dim schedules As Collection
+   Dim progressNote As CRow   
+   
+   modDBConnect.BeginTrans()
+   vaccines = modDBConnect.exec_query_collection("Select * from clin_vaccination.vwVaccines")
+   schedules = modDBConnect.exec_query_collection("Select * from clin_vaccination.lu_schedules")
+   patients = New Collection 
+   Sfilename = import_dir & "/" & Trim("Exported_Vaccinations.txt")
+   '  Sfilename = import_dir & "/" & Trim("test_fh.txt")
+   If sFilename = "" Then 
+      txtImportDirectory.SetFocus()
+      Return
+   End If
+   '------------------------------------------------------------------
+   'Attempt to open the designated file
+   'If fail, given an appropriate understandable error message and exit
+   '-------------------------------------------------------------------
+   Try hfile = Open sfilename For Input
+   If Error Then
+      sFileError = File_IO_Describe_Error(Error.code)
+      Message.Warning("Unable to open " & sFilename & "\n\n" & sFileError)
+      Return
+   End If
+   ErrorFile = Open import_dir & "/vaccination_import_errors.txt" For Write Create   'open an error file to log errors
+   
+   '-------------------------------------------------------------------
+   'So far so good - hourglass to user to indicate we are go for import
+   '-------------------------------------------------------------------
+   Inc Application.Busy
+   lvDataImportProgressMessages.Clear()
+   lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "Starting vaccination import..............")
+   Patients = New Collection
+   While Not Eof(hfile)
+      '------------------------------------------
+      'Input each line and split at the delimeter
+      '------------------------------------------
+      Line Input #hfile, sLineInput           
+      bits = Split(sLineInput, "|")
+      scurrentPatient = bits[firstname] & bits[surname] & bits[birthdate]
+      If sLastPatient <> scurrentPatient Then
+         '------------------------------------------------------
+         'if line contains a new patient, find match in back end
+         'and reset keys
+         '------------------------------------------------------
+         Print "Imported patient number:" & import_count & " " & sLastPatient 
+         Print "committing data..............."
+         modDBConnect.CommitTrans()
+         total_vaccine_count += vaccination_count      
+         Print "Total Vaccines Processed:" & total_vaccine_count
+         vaccination_count = 0    
+         lblProgress.text = "Importing vaccine record for " & scurrentPatient
+         Print "loading data for " & scurrentPatient
+         Inc import_count
+         bValidPatient = False 
+         patient = Patient_Identify(bits)                                    'create the next patient.
+         If patient!fk_patient Then
+            sLastPatient = bits[firstname] & bits[surname] & bits[birthdate]
+            currentconsult = New CConsult(patient)
+            currentconsult.Set(const.ConsultType_DataImport, "Vaccination Imported")
+            bValidPatient = True
+         End If
+      End If  
+      If bValidPatient Then 
+         '-------------------------------------------------------------------------
+         ' At this point probably got a valid patient, save each family vaccination
+         '-------------------------------------------------------------------------         
+         'Create TABLE clin_vaccination.vaccinations
+         ' (
+         '   pk serial Not Null,
+         ' x  fk_vaccine integer,
+         ' x  fk_schedule integer,
+         ' x  fk_site integer Not Null Default 0, - - As Sometimes we need To record a vaccine component As Not given...
+         ' x  fk_laterality integer,
+         ' x  date_given character varying(10), - - Not a Date field because sometimes may need To record just say 01 / 2002 Or 1998
+         ' x  serial_no text Not Null Default 'not recorded'::text,
+         '   fk_progressnote integer,
+         ' x  notes text, - - notes about the vaccine e.g this vaccine Not given because child was...
+         ' x  not_given boolean Default False, - - If True Then this vaccine was Not given.Recorded because a schedule...
+         '  x deleted boolean Default False,
+         '   CONSTRAINT vaccinations_pkey PRIMARY KEY(pk)
+         ' )
+         ' With (
+         '   OIDS = False
+         ' );
+         Progressnote = New CRow
+         Progressnote!fk_consult = currentconsult.GetPK()
+         Progressnote!fk_audit_action = const.cAuditAction_FileImport
+         Progressnote!fk_section = const.cSection_Vaccination
+         Progressnote!fk_problem = 0 'no problem
+         '-------------------------------------------------------------------------
+         'get fk_schedule - first try and match the legacy vaccine with EasyGP vaccines.
+         '-------------------------------------------------------------------------
+         bFoundschedule = False  
+         bFoundVaccine = False
+         If scurrentPatient = "VinesToby10/03/1998" Then
+            Print
+         Endif
+         Vaccination = New CRow  
+         For Each vaccine In vaccines
+            If Lower(Trim(bits[vax_brand])) = Lower(vaccine!brand) Then
+               Vaccination!fk_vaccine = vaccine!pk
+               bFoundVaccine = True 
+               Progressnote!notes = "Imported vaccine: " & bits[vax_brand] & " given " & bits[vax_date]
+               Break
+            Endif
+         Next
+         If bFoundVaccine = False Then
+            Print "missing vaccine"
+         Endif
+         '-----------------------------------------------------------------------
+         'get fk_vaccine - first try and match legacy vaccine with EasyGP vaccine
+         '-----------------------------------------------------------------------
+         If Trim(bits[vax_schedule]) = "4 year childhood (From 1/11/2005)" Then 'I changed the name of this schedule
+            bits[vax_schedule] = "4 year childhood"
+         Endif
+         If Trim(bits[vax_schedule]) = "18 month childhood (From 1/11/2005)" Then
+            bits[vax_schedule] = "18 month childhood"
+         Endif
+         '     If Trim(bits[vax_schedule]) = "2 month childhood (From 1/11/2005)" Then
+         '        bits[vax_schedule] = "2 month childhood - old prevenar"
+         '    Endif
+         '    If Trim(bits[vax_schedule]) = "6 month childhood (From 1/11/2005)" Then
+         '        bits[vax_schedule] = "6 month childhood - old prevenar"
+         '    Endif
+         '    If Trim(bits[vax_schedule]) = "12 month childhood (From 1/11/2005)" Then
+         '        bits[vax_schedule] = "12 month childhood"
+         '    Endif
+         '     If Trim(bits[vax_schedule]) = "2 month childhood (Born after 01 May 2007)" Then
+         '         bits[vax_schedule]) = "2 month childhood - old prevenar"
+         '     Endif
+         '     If Trim(bits[vax_schedule]) = "4 month childhood (Born after 01 May 2007)" Then
+         '         bits[vax_schedule] = "4 month childhood - old prevenar"
+         '     Endif
+         '     If Trim(bits[vax_schedule]) = "6 month childhood (Born after 01 May 2007)" Then
+         '         bits[vax_schedule] = "6 month childhood - old prevenar"
+         '     Endif
+         
+         For Each Schedule In schedules
+            If Lower(Trim(bits[vax_schedule])) = Lower(schedule!schedule) Then
+               Vaccination!fk_schedule = schedule!pk
+               bFoundschedule = True 
+               progressNote!notes &= " for " & bits[vax_schedule]
+               Break
+            Endif
+         Next
+         If bFoundschedule = False Then
+            Print "missing schedule"
+         Endif
+         Vaccination!fk_laterality = 0    'were not kept in drsdesk
+         Vaccination!fk_site = 0          'were not kept in drsdesk
+         Vaccination!date_given = Trim(bits[vax_date]) 'not a date in the backend see notes there
+         Vaccination!notes = ""
+         If Trim(bits[vax_serialno]) = "" Then
+            bits[vax_serialno] = "Unknown"
+         Endif
+         Vaccination!serial_no = Trim(bits[vax_serialno])
+         progressNote.Save("clin_consult.progressnotes", "fk_progressnote")        
+         Vaccination!fk_progressnote = progressNote!fk_progressnote
+         Vaccination.Save("clin_vaccination.vaccinations", "fk_vaccination")
+         Inc vaccination_count
+         '' If import_count = 2 Then
+         '  Break
+         'Endif
+      End If 
+      
+   Wend  
+   modDBConnect.CommitTrans()
+   Dec Application.Busy  
+   
+End
+
 Public Sub DrsDesk_SocialHistory_Import()
    '--------------------------------------------------------------
    'Imports the patients social history initially only DrsDesk
@@ -775,7 +994,7 @@ Public Sub DrsDesk_FamilyHistory_Import()
    Wend  
    modDBConnect.CommitTrans()
    Dec Application.Busy
-
+   
 End
 
 Public Sub DrsDesk_PastHistory_Import()
@@ -924,9 +1143,6 @@ Public Sub DrsDesk_PastHistory_Import()
             Print "Imported patient " & import_count & " " & scurrentPatient
             past_history_item_count = 0                                              
             Inc import_count
-            ' If import_count = 100 Then
-            '   Break
-            ' Endif
          End If
          bValidPatient = False 
          patient = Patient_Identify(bits)
@@ -1546,6 +1762,9 @@ Public Sub DrsDesk_Import()
    End If   
    If chkImportFamilyHistory.value Then
       DrsDesk_FamilyHistory_Import  
+   Endif
+   If chkImportVaccinations.Value Then
+      DrsDesk_Vaccinations_Import
    Endif
    
 End

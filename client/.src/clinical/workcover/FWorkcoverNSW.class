@@ -251,13 +251,13 @@ Public Sub Save()
    claim!identifier = Trim(txtIdentifier.text)
    claim!accepted = CBool(chkClaimAccepted.value)
    If rbInjuryConsistantWithHistoryYes.value = True Then
-      claim!consistant_with_cause = "yes"
+      claim!consistant_with_cause = 0
    End If
    If rbInjuryConsistantWithHistoryNo.value = True Then
-      claim!consistant_with_cause = "no"
+      claim!consistant_with_cause = 1
    End If 
    If rbInjuryConsistantWithHistoryuncertain.value = True Then
-      claim!consistant_with_cause = "uncertain"
+      claim!consistant_with_cause = 2
    End If
    claim.Save("clin_workcover.claims", "fk_claim")
    '--------------
@@ -333,11 +333,18 @@ Public Sub Save()
    ProgressNote!problem = "Workcover"
    ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
    visit!fk_progressnote = progressnote!fk_progressnote
-   visit!latex = WorkcoverForm_LaTeX_Construct(visit).GetData()
+   'this code needs fixing
+   'with the LaTex overpic command I found I needed to use pdflatex 
+   If DateDiff(Val("31/03/2013"), Val(txtCertificateDate.text), gb.day) > 0 Then 'all dates later than 31/03/2013
+      visit!latex = WorkcoverForm_LaTeX_Construct(visit).GetData()
+      modPrinting.Print_latex_tempRT(visit!latex)  'IAN TO FIX THIS uses overpic
+   Else
+      visit!latex = WorkcoverForm_LaTeX_Construct_To_31March2013(visit).GetData()
+      modPrinting.Print_latex(visit!latex, const.Paper_Plain)  'IAN COMPARE TO THIS
+   End If
    visit.Save("clin_workcover.visits", "fk_visit")
    modDBConnect.CommitTrans()
    EditArea_Notify_Datachanged(False)
-   modPrinting.Print_latex(visit!latex, const.Paper_Plain, 2)
    FClinical.Refresh_AllPreviousNotes()
    FClinical.Refresh_Section(const.cSection_Workcover)
    Reload()
@@ -387,9 +394,11 @@ Public Sub Reload()
 End
 
 Public Function EditArea_Contents_Valid() As Boolean
-   '-------------------------------------------
+   '--------------------------------------------------------------------
    'Validate adequate data exists before a save
-   '-------------------------------------------   
+   'mmm.................. fuckwit beaurocrats changing forms mid stream
+   'means having to date-test the editing area contents
+   '--------------------------------------------------------------------
    
    Dim date_exists As Boolean
    Dim sMsg As String 
@@ -403,9 +412,14 @@ Public Function EditArea_Contents_Valid() As Boolean
       Return False   
    Endif
    If Not IsDate(txtDateFirstSeen.text) Then
-      txtDateFirstSeen.SetFocus()
-      Return False   
-   Endif
+      If DateDiff(Val("31/03/2013"), Val(txtCertificateDate.text), gb.day) > 0 Then 
+         With txtDateFirstSeen
+            .Background = Color.rgb(95, 255, 175)
+            .SetFocus()
+            Return False   
+         End With
+      End If
+   End If   
    If fk_branch = 0 And fk_person = 0 Then  'no branch or person
       Missing_Employer_Hint()
       txtemployer.SetFocus()
@@ -490,6 +504,14 @@ Public Function EditArea_Contents_Valid() As Boolean
          txtUnfit_To.SetFocus()
          Return False
       End If
+      'the NSW workcover form insists on this field dates > 30/04/2013
+      If Trim(txtEstimatedTimeForAnyDuties.text) = "" And DateDiff(Val("31/03/2013"), Val(txtCertificateDate.text), gb.day) > 0 Then 
+         With txtEstimatedTimeForAnyDuties
+            .Background = Color.rgb(95, 255, 175)
+            .SetFocus()
+         End With
+         Return   
+      End If
    End If
    
    If Trim(txtSuitable_From.text) <> "" Then                       'if have suitable from date
@@ -501,6 +523,20 @@ Public Function EditArea_Contents_Valid() As Boolean
          txtSuitable_To.SetFocus()
          Return False
       End If
+      If Trim(txtCanWork_DaysPerWeek.text) = "" Then
+         With txtCanWork_DaysPerWeek
+            .Background = Color.rgb(95, 255, 175)
+            .SetFocus()
+         End With
+         Return 
+      Endif
+      If Trim(txtCanWork_HrsPerDay.text) = "" Then
+         With txtCanWork_HrsPerDay
+            .Background = Color.rgb(95, 255, 175)
+            .SetFocus()
+         End With
+         Return
+      Endif
    End If
    If Not IsDate(txtPermModDuties_From.text) And Trim(txtPermModDuties_From.text) <> "" Then
       txtPermModDuties_From.SetFocus()
@@ -772,7 +808,7 @@ Public Sub Visit_RePrint()
    '----------------------------------------------------------------------------   
    
    lvwClaims_Select 'load stuff into claim ?need anymore fixme
-   modPrinting.Print_latex(visit!latex, const.Paper_Plain, 2)
+   modPrinting.Print_latex(visit!latex, const.Paper_Plain)
    
 End
 
@@ -862,6 +898,9 @@ Public Function WorkcoverForm_LaTeX_Construct(visit As CRow) As CTemplate
    Dim x As Integer
    Dim sPhone As String
    Dim y As Integer
+   Dim page1_filepath As String
+   Dim page2_filepath As String
+   Dim page3_filepath As String
    
    templ.Subst("pdf_path_page1", modUtil.Find_File("templates" &/ "nsw-workcover-certificate-of-capacity-page1.pdf"))
    templ.Subst("pdf_path_page2", modUtil.Find_File("templates" &/ "nsw-workcover-certificate-of-capacity-page2.pdf"))
@@ -882,16 +921,30 @@ Public Function WorkcoverForm_LaTeX_Construct(visit As CRow) As CTemplate
    templ.Subst("DOB6", Mid$(birthdate, 8, 1))
    templ.Subst("DOB7", Mid$(birthdate, 9, 1))
    templ.Subst("DOB8", Mid$(birthdate, 10, 1))
-   templ.Subst("CLAIMNUMBER01", Mid$(txtClaim.text, 1, 1))
-   templ.Subst("CLAIMNUMBER02", Mid$(txtClaim.text, 2, 1))
-   templ.Subst("CLAIMNUMBER03", Mid$(txtClaim.text, 3, 1))
-   templ.Subst("CLAIMNUMBER04", Mid$(txtClaim.text, 4, 1))
-   templ.Subst("CLAIMNUMBER05", "")
-   templ.Subst("CLAIMNUMBER06", "")
-   templ.Subst("CLAIMNUMBER07", "")
-   templ.Subst("CLAIMNUMBER08", "")
-   templ.Subst("CLAIMNUMBER09", "")
-   templ.Subst("CLAIMNUMBER10", "")
+   ' templ.Subst("CLAIMNUMBER01", Mid$(txtClaim.text, 1, 1))
+   ' templ.Subst("CLAIMNUMBER02", Mid$(txtClaim.text, 2, 1))
+   ' templ.Subst("CLAIMNUMBER03", Mid$(txtClaim.text, 3, 1))
+   ' templ.Subst("CLAIMNUMBER04", Mid$(txtClaim.text, 4, 1))
+   ' templ.Subst("CLAIMNUMBER05", "")
+   ' templ.Subst("CLAIMNUMBER06", "")
+   ' templ.Subst("CLAIMNUMBER07", "")
+   ' templ.Subst("CLAIMNUMBER08", "")
+   ' templ.Subst("CLAIMNUMBER09", "")
+   ' templ.Subst("CLAIMNUMBER10", "")
+   For x = 1 To 25         '25 spaces on the form, maybe in some crazy company there are 25 character claim numbers
+      If x < 10 Then 
+         templ.Subst("CLAIMNUMBER0" & Str(x), Mid$(txtClaim.text, x, 1))
+      Else
+         templ.Subst("CLAIMNUMBER" & Str(x), Mid$(txtClaim.text, x, 1))
+      End If 
+   Next  
+   For x = 1 To 25
+      If x < 10 Then 
+         templ.Subst("CLAIMNUMBER0" & Str(x), "")
+      Else
+         templ.Subst("CLAIMNUMBER" & Str(x), "")
+      End If 
+   Next
    templ.Subst("MA1", Mid$(currentconsult!patient!medicare_number, 1, 1))
    templ.Subst("MA2", Mid$(currentconsult!patient!medicare_number, 2, 1))
    templ.Subst("MA3", Mid$(currentconsult!patient!medicare_number, 3, 1))
@@ -902,6 +955,18 @@ Public Function WorkcoverForm_LaTeX_Construct(visit As CRow) As CTemplate
    templ.Subst("MA8", Mid$(currentconsult!patient!medicare_number, 8, 1))
    templ.Subst("MA9", Mid$(currentconsult!patient!medicare_number, 9, 1)) 
    templ.Subst("MA0", Mid$(currentconsult!patient!medicare_number, 10, 1))
+   'if has no medicare number
+   templ.Subst("MA1", "")
+   templ.Subst("MA2", "")
+   templ.Subst("MA3", "")
+   templ.Subst("MA4", "")
+   templ.Subst("MA5", "")
+   templ.Subst("MA6", "")
+   templ.Subst("MA7", "")
+   templ.Subst("MA8", "")
+   templ.Subst("MA9", "")
+   templ.Subst("MA0", "")
+   
    templ.Subst("employerdetails", Trim(txtemployer.text) & " " & Trim(txtAddress.Text))
    templ.Subst("occupation", Trim(txtoccupation.text))
    templ.Subst("dateprinted1", Mid$(printed_date, 1, 1))
@@ -934,6 +999,20 @@ Public Function WorkcoverForm_LaTeX_Construct(visit As CRow) As CTemplate
    templ.Subst("historyofinjury", Trim(txtMechanismInjury.text))
    templ.Subst("preexistantfactors", Trim(txtPreExistingFactors.text))
    templ.Subst("diagnosis", Trim(txtDiagnosis.text))
+   
+   If rbInjuryConsistantWithHistoryYes.value = True Then
+      templ.Subst("consistantwithinjuryyes", "x")
+   End If
+   If rbInjuryConsistantWithHistoryNo.value = True Then
+      templ.Subst("consistantwithinjuryno", "x")
+   Endif
+   If rbInjuryConsistantWithHistoryUncertain.value = True Then
+      templ.Subst("consistantwithinjuryuncertain", "x")
+   Endif
+   templ.Subst("consistantwithinjuryyes", "")
+   templ.Subst("consistantwithinjuryno", "")
+   templ.Subst("consistantwithinjuryuncertain", "")
+   
    '------  
    'page 2
    '------
@@ -954,22 +1033,22 @@ Public Function WorkcoverForm_LaTeX_Construct(visit As CRow) As CTemplate
    Endif
    If chkFitness_Suitable.value = True Then
       templ.Subst("fit-suitable-duties", "x")
-      templ.Subst("SUITABLEDUTIESFROM1", Mid$(txtSuitable_From, 1, 1))
-      templ.Subst("SUITABLEDUTIESFROM2", Mid$(txtSuitable_From, 2, 1))
-      templ.Subst("SUITABLEDUTIESFROM3", Mid$(txtSuitable_From, 4, 1))
-      templ.Subst("SUITABLEDUTIESFROM4", Mid$(txtSuitable_From, 5, 1))
-      templ.Subst("SUITABLEDUTIESFROM5", Mid$(txtSuitable_From, 7, 1))
-      templ.Subst("SUITABLEDUTIESFROM6", Mid$(txtSuitable_From, 8, 1))
-      templ.Subst("SUITABLEDUTIESFROM7", Mid$(txtSuitable_From, 9, 1))
-      templ.Subst("SUITABLEDUTIESFROM8", Mid$(txtSuitable_From, 10, 1))
-      templ.Subst("SUITABLEDUTIESTO1", Mid$(txtSuitable_To, 1, 1))
-      templ.Subst("SUITABLEDUTIESTO2", Mid$(txtSuitable_To, 2, 1))
-      templ.Subst("SUITABLEDUTIESTO3", Mid$(txtSuitable_To, 4, 1))
-      templ.Subst("SUITABLEDUTIESTO4", Mid$(txtSuitable_To, 5, 1))
-      templ.Subst("SUITABLEDUTIESTO5", Mid$(txtSuitable_To, 7, 1))
-      templ.Subst("SUITABLEDUTIESTO6", Mid$(txtSuitable_To, 8, 1))
-      templ.Subst("SUITABLEDUTIESTO7", Mid$(txtSuitable_To, 9, 1))
-      templ.Subst("SUITABLEDUTIESTO8", Mid$(txtSuitable_To, 10, 1))    
+      templ.Subst("SUITABLEDUTIESFROM1", Mid$(txtSuitable_From.text, 1, 1))
+      templ.Subst("SUITABLEDUTIESFROM2", Mid$(txtSuitable_From.text, 2, 1))
+      templ.Subst("SUITABLEDUTIESFROM3", Mid$(txtSuitable_From.text, 4, 1))
+      templ.Subst("SUITABLEDUTIESFROM4", Mid$(txtSuitable_From.text, 5, 1))
+      templ.Subst("SUITABLEDUTIESFROM5", Mid$(txtSuitable_From.text, 7, 1))
+      templ.Subst("SUITABLEDUTIESFROM6", Mid$(txtSuitable_From.text, 8, 1))
+      templ.Subst("SUITABLEDUTIESFROM7", Mid$(txtSuitable_From.text, 9, 1))
+      templ.Subst("SUITABLEDUTIESFROM8", Mid$(txtSuitable_From.text, 10, 1))
+      templ.Subst("SUITABLEDUTIESTO1", Mid$(txtSuitable_To.text, 1, 1))
+      templ.Subst("SUITABLEDUTIESTO2", Mid$(txtSuitable_To.text, 2, 1))
+      templ.Subst("SUITABLEDUTIESTO3", Mid$(txtSuitable_To.text, 4, 1))
+      templ.Subst("SUITABLEDUTIESTO4", Mid$(txtSuitable_To.text, 5, 1))
+      templ.Subst("SUITABLEDUTIESTO5", Mid$(txtSuitable_To.text, 7, 1))
+      templ.Subst("SUITABLEDUTIESTO6", Mid$(txtSuitable_To.text, 8, 1))
+      templ.Subst("SUITABLEDUTIESTO7", Mid$(txtSuitable_To.text, 9, 1))
+      templ.Subst("SUITABLEDUTIESTO8", Mid$(txtSuitable_To.text, 10, 1))    
    Else
       templ.Subst("fit-suitable-duties", "")
       templ.Subst("SUITABLEDUTIESFROM1", " ")
@@ -1000,22 +1079,22 @@ Public Function WorkcoverForm_LaTeX_Construct(visit As CRow) As CTemplate
       Endif
       If chkFitness_Unfit.value = True Then
          templ.Subst("unfit-for-work", "x")
-         templ.Subst("UNFITFROM1", Mid$(txtUnfit_From, 1, 1))
-         templ.Subst("UNFITFROM2", Mid$(txtUnfit_From, 2, 1))
-         templ.Subst("UNFITFROM3", Mid$(txtUnfit_From, 4, 1))
-         templ.Subst("UNFITFROM4", Mid$(txtUnfit_From, 5, 1))
-         templ.Subst("UNFITFROM5", Mid$(txtUnfit_From, 7, 1))
-         templ.Subst("UNFITFROM6", Mid$(txtUnfit_From, 8, 1))
-         templ.Subst("UNFITFROM7", Mid$(txtUnfit_From, 9, 1))
-         templ.Subst("UNFITFROM8", Mid$(txtUnfit_From, 10, 1))
-         templ.Subst("UNFITTO1", Mid$(txtUnfit_To, 1, 1))
-         templ.Subst("UNFITTO2", Mid$(txtUnfit_To, 2, 1))
-         templ.Subst("UNFITTO3", Mid$(txtUnfit_To, 4, 1))
-         templ.Subst("UNFITTO4", Mid$(txtUnfit_To, 5, 1))
-         templ.Subst("UNFITTO5", Mid$(txtUnfit_To, 7, 1))
-         templ.Subst("UNFITTO6", Mid$(txtUnfit_To, 8, 1))
-         templ.Subst("UNFITTO7", Mid$(txtUnfit_To, 9, 1))
-         templ.Subst("UNFITTO8", Mid$(txtUnfit_To, 10, 1))
+         templ.Subst("UNFITFROM1", Mid$(txtUnfit_From.text, 1, 1))
+         templ.Subst("UNFITFROM2", Mid$(txtUnfit_From.text, 2, 1))
+         templ.Subst("UNFITFROM3", Mid$(txtUnfit_From.text, 4, 1))
+         templ.Subst("UNFITFROM4", Mid$(txtUnfit_From.text, 5, 1))
+         templ.Subst("UNFITFROM5", Mid$(txtUnfit_From.text, 7, 1))
+         templ.Subst("UNFITFROM6", Mid$(txtUnfit_From.text, 8, 1))
+         templ.Subst("UNFITFROM7", Mid$(txtUnfit_From.text, 9, 1))
+         templ.Subst("UNFITFROM8", Mid$(txtUnfit_From.text, 10, 1))
+         templ.Subst("UNFITTO1", Mid$(txtUnfit_To.text, 1, 1))
+         templ.Subst("UNFITTO2", Mid$(txtUnfit_To.text, 2, 1))
+         templ.Subst("UNFITTO3", Mid$(txtUnfit_To.text, 4, 1))
+         templ.Subst("UNFITTO4", Mid$(txtUnfit_To.text, 5, 1))
+         templ.Subst("UNFITTO5", Mid$(txtUnfit_To.text, 7, 1))
+         templ.Subst("UNFITTO6", Mid$(txtUnfit_To.text, 8, 1))
+         templ.Subst("UNFITTO7", Mid$(txtUnfit_To.text, 9, 1))
+         templ.Subst("UNFITTO8", Mid$(txtUnfit_To.text, 10, 1))
       Else
          templ.Subst("unfit-for-work", "")
          templ.Subst("UNFITFROM1", "")
@@ -1139,26 +1218,25 @@ Public Function WorkcoverForm_LaTeX_Construct(visit As CRow) As CTemplate
          End If   
       Next
       'lastly the provider number
-            For x = 1 To 22
-                If x < 10 Then 
-                  templ.Subst("provider-number0" & Str(x), Mid$(modDBConnect.currentUser!provider_number, x, 1))
-               Else
-                  templ.Subst("provider-number" & Str(x), "")
-               Endif
-            Next  
-             For x = 1 To Len(modDBConnect.currentUser!provider_number)
-                If x < 10 Then 
-                  templ.Subst("provider-number0" & Str(x), "")
-               Else
-                  templ.Subst("provider-number" & Str(x), "")
-                End If
-             Next
-      Endif
-      
-      Print templ.GetData() 
-      modPrinting.Print_latex_tempRT(templ.GetData())  
-      Return templ
-      
+      For x = 1 To 22
+         If x < 10 Then 
+            templ.Subst("provider-number0" & Str(x), Mid$(modDBConnect.currentUser!provider_number, x, 1))
+         Else
+            templ.Subst("provider-number" & Str(x), "")
+         Endif
+      Next  
+      For x = 1 To Len(modDBConnect.currentUser!provider_number)
+         If x < 10 Then 
+            templ.Subst("provider-number0" & Str(x), "")
+         Else
+            templ.Subst("provider-number" & Str(x), "")
+         End If
+      Next
+   Endif
+   
+   Print templ.GetData() 
+   Return templ
+   
 End
 
 Public Function WorkcoverForm_LaTeX_Construct_temp(visit As CRow) As CTemplate
@@ -1492,7 +1570,7 @@ Public Function WorkcoverForm_LaTeX_Construct_temp(visit As CRow) As CTemplate
    
 End
 
-Public Function WorkcoverForm_LaTeX_Construct_To_30March2013(visit As CRow) As CTemplate
+Public Function WorkcoverForm_LaTeX_Construct_To_31March2013(visit As CRow) As CTemplate
    '-------------------------------------------------------------------------------------
    'on 30/03/2013 NSW workcover in their infinitate beurocratic stupidity changed a
    'perfectly good and functional form to a f****d up cretinous 3 page form that
@@ -1647,7 +1725,7 @@ Public Function WorkcoverForm_LaTeX_Construct_To_30March2013(visit As CRow) As C
    
 End
 
-Public Function Claim_Construct_Progressnotes_Structured_HTML_old() As CTemplate
+Public Function Claim_Construct_Progressnotes_Structured_HTML(visit As CRow) As CTemplate
    '-------------------------------
    'HTML to put into progress notes
    '-------------------------------   
@@ -1672,7 +1750,7 @@ Public Function Claim_Construct_Progressnotes_Structured_HTML_old() As CTemplate
    End Select
    templ = New CTemplate(modHTML.workcover_progressnotes_structured_html) 
    templ.Subst_common(currentconsult)
-   templ.Subst("visit_type", UCase(visit!visit_type))
+   templ.Subst("visit_type", UCase(visit_types[visit!fk_lu_visit_type]))
    templ.Subst("claim", Trim(txtClaim.text))
    templ.Subst("employer", Trim(txtEmployer.text))
    templ.Subst("workaddress", Trim(txtAddress.text))
@@ -1823,7 +1901,7 @@ Public Function Claim_Construct_Progressnotes_Structured_HTML_old() As CTemplate
    
 End
 
-Public Function Claim_Construct_Progressnotes_Structured_HTML(visit As CRow) As CTemplate
+Public Function Claim_Construct_Progressnotes_Structured_HTML_pre30march13(visit As CRow) As CTemplate
    '-------------------------------
    'HTML to put into progress notes
    '-------------------------------   
@@ -2140,7 +2218,7 @@ Public Sub Claim_Display()
       txtemployer.text = branch!organisation        '" " & branch!town & " " & branch!postcode
    End If
    txtDateInjury.text = claim!date_injury  'text field not a date field to allow free text
-   txtDateFirstSeen.text = claim!date_first_seen
+   Try txtDateFirstSeen.text = claim!date_first_seen 'can be null if date <31/03/2013
    txtMechanismInjury.text = claim!mechanism_of_injury
    txtPreExistingFactors.text = claim!preexisting_factors
    txtOccupation.text = claim!occupation
@@ -2149,13 +2227,13 @@ Public Sub Claim_Display()
    txtContactPerson.text = claim!contact_person
    txtMemo.text = claim!memo
    chkClaimAccepted.value = claim!accepted
-   If claim!consistant_with_cause = "yes" Then
+   If claim!consistant_with_cause = 0 Then
       rbInjuryConsistantWithHistoryYes.value = True
    Endif
-   If claim!consistant_with_cause = "no" Then
+   If claim!consistant_with_cause = 1 Then
       rbInjuryConsistantWithHistoryNo.value = True
    Endif
-   If claim!consistant_with_cause = "uncertain" Then
+   If claim!consistant_with_cause = 2 Then
       rbInjuryConsistantWithHistoryuncertain.value = True
    End If 
    bClaimLoaded = True   

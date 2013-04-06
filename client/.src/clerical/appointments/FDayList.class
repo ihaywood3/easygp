@@ -66,6 +66,7 @@ Public form_select As FPatientsSelect
 Private bKeyValid As Boolean                       'if true the keypress is valid
 Private bMoveToNextAvailableAppointment As Boolean 'if true after a save the next vacant appt slot is found
 Private WeeksAppointments As Collection 
+Private watcher As DatabaseWatcher
 
 Public Sub WeeksAppointments_Set(wa As Collection)
    
@@ -86,6 +87,7 @@ Public Sub Init(sm As Collection, app_date As Date, clinic_key As Integer, icons
    staff_member = sm                                                   
    fk_clinic = clinic_key
    Appointment_Date = app_date
+   watcher = New DatabaseWatcher("booking") As "Booking"
    appointment_icons = icons
    txtAppointment.height = irowheight                                    'grid rows = same height as our textbox
    Me.title = UCase(staff_member!title & " " & staff_member!wholename)   'will appear on the tab 
@@ -105,36 +107,39 @@ Public Sub Init(sm As Collection, app_date As Date, clinic_key As Integer, icons
    
 End
 
-Public Sub Init_old(sm As Collection, app_date As Date, clinic_key As Integer, icons As Collection)
-   '------------------------------------------------------------------
-   'initialise the appointment module from  FMakeAppointments 
-   'sm= the staff member
-   'app-date = the date of this apointment grid
-   'icons= collection from backend of icons for the grid eg home visit
-   'later grabbed from the backend
-   'Note this also starts the timer to reload every 30 seconds
-   '------------------------------------------------------------------
+Public Sub Form_Close()
    
-   staff_member = sm                                                   
-   fk_clinic = clinic_key
-   Appointment_Date = app_date
-   appointment_icons = icons
-   txtAppointment.height = irowheight                                    'grid rows = same height as our textbox
-   Me.title = UCase(staff_member!title & " " & staff_member!wholename)   'will appear on the tab 
-   lblDate.text = Format(appointment_date, gb.LongDate)                  'Wednesay 18th September   
-   With gridview1                                                        'construct the basic grid  for appointments                           
-      .columns.count = 2
-      .columns[0].width = 22                                             'col0=icon
-   End With
-   appointment_interval = 10                                             'fix me get me from backend (when done)  
-   Appointment_Status_Colors = New String[6]                             'don't use 0 member
-   Appointment_Status_Colors[appointment_made] = Color.Black             
-   Appointment_Status_Colors[arrived_and_waiting] = Color.Blue
-   Appointment_Status_Colors[in_consulting_room] = Color.DarkRed
-   Appointment_Status_Colors[patient_departed] = Color.Gray
-   Appointment_Status_Colors[emergency] = Color.Red
-   Reload()                                                              'load the days appointments
+  watcher.Close()
    
+End
+
+Public Sub Booking_Notify(pid As Integer, param As String)
+   
+  Dim s As String[]
+  Dim param_day As Integer
+  Dim param_month As Integer
+  Dim param_year As Integer
+  Dim param_fk_clinic As Integer
+  Dim param_fk_staff As Integer
+  Dim param_date As Date
+  
+  s = Split(param, " ")
+  If s.Length <> 5 Then
+     Log.ErrorMsg("Aaargh! FDayList got an invalid param string: " & param)
+     Return
+  Endif 
+  param_day = CInt(s[0])
+  param_month = CInt(s[1])
+  param_year = CInt(s[2])
+  param_fk_clinic = CInt(s[3])
+  param_fk_staff = CInt(s[4])
+  If param_fk_clinic <> fk_clinic Then Return
+  If param_fk_staff <> staff_member!fk_staff Then Return
+  If param_day <> Day(Appointment_Date) Then Return
+  If param_month <> Month(Appointment_Date) Then Return
+  If param_year <> Year(Appointment_Date) Then Return
+  Debug "Reloading on pid:" & pid & " param:" & param
+  Reload()
 End
 
 
@@ -251,27 +256,6 @@ Public Sub Reload()
    
 End
 
-Public Sub Reload_old()
-   '----------------------------------------------------------
-   'Get any existing appointments for the day from the backend
-   'Merge these with the initialised gridrows collection
-   'and fill gridview1 with the appointments.
-   'fixme the init
-   '----------------------------------------------------------   
-   
- '  Timer1.Stop
-   patient = Null
-   fk_lu_appointment_status = 1                                         'default to normal appointment length
-   fk_lu_appointment_icon = 0 
-   appointment_interval = 10
-   GridRows_Init(Time(8, 30, 0), Time(18, 0, 0), appointment_interval)  'fill empty collection with times
-   Appointments_Refresh()                                               'get appointments for this day
-   If appointments.count Then                                           'have appointments?
-      GridRows_Update()                                                 'update the underlying collection of data
-   End If   
-   Gridview1_Refresh()                                                  'load data into the grid
-   
-End
 
 Public Sub Appointments_Refresh()
    
@@ -898,7 +882,6 @@ Public Sub Appointment_Delete()
    Dim iDeletedRow As Integer
    
    If gridview1.row = -1 Then Return
-   FMakeAppointments.Timer1_Stop()
    iDeletedRow = Gridview1.Row
    If Not IsNull(gridrows[Gridview1.Row]!pk_appointment) Then
       appointment!pk = gridrows[Gridview1.Row]!pk_appointment
@@ -913,7 +896,6 @@ Public Sub Appointment_Delete()
       Reload()
       gridview1.row = iDeletedRow
    Endif
-   FMakeAppointments.Timer1_Start()
 End
 
 Public Sub Save()
@@ -945,7 +927,6 @@ Public Sub Save()
    If onrow = -1 Then 
       Return          'should never happen but there are bugs
    End If   
-   FMakeAppointments.Timer1_Stop         'stop auto-refresh on the parent form
    Try appointment!fk_patient = patient!fk_patient
    If Error Then
       appointment!fk_patient = gridrows[onrow]!fk_patient
@@ -1037,7 +1018,6 @@ Public Sub Save()
       Wait
    End If   
    gridview1.SetFocus()
-   FMakeAppointments.Timer1_Start
 End
 
 Public Sub Gridview1_First_Vacant(startrow As Integer) As Integer

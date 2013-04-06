@@ -142,6 +142,20 @@ insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('82d04b86-c920-4211-abd2-bd3e6dc4df10','leuprorelin acetate',22,'30mg','','932931011000036109',$$leuprorelin acetate 30 mg injection: modified release [1 syringe] (&) inert substance diluent [1 syringe], 1 pack$$,1,'L02AE02',NULL,NULL,1);
 
+insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
+('7502b034-0237-4003-91ad-5d0a10366193','risedronate sodium and calcium carbonate',39,'None','4 tablets 35mg risendronate, 24 tablets 500mg calcium carbonate','26692011000036107',$$risedronate sodium 35 mg tablet [4 tablets] (&) calcium (as carbonate) 500 mg tablet [24 tablets], 28$$,1,'M05BB02',NULL,NULL,28);
+
+insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
+('a72b630c-7f3d-40b7-8ab0-8019f32904ac','risedronate sodium',59,'35mg','','51591000144100',$$RISEDRONATE SODIUM Tablet 35 mg (enteric coated), 4$$,4,'M05BA07',NULL,NULL,1);
+
+insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
+('980fa0a2-ba4f-4737-acc4-20a44f09fc95','goserelin acetate and bicalutamide',39,'None','goserelin 3.6mg, 28 tablets 50mg bicalutamide ','26781011000036107',$$goserelin 3.6 mg implant [1 implant] (&) bicalutamide 50 mg tablet [28 tablets], 1 pack$$,1,'L02AE',NULL,NULL,1);
+update drugs.product set free_comment='goserelin 10.8mg, 84 tablets bicalutamide' where sct='26783011000036108';
+
+
+insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
+('52a72cc2-0ffe-4fec-9de7-03f427ca765c','goserelin acetate and bicalutamide',39,'None','goserelin 10.8mg, 28 tablets 50mg bicalutamide','26782011000036101',$$goserelin 10.8 mg implant [1 implant] (&) bicalutamide 50 mg tablet [28 tablets], 1 pack$$,1,'L02AE',NULL,NULL,1);
+
 
 
 truncate db.lu_version;

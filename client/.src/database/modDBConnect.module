@@ -22,6 +22,7 @@ Private pg_socket_file As Stream
 Private storedQueries As String
 Private bStoring As Boolean
 Private event_listeners As Collection
+Private backend_pid As Integer
 
 Property Read currentUser As Collection
 Property Read IsAdmin As Boolean
@@ -34,6 +35,7 @@ Extern PQnotifies(conn As Pointer) As Pointer
 Extern PQconsumeInput(conn As Pointer)
 Extern PQsocket(conn As Pointer) As Integer
 Extern PQfreemem(obj As Pointer)
+Extern PQbackendPID(obj As Pointer) As Integer
 
 Private Function timeDiff(startTime As Float) As String
   
@@ -100,29 +102,44 @@ Public Function dbConnect_global(host As String, database As String, login As St
   'Attempts to connect to a database
   'returns true if success, false if not
   '-------------------------------------
+  Dim sa As String[]
+  Dim port As String
+  
   $hconn = New Connection
-  login = login
   Try $hconn.Close
+  sa = Split(host, "/")
+  If sa.Length = 2 Then
+     host = sa[0]
+     database = sa[1]
+  Endif
+  If IsNull(database) Then database = "easygp"
+  sa = Split(host, ":")
+  If sa.Length = 2 Then
+     host = sa[0]
+     port = sa[1]
+  Else
+     port = "5432"
+  Endif
   With $hconn
     .Type = "postgresql"
     .Host = host
     .Login = login
     .Password = password
     .Name = ""
+    .Name = database
+    .Port = port
   End With
-  $hconn.Name = database
   $hconn.Open
   $hconn.Exec("set datestyle = 'iso,dmy'")
   Try $hconn.Exec("set bytea_output = 'escape'")
   CheckDBVersion()
   my_current_user = modConsultDBI.Staff_member_Get()
   DB.Current = $hconn
-  Try pg_socket_file = Open "." & PQsocket(Connection.Handle) For Read Watch
-  If Error Then
-     Log.ErrorMsg("PQsocket failed: " & Error.Text)
-  Endif
+  backend_pid = PQbackendPID(Connection.Handle)
+  pg_socket_file = Open "." & PQsocket(Connection.Handle) For Read Watch
   bStoring = False
   event_listeners = New Collection
+  
   Return "success"
 Catch
   Return DConv(Error.Text)
@@ -142,47 +159,50 @@ Public Sub File_Read()
   Dim notify_string As String
   Dim notify_pid As Integer
   Dim notify_param As String
-  Dim i As Object
+  Dim i As DatabaseWatcher
   
+  Debug "File_Read() called"
   PQconsumeInput(Connection.Handle)
   notifies = PQnotifies(Connection.Handle)
-  If Not IsNull(notifies) Then
+  While Not IsNull(notifies)
      notifies2 = notifies
      notify_string = String@(Pointer@(notifies))
      notifies += SizeOf(gb.Pointer)
      notify_pid = Integer@(notifies)
      notifies += SizeOf(gb.Pointer) 'remember C structs are padded for speed to the larger type
      notify_param = String@(Pointer@(notifies))
-     Debug "Hey, I received a notification!"
-     Debug "REL: "; notify_string
-     Debug "PID: "; notify_pid
-     Debug "PARAM: "; notify_param
+     PQfreemem(notifies2)
+     Debug "NOTIFY "; notify_pid; " "; notify_param
+     If backend_pid = notify_pid Then Return ' it's us.
      If event_listeners.Exist(notify_string) Then
         For Each i In event_listeners[notify_string]
-           Try Object.Call(i, "Notify", [notify_pid, notify_param])
+           Try i.Send_Notify(notify_pid, notify_param)
            If Error Then
               modUtil.ReportError(Error.Text, Error.Backtrace)
            Endif
         Next 
      Endif
-     PQfreemem(notifies2)
-  Endif
+     PQconsumeInput(Connection.Handle)
+     notifies = PQnotifies(Connection.Handle)
+  Wend
   
 End
 
-Public Sub Register_Listener(evt As String, obj As Object)
+Public Sub Register_Listener(evt As String, obj As DatabaseWatcher)
    
    If Not event_listeners.Exist(evt) Then
       exec_query("LISTEN " & evt)
       event_listeners[evt] = New Collection
    Endif
-   event_listeners[evt].Add(Str$(obj), obj)
+   event_listeners[evt].Add(obj, Str$(obj))
    
 End
 
-Public Sub Unregister_Listener(evt As String, obj As Object)
+Public Sub Unregister_Listener(evt As String, obj As DatabaseWatcher)
    
   If IsNull(event_listeners) Then Return
+  If Not event_listeners.Exist(evt) Then Return
+  If Not event_listeners[evt].Exist(Str$(obj)) Then Return
   event_listeners[evt].Remove(Str$(obj)) 
    
 End
@@ -279,7 +299,7 @@ Public Function exec_query(sql As String, Optional params As Variant[]) As Resul
   If bStoring Then storedQueries &= sql & ";\n"
   prefix = Lower$(Left$(sql, 6))     
   startTime = Timer()
-  If Not bTransaction And prefix <> "select" Then
+  If Not bTransaction And prefix <> "select" And prefix <> "listen" Then
     $hconn.Exec("BEGIN")
     bTransaction = True 
   End If

@@ -13,4 +13,4 @@ end;$function$;
 create trigger notify_booking BEFORE INSERT OR UPDATE ON clerical.bookings FOR EACH ROW EXECUTE PROCEDURE clerical.notify_booking();
 
 truncate db.lu_version;
-insert into db.lu_version (lu_major,lu_minor) values (0, 254);
+insert into db.lu_version (lu_major,lu_minor) values (0, 262);

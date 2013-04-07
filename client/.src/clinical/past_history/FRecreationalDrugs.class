@@ -25,65 +25,221 @@ Private substances As Collection
 Private substance As Collection
 Private common_lu_route_administration_keys As String[] 'only use a few match these to the cmbRouteTaken
 Private fk_recreationaldrug As Integer
+Private CurrentRecreationalDrug As Collection
+Private RecreationalDrugs As Collection
+Private bExit As Boolean
+Private bIniting As Boolean
 
 Public Sub Init(cons As CConsult)
    
-  currentconsult = cons 
-  lblMeasure.text = "  Age Last Used  " 'this label auto-resizes and used to set the widest label in the edit area
-  modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
-  substances = modUtil.LoadCombo(cmbSubstances, modRecreationalDrugs.Recreational_Drugs_Get(), "drug")
-  cmbRouteTaken.Add("inhaled", 0)    
-  cmbRouteTaken.Add("intramuscular", 1)
-  cmbRouteTaken.Add("intranasal", 2)    
-  cmbRouteTaken.Add("intravenous", 3)    
-  cmbRouteTaken.Add("oral", 4)    
-  cmbRouteTaken.Add("subcutaneous", 5)    
-  cmbRouteTaken.Add("topical", 6)    
-  common_lu_route_administration_keys = New String[7]
-  common_lu_route_administration_keys[0] = const.route_administration_inhaled
-  common_lu_route_administration_keys[1] = const.route_administration_intramuscular
-  common_lu_route_administration_keys[2] = const.route_administration_intranasal
-  common_lu_route_administration_keys[3] = const.route_administration_intravenous
-  common_lu_route_administration_keys[4] = const.route_administration_oral
-  common_lu_route_administration_keys[5] = const.route_administration_subcutaneous
-  common_lu_route_administration_keys[6] = const.route_administration_topical
-  cmbSubstances_Click()
-  Reload()
-  
-
-  
+   currentconsult = cons 
+   lblMeasure.text = "  Age Last Used  " 'this label auto-resizes and used to set the widest label in the edit area
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
+   substances = modUtil.LoadCombo(cmbSubstances, modUtil.Copy_Collection_Keyed_Sequentially(modRecreationalDrugs.Recreational_Drugs_Get()), "drug")
+   cmbRouteTaken.Add("inhaled", 0)    
+   cmbRouteTaken.Add("intramuscular", 1)
+   cmbRouteTaken.Add("intranasal", 2)    
+   cmbRouteTaken.Add("intravenous", 3)    
+   cmbRouteTaken.Add("oral", 4)    
+   cmbRouteTaken.Add("subcutaneous", 5)    
+   cmbRouteTaken.Add("topical", 6)    
+   common_lu_route_administration_keys = New String[7]
+   common_lu_route_administration_keys[0] = const.route_administration_inhaled
+   common_lu_route_administration_keys[1] = const.route_administration_intramuscular
+   common_lu_route_administration_keys[2] = const.route_administration_intranasal
+   common_lu_route_administration_keys[3] = const.route_administration_intravenous
+   common_lu_route_administration_keys[4] = const.route_administration_oral
+   common_lu_route_administration_keys[5] = const.route_administration_subcutaneous
+   common_lu_route_administration_keys[6] = const.route_administration_topical
+   With cvwRecreationalDrugs
+      .Columns.count = 5
+      .Columns[0].text = "Substance"
+      .Columns[1].text = "Route"
+      .Columns[2].text = "Age Details"
+      .Columns[3].text = "Amount"    
+      .Columns[4].text = "Amount"    
+   End With
+   bIniting = True 
+   cmbSubstances_Click()
+   Settings_Load
+   bIniting = False  
+   Reload()
+   EditArea_Notify_DataChange(False)
+   
 End
 
 Public Sub Save()
-   
-  'Save the recreational drug
+   '---------------------------------------------------------------------------------------------------------------------
+   'Save the recreational drug
+   '
+   ' CREATE TABLE clin_history.recreational_drugs
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_consult integer NOT NULL,
+   '   fk_lu_recreational_drug integer NOT NULL, -- foreign key to common.lu_recreational_drugs
+   '   age_started integer, -- the age the patient first used this drug
+   '   age_last_used integer, -- the age the patient last used or stopped using the drug
+   '   substance_amount integer, -- the quantity of the substance e.g 10 if say 10gm of alcohol per day see lu_substance_frequency
+   '   fk_substance_unit_amount integer, -- the units for the substance amount eg gm key to common.lu_units (to be restricted in the front end
+   '   fk_lu_substance_frequency integer, -- foreign key to common.lu_units but front end will allow on day/week/month/year
+   '   fk_lu_route_administration integer, -- key to common.lu_route_administration
+   '   notes text, -- any qualifying information about the drug eg, 'used intermittently 20-30, stopped in 30's, started again in 40's
+   '   deleted boolean,
+   '   CONSTRAINT recreational_drugs_pkey PRIMARY KEY (pk),
+   '   CONSTRAINT data_recreational_drugs_fk_consult FOREIGN KEY (fk_consult)
+   '       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT data_recreational_drugs_fk_lu_recreational_drug FOREIGN KEY (fk_lu_recreational_drug)
+   '       REFERENCES common.lu_recreational_drugs (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '-----------------------------------------------------------------------------------------------------------------------
    
    Dim recreationalDrug As CRow
    
    If HBox_EditArea.Padding = 0 Then Return
    If Not RecreationalDrug_Valid() Then Return 
+   HBox_EditArea.Enabled = False 
    recreationalDrug = New CRow  
    If fk_recreationaldrug <> 0 Then
       recreationalDrug.put_unchanged(fk_recreationaldrug, "fk_recreationaldrug")
    Endif
    recreationalDrug!fk_consult = currentconsult.GetPK() 
-   recreationalDrug.Save()
+   recreationalDrug!fk_lu_recreational_drug = substances[cmbSubstances.index]!pk
+   recreationalDrug!age_started = Val(Trim(txtAgeStarted.text))
+   recreationalDrug!age_last_used = Val(Trim(txtAgeLastUsed.text))
+   recreationalDrug!substance_amount = Val(Trim(txtQuantity.text))
+   If rbMonth.Value = True Then
+      recreationalDrug!fk_lu_substance_amount_units = const.Units_month
+   Endif
+   If rbDay.Value = True Then
+      recreationalDrug!fk_lu_substance_amount_units = const.Units_day
+   Endif
+   If rbWeek.Value = True Then
+      recreationalDrug!fk_lu_substance_amount_units = const.Units_week
+   Endif 
+   
+   ' If Val(Trim(txtQuantity.text)) <> "" Then
+   '   recreationalDrug!fk_substance_unit_amount - 
+   ' End If
+   recreationalDrug!fk_lu_route_administration = common_lu_route_administration_keys[cmbRouteTaken.index]
+   recreationalDrug!notes = Trim(txtNotes.text)
+   recreationalDrug!cumulative_amount = Trim(txtPackYears.Text)
+   recreationalDrug.Save("clin_history.recreational_drugs", "fk_recreationaldrug")
    modDBConnect.CommitTrans
+   EditArea_Notify_DataChange(False)
+   HBox_EditArea.Enabled = True
    Reload()
    
 End
 
 Public Sub Reload()
-  '----------------------------------
-  'Reload the users recreational drugs
-  '----------------------------------- 
+   '----------------------------------
+   'Reload the users recreational drugs
+   '----------------------------------- 
+   
+   Dim recreationalDrug As Collection
+   Dim sString As String
+   
+   EditArea_Clear()
+   cvwRecreationalDrugs.clear()
+   currentconsult.Refresh("recreationaldrugs")                    'force reload from back end
+   For Each recreationalDrug In currentconsult!recreationaldrugs
+      cvwRecreationalDrugs.Add(recreationalDrug!pk, 0)
+      cvwRecreationalDrugs[recreationalDrug!pk][0] = recreationalDrug!drug  
+      cvwRecreationalDrugs[recreationalDrug!pk][1] = recreationalDrug!route
+      sString = "Age started:" 
+      If Not IsNull(recreationalDrug!age_started) Then
+         sString &= recreationalDrug!age_started
+      Else
+         sSTring &= "?"
+      Endif
+      If IsNull(recreationalDrug!age_last_used) Then
+         sSTring &= " " & recreationalDrug!age_last_used
+         cvwRecreationalDrugs[recreationalDrug!pk][4] = " Current "
+      Else
+         cvwRecreationalDrugs[recreationalDrug!pk][4] = " Has Quit "
+      Endif
+      cvwRecreationalDrugs[recreationalDrug!pk][2] = sString 
+      
+      If Not IsNull(recreationalDrug!substance_amount) Then
+       sString = "Quantity " & recreationalDrug!substance_amount & recreationalDrug!quantification 
+         Select Case CurrentRecreationalDrug!fk_lu_substance_frequency
+            Case const.Units_day
+               sString = "per day "
+            Case const.Units_week
+                sString = "per week "
+            Case const.Units_month 
+               sString = "per month "
+         End Select              
+           cvwRecreationalDrugs[recreationalDrug!pk][3] = sString
+      Endif
+      cvwRecreationalDrugs[recreationalDrug!pk][5] = recreationalDrug!notes
+   Next
+   
+End
+
+Public Sub cvwRecreationalDrugs_Select()
+   '  
+   '   RecreationalDrug_Display
+   
+End
+
+Public Sub New_Entry()
+   
+   RecreationalDrug_New() 
+   
+End
+
+Public Sub RecreationalDrug_New()
+   '--------------------------------------------------------
+   'Clear the edit area for input of a new recreational drug
+   '--------------------------------------------------------
+   
+   EditArea_Clear() 
+   Vbox_EditArea.Enabled = True  
+   cmbSubstances.SetFocus() 
+   
+End
+
+Public Sub RecreationalDrug_Display()
+   '---------------------------------------------------------
+   'Display the recreational drug details in the editing area
+   '---------------------------------------------------------
+   
+   EditArea_Clear()
+   cvwRecreationalDrugs.MoveCurrent()
+   CurrentRecreationalDrug = currentconsult!recreationaldrugs[cvwRecreationalDrugs.Item.key]
+   cmbSubstances.index = cmbSubstances.Find(CurrentRecreationalDrug!drug)
+   bExit = True  
+   txtAgeStarted.text = CurrentRecreationalDrug!age_started
+   txtAgeLastUsed.text = CurrentRecreationalDrug!age_last_used
+   txtPackYears.text = CurrentRecreationalDrug!cumulative_amount 'only used for nicotine
+   txtQuantity.text = CurrentRecreationalDrug!substance_amount 
+   Select Case CurrentRecreationalDrug!fk_lu_substance_frequency
+      Case const.Units_day
+         rbDay.value = True
+      Case const.Units_week
+         rbWeek.Value = True 
+      Case const.Units_month 
+         rbMonth.Value = True   
+   End Select              
+   txtNotes.text = CurrentRecreationalDrug!notes  
+   fk_recreationaldrug = CurrentRecreationalDrug!pk
+   cmbRouteTaken.index = cmbRouteTaken.Find(CurrentRecreationalDrug!route)
+   bExit = False 
    
 End
 
 Public Sub RecreationalDrug_Valid() As Boolean
-   'Returns true if enough information to save this recreational drug 
-  
+   '-----------------------------------------------------------------
+   'Returns true if enough information to save this recreational drug
+   '----------------------------------------------------------------- 
    
+   Return True 'for the moment whilst developing.
    
 End
 
@@ -99,6 +255,177 @@ Public Sub Settings_Save()
    
 End
 
+Public Sub Form_Close()
+   '------------------
+   'Save splits layout
+   '------------------
+   
+   Settings_Save()
+   
+End
+
+Public Sub EditArea_Clear()
+   
+   bExit = True 
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea) 
+   fk_recreationaldrug = 0
+   CurrentRecreationalDrug = Null
+   rbReset.value = True 'unsets the day/month/week radiobuttons
+   bexit = False  
+   EditArea_Notify_DataChange(False)
+   
+End
+
+Public Sub EditAreaTextBox_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   
+End
+
+Public Sub EditAreaTextBox_LostFocus()
+   
+   Last.Background = Color.White 
+   
+End
+
+Public Sub EditArea_Notify_DataChange(flag As Boolean)
+   '--------------------------------------------------
+   'Adds or removes padding around edit area and lists
+   'to indicate if data is changed and unsaved
+   '--------------------------------------------------
+   
+   If flag Then
+      HBox_EditArea.Padding = 1
+   Else
+      HBox_EditArea.Padding = 0
+   End If
+   
+End  
+
+Public Sub EditAreaTextBox_KeyPress()
+   '-------------------------------------------------------------
+   'first make sure only valid keys for each text box are entered
+   'here effectively this means only the date
+   '--------------------------------------------------------------
+   
+   Dim x As Integer
+   Dim bKeyValid As Boolean
+   
+   bkeyvalid = EditAreaTextBox_ExcludeKeys(key.code, Last.tag)
+   If bkeyvalid = False Then
+      Stop Event
+      Return
+   End If
+   Select Case Key.Code
+      Case Key.Return, Key.tab
+         Select Case Last.tag
+            Case "age started"
+               txtAgeLastUsed.SetFocus()
+            Case "age last used"
+               txtQuantity.SetFocus()
+            Case "quantity"
+               rbDay.SetFocus()
+            Case "pack years"
+               cmbRouteTaken.SetFocus()
+         End Select
+   End Select
+   
+End
+
+Public Sub EditAreaTextBox_Change()
+   
+   EditArea_Notify_DataChange(True)
+   ' If Last.tag = "age last used" And Len(Trim(txtAgeLastUsed.text)) > 0 Then
+   '    If currentconsult!patient!age_numeric > Val(Trim(txtAgeLastUsed.text)) Or currentconsult!patient!age_numeric < Val(Trim(txtAgeStarted.text)) Then
+   '       Last.text = ""
+   '    Endif
+   ' Endif
+   
+End
+
+Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean  
+   
+   Dim bKeyValid As Boolean
+   
+   Select Case tag
+      Case "pack years", "age started", "age last used", "quantity"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_NumbersOnly, keycode)
+      Case Else
+         bKeyValid = True 
+   End Select
+   Return bKeyValid
+   
+End
+
+Public Sub cmbSubstances_Click()
+   
+   Dim sMsg As String
+   
+   If bexit Then Return   
+   '-----------------------------------------------------------------------
+   'First check the user is not stupid enough to be starting another record
+   'for a substance already recorded
+   '-----------------------------------------------------------------------
+   If Not bIniting Then
+      For Each substance In currentconsult!recreationaldrugs
+         If substances[cmbSubstances.index]!pk = substance!fk_lu_recreational_drug Then
+            Message.title = "Existing Recreational Drug"
+            sMsg = "You have already entered data for " & substance!drug & ".\n"
+            sMsg &= "Please edit existing data for this drug if you wish to modify it."
+            Message.info(sMsg)
+            Return
+         Endif
+      Next 
+   End If   
+   If cmbSubstances.text = "alcohol" Then
+      lblQuantity.text = "gms per"
+   Endif
+   lblSubstanceAKA.text = substances[cmbSubstances.index]!alternative_names
+   cmbRouteTaken.index = cmbRouteTaken.Find(substances[cmbSubstances.index]!route)
+   lblQuantity.text = substances[cmbSubstances.index]!quantification & " per  "
+   If cmbSubstances.text = "nicotine" Then
+      HBox_PackYears.Visible = True
+   Else
+      HBox_PackYears.Visible = False 
+   End If   
+   EditArea_Notify_DataChange(True)
+   
+End
+
+Public Sub EditArea_RadioButtons_Click()
+   
+   EditArea_Notify_DataChange(True)
+   
+End
+
+Public Sub EditArea_RadioButtons_KeyPress()
+   
+   If bexit Then Return    
+   Select Case Key.Code
+      Case Key.Tab, Key.Return
+         Select Case Last.tag
+            Case "day"
+               rbWeek.SetFocus()   
+            Case "week"
+               rbMonth.SetFocus()
+            Case "month"
+               If cmbSubstances.text = "nicotine" Then
+                  txtPackYears.SetFocus()
+               Else
+                  cmbRouteTaken.SetFocus
+               Endif
+               
+         End Select
+   End Select
+   
+End
+
+Public Sub cmbRouteTaken_KeyPress()
+   
+   If bexit Then Return
+   txtNotes.SetFocus()
+   
+End
 
 ' -- work on recreational drug use tables
 ' drop table clin_history.data_recreational_drugs;
@@ -181,11 +508,3 @@ End
 ' insert into db.lu_version (lu_major,lu_minor) values (0, 259);
 ' 
 ' 
-
-Public Sub cmbSubstances_Click()
-
-    If cmbSubstances.text = "alcohol" Then
-       lblQuantity.text = "gms per"
-    Endif
-
-End

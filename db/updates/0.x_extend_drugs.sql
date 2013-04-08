@@ -88,22 +88,32 @@ insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original
 -- fix salbutamol
 
 update drugs.product set sct='27601011000036100',free_comment='pressurised device' where pk='4081e0e2-5379-4298-a628-bdff9eb1d348';
--- auromir autohaler
+-- auromir autohaler now a separate product: FINISHED
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('6c55488b-d1ee-4683-b262-6482bd92dda3','salbutamol sulfate',46,'100mcg','breath-actuated device','30361000144109',$$salbutamol Oral pressurised inhalation in breath actuated device 100 micrograms (base) per dose (200 doses), CFC-free formulation, 1$$,1,'R03AC02',200.0,56,1);
+update drugs.brand set fk_product='6c55488b-d1ee-4683-b262-6482bd92dda3'  where pk='f9e4273e-9231-468e-8bf9-6c83464190ac';
+update clin_prescribing.medications set fk_generic_product='6c55488b-d1ee-4683-b262-6482bd92dda3' from clin_prescribing.prescribed where prescribed.fk_brand='f9e4273e-9231-468e-8bf9-6c83464190ac' and prescribed.fk_medication = medications.pk;
 
 update drugs.product set generic='amino acid synthetic formula supplemented with long chain polyunsaturated fatty acids' where sct='51427011000036107';
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('40f7014a-97d6-4c72-9c7a-1c43884f19b3','amino acid synthetic formula supplemented with long chain polyunsaturated fatty acids and medium chain triglycerides',36,'400g','','927290011000036108',$$amino acid synthetic formula supplemented with long chain polyunsaturated fatty acids and medium chain triglycerides oral liquid: powder for, 400 g$$,1,'V06DB',NULL,NULL,1);
 
+-- etanercept: only one brand: FINISHED
 update drugs.product set sct='53301000144102' where pk='ed23fb8e-551a-4e23-9a6f-c6873b9ff13a';
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('32dcf1ea-0952-4fd3-83c8-d917058cf488','etanercept',58,'50mg','auto-injector','53261000144107',$$ETANERCEPT Injection 50 mg in 1 mL single use auto-injector, 4, 1$$,1,'L04AB01',1.0,26,4);
- --brands Pyralin En and Salazopyrin EN
-update drugs.product set sct='27402011000036108',original_pbs_name='sulfasalazine 500 mg tablet, 100',free_comment='' where pk='6812260e-c377-4378-84d3-8f1880191ec6';
+
+-- sulphasalazine: FINISHED
 -- brand Salazopyrin
+update drugs.product set sct='27402011000036108',original_pbs_name='sulfasalazine 500 mg tablet, 100',free_comment='' where pk='6812260e-c377-4378-84d3-8f1880191ec6';
+--brands Pyralin En and Salazopyrin EN
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('08464091-46f3-4f8e-926b-b29df46bc652','sulfasalazine',59,'500mg','enteric-coated','31301000144102',$$SULFASALAZINE Tablet 500 mg (enteric coated), 100$$,100,'A07EC01',NULL,NULL,1);
+update drugs.brand set fk_product='08464091-46f3-4f8e-926b-b29df46bc652' where pk='f465c187-5220-4cf3-a6ba-2afd0b88d71b';
+update clin_prescribing.medications set fk_generic_product='08464091-46f3-4f8e-926b-b29df46bc652' from clin_prescribing.prescribed where prescribed.fk_brand='f465c187-5220-4cf3-a6ba-2afd0b88d71b' and prescribed.fk_medication = medications.pk;
+update drugs.brand set fk_product='08464091-46f3-4f8e-926b-b29df46bc652' where pk='5bf3d70d-1288-4961-b469-ff092f94d708';
+update clin_prescribing.medications set fk_generic_product='08464091-46f3-4f8e-926b-b29df46bc652' from clin_prescribing.prescribed where prescribed.fk_brand='5bf3d70d-1288-4961-b469-ff092f94d708' and prescribed.fk_medication = medications.pk;
+
 
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('65236ba0-69af-4c8c-a544-f0f258c083a8','milk powder-lactose free predigested formula',36,'900g','','51255011000036100',$$milk powder lactose free formula predigested oral liquid: powder for, 900 g$$,1,'V06DF',NULL,NULL,1);
@@ -112,41 +122,60 @@ insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('57196726-0370-4827-8f74-253d3b3fa539','methylprednisolone',22,'40mg','with diluent','26759011000036103',$$methylprednisolone 40 mg injection [5 x 40 mg vials] (&) inert substance diluent [5 x 1 mL vials], 1 pack$$,5,'H02AB04',NULL,NULL,1);
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
-('f0d6c1fe-0b8a-45df-90d8-8498256771db','methylprednisolone',22,'1g','as sodium succinate','26101000144108',$$methylprednisolone Powder for injection 1 g (as sodium succinate), 1$$,1,'H02AB04',NULL,NULL,1);
+('f0d6c1fe-0b8a-45df-90d8-8498256771db','methylprednisolone',22,'1g','with diluent','26758011000036106',$$methylprednisolone 1 g injection [1 x 1 g vial] (&) inert substance diluent [1 x 16 mL vial], 1 pack$$,1,'H02AB04',NULL,NULL,1);
 
--- Qvar 50
+-- Qvar 50 FINISHED
 update drugs.product set sct='27701011000036109',free_comment='pressurised device',original_pbs_name=$$beclomethasone dipropionate 50 microgram/actuation inhalation: pressurised, 200 actuations$$ where pk='51d3317e-076d-4491-b4d7-0249f1ff252e';
 -- Qvar 50 Autohaler
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('05d8b286-9576-4137-b3a1-46db86764e8d','beclomethasone dipropionate',46,'50mcg','breath-actuated device','16091000144106',$$BECLOMETHASONE DIPROPIONATE Oral pressurised inhalation in breath actuated device 50 micrograms per dose (200 doses), CFC-free formulation, 1$$,1,'R03BA01',200.0,56,1);
+update drugs.brand set fk_product='05d8b286-9576-4137-b3a1-46db86764e8d' where pk='cca2040d-006a-4d77-8576-f59dcf267f41';
+update clin_prescribing.medications set fk_generic_product='05d8b286-9576-4137-b3a1-46db86764e8d' from clin_prescribing.prescribed where prescribed.fk_brand='cca2040d-006a-4d77-8576-f59dcf267f41' and prescribed.fk_medication = medications.pk;
 
--- Qvar 100
+-- Qvar 100 FINISHED
 update drugs.product set sct='27702011000036103',free_comment='pressurised device',original_pbs_name=$$beclomethasone dipropionate 100 microgram/actuation inhalation: pressurised, 200 actuations$$ where pk='3c1e79ae-0c74-444e-9a17-a2d8648b24a3';
 -- Qvar 100 Autohaler
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('1b1cd924-01da-41b5-a09b-680f06358d9c','beclomethasone dipropionate',46,'100mcg','breath-actuated device','16061000144100',$$BECLOMETHASONE DIPROPIONATE Oral pressurised inhalation in breath actuated device 100 micrograms per dose (200 doses), CFC-free formulation, 1$$,1,'R03BA01',200.0,56,1);
+update drugs.brand set fk_product='1b1cd924-01da-41b5-a09b-680f06358d9c' where pk='bf8359f6-69dc-413b-8c9d-e37d2ca755b0';
+update clin_prescribing.medications set fk_generic_product='1b1cd924-01da-41b5-a09b-680f06358d9c' from clin_prescribing.prescribed where prescribed.fk_brand='bf8359f6-69dc-413b-8c9d-e37d2ca755b0' and prescribed.fk_medication = medications.pk;
 
--- Estalis sequi 50/250
+-- Estalis sequi 50/250 : FINISHED
 update drugs.product set generic='oestradiol;norethisterone',strength='50mcg-250mcg',free_comment='4 patches oestradiol, 4 patches oestradiol and norethisterone acetate',units_per_pack=8 where pk='3506a9e7-3bf3-4e0b-ac5c-65a7baee28a2';
 -- Estalis sequi 50/140
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('351b2943-cf44-4930-a16f-edb11cc207cd','oestradiol;norethisterone',39,'50mcg-140mcg','4 patches oestradiol, 4 patches oestradiol and norethisterone acetate','27681011000036101',$$oestradiol 50 microgram/24 hours patch [4 patches] (&) oestradiol 50 microgram/24 hours + norethisterone acetate 140 microgram/24 hours patch [4 patches], 8$$,1,'G03FB05',NULL,NULL,8);
+update drugs.brand set fk_product='351b2943-cf44-4930-a16f-edb11cc207cd' where pk='373e3559-8974-4655-b848-0c989c888d20';
+update clin_prescribing.medications set fk_generic_product='351b2943-cf44-4930-a16f-edb11cc207cd' from clin_prescribing.prescribed where prescribed.fk_brand='373e3559-8974-4655-b848-0c989c888d20' and prescribed.fk_medication = medications.pk;
 
- 
+-- leuprorelin
+
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('b4897e11-9ba2-4143-bb50-b2b08ef21120','leuprorelin acetate',22,'7.5mg','','932927011000036104',$$leuprorelin acetate 7.5 mg injection: modified release [1 syringe] (&) inert substance diluent [1 syringe], 1 pack$$,1,'L02AE02',NULL,NULL,1);
 
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('2dc0db6a-9190-42af-b6a0-73133d978129','leuprorelin acetate',22,'22.5mg','','932929011000036106',$$leuprorelin acetate 22.5 mg injection: modified release [1 syringe] (&) inert substance diluent [1 syringe], 1 pack$$,1,'L02AE02',NULL,NULL,1);
 
+
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('82d04b86-c920-4211-abd2-bd3e6dc4df10','leuprorelin acetate',22,'30mg','','932931011000036109',$$leuprorelin acetate 30 mg injection: modified release [1 syringe] (&) inert substance diluent [1 syringe], 1 pack$$,1,'L02AE02',NULL,NULL,1);
 
+-- risendronate enteric-coated pack: FINISHED
+update drugs.product set free_comment='4 tablets 35mg risendronate enteric-coated, 24 tablets 500mg calcium carbonate',sct='55141000144100' where pk='b98d6d27-2971-4cc1-9e89-68734e01f960';
+-- risendronate NOT enteric-coated pack: FINISHED
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('7502b034-0237-4003-91ad-5d0a10366193','risedronate sodium and calcium carbonate',39,'None','4 tablets 35mg risendronate, 24 tablets 500mg calcium carbonate','26692011000036107',$$risedronate sodium 35 mg tablet [4 tablets] (&) calcium (as carbonate) 500 mg tablet [24 tablets], 28$$,1,'M05BB02',NULL,NULL,28);
+update drugs.brand set fk_product='7502b034-0237-4003-91ad-5d0a10366193' where pk='ed714fd8-8227-4205-acec-3405c1404b29';
+update clin_prescribing.medications set fk_generic_product='7502b034-0237-4003-91ad-5d0a10366193' from clin_prescribing.prescribed where prescribed.fk_brand='ed714fd8-8227-4205-acec-3405c1404b29' and prescribed.fk_medication = medications.pk;
+update drugs.brand set fk_product='7502b034-0237-4003-91ad-5d0a10366193' where pk='e2a9d6fd-5d52-45e6-bc6e-f7bb8173cffc';
+update clin_prescribing.medications set fk_generic_product='7502b034-0237-4003-91ad-5d0a10366193' from clin_prescribing.prescribed where prescribed.fk_brand='e2a9d6fd-5d52-45e6-bc6e-f7bb8173cffc' and prescribed.fk_medication = medications.pk;
 
+-- risendronate enteric-coated plain 35mg tabs: FINISHED
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
-('a72b630c-7f3d-40b7-8ab0-8019f32904ac','risedronate sodium',59,'35mg','','51591000144100',$$RISEDRONATE SODIUM Tablet 35 mg (enteric coated), 4$$,4,'M05BA07',NULL,NULL,1);
+('a72b630c-7f3d-40b7-8ab0-8019f32904ac','risedronate sodium',59,'35mg','enteric-coated','51591000144100',$$RISEDRONATE SODIUM Tablet 35 mg (enteric coated), 4$$,4,'M05BA07',NULL,NULL,1);
+update drugs.brand set fk_product='a72b630c-7f3d-40b7-8ab0-8019f32904ac' where pk='5290fd08-354e-4014-9c0f-a5e9d5f4928c';
+update clin_prescribing.medications set fk_generic_product='a72b630c-7f3d-40b7-8ab0-8019f32904ac' from clin_prescribing.prescribed where prescribed.fk_brand='5290fd08-354e-4014-9c0f-a5e9d5f4928c' and prescribed.fk_medication = medications.pk;
+
 
 -- gosrelins
 
@@ -158,7 +187,7 @@ update drugs.product set free_comment='goserelin 10.8mg, 84 tablets bicalutamide
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('52a72cc2-0ffe-4fec-9de7-03f427ca765c','goserelin acetate and bicalutamide',39,'None','goserelin 10.8mg, 28 tablets 50mg bicalutamide','26782011000036101',$$goserelin 10.8 mg implant [1 implant] (&) bicalutamide 50 mg tablet [28 tablets], 1 pack$$,1,'L02AE',NULL,NULL,1);
 
--- bath oils
+-- bath oils: FINISHED
 
 insert into drugs.form (pk,form,volume_amount_required) values (76, 'bath oil', true);
 update drugs.product set fk_form=76 where pk='c405b849-3280-4a0e-8104-6e00479eb639';
@@ -168,47 +197,32 @@ update drugs.brand set fk_product='62d9bd4c-72fc-4b63-8009-488a82ec478f' where p
 update clin_prescribing.medications set fk_generic_product='62d9bd4c-72fc-4b63-8009-488a82ec478f' from clin_prescribing.prescribed where prescribed.fk_brand='c0f5ca47-a8c8-4173-96a6-3a4974078a38' and prescribed.fk_medication = medications.pk;
 
 
--- peginferon
-
+-- peginferon  2A  -- FINISHED
+update drugs.product set free_comment='peginterferon alfa-2a 180mcg injection, 140 tablets ribavirin 200mg', sct='28056011000036104',original_pbs_name='peginterferon alfa-2a 180 microgram/0.5 mL injection [4 x 0.5 mL syringes] (&) ribavirin 200 mg tablet [140 tablets], 1 pack' where pk='42f58e69-50eb-406e-9083-ce46c32ee43f';
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('74be2df3-98a6-4d7c-ba60-b7bf01a3b6ff','ribavirin and peginterferon alfa-2a',39,'None','peginferon alfa-2a 135mcg injection, 4 syringes, 168 tablets ribavirin 200mg','28053011000036105',$$peginterferon alfa-2a 135 microgram/0.5 mL injection [4 x 0.5 mL syringes] (&) ribavirin 200 mg tablet [168 tablets], 1 pack$$,1,'L03AB61',NULL,NULL,1);
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
-('1a36d290-44d7-4328-b106-3bb40dad0e67','ribavirin and peginterferon alfa-2a',39,'None','peginterferon alfa-2a 180mg infection, 4 syringes, 112 tablets ribavirin','28055011000036106',$$peginterferon alfa-2a 180 microgram/0.5 mL injection [4 x 0.5 mL syringes] (&) ribavirin 200 mg tablet [112 tablets], 1 pack$$,1,'L03AB61',NULL,NULL,1);
+('1a36d290-44d7-4328-b106-3bb40dad0e67','ribavirin and peginterferon alfa-2a',39,'None','peginterferon alfa-2a 180mcg infection, 4 syringes, 112 tablets ribavirin 200mg','28055011000036106',$$peginterferon alfa-2a 180 microgram/0.5 mL injection [4 x 0.5 mL syringes] (&) ribavirin 200 mg tablet [112 tablets], 1 pack$$,1,'L03AB61',NULL,NULL,1);
+insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
+('7bb768ce-5e18-4cac-9810-fe002243dd9e','ribavirin and peginterferon alfa-2a',39,'None','peginterferon alfa-2a 180mcg infection, 4 syringes, 168 tablets ribavirin 200mg','28056011000036101',$$peginterferon alfa-2a 180 microgram/0.5 mL injection [4 x 0.5 mL syringes] (&) ribavirin 200 mg tablet [168 tablets], 1 pack$$,1,'L03AB61',NULL,NULL,1);
 
---for PBS code 6395N pack_size matches but SCT doesn't
--- existing SCT is {'pack_size': '1', 'sct': '28057011000036101', 'xml:id': 'a14840569', 'brands': [{'sct': '13992011000036104', 'brand': 'Pegasys RBV', 'price': '1703.18', 'manufacturer': 'a16095498'}]} {'chapter': 'HB', 'code': '9527K', 'atc': 'L03AB61', 'title': 'peginterferon alfa-2a 180 microgram/0.5 mL injection [4 x 0.5 mL syringes] (&) ribavirin 200 mg tablet [168 tablets], 1 pack', 'mpps': ['a14840569'], 'restricts': ['a15878374', 'a15878379'], 'mpp': 'a14840569', 'max_rpt': '5', 'type': 'streamlined', 'quantity': '2'}, new drug is {'pack_size': '1', 'sct': '28056011000036104', 'xml:id': 'a14840559', 'brands': [{'sct': '13991011000036105', 'brand': 'Pegasys RBV', 'price': '1622.91', 'manufacturer': 'a16095498'}]} {'chapter': 'HS', 'code': '6395N', 'atc': 'L03AB61', 'title': 'peginterferon alfa-2a 180 microgram/0.5 mL injection [4 x 0.5 mL syringes] (&) ribavirin 200 mg tablet [140 tablets], 1 pack', 'mpps': ['a14840559'], 'restricts': ['a15902963', 'a15902968'], 'mpp': 'a14840559', 'max_rpt': '5', 'type': 'authority-required', 'quantity': '2'}
+
+-- peginterferon 2 *B* FINISHED
+update drugs.product set free_comment='peginterferon alfa-2b 80mcg injection, 140 tablets ribavirin 200mg',sct='28076011000036102' where pk='d3c9ef7c-c8fd-4dd0-b0d5-441689b945f7';
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
-('7bb768ce-5e18-4cac-9810-fe002243dd9e','ribavirin and peginterferon alfa-2a',39,'None','','28056011000036104',$$peginterferon alfa-2a 180 microgram/0.5 mL injection [4 x 0.5 mL syringes] (&) ribavirin 200 mg tablet [140 tablets], 1 pack$$,1,'L03AB61',NULL,NULL,1);
---for PBS code 6396P packsize and sct match
---for PBS code 6397Q packsize and sct match
---for PBS code 6400W pack_size matches but SCT doesn't
--- existing SCT is {'pack_size': '1', 'sct': '51572011000036101', 'xml:id': 'a14840629', 'brands': [{'sct': '49715011000036102', 'brand': 'Pegatron', 'price': '2182.24', 'manufacturer': 'a16094544'}]} {'chapter': 'HB', 'code': '9540D', 'atc': 'L03AB60', 'title': 'peginterferon alfa-2b 150 microgram injection [4 x 150 microgram cartridges] (&) ribavirin 200 mg capsule [196 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack', 'mpps': ['a14840629'], 'restricts': ['a15901284', 'a15901289'], 'mpp': 'a14840629', 'max_rpt': '5', 'type': 'streamlined', 'quantity': '2'}, new drug is {'pack_size': '1', 'sct': '28074011000036105', 'xml:id': 'a14840639', 'brands': [{'sct': '14011011000036101', 'brand': 'Pegatron', 'price': '1059.87', 'manufacturer': 'a16094544'}]} {'chapter': 'HS', 'code': '6400W', 'atc': 'L03AB60', 'title': 'peginterferon alfa-2b 50 microgram injection [4 x 50 microgram cartridges] (&) ribavirin 200 mg capsule [112 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack', 'mpps': ['a14840639'], 'restricts': ['a15889159', 'a15889164'], 'mpp': 'a14840639', 'max_rpt': '5', 'type': 'authority-required', 'quantity': '2'}
+('ee148a47-5007-491b-af25-04031bd981b5','ribavirin and peginterferon alfa-2b',39,'None','peginterferon alfa-2b 50mcg infection, 4 syringes, 112 tablets ribavirin 200mg','28074011000036105',$$peginterferon alfa-2b 50 microgram injection [4 x 50 microgram cartridges] (&) ribavirin 200 mg capsule [112 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack$$,1,'L03AB60',NULL,NULL,1);
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
-('ee148a47-5007-491b-af25-04031bd981b5','ribavirin and peginterferon alfa-2b',39,'None','','28074011000036105',$$peginterferon alfa-2b 50 microgram injection [4 x 50 microgram cartridges] (&) ribavirin 200 mg capsule [112 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack$$,1,'L03AB60',NULL,NULL,1);
---for PBS code 6401X pack_size matches but SCT doesn't
--- existing SCT is {'pack_size': '1', 'sct': '51572011000036101', 'xml:id': 'a14840629', 'brands': [{'sct': '49715011000036102', 'brand': 'Pegatron', 'price': '2182.24', 'manufacturer': 'a16094544'}]} {'chapter': 'HB', 'code': '9540D', 'atc': 'L03AB60', 'title': 'peginterferon alfa-2b 150 microgram injection [4 x 150 microgram cartridges] (&) ribavirin 200 mg capsule [196 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack', 'mpps': ['a14840629'], 'restricts': ['a15901284', 'a15901289'], 'mpp': 'a14840629', 'max_rpt': '5', 'type': 'streamlined', 'quantity': '2'}, new drug is {'pack_size': '1', 'sct': '28078011000036103', 'xml:id': 'a14840659', 'brands': [{'sct': '14015011000036104', 'brand': 'Pegatron', 'price': '1211.36', 'manufacturer': 'a16094544'}]} {'chapter': 'HS', 'code': '6401X', 'atc': 'L03AB60', 'title': 'peginterferon alfa-2b 80 microgram injection [4 x 80 microgram cartridges] (&) ribavirin 200 mg capsule [84 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack', 'mpps': ['a14840659'], 'restricts': ['a15899348', 'a15899353'], 'mpp': 'a14840659', 'max_rpt': '5', 'type': 'authority-required', 'quantity': '2'}
+('e97a702b-7d98-44e9-9990-906ce48da7d3','ribavirin and peginterferon alfa-2b',39,'None','peginterferon alfa-2b 80mcg infection, 4 syringes, 84 tablets ribavirin 200mg','28078011000036103',$$peginterferon alfa-2b 80 microgram injection [4 x 80 microgram cartridges] (&) ribavirin 200 mg capsule [84 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack$$,1,'L03AB60',NULL,NULL,1);
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
-('e97a702b-7d98-44e9-9990-906ce48da7d3','ribavirin and peginterferon alfa-2b',39,'None','','28078011000036103',$$peginterferon alfa-2b 80 microgram injection [4 x 80 microgram cartridges] (&) ribavirin 200 mg capsule [84 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack$$,1,'L03AB60',NULL,NULL,1);
---for PBS code 6402Y pack_size matches but SCT doesn't
--- existing SCT is {'pack_size': '1', 'sct': '51572011000036101', 'xml:id': 'a14840629', 'brands': [{'sct': '49715011000036102', 'brand': 'Pegatron', 'price': '2182.24', 'manufacturer': 'a16094544'}]} {'chapter': 'HB', 'code': '9540D', 'atc': 'L03AB60', 'title': 'peginterferon alfa-2b 150 microgram injection [4 x 150 microgram cartridges] (&) ribavirin 200 mg capsule [196 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack', 'mpps': ['a14840629'], 'restricts': ['a15901284', 'a15901289'], 'mpp': 'a14840629', 'max_rpt': '5', 'type': 'streamlined', 'quantity': '2'}, new drug is {'pack_size': '1', 'sct': '28076011000036102', 'xml:id': 'a14840649', 'brands': [{'sct': '14013011000036100', 'brand': 'Pegatron', 'price': '1353.83', 'manufacturer': 'a16094544'}]} {'chapter': 'HS', 'code': '6402Y', 'atc': 'L03AB60', 'title': 'peginterferon alfa-2b 80 microgram injection [4 x 80 microgram cartridges] (&) ribavirin 200 mg capsule [140 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack', 'mpps': ['a14840649'], 'restricts': ['a15878404', 'a15878409'], 'mpp': 'a14840649', 'max_rpt': '5', 'type': 'authority-required', 'quantity': '2'}
+('29973764-0224-4379-b9e7-8a91fc3eb734','ribavirin and peginterferon alfa-2b',39,'None','peginterferon alfa-2b 150mcg infection, 4 syringes, 196 tablets ribavirin 200mg','51572011000036101',$$peginterferon alfa-2b 150 microgram injection [4 x 150 microgram cartridges] (&) ribavirin 200 mg capsule [196 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack$$,1,'L03AB60',NULL,NULL,1);
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
-('29973764-0224-4379-b9e7-8a91fc3eb734','ribavirin and peginterferon alfa-2b',39,'None','','28076011000036102',$$peginterferon alfa-2b 80 microgram injection [4 x 80 microgram cartridges] (&) ribavirin 200 mg capsule [140 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack$$,1,'L03AB60',NULL,NULL,1);
---for PBS code 6405D pack_size matches but SCT doesn't
--- existing SCT is {'pack_size': '1', 'sct': '51572011000036101', 'xml:id': 'a14840629', 'brands': [{'sct': '49715011000036102', 'brand': 'Pegatron', 'price': '2182.24', 'manufacturer': 'a16094544'}]} {'chapter': 'HB', 'code': '9540D', 'atc': 'L03AB60', 'title': 'peginterferon alfa-2b 150 microgram injection [4 x 150 microgram cartridges] (&) ribavirin 200 mg capsule [196 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack', 'mpps': ['a14840629'], 'restricts': ['a15901284', 'a15901289'], 'mpp': 'a14840629', 'max_rpt': '5', 'type': 'streamlined', 'quantity': '2'}, new drug is {'pack_size': '1', 'sct': '28079011000036106', 'xml:id': 'a14840589', 'brands': [{'sct': '14016011000036106', 'brand': 'Pegatron', 'price': '1549.81', 'manufacturer': 'a16094544'}]} {'chapter': 'HS', 'code': '6405D', 'atc': 'L03AB60', 'title': 'peginterferon alfa-2b 100 microgram injection [4 x 100 microgram cartridges] (&) ribavirin 200 mg capsule [112 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack', 'mpps': ['a14840589'], 'restricts': ['a15901274', 'a15901279'], 'mpp': 'a14840589', 'max_rpt': '5', 'type': 'authority-required', 'quantity': '2'}
+('65f3f0b5-4c29-4f90-8d4e-31608e1e90bc','ribavirin and peginterferon alfa-2b',39,'None','peginterferon alfa-2b 100mcg infection, 4 syringes, 112 tablets ribavirin 200mg','28079011000036106',$$peginterferon alfa-2b 100 microgram injection [4 x 100 microgram cartridges] (&) ribavirin 200 mg capsule [112 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack$$,1,'L03AB60',NULL,NULL,1);
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
-('65f3f0b5-4c29-4f90-8d4e-31608e1e90bc','ribavirin and peginterferon alfa-2b',39,'None','','28079011000036106',$$peginterferon alfa-2b 100 microgram injection [4 x 100 microgram cartridges] (&) ribavirin 200 mg capsule [112 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack$$,1,'L03AB60',NULL,NULL,1);
---for PBS code 6407F pack_size matches but SCT doesn't
--- existing SCT is {'pack_size': '1', 'sct': '51572011000036101', 'xml:id': 'a14840629', 'brands': [{'sct': '49715011000036102', 'brand': 'Pegatron', 'price': '2182.24', 'manufacturer': 'a16094544'}]} {'chapter': 'HB', 'code': '9540D', 'atc': 'L03AB60', 'title': 'peginterferon alfa-2b 150 microgram injection [4 x 150 microgram cartridges] (&) ribavirin 200 mg capsule [196 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack', 'mpps': ['a14840629'], 'restricts': ['a15901284', 'a15901289'], 'mpp': 'a14840629', 'max_rpt': '5', 'type': 'streamlined', 'quantity': '2'}, new drug is {'pack_size': '1', 'sct': '28081011000036104', 'xml:id': 'a14840599', 'brands': [{'sct': '14018011000036105', 'brand': 'Pegatron', 'price': '1745.79', 'manufacturer': 'a16094544'}]} {'chapter': 'HS', 'code': '6407F', 'atc': 'L03AB60', 'title': 'peginterferon alfa-2b 120 microgram injection [4 x 120 microgram cartridges] (&) ribavirin 200 mg capsule [140 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack', 'mpps': ['a14840599'], 'restricts': ['a15878444', 'a15878449'], 'mpp': 'a14840599', 'max_rpt': '5', 'type': 'authority-required', 'quantity': '2'}
+('e527e448-a943-4bf7-9ad7-fb14b46f4ffb','ribavirin and peginterferon alfa-2b',39,'None','peginterferon alfa-2b 120mcg infection, 4 syringes, 140 tablets ribavirin 200mg','28081011000036104',$$peginterferon alfa-2b 120 microgram injection [4 x 120 microgram cartridges] (&) ribavirin 200 mg capsule [140 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack$$,1,'L03AB60',NULL,NULL,1);
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
-('e527e448-a943-4bf7-9ad7-fb14b46f4ffb','ribavirin and peginterferon alfa-2b',39,'None','','28081011000036104',$$peginterferon alfa-2b 120 microgram injection [4 x 120 microgram cartridges] (&) ribavirin 200 mg capsule [140 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack$$,1,'L03AB60',NULL,NULL,1);
---for PBS code 6409H pack_size matches but SCT doesn't
--- existing SCT is {'pack_size': '1', 'sct': '51572011000036101', 'xml:id': 'a14840629', 'brands': [{'sct': '49715011000036102', 'brand': 'Pegatron', 'price': '2182.24', 'manufacturer': 'a16094544'}]} {'chapter': 'HB', 'code': '9540D', 'atc': 'L03AB60', 'title': 'peginterferon alfa-2b 150 microgram injection [4 x 150 microgram cartridges] (&) ribavirin 200 mg capsule [196 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack', 'mpps': ['a14840629'], 'restricts': ['a15901284', 'a15901289'], 'mpp': 'a14840629', 'max_rpt': '5', 'type': 'streamlined', 'quantity': '2'}, new drug is {'pack_size': '1', 'sct': '28083011000036103', 'xml:id': 'a14840609', 'brands': [{'sct': '14020011000036101', 'brand': 'Pegatron', 'price': '2039.76', 'manufacturer': 'a16094544'}]} {'chapter': 'HS', 'code': '6409H', 'atc': 'L03AB60', 'title': 'peginterferon alfa-2b 150 microgram injection [4 x 150 microgram cartridges] (&) ribavirin 200 mg capsule [140 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack', 'mpps': ['a14840609'], 'restricts': ['a15879440', 'a15879445'], 'mpp': 'a14840609', 'max_rpt': '5', 'type': 'authority-required', 'quantity': '2'}
+('4852c05c-3027-4f0b-bce3-69f34d1c23e1','ribavirin and peginterferon alfa-2b',39,'None','peginterferon alfa-2b 150mcg infection, 4 syringes, 140 tablets ribavirin 200mg','28083011000036103',$$peginterferon alfa-2b 150 microgram injection [4 x 150 microgram cartridges] (&) ribavirin 200 mg capsule [140 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack$$,1,'L03AB60',NULL,NULL,1);
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
-('4852c05c-3027-4f0b-bce3-69f34d1c23e1','ribavirin and peginterferon alfa-2b',39,'None','','28083011000036103',$$peginterferon alfa-2b 150 microgram injection [4 x 150 microgram cartridges] (&) ribavirin 200 mg capsule [140 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack$$,1,'L03AB60',NULL,NULL,1);
---for PBS code 6410J pack_size matches but SCT doesn't
--- existing SCT is {'pack_size': '1', 'sct': '51572011000036101', 'xml:id': 'a14840629', 'brands': [{'sct': '49715011000036102', 'brand': 'Pegatron', 'price': '2182.24', 'manufacturer': 'a16094544'}]} {'chapter': 'HB', 'code': '9540D', 'atc': 'L03AB60', 'title': 'peginterferon alfa-2b 150 microgram injection [4 x 150 microgram cartridges] (&) ribavirin 200 mg capsule [196 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack', 'mpps': ['a14840629'], 'restricts': ['a15901284', 'a15901289'], 'mpp': 'a14840629', 'max_rpt': '5', 'type': 'streamlined', 'quantity': '2'}, new drug is {'pack_size': '1', 'sct': '28084011000036101', 'xml:id': 'a14840619', 'brands': [{'sct': '14021011000036108', 'brand': 'Pegatron', 'price': '2039.76', 'manufacturer': 'a16094544'}]} {'chapter': 'HS', 'code': '6410J', 'atc': 'L03AB60', 'title': 'peginterferon alfa-2b 150 microgram injection [4 x 150 microgram cartridges] (&) ribavirin 200 mg capsule [168 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack', 'mpps': ['a14840619'], 'restricts': ['a15878424', 'a15878429'], 'mpp': 'a14840619', 'max_rpt': '5', 'type': 'authority-required', 'quantity': '2'}
-insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
-('3643fd5d-9eb2-4709-8a8a-59bb4adceb41','ribavirin and peginterferon alfa-2b',39,'None','','28084011000036101',$$peginterferon alfa-2b 150 microgram injection [4 x 150 microgram cartridges] (&) ribavirin 200 mg capsule [168 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack$$,1,'L03AB60',NULL,NULL,1);
+('3643fd5d-9eb2-4709-8a8a-59bb4adceb41','ribavirin and peginterferon alfa-2b',39,'None','peginterferon alfa-2b 150mcg infection, 4 syringes, 168 tablets ribavirin 200mg','28084011000036101',$$peginterferon alfa-2b 150 microgram injection [4 x 150 microgram cartridges] (&) ribavirin 200 mg capsule [168 capsules] (&) inert substance diluent [4 x 0.5 mL cartridges], 1 pack$$,1,'L03AB60',NULL,NULL,1);
 
 
 

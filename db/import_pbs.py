@@ -230,6 +230,19 @@ insert into drugs.product (pk,atccode,sct,generic,fk_form,strength,original_pbs_
         else:
             cmd("update drugs.product set original_pbs_name=$$%s$$,sct='%s',pack_size=%s where pk='%s'" % (drug['title'],drug["sct"],drug["pack_size"],r.getresult()[0][0]))
 
+def print_all_drugs(t):
+    generics = {}
+    for g in xml_generics_brands(t):
+        generics[g["xml:id"]] = g
+    for drug in xml_pbs_items(t):
+        print_drug(drug,generics)
+
+def print_drug(drug,generics):
+    print "sct: %s atc: %s\noriginal_pbs_name: %s" % (generics[drug["mpp"]]["sct"],drug["atc"],drug["title"])
+    for b in generics[drug["mpp"]]["brands"]:
+        print "brand: %s" % b["brand"]
+    print
+
 def fix_packsize(t):
     cantmatch = set()
     created = set()
@@ -329,4 +342,5 @@ def verify_brands(t):
                     if price <> "$"+brand["price"]:
                         print "update drugs.brand set price='%s'::money where pk='%s';" % (brand["price"],pk)
 
-fix_packsize(get_xml_etree())
+#fix_packsize(get_xml_etree())
+print_all_drugs(get_xml_etree())

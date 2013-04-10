@@ -1,0 +1,273 @@
+' Gambas class file
+
+' Copyright (C) 2008-2012 Dr. Richard Terry, Dr. I Haywood
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+' 
+Private Const sampleRate As Integer = 16000 ' sufficient for non-sung human voices IMHO
+Private recLength As Integer ' total samples recorded
+Private TempDir As String ' temp dir where soundfiles hang out before compression
+Private recOffset As Float ' samples into existing soundfile to splice from
+Private recStart As Float ' wall time when we started recording
+Private playStart As Float ' wall time when we started playing
+Private pro As Process
+Private mode As Integer
+Private cards As Collection 'soundcards available on the system
+Private Const modeStopped As Integer = 0
+Private Const modeRecording As Integer = 1
+Private Const modePlaying As Integer = 2
+
+Event Dictation(fname As String) ' fired when user has completed a dictation, fname is MP3 file name
+
+Static Public Sub GetSoundCards() As Collection
+  
+  ' returns a collection, keys are human names, values are driver names
+  
+  Dim coll As New Collection
+  
+  Dim sOutput As String
+  Dim lines As String[]
+  Dim i As Integer
+  Dim aScan As String[]
+  
+  Exec ["arecord", "-L"] To sOutput
+  lines = Split(sOutput, "\n")
+  i = 0
+  While i < lines.Count
+    aScan = Scan(lines[i], "*:*")
+    If aScan.Count = 2 Then
+      coll[Trim(lines[i + 1])] = lines[i]
+      Inc i ' skip a line
+    Endif
+    Inc i
+  Wend
+  Return coll
+End
+
+
+Private Sub StartRecording()
+  ' on my laptop plughw:CARD=Camera,DEV=0
+  Dim cmd As String
+  
+  If Exist(TempDir &/ "rec.raw") And If recOffset < recLength Then
+    Shell "truncate -s " & Str((recOffset * 2)) & " " & TempDir &/ "rec.raw"
+  Endif
+  cmd = "/usr/bin/arecord -D " & cards[cbCards.Current.Text]
+  cmd &= " -f S16_LE -r " & sampleRate & " -t raw >> " & TempDir &/ "rec.raw "
+  cmd &= " 2> " & TempDir &/ "error.txt"
+  pro = Shell cmd For Input Output
+  recStart = Timer()
+  
+End
+
+Private Sub StopRecording()
+  Dim err_msg As String
+  Dim err As Boolean = False
+  
+  timMusic.Enabled = False
+  Try Print #pro, Chr$(3); 'do a Control-C on arecord
+  Wait 0.01 ' give arecord an opportunity to die gracefully
+  Try pro.Kill()
+  Wait ' give Gambas event loop an opportunity to digest SIGCHLD
+  If Not Exist(TempDir &/ "rec.raw") Then
+    Let err = True
+  Else
+    With Stat(TempDir &/ "rec.raw")
+      If .Size = 0 Then err = True
+      recLength = .Size / 2
+      recOffset = recLength
+    End With
+  Endif
+  If err Then
+    err_msg = "The recording failed for an unknown reason"
+    err_msg = "Recording failed: " & File.Load(TempDir &/ "error.txt")
+    Message.Error(err_msg, "OK")
+  Endif
+
+End
+
+Private Sub StopPlaying()
+  Dim err_msg As String
+  Dim err As Boolean = False
+    
+  timMusic.Enabled = False
+  Try Print #pro, Chr$(3); 'do a Control-C on arecord
+  Wait 0.01 ' give arecord an opportunity to die gracefully
+  Try pro.Kill()
+  Wait ' give Gambas event loop an opportunity to digest SIGCHLD
+  recOffset += CInt((Timer() - playStart) * sampleRate)
+  lblPos.Text = FormatTime(recOffset)
+End
+
+
+
+Public Sub btnRecord_Click()
+  If mode = modePlaying Then
+    StopPlaying()
+  Endif
+  mode = modeRecording
+  StartRecording()
+  timMusic.Enabled = True
+End
+
+
+Public Sub btnPause_Click()
+  
+  If mode = modeRecording Then
+    StopRecording()
+    mode = modeStopped
+    timMusic.Enabled = False
+    lblPos.Text = FormatTime(recOffset)
+  Endif
+  If mode = modePlaying Then
+    StopPlaying()
+    mode = modeStopped
+    lblPos.Text = FormatTime(recOffset)
+  Endif
+End
+
+
+Public Sub btnBack_Click()
+  
+  If mode = modeRecording Then
+    StopRecording()
+    recOffset -= 10 * sampleRate
+    If recOffset < 0 Then recOffset = 0
+    mode = modePlaying
+    StartPlay(recOffset)
+    timMusic.Enabled = True
+    Return
+  Endif
+  If mode = modePlaying Then
+    StopPlaying()
+    recOffset -= 10 * sampleRate
+    If recOffset < 0 Then recOffset = 0
+    StartPlay(recOffset)
+    timMusic.Enabled = True
+    Return
+  Endif
+  If mode = modeStopped Then
+    recOffset -= 10 * sampleRate
+    If recOffset < 0 Then recOffset = 0 
+    StartPlay(recOffset)
+    timMusic.Enabled = True
+    mode = modePlaying
+  Endif
+End
+
+Public Sub btnStop_Click()
+  Dim tmpfile As String
+  
+  If mode = modeRecording Then
+    StopRecording()
+  Endif
+  If mode = modePlaying Then
+    StopPlaying()
+  Endif
+  tmpfile = Temp$() & ".mp3"
+  Exec ["/usr/bin/lame", "--silent", "-s", "16", "--bitwidth", "16", "--little-endian", "-m", "m", "-h", TempDir &/ "rec.raw", tmpfile] Wait
+  CleanFiles()
+  Raise Dictation(tmpfile)
+End
+
+Private Sub CleanFiles()
+  
+  Try Kill TempDir &/ "rec.raw"
+  Try Kill TempDir &/ "error.txt"
+  
+End
+
+
+Private Sub makeDestName(Optional stem As String = "note") As String
+  
+  Return stem & "-" & Format$(Now(), "yyyy-mm-dd-hhnnss") & ".mp3"
+  
+End
+
+
+Private Sub FormatTime(f As Integer) As String
+  
+  Dim minutes As Integer
+  Dim seconds As Float
+    
+  seconds = f / sampleRate
+  minutes = CInteger(seconds) \ 60
+  seconds -= (minutes * 60)
+  Return Format(minutes, "00") & ":" & Format(seconds, "00.0")
+
+End
+
+
+Public Sub timMusic_Timer()
+
+  Dim err_msg As String
+  Dim i As Integer
+  
+  If mode = modePlaying Then
+    If pro.State <> Process.Running Then
+      ' we have stopped playing, presumably at the end of the record
+      mode = modeStopped
+      recOffset = recLength
+      lblPos.Text = FormatTime(recOffset)
+      timMusic.Enabled = False
+      If pro.State = Process.Crashed Then 'but did aplay crash instead?
+        err_msg = "The playing failed for an unknown reason"
+        Try err_msg = "Playing failed: " & File.Load(TempDir &/ "error.txt")
+        Message.Error(err_msg, "OK")
+      Endif
+      Return
+    Else
+      i = recOffset + ((Timer() - playStart) * sampleRate)
+      If i > recLength Then i = recLength
+      lblPos.Text = FormatTime(i)
+    Endif
+  Endif
+  If mode = modeRecording Then
+      If pro.State <> Process.Running Then
+        ' Aaargh! the recorder process died prematurely
+        mode = modeStopped
+        timMusic.Enabled = False
+        err_msg = "The recording failed for an unknown reason"
+        Try err_msg = "Playing failed: " & File.Load(TempDir &/ "error.txt")
+        Message.Error(err_msg, "OK")
+      Else
+        lblPos.Text = FormatTime(recOffset + ((Timer() - recStart) * sampleRate))
+      Endif
+  Endif
+
+End
+
+
+Private Sub StartPlay(offset As Integer)
+  
+  If offset = 0 Then
+    pro = Shell "aplay -t raw -f S16_LE -r " & sampleRate & " " & TempDir &/ "rec.raw 2> " & TempDir &/ "error.txt"
+  Else
+    pro = Shell "tail -c +" & Str((offset * 2) + 1) & " " & TempDir &/ "rec.raw | aplay -t raw -f S16_LE -r " & sampleRate & " 2> " & TempDir &/ "error.txt"
+  Endif
+  playStart = Timer()
+  
+End
+
+
+Public Sub Form_Open()
+  Dim s As String
+  
+  Tempdir = Left$(Temp("x"), -5)
+  mode = modeStopped
+  recOffset = 0
+  recLength = 0
+  lblPos.Text = FormatTime(0)
+  
+End

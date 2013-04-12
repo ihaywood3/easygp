@@ -16,6 +16,7 @@ create table clin_consult.dictations (
     fk_referral integer references clin_referrals.referrals (pk),
     fk_progress_note integer references clin_consult.progressnotes (pk),
     transcript text,
+    fk_user integer references admin.staff (pk) not null,
     processed boolean not null default false
 );
 
@@ -28,6 +29,26 @@ comment on column clin_consult.dictations.fk_referral is 'if a dictated referral
 comment on column clin_consult.dictations.fk_progress_note is 'if a progress note, the progress note row to be filled in. This and fk_referral cannot both be NULL, but one alwys will be';
 comment on column clin_consult.dictations.transcript is 'the text as returned by the transcriptionist, without user corrections';
 comment on column clin_consult.dictations.processed is 'true if the user has reviewed the transcript, corrected and post to the original table (referral or progress note). In principle the referral could still be unsent, but would usually be sent immediately after correction of the transcript';
+
+create or replace view clin_consult.vwdictations as 
+   select 
+	d.pk as pk_dictation,
+	d.fk_referral as fk_referral,
+	d.transcript as transcript,
+	d.fk_progress_note as fk_progress_note,
+	d.fk_user as fk_user,
+	d.processed as processed,
+	d.filename as filename,
+	vwp.wholename as wholename
+  from
+       clin_consult.dictations d,
+       clin_referrals.referrals r,
+       contacts.vwpatients vwp,
+	clin-consult.consult c
+ where
+	d.fk_referral = r.pk and
+        r.fk_consult = c.pk  and
+	c.fk_patient = vwp.fk_patient;
 
 truncate table db.lu_version;
 insert into db.lu_version (lu_major,lu_minor) values (0, 264);

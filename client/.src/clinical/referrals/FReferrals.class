@@ -43,6 +43,7 @@
 '----------------------------------------------------------------------------------
 Private Dictaphone As FDictaphone
 Private bEmbedded As Boolean                                'True if this form is embedded e.g in the inbox
+Private sEmbeddedFormName As String                         'the parent this form is embedded in 
 Private bEditing As Boolean                                 'True if editing an existing referral written this consultation
 Private bExit As Boolean                                    'Used to prevent re-entry into subroutines
 Private bKeyValid As Boolean                                'Used in EditAreaTextBox routines to ensure valid data entry
@@ -97,6 +98,12 @@ Static Public Sub Refresh_Referrals_Written_Today()
    
 End
 
+Public Sub Set_Embedded_Form_Name(n As String)
+   'the name of the parent form this form is embedded in.   
+    sEmbeddedFormName = n 
+   
+End
+
 Public Sub set_embedded(flag As Boolean)
    '--------------------------------------------------
    'If this form is embeded from another form set flag
@@ -143,10 +150,7 @@ Public Sub Init(cons As CConsult)
    End With
    MenuButton1.menu = "mnuHealthIssues"
    Dictaphone = New FDictaphone(Hbox_Dictaphone)
-   Dictaphone.Visible = True
-   Dictaphone.Expand = True
-   
-   Reload()
+   If Not IsNull(Currentconsult) Then Reload()
    
 End
 
@@ -213,7 +217,7 @@ Public Sub Save(Optional bFinalised As Boolean = False)
    Dim Accompanying_Documents As New Collection
    Dim bDoNotPrintInclusionsForCCD As Boolean       
    
-   If VBox_Letters.Padding = 0 And If Not bFinalised Then Return  'no padding, nothing to save
+   If VBox_Letters.Padding = 0 Then Return  'no padding, nothing to save
    If Not bHaveSpellChecked Then 
       Spelling_Check()
    Endif
@@ -544,7 +548,7 @@ Private Function Referral_Letter_Construct_Common(textin As String, sSep As Stri
    Endif
    ntext = Replace(ntext, "%clinic.suburb", modDBConnect.currentUser!town & " " & modDBConnect.currentuser!postcode)
    
-   ntext = Replace$(ntext, "%referred-to%", txtName.text & sSep)
+   ntext = Replace$(ntext, "%referred-to%", txtName.text)
    If txtOrganisation.text <> "" Then 
       ntext = Replace$(ntext, "%organisation%", txtOrganisation.text & sSep)
    Else
@@ -560,7 +564,7 @@ Private Function Referral_Letter_Construct_Common(textin As String, sSep As Stri
    Else
       ntext = Replace$(ntext, "%qualifications%", "")
    Endif
-   If txtBranch.text <> "" And If txtBranch.Text <> "HEAD OFFICE" Then
+   If txtBranch.text <> "" Then
       ntext = Replace$(ntext, "%branch%", txtBranch.text & sSep)
    Else
       ntext = Replace$(ntext, "%branch%", "")
@@ -793,14 +797,13 @@ Public Function Referral_BodyHTML_Construct() As String
    
    Dim sBodyHTML As String
    Dim charpos As Integer
-   Dim lastspan As New String[]
    
    charpos = InStr(Lower(teLetter.RichText), "<p")
    sBodyHTML = Right(teLetter.RichText, Len(teLetter.RichText) - charpos + 1)
    charpos = InStr(sBodyHTML, "</body>")
    sBodyHTML = Left(sBodyHTML, charpos - 1)
    Debug sBodyHTML
-   sBodyHTML = Fix_HTML(sBodyHTML, lastspan)
+   sBodyHTML = Fix_HTML(sBodyHTML, [])
    Debug sBodyHTML
    Return Trim(sBodyHTML)
    
@@ -846,8 +849,7 @@ Private Function Make_New_Tag(tag As String, ByRef lastspan As String[]) As Stri
        tokens.Add("u")
        tokens_close.Add("/u")
     Endif
-    If Not IsNull(tokens) And If Not IsNull(tokens_close) And If tokens.Length > 0 And If tokens_close.Length > 0 Then
-       If IsNull(lastspan) Then lastspan = New String[]
+    If tokens.Length > 0 Then
       lastspan.Push(tokens_close.Join("><"))  ' calling code adds the final outer < >
       Return tokens.Join("><")
     Else  ' we didn't recognise anything in the span, so add nothing to the translated HTML stream
@@ -1588,8 +1590,10 @@ Public Sub ReferralsList_Delete()
       inclusion!deleted = True 
    Next
    modDBConnect.BeginTrans()
-   modDBConnect.update("clin_consult.progressnotes", Null, ["pk": referral!fk_progressnote, "deleted": True])
-   pk_deleted_progressnote = referral!fk_progressnote
+   If referral!finalised = True Then 'unfinalised letters have no progress note.
+       modDBConnect.update("clin_consult.progressnotes", Null, ["pk": referral!fk_progressnote, "deleted": True])
+       pk_deleted_progressnote = referral!fk_progressnote
+   End If   
    pk_deleted_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral, Inclusions_Referral_This_consult)
    modDBConnect.CommitTrans()
    Reload()                                                  'Default to a new letter
@@ -2795,7 +2799,7 @@ Public Sub btSendAsHL7_Click()
          
    End Select
    
-   Branch = modDBConnect.exec_query_first("Select * From contacts.vworganisations")
+   Branch = modDBConnect.exec_query_first("Select * From contacts.vworganisations;")
    
    ReceivingFacility.ApplicationIdentifier = Branch["organisation"]
    

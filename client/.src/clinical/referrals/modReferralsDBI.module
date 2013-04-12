@@ -285,6 +285,18 @@ Public Function Employee_Comms_Get(fk_employee As Integer) As Result
 End
 
 Public Sub Referral_Print(currentconsult As CConsult, referral As Collection, bPrintCopies As Boolean, bSingleCopyInclusionsOnly As Boolean, Optional Inclusions As Collection)
+   
+  If modAdminDBI.Config_Get("use_ozefax", False) Then
+     Referral_Print_Fax(currentconsult, referral, bPrintCopies)  'currently copies always sent and inclusions not supported
+  Else
+     Referral_Print_Only(currentconsult, referral, bPrintCopies, bSingleCopyInclusionsOnly, Inclusions)
+  Endif
+   
+End
+
+
+
+Public Sub Referral_Print_Only(currentconsult As CConsult, referral As Collection, bPrintCopies As Boolean, bSingleCopyInclusionsOnly As Boolean, Optional Inclusions As Collection)
    '-----------------------------------------------------------------------------------------------------------------
    'Print the referral letter, appropriate copies, inclusions - may be null e.g none - or only re-printing the letter
    'If bPrintInclusionss_for_ccd = True then any cc'd person/organisation will also have all the inclusions printed.
@@ -353,3 +365,100 @@ Public Sub Referral_Print(currentconsult As CConsult, referral As Collection, bP
    
 End
 
+Public Sub Referral_Print_Fax(currentconsult As CConsult, referral As Collection, bPrintCopies As Boolean)
+ '-----------------------------------------------------------------------------------------------------------------
+ ' print or fax as appropriate, using new cPrintTask structures.
+ '-----------------------------------------------------------------------------------------------------------------
+ Dim x As Integer
+ Dim s As String
+ Dim num_print_copies As Integer  
+ Dim destination_faxes As New String[] 
+ Dim Document As Collection
+ Dim file_extension As String
+ Dim coll As Collection
+ Dim fax_pdf_path As String
+ Dim print_ps_path As String
+ Dim re As Regexp
+ Dim task As New CPrintTask
+   
+ num_print_copies = 0                      'maybe we can fax the lot
+ ' first question: does the main recipient have a fax?
+ If Not IsNull(referral!fk_employee) Then
+   For Each coll In modContactsDBI.Employee_Comms_Get(referral!fk_employee)
+     If coll!fk_type = const.CommModalityFax Then
+       destination_faxes.Add(coll!value)
+     Endif
+   Next
+ Else
+   If Not IsNull(referral!fk_person) Then
+     For Each coll In modContactsDBI.person_comms_get(referral!fk_person)
+       If coll!fk_type = const.CommModalityFax Then
+         destination_faxes.Add(coll!value)
+       Endif
+     Next
+   Endif
+ Endif
+ If destination_faxes.Length = 0 Then num_print_copies = 1 ' no fax, so print
+ '----------------------------------------------------------
+ ' now let's see which of the CCs we can fax to
+ '---------------------------------------------------------
+ re = New Regexp("x", "Fax *: *([0-9]+)")
+ For Each s In Split(referral!copyto, "|")
+   re.Exec(s)
+   If re.Offset <> -1 Then
+     destination_faxes.Add(re.SubMatches[1].Text)
+   Else
+     If bPrintCopies Then Inc num_print_copies
+   Endif
+ Next
+     
+ '-----------------------------------------------------------
+ ' now print if we have to
+ ' -----------------------------------------------------------
+ If num_print_copies > 0 Then
+   If Left$(referral!letter_html, 14) = "\\documentclass" Then
+     s = Replace(referral!letter_html, "% signature", "\\vspace{12mm}")
+     print_ps_path = task.Latex_To_Ps(referral!letter_html, const.Paper_Plain)
+   Else
+     print_ps_path = task.Html_To_Pdf(referral!letter_html)
+   Endif
+   task.Print_PDF(print_ps_path, const.Paper_Plain, num_print_copies)
+ Endif
+ '---------------------------------------------------------------
+ ' now fax if we have to
+ ' ---------------------------------------------------------------
+ If destination_faxes.Length > 0 Then
+   If Left$(referral!letter_html, 14) = "\\documentclass" Then
+     If Exist(User.Home &/ "signature.jpg") Then
+       s = Replace(referral!letter_html, "% signature", "\\includegraphics[height=12mm]{" & User.Home &/ "signature.jpg" & "}")
+     Else
+       s = Replace(referral!letter_html, "% signature", "\\vspace{12mm}")
+     Endif
+     fax_pdf_path = task.Latex_To_Pdf(s)
+   Else
+     If Not IsNull(print_ps_path) Then
+       fax_pdf_path = task.Html_To_Pdf(referral!letter_html)
+     Else
+       fax_pdf_path = print_ps_path ' will be the same as no signature for HTML letters
+     Endif
+   Endif
+   For Each s In destination_faxes
+     task.Send_Fax(s, fax_pdf_path)
+   Next
+   task.Kill(fax_pdf_path)
+ Endif
+ If Not IsNull(print_ps_path) Then task.Kill(print_ps_path)
+ task.Close()
+End
+
+Public Sub UnitTest(form_main As FMain)
+   
+   Dim referral As New Collection
+   Dim cc As New CConsult(modContactsDBI.Patient_Get_Using_PK(7)) ' Jim Bloggs
+   
+   referral!fk_employee = 164 ' Richard Terry
+   referral!letter_html = File.Load("/home/ian/test-referral.tex")
+   referral!copyto = "Some Random Address, Somewhere 1234 Fax: 0312345678"
+   Referral_Print_Fax(cc, referral, True)
+   
+End

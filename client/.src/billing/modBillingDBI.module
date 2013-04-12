@@ -584,7 +584,7 @@ End
 
 Public Function Report_Titles_Get() As Collection
    
-   Return modDBConnect.exec_query_collection("Select * from billing.lu_reports order by report_title")
+   Return modDBConnect.exec_query_collection("Select * from billing.reports order by report_title")
    
 End
 
@@ -716,7 +716,7 @@ Public Function Find_Referrer(fk_patient As Integer) As Collection
    
    sql = "with base as (select title, firstname, surname, provider_number, street1, street2, town, state, postcode, date_created, "
    "comment_on_document ~ 'indefin[ia]te' as indefinite, "
-   "coalesce(substring(comment_on_document from '([0-9]+) month')::integer,12) as months "
+   "coalesce(substring(tag_user from '([0-9]+) month')::integer,12) as months "
    "from contacts.vwpersonsemployeesbyoccupation vpe, documents.vwdocuments vd"
    " where vd.fk_employee_branch = vpe.fk_employee and vd.fk_sender_branch = vpe.fk_branch and "
    " vd.fk_patient = &1 and incoming_referral) "
@@ -921,7 +921,7 @@ Private Sub Load_FDF_Common(fdf As String, doctor As Collection, cc As CConsult,
    fdf = Replace$(fdf, "DOB", Format$(cc!patient!birthdate, "dd/mm/yy"))
    fdf = Replace$(fdf, "Add1", cc!patient!street1 & " " & cc!patient!street2)
    fdf = Replace$(fdf, "Add2", cc!patient!town & " " & cc!patient!postcode)
-   s = Format$(invoice!date_invoiced, "ddmmyy")
+   s = Format$(invoice!visit_date, "ddmmyy")
    fdf = Replace$(fdf, "DD1", Mid$(s, 1, 1))
    fdf = Replace$(fdf, "DD2", Mid$(s, 2, 1))
    fdf = Replace$(fdf, "MM1", Mid$(s, 3, 1))
@@ -1027,7 +1027,7 @@ Private Sub Load_FDF_GP(fdf As String, items As Collection) As String
       fdf = Replace$(fdf, "Ben6_4", "")
       fdf = Replace$(fdf, "Ben6_5", "")    
    Endif
-   If no_free_item = 0 Then
+   If no_free_item = 1 Then
       fdf = Replace$(fdf, "Item1_1", "")
       fdf = Replace$(fdf, "Item1_2", "")
       fdf = Replace$(fdf, "Item1_3", "")
@@ -1085,13 +1085,13 @@ Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBul
    referrer_type = doctor!referrer_type
    If bBulkBIll Then 
       ' cue scary music: patient is being bulk-billed
-      If referrer_type = "s" Then
+      If True Then
          pdfname = "db2-ot"
       Else
          pdfname = "db2-gp"
       Endif
       fdf = File.Load(modUtil.Find_File("templates" &/ pdfname & ".fdf"))
-      If referrer_type = "s" Then 
+      If True Then 
          fdf = Load_FDF_Specialist(fdf, items, doctor, cc, invoice)
       Else
          fdf = Load_FDF_GP(fdf, items)
@@ -1152,7 +1152,7 @@ Private Sub Load_Template_Specialist(templ As Ctemplate, invoice As Crow)
       Else
          templ.Subst("referral-duration", referrer!months & " months")
       Endif
-      templ.Subst("referral-date", referrer!date_created)
+      templ.Subst("referral-date", Format$(referrer!date_created, "dd/mm/yy"))
    Endif
    
 End
@@ -1161,6 +1161,7 @@ End
 Private Function Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As Collection, items As Collection, payments As Collection, cc As CConsult)
    
    Dim i As Collection
+   Dim s As String
    
    templ.Subst("doctor-name", doctor!title & " " & doctor!firstname & " " & doctor!surname)
    templ.Subst("doctor-address-line1", doctor!street1)
@@ -1195,12 +1196,12 @@ Private Function Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As
       End If   
    Endif
    If Not IsNull(invoice!reference) Then
-      Templ.Subst("invoice-reference", "Reference " & invoice!reference)
+      Templ.Subst("invoice-reference", "Reference: " & invoice!reference)
    Else
       Templ.Subst("invoice-reference", "\\relax")
    Endif
    If Not IsNull(invoice!notes) Then
-      Templ.Subst("invoice-notes", "Comment " & invoice!notes)
+      Templ.Subst("invoice-notes", "Comment: " & invoice!notes)
    Else
       Templ.Subst("invoice-notes", "\\relax")
    Endif
@@ -1217,8 +1218,18 @@ Private Function Load_Template_GP(invoice As Crow, templ As CTemplate, doctor As
    templ.Table("accounts-table")
    templ.Subst("due", invoice!due)
    templ.Subst("gst", invoice!total_gst)
+   If invoice!due <> "$0.00" Then
+      s = User.Home &/ "payment-info.tex"
+      If Access(s, gb.Read) Then
+         templ.Subst("payment-info", File.Load(s))
+      Else
+         templ.Subst("payment-info", "")
+      Endif
+   Else
+      templ.Subst("payment-info", "")
+   Endif
    templ.Subst("total", invoice!total_bill)
-   If invoice!total_gst = invoice!total_bill Then
+   If invoice!total_gst = invoice!total_bill Or invoice!total_gst = "$0.00" Then
       templ.Subst("invoice-name", "Patient Account")
    Else
       templ.Subst("invoice-name", "Tax Invoice")

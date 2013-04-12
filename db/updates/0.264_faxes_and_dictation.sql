@@ -39,12 +39,13 @@ create or replace view clin_consult.vwdictations as
 	d.fk_user as fk_user,
 	d.processed as processed,
 	d.filename as filename,
-	vwp.wholename as wholename
+	vwp.wholename as wholename,
+        c.fk_patient as fk_patient
   from
        clin_consult.dictations d,
        clin_referrals.referrals r,
        contacts.vwpatients vwp,
-	clin-consult.consult c
+	clin_consult.consult c
  where
 	d.fk_referral = r.pk and
         r.fk_consult = c.pk  and

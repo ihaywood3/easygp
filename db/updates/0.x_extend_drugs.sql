@@ -148,8 +148,10 @@ insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original
 update drugs.brand set fk_product='351b2943-cf44-4930-a16f-edb11cc207cd' where pk='373e3559-8974-4655-b848-0c989c888d20';
 update clin_prescribing.medications set fk_generic_product='351b2943-cf44-4930-a16f-edb11cc207cd' from clin_prescribing.prescribed where prescribed.fk_brand='373e3559-8974-4655-b848-0c989c888d20' and prescribed.fk_medication = medications.pk;
 
--- leuprorelin
+-- leuprorelin: BLOWN AWAY
 
+delete from drugs.brand using drugs.product where product.pk = brand.fk_product and product.generic='leuprorelin acetate';
+delete from drugs.product where generic='leuprorelin acetate';
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('b4897e11-9ba2-4143-bb50-b2b08ef21120','leuprorelin acetate',22,'7.5mg','','932927011000036104',$$leuprorelin acetate 7.5 mg injection: modified release [1 syringe] (&) inert substance diluent [1 syringe], 1 pack$$,1,'L02AE02',NULL,NULL,1);
 
@@ -177,13 +179,12 @@ update drugs.brand set fk_product='a72b630c-7f3d-40b7-8ab0-8019f32904ac' where p
 update clin_prescribing.medications set fk_generic_product='a72b630c-7f3d-40b7-8ab0-8019f32904ac' from clin_prescribing.prescribed where prescribed.fk_brand='5290fd08-354e-4014-9c0f-a5e9d5f4928c' and prescribed.fk_medication = medications.pk;
 
 
--- gosrelins
+-- gosrelins: BLOWN AWAY
+delete from drugs.brand using drugs.product where product.pk = brand.fk_product and product.atccode='L02AE';
+delete from drugs.product where atccode='L02AE';
 
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('980fa0a2-ba4f-4737-acc4-20a44f09fc95','goserelin acetate and bicalutamide',39,'None','goserelin 3.6mg, 28 tablets 50mg bicalutamide ','26781011000036107',$$goserelin 3.6 mg implant [1 implant] (&) bicalutamide 50 mg tablet [28 tablets], 1 pack$$,1,'L02AE',NULL,NULL,1);
-update drugs.product set free_comment='goserelin 10.8mg, 84 tablets bicalutamide' where sct='26783011000036108';
-
-
 insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values
 ('52a72cc2-0ffe-4fec-9de7-03f427ca765c','goserelin acetate and bicalutamide',39,'None','goserelin 10.8mg, 28 tablets 50mg bicalutamide','26782011000036101',$$goserelin 10.8 mg implant [1 implant] (&) bicalutamide 50 mg tablet [28 tablets], 1 pack$$,1,'L02AE',NULL,NULL,1);
 

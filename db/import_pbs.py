@@ -125,17 +125,18 @@ def xml_pbs_items(t):
             if not a is None:
                 d["title"] = a.text
             else:
-                print >>sys.stderr, "WARNING, no title on %r" % d
+                #print >>sys.stderr, "WARNING, no title on %r" % d
                 continue
             a = drug.find(x(".//pbs:classification/pbs:ATC"))
             if not a is None:
                 d["atc"] = a.text[4:]
             else:
-                print >>sys.stderr, "WARNING: NO ATC on %r" % d
+                #print >>sys.stderr, "WARNING: NO ATC on %r" % d
                 continue
             d["type"] = drug.get("type")
             d["restricts"] = [l.get(x("xlink:href"))[1:] for l in drug.iterfind(x(".//rwt:restriction-references-list/rwt:restriction-reference"))]
             d["mpps"] = [j.get(x("xlink:href"))[1:] for j in drug.iterfind(x(".//pbs:mpp-reference"))]
+            if d['chapter'] == 'IN' or d['chapter'] == 'EP' or d['chapter'] == 'IP': continue
             if len(d["mpps"]) == 1: # for now ignore EP and IN chapters which both violate this rule: EP has zero, IN has multiple
                 d["mpp"] = d["mpps"][0]
                 yield d
@@ -236,13 +237,84 @@ def print_all_drugs(t):
         generics[g["xml:id"]] = g
     for drug in xml_pbs_items(t):
         print_drug(drug,generics)
+        print 
 
 def print_drug(drug,generics):
-    print "sct: %s atc: %s\noriginal_pbs_name: %s" % (generics[drug["mpp"]]["sct"],drug["atc"],drug["title"])
+    print "sct: %s\natc: %s\nchapter: %s\noriginal_pbs_name: %s" % (generics[drug["mpp"]]["sct"],drug["atc"],drug["chapter"],drug["title"])
     for b in generics[drug["mpp"]]["brands"]:
         print "brand: %s" % b["brand"]
-    print
 
+
+# STEP ONE: go through all drugs by SCT and complain on stdout about the ones we can't find
+def import_step1(t):
+    generics = {}
+    for g in xml_generics_brands(t):
+        generics[g["xml:id"]] = g
+    for drug in xml_pbs_items(t):
+        r = c.query("select * from drugs.product where sct='%s'" % generics[drug["mpp"]]["sct"])
+        if r.ntuples () == 0:
+            print_drug(drug,generics)
+            print "generic: "
+            print "form: "
+            print "strength: "
+            print "free_comment: "
+            print "units_per_pack: 1"
+            print "pack_size: %s" % generics[drug["mpp"]]["pack_size"]
+            print "amount: "
+            print "amount_unit: "
+            print
+
+# STEP TWO: import the human-modified new entities from stdin .
+def import_step2(t):
+    drug = {}
+    lineno = 1
+    f = open("new_scts.txt","r")
+    sct_done = set()
+    for l in f.readlines():
+        if l == "\n":
+            if drug["sct"] in sct_done:
+                continue
+            sct_done.add(drug["sct"])
+            r = c.query("select 1 from drugs.product where sct='%s'" % drug["sct"])
+            if r.ntuples () > 0:
+                print >>sys.stderr, "SCT %s already exists, skipping" % drug["sct"]
+                continue
+            if drug["free_comment"] == "":
+                drug["free_comment"] = "NULL"
+            else:
+                drug["free_comment"] = "$$%s$$" % drug["free_comment"]
+            au = drug["amount_unit"]
+            au = au.lower()
+            if au == 'g' or au == "gm": 
+                drug["amount_unit"] = 35
+            elif au == 'ml': 
+                drug["amount_unit"] = 26
+            elif au == "":
+                drug["amount_unit"] = "NULL"
+            else:
+                print >> sys.stderr, "amount %s not recognised at line %d" % (au, lineno)
+                sys.exit(1)
+            if drug["amount"] == "": 
+                drug["amount"] = "NULL"
+            r = c.query("select pk from drugs.form where form='%s'" % drug["form"])
+            if r.ntuples() != 1:
+                print >>sys.stderr,"can't recognise drug form %s at line %d" % (drug["form"],lineno)
+                sys.exit(1)
+            drug["fk_form"] = r.getresult()[0][0]
+            c.query("""
+insert into drugs.product (pk,generic,fk_form,free_comment,units_per_pack,pack_size,amount,amount_unit,original_pbs_name, sct, atccode)
+values
+(uuid_generate_v4(), $$%(generic)s$$, %(fk_form)d, %(free_comment)s, 
+%(units_per_pack)s, %(pack_size)s, %(amount)s, %(amount_unit)s, $$%(original_pbs_name)s$$, '%(sct)s', '%(atc)s')
+""" % drug)
+            drug = {}
+        else:
+            s = l.split(":", 1)
+            s[0] = s[0].lower().strip()
+            s[1] = s[1].strip()
+            drug[s[0]] = s[1]
+        lineno += 1
+                
 def fix_packsize(t):
     cantmatch = set()
     created = set()
@@ -342,5 +414,9 @@ def verify_brands(t):
                     if price <> "$"+brand["price"]:
                         print "update drugs.brand set price='%s'::money where pk='%s';" % (brand["price"],pk)
 
-#fix_packsize(get_xml_etree())
-print_all_drugs(get_xml_etree())
+t = get_xml_etree()
+if sys.argv[1] == '1':
+    import_step1(t)
+elif sys.argv[1] == '2':
+    import_step2(t)
+

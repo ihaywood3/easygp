@@ -407,14 +407,26 @@ Public Sub DrsDesk_Vaccinations_Import()
    modDBConnect.CommitTrans()
    Dec Application.Busy  
    chkImportVaccinations.value = False     
+   lblProgress.text = ""
    
 End
 
 Public Sub DrsDesk_Ethicity_Occupation_Country_Of_Birth_Import()
    '---------------------------------------------------------------------------------
    'Imports patients ethnicity country of birth and occupation from DrsDesk Software
+   'Adams|George|20/12/1925 0:00:00|Scotland|tool maker|0|0|1
+   'Sname|Fname |dob               |country|occupation|ab|torres|retired
+   '
    '---------------------------------------------------------------------------------
    
+   Dim iSurname As Integer = 0
+   Dim iFirstname As Integer = 1
+   Dim iBirthdate As Integer = 2
+   Dim iCountry_birth As Integer = 3
+   Dim iOccupation As Integer = 4
+   Dim iAboriginality As Integer = 5
+   Dim iTorresstraightislander As Integer = 6
+   Dim iRetired As Integer = 7
    Dim sfilename As String 
    Dim Errorfile As File
    Dim bits As String[]
@@ -425,7 +437,18 @@ Public Sub DrsDesk_Ethicity_Occupation_Country_Of_Birth_Import()
    Dim sLastPatient As String
    Dim bValidPatient As Boolean
    Dim import_count As Integer
+   Dim occupation As CRow
+   Dim country_of_birth As CRow
+   Dim patient_aboriginality As CRow   
+   Dim person As CRow
+   Dim Ethnicities As Collection
+   Dim Countries As Collection 
+   Dim ethnicity As Collection
+   Dim country As Collection
+   Dim fk_occupation As Integer
    
+   countries = modDBConnect.exec_query_collection("Select * from common.lu_countries")
+   ethnicities = modDBConnect.exec_query_collection("Select * from common.lu_ethnicity")
    '-------------------------------------------------
    'Insist on at least some sort of attempt at a name
    '-------------------------------------------------
@@ -459,34 +482,166 @@ Public Sub DrsDesk_Ethicity_Occupation_Country_Of_Birth_Import()
       '------------------------------------------
       Line Input #hfile, sLineInput                                               'import a line  
       Inc slinecount
-      '  Print "reading line " & slinecount
       bits = Split(sLineInput, "|")                                               'split at delimiter
       scurrentPatient = bits[firstname] & bits[surname] & bits[birthdate]         'firstnamenamebirthdate is current patient 
       If sLastPatient <> scurrentPatient Then                                     'if this patient different to the last, save the habits
-         ' If habits_item_count Then
-         '    For Each Habit In Habits
-         '       Habit.Save("clin_history.recreational_drugs", "fk_recreationaldrug")       
-         '       modDBConnect.CommitTrans()    
-         '    Next   
-         '    habits_item_count = 0                                              
-         ' End If 
          bValidPatient = False                                                   'scurrentPatient <> that on the current sLineInput
          patient = Patient_Identify(bits)                                        'so identify the patient
          If patient!fk_patient Then                                              'if we find them
             sLastPatient = bits[firstname] & bits[surname] & bits[birthdate]     'they become the current patient
-            currentconsult = New CConsult(patient)                               'start a new consult
-            currentconsult.Set(const.ConsultType_DataImport, "Recreational Drugs Imported") ' set the type to import of recreational drugs
             bValidPatient = True                                                 'flag the patient as valid
-            '  Habits = New Collection                                              'start a new collection of their cRow Habit
             Inc import_count
-            Print "Starting import for " & import_count & " " & scurrentPatient
+            Print "importing data for " & bits[firstname] & " " & bits[surname] 
          End If
       End If
-   Wend
-   '-------------------------------------------------------------------------------------------------
-   'At this point probably have a valid patient, create a cRow object for each habit for the patient
+      If bValidPatient Then
+         '--------------------------------------------------------------------------------------
+         'rightly or wrongly the aboriginality lookup flag is in clerical.data_patients
+         'so only have to change that field, otherwise the data goes into contacts.data_patients
+         '--------------------------------------------------------------------------------------
+         Person = New CRow
+         Person.put_unchanged(patient!fk_person, "fk_person")
+         person!fk_language = const.language_english                                      'well, is most likely
+         '-----------------------
+         'First the aboriginality
+         '-----------------------
+         patient_aboriginality = New CRow
+         patient_aboriginality.put_unchanged(patient!fk_patient, "fk_patient")
+         patient_aboriginality!fk_lu_aboriginality = 0                                        'default to non aboriginal
+         If bits[iAboriginality] = 1 Then
+            patient_aboriginality!fk_lu_aboriginality = const.aboriginality_aboriginal
+         Endif
+         If bits[iTorresstraightislander] = 1 Then
+            patient_aboriginality!fk_lu_aboriginality = const.aboriginality_Torres_Strait_Islander
+         Endif
+         patient_aboriginality.Save("clerical.data_patients", "fk_patient")
+         '----------------------------------------------------------------
+         'Now the rest of the person stuff - keep in contacts.data_persons
+         '----------------------------------------------------------------
+         If bits[surname] = "Askew" Then
+            Print
+         Endif
+         If bits[iRetired] = True Then
+            Person!retired = True                               'the backend default is false so don't implicitly set this
+         Else 
+            Person!retired = False    
+         Endif
+         If Trim(bits[iOccupation]) <> "" Then                      'get the key or create new row in common.lu_occupations
+            fk_occupation = Occupation_Get(Trim(bits[iOccupation])) 'return proper fk_occupation or 0 if user aborts adding one
+            If fk_occupation Then person!fk_occupation = fk_occupation
+         Endif
+         If Lower(bits[iCountry_birth]) = "england" Then bits[iCountry_birth] = "United Kingdom"
+         If Lower(bits[iCountry_birth]) = "scotland" Then bits[iCountry_birth] = "United Kingdom"
+         If Lower(bits[iCountry_birth]) = "wales" Then bits[iCountry_birth] = "United Kingdom"
    
+         If InStr(Lower(bits[iCountry_birth]), "romania") Then bits[iCountry_birth] = "Romania"
+         If Trim(Lower(bits[iCountry_birth])) = "netherlands" Then bits[iCountry_birth] = "Netherlands"
+         If Trim(Lower(bits[iCountry_birth])) = "republic of ireland" Then bits[iCountry_birth] = "Ireland"
+         If Trim(Lower(bits[iCountry_birth])) = "northern ireland" Then bits[iCountry_birth] = "Ireland"
+          
+         If bits[iCountry_birth] <> "" Then
+            country = modContactsDBI.Country_Get_Single(bits[iCountry_birth])
+            If Not IsNull(country) Then
+               person!country_code = country!country_code
+               
+               '------------------------------------------------
+               'Now try and guess ethnicity for commoner groups
+               '------------------------------------------------
+               Select Case person!country_code
+                  Case "UA" 'ukraine
+                      person!fk_ethnicity = const.ethnicity_Ukrainian
+                  Case "CY" 'cyprus  
+                      person!fk_ethnicity = const.ethnicity_Cypriot_Unspecified
+                  Case "CH" 'switzerland
+                      person!fk_ethnicity = const.ethnicity_swiss
+                  Case "MU" 'mauritius
+                      person!fk_ethnicity = const.ethnicity_Mauritian
+                  Case "PL"
+                     person!fk_ethnicity = const.ethnicity_Polish
+                  Case "AU"
+                     If bits[iAboriginality] = 1 Then
+                        person!fk_ethnicity = const.ethnicity_australian_aboriginal
+                     Else
+                        person!fk_ethnicity = const.ethnicity_australian
+                     Endif
+                  Case "NZ"
+                     If Message.Question("Is the person a Maori NewZealander?\n\n" & bits[firstname] & " " & bits[surname], "Yes", "No") = 1 Then
+                        person!fk_ethnicity = const.ethnicity_New_Zealand_Maori
+                     Else
+                        person!fk_ethnicity = const.ethnicity_New_Zealand_European
+                     Endif
+                  Case "RO"
+                     person!fk_ethnicity = const.ethnicity_Romanian     
+                  Case "FR" 'france
+                     person!fk_ethnicity = const.ethnicity_French
+                  Case "AT" 'austria
+                     person!fk_ethnicity = const.ethnicity_Austrian
+                  Case "CA" 'canada
+                     person!fk_ethnicity = const.ethnicity_canadian
+                  Case "CL"  'chile
+                     person!fk_ethnicity = const.ethnicity_Chilean
+                  Case "CN" 'china
+                     person!fk_ethnicity = const.ethnicity_chinese
+                  Case "DE" 'germany"
+                     person!fk_ethnicity = const.ethnicity_German
+                  Case "ES"  'spain
+                     person!fk_ethnicity = const.ethnicity_Spanish
+                  Case "GB"  'great britain
+                     person!fk_ethnicity = const.ethnicity_british
+                  Case "GR" 'greece
+                     person!fk_ethnicity = const.ethnicity_Greek
+                  Case "HU" 'hungary"
+                     person!fk_ethnicity = const.ethnicity_Hungarian
+                  Case "IE" 'ireland
+                     person!fk_ethnicity = const.ethnicity_Irish 
+                  Case "IN" 'india
+                     person!fk_ethnicity = const.ethnicity_Indian
+                  Case "IT"  'italy"
+                     person!fk_ethnicity = const.ethnicity_Italian
+                  Case "JP" 'japan  
+                     person!fk_ethnicity = const.ethnicity_japanese
+                  Case "KR" 'south korea"
+                     person!fk_ethnicity = const.ethnicity_Korean
+                  Case "KH" 'cambodia
+                     person!fk_ethnicity = const.ethnicity_Cambodian_Khmer
+                  Case "MY" 'malaysia
+                     person!fk_ethnicity = const.ethnicity_Malay_Malayan
+                  Case "PK" 'poland
+                     person!fk_ethnicity = const.ethnicity_Polish
+                  Case "SW" 'sweden
+                     person!fk_ethnicity = const.ethnicity_swedish
+                  Case "UK" 'united kingdon
+                     person!fk_ethnicity = const.ethnicity_swedish
+                  Case "TH" 'thailand
+                     person!fk_ethnicity = const.ethnicity_Thai_Tai_Siamese
+                  Case "VN 'vietnam"
+                     person!fk_ethnicity = const.ethnicity_Vietnam
+                  Case "ZA" 'south africa
+                     person!fk_ethnicity = const.ethnicity_South_African
+                  Case "US"
+                     person!fk_ethnicity = const.ethnicity_American
+                  Case "NL"
+                     person!fk_ethnicity = const.ethnicity_Dutch
+                  Case Else
+                     Message.info("ethnicity not found " & bits[iCountry_birth])
+                     Print 
+               End Select
+            Else
+               
+               Message.title = "Country of Origin"
+               Message.info("The country " & bits[iCountry_birth] & " was not found.")
+               Print person
+            End If   
+         End If   
+         person.Save("contacts.data_persons", "fk_person")
+         lblProgress.text = "Saving ethnicity data for " & import_count & " " & bits[firstname] & " " & bits[surname]
+         modDBConnect.CommitTrans()
+      Endif
+   Wend
+   modDBConnect.CommitTrans()
+   Dec Application.busy
    chkImportEthnicity.value = False 
+   lblProgress.text = ""
    
 End
 
@@ -612,6 +767,7 @@ Public Sub DrsDesk_SocialHistory_Import()
       If $Result.count = 1 Then
          patient!fk_patient = $Result!fk_patient
          lblProgress.text = "Importing data for" & patient!firstname & " " & patient!surname 
+         Wait
          '--------------------------------------------------
          'Ok we have a patient, so save their social history
          'Should we worry about the original data of entry
@@ -638,7 +794,7 @@ Public Sub DrsDesk_SocialHistory_Import()
          SH!fk_consult = currentconsult.GetPK()
          SH!history = bits[social_history]
          SH!fk_socialhistory = modDBConnect.insert("clin_history.social_history", SH)
-         
+         modDBConnect.CommitTrans()
       Else
          If $Result.count > 1 Then
             Message.info("More than 1 patient found with same names and dob")
@@ -664,6 +820,7 @@ Public Sub DrsDesk_SocialHistory_Import()
    
    Dec Application.busy
    chkImportSocialHIstory.value = False
+   lblProgress.text = ""
    
 End
 
@@ -745,7 +902,7 @@ Public Function DrsDesk_Leant_Terms_Refresh() As Result
    "  coding.lu_icpc2_plain_language_mapper "
    "WHERE "
    "  lu_icpc2_plain_language_mapper.fk_icpc2_term = icpc2_terms.pk;"
-   
+   Print sql
    Return modDBConnect.exec_query(sql)
    
 End
@@ -818,6 +975,7 @@ Public Sub DrsDesk_Habits_Import()
    If Error Then
       sFileError = File_IO_Describe_Error(Error.code)
       Message.Warning("Unable to open " & sFilename & "\n\n" & sFileError)
+      Return 
    End If
    Inc Application.Busy
    lvDataImportProgressMessages.Clear()
@@ -1000,7 +1158,6 @@ Public Sub DrsDesk_FamilyHistory_Import()
    modDBConnect.BeginTrans()
    patients = New Collection 
    Sfilename = import_dir & "/" & Trim("Exported_FamilyHistory.txt")
-   '  Sfilename = import_dir & "/" & Trim("test_fh.txt")
    If sFilename = "" Then 
       txtImportDirectory.SetFocus()
       Return
@@ -1040,10 +1197,9 @@ Public Sub DrsDesk_FamilyHistory_Import()
          Print "committing data..............."
          modDBConnect.CommitTrans()
          Print "loading data for " & scurrentPatient
-         
+         lblProgress.text = "loading data for " & scurrentPatient
          family_history_condition_count = 0                                              
          Inc import_count
-         '  End If
          bValidPatient = False 
          last_fk_relationship = 0
          patient = Patient_Identify(bits)                                    'create the next patient.
@@ -1167,7 +1323,6 @@ Public Sub DrsDesk_FamilyHistory_Import()
       If Not FH_Condition.Exist("fk_code") Then                                          'we didn't find an icpc2 match
          For Each a_term In icd10_terms                                        'try looking in icd10
             If Lower(FH_Condition!condition) = Lower(a_term!term) Then                 'found a match?
-               '  PH!fk_coding_system = const.coding_icd10                        'save fields
                FH_Condition!fk_code = a_term!pk_code                                     'coding.generic_terms.pk
                Break
             End If
@@ -1176,7 +1331,6 @@ Public Sub DrsDesk_FamilyHistory_Import()
       If Not FH_Condition.Exist("fk_code") Then                                          'still not code?, see if we have learnt it
          For Each LearntTerms
             If Trim(Lower(FH_Condition!condition)) = Trim(Lower(LearntTerms!free_text)) Then  'Yes?
-               '   PH!fk_coding_system = const.coding_icpcPlus                                    'we only learn from icpc2 plus - my decision
                FH_Condition!fk_code = LearntTerms!icpc_code & LearntTerms!term_code                     'save the code                  
                Break
             End If
@@ -1188,7 +1342,6 @@ Public Sub DrsDesk_FamilyHistory_Import()
          For Each a_term In user_j_terms                    'try and find a match
             If Lower(FH_Condition!condition) = Lower(a_term!natural_language_term) Then
                FH_Condition!fk_code = a_term!icpc_code & a_term!term_code
-               '   PH!fk_coding_system = const.coding_icpcPlus
                Break
             Endif
          Next
@@ -1208,12 +1361,8 @@ Public Sub DrsDesk_FamilyHistory_Import()
          FICPC.txtTermToImport.text = FH_Condition!condition                           'term we are trying to match
          FICPC.txtSearch.SetFocus()
          FICPC.ShowModal()
-         '  If const.globalstring = "" Then
-         '     Message.Info("no term code retrieved")
-         '   Endif
          Inc Application.busy
          FH_Condition!fk_code = const.globalstring
-         ' PH!fk_coding_system = const.coding_icpcPlus
          '-----------------------------------------------------
          'If user (me) did allocate a term, save for future use
          '-----------------------------------------------------
@@ -1222,12 +1371,6 @@ Public Sub DrsDesk_FamilyHistory_Import()
             icpc2_mapped_term!fk_icpc2_term = FH_Condition!fk_code
             icpc2_mapped_term!free_text = FH_Condition!condition
             icpc2_mapped_term.Save("coding.lu_icpc2_plain_language_mapper", "fk_lu_icpc2_plain_language_mapper")
-            '   sql = "INSERT INTO coding.lu_icpc2_plain_language_mapper("
-            '   "fk_icpc2_term, free_text) " 
-            '  "VALUES ("
-            '  sql &= FH_Condition!fk_code & ", $$"
-            '  sql &= FH_Condition!condition & "$$)"
-            '  $Result = modDBConnect.exec_query(sql)
             modDBConnect.CommitTrans()
             learntTerms = DrsDesk_Leant_Terms_Refresh() 'Load mappable terms drsdesk to icpc
          Else
@@ -1242,9 +1385,8 @@ Public Sub DrsDesk_FamilyHistory_Import()
             Next
          End If  
          If Not FH_Condition.Exist("fk_code") Or IsNull(FH_Condition!fk_code) Then   
-            '    Message.Info("Create J code") 
             Print "creating j-code"
-            J_code_count = modDBConnect.exec_query("SELECT CAST(coalesce(term_code, '0') AS integer) as last_j_code from coding.icpc2_user_terms order by term_code DESC limit 1")!last_j_code
+            J_code_count = modDBConnect.exec_query("SELECT CAST(coalesce(term_code, '0') AS integer) as last_j_code from coding.icpc2_user_terms order by pk DESC limit 1")!last_j_code
             FH_Condition!fk_code = "J99" & Format(J_code_count + 1, "00#")
             '  FH_Condition!fk_coding_system = 1
             '  pk integer,
@@ -1267,7 +1409,6 @@ Public Sub DrsDesk_FamilyHistory_Import()
       End If 
       Print "....saving condition:", FH_Condition!condition 
       FH_Condition.Save("clin_history.family_conditions", "fk_condition")
-      'End If 
    Wend  
    modDBConnect.CommitTrans()
    Dec Application.Busy
@@ -1278,12 +1419,10 @@ End
 Public Sub DrsDesk_PastHistory_Import()
    '--------------------------------------------------------------
    ' Imports the patients past history initially only DrsDesk
-   ' Adams|George|20/12/1925 0:00:00|M|289|1|35|7|Deafness||0|102008601|1960|0|0|0|1|0
+   ' Mouse|Mickey|08/04/1947 0:00:00|0|59|7|ankle fusion|failed union Dr James O'sullivan|1|2006|0|0|0|1|0
    ' surname
    ' firstname
    ' birthdate
-   ' sex
-   ' ph_id
    ' active flag 0=not 1 = yes
    ' age_onset
    ' age_onset_units eg 7 = year 5 = week, 6 = month
@@ -1339,14 +1478,13 @@ Public Sub DrsDesk_PastHistory_Import()
    Dim age_onset_units As Integer = 5
    Dim condition As Integer = 6
    Dim comment As Integer = 7
-   Dim lateralisation As Integer = 10
-   Dim ozcode As Integer = 11
+   Dim lateralisation As Integer = 8
    Dim date_onset As Integer = 9
    Dim operation As Integer = 10
    Dim cause_death As Integer = 11
    Dim confidential As Integer = 12
    Dim significant As Integer = 13
-   Dim Deleted As Integer = 13
+   Dim Deleted As Integer = 14
    Dim Errorfile As File
    Dim bits As String[]
    Dim vwTerms As Collection 
@@ -1385,7 +1523,7 @@ Public Sub DrsDesk_PastHistory_Import()
    learntTerms = DrsDesk_Leant_Terms_Refresh()                                'Load mappable terms drsdesk to icpc as result
    import_dir = "/home/richard/easygp/import/"
    ErrorFile = Open import_dir & "/pasthistory_import_errors.txt" For Write Create   'open an error file to log errors
-   Sfilename = import_dir & "/" & Trim("Exported_PastHistory.txt")                   'Insist on at least some sort Of attempt at a name
+   Sfilename = import_dir & Trim("Exported_PastHistory_MINI.txt")                   'Insist on at least some sort Of attempt at a name
    If sFilename = "" Then 
       txtImportDirectory.SetFocus()
       Return
@@ -1394,6 +1532,8 @@ Public Sub DrsDesk_PastHistory_Import()
    If Error Then
       sFileError = File_IO_Describe_Error(Error.code)
       Message.Warning("Unable to open " & sFilename & "\n\n" & sFileError)
+      Dec Application.Busy
+      Return 
    End If
    Inc Application.Busy
    lvDataImportProgressMessages.Clear()
@@ -1486,7 +1626,7 @@ Public Sub DrsDesk_PastHistory_Import()
          'J99-00n term or popup an option to search
          '-------------------------------------------------
          For Each a_term In icpc_terms                                            ' loop through all icpc2 terms
-            If Lower(PH!description) = Lower(a_term!natural_language_term) Then   ' is there are match to my natural language?
+            If Lower(PH!description) = Trim(Lower(a_term!natural_language_term)) Then   ' is there are match to my natural language?
                PH!fk_coding_system = const.coding_icpcPlus                        'yes, then coding system = icpc2 plus
                PH!fk_code = a_term!icpc_code & a_term!term_code                   ' the code = join of both codes = key to coding.generic_terms
                Break
@@ -1514,7 +1654,7 @@ Public Sub DrsDesk_PastHistory_Import()
          If Not PH.Exist("fk_code") Then                                          'still not code?, see if we have learnt it
             user_j_terms = ICPC2_Get_J_Terms()                 'get all current j terms
             For Each a_term In user_j_terms                    'try and find a match
-               If Lower(PH!description) = Lower(a_term!natural_language_term) Then
+               If Lower(PH!description) = Trim(Lower(a_term!natural_language_term)) Then
                   PH!fk_code = a_term!icpc_code & a_term!term_code
                   PH!fk_coding_system = const.coding_icpcPlus
                   Break
@@ -1550,13 +1690,6 @@ Public Sub DrsDesk_PastHistory_Import()
                icpc2_mapped_term!fk_icpc2_term = PH!fk_code
                icpc2_mapped_term!free_text = PH!description
                icpc2_mapped_term.Save("coding.lu_icpc2_plain_language_mapper", "fk_lu_icpc2_plain_language_mapper")
-               
-               '   sql = "INSERT INTO coding.lu_icpc2_plain_language_mapper("
-               '   "fk_icpc2_term, free_text) " 
-               '  "VALUES ("
-               '   sql &= PH!fk_code & ", $$"
-               '   sql &= PH!description & "$$)"
-               '  $Result = modDBConnect.exec_query(sql)
                modDBConnect.CommitTrans()
                learntTerms = DrsDesk_Leant_Terms_Refresh() 'Load mappable terms drsdesk to icpc
             Else
@@ -1571,9 +1704,8 @@ Public Sub DrsDesk_PastHistory_Import()
                Next
             End If  
             If Not PH.Exist("fk_code") Or IsNull(PH!fk_code) Then   
-               '    Message.Info("Create J code") 
                Print "creating j-code"
-               J_code_count = modDBConnect.exec_query("SELECT CAST(coalesce(term_code, '0') AS integer) as last_j_code from coding.icpc2_user_terms order by term_code DESC limit 1")!last_j_code
+               J_code_count = modDBConnect.exec_query("SELECT CAST(coalesce(term_code, '0') AS integer) as last_j_code from coding.icpc2_user_terms order by pk DESC limit 1")!last_j_code
                PH!fk_code = "J99" & Format(J_code_count + 1, "00#")
                PH!fk_coding_system = 1
                '  pk integer,
@@ -1969,12 +2101,14 @@ Public Sub Patient_Identify(bits As String[]) As Collection
    $Result = modDBConnect.exec_query(sql)
    If $Result.count = 1 Then
       patient!fk_patient = $Result!fk_patient
+      patient!fk_person = $Result!fk_person  'needed to save ethnicity data
       lblImporting2.text = "Importing data for" & patient!firstname & " " & patient!surname 
       Wait
    Else
       sMsg = ""
       If $Result.count > 1 Then
          patient!fk_patient = $Result!fk_patient
+         patient!fk_person = $Result!fk_person
          '  For Each $Result
          '     sMsg &= $Result!firstname & " " & $Result!surname & " " & Format($Result!birthdate, "dd/mm/yyyy") & "\n"
          '  Next
@@ -2760,6 +2894,72 @@ Public Sub btnImportStaff_Click()
    ' Close #hFile
    ' 
    ' Import_staff(staff, json_lines) '
+   
+End
+
+Public Function Occupation_Get(person_occupation As String) As Integer
+   '---------------------------------------------------------
+   'Attempts to find if the occupation exists
+   'if not, pops up a dialog, asks to correct spelling
+   'which strips out any extra blanks and returns the string
+   'then we have to re-check that this possibly corrected
+   'string in which user may have changed the spelling
+   'is not already an existing occupation
+   '---------------------------------------------------------
+   
+   Dim occupation As New Collection
+   Dim new_occupation As CRow
+   Dim fk_occupation As Integer
+   Dim Form_Verify_Occupation As New FAllocateOccupation
+   Dim misspelt_occupation As CRow  
+   Dim sql As String
+   Dim bNotInMisSpeltOccupations As Boolean
+   Dim sstring As String
+   Dim R As Result
+   
+   person_occupation = modUtil.StripExtraBlanks(person_occupation)
+   Dec Application.Busy
+   occupation = modCommonDBI.Occupation_Get(person_occupation)    'should only return one if this table has been fixed
+   R = modDBConnect.exec_query("Select * from common.lu_occupations where occupation ilike $$" & person_occupation & "$$")
+   If R.count = 0 Then                                     'no match found in common.lu_occupations
+      sql = "Select * from import_export.lu_misspelt_occupations " 'see if previously encountered as mis-spelling
+      sql &= " WHERE misspelt_occupation ILIKE $$" & person_occupation & "$$"
+      occupation = modDBConnect.exec_query_first(sql)             'will return only one
+      If Not IsNull(occupation) Then                              'get the real pk from common.lu_occupations
+         sString = occupation!occupation 
+         occupation = New Collection 
+         R = modDBConnect.exec_query("Select * from common.lu_occupations where occupation ILIKE $$" & sstring & "$$")
+         If R.count Then                                 
+            Return R!pk
+         End If
+      End If   
+      'still not found 
+      With Form_Verify_Occupation                                'popup a dialog to get user interaction 
+         .Init(Lower(person_occupation))                         'this will also save the new mis-spelt occupation
+         .txtOccupationNew.SetFocus()                            'when user hits <OK>
+         .ShowModal()
+      End With
+      If const.globalstring <> "" Then                           'ok - they typed in something 
+         occupation = modCommonDBI.Occupation_Get(const.globalstring) 'this could be change in spelling, so check again
+         If IsNull(occupation) Then                              'give up, save this as new occupation
+            new_occupation = New CRow
+            new_occupation!occupation = const.globalstring        'the verified or corrected spelling
+            new_occupation.Save("common.lu_occupations", "fk_occupation")
+            fk_occupation = new_occupation!fk_occupation
+         Else
+            fk_occupation = occupation!pk
+         End If   
+         modDBConnect.CommitTrans()
+      Else
+         Message.title = "Occupations"
+         Message.Info("Inserting new occupation cancelled by the user")
+         Return '0
+      End If 
+   Else
+      fk_occupation = R!pk
+   Endif
+   Inc Application.Busy
+   Return fk_occupation
    
 End
 

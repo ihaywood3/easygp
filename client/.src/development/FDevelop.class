@@ -17,312 +17,373 @@
 'Don't delete this module = used to dump all schema and tables into the audit schema.
 'Updating this will break your database, so only do this if you know what you are doing.
 
-
-
-
 Public Sub Button2_Click()
    '---------------------------------------------------------------------------
    'I put this in for temporary use as all my categories were screwed over time
    'as there is some sort of bug in the category creation which I need to find
    '----------------------------------------------------------------------------
-  Dim sql As String
-  Dim categories As Collection
-  Dim copycats As Collection 
-  Dim copycat As Collection 
-  Dim done As Boolean
-
-  Dim members As Collection
-  Dim member As Collection 
-  Dim old_category As String
-  Dim R As Result
-  Dim x As Integer
-  Dim category As Collection 
-  Dim new_pk_category As String 
-  
-  If Message.Warning("This will fix duplicated entries in the categories table.\n\nIt will not affect your current allocation of categories", "Yes", "No") = 2 Then Return 
-  sql = "Drop table contacts.lu_categories_new"       'try and drop it may not exist. at least it shouldn't
-' Try modDBConnect.exec_query(sql)
-  ' If Error Then
-  '   "CREATE TABLE \"contacts\".\"lu_categories_new\" ("
-  '     "  \"pk\" INTEGER NOT NULL, "
-  '     "  \"category\" VARCHAR(50) NOT NULL"
-  '     ") WITHOUT OIDS;"
-  '     modDBConnect.exec_query(sql)
-  ' Endif
- 'If Error Then 
- '  sql = "CREATE TABLE contacts.lu_categories_new "        'create temporary table
- '  sql &= "(pk  serial primary key,category text NOT NULL)"
- ''End If  
-  'copy all 'provider' named categories over first to the new table  
-  sql = "Select * from contacts.lu_categories where category ILIKE '%provider' order by pk"
-  categories = modDBConnect.exec_query_collection(sql)
-  copycats = modDBConnect.exec_query_collection(sql)
-  For Each category In categories
-         'fist check it's not one we have saved
-          done = False
-          For Each copycat In copycats
-             If Lower(Trim(copycat!category)) = Lower(Trim(category!category)) Then
-                 If copycat!exists = True Then
-                    done = True
-                    Break
-                 Endif
-              Endif
+   
+   Dim sql As String
+   Dim categories As Collection
+   Dim copycats As Collection 
+   Dim copycat As Collection 
+   Dim done As Boolean
+   
+   Dim members As Collection
+   Dim member As Collection 
+   Dim old_category As String
+   Dim R As Result
+   Dim x As Integer
+   Dim category As Collection 
+   Dim new_pk_category As String 
+   
+   If Message.Warning("This will fix duplicated entries in the categories table.\n\nIt will not affect your current allocation of categories", "Yes", "No") = 2 Then Return 
+   sql = "Drop table contacts.lu_categories_new"       'try and drop it may not exist. at least it shouldn't
+   ' Try modDBConnect.exec_query(sql)
+   ' If Error Then
+   '   "CREATE TABLE \"contacts\".\"lu_categories_new\" ("
+   '     "  \"pk\" INTEGER NOT NULL, "
+   '     "  \"category\" VARCHAR(50) NOT NULL"
+   '     ") WITHOUT OIDS;"
+   '     modDBConnect.exec_query(sql)
+   ' Endif
+   'If Error Then 
+   '  sql = "CREATE TABLE contacts.lu_categories_new "        'create temporary table
+   '  sql &= "(pk  serial primary key,category text NOT NULL)"
+   ''End If  
+   'copy all 'provider' named categories over first to the new table  
+   sql = "Select * from contacts.lu_categories where category ILIKE '%provider' order by pk"
+   categories = modDBConnect.exec_query_collection(sql)
+   copycats = modDBConnect.exec_query_collection(sql)
+   For Each category In categories
+      'fist check it's not one we have saved
+      done = False
+      For Each copycat In copycats
+         If Lower(Trim(copycat!category)) = Lower(Trim(category!category)) Then
+            If copycat!exists = True Then
+               done = True
+               Break
+            Endif
+         Endif
+      Next
+      If Not done Then 
+         sql = "insert into contacts.lu_categories_new(category) values('" & category!category & "')"
+         modDBConnect.exec_query(sql)
+         For Each copycat In copycats
+            If Lower(Trim(copycat!category)) = Lower(Trim(category!category)) Then
+               copycat!exists = True
+            Endif
+            
          Next
-        If Not done Then 
-            sql = "insert into contacts.lu_categories_new(category) values('" & category!category & "')"
-            modDBConnect.exec_query(sql)
-            For Each copycat In copycats
-             If Lower(Trim(copycat!category)) = Lower(Trim(category!category)) Then
-                 copycat!exists = True
-             Endif
-       
-         Next
-           
-     End If
-  Next
-  'Next read all categories not a provider
-  sql = "Select * from contacts.lu_categories order by pk"
-  categories = modDBConnect.exec_query_collection(sql)
-  copycats = modDBConnect.exec_query_collection(sql)
-  For Each category In categories
-         'fist check it's not one we have saved
-     If InStr(Lower(category!category), "provider") = False Then 
-          done = False
-          For Each copycat In copycats
-             If Lower(Trim(copycat!category)) = Lower(Trim(category!category)) Then
-                 If copycat!exists = True Then
-                    done = True
-                    Break
-                 Endif
-              Endif
-          Next
-          If Not done Then 
-            sql = "insert into contacts.lu_categories_new(category) values('" & category!category & "')"
-            modDBConnect.exec_query(sql)
-            For Each copycat In copycats
-             If Lower(Trim(copycat!category)) = Lower(Trim(category!category)) Then
-                 copycat!exists = True
-             Endif
-       
-          Next
+         
       End If
-    End If
-  Next   
-  modDBConnect.CommitTrans() 
- 
-  'Now to fix all the tables contacts.data_branches, data_persons, data_employees
-  members = modDBConnect.exec_query_collection("Select * from contacts.data_branches")
-  For Each member In members
-     sql = "Select * from contacts.lu_categories where pk = " & member!fk_category        'for each branch get its fk_category
-     R = modDBConnect.exec_query(sql)
-     If R.count = 0 Then
-       Message.Warning("missing category")
-     Else
-        old_category = R!category                                                        'assuming dosn't fail
-        sql = "Select * from contacts.lu_categories_new where category ILIKE $$" & old_category & "$$"  'get new category pk
-        R = modDBConnect.exec_query(sql)
-        If R.count = 0 Then
-            Message.Warning("missing new category")
-        Else
-           new_pk_category = R!pk                                                            'then update the old table with new pk
-           sql = "Update contacts.data_branches set fk_category = " & new_pk_category & " where pk=" & member!pk
-           modDBConnect.exec_query(sql)
-        Endif
-     Endif
    Next
-  members = modDBConnect.exec_query_collection("Select * from contacts.data_persons")
-  For Each member In members
-    'not every person has a category - eg all imported patients
-    If Not IsNull(member!fk_category) Then 
+   'Next read all categories not a provider
+   sql = "Select * from contacts.lu_categories order by pk"
+   categories = modDBConnect.exec_query_collection(sql)
+   copycats = modDBConnect.exec_query_collection(sql)
+   For Each category In categories
+      'fist check it's not one we have saved
+      If InStr(Lower(category!category), "provider") = False Then 
+         done = False
+         For Each copycat In copycats
+            If Lower(Trim(copycat!category)) = Lower(Trim(category!category)) Then
+               If copycat!exists = True Then
+                  done = True
+                  Break
+               Endif
+            Endif
+         Next
+         If Not done Then 
+            sql = "insert into contacts.lu_categories_new(category) values('" & category!category & "')"
+            modDBConnect.exec_query(sql)
+            For Each copycat In copycats
+               If Lower(Trim(copycat!category)) = Lower(Trim(category!category)) Then
+                  copycat!exists = True
+               Endif
+               
+            Next
+         End If
+      End If
+   Next   
+   modDBConnect.CommitTrans() 
+   
+   'Now to fix all the tables contacts.data_branches, data_persons, data_employees
+   members = modDBConnect.exec_query_collection("Select * from contacts.data_branches")
+   For Each member In members
+      sql = "Select * from contacts.lu_categories where pk = " & member!fk_category        'for each branch get its fk_category
+      R = modDBConnect.exec_query(sql)
+      If R.count = 0 Then
+         Message.Warning("missing category")
+      Else
+         old_category = R!category                                                        'assuming dosn't fail
+         sql = "Select * from contacts.lu_categories_new where category ILIKE $$" & old_category & "$$"  'get new category pk
+         R = modDBConnect.exec_query(sql)
+         If R.count = 0 Then
+            Message.Warning("missing new category")
+         Else
+            new_pk_category = R!pk                                                            'then update the old table with new pk
+            sql = "Update contacts.data_branches set fk_category = " & new_pk_category & " where pk=" & member!pk
+            modDBConnect.exec_query(sql)
+         Endif
+      Endif
+   Next
+   members = modDBConnect.exec_query_collection("Select * from contacts.data_persons")
+   For Each member In members
+      'not every person has a category - eg all imported patients
+      If Not IsNull(member!fk_category) Then 
          sql = "Select * from contacts.lu_categories where pk = " & member!fk_category        'for each branch get its fk_category
          R = modDBConnect.exec_query(sql)
          If R.count = 0 Then
-           Message.Warning("missing category")
+            Message.Warning("missing category")
          Else
             old_category = R!category                                                        'assuming dosn't fail
             sql = "Select * from contacts.lu_categories_new where category ILIKE $$" & old_category & "$$"  'get new category pk
             R = modDBConnect.exec_query(sql)
             If R.count = 0 Then
-                Message.Warning("missing new category")
+               Message.Warning("missing new category")
             Else
                new_pk_category = R!pk                                                            'then update the old table with new pk
                sql = "Update  contacts.data_persons set fk_category = " & new_pk_category & " where pk=" & member!pk
                modDBConnect.exec_query(sql)
             Endif
          Endif
-     End If
+      End If
    Next
-    members = modDBConnect.exec_query_collection("Select * from contacts.data_employees")
-    For Each member In members
-    If Not IsNull(member!fk_category) Then 
+   members = modDBConnect.exec_query_collection("Select * from contacts.data_employees")
+   For Each member In members
+      If Not IsNull(member!fk_category) Then 
          sql = "Select * from contacts.lu_categories where pk = " & member!fk_category        'for each branch get its fk_category
          R = modDBConnect.exec_query(sql)
          If R.count = 0 Then
-           Message.Warning("missing category")
+            Message.Warning("missing category")
          Else
             old_category = R!category                                                        'assuming dosn't fail
             sql = "Select * from contacts.lu_categories_new where category ILIKE $$" & old_category & "$$"  'get new category pk
             R = modDBConnect.exec_query(sql)
             If R.count = 0 Then
-                Message.Warning("missing new category")
+               Message.Warning("missing new category")
             Else
                new_pk_category = R!pk                                                            'then update the old table with new pk
                sql = "Update contacts.data_employees set fk_category = " & new_pk_category & " where pk=" & member!pk
                modDBConnect.exec_query(sql)
             Endif
          Endif
-     End If
+      End If
    Next 
- '------------------------------------------------------------------------------
- 'Now wipe the original contacts lu_categories table, copy back the altered data
- '------------------------------------------------------------------------------
-  modDBConnect.exec_query("Delete from contacts.lu_categories")      'Now wipe the contacts lu_categories table
-  sql = "ALTER SEQUENCE contacts.lu_categories_pk_seq "              'reset the index to the start
-  sql &= " INCREMENT 1 MINVALUE 1 "
-  sql &= "MAXVALUE 9223372036854775807 RESTART 1 "
-  sql &= "CACHE 1 NO CYCLE"
-  modDBConnect.exec_query(sql)
-  sql = "INSERT INTO contacts.lu_categories(pk,category) "
-  sql &= "SELECT * from contacts.lu_categories_new order by pk"     'copy back the fixed data
-  modDBConnect.exec_query(sql)
-  sql = "Select count(pk) from contacts.lu_categories_new"
-  R = modDBConnect.exec_query(sql)
-  
-  sql = "ALTER SEQUENCE contacts.lu_categories_pk_seq RESTART " 'reset starting pk
-  sql &= R!count + 1
-  modDBConnect.exec_query(sql)
-  sql = "drop table contacts.lu_categories_new"
-  modDBConnect.exec_query(sql)
-modDBConnect.CommitTrans()
-  Message.Info("Finished refurbishing the category table")
+   '------------------------------------------------------------------------------
+   'Now wipe the original contacts lu_categories table, copy back the altered data
+   '------------------------------------------------------------------------------
+   modDBConnect.exec_query("Delete from contacts.lu_categories")      'Now wipe the contacts lu_categories table
+   sql = "ALTER SEQUENCE contacts.lu_categories_pk_seq "              'reset the index to the start
+   sql &= " INCREMENT 1 MINVALUE 1 "
+   sql &= "MAXVALUE 9223372036854775807 RESTART 1 "
+   sql &= "CACHE 1 NO CYCLE"
+   modDBConnect.exec_query(sql)
+   sql = "INSERT INTO contacts.lu_categories(pk,category) "
+   sql &= "SELECT * from contacts.lu_categories_new order by pk"     'copy back the fixed data
+   modDBConnect.exec_query(sql)
+   sql = "Select count(pk) from contacts.lu_categories_new"
+   R = modDBConnect.exec_query(sql)
+   
+   sql = "ALTER SEQUENCE contacts.lu_categories_pk_seq RESTART " 'reset starting pk
+   sql &= R!count + 1
+   modDBConnect.exec_query(sql)
+   sql = "drop table contacts.lu_categories_new"
+   modDBConnect.exec_query(sql)
+   modDBConnect.CommitTrans()
+   Message.Info("Finished refurbishing the category table")
+   
 End
 
 Public Sub Button3_Click()
-
-     '---------------------------------------------------------------------------
+   
+   '---------------------------------------------------------------------------
    'I put this in for temporary use as all my occupations were screwed over time
    'as there is some sort of bug in the occupation creation which I need to find
    '----------------------------------------------------------------------------
-  Dim sql As String
-  Dim occupations As Collection
-  Dim copyoccup As Collection 
-  Dim copycat As Collection 
-  Dim done As Boolean
-
-  Dim members As Collection
-  Dim member As Collection 
-  Dim old_occupation As String
-  Dim R As Result
-  Dim x As Integer
-  Dim occupation As Collection 
-  Dim new_pk_occupation As String 
-  
-  If Message.Warning("This will fix duplicated entries in the occupations table.\n\nIt will not affect your current allocation of occupations", "Yes", "No") = 2 Then Return 
-'  sql = "Drop table common.lu_occupations_new"       'try and drop it may not exist. at least it shouldn't
-' CREATE TABLE common.lu_occupations_new
-' (
-'   pk serial,
-'   occupation text NOT NULL
-' )
-' WITH (
-'   OIDS=FALSE
-' );
-' Try modDBConnect.exec_query(sql)
-' "CREATE TABLE \"common\".\"lu_occupations_new\" ("
-'     "  \"pk\" INTEGER NOT NULL, "
-'     "  \"occupation\" TEXT NOT NULL"
-'     ") WITHOUT OIDS;"
- 'If Error Then 
- '  sql = "CREATE TABLE common.lu_occupations_new "        'create temporary table
- '  sql &= "(pk  serial primary key,category text NOT NULL)"
- ''End If  
-  'copy all 'provider' named occupations over first to the new table  
-
-  sql = "Select * from common.lu_occupations order by pk"
-  occupations = modDBConnect.exec_query_collection(sql)
-  copyoccup = modDBConnect.exec_query_collection(sql)
-  For Each occupation In occupations
-
-          If Trim(occupation!occupation) = "" Then
-            Message.info("the key for empty occupation is" & Str$(occupation!pk))
-          Else
-            sql = "Select * from common.lu_occupations_new where occupation =$$" & Lower(Trim(occupation!occupation)) & "$$"
-            R = modDBConnect.exec_query(sql)
-            If Not R.count Then
-              sql = "insert into common.lu_occupations_new(occupation) values('" & Lower(Trim(occupation!occupation)) & "')"
-              modDBConnect.exec_query(sql)
-              Inc x
-             End If
-         End If   
-  Next   
-  modDBConnect.CommitTrans() 
- 
-  'Now to fix all the tables containing occupations
-
-  members = modDBConnect.exec_query_collection("Select * from contacts.data_persons")
-  For Each member In members
-    'not every person has a occupation - eg all imported patients
-    If Not IsNull(member!fk_occupation) Then 
+   Dim sql As String
+   Dim occupations As Collection
+   Dim copyoccup As Collection 
+   Dim copycat As Collection 
+   Dim done As Boolean
+   Dim Form_Verify_Occupation As New FAllocateOccupation
+   Dim members As Collection
+   Dim member As Collection 
+   Dim old_occupation As String
+   Dim R As Result
+   Dim x As Integer
+   Dim occupation As Collection 
+   Dim new_pk_occupation As String 
+   Dim new_occupation As CRow 
+   Dim fk_occupation As Integer
+   Dim total_patients_with_occupations As Integer
+   Dim total_fk_occupation_zero As Integer
+   Dim total_occupation_string_empty As Integer
+   Dim total_employees_with_occupations As Integer
+   
+   If Message.Warning("This will fix duplicated entries in the occupations table.\n\nIt will not affect your current allocation of occupations, do you want to continue", "Yes", "No") = 2 Then Return 
+   '--------------------------------------------------
+   'Create at tempory table to hold unique occupations
+   'Then copy all unique occupations into that table
+   '--------------------------------------------------
+   ' Try modDBConnect.exec_query("Drop table common.lu_occupations_temp")       'try and drop it may not exist. at least it shouldn't
+   ' 
+   ' sql = "create table common.lu_occupations_temp"
+   ' "(pk serial primary key,"
+   ' "occupation text not null,"
+   ' "referrer_type character(1) DEFAULT 'o'::bpchar"
+   ' ")"
+   ' modDBConnect.exec_query(sql)
+   ' sql = "insert into common.lu_occupations_temp (occupation, referrer_type) "
+   ' "select distinct lower(occupation) as occupation, referrer_type from common.lu_occupations "
+   ' "where occupation <> '' order by occupation"
+   ' modDBConnect.exec_query(sql)
+   
+   'sql = "Select * from common.lu_occupations order by pk"
+   '------------------------------------------------  
+   'Now to fix all the tables containing occupations
+   'Load the occupation (text) for existing persons
+   '------------------------------------------------
+   Inc Application.Busy
+   members = modDBConnect.exec_query_collection("Select * from contacts.data_persons")
+   For Each member In members
+      'not every person has a occupation - eg all imported patients
+      If Not IsNull(member!fk_occupation) Then 
          sql = "Select * from common.lu_occupations where pk = " & member!fk_occupation        'for each branch get its fk_occupation
          R = modDBConnect.exec_query(sql)
          If R.count = 0 Then
-           Message.Warning("missing occupation")
+            '   Message.Warning("missing occupation")
+            Print "Setting an fk_occupation =0 back to null"
+            modDBConnect.exec_query("Update  contacts.data_persons set fk_occupation = null WHERE pk=" & member!pk)
+            Inc total_fk_occupation_zero
          Else
-            old_occupation = R!occupation                                                        'assuming dosn't fail
-            sql = "Select * from common.lu_occupations_new where occupation ILIKE $$" & old_occupation & "$$"  'get new occupation pk
-            R = modDBConnect.exec_query(sql)
-            If R.count = 0 Then
-                Message.Warning("missing new occupation")
+            If R!occupation <> "" 'empty string because of previous bugs in way occupation saved
+               old_occupation = R!occupation                                                        'assuming dosn't fail
+               sql = "Select * from common.lu_occupations_temp where occupation ILIKE $$" & old_occupation & "$$"  'get new occupation pk
+               R = modDBConnect.exec_query(sql)
+               '-------------------------------------------------
+               'Can't find it? maybe because I fixed the spelling
+               '-------------------------------------------------
+               If R.count = 0 Then
+                 ' Message.Warning("Can't match new to old occupation.\n\n")
+                 Print 
+                  With Form_Verify_Occupation
+                     .Init(Lower(old_occupation))
+                     .txtOccupationNew.SetFocus()
+                     .ShowModal()
+                  End With
+                  If const.globalstring <> "" Then   
+                     '---------------------------------------------------------------
+                     'is the possibly corrected spelling already in as an occupation?
+                     '---------------------------------------------------------------
+                     occupation = modCommonDBI.Occupation_Get(const.globalstring)
+                     If IsNull(occupation) Then
+                        new_occupation = New CRow
+                        new_occupation!occupation = const.globalstring 'the verified or corrected spelling
+                        new_occupation.Save("common.lu_occupations_temp", "fk_occupation")
+                        fk_occupation = new_occupation!fk_occupation
+                     Else
+                        fk_occupation = occupation!pk
+                     End If   
+                     new_pk_occupation = fk_occupation
+                  Endif
+               Else
+                  new_pk_occupation = R!pk                                                            'then update the old table with new pk
+               End If  
+               Inc total_patients_with_occupations
             Else
-               new_pk_occupation = R!pk                                                            'then update the old table with new pk
-               sql = "Update  contacts.data_persons set fk_occupation = " & new_pk_occupation & " where pk=" & member!pk
-               modDBConnect.exec_query(sql)
-            Endif
+               Print "the occupation is an empty string"
+               new_pk_occupation = modDBConnect.exec_query("Select * from common.lu_occupations_temp where occupation ILIKE 'unknown'")!pk
+               Inc total_occupation_string_empty
+            End If   
+            sql = "Update  contacts.data_persons set fk_occupation = " & new_pk_occupation & " where pk=" & member!pk
+            modDBConnect.exec_query(sql)
          Endif
-     End If
+      Endif
    Next
-    members = modDBConnect.exec_query_collection("Select * from contacts.data_employees")
-    For Each member In members
-    If Not IsNull(member!fk_occupation) Then 
+   Print "Total with occupations:" & total_patients_with_occupations
+   Print "total with zero string:" & total_occupation_string_empty
+   Print "total with 0 fk_occupation" & total_fk_occupation_zero
+   '-----------------------------
+   'Now do the same for employees
+   '-----------------------------
+   Message.Info("Now to start on employee's")
+   members = modDBConnect.exec_query_collection("Select * from contacts.data_employees")
+   For Each member In members
+      'every employee should have an occupation
+      If Not IsNull(member!fk_occupation) Then 
          sql = "Select * from common.lu_occupations where pk = " & member!fk_occupation        'for each branch get its fk_occupation
          R = modDBConnect.exec_query(sql)
          If R.count = 0 Then
-           Message.Warning("missing occupation")
+            '   Message.Warning("missing occupation for employee - should never get here")
+            Print "Setting an fk_occupation =0 back to null"
+            modDBConnect.exec_query("Update  contacts.data_employees set fk_occupation = null WHERE pk=" & member!pk)
+            Inc total_fk_occupation_zero
          Else
-            old_occupation = R!occupation                                                        'assuming dosn't fail
-            sql = "Select * from common.lu_occupations_new where occupation ILIKE $$" & old_occupation & "$$"  'get new occupation pk
-            R = modDBConnect.exec_query(sql)
-            If R.count = 0 Then
-                Message.Warning("missing new occupation")
+            If R!occupation <> "" 'empty string because of previous bugs in way occupation saved
+               old_occupation = R!occupation                                                        'assuming dosn't fail
+               sql = "Select * from common.lu_occupations_temp where occupation ILIKE $$" & old_occupation & "$$"  'get new occupation pk
+               R = modDBConnect.exec_query(sql)
+               '-------------------------------------------------
+               'Can't find it? maybe because I fixed the spelling
+               '-------------------------------------------------
+               If R.count = 0 Then
+                  Message.Warning("Can't match new to old occupation.\n\n")
+                  With Form_Verify_Occupation
+                     .Init(Lower(old_occupation))
+                     .txtOccupationNew.SetFocus()
+                     .ShowModal()
+                  End With
+                  If const.globalstring <> "" Then   
+                     '---------------------------------------------------------------
+                     'is the possibly corrected spelling already in as an occupation?
+                     '---------------------------------------------------------------
+                     occupation = modCommonDBI.Occupation_Get(const.globalstring)
+                     If IsNull(occupation) Then
+                        new_occupation = New CRow
+                        new_occupation!occupation = const.globalstring 'the verified or corrected spelling
+                        new_occupation.Save("common.lu_occupations_temp", "fk_occupation")
+                        fk_occupation = new_occupation!fk_occupation
+                     Else
+                        fk_occupation = occupation!pk
+                     End If   
+                     new_pk_occupation = fk_occupation
+                  Endif
+               Else
+                  new_pk_occupation = R!pk                                                            'then update the old table with new pk
+               End If  
+               Inc total_employees_with_occupations
             Else
-               new_pk_occupation = R!pk                                                            'then update the old table with new pk
-               sql = "Update contacts.data_employees set fk_occupation = " & new_pk_occupation & " where pk=" & member!pk
-               modDBConnect.exec_query(sql)
-            Endif
+               Print "the occupation is an empty string"
+               new_pk_occupation = modDBConnect.exec_query("Select * from common.lu_occupations_temp where occupation ILIKE 'unknown'")!pk
+               Inc total_occupation_string_empty
+            End If   
+            sql = "Update contacts.data_employees set fk_occupation = " & new_pk_occupation & " where pk=" & member!pk
+            modDBConnect.exec_query(sql)
          Endif
-     End If
-   Next 
- '------------------------------------------------------------------------------
- 'Now wipe the original common lu_occupations table, copy back the altered data
- '------------------------------------------------------------------------------
-  modDBConnect.exec_query("Delete from common.lu_occupations")      'Now wipe the common lu_occupations table
-  sql = "ALTER SEQUENCE common.lu_occupations_pk_seq "              'reset the index to the start
-  sql &= " INCREMENT 1 MINVALUE 1 "
-  sql &= "MAXVALUE 9223372036854775807 RESTART 1 "
-  sql &= "CACHE 1 NO CYCLE"
-  modDBConnect.exec_query(sql)
-  sql = "INSERT INTO common.lu_occupations(pk,occupation) "
-  sql &= "SELECT * from common.lu_occupations_new order by pk"     'copy back the fixed data
-  modDBConnect.exec_query(sql)
-  sql = "Select count(pk) from common.lu_occupations_new"
-  R = modDBConnect.exec_query(sql)
-  
-  sql = "ALTER SEQUENCE common.lu_occupations_pk_seq RESTART " 'reset starting pk
-  sql &= R!count + 1
-  modDBConnect.exec_query(sql)
-  sql = "drop table common.lu_occupations_new"
-  modDBConnect.exec_query(sql)
-modDBConnect.CommitTrans()
-  Message.Info("Finished refurbishing the occupation table")
-
+      Endif
+   Next
+   Print "Total with occupations:" & total_patients_with_occupations
+   Print "total with zero string:" & total_occupation_string_empty
+   Print "total with 0 fk_occupation" & total_fk_occupation_zero
+   Print "total employee's with occupations" & total_patients_with_occupations
+   Print "stop here"
+   '------------------------------------------------------------------------------
+   'Now wipe the original common lu_occupations table, copy back the altered data
+   '------------------------------------------------------------------------------
+   modDBConnect.exec_query("Delete from common.lu_occupations")      'Now wipe the common lu_occupations table
+   sql = "ALTER SEQUENCE common.lu_occupations_pk_seq "              'reset the index to the start
+   sql &= " INCREMENT 1 MINVALUE 1 "
+   sql &= "MAXVALUE 9223372036854775807 RESTART 1 "
+   sql &= "CACHE 1 NO CYCLE"
+   modDBConnect.exec_query(sql)
+   sql = "insert into common.lu_occupations (occupation, referrer_type) "
+   "select distinct lower(occupation) as occupation, referrer_type from common.lu_occupations_temp "
+   "order by occupation"
+   modDBConnect.exec_query(sql)
+   modDBConnect.CommitTrans()
+   Dec Application.Busy
+   Message.Info("Finished refurbishing the occupation table")
+   
 End

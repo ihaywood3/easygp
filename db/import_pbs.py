@@ -6,8 +6,8 @@ from xml.etree.cElementTree import *
 
 c = pg.connect('easygp','',-1,None,None,'easygp','')
 updates = open("/home/ian/product-update.sql","a+")
-updates_pbs = open("/home/ian/pbs-update.sql","w")
-updates_restrict = open("/home/ian/restrict-update.sql","w")
+updates_pbs = open("./pbs-update.sql","w")
+updates_restrict = open("./restrict-update.sql","w")
 
 
 now_t = time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(time.time()))
@@ -73,8 +73,7 @@ values ('%s','%s',%s,%s,'%s','%s');\n
 
 
 def import_restricts(t):
-    updates_restrict.write("truncate drugs.restriction;\n")
-    
+    updates_restrict.write("truncate drugs.restriction;\n")    
     restricts = {}
     for i in xml_restricts(t):
         restricts[i["xml:id"]] = i
@@ -384,7 +383,8 @@ def fix_packsize(t):
                         print "('%s','%s',%s,'%s',%s,'%s',$$%s$$,%s,'%s',%s,%s,%s);" % (pk,row[3],row[4],row[5],comment,sct,drug['title'],pack_size,drug['atc'],amount,amount_unit,units_per_pack)
                 else:
                     print "-- multiple matches for %r %r" % (generics[drug["mpp"]],drug)
-                
+
+# STEP THREE: create new brands where required        
 def verify_brands(t):
     ms = {}
     for m in xml_manufacturers(t): ms[m["xml:id"]] = m
@@ -405,18 +405,27 @@ def verify_brands(t):
                             print "--update drugs.brand set brand=$$%s$$, price='%s'::money where pk='%s';" % (brand["brand"],brand["price"],i[0]) 
                     r = c.query("select uuid_generate_v4()")
                     pk = r.getresult()[0][0]
-                    print """insert into drugs.brand (pk, fk_product, brand, fk_company, from_pbs, price)
-                values ('%s', '%s', '%s', '%s', true, '%s'::money);""" % (pk, fk_product, brand['brand'], code, brand['price'])
+                    print """insert into drugs.brand (pk, fk_product, sct, brand, fk_company, from_pbs, price)
+                values ('%s', '%s', '%s', '%s', '%s', true, '%s'::money);""" % (pk, fk_product, brand['sct'], brand['brand'], code, brand['price'])
                 else:
                     r = r.getresult()[0]
                     price = r[1]
                     pk = r[0]
                     if price <> "$"+brand["price"]:
-                        print "update drugs.brand set price='%s'::money where pk='%s';" % (brand["price"],pk)
+                        c.query("update drugs.brand set price='%s'::money,sct='%s' where pk='%s';" % (brand["price"],brand["sct"],pk))
 
 t = get_xml_etree()
 if sys.argv[1] == '1':
     import_step1(t)
 elif sys.argv[1] == '2':
     import_step2(t)
-
+elif sys.argv[1] == '3':
+    verify_brands(t)
+elif sys.argv[1] == '4':
+    import_pbs(t)
+    import_restricts(t)
+    updates_restrict.close()
+    updates_pbs.close()
+elif sys.argv[1] == '5':
+    import_mnfr(t)
+    import_atc(t)

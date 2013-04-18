@@ -44,12 +44,12 @@ update clin_prescribing.medications set fk_generic_product = 'ac358441-825e-496f
 update clin_prescribing.medications set fk_generic_product='08464091-46f3-4f8e-926b-b29df46bc652' where fk_generic_product='6812260e-c377-4378-84d3-8f1880191ec6';
 update clin_prescribing.prescribed set fk_brand = '368bff97-032e-4c52-84f3-38f6a5f9938f' where fk_brand = '9b5af915-5bf2-4f5c-8d7f-17963353c978';
 
-update clin_prescribing.medications set fk_generic_product='7d32b887-48a0-480d-8b07-a77667b21b63' using clin_prescribing.prescribed where prescribed.fk_medication = medications.pk and prescribed.fk_brand='f465c187-5220-4cf3-a6ba-2afd0b88d71b';
+update clin_prescribing.medications set fk_generic_product='7d32b887-48a0-480d-8b07-a77667b21b63' from clin_prescribing.prescribed where prescribed.fk_medication = medications.pk and prescribed.fk_brand='f465c187-5220-4cf3-a6ba-2afd0b88d71b';
 update clin_prescribing.prescribed set fk_brand = 'f456ef25-1418-4821-bea9-19fe8097045d' where fk_brand ='f465c187-5220-4cf3-a6ba-2afd0b88d71b';
 
 -- simponi extra brand
 
-update clin_prescribing.medications set fk_generic_product='989c2d00-b5a0-51af-a4d5-a3dbba2b4b12' using clin_prescribing.prescribed where prescribed.fk_medication = medications.pk and prescribed.fk_brand='50b808db-91d0-436f-90d3-0737cfffde2a';
+update clin_prescribing.medications set fk_generic_product='989c2d00-b5a0-51af-a4d5-a3dbba2b4b12' from clin_prescribing.prescribed where prescribed.fk_medication = medications.pk and prescribed.fk_brand='50b808db-91d0-436f-90d3-0737cfffde2a';
 update clin_prescribing.prescribed set fk_brand = '494ef591-389f-4159-b63f-64e641112048' where fk_brand ='50b808db-91d0-436f-90d3-0737cfffde2a';
 
 -- fix brufens
@@ -103,15 +103,18 @@ update clin_prescribing.medications set fk_generic_product='351b2943-cf44-4930-a
 
 -- leuprorelin: BLOWN AWAY
 
+-- actonel
+update clin_prescribing.medications set fk_generic_product='a293e28a-11e5-4d78-a3fb-27282a59d68f' from clin_prescribing.prescribed where prescribed.fk_brand='ed714fd8-8227-4205-acec-3405c1404b29' and prescribed.fk_medication = medications.pk;
 
-update clin_prescribing.medications set fk_generic_product='7502b034-0237-4003-91ad-5d0a10366193' from clin_prescribing.prescribed where prescribed.fk_brand='ed714fd8-8227-4205-acec-3405c1404b29' and prescribed.fk_medication = medications.pk;
-
-update clin_prescribing.medications set fk_generic_product='7502b034-0237-4003-91ad-5d0a10366193' from clin_prescribing.prescribed where prescribed.fk_brand='e2a9d6fd-5d52-45e6-bc6e-f7bb8173cffc' and prescribed.fk_medication = medications.pk;
+update clin_prescribing.medications set fk_generic_product='a293e28a-11e5-4d78-a3fb-27282a59d68f' from clin_prescribing.prescribed where prescribed.fk_brand='e2a9d6fd-5d52-45e6-bc6e-f7bb8173cffc' and prescribed.fk_medication = medications.pk;
 
 -- risendronate enteric-coated plain 35mg tabs: FINISHED
 
 update clin_prescribing.medications set fk_generic_product='a72b630c-7f3d-40b7-8ab0-8019f32904ac' from clin_prescribing.prescribed where prescribed.fk_brand='5290fd08-354e-4014-9c0f-a5e9d5f4928c' and prescribed.fk_medication = medications.pk;
 
+-- Fluvax
+update clin_prescribing.medications set fk_generic_product ='07071d7c-a3dc-5c3e-869d-24b596645476' where fk_generic_product ='59336329-98b6-50f9-b0a4-61cd50407973';
+update clin_prescribing.prescribed set fk_brand='6411e912-625e-4d0e-8fbc-28a6ca742323' where fk_brand='5ea6d852-5089-40f8-9c98-afb8f23875ed';
 
 -- gosrelins: BLOWN AWAY
 
@@ -121,9 +124,9 @@ update clin_prescribing.medications set fk_generic_product='a72b630c-7f3d-40b7-8
 update clin_prescribing.medications set fk_generic_product='62d9bd4c-72fc-4b63-8009-488a82ec478f' from clin_prescribing.prescribed where prescribed.fk_brand='c0f5ca47-a8c8-4173-96a6-3a4974078a38' and prescribed.fk_medication = medications.pk;
 
 
-
+insert into drugs.form (pk,form,volume_amount_required) values (76,'bath oil',true);
 
 
 
 truncate db.lu_version;
-insert into db.lu_version (lu_major,lu_minor) values (0, 251);
+insert into db.lu_version (lu_major,lu_minor) values (0, 266);

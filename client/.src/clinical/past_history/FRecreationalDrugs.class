@@ -29,6 +29,7 @@ Private CurrentRecreationalDrug As Collection
 Private RecreationalDrugs As Collection
 Private bExit As Boolean
 Private bIniting As Boolean
+Private fk_progressnote As Integer
 
 Public Sub Init(cons As CConsult)
    
@@ -89,7 +90,7 @@ Public Sub Save()
    '   CONSTRAINT recreational_drugs_pkey PRIMARY KEY (pk),
    '   CONSTRAINT data_recreational_drugs_fk_consult FOREIGN KEY (fk_consult)
    '       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
-   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,NotificationFlag
    '   CONSTRAINT data_recreational_drugs_fk_lu_recreational_drug FOREIGN KEY (fk_lu_recreational_drug)
    '       REFERENCES common.lu_recreational_drugs (pk) MATCH SIMPLE
    '       ON UPDATE NO ACTION ON DELETE NO ACTION
@@ -100,6 +101,9 @@ Public Sub Save()
    '-----------------------------------------------------------------------------------------------------------------------
    
    Dim recreationalDrug As CRow
+   Dim ProgressNote As CRow   
+   Dim sProgressNotes As String
+   Dim NotificationFlag As Integer = const.cSmokerUnknown
    
    If HBox_EditArea.Padding = 0 Then Return
    If Not RecreationalDrug_Valid() Then Return 
@@ -122,22 +126,123 @@ Public Sub Save()
    If rbWeek.Value = True Then
       recreationalDrug!fk_lu_substance_frequency = const.Units_week
    Endif 
-   
    recreationalDrug!fk_lu_route_administration = common_lu_route_administration_keys[cmbRouteTaken.index]
    recreationalDrug!notes = Trim(txtNotes.text)
    recreationalDrug!cumulative_amount = Trim(txtPackYears.Text)
    recreationalDrug!never_used_drug = CBool(chkNeverUsedDrug.value)
+   ProgressNote = New CRow 
+   ProgressNote!notes = ProgressNotes_Create(fk_progressnote)
+   If fk_progressnote Then  
+      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")            'am editing todays progress note
+   End If   
+   ProgressNote!fk_audit_action = const.cAuditAction_Insert                  'is an insert
+   ProgressNote!fk_consult = recreationalDrug!fk_consult
+   ProgressNote!fk_section = const.cSection_RecreationalDrugs
+   ProgressNote!problem = "Recreational Drugs"
+   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+   recreationalDrug!fk_progressnote = progressnote!fk_progressnote
    recreationalDrug.Save("clin_history.recreational_drugs", "fk_recreationaldrug")
-   modDBConnect.CommitTrans
+   modDBConnect.CommitTrans()
    EditArea_Notify_DataChange(False)
    HBox_EditArea.Enabled = False 
+   If recreationalDrug!fk_lu_recreational_drug = const.cRecreational_Drug_Nicotine Then   
+      If recreationalDrug!never_used_drug Then
+         NotificationFlag = const.cSmokerNever
+      Else
+         If Not IsNull(recreationalDrug!age_last_used) Then
+            NotificationFlag = const.cSmokerPast
+         Else
+            NotificationFlag = const.cSmokerCurrent
+         End If
+      End If   
+      FClinical.Smoking_Nofication_Update(NotificationFlag)
+   Endif
+   Wait
    Reload()
+   
+End
+
+Public Sub ProgressNotes_Create(fk_progressnote As Integer) As String
+   '-----------------------------------------------------------------  
+   'Create a progress note entry for the substance along the lines of
+   'current smoker 10/day or ex-smoker 15/day from age 23 to 50
+   '-----------------------------------------------------------------   
+   
+   Dim sPN As String
+   
+   sPN = "<B> " & cmbSubstances.text 
+   If fk_progressnote Then
+      sPN &= " details updated:</B> "
+   Else
+      sPN &= " details added:</B> "
+   End If 
+   If chkNeverUsedDrug.value = True Then
+      Select Case cmbSubstances.text
+         Case "nicotine"
+            sPn &= "never smoked."
+         Case "alcohol"
+            sPn &= "never drunk alcohol."
+      End Select
+      Return sPN
+   End If   
+   '----------------------------------------
+   'ok, they have used the drug in some form
+   '----------------------------------------
+   Select Case cmbSubstances.text
+      Case "Nicotine"
+         If Trim(txtAgeLastUsed.text) = "" Then
+            sPn &= "currently smokes "
+         Else
+            sPn &= "ex smoker "
+         End If   
+         If txtQuantity.text <> "" Then
+            sPn &= txtQuantity & " per "
+         Else
+            sPn &= "? per "
+         Endif
+         If rbDay.Value = True Then
+            sPn &= "day "
+         Endif
+         If rbWeek.Value = True Then
+            sPn &= "week "
+         Endif
+      Case "Alcohol"
+         If Trim(txtAgeLastUsed.text) = "" Then
+            sPn &= "currently drinks "
+         Else
+            sPn &= "ex-drinker"
+         End If 
+         If txtQuantity.text <> "" Then
+            sPn &= txtQuantity.text & "gms per "
+         Else
+            sPn &= "?gms per "
+         End If 
+         If rbDay.Value = True Then
+            sPn &= "day "
+         Endif
+         If rbWeek.Value = True Then
+            sPn &= "week "
+         Endif
+   End Select
+   
+   sPN &= "from age "
+   If Trim(txtAgeStarted.text) <> "" Then
+      sPN &= txtAgeStarted.text & " yrs "
+   Else
+      sPN &= " ? "
+   Endif
+   If Trim(txtAgeLastUsed.text) <> "" Then
+      sPN &= " to age " & txtAgeLastUsed.Text
+   Endif
+   Print sPN
+   Return sPN
    
 End
 
 Public Sub Reload()
    '----------------------------------
    'Reload the users recreational drugs
+   'fixme remove NotificationFlag
    '----------------------------------- 
    
    Dim recreationalDrug As Collection
@@ -199,13 +304,12 @@ Public Sub Reload()
          NotificationFlag = const.cSmokerNever
          cvwRecreationalDrugs[recreationalDrug!pk][5] = "NEVER USED THIS DRUG"
       End If
-      If recreationalDrug!drug = "nicotine" Then
-         '    FClinical.Smoking_Nofication_Update(NotificationFlag)
-      End If   
+      
    Next
    For x = 0 To 4
       cvwRecreationalDrugs.Columns[x].Width = col_widths[x]
    Next
+   btnForFocus.SetFocus()
    
 End
 
@@ -303,6 +407,7 @@ Public Sub RecreationalDrug_Display()
       Case const.Units_month 
          rbMonth.Value = True   
    End Select  
+   fk_progressnote = CurrentRecreationalDrug!fk_progressnote
    chkNeverUsedDrug.value = CurrentRecreationalDrug!never_used_drug         
    txtNotes.text = CurrentRecreationalDrug!notes  
    fk_recreationaldrug = CurrentRecreationalDrug!pk
@@ -348,6 +453,7 @@ Public Sub EditArea_Clear()
    bExit = True 
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea) 
    fk_recreationaldrug = 0
+   fk_progressnote = 0
    CurrentRecreationalDrug = Null
    rbReset.value = True 'unsets the day/month/week radiobuttons
    bexit = False  
@@ -674,7 +780,7 @@ End
 ' 
 
 Public Sub chkNeverUsedDrug_Click()
-
+   
    If bexit Then Return
    EditArea_Notify_DataChange(True)
    txtAgeLastUsed.text = ""

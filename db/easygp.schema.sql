@@ -598,7 +598,7 @@ end;$$;
 ALTER FUNCTION clerical.notify_booking() OWNER TO postgres;
 
 --
--- Name: tell_remote_server1(); Type: FUNCTION; Schema: clerical; Owner: ian
+-- Name: tell_remote_server1(); Type: FUNCTION; Schema: clerical; Owner: easygp
 --
 
 CREATE FUNCTION tell_remote_server1() RETURNS trigger
@@ -620,10 +620,10 @@ END;
 $$;
 
 
-ALTER FUNCTION clerical.tell_remote_server1() OWNER TO ian;
+ALTER FUNCTION clerical.tell_remote_server1() OWNER TO easygp;
 
 --
--- Name: tell_remote_server2(integer, integer); Type: FUNCTION; Schema: clerical; Owner: postgres
+-- Name: tell_remote_server2(integer, integer); Type: FUNCTION; Schema: clerical; Owner: easygp
 --
 
 CREATE FUNCTION tell_remote_server2(start integer, duration integer) RETURNS void
@@ -634,7 +634,7 @@ urllib.urlopen("http://127.0.0.1:4567/auto_update_appt",urllib.urlencode({"start
 $$;
 
 
-ALTER FUNCTION clerical.tell_remote_server2(start integer, duration integer) OWNER TO postgres;
+ALTER FUNCTION clerical.tell_remote_server2(start integer, duration integer) OWNER TO easygp;
 
 SET search_path = clin_careplans, pg_catalog;
 
@@ -2878,148 +2878,6 @@ ALTER TABLE billing.vwbulkbilleditems OWNER TO easygp;
 SET search_path = clerical, pg_catalog;
 
 --
--- Name: bookings; Type: TABLE; Schema: clerical; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE bookings (
-    pk bigint NOT NULL,
-    fk_patient integer,
-    fk_staff integer NOT NULL,
-    begin timestamp without time zone,
-    duration interval,
-    notes text,
-    fk_staff_booked integer NOT NULL,
-    booked_at timestamp without time zone DEFAULT now() NOT NULL,
-    fk_clinic integer NOT NULL,
-    deleted boolean DEFAULT false,
-    fk_lu_appointment_icon integer,
-    fk_lu_appointment_status integer DEFAULT 1,
-    invoiced boolean DEFAULT false,
-    did_not_attend boolean DEFAULT false,
-    fk_lu_reason_not_billed integer
-);
-
-
-ALTER TABLE clerical.bookings OWNER TO easygp;
-
---
--- Name: TABLE bookings; Type: COMMENT; Schema: clerical; Owner: easygp
---
-
-COMMENT ON TABLE bookings IS 'list of all bookings past and future. Note fk_patient can be NULL for non-patien things: meetings, holidays etc';
-
-
---
--- Name: COLUMN bookings.invoiced; Type: COMMENT; Schema: clerical; Owner: easygp
---
-
-COMMENT ON COLUMN bookings.invoiced IS 'if true then the consultation has been invoiced (paid or account raised)';
-
-
---
--- Name: COLUMN bookings.did_not_attend; Type: COMMENT; Schema: clerical; Owner: easygp
---
-
-COMMENT ON COLUMN bookings.did_not_attend IS 'if true then the the patient did not attend the appointment';
-
-
-SET search_path = common, pg_catalog;
-
---
--- Name: lu_countries; Type: TABLE; Schema: common; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE lu_countries (
-    pk integer NOT NULL,
-    country_code character(2) NOT NULL,
-    country text NOT NULL
-);
-
-
-ALTER TABLE common.lu_countries OWNER TO easygp;
-
-SET search_path = contacts, pg_catalog;
-
---
--- Name: links_persons_addresses; Type: TABLE; Schema: contacts; Owner: easygp; Tablespace: 
---
-
-CREATE TABLE links_persons_addresses (
-    pk integer NOT NULL,
-    fk_address integer,
-    fk_person integer,
-    deleted boolean DEFAULT false
-);
-
-
-ALTER TABLE contacts.links_persons_addresses OWNER TO easygp;
-
---
--- Name: vworganisations_pk_seq; Type: SEQUENCE; Schema: contacts; Owner: easygp
---
-
-CREATE SEQUENCE vworganisations_pk_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE contacts.vworganisations_pk_seq OWNER TO easygp;
-
---
--- Name: vworganisations; Type: VIEW; Schema: contacts; Owner: easygp
---
-
-CREATE VIEW vworganisations AS
-    SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, data_numbers.australian_business_number FROM (((((((data_branches branches JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) LEFT JOIN data_numbers ON ((branches.pk = data_numbers.fk_branch))) ORDER BY nextval('vworganisations_pk_seq'::regclass), organisations.organisation, organisations.deleted;
-
-
-ALTER TABLE contacts.vworganisations OWNER TO easygp;
-
---
--- Name: vwpersonsincludingpatients; Type: VIEW; Schema: contacts; Owner: easygp
---
-
-CREATE VIEW vwpersonsincludingpatients AS
-    SELECT persons.pk AS fk_person, CASE WHEN (addresses.pk > 0) THEN COALESCE(((persons.pk || '-'::text) || addresses.pk)) ELSE (persons.pk || '-0'::text) END AS pk_view, addresses.pk AS fk_address, (((title.title || ' '::text) || (persons.firstname || ' '::text)) || (persons.surname || ' '::text)) AS wholename, persons.firstname, persons.surname, persons.salutation, persons.birthdate, date_part('year'::text, age((persons.birthdate)::timestamp with time zone)) AS age, marital.marital, sex.sex, title.title, countries.country, languages.language, countries1.country AS country_birth, ethnicity.ethnicity, addresses.street1, addresses.street2, towns.town, towns.state, towns.postcode, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.geolocation, addresses.country_code, addresses.fk_lu_address_type AS fk_address_type, addresses.deleted AS address_deleted, persons.fk_ethnicity, persons.fk_language, persons.language_problems, persons.memo, persons.fk_marital, persons.country_code AS country_birth_country_code, persons.fk_title, persons.deceased, persons.date_deceased, persons.fk_sex, images.pk AS fk_image, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image, persons.surname_normalised FROM ((((((((((((data_persons persons LEFT JOIN clerical.data_patients ON ((persons.pk = data_patients.pk))) LEFT JOIN links_persons_addresses ON ((persons.pk = links_persons_addresses.fk_person))) LEFT JOIN lu_marital marital ON ((persons.fk_marital = marital.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN common.lu_languages languages ON ((persons.fk_language = languages.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN common.lu_ethnicity ethnicity ON ((persons.fk_ethnicity = ethnicity.pk))) LEFT JOIN blobs.images ON ((persons.fk_image = images.pk))) LEFT JOIN common.lu_countries countries ON ((persons.country_code = (countries.country_code)::text))) JOIN data_addresses addresses ON ((links_persons_addresses.fk_address = addresses.pk))) JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN common.lu_countries countries1 ON ((addresses.country_code = countries1.country_code)));
-
-
-ALTER TABLE contacts.vwpersonsincludingpatients OWNER TO easygp;
-
---
--- Name: VIEW vwpersonsincludingpatients; Type: COMMENT; Schema: contacts; Owner: easygp
---
-
-COMMENT ON VIEW vwpersonsincludingpatients IS 'temporary view until I fix it, a view of all persons including those who are patients';
-
-
-SET search_path = billing, pg_catalog;
-
---
--- Name: vwdaylist; Type: VIEW; Schema: billing; Owner: postgres
---
-
-CREATE VIEW vwdaylist AS
-    SELECT ((bookings.pk || '-'::text) || items_billed.pk) AS pk_view, bookings.pk AS fk_appointment, bookings.fk_patient, bookings.fk_lu_reason_not_billed, data_patients.fk_lu_centrelink_card_type, invoices.pk AS fk_invoice, invoices.paid, invoices.fk_payer_person, invoices.fk_payer_branch, invoices.latex, invoices.total_bill, invoices.total_gst, invoices.total_paid, invoices.fk_staff_provided_service, invoices.fk_lu_bulk_billing_type, lu_bulk_billing_type.type AS bulk_billing_type, bookings.begin AS appointment_date, COALESCE(COALESCE(fee_schedule.ama_item, fee_schedule.mbs_item), fee_schedule.user_item) AS item, fee_schedule.descriptor_brief, items_billed.amount, items_billed.amount_gst, items_billed.pk AS fk_items_billed, payments_received.fk_lu_payment_method, payments_received.amount AS payment_amount, lu_billing_type.type AS billing_type, lu_payment_method.method AS payment_method, NULL::text AS reason_not_billed, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename, data_persons.firstname, data_persons.surname, lu_title.title, data_persons.fk_sex, COALESCE(vworganisations.organisation, vwpersonsincludingpatients.wholename) AS account_to_name, clinics.fk_branch FROM (((((((((((((clerical.bookings JOIN invoices ON ((invoices.fk_appointment = bookings.pk))) JOIN admin.clinics ON ((bookings.fk_clinic = clinics.pk))) JOIN clerical.data_patients ON ((bookings.fk_patient = data_patients.pk))) LEFT JOIN lu_bulk_billing_type ON ((invoices.fk_lu_bulk_billing_type = lu_bulk_billing_type.pk))) JOIN items_billed ON ((invoices.pk = items_billed.fk_invoice))) JOIN fee_schedule ON ((items_billed.fk_fee_schedule = fee_schedule.pk))) JOIN lu_billing_type ON ((items_billed.fk_lu_billing_type = lu_billing_type.pk))) LEFT JOIN contacts.vworganisations ON ((invoices.fk_payer_branch = vworganisations.fk_branch))) LEFT JOIN contacts.vwpersonsincludingpatients ON ((invoices.fk_payer_person = vwpersonsincludingpatients.fk_person))) JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN payments_received ON ((invoices.pk = payments_received.fk_invoice))) LEFT JOIN lu_payment_method ON ((payments_received.fk_lu_payment_method = lu_payment_method.pk))) WHERE (bookings.fk_lu_reason_not_billed IS NULL) UNION SELECT ((bookings.pk || '-'::text) || '0'::text) AS pk_view, bookings.pk AS fk_appointment, bookings.fk_patient, bookings.fk_lu_reason_not_billed, NULL::integer AS fk_lu_centrelink_card_type, NULL::integer AS fk_invoice, NULL::boolean AS paid, NULL::integer AS fk_payer_person, NULL::integer AS fk_payer_branch, NULL::text AS latex, NULL::money AS total_bill, NULL::money AS total_gst, NULL::money AS total_paid, bookings.fk_staff AS fk_staff_provided_service, NULL::integer AS fk_lu_bulk_billing_type, NULL::text AS bulk_billing_type, bookings.begin AS appointment_date, NULL::text AS item, NULL::text AS descriptor_brief, NULL::money AS amount, NULL::money AS amount_gst, NULL::integer AS fk_items_billed, NULL::integer AS fk_lu_payment_method, NULL::money AS payment_amount, NULL::text AS billing_type, NULL::text AS payment_method, lu_reasons_not_billed.reason AS reason_not_billed, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename, data_persons.firstname, data_persons.surname, lu_title.title, data_persons.fk_sex, NULL::text AS account_to_name, clinics.fk_branch FROM (((((clerical.bookings JOIN clerical.data_patients ON ((bookings.fk_patient = data_patients.pk))) JOIN admin.clinics ON ((bookings.fk_clinic = clinics.pk))) LEFT JOIN lu_reasons_not_billed ON ((bookings.fk_lu_reason_not_billed = lu_reasons_not_billed.pk))) JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) WHERE (bookings.fk_lu_reason_not_billed IS NOT NULL);
-
-
-ALTER TABLE billing.vwdaylist OWNER TO postgres;
-
---
--- Name: vwfees; Type: VIEW; Schema: billing; Owner: easygp
---
-
-CREATE VIEW vwfees AS
-    SELECT prices.pk AS pk_view, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, fee_schedule.descriptor, fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule, fee_schedule.ceased_date, fee_schedule."group", fee_schedule.derived_fee, fee_schedule.number_of_patients, prices.fk_fee_schedule, prices.pk AS fk_price, prices.price, prices.fk_lu_billing_type, prices.notes, lu_billing_type.type AS fee_type FROM ((fee_schedule JOIN prices ON ((fee_schedule.pk = prices.fk_fee_schedule))) JOIN lu_billing_type ON ((prices.fk_lu_billing_type = lu_billing_type.pk)));
-
-
-ALTER TABLE billing.vwfees OWNER TO easygp;
-
-SET search_path = clerical, pg_catalog;
-
---
 -- Name: lu_active_status; Type: TABLE; Schema: clerical; Owner: easygp; Tablespace: 
 --
 
@@ -3112,7 +2970,34 @@ CREATE TABLE lu_aboriginality (
 
 ALTER TABLE common.lu_aboriginality OWNER TO easygp;
 
+--
+-- Name: lu_countries; Type: TABLE; Schema: common; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE lu_countries (
+    pk integer NOT NULL,
+    country_code character(2) NOT NULL,
+    country text NOT NULL
+);
+
+
+ALTER TABLE common.lu_countries OWNER TO easygp;
+
 SET search_path = contacts, pg_catalog;
+
+--
+-- Name: links_persons_addresses; Type: TABLE; Schema: contacts; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE links_persons_addresses (
+    pk integer NOT NULL,
+    fk_address integer,
+    fk_person integer,
+    deleted boolean DEFAULT false
+);
+
+
+ALTER TABLE contacts.links_persons_addresses OWNER TO easygp;
 
 --
 -- Name: vwpatients; Type: VIEW; Schema: contacts; Owner: easygp
@@ -3125,6 +3010,129 @@ CREATE VIEW vwpatients AS
 ALTER TABLE contacts.vwpatients OWNER TO easygp;
 
 SET search_path = billing, pg_catalog;
+
+--
+-- Name: vwclaims; Type: VIEW; Schema: billing; Owner: easygp
+--
+
+CREATE VIEW vwclaims AS
+    SELECT items_billed.pk AS pk_view, bulk_billing_claims.pk AS fk_bulk_billing_claim, bulk_billing_claims.claim_id, bulk_billing_claims.claim_date, bulk_billing_claims.claim_amount, bulk_billing_claims.voucher_count, bulk_billing_claims.finalised, bulk_billing_claims.fk_branch, bulk_billing_claims.fk_medclaim, bulk_billing_claims.fk_lu_bulk_billing_type, bulk_billing_claims.fk_staff_provided_service, bulk_billing_claims.fk_staff_processed, bulk_billing_claims.html, lu_bulk_billing_type.type AS bulk_billing_type, vwstaffinclinics.wholename AS staff_provided_service_wholename, vwstaffinclinics.branch, link_invoice_bulk_bill_claim.fk_invoice, invoices.latex AS invoice_latex, invoices.fk_patient, vwpatients.wholename AS patient_wholename, invoices.visit_date, fee_schedule.mbs_item, items_billed.amount, vwstaffinclinics1.wholename AS staff_processed_wholename FROM ((((((((bulk_billing_claims JOIN lu_bulk_billing_type ON ((bulk_billing_claims.fk_lu_bulk_billing_type = lu_bulk_billing_type.pk))) JOIN link_invoice_bulk_bill_claim ON ((bulk_billing_claims.pk = link_invoice_bulk_bill_claim.fk_claim))) JOIN invoices ON ((link_invoice_bulk_bill_claim.fk_invoice = invoices.pk))) JOIN contacts.vwpatients ON ((invoices.fk_patient = vwpatients.fk_patient))) JOIN items_billed ON ((invoices.pk = items_billed.fk_invoice))) JOIN admin.vwstaffinclinics ON ((bulk_billing_claims.fk_staff_provided_service = vwstaffinclinics.fk_staff))) JOIN fee_schedule ON ((items_billed.fk_fee_schedule = fee_schedule.pk))) JOIN admin.vwstaffinclinics vwstaffinclinics1 ON ((bulk_billing_claims.fk_staff_processed = vwstaffinclinics1.fk_staff)));
+
+
+ALTER TABLE billing.vwclaims OWNER TO easygp;
+
+SET search_path = clerical, pg_catalog;
+
+--
+-- Name: bookings; Type: TABLE; Schema: clerical; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE bookings (
+    pk bigint NOT NULL,
+    fk_patient integer,
+    fk_staff integer NOT NULL,
+    begin timestamp without time zone,
+    duration interval,
+    notes text,
+    fk_staff_booked integer NOT NULL,
+    booked_at timestamp without time zone DEFAULT now() NOT NULL,
+    fk_clinic integer NOT NULL,
+    deleted boolean DEFAULT false,
+    fk_lu_appointment_icon integer,
+    fk_lu_appointment_status integer DEFAULT 1,
+    invoiced boolean DEFAULT false,
+    did_not_attend boolean DEFAULT false,
+    fk_lu_reason_not_billed integer
+);
+
+
+ALTER TABLE clerical.bookings OWNER TO easygp;
+
+--
+-- Name: TABLE bookings; Type: COMMENT; Schema: clerical; Owner: easygp
+--
+
+COMMENT ON TABLE bookings IS 'list of all bookings past and future. Note fk_patient can be NULL for non-patien things: meetings, holidays etc';
+
+
+--
+-- Name: COLUMN bookings.invoiced; Type: COMMENT; Schema: clerical; Owner: easygp
+--
+
+COMMENT ON COLUMN bookings.invoiced IS 'if true then the consultation has been invoiced (paid or account raised)';
+
+
+--
+-- Name: COLUMN bookings.did_not_attend; Type: COMMENT; Schema: clerical; Owner: easygp
+--
+
+COMMENT ON COLUMN bookings.did_not_attend IS 'if true then the the patient did not attend the appointment';
+
+
+SET search_path = contacts, pg_catalog;
+
+--
+-- Name: vworganisations_pk_seq; Type: SEQUENCE; Schema: contacts; Owner: easygp
+--
+
+CREATE SEQUENCE vworganisations_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE contacts.vworganisations_pk_seq OWNER TO easygp;
+
+--
+-- Name: vworganisations; Type: VIEW; Schema: contacts; Owner: easygp
+--
+
+CREATE VIEW vworganisations AS
+    SELECT nextval('vworganisations_pk_seq'::regclass) AS pk_view, clinics.pk AS fk_clinic, organisations.organisation, organisations.deleted AS organisation_deleted, branches.pk AS fk_branch, branches.branch, branches.fk_organisation, branches.deleted AS branch_deleted, branches.fk_address, branches.memo, branches.fk_category, categories.category, addresses.street1, addresses.street2, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.country_code, addresses.fk_lu_address_type, addresses.deleted AS address_deleted, towns.postcode, towns.town, towns.state, data_numbers.australian_business_number FROM (((((((data_branches branches JOIN data_organisations organisations ON ((branches.fk_organisation = organisations.pk))) JOIN lu_categories categories ON ((branches.fk_category = categories.pk))) LEFT JOIN data_addresses addresses ON ((branches.fk_address = addresses.pk))) LEFT JOIN lu_address_types ON ((addresses.fk_lu_address_type = lu_address_types.pk))) LEFT JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN admin.clinics ON ((branches.pk = clinics.fk_branch))) LEFT JOIN data_numbers ON ((branches.pk = data_numbers.fk_branch))) ORDER BY nextval('vworganisations_pk_seq'::regclass), organisations.organisation, organisations.deleted;
+
+
+ALTER TABLE contacts.vworganisations OWNER TO easygp;
+
+--
+-- Name: vwpersonsincludingpatients; Type: VIEW; Schema: contacts; Owner: easygp
+--
+
+CREATE VIEW vwpersonsincludingpatients AS
+    SELECT persons.pk AS fk_person, CASE WHEN (addresses.pk > 0) THEN COALESCE(((persons.pk || '-'::text) || addresses.pk)) ELSE (persons.pk || '-0'::text) END AS pk_view, addresses.pk AS fk_address, (((title.title || ' '::text) || (persons.firstname || ' '::text)) || (persons.surname || ' '::text)) AS wholename, persons.firstname, persons.surname, persons.salutation, persons.birthdate, date_part('year'::text, age((persons.birthdate)::timestamp with time zone)) AS age, marital.marital, sex.sex, title.title, countries.country, languages.language, countries1.country AS country_birth, ethnicity.ethnicity, addresses.street1, addresses.street2, towns.town, towns.state, towns.postcode, addresses.fk_town, addresses.preferred_address, addresses.postal_address, addresses.head_office, addresses.geolocation, addresses.country_code, addresses.fk_lu_address_type AS fk_address_type, addresses.deleted AS address_deleted, persons.fk_ethnicity, persons.fk_language, persons.language_problems, persons.memo, persons.fk_marital, persons.country_code AS country_birth_country_code, persons.fk_title, persons.deceased, persons.date_deceased, persons.fk_sex, images.pk AS fk_image, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image, persons.surname_normalised FROM ((((((((((((data_persons persons LEFT JOIN clerical.data_patients ON ((persons.pk = data_patients.pk))) LEFT JOIN links_persons_addresses ON ((persons.pk = links_persons_addresses.fk_person))) LEFT JOIN lu_marital marital ON ((persons.fk_marital = marital.pk))) LEFT JOIN lu_sex sex ON ((persons.fk_sex = sex.pk))) LEFT JOIN common.lu_languages languages ON ((persons.fk_language = languages.pk))) LEFT JOIN lu_title title ON ((persons.fk_title = title.pk))) LEFT JOIN common.lu_ethnicity ethnicity ON ((persons.fk_ethnicity = ethnicity.pk))) LEFT JOIN blobs.images ON ((persons.fk_image = images.pk))) LEFT JOIN common.lu_countries countries ON ((persons.country_code = (countries.country_code)::text))) JOIN data_addresses addresses ON ((links_persons_addresses.fk_address = addresses.pk))) JOIN lu_towns towns ON ((addresses.fk_town = towns.pk))) LEFT JOIN common.lu_countries countries1 ON ((addresses.country_code = countries1.country_code)));
+
+
+ALTER TABLE contacts.vwpersonsincludingpatients OWNER TO easygp;
+
+--
+-- Name: VIEW vwpersonsincludingpatients; Type: COMMENT; Schema: contacts; Owner: easygp
+--
+
+COMMENT ON VIEW vwpersonsincludingpatients IS 'temporary view until I fix it, a view of all persons including those who are patients';
+
+
+SET search_path = billing, pg_catalog;
+
+--
+-- Name: vwdaylist; Type: VIEW; Schema: billing; Owner: postgres
+--
+
+CREATE VIEW vwdaylist AS
+    SELECT ((bookings.pk || '-'::text) || items_billed.pk) AS pk_view, bookings.pk AS fk_appointment, bookings.fk_patient, bookings.fk_lu_reason_not_billed, data_patients.fk_lu_centrelink_card_type, invoices.pk AS fk_invoice, invoices.paid, invoices.fk_payer_person, invoices.fk_payer_branch, invoices.latex, invoices.total_bill, invoices.total_gst, invoices.total_paid, invoices.fk_staff_provided_service, invoices.fk_lu_bulk_billing_type, lu_bulk_billing_type.type AS bulk_billing_type, bookings.begin AS appointment_date, COALESCE(COALESCE(fee_schedule.ama_item, fee_schedule.mbs_item), fee_schedule.user_item) AS item, fee_schedule.descriptor_brief, items_billed.amount, items_billed.amount_gst, items_billed.pk AS fk_items_billed, payments_received.fk_lu_payment_method, payments_received.amount AS payment_amount, lu_billing_type.type AS billing_type, lu_payment_method.method AS payment_method, NULL::text AS reason_not_billed, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename, data_persons.firstname, data_persons.surname, lu_title.title, data_persons.fk_sex, COALESCE(vworganisations.organisation, vwpersonsincludingpatients.wholename) AS account_to_name, clinics.fk_branch FROM (((((((((((((clerical.bookings JOIN invoices ON ((invoices.fk_appointment = bookings.pk))) JOIN admin.clinics ON ((bookings.fk_clinic = clinics.pk))) JOIN clerical.data_patients ON ((bookings.fk_patient = data_patients.pk))) LEFT JOIN lu_bulk_billing_type ON ((invoices.fk_lu_bulk_billing_type = lu_bulk_billing_type.pk))) JOIN items_billed ON ((invoices.pk = items_billed.fk_invoice))) JOIN fee_schedule ON ((items_billed.fk_fee_schedule = fee_schedule.pk))) JOIN lu_billing_type ON ((items_billed.fk_lu_billing_type = lu_billing_type.pk))) LEFT JOIN contacts.vworganisations ON ((invoices.fk_payer_branch = vworganisations.fk_branch))) LEFT JOIN contacts.vwpersonsincludingpatients ON ((invoices.fk_payer_person = vwpersonsincludingpatients.fk_person))) JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN payments_received ON ((invoices.pk = payments_received.fk_invoice))) LEFT JOIN lu_payment_method ON ((payments_received.fk_lu_payment_method = lu_payment_method.pk))) WHERE (bookings.fk_lu_reason_not_billed IS NULL) UNION SELECT ((bookings.pk || '-'::text) || '0'::text) AS pk_view, bookings.pk AS fk_appointment, bookings.fk_patient, bookings.fk_lu_reason_not_billed, NULL::integer AS fk_lu_centrelink_card_type, NULL::integer AS fk_invoice, NULL::boolean AS paid, NULL::integer AS fk_payer_person, NULL::integer AS fk_payer_branch, NULL::text AS latex, NULL::money AS total_bill, NULL::money AS total_gst, NULL::money AS total_paid, bookings.fk_staff AS fk_staff_provided_service, NULL::integer AS fk_lu_bulk_billing_type, NULL::text AS bulk_billing_type, bookings.begin AS appointment_date, NULL::text AS item, NULL::text AS descriptor_brief, NULL::money AS amount, NULL::money AS amount_gst, NULL::integer AS fk_items_billed, NULL::integer AS fk_lu_payment_method, NULL::money AS payment_amount, NULL::text AS billing_type, NULL::text AS payment_method, lu_reasons_not_billed.reason AS reason_not_billed, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename, data_persons.firstname, data_persons.surname, lu_title.title, data_persons.fk_sex, NULL::text AS account_to_name, clinics.fk_branch FROM (((((clerical.bookings JOIN clerical.data_patients ON ((bookings.fk_patient = data_patients.pk))) JOIN admin.clinics ON ((bookings.fk_clinic = clinics.pk))) LEFT JOIN lu_reasons_not_billed ON ((bookings.fk_lu_reason_not_billed = lu_reasons_not_billed.pk))) JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) WHERE (bookings.fk_lu_reason_not_billed IS NOT NULL);
+
+
+ALTER TABLE billing.vwdaylist OWNER TO postgres;
+
+--
+-- Name: vwfees; Type: VIEW; Schema: billing; Owner: easygp
+--
+
+CREATE VIEW vwfees AS
+    SELECT prices.pk AS pk_view, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, fee_schedule.descriptor, fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule, fee_schedule.ceased_date, fee_schedule."group", fee_schedule.derived_fee, fee_schedule.number_of_patients, prices.fk_fee_schedule, prices.pk AS fk_price, prices.price, prices.fk_lu_billing_type, prices.notes, lu_billing_type.type AS fee_type FROM ((fee_schedule JOIN prices ON ((fee_schedule.pk = prices.fk_fee_schedule))) JOIN lu_billing_type ON ((prices.fk_lu_billing_type = lu_billing_type.pk)));
+
+
+ALTER TABLE billing.vwfees OWNER TO easygp;
 
 --
 -- Name: vwinvoices; Type: VIEW; Schema: billing; Owner: easygp
@@ -3155,6 +3163,16 @@ CREATE VIEW vwitemsandinvoices AS
 
 
 ALTER TABLE billing.vwitemsandinvoices OWNER TO easygp;
+
+--
+-- Name: vwpaymentsreceived; Type: VIEW; Schema: billing; Owner: easygp
+--
+
+CREATE VIEW vwpaymentsreceived AS
+    SELECT payments_received.pk AS pk_view, payments_received.pk AS fk_payment_received, payments_received.date_paid, COALESCE(vworganisations.organisation, vwpersonsincludingpatients.wholename) AS account_to_name, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS patient_wholename, payments_received.fk_invoice, payments_received.referent, payments_received.amount, payments_received.fk_lu_payment_method, payments_received.fk_staff_receipted, lu_payment_method.method AS payment_method, invoices.fk_patient, invoices.fk_payer_person, invoices.fk_payer_branch, invoices.fk_staff_provided_service, invoices.fk_branch AS fk_clinic_branch, invoices.visit_date, invoices.latex, data_persons.firstname, data_persons.surname, lu_title.title FROM (((((((payments_received JOIN lu_payment_method ON ((payments_received.fk_lu_payment_method = lu_payment_method.pk))) JOIN invoices ON ((payments_received.fk_invoice = invoices.pk))) LEFT JOIN clerical.data_patients ON ((invoices.fk_patient = data_patients.pk))) LEFT JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN contacts.vworganisations ON ((invoices.fk_payer_branch = vworganisations.fk_branch))) LEFT JOIN contacts.vwpersonsincludingpatients ON ((invoices.fk_payer_person = vwpersonsincludingpatients.fk_person)));
+
+
+ALTER TABLE billing.vwpaymentsreceived OWNER TO easygp;
 
 SET search_path = blobs, pg_catalog;
 
@@ -6933,14 +6951,14 @@ COMMENT ON COLUMN referrals.finalised IS 'if true the letter has been partly wri
 SET search_path = clin_consult, pg_catalog;
 
 --
--- Name: vwdictations; Type: VIEW; Schema: clin_consult; Owner: ian
+-- Name: vwdictations; Type: VIEW; Schema: clin_consult; Owner: easygp
 --
 
 CREATE VIEW vwdictations AS
     SELECT d.pk AS pk_dictation, d.fk_referral, d.transcript, d.fk_progress_note, d.fk_user, d.processed, d.filename, vwp.wholename, c.fk_patient FROM dictations d, clin_referrals.referrals r, contacts.vwpatients vwp, consult c WHERE (((d.fk_referral = r.pk) AND (r.fk_consult = c.pk)) AND (c.fk_patient = vwp.fk_patient));
 
 
-ALTER TABLE clin_consult.vwdictations OWNER TO ian;
+ALTER TABLE clin_consult.vwdictations OWNER TO easygp;
 
 --
 -- Name: vwpatientconsults; Type: VIEW; Schema: clin_consult; Owner: easygp
@@ -14338,14 +14356,14 @@ ALTER SEQUENCE lu_whisper_test_pk_seq OWNED BY lu_whisper_test.pk;
 
 
 --
--- Name: vwrecreationaldrugs; Type: VIEW; Schema: common; Owner: ian
+-- Name: vwrecreationaldrugs; Type: VIEW; Schema: common; Owner: easygp
 --
 
 CREATE VIEW vwrecreationaldrugs AS
     SELECT lu_recreational_drugs.pk, lu_recreational_drugs.drug, lu_route_administration.route, lu_recreational_drugs.alternative_names, lu_recreational_drugs.illicit, lu_recreational_drugs.quantification, lu_recreational_drugs.default_fk_lu_route_administration FROM lu_route_administration, lu_recreational_drugs WHERE (lu_recreational_drugs.default_fk_lu_route_administration = lu_route_administration.pk);
 
 
-ALTER TABLE common.vwrecreationaldrugs OWNER TO ian;
+ALTER TABLE common.vwrecreationaldrugs OWNER TO easygp;
 
 --
 -- Name: vwreligions; Type: VIEW; Schema: common; Owner: easygp
@@ -21177,13 +21195,6 @@ CREATE TRIGGER notify_booking BEFORE INSERT OR UPDATE ON bookings FOR EACH ROW E
 
 
 --
--- Name: tell_remote_server; Type: TRIGGER; Schema: clerical; Owner: easygp
---
-
-CREATE TRIGGER tell_remote_server BEFORE INSERT OR UPDATE ON bookings FOR EACH ROW WHEN ((NOT (new.notes ~~* '%internet%'::text))) EXECUTE PROCEDURE tell_remote_server1();
-
-
---
 -- Name: bookings_booked_by_fkey; Type: FK CONSTRAINT; Schema: clerical; Owner: easygp
 --
 
@@ -21698,6 +21709,7 @@ ALTER TABLE ONLY inventory_items_lent
 REVOKE ALL ON SCHEMA admin FROM PUBLIC;
 REVOKE ALL ON SCHEMA admin FROM easygp;
 GRANT ALL ON SCHEMA admin TO easygp;
+GRANT USAGE ON SCHEMA admin TO staff;
 
 
 --
@@ -21707,6 +21719,7 @@ GRANT ALL ON SCHEMA admin TO easygp;
 REVOKE ALL ON SCHEMA billing FROM PUBLIC;
 REVOKE ALL ON SCHEMA billing FROM easygp;
 GRANT ALL ON SCHEMA billing TO easygp;
+GRANT USAGE ON SCHEMA billing TO staff;
 
 
 --
@@ -21716,6 +21729,7 @@ GRANT ALL ON SCHEMA billing TO easygp;
 REVOKE ALL ON SCHEMA blobs FROM PUBLIC;
 REVOKE ALL ON SCHEMA blobs FROM easygp;
 GRANT ALL ON SCHEMA blobs TO easygp;
+GRANT USAGE ON SCHEMA blobs TO staff;
 
 
 --
@@ -21725,6 +21739,7 @@ GRANT ALL ON SCHEMA blobs TO easygp;
 REVOKE ALL ON SCHEMA clerical FROM PUBLIC;
 REVOKE ALL ON SCHEMA clerical FROM easygp;
 GRANT ALL ON SCHEMA clerical TO easygp;
+GRANT USAGE ON SCHEMA clerical TO staff;
 
 
 --
@@ -21734,6 +21749,7 @@ GRANT ALL ON SCHEMA clerical TO easygp;
 REVOKE ALL ON SCHEMA clin_allergies FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_allergies FROM easygp;
 GRANT ALL ON SCHEMA clin_allergies TO easygp;
+GRANT USAGE ON SCHEMA clin_allergies TO staff;
 
 
 --
@@ -21743,6 +21759,7 @@ GRANT ALL ON SCHEMA clin_allergies TO easygp;
 REVOKE ALL ON SCHEMA clin_careplans FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_careplans FROM easygp;
 GRANT ALL ON SCHEMA clin_careplans TO easygp;
+GRANT USAGE ON SCHEMA clin_careplans TO staff;
 
 
 --
@@ -21752,6 +21769,7 @@ GRANT ALL ON SCHEMA clin_careplans TO easygp;
 REVOKE ALL ON SCHEMA clin_certificates FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_certificates FROM easygp;
 GRANT ALL ON SCHEMA clin_certificates TO easygp;
+GRANT USAGE ON SCHEMA clin_certificates TO staff;
 
 
 --
@@ -21761,6 +21779,7 @@ GRANT ALL ON SCHEMA clin_certificates TO easygp;
 REVOKE ALL ON SCHEMA clin_checkups FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_checkups FROM easygp;
 GRANT ALL ON SCHEMA clin_checkups TO easygp;
+GRANT USAGE ON SCHEMA clin_checkups TO staff;
 
 
 --
@@ -21770,6 +21789,7 @@ GRANT ALL ON SCHEMA clin_checkups TO easygp;
 REVOKE ALL ON SCHEMA clin_consult FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_consult FROM easygp;
 GRANT ALL ON SCHEMA clin_consult TO easygp;
+GRANT USAGE ON SCHEMA clin_consult TO staff;
 
 
 --
@@ -21779,6 +21799,7 @@ GRANT ALL ON SCHEMA clin_consult TO easygp;
 REVOKE ALL ON SCHEMA clin_history FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_history FROM easygp;
 GRANT ALL ON SCHEMA clin_history TO easygp;
+GRANT USAGE ON SCHEMA clin_history TO staff;
 
 
 --
@@ -21788,6 +21809,7 @@ GRANT ALL ON SCHEMA clin_history TO easygp;
 REVOKE ALL ON SCHEMA clin_measurements FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_measurements FROM easygp;
 GRANT ALL ON SCHEMA clin_measurements TO easygp;
+GRANT USAGE ON SCHEMA clin_measurements TO staff;
 
 
 --
@@ -21797,7 +21819,7 @@ GRANT ALL ON SCHEMA clin_measurements TO easygp;
 REVOKE ALL ON SCHEMA clin_prescribing FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_prescribing FROM easygp;
 GRANT ALL ON SCHEMA clin_prescribing TO easygp;
-GRANT USAGE ON SCHEMA clin_prescribing TO ian;
+GRANT USAGE ON SCHEMA clin_prescribing TO staff;
 
 
 --
@@ -21807,6 +21829,7 @@ GRANT USAGE ON SCHEMA clin_prescribing TO ian;
 REVOKE ALL ON SCHEMA clin_procedures FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_procedures FROM easygp;
 GRANT ALL ON SCHEMA clin_procedures TO easygp;
+GRANT USAGE ON SCHEMA clin_procedures TO staff;
 
 
 --
@@ -21816,6 +21839,7 @@ GRANT ALL ON SCHEMA clin_procedures TO easygp;
 REVOKE ALL ON SCHEMA clin_recalls FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_recalls FROM easygp;
 GRANT ALL ON SCHEMA clin_recalls TO easygp;
+GRANT USAGE ON SCHEMA clin_recalls TO staff;
 
 
 --
@@ -21825,6 +21849,7 @@ GRANT ALL ON SCHEMA clin_recalls TO easygp;
 REVOKE ALL ON SCHEMA clin_referrals FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_referrals FROM easygp;
 GRANT ALL ON SCHEMA clin_referrals TO easygp;
+GRANT USAGE ON SCHEMA clin_referrals TO staff;
 
 
 --
@@ -21834,6 +21859,7 @@ GRANT ALL ON SCHEMA clin_referrals TO easygp;
 REVOKE ALL ON SCHEMA clin_requests FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_requests FROM easygp;
 GRANT ALL ON SCHEMA clin_requests TO easygp;
+GRANT USAGE ON SCHEMA clin_requests TO staff;
 
 
 --
@@ -21843,6 +21869,7 @@ GRANT ALL ON SCHEMA clin_requests TO easygp;
 REVOKE ALL ON SCHEMA clin_vaccination FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_vaccination FROM easygp;
 GRANT ALL ON SCHEMA clin_vaccination TO easygp;
+GRANT USAGE ON SCHEMA clin_vaccination TO staff;
 
 
 --
@@ -21852,6 +21879,7 @@ GRANT ALL ON SCHEMA clin_vaccination TO easygp;
 REVOKE ALL ON SCHEMA clin_workcover FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_workcover FROM easygp;
 GRANT ALL ON SCHEMA clin_workcover TO easygp;
+GRANT USAGE ON SCHEMA clin_workcover TO staff;
 
 
 --
@@ -21861,6 +21889,7 @@ GRANT ALL ON SCHEMA clin_workcover TO easygp;
 REVOKE ALL ON SCHEMA coding FROM PUBLIC;
 REVOKE ALL ON SCHEMA coding FROM easygp;
 GRANT ALL ON SCHEMA coding TO easygp;
+GRANT USAGE ON SCHEMA coding TO staff;
 
 
 --
@@ -21870,6 +21899,7 @@ GRANT ALL ON SCHEMA coding TO easygp;
 REVOKE ALL ON SCHEMA common FROM PUBLIC;
 REVOKE ALL ON SCHEMA common FROM easygp;
 GRANT ALL ON SCHEMA common TO easygp;
+GRANT USAGE ON SCHEMA common TO staff;
 
 
 --
@@ -21879,6 +21909,7 @@ GRANT ALL ON SCHEMA common TO easygp;
 REVOKE ALL ON SCHEMA contacts FROM PUBLIC;
 REVOKE ALL ON SCHEMA contacts FROM easygp;
 GRANT ALL ON SCHEMA contacts TO easygp;
+GRANT USAGE ON SCHEMA contacts TO staff;
 
 
 --
@@ -21888,7 +21919,7 @@ GRANT ALL ON SCHEMA contacts TO easygp;
 REVOKE ALL ON SCHEMA db FROM PUBLIC;
 REVOKE ALL ON SCHEMA db FROM easygp;
 GRANT ALL ON SCHEMA db TO easygp;
-GRANT USAGE ON SCHEMA db TO ian;
+GRANT USAGE ON SCHEMA db TO staff;
 
 
 --
@@ -21898,6 +21929,7 @@ GRANT USAGE ON SCHEMA db TO ian;
 REVOKE ALL ON SCHEMA defaults FROM PUBLIC;
 REVOKE ALL ON SCHEMA defaults FROM easygp;
 GRANT ALL ON SCHEMA defaults TO easygp;
+GRANT USAGE ON SCHEMA defaults TO staff;
 
 
 --
@@ -21907,6 +21939,7 @@ GRANT ALL ON SCHEMA defaults TO easygp;
 REVOKE ALL ON SCHEMA documents FROM PUBLIC;
 REVOKE ALL ON SCHEMA documents FROM easygp;
 GRANT ALL ON SCHEMA documents TO easygp;
+GRANT USAGE ON SCHEMA documents TO staff;
 
 
 --
@@ -21916,7 +21949,7 @@ GRANT ALL ON SCHEMA documents TO easygp;
 REVOKE ALL ON SCHEMA drugs FROM PUBLIC;
 REVOKE ALL ON SCHEMA drugs FROM easygp;
 GRANT ALL ON SCHEMA drugs TO easygp;
-GRANT USAGE ON SCHEMA drugs TO ian;
+GRANT ALL ON SCHEMA drugs TO staff;
 
 
 --
@@ -21926,6 +21959,7 @@ GRANT USAGE ON SCHEMA drugs TO ian;
 REVOKE ALL ON SCHEMA import_export FROM PUBLIC;
 REVOKE ALL ON SCHEMA import_export FROM easygp;
 GRANT ALL ON SCHEMA import_export TO easygp;
+GRANT USAGE ON SCHEMA import_export TO staff;
 
 
 --
@@ -21935,6 +21969,7 @@ GRANT ALL ON SCHEMA import_export TO easygp;
 REVOKE ALL ON SCHEMA maintenance FROM PUBLIC;
 REVOKE ALL ON SCHEMA maintenance FROM easygp;
 GRANT ALL ON SCHEMA maintenance TO easygp;
+GRANT USAGE ON SCHEMA maintenance TO staff;
 
 
 --
@@ -21954,6 +21989,7 @@ GRANT ALL ON SCHEMA public TO PUBLIC;
 REVOKE ALL ON SCHEMA research FROM PUBLIC;
 REVOKE ALL ON SCHEMA research FROM easygp;
 GRANT ALL ON SCHEMA research TO easygp;
+GRANT USAGE ON SCHEMA research TO staff;
 
 
 SET search_path = clerical, pg_catalog;
@@ -21965,7 +22001,7 @@ SET search_path = clerical, pg_catalog;
 REVOKE ALL ON FUNCTION listavailable(fk_clinicv integer, fk_doctor integer, max integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION listavailable(fk_clinicv integer, fk_doctor integer, max integer) FROM easygp;
 GRANT ALL ON FUNCTION listavailable(fk_clinicv integer, fk_doctor integer, max integer) TO easygp;
-GRANT ALL ON FUNCTION listavailable(fk_clinicv integer, fk_doctor integer, max integer) TO PUBLIC;
+GRANT ALL ON FUNCTION listavailable(fk_clinicv integer, fk_doctor integer, max integer) TO staff;
 
 
 --
@@ -21975,7 +22011,7 @@ GRANT ALL ON FUNCTION listavailable(fk_clinicv integer, fk_doctor integer, max i
 REVOKE ALL ON TABLE sessions FROM PUBLIC;
 REVOKE ALL ON TABLE sessions FROM easygp;
 GRANT ALL ON TABLE sessions TO easygp;
-GRANT ALL ON TABLE sessions TO ian;
+GRANT ALL ON TABLE sessions TO staff;
 
 
 SET search_path = public, pg_catalog;
@@ -21988,6 +22024,7 @@ REVOKE ALL ON FUNCTION invoice_received(integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION invoice_received(integer) FROM easygp;
 GRANT ALL ON FUNCTION invoice_received(integer) TO easygp;
 GRANT ALL ON FUNCTION invoice_received(integer) TO PUBLIC;
+GRANT ALL ON FUNCTION invoice_received(integer) TO staff;
 
 
 --
@@ -21998,6 +22035,7 @@ REVOKE ALL ON FUNCTION invoice_total(integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION invoice_total(integer) FROM easygp;
 GRANT ALL ON FUNCTION invoice_total(integer) TO easygp;
 GRANT ALL ON FUNCTION invoice_total(integer) TO PUBLIC;
+GRANT ALL ON FUNCTION invoice_total(integer) TO staff;
 
 
 SET search_path = admin, pg_catalog;
@@ -22009,7 +22047,7 @@ SET search_path = admin, pg_catalog;
 REVOKE ALL ON TABLE clinics FROM PUBLIC;
 REVOKE ALL ON TABLE clinics FROM easygp;
 GRANT ALL ON TABLE clinics TO easygp;
-GRANT ALL ON TABLE clinics TO ian;
+GRANT ALL ON TABLE clinics TO staff;
 
 
 --
@@ -22019,6 +22057,7 @@ GRANT ALL ON TABLE clinics TO ian;
 REVOKE ALL ON SEQUENCE clinic_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE clinic_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE clinic_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE clinic_pk_seq TO staff;
 
 
 --
@@ -22028,7 +22067,7 @@ GRANT ALL ON SEQUENCE clinic_pk_seq TO easygp;
 REVOKE ALL ON TABLE clinic_rooms FROM PUBLIC;
 REVOKE ALL ON TABLE clinic_rooms FROM easygp;
 GRANT ALL ON TABLE clinic_rooms TO easygp;
-GRANT ALL ON TABLE clinic_rooms TO ian;
+GRANT SELECT ON TABLE clinic_rooms TO staff;
 
 
 --
@@ -22038,7 +22077,7 @@ GRANT ALL ON TABLE clinic_rooms TO ian;
 REVOKE ALL ON TABLE global_preferences FROM PUBLIC;
 REVOKE ALL ON TABLE global_preferences FROM easygp;
 GRANT ALL ON TABLE global_preferences TO easygp;
-GRANT ALL ON TABLE global_preferences TO ian;
+GRANT ALL ON TABLE global_preferences TO staff;
 
 
 --
@@ -22048,6 +22087,7 @@ GRANT ALL ON TABLE global_preferences TO ian;
 REVOKE ALL ON SEQUENCE global_preferences_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE global_preferences_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE global_preferences_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE global_preferences_pk_seq TO staff;
 
 
 --
@@ -22057,7 +22097,7 @@ GRANT ALL ON SEQUENCE global_preferences_pk_seq TO easygp;
 REVOKE ALL ON TABLE link_staff_clinics FROM PUBLIC;
 REVOKE ALL ON TABLE link_staff_clinics FROM easygp;
 GRANT ALL ON TABLE link_staff_clinics TO easygp;
-GRANT ALL ON TABLE link_staff_clinics TO ian;
+GRANT ALL ON TABLE link_staff_clinics TO staff;
 
 
 --
@@ -22067,6 +22107,7 @@ GRANT ALL ON TABLE link_staff_clinics TO ian;
 REVOKE ALL ON SEQUENCE link_staff_clinics_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE link_staff_clinics_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE link_staff_clinics_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE link_staff_clinics_pk_seq TO staff;
 
 
 --
@@ -22076,7 +22117,7 @@ GRANT ALL ON SEQUENCE link_staff_clinics_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_clinical_modules FROM PUBLIC;
 REVOKE ALL ON TABLE lu_clinical_modules FROM easygp;
 GRANT ALL ON TABLE lu_clinical_modules TO easygp;
-GRANT ALL ON TABLE lu_clinical_modules TO ian;
+GRANT ALL ON TABLE lu_clinical_modules TO staff;
 
 
 --
@@ -22086,7 +22127,7 @@ GRANT ALL ON TABLE lu_clinical_modules TO ian;
 REVOKE ALL ON TABLE lu_staff_roles FROM PUBLIC;
 REVOKE ALL ON TABLE lu_staff_roles FROM easygp;
 GRANT ALL ON TABLE lu_staff_roles TO easygp;
-GRANT ALL ON TABLE lu_staff_roles TO ian;
+GRANT SELECT ON TABLE lu_staff_roles TO staff;
 
 
 --
@@ -22096,7 +22137,7 @@ GRANT ALL ON TABLE lu_staff_roles TO ian;
 REVOKE ALL ON TABLE lu_staff_status FROM PUBLIC;
 REVOKE ALL ON TABLE lu_staff_status FROM easygp;
 GRANT ALL ON TABLE lu_staff_status TO easygp;
-GRANT ALL ON TABLE lu_staff_status TO ian;
+GRANT SELECT ON TABLE lu_staff_status TO staff;
 
 
 --
@@ -22106,7 +22147,7 @@ GRANT ALL ON TABLE lu_staff_status TO ian;
 REVOKE ALL ON TABLE lu_staff_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_staff_type FROM easygp;
 GRANT ALL ON TABLE lu_staff_type TO easygp;
-GRANT ALL ON TABLE lu_staff_type TO ian;
+GRANT SELECT ON TABLE lu_staff_type TO staff;
 
 
 --
@@ -22116,7 +22157,7 @@ GRANT ALL ON TABLE lu_staff_type TO ian;
 REVOKE ALL ON TABLE staff FROM PUBLIC;
 REVOKE ALL ON TABLE staff FROM easygp;
 GRANT ALL ON TABLE staff TO easygp;
-GRANT ALL ON TABLE staff TO ian;
+GRANT ALL ON TABLE staff TO staff;
 
 
 --
@@ -22126,7 +22167,7 @@ GRANT ALL ON TABLE staff TO ian;
 REVOKE ALL ON TABLE staff_clinical_toolbar FROM PUBLIC;
 REVOKE ALL ON TABLE staff_clinical_toolbar FROM easygp;
 GRANT ALL ON TABLE staff_clinical_toolbar TO easygp;
-GRANT ALL ON TABLE staff_clinical_toolbar TO ian;
+GRANT ALL ON TABLE staff_clinical_toolbar TO staff;
 
 
 --
@@ -22136,6 +22177,7 @@ GRANT ALL ON TABLE staff_clinical_toolbar TO ian;
 REVOKE ALL ON SEQUENCE staff_clinical_toolbar_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE staff_clinical_toolbar_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE staff_clinical_toolbar_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE staff_clinical_toolbar_pk_seq TO staff;
 
 
 --
@@ -22145,6 +22187,7 @@ GRANT ALL ON SEQUENCE staff_clinical_toolbar_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE staff_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE staff_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE staff_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE staff_pk_seq TO staff;
 
 
 SET search_path = contacts, pg_catalog;
@@ -22156,7 +22199,7 @@ SET search_path = contacts, pg_catalog;
 REVOKE ALL ON TABLE data_addresses FROM PUBLIC;
 REVOKE ALL ON TABLE data_addresses FROM easygp;
 GRANT ALL ON TABLE data_addresses TO easygp;
-GRANT ALL ON TABLE data_addresses TO ian;
+GRANT ALL ON TABLE data_addresses TO staff;
 
 
 --
@@ -22166,7 +22209,7 @@ GRANT ALL ON TABLE data_addresses TO ian;
 REVOKE ALL ON TABLE data_branches FROM PUBLIC;
 REVOKE ALL ON TABLE data_branches FROM easygp;
 GRANT ALL ON TABLE data_branches TO easygp;
-GRANT ALL ON TABLE data_branches TO ian;
+GRANT ALL ON TABLE data_branches TO staff;
 
 
 --
@@ -22176,7 +22219,7 @@ GRANT ALL ON TABLE data_branches TO ian;
 REVOKE ALL ON TABLE data_organisations FROM PUBLIC;
 REVOKE ALL ON TABLE data_organisations FROM easygp;
 GRANT ALL ON TABLE data_organisations TO easygp;
-GRANT ALL ON TABLE data_organisations TO ian;
+GRANT ALL ON TABLE data_organisations TO staff;
 
 
 --
@@ -22186,7 +22229,7 @@ GRANT ALL ON TABLE data_organisations TO ian;
 REVOKE ALL ON TABLE lu_address_types FROM PUBLIC;
 REVOKE ALL ON TABLE lu_address_types FROM easygp;
 GRANT ALL ON TABLE lu_address_types TO easygp;
-GRANT ALL ON TABLE lu_address_types TO ian;
+GRANT SELECT ON TABLE lu_address_types TO staff;
 
 
 --
@@ -22196,7 +22239,7 @@ GRANT ALL ON TABLE lu_address_types TO ian;
 REVOKE ALL ON TABLE lu_categories FROM PUBLIC;
 REVOKE ALL ON TABLE lu_categories FROM easygp;
 GRANT ALL ON TABLE lu_categories TO easygp;
-GRANT ALL ON TABLE lu_categories TO ian;
+GRANT ALL ON TABLE lu_categories TO staff;
 
 
 --
@@ -22206,7 +22249,7 @@ GRANT ALL ON TABLE lu_categories TO ian;
 REVOKE ALL ON TABLE lu_towns FROM PUBLIC;
 REVOKE ALL ON TABLE lu_towns FROM easygp;
 GRANT ALL ON TABLE lu_towns TO easygp;
-GRANT ALL ON TABLE lu_towns TO ian;
+GRANT SELECT ON TABLE lu_towns TO staff;
 
 
 SET search_path = admin, pg_catalog;
@@ -22218,7 +22261,7 @@ SET search_path = admin, pg_catalog;
 REVOKE ALL ON TABLE vwclinics FROM PUBLIC;
 REVOKE ALL ON TABLE vwclinics FROM easygp;
 GRANT ALL ON TABLE vwclinics TO easygp;
-GRANT ALL ON TABLE vwclinics TO ian;
+GRANT ALL ON TABLE vwclinics TO staff;
 
 
 --
@@ -22228,7 +22271,7 @@ GRANT ALL ON TABLE vwclinics TO ian;
 REVOKE ALL ON TABLE vwclinicrooms FROM PUBLIC;
 REVOKE ALL ON TABLE vwclinicrooms FROM easygp;
 GRANT ALL ON TABLE vwclinicrooms TO easygp;
-GRANT ALL ON TABLE vwclinicrooms TO ian;
+GRANT SELECT ON TABLE vwclinicrooms TO staff;
 
 
 SET search_path = contacts, pg_catalog;
@@ -22240,7 +22283,7 @@ SET search_path = contacts, pg_catalog;
 REVOKE ALL ON TABLE data_numbers FROM PUBLIC;
 REVOKE ALL ON TABLE data_numbers FROM easygp;
 GRANT ALL ON TABLE data_numbers TO easygp;
-GRANT ALL ON TABLE data_numbers TO ian;
+GRANT ALL ON TABLE data_numbers TO staff;
 
 
 --
@@ -22250,7 +22293,7 @@ GRANT ALL ON TABLE data_numbers TO ian;
 REVOKE ALL ON TABLE data_persons FROM PUBLIC;
 REVOKE ALL ON TABLE data_persons FROM easygp;
 GRANT ALL ON TABLE data_persons TO easygp;
-GRANT ALL ON TABLE data_persons TO ian;
+GRANT ALL ON TABLE data_persons TO staff;
 
 
 --
@@ -22260,7 +22303,7 @@ GRANT ALL ON TABLE data_persons TO ian;
 REVOKE ALL ON TABLE lu_title FROM PUBLIC;
 REVOKE ALL ON TABLE lu_title FROM easygp;
 GRANT ALL ON TABLE lu_title TO easygp;
-GRANT ALL ON TABLE lu_title TO ian;
+GRANT ALL ON TABLE lu_title TO staff;
 
 
 SET search_path = admin, pg_catalog;
@@ -22272,7 +22315,7 @@ SET search_path = admin, pg_catalog;
 REVOKE ALL ON TABLE vwstaff FROM PUBLIC;
 REVOKE ALL ON TABLE vwstaff FROM easygp;
 GRANT ALL ON TABLE vwstaff TO easygp;
-GRANT ALL ON TABLE vwstaff TO ian;
+GRANT ALL ON TABLE vwstaff TO staff;
 
 
 SET search_path = blobs, pg_catalog;
@@ -22284,7 +22327,7 @@ SET search_path = blobs, pg_catalog;
 REVOKE ALL ON TABLE images FROM PUBLIC;
 REVOKE ALL ON TABLE images FROM easygp;
 GRANT ALL ON TABLE images TO easygp;
-GRANT ALL ON TABLE images TO ian;
+GRANT ALL ON TABLE images TO staff;
 
 
 SET search_path = common, pg_catalog;
@@ -22296,7 +22339,7 @@ SET search_path = common, pg_catalog;
 REVOKE ALL ON TABLE lu_ethnicity FROM PUBLIC;
 REVOKE ALL ON TABLE lu_ethnicity FROM easygp;
 GRANT ALL ON TABLE lu_ethnicity TO easygp;
-GRANT ALL ON TABLE lu_ethnicity TO ian;
+GRANT SELECT,INSERT ON TABLE lu_ethnicity TO staff;
 
 
 --
@@ -22306,7 +22349,7 @@ GRANT ALL ON TABLE lu_ethnicity TO ian;
 REVOKE ALL ON TABLE lu_languages FROM PUBLIC;
 REVOKE ALL ON TABLE lu_languages FROM easygp;
 GRANT ALL ON TABLE lu_languages TO easygp;
-GRANT ALL ON TABLE lu_languages TO ian;
+GRANT SELECT ON TABLE lu_languages TO staff;
 
 
 --
@@ -22316,7 +22359,7 @@ GRANT ALL ON TABLE lu_languages TO ian;
 REVOKE ALL ON TABLE lu_occupations FROM PUBLIC;
 REVOKE ALL ON TABLE lu_occupations FROM easygp;
 GRANT ALL ON TABLE lu_occupations TO easygp;
-GRANT ALL ON TABLE lu_occupations TO ian;
+GRANT SELECT,INSERT ON TABLE lu_occupations TO staff;
 
 
 SET search_path = contacts, pg_catalog;
@@ -22328,7 +22371,7 @@ SET search_path = contacts, pg_catalog;
 REVOKE ALL ON TABLE data_employees FROM PUBLIC;
 REVOKE ALL ON TABLE data_employees FROM easygp;
 GRANT ALL ON TABLE data_employees TO easygp;
-GRANT ALL ON TABLE data_employees TO ian;
+GRANT ALL ON TABLE data_employees TO staff;
 
 
 --
@@ -22338,7 +22381,6 @@ GRANT ALL ON TABLE data_employees TO ian;
 REVOKE ALL ON TABLE lu_employee_status FROM PUBLIC;
 REVOKE ALL ON TABLE lu_employee_status FROM easygp;
 GRANT ALL ON TABLE lu_employee_status TO easygp;
-GRANT ALL ON TABLE lu_employee_status TO ian;
 
 
 --
@@ -22348,7 +22390,7 @@ GRANT ALL ON TABLE lu_employee_status TO ian;
 REVOKE ALL ON TABLE lu_marital FROM PUBLIC;
 REVOKE ALL ON TABLE lu_marital FROM easygp;
 GRANT ALL ON TABLE lu_marital TO easygp;
-GRANT ALL ON TABLE lu_marital TO ian;
+GRANT SELECT ON TABLE lu_marital TO staff;
 
 
 --
@@ -22358,7 +22400,7 @@ GRANT ALL ON TABLE lu_marital TO ian;
 REVOKE ALL ON TABLE lu_sex FROM PUBLIC;
 REVOKE ALL ON TABLE lu_sex FROM easygp;
 GRANT ALL ON TABLE lu_sex TO easygp;
-GRANT ALL ON TABLE lu_sex TO ian;
+GRANT SELECT ON TABLE lu_sex TO staff;
 
 
 SET search_path = admin, pg_catalog;
@@ -22370,7 +22412,7 @@ SET search_path = admin, pg_catalog;
 REVOKE ALL ON TABLE vwstaffinclinics FROM PUBLIC;
 REVOKE ALL ON TABLE vwstaffinclinics FROM easygp;
 GRANT ALL ON TABLE vwstaffinclinics TO easygp;
-GRANT ALL ON TABLE vwstaffinclinics TO ian;
+GRANT ALL ON TABLE vwstaffinclinics TO staff;
 
 
 --
@@ -22380,7 +22422,7 @@ GRANT ALL ON TABLE vwstaffinclinics TO ian;
 REVOKE ALL ON TABLE vwstafftoolbarbuttons FROM PUBLIC;
 REVOKE ALL ON TABLE vwstafftoolbarbuttons FROM easygp;
 GRANT ALL ON TABLE vwstafftoolbarbuttons TO easygp;
-GRANT ALL ON TABLE vwstafftoolbarbuttons TO ian;
+GRANT ALL ON TABLE vwstafftoolbarbuttons TO staff;
 
 
 SET search_path = billing, pg_catalog;
@@ -22392,7 +22434,7 @@ SET search_path = billing, pg_catalog;
 REVOKE ALL ON TABLE bulk_billing_claims FROM PUBLIC;
 REVOKE ALL ON TABLE bulk_billing_claims FROM easygp;
 GRANT ALL ON TABLE bulk_billing_claims TO easygp;
-GRANT ALL ON TABLE bulk_billing_claims TO ian;
+GRANT ALL ON TABLE bulk_billing_claims TO staff;
 
 
 --
@@ -22402,6 +22444,7 @@ GRANT ALL ON TABLE bulk_billing_claims TO ian;
 REVOKE ALL ON SEQUENCE bulk_billing_claims_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE bulk_billing_claims_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE bulk_billing_claims_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE bulk_billing_claims_pk_seq TO staff;
 
 
 --
@@ -22411,7 +22454,7 @@ GRANT ALL ON SEQUENCE bulk_billing_claims_pk_seq TO easygp;
 REVOKE ALL ON TABLE fee_schedule FROM PUBLIC;
 REVOKE ALL ON TABLE fee_schedule FROM easygp;
 GRANT ALL ON TABLE fee_schedule TO easygp;
-GRANT ALL ON TABLE fee_schedule TO ian;
+GRANT ALL ON TABLE fee_schedule TO staff;
 
 
 --
@@ -22421,6 +22464,7 @@ GRANT ALL ON TABLE fee_schedule TO ian;
 REVOKE ALL ON SEQUENCE fee_schedule_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE fee_schedule_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE fee_schedule_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE fee_schedule_pk_seq TO staff;
 
 
 --
@@ -22430,7 +22474,7 @@ GRANT ALL ON SEQUENCE fee_schedule_pk_seq TO easygp;
 REVOKE ALL ON TABLE invoices FROM PUBLIC;
 REVOKE ALL ON TABLE invoices FROM easygp;
 GRANT ALL ON TABLE invoices TO easygp;
-GRANT ALL ON TABLE invoices TO ian;
+GRANT ALL ON TABLE invoices TO staff;
 
 
 --
@@ -22440,6 +22484,7 @@ GRANT ALL ON TABLE invoices TO ian;
 REVOKE ALL ON SEQUENCE invoices_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE invoices_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE invoices_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE invoices_pk_seq TO staff;
 
 
 --
@@ -22449,7 +22494,7 @@ GRANT ALL ON SEQUENCE invoices_pk_seq TO easygp;
 REVOKE ALL ON TABLE items_billed FROM PUBLIC;
 REVOKE ALL ON TABLE items_billed FROM easygp;
 GRANT ALL ON TABLE items_billed TO easygp;
-GRANT ALL ON TABLE items_billed TO ian;
+GRANT ALL ON TABLE items_billed TO staff;
 
 
 --
@@ -22459,6 +22504,7 @@ GRANT ALL ON TABLE items_billed TO ian;
 REVOKE ALL ON SEQUENCE items_billed_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE items_billed_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE items_billed_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE items_billed_pk_seq TO staff;
 
 
 --
@@ -22468,7 +22514,7 @@ GRANT ALL ON SEQUENCE items_billed_pk_seq TO easygp;
 REVOKE ALL ON TABLE link_invoice_bulk_bill_claim FROM PUBLIC;
 REVOKE ALL ON TABLE link_invoice_bulk_bill_claim FROM easygp;
 GRANT ALL ON TABLE link_invoice_bulk_bill_claim TO easygp;
-GRANT ALL ON TABLE link_invoice_bulk_bill_claim TO ian;
+GRANT ALL ON TABLE link_invoice_bulk_bill_claim TO staff;
 
 
 --
@@ -22478,7 +22524,7 @@ GRANT ALL ON TABLE link_invoice_bulk_bill_claim TO ian;
 REVOKE ALL ON TABLE lu_billing_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_billing_type FROM easygp;
 GRANT ALL ON TABLE lu_billing_type TO easygp;
-GRANT ALL ON TABLE lu_billing_type TO ian;
+GRANT SELECT ON TABLE lu_billing_type TO staff;
 
 
 --
@@ -22488,7 +22534,7 @@ GRANT ALL ON TABLE lu_billing_type TO ian;
 REVOKE ALL ON TABLE lu_bulk_billing_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_bulk_billing_type FROM easygp;
 GRANT ALL ON TABLE lu_bulk_billing_type TO easygp;
-GRANT ALL ON TABLE lu_bulk_billing_type TO ian;
+GRANT SELECT ON TABLE lu_bulk_billing_type TO staff;
 
 
 --
@@ -22498,7 +22544,7 @@ GRANT ALL ON TABLE lu_bulk_billing_type TO ian;
 REVOKE ALL ON TABLE lu_default_billing_level FROM PUBLIC;
 REVOKE ALL ON TABLE lu_default_billing_level FROM easygp;
 GRANT ALL ON TABLE lu_default_billing_level TO easygp;
-GRANT ALL ON TABLE lu_default_billing_level TO ian;
+GRANT SELECT ON TABLE lu_default_billing_level TO staff;
 
 
 --
@@ -22508,7 +22554,7 @@ GRANT ALL ON TABLE lu_default_billing_level TO ian;
 REVOKE ALL ON TABLE lu_invoice_comments FROM PUBLIC;
 REVOKE ALL ON TABLE lu_invoice_comments FROM easygp;
 GRANT ALL ON TABLE lu_invoice_comments TO easygp;
-GRANT ALL ON TABLE lu_invoice_comments TO ian;
+GRANT ALL ON TABLE lu_invoice_comments TO staff;
 
 
 --
@@ -22518,7 +22564,7 @@ GRANT ALL ON TABLE lu_invoice_comments TO ian;
 REVOKE ALL ON TABLE lu_payment_method FROM PUBLIC;
 REVOKE ALL ON TABLE lu_payment_method FROM easygp;
 GRANT ALL ON TABLE lu_payment_method TO easygp;
-GRANT ALL ON TABLE lu_payment_method TO ian;
+GRANT SELECT ON TABLE lu_payment_method TO staff;
 
 
 --
@@ -22528,7 +22574,7 @@ GRANT ALL ON TABLE lu_payment_method TO ian;
 REVOKE ALL ON TABLE lu_reasons_not_billed FROM PUBLIC;
 REVOKE ALL ON TABLE lu_reasons_not_billed FROM easygp;
 GRANT ALL ON TABLE lu_reasons_not_billed TO easygp;
-GRANT ALL ON TABLE lu_reasons_not_billed TO ian;
+GRANT ALL ON TABLE lu_reasons_not_billed TO staff;
 
 
 --
@@ -22538,7 +22584,7 @@ GRANT ALL ON TABLE lu_reasons_not_billed TO ian;
 REVOKE ALL ON TABLE lu_reports FROM PUBLIC;
 REVOKE ALL ON TABLE lu_reports FROM easygp;
 GRANT ALL ON TABLE lu_reports TO easygp;
-GRANT ALL ON TABLE lu_reports TO ian;
+GRANT ALL ON TABLE lu_reports TO staff;
 
 
 --
@@ -22548,7 +22594,7 @@ GRANT ALL ON TABLE lu_reports TO ian;
 REVOKE ALL ON TABLE payments_received FROM PUBLIC;
 REVOKE ALL ON TABLE payments_received FROM easygp;
 GRANT ALL ON TABLE payments_received TO easygp;
-GRANT ALL ON TABLE payments_received TO ian;
+GRANT ALL ON TABLE payments_received TO staff;
 
 
 --
@@ -22558,6 +22604,7 @@ GRANT ALL ON TABLE payments_received TO ian;
 REVOKE ALL ON SEQUENCE payments_received_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE payments_received_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE payments_received_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE payments_received_pk_seq TO staff;
 
 
 --
@@ -22567,7 +22614,7 @@ GRANT ALL ON SEQUENCE payments_received_pk_seq TO easygp;
 REVOKE ALL ON TABLE prices FROM PUBLIC;
 REVOKE ALL ON TABLE prices FROM easygp;
 GRANT ALL ON TABLE prices TO easygp;
-GRANT ALL ON TABLE prices TO ian;
+GRANT ALL ON TABLE prices TO staff;
 
 
 --
@@ -22577,6 +22624,7 @@ GRANT ALL ON TABLE prices TO ian;
 REVOKE ALL ON SEQUENCE prices_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE prices_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE prices_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE prices_pk_seq TO staff;
 
 
 --
@@ -22586,7 +22634,8 @@ GRANT ALL ON SEQUENCE prices_pk_seq TO easygp;
 REVOKE ALL ON TABLE reports FROM PUBLIC;
 REVOKE ALL ON TABLE reports FROM easygp;
 GRANT ALL ON TABLE reports TO easygp;
-GRANT ALL ON TABLE reports TO ian;
+GRANT ALL ON TABLE reports TO postgres;
+GRANT ALL ON TABLE reports TO staff;
 
 
 SET search_path = clerical, pg_catalog;
@@ -22598,7 +22647,7 @@ SET search_path = clerical, pg_catalog;
 REVOKE ALL ON TABLE data_patients FROM PUBLIC;
 REVOKE ALL ON TABLE data_patients FROM easygp;
 GRANT ALL ON TABLE data_patients TO easygp;
-GRANT ALL ON TABLE data_patients TO ian;
+GRANT ALL ON TABLE data_patients TO staff;
 
 
 SET search_path = billing, pg_catalog;
@@ -22610,94 +22659,7 @@ SET search_path = billing, pg_catalog;
 REVOKE ALL ON TABLE vwbulkbilleditems FROM PUBLIC;
 REVOKE ALL ON TABLE vwbulkbilleditems FROM easygp;
 GRANT ALL ON TABLE vwbulkbilleditems TO easygp;
-GRANT ALL ON TABLE vwbulkbilleditems TO ian;
-
-
-SET search_path = clerical, pg_catalog;
-
---
--- Name: bookings; Type: ACL; Schema: clerical; Owner: easygp
---
-
-REVOKE ALL ON TABLE bookings FROM PUBLIC;
-REVOKE ALL ON TABLE bookings FROM easygp;
-GRANT ALL ON TABLE bookings TO easygp;
-GRANT ALL ON TABLE bookings TO ian;
-
-
-SET search_path = common, pg_catalog;
-
---
--- Name: lu_countries; Type: ACL; Schema: common; Owner: easygp
---
-
-REVOKE ALL ON TABLE lu_countries FROM PUBLIC;
-REVOKE ALL ON TABLE lu_countries FROM easygp;
-GRANT ALL ON TABLE lu_countries TO easygp;
-GRANT ALL ON TABLE lu_countries TO ian;
-
-
-SET search_path = contacts, pg_catalog;
-
---
--- Name: links_persons_addresses; Type: ACL; Schema: contacts; Owner: easygp
---
-
-REVOKE ALL ON TABLE links_persons_addresses FROM PUBLIC;
-REVOKE ALL ON TABLE links_persons_addresses FROM easygp;
-GRANT ALL ON TABLE links_persons_addresses TO easygp;
-GRANT ALL ON TABLE links_persons_addresses TO ian;
-
-
---
--- Name: vworganisations_pk_seq; Type: ACL; Schema: contacts; Owner: easygp
---
-
-REVOKE ALL ON SEQUENCE vworganisations_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE vworganisations_pk_seq FROM easygp;
-GRANT ALL ON SEQUENCE vworganisations_pk_seq TO easygp;
-
-
---
--- Name: vworganisations; Type: ACL; Schema: contacts; Owner: easygp
---
-
-REVOKE ALL ON TABLE vworganisations FROM PUBLIC;
-REVOKE ALL ON TABLE vworganisations FROM easygp;
-GRANT ALL ON TABLE vworganisations TO easygp;
-GRANT ALL ON TABLE vworganisations TO ian;
-
-
---
--- Name: vwpersonsincludingpatients; Type: ACL; Schema: contacts; Owner: easygp
---
-
-REVOKE ALL ON TABLE vwpersonsincludingpatients FROM PUBLIC;
-REVOKE ALL ON TABLE vwpersonsincludingpatients FROM easygp;
-GRANT ALL ON TABLE vwpersonsincludingpatients TO easygp;
-GRANT ALL ON TABLE vwpersonsincludingpatients TO ian;
-
-
-SET search_path = billing, pg_catalog;
-
---
--- Name: vwdaylist; Type: ACL; Schema: billing; Owner: postgres
---
-
-REVOKE ALL ON TABLE vwdaylist FROM PUBLIC;
-REVOKE ALL ON TABLE vwdaylist FROM postgres;
-GRANT ALL ON TABLE vwdaylist TO postgres;
-GRANT ALL ON TABLE vwdaylist TO ian;
-
-
---
--- Name: vwfees; Type: ACL; Schema: billing; Owner: easygp
---
-
-REVOKE ALL ON TABLE vwfees FROM PUBLIC;
-REVOKE ALL ON TABLE vwfees FROM easygp;
-GRANT ALL ON TABLE vwfees TO easygp;
-GRANT ALL ON TABLE vwfees TO ian;
+GRANT SELECT ON TABLE vwbulkbilleditems TO staff;
 
 
 SET search_path = clerical, pg_catalog;
@@ -22709,7 +22671,7 @@ SET search_path = clerical, pg_catalog;
 REVOKE ALL ON TABLE lu_active_status FROM PUBLIC;
 REVOKE ALL ON TABLE lu_active_status FROM easygp;
 GRANT ALL ON TABLE lu_active_status TO easygp;
-GRANT ALL ON TABLE lu_active_status TO ian;
+GRANT ALL ON TABLE lu_active_status TO staff;
 
 
 --
@@ -22719,7 +22681,7 @@ GRANT ALL ON TABLE lu_active_status TO ian;
 REVOKE ALL ON TABLE lu_centrelink_card_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_centrelink_card_type FROM easygp;
 GRANT ALL ON TABLE lu_centrelink_card_type TO easygp;
-GRANT ALL ON TABLE lu_centrelink_card_type TO ian;
+GRANT ALL ON TABLE lu_centrelink_card_type TO staff;
 
 
 --
@@ -22729,7 +22691,7 @@ GRANT ALL ON TABLE lu_centrelink_card_type TO ian;
 REVOKE ALL ON TABLE lu_private_health_funds FROM PUBLIC;
 REVOKE ALL ON TABLE lu_private_health_funds FROM easygp;
 GRANT ALL ON TABLE lu_private_health_funds TO easygp;
-GRANT ALL ON TABLE lu_private_health_funds TO ian;
+GRANT ALL ON TABLE lu_private_health_funds TO staff;
 
 
 --
@@ -22739,7 +22701,7 @@ GRANT ALL ON TABLE lu_private_health_funds TO ian;
 REVOKE ALL ON TABLE lu_veteran_card_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_veteran_card_type FROM easygp;
 GRANT ALL ON TABLE lu_veteran_card_type TO easygp;
-GRANT ALL ON TABLE lu_veteran_card_type TO ian;
+GRANT ALL ON TABLE lu_veteran_card_type TO staff;
 
 
 SET search_path = common, pg_catalog;
@@ -22751,10 +22713,30 @@ SET search_path = common, pg_catalog;
 REVOKE ALL ON TABLE lu_aboriginality FROM PUBLIC;
 REVOKE ALL ON TABLE lu_aboriginality FROM easygp;
 GRANT ALL ON TABLE lu_aboriginality TO easygp;
-GRANT ALL ON TABLE lu_aboriginality TO ian;
+GRANT SELECT ON TABLE lu_aboriginality TO staff;
+
+
+--
+-- Name: lu_countries; Type: ACL; Schema: common; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_countries FROM PUBLIC;
+REVOKE ALL ON TABLE lu_countries FROM easygp;
+GRANT ALL ON TABLE lu_countries TO easygp;
+GRANT SELECT ON TABLE lu_countries TO staff;
 
 
 SET search_path = contacts, pg_catalog;
+
+--
+-- Name: links_persons_addresses; Type: ACL; Schema: contacts; Owner: easygp
+--
+
+REVOKE ALL ON TABLE links_persons_addresses FROM PUBLIC;
+REVOKE ALL ON TABLE links_persons_addresses FROM easygp;
+GRANT ALL ON TABLE links_persons_addresses TO easygp;
+GRANT ALL ON TABLE links_persons_addresses TO staff;
+
 
 --
 -- Name: vwpatients; Type: ACL; Schema: contacts; Owner: easygp
@@ -22763,10 +22745,87 @@ SET search_path = contacts, pg_catalog;
 REVOKE ALL ON TABLE vwpatients FROM PUBLIC;
 REVOKE ALL ON TABLE vwpatients FROM easygp;
 GRANT ALL ON TABLE vwpatients TO easygp;
-GRANT ALL ON TABLE vwpatients TO ian;
+GRANT ALL ON TABLE vwpatients TO staff;
 
 
 SET search_path = billing, pg_catalog;
+
+--
+-- Name: vwclaims; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON TABLE vwclaims FROM PUBLIC;
+REVOKE ALL ON TABLE vwclaims FROM easygp;
+GRANT ALL ON TABLE vwclaims TO easygp;
+GRANT SELECT ON TABLE vwclaims TO staff;
+
+
+SET search_path = clerical, pg_catalog;
+
+--
+-- Name: bookings; Type: ACL; Schema: clerical; Owner: easygp
+--
+
+REVOKE ALL ON TABLE bookings FROM PUBLIC;
+REVOKE ALL ON TABLE bookings FROM easygp;
+GRANT ALL ON TABLE bookings TO easygp;
+GRANT ALL ON TABLE bookings TO staff;
+
+
+SET search_path = contacts, pg_catalog;
+
+--
+-- Name: vworganisations_pk_seq; Type: ACL; Schema: contacts; Owner: easygp
+--
+
+REVOKE ALL ON SEQUENCE vworganisations_pk_seq FROM PUBLIC;
+REVOKE ALL ON SEQUENCE vworganisations_pk_seq FROM easygp;
+GRANT ALL ON SEQUENCE vworganisations_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE vworganisations_pk_seq TO staff;
+
+
+--
+-- Name: vworganisations; Type: ACL; Schema: contacts; Owner: easygp
+--
+
+REVOKE ALL ON TABLE vworganisations FROM PUBLIC;
+REVOKE ALL ON TABLE vworganisations FROM easygp;
+GRANT ALL ON TABLE vworganisations TO easygp;
+GRANT ALL ON TABLE vworganisations TO staff;
+
+
+--
+-- Name: vwpersonsincludingpatients; Type: ACL; Schema: contacts; Owner: easygp
+--
+
+REVOKE ALL ON TABLE vwpersonsincludingpatients FROM PUBLIC;
+REVOKE ALL ON TABLE vwpersonsincludingpatients FROM easygp;
+GRANT ALL ON TABLE vwpersonsincludingpatients TO easygp;
+GRANT SELECT ON TABLE vwpersonsincludingpatients TO staff;
+
+
+SET search_path = billing, pg_catalog;
+
+--
+-- Name: vwdaylist; Type: ACL; Schema: billing; Owner: postgres
+--
+
+REVOKE ALL ON TABLE vwdaylist FROM PUBLIC;
+REVOKE ALL ON TABLE vwdaylist FROM postgres;
+GRANT ALL ON TABLE vwdaylist TO postgres;
+GRANT ALL ON TABLE vwdaylist TO easygp;
+GRANT ALL ON TABLE vwdaylist TO staff;
+
+
+--
+-- Name: vwfees; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON TABLE vwfees FROM PUBLIC;
+REVOKE ALL ON TABLE vwfees FROM easygp;
+GRANT ALL ON TABLE vwfees TO easygp;
+GRANT SELECT ON TABLE vwfees TO staff;
+
 
 --
 -- Name: vwinvoices; Type: ACL; Schema: billing; Owner: easygp
@@ -22775,7 +22834,7 @@ SET search_path = billing, pg_catalog;
 REVOKE ALL ON TABLE vwinvoices FROM PUBLIC;
 REVOKE ALL ON TABLE vwinvoices FROM easygp;
 GRANT ALL ON TABLE vwinvoices TO easygp;
-GRANT ALL ON TABLE vwinvoices TO ian;
+GRANT ALL ON TABLE vwinvoices TO staff;
 
 
 --
@@ -22785,7 +22844,7 @@ GRANT ALL ON TABLE vwinvoices TO ian;
 REVOKE ALL ON TABLE vwitemsbilled FROM PUBLIC;
 REVOKE ALL ON TABLE vwitemsbilled FROM easygp;
 GRANT ALL ON TABLE vwitemsbilled TO easygp;
-GRANT ALL ON TABLE vwitemsbilled TO ian;
+GRANT SELECT ON TABLE vwitemsbilled TO staff;
 
 
 --
@@ -22795,7 +22854,17 @@ GRANT ALL ON TABLE vwitemsbilled TO ian;
 REVOKE ALL ON TABLE vwitemsandinvoices FROM PUBLIC;
 REVOKE ALL ON TABLE vwitemsandinvoices FROM easygp;
 GRANT ALL ON TABLE vwitemsandinvoices TO easygp;
-GRANT ALL ON TABLE vwitemsandinvoices TO ian;
+GRANT SELECT ON TABLE vwitemsandinvoices TO staff;
+
+
+--
+-- Name: vwpaymentsreceived; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON TABLE vwpaymentsreceived FROM PUBLIC;
+REVOKE ALL ON TABLE vwpaymentsreceived FROM easygp;
+GRANT ALL ON TABLE vwpaymentsreceived TO easygp;
+GRANT SELECT ON TABLE vwpaymentsreceived TO staff;
 
 
 SET search_path = blobs, pg_catalog;
@@ -22807,7 +22876,7 @@ SET search_path = blobs, pg_catalog;
 REVOKE ALL ON TABLE blobs FROM PUBLIC;
 REVOKE ALL ON TABLE blobs FROM easygp;
 GRANT ALL ON TABLE blobs TO easygp;
-GRANT ALL ON TABLE blobs TO ian;
+GRANT SELECT,INSERT ON TABLE blobs TO staff;
 
 
 --
@@ -22817,6 +22886,7 @@ GRANT ALL ON TABLE blobs TO ian;
 REVOKE ALL ON SEQUENCE blobs_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE blobs_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE blobs_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE blobs_pk_seq TO staff;
 
 
 --
@@ -22826,6 +22896,7 @@ GRANT ALL ON SEQUENCE blobs_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE images_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE images_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE images_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE images_pk_seq TO staff;
 
 
 SET search_path = clin_consult, pg_catalog;
@@ -22837,7 +22908,7 @@ SET search_path = clin_consult, pg_catalog;
 REVOKE ALL ON TABLE consult FROM PUBLIC;
 REVOKE ALL ON TABLE consult FROM easygp;
 GRANT ALL ON TABLE consult TO easygp;
-GRANT ALL ON TABLE consult TO ian;
+GRANT ALL ON TABLE consult TO staff;
 
 
 SET search_path = blobs, pg_catalog;
@@ -22849,7 +22920,7 @@ SET search_path = blobs, pg_catalog;
 REVOKE ALL ON TABLE vwpatientimages FROM PUBLIC;
 REVOKE ALL ON TABLE vwpatientimages FROM easygp;
 GRANT ALL ON TABLE vwpatientimages TO easygp;
-GRANT ALL ON TABLE vwpatientimages TO ian;
+GRANT ALL ON TABLE vwpatientimages TO staff;
 
 
 SET search_path = chronic_disease_management, pg_catalog;
@@ -22861,7 +22932,6 @@ SET search_path = chronic_disease_management, pg_catalog;
 REVOKE ALL ON TABLE diabetes_annual_cycle_of_care FROM PUBLIC;
 REVOKE ALL ON TABLE diabetes_annual_cycle_of_care FROM easygp;
 GRANT ALL ON TABLE diabetes_annual_cycle_of_care TO easygp;
-GRANT ALL ON TABLE diabetes_annual_cycle_of_care TO ian;
 
 
 --
@@ -22871,7 +22941,6 @@ GRANT ALL ON TABLE diabetes_annual_cycle_of_care TO ian;
 REVOKE ALL ON TABLE diabetes_annual_cycle_of_care_notes FROM PUBLIC;
 REVOKE ALL ON TABLE diabetes_annual_cycle_of_care_notes FROM easygp;
 GRANT ALL ON TABLE diabetes_annual_cycle_of_care_notes TO easygp;
-GRANT ALL ON TABLE diabetes_annual_cycle_of_care_notes TO ian;
 
 
 --
@@ -22881,7 +22950,6 @@ GRANT ALL ON TABLE diabetes_annual_cycle_of_care_notes TO ian;
 REVOKE ALL ON TABLE epc_link_provider_form FROM PUBLIC;
 REVOKE ALL ON TABLE epc_link_provider_form FROM easygp;
 GRANT ALL ON TABLE epc_link_provider_form TO easygp;
-GRANT ALL ON TABLE epc_link_provider_form TO ian;
 
 
 --
@@ -22891,7 +22959,6 @@ GRANT ALL ON TABLE epc_link_provider_form TO ian;
 REVOKE ALL ON TABLE epc_referral FROM PUBLIC;
 REVOKE ALL ON TABLE epc_referral FROM easygp;
 GRANT ALL ON TABLE epc_referral TO easygp;
-GRANT ALL ON TABLE epc_referral TO ian;
 
 
 --
@@ -22901,7 +22968,6 @@ GRANT ALL ON TABLE epc_referral TO ian;
 REVOKE ALL ON TABLE lu_allied_health_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_allied_health_type FROM easygp;
 GRANT ALL ON TABLE lu_allied_health_type TO easygp;
-GRANT ALL ON TABLE lu_allied_health_type TO ian;
 
 
 --
@@ -22911,7 +22977,6 @@ GRANT ALL ON TABLE lu_allied_health_type TO ian;
 REVOKE ALL ON TABLE lu_dacc_components FROM PUBLIC;
 REVOKE ALL ON TABLE lu_dacc_components FROM easygp;
 GRANT ALL ON TABLE lu_dacc_components TO easygp;
-GRANT ALL ON TABLE lu_dacc_components TO ian;
 
 
 --
@@ -22921,7 +22986,6 @@ GRANT ALL ON TABLE lu_dacc_components TO ian;
 REVOKE ALL ON TABLE patients_with_hba1c_not_diabetic FROM PUBLIC;
 REVOKE ALL ON TABLE patients_with_hba1c_not_diabetic FROM easygp;
 GRANT ALL ON TABLE patients_with_hba1c_not_diabetic TO easygp;
-GRANT ALL ON TABLE patients_with_hba1c_not_diabetic TO ian;
 
 
 --
@@ -22931,7 +22995,6 @@ GRANT ALL ON TABLE patients_with_hba1c_not_diabetic TO ian;
 REVOKE ALL ON TABLE team_care_arrangements FROM PUBLIC;
 REVOKE ALL ON TABLE team_care_arrangements FROM easygp;
 GRANT ALL ON TABLE team_care_arrangements TO easygp;
-GRANT ALL ON TABLE team_care_arrangements TO ian;
 
 
 SET search_path = clin_consult, pg_catalog;
@@ -22943,7 +23006,7 @@ SET search_path = clin_consult, pg_catalog;
 REVOKE ALL ON TABLE lu_audit_actions FROM PUBLIC;
 REVOKE ALL ON TABLE lu_audit_actions FROM easygp;
 GRANT ALL ON TABLE lu_audit_actions TO easygp;
-GRANT ALL ON TABLE lu_audit_actions TO ian;
+GRANT SELECT,INSERT ON TABLE lu_audit_actions TO staff;
 
 
 --
@@ -22953,7 +23016,7 @@ GRANT ALL ON TABLE lu_audit_actions TO ian;
 REVOKE ALL ON TABLE lu_audit_reasons FROM PUBLIC;
 REVOKE ALL ON TABLE lu_audit_reasons FROM easygp;
 GRANT ALL ON TABLE lu_audit_reasons TO easygp;
-GRANT ALL ON TABLE lu_audit_reasons TO ian;
+GRANT SELECT,INSERT ON TABLE lu_audit_reasons TO staff;
 
 
 --
@@ -22963,7 +23026,7 @@ GRANT ALL ON TABLE lu_audit_reasons TO ian;
 REVOKE ALL ON TABLE lu_consult_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_consult_type FROM easygp;
 GRANT ALL ON TABLE lu_consult_type TO easygp;
-GRANT ALL ON TABLE lu_consult_type TO ian;
+GRANT SELECT ON TABLE lu_consult_type TO staff;
 
 
 --
@@ -22973,7 +23036,7 @@ GRANT ALL ON TABLE lu_consult_type TO ian;
 REVOKE ALL ON TABLE lu_progressnotes_sections FROM PUBLIC;
 REVOKE ALL ON TABLE lu_progressnotes_sections FROM easygp;
 GRANT ALL ON TABLE lu_progressnotes_sections TO easygp;
-GRANT ALL ON TABLE lu_progressnotes_sections TO ian;
+GRANT SELECT ON TABLE lu_progressnotes_sections TO staff;
 
 
 --
@@ -22983,7 +23046,7 @@ GRANT ALL ON TABLE lu_progressnotes_sections TO ian;
 REVOKE ALL ON TABLE progressnotes FROM PUBLIC;
 REVOKE ALL ON TABLE progressnotes FROM easygp;
 GRANT ALL ON TABLE progressnotes TO easygp;
-GRANT ALL ON TABLE progressnotes TO ian;
+GRANT ALL ON TABLE progressnotes TO staff;
 
 
 --
@@ -22993,7 +23056,7 @@ GRANT ALL ON TABLE progressnotes TO ian;
 REVOKE ALL ON TABLE vwprogressnotes FROM PUBLIC;
 REVOKE ALL ON TABLE vwprogressnotes FROM easygp;
 GRANT ALL ON TABLE vwprogressnotes TO easygp;
-GRANT ALL ON TABLE vwprogressnotes TO ian;
+GRANT ALL ON TABLE vwprogressnotes TO staff;
 
 
 SET search_path = chronic_disease_management, pg_catalog;
@@ -23005,7 +23068,7 @@ SET search_path = chronic_disease_management, pg_catalog;
 REVOKE ALL ON TABLE vwdiabetescycleofcare FROM PUBLIC;
 REVOKE ALL ON TABLE vwdiabetescycleofcare FROM easygp;
 GRANT ALL ON TABLE vwdiabetescycleofcare TO easygp;
-GRANT ALL ON TABLE vwdiabetescycleofcare TO ian;
+GRANT SELECT ON TABLE vwdiabetescycleofcare TO staff;
 
 
 SET search_path = clerical, pg_catalog;
@@ -23017,6 +23080,7 @@ SET search_path = clerical, pg_catalog;
 REVOKE ALL ON SEQUENCE bookings_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE bookings_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE bookings_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE bookings_pk_seq TO staff;
 
 
 --
@@ -23026,7 +23090,7 @@ GRANT ALL ON SEQUENCE bookings_pk_seq TO easygp;
 REVOKE ALL ON TABLE data_families FROM PUBLIC;
 REVOKE ALL ON TABLE data_families FROM easygp;
 GRANT ALL ON TABLE data_families TO easygp;
-GRANT ALL ON TABLE data_families TO ian;
+GRANT ALL ON TABLE data_families TO staff;
 
 
 --
@@ -23036,6 +23100,7 @@ GRANT ALL ON TABLE data_families TO ian;
 REVOKE ALL ON SEQUENCE data_families_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE data_families_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE data_families_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE data_families_pk_seq TO staff;
 
 
 --
@@ -23045,7 +23110,7 @@ GRANT ALL ON SEQUENCE data_families_pk_seq TO easygp;
 REVOKE ALL ON TABLE data_family_members FROM PUBLIC;
 REVOKE ALL ON TABLE data_family_members FROM easygp;
 GRANT ALL ON TABLE data_family_members TO easygp;
-GRANT ALL ON TABLE data_family_members TO ian;
+GRANT ALL ON TABLE data_family_members TO staff;
 
 
 --
@@ -23055,6 +23120,7 @@ GRANT ALL ON TABLE data_family_members TO ian;
 REVOKE ALL ON SEQUENCE data_family_members_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE data_family_members_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE data_family_members_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE data_family_members_pk_seq TO staff;
 
 
 --
@@ -23064,6 +23130,7 @@ GRANT ALL ON SEQUENCE data_family_members_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE data_patients_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE data_patients_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE data_patients_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE data_patients_pk_seq TO staff;
 
 
 --
@@ -23073,7 +23140,7 @@ GRANT ALL ON SEQUENCE data_patients_pk_seq TO easygp;
 REVOKE ALL ON TABLE inventory FROM PUBLIC;
 REVOKE ALL ON TABLE inventory FROM easygp;
 GRANT ALL ON TABLE inventory TO easygp;
-GRANT ALL ON TABLE inventory TO ian;
+GRANT ALL ON TABLE inventory TO staff;
 
 
 --
@@ -23083,7 +23150,7 @@ GRANT ALL ON TABLE inventory TO ian;
 REVOKE ALL ON TABLE inventory_lent FROM PUBLIC;
 REVOKE ALL ON TABLE inventory_lent FROM easygp;
 GRANT ALL ON TABLE inventory_lent TO easygp;
-GRANT ALL ON TABLE inventory_lent TO ian;
+GRANT ALL ON TABLE inventory_lent TO staff;
 
 
 --
@@ -23093,6 +23160,7 @@ GRANT ALL ON TABLE inventory_lent TO ian;
 REVOKE ALL ON SEQUENCE inventory_lent_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE inventory_lent_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE inventory_lent_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE inventory_lent_pk_seq TO staff;
 
 
 --
@@ -23102,7 +23170,7 @@ GRANT ALL ON SEQUENCE inventory_lent_pk_seq TO easygp;
 REVOKE ALL ON TABLE inventory_locations FROM PUBLIC;
 REVOKE ALL ON TABLE inventory_locations FROM easygp;
 GRANT ALL ON TABLE inventory_locations TO easygp;
-GRANT ALL ON TABLE inventory_locations TO ian;
+GRANT ALL ON TABLE inventory_locations TO staff;
 
 
 --
@@ -23112,6 +23180,7 @@ GRANT ALL ON TABLE inventory_locations TO ian;
 REVOKE ALL ON SEQUENCE inventory_locations_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE inventory_locations_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE inventory_locations_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE inventory_locations_pk_seq TO staff;
 
 
 --
@@ -23121,6 +23190,7 @@ GRANT ALL ON SEQUENCE inventory_locations_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE inventory_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE inventory_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE inventory_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE inventory_pk_seq TO staff;
 
 
 --
@@ -23130,6 +23200,7 @@ GRANT ALL ON SEQUENCE inventory_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE lu_active_status_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_active_status_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_active_status_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE lu_active_status_pk_seq TO staff;
 
 
 --
@@ -23139,7 +23210,7 @@ GRANT ALL ON SEQUENCE lu_active_status_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_appointment_icons FROM PUBLIC;
 REVOKE ALL ON TABLE lu_appointment_icons FROM easygp;
 GRANT ALL ON TABLE lu_appointment_icons TO easygp;
-GRANT ALL ON TABLE lu_appointment_icons TO ian;
+GRANT ALL ON TABLE lu_appointment_icons TO staff;
 
 
 --
@@ -23149,6 +23220,7 @@ GRANT ALL ON TABLE lu_appointment_icons TO ian;
 REVOKE ALL ON SEQUENCE lu_appointment_icons_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_appointment_icons_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_appointment_icons_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE lu_appointment_icons_pk_seq TO staff;
 
 
 --
@@ -23158,7 +23230,7 @@ GRANT ALL ON SEQUENCE lu_appointment_icons_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_appointment_status FROM PUBLIC;
 REVOKE ALL ON TABLE lu_appointment_status FROM easygp;
 GRANT ALL ON TABLE lu_appointment_status TO easygp;
-GRANT ALL ON TABLE lu_appointment_status TO ian;
+GRANT ALL ON TABLE lu_appointment_status TO staff;
 
 
 --
@@ -23168,6 +23240,7 @@ GRANT ALL ON TABLE lu_appointment_status TO ian;
 REVOKE ALL ON SEQUENCE lu_appointment_status_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_appointment_status_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_appointment_status_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE lu_appointment_status_pk_seq TO staff;
 
 
 --
@@ -23177,6 +23250,7 @@ GRANT ALL ON SEQUENCE lu_appointment_status_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE lu_centrelink_card_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_centrelink_card_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_centrelink_card_type_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE lu_centrelink_card_type_pk_seq TO staff;
 
 
 --
@@ -23186,7 +23260,7 @@ GRANT ALL ON SEQUENCE lu_centrelink_card_type_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_inventory_categories FROM PUBLIC;
 REVOKE ALL ON TABLE lu_inventory_categories FROM easygp;
 GRANT ALL ON TABLE lu_inventory_categories TO easygp;
-GRANT ALL ON TABLE lu_inventory_categories TO ian;
+GRANT ALL ON TABLE lu_inventory_categories TO staff;
 
 
 --
@@ -23196,6 +23270,7 @@ GRANT ALL ON TABLE lu_inventory_categories TO ian;
 REVOKE ALL ON SEQUENCE lu_inventory_categories_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_inventory_categories_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_inventory_categories_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE lu_inventory_categories_pk_seq TO staff;
 
 
 --
@@ -23205,7 +23280,7 @@ GRANT ALL ON SEQUENCE lu_inventory_categories_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_inventory_items FROM PUBLIC;
 REVOKE ALL ON TABLE lu_inventory_items FROM easygp;
 GRANT ALL ON TABLE lu_inventory_items TO easygp;
-GRANT ALL ON TABLE lu_inventory_items TO ian;
+GRANT ALL ON TABLE lu_inventory_items TO staff;
 
 
 --
@@ -23215,6 +23290,7 @@ GRANT ALL ON TABLE lu_inventory_items TO ian;
 REVOKE ALL ON SEQUENCE lu_inventory_items_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_inventory_items_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_inventory_items_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE lu_inventory_items_pk_seq TO staff;
 
 
 --
@@ -23224,6 +23300,7 @@ GRANT ALL ON SEQUENCE lu_inventory_items_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE lu_private_health_funds_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_private_health_funds_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_private_health_funds_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE lu_private_health_funds_pk_seq TO staff;
 
 
 --
@@ -23233,7 +23310,7 @@ GRANT ALL ON SEQUENCE lu_private_health_funds_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_task_types FROM PUBLIC;
 REVOKE ALL ON TABLE lu_task_types FROM easygp;
 GRANT ALL ON TABLE lu_task_types TO easygp;
-GRANT ALL ON TABLE lu_task_types TO ian;
+GRANT SELECT ON TABLE lu_task_types TO staff;
 
 
 --
@@ -23243,6 +23320,7 @@ GRANT ALL ON TABLE lu_task_types TO ian;
 REVOKE ALL ON SEQUENCE lu_task_types_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_task_types_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_task_types_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE lu_task_types_pk_seq TO staff;
 
 
 --
@@ -23252,6 +23330,7 @@ GRANT ALL ON SEQUENCE lu_task_types_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE lu_veteran_card_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_veteran_card_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_veteran_card_type_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE lu_veteran_card_type_pk_seq TO staff;
 
 
 --
@@ -23261,6 +23340,7 @@ GRANT ALL ON SEQUENCE lu_veteran_card_type_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE sessions_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE sessions_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE sessions_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE sessions_pk_seq TO staff;
 
 
 --
@@ -23270,7 +23350,7 @@ GRANT ALL ON SEQUENCE sessions_pk_seq TO easygp;
 REVOKE ALL ON TABLE task_component_notes FROM PUBLIC;
 REVOKE ALL ON TABLE task_component_notes FROM easygp;
 GRANT ALL ON TABLE task_component_notes TO easygp;
-GRANT ALL ON TABLE task_component_notes TO ian;
+GRANT ALL ON TABLE task_component_notes TO staff;
 
 
 --
@@ -23280,6 +23360,7 @@ GRANT ALL ON TABLE task_component_notes TO ian;
 REVOKE ALL ON SEQUENCE task_component_notes_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE task_component_notes_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE task_component_notes_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE task_component_notes_pk_seq TO staff;
 
 
 --
@@ -23289,7 +23370,7 @@ GRANT ALL ON SEQUENCE task_component_notes_pk_seq TO easygp;
 REVOKE ALL ON TABLE task_components FROM PUBLIC;
 REVOKE ALL ON TABLE task_components FROM easygp;
 GRANT ALL ON TABLE task_components TO easygp;
-GRANT ALL ON TABLE task_components TO ian;
+GRANT ALL ON TABLE task_components TO staff;
 
 
 --
@@ -23299,6 +23380,7 @@ GRANT ALL ON TABLE task_components TO ian;
 REVOKE ALL ON SEQUENCE task_components_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE task_components_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE task_components_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE task_components_pk_seq TO staff;
 
 
 --
@@ -23308,7 +23390,7 @@ GRANT ALL ON SEQUENCE task_components_pk_seq TO easygp;
 REVOKE ALL ON TABLE tasks FROM PUBLIC;
 REVOKE ALL ON TABLE tasks FROM easygp;
 GRANT ALL ON TABLE tasks TO easygp;
-GRANT ALL ON TABLE tasks TO ian;
+GRANT ALL ON TABLE tasks TO staff;
 
 
 --
@@ -23318,6 +23400,7 @@ GRANT ALL ON TABLE tasks TO ian;
 REVOKE ALL ON SEQUENCE tasks_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE tasks_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE tasks_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE tasks_pk_seq TO staff;
 
 
 --
@@ -23327,7 +23410,7 @@ GRANT ALL ON SEQUENCE tasks_pk_seq TO easygp;
 REVOKE ALL ON TABLE vwappointments FROM PUBLIC;
 REVOKE ALL ON TABLE vwappointments FROM easygp;
 GRANT ALL ON TABLE vwappointments TO easygp;
-GRANT ALL ON TABLE vwappointments TO ian;
+GRANT ALL ON TABLE vwappointments TO staff;
 
 
 --
@@ -23337,7 +23420,7 @@ GRANT ALL ON TABLE vwappointments TO ian;
 REVOKE ALL ON TABLE vwinventory FROM PUBLIC;
 REVOKE ALL ON TABLE vwinventory FROM easygp;
 GRANT ALL ON TABLE vwinventory TO easygp;
-GRANT ALL ON TABLE vwinventory TO ian;
+GRANT ALL ON TABLE vwinventory TO staff;
 
 
 SET search_path = common, pg_catalog;
@@ -23349,7 +23432,7 @@ SET search_path = common, pg_catalog;
 REVOKE ALL ON TABLE lu_urgency FROM PUBLIC;
 REVOKE ALL ON TABLE lu_urgency FROM easygp;
 GRANT ALL ON TABLE lu_urgency TO easygp;
-GRANT ALL ON TABLE lu_urgency TO ian;
+GRANT SELECT ON TABLE lu_urgency TO staff;
 
 
 SET search_path = clerical, pg_catalog;
@@ -23361,7 +23444,7 @@ SET search_path = clerical, pg_catalog;
 REVOKE ALL ON TABLE vwtaskscomponents FROM PUBLIC;
 REVOKE ALL ON TABLE vwtaskscomponents FROM easygp;
 GRANT ALL ON TABLE vwtaskscomponents TO easygp;
-GRANT ALL ON TABLE vwtaskscomponents TO ian;
+GRANT SELECT ON TABLE vwtaskscomponents TO staff;
 
 
 --
@@ -23371,7 +23454,7 @@ GRANT ALL ON TABLE vwtaskscomponents TO ian;
 REVOKE ALL ON TABLE vwtaskscomponentsandnotes FROM PUBLIC;
 REVOKE ALL ON TABLE vwtaskscomponentsandnotes FROM easygp;
 GRANT ALL ON TABLE vwtaskscomponentsandnotes TO easygp;
-GRANT ALL ON TABLE vwtaskscomponentsandnotes TO ian;
+GRANT SELECT ON TABLE vwtaskscomponentsandnotes TO staff;
 
 
 --
@@ -23381,7 +23464,7 @@ GRANT ALL ON TABLE vwtaskscomponentsandnotes TO ian;
 REVOKE ALL ON TABLE vwtaskscomponentsnotes FROM PUBLIC;
 REVOKE ALL ON TABLE vwtaskscomponentsnotes FROM easygp;
 GRANT ALL ON TABLE vwtaskscomponentsnotes TO easygp;
-GRANT ALL ON TABLE vwtaskscomponentsnotes TO ian;
+GRANT ALL ON TABLE vwtaskscomponentsnotes TO staff;
 
 
 SET search_path = clin_allergies, pg_catalog;
@@ -23393,7 +23476,7 @@ SET search_path = clin_allergies, pg_catalog;
 REVOKE ALL ON TABLE allergies FROM PUBLIC;
 REVOKE ALL ON TABLE allergies FROM easygp;
 GRANT ALL ON TABLE allergies TO easygp;
-GRANT ALL ON TABLE allergies TO ian;
+GRANT ALL ON TABLE allergies TO staff;
 
 
 --
@@ -23403,6 +23486,7 @@ GRANT ALL ON TABLE allergies TO ian;
 REVOKE ALL ON SEQUENCE allergies_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE allergies_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE allergies_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE allergies_pk_seq TO staff;
 
 
 --
@@ -23412,7 +23496,7 @@ GRANT ALL ON SEQUENCE allergies_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_reaction_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_reaction_type FROM easygp;
 GRANT ALL ON TABLE lu_reaction_type TO easygp;
-GRANT ALL ON TABLE lu_reaction_type TO ian;
+GRANT ALL ON TABLE lu_reaction_type TO staff;
 
 
 --
@@ -23422,6 +23506,7 @@ GRANT ALL ON TABLE lu_reaction_type TO ian;
 REVOKE ALL ON SEQUENCE lu_reaction_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_reaction_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_reaction_type_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_reaction_type_pk_seq TO staff;
 
 
 SET search_path = coding, pg_catalog;
@@ -23433,7 +23518,7 @@ SET search_path = coding, pg_catalog;
 REVOKE ALL ON TABLE generic_terms FROM PUBLIC;
 REVOKE ALL ON TABLE generic_terms FROM easygp;
 GRANT ALL ON TABLE generic_terms TO easygp;
-GRANT ALL ON TABLE generic_terms TO ian;
+GRANT SELECT ON TABLE generic_terms TO staff;
 
 
 --
@@ -23443,7 +23528,7 @@ GRANT ALL ON TABLE generic_terms TO ian;
 REVOKE ALL ON TABLE lu_systems FROM PUBLIC;
 REVOKE ALL ON TABLE lu_systems FROM easygp;
 GRANT ALL ON TABLE lu_systems TO easygp;
-GRANT ALL ON TABLE lu_systems TO ian;
+GRANT SELECT ON TABLE lu_systems TO staff;
 
 
 SET search_path = drugs, pg_catalog;
@@ -23455,7 +23540,7 @@ SET search_path = drugs, pg_catalog;
 REVOKE ALL ON TABLE atc FROM PUBLIC;
 REVOKE ALL ON TABLE atc FROM easygp;
 GRANT ALL ON TABLE atc TO easygp;
-GRANT ALL ON TABLE atc TO ian;
+GRANT ALL ON TABLE atc TO staff;
 
 
 --
@@ -23465,7 +23550,7 @@ GRANT ALL ON TABLE atc TO ian;
 REVOKE ALL ON TABLE brand FROM PUBLIC;
 REVOKE ALL ON TABLE brand FROM easygp;
 GRANT ALL ON TABLE brand TO easygp;
-GRANT ALL ON TABLE brand TO ian;
+GRANT ALL ON TABLE brand TO staff;
 
 
 --
@@ -23475,7 +23560,7 @@ GRANT ALL ON TABLE brand TO ian;
 REVOKE ALL ON TABLE product FROM PUBLIC;
 REVOKE ALL ON TABLE product FROM easygp;
 GRANT ALL ON TABLE product TO easygp;
-GRANT ALL ON TABLE product TO ian;
+GRANT ALL ON TABLE product TO staff;
 
 
 SET search_path = clin_allergies, pg_catalog;
@@ -23487,7 +23572,7 @@ SET search_path = clin_allergies, pg_catalog;
 REVOKE ALL ON TABLE vwallergies FROM PUBLIC;
 REVOKE ALL ON TABLE vwallergies FROM easygp;
 GRANT ALL ON TABLE vwallergies TO easygp;
-GRANT ALL ON TABLE vwallergies TO ian;
+GRANT ALL ON TABLE vwallergies TO staff;
 
 
 SET search_path = clin_careplans, pg_catalog;
@@ -23499,7 +23584,7 @@ SET search_path = clin_careplans, pg_catalog;
 REVOKE ALL ON TABLE careplan_pages FROM PUBLIC;
 REVOKE ALL ON TABLE careplan_pages FROM easygp;
 GRANT ALL ON TABLE careplan_pages TO easygp;
-GRANT ALL ON TABLE careplan_pages TO ian;
+GRANT ALL ON TABLE careplan_pages TO staff;
 
 
 --
@@ -23509,6 +23594,7 @@ GRANT ALL ON TABLE careplan_pages TO ian;
 REVOKE ALL ON SEQUENCE careplan_pages_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE careplan_pages_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE careplan_pages_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE careplan_pages_pk_seq TO staff;
 
 
 --
@@ -23518,7 +23604,7 @@ GRANT ALL ON SEQUENCE careplan_pages_pk_seq TO easygp;
 REVOKE ALL ON TABLE careplans FROM PUBLIC;
 REVOKE ALL ON TABLE careplans FROM easygp;
 GRANT ALL ON TABLE careplans TO easygp;
-GRANT ALL ON TABLE careplans TO ian;
+GRANT ALL ON TABLE careplans TO staff;
 
 
 --
@@ -23528,6 +23614,7 @@ GRANT ALL ON TABLE careplans TO ian;
 REVOKE ALL ON SEQUENCE careplans_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE careplans_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE careplans_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE careplans_pk_seq TO staff;
 
 
 --
@@ -23537,7 +23624,7 @@ GRANT ALL ON SEQUENCE careplans_pk_seq TO easygp;
 REVOKE ALL ON TABLE component_task_due FROM PUBLIC;
 REVOKE ALL ON TABLE component_task_due FROM easygp;
 GRANT ALL ON TABLE component_task_due TO easygp;
-GRANT ALL ON TABLE component_task_due TO ian;
+GRANT ALL ON TABLE component_task_due TO staff;
 
 
 --
@@ -23547,6 +23634,7 @@ GRANT ALL ON TABLE component_task_due TO ian;
 REVOKE ALL ON SEQUENCE component_task_due_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE component_task_due_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE component_task_due_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE component_task_due_pk_seq TO staff;
 
 
 --
@@ -23556,7 +23644,7 @@ GRANT ALL ON SEQUENCE component_task_due_pk_seq TO easygp;
 REVOKE ALL ON TABLE link_careplanpage_advice FROM PUBLIC;
 REVOKE ALL ON TABLE link_careplanpage_advice FROM easygp;
 GRANT ALL ON TABLE link_careplanpage_advice TO easygp;
-GRANT ALL ON TABLE link_careplanpage_advice TO ian;
+GRANT ALL ON TABLE link_careplanpage_advice TO staff;
 
 
 --
@@ -23566,6 +23654,7 @@ GRANT ALL ON TABLE link_careplanpage_advice TO ian;
 REVOKE ALL ON SEQUENCE link_careplanpage_advice_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE link_careplanpage_advice_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE link_careplanpage_advice_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE link_careplanpage_advice_pk_seq TO staff;
 
 
 --
@@ -23575,7 +23664,7 @@ GRANT ALL ON SEQUENCE link_careplanpage_advice_pk_seq TO easygp;
 REVOKE ALL ON TABLE link_careplanpage_components FROM PUBLIC;
 REVOKE ALL ON TABLE link_careplanpage_components FROM easygp;
 GRANT ALL ON TABLE link_careplanpage_components TO easygp;
-GRANT ALL ON TABLE link_careplanpage_components TO ian;
+GRANT ALL ON TABLE link_careplanpage_components TO staff;
 
 
 --
@@ -23585,6 +23674,7 @@ GRANT ALL ON TABLE link_careplanpage_components TO ian;
 REVOKE ALL ON SEQUENCE link_careplanpage_components_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE link_careplanpage_components_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE link_careplanpage_components_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE link_careplanpage_components_pk_seq TO staff;
 
 
 --
@@ -23594,7 +23684,7 @@ GRANT ALL ON SEQUENCE link_careplanpage_components_pk_seq TO easygp;
 REVOKE ALL ON TABLE link_careplanpages_careplan FROM PUBLIC;
 REVOKE ALL ON TABLE link_careplanpages_careplan FROM easygp;
 GRANT ALL ON TABLE link_careplanpages_careplan TO easygp;
-GRANT ALL ON TABLE link_careplanpages_careplan TO ian;
+GRANT ALL ON TABLE link_careplanpages_careplan TO staff;
 
 
 --
@@ -23604,6 +23694,7 @@ GRANT ALL ON TABLE link_careplanpages_careplan TO ian;
 REVOKE ALL ON SEQUENCE link_careplanpages_careplan_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE link_careplanpages_careplan_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE link_careplanpages_careplan_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE link_careplanpages_careplan_pk_seq TO staff;
 
 
 --
@@ -23613,7 +23704,7 @@ GRANT ALL ON SEQUENCE link_careplanpages_careplan_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_advice FROM PUBLIC;
 REVOKE ALL ON TABLE lu_advice FROM easygp;
 GRANT ALL ON TABLE lu_advice TO easygp;
-GRANT ALL ON TABLE lu_advice TO ian;
+GRANT SELECT,INSERT ON TABLE lu_advice TO staff;
 
 
 --
@@ -23623,6 +23714,7 @@ GRANT ALL ON TABLE lu_advice TO ian;
 REVOKE ALL ON SEQUENCE lu_advice_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_advice_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_advice_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_advice_pk_seq TO staff;
 
 
 --
@@ -23632,7 +23724,7 @@ GRANT ALL ON SEQUENCE lu_advice_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_aims FROM PUBLIC;
 REVOKE ALL ON TABLE lu_aims FROM easygp;
 GRANT ALL ON TABLE lu_aims TO easygp;
-GRANT ALL ON TABLE lu_aims TO ian;
+GRANT SELECT,INSERT ON TABLE lu_aims TO staff;
 
 
 --
@@ -23642,6 +23734,7 @@ GRANT ALL ON TABLE lu_aims TO ian;
 REVOKE ALL ON SEQUENCE lu_aims_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_aims_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_aims_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_aims_pk_seq TO staff;
 
 
 --
@@ -23651,7 +23744,7 @@ GRANT ALL ON SEQUENCE lu_aims_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_components FROM PUBLIC;
 REVOKE ALL ON TABLE lu_components FROM easygp;
 GRANT ALL ON TABLE lu_components TO easygp;
-GRANT ALL ON TABLE lu_components TO ian;
+GRANT SELECT,INSERT ON TABLE lu_components TO staff;
 
 
 --
@@ -23661,6 +23754,7 @@ GRANT ALL ON TABLE lu_components TO ian;
 REVOKE ALL ON SEQUENCE lu_components_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_components_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_components_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_components_pk_seq TO staff;
 
 
 --
@@ -23670,7 +23764,7 @@ GRANT ALL ON SEQUENCE lu_components_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_conditions FROM PUBLIC;
 REVOKE ALL ON TABLE lu_conditions FROM easygp;
 GRANT ALL ON TABLE lu_conditions TO easygp;
-GRANT ALL ON TABLE lu_conditions TO ian;
+GRANT SELECT,INSERT ON TABLE lu_conditions TO staff;
 
 
 --
@@ -23680,6 +23774,7 @@ GRANT ALL ON TABLE lu_conditions TO ian;
 REVOKE ALL ON SEQUENCE lu_conditions_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_conditions_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_conditions_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_conditions_pk_seq TO staff;
 
 
 --
@@ -23689,7 +23784,7 @@ GRANT ALL ON SEQUENCE lu_conditions_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_education FROM PUBLIC;
 REVOKE ALL ON TABLE lu_education FROM easygp;
 GRANT ALL ON TABLE lu_education TO easygp;
-GRANT ALL ON TABLE lu_education TO ian;
+GRANT SELECT,INSERT ON TABLE lu_education TO staff;
 
 
 --
@@ -23699,6 +23794,7 @@ GRANT ALL ON TABLE lu_education TO ian;
 REVOKE ALL ON SEQUENCE lu_education_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_education_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_education_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_education_pk_seq TO staff;
 
 
 --
@@ -23708,7 +23804,7 @@ GRANT ALL ON SEQUENCE lu_education_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_responsible FROM PUBLIC;
 REVOKE ALL ON TABLE lu_responsible FROM easygp;
 GRANT ALL ON TABLE lu_responsible TO easygp;
-GRANT ALL ON TABLE lu_responsible TO ian;
+GRANT SELECT,INSERT ON TABLE lu_responsible TO staff;
 
 
 --
@@ -23718,6 +23814,7 @@ GRANT ALL ON TABLE lu_responsible TO ian;
 REVOKE ALL ON SEQUENCE lu_responsible_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_responsible_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_responsible_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_responsible_pk_seq TO staff;
 
 
 --
@@ -23727,7 +23824,7 @@ GRANT ALL ON SEQUENCE lu_responsible_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_tasks FROM PUBLIC;
 REVOKE ALL ON TABLE lu_tasks FROM easygp;
 GRANT ALL ON TABLE lu_tasks TO easygp;
-GRANT ALL ON TABLE lu_tasks TO ian;
+GRANT SELECT,INSERT ON TABLE lu_tasks TO staff;
 
 
 --
@@ -23737,6 +23834,7 @@ GRANT ALL ON TABLE lu_tasks TO ian;
 REVOKE ALL ON SEQUENCE lu_tasks_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_tasks_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_tasks_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_tasks_pk_seq TO staff;
 
 
 --
@@ -23746,7 +23844,7 @@ GRANT ALL ON SEQUENCE lu_tasks_pk_seq TO easygp;
 REVOKE ALL ON TABLE sample_plan FROM PUBLIC;
 REVOKE ALL ON TABLE sample_plan FROM easygp;
 GRANT ALL ON TABLE sample_plan TO easygp;
-GRANT ALL ON TABLE sample_plan TO ian;
+GRANT ALL ON TABLE sample_plan TO staff;
 
 
 --
@@ -23756,7 +23854,7 @@ GRANT ALL ON TABLE sample_plan TO ian;
 REVOKE ALL ON TABLE test FROM PUBLIC;
 REVOKE ALL ON TABLE test FROM easygp;
 GRANT ALL ON TABLE test TO easygp;
-GRANT ALL ON TABLE test TO ian;
+GRANT ALL ON TABLE test TO staff;
 
 
 SET search_path = clin_certificates, pg_catalog;
@@ -23768,7 +23866,15 @@ SET search_path = clin_certificates, pg_catalog;
 REVOKE ALL ON TABLE certificate_reasons FROM PUBLIC;
 REVOKE ALL ON TABLE certificate_reasons FROM easygp;
 GRANT ALL ON TABLE certificate_reasons TO easygp;
-GRANT ALL ON TABLE certificate_reasons TO ian;
+
+
+--
+-- Name: certificate_reasons_pk_seq; Type: ACL; Schema: clin_certificates; Owner: easygp
+--
+
+REVOKE ALL ON SEQUENCE certificate_reasons_pk_seq FROM PUBLIC;
+REVOKE ALL ON SEQUENCE certificate_reasons_pk_seq FROM easygp;
+GRANT ALL ON SEQUENCE certificate_reasons_pk_seq TO easygp;
 
 
 --
@@ -23778,7 +23884,15 @@ GRANT ALL ON TABLE certificate_reasons TO ian;
 REVOKE ALL ON TABLE lu_fitness FROM PUBLIC;
 REVOKE ALL ON TABLE lu_fitness FROM easygp;
 GRANT ALL ON TABLE lu_fitness TO easygp;
-GRANT ALL ON TABLE lu_fitness TO ian;
+
+
+--
+-- Name: lu_fitness_pk_seq; Type: ACL; Schema: clin_certificates; Owner: easygp
+--
+
+REVOKE ALL ON SEQUENCE lu_fitness_pk_seq FROM PUBLIC;
+REVOKE ALL ON SEQUENCE lu_fitness_pk_seq FROM easygp;
+GRANT ALL ON SEQUENCE lu_fitness_pk_seq TO easygp;
 
 
 --
@@ -23788,7 +23902,7 @@ GRANT ALL ON TABLE lu_fitness TO ian;
 REVOKE ALL ON TABLE lu_illness_temporality FROM PUBLIC;
 REVOKE ALL ON TABLE lu_illness_temporality FROM easygp;
 GRANT ALL ON TABLE lu_illness_temporality TO easygp;
-GRANT ALL ON TABLE lu_illness_temporality TO ian;
+GRANT SELECT ON TABLE lu_illness_temporality TO staff;
 
 
 --
@@ -23798,6 +23912,7 @@ GRANT ALL ON TABLE lu_illness_temporality TO ian;
 REVOKE ALL ON SEQUENCE lu_illness_temporality_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_illness_temporality_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_illness_temporality_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_illness_temporality_pk_seq TO staff;
 
 
 --
@@ -23807,7 +23922,6 @@ GRANT ALL ON SEQUENCE lu_illness_temporality_pk_seq TO easygp;
 REVOKE ALL ON TABLE medical_certificates FROM PUBLIC;
 REVOKE ALL ON TABLE medical_certificates FROM easygp;
 GRANT ALL ON TABLE medical_certificates TO easygp;
-GRANT ALL ON TABLE medical_certificates TO ian;
 
 
 --
@@ -23817,6 +23931,7 @@ GRANT ALL ON TABLE medical_certificates TO ian;
 REVOKE ALL ON SEQUENCE medical_certificate_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE medical_certificate_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE medical_certificate_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE medical_certificate_pk_seq TO staff;
 
 
 --
@@ -23826,7 +23941,7 @@ GRANT ALL ON SEQUENCE medical_certificate_pk_seq TO easygp;
 REVOKE ALL ON TABLE vwmedicalcertificates FROM PUBLIC;
 REVOKE ALL ON TABLE vwmedicalcertificates FROM easygp;
 GRANT ALL ON TABLE vwmedicalcertificates TO easygp;
-GRANT ALL ON TABLE vwmedicalcertificates TO ian;
+GRANT SELECT ON TABLE vwmedicalcertificates TO staff;
 
 
 SET search_path = clin_checkups, pg_catalog;
@@ -23838,7 +23953,7 @@ SET search_path = clin_checkups, pg_catalog;
 REVOKE ALL ON TABLE annual_checkup FROM PUBLIC;
 REVOKE ALL ON TABLE annual_checkup FROM easygp;
 GRANT ALL ON TABLE annual_checkup TO easygp;
-GRANT ALL ON TABLE annual_checkup TO ian;
+GRANT ALL ON TABLE annual_checkup TO staff;
 
 
 --
@@ -23848,6 +23963,7 @@ GRANT ALL ON TABLE annual_checkup TO ian;
 REVOKE ALL ON SEQUENCE annual_checkup_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE annual_checkup_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE annual_checkup_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE annual_checkup_pk_seq TO staff;
 
 
 --
@@ -23857,7 +23973,7 @@ GRANT ALL ON SEQUENCE annual_checkup_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_nutrition_questions FROM PUBLIC;
 REVOKE ALL ON TABLE lu_nutrition_questions FROM easygp;
 GRANT ALL ON TABLE lu_nutrition_questions TO easygp;
-GRANT ALL ON TABLE lu_nutrition_questions TO ian;
+GRANT SELECT ON TABLE lu_nutrition_questions TO staff;
 
 
 --
@@ -23867,6 +23983,7 @@ GRANT ALL ON TABLE lu_nutrition_questions TO ian;
 REVOKE ALL ON SEQUENCE lu_nutrition_questions_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_nutrition_questions_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_nutrition_questions_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_nutrition_questions_pk_seq TO staff;
 
 
 --
@@ -23876,7 +23993,7 @@ GRANT ALL ON SEQUENCE lu_nutrition_questions_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_state_of_health FROM PUBLIC;
 REVOKE ALL ON TABLE lu_state_of_health FROM easygp;
 GRANT ALL ON TABLE lu_state_of_health TO easygp;
-GRANT ALL ON TABLE lu_state_of_health TO ian;
+GRANT SELECT ON TABLE lu_state_of_health TO staff;
 
 
 --
@@ -23886,6 +24003,7 @@ GRANT ALL ON TABLE lu_state_of_health TO ian;
 REVOKE ALL ON SEQUENCE lu_state_of_health_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_state_of_health_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_state_of_health_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_state_of_health_pk_seq TO staff;
 
 
 --
@@ -23895,7 +24013,7 @@ GRANT ALL ON SEQUENCE lu_state_of_health_pk_seq TO easygp;
 REVOKE ALL ON TABLE over75 FROM PUBLIC;
 REVOKE ALL ON TABLE over75 FROM easygp;
 GRANT ALL ON TABLE over75 TO easygp;
-GRANT ALL ON TABLE over75 TO ian;
+GRANT SELECT,INSERT,UPDATE ON TABLE over75 TO staff;
 
 
 --
@@ -23905,6 +24023,7 @@ GRANT ALL ON TABLE over75 TO ian;
 REVOKE ALL ON SEQUENCE over75_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE over75_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE over75_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE over75_pk_seq TO staff;
 
 
 SET search_path = clin_consult, pg_catalog;
@@ -23916,6 +24035,7 @@ SET search_path = clin_consult, pg_catalog;
 REVOKE ALL ON SEQUENCE consult_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE consult_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE consult_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE consult_pk_seq TO staff;
 
 
 --
@@ -23929,13 +24049,23 @@ GRANT ALL ON TABLE dictations TO staff;
 
 
 --
+-- Name: dictations_pk_seq; Type: ACL; Schema: clin_consult; Owner: easygp
+--
+
+REVOKE ALL ON SEQUENCE dictations_pk_seq FROM PUBLIC;
+REVOKE ALL ON SEQUENCE dictations_pk_seq FROM easygp;
+GRANT ALL ON SEQUENCE dictations_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE dictations_pk_seq TO staff;
+
+
+--
 -- Name: images; Type: ACL; Schema: clin_consult; Owner: easygp
 --
 
 REVOKE ALL ON TABLE images FROM PUBLIC;
 REVOKE ALL ON TABLE images FROM easygp;
 GRANT ALL ON TABLE images TO easygp;
-GRANT ALL ON TABLE images TO ian;
+GRANT ALL ON TABLE images TO staff;
 
 
 --
@@ -23945,6 +24075,7 @@ GRANT ALL ON TABLE images TO ian;
 REVOKE ALL ON SEQUENCE images_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE images_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE images_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE images_pk_seq TO staff;
 
 
 --
@@ -23954,6 +24085,7 @@ GRANT ALL ON SEQUENCE images_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE lu_actions_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_actions_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_actions_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_actions_pk_seq TO staff;
 
 
 --
@@ -23963,6 +24095,7 @@ GRANT ALL ON SEQUENCE lu_actions_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE lu_audit_reasons_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_audit_reasons_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_audit_reasons_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_audit_reasons_pk_seq TO staff;
 
 
 --
@@ -23972,6 +24105,7 @@ GRANT ALL ON SEQUENCE lu_audit_reasons_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE lu_consult_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_consult_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_consult_type_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_consult_type_pk_seq TO staff;
 
 
 --
@@ -23981,7 +24115,7 @@ GRANT ALL ON SEQUENCE lu_consult_type_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_progressnote_templates FROM PUBLIC;
 REVOKE ALL ON TABLE lu_progressnote_templates FROM easygp;
 GRANT ALL ON TABLE lu_progressnote_templates TO easygp;
-GRANT ALL ON TABLE lu_progressnote_templates TO ian;
+GRANT ALL ON TABLE lu_progressnote_templates TO staff;
 
 
 --
@@ -23991,6 +24125,7 @@ GRANT ALL ON TABLE lu_progressnote_templates TO ian;
 REVOKE ALL ON SEQUENCE lu_progressnote_templates_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_progressnote_templates_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_progressnote_templates_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_progressnote_templates_pk_seq TO staff;
 
 
 --
@@ -24000,6 +24135,7 @@ GRANT ALL ON SEQUENCE lu_progressnote_templates_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE lu_progressnotes_sections_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_progressnotes_sections_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_progressnotes_sections_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_progressnotes_sections_pk_seq TO staff;
 
 
 --
@@ -24009,7 +24145,7 @@ GRANT ALL ON SEQUENCE lu_progressnotes_sections_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_scratchpad_status FROM PUBLIC;
 REVOKE ALL ON TABLE lu_scratchpad_status FROM easygp;
 GRANT ALL ON TABLE lu_scratchpad_status TO easygp;
-GRANT ALL ON TABLE lu_scratchpad_status TO ian;
+GRANT SELECT ON TABLE lu_scratchpad_status TO staff;
 
 
 --
@@ -24019,6 +24155,7 @@ GRANT ALL ON TABLE lu_scratchpad_status TO ian;
 REVOKE ALL ON SEQUENCE lu_scratchpad_status_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_scratchpad_status_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_scratchpad_status_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_scratchpad_status_pk_seq TO staff;
 
 
 --
@@ -24028,6 +24165,7 @@ GRANT ALL ON SEQUENCE lu_scratchpad_status_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE progressnotes_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE progressnotes_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE progressnotes_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE progressnotes_pk_seq TO staff;
 
 
 --
@@ -24037,7 +24175,7 @@ GRANT ALL ON SEQUENCE progressnotes_pk_seq TO easygp;
 REVOKE ALL ON TABLE scratchpad FROM PUBLIC;
 REVOKE ALL ON TABLE scratchpad FROM easygp;
 GRANT ALL ON TABLE scratchpad TO easygp;
-GRANT ALL ON TABLE scratchpad TO ian;
+GRANT ALL ON TABLE scratchpad TO staff;
 
 
 --
@@ -24047,6 +24185,7 @@ GRANT ALL ON TABLE scratchpad TO ian;
 REVOKE ALL ON SEQUENCE scratchpad_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE scratchpad_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE scratchpad_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE scratchpad_pk_seq TO staff;
 
 
 SET search_path = clin_referrals, pg_catalog;
@@ -24058,7 +24197,7 @@ SET search_path = clin_referrals, pg_catalog;
 REVOKE ALL ON TABLE referrals FROM PUBLIC;
 REVOKE ALL ON TABLE referrals FROM easygp;
 GRANT ALL ON TABLE referrals TO easygp;
-GRANT ALL ON TABLE referrals TO ian;
+GRANT ALL ON TABLE referrals TO staff;
 
 
 SET search_path = clin_consult, pg_catalog;
@@ -24070,7 +24209,7 @@ SET search_path = clin_consult, pg_catalog;
 REVOKE ALL ON TABLE vwpatientconsults FROM PUBLIC;
 REVOKE ALL ON TABLE vwpatientconsults FROM easygp;
 GRANT ALL ON TABLE vwpatientconsults TO easygp;
-GRANT ALL ON TABLE vwpatientconsults TO ian;
+GRANT ALL ON TABLE vwpatientconsults TO staff;
 
 
 --
@@ -24080,7 +24219,6 @@ GRANT ALL ON TABLE vwpatientconsults TO ian;
 REVOKE ALL ON TABLE vwprogressnotes1 FROM PUBLIC;
 REVOKE ALL ON TABLE vwprogressnotes1 FROM easygp;
 GRANT ALL ON TABLE vwprogressnotes1 TO easygp;
-GRANT ALL ON TABLE vwprogressnotes1 TO ian;
 
 
 --
@@ -24090,7 +24228,7 @@ GRANT ALL ON TABLE vwprogressnotes1 TO ian;
 REVOKE ALL ON TABLE vwscratchpad FROM PUBLIC;
 REVOKE ALL ON TABLE vwscratchpad FROM easygp;
 GRANT ALL ON TABLE vwscratchpad TO easygp;
-GRANT ALL ON TABLE vwscratchpad TO ian;
+GRANT ALL ON TABLE vwscratchpad TO staff;
 
 
 SET search_path = clin_history, pg_catalog;
@@ -24102,7 +24240,6 @@ SET search_path = clin_history, pg_catalog;
 REVOKE ALL ON TABLE care_plan_components FROM PUBLIC;
 REVOKE ALL ON TABLE care_plan_components FROM easygp;
 GRANT ALL ON TABLE care_plan_components TO easygp;
-GRANT ALL ON TABLE care_plan_components TO ian;
 
 
 --
@@ -24112,7 +24249,7 @@ GRANT ALL ON TABLE care_plan_components TO ian;
 REVOKE ALL ON TABLE care_plan_components_due FROM PUBLIC;
 REVOKE ALL ON TABLE care_plan_components_due FROM easygp;
 GRANT ALL ON TABLE care_plan_components_due TO easygp;
-GRANT ALL ON TABLE care_plan_components_due TO ian;
+GRANT SELECT,INSERT,UPDATE ON TABLE care_plan_components_due TO staff;
 
 
 --
@@ -24122,6 +24259,7 @@ GRANT ALL ON TABLE care_plan_components_due TO ian;
 REVOKE ALL ON SEQUENCE care_plan_components_due_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE care_plan_components_due_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE care_plan_components_due_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE care_plan_components_due_pk_seq TO staff;
 
 
 --
@@ -24131,7 +24269,7 @@ GRANT ALL ON SEQUENCE care_plan_components_due_pk_seq TO easygp;
 REVOKE ALL ON TABLE family_conditions FROM PUBLIC;
 REVOKE ALL ON TABLE family_conditions FROM easygp;
 GRANT ALL ON TABLE family_conditions TO easygp;
-GRANT ALL ON TABLE family_conditions TO ian;
+GRANT ALL ON TABLE family_conditions TO staff;
 
 
 --
@@ -24141,6 +24279,7 @@ GRANT ALL ON TABLE family_conditions TO ian;
 REVOKE ALL ON SEQUENCE family_conditions_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE family_conditions_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE family_conditions_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE family_conditions_pk_seq TO staff;
 
 
 --
@@ -24150,7 +24289,7 @@ GRANT ALL ON SEQUENCE family_conditions_pk_seq TO easygp;
 REVOKE ALL ON TABLE family_links FROM PUBLIC;
 REVOKE ALL ON TABLE family_links FROM easygp;
 GRANT ALL ON TABLE family_links TO easygp;
-GRANT ALL ON TABLE family_links TO ian;
+GRANT ALL ON TABLE family_links TO staff;
 
 
 --
@@ -24160,6 +24299,7 @@ GRANT ALL ON TABLE family_links TO ian;
 REVOKE ALL ON SEQUENCE family_links_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE family_links_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE family_links_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE family_links_pk_seq TO staff;
 
 
 --
@@ -24169,7 +24309,7 @@ GRANT ALL ON SEQUENCE family_links_pk_seq TO easygp;
 REVOKE ALL ON TABLE family_members FROM PUBLIC;
 REVOKE ALL ON TABLE family_members FROM easygp;
 GRANT ALL ON TABLE family_members TO easygp;
-GRANT ALL ON TABLE family_members TO ian;
+GRANT ALL ON TABLE family_members TO staff;
 
 
 --
@@ -24179,6 +24319,7 @@ GRANT ALL ON TABLE family_members TO ian;
 REVOKE ALL ON SEQUENCE family_members_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE family_members_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE family_members_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE family_members_pk_seq TO staff;
 
 
 --
@@ -24188,7 +24329,7 @@ GRANT ALL ON SEQUENCE family_members_pk_seq TO easygp;
 REVOKE ALL ON TABLE hospitalisations FROM PUBLIC;
 REVOKE ALL ON TABLE hospitalisations FROM easygp;
 GRANT ALL ON TABLE hospitalisations TO easygp;
-GRANT ALL ON TABLE hospitalisations TO ian;
+GRANT ALL ON TABLE hospitalisations TO staff;
 
 
 --
@@ -24198,6 +24339,7 @@ GRANT ALL ON TABLE hospitalisations TO ian;
 REVOKE ALL ON SEQUENCE hospitalisations_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE hospitalisations_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE hospitalisations_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE hospitalisations_pk_seq TO staff;
 
 
 --
@@ -24207,7 +24349,7 @@ GRANT ALL ON SEQUENCE hospitalisations_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_careplan_components FROM PUBLIC;
 REVOKE ALL ON TABLE lu_careplan_components FROM easygp;
 GRANT ALL ON TABLE lu_careplan_components TO easygp;
-GRANT ALL ON TABLE lu_careplan_components TO ian;
+GRANT SELECT ON TABLE lu_careplan_components TO staff;
 
 
 --
@@ -24217,7 +24359,7 @@ GRANT ALL ON TABLE lu_careplan_components TO ian;
 REVOKE ALL ON TABLE lu_dacc_components FROM PUBLIC;
 REVOKE ALL ON TABLE lu_dacc_components FROM easygp;
 GRANT ALL ON TABLE lu_dacc_components TO easygp;
-GRANT ALL ON TABLE lu_dacc_components TO ian;
+GRANT SELECT ON TABLE lu_dacc_components TO staff;
 
 
 --
@@ -24227,6 +24369,7 @@ GRANT ALL ON TABLE lu_dacc_components TO ian;
 REVOKE ALL ON SEQUENCE lu_dacc_components_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_dacc_components_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_dacc_components_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_dacc_components_pk_seq TO staff;
 
 
 --
@@ -24236,7 +24379,7 @@ GRANT ALL ON SEQUENCE lu_dacc_components_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_exposures FROM PUBLIC;
 REVOKE ALL ON TABLE lu_exposures FROM easygp;
 GRANT ALL ON TABLE lu_exposures TO easygp;
-GRANT ALL ON TABLE lu_exposures TO ian;
+GRANT SELECT,INSERT ON TABLE lu_exposures TO staff;
 
 
 --
@@ -24246,6 +24389,7 @@ GRANT ALL ON TABLE lu_exposures TO ian;
 REVOKE ALL ON SEQUENCE lu_exposures_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_exposures_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_exposures_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_exposures_pk_seq TO staff;
 
 
 --
@@ -24255,7 +24399,7 @@ GRANT ALL ON SEQUENCE lu_exposures_pk_seq TO easygp;
 REVOKE ALL ON TABLE occupational_history FROM PUBLIC;
 REVOKE ALL ON TABLE occupational_history FROM easygp;
 GRANT ALL ON TABLE occupational_history TO easygp;
-GRANT ALL ON TABLE occupational_history TO ian;
+GRANT ALL ON TABLE occupational_history TO staff;
 
 
 --
@@ -24265,6 +24409,7 @@ GRANT ALL ON TABLE occupational_history TO ian;
 REVOKE ALL ON SEQUENCE occupational_history_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE occupational_history_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE occupational_history_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE occupational_history_pk_seq TO staff;
 
 
 --
@@ -24274,7 +24419,7 @@ GRANT ALL ON SEQUENCE occupational_history_pk_seq TO easygp;
 REVOKE ALL ON TABLE occupations_exposures FROM PUBLIC;
 REVOKE ALL ON TABLE occupations_exposures FROM easygp;
 GRANT ALL ON TABLE occupations_exposures TO easygp;
-GRANT ALL ON TABLE occupations_exposures TO ian;
+GRANT SELECT,INSERT,UPDATE ON TABLE occupations_exposures TO staff;
 
 
 --
@@ -24284,6 +24429,7 @@ GRANT ALL ON TABLE occupations_exposures TO ian;
 REVOKE ALL ON SEQUENCE occupations_exposures_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE occupations_exposures_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE occupations_exposures_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE occupations_exposures_pk_seq TO staff;
 
 
 --
@@ -24293,7 +24439,7 @@ GRANT ALL ON SEQUENCE occupations_exposures_pk_seq TO easygp;
 REVOKE ALL ON TABLE past_history FROM PUBLIC;
 REVOKE ALL ON TABLE past_history FROM easygp;
 GRANT ALL ON TABLE past_history TO easygp;
-GRANT ALL ON TABLE past_history TO ian;
+GRANT ALL ON TABLE past_history TO staff;
 
 
 --
@@ -24303,6 +24449,7 @@ GRANT ALL ON TABLE past_history TO ian;
 REVOKE ALL ON SEQUENCE past_history_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE past_history_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE past_history_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE past_history_pk_seq TO staff;
 
 
 --
@@ -24322,7 +24469,7 @@ GRANT SELECT ON TABLE recreational_drugs TO staff;
 REVOKE ALL ON TABLE social_history FROM PUBLIC;
 REVOKE ALL ON TABLE social_history FROM easygp;
 GRANT ALL ON TABLE social_history TO easygp;
-GRANT ALL ON TABLE social_history TO ian;
+GRANT ALL ON TABLE social_history TO staff;
 
 
 --
@@ -24332,6 +24479,7 @@ GRANT ALL ON TABLE social_history TO ian;
 REVOKE ALL ON SEQUENCE social_history_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE social_history_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE social_history_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE social_history_pk_seq TO staff;
 
 
 --
@@ -24341,7 +24489,7 @@ GRANT ALL ON SEQUENCE social_history_pk_seq TO easygp;
 REVOKE ALL ON TABLE team_care_members FROM PUBLIC;
 REVOKE ALL ON TABLE team_care_members FROM easygp;
 GRANT ALL ON TABLE team_care_members TO easygp;
-GRANT ALL ON TABLE team_care_members TO ian;
+GRANT SELECT,INSERT,UPDATE ON TABLE team_care_members TO staff;
 
 
 --
@@ -24351,6 +24499,7 @@ GRANT ALL ON TABLE team_care_members TO ian;
 REVOKE ALL ON SEQUENCE team_care_members_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE team_care_members_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE team_care_members_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE team_care_members_pk_seq TO staff;
 
 
 SET search_path = clin_recalls, pg_catalog;
@@ -24362,7 +24511,7 @@ SET search_path = clin_recalls, pg_catalog;
 REVOKE ALL ON TABLE lu_reasons FROM PUBLIC;
 REVOKE ALL ON TABLE lu_reasons FROM easygp;
 GRANT ALL ON TABLE lu_reasons TO easygp;
-GRANT ALL ON TABLE lu_reasons TO ian;
+GRANT SELECT,INSERT ON TABLE lu_reasons TO staff;
 
 
 --
@@ -24372,7 +24521,7 @@ GRANT ALL ON TABLE lu_reasons TO ian;
 REVOKE ALL ON TABLE lu_recall_intervals FROM PUBLIC;
 REVOKE ALL ON TABLE lu_recall_intervals FROM easygp;
 GRANT ALL ON TABLE lu_recall_intervals TO easygp;
-GRANT ALL ON TABLE lu_recall_intervals TO ian;
+GRANT SELECT,INSERT ON TABLE lu_recall_intervals TO staff;
 
 
 --
@@ -24382,7 +24531,7 @@ GRANT ALL ON TABLE lu_recall_intervals TO ian;
 REVOKE ALL ON TABLE lu_templates FROM PUBLIC;
 REVOKE ALL ON TABLE lu_templates FROM easygp;
 GRANT ALL ON TABLE lu_templates TO easygp;
-GRANT ALL ON TABLE lu_templates TO ian;
+GRANT ALL ON TABLE lu_templates TO staff;
 
 
 --
@@ -24392,7 +24541,7 @@ GRANT ALL ON TABLE lu_templates TO ian;
 REVOKE ALL ON TABLE recalls FROM PUBLIC;
 REVOKE ALL ON TABLE recalls FROM easygp;
 GRANT ALL ON TABLE recalls TO easygp;
-GRANT ALL ON TABLE recalls TO ian;
+GRANT ALL ON TABLE recalls TO staff;
 
 
 --
@@ -24402,7 +24551,7 @@ GRANT ALL ON TABLE recalls TO ian;
 REVOKE ALL ON TABLE sent FROM PUBLIC;
 REVOKE ALL ON TABLE sent FROM easygp;
 GRANT ALL ON TABLE sent TO easygp;
-GRANT ALL ON TABLE sent TO ian;
+GRANT ALL ON TABLE sent TO staff;
 
 
 SET search_path = common, pg_catalog;
@@ -24414,6 +24563,7 @@ SET search_path = common, pg_catalog;
 REVOKE ALL ON SEQUENCE lu_appointment_length_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_appointment_length_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_appointment_length_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_appointment_length_pk_seq TO staff;
 
 
 --
@@ -24423,7 +24573,7 @@ GRANT ALL ON SEQUENCE lu_appointment_length_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_appointment_length FROM PUBLIC;
 REVOKE ALL ON TABLE lu_appointment_length FROM easygp;
 GRANT ALL ON TABLE lu_appointment_length TO easygp;
-GRANT ALL ON TABLE lu_appointment_length TO ian;
+GRANT SELECT ON TABLE lu_appointment_length TO staff;
 
 
 --
@@ -24433,7 +24583,7 @@ GRANT ALL ON TABLE lu_appointment_length TO ian;
 REVOKE ALL ON TABLE lu_units FROM PUBLIC;
 REVOKE ALL ON TABLE lu_units FROM easygp;
 GRANT ALL ON TABLE lu_units TO easygp;
-GRANT ALL ON TABLE lu_units TO ian;
+GRANT SELECT ON TABLE lu_units TO staff;
 
 
 SET search_path = contacts, pg_catalog;
@@ -24445,7 +24595,7 @@ SET search_path = contacts, pg_catalog;
 REVOKE ALL ON TABLE lu_contact_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_contact_type FROM easygp;
 GRANT ALL ON TABLE lu_contact_type TO easygp;
-GRANT ALL ON TABLE lu_contact_type TO ian;
+GRANT SELECT ON TABLE lu_contact_type TO staff;
 
 
 SET search_path = clin_recalls, pg_catalog;
@@ -24457,7 +24607,7 @@ SET search_path = clin_recalls, pg_catalog;
 REVOKE ALL ON TABLE vwrecalls FROM PUBLIC;
 REVOKE ALL ON TABLE vwrecalls FROM easygp;
 GRANT ALL ON TABLE vwrecalls TO easygp;
-GRANT ALL ON TABLE vwrecalls TO ian;
+GRANT ALL ON TABLE vwrecalls TO staff;
 
 
 SET search_path = clin_history, pg_catalog;
@@ -24469,7 +24619,7 @@ SET search_path = clin_history, pg_catalog;
 REVOKE ALL ON TABLE vwcareplancomponents FROM PUBLIC;
 REVOKE ALL ON TABLE vwcareplancomponents FROM easygp;
 GRANT ALL ON TABLE vwcareplancomponents TO easygp;
-GRANT ALL ON TABLE vwcareplancomponents TO ian;
+GRANT ALL ON TABLE vwcareplancomponents TO staff;
 
 
 --
@@ -24479,7 +24629,7 @@ GRANT ALL ON TABLE vwcareplancomponents TO ian;
 REVOKE ALL ON TABLE vwcareplancomponentsdue FROM PUBLIC;
 REVOKE ALL ON TABLE vwcareplancomponentsdue FROM easygp;
 GRANT ALL ON TABLE vwcareplancomponentsdue TO easygp;
-GRANT ALL ON TABLE vwcareplancomponentsdue TO ian;
+GRANT SELECT ON TABLE vwcareplancomponentsdue TO staff;
 
 
 SET search_path = common, pg_catalog;
@@ -24491,7 +24641,7 @@ SET search_path = common, pg_catalog;
 REVOKE ALL ON TABLE lu_family_relationships FROM PUBLIC;
 REVOKE ALL ON TABLE lu_family_relationships FROM easygp;
 GRANT ALL ON TABLE lu_family_relationships TO easygp;
-GRANT ALL ON TABLE lu_family_relationships TO ian;
+GRANT SELECT ON TABLE lu_family_relationships TO staff;
 
 
 SET search_path = clin_history, pg_catalog;
@@ -24515,7 +24665,7 @@ SET search_path = common, pg_catalog;
 REVOKE ALL ON TABLE lu_laterality FROM PUBLIC;
 REVOKE ALL ON TABLE lu_laterality FROM easygp;
 GRANT ALL ON TABLE lu_laterality TO easygp;
-GRANT ALL ON TABLE lu_laterality TO ian;
+GRANT SELECT ON TABLE lu_laterality TO staff;
 
 
 SET search_path = clin_history, pg_catalog;
@@ -24527,7 +24677,7 @@ SET search_path = clin_history, pg_catalog;
 REVOKE ALL ON TABLE vwhealthissues FROM PUBLIC;
 REVOKE ALL ON TABLE vwhealthissues FROM easygp;
 GRANT ALL ON TABLE vwhealthissues TO easygp;
-GRANT ALL ON TABLE vwhealthissues TO ian;
+GRANT ALL ON TABLE vwhealthissues TO staff;
 
 
 --
@@ -24537,7 +24687,7 @@ GRANT ALL ON TABLE vwhealthissues TO ian;
 REVOKE ALL ON TABLE vwoccupationalhistory FROM PUBLIC;
 REVOKE ALL ON TABLE vwoccupationalhistory FROM easygp;
 GRANT ALL ON TABLE vwoccupationalhistory TO easygp;
-GRANT ALL ON TABLE vwoccupationalhistory TO ian;
+GRANT ALL ON TABLE vwoccupationalhistory TO staff;
 
 
 SET search_path = common, pg_catalog;
@@ -24559,7 +24709,7 @@ GRANT SELECT ON TABLE lu_recreational_drugs TO staff;
 REVOKE ALL ON TABLE lu_route_administration FROM PUBLIC;
 REVOKE ALL ON TABLE lu_route_administration FROM easygp;
 GRANT ALL ON TABLE lu_route_administration TO easygp;
-GRANT ALL ON TABLE lu_route_administration TO ian;
+GRANT SELECT ON TABLE lu_route_administration TO staff;
 
 
 SET search_path = clin_history, pg_catalog;
@@ -24581,7 +24731,7 @@ GRANT SELECT ON TABLE vwrecreationaldrugsused TO staff;
 REVOKE ALL ON TABLE vwsocialhistory FROM PUBLIC;
 REVOKE ALL ON TABLE vwsocialhistory FROM easygp;
 GRANT ALL ON TABLE vwsocialhistory TO easygp;
-GRANT ALL ON TABLE vwsocialhistory TO ian;
+GRANT ALL ON TABLE vwsocialhistory TO staff;
 
 
 SET search_path = contacts, pg_catalog;
@@ -24593,7 +24743,7 @@ SET search_path = contacts, pg_catalog;
 REVOKE ALL ON TABLE vworganisationsemployees FROM PUBLIC;
 REVOKE ALL ON TABLE vworganisationsemployees FROM easygp;
 GRANT ALL ON TABLE vworganisationsemployees TO easygp;
-GRANT ALL ON TABLE vworganisationsemployees TO ian;
+GRANT ALL ON TABLE vworganisationsemployees TO staff;
 
 
 SET search_path = clin_history, pg_catalog;
@@ -24605,7 +24755,7 @@ SET search_path = clin_history, pg_catalog;
 REVOKE ALL ON TABLE vwteamcaremembers FROM PUBLIC;
 REVOKE ALL ON TABLE vwteamcaremembers FROM easygp;
 GRANT ALL ON TABLE vwteamcaremembers TO easygp;
-GRANT ALL ON TABLE vwteamcaremembers TO ian;
+GRANT SELECT ON TABLE vwteamcaremembers TO staff;
 
 
 SET search_path = clin_measurements, pg_catalog;
@@ -24617,7 +24767,7 @@ SET search_path = clin_measurements, pg_catalog;
 REVOKE ALL ON TABLE lu_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_type FROM easygp;
 GRANT ALL ON TABLE lu_type TO easygp;
-GRANT ALL ON TABLE lu_type TO ian;
+GRANT SELECT ON TABLE lu_type TO staff;
 
 
 --
@@ -24627,6 +24777,7 @@ GRANT ALL ON TABLE lu_type TO ian;
 REVOKE ALL ON SEQUENCE lu_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_type_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_type_pk_seq TO staff;
 
 
 --
@@ -24636,7 +24787,7 @@ GRANT ALL ON SEQUENCE lu_type_pk_seq TO easygp;
 REVOKE ALL ON TABLE measurements FROM PUBLIC;
 REVOKE ALL ON TABLE measurements FROM easygp;
 GRANT ALL ON TABLE measurements TO easygp;
-GRANT ALL ON TABLE measurements TO ian;
+GRANT ALL ON TABLE measurements TO staff;
 
 
 --
@@ -24646,6 +24797,7 @@ GRANT ALL ON TABLE measurements TO ian;
 REVOKE ALL ON SEQUENCE measurements_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE measurements_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE measurements_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE measurements_pk_seq TO staff;
 
 
 --
@@ -24655,7 +24807,7 @@ GRANT ALL ON SEQUENCE measurements_pk_seq TO easygp;
 REVOKE ALL ON TABLE patients_defaults FROM PUBLIC;
 REVOKE ALL ON TABLE patients_defaults FROM easygp;
 GRANT ALL ON TABLE patients_defaults TO easygp;
-GRANT ALL ON TABLE patients_defaults TO ian;
+GRANT ALL ON TABLE patients_defaults TO staff;
 
 
 --
@@ -24665,6 +24817,7 @@ GRANT ALL ON TABLE patients_defaults TO ian;
 REVOKE ALL ON SEQUENCE patients_defaults_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE patients_defaults_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE patients_defaults_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE patients_defaults_pk_seq TO staff;
 
 
 --
@@ -24674,7 +24827,7 @@ GRANT ALL ON SEQUENCE patients_defaults_pk_seq TO easygp;
 REVOKE ALL ON TABLE vwmeasurements FROM PUBLIC;
 REVOKE ALL ON TABLE vwmeasurements FROM easygp;
 GRANT ALL ON TABLE vwmeasurements TO easygp;
-GRANT ALL ON TABLE vwmeasurements TO ian;
+GRANT ALL ON TABLE vwmeasurements TO staff;
 
 
 --
@@ -24684,7 +24837,6 @@ GRANT ALL ON TABLE vwmeasurements TO ian;
 REVOKE ALL ON TABLE vwbpmostrecent FROM PUBLIC;
 REVOKE ALL ON TABLE vwbpmostrecent FROM easygp;
 GRANT ALL ON TABLE vwbpmostrecent TO easygp;
-GRANT ALL ON TABLE vwbpmostrecent TO ian;
 
 
 --
@@ -24694,7 +24846,6 @@ GRANT ALL ON TABLE vwbpmostrecent TO ian;
 REVOKE ALL ON TABLE vwheightmostrecent FROM PUBLIC;
 REVOKE ALL ON TABLE vwheightmostrecent FROM easygp;
 GRANT ALL ON TABLE vwheightmostrecent TO easygp;
-GRANT ALL ON TABLE vwheightmostrecent TO ian;
 
 
 --
@@ -24704,7 +24855,7 @@ GRANT ALL ON TABLE vwheightmostrecent TO ian;
 REVOKE ALL ON TABLE vwmeasurementtypes FROM PUBLIC;
 REVOKE ALL ON TABLE vwmeasurementtypes FROM easygp;
 GRANT ALL ON TABLE vwmeasurementtypes TO easygp;
-GRANT ALL ON TABLE vwmeasurementtypes TO ian;
+GRANT ALL ON TABLE vwmeasurementtypes TO staff;
 
 
 --
@@ -24714,7 +24865,7 @@ GRANT ALL ON TABLE vwmeasurementtypes TO ian;
 REVOKE ALL ON TABLE vwpatientsdefaults FROM PUBLIC;
 REVOKE ALL ON TABLE vwpatientsdefaults FROM easygp;
 GRANT ALL ON TABLE vwpatientsdefaults TO easygp;
-GRANT ALL ON TABLE vwpatientsdefaults TO ian;
+GRANT ALL ON TABLE vwpatientsdefaults TO staff;
 
 
 --
@@ -24724,7 +24875,6 @@ GRANT ALL ON TABLE vwpatientsdefaults TO ian;
 REVOKE ALL ON TABLE vwweightmostrecent FROM PUBLIC;
 REVOKE ALL ON TABLE vwweightmostrecent FROM easygp;
 GRANT ALL ON TABLE vwweightmostrecent TO easygp;
-GRANT ALL ON TABLE vwweightmostrecent TO ian;
 
 
 SET search_path = clin_mentalhealth, pg_catalog;
@@ -24736,7 +24886,7 @@ SET search_path = clin_mentalhealth, pg_catalog;
 REVOKE ALL ON TABLE k10_results FROM PUBLIC;
 REVOKE ALL ON TABLE k10_results FROM easygp;
 GRANT ALL ON TABLE k10_results TO easygp;
-GRANT ALL ON TABLE k10_results TO ian;
+GRANT SELECT,INSERT,UPDATE ON TABLE k10_results TO staff;
 
 
 --
@@ -24746,6 +24896,7 @@ GRANT ALL ON TABLE k10_results TO ian;
 REVOKE ALL ON SEQUENCE k10_results_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE k10_results_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE k10_results_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE k10_results_pk_seq TO staff;
 
 
 --
@@ -24755,7 +24906,7 @@ GRANT ALL ON SEQUENCE k10_results_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_assessment_tools FROM PUBLIC;
 REVOKE ALL ON TABLE lu_assessment_tools FROM easygp;
 GRANT ALL ON TABLE lu_assessment_tools TO easygp;
-GRANT ALL ON TABLE lu_assessment_tools TO ian;
+GRANT SELECT ON TABLE lu_assessment_tools TO staff;
 
 
 --
@@ -24765,7 +24916,7 @@ GRANT ALL ON TABLE lu_assessment_tools TO ian;
 REVOKE ALL ON TABLE lu_component_help FROM PUBLIC;
 REVOKE ALL ON TABLE lu_component_help FROM easygp;
 GRANT ALL ON TABLE lu_component_help TO easygp;
-GRANT ALL ON TABLE lu_component_help TO ian;
+GRANT SELECT ON TABLE lu_component_help TO staff;
 
 
 --
@@ -24775,6 +24926,7 @@ GRANT ALL ON TABLE lu_component_help TO ian;
 REVOKE ALL ON SEQUENCE lu_component_help_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_component_help_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_component_help_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_component_help_pk_seq TO staff;
 
 
 --
@@ -24784,7 +24936,7 @@ GRANT ALL ON SEQUENCE lu_component_help_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_depression_degree FROM PUBLIC;
 REVOKE ALL ON TABLE lu_depression_degree FROM easygp;
 GRANT ALL ON TABLE lu_depression_degree TO easygp;
-GRANT ALL ON TABLE lu_depression_degree TO ian;
+GRANT SELECT ON TABLE lu_depression_degree TO staff;
 
 
 --
@@ -24794,6 +24946,7 @@ GRANT ALL ON TABLE lu_depression_degree TO ian;
 REVOKE ALL ON SEQUENCE lu_depression_degree_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_depression_degree_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_depression_degree_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_depression_degree_pk_seq TO staff;
 
 
 --
@@ -24803,7 +24956,7 @@ GRANT ALL ON SEQUENCE lu_depression_degree_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_k10_components FROM PUBLIC;
 REVOKE ALL ON TABLE lu_k10_components FROM easygp;
 GRANT ALL ON TABLE lu_k10_components TO easygp;
-GRANT ALL ON TABLE lu_k10_components TO ian;
+GRANT SELECT ON TABLE lu_k10_components TO staff;
 
 
 --
@@ -24813,6 +24966,7 @@ GRANT ALL ON TABLE lu_k10_components TO ian;
 REVOKE ALL ON SEQUENCE lu_k10_components_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_k10_components_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_k10_components_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_k10_components_pk_seq TO staff;
 
 
 --
@@ -24822,7 +24976,7 @@ GRANT ALL ON SEQUENCE lu_k10_components_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_plan_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_plan_type FROM easygp;
 GRANT ALL ON TABLE lu_plan_type TO easygp;
-GRANT ALL ON TABLE lu_plan_type TO ian;
+GRANT SELECT ON TABLE lu_plan_type TO staff;
 
 
 --
@@ -24832,6 +24986,7 @@ GRANT ALL ON TABLE lu_plan_type TO ian;
 REVOKE ALL ON SEQUENCE lu_plan_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_plan_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_plan_type_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_plan_type_pk_seq TO staff;
 
 
 --
@@ -24841,7 +24996,7 @@ GRANT ALL ON SEQUENCE lu_plan_type_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_risk_to_others FROM PUBLIC;
 REVOKE ALL ON TABLE lu_risk_to_others FROM easygp;
 GRANT ALL ON TABLE lu_risk_to_others TO easygp;
-GRANT ALL ON TABLE lu_risk_to_others TO ian;
+GRANT SELECT ON TABLE lu_risk_to_others TO staff;
 
 
 --
@@ -24851,6 +25006,7 @@ GRANT ALL ON TABLE lu_risk_to_others TO ian;
 REVOKE ALL ON SEQUENCE lu_risk_to_others_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_risk_to_others_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_risk_to_others_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_risk_to_others_pk_seq TO staff;
 
 
 --
@@ -24860,7 +25016,7 @@ GRANT ALL ON SEQUENCE lu_risk_to_others_pk_seq TO easygp;
 REVOKE ALL ON TABLE mentalhealth_plan FROM PUBLIC;
 REVOKE ALL ON TABLE mentalhealth_plan FROM easygp;
 GRANT ALL ON TABLE mentalhealth_plan TO easygp;
-GRANT ALL ON TABLE mentalhealth_plan TO ian;
+GRANT SELECT,INSERT,UPDATE ON TABLE mentalhealth_plan TO staff;
 
 
 --
@@ -24870,6 +25026,7 @@ GRANT ALL ON TABLE mentalhealth_plan TO ian;
 REVOKE ALL ON SEQUENCE mentalhealth_plan_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE mentalhealth_plan_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE mentalhealth_plan_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE mentalhealth_plan_pk_seq TO staff;
 
 
 --
@@ -24879,7 +25036,7 @@ GRANT ALL ON SEQUENCE mentalhealth_plan_pk_seq TO easygp;
 REVOKE ALL ON TABLE team_care_members FROM PUBLIC;
 REVOKE ALL ON TABLE team_care_members FROM easygp;
 GRANT ALL ON TABLE team_care_members TO easygp;
-GRANT ALL ON TABLE team_care_members TO ian;
+GRANT SELECT,INSERT ON TABLE team_care_members TO staff;
 
 
 --
@@ -24889,6 +25046,7 @@ GRANT ALL ON TABLE team_care_members TO ian;
 REVOKE ALL ON SEQUENCE team_care_members_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE team_care_members_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE team_care_members_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE team_care_members_pk_seq TO staff;
 
 
 --
@@ -24898,7 +25056,7 @@ GRANT ALL ON SEQUENCE team_care_members_pk_seq TO easygp;
 REVOKE ALL ON TABLE vwk10results FROM PUBLIC;
 REVOKE ALL ON TABLE vwk10results FROM easygp;
 GRANT ALL ON TABLE vwk10results TO easygp;
-GRANT ALL ON TABLE vwk10results TO ian;
+GRANT SELECT ON TABLE vwk10results TO staff;
 
 
 --
@@ -24908,7 +25066,7 @@ GRANT ALL ON TABLE vwk10results TO ian;
 REVOKE ALL ON TABLE vwmentalhealthplans FROM PUBLIC;
 REVOKE ALL ON TABLE vwmentalhealthplans FROM easygp;
 GRANT ALL ON TABLE vwmentalhealthplans TO easygp;
-GRANT ALL ON TABLE vwmentalhealthplans TO ian;
+GRANT SELECT ON TABLE vwmentalhealthplans TO staff;
 
 
 --
@@ -24918,7 +25076,7 @@ GRANT ALL ON TABLE vwmentalhealthplans TO ian;
 REVOKE ALL ON TABLE vwteamcaremembers FROM PUBLIC;
 REVOKE ALL ON TABLE vwteamcaremembers FROM easygp;
 GRANT ALL ON TABLE vwteamcaremembers TO easygp;
-GRANT ALL ON TABLE vwteamcaremembers TO ian;
+GRANT SELECT ON TABLE vwteamcaremembers TO staff;
 
 
 SET search_path = clin_pregnancy, pg_catalog;
@@ -24930,7 +25088,7 @@ SET search_path = clin_pregnancy, pg_catalog;
 REVOKE ALL ON TABLE lu_antenatal_venue FROM PUBLIC;
 REVOKE ALL ON TABLE lu_antenatal_venue FROM easygp;
 GRANT ALL ON TABLE lu_antenatal_venue TO easygp;
-GRANT ALL ON TABLE lu_antenatal_venue TO ian;
+GRANT SELECT,INSERT ON TABLE lu_antenatal_venue TO staff;
 
 
 --
@@ -24940,6 +25098,7 @@ GRANT ALL ON TABLE lu_antenatal_venue TO ian;
 REVOKE ALL ON SEQUENCE lu_antenatal_venue_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_antenatal_venue_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_antenatal_venue_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_antenatal_venue_pk_seq TO staff;
 
 
 SET search_path = clin_prescribing, pg_catalog;
@@ -24951,7 +25110,7 @@ SET search_path = clin_prescribing, pg_catalog;
 REVOKE ALL ON TABLE authority_script_number FROM PUBLIC;
 REVOKE ALL ON TABLE authority_script_number FROM easygp;
 GRANT ALL ON TABLE authority_script_number TO easygp;
-GRANT ALL ON TABLE authority_script_number TO ian;
+GRANT ALL ON TABLE authority_script_number TO staff;
 
 
 --
@@ -24961,7 +25120,7 @@ GRANT ALL ON TABLE authority_script_number TO ian;
 REVOKE ALL ON TABLE increased_quantity_authority_reasons FROM PUBLIC;
 REVOKE ALL ON TABLE increased_quantity_authority_reasons FROM easygp;
 GRANT ALL ON TABLE increased_quantity_authority_reasons TO easygp;
-GRANT ALL ON TABLE increased_quantity_authority_reasons TO ian;
+GRANT ALL ON TABLE increased_quantity_authority_reasons TO staff;
 
 
 --
@@ -24971,6 +25130,7 @@ GRANT ALL ON TABLE increased_quantity_authority_reasons TO ian;
 REVOKE ALL ON SEQUENCE increased_quantity_authority_reasons_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE increased_quantity_authority_reasons_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE increased_quantity_authority_reasons_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE increased_quantity_authority_reasons_pk_seq TO staff;
 
 
 --
@@ -24980,7 +25140,7 @@ GRANT ALL ON SEQUENCE increased_quantity_authority_reasons_pk_seq TO easygp;
 REVOKE ALL ON TABLE instruction_habits FROM PUBLIC;
 REVOKE ALL ON TABLE instruction_habits FROM easygp;
 GRANT ALL ON TABLE instruction_habits TO easygp;
-GRANT ALL ON TABLE instruction_habits TO ian;
+GRANT ALL ON TABLE instruction_habits TO staff;
 
 
 --
@@ -24990,6 +25150,7 @@ GRANT ALL ON TABLE instruction_habits TO ian;
 REVOKE ALL ON SEQUENCE instruction_habits_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE instruction_habits_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE instruction_habits_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE instruction_habits_pk_seq TO staff;
 
 
 --
@@ -24999,7 +25160,7 @@ GRANT ALL ON SEQUENCE instruction_habits_pk_seq TO easygp;
 REVOKE ALL ON TABLE instructions FROM PUBLIC;
 REVOKE ALL ON TABLE instructions FROM easygp;
 GRANT ALL ON TABLE instructions TO easygp;
-GRANT ALL ON TABLE instructions TO ian;
+GRANT ALL ON TABLE instructions TO staff;
 
 
 --
@@ -25009,6 +25170,7 @@ GRANT ALL ON TABLE instructions TO ian;
 REVOKE ALL ON SEQUENCE instructions_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE instructions_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE instructions_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE instructions_pk_seq TO staff;
 
 
 --
@@ -25018,7 +25180,7 @@ GRANT ALL ON SEQUENCE instructions_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_pbs_script_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_pbs_script_type FROM easygp;
 GRANT ALL ON TABLE lu_pbs_script_type TO easygp;
-GRANT ALL ON TABLE lu_pbs_script_type TO ian;
+GRANT ALL ON TABLE lu_pbs_script_type TO staff;
 
 
 --
@@ -25028,7 +25190,7 @@ GRANT ALL ON TABLE lu_pbs_script_type TO ian;
 REVOKE ALL ON TABLE medications FROM PUBLIC;
 REVOKE ALL ON TABLE medications FROM easygp;
 GRANT ALL ON TABLE medications TO easygp;
-GRANT ALL ON TABLE medications TO ian;
+GRANT ALL ON TABLE medications TO staff;
 
 
 --
@@ -25038,6 +25200,7 @@ GRANT ALL ON TABLE medications TO ian;
 REVOKE ALL ON SEQUENCE medications_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE medications_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE medications_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE medications_pk_seq TO staff;
 
 
 --
@@ -25047,7 +25210,7 @@ GRANT ALL ON SEQUENCE medications_pk_seq TO easygp;
 REVOKE ALL ON TABLE prescribed FROM PUBLIC;
 REVOKE ALL ON TABLE prescribed FROM easygp;
 GRANT ALL ON TABLE prescribed TO easygp;
-GRANT ALL ON TABLE prescribed TO ian;
+GRANT ALL ON TABLE prescribed TO staff;
 
 
 --
@@ -25057,7 +25220,7 @@ GRANT ALL ON TABLE prescribed TO ian;
 REVOKE ALL ON TABLE prescribed_for FROM PUBLIC;
 REVOKE ALL ON TABLE prescribed_for FROM easygp;
 GRANT ALL ON TABLE prescribed_for TO easygp;
-GRANT ALL ON TABLE prescribed_for TO ian;
+GRANT ALL ON TABLE prescribed_for TO staff;
 
 
 --
@@ -25067,7 +25230,7 @@ GRANT ALL ON TABLE prescribed_for TO ian;
 REVOKE ALL ON TABLE prescribed_for_habits FROM PUBLIC;
 REVOKE ALL ON TABLE prescribed_for_habits FROM easygp;
 GRANT ALL ON TABLE prescribed_for_habits TO easygp;
-GRANT ALL ON TABLE prescribed_for_habits TO ian;
+GRANT ALL ON TABLE prescribed_for_habits TO staff;
 
 
 --
@@ -25077,6 +25240,7 @@ GRANT ALL ON TABLE prescribed_for_habits TO ian;
 REVOKE ALL ON SEQUENCE prescribed_for_habits_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE prescribed_for_habits_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE prescribed_for_habits_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE prescribed_for_habits_pk_seq TO staff;
 
 
 --
@@ -25086,6 +25250,7 @@ GRANT ALL ON SEQUENCE prescribed_for_habits_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE prescribed_for_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE prescribed_for_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE prescribed_for_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE prescribed_for_pk_seq TO staff;
 
 
 --
@@ -25095,6 +25260,7 @@ GRANT ALL ON SEQUENCE prescribed_for_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE prescribed_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE prescribed_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE prescribed_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE prescribed_pk_seq TO staff;
 
 
 --
@@ -25104,6 +25270,7 @@ GRANT ALL ON SEQUENCE prescribed_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE print_status_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE print_status_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE print_status_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE print_status_pk_seq TO staff;
 
 
 --
@@ -25113,6 +25280,7 @@ GRANT ALL ON SEQUENCE print_status_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE script_number FROM PUBLIC;
 REVOKE ALL ON SEQUENCE script_number FROM easygp;
 GRANT ALL ON SEQUENCE script_number TO easygp;
+GRANT ALL ON SEQUENCE script_number TO staff;
 
 
 --
@@ -25122,7 +25290,7 @@ GRANT ALL ON SEQUENCE script_number TO easygp;
 REVOKE ALL ON TABLE vwinstructionhabits FROM PUBLIC;
 REVOKE ALL ON TABLE vwinstructionhabits FROM easygp;
 GRANT ALL ON TABLE vwinstructionhabits TO easygp;
-GRANT ALL ON TABLE vwinstructionhabits TO ian;
+GRANT ALL ON TABLE vwinstructionhabits TO staff;
 
 
 --
@@ -25132,7 +25300,7 @@ GRANT ALL ON TABLE vwinstructionhabits TO ian;
 REVOKE ALL ON TABLE vwprescribedforhabits FROM PUBLIC;
 REVOKE ALL ON TABLE vwprescribedforhabits FROM easygp;
 GRANT ALL ON TABLE vwprescribedforhabits TO easygp;
-GRANT ALL ON TABLE vwprescribedforhabits TO ian;
+GRANT ALL ON TABLE vwprescribedforhabits TO staff;
 
 
 SET search_path = drugs, pg_catalog;
@@ -25144,7 +25312,7 @@ SET search_path = drugs, pg_catalog;
 REVOKE ALL ON TABLE form FROM PUBLIC;
 REVOKE ALL ON TABLE form FROM easygp;
 GRANT ALL ON TABLE form TO easygp;
-GRANT ALL ON TABLE form TO ian;
+GRANT ALL ON TABLE form TO staff;
 
 
 --
@@ -25154,7 +25322,7 @@ GRANT ALL ON TABLE form TO ian;
 REVOKE ALL ON TABLE restriction FROM PUBLIC;
 REVOKE ALL ON TABLE restriction FROM easygp;
 GRANT ALL ON TABLE restriction TO easygp;
-GRANT ALL ON TABLE restriction TO ian;
+GRANT ALL ON TABLE restriction TO staff;
 
 
 --
@@ -25164,7 +25332,7 @@ GRANT ALL ON TABLE restriction TO ian;
 REVOKE ALL ON TABLE schedules FROM PUBLIC;
 REVOKE ALL ON TABLE schedules FROM easygp;
 GRANT ALL ON TABLE schedules TO easygp;
-GRANT ALL ON TABLE schedules TO ian;
+GRANT ALL ON TABLE schedules TO staff;
 
 
 SET search_path = clin_prescribing, pg_catalog;
@@ -25176,7 +25344,7 @@ SET search_path = clin_prescribing, pg_catalog;
 REVOKE ALL ON TABLE vwprescribeditems FROM PUBLIC;
 REVOKE ALL ON TABLE vwprescribeditems FROM easygp;
 GRANT ALL ON TABLE vwprescribeditems TO easygp;
-GRANT ALL ON TABLE vwprescribeditems TO ian;
+GRANT SELECT ON TABLE vwprescribeditems TO staff;
 
 
 SET search_path = clin_procedures, pg_catalog;
@@ -25188,7 +25356,7 @@ SET search_path = clin_procedures, pg_catalog;
 REVOKE ALL ON TABLE link_images_procedures FROM PUBLIC;
 REVOKE ALL ON TABLE link_images_procedures FROM easygp;
 GRANT ALL ON TABLE link_images_procedures TO easygp;
-GRANT ALL ON TABLE link_images_procedures TO ian;
+GRANT ALL ON TABLE link_images_procedures TO staff;
 
 
 --
@@ -25198,6 +25366,7 @@ GRANT ALL ON TABLE link_images_procedures TO ian;
 REVOKE ALL ON SEQUENCE link_images_procedures_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE link_images_procedures_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE link_images_procedures_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE link_images_procedures_pk_seq TO staff;
 
 
 --
@@ -25207,7 +25376,7 @@ GRANT ALL ON SEQUENCE link_images_procedures_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_anaesthetic_agent FROM PUBLIC;
 REVOKE ALL ON TABLE lu_anaesthetic_agent FROM easygp;
 GRANT ALL ON TABLE lu_anaesthetic_agent TO easygp;
-GRANT ALL ON TABLE lu_anaesthetic_agent TO ian;
+GRANT SELECT,INSERT ON TABLE lu_anaesthetic_agent TO staff;
 
 
 --
@@ -25217,6 +25386,7 @@ GRANT ALL ON TABLE lu_anaesthetic_agent TO ian;
 REVOKE ALL ON SEQUENCE lu_anaesthetic_agent_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_anaesthetic_agent_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_anaesthetic_agent_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_anaesthetic_agent_pk_seq TO staff;
 
 
 --
@@ -25226,7 +25396,7 @@ GRANT ALL ON SEQUENCE lu_anaesthetic_agent_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_complications FROM PUBLIC;
 REVOKE ALL ON TABLE lu_complications FROM easygp;
 GRANT ALL ON TABLE lu_complications TO easygp;
-GRANT ALL ON TABLE lu_complications TO ian;
+GRANT SELECT,INSERT ON TABLE lu_complications TO staff;
 
 
 --
@@ -25236,6 +25406,7 @@ GRANT ALL ON TABLE lu_complications TO ian;
 REVOKE ALL ON SEQUENCE lu_complications_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_complications_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_complications_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_complications_pk_seq TO staff;
 
 
 --
@@ -25245,7 +25416,7 @@ GRANT ALL ON SEQUENCE lu_complications_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_procedure_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_procedure_type FROM easygp;
 GRANT ALL ON TABLE lu_procedure_type TO easygp;
-GRANT ALL ON TABLE lu_procedure_type TO ian;
+GRANT ALL ON TABLE lu_procedure_type TO staff;
 
 
 --
@@ -25255,6 +25426,7 @@ GRANT ALL ON TABLE lu_procedure_type TO ian;
 REVOKE ALL ON SEQUENCE lu_excision_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_excision_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_excision_type_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_excision_type_pk_seq TO staff;
 
 
 --
@@ -25264,7 +25436,7 @@ GRANT ALL ON SEQUENCE lu_excision_type_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_last_surgical_pack FROM PUBLIC;
 REVOKE ALL ON TABLE lu_last_surgical_pack FROM easygp;
 GRANT ALL ON TABLE lu_last_surgical_pack TO easygp;
-GRANT ALL ON TABLE lu_last_surgical_pack TO ian;
+GRANT ALL ON TABLE lu_last_surgical_pack TO staff;
 
 
 --
@@ -25274,6 +25446,7 @@ GRANT ALL ON TABLE lu_last_surgical_pack TO ian;
 REVOKE ALL ON SEQUENCE lu_pack_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_pack_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_pack_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_pack_pk_seq TO staff;
 
 
 --
@@ -25283,7 +25456,7 @@ GRANT ALL ON SEQUENCE lu_pack_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_repair_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_repair_type FROM easygp;
 GRANT ALL ON TABLE lu_repair_type TO easygp;
-GRANT ALL ON TABLE lu_repair_type TO ian;
+GRANT ALL ON TABLE lu_repair_type TO staff;
 
 
 --
@@ -25293,6 +25466,7 @@ GRANT ALL ON TABLE lu_repair_type TO ian;
 REVOKE ALL ON SEQUENCE lu_repair_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_repair_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_repair_type_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_repair_type_pk_seq TO staff;
 
 
 --
@@ -25302,7 +25476,7 @@ GRANT ALL ON SEQUENCE lu_repair_type_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_skin_preparation FROM PUBLIC;
 REVOKE ALL ON TABLE lu_skin_preparation FROM easygp;
 GRANT ALL ON TABLE lu_skin_preparation TO easygp;
-GRANT ALL ON TABLE lu_skin_preparation TO ian;
+GRANT ALL ON TABLE lu_skin_preparation TO staff;
 
 
 --
@@ -25312,6 +25486,7 @@ GRANT ALL ON TABLE lu_skin_preparation TO ian;
 REVOKE ALL ON SEQUENCE lu_skin_preparation_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_skin_preparation_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_skin_preparation_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_skin_preparation_pk_seq TO staff;
 
 
 --
@@ -25321,7 +25496,7 @@ GRANT ALL ON SEQUENCE lu_skin_preparation_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_suture_site FROM PUBLIC;
 REVOKE ALL ON TABLE lu_suture_site FROM easygp;
 GRANT ALL ON TABLE lu_suture_site TO easygp;
-GRANT ALL ON TABLE lu_suture_site TO ian;
+GRANT ALL ON TABLE lu_suture_site TO staff;
 
 
 --
@@ -25331,6 +25506,7 @@ GRANT ALL ON TABLE lu_suture_site TO ian;
 REVOKE ALL ON SEQUENCE lu_suture_site_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_suture_site_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_suture_site_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_suture_site_pk_seq TO staff;
 
 
 --
@@ -25340,7 +25516,7 @@ GRANT ALL ON SEQUENCE lu_suture_site_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_suture_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_suture_type FROM easygp;
 GRANT ALL ON TABLE lu_suture_type TO easygp;
-GRANT ALL ON TABLE lu_suture_type TO ian;
+GRANT ALL ON TABLE lu_suture_type TO staff;
 
 
 --
@@ -25350,6 +25526,7 @@ GRANT ALL ON TABLE lu_suture_type TO ian;
 REVOKE ALL ON SEQUENCE lu_suture_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_suture_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_suture_type_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_suture_type_pk_seq TO staff;
 
 
 --
@@ -25359,7 +25536,7 @@ GRANT ALL ON SEQUENCE lu_suture_type_pk_seq TO easygp;
 REVOKE ALL ON TABLE skin_procedures FROM PUBLIC;
 REVOKE ALL ON TABLE skin_procedures FROM easygp;
 GRANT ALL ON TABLE skin_procedures TO easygp;
-GRANT ALL ON TABLE skin_procedures TO ian;
+GRANT ALL ON TABLE skin_procedures TO staff;
 
 
 --
@@ -25369,6 +25546,7 @@ GRANT ALL ON TABLE skin_procedures TO ian;
 REVOKE ALL ON SEQUENCE skin_procedures_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE skin_procedures_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE skin_procedures_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE skin_procedures_pk_seq TO staff;
 
 
 --
@@ -25378,7 +25556,7 @@ GRANT ALL ON SEQUENCE skin_procedures_pk_seq TO easygp;
 REVOKE ALL ON TABLE staff_skin_procedure_defaults FROM PUBLIC;
 REVOKE ALL ON TABLE staff_skin_procedure_defaults FROM easygp;
 GRANT ALL ON TABLE staff_skin_procedure_defaults TO easygp;
-GRANT ALL ON TABLE staff_skin_procedure_defaults TO ian;
+GRANT ALL ON TABLE staff_skin_procedure_defaults TO staff;
 
 
 --
@@ -25388,6 +25566,7 @@ GRANT ALL ON TABLE staff_skin_procedure_defaults TO ian;
 REVOKE ALL ON SEQUENCE staff_skin_procedure_defaults_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE staff_skin_procedure_defaults_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE staff_skin_procedure_defaults_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE staff_skin_procedure_defaults_pk_seq TO staff;
 
 
 --
@@ -25397,7 +25576,7 @@ GRANT ALL ON SEQUENCE staff_skin_procedure_defaults_pk_seq TO easygp;
 REVOKE ALL ON TABLE surgical_packs FROM PUBLIC;
 REVOKE ALL ON TABLE surgical_packs FROM easygp;
 GRANT ALL ON TABLE surgical_packs TO easygp;
-GRANT ALL ON TABLE surgical_packs TO ian;
+GRANT ALL ON TABLE surgical_packs TO staff;
 
 
 --
@@ -25407,6 +25586,7 @@ GRANT ALL ON TABLE surgical_packs TO ian;
 REVOKE ALL ON SEQUENCE surgical_packs_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE surgical_packs_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE surgical_packs_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE surgical_packs_pk_seq TO staff;
 
 
 --
@@ -25416,7 +25596,7 @@ GRANT ALL ON SEQUENCE surgical_packs_pk_seq TO easygp;
 REVOKE ALL ON TABLE vwimages FROM PUBLIC;
 REVOKE ALL ON TABLE vwimages FROM easygp;
 GRANT ALL ON TABLE vwimages TO easygp;
-GRANT ALL ON TABLE vwimages TO ian;
+GRANT ALL ON TABLE vwimages TO staff;
 
 
 SET search_path = clin_requests, pg_catalog;
@@ -25428,7 +25608,7 @@ SET search_path = clin_requests, pg_catalog;
 REVOKE ALL ON TABLE forms FROM PUBLIC;
 REVOKE ALL ON TABLE forms FROM easygp;
 GRANT ALL ON TABLE forms TO easygp;
-GRANT ALL ON TABLE forms TO ian;
+GRANT SELECT,INSERT ON TABLE forms TO staff;
 
 
 SET search_path = common, pg_catalog;
@@ -25440,7 +25620,7 @@ SET search_path = common, pg_catalog;
 REVOKE ALL ON TABLE lu_anatomical_site FROM PUBLIC;
 REVOKE ALL ON TABLE lu_anatomical_site FROM easygp;
 GRANT ALL ON TABLE lu_anatomical_site TO easygp;
-GRANT ALL ON TABLE lu_anatomical_site TO ian;
+GRANT SELECT,INSERT ON TABLE lu_anatomical_site TO staff;
 
 
 --
@@ -25450,7 +25630,7 @@ GRANT ALL ON TABLE lu_anatomical_site TO ian;
 REVOKE ALL ON TABLE lu_anterior_posterior FROM PUBLIC;
 REVOKE ALL ON TABLE lu_anterior_posterior FROM easygp;
 GRANT ALL ON TABLE lu_anterior_posterior TO easygp;
-GRANT ALL ON TABLE lu_anterior_posterior TO ian;
+GRANT SELECT,INSERT ON TABLE lu_anterior_posterior TO staff;
 
 
 SET search_path = clin_procedures, pg_catalog;
@@ -25462,7 +25642,7 @@ SET search_path = clin_procedures, pg_catalog;
 REVOKE ALL ON TABLE vwskinprocedures FROM PUBLIC;
 REVOKE ALL ON TABLE vwskinprocedures FROM easygp;
 GRANT ALL ON TABLE vwskinprocedures TO easygp;
-GRANT ALL ON TABLE vwskinprocedures TO ian;
+GRANT ALL ON TABLE vwskinprocedures TO staff;
 
 
 --
@@ -25472,7 +25652,7 @@ GRANT ALL ON TABLE vwskinprocedures TO ian;
 REVOKE ALL ON TABLE vwstaffskinproceduredefaults FROM PUBLIC;
 REVOKE ALL ON TABLE vwstaffskinproceduredefaults FROM easygp;
 GRANT ALL ON TABLE vwstaffskinproceduredefaults TO easygp;
-GRANT ALL ON TABLE vwstaffskinproceduredefaults TO ian;
+GRANT SELECT ON TABLE vwstaffskinproceduredefaults TO staff;
 
 
 --
@@ -25482,7 +25662,7 @@ GRANT ALL ON TABLE vwstaffskinproceduredefaults TO ian;
 REVOKE ALL ON TABLE vwsutures FROM PUBLIC;
 REVOKE ALL ON TABLE vwsutures FROM easygp;
 GRANT ALL ON TABLE vwsutures TO easygp;
-GRANT ALL ON TABLE vwsutures TO ian;
+GRANT ALL ON TABLE vwsutures TO staff;
 
 
 SET search_path = clin_recalls, pg_catalog;
@@ -25494,7 +25674,7 @@ SET search_path = clin_recalls, pg_catalog;
 REVOKE ALL ON TABLE forms FROM PUBLIC;
 REVOKE ALL ON TABLE forms FROM easygp;
 GRANT ALL ON TABLE forms TO easygp;
-GRANT ALL ON TABLE forms TO ian;
+GRANT ALL ON TABLE forms TO staff;
 
 
 --
@@ -25504,6 +25684,7 @@ GRANT ALL ON TABLE forms TO ian;
 REVOKE ALL ON SEQUENCE forms_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE forms_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE forms_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE forms_pk_seq TO staff;
 
 
 --
@@ -25513,7 +25694,7 @@ GRANT ALL ON SEQUENCE forms_pk_seq TO easygp;
 REVOKE ALL ON TABLE links_forms FROM PUBLIC;
 REVOKE ALL ON TABLE links_forms FROM easygp;
 GRANT ALL ON TABLE links_forms TO easygp;
-GRANT ALL ON TABLE links_forms TO ian;
+GRANT SELECT,INSERT ON TABLE links_forms TO staff;
 
 
 --
@@ -25523,6 +25704,7 @@ GRANT ALL ON TABLE links_forms TO ian;
 REVOKE ALL ON SEQUENCE links_forms_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE links_forms_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE links_forms_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE links_forms_pk_seq TO staff;
 
 
 --
@@ -25532,6 +25714,7 @@ GRANT ALL ON SEQUENCE links_forms_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE lu_reasons_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_reasons_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_reasons_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_reasons_pk_seq TO staff;
 
 
 --
@@ -25541,6 +25724,7 @@ GRANT ALL ON SEQUENCE lu_reasons_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE lu_recall_intervals_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_recall_intervals_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_recall_intervals_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_recall_intervals_pk_seq TO staff;
 
 
 --
@@ -25550,6 +25734,7 @@ GRANT ALL ON SEQUENCE lu_recall_intervals_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE lu_templates_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_templates_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_templates_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_templates_pk_seq TO staff;
 
 
 --
@@ -25559,6 +25744,7 @@ GRANT ALL ON SEQUENCE lu_templates_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE recalls_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE recalls_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE recalls_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE recalls_pk_seq TO staff;
 
 
 --
@@ -25568,6 +25754,7 @@ GRANT ALL ON SEQUENCE recalls_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE sent_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE sent_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE sent_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE sent_pk_seq TO staff;
 
 
 --
@@ -25577,7 +25764,7 @@ GRANT ALL ON SEQUENCE sent_pk_seq TO easygp;
 REVOKE ALL ON TABLE vwreasons FROM PUBLIC;
 REVOKE ALL ON TABLE vwreasons FROM easygp;
 GRANT ALL ON TABLE vwreasons TO easygp;
-GRANT ALL ON TABLE vwreasons TO ian;
+GRANT ALL ON TABLE vwreasons TO staff;
 
 
 --
@@ -25587,7 +25774,7 @@ GRANT ALL ON TABLE vwreasons TO ian;
 REVOKE ALL ON TABLE vwrecallsdue FROM PUBLIC;
 REVOKE ALL ON TABLE vwrecallsdue FROM easygp;
 GRANT ALL ON TABLE vwrecallsdue TO easygp;
-GRANT ALL ON TABLE vwrecallsdue TO ian;
+GRANT ALL ON TABLE vwrecallsdue TO staff;
 
 
 --
@@ -25597,7 +25784,7 @@ GRANT ALL ON TABLE vwrecallsdue TO ian;
 REVOKE ALL ON TABLE vwtemplates FROM PUBLIC;
 REVOKE ALL ON TABLE vwtemplates FROM easygp;
 GRANT ALL ON TABLE vwtemplates TO easygp;
-GRANT ALL ON TABLE vwtemplates TO ian;
+GRANT ALL ON TABLE vwtemplates TO staff;
 
 
 SET search_path = clin_referrals, pg_catalog;
@@ -25609,7 +25796,6 @@ SET search_path = clin_referrals, pg_catalog;
 REVOKE ALL ON TABLE inclusions FROM PUBLIC;
 REVOKE ALL ON TABLE inclusions FROM easygp;
 GRANT ALL ON TABLE inclusions TO easygp;
-GRANT ALL ON TABLE inclusions TO ian;
 
 
 --
@@ -25619,7 +25805,7 @@ GRANT ALL ON TABLE inclusions TO ian;
 REVOKE ALL ON TABLE lu_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_type FROM easygp;
 GRANT ALL ON TABLE lu_type TO easygp;
-GRANT ALL ON TABLE lu_type TO ian;
+GRANT SELECT ON TABLE lu_type TO staff;
 
 
 --
@@ -25629,6 +25815,7 @@ GRANT ALL ON TABLE lu_type TO ian;
 REVOKE ALL ON SEQUENCE lu_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_type_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_type_pk_seq TO staff;
 
 
 --
@@ -25638,7 +25825,7 @@ GRANT ALL ON SEQUENCE lu_type_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_urgency FROM PUBLIC;
 REVOKE ALL ON TABLE lu_urgency FROM easygp;
 GRANT ALL ON TABLE lu_urgency TO easygp;
-GRANT ALL ON TABLE lu_urgency TO ian;
+GRANT ALL ON TABLE lu_urgency TO staff;
 
 
 --
@@ -25648,6 +25835,7 @@ GRANT ALL ON TABLE lu_urgency TO ian;
 REVOKE ALL ON SEQUENCE referrals_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE referrals_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE referrals_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE referrals_pk_seq TO staff;
 
 
 SET search_path = documents, pg_catalog;
@@ -25659,7 +25847,7 @@ SET search_path = documents, pg_catalog;
 REVOKE ALL ON TABLE documents FROM PUBLIC;
 REVOKE ALL ON TABLE documents FROM easygp;
 GRANT ALL ON TABLE documents TO easygp;
-GRANT ALL ON TABLE documents TO ian;
+GRANT SELECT,INSERT,UPDATE ON TABLE documents TO staff;
 
 
 SET search_path = clin_referrals, pg_catalog;
@@ -25671,7 +25859,7 @@ SET search_path = clin_referrals, pg_catalog;
 REVOKE ALL ON TABLE vwinclusions FROM PUBLIC;
 REVOKE ALL ON TABLE vwinclusions FROM easygp;
 GRANT ALL ON TABLE vwinclusions TO easygp;
-GRANT ALL ON TABLE vwinclusions TO ian;
+GRANT ALL ON TABLE vwinclusions TO staff;
 
 
 --
@@ -25693,6 +25881,7 @@ SET search_path = clin_requests, pg_catalog;
 REVOKE ALL ON SEQUENCE forms_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE forms_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE forms_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE forms_pk_seq TO staff;
 
 
 --
@@ -25702,7 +25891,7 @@ GRANT ALL ON SEQUENCE forms_pk_seq TO easygp;
 REVOKE ALL ON TABLE forms_requests FROM PUBLIC;
 REVOKE ALL ON TABLE forms_requests FROM easygp;
 GRANT ALL ON TABLE forms_requests TO easygp;
-GRANT ALL ON TABLE forms_requests TO ian;
+GRANT ALL ON TABLE forms_requests TO staff;
 
 
 --
@@ -25712,6 +25901,7 @@ GRANT ALL ON TABLE forms_requests TO ian;
 REVOKE ALL ON SEQUENCE forms_requests_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE forms_requests_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE forms_requests_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE forms_requests_pk_seq TO staff;
 
 
 --
@@ -25721,6 +25911,7 @@ GRANT ALL ON SEQUENCE forms_requests_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE inbox_oru_unresolved_temp_patient_id_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE inbox_oru_unresolved_temp_patient_id_seq FROM easygp;
 GRANT ALL ON SEQUENCE inbox_oru_unresolved_temp_patient_id_seq TO easygp;
+GRANT ALL ON SEQUENCE inbox_oru_unresolved_temp_patient_id_seq TO staff;
 
 
 --
@@ -25730,7 +25921,7 @@ GRANT ALL ON SEQUENCE inbox_oru_unresolved_temp_patient_id_seq TO easygp;
 REVOKE ALL ON TABLE link_forms_requests_requests_results FROM PUBLIC;
 REVOKE ALL ON TABLE link_forms_requests_requests_results FROM easygp;
 GRANT ALL ON TABLE link_forms_requests_requests_results TO easygp;
-GRANT ALL ON TABLE link_forms_requests_requests_results TO ian;
+GRANT ALL ON TABLE link_forms_requests_requests_results TO staff;
 
 
 --
@@ -25740,6 +25931,7 @@ GRANT ALL ON TABLE link_forms_requests_requests_results TO ian;
 REVOKE ALL ON SEQUENCE link_forms_requests_requests_results_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE link_forms_requests_requests_results_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE link_forms_requests_requests_results_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE link_forms_requests_requests_results_pk_seq TO staff;
 
 
 --
@@ -25749,7 +25941,7 @@ GRANT ALL ON SEQUENCE link_forms_requests_requests_results_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_copyto_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_copyto_type FROM easygp;
 GRANT ALL ON TABLE lu_copyto_type TO easygp;
-GRANT ALL ON TABLE lu_copyto_type TO ian;
+GRANT ALL ON TABLE lu_copyto_type TO staff;
 
 
 --
@@ -25759,6 +25951,7 @@ GRANT ALL ON TABLE lu_copyto_type TO ian;
 REVOKE ALL ON SEQUENCE lu_copyto_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_copyto_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_copyto_type_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_copyto_type_pk_seq TO staff;
 
 
 --
@@ -25768,7 +25961,7 @@ GRANT ALL ON SEQUENCE lu_copyto_type_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_form_header FROM PUBLIC;
 REVOKE ALL ON TABLE lu_form_header FROM easygp;
 GRANT ALL ON TABLE lu_form_header TO easygp;
-GRANT ALL ON TABLE lu_form_header TO ian;
+GRANT ALL ON TABLE lu_form_header TO staff;
 
 
 --
@@ -25778,6 +25971,7 @@ GRANT ALL ON TABLE lu_form_header TO ian;
 REVOKE ALL ON SEQUENCE lu_form_header_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_form_header_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_form_header_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_form_header_pk_seq TO staff;
 
 
 --
@@ -25787,7 +25981,7 @@ GRANT ALL ON SEQUENCE lu_form_header_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_instructions FROM PUBLIC;
 REVOKE ALL ON TABLE lu_instructions FROM easygp;
 GRANT ALL ON TABLE lu_instructions TO easygp;
-GRANT ALL ON TABLE lu_instructions TO ian;
+GRANT SELECT,INSERT ON TABLE lu_instructions TO staff;
 
 
 --
@@ -25797,6 +25991,7 @@ GRANT ALL ON TABLE lu_instructions TO ian;
 REVOKE ALL ON SEQUENCE lu_instructions_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_instructions_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_instructions_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_instructions_pk_seq TO staff;
 
 
 --
@@ -25806,7 +26001,7 @@ GRANT ALL ON SEQUENCE lu_instructions_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_link_provider_user_requests FROM PUBLIC;
 REVOKE ALL ON TABLE lu_link_provider_user_requests FROM easygp;
 GRANT ALL ON TABLE lu_link_provider_user_requests TO easygp;
-GRANT ALL ON TABLE lu_link_provider_user_requests TO ian;
+GRANT SELECT,INSERT ON TABLE lu_link_provider_user_requests TO staff;
 
 
 --
@@ -25816,6 +26011,7 @@ GRANT ALL ON TABLE lu_link_provider_user_requests TO ian;
 REVOKE ALL ON SEQUENCE lu_link_provider_user_requests_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_link_provider_user_requests_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_link_provider_user_requests_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_link_provider_user_requests_pk_seq TO staff;
 
 
 --
@@ -25825,7 +26021,7 @@ GRANT ALL ON SEQUENCE lu_link_provider_user_requests_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_request_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_request_type FROM easygp;
 GRANT ALL ON TABLE lu_request_type TO easygp;
-GRANT ALL ON TABLE lu_request_type TO ian;
+GRANT SELECT ON TABLE lu_request_type TO staff;
 
 
 --
@@ -25835,6 +26031,7 @@ GRANT ALL ON TABLE lu_request_type TO ian;
 REVOKE ALL ON SEQUENCE lu_request_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_request_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_request_type_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE lu_request_type_pk_seq TO staff;
 
 
 --
@@ -25844,7 +26041,7 @@ GRANT ALL ON SEQUENCE lu_request_type_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_requests FROM PUBLIC;
 REVOKE ALL ON TABLE lu_requests FROM easygp;
 GRANT ALL ON TABLE lu_requests TO easygp;
-GRANT ALL ON TABLE lu_requests TO ian;
+GRANT ALL ON TABLE lu_requests TO staff;
 
 
 --
@@ -25854,6 +26051,7 @@ GRANT ALL ON TABLE lu_requests TO ian;
 REVOKE ALL ON SEQUENCE lu_requests_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_requests_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_requests_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_requests_pk_seq TO staff;
 
 
 --
@@ -25863,7 +26061,7 @@ GRANT ALL ON SEQUENCE lu_requests_pk_seq TO easygp;
 REVOKE ALL ON TABLE notes FROM PUBLIC;
 REVOKE ALL ON TABLE notes FROM easygp;
 GRANT ALL ON TABLE notes TO easygp;
-GRANT ALL ON TABLE notes TO ian;
+GRANT ALL ON TABLE notes TO staff;
 
 
 --
@@ -25873,6 +26071,7 @@ GRANT ALL ON TABLE notes TO ian;
 REVOKE ALL ON SEQUENCE notes_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE notes_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE notes_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE notes_pk_seq TO staff;
 
 
 --
@@ -25882,7 +26081,7 @@ GRANT ALL ON SEQUENCE notes_pk_seq TO easygp;
 REVOKE ALL ON TABLE request_providers FROM PUBLIC;
 REVOKE ALL ON TABLE request_providers FROM easygp;
 GRANT ALL ON TABLE request_providers TO easygp;
-GRANT ALL ON TABLE request_providers TO ian;
+GRANT ALL ON TABLE request_providers TO staff;
 
 
 --
@@ -25892,6 +26091,7 @@ GRANT ALL ON TABLE request_providers TO ian;
 REVOKE ALL ON SEQUENCE request_providers_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE request_providers_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE request_providers_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE request_providers_pk_seq TO staff;
 
 
 --
@@ -25901,6 +26101,7 @@ GRANT ALL ON SEQUENCE request_providers_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE results_requests_episode_key FROM PUBLIC;
 REVOKE ALL ON SEQUENCE results_requests_episode_key FROM easygp;
 GRANT ALL ON SEQUENCE results_requests_episode_key TO easygp;
+GRANT USAGE ON SEQUENCE results_requests_episode_key TO staff;
 
 
 --
@@ -25910,7 +26111,7 @@ GRANT ALL ON SEQUENCE results_requests_episode_key TO easygp;
 REVOKE ALL ON TABLE user_default_type FROM PUBLIC;
 REVOKE ALL ON TABLE user_default_type FROM easygp;
 GRANT ALL ON TABLE user_default_type TO easygp;
-GRANT ALL ON TABLE user_default_type TO ian;
+GRANT ALL ON TABLE user_default_type TO staff;
 
 
 --
@@ -25920,6 +26121,7 @@ GRANT ALL ON TABLE user_default_type TO ian;
 REVOKE ALL ON SEQUENCE user_default_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE user_default_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE user_default_type_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE user_default_type_pk_seq TO staff;
 
 
 --
@@ -25929,7 +26131,7 @@ GRANT ALL ON SEQUENCE user_default_type_pk_seq TO easygp;
 REVOKE ALL ON TABLE user_provider_defaults FROM PUBLIC;
 REVOKE ALL ON TABLE user_provider_defaults FROM easygp;
 GRANT ALL ON TABLE user_provider_defaults TO easygp;
-GRANT ALL ON TABLE user_provider_defaults TO ian;
+GRANT ALL ON TABLE user_provider_defaults TO staff;
 
 
 --
@@ -25939,6 +26141,7 @@ GRANT ALL ON TABLE user_provider_defaults TO ian;
 REVOKE ALL ON SEQUENCE user_provider_defaults_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE user_provider_defaults_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE user_provider_defaults_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE user_provider_defaults_pk_seq TO staff;
 
 
 --
@@ -25948,6 +26151,7 @@ GRANT ALL ON SEQUENCE user_provider_defaults_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE vwforms_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE vwforms_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE vwforms_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE vwforms_pk_seq TO staff;
 
 
 SET search_path = contacts, pg_catalog;
@@ -25959,7 +26163,7 @@ SET search_path = contacts, pg_catalog;
 REVOKE ALL ON TABLE images FROM PUBLIC;
 REVOKE ALL ON TABLE images FROM easygp;
 GRANT ALL ON TABLE images TO easygp;
-GRANT ALL ON TABLE images TO ian;
+GRANT SELECT,INSERT ON TABLE images TO staff;
 
 
 --
@@ -25969,7 +26173,7 @@ GRANT ALL ON TABLE images TO ian;
 REVOKE ALL ON TABLE vwpersons FROM PUBLIC;
 REVOKE ALL ON TABLE vwpersons FROM easygp;
 GRANT ALL ON TABLE vwpersons TO easygp;
-GRANT ALL ON TABLE vwpersons TO ian;
+GRANT SELECT ON TABLE vwpersons TO staff;
 
 
 SET search_path = clin_requests, pg_catalog;
@@ -25981,7 +26185,7 @@ SET search_path = clin_requests, pg_catalog;
 REVOKE ALL ON TABLE vwrequestproviders FROM PUBLIC;
 REVOKE ALL ON TABLE vwrequestproviders FROM easygp;
 GRANT ALL ON TABLE vwrequestproviders TO easygp;
-GRANT ALL ON TABLE vwrequestproviders TO ian;
+GRANT SELECT ON TABLE vwrequestproviders TO staff;
 
 
 --
@@ -25991,7 +26195,7 @@ GRANT ALL ON TABLE vwrequestproviders TO ian;
 REVOKE ALL ON TABLE vwrequestforms FROM PUBLIC;
 REVOKE ALL ON TABLE vwrequestforms FROM easygp;
 GRANT ALL ON TABLE vwrequestforms TO easygp;
-GRANT ALL ON TABLE vwrequestforms TO ian;
+GRANT ALL ON TABLE vwrequestforms TO staff;
 
 
 --
@@ -26001,7 +26205,7 @@ GRANT ALL ON TABLE vwrequestforms TO ian;
 REVOKE ALL ON TABLE vwrequestnames FROM PUBLIC;
 REVOKE ALL ON TABLE vwrequestnames FROM easygp;
 GRANT ALL ON TABLE vwrequestnames TO easygp;
-GRANT ALL ON TABLE vwrequestnames TO ian;
+GRANT ALL ON TABLE vwrequestnames TO staff;
 
 
 SET search_path = documents, pg_catalog;
@@ -26013,7 +26217,7 @@ SET search_path = documents, pg_catalog;
 REVOKE ALL ON TABLE lu_message_display_style FROM PUBLIC;
 REVOKE ALL ON TABLE lu_message_display_style FROM easygp;
 GRANT ALL ON TABLE lu_message_display_style TO easygp;
-GRANT ALL ON TABLE lu_message_display_style TO ian;
+GRANT SELECT ON TABLE lu_message_display_style TO staff;
 
 
 --
@@ -26023,7 +26227,7 @@ GRANT ALL ON TABLE lu_message_display_style TO ian;
 REVOKE ALL ON TABLE lu_message_standard FROM PUBLIC;
 REVOKE ALL ON TABLE lu_message_standard FROM easygp;
 GRANT ALL ON TABLE lu_message_standard TO easygp;
-GRANT ALL ON TABLE lu_message_standard TO ian;
+GRANT SELECT ON TABLE lu_message_standard TO staff;
 
 
 --
@@ -26033,7 +26237,7 @@ GRANT ALL ON TABLE lu_message_standard TO ian;
 REVOKE ALL ON TABLE sending_entities FROM PUBLIC;
 REVOKE ALL ON TABLE sending_entities FROM easygp;
 GRANT ALL ON TABLE sending_entities TO easygp;
-GRANT ALL ON TABLE sending_entities TO ian;
+GRANT SELECT,INSERT,UPDATE ON TABLE sending_entities TO staff;
 
 
 --
@@ -26043,7 +26247,7 @@ GRANT ALL ON TABLE sending_entities TO ian;
 REVOKE ALL ON TABLE unmatched_patients FROM PUBLIC;
 REVOKE ALL ON TABLE unmatched_patients FROM easygp;
 GRANT ALL ON TABLE unmatched_patients TO easygp;
-GRANT ALL ON TABLE unmatched_patients TO ian;
+GRANT SELECT,INSERT,UPDATE ON TABLE unmatched_patients TO staff;
 
 
 --
@@ -26053,7 +26257,7 @@ GRANT ALL ON TABLE unmatched_patients TO ian;
 REVOKE ALL ON TABLE unmatched_staff FROM PUBLIC;
 REVOKE ALL ON TABLE unmatched_staff FROM easygp;
 GRANT ALL ON TABLE unmatched_staff TO easygp;
-GRANT ALL ON TABLE unmatched_staff TO ian;
+GRANT SELECT,INSERT,UPDATE ON TABLE unmatched_staff TO staff;
 
 
 --
@@ -26063,7 +26267,7 @@ GRANT ALL ON TABLE unmatched_staff TO ian;
 REVOKE ALL ON TABLE vwsendingentities FROM PUBLIC;
 REVOKE ALL ON TABLE vwsendingentities FROM easygp;
 GRANT ALL ON TABLE vwsendingentities TO easygp;
-GRANT ALL ON TABLE vwsendingentities TO ian;
+GRANT SELECT ON TABLE vwsendingentities TO staff;
 
 
 --
@@ -26073,7 +26277,7 @@ GRANT ALL ON TABLE vwsendingentities TO ian;
 REVOKE ALL ON TABLE vwdocuments FROM PUBLIC;
 REVOKE ALL ON TABLE vwdocuments FROM easygp;
 GRANT ALL ON TABLE vwdocuments TO easygp;
-GRANT ALL ON TABLE vwdocuments TO ian;
+GRANT SELECT ON TABLE vwdocuments TO staff;
 
 
 SET search_path = clin_requests, pg_catalog;
@@ -26085,7 +26289,7 @@ SET search_path = clin_requests, pg_catalog;
 REVOKE ALL ON TABLE vwrequestsordered FROM PUBLIC;
 REVOKE ALL ON TABLE vwrequestsordered FROM easygp;
 GRANT ALL ON TABLE vwrequestsordered TO easygp;
-GRANT ALL ON TABLE vwrequestsordered TO ian;
+GRANT SELECT ON TABLE vwrequestsordered TO staff;
 
 
 --
@@ -26095,7 +26299,7 @@ GRANT ALL ON TABLE vwrequestsordered TO ian;
 REVOKE ALL ON TABLE vwrequestsynonyms FROM PUBLIC;
 REVOKE ALL ON TABLE vwrequestsynonyms FROM easygp;
 GRANT ALL ON TABLE vwrequestsynonyms TO easygp;
-GRANT ALL ON TABLE vwrequestsynonyms TO ian;
+GRANT SELECT ON TABLE vwrequestsynonyms TO staff;
 
 
 --
@@ -26105,7 +26309,7 @@ GRANT ALL ON TABLE vwrequestsynonyms TO ian;
 REVOKE ALL ON TABLE vwuserproviderdefaults FROM PUBLIC;
 REVOKE ALL ON TABLE vwuserproviderdefaults FROM easygp;
 GRANT ALL ON TABLE vwuserproviderdefaults TO easygp;
-GRANT ALL ON TABLE vwuserproviderdefaults TO ian;
+GRANT ALL ON TABLE vwuserproviderdefaults TO staff;
 
 
 SET search_path = clin_vaccination, pg_catalog;
@@ -26117,7 +26321,7 @@ SET search_path = clin_vaccination, pg_catalog;
 REVOKE ALL ON TABLE lu_descriptions FROM PUBLIC;
 REVOKE ALL ON TABLE lu_descriptions FROM easygp;
 GRANT ALL ON TABLE lu_descriptions TO easygp;
-GRANT ALL ON TABLE lu_descriptions TO ian;
+GRANT ALL ON TABLE lu_descriptions TO staff;
 
 
 --
@@ -26127,7 +26331,7 @@ GRANT ALL ON TABLE lu_descriptions TO ian;
 REVOKE ALL ON TABLE lu_formulation FROM PUBLIC;
 REVOKE ALL ON TABLE lu_formulation FROM easygp;
 GRANT ALL ON TABLE lu_formulation TO easygp;
-GRANT ALL ON TABLE lu_formulation TO ian;
+GRANT ALL ON TABLE lu_formulation TO staff;
 
 
 --
@@ -26137,7 +26341,7 @@ GRANT ALL ON TABLE lu_formulation TO ian;
 REVOKE ALL ON TABLE lu_schedules FROM PUBLIC;
 REVOKE ALL ON TABLE lu_schedules FROM easygp;
 GRANT ALL ON TABLE lu_schedules TO easygp;
-GRANT ALL ON TABLE lu_schedules TO ian;
+GRANT ALL ON TABLE lu_schedules TO staff;
 
 
 --
@@ -26147,6 +26351,7 @@ GRANT ALL ON TABLE lu_schedules TO ian;
 REVOKE ALL ON SEQUENCE lu_schedules_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_schedules_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_schedules_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_schedules_pk_seq TO staff;
 
 
 --
@@ -26156,7 +26361,7 @@ GRANT ALL ON SEQUENCE lu_schedules_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_vaccines FROM PUBLIC;
 REVOKE ALL ON TABLE lu_vaccines FROM easygp;
 GRANT ALL ON TABLE lu_vaccines TO easygp;
-GRANT ALL ON TABLE lu_vaccines TO ian;
+GRANT ALL ON TABLE lu_vaccines TO staff;
 
 
 --
@@ -26166,6 +26371,7 @@ GRANT ALL ON TABLE lu_vaccines TO ian;
 REVOKE ALL ON SEQUENCE lu_vaccines_descriptions_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_vaccines_descriptions_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_vaccines_descriptions_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_vaccines_descriptions_pk_seq TO staff;
 
 
 --
@@ -26175,7 +26381,7 @@ GRANT ALL ON SEQUENCE lu_vaccines_descriptions_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_vaccines_in_schedule FROM PUBLIC;
 REVOKE ALL ON TABLE lu_vaccines_in_schedule FROM easygp;
 GRANT ALL ON TABLE lu_vaccines_in_schedule TO easygp;
-GRANT ALL ON TABLE lu_vaccines_in_schedule TO ian;
+GRANT SELECT ON TABLE lu_vaccines_in_schedule TO staff;
 
 
 --
@@ -26185,6 +26391,7 @@ GRANT ALL ON TABLE lu_vaccines_in_schedule TO ian;
 REVOKE ALL ON SEQUENCE lu_vaccines_in_schedule_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_vaccines_in_schedule_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_vaccines_in_schedule_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_vaccines_in_schedule_pk_seq TO staff;
 
 
 --
@@ -26194,6 +26401,7 @@ GRANT ALL ON SEQUENCE lu_vaccines_in_schedule_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE lu_vaccines_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_vaccines_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_vaccines_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_vaccines_pk_seq TO staff;
 
 
 --
@@ -26203,7 +26411,7 @@ GRANT ALL ON SEQUENCE lu_vaccines_pk_seq TO easygp;
 REVOKE ALL ON TABLE vaccinations FROM PUBLIC;
 REVOKE ALL ON TABLE vaccinations FROM easygp;
 GRANT ALL ON TABLE vaccinations TO easygp;
-GRANT ALL ON TABLE vaccinations TO ian;
+GRANT ALL ON TABLE vaccinations TO staff;
 
 
 --
@@ -26213,7 +26421,7 @@ GRANT ALL ON TABLE vaccinations TO ian;
 REVOKE ALL ON TABLE vaccine_serial_numbers FROM PUBLIC;
 REVOKE ALL ON TABLE vaccine_serial_numbers FROM easygp;
 GRANT ALL ON TABLE vaccine_serial_numbers TO easygp;
-GRANT ALL ON TABLE vaccine_serial_numbers TO ian;
+GRANT ALL ON TABLE vaccine_serial_numbers TO staff;
 
 
 --
@@ -26223,7 +26431,7 @@ GRANT ALL ON TABLE vaccine_serial_numbers TO ian;
 REVOKE ALL ON TABLE vwvaccineroutesadministration FROM PUBLIC;
 REVOKE ALL ON TABLE vwvaccineroutesadministration FROM easygp;
 GRANT ALL ON TABLE vwvaccineroutesadministration TO easygp;
-GRANT ALL ON TABLE vwvaccineroutesadministration TO ian;
+GRANT ALL ON TABLE vwvaccineroutesadministration TO staff;
 
 
 --
@@ -26233,7 +26441,7 @@ GRANT ALL ON TABLE vwvaccineroutesadministration TO ian;
 REVOKE ALL ON TABLE vwvaccines FROM PUBLIC;
 REVOKE ALL ON TABLE vwvaccines FROM easygp;
 GRANT ALL ON TABLE vwvaccines TO easygp;
-GRANT ALL ON TABLE vwvaccines TO ian;
+GRANT ALL ON TABLE vwvaccines TO staff;
 
 
 SET search_path = common, pg_catalog;
@@ -26245,7 +26453,7 @@ SET search_path = common, pg_catalog;
 REVOKE ALL ON TABLE lu_seasons FROM PUBLIC;
 REVOKE ALL ON TABLE lu_seasons FROM easygp;
 GRANT ALL ON TABLE lu_seasons TO easygp;
-GRANT ALL ON TABLE lu_seasons TO ian;
+GRANT SELECT ON TABLE lu_seasons TO staff;
 
 
 --
@@ -26255,7 +26463,7 @@ GRANT ALL ON TABLE lu_seasons TO ian;
 REVOKE ALL ON TABLE lu_site_administration FROM PUBLIC;
 REVOKE ALL ON TABLE lu_site_administration FROM easygp;
 GRANT ALL ON TABLE lu_site_administration TO easygp;
-GRANT ALL ON TABLE lu_site_administration TO ian;
+GRANT SELECT ON TABLE lu_site_administration TO staff;
 
 
 SET search_path = clin_vaccination, pg_catalog;
@@ -26267,7 +26475,7 @@ SET search_path = clin_vaccination, pg_catalog;
 REVOKE ALL ON TABLE vwvaccinesgiven FROM PUBLIC;
 REVOKE ALL ON TABLE vwvaccinesgiven FROM easygp;
 GRANT ALL ON TABLE vwvaccinesgiven TO easygp;
-GRANT ALL ON TABLE vwvaccinesgiven TO ian;
+GRANT ALL ON TABLE vwvaccinesgiven TO staff;
 
 
 --
@@ -26277,7 +26485,7 @@ GRANT ALL ON TABLE vwvaccinesgiven TO ian;
 REVOKE ALL ON TABLE vwvaccinesinschedule FROM PUBLIC;
 REVOKE ALL ON TABLE vwvaccinesinschedule FROM easygp;
 GRANT ALL ON TABLE vwvaccinesinschedule TO easygp;
-GRANT ALL ON TABLE vwvaccinesinschedule TO ian;
+GRANT ALL ON TABLE vwvaccinesinschedule TO staff;
 
 
 SET search_path = clin_workcover, pg_catalog;
@@ -26289,7 +26497,7 @@ SET search_path = clin_workcover, pg_catalog;
 REVOKE ALL ON TABLE claims FROM PUBLIC;
 REVOKE ALL ON TABLE claims FROM easygp;
 GRANT ALL ON TABLE claims TO easygp;
-GRANT ALL ON TABLE claims TO ian;
+GRANT ALL ON TABLE claims TO staff;
 
 
 --
@@ -26299,6 +26507,7 @@ GRANT ALL ON TABLE claims TO ian;
 REVOKE ALL ON SEQUENCE claims_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE claims_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE claims_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE claims_pk_seq TO staff;
 
 
 --
@@ -26308,7 +26517,7 @@ GRANT ALL ON SEQUENCE claims_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_caused_by_employment FROM PUBLIC;
 REVOKE ALL ON TABLE lu_caused_by_employment FROM easygp;
 GRANT ALL ON TABLE lu_caused_by_employment TO easygp;
-GRANT ALL ON TABLE lu_caused_by_employment TO ian;
+GRANT ALL ON TABLE lu_caused_by_employment TO staff;
 
 
 --
@@ -26318,6 +26527,7 @@ GRANT ALL ON TABLE lu_caused_by_employment TO ian;
 REVOKE ALL ON SEQUENCE lu_caused_by_employment_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_caused_by_employment_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_caused_by_employment_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_caused_by_employment_pk_seq TO staff;
 
 
 --
@@ -26327,7 +26537,7 @@ GRANT ALL ON SEQUENCE lu_caused_by_employment_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_visit_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_visit_type FROM easygp;
 GRANT ALL ON TABLE lu_visit_type TO easygp;
-GRANT ALL ON TABLE lu_visit_type TO ian;
+GRANT SELECT ON TABLE lu_visit_type TO staff;
 
 
 --
@@ -26337,6 +26547,7 @@ GRANT ALL ON TABLE lu_visit_type TO ian;
 REVOKE ALL ON SEQUENCE lu_visit_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_visit_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_visit_type_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_visit_type_pk_seq TO staff;
 
 
 --
@@ -26346,7 +26557,7 @@ GRANT ALL ON SEQUENCE lu_visit_type_pk_seq TO easygp;
 REVOKE ALL ON TABLE visits FROM PUBLIC;
 REVOKE ALL ON TABLE visits FROM easygp;
 GRANT ALL ON TABLE visits TO easygp;
-GRANT ALL ON TABLE visits TO ian;
+GRANT ALL ON TABLE visits TO staff;
 
 
 --
@@ -26356,6 +26567,7 @@ GRANT ALL ON TABLE visits TO ian;
 REVOKE ALL ON SEQUENCE visits_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE visits_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE visits_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE visits_pk_seq TO staff;
 
 
 --
@@ -26365,7 +26577,7 @@ GRANT ALL ON SEQUENCE visits_pk_seq TO easygp;
 REVOKE ALL ON TABLE vwworkcover FROM PUBLIC;
 REVOKE ALL ON TABLE vwworkcover FROM easygp;
 GRANT ALL ON TABLE vwworkcover TO easygp;
-GRANT ALL ON TABLE vwworkcover TO ian;
+GRANT ALL ON TABLE vwworkcover TO staff;
 
 
 SET search_path = coding, pg_catalog;
@@ -26377,7 +26589,7 @@ SET search_path = coding, pg_catalog;
 REVOKE ALL ON TABLE lu_loinc FROM PUBLIC;
 REVOKE ALL ON TABLE lu_loinc FROM easygp;
 GRANT ALL ON TABLE lu_loinc TO easygp;
-GRANT ALL ON TABLE lu_loinc TO ian;
+GRANT SELECT ON TABLE lu_loinc TO staff;
 
 
 --
@@ -26387,7 +26599,7 @@ GRANT ALL ON TABLE lu_loinc TO ian;
 REVOKE ALL ON TABLE lu_loinc_abbrev FROM PUBLIC;
 REVOKE ALL ON TABLE lu_loinc_abbrev FROM easygp;
 GRANT ALL ON TABLE lu_loinc_abbrev TO easygp;
-GRANT ALL ON TABLE lu_loinc_abbrev TO ian;
+GRANT SELECT ON TABLE lu_loinc_abbrev TO staff;
 
 
 --
@@ -26397,7 +26609,7 @@ GRANT ALL ON TABLE lu_loinc_abbrev TO ian;
 REVOKE ALL ON TABLE usr_codes_weighting FROM PUBLIC;
 REVOKE ALL ON TABLE usr_codes_weighting FROM easygp;
 GRANT ALL ON TABLE usr_codes_weighting TO easygp;
-GRANT ALL ON TABLE usr_codes_weighting TO ian;
+GRANT ALL ON TABLE usr_codes_weighting TO staff;
 
 
 --
@@ -26407,6 +26619,7 @@ GRANT ALL ON TABLE usr_codes_weighting TO ian;
 REVOKE ALL ON SEQUENCE usr_codes_weighting_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE usr_codes_weighting_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE usr_codes_weighting_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE usr_codes_weighting_pk_seq TO staff;
 
 
 --
@@ -26416,7 +26629,7 @@ GRANT ALL ON SEQUENCE usr_codes_weighting_pk_seq TO easygp;
 REVOKE ALL ON TABLE vwcodesweighted FROM PUBLIC;
 REVOKE ALL ON TABLE vwcodesweighted FROM easygp;
 GRANT ALL ON TABLE vwcodesweighted TO easygp;
-GRANT ALL ON TABLE vwcodesweighted TO ian;
+GRANT SELECT ON TABLE vwcodesweighted TO staff;
 
 
 --
@@ -26426,7 +26639,7 @@ GRANT ALL ON TABLE vwcodesweighted TO ian;
 REVOKE ALL ON TABLE vwgenericterms FROM PUBLIC;
 REVOKE ALL ON TABLE vwgenericterms FROM easygp;
 GRANT ALL ON TABLE vwgenericterms TO easygp;
-GRANT ALL ON TABLE vwgenericterms TO ian;
+GRANT SELECT ON TABLE vwgenericterms TO staff;
 
 
 SET search_path = common, pg_catalog;
@@ -26438,7 +26651,7 @@ SET search_path = common, pg_catalog;
 REVOKE ALL ON TABLE lu_anatomical_localisation FROM PUBLIC;
 REVOKE ALL ON TABLE lu_anatomical_localisation FROM easygp;
 GRANT ALL ON TABLE lu_anatomical_localisation TO easygp;
-GRANT ALL ON TABLE lu_anatomical_localisation TO ian;
+GRANT SELECT ON TABLE lu_anatomical_localisation TO staff;
 
 
 --
@@ -26448,7 +26661,7 @@ GRANT ALL ON TABLE lu_anatomical_localisation TO ian;
 REVOKE ALL ON TABLE lu_companion_status FROM PUBLIC;
 REVOKE ALL ON TABLE lu_companion_status FROM easygp;
 GRANT ALL ON TABLE lu_companion_status TO easygp;
-GRANT ALL ON TABLE lu_companion_status TO ian;
+GRANT SELECT ON TABLE lu_companion_status TO staff;
 
 
 --
@@ -26458,7 +26671,7 @@ GRANT ALL ON TABLE lu_companion_status TO ian;
 REVOKE ALL ON TABLE lu_formulation FROM PUBLIC;
 REVOKE ALL ON TABLE lu_formulation FROM easygp;
 GRANT ALL ON TABLE lu_formulation TO easygp;
-GRANT ALL ON TABLE lu_formulation TO ian;
+GRANT SELECT ON TABLE lu_formulation TO staff;
 
 
 --
@@ -26468,7 +26681,7 @@ GRANT ALL ON TABLE lu_formulation TO ian;
 REVOKE ALL ON TABLE lu_hearing_aid_status FROM PUBLIC;
 REVOKE ALL ON TABLE lu_hearing_aid_status FROM easygp;
 GRANT ALL ON TABLE lu_hearing_aid_status TO easygp;
-GRANT ALL ON TABLE lu_hearing_aid_status TO ian;
+GRANT SELECT ON TABLE lu_hearing_aid_status TO staff;
 
 
 --
@@ -26478,7 +26691,7 @@ GRANT ALL ON TABLE lu_hearing_aid_status TO ian;
 REVOKE ALL ON TABLE lu_medicolegal FROM PUBLIC;
 REVOKE ALL ON TABLE lu_medicolegal FROM easygp;
 GRANT ALL ON TABLE lu_medicolegal TO easygp;
-GRANT ALL ON TABLE lu_medicolegal TO ian;
+GRANT SELECT ON TABLE lu_medicolegal TO staff;
 
 
 --
@@ -26488,7 +26701,7 @@ GRANT ALL ON TABLE lu_medicolegal TO ian;
 REVOKE ALL ON TABLE lu_motion FROM PUBLIC;
 REVOKE ALL ON TABLE lu_motion FROM easygp;
 GRANT ALL ON TABLE lu_motion TO easygp;
-GRANT ALL ON TABLE lu_motion TO ian;
+GRANT SELECT ON TABLE lu_motion TO staff;
 
 
 --
@@ -26498,7 +26711,7 @@ GRANT ALL ON TABLE lu_motion TO ian;
 REVOKE ALL ON TABLE lu_normality FROM PUBLIC;
 REVOKE ALL ON TABLE lu_normality FROM easygp;
 GRANT ALL ON TABLE lu_normality TO easygp;
-GRANT ALL ON TABLE lu_normality TO ian;
+GRANT SELECT ON TABLE lu_normality TO staff;
 
 
 --
@@ -26508,6 +26721,7 @@ GRANT ALL ON TABLE lu_normality TO ian;
 REVOKE ALL ON SEQUENCE lu_occupations_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_occupations_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_occupations_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_occupations_pk_seq TO staff;
 
 
 --
@@ -26517,7 +26731,7 @@ GRANT ALL ON SEQUENCE lu_occupations_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_proximal_distal FROM PUBLIC;
 REVOKE ALL ON TABLE lu_proximal_distal FROM easygp;
 GRANT ALL ON TABLE lu_proximal_distal TO easygp;
-GRANT ALL ON TABLE lu_proximal_distal TO ian;
+GRANT SELECT ON TABLE lu_proximal_distal TO staff;
 
 
 --
@@ -26527,7 +26741,7 @@ GRANT ALL ON TABLE lu_proximal_distal TO ian;
 REVOKE ALL ON TABLE lu_religions FROM PUBLIC;
 REVOKE ALL ON TABLE lu_religions FROM easygp;
 GRANT ALL ON TABLE lu_religions TO easygp;
-GRANT ALL ON TABLE lu_religions TO ian;
+GRANT SELECT ON TABLE lu_religions TO staff;
 
 
 --
@@ -26537,7 +26751,7 @@ GRANT ALL ON TABLE lu_religions TO ian;
 REVOKE ALL ON TABLE lu_smoking_status FROM PUBLIC;
 REVOKE ALL ON TABLE lu_smoking_status FROM easygp;
 GRANT ALL ON TABLE lu_smoking_status TO easygp;
-GRANT ALL ON TABLE lu_smoking_status TO ian;
+GRANT SELECT ON TABLE lu_smoking_status TO staff;
 
 
 --
@@ -26547,7 +26761,7 @@ GRANT ALL ON TABLE lu_smoking_status TO ian;
 REVOKE ALL ON TABLE lu_social_support FROM PUBLIC;
 REVOKE ALL ON TABLE lu_social_support FROM easygp;
 GRANT ALL ON TABLE lu_social_support TO easygp;
-GRANT ALL ON TABLE lu_social_support TO ian;
+GRANT SELECT ON TABLE lu_social_support TO staff;
 
 
 --
@@ -26557,7 +26771,7 @@ GRANT ALL ON TABLE lu_social_support TO ian;
 REVOKE ALL ON TABLE lu_sub_religions FROM PUBLIC;
 REVOKE ALL ON TABLE lu_sub_religions FROM easygp;
 GRANT ALL ON TABLE lu_sub_religions TO easygp;
-GRANT ALL ON TABLE lu_sub_religions TO ian;
+GRANT SELECT ON TABLE lu_sub_religions TO staff;
 
 
 --
@@ -26567,7 +26781,7 @@ GRANT ALL ON TABLE lu_sub_religions TO ian;
 REVOKE ALL ON TABLE lu_whisper_test FROM PUBLIC;
 REVOKE ALL ON TABLE lu_whisper_test FROM easygp;
 GRANT ALL ON TABLE lu_whisper_test TO easygp;
-GRANT ALL ON TABLE lu_whisper_test TO ian;
+GRANT SELECT ON TABLE lu_whisper_test TO staff;
 
 
 --
@@ -26577,7 +26791,7 @@ GRANT ALL ON TABLE lu_whisper_test TO ian;
 REVOKE ALL ON TABLE vwreligions FROM PUBLIC;
 REVOKE ALL ON TABLE vwreligions FROM easygp;
 GRANT ALL ON TABLE vwreligions TO easygp;
-GRANT ALL ON TABLE vwreligions TO ian;
+GRANT SELECT ON TABLE vwreligions TO staff;
 
 
 SET search_path = contacts, pg_catalog;
@@ -26589,6 +26803,7 @@ SET search_path = contacts, pg_catalog;
 REVOKE ALL ON SEQUENCE data_addresses_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE data_addresses_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE data_addresses_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE data_addresses_pk_seq TO staff;
 
 
 --
@@ -26598,6 +26813,7 @@ GRANT ALL ON SEQUENCE data_addresses_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE data_branches_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE data_branches_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE data_branches_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE data_branches_pk_seq TO staff;
 
 
 --
@@ -26607,7 +26823,7 @@ GRANT ALL ON SEQUENCE data_branches_pk_seq TO easygp;
 REVOKE ALL ON TABLE data_communications FROM PUBLIC;
 REVOKE ALL ON TABLE data_communications FROM easygp;
 GRANT ALL ON TABLE data_communications TO easygp;
-GRANT ALL ON TABLE data_communications TO ian;
+GRANT ALL ON TABLE data_communications TO staff;
 
 
 --
@@ -26617,6 +26833,7 @@ GRANT ALL ON TABLE data_communications TO ian;
 REVOKE ALL ON SEQUENCE data_communications_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE data_communications_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE data_communications_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE data_communications_pk_seq TO staff;
 
 
 --
@@ -26626,6 +26843,17 @@ GRANT ALL ON SEQUENCE data_communications_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE data_employees_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE data_employees_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE data_employees_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE data_employees_pk_seq TO staff;
+
+
+--
+-- Name: data_numbers_pk_seq; Type: ACL; Schema: contacts; Owner: easygp
+--
+
+REVOKE ALL ON SEQUENCE data_numbers_pk_seq FROM PUBLIC;
+REVOKE ALL ON SEQUENCE data_numbers_pk_seq FROM easygp;
+GRANT ALL ON SEQUENCE data_numbers_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE data_numbers_pk_seq TO staff;
 
 
 --
@@ -26635,6 +26863,7 @@ GRANT ALL ON SEQUENCE data_employees_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE data_organisations_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE data_organisations_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE data_organisations_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE data_organisations_pk_seq TO staff;
 
 
 --
@@ -26644,6 +26873,7 @@ GRANT ALL ON SEQUENCE data_organisations_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE data_persons_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE data_persons_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE data_persons_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE data_persons_pk_seq TO staff;
 
 
 --
@@ -26653,6 +26883,7 @@ GRANT ALL ON SEQUENCE data_persons_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE images_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE images_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE images_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE images_pk_seq TO staff;
 
 
 --
@@ -26662,7 +26893,7 @@ GRANT ALL ON SEQUENCE images_pk_seq TO easygp;
 REVOKE ALL ON TABLE links_branches_comms FROM PUBLIC;
 REVOKE ALL ON TABLE links_branches_comms FROM easygp;
 GRANT ALL ON TABLE links_branches_comms TO easygp;
-GRANT ALL ON TABLE links_branches_comms TO ian;
+GRANT ALL ON TABLE links_branches_comms TO staff;
 
 
 --
@@ -26672,6 +26903,7 @@ GRANT ALL ON TABLE links_branches_comms TO ian;
 REVOKE ALL ON SEQUENCE links_branches_comms_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE links_branches_comms_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE links_branches_comms_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE links_branches_comms_pk_seq TO staff;
 
 
 --
@@ -26681,7 +26913,7 @@ GRANT ALL ON SEQUENCE links_branches_comms_pk_seq TO easygp;
 REVOKE ALL ON TABLE links_employees_comms FROM PUBLIC;
 REVOKE ALL ON TABLE links_employees_comms FROM easygp;
 GRANT ALL ON TABLE links_employees_comms TO easygp;
-GRANT ALL ON TABLE links_employees_comms TO ian;
+GRANT ALL ON TABLE links_employees_comms TO staff;
 
 
 --
@@ -26691,6 +26923,7 @@ GRANT ALL ON TABLE links_employees_comms TO ian;
 REVOKE ALL ON SEQUENCE links_employees_comms_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE links_employees_comms_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE links_employees_comms_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE links_employees_comms_pk_seq TO staff;
 
 
 --
@@ -26700,6 +26933,7 @@ GRANT ALL ON SEQUENCE links_employees_comms_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE links_persons_addresses_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE links_persons_addresses_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE links_persons_addresses_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE links_persons_addresses_pk_seq TO staff;
 
 
 --
@@ -26709,7 +26943,7 @@ GRANT ALL ON SEQUENCE links_persons_addresses_pk_seq TO easygp;
 REVOKE ALL ON TABLE links_persons_comms FROM PUBLIC;
 REVOKE ALL ON TABLE links_persons_comms FROM easygp;
 GRANT ALL ON TABLE links_persons_comms TO easygp;
-GRANT ALL ON TABLE links_persons_comms TO ian;
+GRANT ALL ON TABLE links_persons_comms TO staff;
 
 
 --
@@ -26719,6 +26953,7 @@ GRANT ALL ON TABLE links_persons_comms TO ian;
 REVOKE ALL ON SEQUENCE links_persons_comms_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE links_persons_comms_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE links_persons_comms_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE links_persons_comms_pk_seq TO staff;
 
 
 --
@@ -26728,6 +26963,7 @@ GRANT ALL ON SEQUENCE links_persons_comms_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE lu_categories_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_categories_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_categories_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE lu_categories_pk_seq TO staff;
 
 
 --
@@ -26737,7 +26973,7 @@ GRANT ALL ON SEQUENCE lu_categories_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_firstnames FROM PUBLIC;
 REVOKE ALL ON TABLE lu_firstnames FROM easygp;
 GRANT ALL ON TABLE lu_firstnames TO easygp;
-GRANT ALL ON TABLE lu_firstnames TO ian;
+GRANT SELECT,INSERT ON TABLE lu_firstnames TO staff;
 
 
 --
@@ -26747,6 +26983,7 @@ GRANT ALL ON TABLE lu_firstnames TO ian;
 REVOKE ALL ON SEQUENCE lu_firstnames_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_firstnames_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_firstnames_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_firstnames_pk_seq TO staff;
 
 
 --
@@ -26756,7 +26993,7 @@ GRANT ALL ON SEQUENCE lu_firstnames_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_misspelt_towns FROM PUBLIC;
 REVOKE ALL ON TABLE lu_misspelt_towns FROM easygp;
 GRANT ALL ON TABLE lu_misspelt_towns TO easygp;
-GRANT ALL ON TABLE lu_misspelt_towns TO ian;
+GRANT ALL ON TABLE lu_misspelt_towns TO staff;
 
 
 --
@@ -26766,6 +27003,7 @@ GRANT ALL ON TABLE lu_misspelt_towns TO ian;
 REVOKE ALL ON SEQUENCE lu_mismatched_towns_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_mismatched_towns_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_mismatched_towns_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_mismatched_towns_pk_seq TO staff;
 
 
 --
@@ -26775,7 +27013,7 @@ GRANT ALL ON SEQUENCE lu_mismatched_towns_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_surnames FROM PUBLIC;
 REVOKE ALL ON TABLE lu_surnames FROM easygp;
 GRANT ALL ON TABLE lu_surnames TO easygp;
-GRANT ALL ON TABLE lu_surnames TO ian;
+GRANT SELECT,INSERT ON TABLE lu_surnames TO staff;
 
 
 --
@@ -26785,6 +27023,7 @@ GRANT ALL ON TABLE lu_surnames TO ian;
 REVOKE ALL ON SEQUENCE lu_surnames_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_surnames_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_surnames_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_surnames_pk_seq TO staff;
 
 
 --
@@ -26794,6 +27033,7 @@ GRANT ALL ON SEQUENCE lu_surnames_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE lu_title_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_title_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_title_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_title_pk_seq TO staff;
 
 
 --
@@ -26803,7 +27043,7 @@ GRANT ALL ON SEQUENCE lu_title_pk_seq TO easygp;
 REVOKE ALL ON TABLE todo FROM PUBLIC;
 REVOKE ALL ON TABLE todo FROM easygp;
 GRANT ALL ON TABLE todo TO easygp;
-GRANT ALL ON TABLE todo TO ian;
+GRANT ALL ON TABLE todo TO staff;
 
 
 --
@@ -26813,7 +27053,7 @@ GRANT ALL ON TABLE todo TO ian;
 REVOKE ALL ON TABLE vwbranchescomms FROM PUBLIC;
 REVOKE ALL ON TABLE vwbranchescomms FROM easygp;
 GRANT ALL ON TABLE vwbranchescomms TO easygp;
-GRANT ALL ON TABLE vwbranchescomms TO ian;
+GRANT ALL ON TABLE vwbranchescomms TO staff;
 
 
 --
@@ -26823,7 +27063,7 @@ GRANT ALL ON TABLE vwbranchescomms TO ian;
 REVOKE ALL ON TABLE vwemployees FROM PUBLIC;
 REVOKE ALL ON TABLE vwemployees FROM easygp;
 GRANT ALL ON TABLE vwemployees TO easygp;
-GRANT ALL ON TABLE vwemployees TO ian;
+GRANT SELECT ON TABLE vwemployees TO staff;
 
 
 --
@@ -26833,7 +27073,7 @@ GRANT ALL ON TABLE vwemployees TO ian;
 REVOKE ALL ON TABLE vworganisationsbycategory FROM PUBLIC;
 REVOKE ALL ON TABLE vworganisationsbycategory FROM easygp;
 GRANT ALL ON TABLE vworganisationsbycategory TO easygp;
-GRANT ALL ON TABLE vworganisationsbycategory TO ian;
+GRANT ALL ON TABLE vworganisationsbycategory TO staff;
 
 
 --
@@ -26843,6 +27083,7 @@ GRANT ALL ON TABLE vworganisationsbycategory TO ian;
 REVOKE ALL ON SEQUENCE vwpatients_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE vwpatients_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE vwpatients_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE vwpatients_pk_seq TO staff;
 
 
 --
@@ -26852,7 +27093,7 @@ GRANT ALL ON SEQUENCE vwpatients_pk_seq TO easygp;
 REVOKE ALL ON TABLE vwpersonsaddresses FROM PUBLIC;
 REVOKE ALL ON TABLE vwpersonsaddresses FROM easygp;
 GRANT ALL ON TABLE vwpersonsaddresses TO easygp;
-GRANT ALL ON TABLE vwpersonsaddresses TO ian;
+GRANT ALL ON TABLE vwpersonsaddresses TO staff;
 
 
 --
@@ -26862,7 +27103,7 @@ GRANT ALL ON TABLE vwpersonsaddresses TO ian;
 REVOKE ALL ON TABLE vwpersonsexcludingpatients FROM PUBLIC;
 REVOKE ALL ON TABLE vwpersonsexcludingpatients FROM easygp;
 GRANT ALL ON TABLE vwpersonsexcludingpatients TO easygp;
-GRANT ALL ON TABLE vwpersonsexcludingpatients TO ian;
+GRANT SELECT ON TABLE vwpersonsexcludingpatients TO staff;
 
 
 --
@@ -26872,7 +27113,7 @@ GRANT ALL ON TABLE vwpersonsexcludingpatients TO ian;
 REVOKE ALL ON TABLE vwpersonsandemployeesaddresses FROM PUBLIC;
 REVOKE ALL ON TABLE vwpersonsandemployeesaddresses FROM easygp;
 GRANT ALL ON TABLE vwpersonsandemployeesaddresses TO easygp;
-GRANT ALL ON TABLE vwpersonsandemployeesaddresses TO ian;
+GRANT ALL ON TABLE vwpersonsandemployeesaddresses TO staff;
 
 
 --
@@ -26882,7 +27123,7 @@ GRANT ALL ON TABLE vwpersonsandemployeesaddresses TO ian;
 REVOKE ALL ON TABLE vwpersonscomms FROM PUBLIC;
 REVOKE ALL ON TABLE vwpersonscomms FROM easygp;
 GRANT ALL ON TABLE vwpersonscomms TO easygp;
-GRANT ALL ON TABLE vwpersonscomms TO ian;
+GRANT ALL ON TABLE vwpersonscomms TO staff;
 
 
 --
@@ -26892,7 +27133,7 @@ GRANT ALL ON TABLE vwpersonscomms TO ian;
 REVOKE ALL ON TABLE vwpersonsemployeesbyoccupation FROM PUBLIC;
 REVOKE ALL ON TABLE vwpersonsemployeesbyoccupation FROM easygp;
 GRANT ALL ON TABLE vwpersonsemployeesbyoccupation TO easygp;
-GRANT ALL ON TABLE vwpersonsemployeesbyoccupation TO ian;
+GRANT ALL ON TABLE vwpersonsemployeesbyoccupation TO staff;
 
 
 --
@@ -26902,7 +27143,7 @@ GRANT ALL ON TABLE vwpersonsemployeesbyoccupation TO ian;
 REVOKE ALL ON TABLE vwtowns FROM PUBLIC;
 REVOKE ALL ON TABLE vwtowns FROM easygp;
 GRANT ALL ON TABLE vwtowns TO easygp;
-GRANT ALL ON TABLE vwtowns TO ian;
+GRANT ALL ON TABLE vwtowns TO staff;
 
 
 SET search_path = db, pg_catalog;
@@ -26914,7 +27155,7 @@ SET search_path = db, pg_catalog;
 REVOKE ALL ON TABLE lu_version FROM PUBLIC;
 REVOKE ALL ON TABLE lu_version FROM easygp;
 GRANT ALL ON TABLE lu_version TO easygp;
-GRANT ALL ON TABLE lu_version TO ian;
+GRANT SELECT ON TABLE lu_version TO staff;
 
 
 SET search_path = defaults, pg_catalog;
@@ -26926,7 +27167,7 @@ SET search_path = defaults, pg_catalog;
 REVOKE ALL ON TABLE hl7_inboxes FROM PUBLIC;
 REVOKE ALL ON TABLE hl7_inboxes FROM easygp;
 GRANT ALL ON TABLE hl7_inboxes TO easygp;
-GRANT ALL ON TABLE hl7_inboxes TO ian;
+GRANT ALL ON TABLE hl7_inboxes TO staff;
 
 
 --
@@ -26936,6 +27177,7 @@ GRANT ALL ON TABLE hl7_inboxes TO ian;
 REVOKE ALL ON SEQUENCE hl7_message_destination_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE hl7_message_destination_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE hl7_message_destination_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE hl7_message_destination_pk_seq TO staff;
 
 
 --
@@ -26945,7 +27187,7 @@ GRANT ALL ON SEQUENCE hl7_message_destination_pk_seq TO easygp;
 REVOKE ALL ON TABLE incoming_message_handling FROM PUBLIC;
 REVOKE ALL ON TABLE incoming_message_handling FROM easygp;
 GRANT ALL ON TABLE incoming_message_handling TO easygp;
-GRANT ALL ON TABLE incoming_message_handling TO ian;
+GRANT ALL ON TABLE incoming_message_handling TO staff;
 
 
 --
@@ -26955,6 +27197,7 @@ GRANT ALL ON TABLE incoming_message_handling TO ian;
 REVOKE ALL ON SEQUENCE incoming_message_handling_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE incoming_message_handling_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE incoming_message_handling_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE incoming_message_handling_pk_seq TO staff;
 
 
 --
@@ -26964,7 +27207,7 @@ GRANT ALL ON SEQUENCE incoming_message_handling_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_link_printer_task FROM PUBLIC;
 REVOKE ALL ON TABLE lu_link_printer_task FROM easygp;
 GRANT ALL ON TABLE lu_link_printer_task TO easygp;
-GRANT ALL ON TABLE lu_link_printer_task TO ian;
+GRANT ALL ON TABLE lu_link_printer_task TO staff;
 
 
 --
@@ -26974,6 +27217,7 @@ GRANT ALL ON TABLE lu_link_printer_task TO ian;
 REVOKE ALL ON SEQUENCE lu_link_printer_task_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_link_printer_task_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_link_printer_task_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_link_printer_task_pk_seq TO staff;
 
 
 --
@@ -26983,7 +27227,6 @@ GRANT ALL ON SEQUENCE lu_link_printer_task_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_message_display_style FROM PUBLIC;
 REVOKE ALL ON TABLE lu_message_display_style FROM easygp;
 GRANT ALL ON TABLE lu_message_display_style TO easygp;
-GRANT ALL ON TABLE lu_message_display_style TO ian;
 
 
 --
@@ -26993,6 +27236,7 @@ GRANT ALL ON TABLE lu_message_display_style TO ian;
 REVOKE ALL ON SEQUENCE lu_message_display_style_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_message_display_style_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_message_display_style_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_message_display_style_pk_seq TO staff;
 
 
 --
@@ -27002,7 +27246,6 @@ GRANT ALL ON SEQUENCE lu_message_display_style_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_message_standard FROM PUBLIC;
 REVOKE ALL ON TABLE lu_message_standard FROM easygp;
 GRANT ALL ON TABLE lu_message_standard TO easygp;
-GRANT ALL ON TABLE lu_message_standard TO ian;
 
 
 --
@@ -27012,7 +27255,7 @@ GRANT ALL ON TABLE lu_message_standard TO ian;
 REVOKE ALL ON TABLE lu_printer_host FROM PUBLIC;
 REVOKE ALL ON TABLE lu_printer_host FROM easygp;
 GRANT ALL ON TABLE lu_printer_host TO easygp;
-GRANT ALL ON TABLE lu_printer_host TO ian;
+GRANT ALL ON TABLE lu_printer_host TO staff;
 
 
 --
@@ -27022,6 +27265,7 @@ GRANT ALL ON TABLE lu_printer_host TO ian;
 REVOKE ALL ON SEQUENCE lu_printer_host_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_printer_host_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_printer_host_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_printer_host_pk_seq TO staff;
 
 
 --
@@ -27031,7 +27275,7 @@ GRANT ALL ON SEQUENCE lu_printer_host_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_printer_task FROM PUBLIC;
 REVOKE ALL ON TABLE lu_printer_task FROM easygp;
 GRANT ALL ON TABLE lu_printer_task TO easygp;
-GRANT ALL ON TABLE lu_printer_task TO ian;
+GRANT ALL ON TABLE lu_printer_task TO staff;
 
 
 --
@@ -27041,6 +27285,7 @@ GRANT ALL ON TABLE lu_printer_task TO ian;
 REVOKE ALL ON SEQUENCE lu_printer_task_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_printer_task_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_printer_task_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_printer_task_pk_seq TO staff;
 
 
 --
@@ -27050,7 +27295,7 @@ GRANT ALL ON SEQUENCE lu_printer_task_pk_seq TO easygp;
 REVOKE ALL ON TABLE script_coordinates FROM PUBLIC;
 REVOKE ALL ON TABLE script_coordinates FROM easygp;
 GRANT ALL ON TABLE script_coordinates TO easygp;
-GRANT ALL ON TABLE script_coordinates TO ian;
+GRANT ALL ON TABLE script_coordinates TO staff;
 
 
 --
@@ -27060,6 +27305,7 @@ GRANT ALL ON TABLE script_coordinates TO ian;
 REVOKE ALL ON SEQUENCE script_coordinates_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE script_coordinates_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE script_coordinates_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE script_coordinates_pk_seq TO staff;
 
 
 --
@@ -27069,7 +27315,7 @@ GRANT ALL ON SEQUENCE script_coordinates_pk_seq TO easygp;
 REVOKE ALL ON TABLE temp FROM PUBLIC;
 REVOKE ALL ON TABLE temp FROM easygp;
 GRANT ALL ON TABLE temp TO easygp;
-GRANT ALL ON TABLE temp TO ian;
+GRANT ALL ON TABLE temp TO staff;
 
 
 --
@@ -27079,6 +27325,7 @@ GRANT ALL ON TABLE temp TO ian;
 REVOKE ALL ON SEQUENCE temp_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE temp_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE temp_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE temp_pk_seq TO staff;
 
 
 --
@@ -27088,7 +27335,7 @@ GRANT ALL ON SEQUENCE temp_pk_seq TO easygp;
 REVOKE ALL ON TABLE vwprinterstasks FROM PUBLIC;
 REVOKE ALL ON TABLE vwprinterstasks FROM easygp;
 GRANT ALL ON TABLE vwprinterstasks TO easygp;
-GRANT ALL ON TABLE vwprinterstasks TO ian;
+GRANT ALL ON TABLE vwprinterstasks TO staff;
 
 
 SET search_path = documents, pg_catalog;
@@ -27100,6 +27347,7 @@ SET search_path = documents, pg_catalog;
 REVOKE ALL ON SEQUENCE documents_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE documents_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE documents_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE documents_pk_seq TO staff;
 
 
 --
@@ -27109,7 +27357,7 @@ GRANT ALL ON SEQUENCE documents_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_archive_site FROM PUBLIC;
 REVOKE ALL ON TABLE lu_archive_site FROM easygp;
 GRANT ALL ON TABLE lu_archive_site TO easygp;
-GRANT ALL ON TABLE lu_archive_site TO ian;
+GRANT SELECT ON TABLE lu_archive_site TO staff;
 
 
 --
@@ -27119,6 +27367,7 @@ GRANT ALL ON TABLE lu_archive_site TO ian;
 REVOKE ALL ON SEQUENCE lu_archive_site_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_archive_site_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_archive_site_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_archive_site_pk_seq TO staff;
 
 
 --
@@ -27128,7 +27377,6 @@ GRANT ALL ON SEQUENCE lu_archive_site_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_display_as FROM PUBLIC;
 REVOKE ALL ON TABLE lu_display_as FROM easygp;
 GRANT ALL ON TABLE lu_display_as TO easygp;
-GRANT ALL ON TABLE lu_display_as TO ian;
 
 
 --
@@ -27138,6 +27386,7 @@ GRANT ALL ON TABLE lu_display_as TO ian;
 REVOKE ALL ON SEQUENCE lu_message_standard_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_message_standard_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_message_standard_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_message_standard_pk_seq TO staff;
 
 
 --
@@ -27147,7 +27396,7 @@ GRANT ALL ON SEQUENCE lu_message_standard_pk_seq TO easygp;
 REVOKE ALL ON TABLE observations FROM PUBLIC;
 REVOKE ALL ON TABLE observations FROM easygp;
 GRANT ALL ON TABLE observations TO easygp;
-GRANT ALL ON TABLE observations TO ian;
+GRANT SELECT,INSERT ON TABLE observations TO staff;
 
 
 --
@@ -27157,6 +27406,7 @@ GRANT ALL ON TABLE observations TO ian;
 REVOKE ALL ON SEQUENCE observations_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE observations_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE observations_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE observations_pk_seq TO staff;
 
 
 --
@@ -27166,7 +27416,7 @@ GRANT ALL ON SEQUENCE observations_pk_seq TO easygp;
 REVOKE ALL ON TABLE vwgraphableobservations FROM PUBLIC;
 REVOKE ALL ON TABLE vwgraphableobservations FROM easygp;
 GRANT ALL ON TABLE vwgraphableobservations TO easygp;
-GRANT ALL ON TABLE vwgraphableobservations TO ian;
+GRANT SELECT ON TABLE vwgraphableobservations TO staff;
 
 
 --
@@ -27176,7 +27426,6 @@ GRANT ALL ON TABLE vwgraphableobservations TO ian;
 REVOKE ALL ON TABLE patientshba1cover75 FROM PUBLIC;
 REVOKE ALL ON TABLE patientshba1cover75 FROM easygp;
 GRANT ALL ON TABLE patientshba1cover75 TO easygp;
-GRANT ALL ON TABLE patientshba1cover75 TO ian;
 
 
 --
@@ -27186,6 +27435,7 @@ GRANT ALL ON TABLE patientshba1cover75 TO ian;
 REVOKE ALL ON SEQUENCE sending_entities_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE sending_entities_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE sending_entities_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE sending_entities_pk_seq TO staff;
 
 
 --
@@ -27195,7 +27445,7 @@ GRANT ALL ON SEQUENCE sending_entities_pk_seq TO easygp;
 REVOKE ALL ON TABLE signed_off FROM PUBLIC;
 REVOKE ALL ON TABLE signed_off FROM easygp;
 GRANT ALL ON TABLE signed_off TO easygp;
-GRANT ALL ON TABLE signed_off TO ian;
+GRANT SELECT,INSERT,UPDATE ON TABLE signed_off TO staff;
 
 
 --
@@ -27205,6 +27455,7 @@ GRANT ALL ON TABLE signed_off TO ian;
 REVOKE ALL ON SEQUENCE signed_off_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE signed_off_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE signed_off_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE signed_off_pk_seq TO staff;
 
 
 --
@@ -27214,6 +27465,7 @@ GRANT ALL ON SEQUENCE signed_off_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE unmatched_patients_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE unmatched_patients_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE unmatched_patients_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE unmatched_patients_pk_seq TO staff;
 
 
 --
@@ -27223,6 +27475,7 @@ GRANT ALL ON SEQUENCE unmatched_patients_pk_seq TO easygp;
 REVOKE ALL ON SEQUENCE unmatched_staff_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE unmatched_staff_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE unmatched_staff_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE unmatched_staff_pk_seq TO staff;
 
 
 --
@@ -27232,7 +27485,6 @@ GRANT ALL ON SEQUENCE unmatched_staff_pk_seq TO easygp;
 REVOKE ALL ON TABLE vwhba1cover75 FROM PUBLIC;
 REVOKE ALL ON TABLE vwhba1cover75 FROM easygp;
 GRANT ALL ON TABLE vwhba1cover75 TO easygp;
-GRANT ALL ON TABLE vwhba1cover75 TO ian;
 
 
 --
@@ -27242,7 +27494,7 @@ GRANT ALL ON TABLE vwhba1cover75 TO ian;
 REVOKE ALL ON TABLE vwhl7filesimported FROM PUBLIC;
 REVOKE ALL ON TABLE vwhl7filesimported FROM easygp;
 GRANT ALL ON TABLE vwhl7filesimported TO easygp;
-GRANT ALL ON TABLE vwhl7filesimported TO ian;
+GRANT SELECT ON TABLE vwhl7filesimported TO staff;
 
 
 --
@@ -27252,7 +27504,7 @@ GRANT ALL ON TABLE vwhl7filesimported TO ian;
 REVOKE ALL ON TABLE vwinboxstaff FROM PUBLIC;
 REVOKE ALL ON TABLE vwinboxstaff FROM easygp;
 GRANT ALL ON TABLE vwinboxstaff TO easygp;
-GRANT ALL ON TABLE vwinboxstaff TO ian;
+GRANT SELECT ON TABLE vwinboxstaff TO staff;
 
 
 --
@@ -27262,7 +27514,7 @@ GRANT ALL ON TABLE vwinboxstaff TO ian;
 REVOKE ALL ON TABLE vwobservations FROM PUBLIC;
 REVOKE ALL ON TABLE vwobservations FROM easygp;
 GRANT ALL ON TABLE vwobservations TO easygp;
-GRANT ALL ON TABLE vwobservations TO ian;
+GRANT SELECT ON TABLE vwobservations TO staff;
 
 
 SET search_path = drugs, pg_catalog;
@@ -27274,7 +27526,7 @@ SET search_path = drugs, pg_catalog;
 REVOKE ALL ON TABLE chapters FROM PUBLIC;
 REVOKE ALL ON TABLE chapters FROM easygp;
 GRANT ALL ON TABLE chapters TO easygp;
-GRANT ALL ON TABLE chapters TO ian;
+GRANT ALL ON TABLE chapters TO staff;
 
 
 --
@@ -27284,7 +27536,7 @@ GRANT ALL ON TABLE chapters TO ian;
 REVOKE ALL ON TABLE clinical_effects FROM PUBLIC;
 REVOKE ALL ON TABLE clinical_effects FROM easygp;
 GRANT ALL ON TABLE clinical_effects TO easygp;
-GRANT ALL ON TABLE clinical_effects TO ian;
+GRANT ALL ON TABLE clinical_effects TO staff;
 
 
 --
@@ -27294,6 +27546,7 @@ GRANT ALL ON TABLE clinical_effects TO ian;
 REVOKE ALL ON SEQUENCE clinical_effects_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE clinical_effects_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE clinical_effects_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE clinical_effects_pk_seq TO staff;
 
 
 --
@@ -27303,7 +27556,7 @@ GRANT ALL ON SEQUENCE clinical_effects_pk_seq TO easygp;
 REVOKE ALL ON TABLE company FROM PUBLIC;
 REVOKE ALL ON TABLE company FROM easygp;
 GRANT ALL ON TABLE company TO easygp;
-GRANT ALL ON TABLE company TO ian;
+GRANT ALL ON TABLE company TO staff;
 
 
 --
@@ -27313,7 +27566,7 @@ GRANT ALL ON TABLE company TO ian;
 REVOKE ALL ON TABLE evidence_levels FROM PUBLIC;
 REVOKE ALL ON TABLE evidence_levels FROM easygp;
 GRANT ALL ON TABLE evidence_levels TO easygp;
-GRANT ALL ON TABLE evidence_levels TO ian;
+GRANT ALL ON TABLE evidence_levels TO staff;
 
 
 --
@@ -27323,7 +27576,7 @@ GRANT ALL ON TABLE evidence_levels TO ian;
 REVOKE ALL ON TABLE flags FROM PUBLIC;
 REVOKE ALL ON TABLE flags FROM easygp;
 GRANT ALL ON TABLE flags TO easygp;
-GRANT ALL ON TABLE flags TO ian;
+GRANT ALL ON TABLE flags TO staff;
 
 
 --
@@ -27333,6 +27586,7 @@ GRANT ALL ON TABLE flags TO ian;
 REVOKE ALL ON SEQUENCE flags_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE flags_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE flags_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE flags_pk_seq TO staff;
 
 
 --
@@ -27342,7 +27596,7 @@ GRANT ALL ON SEQUENCE flags_pk_seq TO easygp;
 REVOKE ALL ON TABLE info FROM PUBLIC;
 REVOKE ALL ON TABLE info FROM easygp;
 GRANT ALL ON TABLE info TO easygp;
-GRANT ALL ON TABLE info TO ian;
+GRANT ALL ON TABLE info TO staff;
 
 
 --
@@ -27352,6 +27606,7 @@ GRANT ALL ON TABLE info TO ian;
 REVOKE ALL ON SEQUENCE info_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE info_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE info_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE info_pk_seq TO staff;
 
 
 --
@@ -27361,7 +27616,7 @@ GRANT ALL ON SEQUENCE info_pk_seq TO easygp;
 REVOKE ALL ON TABLE link_atc_info FROM PUBLIC;
 REVOKE ALL ON TABLE link_atc_info FROM easygp;
 GRANT ALL ON TABLE link_atc_info TO easygp;
-GRANT ALL ON TABLE link_atc_info TO ian;
+GRANT ALL ON TABLE link_atc_info TO staff;
 
 
 --
@@ -27371,7 +27626,7 @@ GRANT ALL ON TABLE link_atc_info TO ian;
 REVOKE ALL ON TABLE link_category_info FROM PUBLIC;
 REVOKE ALL ON TABLE link_category_info FROM easygp;
 GRANT ALL ON TABLE link_category_info TO easygp;
-GRANT ALL ON TABLE link_category_info TO ian;
+GRANT ALL ON TABLE link_category_info TO staff;
 
 
 --
@@ -27381,7 +27636,7 @@ GRANT ALL ON TABLE link_category_info TO ian;
 REVOKE ALL ON TABLE link_flag_product FROM PUBLIC;
 REVOKE ALL ON TABLE link_flag_product FROM easygp;
 GRANT ALL ON TABLE link_flag_product TO easygp;
-GRANT ALL ON TABLE link_flag_product TO ian;
+GRANT ALL ON TABLE link_flag_product TO staff;
 
 
 --
@@ -27391,7 +27646,7 @@ GRANT ALL ON TABLE link_flag_product TO ian;
 REVOKE ALL ON TABLE link_info_source FROM PUBLIC;
 REVOKE ALL ON TABLE link_info_source FROM easygp;
 GRANT ALL ON TABLE link_info_source TO easygp;
-GRANT ALL ON TABLE link_info_source TO ian;
+GRANT SELECT ON TABLE link_info_source TO staff;
 
 
 --
@@ -27401,7 +27656,7 @@ GRANT ALL ON TABLE link_info_source TO ian;
 REVOKE ALL ON TABLE patient_categories FROM PUBLIC;
 REVOKE ALL ON TABLE patient_categories FROM easygp;
 GRANT ALL ON TABLE patient_categories TO easygp;
-GRANT ALL ON TABLE patient_categories TO ian;
+GRANT ALL ON TABLE patient_categories TO staff;
 
 
 --
@@ -27411,7 +27666,7 @@ GRANT ALL ON TABLE patient_categories TO ian;
 REVOKE ALL ON TABLE pbs FROM PUBLIC;
 REVOKE ALL ON TABLE pbs FROM easygp;
 GRANT ALL ON TABLE pbs TO easygp;
-GRANT ALL ON TABLE pbs TO ian;
+GRANT ALL ON TABLE pbs TO staff;
 
 
 --
@@ -27421,7 +27676,6 @@ GRANT ALL ON TABLE pbs TO ian;
 REVOKE ALL ON TABLE pbsconvert FROM PUBLIC;
 REVOKE ALL ON TABLE pbsconvert FROM easygp;
 GRANT ALL ON TABLE pbsconvert TO easygp;
-GRANT ALL ON TABLE pbsconvert TO ian;
 
 
 --
@@ -27431,7 +27685,7 @@ GRANT ALL ON TABLE pbsconvert TO ian;
 REVOKE ALL ON TABLE pharmacologic_mechanisms FROM PUBLIC;
 REVOKE ALL ON TABLE pharmacologic_mechanisms FROM easygp;
 GRANT ALL ON TABLE pharmacologic_mechanisms TO easygp;
-GRANT ALL ON TABLE pharmacologic_mechanisms TO ian;
+GRANT ALL ON TABLE pharmacologic_mechanisms TO staff;
 
 
 --
@@ -27441,7 +27695,7 @@ GRANT ALL ON TABLE pharmacologic_mechanisms TO ian;
 REVOKE ALL ON TABLE product_information_files FROM PUBLIC;
 REVOKE ALL ON TABLE product_information_files FROM easygp;
 GRANT ALL ON TABLE product_information_files TO easygp;
-GRANT ALL ON TABLE product_information_files TO ian;
+GRANT ALL ON TABLE product_information_files TO staff;
 
 
 --
@@ -27451,7 +27705,7 @@ GRANT ALL ON TABLE product_information_files TO ian;
 REVOKE ALL ON TABLE product_information_unmatched FROM PUBLIC;
 REVOKE ALL ON TABLE product_information_unmatched FROM easygp;
 GRANT ALL ON TABLE product_information_unmatched TO easygp;
-GRANT ALL ON TABLE product_information_unmatched TO ian;
+GRANT ALL ON TABLE product_information_unmatched TO staff;
 
 
 --
@@ -27461,7 +27715,7 @@ GRANT ALL ON TABLE product_information_unmatched TO ian;
 REVOKE ALL ON TABLE severity_level FROM PUBLIC;
 REVOKE ALL ON TABLE severity_level FROM easygp;
 GRANT ALL ON TABLE severity_level TO easygp;
-GRANT ALL ON TABLE severity_level TO ian;
+GRANT ALL ON TABLE severity_level TO staff;
 
 
 --
@@ -27471,7 +27725,7 @@ GRANT ALL ON TABLE severity_level TO ian;
 REVOKE ALL ON TABLE sources FROM PUBLIC;
 REVOKE ALL ON TABLE sources FROM easygp;
 GRANT ALL ON TABLE sources TO easygp;
-GRANT ALL ON TABLE sources TO ian;
+GRANT ALL ON TABLE sources TO staff;
 
 
 --
@@ -27481,7 +27735,7 @@ GRANT ALL ON TABLE sources TO ian;
 REVOKE ALL ON TABLE topic FROM PUBLIC;
 REVOKE ALL ON TABLE topic FROM easygp;
 GRANT ALL ON TABLE topic TO easygp;
-GRANT ALL ON TABLE topic TO ian;
+GRANT ALL ON TABLE topic TO staff;
 
 
 --
@@ -27491,7 +27745,7 @@ GRANT ALL ON TABLE topic TO ian;
 REVOKE ALL ON TABLE vwdistinctbrandsforgenericproduct FROM PUBLIC;
 REVOKE ALL ON TABLE vwdistinctbrandsforgenericproduct FROM easygp;
 GRANT ALL ON TABLE vwdistinctbrandsforgenericproduct TO easygp;
-GRANT ALL ON TABLE vwdistinctbrandsforgenericproduct TO ian;
+GRANT SELECT ON TABLE vwdistinctbrandsforgenericproduct TO staff;
 
 
 --
@@ -27501,7 +27755,7 @@ GRANT ALL ON TABLE vwdistinctbrandsforgenericproduct TO ian;
 REVOKE ALL ON TABLE vwpbs FROM PUBLIC;
 REVOKE ALL ON TABLE vwpbs FROM easygp;
 GRANT ALL ON TABLE vwpbs TO easygp;
-GRANT ALL ON TABLE vwpbs TO ian;
+GRANT ALL ON TABLE vwpbs TO staff;
 
 
 --
@@ -27511,7 +27765,7 @@ GRANT ALL ON TABLE vwpbs TO ian;
 REVOKE ALL ON TABLE vwdrugs FROM PUBLIC;
 REVOKE ALL ON TABLE vwdrugs FROM easygp;
 GRANT ALL ON TABLE vwdrugs TO easygp;
-GRANT ALL ON TABLE vwdrugs TO ian;
+GRANT ALL ON TABLE vwdrugs TO staff;
 
 
 --
@@ -27521,7 +27775,6 @@ GRANT ALL ON TABLE vwdrugs TO ian;
 REVOKE ALL ON TABLE vwdrugs1 FROM PUBLIC;
 REVOKE ALL ON TABLE vwdrugs1 FROM easygp;
 GRANT ALL ON TABLE vwdrugs1 TO easygp;
-GRANT ALL ON TABLE vwdrugs1 TO ian;
 
 
 --
@@ -27531,7 +27784,7 @@ GRANT ALL ON TABLE vwdrugs1 TO ian;
 REVOKE ALL ON TABLE vwgeneric FROM PUBLIC;
 REVOKE ALL ON TABLE vwgeneric FROM easygp;
 GRANT ALL ON TABLE vwgeneric TO easygp;
-GRANT ALL ON TABLE vwgeneric TO ian;
+GRANT ALL ON TABLE vwgeneric TO staff;
 
 
 SET search_path = import_export, pg_catalog;
@@ -27543,7 +27796,7 @@ SET search_path = import_export, pg_catalog;
 REVOKE ALL ON TABLE lu_demographics_field_templates FROM PUBLIC;
 REVOKE ALL ON TABLE lu_demographics_field_templates FROM easygp;
 GRANT ALL ON TABLE lu_demographics_field_templates TO easygp;
-GRANT ALL ON TABLE lu_demographics_field_templates TO ian;
+GRANT SELECT ON TABLE lu_demographics_field_templates TO staff;
 
 
 --
@@ -27553,6 +27806,7 @@ GRANT ALL ON TABLE lu_demographics_field_templates TO ian;
 REVOKE ALL ON SEQUENCE lu_demographics_field_templates_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_demographics_field_templates_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_demographics_field_templates_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_demographics_field_templates_pk_seq TO staff;
 
 
 --
@@ -27562,7 +27816,7 @@ GRANT ALL ON SEQUENCE lu_demographics_field_templates_pk_seq TO easygp;
 REVOKE ALL ON TABLE lu_misspelt_user_request_tags FROM PUBLIC;
 REVOKE ALL ON TABLE lu_misspelt_user_request_tags FROM easygp;
 GRANT ALL ON TABLE lu_misspelt_user_request_tags TO easygp;
-GRANT ALL ON TABLE lu_misspelt_user_request_tags TO ian;
+GRANT ALL ON TABLE lu_misspelt_user_request_tags TO staff;
 
 
 --
@@ -27572,7 +27826,7 @@ GRANT ALL ON TABLE lu_misspelt_user_request_tags TO ian;
 REVOKE ALL ON TABLE lu_source_program FROM PUBLIC;
 REVOKE ALL ON TABLE lu_source_program FROM easygp;
 GRANT ALL ON TABLE lu_source_program TO easygp;
-GRANT ALL ON TABLE lu_source_program TO ian;
+GRANT SELECT ON TABLE lu_source_program TO staff;
 
 
 --
@@ -27582,6 +27836,7 @@ GRANT ALL ON TABLE lu_source_program TO ian;
 REVOKE ALL ON SEQUENCE lu_source_program_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_source_program_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_source_program_pk_seq TO easygp;
+GRANT USAGE ON SEQUENCE lu_source_program_pk_seq TO staff;
 
 
 --
@@ -27591,7 +27846,7 @@ GRANT ALL ON SEQUENCE lu_source_program_pk_seq TO easygp;
 REVOKE ALL ON TABLE vwdemographictemplates FROM PUBLIC;
 REVOKE ALL ON TABLE vwdemographictemplates FROM easygp;
 GRANT ALL ON TABLE vwdemographictemplates TO easygp;
-GRANT ALL ON TABLE vwdemographictemplates TO ian;
+GRANT SELECT ON TABLE vwdemographictemplates TO staff;
 
 
 SET search_path = public, pg_catalog;
@@ -27603,7 +27858,6 @@ SET search_path = public, pg_catalog;
 REVOKE ALL ON TABLE dailymed FROM PUBLIC;
 REVOKE ALL ON TABLE dailymed FROM easygp;
 GRANT ALL ON TABLE dailymed TO easygp;
-GRANT ALL ON TABLE dailymed TO ian;
 
 
 --
@@ -27613,7 +27867,6 @@ GRANT ALL ON TABLE dailymed TO ian;
 REVOKE ALL ON TABLE forms1 FROM PUBLIC;
 REVOKE ALL ON TABLE forms1 FROM easygp;
 GRANT ALL ON TABLE forms1 TO easygp;
-GRANT ALL ON TABLE forms1 TO ian;
 
 
 --
@@ -27623,7 +27876,6 @@ GRANT ALL ON TABLE forms1 TO ian;
 REVOKE ALL ON TABLE inventory_items_lent FROM PUBLIC;
 REVOKE ALL ON TABLE inventory_items_lent FROM easygp;
 GRANT ALL ON TABLE inventory_items_lent TO easygp;
-GRANT ALL ON TABLE inventory_items_lent TO ian;
 
 
 --
@@ -27633,7 +27885,6 @@ GRANT ALL ON TABLE inventory_items_lent TO ian;
 REVOKE ALL ON TABLE lu_modes FROM PUBLIC;
 REVOKE ALL ON TABLE lu_modes FROM easygp;
 GRANT ALL ON TABLE lu_modes TO easygp;
-GRANT ALL ON TABLE lu_modes TO ian;
 
 
 --
@@ -27643,7 +27894,6 @@ GRANT ALL ON TABLE lu_modes TO ian;
 REVOKE ALL ON TABLE rawpbs FROM PUBLIC;
 REVOKE ALL ON TABLE rawpbs FROM easygp;
 GRANT ALL ON TABLE rawpbs TO easygp;
-GRANT ALL ON TABLE rawpbs TO ian;
 
 
 --
@@ -27653,7 +27903,6 @@ GRANT ALL ON TABLE rawpbs TO ian;
 REVOKE ALL ON TABLE web FROM PUBLIC;
 REVOKE ALL ON TABLE web FROM easygp;
 GRANT ALL ON TABLE web TO easygp;
-GRANT ALL ON TABLE web TO ian;
 
 
 SET search_path = research, pg_catalog;
@@ -27665,7 +27914,7 @@ SET search_path = research, pg_catalog;
 REVOKE ALL ON TABLE diabetes_patients_latest_hba1c FROM PUBLIC;
 REVOKE ALL ON TABLE diabetes_patients_latest_hba1c FROM easygp;
 GRANT ALL ON TABLE diabetes_patients_latest_hba1c TO easygp;
-GRANT ALL ON TABLE diabetes_patients_latest_hba1c TO ian;
+GRANT SELECT ON TABLE diabetes_patients_latest_hba1c TO staff;
 
 
 --
@@ -27675,7 +27924,6 @@ GRANT ALL ON TABLE diabetes_patients_latest_hba1c TO ian;
 REVOKE ALL ON TABLE diabetes_patients_with_hba1c FROM PUBLIC;
 REVOKE ALL ON TABLE diabetes_patients_with_hba1c FROM easygp;
 GRANT ALL ON TABLE diabetes_patients_with_hba1c TO easygp;
-GRANT ALL ON TABLE diabetes_patients_with_hba1c TO ian;
 
 
 --
@@ -27685,7 +27933,7 @@ GRANT ALL ON TABLE diabetes_patients_with_hba1c TO ian;
 REVOKE ALL ON TABLE patientsnameshba1cover75 FROM PUBLIC;
 REVOKE ALL ON TABLE patientsnameshba1cover75 FROM easygp;
 GRANT ALL ON TABLE patientsnameshba1cover75 TO easygp;
-GRANT ALL ON TABLE patientsnameshba1cover75 TO ian;
+GRANT SELECT ON TABLE patientsnameshba1cover75 TO staff;
 
 
 --
@@ -27695,7 +27943,7 @@ GRANT ALL ON TABLE patientsnameshba1cover75 TO ian;
 REVOKE ALL ON TABLE vwdiabetes_patients_with_hba1c FROM PUBLIC;
 REVOKE ALL ON TABLE vwdiabetes_patients_with_hba1c FROM easygp;
 GRANT ALL ON TABLE vwdiabetes_patients_with_hba1c TO easygp;
-GRANT ALL ON TABLE vwdiabetes_patients_with_hba1c TO ian;
+GRANT ALL ON TABLE vwdiabetes_patients_with_hba1c TO staff;
 
 
 --
@@ -27705,7 +27953,7 @@ GRANT ALL ON TABLE vwdiabetes_patients_with_hba1c TO ian;
 REVOKE ALL ON TABLE vwdiabetics_with_ldlcholesterol FROM PUBLIC;
 REVOKE ALL ON TABLE vwdiabetics_with_ldlcholesterol FROM easygp;
 GRANT ALL ON TABLE vwdiabetics_with_ldlcholesterol TO easygp;
-GRANT ALL ON TABLE vwdiabetics_with_ldlcholesterol TO ian;
+GRANT SELECT ON TABLE vwdiabetics_with_ldlcholesterol TO staff;
 
 
 --
@@ -27715,7 +27963,6 @@ GRANT ALL ON TABLE vwdiabetics_with_ldlcholesterol TO ian;
 REVOKE ALL ON TABLE vwmicroalbuminuria FROM PUBLIC;
 REVOKE ALL ON TABLE vwmicroalbuminuria FROM easygp;
 GRANT ALL ON TABLE vwmicroalbuminuria TO easygp;
-GRANT ALL ON TABLE vwmicroalbuminuria TO ian;
 
 
 --
@@ -27725,7 +27972,7 @@ GRANT ALL ON TABLE vwmicroalbuminuria TO ian;
 REVOKE ALL ON TABLE vwdiabetics_with_microalbumins FROM PUBLIC;
 REVOKE ALL ON TABLE vwdiabetics_with_microalbumins FROM easygp;
 GRANT ALL ON TABLE vwdiabetics_with_microalbumins TO easygp;
-GRANT ALL ON TABLE vwdiabetics_with_microalbumins TO ian;
+GRANT ALL ON TABLE vwdiabetics_with_microalbumins TO staff;
 
 
 --
@@ -27735,7 +27982,7 @@ GRANT ALL ON TABLE vwdiabetics_with_microalbumins TO ian;
 REVOKE ALL ON TABLE vwdiabeticsegfr FROM PUBLIC;
 REVOKE ALL ON TABLE vwdiabeticsegfr FROM easygp;
 GRANT ALL ON TABLE vwdiabeticsegfr TO easygp;
-GRANT ALL ON TABLE vwdiabeticsegfr TO ian;
+GRANT SELECT ON TABLE vwdiabeticsegfr TO staff;
 
 
 --
@@ -27745,7 +27992,7 @@ GRANT ALL ON TABLE vwdiabeticsegfr TO ian;
 REVOKE ALL ON TABLE vwldh FROM PUBLIC;
 REVOKE ALL ON TABLE vwldh FROM easygp;
 GRANT ALL ON TABLE vwldh TO easygp;
-GRANT ALL ON TABLE vwldh TO ian;
+GRANT ALL ON TABLE vwldh TO staff;
 
 
 --
@@ -27755,7 +28002,6 @@ GRANT ALL ON TABLE vwldh TO ian;
 REVOKE ALL ON TABLE vwldlcholesterol FROM PUBLIC;
 REVOKE ALL ON TABLE vwldlcholesterol FROM easygp;
 GRANT ALL ON TABLE vwldlcholesterol TO easygp;
-GRANT ALL ON TABLE vwldlcholesterol TO ian;
 
 
 --
@@ -27765,7 +28011,7 @@ GRANT ALL ON TABLE vwldlcholesterol TO ian;
 REVOKE ALL ON TABLE vwmostrecenteyerelateddocuments FROM PUBLIC;
 REVOKE ALL ON TABLE vwmostrecenteyerelateddocuments FROM easygp;
 GRANT ALL ON TABLE vwmostrecenteyerelateddocuments TO easygp;
-GRANT ALL ON TABLE vwmostrecenteyerelateddocuments TO ian;
+GRANT ALL ON TABLE vwmostrecenteyerelateddocuments TO staff;
 
 
 --
@@ -27775,7 +28021,6 @@ GRANT ALL ON TABLE vwmostrecenteyerelateddocuments TO ian;
 REVOKE ALL ON TABLE vwtotalcholesterol FROM PUBLIC;
 REVOKE ALL ON TABLE vwtotalcholesterol FROM easygp;
 GRANT ALL ON TABLE vwtotalcholesterol TO easygp;
-GRANT ALL ON TABLE vwtotalcholesterol TO ian;
 
 
 --

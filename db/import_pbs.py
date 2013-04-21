@@ -45,7 +45,7 @@ def import_mnfr(t):
     ('%(code)s',$$%(company)s$$,$$%(address)s$$,'%(telephone)s')""" % m)
 
 def import_pbs(t):
-    updates_pbs.write("truncate drugs.pbs;\n")
+    updates_pbs.write("truncate drugs.pbs cascade;\n")
     generics = {}
     for g in xml_generics_brands(t):
         generics[g["xml:id"]] = g
@@ -60,12 +60,15 @@ def import_pbs(t):
             print >>sys.stderr, "WARNING: %r matches multiple products on SCT" % item
         else:
             fk_product = r.getresult()[0][0]
-            if item["type"] == "streamlined" or item["type"] == "authority":
+            if item["type"] == "streamlined" or item["type"] == "authority" or item["type"] == 'authority-required':
                 flag = "A"
             elif item["type"] == "restricted":
                 flag = "R"
-            else:
+            elif item["type"] == 'unrestricted':
                 flag = "U"
+            else:
+                print "I saw an unrecognised type %s on pbscode %s" % (item["type"], item['code'])
+                flag = "u"
             updates_pbs.write("""
 insert into drugs.pbs (fk_product,pbscode,quantity,max_rpt,chapter,restrictionflag)
 values ('%s','%s',%s,%s,'%s','%s');\n

@@ -98,23 +98,7 @@ Static Public Sub Refresh_Referrals_Written_Today()
    
 End
 
-Public Sub Set_Embedded_Form_Name(n As String)
-   'the name of the parent form this form is embedded in.   
-   
-   sEmbeddedFormName = n 
-   
-End
-
-Public Sub set_embedded(flag As Boolean)
-   '--------------------------------------------------
-   'If this form is embeded from another form set flag
-   '--------------------------------------------------
-   
-   bEmbedded = flag
-   
-End
-
-Public Sub Init(cons As CConsult)
+Public Sub Init(cons As CConsult, Optional bEmbedded As Boolean = False)
    '---------------------------------------------------------
    'Do all the form initialisation stuff like adding stuff to 
    'combo's, setting numbers of columns in lists
@@ -150,8 +134,18 @@ Public Sub Init(cons As CConsult)
       .lblCopyTo.width = lblmeasure.Width
    End With
    MenuButton1.menu = "mnuHealthIssues"
-   Dictaphone = New FDictaphone(Hbox_Dictaphone)
-   If Not IsNull(Currentconsult) Then Reload()
+   If Not bEmbedded Then
+     Dictaphone = New FDictaphone(Hbox_Dictaphone)
+     Dictaphone.Visible = True
+     Dictaphone.Expand = True
+   Else
+      ' we are embedded, so turn off inclusions and don't load the Dictaphone
+      Hbox_Dictaphone.Visible = False
+      lvwInclusions_EditArea.Visible = False
+      lvwInclusions_Saved.Visible = False
+      lblDocuments.Visible = False
+      lblFamilyMembers2.Visible = False
+   Endif
    
 End
 
@@ -217,8 +211,14 @@ Public Sub Save(Optional bFinalised As Boolean = False)
    Dim CopyToData As Collection
    Dim Accompanying_Documents As New Collection
    Dim bDoNotPrintInclusionsForCCD As Boolean       
+   Dim dictation_fname As String
    
-   If VBox_Letters.Padding = 0 Then Return  'no padding, nothing to save
+   If Not bEmbedded And If Dictaphone.Has_Dictated() Then
+      bFinalised = False ' dictations are never finalised
+      dictation_fname = Dictaphone.Get_File()
+      If IsNull(dictation_fname) Then Error.Raise("null dictation")
+   Endif
+   If VBox_Letters.Padding = 0 And If Not bFinalised Then Return  'no padding, nothing to save
    If Not bHaveSpellChecked Then 
       Spelling_Check()
    Endif
@@ -227,7 +227,6 @@ Public Sub Save(Optional bFinalised As Boolean = False)
    ' -----------------------------------------------------------
    ' Now load a fresh collection with data from the widgets
    ' -----------------------------------------------------------
-   referral!finalised = bFinalised
    If pk_referral <> -1 Then
       referral!pk_referral = pk_referral
    End If
@@ -250,7 +249,8 @@ Public Sub Save(Optional bFinalised As Boolean = False)
    referral!fk_lu_urgency = priority_types[cmbPriorityTypes.index]!pk
    referral!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto 'FIXME, I'VE LEFT it as collection till I sort using this in FRequests
    referral!body_html = Referral_BodyHTML_Construct()
-   referral!fk_type = referral_types[cmbReferralTypes.index]!pk                                            'e.g opinion and management
+   referral!fk_type = referral_types[cmbReferralTypes.index]!pk  'e.g opinion and management
+   referral!finalised = bFinalised
    If bFinalised Then
       If modAdminDBI.Config_Get("referral_engine", "h") = "h" Then
          referral!letter_html = Referral_LetterHTML_Construct(referral!copyto)
@@ -273,6 +273,16 @@ Public Sub Save(Optional bFinalised As Boolean = False)
       referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote_Html, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
    Endif
    pk_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral, Inclusions_EditArea)   'Save the referral letter
+   If Not bEmbedded And If Dictaphone.Has_Dictated() Then
+      dictation_fname = modDictationsDBI.Submit_Dictation(currentconsult, pk_referral, dictation_fname)
+      dictation_fname = Subst$("<p>Dictation pending: &1</p>", dictation_fname)
+      If Not IsNull(referral!body_html) Then
+         referral!body_html = referral!body_html & dictation_fname
+      Else
+         referral!body_html = dictation_fname
+      Endif
+      modDBConnect.exec_query("update clin_referrals.referrals set body_html=&1 where pk=&2", [referral!body_html, pk_referral])
+   Endif
    modDBConnect.CommitTrans()
    '---------------------------------------------------------------------------------------------------------------
    'Now, if have been editing a referral and there are no additional inclusions to print, don't reprint inclusions
@@ -830,48 +840,49 @@ End
 
 Private Function Make_New_Tag(tag As String, ByRef lastspan As String[]) As String
    
-   Dim r As Regexp
-   Dim tokens As New String[]
-   Dim tokens_close As New String[]
-   
-   r = New Regexp(tag, "^span.*")
-   If r.Offset = 0 Then
-      If InStr(tag, "font-weight:600") Then
-         tokens.Add("b")
-         tokens_close.Add("/b")
-      Endif
-      If InStr(tag, "font-style:italic") Then
-         tokens.Add("i")
-         tokens_close.Add("/i")
-      Endif
-      If InStr(tag, "text-decoration: underline") Then
-         tokens.Add("u")
-         tokens_close.Add("/u")
-      Endif
-      If tokens.Length > 0 Then
-         lastspan.Push(tokens_close.Join("><"))  ' calling code adds the final outer < >
-         Return tokens.Join("><")
-      Else  ' we didn't recognise anything in the span, so add nothing to the translated HTML stream
-         lastspan.Add("")  '*** bug here null ***
-         Return Null
-      Endif 
-   Endif
-   If tag = "/span" Then
-      If lastspan.Length > 0 Then
-         Return lastspan.Pop()
-      Else
-         Return Null
-      Endif
-   Endif
-   r = New Regexp(tag, "^p.*")
-   If r.Offset = 0 Then
-      Return "p"
-   Endif
-   If tag = "/p" Then
-      Return "/p"
-   Endif
-   Return Null
-   
+  Dim r As Regexp
+  Dim tokens As New String[]
+  Dim tokens_close As New String[]
+  
+  If IsNull(lastspan) Then lastspan = New String[]
+  r = New Regexp(tag, "^span.*")
+  If r.Offset = 0 Then
+    If InStr(tag, "font-weight:600") Then
+        tokens.Add("b")
+        tokens_close.Add("/b")
+    Endif
+    If InStr(tag, "font-style:italic") Then
+       tokens.Add("i")
+       tokens_close.Add("/i")
+    Endif
+    If InStr(tag, "text-decoration: underline") Then
+       tokens.Add("u")
+       tokens_close.Add("/u")
+    Endif
+    If Not IsNull(tokens) And If Not IsNull(tokens_close) And If tokens.Length > 0 And If tokens_close.Length > 0 Then
+      lastspan.Push(tokens_close.Join("><"))  ' calling code adds the final outer < >
+      Return tokens.Join("><")
+    Else  ' we didn't recognise anything in the span, so add nothing to the translated HTML stream
+      lastspan.Add("")
+      Return Null
+    Endif 
+  Endif
+  If tag = "/span" Then
+     If lastspan.Length > 0 Then
+        Return lastspan.Pop()
+     Else
+        Return Null
+     Endif
+  Endif
+  r = New Regexp(tag, "^p.*")
+  If r.Offset = 0 Then
+     Return "p"
+  Endif
+  If tag = "/p" Then
+     Return "/p"
+  Endif
+  Return Null
+
 End
 
 Private Function HTML_To_LaTeX(s As String) As String
@@ -988,8 +999,10 @@ Public Function Valid_Referral() As Boolean
    End If
    
    If Trim(teLetter.text) = "" Then
-      teLetter.SetFocus
-      Return False
+      If bEmbedded Or If Not Dictaphone.Has_Dictated() Then
+        teLetter.SetFocus
+        Return False
+      Endif
    End If
    If Trim(txtHealthIssue.text) = "" Then
       Message.Info("Please select a health issue to link to this request\nor link to 'General Notes'")
@@ -1418,7 +1431,7 @@ Public Sub Referral_New()
    comms = Null
    EditArea_Notify_DataChange(False)
    txtName.SetFocus()
-   
+   If Not IsNull(Dictaphone) Then Dictaphone.Reset()
 End
 
 Public Sub EditAreaButtons_Click()

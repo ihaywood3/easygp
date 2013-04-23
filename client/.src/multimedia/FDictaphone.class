@@ -66,7 +66,7 @@ Private Sub StartRecording()
   If Exist(TempDir &/ "rec.raw") And If recOffset < recLength Then
     Shell "truncate -s " & Str((recOffset * 2)) & " " & TempDir &/ "rec.raw"
   Endif
-  cmd = arecord_path & " -D " & Settings["Audio/device", "default"]
+  cmd = arecord_path & " -q  -D " & cards[Settings["Audio/device", "default"]]
   cmd &= " -f S16_LE -r " & sampleRate & " -t raw >> " & TempDir &/ "rec.raw "
   cmd &= " 2> " & TempDir &/ "error.txt"
   pro = Shell cmd For Input Output
@@ -119,6 +119,7 @@ Public Sub btnRecord_Click()
   If mode = modePlaying Then
     StopPlaying()
   Endif
+  If mode = modeRecording Then Return
   mode = modeRecording
   StartRecording()
   timMusic.Enabled = True
@@ -169,6 +170,14 @@ Public Sub btnBack_Click()
   Endif
 End
 
+Public Function Has_Dictated() As Boolean
+   
+  If recLength > 0 Then Return True
+  Return False 
+   
+End
+
+
 Public Function Get_File() As String
   Dim tmpfile As String
   
@@ -176,13 +185,23 @@ Public Function Get_File() As String
   If recLength > 0 Then
      If Not Exist(TempDir &/ "rec.raw") Then Error.Raise("Aaargh! no rec.raw")
      tmpfile = Temp$() & ".mp3"
-     Exec [lame_path, "--silent", "-s", "16", "--bitwidth", "16", "--little-endian", "-m", "m", "-h", TempDir &/ "rec.raw", tmpfile] Wait
-     CleanFiles()
+     Exec [lame_path, "-s", "16", "--bitwidth", "16", "--little-endian", "-m", "m", "-S", TempDir &/ "rec.raw", tmpfile] Wait
      Return tmpfile
   Else
      Return Null ' user didn't dictate
   Endif
 End
+
+Public Sub Reset()
+   
+  CleanFiles() 
+  mode = modeStopped
+  recOffset = 0
+  recLength = 0
+  lblPos.Text = FormatTime(0)
+
+End
+
 
 Private Sub CleanFiles()
   
@@ -246,20 +265,46 @@ End
 
 
 Private Sub StartPlay(offset As Integer)
+  Dim cmd As String
   
   If offset = 0 Then
-    pro = Shell aplay_path & " -t raw -f S16_LE -r " & sampleRate & " " & TempDir &/ "rec.raw 2> " & TempDir &/ "error.txt"
+    cmd = aplay_path & " -q  -D " & cards[Settings["Audio/device", "default"]]
+    cmd &= " -t raw -f S16_LE -r " & sampleRate & " " & TempDir &/ "rec.raw 2> " & TempDir &/ "error.txt"
   Else
-    pro = Shell "tail -c +" & Str((offset * 2) + 1) & " " & TempDir &/ "rec.raw | " & aplay_path & " -t raw -f S16_LE -r " & sampleRate & " 2> " & TempDir &/ "error.txt"
+    cmd = "tail -c +" & Str((offset * 2) + 1) & " " & TempDir &/ "rec.raw | " 
+    cmd &= aplay_path & " -q  -D " & cards[Settings["Audio/device", "default"]] 
+    cmd &= " -t raw -f S16_LE -r " & sampleRate & " 2> " & TempDir &/ "error.txt"
   Endif
+  pro = Shell cmd
   playStart = Timer()
   
 End
+
+Static Public Sub TestSound(card As String)
+   
+  Dim mycards As Collection
+  Dim myaplay As String
+  Dim myerrorfile As String
+  
+  myerrorfile = Temp$()
+  mycards = GetSoundCards()
+  myaplay = modUtil.FindProgram("aplay", "alsa-utils")
+  Shell myaplay & " -q  -D " & mycards[card] & " -t raw -f S16_LE -r 16000 " & modUtil.Find_File("testsound.raw") & " 2> " & myerrorfile Wait
+  If Exist(myerrorfile) Then
+     myerrorfile = File.Load(myerrorfile)
+     If myerrorfile <> "" Then
+        Message.Error(myerrorfile, "OK")
+        Log.ErrorMsg("aplay failed with: " & myerrorfile)
+     Endif
+  Endif
+End
+
 
 
 Public Sub Form_Open()
   Dim s As String
   
+  cards = GetSoundCards()
   Tempdir = Left$(Temp("x"), -5)
   mode = modeStopped
   recOffset = 0

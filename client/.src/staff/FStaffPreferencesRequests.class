@@ -41,13 +41,11 @@ Private fk_default_branch As Integer
 Private fk_head_office_branch As Integer
 Private fk_lu_request_type As Integer 
 Private fk_request_provider As Integer
+Private fk_user_provider_default As Integer
 Private fk_person As Integer = 0
-Private pk_view As Integer
 Private RequestDefaultProviders As Collection 
 Private RequestDefaultProvider As Collection 
 Private fk_staff As Integer  
-Private Settings_Section As String  
-'Private FHelp As FHtmlViewer
 
 Public Sub Set_Staff_member(staff_fk As Integer)
    '--------------------------------------------------------------------
@@ -86,52 +84,43 @@ Public Sub Notify_No_Providers_In_Contacts()
    
 End
 
-Public Function Save() As Boolean
+Public Sub Save()
    '-----------------------------------------------------------------------------------
    'Save the current provider default for the particular category shown in the combobox
-   '  clin_requests.user_provider_defaults
+   ' CREATE TABLE clin_requests.user_provider_defaults
+   ' (
    '   pk serial NOT NULL,
-   '   fk_staff integer NOT NULL, -- key to admin.staff table ie describes the user
-   '   fk_request_provider integer NOT NULL, -- key to clin_requests.provider_defaults table, this points to the organisation, employee or person who is the default provider, usually this is the companies head office.
-   '   fk_default_branch integer, -- if Not null, then this is the branch address that the user whats printed on top of a request form - ie. could be a local branch of a large pathology organisation for their patients to go to.
-   '   send_electronically boolean DEFAULT false,
-   '   print_paper boolean DEFAULT true,
-   '   deleted boolean DEFAULT false,
+   ' x  fk_staff integer NOT NULL, -- key to admin.staff table ie describes the user
+   ' x  fk_default_branch integer NOT NULL, -- key to contacts.branches table...
+   ' x  fk_request_provider integer,
+   ' x  send_electronically boolean DEFAULT false,
+   '  x print_paper boolean DEFAULT true,
+   ' x  deleted boolean DEFAULT false,
+   ' x  fk_lu_request_type integer NOT NULL,
+   '   CONSTRAINT user_provider_defaults_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
    
    '------------------------------------------------------------------------------------
    Dim sMsg As String
+   Dim RequestDefaultProvider As CRow
    
    If VBox_EditArea.Padding = 0 Then Return            'nothing to save
    If Not Valid_Request_Provider_Default() Then
       Notify_No_Providers_In_Contacts()
       Return  
    End If
-   RequestDefaultProvider = New Collection 
-   '-------------------------------------------------------------------------
-   'We don't need to keep the category as this is defined as  property of the
-   'organisation eg pathology provider. nor do we need fk_organisation as
-   'this is defined by the branch in contacts.data_branches.fk_organisation
-   '-------------------------------------------------------------------------
-   If pk_view <> -1 Then 
-      RequestDefaultProvider!pk_default = pk_view
-   Endif
-   RequestDefaultProvider!fk_staff = fk_staff
-   RequestDefaultProvider!fk_request_provider = fk_request_provider
-   If fk_default_branch <> 0 Then 
-      RequestDefaultProvider!fk_default_branch = fk_default_branch 
-   End If
-   RequestDefaultProvider!fk_lu_request_type = request_types[cmbRequestTypes.index]!pk
-   '--------------------------------------------------------------------------
-   'Save the default type of provider for the user, get the type key
-   'Request_Types is the collection of types, keyed to the index of the combo
-   '--------------------------------------------------------------------------
-   ' If chkDefaultType.value Then
-   '    If IsNull(user_default_type) Then
-   '        user_default_type = New Collection
-   '    End If
-   '    user_default_type!fk_lu_type = Request_Types[cmbProvidertypes.index]!pk
-   ' End If
+   RequestDefaultProvider = New CRow
    
+   If fk_user_provider_default Then 
+      RequestDefaultProvider.Put_Unchanged(fk_user_provider_default, "fk_user_provider_default")
+   End If
+   RequestDefaultProvider!fk_request_provider = fk_request_provider
+   RequestDefaultProvider!fk_staff = fk_staff               
+   RequestDefaultProvider!fk_default_branch = fk_default_branch
+   RequestDefaultProvider!fk_lu_request_type = request_types[cmbRequestTypes.index]!pk
    If chkElectronic.Value Then
       RequestDefaultProvider!send_electronically = True
    Else
@@ -142,18 +131,10 @@ Public Function Save() As Boolean
    Else
       RequestDefaultProvider!print_paper = False
    End If
-   '----------------------------------------------------------------------------------
-   'At this point, get the default head office branch. This should never fail, however
-   'I think there are still bugs in contacts so it could
-   '----------------------------------------------------------------------------------
-   modDBConnect.BeginTrans()
-   ' RequestDefaultProvider!fk_head_office_branch = modContactsDBI.Organisation_Get_Head_office_pk(fk_organisation)
-   RequestDefaultProvider!fk_default = modPreferencesDBI.RequestType_DefaultsSave(RequestDefaultProviders, pk_view, RequestDefaultProvider)
-   ' DO NOT RE-INSERT THIS I'M MOVING IT OUT user_default_type!fk_user_default_type = modRequestsDBI.User_Save_Default_Type(old_user_default_type, user_default_type)
+   RequestDefaultProvider.Save("clin_requests.user_provider_defaults", "fk_user_provider_default")
    modDBConnect.CommitTrans()
-   RequestsDefaults_Refresh()  
+   Reload()  
    Editarea_Clear()
-   Return True
    
 End
 
@@ -184,17 +165,6 @@ Public Sub EditAreaTextBox_GotFocus()
                Return
             End If
          End If
-      Case "branch"
-         With Columnview1
-            '  .top = Hbox_Branch.top + Hbox_Branch.Height '+ Vbox1.Padding
-            .top = Last.Parent.Parent.Top + Last.Parent.Height
-            .width = Last.Width * 1.5 
-            .left = Last.Parent.left + VBox_EditArea.padding + Vbox_EditArea_Inner.Padding
-         End With
-         If fk_organisation Then 
-            Branches_Selection("get")
-         End If
-         
    End Select
    
 End
@@ -210,10 +180,6 @@ End
 Public Sub ColumnView1_LostFocus()
    
    Columnview1.Visible = False
-   
-End
-
-Public Sub cvwUserDefaults_Click()
    
 End
 
@@ -248,14 +214,9 @@ Public Sub User_RequestDefault_New()
    
    bExit = True
    Editarea_Clear()
-   'RequestDefaultProvider = New collection 
    branch = New Collection
    provider = New Collection 
    EditArea_Notify_Change(False)
-   pk_view = -1
-   fk_organisation = 0
-   fk_default_branch = 0
-   fk_lu_request_type = 0
    cmbRequestTypes.SetFocus()
    With lblEditArea_Heading
       .Foreground = Color.Red
@@ -291,7 +252,6 @@ Public Sub cmbRequestTypes_Click()
    If cmbRequestTypes.index = -1 Then Return 
    fk_lu_request_type = Request_Types[cmbRequestTypes.index]!pk   'set request type key eg 1=pathology
    With Columnview1
-      ' .top = Hbox_Branch.top + Hbox_Branch.Height '+ Vbox1.Padding
       .top = Hbox_Provider.top + HBox_Provider.Height
       .width = txtProvider.Width
       .left = txtProvider.Parent.left + VBox_EditArea.padding + Vbox_EditArea_Inner.Padding
@@ -340,15 +300,17 @@ Public Sub Providers_Get()
          Else
             columnview1[provider!pk_request_provider][0] = provider!organisation
          Endif
-         
       Next
-      columnview1.tag = txtprovider
+      If providers.count = 1 Then
+         Provider_Select(provider)
+         Return 
+      End If
       With columnview1
+         .tag = txtprovider
          .Visible = True
          .Raise
          .SetFocus()
       End With 
-      Return 
    Else
       sMsg = "There are no providers for the request type " & cmbRequestTypes.Text & ".\n\n"
       sMsg &= "To be able to continue you must:\n\n"
@@ -363,57 +325,6 @@ Public Sub Providers_Get()
       Return 
    End If
    
-End
-
-Public Sub Branches_Selection(action As String, Optional calling_control As String)
-   ' '------------------------------------------------------------
-   ' 'PURPOSE    : Fetches a list of branches for a given provider
-   ' '------------------------------------------------------------
-   ' 
-   ' Select Case action
-   '    Case "get"
-   '       With columnview1
-   '          .Clear
-   '          .Visible = False
-   '          .Columns.count = 2
-   '       End With   
-   '       branches = modContactsDBI.Branches_Get_For_Organisation(fk_organisation)
-   '       '-----------------------------------------------------------------
-   '       'If branches exist to match the text, auto-select or show a list
-   '       '-----------------------------------------------------------------
-   '       If branches.count Then 
-   '          For Each branch In branches
-   '             columnview1.Add(branch!pk_view, 0)
-   '             columnview1[branch!pk_view][0] = branch!branch
-   '             columnview1[branch!pk_view][1] = Trim(branch!street1 & " " & branch!street2) & " " & branch!town & " " & branch!state & " " & branch!postcode
-   '          Next
-   '       '   columnview1.tag = txtbranch
-   '          If branches.count = 1 Then 
-   '             columnview1.Visible = False 
-   '             branches_Selection("accept")
-   '             Return
-   '          End If
-   '          With columnview1
-   '             .Visible = True
-   '             .Raise
-   '             .MoveFirst()
-   '             .SetFocus()
-   '          End With 
-   '          Return 
-   '       End If
-   '       
-   '    Case "accept"
-   '       ' columnview1.SetFocus()
-   '       ' columnview1.MoveCurrent   'set internal cursor to match marquee
-   '       ' fk_default_branch = branches[columnview1.Item.key]!fk_branch
-   '       ' txtbranch.text = branches[columnview1.Item.key]!branch
-   '       ' txtStreet1.text = branches[columnview1.Item.key]!street1
-   '       ' txtStreet2.text = branches[columnview1.Item.key]!street2
-   '       ' txtsuburb.text = branches[columnview1.Item.key]!town & " " & branches[columnview1.Item.key]!postcode
-   '       ' columnview1.Visible = False 
-   '       ' chkElectronic.SetFocus()
-   ' End Select
-   ' 
 End
 
 Public Sub EditArea_Notify_Change(flag As Boolean)
@@ -470,23 +381,34 @@ Public Sub Editarea_Clear()
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_Inner) 
    bExit = False   
    cmbRequestTypes.index = -1 
+   cmbBranches.index = -1
    Columnview1.Visible = False
    EditArea_Notify_Change(False)
    With lblEditArea_Heading
       .Foreground = Color.Red
       .Text = ""
    End With
-   
+   fk_request_provider = 0
+   fk_user_provider_default = 0
+   fk_default_branch = 0
+   fk_lu_request_type = 0
+   fk_organisation = 0
+
 End
 
 Public Sub User_RequestDefault_Display()
-   
+   '-----------------------------------------------------------------
+   'Display the current default for the user for the request type
+   'load all the branches for this organisation into the branch combo
+   '-----------------------------------------------------------------   
+
    bexit = True
    cvwUserDefaults.MoveCurrent
    RequestDefaultProvider = New Collection
    txtProvider.text = RequestDefaultProviders[cvwUserDefaults.Item.key]!organisation
-   cmbBranches.index = cmbBranches.Find(RequestDefaultProviders[cvwUserDefaults.Item.key]!branch)
-  'txtBranch.text = RequestDefaultProviders[cvwUserDefaults.Item.key]!default_branch
+   fk_organisation = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_organisation
+   branches = modUtil.LoadCombo(cmbBranches, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Branches_Get_For_Organisation(fk_organisation)), "branch")
+   cmbBranches.index = cmbBranches.Find(RequestDefaultProviders[cvwUserDefaults.Item.key]!default_branch)
    txtStreet1.text = RequestDefaultProviders[cvwUserDefaults.Item.key]!default_branch_street1
    txtStreet2.text = RequestDefaultProviders[cvwUserDefaults.Item.key]!default_branch_street2
    txtsuburb.text = RequestDefaultProviders[cvwUserDefaults.Item.key]!default_branch_town & " " & RequestDefaultProviders[cvwUserDefaults.Item.key]!default_branch_postcode
@@ -494,10 +416,9 @@ Public Sub User_RequestDefault_Display()
    chkElectronic.value = RequestDefaultProviders[cvwUserDefaults.Item.key]!send_electronically
    chkPrint.value = RequestDefaultProviders[cvwUserDefaults.Item.key]!print_paper
    fk_default_branch = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_default_branch
-   fk_organisation = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_organisation
    fk_lu_request_type = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_lu_request_type
-   pk_view = cvwUserDefaults.Item.key ' = pk_default
-   
+   fk_user_provider_default = cvwUserDefaults.Item.key ' = pk_default
+   fk_request_provider = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_request_provider 'key to  clin_requests.user_provider_defaults
    RequestDefaultProvider!pk_default = RequestDefaultProviders[cvwUserDefaults.Item.key]!pk_default
    RequestDefaultProvider!fk_staff = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_staff
    RequestDefaultProvider!fk_default_branch = RequestDefaultProviders[cvwUserDefaults.Item.key]!fk_default_branch 
@@ -513,16 +434,41 @@ Public Sub ColumnView1_DblClick()
    
    columnview1.MoveCurrent()
    Select Case ColumnView1.tag.tag 'Do not put Last here please it kills other calling routines
-         
       Case "provider"
-         Provider_Select
-      Case "branch"
-         Branch_Select
+         Provider_Select(providers[columnview1.Item.key])
    End Select
+   columnview1.Visible = False  
    
 End
 
-Public Sub Provider_Select()
+Public Sub Provider_Select(provider As Collection)
+   
+   '----------------------------------------------------------------------------
+   'Display the selected provider and load organisations branches into the combo
+   '----------------------------------------------------------------------------
+   bExit = True
+   fk_request_provider = provider!pk_request_provider
+   If provider!fk_person <> 0 Then
+      txtProvider.text = provider!wholename
+      txtProvider.pos = 0
+      fk_person = provider!fk_person
+      txtStreet1.text = provider!headoffice_street1
+      txtStreet1.pos = 0
+      txtStreet2.text = provider!headoffice_street2
+      txtStreet2.pos = 0   
+      txtsuburb.text = provider!headoffice_town & " " & provider!postcode
+      txtsuburb.pos = 0
+   Else
+      txtProvider.text = provider!organisation
+      txtProvider.pos = 0
+      fk_organisation = provider!fk_organisation
+      Branches_Get(provider)
+   End If   
+   bExit = False   
+   
+End
+
+Public Sub Provider_Select_old()
    
    '----------------------------------------------------------------------
    'CALLED BY  : user hitting <enter> in txtprovider ie editarea_keypress
@@ -539,7 +485,7 @@ Public Sub Provider_Select()
       txtProvider.text = providers[columnview1.Item.key]!wholename
       txtProvider.pos = 0
       fk_person = providers[columnview1.Item.key]!fk_person
-     ' txtbranch.text = "HEAD OFFICE"
+      ' txtbranch.text = "HEAD OFFICE"
       txtStreet1.text = providers[columnview1.Item.key]!headoffice_street1
       txtStreet1.pos = 0
       txtStreet2.text = providers[columnview1.Item.key]!headoffice_street2
@@ -550,7 +496,7 @@ Public Sub Provider_Select()
       txtProvider.text = providers[columnview1.Item.key]!organisation
       txtProvider.pos = 0
       fk_organisation = providers[columnview1.Item.key]!fk_organisation
-     ' txtBranch.SetFocus()
+      ' txtBranch.SetFocus()
    End If   
    branches = modUtil.LoadCombo(cmbBranches, modContactsDBI.Branches_Get_For_Organisation(fk_organisation), "branch")
    columnview1.Visible = False  
@@ -559,31 +505,39 @@ Public Sub Provider_Select()
    
 End
 
-Public Sub Branch_Select()
+Public Sub Branches_Get(provider As Collection)
+   '-------------------------------------------------------------------------
+   'Gets the branches for the provider, try and match to branch in our suburb
+   'otherwise The combo will be set to the first alphabetically
+   'user can change if they want a different default collection branch
+   '-------------------------------------------------------------------------
    
-   fk_default_branch = branches[columnview1.Item.key]!fk_branch
-  ' txtbranch.text = branches[columnview1.Item.key]!branch
-   txtStreet1.text = branches[columnview1.Item.key]!street1
-   txtStreet2.text = branches[columnview1.Item.key]!street2
-   txtsuburb.text = branches[columnview1.Item.key]!town & " " & branches[columnview1.Item.key]!postcode
-   columnview1.Visible = False 
-   chkElectronic.SetFocus()
+   Dim bFoundLocalBranch As Boolean
+   
+   branches = modUtil.LoadCombo(cmbBranches, modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Branches_Get_For_Organisation(fk_organisation)), "branch")
+   For Each branch In branches
+      If branch!postcode = modDBConnect.currentUser!postcode Then
+         cmbBranches.index = cmbBranches.Find(branch!branch)   'triggers the combo and sets the branch details
+         bFoundLocalBranch = True
+         Return   
+      End If   
+   Next
+   cmbBranches.index = 0 
+   cmbBranches_Click()
    
 End
 
 Public Sub Settings_Save()
    
-   ' Settings[Settings_Section & "/VSplit_Main.Layout"] = VSplit_Main.Layout
-   ' Settings[Settings_Section & "/HSplit_Main.Layout "] = HSplit_Main.layout
-   ' Settings[Settings_Section & "/Help_Zoom"] = FHelp.WebView1.Zoom
+   Settings["FStaffPreferencesRequests/VSplit_Main.Layout"] = VSplit_Main.Layout
+   Settings["FStaffPreferencesRequests/Help_Zoom"] = FHelp.WebView1.Zoom
    
 End
 
 Private Sub Settings_Load()
    
-   ' Try VSplit_Main.Layout = Settings[Settings_Section & "/VSplit_Main.Layout", [1, 1]]
-   ' Try HSplit_Main.layout = Settings[Settings_Section & "/HSplit_Main.Layout", [1, 1]] 
-   ' Try FHelp.WebView1.Zoom = Settings[Settings_Section & "/Help_Zoom"]
+   VSplit_Main.Layout = Settings["FStaffPreferencesRequests/VSplit_Main.Layout", modUtil.VSplit([313, 667])]
+   FHelp.WebView1.Zoom = Settings["FStaffPreferencesRequests/Help_Zoom", 1.0]
    
 End
 
@@ -594,23 +548,17 @@ Public Sub Init()
    '------------------------------------------------
    
    bexit = True
-   ' With FHelp = New FHtmlViewer(Vbox_Help)
-   '    .tbWebBrowserZoomIn.Visible = True
-   '    .tbWebBrowserZoomOut.Visible = True 
-   '    .Help_Show("user-request-provider-defaults.html") 
-   ' End With
    request_types = modUtil.LoadCombo(cmbRequestTypes, modRequestsDBI.RequestTypes_Get(), "type") 'all available types of requests
    bexit = False
    lblMeasure.text = "  Send Electronically   "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
-   Settings_Section = "Preferences_FStaffRequestPreferences_" & ModDBConnect.currentUser!logon_name
    Try Settings_Load()
    cvwUserDefaults.Columns.count = 3
    Editarea_Clear()
    
 End
 
-Public Sub RequestsDefaults_Refresh()
+Public Sub Reload()
    '-----------------------------------------------------------------
    'Gets the defaults for how the user wants to handle their requests
    'e.g default pathology company, branch etc
@@ -663,10 +611,10 @@ Public Sub mnuProviderDefaults_Click()
       Case "delete"
          If Message.warning("Are you sure you want to delete this provider default?", "Yes", "No") = 1 Then
             modDBConnect.BeginTrans()
-            If modPreferencesDBI.Request_Default_Mark_Deleted(RequestDefaultProviders, pk_view, RequestDefaultProvider) Then
+            If modPreferencesDBI.Request_Default_Mark_Deleted(RequestDefaultProviders, fk_user_provider_default, RequestDefaultProvider) Then
                modDBConnect.CommitTrans()
             End If   
-            RequestsDefaults_Refresh()
+            Reload()
          End If
       Case "edit"
          User_RequestDefault_Edit()
@@ -705,4 +653,13 @@ Public Sub cvwUserDefaults_Select()
    Vbox_EditArea_Inner.Enabled = True
    VBox_EditArea.Enabled = False
    
+End
+
+Public Sub cmbBranches_Click()
+   
+   branch = branches[cmbBranches.index]
+   txtStreet1.text = branch!street1
+   txtStreet2.text = branch!street2
+   txtsuburb.text = branch!town & " " & branch!postcode  
+   fk_default_branch = branch!fk_branch
 End

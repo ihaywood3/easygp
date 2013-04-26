@@ -51,6 +51,8 @@ create or replace view clin_consult.vwdictations as
         r.fk_consult = c.pk  and
 	c.fk_patient = vwp.fk_patient;
 
+grant select on clin_consult.vwdictations to staff;
+
 truncate table db.lu_version;
 insert into db.lu_version (lu_major,lu_minor) values (0, 264);
 

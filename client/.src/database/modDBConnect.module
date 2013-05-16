@@ -159,9 +159,9 @@ Public Sub File_Read()
   Dim notify_string As String
   Dim notify_pid As Integer
   Dim notify_param As String
-  Dim i As DatabaseWatcher
+  Dim its_us As Boolean
+  Dim i As Object
   
-  Debug "File_Read() called"
   PQconsumeInput(Connection.Handle)
   notifies = PQnotifies(Connection.Handle)
   While Not IsNull(notifies)
@@ -171,26 +171,30 @@ Public Sub File_Read()
      notify_pid = Integer@(notifies)
      notifies += SizeOf(gb.Pointer) 'remember C structs are padded for speed to the larger type
      notify_param = String@(Pointer@(notifies))
-     PQfreemem(notifies2)
-     Debug "NOTIFY "; notify_pid; " "; notify_param
-     If backend_pid = notify_pid Then Return ' it's us.
+     Debug "NOTIFY "; notify_string; " pid: "; notify_pid; " param: "; notify_param
+     ' check if it's our client making the update happen
+     ' some listeners may wish to ignore in this case, some may not
+     its_us = False
+     If backend_pid = notify_pid Then its_us = True 
      If event_listeners.Exist(notify_string) Then
         For Each i In event_listeners[notify_string]
-           Try i.Send_Notify(notify_pid, notify_param)
+           Try Object.Call(i, "Notify", [its_us, notify_param])
            If Error Then
               modUtil.ReportError(Error.Text, Error.Backtrace)
            Endif
         Next 
      Endif
+     PQfreemem(notifies2) ' don't free until all handlers have run
      PQconsumeInput(Connection.Handle)
      notifies = PQnotifies(Connection.Handle)
   Wend
   
 End
 
-Public Sub Register_Listener(evt As String, obj As DatabaseWatcher)
+Public Sub Register_Listener(evt As String, obj As Object)
    
    If Not event_listeners.Exist(evt) Then
+      ' we are the first listener, so tell postgres we are internested in this event
       exec_query("LISTEN " & evt)
       event_listeners[evt] = New Collection
    Endif
@@ -198,12 +202,16 @@ Public Sub Register_Listener(evt As String, obj As DatabaseWatcher)
    
 End
 
-Public Sub Unregister_Listener(evt As String, obj As DatabaseWatcher)
+Public Sub Unregister_Listener(evt As String, obj As Object)
    
   If IsNull(event_listeners) Then Return
   If Not event_listeners.Exist(evt) Then Return
   If Not event_listeners[evt].Exist(Str$(obj)) Then Return
   event_listeners[evt].Remove(Str$(obj)) 
+  If event_listeners[evt].Count = 0 Then
+     event_listeners.Remove(evt)
+     exec_query("UNLISTEN " & evt)
+  Endif
    
 End
 

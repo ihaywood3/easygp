@@ -17,6 +17,7 @@
 
 Private $hconn As Connection
 Private bTransaction As Boolean
+Private conninfo As Collection
 Private my_current_user As Collection
 Private pg_socket_file As Stream
 Private storedQueries As String
@@ -103,43 +104,56 @@ Public Function dbConnect_global(host As String, database As String, login As St
   'returns true if success, false if not
   '-------------------------------------
   Dim sa As String[]
-  Dim port As String
+  Dim r As String
   
-  $hconn = New Connection
-  Try $hconn.Close
+  conninfo = New Collection
   sa = Split(host, "/")
   If sa.Length = 2 Then
-     host = sa[0]
-     database = sa[1]
+     conninfo!host = sa[0]
+     conninfo!database = sa[1]
+  Else
+     conninfo!database = database
   Endif
-  If IsNull(database) Then database = "easygp"
+  If IsNull(conninfo!database) Then conninfo!database = "easygp"
   sa = Split(host, ":")
   If sa.Length = 2 Then
-     host = sa[0]
-     port = sa[1]
+     conninfo!host = sa[0]
+     conninfo!port = sa[1]
   Else
-     port = "5432"
+     conninfo!host = host
+     conninfo!port = "5432"
   Endif
+  conninfo!login = login
+  conninfo!password = password
+  r = Actual_Connect()
+  If r = "success" Then
+    CheckDBVersion()
+    my_current_user = modConsultDBI.Staff_member_Get()
+    bStoring = False
+    event_listeners = New Collection
+  Endif
+  Return r
+End
+  
+Private Function Actual_Connect() As String  
+  Try $hconn.Close
+  Try pg_socket_file.Close()
+  $hconn = New Connection
   With $hconn
     .Type = "postgresql"
-    .Host = host
-    .Login = login
-    .Password = password
+    .Host = conninfo!host
+    .Login = conninfo!login
+    .Password = conninfo!password
     .Name = ""
-    .Name = database
-    .Port = port
+    .Name = conninfo!database
+    .Port = conninfo!port
   End With
   $hconn.Open
   $hconn.Exec("set datestyle = 'iso,dmy'")
   Try $hconn.Exec("set bytea_output = 'escape'")
-  CheckDBVersion()
-  my_current_user = modConsultDBI.Staff_member_Get()
   DB.Current = $hconn
   backend_pid = PQbackendPID(Connection.Handle)
   pg_socket_file = Open "." & PQsocket(Connection.Handle) For Read Watch
-  bStoring = False
-  event_listeners = New Collection
-  
   Return "success"
 Catch
   Return DConv(Error.Text)
@@ -300,7 +314,7 @@ Public Function exec_query(sql As String, Optional params As Variant[]) As Resul
   Dim prefix As String
   Dim startTime As Float
   Dim errtxt As String
-  
+  Dim i As Integer
   If Not IsNull(params) Then
     sql = Me.Subst(sql, params)
   Endif
@@ -316,12 +330,33 @@ Public Function exec_query(sql As String, Optional params As Variant[]) As Resul
   Else
     Log.DebugMsg(sql)
   Endif
+  do_query: 
   Try $Result = $hconn.Exec(sql)
   If Error Then 
-     Print sql
     errtxt = Error.Text
-    Log.ErrorMsg(errtxt)
-    Error.Raise(errtxt)
+    If errtxt = "Query failed: SSL SYSCALL error: EOF detected\n" Then
+       ' connection lost
+       Log.ErrorMsg(errtxt)
+       i = Message.Error("EasyGP has lost the Internet connection", "Try to Re-connect", "Quit Program")
+       If i = 1 Then
+          do_reconnect: 
+          errtxt = Actual_Connect()
+          If errtxt = "success" Then 
+            Goto do_query
+          Else
+             i = Message.Error("Reconnection failed with " & errtxt, "Try To Re-connect", "Quit Program")
+             If i = 1 Then 
+                Goto do_reconnect
+             Else
+                Log.ErrorMsg(errtxt)
+                Quit
+             Endif
+          Endif
+       Endif
+    Else
+      Log.ErrorMsg(errtxt)
+      Quit
+    Endif
   Else
     Log.DebugMsg(" ( " & $Result.Count & " rows returned in " & timeDiff(startTime) & "msec )")  
   Endif

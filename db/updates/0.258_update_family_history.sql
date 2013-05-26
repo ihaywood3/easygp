@@ -1,5 +1,5 @@
 alter table clin_history.family_conditions alter column contributed_to_death set default null;
-Alter table clin_history.family_conditions add column diagnosis_certain boolean default true;
+
 
 DROP VIEW clin_history.vwfamilyhistory;
 

@@ -14,37 +14,51 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'
+' Allow user to put in their practice details and the first admin user
+'----------------------------------------------------------------------
 Private Const cPage_Welcome As Integer = 0
-Private Const cPage_Licence As Integer = 1
-Private Const cPage_EnterOrganisation As Integer = 3
-Private Const cPage_ReviewSettings As Integer = 4
-Private Const cPage_Finished As Integer = 5
-Private staff As Collection 
-Private Multiple_Collections As Collection 
-Private Towns As Collection 
-Private town As Collection 
-Private collection_member As Collection 
+Private Const cPage_AboutLicence As Integer = 1
+Private Const cPage_Licence As Integer = 2
+Private Const cPage_Introduction As Integer = 3
+Private Const cPage_EnterOrganisation As Integer = 4
+Private Const cPage_Add_Sys_Admin As Integer = 5
+Private Const cPage_ReviewSettings As Integer = 6
+Private Const cPage_Finished As Integer = 7
+
+Private staff As Collection
+Private StaffTypes As Collection
+Private roles As Collection
+Private role As Collection
+Private arraysex As String[]
+Private Multiple_Collections As Collection
+Private Towns As Collection
+Private town As Collection
+Private collection_member As Collection
 Private fk_town As Integer
 Private fk_occupation As Integer
 Private fk_category As Integer
 Private fk_branch As Integer
-Private fk_organisation As Integer 
+Private fk_organisation As Integer
 Private fk_employee_category As Integer
-Private clinic As Collection 
+Private clinic As Collection
+Private occupation As Collection
+Private occupations As Collection
 
 Public Sub wizard1_Close()
-   'The final button in the wizard reached, logon the new user
+   'The final button in the wizard reached, quit and allow uers to re-start
 
-   Me.Close(1)
+   Quit
 
 End
 
 Public Sub Wizard1_Cancel()
    '---------------------------------------------------
    'User has clicked cancel, give change to change mind
-   '---------------------------------------------------  
+   '---------------------------------------------------
 
-   Me.Close(0)
+   modDBConnect.RollBack()
+   Quit
 
 End
 
@@ -52,8 +66,35 @@ Public Sub _new()
 
    Me.Title = "Welcome to EasyGP"
    Me.Center()
+   lblMeasure.text = "   Category  "
+   modEditAreaHelpers.Resize_labels(VBox_Organisation, lblmeasure)
+   lblMeasure.text = "  Password Repeat    "
+   modEditAreaHelpers.Resize_labels(VBox_EditArea_SysAdmin, lblmeasure)
+   StaffTypes = modAdminDBI.Staff_Types_Get()
+   StaffTypes = modUtil.Copy_Collection_Keyed_Sequentially(modAdminDBI.Staff_Types_Get())
+   modUtil.LoadCombo(cmbStafftype, StaffTypes, "type")
+   roles = modUtil.Copy_Collection_Keyed_Sequentially(modAdminDBI.Roles_Get())
+   modUtil.LoadCombo(cmbAccessLevel, roles, "role")
+   'fixme put me in eg editarea helpers (see also  contacts similar code)
+   cmbSex.Add("Male", 0)
+   cmbSex.Add("Female", 1)
+   arraysex = New String[2]
+   arraysex[0] = "M"
+   arraysex[1] = "F"
+   cmbTitle.Add("Mr", 0)
+   cmbTitle.Add("Mrs", 1)
+   cmbTitle.Add("Master", 2)
+   cmbTitle.Add("Miss", 3)
+   cmbTitle.Add("Dr", 4)
+   cmbTitle.Add("Prof", 5)
+   cmbTitle.Add("Ms")
+   cmbStafftype.index = -1
+   cmbAccessLevel.index = -1
+   cmbSex.index = -1
+   cmbTitle.index = -1
+   Steps_FgColors_Reset
    Page_Welcome()
-   
+
 End
 
 Public Sub Form_Close()
@@ -72,6 +113,192 @@ Public Sub Save_Example_Patient()
    'Put in a dummy patient Mr Test Patient
    '---------------------------------------------------------------------
 
+   Dim comm As New CRow
+   Dim comms As New Collection 'of comms
+   Dim address As New CRow
+   Dim patient As New CRow
+   Dim person As New CRow
+   Dim link_person_comms As CRow
+   Dim link_person_addresses As CRow
+   '-------------------------------------------------------------------------
+   ' CREATE TABLE contacts.data_persons
+   ' (
+   '   pk serial NOT NULL,
+   '   firstname text,
+   '   surname text,
+   '   salutation text,
+   '   birthdate date,
+   '   fk_ethnicity integer,
+   '   fk_language integer,
+   '   memo text,
+   '   fk_marital integer DEFAULT 0,
+   '   fk_title integer DEFAULT 7,
+   '   fk_sex integer,
+   '   country_code text, -- This code if not null refers to common.lu_countries and is the country of origin or the patient, normally country of birth
+   '   fk_image integer,
+   '   retired boolean DEFAULT false,
+   '   fk_occupation integer, -- maybe a temporary column - at the moment only used to record a single occupation ...
+   '   deleted boolean DEFAULT false,
+   '   deceased boolean DEFAULT false,
+   '   date_deceased date,
+   '   language_problems boolean DEFAULT false, -- so named in case EasyGP used outside of english speaking country, ie this field could have...
+   '   surname_normalised text,
+   '   CONSTRAINT data_persons_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '--------------------------------------------------------------------------
+   person = New CRow
+   person!firstname = "Test"
+   person!surname = "Patient"
+   person!salutation = "Fred"
+   person!birthdate = Date(1950, 09, 10)
+   person!fk_title = 0
+   person!fk_sex = 0
+   person!fk_marital = 0
+   person!memo = "This is your test patient"
+   person!country_code = "AU"  'country of birth
+   person!fk_ethnicity = 1 'Australian
+   person!fk_occupation = 1 'random occupation
+   person!fk_language = 22 'English
+   person!retired = False
+   person.Save("contacts.data_persons", "fk_person")
+   '------------------------------------------
+   ' CREATE TABLE contacts.data_addresses
+   ' (
+   '   pk serial NOT NULL,
+   '   street1 text,
+   '   fk_town integer,
+   '   preferred_address boolean DEFAULT false,
+   '   postal_address boolean DEFAULT false,
+   '   head_office boolean DEFAULT false,
+   '   geolocation point, -- geographical location latitude and longitude
+   '   country_code character(2), -- pointer to lu_country
+   '   fk_lu_address_type integer,
+   '   deleted boolean DEFAULT false, -- IF False then this address has had its link removed
+   '   street2 text,
+   '   CONSTRAINT data_addresses_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '-------------------------------------------------------------------------------------------
+   address = New CRow
+   address!street1 = "The Gables"
+   address!street2 = "1 Leafy Grove"
+   address!fk_town = 230 'random town
+   address!country_code = "AU"
+   address!fk_lu_address_type = const.AddressType_Home
+   address.Save("contacts.data_addresses", "fk_address")
+   '--------------------------------------------------------------
+   ' CREATE TABLE contacts.links_persons_addresses
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_address integer,
+   '   fk_person integer,
+   '   deleted boolean DEFAULT false,
+   '   CONSTRAINT links_persons_addresses_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '--------------------------------------------------------------
+   link_person_addresses = New CRow
+   link_person_addresses!fk_address = address!fk_address
+   link_person_addresses!fk_person = person!fk_person
+   link_person_addresses.Save(" contacts.links_persons_addresses", "fk_link_persons_address")
+   '----------------------------------------------------
+   ' CREATE TABLE contacts.data_communications
+   ' (
+   '   pk serial NOT NULL,
+   '   value text NOT NULL,
+   '   note text,
+   '   preferred_method boolean DEFAULT false,
+   '   confidential boolean DEFAULT false,
+   '   deleted boolean DEFAULT false,
+   '   fk_type integer NOT NULL,
+   '   CONSTRAINT data_communications_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '----------------------------------------------------
+   comm = New CRow
+   comm!fk_type = const.CommModalityPhone
+   comm!value = "02 49 5102912"
+   comms.Add(comm, comms.count)
+
+   comm = New CRow
+   comm!fk_type = Const.CommModalityMobile
+   comm!value = "0418 592195"
+   comms.Add(comm, comms.count)
+
+   comm = New CRow
+   comm!fk_type = Const.CommModalityEmail
+   comm!value = "tpatient@ozemail.com.au"
+   comms.Add(comm, comms.count)
+   For Each comm In comms
+      comm.Save("contacts.data_communications", "fk_comm")
+      '-------------------------------------------------------
+      'CREATE TABLE contacts.links_persons_comms
+      ' (
+      '   pk serial NOT NULL,
+      '   fk_person integer,
+      '   fk_comm integer,
+      '   deleted boolean DEFAULT false,
+      '   CONSTRAINT links_persons_comms_pkey PRIMARY KEY (pk )
+      ' )
+      ' WITH (
+      '   OIDS=FALSE
+      ' );
+      '--------------------------------------------------------
+      link_person_comms = New CRow
+      link_person_comms!fk_person = person!fk_person
+      link_person_comms!fk_comm = comm!fk_comm
+      link_person_comms.Save("contacts.links_persons_comms", "fk_link_person_comms")
+   Next
+   '-----------------------------------------------------------------------------------------------------
+   ' CREATE TABLE clerical.data_patients
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_person integer NOT NULL, -- foreign key to contacts.data_persons table
+   '   fk_doctor integer, -- if not null this is the patients perferred doctor
+   '   fk_next_of_kin integer, -- if not null points to person in the database who is the next of kin
+   '   fk_payer_person integer, -- if the patient does not pay, this is the key to contacts.persons table this could be another patient, or a non-patient in the persons table
+   '   fk_family integer, -- foriegn key to clerical.data_families - links patients to a family unit
+   '   medicare_number character varying(10),
+   '   medicare_ref_number text,
+   '   medicare_expiry_date date,
+   '   veteran_number character varying(10),
+   '   veteran_specific_condition text, -- the condition the veteran is entitled to if limited benefit
+   '   concession_card_number text,
+   '   concession_card_expiry_date date,
+   '   memo text,
+   '   fk_legacy text, -- the key from the legacy database for the patient
+   '   fk_lu_veteran_card_type integer, -- the type of card 1 = full (gold) 2= specific entitlement (white)  3=war widow (lilac)
+   '   fk_lu_active_status integer, -- key to clerical.lu_active_status 1= active 2 = inactive
+   '   fk_lu_centrelink_card_type integer, -- key to clerial.lu_centrelink_card_type - the 3 card types in Australia
+   '   fk_lu_aboriginality integer,
+   '   fk_lu_private_health_fund integer, -- foreign key to clerical.lu_private_health_fund table listing nearly 40 private health funds
+   '   private_insurance boolean, -- boolean value if true the patient has private insurance
+   '   fk_lu_default_billing_level integer, -- the default billing level eg private
+   '   fk_payer_branch integer, -- if the patient does not pay, then the branch of the organisation in data_branches (e.g could be head office) is the payer
+   '   nursing_home_resident boolean DEFAULT false, -- If true the patient lives in an aged care facility...
+   '------------------------------------------------------------------------------------------------------
+   patient = New CRow
+   patient!fk_person = person!fk_person
+   patient!fk_lu_active_status = 1 'active
+   patient.Save("clerical.data_patients", "fk_patient")
+
+End
+
+Public Sub Save_Example_Patient_old()
+   '---------------------------------------------------------------------
+   'Note this routine is encapsulated in a begin-commit trans from save()
+   'Put in a dummy patient Mr Test Patient
+   '---------------------------------------------------------------------
+
    Dim old_pk As Integer                      'not used
    Dim Returned_collection As Collection      'not used
    Dim rows_in_view As Collection             'not used
@@ -79,10 +306,10 @@ Public Sub Save_Example_Patient()
    Dim comm As New Collection
    Dim comms As New Collection
    Dim address As New Collection
-   Dim addresses As New Collection 
+   Dim addresses As New Collection
    Dim patient As New Collection
-   Dim person As New Collection 
-   
+   Dim person As New Collection
+
    '------------------------------------------------
    address!street1 = "The Gables"
    address!street2 = "1 Leafy Grove"
@@ -92,7 +319,7 @@ Public Sub Save_Example_Patient()
    '-------------------------------
    'now the patient specific stuff
    '-------------------------------
-   person!retired = False 
+   person!retired = False
    '--------------------------------------------------------------------------
    'The person's details
    '
@@ -114,7 +341,7 @@ Public Sub Save_Example_Patient()
    person!surname = "Patient"
    person!salutation = "Fred"
    person!birthdate = Date(1950, 09, 10)
-   person!fk_title = 0 
+   person!fk_title = 0
    person!fk_sex = 0
    person!fk_marital = 0
    person!memo = "This is your test patient"
@@ -129,48 +356,53 @@ Public Sub Save_Example_Patient()
    comm!fk_type = const.CommModalityPhone
    comm!value = "02 49 5102912"
    comms.Add(comm, comms.count)
-   
+
    comm = New Collection
    comm!fk_type = Const.CommModalityMobile
    comm!value = "0418 592195"
    comms.Add(comm, comms.count)
-   
+
    comm = New Collection
    comm!fk_type = Const.CommModalityEmail
    comm!value = "tpatient@ozemail.com.au"
    comms.Add(comm, comms.count)
    patient!fk_person = modContactsDBI.Person_Save(rows_in_view, old_pk, person, comms, views_comms)
+   patient!fk_lu_active_status = 1 'active
    modContactsDBI.Person_Addresses_Save(rows_in_view, old_pk, addresses, person)
    patient!fk_patient = modContactsDBI.Patient_Save(rows_in_view, old_pk, patient)
 
 End
 
-Public Sub Save_Organisation() As Boolean
+Public Sub Save_Organisation_SysAdmin() As Boolean
    '----------------------------------------------------------------------
-   'Creates the database entries for the main clinic for the organisation
+   'Creates the database entries for
+   '- the main clinic for the organisation
+   '- the first employee designated sysadmin
    'If we get to this point we have already validated the data
-   'returns true (at least will once I've discussed this with IAN
-   'and sorted out a mechanism
-   'Note this routine is encapsulated in a begin-commit trans from save()
+   'Note this is old code in part not using cRow
    '----------------------------------------------------------------------
 
-   Dim old_data As Collection 
+   Dim old_data As Collection
    Dim old_pk As Integer
    Dim organisation As New Collection
    Dim branch As New Collection
-   Dim address As New Collection 
+   Dim address As New Collection
    Dim comms As New Collection
-   Dim comm As Collection 
+   Dim comm As Collection
    Dim old_comms As Collection
    Dim org_branch_keys As Collection  'keyed as "fk_organisation", "fk_branch"
-   
+   Dim person As CRow
+   Dim employee As CRow
+   Dim link_staff_clinic As CRow
+   Dim staff_member As CRow
+
    organisation!organisation = Trim(txtOrganisation.text)
    '--------------------------------------------------------------------
    'Note the branch branch will be "HEAD OFFICE" by default
    'The category is definable as not all users at General practitioners
    '--------------------------------------------------------------------
    branch!category = Trim(txtCategory.text)
-   branch!branch = Trim(txtBranch.text) 
+   branch!branch = Trim(txtBranch.text)
    address!street1 = Trim(txtStreet1.text)
    address!street2 = Trim(txtStreet2.text)
    address!head_office = True
@@ -214,9 +446,111 @@ Public Sub Save_Organisation() As Boolean
    '-----------------------------------------------------------------
    'Now, this organisation = a clinic, so save to admin.clinics table
    '-----------------------------------------------------------------
-   clinic = New Collection 
+   clinic = New Collection
    clinic!fk_branch = fk_branch
    clinic!fk_clinic = modAdminDBI.Clinic_Save(clinic)
+   '------------------------------------------------
+   ' CREATE TABLE contacts.data_persons
+   ' (
+   '   pk serial NOT NULL,
+   '   firstname text,
+   '   surname text,
+   '   salutation text,
+   '   birthdate date,
+   '   fk_ethnicity integer,
+   '   fk_language integer,
+   '   fk_marital integer DEFAULT 0,
+   '   fk_title integer DEFAULT 7,
+   '   fk_sex integer,
+   '   country_code text,
+   '   fk_image integer,
+   '   retired boolean DEFAULT false,
+   '   fk_occupation integer,
+   '   deleted boolean DEFAULT false,
+   '   deceased boolean DEFAULT false,
+   '   date_deceased date,
+   '   language_problems boolean DEFAULT false,
+   '   surname_normalised text,
+   '   CONSTRAINT data_persons_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '---------------------------------------------------
+   Person = New CRow
+   Person!firstname = Trim(txtSysAdminFirstname.text)
+   Person!surname = Trim(txtSysAdminSurname.text)
+   Person!fk_title = cmbTitle.index
+   Person!fk_sex = cmbSex.index
+   Person.Save("contacts.data_persons", "fk_person")
+   '-----------------------------------------------------
+   ' REATE TABLE contacts.data_employees
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_branch integer,
+   '   fk_person integer,
+   '   fk_occupation integer,
+   '   memo text,
+   '   deleted boolean DEFAULT false, -- If True then the person is marked as no longer attatched to current branch...
+   '   fk_status integer DEFAULT 0, -- employement status, foreign key to admin.lu_status FIXME SHIFT THIS TO CONTACTS AND...
+   '   CONSTRAINT data_employees_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '------------------------------------------------------
+   employee = New CRow
+   employee!fk_branch = fk_branch
+   employee!fk_person = person!fk_person
+   employee!fk_occupation = fk_occupation
+   employee.Save("contacts.data_employees", "fk_employee")
+   '-------------------------------------------------------
+   '
+   ' CREATE TABLE admin.staff
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_person integer NOT NULL,
+   '   fk_role integer NOT NULL,
+   '   fk_status integer NOT NULL,
+   '   logon_name text NOT NULL,
+   '   logon_date_from date,
+   '   logon_date_to date,
+   '   fk_lu_staff_type integer NOT NULL DEFAULT 12, -- type of staff e.g 12 - clerical. As I added this later it couldn't be null due to join ...
+   '   qualifications text,
+   '   CONSTRAINT staff_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '----------------------------------------------------------
+   staff_member = New CRow
+   staff_member!fk_person = person!fk_person
+   staff_member!fk_status = const.StaffStatus_Active
+   staff_member!fk_lu_staff_type = StaffTypes[cmbStafftype.index]!pk
+   staff_member!logon_name = Trim(txtLogonName.text)    'logon name
+   staff_member!password = Trim(txtPassword.text)    'password
+   staff_member!logon_date_from = Val(txtSysAdminValidFromDate.text)
+   staff_member!logon_date_to = Val(txtSysAdminValidToDate.Text)
+   staff_member!fk_role = roles[cmbAccessLevel.Index]!pk_role
+   modContactsDBI.Staff_Create_Postgres_User(Null, 0, staff_member, True) 'create postgres user who is superuser
+   staff_member.Remove("password")
+   staff_member.Save("admin.staff", "fk_staff")
+   '-----------------------------------------------------------
+   ' CREATE TABLE admin.link_staff_clinics
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_staff integer NOT NULL,
+   '   fk_clinic integer NOT NULL,
+   '   CONSTRAINT link_staff_clinics_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '-------------------------------------------------------------
+   link_staff_clinic = New CRow
+   link_staff_clinic!fk_staff = staff_member!fk_staff
+   link_staff_clinic!fk_clinic = clinic!fk_clinic
+   link_staff_clinic.Save("admin.link_staff_clinics", "fk_link_staff_clinic")
 
 End
 
@@ -228,23 +562,24 @@ Public Sub Save()
    '----------------------------------------------------------
 
    modDBConnect.BeginTrans
-   Save_Organisation() 
+   Save_Organisation_SysAdmin()
    Save_Example_Patient()
    modDBConnect.CommitTrans()
-End  
+
+End
 
 Public Sub Page_Welcome()
 
-   tlStepWelcome.text = "<B>Welcome</B>"
-   tlStepWelcome.Foreground = Color.DarkBlue
+   tlStepWelcome.text = "<B>What you should know about EasyGP before choosing to install</B>"
+   tlStepWelcome.Foreground = Color.white
 
 End
 
 Public Sub Page_Licence()
    Dim gpl_fname As String
 
-   tlStepLicence.Foreground = Color.DarkBlue
-   tlStepLicence.text = "<B>Accept Licence</B>"
+   tlStepLicence.Foreground = Color.white
+   tlStepLicence.text = "<B>Read and accept and Gnu General Public Licence version 3</B>"
    textedit1.ReadOnly = True
    gpl_fname = modUtil.Find_File("COPYING")
    If IsNull(gpl_fname) Then gpl_fname = "/usr/share/common-licenses/GPL-3" ' on Debian-based systems the GPL is in a central location
@@ -254,8 +589,8 @@ End
 
 Public Sub Page_EnterOrganisation()
 
-   tlStepPracticeDetails.Foreground = Color.DarkBlue
-   tlStepPracticeDetails.text = "<B>Practice Details</B>"
+   tlStepPracticeDetails.Foreground = Color.white
+   tlStepPracticeDetails.text = "<B>Enter the details of your medical practice</B>"
 
 End
 
@@ -266,59 +601,113 @@ Public Sub Page_ReviewSettings()
    '------------------------------------------------------
 
    Dim sHtml As String
-   Dim sMsg As String 
+   Dim sMsg As String
 
-   tlReviewSettings.text = "<B>Review Settings</B>"
-   tlReviewSettings.Foreground = Color.DarkBlue
-   shtml = modHTML.SetupWizard_Review_Data
-   shtml = Replace(shtml, "%name", txtOrganisation.text)
+   sMsg = UCase(txtSuburb.text) & " " & txtState.text & " " & txtPostcode.Text
+   tlReviewSettings.text = "<B>Review your choices and save the information to the database</B><BR>"
+   tlReviewSettings.Foreground = Color.white
+   shtml = modHTML.SetupWizard_Review_Data()
+   shtml = Replace(shtml, "%practice-name", txtOrganisation.text)
    shtml = Replace(shtml, "%street1", txtStreet1.text)
    If Trim(txtStreet2.text) <> "" Then
       shtml = Replace(shtml, "%street2", txtStreet2.text)
+      shtml = Replace(shtml, "%suburb", sMsg)
    Else
-      shtml = Replace(shtml, "%street2<BR>", "")
+      shtml = Replace(shtml, "%street2", sMsg)
+      shtml = Replace(shtml, "%suburb", "")
    End If
    shtml = Replace(shtml, "%phone", txtPhone.text)
-   
-   If Trim(txtFax.text) = "" Then
-      shtml = Replace(shtml, "%fax", txtFax.text)
-   Else
-      shtml = Replace(shtml, "%fax<BR>", "")
-   End If   
-   
+   shtml = Replace(shtml, "%fax", txtFax.text)
    shtml = Replace(shtml, "%email", txtemail.text)
    shtml = Replace(shtml, "%web", txtWeb.text)
-   sMsg = UCase(txtSuburb.text) & " " & txtState.text & " " & txtPostcode.Text
-   shtml = Replace(shtml, "%suburb", sMsg)
+   shtml = Replace(shtml, "%staff-name", txtSysAdminFirstname.Text & " " & txtSysAdminSurname.text)
+   shtml = Replace(shtml, "%staff-type", cmbStafftype.Text)
+   shtml = Replace(shtml, "%access-level", cmbAccessLevel.Text)
+   shtml = Replace(shtml, "%logon-name", txtLogonName.Text)
    tlSummary.text = shtml
-   
+
+End
+
+Public Sub Page_Introduction()
+
+   tlStepIntroduction.Foreground = Color.white
+   tlStepIntroduction.text = "<B>Notes on choices you will have to make during the installation</B>"
+
+End
+
+Public Sub Page_AboutLicence()
+
+   tlStepAboutLicence.Foreground = Color.white
+   tlStepAboutLicence.text = "<B>About the Licence - Specific Disclaimers & Limitation of Warranty</B>"
+   textlabel1.text = "<P>In the follow page you will be asked to agree to the standard GNU GENERAL PUBLIC LICENSE. In particular "
+   "we would like to draw your attention to the fact that by installing EasyGP you will be agreeing to the following clauses:</P>"
+   "<P><Align='center'>15. <B>Disclaimer Of Warranty</B>."
+   "<P>THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY "
+   "APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT "
+   "HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM *AS IS* WITHOUT WARRANTY "
+   "OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, "
+   "THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR "
+   "PURPOSE. <BR><BR> <B><I>THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM "
+   "IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF "
+   "ALL NECESSARY SERVICING, REPAIR OR CORRECTION.</I></B></P>"
+
+   "<P><Align='center'>16.<B> Limitation of Liability</B></P>"
+   "IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING "
+   "WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS "
+   "THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY "
+   "GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE "
+   "USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED TO LOSS OF "
+   "DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD "
+   "PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS), "
+   "EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF "
+   "SUCH DAMAGES."
+   "<P>If you  will not accept either of these clauses you should quit EasyGP now and remove it from your computer, otherwise you should "
+   "proceed to the the next page and read the licence in full and agree to the terms of use.</P>"
+
 End
 
 Public Sub Page_Finished()
-   
-  tlFinished.text = "<B>Using EasyGP</B>"
-  "<p>The system will now log in as user &quot;easygp&quot;, the system administrator.</p>"
-  "<p>This is a restricted mode in which no clinical functions can be performed: medico-legally clinical" 
-  " work can only be done with user accounts that refer to a real person. You can create a real user"
-  " under the Adminstrator tab, then close the program and log in as that user.</p>"
-   
-   
+
+   tlFinished.text = "<B>Using EasyGP version 0.1</B>"
+   "<p>After the wizard shuts down you can re-start EasyGP and log in as user &quot;" & Trim(txtLogonName.text) & "&quot;, the system administrator. It is recommended that you "
+   "read the help file before using the program.</p>"
+
+   "<p>If the new admin user you have created is not a clinical user, then you will not be able to access the clinical sections, however the admin user "
+   "can create new staff members in the appropriate roles."
+
+   Settings["Logon/User"] = txtLogonName.Text
+
+End
+
+Public Sub Page_Add_SysAdmin()
+
+   tlStepLicence.Foreground = Color.white
+   tlStepLicence.text = "<B>Choose a staff member who will be the system administrator</B>"
+   txtSysAdminValidFromDate.text = Format(Now, "dd/mm/yyyy")
+   txtSysAdminValidToDate.text = Format(DateAdd(Now, gb.Year, 5), "dd/mm/yyyy")
+
 End
 
 Public Sub Wizard1_Change()
-   
+
    '-------------------------------------------------------------
    '
    '-------------------------------------------------------------
-   
+
    Steps_FgColors_Reset
    Select Case Wizard1.Index
       Case cPage_Welcome
          Page_Welcome
+      Case cPage_AboutLicence
+         Page_AboutLicence
       Case cPage_Licence
          Page_Licence
+      Case cPage_Introduction
+         Page_Introduction()
       Case cPage_EnterOrganisation
          Page_EnterOrganisation
+      Case cPage_Add_Sys_Admin
+         Page_Add_SysAdmin
       Case cPage_ReviewSettings
          Page_ReviewSettings
       Case cPage_Finished
@@ -340,31 +729,95 @@ Public Sub Wizard1_BeforeChange()
    Dim $str As String
 
    Select Case Wizard1.Index
-         
+
       Case cPage_Licence
          If Not chkLicence.value Then
             Hbox_Licence.Padding = 1
             Stop Event
-            Return 
+            Return
          Else
             Hbox_Licence.Padding = 0
-         End If   
+         End If
       Case cPage_EnterOrganisation
          If Not Valid_Organisation() Then Stop Event
-         
+      Case cPage_Add_Sys_Admin
+         If Not Valid_SysAdmin() Then Stop Event
       Case cPage_ReviewSettings
          '-------------------------------------------------------
          'Attempt To save the organisation, install coding system
          '-------------------------------------------------------
-         Try Save() 
+         Try Save()
          If Error Then
             $str = Error.Text
             Stop Event
             Message.Info(Subst$("An error occurred whilst attempting to initialise EasyGP (&1).", $str))
+            modDBConnect.RollBack()
             Me.Close(0)
          End If
-         
+
    End Select
+
+End
+
+Public Function Valid_SysAdmin() As Boolean
+   '------------------------------------------
+   'Validate the data for system administrator
+   '------------------------------------------
+
+   Dim Hctrl As Control
+   Dim tb As TextBox
+   Dim hb As HBox
+   Dim cb As ComboBox
+
+   For Each Hctrl In VBox_EditArea_SysAdmin.Children
+      If hctrl Is Hbox Then
+         hb = hctrl
+         For Each hctrl In hb.Children
+            If hctrl Is HBox Then
+               hb = hctrl
+               For Each hctrl In hb.Children
+                  If hctrl Is Textbox Then
+                     tb = hctrl
+                     If Trim(tb.text) = "" Then
+                        Goto Highlight_textbox
+                     Else
+                        If tb.tag = "sys admin occupation" And fk_occupation = 0 Then
+                           Message.Info("Please pick an occupation from the list")
+                           Goto Highlight_textbox
+                        Endif
+                     Endif
+                     If InStr(tb.tag, "date") Then
+                        If Not IsDate(tb.text) Then
+                           Goto Highlight_textbox
+                        Endif
+                     End If
+                     If txtPassword.text <> txtPasswordRepeat.text Then
+                        Message.info("The passwords to not much")
+                        tb = txtPassword
+                        Goto Highlight_textbox
+                     Endif
+                  Else
+                     If hctrl Is ComboBox Then
+                        cb = hctrl
+                        If cb.index = -1 Then
+                           cb.SetFocus
+                           Return
+                        Endif
+                     Endif
+                  Endif
+               Next
+            End If
+         Next
+      Endif
+   Next
+   Return True
+
+Highlight_textbox:
+   With tb
+      .Background = Color.rgb(95, 255, 175)
+      .SetFocus
+      Return
+   End With
 
 End
 
@@ -374,7 +827,7 @@ Public Function Valid_Organisation() As Boolean
    'is name, street, suburb and a phone
    '--------------------------------------------
 
-   If Trim(txtOrganisation.text) = "" Then  
+   If Trim(txtOrganisation.text) = "" Then
       txtOrganisation.SetFocus()
       Return False
    End If
@@ -385,12 +838,12 @@ Public Function Valid_Organisation() As Boolean
    If fk_town = 0 Then
       txtSuburb.SetFocus()
       Return False
-   End If 
+   End If
    If Trim(txtCategory.text) = "" Then
       txtCategory.SetFocus()
       Return False
-   End If   
-   If Trim(txtPhone.text) = "" Then  
+   End If
+   If Trim(txtPhone.text) = "" Then
       txtPhone.SetFocus()
       Return False
    End If
@@ -404,39 +857,72 @@ Public Sub chkLicence_Click()
       Hbox_Licence.Padding = 0
    Else
       Hbox_Licence.Padding = 1
-   End If 
-   
+   End If
+
 End
 
 Public Sub Steps_FgColors_Reset()
 
+   tlStepWelcome.Foreground = Color.LightGray
+   tlStepWelcome.text = "What you should know about EasyGP before choosing to install"
+   tlStepAboutLicence.Foreground = Color.LightGray
+   tlStepAboutLicence.text = "About the Licence - Specific Disclaimers & Limitation of Warranty"
+   tlStepLicence.Foreground = Color.LightGray
+   tlStepLicence.text = "Read and accept the Gnu General Public Licence Version 3"
+   tlStepPracticeDetails.Foreground = Color.LightGray
+   tlStepIntroduction.Text = "Notes on choices you will have to make during the installation"
+   tlStepIntroduction.Foreground = Color.LightGray
+   tlStepPracticeDetails.text = "Enter the details of your Medical Practice"
+   tlReviewSettings.text = "Review your choices and save the information to the database"
+   tlReviewSettings.Foreground = Color.LightGray
+   tlStepSysAdmin.text = "Choose a staff member who will be the system administrator"
+   tlStepSysAdmin.Foreground = Color.LightGray
+
+End
+
+Public Sub Steps_FgColors_Reset_old()
+
    tlStepWelcome.Foreground = Color.DarkGray
    tlStepWelcome.text = "Welcome"
    tlStepLicence.Foreground = Color.DarkGray
+   tlStepAboutLicence.Foreground = Color.DarkGray
+   tlStepLicence.text = "About the Licence"
    tlStepLicence.text = "Accept Licence"
    tlStepPracticeDetails.Foreground = Color.DarkGray
+   tlStepIntroduction.Text = "Introduction"
+   tlStepIntroduction.Foreground = Color.DarkGray
    tlStepPracticeDetails.text = "Practice Details"
    tlReviewSettings.text = "Review Settings"
    tlReviewSettings.Foreground = Color.DarkGray
-   
+   tlStepSysAdmin.text = "Add Sys Admin"
+   tlStepSysAdmin.Foreground = Color.DarkGray
+
 End
 
 Public Sub EditArea_GotFocus()
-   
+
    Last.BackGround = Color.rgb(95, 255, 175)
+   listview1.Visible = False
+   listview2.Visible = False
    Select Case Last.tag
-      Case "organisation", "suburb", "category" 
+      Case "organisation", "suburb", "category"
          With Listview1
             .top = Last.Parent.Parent.top + Last.Parent.height
-            .left = Last.Parent.Left
-            .width = txtSuburb.width   
+            .left = Last.Parent.Left + VBox_Organisation.Padding
+            .width = txtSuburb.width
             .raise
-         End With  
+         End With
+      Case "sys admin occupation"
+         With listview2
+            .top = Last.Parent.Parent.top + Last.Parent.height
+            .left = Last.Parent.Left + VBox_EditArea_SysAdmin.Padding
+            .width = Last.width
+         End With
    End Select
 
 End
 
-Public Sub Suburb_Selection(action As String, Optional calling_control As String) 
+Public Sub Suburb_Selection(action As String, Optional calling_control As String)
    '--------------------------------
    'PURPOSE    :Select a suburb
    'CALLED BY  :user typing in txtSuburb or
@@ -450,23 +936,23 @@ Public Sub Suburb_Selection(action As String, Optional calling_control As String
          '----------------------------------------------------------
          'Load all the towns  like txtSuburb into the popup listview1
          '----------------------------------------------------------
-         Listview1.Visible = False  
-         If Trim(txtSuburb.text) = "" Then Return 
+         Listview1.Visible = False
+         If Trim(txtSuburb.text) = "" Then Return
          towns = modContactsDBI.Get_Town(Lower(Trim$(txtSuburb.text)))
          Listview1.Clear
-         If towns.count Then 
-            For Each town In towns 
+         If towns.count Then
+            For Each town In towns
                Listview1.Add(town!pk, town!town & " " & town!state & " " & town!postcode)
-            Next 
-            If towns.count = 1 Then 
+            Next
+            If towns.count = 1 Then
                Suburb_Selection("accept")
-            Else 
+            Else
                Listview1.Visible = True
                Listview1.Raise
                Listview1.tag = txtSuburb
             End If
          Else
-            Listview1.Visible = False  
+            Listview1.Visible = False
          End If
       Case "accept"
          If calling_control = "textbox" Then
@@ -478,22 +964,22 @@ Public Sub Suburb_Selection(action As String, Optional calling_control As String
                Listview1.MoveFirst
                Do Until Listview1.MoveNext()
                   If InStr(Lower(Listview1.Item.text), Trim(Lower(txtsuburb.text))) Then
-                     iMatched = True 
+                     iMatched = True
                      Break
                   End If
                Loop
                If Not iMatched Then
                   Listview1.Visible = False
                   txtSuburb.SetFocus()
-                  Return 'no match found for suburb user typed in 
-               End If 
+                  Return 'no match found for suburb user typed in
+               End If
             End If
          Else
             '-------------------------------------
             'User is selecting from the popup list
             '-------------------------------------
             If Listview1.Visible Then
-               
+
                Listview1.MoveCurrent()             'match internal cursor to marquee
             End If
          End If
@@ -501,13 +987,13 @@ Public Sub Suburb_Selection(action As String, Optional calling_control As String
          'either way, a match has been found within the list, or the user has selected from the list
          '------------------------------------------------------------------------------------------
          txtSuburb.text = towns[Listview1.Item.key]!town
-         txtState.text = towns[Listview1.Item.key]!state 
+         txtState.text = towns[Listview1.Item.key]!state
          txtPostcode.text = towns[Listview1.Item.key]!postcode
          fk_town = towns[Listview1.Item.key]!pk
          txtCategory.SetFocus()
-         Listview1.Visible = False  
+         Listview1.Visible = False
    End Select
-   
+
 End
 
 Public Sub Listview1_DblClick()
@@ -519,7 +1005,7 @@ Public Sub Listview1_DblClick()
 
    Select Case Last.Tag.tag
       Case "category"
-         Organisation_Category_Selection("accept", "list")  
+         Organisation_Category_Selection("accept", "list")
       Case "suburb"
          Suburb_Selection("accept", "list")
    End Select
@@ -532,7 +1018,7 @@ Public Sub Listview1_KeyPress()
    'popup list visible, user hits the enter key
    '-------------------------------------------
 
-   If Key.Code = Key.RETURN Then 
+   If Key.Code = Key.RETURN Then
       Listview1_DblClick()
    End If
 
@@ -542,23 +1028,23 @@ Public Sub Organisation_Category_Selection(action As String, Optional calling_co
 
    Select Case action
       Case "get"
-         
+
          '----------------------------------------------------------------
          'Load all the categories like txtCategory into the popup listview1
          'Category can be allocated To either a person Or a branch
          '---------------------------------------------------------------
-         Listview1.Visible = False  
-         If Trim$(txtCategory.text) = "" Then Return 
+         Listview1.Visible = False
+         If Trim$(txtCategory.text) = "" Then Return
          Multiple_Collections = modContactsDBI.Get_Category(Lower(Trim$(txtCategory.text)))
          Listview1.Clear
          '-----------------------------------------------------------------
          'If categories exist to match the text, auto-select or show a list
          '-----------------------------------------------------------------
-         If Multiple_Collections.count Then 
+         If Multiple_Collections.count Then
             For Each collection_member In Multiple_Collections
                Listview1.Add(collection_member!pk, collection_member!category)
-            Next 
-            If Multiple_Collections.count = 1 Then 
+            Next
+            If Multiple_Collections.count = 1 Then
                If Trim(Lower(txtCategory.text)) = Lower(collection_member!category) Then
                   Organisation_Category_Selection("select")
                   Return
@@ -567,8 +1053,8 @@ Public Sub Organisation_Category_Selection(action As String, Optional calling_co
             Listview1.Visible = True
             Listview1.Raise
             Listview1.tag = txtCategory
-            Return 
-            
+            Return
+
          Else
             '---------------------------------------------------------------------
             'The text user has typed in dosn't exist yet in contacts.lu_categories
@@ -576,8 +1062,8 @@ Public Sub Organisation_Category_Selection(action As String, Optional calling_co
             '---------------------------------------------------------------------
             fk_category = 0
          End If
-         Listview1.Visible = False  
-         
+         Listview1.Visible = False
+
       Case "accept"
          '---------------------------------------------------------------
          'User has selected a category for either a branch or an employee
@@ -592,7 +1078,7 @@ Public Sub Organisation_Category_Selection(action As String, Optional calling_co
                Do Until Listview1.MoveNext()
                   If Lower(Listview1.Item.text) = Trim(Lower(txtCategory.text)) Then
                      fk_category = Listview1.Item.Key
-                     Listview1.Visible = False  
+                     Listview1.Visible = False
                      Break
                   End If
                Loop
@@ -607,10 +1093,10 @@ Public Sub Organisation_Category_Selection(action As String, Optional calling_co
                txtCategory.Text = Listview1.Item.Text
             Else
                fk_category = 0
-               
+
             End If
          End If
-         Listview1.Visible = False  
+         Listview1.Visible = False
          txtPhone.SetFocus()
    End Select
 
@@ -621,12 +1107,32 @@ Public Sub EditArea_Change()
    Select Case Last.tag
       Case "suburb"
          'user deletes suburb, delete everything else"
-         If Trim(txtSuburb.text) = "" Then  
+         If Trim(txtSuburb.text) = "" Then
             txtState.Text = ""
             txtPostcode.text = ""
             fk_town = 0
          End If
+      Case "sys admin occupation"
+         If Len(Last.text) = "" Then
+            fk_occupation = 0
+            listview2.Visible = False
+         Endif
    End Select
+
+End
+
+Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   'Note - date of injury = string because could be e.g January 2009
+
+   Dim bKeyValid As Boolean
+
+   Select Case tag
+      Case "logon date from", "logon date to"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
+      Case Else
+         bKeyValid = True
+   End Select
+   Return bKeyValid
 
 End
 
@@ -636,6 +1142,10 @@ Public Sub EditArea_KeyPress()
    'used  here only for birthdate
    '------------------------------------------------
 
+   If Not EditArea_Textbox_ExcludeKeys(key.code, Last.tag) Then
+      Stop Event
+      Return
+   End If
    Select Case Key.Code
       Case Key.Return, key.tab
          Select Case Last.tag
@@ -655,17 +1165,35 @@ Public Sub EditArea_KeyPress()
                txtEmail.SetFocus()
             Case "email"
                txtWeb.SetFocus()
-               
+            Case "sys admin surname"
+               cmbTitle.SetFocus()
+            Case "sys admin firstname"
+               cmbSex.SetFocus()
+            Case "sys admin occupation"
+               cmbStafftype.SetFocus()
+            Case "logon name"
+               txtSysAdminValidFromDate.SetFocus()
+            Case "logon date from"
+               txtSysAdminValidToDate.SetFocus()
+            Case "logon date to"
+               txtPassword.SetFocus
+            Case "staff password"
+               txtPasswordRepeat.SetFocus()
          End Select
-         Listview1.Visible = False  
+         Listview1.Visible = False
       Case key.Down
          If Listview1.Visible Then
             Listview1.MoveFirst
             Listview1.SetFocus
             Listview1.Item.Selected = True
-         End If   
+         End If
+         If Listview2.Visible Then
+            Listview2.MoveFirst
+            Listview2.SetFocus
+            Listview2.Item.Selected = True
+         End If
    End Select
-   
+
 End
 
 Public Sub EditArea_KeyRelease()
@@ -675,13 +1203,100 @@ Public Sub EditArea_KeyRelease()
          Suburb_selection("get")
       Case "category"
          Organisation_Category_Selection("get")
+      Case "sys admin occupation"
+         Occupation_Get()
    End Select
 
 End
 
 Public Sub EditArea_LostFocus()
-   
+
    Last.background = Color.white
-   
+
 End
 
+Public Sub ListView2_KeyPress()
+
+   If Key.code = Key.Return Then
+      listview2_dblClick()
+   End If
+
+End
+
+Public Sub listview2_DblClick()
+
+   listview2.MoveCurrent()
+   occupation = occupations[listview2.Item.key]
+   listview2.Visible = False
+   Occupation_Select(occupation)
+   cmbStafftype.SetFocus
+
+End
+
+Public Sub Occupation_Get()
+
+   Dim x As Integer
+
+   With listview2
+      .Visible = False
+      .Clear
+   End With
+   If Len(Trim(txtSysAdminOccupation.text)) = 0 Then Return
+   Occupations = modUtil.Copy_Collection_Keyed_Sequentially(modCommonDBI.Occupations_Get(Trim(txtSysAdminOccupation.text))) 'FIXME duplications in the back-end table
+
+   '-----------------------------------------------------------------
+   'If categories exist to match the text, auto-select or show a list
+   '-----------------------------------------------------------------
+   If Not Occupations.count Then Return
+   For Each Occupation In Occupations
+      listview2.Add(x, Occupation!occupation)
+      Inc x
+   Next
+   If Occupations.count = 1 Then
+      Occupation_Select(occupation)
+   Else
+      With listview2
+         .Visible = True
+         .Raise
+      End With
+   End If
+
+End
+
+Public Sub Occupation_Select(occupation As Collection)
+
+   txtSysAdminOccupation.Text = occupation!occupation
+   fk_occupation = occupation!pk
+
+End
+
+Public Sub EditArea_Combo_Activate()
+
+   Select Case Last.tag
+      Case "staff type"
+         cmbAccessLevel.SetFocus()
+      Case "staff access level"
+         txtLogonName.SetFocus()
+      Case "title"
+         txtSysAdminFirstname.SetFocus()
+      Case "sex"
+         txtSysAdminOccupation.SetFocus()
+   End Select
+
+End
+
+Public Sub EditArea_Combo_Click()
+
+   Select Case Last.tag
+      Case "staff type"
+         cmbAccessLevel.SetFocus()
+      Case "staff access level"
+         txtLogonName.SetFocus()
+      Case "title"
+         txtSysAdminFirstname.SetFocus()
+      Case "sex"
+         txtSysAdminOccupation.SetFocus()
+
+   End Select
+
+End

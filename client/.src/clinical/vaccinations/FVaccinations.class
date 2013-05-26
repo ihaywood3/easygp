@@ -20,6 +20,7 @@
 '                  the particular serial number is used.
 ' BUGS             Sadly .... there are a few please report in real-time-use
 '----------------------------------------------------------------------
+Private ReferenceHboxForTopOfListView As Hbox               'used if split moves to reposition columnview
 Public bEmbedded As Boolean
 Private bKeyValid As Boolean
 Private bEditing As Boolean
@@ -30,7 +31,7 @@ Private cProgressNote_Section As Integer
 Private iEditArea As Integer              'the key of current edit area 0,1...n
 Private iCurrentEditArea As Integer
 Private hObs As Observer
-Public EditAreas As Object[] 
+Public EditAreas As Object[]
 Private EditArea As FVaccineEditArea
 Private fk_schedule As Integer
 Private schedules As Collection
@@ -39,64 +40,62 @@ Private vaccines As Collection
 Private vaccine As Collection
 Private fk_vaccine As Integer
 Private fk_progressnote As Integer
-Private fk_consult_progress_note As Integer 
+Private fk_consult_progress_note As Integer
 Private pk_view As Integer
 Private Vaccinations As Collection
 Private Vaccination As Collection
 Private pk_view_vaccination As Integer
 Private fk_site As Integer
 Private fk_laterality As Integer
-Private Sites As Collection 
+Private Sites As Collection
 Private Episodes As Collection
-Private Episode As Collection 
-Private CurrentVaccination As Collection 
-Private Serial_Number As Collection 
+Private Episode As Collection
+Private CurrentVaccination As Collection
+Private Serial_Number As Collection
 
 Public Sub Form_Close()
-   
+
    Settings_Save()
-   
+
 End
 
-Public Sub Init(cons As CConsult) 
+Public Sub Init(cons As CConsult)
    '-----------------------------------------------------------------------------------
    'Basic form initialisation, called from Parent form
    'Loads settings to layout the form, creates the initial editing area
    'creates observors on the textboxes in that initial editing area
-   'creates consult object for saving, loads any vaccines patient has been given before  
+   'creates consult object for saving, loads any vaccines patient has been given before
    '-----------------------------------------------------------------------------------
-   
-   Dim x As Integer 
-   
-   Try Settings_load()
+
+   Settings_load()
    sites = modCommonDBI.Sites_Administration_Get()          'sites of adminstration, passed to each editing area
    editAreas = New Object[]                                 'can be 0 to n vaccines per episode, so 0-n editing areas
    iEditArea = 0                                            'default to a single vaccine display/edit area
    EditAreas_Vaccines_Create(0)                             'create this as the default single vaccine entry area
    '   HBox_Schedule.height = EditAreas[0].HBox_Vaccine.height
-   lblMeasure.text = "Schedule or Disease  "                'Used to set width of all labels facing edit area
+   lblmeasure.text = " Authority Approval No.  "            'Used to set width of all labels facing edit area, presriptions are the widest, keep consistant across forms.
    modEditAreaHelpers.Resize_label(lblSchedule, lblMeasure) 'This is a ;composite' edit area, labels + edit area (0-n)
    VBox_Labels.width = lblmeasure.width                     'will auto-stretch the internal labels facing editarea(s)
    modEditAreaHelpers.Resize_label(lblButtons, lblmeasure)  'push buttons to align with edge of textboxes in Editarea(0)
    currentconsult = cons
    cvwVaccines.Columns.count = 2                            'date/vaccine/description
    Reload()                                                 'load existing vaccines.
-   
+
 End
 
 Public Sub cmbSiteAdministration_KeyPress()
-   
+
    Stop Event
    Select Case key.Code
-      Case key.return  
+      Case key.return
          EditAreas[ieditarea].rbLateralityLeft.SetFocus()
          EditArea_notifyData_Changed(True)
       Case key.Space
          'cmbSiteAdministration_Click()
       Case key.F12
          Save()
-   End Select 
-   
+   End Select
+
 End
 
 Public Sub cmbSiteAdministration_Click()
@@ -104,7 +103,7 @@ Public Sub cmbSiteAdministration_Click()
    'User has clicked on the site of administration combo in one of the edit areas
    'The event on the editarea(n) is over-ridden by this form
    '-----------------------------------------------------------------------------
-   
+
    Stop Event
    EditAreas[ieditarea].fk_site = EditAreas[ieditarea].Sites[EditAreas[ieditarea].cmbSiteAdministration.index]!pk
    If EditAreas[ieditarea].sites[EditAreas[ieditarea].cmbSiteAdministration.index]!has_laterality Then
@@ -114,18 +113,42 @@ Public Sub cmbSiteAdministration_Click()
       EditAreas[ieditarea].rbLateralityNone.value = True
    Endif
    EditArea_notifyData_Changed(True)
-   EditAreas[ieditarea].ChkNotGiven.value = False 
-   
+   EditAreas[ieditarea].ChkNotGiven.value = False
+
 End
 
 Public Sub listview1_KeyPress()
-   
+
    If key.code = key.return Then listview1_DblClick()
-   
+
 End
 
 Public Sub listview1_DblClick()
-   
+
+   listview1.MoveCurrent()
+   Select Case Last.tag.tag
+      Case "target disease"
+         Schedule_Select(schedules[listview1.Item.key])
+         ' EditAreas[0].txtVaccine.SetFocus()
+      Case "vaccine"
+         Vaccine_Select(vaccines[listview1.Item.key])
+      Case "serial number"
+         SerialNumber_Select(EditAreas[ieditarea].serial_numbers[listview1.Item.key])
+         If EditAreas[ieditarea].cmbSiteAdministration.index = -1 Then
+            EditAreas[ieditarea].cmbSiteAdministration.SetFocus()
+         Else
+            If EditAreas[ieditarea].RbLateralityLeft.value = False Then
+               EditAreas[ieditarea].RbLateralityRight.SetFocus()
+            Endif
+         End If
+   End Select
+   listview1.Visible = False
+
+End
+
+Public Sub listview1_DblClick_old()
+
+   listview1.MoveCurrent
    Select Case Last.tag.tag
       Case "target disease"
          Schedule_Select()
@@ -142,43 +165,43 @@ Public Sub listview1_DblClick()
             Endif
          End If
    End Select
-   listview1.Visible = False   
-   
+   listview1.Visible = False
+
 End
 
 Public Sub EditArea_TextBox_GotFocus()
-   
+
    Last.BackGround = Color.rgb(95, 255, 175)
-   
+   ReferenceHboxForTopOfListView = Last.Parent.Parent
    Select Case Last.tag
       Case "target disease"
          With listview1
-            .Top = HBox_Schedule.Height 
-            .Left = HBox_EditAreas.Left
+            .Top = HBox_Schedule.Height
+            .Left = HBox_EditAreas.Left + Vbox_EditArea_Inner.Padding
             .Clear()
-            .Visible = False  
+            .Visible = False
             .width = EditAreas[ieditarea].cmbSiteAdministration.width + 20
             .Raise()
          End With
-      Case "vaccine" 
+      Case "vaccine"
          With listview1
             .Top = HBox_Schedule.Height + Last.parent.parent.top + Last.Height
-            .Left = VBox_Labels.width 
+            .Left = VBox_Labels.width + Vbox_EditArea_Inner.Padding
             .Clear()
-            .Visible = False 
+            .Visible = False
             .width = EditAreas[ieditarea].cmbSiteAdministration.width + 20 '.raise not working, the combo in part is sitting over the list's scroll bar
             .Raise()
          End With
          '----------------------------------------------
          'If have a schedule then select the vaccine (s)
          '----------------------------------------------
-         If Last.tag = "vaccine" And fk_schedule <> 0 And Trim(Last.text) = "" Then 
+         If Last.tag = "vaccine" And fk_schedule <> 0 And Trim(Last.text) = "" Then
             If Not bEditing Then Vaccines_get(Last)
-            Return 
+            Return
          Endif
-         
-      Case "serial number" 
-         
+
+      Case "serial number"
+
          listview1.Clear()                                     'remove any existing
          If EditAreas[iEditArea].Serial_Numbers.count Then
             For Each serial_number In EditAreas[iEditArea].Serial_Numbers
@@ -186,12 +209,11 @@ Public Sub EditArea_TextBox_GotFocus()
             Next
             With listview1
                .tag = EditAreas[ieditarea].txtSerialNumber
-               .left = VBox_Labels.width + (txtSchedule.width / EditAreas.count) * ieditarea + (1 * iEditArea)
+               .left = VBox_Labels.width + (txtSchedule.width / EditAreas.count) * ieditarea + (1 * iEditArea) + Vbox_EditArea_Inner.Padding
                .Top = HBox_Schedule.Height + EditAreas[ieditarea].txtSerialNumber.parent.parent.top + EditAreas[ieditarea].txtSerialNumber.Height ' + HBox_Heading.Heigh 't + VBox1.Padding + 5 + txtSchedule.Height
                .Raise()
-               
                EditAreas[ieditarea].txtSerialNumber.text = serial_number!serial_number
-               If .count > 1 Then 
+               If .count > 1 Then
                   .Visible = True
                End If
                .MoveFirst()
@@ -199,109 +221,108 @@ Public Sub EditArea_TextBox_GotFocus()
             End With
          Else
             SerialNumbers_Get()
-         End If   
+         End If
    End Select
-   
-   If Last.tag = "date" And Last.text = "" Then 
+
+   If Last.tag = "date" And Last.text = "" Then
       Last.text = Format(Now, "dd/mm/yyyy")
       EditAreas[iEditArea].txtSerialNumber.SetFocus()
-   End If      
-   
+   End If
+
 End
 
-
-
-
-Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean  
+Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
    '--------------------------------------------------------------
    'Validate keypress e.g only allow numbers and slashes for dates
    '--------------------------------------------------------------
-   
-   bKeyValid = False 
+
+   bKeyValid = False
    Select Case tag
       Case "date"
          bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
       Case Else
-         bKeyValid = True   
+         bKeyValid = True
    End Select
-   Return bKeyValid 
-   
+   Return bKeyValid
+
 End
 
 Public Sub Editarea_Textbox_Change()
-   
+
    Stop Event
-   If Bexit Then Return 
+   If Bexit Then Return
    Select Case Last.tag
       Case "target disease"
          If Trim(Last.text) = "" Then
             Vaccination_New()
          Endif
-         Return 
+         Return
       Case "vaccine"
-         If Last.tag = "vaccine" And fk_schedule <> 0 And Trim(Last.text) = "" Then 
+         If Last.tag = "vaccine" And fk_schedule <> 0 And Trim(Last.text) = "" Then
             If Not bEditing Then Vaccines_get(Last)
-            Return 
+            Return
          Endif
-         
-      Case "serial number" 
+
+      Case "serial number"
          EditAreas[ieditarea].ChkNotGiven.value = False
    End Select
    EditArea_notifyData_Changed(True)
-   
+
 End
 
 Public Sub EditArea_TextBox_LostFocus()
-   
+
    Stop Event
    Last.BackGround = Color.White
    If Last.tag = "date" Then
       If Not IsDate(Last.text) Then
-         Last.text = "" 
+         Last.text = ""
       End If
    Endif
-   
+
 End
 
 Public Sub Settings_Save()
    '-------------------------------------------------------------------------
    'If the form is embedded in an editor, save that config, otherwise, normal
    '-------------------------------------------------------------------------
-   
+
    If bEmbedded Then
-      Settings["Vaccinations_Embedded/HSplit_SchedulesVaccines.Layout"] = HSplit_SchedulesVaccines.Layout 
-      Settings["Vaccinations_Embedded/VSplit_Vaccinations.Layout"] = VSplit_Vaccinations.Layout
-   Else 
-      Settings["Vaccinations/HSplit_SchedulesVaccines.Layout"] = HSplit_SchedulesVaccines.Layout 
-      Settings["Vaccinations/VSplit_Vaccinations.Layout"] = VSplit_Vaccinations.Layout
+      Settings["FVaccinations_Embedded/HSplit_SchedulesVaccines.Layout"] = HSplit_SchedulesVaccines.Layout
+      Settings["FVaccinations_Embedded/VSplit_Vaccinations.Layout"] = VSplit_Vaccinations.Layout
+   Else
+      Settings["FVaccinations/HSplit_SchedulesVaccines.Layout"] = HSplit_SchedulesVaccines.Layout
+      Settings["FVaccinations/VSplit_Vaccinations.Layout"] = VSplit_Vaccinations.Layout
    Endif
-   
+
 End
 
-Public Sub Settings_load()
-   
+Private Sub Settings_load()
+
    If bEmbedded Then
-      Try HSplit_SchedulesVaccines.Layout = Settings["Vaccinations_Embedded/HSplit_SchedulesVaccines.Layout"]
-      Try VSplit_Vaccinations.Layout = Settings["Vaccinations_Embedded/VSplit_Vaccinations.Layout"] 
+      HSplit_SchedulesVaccines.Layout = Settings["FVaccinations_Embedded/HSplit_SchedulesVaccines.Layout", modUtil.HSplit([601, 600])]
+      VSplit_Vaccinations.Layout = Settings["FVaccinations_Embedded/VSplit_Vaccinations.Layout", modUtil.VSplit([253, 319, 285])]
    Else
-      Try HSplit_SchedulesVaccines.Layout = Settings["Vaccinations/HSplit_SchedulesVaccines.Layout"]
-      Try VSplit_Vaccinations.Layout = Settings["Vaccinations/VSplit_Vaccinations.Layout"] 
+      HSplit_SchedulesVaccines.Layout = Settings["FVaccinations/HSplit_SchedulesVaccines.Layout", modUtil.HSplit([601, 600])]
+      VSplit_Vaccinations.Layout = Settings["FVaccinations/VSplit_Vaccinations.Layout", modUtil.VSplit([253, 319, 285])]
    End If
-   
+   cvwVaccines.font = Font[Settings["FVaccinations/cvwVaccines.font", "DejaVu Sans,9"]]
+   lvwSchedules.font = cvwVaccines.Font
+
 End
 
 Public Sub BriefPI()
-   
+
 End
 
 Public Sub EditArea_TextBox_KeyRelease()
-   
-   Stop Event 
+
+   Stop Event
    Select Case Last.tag
       Case "target disease"
          Schedule_get()
    End Select
-   
+
 End
 
 Public Sub Vaccination_Delete()
@@ -309,37 +330,37 @@ Public Sub Vaccination_Delete()
    'Deletes a vaccination with Audit Trail if not a reversal on the same day
    'The vaccine in the progress notes is struck through with the audit note added
    '-----------------------------------------------------------------------------
-   
+
    Dim fk_progressnote As Integer
    Dim fk_vaccination As Integer
-   Dim fk_schedule As Integer 
-   Dim pn As Collection  
+   Dim fk_schedule As Integer
+   Dim pn As Collection
    Dim fk_reason As Integer
    Dim reason As String
    Dim Vaccine As Collection
    Dim EA As FVaccineEditArea
-   
+
    fk_progressnote = CurrentVaccination!fk_progressnote
    fk_vaccination = CurrentVaccination!fk_vaccination
    Hbox_EditArea.Padding = 1
-   If Format(CurrentVaccination!consult_date, "dd/mm/yyyy") <> Format(Now(), "dd/mm/yyyy") Then 
-      '------------------------------------------------------------------- 
+   If Format(CurrentVaccination!consult_date, "dd/mm/yyyy") <> Format(Now(), "dd/mm/yyyy") Then
+      '-------------------------------------------------------------------
       'This vaccination was recorded before today, so need an audit trail
-      '------------------------------------------------------------------- 
+      '-------------------------------------------------------------------
       Message.title = "Delete Vaccine"
       If Message.Question("Are you sure you want to delete the vaccine:\n\n" & CurrentVaccination!brand, "Yes", "No") = 2 Then Return
       For Each PN In currentconsult!progress_notes
          If PN!pk_progressnote = fk_progressnote Then
             pn!notes = "<strike>" & pn!notes & "</strike><BR>"
             Faudit.Init(": Delete Vaccination", "clin_consult.progressnotes/clin_vaccination.vaccinations", "Vaccination:" & CurrentVaccination!brand)
-            fk_reason = FAudit.ShowModal() 
+            fk_reason = FAudit.ShowModal()
             modDBConnect.CommitTrans()  'otherwise if a new reason it won't have been comitted
             reason = modAudit.Get_Reason_Using_pk(fk_reason)
             pn!notes &= "<small><B><I>Audit note:</B> this vaccination was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small>"
             modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
-            modAudit.MakeAudit(currentconsult, "delete", "clin_consult.progressnotes", fk_vaccination, const.cSection_Vaccination, pn!notes) 
+            modAudit.MakeAudit(currentconsult, "delete", "clin_consult.progressnotes", fk_vaccination, const.cSection_Vaccination, pn!notes)
             Break
-         Endif 
+         Endif
       Next
    Else
       '---------------------------------------------------------------------------------------
@@ -352,20 +373,20 @@ Public Sub Vaccination_Delete()
       For Each EA In EditAreas
          If EA.fk_vaccination = fk_vaccination Then
             EA.marked_deleted = True
-            Break   
-         End If    
+            Break
+         End If
       Next
       Save() 'save the deleted vaccine which also will delete it from the progress notes entry
-      Return 
-   End If                                          
+      Return
+   End If
    '-----------------------------------------------
    'Either way, now mark the vaccination as deleted
    '-----------------------------------------------
    modDBConnect.update("clin_vaccination.vaccinations", Null, ["pk": fk_vaccination, "deleted": True])
-   modDBConnect.CommitTrans() 
-   FClinical.Refresh_AllPreviousNotes() 
+   modDBConnect.CommitTrans()
+   FClinical.Refresh_AllPreviousNotes()
    Reload()
-   
+
 End
 
 Public Sub Vaccination_Edit()
@@ -374,11 +395,11 @@ Public Sub Vaccination_Edit()
    'Called from the popup menu over the vaccines given list
    'get all serial numbers for this type of vaccine, to be ready
    '------------------------------------------------------------
-   
+
    Vbox_EditArea_Inner.enabled = True
-   Hbox_EditArea.Enabled = True 
-   bEditing = True 
-   
+   Hbox_EditArea.Enabled = True
+   bEditing = True
+
 End
 
 Public Sub Vaccination_Display(EA As FVaccineEditArea, vaccination As Collection)
@@ -387,7 +408,7 @@ Public Sub Vaccination_Display(EA As FVaccineEditArea, vaccination As Collection
    'Not a vaccine component of a vaccine may not have been given for example
    'if child was behind in vaccination and alternate catch up regime in place
    '--------------------------------------------------------------------------
-   
+
    bExit = True
    EA.txtVaccine.text = vaccination!brand
    EA.txtDate.text = vaccination!date_given 'NB: not a float, but a string here
@@ -397,13 +418,13 @@ Public Sub Vaccination_Display(EA As FVaccineEditArea, vaccination As Collection
       EA.fk_site = 0
    Else
       EA.fk_site = vaccination!fk_site
-   End If   
+   End If
    If vaccination!fk_route = const.route_administration_oral Then
-      EA.rbLateralityLeft.Enabled = False 
-      EA.rbLateralityRight.Enabled = False   
+      EA.rbLateralityLeft.Enabled = False
+      EA.rbLateralityRight.Enabled = False
    Else
-      EA.rbLateralityLeft.Enabled = True 
-      EA.rbLateralityRight.Enabled = True    
+      EA.rbLateralityLeft.Enabled = True
+      EA.rbLateralityRight.Enabled = True
    Endif
    Select Case vaccination!fk_laterality
       Case const.LateralityLeft
@@ -421,9 +442,9 @@ Public Sub Vaccination_Display(EA As FVaccineEditArea, vaccination As Collection
    EA.fk_vaccine = vaccination!fk_vaccine
    EA.fk_schedule = vaccination!fk_schedule
    fk_progressnote = vaccination!fk_progressnote
-   EA.txtNotes.text = vaccination!notes   
-   bExit = False  
-   
+   EA.txtNotes.text = vaccination!notes
+   bExit = False
+
 End
 
 Public Sub Schedule_Display()
@@ -433,15 +454,15 @@ Public Sub Schedule_Display()
    'Note in this module EditArea_Clear is complex as the edit area has
    'minimum of 1 vaccine edit area maximumum of n.
    '-------------------------------------------------------------------
-   
+
    Dim CurrentSchedule As New Collection
-   Dim x As Integer 
-   
+   Dim x As Integer
+
    CurrentVaccination = currentconsult!vaccinations_given[lvwSchedules.Item.Key]
    If fk_schedule = CurrentVaccination!fk_schedule Then  'user has clicked on a the same schedule as showing
-   
-      Return 
-   End If 
+
+      Return
+   End If
    bExit = True
    EditArea_Clear()                                                     'Clear the input areas + txtschedule
    fk_schedule = CurrentVaccination!fk_schedule
@@ -460,14 +481,14 @@ Public Sub Schedule_Display()
    bExit = False
    cvwVaccines.MoveFirst()
    cvwVaccines_Select()
-   
+
 End
 
 Public Sub EditAreas_Vaccines_Create(x As Integer)
    '---------------------------------------------------------------
    'Creates a new vaccine editing area and adds it to Hbox_EditArea
    'Creates the necessary observors on the controls
-   
+
    '---------------------------------------------------------------
    EditArea = New FVaccineEditArea(HBox_EditAreas)  'need more? then add new one and observers
    EditAreas.Add(EditArea, x)
@@ -476,15 +497,16 @@ Public Sub EditAreas_Vaccines_Create(x As Integer)
    hObs = New Observer(EditAreas[x].txtVaccine) As "EditArea_TextBox"
    hObs = New Observer(EditAreas[x].txtDate) As "EditArea_TextBox"
    hObs = New Observer(EditAreas[x].txtSerialNumber) As "EditArea_TextBox"
+   hObs = New Observer(EditAreas[x].txtNotes) As "EditArea_TextBox"
    hObs = New Observer(EditAreas[x]) As "EditArea"
    HObs = New Observer(EditAreas[x].RbLateralityLeft) As "rbLaterality"
    HObs = New Observer(EditAreas[x].RbLateralityRight) As "rbLaterality"
    HObs = New Observer(EditAreas[x].cmbSiteAdministration) As "cmbSiteAdministration"
-   
+
 End
 
 Public Sub RbLaterality_Keypress()
-   
+
    Stop Event
    Select Case Last.tag
       Case const.LateralityLeft
@@ -492,17 +514,17 @@ Public Sub RbLaterality_Keypress()
             EditAreas[iEditArea].RbLateralityRight.SetFocus()
          Endif
    End Select
-   
+
 End
 
 Public Sub RbLaterality_Click()
-   
+
    Stop Event
-   
+
    EditAreas[iEditArea].fk_laterality = Last.tag
    EditAreas[ieditarea].ChkNotGiven.value = False   'if user chosen a side, vaccine must be given
    EditArea_notifyData_Changed(True)
-   
+
 End
 
 Public Sub Schedule_get()
@@ -510,10 +532,10 @@ Public Sub Schedule_get()
    'Gets schedules from the backend like txtSchedule.text
    'and loads into the listview for selection by the user
    '-----------------------------------------------------
-   
+
    With listview1
-      .Visible = False   
-      .Clear 
+      .Visible = False
+      .Clear
    End With
    If Trim(txtSchedule.text) = "" Then Return
    schedules = modVaccinationDBI.Schedules_get(txtSchedule.text)
@@ -522,85 +544,108 @@ Public Sub Schedule_get()
    Next
    If schedules.count Then
       With listview1
-         .Visible = True   
+         .Visible = True
          .tag = txtSchedule
       End With
    Endif
-   
+
 End
 
-Public Sub Schedule_Select()
+Public Sub Schedule_Select(sched As Collection)
    '-------------------------------------------------------
    'User selects a vaccine schedule from the list then
    'the txtVaccine textbox gets focus. This will auto-load
-   'a list of vaccines          
-   
+   'a list of vaccines
+
    '------------------------------------------------------
-   
-   bExit = True   
+
+   bExit = True
+   fk_schedule = sched!pk
+   txtSchedule.text = sched!schedule
+   EditAreas[0].txtVaccine.SetFocus()
+   bExit = False
+
+End
+
+Public Sub Schedule_Select_old()
+   '-------------------------------------------------------
+   'User selects a vaccine schedule from the list then
+   'the txtVaccine textbox gets focus. This will auto-load
+   'a list of vaccines
+
+   '------------------------------------------------------
+
+   bExit = True
    listview1.MoveCurrent()
    fk_schedule = schedules[listview1.Item.key]!pk
    txtSchedule.text = schedules[listview1.Item.key]!schedule
    EditAreas[0].txtVaccine.SetFocus()
-   bExit = False  
-   
+   bExit = False
+
 End
 
 Public Sub EditArea_Enter()
    '-----------------------------------------------------------------
    'User has moved cursor over one of the embedded FVaccineEditArea's
-   '-----------------------------------------------------------------  
-   
+   '-----------------------------------------------------------------
+
    Stop Event
    iEditArea = Last.tag
    EditArea = EditAreas[iEditArea]
-   
+
 End
 
 Public Sub EditArea_TextBox_KeyPress()
-   
-   If Bexit Then 
-      Return           
-      
-   End If   
-   If Not EditArea_Textbox_ExcludeKeys(key.code, Last.tag) Then 
+
+   If Bexit Then
+      Return
+
+   End If
+   If Not EditArea_Textbox_ExcludeKeys(key.code, Last.tag) Then
       Stop Event
       Return
    End If
-   
+
    Select Case Key.Code
       Case Key.Down
          If listview1.Visible Then
             listview1.MoveFirst
             listview1.Item.Selected = True
             listview1.SetFocus()
-            
-            Return 
+
+            Return
          Endif
       Case Key.Return
          Select Case Last.tag
             Case "target disease"
                EditAreas[iEditArea].txtVaccine.SetFocus()
-            Case "vaccine" 
+            Case "vaccine"
                EditAreas[iEditArea].txtDate.SetFocus()
             Case "date"
                EditAreas[iEditArea].txtSerialNumber.SetFocus()
             Case "serial number"
                EditAreas[iEditArea].cmbSiteAdministration.SetFocus()
-               listview1.Visible = False  
+               listview1.Visible = False
          End Select
-         
+
    End Select
-   
+
 End
 
-Public Sub SerialNumber_Select()
-   
+Public Sub SerialNumber_Select(sn As Collection)
+
+   EditAreas[ieditarea].txtSerialNumber.text = sn!serial_number
+   EditAreas[ieditarea].cmbSiteAdministration.SetFocus()
+
+End
+
+Public Sub SerialNumber_Select_old()
+
    listview1.MoveCurrent
    ' EditAreas[ieditarea].txtSerialNumber.text = serial_numbers[listview1.Item.key]!serial_number
    EditAreas[ieditarea].txtSerialNumber.text = EditAreas[ieditarea].serial_numbers[listview1.Item.key]!serial_number
    EditAreas[ieditarea].cmbSiteAdministration.SetFocus()
-   
+
 End
 
 Public Sub SerialNumbers_Get()
@@ -610,36 +655,32 @@ Public Sub SerialNumbers_Get()
    'is the last one used date wise. if user hits down-arrow key
    'at this textbox, will popup list of last say (3), but FIXME
    'this should be user configurable
-   '----------------------------------------------------------   
-   
+   '----------------------------------------------------------
+
    Dim x As Integer
-   
-   listview1.Clear()                                     'remove any existing serial numbers for whatever fk_vaccine
-   If EditAreas[ieditarea].fk_vaccine = 0 Then Return 
-   'Serial_Numbers = modVaccinationDBI.Vaccines_Serial_Numbers_Get(EditAreas[ieditarea].fk_vaccine)
+
+   With listview1
+      .Clear()                                     'remove any existing serial numbers for whatever fk_vaccine
+      .Visible = False
+   End With
+   If EditAreas[ieditarea].fk_vaccine = 0 Then Return
    EditAreas[ieditarea].Serial_Numbers = modVaccinationDBI.Vaccines_Serial_Numbers_Get(EditAreas[ieditarea].fk_vaccine)
-   ' If Serial_Numbers.count Then
    If EditAreas[ieditarea].Serial_Numbers.count Then
       With listview1
-         .Visible = False 
+         .Visible = False
          .width = EditAreas[ieditarea].cmbSiteAdministration.width + 20 '.raise not working, the combo in part is sitting over the list's scroll bar
          .Raise()
       End With
       listview1.tag = EditAreas[ieditarea].txtSerialNumber
-      For Each Serial_Number In EditAreas[ieditarea].Serial_Numbers 
+      For Each Serial_Number In EditAreas[ieditarea].Serial_Numbers
          If x = 0 Then
             EditAreas[ieditarea].txtSerialNumber.text = Serial_Number!serial_number
-         End If   
+         End If
          listview1.Add(Serial_Number!pk, serial_number!serial_number)
          Inc x
       Next
-      ' For Each serial_number In Serial_Numbers  
-      '    If x = 0 Then EditAreas[ieditarea].txtSerialNumber.text = serial_number!serial_number
-      '    listview1.Add(serial_number!pk, serial_number!serial_number)
-      '    Inc x
-      ' Next
    End If
-   
+
 End
 
 Public Sub New_Entry()
@@ -647,22 +688,22 @@ Public Sub New_Entry()
    'Called from FClinical where the button tag is a generic 'New Entry'
    'I've left the orginal nomenclature here for easier reading of the code
    'Prepare the gui for user to add a new vaccination
-   '----------------------------------------------------------------------   
-   
+   '----------------------------------------------------------------------
+
    Vaccination_New()
-   
+
 End
 
 Public Sub Vaccination_New()
    '-------------------------------------
    'User wants to enter a new vaccination
-   '-------------------------------------   
-   
+   '-------------------------------------
+
    EditArea_Clear()                       'clear the input area + all sub input areas for the vaccines
    Vbox_EditArea_Inner.enabled = True     'Enable the area holding all the input textboxes and edit areas
-   Hbox_EditArea.Enabled = True 
+   Hbox_EditArea.Enabled = True
    txtSchedule.SetFocus()                 'user can start typing on the schedules line
-   
+
 End
 
 Public Sub Save()
@@ -681,17 +722,17 @@ Public Sub Save()
    '   deleted boolean default false,
    '   fk_progressnote integer not null
    '-----------------------------------------------------------------------------------
-   
+
    Dim x As Integer
    Dim EA As FVaccineEditArea
-   Dim sProgressNotes As String 
-   
+   Dim sProgressNotes As String
+
    If Hbox_EditArea.Padding = 0 Then Return
-   If Not Vaccination_Valid() Then Return 
-   Hbox_EditArea.Enabled = False 
-   episode = New Collection 
+   If Not Vaccination_Valid() Then Return
+   Hbox_EditArea.Enabled = False
+   episode = New Collection
    '-------------------------------------------------------------------------------
-   'If a progress note key exists, then this record is being edited    
+   'If a progress note key exists, then this record is being edited
    '1-n vaccines fk_progressnote always the same as part of an episode
    'if this record being edited within the currconsultconsultent consultation
    'just change the progress notes.
@@ -702,10 +743,10 @@ Public Sub Save()
       sProgressNotes = "<B>New Vaccination - " & txtSchedule.text & "</B><BR>"     'allow replacing of existing text
    Else
       sProgressNotes = "<B>Vaccination Edited - " & txtSchedule.text & "</B><BR>"  'otherwise, annotate editing
-   End If  
-   
+   End If
+
    For Each EA In EditAreas
-      vaccination = New Collection 
+      vaccination = New Collection
       If EA.fk_vaccination <> 0 Then                           'previously saved vaccination
          vaccination!fk_vaccination = EA.fk_vaccination
       Endif
@@ -714,20 +755,20 @@ Public Sub Save()
       vaccination!fk_site = EA.fk_site                         'can be 0 (zero) if vaccine not given if part of a schedule
       vaccination!fk_laterality = EA.fk_laterality             'can be 0 (zero) if vaccine not given if part of a schedule
       Vaccination!date_given = EA.txtDate.text                 'because may be entering vaccine retrospectively
-      If EA.txtSerialNumber.text <> "" Then 
+      If EA.txtSerialNumber.text <> "" Then
          Vaccination!serial_no = EA.txtSerialNumber.text
       Else
-         Vaccination!serial_no = "not recorded" 
-      End If   
+         Vaccination!serial_no = "not recorded"
+      End If
       Vaccination!notes = Trim(EA.txtNotes.Text)
       If EA.ChkNotGiven.value = True Then
-         Vaccination!not_given = True  
+         Vaccination!not_given = True
       Else
-         Vaccination!not_given = False  
+         Vaccination!not_given = False
       Endif
       If EA.marked_deleted = False Then         'if true Save() is being called by delete(), otherwise add progress note
-         If EA.ChkNotGiven.value = False Then 
-            sProgressNotes &= " - " & EA.txtVaccine.text & ", serial number:" & EA.txtSerialNumber.text & " given on " & EA.txtDate.text 
+         If EA.ChkNotGiven.value = False Then
+            sProgressNotes &= " - " & EA.txtVaccine.text & ", serial number:" & EA.txtSerialNumber.text & " given on " & EA.txtDate.text
             sProgressNotes &= ", site " & EA.cmbSiteAdministration.text
             Select Case EA.fk_laterality
                Case const.LateralityLeft
@@ -740,13 +781,13 @@ Public Sub Save()
             'The vaccEA.ine is part of a schedule and is being recorded as not given
             sProgressNotes &= " - " & EA.txtVaccine.text & " was not given."
             If Trim(EA.txtNotes.text) <> "" Then sProgressNotes &= Trim(EA.txtNotes.text) & "<BR>"
-         End If  
+         End If
       Else
          vaccination!deleted = True
-      End If    
-      Episode.Add(vaccination, Episode.count) 
+      End If
+      Episode.Add(vaccination, Episode.count)
    Next
-   
+
    modDBConnect.BeginTrans()
    fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_GeneralNotes, fk_progressnote, "Vaccinations", 0, False)
    For Each vaccination In Episode
@@ -757,21 +798,24 @@ Public Sub Save()
    modDBConnect.CommitTrans()
    FClinical.Refresh_AllPreviousNotes()
    Reload()
-   
+
 End
 
 Public Sub mnuVaccinesGiven_Click()
-   
+
    Select Case Last.tag
       Case "edit"
          Vaccination_Edit()
       Case "delete"
-         Vaccination_Delete() 
+         Vaccination_Delete()
       Case "pi"
+         modUtil.NotImplemented("Viewing the product information")
       Case "help"
-         
+         modUtil.NotImplemented("Help for this section")
+      Case "font"
+         modUtil.Columnview_SetFont(cvwVaccines, "FVaccinations")
    End Select
-   
+
 End
 
 Public Sub Reload()
@@ -782,36 +826,37 @@ Public Sub Reload()
    ' fk_schedule2  fk_vaccine (1)... first in this schedule
    ' fk-schedule2  fk_vaccines(2) .. second in this schedule
    '-----------------------------------------------------------
-   
+
    Dim last_fk_schedule As Integer
+
    EditArea_Clear()
    Vbox_EditArea_Inner.enabled = False
    lvwSchedules.Clear
    currentconsult.Refresh("vaccinations_given")
    Vaccinations = currentconsult!vaccinations_given
    For Each vaccination In vaccinations
-      If last_fk_schedule <> vaccination!fk_schedule Then 
+      If last_fk_schedule <> vaccination!fk_schedule Then
          last_fk_schedule = vaccination!fk_schedule
          lvwSchedules.Add(vaccination!pk_view, vaccination!schedule)
       End If
    Next
-   If lvwSchedules.count Then    
+   If lvwSchedules.count Then
       lvwSchedules.MoveFirst
       lvwSchedules.Item.Selected = True  'effectively lvwSchedules_Select()
-      lvwSchedules.SetFocus() 
-   End If   
+      lvwSchedules.SetFocus()
+   End If
    EditArea_notifyData_Changed(False)
-   
+
 End
 
 Public Sub lvwSchedules_Select()
    '------------------------------------------------------------------------------------
    'User has clicked on, or problem set by lvwSchedules.item.selected = True, a schedule
    '------------------------------------------------------------------------------------
-   
+
    lvwSchedules.MoveCurrent()    'set internal list cursor
    Schedule_Display()            'display the schedule
-   
+
 End
 
 Public Function Vaccination_Valid() As Boolean
@@ -819,52 +864,52 @@ Public Function Vaccination_Valid() As Boolean
    'Validate the vaccination contains enough information
    'A little bit more complex than most edit areas as there
    'can be 1 or more edit areas per vaccination
-   '--------------------------------------------------------   
-   
+   '--------------------------------------------------------
+
    Dim sMsg As String
    Dim EA As FVaccineEditArea
-   
+
    Message.Title = "Vaccine Data Incomplete"
-   
+
    If fk_schedule = 0 Then
       txtSchedule.SetFocus()
-      Return 
+      Return
    Endif
-   
-   For Each EA In EditAreas 
+
+   For Each EA In EditAreas
       If EA.fk_vaccine = 0 Then
          EA.txtVaccine.SetFocus()
-         Return 
+         Return
       Endif
       Select Case EA.ChkNotGiven.Value
          Case False
             If EA.fk_site = 0 Then  'only time can't have site is if vaccine wasn't given
                EA.cmbSiteAdministration.SetFocus()
-               Return 
+               Return
             Endif
             If Not IsDate(EA.txtDate.text) Then
-               EA.txtDate.text = "" 
-               EA.txtDate.SetFocus() 
-               Return 
+               EA.txtDate.text = ""
+               EA.txtDate.SetFocus()
+               Return
             Endif
             If Trim(EA.txtSerialNumber.text) = "" Then
                smsg = "Please enter a serial number.\n\nIf you don't know or have one, please enter 'unknown'"
-               Goto prompt  
+               Goto prompt
             Endif
          Case True
             If Trim(EA.txtNotes.text) = "" Then
                sMsg = "If a vaccine component of a schedule is not being given you should enter the reason why."
                EA.txtNotes.SetFocus
-               Goto prompt    
-            End If       
+               Goto prompt
+            End If
       End Select
-      
+
    Next
    Return True
 prompt:
    Message.Info(sMsg)
    Return False
-   
+
 End
 
 Public Sub Vaccines_get(tb As Textbox)
@@ -873,9 +918,103 @@ Public Sub Vaccines_get(tb As Textbox)
    'disease, or are part of a vaccination schedule. These parameters have
    'been defined in Admin.Vaccination
    '----------------------------------------------------------------------
-   
+
+   With listview1
+      .clear()
+      .Visible = False
+   End With
+   If fk_schedule = 0 Then Return
+   vaccines = modVaccinationDBI.Vaccines_In_Schedules_Get(fk_schedule)
+   iEditArea = 0
+   If vaccines.count = 0 Then Return                         'no vaccines, get outa here
+   For Each vaccine In vaccines                              'Fill the listview
+      listview1.Add(vaccine!pk_view, vaccine!brand)
+   Next
+   '----------------------------------------------------
+   'If there are not multiple vaccines in the schedule
+   'i.e this will require populating multiple edit areas
+   'if only one vaccine in schedule > auto-select
+   'otherwise popup the list of vaccine brands
+   '-----------------------------------------------------
+   If vaccine!multiple_vaccines = False Then                 'if this schedule dosn't contain
+      If vaccines.count = 1 Then
+         Vaccine_Select(vaccine)
+      Else
+         With listview1                                         'multiple vaccines, then these
+            .Visible = True                                     'vaccines are brand equivalents
+            .tag = tb                                           'so popup the list of these for user to choose
+            .MoveFirst
+            .Item.Selected = True
+            .SetFocus()
+         End With
+         Return
+      End If
+   Else                                                       'otherwise, they must be a fixed schedule
+      bExit = True
+      For Each Vaccine In vaccines                            'containing multiple to be given at same time
+         If iEditArea > 0 And vaccine!multiple_vaccines = True Then  'Editarea[0] always exists
+            EditAreas_Vaccines_Create(iEditArea)
+         End If
+
+         EditAreas[iEditArea].txtVaccine.text = vaccine!brand          'put brand and
+         EditAreas[iEditArea].fk_vaccine = vaccine!fk_vaccine
+         EditAreas[iEditArea].fk_schedule = vaccine!fk_schedule
+         EditAreas[iEditArea].txtDate.text = Format(Now, "dd/mm/yyyy") 'default to today's date
+         '---------------------------------------------------------------------------------------------------------
+         'Try and guess the site of administration and guess an arbitary side - all to save typing, user may change
+         '---------------------------------------------------------------------------------------------------------
+         Select Case vaccine!fk_route
+            Case const.route_administration_intramuscular
+               '-------------------------------------
+               'If age <1 we probably jab in the legs
+               '-------------------------------------
+               If currentconsult!patient!age_numeric < 1 Then
+                  EditAreas[iEditArea].cmbSiteAdministration.index = EditAreas[iEditArea].cmbSiteAdministration.Find("thigh (imi)")
+               Else
+                  EditAreas[iEditArea].cmbSiteAdministration.index = EditAreas[iEditArea].cmbSiteAdministration.Find("deltoid (imi)")
+               End If
+               If iEditArea = 0 Then
+                  EditAreas[iEditArea].rbLateralityLeft.value = True
+               Else
+                  EditAreas[iEditArea].rbLateralityRight.value = True
+               End If
+            Case const.route_administration_subcutaneous
+               If currentconsult!patient!age_numeric < 1 Then
+                  EditAreas[iEditArea].cmbSiteAdministration.index = EditAreas[iEditArea].cmbSiteAdministration.Find("thigh (scut)")
+               Else
+                  EditAreas[iEditArea].cmbSiteAdministration.index = EditAreas[iEditArea].cmbSiteAdministration.Find("deltoid (scut)")
+               End If
+               If iEditArea = 0 Then
+                  EditAreas[iEditArea].rbLateralityLeft.value = True
+               Else
+                  EditAreas[iEditArea].rbLateralityRight.value = True
+               End If
+
+            Case const.route_administration_oral
+               EditAreas[iEditArea].cmbSiteAdministration.index = EditAreas[iEditArea].cmbSiteAdministration.Find("oral")
+         End Select
+         'get the serial numbers  'fixme - cache me, if not in cache - the check backend
+         SerialNumbers_Get()
+         Inc iEditArea
+      Next
+   End If
+   bExit = False
+   EditArea_notifyData_Changed(True)
+   iEditArea = 0
+   ' serial_Numbers = New Collection
+   EditAreas[0].cmbSiteAdministration.SetFocus()
+
+End
+
+Public Sub Vaccines_get_old(tb As Textbox)
+   '----------------------------------------------------------------------
+   'Get the vaccines from the backend which can be used against the target
+   'disease, or are part of a vaccination schedule. These parameters have
+   'been defined in Admin.Vaccination
+   '----------------------------------------------------------------------
+
    listview1.clear()
-   If fk_schedule = 0 Then Return 
+   If fk_schedule = 0 Then Return
    vaccines = modVaccinationDBI.Vaccines_In_Schedules_Get(fk_schedule)
    iEditArea = 0
    If vaccines.count = 0 Then Return                         'no vaccines, get outa here
@@ -898,16 +1037,16 @@ Public Sub Vaccines_get(tb As Textbox)
             .MoveFirst
             .Item.Selected = True
             .SetFocus()
-         End With      
-         Return 
+         End With
+         Return
       End If
    Else                                                       'otherwise, they must be a fixed schedule
-      bExit = True                                                    
+      bExit = True
       For Each Vaccine In vaccines                            'containing multiple to be given at same time
          If iEditArea > 0 And vaccine!multiple_vaccines = True Then  'Editarea[0] always exists
             EditAreas_Vaccines_Create(iEditArea)
          End If
-         
+
          EditAreas[iEditArea].txtVaccine.text = vaccine!brand          'put brand and
          EditAreas[iEditArea].fk_vaccine = vaccine!fk_vaccine
          EditAreas[iEditArea].fk_schedule = vaccine!fk_schedule
@@ -916,7 +1055,7 @@ Public Sub Vaccines_get(tb As Textbox)
          'Try and guess the site of administration and guess an arbitary side - all to save typing, user may change
          '---------------------------------------------------------------------------------------------------------
          Select Case vaccine!fk_route
-            Case const.route_administration_intramuscular 
+            Case const.route_administration_intramuscular
                '-------------------------------------
                'If age <1 we probably jab in the legs
                '-------------------------------------
@@ -924,24 +1063,24 @@ Public Sub Vaccines_get(tb As Textbox)
                   EditAreas[iEditArea].cmbSiteAdministration.index = EditAreas[iEditArea].cmbSiteAdministration.Find("thigh (imi)")
                Else
                   EditAreas[iEditArea].cmbSiteAdministration.index = EditAreas[iEditArea].cmbSiteAdministration.Find("deltoid (imi)")
-               End If 
-               If iEditArea = 0 Then 
+               End If
+               If iEditArea = 0 Then
                   EditAreas[iEditArea].rbLateralityLeft.value = True
                Else
                   EditAreas[iEditArea].rbLateralityRight.value = True
-               End If 
+               End If
             Case const.route_administration_subcutaneous
                If currentconsult!patient!age_numeric < 1 Then
                   EditAreas[iEditArea].cmbSiteAdministration.index = EditAreas[iEditArea].cmbSiteAdministration.Find("thigh (scut)")
                Else
                   EditAreas[iEditArea].cmbSiteAdministration.index = EditAreas[iEditArea].cmbSiteAdministration.Find("deltoid (scut)")
-               End If 
-               If iEditArea = 0 Then 
+               End If
+               If iEditArea = 0 Then
                   EditAreas[iEditArea].rbLateralityLeft.value = True
                Else
                   EditAreas[iEditArea].rbLateralityRight.value = True
-               End If 
-               
+               End If
+
             Case const.route_administration_oral
                EditAreas[iEditArea].cmbSiteAdministration.index = EditAreas[iEditArea].cmbSiteAdministration.Find("oral")
          End Select
@@ -950,29 +1089,26 @@ Public Sub Vaccines_get(tb As Textbox)
          Inc iEditArea
       Next
    End If
-   bExit = False  
+   bExit = False
    EditArea_notifyData_Changed(True)
    iEditArea = 0
    ' serial_Numbers = New Collection
    EditAreas[0].cmbSiteAdministration.SetFocus()
-   
+
 End
 
-Public Sub Vaccine_Select()                                      
+Public Sub Vaccine_Select(vac As Collection)
    '-------------------------------------------------------------
    'There is a list of vaccines for the selected schedule showing
    'User is selecting one of these
    '-------------------------------------------------------------
-   
-   listview1.MoveCurrent
-   EditAreas[0].txtVaccine.text = vaccines[listview1.Item.key]!brand
+
+   EditAreas[0].txtVaccine.text = vac!brand
    EditAreas[0].txtDate.text = Format(Now, "dd/mm/yyyy") 'default to today's date
-   EditAreas[0].fk_vaccine = vaccines[listview1.Item.key]!fk_vaccine        
-   EditAreas[0].fk_schedule = vaccines[listview1.Item.key]!fk_schedule      
-   listview1.Visible = False                            
-   
-   Select Case vaccines[listview1.Item.key]!fk_route
-      Case const.route_administration_intramuscular 
+   EditAreas[0].fk_vaccine = vac!fk_vaccine
+   EditAreas[0].fk_schedule = vac!fk_schedule
+   Select Case vac!fk_route
+      Case const.route_administration_intramuscular
          '-------------------------------------
          'If age <1 we probably jab in the legs
          '-------------------------------------
@@ -980,52 +1116,105 @@ Public Sub Vaccine_Select()
             EditAreas[0].cmbSiteAdministration.index = EditAreas[0].cmbSiteAdministration.Find("thigh (imi)")
          Else
             EditAreas[0].cmbSiteAdministration.index = EditAreas[0].cmbSiteAdministration.Find("deltoid (imi)")
-         End If 
-         If iEditArea = 0 Then 
+         End If
+         If iEditArea = 0 Then
             EditAreas[0].rbLateralityLeft.value = True
          Else
             EditAreas[0].rbLateralityRight.value = True
-         End If 
-         
-      Case const.route_administration_subcutaneous 
+         End If
+      Case const.route_administration_subcutaneous
          If currentconsult!patient!age_numeric < 1 Then
             EditAreas[0].cmbSiteAdministration.index = EditAreas[0].cmbSiteAdministration.Find("thigh (scut)")
          Else
             EditAreas[0].cmbSiteAdministration.index = EditAreas[0].cmbSiteAdministration.Find("deltoid (scut)")
-         End If 
-         If iEditArea = 0 Then 
+         End If
+         If iEditArea = 0 Then
             EditAreas[0].rbLateralityLeft.value = True
          Else
             EditAreas[0].rbLateralityRight.value = True
-         End If 
-         
+         End If
+
       Case const.route_administration_oral
-         EditAreas[iEditArea].cmbSiteAdministration.index = EditAreas[iEditArea].cmbSiteAdministration.Find("oral") 
-   End Select 
+         EditAreas[iEditArea].cmbSiteAdministration.index = EditAreas[iEditArea].cmbSiteAdministration.Find("oral")
+   End Select
    '----------------------------------------------------
    'A vaccine has been selected - now get serial numbers
    '----------------------------------------------------
    SerialNumbers_Get()
-   If EditAreas[ieditarea].txtSerialNumber.text = "" Then 
+   If EditAreas[ieditarea].txtSerialNumber.text = "" Then
       EditAreas[ieditarea].txtSerialNumber.SetFocus()
-   End If   
-   
+   End If
+
+End
+
+Public Sub Vaccine_Select_old()
+   '-------------------------------------------------------------
+   'There is a list of vaccines for the selected schedule showing
+   'User is selecting one of these
+   '-------------------------------------------------------------
+
+   listview1.MoveCurrent
+   EditAreas[0].txtVaccine.text = vaccines[listview1.Item.key]!brand
+   EditAreas[0].txtDate.text = Format(Now, "dd/mm/yyyy") 'default to today's date
+   EditAreas[0].fk_vaccine = vaccines[listview1.Item.key]!fk_vaccine
+   EditAreas[0].fk_schedule = vaccines[listview1.Item.key]!fk_schedule
+   listview1.Visible = False
+
+   Select Case vaccines[listview1.Item.key]!fk_route
+      Case const.route_administration_intramuscular
+         '-------------------------------------
+         'If age <1 we probably jab in the legs
+         '-------------------------------------
+         If currentconsult!patient!age_numeric < 1 Then
+            EditAreas[0].cmbSiteAdministration.index = EditAreas[0].cmbSiteAdministration.Find("thigh (imi)")
+         Else
+            EditAreas[0].cmbSiteAdministration.index = EditAreas[0].cmbSiteAdministration.Find("deltoid (imi)")
+         End If
+         If iEditArea = 0 Then
+            EditAreas[0].rbLateralityLeft.value = True
+         Else
+            EditAreas[0].rbLateralityRight.value = True
+         End If
+
+      Case const.route_administration_subcutaneous
+         If currentconsult!patient!age_numeric < 1 Then
+            EditAreas[0].cmbSiteAdministration.index = EditAreas[0].cmbSiteAdministration.Find("thigh (scut)")
+         Else
+            EditAreas[0].cmbSiteAdministration.index = EditAreas[0].cmbSiteAdministration.Find("deltoid (scut)")
+         End If
+         If iEditArea = 0 Then
+            EditAreas[0].rbLateralityLeft.value = True
+         Else
+            EditAreas[0].rbLateralityRight.value = True
+         End If
+
+      Case const.route_administration_oral
+         EditAreas[iEditArea].cmbSiteAdministration.index = EditAreas[iEditArea].cmbSiteAdministration.Find("oral")
+   End Select
+   '----------------------------------------------------
+   'A vaccine has been selected - now get serial numbers
+   '----------------------------------------------------
+   SerialNumbers_Get()
+   If EditAreas[ieditarea].txtSerialNumber.text = "" Then
+      EditAreas[ieditarea].txtSerialNumber.SetFocus()
+   End If
+
 End
 
 Public Sub EditArea_notifyData_Changed(flag As Boolean)
    '---------------------------------------------------------------------------------
    'show a red outline around the edit area to indicate to user there is data to save
-   '---------------------------------------------------------------------------------   
+   '---------------------------------------------------------------------------------
 
    If Bexit Then
-    Return 
-   End If   
-   If flag Then 
+      Return
+   End If
+   If flag Then
       Hbox_EditArea.Padding = 1
    Else
       Hbox_EditArea.Padding = 0
    Endif
-   
+
 End
 
 Public Sub EditArea_Clear()
@@ -1034,35 +1223,35 @@ Public Sub EditArea_Clear()
    'The txtSchedule is shared across 1 or more vaccine edit areas
    'Clears the txtSchedule and one or more edit area's
    '-------------------------------------------------- -----------
-   
+
    bExit = True
    txtSchedule.text = ""
-   bExit = False  
-   fk_progressnote = -1 
+   bExit = False
+   fk_progressnote = -1
    fk_consult_progress_note = 0
    fk_schedule = 0
    EditAreas_Vaccines_Clear()
-   
+
 End
 
 Public Sub EditAreas_Vaccines_Clear()
    '--------------------------------------------------------------------------------
    'Clears the editing area(s) which may exist 1 or more if a multi-vaccine schedule
    '--------------------------------------------------------------------------------
-   
+
    Dim x As Integer
    Dim y As Integer = EditAreas.Count - 1
    Dim Obj As FVaccineEditArea
-   
+
    bExit = True
    modEditAreaHelpers.EditArea_Clear(EditAreas[0].Vbox_EditArea)  'clear the first edit area
    EditAreas[0].RbLateralityNone.value = True                     'reset controls in this to startup defaults
    EditAreas[0].cmbSiteAdministration.index = -1
    EditAreas[0].Reset_Keys()
-   EditAreas[0].Serial_Numbers = New Collection 
-   bEditing = False  
+   EditAreas[0].Serial_Numbers = New Collection
+   bEditing = False
    If EditAreas.count > 1 Then                                    'if more than 1 vaccine edit area showing
-      For x = 1 To y                                              'delete them, leaving on editarea (0)   
+      For x = 1 To y                                              'delete them, leaving on editarea (0)
          Obj = EditAreas[x]
          Obj.Delete()
       Next
@@ -1072,54 +1261,54 @@ Public Sub EditAreas_Vaccines_Clear()
    listview1.visible = False                                      'remove the popup list
    Vbox_EditArea_Inner.enabled = False                            'by default we can't edit a vaccine
    HBox_Schedule.height = EditAreas[0].HBox_Vaccine.height
-   bExit = False  
+   bExit = False
    EditArea_notifyData_Changed(False)                             'remove red border indicating change
-   
+
 End
 
 Public Sub EditArea_Buttons_KeyPress()
-   
+
    If Key.code = Key.return Then
       EditArea_Buttons_Click()
    Endif
-   
+
 End
 
 Public Sub EditArea_Buttons_Click()
-   
+
    Select Case Last.tag
       Case "help"
          FClinical.Help_Show("immunizations.html", "Help:Immunizations", True)
       Case "brief pi"
          Message.Info(Str(Hbox_EditArea.padding))
    End Select
-   
+
 End
 
 Public Sub cvwVaccines_Menu()
-   
+
    If Last.count Then mnuVaccinesGiven.Popup()
-   
+
 End
 
-Public Sub cvwVaccines_Select()  
+Public Sub cvwVaccines_Select()
    '----------------------------------------------------------------------------
    'User has clicked on one of the vaccines in the schedule (or program sets it)
    'showing the schedule originally > shows all the vaccines
-   '----------------------------------------------------------------------------   
-   
+   '----------------------------------------------------------------------------
+
    Dim x As Integer
-   
+
    Vbox_EditArea_Inner.enabled = False                   'default state is non editable
-   Hbox_EditArea.Enabled = False    
-  ' cvwVaccines.MoveCurrent()
+   Hbox_EditArea.Enabled = False
+   ' cvwVaccines.MoveCurrent()
    CurrentVaccination = currentconsult!vaccinations_given[cvwVaccines.Item.key]
    If fk_schedule = CurrentVaccination!fk_schedule And CurrentVaccination!multiple_vaccines = True Then
       If EditAreas.Count > 1 Then
-         Return  
+         Return
       Endif
    Endif
-   '----------------------------------------------------------------------------------------------- 
+   '-----------------------------------------------------------------------------------------------
    'If this schedule does not contain multiple vaccines, then remove all vaccine edit areas bar one
    '-----------------------------------------------------------------------------------------------
    If CurrentVaccination!multiple_vaccines = False Then
@@ -1131,18 +1320,33 @@ Public Sub cvwVaccines_Select()
       '----------------------------------------------------------------------------------------------
       For Each vaccination In currentconsult!vaccinations_given
          If fk_schedule = vaccination!fk_schedule
-            If x <> 0 Then 
-               EditAreas_Vaccines_Create(x) 
-            End If 
+            If x <> 0 Then
+               EditAreas_Vaccines_Create(x)
+            End If
             Vaccination_Display(EditAreas[x], vaccination)
-            Inc x 
-         End If 
+            Inc x
+         End If
       Next
-   End If   
+   End If
+
 End
 
 Public Sub lvwSchedules_Click()
-   
+
    lvwSchedules_Select()
-   
+
+End
+
+Public Sub VSplit_Vaccinations_Resize()
+
+   If listview1.Visible Then
+      listview1.top = ReferenceHboxForTopOfListView.top + ReferenceHboxForTopOfListView.Height
+   Endif
+
+End
+
+Public Sub Form_Resize()
+
+   VSplit_Vaccinations_Resize()
+
 End

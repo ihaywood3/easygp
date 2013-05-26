@@ -1,4 +1,4 @@
-drop table common.lu_recreationaldrugs;
+drop table common.lu_recreational_drugs cascade;
 
 Create table common.lu_recreational_drugs
 (pk serial primary key,

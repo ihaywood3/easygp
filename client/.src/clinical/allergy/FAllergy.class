@@ -57,6 +57,7 @@ Private Allergies As Collection
 Private iReactionType As Integer = const.ReactionType_Allergy
 Private sSpecificity As String    'g=generic, b=brand c=class
 Private Reaction_Types As String[]
+Private ReferenceHboxForTopListView As Hbox               'used if split moves to reposition columnview
 
 Public Sub Init(cons As CConsult)
    '--------------------------------
@@ -65,7 +66,7 @@ Public Sub Init(cons As CConsult)
    
    Try Settings_Load()
    currentconsult = cons  
-   lblMeasure.text = "  Generic Specific Reaction  "
+   lblmeasure.text = " Authority Approval No.  "                'resize edit area labels, keep size consistant across forms - this from script is the widest
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
    With Form_Terms = New FCodedTermSelector(Me)
       .Ignore = True
@@ -87,10 +88,12 @@ Public Sub Init(cons As CConsult)
    With cvwAllergies
       .Columns.count = 6
       .Columns[0].text = "Date Reaction"
+      
       .Columns[0].Alignment = Align.Center
       .Columns[1].text = "ACT Class or Allergen"
       
       .Columns[2].text = "Specificity"
+      .Columns[2].width = 200
       .Columns[3].text = "Type"
       .Columns[4].text = "Details"
       .Columns[5].text = "Confirmed"
@@ -181,8 +184,10 @@ Public Sub Save()
    ProgressNote = New CRow 
    If fk_progressnote And txtDateEntered.text = Format(Now, "dd/mm/yyyy") Then  'if originally entered on today
       ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")            'am editing todays progress note
+      ProgressNote!fk_audit_action = const.cAuditAction_Insert                  'is an insert
+   Else     
+      ProgressNote!fk_audit_action = const.cAuditAction_Edit
    End If   
-   ProgressNote!fk_audit_action = const.cAuditAction_Insert                  'is an insert
    ProgressNote!fk_consult = currentconsult.GetPK()
    ProgressNote!notes = Progress_Notes_Create()
    ProgressNote!fk_section = const.cSection_allergies
@@ -231,47 +236,42 @@ Public Sub Allergy_Edit()
 End
 
 Public Sub Allergy_Delete()
-   '------------------
+   '------------------------------------------------------------------
    'Deletes an allergy
-   '------------------
-   
+   'If this allergy was entered another consultation, enforce an audit
+   'Indicate the change in the progress notes and update the
+   'main task bar in FClinical
+   '------------------------------------------------------------------
+
    Dim sSummary As String
    Dim fk_reason As Integer
-   Dim reason As Collection
+   Dim reason As String
+   Dim allergy As Collection   'ease of typing.
    
    sSummary = ""
-   
+   cvwAllergies.MoveCurrent()
+   allergy = allergies[cvwAllergies.Item.key]
    sSummary = Progress_Notes_Create()
-   Print sSummary
-   Return   
-   '------------------------------------------------------------------
-   'If this allergy was entered another consultation, enforce an audit
-   '------------------------------------------------------------------
-   If allergies[fk_allergy]!fk_consult <> currentconsult.GetPK() Then
-      Faudit.Init(": Delete Allergy", "clin_allergies.allergies", "Allergy Summary:" & sSummary)
-      fk_reason = FAudit.ShowModal()  
-      modDBConnect.CommitTrans()                       'otherwise if a new reason it won't have been comitted
-      reason = modAudit.Get_Reason_Using_pk(fk_reason) 'get back the details to write into the progress notes
-      
-   End If  
-   modDBConnect.update("clin_allergies.allergies", Null, ["pk": fk_allergy, "deleted": True])
-   
-   '  If PN!fk_consult = currentconsult.GetPK() Then           'probabably a reversal, don't need to audit just visually remove from the notes
-   '             modDBConnect.update("clin_consult.progressnotes", Null, ["pk": referral!fk_progressnote, "deleted": True])
-   '          Else
-   '             pn!notes = Replace$(pn!notes, "<TABLE", "<TABLE BGCOLOR='#CFCFCF' ") 
-   '             pn!notes = Replace$(pn!notes, "<small>", "<strike><small>", gb.IgnoreCase)
-   '             pn!notes = Replace$(pn!notes, "</small>", "</strike></small>", gb.IgnoreCase)
-   '             Faudit.Init(": Delete Referral Letter", "clin_consult.progressnotes/clin_referrals.referrals", "Letter summary:" & referral!tag)
-   '             fk_reason = FAudit.ShowModal() 
-   '             modDBConnect.CommitTrans()  'otherwise if a new reason it won't have been comitted
-   '             reason = modAudit.Get_Reason_Using_pk(fk_reason)
-   '             pn!notes = Replace(pn!notes, "</TABLE>", "</TABLE><small><B><I>Audit note:</B> this referral letter was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small>")
-   '             modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
-   '          End If     
-   '          modDBConnect.update("clin_referrals.referrals", Null, ["pk": fk_referral, "deleted": True])
-   '      
-   
+   If allergy!fk_consult <> currentconsult.GetPK() Then                                             'if allergy was not deleted this consult
+      Faudit.Init(": Delete Allergy", "clin_allergies.allergies", "Allergy Summary:" & sSummary)     'pop up the audit-trail dialog
+      fk_reason = FAudit.ShowModal()                                                                 'this returns the reason
+      modDBConnect.CommitTrans()                                                                     'otherwise if a new reason it won't have been comMitted FIXMED i DID Put commit trans in the form
+      reason = modAudit.Get_Reason_Using_pk(fk_reason)                                               'get back the details to write into the progress notes
+      allergy!notes = Replace$(allergy!notes, "<TABLE", "<TABLE BGCOLOR='#CFCFCF' ")                 'now, mark this allergy as having been deleted by the user in the notes as part of audit trail
+      allergy!notes = Replace$(allergy!notes, "<small>", "<strike><small>", gb.IgnoreCase)
+      allergy!notes = Replace$(allergy!notes, "</small>", "</strike></small>", gb.IgnoreCase)
+      allergy!notes = Replace(allergy!notes, "</TABLE>", "</TABLE><small><B><I>Audit note:</B> this allergy was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small>")
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": allergy!notes])
+   Else                                                                                               'the allergy was inserted this consultation
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "deleted": True]) 'just delete the progress note associated with it.
+   End If 
+   modDBConnect.update("clin_allergies.allergies", Null, ["pk": fk_allergy, "deleted": True])      'and delete from the backend.
+   modDBConnect.CommitTrans()
+   If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then
+      FClinical.Refresh_Section(const.cSection_Allergies) 'retrieve the data from the backend again.
+      FClinical.Refresh_AllPreviousNotes()
+   End If 
+   Reload()
 End
 
 Public Sub Allergy_Display()
@@ -334,8 +334,8 @@ Public Sub Allergy_Display()
          rbSpecificityBrand.Value = True  
    End Select
    txtDetails.text = allergy!details
-   bExit = False  
    txtDate.SetFocus()
+   bExit = False  
    
 End
 
@@ -370,11 +370,11 @@ Public Function Progress_Notes_Create() As String
             pn &= " - Not confirmed"
          Endif
          pn &= "<BR>"
-         pn &= "<B>Drug:</B>" & Trim(txtGeneric.text) & " " & "(" & Trim(txtBrand.text) & ")<BR>"
+         pn &= "<B>Drug: </B>" & Trim(txtGeneric.text) & " " & "(" & Trim(txtBrand.text) & ")<BR>"
          pn = Replace(pn, "()", "")
-         pn &= "<B>Details:</B>" & Trim(txtDetails.text) & "<BR>"
+         pn &= "<B>Details: </B>" & Trim(txtDetails.text) & "<BR>"
          If fk_code <> "" Then
-            pn &= "<B>Coding:</B>" & Trim(txtCodedTerm.text) & "<BR"
+            pn &= "<B>Coding: </B>" & Trim(txtCodedTerm.text) & "<BR"
          Endif
       Case Else
          
@@ -385,25 +385,27 @@ Public Function Progress_Notes_Create() As String
 End
 
 Public Sub Reload()
-   '--------------------------------------------------------------------------
+   '------------------------------------------------------------------------------------
    'Reload data from backend - display any existing allergies or sensitivities
-   '-------------------------------------------------------------------------- 
+   'columnview key is integer 0 based so as to use   modUtil.Columnview_Columns_Set_Size
+   '------------------------------------------------------------------------------------ 
    
    Dim allergy As Collection
    Dim specificity As String
+   Dim x As Integer
    
    EditArea_Clear()                                      'clear the input area
    currentconsult.Refresh("allergies")                   'remove key from cache > later forces a reload
-   allergies = currentconsult!allergies                  'reload latest list from the backend
+   allergies = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!allergies)                 'reload latest list from the backend
    cvwAllergies.Clear()
    For Each allergy In allergies
-      cvwAllergies.Add(allergy!pk, 0)
+      cvwAllergies.Add(x, 0)
       If IsNull(allergy!date_reaction) Then
-         cvwAllergies[allergy!pk][0] = "??"
+         cvwAllergies[x][0] = " Date?"
       Else
-         cvwAllergies[allergy!pk][0] = allergy!date_reaction 'could be free text
+         cvwAllergies[x][0] = allergy!date_reaction 'could be free text
       Endif
-      cvwAllergies[allergy!pk][1] = Trim(allergy!class_name & " " & allergy!allergen) 'will be only one
+      cvwAllergies[x][1] = Trim(allergy!class_name & " " & allergy!allergen) 'will be only one
       Select Case allergy!specificity
          Case "c"
             specificity = "class"
@@ -412,42 +414,37 @@ Public Sub Reload()
          Case "b"
             specificity = "brand"
       End Select
-      cvwAllergies[allergy!pk][2] = specificity
-      cvwAllergies[allergy!pk][3] = allergy!reaction_type
-      cvwAllergies[allergy!pk][4] = allergy!details
+      cvwAllergies[x][2] = "  " & specificity & " reaction  "
+      cvwAllergies[x][3] = "  " & allergy!reaction_type & "  "
+      cvwAllergies[x][4] = "  " & allergy!details & "  "
       If allergy!confirmed Then
-         cvwAllergies[allergy!pk][5] = "Yes"
+         cvwAllergies[x][5] = "  Confirmed  "
       Else
-         cvwAllergies[allergy!pk][5] = "No"
+         cvwAllergies[x][5] = "  Not Confirmed  "
       Endif
+      Inc x
    Next
-   EditArea_Clear()
-   button1.SetFocus 'hidden button
+   modUtil.Columnview_Columns_Set_Size(cvwAllergies, lblmeasure)
+   lblDate.SetFocus() 'to anything
    
 End
 
 Public Sub form_Close()
    
    timer1_Stop()
-   Settings_Save()
-   
-End
-
-Public Sub Form_Save()
-   
-   ' FClinical.Refresh_AllPreviousNotes()
    
 End
 
 Public Sub Settings_Save()
    
-   Settings["Allergies/VSplit_Allergies.Layout"] = VSplit_Allergies.layout
+   Settings["FAllergy/VSplit_Allergies.Layout"] = VSplit_Allergies.layout
    
 End
 
 Public Sub Settings_Load()
    
-   VSplit_Allergies.layout = Settings["Allergies/VSplit_Allergies.Layout"]
+   VSplit_Allergies.layout = Settings["FAllergy/VSplit_Allergies.Layout", modUtil.VSplit([244, 319, 284])]
+   cvwAllergies.Font = Font[Settings["FAllergy/cvwAllergies.font", "Arial,9"]]
    
 End
 
@@ -523,7 +520,7 @@ Public Function EditArea_txtBox_ExcludeKeys(keycode As Integer, tag As String) A
    '-----------------------------------------------------------
    
    Select Case Last.Tag
-      Case "brand", "allergen", "coded term", "free text reaction", "generic", "date reaction", "coded term", "atc name"
+      Case "brand", "allergen", "coded term", "free text reaction", "generic", "date reaction", "coded term", "atc name", "details"
          bKeyValid = True
    End Select
    Return bKeyValid
@@ -931,13 +928,14 @@ End
 Public Sub EditArea_TextBox_GotFocus()
    
    listview1.Visible = False  
+   ReferenceHboxForTopListView = Last.Parent.parent
    Last.BackGround = Color.rgb(95, 255, 175)
    Select Case Last.tag
       Case "coded term"
          With Form_Terms
-            .top = Last.Parent.Parent.Top + Last.Parent.Height + Vsplit_Allergies.top 
+            .top = Last.Parent.Parent.Top + Last.Parent.Height + Vsplit_Allergies.top + Me.Padding
             .width = txtCodedTerm.Width
-            .Left = Last.Parent.Left + VBox1.padding
+            .Left = Last.Parent.Left + VBox_EditArea.padding + Me.Padding
             .Raise 
             .Visible = False  
             If Trim(Last.text) <> "" Then
@@ -948,7 +946,7 @@ Public Sub EditArea_TextBox_GotFocus()
          With listview1
             .top = Last.Parent.Parent.top + Last.Height
             .width = Last.Parent.width / 2
-            .left = Last.Parent.Left
+            .left = Last.Parent.Left + VBox_EditArea.padding
             .Raise()
          End With
    End Select
@@ -995,7 +993,7 @@ Public Sub mnuAllergies_Click()
       Case "delete"
          Allergy_Delete()
       Case "font"
-         modUtil.Columnview_SetFont(cvwAllergies, "Allergies")
+         modUtil.Columnview_SetFont(cvwAllergies, "FAllergy")
       Case "help"
          modUtil.NotImplemented("Help for allergies")
    End Select
@@ -1009,3 +1007,22 @@ Public Sub rbSpecificity_Click()
    EditArea_Notify_DataChange(True)
    
 End
+
+Public Sub Vsplit_Allergies_Resize()
+   
+   If listview1.Visible Then
+      listview1.top = ReferenceHboxForTopListView.top + ReferenceHboxForTopListView.Height
+   Endif
+   If Form_Terms.Visible Then
+      Form_Terms.top = ReferenceHboxForTopListView.top + ReferenceHboxForTopListView.Height
+   Endif
+   
+End
+
+Public Sub Form_Resize()
+   
+   Vsplit_Allergies_Resize()
+   Form_Terms.width = txtCodedTerm.Width
+   
+End
+

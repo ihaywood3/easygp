@@ -99,12 +99,12 @@ Static Public Sub Refresh_Referrals_Written_Today()
    
 End
 
-Public Sub Init(cons As CConsult, Optional bEmbedded_Param As Boolean = False)
+Public Sub Init(cons As CConsult, Optional bEmbedded As Boolean = False)
    '---------------------------------------------------------
    'Do all the form initialisation stuff like adding stuff to 
    'combo's, setting numbers of columns in lists
    '---------------------------------------------------------
-   bEmbedded = bEmbedded_Param
+   
    form_referral = Me
    currentconsult = Cons                       'set current consult
    cvwLetters.Columns.Count = 7                '7 = finalised or not         
@@ -114,27 +114,24 @@ Public Sub Init(cons As CConsult, Optional bEmbedded_Param As Boolean = False)
    cvwLetters.Columns[3].width = 200           'referral tag
    cvwLetters.Columns[4].width = 80            'if include_careplan is true = 'Care Plan'
    cvwLetters.Columns[5].width = 100            'if include_summary  is true = 'Health Summary'
-   
-   txtReferralDate.Text = Format$(Now, "dd/mm/yy")
+'   txtReferralDate.Text = Format$(Now, "dd/mm/yyyy")
    referral_types = modUtil.LoadCombo(cmbReferralTypes, modReferralsDBI.Referral_Get_Types(), "type")
    priority_types = modUtil.LoadCombo(cmbPriorityTypes, modReferralsDBI.Priority_Get(), "urgency")
-   lblmeasure.text = " Provider Category "
+   lblmeasure.text = " Authority Approval No.  "  'to keep all edit area's left width the same
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
    lblSpacerLeftOfButtons.width = lblmeasure.width
    cvwPersonContacts.Columns.count = 2
-   ' Spelling stuff
    With SpellChecker = New ClskSpell
       .EditorControlToCheck = teLetter
       .TempFileForSpelling = User.home &/ "myspelltemp.txt"
       .TempFileForErrors = User.home &/ "myspellerrors.txt"
    End With
-   ' modUtil.FindProgram("aspell", "aspell")
-   
-   Try Settings_Load()                          'load settings for this form
+   Settings_Load()                          'load settings for this form
    With Form_Copy_To = New FCopyTo(Vbox_CopyToList)
       .Init(Me)
       .lblCopyTo.width = lblmeasure.Width
    End With
+   modEditAreaHelpers.Resize_labels(Form_Copy_To.Vbox_CopyToList, lblmeasure)
    MenuButton1.menu = "mnuHealthIssues"
    If Not bEmbedded Then
       Dictaphone = New FDictaphone(Hbox_Dictaphone)
@@ -151,6 +148,9 @@ Public Sub Init(cons As CConsult, Optional bEmbedded_Param As Boolean = False)
    Endif
    lblReferralsThisConsultation.Width = HSplit_Letter_Include.children[0].width
    lblDocumentsPrinted.width = HSplit_Letter_Include.children[1].width
+   EditArea_Notify_DataChange(False)
+   Reload()
+    
 End
 
 Public Sub Set_Consult(new_cc As CConsult)
@@ -158,8 +158,6 @@ Public Sub Set_Consult(new_cc As CConsult)
    currentconsult = new_cc
    
 End
-
-
 
 Public Sub mnuHealthIssues_Click()
    '---------------------------------------------------
@@ -325,14 +323,14 @@ Public Sub Reload()
    '-----------------------------------------------------------------------------------------------------------
    
    If Not IsNull(currentconsult) Then
-     currentconsult.Refresh("referrals_written_this_consult")                  'Delete key = force a refresh
-     If Not bEmbedded Then
-       Inclusions_Referrals_This_Consult = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False, True) 'fk_patient, deleted, only this consult
-       Referrals_This_consult_Show()                                          'Update list under edit area
-     Endif
+      currentconsult.Refresh("referrals_written_this_consult")                  'Delete key = force a refresh
+      If Not bEmbedded Then
+         Inclusions_Referrals_This_Consult = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False, True) 'fk_patient, deleted, only this consult
+         Referrals_This_consult_Show()                                          'Update list under edit area
+      Endif
    Endif
    Referral_New()                                                         'clear for next condition
-   txtName.SetFocus()
+   '  txtName.SetFocus()
    
 End
 
@@ -386,6 +384,8 @@ Public Sub LetterWriter_Click()
       Case "maximize"
          Editor_Maximize_Minimize()
       Case "erase"
+         Message.title = "Erase Letter"
+         If Message.Question("Are you sure you want to erase the letter?", "Yes", "No") = 2 Then Return
          teLetter.Clear()
       Case "bold"
          teLetter.Format.Font.Bold = Last.Value
@@ -548,7 +548,7 @@ Private Function Referral_Letter_Construct_Common(textin As String, sSep As Stri
    
    Dim ntext As String
    Dim sType As String
-   Dim s As String
+   
    Dim charpos As Integer
    Dim sPatient As String = currentconsult!patient!firstname & " " & currentconsult!patient!surname & " " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2)
    Dim sPatient_Comms As String 'phone, etc for the patient
@@ -573,11 +573,8 @@ Private Function Referral_Letter_Construct_Common(textin As String, sSep As Stri
       ntext = Replace(ntext, "%clinic.street", modDBConnect.currentUser!street1) 
    Endif
    ntext = Replace(ntext, "%clinic.suburb", modDBConnect.currentUser!town & " " & modDBConnect.currentuser!postcode)
-   If txtName.Text <> "" Then
-      ntext = Replace$(ntext, "%referred-to%", txtName.text & sSep)
-   Else
-      ntext = Replace$(ntext, "%referred-to%", "")
-   Endif
+   
+   ntext = Replace$(ntext, "%referred-to%", txtName.text)
    If txtOrganisation.text <> "" Then 
       ntext = Replace$(ntext, "%organisation%", txtOrganisation.text & sSep)
    Else
@@ -598,19 +595,10 @@ Private Function Referral_Letter_Construct_Common(textin As String, sSep As Stri
    Else
       ntext = Replace$(ntext, "%branch%", "")
    End If
-   s = Trim(txtStreet1.text & " " & txtStreet2.text)
-   If s <> "" Then
-      ntext = Replace$(ntext, "%address%", s & sSep)
-   Else
-      ntext = Replace$(ntext, "%address%", "")
-   Endif
-   s = Trim$(txtSuburb.text & " " & txtPostcode.text)
-   If s <> "" Then
-      ntext = Replace$(ntext, "%suburb%", s & sSep)
-   Else
-      ntext = Replace$(ntext, "%suburb%", "")
-   Endif
-   If Not IsNull(PersonWritingTo) And If Not IsNull(PersonWritingTo!firstname) Then
+   ntext = Replace$(ntext, "%address%", Trim(txtStreet1.text & " " & txtStreet2.text) & sSep)
+   ntext = Replace$(ntext, "%suburb%", txtSuburb.text & " " & txtPostcode.text & sSep)
+   
+   If Not IsNull(PersonWritingTo!firstname) Then
       ntext = Replace$(ntext, "%firstname%", PersonWritingTo!firstname)
    Else
       ntext = Replace$(ntext, "%firstname%", "Sir/Madam")
@@ -1238,7 +1226,7 @@ Public Sub EditAreaTextBox_GotFocus()
             .columns.count = 2
          End With  
          If fk_branch Then
-            Branch_Get()
+            Branches_Get_For_Organisation()
          Endif
          
       Case "street1"
@@ -1320,9 +1308,11 @@ Public Sub EditAreaTextBox_KeyPress()
 End
 
 Public Sub Referrals_This_Consult_Show()
-   '--------------------------------------
-   'Updates the display in the visits list
-   '--------------------------------------
+   '-----------------------------------------------------------------
+   'Show the referrals written this consultation
+   'The collection referrals_written_this_consult is re-keyed 0 based
+   'to match the columnview 0>n index
+   '-----------------------------------------------------------------
    
    Dim referral As Collection 
    Dim bDataChanged As Boolean
@@ -1330,51 +1320,27 @@ Public Sub Referrals_This_Consult_Show()
    Dim col_widths As New Integer[7]
    
    cvwLetters.Clear()
-   referrals_written_this_consult = currentconsult!referrals_written_this_consult
+   referrals_written_this_consult = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!referrals_written_this_consult)
    For Each referral In currentconsult!referrals_written_this_consult
-      x = referral!pk_referral
       cvwLetters.Add(x, 0)
-      cvwletters[x][0] = Format(referral!date_referral, "dd/mm/yyyy")
-      lblmeasure.Font.size = cvwletters.Font.Size
-      lblmeasure.Font.Name = cvwLetters.Font.Name
-      lblmeasure.text = cvwletters[x][0]
-      col_widths[0] = lblmeasure.Width
+      cvwletters[x][0] = Format(referral!date_referral, "dd/mm/yyyy") & "  "
       If Not IsNull(referral!surname) Then
-         cvwletters[x][1] = referral!wholename
+         cvwletters[x][1] = referral!wholename & "  "
       Else
          If Not IsNull(referral!organisation) Then
-            cvwletters[x][1] = referral!organisation & " " & referral!branch
+            cvwletters[x][1] = referral!organisation & " " & referral!branch & "  "
          Endif
       Endif
-      lblmeasure.text = cvwletters[x][1] & " " 
-      col_widths[1] = Max(lblmeasure.Width, col_widths[1]) 
-      cvwletters[x][2] = referral!type
-      lblmeasure.text = cvwletters[x][2] & " " 
-      col_widths[2] = Max(lblmeasure.Width, col_widths[2]) 
-      cvwletters[x][3] = referral!tag
-      lblmeasure.text = cvwletters[x][3] & " " 
-      col_widths[3] = Max(lblmeasure.Width, col_widths[3]) 
-      ' If referral!include_careplan = True Then
-      '    cvwletters[x][4] = " + Care Plan"
-      ' End If
-      ' If referral!include_healthsummary = True Then
-      '    cvwletters[x][5] = " + Health Summary"
-      ' End If
+      cvwletters[x][2] = referral!type & "  "
+      cvwletters[x][3] = referral!tag & "  "
       If referral!finalised Then
          cvwletters[x][4] = "Printed"
       Else
          cvwletters[x][4] = "Not Finalised"
       Endif
-      lblmeasure.text = " " & cvwletters[x][4] & " " 
-      col_widths[4] = Max(lblmeasure.Width, col_widths[4])     
+      Inc x    
    Next
-   For x = 0 To 4
-      cvwLetters.Columns[x].Width = col_widths[x]
-   Next
-   If cvwLetters.count Then
-      cvwLetters.MoveFirst
-      cvwletters.Item.Selected = True
-   Endif
+   modUtil.Columnview_Columns_Set_Size(cvwLetters, lblMeasure)
    
 End
 
@@ -1448,10 +1414,11 @@ Public Sub Referral_New()
    bExit = False  
    bEditing = False  
    comms = Null
-   EditArea_Notify_DataChange(False)
    txtName.SetFocus()
    If Not IsNull(Dictaphone) Then Dictaphone.Reset()
-
+   Print VBox_Letters.Padding = 1
+   EditArea_Notify_DataChange(False)
+   
 End
 
 Public Sub EditAreaButtons_Click()
@@ -1495,14 +1462,14 @@ Public Sub Settings_Save()
    
 End
 
-Public Sub Settings_Load() 'do not make this private called e.g by FReportsDue
+Public Sub Settings_Load() 
    
    If bEmbedded Then
       Try VSplit_Main.Layout = Settings["Referrals_Embedded/VSplit_Main.Layout"]
       Try VSplit_Referrals.Layout = Settings["Referrals_Embedded/VSplit_Referrals.Layout"]
       Try HSplitEditArea_Communications.Layout = Settings["Referrals_Embedded/EditArea_Communications"]
       Try HSplit_Letter_Include.Layout = Settings["Referrals_Embedded/Letters_Include"]
-      Try cvwLetters.font = Font[Settings["Referrals/cvwLetters.font"]]
+      cvwLetters.font = Font[Settings["Referrals/cvwLetters.font", "DejaVu Sans,9"]]
       Try HSplit_Referrals_This_Consult.Layout = Settings["Referrals_Embedded/HSplit_Referrals_This_Consult.Layout"]
    Else
       VSplit_Main.Layout = Settings["Referrals/VSplit_Main.Layout", modUtil.VSplit([759, 85])]
@@ -1510,12 +1477,12 @@ Public Sub Settings_Load() 'do not make this private called e.g by FReportsDue
       HSplitEditArea_Communications.Layout = Settings["Referrals/EditArea_Communications", modUtil.HSplit([866, 333])]
       HSplit_Letter_Include.Layout = Settings["Referrals/Letters_Include", modUtil.HSplit([866, 333])]
       HSplit_Referrals_This_Consult.Layout = Settings["Referrals/HSplit_Referrals_This_Consult.Layout", modUtil.HSplit([866, 333])]
-      Try cvwLetters.font = Font[Settings["Referrals/cvwLetters.font"]]
+      cvwLetters.font = Font[Settings["Referrals/cvwLetters.font", "DejaVu Sans,9"]]
    End If
    
 End
 
-Public Sub Address_Select()
+Public Sub Address_Select(address As Collection)
    '-------------------------------------------------------------------------------
    'There is a complicated problem with this, because of the very freedom we allow
    'in the editing area, namely that a person could have been selected with an 
@@ -1527,15 +1494,14 @@ Public Sub Address_Select()
    'fk_employee no longer exists
    '--------------------------------------------------------------------------------
    
-   columnview1.MoveCurrent
-   Try txtOrganisation.text = Addresses[columnview1.Item.key]!organisation
-   Try txtBranch.text = Addresses[columnview1.Item.key]!branch
-   Try txtStreet1.text = Addresses[columnview1.Item.key]!street1
-   Try txtStreet2.text = Addresses[columnview1.Item.key]!street2
-   Try txtSuburb.text = Addresses[columnview1.Item.key]!town
-   Try txtPostcode.text = Addresses[columnview1.Item.key]!postcode
-   Try fk_organisation = Addresses[columnview1.Item.key]!fk_organisation
-   Try fk_branch = Addresses[columnview1.Item.key]!fk_branch
+   Try txtOrganisation.text = Address!organisation
+   Try txtBranch.text = Address!branch
+   Try txtStreet1.text = Address!street1
+   Try txtStreet2.text = Address!street2
+   Try txtSuburb.text = Address!town
+   Try txtPostcode.text = Address!postcode
+   Try fk_organisation = Address!fk_organisation
+   Try fk_branch = Address!fk_branch
    If Error Then
       fk_employee = 0 
    Endif
@@ -1580,7 +1546,7 @@ Public Sub ColumnView1_DblClick()
       Case "occupation", "name"
          Person_Select(persons[columnview1.Item.key])
       Case "street1"
-         Address_Select()
+         Address_Select(Addresses[columnview1.Item.key])
    End Select
    columnview1.Visible = False  
    
@@ -1702,7 +1668,7 @@ Public Sub ReferralsList_Print(print_type As String)
    
 End
 
-Public Sub Referral_Edit(Optional new_referral As Collection)
+Public Sub Referral_Edit(Optional new_referral As CRow)
    '---------------------------------------------------------------   
    'Edits either an letter just written (saved or not this consult)
    'or an old referral that has been re-loaded for re-printing
@@ -1720,12 +1686,12 @@ Public Sub Referral_Edit(Optional new_referral As Collection)
    comms = Null
    bExit = True
    If IsNull(new_referral) Then
-     cvwLetters.MoveCurrent
-     pk_referral = cvwLetters.Item.key
-     Letter_from_View = currentconsult!referrals_written_this_consult[pk_referral]
+      cvwLetters.MoveCurrent
+      Letter_from_View = referrals_written_this_consult[cvwLetters.Item.key]
+      pk_referral = Letter_from_View!pk_referral  
    Else
       Letter_from_View = new_referral
-      pk_referral = new_referral!pk_referral
+      pk_referral = new_referral!fk_referral
    Endif
    Try fk_branch = Letter_from_View!fk_branch
    If Not Error Then
@@ -1787,10 +1753,8 @@ Public Sub Referral_Edit(Optional new_referral As Collection)
    tbSave.Enabled = False  
    teLetter.SetFocus()
    Form_Copy_To.CopyTos_Reload(modUtil.SplitStrings_into_collection(Letter_from_View!copyto, "|"))
-   If Not IsNull(Inclusions_Referrals_This_Consult) Then
-     Inclusions_EditArea = modUtil.Copy_Collection(Inclusions_Referral_This_Consult)
-     lvwInclusions_EditArea_Refresh(Inclusions_EditArea)
-   Endif
+   Inclusions_EditArea = modUtil.Copy_Collection(Inclusions_Referral_This_Consult)
+   lvwInclusions_EditArea_Refresh(Inclusions_EditArea)
    bExit = False  
    cmbReferralTypes.index = cmbReferralTypes.Find(Letter_from_View!type) 'leave outside of Bexit to use the click event
    EditArea_Notify_DataChange(False)
@@ -1863,7 +1827,7 @@ Public Sub lvwInclusions_Saved_Refresh()
          'letter > crash!!!!1
          '--------------------------------------------------------------------------
          If Not IsNull(document) Then 
-            sString = Format(Document!date_created, "dd/mm/yyyy") & " " & Document!tag_user  
+            sString = Format(Document!date_createcurrentconsult!referrals_written_this_consultd, "dd/mm/yyyy") & " " & Document!tag_user  
             lvwInclusions_Saved.add(lvwInclusions_Saved.count, sSTring)
             Inclusions_Referral_This_Consult.Add(Inclusion, Inclusion!pk_inclusion)
          Else
@@ -1879,11 +1843,6 @@ Public Sub lvwInclusions_Saved_Refresh()
    
 End
 
-Public Sub cvwLetters_Click()
-   
-   cvwLetters_Select()
-   
-End
 
 Public Sub cvwLetters_Select()
    '-----------------------------------------------------------------
@@ -1968,22 +1927,26 @@ Public Sub Person_Addresses_Get()
    
    columnview1.Clear
    columnview1.Columns.count = 2
-   Addresses = modReferralsDBI.Persons_Addresses_Get(fk_person)
+   Addresses = modUtil.Copy_Collection_Keyed_Sequentially(modReferralsDBI.Persons_Addresses_Get(fk_person))
    For Each address In Addresses
-      ColumnView1.add(address!pk_view, 0)
+      ColumnView1.add(x, 0)
       If address!organisation <> Null Then 
-         ColumnView1[address!pk_view][0] = address!organisation & " " & address!branch
+         ColumnView1[x][0] = address!organisation & " " & address!branch
       Else
-         ColumnView1[address!pk_view][0] = "Private rooms"
+         ColumnView1[x][0] = "Private rooms"
       End If   
-      ColumnView1[address!pk_view][1] = address!street1 & " " & address!street2 & " " & address!town
+      ColumnView1[x][1] = address!street1 & " " & address!street2 & " " & address!town
+      Inc x
    Next
-   If Addresses.count > 1 Then 
-      columnview1.Raise
-      columnview1.Visible = True
-      columnview1.tag = txtStreet1
+   If Addresses.count = 1 Then 
+      Address_Select(address)
    Else
-      If Addresses.Count = 1 Then Address_Select()
+      modUtil.Columnview_Columns_Set_Size(columnview1, lblmeasure)
+      With columnview1
+         .Raise
+         .Visible = True
+         .tag = txtStreet1
+      End With  
    Endif
    
 End
@@ -1993,7 +1956,6 @@ Public Sub Person_Get()
    'Gets a list of persons who could be sole traders or employees
    '-------------------------------------------------------------
    
-   Dim col_widths As New Integer[3]
    Dim address As String
    Dim x As Integer
    
@@ -2004,39 +1966,31 @@ Public Sub Person_Get()
    If Trim(txtName.text) = "" Then Return 
    lblMeasure.font = columnview1.Font
    If chkSearchPatient.value = True Then
-      persons = modContactsDBI.patients_get_firstname_surname(Trim(txtName.text))
+      persons = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.patients_get_firstname_surname(Trim(txtName.text)))
       persons.Remove("sql_in_english")
    Else
-      persons = modReferralsDBI.Person_Get_By_Surname(Trim(txtName.text))
+      persons = modUtil.Copy_Collection_Keyed_Sequentially(modReferralsDBI.Person_Get_By_Surname(Trim(txtName.text)))
    Endif
-   columnview1.Clear()
    If persons.count <> 0 Then 
       For Each person In persons
-         columnview1.Add(person!pk_view, 0)
-         columnview1[person!pk_view][0] = person!wholename
-         lblmeasure.text = person!wholename
-         col_widths[0] = Max(lblmeasure.Width, col_widths[0])
-         columnview1[person!pk_view][1] = "(" & person!occupation & ") "
-         lblmeasure.text = columnview1[person!pk_view][1]
-         col_widths[1] = Max(lblmeasure.Width, col_widths[1])
+         columnview1.Add(x, 0)
+         columnview1[x][0] = person!wholename
+         columnview1[x][1] = "(" & person!occupation & ") "
          If Not IsNull(person!organisation) Then
-            columnview1[person!pk_view][2] = person!organisation & " " & person!branch
+            columnview1[x][2] = person!organisation & " " & person!branch
          Else
-            columnview1[person!pk_view][2] = ""
+            columnview1[x][2] = ""
          Endif
-         lblmeasure.text = columnview1[person!pk_view][2]
-         col_widths[2] = Max(lblmeasure.Width, col_widths[2])
          Try address = Trim(person!street1 & " " & person!street2)
          Try address &= person!town & " " & person!postcode
-         columnview1[person!pk_view][3] = address
+         columnview1[x][3] = address
+         Inc x
       Next
       If persons.count = 1 Then                              'auto-select single person
          Person_Select(person)
       Else                                                  'otherwise show a list with resized column widths
+         modUtil.Columnview_Columns_Set_Size(columnview1, lblmeasure)
          With columnview1
-            For x = 0 To 2
-               .Columns[x].Width = col_widths[x]
-            Next
             .tag = txtName 
             .Visible = True
             .Raise
@@ -2045,16 +1999,6 @@ Public Sub Person_Get()
    End If
    
 End
-
-' Public Sub Person_Select()
-'    '-----------------------------------------------------------
-'    'There is a list of persons showing, user is selecting one
-'    'Routine called by user clicking on list or pressing <enter>
-'    '-----------------------------------------------------------
-'    
-'    Person_By_Occupation_Select()
-'    
-' End
 
 Public Sub Person_Comms_Get()
    '--------------------------------------------------------
@@ -2081,46 +2025,34 @@ Public Sub Organisation_By_Category_Get()
    'applies only to organisation, for persons, search on occupation
    '---------------------------------------------------------------
    
-   columnview1.Visible = False
+   Dim x As Integer
+   
+   With columnview1
+      .Visible = False
+      .Clear
+   End With
    If Trim(txtCategory.text) = "" Then Return 
-   branches = modContactsDBI.Organisations_Get_By_Category(Trim(txtCategory.text))
+   branches = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Organisations_Get_By_Category(Trim(txtCategory.text)))
    If Not branches.count Then Return
-   columnview1.Clear()
    For Each branch In branches
-      columnview1.Add(branch!pk_view, 0)
-      columnview1[branch!pk_view][0] = branch!category
-      columnview1[branch!pk_view][1] = branch!organisation
-      columnview1[branch!pk_view][2] = branch!branch
+      columnview1.Add(x, 0)
+      columnview1[x][0] = branch!category
+      columnview1[x][1] = branch!organisation
+      columnview1[x][2] = branch!branch
+      Inc x
    Next
    If branches.count = 1 Then
       Branch_Select(branch) 'display branch and comms
-   Endif
-   With columnview1
-      .tag = txtCategory
-      .Raise()
-      .Visible = True
-   End With 
+   Else
+      modUtil.Columnview_Columns_Set_Size(columnview1, lblmeasure)
+      With columnview1
+         .tag = txtCategory
+         .Raise()
+         .Visible = True
+      End With 
+   End If
    
 End
-
-' Public Sub Organisation_By_Category_Select(branch As Collection)
-'    '--------------------------------------------------------------
-'    'User has been trying to find organisation by typing a category
-'    '--------------------------------------------------------------
-'    
-'    Branch_Select(branch)
-'   ' Branch_Comms_Get()
-'    '------------------------------------------
-'    'Get the comms for this organisation/branch
-'    '------------------------------------------
-'    ' lvworgcontacts.Clear() 
-'    ' cvwPersonContacts.Clear()
-'    ' comms = modContactsDBI.Branch_Comms_Get(fk_branch)
-'    ' For Each comm In comms
-'    '    lvworgcontacts.Add(comm!pk, comm!type & " " & comm!value)
-'    ' Next
-'    
-' End
 
 Public Sub Branch_Comms_Get()
    '----------------------------------------------------
@@ -2158,22 +2090,32 @@ Public Sub Branch_Select(branch As Collection)
    
 End
 
-Public Sub Branch_Get()
+Public Sub Branches_Get_For_Organisation()
    '--------------------------------
    'Get branches for an organisation
    '--------------------------------
    
-   Branches = modContactsDBI.Branches_Get_For_Organisation(fk_organisation)
+   Dim x As Integer
+   
+   With columnview1
+      .Clear
+      .Visible = False  
+   End With
+   Branches = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Branches_Get_For_Organisation(fk_organisation))
    If Branches.count Then
-      columnview1.Clear
-      For Each branch In branches
-         columnview1.Add(branch!pk_view, 0)
-         columnview1[branch!pk_view][0] = branch!branch
-         columnview1[branch!pk_view][1] = Trim(branch!street1 & " " & branch!street2) & " " & branch!town & " " & branch!postcode
-      Next
-      columnview1.Visible = True
-      columnview1.Tag = txtBranch
+        For Each branch In branches
+         columnview1.Add(x, 0)
+         columnview1[x][0] = branch!branch
+         columnview1[x][1] = Trim(branch!street1 & " " & branch!street2) & " " & branch!town & " " & branch!postcode
+         Inc x
+      Next 
+      modUtil.Columnview_Columns_Set_Size(columnview1, lblmeasure)
+      With columnview1
+       .Visible = True
+       .Tag = txtBranch
+      End With 
    Endif
+  
    
 End
 
@@ -2183,51 +2125,56 @@ Public Function Employee_Workplace_Get()
    'If a single place of employ - auto accept and put in the details
    '-----------------------------------------------------------------------------
    
-   columnview1.Visible = False 
+   Dim x As Integer
+   
+   With columnview1
+      .Visible = False 
+      .Clear
+   End With
    If Trim(txtName.text) = "" Then Return 
    fk_organisation = 0
    fk_branch = 0
-   branches = modReferralsDBI.Organisations_Get_For_Employee(fk_person)
+   branches = modUtil.Copy_Collection_Keyed_Sequentially(modReferralsDBI.Organisations_Get_For_Employee(fk_person))
    If Not branches.count Then Return 
-   columnview1.Clear()
    '-----------------------------------------------------------------------------------
    'If branches of an organisation  exist to match the text, auto-select or show a list
    '-----------------------------------------------------------------------------------
    For Each branch In branches
-      Columnview1.Add(branch!pk_view, 0)
-      Columnview1[branch!pk_view][0] = Branch!organisation
-      Columnview1[branch!pk_view][1] = Branch!branch
-      Columnview1[branch!pk_view][2] = Trim(Branch!street1 & " " & Branch!street2)
-      Columnview1[branch!pk_view][3] = Branch!town & " " & Branch!postcode
+      Columnview1.Add(x, 0)
+      Columnview1[x][0] = Branch!organisation
+      Columnview1[x][1] = Branch!branch
+      Columnview1[x][2] = Trim(Branch!street1 & " " & Branch!street2)
+      Columnview1[x][3] = Branch!town & " " & Branch!postcode
+      Inc x
    Next 
-   
    If branches.count = 1 Then 
-      Employee_Workplace_Select()
+      Employee_Workplace_Select(branch) 'FIXME I THINK THIS IS A DUPLICATE SUB OF ANOTHER NAME
       Return  
    End If
-   columnview1.Visible = True
-   columnview1.Raise
-   columnview1.tag = txtOrganisation
-   
-   Return   
+   modUtil.Columnview_Columns_Set_Size(columnview1, lblmeasure)
+   With columnview1
+      .Visible = True
+      .Raise
+      .tag = txtOrganisation
+   End With
    
 End
 
-Public Function Employee_Workplace_Select()  
+Public Function Employee_Workplace_Select(branch As Collection)  
    
    bExit = True
-   columnview1.MoveCurrent 
-   fk_organisation = branches[columnview1.Item.key]!fk_organisation
-   fk_branch = branches[columnview1.Item.key]!fk_branch
-   txtOrganisation.text = branches[columnview1.Item.key]!organisation
-   txtBranch.text = branches[columnview1.Item.key]!branch
+ 
+   fk_organisation = Branch!fk_organisation
+   fk_branch = Branch!fk_branch
+   txtOrganisation.text = Branch!organisation
+   txtBranch.text = Branch!branch
    '-----------------
    'These can be null
    '-----------------
-   Try txtStreet1.text = branches[columnview1.Item.key]!street1
-   Try txtStreet2.text = branches[columnview1.Item.key]!street2
-   Try txtSuburb.text = branches[columnview1.Item.key]!town
-   Try txtPostcode.text = branches[columnview1.Item.key]!postcode
+   Try txtStreet1.text = Branch!street1
+   Try txtStreet2.text = Branch!street2
+   Try txtSuburb.text = Branch!town
+   Try txtPostcode.text = Branch!postcode
    txtTag.SetFocus   
    '------------------------------------------
    'Get the comms for this organisation/branch
@@ -2236,7 +2183,7 @@ Public Function Employee_Workplace_Select()
    cvwPersonContacts.Clear()
    Branch_Comms_Get()
    bExit = False  
-   columnview1.Visible = False     
+ 
    
 End
 
@@ -2284,23 +2231,24 @@ Public Sub Person_Select(person As Collection)
    Try txtPostcode.text = person!postcode 
    'this is a bit arbitrary fixme test me
    If fk_branch Then Branch_Comms_Get()
-   If IsNull(comms) Then
+ '  If IsNull(comms) Then
       If fk_person Then Person_Comms_Get()
-   End If
+  ' End If
    bExit = False  
    
 End
 
 Public Sub Person_By_Occupation_Get()
-   '-----------------------------------------------------------------------
-   ' Gets a list of categories of occupations, presented in a list like this
+   '----------------------------------------------------------------------------------
+   ' Gets a list of categories of persons by occupation, presented in a list like this
    ' category .... persons name i.e
    ' cardiologist      Dr Big heart
    ' If > one found popup a list, otherwise auto-accept the single one
    ' of course they may be simple old people not persons FIXME 
-   '-----------------------------------------------------------------------
+   '-----------------------------------------------------------------------------------
    
    Dim address As String 
+   Dim x As Integer
    
    With columnview1
       .Visible = False   
@@ -2308,26 +2256,27 @@ Public Sub Person_By_Occupation_Get()
    End With
    If Trim(txtOccupation.text) = "" Then Return 
    txtOccupation.ReadOnly = True                                                          'prevent further typing    
-   persons = modReferralsDBI.Persons_Get_By_Occupation(Trim(txtOccupation.text))      'get list of persons/persons
+   persons = modutil.Copy_Collection_Keyed_Sequentially(modReferralsDBI.Persons_Get_By_Occupation(Trim(txtOccupation.text)))      'get list of persons/persons
    If persons.count <> 0 Then                                                         'if have one or more load to columnvie
       For Each person In persons
-         columnview1.Add(person!pk_view, 0)
-         columnview1[person!pk_view][0] = person!occupation
-         columnview1[person!pk_view][1] = person!wholename
-         columnview1.Columns[2].width = 150
+         columnview1.Add(x, 0)
+         columnview1[x][0] = person!occupation
+         columnview1[x][1] = person!wholename
          If Not IsNull(person!organisation) Then
-            columnview1[person!pk_view][2] = person!organisation & " " & person!branch
+            columnview1[x][2] = person!organisation & " " & person!branch
          Else
-            columnview1[person!pk_view][2] = ""
+            columnview1[x][2] = ""
          Endif
          Try address = Trim(person!street1 & " " & person!street2)
          Try address &= person!town & " " & person!postcode
-         columnview1[person!pk_view][3] = address
+         columnview1[x][3] = address
+         Inc x
       Next 
       If persons.count = 1 Then                                                      'only one?, just display this instance
          Person_Select(person)
          Goto Unlock_Textbox
-      Else                                                                               'otherwise popup the columnview.
+      Else     
+          modUtil.Columnview_Columns_Set_Size(columnview1, lblmeasure) 'otherwise popup the columnview.
          With columnview1
             .Visible = True
             .Raise
@@ -2335,6 +2284,7 @@ Public Sub Person_By_Occupation_Get()
          End With 
       End If
    End If   
+   Goto Unlock_Textbox
    
 Unlock_Textbox:
    txtOccupation.ReadOnly = False  
@@ -2347,6 +2297,8 @@ Public Sub Organisation_Get()
    'If branches of an organisation  exist to match the text, auto-select or show a list
    '-----------------------------------------------------------------------------------
    
+   Dim x As Integer
+   
    With columnview1
       .Visible = False 
       .Clear
@@ -2354,24 +2306,27 @@ Public Sub Organisation_Get()
    If Trim(txtOrganisation.text) = "" Then Return 
    fk_organisation = 0
    fk_branch = 0
-   branches = modContactsDBI.Organisations_Get(Trim(txtOrganisation.text))
+   branches = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Organisations_Get(Trim(txtOrganisation.text)))
    If Not branches.count Then Return 
    '-----------------------------------------------------------------------------------
    For Each branch In branches
-      Columnview1.Add(branch!pk_view, 0)
-      Columnview1[branch!pk_view][0] = Branch!organisation
-      Columnview1[branch!pk_view][1] = Branch!branch
-      Columnview1[branch!pk_view][2] = Trim(Branch!street1 & " " & Branch!street2)
-      Columnview1[branch!pk_view][3] = Branch!suburb & " " & Branch!postcode
+      Columnview1.Add(x, 0)
+      Columnview1[x][0] = Branch!organisation
+      Columnview1[x][1] = Branch!branch
+      Columnview1[x][2] = Trim(Branch!street1 & " " & Branch!street2)
+      Columnview1[x][3] = Branch!suburb & " " & Branch!postcode
+      Inc x
    Next 
    
    If branches.count = 1 Then 
       Branch_Select(branch)
    Else
+      modUtil.Columnview_Columns_Set_Size(columnview1, lblmeasure)
       columnview1.Visible = True
       columnview1.Raise
       columnview1.tag = txtOrganisation   
    End If   
+   
    
 End
 
@@ -2490,7 +2445,6 @@ Public Function Inclusions_Construct(Inclusions As Collection, templ As String, 
    Dim inclusion As Collection 
    Dim document As Collection
    
-   If IsNull(Inclusions) Then Return ""
    If Inclusions.count = 0 Then Return ""
    
    For Each inclusion In Inclusions
@@ -2669,7 +2623,7 @@ Public Sub teLetter_Drop()
    'Accept drop only at moment from known image source
    'Inserts this picture at the current cursor position
    ' FIXME fixing eg use mime type To know data - type
-   'and insert app<p>Thankyou forseeing Liam for an assessment of speech and language, fundable under the Medicare autism items.</p>
+   'and insert appropriately eg   "text/x-moz-url"
    '----------------------------------------------------------
    
    Dim pic As New Picture
@@ -2911,8 +2865,7 @@ Public Sub HSplitEditArea_Communications_Resize()
       columnview1.width = txtCategory.Width - 5
    Endif
    Form_Copy_To.txtCopyTo.width = HBox_ReferralDate.width - lblReferralDate.Width
-   '  Form_Copy_To.HBox_CopyCategory.width = Form_Copy_To.HBox_CopyTo.width - Form_Copy_To.txtCopyTo.width
-
+   
 End
 
 Public Sub Vsplit_Referrals_Resize()
@@ -2929,11 +2882,12 @@ Public Sub Form_Resize()
    Vsplit_Referrals_Resize()
    HSplitEditArea_Communications_Resize()
    HSplit_Referrals_This_Consult_Resize()
+   
 End
 
 Public Sub HSplit_Referrals_This_Consult_Resize()
    
    lblReferralsThisConsultation.Width = HSplit_Letter_Include.children[0].width
    lblDocumentsPrinted.width = HSplit_Letter_Include.children[1].width
-
+   
 End

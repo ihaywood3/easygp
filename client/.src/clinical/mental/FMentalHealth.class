@@ -139,14 +139,14 @@ Public Sub Init(cons As CConsult)
    '-------------------------------------------------------------------------------
    
    currentconsult = cons
-   Try Settings_Load()             
+   Settings_Load()             
    textbox_help = modMentalHealthDBI.textbox_help_Get() 'LinkInput textboxes to help prompts
    Form_K10 = New FK10OutcomeTool(VBoxK10)
    Form_DASS21 = New FDASS21AssessmentTool(VBox_DASS)
    '----------------------
    'Init some gui-elements
    '----------------------
-   cvwPlans.Columns.Count = 7
+   cvwPlans.Columns.Count = 4
    iDefault_Distress_Tool = const.mentalhealth_assessmentdistresstool_K10
    columnview1.Columns.count = 2          'the popup columnview for terms
    '------------------------------------------------------------------
@@ -174,6 +174,134 @@ Public Sub Save()
    Dim sK10html As String 
    Dim bNewPlan As Boolean   
    Dim P As Integer
+   Dim mentalhealthplan As CRow
+   Dim TeamCareMember As CRow
+   '----------------------------------------------------------------------
+   'If no padding, then no data was changed, or if sample data, don't save
+   '----------------------------------------------------------------------
+   If Not (HBox_EditArea.Padding) Then Return  'no data to save
+   If Not Plan_Is_Valid() Then Return
+   '----------------------------
+   '   pk serial NOT NULL,
+   '   fk_consult integer NOT NULL, -- key to clin_consult.consult > gives Dr and date plan formulated
+   '   fk_pasthistory integer, -- key to clin_history.past_history if not null is linked to health issue
+   '   diagnosis text NOT NULL, -- the diagnosis may be free text but could be coded
+   '   fk_coding_system integer, -- if not null this is the coding system used for the coded diagnosis
+   '   fk_code text,
+   '   presenting_problems text,
+   '   bio_psycho_social text,
+   '   mental_state_examination text,
+   '   fk_lu_risk_to_others integer, -- key to lu_risk_to_others table
+   '   fk_stress_assessment integer, -- key to stress_assessment table eg results of K10
+   '   risk_harm_comments text,
+   '   goals text,
+   '   treatment_referrrals text,
+   '   patient_action text,
+   '   review_date date,
+   '   html text,
+   '   
+   '  OK: First prompt the user if they seem to be reviewing an existing plan
+   '-------------------------------------------------------------------------
+   Inc Application.Busy
+   
+   
+   If fk_plan And fk_lu_plan_type = Const.mentalhealth_plantype_review Then
+      sMsg = "You are saving an existing plan.\n\n"
+      "Confirm save as a review?"
+      If Message.Warning(smsg, "Yes", "No") = 2 Then
+         Return
+      End If
+      fk_plan = 0
+      bNewPlan = True  
+   End If   
+   If bSkipK10 = False Then                              'will only be true is user answered Yes to skin on plan validation
+      currentK10 = Form_K10.Get_CurrentK10()
+      sK10html = K10_construct_html(currentK10)
+   End If   
+   mentalhealthplan = New CRow
+   If fk_plan <> 0 Then
+      mentalhealthplan.put_unchanged(fk_plan, "fk_plan")
+   End If
+   mentalhealthplan!fk_lu_plan_type = fk_lu_plan_type
+   mentalhealthplan!fk_consult = currentconsult.GetPK()
+   If fk_pasthistory <> 0 Then
+      mentalhealthplan!fk_pasthistory = fk_pasthistory
+   End If
+   mentalhealthplan!diagnosis = Trim(txtdiagnosis.text)
+   mentalhealthplan!fk_coding_system = fk_coding_system
+   mentalhealthplan!fk_code = fk_code
+   mentalhealthplan!presenting_problems = Trim(txtpresentingProblems.text)
+   mentalhealthplan!bio_psycho_social = Trim(txtBioPsychoSocial.text)
+   mentalhealthplan!mental_state_examination = Trim(txtMentalStateExamination.text)
+   If fk_lu_risk_to_others <> const.mentalhealth_risk_undefined Then  
+      mentalhealthplan!fk_lu_risk_to_others = fk_lu_risk_to_others
+   End If
+   mentalhealthplan!risk_harm_comments = Trim(txtRisk.text)
+   mentalhealthplan!goals = Trim(txtGoals.text)
+   mentalhealthplan!treatment_referrrals = Trim(txtTreatment.text)   
+   mentalhealthplan!relapse_plan = Trim(txtRelapsePlan.text)
+   mentalhealthplan!review_date = Val(txtReviewDate.text)
+   mentalhealthplan!html = Plan_Html_Construct().GetData()
+   sProgressNoteHtml = mentalhealthplan!html
+   sProgressNoteHtml = Replace(sProgressNoteHtml, "<HTML><BODY>", "")
+   sProgressNoteHtml = Replace(sProgressNoteHtml, "</BODY></HTML>", "")
+   sProgressNoteHtml = "<HR><small><small>" & sProgressNoteHtml
+   If Not bSkipK10 Then 
+      sProgressNoteHtml &= K10_construct_html(currentK10) & "</small></small><HR>"
+   End If   
+   '-----------------------------------------------------------------------------------------------------------------
+   'ok, save the progress note first, to have the fk_progressnote to add to the mentalhealthplan table, then the plan
+   'or edit progress note if this plan was done within the context of today's consultation.
+   '------------------------------------------------------------------------------------------------------------------
+   mentalhealthplan!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNoteHtml, const.cSection_MentalHealth, fk_progressnote, "mental health plan", 0, False)
+  ' fk_plan = modMentalHealthDBI.Save(currentconsult, pk_view, fk_plan, mentalhealthplan)
+   mentalhealthplan.Save("clin_mentalhealth.mentalhealth_plan", "fk_plan")
+   If Not bSkipK10 Then 
+      modMentalHealthDBI.Save_K10(currentConsult, old_K10, mentalhealthplan!fk_plan, currentK10)
+   End If  
+   '--------------------------------------------------------------------------------------
+   'If the plan has been re-saved as a follow up, then insert the current fk_plan into the
+   'team care members collection
+   '---------------------------------------------------------------------------------------
+      For Each collection_member In TeamCareMembers
+         TeamCareMember = New CRow
+         If Not IsNull(collection_member!pk) Then 
+            TeamCareMember.put_unchanged(collection_member!pk, "fk_member")
+         Endif
+         TeamCareMember!fk_plan = mentalhealthplan!fk_plan
+         TeamCareMember!fk_organisation = collection_member!fk_organisation
+         TeamCareMember!fk_branch = collection_member!fk_branch
+         TeamCareMember!fk_employee = collection_member!fk_employee
+         TeamCareMember!fk_person = collection_member!fk_person
+         TeamCareMember!responsibility = collection_member!responsibility
+         TeamCareMember.Save("clin_mentalhealth.team_care_members", "fk_member")
+      Next
+  
+  ' modMentalHealthDBI.Save_TeamCareMembers(teamcaremembers_old, TeamCareMembers, fk_plan)
+   modPrinting.PrintHtml(mentalhealthplan!html)
+   modDBConnect.CommitTrans()
+   EditArea_Notify_Datachanged(False)
+   FClinical.Refresh_AllPreviousNotes()
+   Reload()
+   Dec Application.Busy
+   
+End
+
+Public Sub Save_old()
+   '--------------------------------------------------------------------------
+   'Saves the current mental health plan
+   'First validate enough information for the save
+   'In view of fact that K10 not validated for children or often not indicated
+   'Just prompt if K10 not completed, rather than enforce
+   '---------------------------------------------------------------------------
+   
+   Dim sMsg As String
+   Dim sProgressNoteHtml As String 
+   Dim sK10html As String 
+   Dim bNewPlan As Boolean   
+   Dim P As Integer
+   Dim plan As CRow
+   Dim TeamCareMember As CRow
    '----------------------------------------------------------------------
    'If no padding, then no data was changed, or if sample data, don't save
    '----------------------------------------------------------------------
@@ -207,7 +335,7 @@ Public Sub Save()
       If Message.Warning(smsg, "Yes", "No") = 2 Then
          Return
       End If
-      fk_plan = -1
+      fk_plan = 0
       bNewPlan = True  
    End If   
    If bSkipK10 = False Then                              'will only be true is user answered Yes to skin on plan validation
@@ -284,9 +412,11 @@ Public Sub Reload()
 End
 
 Public Sub Plans_Refresh()
-   '----------------------------------------------------------
-   'Refreshes the plans collection and puts back into the list
-   '----------------------------------------------------------
+   '-----------------------------------------------------------------
+   'Refreshes the plans collection and puts back into the columnview
+   'The plan collection is copied sequentially so that the zero index
+   'will match the columnview key
+   '-----------------------------------------------------------------
    
    Dim plan As Collection
    Dim x As Integer
@@ -294,45 +424,39 @@ Public Sub Plans_Refresh()
    Dim sPerson As String
    
    currentconsult.Refresh("mentalhealthplans")
-   mentalhealthplans = currentconsult!mentalhealthplans  
+   mentalhealthplans = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!mentalhealthplans) ' 
    cvwPlans.Clear()           'clear the list    
    '-------------------------------------------------
    'Display the plan: Date/diagnosis/Type/Prepared By
    '-------------------------------------------------
    For Each mentalhealthplan In mentalhealthplans 
-      x = mentalhealthplan!pk_mentalhealth_plan
       cvwPlans.Add(x, 0)
-      cvwPlans[x][0] = Format(mentalhealthplan!plan_date, "dd/mm/yyyy")
-      cvwPlans[x][1] = "  "
-      cvwPlans[x][2] = mentalhealthplan!diagnosis
-      cvwPlans[x][3] = "  "
-      cvwPlans[x][4] = mentalhealthplan!type
-      cvwPlans[x][5] = "  "
-      cvwPlans[x][6] = "Prepared by: " & mentalhealthplan!title & " " & mentalhealthplan!wholename
+      cvwPlans[x][0] = Format(mentalhealthplan!plan_date, "dd/mm/yyyy") & "  "
+      cvwPlans[x][1] = mentalhealthplan!diagnosis & "  "
+      cvwPlans[x][2] = mentalhealthplan!type & "  "
+      cvwPlans[x][3] = "Prepared by: " & mentalhealthplan!title & " " & mentalhealthplan!wholename
       Inc x
    Next
-   
+   modUtil.Columnview_Columns_Set_Size(cvwPlans, lblMeasure)
+
 End
-
-
 
 Public Sub Settings_Save()
    
-   Settings["MentalHealth/HSplit_MentalHealthPlans.Layout"] = HSplit_MentalHealthPlans.Layout
-   Settings["MentalHealth/VSplit_EditArea_Right.Layout"] = VSplit_EditArea_Right.Layout
-   Settings["MentalHealth/VSplit_EditArea_Left.Layout"] = VSplit_EditArea_Left.Layout
-   Settings["MentalHealth/HSplit_EditArea.Layout"] = HSplit_EditArea.Layout
-   Settings["MentalHealth/VSplit_MentalHealth.Layout"] = VSplit_MentalHealth.Layout
+   Settings["FMentalHealth/VSplit_EditArea_Right.Layout"] = VSplit_EditArea_Right.Layout
+   Settings["FMentalHealth/VSplit_EditArea_Left.Layout"] = VSplit_EditArea_Left.Layout
+   Settings["FMentalHealth/HSplit_EditArea.Layout"] = HSplit_EditArea.Layout
+   Settings["FMentalHealth/VSplit_MentalHealth.Layout"] = VSplit_MentalHealth.Layout
    
 End
 
 Private Sub Settings_Load()
    
-   Try HSplit_MentalHealthPlans.Layout = Settings["MentalHealth/HSplit_MentalHealthPlans.Layout"]
-   Try VSplit_EditArea_Right.Layout = Settings["MentalHealth/VSplit_EditArea_Right.Layout"]
-   Try VSplit_EditArea_Left.Layout = Settings["MentalHealth/VSplit_EditArea_Left.Layout"] 
-   Try HSplit_EditArea.Layout = Settings["MentalHealth/HSplit_EditArea.Layout"] 
-   Try VSplit_MentalHealth.Layout = Settings["MentalHealth/VSplit_MentalHealth.Layout"]
+   VSplit_EditArea_Right.Layout = Settings["FMentalHealth/VSplit_EditArea_Right.Layout", modUtil.VSplit([72, 88, 116, 164])]
+   VSplit_EditArea_Left.Layout = Settings["FMentalHealth/VSplit_EditArea_Left.Layout", modUtil.VSplit([1, 1, 1, 1])] 
+   HSplit_EditArea.Layout = Settings["FMentalHealth/HSplit_EditArea.Layout", modUtil.HSplit([371, 405])] 
+   VSplit_MentalHealth.Layout = Settings["FMentalHealth/VSplit_MentalHealth.Layout", modUtil.VSplit([524, 89])]
+   cvwPlans.font = Font[Settings["FMentalHealth/cvwPlans", "DejaVu Sans,9"]]
    
 End
 
@@ -559,11 +683,12 @@ Public Function Plan_Is_Valid() As Boolean
    'Does minimal validation to ensure a valid plan
    'returns true if valid, false if not
    '----------------------------------------------  
+   
    Dim sMsg As String
    
    If bsampledata Then
       Message.info("The sample plan cannot be saved")
-     Return 
+      Return 
    End If   
    '------------------------------------------------------------------------------------
    'First, make sure a K10 has been filled out, or at least remind user if they forgot
@@ -574,7 +699,7 @@ Public Function Plan_Is_Valid() As Boolean
          If TabStrip1.index <> 1 Then
             TabStrip1.index = 1
          End If  
-        Return 
+         Return 
       Else
          bSkipK10 = True
       End If
@@ -588,16 +713,16 @@ Public Function Plan_Is_Valid() As Boolean
    End If  
    If Trim(txtDiagnosis.text) = "" Then 
       txtDiagnosis.SetFocus()
-     Return 
+      Return 
    End If
    If fk_coding_system = const.coding_none_selected Then  'icpc and icd10 codes are strings"
       smsg = "Please select a valid coded term by typing in the coded terms textbox and selecting from the popup list."
       Message.Info(smsg)
       With txtCodedTerm
-            .Background = Color.rgb(95, 255, 175)
-            .SetFocus()
+         .Background = Color.rgb(95, 255, 175)
+         .SetFocus()
       End With
-     Return 
+      Return 
    End If   
    If Trim(txtpresentingProblems.text) = "" Then
       txtpresentingProblems.SetFocus()
@@ -605,7 +730,7 @@ Public Function Plan_Is_Valid() As Boolean
    If Not (IsDate(txtReviewDate.text)) Then
       txtReviewDate.text = ""
       txtReviewDate.SetFocus
-     Return 
+      Return 
    End If
    Return True
    
@@ -687,16 +812,16 @@ Public Sub New_Entry()
    'Called from FClinical where the button tag is a generic 'New Entry'
    'I've left the orginal nomenclature here for easier reading of the code
    '----------------------------------------------------------------------   
-
+   
    Plan_New()
-
+   
 End
 
 Public Sub Plan_New()
    '------------------------------------------------------------------------------
    'User wants a new plan - set focus to presenting symptoms and put up mini-help
    '------------------------------------------------------------------------------ 
-
+   
    If HBox_EditArea.padding = 1 Then
       If Plan_Is_Valid() Then
          If Message.Question("Wipe current mental health plan?", "Yes", "No") = 2 Then Return 
@@ -709,7 +834,7 @@ Public Sub Plan_New()
    fk_lu_risk_to_others = Const.mentalhealth_risk_undefined
    fk_lu_plan_type = Const.mentalhealth_plantype_initial
    fk_progressnote = -1
-   fk_plan = -1
+   fk_plan = 0
    fk_organisation = 0
    fk_employee = 0
    fk_person = 0
@@ -771,7 +896,7 @@ Public Sub Plan_Edit()
    
 End
 
-Public Sub Plan_Display()
+Public Sub Plan_Display(plan As Collection)
    '------------------------------------------------------------------------------
    'User has clicked on an existing mental health plan display in the editing area
    'pk_view is set by user clicking on the plans list: cvwPlans_click()
@@ -779,6 +904,86 @@ Public Sub Plan_Display()
    'fk_pasthsitory may not be >0 as the problem may not have been entered into th
    'health issues (past history) section although it should have been
    '------------------------------------------------------------------------------
+
+  
+   
+   HBox_EditArea.Enabled = False 
+   EditArea_Clear()
+   cvwPlans.MoveCurrent
+   plan = mentalhealthplans[cvwPlans.Item.key]
+  ' pk_view = cvwPlans.Item.Key
+   '--------------------------------------------------------------------------
+   'If the plan is edited and the user DOES NOT CHANGE THE PLAN TYPE TO REVIEW
+   'it will be saved as the orginal plan (modified) and any progress notes
+   'edited. 
+   '---------------------------------------------------------------------------
+   fk_plan = plan!pk_mentalhealth_plan
+   fk_code = Plan!fk_code
+   fk_coding_system = Plan!fk_coding_system
+   '--------------------------------------------------------------------
+   'Associated progress notes - difficult: arbitary decision
+   'Allow editing of the progress note when changed on the same day only
+   'otherwise a new note is associated with it ie fk_progressnote = -1
+   '--------------------------------------------------------------------
+   If Not IsNull(Plan!fk_progressnote) Then
+      If Format(Now, "dd/mm/yyyy") = Format(Plan!plan_date, "dd/mm/yyyy") Then 
+         fk_progressnote = Plan!fk_progressnote
+      End If
+   End If 
+   Try fk_lu_risk_to_others = Plan!fk_lu_risk_to_others
+   fk_lu_plan_type = Plan!fk_lu_plan_type  'can be changed
+   Select Case fk_lu_plan_type
+      Case Const.mentalhealth_plantype_initial
+         rbInitialPlan.value = True
+      Case Const.mentalhealth_plantype_review
+         rbReviewPlan.Value = True  
+   End Select
+   '----------------------
+   'Populate the textboxes
+   '----------------------  
+   bExit = True
+   txtdiagnosis.text = Plan!diagnosis
+   txtCodedTerm.text = Plan!coded_term & " (" & Plan!fk_code & ")" 
+   txtMentalStateExamination.text = Plan!mental_state_examination
+   txtpresentingProblems.text = Plan!presenting_problems
+   txtBioPsychoSocial.text = Plan!bio_psycho_social
+   txtMentalStateExamination.text = Plan!mental_state_examination
+   Select Case fk_lu_risk_to_others
+      Case Const.mentalhealth_risk_none
+         rbHarmNone.value = True
+      Case Const.mentalhealth_risk_low
+         rbHarmLow.value = True
+      Case Const.mentalhealth_risk_medium
+         rbHarmMedium.value = True
+      Case Const.mentalhealth_risk_high
+         rbHarmHigh.value = True
+   End Select
+   txtRisk.text = Plan!risk_harm_comments
+   txtGoals.text = Plan!goals
+   txtTreatment.text = Plan!treatment_referrrals 
+   txtRelapsePlan.text = Plan!relapse_plan 
+   txtPlanDate.text = Format(Plan!plan_date, "dd/mm/yyy")
+   txtReviewDate.text = Format(Plan!review_date, "dd/mm/yyy")
+   Old_K10 = modMentalHealthDBI.Get_K10(fk_plan)
+   Form_K10.Init("FMentalHealth", old_k10)
+   lblK10Score.text = Form_K10.Get_CurrentK10_Score() & "/50"
+   tbNewK10.visible = False
+   TeamCareMembers_Get()
+   bExit = False
+   EditArea_Notify_Datachanged(False)  
+   
+End
+
+Public Sub Plan_Display_old()
+   '------------------------------------------------------------------------------
+   'User has clicked on an existing mental health plan display in the editing area
+   'pk_view is set by user clicking on the plans list: cvwPlans_click()
+   'extract the keys needed, otherwise, just load the textboxes
+   'fk_pasthsitory may not be >0 as the problem may not have been entered into th
+   'health issues (past history) section although it should have been
+   '------------------------------------------------------------------------------
+
+   Dim Plan As Collection
    
    HBox_EditArea.Enabled = False 
    EditArea_Clear()
@@ -854,9 +1059,9 @@ Public Sub EditAreaButtons_Click()
    "all the data you have entered\n\n"
    "Are you sure you want To continue?"
    Select Case Last.tag
-      ' Case "help"
-      '    FClinical.Help_Show("mental-health.html", "Help:Mental Health", True)
-       Case "sample plan"
+         ' Case "help"
+         '    FClinical.Help_Show("mental-health.html", "Help:Mental Health", True)
+      Case "sample plan"
          If HBox_EditArea.Padding = 1 Then
             If Message.Warning(smsg, "Yes", "No") = 2 Then Return 
          End If
@@ -913,6 +1118,7 @@ Public Sub EditArea_Clear()
    Vbox_Psychologists.Visible = False  
    taMemo.Clear
    pk_view = 0
+   fk_progressnote = 0
    bSampleData = False  
    VBox_ColumnView.Visible = False  
    bExit = False   
@@ -924,6 +1130,7 @@ End
 Public Sub EditArea_TxtBox_GotFocus()
    
    Dim sPrompts As String 
+   
    VBox_ColumnView.Visible = False  
    Last.BackGround = Color.rgb(95, 255, 175)
    Help_Prompt_Input(Last.tag)
@@ -1111,11 +1318,11 @@ Public Sub EditArea_ChkBoxes_Click()
    
 End
 
-Public Sub cvwPlans_Click()
+Public Sub cvwPlans_Select()
    
-   cvwPlans.MoveCurrent()
-   Plan_Display()
-   
+   cvwPlans.MoveCurrent
+   Plan_Display(mentalhealthplans[cvwPlans.Item.key])
+
 End
 
 Public Sub cvwPlans_Menu()
@@ -1142,6 +1349,10 @@ Public Sub mnuMentalHealthPlans_Click()
          Plan_Undelete()
       Case "preview"
          Plan_Preview()
+      Case "font"
+         modUtil.Columnview_SetFont(cvwPlans, "FMentalHealth")
+      Case "help"
+         modUtil.NotImplemented("Help for Mental Health Plans")
       Case "reprint"
          modPrinting.PrintHtml(mentalhealthplans[fk_plan]!html)
    End Select
@@ -1329,43 +1540,43 @@ Public Sub TeamCareMembers_RefreshList()
    Dim aCollection As Collection
    Dim x As Integer
    
-   TeamCareMembers = TeamCareMembers_RefreshCollection(TeamCareMembers)
+  ' TeamCareMembers = TeamCareMembers_RefreshCollection(TeamCareMembers)
    cvwTeamCareMembers.Clear()
    For Each TeamCareMember In TeamCareMembers
       cvwTeamCareMembers.Add(cvwTeamCareMembers.count, TeamCareMembers_MakeSummary(TeamCareMember))
    Next
-   cvwTeamCareMembers.MoveLast()
+  ' cvwTeamCareMembers.MoveLast()
    
 End
 
-Public Function TeamCareMembers_RefreshCollection(The_collection As Collection) As Collection  
-   '-----------------------------------------------------
-   'When an item is removed from a collection, its count
-   'not longer reflects its internal key order
-   'so rebuild it, or use just to copy a collection
-   're-ordered
-   '-----------------------------------------------------
-   
-   Dim NewCol As New Collection 
-   Dim member As Collection 
-   Dim teammember As Collection 
-   
-   For Each member In The_collection
-      teammember = New Collection
-      teamMember!pk = member!pk
-      teammember!fk_pasthistory = member!fk_pasthistory
-      teammember!fk_organisation = member!fk_organisation
-      teammember!fk_branch = member!fk_branch
-      teammember!fk_employee = member!fk_employee
-      teammember!fk_person = member!fk_person
-      teammember!wholename = member!wholename
-      teammember!summary = member!summary
-      teammember!responsibility = member!responsibility
-      NewCol.Add(teammember, NewCol.count)
-   Next
-   Return NewCol 
-   
-End
+' Public Function TeamCareMembers_RefreshCollection(The_collection As Collection) As Collection  
+'    '-----------------------------------------------------
+'    'When an item is removed from a collection, its count
+'    'not longer reflects its internal key order
+'    'so rebuild it, or use just to copy a collection
+'    're-ordered
+'    '-----------------------------------------------------
+'    
+'    Dim NewCol As New Collection 
+'    Dim member As Collection 
+'    Dim teammember As Collection 
+'    
+'    For Each member In The_collection
+'       teammember = New Collection
+'       teamMember!pk = member!pk
+'       teammember!fk_pasthistory = member!fk_pasthistory
+'       teammember!fk_organisation = member!fk_organisation
+'       teammember!fk_branch = member!fk_branch
+'       teammember!fk_employee = member!fk_employee
+'       teammember!fk_person = member!fk_person
+'       teammember!wholename = member!wholename
+'       teammember!summary = member!summary
+'       teammember!responsibility = member!responsibility
+'       NewCol.Add(teammember, NewCol.count)
+'    Next
+'    Return NewCol 
+'    
+' End
 
 Public Sub TeamCareMembers_Get()
    '-------------------------------------------------------------
@@ -1375,13 +1586,28 @@ Public Sub TeamCareMembers_Get()
    'corresponding to the cvwTeamMembers.count value
    '-------------------------------------------------------------
    
-   TeamCareMembers_old = modMentalHealthDBI.TeamCareMembers_Get(fk_plan) 'the old data - never changed
-   TeamCareMembers = TeamCareMembers_RefreshCollection(TeamCareMembers_old)
+   TeamCareMembers = modUtil.Copy_Collection_Keyed_Sequentially(modMentalHealthDBI.TeamCareMembers_Get(fk_plan))
    TeamCareMembers_RefreshList()
    cvwTeamCareMembers.MoveFirst()
-   cvwTeamCareMembers_Click()
    cvwTeamCareMembers.Item.Selected = True
-   cvwTeamCareMembers_Select()
+    
+End
+
+Public Sub TeamCareMembers_Get_old()
+   '-------------------------------------------------------------
+   'Get the team care members from backend, they are keyed by the
+   'clin_history.team_care_members.pk, no good if we want to add
+   'new items to the list, so re-order the collection with keys
+   'corresponding to the cvwTeamMembers.count value
+   '-------------------------------------------------------------
+   
+   ' TeamCareMembers_old = modMentalHealthDBI.TeamCareMembers_Get(fk_plan) 'the old data - never changed
+   ' TeamCareMembers = TeamCareMembers_RefreshCollection(TeamCareMembers_old)
+   ' TeamCareMembers_RefreshList()
+   ' cvwTeamCareMembers.MoveFirst()
+   ' cvwTeamCareMembers_Click()
+   ' cvwTeamCareMembers.Item.Selected = True
+   ' cvwTeamCareMembers_Select()
    
 End
 
@@ -1572,13 +1798,13 @@ Public Sub cvwTeamCareMembers_Menu()
    
 End
 
-Public Sub cvwTeamCareMembers_Click()
-   
-   If Not cvwTeamCareMembers.count Then Return 
-   cvwTeamCareMembers.MoveCurrent()
-   iTeamCareMember = cvwTeamCareMembers.Item.key
-   
-End
+' Public Sub cvwTeamCareMembers_Click()
+'    
+'    If Not cvwTeamCareMembers.count Then Return 
+'    cvwTeamCareMembers.MoveCurrent()
+'    iTeamCareMember = cvwTeamCareMembers.Item.key
+'    
+' End
 
 Public Sub cvwTeamCareMembers_Select()
    '----------------------------------------------------------------
@@ -1672,6 +1898,7 @@ Public Sub TabStrip1_Click()
          tbNewK10.visible = True
    End Select
    tbFocus.SetFocus() 'have to focus on something
+   
 End
 
 Public Function K10_construct_html(currentK10 As Collection) As String 'parameter not needed, please leave it in for the moment

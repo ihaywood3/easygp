@@ -1,6 +1,6 @@
 alter table clin_history.recreational_drugs add column fk_progressnote integer not null;
 comment on column clin_history.recreational_drugs.fk_progressnote is
-'of not 0=was imported then links to the progress note for this drug';
+'if not 0=was imported then links to the progress note for this drug';
 
 DROP VIEW clin_history.vwrecreationaldrugsused;
 

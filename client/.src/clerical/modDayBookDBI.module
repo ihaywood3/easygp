@@ -4,126 +4,240 @@
 '   "  and "
 '   "       concluded = false and deleted = False  AND fk_staff_destination = 1 "
 '   "  ) as total"
-'   
+'
 
 Public Function Inbox_Document_Count(fk_staff As Integer) As Result
    '-----------------------------------------------------------------------------------------------
-   'IAN FIXME combine me into one clever query  
+   'IAN FIXME combine me into one clever query
    'Gets all the different types of documents outstanding, and works out how many in each category
    'note:  fk_lu_provider_type is not null is included because a msh_sending_entity may not have
    'been allocated to a real provider
    '----------------------------------------------------------------------------------------------
-   Dim sql As String 
-   Dim doc_types As Collection 
-   Dim doc_type As Collection 
-   Dim final As Collection 
-   Dim R As Result 
+
+   Dim sql As String
+   Dim doc_types As Collection
+   Dim doc_type As Collection
+   Dim final As Collection
+   Dim R As Result
+
    sql = "SELECT distinct fk_lu_provider_type as pk_lu_provider_type, provider_type FROM documents.vwdocuments "
-         "where concluded = false and deleted = False  AND fk_lu_provider_type is not null AND fk_staff_destination = "
+   "where concluded = false and deleted = False  AND fk_lu_provider_type is not null AND fk_staff_destination = "
    sql &= fk_staff & " ORDER BY fk_lu_Provider_type "
    doc_types = modDBConnect.exec_query_collection(sql)
    sql = ""
-   If doc_types.count Then 
+   If doc_types.count Then
       For Each doc_type In doc_types
-           sql &= " Select count(pk_document) as total, ('" & doc_type!provider_type & "'::TEXT) as provider_type " 
-           sql &= "From documents.vwDocuments Where concluded = False And deleted = False AND fk_staff_destination = " & fk_staff 
-           sql &= " AND fk_lu_provider_type =  " & doc_type!pk_lu_provider_type
-           sql &= " UNION "
+         sql &= " Select count(pk_document) as total, ('" & doc_type!provider_type & "'::TEXT) as provider_type "
+         sql &= "From documents.vwDocuments Where concluded = False And deleted = False AND fk_staff_destination = " & fk_staff
+         sql &= " AND fk_lu_provider_type =  " & doc_type!pk_lu_provider_type
+         sql &= " UNION "
       Next
       sql = Left(sql, Len(sql) - 6)
-      R = modDBConnect.exec_query(sql)  
-   End If   
-   Return R   
+      R = modDBConnect.exec_query(sql)
+   End If
+   Return R
+
 End
-Public Sub Staff_Tasks_Get_Notes(fk_task As Integer) As Collection 
+
+Public Sub Staff_Tasks_Get_Notes_For_Document(fk_document As Integer) As Collection
+   '---------------------------------------------------------------------
+   'Gets all the notes made by staff who are working on a document's task
+   '---------------------------------------------------------------------
+   'fixme fk_row in the backend is fk_document so should be renamed. in the tasks table and all queries.
+
+   Return modDBConnect.exec_query_collection("Select * from clerical.vwtaskscomponentandsnotes where fk_row =  " & fk_document & " ORDER BY date_note")
+
+End
+
+Public Sub Staff_Tasks_Get_Notes(fk_task As Integer) As Collection
    '-----------------------------------------------------------------
    'Gets any notes associated with the staff task
    '-----------------------------------------------------------------
-  '  Return modDBConnect.exec_query_collection("Select * from admin.vwTasksNotes where fk_task =  " & fk_task & " ORDER BY date")
+   '  Return modDBConnect.exec_query_collection("Select * from admin.vwTasksNotes where fk_task =  " & fk_task & " ORDER BY date")
    ' Return modDBConnect.exec_query_collection("Select * from clerical.task_component_notes where fk_task_component =  " & fk_component & " ORDER BY date")
-   Return modDBConnect.exec_query_collection("Select * from clerical.vwtaskscomponentsnotes where fk_task =  " & fk_task & " ORDER BY date")
-   
+
+   Return modDBConnect.exec_query_collection("Select * from clerical.vwtaskscomponentsnotes where fk_task =  " & fk_task & " ORDER BY date, pk_note ASC")
+
 End
 
 Public Sub Staff_Tasks_Get_as_Result(fk_staff As Integer, Optional bOutstanding As Boolean = True) As Result
    '-----------------------------------------------------------------
    'Gets staff tasks, usually outstanding unless doing an audit check
    '-----------------------------------------------------------------
-   Dim sql As String
-   sql = "Select * from Documents.vwStaffTasks_Documents WHERE fk_staff_allocated = " & fk_staff
-   sql &= " AND date_finalised is null ORDER BY fk_urgency"
-   Return modDBConnect.exec_query(sql)
-  
+   '
+   ' Dim sql As String
+   ' sql = "Select * from Documents.vwStaffTasks_Documents WHERE fk_staff_allocated = " & fk_staff
+   ' sql &= " AND date_finalised is null ORDER BY fk_urgency"
+   ' Return modDBConnect.exec_query(sql)
+
 End
 
 Public Sub Staff_Tasks_Get_For_Patient(fk_patient As Integer) As Collection
-  
-  Dim sql As String  
-  sql = "Select * from clerical.vwStaffTasksComponents where fk_patient = " & fk_patient
-  Return modDBConnect.exec_query_collection(sql)
-  
+   'fixme currently not used
+
+   Dim sql As String
+
+   sql = "Select * from clerical.vwStaffTasksComponents where fk_patient = " & fk_patient
+   Return modDBConnect.exec_query_collection(sql)
+
 End
+
 Public Sub Staff_Tasks_Get_Associated(fk_task As Integer, fk_staff_allocated As Integer) As Collection
    '---------------------------------------------------------------------------------------
    'Gets all task components bar that for the staff member viewing their own tasks
    'these are placed in list on the screen so the staff member can see who else is involved
    '---------------------------------------------------------------------------------------
-   Dim sql As String  
+
+   Dim sql As String
+
    sql = "Select * from clerical.vwTasksComponents where fk_task = " & fk_task
    sql &= " AND fk_staff_allocated <> " & fk_staff_allocated
    Return modDBConnect.exec_query_collection(sql)
-  
+
 End
-', Optional sort_order As Integer = const.cSortASC,
-Public Sub Staff_Tasks_Get(fk_staff_allocated_task As Integer, fk_staff_filed_task As Integer, bfk_staff_only As Boolean, Optional fk_row As Integer = 0, Optional completed As Integer = const.cTaskCompletionNo, Optional iTaskRestriction As Integer = const.cTaskRestriction_User, Optional sort_order As String = "ASC") As Collection
-  '----------------------------------------------------------------------------------
+
+Public Function Staff_Tasks_User_Must_Finalise(fk_staff_must_finalise As Integer) As Collection
+   '------------------------------------------------------------------------
+   'gets a list of unfilalised tasks a particular staff member must finalise
+   'from oldest to newest
+   '------------------------------------------------------------------------
+
+   Dim sql As String
+
+   sql = "Select * from  Clerical.vwTasksComponents WHERE "
+   sql &= "fk_staff_must_finalise =" & fk_staff_must_finalise
+   sql &= " and task_deleted = false and component_deleted = false "
+   sql &= " and date_finalised is null "
+   sql &= "ORDER BY date_component_logged ASC"
+   Print sql
+   Return modDBConnect.exec_query_collection(sql)
+
+End
+
+Public Function Staff_Tasks_Get_For_Document(fk_document As Integer) As Collection
+   '-----------------------------------------------------------
+   'gets a list of all tasks attatched to a particular document
+   '-----------------------------------------------------------
+
+   Dim sql As String
+
+   sql = "Select * from  Clerical.vwTasksComponents WHERE fk_row =  " & fk_document
+   Return modDBConnect.exec_query_collection(sql)
+
+End
+
+Public Function Staff_Tasks_Get_For_User(fk_staff As Integer, Optional bComponent_completed As Integer = const.cTaskCompletionNo, Optional filter_patient_name As String = "") As Collection
+   'Gets staff tasks for the user where the task component is/is not completed
+   'the task itself could still be marked as not finalised for example
+   'if someone else has to finalise it
+
+   Dim sql As String
+
+   sql = "Select * from  Clerical.vwTasksComponents WHERE "
+   sql &= "fk_staff_allocated = " & fk_staff & " AND date_component_completed "
+   If bComponent_completed Then
+      sql &= " is not null "
+   Else
+      sql &= " is null "
+   Endif
+   sql &= " AND component_deleted is FALSE "
+   If filter_patient_name <> "" Then
+      sql &= " And patient_wholename ILIKE $$%" & filter_patient_name & "%$$ "
+   Endif
+   SQL &= "ORDER BY fk_patient, fk_component ASC"
+   Return modDBConnect.exec_query_collection(sql)
+
+End
+
+Public Function Staff_Tasks_Get_Critical(fk_staff_allocated As Integer, fk_staff_filed_task As Integer, Optional bcompleted As Boolean = False) As Collection
+   '----------------------------------------------------------------------------------------------------
+   ' Returns a collection of tasks that are regarded as 'critical', not so much in timeline
+   ' but in importance to finish eg. chase up a +ve FOB. The user allocating the task
+   ' must of course have marked the tasks as needing to be verified see FStaffTasks and Verify_completed
+   ' fk_staff_allocated = the person allocated to do the task
+   ' fk_staff_filed_task = the person who filed the task
+   ' ---------------------------------------------------------------------------------------------------
+
+   Dim sql As String
+
+   sql = "Select * from  Clerical.vwTasksComponents WHERE "
+   If fk_staff_allocated Then
+      sql &= "fk_staff_allocated=" & fk_staff_allocated
+   Endif
+   If fk_staff_filed_task Then
+      sql &= "fk_staff_filed_task=" & fk_staff_filed_task
+   Endif
+   sql &= " AND must_verify_completed = TRUE "        'the task must be verified as completed
+   If Not bcompleted Then
+      sql &= " AND date_finalised is null "
+   Else
+      sql &= " AND date_finalised is not null "
+   End If
+   sql &= "  AND task_deleted = False and component_deleted = False "
+   sql &= "ORDER BY date_component_logged "
+   Print sql
+   Return modDBConnect.exec_query_collection(sql)
+
+End
+
+Public Function Staff_Tasks_Get(fk_staff_allocated_task As Integer, fk_staff_filed_task As Integer, bfk_staff_only As Boolean, Optional fk_row As Integer = 0, Optional completed As Integer = const.cTaskCompletionNo, Optional iTaskRestriction As Integer = const.cTaskRestriction_User, Optional sort_order As String = "ASC", Optional filter_patient_name As String = "") As Collection
+   '----------------------------------------------------------------------------------
    'Gets staff tasks
    ' Parameters: fk_staff_allocated_task - the staff person who was allocated the task
-   '           : fk_staff_filed_task     - the staff person who filed the task
-   '           : completed               -  0 = not completed 1 = completed 2 = either
-   '           : iTaskRestriction        - const.cTaskRestriction_user, ..role, ..none
+   ' fk_staff_allocated_task As Integer,  = the person to whom the task was allocated
+   ' fk_staff_filed_task As Integer,      = the person who filed the task
+   ' bfk_staff_only As Boolean,
+   ' Optional fk_row As Integer = 0,
+   ' Optional completed As Integer -  0 = not completed 1 = completed 2 = either
+   ' Optional iTaskRestriction As Integer  - const.cTaskRestriction_user, ..role, ..none
+   ' Optional sort_order As String = "ASC",
+   ' Optional filter_patient_name As String = "" -- filter by patient name
    '-----------------------------------------------------------------------------------
+
    Dim sql As String
-   
-   
+
    sql = "Select * from  Clerical.vwTasksComponents WHERE "
    Select Case iTaskRestriction                                                     'check restriction
       Case const.cTaskRestriction_user                                              'If just the user, only show their tasks
-            If fk_staff_allocated_task Then 
-               sql &= "fk_staff_allocated = " & fk_staff_allocated_task
-            Endif
+         If fk_staff_allocated_task Then
+            sql &= "fk_staff_allocated = " & fk_staff_allocated_task
+         Endif
       Case const.cTaskRestriction_role                                              'if restricted to a role, eg secretary
-        sql &= " fk_role = " & modDBConnect.currentUser!fk_role                     'show all tasks for this role
+         sql &= " fk_role = " & modDBConnect.currentUser!fk_role                     'show all tasks for this role
       Case const.cTaskRestriction_none
-        
-    End Select
-      
-   ' If fk_staff_allocated_task Then 
+
+   End Select
+
+   ' If fk_staff_allocated_task Then
    '     sql = "Select * from  Clerical.vwTasksComponents WHERE fk_staff_allocated  "
-   '    If bfk_staff_only = True Then 
+   '    If bfk_staff_only = True Then
    '       sql &= "="
    '    Else
    '       sql &= "<>"
    '    End If
    '    sql &= fk_staff_allocated_task
-   '  
+   '
    ' End If
+
    If fk_staff_filed_task Then
       sql = "Select * from  Clerical.vwTasksComponents WHERE fk_staff_filed_task  =" & fk_staff_filed_task & " AND fk_staff_allocated <>" & fk_staff_filed_task
    Endif
    If fk_row Then
-     sql &= " AND fk_row = " & fk_row
+      sql &= " AND fk_row = " & fk_row
    Endif
    Select Case completed
-     Case const.cTaskCompletionNo
-         sql &= " AND date_component_completed is null " 
-     Case const.cTaskCompletionYes
-        sql &= " AND date_component_completed is not null " 
-     Case Else  'hence will be either
+      Case const.cTaskCompletionNo
+         sql &= " AND date_finalised is null "
+      Case const.cTaskCompletionYes
+         sql &= " AND date_finalised is not null "
+      Case Else  'hence will be either
    End Select
-    sql &= "  AND task_deleted = False and component_deleted = False ORDER BY date_component_logged " & sort_order  'and date_component_completed is null
+   sql &= "  AND task_deleted = False and component_deleted = False "
+   If filter_patient_name <> "" Then
+      sql &= " AND patient_wholename ILIKE $$%" & Trim(filter_patient_name) & "%$$ "
+   Endif
+   sql &= "ORDER BY date_component_logged " & sort_order  'and date_component_completed is null"
+   Print sql
    Return modDBConnect.exec_query_collection(sql)
-  
+
 End
-
-

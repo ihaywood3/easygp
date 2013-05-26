@@ -1,0 +1,42 @@
+GRANT ALL ON TABLE clin_history.recreational_drugs TO staff;
+GRANT ALL ON SEQUENCE clin_history.recreational_drugs_pk_seq to staff;
+GRANT ALL ON SCHEMA clin_mentalhealth to staff;
+GRANT ALL ON TABLE clin_mentalhealth.team_care_members TO staff;
+GRANT ALL ON TABLE clin_mentalhealth.mentalhealth_plan to staff;
+GRANT ALL ON TABLE clin_requests.forms TO staff;
+GRANT SELECT ON TABLE clin_certificates.lu_fitness TO staff;
+GRANT ALL ON TABLE clin_certificates.medical_certificates to staff;
+GRANT ALL ON TABLE clin_certificates.certificate_reasons to staff;
+ALTER TABLE clin_pregnancy.ante_natal_care_summary owner to easygp;
+ALTER TABLE clin_pregnancy.ante_natal_care_summary_pk_seq   OWNER TO easygp;
+GRANT ALL ON TABLE clin_pregnancy.ante_natal_care_summary_pk_seq TO STAFF;
+ALTER TABLE clin_pregnancy.ante_natal_visits owner to easygp;
+ALTER TABLE clin_pregnancy.ante_natal_visits_pk_seq   OWNER TO easygp;
+GRANT ALL ON TABLE clin_pregnancy.ante_natal_visits_pk_seq to staff;
+ALTER TABLE clin_pregnancy.edc owner to easygp;
+ALTER TABLE clin_pregnancy.edc_pk_seq OWNER TO easygp;
+GRANT ALL ON TABLE clin_pregnancy.edc_pk_seq to staff;
+ALTER TABLE clin_pregnancy.lu_delivery_types owner to easygp;
+ALTER TABLE clin_pregnancy.lu_delivery_types_pk_seq OWNER TO easygp;
+GRANT ALL ON TABLE clin_pregnancy.lu_delivery_types_pk_seq to staff;
+ALTER TABLE clin_pregnancy.lu_onset_labour owner to easygp;
+ALTER TABLE clin_pregnancy.lu_onset_labour_pk_seq OWNER TO easygp;
+GRANT ALL ON TABLE clin_pregnancy.lu_onset_labour_pk_seq to staff;
+ALTER TABLE clin_pregnancy.lu_presentations owner to easygp;
+ALTER TABLE clin_pregnancy.lu_presentations_pk_seq OWNER TO easygp;
+GRANT ALL ON TABLE clin_pregnancy.lu_presentations_pk_seq to staff;
+ ALTER TABLE clin_pregnancy.pregnancies owner to easygp;
+ALTER TABLE clin_pregnancy.pregnancies_pk_seq OWNER TO easygp;
+GRANT ALL ON TABLE clin_pregnancy.pregnancies_pk_seq to staff;
+ALTER TABLE clin_pregnancy.pregnancies owner to easygp;
+ALTER TABLE clin_pregnancy.pregnancies_pk_seq OWNER TO easygp;
+GRANT ALL ON TABLE clin_pregnancy.pregnancies_pk_seq to staff;
+GRANT ALL ON TABLE clin_consult.vwdictations TO Staff;
+ 
+GRANT USAGE ON TABLE clin_vaccination.lu_formulation_pk_seq TO staff;
+GRANT ALL ON TABLE  clin_vaccination.vaccinations_pk_seq to staff;
+GRANT ALL ON TABLE clin_vaccination.vaccine_serial_numbers_pk_seq to staff;
+
+truncate db.lu_version;
+insert into db.lu_version (lu_major,lu_minor) values (0, 275);
+

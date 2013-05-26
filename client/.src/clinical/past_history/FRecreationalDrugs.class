@@ -25,16 +25,16 @@ Private substances As Collection
 Private substance As Collection
 Private common_lu_route_administration_keys As String[] 'only use a few match these to the cmbRouteTaken
 Private fk_recreationaldrug As Integer
-Private CurrentRecreationalDrug As Collection
 Private RecreationalDrugs As Collection
 Private bExit As Boolean
 Private bIniting As Boolean
 Private fk_progressnote As Integer
+Private bEditing As Boolean
 
 Public Sub Init(cons As CConsult)
    
    currentconsult = cons 
-   lblMeasure.text = "  Never Used This Drug  " 'this label auto-resizes and used to set the widest label in the edit area
+   lblmeasure.text = " Authority Approval No.  "  'to keep all edit area's left width the same the script one is the widest
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
    substances = modUtil.LoadCombo(cmbSubstances, modUtil.Copy_Collection_Keyed_Sequentially(modRecreationalDrugs.Recreational_Drugs_Get()), "drug")
    cmbRouteTaken.Add("inhaled", 0)    
@@ -108,6 +108,7 @@ Public Sub Save()
    If HBox_EditArea.Padding = 0 Then Return
    If Not RecreationalDrug_Valid() Then Return 
    HBox_EditArea.Enabled = False 
+   
    recreationalDrug = New CRow  
    If fk_recreationaldrug <> 0 Then
       recreationalDrug.put_unchanged(fk_recreationaldrug, "fk_recreationaldrug")
@@ -155,9 +156,17 @@ Public Sub Save()
             NotificationFlag = const.cSmokerCurrent
          End If
       End If   
-      FClinical.Smoking_Nofication_Update(NotificationFlag)
+      If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then             'if the form is not embedded update fclinical FIXME the summary is not updated
+         FClinical.Refresh_AllPreviousNotes()                                        'refresh the progress notes
+         FClinical.Refresh_Section(const.cSection_HealthSummary)
+         If Not IsNull(recreationalDrug!cumulative_amount) Then
+            FClinical.Smoking_Nofication_Update(NotificationFlag, Str(recreationalDrug!cumulative_amount) & " Pack Years")
+         Else
+         '   FClinical.Smoking_Nofication_Update(NotificationFlag, recreationalDrug!quantification)
+             FClinical.Smoking_Nofication_Update(NotificationFlag, "")
+         End If 
+      End If  
    Endif
-   Wait
    Reload()
    
 End
@@ -189,14 +198,14 @@ Public Sub ProgressNotes_Create(fk_progressnote As Integer) As String
    'ok, they have used the drug in some form
    '----------------------------------------
    Select Case cmbSubstances.text
-      Case "Nicotine"
+      Case "nicotine"
          If Trim(txtAgeLastUsed.text) = "" Then
             sPn &= "currently smokes "
          Else
             sPn &= "ex smoker "
          End If   
          If txtQuantity.text <> "" Then
-            sPn &= txtQuantity & " per "
+            sPn &= txtQuantity.text & " per "
          Else
             sPn &= "? per "
          Endif
@@ -206,7 +215,10 @@ Public Sub ProgressNotes_Create(fk_progressnote As Integer) As String
          If rbWeek.Value = True Then
             sPn &= "week "
          Endif
-      Case "Alcohol"
+         If Not rbWeek.value And Not rbDay.value Then
+            sPn &= " ?day ?week "
+         Endif
+      Case "alcohol"
          If Trim(txtAgeLastUsed.text) = "" Then
             sPn &= "currently drinks "
          Else
@@ -248,22 +260,17 @@ Public Sub Reload()
    Dim recreationalDrug As Collection
    Dim sString As String
    Dim NotificationFlag As Integer = const.cSmokerUnknown 'the default.
-   Dim col_widths As New Integer[5]
+   '  Dim col_widths As New Integer[5]
    Dim x As Integer
-   
-   lblMeasure.font = cvwRecreationalDrugs.Font 
    
    EditArea_Clear()
    cvwRecreationalDrugs.clear()
    currentconsult.Refresh("recreationaldrugs")                    'force reload from back end
-   For Each recreationalDrug In currentconsult!recreationaldrugs
-      cvwRecreationalDrugs.Add(recreationalDrug!pk, 0)
-      cvwRecreationalDrugs[recreationalDrug!pk][0] = recreationalDrug!drug 
-      lblmeasure.text = " " & recreationalDrug!drug & " " 
-      col_widths[0] = Max(lblmeasure.Width, col_widths[0])
-      cvwRecreationalDrugs[recreationalDrug!pk][1] = recreationalDrug!route
-      lblmeasure.Text = " " & recreationalDrug!route & " " 
-      col_widths[1] = Max(lblmeasure.Width, col_widths[1])
+   RecreationalDrugs = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!recreationaldrugs)
+   For Each recreationalDrug In RecreationalDrugs
+      cvwRecreationalDrugs.Add(x, 0)
+      cvwRecreationalDrugs[x][0] = recreationalDrug!drug 
+      cvwRecreationalDrugs[x][1] = recreationalDrug!route
       If recreationalDrug!never_used_drug = False Then                         'the user has taken a history and never used the drug
          sString = "Age started:" 
          If Not IsNull(recreationalDrug!age_started) Then
@@ -273,18 +280,14 @@ Public Sub Reload()
          Endif
          If IsNull(recreationalDrug!age_last_used) Then
             sSTring &= " " & recreationalDrug!age_last_used
-            cvwRecreationalDrugs[recreationalDrug!pk][4] = " Current "
+            cvwRecreationalDrugs[x][4] = " Current "
             NotificationFlag = const.cSmokerCurrent
          Else
-            cvwRecreationalDrugs[recreationalDrug!pk][4] = " Has Quit "
+            cvwRecreationalDrugs[x][4] = " Has Quit "
             sString &= " to " & recreationalDrug!age_last_used
             NotificationFlag = const.cSmokerPast
          Endif
-         lblmeasure.text = cvwRecreationalDrugs[recreationalDrug!pk][4]
-         col_widths[4] = Max(lblmeasure.Width, col_widths[4])   
-         cvwRecreationalDrugs[recreationalDrug!pk][2] = sString 
-         lblmeasure.Text = " " & sString & " " 
-         col_widths[2] = Max(lblmeasure.Width, col_widths[2])   
+         cvwRecreationalDrugs[x][2] = sString 
          If Not IsNull(recreationalDrug!substance_amount) Then
             sString = "Quantity " & recreationalDrug!substance_amount & " " & recreationalDrug!quantification 
             Select Case recreationalDrug!fk_lu_substance_frequency
@@ -295,21 +298,17 @@ Public Sub Reload()
                Case const.Units_month 
                   sString &= " per month "
             End Select              
-            cvwRecreationalDrugs[recreationalDrug!pk][3] = sString
+            cvwRecreationalDrugs[x][3] = sString
          Endif
-         lblmeasure.text = " " & cvwRecreationalDrugs[recreationalDrug!pk][3] & " " 
-         col_widths[3] = Max(lblmeasure.Width, col_widths[3])   
-         cvwRecreationalDrugs[recreationalDrug!pk][5] = recreationalDrug!notes
+         cvwRecreationalDrugs[x][5] = recreationalDrug!notes
       Else
          NotificationFlag = const.cSmokerNever
-         cvwRecreationalDrugs[recreationalDrug!pk][5] = "NEVER USED THIS DRUG"
+         cvwRecreationalDrugs[x][5] = "NEVER USED THIS DRUG"
       End If
-      
+      Inc x
    Next
-   For x = 0 To 4
-      cvwRecreationalDrugs.Columns[x].Width = col_widths[x]
-   Next
-   btnForFocus.SetFocus()
+   modUtil.Columnview_Columns_Set_Size(cvwRecreationalDrugs, lblMeasure)
+   lblSubstance.SetFocus()
    
 End
 
@@ -324,8 +323,8 @@ Public Sub mnuRecreationalDrugs_Click()
          RecreationalDrug_Edit
       Case "delete"
          RecreationalDrug_Delete
-      Case "change font"
-         modUtil.Columnview_SetFont(cvwRecreationalDrugs, "RecreationalDrugs")
+      Case "font"
+         modUtil.Columnview_SetFont(cvwRecreationalDrugs, "FRecreationalDrugs")
       Case "help"
          modUtil.NotImplemented("Help")
    End Select 
@@ -355,6 +354,7 @@ End
 Public Sub RecreationalDrug_Edit()
    
    HBox_EditArea.Enabled = True 
+   bEditing = True 
    
 End
 
@@ -375,7 +375,7 @@ Public Sub RecreationalDrug_Delete()
    
    cvwRecreationalDrugs.MoveCurrent
    SMsg = "Are you sure you want to delete this drug?\n\n"
-   sMsg = CurrentRecreationalDrug!drug
+   sMsg = RecreationalDrugs[cvwRecreationalDrugs.Item.key]!drug
    If Message.Question(sMsg, "Yes - Delete Drug", "No") = 2 Then Return
    modDBConnect.update("clin_history.recreational_drugs", Null, ["pk": fk_recreationaldrug, "deleted": True])
    modDBConnect.CommitTrans()
@@ -388,18 +388,20 @@ Public Sub RecreationalDrug_Display()
    'Display the recreational drug details in the editing area
    '---------------------------------------------------------
    
+   Dim RecreationalDrug As Collection
+   
    EditArea_Clear()
    cvwRecreationalDrugs.MoveCurrent()
-   CurrentRecreationalDrug = currentconsult!recreationaldrugs[cvwRecreationalDrugs.Item.key]
+   RecreationalDrug = RecreationalDrugs[cvwRecreationalDrugs.Item.key]
    bIniting = True   
-   cmbSubstances.index = cmbSubstances.Find(CurrentRecreationalDrug!drug)
+   cmbSubstances.index = cmbSubstances.Find(RecreationalDrug!drug)
    bIniting = False  
    bExit = True
-   txtAgeStarted.text = CurrentRecreationalDrug!age_started
-   txtAgeLastUsed.text = CurrentRecreationalDrug!age_last_used
-   txtPackYears.text = CurrentRecreationalDrug!cumulative_amount 'only used for nicotine
-   txtQuantity.text = CurrentRecreationalDrug!substance_amount 
-   Select Case CurrentRecreationalDrug!fk_lu_substance_frequency
+   txtAgeStarted.text = RecreationalDrug!age_started
+   txtAgeLastUsed.text = RecreationalDrug!age_last_used
+   txtPackYears.text = RecreationalDrug!cumulative_amount 'only used for nicotine
+   txtQuantity.text = RecreationalDrug!substance_amount 
+   Select Case RecreationalDrug!fk_lu_substance_frequency
       Case const.Units_day
          rbDay.value = True
       Case const.Units_week
@@ -407,11 +409,11 @@ Public Sub RecreationalDrug_Display()
       Case const.Units_month 
          rbMonth.Value = True   
    End Select  
-   fk_progressnote = CurrentRecreationalDrug!fk_progressnote
-   chkNeverUsedDrug.value = CurrentRecreationalDrug!never_used_drug         
-   txtNotes.text = CurrentRecreationalDrug!notes  
-   fk_recreationaldrug = CurrentRecreationalDrug!pk
-   cmbRouteTaken.index = cmbRouteTaken.Find(CurrentRecreationalDrug!route)
+   fk_progressnote = RecreationalDrug!fk_progressnote
+   chkNeverUsedDrug.value = RecreationalDrug!never_used_drug         
+   txtNotes.text = RecreationalDrug!notes  
+   fk_recreationaldrug = RecreationalDrug!pk
+   cmbRouteTaken.index = cmbRouteTaken.Find(RecreationalDrug!route)
    bExit = False 
    EditArea_Notify_DataChange(False)
    
@@ -428,8 +430,8 @@ End
 
 Private Sub Settings_Load()
    
-   Vsplit_Main.Layout = Settings["FRecreationalDrugs/VSplit_Main.Layout", [1, 1]] 
-   Try cvwRecreationalDrugs.font = Font[Settings["RecreationalDrugs/cvwRecreationalDrugs.font"]]
+   Vsplit_Main.Layout = Settings["FRecreationalDrugs/VSplit_Main.Layout", modUtil.VSplit([299, 558])] 
+   cvwRecreationalDrugs.font = Font[Settings["RecreationalDrugs/cvwRecreationalDrugs.font", "DejaVu Sans,9"]]
    
 End
 
@@ -454,9 +456,9 @@ Public Sub EditArea_Clear()
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea) 
    fk_recreationaldrug = 0
    fk_progressnote = 0
-   CurrentRecreationalDrug = Null
    rbReset.value = True 'unsets the day/month/week radiobuttons
    bexit = False  
+   bEditing = False  
    EditArea_Notify_DataChange(False)
    
 End
@@ -521,14 +523,16 @@ End
 Public Sub EditAreaTextBox_Change()
    
    EditArea_Notify_DataChange(True)
-   ' If Last.tag = "age last used" And Len(Trim(txtAgeLastUsed.text)) > 0 Then
-   '    If currentconsult!patient!age_numeric > Val(Trim(txtAgeLastUsed.text)) Or currentconsult!patient!age_numeric < Val(Trim(txtAgeStarted.text)) Then
-   '       Last.text = ""
-   '    Endif
-   ' Endif
+   If Last.tag = "age last used" And Len(Trim(txtAgeLastUsed.text)) > 0 Then
+      If Val(Trim(txtAgeLastUsed.text)) > currentconsult!patient!age_numeric Or currentconsult!patient!age_numeric < Val(Trim(txtAgeStarted.text)) Then 
+         bexit = False   
+         Last.text = ""
+         bExit = True
+      Endif
+   Endif
    Select Case Last.tag
-      Case "age_started", "age_last_used", "pack years"
-         chkNeverUsedDrug.value = False
+      Case "age started", "age last_used", "pack years"
+         If Len(Last.text) Then chkNeverUsedDrug.value = False
    End Select
    
 End

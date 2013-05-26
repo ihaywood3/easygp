@@ -1,5 +1,5 @@
 -- work on recreational drug use tables
-drop table clin_history.data_recreational_drugs;
+drop table clin_history.recreational_drugs cascade;
 
 CREATE TABLE clin_history.recreational_drugs
 (
@@ -16,10 +16,10 @@ CREATE TABLE clin_history.recreational_drugs
   never_used_drug boolean default false,
   notes text,
   deleted boolean default false,
-  CONSTRAINT data_recreational_drugs_fk_consult FOREIGN KEY (fk_consult)
+  CONSTRAINT recreational_drugs_fk_consult FOREIGN KEY (fk_consult)
       REFERENCES clin_consult.consult (pk) MATCH SIMPLE
       ON UPDATE NO ACTION ON DELETE NO ACTION,
-  CONSTRAINT data_recreational_drugs_fk_lu_recreational_drug FOREIGN KEY (fk_lu_recreational_drug)
+  CONSTRAINT recreational_drugs_fk_lu_recreational_drug FOREIGN KEY (fk_lu_recreational_drug)
       REFERENCES common.lu_recreational_drugs (pk) MATCH SIMPLE
       ON UPDATE NO ACTION ON DELETE NO ACTION
  );

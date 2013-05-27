@@ -57,7 +57,7 @@ end
 
 def new_html_file(key,title,file)
   if $output
-    $output.write("<!--FTR-->></body></html>")
+    $output.write("<!--FTR--></body></html>")
     $output.close
   end
   title = esc(title)

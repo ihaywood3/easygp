@@ -21,98 +21,95 @@
 
 Private bUseLocalFS As Boolean
 
-
 Public Sub CheckForLocalDirs()
-  
-  Dim d As String
-  
-  d = modAdminDBI.Config_Get("document_archiving_directory", "/var/lib/easygp/documents", "Directories/Archiving")
-  If Exist(d) Then
-    bUseLocalFS = True
-  Else
-    bUseLocalFS = False
-  Endif 
-   
-   
+
+   Dim d As String
+
+   d = modAdminDBI.Config_Get("document_archiving_directory", "/var/lib/easygp/documents", "Directories/Archiving")
+   If Exist(d) Then
+      bUseLocalFS = True
+   Else
+      bUseLocalFS = False
+   Endif
+
 End
-
-
 
 ' takes the name of the config option for the directory (e.g. "document_archiving_directory")
 ' and the filename
 ' returns a *local* pathname with a copy of the file
 ' WARNING: this function will crash out if the file doesn't exist
 Public Function Get(config As String, fname As String) As String
+
    Dim s As String
    Dim r As Result
-   
- If Not bUseLocalFS Then
-    ' we need to grab from the remote filesystem
-    r = modDBConnect.exec_query("select load_file(&1,&2) as data", [config, fname])
-    s = Temp$ & "." & Right$(fname, - RInStr(fname, ".")) ' make the temp name have the same ending as the original file
-    File.Save(s, r!data.Data)
-    Return s
-  Else
+
+   If Not bUseLocalFS Then
+      ' we need to grab from the remote filesystem
+      r = modDBConnect.exec_query("select load_file(&1,&2) as data", [config, fname])
+      s = Temp$ & "." & Right$(fname, - RInStr(fname, ".")) ' make the temp name have the same ending as the original file
+      Try File.Save(s, r!data.Data)  'FIXME REMOVE THE TRY IAN MAKE IT WORK BETTER
+      Return s
+   Else
       s = modAdminDBI.Config_Get(config, "no-default", "Files/" & config) &/ fname
       If Not Exist(s) Then Error.Raise("File " & s & " does not exist")
       Return s
-  Endif
-   
+   Endif
+
 End
 
 ' puts a file in a remote filestore
 ' fname is the name you want it to have remotely
 ' local is the local name (so this function does a name change on the file "for free")
 Public Sub Put(config As String, fname As String, local As String)
-   
+
    If Not bUseLocalFS Then
       modDBConnect.exec_query(modDBConnect.Subst("select save_file(&1,&2,", [config, fname]) & modDBConnect.FormatBlob(local) & "::bytea)")
    Else
       Copy local To modAdminDBI.Config_Get(config, "no-default", "Files/" & config) &/ fname
    Endif
-   
-   
+
 End
 
 ' return a list of all files in the directory
 ' don't do this on "document_archiving_directory" as it will have too many file
 ' it should cope with subdirectories: it lists all the files in them too
 Public Sub List(config As String) As String[]
+
    Dim r As Result
    Dim ret As String[]
-   
-      If Not bUseLocalFS Then
-         ret = New String[]
-         r = modDBConnect.exec_query("select list_files(&1) as fname", [config])
-         For Each r
-            ret.Add(r!fname)
-         Next
-         Return ret
-      Else
-        Return Dir(modAdminDBI.Config_Get(config, "no-default", "Files/" & config))
-      Endif
-   
+
+   If Not bUseLocalFS Then
+      ret = New String[]
+      r = modDBConnect.exec_query("select list_files(&1) as fname", [config])
+      For Each r
+         ret.Add(r!fname)
+      Next
+      Return ret
+   Else
+      Return Dir(modAdminDBI.Config_Get(config, "no-default", "Files/" & config))
+   Endif
+
 End
 
 ' deletes a file on the server in the directory specified in the config
 ' remember it acts as athe "postgres" user there: UNIX permissions must be set correctly.
 Public Sub Delete(config As String, fname As String)
-   
+
    If Not bUseLocalFS Then
       modDBConnect.exec_query("select delete_file(&1,&2)", [config, fname])
    Else
       Kill modAdminDBI.Config_Get(config, "no-default", "Files/" & config) &/ fname
    Endif
-   
+
 End
 
 ' unit tests
 Public Sub UnitTest(form_main As FMain)
-  Dim files As String[]
-  
 
-  Put("document_scanning_directory", "foo.pdf", "/home/ian/final-quantitative.pdf") 
-  Get("document_scanning_directory", "foo.pdf")
-  files = List("document_scanning_directory")
+   Dim files As String[]
+
+   Put("document_scanning_directory", "foo.pdf", "/home/ian/final-quantitative.pdf")
+   Get("document_scanning_directory", "foo.pdf")
+   files = List("document_scanning_directory")
   Delete("document_scanning_directory", "foo.pdf")
 End

@@ -39,362 +39,366 @@ Extern PQfreemem(obj As Pointer)
 Extern PQbackendPID(obj As Pointer) As Integer
 
 Private Function timeDiff(startTime As Float) As String
-  
-  Dim diff As Float
-  
-  diff = Timer() - startTime ' actual difference in float seconds
-  diff = diff * 1000 ' milliseconds
-  If diff > 20 Then
-    Return Str$(Round(diff))
-  Else
-    If diff > 2 Then
-      Return Str$(Round(diff, -1))
-    Else
-      Return Str$(Round(diff, -2))
-    Endif
-  Endif
-  
-End
 
+   Dim diff As Float
+
+   diff = Timer() - startTime ' actual difference in float seconds
+   diff = diff * 1000 ' milliseconds
+   If diff > 20 Then
+      Return Str$(Round(diff))
+   Else
+      If diff > 2 Then
+         Return Str$(Round(diff, -1))
+      Else
+         Return Str$(Round(diff, -2))
+      Endif
+   Endif
+
+End
 
 Private Function IsConnected_Read() As Boolean
-  
-  Return Not IsNull($hconn)
-  
+
+   Return Not IsNull($hconn)
+
 End
 
-
 Private Function currentUser_Read() As Collection
- 
-  Return my_current_user
-  
+
+   Return my_current_user
+
 End
 
 Public Function currentUser_FullName() As String
-  
-  If IsNull(my_current_user)
+
+   If IsNull(my_current_user)
       Return "The Admin User"
-  Else
-   Return my_current_user!title & " " & my_current_user!wholename
-  Endif
+   Else
+      Return my_current_user!title & " " & my_current_user!wholename
+   Endif
+
 End
 
 Public Function userName() As String
-   
-  If IsNull(my_current_user) Then
-   Return "admin"
-  Else
-   Return my_current_user!logon_name
-  Endif 
-   
+
+   If IsNull(my_current_user) Then
+      Return "admin"
+   Else
+      Return my_current_user!logon_name
+   Endif
+
 End
-
-
 
 Private Function IsAdmin_Read() As Boolean
-  
-  Return IsNull(my_current_user)
-  
-End
 
+   Return IsNull(my_current_user)
+
+End
 
 Public Function dbConnect_global(host As String, database As String, login As String, password As String) As String
-  '-------------------------------------
-  'Attempts to connect to a database
-  'returns true if success, false if not
-  '-------------------------------------
-  Dim sa As String[]
-  Dim r As String
-  
-  conninfo = New Collection
-  sa = Split(host, "/")
-  If sa.Length = 2 Then
-     conninfo!host = sa[0]
-     conninfo!database = sa[1]
-  Else
-     conninfo!database = database
-  Endif
-  If IsNull(conninfo!database) Then conninfo!database = "easygp"
-  sa = Split(conninfo!host, ":")
-  If sa.Length = 2 Then
-     conninfo!host = sa[0]
-     conninfo!port = sa[1]
-  Else
-     conninfo!port = "5432"
-  Endif
-  conninfo!login = login
-  conninfo!password = password
-  r = Actual_Connect()
-  If r = "success" Then
-    CheckDBVersion()
-    my_current_user = modConsultDBI.Staff_member_Get()
-    bStoring = False
-    event_listeners = New Collection
-  Endif
-  Return r
+   '-------------------------------------
+   'Attempts to connect to a database
+   'returns true if success, false if not
+   '-------------------------------------
+
+   Dim sa As String[]
+   Dim r As String
+
+   conninfo = New Collection
+   sa = Split(host, "/")
+   If sa.Length = 2 Then
+      conninfo!host = sa[0]
+      conninfo!database = sa[1]
+   Else
+      conninfo!database = database
+   Endif
+   If IsNull(conninfo!database) Then conninfo!database = "easygp"
+   sa = Split(conninfo!host, ":")
+   If sa.Length = 2 Then
+      conninfo!host = sa[0]
+      conninfo!port = sa[1]
+   Else
+      conninfo!port = "5432"
+   Endif
+   conninfo!login = login
+   conninfo!password = password
+   r = Actual_Connect()
+   If r = "success" Then
+      CheckDBVersion()
+      my_current_user = modConsultDBI.Staff_member_Get()
+      bStoring = False
+      event_listeners = New Collection
+   Endif
+   Return r
+
 End
-  
-Private Function Actual_Connect() As String  
-  Try $hconn.Close
-  Try pg_socket_file.Close()
-  $hconn = New Connection
-  With $hconn
-    .Type = "postgresql"
-    .Host = conninfo!host
-    .Login = conninfo!login
-    .Password = conninfo!password
-    .Name = ""
-    .Name = conninfo!database
-    .Port = conninfo!port
-  End With
-  $hconn.Open
-  $hconn.Exec("set datestyle = 'iso,dmy'")
-  Try $hconn.Exec("set bytea_output = 'escape'")
-  DB.Current = $hconn
-  backend_pid = PQbackendPID(Connection.Handle)
-  pg_socket_file = Open "." & PQsocket(Connection.Handle) For Read Watch
-  Return "success"
+
+Private Function Actual_Connect() As String
+
+   Try $hconn.Close
+   Try pg_socket_file.Close()
+   $hconn = New Connection
+   With $hconn
+      .Type = "postgresql"
+      .Host = conninfo!host
+      .Login = conninfo!login
+      .Password = conninfo!password
+      .Name = ""
+      .Name = conninfo!database
+      .Port = conninfo!port
+   End With
+   $hconn.Open
+   $hconn.Exec("set datestyle = 'iso,dmy'")
+   Try $hconn.Exec("set bytea_output = 'escape'")
+   DB.Current = $hconn
+   backend_pid = PQbackendPID(Connection.Handle)
+   pg_socket_file = Open "." & PQsocket(Connection.Handle) For Read Watch
+   Return "success"
 Catch
-  Return DConv(Error.Text)
+   Return DConv(Error.Text)
+
 End
 
 Public Sub Close_Listener()
-   
-  event_listeners = Null
-  Try Close #pg_socket_file 
-   
+
+   event_listeners = Null
+   Try Close #pg_socket_file
+
 End
 
 ' process asynchronous notifications
 Public Sub File_Read()
-  Dim notifies As Pointer
-  Dim notifies2 As Pointer
-  Dim notify_string As String
-  Dim notify_pid As Integer
-  Dim notify_param As String
-  Dim its_us As Boolean
-  Dim i As Object
-  
-  PQconsumeInput(Connection.Handle)
-  notifies = PQnotifies(Connection.Handle)
-  While Not IsNull(notifies)
-     notifies2 = notifies
-     notify_string = String@(Pointer@(notifies))
-     notifies += SizeOf(gb.Pointer)
-     notify_pid = Integer@(notifies)
-     notifies += SizeOf(gb.Pointer) 'remember C structs are padded for speed to the larger type
-     notify_param = String@(Pointer@(notifies))
-     Debug "NOTIFY "; notify_string; " pid: "; notify_pid; " param: "; notify_param
-     ' check if it's our client making the update happen
-     ' some listeners may wish to ignore in this case, some may not
-     its_us = False
-     If backend_pid = notify_pid Then its_us = True 
-     If event_listeners.Exist(notify_string) Then
-        For Each i In event_listeners[notify_string]
-           Try Object.Call(i, "Notify", [its_us, notify_param])
-           If Error Then
-              modUtil.ReportError(Error.Text, Error.Backtrace)
-           Endif
-        Next 
-     Endif
-     PQfreemem(notifies2) ' don't free until all handlers have run
-     PQconsumeInput(Connection.Handle)
-     notifies = PQnotifies(Connection.Handle)
-  Wend
-  
+
+   Dim notifies As Pointer
+   Dim notifies2 As Pointer
+   Dim notify_string As String
+   Dim notify_pid As Integer
+   Dim notify_param As String
+   Dim its_us As Boolean
+   Dim i As Object
+
+   PQconsumeInput(Connection.Handle)
+   notifies = PQnotifies(Connection.Handle)
+   While Not IsNull(notifies)
+      notifies2 = notifies
+      notify_string = String@(Pointer@(notifies))
+      notifies += SizeOf(gb.Pointer)
+      notify_pid = Integer@(notifies)
+      notifies += SizeOf(gb.Pointer) 'remember C structs are padded for speed to the larger type
+      notify_param = String@(Pointer@(notifies))
+      Debug "NOTIFY "; notify_string; " pid: "; notify_pid; " param: "; notify_param
+      ' check if it's our client making the update happen
+      ' some listeners may wish to ignore in this case, some may not
+      its_us = False
+      If backend_pid = notify_pid Then its_us = True
+      If event_listeners.Exist(notify_string) Then
+         For Each i In event_listeners[notify_string]
+            Try Object.Call(i, "Notify", [its_us, notify_param])
+            If Error Then
+               modUtil.ReportError(Error.Text, Error.Backtrace)
+            Endif
+         Next
+      Endif
+      PQfreemem(notifies2) ' don't free until all handlers have run
+      PQconsumeInput(Connection.Handle)
+      notifies = PQnotifies(Connection.Handle)
+   Wend
+
 End
 
 Public Sub Register_Listener(evt As String, obj As Object)
-   
+
    If Not event_listeners.Exist(evt) Then
       ' we are the first listener, so tell postgres we are internested in this event
       exec_query("LISTEN " & evt)
       event_listeners[evt] = New Collection
    Endif
    event_listeners[evt].Add(obj, Str$(obj))
-   
+
 End
 
 Public Sub Unregister_Listener(evt As String, obj As Object)
-   
-  If IsNull(event_listeners) Then Return
-  If Not event_listeners.Exist(evt) Then Return
-  If Not event_listeners[evt].Exist(Str$(obj)) Then Return
-  event_listeners[evt].Remove(Str$(obj)) 
-  If event_listeners[evt].Count = 0 Then
-     event_listeners.Remove(evt)
-     exec_query("UNLISTEN " & evt)
-  Endif
-   
-End
 
+   If IsNull(event_listeners) Then Return
+   If Not event_listeners.Exist(evt) Then Return
+   If Not event_listeners[evt].Exist(Str$(obj)) Then Return
+   event_listeners[evt].Remove(Str$(obj))
+   If event_listeners[evt].Count = 0 Then
+      event_listeners.Remove(evt)
+      exec_query("UNLISTEN " & evt)
+   Endif
+
+End
 
 Private Sub CheckDBVersion()
-  Dim db_version As Collection
-  Dim app_version As New Collection
-  Dim s As String[]
-  Dim msg As String
-  
-  Try db_version = exec_query_first("Select lu_minor as minor, lu_major as major  from db.lu_version")
-  If Error Then
-    msg = Error.Text
-    If Left$(msg, 48) = "Query failed: ERROR:  schema \"db\" does not exist" Then
-      Error.Raise("The database is empty and must be set up properly on the remote system. See easygp(8)")
-    Else
-      Error.Raise(msg)
-    Endif
-  Endif
-  If IsNull(db_version) Then
-    Error.Raise("No database version stored")
-  Endif
-  modCache.SetDBVersion(db_version)
-  s = Split(Application.Version, ".")
-  app_version!major = CInt(s[0])
-  app_version!minor = CInt(s[1])
-  
-  If db_version!major <> app_version!major Or If db_version!minor < app_version!minor Then
-     msg = "You are running client version " & Application.Version
-     msg &= " but the database is version " & db_version!major & "." & db_version!minor
-     msg &= "\nThese are not compatible, you cannot login to this database.\n\n" 
-     msg &= "Update scripts are located in the db/updates directory of the svn. Your system administrator should know how to deal with these."
-     Log.PanicMsg(msg)
-     Message.Error(msg)
-     Error.Raise("Incompatible database version")
-  Endif 
+
+   Dim db_version As Collection
+   Dim app_version As New Collection
+   Dim s As String[]
+   Dim msg As String
+
+   Try db_version = exec_query_first("Select lu_minor as minor, lu_major as major  from db.lu_version")
+   If Error Then
+      msg = Error.Text
+      If Left$(msg, 48) = "Query failed: ERROR:  schema \"db\" does not exist" Then
+         Error.Raise("The database is empty and must be set up properly on the remote system. See easygp(8)")
+      Else
+         Error.Raise(msg)
+      Endif
+   Endif
+   If IsNull(db_version) Then
+      Error.Raise("No database version stored")
+   Endif
+   modCache.SetDBVersion(db_version)
+   s = Split(Application.Version, ".")
+   app_version!major = CInt(s[0])
+   app_version!minor = CInt(s[1])
+
+   If db_version!major <> app_version!major Or If db_version!minor < app_version!minor Then
+      msg = "You are running client version " & Application.Version
+      msg &= " but the database is version " & db_version!major & "." & db_version!minor
+      msg &= "\nThese are not compatible, you cannot login to this database.\n\n"
+      msg &= "Update scripts are located in the db/updates directory of the svn. Your system administrator should know how to deal with these."
+      Log.PanicMsg(msg)
+      Message.Error(msg)
+      Error.Raise("Incompatible database version")
+   Endif
+
 End
-
-
 
 Public Function BeginTrans() As Result
 
-  ' now a noop
+   ' now a noop
 
 End
 
 Public Function RollBack() As Result
+
    Dim $Result As Result
    Dim startTime As Float
-  
-  If bTransaction Then
-    bTransaction = False
-    startTime = Timer() 
-    Try $Result = $hconn.Exec("ROLLBACK")
-    If Error Then 
-      Log.ErrorMsg(Error.Text)
-      Message.Error(Error.Text)   
-    Else
-      Log.DebugMsg(" ROLLBACK ( took " & timeDiff(startTime) & "msec )")
-    Endif 
-    Return $Result
-  End If  
+
+   If bTransaction Then
+      bTransaction = False
+      startTime = Timer()
+      Try $Result = $hconn.Exec("ROLLBACK")
+      If Error Then
+         Log.ErrorMsg(Error.Text)
+         Message.Error(Error.Text)
+      Else
+         Log.DebugMsg(" ROLLBACK ( took " & timeDiff(startTime) & "msec )")
+      Endif
+      Return $Result
+   End If
+
 End
 
 Public Function CommitTrans() As Result
-  Dim $Result As Result
-  Dim startTime As Float
-  
-  If bTransaction Then
-    bTransaction = False
-    startTime = Timer() 
-    Try $Result = $hconn.Exec("COMMIT")
-    If Error Then 
-      Log.ErrorMsg(Error.Text)
-      Message.Error(Error.Text)   
-    Else
-      Log.DebugMsg(" COMMIT ( took " & timeDiff(startTime) & "msec )")
-    Endif 
-    Try File_Read()
-    Return $Result
-  End If
+
+   Dim $Result As Result
+   Dim startTime As Float
+
+   If bTransaction Then
+      bTransaction = False
+      startTime = Timer()
+      Try $Result = $hconn.Exec("COMMIT")
+      If Error Then
+         Log.ErrorMsg(Error.Text)
+         Message.Error(Error.Text)
+      Else
+         Log.DebugMsg(" COMMIT ( took " & timeDiff(startTime) & "msec )")
+      Endif
+      Try File_Read()
+      Return $Result
+   End If
+
 End
 
 Public Function exec_query(sql As String, Optional params As Variant[]) As Result
-  Dim $Result As Result
-  Dim prefix As String
-  Dim startTime As Float
-  Dim errtxt As String
-  Dim i As Integer
-  If Not IsNull(params) Then
-    sql = Me.Subst(sql, params)
-  Endif
-  If bStoring Then storedQueries &= sql & ";\n"
-  prefix = Lower$(Left$(sql, 6))     
-  startTime = Timer()
-  If Not bTransaction And prefix <> "select" And prefix <> "listen" Then
-    $hconn.Exec("BEGIN")
-    bTransaction = True 
-  End If
-  If Len(sql) > 5000 Then
-    Log.DebugMsg(Left$(sql, 5000))
-  Else
-    Log.DebugMsg(sql)
-  Endif
-  do_query: 
-  Try $Result = $hconn.Exec(sql)
-  If Error Then 
-    errtxt = Error.Text
-    If errtxt = "Query failed: SSL SYSCALL error: EOF detected\n" Then
-       ' connection lost
-       Log.ErrorMsg(errtxt)
-       i = Message.Error("EasyGP has lost the Internet connection", "Try to Re-connect", "Quit Program")
-       If i = 1 Then
-          do_reconnect: 
-          errtxt = Actual_Connect()
-          If errtxt = "success" Then 
-            Goto do_query
-          Else
-             i = Message.Error("Reconnection failed with " & errtxt, "Try To Re-connect", "Quit Program")
-             If i = 1 Then 
-                Goto do_reconnect
-             Else
-                Log.ErrorMsg(errtxt)
-                Quit
-             Endif
-          Endif
-       Endif
-    Else
-      Log.ErrorMsg(errtxt)
-      Quit
-    Endif
-  Else
-    Log.DebugMsg(" ( " & $Result.Count & " rows returned in " & timeDiff(startTime) & "msec )")  
-  Endif
-  Return $Result
- Catch
-      modUtil.ReportError(Error.Text, Error.Backtrace)
-      Error.Raise("query failed") 
+
+   Dim $Result As Result
+   Dim prefix As String
+   Dim startTime As Float
+   Dim errtxt As String
+   Dim i As Integer
+
+   If Not IsNull(params) Then
+      sql = Me.Subst(sql, params)
+   Endif
+   If bStoring Then storedQueries &= sql & ";\n"
+   prefix = Lower$(Left$(sql, 6))
+   startTime = Timer()
+   If Not bTransaction And prefix <> "select" And prefix <> "listen" Then
+      $hconn.Exec("BEGIN")
+      bTransaction = True
+   End If
+   If Len(sql) > 5000 Then
+      Log.DebugMsg(Left$(sql, 5000))
+   Else
+      Log.DebugMsg(sql)
+   Endif
+do_query:
+   Try $Result = $hconn.Exec(sql)
+   If Error Then
+      errtxt = Error.Text
+      If errtxt = "Query failed: SSL SYSCALL error: EOF detected\n" Then
+         ' connection lost
+         Log.ErrorMsg(errtxt)
+         i = Message.Error("EasyGP has lost the Internet connection", "Try to Re-connect", "Quit Program")
+         If i = 1 Then
+         do_reconnect:
+            errtxt = Actual_Connect()
+            If errtxt = "success" Then
+               Goto do_query
+            Else
+               i = Message.Error("Reconnection failed with " & errtxt, "Try To Re-connect", "Quit Program")
+               If i = 1 Then
+                  Goto do_reconnect
+               Else
+                  Log.ErrorMsg(errtxt)
+                  Quit
+               Endif
+            Endif
+         Endif
+      Else
+         Log.ErrorMsg(errtxt)
+         'Quit
+      Endif
+   Else
+      Log.DebugMsg(" ( " & $Result.Count & " rows returned in " & timeDiff(startTime) & "msec )")
+   Endif
+   Return $Result
+Catch
+   modUtil.ReportError(Error.Text, Error.Backtrace)
+   Error.Raise("query failed")
+
 End
 
 Public Sub startStoring()
-   
-  bStoring = True
-  storedQueries = "" 
-   
-End
 
+   bStoring = True
+   storedQueries = ""
+
+End
 
 Public Sub stopStoring() As String
-   
-  bStoring = False
-  Return storedQueries 
-   
+
+   bStoring = False
+   Return storedQueries
+
 End
-
-
 
 Public Function Select(table As String, field As String, v As Variant) As Collection
-  
-  Dim s As String
-  
-  If IsInteger(v) Then
-    s = " = " & Str$(v)
-  Else
-    s = $hconn.Subst(" = upper(&1)", Str$(v))
-    field = "upper(" & field & ") " 
-  Endif
-  Return exec_query_collection("select * from " & table & " where " & field & s)
-End
 
+   Dim s As String
+
+   If IsInteger(v) Then
+      s = " = " & Str$(v)
+   Else
+      s = $hconn.Subst(" = upper(&1)", Str$(v))
+      field = "upper(" & field & ") "
+   Endif
+   Return exec_query_collection("select * from " & table & " where " & field & s)
+
+End
 
 ' for queries where only 0 or 1 rows are expected
 ' returns a collection representing the row or Null
@@ -402,248 +406,254 @@ End
 ' fixme - this is a problem - eg patient can have two addresses
 Public Function exec_query_first(sql As String, Optional params As Variant[]) As Collection
 
-  Dim $result As Result
-  Dim f As ResultField
-  Dim some_rows As New Collection
-  
-  $result = exec_query(sql, params)
-  If $result.Count = 0 Then Return Null
-  If $result.Count > 1 Then
-    Log.ErrorMsg("multiple rows shouldn't be returned") 
-    Error.Raise("multiple rows shouldn't be returned")
-  Endif
-  $result.MoveFirst
-  For Each f In $result.Fields
-   some_rows.Add($result[f.Name], f.Name)
-  Next
-  Return some_rows
+   Dim $result As Result
+   Dim f As ResultField
+   Dim some_rows As New Collection
+
+   $result = exec_query(sql, params)
+   If $result.Count = 0 Then Return Null
+   If $result.Count > 1 Then
+      Log.ErrorMsg("multiple rows shouldn't be returned")
+      Error.Raise("multiple rows shouldn't be returned")
+   Endif
+   $result.MoveFirst
+   For Each f In $result.Fields
+      some_rows.Add($result[f.Name], f.Name)
+   Next
+   Return some_rows
+
 End
 
 Public Sub FormatBlob(fname As String) As String
-   
-  Return $hconn.FormatBlob(File.Load(fname)) 
-   
-End
 
+   Return $hconn.FormatBlob(File.Load(fname))
+
+End
 
 Public Sub Subst(sql As String, params As Variant[]) As String
-   
+
    params.Add(sql, 0)
    Return Object.Call($hconn, "subst", params)
-   
-End
 
+End
 
 Public Sub insert(table As String, data As Collection, Optional pk_name As String = "pk") As Variant
    '--------------------------------------------------------------
    'Inserts a new record into the table, returning its primary key
    '--------------------------------------------------------------
+
    Dim sql As String
    Dim fieldslist As New String[]    '[data.count]
    Dim valueslist As New String[]
    Dim returned_row As Result
    Dim field As Variant
    Dim fname As String
-   
+
    For Each field In data
-     fieldslist.Push("\"" & data.Key & "\"")
-     If TypeOf(field) = gb.string Then
+      fieldslist.Push("\"" & data.Key & "\"")
+      If TypeOf(field) = gb.string Then
          If Left$(field, 5) = "BLOB:" Then
-           'a fix till Ian fixes the regex
-           If InStr(field, "src") Then
-                fname = Right$(field, -10)
-           Else
-               fname = Right$(field, -5)    
-           End If
-           valueslist.Push($hconn.FormatBlob(File.Load(fname)) & "::bytea")
-       Else
+            'a fix till Ian fixes the regex
+            If InStr(field, "src") Then
+               fname = Right$(field, -10)
+            Else
+               fname = Right$(field, -5)
+            End If
+            valueslist.Push($hconn.FormatBlob(File.Load(fname)) & "::bytea")
+         Else
+            valueslist.Push($hconn.Subst("&1", field))
+         End If
+      Else
+         If TypeOf(field) = gb.Date Then
+            field = Format$(field, "dd/mm/yyyy")
+         Endif
          valueslist.Push($hconn.Subst("&1", field))
-       End If
-     Else
-        If TypeOf(field) = gb.Date Then
-          field = Format$(field, "dd/mm/yyyy")
-        Endif
-        valueslist.Push($hconn.Subst("&1", field))
-     End If
+      End If
    Next
    sql = "INSERT INTO " & table & " (" & fieldslist.Join(",") & ") VALUES (" & valueslist.Join(",") & ")"
-   If Not IsNull(pk_name) Then 
+   If Not IsNull(pk_name) Then
       sql &= " RETURNING " & pk_name
       returned_row = exec_query(sql)
-      Return returned_row[pk_name] 
+      Return returned_row[pk_name]
    Else
       exec_query(sql)
       Return Null
    End If
+
 End
-           
+
 Public Function Role_Check_If_Exists(role As String) As Boolean
    '---------------------------------------------------------
    'Checks if a role (i.e user logon name) already exists
    'Used when adding a staff member, eg from setupwizard
    'returns TRUE if it does (!count = field, not record count
    '---------------------------------------------------------
+
    If modDBConnect.exec_query("select count(*) from pg_roles where rolname = $$" & role & "$$")!count Then
       Return True
    Else
       Return False
    End If
+
 End
 
-
 Public Function update(table As String, old_data As Collection, new_data As Collection, Optional old_pk_name As String = "pk", table_pk_name As String = "pk") As Boolean
-' updates a table by comparing old and new data and uploading the difference. At the end the new data is also copied back to old_data.
-' old_data can be Null, in which case all values in new_data are assumed to be changes
-' if no changes then no database query occurs
-' old_pk_name is the name of the primary key field in old_data. because this collection is coming from views, it is often
-' not "pk", such "pk_progress_note", or "pk_history" or suchlike and so often must be specified
-' table_pk_name is the name of the primary key in the underlying table, as it
-' is nearly always "pk", it is optional with this as a default.
-' returns True if a database action occurred, otherwise false
-  Dim changes As New String[]
-  Dim field As Variant
-  Dim field_as_str As String
-  Dim sql As String 'so I can see what is happening.
-  Dim old_pk As Variant 'was integer, but then can't update data to table with a non-integer primary key
-  
-  changes.Clear()
-  If IsNull(old_data) Then
-    old_pk = new_data[old_pk_name]
-  Else
-    old_pk = old_data[old_pk_name]
-  Endif
-  For Each field In new_data
-     If IsNull(old_data) Then
-       If new_data.Key = old_pk_name Then Continue
-     Else
-       If field = old_data[new_data.Key] Then Continue
-     Endif
-     If Not IsNull(old_data) Then
-       old_data[new_data.Key] = field ' copy back to old_data
-     Endif
-     If TypeOf(field) = gb.string Then
-       If InStr(field, "BLOB:") Then
-          changes.Push(new_data.Key & "=" & $hconn.FormatBlob(File.Load((Right$(field, -5)))) & ":: bytea ")       
-       Else
-         If TypeOf(field) = gb.Date Then
-           field = Format$(field, "dd/mm/yyyy")
+   ' updates a table by comparing old and new data and uploading the difference. At the end the new data is also copied back to old_data.
+   ' old_data can be Null, in which case all values in new_data are assumed to be changes
+   ' if no changes then no database query occurs
+   ' old_pk_name is the name of the primary key field in old_data. because this collection is coming from views, it is often
+   ' not "pk", such "pk_progress_note", or "pk_history" or suchlike and so often must be specified
+   ' table_pk_name is the name of the primary key in the underlying table, as it
+   ' is nearly always "pk", it is optional with this as a default.
+   ' returns True if a database action occurred, otherwise false
+
+   Dim changes As New String[]
+   Dim field As Variant
+   Dim field_as_str As String
+   Dim sql As String 'so I can see what is happening.
+   Dim old_pk As Variant 'was integer, but then can't update data to table with a non-integer primary key
+
+   changes.Clear()
+   If IsNull(old_data) Then
+      old_pk = new_data[old_pk_name]
+   Else
+      old_pk = old_data[old_pk_name]
+   Endif
+   For Each field In new_data
+      If IsNull(old_data) Then
+         If new_data.Key = old_pk_name Then Continue
+      Else
+         If field = old_data[new_data.Key] Then Continue
+      Endif
+      If Not IsNull(old_data) Then
+         old_data[new_data.Key] = field ' copy back to old_data
+      Endif
+      If TypeOf(field) = gb.string Then
+         If InStr(field, "BLOB:") Then
+            changes.Push(new_data.Key & "=" & $hconn.FormatBlob(File.Load((Right$(field, -5)))) & ":: bytea ")
+         Else
+            If TypeOf(field) = gb.Date Then
+               field = Format$(field, "dd/mm/yyyy")
+            Endif
+            changes.Push($hconn.Subst(new_data.Key & " = &1", field))
          Endif
-          changes.Push($hconn.Subst(new_data.Key & " = &1", field))
-       Endif
-     Else
-       changes.Push($hconn.Subst(new_data.Key & " = &1", field))
-    End If
-  Next
-  If changes.Count > 0 Then
-     If IsInteger(old_pk_name) Then          'Ian talk to me, fix this where primary key of table is string the old way didn't work
-        exec_query("UPDATE " & table & " SET " & changes.Join(",") & " WHERE " & table_pk_name & " = " & old_pk)
-     Else
-        exec_query("UPDATE " & table & " SET " & changes.Join(",") & " WHERE " & table_pk_name & " =$$" & old_pk & "$$")
-     End If 
-     Return True
-  End If
-  Return False
+      Else
+         changes.Push($hconn.Subst(new_data.Key & " = &1", field))
+      End If
+   Next
+   If changes.Count > 0 Then
+      If IsInteger(old_pk_name) Then          'Ian talk to me, fix this where primary key of table is string the old way didn't work
+         exec_query("UPDATE " & table & " SET " & changes.Join(",") & " WHERE " & table_pk_name & " = " & old_pk)
+      Else
+         exec_query("UPDATE " & table & " SET " & changes.Join(",") & " WHERE " & table_pk_name & " =$$" & old_pk & "$$")
+      End If
+      Return True
+   End If
+   Return False
+
 End
 
 Public Sub update_array(tbl As String, old_pk As Variant, fields As String[], vals As Variant[])
 
-  Dim i As Integer = 0
-  Dim changes As New String[]
-  Dim field As Variant
+   Dim i As Integer = 0
+   Dim changes As New String[]
+   Dim field As Variant
 
-  For i = 0 To fields.Max
-     field = vals[i]
-     If TypeOf(field) = gb.string Then
-       If InStr(field, "BLOB:") Then
-          changes.Push("\"" & fields[i] & "\" =" & $hconn.FormatBlob(File.Load((Right$(field, -5)))) & ":: bytea ")       
-       Else
-         If TypeOf(field) = gb.Date Then
-           field = Format$(field, "dd/mm/yyyy")
+   For i = 0 To fields.Max
+      field = vals[i]
+      If TypeOf(field) = gb.string Then
+         If InStr(field, "BLOB:") Then
+            changes.Push("\"" & fields[i] & "\" =" & $hconn.FormatBlob(File.Load((Right$(field, -5)))) & ":: bytea ")
+         Else
+            If TypeOf(field) = gb.Date Then
+               field = Format$(field, "dd/mm/yyyy")
+            Endif
+            changes.Push($hconn.Subst("\"" & fields[i] & "\" = &1", field))
          Endif
+      Else
          changes.Push($hconn.Subst("\"" & fields[i] & "\" = &1", field))
-       Endif
-     Else
-       changes.Push($hconn.Subst("\"" & fields[i] & "\" = &1", field))
-    End If
-  Next
-  exec_query($hconn.Subst("UPDATE " & tbl & " SET " & changes.Join(",") & " WHERE pk = &1 ", old_pk))
-  
+      End If
+   Next
+   exec_query($hconn.Subst("UPDATE " & tbl & " SET " & changes.Join(",") & " WHERE pk = &1 ", old_pk))
+
 End
 
 Public Function exec_query_collection(sql As String, Optional params As Variant[]) As Collection
-  ' perform a query and return result as a collection of collections
-  
-  Dim thelot As New Collection
-  Dim a_collection As Collection
-  Dim $result As Result
-  Dim resultfield As ResultField
-  Dim generic_pk As Variant 
-  Dim pk_field_present As Boolean
+   ' perform a query and return result as a collection of collections
 
-  $result = exec_query(sql, params)
-  For Each $result
-    a_collection = New Collection
-    generic_pk = -1
-    For Each resultfield In $result.Fields
-      If Not IsNull(resultfield.Name) Then
-         a_collection.Add($result[resultfield.Name], resultfield.Name) 
-         If Left$(resultfield.Name, 2) = "pk" Then
-           If Not IsNull($result[resultfield.Name]) Then
-             generic_pk = $result[resultfield.Name]
-             pk_field_present = True
-           Endif
+   Dim thelot As New Collection
+   Dim a_collection As Collection
+   Dim $result As Result
+   Dim resultfield As ResultField
+   Dim generic_pk As Variant
+   Dim pk_field_present As Boolean
+
+   $result = exec_query(sql, params)
+   For Each $result
+      a_collection = New Collection
+      generic_pk = -1
+      For Each resultfield In $result.Fields
+         If Not IsNull(resultfield.Name) Then
+            a_collection.Add($result[resultfield.Name], resultfield.Name)
+            If Left$(resultfield.Name, 2) = "pk" Then
+               If Not IsNull($result[resultfield.Name]) Then
+                  generic_pk = $result[resultfield.Name]
+                  pk_field_present = True
+               Endif
+            End If
          End If
-     End If
-    Next 
-    If Not pk_field_present Then 
-       Message.info("Table in sql " & sql & " must have a field beginning with the letters pk\n Sorry, the program will now quit!")
-       Log.PanicMsg("Table in sql " & sql & " must have a field beginning with the letters pk")
-       Quit
-    End If 
-    thelot[generic_pk] = a_collection
-  Next
-  Return thelot
+      Next
+      If Not pk_field_present Then
+         Message.info("Table in sql " & sql & " must have a field beginning with the letters pk\n Sorry, the program will now quit!")
+         Log.PanicMsg("Table in sql " & sql & " must have a field beginning with the letters pk")
+         Quit
+      End If
+      thelot[generic_pk] = a_collection
+   Next
+   Return thelot
+
 End
 
 Public Function exec_query_row(sql As String, Optional params As Variant[]) As Collection
-  ' perform a query and return result as a collection of cRows
-  
-  Dim thelot As New Collection
-  Dim a_collection As Collection
-  Dim $result As Result
-  Dim resultfield As ResultField
-  Dim generic_pk As Variant 
-  Dim pk_field_present As Boolean
-  Dim i As Variant
+   ' perform a query and return result as a collection of cRows
 
-  If Not IsNull(params) Then
-     params.Add(sql, 0)
-     sql = Object.Call($hconn, "subst", params)
-  Endif
-  $result = exec_query(sql)
-  For Each $result
-    a_collection = New Collection
-    generic_pk = -1
-    For Each resultfield In $result.Fields
-      
-      If Not IsNull(resultfield.Name) Then
-         a_collection.Add($result[resultfield.Name], resultfield.Name) 
-         If Left$(resultfield.Name, 2) = "pk" Then
-           If Not IsNull($result[resultfield.Name]) Then
-             generic_pk = $result[resultfield.Name]
-             pk_field_present = True
-           Endif
+   Dim thelot As New Collection
+   Dim a_collection As Collection
+   Dim $result As Result
+   Dim resultfield As ResultField
+   Dim generic_pk As Variant
+   Dim pk_field_present As Boolean
+   Dim i As Variant
+
+   If Not IsNull(params) Then
+      params.Add(sql, 0)
+      sql = Object.Call($hconn, "subst", params)
+   Endif
+   $result = exec_query(sql)
+   For Each $result
+      a_collection = New Collection
+      generic_pk = -1
+      For Each resultfield In $result.Fields
+
+         If Not IsNull(resultfield.Name) Then
+            a_collection.Add($result[resultfield.Name], resultfield.Name)
+            If Left$(resultfield.Name, 2) = "pk" Then
+               If Not IsNull($result[resultfield.Name]) Then
+                  generic_pk = $result[resultfield.Name]
+                  pk_field_present = True
+               Endif
+            End If
          End If
-     End If
-    Next 
-    If Not pk_field_present Then 
-       Message.info("Table in sql " & sql & " must have a field beginning with the letters pk\n Sorry, the program will now quit!")
-       Log.PanicMsg("Table in sql " & sql & " must have a field beginning with the letters pk")
-       Quit
-    End If 
-    thelot[generic_pk] = New CRow(a_collection)
-  Next
-  Return thelot
+      Next
+      If Not pk_field_present Then
+         Message.info("Table in sql " & sql & " must have a field beginning with the letters pk\n Sorry, the program will now quit!")
+         Log.PanicMsg("Table in sql " & sql & " must have a field beginning with the letters pk")
+         Quit
+      End If
+      thelot[generic_pk] = New CRow(a_collection)
+   Next
+   Return thelot
+
 End
 
 

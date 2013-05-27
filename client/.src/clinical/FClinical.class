@@ -597,10 +597,14 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
          Case const.cSmokerCurrent
             lblAlert.TEXT &= "CURRENT SMOKER"
          Case const.cSmokerUnknown
-            lblAlert.text &= " ?? SMOKER ??"
+            If currentconsult!patient!age_numeric > 17 Then
+               lblAlert.text &= " ?? SMOKER ??"
+            End If
       End Select
    Else
-      lblAlert.text &= " ?? SMOKER ??"
+      If currentconsult!patient!age_numeric > 17 Then
+         lblAlert.text &= " ?? SMOKER ??"
+      End If
    End If
    ' lblsmoker.Visible = True
    Allergies_Refresh()                    'Get all allergies, display on toolbar
@@ -804,13 +808,6 @@ Public Sub Layout_Form()
 
 End
 
-Public Sub Form_Close()
-
-   Settings_Save()
-   form_clinical = Null
-
-End
-
 Public Sub FormFonts_Adjust()
    '------------------------------------------------------------------------
    'first attempt to globally change the label sizes on all forms edit areas
@@ -870,9 +867,10 @@ Public Sub Settings_Save()
    Settings["FClinical/cvwResults.columns"] = Modutil.Columnsizes_To_String(cvwResults)
    Settings["FClinical/cvwReferrals.columns"] = Modutil.Columnsizes_To_String(cvwReferrals)
    'the splitter on the tabbed lists containing measurement types/values
-   Settings["FClinical/VSplit_TabbedListsGraph.Layout"] = VSplit_TabbedListsGraph.Layout
+   Settings["FClinical/VSplit_TabbedListsGraph.Layout"] = [VSplit_TabbedListsGraph.Layout[0], Max(VSplit_TabbedListsGraph.Layout[1], 150)]
    Settings["FClinical/HSplit_ProblemLists.layout"] = Hsplit_ProblemLists.Layout
    modAdminDBI.Clinical_Toolbuttons_Save(pnlToolButtons, modDBConnect.currentUser!fk_staff, Toolbuttons)
+   Settings["FClinical/Graphs_font.size"] = slGraphFontSize.value
    FQuickContact.Settings_Save
 
 End
@@ -894,7 +892,6 @@ Private Sub Settings_Load()
    cvwResults.Font = Font[Settings["FClinical/cvwResults.font", "Arial,9"]]
    cvwLettersReceived.font = Font[Settings["FClinicals/cvwLettersReceived.font", "Arial,9"]]
    cvwCertificates.Font = Font[Settings["FClinical/cvwCertificates.font", "Arial,9"]]
-   'Try modUtil.columnSizes_Set(Settings["FClinical/cvwRequests.columns"], cvwRequests)
    '-------------------------------------------------------------------------------------------
    'We can't afford to have split contents on the main right side of the screen 'go missing'
    'i.e if user has 'disappeared the splits e.g made the script list big and removed the graph
@@ -902,6 +899,7 @@ Private Sub Settings_Load()
    'so, assume 2/3 1/3 optimum
    '-------------------------------------------------------------------------------------------
    Layout_Right_Side_Screen
+   Try slGraphFontSize.value = Settings["FClinical/Graphs_font.size"]
    Try modUtil.columnSizes_Set(Settings["FClinical/cvwResults.columns"], cvwResults)
    Try modUtil.columnSizes_Set(Settings["FClinical/cvwRequests.columns"], cvwRequests)
    Try modUtil.columnSizes_Set(Settings["FClinical/cvwRecalls.columns", "60|425"], cvwRecalls)
@@ -926,7 +924,8 @@ Public Sub Layout_Right_Side_Screen()
    '----------------------------------------------------------------
    'Now, layout the tasks and problem lists bottom part on the right
    '----------------------------------------------------------------
-   VsplitClinical_RightPane.Layout = Settings["FClinical/VsplitClinical_RightPane", modUtil.VSplit([536, 0, 84, 276])]
+   Print Settings["FClinical/VsplitClinical_RightPane", modUtil.VSplit([536, 0, 84, 276])]
+   VsplitClinical_RightPane.Layout = Settings["FClinical/VsplitClinical_RightPane", modUtil.VSplit([536, 150, 84, 276])]
 
 End
 
@@ -1696,14 +1695,14 @@ Public Sub cvwRecalls_Refresh()
       .Clear()
       .Columns.count = 2
       .Columns[0].width = 60
-      .Columns[1].width = 200
+      '  .Columns[1].width = 200
    End With
 
-   Try modUtil.columnSizes_Set(Settings["TabbedLists/cvwRecalls.columns"], cvwRecalls)
-   If Error Then
-      cvwRecalls.Columns[0].width = 60
-      cvwRecalls.Columns[1].width = 200
-   Endif
+   '  Try modUtil.columnSizes_Set(Settings["TabbedLists/cvwRecalls.columns"], cvwRecalls)
+   ' If Error Then
+   '    cvwRecalls.Columns[0].width = 60
+   '    cvwRecalls.Columns[1].width = 200
+   ' Endif
    currentconsult.Refresh("recalls_logged")
    tlReminders.text = ""
    rows = ""
@@ -2567,6 +2566,11 @@ Public Sub Certificates_Medical_Refresh()
    Dim cert As Collection
 
    If IsNull(currentconsult) Then Return
+   With cvwCertificates
+      .Clear()
+      .Columns.count = 4
+      .Columns[0].width = 60
+   End With
    lblCertificateType.text = "Medical Certificates"
    currentconsult.Refresh("medical_certificates")
    cvwCertificates.Clear()
@@ -2612,13 +2616,7 @@ Public Sub Certificates_Refresh()
    Dim x As Integer 'for readability
    Dim sMsg As String
 
-   With cvwCertificates
-      .Clear()
-      .Columns.count = 4
-      .Columns[0].width = 60
-   End With
    Select Case iCertificatetype
-
       Case const.certificate_type_medical
          Certificates_Medical_Refresh()
       Case const.certificate_type_workcover
@@ -2629,13 +2627,37 @@ Public Sub Certificates_Refresh()
 
 End
 
-Public Sub Workcover_Certificates_Refresh()
+Public Sub Workcover_Certificates_Refresh_new()
 
    Dim cert As Collection
    Dim x As Integer
 
    If IsNull(currentconsult) Then Return
    cvwCertificates.Clear()
+   lblCertificateType.text = "Workcover Certificates"
+   currentconsult.Refresh("workcover_claims")
+   '  Workcover_Certificates = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!workcover_claims)
+   For Each cert In currentconsult!workcover_claims
+      cvwCertificates.Add(x, 0)
+      cvwCertificates[x][0] = Format(cert!visit_date, "dd/mm/yyyy")
+      cvwCertificates[x][1] = cert!identifier
+   Next
+   lblmeasure.font = cvwCertificates.Font
+   modUtil.Columnview_Columns_Set_Size(cvwCertificates, lblmeasure)
+
+End
+
+Public Sub Workcover_Certificates_Refresh()
+
+   Dim cert As Collection
+   Dim x As Integer
+
+   If IsNull(currentconsult) Then Return
+   With cvwCertificates
+      .Clear()
+      .Columns.count = 2
+      .Columns[0].width = 60
+   End With
    lblCertificateType.text = "Workcover Certificates"
    currentconsult.Refresh("workcover_claims")
    For Each cert In currentconsult!workcover_claims
@@ -2646,6 +2668,8 @@ Public Sub Workcover_Certificates_Refresh()
       ' cvwCertificates[x][2] = cert!diagnosis
       ' cvwCertificates[x][3] = cert!management_plan
    Next
+   '  lblmeasure.font = cvwCertificates.Font
+   ' modUtil.Columnview_Columns_Set_Size(cvwCertificates, lblmeasure)
 
 End
 
@@ -3919,107 +3943,6 @@ Public Sub mnuMedications_Click()
 
 End
 
-Public Sub mnuMedications_Click_old()
-
-   Dim medication As Collection
-   Dim new_Prescription_item As Collection
-   Dim prescribed As CRow
-   Dim x As Integer
-
-   cvwMedications.MoveCurrent()
-   medication = currentconsult!medications[cvwMedications.Selection[0]]
-   Select Case Last.tag
-      Case "delete"
-         ' If modPrescribingDBI.Medication_Delete(currentconsult, currentconsult!medications, cvwMedications.Selection[0], const.cSection_Prescriptions, const.sAuditAction[const.cAuditAction_MarkDeleted], "Medication:" & currentconsult!medications[cvwMedications.Selection[0]]!generic) Then
-         '    modDBConnect.CommitTrans()
-         '    Deleted_medications.Add(currentconsult!medications[cvwMedications.Selection[0]], cvwMedications.Selection[0])
-         '    cvwMedications_Refresh() 'refresh the collection and reshow the list
-         ' End If
-      Case "full product information"
-         cvwMedications.MoveCurrent()
-         If Not IsNull(medication!product_information_filename) Then
-            Try Editor_ShowPage("drugs browser", medication!brand & " (" & medication!generic & ")", modAdminDBI.Config_Get("product_information_directory", "", Null, modDBConnect.currentUser!fk_clinic) &/ medication!product_information_filename)
-            If Error Then
-               Message.info("The product information could not be found")
-            Endif
-         Else
-            Message.info("The product information could not be found")
-         Endif
-      Case "make active"
-         modPrescribingDBI.Medication_MakeActiveOrInactive(medication!prescribed!fk_medication, True)
-         cvwMedications_Refresh()
-      Case "make inactive"
-         modPrescribingDBI.Medication_MakeActiveOrInactive(medication!prescribed!fk_medication, False)
-         cvwMedications_Refresh()
-
-      Case "view inactive medications", "view active medications"
-         Medications_DisplayActiveInactive
-      Case "brief product information"
-         modUtil.NotImplemented("Brief Product Information")
-      Case "view medication history"
-
-      Case "view medication as printed"
-         '------------------------------------------------------------------------------------------------------------------------------
-         'If a Latex defination exists (which it should, except for myself who used this in beta form before this feature was available)
-         'show the actual script as printed (could contain 1-3 drugs)
-         '------------------------------------------------------------------------------------------------------------------------------
-         If Not IsNull(medication!prescribed!latex) Then
-            Editor_ShowPage("pdf file", medication!brand, modPrinting.Latex_To_PDF(medication!prescribed!latex))
-         End If
-      Case "prescribe selected", "prescribe all", "prescribe selected reg24", "prescribe all reg24"
-         Editor_ShowPage("Scripts")            'Ensure the script module is loaded and visible
-         If Last.tag = "prescribe all" Or Last.tag = "prescribe all reg24" Then  'cvwMedicals.SelectAll does not work??
-            '    cvwMedications.MoveFirst()
-            '    For x = 0 To cvwMedications.count - 1
-            '       cvwMedications.Item.Selected = True
-            '       cvwMedications.MoveNext
-            '    Next
-            ' Endif
-            cvwMedications.SelectAll()
-         End If
-         cvwMedications.MoveFirst()
-         Print cvwMedications.Selection
-         For x = 0 To cvwMedications.Count - 1
-            If cvwMedications.Item.Selected = True Then
-
-               cvwMedications.MoveCurrent
-               ' Print cvwMedications.Item.Key
-               '     medication = currentconsult!medications[cvwMedications.Item.Key]
-               medication = currentconsult!medications[cvwMedications.Selection[x]]
-               new_Prescription_item = medication                 'set all the display fields, are the same as the original, not saved
-               new_Prescription_item!date_script_written = Now()
-               new_Prescription_item!med!last_date = Now()
-               prescribed = medication!prescribed.Clone()         'create a new prescribed cRow, don't put in authority approval etc even if an authority
-               prescribed.Remove("pk")                            ' make cRow save a new row
-               prescribed.Remove("printed")
-               If InStr(Last.tag, "24") Then
-                  prescribed!reg24 = True
-               Else
-                  prescribed!reg24 = False
-               Endif
-               prescribed!date_on_script = Now()                  'FIXME ALLOW MENU DRIVEN DATE AHEAD OPTIONS
-               prescribed!fk_consult = currentconsult.GetPK()
-               prescribed!script_number = modPrescribingDBI.Script_Number_Get_Next()
-               prescribed!latex = Null
-               If Not IsNull(prescribed!authority_reason) Then
-                  prescribed!authority_script_number = modPrescribingDBI.Authority_Number_Get_Next(modDBConnect.currentUser!fk_staff)
-               Endif
-               ' prescribed! = concession_details : these three not yet implemented
-               ' prescribed! = brand_substitution : do not remove this code
-               ' prescribed! = fk_progress_note
-               new_Prescription_item!prescribed = prescribed         'new cRow, otherwise the fields not changed IAN FIXME EASIER WAY
-               FPrescriptions.Script_Item_Re_Prescribe(new_Prescription_item)
-            End If
-            cvwMedications.MoveNext()
-         Next
-         cvwMedications.UnselectAll()
-      Case "view all medications history"
-         Print modPrescribingDBI.Medications_History_Construct_HTML(currentconsult!medications)
-         Editor_ShowPage("browser", "Medication history", modPrescribingDBI.Medications_History_Construct_HTML(currentconsult!medications))
-   End Select
-
-End
-
 Public Sub mnuLettersReceived_Click()
 
    Dim D As Collection
@@ -4093,85 +4016,6 @@ Public Sub mnuLettersReceived_Click()
          Document_AuditTrail_Show(cvwLettersReceived_key)
       Case "refile document"
          If modArchiveDocumentsDBI.Document_SendBack_For_ReFiling(currentconsult, currentconsult!letters_received[cvwLettersReceived_key]) Then 'commit done in that routine
-            cvwLettersReceived_Refresh(True)
-         Endif
-
-   End Select
-
-End
-
-Public Sub mnuLettersReceived_Click_old()
-
-   Dim D As Collection
-   Dim x As Integer
-
-   cvwLettersReceived.MoveCurrent()
-   Select Case Last.tag
-      Case "help"                          'show help for this section
-      Case "columns"                       'adjust and save column widths
-      Case "fonts"                         'adjust and save font"
-         modUtil.Columnview_SetFont(cvwLettersReceived, "TabbedLists")
-      Case "display"                       'show the letter
-         '  Document_Display(currentconsult!letters_received, cvwLettersReceived.Selection[0])              'display document
-         Document_Display(currentconsult!letters_received, cvwLettersReceived_key)
-      Case "display as result"                'change fk_lu_display as to const.Document_Display_As_Result
-         ' If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!letters_received, cvwLettersReceived.Selection[0], const.Document_Display_As_Result, const.cSection_Documents, "display mode changed from letter to result") Then
-         If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!letters_received[cvwLettersReceived.Selection[0]], const.Document_Display_As_Result, const.cSection_Documents, "display mode changed from letter to result") Then
-
-            cvwLettersReceived_Refresh(True)
-         Endif
-      Case "delete"                        'mark this as deleted but enforce a reason
-         If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!letters_received, cvwLettersReceived.Selection[0], const.cSection_Documents, const.sAuditAction[const.cAuditAction_MarkDeleted], "Letter re:" & currentconsult!letters_received[cvwLettersReceived.Item.key]!tag_user) Then
-            modDBConnect.CommitTrans()
-            Deleted_Documents.Add(currentconsult!letters_received[cvwLettersReceived.Item.key], cvwLettersReceived.Selection[0])
-            cvwLettersReceived_Refresh(True) 'refresh the collection and reshow the list
-         End If
-      Case "delete duplicate"             'Delete the letter, but don't enforce a reason
-         If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!letters_received[cvwLettersReceived.Selection[0]], const.cSection_Documents, const.sAuditAction[const.cAuditAction_DeleteDuplicateDocument], "duplicate letter") Then
-            modDBConnect.CommitTrans()
-            Deleted_Documents.Add(currentconsult!letters_received[cvwLettersReceived.Item.key], cvwLettersReceived.Selection[0])
-            cvwLettersReceived_Refresh(True)
-         End If
-      Case "undo delete"
-         'find the last deleted letter
-         For Each D In Deleted_Documents
-            If D!fk_lu_display_as = const.Document_Display_As_Letter Then
-               If modArchiveDocumentsDBI.UnDelete(currentconsult, d!pk_document, const.cSection_Documents) Then
-                  modDBConnect.CommitTrans()
-                  Deleted_Documents.Remove(d!pk_document)
-                  cvwLettersReceived_Refresh(True)
-                  Break
-               Endif
-            Endif
-         Next
-
-      Case "edit"            'edit the metadata
-         Document_Display(currentconsult!letters_received, cvwLettersReceived.key)
-         Document_Edit_Metadata(currentconsult!letters_received, cvwLettersReceived_Key)
-         ' Document_Edit_Metadata(currentconsult!letters_received, cvwLettersReceived.Selection[0])
-      Case "link"                          'link to a health issue not yet implemented
-         modUtil.NotImplemented("Link letter to health issue")
-      Case "print selected"
-         cvwLettersReceived.MoveFirst
-         For x = 0 To cvwLettersReceived.count - 1
-            If cvwLettersReceived.Item.Selected = True Then
-               Document_Print(cvwLettersReceived.Selected[x])
-            End If
-            cvwLettersReceived.MoveNext()
-         Next
-         cvwLettersReceived.UnselectAll()
-      Case "print all"
-         For Each D In currentconsult!letters_received
-            Document_Print(D!pk_document)
-         Next
-      Case "select all"
-         cvwLettersReceived.SelectAll()
-      Case "unselect"
-         cvwLettersReceived.UnselectAll()
-      Case "audit trail"
-         Document_AuditTrail_Show(cvwLettersReceived.Item.Key)
-      Case "refile document"
-         If modArchiveDocumentsDBI.Document_SendBack_For_ReFiling(currentconsult, currentconsult!letters_received[cvwLettersReceived.Selection[0]]) Then 'commit done in that routine
             cvwLettersReceived_Refresh(True)
          Endif
 

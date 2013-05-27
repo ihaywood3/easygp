@@ -1600,7 +1600,7 @@ Public Sub cvwLettersReceived_dblClick()
    Print cvwLettersReceived_Key
    'quickn dirty attempt at fix for key not being sent - no time to look
    'FIXM
-   If cvwLettersReceived.key = 0 Or cvwLettersReceived.key = "" Then Return 
+   If cvwLettersReceived.key = 0 Or cvwLettersReceived.key = "" Then Return
    Document_Display(currentconsult!letters_received, cvwLettersReceived_Key)
 
 End
@@ -3885,8 +3885,106 @@ Public Sub mnuMedications_Click()
             cvwMedications.SelectAll()
          End If
          cvwMedications.MoveFirst()
+         For x = 0 To cvwMedications.Selection.Count - 1
+            medication = currentconsult!medications[cvwMedications.Selection[x]]
+            new_Prescription_item = medication                 'set all the display fields, are the same as the original, not saved
+            new_Prescription_item!date_script_written = Now()
+            new_Prescription_item!med!last_date = Now()
+            prescribed = medication!prescribed.Clone()         'create a new prescribed cRow, don't put in authority approval etc even if an authority
+            prescribed.Remove("pk")                            ' make cRow save a new row
+            prescribed.Remove("printed")
+            If InStr(Last.tag, "24") Then
+               prescribed!reg24 = True
+            Else
+               prescribed!reg24 = False
+            Endif
+            prescribed!date_on_script = Now()                  'FIXME ALLOW MENU DRIVEN DATE AHEAD OPTIONS
+            prescribed!fk_consult = currentconsult.GetPK()
+            prescribed!script_number = modPrescribingDBI.Script_Number_Get_Next()
+            prescribed!latex = Null
+            If Not IsNull(prescribed!authority_reason) Then
+               prescribed!authority_script_number = modPrescribingDBI.Authority_Number_Get_Next(modDBConnect.currentUser!fk_staff)
+            Endif
+            ' prescribed! = concession_details : these three not yet implemented
+            ' prescribed! = brand_substitution : do not remove this code
+            ' prescribed! = fk_progress_note
+            new_Prescription_item!prescribed = prescribed         'new cRow, otherwise the fields not changed IAN FIXME EASIER WAY
+            FPrescriptions.Script_Item_Re_Prescribe(new_Prescription_item)
+         Next
+         cvwMedications.UnselectAll()
+      Case "view all medications history"
+         Print modPrescribingDBI.Medications_History_Construct_HTML(currentconsult!medications)
+         Editor_ShowPage("browser", "Medication history", modPrescribingDBI.Medications_History_Construct_HTML(currentconsult!medications))
+   End Select
+
+End
+
+Public Sub mnuMedications_Click_old()
+
+   Dim medication As Collection
+   Dim new_Prescription_item As Collection
+   Dim prescribed As CRow
+   Dim x As Integer
+
+   cvwMedications.MoveCurrent()
+   medication = currentconsult!medications[cvwMedications.Selection[0]]
+   Select Case Last.tag
+      Case "delete"
+         ' If modPrescribingDBI.Medication_Delete(currentconsult, currentconsult!medications, cvwMedications.Selection[0], const.cSection_Prescriptions, const.sAuditAction[const.cAuditAction_MarkDeleted], "Medication:" & currentconsult!medications[cvwMedications.Selection[0]]!generic) Then
+         '    modDBConnect.CommitTrans()
+         '    Deleted_medications.Add(currentconsult!medications[cvwMedications.Selection[0]], cvwMedications.Selection[0])
+         '    cvwMedications_Refresh() 'refresh the collection and reshow the list
+         ' End If
+      Case "full product information"
+         cvwMedications.MoveCurrent()
+         If Not IsNull(medication!product_information_filename) Then
+            Try Editor_ShowPage("drugs browser", medication!brand & " (" & medication!generic & ")", modAdminDBI.Config_Get("product_information_directory", "", Null, modDBConnect.currentUser!fk_clinic) &/ medication!product_information_filename)
+            If Error Then
+               Message.info("The product information could not be found")
+            Endif
+         Else
+            Message.info("The product information could not be found")
+         Endif
+      Case "make active"
+         modPrescribingDBI.Medication_MakeActiveOrInactive(medication!prescribed!fk_medication, True)
+         cvwMedications_Refresh()
+      Case "make inactive"
+         modPrescribingDBI.Medication_MakeActiveOrInactive(medication!prescribed!fk_medication, False)
+         cvwMedications_Refresh()
+
+      Case "view inactive medications", "view active medications"
+         Medications_DisplayActiveInactive
+      Case "brief product information"
+         modUtil.NotImplemented("Brief Product Information")
+      Case "view medication history"
+
+      Case "view medication as printed"
+         '------------------------------------------------------------------------------------------------------------------------------
+         'If a Latex defination exists (which it should, except for myself who used this in beta form before this feature was available)
+         'show the actual script as printed (could contain 1-3 drugs)
+         '------------------------------------------------------------------------------------------------------------------------------
+         If Not IsNull(medication!prescribed!latex) Then
+            Editor_ShowPage("pdf file", medication!brand, modPrinting.Latex_To_PDF(medication!prescribed!latex))
+         End If
+      Case "prescribe selected", "prescribe all", "prescribe selected reg24", "prescribe all reg24"
+         Editor_ShowPage("Scripts")            'Ensure the script module is loaded and visible
+         If Last.tag = "prescribe all" Or Last.tag = "prescribe all reg24" Then  'cvwMedicals.SelectAll does not work??
+            '    cvwMedications.MoveFirst()
+            '    For x = 0 To cvwMedications.count - 1
+            '       cvwMedications.Item.Selected = True
+            '       cvwMedications.MoveNext
+            '    Next
+            ' Endif
+            cvwMedications.SelectAll()
+         End If
+         cvwMedications.MoveFirst()
+         Print cvwMedications.Selection
          For x = 0 To cvwMedications.Count - 1
             If cvwMedications.Item.Selected = True Then
+
+               cvwMedications.MoveCurrent
+               ' Print cvwMedications.Item.Key
+               '     medication = currentconsult!medications[cvwMedications.Item.Key]
                medication = currentconsult!medications[cvwMedications.Selection[x]]
                new_Prescription_item = medication                 'set all the display fields, are the same as the original, not saved
                new_Prescription_item!date_script_written = Now()
@@ -4681,26 +4779,6 @@ Public Sub TabbedLists_Click()
          'Graph measurements if possible
          '------------------------------
          cvwMeasurementFavorites.UnselectAll()
-   End Select
-
-End
-
-Public Sub mnuPopupMedications_Click()
-
-   Select Case Last.tag
-      Case "make inactive"
-      Case "make active"
-      Case "prescribe single"
-      Case "prescribe all"
-      Case "delete single request"
-      Case "reverse single request"
-      Case "brief product information"
-      Case "full product information"
-      Case "change column widths"
-      Case "fonts"
-         modUtil.Columnview_SetFont(cvwMedications, "TabbedLists")
-      Case "save configuration"
-      Case "view medication history"
    End Select
 
 End

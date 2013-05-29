@@ -17,6 +17,7 @@
 
 Private $hconn As Connection
 Private bTransaction As Boolean
+Private bFirstCommand As Boolean
 Private conninfo As Collection
 Private my_current_user As Collection
 Private pg_socket_file As Stream
@@ -109,6 +110,7 @@ Public Function dbConnect_global(host As String, database As String, login As St
       conninfo!host = sa[0]
       conninfo!database = sa[1]
    Else
+      conninfo!host = host
       conninfo!database = database
    Endif
    If IsNull(conninfo!database) Then conninfo!database = "easygp"
@@ -126,6 +128,7 @@ Public Function dbConnect_global(host As String, database As String, login As St
       CheckDBVersion()
       my_current_user = modConsultDBI.Staff_member_Get()
       bStoring = False
+      modUtil.ReportError("stupid error", sa)
       event_listeners = New Collection
    Endif
    Return r
@@ -267,7 +270,8 @@ End
 
 Public Function BeginTrans() As Result
 
-   ' now a noop
+   bTransaction = True
+   bFirstCommand = True
 
 End
 
@@ -295,14 +299,17 @@ Public Function CommitTrans() As Result
 
    Dim $Result As Result
    Dim startTime As Float
-
+   Dim errtxt As String
+   
    If bTransaction Then
       bTransaction = False
+      bFirstCommand = False
       startTime = Timer()
       Try $Result = $hconn.Exec("COMMIT")
       If Error Then
-         Log.ErrorMsg(Error.Text)
-         Message.Error(Error.Text)
+         errtxt = Error.Text
+         Log.ErrorMsg(errtxt)
+         Error.Raise(errtxt)
       Else
          Log.DebugMsg(" COMMIT ( took " & timeDiff(startTime) & "msec )")
       Endif
@@ -329,6 +336,7 @@ Public Function exec_query(sql As String, Optional params As Variant[]) As Resul
    If Not bTransaction And prefix <> "select" And prefix <> "listen" Then
       $hconn.Exec("BEGIN")
       bTransaction = True
+      bFirstCommand = True
    End If
    If Len(sql) > 5000 Then
       Log.DebugMsg(Left$(sql, 5000))
@@ -339,7 +347,7 @@ do_query:
    Try $Result = $hconn.Exec(sql)
    If Error Then
       errtxt = Error.Text
-      If errtxt = "Query failed: SSL SYSCALL error: EOF detected\n" Then
+      If errtxt = "Query failed: SSL SYSCALL error: EOF detected\n" And If ((Not bTransaction) Or bFirstCommand) Then
          ' connection lost
          Log.ErrorMsg(errtxt)
          i = Message.Error("EasyGP has lost the Internet connection", "Try to Re-connect", "Quit Program")
@@ -354,22 +362,19 @@ do_query:
                   Goto do_reconnect
                Else
                   Log.ErrorMsg(errtxt)
-                  Quit
+                  Error.Raise(errtxt)
                Endif
             Endif
          Endif
       Else
          Log.ErrorMsg(errtxt)
-         'Quit
+         Error.Raise(errtxt)
       Endif
    Else
       Log.DebugMsg(" ( " & $Result.Count & " rows returned in " & timeDiff(startTime) & "msec )")
+      bFirstCommand = False
    Endif
    Return $Result
-Catch
-   modUtil.ReportError(Error.Text, Error.Backtrace)
-   Error.Raise("query failed")
-
 End
 
 Public Sub startStoring()

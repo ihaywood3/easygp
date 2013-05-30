@@ -17,7 +17,6 @@
 
 Private $hconn As Connection
 Private bTransaction As Boolean
-Private bFirstCommand As Boolean
 Private conninfo As Collection
 Private my_current_user As Collection
 Private pg_socket_file As Stream
@@ -110,7 +109,6 @@ Public Function dbConnect_global(host As String, database As String, login As St
       conninfo!host = sa[0]
       conninfo!database = sa[1]
    Else
-      conninfo!host = host
       conninfo!database = database
    Endif
    If IsNull(conninfo!database) Then conninfo!database = "easygp"
@@ -269,8 +267,7 @@ End
 
 Public Function BeginTrans() As Result
 
-   bTransaction = True
-   bFirstCommand = True
+   ' now a noop
 
 End
 
@@ -299,17 +296,14 @@ Public Function CommitTrans() As Result
 
    Dim $Result As Result
    Dim startTime As Float
-   Dim errtxt As String
-   
+
    If bTransaction Then
       bTransaction = False
-      bFirstCommand = False
       startTime = Timer()
       Try $Result = $hconn.Exec("COMMIT")
       If Error Then
-         errtxt = Error.Text
-         Log.ErrorMsg(errtxt)
-         Error.Raise(errtxt)
+         Log.ErrorMsg(Error.Text)
+         Message.Error(Error.Text)
       Else
          Log.DebugMsg(" COMMIT ( took " & timeDiff(startTime) & "msec )")
       Endif
@@ -336,7 +330,6 @@ Public Function exec_query(sql As String, Optional params As Variant[]) As Resul
    If Not bTransaction And prefix <> "select" And prefix <> "listen" Then
       $hconn.Exec("BEGIN")
       bTransaction = True
-      bFirstCommand = True
    End If
    If Len(sql) > 5000 Then
       Log.DebugMsg(Left$(sql, 5000))
@@ -347,7 +340,7 @@ do_query:
    Try $Result = $hconn.Exec(sql)
    If Error Then
       errtxt = Error.Text
-      If errtxt = "Query failed: SSL SYSCALL error: EOF detected\n" And If ((Not bTransaction) Or bFirstCommand) Then
+      If errtxt = "Query failed: SSL SYSCALL error: EOF detected\n" Then
          ' connection lost
          Log.ErrorMsg(errtxt)
          i = Message.Error("EasyGP has lost the Internet connection", "Try to Re-connect", "Quit Program")
@@ -362,19 +355,22 @@ do_query:
                   Goto do_reconnect
                Else
                   Log.ErrorMsg(errtxt)
-                  Error.Raise(errtxt)
+                  Quit
                Endif
             Endif
          Endif
       Else
          Log.ErrorMsg(errtxt)
-         Error.Raise(errtxt)
+         'Quit
       Endif
    Else
       Log.DebugMsg(" ( " & $Result.Count & " rows returned in " & timeDiff(startTime) & "msec )")
-      bFirstCommand = False
    Endif
    Return $Result
+Catch
+   modUtil.ReportError(Error.Text, Error.Backtrace)
+   Error.Raise("query failed")
+
 End
 
 Public Sub startStoring()
@@ -661,26 +657,26 @@ Public Function exec_query_row(sql As String, Optional params As Variant[]) As C
 
 End
 
-
 Private Function DbName_Read() As String
 
-  Return $hconn.Name
+   Return $hconn.Name
 
 End
 
 Private Function DbHost_Read() As String
 
-  Return $hconn.Host
+   Return $hconn.Host
 
 End
 
 Public Function Esc_Like(s As String) As String
-  ' escapes characters required for doing LIKE and ILIKE
-  Dim s2 As String
-  
-  s2 = Replace$(s, "%", "\\%")
-  s2 = Replace$(s2, "\\", "\\\\")
-  s2 = Replace$(s2, "_", "\\_")
-  Return s2
-  
+   ' escapes characters required for doing LIKE and ILIKE
+
+   Dim s2 As String
+
+   s2 = Replace$(s, "%", "\\%")
+   s2 = Replace$(s2, "\\", "\\\\")
+   s2 = Replace$(s2, "_", "\\_")
+   Return s2
+
 End

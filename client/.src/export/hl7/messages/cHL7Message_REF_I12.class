@@ -1,7 +1,5 @@
 ' Gambas class file
 
-' Gambas class file
-
 ' Copyright (C) 2012-2013 Bernd Brinkmann brinkmann_bernd@gmx.de
 
 ' This program is free software: you can redistribute it and/or modify
@@ -27,15 +25,15 @@
 ' 4: OBR( Observation result segment)Optional
 ' 5: OBX(Observation segment)Optional repeating (there can be more than one acording to the number of referral letters, pdfś or jpgś taht are attadched to this hl7 message
 '
-Public Function Base64()
-   
-   
-   
-End
 
-Public Sub CreateHL7Message_REF_I12(ReferredToProvider As Collection, ToTransferPatient_fk_Patient As Integer, ReferralStatus As String, ReferralPriority As String, ReferralType As String, ReferralDisposition As String, ReferralReason As String, Optional Attachments As String[], Optional ObservationResultStatus As String, Optional ReferralDate As CHL7Datatype_TS, Optional ConsultingProvider As Collection, Optional PrimaryCareProvider As Collection, Optional ReceivingFacility_HD As CHL7Datatype_HD, Optional OriginatingReferralIdentifier_EI As CHL7Datatype_EI, Optional PlacerOrderNumber As CHL7Datatype_EI, Optional AdmissionType As String) As String
+Public fname As String ' name of the file
+Public fpath As String ' full path (in temp dir)
+Public message_id As String
+
+Public Sub CreateHL7Message_REF_I12(ReferredToProvider As Collection, Patient As Collection, Attachments As String[], ReferralDisposition As String, ReferralReason As String, Optional ReferralPriority As String = "R", Optional ReferralType As String = "GRF", Optional ReferralStatus As String = "P", Optional ObservationResultStatus As String, Optional ReferralDate As CHL7Datatype_TS, Optional ConsultingProvider As Collection, Optional PrimaryCareProvider As Collection, Optional ReceivingFacility_HD As CHL7Datatype_HD, Optional PlacerOrderNumber As CHL7Datatype_EI, Optional AdmissionType As String)
    '----------------------------------------------------------------------
    'This Function fills all required fields for the message and prints them to a File
+   'populates public globals with message ID and path of temp directory file written to with HL7 data
    'Variables:
    '- ReferredToProvider: Needs to be a collection and contains the information of the Receiving doctor
    '- ToTransferPatient_fk_Patient: Needs to be an integer and contains the foreign key which gives the information were the data of the to reffering patient is storred in the DB
@@ -53,9 +51,6 @@ Public Sub CreateHL7Message_REF_I12(ReferredToProvider As Collection, ToTransfer
    '- PlacerOrderNumber(Opional) is a chl7datatype_EI  and in case this is a answer to a referral the .Identifyer value has to contain the filler order number of the first referrel message
    '- AdmissionType(optional): Needs to be a string which is coded according to the HL7 user table 7
    '----------------------------------------------------------------------
-   
-   ' Variable declaration
-   Dim hFile As File 'the file were the result is printed to
    ' declaring all eventually used HL7 segments
    Dim MSH As CHL7Segment_MSH 
    Dim PID As CHL7Segment_PID
@@ -77,35 +72,21 @@ Public Sub CreateHL7Message_REF_I12(ReferredToProvider As Collection, ToTransfer
    Dim ReferralDisposition_CE As New CHL7Datatype_CE
    Dim ReferralReason_CE As New CHL7Datatype_CE
    Dim UserInformation As New Collection   ' collection which later contains the information of the current user which is then used as sender
-   Dim Patient As Collection ' collection which later ontains the information of the patient which that is going to be referred
    Dim MessageGUID_EI As New CHL7Datatype_EI
    Dim ReferralPriority_CE As New CHL7Datatype_CE
-   Dim PrimaryKey As Integer
    Dim ReferralType_CE As New CHL7Datatype_CE
    Dim ProviderRole_CE As New CHL7Datatype_CE
    Dim UniversalServiceID_CE As New CHL7Datatype_CE
+   Dim OriginatingReferralIdentifier_EI As New CHL7Datatype_EI
    Dim Attachment As String
    Dim sLine As String
    Dim TempString As String
-
    Dim TempCollection As Collection
-   Dim TempStream As Stream
-   Dim count As Integer
+   Dim hFile As File
+   
    
    UserInformation = modDBConnect.currentUser ' reads the information of the current user out of the DB
-   Patient = modContactsDBI.Patient_Get_Using_PK(ToTransferPatient_fk_Patient) ' reads the information of the to referring patient out of the DB 
 
-   ' if no GUID is passed to this function make your own
-   If IsNull(OriginatingReferralIdentifier_EI) Then
-      OriginatingReferralIdentifier_EI = New CHL7Datatype_EI
-      PrimaryKey = modDBConnect.exec_query("Select nextval('documents.hl7_messages_seq') as Pk;")!Pk   'gets the a unique value for the table were the massege will be strored an this value is also used to create a universalID
-      OriginatingReferralIdentifier_EI.Identifier = PrimaryKey 'unique message identifyer 
-      OriginatingReferralIdentifier_EI.AssigningAuthority.UniversalID = UserInformation["organisation"] 'here a unique identifyer of ordering facility has to be inserted
-      OriginatingReferralIdentifier_EI.AssigningAuthority.ApplicationIdentifier = "EasyGP v" & Application.Version
-      OriginatingReferralIdentifier_EI.AssigningAuthority.UniversalIDType = "ID"
-   Endif
-   
-   ' fills the rest of the referralstatus according to the parameter 
    Select ReferralStatus 
       Case "A"
          ReferralStatus_CE.Text = "Accepted"
@@ -232,15 +213,21 @@ Public Sub CreateHL7Message_REF_I12(ReferredToProvider As Collection, ToTransfer
          ReferralReason_CE.Identifier = ReferralReason
          ReferralReason_CE.NameOfCodingSystem = "HL70336"
    End Select
-   If IsNull(ReferralDate) Then ReferralDate.TimeStamp = Now
-   If IsNull(ReceivingFacility_HD) Then
-      MSH = New CHL7Segment_MSH("REF", "I12", OriginatingReferralIdentifier_EI.Identifier, ReferralDate) 'creates a new MSH segment with all the underlaying datatypes
-      ObjectArray.Add(MSH)
-   Else
-      MSH = New CHL7Segment_MSH("REF", "I12", OriginatingReferralIdentifier_EI.Identifier, ReferralDate, ReceivingFacility_HD) 'creates a new MSH segment with all the underlaying datatypes
-      ObjectArray.Add(MSH)
-   Endif
    
+   MSH = New CHL7Segment_MSH("REF", "I12", ReceivingFacility_HD) 'creates a new MSH segment with all the underlaying datatypes
+   ObjectArray.Add(MSH)
+
+   message_id = MSH.MessageControlID_ST_Req
+   fname = message_id & ".ref"
+   fpath = modUtil.Get_Temp_Dir() &/ fname 
+   hFile = Open fpath For Write Create
+   
+   OriginatingReferralIdentifier_EI.Identifier = message_id 'unique message identifyer
+   OriginatingReferralIdentifier_EI.AssigningAuthority.UniversalID = UserInformation["organisation"] 'here a unique identifyer of ordering facility has to be inserted
+   OriginatingReferralIdentifier_EI.AssigningAuthority.ApplicationIdentifier = "EasyGP"
+   OriginatingReferralIdentifier_EI.AssigningAuthority.UniversalIDType = "ID"
+   ' fills the rest of the referralstatus according to the parameter 
+     
    RF1 = New CHL7Segment_RF1(ReferralStatus_CE, OriginatingReferralIdentifier_EI, ReferralPriority_CE, ReferralType_CE, ReferralDisposition_CE, ReferralReason_CE) 'creates a new RF1 segment with all the underlaying datatypes
    ObjectArray.Add(RF1)
    
@@ -265,7 +252,7 @@ Public Sub CreateHL7Message_REF_I12(ReferredToProvider As Collection, ToTransfer
    
    UniversalServiceID_CE.Identifier = "R"
    UniversalServiceID_CE.Text = "Referral"
-   UniversalServiceID_CE.NameOfCodingSystem = "EasyGp " & Application.Version
+   UniversalServiceID_CE.NameOfCodingSystem = "EasyGP"
    FillerOrderNumber_EI.Identifier = OriginatingReferralIdentifier_EI.Identifier
    
    If IsNull(PlacerOrderNumber) Then 
@@ -286,55 +273,38 @@ Public Sub CreateHL7Message_REF_I12(ReferredToProvider As Collection, ToTransfer
    ' 
    For Each Attachment In Attachments
       If Left$(attachment) = "/" Then
-
-        If Exist(attachment) Then 
-            Select Case Right$(attachment, 4)
-                  
-               Case ".txt", ".TXT"
-               
-                  TempString = File.Load(attachment)
-                  ObservationIdentifier_CE.Identifier = "Txt"
+            TempString = File.Load(attachment)
+            Select Case Upper$(Right$(attachment, 3))
+               Case "TXT"
+                  ObservationIdentifier_CE.Identifier = "TXT"
                   ObservationIdentifier_CE.Text = "Display format in text"
                   ObservationIdentifier_CE.NameOfCodingSystem = "AUSPDI"
                   OBX = New CHL7Segment_OBX(1, "FT", ObservationIdentifier_CE, ObservationResultStatus, TempString) ' "FT" means FORMATTED TEXT
-                  ObjectArray.Add(OBX)
                   
-               Case ".rtf", ".RTF"
-                  TempString = File.Load(attachment)
+               Case "RTF"
+                  
                   ObservationIdentifier_CE.Identifier = "RTF"
                   ObservationIdentifier_CE.Text = "Display format in RTF"
                   ObservationIdentifier_CE.NameOfCodingSystem = "AUSPDI"
                   OBX = New CHL7Segment_OBX(1, "ED", ObservationIdentifier_CE, ObservationResultStatus, Base64(TempString)) 
-                  ObjectArray.Add(OBX)
                   
-               Case ".pdf", ".PDF"
-                  TempString = File.Load(attachment)
+               Case "PDF"
+                  
                   ObservationIdentifier_CE.Identifier = "PDF"
                   ObservationIdentifier_CE.Text = "Display format in PDF"
                   ObservationIdentifier_CE.NameOfCodingSystem = "AUSPDI"
                   OBX = New CHL7Segment_OBX(1, "ED", ObservationIdentifier_CE, ObservationResultStatus, Base64(TempString)) 
-                  ObjectArray.Add(OBX)
                   
-               Case ".jpg", ".JPG"
-                  TempString = File.Load(attachment)
+               Case "JPG"
+                  
                   ObservationIdentifier_CE.Identifier = "JPG"
                   ObservationIdentifier_CE.Text = "Display format in JPG"
                   ObservationIdentifier_CE.NameOfCodingSystem = "AUSPDI"
                   OBX = New CHL7Segment_OBX(1, "ED", ObservationIdentifier_CE, ObservationResultStatus, Base64(TempString)) 
-                  ObjectArray.Add(OBX)
-                  
                Case Else
-                  Select Case Message.Warning(attachment & " was opened but is not matching with one of these formats( .txt, .pdf, .jpg)", "Send HL7 message without file", " Abort sending") 'raises an error if the file dose not have the right ending
-                     Case 2
-                        Return
-                  End Select
+                 Error.Raise("unrecognised file type " & Attachment)
             End Select
-         Else
-            Select Case Message.Warning(attachment & " could not be opened", "Send HL7 message without file", " Abort sending") 'raises an error if the file dose not have the right ending
-               Case 2
-                  Return
-            End Select
-         Endif
+            ObjectArray.Add(OBX)
       Else
          ObservationIdentifier_CE.Identifier = "Txt"
          ObservationIdentifier_CE.Text = "Display format in text"
@@ -343,45 +313,7 @@ Public Sub CreateHL7Message_REF_I12(ReferredToProvider As Collection, ToTransfer
          ObjectArray.Add(OBX)
       Endif 
    Next
-   
-   If Exist("/home/bernd/svn/" & "/HL7Message_" & PrimaryKey & ".txt") Then  'links the hFile file to a path and ceates the file.txt if the file is not already existing 
-      hFile = Open "/home/bernd/svn/" & "/HL7Message_" & PrimaryKey & ".txt" For Write Append 
-   Else 
-      hFile = Open "/home/bernd/svn/" & "/HL7Message_" & PrimaryKey & ".txt" For Write Create
-   Endif 
    modHL7Emitter.Emit("\r", hFile, ObjectArray)   'NOTE: separator here should be \ r, but To be visible In a UNIX terminal use \ n
-   Print #hFile, "\r"; 'prints a carriage return at the end of the last segment because every segment mussed be followed by one
-   hFile.Close()
-   
-   count = ObjectArray.Length - 6
-   If Not IsNull(ConsultingProvider) Then Dec count
-   If Not IsNull(PrimaryCareProvider) Then Dec count
-   
-   For Each attachment In attachments
-      If Left$(attachment, 1) <> "/" Then
-         ObjectArray[ObjectArray.Length - count].ObservationValue_ST = attachment
-         Dec count
-      Else
-         If Exist(attachment) Then
-            ObjectArray[ObjectArray.Length - count].ObservationValue_ST = attachment
-            Dec count
-         Endif
-      Endif
-   Next
-   
-   If Exist(Application.path & "/TempHL7File.txt") Then  'links the hFile file to a path and ceates the file.txt if the file is not already existing 
-      hFile = Open Application.path & "/TempHL7File.txt" For Write Append 
-   Else 
-      hFile = Open Application.path & "/TempHL7File.txt" For Write Create
-   Endif 
-      
-   modHL7Emitter.Emit("\r", hFile, ObjectArray)   'NOTE: separator here should be \ r, but To be visible In a UNIX terminal use \ n
-   Print #hFile, "\r"; 'prints a carriage return at the end of the last segment because every segment mussed be followed by one
-   
-   TempString = hFile.Load(Application.path & "/TempHL7File.txt")
-     hFile.Close()
-   Try Kill Application.path & "/TempHL7File.txt"
-   Return TempString
-
+   Close #hFile
 
 End

@@ -97,8 +97,14 @@ def process_file(fd)
   fd.each_line  do |line|
     case line
     when /^\.include (.*)/
-      $latex.write(latex_esc("\n\n\\texttt{[File %s]}\n\n" % $1))
-      process_file(File.new($1))
+      begin
+        $latex.write(latex_esc("\n\n\\texttt{[File %s]}\n\n" % $1))
+        process_file(File.new($1))
+      rescue
+	$latex.write(latex_esc("\n\n\\textt{[No such file %s]}\n\n" % $1))
+        $output.write("<p><tt>No such file %s</tt></p>" % $1)
+$stderr.write("no such file %s\n" % $1)
+      end
     when /^\.section (.*)/
       title, file = parse_name($1)
       key = make_key(title)

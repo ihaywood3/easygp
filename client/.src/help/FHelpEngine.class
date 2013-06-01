@@ -20,38 +20,27 @@
 ' TODO's    - lots actually this is fairly embryonic. Put up your hands
 ' ---------------------------------------------------------------------
 Private basedir As String
-Private index As Object[]
-Private StartPage As FHelpBrowser
 Private DialogAboutHelpBrowser As FAbout
-Public iZoom As Integer
 Public default_Zoom As Integer
-Public obs As Observer
+Public index As Object[]
+
+
 
 Public Sub _new()
 
-   Debug "bazinga!"
    basedir = modUtil.Find_File("help")
    default_Zoom = 1
-   StartPage = New FHelpBrowser
 
 End
 
-Public Sub WebView_Menu()
 
-   Stop Event
-   StartPage.mnuHelpBrowser.Popup()
+Public Sub Make_New_Tab(caller As Webview)
+   
+     Dim new_page As New FHelpBrowser(Workspace1)
 
-End
-
-Public Sub mnuHelpBrowser_Click()
-
-   Stop Event
-   Print "clicked the new menu"
-
-   Select Case Last.tag
-      Case "open link in new tab"
-      Case "open link in external browser"
-   End Select
+     new_page.Init(Me, default_Zoom)     
+     Workspace1.Add(new_page)
+     caller.NewView = new_page.WebView1
 
 End
 
@@ -69,31 +58,12 @@ Public Sub btnZoomNormal_Click()
 
 End
 
-Public Sub Webview1_ZoomIn()
 
-   'Startpage.Webview1.GetView().Zoom = Round(GetView().Zoom * 1.25, -2)
-   ' Dim ipercent As Integer
-   ' Inc izoom
-   ' izoom = Min(iZoom, 6)
-   ' default_zoom = const.zoom[izoom]
-   ' StartPage.Webview1.Zoom = default_zoom
-
-End
-
-Public Sub Webview1_ZoomOut()
-   'Startpage.Webview1.GetView().Zoom = Round(GetView().Zoom / 1.25, -2)
-   ' Dim ipercent As Integer
-   ' Dec iZoom
-   ' iZoom = Max(iZoom, 0)
-   ' default_zoom = const.zoom[izoom]
-   ' StartPage.Webview1.Zoom = default_zoom
-
-End
 
 Public Sub Settings_Save()
 
    Settings["FHelpEngine/HSplit_Main"] = HSplit_Main.Layout
-   Try Settings["FHelpEngine/default_zoom"] = StartPage.Webview1.Zoom 'do not remove StartPage can be null
+   Try Settings["FHelpEngine/default_zoom"] = default_Zoom
 
 End
 
@@ -102,7 +72,6 @@ Private Sub Settings_Load()
    HSplit_Main.Layout = Settings["Help/HSplit_Main", modUtil.HSplit([387, 1324])]
    default_Zoom = Settings["Help/default_zoom", 1.0]
    If default_Zoom < 1 Then default_Zoom = 1
-   StartPage.Webview1.Zoom = default_Zoom
 
 End
 
@@ -127,18 +96,24 @@ Public Sub Refresh()
    Dim record As String[]
    Dim picClosedBook As Picture
    Dim picPage As Picture
-
+   Dim page As FHelpBrowser
+   Dim s As String
+   
    picClosedBook = Picture["icons/16/closed_book1616.png"]
    picPage = Picture["icons/16/page_1616.png"]
 
    TreeView1.Clear()
    Try fd = Open basedir &/ "toc.txt" For Input
    If Error Then
-      MissingHelp()
-      If IsNull(StartPage) Then
-         StartPage = New FHelpBrowser
-      Endif
-      Workspace1.Add(StartPage)
+      page = New FHelpBrowser(Workspace1)
+      Workspace1.Add(page)
+      page.Init(Me, default_Zoom)
+      s = "<HTML><BODY><H1>Aaargh!</H1>"
+      "<P>The help files cannot be found on the local system.</P>"
+      "<P>Please ask your admin to check the package <TT>easygp-doc></TT> is installed on all clients.</P>"
+      "</BODY></HTML>"
+      page.WebView1.HTML = s
+      page.text = "missing help"
       Return
    End If
    While Not Eof(fd)
@@ -159,44 +134,30 @@ Public Sub Refresh()
       record = Split(sLine, "\t")
       index.Add(record)
    Wend
-   Workspace1.Add(StartPage)
-
+   
 End
 
-Public Sub MissingHelp()
-
-   Dim s As String
-
-   s = "<HTML><BODY><H1>Aaargh!</H1>"
-   "<P>The help files cannot be found on the local system.</P>"
-   "<P>Please ask your admin to check the package <TT>easygp-doc></TT> is installed on all clients.</P>"
-   "</BODY></HTML>"
-   StartPage.Webview1.HTML = s
-   StartPage.Webview1.Zoom = default_Zoom
-   StartPage.text = "missing help"
-
-End
 
 Public Sub TreeView1_Select()
    '--------------------------------------------
    'Display the help file for the selected topic
    '--------------------------------------------
+   Dim page As FHelpBrowser
 
    If Not IsNull(TreeView1.Key)
-      Print Workspace1.ActiveWindow
-      If IsNull(Workspace1.ActiveWindow) Then
-         StartPage = New FHelpBrowser
-         obs = New Observer(StartPage.WebView1) As "WebView"
-         obs = New Observer(StartPage.mnuHelpBrowser) As "mnuHelpBrowser"
-         Workspace1.Add(StartPage)
+      If Not IsNull(Workspace1.ActiveWindow) Then
+        page = Workspace1.ActiveWindow
+      Else
+        page = New FHelpBrowser(Workspace1)
+        Workspace1.Add(page)
+        page.Init(Me, default_Zoom)
       Endif
-      StartPage.Webview1.url = basedir &/ TreeView1.Key & ".html"
-      StartPage.Webview1.Zoom = default_Zoom
-      StartPage.text = TreeView1.Key & ".html"
-
+      page.Webview1.url = basedir &/ TreeView1.Key & ".html"
+      'StartPage.text = TreeView1.Key
    Endif
 
 End
+
 
 Public Sub SearchBox_Change()
 
@@ -215,12 +176,16 @@ End
 
 Public Sub IndexList_Select()
 
+   Dim page As FHelpBrowser
    Dim i As String[]
-
+   
    If Not IsNull(IndexList.Key) Then
       i = Split(IndexList.Key, "\t")
-      StartPage.Webview1.url = basedir &/ i[1] & ".html"
-      StartPage.text = i[1] & ".html"
+      page = New WebView(Workspace1)
+      Workspace1.Add(page)
+      page.WebView1.url = basedir &/ i[1] & ".html"
+      page.Init(Me, default_Zoom)
+      'StartPage.text = TreeView1.Key
    Endif
 
 End
@@ -245,7 +210,11 @@ Public Sub Buttons_Click()
 End
 
 Public Sub toolbuttons_Click()
+   Dim page As FHelpBrowser
 
+   page = Workspace1.ActiveWindow
+   If IsNull(page) Then Return
+   
    Select Case Last.tag
       Case "open file"
 
@@ -254,15 +223,18 @@ Public Sub toolbuttons_Click()
       Case "home"
 
       Case "back"
-
-      Case "foreward"
-
+        page.WebView1.Back()
+      Case "forward"
+        page.WebView1.Forward()
       Case "locate"
 
       Case "zoom in"
-         Try StartPage.Webview1.Zoom = Round(StartPage.Webview1.Zoom * 1.25, -2) 'the page may not exist
+         default_Zoom = page.Webview1.Zoom + 1
+         page.WebView1.Zoom = default_Zoom
       Case "zoom out"
-         Try StartPage.Webview1.Zoom = Round(StartPage.Webview1.Zoom / 1.25, -2)  'the page may not exist
+         default_Zoom = page.Webview1.Zoom - 1
+         If default_Zoom < 1 Then default_Zoom = 1
+         page.WebView1.Zoom = default_Zoom
       Case "view html"
 
       Case "bookmark"
@@ -353,3 +325,4 @@ Public Sub tbRefresh_Click()
    Refresh
 
 End
+' 

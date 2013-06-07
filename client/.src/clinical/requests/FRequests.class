@@ -206,27 +206,95 @@ End
 Public Sub Save()
 
    Dim sProgressNotes As String
+   Dim request_form As CRow
+   Dim Req As Collection
+   Dim forms_request As CRow
+   Dim RQ As Collection
 
    If VBox_Referrals.Padding = 0 Then Return
    If Not Valid_RequestForm() Then Return
 
    tbSave.Enabled = False                            'prevents user clicking twice in quick succession which is possible! cause it's happend to me > two saves
-   sProgressNotes = RequestForm_Fill_Collection()    'probably not previewed > fills CurrentRequestForm including generates the forms html
-   modDBConnect.BeginTrans()
-   If IsNull(CurrentRequestForm!fk_progressnote) Then
-      fk_progressnote = -1
-   Else
-      fk_progressnote = CurrentRequestForm!fk_progressnote
-   End If
-   If fk_pasthistory <> 0 Then
-      CurrentRequestForm!fk_pasthistory = fk_pasthistory
+   sProgressNotes = ProgressNotes_Construct()       'probably not previewed > fills CurrentRequestForm including generates the forms html
+   '-------------------------------------------------------------------------------------------------
+   ' CREATE TABLE clin_requests.forms
+   ' (
+   '   pk serial NOT NULL,
+   ' x  fk_consult integer NOT NULL, -- foreign key to clin_consult.consult table
+   ' x  date date, -- the date printed on request form. May not be...
+   ' x  fk_request_provider integer NOT NULL, -- foreign key to contacts.data_branches table points to organisation service is requested of, the branch address, all comms for the organisation, branch etc...
+   ' x  fk_lu_request_type integer NOT NULL, -- foreign key to clin_requests.lu_type table e.g 1= pathology
+   ' x  requests_summary text NOT NULL, -- delimited ; summary of requests eg fbc;esr;msu;lfts;
+   ' x  notes_summary text, -- delimited ; summary of clinicalnotes eg tiredness;weight loss;
+   ' x  medications_summary text, -- delimited ; summary of medications eg ranitidine;simvastatin
+   ' x  copyto text,
+   '   deleted boolean DEFAULT false, -- if true the the request form as been deleted
+   ' x  copyto_patient boolean DEFAULT false,
+   ' x  urgent boolean DEFAULT false,
+   ' x  bulk_bill boolean DEFAULT false,
+   ' x  fasting boolean DEFAULT false,
+   ' x  phone boolean DEFAULT false,
+   ' x  fax boolean DEFAULT false,
+   ' x  include_medications boolean DEFAULT false,
+   '   pk_image integer,  'currently not implemented
+   '   fk_progressnote integer,
+   '   fk_pasthistory integer, -- if not null it is the health issue linked to this request form -  foreign key to clin_history.past_history
+   '   latex text, -- the actually LaTex of the form as printed currently the field has no default as all ...
+   '   CONSTRAINT forms_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '------------------------------------------------------------------------------------------------------------
+   request_form = New CRow
+   If fk_form Then
+      request_form.put_unchanged(fk_form, "fk_form")
    Endif
-   CurrentRequestForm!latex = RequestForm_LaTeX_Construct(CurrentRequestForm).GetData()
-   CurrentRequestForm!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, cProgressNote_Section, fk_progressnote, "Requests", fk_pasthistory, False)
-   fk_form = modRequestsDBI.RequestForm_Save(currentconsult, pk_view, CurrentRequestForm, old_forms_requests, currentFormsRequests, currentRequestFormPictures)
+   request_form!fk_consult = currentconsult.GetPK()
+   request_form!date = Val(txtDate.text)
+   request_form!fk_request_provider = fk_request_provider
+   request_form!fk_lu_request_type = fk_lu_request_type
+   request_form!requests_summary = Trim(txtRequest.text)
+   request_form!notes_summary = Trim(txtNotes.text)
+   request_form!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto
+   request_form!copyto_patient = CBool(chkCopypatient.value)
+   request_form!urgent = CBool(chkUrgent.value)
+   request_form!bulk_bill = CBool(chkBulkBill.value)
+   request_form!fasting = CBool(chkFasting.value)
+   request_form!fax = CBool(chkFax.value)
+   request_form!phone = CBool(chkPhone.value)
+   request_form!include_medications = CBool(chkIncludeMedications.value)
+   request_form!medications_summary = Trim(txtMedications.text)
+   request_form!latex = RequestForm_LaTeX_Construct(request_form).GetData()
+   request_form!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, cProgressNote_Section, fk_progressnote, "Requests", fk_pasthistory, False)
+   request_form.Save("clin_requests.forms", "fk_form")
+   '------------------------------------------------------------------------------------------------
+   ' CREATE TABLE clin_requests.forms_requests
+   ' (
+   '   pk serial NOT NULL, -- key to forms_requests table, ie points to pk of the orginal request
+   '   fk_form integer, -- points to form the request was on
+   '   fk_lu_request integer NOT NULL, -- foreign key points to the actual request name eg 'FBC
+   '   deleted boolean DEFAULT false, -- If false the form has been delted
+   '   request_result_html text, -- the entire html of a single result
+   '   CONSTRAINT forms_requests_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '-----------------------------------------------------------------------------------------------
+   For Each RQ In currentFormsRequests
+      forms_request = New CRow
+      If Not IsNull(RQ!fk_forms_requests) Then
+         forms_request.put_unchanged(RQ!fk_forms_requests, "fk_forms_requests")
+      Endif
+      forms_request!fk_form = request_form!fk_form
+      forms_request!fk_lu_request = RQ!fk_lu_request
+      forms_request.Save("clin_requests.forms_requests", "fk_lu_requests")
+   Next
+   '  fk_form = modRequestsDBI.RequestForm_Save(currentconsult, pk_view, CurrentRequestForm, old_forms_requests, currentFormsRequests, currentRequestFormPictures)
 
    modDBConnect.CommitTrans()
-   modPrinting.Print_latex(CurrentRequestForm!latex)
+   modPrinting.Print_latex(request_form!latex)
    FClinical.Refresh_Section(const.cSection_Requests)           'refresh lists on main screen FClinical
    FClinical.Refresh_AllPreviousNotes()                         'refresh progress notes in FClinical
    VBox_Referrals.Padding = 0
@@ -284,6 +352,88 @@ Public Function Valid_RequestForm() As Boolean
    Return True
 
 End
+
+Public Sub Save_orig()
+
+   Dim sProgressNotes As String
+
+   If VBox_Referrals.Padding = 0 Then Return
+   If Not Valid_RequestForm() Then Return
+
+   tbSave.Enabled = False                            'prevents user clicking twice in quick succession which is possible! cause it's happend to me > two saves
+   sProgressNotes = RequestForm_Fill_Collection()    'probably not previewed > fills CurrentRequestForm including generates the forms html
+   modDBConnect.BeginTrans()
+   If IsNull(CurrentRequestForm!fk_progressnote) Then
+      fk_progressnote = -1
+   Else
+      fk_progressnote = CurrentRequestForm!fk_progressnote
+   End If
+   If fk_pasthistory <> 0 Then
+      CurrentRequestForm!fk_pasthistory = fk_pasthistory
+   Endif
+   CurrentRequestForm!latex = RequestForm_LaTeX_Construct(CurrentRequestForm).GetData()
+   CurrentRequestForm!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, cProgressNote_Section, fk_progressnote, "Requests", fk_pasthistory, False)
+   fk_form = modRequestsDBI.RequestForm_Save(currentconsult, pk_view, CurrentRequestForm, old_forms_requests, currentFormsRequests, currentRequestFormPictures)
+
+   modDBConnect.CommitTrans()
+   modPrinting.Print_latex(CurrentRequestForm!latex)
+   FClinical.Refresh_Section(const.cSection_Requests)           'refresh lists on main screen FClinical
+   FClinical.Refresh_AllPreviousNotes()                         'refresh progress notes in FClinical
+   VBox_Referrals.Padding = 0
+   Reload() 'reload all data default to new request
+
+End
+
+' Public Function Valid_RequestForm() As Boolean
+'
+'    If Trim(txtRequest.text) = "" Then
+'       txtRequest.SetFocus()
+'       Return False
+'    Endif
+'    If Not IsDate(txtDate.text) Then
+'       txtDate.text = ""
+'       txtDate.SetFocus()
+'       Return False
+'    End If
+'    If Not fk_branch Then            '
+'       If Not fk_person Then
+'          tlRequestHints.text = "<P><b><U>Provider Names</U><b></P>"
+'          "<P>Please enter a provider for the selected category. "
+'          "If you unable to find any, it may be that you have not "
+'          "as yet entered any in the Contacts database.</P>"
+'          "Please Click on the Contacts icon on the side bar "
+'          "and enter a provider name. Ensure that the category that "
+'          "you allocate to them matches the category of request form "
+'          "that you have chosen."
+'          Vbox_Communications.visible = False
+'          Vbox_RequestHints.Visible = True
+'          Return False
+'       End If
+'    End If
+'
+'    If Not fk_lu_request_type Then
+'
+'       cmbRequestTypes.SetFocus()
+'
+'       Return False
+'    End If
+'
+'    If Trim(txtRequest.text) = "" Then
+'       txtRequest.SetFocus
+'       Hbox_Items.BackGround = Color.Red
+'       Hbox_Items.Padding = 1
+'       Return False
+'    End If
+'
+'    If Trim(txtHealthIssue.text) = "" Then
+'       Message.Info("Please select a health issue to link to this request\nor link to 'General Notes'")
+'       MenuButton1.SetFocus()
+'       Return False
+'    End If
+'
+'    Return True
+'
+' End
 
 Public Sub Form_Close()
 
@@ -355,6 +505,7 @@ Public Sub RequestForm_Display()
    currentRequestForm!phone = RequestForms[sCurrentForm_Key]!phone
    currentRequestForm!include_medications = RequestForms[sCurrentForm_Key]!include_medications
    currentRequestForm!fk_progressnote = RequestForms[sCurrentForm_Key]!fk_progressnote
+   fk_progressNote = RequestForms[sCurrentForm_Key]!fk_progressnote
    currentRequestForm!latex = RequestForms[sCurrentForm_Key]!latex   'could be null in my system as written 100's forms prior to latex being saved
    bExit = True
    Try fk_pasthistory = RequestForms[sCurrentForm_Key]!fk_pasthistory
@@ -461,6 +612,30 @@ Public Sub RequestForm_Print()
 
 End
 
+Public Function ProgressNotes_Construct() As String
+
+   Dim sString As String
+   Dim sTextForProgressNotes As String
+
+   sString = Trim(txtRequest.text)
+   sString = Replace(sSTring, ";", " ")           'get rid of the delimeters eg fbc;esr;msu now fbc esr msu
+   sTextForProgressNotes = txtProvider.text & " for " & sString & "(<small>dated " & Format(Val(txtDate.text), "dd/mm/yyyy") & "</small>"
+   If chkUrgent.value = True Then
+      sTextForProgressNotes &= " and marked urgent"
+   End If
+   sTextForProgressNotes &= ")<BR>"
+   If Trim(txtNotes.text) <> "" Then
+      sstring = Trim(txtNotes.text)
+      Sstring = Replace(sstring, ";", ",")
+      If Right(SString) = "," Then sString = Left(sString, -1)
+      sTextForProgressNotes &= " - clinical notes were: " & sString & ".<BR>"
+   Else
+      sTextForProgressNotes &= " - no clinical notes were written on the form.<BR>"
+   End If
+   Return sTextForProgressNotes
+
+End
+
 Public Function RequestForm_Fill_Collection() As String
 
    Dim x As Integer
@@ -489,8 +664,7 @@ Public Function RequestForm_Fill_Collection() As String
    CurrentRequestForm!requests_summary = Trim(txtRequest.text)
    CurrentRequestForm!notes_summary = Trim(txtNotes.text)
    CurrentRequestForm!medications_summary = Trim(txtMedications.text)
-   copytos.Clear()
-   CurrentRequestForm!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto 'FIXME, I'VE LEFT it as collection till I sort using this in FRequests
+   CurrentRequestForm!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto        'FIXME, I'VE LEFT it as collection till I sort using this in FRequests
    sTextForProgressNotes &= Copyto_Html_Construct(CurrentRequestForm!copyto)
    CurrentRequestForm!copyto = Form_Copy_To.Get_CopyTo_Data()!copyto
    CurrentRequestForm!copyto_patient = CBool(chkCopypatient.value)
@@ -500,7 +674,6 @@ Public Function RequestForm_Fill_Collection() As String
    CurrentRequestForm!fax = CBool(chkFax.value)
    CurrentRequestForm!phone = CBool(chkPhone.value)
    CurrentRequestForm!include_medications = CBool(chkIncludeMedications.value)
-
    Return sTextForProgressNotes
 
 End
@@ -541,6 +714,8 @@ Public Sub Reset_Keys()
    fk_pasthistory = 0
    fk_organisation = 0
    fk_lu_request_type = 0
+   fk_form = 0
+   fk_progressnote = -1 'fixme make 0 when re-write this old module
 
 End
 
@@ -680,16 +855,9 @@ Public Sub EditAreaTextBox_KeyRelease()
    Select Case Last.tag
       Case "request"
          RequestItem_Selection("get")
-
-      Case "medications"
-
       Case "notes"
          '  Notes_Selection("get") currrently not used
    End Select
-
-End
-
-Public Sub request_types_Selection(action As String, Optional calling_control As String)
 
 End
 
@@ -791,7 +959,7 @@ Public Sub EditAreaTextBox_KeyPress()
             Case "provider"
 
             Case "request"
-
+               columnview1.Visible = False
                If Not InStr(txtRequest.text, ";", Len(txtRequest.text) - 1) Then
                   bExit = True
                   txtRequest.text &= ";"
@@ -1019,7 +1187,6 @@ Public Sub RequestItem_select_bysemicolon()
    If columnview1.Visible Then
       columnview1.MoveFirst
       For Each item In items
-
          If Lower(sSearchText) = Lower(item!item) Then
             iCurrentKey = columnview1.Item.key
             RequestItem_Selection("accept")
@@ -1263,6 +1430,7 @@ Public Sub EditAreaTextBox_Clear()
    sSearchText = ""
    Reset_Keys
    lastpos = 0
+
    bPreviewingPrintedForm = False
    cProgressNote_Section = const.cSection_GeneralNotes
    txtHealthIssue.text = "general notes"
@@ -1325,7 +1493,175 @@ Public Sub RequestForm_Preview()
 
 End
 
-Public Function RequestForm_LaTeX_Construct(RequestForm As Collection) As CTemplate
+Public Function RequestForm_LaTeX_Construct_old(RequestForm As Collection) As CTemplate
+
+   Dim templ As New CTemplate("request-form", "tex")
+   Dim x As Integer
+   Dim comm As Collection
+   Dim sHtml As String
+   Dim sString As String
+   Dim sImagePath As String
+   Dim pic As Picture
+   Dim cc As String
+   Dim branch As Collection
+   Dim branchlocations As String = ""
+   Dim cmd As String
+
+   templ.Subst_common(currentconsult)
+   sString = cmbRequestTypes.text
+   sString = Replace(sString, "provider", "")
+   templ.Subst("form-type", UCase(Left(sString, 1)) & Right(sString, Len(sstring) - 1))   'The heading e.g 'Pathology Provider'
+   '-----------------------------------------------------------
+   'Mostly we are dealing with organisations providing services
+   '-----------------------------------------------------------
+   If Not IsNull(default_provider!organisation) Then
+      templ.Subst("provider-organisation", default_provider!organisation)
+   Else
+      templ.Subst("provider-organisation", default_provider!wholename)
+   End If
+   templ.Subst("provider-branch", default_provider!headoffice_branch)
+   If Not IsNull(default_provider!headoffice_street2) Then
+      templ.Subst("provider-address-street", default_provider!headoffice_street1 & "\\\\" & default_provider!headoffice_street2)
+   Else
+      templ.Subst("provider-address-street", default_provider!headoffice_street1)
+   End If
+   templ.Subst("provider-address-suburb", default_provider!headoffice_town & " " & default_provider!headoffice_postcode)
+   If Not IsNull(default_provider!organisation_tollfree) Then
+      templ.Subst("provider-phone", default_provider!tollfree)
+   Else If Not IsNull(default_provider!phone) Then
+      templ.Subst("provider-phone", "Phone: " & default_provider!phone)
+   Else
+      templ.Subst("provider-phone", "Phone not recorded")
+   End If
+   If Not IsNull(default_provider!fax) Then
+      templ.Subst("provider-fax", "Fax  : " & default_provider!fax)
+   Else
+      templ.Subst("provider-fax", "Fax   not recorded")
+   End If
+   If branches.count = 1 Or default_provider!fk_person <> 0 Then
+      templ.Subst("defaultbranch-branch", "\\relax")
+      templ.Subst("defaultbranch-address-street", "\\relax")
+      templ.Subst("defaultbranch-address-suburb", "\\relax")
+      templ.Subst("defaultbranch-phone", "\\relax")
+      templ.Subst("defaultbranch-fax", "\\relax")
+   Else
+      If Not IsNull(default_provider!default_branch) Then
+         templ.Subst("defaultbranch-branch", default_provider!default_branch)
+      Else
+         templ.Subst("defaultbranch-branch", "\\relax")
+      End If
+      If Not IsNull(default_provider!default_branch_street1) Then
+         If Not IsNull(default_provider!default_branch_street2) Then
+            templ.Subst("defaultbranch-address-street", default_provider!default_branch_street1 & "\\\\" & default_provider!default_branch_street2)
+         Else
+            templ.Subst("defaultbranch-address-street", default_provider!default_branch_street1)
+         End If
+      Else
+         templ.Subst("defaultbranch-address-street", "\\relax")
+      End If
+      If Not IsNull(default_provider!default_branch_town) Then
+         templ.Subst("defaultbranch-address-suburb", default_provider!default_branch_town & " " & default_provider!default_branch_postcode)
+      Else
+         templ.Subst("defaultbranch-address-suburb", "\\relax")
+      End If
+      If Not IsNull(default_branch_comms!tollfree) Then
+         templ.Subst("defaultbranch-phone", default_branch_comms!tollfree)
+      Else If Not IsNull(default_branch_comms!phone) Then
+         templ.Subst("defaultbranch-phone", "Phone :" & default_branch_comms!phone)
+      Else
+         templ.Subst("defaultbranch-phone", "Phone :Not recorded")
+      End If
+      If Not IsNull(default_branch_comms!fax) Then
+         templ.Subst("defaultbranch-fax", "Fax    :" & default_branch_comms!fax)
+      Else
+         templ.Subst("defaultbranch-fax", "Fax    :Not recorded")
+      End If
+   End If
+
+   x = 0
+   For Each branch In branches
+      If branch!head_office <> True Then
+         If branch!branch <> default_provider!default_branch Then
+            If Lower(branch!category) = Lower(default_provider!category) Then
+               sstring = ""
+               For Each comm In branch!comms
+                  If comm!fk_type = Const.CommModalityPhone Then
+                     sstring &= " " & comm!value
+                  End If
+               Next
+               branchlocations &= branch!branch & " " & Trim(branch!street1 & " " & branch!street2) & " " & branch!town & " " & branch!postcode
+               branchlocations &= sString & "<BR>"
+            End If
+         End If
+      End If
+      Inc x
+      If x > 10 Then Break
+   Next
+   If branchlocations = "" Then branchlocations = "no branches"
+   templ.Subst_HTML("branchlocations", branchlocations)
+   templ.Subst("requests", requestform!requests_summary)
+   templ.Subst("medications", requestform!medications_summary)
+   templ.Subst("notes", requestform!notes_summary)
+   sString = ""
+   If currentRequestFormPictures.count Then
+      For x = 0 To currentRequestFormPictures.count - 1
+         sImagePath = currentRequestFormPictures[x]!path
+
+         cmd = "cd `dirname " & sImagePath & "` ; "
+         cmd &= "convert " & File.Name(sImagePath) & " " & "test.eps"
+         Shell cmd Wait
+
+         sString &= templ.MakeImage(File.Dir(sImagePath) & "/test.eps")
+      Next
+
+   End If
+   templ.Subst("diagrams-pictures", sString)
+   If requestform!urgent = True Then
+      templ.Checkbox("urgent-checkbox", True)
+   Else
+      templ.Checkbox("urgent-checkbox", False)
+   End If
+   If requestform!phone = True Then
+      templ.Checkbox("phone-checkbox", True)
+   Else
+      templ.Checkbox("phone-checkbox", False)
+   End If
+   If requestform!fax = True Then
+      templ.Checkbox("fax-checkbox", True)
+   Else
+      templ.Checkbox("fax-checkbox", False)
+   End If
+   If requestform!fasting = True Then
+      templ.Checkbox("fasting-checkbox", True)
+   Else
+      templ.Checkbox("fasting-checkbox", False)
+   End If
+   sString = ""
+   templ.Subst("our-reference", "") 'FIXME PUT IN A REFERENCE
+   sString = ""
+   If requestform!bulk_bill Then sString = "Bulk Bill"
+   templ.Subst("billing", sString)
+   If requestform!urgent Then
+      templ.Subst("urgent-word", templ.Bold("**Urgent**"))
+   Else
+      templ.Subst("urgent-word", "Urgent")
+   Endif
+   sString = ""
+   If RequestForm!copyto_patient Then
+      sString &= "Patient at their address on this form<BR>"
+   End If
+   CopyTos = modUtil.SplitStrings_into_collection(requestform!copyto, "|")
+   For Each cc In Copytos
+      sString &= cc & "<BR>"
+   Next
+   templ.Subst_HTML("copyto", sString)
+   templ.Subst("form-date", Format(RequestForm!date, "dd/mm/yyyy"))
+
+   Return templ
+
+End
+
+Public Function RequestForm_LaTeX_Construct(RequestForm As Variant) As CTemplate 'varient to handle cRow and collection
 
    Dim templ As New CTemplate("request-form", "tex")
    Dim x As Integer

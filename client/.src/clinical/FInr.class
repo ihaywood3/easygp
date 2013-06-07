@@ -1,0 +1,307 @@
+' Gambas class file
+
+Private CurrentConsult As CConsult
+Private INRS As Collection
+Private fk_inr_plan As Integer
+Private fk_inr_management As Integer
+Private bEdit As Boolean
+Private ReferenceHboxForTopOfPopupList As Hbox
+Private fk_coding_system As Integer                'if non-zero is a valid coding system
+Private fk_code As String                          'if not "" then a valid code
+Private fk_reason_for_anticoagulation_use As Integer
+Private Terms As Collection                        'Coded term list
+Private Form_Terms As FCodedTermSelector      'Popup form to display coded terms for user to choose from
+Private obs As Observer
+Private timer_count As Integer
+Private bExit As Boolean
+
+Public Sub init(cons As CConsult)
+
+   CurrentConsult = cons
+   lblmeasure.text = " Comment on Dose Advised  "
+   modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
+   With Form_Terms = New FCodedTermSelector(Vbox_EditArea)        'hide a new instance of popup coded term selector
+      .Ignore = True
+      .ColumnView1.Background = Color.White
+      .Visible = False
+      .Expand = False
+      .Raise()
+   End With
+   obs = New Observer(Form_Terms.columnview1) As "Terms_columnview"  'Over-ride events on this form
+
+End
+
+Public Sub INR_New()
+
+   EditArea_Clear()
+   txtDateINR.SetFocus()
+
+End
+
+Public Sub Reload()
+
+End
+
+Public Sub New_Entry()
+
+   INR_New()
+
+End
+
+Public Sub Coded_Terms_Get()
+   '-------------------------------------------------------------------------------------
+   'Gets list of coded terms
+   'Cannot set default if count is one because must  be able to add new occupations
+   'can't remove the label because it needs to occupy space to keep textbox correct width
+   '-------------------------------------------------------------------------------------
+
+   Dim key As String
+
+   If Trim(txtCodedTerm.text) = "" Then
+      fk_code = 0
+      fk_coding_system = const.coding_none_selected
+      Form_Terms.Visible = False
+      Return
+   End If
+   If Trim(txtCodedTerm.text) <> "" Then
+      Form_Terms.Set_SearchText(Trim(txtCodedTerm.text))
+   End If
+
+End
+
+Public Sub Timer1_Timer()
+
+   If timer_count > 3 Then  'FIXME MAKE THESE USER CONFIGURABLE PER TYPING SPEED
+      timer1.stop
+      timer_count = 0
+      Coded_Terms_Get()
+   End If
+
+End
+
+Public Sub EditArea_Notify_Data_Change(flag As Boolean)
+
+   If bexit Then Return
+   If flag Then
+      Vbox_EditArea_Outer.Padding = 1
+   Else
+      Vbox_EditArea_Outer.Padding = 0
+   End If
+
+End
+
+Public Sub EditArea_Clear()
+   '--------------------------
+   'Clears the data input area
+   '--------------------------
+
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
+   Form_Terms.Visible = False
+   EditArea_Notify_Data_Change(False)
+
+End
+
+Private Sub Settings_LOAD()
+
+   Vsplit_Main.Layout = Settings["FInr/Vsplit_Main", modUtil.VSplit(1, 2)]
+
+End
+
+Public Sub Settings_Save()
+
+   Settings["FInr/Vsplit_Main"] = Vsplit_Main.Layout
+
+End
+
+Public Sub Save()
+
+   Dim reason_for_anticoagulation As CRow
+   Dim inr_plan As CRow
+   Dim pn As String
+
+   If Vbox_EditArea_Outer.padding = 0 Then Return
+   If Not Valid_Data() Then Return
+
+   pn = "This is the INR progressNote)"
+
+   '------------------------------------------------------------
+   ' Create  table clin_measurements.lu_reason_anticoagulant_use
+   ' (pk serial primary key,
+   ' reason text not null,
+   ' fk_code text not null
+   ' );
+   '-------------------------------------------------------------
+   reason_for_anticoagulation = New CRow
+   If fk_reason_for_anticoagulation_use Then 'editing existing record
+      reason_for_anticoagulation.put_unchanged(fk_reason_for_anticoagulation_USE, "fk_reason_for_anticoagulation")
+   Endif
+   reason_for_anticoagulation!fk_code = fk_code
+   reason_for_anticoagulation!reason = Trim(txtREason)
+   reason_for_anticoagulation.Save("clin_measurements.lu_reason_anticoagulant_use", "fk_.lu_reason_anticoagulant_use")
+   '----------------------------------------------------------------------------------------------------
+   ' Create  table clin_measurements.inr_plan
+   ' (pk serial primary key,
+   ' fk_lu_reason_anticoagulant_use integer references clin_measurements.lu_reason_anticoagulant_use(pk) ,
+   ' fk_consult integer not null references clin_consult.consult (pk),
+   ' fk_progressnote integer default null,
+   ' inr_target_range text not null,
+   ' "comment" text default null
+   ' );
+   '----------------------------------------------------------------------------------------------------
+   inr_plan = New CRow
+   If fk_inr_plan Then
+      inr_plan.put_unchanged(fk_inr_plan, "fk_inr_plan")
+   Endif
+   inr_plan!fk_reason_for_anticoagulation_use = reason_for_anticoagulation!fk_reason_for_anticoagulation_use
+   inr_plan!fk_consult = CurrentConsult.GetPK()
+   '   inr_plan!fk_progressnote = pn!fk_progressnote
+   inr_plan!inr_target_range = Trim(txtINRRange.text)
+   inr_plan!comment = Trim(txtCommentReason.text)
+   inr_plan.Save("clin_measurements.inr_plan", "fk_inr_plan")
+   '-------------------------------------------------------------------
+   ' Create  table clin_measurements.inr_dose_management
+   ' (pk serial primary key,
+   ' fk_consult integer not null references clin_consult.consult (pk),
+   ' fk_progressnote integer default null,
+   ' dose_advised text not null,
+   ' date_recheck date not null,
+   ' comment text default null
+   ' );
+   '----------------------------------------------------------------------
+
+End
+
+Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+
+   Select Case tag
+      Case "date last inr", "date next inr"
+         Return modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
+      Case Else
+         Return True
+   End Select
+
+End
+
+Public Sub EditArea_TextBox_KeyPress()
+
+   Dim bKeyValid As Boolean
+
+   bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code, Last.tag)
+   If bkeyvalid = False Then
+      Stop Event
+      Return
+   End If
+   If Key.code = Key.down Then
+      If Form_Terms.Visible Then
+         With Form_Terms
+            .ColumnView1.MoveFirst
+            .ColumnView1.SetFocus()
+         End With
+      Endif
+   End If
+
+End
+
+Public Sub EditArea_textbox_GotFocus()
+
+   ReferenceHboxForTopOfPopupList = Last.Parent.Parent
+   If Last.tag = "coded term"
+      With Form_Terms
+         .top = Last.parent.Parent.top + Last.height
+         .left = Last.Parent.left + Vbox_EditArea.Padding
+         .height = listview1.Height
+         .width = txtCodedTerm.Width / 2
+         .Visible = False
+         .ColumnView1.Clear()
+         .Raise()
+      End With
+   End If
+
+End
+
+Public Sub EditArea_TextBox_KeyRelease()
+
+   If Last.tag = "coded term" Then
+      timer_count = 0
+      Coded_Terms_Get()
+   End If
+
+End
+
+Public Sub Terms_Columnview_KeyPress()
+
+   If key.code = key.return Then
+      Terms_Columnview_dblClick
+   End If
+
+End
+
+Public Sub Terms_Columnview_dblClick()
+
+   Dim CurrentTerm As Collection
+   Dim x As Integer
+
+   Stop Event
+   Form_Terms.Visible = False
+   Last.movecurrent()
+   CurrentTerm = Form_Terms.Terms[Form_Terms.columnview1.Item.key]
+   fk_code = CurrentTerm!code
+   fk_coding_system = CurrentTerm!fk_coding_system
+   txtCodedTerm.text = CurrentTerm!term & " (" & CurrentTerm!code & ")"
+   txtCodedTerm.pos = 0
+   txtINRRange.SetFocus()
+
+End
+
+Public Function Valid_Data() As Boolean
+
+   Dim hctrl As Control
+   Dim tb As TextBox
+   Dim hb As HBox
+
+   If Not IsDate(txtDateINR) Then
+      With txtDateINR
+         .Background = Color.rgb(95, 255, 175)
+         .SetFocus
+         Return
+      End With
+   End If
+   If Not IsDate(txtDateNextINR) Then
+      With txtDateINR
+         .Background = Color.rgb(95, 255, 175)
+         .SetFocus
+         Return
+      End With
+   End If
+   For Each hctrl In Vbox_EditArea.Children
+      If hctrl Is Hbox Then
+         hb = hctrl
+         For Each hctrl In hb.Children
+            If hctrl = hbox Then
+               hb = hctrl
+               For Each hctrl In hb.Children
+                  If hctrl = TextBox Then
+                     tb = hctrl
+                     If Not InStr(tb.tag, "comment") Then
+                        If tb.text = "" Then
+                           With tb
+                              .Background = Color.rgb(95, 255, 175)
+                              .SetFocus()
+                              Return
+                           End With
+                        Endif
+                     Endif
+                  Endif
+               Next
+            Endif
+         Next
+      Endif
+   Next
+
+End
+
+Public Sub EditArea_TextBox_LostFocus()
+
+   Last.background = Color.White
+
+End

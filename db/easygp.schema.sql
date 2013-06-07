@@ -143,13 +143,13 @@ CREATE SCHEMA clin_mentalhealth;
 ALTER SCHEMA clin_mentalhealth OWNER TO easygp;
 
 --
--- Name: clin_pregnancy; Type: SCHEMA; Schema: -; Owner: ian
+-- Name: clin_pregnancy; Type: SCHEMA; Schema: -; Owner: easygp
 --
 
 CREATE SCHEMA clin_pregnancy;
 
 
-ALTER SCHEMA clin_pregnancy OWNER TO ian;
+ALTER SCHEMA clin_pregnancy OWNER TO easygp;
 
 --
 -- Name: clin_prescribing; Type: SCHEMA; Schema: -; Owner: easygp
@@ -9972,7 +9972,7 @@ ALTER SEQUENCE pregnancies_pk_seq OWNED BY pregnancies.pk;
 
 
 --
--- Name: scans; Type: TABLE; Schema: clin_pregnancy; Owner: ian; Tablespace: 
+-- Name: scans; Type: TABLE; Schema: clin_pregnancy; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE scans (
@@ -9985,38 +9985,38 @@ CREATE TABLE scans (
 );
 
 
-ALTER TABLE clin_pregnancy.scans OWNER TO ian;
+ALTER TABLE clin_pregnancy.scans OWNER TO easygp;
 
 --
--- Name: TABLE scans; Type: COMMENT; Schema: clin_pregnancy; Owner: ian
+-- Name: TABLE scans; Type: COMMENT; Schema: clin_pregnancy; Owner: easygp
 --
 
 COMMENT ON TABLE scans IS 'contains information about pregnancy scans';
 
 
 --
--- Name: COLUMN scans.fk_document; Type: COMMENT; Schema: clin_pregnancy; Owner: ian
+-- Name: COLUMN scans.fk_document; Type: COMMENT; Schema: clin_pregnancy; Owner: easygp
 --
 
 COMMENT ON COLUMN scans.fk_document IS 'if not null the scan is a document in our system key to documents.documents table';
 
 
 --
--- Name: COLUMN scans.scan_date; Type: COMMENT; Schema: clin_pregnancy; Owner: ian
+-- Name: COLUMN scans.scan_date; Type: COMMENT; Schema: clin_pregnancy; Owner: easygp
 --
 
 COMMENT ON COLUMN scans.scan_date IS 'this is a text field because patient may have had scan elsewhere, not know the date';
 
 
 --
--- Name: COLUMN scans.fk_blob; Type: COMMENT; Schema: clin_pregnancy; Owner: ian
+-- Name: COLUMN scans.fk_blob; Type: COMMENT; Schema: clin_pregnancy; Owner: easygp
 --
 
 COMMENT ON COLUMN scans.fk_blob IS 'if not null, the key to blobs.images table containing picture of the scan';
 
 
 --
--- Name: scans_pk_seq; Type: SEQUENCE; Schema: clin_pregnancy; Owner: ian
+-- Name: scans_pk_seq; Type: SEQUENCE; Schema: clin_pregnancy; Owner: easygp
 --
 
 CREATE SEQUENCE scans_pk_seq
@@ -10027,34 +10027,34 @@ CREATE SEQUENCE scans_pk_seq
     CACHE 1;
 
 
-ALTER TABLE clin_pregnancy.scans_pk_seq OWNER TO ian;
+ALTER TABLE clin_pregnancy.scans_pk_seq OWNER TO easygp;
 
 --
--- Name: scans_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_pregnancy; Owner: ian
+-- Name: scans_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_pregnancy; Owner: easygp
 --
 
 ALTER SEQUENCE scans_pk_seq OWNED BY scans.pk;
 
 
 --
--- Name: vwantenatal_visits; Type: VIEW; Schema: clin_pregnancy; Owner: ian
+-- Name: vwantenatal_visits; Type: VIEW; Schema: clin_pregnancy; Owner: easygp
 --
 
 CREATE VIEW vwantenatal_visits AS
     SELECT ante_natal_visits.pk AS pk_antenatal_visit, lu_presentations.presentation, ante_natal_visits.fk_consult, consult.fk_patient, ante_natal_visits.fk_pregnancy, ante_natal_visits.visit_date, ante_natal_visits.duration_weeks, ante_natal_visits.fundal_height, ante_natal_visits.fk_lu_presentation, ante_natal_visits.foetal_heart_heard, ante_natal_visits.urinalysis, ante_natal_visits.bloodpressure, ante_natal_visits.weight, ante_natal_visits.foetal_movements_felt, ante_natal_visits.notes, pregnancies.edc, pregnancies.edc_revised FROM ante_natal_visits, lu_presentations, clin_consult.consult, pregnancies WHERE (((ante_natal_visits.fk_lu_presentation = lu_presentations.pk) AND (ante_natal_visits.fk_consult = consult.pk)) AND (ante_natal_visits.fk_pregnancy = pregnancies.pk));
 
 
-ALTER TABLE clin_pregnancy.vwantenatal_visits OWNER TO ian;
+ALTER TABLE clin_pregnancy.vwantenatal_visits OWNER TO easygp;
 
 --
--- Name: vwpregnancies; Type: VIEW; Schema: clin_pregnancy; Owner: ian
+-- Name: vwpregnancies; Type: VIEW; Schema: clin_pregnancy; Owner: easygp
 --
 
 CREATE VIEW vwpregnancies AS
     SELECT consult.fk_patient, pregnancies.pk AS fk_pregnancy, pregnancies.pk, pregnancies.fk_consult, pregnancies.lmp, pregnancies.edc, pregnancies.edc_revised, pregnancies.date_anti_d, pregnancies.anti_d_given, pregnancies.date_gtt, pregnancies.notes, pregnancies.gestation, pregnancies.nuchal_fold_scan_date, pregnancies.morphology_scan_date, pregnancies.last_presentation, pregnancies.risk_factor_smoking, pregnancies.risk_factor_smoking_details, pregnancies.risk_factor_alcohol, pregnancies.risk_factor_alcohol_details, pregnancies.risk_factor_drugs, pregnancies.risk_factor_drugs_details, pregnancies.risk_factor_social, pregnancies.risk_factor_social_details, pregnancies.risk_factor_mental_health, pregnancies.risk_factor_mental_health_details, pregnancies.age_at_delivery, pregnancies.date_delivery, pregnancies.gestation_at_delivery, pregnancies.fk_lu_onset_labour, pregnancies.labour_hours, pregnancies.fk_lu_delivery_type, pregnancies.complications, pregnancies.fk_lu_sex, pregnancies.birthweight, pregnancies.baby_name, pregnancies.peurperium, lu_delivery_types.type AS delivery_type, lu_onset_labour.type AS onset_labour_type, lu_sex.sex_text AS baby_sex FROM ((((pregnancies JOIN clin_consult.consult ON ((pregnancies.fk_consult = consult.pk))) LEFT JOIN lu_onset_labour ON ((pregnancies.fk_lu_onset_labour = lu_onset_labour.pk))) LEFT JOIN lu_delivery_types ON ((pregnancies.fk_lu_delivery_type = lu_delivery_types.pk))) LEFT JOIN contacts.lu_sex ON ((pregnancies.fk_lu_sex = lu_sex.pk)));
 
 
-ALTER TABLE clin_pregnancy.vwpregnancies OWNER TO ian;
+ALTER TABLE clin_pregnancy.vwpregnancies OWNER TO easygp;
 
 SET search_path = clin_prescribing, pg_catalog;
 
@@ -18698,7 +18698,7 @@ ALTER TABLE ONLY pregnancies ALTER COLUMN pk SET DEFAULT nextval('pregnancies_pk
 
 
 --
--- Name: pk; Type: DEFAULT; Schema: clin_pregnancy; Owner: ian
+-- Name: pk; Type: DEFAULT; Schema: clin_pregnancy; Owner: easygp
 --
 
 ALTER TABLE ONLY scans ALTER COLUMN pk SET DEFAULT nextval('scans_pk_seq'::regclass);
@@ -20641,7 +20641,7 @@ ALTER TABLE ONLY pregnancies
 
 
 --
--- Name: scans_pkey; Type: CONSTRAINT; Schema: clin_pregnancy; Owner: ian; Tablespace: 
+-- Name: scans_pkey; Type: CONSTRAINT; Schema: clin_pregnancy; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY scans
@@ -22366,7 +22366,7 @@ ALTER TABLE ONLY ante_natal_care_summary
 
 
 --
--- Name: scans_fk_blob_fkey; Type: FK CONSTRAINT; Schema: clin_pregnancy; Owner: ian
+-- Name: scans_fk_blob_fkey; Type: FK CONSTRAINT; Schema: clin_pregnancy; Owner: easygp
 --
 
 ALTER TABLE ONLY scans
@@ -22374,7 +22374,7 @@ ALTER TABLE ONLY scans
 
 
 --
--- Name: scans_fk_document_fkey; Type: FK CONSTRAINT; Schema: clin_pregnancy; Owner: ian
+-- Name: scans_fk_document_fkey; Type: FK CONSTRAINT; Schema: clin_pregnancy; Owner: easygp
 --
 
 ALTER TABLE ONLY scans
@@ -22382,7 +22382,7 @@ ALTER TABLE ONLY scans
 
 
 --
--- Name: scans_fk_pregnancy_fkey; Type: FK CONSTRAINT; Schema: clin_pregnancy; Owner: ian
+-- Name: scans_fk_pregnancy_fkey; Type: FK CONSTRAINT; Schema: clin_pregnancy; Owner: easygp
 --
 
 ALTER TABLE ONLY scans
@@ -22808,12 +22808,11 @@ GRANT ALL ON SCHEMA clin_mentalhealth TO staff;
 
 
 --
--- Name: clin_pregnancy; Type: ACL; Schema: -; Owner: ian
+-- Name: clin_pregnancy; Type: ACL; Schema: -; Owner: easygp
 --
 
 REVOKE ALL ON SCHEMA clin_pregnancy FROM PUBLIC;
-REVOKE ALL ON SCHEMA clin_pregnancy FROM ian;
-GRANT ALL ON SCHEMA clin_pregnancy TO ian;
+REVOKE ALL ON SCHEMA clin_pregnancy FROM easygp;
 GRANT ALL ON SCHEMA clin_pregnancy TO easygp;
 GRANT ALL ON SCHEMA clin_pregnancy TO staff;
 
@@ -26272,34 +26271,31 @@ GRANT ALL ON SEQUENCE pregnancies_pk_seq TO staff;
 
 
 --
--- Name: scans; Type: ACL; Schema: clin_pregnancy; Owner: ian
+-- Name: scans; Type: ACL; Schema: clin_pregnancy; Owner: easygp
 --
 
 REVOKE ALL ON TABLE scans FROM PUBLIC;
-REVOKE ALL ON TABLE scans FROM ian;
-GRANT ALL ON TABLE scans TO ian;
+REVOKE ALL ON TABLE scans FROM easygp;
 GRANT ALL ON TABLE scans TO easygp;
 GRANT ALL ON TABLE scans TO staff;
 
 
 --
--- Name: vwantenatal_visits; Type: ACL; Schema: clin_pregnancy; Owner: ian
+-- Name: vwantenatal_visits; Type: ACL; Schema: clin_pregnancy; Owner: easygp
 --
 
 REVOKE ALL ON TABLE vwantenatal_visits FROM PUBLIC;
-REVOKE ALL ON TABLE vwantenatal_visits FROM ian;
-GRANT ALL ON TABLE vwantenatal_visits TO ian;
+REVOKE ALL ON TABLE vwantenatal_visits FROM easygp;
 GRANT ALL ON TABLE vwantenatal_visits TO easygp;
 GRANT ALL ON TABLE vwantenatal_visits TO staff;
 
 
 --
--- Name: vwpregnancies; Type: ACL; Schema: clin_pregnancy; Owner: ian
+-- Name: vwpregnancies; Type: ACL; Schema: clin_pregnancy; Owner: easygp
 --
 
 REVOKE ALL ON TABLE vwpregnancies FROM PUBLIC;
-REVOKE ALL ON TABLE vwpregnancies FROM ian;
-GRANT ALL ON TABLE vwpregnancies TO ian;
+REVOKE ALL ON TABLE vwpregnancies FROM easygp;
 GRANT ALL ON TABLE vwpregnancies TO easygp;
 GRANT ALL ON TABLE vwpregnancies TO staff;
 

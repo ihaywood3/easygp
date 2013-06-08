@@ -14,6 +14,8 @@ Private Form_Terms As FCodedTermSelector      'Popup form to display coded terms
 Private obs As Observer
 Private timer_count As Integer
 Private bExit As Boolean
+Private fk_progressnote As Integer
+Private INRPlan As Collection
 
 Public Sub init(cons As CConsult)
 
@@ -28,6 +30,7 @@ Public Sub init(cons As CConsult)
       .Raise()
    End With
    obs = New Observer(Form_Terms.columnview1) As "Terms_columnview"  'Over-ride events on this form
+   Reload
 
 End
 
@@ -39,6 +42,73 @@ Public Sub INR_New()
 End
 
 Public Sub Reload()
+   '-------------------------------------------------------------------------------
+   'Reload the INR Plan and fill the list with most recent INR"s eg 12 months worth
+   '-------------------------------------------------------------------------------
+
+   INRPlan = modMeasurementsDBI.INRPlans_Get(CurrentConsult!patient!fk_patient)
+   bExit = True
+   txtREason.text = INRPlan!reason
+   txtCodedTerm.text = INRPlan!term & " (" & INRPlan!fk_code & ")"
+   txtINRRange.text = INRPlan!inr_target_range
+   txtCommentReason.Text = INRPlan!comment
+   fk_inr_plan = INRPlan!pk
+   bexit = False
+   '------------------------------------------
+   'load last 12 months worth to the columnview
+   '-------------------------------------------
+
+End
+
+Public Sub FileAsHL7()
+   '-----------------------------------------------------------------
+   'creates a hl7 message, transfers to backend as a 'filed' document
+   '-----------------------------------------------------------------
+
+   Dim message As New CHL7Message_REF_I12
+   Dim ReceivingFacility As New CHL7Datatype_HD
+   Dim ConsultingProvider As Collection
+   Dim ReferredtoProvider As New Collection
+   Dim PrimaryCareProvider As Collection
+   Dim ReferralLetterText As String
+   Dim TempFile As File 'just for testing
+   Dim AttachmentsArray As New String[]
+   Dim ReferralStatus As String
+   Dim ReferralPriority As String
+   Dim ReferralType As String
+   Dim ReferralDisposition As String
+   Dim ReferralReason As String
+
+   '  Select Case cmbPriorityTypes.Current.Text
+   '    Case "Routine"
+   ReferralPriority = "R" 'With highest priority = 'S' As soon as possible = 'A' Urgent = 'U' Early = 'E' Routine = 'R'
+   '    Case "Semi-Urgent"
+   '      ReferralPriority = "E" 'With highest priority = 'S' As soon as possible = 'A' Urgent = 'U' Early = 'E' Routine = 'R'
+   '   Case "Urgent"
+   '      ReferralPriority = "A" 'With highest priority = 'S' As soon as possible = 'A' Urgent = 'U' Early = 'E' Routine = 'R'
+   '  End Select
+
+   ' Select Case cmbReferralTypes.Current.Text
+   '    Case "opinion"
+   '       ReferralReason = "S" 'Second opinion = ‘S’ Patient preference = ‘P’ Provider ordered = ‘O’ Work load = ‘W’
+   '       ReferralType = "GRF" 'General referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
+
+   ReferralStatus = "P" 'Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
+   ReferralDisposition = "FI" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
+
+   ReferredtoProvider!name = modDBConnect.currentUser!title & " " & modDBConnect.currentUser!firstname & " " & modDBConnect.currentUser!surname
+   ReferredtoProvider!organisation = modDBConnect.currentUser!organisation
+   ReferredtoProvider!branch = "HEAD OFFICE"
+   ReferredtoProvider!street1 = modDBConnect.currentUser!street1
+   ReferredtoProvider!street2 = modDBConnect.currentUser!street2
+   ReferredtoProvider!suburb = modDBConnect.currentUser!suburb
+   ReferredtoProvider!postcode = modDBConnect.currentUser!postcode
+   'ReferredtoProvider!comms = comms
+   '  If Not IsNull(PersonWritingTo) Then
+   '    ReferredtoProvider!provider_number = PersonWritingTo!provider_number
+   '   Endif
+   '  AttachmentsArray.Add(GetLetterText(ReferredtoProvider))
+   message.createHL7Message_REF_I12(ReferredtoProvider, currentconsult!patient, AttachmentsArray, ReferralDisposition, ReferralReason, ReferralPriority, ReferralType, ReferralStatus)
 
 End
 
@@ -71,7 +141,8 @@ End
 
 Public Sub Timer1_Timer()
 
-   If timer_count > 3 Then  'FIXME MAKE THESE USER CONFIGURABLE PER TYPING SPEED
+   Inc timer_count
+   If timer_count > 1 Then  'FIXME MAKE THESE USER CONFIGURABLE PER TYPING SPEED
       timer1.stop
       timer_count = 0
       Coded_Terms_Get()
@@ -117,13 +188,29 @@ Public Sub Save()
 
    Dim reason_for_anticoagulation As CRow
    Dim inr_plan As CRow
-   Dim pn As String
+   Dim sProgressNotes As String
+   Dim progressNote As CRow
 
    If Vbox_EditArea_Outer.padding = 0 Then Return
    If Not Valid_Data() Then Return
 
-   pn = "This is the INR progressNote)"
-
+   sProgressNotes = "INR level noted: " & Trim(txtINR.text) & " dosage advised " & Trim(txtDoseAdvised.text)
+   sProgressNotes &= " next INR to be done on " & txtDateNextINR.Text
+   If Trim(txtCommentDoseAdvice.text) <> "" Then
+      sProgressNotes &= " comment added: " & Trim(txtCommentDoseAdvice.text)
+   Endif
+   '----------------------
+   'Save the progress note
+   '----------------------
+   ProgressNote = New CRow
+   If fk_progressnote Then
+      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")
+   Endif
+   ProgressNote!fk_consult = CurrentConsult.GetPK()
+   ProgressNote!notes = sProgressNotes
+   ProgressNote!fk_section = const.cSection_INR_Management
+   ProgressNote!fk_audit_action = const.cAuditAction_Insert
+   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
    '------------------------------------------------------------
    ' Create  table clin_measurements.lu_reason_anticoagulant_use
    ' (pk serial primary key,
@@ -136,8 +223,8 @@ Public Sub Save()
       reason_for_anticoagulation.put_unchanged(fk_reason_for_anticoagulation_USE, "fk_reason_for_anticoagulation")
    Endif
    reason_for_anticoagulation!fk_code = fk_code
-   reason_for_anticoagulation!reason = Trim(txtREason)
-   reason_for_anticoagulation.Save("clin_measurements.lu_reason_anticoagulant_use", "fk_.lu_reason_anticoagulant_use")
+   reason_for_anticoagulation!reason = Trim(txtREason.text)
+   reason_for_anticoagulation.Save("clin_measurements.lu_reason_anticoagulant_use", "fk_lu_reason_anticoagulant_use")
    '----------------------------------------------------------------------------------------------------
    ' Create  table clin_measurements.inr_plan
    ' (pk serial primary key,
@@ -152,9 +239,9 @@ Public Sub Save()
    If fk_inr_plan Then
       inr_plan.put_unchanged(fk_inr_plan, "fk_inr_plan")
    Endif
-   inr_plan!fk_reason_for_anticoagulation_use = reason_for_anticoagulation!fk_reason_for_anticoagulation_use
+   inr_plan!fk_lu_reason_anticoagulant_use = reason_for_anticoagulation!fk_lu_reason_anticoagulant_use
    inr_plan!fk_consult = CurrentConsult.GetPK()
-   '   inr_plan!fk_progressnote = pn!fk_progressnote
+   inr_plan!fk_progressnote = ProgressNote!fk_progressnote
    inr_plan!inr_target_range = Trim(txtINRRange.text)
    inr_plan!comment = Trim(txtCommentReason.text)
    inr_plan.Save("clin_measurements.inr_plan", "fk_inr_plan")
@@ -168,14 +255,17 @@ Public Sub Save()
    ' comment text default null
    ' );
    '----------------------------------------------------------------------
+   modDBConnect.CommitTrans()
 
 End
 
 Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
 
    Select Case tag
-      Case "date last inr", "date next inr"
+      Case "date last inr"
          Return modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
+      Case "date next inr"
+         Return modUtil.AllowKeys(const.AllowKeys_Date_DWMY, keycode)
       Case Else
          Return True
    End Select
@@ -199,12 +289,42 @@ Public Sub EditArea_TextBox_KeyPress()
          End With
       Endif
    End If
+   If Key.code = Key.Return Then
+      Select Case Last.tag
+         Case "reason"
+            txtCodedTerm.SetFocus
+         Case "coded term"
+            txtINRRange.SetFocus
+         Case "inr range"
+            txtCommentReason.SetFocus
+         Case "reason comment"
+            txtDateINR.SetFocus
+         Case "date last inr"
+            txtINR.SetFocus
+         Case "inr"
+            txtLastWarfarinDose.SetFocus
+         Case "last warfarin dose"
+            txtDoseAdvised.SetFocus
+         Case "dose advised"
+            txtDateNextINR.SetFocus
+         Case "date next inr"
+            modEditAreaHelpers.Calculate_Date_From_Interval(Last)
+            txtCommentDoseAdvice.SetFocus
+      End Select
+   End If
+
+End
+
+Public Sub EditArea_TextBox_LostFocus()
+
+   Last.background = Color.White
 
 End
 
 Public Sub EditArea_textbox_GotFocus()
 
    ReferenceHboxForTopOfPopupList = Last.Parent.Parent
+   Last.BackGround = Color.rgb(95, 255, 175)
    If Last.tag = "coded term"
       With Form_Terms
          .top = Last.parent.Parent.top + Last.height
@@ -223,7 +343,8 @@ Public Sub EditArea_TextBox_KeyRelease()
 
    If Last.tag = "coded term" Then
       timer_count = 0
-      Coded_Terms_Get()
+
+      timer1.Start
    End If
 
 End
@@ -253,34 +374,75 @@ Public Sub Terms_Columnview_dblClick()
 
 End
 
+Public Sub EditAreaButtons_Click()
+
+   Dim hCtrl As Control
+   Dim txtbox As TextBox
+
+   Select Case Last.tag
+      Case "pick date"
+         For Each Hctrl In Last.parent.children
+            If hctrl Is Textbox Then
+               txtbox = hctrl
+               DateChooser1.tag = txtbox
+               Break
+            End If
+         Next
+         With HBox_Calander
+            .top = Last.Parent.Parent.top + Last.Parent.Height
+            .left = Last.Parent.left
+            .Raise()
+         End With
+         DateChooser1.Parent.Visible = True
+         DateChooser1.Parent.Raise
+   End Select
+
+End
+
+Public Sub DateChooser1_Activate()
+   '------------------------------------------------
+   'User is selecting a date from the popup calander
+   '------------------------------------------------
+
+   Last.tag.text = Format(Last.value, "dd/mm/yyyy")
+   HBox_Calander.Visible = False
+   Select Case Last.tag.tag
+      Case "date last inr"
+         txtINR.setfocus()
+      Case "date next inr"
+         txtCommentDoseAdvice.SetFocus()
+   End Select
+
+End
+
+Public Sub DateChooser1_LostFocus()
+
+   DateChooser1.visible = False
+
+End
+
 Public Function Valid_Data() As Boolean
 
    Dim hctrl As Control
    Dim tb As TextBox
    Dim hb As HBox
 
-   If Not IsDate(txtDateINR) Then
+   If Not IsDate(txtDateINR.text) Then
       With txtDateINR
          .Background = Color.rgb(95, 255, 175)
          .SetFocus
          Return
       End With
    End If
-   If Not IsDate(txtDateNextINR) Then
-      With txtDateINR
-         .Background = Color.rgb(95, 255, 175)
-         .SetFocus
-         Return
-      End With
-   End If
+
    For Each hctrl In Vbox_EditArea.Children
       If hctrl Is Hbox Then
          hb = hctrl
          For Each hctrl In hb.Children
-            If hctrl = hbox Then
+            If hctrl Is Hbox Then
                hb = hctrl
                For Each hctrl In hb.Children
-                  If hctrl = TextBox Then
+                  If hctrl Is TextBox Then
                      tb = hctrl
                      If Not InStr(tb.tag, "comment") Then
                         If tb.text = "" Then
@@ -297,11 +459,57 @@ Public Function Valid_Data() As Boolean
          Next
       Endif
    Next
+   If Not IsDate(txtDateNextINR.Text) Then
+      With txtDateNextINR
+         .Background = Color.rgb(95, 255, 175)
+         .SetFocus
+         Return
+      End With
+   End If
+   Return True
 
 End
 
-Public Sub EditArea_TextBox_LostFocus()
+Public Sub Form_Resize()
 
-   Last.background = Color.White
+   Form_Terms.width = txtCodedTerm.Width / 2
+
+End
+
+Public Sub VSplit_Main_Resize()
+
+   ' If listview1.Visible Then
+   '    listview1.top = ReferenceHboxForTopOfPopupList.top + ReferenceHboxForTopOfPopupList.height
+   ' Endif
+   If Form_Terms.Visible Then
+      Form_Terms.top = HBox_CodedTerm.Top + HBox_CodedTerm.Height
+   Endif
+
+End
+
+Public Sub Form_Open()
+
+   Form_Terms.Visible = False
+
+End
+
+Public Sub EditArea_TextBox_Change()
+
+   If bexit Then Return
+   Select Case Last.tag
+      Case "coded term"
+         If Trim(Last.text) = "" Then
+            fk_code = ""
+            fk_coding_system = 0
+            Form_Terms.Visible = False
+         Endif
+   End Select
+   EditArea_Notify_Data_Change(True)
+
+End
+
+Public Sub Button1_Click()
+
+   FileAsHL7
 
 End

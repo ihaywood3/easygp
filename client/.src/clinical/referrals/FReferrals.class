@@ -269,7 +269,7 @@ Public Sub Save(Optional bFinalised As Boolean = False)
          ' do LaTeX letters
          referral!letter_html = Referral_LetterLaTeX_Construct(referral!copyto)
       Endif
-      ' referral!letter_hl7 = BERND TO ADD STUFF HERE
+      referral!letter_hl7 = File.Load(SendAsHL7())
       '-------------------------------------------------
       'Construct the text to embed in the progress notes
       '-------------------------------------------------
@@ -553,7 +553,7 @@ Private Function Referral_Letter_Construct_Common(textin As String, sSep As Stri
    Dim charpos As Integer
    Dim sPatient As String = currentconsult!patient!firstname & " " & currentconsult!patient!surname & " " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2)
    Dim sPatient_Comms As String 'phone, etc for the patient
-   Dim com As Collection 
+   Dim com As Collection
    Dim s As String
 
    ntext = textin
@@ -575,11 +575,11 @@ Private Function Referral_Letter_Construct_Common(textin As String, sSep As Stri
       ntext = Replace(ntext, "%clinic.street", modDBConnect.currentUser!street1)
    Endif
    ntext = Replace(ntext, "%clinic.suburb", modDBConnect.currentUser!town & " " & modDBConnect.currentuser!postcode)
-   If txtName.Text <> "" Then 
-      ntext = Replace$(ntext, "%referred-to%", txtName.text & sSep) 
-    Else 
-      ntext = Replace$(ntext, "%referred-to%", "") 
-   Endif 
+   If txtName.Text <> "" Then
+      ntext = Replace$(ntext, "%referred-to%", txtName.text & sSep)
+   Else
+      ntext = Replace$(ntext, "%referred-to%", "")
+   Endif
 
    If txtOrganisation.text <> "" Then
       ntext = Replace$(ntext, "%organisation%", txtOrganisation.text & sSep)
@@ -601,18 +601,18 @@ Private Function Referral_Letter_Construct_Common(textin As String, sSep As Stri
    Else
       ntext = Replace$(ntext, "%branch%", "")
    End If
-   s = Trim(txtStreet1.text & " " & txtStreet2.text) 
-   If s <> "" Then 
-      ntext = Replace$(ntext, "%address%", s & sSep) 
-   Else 
-      ntext = Replace$(ntext, "%address%", "") 
-   Endif 
-   s = Trim$(txtSuburb.text & " " & txtPostcode.text) 
-   If s <> "" Then 
-      ntext = Replace$(ntext, "%suburb%", s & sSep) 
-   Else 
-      ntext = Replace$(ntext, "%suburb%", "") 
-   Endif 
+   s = Trim(txtStreet1.text & " " & txtStreet2.text)
+   If s <> "" Then
+      ntext = Replace$(ntext, "%address%", s & sSep)
+   Else
+      ntext = Replace$(ntext, "%address%", "")
+   Endif
+   s = Trim$(txtSuburb.text & " " & txtPostcode.text)
+   If s <> "" Then
+      ntext = Replace$(ntext, "%suburb%", s & sSep)
+   Else
+      ntext = Replace$(ntext, "%suburb%", "")
+   Endif
    If Not IsNull(PersonWritingTo) And If Not IsNull(PersonWritingTo!firstname) Then
       ntext = Replace$(ntext, "%firstname%", PersonWritingTo!firstname)
    Else
@@ -2658,12 +2658,13 @@ Public Sub teLetter_Drop()
 
 End
 
-Public Sub SendAsHL7()
+Public Function SendAsHL7() As String
    '--------------------------------------------------------------
+
    Dim message As New CHL7Message_REF_I12
    Dim ReceivingFacility As New CHL7Datatype_HD
    Dim ConsultingProvider As Collection
-   Dim ReferredtoProvider As Collection
+   Dim ReferredtoProvider As New Collection
    Dim PrimaryCareProvider As Collection
    Dim ReferralLetterText As String
    Dim TempFile As File 'just for testing
@@ -2673,6 +2674,7 @@ Public Sub SendAsHL7()
    Dim ReferralType As String
    Dim ReferralDisposition As String
    Dim ReferralReason As String
+   Dim sSTr As String
 
    Select Case cmbPriorityTypes.Current.Text
       Case "Routine"
@@ -2742,7 +2744,7 @@ Public Sub SendAsHL7()
          ' message.warning(cmbReferralTypes.Current.Text & " is not supported")
 
    End Select
-   
+
    ReferredtoProvider!name = txtName.Text
    ReferredtoProvider!organisation = txtOrganisation.Text
    ReferredtoProvider!branch = txtBranch.Text
@@ -2750,12 +2752,16 @@ Public Sub SendAsHL7()
    ReferredtoProvider!street2 = txtStreet2.Text
    ReferredtoProvider!suburb = txtSuburb.Text
    ReferredtoProvider!postcode = txtPostcode.Text
+   ReferredtoProvider!fk_person = fk_person
    ReferredtoProvider!comms = comms
    If Not IsNull(PersonWritingTo) Then
       ReferredtoProvider!provider_number = PersonWritingTo!provider_number
    Endif
-   AttachmentsArray.Add(GetLetterText(ReferredtoProvider))
+   sSTr = GetLetterText()
+   AttachmentsArray.Add(GetLetterText())
    message.createHL7Message_REF_I12(ReferredtoProvider, currentconsult!patient, AttachmentsArray, ReferralDisposition, ReferralReason, ReferralPriority, ReferralType, ReferralStatus)
+   Print Message.fpath
+   Return Message.fpath
 
 End
 
@@ -2763,24 +2769,23 @@ Private Function GetLetterText() As String
 
    Dim ProviderInformation As Collection
    Dim TempLetter As String
-   Dim StreetAdress As String
-   Dim Patient As Collection
+   Dim StreetAddress As String
 
-   Patient = modContactsDBI.Patient_Get_Using_PK(fk_employee)
+   '   Patient = modContactsDBI.Patient_Get_Using_PK(fk_employee)
    ProviderInformation = modDBConnect.currentUser ' reads the information of the current user out of the DB
    If ProviderInformation["street2"] <> "" Then
-      StreetAdress = ProviderInformation["street1"] & "\n" & ProviderInformation["street2"]
+      StreetAddress = ProviderInformation["street1"] & "\n" & ProviderInformation["street2"]
    Else
-      StreetAdress = ProviderInformation["street1"]
+      StreetAddress = ProviderInformation["street1"]
    Endif
    ' Adressblock of the sending provider
-   TempLetter = ProviderInformation["surname"] & ProviderInformation["firstname"] & ProviderInformation["title"] & "\n" &
-      StreetAdress & "\n" & ProviderInformation["town"] & ProviderInformation["postcode"] & "\n" &
-      ProviderInformation["state"] & "\n\n" &
-      "__________________________________________________________________________________" & "\n\n" &
-      txtReferralDate.text & "\n\n" &
-      "Dear " & Patient["title"] & " " & Patient["surname"] & "\n\n" &
-      teLetter.Text & "\n\n" & "Kind Regards " & ProviderInformation["surname"] & ProviderInformation["firstname"]
+   TempLetter = ProviderInformation["surname"] & ProviderInformation["firstname"] & ProviderInformation["title"] & "\n"
+   TempLetter &= StreetAddress & "\n" & ProviderInformation["town"] & ProviderInformation["postcode"] & "\n"
+   TempLetter &= ProviderInformation["state"] & "\n\n"
+   TempLetter &= "__________________________________________________________________________________" & "\n\n"
+   TempLetter &= txtReferralDate.text & "\n\n"
+   TempLetter &= "Re: " & currentconsult!patient!title & " " & currentconsult!patient!surname & "\n\n"
+   TempLetter &= teLetter.Text & "\n\n" & "Kind Regards " & ProviderInformation["surname"] & ProviderInformation["firstname"]
 
    Return TempLetter
 

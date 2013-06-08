@@ -1,5 +1,5 @@
 -- update or install the ICPC codes
-\cd coding
+-- \cd coding
 
 truncate coding.icpc2_keywords;
 truncate coding.icpc2_link_keyword_term ;
@@ -31,4 +31,4 @@ insert into coding.generic_terms (code,                    body_system,code_role
                                   t.icpc_code||t.term_code,     NULL,     2,     t.term,       1        ,  't' ,c.icd10
           from coding.icpc2_terms t, coding.icpc2_codes c where t.status = 'A' and t.icpc_code=c.icpc_code;
 
-\cd ..
+-- \cd ..

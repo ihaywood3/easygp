@@ -80,6 +80,8 @@ Private Const clistRecalls As Integer = 3
 Private Const cListCertificates As Integer = 4
 Private Const clistMeasurements As Integer = 5
 Public Const clistImages As Integer = 6 'accessed from other forms
+Private Const cTabResults As Integer = 1
+Private Const CTabLetters As Integer = 2
 Private Const ctabCalculators As Integer = 7
 Private Const cTabQuickContacts As Integer = 8
 Private Const cMainDisplay_DataEntry As Integer = 1
@@ -923,7 +925,7 @@ Public Sub Layout_Right_Side_Screen()
    
    Dim layout_vals As New Integer[]
    
-   VSplit_TabbedListsGraph.Layout = Settings["FClinical/VSplit_TabbedListsGraph.Layout", modUtil.VSplit([149, 149])]  'get the layout vals if exist
+   Try VSplit_TabbedListsGraph.Layout = Settings["FClinical/VSplit_TabbedListsGraph.Layout", modUtil.VSplit([149, 149])]  'get the layout vals if exist FIXME BUG HERE
    '----------------------------------------------------------------
    'Now, layout the tasks and problem lists bottom part on the right
    '----------------------------------------------------------------
@@ -1649,11 +1651,14 @@ Public Sub cvwLettersReceived_Menu()
       mnuLettersReceived_PrintSelected.Enabled = True
       mnuLettersReceived_PrintAll.Enabled = True
       mnuLettersReceived_Fonts.Enabled = True
+      mnuLettersReceived_JoinPDF.Enabled = True 
       mnuLettersReceived_Help.Enabled = True
-   Else                                                                                 'not multil-selected allow all options
+   Else   
+      'not multil-selected allow all options
       For Each mnu In mnuLettersReceived.Children
          mnu.Enabled = True
       Next
+      mnuLettersReceived_JoinPDF.Enabled = False                                  'not alot to join! 
       cvwLettersReceived.MoveCurrent()
       mnuLettersReceived_UndoDelete.Enabled = False                                     'assume there is no documents to undelete
       Print cvwLettersReceived.Selection[0]
@@ -3350,54 +3355,7 @@ Public Sub TabbedLists_Menu()
          If cvwMeasurementValues.count Then
             mnuMeasurements.popup()
          Endif
-         
-      Case "recalls"
-         ' '------------------------------------------------------------------------
-         ' 'Adjust the popup menu text to indicate the usual default repeat interval
-         ' 'turn back on (could be off) all menu options
-         ' '------------------------------------------------------------------------
-         ' If cvwRecalls.count Then
-         '    For Each menuitem In mnuTabbedListRecalls.Children
-         '       menuitem.Enabled = True
-         '    Next
-         '    mnuTabbedListRecalls_Completed.caption = "Mark Completed Repeat in " & currentrecall!interval & currentrecall!abbrev_text
-         ' Else
-         '    '-------------------------------------------------------------
-         '    'allow the menu, but only couple of things
-         '    'mnuScratchPad_HistoryEntirew entire pad history or above
-         '    '-------------------------------------------------------------
-         '    For Each menuitem In mnuTabbedListRecalls.Children
-         '       Select Case menuitem.Tag
-         '          Case "view audit trail", "help", "exit"
-         '             menuitem.Enabled = True
-         '          Case Else
-         '             menuitem.Enabled = False
-         '       End Select
-         '    Next
-         ' End If
-         ' mnuTabbedListRecalls.popup()
-      Case "results"
-         'FIXME and similar instances, need to disable the entire menu if the
-         'count is zero, in situation where one or more undelete exists
-         ' cvwResults.MoveCurrent()
-         ' If cvwResults.count Then
-         '    mnuResultsReceived_UndoDelete.Enabled = False                       'assume there is no documents to undelete
-         '    For Each Document In Deleted_Documents
-         '       If Document!fk_lu_display_as = const.Document_Display_As_Result Then     'there are?
-         '          mnuResultsReceived_UndoDelete.Enabled = True                    ' enable undelete menu option
-         '          Break
-         '       Endif
-         '    Next
-         '    If currentconsult!results_received[cvwResults.Item.key]!msh_transmitting_entity = "snail mail" Then 'can only send back non-hl7 e.g scanned FIXME, LATER ?IMAGES
-         '       mnuResultsReceived_Refile.Enabled = True
-         '    Else
-         '       mnuResultsReceived_Refile.Enabled = False
-         '    End If
-         '    mnuResultsReceived_ShowGraphable()
-         '    mnuResultsReceived.Popup()
-         ' End If
-      Case "inbox"
-      Case "certificates"
+     Case "certificates"
          If cvwCertificates.count Then mnuCertificates.popup()
    End Select
    
@@ -3441,10 +3399,38 @@ Public Sub mnuResultsReceived_Click()
    
    Dim D As Collection
    Dim x As Integer
+   Dim pdfs_to_merge As Collection
    
    Dim TabulatedResults As CTabResults
    
    Select Case Last.tag
+      Case "transfer to pdfs to join list"
+         '-----------------------------------------------------------------------------------------      
+         'joining pdf's difficult (not the actual joining)
+         'eg.user could want to or be stupid enough to join disparate pdf's
+         'so some decision needs to be made about the original collection's settings e.g originator
+         'for the moment (experimental) the last document sent to the list (i.e this one) will
+         'be attatched  as the tag of the lvFilesToJoin
+         '------------------------------------------------------------------------------------------   
+         cvwResults.MoveFirst
+         pdfs_to_merge = New Collection 
+         lvFilesToJoin.Clear()
+         txtTagUser.text = ""
+         For x = 0 To cvwResults.Selection.count - 1
+            If Lower(File.Ext(currentconsult!results_received[cvwResults.Selection[x]]!source_file)) = "pdf" Then
+               Try lvFilesToJoin.Add(cvwResults.Selection[x], currentconsult!results_received[cvwResults.Selection[x]]!source_file)
+               If Not Error Then
+                  pdfs_to_merge.Add(currentconsult!results_received[cvwResults.Selection[x]], pdfs_to_merge.count) 'needed to delete these later
+               End If
+            Else
+               Message.info("Only pdf files can be joined")
+               cvwResults.UnselectAll()
+               Return
+            End If   
+         Next
+         lvFilesToJoin.tag = pdfs_to_merge
+         VBox_Files_To_Join.Visible = True
+         Vbox_MiniGraphs.Visible = False      
       Case "tabulated cumulative results"
          Message.Info("DANGER DANGER.\n\nI think this module is inaccurate and should not be used clinically until re-developed.")
          TabulatedResults = New CTabResults(currentconsult, currentconsult!results_received[cvwResultsReceived_Key]!tag_user, currentconsult!results_received[cvwResultsReceived_Key]!pk_document)
@@ -3501,13 +3487,15 @@ Public Sub mnuResultsReceived_Click()
       Case "audit trail"
          Document_AuditTrail_Show(cvwResultsReceived_Key)
       Case "print all"
-         cvwResults.MoveFirst
-         For x = 0 To cvwResults.count - 1
-            Document_Print(cvwResultsReceived_Key)
-            cvwResults.MoveNext
+         cvwResults.Selectall
+         For x = 0 To cvwResults.Selection.count - 1
+            Document_Print(cvwResults.Selection[x])
          Next
-      Case "print"
-         Document_Print(cvwResultsReceived_Key)
+         cvwResults.UnselectAll
+      Case "print selected"
+         For x = 0 To cvwResults.Selection.count - 1
+             Document_Print(cvwResults.Selection[x])
+         Next
    End Select
    
 End
@@ -3970,6 +3958,7 @@ Public Sub mnuLettersReceived_Click()
    
    Dim D As Collection
    Dim x As Integer
+   Dim pdfs_to_merge As Collection  'if user decides to merge pdfs
    
    Select Case Last.tag
       Case "help"                          'show help for this section
@@ -3977,11 +3966,26 @@ Public Sub mnuLettersReceived_Click()
       Case "fonts"                         'adjust and save font"
          modUtil.Columnview_SetFont(cvwLettersReceived, "TabbedLists")
       Case "transfer to pdfs to join list"                                                                    'joins selected documents into a single pdf
-         Print currentconsult!letters_received[cvwLettersReceived_key]!source_file
-         lvFilesToJoin.Add(lvFilesToJoin.count, currentconsult!letters_received[cvwLettersReceived_key]!source_file)
-         
-          VBox_Files_To_Join.Visible = True
-          Vbox_MiniGraphs.Visible = False 
+         '-----------------------------------------------------------------------------------------      
+         'joining pdf's difficult (not the actual joining)
+         'eg.user could want to or be stupid enough to join disparate pdf's
+         'so some decision needs to be made about the original collection's settings e.g originator
+         'for the moment (experimental) the last document sent to the list (i.e this one) will
+         'be attatched  as the tag of the lvFilesToJoin
+         '------------------------------------------------------------------------------------------   
+         cvwLettersReceived.MoveFirst
+         pdfs_to_merge = New Collection 
+         lvFilesToJoin.Clear()
+         txtTagUser.text = ""
+         For x = 0 To cvwLettersReceived.Selection.count - 1
+            Try lvFilesToJoin.Add(cvwLettersReceived.Selection[x], currentconsult!letters_received[cvwLettersReceived.Selection[x]]!source_file)
+            If Not Error Then
+               pdfs_to_merge.Add(currentconsult!letters_received[cvwLettersReceived.Selection[x]], pdfs_to_merge.count) 'needed to delete these later
+            End If
+         Next
+         lvFilesToJoin.tag = pdfs_to_merge
+         VBox_Files_To_Join.Visible = True
+         Vbox_MiniGraphs.Visible = False 
       Case "display in new tab"                       'show the letter
          If cvwLettersReceived_key = 0 Then
             Message.Info("key is zero")
@@ -4000,6 +4004,7 @@ Public Sub mnuLettersReceived_Click()
             cvwLettersReceived_Refresh(True) 'refresh the collection and reshow the list
          End If
       Case "delete duplicate"             'Delete the letter, but don't enforce a reason
+         If Message.Question("Are you sure this is a duplicate? Sure you want to delete it?", "Yes", "No") = 2 Then Return
          If modArchiveDocumentsDBI.Delete(currentconsult, currentconsult!letters_received[cvwLettersReceived_key], const.cSection_Documents, const.sAuditAction[const.cAuditAction_DeleteDuplicateDocument], "duplicate letter") Then
             modDBConnect.CommitTrans()
             Deleted_Documents.Add(currentconsult!letters_received[cvwLettersReceived_key], cvwLettersReceived_key)
@@ -4025,12 +4030,8 @@ Public Sub mnuLettersReceived_Click()
       Case "link"                          'link to a health issue not yet implemented
          modUtil.NotImplemented("Link letter to health issue")
       Case "print selected"
-         cvwLettersReceived.MoveFirst
-         For x = 0 To cvwLettersReceived.count - 1
-            If cvwLettersReceived.Item.Selected = True Then
-               Document_Print(cvwLettersReceived.Selected[x])
-            End If
-            cvwLettersReceived.MoveNext()
+         For x = 0 To cvwLettersReceived.Selection.count - 1
+            Document_Print(cvwLettersReceived.Selection[x])
          Next
          cvwLettersReceived.UnselectAll()
       Case "print all"
@@ -5861,24 +5862,43 @@ Public Sub cvwResults_Menu()
    'key is set cvwresultsRecieved_key in cvwResults_select()
    
    Dim Document As Collection
+   Dim x As Integer
+   Dim bMultiSelected As Boolean
+   Dim mnu As Menu
    
+   If Not cvwResults.count Then Return    
    cvwResults.MoveCurrent()
-   If cvwResults.count Then
-      mnuResultsReceived_UndoDelete.Enabled = False                       'assume there is no documents to undelete
-      For Each Document In Deleted_Documents
-         If Document!fk_lu_display_as = const.Document_Display_As_Result Then     'there are?
-            mnuResultsReceived_UndoDelete.Enabled = True                    ' enable undelete menu option
-            Break
-         Endif
-      Next
-      If currentconsult!results_received[cvwResultsReceived_Key]!msh_transmitting_entity = "snail mail" Then 'can only send back non-hl7 e.g scanned FIXME, LATER ?IMAGES
-         mnuResultsReceived_Refile.Enabled = True
-      Else
-         mnuResultsReceived_Refile.Enabled = False
-      End If
-      mnuResultsReceived_ShowGraphable()
-      mnuResultsReceived.Popup()
+   
+   mnuResultsReceived_UndoDelete.Enabled = False                       'assume there is no documents to undelete
+   For Each Document In Deleted_Documents
+      If Document!fk_lu_display_as = const.Document_Display_As_Result Then     'there are?
+         mnuResultsReceived_UndoDelete.Enabled = True                    ' enable undelete menu option
+         Break
+      Endif
+   Next
+   If currentconsult!results_received[cvwResultsReceived_Key]!msh_transmitting_entity = "snail mail" Then 'can only send back non-hl7 e.g scanned FIXME, LATER ?IMAGES
+      mnuResultsReceived_Refile.Enabled = True
+   Else
+      mnuResultsReceived_Refile.Enabled = False
    End If
+   mnuResultsReceived_ShowGraphable()
+   
+   If cvwResults.Selection.count > 1 Then                                                     'see if more than one item has been selected
+      For Each mnu In mnuResultsReceived.Children
+         mnu.Enabled = False
+      Next
+      mnuResultsReceived_PrintSelected.Enabled = True
+      mnuResultsReceived_PrintAll.Enabled = True
+      mnuResultsReceived_JoinPDF.Enabled = True 
+   Else
+       For Each mnu In mnuResultsReceived.Children
+         mnu.Enabled = True
+      Next
+      mnuResultsReceived_JoinPDF.Enabled = False   
+   Endif
+   
+   mnuResultsReceived.Popup()
+   ' 
    
 End
 
@@ -5887,6 +5907,8 @@ Public Sub tbJoin_Click()
    'Joins any pdfs's transfer to the lvFilesToJoin
    'the panel containing the join stuff is shown
    'when user elects to transfer pdf to join
+   '  FIXME pretty messy routine proof of concept
+   ' FDocumentsMetaData to fix the duplicate md5 stuff
    '----------------------------------------------
    
    Dim pdf_files As New Collection
@@ -5896,37 +5918,90 @@ Public Sub tbJoin_Click()
    Dim remote_fname As String
    Dim file_to_join As String
    Dim x As Integer
+   Dim unique_filename As String
+   Dim D As New Crow
+   Dim md5Output As String 'fix me put the md5 calcs in this and FDocumentMetadata into another class somewhere (duplication)
+   Dim signed_off As New Collection 
    Dim archiving_dir As String = modAdminDBI.Config_Get("document_archiving_directory", "", Null, modDBConnect.currentUser!fk_clinic)
- '  modFiles.Get(
+   
    Select Case Last.tag
       Case "join"
-         If lvFilestojoin.count = 0 Then Return
-         fname = Temp$ & ".pdf"
-         lvFilestojoin.MoveFirst
+         If lvFilestojoin.count = 0 Or Trim(txtTagUser.text) = "" Then Return   'no files or no tag get out of here.
+         fname = Temp$                                                          'get temporary filename (no path)
+         lvFilestojoin.MoveFirst                                                'add all the files into a collection
          For x = 0 To lvFilestojoin.count - 1
             pdf_files.Add(archiving_dir &/ lvFilestojoin.item.text, pdf_files.count)           
             lvFilestojoin.MoveNext
          Next
-         fname = modPrinting.Join_PDF(pdf_files, fname)  'join the files together
-         lvFilestojoin.MoveFirst                         'then remove them from the HDD
-         For x = 0 To lvFilestojoin.count - 1
-         '   modFiles.Delete("document_archiving_directory", lvFilestojoin.Item.Text)
-          '  lvFilestojoin.MoveNext
-         Next
-         lvfilesToJoin.Clear()
-         lblFilestoJoin.text = "Files to join"
+         fname = modPrinting.Join_PDF(pdf_files, fname)                         'join the files together
          local_fname = fname
          remote_fname = File.Name(fname)
-         modFiles.Put("document_archiving_directory", remote_fname, local_fname)
-         
-   
-         
+         modFiles.Put("document_archiving_directory", remote_fname, local_fname) 'copy the file from /tmp to the filed directory
+         '-----------------------------------------------------------------------------------
+         'the new file now has to be filed as one would a newly scanned in and allocated file
+         'except that it won't end up in the inbox, but will be marked as filed
+         '------------------------------------------------------------------------------------
+         D!fk_staff_filed_document = modDBConnect.currentUser!fk_staff
+         D!date_created = lvFilesToJoin.Tag[0]!date_created
+         D!fk_patient = currentconsult!patient!fk_patient   
+         D!originator = lvFilesToJoin.Tag[0]!originator  'get the original originator
+         D!fk_sending_entity = lvFilesToJoin.Tag[0]!fk_sending_entity
+         D!tag = D!originator & " - joined pdf"
+         D!tag_user = Trim(txtTagUser.text)
+         D!fk_lu_urgency = const.UrgencyLevelRoutine
+         Exec ["/usr/bin/md5sum", fname] To md5Output
+         D!md5sum = Left(md5Output, InStr(md5Output, " ") - 1)
+         D!fk_staff_destination = lvFilesToJoin.Tag[0]!fk_staff_destination
+         If TabStrip_Lists.index = cTabResults Then
+            D!fk_lu_display_as = const.Document_Display_As_Result
+         Else  
+            D!fk_lu_display_as = const.Document_Display_As_Letter
+         Endif
+         D!incoming_referral = False
+         D!concluded = True
+         D.Save("documents.documents", "fk_document")                              'chicken and egg, need unique new document-pk for a unqiue filename
+         '--------------------------------------------------------------------------------------------------
+         'now work out a unique readable filename usign patient's name, birthdate and the unique document pk
+         '--------------------------------------------------------------------------------------------------
+         unique_filename &= modutil.Filename_Protect(Trim(currentconsult!patient!wholename)) & "." & modutil.DateString_Encode(Format(currentconsult!patient!birthdate, "dd/mm/yyyy")) & "." & Str(Currentconsult!patient!fk_patient) & "."
+         unique_filename &= modutil.Filename_Protect(D!originator) & "." & Str$(D!fk_document) & "."
+         unique_filename &= "pdf"
+         Move archiving_dir &/ File.Name(fname) To archiving_dir &/ unique_filename  'rename the file in the archived document dir to this unique name
+         D.put_unchanged(D!fk_document, "fk_document")                               'resave this as the source_file into the backend
+         D!source_file = unique_filename   
+         D.Save("documents.documents", "fk_document")
+         signed_off!fk_staff = modDBConnect.currentUser!fk_staff                     'mark document as 'signed off'
+         signed_off!fk_document = D!fk_document
+         signed_off!date = Now()
+         modInboxDBI.Document_SignOff(signed_off)
+         lvFilestojoin.MoveFirst                         ' 'finally remove the original files
+         For x = 0 To lvFilestojoin.count - 1  'Now mark the orginal documents in the backend as deleted
+            modDBConnect.update("documents.documents", Null, ["pk": lvFilesToJoin.Tag[x]!pk_document, "deleted": True])
+         Next
+         modDBConnect.CommitTrans()
+         For x = 0 To lvFilestojoin.count - 1
+            modFiles.Delete("document_archiving_directory", lvFilestojoin.Item.Text)
+            lvFilestojoin.MoveNext
+         Next
+         lvfilesToJoin.Clear()
+           If TabStrip_Lists.index = cTabResults Then
+              cvwResults_Refresh(True)
+           Else
+             cvwLettersReceived_Refresh(True)
+           Endif
+         Goto Remove_Join_Panel
       Case "clear"
          lvFilesToJoin.Clear
       Case "close"
-         VBox_Files_To_Join.Visible = False  
-         Vbox_MiniGraphs.Visible = True   
- 
+         Goto Remove_Join_Panel
    End Select
+   Return
+   
+Remove_Join_Panel:
+   VBox_Files_To_Join.Visible = False  
+   Vbox_MiniGraphs.Visible = True   
+   
+Catch
+   modDBConnect.RollBack()
    
 End

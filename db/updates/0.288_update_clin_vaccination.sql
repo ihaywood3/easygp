@@ -18,8 +18,7 @@ CREATE OR REPLACE VIEW clin_vaccination.vwvaccines AS
   ORDER BY lu_descriptions.description;
 
 ALTER TABLE clin_vaccination.vwvaccines
-  OWNER TO richard;
-GRANT ALL ON TABLE clin_vaccination.vwvaccines TO richard;
+  OWNER TO easygp;
 GRANT ALL ON TABLE clin_vaccination.vwvaccines TO easygp;
 GRANT ALL ON TABLE clin_vaccination.vwvaccines TO staff;
 

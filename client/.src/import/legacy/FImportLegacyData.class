@@ -49,6 +49,7 @@ Public fk_town As Integer
 Private Corrected_Town As Collection
 Private hLog_file As File
 Private last_fk_relationship As Integer
+Private bexit As Boolean
 
 Static Private Form_Legacy_Data_Import As FImportLegacyData
 
@@ -80,7 +81,8 @@ Public Sub init()
       .tbWebBrowserZoomOut.Visible = True  
       .Help_Show("importing-data-from-other-systems.html")
    End With
-   Try Settings_Load()
+   bexit = True
+   
    cmbMedicalProgram.Add("DrsDesk")
    cmbMedicalProgram.Add("Medical Director V2")
    cmbMedicalProgram.Add("Medical Director V3")
@@ -91,27 +93,29 @@ Public Sub init()
    txtPastHistoryPath.text = User.home &/ "easygp/import/Exported_PastHistory_small.txt" 'fixme
    lblmeasure.text = "  Import Patient Demographics  "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
-   txtImportDirectory.text = "/home/richard/easygp/import"
-   '  txtImportDirectory.text = "/home/richard/horst/MEDIBASE_EXPORT/" 'FIXME REMOVE ME
-   cmbMedicalProgram.index = 0
+   cmbMedicalProgram.Index = -1
+   Try Settings_Load()
+   bexit = False
    
 End
 
 Public Sub Settings_Save()
    
-   Settings["Legacy Data Import/HSplit_ImportLegacy.Layout"] = HSplit_ImportLegacy.Layout
-   Settings["Legacy Data Import/VSplit_Legacy.Layout"] = VSplit_Legacy.layout
-   Settings["Legacy Data Import/HSplit_Legacy.layout"] = HSplit_Legacy1.layout
-   Settings["Legacy Data Import/import_file_dir"] = Trim(txtImportDirectory.text)
+   Settings["FImportLegacyData/HSplit_ImportLegacy.Layout"] = HSplit_ImportLegacy.Layout
+   Settings["FImportLegacyData/VSplit_Legacy.Layout"] = VSplit_Legacy.layout
+   Settings["FImportLegacyData/HSplit_Legacy.layout"] = HSplit_Legacy1.layout
+   Settings["FImportLegacyData/import_dir"] = Trim(txtImportDirectory.text)
+   Settings["FImportLegacyData/import_program"] = cmbMedicalProgram.Text
    
 End
 
 Private Sub Settings_Load()
-
-   HSplit_ImportLegacy.Layout = Settings["Legacy Data Import/HSplit_ImportLegacy.Layout", modUtil.HSplit([996, 707])]
-   VSplit_Legacy.layout = Settings["Legacy Data Import/VSplit_Legacy.Layout", modUtil.VSplit([481, 212])]
-   HSplit_Legacy1.layout = Settings["Legacy Data Import/HSplit_Legacy.Layout", modUtil.HSplit([547, 209])]
-   txtImportDirectory.text = Settings["Legacy Data Import/import_file_dir", User.home &/ "easgyp/import"]
+   
+   HSplit_ImportLegacy.Layout = Settings["FImportLegacyData/HSplit_ImportLegacy.Layout", modUtil.HSplit([996, 707])]
+   VSplit_Legacy.layout = Settings["FImportLegacyData/VSplit_Legacy.Layout", modUtil.VSplit([481, 212])]
+   HSplit_Legacy1.layout = Settings["FImportLegacyData/HSplit_Legacy.Layout", modUtil.HSplit([547, 209])]
+   txtImportDirectory.text = Settings["FImportLegacyData/import_dir", User.home &/ "easgyp/import"]
+   cmbMedicalProgram.index = cmbMedicalProgram.Find(Settings["FImportLegacyData/import_program"])
    
 End
 
@@ -2164,7 +2168,10 @@ Public Sub EditArea_Buttons_Click()
    
    Select Case Last.tag
       Case "import"
-         Import()
+         Import("new")
+      Case "resume"
+         If Message.Question("Resume from last patient imported for currently selected section?", "Yes", "No") = 2 Then Return   
+         Import("resume")
       Case "import path"
          Import_Select_Dir()
    End Select
@@ -2194,7 +2201,7 @@ Public Sub DrsDesk_Import()
    
 End
 
-Public Sub Medibase_Import()
+Public Sub Medibase_Import(sImportType As String)
    
    Dim bNothingChosen As Boolean = True
    Dim starttime As Date
@@ -2222,7 +2229,7 @@ Public Sub Medibase_Import()
    If chkImportLetters.value = True Then
       bNothingChosen = False 
       Print #hLog_file, "Starting letters import"
-      Medibase_Import_Letters()
+      Medibase_Import_Letters(sImportType)
       Print #hLog_file, "Finished letters import"
       chkImportLetters.Value = False   
    End If
@@ -2235,7 +2242,7 @@ Public Sub Medibase_Import()
    If chkImportDocuments.value = True Then
       bNothingChosen = False 
       Print #hLog_file, "Starting document import"
-      Medibase_Import_Documents()
+      Medibase_Import_Documents(sImportType)
       Print #hLog_file, "ending document import"
       chkImportDocuments.Value = False  
    End If
@@ -2266,7 +2273,7 @@ Public Function Get_Possible_Request_Tags() As Collection
    
 End
 
-Public Sub Medibase_Import_Documents()
+Public Sub Medibase_Import_Documents(sImportType As String)
    
    Dim sFile As String
    Dim sDir As String
@@ -2302,98 +2309,101 @@ Public Sub Medibase_Import_Documents()
    Dim request_tags As Collection = Get_Possible_Request_Tags()
    Dim request_tag As Collection
    
-   ' sRootdir = "/home/richard/horst/test"
-   '   fk_patient = modImportDBI.Patient_Get_pk_Using_pk_Legacy("YOUNDEBBA")
    lblImport.text = "Importing Documents"
    lblProgress.text = ""
    rejected_records = New Collection
-   sRootdir = Trim(txtImportDirectory.text)  ' &/ "MEDIBASE_EXPORT/"
-   If IsDir(sRootdir) Then                             'eg "/home/user/MEDIBASE_EXPORT/"
-      For Each sFile In Dir(sRootdir)                 
-         If IsDir(sRootdir &/ Sfile) Then             
-            sPatientDir = sFile
-            fk_patient = modImportDBI.Patient_Get_pk_Using_fk_Legacy(sPatientDir)
-            For Each sFile In Dir(sRootdir &/ sPatientDir)
-               If sFile = "DOCUMENTS" Then 
-                  x = 0 
-                  For Each sFile In Dir(sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS")
-                     If File.Ext(sRootdir &/ sPatientDir &/ sNotesDir &/ sFile) = "meta" Then
-                        Documents = New Collection
-                        MetaData = New Collection 
-                        metadata_filename_path = sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ sFile
-                        hFile = Open metadata_filename_path For Read
-                        While Not Eof(hFile)
-                           Line Input #hFile, sOneLine
-                        Wend  
-                        Close #hfile
-                        MetaData = JSON.Decode(sOneline)
-                        pdf_filename_original = Replace(sFile, ".meta", "")         'this is the pdf name
-                        pdf_filename_modified = modUtil.Filename_Protect(pdf_filename_original) & ".pdf"                                            'create a new name which won't crash 
-                        fk_staff = modImportDBI.Staff_Get_Using_Firstname_Lastname(metadata)
-                        '------------------------------------------------------------------------------------------------
-                        'Insert the document
-                        'the fk_sending_entity = the practice importing the data, ie wherever this program is being run
-                        'const.Document_Display_As_Letter not of relevance
-                        '---------------------------------------- --------------------------------------------------------
-                        Document = New CRow
-                        '------------------------------------------------------------
-                        'Can sometimes work out if a request result or a letter
-                        'HORST/IAN FIXME: replace this long line with a better logic
-                        'e.g symbion s & n, 'Holter' etc
-                        'Default to assuming it is a letter
-                        '------------------------------------------------------------
-                        Document!tag_user = MetaData!description
-                        fk_lu_display_as = const.Document_Display_As_Letter 
-                        Document!tag = "Sender Unknown - scanned letter"
-                        
-                        If Not InStr(Document!tag_user, "Dr ") Then   
-                           For Each request_tag In request_tags                           'loaded from import_export.lu_misspelt_user_request_tags
-                              If InStr(Lower(MetaData!description), Lower(request_tag!tag)) Then
-                                 fk_lu_display_as = const.Document_Display_As_Result
-                                 Document!tag = "Sender Unknown - scanned result"
-                                 Break
-                              End If   
-                           Next
-                        End If   
-                        msh_sending_entity = modDBConnect.currentUser!organisation & "." & modDBConnect.currentUser!branch
-                        Document!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(fk_lu_display_as, msh_sending_entity, modDBConnect.currentUser!fk_branch)
-                        If Not File.Ext(pdf_filename_modified) = ".pdf" Then
-                           Message.Info(pdf_filename_modified, " is not ok")
+   sRootdir = Trim(txtImportDirectory.text) 
+   If sImportType = "new" Then   
+      Settings["FImportLegacyData/last_patient_no_documents"] = -1
+   Endif
+   If IsDir(sRootdir) Then                           
+      If iPatientCount > Settings["FImportLegacyData/last_patient_no_documents", -1] Then
+         For Each sFile In Dir(sRootdir)                 
+            If IsDir(sRootdir &/ Sfile) Then             
+               sPatientDir = sFile
+               fk_patient = modImportDBI.Patient_Get_pk_Using_fk_Legacy(sPatientDir)
+               For Each sFile In Dir(sRootdir &/ sPatientDir)
+                  If sFile = "DOCUMENTS" Then 
+                     x = 0 
+                     For Each sFile In Dir(sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS")
+                        If File.Ext(sRootdir &/ sPatientDir &/ sNotesDir &/ sFile) = "meta" Then
+                           Documents = New Collection
+                           MetaData = New Collection 
+                           metadata_filename_path = sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ sFile
+                           hFile = Open metadata_filename_path For Read
+                           While Not Eof(hFile)
+                              Line Input #hFile, sOneLine
+                           Wend  
+                           Close #hfile
+                           MetaData = JSON.Decode(sOneline)
+                           pdf_filename_original = Replace(sFile, ".meta", "")         'this is the pdf name
+                           pdf_filename_modified = modUtil.Filename_Protect(pdf_filename_original) & ".pdf"                                            'create a new name which won't crash 
+                           fk_staff = modImportDBI.Staff_Get_Using_Firstname_Lastname(metadata)
+                           '------------------------------------------------------------------------------------------------
+                           'Insert the document
+                           'the fk_sending_entity = the practice importing the data, ie wherever this program is being run
+                           'const.Document_Display_As_Letter not of relevance
+                           '---------------------------------------- --------------------------------------------------------
+                           Document = New CRow
+                           '------------------------------------------------------------
+                           'Can sometimes work out if a request result or a letter
+                           'HORST/IAN FIXME: replace this long line with a better logic
+                           'e.g symbion s & n, 'Holter' etc
+                           'Default to assuming it is a letter
+                           '------------------------------------------------------------
+                           Document!tag_user = MetaData!description
+                           fk_lu_display_as = const.Document_Display_As_Letter 
+                           Document!tag = "Sender Unknown - scanned letter"
+                           
+                           If Not InStr(Document!tag_user, "Dr ") Then   
+                              For Each request_tag In request_tags                           'loaded from import_export.lu_misspelt_user_request_tags
+                                 If InStr(Lower(MetaData!description), Lower(request_tag!tag)) Then
+                                    fk_lu_display_as = const.Document_Display_As_Result
+                                    Document!tag = "Sender Unknown - scanned result"
+                                    Break
+                                 End If   
+                              Next
+                           End If   
+                           msh_sending_entity = modDBConnect.currentUser!organisation & "." & modDBConnect.currentUser!branch
+                           Document!fk_sending_entity = modInboxDBI.SendingEntity_GetPK(fk_lu_display_as, msh_sending_entity, modDBConnect.currentUser!fk_branch)
+                           If Not File.Ext(pdf_filename_modified) = ".pdf" Then
+                              Message.Info(pdf_filename_modified, " is not ok")
+                           Endif
+                           Document!source_file = pdf_filename_modified
+                           Document!imported_time = Now()
+                           Document!date_created = MetaData!document_date
+                           Document!originator = "sender unknown"
+                           Document!fk_patient = fk_patient
+                           Document!fk_staff_filed_document = modDBConnect.currentUser!fk_staff
+                           Document!fk_staff_destination = modDBConnect.currentUser!fk_staff
+                           Document!concluded = True
+                           Document!fk_lu_display_as = fk_lu_display_as
+                           Document!fk_lu_urgency = const.UrgencyLevelRoutine
+                           Document!md5sum = modUtil.Calc_md5sum_File(sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original)
+                           Try modFiles.Put("document_archiving_directory", pdf_filename_modified, sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original) 'copy to our documents dir
+                           If Not Error Then
+                              Document.Save("documents.documents", "fk_document")
+                              modDBConnect.CommitTrans()
+                              '   Try Kill sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original
+                              '  If Error Then
+                              '     Message.info("problem killing the original file")
+                              '   Endif
+                           Else
+                              rejected_records.Add(sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original, rejected_records.count)
+                           Endif
+                           Settings["FImportLegacyData/last_patient_no_documents"] = iPatientCount
                         Endif
-                        Document!source_file = pdf_filename_modified
-                        Document!imported_time = Now()
-                        Document!date_created = MetaData!document_date
-                        Document!originator = "sender unknown"
-                        Document!fk_patient = fk_patient
-                        Document!fk_staff_filed_document = modDBConnect.currentUser!fk_staff
-                        Document!fk_staff_destination = modDBConnect.currentUser!fk_staff
-                        Document!concluded = True
-                        Document!fk_lu_display_as = fk_lu_display_as
-                        Document!fk_lu_urgency = const.UrgencyLevelRoutine
-                        Document!md5sum = modUtil.Calc_md5sum_File(sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original)
-                        Try modFiles.Put("document_archiving_directory", pdf_filename_modified, sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original) 'copy to our documents dir
-                        If Not Error Then
-                           Document.Save("documents.documents", "fk_document")
-                           modDBConnect.CommitTrans()
-                           '   Try Kill sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original
-                           '  If Error Then
-                           '     Message.info("problem killing the original file")
-                           '   Endif
-                        Else
-                           rejected_records.Add(sRootdir &/ sPatientDir &/ sNotesDir &/ "DOCUMENTS" &/ pdf_filename_original, rejected_records.count)
-                        Endif
-                     Endif
-                     Inc x 
-                  Next
-               End If
-            Next
-         Endif
-         Inc iPatientCount
-         Print "patient", iPatientCount
-         
-         lblProgress.text = "total patients processed:" & Str(iPatientCount)
-         Wait 
-      Next
+                        Inc x 
+                     Next
+                  End If
+               Next
+            Endif
+            Inc iPatientCount
+            Print "patient", iPatientCount
+             lblProgress.text = "total patients processed:" & Str(iPatientCount)
+           Wait 
+         Next
+      End If
    End If
    modDBConnect.CommitTrans 
    If rejected_records.count Then   
@@ -2449,94 +2459,100 @@ Public Sub Medibase_Import_Progress_Notes()
    sRootdir = Trim(txtImportDirectory.text) ' &/ "MEDIBASE_EXPORT/"
    If IsDir(sRootdir) Then                             'eg "/home/user/MEDIBASE_EXPORT/"
       For Each sFile In Dir(sRootdir)                 
-         If IsDir(sRootdir &/ Sfile) Then             
-            sPatientDir = sFile
-            fk_patient = modImportDBI.Patient_Get_pk_Using_fk_Legacy(sPatientDir)
-            For Each sFile In Dir(sRootdir &/ sPatientDir)
-               If sFile = "PROGRESSNOTES" Then 
-                  x = 0 
-                  For Each sFile In Dir(sRootdir &/ sPatientDir &/ sNotesDir &/ "PROGRESSNOTES")
-                     If File.Ext(sRootdir &/ sPatientDir &/ sNotesDir &/ sFile) = "json" Then
-                        ProgressNotes = New Collection
-                        MetaData = New Collection 
-                        metadata_filename_path = sRootdir &/ sPatientDir &/ sNotesDir &/ "PROGRESSNOTES" &/ sFile
-                        hFile = Open metadata_filename_path For Read
-                        While Not Eof(hFile)
-                           Line Input #hFile, sOneLine
-                        Wend  
-                        Close #hfile
-                        MetaData = JSON.Decode(sOneline)
-                        html_filename_path = Replace(metadata_filename_path, ".json", ".html")
-                        hFile = Open html_filename_path For Read
-                        notes = ""
-                        While Not Eof(hFile)
-                           Line Input #hFile, sOneLine
-                           notes &= sOneLine
-                        Wend  
-                        Close #hfile
-                        '------------------------------------------------------------------------------------------
-                        'Ok, massage the notes a little, first correct the formatting, leaving headings on one line
-                        '------------------------------------------------------------------------------------------
-                        metadata!notes = notes
-                        metadata!notes = Replace$(metadata!notes, "<b>Diagnosis:", "<BR><b>Diagnosis:")
-                        metadata!notes = Replace$(metadata!notes, "<b>Management:", "<BR><b>Management:")
-                        metadata!notes = Replace$(metadata!notes, "<b>Action:", "<BR><b>Management:")
-                        metadata!notes = Replace$(metadata!notes, "<b>History:", "<BR><b>History:")
-                        metadata!notes = Replace$(metadata!notes, "<b>Examination:", "<BR><b>Examination:")
-                        metadata!notes = Replace$(metadata!notes, "<b>Actions:", "<BR><b>Actions:")
-                        metadata!notes = Replace$(metadata!notes, "<b>Review:", "<BR><b>Review:")
-                        metadata!notes = Replace$(metadata!notes, "&nbsp", "&nbsp;")
-                        '------------------------------------------------------------
-                        'Next, try and parse out the BP measurements
-                        '<A HREF='blood pressure'>blood pressure=180/80 mmhg</A><BR>
-                        'BP: 135/85 &nbsp;
-                        '-----------------------------------------------------------
-                        ' If InStr(metadata!notes, "BP: ") Then
-                        '    Print "found a BP"
-                        '    Print metadata!notes
-                        '    charpos = InStr(metadata!notes, "BP: ")
-                        '    LeftString = Left(metadata!notes, InStr(metadata!notes, "BP: ") - 1)
-                        '    Print LeftString
-                        '  '  metadata!notes = Replace$("BP: ", "<A HREF='blood pressure'>blood pressure=")
-                        '    sString = Right(metadata!notes, Len(metadata!notes) - charpos - 3)  'includes e.g 130/85 ;nbsp
-                        '    RightString = Right(sString, Len(sSTring) - InStr(sString, "&nbsp") - 5)
-                        '    
-                        '    Print "right side:", RightString
-                        '    
-                        '    Print 
-                        '    charpos = InStr(sString, "&nbsp")
-                        '    bpString = Trim(Left(sSTring, charpos - 1))
-                        '    Print bpString
-                        '  metadata!notes = LeftString & "<A HREF='blood pressure'>blood pressure=" & bpString & " mmhg</A><BR>" & RightString
-                        '  Print metadata!notes   
-                        '  
-                        ' Endif
-                        '   Print "starting ", txtImportPatient.text, fk_patient, MetaData!date, MetaData!time
-                        fk_staff = modImportDBI.Staff_Get_Using_Firstname_Lastname(metadata)
-                        datebits = Split(MetaData!date, "-")
-                        timebits = Split(MetaData!time, ":")
-                        consult = New CRow 
-                        consult!consult_date = Make_Date_time(datebits, timebits)
-                        consult!consult_date = Make_Date_time(datebits, timebits)
-                        consult!fk_patient = fk_patient
-                        consult!fk_staff = fk_staff
-                        consult!fk_type = const.consult_type_at_Surgery
-                        consult!summary = "Imported progress note from MediBase" & Format(Now, "dd/mm/yyyy")
-                        consult.Save("clin_consult.consult", "fk_consult")
-                        Progressnote = New CRow
-                        Progressnote!fk_consult = consult!fk_consult
-                        Progressnote!fk_audit_action = const.cAuditAction_FileImport
-                        Progressnote!notes = metadata!notes
-                        Progressnote!fk_section = 0 'general notes
-                        Progressnote!fk_problem = 0 'no problem
-                        progressNote.Save("clin_consult.progressnotes", "fk_progressnote")
-                     Endif
-                     Inc x 
-                  Next
-               End If
-            Next
+         If iPatientCount > Settings["FImportLegacyData/last_patient_no_notes", -1] Then
+            If IsDir(sRootdir &/ Sfile) Then             
+               sPatientDir = sFile
+               fk_patient = modImportDBI.Patient_Get_pk_Using_fk_Legacy(sPatientDir)
+               For Each sFile In Dir(sRootdir &/ sPatientDir)
+                  If sFile = "PROGRESSNOTES" Then 
+                     x = 0 
+                     For Each sFile In Dir(sRootdir &/ sPatientDir &/ sNotesDir &/ "PROGRESSNOTES")
+                        If File.Ext(sRootdir &/ sPatientDir &/ sNotesDir &/ sFile) = "json" Then
+                           ProgressNotes = New Collection
+                           MetaData = New Collection 
+                           metadata_filename_path = sRootdir &/ sPatientDir &/ sNotesDir &/ "PROGRESSNOTES" &/ sFile
+                           hFile = Open metadata_filename_path For Read
+                           While Not Eof(hFile)
+                              Line Input #hFile, sOneLine
+                           Wend  
+                           Close #hfile
+                           MetaData = JSON.Decode(sOneline)
+                           html_filename_path = Replace(metadata_filename_path, ".json", ".html")
+                           hFile = Open html_filename_path For Read
+                           notes = ""
+                           While Not Eof(hFile)
+                              Line Input #hFile, sOneLine
+                              notes &= sOneLine
+                           Wend  
+                           Close #hfile
+                           '------------------------------------------------------------------------------------------
+                           'Ok, massage the notes a little, first correct the formatting, leaving headings on one line
+                           '------------------------------------------------------------------------------------------
+                           metadata!notes = notes
+                           metadata!notes = Replace$(metadata!notes, "<b>Diagnosis:", "<BR><b>Diagnosis:")
+                           metadata!notes = Replace$(metadata!notes, "<b>Management:", "<BR><b>Management:")
+                           metadata!notes = Replace$(metadata!notes, "<b>Action:", "<BR><b>Management:")
+                           metadata!notes = Replace$(metadata!notes, "<b>History:", "<BR><b>History:")
+                           metadata!notes = Replace$(metadata!notes, "<b>Examination:", "<BR><b>Examination:")
+                           metadata!notes = Replace$(metadata!notes, "<b>Actions:", "<BR><b>Actions:")
+                           metadata!notes = Replace$(metadata!notes, "<b>Review:", "<BR><b>Review:")
+                           metadata!notes = Replace$(metadata!notes, "&nbsp", "&nbsp;")
+                           '------------------------------------------------------------
+                           'Next, try and parse out the BP measurements
+                           '<A HREF='blood pressure'>blood pressure=180/80 mmhg</A><BR>
+                           'BP: 135/85 &nbsp;
+                           '-----------------------------------------------------------
+                           ' If InStr(metadata!notes, "BP: ") Then
+                           '    Print "found a BP"
+                           '    Print metadata!notes
+                           '    charpos = InStr(metadata!notes, "BP: ")
+                           '    LeftString = Left(metadata!notes, InStr(metadata!notes, "BP: ") - 1)
+                           '    Print LeftString
+                           '  '  metadata!notes = Replace$("BP: ", "<A HREF='blood pressure'>blood pressure=")
+                           '    sString = Right(metadata!notes, Len(metadata!notes) - charpos - 3)  'includes e.g 130/85 ;nbsp
+                           '    RightString = Right(sString, Len(sSTring) - InStr(sString, "&nbsp") - 5)
+                           '    
+                           '    Print "right side:", RightString
+                           '    
+                           '    Print 
+                           '    charpos = InStr(sString, "&nbsp")
+                           '    bpString = Trim(Left(sSTring, charpos - 1))
+                           '    Print bpString
+                           '  metadata!notes = LeftString & "<A HREF='blood pressure'>blood pressure=" & bpString & " mmhg</A><BR>" & RightString
+                           '  Print metadata!notes   
+                           '  
+                           ' Endif
+                           '   Print "starting ", txtImportPatient.text, fk_patient, MetaData!date, MetaData!time
+                           fk_staff = modImportDBI.Staff_Get_Using_Firstname_Lastname(metadata)
+                           datebits = Split(MetaData!date, "-")
+                           timebits = Split(MetaData!time, ":")
+                           consult = New CRow 
+                           consult!consult_date = Make_Date_time(datebits, timebits)
+                           consult!consult_date = Make_Date_time(datebits, timebits)
+                           consult!fk_patient = fk_patient
+                           consult!fk_staff = fk_staff
+                           consult!fk_type = const.consult_type_at_Surgery
+                           consult!summary = "Imported progress note from MediBase" & Format(Now, "dd/mm/yyyy")
+                           consult.Save("clin_consult.consult", "fk_consult")
+                           Progressnote = New CRow
+                           Progressnote!fk_consult = consult!fk_consult
+                           Progressnote!fk_audit_action = const.cAuditAction_FileImport
+                           Progressnote!notes = metadata!notes
+                           Progressnote!fk_section = 0 'general notes
+                           Progressnote!fk_problem = 0 'no problem
+                           progressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+                           modDBConnect.CommitTrans() 
+                           Settings["FImportLegacyData/last_patient_no_notes"] = iPatientCount
+                           Wait
+                        Endif
+                        Inc x 
+                     Next
+                  End If
+               Next
+            Endif
+            
          Endif
-         modDBConnect.CommitTrans() 
+         
          Inc iPatientCount
          Print iPatientCount
          lblProgress.text = "Total patients with imported notes:" & Str(iPatientCount)
@@ -2579,7 +2595,7 @@ Public Sub Import_Select_Dir()
    
 End
 
-Public Sub Import()
+Public Sub Import(sImportType As String) 'resume or start again
    
    If Not IsDir(Trim(txtImportDirectory.text)) Then
       Message.Info("Please select a valid directory before proceeding")
@@ -2589,7 +2605,7 @@ Public Sub Import()
    Endif
    Select Case cmbMedicalProgram.text
       Case "Medibase"
-         Medibase_Import()
+         Medibase_Import(sImportType)
       Case "DrsDesk"
          DrsDesk_Import()
    End Select
@@ -3325,7 +3341,7 @@ Public Sub Person_Create(data As Collection) As CRow
             If Not oddoccupations.Exist(Trim(Lower(data!person!occupation))) Then 
                Select Case Message.Question("Occupation not found:\n\n" & data!person!occupation, "Save As New Occupation", "Do Not save")
                   Case 1 
-                     person!fk_occupation = modContactsDBI.Occupation_Save(Trim(Lower(data!person!occupation)))
+                     person!fk_occupation = modCommonDBI.Occupation_Save(Trim(Lower(data!person!occupation)))
                      modDBConnect.CommitTrans
                   Case 2
                      bOddOccupation = True        
@@ -3683,7 +3699,7 @@ Public Sub Temp1()
    
 End
 
-Public Sub Medibase_Import_Letters()
+Public Sub Medibase_Import_Letters(sImportType As String)
    
    '----------------------------------------------------
    'Expected directory structure
@@ -3754,64 +3770,75 @@ Public Sub Medibase_Import_Letters()
    lblProgress.text = ""
    rejected_records = New Collection
    sRootdir = Trim(txtImportDirectory.text) ' &/ "MEDIBASE_EXPORT/"
+   If sImportType = "new" Then   
+      Settings["FImportLegacyData/last_patient_no_letters"] = -1
+   Endif
    If IsDir(sRootdir) Then                             'eg "/home/user/MEDIBASE_EXPORT/"
-      For Each sFile In Dir(sRootdir)                 
-         If IsDir(sRootdir &/ Sfile) Then             
-            sPatientDir = sFile
-            fk_patient = modImportDBI.Patient_Get_pk_Using_fk_Legacy(sPatientDir)
-            For Each sFile In Dir(sRootdir &/ sPatientDir)
-               If sFile = "LETTERS" Then 
-                  x = 0 
-                  For Each sFile In Dir(sRootdir &/ sPatientDir &/ sNotesDir &/ "LETTERS")
-                     If File.Ext(sRootdir &/ sPatientDir &/ sNotesDir &/ sFile) = "json" Then
-                        MetaData = New Collection 
-                        metadata_filename_path = sRootdir &/ sPatientDir &/ sNotesDir &/ "LETTERS" &/ sFile
-                        hFile = Open metadata_filename_path For Read
-                        While Not Eof(hFile)
-                           Line Input #hFile, sOneLine
-                        Wend  
-                        Close #hfile
-                        MetaData = JSON.Decode(sOneline)
-                        html_filename_path = Replace(metadata_filename_path, ".json", ".html")
-                        hFile = Open html_filename_path For Read
-                        letter_html = ""
-                        While Not Eof(hFile)
-                           Line Input #hFile, sOneLine
-                           letter_html &= sOneLine
-                        Wend  
-                        Close #hfile
-                        '------------------------------------------------------------------------------------------
-                        'Ok, massage the notes a little, first correct the formatting, leaving headings on one line
-                        '------------------------------------------------------------------------------------------
-                        fk_staff = modImportDBI.Staff_Get_Using_Firstname_Lastname(metadata)
-                        datebits = Split(MetaData!date_referral, "-")
-                        timebits = Split(MetaData!time, ":")
-                        consult = New CRow 
-                        consult!consult_date = Make_Date_time(datebits, timebits)
-                        consult!fk_patient = fk_patient
-                        consult!fk_staff = modDBConnect.currentUser!fk_staff
-                        consult!fk_type = const.consult_type_at_Surgery
-                        consult!summary = "Imported referral letter from MediBase" & Format(Now, "dd/mm/yyyy")
-                        consult.Save("clin_consult.consult", "fk_consult")
-                        Referral = New CRow
-                        Referral!fk_consult = consult!fk_consult
-                        Referral!fk_branch = modDBConnect.currentUser!fk_branch   
-                        Referral!date_referral = metadata!date_referral
-                        Referral!fk_type = const.ReferralType_OpinionAndManagement 'metadata!fk_type
-                        Referral!letter_html = letter_html
-                        Referral!tag = metadata!tag
-                        Referral!body_html = metadata!body_html
-                        Referral.Save("clin_referrals.referrals", "fk_referral")
-                        modDBConnect.CommitTrans() 
-                     Endif
-                     Inc x 
-                  Next
-               End If
-            Next
-         Endif
-         Inc iPatientCount
-         Print iPatientCount
-         lblProgress.text = "Total patients with imported letters:" & Str(iPatientCount)
+      For Each sFile In Dir(sRootdir)     
+         If iPatientCount > Settings["FImportLegacyData/last_patient_no_letters", -1] Then
+            If IsDir(sRootdir &/ Sfile) Then             
+               sPatientDir = sFile
+               fk_patient = modImportDBI.Patient_Get_pk_Using_fk_Legacy(sPatientDir)
+               Print sPatientDir
+               For Each sFile In Dir(sRootdir &/ sPatientDir)
+                  If sFile = "LETTERS" Then 
+                     x = 0 
+                     For Each sFile In Dir(sRootdir &/ sPatientDir &/ sNotesDir &/ "LETTERS")
+                        If File.Ext(sRootdir &/ sPatientDir &/ sNotesDir &/ sFile) = "json" Then
+                           MetaData = New Collection 
+                           metadata_filename_path = sRootdir &/ sPatientDir &/ sNotesDir &/ "LETTERS" &/ sFile
+                           hFile = Open metadata_filename_path For Read
+                           While Not Eof(hFile)
+                              Line Input #hFile, sOneLine
+                           Wend  
+                           Close #hfile
+                           MetaData = JSON.Decode(sOneline)
+                           html_filename_path = Replace(metadata_filename_path, ".json", ".html")
+                           hFile = Open html_filename_path For Read
+                           letter_html = ""
+                           While Not Eof(hFile)
+                              Line Input #hFile, sOneLine
+                              letter_html &= sOneLine
+                           Wend  
+                           Close #hfile
+                           '------------------------------------------------------------------------------------------
+                           'Ok, massage the notes a little, first correct the formatting, leaving headings on one line
+                           '------------------------------------------------------------------------------------------
+                           fk_staff = modImportDBI.Staff_Get_Using_Firstname_Lastname(metadata)
+                           datebits = Split(MetaData!date_referral, "-")
+                           timebits = Split(MetaData!time, ":")
+                           consult = New CRow 
+                           consult!consult_date = Make_Date_time(datebits, timebits)
+                           consult!fk_patient = fk_patient
+                           consult!fk_staff = modDBConnect.currentUser!fk_staff
+                           consult!fk_type = const.consult_type_at_Surgery
+                           consult!summary = "Imported referral letter from MediBase " & Format(Now, "dd/mm/yyyy")
+                           consult.Save("clin_consult.consult", "fk_consult")
+                           Referral = New CRow
+                           Referral!fk_consult = consult!fk_consult
+                           ' Referral!fk_branch = modDBConnect.currentUser!fk_branch   
+                           Referral!date_referral = metadata!date_referral
+                           Referral!fk_type = const.ReferralType_OpinionAndManagement 'metadata!fk_type
+                           Referral!letter_html = letter_html
+                           Referral!tag = Replace(metadata!tag, "TO: ", "")
+                           Referral!body_html = metadata!body_html
+                           Referral!finalised = True
+                           Referral.Save("clin_referrals.referrals", "fk_referral")
+                           modDBConnect.CommitTrans() 
+                           Settings["FImportLegacyData/last_patient_no_letters"] = iPatientCount
+                        Endif
+                        Inc x 
+                     Next
+                  End If
+               Next
+               Inc iPatientCount
+               Print iPatientCount
+               lblProgress.text = "Total patients with imported letters:" & Str(iPatientCount)
+               If iPatientCount = 100 Then Return
+               
+            Endif
+         End If
+         
          Wait
       Next
    End If
@@ -3841,6 +3868,7 @@ Public Sub cmbMedicalProgram_Click()
          Hbox_Import_SocialHistory.Visible = False 
          
    End Select
+   ' Try txtImportDirectory.text = Settings["FImportLegacy/import_dir"]
    
 End
 

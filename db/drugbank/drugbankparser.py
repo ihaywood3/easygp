@@ -183,7 +183,16 @@ def add_atc_codes(con, drug, drugname):
 	pass
 	
 def add_brands(con, drug, drugname):
-	pass
+	global NS
+	drugbank_id = drug.find(NS+'drugbank-id').text
+	pk = get_drugbank_pk(con, drugbank_id, drugname)
+	brands_root = drug.find(NS+'brands')
+	brands = brands_root.findall(NS+'brand')
+	cur=con.cursor()
+	for brand in brands:
+		cur.execute("insert into drugbank.brands(fk_drug, name) values(%s, %s)", (pk, brand.text))
+	con.commit()
+	cur.close()
 	
 def add_categories(con, drug, drugname):
 	pass
@@ -234,8 +243,9 @@ if __name__ == "__main__":
 	drugs = root.findall(NS+'drug')
 	con = pgconnection()
 	
-	for_all_drugs(con, drugs, add_drug, "Adding basic drug data")
-	for_all_drugs(con, drugs, add_synonyms, "Adding drug name synonyms")
-	for_all_drugs(con, drugs, add_interactions, "Adding interaction data")
+	#for_all_drugs(con, drugs, add_drug, "Adding basic drug data")
+	#for_all_drugs(con, drugs, add_synonyms, "Adding drug name synonyms")
+	#for_all_drugs(con, drugs, add_interactions, "Adding interaction data")
+	for_all_drugs(con, drugs, add_brands, "Adding brand names")
 		
 	con.close()

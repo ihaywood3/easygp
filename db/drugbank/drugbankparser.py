@@ -7,30 +7,72 @@ you must get the explicit permission of the owners.
 At present it is still a quick hack with hardcoded database login details and hard-
 coded XML file location (presumes this file is in the directory this script is run from)
 
+UNTESTED: if the drugbank XML file does not exist, the script will attempt to download 
+and unzip it for you in your current directory 
+
 This script is provided under the terms of the GPL license version 3.0 by Dr H. Herb
 """
 import xml.etree.ElementTree as ET
 import psycopg2 as DBAPI
+import urllib
+import zipfile
+import os.path
 
-NS = "{http://drugbank.ca}"  #the namespace of XML elements in the import file
+DOWNLOAD_URL= "http://www.drugbank.ca/system/downloads/current/drugbank.xml.zip"
+DOWNLOAD_ZIPFILE = "drugbank.xml.zip"
+DRUGBANK_FILENAME = "drugbank.xml"
+
+NS = "{http://drugbank.ca}"	 #the namespace of XML elements in the import file
+
+
+def download_progress(blocks_downloaded, blocksize, filesize):
+	"""
+	callback function showing download progress
+	"""
+	print blocks_downloaded * blocksize / 1024, "Kb downloaded of", filesize/1024
+
+
+
+def getfile(url=DOWNLOAD_URL, fname=DOWNLOAD_ZIPFILE, download_progress_reporter=download_progress):
+	"""
+	attempts to download the drugbank data file and unzip it i your
+	current directory
+	"""
+	urllib.urlretrieve(DOWNLOAD_URL, DOWNLOAD_ZIPFILE, download_progress_reporter)
+	zf = zipfile.ZipFile(DOWNLOAD_ZIPFILE)
+	files = zf.namelist()
+	if DRUGBANK_FILENAME not in files:
+		print "Sorry, the downloaded file does not seem to contain", DRUGBANK_FILENAME
+		print "It only contains", files
+		print "You need to manually give me", DRUGBANK_FILENAME
+		return None
+	else:
+		zf.extractall()
+		return DRUGBANK_FILENAME
 
 	
 def pgconnection(host='127.0.0.1', dbname='drugbank', user='easygp', password='easygp.'):
-	""" Establishes a connection with the database our data will be imported into.
+	""" 
+	Establishes a connection with the database our data will be imported into.
 	quick hack with hardcoded access credentials in order to test the import.
-	Needs sophistication and command line argument parsing in the future"""
+	Needs sophistication and command line argument parsing in the future
+	"""
 	con = DBAPI.connect(host=host, dbname=dbname, user=user, password=password)
 	return con	
 	
 	
 class drugbankentry:
-    """quick hack dummy for import """	
+	"""
+	quick hack dummy for import 
+	""" 
 	pass
 		
 
 def get_drugbank_pk(con, drugbank_id, drugname):
-	"""find the internal primary key for a given drugbank id string and return it.
-	    Return None if none was found """
+	"""
+	find the internal primary key for a given drugbank id string and return it.
+	Return None if none was found 
+	"""
 	pk = None
 	cur = con.cursor()
 	cur.execute("select pk from drugbank.drug where drugbank_id like %s", (drugbank_id,))
@@ -50,7 +92,14 @@ def get_drugbank_pk(con, drugbank_id, drugname):
 	cur.close()
 	return pk
 	
+
+
 def add_drug(con, drug, drugname):
+	""" 
+	adds only basic drug data along with the name from the drugbank data.
+		The name is not necessarily the INN, can be the genetic name that is usually used
+		in Canada. We will fix that to INN later
+	"""
 	global NS
 	d = drugbankentry()
 	d.drugbank_id = drug.find(NS+'drugbank-id').text
@@ -68,25 +117,29 @@ def add_drug(con, drug, drugname):
 	d.clearance = drug.find(NS+'clearance').text
 	# d. = drug.find(NS+'').text
 	sqlstr = """INSERT INTO drugbank.drug(drugbank_id, name, description, pharmacology, mechanism_of_action, toxicity,
-	            biotransformation, absorption, half_life, route_of_elimination, volume_of_distribution,
-	            clearance) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+				biotransformation, absorption, half_life, route_of_elimination, volume_of_distribution,
+				clearance) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 	cur = con.cursor()
 	cur.execute(sqlstr, (d.drugbank_id, 
-	    d.name, 
+		d.name, 
 		d.description, 
-	    d.pharmacology, 
-	    d.mechanism_of_action, 
-	    d.toxicity,
-	    d.biotransformation, 
-	    d.absorption, 
-	    d.half_life, 
+		d.pharmacology, 
+		d.mechanism_of_action, 
+		d.toxicity,
+		d.biotransformation, 
+		d.absorption, 
+		d.half_life, 
 		d.route_of_elimination,
-	    d.volume_of_distribution, 
-	    d.clearance) )
+		d.volume_of_distribution, 
+		d.clearance) )
 	con.commit()
 	cur.close()
 	
 def add_synonyms(con, drug, drugname):
+	"""
+	adds synonyms for a given drug name, including the name from the 'drug' table too.
+	It is recommended to always search via synonyms for the drug primary key
+	"""
 	global NS
 	drugbank_id = drug.find(NS+'drugbank-id').text
 	pk = get_drugbank_pk(con, drugbank_id, drugname)
@@ -102,6 +155,10 @@ def add_synonyms(con, drug, drugname):
 	cur.close()
 	
 def add_interactions(con,drug, drugname):
+	"""
+	adds interactions. The table structure and how we handle this is currently still primitive
+	and will change, but it works for now
+	"""
 	global NS
 	drugbank_id = drug.find(NS+'drugbank-id').text
 	fk_drug = get_drugbank_pk(con, drugbank_id, drugname)
@@ -122,25 +179,63 @@ def add_interactions(con,drug, drugname):
 	con.commit()	
 	cur.close()
 		
+def add_atc_codes(con, drug, drugname):
+	pass
+	
+def add_brands(con, drug, drugname):
+	pass
+	
+def add_categories(con, drug, drugname):
+	pass
+	
+def add_dosage(con, drug, drugname):
+	pass
+	
+def add_food_interactions(con, drug, drugname):
+	pass
+	
+def add_external_links(con, drug, drugname):
+	pass
+	
+def add_general_references(con, drug, drugname):
+	pass
+	
+def add_patents(con, drug, drugname):
+	pass
+	
+def add_salts(con, drug, drugname):
+	pass
+	
+def for_all_drugs(con, drugs, myfunc, message='', progressfeedback=True):
+	"""
+	Process the specified callback functions for all drug data entries found
+	in the drugbank XML data dump
+	"""
+	counter = 0
+	if message:
+		print message
+	for drug in drugs:
+		drugname = drug.find(NS+'name').text
+		if progressfeedback:
+			print message, "processing drug", drugname 
+		myfunc(con, drug, drugname)
+		counter += 1
+		print counter
 	
 	
 if __name__ == "__main__":
 	counter = 0
 	#read xml file
-	tree = ET.parse('drugbank.xml')
+	filename=DRUGBANK_FILENAME
+	if not os.path.exists(DRUGBANK_FILENAME):
+		filename = getfile('DRUGBANK_FILENAME')
+	tree = ET.parse(filename)
 	root = tree.getroot()
 	drugs = root.findall(NS+'drug')
 	con = pgconnection()
 	
-	for drug in drugs:
-		drugname = drug.find(NS+'name').text
-		print "processing drug", drugname 
-		add_drug(con, drug, drugname)
-		print "Adding synonyms ..."
-		add_synonyms(con, drug, drugname)
-		print "Adding interactions ..."
-		add_interactions(con, drug, drugname)
-		counter += 1
-		print counter
+	for_all_drugs(con, drugs, add_drug, "Adding basic drug data")
+	for_all_drugs(con, drugs, add_synonyms, "Adding drug name synonyms")
+	for_all_drugs(con, drugs, add_interactions, "Adding interaction data")
 		
 	con.close()

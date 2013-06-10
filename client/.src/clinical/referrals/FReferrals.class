@@ -52,6 +52,7 @@ Private persons As Collection
 Private person As Collection
 Private Branches As Collection
 Private branch As Collection
+Private stored_state As String
 Private Comms As Collection
 Private comm As Collection
 Private sHtml_Inclusions As String
@@ -192,7 +193,7 @@ End
 '
 ' End
 
-Public Sub Save(Optional bFinalised As Boolean = False)
+Public Sub Save(Optional bFinalised As Boolean = False, bSuppressSpellCheck As Boolean = False)
    '--------------------------------------------------------------
    'Save the current edit area recall and updates the recalls list
    'Need this amount of info to save
@@ -230,7 +231,7 @@ Public Sub Save(Optional bFinalised As Boolean = False)
       If IsNull(dictation_fname) Then Error.Raise("null dictation")
    Endif
    If VBox_Letters.Padding = 0 And If Not bFinalised Then Return  'no padding, nothing to save
-   If Not bHaveSpellChecked Then
+   If Not bHaveSpellChecked And If Not bSuppressSpellCheck Then
       Spelling_Check()
    Endif
 
@@ -269,7 +270,6 @@ Public Sub Save(Optional bFinalised As Boolean = False)
          ' do LaTeX letters
          referral!letter_html = Referral_LetterLaTeX_Construct(referral!copyto)
       Endif
-      referral!letter_hl7 = File.Load(SendAsHL7())
       '-------------------------------------------------
       'Construct the text to embed in the progress notes
       '-------------------------------------------------
@@ -282,6 +282,9 @@ Public Sub Save(Optional bFinalised As Boolean = False)
    modDBConnect.BeginTrans()
    If bFinalised Then
       referral!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote_Html, cProgressNote_Section, fk_progressnote, txtHealthIssue.text, fk_pasthistory, False)
+      If chkSendAsHL7.Value = chkSendAsHL7.True Then
+         referral!letter_hl7 = SendAsHL7()
+      Endif
    Endif
    pk_referral = modReferralsDBI.Save(currentconsult, pk_referral, referral, Inclusions_EditArea)   'Save the referral letter
    If Not bEmbedded And If Dictaphone.Has_Dictated() Then
@@ -1530,6 +1533,7 @@ Public Sub Address_Select(address As Collection)
    Try txtPostcode.text = Address!postcode
    Try fk_organisation = Address!fk_organisation
    Try fk_branch = Address!fk_branch
+   Try stored_state = address!state
    If Error Then
       fk_employee = 0
    Endif
@@ -1697,7 +1701,7 @@ Public Sub ReferralsList_Print(print_type As String)
 
 End
 
-Public Sub Referral_Edit(Optional new_referral As CRow)
+Public Sub Referral_Edit(Optional new_referral As Collection)
    '---------------------------------------------------------------
    'Edits either an letter just written (saved or not this consult)
    'or an old referral that has been re-loaded for re-printing
@@ -1720,7 +1724,7 @@ Public Sub Referral_Edit(Optional new_referral As CRow)
       pk_referral = Letter_from_View!pk_referral
    Else
       Letter_from_View = new_referral
-      pk_referral = new_referral!fk_referral
+      Try pk_referral = new_referral!fk_referral
    Endif
    Try fk_branch = Letter_from_View!fk_branch
    If Not Error Then
@@ -1734,12 +1738,23 @@ Public Sub Referral_Edit(Optional new_referral As CRow)
    Endif
    Try fk_employee = Letter_from_View!fk_employee
    Try fk_address = Letter_from_View!fk_address
+   If Not IsNull(fk_address) Then
+      If Not Letter_from_View.Exist("state") Then
+         stored_state = modContactsDBI.Towns_Get(Letter_from_View!postcode)!state
+      Else
+         stored_state = Letter_from_View!state
+      Endif
+   Endif
    Try fk_progressnote = Letter_from_View!fk_progressnote
    PersonWritingTo!firstname = Letter_from_View!firstname
    PersonWritingTo!surname = Letter_from_View!surname
    PersonWritingTo!title = Letter_from_View!title
-   If Not IsNull(fk_person) Then
-      PersonWritingTo!provider_number = modContactsDBI.Organisations_Employees_Get_By_Keys(0, 0, fk_employee)!provider_number
+   If Not IsNull(fk_employee) Then
+      If Letter_from_View.Exist("provider_number") Then
+         PersonWritingTo!provider_number = Letter_from_View!provider_number
+      Else
+         PersonWritingTo!provider_number = modContactsDBI.Organisations_Employees_Get_By_Keys(0, 0, fk_employee)!provider_number
+      Endif
    Endif
    txtReferralDate.text = Format(Letter_from_View!date_referral, "dd/mm/yyyy")
    txtName.text = Letter_from_View!wholename
@@ -1754,7 +1769,7 @@ Public Sub Referral_Edit(Optional new_referral As CRow)
    '-----------------------------------------------------------------------------
    'Now, use the fk_pasthistory (default = 0) to set the linked past history item
    '-----------------------------------------------------------------------------
-   If Letter_from_View!fk_pasthistory = 0 Then
+   If Not Letter_from_View.Exist("fk_pasthistory") Or If Letter_from_View!fk_pasthistory = 0 Then
       txtHealthIssue.text = "General Notes"
       fk_pasthistory = 0
    Else
@@ -1785,8 +1800,10 @@ Public Sub Referral_Edit(Optional new_referral As CRow)
    tbSave.Enabled = False
    teLetter.SetFocus()
    Form_Copy_To.CopyTos_Reload(modUtil.SplitStrings_into_collection(Letter_from_View!copyto, "|"))
-   Inclusions_EditArea = modUtil.Copy_Collection(Inclusions_Referral_This_Consult)
-   lvwInclusions_EditArea_Refresh(Inclusions_EditArea)
+   If Not IsNull(Inclusions_Referral_This_Consult) Then
+     Inclusions_EditArea = modUtil.Copy_Collection(Inclusions_Referral_This_Consult)
+     lvwInclusions_EditArea_Refresh(Inclusions_EditArea)
+   Endif
    bExit = False
    cmbReferralTypes.index = cmbReferralTypes.Find(Letter_from_View!type) 'leave outside of Bexit to use the click event
    EditArea_Notify_DataChange(False)
@@ -2115,6 +2132,7 @@ Public Sub Branch_Select(branch As Collection)
    txtPostcode.text = branch!postcode
    txtCategory.text = branch!category
    fk_branch = branch!fk_branch
+   stored_state = branch!state
    fk_organisation = branch!fk_organisation
    Branch_Comms_Get()
    bexit = False
@@ -2206,6 +2224,7 @@ Public Function Employee_Workplace_Select(branch As Collection)
    Try txtStreet2.text = Branch!street2
    Try txtSuburb.text = Branch!town
    Try txtPostcode.text = Branch!postcode
+   Try stored_state = branch!state
    txtTag.SetFocus
    '------------------------------------------
    'Get the comms for this organisation/branch
@@ -2254,6 +2273,7 @@ Public Sub Person_Select(person As Collection)
    PersonWritingTo!surname = person!surname
    PersonWritingTo!title = person!title
    PersonWritingTo!provider_number = person!provider_number
+   Try stored_state = person!state
    Try txtOrganisation.text = person!organisation
    Try txtBranch.text = person!branch
    Try txtStreet1.text = person!street1
@@ -2673,7 +2693,7 @@ End
 Public Function SendAsHL7() As String
    '--------------------------------------------------------------
 
-   Dim message As New CHL7Message_REF_I12
+   Dim hl7 As New CHL7Message_REF_I12
    Dim ReceivingFacility As New CHL7Datatype_HD
    Dim ConsultingProvider As Collection
    Dim ReferredtoProvider As New Collection
@@ -2686,7 +2706,7 @@ Public Function SendAsHL7() As String
    Dim ReferralType As String
    Dim ReferralDisposition As String
    Dim ReferralReason As String
-   Dim sSTr As String
+   Dim s As String
 
    Select Case cmbPriorityTypes.Current.Text
       Case "Routine"
@@ -2753,37 +2773,42 @@ Public Function SendAsHL7() As String
          ReferralDisposition = "UCP" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
 
       Case Else
-         ' message.warning(cmbReferralTypes.Current.Text & " is not supported")
+         Error.Raise(cmbReferralTypes.Current.Text & " is not supported")
 
    End Select
 
+   ReferredtoProvider = New Collection
    ReferredtoProvider!name = txtName.Text
    ReferredtoProvider!organisation = txtOrganisation.Text
    ReferredtoProvider!branch = txtBranch.Text
    ReferredtoProvider!street1 = txtStreet1.Text
    ReferredtoProvider!street2 = txtStreet2.Text
-   ReferredtoProvider!suburb = txtSuburb.Text
+   ReferredtoProvider!town = txtSuburb.Text
    ReferredtoProvider!postcode = txtPostcode.Text
    ReferredtoProvider!fk_person = fk_person
    ReferredtoProvider!comms = comms
+   ReferredtoProvider!state = stored_state
    If Not IsNull(PersonWritingTo) Then
       ReferredtoProvider!provider_number = PersonWritingTo!provider_number
+      ReferredtoProvider!firstname = PersonWritingTo!firstname
+      ReferredtoProvider!surname = PersonWritingTo!surname
+      ReferredtoProvider!title = PersonWritingTo!title
    Endif
-   sSTr = GetLetterText()
-   AttachmentsArray.Add(GetLetterText())
-   message.createHL7Message_REF_I12(ReferredtoProvider, currentconsult!patient, AttachmentsArray, ReferralDisposition, ReferralReason, ReferralPriority, ReferralType, ReferralStatus)
-   Print Message.fpath
-   Return Message.fpath
-
+   AttachmentsArray.Add(GetLetterText(ReferredtoProvider))
+   hl7.createHL7Message_REF_I12(ReferredtoProvider, currentconsult!patient, currentconsult!comms, AttachmentsArray, ReferralDisposition, ReferralReason, ReferralPriority, ReferralType, ReferralStatus)
+   Log.DataMsg("HL7 generated in " & hl7.fpath)
+   s = File.Load(hl7.fpath)
+   modFiles.Put("hl7_outgoing_directory", hl7.fname, hl7.fpath)
+   Kill hl7.fpath
+   Return s
 End
 
-Private Function GetLetterText() As String
+Private Function GetLetterText(ReferredtoProvider As Collection) As String
 
    Dim ProviderInformation As Collection
    Dim TempLetter As String
    Dim StreetAddress As String
-
-   '   Patient = modContactsDBI.Patient_Get_Using_PK(fk_employee)
+   
    ProviderInformation = modDBConnect.currentUser ' reads the information of the current user out of the DB
    If ProviderInformation["street2"] <> "" Then
       StreetAddress = ProviderInformation["street1"] & "\n" & ProviderInformation["street2"]
@@ -2791,13 +2816,13 @@ Private Function GetLetterText() As String
       StreetAddress = ProviderInformation["street1"]
    Endif
    ' Adressblock of the sending provider
-   TempLetter = ProviderInformation["surname"] & ProviderInformation["firstname"] & ProviderInformation["title"] & "\n"
-   TempLetter &= StreetAddress & "\n" & ProviderInformation["town"] & ProviderInformation["postcode"] & "\n"
-   TempLetter &= ProviderInformation["state"] & "\n\n"
-   TempLetter &= "__________________________________________________________________________________" & "\n\n"
-   TempLetter &= txtReferralDate.text & "\n\n"
-   TempLetter &= "Re: " & currentconsult!patient!title & " " & currentconsult!patient!surname & "\n\n"
-   TempLetter &= teLetter.Text & "\n\n" & "Kind Regards " & ProviderInformation["surname"] & ProviderInformation["firstname"]
+   TempLetter = ProviderInformation["surname"] & ProviderInformation["firstname"] & ProviderInformation["title"] & "\n" &
+      StreetAddress & "\n" & ProviderInformation["town"] & ProviderInformation["postcode"] & "\n" &
+      ProviderInformation["state"] & "\n\n" &
+      "__________________________________________________________________________________" & "\n\n" &
+      txtReferralDate.text & "\n\n" &
+      "Dear " & ReferredtoProvider["title"] & " " & ReferredtoProvider["surname"] & "\n\n" &
+      teLetter.Text & "\n\n" & "Kind Regards " & ProviderInformation["surname"] & ProviderInformation["firstname"]
 
    Return TempLetter
 
@@ -2835,3 +2860,41 @@ Public Sub HSplit_Referrals_This_Consult_Resize()
    lblDocumentsPrinted.width = HSplit_Letter_Include.children[1].width
 
 End
+
+Static Public Sub UnitTest(form_main As FMain)
+   Dim form_referrals As FReferrals
+   Dim fake_referral As New Collection
+   
+   form_main.btnSection_Clinical_Click()
+   form_main.pnlClinical.Patients_Find(2) 
+   form_referrals = form_main.pnlClinical.Editor_ShowPage("Referrals", "Referral")
+   fake_referral!date_referral = Val("12/5/2013")
+   fake_referral!firstname = "Bruce"
+   fake_referral!surname = "Bonebreaker"
+   fake_referral!wholename = "Mr. Bruce Bonebreaker"
+   fake_referral!occupation = "orthopaedic surgeon"
+   fake_referral!tag = "test letter"
+   fake_referral!title = "Mr"
+   fake_referral!fk_employee = 2
+   fake_referral!fk_person = 4
+   fake_referral!branch = "HEAD OFFICE"
+   fake_referral!fk_branch = 2
+   fake_referral!organisation = "Meataxe Surgical Services"
+   fake_referral!fk_organisation = 2
+   fake_referral!fk_address = 4
+   fake_referral!street1 = "1 Blood Way"
+   fake_referral!fk_town = 3535
+   fake_referral!town = "SEDDON"
+   fake_referral!postcode = "3011"
+   fake_referral!state = "VIC"
+   fake_referral!provider_number = "246564AK"
+   fake_referral!body_html = "<p>This is a test referral for HL7 generation.</p>"
+   fake_referral!include_careplan = False
+   fake_referral!include_healthsummary = False
+   fake_referral!type = "Opinion and Management"
+   form_referrals.Referral_Edit(fake_referral)
+   form_referrals.chkSendAsHL7.Value = form_referrals.chkSendAsHL7.True
+   form_referrals.Save(True, True)
+   
+End
+

@@ -217,7 +217,18 @@ def add_external_links(con, drug, drugname):
 	pass
 	
 def add_general_references(con, drug, drugname):
-	pass
+	global NS
+	drugbank_id = drug.find(NS+'drugbank-id').text
+	pk = get_drugbank_pk(con, drugbank_id, drugname)
+	root = drug.find(NS+'general-references').text
+	if root is None or len(root)<1:
+		return
+	items = root.split("&#xD;")
+	cur=con.cursor()
+	for item in items:
+		cur.execute("insert into drugbank.general_references(fk_drug, reference) values(%s, %s)", (pk, item.strip('\n') ) )
+	con.commit()
+	cur.close()
 	
 def add_patents(con, drug, drugname):
 	global NS
@@ -237,7 +248,17 @@ def add_patents(con, drug, drugname):
 	cur.close()
 	
 def add_salts(con, drug, drugname):
-	pass
+	global NS
+	drugbank_id = drug.find(NS+'drugbank-id').text
+	pk = get_drugbank_pk(con, drugbank_id, drugname)
+	root = drug.find(NS+'salts')
+	items = root.findall(NS+'salt')
+	cur=con.cursor()
+	for item in items:
+		cur.execute("insert into drugbank.salts(fk_drug, salt) values(%s, %s)", (pk, item.text))
+	con.commit()
+	cur.close()
+
 	
 def for_all_drugs(con, drugs, myfunc, message='', progressfeedback=True):
 	"""
@@ -267,11 +288,14 @@ if __name__ == "__main__":
 	drugs = root.findall(NS+'drug')
 	con = pgconnection()
 	
-	for_all_drugs(con, drugs, add_drug, "Adding basic drug data")
-	for_all_drugs(con, drugs, add_synonyms, "Adding drug name synonyms")
-	for_all_drugs(con, drugs, add_interactions, "Adding interaction data")
-	for_all_drugs(con, drugs, add_brands, "Adding brand names")
-	for_all_drugs(con, drugs, add_food_interactions, "Adding food interactions")
-	for_all_drugs(con, drugs, add_patents, "Adding patents")
+	# for_all_drugs(con, drugs, add_drug, "Adding basic drug data")
+# 	for_all_drugs(con, drugs, add_synonyms, "Adding drug name synonyms")
+# 	for_all_drugs(con, drugs, add_interactions, "Adding interaction data")
+# 	for_all_drugs(con, drugs, add_brands, "Adding brand names")
+# 	for_all_drugs(con, drugs, add_food_interactions, "Adding food interactions")
+# 	for_all_drugs(con, drugs, add_patents, "Adding patents")
+#	for_all_drugs(con, drugs, add_salts, "Adding salts of drugs")
+	for_all_drugs(con, drugs, add_general_references, "Adding general references")
+	
 		
 	con.close()

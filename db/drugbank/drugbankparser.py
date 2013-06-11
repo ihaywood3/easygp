@@ -220,7 +220,21 @@ def add_general_references(con, drug, drugname):
 	pass
 	
 def add_patents(con, drug, drugname):
-	pass
+	global NS
+	drugbank_id = drug.find(NS+'drugbank-id').text
+	pk = get_drugbank_pk(con, drugbank_id, drugname)
+	root = drug.find(NS+'patents')
+	items = root.findall(NS+'patent')
+	cur=con.cursor()
+	for item in items:
+		number = item.find(NS+'number').text
+		country = item.find(NS+'country').text
+		approved = item.find(NS+'approved').text
+		expires = item.find(NS+'expires').text
+		cur.execute("insert into drugbank.patents(fk_drug, patent_number, country, approved, expires) values(%s, %s, %s, %s, %s)", 
+			(pk, number, country, approved, expires))
+	con.commit()
+	cur.close()
 	
 def add_salts(con, drug, drugname):
 	pass
@@ -258,5 +272,6 @@ if __name__ == "__main__":
 	for_all_drugs(con, drugs, add_interactions, "Adding interaction data")
 	for_all_drugs(con, drugs, add_brands, "Adding brand names")
 	for_all_drugs(con, drugs, add_food_interactions, "Adding food interactions")
+	for_all_drugs(con, drugs, add_patents, "Adding patents")
 		
 	con.close()

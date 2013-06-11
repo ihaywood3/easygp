@@ -288,13 +288,13 @@ if __name__ == "__main__":
 	drugs = root.findall(NS+'drug')
 	con = pgconnection()
 	
-	# for_all_drugs(con, drugs, add_drug, "Adding basic drug data")
-# 	for_all_drugs(con, drugs, add_synonyms, "Adding drug name synonyms")
-# 	for_all_drugs(con, drugs, add_interactions, "Adding interaction data")
-# 	for_all_drugs(con, drugs, add_brands, "Adding brand names")
-# 	for_all_drugs(con, drugs, add_food_interactions, "Adding food interactions")
-# 	for_all_drugs(con, drugs, add_patents, "Adding patents")
-#	for_all_drugs(con, drugs, add_salts, "Adding salts of drugs")
+	for_all_drugs(con, drugs, add_drug, "Adding basic drug data")
+	for_all_drugs(con, drugs, add_synonyms, "Adding drug name synonyms")
+	for_all_drugs(con, drugs, add_interactions, "Adding interaction data")
+	for_all_drugs(con, drugs, add_brands, "Adding brand names")
+	for_all_drugs(con, drugs, add_food_interactions, "Adding food interactions")
+	for_all_drugs(con, drugs, add_patents, "Adding patents")
+	for_all_drugs(con, drugs, add_salts, "Adding salts of drugs")
 	for_all_drugs(con, drugs, add_general_references, "Adding general references")
 	
 		

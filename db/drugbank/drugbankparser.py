@@ -179,9 +179,6 @@ def add_interactions(con,drug, drugname):
 	con.commit()	
 	cur.close()
 		
-def add_atc_codes(con, drug, drugname):
-	pass
-	
 def add_brands(con, drug, drugname):
 	global NS
 	drugbank_id = drug.find(NS+'drugbank-id').text
@@ -194,13 +191,26 @@ def add_brands(con, drug, drugname):
 	con.commit()
 	cur.close()
 	
+	
+def add_food_interactions(con, drug, drugname):
+	global NS
+	drugbank_id = drug.find(NS+'drugbank-id').text
+	pk = get_drugbank_pk(con, drugbank_id, drugname)
+	food_interactions_root = drug.find(NS+'food-interactions')
+	food_interactions = food_interactions_root.findall(NS+'food-interaction')
+	cur=con.cursor()
+	for food_interaction in food_interactions:
+		cur.execute("insert into drugbank.food_interactions(fk_drug, food_interaction) values(%s, %s)", (pk, food_interaction.text))
+	con.commit()
+	cur.close()
+	
+def add_atc_codes(con, drug, drugname):
+	pass
+	
 def add_categories(con, drug, drugname):
 	pass
 	
 def add_dosage(con, drug, drugname):
-	pass
-	
-def add_food_interactions(con, drug, drugname):
 	pass
 	
 def add_external_links(con, drug, drugname):
@@ -243,9 +253,10 @@ if __name__ == "__main__":
 	drugs = root.findall(NS+'drug')
 	con = pgconnection()
 	
-	#for_all_drugs(con, drugs, add_drug, "Adding basic drug data")
-	#for_all_drugs(con, drugs, add_synonyms, "Adding drug name synonyms")
-	#for_all_drugs(con, drugs, add_interactions, "Adding interaction data")
+	for_all_drugs(con, drugs, add_drug, "Adding basic drug data")
+	for_all_drugs(con, drugs, add_synonyms, "Adding drug name synonyms")
+	for_all_drugs(con, drugs, add_interactions, "Adding interaction data")
 	for_all_drugs(con, drugs, add_brands, "Adding brand names")
+	for_all_drugs(con, drugs, add_food_interactions, "Adding food interactions")
 		
 	con.close()

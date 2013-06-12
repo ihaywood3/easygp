@@ -4,7 +4,7 @@
 
 -- Dumped from database version 9.2.3
 -- Dumped by pg_dump version 9.2.3
--- Started on 2013-06-11 23:40:13 EST
+-- Started on 2013-06-12 23:14:12 EST
 
 SET statement_timeout = 0;
 SET client_encoding = 'UTF8';
@@ -59,7 +59,7 @@ SET default_with_oids = false;
 
 CREATE TABLE atc_codes (
     pk integer NOT NULL,
-    "atc-code" text
+    atc_code text
 );
 
 
@@ -780,7 +780,7 @@ ALTER TABLE ONLY synonyms ALTER COLUMN pk SET DEFAULT nextval('synonyms_pk_seq':
 --
 
 ALTER TABLE ONLY atc_codes
-    ADD CONSTRAINT "atc_codes_atc-code_key" UNIQUE ("atc-code");
+    ADD CONSTRAINT "atc_codes_atc-code_key" UNIQUE (atc_code);
 
 
 --
@@ -1080,7 +1080,7 @@ ALTER TABLE ONLY synonyms
     ADD CONSTRAINT synonyms_fk_drug_fkey FOREIGN KEY (fk_drug) REFERENCES drug(pk);
 
 
--- Completed on 2013-06-11 23:40:13 EST
+-- Completed on 2013-06-12 23:14:12 EST
 
 --
 -- PostgreSQL database dump complete

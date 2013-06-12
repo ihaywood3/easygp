@@ -87,12 +87,37 @@ def get_drugbank_pk(con, drugbank_id, drugname):
 			print "THIS SHOULD NEVER HAPPEN - MISING DRUG", drugbank_id, name
 		cur.execute("select pk from drugbank.drug where drugbank_id ilike %s", (drugbank_id,))
 		res = cur.fetchone()
-		if res:
+		if res is not None:
 			pk = res[0]
 	cur.close()
 	return pk
 	
-
+	
+def find_or_add(con, what, column, table):
+	"""
+	find data 'what' in the specified column of the specified table.
+	If not found, insert the data into a new record.
+	Return the pk of the found or inserted record 
+	"""
+	cur=con.cursor()
+	querystr = "select pk from %s where %s like %%s" % (table, column)
+	cur.execute(querystr, (what,))
+	res=cur.fetchone()
+	if res is not None:
+		pk= res[0]
+	else:
+		insertquery = "insert into %s(%s) values(%%s) returning pk" % (table, column)
+		cur.execute(insertquery, (what,))
+		res=cur.fetchone()
+		if res is not None:
+			pk = res[0]
+			con.commit()
+		else:
+			print "THIS ERROR SHOULD NEVER HAPPEN - FAILED TO INSERT", what, column, table
+			pk = None
+	cur.close()
+	return pk
+	
 
 def add_drug(con, drug, drugname):
 	""" 
@@ -205,7 +230,18 @@ def add_food_interactions(con, drug, drugname):
 	cur.close()
 	
 def add_atc_codes(con, drug, drugname):
-	pass
+	global NS
+	drugbank_id = drug.find(NS+'drugbank-id').text
+	pk = get_drugbank_pk(con, drugbank_id, drugname)
+	root = drug.find(NS+'atc-codes')
+	items = root.findall(NS+'atc-code')
+	cur=con.cursor()
+	for item in items:
+		atc_code = item.text
+		pk_atc = find_or_add(con, atc_code, 'atc_code', 'drugbank.atc_codes') 
+		cur.execute("insert into drugbank.link_drug_to_atc_code(fk_drug, fk_atc_code) values(%s, %s)", (pk, pk_atc))
+	con.commit()
+	cur.close()
 	
 def add_categories(con, drug, drugname):
 	pass
@@ -296,6 +332,7 @@ if __name__ == "__main__":
 	for_all_drugs(con, drugs, add_patents, "Adding patents")
 	for_all_drugs(con, drugs, add_salts, "Adding salts of drugs")
 	for_all_drugs(con, drugs, add_general_references, "Adding general references")
+	for_all_drugs(con, drugs, add_atc_codes, "Adding ATC codes")
 	
 		
 	con.close()

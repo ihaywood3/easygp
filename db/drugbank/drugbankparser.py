@@ -7,8 +7,9 @@ you must get the explicit permission of the owners.
 At present it is still a quick hack with hardcoded database login details and hard-
 coded XML file location (presumes this file is in the directory this script is run from)
 
-UNTESTED: if the drugbank XML file does not exist, the script will attempt to download 
-and unzip it for you in your current directory 
+However, if the drugbank XML file does not exist, the script will attempt to download 
+and unzip it for you in your current directory. It makes hard coded assumptions about 
+download URL and file names. 
 
 This script is provided under the terms of the GPL license version 3.0 by Dr H. Herb
 """
@@ -84,7 +85,7 @@ def get_drugbank_pk(con, drugbank_id, drugname):
 			cur.execute("""INSERT INTO drugbank.drug(drugbank_id, name) values (%s, %s)""", (drugbank_id, drugname))
 			#con.commit()
 		except: 
-			print "THIS SHOULD NEVER HAPPEN - MISING DRUG", drugbank_id, name
+			print "THIS SHOULD NEVER HAPPEN - MISSING DRUG", drugbank_id, name
 		cur.execute("select pk from drugbank.drug where drugbank_id ilike %s", (drugbank_id,))
 		res = cur.fetchone()
 		if res is not None:
@@ -243,15 +244,6 @@ def add_atc_codes(con, drug, drugname):
 	con.commit()
 	cur.close()
 	
-def add_categories(con, drug, drugname):
-	pass
-	
-def add_dosage(con, drug, drugname):
-	pass
-	
-def add_external_links(con, drug, drugname):
-	pass
-	
 def add_general_references(con, drug, drugname):
 	global NS
 	drugbank_id = drug.find(NS+'drugbank-id').text
@@ -313,6 +305,28 @@ def for_all_drugs(con, drugs, myfunc, message='', progressfeedback=True):
 		print counter
 	
 	
+def add_categories(con, drug, drugname):
+	global NS
+	drugbank_id = drug.find(NS+'drugbank-id').text
+	pk = get_drugbank_pk(con, drugbank_id, drugname)
+	root = drug.find(NS+'categories')
+	items = root.findall(NS+'category')
+	cur=con.cursor()
+	for item in items:
+		atc_code = item.text
+		pk_category = find_or_add(con, atc_code, 'category', 'drugbank.categories') 
+		cur.execute("insert into drugbank.link_drug_to_category(fk_drug, fk_category) values(%s, %s)", (pk, pk_category))
+	con.commit()
+	cur.close()
+	
+	
+def add_dosage(con, drug, drugname):
+	pass
+	
+def add_external_links(con, drug, drugname):
+	pass
+	
+	
 if __name__ == "__main__":
 	counter = 0
 	#read xml file
@@ -324,15 +338,16 @@ if __name__ == "__main__":
 	drugs = root.findall(NS+'drug')
 	con = pgconnection()
 	
-	for_all_drugs(con, drugs, add_drug, "Adding basic drug data")
-	for_all_drugs(con, drugs, add_synonyms, "Adding drug name synonyms")
-	for_all_drugs(con, drugs, add_interactions, "Adding interaction data")
-	for_all_drugs(con, drugs, add_brands, "Adding brand names")
-	for_all_drugs(con, drugs, add_food_interactions, "Adding food interactions")
-	for_all_drugs(con, drugs, add_patents, "Adding patents")
-	for_all_drugs(con, drugs, add_salts, "Adding salts of drugs")
-	for_all_drugs(con, drugs, add_general_references, "Adding general references")
-	for_all_drugs(con, drugs, add_atc_codes, "Adding ATC codes")
+	# for_all_drugs(con, drugs, add_drug, "Adding basic drug data")
+# 	for_all_drugs(con, drugs, add_synonyms, "Adding drug name synonyms")
+# 	for_all_drugs(con, drugs, add_interactions, "Adding interaction data")
+# 	for_all_drugs(con, drugs, add_brands, "Adding brand names")
+# 	for_all_drugs(con, drugs, add_food_interactions, "Adding food interactions")
+# 	for_all_drugs(con, drugs, add_patents, "Adding patents")
+# 	for_all_drugs(con, drugs, add_salts, "Adding salts of drugs")
+# 	for_all_drugs(con, drugs, add_general_references, "Adding general references")
+# 	for_all_drugs(con, drugs, add_atc_codes, "Adding ATC codes")
+	for_all_drugs(con, drugs, add_categories, "Adding categories")
 	
 		
 	con.close()

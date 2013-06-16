@@ -52,7 +52,7 @@ def getfile(url=DOWNLOAD_URL, fname=DOWNLOAD_ZIPFILE, download_progress_reporter
 		return DRUGBANK_FILENAME
 
 	
-def pgconnection(host='127.0.0.1', dbname='drugbank', user='easygp', password='easygp.'):
+def pgconnection(host='127.0.0.1', dbname='easygp', user='easygp', password='admin'):
 	""" 
 	Establishes a connection with the database our data will be imported into.
 	quick hack with hardcoded access credentials in order to test the import.
@@ -350,16 +350,16 @@ if __name__ == "__main__":
 	drugs = root.findall(NS+'drug')
 	con = pgconnection()
 	
-	# for_all_drugs(con, drugs, add_drug, "Adding basic drug data")
-# 	for_all_drugs(con, drugs, add_synonyms, "Adding drug name synonyms")
-# 	for_all_drugs(con, drugs, add_interactions, "Adding interaction data")
-# 	for_all_drugs(con, drugs, add_brands, "Adding brand names")
-# 	for_all_drugs(con, drugs, add_food_interactions, "Adding food interactions")
-# 	for_all_drugs(con, drugs, add_patents, "Adding patents")
-# 	for_all_drugs(con, drugs, add_salts, "Adding salts of drugs")
-# 	for_all_drugs(con, drugs, add_general_references, "Adding general references")
-# 	for_all_drugs(con, drugs, add_atc_codes, "Adding ATC codes")
-#	for_all_drugs(con, drugs, add_categories, "Adding categories")
+	for_all_drugs(con, drugs, add_drug, "Adding basic drug data")
+	for_all_drugs(con, drugs, add_synonyms, "Adding drug name synonyms")
+	for_all_drugs(con, drugs, add_interactions, "Adding interaction data")
+	for_all_drugs(con, drugs, add_brands, "Adding brand names")
+	for_all_drugs(con, drugs, add_food_interactions, "Adding food interactions")
+	for_all_drugs(con, drugs, add_patents, "Adding patents")
+	for_all_drugs(con, drugs, add_salts, "Adding salts of drugs")
+	for_all_drugs(con, drugs, add_general_references, "Adding general references")
+	for_all_drugs(con, drugs, add_atc_codes, "Adding ATC codes")
+	for_all_drugs(con, drugs, add_categories, "Adding categories")
 	for_all_drugs(con, drugs, add_external_links, "Adding external links")
 
 	

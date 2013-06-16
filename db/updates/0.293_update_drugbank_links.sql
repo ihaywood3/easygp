@@ -5,3 +5,6 @@ ALTER TABLE drugbank.external_links
       ON UPDATE NO ACTION ON DELETE NO ACTION;
 ALTER TABLE drugbank.lu_external_resources
   ADD CONSTRAINT lu_external_resources_resource_key UNIQUE(resource);
+
+truncate db.lu_version;
+insert into db.lu_version (lu_major,lu_minor) values (0, 293);

@@ -1,5 +1,5 @@
-- creates a view of a drugs atccode and all drugs that this interacts with
-- used in interactions
+-- creates a view of a drugs atccode and all drugs that this interacts with
+-- used in interactions
 CREATE OR REPLACE VIEW drugbank.vwdrugatccodeinteractions AS 
  SELECT drug_interactions.pk AS pk_view, drug.name, atc1.atc_code,
  drug1.name AS drug_interacts_with, drug_interactions.description,

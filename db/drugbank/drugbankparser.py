@@ -52,7 +52,7 @@ def getfile(url=DOWNLOAD_URL, fname=DOWNLOAD_ZIPFILE, download_progress_reporter
 		return DRUGBANK_FILENAME
 
 	
-def pgconnection(host='127.0.0.1', dbname='easygp', user='easygp', password='admin'):
+def pgconnection(host='127.0.0.1', dbname='drugbank', user='easygp', password='easygp.'):
 	""" 
 	Establishes a connection with the database our data will be imported into.
 	quick hack with hardcoded access credentials in order to test the import.
@@ -324,7 +324,19 @@ def add_dosage(con, drug, drugname):
 	pass
 	
 def add_external_links(con, drug, drugname):
-	pass
+	global NS
+	drugbank_id = drug.find(NS+'drugbank-id').text
+	pk = get_drugbank_pk(con, drugbank_id, drugname)
+	root = drug.find(NS+'external-links')
+	items = root.findall(NS+'external-link')
+	cur=con.cursor()
+	for item in items:
+		resource = item.find(NS+'resource').text
+		url = item.find(NS+'url').text
+		pk_resource = find_or_add(con, resource, 'resource', 'drugbank.lu_external_resources') 
+		cur.execute("insert into drugbank.external_links(fk_drug, fk_external_resource, external_link) values(%s, %s, %s)", (pk, pk_resource, url))
+	con.commit()
+	cur.close()
 	
 	
 if __name__ == "__main__":
@@ -347,7 +359,9 @@ if __name__ == "__main__":
 # 	for_all_drugs(con, drugs, add_salts, "Adding salts of drugs")
 # 	for_all_drugs(con, drugs, add_general_references, "Adding general references")
 # 	for_all_drugs(con, drugs, add_atc_codes, "Adding ATC codes")
-	for_all_drugs(con, drugs, add_categories, "Adding categories")
+#	for_all_drugs(con, drugs, add_categories, "Adding categories")
+	for_all_drugs(con, drugs, add_external_links, "Adding external links")
+
 	
 		
 	con.close()

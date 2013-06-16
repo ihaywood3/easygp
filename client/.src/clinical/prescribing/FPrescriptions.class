@@ -19,14 +19,14 @@
 '        prescribed! = fk_progress_note
 '        Put rpbs into clerical to differential if patient is repat
 '        implement repat in tDim unique_drugs As New Collection     his module
-'        put the suppress reaDim unique_drugs As New Collectdayion     son checkbox in the gui
+'        put the suppress reaDim unique_drucgs As New Collectdayion     son checkbox in the gui
 '        implement brand substitution not permitted
 '        implement keep record of writing scripts in the progress note
 '        lu_pbs_script_type FIXME RENAME IN BACK END TO lu_script_type and adjust queries accordingly
 '        fix the problem of 'mixture' of printed (hence saved) and not printed (hence unsaved) scripts
 '        under the edit area and what happens with Reload()
 '        Do the code to edit a script item.
-'        Plus lots more I can't even think about
+'        Plus lots more I can't even think aboutc
 '        Check/double check that the drug validation before save workstown
 '        fix the formatting on the medicare number in the latex preparation, dosn't work
 '        Implement duplication checking before landing something on the script pad
@@ -56,6 +56,7 @@ Private generic_brands_split_layout As String[]
 Public bExit As Boolean 'accessed from Fclinical Editor_SetPage
 Private bAuthority As Boolean       'If True the script item needs an authority.
 Private bKeyValid As Boolean
+Private bInteractionsExist As Boolean 'if True interactions exist for current drug being prescribed.
 Private bGenericSearch As Boolean
 Private Script_Items_This_Consultation As Collection
 Private Script As Collection
@@ -68,6 +69,8 @@ Private fk_generic_product As String
 Private fk_prescribed_for As Integer
 Private fk_increased_quantity_authority_reason As Integer      'if not 0 then key to clin_prescribing.increased_quantity_authority_reasons
 Private pbscode As String
+Private Interactions_For_Drug_Prescribed As Collection
+Private Interactions_For_Drugs_Prescribed As Collection
 Private iPBS_Script_Type As Integer              'e.g print as PBS, rpbs, PBS AUTHORITY etc, see Const
 Private restriction_code As String   ' pbs restriction.code  eg for authorities
 Private restriction As String
@@ -182,6 +185,7 @@ Public Sub Init(cons As CConsult)
       .Columns[9].text = "Directions"
       .Columns[10].text = "Prescribed For"
    End With
+   Interactions_For_Drug_Prescribed = New Collection
    With gvRestrictions
       .Columns.count = 2
       .Columns[0].width = gvRestrictions.Width
@@ -278,10 +282,15 @@ Public Sub Script_items_Update(item As Collection)
    '------------------------------------------------------------
    'Adds as previously prescribed script item to today's scripts
    'and updates the list visually
+   'The True flag tells the interaction checker to ignore
+   'checking this re-prescribed medication against the patient's
+   'existing medications
    '------------------------------------------------------------
 
    script_Items.add(item, script_items.Count)
+   '  Interactions_Display(item, True)
    cvwPrescriptions_Refresh(script_items)
+   Interactions_Refresh
 
 End
 
@@ -301,6 +310,7 @@ Public Sub Reload()
    'that if saved to backend they have been printed, however
    'could have been saved 'no print', so perhaps change this flag
    'FIXME THIS WON'T ALWAYS WORK - IT SETS AN UNPRINTED TO A PRINTED
+   'Reload the interactions noted for meds prescribed today
    '----------------------------------------------------------------
 
    currentconsult.Refresh("prescriptions_written")
@@ -308,7 +318,8 @@ Public Sub Reload()
    For Each script_item In script_items
       script_item!printed = True   'may not be true
    Next
-   cvwPrescriptions_Refresh(script_items)
+   cvwPrescriptions_Refresh(script_items)            'show all meds prescribed today
+   Interactions_Refresh()                           'aand summmary of interactions (if any)
    Drug_New()
 
 End
@@ -317,6 +328,7 @@ Public Sub Settings_Save()
 
    Settings["FPrescriptions_" & Embedded_In_Form & "/HSplit_EditArea_Inner.Layout"] = HSplit_EditArea_Inner.Layout
    Settings["FPrescriptions_" & embedded_in_form & "/HSplit_DrugDisplay.Layout"] = HSplit_DrugDisplay.Layout
+   Settings["FPrescriptions_" & embedded_in_form & "/HSplit_Interactions.Layout"] = HSplit_Interactions.Layout
    Settings["FPrescriptions_" & Embedded_In_Form & "/Vsplit_Script.Layout"] = Vsplit_Script.Layout
 
 End
@@ -328,6 +340,7 @@ Public Sub Settings_Load()
    HSplit_EditArea_Inner.Layout = Settings["FPrescriptions_" & Embedded_In_Form & "/HSplit_EditArea_Inner.Layout", modUtil.HSplit([886, 287])]
    cvwPrescriptions.Font = Font[Settings["FPrescriptions_" & Embedded_In_Form & "/cvwPrescriptions.font", "DejaVu Sans,9"]]
    Generic_brands_split_layout = HSplit_DrugDisplay.Layout
+   HSplit_Interactions.Layout = Settings["FPrescriptions_" & embedded_in_form & "/HSplit_Interactions.Layout", modUtil.HSplit([1, 2])]
 
 End
 
@@ -503,7 +516,6 @@ Public Sub EditArea_Clear()
    cProgressNote_Section = const.cSection_GeneralNotes
    txtHealthIssue.text = "general notes"
    cmbScriptTypes_Load
-   teInteractions.Clear()
    With tlBrandsLike
       .text = ""
       .Visible = False
@@ -1705,7 +1717,7 @@ Public Sub Drug_Select()
       txtBrand.text = drug!brand
       fk_brand = drug!fk_brand
    End If
-   Interactions_Display(drug!atccode)
+   Interactions_Display(drug, True)  'True = currently selecting a drug to prescribe
    If Not IsNull(drug!product_information_filename) Or Not IsNull(drug!product_information_filename_user) Then
       tbFullPi.Enabled = True
    Else
@@ -1891,7 +1903,9 @@ Public Sub Drug_Add(Optional bSaveItemNoPrint As Boolean = False) As Boolean
    ' x  fk_lu_pbs_script_type integer,
    ' not yet implemented  fk_progress_note integer,
    ' x  deleted boolean DEFAULT false, 'the default
-
+   '
+   ' If interactions exist for the drug, add them to the list under the editing area
+   ' bInteractionsExist was set in Interactions_Display
    '----------------------------------------------------------------------------------------
 
    Dim x As Integer 'for readability
@@ -1953,6 +1967,10 @@ Public Sub Drug_Add(Optional bSaveItemNoPrint As Boolean = False) As Boolean
    ' prescribed! = brand_substitution : do not remove this code
    ' prescribed! = fk_progress_note
    cvwPrescriptions_Refresh(script_items)
+   If Interactions_For_Drug_Prescribed.count Then
+      Interactions_For_Drugs_Prescribed.add(Interactions_For_Drug_Prescribed, Interactions_For_Drugs_Prescribed.count)
+      lvwDrugsWithInteractions_ReLoad()
+   Endif
    tbOk.Enabled = True   '??fixme whats this ?legac y
    Return True
 
@@ -2452,6 +2470,8 @@ Public Sub Drug_New()
    'User has decided to prescript a new drug
    '----------------------------------------
 
+   Dim hCtrl As Control
+
    EditArea_Clear()                                  'Clear the edit area (the input area)
    Reset_Flags()                                     'Reset all keys and flags
    txtdate.text = Format(Now, "dd/mm/yyyy")          'Default to today's date, this can be over-ridden by user
@@ -2461,7 +2481,25 @@ Public Sub Drug_New()
    Prescribed_For_Habits = New Collection
    Instruction_Habits = New Collection
    EditArea_Notify_Data_Change(False)
-   tlInteractions.text = ""
+   If lvwDrugsWithInteractions.count = 0 Then
+      tlInteractions.text = ""
+      tabstrip1.text = "No Interactions Noted Today"
+   Else
+      With lvwDrugsWithInteractions
+         .MoveFirst
+         .Item.Selected = True
+      End With
+   Endif
+   If tabstrip1.count = 2 Then
+      tabstrip1.index = 1
+      For Each hCtrl In tabstrip1.children
+         hCtrl.Delete
+         Break
+      Next
+      tabstrip1.count = 1
+
+   Endif
+   Interactions_For_Drug_Prescribed = New Collection
    If sDefault_Prescribing_Mode = "brand" Then
       txtBrand.SetFocus()
    Else
@@ -2778,53 +2816,128 @@ Public Sub VSplit_Script_Resize()
 
 End
 
-Public Sub Interactions_Display(atccode As String)
-   '--------------------------------------------------------------------------------------
-   'Display any drug interactions
-   'If not critical then just display in text label under the editing area
-   'If considerd critical popup a warning dialog
-   'check against all active past medications and anything prescribed today printed or not
-   '--------------------------------------------------------------------------------------
+Public Sub Interactions_Refresh()
+   '-----------------------------------------------------------------------------------------
+   'Reload interactions for the current drugs for today against both each other and past meds
+   'Flags:
+   'False = not actually selecting this drug by prescribing in Edit ARea
+   'False=not being re-prescribed from the past medications list
+   'False=do not popup modal dialog boxes to warn if serious
+   'as we've already seen these when we prescribed.
+   '-----------------------------------------------------------------------------------------
+
+   bInteractionsExist = False
+   Interactions_For_Drugs_Prescribed = New Collection
+   For Each script_Item In script_items                         'for each script that has been prescribed today
+      Interactions_Display(script_item, False, False, False)           'check against all others prescribed + past meds
+      If Interactions_For_Drug_Prescribed.count Then
+         Interactions_For_Drugs_Prescribed.add(Interactions_For_Drug_Prescribed, Interactions_For_Drugs_Prescribed.count)
+      Endif
+   Next
+   lvwDrugsWithInteractions_ReLoad()                             'reload the interactions list (if any)
+   If lvwDrugsWithInteractions.count Then
+      With lvwDrugsWithInteractions
+         .MoveFirst
+         .Item.Selected = True
+      End With
+   Endif
+
+End
+
+Public Sub lvwDrugsWithInteractions_ReLoad()
+
+   Dim Interacting_drug As Collection
+
+   lvwDrugsWithInteractions.clear()
+   For Each Interacting_drug In Interactions_For_Drugs_Prescribed
+      lvwDrugsWithInteractions.Add(lvwDrugsWithInteractions.count, Interacting_drug[0]!generic)
+   Next
+
+End
+
+Public Sub Interactions_Display(DR As Collection, bSelectingDrug As Boolean, Optional bIgnoreActiveMedications As Boolean = False, Optional bWarnIfSerious As Boolean = True)
+   'Checks for interactions with current drug being prescribed, places into a collection
 
    Dim med As Collection
    Dim sMsg As String
    Dim item_prescribed_today As Collection
    Dim fk_generic_product_keys As New String[]
+   Dim sAllInterationsForDrug As String
    Dim sInteractionText As String
+   Dim Drug_With_Interaction As Collection
+   Dim tlTab2 As Textlabel
 
-   tlInteractions.text = ""                                                               'clear any previous interaactions
-   Interactions = modPrescribingDBI.Drugs_Have_ATC_Code_Get_Interactions(atccode)          'get interactions for this atccode (our atc code)
-   For Each med In currentconsult!medications                                             'check against current med list contains **** all **** medications ever prescribed
-      If fk_generic_product_keys.Find(med!prescribed!fk_medication) = True Then           'as multiple prescriptions for same drug true= not found
-         fk_generic_product_keys.Add(med!prescribed!fk_medication, fk_generic_product_keys.count) 'add this key, don't won't a duplicate message
-         If med!med!active Then                                                            'if it is an active medicaiton, do the checking
-            If Interactions.Exist(med!atccode) Then                                        'the atccode is the key of the drugbank data
-               sInteractionText = "<B>" & med!brand & "(" & med!generic & ")</B><BR>"      'create the interaction text
-               sInteractionText &= Interactions[med!atccode]!description & "<BR>"
-               If Not InStr(tlInteractions.text, sInteractionText) Then                    'check not already there e.g could be on coumadin 1mg, 2mg, 3mg
-                  tlInteractions.Text &= sInteractionText                                  'and don't want to show this 3 times!
+   Interactions_For_Drug_Prescribed = New Collection                                          'the interactions for this drug only
+   Interactions = modPrescribingDBI.Drugs_Have_ATC_Code_Get_Interactions(DR!atccode)          'get interactions for this atccode (our atc code)
+   If Not bIgnoreActiveMedications Then
+      For Each med In currentconsult!medications                                             'check against current med list contains **** all **** medications ever prescribed
+         If fk_generic_product_keys.Find(med!prescribed!fk_medication) = True Then           'as multiple prescriptions for same drug true= not found
+            If med!fk_form <> 33 Then                                                         'creams
+               fk_generic_product_keys.Add(med!prescribed!fk_medication, fk_generic_product_keys.count) 'add this key, don't won't a duplicate message
+               If med!med!active Then                                                            'if it is an active medicaiton, do the checking
+                  If Interactions.Exist(med!atccode) Then                                        'the atccode is the key of the drugbank data
+                     ' sInteractionText = "<B>" & med!brand & "(" & med!generic & ")</B><BR>"      'create the interaction text
+                     sInteractionText = "<B>" & UCase(med!generic) & "</B> (" & modUtil.Ucase_Word_First_Letter(med!brand) & ")<BR>"      'create the interaction text"
+                     sInteractionText &= Interactions[med!atccode]!description & "<BR>"
+                     If Not InStr(sAllInterationsForDrug, sInteractionText) Then                    'check not already there e.g could be on coumadin 1mg, 2mg, 3mg
+                        sAllInterationsForDrug &= sInteractionText                                  'and don't want to show this 3 times!
+                     End If
+                     If bSelectingDrug Then Interactions_Warn_Serious(med)                             'any serious ones, popup a dialog
+                  Endif
                End If
-               Interactions_Check_Serious(med)                                             'any serious ones, popup a dialog
-            Endif
-         End If
-      End If
-   Next
-   For Each item_prescribed_today In script_items                                         'ditto check against drugs prescribed today.
-      If IsNull(item_prescribed_today!printed) Then
-         If Interactions.Exist(item_prescribed_today!atccode) Then
-            sInteractionText = "<B>" & item_prescribed_today!brand & "(" & item_prescribed_today!generic & ")</B><BR>"      'create the interaction text
-            sInteractionText &= Interactions[item_prescribed_today!atccode]!description & "<BR>"
-            If Not InStr(tlInteractions.text, sInteractionText) Then                    'check not already there e.g could be on coumadin 1mg, 2mg, 3mg
-               tlInteractions.Text &= sInteractionText                                  'and don't want to show this 3 times!
             End If
-            Interactions_Check_Serious(item_prescribed_today)
-         Endif
+         End If
+      Next
+   End If
+   For Each item_prescribed_today In script_items                                         'ditto check against drugs prescribed today.
+      If Interactions.Exist(item_prescribed_today!atccode) Then
+         ' sInteractionText = "<B>" & item_prescribed_today!brand & "(" & item_prescribed_today!generic & ")</B><BR>"      'create the interaction text
+         sInteractionText = "<B>" & UCase(item_prescribed_today!generic) & "</B> (" & modUtil.Ucase_Word_First_Letter(item_prescribed_today!brand) & ")<BR>"      'create the interaction text"
+
+         sInteractionText &= Interactions[item_prescribed_today!atccode]!description & "<BR>"
+         If Not InStr(sAllInterationsForDrug, sInteractionText) Then                    'check not already there e.g could be on coumadin 1mg, 2mg, 3mg
+            sAllInterationsForDrug &= sInteractionText                                  'and don't want to show this 3 times!
+         End If
+         If bSelectingDrug Then Interactions_Warn_Serious(item_prescribed_today)
       Endif
    Next
+   '-----------------------------------------------------------------------------
+   'if an interaction exists, add drug to the collection containing
+   'all drugs with interactions this consultation
+   'once user hits the <ADD> button or <SAVE no PRINT> button
+   'this drug will be added to the list showing which drugs this consult interact
+   '-----------------------------------------------------------------------------
+   If sAllInterationsForDrug <> "" Then
+      bInteractionsExist = True        'fixme get rid of flag = need only the Drugs_With_Interactions.count
+      Drug_With_Interaction = New Collection
+      Drug_With_Interaction!generic = DR!generic
+      Drug_With_Interaction!atccode = DR!atccode
+      Drug_With_Interaction!interactions = sAllInterationsForDrug
+      Interactions_For_Drug_Prescribed.Add(Drug_With_Interaction, Interactions_For_Drug_Prescribed.count)
+      If bSelectingDrug Then                                                             'if prescribing a new drug
+         If lvwDrugsWithInteractions.count Then                                           'previous interactions exist
+            With tabstrip1                                                                'add a new tab strip
+               .count = 2
+               .index = 1
+               With tlTab2 = New TextLabel(Tabstrip1)
+                  .tag = "second"
+                  .text = sAllInterationsForDrug
+                  .Background = Color.White
+                  .border = False
+               End With
+               .text = "Interactions " & DR!generic
+            End With
+         Else
+            tabstrip1.index = 0
+            tlInteractions.text = sAllInterationsForDrug
+         Endif
+         tabstrip1.text = "Interactions " & DR!generic
+      Endif
+   End If
 
 End
 
-Public Sub Interactions_Check_Serious(existing_med As Collection)
+Public Sub Interactions_Warn_Serious(existing_med As Collection)
    '-----------------------------------------------------------------------
    'Checks for the type of interactions that must be a popup dialog warning
    'currently based on parsing text from within the interaction message.
@@ -2860,5 +2973,31 @@ Public Sub Interactions_Check_Serious(existing_med As Collection)
       sMsg &= Interactions[existing_med!atccode]!description
       Message.Warning(sMsg)
    Endif
+
+End
+
+Public Sub lvwDrugsWithInteractions_Click()
+
+   lvwDrugsWithInteractions_Select()
+
+End
+
+Public Sub lvwDrugsWithInteractions_Select()
+   '-------------------------------------------------------------------
+   'User has clicked on the interactions noted today during prescribing
+   '-------------------------------------------------------------------
+
+   Dim DrugsInteractions As Collection
+
+   Dim interaction As Collection
+
+   lvwDrugsWithInteractions.MoveCurrent
+   tabstrip1.index = 0
+   tabstrip1.text = lvwDrugsWithInteractions.Item.Text
+   DrugsInteractions = Interactions_For_Drugs_Prescribed[lvwDrugsWithInteractions.Item.Key]
+   tlInteractions.text = ""
+   For Each interaction In DrugsInteractions
+      tlInteractions.text &= interaction!interactions
+   Next
 
 End

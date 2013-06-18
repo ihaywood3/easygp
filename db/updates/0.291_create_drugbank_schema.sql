@@ -18,7 +18,6 @@ SET client_min_messages = warning;
 -- Name: drugbank; Type: COMMENT; Schema: -; Owner: -
 --
 
-COMMENT ON DATABASE drugbank IS 'http://drugbank.ca derived drug reference data';
 
 
 --
@@ -28,22 +27,12 @@ COMMENT ON DATABASE drugbank IS 'http://drugbank.ca derived drug reference data'
 
 CREATE SCHEMA drugbank;
 
-
---
--- TOC entry 201 (class 3079 OID 11995)
--- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: -
---
-
-CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
+COMMENT ON schema drugbank IS 'http://drugbank.ca derived drug reference data';
 
 
---
--- TOC entry 2362 (class 0 OID 0)
--- Dependencies: 201
--- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: -
---
 
-COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
+
+
 
 
 SET search_path = drugbank, pg_catalog;

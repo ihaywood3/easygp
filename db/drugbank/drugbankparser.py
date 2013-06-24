@@ -18,6 +18,7 @@ import psycopg2 as DBAPI
 import urllib
 import zipfile
 import os.path
+import sys
 
 DOWNLOAD_URL= "http://www.drugbank.ca/system/downloads/current/drugbank.xml.zip"
 DOWNLOAD_ZIPFILE = "drugbank.xml.zip"
@@ -39,8 +40,12 @@ def getfile(url=DOWNLOAD_URL, fname=DOWNLOAD_ZIPFILE, download_progress_reporter
 	attempts to download the drugbank data file and unzip it i your
 	current directory
 	"""
-	urllib.urlretrieve(DOWNLOAD_URL, DOWNLOAD_ZIPFILE, download_progress_reporter)
-	zf = zipfile.ZipFile(DOWNLOAD_ZIPFILE)
+	urllib.urlretrieve(url, fname, download_progress_reporter)
+	try:
+		zf = zipfile.ZipFile(fname)
+	except:
+		print "Sorry, could not download or extract file %s", fname
+		return None
 	files = zf.namelist()
 	if DRUGBANK_FILENAME not in files:
 		print "Sorry, the downloaded file does not seem to contain", DRUGBANK_FILENAME
@@ -343,8 +348,11 @@ if __name__ == "__main__":
 	counter = 0
 	#read xml file
 	filename=DRUGBANK_FILENAME
-	if not os.path.exists(DRUGBANK_FILENAME):
-		filename = getfile('DRUGBANK_FILENAME')
+	if not os.path.exists(filename):
+		filename = getfile(filename)
+	if filename is None:
+		print "File %s not found, aborting program" % DRUGBANK_FILENAME
+		sys.exit(1)
 	tree = ET.parse(filename)
 	root = tree.getroot()
 	drugs = root.findall(NS+'drug')

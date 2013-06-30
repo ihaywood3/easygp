@@ -1,4 +1,4 @@
-DROP TABLE drugbank.pregnancy_code;
+--DROP TABLE drugbank.pregnancy_code;
 CREATE TABLE drugbank.pregnancy_code
 (
   pk SERIAL PRIMARY KEY, 

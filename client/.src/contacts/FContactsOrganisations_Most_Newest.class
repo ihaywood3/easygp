@@ -1,0 +1,2537 @@
+' Gambas class file
+
+' Copyright (C) 2008-2013 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'-------------------------------------------------------------------------------
+'PURPOSE       :Display heirachically organisations/branches/employees, persons
+'              :Total rewrite on 29June2013
+'              :the orginal was the first gambas code I ever wrote crap!
+'ODDITITES     :The FcommunicationData class is embedded in this form for
+'               the organisations, employees and persons
+'               Data is saved in this form in the main Save Routines
+'               As the user could e.g view a record and only just change the
+'               contacts details e.g phone etc, those forms containers
+'               VBox_Contacts_Employee (_Organisation) has their tag set
+'               to True if the data in this has been changed.
+'WHERE USED    :In the main container as side bar button 'Contacts'
+'              :Embedded in the Clerical.Scanning module on a tab
+'               to allow new organisations/persons/employees to be put
+'               in whilst you have the document scan side-by-side on screen
+'               hence here the screen is a little cramped! but useful
+'-------------------------------------------------------------------------------
+Private persons As Collection
+Private person As Collection
+Private Occupations As Collection 
+Private country_code As String
+Private fk_ethnicity As Integer
+Private fk_language As Integer
+Private addresses As Collection
+Private Views_addresses As Collection
+Private bExit As Boolean                            'general flag to prevent re-entry into routines
+Private bNewCommunication As Integer                'true if adding a new communication
+Private bEmployeeDisplayed As Boolean               'True if adding or displaying existing employee
+Private sLastSearchCriteria As String               'last criteria used to create the viewing list
+Private iTimer_count As Integer
+Private sSearchMode As String                       'search for e.g firstname, surname, category, occupation, organisation
+Private iCommunication As Integer
+Private listview1_key As Integer
+Private age As Integer
+Private Branches As Collection                      'holds a collection of cBranch = 1 row in the viewing list
+Private Suburbs As Collection
+Private Suburb As Collection
+Private Members As Collection
+Private Member As Collection
+Private The_Collection As Collection
+Private sMsgGlobal As String
+Private Categories As Collection
+Private category As Collection
+Private aString As String                      'a collection or towns or suburbs
+Private SpellChecker As ClskSpell
+Private iSecurityType As Integer  'clinical/clerical or both
+Private cSecurityTypeClinical As Integer = 0
+Private cSecurityTypeClerical As Integer = 1
+Private cSecurityTypeBoth As Integer = 3
+Private bKeyValid As Boolean
+Private usingWizard As Boolean 'If true this form has been loaded form the installation wizard
+Private fk_staff As Integer
+Private fk_organisation As Integer
+Private fk_branch As Integer
+Private fk_address As Integer
+Private fk_category As Integer
+Private fk_employee As Integer
+Private fk_person As Integer
+Private fk_occupation As Integer
+Private fk_town As Integer
+Private sEmbedded_In_Form As String          'if not "" then the name of the form this form is embedded in
+Private organisation As Collection
+Private Organisations As Collection
+Private row_in_view As Collection 'current row we are on
+Private branch As Collection
+Private clinic As Collection
+Private employee As Collection
+Private employees As Collection
+Private address As Collection
+Private bOrganisationChanged As Boolean
+Private bEmployeeChanged As Boolean
+Private HtmlMessageBox As FGenericHTMLMessage
+Private bEmbedded As Boolean
+Private textboxForSpellCheck As TextBox
+Private bInstringSearch As Boolean 
+Public form_persons As FPersons_New
+Public form_contacts_employee As New FCommunicationData
+Public form_contacts_organisations As New FCommunicationData
+Static Public form_contacts As FContactsOrganisations_Most_Newest
+
+Public Sub set_embedded(flag As Boolean)
+   
+   bEmbedded = flag
+   
+End
+
+Public Sub Form_Show()
+   
+   HSplit_Grids_Resize
+   
+End
+
+Public Sub Form_Open()
+   
+   Init() 'just for compatibility with the other forms
+   
+End
+
+Public Sub Form_Clear()
+   '------------------------------- 
+   'Clears the grids and edit areas 
+   '-------------------------------
+   
+   txtSearchOrganisations_or_Persons.text = ""
+   form_contacts_employee.Form_Clear              'clear the contacts for employees
+   form_contacts_organisations.Form_Clear         'clear the contacts for organisations
+   form_persons.EditArea_Clear                    'clear input area on the persons form
+   form_persons.form_contacts_person.Form_Clear   'the the contacts for persons form
+   EditArea_Organisation_Clear                    'clear the data entry area organisations
+   EditArea_Employee_Clear                        'clear the data entry for employees
+   EditArea_Notify_Data_Changed(False)            'remove red data changed notification
+   gvwOrganisations.Clear                         'remove all organisations from grid
+   gvwPersons.Clear                               'remove all persons from grid
+   listview1.Visible = False                      'remove popup list
+   VBox_EditArea.Enabled = False                  'don't allow user to click in data entry area
+   Timer1.Stop                                    'stop timer
+   iTimer_count = 0                               'reset counter  
+   tbSave.Foreground = Color.black                'remove red text color from the save button
+   lblOrganisationHeading.text = "Organisations and Employees"
+   lblPersonHeading.text = "Persons or Sole Traders"
+   txtFilterSurname.text = ""
+   txtFilterBranch.text = ""
+   txtSearchByCategory.text = ""
+   txtSearchByOccupation.text = ""
+   
+End
+
+Public Sub Form_Leave()
+   
+   timer1.Stop
+   timer1.Enabled = False
+   
+End
+
+Public Sub Form_Enter()
+   
+   Timer1.enabled = True
+   
+End
+
+Public Sub Init(Optional sembeddedInForm As String = "")
+   
+   Dim x As Integer
+   Dim sMsg As String
+   '-------------------------------------------------------
+   'First set up the screen etc for organisations/employees
+   '-------------------------------------------------------
+   form_contacts = Me
+   sEmbedded_In_Form = sembeddedInForm   'used in settings
+   Try Settings_Load()
+   combos_Load()
+   With gvwOrganisations
+      .Columns.count = 3
+      .Enabled = False
+   End With
+   With SpellChecker = New ClskSpell
+      .EditorControlToCheck = teForSpelling
+      .TempFileForSpelling = User.home &/ "myspelltemp.txt"  'FIXME
+      .TempFileForErrors = User.home &/ "myspellerrors.txt"
+   End With
+   '  Reset_Fonts(VBox_EditArea_Organisation)
+   '   Reset_Fonts(VBox_EditArea_Employee)
+   Vbox_EditArea.Enabled = False
+   lblmeasure.text = "  HPI-O (Organisation)   "                                      'use widest label to resize all others
+   modEditAreaHelpers.Resize_labels(VBox_EditArea_Employee, lblmeasure)
+   modEditAreaHelpers.Resize_labels(VBox_EditArea_Organisation, lblmeasure)
+   
+   chkEmployeeRetired.width = txtEmployeeBirthdate.Width
+   gvwPersons.Background = Color.RGB(254, 254, 254)
+   bInstringSearch = True
+   '---------------------------------
+   'Input the persons part of the form
+   '----------------------------------
+   With form_persons = New FPersons_New(Vbox_EditArea)
+      .init(Vbox_EditArea, tbSave)
+   End With
+   With form_contacts_employee = New FCommunicationData(VBox_Contacts_Employee) 'form to display/create employee contacts
+      .Init(Vbox_EditArea, tbSave)  'pass the outer edit area to allow it to set the data-change
+   End With
+   With form_contacts_organisations = New FCommunicationData(Vbox_Contacts_Organisation)
+      .Init(Vbox_EditArea, tbSave)
+   End With
+   modEditAreaHelpers.Resize_labels(form_contacts_employee.Vbox_EditArea, lblmeasure)
+   modEditAreaHelpers.Resize_label(form_contacts_employee.lblContacts, lblMeasure)
+   modEditAreaHelpers.Resize_label(form_contacts_employee.lblButtons, lblMeasure)
+   modEditAreaHelpers.Resize_labels(form_contacts_organisations.Vbox_EditArea, lblmeasure)
+   modEditAreaHelpers.Resize_label(form_contacts_organisations.lblContacts, lblMeasure)
+   modEditAreaHelpers.Resize_label(form_contacts_organisations.lblButtons, lblMeasure)
+   
+End
+
+Public Sub Reset_Fonts(VB As Vbox)
+   
+   Dim hCtrl As Control
+   Dim ABox As HBox
+   Dim lbl As Label
+   
+   For Each Hctrl In VB.Children
+      If hctrl Is Hbox Then
+         Abox = hctrl
+         For Each hctrl In Abox.Children
+            If hctrl Is Label Then
+               lbl = hctrl
+               If lbl.AutoResize = False Then
+                  lbl.width = lblmeasure.Width
+               End If
+               Break
+            End If
+         Next
+      End If
+   Next
+   
+End
+
+Public Sub combos_Load()
+   
+   cmbEmployeeSex.Add("Male", 0)
+   cmbEmployeeSex.Add("Female", 1)
+   cmbEmployeeSex.Add("Unknown", 2)
+   
+   cmbEmployeeTitle.Add("Mr", 0)
+   cmbEmployeeTitle.Add("Mrs", 1)
+   cmbEmployeeTitle.Add("Master", 2)
+   cmbEmployeeTitle.Add("Miss", 3)
+   cmbEmployeeTitle.Add("Dr", 4)
+   cmbEmployeeTitle.Add("Prof", 5)
+   cmbEmployeeTitle.Add("Ms", 6)
+   cmbemployeeMarital.Add("Unkown", 0)
+   cmbemployeeMarital.Add("Single", 1)
+   cmbemployeeMarital.Add("Married", 2)
+   cmbemployeeMarital.Add("Divorced", 3)
+   cmbemployeeMarital.Add("Defacto", 4)
+   cmbemployeeMarital.Add("Widow", 5)
+   cmbemployeeMarital.Add("Widower", 6)
+   
+End
+
+Public Sub Form_Close()
+   
+   Settings_Save()
+   
+End
+
+Public Sub Settings_Save()
+   
+   Settings["FContacts/HSplit_EditArea_Organisations.Layout"] = HSplit_EditArea_Organisations.Layout
+   Settings["FContacts/VSplit_DataEntry.Layout"] = VSplit_DataEntry.Layout
+   Settings["FContacts/HSplit_Grids.Layout"] = HSplit_Grids.Layout
+   
+End
+
+Private Sub Settings_Load()
+   
+   VSplit_DataEntry.Layout = Settings["FContacts/VSplit_DataEntry.Layout", modUtil.HSplit([983, 716])]
+   HSplit_EditArea_Organisations.Layout = Settings["FContacts/HSplit_EditArea_Organisations.Layout", modUtil.HSplit([527, 384])]
+   HSplit_Grids.Layout = Settings["FContacts/HSplit_Grids.Layout", modUtil.HSplit([1, 1])]
+   gvwOrganisations.Font = Font[Settings["FContacts/gwvOrganisations.font", "DejaVu Sans,9"]]
+   gvwPersons.Font = Font[Settings["FContacts/gwvPersons.font", "DejaVu Sans,9"]]
+   
+End
+
+Public Sub Reset_Gui()
+   
+   bExit = True
+   '  timer1.Stop
+   'iTimer_count = 0
+   sSearchMode = "general search"
+   
+End Sub
+
+Public Sub PopupAddressMenu_Click()
+   
+   Select Case Last.tag
+      Case "new"
+         
+      Case "delete"
+         
+   End Select
+   
+End
+
+Public Sub Form_KeyPress()
+   
+   Select Case key.Code
+      Case key.F12
+         Save()
+      Case key.Esc
+         Reset_Gui
+         
+   End Select
+   
+End
+
+Public Sub timer1_Timer()
+   '--------------------------------------------------------------------
+   'This is the  main search routine
+   'When user presses key in txtSearch group or if adding or changing
+   'data in any of the appropriate EditArea_textBox Group
+   'the Timer count Is Zero 'd once they stop typing this event will run
+   '--------------------------------------------------------------------   
+   
+   Inc itimer_Count
+   If itimer_count > 3 Then
+      timer1.stop
+      Do_Search
+   End If   
+   
+End
+
+Public Sub Do_Search() 
+   '----------------------------------------------------------
+   'Does the searching in all sSearchModes
+   'Called by Timer1_Timer, text filters and chkInStringSearch
+   '----------------------------------------------------------
+   
+   Select Case sSearchMode
+      Case "organisation or person search"
+         If Trim(txtSearchOrganisations_or_Persons.text) = "" Then Return
+         Organisations_Employees_Get_By_Name()
+         Persons_Get_By_Name()
+      Case "suburb"
+         Suburb_Get
+      Case "category"
+         Category_Get
+      Case "surname"
+         Persons_Show_Existing
+      Case "occupation"
+         Occupation_Get()
+      Case "organisation"
+         Organisations_Show_Duplicates
+      Case "occupation search"
+         Employees_By_Occupation_Get()
+         Persons_By_Occupation_Get()
+      Case "category search"
+         Organisations_By_Category_Get()
+   End Select
+   
+End
+
+Public Sub Employees_By_Occupation_Get()
+   'if chkInstringSearch is False then will search on start of string  
+   
+   Organisations = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Employees_Get_By_Occupation(Trim(txtSearchByOccupation.text), bInstringSearch))
+   Organisations_Refresh_List()
+   
+End
+
+Public Sub Persons_By_Occupation_Get()
+   
+   If Trim(txtSearchByOccupation.text) = "" Then Return
+   Inc Application.Busy
+   persons = modContactsDBI.Persons_Get_By_Occupation(Trim(txtSearchByOccupation.Text), bInstringSearch, Trim(txtFilterSurname.text), chkExcludeRetired.value, chkIncludeDeceased.value) 'fixme false = don't include deceased
+   Persons_List_Fill()
+   Dec Application.Busy
+   
+End
+
+Public Sub Persons_Show_Existing()
+   '-------------------------------------------------------------------- 
+   'As user is adding new employee to a branch, they could already exist
+   'at another branch 
+   'popup a list of persons already in the database to avoid duplication
+   '--------------------------------------------------------------------
+   
+   With listview1
+      .Clear
+      .Visible = False  
+   End With
+   If Trim(txtEmployeesurname.text) = "" Then Return
+   Persons = modContactsDBI.Person_Get(Trim(txtEmployeesurname.text), const.contacttype_person)
+   Persons.Remove("sql_in_english")
+   persons = modUtil.Copy_Collection_Keyed_Sequentially(persons)      'don't change these 3 lines or won't work
+   If Persons.count Then
+      For Each Person In Persons
+         listview1.Add(listview1.count, Person!firstname & " " & Person!surname & " (" & Person!occupation & ")")
+         Print person
+      Next
+      With listview1
+         .Visible = True
+         .Raise
+         .tag = txtEmployeesurname
+      End With
+   End If
+   
+End
+
+Public Sub Persons_Existing_Select(P As Collection)
+   '------------------------------------------------------------------------------------ 
+   'User has decided that a person in the popup duplicates list will be the new employee
+   '------------------------------------------------------------------------------------ 
+   
+   bExit = True
+   txtEmployeesurname.text = P!surname
+   txtEmployeeFirstname.text = P!firstname
+   txtOccupation.text = P!occupation
+   Try fk_occupation = P!fk_occupation
+   fk_person = P!fk_person
+   Try cmbEmployeeSex.index = P!fk_sex
+   Try cmbEmployeeTitle = P!fk_title
+   If txtOccupation.text = "" Then
+      txtOccupation.SetFocus
+   Else
+      txtProviderNumber.SetFocus
+   End If   
+   bExit = False
+   
+End
+
+Public Sub Surname_Duplicates_Selection(action As String, Optional calling_control As String)
+   
+   Select Case action
+         ' Case "get"
+         '    listview1.Clear
+         '    If Trim(txtEmployeesurname.text) = "" Then Return
+         '    The_Collection = modContactsDBI.Person_Get(Trim(txtEmployeesurname.text), const.contacttype_person)
+         '    The_Collection.Remove("sql_in_english")
+         '    If The_Collection.count Then
+         '       For Each Member In The_Collection
+         '          listview1.Add(Member!pk_view, Member!firstname & " " & Member!surname & " (" & Member!occupation & ")")
+         '       Next
+         '       listview1.Visible = True
+         '       listview1.Raise
+         '       listview1.tag = txtEmployeesurname
+         '    Else
+         '       listview1.Visible = False
+         '    End If
+      Case "accept"
+         
+         bExit = True
+         If listview1.Visible Then
+            listview1.MoveCurrent()             'match internal cursor to marquee
+         End If
+         txtEmployeesurname.text = The_Collection[listview1.Item.key]!surname
+         txtEmployeeFirstname.text = The_Collection[listview1.Item.key]!firstname
+         txtOccupation.text = The_Collection[listview1.Item.key]!occupation
+         Try fk_occupation = The_Collection[listview1.Item.key]!fk_occupation
+         fk_person = The_Collection[listview1.Item.key]!fk_person
+         Organisations[gvwOrganisations.row]!fk_person = fk_person
+         Try fk_category = The_Collection[listview1.Item.key]!fk_category
+         txtCategory.text = The_Collection[listview1.Item.key]!category
+         Try cmbEmployeeSex.index = The_Collection[listview1.Item.key]!fk_sex
+         Try cmbEmployeeTitle = The_Collection[listview1.Item.key]!fk_title
+         listview1.Visible = False
+         
+         tbSave.SetFocus()
+         bExit = False
+   End Select
+Catch            'couldn't find elegant way to cope with the fact that the list can be showing but no internal key is set.
+   txtEmployeesurname.text = ""
+   bexit = False  
+   
+End
+
+Public Function Read_Help(sfilename As String) As String
+   
+   Dim fn As File
+   Dim sString As String
+   
+   fn = Open sfilename For Input
+   Input #fn, sstring
+   Close #fn
+   Return sstring
+   
+End
+
+Public Sub Suburb_Select(S As Collection)
+   
+   bExit = True
+   With txtSuburb
+      .text = S!town
+      .pos = 0
+   End With
+   txtState.text = S!state
+   txtPostcode.text = S!postcode
+   fk_town = S!pk
+   teBranchMemo.SetFocus
+   bExit = False
+   
+End
+
+Public Sub Suburb_Get()
+   
+   Dim x As Integer
+   
+   With listview1
+      .Visible = False
+      .Clear
+   End With
+   If Trim$(txtSuburb.text) = "" Then Return
+   Suburbs = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Get_Town(Lower(Trim$(txtSuburb.text))))
+   If Suburbs.count Then
+      For Each suburb In Suburbs
+         listview1.Add(x, Suburb!town & " " & Suburb!state & " " & Suburb!postcode)
+         Inc x
+      Next
+      If Suburbs.count = 1 Then
+         Suburb_Select(suburb)            'uses the collection in suburb
+         Return
+      End If
+      With listview1
+         .Raise
+         .Visible = True
+         .tag = txtSuburb
+      End With
+   End If
+   
+End
+
+Public Sub ListView1_KeyPress()
+   '---------------------------------------------------
+   'The popup list has focus and user has hit enter key
+   '---------------------------------------------------   
+   
+   If Key.Code = Key.RETURN Then
+      ListView1_DblClick()
+   End If
+   
+End
+
+Public Sub ListView1_DblClick()
+   '------------------------------------------------------------
+   'User has double clicked (or pressed enter) on the popup list
+   '------------------------------------------------------------
+   
+   If listview1.MoveCurrent() Then Return
+   Select Case Last.Tag.tag
+      Case "category"
+         Category_Select(categories[listview1.Item.Key])
+      Case "occupation"
+         occupation_select(Occupations[listview1.Item.key])
+      Case "surname"
+         Persons_Existing_Select(persons[listview1.Item.key])
+      Case "suburb"
+         Suburb_Select(suburbs[listview1.Item.key])
+   End Select
+   listView1.visible = False
+Catch
+   Return 
+   
+End
+
+Public Sub EditArea_Organisation_Clear()
+   
+   bExit = True  
+   modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Organisation)
+   Vbox_Contacts_Organisation.tag = False   'if true the contacts data has changed
+   listview1.Visible = False  
+   bExit = False   
+   
+End
+
+Public Sub Save()
+   '------------------------------------------------------------
+   'Can be called by F12 rather than the click_event so read tag
+   '------------------------------------------------------------
+   
+   If tbSave.Tag = "save person" Or tbSave.tag = "save new person" Then
+      Person_Save(tbSave.tag)
+   Else
+      Organisation_Employees_Save
+   Endif
+   
+End
+
+Public Sub Organisation_Employees_Save()
+   '---------------------------------------------------------------------------------------
+   'Save Organisation or Employee can sometimes change both at the same time
+   'reloads the data using the same search criteria and finds the appropriate record by
+   'using the state of fk_organisation, fk_branch and fk_employee prior to the save
+   'Includes all validation for minimum data set and for specifics such as making sure
+   'a provider number is valid. If missing stuff like category or putting in say
+   'new occupation, popup dialogs will help the user.
+   '---------------------------------------------------------------------------------------
+   
+   Dim data_numbers As CRow
+   Dim data_numbers_persons As CRow
+   Dim organisation As CRow
+   Dim person As CRow
+   Dim employee As CRow
+   Dim branch As CRow
+   Dim address As CRow
+   Dim category As CRow
+   Dim communication As CRow
+   Dim link_branches_comm As CRow
+   Dim link_employee_comm As CRow
+   Dim R As Result
+   Dim occupation As CRow
+   Dim sSearchCriteria As String = Trim(txtSearchOrganisations_or_Persons.text)
+   
+   If Vbox_EditArea.Padding = 0 Then Return                                       'no data change indicators - no save
+   tbSave.Enabled = False                                                         'stop user clicking twice on button
+   modEditAreaHelpers.EditArea_ResetTextBox_BackColor(VBox_EditArea_Employee)     'remove any green colors
+   modEditAreaHelpers.EditArea_ResetTextBox_BackColor(VBox_EditArea_Organisation)
+   If Not Organisation_Valid() Then                                               'ensure minimum dataset, if not enough   
+      tbSave.Enabled = True                                                       'allow user to continue
+      Return
+   End If
+   If bEmployeeDisplayed = True Then                                              'if employed displayed or entered as well
+      If Not Employee_Valid() Then                                                 'ensure enough data to save
+         tbSave.Enabled = True                                                    'othewise exit subroutine
+         Return
+      End If
+   Endif
+   If VBox_Contacts_Employee.tag = True Then bEmployeeChanged = True             'tag set by form_contacts_employee when contact data changed
+   If Vbox_Contacts_Organisation.tag = True Then bOrganisationChanged = True     'tag set by form_contacts_organisations when contact data changed
+   If bOrganisationChanged Then 
+      '--------------------------------------------------------
+      ' CREATE TABLE contacts.data_organisations
+      ' (
+      '   pk serial NOT NULL,
+      '   organisation text NOT NULL,
+      '   deleted boolean DEFAULT false,
+      '   CONSTRAINT data_organisations_pkey PRIMARY KEY (pk )
+      ' )
+      ' WITH (
+      '   OIDS=FALSE
+      ' );
+      '---------------------------------------------------------
+      Organisation = New Crow
+      If fk_organisation Then
+         Organisation.put_unchanged(fk_organisation, "fk_organisation")
+      End If
+      organisation!organisation = Trim(txtOrganisation.text)
+      organisation.Save("contacts.data_organisations", "fk_organisation")
+      fk_organisation = organisation!fk_organisation
+      '-------------------------------------------------
+      ' Create TABLE contacts.lu_categories
+      ' (
+      '   pk serial Not Null,
+      '   category character varying(50) Not Null,
+      '   CONSTRAINT lu_categories_pkey PRIMARY KEY(pk)
+      ' )
+      ' With (
+      '   OIDS = False
+      ' );
+      ' Category can apply to organisation or employee, there is bug here
+      ' where despite a valid category fk_category = 0 FIXME WHEN TIME
+      ' quickn' dirty patch today
+      ' ------------------------------------------------
+      If fk_category = 0 Then  'will always be 0 if not valid category see Organisation_Valid()
+         category = New CRow
+         category!category = Trim(txtCategory.text)
+         category.Save("contacts.lu_categories", "fk_category")
+         fk_category = category!fk_category
+      Endif
+      '------------------------------------------------------------------------------------------
+      ' CREATE TABLE contacts.data_addresses
+      ' (
+      '   pk serial NOT NULL,
+      '   street1 text,
+      '   fk_town integer,
+      '   preferred_address boolean DEFAULT false,
+      '   postal_address boolean DEFAULT false,
+      '   head_office boolean DEFAULT false,
+      '   geolocation point, -- geographical location latitude and longitude
+      '   country_code character(2), -- pointer to lu_country
+      '   fk_lu_address_type integer,
+      '   deleted boolean DEFAULT false, -- IF False then this address has had its link removed
+      '   street2 text,
+      '   CONSTRAINT data_addresses_pkey PRIMARY KEY (pk )
+      ' )
+      ' WITH (
+      '   OIDS=FALSE
+      ' );
+      '------------------------------------------------------------------------------------------
+      If Trim(txtStreet1.text) = "" And fk_town = 0 Then
+         address = Null
+      Else
+         address = New CRow
+         If fk_address <> 0 Then
+            address.put_unchanged(fk_address, "fk_address")
+         End If
+         address!street1 = Trim(txtStreet1.text)
+         address!street2 = Trim(txtStreet2.text)
+         If fk_town <> 0 Then address!fk_town = fk_town
+         address!country_code = "AU" 'FIXME make me configurable
+         If chkHeadOffice.value = True Then
+            address!head_office = True
+         Else
+            address!head_office = False
+         End If
+         If chkPostal.Value = True Then
+            address!postal_address = True
+         Else
+            address!postal_address = False
+         End If
+         address.Save("contacts.data_addresses", "fk_address")
+      End If
+      branch = New CRow
+      If fk_branch <> 0 Then
+         branch.put_unchanged(fk_branch, "fk_branch")
+      End If
+      branch!fk_organisation = fk_organisation
+      Try branch!fk_address = address!fk_address   'address can be null
+      branch!branch = Trim(txtBranch.text)
+      branch!fk_category = fk_category
+      branch!memo = Trim(teBranchMemo.Text)
+      branch.Save("contacts.data_branches", "fk_branch")
+      fk_branch = branch!fk_branch
+      '------------------------------------------------------------------------------------------------------------------------
+      'Save in numbers, the address specific numbers go into data_numbers ie fixed to a location not transportable
+      '------------------------------------------------------------------------------------------------------------------------
+      ' CREATE TABLE contacts.data_numbers
+      ' (
+      '   fk_person integer,
+      '   fk_branch integer, -- can be NULL for individuals in solo practices who aren't part of an 'organisation' in our system.
+      '   provider_number text, -- the Medicare Australia alphanumeric provider number.
+      '   australian_business_number text,
+      '   pk serial NOT NULL,
+      '   hpio text, -- Health Provider Identifier - Organisation
+      '   CONSTRAINT data_numbers_pkey PRIMARY KEY (pk ),
+      '   CONSTRAINT data_numbers_fk_branch_fkey FOREIGN KEY (fk_branch)
+      '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+      '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+      '   CONSTRAINT data_numbers_fk_person_fkey FOREIGN KEY (fk_person)
+      '       REFERENCES contacts.data_persons (pk) MATCH SIMPLE
+      '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+      '   CONSTRAINT data_numbers_hpio_check CHECK (hpio ~ '^[0-9]+$'::text),
+      '   CONSTRAINT employees_no_hpio CHECK (NOT (hpio IS NOT NULL AND fk_person IS NOT NULL AND fk_branch IS NOT NULL)),
+      '   CONSTRAINT one_of_branch_person CHECK (NOT (fk_branch IS NULL AND fk_person IS NULL))
+      ' )
+      ' WITH (
+      '   OIDS=FALSE
+      ' );
+      '-------------------------------------------------------------------------------------------------------------------------------
+      R = modDBConnect.exec_query("Select * from contacts.data_numbers where fk_branch = " & branch!fk_branch & " AND fk_person is null")
+      If R.count Then                                                                     'the organisation already an entry in data numbers
+         data_numbers = New CRow
+         data_numbers.put_unchanged(R!pk, "fk_data_numbers")
+         data_numbers!australian_business_number = Trim(txtAustralianBusinessNumber.text) 'will revert to null if deleted
+         data_numbers!hpio = Trim(TxtHealthProviderNumberOrganisation.text)               'Health Provider Identifier - Organisation
+         data_numbers.Save("contacts.data_numbers", "fk_data_numbers")
+      Else                                                                                'the organisation does not yet have an entry in data numbers
+         If Organisation_Has_Data_for_DataNumbers() Then                                  'if there is data to save here
+            data_numbers = New CRow
+            data_numbers!fk_branch = Branch!fk_branch
+            data_numbers!australian_business_number = Trim(txtAustralianBusinessNumber.text)
+            data_numbers!hpio = Trim(TxtHealthProviderNumberOrganisation.text)     
+            data_numbers.Save("contacts.data_numbers", "fk_data_numbers")
+         Endif
+      End If
+      '--------------------------------------------------------------------------------------
+      'Next save any communications for the organisation eg phone numbers, emails, web url's
+      '-------------------------------------------------------------------------------------
+      form_contacts_organisations.Save(fk_branch)
+   End If
+   '-------------------------------------------------------------------------------------
+   'An employee may be simultaneously displayed and being edited or added, deal with that
+   '-------------------------------------------------------------------------------------
+   If bEmployeeDisplayed = True And bEmployeeChanged Then 
+      '------------------------------------------------------------------------------------
+      ' CREATE TABLE contacts.data_persons
+      ' (
+      '   pk serial NOT NULL,
+      '   firstname text,
+      '   surname text,
+      '   salutation text,
+      '   birthdate date,
+      '   fk_ethnicity integer,
+      '   fk_language integer,
+      '   memo text,
+      '   fk_marital integer DEFAULT 0,
+      '   fk_title integer DEFAULT 7,
+      '   fk_sex integer,
+      '   country_code text, -- This code if not null refers to common.lu_countries and is the country of origin or the patient, normally country of birth
+      '   fk_image integer,
+      '   retired boolean DEFAULT false,
+      '   fk_occupation integer, -- maybe a temporary column - at the moment only used to record a single occupation ...
+      '   deleted boolean DEFAULT false,
+      '   deceased boolean DEFAULT false,
+      '   date_deceased date,
+      '   language_problems boolean DEFAULT false, -- so named in case EasyGP used outside of english speaking country, ie this field could have...
+      '   surname_normalised text,
+      '   CONSTRAINT data_persons_pkey PRIMARY KEY (pk )
+      ' )
+      ' WITH (
+      '   OIDS=FALSE
+      ' );
+      ' employee fk_image not  used
+      ' -----------------------------------------------------------------------------
+      If fk_occupation = 0 Then                                                   'person must have occupation, this is enforced
+         occupation = New CRow
+         occupation!occupation = Trim(txtOccupation.text)
+         occupation.Save("common.lu_occupations", "fk_occupation")
+         fk_occupation = occupation!fk_occupation
+      End If
+      person = New CRow
+      If fk_person Then
+         person.put_unchanged(fk_person, "fk_person")
+      End If
+      person!firstname = Trim(txtEmployeeFirstname.text)
+      person!surname = Trim(txtEmployeeSurname.text)
+      person!salutation = Trim(txtEmployeeSalutation.text)
+      person!fk_title = cmbEmployeeTitle.Index
+      person!fk_occupation = fk_occupation
+      person!fk_sex = cmbEmployeeSex.Index
+      person!fk_marital = cmbemployeeMarital.Index
+      If chkEmployeeRetired.value Then
+         person!retired = True
+      Else
+         person!retired = False
+      End If
+      If chkDeceased.value = True Then
+         person!deceased = True
+      Else
+         person!deceased = False
+      Endif
+      If Trim(txtEmployeeBirthdate.text) <> "" Then
+         person!birthdate = Format(Val(txtEmployeeBirthdate.text), "dd/mm/yyyy")
+      End If
+      person.Save("contacts.data_persons", "fk_person")
+      
+      employee = New CRow
+      If fk_employee Then
+         employee.put_unchanged(fk_employee, "fk_employee")
+      End If
+      If chkLeftOrganisation.value = True Then
+         employee!fk_status = const.StaffStatus_LeftOrganisation
+      Else
+         employee!fk_status = const.StaffStatus_Active
+      End If
+      employee!fk_branch = fk_branch
+      employee!fk_person = person!fk_person
+      employee!fk_occupation = fk_occupation
+      employee!memo = Trim(txtEmployeeMemo.text)
+      employee.Save("contacts.data_employees", "fk_employee")
+      fk_employee = employee!fk_employee
+      '-------------------------------------------------------------------------------------------------------------------------
+      'Does this employee (person) have an entry in contacts.data_numbers? for their provider number
+      '-------------------------------------------------------------------------------------------------------------------------
+      ' CREATE TABLE contacts.data_numbers
+      ' (
+      '   fk_person integer,
+      '   fk_branch integer, -- can be NULL for individuals in solo practices who aren't part of an 'organisation' in our system.
+      '   provider_number text, -- the Medicare Australia alphanumeric provider number.
+      '   australian_business_number text,
+      '   pk serial NOT NULL,
+      '   hpio text, -- Health Provider Identifier - Organisation
+      '   CONSTRAINT data_numbers_pkey PRIMARY KEY (pk ),
+      '   CONSTRAINT data_numbers_fk_branch_fkey FOREIGN KEY (fk_branch)
+      '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+      '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+      '   CONSTRAINT data_numbers_fk_person_fkey FOREIGN KEY (fk_person)
+      '       REFERENCES contacts.data_persons (pk) MATCH SIMPLE
+      '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+      '   CONSTRAINT data_numbers_hpio_check CHECK (hpio ~ '^[0-9]+$'::text),
+      '   CONSTRAINT employees_no_hpio CHECK (NOT (hpio IS NOT NULL AND fk_person IS NOT NULL AND fk_branch IS NOT NULL)),
+      '   CONSTRAINT one_of_branch_person CHECK (NOT (fk_branch IS NULL AND fk_person IS NULL))
+      ' )
+      ' WITH (
+      '   OIDS=FALSE
+      ' );
+      '---------------------------------------------------------------------------------------------------------------------------
+      R = modDBConnect.exec_query("Select * from contacts.data_numbers where fk_person = " & person!fk_person & " AND fk_branch=" & fk_branch)
+      If R.count Then                  'the employee (person) already an entry in data numbers
+         data_numbers = New CRow      
+         data_numbers.put_unchanged(R!pk, "fk_data_numbers")
+         data_numbers!provider_number = Trim(TxtProviderNumber.text)               'Health Provider Identifier - Individual
+         data_numbers.Save("contacts.data_numbers", "fk_data_numbers")
+      Else                                                                              'no data numbers entry for employee
+         If Employee_Has_Data_For_DataNumbers() Then                                    'Is there something to save?
+            data_numbers = New CRow
+            data_numbers!fk_branch = fk_branch
+            data_numbers!fk_person = person!fk_person 
+            data_numbers!provider_number = Trim(TxtProviderNumber.text)               'Health Provider Identifier - Individual
+            data_numbers.Save("contacts.data_numbers", "fk_data_numbers")
+         Endif
+      End If   
+      '------------------------------------------------------------------------------------------------
+      'Now save the employees 'fixed numbers here hpii
+      '----------------------------------------------------------------------------------------------
+      ' CREATE TABLE contacts.data_numbers_persons
+      ' (
+      '   pk serial NOT NULL,
+      '   fk_person integer NOT NULL,
+      '   prescriber_number text, -- the Medicare Australia numeric prescriber number.
+      '   hpii text, -- Health Provider Identifier - Individual - numeric
+      '   CONSTRAINT data_numbers_persons_pkey PRIMARY KEY (pk ),
+      '   CONSTRAINT data_numbers_fk_person_fkey FOREIGN KEY (fk_person)
+      '       REFERENCES contacts.data_persons (pk) MATCH SIMPLE
+      '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+      '   CONSTRAINT data_numbers_hpii_check CHECK (hpii ~ '^[0-9]+$'::text),
+      '   CONSTRAINT data_numbers_prescriber_number_check CHECK (prescriber_number ~ '^[0-9]+$'::text)
+      ' )
+      ' WITH (
+      '   OIDS=FALSE
+      ' );
+      ' FIXME put the keys in the view to make this easier
+      '------------------------------------------------------------------------------------------------ 
+      R = modDBConnect.exec_query("Select * from contacts.data_numbers_persons where fk_person =" & person!fk_person)
+      If R.count Then                                                                     'the organisation already an entry in data numbers
+         data_numbers_persons = New CRow
+         data_numbers_persons.put_unchanged(R!pk, "fk_data_numbers")
+         data_numbers_persons!hpii = Trim(TxtHealthProviderNumberIndividual.text)
+         data_numbers_persons.Save("contacts.data_numbers_persons", "fk_data_numbers")
+      Else                                                                                'the organisation does not yet have an entry in data numbers
+         If Employee_Has_Data_for_Data_Numbers_Persons() Then                                      'No data saved to this table yet, if there is data to save here
+            data_numbers_persons = New CRow
+            data_numbers_persons!fk_person = person!fk_person
+            data_numbers_persons!hpii = Trim(TxtHealthProviderNumberIndividual.text)
+            data_numbers_persons.Save("contacts.data_numbers_persons", "fk_data_numbers")
+         End If
+      End If     
+      form_contacts_employee.Save(, person!fk_person)                                         'save communication/contacts
+   End If
+   modDBConnect.CommitTrans()
+   Vbox_EditArea.Padding = 0
+   bOrganisationChanged = False  
+   bEmployeeChanged = False   
+   tbSave.foreground = Color.Black
+   txtSearchOrganisations_or_Persons.text = sSearchCriteria
+   If sSearchCriteria <> "" Then                                                       'if search text, this is an edit
+      Organisations_Employees_Get_By_Name                                              'refresh organisations by same search criteria
+   Else                                                                                'a new organisation or edited employee
+      Organisations_Get_By_Keys                                                        'find the organisation by the key's just created
+   End If                                                                              'either way, go to correct row using the keys
+   gvwOrganisations_find_row_by_keys                                                   'match fk_organisation, fk_branch, fk_employee
+   
+End
+
+Public Sub gvwOrganisations_Change_ForeGround_Text_Color(iExludingRow As Integer)
+   'fixme probably will not use this
+   
+   Dim row As Integer
+   Dim x As Integer
+   
+   For row = 0 To gvwOrganisations.Rows.Count - 1
+      If row <> iExludingRow Then
+         For x = 0 To gvwOrganisations.Columns.count - 1
+            gvwOrganisations[row, x].Foreground = Color.LightGray
+         Next
+      End If
+   Next
+   
+End
+
+Public Sub gvwOrganisations_find_row_by_keys()
+   '--------------------------------------------------------------
+   'the organisations collectin is zero based = so is the gridview
+   'match keys to set the grid row after a save
+   '--------------------------------------------------------------
+   
+   Dim x As Integer
+   
+   For Each organisation In Organisations
+      If organisation!fk_organisation = fk_organisation Then        'match organisation
+         If organisation!fk_branch = fk_branch Then                 'match branch
+            If fk_employee Then                                     'if there is an employee
+               If organisation!fk_employee = fk_employee Then       'match to emplyee
+                  Goto SetRow
+               Endif
+            Else                                                    'otherwise
+               Goto SetRow                                          'just much on branch
+            Endif
+         Endif
+      Endif
+      Inc x
+   Next
+   Return
+   
+SetRow:
+   With gvwOrganisations
+      .row = x
+      .SetFocus()
+   End With
+   gvwOrganisations_Select()
+   
+End
+
+Public Sub Organisation_New()
+   '-------------------------------------------------------
+   'User has decided to add a new organisation
+   'Clear the input areas including the employee of course
+   '------------------------------------------------------   
+   
+   bExit = True
+   fk_organisation = 0
+   fk_address = 0
+   fk_branch = 0
+   fk_town = 0
+   fk_employee = 0
+   fk_category = 0
+   fk_person = 0
+   fk_occupation = 0
+   txtSearchByOccupation.text = ""
+   txtSearchOrganisations_or_Persons.text = ""
+   txtSearchByCategory.text = ""
+   form_clear                                             'clear all input areas, grids, remove lists, stop timers
+   'tbBranchAdd.Enabled = False   
+   ' tbAddPerson.Enabled = False  
+   HSplit_EditArea_Organisations.Visible = True           'make organisations/employees visible
+   form_persons.Visible = False                           'make the persons form invisible
+   Vbox_EditArea.Enabled = True                           'enable the data entry edit area's
+   bexit = True                                           'stop the EditArea_TextBox change event triggering and hence the data changed sub
+   txtBranch.text = "HEAD OFFICE"                         'branch default to head office
+   txtBranch.Enabled = False                              'Sorry Horst, user not allowed to change this
+   chkHeadOffice.value = True                             'This will be head office
+   chkHeadOffice.Enabled = False                          'Sorry Horst, you can't change this
+   chkPostal.enabled = True                               'default this to the mailing address
+   With tbSave
+      .Enabled = True
+      .Tag = "save organisation"
+   End With
+   bEmployeeDisplayed = False
+   bExit = False
+   txtOrganisation.SetFocus                               'Set focus for first data entry to the organisation textbox
+   
+End
+
+Public Sub Branch_New()
+   '-----------------------------------------------------------------------
+   'User wants to add a new branch and has selected this from the popup menu
+   '------------------------------------------------------------------------   
+   
+   Dim sOrganisation As String
+   Dim sCategory As String
+   Dim sMsg As String
+   Dim tempfile As String
+   Dim fk_category_organisation As Integer
+   Dim x As Integer
+   
+   EditArea_Employee_Clear()                           'visually clear the employee edit areas
+   fk_employee = 0                                     'hence won't be save
+   Vbox_EditArea_Employee.Enabled = False              'don't allow user to type over there
+   form_contacts_employee.Form_Clear                   'make sure no phone numbers of previous employee showing
+   VBox_Contacts_Employee.Enabled = False              'and disable the employee contacts input edit area
+   With form_contacts_organisations
+      .Form_Clear              'clear existing phone numbers for organisation, new for branch
+      .comm_new()
+   End With
+   
+   With lblBottomLeftHeading
+      .text = "Add Branch to " & txtOrganisation.Text
+      .Foreground = Color.red
+   End With
+   sCategory = txtCategory.Text                 'we have to clear the editing area, so keep the string for category
+   sOrganisation = txtOrganisation.Text         'ditto for the organisation
+   fk_category_organisation = fk_category       'and the category key
+   bExit = True
+   bEmployeeDisplayed = False
+   EditArea_Organisation_Clear()                'clear all textboxes on the screen
+   EditArea_Employee_Clear()
+   txtOrganisation.Enabled = False              'Do not allow editing of the organisation name
+   ' txtStreet1.Enabled = True
+   ' txtStreet2.Enabled = True
+   ' txtSuburb.Enabled = True
+   ' txtPostcode.Enabled = True
+   ' txtState.Enabled = True
+   '  lblOrganisation.text = "Add new branch to the organisation"
+   'txtBranch.Enabled = True
+   chkHeadOffice.Enabled = False                'branch cannot be a head office
+   tbSave.Enabled = True
+   txtOrganisation.text = sOrganisation         'put back the organisation name
+   txtCategory.text = sCategory
+   chkPostal.Enabled = True
+   fk_address = 0                               'reset keys except for fk_organisation
+   fk_town = 0
+   fk_employee = 0
+   fk_person = 0
+   fk_branch = 0
+   fk_category = fk_category_organisation
+   bExit = False
+   form_contacts_organisations.comm_new
+   tbSave.Tag = "save organisation"
+   txtBranch.SetFocus()
+   
+End
+
+Public Sub branch_delete()
+   
+End
+
+Public Function Organisation_Valid() As Boolean
+   '-----------------------------------------
+   'Returns True if the organisation is Valid
+   '------------------------------------------   
+   
+   Dim sMsg As String
+   Dim category As Collection
+   
+   If listview1.Visible Then
+      listview1.SetFocus
+      Return
+   Endif
+   If txtOrganisation.text = "" Then
+      sMsg = "Please enter the name of the organisation before saving"
+      txtOrganisation.SetFocus()
+      Goto MissingData
+   End If
+   If txtBranch.text = "" Then
+      sMsg = "Please enter the name of the branch before saving"
+      If chkHeadOffice.value = True Then
+         txtBranch.text = "HEAD OFFICE"
+      End If
+      txtBranch.SetFocus()
+      Goto MissingData
+   End If
+   
+   If txtCategory.text = "" Then
+      sMsg = "Each entry in the contacts database must be allocated a category.\n\n"
+      "This is extremely important, and should be an accurate reflection of the"
+      "organisations function, so please think carefully before allocating this.\n\n"
+      "If the category does not exist, it will be created when the record is saved."
+      txtCategory.SetFocus()
+      Goto MissingData
+   Else
+      '---------------------------------------------------------------------------------
+      'though we shouldn't have to do this, the gambas lost focus event does not trigger
+      'when the control recieving focus is e.g button, so the EditArea_LostFocus() event
+      'will not have triggered, anyway also check the category was not an accident eg
+      'a typo. Also I know I shouldn't need to re-fetch the fk_category but.....
+      'user could eg have category of Hospital chosen, hence as a fk_category but then
+      'types a little further to make this Hospital - Public - the key is still there for
+      'the original Hospital
+      '----------------------------------------------------------------------------------
+      bExit = True
+      SpellCheck_TextBox(txtCategory)
+      category = modContactsDBI.Category_Get(Trim(txtCategory.text)) 'returns single category or null
+      If Not IsNull(category) Then 
+         fk_category = category!pk
+      Else
+         If Message.Question("Please confirm that you wish to add a new category:\n\n" & txtCategory.text, "Yes", "No") = 2 Then
+            txtCategory.SetFocus()
+            Return
+         End If 
+         fk_category = 0
+      End If
+   End If
+   Return True
+   
+MissingData:
+   Message.Info(sMsg)
+   Return False
+   
+End
+
+Public Function Organisation_Has_Data_for_DataNumbers() As Boolean
+   '--------------------------------------------------
+   'If there is data_numbers stuff to save return true
+   'here only   australian_business_number or hpio
+   '--------------------------------------------------
+   
+   If Trim(txtAustralianBusinessNumber.text) <> "" Then Return True
+   If Trim(TxtHealthProviderNumberOrganisation.text) <> "" Then Return True
+   Return 'false  
+   
+End
+
+Public Function Employee_Has_Data_For_DataNumbers() As Boolean
+   '---------------------------------------------------------
+   'Returns true if this employee has data to go into
+   'contacts.data_numbers table, sub because could add others
+   '--------------------------------------------------------- 
+   
+   If Trim(txtProviderNumber.text) <> "" Then Return True
+   Return 'false  
+   
+End
+
+Public Function Employee_Has_Data_for_Data_Numbers_Persons() As Boolean
+   '---------------------------------------------------------
+   'Returns true if there is data to be put in the
+   'contacts.data_numbers table
+   'txtproviders not yet on this form probably shouldn't be
+   '--------------------------------------------------------
+   
+   ' If Trim(txtPrescribernumber.text) <> "" Then Return True
+   If Trim(TxtHealthProviderNumberIndividual.text) <> "" Then Return True
+   Return 'false  
+   
+End
+
+Public Function Employee_Valid() As Boolean
+   '------------------------------------------
+   'Is there enough data to save the employee?
+   'return true if yes, includes validating
+   'a provider number and occupation
+   '------------------------------------------   
+   
+   Dim sMsg As String
+   Dim occupation As Collection
+   
+   If listview1.Visible Then  'eg typed in occupation and not selected.
+      listview1.SetFocus
+      Return
+   Endif
+   If Trim(txtEmployeeFirstname.text) = "" Then        'insist on firstname
+      txtEmployeeFirstname.SetFocus
+      Return False
+   End If
+   If Trim(txtEmployeeSurname.text) = "" Then          'insist on suranme
+      txtEmployeeSurname.SetFocus
+      Return False
+   End If
+   If Trim(txtEmployeeBirthdate.text) <> "" Then       'if have a birthdate must be valid
+      If Not IsDate(txtEmployeeBirthdate.text) Then
+         txtEmployeeBirthdate.SetFocus()
+         Return False
+      End If
+   End If
+   If Trim(txtProviderNumber.text) <> "" Then
+      If modUtil.Provider_Number_Check(Trim(txtProviderNumber.text)) = "*INVALID*" Then
+         Message.Info("The provider number is invalid")
+         txtProviderNumber.SetFocus
+         Return
+      Endif
+   Endif
+   
+   If Trim(txtOccupation.text) = "" Then
+      sMsg = "Please enter an occupation for this employee."
+      txtOccupation.SetFocus
+      Message.Info(sMsg)
+      Return
+   Endif
+   '------------------------------------------------------------------------------------------ 
+   'Must check occupation every time, e.g an fk_occupation could exist, even if the
+   'user altered an occupation e.g
+   'existing occupation could be cardiologist, they then realised the person was 
+   'cardiologist - interventional, simply added the second bit on, the fk_occupation is
+   'then invalid fixme - remove fk-occupation through entire easygp data entry and always check
+   '-------------------------------------------------------------------------------------------
+   SpellCheck_TextBox(txtOccupation)                                  'popup spelling correction dialog if needed
+   occupation = modCommonDBI.Occupation_Get(Trim(txtOccupation.text)) 'check if occupation is in the database
+   If Not IsNull(occupation) Then                                             'if it is retrieive the key
+      fk_occupation = occupation!pk
+   Else
+      smsg = "The occupation:\n\n " & Trim(txtOccupation.text) & "\n\nwas not found in the database.\n\n"
+      "Please check the spelling and if ok confirm you wish to add this occupation to the database."
+      If Message.Question(sMsg, "Yes - Add Occupation", "Cancel") = 2 Then
+         txtOccupation.SetFocus
+         Return
+      End If
+      fk_occupation = 0 'reset to 0 see the case scenario above where it could be non zero and occupation not found
+   Endif
+   
+   Return True
+   
+End
+
+Public Sub Employee_Add()
+   '------------------------------------------------------------------------------------
+   'Add a new employee to a branch of the organisation, either head office or any branch
+   'we have the keys fk_organisation and fk_branch
+   '------------------------------------------------------------------------------------  
+   
+   Dim msg As String
+   
+   If gvwOrganisations.rows.count = 0 Then Return
+   If row_in_view!fk_employee <> 0 Then
+      msg = "You may not link a new employee to an existing employee\n\n"
+      "Please select an organisation or a branch or department prior to adding an employee"
+      Message.Info(Msg)
+      Return
+   End If
+   EditArea_Employee_Clear()                            'clear the input area      
+   VBox_EditArea_Employee.Enabled = True                  
+   fk_employee = 0
+   With lblBottomRightHeading
+      .text = "Add Employee to: " & txtBranch.Text
+      .Foreground = Color.Red 
+   End With
+   bEmployeeDisplayed = True
+   tbSave.Tag = "save employee"
+   With form_contacts_employee
+      .Form_Clear
+      .comm_new
+   End With
+   VBox_Contacts_Employee.Enabled = True  
+   txtEmployeeSurname.SetFocus
+   
+End
+
+Public Sub Organisations_Get_By_Keys()
+   '-----------------------------------------------------------------
+   'Reload the organisations list by using keys only
+   'Used after saving a new organisation to reload that into the grid
+   'create a zero based collection to match to grid rows 0-n
+   '------------------------------------------------ ----------------
+   
+   organisations = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Organisations_Employees_Get_By_Keys(fk_organisation, fk_branch, fk_employee))
+   If Not IsNull(Organisations) Then Organisations_Refresh_List()
+   
+End
+
+Public Sub Organisations_By_Category_Get()
+   
+   Dim sql As String = "Select * from contacts.vworganisationsemployees where category ILIKE $$%" & Trim(txtSearchByCategory.text) & "%$$"
+   
+   organisations = modUtil.Copy_Collection_Keyed_Sequentially(modDBConnect.exec_query_collection(sql))
+   'organisations = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Organisations_Get_By_Category(Trim(txtSearchByCategory.text)))
+   If Not IsNull(Organisations) Then Organisations_Refresh_List()
+   
+End
+
+Public Sub Organisations_Employees_Get_By_Name()
+   '------------------------------------------------------------------------------
+   'This event is called by Timer1_Timer, the user has been searching
+   'for either organisation, person or type or occupatoin or organisation category
+   'Fetch a list of organisations and employees from the backend
+   'create a zero based collection to match to grid rows 0-n
+   '------------------------------------------------------------------------------  
+   Dim Orgs As Collection
+   
+   If bExit Then Return
+   orgs = modContactsDBI.organisations_employees_get(Trim(txtSearchOrganisations_or_Persons.text))
+   Organisations = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.organisations_employees_get(Trim(txtSearchOrganisations_or_Persons.text)))
+   If Organisations.count = 0 Then
+      Organisations = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Employees_In_Organisations_Find(Trim(txtSearchOrganisations_or_Persons.text)))
+   Endif
+   If Not IsNull(Organisations) Then Organisations_Refresh_List()
+   
+End
+
+Public Sub Organisations_Show_Duplicates()
+   
+   If Trim(txtOrganisation.text) = "" Then Return
+   The_Collection = modContactsDBI.Organisations_Get(Trim(txtOrganisation.text))
+   listview1.Clear
+   If The_Collection.count Then
+      For Each Member In The_Collection
+         listview1.Add(Member!pk_view, Member!organisation & " " & Member!branch & " " & Trim(Member!street1 & " " & Member!street2) & " " & Member!town & " (" & Member!category & ")")
+      Next
+      listview1.Visible = True
+      listview1.Raise
+      listview1.tag = txtOrganisation
+   Else
+      listview1.Visible = False
+   End If
+   
+End
+
+Public Sub EditArea_Employee_Clear()
+   
+   bExit = True  
+   modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Employee)
+   listview1.Visible = False  
+   VBox_Contacts_Employee.tag = False   'if True the contacts data has changed
+   bExit = False
+   
+End
+
+Public Sub Organisations_Refresh_List()
+   '---------------------------------------------------------------------------------
+   'Loads into the gridview all organisations and employees for txtSearch criteria
+   'the collection is an heirachical list of organisations, branches and employees
+   'the display is ordered like this:
+   'Organisation Branch (horst hates this)
+   '             --employee
+   'If only employee's are returned by the search the display is the same
+   'which each employee listed under their place of work             
+   '---------------------------------------------------------------------------------
+   
+   Dim x As Integer
+   Dim sTemp As String
+   Dim sStatusMessage As String
+   Dim iLastorganisation_pk As Integer
+   Dim ilastBranch As Integer
+   Dim sText As String
+   Dim sAddress As String
+   
+   With gvwOrganisations
+      .Clear
+      .Rows.count = 0
+      .Columns.count = 2
+   End With
+   If Organisations.count Then                                                       'If organisations exist do all the work
+      For Each row_in_view In Organisations
+         sText = ""
+         sAddress = ""
+         sTemp = ""
+         Inc gvwOrganisations.Rows.Count
+         gvwOrganisations.Rows[x].height = -1
+         If iLastorganisation_pk <> row_in_view!fk_organisation Then
+            iLastorganisation_pk = row_in_view!fk_organisation
+            With gvwOrganisations[x, 0]
+               .wordwrap = True
+               .text = row_in_view!organisation & "  "
+               .Alignment = Align.TopLeft
+            End With
+         End If
+         If ilastBranch <> row_in_view!fk_branch Then  
+            If row_in_view!head_office = True Then                            
+               sText = "<B>" & "HEAD OFFICE" & "</B>"
+            Else
+               sText = "<B>" & row_in_view!branch & "</B>"
+            End If
+            ilastBranch = row_in_view!fk_branch
+         End If
+         If Len(row_in_view!surname) Then 'FIXME BAD CODE
+            If sText <> "" Then sTemp = "<BR>"
+            sTemp &= "-- " & row_in_view!firstname & " " & row_in_view!surname & Space$(Max(35 - Len(Trim(row_in_view!firstname & " " & row_in_view!surname)), 1))
+            If Not IsNull(row_in_view!occupation) Then
+               sTemp &= " (" & row_in_view!occupation & ")"
+            End If
+            sText &= sTemp
+            sTemp = ""
+            If row_in_view!fk_status = const.StaffStatus_LeftOrganisation Then
+               sTemp = "<BR>   :" & "<small><i>*** NO LONGER AT THIS ADDRESS ***</I></small> "
+            End If
+            If row_in_view!retired = True Then
+               If Left(sTemp, 4) <> "<BR>" Then
+                  sTemp &= "<BR>   :"
+               End If
+               sTemp &= "<I><small>*** RETIRED ***</small></I>"
+            Endif
+            If row_in_view!deceased = True Then
+               If Left(sTemp, 4) <> "<BR>" Then
+                  sTemp &= "<BR>   :"
+               Endif
+               sTemp &= "<I><small> *** DECEASED ***</small></I>"
+            Endif
+            If sTemp <> "" Then sText &= sTemp
+         Else
+            sAddress = Trim(Trim(row_in_view!street1 & " " & row_in_view!street2) & " " & row_in_view!town & " " & row_in_view!postcode)
+            If sAddress <> "" Then
+               sText &= "<BR>" & sAddress
+            Endif
+         End If
+         With gvwOrganisations[x, 1]
+            .WordWrap = True
+            .RichText = sTExt
+            .Alignment = Align.Left
+         End With
+         gvwOrganisations.Rows[x].height = -1
+         Inc x
+      Next
+      VSplit_DataEntry.Enabled = True
+      gvwOrganisations.Enabled = True
+      lblmeasure.font = gvwOrganisations.Font
+      modUtil.Gridview_Columns_Set_Size(gvwOrganisations, lblmeasure)
+   End If
+   
+End
+
+Public Sub gvwOrganisations_Select()
+   '----------------------------------------------------------------------------------
+   'User has clicked on an row in the grid, prompt to save unsaved data
+   'the flag bPromptedSave later  used in Save to determine if move to the changed row
+   'if false we will move to the row saved
+   '-----------------------------------------------------------------------------------
+   
+   If bExit Or gvwOrganisations.Rows.count = 0 Then Return
+   Check_Unsaved_Data                                     'save any unsaved data
+   bexit = True      
+   gvwPersons.UnSelectAll                                 'remove all the marquee(s) from the grid
+   bexit = False                                          'de-select the persons listbexit
+   With gvwpersons
+      .Background = Color.RGB(254, 254, 254)
+   End With
+   tbOrganisationAdd.Enabled = True
+   With tbSave
+      .tag = "save organisation"
+      .Tooltip = "Save the organisation's details"
+   End With
+   If gvwOrganisations.Background = Color.RGB(254, 254, 254) Then     'if greyed out have been using the persons list
+      With gvwOrganisations
+         '  .row = 0                                        'set row to 0
+         .Background = Color.White                       'alert user by making background white
+         .Foreground = Color.Black
+      End With
+   End If
+   Organisation_Display()
+   
+End
+
+Public Sub Check_Unsaved_Data()
+   '----------------------------------
+   'Prompt  user to save  unsaved data
+   '----------------------------------
+   
+   If Vbox_EditArea.Padding = 1 Then
+      sMsgGlobal = "Do you wish to save the altered data for:\n\n"
+      sMsgGlobal &= Trim(txtOrganisation.text) & "\n" & Trim(txtBranch.text) & "\n\""
+      '      If Vbox_EditArea_Employee.Visible Then
+      '     sMsgGlobal &= cmbEmployeeTitle.text & " " & Trim(txtEmployeeFirstname.text) & " " & Trim(txtEmployeeSurname.text)
+      '  Endif
+      If Message.Question(sMsgGlobal, " Yes ", " No ") = 1 Then
+         Save()
+         Return
+      Endif
+   End If
+   
+End
+
+Public Sub Organisation_Display()
+   '---------------------------------------------------------------------------------------------------
+   'Displays a row from the gridview of either organisation (branch) and or person who sis the employee
+   '---------------------------------------------------------------------------------------------------
+   
+   If gvwOrganisations.rows.Count = 0 Or gvwOrganisations.row = -1 Then Return
+   
+   row_in_view = Organisations[gvwOrganisations.row] '                 'set the collection
+   EditArea_Employee_Clear                                             'clear input area for employees
+   EditArea_Organisation_Clear                                         'clear input area for organisations
+   form_contacts_organisations.Form_Clear                              'clear embedded contacts for organisation
+   form_contacts_employee.Form_Clear                                   'clear embedded contact for for the employee
+   bExit = True                                                        'prevent re-entry into referenced routines
+   listview1.Visible = False                                           'could have been visible e.g user adding record, then just clicks on list without saving
+   Vbox_EditArea.Enabled = True                                        'enable the data entry edit area's
+   fk_organisation = row_in_view!fk_organisation                       'set or zero the keys
+   fk_branch = row_in_view!fk_branch
+   fk_person = 0
+   fk_occupation = 0
+   fk_employee = 0
+   fk_town = 0                                                          'this row may not have a town
+   fk_category = 0
+   fk_address = 0                                                   'and may not have an address
+   If row_in_view!fk_employee = 0 Then                              'if  no employee, don't allow data entry
+      bEmployeeDisplayed = False                                    'set the employee visible flag , used in Save()
+      VBox_EditArea_Employee.Enabled = False                        'clear the employee input textboxes from last record
+      lblBottomRightHeading.text = ""                               'this label display's the employee's name
+   Else                                                             'otherwise this row in the collection is for an employy
+      bEmployeeDisplayed = True                                     'set employee visible flag, used in Save()
+      VBox_EditArea_Employee.Enabled = True                         'allow user to enter/change data
+      With lblBottomRightHeading
+         .text = "Employee: " & row_in_view!wholename  'show user the name of employee they are viewing/editing
+         .Foreground = Color.Black
+      End With
+      fk_employee = row_in_view!fk_employee                         'set the keys for the employee
+      fk_person = row_in_view!fk_person                             'the person
+      fk_occupation = row_in_view!fk_occupation                     'must have an occupation
+      txtEmployeeFirstname.text = row_in_view!firstname
+      txtEmployeeSurname.text = row_in_view!surname
+      txtEmployeeSalutation.text = row_in_view!salutation
+      txtOccupation.text = row_in_view!occupation
+      txtEmployeeMemo.text = row_in_view!memo
+      cmbEmployeeSex.Index = row_in_view!fk_sex
+      cmbEmployeeTitle.Index = row_in_view!fk_title
+      txtProviderNumber.Text = row_in_view!provider_number
+      TxtHealthProviderNumberIndividual.text = row_in_view!hpii
+      Select Case row_in_view!fk_status
+         Case const.StaffStatus_Active
+            chkLeftOrganisation.value = False
+         Case const.StaffStatus_LeftOrganisation
+            chkLeftOrganisation.value = True
+      End Select
+      chkDeceased.value = row_in_view!deceased
+      mnuOrganisationsPopup_EnableEmployeeOptions
+      If row_in_view!retired = True Then
+         chkEmployeeRetired.value = True
+      Else
+         chkEmployeeRetired.Value = False
+      Endif
+      lblOrganisationHeading.text = "Employee of " & row_in_view!organisation & ": " & row_in_view!firstname & " " & row_in_view!surname
+      With form_contacts_employee
+         .Set_Keys(, fk_person)   'will tell FCommunicationData then this is only a person (aka employee here)
+         .Set_Owner("Employee " & modUtil.Ucase_Word_First_Letter(row_in_view!firstname & " " & row_in_view!surname)) 'used in popup dialogs
+         .comms_Load(modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.person_comms_get(fk_person)))          'show comms for the person
+      End With
+   End If    
+   '---------------------------------------------------------------------------------
+   'at all times display the organisation details on the left hand side of the screen
+   '--------------------------------------------------------------------------------  
+   Try fk_address = row_in_view!fk_address                          'may be null
+   Try fk_town = row_in_view!fk_town                                'may be null
+   fk_category = row_in_view!fk_category                            'category is enforced for organisations will always exist
+   txtCategory.text = row_in_view!category                          'wil be in both employee and organisations rows of the view
+   txtOrganisation.text = row_in_view!organisation
+   With lblBottomLeftHeading                                        'the heading above the area showing the organisations details
+      .text = txtOrganisation.text
+      .Foreground = Color.Black
+   End With
+   lblOrganisationHeading.text = "Organisation: " & row_in_view!organisation & " " & row_in_view!branch  'the heading at the top over the organisations listing
+   txtBranch.text = row_in_view!branch
+   txtStreet1.text = row_in_view!street1
+   txtStreet2.text = row_in_view!street2
+   With txtSuburb
+      .text = row_in_view!town
+      .pos = 0                   'because some towns an be long in a confined area e.g if this form is embedded in scanning.
+   End With
+   txtState.text = row_in_view!state
+   txtPostcode.text = row_in_view!postcode
+   chkPostal.Enabled = True
+   Try chkPostal.value = row_in_view!postal_address
+   TxtHealthProviderNumberOrganisation.text = row_in_view!hpio
+   If Not IsNull(row_in_view!australian_business_number) Then
+      txtAustralianBusinessNumber.text = row_in_view!australian_business_number
+   Endif
+   teBranchMemo.text = row_in_view!memo
+   If row_in_view!postal_address = True Then
+      chkPostal.value = True
+   Else
+      chkPostal.value = False
+   End If
+   If row_in_view!head_office = True Then
+      With chkHeadOffice
+         .value = True
+         .Enabled = True
+      End With
+   Else
+      With chkHeadOffice
+         .value = False
+      End With
+   End If
+   MnuOrganisationsPopup_EnableBranchOptions                                    'enable/disable options for branches on popup menu
+   With form_contacts_organisations
+      .Set_Keys(fk_branch)   'will tell FCommunicationData then this is only a branch (headoffice or other)
+      .Set_Owner(modUtil.Ucase_Word_First_Letter(row_in_view!organisation & " " & row_in_view!branch))                                   'used in popup menu options eg delete contacts
+      .comms_Load(modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Branch_Comms_Get(row_in_view!fk_branch)))
+   End With   
+   tbSave.Enabled = True
+   EditArea_Notify_Data_Changed(False)
+   bExit = False
+   HSplit_EditArea_Organisations.Visible = True                                    'finally make organisations/employees visible
+   form_persons.Visible = False                                                    'make the persons form invisible
+   
+End
+
+Public Sub Employee_Delete()
+   
+   Dim smsg As String = "Are you sure you want to delete this employee:\n\n"
+   'fixme
+   Message.Info("Richard fix employee delete")
+   Return
+   sMsg &= "Organisation:" & Organisations[gvwOrganisations.row]!organisation & "\n"
+   sMsg &= "Branch:" & Organisations[gvwOrganisations.row]!branch & "\n"
+   sMsg &= "Name:" & Organisations[gvwOrganisations.row]!wholename & "\n\n"
+   sMsg &= "Are you sure you want to continue?"
+   If Message.Warning(sMsg, "Yes", "No") = 2 Then Return
+   modContactsDBI.Employee_Delete(fk_person, fk_branch)
+   modDBConnect.CommitTrans()
+   Organisations = modContactsDBI.Organisations_Employees_Get_By_Keys(fk_organisation)
+   Organisations_Refresh_List()
+   
+End
+
+Public Sub tbContacts_Click()
+   '-----------------------------------------------
+   'one of the three buttons on the top bar clicked
+   '-----------------------------------------------   
+   
+   Select Case Last.tag
+      Case "new organisation"
+         ' Check_Unsaved_Data
+         Organisation_New()
+      Case "new person"
+         '  Check_Unsaved_Data
+         person_New
+      Case "save person", "save organisation", "save employee", "save new person"
+         Save  
+   End Select
+   
+End
+
+Public Sub Employees_Find(sSearchCriteria As String) As Collection
+   
+   Dim $localResult As Result
+   
+   sLastSearchCriteria = Trim(sSearchCriteria)
+   $localResult = modContactsDBI.Employees_In_Organisations_Find(sSearchCriteria)
+   Organisations_Refresh_List($localResult)
+   
+End
+
+Public Sub btnAquirePHoto2_Click()
+   
+   Message.Info("Not implemented yet")
+   
+End
+
+Public Sub Employee_Locations_Show()
+   
+End
+
+Public Sub gvwOrganisations_Menu()
+   '-------------------------------------
+   'Popup menu over the organisations list
+   '--------------------------------------
+   
+   If gvwOrganisations.rows.Count And gvwOrganisations.row <> -1 Then
+      mnuOrganisationsPopUp_SetDefaultProvider.Caption = "Set as Default Provider for " & Organisations[gvwOrganisations.Row]!category
+      '  mnuOrganisationsPopUp_BranchAdd.text = "Add Branch to Head Office"
+      mnuOrganisationsPopUp.popup
+   End If
+   
+End
+
+Public Sub mnuOrganisationsPopup_EnableEmployeeOptions()
+   
+   ' mnuOrganisationsPopUp_BranchAdd.Enabled = False
+   mnuOrganisationsPopUp_AddEmployee.Enabled = False
+   mnuOrganisationsPopUp_AddEmployeeAll.Enabled = False
+   mnuOrganisationsPopUp_DeleteEmployee.Enabled = True
+   mnuOrganisationsPopUp_DeleteEmployeeAll.Enabled = True
+   mnuOrganisationsPopUp_Email.Enabled = True 'fixme b checking if this is possible
+   mnuOrganisationsPopUp_Web.Enabled = True 'fixme b checking if this is possible
+   
+End
+
+Public Sub MnuOrganisationsPopup_EnableBranchOptions()
+   
+   If chkHeadOffice.Value = True
+      mnuOrganisationsPopUp_AddEmployee.text = "Add employee to head office"
+      '  mnuOrganisationsPopUp_BranchAdd.Enabled = True
+      '  tbBranchAdd.Enabled = True
+      chkHeadOffice.Enabled = True
+   Else
+      '  mnuOrganisationsPopUp_BranchAdd.Enabled = False
+      mnuOrganisationsPopUp_AddEmployee.text = "Add employee to branch office"
+      '   tbBranchAdd.Enabled = False
+      chkHeadOffice.Enabled = False
+   End If
+   ' tbAddPerson.Enabled = True 'can add employee to head office or any other branch
+   mnuOrganisationsPopUp_AddEmployee.Enabled = True
+   mnuOrganisationsPopUp_AddEmployeeAll.Enabled = False
+   mnuOrganisationsPopUp_DeleteEmployee.Enabled = False
+   mnuOrganisationsPopUp_DeleteEmployeeAll.Enabled = False
+   
+   mnuOrganisationsPopUp_Email.Enabled = True 'fixme b checking if this is possible
+   mnuOrganisationsPopUp_Web.Enabled = True 'fixme b checking if this is possible
+   
+End
+
+Public Sub Employee_Surname_Get()
+   
+End
+
+Public Sub Occupation_Get()
+   
+   Dim x As Integer
+   Dim occupation As Collection
+   
+   With listview1
+      .Visible = False
+      .Clear
+   End With
+   If Len(Trim(txtOccupation.text)) = 0 Then Return
+   Occupations = modUtil.Copy_Collection_Keyed_Sequentially(modCommonDBI.Occupations_Get(Trim(txtOccupation.text)))
+   
+   '-----------------------------------------------------------------
+   'If categories exist to match the text, auto-select or show a list
+   '-----------------------------------------------------------------
+   If Not Occupations.count Then Return
+   For Each Occupation In Occupations
+      listview1.Add(x, Occupation!occupation)
+      Inc x
+   Next
+   If Occupations.count Then
+      With listview1
+         .Visible = True
+         .Raise
+         .tag = txtOccupation
+      End With
+   End If
+   
+End
+
+Public Sub Occupation_Select(occupation As Collection)
+   '----------------------------------------
+   'Select an occupation from the popup list
+   'called by Listview1_dblclick() 
+   '-----------------------------------------   
+   
+   bexit = True   
+   txtOccupation.Text = occupation!occupation
+   bexit = False
+   fk_occupation = occupation!pk
+   txtStreet1.SetFocus
+Catch
+   Return
+   
+End
+
+Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   
+   Select Case tag
+      Case "birthdate"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
+      Case "health provider number individual", "health provider number organisation"
+         bKeyValid = modUtil.AllowKeys(const.AllowKeys_NumbersOnly, Keycode)
+      Case Else
+         bKeyValid = True
+   End Select
+   Return bKeyValid
+   
+End
+
+Public Sub EditArea_KeyPress()
+   
+   If Not EditArea_Textbox_ExcludeKeys(key.code, Last.tag) Then  'only allow valid keys for each textbox
+      Stop Event
+      Return
+   End If
+   Select Case key.Code
+      Case key.Return, Key.Tab
+         Select Case Last.tag
+            Case "organisation"
+               listview1.Visible = False 'becomes visible when editing existing organisation
+               txtStreet1.SetFocus
+            Case "branch"
+               txtStreet1.SetFocus
+            Case "surname"
+               cmbEmployeeTitle.SetFocus
+               listview1.Visible = False 'list could be popped up with duplicate and not used
+            Case "firstname"
+               cmbEmployeeSex.SetFocus
+            Case "birthdate"
+               txtOccupation.SetFocus
+            Case "occupation"
+               txtProviderNumber.SetFocus
+            Case "provider number"
+               txtEmployeeMemo.SetFocus
+            Case "employee memo"
+               form_contacts_employee.txtCommunication.SetFocus
+            Case "occupation"
+               txtProviderNumber.SetFocus
+            Case "salutation"
+               cmbemployeeMarital.SetFocus
+            Case "street1"
+               txtSuburb.SetFocus
+            Case "street2"
+               txtSuburb.SetFocus
+            Case "suburb"
+               txtAustralianBusinessNumber.SetFocus
+            Case "category"
+               txtAustralianBusinessNumber.SetFocus
+            Case "australian business number"
+               TxtHealthProviderNumberOrganisation.SetFocus
+            Case "health provider number organisation"
+               teBranchMemo.SetFocus
+            Case "memo branch"
+               form_contacts_organisations.comm_new
+               form_contacts_organisations.cmbCommunicationType.index = form_contacts_organisations.cmbCommunicationType.Find("Phone")
+         End Select
+         listview1.Visible = False
+      Case key.Down
+         Select Case Last.tag
+            Case "occupation", "surname", "firstname", "suburb", "category"
+               If listview1.Visible Then
+                  listview1.SetFocus
+                  listview1.MoveFirst
+                  listview1.Item.Selected = True
+               End If
+         End Select
+   End Select
+   
+End
+
+Public Sub Editarea_GotFocus()
+   
+   If bexit Then Return
+   sSearchMode = Last.tag
+   With listview1
+      .Visible = False
+      .Clear
+   End With
+   textboxForSpellCheck = Null
+   Last.BackGround = Color.rgb(95, 255, 175)
+   Select Case Last.tag
+      Case "suburb"
+         With listview1
+            .top = VBox_EditArea_Organisation.top + Last.parent.parent.top + Last.height + 2  '+ VBox_EditArea_Organisation.padding
+            .left = VBox_EditArea_Organisation.left + Last.Parent.left + VBox_EditArea_Organisation.padding + 2
+            .Width = (Last.parent.width * 3) / 4
+         End With
+      Case "category"
+         With listview1
+            .left = VBox_EditArea_Organisation.left + Last.Parent.left + VBox_EditArea_Organisation.padding + 2
+            .width = txtCategory.Width
+            .top = VBox_EditArea_Organisation.top + Last.parent.parent.top + Last.height + 2  '+ VBox_EditArea_Employee.Padding
+            .raise
+         End With
+         textboxForSpellCheck = Last
+         ' Case "firstname"
+         '    With listview1
+         '       ' .left = Vbox_EditArea_Employee.left + txtEmployeeFirstname.Left + Vbox_EditArea_Employee.padding
+         '       .width = txtEmployeeFirstname.Width
+         '       ' .top = Vbox_EditArea_Employee.top + Hbox_Firstname.top + txtEmployeeFirstname.Height
+         '       .raise
+         '    End With
+      Case "surname"
+         With listview1
+            .left = Vsplit_Employees.Left + Last.parent.left + Vbox_EditArea_Employee.padding + 2
+            .width = txtEmployeeSurname.Width
+            .top = Last.parent.parent.top + txtEmployeeSurname.Height + 2
+            .raise
+         End With
+      Case "occupation"
+         With listview1
+            .left = Vsplit_Employees.Left + Last.parent.left + Vbox_EditArea_Employee.padding + 2
+            .width = txtOccupation.Width
+            .top = Last.parent.parent.top + txtOccupation.Height + 2 ' + VBox_EditArea_Employee.Padding
+            .raise
+         End With
+         textboxForSpellCheck = Last
+      Case "organisation"
+         With listview1
+            .left = VBox_EditArea_Organisation.left + Last.Parent.Left + VBox_EditArea_Organisation.padding
+            .width = txtOrganisation.Width
+            .top = VBox_EditArea_Organisation.top + HboxOrg_Name.top + txtOrganisation.Height + 2
+            .raise 
+         End With
+   End Select
+   
+End
+
+Public Sub EditArea_Change()
+   
+   If bexit Then Return
+   '  bExit = False  
+   If Trim(Last.text) = "" Then
+      listview1.Visible = False
+   End If
+   Select Case Last.tag
+      Case "suburb"
+         bOrganisationChanged = True
+         If Trim(txtSuburb.text) = "" Then
+            txtState.Text = ""
+            txtPostcode.text = ""
+            fk_town = 0
+            Return
+         End If
+      Case "organisation", "street1", "street2", "health provider number organisation", "australian business number"
+         bOrganisationChanged = True
+      Case "surname", "firstname", "salutation", "health provider number individual", "health provider number individual organisation", "provider number"
+         bEmployeeChanged = True
+      Case "birthdate"
+         If txtEmployeeBirthdate.text <> "" Then
+            age = -1
+            Try age = DateDiff(Val((Trim(txtEmployeeBirthdate.text))), Now, gb.Year)
+            If Not Error Then
+               If age > 0 And age < 100 Then 'most unlikely to have centarian working in practice
+                  txtEmployeeAge.text = age
+               End If
+            End If
+         Else
+            txtEmployeeAge.text = ""
+         End If
+         bEmployeeChanged = True
+      Case "occupation"
+         If Trim(Last.text) = "" Then 'Or Trim(Last.text) = "" And Listview1.Visible = False Then
+            fk_occupation = 0
+            listview1.Visible = False 'could be showing if user backspaced
+         End If
+         bEmployeeChanged = True
+      Case "employee memo"
+         If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "")
+            txtCategory.SetFocus()
+         End If
+         bEmployeeChanged = True
+      Case "memo branch"
+         If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "")
+            txtCategory.SetFocus()
+            bOrganisationChanged = True
+         End If
+      Case "category"
+         If Len(txtCategory.text) = 0 Then
+            fk_category = 0
+            listview1.Visible = False  
+         End If
+         bOrganisationChanged = True
+   End Select
+   
+   EditArea_Notify_Data_Changed(True)
+   
+End
+
+Public Sub EditArea_LostFocus()
+   
+   Last.BackGround = Color.White
+   timer1.stop
+   Last.pos = 0
+   Select Case Last.tag
+      Case "suburb"
+         ' If fk_town = 0 And list = Then 
+         '    Last.text = ""
+         '    Return
+         ' Endif
+   End Select
+   '    Case "occupation", "category"
+   '       SpellCheck_TextBox(Last)
+   ' End Select
+   
+End
+
+Public Sub SpellCheck_TextBox(tb As TextBox)
+   
+   bexit = True
+   teForSpelling.text = tb.text
+   bexit = False
+   
+   SpellChecker.init(tb)
+   SpellChecker.StartSpelling()
+   
+End
+
+Public Sub EditArea_KeyRelease()
+   
+   iTimer_count = 0
+   timer1.start
+   
+End
+
+Public Sub Category_Get()
+   '--------------------------------------------------------------------------- 
+   'Allow user to search for category to allocate to the organisation or branch
+   '--------------------------------------------------------------------------- 
+   
+   Dim x As Integer
+   
+   With listview1
+      .Clear
+      .Visible = False  
+   End With
+   If Trim$(txtCategory.text) = "" Then Return
+   categories = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Categories_Get(Lower(Trim$(txtCategory.text))))
+   If categories.count Then
+      For Each category In categories
+         listview1.Add(x, category!category)
+         Inc x
+      Next
+      With listview1
+         .raise
+         .Visible = True
+         .tag = txtCategory
+      End With
+   Else
+      fk_category = 0
+   End If
+   
+End
+
+Public Sub Category_Select(category As Collection)
+   '--------------------------------------------------------------------
+   'User has selected a category from the popup list for an organisation
+   '--------------------------------------------------------------------
+   
+   fk_category = category!pk
+   txtCategory.text = category!category
+   txtAustralianBusinessNumber.SetFocus()
+   
+End
+
+Public Sub EditAreaChkBox_KeyPress()
+   
+   If key.code = key.Return Then
+      Select Case Last.tag
+         Case "head office"
+            chkPostal.SetFocus
+         Case "postal address"
+            teBranchMemo.SetFocus
+      End Select
+   End If
+   
+End
+
+Public Sub EditAreaChkBox_Click()
+   
+   If bExit Then Return
+   Select Case Last.tag
+      Case "Head office"
+         If Last.value = True Then
+            txtBranch.text = "HEAD OFFICE"
+         Else
+            txtBranch.text = ""
+         Endif
+         bOrganisationChanged = True
+      Case "postal address"
+         bOrganisationChanged = True
+      Case "deceased", "retired", "left organisation"
+         bEmployeeChanged = True 
+   End Select
+   EditArea_Notify_Data_Changed(True)
+   
+End
+
+Public Sub cmbEditArea_KeyPress()
+   
+   If key.code = key.Return Then
+      Select Case Last.tag
+         Case "title"
+            txtEmployeeFirstname.SetFocus
+         Case "sex"
+            txtEmployeeSalutation.SetFocus
+      End Select
+   End If
+   
+End
+
+Public Sub cmbEditArea_Click()
+   
+   If bExit Then Return
+   EditArea_Notify_Data_Changed(True)
+   
+End
+
+Public Sub mnuOrganisations_Click()
+   
+   Dim rd As CRequestDefault
+   
+   Select Case Last.tag
+      Case "add branch"
+         Branch_New()
+      Case "add employee"
+         employee_add()
+      Case "delete employee"
+         Employee_Delete()
+      Case "delete employee from all branches"
+         modUtil.NotImplemented("delete employee from all branches not implemented")
+      Case "delete organisation"
+         modUtil.NotImplemented("Deleting organisation not implemented")
+      Case "retired"
+      Case "deceased"
+         
+      Case "fonts"
+         modUtil.Columnview_SetFont(gvwOrganisations, "FContacts") 'fixme misnomer
+      Case "show locations"
+         Employee_Locations_Show()
+      Case "show all branches"
+         modUtil.NotImplemented("show all branches not implemented")
+      Case "default provider"
+         modUtil.NotImplemented("default provider not implemented")
+         
+   End Select
+   
+End
+
+Public Sub EditArea_Notify_Data_Changed(bFlag As Boolean)
+   '---------------------------------------------------------
+   'give the user a visual clue that they have data to save
+   'outline the editing area in red and change the foreground
+   'of tbSave to red
+   '----------------------------------------------------------
+   
+   modEditAreaHelpers.Notify_Data_Changed(Vbox_EditArea, tbSave, bFlag)
+   
+End
+
+Public Sub EditArea_Combo_KeyPress()
+   
+   Select Case Last.tag
+      Case "title"
+         txtEmployeeFirstname.SetFocus()
+      Case "sex"
+         txtEmployeeSalutation.SetFocus()
+      Case "marital"
+         txtEmployeeBirthdate.SetFocus()
+   End Select
+   
+End
+
+Public Sub tbContacts_KeyPress()
+   
+   If key.code = key.Return Then
+      Select Case Last.tag
+         Case "save"
+            Save()
+      End Select
+   End If
+   
+End
+
+' Public Sub txtSearchByOccupation_KeyRelease()
+'    
+'    sSearchmode = "persons employees by occupation"
+'    iTimer_count = 0
+'    Timer1.start
+'    
+' End
+' 
+' Public Sub txtSearchOrganisations_or_Persons_KeyRelease()
+'    
+'    iTimer_count = 0
+'    Timer1.start
+'    
+' End
+
+' Public Sub txtSearchOrganisations_or_Persons_GotFocus()
+'    
+'    '  Check_Unsaved_Data
+'    txtSearchOrganisations_or_Persons.text = "" 'change event triggers a form clear in txtSearch_change
+'    
+'    Reset_Gui()
+'    
+' End
+
+Public Sub gvwPersons_Select()
+   
+   If bExit Or gvwPersons.Rows.count = 0 Then Return
+   Check_Unsaved_Data
+   With gvwOrganisations
+      .Background = Color.RGB(254, 254, 254)
+   End With
+   tbOrganisationAdd.Enabled = False
+   With tbSave
+      .tag = "save person"
+      .Tooltip = "Save the person's details"
+   End With
+   bexit = True
+   gvwOrganisations.UnSelectAll
+   bexit = False
+   If gvwPersons.Background = Color.RGB(254, 254, 254) Then
+      With gvwPersons
+         .Background = Color.White
+         .Foreground = Color.Black
+         '     .row = 0
+      End With
+   Endif
+   Person_Display()
+   
+End
+
+Public Sub Persons_Get_By_Name()
+   
+   If Trim(txtSearchOrganisations_or_Persons.text) = "" Then Return
+   Inc Application.Busy
+   persons = modContactsDBI.Person_Get(Trim(txtSearchOrganisations_or_Persons.text), const.contacttype_person, True) 'fixme false = do include the dead or no way or resurrecting them
+   Persons_List_Fill()
+   Dec Application.Busy
+   
+End
+
+Public Sub Persons_List_Fill()
+   'From the search criteria in txtSearchOrganisations_or_Persons etc
+   'display the details from a persons view of the data e.g
+   'Dr Joe Blogs
+   '- cardiologist
+   '- Works at John Hunter Hospital cardiovacular dept
+   '- Works at Linguard private hospital
+   '- Private rooms at:
+   '---------------------------  
+   
+   Dim iKey As Integer
+   
+   Dim comm As Collection
+   Dim sTemp As String
+   Dim sStatusMessage As String
+   Dim person As Collection
+   Dim iLastperson_pk As Integer
+   Dim x As Integer
+   Dim sText As String 'text of the whole grid cell
+   Dim sWorkPlacesOrganisations As String    'if not "" then = addresses the person  works at not private
+   Dim sWorkPlaces As String
+   Dim DeadOrRetired As Boolean
+   
+   With gvwPersons
+      .Clear                           'clear current list persons
+      .Columns.count = 1
+      .Rows.count = 0
+   End With
+   If persons.count Then
+      Try persons.Remove("sql_in_english") 'ian included this for FClinical patient search
+      persons = modUtil.Copy_Collection_Keyed_Sequentially(persons)
+      For Each person In persons
+         DeadOrRetired = False  
+         Inc gvwPersons.Rows.Count
+         gvwPersons.Rows[x].Height = -1
+         If iLastperson_pk <> person!fk_person Then
+            
+            sText = "<B>" & person!surname & "  " & person!firstname & "</B>"
+            iLastperson_pk = person!fk_person
+            If person!fk_address Then
+               sTemp = Trim(Trim(person!street1 & " " & person!street2) & " " & person!town & " " & person!state & " " & person!postcode)
+               sText &= "<BR> - " & sTemp
+            Else
+               sText &= "<BR> - no private address in the database"
+            Endif
+            If person!fk_occupation Then
+               sText &= "<BR> - " & person!occupation
+            Endif
+            If person!retired Then
+               sText &= " - <I><small>*** RETIRED *** </small></I>"
+               DeadOrRetired = True
+            Endif
+            If person!deceased Then
+               sText &= " - <I><small>*** DECEASED *** </small></I>"
+               DeadOrRetired = True   
+            Endif
+            sWorkPlacesOrganisations = ""
+            If Not IsNull(organisations) 'is null if reloading a newly added person
+               For Each organisation In organisations
+                  If organisation!fk_person = person!fk_person Then
+                     If organisation!fk_status <> const.StaffStatus_LeftOrganisation Then 
+                        If IsNull(person!fk_address) Then   
+                           sWorkPlacesOrganisations &= "<BR> - works at "
+                        Else
+                           If Not DeadOrRetired Then
+                              sWorkPlacesOrganisations &= "<BR> - Also works at "
+                           Else
+                              sWorkPlacesOrganisations &= "<BR> - Used to work at "
+                           End If
+                        End If
+                        sWorkPlacesOrganisations &= organisation!organisation & " - " & organisation!branch
+                     End If 
+                  Endif
+               Next
+            End If   
+            sText &= sWorkPlacesOrganisations
+            With gvwPersons[x, 0]
+               .WordWrap = True
+               .Richtext = sText
+               .Alignment = Align.Left
+            End With
+            gvwPersons.Rows[x].Height = -1
+            Inc x
+         End If
+      Next
+      gvwPersons.Enabled = True                       'enable list for clicking on
+   End If
+   lblMeasure.font = gvwPersons.Font
+   '  modUtil.Gridview_Columns_Set_Size(gvwPersons, lblmeasure)
+   
+End
+
+Public Sub Person_Get_By_pk()
+   
+   persons = modContactsDBI.Person_excluding_patients_Get_By_pk(form_persons.fk_person)
+   Persons_List_Fill()
+   
+End
+
+Public Sub Person_Save(tag As String)
+   '-----------------------------
+   'Saves a person or sole trader   
+   '-----------------------------
+   
+   Dim onRow As Integer = gvwPersons.Row
+   
+   If Not form_persons.Save() Then Return    
+   EditArea_Notify_Data_Changed(False)
+   
+   If tag = "save new person" Then
+      Person_Get_By_pk
+      gvwPersons.row = 0
+   Else
+      Do_Search() 
+      gvwPersons.row = onRow  
+   Endif
+   
+End
+
+Public Sub person_New()
+   
+   txtSearchOrganisations_or_Persons.text = "" 'clears screen
+   HSplit_EditArea_Organisations.Visible = False
+   form_persons.visible = True
+   VBox_EditArea.Enabled = True
+   tbSave.tag = "save new person"
+   form_persons.person_New()
+   
+End
+
+Public Sub Person_Display()
+   '---------------------------------------------------
+   'Display the detail of the person (or patient)
+   'editing is implicit - ie automatically in edit mode
+   'Saving is done on the embedded form form_persons
+   'but via the tbSave on this form
+   '---------------------------------------------------
+   
+   Dim bFoundPerson As Boolean
+   Dim x As Integer
+   Dim row As Collection
+   
+   If gvwPersons.rows.Count = 0 Or gvwPersons.row = -1 Then Return
+   '  Check_For_Unsaved_Data()
+   '-------------------------------------------------
+   'change the gui e.g button labels, for the persons
+   '-------------------------------------------------
+   person = persons[gvwpersons.row]
+   With form_persons
+      .EditArea_Clear
+      .Person_Display(person)
+   End With
+   lblPersonHeading.text = modUtil.Ucase_Word_First_Letter(person!firstname & " " & person!surname)
+   VBox_EditArea.Enabled = True
+   HSplit_EditArea_Organisations.Visible = False
+   form_persons.visible = True
+   
+End
+
+Public Sub HSplit_Grids_Resize()
+   
+   Dim x As Integer
+   
+   lblOrganisationHeading.width = HSplit_Grids.Layout[0]
+   lblPersonHeading.width = HSplit_Grids.Layout[1]
+   For x = 0 To gvwOrganisations.Rows.count - 1
+      gvwOrganisations.Rows[x].Height = -1
+   Next
+   
+End
+
+Public Sub txtSearch_Change()
+   '------------------------------------------------------------------------
+   'Change event for the group of textboxes we search via
+   'txtSearchOrganisations_or_Persons search for an organisation or a person
+   'txtSearchCategory - search for a category of organisation
+   'txtSearchOccupation - search for all occupations like
+   '-------------------------------------------------------------------------
+   
+   If bexit Then Return
+   If Trim(Last.text) = "" Then
+      Form_Clear()
+   Endif
+   
+End
+
+Public Sub txtSearch_GotFocus()
+   '--------------------------------------------------
+   'User has clicked on one of the 3 search text boxes
+   '--------------------------------------------------   
+   ' If bexit Then Return
+   
+   Last.text = ""                            'change event txtSearch_Change clears the form/grids etc
+   sSearchMode = Last.tag                    'set search mode for other subroutines
+   'bexit = False
+   
+End
+
+Public Sub txtSearch_KeyRelease()
+   '----------------------------------------------------------
+   'User is typing in onee of the three search textboxes
+   'keep zeroing the timer count to prevent Timer1 triggering
+   'When 300msec passes i.e they have paused typing
+   'timer1_Timer will do the search
+   '---------------------------------------------------------
+   
+   iTimer_count = 0                      
+   Timer1.Start                           'is stopped every 300msec by timer1_timer to trigger search
+   
+End
+
+Public Sub cmbEditArea_Change()
+   'The only combo's are in the employee edit area
+   
+   bEmployeeChanged = True
+   
+End
+
+Public Sub VSplit_Organisations_Resize()
+   '------------------------------------------------------------
+   'Keep the organisations and employee's splits the same height
+   'adjust one if the other is adjusted
+   '-------------------------------------------------------------    
+   
+   If bexit Then Return  'prevent 'circular' resizing
+   bexit = True
+   Vsplit_Employees.Layout = VSplit_Organisations.layout
+   bexit = False
+   
+End
+
+Public Sub VSplit_Employees_Resize()
+   '------------------------------------------------------------
+   'Keep the organisations and employee's splits the same height
+   'adjust one if the other is adjusted
+   '-------------------------------------------------------------  
+   
+   If bexit Then Return   'prevent 'circular' resizing
+   bexit = True
+   VSplit_Organisations.layout = Vsplit_Employees.Layout
+   bexit = False
+   
+End
+
+Public Sub chkInStringSearch_Click()
+   
+   If Last.value = True Then
+      bInstringSearch = True
+   Else
+      bInstringSearch = False 
+   Endif
+   Do_Search
+   
+End
+
+Public Sub txtFilterSurname_LostFocus()
+   
+   Last.background = Color.White
+   
+End
+
+Public Sub txtFilterSurname_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   
+End
+
+Public Sub txtFilterBranch_LostFocus()
+   
+   Last.background = Color.White
+   
+End
+
+Public Sub txtFilterBranch_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   
+End
+
+Public Sub txtFilterSurname_KeyRelease()
+   
+   Do_Search
+   
+End
+
+Public Sub gvwPersons_Menu()
+   
+   If gvwPersons.rows.count And gvwPersons.row <> -1 Then
+      mnuPersons.popup
+   Endif
+   
+End
+
+Public Sub mnuPersons_Click()
+   
+   Select Case Last.tag
+      Case "font"
+         modUtil.Columnview_SetFont(gvwPersons, "FContacts") 'fixme misnomer
+   End Select
+   
+End
+
+Public Sub chkPersonsExclude_Click()
+   
+   Do_Search()
+   
+End

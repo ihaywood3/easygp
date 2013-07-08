@@ -1,0 +1,601 @@
+' Gambas class file
+
+' Copyright (C) 2008-2013 Dr. Richard Terry  rterry@pacific.net.au
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'-----------------------------------------------------------------------------------
+' A Class to allow users to enter ways of contacting person/organisation/patient etc
+' Note: The database commit for changes made in Save() done in calling form
+' Note: In the backend the table links_employees_comms is no longer used as we
+'       decided having individual comms per employee too granular. Employee's comms
+'       now = persons comms
+'-----------------------------------------------------------------------------------
+
+Private Comms As Collection                 'will be passed a collection of comms form parent form
+Private cvwContacts_key As Integer          'when row in the contacts columnview is selected this is set
+Private bEditing As Boolean                 'If true then the data in the editing area is being edited
+Private bExit As Boolean                    'used to prevent re-entry into subroutines
+Private Parent_EditArea As VBox             'The outer Vbox of the parent forms edit area (color changed to indictaed data-change)
+Private btnSaveOnParentForm As ToolButton
+Private Parent_VBox As VBox '               '"organisation", "person", "employee" 
+Private fk_person As Integer                'if not zero then this form is being used to display persons/employees contacts 
+Private fk_branch As Integer                'if not zero then this form is being used to display a branches contacts 
+                                             'if fk_branch and fk_person then the fk_branch is ignored ie is employee = fk_person used for comms
+                                             'see backend comment above
+Private Comms_Owner As String                'the person/organisation/employee owning the comms
+
+
+Public Sub Set_Owner(Owner As String)
+   '-----------------------------------------------------------------------------
+   'Set by the calling form when row on gvworganisations or gvwPersons clicked on
+   '-----------------------------------------------------------------------------   
+  Comms_Owner = Owner    
+   
+End
+
+
+Public Sub Init(PEA As VBox, tb As ToolButton) ', VBox_Parent As VBox)
+   '------------------------------------------------------------
+   'fill combo with types of contacts intiialise the columnview 
+   'the Vbox_Notify = the vbox in the parent form which we
+   'want to change to red to notify a data-change
+   'The VBox_Parent is
+   '------------------------------------------------------------
+   
+   Parent_EditArea = PEA
+   btnSaveOnParentForm = tb   
+   cmbCommunicationType.Add("Home", 0)
+   cmbCommunicationType.Add("Work", 1)
+   cmbCommunicationType.Add("Fax", 2)
+   cmbCommunicationType.Add("Email", 3)
+   cmbCommunicationType.Add("Mobile", 4)
+   cmbCommunicationType.Add("VOIP", 5)
+   cmbCommunicationType.Add("Web URL ", 6)
+   cmbCommunicationType.Add("Phone", 7)
+   cmbCommunicationType.Add("Toll Free", 8) 
+   cvwContacts.Columns.count = 3
+   
+End
+
+Public Sub Set_Keys(Optional branch_key As Integer = 0, Optional person_key As Integer = 0)
+   
+   fk_branch = branch_key
+   fk_person = person_key 
+   
+End
+
+Public Sub Save(Optional fk_branch As Integer = 0, Optional fk_person As Integer = 0)
+   '-------------------------------------------------------------------
+   'Saves the comms dependant on whether for branch or person
+   'This sub is called by  - FContacts (currently called FContactsOrganisations_Most_Newest! FIXME
+   '                       - FContactsPersons
+   'The database commit is done in the calling form
+   'Decided not to keep any employee<>worksite specific comms now
+   '-------------------------------------------------------------------   
+   
+   Dim link_branches_comm As CRow  
+   Dim link_person_comm As CRow  
+   Dim communication As CRow  
+   Dim comm As Collection  
+   '-----------------------------------------------------------
+   ' CREATE TABLE contacts.data_communications
+   ' (
+   '   pk serial NOT NULL,
+   '   value text NOT NULL,
+   '   note text,
+   '   preferred_method boolean DEFAULT false,
+   '   confidential boolean DEFAULT false,
+   '   deleted boolean DEFAULT false,
+   '   fk_type integer NOT NULL,
+   '   CONSTRAINT data_communications_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '------------------------------------------------------------   
+   For Each comm In comms
+      communication = New CRow
+      If comm!pk Then
+         communication.put_unchanged(comm!pk, "fk_comm")
+      Endif
+      communication!value = comm!value
+      communication!note = comm!note
+      communication!preferred_method = comm!preferred_method
+      communication!confidential = comm!confidential
+      communication!fk_type = comm!fk_type
+      communication.Save("contacts.data_communications", "fk_comm")
+      '----------------------------------------------------------
+      'the employee communcations
+      ' CREATE TABLE contacts.links_employees_comms
+      ' (
+      '   pk serial NOT NULL,
+      '   fk_employee integer,
+      '   fk_comm integer,
+      '   deleted boolean DEFAULT false,
+      '   CONSTRAINT links_employees_comms_pkey PRIMARY KEY (pk )
+      ' )
+      ' WITH (
+      '   OIDS=FALSE
+      ' );
+      'CREATE TABLE contacts.links_persons_comms
+      ' (
+      '   pk serial NOT NULL,
+      '   fk_person integer,
+      '   fk_comm integer,
+      '   deleted boolean DEFAULT false,
+      '   CONSTRAINT links_persons_comms_pkey PRIMARY KEY (pk )
+      ' )
+      ' WITH (
+      '   OIDS=FALSE
+      ' );
+      ' ---------------------------------------------------------
+      'Link the communication to the person
+      ' ----------------------------------------------------------
+      If fk_person Then
+         If IsNull(comm!pk) Then
+            link_person_comm = New CRow
+            link_person_comm!fk_person = fk_person
+            link_person_comm!fk_comm = communication!fk_comm
+            link_person_comm.Save("contacts.links_persons_comms", "fk_link_person_comm")
+         Endif
+      Endif
+      '------------------------------------------------------------------------
+      'CREATE TABLE contacts.links_branches_comms
+      ' (
+      '   pk serial NOT NULL,
+      '   fk_branch integer,
+      '   fk_comm integer,
+      '   deleted boolean DEFAULT false,
+      '   CONSTRAINT links_branches_comms_pkey PRIMARY KEY (pk ),
+      '   CONSTRAINT links_branches_comms_fk_branch_fkey FOREIGN KEY (fk_branch)
+      '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+      '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+      '   CONSTRAINT links_branches_comms_fk_comm_fkey FOREIGN KEY (fk_comm)
+      '       REFERENCES contacts.data_communications (pk) MATCH SIMPLE
+      '       ON UPDATE NO ACTION ON DELETE NO ACTION
+      ' )
+      ' WITH (
+      '   OIDS=FALSE
+      ' );
+      '-------------------------------------------------------------------------------
+      If fk_branch Then    
+         If IsNull(comm!pk) Then
+            link_branches_comm = New CRow
+            link_branches_comm!fk_branch = fk_branch
+            link_branches_comm!fk_comm = communication!fk_comm
+            link_branches_comm.Save("contacts.links_branches_comms", "fk_link_branch_comm")
+         Endif
+      End If   
+   Next 
+   
+End
+
+Public Sub Form_Clear()
+   '----------------------------------------------------------------------------------
+   'Clears the entire form by ersasing content of textboxes, checkboxes and columnview
+   '---------------------------------------------------------------------------------- 
+   
+   bExit = True  
+   EditArea_Clear() 
+   cvwContacts.Clear
+   comms = New Collection
+   bExit = False
+   
+End
+
+Public Sub comms_Load(C As Collection)
+   '---------------------------------------------------------------------------------------
+   'Display the comms provided by the calling form in the columnview under edit area
+   'For example this in the parent form is how the collection is generated for a person
+   'modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.person_Comms_Get(fk_person)))   4
+   'see:FContacts.Organisation_Display
+   '---------------------------------------------------------------------------------------
+   
+   Comms = C
+   Reload()
+   
+End
+
+Private Sub Reload()
+   '--------------------------------------------
+   'Reload the contacts list under the edit area
+   'comms is a zero based collection
+   '--------------------------------------------   
+   
+   Dim x As Integer
+   Dim comm As Collection  
+   
+   cvwContacts.Clear
+   For Each comm In Comms
+      cvwContacts.Add(x, 0)
+      cvwContacts[x][0] = comm!type & "  "
+      cvwContacts[x][1] = comm!value & "  "
+      cvwContacts[x][2] = comm!note
+      Inc x
+   Next
+   lblmeasure.font = cvwContacts.Font
+   modUtil.Columnview_Columns_Set_Size(cvwContacts, lblmeasure)  'resize columns to make sure visit.
+   
+End
+
+Public Sub mnuContacts_Click()
+   '-------------------------------------------------------------------------
+   'User has clicked on the popup menu over the contacts list under edit area
+   '-------------------------------------------------------------------------   
+   
+   Select Case Last.tag
+      Case "edit"
+         comm_Edit
+      Case "new"
+         Comm_New
+      Case "delete"
+         Comm_Delete
+      Case "font"
+   End Select 
+   
+End
+
+Private Sub comm_Edit()
+   '--------------------------------------------------------------
+   'Allow the editing of an existing comm
+   'The user must select 'Edit' from the popup menu over contacts
+   '-------------------------------------------------------------   
+   
+   bEditing = True   
+   Vbox_EditArea.Enabled = True
+   txtCommunication.SetFocus
+   
+End
+
+Private Sub Comm_Display()
+   '-----------------------------------------------------------------------
+   'Displays the details of a communication/contact method in the edit area
+   '-----------------------------------------------------------------------  
+   
+   Dim comm As Collection  
+   
+   comm = Comms[cvwContacts.key]
+   bExit = True   
+   txtCommunication.text = comm!value
+   txtCommunicationNotes.text = comm!note
+   cmbCommunicationType.index = comm!fk_type
+   chkCommunicationConfidential.value = comm!confidential
+   chkPreferredCommunication.Value = comm!preferred_method 
+   Vbox_EditArea.Enabled = False 
+   cvwContacts.SetFocus
+   bExit = False  
+   
+End
+
+Private Sub Comm_Delete()
+   '-----------------------------------------------------------------------
+   'Delete a communication, if one loaded from the backend delete from
+   'the backend, otherwise just delete the key and reload the comms
+   'cvwContacts_key was set when the row in the columnview was clicked on
+   '-----------------------------------------------------------------------
+   ' CREATE TABLE contacts.data_communications
+   ' (
+   '   pk serial NOT NULL,
+   '   value text NOT NULL,
+   '   note text,
+   '   preferred_method boolean DEFAULT false,
+   '   confidential boolean DEFAULT false,
+   '   deleted boolean DEFAULT false,
+   '   fk_type integer NOT NULL,
+   '   CONSTRAINT data_communications_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '------------------------------------------------------------   
+   
+   'CREATE TABLE contacts.links_branches_comms
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_branch integer,
+   '   fk_comm integer,
+   '   deleted boolean DEFAULT false,
+   '   CONSTRAINT links_branches_comms_pkey PRIMARY KEY (pk ),
+   '   CONSTRAINT links_branches_comms_fk_branch_fkey FOREIGN KEY (fk_branch)
+   '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT links_branches_comms_fk_comm_fkey FOREIGN KEY (fk_comm)
+   '       REFERENCES contacts.data_communications (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   'CREATE TABLE contacts.links_persons_comms
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_person integer,
+   '   fk_comm integer,
+   '   deleted boolean DEFAULT false,
+   '   CONSTRAINT links_persons_comms_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '-------------------------------------------------------------------------------
+   Dim comm As Collection = comms[cvwContacts_key]
+   Message.Title = Comms_Owner
+   If Message.Question("Do you wish to  delete this contact information\n\n" & comm!type & ": " & comm!value, "Yes", "No") = 2 Then Return 
+   If Not IsNull(comm!pk) Then                             'the is a previously saved comm
+      If fk_branch Then  
+           modContactsDBI.Branch_Comm_Link_Mark_Deleted(fk_branch, comm!pk)
+      End If
+      If fk_person Then                                    'a person or employee the old table links_employees_comms no longer used
+           modContactsDBI.Person_Comm_Link_Mark_Deleted(fk_person, comm!pk)
+      End If   
+      modDBConnect.update("contacts.data_communications", Null, ["pk": comm!pk, "deleted": True])
+      modDBConnect.CommitTrans()
+   End If    
+   comms.Remove(cvwContacts_key)                            'remove the contacts from the comms collection 
+   comms = modUtil.Copy_Collection_Keyed_Sequentially(comms) 're-zero the collection 
+   Reload()                                                  'reload the list.
+End
+
+Public Sub Comm_new()
+   '-----------------------------
+   ' Allow user to add a new comm
+   '-----------------------------
+   
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
+   bEditing = False  
+   cvwContacts.UnselectAll()
+   cvwContacts_key = -1 
+   btnAddContact.Enabled = True  
+   Vbox_EditArea.Enabled = True   
+   txtCommunication.SetFocus()  
+   
+End
+
+Private Sub Comm_Add()
+   '----------------------------------------------------
+   'Adds the comm to the list but does not save
+   'The saving is triggered by the save routine
+   'in the form this form is embedded in
+   'Adding a new contact to the existing comms collection
+   'means this will not have a primary key. This is later
+   'used in Save to recognise this is  new communication
+   '------------------------------------------------------ 
+   
+   Dim comm As Collection    
+   
+   btnAddContact.Enabled = False 
+   If Trim(txtCommunication.Text) = "" Then               'enforce at least a value in eg phone number
+      txtCommunication.SetFocus
+      Return
+   End If
+   If cmbCommunicationType.index = -1 Then                'enforce the type eg 'Home Phone'
+      cmbCommunicationType.SetFocus
+      Return
+   Endif
+   If bEditing = False Then                                 'adding a new contact
+      comm = New Collection
+      Comm!fk_type = cmbCommunicationType.Index
+      Comm!type = cmbCommunicationType.text 'need this for display
+      Comm!value = txtCommunication.Text
+      Comm!note = txtCommunicationNotes.Text
+      If chkPreferredCommunication.value Then
+         Comm!preferred_method = True
+      Else
+         Comm!preferred_method = False
+      End If
+      If chkCommunicationConfidential.Value Then
+         Comm!confidential = True
+      Else
+         Comm!confidential = False
+      End If
+      Comms.Add(Comm, cvwContacts.Count)
+   Else                                                           'editing an existing comm, save changes (not to backend yet)
+      Comms[cvwContacts_key]!value = txtCommunication.Text
+      Comms[cvwContacts_key]!note = txtCommunicationNotes.Text
+      If chkPreferredCommunication.value Then
+         Comms[cvwContacts_key]!preferred_method = True
+      Else
+         Comms[cvwContacts_key]!preferred_method = False
+      End If
+      If chkCommunicationConfidential.Value Then
+         Comms[cvwContacts_key]!confidential = True
+      Else
+         Comms[cvwContacts_key]!confidential = False
+      End If
+      Comms[cvwContacts_key]!fk_type = cmbCommunicationType.index
+      Comms[cvwContacts_key]!type = cmbCommunicationType.text
+   End If
+   Reload
+   With cvwContacts
+      .MoveFirst
+      .SetFocus
+      .Item.Selected = True
+   End With
+   btnAddContact.Foreground = Color.Black
+   EditArea_Clear                          'clear the edit area ready for another
+   
+End
+
+Public Sub cvwContacts_Select()
+   '------------------------------------------------------------
+   'The user has clicked on a row in the contacts columnview
+   'Display this in the editing area
+   'Cannot be edited until the popup menu choice to edit is made
+   '------------------------------------------------------------   
+   
+   cvwContacts.MoveCurrent()
+   cvwContacts_key = Last.item.Key
+   Comm_Display
+   
+End
+
+Public Sub cvwContacts_Menu()
+   '-------------------------------------
+   'popup the menu over the contacts list
+   'if not public the menu won't pop up
+   '-------------------------------------
+   
+   If cvwContacts.count Then
+      mnuContacts.Popup
+   Endif
+   
+End
+
+Public Sub btnCommunications_Click()
+   '----------------------------------------------------
+   'User has clicked on one of the two buttons under the
+   'contacts edit area
+   '----------------------------------------------------  
+   
+   Select Case Last.tag
+      Case "new"
+         Comm_new
+      Case "save"
+         Comm_Add 
+         Comm_new
+   End Select
+   
+End
+
+Public Sub btnCommunications_KeyPress()
+   '------------------------------------------------------------
+   'If user presses <enter> when the buttons under the edit area
+   'have focus, action this
+   '------------------------------------------------------------   
+   
+   If Key.code = Key.return Then
+      If Last.tag = "save" Then
+         Comm_Add 
+      Else
+         Comm_new
+      Endif
+   Endif
+   
+End
+
+Private Sub EditArea_Notify_Data_Change(bflag As Boolean)
+   '------------------------------------------------------------
+   'The parent Editing Area outer VBox was passed to this module
+   'when it was loaded, now turn on/off the red colour to 
+   'indicate to the user visually that data has changed
+   '------------------------------------------------------------   
+   
+   modEditAreaHelpers.Notify_Data_Changed(Parent_EditArea, btnSaveOnParentForm, bflag)
+   If Not bexit Then 
+      Me.Parent.Tag = True  'will be read on data save in parent, if true the comms change.
+   End If   
+   
+End
+
+Public Sub EditArea_GotFocus()
+   '----------------------------------------------------
+   'Highlight the background color a vivid green to give
+   'user visual clue that this textbox has focus
+   '----------------------------------------------------   
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   
+End
+
+Public Sub EditArea_LostFocus()
+   '-------------------------------------------
+   'Now turn the background back to normal when
+   'textbox no longer being used
+   '-------------------------------------------   
+   
+   Last.BackGround = Color.white
+   
+End
+
+Private Sub EditArea_Clear()
+   '---------------------------------------------------------
+   'Clear the editing area prior to display/input of new data
+   '---------------------------------------------------------  
+   
+   bexit = True            'don't trigger EditArea_Change()
+   modEditAreaHelpers.EditArea_Clear(VBox_EditArea)
+   btnAddContact.Foreground = Color.Black
+   bexit = False  
+   
+End
+
+Public Sub EditArea_Change()
+   '--------------------------------------------------
+   'Try and work out what type of comm being entered
+   'and set the combo box appropriately
+   '-------------------------------------------------   
+   
+   If bexit Then Return
+   Select Case Last.tag  
+      Case "value"
+         If InStr(Last.text, "@") Then
+            cmbCommunicationType.index = const.CommModalityEmail
+         Else If Left$(Trim(Last.text), 2) = "04" Then 'fix me put in the rest
+            cmbCommunicationType.index = const.CommModalityMobile
+         Else If InStr(Last.text, "www") Or InStr(Last.text, "http://") Then
+            cmbCommunicationType.index = const.CommModalityWeb
+         Else If InStr(Last.text, "1800") Then
+            cmbCommunicationType.index = Const.CommModalityTollFree
+         End If
+   End Select
+   EditArea_Notify_Data_Change(True)
+   btnAddContact.Foreground = Color.Red
+   
+End
+
+Public Sub cmbEditArea_Change()
+   '-------------------------------------------------------------------------------
+   'If the text in the edit area changes, change the parent forms notification VBox
+   '-------------------------------------------------------------------------------   
+   
+   If bexit Then Return 
+   EditArea_Notify_Data_Change(True)
+   
+End
+
+Public Sub EditAreaChkBox_Click()
+   '-------------------------------------------------------------------------------
+   'If the checkbox in the edit area changes, change the parent forms notification VBox
+   '-------------------------------------------------------------------------------   
+   
+   EditArea_Notify_Data_Change(True)
+   
+End
+
+Public Sub EditArea_KeyPress()
+   
+   Select Case Key.code
+      Case Key.Return, Key.Tab
+         Select Case Last.tag
+            Case "value"
+               txtCommunicationNotes.SetFocus
+            Case "notes"
+               chkPreferredCommunication.SetFocus
+         End Select
+   End Select
+   
+End
+
+Public Sub EditAreaChkBox_KeyPress()
+   
+   If Key.code = Key.Return Or Key.code = Key.tab Then
+      Select Case Last.tag
+         Case "communication preferred"
+            chkCommunicationConfidential.SetFocus
+         Case Else
+            btnAddContact.SetFocus
+      End Select
+   Endif
+   
+End

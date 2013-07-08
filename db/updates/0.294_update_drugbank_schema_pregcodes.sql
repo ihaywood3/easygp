@@ -1,7 +1,7 @@
---DROP TABLE drugbank.pregnancy_code;
+
 CREATE TABLE drugbank.pregnancy_code
 (
-  pk SERIAL PRIMARY KEY, 
+  pk serial primary key,
   fk_drug integer,
   code character(2),
   safety text,
@@ -12,11 +12,12 @@ CREATE TABLE drugbank.pregnancy_code
 WITH (
   OIDS=FALSE
 );
+ALTER TABLE drugbank.pregnancy_code
+  OWNER TO easygp;
 
-COMMENT ON COLUMN drugbank.pregnancy_code.code IS 'ABCD pregnancy category as per Australian TGA definition';
-COMMENT ON COLUMN drugbank.pregnancy_code.safety IS 'comment on safety of the referenced drug in pregnancy'; 
+GRANT ALL ON TABLE drugbank.pregnancy_code to easygp;
+GRANT SELECT ON TABLE drugbank.pregnancy_code to STAFF;
 
-ALTER TABLE drugbank.pregnancy_code OWNER TO easygp;
-  
 truncate db.lu_version;
-insert into db.lu_version (lu_major,lu_minor) values (0, 294);
+insert into db.lu_version (lu_major,lu_minor) values (0, 294)
+

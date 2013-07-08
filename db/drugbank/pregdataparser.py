@@ -42,7 +42,7 @@ def getfile(url=DOWNLOAD_URL, fname=PREGDATA_FILENAME, download_progress_reporte
 	return fname
 
 	
-def pgconnection(host='127.0.0.1', dbname='easygp', user='easygp', password='admin'):
+def pgconnection(host='127.0.0.1', dbname='26june13', user='easygp', password='admin'):
 	""" 
 	Establishes a connection with the database our data will be imported into.
 	quick hack with hardcoded access credentials in order to test the import.

@@ -51,15 +51,6 @@ COMMENT ON COLUMN contacts.data_numbers_persons.hpii IS 'Health Provider Identif
 insert into contacts.data_numbers_persons(fk_person, prescriber_number)
 (select fk_person, prescriber_number from contacts.data_numbers where  prescriber_number is not null);
 
--- in particular this should not be necessary as they should already be in there.
-
-insert into contacts.data_numbers (fk_person, fk_branch, provider_number)
-(select distinct fk_person, fk_branch, provider_number from admin.vwStaffInclinics
-where
-provider_number is not null
-and
-(fk_person <> admin.vwStaffInclinics.fk_person AND fk_branch <> admin.vwStaffInclinics.fk_branch)
-);
 
 -- now add the new epcehr columns to the patients views pcehr_consent,ihi,ihi_updated
 

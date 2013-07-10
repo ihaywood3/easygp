@@ -154,7 +154,7 @@ CREATE OR REPLACE VIEW admin.vwstaff AS
    JOIN admin.lu_staff_roles roles ON staff.fk_role = roles.pk
    JOIN contacts.data_persons persons ON staff.fk_person = persons.pk
    JOIN contacts.lu_title ON persons.fk_title = lu_title.pk
-   LEFT JOIN contacts. data_numbers_persons ON staff.fk_person = data_numbers_persons.fk_person
+   LEFT JOIN contacts.data_numbers_persons ON staff.fk_person = data_numbers_persons.fk_person
   LEFT JOIN contacts.data_numbers employees_numbers ON staff.fk_person = employees_numbers.fk_person;
 ALTER TABLE admin.vwstaff   OWNER TO easygp;
 GRANT ALL ON TABLE admin.vwstaff TO easygp;

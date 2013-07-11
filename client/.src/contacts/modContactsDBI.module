@@ -42,6 +42,81 @@ Public Function Towns_Get(Optional postcode As String) As Collection
    
 End
 
+Public Sub Fix_Categories()
+   
+    '---------------------------------------------------------------------------
+   'Tempory fix to duplicated categores till Horst/I decide what to do
+   'unfortunately historically persons were allocated categories as well
+   'as occuptions, this was later removed, but occupations have ended up 
+   'in the categories table, plus there was  a bug leading to duplicates  
+   '----------------------------------------------------------------------------
+   
+   Dim sql As String
+   Dim categories As Collection
+   Dim done As Boolean
+   
+   Dim branches As Collection
+   Dim branch As Collection 
+   Dim old_category As String
+   Dim R As Result
+   Dim x As Integer
+   Dim category As Collection 
+   Dim new_pk_category As String 
+   
+   'make a copy of all unique categories in the database these will have new primary keys 1 through to whatever
+   If Message.Warning("This will fix duplicated entries in the categories table.\n\nIt will not affect your current allocation of categories", "Yes", "No") = 2 Then Return 
+   modDBConnect.exec_query("CREATE temporary TABLE lu_categories_new (pk serial primary key,category text NOT NULL)")
+    Inc Application.Busy
+   modDBConnect.exec_query("insert into lu_categories_new (category) select distinct lower (category) from contacts.lu_categories order by lower (category)")
+   'Now to fix all the tables contacts.data_branches
+   branches = modDBConnect.exec_query_collection("Select * from contacts.data_branches")
+   For Each branch In branches
+      R = modDBConnect.exec_query("Select * from contacts.lu_categories where pk = " & branch!fk_category)       'for each branch get its fk_categoryl)
+      If R.count = 0 Then     'warning just in case 
+         Message.Warning("missing category")
+      Else
+         old_category = R!category                                                        'assuming dosn't fail
+         sql = "Select * from lu_categories_new where category ILIKE $$" & old_category & "$$"  'get new category pk
+         R = modDBConnect.exec_query(sql)
+         If R.count = 0 Then
+            Message.Warning("missing new category")
+         Else
+            new_pk_category = R!pk                                                            'then update the old table with new pk
+            sql = "Update contacts.data_branches set fk_category = " & new_pk_category & " where pk=" & branch!pk
+            modDBConnect.exec_query(sql)
+         Endif
+      Endif
+   Next
+   '------------------------------------------------------------------------------
+   'Now wipe the original contacts lu_categories table, copy back the altered data
+   '------------------------------------------------------------------------------
+   modDBConnect.exec_query("Delete from contacts.lu_categories")      'Now wipe the contacts lu_categories table
+   sql = "ALTER SEQUENCE contacts.lu_categories_pk_seq "              'reset the index to the start
+   sql &= " INCREMENT 1 MINVALUE 1 "
+   sql &= "MAXVALUE 9223372036854775807 RESTART 1 "
+   sql &= "CACHE 1 NO CYCLE"
+   modDBConnect.exec_query(sql)
+   sql = "INSERT INTO contacts.lu_categories(pk,category) "
+   sql &= "SELECT * from lu_categories_new order by pk"     'copy back the fixed data
+   modDBConnect.exec_query(sql)
+   sql = "Select count(pk) from lu_categories_new"
+   R = modDBConnect.exec_query(sql)
+   sql = "ALTER SEQUENCE contacts.lu_categories_pk_seq RESTART " 'reset starting pk
+   sql &= R!count
+   modDBConnect.exec_query(sql)
+   sql = "drop table lu_categories_new"
+   modDBConnect.exec_query(sql)
+   Dec Application.Busy
+  Select Case Message.Question("Finished refurbishing the category table, commit the transaction?", "Yes", "No")
+     Case 1
+          modDBConnect.CommitTrans()
+     Case 2
+        modDBConnect.RollBack()
+  End Select
+  
+   
+End
+
 Public Function Town_state_postcode_get() As Collection
    '-------------------------------------------------------------------------------------------------
    'gets collection of single field joined townstatepostcode, used in importing or updating postcodes

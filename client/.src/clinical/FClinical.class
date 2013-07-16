@@ -1233,10 +1233,12 @@ Public Sub Allergies_Refresh()
    
 End
 
-Public Sub cvwReferrals_DblClick()
-   '--------------------------------------------------------
+Public Sub cvwReferrals_Select()
+   '---------------------------------------------------------------
    'display the referral letter written which was clicked on
-   '--------------------------------------------------------
+   'This would usually be on the click event but the drag event
+   'takes precendence over cvwReferrals_click when referrals showing
+   '----------------------------------------------------------------
    
    cvwReferrals.MoveCurrent()
    cvwReferrals_key = cvwReferrals.Item.Key
@@ -1577,18 +1579,6 @@ Public Sub WorkspaceEditor_Clear()
    
 End
 
-' Public Sub WorkspaceEditor_RemovePage()
-'
-'    Dim hWindow As Window
-'
-'    WorkspaceEditor.Lock()
-'    For Each hWindow In WorkspaceEditor.Windows
-'       '  hWindow.Close()
-'    Next
-'    WorkspaceEditor.Unlock()
-'
-' End
-
 Public Sub Care_Plan_Display()
    
    Inc Application.Busy
@@ -1638,6 +1628,8 @@ Public Sub cvwLettersReceived_Select()
    
    cvwLettersReceived.MoveCurrent
    cvwLettersReceived_Key = cvwLettersReceived.Item.key
+   If cvwLettersReceived.key = 0 Or cvwLettersReceived.key = "" Then Return
+   If WorkspaceEditor.ActiveWindow.Caption <> "Referrals" Then Document_Display
 Catch
    Return 
    
@@ -1645,8 +1637,10 @@ End
 
 Public Sub cvwLettersReceived_dblClick()
    
+   Print WorkspaceEditor.ActiveWindow.Caption
+   If WorkspaceEditor.ActiveWindow.Caption <> "Referrals" Then Return
    If cvwLettersReceived.key = 0 Or cvwLettersReceived.key = "" Then Return
-   Document_Display(currentconsult!letters_received, cvwLettersReceived_Key)
+   Document_Display()
 Catch
    Return 
    
@@ -1707,16 +1701,17 @@ Public Sub cvwLettersReceived_Menu()
       cvwLettersReceived.MoveCurrent()
       mnuLettersReceived_UndoDelete.Enabled = False                                     'assume there is no documents to undelete
       Print cvwLettersReceived.Selection[0]
-      If currentconsult!letters_received[cvwLettersReceived.Selection[0]]!msh_transmitting_entity = "snail_mail" Then 'can only send back non-hl7 e.g scanned FIXME, LATER ?IMAGES
-         mnuResultsReceived_Refile.Enabled = True
-      Else
-         mnuResultsReceived_Refile.Enabled = False
-      End If
    End If
+   If currentconsult!letters_received[cvwLettersReceived.Selection[0]]!msh_transmitting_entity = "snail_mail" Then 'can only send back non-hl7 e.g scanned FIXME, LATER ?IMAGES
+     mnuLettersReceived_ReFile.Enabled = True
+   Else
+      mnuLettersReceived_ReFile.Enabled = False
+   End If
+   
    mnuLettersReceived.Popup()
 Catch
    Return
-
+   
 End
 
 Public Sub cvwRecalls_Refresh()
@@ -1932,6 +1927,670 @@ Public Sub cvwResults_Refresh(Optional bRefresh As Boolean = False)
 End
 
 Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = "", page_data As Variant, additional_page_tag As String = "") As Form
+   '----------------------------------------------------------------
+   'PURPOSE:   Adds a new page to the progress notes workspace
+   '           according to sType parameter passsed to it
+   '           e.g "past history", "new page", "Request" etc
+   '           Two types of pages Document_Viewer and Result_Viewer are global instances of FDocumentviewer
+   '           and once created in this subroutine 'live' for the life of the EasyGP instance unless the
+   '           tab is closed
+   ' A FProgressNotePageContainer doesn't contain the texteditor - just a form
+   ' containg two rows of toolbars with combo's and text formatting
+   ' buttons, contained in VboxEditor
+   '
+   ' The container then has added to it either other forms or just
+   ' a plain textedit control for pages only needing a text editor
+   ' Note that Collections start from a zero(0) count
+   ' but the tablist count starts from 1
+   ' hence first tab > EditorPages[0] etc
+   ' the page tag is either fixed eg "Skin Excision" or
+   ' is a pk_pasthistory if doing progress notes for a past historyDisplay_Health_Issue
+   ' item
+   'FIXME convert this routine so that lower(page.title) = tag
+   'NB: Though it would seem logical not to repeat for every new page
+   '    the code: WorkspaceEditor.Add(NewPage)
+   '    within each case statement, putting it at the end seems to
+   '    make it impossible to auto-set focus on the first control
+   '    in the new form.
+   '--------------------------------------------------------------
+   
+   Dim INRManager As FInr
+   Dim Image_Viewer As FImageViewer
+   Dim retform As Form ' the Form we are returning to the caller: very useful for scripting
+   Dim webpage As FBrowser
+   Dim Browser As FHtmlViewer
+   Dim GPCOG As FGPCOG
+   Dim EdinburghPNDS As FEdinburgPNDScale
+   Dim Cumulative As FCumulative
+   Dim Chads As FChads
+   Dim HasBled As FHasBled
+   Dim K10 As FK10OutcomeTool
+   Dim Export_Clinical As FExportClinical
+   Dim MultiMedia As FMoviePlayer
+   Dim ProgressNotesPage As FProgressNotePage
+   Dim PsychoSocialHistory As FPsychoSocialHistory
+   Dim AllPreviousNotes As FProgressNotesViewer_New
+   Dim SingleHealthIssueNotes As FProgressNotesViewer_New
+   Dim ExcisionPage As FProcedures
+   Dim RequestPage As FRequests
+   Dim PregnancyPage As FPregnancy
+   Dim RecreationalDrugs As FRecreationalDrugs
+   Dim FamilyHistoryPage As FFamilyHistory
+   Dim HealthAssessmentPage As FHealthAssessment
+   Dim OccupationalHistoryPage As FOccupation
+   Dim MC As FMedicalCertificate
+   Dim AllergyPage As FAllergy
+   Dim RecallPage As FRecalls
+   Dim PrescriptionPage As FPrescriptions
+   Dim PastHistoryPage As FPastHistory
+   Dim ReferralPage As FReferrals
+   Dim MentalHealthPage As FMentalHealth
+   Dim VaccinationPage As FVaccinations
+   'Dim workcoverPage As FWorkCover
+   Dim workcoverNSWPage As FWorkcoverNSW
+   Dim DiabetesCycleOfCare As FDACC
+   Dim TravelPage As FTravel
+   Dim GeneralCheckup As FCheckups
+   Dim page As FLinkContainer
+   Dim EditPastNotes As FEditNotes
+   Dim PDF As FPDF
+   Dim DrugBrowser As FPDF
+   Dim CarePlans As FCarePlanning
+   '    Dim CarePlans As FCarePlanning_New
+   Dim Form_Library As FLibrary
+   Dim Pictures As FPictureViewer
+   Dim sMsg As String
+   Dim Document_Viewer As FDocumentViewer                 'view any document but on the same page as previous
+   Dim Result_Viewer As FDocumentViewer                   'view any resuilt  but on the same page as previous
+   Dim Letters_Written_Viewer As FDocumentViewer          'view any previous letters written on same page as previous
+   Dim bPagefound As Boolean
+   
+   '----------------------------------------------------------------------
+   'With these pages, we want the appropriate list to be in the foreground
+   'So this switches the list
+   '----------------------------------------------------------------------
+   Select Case sPageName
+         
+      Case "Referrals"
+         TabStrip_Lists.Index = clistReferrals
+         Refresh_Section_Instance(const.cSection_Referrals)
+      Case "Requests"
+         TabStrip_Lists.index = cListRequests
+         Refresh_Section_Instance(const.cSection_Requests)            'swap tabbed lists to requests
+      Case "Workcover"
+         TabStrip_Lists.index = cListCertificates
+         rbWorkCoverCertificate.value = True
+      Case "Measurements"
+         TabStrip_Lists.index = clistMeasurements
+      Case "Recalls"
+         TabStrip_Lists.index = clistRecalls            'show recalls list on tab
+   End Select
+   'Results and documents are always shown on the same editor page, just re-loaded every time
+   If sPageName = "result" Then                                             'generic tab for documents, re-used time after time after time
+      bPagefound = False  
+      For Each page In WorkspaceEditor.Windows                                    'search all tabs
+         If Page.title = "Result" Then                     'if result tab showing
+            WorkspaceEditor.ActiveWindow = page
+            Result_Viewer = page.VBoxEditor.Children[0]
+            bPagefound = True   
+            Break
+         End If
+      Next
+      If bPagefound = False Then                                             'if not already showing
+         page = New FLinkContainer                               'create the container
+         page.tag = "Result"
+         page.title = "Result"
+         Result_Viewer = New FDocumentViewer(page.VBoxEditor)  'and instance of document (never killed whilst program running)
+         '   EditorPages.Add(Result_Viewer, "result")
+         WorkspaceEditor.Add(page)
+      Endif
+      Select Case additional_page_tag                            'show appropriate document
+         Case "pdf"
+            Result_Viewer.Load_PDF(modFiles.Get("document_archiving_directory", page_data))
+         Case "image"
+            Result_Viewer.Load_Picture(modFiles.Get("document_archiving_directory", page_data))
+         Case "html"
+            Result_Viewer.Load_Html(page_data)
+      End Select
+   Else If sPagename = "document" Then
+      bPagefound = False  
+      For Each page In WorkspaceEditor.Windows                                    'search all tabs
+         If Page.title = "Document" Then                     'if result tab showing
+            WorkspaceEditor.ActiveWindow = page
+            Document_Viewer = page.VBoxEditor.Children[0]
+            bPagefound = True   
+            Break
+         End If
+      Next
+      If bPagefound = False Then                                             'if not already showin
+         page = New FLinkContainer                               'create the container
+         page.tag = "Document"
+         page.title = "Document"
+         Document_Viewer = New FDocumentViewer(page.VBoxEditor)  'and instance of document (never killed whilst program running)
+         '   EditorPages.Add(Document_Viewer, "document")
+         WorkspaceEditor.Add(page)
+      End If   
+      Select Case additional_page_tag                            'show appropriate document
+         Case "pdf"
+            Document_Viewer.Load_PDF(modFiles.Get("document_archiving_directory", page_data))
+         Case "image"
+            Document_Viewer.Load_Picture(modFiles.Get("document_archiving_directory", page_data)) 
+         Case "html"
+            Document_Viewer.Load_Html(page_data)
+      End Select
+   Else If sPagename = "letters written" Then
+      bPagefound = False  
+      For Each page In WorkspaceEditor.Windows                                    'search all tabs
+         If Page.title = "Letters Written" Then                     'if result tab showing
+            WorkspaceEditor.ActiveWindow = page
+            Letters_Written_Viewer = page.VBoxEditor.Children[0]
+            bPagefound = True   
+            Break
+         End If
+      Next
+      If bPagefound = False Then                                             'if not already showin
+         page = New FLinkContainer                               'create the container
+         page.tag = "Letters Written"
+         page.title = "Letters Written"
+         Letters_Written_Viewer = New FDocumentViewer(page.VBoxEditor)  'and instance of document (never killed whilst program running)
+         WorkspaceEditor.Add(page)
+      End If   
+      Select Case additional_page_tag                            'show appropriate document
+         Case "tex"
+            Message.info("sorry you'll have to fix the tex stuff  yourself")
+            ' Letters_Written_Viewer.Load_PDF(modFiles.Get("document_archiving_directory", page_data))
+         Case "html"
+            Letters_Written_Viewer.Load_Html(page_data)
+      End Select
+   Else
+      If Not Editor_SetActivePage(sPageName, page_tag) Then 'check if this page be it section or a result is already showing.
+         'fixme this needs to be more sophisticated eg for result, take into account date.
+         Select Case sPageName
+               '   Case "result"
+               
+            Case "multimedia"
+               page = New FLinkContainer
+               With MultiMedia = New FMoviePlayer(page.VBoxEditor)
+                  .Init(page_data)
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = page_tag
+               Page.title = page_tag
+               retform = MultiMedia
+            Case "image"
+               page = New FLinkContainer
+               With Pictures = New FPictureViewer(page.VBoxEditor)
+                  .Init(modFiles.Get("document_archiving_directory", page_data))
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = Page_tag
+               retform = Pictures
+               EditorPages.Add(Pictures, sPageName)
+            Case "Library"
+               page = New FLinkContainer
+               With Form_Library = New FLibrary(page.VBoxEditor)
+                  .HBox_Heading.Visible = False
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = Form_Library
+               EditorPages.Add(Form_Library, sPageName)
+               Control_For_Focus = Form_Library.TreeView1
+            Case "Export File"
+               page = New FLinkContainer
+               Export_Clinical = New FExportClinical(page.VBoxEditor)
+               Export_Clinical.Init(currentconsult)
+               WorkspaceEditor.Add(page)
+               retform = Export_Clinical
+               page.tag = sPageName
+               Page.title = sPageName
+               EditorPages.Add(Export_Clinical, sPageName)
+               ' Control_For_Focus = MC.txtReason
+            Case "INR"
+               page = New FLinkContainer
+               INRManager = New Finr(page.VBoxEditor)
+               INRManager.Init(currentconsult)
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               EditorPages.Add(MC, sPageName)
+               Control_For_Focus = INRManager.tbFocus
+            Case "Medical Certificates"
+               page = New FLinkContainer
+               MC = New FMedicalCertificate(page.VBoxEditor)
+               MC.Init(currentconsult)
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = MC
+               EditorPages.Add(MC, sPageName)
+               Control_For_Focus = MC.txtReason
+            Case "pdf file"
+               page = New FLinkContainer
+               With PDF = New FPDF(page.VBoxEditor)
+                  .Init(currentconsult)
+                  .Load_PDF(page_data)
+                  .tbSave.Enabled = True
+                  .tbSave.Visible = True
+                  .btRotate.Visible = True
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = page_tag
+               Page.title = page_tag
+               retform = PDF
+               EditorPages.Add(PDF, page_tag)
+            Case "drugs browser"
+               page = New FLinkContainer
+               With DrugBrowser = New FPDF(page.VBoxEditor)
+                  .Load_PDF(page_data)
+                  .Init_Drugs_Browser()
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = page_tag
+               Page.title = page_tag
+               retform = DrugBrowser
+               EditorPages.Add(PDF, page_tag)
+               
+            Case "pdf document"
+               page = New FLinkContainer
+               With PDF = New FPDF(page.VBoxEditor)
+                  .Load_PDF(modFiles.Get("document_archiving_directory", page_data))
+                  .btRotate.Visible = True
+                  .btRotate.Enabled = True
+                  .btZoomIn.Visible = True
+                  .btZoomIn.Enabled = True
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = page_tag
+               Page.title = page_tag
+               retform = PDF
+               EditorPages.Add(PDF, page_tag)
+            Case "pdf document external"   'not one of our documents
+               page = New FLinkContainer
+               With PDF = New FPDF(page.VBoxEditor)
+                  .Load_PDF(page_data)
+                  .btRotate.Visible = True
+                  .btRotate.Enabled = True
+                  .btZoomIn.Visible = True
+                  .btZoomIn.Enabled = True
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = page_tag
+               Page.title = page_tag
+               retform = PDF
+               EditorPages.Add(PDF, page_tag)
+            Case "Recreational Drugs"
+               page = New FLinkContainer
+               RecreationalDrugs = New FRecreationalDrugs(page.VBoxEditor)
+               RecreationalDrugs.Init(currentconsult)
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = RecreationalDrugs
+               EditorPages.Add(RecreationalDrugs, sPageName)
+               Control_For_Focus = RecreationalDrugs.lblMeasure
+            Case "Care Planning"
+               '  Message.title = "CARE PLANNING MODULE"
+               '  Message.Info("Sorry, this module is currently not accessible")
+               '  Return
+               '  Message.Warning("before loading this module please note:\n\nTHIS MODULE IS NOT FINISHED, IS INACCURATE AND CANNOT BE USED AND WILL PROBABLY CRASH.\n\nUse it at your own peril.")
+               page = New FLinkContainer
+               CarePlans = New FCarePlanning(page.VBoxEditor)
+               CarePlans.Init(currentconsult)
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = CarePlans
+               EditorPages.Add(CarePlans, sPageName)
+               Control_For_Focus = CarePlans.txtHealthIssue
+            Case "browser"
+               page = New FLinkContainer
+               With Browser = New FHtmlViewer(page.VBoxEditor)
+                  Print page_data
+                  .WebView1.HTML = page_data
+                  .Set_Document_Details(Trim(additional_page_tag & " " & page_tag))
+               End With
+               obs = New Observer(Browser.mnuTest) As "mnuWebViewTest"
+               obs = New Observer(Browser.Webview1) As "WebView"
+               WorkspaceEditor.Add(page)
+               page.tag = page_tag
+               Page.title = page_tag
+               retform = Browser
+               EditorPages.Add(Browser, page_tag)
+            Case "images"
+               page = New FLinkContainer
+               Image_Viewer = New FImageViewer(page.VBoxEditor)
+               Image_Viewer.Init(Currentconsult, page_data)
+               WorkspaceEditor.Add(page)
+               retform = Image_Viewer
+               page.tag = page_tag
+               Page.title = page_tag
+               EditorPages.Add(Image_Viewer, page_tag)
+            Case "GPCOG"
+               page = New FLinkContainer
+               GPCOG = New FGPCOG(page.VBoxEditor)
+               GPCOG.Init(Currentconsult)
+               retform = GPCOG
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+            Case "Edinburgh"
+               page = New FLinkContainer
+               EdinburghPNDS = New FEdinburgPNDScale(page.VBoxEditor)
+               EdinburghPNDS.Init(Currentconsult)
+               WorkspaceEditor.Add(page)
+               retform = EdinburghPNDS
+               page.tag = sPageName
+               Page.title = sPageName
+            Case "K10"
+               page = New FLinkContainer
+               K10 = New FK10OutcomeTool(page.VBoxEditor)
+               K10.Init("FClinical") 'not yet integrated as a stand alone tool FIXME
+               WorkspaceEditor.Add(page)
+               page.tag = sPageName
+               Page.title = sPageName
+               retform = K10
+               EditorPages.Add(K10, "K10")
+            Case "Has-Bled Calculator"
+               page = New FLinkContainer
+               HasBled = New FHasBled(page.VBoxEditor)
+               HasBled.Init(Currentconsult)
+               WorkspaceEditor.Add(page)
+               page.tag = "Has-Bled Calculator"
+               page.Title = "Has-Bled Calculator"
+               EditorPages.Add(HasBled, "Has-Bled Calculator")
+               retform = HasBled
+            Case "Chads Calculator"
+               page = New FLinkContainer
+               Chads = New FChads(page.VBoxEditor)
+               Chads.Init(Currentconsult)
+               WorkspaceEditor.Add(page)
+               page.tag = "Chads Calculator"
+               page.Title = "Chads Calculator"
+               EditorPages.Add(Chads, "Chads Calculator")
+               retform = Chads
+            Case "Edit Notes"
+               page = New FLinkContainer
+               EditPastNotes = New FEditNotes(page.VBoxEditor)
+               EditPastNotes.Init(currentconsult)
+               WorkspaceEditor.Add(page)
+               page.tag = "Edit Notes"
+               page.Title = "Edit Notes"
+               EditorPages.Add(EditPastNotes, "Edit Notes")
+               '  Control_For_Focus = EditPastNotes.teNotes
+               retform = EditPastNotes
+            Case "Single Health Issue Notes"
+               page = New FLinkContainer
+               With SingleHealthIssueNotes = New FProgressNotesViewer_New(page.VBoxEditor)
+                  .Init(currentconsult, page_data)
+                  .LblNotesFilter.text = page_tag
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = page_tag
+               page.Text = page_tag
+               retform = SingleHealthIssueNotes
+               EditorPages.Add(SingleHealthIssueNotes, page_tag)
+               Control_For_Focus = SingleHealthIssueNotes.WebView1
+            Case "All Previous Notes"
+               page = New FLinkContainer
+               With AllPreviousNotes = New FProgressNotesViewer_New(page.VBoxEditor)
+                  .Init(currentconsult, modProgressNotes.AllProgressNotes_Construct_Html(currentconsult))
+               End With
+               WorkspaceEditor.Add(page)
+               page.tag = "All Previous Notes"
+               page.Text = "All Previous Notes"
+               retform = AllPreviousNotes
+               EditorPages.Add(AllPreviousNotes, "All Previous Notes")
+               Control_For_Focus = AllPreviousNotes.WebView1
+            Case "Diabetes Cycle of Care"
+               page = New FLinkContainer
+               DiabetesCycleOfCare = New FDACC(page.VBoxEditor)
+               DiabetesCycleOfCare.Init(Currentconsult)
+               page.tag = "Diabetes Cycle of Care"
+               page.Text = "Diabetes Cycle of Care"
+               WorkspaceEditor.Add(page)
+               retform = DiabetesCycleOfCare
+               EditorPages.Add(DiabetesCycleOfCare, "Diabetes Cycle of Care")
+            Case "General Checkups"
+               page = New FLinkContainer
+               GeneralCheckup = New FCheckups(page.VBoxEditor)
+               GeneralCheckup.Init(Currentconsult)
+               page.tag = "General Checkup"
+               page.Title = "General Checkup"
+               WorkspaceEditor.Add(page)
+               retform = GeneralCheckup
+               EditorPages.Add(GeneralCheckup, "General Checkup")
+            Case "New General Notes"
+               '----------------------------------------------------------------------
+               'General notes page as the name implies is for notes not tied to a
+               'particular health issue or problem. For particular problems the user
+               'should be taught to open an editor tab for that problem.
+               '----------------------------------------------------------------------
+               page = New FLinkContainer
+               ProgressNotesPage = New FProgressNotePage(page.VBoxEditor)
+               WorkspaceEditor.Add(page)
+               page.tag = "New General Notes"
+               page.Text = "New General Notes"
+               ProgressNotesPage.set_fk_section(const.cSection_GeneralNotes)
+               ProgressNotesPage.lblNotesFor.text = "New General Notes"
+               ProgressNotesPage.Init(currentconsult)
+               EditorPages.Add(ProgressNotesPage, "New General Notes")
+               FGeneralNotesEditor = ProgressNotesPage.Notes_Editor
+               retform = ProgressNotesPage
+               ' Control_For_Focus = ProgressNotesPage.Notes_Editor.teNotes
+            Case "Travel"
+               page = New FLinkContainer
+               TravelPage = New FTravel(page.VBoxEditor)
+               TravelPage.Init(currentconsult)
+               page.tag = "Travel"
+               page.Title = "Travel"
+               WorkspaceEditor.Add(page)
+               retform = TravelPage
+               EditorPages.Add(TravelPage, "Travel")
+               Control_For_Focus = TravelPage.txtDestination
+            Case "Occupational History"
+               page = New FLinkContainer
+               With OccupationalHistoryPage = New FOccupation(page.VBoxEditor)
+                  .Init(currentconsult)
+               End With
+               page.tag = "Occupational History"
+               page.Title = "Occupational History"
+               WorkspaceEditor.Add(page)
+               retform = OccupationalHistoryPage
+               EditorPages.Add(OccupationalHistoryPage, "Occupational History")
+               Control_For_Focus = OccupationalHistoryPage.lbloccupation
+               
+            Case "Health Assessment"
+               page = New FLinkContainer
+               HealthAssessmentPage = New FHealthAssessment(page.VBoxEditor)
+               HealthAssessmentPage.Init(currentconsult)
+               page.tag = "HealthAssessment"
+               page.Title = "HealthAssessment"
+               WorkspaceEditor.Add(page)
+               retform = HealthAssessmentPage
+               EditorPages.Add(HealthAssessmentPage, "HealthAssessment")
+            Case "Mental Health"
+               page = New FLinkContainer
+               MentalHealthPage = New FMentalHealth(page.VBoxEditor)
+               MentalHealthPage.Init(currentconsult)
+               page.tag = "Mental Health"
+               page.Title = "Mental Health"
+               WorkspaceEditor.Add(page)
+               retform = MentalHealthPage
+               EditorPages.Add(MentalHealthPage, "Mental Health")
+               ' Control_For_Focus = MentalHealthPage.WebView1
+            Case "Allergies"
+               page = New FLinkContainer
+               AllergyPage = New FAllergy(page.VBoxEditor)
+               AllergyPage.Init(currentconsult)
+               page.tag = "Allergies"
+               page.Title = "Allergies"
+               WorkspaceEditor.Add(page)
+               retform = AllergyPage
+               EditorPages.Add(AllergyPage, "Allergies")
+               ' Control_For_Focus = AllergyPage.tbNewAllergy
+            Case "webpage"
+               page = New FLinkContainer
+               '  Page.tag = txtURL.text
+               WebPage = New FBrowser(page.VBoxEditor)
+               WebPage.Expand = True
+               WorkspaceEditor.Add(page)
+               page.Title = "Web"
+               retform = WebPage
+               WebPage.Visible = True 'make it visible, default is not visible, trigger form_load
+               WebPage.txtURL.text = page_data
+               WebPage.btnGo.Value = True
+            Case "Pregnancy"
+               page = New FLinkContainer
+               With PregnancyPage = New FPregnancy(page.VBoxEditor)
+                  .Init(currentconsult)
+               End With
+               retform = PregnancyPage
+               page.tag = "Pregnancy"
+               page.title = "Pregnancy"
+               WorkspaceEditor.Add(page)
+               EditorPages.Add(PregnancyPage, "Pregnancy")
+            Case "Referrals"
+               page = New FLinkContainer
+               ReferralPage = New FReferrals(page.VBoxEditor)
+               ReferralPage.Init(currentconsult)
+               page.tag = "Referrals"
+               page.Title = "Referrals"
+               retform = ReferralPage
+               WorkspaceEditor.Add(page)
+               EditorPages.Add(ReferralPage, "Referrals")
+               Control_For_Focus = ReferralPage.txtName
+            Case "Scripts"
+               'First make sure they have prescriber/provider number
+               Print modDBConnect.currentUser
+               If IsNull(modDBConnect.currentUser!prescriber_number) Or IsNull(modDBConnect.currentUser!provider_number) Then
+                  Message.Title = "Invalid Prescriber Detected"
+                  sMsg = "Mmmmm...looks like you are attempting to write prescriptions without being a valid prescriber.\n\n\""
+                  "Your activity And ID will be reported To the SysAdmin, in fact the built in web-cam in this computer has already mailed your photo to the relevant authorities.\n\n\""
+                  "Should you think this is an error your SysAdmin can rectify this by entering valid details."
+                  Message.Warning(sMsg, "Ok")
+                  Return
+               Endif
+               page = New FLinkContainer
+               PrescriptionPage = New FPrescriptions(page.VBoxEditor)
+               PrescriptionPage.set_embedded("FClinical")
+               PrescriptionPage.Init(currentconsult)
+               page.tag = "Scripts"
+               page.Title = "Scripts"
+               retform = PrescriptionPage
+               WorkspaceEditor.Add(page)
+               EditorPages.Add(PrescriptionPage, "Scripts")
+               PrescriptionPage.bexit = True
+               PrescriptionPage.BExit = False
+               
+            Case "Family History"
+               page = New FLinkContainer
+               FamilyHistoryPage = New FFamilyHistory(page.VBoxEditor)
+               FamilyHistoryPage.Init(currentconsult)
+               page.tag = "Family History"
+               page.Title = "Family History"
+               WorkspaceEditor.Add(page)
+               retform = FamilyHistoryPage
+               EditorPages.Add(FamilyHistoryPage, "Family History")
+               
+            Case "Psycho-Social History"
+               ' modUtil.NotImplemented("This section is under reconstruction")
+               page = New FLinkContainer
+               PsychoSocialHistory = New FPsychoSocialHistory(page.VBoxEditor)
+               PsychoSocialHistory.Init(currentconsult)
+               page.tag = "Psycho-Social History"
+               page.Title = "Psyscho-Social History"
+               WorkspaceEditor.Add(page)
+               retform = PsychoSocialHistory
+               EditorPages.Add(PsychoSocialHistory, "Psycho-Social History")
+               Control_For_Focus = PsychoSocialHistory.teSocialHistory
+            Case "Health Issues"
+               page = New FLinkContainer
+               PastHistoryPage = New FPastHistory(page.VBoxEditor)
+               PastHistoryPage.Init(currentconsult)
+               page.tag = "Health Issues"
+               page.Title = "Health Issues"
+               WorkspaceEditor.Add(page)
+               retform = PastHistoryPage
+               EditorPages.Add(PastHistoryPage, "Health Issues")
+               Control_For_Focus = PastHistoryPage.txtCondition
+            Case "Vaccinations"
+               page = New FLinkContainer
+               VaccinationPage = New FVaccinations(page.VBoxEditor)
+               page.tag = "Vaccinations"
+               page.Title = "Vaccinations"
+               WorkspaceEditor.Add(page)
+               retform = VaccinationPage
+               VaccinationPage.Init(currentconsult)
+               EditorPages.Add(VaccinationPage, "Vaccinations")
+               ' Control_For_Focus = VaccinationPage.tbNewVaccine
+            Case "Workcover"
+               page = New FLinkContainer
+               ' WorkcoverPage = New FWorkCover(page.VBoxEditor)
+               workcoverNSWPage = New FWorkcoverNSW(page.VBoxEditor)
+               page.tag = "Workcover"
+               page.Title = "Workcover"
+               WorkspaceEditor.Add(page)
+               retform = workcoverNSWPage
+               ' WorkcoverPage.Init(currentconsult)
+               workcoverNSWPage.Init(currentconsult)
+               EditorPages.Add(WorkcoverNSWPage, "Workcover")
+               '  Control_For_Focus = WorkcoverPage.lvwClaims
+               Control_For_Focus = workcoverNSWPage.lvwClaims
+            Case "Requests"
+               '------------------------------------------------------------------------
+               'Create an  editor page with embedded request form and space for
+               'some progress notes underneath
+               'Note:   A patient as none or many previously ordered request forms
+               '`       i.e currentconsult!RequestForms collection
+               '        A consultation has none or many RequestForms ordered just
+               '        this consultation
+               '        currently this is pointed to by currentconsult.RequestForms
+               '------------------------------------------------------------------------
+               page = New FLinkContainer
+               RequestPage = New FRequests(page.VBoxEditor)
+               WorkspaceEditor.Add(page)
+               RequestPage.Init(currentconsult)
+               page.tag = "Requests"
+               page.title = "Requests"
+               retform = RequestPage
+               EditorPages.Add(RequestPage, "Requests")
+               Control_For_Focus = RequestPage.txtRequest
+            Case "Measurements"
+               Return 'nothing done yet
+            Case "Recalls"
+               page = New FLinkContainer
+               RecallPage = New FRecalls(page.VBoxEditor)  'add a recalls page
+               WorkspaceEditor.Add(page)
+               RecallPage.Init(currentconsult)
+               page.tag = "Recalls"
+               page.Title = "Recalls"
+               retform = RecallPage
+               EditorPages.Add(RecallPage, "Recalls")
+               '  RecallPage.FAdditionalNotesEditor.bExit = False
+               Control_For_Focus = RecallPage.txtRecallFor
+            Case "Skin Excision"
+               modUtil.NotImplemented("Skin Excision Module")
+               Return
+               page = New FLinkContainer
+               ExcisionPage = New FProcedures(page.VBoxEditor)
+               WorkspaceEditor.Add(page)
+               page.Title = "Skin Excision"
+               page.Tag = "Skin Excision"
+               ExcisionPage.Init(currentconsult)
+               retform = ExcisionPage
+               EditorPages.Add(ExcisionPage, "Skin Excision")
+               Control_For_Focus = ExcisionPage.cmbExcisionTypes
+         End Select
+      End If
+   End If   
+   Return retform
+   
+End
+
+Public Sub Editor_ShowPage_old(sPageName As String, Optional page_tag As String = "", page_data As Variant, additional_page_tag As String = "") As Form
    '----------------------------------------------------------------
    'PURPOSE:   Adds a new page to the progress notes workspace
    '           according to sType parameter passsed to it
@@ -2528,13 +3187,12 @@ End
 
 Function Editor_SetActivePage(pagetitle As String, page_tag As String) As Boolean
    '---------------------------------------------------------------
-   'PURPOSE: If a page is already opened, the twitch to that page
+   'PURPOSE: If a page is already opened, the switch to that page
    'EXPECTS: title of a page as a string
    'RETURNS: boolean flag TRUE if page found, FALSE = not yet added
    'for historical reasons which which will make no sens the
    'FProgressNotePageContainer is only a Vbox. FIXME
    '----------------------------------------------------------------
-   ' Dim page As FProgressNotePageContainer
    
    Dim page As FLinkContainer
    
@@ -3442,7 +4100,7 @@ Public Sub TabbedLists_Menu()
    End Select
 Catch
    Return 
-
+   
 End
 
 Public Sub mnuResultsReceived_ShowGraphable()
@@ -3566,8 +4224,8 @@ Public Sub mnuResultsReceived_Click()
          If modArchiveDocumentsDBI.Document_SendBack_For_ReFiling(currentconsult, currentconsult!results_received[cvwResultsReceived_Key]) Then
             cvwResults_Refresh(True)
          Endif
-      Case "display"
-         Inbox_showResult()
+      Case "display in new tab"
+         Inbox_showResult(True)
       Case "display as letter"
          If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!results_received[cvwResultsReceived_Key], const.Document_Display_As_Letter, const.cSection_Documents, "display mode change from result to letter") Then
             cvwResults_Refresh(True)
@@ -3587,7 +4245,7 @@ Public Sub mnuResultsReceived_Click()
    End Select
 Catch
    Return
-
+   
 End
 
 Public Sub Document_AuditTrail_Show(fk_document As Integer)
@@ -3697,8 +4355,8 @@ Public Sub mnuTabbedListReferral_Click()
          Next
       Case "email"
          modUtil.NotImplemented("Email Referral")
-      Case "preview"
-         Referral_Letter_Display()
+      Case "new tab"
+         Referral_Letter_Display(True)
       Case "sort by letter tag"
          modUtil.NotImplemented("Sorting by letter tag")
       Case "fonts"
@@ -3710,7 +4368,37 @@ Catch
    
 End
 
-Public Sub Referral_Letter_Display()
+Public Sub Referral_Letter_Display(Optional bNewTab As Boolean = False)
+   '------------------------------------------------------------------------
+   ' Display a previously written referral or letter on new tab in workspace
+   '------------------------------------------------------------------------
+   
+   Dim sTag As String
+   Dim ref As Collection
+   Dim sHtml As String
+   
+   ref = currentconsult!referrals_written[cvwReferrals_key]
+   If IsNull(ref) Then Return
+   If ref!finalised = False Then
+      stag = ref!tag & " (** UNFINISHED **)"
+   Else
+      sTag = ref!tag
+   Endif
+   sHtml = ref!letter_html
+   If sHtml Begins "\\documentclass" Then
+      sHtml = ref!body_html
+   Else
+      sHtml = modConsultDBI.Images_Get(sHtml)
+   Endif
+   If bNewTab Then
+      Editor_ShowPage("browser", sTag, sHtml)
+   Else
+      Editor_ShowPage("letters written", stag, shtml, "html")
+   Endif
+   
+End
+
+Public Sub Referral_Letter_Display_old()
    '------------------------------------------------------------------------
    ' Display a previously written referral or letter on new tab in workspace
    '------------------------------------------------------------------------
@@ -3990,7 +4678,7 @@ Public Sub mnuMedications_Click()
       Case "food interactions"
          Editor_ShowPage("browser", "Brand Equivalents", modPrescribingDBI.Food_Interactions_Drugs_Construct_HTML(active_medication_list()))
       Case "brands like"
-           Editor_ShowPage("browser", "Brand Equivalents", modPrescribingDBI.Brand_Equivalents_Make_HTML(active_medication_list()))
+         Editor_ShowPage("browser", "Brand Equivalents", modPrescribingDBI.Brand_Equivalents_Make_HTML(active_medication_list(), currentconsult))
       Case "delete"
          ' If modPrescribingDBI.Medication_Delete(currentconsult, currentconsult!medications, cvwMedications.Selection[0], const.cSection_Prescriptions, const.sAuditAction[const.cAuditAction_MarkDeleted], "Medication:" & currentconsult!medications[cvwMedications.Selection[0]]!generic) Then
          '    modDBConnect.CommitTrans()
@@ -4073,7 +4761,7 @@ Public Sub mnuMedications_Click()
    End Select
 Catch
    Return
-
+   
 End
 
 Public Sub mnuLettersReceived_Click()
@@ -4114,12 +4802,15 @@ Public Sub mnuLettersReceived_Click()
          lvFilesToJoin.tag = pdfs_to_merge
          VBox_Files_To_Join.Visible = True
          Vbox_MiniGraphs.Visible = False
-      Case "display in new tab"                       'show the letter
+      Case "display"                    'show the letter
          If cvwLettersReceived_key = 0 Then
             Message.Info("key is zero")
             Return
          Endif
-         Document_Display(currentconsult!letters_received, cvwLettersReceived_key)
+         ' Document_Display(currentconsult!letters_received, cvwLettersReceived_key)
+         Document_Display()
+      Case "display in new tab"
+         Document_Display(True)
       Case "display as result"                'change fk_lu_display as to const.Document_Display_As_Result
          If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, currentconsult!letters_received[cvwLettersReceived_key], const.Document_Display_As_Result, const.cSection_Documents, "display mode changed from letter to result") Then
             
@@ -4375,7 +5066,130 @@ Catch
    
 End
 
-Public Sub Document_Display(documents As Collection, document_key As Integer)
+Public Sub Document_Display(Optional bNewtab As Boolean)
+   '---------------------------------------------------------------------------------
+   'Displays a document currently in central area until IAN does the emulated browser
+   'If document metadata is not complete, prompt user by showing the metadata
+   '---------------------------------------------------------------------------------
+   
+   Dim filename As String
+   Dim currentobservations As Collection
+   Dim shtml As String
+   Dim documents As Collection = currentconsult!letters_received
+   
+   filename = documents[cvwLettersReceived_Key]!source_file
+   '  Inc application.Busy
+   Try UnFiled_Document_Metadata_Show(False)                               'remove this it could be showing if not completed from previous document
+   '-----------------------------------------------------------------------------------------------------
+   'If there is no tag_user, then this is an unfiled document - i.e document can't be filed without a tag
+   '-----------------------------------------------------------------------------------------------------
+   If Not IsNull(documents[cvwLettersReceived_Key]!tag_user) Then
+      Print filename
+      Select Case File.Ext(filename)
+         Case "pdf"
+            If bNewtab Then 
+               Editor_ShowPage("pdf document", documents[cvwLettersReceived_Key]!tag_user & ":" & Str(documents[cvwLettersReceived_Key]!pk_document), filename)
+            Else
+               Editor_ShowPage("document", documents[cvwLettersReceived_Key]!tag_user & ":" & Str(documents[cvwLettersReceived_Key]!pk_document), filename, "pdf")
+            End If   
+         Case "jpg", "png", "bmp", "jpeg", "tiff"
+            If bNewtab Then   
+               Editor_ShowPage("image", documents[cvwLettersReceived_Key]!tag_user, documents[cvwLettersReceived_Key]!source_file, "An Extra Tag")
+            Else
+               Editor_ShowPage("document", documents[cvwLettersReceived_Key]!tag_user, documents[cvwLettersReceived_Key]!source_file, "image")
+            End If  
+         Case Else 'must be html
+            If bNewTab Then   
+               Editor_ShowPage("browser", documents[cvwLettersReceived_Key]!tag_user, documents[cvwLettersReceived_Key]!html, documents[cvwLettersReceived_Key]!originator)
+            Else
+               Editor_ShowPage("document", documents[cvwLettersReceived_Key]!tag_user, documents[cvwLettersReceived_Key]!html, "html")
+            End If   
+      End Select
+   Else
+      '------------------------------------------------------------------------------
+      'tag_user is null construct the page tag along with a date eg FBC (01/02/2010)
+      'Now determine if this has actually been viewed and filed by the doctor
+      'if it has, then there will be a user tag
+      'If not, then show the metadata for this document
+      '-------------------------------------------------------------------------------
+      Select Case File.Ext(filename)
+         Case "pdf"
+            Editor_ShowPage("pdf document", "UNFILED", filename)
+            Document_Edit_Metadata(Documents, cvwLettersReceived_Key)
+         Case Else
+            If IsNull(documents[cvwLettersReceived_Key]!html) Then        'Null = unfiled, construct this from backend
+               CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & cvwLettersReceived_Key & " ORDER BY observations.observation_date, set_id")
+               shtml = modHL7Process.Construct_HTML(currentconsult!patient, documents[cvwLettersReceived_Key], currentobservations, True, True, documents[cvwLettersReceived_Key]!fk_lu_display_as)
+            Else
+               shtml = documents[cvwLettersReceived_Key]!html
+            End If
+            Editor_ShowPage("browser", "UNFILED", sHTML, documents[cvwLettersReceived_Key]!originator)
+            Document_Edit_Metadata(Documents, cvwLettersReceived_Key, sHtml)
+      End Select
+      
+   End If
+   
+   '   Dec application.Busy
+   
+End
+
+Public Sub Document_Display_old(documents As Collection, document_key As Integer)
+   '---------------------------------------------------------------------------------
+   'Displays a document currently in central area until IAN does the emulated browser
+   'If document metadata is not complete, prompt user by showing the metadata
+   '---------------------------------------------------------------------------------
+   
+   Dim filename As String = documents[document_key]!source_file
+   Dim currentobservations As Collection
+   Dim shtml As String
+   
+   '  Inc application.Busy
+   Try UnFiled_Document_Metadata_Show(False)                               'remove this it could be showing if not completed from previous document
+   '-----------------------------------------------------------------------------------------------------
+   'If there is no tag_user, then this is an unfiled document - i.e document can't be filed without a tag
+   '-----------------------------------------------------------------------------------------------------
+   If Not IsNull(documents[document_key]!tag_user) Then
+      Print filename
+      Select Case File.Ext(filename)
+         Case "pdf"
+            '   Editor_ShowPage("pdf document", documents[document_key]!tag_user & ":" & Str(documents[document_key]!pk_document), filename)
+            Editor_ShowPage("document", documents[document_key]!tag_user & ":" & Str(documents[document_key]!pk_document), filename, "pdf")
+         Case "jpg", "png", "bmp", "jpeg", "tiff"
+            '   Editor_ShowPage("image", documents[document_key]!tag_user, documents[document_key]!source_file, "An Extra Tag")
+            Editor_ShowPage("document", documents[document_key]!tag_user, documents[document_key]!source_file, "image")
+         Case Else 'must be html
+            ' Editor_ShowPage("browser", documents[document_key]!tag_user, documents[document_key]!html, documents[document_key]!originator)
+            Editor_ShowPage("document", documents[document_key]!tag_user, documents[document_key]!html, "html")
+      End Select
+   Else
+      '------------------------------------------------------------------------------
+      'tag_user is null construct the page tag along with a date eg FBC (01/02/2010)
+      'Now determine if this has actually been viewed and filed by the doctor
+      'if it has, then there will be a user tag
+      'If not, then show the metadata for this document
+      '-------------------------------------------------------------------------------
+      Select Case File.Ext(filename)
+         Case "pdf"
+            Editor_ShowPage("pdf document", "UNFILED", filename)
+            Document_Edit_Metadata(Documents, document_key)
+         Case Else
+            If IsNull(documents[document_key]!html) Then        'Null = unfiled, construct this from backend
+               CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & document_key & " ORDER BY observations.observation_date, set_id")
+               shtml = modHL7Process.Construct_HTML(currentconsult!patient, documents[document_key], currentobservations, True, True, documents[document_key]!fk_lu_display_as)
+            Else
+               shtml = documents[document_key]!html
+            End If
+            Editor_ShowPage("browser", "UNFILED", sHTML, documents[document_key]!originator)
+            Document_Edit_Metadata(Documents, document_key, sHtml)
+      End Select
+      
+   End If
+   
+   '   Dec application.Busy
+   
+End
+
+Public Sub Document_Display_oldest(documents As Collection, document_key As Integer)
    '---------------------------------------------------------------------------------
    'Displays a document currently in central area until IAN does the emulated browser
    'If document metadata is not complete, prompt user by showing the metadata
@@ -4428,7 +5242,101 @@ Public Sub Document_Display(documents As Collection, document_key As Integer)
    
 End
 
-Public Sub Inbox_showResult()
+Public Sub Inbox_showResult(Optional bNewTab As Boolean = False)
+   '-------------------------------------------------------------------------------------
+   'Display a result - this could have been received as HL7 or as as scanned pdf or image
+   'It may or may not have been 'filed' - ie viewed in the users inbox
+   'If Filed and bNewTab is true the result is shown in a new workspace tab
+   'otherwise it is displayed in the generic 'Results' tab
+   'If unfiled it is always shown in new tab.
+   '-------------------------------------------------------------------------------------
+   
+   Dim bExcludeFTReport As Boolean
+   Dim bExcludePIT As Boolean
+   Dim display_style As Integer = const.Document_Display_As_Result
+   Dim fgc As Integer
+   Dim bgc As Integer
+   Dim sHtml As String
+   Dim SelectedDocument As Collection
+   Dim filename As String
+   Dim file_extension As String
+   Dim page_tag As String
+   
+   If cvwResults.count = 0 Then Return
+   Try UnFiled_Document_Metadata_Show(False)                                     'remove this it could be showing if not completed from previous document
+   '---------------------------------------------------------
+   'If this document has been filed, show the pdf or the html
+   '---------------------------------------------------------
+   filename = currentconsult!results_received[cvwResultsReceived_Key]!source_file
+   file_extension = Lower(File.Ext(currentconsult!results_received[cvwResultsReceived_Key]!source_file))
+   If Not IsNull(currentconsult!results_received[cvwResultsReceived_Key]!tag_user) Then
+      Select Case file_extension
+         Case "pdf"
+            If bNewTab Then  
+               Editor_ShowPage("pdf document", currentconsult!results_received[cvwResultsReceived_Key]!tag_user & ":" & Str(currentconsult!results_received[cvwResultsReceived_Key]!pk_document), filename)
+            Else
+               Editor_ShowPage("result", currentconsult!results_received[cvwResultsReceived_Key]!tag_user & ":" & Str(currentconsult!results_received[cvwResultsReceived_Key]!pk_document), filename, "pdf")
+            End If   
+         Case "jpg", "png", "bmp", "jpeg", "tiff"
+            If bNewTab Then   
+               Editor_ShowPage("image", currentconsult!results_received[cvwResultsReceived_Key]!tag_user, filename, "An Extra Tag")
+            Else
+               Editor_ShowPage("result", currentconsult!results_received[cvwResultsReceived_Key]!tag_user, filename, "image")
+            End If   
+         Case Else
+            page_tag = currentconsult!results_received[cvwResultsReceived_Key]!tag_user
+            If Right(page_tag) = ";" Then page_tag = Left(page_tag, Len(page_tag) - 1)
+            page_tag &= " (" & Format(currentconsult!results_received[cvwResultsReceived_Key]!date_created) & ":" & Str(currentconsult!results_received[cvwResultsReceived_Key]!pk_document) & ")"
+            If bNewTab Then   
+               Try Editor_ShowPage("browser", page_tag, currentconsult!results_received[cvwResultsReceived_Key]!html, currentconsult!results_received[cvwResultsReceived_Key]!organisation)
+            Else  
+               Try Editor_ShowPage("result", page_tag, currentconsult!results_received[cvwResultsReceived_Key]!html, "html")
+            End If   
+      End Select
+   Else
+      '------------------------------------------------------------------------------
+      'tag_user is null construct the page tag along with a date eg FBC (01/02/2010)
+      'Now determine if this has actually been viewed and filed by the doctor
+      'if it has, then there will be a user tag
+      'If not, then show the metadata for this document
+      '-------------------------------------------------------------------------------
+      FMetaData.Init("Allocated Documents")                                      'gui elements for filing, not allocating like in scanning
+      SelectedDocument = currentconsult!results_received[cvwResultsReceived_Key]    'makes typing easier
+      '-------------------------------------------------------------------
+      'Now, if a HL7 result, if no html - ie not yet file, create the html
+      '------------------------------------------------------------------
+      Select Case file_extension
+         Case "pdf"
+            Editor_ShowPage("pdf document", "UNFILED", filename)
+         Case Else
+            bExcludeFTReport = SelectedDocument!exclude_ft_report
+            bExcludePIT = SelectedDocument!exclude_pit
+            fgc = SelectedDocument!abnormals_foreground_color
+            bgc = SelectedDocument!abnormals_background_color
+            display_style = SelectedDocument!fk_lu_message_display_style
+            CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & SelectedDocument!pk_document & " ORDER BY observations.observation_date, set_id")
+            shtml = modHL7Process.Construct_HTML(currentconsult!patient, SelectedDocument, currentobservations, bExcludePIT, bExcludeFTReport, display_style, fgc, bgc)
+            sHtml = Replace(shtml, "%filingas%", "")
+            sHtml = Replace(shtml, "** UNFILED **:", "")
+            page_tag = "UNFILED RESULT (" & currentconsult!results_received[cvwResultsReceived_Key]!date_created & ")"
+            Editor_ShowPage("browser", page_tag, sHtml)
+      End Select
+      With FMetaData
+         .Edit(currentconsult!results_received, cvwResultsReceived_Key)         'display metadata for this document
+         .bexit = True
+         .txtUserObservationName.text = cvwResults[cvwResultsReceived_Key][1]
+         .txtUserObservationName.pos = 0    'ensure start of line showing
+         .Document_HTML_Set(sHtml)
+         .HBox_Save.visible = True                                           'contains the save button
+         .hBox_Urgency.Visible = False                                       'not needed as already in the patients notes
+         .bExit = False
+      End With
+      UnFiled_Document_Metadata_Show(True)                                   'set up FClinical to show FMetadata
+   End If
+   
+End
+
+Public Sub Inbox_showResult_old()
    '-------------------------------------------------------------------------------------
    'Display a result - this could have been received as HL7 or as as scanned pdf or image
    'It may or may not have been 'filed' - ie viewed in the users inbox
@@ -4455,7 +5363,7 @@ Public Sub Inbox_showResult()
    If Not IsNull(currentconsult!results_received[cvwResultsReceived_Key]!tag_user) Then
       Select Case file_extension
          Case "pdf"
-            Editor_ShowPage("pdf document", currentconsult!results_received[cvwResultsReceived_Key]!tag_user & ":" & Str(currentconsult!results_received[cvwResultsReceived_Key]!pk_document), filename)
+            Editor_ShowPage("document", currentconsult!results_received[cvwResultsReceived_Key]!tag_user & ":" & Str(currentconsult!results_received[cvwResultsReceived_Key]!pk_document), filename)
          Case Else
             page_tag = currentconsult!results_received[cvwResultsReceived_Key]!tag_user
             If Right(page_tag) = ";" Then page_tag = Left(page_tag, Len(page_tag) - 1)
@@ -4983,6 +5891,8 @@ Public Sub WorkspaceEditor_Activate()
                tbEdit.Tooltip = ""
                
                Select Case hctrl.Name
+                  Case "FDocumentViewer"
+                     tbPrint.Enabled = True
                   Case "FPictureViewer"
                      tbPrint.Enabled = True
                      tbPrint.Tooltip = "Print Image"
@@ -5043,11 +5953,12 @@ Public Sub WorkspaceEditor_Activate()
                      tbPreview.Tooltip = "Preview PDF of the progress notes"
                   Case "FProgressNotePage"
                      frmConsult = hctrl
-                     '   frmConsult.Display_FReferalsExisting_Notes()  're-load progress notes
                      frmConsult.Display_Health_Issue()
                      tbSave.Tooltip = "Save Progress Note"
                      tbSave.Enabled = True
                      tbSave.Tooltip = "Save Progress Notes"
+                     tbPrint.Enabled = True
+                     tbPrint.Tooltip = "Print Today's Progress Notes"
                   Case "FPastHistory"
                      tbSave.ToolTip = "Save Health Issue"
                      tbSave.Enabled = True
@@ -5087,7 +5998,7 @@ Public Sub WorkspaceEditor_Activate()
                      tbRefresh.Enabled = True
                      tbRefresh.tooltip = "Refresh DACC Components"
                      tbSave.Enabled = True
-                     tbSave.Tooltip = "Save DACC"
+                     tbSave.Tooltip = "Save and Print DACC"
                      tbPrint.Enabled = True
                      tbPrint.Tooltip = "Re-Print DACC"
                      tbNew.Tooltip = "New DACC"
@@ -5965,6 +6876,7 @@ Public Sub cvwResults_Select()
    
    cvwResults.MoveCurrent
    cvwResultsReceived_Key = cvwResults.item.key
+   Inbox_showResult
 Catch
    Return 
    
@@ -5996,11 +6908,7 @@ Public Sub cvwResults_Menu()
          Break
       Endif
    Next
-   If currentconsult!results_received[cvwResultsReceived_Key]!msh_transmitting_entity = "snail mail" Then 'can only send back non-hl7 e.g scanned FIXME, LATER ?IMAGES
-      mnuResultsReceived_Refile.Enabled = True
-   Else
-      mnuResultsReceived_Refile.Enabled = False
-   End If
+   
    mnuResultsReceived_ShowGraphable()
    
    If cvwResults.Selection.count > 1 Then                                                     'see if more than one item has been selected
@@ -6016,12 +6924,16 @@ Public Sub cvwResults_Menu()
       Next
       mnuResultsReceived_JoinPDF.Enabled = False
    Endif
-   
+   If currentconsult!results_received[cvwResultsReceived_Key]!msh_transmitting_entity = "snail mail" Then 'can only send back non-hl7 e.g scanned FIXME, LATER ?IMAGES
+      mnuResultsReceived_Refile.Enabled = True
+   Else
+      mnuResultsReceived_Refile.Enabled = False
+   End If
    mnuResultsReceived.Popup()
    '
 Catch
    Return 'FIXME still getting null object bug here.
-
+   
 End
 
 Public Sub tbJoin_Click()
@@ -6125,5 +7037,22 @@ Remove_Join_Panel:
    
 Catch
    modDBConnect.RollBack()
+   
+End
 
+Public Sub pbMeasurementGraph_Menu()
+   
+   mnuGraph.popup
+   
+End
+
+Public Sub mnuGraph_Click()
+   ' Dim im As Image
+   
+   '  im = pbMeasurementGraph.Picture.Image
+   Select Case Last.tag
+      Case "copy"
+         Clipboard.Copy(pbMeasurementGraph.Picture.Image)   
+   End Select 
+   
 End

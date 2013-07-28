@@ -1,0 +1,14 @@
+update clin_measurements.lu_type set unit_qualifier='mm Hg' where name_abbreviated='BP';
+update clin_measurements.lu_type set unit_qualifier='kg' where name_abbreviated='Weight';
+update clin_measurements.lu_type set unit_qualifier='cm' where name_abbreviated='Height';
+ALTER TABLE research.diabetes_patients_with_hba1c   OWNER TO easygp;
+GRANT SELECT ON research.diabetes_patients_with_hba1c TO staff;
+ALTER TABLE research.vwldlcholesterol   OWNER TO easygp;
+GRANT SELECT ON research.vwldlcholesterol to staff;
+GRANT SELECT ON TABLE research.vwmicroalbuminuria TO staff;
+GRANT SELECT ON TABLE research.vwtotalcholesterol TO staff;
+GRANT SELECT ON TABLE clin_measurements.vwbpmostrecent TO staff;
+GRANT SELECT ON TABLE clin_measurements.vwheightmostrecent TO staff;
+GRANT SELECT ON TABLE clin_measurements.vwweightmostrecent TO staff;
+truncate db.lu_version;
+insert into db.lu_version (lu_major,lu_minor) values (0, 307);

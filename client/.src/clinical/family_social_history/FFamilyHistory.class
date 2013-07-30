@@ -59,6 +59,7 @@ Private countries As Collection
 Private country As Collection
 Private occupations As Collection
 Private occupation As Collection
+Private SpellChecker As ClskSpell
 
 Public Sub set_embedded(flag As Boolean)
    '--------------------------------------------------
@@ -90,6 +91,11 @@ Public Sub Init(cons As CConsult)
    obs = New Observer(Form_Terms.ColumnView1) As "cvwCodedTerms"
    cvwConditions.Columns.count = 3
    VBox_EditArea_Outer.Enabled = False
+   With SpellChecker = New ClskSpell
+      .EditorControlToCheck = teForSpelling
+      .TempFileForSpelling = User.home &/ "myspelltemp.txt"  'FIXME
+      .TempFileForErrors = User.home &/ "myspellerrors.txt"
+   End With
    Reload()   'Display family members history lists
    
 End
@@ -435,7 +441,7 @@ Public Sub FamilyMember_KeyRelease()
       Case "relationship"
          Relationship_Get()
       Case "occupation"
-         Occupation_Get()
+         occupations = modCommonDBI.Occupations_Get(listview1, txtOccupation)
    End Select
    
 End
@@ -458,6 +464,11 @@ Public Sub FamilyMember_Change()
          If Not IsInteger(txtAgeDeath.text) Then
             txtAgeDeath.text = ""
          End If
+      Case "occupation"
+         If Len(txtOccupation.text) = 0 Then
+            fk_member_occupation = 0
+            listview1.Visible = False
+         Endif
       Case "country origin"
          If Trim(Last.text) = "" Then
             fk_member_country_birth = ""
@@ -663,111 +674,17 @@ Public Sub CountryOrigin_Get()
    
 End
 
-Public Sub Occupation_Get()
+Public Sub Occupation_Select(occupation As Collection)
    
-   With listview1
-      .Visible = False
-      .Clear
-   End With
-   If Len(Trim(txtOccupation.text)) = 0 Then Return
-   Occupations = modCommonDBI.Occupations_Get(Trim(txtOccupation.text))
-   
-   '-----------------------------------------------------------------
-   'If categories exist to match the text, auto-select or show a list
-   '-----------------------------------------------------------------
-   If Not Occupations.count Then Return
-   For Each Occupation In Occupations
-      listview1.Add(Occupation!pk, Occupation!occupation)
-   Next
-   If Occupations.count = 1 Then
-      Occupation_Select()
-   Else
-      With listview1
-         .Visible = True
-         .Raise
-         .tag = txtOccupation
-      End With
-   End If
-   
-End
-
-Public Sub Occupation_Select()
-   
+   bexit = True   
    txtOccupation.Text = listview1.Item.Text
    fk_member_occupation = listview1.Item.key
+   txtRelationship.SetFocus
+   bexit = False  
 Catch
    Return
-
+   
 End
-
-' Public Sub Occupation_Selection(action As String, Optional calling_control As String)
-'
-'    Dim x As Integer
-'
-'    Select Case action
-'       Case "get"
-'
-'          If Len(Trim(txtOccupation.text)) = 0 Then Return
-'          Occupations = modCommonDBI.Occupations_Get(Trim(txtOccupation.text))
-'          listview1.Clear
-'          '-----------------------------------------------------------------
-'          'If categories exist to match the text, auto-select or show a list
-'          '-----------------------------------------------------------------
-'          If Occupations.count Then
-'             For Each Occupation In Occupations
-'                listview1.Add(Occupation!pk, Occupation!occupation)
-'             Next
-'             If Occupations.count = 1 Then
-'                If Trim(Lower(txtOccupation.text)) = Lower(Occupation!occupation) Then
-'                   Occupation_Selection("select", "list")
-'                   Return
-'                End If
-'             End If
-'             listview1.Visible = True
-'             listview1.Raise
-'             listview1.tag = txtOccupation
-'             Return
-'          End If
-'          listview1.Visible = False
-'       Case "accept"
-'          '----------------------------------------------------------------------
-'          'CALLED BY  : user hitting <enter> in txtoccupation ie editarea_keypress
-'          '             user hitting <enter> on the popup list
-'          '             user double clicking on the popup list
-'          '----------------------------------------------------------------------
-'          bExit = True
-'          If calling_control = "textbox" Then
-'             '-------------------------------------------------------
-'             'User has just hit <enter> without scrolling on the list
-'             'try and find a match
-'             '-------------------------------------------------------
-'             If listview1.Visible Then
-'                listview1.MoveFirst
-'                For x = 0 To listview1.count - 1
-'                   If Lower(listview1.Item.text) = Trim(Lower(txtOccupation.text)) Then
-'
-'                      Break
-'                   End If
-'                Next
-'             End If
-'             '------------------------------------------------------------------
-'             'Either no match was found OR list wasn't visible anyway = no match
-'             '------------------------------------------------------------------
-'             listview1.Visible = False
-'          Else
-'             '-----------------------------------------------------------
-'             'Routine called by user clicking on list or pressing <enter>
-'             '-----------------------------------------------------------
-'             If listview1.Visible Then
-'                listview1.MoveCurrent   'set internal cursor to match marquee
-'                txtOccupation.Text = listview1.Item.Text
-'             End If
-'          End If
-'          txtRelationship.SetFocus()
-'          bExit = False
-'    End Select
-'
-' End
 
 Public Sub ListView1_KeyPress()
    '------------------------------------------------------------------
@@ -843,8 +760,7 @@ Public Sub listview1_DblClick()
             Goto AcceptRelative
          End If
       Case "occupation"
-         occupation = occupations[listview1.Item.key]
-         Occupation_Select()
+         Occupation_Select(occupations[listview1.Item.key])
          txtRelationship.SetFocus()
       Case "country origin"
          Country_Select(countries[listview1.Item.key])
@@ -1110,7 +1026,7 @@ Public Sub Save()
    Dim link As New CRow                 'link family member to patient.
    
    If Vbox_EditArea.padding = 0 Then Return
-   If Not Valid_EditArea_Contents() Then Return
+   If Not FamilyMember_Valid() Then Return
    VBox_EditArea_Outer.Enabled = False
    If fk_member <> 0 Then
       member.put_unchanged(fk_member, "fk_member")
@@ -1123,17 +1039,15 @@ Public Sub Save()
    member!name = Trim(txtName.text)
    member!birthdate = Val(txtBirthdate.text)
    member!age_of_death = Val(txtAgeDeath.text)
-   If fk_member_occupation Then                                                           'member has existing occupation or chosen now
-      member!fk_occupation = fk_member_occupation
+   If fk_member_occupation Then                                                'member has existing occupation or chosen now
+      member!fk_occupation = fk_member_occupation                              'will always exist if text exists see FamilyMember_Valid()
    Else
-      If fk_member_occupation = 0 And Trim(txtOccupation.text) <> "" Then                'no key?if actual text save occupation
-         member!fk_occupation = modCommonDBI.Occupation_Save(Trim(txtOccupation.text))
+      If Trim(txtOccupation.text) = "" Then                                                    
+         member!fk_occupation = Null
       End If
    End If
-   If Trim(txtOccupation.text) = "" Then member!fk_occupation = Null                     'could be removing an occupation
-   
+   If Trim(txtOccupation.text) = "" Then member!fk_occupation = Null         'could be removing an occupation
    member!fk_country_birth = fk_member_country_birth
-   
    condition!condition = Trim(txtcondition.text)
    condition!age_of_onset = Val(txtAgeOnset.text)
    If rbDiagnosisCertainYes.Value = True Then
@@ -1171,7 +1085,7 @@ Public Sub Save()
    
 End
 
-Public Function Valid_EditArea_Contents() As Boolean
+Public Function FamilyMember_Valid() As Boolean
    '--------------------------------------------------------------------
    'validates the contents of edit area returns FALSE if invalid
    '  Mimimum amount of data:
@@ -1201,8 +1115,22 @@ Public Function Valid_EditArea_Contents() As Boolean
       txtCodedTerm.setfocus()
       Return
    End If
-   
+   If Trim(txtOccupation.text) <> "" Then
+      SpellCheck_TextBox(txtoccupation)
+      fk_member_occupation = modCommonDBI.Occupation_Check_Valid(txtOccupation)
+      If fk_member_occupation = -1 Then Return  'user aborted saving new occupation
+   Endif
    Return True
+   
+End
+
+Public Sub SpellCheck_TextBox(tb As TextBox)
+   
+   bexit = True
+   teForSpelling.text = tb.text
+   bexit = False
+   SpellChecker.init(tb)
+   SpellChecker.StartSpelling()
    
 End
 

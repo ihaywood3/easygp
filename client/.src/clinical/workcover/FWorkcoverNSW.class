@@ -70,6 +70,7 @@ Private fk_branch As Integer
 Private fk_person As Integer
 Private fk_town As Integer
 Private fk_organisation As Integer
+Private SpellChecker As ClskSpell
 Private visit_types As String[]
 Private fk_code As String  'see coding.generic_terms table
 Private fk_coding_system As Integer 'e.g 1 = icpc2Plus 2 = icd10
@@ -127,6 +128,11 @@ Public Sub Init(cons As CConsult)
    bexit = True
    modEditAreaHelpers.Set_ICD10(chkicd10, lblCodingSystem)
    bexit = False
+   With SpellChecker = New ClskSpell
+      .EditorControlToCheck = teForSpelling
+      .TempFileForSpelling = User.home &/ "myspelltemp.txt"  'FIXME
+      .TempFileForErrors = User.home &/ "myspellerrors.txt"
+   End With
    Reload()                                                                'Refresh claims list and visits list
    
 End
@@ -213,7 +219,7 @@ Public Sub Save()
    'Do some validation/prompt for missing printer
    '---------------------------------------------
    If VBox_EditArea_Outer.padding = 0 Then Return
-   If Not EditArea_Contents_Valid() Then Return
+   If Not Valid_WorkCover_Form() Then Return
    '-----------------------------
    ' first the visit
    ' pk serial Not Null,
@@ -238,12 +244,8 @@ Public Sub Save()
       claim!fk_consult = currentconsult.GetPK()
    Endif
    claim!claim_number = Trim(txtClaim.text)
-   If fk_occupation <> 0 Then                              'fk_occupation exists = an existing occupation
+   If fk_occupation <> 0 Then                              'have insisted on occupation, this should never be zero
       claim!fk_occupation = fk_occupation
-   Else
-      If Trim(txtOccupation.text) <> "" Then             'have an occupation but no key - is a new occupation
-         claim!fk_occupation = modCommonDBI.Occupation_Save(Lower(Trim(txtOccupation.text)))
-      End If
    End If
    claim!fk_branch = fk_branch
    If fk_person <> 0 Then claim!fk_person = fk_person
@@ -404,7 +406,7 @@ Public Sub Reload()
    
 End
 
-Public Function EditArea_Contents_Valid() As Boolean
+Public Function Valid_WorkCover_Form() As Boolean
    '--------------------------------------------------------------------
    'Validate adequate data exists before a save
    'mmm.................. fuckwit beaurocrats changing forms mid stream
@@ -583,8 +585,35 @@ Public Function EditArea_Contents_Valid() As Boolean
          Return False
       End If
    End If
+   If Trim(txtOccupation.text) = "" Then
+      sMsg = "Please enter an occupation for this worker"
+      Message.Info(sMsg)
+      txtOccupation.SetFocus
+      Return
+   Endif
+   '------------------------------------------------------------------------------------------ 
+   'Must check occupation every time, e.g an fk_occupation could exist, even if the
+   'user altered an occupation e.g
+   'existing occupation could be cardiologist, they then realised the person was 
+   'cardiologist - interventional, simply added the second bit on, the fk_occupation is
+   'then invalid fixme - remove fk-occupation through entire easygp data entry and always check
+   '-------------------------------------------------------------------------------------------
+   SpellCheck_TextBox(txtoccupation)
+   fk_occupation = modCommonDBI.Occupation_Check_Valid(txtOccupation)
+   If fk_occupation = -1 Then Return
    
    Return True
+   
+End
+
+Public Sub SpellCheck_TextBox(tb As TextBox)
+   
+   bexit = True
+   teForSpelling.text = tb.text
+   bexit = False
+   
+   SpellChecker.init(tb)
+   SpellChecker.StartSpelling()
    
 End
 
@@ -2033,7 +2062,7 @@ Public Sub Claim_New()
    '----------------------------------------------------------
    
    If VBox_EditArea_Outer.padding = 1 Then
-      If EditArea_Contents_Valid() Then
+      If Valid_WorkCover_Form() Then
          If Message.Question("Wipe current workcover form?", "Yes", "No") = 2 Then Return
       End If
    Endif
@@ -2691,7 +2720,7 @@ Public Sub ListView1_DblClick()
    listview1.MoveCurrent
    Select Case listview1.Tag.tag
       Case "occupation"
-         occupation_Selection("accept", "list")
+         occupation_Select(occupations[listview1.Item.key])
       Case "employer"
          Sole_Trader = Sole_Traders[listview1.Item.key]
          SoleTrader_Select()
@@ -2699,7 +2728,23 @@ Public Sub ListView1_DblClick()
    listview1.Visible = False
 Catch
    Return
+   
+End
 
+Public Sub Occupation_Select(occupation As Collection)
+   '----------------------------------------
+   'Select an occupation from the popup list
+   'called by Listview1_dblclick() 
+   '-----------------------------------------   
+   
+   bexit = True   
+   txtOccupation.Text = occupation!occupation
+   bexit = False
+   fk_occupation = occupation!pk
+   txtHoursWorked.SetFocus
+Catch
+   Return
+   
 End
 
 Public Sub Organisation_Comms_Get()
@@ -2824,53 +2869,53 @@ Public Sub SoleTrader_Select()
    
 End
 
-Public Sub occupation_Selection(action As String, Optional calling_control As String)
-   
-   Select Case action
-      Case "get"
-         If Trim(txtoccupation.text) = "" Then Return
-         occupations = modCommonDBI.occupations_get(Trim(txtoccupation.text))
-         Listview1.Clear()
-         If occupations.count Then
-            For Each occupation In occupations
-               listview1.Add(occupation!pk, occupation!occupation)
-            Next
-            Listview1.Visible = True
-            Listview1.Raise
-            Listview1.tag = txtOccupation
-            Return
-         Else
-            listview1.Visible = False
-         End If
-      Case "accept"
-         Select Case calling_control
-            Case "textbox"
-               If listview1.Visible Then
-                  listview1.MoveFirst
-                  Do Until listview1.MoveNext()
-                     If Lower(Trim(txtoccupation.text)) = Lower(listview1.item.text) Then
-                        Occupation_Selection("accept", "list")
-                        Return
-                     End If
-                  Loop
-               Else
-                  fk_occupation = 0
-               End If
-            Case "list"
-               bExit = True
-               Listview1.MoveCurrent   'set internal cursor to match marquee
-               txtoccupation.text = occupations[Listview1.Item.key]!occupation
-               fk_occupation = occupations[Listview1.Item.key]!pk
-               listview1.Visible = False
-               bExit = False
-         End Select
-         txtHoursWorked.SetFocus()
-   End Select
-Catch
-   bexit = False  
-   Return
-
-End
+' Public Sub occupation_Selection(action As String, Optional calling_control As String)
+'    
+'    Select Case action
+'       Case "get"
+'          If Trim(txtoccupation.text) = "" Then Return
+'          occupations = modCommonDBI.occupations_get(Trim(txtoccupation.text))
+'          Listview1.Clear()
+'          If occupations.count Then
+'             For Each occupation In occupations
+'                listview1.Add(occupation!pk, occupation!occupation)
+'             Next
+'             Listview1.Visible = True
+'             Listview1.Raise
+'             Listview1.tag = txtOccupation
+'             Return
+'          Else
+'             listview1.Visible = False
+'          End If
+'       Case "accept"
+'          Select Case calling_control
+'             Case "textbox"
+'                If listview1.Visible Then
+'                   listview1.MoveFirst
+'                   Do Until listview1.MoveNext()
+'                      If Lower(Trim(txtoccupation.text)) = Lower(listview1.item.text) Then
+'                         Occupation_Selection("accept", "list")
+'                         Return
+'                      End If
+'                   Loop
+'                Else
+'                   fk_occupation = 0
+'                End If
+'             Case "list"
+'                bExit = True
+'                Listview1.MoveCurrent   'set internal cursor to match marquee
+'                txtoccupation.text = occupations[Listview1.Item.key]!occupation
+'                fk_occupation = occupations[Listview1.Item.key]!pk
+'                listview1.Visible = False
+'                bExit = False
+'          End Select
+'          txtHoursWorked.SetFocus()
+'    End Select
+' Catch
+'    bexit = False  
+'    Return
+'    
+' End
 
 Public Sub ListView1_KeyPress()
    
@@ -2894,7 +2939,7 @@ Public Sub EditAreaTextBox_KeyRelease()
       Case "employer"
          Employer_Find()
       Case "occupation"
-         occupation_Selection("get")
+         occupations = modCommonDBI.Occupations_Get(listview1, txtOccupation)
       Case "coded diagnosis"
          Timer1.Start()       'see timer1_timer which gets the terms
    End Select
@@ -2981,6 +3026,7 @@ Public Sub EditAreaTextBox_Change()
       Case "occupation"
          If Len(Last.text) = 0 Then
             fk_occupation = 0
+            listview1.Visible = False  
          End If
       Case "management plan"
          If InStr(Last.text, "\n\n") Then
@@ -3103,8 +3149,6 @@ Public Sub EditAreaTextBox_KeyPress()
                txtOccupation.SetFocus()
             Case "date of injury"
                txtMechanismInjury.SetFocus()
-            Case "occupation"
-               occupation_Selection("accept", "textbox")
             Case "hours worked"
                txtDateInjury.SetFocus()
             Case "mechanism of injury"
@@ -3461,4 +3505,3 @@ Public Sub VSplit_WorkcoverForm_Resize()
    Endif
    
 End
-

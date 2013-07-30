@@ -3,33 +3,41 @@
 Private occupations As Collection
 Private occupation As Collection
 Private fk_occupation As Integer
-'
+Private sReferrerType As String
+
 
 Public Sub Init(occ As String)
-
+   
    ' TextLabel1.text = "<B>Selecting an occupation</B><BR><BR>"
    ' "Easygp uses the Australian Bureau of Statistics (ABS) coded occuptions, so the list is fixed and not user extensible, i.e you may not add new occupations via the user interface. "
    ' "Please select an occupation to match your existing occupation. Should it absolutely be impossible, which is very "
    ' "unlikely, please email the EasyGP developers (see Help/About in the main FClinical Screen.\n\n"
    ' "Note that occupations with the suffix 'nfd' mean 'Not Further Defined'"
-   txtOccupationNew.text = occ
-
+   txtOldOccupation.text = occ
+   modEditAreaHelpers.Resize_labels(Vbox2, lblMeasure)
+   cmbReferrerType.index = 0 'default referrer_type to not medical
+   sReferrerType = "o"
 End
 
 Public Sub Run() As Boolean
-
+   
    Return Not Me.ShowModal()
-
+   
 End
 
 Public Sub btnOK_Click()
-
+   
    Dim mso As CRow
    Dim R As Result
    Dim sql As String
-
-   If txtOccupation.text = "" Then
-      txtOccupation.SetFocus()
+   
+   If Trim(txtNewOccupation.text) = "" Then 
+      txtNewOccupation.SetFocus
+      Return 
+   End If 
+   If Message.Question("You have selected: " & Trim(txtNewOccupation.text) & " as the new occupation.\n\nPleaseClick Confirm or click Cancel to re-try", "Confirm", "Retry") = 2 Then Return
+   If txtNewOccupation.text = "" Then
+      txtNewOccupation.SetFocus()
       Return
    Endif
    '-----------------------------------------------------------
@@ -37,113 +45,140 @@ Public Sub btnOK_Click()
    ' in the table putting the data into this field
    'save this as a probable mis-spelt occupation
    '-----------------------------------------------------------
-   If modUtil.StripExtraBlanks(txtOccupation.text) <> Trim(txtOccupationNew.text) Then
+   If modUtil.StripExtraBlanks(txtNewOccupation.text) <> Trim(txtOldOccupation.text) Then
       sql = "Select * from import_export.lu_misspelt_occupations where misspelt_occupation ILIKE $$"
-      sql &= Lower(Trim(txtOccupationNew.text)) & "$$ AND "
-      sql &= "occupation ILIKE $$" & Lower(modUtil.StripExtraBlanks(txtOccupation.text)) & "$$"
+      sql &= Lower(Trim(txtOldOccupation.text)) & "$$ AND "
+      sql &= "occupation ILIKE $$" & Lower(modUtil.StripExtraBlanks(txtNewOccupation.text)) & "$$"
       R = modDBConnect.exec_query(sql)
       If Not R.count Then
          mso = New CRow
-         mso!occupation = Lower(modUtil.StripExtraBlanks(txtOccupation.text))
-         mso!misspelt_occupation = Lower(Trim(txtOccupationNew.text)) 'don't strip internal blanks
+         mso!occupation = Lower(modUtil.StripExtraBlanks(txtNewOccupation.text))
+         mso!misspelt_occupation = Lower(Trim(txtOldOccupation.text)) 'don't strip internal blanks
          mso.Save("import_export.lu_misspelt_occupations", "fk_lu_misspelt_occupations")
-         modDBConnect.CommitTrans()
+         '  modDBConnect.CommitTrans()
       End If
    End If
-   const.globalstring = Lower(modUtil.StripExtraBlanks(txtOccupation.text))
+   const.globalstring = Lower(modUtil.StripExtraBlanks(txtNewOccupation.text)) & "|" & sReferrerType
    Me.Close(True)
-
+   
 End
 
 Public Sub btnCancel_Click()
-
+   
    const.globalstring = ""
    Me.Close
-
+   
 End
 
 Public Sub listview1_KeyPress()
-
+   
    If Key.code = Key.return Then
       listview1_DblClick
    End If
-
+   
 End
 
 Public Sub listview1_DblClick()
-
+   
    listview1.MoveCurrent
    occupation = occupations[listview1.Item.key]
    occupation_Select
    listview1.Visible = False
-   Catch
-      Return
+   cmbReferrerType.SetFocus
+Catch
+   Return
+
 End
 
 Public Sub Occupation_Get()
+   'Get the occupation from the new table
 
+   Dim sql As String
+   
    With listview1
       .Visible = False
       .Clear
    End With
-   If Trim(txtoccupation.text) = "" Then Return
-   occupations = modCommonDBI.occupations_get(Trim(txtoccupation.text))
+   If Trim(txtNewOccupation.text) = "" Then Return
+   sql = "Select * from common.lu_occupations_temp where occupation ILIKE $$%" & Trim(txtNewOccupation.text) & "%$$ ORDER BY lower (occupation)"
+   Occupations = modDBConnect.exec_query_collection(sql)
    Listview1.Clear()
    If occupations.count Then
       For Each occupation In occupations
          listview1.Add(occupation!pk, occupation!occupation)
       Next
-      If occupations.count = 1 Then
-         occupation_Select()
-      Else
-         With Listview1
-            .Visible = True
-            .Raise
-            .tag = txtOccupation
-         End With
-      Endif
-
-      Return
+      With Listview1
+         .Visible = True
+         .Raise
+         .tag = txtNewOccupation
+      End With
    End If
-
+   
 End
 '
 
 Public Sub Occupation_Select()
-
-   txtoccupation.text = occupation!occupation
+   
+   txtNewOccupation.text = occupation!occupation
+   Select Case occupation!referrer_type
+      Case "o"
+         cmbReferrerType.index = 0
+      Case "g"
+         cmbReferrerType.index = 1
+      Case "s"
+         cmbReferrerType.index = 2
+   End Select
    fk_occupation = occupation!pk
-
+   
 End
 
-Public Sub txtOccupation_GotFocus()
-
+Public Sub txtNewOccupation_GotFocus()
+   
    With listview1
       .top = Last.Parent.top + Last.Parent.height
       .left = Last.Left
       .Visible = False
-      .width = txtoccupation.Width
+      .width = txtNewOccupation.Width
    End With
-
+   
 End
 
-Public Sub txtOccupation_Change()
-
+Public Sub txtNewOccupation_Change()
+   
 End
 
-Public Sub txtOccupation_KeyRelease()
-
-   Return
+Public Sub txtNewOccupation_KeyRelease()
+   
    occupation_get()
-
+   
 End
 
-Public Sub txtOccupation_KeyPress()
-
-   Return
+Public Sub txtNewOccupation_KeyPress()
+   
+   
    If Key.code = Key.Down Then
-      listview1.SetFocus()
+      If listview1.visible Then
+         With listview1
+            .MoveFirst
+            .Item.Selected = True  
+            .SetFocus
+         End With
+      Endif
+  
    Endif
    Inc Application.Busy
+   
+End
+
+Public Sub cmbReferrerType_Click()
+
+   Select Case cmbReferrerType.Index
+      Case 0
+         sReferrerType = "o"
+      Case 1
+         sReferrerType = "g"
+      Case 2
+         sReferrerType = "s"
+   End Select
 
 End

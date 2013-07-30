@@ -19,15 +19,15 @@
 '----------------------------------------------------------------------
 
 Public Function Seasons_Get(Optional season As String) As Collection
-
+   
    Dim sql As String
-
+   
    sql = "Select * from common.lu_seasons "
    If season <> "" Then
       sql &= " WHERE season ILIKE $$%" & season & "%$$ "
    Endif
    Return modDBConnect.exec_query_collection(sql)
-
+   
 End
 
 Public Function Religions_Get(Optional sub_religion As String) As Collection
@@ -35,63 +35,121 @@ Public Function Religions_Get(Optional sub_religion As String) As Collection
    'Returns a collection of religion/subreligion where the collection
    'pk_view is a compound key (see the def of this view)
    '-----------------------------------------------------------------
-
+   
    Dim sql As String
-
+   
    sql = "Select * from common.vwReligions "
    If sub_religion <> "" Then
       sql &= "WHERE sub_religion ILIKE $$%" & sub_religion & "%$$"
    End If
    Return modDBConnect.exec_query_collection(sql)
-
+   
 End
 
 Public Function Drug_Formulations_Get(Optional form As String = "", Optional bsorted As Boolean = False) As Collection
    '-------------------------------------
    'Retrieves a list of drug formulations
    '-------------------------------------
-
+   
    Dim sql As String
-
+   
    sql = "SELECT * from common.lu_formulation WHERE form ILIKE $$%" & form & "%$$ "
    If bsorted Then
       sql &= " SORT DESC"
    Endif
    Return modDBConnect.exec_query_collection(sql)
-
+   
 End
 
 Public Function Sites_Administration_Get(Optional site As String = "") As Collection
    '--------------------------------------------------------
    'Retrieves a list of sites of administration eg 'deltoid'
    '--------------------------------------------------------
-
+   
    Return modDBConnect.exec_query_collection("SELECT * from common.lu_site_administration WHERE site ILIKE $$%" & site & "%$$")
-
+   
 End
 
 Public Function Routes_Administration_Get(Optional route As String = "", Optional bsorted As Boolean = False) As Collection
    '------------------------------------------------------------------
    'Retrieves a list of routes of administration with optional sorting
    '------------------------------------------------------------------
-
+   
    Dim sql As String
-
+   
    sql = "SELECT * from common.lu_route_administration WHERE route ILIKE $$%" & route & "%$$ "
    If bsorted Then
       sql &= " SORT DESC"
    Endif
    Return modDBConnect.exec_query_collection(sql)
-
+   
 End
 
-Public Function Occupations_Get(occupation As String) As Collection
-   '----------------------------------------------------------------------------
-   'Retrieves a list of occupations  like occupation from common.lu_occupations
-   'Does not have to be an exact match
-   '----------------------------------------------------------------------------
+Public Function Occupations_Get(lv As Listview, txtOccupation As Textbox) As Collection 
+   '-----------------------------------------------------------------------
+   'Used across the entire program when need to get an occupation
+   'FIXME remove this comment: once I implement this centralised sub
+   'returns a zero based collection of occupations to match listview index
+   '-----------------------------------------------------------------------
+   
+   Dim x As Integer
+   Dim occupations As Collection 
+   Dim occupation As Collection
+   Dim sql As String
+   
+   With lv                                                        'remove list, clear list
+      .Visible = False
+      .Clear
+   End With
+   If Trim(txtOccupation.text) = "" Then Return                   'no text? then exit
+   sql = "Select * from common.lu_occupations where occupation ILIKE $$%" & Trim(txtOccupation.text) & "%$$ ORDER BY lower (occupation)"
+   Occupations = modUtil.Copy_Collection_Keyed_Sequentially(modDBConnect.exec_query_collection(sql))
+   If Not Occupations.count Then Return                           'no occupations, then exit
+   For Each Occupation In Occupations                             'list index= zero based = occupations collection=zero based
+      lv.Add(x, Occupation!occupation)
+      Inc x
+   Next
+   If Occupations.count Then                                      'if occupations in list, popup this list
+      With lv
+         .Visible = True
+         .Raise
+         .tag = txtOccupation                                    
+      End With
+   End If
+   Return occupations
+Catch
+   Return 
+   
+End
 
-   Return modDBConnect.exec_query_collection("SELECT * from common.lu_occupations WHERE occupation ILIKE $$%" & Trim(occupation) & "%$$ ORDER BY occupation")
+Public Sub Occupation_Check_Valid(txtOccupation As TextBox) As Integer
+   '---------------------------------------------------------------------------------------
+   'Before calling this routine the txtOccupation has been spell checked by calling routine
+   'Because of this scenario, always get the fk_occupation from the backend
+   'I had awful trouble throughout the program, probably my stupidity in locking down a
+   'valid fk_occupation so I've given up and put this central routine in
+   'returns -1 if user cancels, integer value if fk_occupation or 0 if new occupation
+   'to be saved
+   '---------------------------------------------------------------------------------------
+
+   Dim occupation As Collection
+   Dim fk_occupation As Integer
+   Dim sMsg As String
+   
+   occupation = modCommonDBI.Occupation_Get(Trim(txtoccupation.text))       'check if occupation is in the database
+   If Not IsNull(occupation) Then                                           'Yes? 
+      fk_occupation = occupation!pk                                         'get key
+   Else                                                                     'No?
+      smsg = "The occupation:\n\n " & Trim(txtoccupation.text) & "\n\nwas not found in the database.\n\n"  'Prompt user
+      sMsg &= "Please check the spelling and if ok confirm you wish to add this occupation to the database."
+      If Message.Question(sMsg, "Yes - Add Occupation", "Cancel") = 2 Then
+         txtoccupation.SetFocus
+         Return -1
+      Else
+         fk_occupation = Occupation_Save(Lower(Trim(txtOccupation.text)))
+      End If
+   End If
+   Return fk_occupation 
 
 End
 
@@ -102,9 +160,9 @@ Public Function Occupation_Get(occupation As String) As Collection
    'FIXME THE occupations table needs re-writing has has
    'non unique values due to previous bugs
    '--------------------------------------------------------------
-
+   
    Return modDBConnect.exec_query_first("SELECT * from common.lu_occupations WHERE occupation ILIKE $$" & Trim(occupation) & "$$ ORDER BY occupation LIMIT 1")
-
+   
 End
 
 Public Function Occupation_Save(occupation As String) As Integer
@@ -113,9 +171,9 @@ Public Function Occupation_Save(occupation As String) As Integer
    'which is auto-capitalised eg 'General Manager'
    'and returns the primary key of that table
    '------------------------------------------------------------
-
+   
    Dim $result As Result
-
+   
    $result = modDBConnect.exec_query("Select * from common.lu_occupations WHERE occupation ILIKE $$" & Trim(occupation) & "$$")
    If $result.count Then
       Return $result!pk
@@ -123,5 +181,5 @@ Public Function Occupation_Save(occupation As String) As Integer
       $Result = modDBConnect.exec_query("INSERT INTO common.lu_occupations (occupation) VALUES ($$" & modStrings.CapitaliseWord(Trim(occupation)) & "$$) returning pk")
       Return $Result!pk
    End If
-
+   
 End

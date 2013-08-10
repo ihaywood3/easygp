@@ -5,9 +5,6 @@ import os, re, psycopg2, pdb, sys, glob, codecs, pdb, time
 from xml.etree.cElementTree import *
 
 conn = psycopg2.connect(database='drugs',user='ian')
-updates = open("./product-update.sql","a+")
-updates_pbs = open("./pbs-update.sql","w")
-updates_restrict = open("./restrict-update.sql","w")
 
 
 now_t = time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(time.time()))
@@ -29,12 +26,12 @@ def cmd(q):
     cur = conn.cursor()
     cur.execute(q)
     cur.close()
-    c.commit()
-    print >>updates, sql+";"
+    conn.commit()
+    print q+";"
     
 
 def comment(sql):
-    print >>updates, "--"+sql
+    print "--"+sql
 
 def x(s):
     x = {"pbs":"http://schema.pbs.gov.au", "rwt":"http://schema.pbs.gov.au/RWT/","dbk":"http://docbook.org/ns/docbook","xlink":"http://www.w3.org/1999/xlink","xml":"http://www.w3.org/XML/1998/namespace","rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#","skos":"http://www.w3.org/2004/02/skos/core#"}
@@ -46,22 +43,23 @@ def import_atc(t):
     for atc in xml_atc(t):
         r = query("select 1 from drugs.atc where atccode='%s'" % atc["atccode"])
         if len(r) == 0:
-            cmd("insert into drugs.atc (atccode, atcname) values ($$%s$$, $$%s$$)" % (atc["atccode"],atc["atcname"]))
+            "insert into drugs.atc (atccode, atcname) values ($$%s$$, $$%s$$)" % (atc["atccode"],atc["atcname"])
 
 def import_mnfr(t):
     for m in xml_manufacturers(t):
-        r = query("select 1 from drugs.company where code='%s'" % m["code"])
+        r = query("select * from drugs.company where code='%s'" % m["code"])
         if len(r) == 1:
-            cmd("""
-        update drugs.company set company=$$%(company)s$$,address=$$%(address)s$$,telephone='%(telephone)s'
-        where code='%(code)s'""" % m)
+            if m["company"] != r[0]["company"] or m["address"] != r[0]["address"] or m['telephone'] != r[0]['telephone']:
+                print """
+update drugs.company set company=$$%(company)s$$,address=$$%(address)s$$,telephone='%(telephone)s'
+where code='%(code)s'""" % m
         else:
-            cmd("""
-    insert into drugs.company (code,company,address,telephone) values
-    ('%(code)s',$$%(company)s$$,$$%(address)s$$,'%(telephone)s')""" % m)
+            print """
+insert into drugs.company (code,company,address,telephone) values
+('%(code)s',$$%(company)s$$,$$%(address)s$$,'%(telephone)s')""" % m
 
 def import_pbs(t):
-    updates_pbs.write("truncate drugs.pbs cascade;\n")
+    print "truncate drugs.pbs cascade;"
     generics = {}
     for g in xml_generics_brands(t):
         generics[g["xml:id"]] = g
@@ -69,13 +67,19 @@ def import_pbs(t):
         g = generics[item["mpp"]]
         item["mpp"] = g
         sct = g["sct"]
-        r = query("select pk from drugs.product where sct='%s'" % sct)
-        if len(r) == 0:
-            print >>sys.stderr, "WARNING: %r doesn't match on SCT" % item
-        elif len(r) > 1:
-            print >>sys.stderr, "WARNING: %r matches multiple products on SCT" % item
+        manual_matches = {'27227011000036100':'9bb5d495-c26a-4a39-8b4f-bc2c0c84b026'} # advantan fatty ointment
+        fk_product = None
+        if sct in manual_matches:
+            fk_product = manual_matches[sct]
         else:
-            fk_product = r[0]["pk"]
+            r = query("select pk from drugs.product where sct='%s'" % sct)
+            if len(r) == 0:
+                print >>sys.stderr, "WARNING: %r doesn't match on SCT" % item
+            elif len(r) > 1:
+                print >>sys.stderr, "WARNING: %r matches multiple products on SCT" % item
+            else:
+                fk_product = r[0]["pk"]
+        if fk_product:
             if item["type"] == "streamlined" or item["type"] == "authority" or item["type"] == 'authority-required':
                 flag = "A"
             elif item["type"] == "restricted":
@@ -83,16 +87,16 @@ def import_pbs(t):
             elif item["type"] == 'unrestricted':
                 flag = "U"
             else:
-                print "I saw an unrecognised type %s on pbscode %s" % (item["type"], item['code'])
+                print >>sys.stderr,"I saw an unrecognised type %s on pbscode %s" % (item["type"], item['code'])
                 flag = "u"
-            updates_pbs.write("""
+            print """
 insert into drugs.pbs (fk_product,pbscode,quantity,max_rpt,chapter,restrictionflag)
-values ('%s','%s',%s,%s,'%s','%s');\n
-""" % (fk_product,item['code'],item['quantity'],item['max_rpt'],item['chapter'],flag))
+values ('%s','%s',%s,%s,'%s','%s');
+""" % (fk_product,item['code'],item['quantity'],item['max_rpt'],item['chapter'],flag)
 
 
 def import_restricts(t):
-    updates_restrict.write("truncate drugs.restriction;\n")    
+    print "truncate drugs.restriction;"  
     restricts = {}
     for i in xml_restricts(t):
         restricts[i["xml:id"]] = i
@@ -103,7 +107,7 @@ def import_restricts(t):
                 r = restricts[xmlid]
                 streamlined = 'f'
                 if drug['type'] == 'streamlined': streamlined = 't'
-                updates_restrict.write("insert into drugs.restriction (pbscode, code, streamlined, restriction) values ('%s','%s','%s',$$%s$$);\n" % (pbscode, r['code'], streamlined,r['restriction']))
+                print "insert into drugs.restriction (pbscode, code, streamlined, restriction) values ('%s','%s','%s',$$%s$$);" % (pbscode, r['code'], streamlined,r['restriction'])
 
 def get_xml_etree():
     t = None
@@ -151,13 +155,18 @@ def xml_pbs_items(t):
             else:
                 #print >>sys.stderr, "WARNING: NO ATC on %r" % d
                 continue
-            d["type"] = drug.get("type")
-            d["restricts"] = [l.get(x("xlink:href"))[1:] for l in drug.iterfind(x(".//rwt:restriction-references-list/rwt:restriction-reference"))]
-            d["mpps"] = [j.get(x("xlink:href"))[1:] for j in drug.iterfind(x(".//pbs:mpp-reference"))]
-            if d['chapter'] == 'IN' or d['chapter'] == 'EP' or d['chapter'] == 'IP': continue
-            if len(d["mpps"]) == 1: # for now ignore EP and IN chapters which both violate this rule: EP has zero, IN has multiple
-                d["mpp"] = d["mpps"][0]
-                yield d
+            blocked_atc = False
+            for i in ['V06DX','V07AY']: # amino acids, dressings
+                if d["atc"].find(i) == 0:
+                    blocked_atc = True
+            if not blocked_atc:
+                d["type"] = drug.get("type")
+                d["restricts"] = [l.get(x("xlink:href"))[1:] for l in drug.iterfind(x(".//rwt:restriction-references-list/rwt:restriction-reference"))]
+                d["mpps"] = [j.get(x("xlink:href"))[1:] for j in drug.iterfind(x(".//pbs:mpp-reference"))]
+                if not (d['chapter'] == 'IN' or d['chapter'] == 'EP' or d['chapter'] == 'IP'):
+                    if len(d["mpps"]) == 1: # for now ignore EP and IN chapters which both violate this rule: EP has zero, IN has multiple
+                        d["mpp"] = d["mpps"][0]
+                        yield d
 
 def xml_restricts(t):
     external_indications = {}
@@ -286,51 +295,53 @@ def import_step1(t):
 def import_step2(t):
     drug = {}
     lineno = 1
-    f = open("new_scts.txt","r")
     sct_done = set()
-    for l in f.readlines():
-        if l == "\n":
-            if drug["sct"] in sct_done:
-                continue
-            sct_done.add(drug["sct"])
-            r = query("select 1 from drugs.product where sct='%s'" % drug["sct"])
-            if len(r) > 0:
-                print >>sys.stderr, "SCT %s already exists, skipping" % drug["sct"]
-                continue
-            if drug["free_comment"] == "":
-                drug["free_comment"] = "NULL"
-            else:
-                drug["free_comment"] = "$$%s$$" % drug["free_comment"]
-            au = drug["amount_unit"]
-            au = au.lower()
-            if au == 'g' or au == "gm": 
-                drug["amount_unit"] = 35
-            elif au == 'ml': 
-                drug["amount_unit"] = 26
-            elif au == "":
-                drug["amount_unit"] = "NULL"
-            else:
-                print >> sys.stderr, "amount %s not recognised at line %d" % (au, lineno)
-                sys.exit(1)
-            if drug["amount"] == "": 
-                drug["amount"] = "NULL"
-            r = query("select pk from drugs.form where form='%s'" % drug["form"])
-            if len(r) != 1:
-                print >>sys.stderr,"can't recognise drug form %s at line %d" % (drug["form"],lineno)
-                sys.exit(1)
-            drug["fk_form"] = r[0]["pk"]
-            cmd("""
-insert into drugs.product (pk,generic,fk_form,free_comment,units_per_pack,pack_size,amount,amount_unit,original_pbs_name, sct, atccode)
+    for l in sys.stdin.readlines():
+        if l.strip() == "":
+            if "sct" in drug and not drug["sct"] in sct_done:
+                sct_done.add(drug["sct"])
+                r = query("select 1 from drugs.product where sct='%s'" % drug["sct"])
+                if len(r) > 0:
+                    print >>sys.stderr, "SCT %s already exists, skipping" % drug["sct"]
+                else:
+                    if drug["free_comment"] == "":
+                        drug["free_comment"] = "NULL"
+                    else:
+                        drug["free_comment"] = "$$%s$$" % drug["free_comment"]
+                    au = drug["amount_unit"]
+                    au = au.lower()
+                    if au == 'g' or au == "gm": 
+                        drug["amount_unit"] = 35
+                    elif au == 'ml': 
+                        drug["amount_unit"] = 26
+                    elif au == "":
+                        drug["amount_unit"] = "NULL"
+                    else:
+                        print >> sys.stderr, "amount %s not recognised at line %d" % (au, lineno)
+                        sys.exit(1)
+                    if drug["amount"] == "": 
+                        drug["amount"] = "NULL"
+                    r = query("select pk from drugs.form where form='%s'" % drug["form"])
+                    if len(r) != 1:
+                        print >>sys.stderr,"can't recognise drug form %s at line %d" % (drug["form"],lineno)
+                        sys.exit(1)
+                    drug["fk_form"] = r[0]["pk"]
+                    drug["uuid"] = query("select uuid_generate_v4() as uuid")[0]["uuid"]
+                    cmd("""
+insert into drugs.product (pk,generic,fk_form,free_comment,units_per_pack,pack_size,amount,amount_unit,original_pbs_name, sct, atccode, strength)
 values
-(uuid_generate_v4(), $$%(generic)s$$, %(fk_form)d, %(free_comment)s, 
-%(units_per_pack)s, %(pack_size)s, %(amount)s, %(amount_unit)s, $$%(original_pbs_name)s$$, '%(sct)s', '%(atc)s')
+('%(uuid)s', $$%(generic)s$$, %(fk_form)d, %(free_comment)s, 
+%(units_per_pack)s, %(pack_size)s, %(amount)s, %(amount_unit)s, $$%(original_pbs_name)s$$, '%(sct)s', '%(atc)s',$$%(strength)s$$)
 """ % drug)
-            drug = {}
+                    drug = {}
         else:
             s = l.split(":", 1)
-            s[0] = s[0].lower().strip()
-            s[1] = s[1].strip()
-            drug[s[0]] = s[1]
+            if len(s) != 2:
+                print >>sys.stderr, "invalid line %r at line %d" % (l,lineno)
+            else:
+                s[0] = s[0].lower().strip()
+                s[1] = s[1].strip()
+                drug[s[0]] = s[1]
         lineno += 1
                 
 def fix_packsize(t):
@@ -403,7 +414,7 @@ def fix_packsize(t):
                 else:
                     print "-- multiple matches for %r %r" % (generics[drug["mpp"]],drug)
 
-# STEP THREE: create new brands where required        
+# STEP THREE: update/create new brands where required        
 def verify_brands(t):
     ms = {}
     for m in xml_manufacturers(t): ms[m["xml:id"]] = m
@@ -413,15 +424,15 @@ def verify_brands(t):
             fk_product = r[0]['pk']
             for brand in drug["brands"]:
                 code = ms[brand["manufacturer"]]["code"]
-                q = "select pk,price from drugs.brand where fk_product='%s' and brand ilike $$%s$$" % (str(fk_product),brand["brand"].upper())
+                q = "select pk,price from drugs.brand where sct='%s'" % brand["sct"]
                 r = query(q)
                 if len(r) == 0:
-                    r = query("select pk,brand from drugs.brand where fk_product='%s' and fk_company='%s'" % (fk_product,code))
+                    r = query("select pk,brand,sct,price from drugs.brand where fk_product='%s' and fk_company='%s'" % (fk_product,code))
                     if len(r) > 0:
                         print "--WARNING: drug has existing brands from this manufacturer, we are adding more"
                         for i in r:
-                            print "--existing brand %s %s" % (i['brand'],i["pk"]) 
-                            print "--update drugs.brand set brand=$$%s$$, price='%s'::money where pk='%s';" % (brand["brand"],brand["price"],i['pk']) 
+                            print "--existing brand %s %s %s %s" % (i['brand'],i["pk"], i["sct"],i["price"]) 
+                            print "--update drugs.brand set brand=$$%s$$, price='%s'::money,sct='%s' where pk='%s';" % (brand["brand"],brand["price"],brand["sct"],i["pk"]) 
                     r = query("select uuid_generate_v4() as uuid")
                     pk = r[0]['uuid']
                     print """insert into drugs.brand (pk, fk_product, sct, brand, fk_company, from_pbs, price)
@@ -429,22 +440,22 @@ def verify_brands(t):
                 else:
                     r = r[0]
                     price = r["price"]
+                    price = price.replace(',','')
                     pk = r["pk"]
                     if price <> "$"+brand["price"]:
-                        query("update drugs.brand set price='%s'::money,sct='%s' where pk='%s';" % (brand["price"],brand["sct"],pk))
+                        print "update drugs.brand set price='%s'::money where pk='%s';" % (brand["price"],pk)
 
 t = get_xml_etree()
-if sys.argv[1] == '1':
-    import_step1(t)
-elif sys.argv[1] == '2':
-    import_step2(t)
-elif sys.argv[1] == '3':
-    verify_brands(t)
-elif sys.argv[1] == '4':
-    import_pbs(t)
+cd = sys.argv[1]
+if cd == '1' or cd == 'products':
+    import_step1(t) # produce list of new products for editing
+elif cd == '2' or cd == 'import':
+    import_step2(t) # read back in the edited list of products, execute and spit out SQL 
+elif cd == '3' or cd == 'brands':
+    verify_brands(t) # brands, just produce SQL (no execute)
+elif cd == '4' or cd == 'pbs':
+    import_pbs(t) # pbs and restrictions, produce SQL 
     import_restricts(t)
-    updates_restrict.close()
-    updates_pbs.close()
-elif sys.argv[1] == '5':
-    import_mnfr(t)
+elif cd == '5' or cd == 'atc':
+    import_mnfr(t) # produce ATCs and company information
     import_atc(t)

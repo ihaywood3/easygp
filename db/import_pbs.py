@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import os, re, psycopg2, pdb, sys, glob, codecs, pdb, time
+import os, re, psycopg2, pdb, sys, glob, codecs, pdb, time, urllib2
 from xml.etree.cElementTree import *
 
 conn = psycopg2.connect(database='drugs',user='ian')
@@ -292,7 +292,7 @@ def import_step1(t):
             print
 
 # STEP TWO: import the human-modified new entities from stdin .
-def import_step2(t):
+def import_step2():
     drug = {}
     lineno = 1
     sct_done = set()
@@ -445,17 +445,68 @@ def verify_brands(t):
                     if price <> "$"+brand["price"]:
                         print "update drugs.brand set price='%s'::money where pk='%s';" % (brand["price"],pk)
 
-t = get_xml_etree()
-cd = sys.argv[1]
+def scan_scts_in_file(f):
+    rex = re.compile("<a href=\".*/browser/concept/([0-9]+)\">([^<]+)</a>")
+    for l in f.readlines():
+        m = rex.search(l)
+        if m:
+            sct = m.group(1)
+            desc = m.group(2)
+            #r = query("select * from drugs.product where sct='%s'" % sct)
+            #if len(r) == 0:
+            yield (sct,desc)
+            
+def scan_all_scts():
+    with open("/home/ian/all-scts.html") as f:
+        for drug_sct,drug_desc in scan_scts_in_file(f):
+            in_db = False
+            u = urllib2.urlopen("http://au.federationhealth.com/browser/concept/%s" % drug_sct)
+            for mpp_sct,mpp_desc in scan_scts_in_file(u):
+                if not in_db:
+                    if "product pack" in mpp_desc:
+                        r = query("select 1 from drugs.product where sct='%s'" % mpp_sct)
+                        if len(r) > 0: in_db = True
+            u.close()
+            if not in_db:
+                print "%s\t%s" % (drug_sct,drug_desc)
+            time.sleep(60)
+
+
+def print_help():
+    print """Import PBS data
+import_pbs.py cmd
+cmd is:
+  - products: scan PBS xml and produce a text report on stdin of new drugs for hand-editing
+  - import: takes list from above after editing on stdiamprenavirn and imports into DB, produces SQL on stdout
+  - brands: imports all new brands, SQL on stdout (not executed)
+  - pbs: imports all PBS data, SQL on stdout
+  - atc: imports new ATC and manufacturer data, SQL on stdout
+  """
+
+
+if len(sys.argv) > 1:
+    cd = sys.argv[1]
+else:
+    cd = "--help"
+
 if cd == '1' or cd == 'products':
-    import_step1(t) # produce list of new products for editing
+    import_step1(get_xml_etree()) # produce list of new products for editing
 elif cd == '2' or cd == 'import':
-    import_step2(t) # read back in the edited list of products, execute and spit out SQL 
+    import_step2() # read back in the edited list of products, execute and spit out SQL 
 elif cd == '3' or cd == 'brands':
-    verify_brands(t) # brands, just produce SQL (no execute)
+    verify_brands(get_xml_etree()) # brands, just produce SQL (no execute)
 elif cd == '4' or cd == 'pbs':
+    t = get_xml_etree()
     import_pbs(t) # pbs and restrictions, produce SQL 
     import_restricts(t)
 elif cd == '5' or cd == 'atc':
+    t = get_xml_etree()
     import_mnfr(t) # produce ATCs and company information
     import_atc(t)
+elif cd == 'scts':
+    scan_all_scts()
+elif cd == "--help":
+    print_help()
+else:
+    print >>sys.stderr,"unknown command: %s" % cd
+    print_help()

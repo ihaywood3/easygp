@@ -20,14 +20,15 @@
 ' TODO: finish and activate the ante-natal care sheet
 ' the tab is currently removed
 ' ----------------------------------------------------------------------
-
+Private lmp_fake As Date
+Private sNuchalFoldScan As String 'abnormal, normal or unknown
+Private sMorphologyScan As String ' ditto
 Private currentconsult As CConsult
 Private currentpregnancy As Collection
 Private bExit As Boolean
 Private bKeyValid As Boolean
 Private fk_pregnancy As Integer
 Private member As Collection
-Private The_Collections As Collection
 'Private form_AnteNatal_CareSheet_Wizard As FAnteNatalCareSheetWizard
 Private pregnancies As Collection
 Private onset_labour_types As Collection
@@ -42,7 +43,7 @@ Private form_visits As FPregnancyVisits
 Static Private form_pregnancy As FPregnancy
 
 Public Sub init(cons As Cconsult)
-
+   
    lblMeasure.text = "    Date for Anti D (If Rh -ve)    "
    '  lblmeasure.text = " Authority Approval No.  "  'to keep all edit area's left width the same
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
@@ -60,24 +61,59 @@ Public Sub init(cons As Cconsult)
    With cvwPregnancies
       .Columns.count = 9
       .Columns[0].text = "Age"
+      .Columns[0].Width = 100
       .Columns[1].text = "Mth/year"
+      .Columns[1].Width = 115
       .Columns[2].text = "Gestation"
+      .Columns[2].width = 100
       .Columns[3].text = "Onset of Labour"
+      .Columns[3].width = 150
       .Columns[4].text = "labour (hrs) "
+      .Columns[4].width = 100
       .Columns[5].text = "Type of Delivery"
+      .Columns[5].width = 130
       .Columns[6].text = " Sex "
+      .Columns[6].width = 100
       .Columns[7].text = " Weight "
+      .Columns[7].width = 100
       .Columns[8].text = "Notes "
    End With
-   lblEDC.width = rbNuchalFoldNormal.width
-   lblDateDelivery.width = lblEDC.Width + txtEDC.Width
-   lblAgeATDelivery.width = lblGestation.width
+   '  lblEDC.width = rbNuchalFoldNormal.width
+   ' lblDateDelivery.width = lblEDC.Width + txtEDC.Width
+   ' lblReasonEDCRevised.width = lblGestation.Width
+   '  HBox_NuchalFold_Normality.width = lblGestation.Width
+   ' HBox_Morphology_Scan_Normality.width = lblGestation.Width
+   ' lblAgeATDelivery.width = lblGestation.width
+   lblReasonEDCRevised.width = lblComment.Width
+   lblGTTResult.width = lblComment.Width
+   ' chkAntiDGiven.width = chkNuchalFoldAbnormal.width
    Reload()
+   
+End
 
+Private Function calc_Nuchal_fold_date(last_period As Date) As String
+   'Last_period can be real or calculated back from gestation date
+   
+   Return Format(DateAdd(last_period, gb.week, 12), "dd/mm/yyyy")
+   
+End
+
+Private Function Calc_Morphology_Scan_Date(last_period As Date) As String  
+   'Last_period can be real or calculated back from gestation date 
+   
+   Return Format(DateAdd(last_period, gb.week, 18), "dd/mm/yyyy")
+   
+End
+
+Private Function Calc_GTT_Or_Anti_D(last_period As Date) As String
+   'Last_period can be real or calculated back from gestation date 
+   
+   Return Format(DateAdd(last_period, gb.week, 28), "dd/mm/yyyy")
+   
 End
 
 Public Sub Settings_Save()
-
+   
    '  Try form_demographics.Settings_Save()
    '  Try form_familyandsocial.Settings_Save
    '  Try form_pasthistory.Settings_Save
@@ -85,23 +121,23 @@ Public Sub Settings_Save()
    ' ' Try form_visits.Settings_Save
    Settings["FPregnancy/VSplit_Main.Layout"] = VSplit_Main.Layout
    form_visits.Settings_Save()
-
+   
 End
 
 Private Sub Settings_Load()
-
+   
    VSplit_Main.Layout = Settings["FPregnancy/VSplit_Main.Layout", modUtil.VSplit([378, 427])]
-
+   
 End
 
 Public Function Sex_Types_Fill_Collection() As Collection
    '---------------------------------------------------------------
    'these keys will correspond to the backend contacts.lu_sex table
    '---------------------------------------------------------------
-
+   
    Dim sex_type As Collection
    Dim types As Collection
-
+   
    types = New Collection
    sex_type = New Collection
    sex_type!pk = 0
@@ -116,23 +152,23 @@ Public Function Sex_Types_Fill_Collection() As Collection
    sex_type!type = "Unknown"
    types.Add(sex_type, 3)
    Return types
-
+   
 End
 
 Public Sub Save()
-
+   
    Select Case TabStripPregnancy.Index
       Case ctabPregnancies
-         Save_Pregnancy()
+         Pregnancy_Save()
       Case cTabAnteNatalVisits
          form_visits.Save()
       Case cTabAnteNatalSheetWizard
          ' form_AnteNatal_CareSheet_Wizard.Save()
    End Select
-
+   
 End
 
-Public Sub Save_Pregnancy()
+Public Sub Pregnancy_Save()
    '----------------------------------
    'Saves the details of the pregnancy and any child forms (not done)
    '
@@ -142,7 +178,9 @@ Public Sub Save_Pregnancy()
    '   fk_consult integer NOT NULL,
    '   lmp text, -- the last period date if known, can be free text or null
    '   edc date, -- the estimated date of confinement can initially be null
-   '   edc_revised boolean DEFAULT false, -- if true the edc has been revised
+   '   date_anti_d date,
+   '   anti_d_given boolean DEFAULT false,
+   '   date_gtt date,
    '   notes text, -- general notes on the pregnancy, could include summary of complications
    '   gestation integer, -- the gestation in weeks
    '   nuchal_fold_scan_date date,
@@ -157,7 +195,8 @@ Public Sub Save_Pregnancy()
    '   risk_factor_social boolean DEFAULT false,
    '   risk_factor_social_details text,
    '   risk_factor_mental_health boolean DEFAULT false,
-   '   risk_factor__mental_health_details text,
+   '   risk_factor_mental_health_details text,
+   '   age_at_delivery integer, -- a deliberately vague column for recording past history of pregnancies...
    '   date_delivery text, -- As we may be recording bare details about past pregnancies where dates are not known accept year or mm/yyyy or proper date
    '   gestation_at_delivery integer,
    '   fk_lu_onset_labour integer,
@@ -168,18 +207,23 @@ Public Sub Save_Pregnancy()
    '   birthweight numeric,
    '   baby_name text,
    '   peurperium text, -- any complications after birth e.g problems with infant feeding, mothers mood, depression etc
-   '   CONSTRAINT pregnancies_pkey PRIMARY KEY (pk)
+   '   edc_revised_reason text,
+   '   edc_revised date,
+   '   gtt_result text,
+   '   nuchal_fold_abnormal boolean,
+   '   morphology_scan_abnormal boolean,
+   '   CONSTRAINT pregnancies_pkey PRIMARY KEY (pk )
    ' )
    ' WITH (
    '   OIDS=FALSE
    ' );
-
+   
    'Note: as we may know nothing about the pregnancy bar that the women is pregnant
    'this table can be saved with no data
    '-------------------------------------------------------------------------------
-
+   
    Dim Pregnancy As CRow
-
+   
    If HBox_EditArea.Padding = 0 Then Return
    If Not Pregnancy_Valid() Then Return
    Pregnancy = New CRow
@@ -189,12 +233,36 @@ Public Sub Save_Pregnancy()
    Pregnancy!fk_consult = currentconsult.GetPK()
    Pregnancy!lmp = Trim(txtDateLMP.text)  'not kept as date could be 'uknown' or  'mid july'
    Pregnancy!edc = Val(txtEDC.text)
+   pregnancy!edc_revised = Val(txtEDCRevised.text)
+   pregnancy!edc_revised_reason = Trim(txtEDCRevisedReason.text)
    pregnancy!gestation = Val(txtGestation.text) '?need this
    Pregnancy!notes = Trim(txtNotes.text)
    Pregnancy!nuchal_fold_scan_date = Val(txtDateNuchalFold.text)
    Pregnancy!morphology_scan_date = Val(txtDateMorphologyScan.text)
+   Select Case sMorphologyScan
+      Case "abnormal"
+         Pregnancy!morphology_scan_abnormal = True   
+      Case "normal"
+         Pregnancy!morphology_scan_abnormal = False
+      Case "unknown"
+         Pregnancy!morphology_scan_abnormal = Null
+   End Select
+   Select Case sNuchalFoldScan
+      Case "abnormal"
+         Pregnancy!nuchal_fold_abnormal = True   
+      Case "normal"
+         Pregnancy!nuchal_fold_abnormal = False
+      Case "unknown"
+         Pregnancy!nuchal_fold_abnormal = Null
+   End Select
    Pregnancy!date_anti_d = Val(txtDateAntiD.text)
+   If chkantiDgiven.Value = True Then 
+      Pregnancy!anti_d_given = True
+   Else
+      pregnancies!anti_d_given = False
+   End If   
    Pregnancy!date_gtt = Val(txtDateGTT.text)
+   Pregnancy!gtt_result = Trim(txtGTTResult.text)
    Pregnancy!risk_factor_smoking = CBool(chkSmoking.value)
    Pregnancy!risk_factor_alcohol = CBool(chkAlcohol.value)
    Pregnancy!risk_factor_drugs = CBool(chkDrugs.value)
@@ -231,7 +299,7 @@ Public Sub Save_Pregnancy()
    FClinical.Pregnancy_Notify 'fixme this wipes out the smoking.
    FClinical.Refresh_AllPreviousNotes
    Reload
-
+   
 End
 
 Public Sub Reload()
@@ -239,53 +307,69 @@ Public Sub Reload()
    'Load all previous or current pregnancies for the patient
    'if one or more exist, display the most recent
    '--------------------------------------------------------
-
+   
    Dim pregnancy As Collection
    Dim x As Integer
-
+   
    HBox_EditArea.Enabled = False
    EditArea_Clear()
    EditArea_NotifyData_Change(False)
    cvwPregnancies.Clear()
-   pregnancies = modPregnancyDBI.Pregnancies_Get(currentconsult!patient!fk_patient)
+   pregnancies = modUtil.Copy_Collection_Keyed_Sequentially(modPregnancyDBI.Pregnancies_Get(currentconsult!patient!fk_patient))
    For Each pregnancy In pregnancies
-      cvwPregnancies.Add(pregnancy!pk, 0)
-      cvwPregnancies[pregnancy!pk][0] = pregnancy!age_at_delivery
-      cvwPregnancies[pregnancy!pk][1] = pregnancy!date_delivery
+      cvwPregnancies.Add(x, 0)
+      cvwPregnancies[x][0] = pregnancy!age_at_delivery
+      If IsNull(pregnancy!date_delivery) Then
+         cvwPregnancies[x][0] = currentconsult!patient!age_numeric
+         cvwPregnancies[x][1] = " CURRENT "
+      Else
+         cvwPregnancies[x][1] = pregnancy!date_delivery 'this field is text not date.
+         Try cvwPregnancies[x][0] = DateDiff(currentconsult!patient!birthdate, Val(pregnancy!date_delivery), gb.year) 'date_delivery may not be a valid date
+         
+      End If   
       If Not IsNull(pregnancy!gestation_at_delivery) Then
-         cvwPregnancies[pregnancy!pk][2] = pregnancy!gestation_at_delivery & " wks"
+         cvwPregnancies[x][2] = pregnancy!gestation_at_delivery & " wks"
+      Else
+         '     Try txtDateLMP.text = Format(currentPregnancy!lmp, "dd/mm/yyyy")
+         ' If Error Then
+         '    txtDateLMP.text = currentPregnancy!lmp
+         ' Endif
+         ' txtGestation.text = (DateDiff(Val(txtDateLMP.text), Now, gb.day) Div 7) & " wks "
+         ' txtGestation.text &= (DateDiff(Val(txtDateLMP.text), Now, gb.day) Mod 7) & " days"
       End If
-      cvwPregnancies[pregnancy!pk][3] = pregnancy!onset_labour_type
+      cvwPregnancies[x][3] = pregnancy!onset_labour_type
       If Not IsNull(pregnancy!labour_hours) Then
-         cvwPregnancies[pregnancy!pk][4] = pregnancy!labour_hours & " hours"
+         cvwPregnancies[x][4] = pregnancy!labour_hours & " hours"
       End If
-      cvwPregnancies[pregnancy!pk][5] = pregnancy!delivery_type
-      cvwPregnancies[pregnancy!pk][6] = pregnancy!baby_sex
+      cvwPregnancies[x][5] = pregnancy!delivery_type
+      cvwPregnancies[x][6] = pregnancy!baby_sex
       If Not IsNull(pregnancy!birthweight) Then
-         cvwPregnancies[pregnancy!pk][7] = pregnancy!birthweight & "Kg"
+         cvwPregnancies[x][7] = pregnancy!birthweight & "Kg" 
       End If
-      cvwPregnancies[pregnancy!pk][8] = pregnancy!notes
+      cvwPregnancies[x][8] = pregnancy!notes
+      Inc x
    Next
    If cvwPregnancies.count Then
       If Not cvwPregnancies.MoveLast() Then
          cvwPregnancies.Item.Selected = True
       Endif
    Endif
-
+   '  lblMeasure.font = cvwPregnancies.Font
+   ' modUtil.Columnview_Columns_Set_Size(cvwPregnancies, lblMeasure)
+   
 End
 
 Public Sub cvwPregnancies_Select()
-
+   
    Pregnancy_Display()
-
+   
 End
 
 Public Sub Pregnancy_Display()
    '--------------------------------------------------
    'Display the pregnancy selected from the columnview
    '--------------------------------------------------
-
-   '  cvwPregnancies.MoveCurrent()
+   
    EditArea_Clear()
    bExit = True    'prevent the auto-calculating of all the dates due
    currentPregnancy = pregnancies[cvwPregnancies.Item.key]
@@ -295,10 +379,14 @@ Public Sub Pregnancy_Display()
       If Error Then
          txtDateLMP.text = currentPregnancy!lmp
       Endif
+      txtGestation.text = (DateDiff(Val(txtDateLMP.text), Now, gb.day) Div 7) & " wks "
+      txtGestation.text &= (DateDiff(Val(txtDateLMP.text), Now, gb.day) Mod 7) & " days"
    End If
    If Not IsNull(currentPregnancy!edc) Then
       txtEDC.text = Format(currentPregnancy!edc, "dd/mm/yyyy")
    Endif
+   Try txtEDCRevised.text = Format(currentPregnancy!edc_revised, "dd/mm/yyyy")
+   txtEDCRevisedReason.text = currentpregnancy!edc_revised_reason
    'FIXME calculate current gestation in weeks
    If Not IsNull(currentPregnancy!nuchal_fold_scan_date) Then
       txtDateNuchalFold.text = Format(currentPregnancy!nuchal_fold_scan_date, "dd/mm/yyyy")
@@ -309,9 +397,26 @@ Public Sub Pregnancy_Display()
    If Not IsNull(currentPregnancy!date_anti_d) Then
       txtDateAntiD.text = Format(currentPregnancy!date_anti_d, "dd/mm/yyyy")
    Endif
+   If currentPregnancy!anti_d_given = True Then chkantiDgiven.value = True
    If Not IsNull(currentPregnancy!date_gtt) Then
       txtDateGTT.text = Format(currentPregnancy!date_gtt, "dd/mm/yyyy")
    Endif
+   bexit = False  
+   If currentPregnancy!nuchal_fold_abnormal = True Then
+      rbNuchalFoldAbnormal.value = True   
+   Else If currentPregnancy!nuchal_fold_abnormal = False Then
+      rbNuchalFoldNormal.value = True
+   Else 'must be null
+      rbNuchalFoldUnknown.value = True  
+   Endif
+   If currentPregnancy!morphology_scan_abnormal = True Then
+      rbMorphologyScanAbNormal.value = True
+   Else If currentPregnancy!morphology_scan_abnormal = False Then
+      rbMorphologyScanNormal.value = True
+   Else 'must be null
+      rbMorphologyScanUnknown.value = True    
+   Endif
+   bexit = True   
    txtNotes.text = currentPregnancy!notes
    chkSmoking.value = currentPregnancy!risk_factor_smoking
    chkDrugs.value = currentPregnancy!risk_factor_drugs
@@ -340,29 +445,29 @@ Public Sub Pregnancy_Display()
    ' Endif
    EditArea_NotifyData_Change(False)
    bExit = False
-
+   
 End
 
 Public Sub Pregnancy_Edit()
-
+   
    HBox_EditArea.Enabled = True
    lblEditAreaHeading.text = "Edit Existing Pregnancy"
-
+   
 End
 
 Public Sub Pregnancy_Delete()
-
+   
 End
 
 Public Sub Preview()
-
+   
 End
 
 Public Sub New_Entry()
    '------------------------------------------------------------------
    'see FClinical for explanation anyway, allow entry of new pregnancy
    '------------------------------------------------------------------
-
+   
    Select Case TabStripPregnancy.index
       Case ctabPregnancies
          Pregnancy_New()
@@ -371,15 +476,15 @@ Public Sub New_Entry()
       Case cTabAnteNatalSheetWizard
          AnteNatal_Summary_New()
    End Select
-
+   
 End
 
 Public Sub AnteNatal_Summary_New()
-
+   
 End
 
 Public Sub AnteNatalVisit_New()
-
+   
    cvwPregnancies.MoveCurrent
    currentPregnancy = pregnancies[cvwPregnancies.Item.key]
    TabStripPregnancy.index = cTabAnteNatalVisits
@@ -391,7 +496,7 @@ Public Sub AnteNatalVisit_New()
       .Init(currentconsult, currentPregnancy)
       .AnteNatal_Visit_New()
    End With
-
+   
 End
 
 Public Sub Pregnancy_New()
@@ -400,40 +505,47 @@ Public Sub Pregnancy_New()
    'none of this will work..... so far
    'just ignore all the wizard stuff....
    '--------------------------------------------------
-
+   
    EditArea_Clear()
    currentPregnancy = New Collection
    fk_pregnancy = 0
-
+   
    lblEditAreaHeading.text = "New Pregnancy"
    HBox_EditArea.Enabled = True
    EditArea_NotifyData_Change(True) 'can save a pregnancy without any data.
    txtDateLMP.SetFocus()
-
+   
 End
 
 Public Sub EditArea_NotifyData_Change(bFlag As Boolean) As Boolean
-
+   
    If bflag Then
       HBox_EditArea.Padding = 1
    Else
       HBox_EditArea.Padding = 0
    End If
-
+   
 End
 
 Public Sub EditArea_Clear()
-
+   
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
    cmbDeliveryTypes.index = cmbDeliveryTypes.Find("n/a")
    cmbOnsetLabour.index = cmbOnsetLabour.Find("n/a")
    cmbBabySex.index = cmbBabySex.Find("Unknown")
    lblEditAreaHeading.text = "" 'fixme
-
+   lblNuchalFoldDateComment.text = ""
+   lblMorphologyScanDateComment.text = ""
+   lblAntiDDateComment.text = ""
+   rbMorphologyScanReset.value = True
+   rbNuchalFoldReset.value = True   
+   sNuchalFoldScan = "unknown"
+   sMorphologyScan = "unknown"
+   
 End
 
 Public Sub EditAreaButtons_Click()
-
+   
    Select Case Last.tag
       Case "new"
          Pregnancy_New()
@@ -441,28 +553,28 @@ Public Sub EditAreaButtons_Click()
          Save()
       Case "preview"
          Preview()
-
+         
    End Select
-
+   
 End
 
 Public Sub EditAreaTextBox_GotFocus()
-
+   
    Last.BackGround = Color.rgb(95, 255, 175)
-
+   
 End
 
 Public Sub EditAreaTextBox_LostFocus()
-
+   
    Last.BackGround = Color.White
-
+   
 End
 
 Public Sub tbDatePicker_ReviewDate_Click()
-
+   
    Dim hCtrl As Control
    Dim hTextbox As Textbox
-
+   
    Select Case Last.tag
       Case "pick date"
          If HBox_Calander.Visible Then
@@ -487,27 +599,27 @@ Public Sub tbDatePicker_ReviewDate_Click()
             DateChooser1.SetFocus()
          End If
       Case "insert"
-
+         
    End Select
-
+   
 End
 
 Public Sub DateChooser1_Activate()
-
+   
    Last.tag.text = Format(Last.value, "dd/mm/yyyy")
    HBox_Calander.Visible = False
    DateChooser1.tag.SetFocus()
-
+   
 End
 
 Public Sub DateChooser1_LostFocus()
-
+   
    HBox_Calander.Visible = False
-
+   
 End
 
 Public Sub EditAreaTextBox_KeyPress()
-
+   
    bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code, Last.tag)
    If bkeyvalid = False Then
       Stop Event
@@ -517,6 +629,10 @@ Public Sub EditAreaTextBox_KeyPress()
       Case key.Return, key.Tab
          Select Case Last.tag
             Case "lmp"
+            Case "edc revised"
+               txtEDCRevisedReason.SetFocus
+            Case "edc revised reason"
+               txtNotes.SetFocus
             Case "date of delivery"
                txtGestationAtDelivery.SetFocus
             Case "gestation at delivery"
@@ -529,13 +645,13 @@ Public Sub EditAreaTextBox_KeyPress()
                txtNotes.SetFocus
          End Select
    End Select
-
+   
 End
 
 Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
-
+   
    Select Case tag
-      Case "edc", "date nuchal fold scan", "date morphology scan", "lmp", "date gtt", "date anti-d"
+      Case "edc", "date nuchal fold scan", "date morphology scan", "lmp", "date gtt", "date anti-d", "edc revised"
          bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
       Case "date of delivery"
          bKeyValid = modUtil.AllowKeys(const.AllowKeys_Date_DWMY, keycode) 'eg mm/yy or full date
@@ -549,28 +665,56 @@ Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) A
          bKeyValid = True
    End Select
    Return bKeyValid
-
+   
 End
 
 Public Sub EditAreaTextBox_Change()
-
+   
    If bexit Then Return
    Select Case Last.tag
       Case "lmp"
          If IsDate(Last.text) Then
+            bexit = True
             txtEDC.text = Format(DateAdd(Val(Last.text), gb.day, 280), "dd/mm/yyyy")
             txtDateNuchalFold.text = Format(DateAdd(Val(Last.text), gb.week, 12), "dd/mm/yyyy")
             txtDateMorphologyScan.text = Format(DateAdd(Val(Last.text), gb.week, 18), "dd/mm/yyyy")
-            ' txtMorphologyScanTo.text = Format(DateAdd(Val(Last.text), gb.week, 20), "dd/mm/yyyy")
             txtGestation.text = (DateDiff(Val(txtDateLMP.text), Now, gb.day) Div 7) & " wks "
             txtGestation.text &= (DateDiff(Val(txtDateLMP.text), Now, gb.day) Mod 7) & " days"
             txtDateGTT.text = Format(DateAdd(Val(Last.text), gb.week, 28), "dd/mm/yyyy")
             txtDateAntiD.text = txtDateGTT.Text
+            bExit = False  
          Endif
+      Case "edc revised"
+         bexit = True   
+         If Len(Last.text) = "" Then
+            lblMorphologyScanDateComment.text = ""
+            lblNuchalFoldDateComment.text = ""
+            lblAntiDDateComment.text = ""
+         Else
+            If IsDate(txtEDCRevised.text) And Len(Last.text) = 10 Then         'revised EDC, re-calculate the gestation
+               lmp_fake = DateAdd(Val(txtEDCRevised.text), gb.day, -280)
+               txtGestation.text = Str(39 - (DateDiff(Now, Val(txtEDCRevised.text), gb.day) Div 7)) & " wks "
+               txtGestation.text &= Str(7 - (DateDiff(Now, Val(txtEDCRevised.text), gb.day) Mod 7)) & " days"
+               If Val(Split(txtGestation.text, " ")[0]) < 12 Then
+                  txtDateNuchalFold.text = calc_Nuchal_fold_date(lmp_fake)
+                  lblNuchalFoldDateComment.text = "** Recalculated from revised EDC"
+               Endif
+               If Val(Split(txtGestation.text, " ")[0]) < 18 Then
+                  txtDateMorphologyScan.text = Calc_Morphology_Scan_Date(lmp_fake)
+                  lblMorphologyScanDateComment.text = "** Recalculated from revised EDC"
+               Endif
+               If Val(Split(txtGestation.text, " ")[0]) < 28 Then
+                  txtDateGTT.text = Calc_GTT_Or_Anti_D(lmp_fake)
+                  txtDateAntiD.text = txtDateGTT.Text
+                  lblAntiDDateComment.text = "** Recalculated from revised EDC" 
+               Endif
+            End If 
+         End If   
+         bExit = False    
       Case "date of delivery"
-
+         
          If IsDate(Last.text) Then
-
+            
             If Year(Val(Last.text)) < Year(Now) Then
                lblEditAreaHeading.text = "Previous Delivery"
             Endif
@@ -584,10 +728,10 @@ Public Sub EditAreaTextBox_Change()
             '    Endif
             ' Endif
          Endif
-
+         
    End Select
    EditArea_NotifyData_Change(True)
-
+   
 End
 
 Public Function Pregnancy_Valid() As Boolean
@@ -596,7 +740,7 @@ Public Function Pregnancy_Valid() As Boolean
    'Note that we need no data to save a pregnancy but what
    'we do enter must be valid format
    '------------------------------------------------------
-
+   
    If Trim(txtDateLMP.text) <> "" Then
       If Not IsDate(Trim(txtDateLMP.text)) Then
          With txtDateLMP
@@ -615,44 +759,52 @@ Public Function Pregnancy_Valid() As Boolean
          Return
       Endif
    End If
+   If Trim(txtEDCRevised.text) <> "" And If Trim(txtEDCRevisedReason.text) = "" Then
+      Message.info("Please enter the reason the EDC has been revised")
+      With txtEDCRevisedReason
+         .Background = Color.rgb(95, 255, 175)
+         .SetFocus()
+      End With
+      Return  
+   Endif
    Return True
-
+   
 End
 
 Public Sub chkEditArea_Click()
-
+   
    If bexit Then Return
    EditArea_NotifyData_Change(True)
-
+   
 End
 
 Public Sub cmbOnsetLabour_KeyPress()
-
+   
    If key.code = key.return Or key.code = key.tab Then txtHoursLabour.SetFocus()
-
+   
 End
 
 Public Sub cmbDeliveryTypes_KeyPress()
-
+   
    If key.code = key.return Or key.code = key.tab Then txtcomplications.SetFocus
-
+   
 End
 
 Public Sub cmbBabySex_KeyPress()
-
+   
    If key.code = key.return Or key.code = key.tab Then txtBirthweight.SetFocus()
-
+   
 End
 
 Public Sub cvwPregnancies_Menu()
-
+   
    If Not cvwPregnancies.count Then Return
    mnuPregnancies.Popup()
-
+   
 End
 
 Public Sub mnuPregnancies_Click()
-
+   
    Select Case Last.tag
       Case "edit"
          Pregnancy_Edit
@@ -661,7 +813,7 @@ Public Sub mnuPregnancies_Click()
       Case "font"
          modUtil.Columnview_SetFont(cvwPregnancies, "FPregnancy")        'allow use to change the font, save to settings"
    End Select
-
+   
 End
 ' drop schema clin_pregnancy cascade;
 ' Create schema clin_pregnancy;
@@ -1003,14 +1155,14 @@ End
 ' grant all on table clin_pregnancy.vwpregnancies To staff;
 
 Public Sub TabStripPregnancy_Click()
-
+   
    If Not pregnancies.count Then
       TabStripPregnancy.index = 0
       Return
    Endif
    Select Case TabStripPregnancy.Index
       Case cTabAnteNatalVisits
-
+         
          If Not IsNull(currentPregnancy!date_delivery) Then
             Stop Event
          Else
@@ -1026,17 +1178,65 @@ Public Sub TabStripPregnancy_Click()
          '    End With
          ' Endif
    End Select
-
+   
 End
 
 Public Sub TabStripPregnancy_MouseDown()
    '------------------------------------------------------------
    'To add an antenatal visit must be pregnant and not delivered
    '------------------------------------------------------------
-
+   
    If IsNull(currentPregnancy) Then
       Stop Event
       Return
    End If
-
+   
 End
+
+Public Sub cmbEditArea_Click()
+   
+   If bexit Then Return
+   EditArea_NotifyData_Change(True)
+   
+End
+
+Public Sub rbMorphologyScan_Click()
+   
+   sNuchalFoldScan = Last.tag 
+   EditArea_NotifyData_Change(True)
+   
+End
+
+Public Sub rbNuchalFold_Click()
+   
+   sMorphologyScan = Last.tag 
+   EditArea_NotifyData_Change(True)
+   
+End
+' 
+' CREATE OR REPLACE VIEW clin_pregnancy.vwpregnancies AS 
+'  SELECT consult.fk_patient, pregnancies.pk AS fk_pregnancy, pregnancies.pk, pregnancies.fk_consult, 
+'  pregnancies.lmp, pregnancies.edc, pregnancies.edc_revised, pregnancies.edc_revised_reason, 
+'  pregnancies.date_anti_d, pregnancies.anti_d_given, pregnancies.date_gtt, pregnancies.notes,
+'   pregnancies.gestation, pregnancies.nuchal_fold_scan_date, pregnancies.morphology_scan_date, 
+'   pregnancies.last_presentation, pregnancies.risk_factor_smoking, pregnancies.risk_factor_smoking_details,
+'    pregnancies.risk_factor_alcohol, pregnancies.risk_factor_alcohol_details, pregnancies.risk_factor_drugs,
+'     pregnancies.risk_factor_drugs_details, pregnancies.risk_factor_social, 
+'     pregnancies.risk_factor_social_details, pregnancies.risk_factor_mental_health, 
+'     pregnancies.risk_factor_mental_health_details, pregnancies.age_at_delivery, 
+'     pregnancies.date_delivery, pregnancies.gestation_at_delivery, pregnancies.fk_lu_onset_labour, 
+'     pregnancies.labour_hours, pregnancies.fk_lu_delivery_type, pregnancies.complications, 
+'     pregnancies.fk_lu_sex, pregnancies.birthweight, pregnancies.baby_name, pregnancies.peurperium, 
+'     lu_delivery_types.type AS delivery_type, lu_onset_labour.type AS onset_labour_type,
+'      lu_sex.sex_text AS baby_sex,
+'      pregnancies.nuchal_fold_abnormal, pregnancies.morphology_scan_abnormal, pregnancies.gtt_result
+'    FROM clin_pregnancy.pregnancies
+'    JOIN clin_consult.consult ON pregnancies.fk_consult = consult.pk
+'    LEFT JOIN clin_pregnancy.lu_onset_labour ON pregnancies.fk_lu_onset_labour = lu_onset_labour.pk
+'    LEFT JOIN clin_pregnancy.lu_delivery_types ON pregnancies.fk_lu_delivery_type = lu_delivery_types.pk
+'    LEFT JOIN contacts.lu_sex ON pregnancies.fk_lu_sex = lu_sex.pk;
+' 
+' ALTER TABLE clin_pregnancy.vwpregnancies
+'   OWNER TO easygp;
+' GRANT ALL ON TABLE clin_pregnancy.vwpregnancies TO easygp;
+' GRANT ALL ON TABLE clin_pregnancy.vwpregnancies TO staff;

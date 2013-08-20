@@ -56,6 +56,8 @@ Private obs As Observer
 Private VSplit_Layout As Integer[]
 Private ParentForm As FProgressNotePage
 Private Last_Key_Numeric As Boolean
+Private ProgressNotesCodes As Collection
+Private fk_progressNote As Integer
 
 Public Sub Set_Copy_of_Editor_text(sText As String)
    
@@ -63,12 +65,15 @@ Public Sub Set_Copy_of_Editor_text(sText As String)
    
 End
 
-Public Sub Timer1_Timer()
-   ' Inc Application.Busy
-   ' tenotes.Enabled = False
-   ' ParentForm.Save()
-   ' Dec Application.Busy
-   ' tenotes.Enabled = True
+Public Function Progress_Notes_Codes_Get() As Collection
+
+   Return ProgressNotesCodes
+   
+End 
+
+Public Sub Set_fk_ProgressNote(pn_key As Integer)
+   
+  fk_progressNote = pn_Key 
    
 End
 
@@ -80,6 +85,7 @@ Public Sub Init(cons As CConsult, notes As String, Optional heading As String, O
    Dim R As Result
    Dim sString As String
    
+   Print fk_progressnote
    Last_Key_Numeric = False
    ParentForm = F                            'Fixme, clumbsy but then accesses FprogressNotePage.Save() see spell checker this module
    currentconsult = cons
@@ -118,10 +124,7 @@ Public Sub Init(cons As CConsult, notes As String, Optional heading As String, O
       .Expand = True
    End With
    obs = New Observer(FTermSelector.columnview1) As "Terms_columnview"
-   With cvwReasonForEncounter
-      .Columns.count = 2
-      
-   End With
+   ProgressNotes_Codes_Reload
    'Spelling stuff
    With SpellChecker = New ClskSpell
       .EditorControlToCheck = tenotes
@@ -933,7 +936,6 @@ Public Sub Habits_Insert()
    
 End
 
-
 Public Sub Problem_list_Insert()
    '---------------------------------
    'Insert an enumerated problem list
@@ -1563,17 +1565,24 @@ Public Sub Terms_Columnview_KeyPress()
 End
 
 Public Sub Terms_Columnview_dblClick()
-   
+   '----------------------------------------------------
+   'User is selecting a coded term for this consultation
+   '----------------------------------------------------   
    Dim CurrentTerm As Collection
    Dim x As Integer
+   Dim coded_diagnosis As New Collection
    
    Stop Event
    FTermSelector.Visible = False
    Last.movecurrent()
    CurrentTerm = FTermSelector.Terms[FTermSelector.columnview1.Item.key]
-   x = cvwReasonForEncounter.count
-   cvwReasonForEncounter.Add(x, 0)
-   cvwReasonForEncounter[x][0] = CurrentTerm!term & "(" & CurrentTerm!code & ")"
+   coded_diagnosis!fk_progressnote = fk_progressnote
+   coded_diagnosis!fk_code = currenTterm!code
+   coded_diagnosis!fk_coding_system = CurrentTerm!fk_coding_system
+   coded_diagnosis!term = CurrentTerm!term
+   ProgressNotesCodes.Add(coded_diagnosis, ProgressNotesCodes.count)
+   DataChange_Update_Indicators(True)
+   cvwReasonForEncounter_ReLoad()
    With FTermSelector
       .Visible = False 
       .set_SearchText("")
@@ -1584,6 +1593,33 @@ Public Sub Terms_Columnview_dblClick()
       .SetFocus()
    End With
    
+End
+
+Public Sub cvwReasonForEncounter_ReLoad()
+   
+   Dim PNC As Collection
+   Dim x As Integer
+   
+   With cvwReasonForEncounter
+      .Clear 
+      .Columns.count = 2
+   End With
+   
+   For Each PNC In ProgressNotesCodes
+      cvwReasonForEncounter.Add(x, 0)
+      cvwReasonForEncounter[x][0] = PNC!term & "(" & PNC!fk_code & ")"
+      Inc x
+   Next
+   
+End
+
+Public Sub ProgressNotes_Codes_Reload()
+   '--------------------------------------------------------
+   'Reloads any existing codes for this progress note editor
+   '--------------------------------------------------------
+   
+   ProgressNotesCodes = modUtil.Copy_Collection_Keyed_Sequentially(modProgressNotes.ProgressNotes_Codes_Get(fk_progressNote))
+   cvwReasonForEncounter_ReLoad()
 End
 
 Public Sub TextArea1_Change()
@@ -1700,3 +1736,67 @@ Public Sub Settings_Load() 'do not make this private
    Endif
    
 End
+
+Public Sub tbSaveConsultAsPDF_Click()
+   
+   '---------------------------------------------------------------------------
+   'Save the pdf as a file optionally provider the filename as the patient name
+   '---------------------------------------------------------------------------
+   
+   Dim filename As String
+   
+   Dialog.Filter = ["*.pdf", "PDF"]
+   
+   If Not IsNull(currentconsult) Then
+      filename = Replace(Trim(currentconsult!patient!wholename), " ", "-") & "_" & Format(currentconsult!patient!birthdate, "dd-mm-yyyy")
+      filename &= "_exported_" & Format(Now, "dd-mm-yyyy") & "-" & "todays_notes"
+      Dialog.title = "Export Consult as  PDF for " & currentconsult!patient!wholename
+      Dialog.Path = User.home &/ filename
+   Else
+      Dialog.title = "Save the consult as PDF"
+   Endif
+   
+   If Dialog.SaveFile() Then Return    'user cancels save
+   
+   If File.Ext(Dialog.Path) <> "pdf" Then
+      Dialog.Path &= ".pdf"
+   Endif
+   Filename = modPrinting.Make_PDF_From_Html(tenotes.Richtext,,,, File.Name(Dialog.Path),, File.Dir(Dialog.Path))
+   FClinical.Editor_ShowPage_External("pdf document external", "ProgressNotes.pdf", filename)
+   
+End
+
+' CREATE TABLE clin_consult.progressnotes_codes
+' (
+'   pk serial NOT NULL,
+'   fk_progressnote integer NOT NULL,
+'   fk_code text NOT NULL,
+'   deleted boolean NOT NULL DEFAULT false,
+'   CONSTRAINT progressnotes_codes_pkey PRIMARY KEY (pk ),
+'   CONSTRAINT progressnotes_codes_fk_progressnote_fkey FOREIGN KEY (fk_progressnote)
+'       REFERENCES clin_consult.progressnotes (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION
+' )
+' WITH (
+'   OIDS=FALSE
+' );
+' ALTER TABLE clin_consult.progressnotes_codes
+'   OWNER TO richard;
+' 
+' drop view clin_consult.vwProgressNotesCodes;
+' Create or replace view clin_consult.vwProgressNotesCodes as
+' SELECT 
+'   progressnotes_codes.pk,
+'   progressnotes_codes.fk_code, 
+'   progressnotes_codes.fk_progressnote, 
+'   generic_terms.fk_coding_system,
+'   generic_terms.term, 
+'   progressnotes_codes.deleted
+' FROM 
+'   clin_consult.progressnotes_codes, 
+'   coding.generic_terms
+' WHERE 
+'   progressnotes_codes.fk_code = generic_terms.code;
+' 
+
+

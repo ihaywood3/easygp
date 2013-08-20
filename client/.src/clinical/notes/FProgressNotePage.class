@@ -37,52 +37,54 @@ Public HSplit1_Layout As Integer[] 'allows embedded forms to reset the layout
 Private Embedded_Form As String
 
 Public Sub set_Embedded_Form(f As String)
-
+   
    Embedded_Form = f
-
+   
 End
 
 Public Sub Set_ExternalTransaction()
-
+   
    bAllowTransactionCompletion = False
-
+   
 End
 
 Public Function HealthIssue_GetName() As String
-
+   
    Return healthissue!description
-
+   
 End
 
 Public Function Refresh_HealthIssue_Collection()
    '-------------------------------------
    'refreshes the past history collection
    '-------------------------------------
-
+   
    Dim PH As Collection
-
+   
    For Each PH In currentconsult!past_history
       If PH!pk_pasthistory = pk_pasthistory Then
          HealthIssue = PH
          Break
       End If
    Next
-
+   
 End
 
 Public Sub Print_Content()
-    modPrinting.PrintHtml(Notes_Editor.teNotes.RichText)
-  '  Notes_Editor.teNotes.RichText
+   
+   modPrinting.PrintHtml(Notes_Editor.teNotes.RichText)
+   '  Notes_Editor.teNotes.RichText
    
 End
+
 Public Function set_pk_pasthistory(pk As Integer) As Integer
    '------------------------------------------
    'Returns the pk_past_history
    'e.g used in FClincial.workSpaceActivate()
    '-----------------------------------------
-
+   
    pk_pasthistory = pk
-
+   
 End
 
 Public Function Get_pk_pasthistory() As Integer
@@ -90,15 +92,15 @@ Public Function Get_pk_pasthistory() As Integer
    'Returns the pk_past_history
    'e.g used in FClincial.workSpaceActivate()
    '-----------------------------------------
-
+   
    Return pk_pasthistory
-
+   
 End
 
 Public Function Get_pk_progressNote() As Integer
-
+   
    Return pk_progressnote
-
+   
 End
 
 Public Sub SetPK(pk As Integer)
@@ -107,22 +109,21 @@ Public Sub SetPK(pk As Integer)
    'FIXME FIX MY NAME EVERYWHERE USED TO Set_pk_progressnote
    'to make more sense
    '-------------------------------------------------
-
+   
    pk_progressnote = pk
-
+   
 End
 
 Public Sub Set_fk_section(fk As Integer)
    '-------------------------------------------------
    'Sets the primary key of the current progress note
    '-------------------------------------------------
-
+   
    fk_section = fk
-
+   
 End
 
 Public Sub Save()
-
    '----------------------------------------------------------
    ' Saves the contents of the editor page if data has changed
    ' in the text editor. If this is the first time this consult
@@ -138,15 +139,20 @@ Public Sub Save()
    '     now both open and invalid, however normally, closing the editor page will auto-save
    '     any changes to both the progress notes and the past history/health issue (which now
    '     does not exist, so just cancel the save
+   '     
+   ' Saves the codes for these progress notes
    '-----------------------------------------------------------
 
+   Dim progress_note_code As CRow   
+   Dim PNC As Collection 
+   
    If bCancelSave Then Return
    '--------------------------------------------------------------------------------------
    'Save any changes to the embedded health issue (past history) form and re-load its data
    'Refresh any past history tab which contains the same past history item as use is
    'adding progress notes to
    '--------------------------------------------------------------------------------------
-
+   
    If pk_pasthistory <> 0 Then
       FPast_History.Save()
       Health_Issue_Reload()
@@ -160,16 +166,44 @@ Public Sub Save()
    If (Trim(Notes_Editor.teNotes.text) = "" And Notes_Editor.Get_copy_of_editor_text() = "") Or Not Notes_Editor.get_data_changed() Then
       Return
    End If
-
-   modDBConnect.BeginTrans()
    pk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, Notes_Editor.teNotes.RichText, fk_section, pk_progressnote, lblNotesFor.text, pk_pasthistory)
+   '----------------------------------------
+   ' CREATE TABLE clin_consult.progressnotes_codes
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_progressnote integer NOT NULL,
+   '   fk_code text NOT NULL,   '= key to coding.generic_terms
+   '   fk_coding_system integer NOT NULL,
+   '   deleted boolean NOT NULL DEFAULT false,
+   '   CONSTRAINT progressnotes_codes_pkey PRIMARY KEY (pk ),
+   '   CONSTRAINT progressnotes_codes_fk_coding_system_fkey FOREIGN KEY (fk_coding_system)
+   '       REFERENCES coding.lu_systems (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT progressnotes_codes_fk_progressnote_fkey FOREIGN KEY (fk_progressnote)
+   '       REFERENCES clin_consult.progressnotes (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   ' Save the codes for these progress notes
+   '----------------------------------------
+   For Each PNC In Notes_Editor.Progress_Notes_Codes_Get()
+      progress_note_code = New CRow
+      If PNC!pk Then
+         progress_note_code.put_unchanged(PNC!pk, "pk")
+      End If   
+      progress_note_code!fk_progressnote = pk_progressnote
+      progress_note_code!fk_code = PNC!fk_code
+      progress_note_code.Save("clin_consult.progressnotes_codes", "pk")
+   Next
    '--------------------------------------------------
    'Sometimes the save routine is called from a form
    'which wants to encapsulate its own transaction
    'so the commit trans is done from the calling form
    'Update all the progress notes in FClinical
    'Any new images will be added to the images collection in FClinical via modConsultDBI.Notes_Parse_For_Images(..)
-   '-------------------------------------------------
+   '-------------------------------------------------pk_progressnote
    If bAllowTransactionCompletion Then
       modDBConnect.CommitTrans()
       Notes_Editor.Set_Copy_of_Editor_text(Notes_Editor.teNotes.text) 'save copy of what is in the editor for later comparison.
@@ -180,7 +214,11 @@ Public Sub Save()
          FClinical.Update_graphs()
       End If
    End If
-
+   With Notes_Editor
+      .Set_fk_ProgressNote(pk_progressnote)
+      .ProgressNotes_Codes_Reload
+   End With
+   
 End
 
 Public Sub DataChange_Update_Indicators(flag As Integer)
@@ -188,17 +226,17 @@ Public Sub DataChange_Update_Indicators(flag As Integer)
    'Removes Or sets the red border To indicate
    'if data is changed
    '------------------------------------------
-
+   
    If flag Then
       '  Vbox_Summary.Padding = 1
       ' Vbox_Plan.Padding = 1
    Else
-
+      
       '  Vbox_Summary.Padding = 0
       '  Vbox_Plan.Padding = 0
-
+      
    End If
-
+   
 End
 
 Public Sub Init(Cons As CConsult, Optional heading As String)
@@ -213,12 +251,12 @@ Public Sub Init(Cons As CConsult, Optional heading As String)
    '           past history item.
    '           heading=temporary 02Feb12 RT fixme
    '------------------------------------------------------------
-
+   
    Dim hctrl As Control
    Dim hb As HBox
    Dim R As Result
    Dim Notes_This_Consult As String  'any notes already written this consultation
-
+   
    currentconsult = Cons
    '-------------------------------------------------------
    'If fk_consult, then reload last notes written for today
@@ -238,10 +276,11 @@ Public Sub Init(Cons As CConsult, Optional heading As String)
       pk_progressnote = -1                      '-1 = no progress notes yet toda
    Endif
    With Notes_Editor = New FProgressNoteEditor(Vbox_ProgressNoteEditor)
+      .Set_fk_ProgressNote(pk_progressnote)
       .Init(currentconsult, Notes_This_Consult, heading, Me) 'FIXME passing Me this way is wrong/clumbsy passed to allow access to Save() in this module
       .DataChange_Update_Indicators(False)
    End With
-
+   
    If Not IsNull(Me.tag) Then                                       'if this page is for problems specific notes
       Notes_Editor.HSplit_Reasons_For_encounter.visible = False     'don't show the reasons for encounter gui
       HSplit_HealthIssue_Plan_and_Notifications.visible = True    'do show the management plan stuff
@@ -280,49 +319,48 @@ Public Sub Init(Cons As CConsult, Optional heading As String)
    '    Refresh_HealthIssue()
    '   ' Display_Health_Issue()
    ' End If
-   Print HSplit_HealthIssue_Plan_and_Notifications.visible
    Try Settings_Load()
    Notes_Editor.teNotes.SetFocus()
-
+   
 End
 
 Private Sub Settings_Save()
-
+   
    If HSplit_HealthIssue_Plan_and_Notifications.visible Then
       Settings["Consult Notes/VSplit_VSplit_ProgressNotes_PlanShowing"] = VSplit_ProgressNotes.Layout
       Settings["Consult Notes/HSplit_HealthIssue_Plan_and_Notifications.Layout"] = HSplit_HealthIssue_Plan_and_Notifications.Layout
    Else
       Settings["Consult Notes/VSplit_VSplit_ProgressNotes_PlanNotShowing"] = VSplit_ProgressNotes.Layout
    End If
-
+   
 End
 
 Private Sub Settings_Load()
-
+   
    If HSplit_HealthIssue_Plan_and_Notifications.visible Then
       Try VSplit_ProgressNotes.Layout = Settings["Consult Notes/VSplit_VSplit_ProgressNotes_PlanShowing"]
       HSplit_HealthIssue_Plan_and_Notifications.Layout = Settings["Consult Notes/HSplit_HealthIssue_Plan_and_Notifications.Layout", modUtil.HSplit([3, 1])]
    Else
       VSplit_ProgressNotes.Layout = [1, 0] 'Settings["Consult Notes/VSplit_VSplit_ProgressNotes_PlanNotShowing", [1, 0])
    End If
-
+   
 End
 
 Public Sub Form_Close()
-
+   
    Save()
    Settings_Save()
-
+   
 End
 
 Public Function Display_Health_Issue()
-
+   
    ' If IsNull(HealthIssue) Then Return
    ' bExit = True
    ' Refresh_HealthIssue()
    ' lblNotesFor.text = HealthIssue!description
    ' bExit = False
-
+   
 End
 
 Public Sub HealthIssue_Change()
@@ -345,7 +383,7 @@ Public Sub HealthIssue_Change()
    '    Vbox_Plan.padding = 1
    '   ' Healthissue!data_changed = True
    ' End Select
-
+   
 End
 
 Public Sub Health_Issue_Reload()
@@ -353,27 +391,27 @@ Public Sub Health_Issue_Reload()
    'load health issue into the past history form, which in this
    'incarnation only shows the aim/summary/plan
    '-----------------------------------------------------------
-
+   
    With FPast_History
       .pk_pasthistory_set(pk_pasthistory)
       .HealthIssue_Display
       .EditArea_Notify_DataChange(False)
       .HealthIssue_Edit
    End With
-
+   
 End
 
 Public Sub PictureBox2_MouseDrag()
-
+   
    If Not IsNull(Last.picture) Then
       Drag.Icon = Last.Picture
       Last.Drag(Last.Picture.Image)
    End If
-
+   
 End
 
 Public Sub tbSave_Click()
-
+   
    Save()
-
+   
 End

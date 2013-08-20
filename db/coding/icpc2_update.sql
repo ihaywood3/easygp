@@ -20,9 +20,9 @@ truncate coding.icpc2_grp_grp_icpc ;
 \copy coding.icpc2_chapters from 'ICPC2CHA.CSV'  delimiter ',' CSV HEADER  NULL AS ''
 \copy coding.icpc2_components from 'ICPC2COM.CSV'  delimiter ',' CSV HEADER  NULL AS ''
 \copy coding.icpc2_codes from 'ICPC2COD.CSV'  delimiter ',' CSV HEADER  NULL AS ''
-\copy coding.icpc2_grp_keyword from 'grp_Keyword.csv'   delimiter ',' CSV HEADER NULL AS ''
+\copy coding.icpc2_grp_keyword from 'grp_keyword.csv'   delimiter ',' CSV HEADER NULL AS ''
 \copy coding.icpc2_grp_keyword_grp from 'grp_kwd_grp.csv'  delimiter ',' CSV HEADER NULL AS ''
-\copy coding.icpc2_grp_grouper from 'grp_Grouper.csv'  delimiter ',' CSV HEADER NULL AS ''
+\copy coding.icpc2_grp_grouper from 'grp_grouper.csv'  delimiter ',' CSV HEADER NULL AS ''
 \copy coding.icpc2_grp_grp_icpc from 'grp_grp_icpc.csv'  delimiter ',' CSV HEADER NULL AS ''
 
 

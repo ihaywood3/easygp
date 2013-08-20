@@ -208,6 +208,19 @@ comment on column documents.pcehr.creation is 'when created, for remote document
 comment on column documents.pcehr.accession is 'when communication with the PCEHR occurred in respect of this document, NULL for local documents awaiting upload';
 comment on column documents.pcehr.fk_lu_pcehr_type is 'logical document type';
 
+
+CREATE OR REPLACE FUNCTION documents.pcehr_new_doc_notify() RETURNS trigger AS $xyz$
+BEGIN
+  EXECUTE 'NOTIFY pcehr_new_doc, ''' || NEW.fk_patient::text || '''';
+  RETURN NEW;
+END;
+$xyz$ LANGUAGE plpgsql;
+
+CREATE TRIGGER pcehr_new_doc BEFORE INSERT ON documents.pcehr
+       FOR EACH ROW
+       EXECUTE PROCEDURE documents.pcehr_new_doc_notify();
+
+
 create table documents.access_code_cache (
     pk serial primary key,
     fk_patient integer references clerical.data_patients (pk) not null,
@@ -217,6 +230,30 @@ create table documents.access_code_cache (
 );
 
 grant all on documents.access_code_cache to staff;
+
+CREATE OR REPLACE FUNCTION documents.pcehr_need_code_notify() RETURNS trigger AS $xyz$
+BEGIN
+  EXECUTE 'NOTIFY pcehr_need_code, ''' || NEW.backend_pid::text || '''';
+  RETURN NEW;
+END;
+$xyz$ LANGUAGE plpgsql;
+
+CREATE TRIGGER pcehr_need_code BEFORE INSERT ON documents.access_code_cache
+       FOR EACH ROW
+       EXECUTE PROCEDURE documents.pcehr_need_code_notify();
+
+CREATE OR REPLACE FUNCTION documents.pcehr_have_code_notify() RETURNS trigger AS $xyz$
+BEGIN
+  EXECUTE 'NOTIFY pcehr_have_code, ''' || NEW.pk::text || '''';
+  RETURN NEW;
+END;
+$xyz$ LANGUAGE plpgsql;
+
+CREATE TRIGGER pcehr_have_code BEFORE UPDATE ON documents.access_code_cache
+       FOR EACH ROW
+       WHEN (NEW.access_code IS NOT NULL)
+       EXECUTE PROCEDURE documents.pcehr_have_code_notify();
+
 
 comment on table documents.access_code_cache is 'temporary store for PCEHR patient access codes. Entries created by server when an access code is required, and a notify "pcehr_need_code" emitted.
 clients read this table either on receiving "pcehr_need_code" or when opening the PCEHR viewer, and ask the user for the access code and save it to the table and emit "pcehr_have_code"

@@ -4,7 +4,7 @@
 import os, re, psycopg2, pdb, sys, glob, codecs, pdb, time, urllib2
 from xml.etree.cElementTree import *
 
-conn = psycopg2.connect(database='drugs',user='ian')
+conn = psycopg2.connect(database='easygp',user='ian')
 
 
 now_t = time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(time.time()))

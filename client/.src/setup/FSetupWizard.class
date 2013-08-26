@@ -25,7 +25,8 @@ Private Const cPage_EnterOrganisation As Integer = 4
 Private Const cPage_Add_Sys_Admin As Integer = 5
 Private Const cPage_ReviewSettings As Integer = 6
 Private Const cPage_Finished As Integer = 7
-
+Private SpellChecker As ClskSpell
+Private textboxForSpellCheck As TextBox
 Private staff As Collection
 Private StaffTypes As Collection
 Private roles As Collection
@@ -92,6 +93,11 @@ Public Sub _new()
    cmbAccessLevel.index = -1
    cmbSex.index = -1
    cmbTitle.index = -1
+   With SpellChecker = New ClskSpell
+      .EditorControlToCheck = teForSpelling
+      .TempFileForSpelling = User.home &/ "myspelltemp.txt"  'FIXME
+      .TempFileForErrors = User.home &/ "myspellerrors.txt"
+   End With
    Steps_FgColors_Reset
    Page_Welcome()
    
@@ -294,6 +300,313 @@ Public Sub Save_Example_Patient()
 End
 
 Public Sub Save_Organisation_SysAdmin() As Boolean
+   '----------------------------------------------------------------------
+   'Creates the database entries for
+   '- the main clinic for the organisation
+   '- the first employee designated sysadmin
+   'If we get to this point we have already validated the data
+   'Note this is old code in part not using cRow
+   '----------------------------------------------------------------------
+   
+   Dim organisation As CRow
+   Dim branch As CRow
+   Dim address As CRow
+   Dim person As CRow
+   Dim employee As CRow
+   Dim link_staff_clinic As CRow
+   Dim staff_member As CRow
+   Dim link_branches_comm As CRow  
+   Dim communication As CRow  
+   Dim comms As New Collection
+   Dim comm As New Collection  
+   Dim clinic As CRow 
+   
+   If Not Organisation_Valid() Then Return
+   '--------------------------------------------------------
+   ' CREATE TABLE contacts.data_organisations
+   ' (
+   '   pk serial NOT NULL,
+   '   organisation text NOT NULL,
+   '   deleted boolean DEFAULT false,
+   '   CONSTRAINT data_organisations_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '---------------------------------------------------------
+   organisation = New CRow 
+   organisation!organisation = Trim(txtOrganisation.text)
+   organisation.Save("contacts.data_organisations", "fk_organisation")
+   '------------------------------------------------------------------------------------------
+   ' CREATE TABLE contacts.data_addresses
+   ' (
+   '   pk serial NOT NULL,
+   '   street1 text,
+   '   fk_town integer,
+   '   preferred_address boolean DEFAULT false,
+   '   postal_address boolean DEFAULT false,
+   '   head_office boolean DEFAULT false,
+   '   geolocation point, -- geographical location latitude and longitude
+   '   country_code character(2), -- pointer to lu_country
+   '   fk_lu_address_type integer,
+   '   deleted boolean DEFAULT false, -- IF False then this address has had its link removed
+   '   street2 text,
+   '   CONSTRAINT data_addresses_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '------------------------------------------------------------------------------------------
+   address = New CRow   
+   address!street1 = Trim(txtStreet1.text)
+   address!street2 = Trim(txtStreet2.text)
+   address!preferred_address = True
+   address!postal_address = True
+   address!head_office = True
+   address!fk_town = fk_town
+   address!country_code = "AU" 'FIXME REMOVE DEFAULT ADD COUNTRY
+   address!fk_lu_address_type = const.AddressType_Work
+   address.Save("contacts.data_addresses", "fk_address")
+   '------------------------------------------------------------------------------------------------
+   'Note the branch branch will be "HEAD OFFICE" by default
+   'The category is definable as not all users at General practitioners
+   ' CREATE TABLE contacts.data_branches
+   ' (
+   '   pk serial NOT NULL,
+   '   branch text,
+   '   fk_organisation integer NOT NULL,
+   '   fk_address integer,
+   '   memo text, -- branch specific memo
+   '   fk_category integer NOT NULL,
+   '   deleted boolean NOT NULL DEFAULT false, -- If true then the branch is marked as  deleted
+   '   CONSTRAINT data_branches_pkey PRIMARY KEY (pk ),
+   '   CONSTRAINT fk_address_fkey FOREIGN KEY (fk_address)
+   '       REFERENCES contacts.data_addresses (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT fk_category_fkey FOREIGN KEY (fk_category)
+   '       REFERENCES contacts.lu_categories (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT fk_organisation_fkey FOREIGN KEY (fk_organisation)
+   '       REFERENCES contacts.data_organisations (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '---------------------------------------------------------------------------------------------
+   branch = New CRow 
+   branch!fk_category = fk_category
+   branch!branch = Trim(txtBranch.text)
+   branch!fk_organisation = organisation!fk_organisation 
+   branch!fk_address = address!fk_address  
+   branch.Save("contacts.data_branches", "fk_branch")
+   '----------------------------------------------------
+   'Now the comms, add at a minimum the phone (enforced)
+   '----------------------------------------------------
+   comm = New Collection
+   comm!fk_type = const.CommModalityPhone
+   comm!value = Trim(txtPhone.text)
+   comm!preferred_method = True
+   comm!confidential = False
+   comms.add(comm, comms.count)
+   If Trim(txtFax.text) <> "" Then
+      comm = New Collection
+      comm!fk_type = const.CommModalityFax
+      comm!value = Trim(txtFax.text)
+      comm!preferred_method = False
+      comm!confidential = False
+      comms.add(comm, comms.count)
+   End If
+   If Trim(txtEmail.text) <> "" Then
+      comm = New Collection
+      comm!fk_type = const.CommModalityEmail
+      comm!value = Trim(txtEmail.text)
+      comm!preferred_method = False
+      comm!confidential = False
+      comms.add(comm, comms.count)
+   End If
+   If Trim(txtWeb.text) <> "" Then
+      comm = New Collection
+      comm!fk_type = const.CommModalityWeb
+      comm!value = Trim(txtWeb.text)
+      comm!preferred_method = False
+      comm!confidential = False
+      comms.add(comm, comms.count)
+   End If
+   '-----------------------------------------------------------
+   ' CREATE TABLE contacts.data_communications
+   ' (
+   '   pk serial NOT NULL,
+   '   value text NOT NULL,
+   '   note text,
+   '   preferred_method boolean DEFAULT false,
+   '   confidential boolean DEFAULT false,
+   '   deleted boolean DEFAULT false,
+   '   fk_type integer NOT NULL,
+   '   CONSTRAINT data_communications_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '------------------------------------------------------------   
+   For Each comm In comms
+      communication = New CRow
+      communication!value = comm!value
+      communication!note = comm!note
+      communication!preferred_method = comm!preferred_method
+      communication!confidential = comm!confidential
+      communication!fk_type = comm!fk_type
+      communication.Save("contacts.data_communications", "fk_comm")
+      '------------------------------------------------------------------------
+      'CREATE TABLE contacts.links_branches_comms
+      ' (
+      '   pk serial NOT NULL,
+      '   fk_branch integer,
+      '   fk_comm integer,
+      '   deleted boolean DEFAULT false,
+      '   CONSTRAINT links_branches_comms_pkey PRIMARY KEY (pk ),
+      '   CONSTRAINT links_branches_comms_fk_branch_fkey FOREIGN KEY (fk_branch)
+      '       REFERENCES contacts.data_branches (pk) MATCH SIMPLE
+      '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+      '   CONSTRAINT links_branches_comms_fk_comm_fkey FOREIGN KEY (fk_comm)
+      '       REFERENCES contacts.data_communications (pk) MATCH SIMPLE
+      '       ON UPDATE NO ACTION ON DELETE NO ACTION
+      ' )
+      ' WITH (
+      '   OIDS=FALSE
+      ' );
+      '-------------------------------------------------------------------------------
+      link_branches_comm = New CRow
+      link_branches_comm!fk_branch = branch!fk_branch
+      link_branches_comm!fk_comm = communication!fk_comm
+      link_branches_comm.Save("contacts.links_branches_comms", "fk_link_branch_comm")
+   Next 
+   '-----------------------------------------------------------------
+   'Now, this organisation = a clinic, so save to admin.clinics table
+   ' CREATE TABLE admin.clinics
+   ' (
+   '   pk integer NOT NULL DEFAULT nextval('admin.clinic_pk_seq'::regclass),
+   '   fk_branch integer NOT NULL, -- foreign key to contacts.branches table
+   '   CONSTRAINT clinic_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '-----------------------------------------------------------------
+   clinic = New CRow
+   clinic!fk_branch = branch!fk_branch
+   clinic.Save("admin.clinics", "fk_clinic")
+   '------------------------------------------------
+   ' CREATE TABLE contacts.data_persons
+   ' (
+   '   pk serial NOT NULL,
+   '   firstname text,
+   '   surname text,
+   '   salutation text,
+   '   birthdate date,
+   '   fk_ethnicity integer,
+   '   fk_language integer,
+   '   fk_marital integer DEFAULT 0,
+   '   fk_title integer DEFAULT 7,
+   '   fk_sex integer,
+   '   country_code text,
+   '   fk_image integer,
+   '   retired boolean DEFAULT false,
+   '   fk_occupation integer,
+   '   deleted boolean DEFAULT false,
+   '   deceased boolean DEFAULT false,
+   '   date_deceased date,
+   '   language_problems boolean DEFAULT false,
+   '   surname_normalised text,
+   '   CONSTRAINT data_persons_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '---------------------------------------------------
+   Person = New CRow
+   Person!firstname = Trim(txtSysAdminFirstname.text)
+   Person!surname = Trim(txtSysAdminSurname.text)
+   Person!fk_title = cmbTitle.index
+   Person!fk_sex = cmbSex.index
+   Person.Save("contacts.data_persons", "fk_person")
+   '-----------------------------------------------------
+   ' CREATE TABLE contacts.data_employees
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_branch integer,
+   '   fk_person integer,
+   '   fk_occupation integer,
+   '   memo text,
+   '   deleted boolean DEFAULT false, -- If True then the person is marked as no longer attatched to current branch...
+   '   fk_status integer DEFAULT 0, -- employement status, foreign key to admin.lu_status FIXME SHIFT THIS TO CONTACTS AND...
+   '   CONSTRAINT data_employees_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '------------------------------------------------------
+   employee = New CRow
+   employee!fk_branch = branch!fk_branch
+   employee!fk_person = person!fk_person
+   employee!fk_occupation = fk_occupation
+   employee.Save("contacts.data_employees", "fk_employee")
+   '-------------------------------------------------------
+   ' CREATE TABLE admin.staff
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_person integer NOT NULL,
+   '   fk_role integer NOT NULL,
+   '   fk_status integer NOT NULL,
+   '   logon_name text NOT NULL,
+   '   logon_date_from date,
+   '   logon_date_to date,
+   '   fk_lu_staff_type integer NOT NULL DEFAULT 12, -- type of staff e.g 12 - clerical. As I added this later it couldn't be null due to join ...
+   '   qualifications text,
+   '   CONSTRAINT staff_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '----------------------------------------------------------
+   staff_member = New CRow
+   staff_member!fk_person = person!fk_person
+   staff_member!fk_status = const.StaffStatus_Active
+   staff_member!fk_lu_staff_type = StaffTypes[cmbStafftype.index]!pk
+   staff_member!logon_name = Trim(txtLogonName.text)    'logon name
+   staff_member!password = Trim(txtPassword.text)    'password
+   staff_member!logon_date_from = Val(txtSysAdminValidFromDate.text)
+   staff_member!logon_date_to = Val(txtSysAdminValidToDate.Text)
+   staff_member!fk_role = roles[cmbAccessLevel.Index]!pk_role
+   If Not modContactsDBI.Staff_Create_Postgres_User(Null, 0, staff_member, True) 'create postgres user who is superuser then
+      Message.info("There is an existing postgres user with the selected logon code.\n\nPlease select another.")
+      With txtPassword
+         .text = ""
+         .SetFocus()
+      End With
+   End If   
+   staff_member.Remove("password")
+   staff_member.Save("admin.staff", "fk_staff")
+   '-----------------------------------------------------------
+   ' CREATE TABLE admin.link_staff_clinics
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_staff integer NOT NULL,
+   '   fk_clinic integer NOT NULL,
+   '   CONSTRAINT link_staff_clinics_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '-------------------------------------------------------------
+   link_staff_clinic = New CRow
+   link_staff_clinic!fk_staff = staff_member!fk_staff
+   link_staff_clinic!fk_clinic = clinic!fk_clinic
+   link_staff_clinic.Save("admin.link_staff_clinics", "fk_link_staff_clinic")
+   
+End
+
+Public Sub Save_Organisation_SysAdmin_old() As Boolean
    '----------------------------------------------------------------------
    'Creates the database entries for
    '- the main clinic for the organisation
@@ -1138,7 +1451,7 @@ Public Sub listview2_DblClick()
    cmbStafftype.SetFocus
 Catch
    Return 
-
+   
 End
 
 Public Sub Occupation_Get()
@@ -1178,7 +1491,7 @@ Public Sub Occupation_Select(occupation As Collection)
    fk_occupation = occupation!pk
 Catch
    Return
-
+   
 End
 
 Public Sub EditArea_Combo_Activate()
@@ -1200,7 +1513,12 @@ Public Sub EditArea_Combo_Click()
    
    Select Case Last.tag
       Case "staff type"
-         cmbAccessLevel.SetFocus()
+         If cmbStafftype.text = "general practitioners" Then
+            cmbAccessLevel.index = cmbAccessLevel.Find("doctor")
+            txtLogonName.SetFocus
+         Else
+            cmbAccessLevel.SetFocus()
+         End If   
       Case "staff access level"
          txtLogonName.SetFocus()
       Case "title"
@@ -1209,5 +1527,57 @@ Public Sub EditArea_Combo_Click()
          txtSysAdminOccupation.SetFocus()
          
    End Select
+   
+End
+
+Public Function Organisation_Valid() As Boolean
+   '-----------------------------------------
+   'Returns True if the organisation is Valid
+   '------------------------------------------   
+   
+   Dim sMsg As String
+   Dim category As Collection
+   
+   If txtCategory.text = "" Then
+      sMsg = "Each entry in the contacts database must be allocated a category.\n\n"
+      "This is extremely important, and should be an accurate reflection of the"
+      "organisations function, so please think carefully before allocating this.\n\n"
+      "If the category does not exist, it will be created when the record is saved."
+      txtCategory.SetFocus()
+      Goto MissingData
+   Else
+      '---------------------------------------------------------------------------------
+      'though we shouldn't have to do this, the gambas lost focus event does not trigger
+      'when the control recieving focus is e.g button, so the EditArea_LostFocus() event
+      'will not have triggered, anyway also check the category was not an accident eg
+      'a typo. Also I know I shouldn't need to re-fetch the fk_category but.....
+      'user could eg have category of Hospital chosen, hence as a fk_category but then
+      'types a little further to make this Hospital - Public - the key is still there for
+      'the original Hospital
+      '----------------------------------------------------------------------------------
+      SpellCheck_TextBox(txtCategory)
+      category = modContactsDBI.Category_Get(Trim(txtCategory.text)) 'returns single category or null
+      If Not IsNull(category) Then 
+         fk_category = category!pk
+      Else
+         If Message.Question("Please confirm that you wish to add a new category:\n\n" & txtCategory.text, "Yes", "No") = 2 Then
+            txtCategory.SetFocus()
+            Return
+         End If 
+         fk_category = 0
+      End If
+   End If
+   Return True  
+MissingData:
+   Message.Info(sMsg)
+   Return False
+   
+End 
+
+Public Sub SpellCheck_TextBox(tb As TextBox)
+   
+   teForSpelling.text = tb.text
+   SpellChecker.init(tb)
+   SpellChecker.StartSpelling()
    
 End

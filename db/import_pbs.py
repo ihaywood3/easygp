@@ -5,8 +5,6 @@ import os, re, psycopg2, pdb, sys, glob, codecs, pdb, time, urllib2
 from xml.etree.cElementTree import *
 
 conn = psycopg2.connect(database='easygp',user='ian')
-
-
 now_t = time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(time.time()))
 
 def query(q,params=()):
@@ -27,11 +25,6 @@ def cmd(q):
     cur.execute(q)
     cur.close()
     conn.commit()
-    print q+";"
-    
-
-def comment(sql):
-    print "--"+sql
 
 def x(s):
     x = {"pbs":"http://schema.pbs.gov.au", "rwt":"http://schema.pbs.gov.au/RWT/","dbk":"http://docbook.org/ns/docbook","xlink":"http://www.w3.org/1999/xlink","xml":"http://www.w3.org/XML/1998/namespace","rdf":"http://www.w3.org/1999/02/22-rdf-syntax-ns#","skos":"http://www.w3.org/2004/02/skos/core#"}
@@ -41,25 +34,13 @@ def x(s):
 
 def import_atc(t):
     for atc in xml_atc(t):
-        r = query("select 1 from drugs.atc where atccode='%s'" % atc["atccode"])
-        if len(r) == 0:
-            "insert into drugs.atc (atccode, atcname) values ($$%s$$, $$%s$$)" % (atc["atccode"],atc["atcname"])
+        print "select drugs.assert_atc('%s',$atc$%s$atc$);" % (atc["atccode"], atc["atcname"])
 
 def import_mnfr(t):
     for m in xml_manufacturers(t):
-        r = query("select * from drugs.company where code='%s'" % m["code"])
-        if len(r) == 1:
-            if m["company"] != r[0]["company"] or m["address"] != r[0]["address"] or m['telephone'] != r[0]['telephone']:
-                print """
-update drugs.company set company=$$%(company)s$$,address=$$%(address)s$$,telephone='%(telephone)s'
-where code='%(code)s'""" % m
-        else:
-            print """
-insert into drugs.company (code,company,address,telephone) values
-('%(code)s',$$%(company)s$$,$$%(address)s$$,'%(telephone)s')""" % m
+        print "select drugs.assert_company('%(code)s',$$%(company)s$$,$$%(address)s$$,'%(telephone)s');" % m
 
 def import_pbs(t):
-    print "truncate drugs.pbs cascade;"
     generics = {}
     for g in xml_generics_brands(t):
         generics[g["xml:id"]] = g
@@ -96,7 +77,6 @@ values ('%s','%s',%s,%s,'%s','%s');
 
 
 def import_restricts(t):
-    print "truncate drugs.restriction;"  
     restricts = {}
     for i in xml_restricts(t):
         restricts[i["xml:id"]] = i
@@ -109,15 +89,25 @@ def import_restricts(t):
                 if drug['type'] == 'streamlined': streamlined = 't'
                 print "insert into drugs.restriction (pbscode, code, streamlined, restriction) values ('%s','%s','%s',$$%s$$);" % (pbscode, r['code'], streamlined,r['restriction'])
 
+def last_file(g):
+    t = sorted(glob.glob(g))
+    if len(t) == 0: return None
+    return t[-1]
+
 def get_xml_etree():
-    t = None
-    for f in glob.iglob("pbs*.xml"):
-        t = parse(f)
-    if t is None:
+    global release_date
+    f = last_file("pbs*.xml")
+    if not f:
+        f = last_file("pbs*.zip")
+        if f:
+            os.system("unzip -Laq '%s'" % f)
+            f = last_file("pbs*.xml")
+    if f is None:
         print >>sys.stderr, "can't find pbs-DATE.xml"
         sys.exit(1)
-    #pdb.set_trace()
-    return t
+    m = re.match('pbs-([0-9\-]+)\.xml',f)
+    release_date = m.group(1)
+    return parse(f)
 
 def xml_pbs_items(t):
     for chapter in t.iterfind(x("pbs:schedule/pbs:listings-list")):
@@ -237,27 +227,6 @@ def xml_manufacturers(t):
         yield d
         
 
-
-def backload_pbs_names():
-    cantmatch = set()
-    t = get_xml_etree()
-    generics = {}
-    for g in xml_generics_brands(t):
-        generics[g["xml:id"]] = g
-    for drug in xml_pbs_items(t):
-        r = query("select fk_product from drugs.pbs where pbscode='%s' limit 1" % drug['code'])
-        drug["sct"] = generics[drug["mpp"]]["sct"]
-        drug["pack_size"] = generics[drug["mpp"]]["pack_size"]
-        if len(r) == 0:
-            r = query("select * from drugs.product where original_pbs_name=$$%s$$" % drug['title'])
-            if len(r) == 0 and not drug['title'] in cantmatch:
-                print """
-insert into drugs.product (pk,atccode,sct,generic,fk_form,strength,original_pbs_name,fk_schedule,pack_size,amount,amount_unit,units_per_pack) values
-('','%(atc)s','%(sct)s','',,'','%(title)s',4,%(pack_size)s,null,null,1);""" % drug
-                cantmatch.add(drug['title'])
-        else:
-            cmd("update drugs.product set original_pbs_name=$$%s$$,sct='%s',pack_size=%s where pk='%s'" % (drug['title'],drug["sct"],drug["pack_size"],r[0]["fk_product"]))
-
 def print_all_drugs(t):
     generics = {}
     for g in xml_generics_brands(t):
@@ -277,19 +246,23 @@ def import_step1(t):
     generics = {}
     for g in xml_generics_brands(t):
         generics[g["xml:id"]] = g
+    already_done = set()
     for drug in xml_pbs_items(t):
-        r = query("select * from drugs.product where sct='%s'" % generics[drug["mpp"]]["sct"])
+        sct =  generics[drug["mpp"]]["sct"]
+        r = query("select * from drugs.product where sct='%s'" % sct)
         if len(r) == 0:
-            print_drug(drug,generics)
-            print "generic: "
-            print "form: "
-            print "strength: "
-            print "free_comment: "
-            print "units_per_pack: 1"
-            print "pack_size: %s" % generics[drug["mpp"]]["pack_size"]
-            print "amount: "
-            print "amount_unit: "
-            print
+            if not sct in already_done:
+                already_done.add(sct)
+                print_drug(drug,generics)
+                print "generic: "
+                print "form: "
+                print "strength: "
+                print "free_comment: "
+                print "units_per_pack: 1"
+                print "pack_size: %s" % generics[drug["mpp"]]["pack_size"]
+                print "amount: "
+                print "amount_unit: "
+                print
 
 # STEP TWO: import the human-modified new entities from stdin .
 def import_step2():
@@ -344,75 +317,6 @@ values
                 drug[s[0]] = s[1]
         lineno += 1
                 
-def fix_packsize(t):
-    cantmatch = set()
-    created = set()
-    t = get_xml_etree()
-    generics = {}
-    by_sct = {}
-    for g in xml_generics_brands(t):
-        generics[g["xml:id"]] = g
-    for drug in xml_pbs_items(t):
-        sct = generics[drug["mpp"]]["sct"]
-        by_sct[sct] = drug
-    for drug in xml_pbs_items(t):
-        sct = generics[drug["mpp"]]["sct"]
-        pack_size = generics[drug["mpp"]]["pack_size"]
-        #if drug["code"] == "1003T": pdb.set_trace()
-        r = query("select product.pk,pack_size,sct,generic,fk_form,strength,free_comment,amount,amount_unit,units_per_pack from drugs.pbs,drugs.product where pbscode='%s' and product.pk = fk_product limit 1" % drug["code"])
-        if len(r) == 1:
-            row = r[0]
-            comment = row["free_comment"]
-            amount = row["amount"]
-            amount_unit = row["amount_unit"]
-            units_per_pack = row["units_per_pack"]
-            if comment is None:
-                comment = 'NULL'
-            else:
-                comment = "$$%s$$" % comment
-            if amount is None: amount = 'NULL'
-            if amount_unit is None: amount_unit = 'NULL'
-            if units_per_pack is None: units_per_pack = 'NULL'
-            if sct == row["sct"] and str(pack_size) == str(row["pack_size"]):
-                print "--for PBS code %s packsize and sct match" % drug['code']
-            elif sct == row["sct"]:
-                print "--for PBS code %s sct matches but packsize doesn't, correcting" % drug["code"]
-                print "update drugs.product set pack_size=%s where pk='%s';" % (pack_size,row[0])
-            elif str(pack_size) == str(row["pack_size"]):
-                r = query("select 1 from drugs.product where sct='%s'" % sct)
-                if len(r) == 1:
-                    print "-- SCT found in different row"
-                else:
-                    if not sct in created:
-                        print "--for PBS code %s pack_size matches but SCT doesn't" % drug["code"]
-                        print "-- existing SCT is %r %r, new drug is %r %r" % (generics[by_sct[row[2]]["mpp"]],by_sct[row[2]],generics[drug["mpp"]],drug)
-                        created.add(sct)
-                        r = query("select uuid_generate_v4() as uuid")
-                        pk = r[0]["uuid"]
-                        print "insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values"
-                        print "('%s','%s',%s,'%s','','%s',$$%s$$,%s,'%s',%s,%s,%s);" % (pk,row[3],row[4],row[5],sct,drug['title'],pack_size,drug['atc'],amount,amount_unit,units_per_pack)
-            else:
-                print "-- for PBS code %s neither sct nor pack-size matches" % drug["code"]
-                r = query("select pk,sct,pack_size from drugs.product where (pack_size=%s or pack_size is null) and generic='%s' and fk_form=%s and strength='%s' and amount is not distinct from %s and amount_unit is not distinct from %s and units_per_pack is not distinct from %s" % (pack_size,row[3],row[4],row[5],amount,amount_unit,units_per_pack))
-                if len(r) == 1:
-                    row2 = r[0]
-                    new_sct = row2["sct"]
-                    if new_sct == sct and str(row2["pack_size"]) == pack_size:
-                        print "-- but existing product with correct SCT and pack size"
-                    else:
-                        print "-- old SCT is %s, old pk %s, new drug %r %r" % (row[2],row2[0],generics[drug["mpp"]],drug)
-                elif len(r) == 0:
-                    if sct in created:
-                        print "-- SCT already created this session"
-                    else:
-                        print "-- no existing product, creating a new one"
-                        created.add(sct)
-                        r = query("select uuid_generate_v4() as uuid")
-                        pk = r[0]["uuid"]
-                        print "insert into drugs.product (pk,generic,fk_form,strength,free_comment,sct,original_pbs_name,pack_size,atccode,amount,amount_unit,units_per_pack) values"
-                        print "('%s','%s',%s,'%s',%s,'%s',$$%s$$,%s,'%s',%s,%s,%s);" % (pk,row[3],row[4],row[5],comment,sct,drug['title'],pack_size,drug['atc'],amount,amount_unit,units_per_pack)
-                else:
-                    print "-- multiple matches for %r %r" % (generics[drug["mpp"]],drug)
 
 # STEP THREE: update/create new brands where required        
 def verify_brands(t):
@@ -429,21 +333,78 @@ def verify_brands(t):
                 if len(r) == 0:
                     r = query("select pk,brand,sct,price from drugs.brand where fk_product='%s' and fk_company='%s'" % (fk_product,code))
                     if len(r) > 0:
-                        print "--WARNING: drug has existing brands from this manufacturer, we are adding more"
+                        print "WARNING: drug has existing brands from this manufacturer, we are adding more"
                         for i in r:
-                            print "--existing brand %s %s %s %s" % (i['brand'],i["pk"], i["sct"],i["price"]) 
-                            print "--update drugs.brand set brand=$$%s$$, price='%s'::money,sct='%s' where pk='%s';" % (brand["brand"],brand["price"],brand["sct"],i["pk"]) 
-                    r = query("select uuid_generate_v4() as uuid")
-                    pk = r[0]['uuid']
-                    print """insert into drugs.brand (pk, fk_product, sct, brand, fk_company, from_pbs, price)
-                values ('%s', '%s', '%s', '%s', '%s', true, '%s'::money);""" % (pk, fk_product, brand['sct'], brand['brand'], code, brand['price'])
+                            print "existing brand %s %s %s %s" % (i['brand'],i["pk"], i["sct"],i["price"]) 
+                            print "update drugs.brand set brand=$$%s$$, price='%s'::money,sct='%s' where pk='%s';" % (brand["brand"],brand["price"],brand["sct"],i["pk"]) 
+                    else:
+                        r = query("select uuid_generate_v4() as uuid")
+                        pk = r[0]['uuid']
+                        cmd("""insert into drugs.brand (pk, fk_product, sct, brand, fk_company, from_pbs, price)
+                values ('%s', '%s', '%s', '%s', '%s', true, '%s'::money);""" % (pk, fk_product, brand['sct'], brand['brand'], code, brand['price']))
                 else:
                     r = r[0]
                     price = r["price"]
                     price = price.replace(',','')
                     pk = r["pk"]
                     if price <> "$"+brand["price"]:
-                        print "update drugs.brand set price='%s'::money where pk='%s';" % (brand["price"],pk)
+                        cmd("update drugs.brand set price='%s'::money where pk='%s';" % (brand["price"],pk))
+
+
+def print_brands():
+    """
+    Run through all brands and print assert_brand commands"""
+    r = query("select * from drugs.brand")
+    for i in r:
+        if i['sct'] is None:
+            i['sct'] = 'NULL'
+        else:
+            i['sct'] = "'%s'" % i['sct']
+        if i['price'] is None:
+            i['price'] = 'NULL'
+        else:
+            i['price'] = "'%s'::money" % i['price']
+        if i['product_information_filename'] is None:
+            i['product_information_filename'] = 'NULL'
+        else:
+            i['product_information_filename'] = "'%s'" % i['product_information_filename']
+        if i["from_pbs"]:
+            i["from_pbs"] = "true"
+        else:
+            i["from_pbs"] = "false"
+        print "select drugs.assert_brand('%(pk)s', '%(fk_product)s', '%(fk_company)s', $$%(brand)s$$, %(sct)s, %(price)s, %(from_pbs)s, %(product_information_filename)s);" % i
+
+def print_products():
+    """Run through all products and print assert_product commands"""
+    r = query("select * from drugs.product")
+    for i in r:
+        if i["free_comment"] is None or i["free_comment"] == '':
+            i["free_comment"] = "NULL"
+        else:
+            i["free_comment"] = "$$%s$$" % i["free_comment"]
+        if i["salt"] is None:
+            i["salt"] = "NULL"
+        else:
+            i["salt"] = "$$%s$$" % i["salt"]
+        if i["salt_strength"] is None:
+            i["salt_strength"] = "NULL"
+        else:
+            i["salt_strength"] = "$$%s$$" % i["salt_strength"]
+        if i["sct"] is None:
+            i["sct"] = "NULL"
+        else:
+            i["sct"] = "'%s'" % i["sct"]
+        if i["original_pbs_name"] is None:
+            i["original_pbs_name"] = "NULL"
+        else:
+            i["original_pbs_name"] = "$$%s$$" % i["original_pbs_name"]
+        if i["amount"] is None: i["amount"] = "NULL"
+        if i["amount_unit"] is None: i["amount_unit"] = "NULL"
+        if i["fk_schedule"] is None: i["fk_schedule"] = "NULL"
+        if i["pack_size"] is None: i["pack_size"] = "NULL"
+        print """select drugs.assert_product('%(pk)s'::uuid,'%(atccode)s',$$%(generic)s$$,%(fk_form)s,$$%(strength)s$$,%(original_pbs_name)s,
+                 %(free_comment)s,%(fk_schedule)s,%(pack_size)s,%(amount)s,
+                 %(amount_unit)s,%(units_per_pack)s,%(sct)s,%(salt)s,%(salt_strength)s,'%(updated_at)s'::timestamp);""" % i
 
 def scan_scts_in_file(f):
     rex = re.compile("<a href=\".*/browser/concept/([0-9]+)\">([^<]+)</a>")
@@ -476,11 +437,10 @@ def print_help():
     print """Import PBS data
 import_pbs.py cmd
 cmd is:
-  - products: scan PBS xml and produce a text report on stdin of new drugs for hand-editing
-  - import: takes list from above after editing on stdiamprenavirn and imports into DB, produces SQL on stdout
-  - brands: imports all new brands, SQL on stdout (not executed)
-  - pbs: imports all PBS data, SQL on stdout
-  - atc: imports new ATC and manufacturer data, SQL on stdout
+  - products: scan PBS xml and produce a text report on stdout of new drugs for hand-editing
+  - import: accepts on stdin list from above after editing and imports into DB, no output
+  - brands: imports all new brands, may report errors
+  - print: complete sql update on stdout
   """
 
 
@@ -492,17 +452,32 @@ else:
 if cd == '1' or cd == 'products':
     import_step1(get_xml_etree()) # produce list of new products for editing
 elif cd == '2' or cd == 'import':
-    import_step2() # read back in the edited list of products, execute and spit out SQL 
+    import_step2() # read back in the edited list of products, execute on DB, no SQL produced
 elif cd == '3' or cd == 'brands':
-    verify_brands(get_xml_etree()) # brands, just produce SQL (no execute)
-elif cd == '4' or cd == 'pbs':
+    verify_brands(get_xml_etree()) # brands, may spit out errors
+elif cd == '4' or cd == 'print':
     t = get_xml_etree()
-    import_pbs(t) # pbs and restrictions, produce SQL 
-    import_restricts(t)
-elif cd == '5' or cd == 'atc':
-    t = get_xml_etree()
-    import_mnfr(t) # produce ATCs and company information
+    print """\\set ON_ERROR_STOP 1"
+\\o /dev/null
+\\set QUIET 1
+DO language plpgsql $$
+DECLARE
+   vers db.lu_version%ROWTYPE;
+BEGIN
+   select * into vers from db.lu_version;
+   if vers.lu_minor < 317 then 
+      raise exception 'database version must be 316=7 or higher';
+   end if;
+END$$;
+"""
+    import_mnfr(t) # company information
     import_atc(t)
+    print_products() # idempotent sql commands for full dump of products
+    print_brands() # and brands
+    print "truncate drugs.pbs, drugs.restriction;"
+    import_pbs(t) # pbs and restrictions, produce dump-and-reload SQL 
+    import_restricts(t)
+    print "update drugs.version set release_date='%s';" % release_date
 elif cd == 'scts':
     scan_all_scts()
 elif cd == "--help":

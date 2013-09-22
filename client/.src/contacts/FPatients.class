@@ -31,44 +31,26 @@ Private fk_country As Integer
 Private iTimer_Count As Integer
 Private sSearchMode As String
 Private bKeyValid As Boolean
-Private seach_delay As Integer
 Private PersonPicture As Collection
-Private bNewOrgContact As Integer
-Private bNewPersonContact As Integer
-Private iLastKeycode As Integer
-Private iSaveYesNo As Integer
-Private $TownResult As Result
-Private bRefreshing As Boolean
 Private bNewAddress As Boolean
-Private bAddingOrgAddress As Boolean
 Private bAddFamilyMember As Boolean
-Private bList2HasFocus As Boolean
 Private Const cStatusMsg_Info As Integer = 0
 Private Const cStatusMsg_Warning As Integer = 1
 Private bExit As Boolean 'fix me remove to a single flag later
 Private occupations As Collection 
 Private bNewCommunication As Boolean
-Private iAddNew As Integer              'true if adding new patient
-Private patients As Collection
-Private cTowns As Collection
 Private isubsection As Integer
 Private Const cNameSearch As Integer = 0
 Private Const cFamilySearch As Integer = 1
 Private Age As Integer
-Private age_months As Integer
 Private arraySex As New String[]  'was 6
 Private arraymarital As New String[] 'was 7
-Private arrayAddressType As New String[]
-Private arrayConctactType As New String[]
 Private bDisplayingData As Boolean
-Private currentdisplayedpersonspk As Integer
-Private lastdisplayedpersonspk As Integer
 Private Const cSection_Patients As Integer = 0 'these section
 Private Const cSection_Persons As Integer = 1
 Private pk_last_comm_deleted As Integer         'the primary key of the last key deleted in contacts.data_communications
 Private iSection As Integer
 Private iaddress As Integer
-Private fk_organisation As Integer
 Private fk_address As Integer
 Private fk_image As Integer
 Private fk_person As Integer
@@ -85,8 +67,6 @@ Private fk_payer As Integer
 Private rows_in_view As Collection
 Private row_in_view As Collection 'current row we are on
 Private iCommunication As Integer
-Private person As Collection
-Private patient As Collection
 Private address As Collection
 Private addresses As Collection
 Private views_comms As Collection
@@ -94,8 +74,6 @@ Private Comms As Collection
 Private Comm As Collection
 Private The_Collection As Collection
 Private Member As Collection
-Private FImport As FImportPatientsWizard
-'Private bEmbedded As Boolean
 Private form_merge As New FMergeContact
 Private Embedded_In_Form As String
 Private form_billing As FPatientBillingCards
@@ -226,7 +204,7 @@ Public Sub cvwPatients_Select()
    
 End
 
-Public Sub Patient_Get()
+Public Sub Patients_Get()
    
    If Trim(txtSearch.text) = "" Then Return
    Inc Application.Busy
@@ -240,12 +218,7 @@ End
 
 Public Sub Patients_List_Fill()
    
-   Dim iKey As Integer
-   
-   Dim comm As Collection
-   Dim sTemp As String
    Dim sStatusMessage As String
-   Dim person As Collection
    Dim iLastperson_pk As Integer
    Dim x As Integer
    
@@ -301,7 +274,6 @@ Public Sub Patient_Display()
    '---------------------------------------------------
    
    Dim bFoundPerson As Boolean
-   Dim x As Integer
    Dim row As Collection
    
    If cvwPatients.Columns.count = 5 Then Return 'just being used for display purposes
@@ -532,8 +504,6 @@ End
 
 Public Function Patient_Valid() As Boolean
    
-   Dim sMsg As String
-   
    If Not check_field_valid(txtsurname) Then Return False               'always have a surname
    If Not check_field_valid(txtFirstname) Then Return False             'always have a firstname
    
@@ -561,9 +531,6 @@ End
 
 Public Sub Save()
    'FIXME mixture of really old and newer cRow code in this routine
-   
-   Dim Returned_collection As Collection
-   Dim x As Integer
    Dim person As CRow
    Dim patient As CRow
    Dim address As CRow
@@ -789,22 +756,21 @@ Public Sub Save()
       FClinical.Patient_Demographics_Refresh()
       If patient!fk_patient And person.Exist("fk_image") Then                    'if we have a picture of them
          If Not IsNull(person!fk_image) Then
-               If person!fk_image > 0                                               'image exists
-                  FClinical.Patient_Picture_Refresh(personpicture!path)             'refresh the picture
-                Else
-                  FClinical.Patient_Picture_Refresh("icons/misc/no_photo.png")
-               End If
-               If fk_occupation Then
-                  Try FOccupation.Occupations_Reload()
-               Endif
-          Else
+            If person!fk_image > 0                                               'image exists
+               FClinical.Patient_Picture_Refresh(personpicture!path)             'refresh the picture
+            Else
+               FClinical.Patient_Picture_Refresh("icons/misc/no_photo.png")
+            End If
+            If fk_occupation Then
+               Try FOccupation.Occupations_Reload()
+            Endif
+         Else
             FClinical.Patient_Picture_Refresh("icons/misc/no_photo.png")
          End If
       End If
       Try FPregnancyDemographics.Occupation_Update(txtOccupation.text, fk_occupation)  'if ante-natal care demographics is loaded
       Try FOccupation.Occupations_Reload
    End If
-  
    
    '    rows_in_view = modContactsDBI.Patient_Get_Using_PK(patient!fk_patient) ' must be Collection so the rest of the code works
    '    If IsNull(rows_in_view) Then
@@ -863,6 +829,48 @@ Public Sub mnuAddresses_Click()
    
 End
 
+Public Sub patients_Mark_Left_Practice()
+   '----------------------------------------------------
+   'Mark one of more patient as having left the practice
+   '----------------------------------------------------   
+   
+   Dim sMsg As String
+   Dim Pat As New CRow 
+   Dim x As Integer
+   Dim sSearchCriteria As String = txtSearch.Text
+   
+   Message.Title = "Marking Patients as Left The Practice"
+   sMsg = "You have selected "
+   If cvwPatients.Selection.Count > 1 Then
+      sMsg &= "a number of patients"
+   Else
+      sMsg &= modStrings.CapitaliseWord(rows_in_view[cvwPatients.Selection[x]]!wholename) 
+   Endif
+   sMsg &= " to mark as having left the practice.\n\nAre you sure you want to continue?"
+   If Message.Question(sMsg, "Yes - Mark as Left", "No") = 2 Then Return
+   For x = 0 To cvwPatients.Selection.Count - 1
+      Pat = New CRow
+      Pat.put_unchanged(rows_in_view[cvwPatients.Selection[x]]!fk_patient, "fk_patient")
+      Pat!fk_lu_active_status = const.PatientStatus_Inactive
+      Pat.Save("clerical.data_patients", "fk_patient")
+   Next 
+   modDBConnect.CommitTrans
+   cvwPatients.UnselectAll
+   txtSearch.text = sSearchCriteria
+   Patients_Get
+   If cvwPatients.count Then
+      With cvwPatients
+         .MoveFirst
+         .SetFocus
+         .Item.Selected = True
+      End With
+   End If
+   
+Catch
+   modDBConnect.RollBack
+   
+End
+
 Public Sub mnuPersons_Click()
    
    Dim x As Integer
@@ -878,7 +886,7 @@ Public Sub mnuPersons_Click()
       Case "add person"
          bAddFamilyMember = False
          Patient_New()
-      Case "add family member"
+      Case "add family member."
          bAddFamilyMember = True
          Patient_New()
       Case "show family members"
@@ -887,6 +895,8 @@ Public Sub mnuPersons_Click()
          
       Case "link as next of kin"
       Case "select as next of kin"
+      Case "mark left practice"
+         patients_Mark_Left_Practice
       Case "mark deceased"
          '----------------------------------------------------------------
          'Run through the selected persons, if more than one being deleted
@@ -894,7 +904,7 @@ Public Sub mnuPersons_Click()
          'see code in FDiabetesResearch which is better FIXME
          '----------------------------------------------------------------
          cvwPatients.MoveFirst
-         sMsg = "You have selected a number of persons to mark deceased.\n\nThey will no longer appear in "
+         sMsg = "You have selected a number of patients to mark deceased.\n\nThey will no longer appear in "
          "the patients list or the clinical record, but will not actually be removed from the database."
          For x = 1 To cvwPatients.Count
             If cvwPatients.Item.Selected = True Then
@@ -918,7 +928,7 @@ Public Sub mnuPersons_Click()
             Endif
             cvwPatients.MoveNext
          Next
-         Patient_Get() 'refresh the list
+         Patients_Get() 'refresh the list
       Case "delete address"
          Address_Delete
       Case "delete person"
@@ -1017,11 +1027,6 @@ Sub Address_Delete()
 End
 
 Public Sub Patient_New()
-   
-   Dim keepaddress As Collection
-   Dim keepcomm As Collection
-   Dim iFk_Family As Integer ' the family table pk
-   Dim sSurname As String
    
    txtSearch.text = ""
    cvwPatients.Clear()
@@ -1123,9 +1128,6 @@ End
 
 Public Sub Address_Accept()
    
-   Dim sMsg As String           'used to show message on status bar as to what we are doing
-   Dim i As Integer             'used as a loop counter in this routine
-   Dim iCurrentRow As Integer   'keep to allow moving back to this row after update
    
    If Not Address_Valid() Then Return
    
@@ -1347,7 +1349,7 @@ Public Sub timer1_Timer()
       timer1.stop
       Select Case sSearchMode
          Case "general search"
-            Patient_Get()
+            Patients_Get()
          Case "surname"
             Surname_Duplicates_Selection("get")
          Case "firstname"
@@ -1368,9 +1370,9 @@ Public Sub timer1_Timer()
    
 End
 
-Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer) As Boolean
+Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
    
-   Select Case Last.Tag
+   Select Case Tag
       Case "birthdate"
          bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
       Case "limit"
@@ -1487,7 +1489,7 @@ Public Sub EditArea_TextBox_KeyPress()
    
    If bExit Then Return
    
-   If Not EditArea_TextBox_ExcludeKeys(key.code) Then
+   If Not EditArea_TextBox_ExcludeKeys(key.code, Last.tag) Then
       Stop Event
       Return
    End If
@@ -1601,7 +1603,6 @@ End
 
 Public Sub Patient_Picture_Import()
    
-   Dim filepath As String
    Dim sMsg As String
    
    Dialog.Title = "Select Image File"
@@ -1725,8 +1726,6 @@ End
 Public Sub Communication_Accept()
    
    Dim sMsg As String           'used to show message on status bar as to what we are doing
-   Dim i As Integer             'used as a loop counter in this routine
-   Dim iCurrentRow As Integer   'keep to allow moving back to this row after update
    
    If Trim(txtCommValue.Text) = "" Then
       
@@ -2280,7 +2279,6 @@ Public Sub Surname_Duplicates_Selection(action As String, Optional calling_contr
    'Checks for duplicate surnames in the contacts database either person or patient
    '-------------------------------------------------------------------------------
    
-   Dim sMsg As String
    Dim x As Integer
    Dim last_fk_person As Integer
    

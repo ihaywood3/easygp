@@ -15,23 +15,25 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'----------------------------------------------------------------------
+'-----------------------------------------------------------------------------------
 'PURPOSE    Allow user to set their peferences for how the clinical section behaves
-'----------------------------------------------------------------------------------
+'TO ADD NEW PARAMAMETERS   Add your radiobuttons to the gui
+'                          Add your saving code in rbEditArea_Click()
+'                          Add your code to display this when program runs in Init()
+'                          To call this parameter elsewhere in program use 
+'                          modAdminDBI.Config_Get_Staff_Member(Param... defaults etc)
+'TO ADD TOOLBUTTONS IN FCLINICAL - user education
+'                                - right clicking on the toolbutton area > popup
+'-----------------------------------------------------------------------------------
 Private bExit As Integer
-Private Settings_Section As String
-Private bShowPatientPicture As Boolean
-Private bPatientListUsePhotoID As Boolean
-Private bPatientForceConfirm As Boolean
 Private Form_Toolbar_Config As FConfigToolbar
 Private ToolButtons As Collection
-Private bDataChanged As Boolean
 
 Public Sub Init()
    '----------------------------------------------------------------------------
    'Set up gui, load currently used toolbuttons and default values if they exist
    '----------------------------------------------------------------------------
-
+   
    bExit = True
    lblMeasure.text = "  Clinical Notes Date Display Order  "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
@@ -44,7 +46,7 @@ Public Sub Init()
       .TextLabel1.text = ""
       "You may add or remove buttons to the existing configuration  shown above, by clicking on the appropriate button next to the sections shown below."
    End With
-
+   
    chkShowPatientPicture.value = modAdminDBI.Config_Get_Staff_Member("clinical_show_patient_photo", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff)
    If modAdminDBI.Config_Get_Staff_Member("clinical_use_photo_id", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
       rbUsePhotoIDYes.Value = True
@@ -56,20 +58,36 @@ Public Sub Init()
    Else
       rbAllowUnfinishedLettersNo.value = True
    Endif
-
+   If modAdminDBI.Config_Get_Staff_Member("progress_notes_enforce_coding", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
+      rbEnforceProgressNoteCodingYes.Value = True
+   Else
+      rbEnforceProgressNoteCodingNo.value = True
+   End If   
    If modAdminDBI.Config_Get_Staff_Member("clinical_enforce_confirm_id", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
       rbConfirmIdentityYes.Value = True
    Else
       rbConfirmIdentityNo.value = True
    Endif
+   'if "inr_point_of_care_testing" is true the FINR the inr management module won't automatically load hl7 lab values by default
+   If modAdminDBI.Config_Get_Staff_Member("inr_point_of_care_testing", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
+      rbINRPointOfCareTestingYes.value = True
+   Else
+      rbINRPointOfCareTestingNo.Value = True
+   End If
    cmbStartUpTab.index = cmbStartUpTab.Find(modAdminDBI.Config_Get_Staff_Member("clinical_startup_tab", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff))
    cmbNotesDisplay.index = modAdminDBI.Config_Get_Staff_Member("notes_date_display_order", 0, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff)
    bexit = False
-
+   
 End
 
 Public Sub rbEditArea_Click()
-
+   '-------------------------------------------------------
+   'User has clicked on a radiobutton in the editing area
+   'to set how the parameters will work in clinical section
+   '-------------------------------------------------------
+   Dim sINRMessageTitle As String = "INR Testing Method"
+   Dim sINRMessage As String = "The changes to the method of INR testing will not be applied until you close and restart EasyGP"
+   
    If bexit Then Return
    Select Case Last.tag
          ' Case "use photo id yes"
@@ -84,28 +102,44 @@ Public Sub rbEditArea_Click()
          modAdminDBI.Config_Save_staff_member(modDBConnect.currentUser!fk_clinic, "referrals_allow_save_unfinished_letters", True, modDBConnect.currentUser!fk_staff)
       Case "allow unfinished letters no"
          modAdminDBI.Config_Save_staff_member(modDBConnect.currentUser!fk_clinic, "referrals_allow_save_unfinished_letters", False, modDBConnect.currentUser!fk_staff)
-
+      Case "progress note coding yes"
+         modAdminDBI.Config_Save_staff_member(modDBConnect.currentUser!fk_clinic, "progress_notes_enforce_coding", True, modDBConnect.currentUser!fk_staff)
+         FClinical.ProgressNotesEnforceCoding_UpdateFlag(True)
+      Case "progress note coding no"
+         modAdminDBI.Config_Save_staff_member(modDBConnect.currentUser!fk_clinic, "progress_notes_enforce_coding", False, modDBConnect.currentUser!fk_staff)
+         FClinical.ProgressNotesEnforceCoding_UpdateFlag(False) 'fixme does not work "illegal instruction" ?why
+      Case "inr test with external laboratory"
+         modAdminDBI.Config_Save_staff_member(modDBConnect.currentUser!fk_clinic, "inr_point_of_care_testing", False, modDBConnect.currentUser!fk_staff)
+         Goto Message_user
+      Case "inr test in office"
+         modAdminDBI.Config_Save_staff_member(modDBConnect.currentUser!fk_clinic, "inr_point_of_care_testing", True, modDBConnect.currentUser!fk_staff)
+         Goto Message_user
    End Select
    modDBConnect.CommitTrans()
    modAdminDBI.Prefs_Staff_Reset
-
+   Return
+   
+Message_user:
+   Message.Title = sINRMessageTitle
+   Message.Info(sINRMessage)
+   
 End
 
 Public Sub cmbStartUpTab_Click()
-
+   
    If bexit Then Return
    modAdminDBI.Config_Save_staff_member(modDBConnect.currentUser!fk_clinic, "clinical_startup_tab", cmbStartUpTab.Text, modDBConnect.currentUser!fk_staff)
    modDBConnect.CommitTrans
    modAdminDBI.Prefs_Staff_Reset
-
+   
 End
 
 Public Sub cmbNotesDisplay_Click()
-
+   
    If bexit Then Return
    modAdminDBI.Config_Save_staff_member(modDBConnect.currentUser!fk_clinic, "notes_date_display_order", cmbNotesDisplay.index, modDBConnect.currentUser!fk_staff)
    modDBConnect.CommitTrans
    modAdminDBI.Prefs_Staff_Reset
    const.iClinicalNotesDisplayOrder = cmbNotesDisplay.Index
-
+   
 End

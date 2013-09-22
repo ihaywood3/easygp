@@ -22,55 +22,30 @@
 '              at the moment just experimenting with Organisation/persons re-design
 '              ------------------------------------------------------------
 Private ReferenceHboxForTopOfListBox As Hbox               'used if split moves to reposition columnview
-Private limit As Integer
 Private pk_view As String 'compound key because view has multiple addreses, I could change this and call addreses as needed
-Private cvwPersons_key As Integer
 Private pk_view_address As Integer
 Private fk_country As Integer
 Private iTimer_Count As Integer
 Private sSearchMode As String
 Private bKeyValid As Boolean
 Private SpellChecker As ClskSpell
-Private seach_delay As Integer
 Private PersonPicture As Collection
 Private person As Collection
-Private bNewOrgContact As Integer
-Private bNewPersonContact As Integer
-Private iLastKeycode As Integer
-Private textboxForSpellCheck As TextBox
-Private iSaveYesNo As Integer
-Private $TownResult As Result
-Private bRefreshing As Boolean
-Private bNewAddress As Boolean
 Private bAddingOrgAddress As Boolean
 Private bAddFamilyMember As Boolean
-Private bList2HasFocus As Boolean
 Private Const cStatusMsg_Info As Integer = 0
 Private Const cStatusMsg_Warning As Integer = 1
 Private bExit As Boolean 'fix me remove to a single flag later
 Private occupations As Collection
-Private occupation As Collection
-Private bNewCommunication As Boolean
-Private iAddNew As Integer              'true if adding new patient
-Private patients As Collection
-Private cTowns As Collection
 Private isubsection As Integer
 Private cvwAddresses_Key As Integer          'zero based key to the addresses collection
 Private Const cNameSearch As Integer = 0
 Private Const cFamilySearch As Integer = 1
 Private Age As Integer
-Private age_months As Integer
 Private arraySex As New String[]  'was 6
 Private arraymarital As New String[] 'was 7
-Private arrayAddressType As New String[]
-Private arrayConctactType As New String[]
 Private bDisplayingData As Boolean
-Private currentdisplayedpersonspk As Integer
-Private lastdisplayedpersonspk As Integer
-Private pk_last_comm_deleted As Integer         'the primary key of the last key deleted in contacts.data_communications
-Private iSection As Integer
 Private iaddress As Integer
-Private fk_organisation As Integer
 Private fk_address As Integer
 Private fk_image As Integer
 Private fk_data_numbers As Integer              'currently not used fixme if not zero the person has previous entry in contacts.data_numbers table = the key
@@ -81,12 +56,11 @@ Private country_code As String
 Private country_code_birth As String
 Private fk_language As Integer
 Private fk_ethnicity As Integer
-
+Private bNewAddress As Boolean
 Private address As Collection
 Private addresses As Collection
 Private The_Collection As Collection
 Private Member As Collection
-Private Embedded_In_Form As String
 Private Suburb As Collection
 Private suburbs As Collection
 Private Parent_EditArea As VBox
@@ -139,8 +113,6 @@ Public Sub Init(PEA As VBox, tb As ToolButton) ', VBox_Parent As VBox)
    End With
    modEditAreaHelpers.Resize_labels(form_contacts_person.VBox_EditArea_Outer, lblMeasure)
    modEditAreaHelpers.Resize_labels(form_contacts_person.VBox_EditArea, lblMeasure)
-   '  modEditAreaHelpers.Resize_label(form_contacts_person.lblContacts, lblMeasure)
-   '  modEditAreaHelpers.Resize_label(form_contacts_person.lblButtons, lblMeasure)
    Combos_Fill()
    cvwAddresses.Columns.count = 3
    lblMeasure.text = " Deceased "
@@ -219,10 +191,6 @@ Public Sub Person_Display(P As Collection)
    'Display the detail of the person (or patient)
    'editing is implicit - ie automatically in edit mode
    '---------------------------------------------------
-   
-   Dim bFoundPerson As Boolean
-   Dim x As Integer
-   Dim row As Collection
    
    person = P
    EditArea_Clear()   'clear the display fields and the patients picture
@@ -445,76 +413,6 @@ Public Function Person_Valid() As Boolean
    
 End
 
-Public Function Person_Valid_old() As Boolean
-   
-   Dim sMsg As String
-   Dim occupation As Collection
-   
-   If listview1.Visible Then  'eg typed in suburb, category or occupation and not selected.
-      listview1.SetFocus
-      Return
-   Endif
-   If Trim(txtFirstname.text) = "" Then
-      txtFirstname.SetFocus
-      Return False
-   End If
-   
-   If Trim(txtSurname.text) = "" Then
-      txtSurname.SetFocus
-      Return False
-   End If
-   
-   If Trim(txtOccupation.text) = "" Then
-      sMsg = "Please enter an occupation for this person"
-      Message.Info(sMsg)
-      txtOccupation.SetFocus
-      Return
-   Endif
-   '------------------------------------------------------------------------------------------ 
-   'Must check occupation every time, e.g an fk_occupation could exist, even if the
-   'user altered an occupation e.g
-   'existing occupation could be cardiologist, they then realised the person was 
-   'cardiologist - interventional, simply added the second bit on, the fk_occupation is
-   'then invalid fixme - remove fk-occupation through entire easygp data entry and always check
-   '-------------------------------------------------------------------------------------------
-   SpellCheck_TextBox(txtoccupation)
-   occupation = modCommonDBI.Occupation_Get(Trim(txtoccupation.text))  'check if occupation is in the database
-   If Not IsNull(occupation) Then
-      fk_occupation = occupation!pk
-   Else
-      smsg = "The occupation:\n\n " & Trim(txtoccupation.text) & "\n\nwas not found in the database.\n\n"
-      "Please check the spelling and if ok confirm you wish to add this occupation to the database."
-      If Message.Question(sMsg, "Yes - Add Occupation", "Cancel") = 2 Then
-         txtoccupation.SetFocus
-         Return
-      End If
-      fk_occupation = 0
-   End If
-   If Trim(txtProviderNumber.text) <> "" Then
-      If modUtil.Provider_Number_Check(Trim(txtProviderNumber.text)) = "*INVALID*" Then
-         Message.Info("The provider number is invalid")
-         txtProviderNumber.SetFocus
-         Return
-      Endif
-   Endif
-   If Trim(TxtHealthProviderNumberIndividual.text) <> "" Then
-      If modPCEHR.checkIdentifier(TxtHealthProviderNumberIndividual.text) = False Then
-         Message.Info("Invalid health provider number for the individual")
-         TxtHealthProviderNumberIndividual.SetFocus()
-         Return
-      End If   
-   End If   
-   If Trim(TxtHealthProviderNumberOrganisation.text) <> "" Then
-      If modPCEHR.checkIdentifier(TxtHealthProviderNumberOrganisation.text) = False Then
-         Message.Info("Invalid health provider number for the individual as an Organisation")
-         TxtHealthProviderNumberOrganisation.SetFocus()
-         Return
-      End If   
-   End If  
-   Return True
-   
-End
-
 Public Sub SpellCheck_TextBox(tb As TextBox)
    
    bexit = True
@@ -553,14 +451,10 @@ Public Sub Save() As Boolean
    'Save the person's details success flag passed back to FContacts 
    '---------------------------------------------------------------   
    
-   Dim Returned_collection As Collection
-   Dim x As Integer
    Dim person As CRow                                        'the data for contacts.data_persons table
    Dim address As CRow                                       'the data for contacts.data_addresses table
    Dim address_link As CRow                                  'the data for contacts.links_persons_addresses table
    Dim Coll As Collection                                    'any old collection 
-   Dim communication As CRow                                 'the data for contacts.data_communications_table
-   Dim link_person_comm As New CRow                          'the data for contacs.links_persons_communications table
    Dim data_numbers As CRow                                  'the data for contacts.data_numbers table
    Dim data_numbers_persons As CRow                           'the data for contacts.data_numbers_persons table
    Dim Image As CRow                                         'the data for blobs.images table
@@ -818,12 +712,6 @@ End
 
 Public Sub mnuPersons_Click()
    
-   Dim x As Integer
-   Dim P As Collection
-   Dim C As New Collection 'empty collections for comms
-   Dim selected_count As Integer
-   Dim sMsg As String
-   
    Select Case Last.tag
       Case "add address"
          Address_New
@@ -1000,10 +888,7 @@ End
 
 Public Sub Address_Accept()
    
-   Dim sMsg As String           'used to show message on status bar as to what we are doing
-   Dim i As Integer             'used as a loop counter in this routine
-   Dim iCurrentRow As Integer   'keep to allow moving back to this row after update
-   Dim address As New Collection 
+    Dim address As New Collection 
    
    If Not Address_Valid() Then Return
    
@@ -1027,7 +912,7 @@ Public Sub Address_Accept()
       If chkAddressPreferred.value = True Then
          address!preferred_address = True
       Else
-          address!preferred_address = False  
+         address!preferred_address = False  
       End If
       addresses.Add(address, iAddress)
    Else                                   'adding existing address back to addresses collection
@@ -1051,7 +936,7 @@ Public Sub Address_Accept()
       If chkAddressPreferred.value = True Then
          Addresses[cvwAddresses_key]!preferred_address = True
       Else
-          Addresses[cvwAddresses_key]!preferred_address = False
+         Addresses[cvwAddresses_key]!preferred_address = False
       End If
       Addresses_FillList()
    End If
@@ -1153,7 +1038,8 @@ Public Sub ListView1_DblClick()
       Case "occupation"
          Occupation_Select(Occupations[listview1.Item.key])
       Case "surname"
-         Surname_Duplicates_Selection("accept", "list")
+        ' Surname_Duplicates_Selection("accept", "list")
+         Message.info("Richard stop this should not get here")
       Case "suburb"
          suburb = suburbs[listview1.Item.key]
          Suburb_Select()
@@ -1189,10 +1075,10 @@ Public Sub timer1_Timer()
             ' Case "general search"
             '    Person_Get()
          Case "surname"
-            Surname_Duplicates_Selection("get")
+          '  Surname_Duplicates_Selection("get")
          Case "firstname"
             ' Firstname_Selection("get")
-            Surname_Duplicates_Selection("get") 'now user the firstname, surname to check for duplicates
+           ' Surname_Duplicates_Selection("get") 'now user the firstname, surname to check for duplicates
          Case "occupation"
             occupations = modCommonDBI.Occupations_Get(listview1, txtOccupation)   'get popup list of occupations
          Case "suburb"
@@ -1208,9 +1094,9 @@ Public Sub timer1_Timer()
    
 End
 
-Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer) As Boolean
+Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
    
-   Select Case Last.Tag
+   Select Case tag
       Case "birthdate"
          bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
       Case "health provider number individual", "health provider number organisation"
@@ -1296,7 +1182,7 @@ Public Sub EditArea_TextBox_KeyPress()
    
    If bExit Then Return
    
-   If Not EditArea_TextBox_ExcludeKeys(key.code) Then
+   If Not EditArea_TextBox_ExcludeKeys(key.code, Last.tag) Then
       Stop Event
       Return
    End If
@@ -1427,7 +1313,6 @@ End
 
 Public Sub person_Picture_Import()
    
-   Dim filepath As String
    Dim sMsg As String
    
    Dialog.Title = "Select Image File"
@@ -1886,159 +1771,12 @@ Public Sub txtSearch_KeyRelease()
    
    If Trim(Last.text) = "" Then Return
    itimer_count = 0
-   '  Timer1.start()
-   
-End
 
-Public Sub Surname_Duplicates_Selection(action As String, Optional calling_control As String)
-   '-------------------------------------------------------------------------------
-   'Checks for duplicate surnames in the contacts database either person or patient
-   '-------------------------------------------------------------------------------
-   '
-   ' Dim sMsg As String
-   ' Dim x As Integer
-   ' Dim last_fk_person As Integer
-   '
-   ' Select Case action
-   '    Case "get"
-   '       With cvwPersons
-   '          .Clear
-   '          .columns.count = 5
-   '       End With
-   '       If Trim(txtSurname.text) = "" Then Return
-   '       The_Collection = modContactsDBI.Person_Get(Trim(txtSurname.text) & "," & Trim(txtFirstname.text), const.contacttype_PersonsAndPatients)
-   '       The_Collection.Remove("sql_in_english")
-   '       The_Collection = modUtil.Copy_Collection_Keyed_Sequentially(The_Collection)
-   '       If The_Collection.count Then
-   '
-   '          cvwPersons.Add(x, 0)
-   '
-   '          CVWPERSONS[X][1] = "EXISTING DATABASE ENTRIES"
-   '          cvwPersons[X][0] = ""
-   '          cvwPersons[X][4] = "PLEASE DOUBLE CHECK FOR DUPLICATES BEFORE SAVING"
-   '          Inc X
-   '
-   '          For Each Member In The_Collection
-   '             If last_fk_person <> Member!fk_person Then                                                    'if this person <> the last person
-   '                cvwPersons.Add(x, 0)
-   '                If Not IsNull(Member!fk_patient) Then
-   '                   cvwPersons[X][0] = "PATIENT DATABASE"
-   '                Else
-   '                   cvwPersons[X][0] = "OTHER PERSONS"
-   '                Endif
-   '                cvwPersons[X][1] = Member!firstname & " " & Member!surname & "   "
-   '                If Not IsNull(Member!birthdate) Then
-   '                   cvwPersons[X][2] = Format(Member!birthdate, "dd/mm/yyyy") & "   "
-   '                Endif
-   '                If Not IsNull(Member!occupation) Then
-   '                   cvwPersons[X][3] = " " & Member!occupation & " "
-   '                Endif
-   '                cvwPersons[X][4] = " " & Trim(Member!street1 & " " & Member!street2) & " " & Member!town
-   '                Last_fk_person = Member!fk_person
-   '                Inc x
-   '             Else
-   '                cvwPersons[X - 1][4] &= "/" & Trim(Member!street1 & " " & Member!street2) & " " & Member!town
-   '             End If
-   '          Next
-   '          With Vbox_PatientsList
-   '             .Background = Color.REd
-   '             .padding = 10
-   '          End With
-   '       Else
-   '          cvwPersons.Clear
-   '          With Vbox_PatientsList
-   '             .Background = Color.Background
-   '             .padding = 2
-   '          End With
-   '       End If
-   '       lblMeasure.font = cvwPersons.Font
-   '       modUtil.Columnview_Columns_Set_Size(cvwPersons, lblmeasure)
-   '
-   ' End Select
-   
-End
-
-Public Sub Surname_Duplicates_Selection_old(action As String, Optional calling_control As String)
-   
-   Dim sMsg As String
-   Dim x As Integer
-   
-   Select Case action
-      Case "get"
-         
-         With Listview1
-            .Clear
-            .Visible = False
-         End With
-         If Trim(txtSurname.text) = "" Then Return
-         The_Collection = modContactsDBI.Person_Get(Trim(txtSurname.text), const.contacttype_person)
-         The_Collection.Remove("sql_in_english")
-         The_Collection = modUtil.Copy_Collection_Keyed_Sequentially(The_Collection)
-         If The_Collection.count Then
-            listview1.Add(x, "Existing database entries for search criteria:" & Trim(txtsurname.text))
-            Inc x
-            listview1.Add(x, "")
-            Inc x
-            For Each Member In The_Collection
-               sMsg = Member!firstname & " " & Member!surname
-               If Not IsNull(Member!birthdate) Then
-                  sMsg &= " " & Format(Member!birthdate, "dd/mm/yyyy")
-               Endif
-               If Not IsNull(Member!occupation) Then
-                  sMsg &= " occupation:" & Member!occupation
-               Endif
-               Listview1.Add(x, sMsg)
-               Inc x
-            Next
-            With Listview1
-               .Visible = True
-               .Raise
-               .tag = txtSurname
-               .Enabled = False
-            End With
-         End If
-      Case "accept"
-         Return
-         listview1.MoveCurrent()
-         If Not IsNull(The_Collection[listview1.Item.key]!fk_patient) Then
-            sMsg = The_Collection[listview1.Item.key]!surname & " " & The_Collection[listview1.Item.key]!firstname & "\n"
-            sMsg &= "Birthdate:"
-            If Not IsNull(The_Collection[listview1.Item.key]!birthdate) Then
-               smsg &= Format(The_Collection[listview1.Item.key]!birthdate, "dd/mm/yyyy") & "\n"
-            Endif
-            sMsg &= Trim(The_Collection[listview1.Item.key]!street1 & " " & The_Collection[listview1.Item.key]!Street2) & " "
-            sMsg &= The_Collection[listview1.Item.key]!town & " " & The_Collection[listview1.Item.key]!postcode & "\n\n"
-            sMsg &= "already exists in the patient's database.\n\nAre you sure you want to continue"
-            Message.title = "Possible duplicate patient"
-            If Message.question(sMsg, "Yes - add duplicate", "Cancel") = 2 Then Return
-         Endif
-         Message.Title = "Existing Persons"
-         sMsg = "You are adding a new person, but you have selected a person who already exists in the database.\n\n"
-         "This popup box is just to help you avoid adding duplicates to your contacts database. In this context "
-         'It is not meant for you to select from the list."
-         If Message.Warning(sMsg, "Ok") = 1 Then Return
-         bExit = True
-         listview1.MoveCurrent()             'match internal cursor to marquee
-         txtSurname.text = The_Collection[listview1.Item.key]!surname
-         txtFirstname.text = The_Collection[listview1.Item.key]!firstname
-         txtOccupation.text = The_Collection[listview1.Item.key]!occupation
-         Try fk_occupation = The_Collection[listview1.Item.key]!fk_occupation
-         fk_person = The_Collection[listview1.Item.key]!fk_person
-         Try cmbSex.indxex = The_Collection[listview1.Item.key]!fk_sex
-         Try cmbTitle = The_Collection[listview1.Item.key]!fk_title
-         listview1.Visible = False
-         bExit = False
-   End Select
-Catch
-   bexit = False  
-   Return
-   
 End
 
 Public Sub Form_Leave()
    
    Timer1.Stop
-   ' timer1.Enabled = False
    
 End
 

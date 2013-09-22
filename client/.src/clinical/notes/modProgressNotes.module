@@ -17,14 +17,15 @@
 '----------------------------------------------------------------------
 
 Public Function ProgressNotes_Codes_Get(fk_progressnote As Integer, Optional deleted As Boolean = False) As Collection
-  Dim sql As String
-  sql = "Select * from clin_consult.vwProgressNotesCodes where fk_progressnote =" & fk_progressnote & " AND deleted ="
-  If deleted Then
-     sql &= "True"
-  Else
-     sql &= "False"
-  Endif
-  Return modDBConnect.exec_query_collection(sql)
+
+   Dim sql As String
+   sql = "Select * from clin_consult.vwProgressNotesCodes where fk_progressnote =" & fk_progressnote & " AND deleted ="
+   If deleted Then
+      sql &= "True"
+   Else
+      sql &= "False"
+   Endif
+   Return modDBConnect.exec_query_collection(sql)
    
 End
 
@@ -33,9 +34,7 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
    
    Dim sString As String
    Dim templ As New CTemplate("hsumv3", "tex")
-   Dim sMissing As String = "**missing**"
-   Dim item As Collection
-   Dim items As Collection
+    Dim item As Collection
    Dim r As Result
    Dim sRange As String
    Dim height As Float
@@ -62,7 +61,6 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
    Dim sSmoking As String
    Dim sAlcohol As String
    Dim sLastOccupation As String
-   
    Dim x As Integer
    
    currentconsult.Refresh("family_history")
@@ -70,25 +68,43 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
    currentconsult.Refresh("past_history")
    currentconsult.Refresh("occupational_history")
    currentconsult.Refresh("recalls_logged")
-   currentconsult.Refresh("recalls_logged")
    currentconsult.Refresh("recreationaldrugs")
    currentconsult.Refresh("allergies")
    currentconsult.Refresh("measurements")
+   currentconsult.Refresh("vaccinations_given")
    templ.Subst_common(currentconsult)
    If bGPMP Then
       templ.Subst("documenttype", "GP MANAGEMENT PLAN")
    Else
       Templ.Subst("documenttype", "PATIENT HEALTH SUMMARY")
    Endif
-   '------------------------------------
-   'Construct a table of known allergies
-   '------------------------------------ 
-   '  templ.Row("\\textbf{\\footnotesize Class}", "Generic", "Reaction Type", "Details")
+   '-----------------------------------------------------------------------
+   'Construct a table of known allergies, possibilities are
+   'Unknow
+   'Nil allergies or sensitivities
+   'A heading of the table (class etc) + row(s) of allergy/sensitivity data
+   '------------------------------------------------------------------------ 
+   If Not currentconsult!allergies.count Then  
+      templ.Row("Unknown", "", "", "")
+   End If   
+   x = 0  'counter
    For Each Item In currentconsult!allergies
-      '  Print item
+      If IsNull(item!nil_allergies_sensitivities) And x = 0 Then
+         If IsNull(item!allergen) Then  
+            templ.Row("\\textbf{\\footnotesize Class}", "Generic", "Reaction Type", "Details")
+            Inc x
+         End If 
+      Endif
       ' class_name, generic, details, reaction_type
-      templ.Row("Class:" & Item!class_name, item!generic, "Type: " & item!reaction_type, "Details: " & item!details)
-      
+      If item!nil_allergies_sensitivities = True Then
+         templ.Row("No known allergies or sensitivites")
+      Else
+         If Not IsNull(Item!allergen) Then 'non drug allergy
+            templ.Row("Non Drug Allergy:", item!allergen, "", "")
+         Else
+            templ.Row("ATC Class:" & Item!class_name, item!generic, "Type: " & item!reaction_type, "Details: " & item!details)
+         End If   
+      End If   
    Next
    templ.Table("allergies")
    For Each item In currentconsult!social_history
@@ -511,203 +527,11 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
       Endif
    Next
    templ.Subst("inactivehealthissues", sstring)
+   Print templ.GetData()
    Return templ
    
 End
 
-Public Function Health_Summary_Construct_LaTeX_V1(currentconsult As Cconsult) As CTemplate
-   
-   Dim sName As String
-   Dim sAddress As String
-   Dim sString As String
-   Dim comm As Collection
-   Dim templ As New CTemplate("hsum", "tex")
-   Dim iIncomplete As Integer
-   Dim sMissing As String = "**missing**"
-   Dim item As Collection
-   Dim items As Collection
-   Dim r As Result
-   Dim sRange As String
-   Dim height As Variant
-   Dim weight As Variant
-   Dim BMI As Variant
-   Dim m As Collection
-   Dim Last_Key As Integer
-   Dim sLaterality As String
-   Dim PH As Collection
-   
-   currentconsult.Refresh("family_history")
-   currentconsult.Refresh("social_history")
-   currentconsult.Refresh("past_history")
-   currentconsult.Refresh("occupational_history")
-   currentconsult.Refresh("recalls_logged")
-   
-   templ.Subst_common(currentconsult)
-   
-   For Each item In currentconsult!social_history
-      templ.Subst("socialhistory", item!history)
-      templ.Subst("responsibleperson", item!responsible_person)
-   Next
-   
-   '----------------------------------
-   'Construct the occupational history
-   'Ian here, one needs to specific the column widths of the three items
-   'as I did here (generated by Lyx)
-   ' \begin{tabular}{>{\raggedright}p{2.5cm}>{\raggedright}p{2cm}>{\raggedright}p{3cm}}
-   ' \textbf{Occupation} &  & \textbf{Exposures}\tabularnewline
-   ' {!occupationalhistory}
-   '\end{tabular}%
-   '----------------------------------
-   sstring = ""
-   For Each item In currentconsult!occupational_history
-      ' templ.Row(item!occupation, item!from_age & " to " & item!to_age, item!exposure & "-")
-      sstring &= item!occupation & "\\&" & (item!from_age & " to " & item!to_age) & "\\&" & item!exposure & "\\tabularnewline \n"
-   Next
-   templ.Subst("occupationalhistory", sstring)
-   '-----------------------------------------------
-   'Family History
-   '    Construct something like this
-   '   Mother (Hilda smith)
-   '   Hypertension onset age 50     templ.Row(" ", sString)
-   
-   '   Carcinoma Breast onset age 65 (caused death)
-   'Ian: the problem is that whatever is constructed here, after the first line return \\
-   'in the outputted file, the rest ends up back in the social history column of the page.
-   '-----------------------------------------------
-   sstring = ""
-   Last_Key = 0
-   
-   For Each item In currentconsult!family_history
-      If last_key <> item!fk_member Then
-         last_key = item!fk_member
-         sstring &= "\\textbf{" & item!relationship & "}" & item!name & "\\\\"
-      End If
-      sstring &= item!condition
-      Try sstring &= " onset " & item!age_of_onset
-      If item!cause_of_death = True Then
-         sstring &= " (caused death"
-         If Not IsNull(item!age_of_death) Then
-            sstring &= "-" & item!age_of_death & " yrs)"
-         Else
-            sstring &= ") "
-         End If
-      End If
-      sstring &= "\\\\"
-   Next
-   templ.Subst("familyhistory", sstring)
-   
-   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height)
-   If Not IsNull(m) Then
-      height = m!data
-      templ.Subst("height_data", m!data)
-      templ.Subst("height_date", m!date)
-   Else
-      templ.Subst("height_data", "-")
-      templ.Subst("height_date", "-")
-   Endif
-   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Weight)
-   If Not IsNull(m) Then
-      weight = m!data
-      templ.Subst("weight_data", m!data)
-      templ.Subst("weight_date", m!date)
-   Else
-      templ.Subst("weight_data", "-")
-      templ.Subst("weight_date", "-")
-   Endif
-   m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_BP)
-   If Not IsNull(m) Then
-      templ.Subst("bp_data", m!data)
-      templ.Subst("bp_date", m!date)
-   Else
-      templ.Subst("bp_data", "-")
-      templ.Subst("bp_date", "-")
-   Endif
-   r = modMeasurementsDBI.Get_Loinc_Value(currentconsult!patient!fk_patient, const.Loinc_EGFR, 1, "DESC") 'Last R by date
-   If r.count Then
-      sRange = r!reference_range
-      sRange = Replace(sRange, "(", "")
-      sRange = Replace(sRange, ")", "")
-      templ.Subst("egfr_date", r!observation_date)
-      templ.Subst("egfr_data", r!value_numeric & " (" & sRange & ")")
-   End If
-   
-   Try BMI = Format((weight / (height ^ 2)) * 10000, "##.#")
-   If Not Error Then
-      templ.Subst("bmi_data", BMI)
-   Else
-      templ.Subst("bmi_data", "N/A")
-   End If
-   '------------------------------
-   'Now do the major health issues
-   '------------------------------
-   sstring = ""
-   For Each PH In currentconsult!past_history
-      If PH!major = True And PH!risk_factor = False Then
-         
-         Select Case PH!fk_laterality
-            Case const.LateralityBoth
-               sLaterality = "(Bilateral)"
-            Case const.LateralityLeft
-               sLaterality = "(Left)"
-            Case const.LateralityRight
-               sLaterality = "(Right)"
-            Case const.LateralityNone
-               sLaterality = ""
-         End Select
-         sstring &= "\\textbf{" & PH!year_onset & "}" & "\\&"
-         sstring &= "\\textbf{" & UCase(PH!description) & " " & sLaterality & "}\\\\"
-         sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
-         sstring &= "\\tabularnewline \n"
-      Endif
-   Next
-   templ.Subst("majorhealthissues", sstring)
-   sstring = ""
-   For Each PH In currentconsult!past_history
-      If PH!active = True And PH!risk_factor Then
-         
-         Select Case PH!fk_laterality
-            Case const.LateralityBoth
-               sLaterality = "(Bilateral)"
-            Case const.LateralityLeft
-               sLaterality = "(Left)"
-            Case const.LateralityRight
-               sLaterality = "(Right)"
-            Case const.LateralityNone
-               sLaterality = ""
-         End Select
-         sstring &= "\\textbf{" & PH!year_onset & "}" & "\\&"
-         sstring &= "\\textbf{" & UCase(PH!description) & " " & sLaterality & "}\\\\"
-         sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
-         sstring &= "\\tabularnewline \n"
-      Endif
-   Next
-   templ.Subst("significanthealthissues", sstring)
-   
-   '  sstring = ""
-   '  For Each PH In currentconsult!past_history
-   '     If PH!active = False And PH!major = False And PH!risk_factor = False Then
-   '
-   '        Select Case PH!fk_laterality
-   '           Case const.LateralityBoth
-   '              sLaterality = "(Bilateral)"
-   '           Case const.LateralityLeft
-   '              sLaterality = "(Left)"
-   '           Case const.LateralityRight
-   '              sLaterality = "(Right)"
-   '           Case const.LateralityNone
-   '              sLaterality = ""
-   '        End Select
-   '      sstring &= "\\textbf{" & PH!year_onset & "}" & "\\&"
-   '      sstring &= "\\textbf{" & UCase(PH!description) & " " & sLaterality & "}\\\\"
-   '      sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
-   '      sstring &= "\\tabularnewline \n"
-   '     Endif
-   ' Next
-   ' templ.Subst("inactivehealthissues", sstring)
-   
-   Return templ
-   
-End
 
 Public Function Health_Summary_Construct_html(currentconsult As Cconsult) As String
    '--------------------------------------------------------
@@ -771,19 +595,10 @@ Public Function Health_Summary_Construct_html(currentconsult As Cconsult) As Str
    Dim sFamilyHistory As String
    Dim FM As Collection
    Dim PH As Collection
-   Dim TeamCareMembers As String[]
-   Dim TeamCaremember As String
-   Dim RC As Collection
+    Dim TeamCaremember As String
    Dim sRow As String
    Dim sTable As String
-   Dim sTableMeasurements As String
-   Dim sTableRiskFactors As String
-   Dim STempString As String
-   Dim sTemp As String
    Dim sString As String
-   Dim sText As String
-   Dim OH As New Collection
-   Dim OE As Collection
    Dim sData As String[]
    Dim height As Integer
    Dim weight As Variant
@@ -791,8 +606,6 @@ Public Function Health_Summary_Construct_html(currentconsult As Cconsult) As Str
    Dim max_ideal_weight As Variant
    Dim min_ideal_weight As Variant
    Dim last_key As Integer
-   Dim last_sub_key As Integer
-   Dim current_key As Integer
    Dim collection_member As Collection
    Dim all_Collections As Collection
    Dim sLaterality As String
@@ -1496,15 +1309,6 @@ Public Function CoverSheet_Construct_HTML(currentconsult As Cconsult) As CTempla
    '-------------------------------------------------------------------------
    
    Dim templ As CTemplate
-   Dim x As Integer
-   Dim comm As Collection
-   Dim sHtml As String
-   Dim sString As String
-   Dim sImagePath As String
-   Dim pic As Picture
-   Dim cc As String
-   Dim branch As Collection
-   Dim branchlocations As String
    
    templ = New CTemplate(modHTML.Exported_Front_Page_Template)
    '---------------------------------------------------------
@@ -1523,7 +1327,6 @@ Public Function Tasks_summary_Construct_html(task As Collection) As String
    
    Dim sHtml As String
    '  Dim task As Collection
-   Dim sString As String = ""
    Dim fk_document As Integer = Task!fk_row
    
    ' For Each task In currentconsult!staff_tasks
@@ -1541,8 +1344,8 @@ Public Function ReferralLetter_summary_construct_html(currentconsult As Cconsult
    
    Dim sHtml As String
    Dim referral As Collection
-   Dim sString As String = ""
-   Dim sRow_Template As String = ""
+   Dim sRow_Template As String 
+   Dim sSTring As String = ""
    
    "<COL WIDTH=10%>"
    "<COL WIDTH=40%>"
@@ -1594,7 +1397,6 @@ Public Function Results_Summary_Construct_HTML(currentconsult As CConsult) As St
    
    Dim R As Collection
    Dim sHtml As String
-   Dim referral As Collection
    Dim sRow_Template As String = ""
    
    "<COL WIDTH=10%>"
@@ -1696,8 +1498,6 @@ Public Function Letters_Summary_Construct_html(currentconsult As CConsult) As St
    'Constructs a table of letters/correspondence recieved
    '-----------------------------------------------------
    
-   Dim current_form_fk As Integer
-   Dim last_form_fk As Integer
    Dim sHTml As String
    Dim letter As Collection
    Dim sRow_Template As String = ""
@@ -1735,8 +1535,6 @@ Public Function Recalls_summary_construct_html(currentconsult As CConsult) As St
    'make up a html summary of all requests ordered
    '----------------------------------------------
    
-   Dim current_form_fk As Integer
-   Dim last_form_fk As Integer
    Dim sHTml As String
    Dim recall As Collection
    Dim sRow_Template As String = ""
@@ -1784,9 +1582,7 @@ Public Function Care_Plan_Construct_html(currentconsult As CConsult) As String
    Dim sHistory_Management_Components As String
    Dim sCumulative_html_forPlan As String
    Dim sCumulative_html_for_components As String
-   Dim sResponsible_Table_row As String
-   Dim sCumulative_html_for_TeamCare As String
-   Dim sComponent_row As String
+    Dim sComponent_row As String
    Dim sTeamCare_row As String
    Dim careplan_components As Collection
    Dim member As Collection
@@ -1798,14 +1594,10 @@ Public Function Care_Plan_Construct_html(currentconsult As CConsult) As String
    Dim x As Integer
    Dim comms As Collection
    Dim comm As Collection
-   Dim pk_branch As Integer
-   Dim pk_last_person As Integer
-   '  "<P ALIGN=CENTER><B>HEALTH ISSUES - GP MANAGEMENT PLAN AND TEAM CARE ARRANGEMENTS</B></P>"
    Dim sPageHeader As String = ""
    
    "<HTML>"
    "<BODY>"
-   
    "<DIV ALIGN=CENTER><H3>Care Plan</H3></div>"
    '----------------------------------------------------------------------------------
    'the sHealthIssueRow_template is a single row of 2 columns 1=the issue 2 = the plan
@@ -2093,15 +1885,16 @@ Public Function Care_Plan_Construct_html(currentconsult As CConsult) As String
 End
 
 Public Function Codes_Get(progress_notes_codes As Collection, fk_progressnote As Integer) As String
-    Dim pnc As Collection
-    Dim codes As String
-    
-    For Each pnc In progress_notes_codes
-         If pnc!fk_progressnote = fk_progressnote Then
-            codes &= "<BR>" & pnc!term & "(" & pnc!fk_code & ")"
-         Endif
-    Next
-    Return codes 
+
+   Dim pnc As Collection
+   Dim codes As String
+   
+   For Each pnc In progress_notes_codes
+      If pnc!fk_progressnote = fk_progressnote Then
+         codes &= "<BR>" & pnc!term & " (" & pnc!fk_code & ")"
+      Endif
+   Next
+   Return codes 
    
 End
 
@@ -2120,150 +1913,7 @@ Public Function AllProgressNotes_Construct_Html(currentconsult As CConsult) As S
    '-----------------------------------------------------------
    
    Dim sStart As String
-   Dim sCumNotes As String
    Dim sTableTemplate As String
-   Dim sTableTemplate1 As String
-   Dim sTable As String
-   Dim sEnd As String
-   ' Dim currentProgressNote As cProgressNote
-   Dim sHtml As String
-   Dim progressnote As Collection
-   Dim sCurrentDate As String
-   Dim sLastDate As String 'because we use date-time, only want a date
-   Dim sCurrentConsultType As String
-   Dim SLastconsultType As String
-   Dim sString As String
-
-   Return AllProgressNotes_Construct_Html_new(currentconsult) 
-   Return 
-   
-   sStart = "<HTML>"
-   "<BODY>"
-   sTableTemplate = "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0 >"
-   "<COL WIDTH=35*>"
-   "<COL WIDTH=135*>"
-   "<TR VALIGN=TOP>"
-   "<TD WIDTH=14%>"
-   "col1"
-   "</TD>"
-   "<TD WIDTH=86%>"
-   "<TABLE WIDTH=100% BORDER=0 CELLPADDING=5 CELLSPACING=0>"
-   "<COL WIDTH=256*>"
-   "<TR>"
-   "<TD WIDTH=100% VALIGN=TOP>"
-   "col2"
-   "</TD>"
-   "</TR>"
-   "</TABLE>"
-   "</TD>"
-   "</TR>"
-   "</TABLE>"
-   
-   sTableTemplate1 = "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0 >"
-   "<COL WIDTH=35*>"
-   "<COL WIDTH=135*>"
-   "<TR VALIGN=TOP>"
-   "<TD WIDTH=14%>"
-   "<P>col1</P>"
-   "</TD>"
-   "<TD WIDTH=86%>"
-   "<TABLE WIDTH=100% BORDER=0 CELLPADDING=5 CELLSPACING=0>"
-   "<COL WIDTH=256*>"
-   "<TR>"
-   "<TD WIDTH=100% VALIGN=TOP>"
-   "<P>col2</P>"
-   "</TD>"
-   "</TR>"
-   "</TABLE>"
-   "</TD>"
-   
-   "</TR>"
-   "</TABLE>"
-   sEnd = "</BODY>"
-   "</HTML>"
-   sHtml = sStart & "<DIV ALIGN=CENTER><H3> All Progress Notes - " & currentconsult!patient!wholename & "</H3></DIV>"
-   currentconsult.Refresh("progress_notes")
-   Print currentconsult!progress_notes
-   For Each progressnote In currentconsult!progress_notes
-      '---------------------------------------------------------
-      'Each new date has one or more sections of clinical notes
-      'so we want it to end uplooking like
-      '
-      'column 1         column 2
-      '
-      '01/02/2000       Gangrene of the leg
-      '
-      'Ok: if the progress note belongs to the problem in this
-      'progress note page, then just display its rows
-      '---------------------------------------------------------
-      'If progressnote!fk_problem = pk_pasthistory And progressnote!fk_section = fk_section Then
-      sCurrentDate = Format(progressnote!consult_date, "dd/mm/yyyy")
-      modConsultDBI.ImageFix(progressnote!notes, progressnote!fk_consult)
-      If sCurrentDate <> sLastDate Then
-         '-------------------------------------------------------------------
-         'As soon as the date changes, print the new days date in col1
-         '-------------------------------------------------------------------
-         sCurrentConsultType = progressnote!consult_type
-         SLastconsultType = sCurrentConsultType
-         sString = sCurrentDate & "<BR><small><small>" & progressnote!consult_type & "<BR>"
-         sString &= Format(progressnote!consult_date, gb.MediumTime) & "<BR>"
-         sString &= progressnote!title & " " & progressnote!firstname & " " & progressnote!surname & "</small></small>" 'put staff position in here
-         sTable = sTableTemplate
-         ' sTable = Replace$(sTable, "col1", Format$(progressnote!consult_date, "dd/mm/yyyy"))
-         sTable = Replace$(sTable, "col1", sString)
-         sTable = Replace$(sTable, "col2", progressnote!notes)
-         sHtml = sHtml & sTable '& ' "<br>"
-         sLastDate = sCurrentDate
-      Else
-         '-----------------------------------------------------------------
-         'Otherwise, if the date is the same, simply add the problems notes
-         '-----------------------------------------------------------------
-         sTable = sTableTemplate
-         sCurrentConsultType = progressnote!consult_type
-         If sCurrentConsultType <> SLastconsultType Then
-            
-            sstring = "<BR><small><small>" & progressnote!consult_type & "<BR>"
-            sString &= Format(progressnote!consult_date, gb.MediumTime) & "<BR>"
-            sString &= progressnote!title & " " & progressnote!firstname & " " & progressnote!surname & "</small></small>" 'put staff position in here
-            sTable = Replace$(sTable, "col1", sstring)
-         Else
-            sTable = Replace$(sTable, "col1", "") 'put time in here.
-         End If
-         sTable = Replace$(sTable, "col2", progressnote!notes)
-         sHtml = sHtml & sTable '& "<br>"
-      Endif
-      '  End If
-   Next
-   sHtml = shtml & sEnd
-   '-----------------------------------------------------------
-   'Check if there is an image in this note - if so, replace it
-   '-----------------------------------------------------------
-   If InStr(sHtml, "pk_image") Then
-      sHtml = modConsultDBI.Images_Get(sHtml)
-   End If
-   
-   Return sHtml
-   
-End
-
-Public Function AllProgressNotes_Construct_Html_new(currentconsult As CConsult) As String
-   '--------------------------------------------------------
-   'Constructs the html for the problem using pk_pasthistory
-   'ordered by date and time order.
-   '
-   'If pk_pasthistory = 0 = the general tab, or if non-zero
-   'it is primary key of clin_history.data_pasthistory
-   'FIXME: BUG HERE AFTER A SAVE IT IS IGNORING THE NEW
-   '       MEMBER OF THE COLLECTION
-   'FIXME: INCLUDE TIME
-   'FIXME: ian best way of using  USE TEMP FILES  fix end of routine
-   '
-   '-----------------------------------------------------------
-   
-   Dim sStart As String
-   Dim sCumNotes As String
-   Dim sTableTemplate As String
-  ' Dim sTableTemplate1 As String
    Dim sTable As String
    Dim sEnd As String
    Dim progress_notes_codes As Collection 
@@ -2274,15 +1924,16 @@ Public Function AllProgressNotes_Construct_Html_new(currentconsult As CConsult) 
    Dim sCurrentConsultType As String
    Dim SLastconsultType As String
    Dim sString As String
-   ' Dim sTime As String
    
-   progress_notes_codes = modProgressNotesDBI.ProgressNotes_Codes_Get_For_Patient(currentconsult!patient!fk_patient)
+   currentconsult.Refresh("progress_notes_codes")
+   progress_notes_codes = currentconsult!progress_notes_codes
+   ' progress_notes_codes = modProgressNotesDBI.ProgressNotes_Codes_Get_For_Patient(currentconsult!patient!fk_patient)
    sStart = "<HTML>"
    "<BODY>"
    sTableTemplate = "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0 >"
    "<COL WIDTH=14%>"
    "<COL WIDTH=64%>"
-  
+   
    "<TR VALIGN=TOP>"
    "<TD WIDTH=14%>"
    "col1"
@@ -2297,36 +1948,15 @@ Public Function AllProgressNotes_Construct_Html_new(currentconsult As CConsult) 
    "</TR>"
    "</TABLE>"
    "</TD>"
-    "<TH WIDTH=22%>"
-      "<P ALIGN=LEFT><FONT SIZE=2 STYLE=\"font-size: 10pt\"><I>col3</I></FONT></P>"
-      "</TH>"
+   "<TH WIDTH=22%>"
+   "<P ALIGN=LEFT><FONT SIZE=2 STYLE=\"font-size: 10pt\"><I>col3</I></FONT></P>"
+   "</TH>"
    "</TR>"
    
    "</TABLE>"
-   '  "<TH WIDTH=22% BGCOLOR=\"#808080(\" STYLE=\"border: 1px double #808080; padding: 0.1cm\">"
-   ' sTableTemplate1 = "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0 >"
-   ' "<COL WIDTH=35*>"
-   ' "<COL WIDTH=135*>"
-   ' "<TR VALIGN=TOP>"
-   ' "<TD WIDTH=14%>"
-   ' "<P>col1</P>"
-   ' "</TD>"
-   ' "<TD WIDTH=86%>"
-   ' "<TABLE WIDTH=100% BORDER=0 CELLPADDING=5 CELLSPACING=0>"
-   ' "<COL WIDTH=256*>"
-   ' "<TR>"
-   ' "<TD WIDTH=100% VALIGN=TOP>"
-   ' "<P>col2</P>"
-   ' "</TD>"
-   ' "</TR>"
-   ' "</TABLE>"
-   ' "</TD>" 
-   ' 
-   ' "</TR>"
-   ' "</TABLE>"
    sEnd = "</BODY>"
    "</HTML>"
-   sHtml = sStart & "<DIV ALIGN=CENTER><H3> All Progress Notes - " & ")" & "</H3></DIV>"
+   sHtml = sStart & "<DIV ALIGN=CENTER><H3> All Progress Notes" & "</H3></DIV>"
    currentconsult.Refresh("progress_notes")
    Print currentconsult!progress_notes
    For Each progressnote In currentconsult!progress_notes
@@ -2341,7 +1971,6 @@ Public Function AllProgressNotes_Construct_Html_new(currentconsult As CConsult) 
       'Ok: if the progress note belongs to the problem in this
       'progress note page, then just display its rows
       '---------------------------------------------------------
-      'If progressnote!fk_problem = pk_pasthistory And progressnote!fk_section = fk_section Then
       sCurrentDate = Format(progressnote!consult_date, "dd/mm/yyyy")
       modConsultDBI.ImageFix(progressnote!notes, progressnote!fk_consult)
       If sCurrentDate <> sLastDate Then
@@ -2358,7 +1987,7 @@ Public Function AllProgressNotes_Construct_Html_new(currentconsult As CConsult) 
          sTable = Replace$(sTable, "col1", sString)
          sTable = Replace$(sTable, "col2", progressnote!notes)
          sTable = Replace(sTable, "col3", Codes_Get(progress_notes_codes, progressnote!pk_progressnote))
-          sTable = Replace(sTable, "col3", "")
+         sTable = Replace(sTable, "col3", "")
          sHtml = sHtml & sTable '& ' "<br>"
          sLastDate = sCurrentDate
       Else
@@ -2368,7 +1997,6 @@ Public Function AllProgressNotes_Construct_Html_new(currentconsult As CConsult) 
          sTable = sTableTemplate
          sCurrentConsultType = progressnote!consult_type
          If sCurrentConsultType <> SLastconsultType Then
-            
             sstring = "<BR><small><small>" & progressnote!consult_type & "<BR>"
             sString &= Format(progressnote!consult_date, gb.MediumTime) & "<BR>"
             sString &= progressnote!title & " " & progressnote!firstname & " " & progressnote!surname & "</small></small>" 'put staff position in here
@@ -2381,7 +2009,6 @@ Public Function AllProgressNotes_Construct_Html_new(currentconsult As CConsult) 
          sTable = Replace(sTable, "col3", "")
          sHtml = sHtml & sTable '& "<br>"
       Endif
-      '  End If
    Next
    sHtml = shtml & sEnd
    '-----------------------------------------------------------
@@ -2390,21 +2017,19 @@ Public Function AllProgressNotes_Construct_Html_new(currentconsult As CConsult) 
    If InStr(sHtml, "pk_image") Then
       sHtml = modConsultDBI.Images_Get(sHtml)
    End If
-   
    Return sHtml
    
 End
+
 Public Function ConstructHTML_SingleDate(currentconsult As Cconsult, sDate As String, Optional heading As String, Optional bUseheading As Boolean) As String
    '--------------------------------------------------------
    'Constructs the html for single date
    '-----------------------------------------------------------
    
    Dim sStart As String
-   
    Dim sTableTemplate As String
    Dim sTable As String
    Dim sEnd As String
-   'Dim currentProgressNote As cProgressNote
    Dim sHtml As String
    Dim progressnote As Collection
    Dim sCurrentDate As String
@@ -2503,11 +2128,9 @@ Public Function ConstructHTML_SingleProblem(currentconsult As Cconsult, pk_pasth
    '-----------------------------------------------------------
    
    Dim sStart As String
-   
    Dim sTableTemplate As String
    Dim sTable As String
    Dim sEnd As String
-   'Dim currentProgressNote As cProgressNote
    Dim sHtml As String
    Dim progressnote As Collection
    Dim sCurrentDate As String

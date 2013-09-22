@@ -24,12 +24,8 @@
 '----------------------------------------------------------------------
 Public Form_PDF As FPdf
 Private sections As Collection
-Private filename As String
-Private Obs As Observer
 Private currentconsult As Cconsult
 Private Page_Orientation As Integer
-Private bExit As Integer
-Private collection_members As Collection
 Private patient As Collection
 Private cPage_Welcome As Integer = 0
 Private cPage_Select_Options As Integer = 1
@@ -141,8 +137,7 @@ Public Sub Dump_Documents()
    Dim Cbox As CheckBox
    Dim temp_dir As String
    Dim cmd As String
-   Dim strOutput As String
-   Dim pro As Process
+    Dim pro As Process
    Dim x As Integer
    Dim files_to_join As New Collection
 
@@ -264,140 +259,6 @@ Public Sub Dump_Documents()
 
 End
 
-Public Sub Dump_Documents_old()
-   '----------------------------------------------------------------------------------
-   'Dump any documents or results, certificates etc as single pdf's
-   'These would include scanned pdfs or hl7 files sent to the practice for the patient
-   'and any results downloaded as pdf's
-   'First the Letters received.
-   '----------------------------------------------------------------------------------
-
-   Dim member As Collection
-   Dim file_extension As String
-   Dim tempfile As String
-   Dim filename As String
-   Dim hCtrl As Control
-   Dim Cbox As CheckBox
-   Dim temp_dir As String
-   Dim cmd As String
-   Dim strOutput As String
-   Dim pro As Process
-   Dim x As Integer
-
-   For Each hctrl In Vbox_Page2.children
-      If hctrl Is CheckBox Then
-         Cbox = hctrl
-         If cbox.value = True Then
-            Select Case Cbox.Tag
-               Case "letters received"
-                  '------------------------------------------
-                  'make a temporary directory for the letters
-                  '------------------------------------------
-                  lbProgress.Add("Copying all letters received")
-                  Wait
-                  Temp_dir = "/tmp/letters"
-                  Try Mkdir "/tmp/letters"
-                  If Error Then
-                     If Error.Code = const.File_ioError_DirectoryExists Then
-                        pro = Shell "rm /tmp/letters/*.pdf" Wait For Write
-                        Try Close #pro
-                     Else
-                        Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the letters.")
-                        Break
-                     End If
-                  End If
-
-                  For Each Member In currentconsult!letters_received
-                     file_extension = File.Ext(member!source_file)
-                     Select Case file_extension
-                        Case "pdf"
-                           filename = modFiles.Get("document_archiving_directory", member!source_file)
-                           If Left$(filename, 4) = "/tmp" Then
-                              Move filename To temp_dir &/ member!source_file
-                           Else
-                              Copy filename To temp_dir &/ member!source_file
-                           Endif
-                        Case Else
-                           filename = Replace(member!originator & "_" & member!tag_user, " ", "_") & ".pdf" 'fix this for eg o'neil
-                           filename = Replace(filename, "(", "")
-                           filename = Replace(filename, ")", "")
-                           filename = Replace(filename, "'", "")
-                           filename = Replace(filename, ",", "")
-                           filename = Replace(filename, ">", "for")
-                           tempfile = modPrinting.Make_PDF_From_Html(member!html, const.orientation_portrait, "", False, filename, ProgressBar1)
-
-                           Try Move tempfile To Temp_dir &/ filename
-                           If Error Then
-                              Try Copy tempfile To Temp_dir &/ filename
-                              If Not Error Then Kill tempfile
-                           Endif
-                     End Select
-
-                  Next
-                  '----------------------------------------------------------------------------
-                  'Now Zip these letters not password protected as will be within the other zip
-                  '----------------------------------------------------------------------------
-                  cmd = "zip --junk-paths " & export_dir &/ Patient_Details & "_letters_received.zip " & temp_dir &/ "*.pdf"
-                  Print cmd
-                  lbProgress.Add("Creating zip file of letters .....")
-                  Wait
-                  Shell cmd Wait
-               Case "results"
-                  lbProgress.Add("Creating Zip file of all results received.")
-                  Wait
-                  Temp_dir = "/tmp/results"
-                  Try Mkdir "/tmp/results"
-                  x = 1
-                  If Error Then
-                     If Error.Code = const.File_ioError_DirectoryExists Then
-                        pro = Shell "rm /tmp/results/*.pdf" Wait For Write
-                        Try Close #pro
-                     Else
-                        Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the results.")
-                        Break
-                     End If
-                  End If
-                  For Each Member In currentconsult!results_received
-                     '  Print currentconsult!results_received.count
-                     file_extension = File.Ext(member!source_file)
-                     Select Case file_extension
-                        Case "pdf"                                                                             'pdf simple, is old scanned result - just copy it over
-                           filename = modFiles.Get("document_archiving_directory", member!source_file)
-                           If Left$(filename, 5) = "/tmp/" Then
-                              Move filename To temp_dir &/ member!source_file
-                           Else
-                              Copy filename To temp_dir &/ member!source_file
-                           Endif
-                        Case Else 'it is html FIXME - WHAT ABOUT PICTURES                                      'html - construct a filename
-                           If Not IsNull(member!tag_user) Then
-                              filename = Replace(Trim(member!tag_user), ";", "")                                     'strip separators
-                              If Right(filename) = ";" Then filename = Left(filename, Len(filename) - 1)
-                              filename = Replace(filename, " ", "-")
-                              filename = Replace(filename, "/", "-")
-                              filename = Replace(filename, "(", "")
-                              filename = Replace(filename, ")", "")
-                              filename = Replace(filename, "&", "-")
-                              filename = Patient_Details & "_" & Format(member!date_created, "dd-mm-yyyy") & "_" & filename & ".pdf" 'eg. Mr-Joe-Blogs_10-02/2010_FBC
-                              Print filename, x
-                              modPrinting.Make_PDF_From_Html(member!html, const.orientation_portrait, "", False, filename, Null, temp_dir)
-                           Else
-                              Message.Title = "Fatal error"
-                              Message.info("This patient's record cannot be accurately exported as it contains unfiled results which will be skipped.")
-                           End If
-                           Inc x
-                     End Select
-                  Next
-                  '----------------------------------------------------------------------------
-                  'Now Zip these results not password protected as will be within the other zip
-                  '----------------------------------------------------------------------------
-                  cmd = "zip --junk-paths " & export_dir &/ Patient_Details & "_results_received.zip " & temp_dir &/ "*.pdf"
-                  Shell cmd Wait
-            End Select
-         End If
-      End If
-   Next
-
-End
 
 Public Sub Create_Indexed_PDF()
    '----------------------------------------------------------------------------------------
@@ -421,23 +282,18 @@ Public Sub Create_Indexed_PDF()
    '-----------------------------------------------------------------------------------------
 
    Dim member As Collection
-   Dim page As String
    Dim bPrintCoversheet As Boolean
    Dim bPrintTableOfContents As Boolean
    Dim x As Integer
    Dim charpos As Integer
-   Dim sHtml As String
    Dim hctrl As Control
    Dim cbox As CheckBox
    Dim ContentsPage As String         'the front page of the pdf - the contents
    Dim Output_file As String
-   Dim pdf_files As Collection
    Dim tempstring As String
-   Dim temp_dir As String
    Dim Letter_PDF_path As Collection
    Dim Workcover_PDF_Path As Collection
    Dim filename_for_workcover As String
-   Dim pro As Process
    Dim filename_for_all_the_letters As String
    Dim WorkcoverClaims As Collection
 

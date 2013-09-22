@@ -14,12 +14,26 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+' ---------------------------------------------------------------------
+' PURPOSE   To fetch/save data to contacts
+'           Historically this is a real mess as it was the first code
+'           written. Eg multiple routines doing sort-of the same thing
+'           FIXME  needs rationalising once we get to beta stage
 '----------------------------------------------------------------------
 Public sSubroutineName As String
 Private searchtext As String
 Private regex As Regexp
 Private staff As Collection
 Private clinics As Collection
+
+Public Sub Person_Set_occupation(fk_person As Integer, fk_occupation As Integer)
+   '-------------------------------------------------
+   'sets the person's occupation in appropriate table
+   '-------------------------------------------------
+   
+   modDBConnect.update("contacts.data_persons", Null, ["pk": fk_person, "fk_occupation": fk_occupation]) 
+   
+End
 
 Public Sub Communication_UnDelete(pk As Integer)
    'Un-deletes a communication, returns non-zero if succeeded
@@ -52,15 +66,10 @@ Public Sub Fix_Categories()
    '----------------------------------------------------------------------------
    
    Dim sql As String
-   Dim categories As Collection
-   Dim done As Boolean
-   
    Dim branches As Collection
    Dim branch As Collection 
    Dim old_category As String
    Dim R As Result
-   Dim x As Integer
-   Dim category As Collection 
    Dim new_pk_category As String 
    
    'make a copy of all unique categories in the database these will have new primary keys 1 through to whatever
@@ -317,7 +326,6 @@ Public Function Employee_Get_With_Memo_Like(surname As String, memo As String, O
    
    Dim sql As String
    Dim searchitems As String[]
-   Dim item As String
    Dim x As Integer
    
    searchitems = Split(memo, ";", "", True)
@@ -600,11 +608,8 @@ Public Function Patient_Save(old_data_patient As Collection, old_pk As String, p
    'Saves or updates a patient
    'FIXME - PUT IN VALIDATION THAT NOT DUPLICATED
    '---------------------------------------------
-   
-   Dim comm As Collection
-   Dim family As Collection
-   Dim collection_to_return As New Collection
-   
+  Dim family As Collection
+    
    '-------------------------------
    'A Patient is firstly a person
    '------------------------------
@@ -889,8 +894,6 @@ Public Function Organisations_Get_HeadOffices_For_Provider_Type(fk_category As I
    Return modDBConnect.exec_query_collection(sql)
    
 End
-
-
 
 Public Function Provider_Get_Types() As Collection
    '------------------------------------------------------------------
@@ -1346,9 +1349,9 @@ Public Function Employee_Get_By_Surname(surname As String) As Collection
    
    Dim sql As String
    
-   sql = "Select DISTINCT occupation, surname, firstname , fk_person  as pk_person,"
-   sql &= "title || ' ' ||firstname || ' ' || surname as wholename from "
-   sql &= "contacts.vwOrganisationsEmployees where surname ILIKE $$%"
+   sql = "Select DISTINCT occupation, fk_occupation, fk_sex, fk_title, surname, firstname , fk_person  as pk_person, wholename "
+   ' sql &= "title || ' ' ||firstname || ' ' || surname as wholename from "
+   sql &= "FROM contacts.vwOrganisationsEmployees where surname ILIKE $$%"
    sql = sql & surname & "%$$ ORDER BY surname  LIMIT 20 "
    Return modDBConnect.exec_query_collection(sql)
    
@@ -1389,8 +1392,7 @@ End
 
 Private Function test_regex(sRegex As String[]) As Boolean
    
-   Dim sql As String
-   Dim i As String
+    Dim i As String
    
    If searchtext = "" Then Return False
    For Each i In sRegex
@@ -1570,6 +1572,7 @@ Public Function Person_Get(searchtext2 As String, iSearchCriteria As Integer, Op
    ' search in the form surname, firstname
    If test_regex(["([a-z' \\-]+) ?, ?([a-z'\\-]+)"]) Then
       clauses.Add("lower(cvwp.surname) like $$" & regex.SubMatches[1].Text & "%$$")
+      ' clauses.Add("lower(cvwp.surname) ilike $$%" & regex.SubMatches[1].Text & "%$$") 'IAN CHANGED THIS 11SEPT TO FIND PERSON SURNAME DE ZWANN
       clauses.Add("lower(cvwp.firstname) like $$" & regex.SubMatches[2].Text & "%$$")
       sql_in_english_array.Add("surname begins with \"" & regex.SubMatches[1].Text & "\"")
       sql_in_english_array.Add("firstname begins with \"" & regex.SubMatches[2].Text & "\"")
@@ -1578,6 +1581,7 @@ Public Function Person_Get(searchtext2 As String, iSearchCriteria As Integer, Op
    ' search in the form firstname surname
    If test_regex(["([a-z'\\-]+) +([a-z'\\-]+)"]) Then
       clauses.Add("lower(cvwp.surname) like $$" & regex.SubMatches[2].Text & "%$$")
+      ' clauses.Add("lower(cvwp.surname) Ilike $$%" & regex.SubMatches[2].Text & "%$$")  'IAN CHANGED THIS 11SEPT TO FIND PERSON SURNAME DE ZWANN
       clauses.Add("lower(cvwp.firstname) like $$" & regex.SubMatches[1].Text & "%$$")
       sql_in_english_array.Add("surname begins with \"" & regex.SubMatches[2].Text & "\"")
       sql_in_english_array.Add("firstname begins with \"" & regex.SubMatches[1].Text & "\"")
@@ -1654,7 +1658,6 @@ Public Function Employee_Save(old_data As Collection, pk_view As String, person 
    
    Dim comm As Collection
    Dim collection_to_return As New Collection
-   Dim sql As String
    '-------------------------------------------------------
    'does the firstname exist in the fistnames table?
    'FIXME PUT IN THE CODE, BUT WHAT ABOUT SPELLING mistakes
@@ -1817,108 +1820,7 @@ Public Function organisation_save(old_data_organisation As Collection, old_pk As
    
 End
 
-Public Function Org_save(old_data_organisation As Collection, old_pk As Integer, organisation As Collection, branch As Collection, address As Collection, comms As Collection, old_comms As Collection, clinic As Collection) As Collection
-   '-------------------------------------------------------------------------
-   'Saves an organisation +/- its branch, address, communications
-   'First save any previously unkown fields for which we need the key
-   'COMMENTS:  Note all fields needed for user to make sense of gui but not
-   '           needed in the data tables are removed like this:
-   '           Try collection.remove("field")
-   '--------------------------------------------------------------------------
-   
-   Dim comm As Collection
-   Dim collection_to_return As New Collection
-   
-   '------------------------------------------
-   'Organisation: create new or change details
-   '------------------------------------------
-   If IsNull(organisation!fk_organisation) Then
-      organisation!fk_organisation = modDBConnect.insert("contacts.data_organisations", organisation)
-   Else
-      '------------------------------
-      'change existing branch details
-      '------------------------------
-      modDBConnect.update("contacts.data_organisations", old_data_organisation[old_pk], organisation, "fk_organisation")
-   End If
-   '-------------------------------------
-   'Address: create new or change details
-   '-------------------------------------
-   If Not IsNull(address) Then
-      If IsNull(address!fk_address) Then
-         '--------------------------------------------------------------------------------
-         'Thought there may be an address collection, the user may have put nothing in it
-         '-------------------------------------------------------------------------------
-         '-------------------
-         'Create a new address
-         '-------------------
-         address!fk_address = modDBConnect.insert("contacts.data_addresses", address)
-      Else
-         '-------------------------------
-         'change existing address details
-         '-------------------------------
-         Try address.Remove("town")
-         Try address.Remove("postcode")
-         Try address.Remove("state")
-         modDBConnect.update("contacts.data_addresses", old_data_organisation[old_pk], address, "fk_address")
-      End If
-   End If
-   '--------------------------------------------
-   'Branch: create new or change details
-   '        first save its category if necessary
-   '--------------------------------------------
-   If IsNull(branch!fk_category) Then
-      branch!fk_category = Category_Save(branch!category)
-   End If
-   Try branch.Remove("category")
-   
-   If IsNull(branch!fk_branch) Then
-      '-------------------
-      'Create a new branch
-      '-------------------
-      Try branch!fk_address = address!fk_address  'may not have an address
-      branch!fk_organisation = organisation!fk_organisation
-      branch!fk_branch = modDBConnect.insert("contacts.data_branches", branch)
-   Else
-      '------------------------------
-      'change existing branch details
-      '------------------------------
-      Try branch!fk_address = address!fk_address  'may now have an address
-      modDBConnect.update("contacts.data_branches", old_data_organisation[old_pk], branch, "fk_branch")
-   End If
-   '-------------------------------------------
-   'Saves communications for branch or employee
-   '--------------------------------------------
-   For Each comm In comms
-      Try comm.Remove("type") 'was needed for display in editing
-      If IsNull(comm!pk) Then
-         comm!pk = modDBConnect.insert("contacts.data_communications", comm)
-         Branch_Comm_Link(branch!fk_branch, comm!pk)
-      Else
-         comm.Remove("fk_branch")
-         modDBConnect.update("contacts.data_communications", old_comms[comm!pk], comm, "pk")
-      End If
-   Next
-   
-   '-------------------------------------
-   'Now save or modify the clinic details
-   '-------------------------------------
-   If Not IsNull(clinic) Then
-      If clinic!fk_clinic = 0 Then  ' And clinic!default_clinic Then
-         Try clinic.remove("fk_clinic")
-         Try clinic.Remove("default_clinic")
-         clinic!fk_branch = branch!fk_branch
-         clinic!fk_clinic = modDBConnect.insert("admin.clinics", clinic)
-      End If
-   End If
-   '--------------------------------------------------------------------
-   'These two keys identify a row, and will be used to restore the row
-   '--------------------------------------------------------------------
-   collection_to_return.Add(organisation!fk_organisation, "fk_organisation")
-   collection_to_return.Add(branch!fk_branch, "fk_branch")
-   collection_to_return.Add(branch!fk_category, "fk_category") 'FIXME MAKE ME LOGICAL
-   Return collection_to_return
-   
-End
+
 
 Public Function Organisations_Employees_Get_By_Keys(Optional fk_organisation As Integer = 0, Optional fk_branch As Integer = 0, Optional fk_employee As Integer = 0, Optional no_fax As Boolean = False) As Collection
    
@@ -1979,9 +1881,7 @@ End
 
 Public Sub Set_Numbers(fk_person As Integer, fk_branch As Integer, provider_number As String, Optional prescriber_number As String)
    
-   Dim res As Result
-   Dim sql As String
-   
+    
    Message.Info("Stop richard, using modContacsDBI.set_numbers should not be possible")
    Return 
    
@@ -2106,8 +2006,8 @@ Public Sub Australian_Business_Number_Display(abn As String) As String
    ' Display_ABN takes a spaceless ABN And inserts 3 spaces at positions 2, 5
    ' And 8 Like the ATO website has.
    '-------------------------------------------------------------------------- 
-
+   
    If Len(abn) <> 11 Then Error.Raise("ABN must be 11 digits")
-  Return Left$(abn, 2) & " " & Mid$(abn, 3, 3) & " " & Mid$(abn, 6, 3) & " " & Mid$(abn, 9, 3)
-  
+   Return Left$(abn, 2) & " " & Mid$(abn, 3, 3) & " " & Mid$(abn, 6, 3) & " " & Mid$(abn, 9, 3)
+   
 End

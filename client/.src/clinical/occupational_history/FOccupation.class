@@ -1,7 +1,6 @@
 ' Gambas class file
 
 ' Copyright (C) 2008-2013 Dr. Richard Terry
-
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
@@ -14,9 +13,12 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+' PURPOSE      A module to allow entry of one or more occupations
+'              and occupational exposures
+'              its quite old and needs re-writing using cRow
+'              FIXME
 '----------------------------------------------------------------------
 Private Occupation As Collection
-Private Exposures As Collection
 Private $Result As Result
 Private bediting As Boolean
 Private bEmbedded As Boolean
@@ -28,19 +30,17 @@ Private currentExposures As Collection      'of currentexposure
 Private currentoccupation As Collection
 Private occupational_history As Collection
 Private member As Collection
-Private the_collection As Collection
 Private currentconsult As CConsult
 Private fk_exposure As Integer
 Private fk_occupation As Integer
 Private fk_occupational_history As Integer      'key to clin_history.occupations table
-Private view_key_occupation As Integer
 Private view_key_exposure As String
 Private ReferenceHboxForTopColumnview As Hbox               'used if split moves to reposition columnview
 Private pk_view As String  'key to the row in the view.
 Private SpellChecker As ClskSpell 
 Private occupations As Collection
 Static Private form_occupations As FOccupation
-  
+
 Public Sub set_embedded(flag As Boolean)
    '--------------------------------------------------
    'If this form is embeded from another form set flag
@@ -56,7 +56,6 @@ Public Sub Init(cons As CConsult)
    'CALLED BY  :calling form e.g FrmClinical.Editor_ShowPage()
    '----------------------------------------------------------
    
-   Dim item As Collection
    form_occupations = Me   
    currentconsult = cons         'set current consult on this form
    Settings_Load()               'set splits, font sizes etc
@@ -84,10 +83,10 @@ Static Public Sub Occupations_Reload()
    'FIXME, need some sort of mesagebus so that if clerical update patients occupation and the 
    'doctor has occupations open, they are warned, updated whatever
    '--------------------------------------------------------------------------------------------
+   
    form_occupations.Reload()
    
 End
-
 
 Public Sub Reload()
    
@@ -267,15 +266,16 @@ Public Sub listview1_DblClick()
    listview1.MoveCurrent
    Select Case Last.tag.tag
       Case "occupation"
-         Occupation_Select(occupations[listview1.Item.key])
+         Occupation_Select()
          txtFromAge.SetFocus()
       Case "exposure"
          Exposure_Select()
    End Select
    listview1.Visible = False  
+   
 End
 
-Public Sub Occupation_Select(occupation As Collection)
+Public Sub Occupation_Select()
    
    bexit = True   
    txtOccupation.Text = listview1.Item.Text
@@ -286,18 +286,12 @@ Catch
    
 End
 
-Public Function EditArea_Vaidate_Contents() As Boolean
+Public Function Occupation_Valid() As Boolean
    '--------------------------------------------------------------------
    'validates the contents of edit area returns FALSE if invalid
    '  Mimimum amount of data:
    '  an occupation with or without a valid key
-   '-------------------------------------------------------------------
-   
-   Dim member As Collection
-   Dim duplicatedcondition As Boolean
-   Dim sMsg As String
-   '-----------------------------------------------
-   'Allow a new oocupation, but must have some text
+    'Allow a new oocupation, but must have some text
    '-----------------------------------------------
    If Trim(txtOccupation.text) = "" Then Return False
    SpellCheck_TextBox(txtoccupation)
@@ -410,12 +404,12 @@ Public Sub EditArea_NotifyChange(flag As Boolean)
    
 End
 
-Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer) As Boolean
+Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
    '--------------------------------------------------
    'Validate keypresses by excluding various key types
    '--------------------------------------------------
    
-   Select Case Last.Tag
+   Select Case tag
       Case "occupation", "exposure", "notes exposure", "notes occupation"
          bKeyValid = True
       Case "from age", "to age"
@@ -434,7 +428,7 @@ Public Sub Editarea_KeyPress()
    
    Dim x As Integer
    
-   bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code)
+   bkeyvalid = EditArea_TxtBox_ExcludeKeys(key.code, Last.tag)
    If bkeyvalid = False Then
       Stop Event
       Return
@@ -451,12 +445,14 @@ Public Sub Editarea_KeyPress()
          End If
       Case Key.Return, Key.tab
          Select Case Last.tag
-             Case "from age"
-               txtToAge.SetFocus()
+            Case "occupation"
+               txtFromAge.SetFocus
+            Case "from age"
+               txtToAge.SetFocus
             Case "to age"
-               txtNotes.SetFocus()
+               txtNotes.SetFocus
             Case "notes occupation"
-               txtExposure.SetFocus()
+               txtExposure.SetFocus
             Case "exposure"
                '--------------------------------------------------
                'User has hit <enter> without picking from the list
@@ -468,7 +464,7 @@ Public Sub Editarea_KeyPress()
                   For x = 0 To listview1.Count - 1
                      listview1.MoveFirst
                      If Lower(Trim(Last.text)) = Lower(listview1.item.text) Then
-                        Exposure_Select()
+                        Exposure_Select
                         Return
                      End If
                      listview1.MoveNext
@@ -559,14 +555,10 @@ Public Sub Save()
    '               :or clicked on it with the mouse
    'WHAT IT DOES   :Checks for minimal data validity - an oocupation
    '----------------------------------------------------------------
-   
-   Dim LastOccupations_pk As Integer
-   Dim occupation As New Collection
-   Dim x As Integer
    Dim sProgressNotes As String
    Dim person As CRow   
    
-   If Vbox_EditArea.Padding = 0 Or Not EditArea_Vaidate_Contents() Then Return 'nothing to save or inadequate data
+   If Vbox_EditArea.Padding = 0 Or Not Occupation_Valid() Then Return 'nothing to save or inadequate data
    '-----------------------------------------------------------------
    'Key to clin_history.occupations (the data table) -1 = new record
    '-----------------------------------------------------------------
@@ -580,11 +572,10 @@ Public Sub Save()
    Else
       currentoccupation!fk_occupation = fk_occupation
    End If
-   
    currentoccupation!from_age = Val(txtFromAge.text)
    currentoccupation!to_age = Val(txtToAge.text)
    currentoccupation!notes_occupation = Trim(txtNotes.text)
-   
+   currentoccupation!main_occupation = CBool(chkMainOccupation.value)
    If chkCurrent.value = True Then
       currentoccupation!current = True
    End If
@@ -607,12 +598,20 @@ Public Sub Save()
    modDBConnect.BeginTrans() 'noop
    currentoccupation!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_OccupationalHistory, fk_progressnote, "occupations", 0, False)
    fk_occupational_history = modOccupationalHistoryDBI.Save(currentconsult, fk_occupational_history, currentoccupation, fk_exposure, currentexposure, pk_view, view_key_exposure)
-   person = New CRow
-   person.put_unchanged(currentconsult!patient!fk_person, "fk_person")
-   person!fk_occupation = fk_occupation
-   person.Save("contacts.data_persons", "fk_person")
+   If currentoccupation!main_occupation Then                  'if this is the main occupation, update the persons table
+      person = New CRow
+      person.put_unchanged(currentconsult!patient!fk_person, "fk_person")
+      person!fk_occupation = fk_occupation
+      If currentoccupation!retired = True Then
+         person!retired = True
+      Else
+         person!retired = False  
+      Endif
+      person.Save("contacts.data_persons", "fk_person")
+   End If  
+    
    modDbConnect.CommitTrans()
-   FClinical.Patient_Demographics_Refresh()
+   If currentoccupation!main_occupation Then FClinical.Patient_Demographics_Refresh()  'and the display in FClinical
    EditArea_NotifyChange(False)
    Reload()
    ' OccupationsList_Refresh()                  'reload visual display
@@ -643,7 +642,6 @@ Public Function Progressnote_construct_html(currentoccupation As Collection, cur
    'Construct progress notes for this occupation
    '--------------------------------------------
    Dim sHtml As String
-   Dim Last_key As Integer
    Dim sString As String
    '-----------------------------------------------------------------
    'If this is the first row in the view for an occupation, show that
@@ -656,7 +654,7 @@ Public Function Progressnote_construct_html(currentoccupation As Collection, cur
          sString = "Occupational details changed:"
       End If
    End If
-   sString &= "<B>" & currentoccupation!occupation & "</B>"
+   sString &= currentoccupation!occupation 
    If currentoccupation!current = True Then
       sString &= " [Current]"
    Else
@@ -768,15 +766,8 @@ Public Sub OccupationsList_Refresh()
    'Note: the only unique key in view is :occupational_history!pk_link_occupation_exposure
    'which identifies the occupational history item for editing
    '---------------------------------------------------------------------------------------
-   ' Dim occupational_history As collection
-   
-   Dim x As Integer                          'for readability
-   
-   Dim view_row As Collection
    Dim Astring As String
-   Dim Last_fk_patient As Integer
    Dim current_fk_occupation As Integer
-   Dim last_fk_occupation As Integer
    
    cvwOccupations.Clear()
    currentconsult.Refresh("occupational_history")     'reload all the history
@@ -803,7 +794,7 @@ Public Sub OccupationsList_Refresh()
          If Not IsNull(occupation!from_age) Then
             Astring = "From age " & occupation!from_age
             If Not IsNull(occupation!to_age) Then
-               Astring &= " to age" & occupation!to_age
+               Astring &= " to age " & occupation!to_age
             End If
          Else
             If Not IsNull(occupation!to_age) Then
@@ -901,10 +892,11 @@ Public Sub Occupational_Details_Display()
    txtFromAge.text = occupational_history[pk_view]!from_age
    txtToAge.text = occupational_history[pk_view]!to_age
    txtNotes.text = occupational_history[pk_view]!notes_occupation
-   
+   chkMainOccupation.value = occupational_history[pk_view]!main_occupation
    chkCurrent.value = occupational_history[pk_view]!current
    chkRetired.value = occupational_history[pk_view]!retired
    bExit = False
+   EditArea_NotifyChange(False)
    
 End
 
@@ -916,7 +908,6 @@ Public Sub ExposuresList_Refresh()
    
    Dim exposure As Collection
    Dim view_row As Collection
-   Dim x As Integer
    
    currentExposures = New Collection
    '------------------------------------------------------
@@ -1098,5 +1089,11 @@ Public Sub Form_Resize()
    
    Vsplit_Occupations_Resize()
    Listview1.width = txtOccupation.Width
+   
+End
+
+Public Sub chkEditArea_Click()
+   
+   EditArea_NotifyChange(True)
    
 End

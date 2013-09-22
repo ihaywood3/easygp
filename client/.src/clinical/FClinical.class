@@ -14,7 +14,7 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
-'
+'-----------------------------------------------------------------------
 ' Notes to put somewhere
 ' note the tag's in the recall menu == the pk of audit.lu_action table.
 ' WHERE TO FIND STUFF
@@ -39,7 +39,10 @@
 '   WHAT NOT TO CHANGE IN THIS CODE IF IT MAKES NO SENSE TO YOU (UNLESS YOU FIND A BETTER WAY TO DO IT)
 '    cmbSearch_Activate()  don't remove the cmbSearch.enabled = False otherwise quick typers send
 '                          enter keypresses in quick succession.
+' WHERE TO FIND CODE  1) To update previous notes:  PreviousNotes_Refresh()
+'                     2) To update the health summary if showing: Health_Summary_Display()
 '--------------------------------------------------------------------------------------------------------
+Private SpellChecker As ClskSpell
 Private cvwLettersReceived_Key As Integer
 Private cvwResultsReceived_Key As Integer
 Private cvwReferrals_Key As Integer
@@ -87,6 +90,7 @@ Private Const cTabQuickContacts As Integer = 8
 Private Const cMainDisplay_DataEntry As Integer = 1
 Private Const cMainDisplay_ProgressNotes As Integer = 2
 Private Const cMainDisplay_CarePlan As Integer = 3
+Public bProgressNotesEnforceCoding As Boolean     'If True then user forced to code progress notes do not make this private
 Public active_medications As Collection
 Private obs As Observer                           'Observer used when FHelp is being shown, to detect the help close button
 Public medication_sort_order As String = "generic" 'wheras this is the default, may be changed at any time on the scripts tab
@@ -112,6 +116,15 @@ Static Public Function Help_Show(sPath As String, heading As String, flag As Boo
    If flag Then
       form_clinical.FHelp.Help_Show(sPath)
    End If
+   
+End
+
+Static Public Sub ProgressNotesEnforceCoding_UpdateFlag(bflag As Boolean)
+   '-------------------------------------------------------------------------
+   'Called by FStaffPreferences if enforcing progress notes coding is changed
+   '-------------------------------------------------------------------------  
+   
+   form_clinical.bProgressNotesEnforceCoding = bFlag   'bug here fix me 'how come at end there is a  illegal function in the IDE
    
 End
 
@@ -323,8 +336,6 @@ Static Public Function Editor_RemovePage(sKey As Variant, Optional bCloseAll As 
    'unsaved progress notes on this item in a progress notes editor.
    '-------------------------------------------------------------------------------------------------
    
-   Dim hWindow As Window
-   Dim ProgressNotePage As FProgressNotePage
    Dim Page As FLinkContainer
    Dim hCtrl As Control
    Dim frmConsult As FProgressNotePage
@@ -566,6 +577,11 @@ Public Sub Init()
    obs = New Observer(FMetaData.txtUserObservationName) As "FMetaData_txtUserObservationName"
    obs = New Observer(FMetaData.tbClose) As "FMetaData_tbClose"    'Let FClinical handle the save event"
    obs = New Observer(Form_Decision_Support.tbWebBrowserClose) As "FDecision_Support_tbClose"
+   With SpellChecker = New ClskSpell
+      .EditorControlToCheck = teForSpelling
+      .TempFileForSpelling = User.home &/ "myspelltemp.txt"  'FIXME
+      .TempFileForErrors = User.home &/ "myspellerrors.txt"
+   End With
    With gvAllergies
       .Columns.count = 1
    End With
@@ -578,7 +594,10 @@ Public Sub Init()
    mnuDecisionSupport_Chads.Visible = True
    lblMeasure.text = "  Cumulative   "
    cmbLineStyle.width = lblmeasure.Width
-   '  lblGraphsspacer.width = cmbLineStyle.Width
+   If modAdminDBI.Config_Get_Staff_Member("progress_notes_enforce_coding", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
+      bProgressNotesEnforceCoding = True 'defaults to false to keep Ian Sane
+   Endif
+   
    cmbSearch_LoadPatients()
    
 End
@@ -605,7 +624,6 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
    'TOFIX     :
    '---------------------------------------------------------------------------
    
-   Dim sPackYears As String
    Dim crclr As String 
    
    VSplit_Main.Visible = True
@@ -653,7 +671,7 @@ Public Sub patient_load_record(patient As Collection, bPhotoConfirmed As Boolean
    Else
       lblCreatinineClearance.text &= ""
    End If   
-   Allergies_Refresh()                    'Get all allergies, display on toolbar
+   Allergies_Sensitivities_Refresh()                    'Get all allergies, display on toolbar
    cvwRecalls_Refresh()                      'Display recalls on toolbar
    cvwMedications_Refresh()              'Get all active meds, display current in list
    '-------------------------------------------------------------------------------
@@ -771,6 +789,8 @@ Public Sub Refresh_Section_Instance(section As Integer)
    If IsNull(currentconsult) Then Return
    
    Select Case section
+      Case const.cSection_Inbox
+         cvwResults_Refresh(True)
       Case const.cSection_PastHistory
          pasthistory_refresh_lists()
       Case const.cSection_Prescriptions
@@ -781,7 +801,7 @@ Public Sub Refresh_Section_Instance(section As Integer)
          currentconsult.Refresh("referrals_written")
          cvwReferrals_Fill()
       Case const.cSection_allergies
-         Allergies_Refresh()
+         Allergies_Sensitivities_Refresh()
       Case const.cSection_Images
          Images_Refresh(True)
       Case Const.cSection_Recalls
@@ -921,16 +941,12 @@ End
 
 Private Sub Settings_Load()
    
-   Dim i As Object
-   
    VSplit_Main.Layout = Settings["FClinical/Vsplit1.Layout", modUtil.VSplit([99, 896])]
    Hsplit_ToolBar.Layout = Settings["FClinical/Hsplit_Toolbar.Layout", modUtil.HSplit([965, 746])]
    Hsplit_ToolBar_Lists.Layout = Settings["FClinical/Hsplit_Toolbar_Lists.Layout", modUtil.HSplit([246, 270, 228])]
-   ' Hsplit_ProblemLists_Patient_And_Buttons.Layout = Settings["FClinical/HSplit1_Patient_And_Buttons.Layout", modUtil.HSplit([491, 469])]
    HSplit_Main.Layout = Settings["FClinical/HsplitClinical_Main", modUtil.HSplit([1222, 489])]
    HSplit_MeasurementLists.Layout = Settings["Clinical/HSplit_MeasurementLists.Layout", modUtil.HSplit([243, 242])]
    Layout_Right_Side_Screen
-   
    cvwRecalls.Font = Font[Settings["FClinical/cvwRecalls.font", "Arial,9"]]
    cvwRequests.Font = Font[Settings["FClinical/cvwRequests.font", "Arial,9"]]
    cvwReferrals.Font = Font[Settings["FClinical/cvwReferrals.font", "Arial,9"]]
@@ -952,6 +968,7 @@ Private Sub Settings_Load()
    Hsplit_ProblemLists.Layout = Settings["FClinical/HSplit_ProblemLists.layout", modUtil.HSplit([1, 1])]
    lblMajorProblems.width = Hsplit_ProblemLists.children[0].width
    lblSignificantProblems.width = Hsplit_ProblemLists.children[1].width
+   gvAllergies.font = Font[Settings["FClinical/gvAllergies.font", "Arial,9"]]
    
 End Sub
 
@@ -962,8 +979,6 @@ Public Sub Layout_Right_Side_Screen()
    'they are probably going to get confused 'Where the f*** is it?
    'Called by Settings_load at init() and any time patient is reloaded.
    '------------------------------------------------------------------------------------------
-   
-   Dim layout_vals As New Integer[]
    
    Try VSplit_TabbedListsGraph.Layout = Settings["FClinical/VSplit_TabbedListsGraph.Layout", modUtil.VSplit([149, 149])]  'get the layout vals if exist FIXME BUG HERE
    '----------------------------------------------------------------
@@ -976,20 +991,47 @@ End
 
 Public Sub Consult_Save()
    '-----------------------------------------------
-   'Saves any outstanding data for the consultation
+   'Saves any outstanding data for the consultation 
    '-----------------------------------------------
    
    Dim i As Object
    
+   If IsNull(currentconsult) Then Return  'do not remove this
    Inc Application.Busy
    TabStrip_Lists.Enabled = False
-   If Not IsNull(currentconsult) Then
-      For Each i In EditorPages
-         Try Object.Call(i, "Save")
-      Next
-   End If
+   For Each i In EditorPages
+      Try Object.Call(i, "Save")
+   Next
    Dec Application.Busy
    TabStrip_Lists.Enabled = True
+   
+End
+
+Public Function Consult_Is_Coded() As Boolean
+   '----------------------------------------------------
+   'Ensures that the consult is coded, or at least tries
+   'to bully the user into doing so
+   'Returns True if consult is coded or they refuse
+   '----------------------------------------------------
+   
+   Dim sMsg As String
+   
+   currentconsult.Refresh("progress_notes")                      'ensure progress notes up to date
+   If currentconsult!progress_notes_today.count Then             'if there have been some written today
+      currentconsult.Refresh("progress_notes_codes")             'makes sure progress notes codes up to date
+      currentconsult.Refresh("progress_notes_codes_today")       'see if there are any codes for today
+      If Not currentconsult!progress_notes_codes_today.count Then 'No? then message the user
+         Message.title = "Coding Consultations"
+         sMsg = "It is recommended that you code all your consultations, in fact it is probably a requirement of your practice accreditation.\n\n"
+         "Do you wish to code this consultation now?"
+         If Message.Question(smsg, "Yes", "No") = 1 Then         'If they do want to code
+            Editor_ShowPage("New General Notes")                 'make sure general notes tab showin
+            FGeneralNotesEditor.txtReasonEncounter.SetFocus      'focus to the text entry for codes
+            Return
+         End If
+      End If   
+   Endif
+   Return True                                                   'all is well, they've at least coded something
    
 End
 
@@ -1201,15 +1243,22 @@ Public Sub cvwMedications_Refresh()
    
 End
 
-Public Sub Allergies_Refresh()
+Public Sub Allergies_Sensitivities_Refresh()
    '---------------------------------------------------------------
    'Fetch the patients allergies and sensitivities from the backend
    'Display only the allergies
+   'If the allergy is non-drug show the allergen
+   'If the allergy is generic specific show the generic
+   'If no allergy and no 'no allergies known'
+   'then prompt user with prominant comment 'PATIENT NOT ASKED'
+   'If any sensitivites exist then by definition the module has been
+   'accessed and allergies will have been queried, user will be
+   'informed sensitivities exist they will not be listed.
    '---------------------------------------------------------------
    
    Dim allergy As Collection
-   Dim x As Integer
    Dim allergies As Collection
+   Dim iSensitivityCount As Integer
    
    With gvAllergies
       .Clear()
@@ -1217,23 +1266,81 @@ Public Sub Allergies_Refresh()
       .Rows.Height = -1
    End With
    currentconsult.Refresh("allergies")
-   allergies = currentconsult!allergies
-   If allergies.count Then
-      For Each allergy In currentconsult!allergies
-         If allergy!fk_lu_reaction_type = const.ReactionType_Allergy Then
+   allergies = Modutil.Copy_Collection_Keyed_Sequentially(currentconsult!allergies)
+   If allergies.count Then                              'have either allergies or sensitivities
+      For Each allergy In currentconsult!allergies    
+         If allergy!nil_allergies_sensitivities Then           'First acertain if has ever been asked 
             Inc gvAllergies.Rows.Count
             With gvAllergies[gvAllergies.Rows.Count - 1, 0]
-               .Text = Trim(allergy!class_name & " " & allergy!allergen) 'only one will appear
+               .Text = "No Known Allergies"
+               .Foreground = Color.Red
+               .Alignment = Align.Center
+            End With
+            Return 
+         Endif
+         If allergy!fk_lu_reaction_type = const.ReactionType_Allergy Then  'exists ?is an allergy
+            Inc gvAllergies.Rows.Count
+            gvAllergies.rows[gvAllergies.row].Height = -1
+            With gvAllergies[gvAllergies.Rows.Count - 1, 0]
+               If allergy!specificity = "g" Then
+                  .text = allergy!generic
+               Else If allergy!specificity = "b" Then 
+                  .text = allergy!brand
+               Else
+                  .Text = Trim(allergy!class_name & " " & allergy!allergen) 'only one will appear
+               End If   
                .Foreground = Color.Red
                .WordWrap = True
             End With
             gvAllergies.Rows[gvAllergies.Rows.Count - 1].height = -1
+         Else  'it is a sensitivity
+            Inc iSensitivityCount
+            
          End If
       Next
+   End If  'No allergies, in particular never asked and 'no known allergies not recorded'
+   If gvAllergies.Rows.count = 0 Then   'no allergies or no comment that has been asked
+      Inc gvAllergies.Rows.Count
+      With gvAllergies[gvAllergies.Rows.Count - 1, 0]
+         .WordWrap = True
+         If iSensitivityCount = 0 Then 
+            .RICHText = "NO RECORD OF PATIENT BEING ASKED ABOUT ALLERGIES"
+         Else
+            .RichText = Str(iSensitivityCount) & " Sensitivity recorded but no allergies"
+         End If   
+         .Foreground = Color.Red
+         .Alignment = Align.Center
+      End With
+      gvAllergies.rows[0].Height = -1
    End If
-   '----------------------------------------------------------------
-   'Now check if script section is loaded, if so update that as well
-   '----------------------------------------------------------------
+   
+End
+
+Public Sub gvAllergies_Select()
+   '-------------------------------------------
+   'Popup dialog box to display allergy details
+   '-------------------------------------------
+   
+   Dim allergy As Collection
+   Dim sMsg As String
+   
+   Return 
+   If gvAllergies.row = -1 Then Return 
+   allergy = modutil.Copy_Collection_Keyed_Sequentially(currentconsult!allergies)[gvAllergies.row]
+   If allergy!specificity = "g" Then
+      sMsg = "Generic Specific "
+   Else If allergy!specificity = "c" Then 
+      sMsg = "Class Specific" 
+   Else If allergy!specificity = "b" Then 
+      sMsg = "Brand Specific " 
+   Endif
+   
+   Message.Title = "Reaction Details"
+   sMsg &= modutil.Ucase_Word_First_Letter(allergy!reaction_type) & "\n\n"
+   sMsg &= "Reaction       : " & allergy!details & "\n"
+   If Not IsNull(allergy!class_name) Then sMsg &= "Drug Class    : " & modutil.Ucase_Word_First_Letter(allergy!class_name) & "\n"
+   If Not IsNull(allergy!generic) Then sMsg &= "Drug Generic: " & modutil.Ucase_Word_First_Letter(allergy!generic) & "\n"
+   Message.info(sMsg)
    
 End
 
@@ -1365,10 +1472,14 @@ Public Sub Patient_Demographics_Display()
    Else
       txtOccupation.text = "Occupation?"
    Endif
+   
    If Not IsNull(currentconsult!patient!veteran_number) Then
       lblMedicareNumber.text = currentconsult!patient!veteran_number
    Else
       lblMedicareNumber.text = modutil.Medicare_Number_Format(currentconsult!patient!medicare_number)  
+      If Not IsNull(currentconsult!patient!medicare_ref_number) Then 
+         lblMedicareNumber.text &= " Pos:" & currentconsult!patient!medicare_ref_number
+      End If   
    Endif
    
    txtOccupation.Enabled = True
@@ -1532,18 +1643,29 @@ Public Sub Gui_Clear()
 End
 
 Public Sub cmbSearch_GotFocus()
-   '------------------------------------------------------------
+   '----------------------------------------------------------------
    'User has clicked on the cmbSearch combo box in the text part
-   'First check there is no un-saved data - save that
+   'i.e they want to end the consultation and find another patient
+   'First check there is no un-saved data - save that, then make
+   'sure the consultation is coded
    'then clear all patient specific data from the gui
    're-setting the lists, notification labels etc
-   '------------------------------------------------------------
+   'See FStaffPreferencesClinical for the config option for coding
+   '----------------------------------------------------------------
    
-   Print "The search combo got focus"
    If bexit Then Return
-   Consult_Save()
-   Gui_Clear()
-   cmbSearch.Enabled = True
+   If Not IsNull(currentconsult) Then           'no consult, no save
+      cmbSearch.Enabled = False                 'stop clicking again until finished database accessing
+      Consult_Save                              'loop through all  open forms and call 'Save'
+      If bProgressNotesEnforceCoding Then       'this global user preference was loaded in init from the backend.
+         If Not Consult_Is_Coded() Then         'then enforce coding, if not done and they want to do so
+            cmbSearch.Enabled = True            'get  ouf of here
+            Return                              'now
+         End If     
+      End If    
+   End If     
+   Gui_Clear()                                  'clear the input area
+   cmbSearch.Enabled = True                     'allow user to click on combo again.
    
 End
 
@@ -1552,7 +1674,7 @@ Public Sub cmbSearch_LostFocus()
    'Ensure that the patient's name at least is showing
    '--------------------------------------------------
    
-   Last.pos = 0
+   '  Last.pos = 0
    
 End
 
@@ -1579,7 +1701,6 @@ Public Sub WorkspaceEditor_Clear()
       hWindow.Close()
    Next
    WorkspaceEditor.Unlock()
-   Print "clearing editor pages"
    EditorPages = New Collection
    
 End
@@ -1664,12 +1785,9 @@ Public Sub cvwLettersReceived_Menu()
    '--------------------------------------------------
    
    Dim document As Collection
-   Dim bMultiSelected As Boolean 'if true then there are multiple selections FIXME activate/deactive menu according to this.
-   Dim x As Integer
    Dim num_selected As Integer
    Dim mnu As Menu
-   
-   ' If Not cvwLettersReceived.count Then Return                                       'no letters no menu FIXME should allow one undelete
+   Dim X As Integer
    
    For Each mnu In mnuLettersReceived.Children                                         'default to no items available on menu
       mnu.Enabled = False
@@ -1733,7 +1851,6 @@ Public Sub cvwRecalls_Refresh()
    '--------------------------------------------------------------
    
    Dim x As Integer                      'for readability = key
-   Dim sString As String
    Dim rows As String
    Dim sColText As String
    Dim sTableStart As String = "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0 >"
@@ -1765,77 +1882,6 @@ Public Sub cvwRecalls_Refresh()
       cvwRecalls.Add(x, 0)
       cvwRecalls[x][0] = Format(currentconsult!recalls_logged[x]!due, "dd/mm/yyyy") & "  " & currentconsult!recalls_logged[x]!reason
       '   cvwRecalls[x][1] = currentconsult!recalls_logged[x]!reason
-      '---------------------------------------------------
-      'Display these recalls as reminders at top of screen
-      '---------------------------------------------------
-      If DateDiff(Now, currentconsult!recalls_logged[x]!due, gb.Month) < 0 Then
-         Rows = Replace(Rows, "%color%", "#800000")
-         sColtext = "Overdue:"
-         Rows = Replace(rows, "%color%", "#FFFFFF")
-      Else
-         sColtext = "Due in:"
-      End If
-      sColText &= Abs(DateDiff(Now, currentconsult!recalls_logged[x]!due, gb.Month)) & "M"
-      rows = Replace(rows, "%col1%", sColText)
-      rows = Replace(rows, "%col2%", currentconsult!recalls_logged[x]!reason)
-   Next
-   'FIXME this list is potentially invisible if user has re-sized it to nothing.
-   If currentconsult!recalls_logged.count Then
-      tlReminders.Richtext = sTableStart & rows & "</TABLE>"
-   Else
-      tlReminders.Richtext = "Recalls & Reminders - Nil"
-   End If
-   
-End
-
-Public Sub cvwRecalls_Refresh_old()
-   '---------------------------------------------------------------
-   'fixme separate out the toolbar display with the cvw display
-   'I've stuck a routine to fill the columnview in modRecallsDBI
-   'as its used in different spots in the progres
-   'FIXME probably need to do so in the recalls management module
-   '--------------------------------------------------------------
-   
-   Dim x As Integer                      'for readability = key
-   Dim sString As String
-   Dim rows As String
-   Dim sColText As String
-   Dim sTableStart As String = "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0 >"
-   
-   Dim sRow As String = ""
-   
-   "<TR>"
-   "<TD WIDTH=60><FONT COLOR='%color%'>"
-   "%col1%</FONT>"
-   "</TD>"
-   "<TD>"
-   "%col2%"
-   "</TD>"
-   "</TR>"
-   
-   With cvwRecalls
-      .Clear()
-      .Columns.count = 2
-      
-   End With
-   
-   '  Try modUtil.columnSizes_Set(Settings["TabbedLists/cvwRecalls.columns"], cvwRecalls)
-   ' If Error Then
-   '    cvwRecalls.Columns[0].width = 60
-   '    cvwRecalls.Columns[1].width = 200
-   ' Endif
-   currentconsult.Refresh("recalls_logged")
-   tlReminders.text = ""
-   rows = ""
-   For Each currentconsult!recalls_logged
-      rows &= srow
-      x = currentconsult!recalls_logged.Key                        'readability
-      '---------------------------------------------------------
-      'Display in the recalls list on the tabstrip_lists control
-      '---------------------------------------------------------
-      cvwRecalls.Add(x, 0)
-      cvwRecalls[x][0] = Format(currentconsult!recalls_logged[x]!due, "dd/mm/yyyy")
-      cvwRecalls[x][1] = currentconsult!recalls_logged[x]!reason
       '---------------------------------------------------
       'Display these recalls as reminders at top of screen
       '---------------------------------------------------
@@ -1936,7 +1982,6 @@ Public Sub cvwResults_Refresh(Optional bRefresh As Boolean = False)
    Dim exclude As String
    Dim result_received As String
    Dim guessed_user_Name As Collection
-   Dim colsizes As String[]
    
    If IsNull(currentconsult) Then Return
    If txtInboxResults_filter.text <> "" Then
@@ -2035,7 +2080,6 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
    Dim Browser As FHtmlViewer
    Dim GPCOG As FGPCOG
    Dim EdinburghPNDS As FEdinburgPNDScale
-   Dim Cumulative As FCumulative
    Dim Chads As FChads
    Dim HasBled As FHasBled
    Dim K10 As FK10OutcomeTool
@@ -2247,7 +2291,7 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                page.tag = sPageName
                Page.title = sPageName
                EditorPages.Add(MC, sPageName)
-               Control_For_Focus = INRManager.tbFocus
+               Control_For_Focus = INRManager.txtReason
             Case "Medical Certificates"
                page = New FLinkContainer
                MC = New FMedicalCertificate(page.VBoxEditor)
@@ -2529,15 +2573,15 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                retform = MentalHealthPage
                EditorPages.Add(MentalHealthPage, "Mental Health")
                ' Control_For_Focus = MentalHealthPage.WebView1
-            Case "Allergies"
+            Case "Allergies & Sensitivities"
                page = New FLinkContainer
                AllergyPage = New FAllergy(page.VBoxEditor)
                AllergyPage.Init(currentconsult)
-               page.tag = "Allergies"
-               page.Title = "Allergies"
+               page.tag = "Allergies & Sensitivities"
+               page.Title = "Allergies & Sensitivities"
                WorkspaceEditor.Add(page)
                retform = AllergyPage
-               EditorPages.Add(AllergyPage, "Allergies")
+               EditorPages.Add(AllergyPage, "Allergies & Sensitivities")
                ' Control_For_Focus = AllergyPage.tbNewAllergy
             Case "webpage"
                page = New FLinkContainer
@@ -2694,587 +2738,6 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
          End Select
       End If
    End If   
-   Return retform
-   
-End
-
-Public Sub Editor_ShowPage_old(sPageName As String, Optional page_tag As String = "", page_data As Variant, additional_page_tag As String = "") As Form
-   '----------------------------------------------------------------
-   'PURPOSE:   Adds a new page to the progress notes workspace
-   '           according to sType parameter passsed to it
-   '           e.g "past history", "new page", "Request" etc
-   '
-   ' A FProgressNotePageContainer doesn't contain the texteditor - just a form
-   ' containg two rows of toolbars with combo's and text formatting
-   ' buttons, contained in VboxEditor
-   '
-   ' The container then has added to it either other forms or just
-   ' a plain textedit control for pages only needing a text editor
-   ' Note that Collections start from a zero(0) count
-   ' but the tablist count starts from 1
-   ' hence first tab > EditorPages[0] etc
-   ' the page tag is either fixed eg "Skin Excision" or
-   ' is a pk_pasthistory if doing progress notes for a past historyDisplay_Health_Issue
-   ' item
-   'FIXME convert this routine so that lower(page.title) = tag
-   'NB: Though it would seem logical not to repeat for every new page
-   '    the code: WorkspaceEditor.Add(NewPage)
-   '    within each case statement, putting it at the end seems to
-   '    make it impossible to auto-set focus on the first control
-   '    in the new form.
-   '--------------------------------------------------------------
-   
-   Dim INRManager As FInr
-   Dim Image_Viewer As FImageViewer
-   Dim retform As Form ' the Form we are returning to the caller: very useful for scripting
-   Dim webpage As FBrowser
-   Dim Browser As FHtmlViewer
-   Dim GPCOG As FGPCOG
-   Dim EdinburghPNDS As FEdinburgPNDScale
-   Dim Cumulative As FCumulative
-   Dim Chads As FChads
-   Dim HasBled As FHasBled
-   Dim K10 As FK10OutcomeTool
-   Dim Export_Clinical As FExportClinical
-   Dim MultiMedia As FMoviePlayer
-   Dim ProgressNotesPage As FProgressNotePage
-   Dim PsychoSocialHistory As FPsychoSocialHistory
-   Dim AllPreviousNotes As FProgressNotesViewer_New
-   Dim SingleHealthIssueNotes As FProgressNotesViewer_New
-   Dim ExcisionPage As FProcedures
-   Dim RequestPage As FRequests
-   Dim PregnancyPage As FPregnancy
-   Dim RecreationalDrugs As FRecreationalDrugs
-   Dim FamilyHistoryPage As FFamilyHistory
-   Dim HealthAssessmentPage As FHealthAssessment
-   Dim OccupationalHistoryPage As FOccupation
-   Dim MC As FMedicalCertificate
-   Dim AllergyPage As FAllergy
-   Dim RecallPage As FRecalls
-   Dim PrescriptionPage As FPrescriptions
-   Dim PastHistoryPage As FPastHistory
-   Dim ReferralPage As FReferrals
-   Dim MentalHealthPage As FMentalHealth
-   Dim VaccinationPage As FVaccinations
-   'Dim workcoverPage As FWorkCover
-   Dim workcoverNSWPage As FWorkcoverNSW
-   Dim DiabetesCycleOfCare As FDACC
-   Dim TravelPage As FTravel
-   Dim GeneralCheckup As FCheckups
-   Dim page As FLinkContainer
-   Dim EditPastNotes As FEditNotes
-   Dim PDF As FPDF
-   Dim DrugBrowser As FPDF
-   Dim CarePlans As FCarePlanning
-   '    Dim CarePlans As FCarePlanning_New
-   Dim Form_Library As FLibrary
-   Dim Pictures As FPictureViewer
-   Dim sMsg As String
-   
-   '----------------------------------------------------------------------
-   'With these pages, we want the appropriate list to be in the foreground
-   'So this switches the list
-   '----------------------------------------------------------------------
-   Select Case sPageName
-         
-      Case "Referrals"
-         TabStrip_Lists.Index = clistReferrals
-         Refresh_Section_Instance(const.cSection_Referrals)
-      Case "Requests"
-         TabStrip_Lists.index = cListRequests
-         Refresh_Section_Instance(const.cSection_Requests)            'swap tabbed lists to requests
-      Case "Workcover"
-         TabStrip_Lists.index = cListCertificates
-         rbWorkCoverCertificate.value = True
-      Case "Measurements"
-         TabStrip_Lists.index = clistMeasurements
-      Case "Recalls"
-         TabStrip_Lists.index = clistRecalls            'show recalls list on tab
-   End Select
-   Print EditorPages
-   If Not Editor_SetActivePage(sPageName, page_tag) Then 'check if this page be it section or a result is already showing.
-      'fixme this needs to be more sophisticated eg for result, take into account date.
-      Select Case sPageName
-         Case "multimedia"
-            page = New FLinkContainer
-            With MultiMedia = New FMoviePlayer(page.VBoxEditor)
-               .Init(page_data)
-            End With
-            WorkspaceEditor.Add(page)
-            page.tag = page_tag
-            Page.title = page_tag
-            retform = MultiMedia
-         Case "image"
-            page = New FLinkContainer
-            With Pictures = New FPictureViewer(page.VBoxEditor)
-               .Init(modFiles.Get("document_archiving_directory", page_data))
-            End With
-            WorkspaceEditor.Add(page)
-            page.tag = sPageName
-            Page.title = Page_tag
-            retform = Pictures
-            EditorPages.Add(Pictures, sPageName)
-         Case "Library"
-            page = New FLinkContainer
-            With Form_Library = New FLibrary(page.VBoxEditor)
-               .HBox_Heading.Visible = False
-            End With
-            WorkspaceEditor.Add(page)
-            page.tag = sPageName
-            Page.title = sPageName
-            retform = Form_Library
-            EditorPages.Add(Form_Library, sPageName)
-            Control_For_Focus = Form_Library.TreeView1
-         Case "Export File"
-            page = New FLinkContainer
-            Export_Clinical = New FExportClinical(page.VBoxEditor)
-            Export_Clinical.Init(currentconsult)
-            WorkspaceEditor.Add(page)
-            retform = Export_Clinical
-            page.tag = sPageName
-            Page.title = sPageName
-            EditorPages.Add(Export_Clinical, sPageName)
-            ' Control_For_Focus = MC.txtReason
-         Case "INR"
-            page = New FLinkContainer
-            INRManager = New Finr(page.VBoxEditor)
-            INRManager.Init(currentconsult)
-            WorkspaceEditor.Add(page)
-            page.tag = sPageName
-            Page.title = sPageName
-            EditorPages.Add(MC, sPageName)
-            Control_For_Focus = INRManager.tbFocus
-         Case "Medical Certificates"
-            page = New FLinkContainer
-            MC = New FMedicalCertificate(page.VBoxEditor)
-            MC.Init(currentconsult)
-            WorkspaceEditor.Add(page)
-            page.tag = sPageName
-            Page.title = sPageName
-            retform = MC
-            EditorPages.Add(MC, sPageName)
-            Control_For_Focus = MC.txtReason
-         Case "pdf file"
-            page = New FLinkContainer
-            With PDF = New FPDF(page.VBoxEditor)
-               .Init(currentconsult)
-               .Load_PDF(page_data)
-               .tbSave.Enabled = True
-               .tbSave.Visible = True
-               .btRotate.Visible = True
-            End With
-            WorkspaceEditor.Add(page)
-            page.tag = page_tag
-            Page.title = page_tag
-            retform = PDF
-            EditorPages.Add(PDF, page_tag)
-         Case "drugs browser"
-            page = New FLinkContainer
-            With DrugBrowser = New FPDF(page.VBoxEditor)
-               .Load_PDF(page_data)
-               .Init_Drugs_Browser()
-            End With
-            WorkspaceEditor.Add(page)
-            page.tag = page_tag
-            Page.title = page_tag
-            retform = DrugBrowser
-            EditorPages.Add(PDF, page_tag)
-         Case "pdf document"
-            page = New FLinkContainer
-            With PDF = New FPDF(page.VBoxEditor)
-               .Load_PDF(modFiles.Get("document_archiving_directory", page_data))
-               .btRotate.Visible = True
-               .btRotate.Enabled = True
-               .btZoomIn.Visible = True
-               .btZoomIn.Enabled = True
-            End With
-            WorkspaceEditor.Add(page)
-            page.tag = page_tag
-            Page.title = page_tag
-            retform = PDF
-            EditorPages.Add(PDF, page_tag)
-         Case "pdf document external"   'not one of our documents
-            page = New FLinkContainer
-            With PDF = New FPDF(page.VBoxEditor)
-               .Load_PDF(page_data)
-               .btRotate.Visible = True
-               .btRotate.Enabled = True
-               .btZoomIn.Visible = True
-               .btZoomIn.Enabled = True
-            End With
-            WorkspaceEditor.Add(page)
-            page.tag = page_tag
-            Page.title = page_tag
-            retform = PDF
-            EditorPages.Add(PDF, page_tag)
-         Case "Recreational Drugs"
-            page = New FLinkContainer
-            RecreationalDrugs = New FRecreationalDrugs(page.VBoxEditor)
-            RecreationalDrugs.Init(currentconsult)
-            WorkspaceEditor.Add(page)
-            page.tag = sPageName
-            Page.title = sPageName
-            retform = RecreationalDrugs
-            EditorPages.Add(RecreationalDrugs, sPageName)
-            Control_For_Focus = RecreationalDrugs.lblMeasure
-         Case "Care Planning"
-            '  Message.title = "CARE PLANNING MODULE"
-            '  Message.Info("Sorry, this module is currently not accessible")
-            '  Return
-            '  Message.Warning("before loading this module please note:\n\nTHIS MODULE IS NOT FINISHED, IS INACCURATE AND CANNOT BE USED AND WILL PROBABLY CRASH.\n\nUse it at your own peril.")
-            page = New FLinkContainer
-            CarePlans = New FCarePlanning(page.VBoxEditor)
-            CarePlans.Init(currentconsult)
-            WorkspaceEditor.Add(page)
-            page.tag = sPageName
-            Page.title = sPageName
-            retform = CarePlans
-            EditorPages.Add(CarePlans, sPageName)
-            Control_For_Focus = CarePlans.txtHealthIssue
-         Case "browser"
-            page = New FLinkContainer
-            With Browser = New FHtmlViewer(page.VBoxEditor)
-               Print page_data
-               .WebView1.HTML = page_data
-               .Set_Document_Details(Trim(additional_page_tag & " " & page_tag))
-            End With
-            obs = New Observer(Browser.mnuTest) As "mnuWebViewTest"
-            obs = New Observer(Browser.Webview1) As "WebView"
-            WorkspaceEditor.Add(page)
-            page.tag = page_tag
-            Page.title = page_tag
-            retform = Browser
-            EditorPages.Add(Browser, page_tag)
-         Case "images"
-            page = New FLinkContainer
-            Image_Viewer = New FImageViewer(page.VBoxEditor)
-            Image_Viewer.Init(Currentconsult, page_data)
-            WorkspaceEditor.Add(page)
-            retform = Image_Viewer
-            page.tag = page_tag
-            Page.title = page_tag
-            EditorPages.Add(Image_Viewer, page_tag)
-         Case "GPCOG"
-            page = New FLinkContainer
-            GPCOG = New FGPCOG(page.VBoxEditor)
-            GPCOG.Init(Currentconsult)
-            retform = GPCOG
-            WorkspaceEditor.Add(page)
-            page.tag = sPageName
-            Page.title = sPageName
-         Case "Edinburgh"
-            page = New FLinkContainer
-            EdinburghPNDS = New FEdinburgPNDScale(page.VBoxEditor)
-            EdinburghPNDS.Init(Currentconsult)
-            WorkspaceEditor.Add(page)
-            retform = EdinburghPNDS
-            page.tag = sPageName
-            Page.title = sPageName
-         Case "K10"
-            page = New FLinkContainer
-            K10 = New FK10OutcomeTool(page.VBoxEditor)
-            K10.Init("FClinical") 'not yet integrated as a stand alone tool FIXME
-            WorkspaceEditor.Add(page)
-            page.tag = sPageName
-            Page.title = sPageName
-            retform = K10
-            EditorPages.Add(K10, "K10")
-         Case "Has-Bled Calculator"
-            page = New FLinkContainer
-            HasBled = New FHasBled(page.VBoxEditor)
-            HasBled.Init(Currentconsult)
-            WorkspaceEditor.Add(page)
-            page.tag = "Has-Bled Calculator"
-            page.Title = "Has-Bled Calculator"
-            EditorPages.Add(HasBled, "Has-Bled Calculator")
-            retform = HasBled
-         Case "Chads Calculator"
-            page = New FLinkContainer
-            Chads = New FChads(page.VBoxEditor)
-            Chads.Init(Currentconsult)
-            WorkspaceEditor.Add(page)
-            page.tag = "Chads Calculator"
-            page.Title = "Chads Calculator"
-            EditorPages.Add(Chads, "Chads Calculator")
-            retform = Chads
-         Case "Edit Notes"
-            page = New FLinkContainer
-            EditPastNotes = New FEditNotes(page.VBoxEditor)
-            EditPastNotes.Init(currentconsult)
-            WorkspaceEditor.Add(page)
-            page.tag = "Edit Notes"
-            page.Title = "Edit Notes"
-            EditorPages.Add(EditPastNotes, "Edit Notes")
-            '  Control_For_Focus = EditPastNotes.teNotes
-            retform = EditPastNotes
-         Case "Single Health Issue Notes"
-            page = New FLinkContainer
-            With SingleHealthIssueNotes = New FProgressNotesViewer_New(page.VBoxEditor)
-               .Init(currentconsult, page_data)
-               .LblNotesFilter.text = page_tag
-            End With
-            WorkspaceEditor.Add(page)
-            page.tag = page_tag
-            page.Text = page_tag
-            retform = SingleHealthIssueNotes
-            EditorPages.Add(SingleHealthIssueNotes, page_tag)
-            Control_For_Focus = SingleHealthIssueNotes.WebView1
-         Case "All Previous Notes"
-            page = New FLinkContainer
-            With AllPreviousNotes = New FProgressNotesViewer_New(page.VBoxEditor)
-               .Init(currentconsult, modProgressNotes.AllProgressNotes_Construct_Html(currentconsult))
-            End With
-            WorkspaceEditor.Add(page)
-            page.tag = "All Previous Notes"
-            page.Text = "All Previous Notes"
-            retform = AllPreviousNotes
-            EditorPages.Add(AllPreviousNotes, "All Previous Notes")
-            Control_For_Focus = AllPreviousNotes.WebView1
-         Case "Diabetes Cycle of Care"
-            page = New FLinkContainer
-            DiabetesCycleOfCare = New FDACC(page.VBoxEditor)
-            DiabetesCycleOfCare.Init(Currentconsult)
-            page.tag = "Diabetes Cycle of Care"
-            page.Text = "Diabetes Cycle of Care"
-            WorkspaceEditor.Add(page)
-            retform = DiabetesCycleOfCare
-            EditorPages.Add(DiabetesCycleOfCare, "Diabetes Cycle of Care")
-         Case "General Checkups"
-            page = New FLinkContainer
-            GeneralCheckup = New FCheckups(page.VBoxEditor)
-            GeneralCheckup.Init(Currentconsult)
-            page.tag = "General Checkup"
-            page.Title = "General Checkup"
-            WorkspaceEditor.Add(page)
-            retform = GeneralCheckup
-            EditorPages.Add(GeneralCheckup, "General Checkup")
-         Case "New General Notes"
-            '----------------------------------------------------------------------
-            'General notes page as the name implies is for notes not tied to a
-            'particular health issue or problem. For particular problems the user
-            'should be taught to open an editor tab for that problem.
-            '----------------------------------------------------------------------
-            page = New FLinkContainer
-            ProgressNotesPage = New FProgressNotePage(page.VBoxEditor)
-            WorkspaceEditor.Add(page)
-            page.tag = "New General Notes"
-            page.Text = "New General Notes"
-            ProgressNotesPage.set_fk_section(const.cSection_GeneralNotes)
-            ProgressNotesPage.lblNotesFor.text = "New General Notes"
-            ProgressNotesPage.Init(currentconsult)
-            EditorPages.Add(ProgressNotesPage, "New General Notes")
-            FGeneralNotesEditor = ProgressNotesPage.Notes_Editor
-            retform = ProgressNotesPage
-            ' Control_For_Focus = ProgressNotesPage.Notes_Editor.teNotes
-         Case "Travel"
-            page = New FLinkContainer
-            TravelPage = New FTravel(page.VBoxEditor)
-            TravelPage.Init(currentconsult)
-            page.tag = "Travel"
-            page.Title = "Travel"
-            WorkspaceEditor.Add(page)
-            retform = TravelPage
-            EditorPages.Add(TravelPage, "Travel")
-            Control_For_Focus = TravelPage.txtDestination
-         Case "Occupational History"
-            page = New FLinkContainer
-            With OccupationalHistoryPage = New FOccupation(page.VBoxEditor)
-               .Init(currentconsult)
-            End With
-            page.tag = "Occupational History"
-            page.Title = "Occupational History"
-            WorkspaceEditor.Add(page)
-            retform = OccupationalHistoryPage
-            EditorPages.Add(OccupationalHistoryPage, "Occupational History")
-            Control_For_Focus = OccupationalHistoryPage.lbloccupation
-            
-         Case "Health Assessment"
-            page = New FLinkContainer
-            HealthAssessmentPage = New FHealthAssessment(page.VBoxEditor)
-            HealthAssessmentPage.Init(currentconsult)
-            page.tag = "HealthAssessment"
-            page.Title = "HealthAssessment"
-            WorkspaceEditor.Add(page)
-            retform = HealthAssessmentPage
-            EditorPages.Add(HealthAssessmentPage, "HealthAssessment")
-         Case "Mental Health"
-            page = New FLinkContainer
-            MentalHealthPage = New FMentalHealth(page.VBoxEditor)
-            MentalHealthPage.Init(currentconsult)
-            page.tag = "Mental Health"
-            page.Title = "Mental Health"
-            WorkspaceEditor.Add(page)
-            retform = MentalHealthPage
-            EditorPages.Add(MentalHealthPage, "Mental Health")
-            ' Control_For_Focus = MentalHealthPage.WebView1
-         Case "Allergies"
-            page = New FLinkContainer
-            AllergyPage = New FAllergy(page.VBoxEditor)
-            AllergyPage.Init(currentconsult)
-            page.tag = "Allergies"
-            page.Title = "Allergies"
-            WorkspaceEditor.Add(page)
-            retform = AllergyPage
-            EditorPages.Add(AllergyPage, "Allergies")
-            ' Control_For_Focus = AllergyPage.tbNewAllergy
-         Case "webpage"
-            page = New FLinkContainer
-            '  Page.tag = txtURL.text
-            WebPage = New FBrowser(page.VBoxEditor)
-            WebPage.Expand = True
-            WorkspaceEditor.Add(page)
-            page.Title = "Web"
-            retform = WebPage
-            WebPage.Visible = True 'make it visible, default is not visible, trigger form_load
-            WebPage.txtURL.text = page_data
-            WebPage.btnGo.Value = True
-         Case "Pregnancy"
-            page = New FLinkContainer
-            With PregnancyPage = New FPregnancy(page.VBoxEditor)
-               .Init(currentconsult)
-            End With
-            retform = PregnancyPage
-            page.tag = "Pregnancy"
-            page.title = "Pregnancy"
-            WorkspaceEditor.Add(page)
-            EditorPages.Add(PregnancyPage, "Pregnancy")
-         Case "Referrals"
-            page = New FLinkContainer
-            ReferralPage = New FReferrals(page.VBoxEditor)
-            ReferralPage.Init(currentconsult)
-            page.tag = "Referrals"
-            page.Title = "Referrals"
-            retform = ReferralPage
-            WorkspaceEditor.Add(page)
-            EditorPages.Add(ReferralPage, "Referrals")
-            Control_For_Focus = ReferralPage.txtName
-         Case "Scripts"
-            'First make sure they have prescriber/provider number
-            Print modDBConnect.currentUser
-            If IsNull(modDBConnect.currentUser!prescriber_number) Or IsNull(modDBConnect.currentUser!provider_number) Then
-               Message.Title = "Invalid Prescriber Detected"
-               sMsg = "Mmmmm...looks like you are attempting to write prescriptions without being a valid prescriber.\n\n\""
-               "Your activity And ID will be reported To the SysAdmin, in fact the built in web-cam in this computer has already mailed your photo to the relevant authorities.\n\n\""
-               "Should you think this is an error your SysAdmin can rectify this by entering valid details."
-               Message.Warning(sMsg, "Ok")
-               Return
-            Endif
-            page = New FLinkContainer
-            PrescriptionPage = New FPrescriptions(page.VBoxEditor)
-            PrescriptionPage.set_embedded("FClinical")
-            PrescriptionPage.Init(currentconsult)
-            page.tag = "Scripts"
-            page.Title = "Scripts"
-            retform = PrescriptionPage
-            WorkspaceEditor.Add(page)
-            EditorPages.Add(PrescriptionPage, "Scripts")
-            PrescriptionPage.bexit = True
-            PrescriptionPage.BExit = False
-            
-         Case "Family History"
-            page = New FLinkContainer
-            FamilyHistoryPage = New FFamilyHistory(page.VBoxEditor)
-            FamilyHistoryPage.Init(currentconsult)
-            page.tag = "Family History"
-            page.Title = "Family History"
-            WorkspaceEditor.Add(page)
-            retform = FamilyHistoryPage
-            EditorPages.Add(FamilyHistoryPage, "Family History")
-            
-         Case "Psycho-Social History"
-            ' modUtil.NotImplemented("This section is under reconstruction")
-            page = New FLinkContainer
-            PsychoSocialHistory = New FPsychoSocialHistory(page.VBoxEditor)
-            PsychoSocialHistory.Init(currentconsult)
-            page.tag = "Psycho-Social History"
-            page.Title = "Psyscho-Social History"
-            WorkspaceEditor.Add(page)
-            retform = PsychoSocialHistory
-            EditorPages.Add(PsychoSocialHistory, "Psycho-Social History")
-            Control_For_Focus = PsychoSocialHistory.teSocialHistory
-         Case "Health Issues"
-            page = New FLinkContainer
-            PastHistoryPage = New FPastHistory(page.VBoxEditor)
-            PastHistoryPage.Init(currentconsult)
-            page.tag = "Health Issues"
-            page.Title = "Health Issues"
-            WorkspaceEditor.Add(page)
-            retform = PastHistoryPage
-            EditorPages.Add(PastHistoryPage, "Health Issues")
-            Control_For_Focus = PastHistoryPage.txtCondition
-         Case "Vaccinations"
-            page = New FLinkContainer
-            VaccinationPage = New FVaccinations(page.VBoxEditor)
-            page.tag = "Vaccinations"
-            page.Title = "Vaccinations"
-            WorkspaceEditor.Add(page)
-            retform = VaccinationPage
-            VaccinationPage.Init(currentconsult)
-            EditorPages.Add(VaccinationPage, "Vaccinations")
-            ' Control_For_Focus = VaccinationPage.tbNewVaccine
-         Case "Workcover"
-            page = New FLinkContainer
-            ' WorkcoverPage = New FWorkCover(page.VBoxEditor)
-            workcoverNSWPage = New FWorkcoverNSW(page.VBoxEditor)
-            page.tag = "Workcover"
-            page.Title = "Workcover"
-            WorkspaceEditor.Add(page)
-            retform = workcoverNSWPage
-            ' WorkcoverPage.Init(currentconsult)
-            workcoverNSWPage.Init(currentconsult)
-            EditorPages.Add(WorkcoverNSWPage, "Workcover")
-            '  Control_For_Focus = WorkcoverPage.lvwClaims
-            Control_For_Focus = workcoverNSWPage.lvwClaims
-         Case "Requests"
-            '------------------------------------------------------------------------
-            'Create an  editor page with embedded request form and space for
-            'some progress notes underneath
-            'Note:   A patient as none or many previously ordered request forms
-            '`       i.e currentconsult!RequestForms collection
-            '        A consultation has none or many RequestForms ordered just
-            '        this consultation
-            '        currently this is pointed to by currentconsult.RequestForms
-            '------------------------------------------------------------------------
-            page = New FLinkContainer
-            RequestPage = New FRequests(page.VBoxEditor)
-            WorkspaceEditor.Add(page)
-            RequestPage.Init(currentconsult)
-            page.tag = "Requests"
-            page.title = "Requests"
-            retform = RequestPage
-            EditorPages.Add(RequestPage, "Requests")
-            Control_For_Focus = RequestPage.txtRequest
-         Case "Measurements"
-            Return 'nothing done yet
-         Case "Recalls"
-            page = New FLinkContainer
-            RecallPage = New FRecalls(page.VBoxEditor)  'add a recalls page
-            WorkspaceEditor.Add(page)
-            RecallPage.Init(currentconsult)
-            page.tag = "Recalls"
-            page.Title = "Recalls"
-            retform = RecallPage
-            EditorPages.Add(RecallPage, "Recalls")
-            '  RecallPage.FAdditionalNotesEditor.bExit = False
-            Control_For_Focus = RecallPage.txtRecallFor
-         Case "Skin Excision"
-            modUtil.NotImplemented("Skin Excision Module")
-            Return
-            page = New FLinkContainer
-            ExcisionPage = New FProcedures(page.VBoxEditor)
-            WorkspaceEditor.Add(page)
-            page.Title = "Skin Excision"
-            page.Tag = "Skin Excision"
-            ExcisionPage.Init(currentconsult)
-            retform = ExcisionPage
-            EditorPages.Add(ExcisionPage, "Skin Excision")
-            Control_For_Focus = ExcisionPage.cmbExcisionTypes
-      End Select
-   End If
-   ' If sPageName <> "webpage" Then
-   '    txtURL.text = sPageName
-   ' End If
-   
    Return retform
    
 End
@@ -3488,17 +2951,12 @@ Public Sub Certificates_Refresh()
    'fixme: centre link not done
    '---------------------------------------------------------------
    
-   Dim cert As Collection
-   Dim x As Integer 'for readability
-   Dim sMsg As String
-   
    Select Case iCertificatetype
       Case const.certificate_type_medical
          Certificates_Medical_Refresh()
       Case const.certificate_type_workcover
          Workcover_Certificates_Refresh()
       Case const.certificate_type_government
-         
    End Select
    
 End
@@ -3580,8 +3038,6 @@ Public Sub cvwLettersReceived_Refresh(Optional bRefresh As Boolean = False)
    Dim x As Integer                      'for readability = key
    Dim letters_received As Collection
    Dim bSkip As Boolean
-   Dim tag As String
-   Dim author As String
    Dim col_widths As New Integer[3]
    
    If IsNull(currentconsult) Then Return
@@ -3948,11 +3404,8 @@ End
 
 Public Sub MainToolbar_Click()
    
-   Dim StartDate As String
-   Dim LastDate As String
    Dim Vb As VBox
    Dim Page As FLinkContainer
-   Dim x As Integer
    Dim form_About As FAbout
    Dim i As Object
    
@@ -4029,10 +3482,6 @@ Public Sub Zoom(zoom As String)
    Try Object.Call(i, zoom)
 Catch
    Return
-   
-End
-
-Public Sub Zoom_Out()
    
 End
 
@@ -4165,9 +3614,6 @@ End
 
 Public Sub TabbedLists_Menu()
    
-   Dim x As Integer
-   Dim menuitem As Menu
-   Dim Document As Collection
    Dim medication As Collection
    
    If Not currentconsult Then Return
@@ -4370,8 +3816,9 @@ Public Sub Document_AuditTrail_Show(fk_document As Integer)
    shtml &= modAudit.MakeTrail("documents.documents", fk_document)
    shtml &= "</TABLE>"
    shtml &= "</BODY></HTML>"
-  ' Editor_ShowPage("browser", "Audit Trail", sHtml)
-    Editor_ShowPage("audit trail", "Audit Trail", sHtml)
+   ' Editor_ShowPage("browser", "Audit Trail", sHtml)
+   Editor_ShowPage("audit trail", "Audit Trail", sHtml)
+   
 End
 
 Public Sub Document_Edit_Metadata(documents As Collection, document_key As Integer, Optional sHtml As String) ' As Integer, user_tag As String)
@@ -4405,7 +3852,6 @@ Public Sub Document_Print(fk_document As Integer)
    '--------------------------------------------------------------
    
    Dim Document As Collection
-   Dim Filename As String
    '---------------------------------------------------
    'Is the document a result?, if not, must be a letter
    'i.e decide which collection to pull them from
@@ -4504,32 +3950,6 @@ Public Sub Referral_Letter_Display(Optional bNewTab As Boolean = False)
    Else
       Editor_ShowPage("letters written", stag, shtml, "html")
    Endif
-   
-End
-
-Public Sub Referral_Letter_Display_old()
-   '------------------------------------------------------------------------
-   ' Display a previously written referral or letter on new tab in workspace
-   '------------------------------------------------------------------------
-   
-   Dim sTag As String
-   Dim ref As Collection
-   Dim sHtml As String
-   
-   ref = currentconsult!referrals_written[cvwReferrals_key]
-   If IsNull(ref) Then Return
-   If ref!finalised = False Then
-      stag = ref!tag & " (** UNFINISHED **)"
-   Else
-      sTag = ref!tag
-   Endif
-   sHtml = ref!letter_html
-   If sHtml Begins "\\documentclass" Then
-      sHtml = ref!body_html
-   Else
-      sHtml = modConsultDBI.Images_Get(sHtml)
-   Endif
-   Editor_ShowPage("browser", sTag, sHtml)
    
 End
 
@@ -4637,7 +4057,6 @@ Public Sub Recalls_Audit_Trail(sAudit_action As String)
    'saudit_Action
    '------------------------------------------------------------
    
-   Dim audit_rows As Collection
    Dim tempstring As String
    Dim recall As Collection
    
@@ -4663,7 +4082,6 @@ End
 
 Public Sub PastHistory_Audit_Trail()
    
-   Dim audit_rows As Collection
    'FIXME: use common audit trail system
    'audit_rows = modAuditDBI.AuditTrail_Get_PastHistory("clin_history.vwpasthistoryaudit", currentconsult!patient!fk_patient, currentpasthistory!pk_pasthistory)
    'FClinical.WebBrowser_show(modAuditDBI.Audit_HTML_Construct(audit_rows, "Past History").GetData())
@@ -4709,7 +4127,6 @@ Public Sub mnuTabbedListRequest_Click()
    '- individual requests - I'll probably remove this as not found useful
    '-----------------------------------------------------------------------------------
    
-   Dim Filename As String
    Dim RequestForm As New Collection
    
    cvwRequests.MoveCurrent()
@@ -4776,7 +4193,6 @@ Public Sub mnuMedications_Click()
    Dim new_Prescription_item As Collection
    Dim prescribed As CRow
    Dim x As Integer
-   Dim sHtml As String
    
    cvwMedications.MoveCurrent()
    medication = currentconsult!medications[cvwMedications.Selection[0]]
@@ -4828,12 +4244,6 @@ Public Sub mnuMedications_Click()
       Case "prescribe selected", "prescribe all", "prescribe selected reg24", "prescribe all reg24"
          Editor_ShowPage("Scripts")            'Ensure the script module is loaded and visible
          If Last.tag = "prescribe all" Or Last.tag = "prescribe all reg24" Then  'cvwMedicals.SelectAll does not work??
-            '    cvwMedications.MoveFirst()
-            '    For x = 0 To cvwMedications.count - 1
-            '       cvwMedications.Item.Selected = True
-            '       cvwMedications.MoveNext
-            '    Next
-            ' Endif
             cvwMedications.SelectAll()
          End If
          cvwMedications.MoveFirst()
@@ -4878,7 +4288,6 @@ Public Sub mnuLettersReceived_Click()
    Dim D As Collection
    Dim x As Integer
    Dim pdfs_to_merge As Collection  'if user decides to merge pdfs
-   Dim filename As String 
    
    Select Case Last.tag
       Case "help"                          'show help for this section
@@ -5234,119 +4643,7 @@ Public Sub Document_Display(Optional bNewtab As Boolean)
             Editor_ShowPage("browser", "UNFILED", sHTML, documents[cvwLettersReceived_Key]!originator)
             Document_Edit_Metadata(Documents, cvwLettersReceived_Key, sHtml)
       End Select
-      
    End If
-   
-   '   Dec application.Busy
-   
-End
-
-Public Sub Document_Display_old(documents As Collection, document_key As Integer)
-   '---------------------------------------------------------------------------------
-   'Displays a document currently in central area until IAN does the emulated browser
-   'If document metadata is not complete, prompt user by showing the metadata
-   '---------------------------------------------------------------------------------
-   
-   Dim filename As String = documents[document_key]!source_file
-   Dim currentobservations As Collection
-   Dim shtml As String
-   
-   '  Inc application.Busy
-   Try UnFiled_Document_Metadata_Show(False)                               'remove this it could be showing if not completed from previous document
-   '-----------------------------------------------------------------------------------------------------
-   'If there is no tag_user, then this is an unfiled document - i.e document can't be filed without a tag
-   '-----------------------------------------------------------------------------------------------------
-   If Not IsNull(documents[document_key]!tag_user) Then
-      Print filename
-      Select Case File.Ext(filename)
-         Case "pdf"
-            '   Editor_ShowPage("pdf document", documents[document_key]!tag_user & ":" & Str(documents[document_key]!pk_document), filename)
-            Editor_ShowPage("document", documents[document_key]!tag_user & ":" & Str(documents[document_key]!pk_document), filename, "pdf")
-         Case "jpg", "png", "bmp", "jpeg", "tiff"
-            '   Editor_ShowPage("image", documents[document_key]!tag_user, documents[document_key]!source_file, "An Extra Tag")
-            Editor_ShowPage("document", documents[document_key]!tag_user, documents[document_key]!source_file, "image")
-         Case Else 'must be html
-            ' Editor_ShowPage("browser", documents[document_key]!tag_user, documents[document_key]!html, documents[document_key]!originator)
-            Editor_ShowPage("document", documents[document_key]!tag_user, documents[document_key]!html, "html")
-      End Select
-   Else
-      '------------------------------------------------------------------------------
-      'tag_user is null construct the page tag along with a date eg FBC (01/02/2010)
-      'Now determine if this has actually been viewed and filed by the doctor
-      'if it has, then there will be a user tag
-      'If not, then show the metadata for this document
-      '-------------------------------------------------------------------------------
-      Select Case File.Ext(filename)
-         Case "pdf"
-            Editor_ShowPage("pdf document", "UNFILED", filename)
-            Document_Edit_Metadata(Documents, document_key)
-         Case Else
-            If IsNull(documents[document_key]!html) Then        'Null = unfiled, construct this from backend
-               CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & document_key & " ORDER BY observations.observation_date, set_id")
-               shtml = modHL7Process.Construct_HTML(currentconsult!patient, documents[document_key], currentobservations, True, True, documents[document_key]!fk_lu_display_as)
-            Else
-               shtml = documents[document_key]!html
-            End If
-            Editor_ShowPage("browser", "UNFILED", sHTML, documents[document_key]!originator)
-            Document_Edit_Metadata(Documents, document_key, sHtml)
-      End Select
-      
-   End If
-   
-   '   Dec application.Busy
-   
-End
-
-Public Sub Document_Display_oldest(documents As Collection, document_key As Integer)
-   '---------------------------------------------------------------------------------
-   'Displays a document currently in central area until IAN does the emulated browser
-   'If document metadata is not complete, prompt user by showing the metadata
-   '---------------------------------------------------------------------------------
-   
-   Dim filename As String = documents[document_key]!source_file
-   Dim currentobservations As Collection
-   Dim shtml As String
-   
-   Inc application.Busy
-   Try UnFiled_Document_Metadata_Show(False)                               'remove this it could be showing if not completed from previous document
-   '-----------------------------------------------------------------------------------------------------
-   'If there is no tag_user, then this is an unfiled document - i.e document can't be filed without a tag
-   '-----------------------------------------------------------------------------------------------------
-   If Not IsNull(documents[document_key]!tag_user) Then
-      Print filename
-      Select Case File.Ext(filename)
-         Case "pdf"
-            Editor_ShowPage("pdf document", documents[document_key]!tag_user & ":" & Str(documents[document_key]!pk_document), filename)
-         Case "jpg", "png", "bmp", "jpeg", "tiff"
-            Editor_ShowPage("image", documents[document_key]!tag_user, documents[document_key]!source_file, "An Extra Tag")
-         Case Else 'must be html
-            Editor_ShowPage("browser", documents[document_key]!tag_user, documents[document_key]!html, documents[document_key]!originator)
-      End Select
-   Else
-      '------------------------------------------------------------------------------
-      'tag_user is null construct the page tag along with a date eg FBC (01/02/2010)
-      'Now determine if this has actually been viewed and filed by the doctor
-      'if it has, then there will be a user tag
-      'If not, then show the metadata for this document
-      '-------------------------------------------------------------------------------
-      Select Case File.Ext(filename)
-         Case "pdf"
-            Editor_ShowPage("pdf document", "UNFILED", filename)
-            Document_Edit_Metadata(Documents, document_key)
-         Case Else
-            If IsNull(documents[document_key]!html) Then        'Null = unfiled, construct this from backend
-               CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & document_key & " ORDER BY observations.observation_date, set_id")
-               shtml = modHL7Process.Construct_HTML(currentconsult!patient, documents[document_key], currentobservations, True, True, documents[document_key]!fk_lu_display_as)
-            Else
-               shtml = documents[document_key]!html
-            End If
-            Editor_ShowPage("browser", "UNFILED", sHTML, documents[document_key]!originator)
-            Document_Edit_Metadata(Documents, document_key, sHtml)
-      End Select
-      
-   End If
-   
-   Dec application.Busy
    
 End
 
@@ -5400,83 +4697,6 @@ Public Sub Inbox_showResult(Optional bNewTab As Boolean = False)
             Else  
                Try Editor_ShowPage("result", page_tag, currentconsult!results_received[cvwResultsReceived_Key]!html, "html")
             End If   
-      End Select
-   Else
-      '------------------------------------------------------------------------------
-      'tag_user is null construct the page tag along with a date eg FBC (01/02/2010)
-      'Now determine if this has actually been viewed and filed by the doctor
-      'if it has, then there will be a user tag
-      'If not, then show the metadata for this document
-      '-------------------------------------------------------------------------------
-      FMetaData.Init("Allocated Documents")                                      'gui elements for filing, not allocating like in scanning
-      SelectedDocument = currentconsult!results_received[cvwResultsReceived_Key]    'makes typing easier
-      '-------------------------------------------------------------------
-      'Now, if a HL7 result, if no html - ie not yet file, create the html
-      '------------------------------------------------------------------
-      Select Case file_extension
-         Case "pdf"
-            Editor_ShowPage("pdf document", "UNFILED", filename)
-         Case Else
-            bExcludeFTReport = SelectedDocument!exclude_ft_report
-            bExcludePIT = SelectedDocument!exclude_pit
-            fgc = SelectedDocument!abnormals_foreground_color
-            bgc = SelectedDocument!abnormals_background_color
-            display_style = SelectedDocument!fk_lu_message_display_style
-            CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & SelectedDocument!pk_document & " ORDER BY observations.observation_date, set_id")
-            shtml = modHL7Process.Construct_HTML(currentconsult!patient, SelectedDocument, currentobservations, bExcludePIT, bExcludeFTReport, display_style, fgc, bgc)
-            sHtml = Replace(shtml, "%filingas%", "")
-            sHtml = Replace(shtml, "** UNFILED **:", "")
-            page_tag = "UNFILED RESULT (" & currentconsult!results_received[cvwResultsReceived_Key]!date_created & ")"
-            Editor_ShowPage("browser", page_tag, sHtml)
-      End Select
-      With FMetaData
-         .Edit(currentconsult!results_received, cvwResultsReceived_Key)         'display metadata for this document
-         .bexit = True
-         .txtUserObservationName.text = cvwResults[cvwResultsReceived_Key][1]
-         .txtUserObservationName.pos = 0    'ensure start of line showing
-         .Document_HTML_Set(sHtml)
-         .HBox_Save.visible = True                                           'contains the save button
-         .hBox_Urgency.Visible = False                                       'not needed as already in the patients notes
-         .bExit = False
-      End With
-      UnFiled_Document_Metadata_Show(True)                                   'set up FClinical to show FMetadata
-   End If
-   
-End
-
-Public Sub Inbox_showResult_old()
-   '-------------------------------------------------------------------------------------
-   'Display a result - this could have been received as HL7 or as as scanned pdf or image
-   'It may or may not have been 'filed' - ie viewed in the users inbox
-   '-------------------------------------------------------------------------------------
-   
-   Dim bExcludeFTReport As Boolean
-   Dim bExcludePIT As Boolean
-   Dim display_style As Integer = const.Document_Display_As_Result
-   Dim fgc As Integer
-   Dim bgc As Integer
-   Dim sHtml As String
-   Dim SelectedDocument As Collection
-   Dim filename As String
-   Dim file_extension As String
-   Dim page_tag As String
-   
-   If cvwResults.count = 0 Then Return
-   Try UnFiled_Document_Metadata_Show(False)                                     'remove this it could be showing if not completed from previous document
-   '---------------------------------------------------------
-   'If this document has been filed, show the pdf or the html
-   '---------------------------------------------------------
-   filename = currentconsult!results_received[cvwResultsReceived_Key]!source_file
-   file_extension = Lower(File.Ext(currentconsult!results_received[cvwResultsReceived_Key]!source_file))
-   If Not IsNull(currentconsult!results_received[cvwResultsReceived_Key]!tag_user) Then
-      Select Case file_extension
-         Case "pdf"
-            Editor_ShowPage("document", currentconsult!results_received[cvwResultsReceived_Key]!tag_user & ":" & Str(currentconsult!results_received[cvwResultsReceived_Key]!pk_document), filename)
-         Case Else
-            page_tag = currentconsult!results_received[cvwResultsReceived_Key]!tag_user
-            If Right(page_tag) = ";" Then page_tag = Left(page_tag, Len(page_tag) - 1)
-            page_tag &= " (" & Format(currentconsult!results_received[cvwResultsReceived_Key]!date_created) & ":" & Str(currentconsult!results_received[cvwResultsReceived_Key]!pk_document) & ")"
-            Try Editor_ShowPage("browser", page_tag, currentconsult!results_received[cvwResultsReceived_Key]!html, currentconsult!results_received[cvwResultsReceived_Key]!organisation)
       End Select
    Else
       '------------------------------------------------------------------------------
@@ -5599,28 +4819,6 @@ Public Sub UnFiled_Document_Metadata_Show(bShow As Boolean)
    
 End
 
-Public Sub UnFiled_Document_Metadata_Show_old(bShow As Boolean)
-   '---------------------------------------------------------
-   'Show or remove the unfiled document metadata gui elements
-   '---------------------------------------------------------
-   
-   FMetaData.visible = bShow
-   VboxActiveProblemList.Visible = Not FMetaData.visible
-   ' Vbox_MiniGraphs.Visible = Not FMetaData.visible
-   ScratchPad.Visible = Not FMetaData.visible  'tasks aka scratchpad and FMetadata live on same box
-   VBox2.visible = Not FMetaData.visible       'holds the mini-graphs
-   Vbox_Decision_Support.visible = False  
-   If bShow Then
-      VsplitClinical_RightPane.Layout = Settings["FClinical/VsplitClinical_RightPane_Metadata"]
-      '  VsplitClinical_RightPane.Layout = [3, 0, 2, 0]
-      VsplitClinical_RightPane.Layout = [3, 2]
-   Else
-      Settings["FClinical/VsplitClinical_RightPane_Metadata"] = VsplitClinical_RightPane.Layout
-      VsplitClinical_RightPane.Layout = Settings["FClinical/VsplitClinical_RightPane_Metadata"]
-   Endif
-   
-End
-
 Public Sub TabbedLists_Select()
    '-------------------------------------------------------------------------------------
    'NOTE the effect of Select and Click on a list are different
@@ -5630,10 +4828,6 @@ Public Sub TabbedLists_Select()
    '     generated when the user clicks on a list
    '     For some lists, we only want to set the underlying collection member e.g Recalls
    '-------------------------------------------------------------------------------------
-   
-   Dim Astring As String
-   Dim interval As Integer = 0
-   Dim RequestForm As New Collection
    
    If IsNull(currentconsult) Then Return
    Last.MoveCurrent()   'set internal cursor
@@ -5682,8 +4876,6 @@ Public Sub Measurements_Make_Graph()
    '                 currently highlighted graph is updated  when progress notes saved
    '----------------------------------------------------------------------------------
    
-   Dim loinc As String
-   Dim currentresult As Collection
    Dim tag As String
    Dim MD As Collection
    
@@ -5762,7 +4954,6 @@ Public Sub Measurement_Graph(loinc As String, Measurement As String)
    '-----------------------------------------------------------
    
    Dim Interval As Integer = 0
-   Dim Astring As String
    Dim GraphableItem_Data As New Collection
    
    If IsInteger(txtMeasurementShowLastMonths.text) Then
@@ -5845,7 +5036,6 @@ Public Sub mnuToolButtons_Click()
    'and deletes the appropriate button - probably an easier way!
    '----------------------------------------------------------------------
    
-   Dim c As Collection
    Dim hCtrl As Control
    Dim tb As ToolButton
    
@@ -5878,7 +5068,6 @@ Public Sub tbSections_Click()
    '------------------------------------------------------------------------
    
    Dim templ As CTemplate
-   Dim sstring As String
    
    If Not currentconsult Then Return
    If const.Clinical_Toolbuttons.Exist(Last.tag) Then
@@ -6009,12 +5198,9 @@ Public Sub WorkspaceEditor_Activate()
    Dim hCtrl As Control
    Dim page As FLinkContainer
    Dim frmConsult As FProgressNotePage
-   Dim tooltip As String
    
    For Each page In WorkspaceEditor.Windows
       If page = WorkspaceEditor.ActiveWindow Then
-         '    txtURL.text = page.tag
-         
          For Each hctrl In page.VBoxEditor.Children
             If hctrl Is Form Then
                'Disable all - will be enabled as needed
@@ -6030,7 +5216,6 @@ Public Sub WorkspaceEditor_Activate()
                tbRefresh.Tooltip = ""
                tbEdit.Enabled = False
                tbEdit.Tooltip = ""
-               
                Select Case hctrl.Name
                   Case "FDocumentViewer"
                      tbPrint.Enabled = True
@@ -6065,6 +5250,8 @@ Public Sub WorkspaceEditor_Activate()
                      tbNew.Tooltip = "Add new INR"
                      tbSave.Enabled = True
                      tbSave.Tooltip = "Save INR"
+                     tbEdit.Enabled = True
+                     tbEdit.Tooltip = "Edit INR Plan"
                   Case "FPsychoSocialHistory"
                      tbSave.ToolTip = "Save Social History"
                      tbSave.Enabled = True
@@ -6108,8 +5295,6 @@ Public Sub WorkspaceEditor_Activate()
                   Case "FCarePlanning"
                      tbSave.ToolTip = "Save Care Plan Item"
                      tbSave.Enabled = True
-                     ' tbNew.tooltip = "New Care Plan Item"
-                     ' tbNew.Enabled = True
                   Case "FVaccinations"
                      tbSave.ToolTip = "Save Vaccination"
                      tbSave.Enabled = True
@@ -6122,7 +5307,6 @@ Public Sub WorkspaceEditor_Activate()
                      tbPreview.Enabled = True
                      tbPreview.Tooltip = "Preview Request Form"
                      tbSave.ToolTip = "Save Request Form"
-                     ' tbSave.Enabled = True
                      tbNew.tooltip = "New Request Form"
                      tbNew.Enabled = True
                      tbPrint.Tooltip = "Print Request Form"
@@ -6202,8 +5386,6 @@ Public Sub WorkspaceEditor_Activate()
                   Case "FPrescriptions"
                      tbNew.Tooltip = "New Script Item"
                      tbNew.Enabled = True
-                     ' tbPreview.Tooltip = "Preview Medical Certificate"
-                     ' tbPreview.Enabled = True
                      tbPrint.tooltip = "Print all scripts"
                      tbPrint.Enabled = True
                End Select
@@ -6567,9 +5749,7 @@ Public Sub mnuHelp_Click()
 End
 
 Public Sub pnlToolButtons_Drop()
-   
-   Dim tb As ToolButton
-   Dim height As Integer
+
    Dim hCtrl As Control
    
    For Each hctrl In Last.Children
@@ -6725,9 +5905,7 @@ End
 Public Sub mnuImages_Click()
    
    Dim fk_image As Integer
-   Dim PatientPicture As Collection
    Dim NewImage As Image
-   Dim sql As String
    Dim tempfile As String
    
    Select Case Last.tag
@@ -6786,11 +5964,6 @@ Public Sub lcImages_Click()
    'User has clicked on one row of the list container - hence selecting a patient
    'put that patient into the current patient collection, and photo into patient_photo
    '----------------------------------------------------------------------------------
-   
-   Dim hctrl As Control
-   Dim PB As PictureBox
-   Dim HB As HBox
-   Dim Tl As TextLabel
    Dim CP As Collection
    
    If lcImages.Count Then
@@ -6804,12 +5977,6 @@ Public Sub lcImages_Click()
       Endif
       Print CP!pk, " is the key"
    Endif
-   
-End
-
-Public Sub ButtonBox1_Menu()
-   
-   mnuHelp.Popup()
    
 End
 
@@ -6863,7 +6030,6 @@ Public Sub PregCalc_tbEditArea_Click()
       Case "insert"
          FGeneralNotesEditor.teNotes.Insert(".sometext")
          FGeneralNotesEditor.teNotes.richtext = Replace$(FGeneralNotesEditor.teNotes.richtext, ".sometext", PregCalc.Dates_Summary_GetRichText())
-         
       Case "insert revised"
          modUtil.NotImplemented("Inserting revised dates into notes")
    End Select
@@ -6878,16 +6044,6 @@ Public Sub cmbSearch_Click()
    Consult_Save()
    Gui_Clear()
    Patients_Find(Patients_Seen[cmbSearch.index]!fk_patient)
-   
-End
-
-Public Sub Button1_Click()
-   'temporary for richard only
-   
-   If IsNull(currentconsult) Then Return
-   modMeasurementsDBI.Run_Measurement_Fix(currentconsult!progress_notes, currentconsult!patient!fk_patient)
-   cvwMeasurementFavorites.MoveCurrent()
-   Measurement_Graph("", cvwMeasurementFavorites.Item.text)
    
 End
 
@@ -6913,9 +6069,9 @@ Public Sub txtOccupation_keypress()
    'User typing in a new occupation, only allow a-z key presses
    '-----------------------------------------------------------
    
-   If modUtil.AllowKeys(const.AllowKeys_AtoZ, key.code) = False Then
+   If modUtil.AllowKeys(const.AllowKeys_Letters, key.code) = False Then
       Stop Event
-      Return
+      Last.SetFocus
    End If
    
 End
@@ -6926,30 +6082,115 @@ Public Sub txtOccupation_LostFocus()
    'Save the occupation if it is not an empty string
    '---------------------------------------------------------------
    
+   With Last
+      .Background = txtAge.Background
+      .pos = 0
+      .ReadOnly = True
+      If .text = "" Then
+         .text = "Occupation?"
+      End If
+   End With
+   bExit = True    'prevents re-entry when spell checking   
    Occupation_Save()
+   bExit = False  
    
 End
 
 Public Sub Occupation_Save()
-   '------------------------------
-   'Saves the patient's occupation
-   '------------------------------
+   '-------------------------------------------------------------------------------------
+   'Saves the patient's occupation... quite complex to make the task quick for the user
+   'FIXME put all the spelling stuff somewhere else across all modules
+   '*Allows entry of an occupation
+   '*Auto-spell checks this - pops up dialog if mistakes
+   '*Checks if occupation exists in occupational history
+   '*Asks if user wants to make this the default if it does, otherwise becomes default
+   '*Changes appropriate back-end flags to make all other occupations not main or current
+   '-------------------------------------------------------------------------------------
    
+   Dim OH As Collection
+   Dim OC As Collection
+   Dim occupational_history As CRow
    Dim fk_occupation As Integer
+   Dim sMsg As String
    
+   If Bexit Then Return
    If Trim(txtOccupation.text) <> "" Then
-      fk_occupation = modCommonDBI.Occupation_Save(Trim(txtOccupation.text))
-      modDBConnect.update("contacts.data_persons", Null, ["pk": currentconsult!patient!fk_person, "fk_occupation": fk_occupation])
+      SpellCheck_TextBox(txtOccupation)                                  'popup spelling correction dialog if needed
+      OC = modCommonDBI.Occupation_Get(Trim(txtOccupation.text))         'check if occupation is in the database
+      If Not IsNull(OC) Then                                             'if it is retrieive the key
+         fk_occupation = OC!pk
+      Else
+         smsg = "The occupation:\n\n " & Trim(txtOccupation.text) & "\n\nwas not found in the database.\n\n"
+         "Please check the spelling and if ok confirm you wish to add this occupation to the database.\n\n"
+         "Note also that this occupation will be registered as the current and main occupation. You can "
+         "always go back and change any  of this in the occupations module."
+         If Message.Question(sMsg, "Yes - Add Occupation", "Cancel") = 2 Then
+            txtOccupation.SetFocus
+            Return
+         Else
+            fk_occupation = modCommonDBI.Occupation_Save(Lower(Trim(txtOccupation.text)))
+         End If
+      Endif
+      '---------------------------------------------------------------------- 
+      'Check this occupation is not already in  the patient's occupations list
+      '-----------------------------------------------------------------------
+      For Each OH In currentconsult!occupational_history
+         If OH!fk_occupation = fk_occupation Then  
+            sMsg = "The patient already is listed as having the occupation you have entered: '"
+            sMsg &= Trim(txtOccupation.text) & "'\n\n"
+            sMsg &= "Do you wish to have this occupation displayed as the patient's current and main occupation?"
+            Message.Title = "Occupation exists in patient's record"
+            Select Case Message.Question(sMsg, "Yes", "No")
+               Case 1  'Yes, have to make all the others inactive  
+                  modOccupationalHistoryDBI.Patient_Occupations_Mark_NotCurrentOrMain(currentconsult)
+                  modOccupationalHistoryDBI.Patient_Occupation_Make_Current_And_Main(OH!fk_occupational_history)
+                  modContactsDBI.Person_Set_occupation(currentconsult!patient!fk_person, fk_occupation)
+                  modDBConnect.CommitTrans()
+               Case 2 'No, then reset the default occupation in the patients view.
+                  If Not IsNull(currentconsult!patient!occupation) Then
+                     txtOccupation.Text = UCase(Left(currentconsult!patient!occupation, 1)) & Right(currentconsult!patient!occupation, Len(currentconsult!patient!occupation) - 1)
+                     If currentconsult!patient!retired Then
+                        txtOccupation.text &= " (Retired)"
+                        txtOccupation.pos = 0
+                     End If
+                  End If
+            End Select
+            Return
+         Endif
+      Next
+      '------------------------------------------------------------------------------------------------------
+      'Ok, not in their history
+      'First, mark all other occupations in their occupational history as not current and not main occupation
+      '------------------------------------------------------------------------------------------------------
+      modOccupationalHistoryDBI.Patient_Occupations_Mark_NotCurrentOrMain(currentconsult)
+      '--------------------------------------------------------------------------
+      'Now save the new occupation for this patient
+      'Bizaare as it may seem the occupation is kept in two places. argue with me
+      'and you can then fix the code base (historical)
+      '--------------------------------------------------------------------------
+      modContactsDBI.Person_Set_occupation(currentconsult!patient!fk_person, fk_occupation)
+      sMsg = "New occupation noted:" & modStrings.CapitaliseWord(Trim(txtOccupation.text))
+      occupational_history = New CRow   
+      occupational_history!fk_occupation = fk_occupation
+      occupational_history!fk_consult = currentconsult.GetPK()
+      occupational_history!current = True
+      occupational_history!main_occupation = True  
+      occupational_history!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sMsg, const.cSection_OccupationalHistory, -1, "occupations", 0, False)
+      occupational_history.Save("clin_history.occupational_history", "fk_occupational_history")
       modDBConnect.CommitTrans()
+      PreviousNotes_Refresh
+      Health_Summary_Display
       currentconsult!patient!fk_occupation = fk_occupation
       currentconsult!patient!occupation = modStrings.CapitaliseWord(txtOccupation.text)
+      currentconsult.Refresh("occupational_history")
       With Last
          .Background = txtAge.Background
          .ReadOnly = True
       End With
+      Try FOccupation.Occupations_Reload   'if this form is open reload the occupations list
    Else
-      If Not IsNull(currentconsult!patient!occupation) Then
-         txtOccupation.text = currentconsult!patienBrandst!occupation
+      If Not IsNull(currentconsult!patient!occupation) Then 'txtOccupation is blank, try and replace with existing one
+         txtOccupation.text = currentconsult!patient!occupation
       Else
          txtOccupation.text = "Occupation?"
       Endif
@@ -6978,7 +6219,7 @@ End
 
 Public Sub Hsplit_ToolBar_Lists_Resize()
    
-   If Not IsNull(currentconsult) Then Allergies_Refresh()
+   If Not IsNull(currentconsult) Then Allergies_Sensitivities_Refresh()
    
 End
 
@@ -7084,8 +6325,6 @@ Public Sub cvwResults_Menu()
    'key is set cvwresultsRecieved_key in cvwResults_select()
    
    Dim Document As Collection
-   Dim x As Integer
-   Dim bMultiSelected As Boolean
    Dim mnu As Menu
    
    If Not cvwResults.count Then Return
@@ -7136,11 +6375,9 @@ Public Sub tbJoin_Click()
    '----------------------------------------------
    
    Dim pdf_files As New Collection
-   Dim pdf_file As Collection
    Dim fname As String
    Dim local_fname As String
    Dim remote_fname As String
-   Dim file_to_join As String
    Dim x As Integer
    Dim unique_filename As String
    Dim D As New Crow
@@ -7251,5 +6488,75 @@ Public Sub picPatient_Menu()
    
    If IsNull(currentconsult) Then Return 
    mnuImages.Popup()
+   
+End
+
+Public Sub gvAllergies_Menu()
+   '-------------------------------------------------------------------------------
+   'popup a menu over the allergies list on the toolbar
+   'Even if no allergies or sensitivities exist there will be
+   'one row in the grid saying:
+   'NO RECORD OF PATIENT BEING ASKED ABOUT ALLERGIES
+   '(see Allergies_Sensitivities_Refresh()
+   'if no allergies exist then give the user a quick option toadd to the allergies
+   'table and record that they have asked patient and 'nil known' will be shown
+   'i.e expose the menu option that allows this
+   '---------------------------------------------------
+   
+   If currentconsult!allergies.count Then                                 'have at least an allergy or sensitivity
+      mnuToolbarAllergies_NoAllergiesSensitivities.Enabled = False       'don't need the quick 'nil known allergies/sensitivities menu option
+   Endif
+   If gvAllergies.Rows.count And currentconsult!allergies.count = 0 Then   'nothing recorded yet?
+      mnuToolbarAllergies_NoAllergiesSensitivities.Enabled = True       'allow the quick add 'nil known' menu option
+   End If   
+   mnuToolbarAllergies.Popup                                               'popup the menu
+   
+End
+
+Public Sub mnuToolbarAllergies_Click()
+   '------------------------------------------------------------------------- 
+   'User has clicked on the popup menu over the allergies grid on the toolbar
+   'Either change the font, if quick-insert 'nil known'
+   'see the FIXME comments regarding the font
+   '------------------------------------------------------------------------- 
+   
+   Dim allergy As CRow  
+   Dim ProgressNote As CRow   
+   
+   Select Case Last.tag
+      Case "font"                                               'change the default font **Bug will not refresh until program restarts FIND THIS FIXME
+         modUtil.Columnview_SetFont(gvAllergies, "FClinical")
+      Case "nil known"
+         Message.title = "Auto-Enter No Known Allergies"
+         If Message.Question("Please confirm that you have asked the patient they have no known allergies or sensitivites.\n\nOnce done you may click 'Confirm' to automatically save this information.", "Confirm - No Known Allergies", "No") = 2 Then Return   
+         allergy = New CRow
+         allergy!fk_consult = currentconsult.GetPK()
+         allergy!nil_allergies_sensitivities = True
+         ProgressNote = New CRow 
+         ProgressNote!fk_consult = currentconsult.GetPK()
+         ProgressNote!notes = "Allergies: patient questioned and reports nil known."
+         ProgressNote!fk_section = const.cSection_allergies
+         ProgressNote!fk_audit_action = const.cAuditAction_Insert                 
+         ProgressNote!problem = "Allergies"
+         ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+         allergy!fk_progressnote = progressnote!fk_progressnote
+         allergy.Save("clin_allergies.allergies", "fk_allergy")
+         modDBConnect.CommitTrans()
+         Allergies_Sensitivities_Refresh                        'reload the allergies/grid
+         PreviousNotes_Refresh()                                'refresh progress notes if showing
+         Refresh_Section_Instance(const.cSection_HealthSummary) 'Refresh the health summary if showing
+         Try FAllergy.Allergies_Reload_External                 'If the allergy module showing, reload the allergies list there
+   End Select
+   
+End
+
+Public Sub SpellCheck_TextBox(tb As TextBox)
+   
+   bexit = True    'fixme shouldn't need this flag - check all category spell checking throughout program
+   teForSpelling.text = tb.text
+   bexit = False
+   
+   SpellChecker.init(tb)
+   SpellChecker.StartSpelling()
    
 End

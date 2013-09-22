@@ -34,38 +34,21 @@
 Private persons As Collection
 Private person As Collection
 Private Occupations As Collection 
-Private country_code As String
-Private fk_ethnicity As Integer
-Private fk_language As Integer
-Private addresses As Collection
-Private Views_addresses As Collection
 Private bExit As Boolean                            'general flag to prevent re-entry into routines
-Private bNewCommunication As Integer                'true if adding a new communication
 Private bEmployeeDisplayed As Boolean               'True if adding or displaying existing employee
 Private sLastSearchCriteria As String               'last criteria used to create the viewing list
 Private iTimer_count As Integer
 Private sSearchMode As String                       'search for e.g firstname, surname, category, occupation, organisation
-Private iCommunication As Integer
-Private listview1_key As Integer
 Private age As Integer
-Private Branches As Collection                      'holds a collection of cBranch = 1 row in the viewing list
 Private Suburbs As Collection
 Private Suburb As Collection
-Private Members As Collection
 Private Member As Collection
 Private The_Collection As Collection
 Private sMsgGlobal As String
 Private Categories As Collection
 Private category As Collection
-Private aString As String                      'a collection or towns or suburbs
 Private SpellChecker As ClskSpell
-Private iSecurityType As Integer  'clinical/clerical or both
-Private cSecurityTypeClinical As Integer = 0
-Private cSecurityTypeClerical As Integer = 1
-Private cSecurityTypeBoth As Integer = 3
 Private bKeyValid As Boolean
-Private usingWizard As Boolean 'If true this form has been loaded form the installation wizard
-Private fk_staff As Integer
 Private fk_organisation As Integer
 Private fk_branch As Integer
 Private fk_address As Integer
@@ -78,14 +61,8 @@ Private sEmbedded_In_Form As String          'if not "" then the name of the for
 Private organisation As Collection
 Private Organisations As Collection
 Private row_in_view As Collection 'current row we are on
-Private branch As Collection
-Private clinic As Collection
-Private employee As Collection
-Private employees As Collection
-Private address As Collection
 Private bOrganisationChanged As Boolean
 Private bEmployeeChanged As Boolean
-Private HtmlMessageBox As FGenericHTMLMessage
 Private bEmbedded As Boolean
 Private textboxForSpellCheck As TextBox
 Private bInstringSearch As Boolean 
@@ -381,9 +358,9 @@ Public Sub Persons_Show_Existing()
       .Visible = False  
    End With
    If Trim(txtEmployeesurname.text) = "" Then Return
-   Persons = modContactsDBI.Person_Get(Trim(txtEmployeesurname.text), const.contacttype_person)
-   Persons.Remove("sql_in_english")
-   persons = modUtil.Copy_Collection_Keyed_Sequentially(persons)      'don't change these 3 lines or won't work
+   ' Persons = modContactsDBI.Person_Get(Trim(txtEmployeesurname.text), const.contacttype_person)
+   Persons = modContactsDBI.Employee_Get_By_Surname(Trim(txtEmployeesurname.text))
+   persons = modUtil.Copy_Collection_Keyed_Sequentially(persons)      'don't change these 2 lines or won't work
    If Persons.count Then
       For Each Person In Persons
          listview1.Add(listview1.count, Person!firstname & " " & Person!surname & " (" & Person!occupation & ")")
@@ -408,7 +385,7 @@ Public Sub Persons_Existing_Select(P As Collection)
    txtEmployeeFirstname.text = P!firstname
    txtOccupation.text = P!occupation
    Try fk_occupation = P!fk_occupation
-   fk_person = P!fk_person
+   fk_person = P!pk_person
    Try cmbEmployeeSex.index = P!fk_sex
    Try cmbEmployeeTitle = P!fk_title
    If txtOccupation.text = "" Then
@@ -422,6 +399,8 @@ Public Sub Persons_Existing_Select(P As Collection)
       .Set_Owner("Employee " & modUtil.Ucase_Word_First_Letter(row_in_view!firstname & " " & row_in_view!surname)) 'used in popup dialogs
       .comms_Load(modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.person_comms_get(fk_person)))          'show comms for the person
    End With
+Catch
+   bExit = False  
    
 End
 
@@ -584,9 +563,6 @@ Public Sub Organisation_Employee_Save()
    Dim branch As CRow
    Dim address As CRow
    Dim category As CRow
-   Dim communication As CRow
-   Dim link_branches_comm As CRow
-   Dim link_employee_comm As CRow
    Dim R As Result
    Dim occupation As CRow
    Dim sSearchCriteria As String = Trim(txtSearchOrganisations_or_Persons.text)
@@ -1694,7 +1670,7 @@ Public Sub tbContacts_Click()
    '-----------------------------------------------
    'one of the three buttons on the top bar clicked
    '-----------------------------------------------   
-
+   
    Select Case Last.tag
       Case "new organisation"
          ' Check_Unsaved_Data
@@ -2255,18 +2231,12 @@ Public Sub Persons_List_Fill()
    '- Works at Linguard private hospital
    '- Private rooms at:
    '---------------------------  
-   
-   Dim iKey As Integer
-   
-   Dim comm As Collection
    Dim sTemp As String
-   Dim sStatusMessage As String
    Dim person As Collection
    Dim iLastperson_pk As Integer
    Dim x As Integer
    Dim sText As String 'text of the whole grid cell
    Dim sWorkPlacesOrganisations As String    'if not "" then = addresses the person  works at not private
-   Dim sWorkPlaces As String
    Dim DeadOrRetired As Boolean
    
    With gvwPersons
@@ -2351,99 +2321,6 @@ Public Sub Persons_List_Fill()
    
 End
 
-Public Sub Persons_List_Fill_old()
-   'From the search criteria in txtSearchOrganisations_or_Persons etc
-   'display the details from a persons view of the data e.g
-   'Dr Joe Blogs
-   '- cardiologist
-   '- Works at John Hunter Hospital cardiovacular dept
-   '- Works at Linguard private hospital
-   '- Private rooms at:
-   '---------------------------  
-   
-   Dim iKey As Integer
-   
-   Dim comm As Collection
-   Dim sTemp As String
-   Dim sStatusMessage As String
-   Dim person As Collection
-   Dim iLastperson_pk As Integer
-   Dim x As Integer
-   Dim sText As String 'text of the whole grid cell
-   Dim sWorkPlacesOrganisations As String    'if not "" then = addresses the person  works at not private
-   Dim sWorkPlaces As String
-   Dim DeadOrRetired As Boolean
-   
-   With gvwPersons
-      .Clear                           'clear current list persons
-      .Columns.count = 1
-      .Rows.count = 0
-   End With
-   If persons.count Then
-      Try persons.Remove("sql_in_english") 'ian included this for FClinical patient search
-      persons = modUtil.Copy_Collection_Keyed_Sequentially(persons)
-      For Each person In persons
-         DeadOrRetired = False  
-         Inc gvwPersons.Rows.Count
-         gvwPersons.Rows[x].Height = -1
-         If iLastperson_pk <> person!fk_person Then
-            sText = "<B>" & person!surname & "  " & person!firstname & "</B>"
-            iLastperson_pk = person!fk_person
-            If person!fk_address Then
-               sTemp = Trim(Trim(person!street1 & " " & person!street2) & " " & person!town & " " & person!state & " " & person!postcode)
-               sText &= "<BR> - " & sTemp
-            Else
-               sText &= "<BR> - no private address in the database"
-            Endif
-            If person!fk_occupation Then
-               sText &= "<BR> - " & person!occupation
-            Endif
-            If person!retired Then
-               sText &= " - <I><small>*** RETIRED *** </small></I>"
-               DeadOrRetired = True
-            Endif
-            If person!deceased Then
-               sText &= " - <I><small>*** DECEASED *** </small></I>"
-               DeadOrRetired = True   
-            Endif
-            sWorkPlacesOrganisations = ""
-            If Not IsNull(organisations) 'is null if reloading a newly added person
-               For Each organisation In organisations
-                  If organisation!fk_person = person!fk_person Then
-                     If organisation!fk_status <> const.StaffStatus_LeftOrganisation Then 
-                        If IsNull(person!fk_address) Then   
-                           sWorkPlacesOrganisations &= "<BR> - works at "
-                        Else
-                           If Not DeadOrRetired Then
-                              sWorkPlacesOrganisations &= "<BR> - Also works at "
-                           Else
-                              sWorkPlacesOrganisations &= "<BR> - Used to work at "
-                           End If
-                        End If
-                        sWorkPlacesOrganisations &= organisation!organisation & " - " & organisation!branch
-                     End If 
-                  Endif
-               Next
-            End If   
-            sText &= sWorkPlacesOrganisations
-            With gvwPersons[x, 0]
-               .WordWrap = True
-               .Richtext = sText
-               .Alignment = Align.Left
-            End With
-            gvwPersons.Rows[x].Height = -1
-            Inc x
-         Else
-            Print "same person"
-         End If
-      Next
-      gvwPersons.Enabled = True                       'enable list for clicking on
-   End If
-   lblMeasure.font = gvwPersons.Font
-   '  modUtil.Gridview_Columns_Set_Size(gvwPersons, lblmeasure)
-   
-End
-
 Public Sub Person_Get_By_pk()
    
    persons = modContactsDBI.Person_excluding_patients_Get_By_pk(form_persons.fk_person)
@@ -2489,11 +2366,7 @@ Public Sub Person_Display()
    'Saving is done on the embedded form form_persons
    'but via the tbSave on this form
    '---------------------------------------------------
-   
-   Dim bFoundPerson As Boolean
-   Dim x As Integer
-   Dim row As Collection
-   
+    
    If gvwPersons.rows.Count = 0 Or gvwPersons.row = -1 Then Return
    '  Check_For_Unsaved_Data()
    '-------------------------------------------------

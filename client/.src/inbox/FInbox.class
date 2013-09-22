@@ -140,13 +140,12 @@ Private Form_Graph As FGraph
 Private Form_ActionDocument As FActionDocument           'This form contains minimum 1 (FArchiveMetadata) actioning form
 Private FPreview_HtmlDocument As FHtmlViewer             'The main html viewer for hl7
 Private PDForm As FPdf                                   'View any PDF files here
-Private FAuditTrail As New FHtmlViewer                   'Not implemented - intended to allow viewing of audit trail on documents
 Private FMessage As FGenericHTMLMessage                  'popup message box
 Private Form_Recall As FRecalls
 Private Form_HealthIssues As FPastHistory
 Public Form_PreviousNotes As FProgressNotesViewer_New
 Private Form_ProgressNotes As FProgressNotePage
-Private Form_Prescriptions As FPrescriptions
+Private Form_INRs As FInr
 
 Static Private Form_Inbox As FInbox                'allow access of this form globally
 
@@ -176,6 +175,7 @@ Static Public Sub Switch_tab(iTab As Integer)
    'called from FRecall to when a recall is saved to save me having
    'to click on the document tab all the time when 99% of the time
    'that's what I want to do after I've added recall in the inbox
+   'FIXME currently does not see to work
    '----------------------------------------------------------------
    
    form_inbox.Tabstrip1.index = iTab
@@ -369,7 +369,7 @@ Public Sub txtUserObservationName_Activate()
    
    Stop Event
    If Last.tag = "user name" Then
-      tbFile_Click()
+      Document_File("file")
    Endif
    
 End
@@ -691,14 +691,8 @@ Public Sub gvwInboxDocuments_Select()
    'This routine does everything
    '-------------------------------------------------------------------------------
    
-   Dim request As Collection
    Dim Guessed_user_Name As Collection
-   Dim item As Collection
-   Dim items As Collection
    Dim file_ext As String
-   Dim observation As Collection
-   Dim sString As String
-   Dim x As Integer
    
    If bExit Or gvwInboxDocuments.rows.count = 0 Then Return        'No documents, show nothing
    Tabstrip1.index = Documents_tab                                 'Make sure we are actually on the documents tab
@@ -718,7 +712,6 @@ Public Sub gvwInboxDocuments_Select()
    tlMissingProvider.Visible = False
    Form_Graph.Visible = False
    tbFile.Enabled = True
-   ' iSelectedDocument = gvwInboxDocuments.Row                      'key to Selected_Inbox!documents
    SelectedDocument = Selected_Inbox!documents[gvwInboxDocuments.Row]  'set current document
    fk_document = SelectedDocument!pk_document
    file_ext = File.Ext(SelectedDocument!source_file)
@@ -862,8 +855,7 @@ Public Sub Auto_Recall()
    '     fk_default_interval
    '     fk_default_interval_unit
    '--------------------------------------------------------------
-   
-   Dim recall As New Collection
+ 
    
 End
 
@@ -960,6 +952,9 @@ Public Sub Auto_Graph(observations As Collection)
                   sFirstMeasurement = observation!identifier
                   Try sFirstLoinc = observation!loinc
                Endif
+               If observation!loinc = const.Loinc_INR Then
+                  sFirstLoinc = observation!loinc 
+               End If   
                With tb = New ToolButton(Form_Graph.pnlToolButtons) As "graph_buttons"
                   .name = observation!loinc
                   .tag = observation!loinc
@@ -971,14 +966,16 @@ Public Sub Auto_Graph(observations As Collection)
                Inc Buttoncount
          End Select
       End If
-      
    Next
    
    '-----------------------------------------------------------------
    'finally, show the first abnormal measurement as the default graph
+   'in case of INR's common show the iNR not the PT
    '-----------------------------------------------------------------
    If Buttoncount Then
-      If sFirstLoinc <> "" Then Show_Graph(sFirstLoinc, sFirstMeasurement)
+      If sFirstLoinc <> "" Then
+         Show_Graph(sFirstLoinc, sFirstMeasurement)
+      Endif
    End If
    Dec Application.Busy
 Catch
@@ -1047,6 +1044,14 @@ Public Sub cvwInbox_Click()
 End
 
 Public Sub cvwInbox_Select()
+   'The Inbox list of patients or destination staff has been selected
+   'If a patient, then either create a new cConsult or if documents for
+   'this patient have already been filed today, reuse the consult.pk
+   'this way, if for example  progress notes, past history or INR stuff
+   'is written from the inbox as a result of viewing the document the
+   'progress notes for the inbox remain discrete from any clinical notes
+   'written for the same patient on the same day
+   '----------------------------------------------------------------
    
    cvwPatientsRequests.Clear()
    cvwInbox.MoveCurrent()                                     'sets internal cursor to match whats visible
@@ -1055,7 +1060,7 @@ Public Sub cvwInbox_Select()
    If Selected_Inbox!fk_patient Then
       cvwPatientsRequests.Clear()
       cvwPatientsRequests.tag = 0
-      currentconsult = New CConsult(Selected_Inbox)           'Each patient has a new consult
+      currentconsult = New CConsult(Selected_Inbox, const.ConsultType_Added_From_Inbox)    
       currentconsult.Set(const.ConsultType_Added_From_Inbox, "importing document")
       Form_ActionDocument.Init_Cons(currentconsult)           'pass current cons to Any actioning forms
       With Form_Recall
@@ -1079,6 +1084,12 @@ Public Sub cvwInbox_Select()
          .Init(currentconsult, "Progress notes pertaining to this document") 'fixme for adding codes
          .HBox_Save.Visible = True
       End With
+      Try Form_INRs.Close
+      With Form_INRs = New FInr(VBox_INR)
+         .set_embedded_form("FInbox")
+         .Init(currentconsult)
+         .HBox_InboxButtons.Visible = True   
+      End With
       Form_ActionDocument.Tabstrip1.index = Metadata_tab       'user only sees metadata first
       Patient_Outstanding_Requests_Show()                     'show requests for this category of provider
       TabStrip1.Enabled = True
@@ -1095,34 +1106,58 @@ Public Sub cvwInbox_Select()
    
 End
 
-Public Function Document_File(sUrgency As String) As Boolean
-   '---------------------------------------------
-   'First, is this a non patient document?
-   'If so, then filing = "I've read this document"
-   'If 
-   '---------------------------------------------
+Public Function Document_File(sFilingAction As String) As Boolean
+   '----------------------------------------
+   'Make sure no half completed staff tasks
+   'Filing action can be:
+   ' 'file', 
+   ' 'routine appointment'
+   ' 'urgent appointment'
+   '----------------------------------------
    
+   If Not IsNull(Form_ActionDocument.FTasks) Then
+      If Form_ActionDocument.FTasks.txtTaskDetails.text <> "" Or Form_ActionDocument.FTasks.txtStaffAllocated.text <> "" Then
+         If Not Form_ActionDocument.FTasks.Save() Then
+            Return
+         End If
+      End If
+   End If
    tbFile.Enabled = False
+   '----------------------------------------------
+   'Is this a non patient document?
+   'If so, then filing = "I've read this document"
+   '----------------------------------------------
    If Selected_Inbox!fk_patient = 0 Then
       Form_ActionDocument.FMetaData.Document_SignOff(SelectedDocument)        'Record who signed off the document, when
       modArchiveDocumentsDBI.Save(["pk_document": SelectedDocument!pk_document, "concluded": True])
       modDBConnect.CommitTrans()
    Else
-      If Not Valid_Document() Then
-         tbFile.Enabled = True
-         Return                 'some inbox-related validation
+      '--------------------------
+      'This is a patient document
+      '--------------------------
+      If Not Valid_Document() Then                 'some inbox-related validation
+         tbFile.Enabled = True                     'not valid, re-enable the file button
+         Return                                   
       End If
+      '----------------------------------------
+      'Document valid, begin the filing process
+      '----------------------------------------
       modDBConnect.BeginTrans()                           'start transaction NOOP
       Unmatched_Patient_Reconcile()                       'reconcile any just-matched unkown patients
-      If Not Form_ActionDocument.FMetaData.Save() Then                        'file document, unsucessful
+      If Not Form_ActionDocument.FMetaData.Save() Then    'file document, unsucessful?
          modDBConnect.RollBack()                          'roll back transaction FIXME does this work?
          tbFile.Enabled = True
          Return False
       End If
+      '--------------------------------------------
+      'filing was successful, create an audit trail
+      '--------------------------------------------
       modAudit.MakeAudit(currentconsult, "viewed and filed document", "documents.documents", SelectedDocument!pk_document, const.cSection_Documents, "")
-      'Finally add any auto tasks for file with routine or urgent appointments
-      If sUrgency <> "file" Then     'if not an ordinary file with no task
-         If Not Auto_Task(sUrgency) Then
+      '--------------------------------------------------------------------------
+      'Finally add any auto tasks for 'file with routine' or 'urgent appointments 
+      '--------------------------------------------------------------------------
+      If sFilingAction <> "file" 
+         If Not Auto_Task(sFilingAction) Then
             modDBConnect.RollBack()
             tbFile.Enabled = True
             Return False
@@ -1209,41 +1244,37 @@ Public Function Unmatched_Patient() As Boolean
 End
 
 Public Sub tbFile_Click()
-   '---------------------------------------------------------------
+   '----------------------------------------------------------------
    'User wants to file this document, if successful, attempts to
    'show the next document for the patient, if none left, attempts
    'to go to the next row of the inbox.
-   '---------------------------------------------------------------
+   'There are three buttons under the inbox:
+   'File, File - Routine Appointment, File - Urgent Appointment
+   'Note that the other way to call Document_File is if the user
+   'hits the <enter> key at FDocumentMetdata.txtUserObservationName
+   'which then calls Document_File itself. That textboxes event is
+   'over-ridden on this form see txtuserObservationName_Click
+   'see Init() for the observor which creates this event
+   'Last.tag = the buttons tag =:
+   'urgent appointment' or 'routine appointment' or 'file'
+   '----------------------------------------------------------------
    
-   Dim task_type As String = Last.tag   'urgent or routine or file
-   
-   If Not gvwInboxDocuments.Rows.count Then Return    'nothing to file
-   '---------------------------------------------
-   'First, make sure no half completed staff tasks
-   '----------------------------------------------
-   If Not IsNull(Form_ActionDocument.FTasks) Then
-      If Form_ActionDocument.FTasks.txtTaskDetails.text <> "" Or Form_ActionDocument.FTasks.txtStaffAllocated.text <> "" Then
-         If Not Form_ActionDocument.FTasks.Save() Then
-            Return
-         End If
-      End If
-   End If
-   ' Try Form_ProgressNotes.Save()
-   If Not Document_File(task_type) Then 
-      Return                  'filing failed
-   End If  
-   Wait
-   Document_Display_Next()                             'success > show next document
+   If Not gvwInboxDocuments.Rows.count Then Return    'no documents, nothing to file
+   If Not Document_File(Last.tag) Then Return         'document filing failed bail out
+   Wait                                               'do not remove this  
+   Document_Display_Next()                            'success > show next document
    
 End
 
-Public Function Auto_Task(sUrgency As String) As Boolean 
-   '--------------------------------------------------------
+Public Function Auto_Task(sFilingAction As String) As Boolean 
+   '------------------------------------------------------------
    'Auto-file tasks for urgent or non urgent appointment
    'if user clicked on those buttons to file
    'Each task gets a 'master entry' in clerical.tasks table
    'Then components linked To the task
-   '--------------------------------------------------------
+   'sFilingAction = 'routine appointment' or 'urgent appointment
+   'These were the tags of the buttons clicked
+   '------------------------------------------------------------
    
    Dim stafftask As CRow
    Dim TaskComponent As CRow
@@ -1303,11 +1334,11 @@ Public Function Auto_Task(sUrgency As String) As Boolean
    TaskComponent!fk_role = const.StaffRole_Secretary
    TaskComponent!fk_staff_filed = staffTask!fk_staff_filed_task
    TaskComponent!details = "Make Appointment"
-   If sUrgency = "urgent" Then
+   If sFilingAction = "urgent appointment" Then
       TaskComponent!fk_urgency = const.UrgencyLevelUrgent
       TaskComponent!details &= " - Urgent"
    End If
-   If sUrgency = "routine" Then 
+   If sFilingAction = "routine appointment" Then 
       TaskComponent!fk_urgency = const.UrgencyLevelRoutine
       TaskComponent!details &= " - Routine"
    End If   
@@ -1357,6 +1388,7 @@ Public Sub Document_Display_Next()
    '
    '--------------------------
    
+   tabStripInbox.index = 0                             'main tab
    Vbox_ActionDocument.Enabled = False
    Form_ActionDocument.Tabstrip1.Index = Metadata_tab  'sucess. switch tab back to metadata
    If gvwInboxDocuments.rows.count = 0 Then             'no documents left?
@@ -1395,7 +1427,6 @@ Public Function Fill_Inbox(Optional fk_sending_entity As Integer = 0, Optional l
    Dim C As Collection
    Dim Document As Collection
    Dim fk_last_patient As String
-   Dim fk_last_umatched_patient As String
    Dim patient As Collection
    Dim surname_firstname As String[]
    Dim x As Integer
@@ -1448,6 +1479,7 @@ Public Function Fill_Inbox(Optional fk_sending_entity As Integer = 0, Optional l
    If limit Then
       sql &= " LIMIT " & limit
    End If
+   Print sql
    Documents = modDBConnect.exec_query_collection(sql)   'all the documents in the inbox
    If Not Documents.count Then
       tlOutstandingStaffMember.Visible = False
@@ -1504,6 +1536,7 @@ Public Function Fill_Inbox(Optional fk_sending_entity As Integer = 0, Optional l
             patient!title = Document!patient_title
             patient!wholename = patient!title & " " & patient!firstname & " " & patient!surname
             patient!age_display = Str(Document!patient_age)
+            patient!age_numeric = Document!patient_age
             patient!street = Document!patient_street
             patient!town = Document!patient_town
             patient!postcode = Document!patient_postcode
@@ -1517,146 +1550,6 @@ Public Function Fill_Inbox(Optional fk_sending_entity As Integer = 0, Optional l
          End If
       End If
       C[x]!documents.Add(Document, C[x]!documents.Count)
-   Next
-   Dec Application.Busy
-   Return C
-   
-End
-
-Public Function Fill_Inbox_orig(Optional fk_sending_entity As Integer = 0, Optional limit As Integer = 0, Optional patient_filter As String, Optional sort_dir As String = "ASC") As Collection
-   
-   Dim sql As String
-   Dim C As Collection
-   Dim Document As Collection
-   Dim fk_last_patient As String
-   Dim fk_last_umatched_patient As String
-   Dim patient As Collection
-   Dim surname_firstname As String[]
-   Dim x As Integer
-   Dim total_doc_count As Integer
-   
-   With cvwInbox
-      .Columns.count = 1
-      .Clear()
-   End With
-   sql = "Select count(pk) as count  from documents.Documents Where concluded = false and deleted = False "
-   total_doc_count = Str(modDBConnect.exec_query(sql)!count)
-   sql = "Select * from documents.vwDocuments Where concluded = false and deleted = False "
-   If fk_sending_entity Then
-      sql &= "AND fk_sending_entity = " & fk_sending_entity & " "
-   End If
-   
-   staff_member = staff_members[cmbStaffMembers.index]
-   If IsNull(Staff_member!fk_staff) Then
-      sql &= "And fk_unmatched_staff = " & Staff_member!fk_unmatched_staff
-      With tlMissingProvider
-         .foreground = color.Red
-         .text = "<P>The recipient of this message was not found.</P> "
-         "You will have to ask the system adminstrator to "
-         "enter the correct details in the staff database before proceeding"
-      End With
-   Else
-      sql &= " AND fk_staff_destination = " & staff_member!fk_staff
-      tlMissingProvider.text = ""
-   End If
-   If Trim(txtFilterDocuments.text) Then
-      sql &= " AND tag ILIKE $$%" & txtFilterDocuments.text & "%$$"
-   Endif
-   
-   If patient_filter <> "" Then
-      surname_firstname = Split(patient_filter, "'")
-      Try sql &= " AND patient_firstname ILIKE $$" & surname_firstname[1] & "%$$"
-      If Error Then
-         sql &= " AND patient_surname ILIKE $$" & surname_firstname[0] & "%$$"
-      Else
-         sql &= " AND patient_surname ILIKE $$" & surname_firstname[0] & "%$$"
-      Endif
-      
-   Endif
-   If chkOnlyRecent.Value = True Then
-      'FIXME make me a global option
-      sql &= " AND date_created > '" & Format(DateAdd(Now, gb.month, -1), "dd/mm/yyyy") & "'::date"
-      
-   Endif
-   sql &= " ORDER BY patient_surname, patient_firstname, unmatched_patient_surname, unmatched_patient_firstname, date_created " & sort_dir
-   If limit Then
-      sql &= " LIMIT " & limit
-   End If
-   Documents = modDBConnect.exec_query_collection(sql)
-   If Not Documents.count Then
-      tlOutstandingStaffMember.Visible = False
-      tlOutstandingStaffMember.text = staff_member!title & " " & staff_member!wholename & ":0"  'do not change from staff_member!
-      tlOutstandingAllStaff.text = Str$(total_doc_count) & " unread documents for other staff"
-      Return
-   End If
-   If total_doc_count - Documents.count <> 0 Then
-      tlOutstandingAllStaff.Visible = True
-      tlOutstandingAllStaff.text = Str$(total_doc_count - Documents.count) & " unread documents for other staff"
-   Else
-      tlOutstandingAllStaff.Visible = False
-   End If
-   tlOutstandingStaffMember.text = Str(Documents.count) & " unread documents for " & staff_member!title & " " & staff_member!wholename
-   
-   C = New Collection     'a misnomer content = who message intended for, or About Who
-   For Each Document In Documents
-      
-      If IsNull(Document!fk_patient) Then
-         If fk_last_patient <> Document!fk_unmatched_patient Then
-            fk_last_patient = Document!fk_unmatched_patient
-            patient = New Collection
-            patient!documents = New Collection
-            patient!fk_unmatched_patient = Document!fk_unmatched_patient
-            patient!fk_person = Document!patient_fk_person
-            patient!firstname = Document!unmatched_patient_firstname
-            patient!surname = Document!unmatched_patient_surname
-            patient!birthdate = Document!unmatched_patient_birthdate
-            patient!sex = Document!unmatched_patient_sex
-            patient!title = Document!unmatched_patient_title
-            patient!wholename = patient!title & " " & patient!firstname & " " & patient!surname
-            patient!street = Document!unmatched_patient_street
-            patient!town = Document!unmatched_patient_town
-            patient!postcode = Document!unmatched_patient_postcode
-            
-            x = cvwInbox.Count
-            
-            C.Add(patient, x)
-            cvwInbox.Add(x, 0)
-            cvwInbox[x][0] = document!unmatched_patient_surname & ", " & document!unmatched_patient_firstname
-            If cvwInbox[x][0] = ", " Then
-               cvwInbox[x][0] = "Non patient document"
-            End If
-            
-         End If
-      Else
-         If fk_last_patient <> Document!fk_patient Then
-            
-            fk_last_patient = Document!fk_patient
-            patient = New Collection
-            patient!documents = New Collection
-            patient!fk_person = Document!patient_fk_person
-            patient!fk_patient = Document!fk_patient
-            patient!firstname = Document!patient_firstname
-            patient!surname = Document!patient_surname
-            patient!birthdate = Document!patient_birthdate
-            patient!sex = Document!patient_sex
-            patient!title = Document!patient_title
-            patient!wholename = patient!title & " " & patient!firstname & " " & patient!surname
-            patient!age_display = Str(Document!patient_age)
-            
-            patient!street = Document!patient_street
-            patient!town = Document!patient_town
-            patient!postcode = Document!patient_postcode
-            x = cvwInbox.Count
-            
-            C.Add(patient, x)
-            cvwInbox.Add(x, 0)
-            cvwInbox[x][0] = document!patient_surname & ", " & document!patient_firstname
-            If cvwInbox[x][0] = ", " Then
-               cvwInbox[x][0] = "Non patient document"
-            End If
-         End If
-      End If
-      C[x]!documents.Add(Document, document!pk_document)
    Next
    Dec Application.Busy
    Return C
@@ -1693,9 +1586,7 @@ Public Sub rbDisplayFormat_Click()
 End
 
 Public Function SendingEntity_Recognised() As Boolean
-   
-   Dim y As Integer
-   
+    
    If Not IsNull(Selecteddocument!fk_sender_branch) Then
       If Selecteddocument!fk_sender_branch <> 0 Then
          Return True
@@ -1729,7 +1620,6 @@ End
 
 Public Sub Staff_Member_ReAllocate(fk_staff_destination As Integer)
    
-   Dim Document As New Collection
    Dim sMsg As String
    
    Message.Title = "Re-allocation of document"
@@ -1862,7 +1752,6 @@ Public Sub Unmatched_Patient_Resolve(bReallocating As Boolean)
    Dim sMsg As String
    Dim sName As String
    Dim x As Integer
-   Dim document_keys As Collection
    
    fk_patient = Form_ActionDocument.FMetaData.get_fk_patient()
    If bReallocating = False Then
@@ -2035,11 +1924,16 @@ Public Sub WebView_Menu()
 End
 
 Private Sub Patient_Outstanding_Requests_Show()
+   '------------------------------------------------------------------------------
+   'Show the last 10 requests ordered, just to jog users memory what they ordered
+   'as often what comes back is a different name, helps them put in the correct
+   'user-tag to match what they ordered
+   '------------------------------------------------------------------------------  
    
    Dim x As Integer
    
    If cvwPatientsRequests.tag = 0 Then
-      modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwPatientsRequests)
+      modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwPatientsRequests, 10)
       cvwPatientsRequests.tag = Selected_Inbox!fk_patient
    End If
    
@@ -2263,19 +2157,6 @@ Public Sub Document_SendBack_For_ReFiling()
    
 End
 
-Public Sub Document_SendBack_For_ReFiling_OLD()
-   '------------------------------------------------------------------------------------
-   'User has decided there is something wrong with document allocation they cannot fix
-   'eg, wrongly joined pages etc, not just simple things like wrongly allocated patients
-   'so they send it back to clerical for re-filing. Only for scanned documents
-   '------------------------------------------------------------------------------------
-   
-   If modArchiveDocumentsDBI.Document_SendBack_For_ReFiling(currentconsult, Selected_Inbox!documents, fk_document) Then
-      Inbox_Reload()
-   Endif
-   
-End
-
 Public Sub Document_SignOff()
    '------------------------------------------------------------
    'User has signed off the document, ie accepted responsibility
@@ -2290,34 +2171,9 @@ Public Sub Document_SignOff()
    
 End
 
-Public Sub mnuDocuments_Delete(bDeleteAll As Boolean, Optional reason As String)
-   'Currently not used please do not delete this
-   
-   Dim x As Integer
-   
-   Message.Info("Richard in mnudocuments_Delete- stop and check this")
-   ' If bDeleteAll Then cvwInboxDocuments.MoveFirst()
-   ' For x = 1 To cvwInboxDocuments.count
-   '    If bDeleteAll Then
-   '       SelectedDocument = Selected_Inbox!documents[cvwInboxDocuments.Item.key]
-   '       If Not Document_Delete(const.cAuditAction_Delete) Then Return
-   '    Else
-   '       cvwInboxDocuments.MoveCurrent()                  're-set was moved by the popup menu
-   '       If cvwInboxDocuments.Item.Selected = True Then
-   '          SelectedDocument = Selected_Inbox!documents[cvwInboxDocuments.Item.key]
-   '          If Not Document_Delete(const.cAuditAction_Delete, reason) Then Return
-   '       End If
-   '    End If
-   '    cvwInboxDocuments.MoveNext()
-   ' Next
-   ' Inbox_Reload()
-   
-End
-
 Public Sub mnuNonPatientDocuments_Click()
    
    Dim x As Integer
-   Dim D As Collection
    Dim audit_notes As String
    
    Try Message.Info("Richard Fix this routine") 'gambas event handling can lead to this trying to popup twice
@@ -2330,28 +2186,23 @@ Public Sub mnuNonPatientDocuments_Click()
          Inbox_Reload()
          
       Case "move to my library", "copy to my library", "copy to patient handouts", "move to patient handouts"
-         '  cvwInboxDocuments.MoveCurrent
          FInboxTransferToLIbrary.Init(SelectedDocument, currentconsult, Last.tag)
          FInboxTransferToLIbrary.ShowModal()
          Inbox_Reload()
       Case "delete - sent in error"
          If Message.Warning("Please confirm that the patient to whom these documents are allocated, is not a patient of this practice", "Confirm - not our patient", "Cancel") = 2 Then Return
-         '   cvwInboxDocuments.MoveFirst()
          For x = 1 To gvwInboxDocuments.count
             If gvwInboxDocuments.Rows[x].Selected = True Then
-               '  iSelectedDocument = cvwInboxDocuments.item.key
                If IsNull(Selected_Inbox!documents[gvwInboxDocuments.row]!tag_user) Then
                   audit_notes = Selected_Inbox!documents[gvwInboxDocuments.row]!tag
                Else
                   audit_notes = Selected_Inbox!documents[gvwINboxDocuments.row]!tag_user
                Endif
-               'If modArchiveDocumentsDBI.Delete(currentconsult, Selected_Inbox!documents, iSelectedDocument, const.cSection_Inbox, Last.tag, audit_notes) Then
                If modArchiveDocumentsDBI.Delete(currentconsult, Selected_Inbox!documents[gvwInboxDocuments.row],, const.cSection_Inbox, Last.tag, audit_notes) Then
                   modDBConnect.CommitTrans()
                   Deleted_Documents.Add(SelectedDocument, fk_document)            'keep for undelete
                End If
             Endif
-            
          Next
          Inbox_Reload()
    End Select
@@ -2400,13 +2251,6 @@ End
 Public Function Valid_Document() As Boolean
    
    Dim sMsg As String
-   Dim fk_patient As Integer
-   Dim fk_unmatched_patient As Integer
-   Dim fk_document As Integer
-   Dim fk_lu_request As Integer 'fixme
-   Dim D As New Collection
-   Dim S As Collection
-   Dim sql As String
    Dim diagnosis_guess As String
    Dim observation As Collection
    Dim button1_text As String
@@ -2555,14 +2399,12 @@ Public Sub chkOnlyRecent_Click()
 End
 
 Public Sub tabStripInbox_Click()
+   'only use INR module if is an INR - crude, easily avoided if you try FIXME  
    
-   Select Case Last.Index
-      Case 5 'prescriptions
-         If IsNull(Form_Prescriptions) Then
-            With Form_Prescriptions = New FPrescriptions(Vbox_Prescriptions)
-               .Init(currentconsult, True)
-            End With
-         Endif
-   End Select
+   If Last.index = 5 Then 
+      If Not InStr(Lower(Form_ActionDocument.FMetaData.txtUserObservationName.text), "inr") Then
+         tabStripInbox.index = 0
+      End If  
+   End If
    
 End

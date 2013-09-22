@@ -26,7 +26,6 @@ Private CurrentRecallThisConsult As Collection
 Private ExistingRecall As Collection
 Private bExit As Boolean
 Private bEditing As Boolean
-Private sTempDate As Date
 Private currentconsult As CConsult
 Private Const cTabInboxDocuments As Integer = 0
 Private pk_recall As Integer
@@ -36,8 +35,6 @@ Private interval As Integer
 Private fk_interval_unit As Integer
 Private default_interval As Integer
 Private fk_default_interval_unit As Integer
-'Public FAdditionalNotesEditor As FEditor
-Private template As Collection
 Private templates As Collection '0 indexed to match the combo
 Private fk_template As Integer
 Private fk_progressNote As Integer
@@ -73,10 +70,18 @@ Public Sub Set_Audit_Schema_Table_SourceRowKey(k As Integer, s As String, t As S
 End
 
 Public Sub ReLoad()
+   '------------------------------------------------------------------------
+   'Reload recalls created this consult
+   'If embedded in the Inbox then show the list of all the patients recalls
+   'but within the edit area. Note in Fclinical an idential list lives on
+   'the main tabbed lists, but it won't fix into the gui design of the Inbox     
+   '------------------------------------------------------------------------
    
    Recalls_This_Consult_Show()   'show recalls ordered this consult
-   If Embedded_form <> "FClinical" And Embedded_Form <> "" Then Recalls_Outstanding_Show()
-   New_Entry()
+   If Embedded_form <> "FClinical" And Embedded_Form <> "" Then 
+      Recalls_Outstanding_Show()   
+   End If   
+   New_Entry()    'default to putting in a new recall
    
 End
 
@@ -170,7 +175,6 @@ Public Sub Save()
    '--------------------------------------------------------------
    
    Dim recall As New Collection
-   Dim sPerson As String            'person who the recalled patient will see
    Dim sProgressNote As String
    
    FClinical.Enable_Save_Button(False)                           'stop clicking twice FIXME ?does not work
@@ -229,7 +233,8 @@ Public Sub Save()
       FClinical.Refresh_AllPreviousNotes()
    End If
    If Embedded_form = "FInbox" Then
-      FInbox.Switch_tab(cTabInboxDocuments)
+      FInbox.Previous_Notes_Refresh         'refresh the 'Context' tab in the inbox
+      FInbox.Switch_tab(cTabInboxDocuments)  'switch back to the main documents list
    End If
    Application.Busy = 0
    ReLoad()                    'update the list under edit area to show recalls this consult, default to new edit
@@ -290,7 +295,7 @@ Private Sub Settings_Load()
       HSplit_EditArea.Layout = Settings["FRecalls_Embedded_" & Embedded_form & "/HSplit_EditArea", modUtil.HSplit([3, 1])]
       VSplit_Recalls.layout = Settings["FRecalls_Embedded_" & Embedded_form & "/VSplitRecalls", modUtil.VSplit([1, 2])]
       cvwRecallsLoggedThisConsult.Font = Font[Settings["FRecalls/cvwRecallsLoggedThisConsult.font", "DejaVu Sans,9"]]
-      
+      cvwRecalls.Font = Font[Settings["FRecalls_Embedded_" & Embedded_form & "/cvwRecalls.font", "DejaVu Sans,9"]]
    Else
       HSplit_EditArea.Layout = Settings["FRecalls/HSplit_EditArea", modUtil.HSplit([1, 0])] 'have hidden the template stuff at the moment.
       VSplit_Recalls.layout = Settings["FRecalls/Vsplit_Recalls", modUtil.VSplit([244, 371])]
@@ -336,9 +341,6 @@ Public Sub Layout_Controls()
    '----------------------------------------------------
    'Needs as better name, in here just to some gui stuff
    '----------------------------------------------------
-   ' bExit = True
-   
-   Dim lbl As Label
    
    cvwRecallsLoggedThisConsult.Columns.count = 6 'recall for|due date|contact method|Person to see|additional notes
    cmbSeeAnyone.Add("", 0) 'fixme unhard code me
@@ -461,15 +463,17 @@ Public Sub EditArea_GotFocus()
    ReferenceHboxForTopColumnview = Last.Parent.Parent
    Last.BackGround = Color.rgb(95, 255, 175)
    Select Case Last.tag
-         
       Case "recall for"
          With listview1
             ' .top = Last.Parent.top + Last.Parent.height + VBox_EditArea.Padding
             .top = ReferenceHboxForTopColumnview.top + ReferenceHboxForTopColumnview.Height
             .left = Last.Parent.Left + VBox_EditArea.Padding
-            .width = txtRecallFor.Width / 2
+            If Embedded_form = "FInbox" Then
+               .width = txtRecallFor.Width
+            Else
+               .width = txtRecallFor.Width / 2
+            Endif
          End With
-         
       Case "see specific person"
          With listview1
             '  .top = Last.Parent.top + Last.Parent.height + Vbox_EditArea.Padding
@@ -980,14 +984,10 @@ Public Sub Calculate_Recall_Date(txt As Textbox)
    'FIXME put in weeks and days
    '--------------------------------------------
    
-   Dim sIntervalUnits As String 'eg if txtdate contains 3M then units interval is 3
-   Dim iNumberOfMonths As Integer      'do not need both these declared, but do for readability
+     Dim iNumberOfMonths As Integer      'do not need both these declared, but do for readability
    Dim iNumberOfYears As Integer
    Dim iNumberOfDays As Integer
    Dim iNumberOfWeeks As Integer
-   Dim vPossibleDate As Variant
-   Dim aDate As Date
-   Dim x As Integer
    
    bExit = True 'stop change event of edit area triggering
    If UCase(Right(Trim(txt.text), 1)) = "M" Then
@@ -1204,7 +1204,7 @@ Public Sub lvwInclusions_EditArea_Refresh(Inclusions As Collection)
    ' 'Called by  lvwInclusions_EditArea_Drop: Inclusions_EditArea collection
    ' '           Referral_Edit:Inclusions_Referral_This_Consult collection
    ' '---------------------------------------------------------------------
-   '
+  '
    ' Dim inclusion As Collection
    ' Dim sString As String
    ' Dim Request As Collection
@@ -1305,7 +1305,7 @@ Public Sub mnuTabbedListRecalls_click()
          ' cvwrecalls.Header = True
          ' cvwRecalls.Resizable = True
       Case "fonts"
-         modUtil.Columnview_SetFont(cvwRecalls, "TabbedLists")
+         modUtil.Columnview_SetFont(cvwRecalls, "FRecalls_Embedded_" & Embedded_form)
       Case Else
          modRecallsMenu.Process(ExistingRecall, Last.tag, currentconsult)
          Recalls_Outstanding_Show()
@@ -1373,5 +1373,11 @@ Public Sub EditAreaButtons_Click()
       Case "help"
          FClinical.Help_Show("recalls.html", "Help:Recalls", True)
    End Select
+   
+End
+
+Public Sub Form_Close()
+   
+   Settings_Save()
    
 End

@@ -1,9 +1,6 @@
 ' Gambas class file
 
-' Gambas class file
-
 ' Copyright (C) 2008-2013 Dr. Richard Terry
-
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
@@ -18,6 +15,7 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ' --------------------------------------------------------------------
 ' PURPOSE   A module to record allergies/sensitivities/reactions
+'           The term allergy here is a misnomer and refers to both FIXME
 ' TODO      Check accuracy
 '           Implement help and delete
 '           Check save works for previously created allergies
@@ -28,22 +26,16 @@
 Private currentconsult As CConsult
 Private bExit As Boolean
 Private bKeyValid As Boolean
-Private generics_to_atc As Collection
-Private brands_to_atc As Collection
-Private Terms As Collection
-Private Term As Collection 
 'The keys for each allergy
 Private fk_code As String
 Private fk_coding_system As Integer
 Private fk_consult As Integer 
-Private fk_allergy As Integer
+Private fk_allergysensitivity As Integer
 Private fk_brand As String    'if not null the key to drugs.brands
 Private fk_product As String 'if not null the key to drugs.products
 Private fk_progressnote As Integer
 Private atccode As String
-Private atccodes As Collection
 Private brands As Collection
-Private generics As Collection
 Private obs As Observer
 Private Form_Terms As FCodedTermSelector
 Private sSearchLimit As Integer = 20 'default to only get 20 terms
@@ -58,16 +50,30 @@ Private iReactionType As Integer = const.ReactionType_Allergy
 Private sSpecificity As String    'g=generic, b=brand c=class
 Private Reaction_Types As String[]
 Private ReferenceHboxForTopListView As Hbox               'used if split moves to reposition columnview
+Private cvwAllergiesSensitivites_key As Integer
+Static Private form_allergy As FAllergy
+
+Static Public Sub Allergies_Reload_External()
+   '-----------------------------------------------------------
+   'Called from FClinical to reload allergies list if the  user
+   'has eg made patient not allergic by the quick popup menu
+   '-----------------------------------------------------------   
+
+   form_allergy.Reload() 
+   
+End
 
 Public Sub Init(cons As CConsult)
    '--------------------------------
    'Do all the initialization things
    '--------------------------------
-   
+
+   form_allergy = Me  
    Try Settings_Load()
    currentconsult = cons  
    lblmeasure.text = " Authority Approval No.  "                'resize edit area labels, keep size consistant across forms - this from script is the widest
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
+   modEditAreaHelpers.Resize_label(lblNoKnownAllergies, lblMeasure)
    With Form_Terms = New FCodedTermSelector(Me)
       .Ignore = True
       .Visible = False   
@@ -85,13 +91,11 @@ Public Sub Init(cons As CConsult)
       .TempFileForSpelling = User.home &/ "myspelltemp.txt"
       .TempFileForErrors = User.home &/ "myspellerrors.txt"
    End With
-   With cvwAllergies
+   With cvwAllergiesSensitivites
       .Columns.count = 6
       .Columns[0].text = "Date Reaction"
-      
       .Columns[0].Alignment = Align.Center
       .Columns[1].text = "ACT Class or Allergen"
-      
       .Columns[2].text = "Specificity"
       .Columns[2].width = 200
       .Columns[3].text = "Type"
@@ -112,6 +116,8 @@ Public Sub Save()
    '1) An allergen eg Bee or Crustacean
    '  or
    '2) A drug, a drug it must must have an ATCcode
+   '         or
+   'be 'nil known' i.e chkNilKnown.value = True
    'Plus: description Of the reaction optionally coded
    '  Clin_allergies.allergies:
    '   (pk serial primary key,
@@ -126,58 +132,68 @@ Public Sub Save()
    '   fk_code text default null, 
    '   confirmed boolean Default True, 
    '   deleted boolean Default False, 
-   '   date_reaction text default null, 
+   '   date_reaction text default null
+   '   fk_progressnote integer NOT NULL, -- The associated progress note summary Of this allergy - at least Of the latest Time it was accessed
+   '   nil_allergies_sensitivities boolean Default False,
    '---------------------------------------------------------------
    
    Dim allergy As CRow
    Dim progressnote As CRow
    
-   FClinical.Enable_Save_Button(False)  'stop clicking twice FIXME does not work
-   If Vbox_EditArea_Outer.Padding = 0 Then Goto Enable_Save   
-   If Not Valid_Allergy() Then Goto Enable_Save   
+   FClinical.Enable_Save_Button(False)            'stop clicking twice FIXME does not work
+   If Vbox_EditArea_Outer.Padding = 0 Then        'The main allergy input area
+      If HBox_EditArea_NoKnownAllergies.padding = 0 Then   'just the Hbox around the no known allergies checkbox
+         Goto Enable_Save   
+      End If
+   End If   
+   If Not Valid_Allergy_Or_Sensitivity() Then Goto Enable_Save   
    Inc Application.Busy
    allergy = New CRow
-   If fk_allergy Then
-      allergy.put_unchanged(fk_allergy, "fk_allergy")
+   If fk_allergysensitivity Then
+      allergy.put_unchanged(fk_allergysensitivity, "fk_allergy")
    Endif
    If fk_consult = 0 Then
       allergy!fk_consult = currentconsult.GetPK()
    Else
       allergy!fk_consult = fk_consult
    Endif 
-   If fk_brand <> "" Then
-      allergy!fk_brand = fk_brand
+   If chkNilKnown.value = False Then 
+      If fk_brand <> "" Then
+         allergy!fk_brand = fk_brand
+      Else
+         allergy!fk_brand = Null
+      Endif
+      If fk_product <> "" Then
+         allergy!fk_product = fk_product  
+      Else
+         allergy!fk_brand = Null
+         allergy!fk_product = Null
+      Endif
+      If Trim(txtAllergen.text) <> "" Then 
+         allergy!allergen = modUtil.StripExtraBlanks(txtAllergen.text)
+         allergy!specificity = Null 
+      Else
+         allergy!allergen = Null    '
+         allergy!specificity = sSpecificity 
+      End If   
+      allergy!details = Trim(txtDetails.text) 
+      If fk_coding_system <> 0 Then
+         allergy!fk_coding_system = fk_coding_system
+         allergy!fk_code = fk_code       'string value
+      Else
+         allergy!fk_coding_system = 0 'integer can't be null, could be removing coding system
+         allergy!fk_code = ""
+      Endif
+      If rbConfirmedYes.Value = True Then
+         allergy!confirmed = True
+      Else
+         allergy!confirmed = False  
+      Endif
+      allergy!fk_lu_reaction_type = iReactionType
+      allergy!date_reaction = modUtil.StripExtraBlanks(txtDate.text)
    Else
-      allergy!fk_brand = Null
-   Endif
-   If fk_product <> "" Then
-      allergy!fk_product = fk_product  
-   Else
-      allergy!fk_brand = Null
-      allergy!fk_product = Null
-   Endif
-   If Trim(txtAllergen.text) <> "" Then 
-      allergy!allergen = modUtil.StripExtraBlanks(txtAllergen.text)
-      allergy!specificity = Null 
-   Else
-      allergy!allergen = Null    '
-      allergy!specificity = sSpecificity 
-   End If   
-   allergy!details = Trim(txtDetails.text) 
-   If fk_coding_system <> 0 Then
-      allergy!fk_coding_system = fk_coding_system
-      allergy!fk_code = fk_code       'string value
-   Else
-      allergy!fk_coding_system = 0 'integer can't be null, could be removing coding system
-      allergy!fk_code = ""
-   Endif
-   If rbConfirmedYes.Value = True Then
-      allergy!confirmed = True
-   Else
-      allergy!confirmed = False  
-   Endif
-   allergy!fk_lu_reaction_type = iReactionType
-   allergy!date_reaction = modUtil.StripExtraBlanks(txtDate.text)
+      allergy!nil_allergies_sensitivities = True
+   End If
    '--------------------------------------------------------------------------------------
    'If the progress note was written on today, we can edit it, otherwise, create a new one
    '--------------------------------------------------------------------------------------
@@ -215,27 +231,46 @@ Public Sub Refresh_FClinical()
    
    FClinical.Refresh_Section(const.cSection_Allergies)    'refresh lists on main screen FClinical
    FClinical.Refresh_AllPreviousNotes() 
-   
+   Try FClinical.Refresh_Section(const.cSection_HealthSummary)
+
 End
 
-Public Sub Allergy_New()
+Public Sub Allergy_Or_Sensitivity_New()
    
+   Dim sMsg As String
+   
+   If chkNilKnown.value = True Then
+      sMsg = "You have elected to add an allergy.\n\n"
+      sMsg = "Delete existing status: Nil Known Allergies or Sensitivites?"
+      If Message.Question(sMsg, "Yes", "No") = 1 Then
+         Allergy_Or_Sensitivity_Delete
+         Allergy_Or_Sensitivity_New   're-enter the routine
+      End If
+   Endif
+   cvwAllergiesSensitivites.UnselectAll
+   chkNilKnown.value = False   
    EditArea_Clear()
    Reset_Keys() 
    Vbox_EditArea.Enabled = True  
+   HBox_NoKnownAllergies.enabled = True
+   chkNilKnown.value = False   
    txtDateEntered.text = Format(Now, "dd/mm/yyyy") ' not editable
    txtDate.SetFocus()
    
 End
 
-Public Sub Allergy_Edit()
+Public Sub Allergy_Or_Sensitivity_Edit()
    
-   Vbox_EditArea.Enabled = True
-   txtDate.SetFocus()
+   If allergies[cvwAllergiesSensitivites_key]!nil_allergies_sensitivities = False Then
+      Vbox_EditArea.Enabled = True
+      txtDate.SetFocus()
+   Else
+      HBox_NoKnownAllergies.enabled = True
+   End If   
    
 End
 
-Public Sub Allergy_Delete()
+Public Sub Allergy_Or_Sensitivity_Delete()
    '------------------------------------------------------------------
    'Deletes an allergy
    'If this allergy was entered another consultation, enforce an audit
@@ -248,9 +283,10 @@ Public Sub Allergy_Delete()
    Dim reason As String
    Dim allergy As Collection   'ease of typing.
    
+   If Message.Question("Delete current allergy?", "Yes", "No") = 2 Then Return
    sSummary = ""
-   cvwAllergies.MoveCurrent()
-   allergy = allergies[cvwAllergies.Item.key]
+   cvwAllergiesSensitivites.MoveCurrent()
+   allergy = allergies[cvwAllergiesSensitivites.Item.key]
    sSummary = Progress_Notes_Create()
    If allergy!fk_consult <> currentconsult.GetPK() Then                                             'if allergy was not deleted this consult
       Faudit.Init(": Delete Allergy", "clin_allergies.allergies", "Allergy Summary:" & sSummary)     'pop up the audit-trail dialog
@@ -265,26 +301,35 @@ Public Sub Allergy_Delete()
    Else                                                                                               'the allergy was inserted this consultation
       modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "deleted": True]) 'just delete the progress note associated with it.
    End If 
-   modDBConnect.update("clin_allergies.allergies", Null, ["pk": fk_allergy, "deleted": True])      'and delete from the backend.
+   modDBConnect.update("clin_allergies.allergies", Null, ["pk": fk_allergysensitivity, "deleted": True])      'and delete from the backend.
    modDBConnect.CommitTrans()
    If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then
       FClinical.Refresh_Section(const.cSection_Allergies) 'retrieve the data from the backend again.
       FClinical.Refresh_AllPreviousNotes()
+      FClinical.Refresh_Section(const.cSection_HealthSummary)
    End If 
    Reload()
-
+   
 End
 
-Public Sub Allergy_Display()
+Public Sub Allergy_Or_Sensitivity_Display()
    '-----------------------------------------
    'Display the currently highlighted allergy
    '------------------------------------------
    
    Dim allergy As Collection
    
-   cvwAllergies.MoveCurrent()
-   allergy = allergies[cvwAllergies.Item.key]
-   EditArea_Clear                                                     'clear input area
+   EditArea_Clear()
+   HBox_NoKnownAllergies.Enabled = False  
+   cvwAllergiesSensitivites.MoveCurrent()
+   allergy = allergies[cvwAllergiesSensitivites_key]
+   If allergy!nil_allergies_sensitivities = True Then   
+      bexit = True    
+      chkNilKnown.value = allergy!nil_allergies_sensitivities
+      bexit = False   
+   Else
+      EditArea_Clear          
+   End If    
    '------------------------
    're-allocate all the keys
    '------------------------
@@ -295,7 +340,7 @@ Public Sub Allergy_Display()
    Try fk_brand = allergy!fk_brand
    Try fk_product = allergy!fk_product
    fk_progressnote = allergy!fk_progressnote
-   fk_allergy = allergy!pk
+   fk_allergysensitivity = allergy!pk
    '----------------------------------------------
    'Now fill the gui - textboxes, radiobuttons etc
    '----------------------------------------------
@@ -347,40 +392,51 @@ Public Function Progress_Notes_Create() As String
    
    Dim pn As String
    
-   If txtDateEntered.text = Format(Now, "dd/mm/yyyy") Then       'the progress note is created today
-      pn = "<B>%reaction_type% noted </B>"
+   If chkNilKnown.value = False Then
+      
+      If txtDateEntered.text = Format(Now, "dd/mm/yyyy") Then       'the progress note is created today
+         pn = "<B>%reaction_type% noted </B>"
+      Else
+         pn = "<B>%reaction_type% details edited </B>"     'otherwise this is an edit
+      End If   
+      pn = Replace(pn, "%reaction_type%", Reaction_Types[iReactionType]) & "<BR>"
+      Select Case Trim(txtAllergen.text)
+         Case ""
+            pn &= "<B>Class</B>: " & Trim(txtATCClass.text) & "<BR>"
+            pn &= "<B>Scope</B>: "
+            Select Case sSpecificity
+               Case "c"
+                  pn &= "class reaction"
+               Case "g"
+                  pn &= "reaction to the generic only"
+               Case "b"
+                  pn &= "reaction to the brand only"
+            End Select
+            If rbConfirmedYes.value = True Then
+               pn &= " - Confirmed"
+            Else
+               pn &= " - Not confirmed"
+            Endif
+            pn &= "<BR>"
+            pn &= "<B>Drug: </B>" & Trim(txtGeneric.text) & " " & "(" & Trim(txtBrand.text) & ")<BR>"
+            pn = Replace(pn, "()", "")
+            pn &= "<B>Details: </B>" & Trim(txtDetails.text) & "<BR>"
+            If fk_code <> "" Then
+               pn &= "<B>Coding: </B>" & Trim(txtCodedTerm.text) & "<BR>"
+            Endif
+         Case Else
+            'this is a non-drug allergen
+            pn &= "<B>Non Drug:</B>" & Trim(txtAllergen.text) & "<BR>"
+            pn &= "<B>Details: </B>" & Trim(txtDetails.text) & "<BR>"
+            If fk_code <> "" Then
+               pn &= "<B>Coding: </B>" & Trim(txtCodedTerm.text) & "<BR>"
+            Endif
+      End Select 
+      
    Else
-      pn = "<B>%reaction_type% details edited </B>"     'otherwise this is an edit
+      pn = "Allergies: patient questioned and reports nil known."
    End If   
-   pn = Replace(pn, "%reaction_type%", Reaction_Types[iReactionType]) & "<BR>"
-   Select Case Trim(txtAllergen.text)
-      Case ""
-         pn &= "<B>Class</B>: " & Trim(txtATCClass.text) & "<BR>"
-         pn &= "<B>Scope</B>: "
-         Select Case sSpecificity
-            Case "c"
-               pn &= "class reaction"
-            Case "g"
-               pn &= "reaction to the generic only"
-            Case "b"
-               pn &= "reaction to the brand only"
-         End Select
-         If rbConfirmedYes.value = True Then
-            pn &= " - Confirmed"
-         Else
-            pn &= " - Not confirmed"
-         Endif
-         pn &= "<BR>"
-         pn &= "<B>Drug: </B>" & Trim(txtGeneric.text) & " " & "(" & Trim(txtBrand.text) & ")<BR>"
-         pn = Replace(pn, "()", "")
-         pn &= "<B>Details: </B>" & Trim(txtDetails.text) & "<BR>"
-         If fk_code <> "" Then
-            pn &= "<B>Coding: </B>" & Trim(txtCodedTerm.text) & "<BR"
-         Endif
-      Case Else
-         
-   End Select
-   Print pn 
+   Print pn
    Return pn 
    
 End
@@ -396,37 +452,54 @@ Public Sub Reload()
    Dim x As Integer
    
    EditArea_Clear()                                      'clear the input area
+   bExit = True
+   chkNilKnown.value = False
+   bExit = False  
    currentconsult.Refresh("allergies")                   'remove key from cache > later forces a reload
    allergies = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!allergies)                 'reload latest list from the backend
-   cvwAllergies.Clear()
+   cvwAllergiesSensitivites.Clear()
    For Each allergy In allergies
-      cvwAllergies.Add(x, 0)
-      If IsNull(allergy!date_reaction) Then
-         cvwAllergies[x][0] = " Date?"
+      If allergy!nil_allergies_sensitivities = True Then
+         cvwAllergiesSensitivites.Columns.count = 1
+         cvwAllergiesSensitivites.Add(x, 0)
+         cvwAllergiesSensitivites[x][0] = "Nil Known Allergies or Sensitivites"
       Else
-         cvwAllergies[x][0] = allergy!date_reaction 'could be free text
+         cvwAllergiesSensitivites.Add(x, 0)
+         If IsNull(allergy!date_reaction) Then
+            cvwAllergiesSensitivites[x][0] = " Date?"
+         Else
+            cvwAllergiesSensitivites[x][0] = allergy!date_reaction 'could be free text
+         Endif
+         cvwAllergiesSensitivites[x][1] = Trim(allergy!class_name & " " & allergy!allergen) 'will be only one
+         Select Case allergy!specificity
+            Case "c"
+               specificity = "class"
+            Case "g"
+               specificity = "generic"
+            Case "b"
+               specificity = "brand"
+         End Select
+         cvwAllergiesSensitivites[x][2] = "  " & specificity & " reaction  "
+         cvwAllergiesSensitivites[x][3] = "  " & allergy!reaction_type & "  "
+         cvwAllergiesSensitivites[x][4] = "  " & allergy!details & "  "
+         If allergy!confirmed Then
+            cvwAllergiesSensitivites[x][5] = "  Confirmed  "
+         Else
+            cvwAllergiesSensitivites[x][5] = "  Not Confirmed  "
+         Endif
+         Inc x
       Endif
-      cvwAllergies[x][1] = Trim(allergy!class_name & " " & allergy!allergen) 'will be only one
-      Select Case allergy!specificity
-         Case "c"
-            specificity = "class"
-         Case "g"
-            specificity = "generic"
-         Case "b"
-            specificity = "brand"
-      End Select
-      cvwAllergies[x][2] = "  " & specificity & " reaction  "
-      cvwAllergies[x][3] = "  " & allergy!reaction_type & "  "
-      cvwAllergies[x][4] = "  " & allergy!details & "  "
-      If allergy!confirmed Then
-         cvwAllergies[x][5] = "  Confirmed  "
-      Else
-         cvwAllergies[x][5] = "  Not Confirmed  "
-      Endif
-      Inc x
    Next
-   modUtil.Columnview_Columns_Set_Size(cvwAllergies, lblmeasure)
-   lblDate.SetFocus() 'to anything
+   
+   If cvwAllergiesSensitivites.count Then
+      modUtil.Columnview_Columns_Set_Size(cvwAllergiesSensitivites, lblmeasure)
+      With cvwAllergiesSensitivites
+         .MoveFirst
+         .SetFocus
+         .Item.Selected = True  
+      End With
+   Endif
+   ' lblDate.SetFocus() 'to anything
    
 End
 
@@ -445,7 +518,7 @@ End
 Public Sub Settings_Load()
    
    VSplit_Allergies.layout = Settings["FAllergy/VSplit_Allergies.Layout", modUtil.VSplit([244, 319, 284])]
-   cvwAllergies.Font = Font[Settings["FAllergy/cvwAllergies.font", "Arial,9"]]
+   cvwAllergiesSensitivites.Font = Font[Settings["FAllergy/cvwAllergies.font", "Arial,9"]]
    
 End
 
@@ -466,6 +539,7 @@ Public Sub EditArea_Clear()
    rbReactionAllergy.value = True
    rbConfirmedYes.Value = True 
    bExit = False
+   HBox_EditArea_NoKnownAllergies.padding = 0
    EditArea_Notify_DataChange(False)
    
 End
@@ -474,7 +548,7 @@ Public Sub Reset_Keys()
    
    fk_code = ""      '
    fk_coding_system = 0
-   fk_allergy = 0
+   fk_allergysensitivity = 0
    fk_consult = 0
    fk_brand = ""
    fk_product = ""
@@ -520,7 +594,7 @@ Public Function EditArea_txtBox_ExcludeKeys(keycode As Integer, tag As String) A
    'actually not implemented here FIXME
    '-----------------------------------------------------------
    
-   Select Case Last.Tag
+   Select Case Tag
       Case "brand", "allergen", "coded term", "free text reaction", "generic", "date reaction", "coded term", "atc name", "details"
          bKeyValid = True
    End Select
@@ -565,7 +639,7 @@ Public Sub Brand_Select()
 Catch
    bexit = False
    Return
-
+   
 End
 
 Private Sub Brands_Get()
@@ -613,10 +687,11 @@ Private Sub Generics_Get(generic As String)
    
 End
 
-Public Function Valid_Allergy() As Boolean
+Public Function Valid_Allergy_Or_Sensitivity() As Boolean
    '-------------------------------------------------------------------
    'Returns true if the information in the edit area is a valid allergy
-   'At a minimum must have either
+   'If the 'nil known' checkbox is not checked
+   'then at a minimum must have either
    '1) An allergen eg Bee or Crustacean
    '  or
    '2) A drug, hence must have an ATCcode
@@ -628,6 +703,7 @@ Public Function Valid_Allergy() As Boolean
    
    Dim sMsg As String
    
+   If chkNilKnown.value = True Then Return True
    If txtBrand.text <> "" Then 
       If atccode = "" Then
          Message.Info("Please select a valid generic or brand.")
@@ -843,10 +919,7 @@ Public Sub Terms_Get()
    'Cannot set default if count is one because must  be able to add new occupations
    'can't remove the label because it needs to occupy space to keep textbox correct width
    '-------------------------------------------------------------------------------------
-   
-   Dim term As Collection 
-   Dim key As String
-   
+
    If Trim(txtCodedTerm.text) = "" Then
       fk_code = ""
       fk_coding_system = 0
@@ -916,7 +989,7 @@ Public Sub New_Entry()
    'This is called from the main toolbar in FClinical and here for consistant nomenclature between modules
    '------------------------------------------------------------------------------------------------------   
    
-   Allergy_New()
+   Allergy_Or_Sensitivity_New()
    
 End 
 
@@ -972,32 +1045,34 @@ Public Sub EditArea_RadioButtons_Click()
    
 End
 
-Public Sub cvwAllergies_Select()
+Public Sub cvwAllergiesSensitivites_Select()
    '-------------------------------------------------------------
    'User has clicked on the allergies list - display in edit area
    '-------------------------------------------------------------  
    
-   Allergy_Display()
+   cvwAllergiesSensitivites.MoveCurrent
+   cvwAllergiesSensitivites_key = cvwAllergiesSensitivites.Item.Key
+   Allergy_Or_Sensitivity_Display()
    
 End
 
-Public Sub cvwAllergies_Menu()
+Public Sub cvwAllergiesSensitivites_Menu()
    
-   If cvwAllergies.count Then
-      mnuAllergies.Popup()
+   If cvwAllergiesSensitivites.count Then
+      mnuAllergiesSensitivities.Popup()
    Endif
    
 End
 
-Public Sub mnuAllergies_Click()
+Public Sub mnuAllergiesSensitivities_Click()
    
    Select Case Last.tag
       Case "edit"
-         Allergy_Edit()
+         Allergy_Or_Sensitivity_Edit()
       Case "delete"
-         Allergy_Delete()
+         Allergy_Or_Sensitivity_Delete()
       Case "font"
-         modUtil.Columnview_SetFont(cvwAllergies, "FAllergy")
+         modUtil.Columnview_SetFont(cvwAllergiesSensitivites, "FAllergy")
       Case "help"
          modUtil.NotImplemented("Help for allergies")
    End Select
@@ -1030,3 +1105,32 @@ Public Sub Form_Resize()
    
 End
 
+Public Sub chkNilKnown_Click()
+   '-----------------------------------------------
+   'If use checks this checkbox they are indicating 
+   'no known allergies or sensitivites
+   '-----------------------------------------------
+   
+   Dim sMsg As String
+   
+   If bexit Then Return
+   If Last.value = True Then      'no known allergies or sensitivites
+      If cvwAllergiesSensitivites.count Then   'existing allergies/sensitivities, user must be making mistake or changing mind
+         sMsg = "You have indicated the patient has 'No Known Allergies or sensitivites' but there are existing ones recorded.\n\n"
+         "You should delete these before proceeding."
+         bExit = True
+         chkNilKnown.value = False
+         bExit = False  
+         Message.info(sMsg)
+         Return
+      End If 
+      EditArea_Clear
+      Reset_Keys
+      Vbox_EditArea.Enabled = False
+      HBox_EditArea_NoKnownAllergies.padding = 1
+   Else
+      Vbox_EditArea.Enabled = True  
+      HBox_EditArea_NoKnownAllergies.padding = 0
+   End If   
+   
+End

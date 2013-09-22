@@ -1,28 +1,110 @@
 ' Gambas class file
 
+' Copyright (C) 2008-2013 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'---------------------------------------------------------------------------
+' PURPOSE         Allow user to enter point-of-testing INR 
+'                 i.e those done in the surgery not downloaded via HL7
+'                 Allow user to enter advice about INR doses
+'                 
+' NOTES           It is possible or necessary to allow multiple INR's to 
+'                 be entered on one day, e.g might be putting in some
+'                 home INR's on different dates from a patient's own 
+'                 INR machine
+'                 if clin_measurents.inr_plan.use_lab_hl7 is true then
+'                 the INR manager will default to pulling in the last lab
+'                 INR result and will not create a new row in
+'                 documents or documents.observations when the advice is
+'                 saved
+'PROBLEMS         This module can be embedded in both Fclinical and FInbox
+'                 and not only that, but this could occur at the same time
+'                 using different cConsults, or on the same day at different
+'                 times. This makes life a little complicated............
+'                 and the potential for bugs is high. Different
+'                 fk_progress notes and fk_consults are in use
+'---------------------------------------------------------------------------
+
 Private CurrentConsult As CConsult
-Private INRS As Collection
 Private fk_inr_plan As Integer
-Private fk_inr_management As Integer
-Private bEdit As Boolean
+Private fk_inr_dose_management As Integer
+Private bEditing As Boolean
 Private ReferenceHboxForTopOfPopupList As Hbox
-Private fk_coding_system As Integer                'if non-zero is a valid coding system
 Private fk_code As String                          'if not "" then a valid code
-Private fk_reason_for_anticoagulation_use As Integer
-Private Terms As Collection                        'Coded term list
+Private fk_reason_anticoagulant_use As Integer
 Private Form_Terms As FCodedTermSelector      'Popup form to display coded terms for user to choose from
 Private obs As Observer
 Private timer_count As Integer
 Private bExit As Boolean
-Private fk_progressnote As Integer
+Private fk_progressnote_plan As Integer
+Private fk_progressnote_management As Integer
+'Private fk_progressnote As Integer
 Private INRPlan As Collection
+Private fk_document As Integer
+Private fk_sending_entity As Integer
+Private fk_observation As Integer
+Private INRs_Recorded_Today As Collection
+Private INR_Test As Collection 
+Private Previous_INRs As Collection
+Private bSavePlanOnly As Boolean = False        'If True then the plan only is saved
+Private Last_Lab_INR As Collection
+Private bPlanCreatedToday As Boolean            'If True the plan was created and saved today, used in Save for progress notes
+Private Embedded_In_Form As String              'if not in Fclinical but in FInbox = "Finbox
+Private bEditingPlan As Boolean                    'If True we are editing the Plan, not the INR data
+Private reason_for_anticoagulation As Collection
+Private Range2to3 As New String[2, 6]
+Private Range2point5to3point5 As New String[2, 6]
 
-Public Sub init(cons As CConsult)
+Public Sub set_embedded_form(frmName As String)
    
+   Embedded_In_Form = frmName 
+   
+End
+
+Public Sub Init(cons As CConsult)
+   
+   Dim x As Integer
+   
+   tlHighINR.text = High_INR_html()
+   Range2to3[0, 0] = "Increase dose 10 To 20%; consider extra dose" 
+   Range2to3[0, 1] = "Increase dose 5 To 10% (If INR is 1.8 to 1.9 consider no change with repeat INR In 7 To 14 days." 
+   Range2to3[0, 2] = "No Change"
+   Range2to3[0, 3] = "Decrease dose 5 To 10% (If INR is 3.1 to 3.2, consider no change with repeat INR In 7 To 14 days"
+   Range2to3[0, 4] = "Hold for 0 to 1 days, then decrease dose 10%" 
+   Range2to3[0, 5] = "See below"
+   Range2to3[1, 0] = "4 to 8 days" 
+   Range2to3[1, 1] = "7 to 14 days"
+   Range2to3[1, 2] = "No. of consecutive In-Range INRs x 1wk(Max: 4 wks)" 
+   Range2to3[1, 3] = "7 to 14 days"
+   Range2to3[1, 4] = "4 to 8 days"
+   Range2to3[1, 5] = "See below"
+   Range2point5to3point5[0, 0] = "Increase dose 10 To 20%; consider extra dose" 
+   Range2point5to3point5[0, 1] = "Increase dose 5 To 10% (If INR is 1.8 to 1.9 consider no change with repeat INR In seven To 14 days." 
+   Range2point5to3point5[0, 2] = "No Change"
+   Range2point5to3point5[0, 3] = "Decrease dose 5 To 10%;consider holding one dose (If INR is 3.1 to 3.2, consider no change with repeat INR In 7 To 14 days"
+   Range2point5to3point5[0, 4] = "Hold for 1 to 2 days, then decrease dose 5 to 15%" 
+   Range2point5to3point5[0, 5] = "See below"
+   Range2point5to3point5[1, 0] = "4 to 8 days" 
+   Range2point5to3point5[1, 1] = "7 to 14 days"
+   Range2point5to3point5[1, 2] = "No. of consecutive In-Range INRs x 1wk(Max: 4 wks)" 
+   Range2point5to3point5[1, 3] = "7 to 14 days"
+   Range2point5to3point5[1, 4] = "2 to 8 days"
+   Range2point5to3point5[1, 5] = "See below"
    CurrentConsult = cons
+   fk_sending_entity = modInboxDBI.SendingEntity_GetPK(const.Document_Display_As_Result, "", modDBConnect.currentUser!fk_branch)
    lblmeasure.text = " Comment on Dose Advised  "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblmeasure)
-   With Form_Terms = New FCodedTermSelector(Vbox_EditArea)        'hide a new instance of popup coded term selector
+   With Form_Terms = New FCodedTermSelector(Vbox_EditArea)          ' Create And hide a New Instance Of popup coded term selector
       .Ignore = True
       .ColumnView1.Background = Color.White
       .Visible = False
@@ -30,15 +112,232 @@ Public Sub init(cons As CConsult)
       .Raise()
    End With
    obs = New Observer(Form_Terms.columnview1) As "Terms_columnview"  'Over-ride events on this form
- '  Reload
+   With cvwINR
+      .Columns.count = 5
+      .Columns[0].text = "    Date INR   "
+      .Columns[1].text = "    Value    "
+      .Columns[2].text = "       Warfarin Dose        "
+      .Columns[3].text = "       Next Dose Advised    "
+      .Columns[4].text = "Comment"
+      For x = 0 To 4
+         .Columns[x].Alignment = Align.Center
+      Next
+   End With
+   With cvwManagement
+      .Columns.count = 5
+      .Columns[0].text = "    Date INR   "
+      .Columns[1].text = "    Value    "
+      .Columns[2].text = "      Last Dose        "
+      .Columns[3].text = "      Dose Advised     "
+      .Columns[4].text = "Date Recheck"
+      For x = 0 To 4
+         .Columns[x].Alignment = Align.Center
+      Next
+   End With
+   
+   With gvwDosageAdvice
+      .Columns.count = 6
+      .Rows.count = 2
+      .Rows[0].text = "Adjustment"
+      .Rows[1].text = "Next INR"
+   End With
+   
+   Settings_load
+   If Embedded_In_Form = "FInbox" Then
+      Hbox_INR_Date.Enabled = False                 'as pulling these from HL7
+      Hbox_INR_Value.Enabled = False                'cannot enter either of these fields
+      lblDoseHeading.text = "Enter Dose Advice"     
+   Endif
+   Reload
+   
+End
+
+Public Sub INR_Show_Dose_Advice(sRange As String)
+   
+   Dim sHeading As String = "Dosage Adjustment Algorithms for INR Range %range% (no bleeding)"
+   
+   gvwDosageAdvice.Visible = True   
+   Select Case sRange
+      Case "2.0-3.0"
+         INR_Dose_Advice_Load_Grid(sRange)
+      Case "2.5-3.5"
+         INR_Dose_Advice_Load_Grid(sRange)
+      Case Else
+         With tlNoDecisionSupport
+            .text = "There is no specific decision support available for the INR range you have selected for this patient"
+            .Visible = True
+         End With
+         gvwDosageAdvice.Visible = False
+   End Select
+   lblDecisionSupportHeading.text = Replace(sHeading, "%range%", sRange)
+   Resize_Grid
+   
+End
+
+Public Sub INR_Dose_Advice_Load_Grid(sRange As String)
+   
+   Dim x As Integer
+   
+   gvwDosageAdvice.Clear
+   Select Case sRange
+      Case "2.0-3.0"
+         With gvwDosageAdvice
+            .Columns.count = 6
+            .Rows.count = 2
+            .Columns[0].text = "<1.5"
+            .Columns[1].text = "1.5 to 1.9"
+            .Columns[2].text = " 2.0 to 3.0"
+            .Columns[3].text = " 3.1 to 3.9"
+            .Columns[4].text = " 4.0 to 4.9"
+            .Columns[5].text = " ≥ 5.0"
+         End With
+         For x = 0 To 5
+            With gvwDosageAdvice[0, x]
+               .Text = Range2to3[0, x]
+               .WordWrap = True  
+               .Alignment = Align.TopLeft
+               With gvwDosageAdvice.Rows[x]
+                  .Height = -1 
+               End With
+            End With
+            With gvwDosageAdvice[1, x]
+               .Text = Range2to3[1, x]
+               .WordWrap = True  
+               .Alignment = Align.TopLeft
+               With gvwDosageAdvice.Rows[1]
+                  .Height = -1
+               End With
+            End With    
+         Next
+         For x = 0 To 5
+            gvwDosageAdvice.Columns[x].width = cvwINR.width / 7
+         Next
+      Case "2.5-3.5"
+         With gvwDosageAdvice
+            .Columns.count = 6
+            .Rows.count = 2
+            .Columns[0].text = "<1.5"
+            .Columns[1].text = "1.5 to 2.4"
+            .Columns[2].text = " 2.5 to 3.5"
+            .Columns[3].text = " 3.6 to 4.5"
+            .Columns[4].text = " 4.5 to 6.0"
+            .Columns[5].text = " ≥ 6.0"  
+         End With 
+         For x = 0 To 5
+            With gvwDosageAdvice[0, x]
+               .Text = Range2point5to3point5[0, x]
+               .WordWrap = True  
+               .Alignment = Align.TopLeft
+               With gvwDosageAdvice.Rows[x]
+                  .Height = -1 
+               End With
+            End With
+            With gvwDosageAdvice[1, x]
+               .Text = Range2point5to3point5[1, x]
+               .WordWrap = True  
+               .Alignment = Align.TopLeft
+               With gvwDosageAdvice.Rows[1]
+                  .Height = -1
+               End With
+            End With    
+         Next
+         For x = 0 To 5
+            gvwDosageAdvice.Columns[x].width = cvwINR.width / 7
+         Next
+   End Select
    
 End
 
 Public Sub INR_New()
+   '-------------------------------------------------------
+   'Allow entry of  new INR plan or if no plan yet the plan
+   'Default to Atrial fibrillation as this is most common
+   '-------------------------------------------------------- 
    
+   Dim INRRange As Variant[]
+   
+   INRRange = Split(txtINRRange.text, "-")       'if plan already showing keep the range values
    EditArea_Clear()
+   bEditing = False
+   If Embedded_In_Form <> "FInbox" Then   
+      If chkUseLabHl7.value = True Then
+         If Message.Question("You have previously indicated that this persons INR results will be done in an external lab.\n\nAre you sure you want to add an INR manually?", "Yes", "No") = 2 Then Return
+      Endif
+      txtDateINR.Enabled = True
+      txtDateINR.text = Format(Now, "dd/mm/yyyy")
+      txtDateNextINR.text = Format(DateAdd(Now, gb.month, 1), "dd/mm/yyyy")
+   End If   
+   txtDateNextINR.Enabled = True   
+   txtDoseAdvised.Enabled = True   
+   txtCommentDoseAdvice.Enabled = True   
+   tbDatePicker_1.Enabled = True
+   tbDatePicker_2.Enabled = True
+   txtLastWarfarinDose.text = modMeasurementsDBI.Warfarin_Last_Dose_Get(CurrentConsult!patient!fk_patient)
+   cvwINR.UnselectAll()
+   With lblDoseHeading
+      .Foreground = Color.Red
+      If chkUseLabHl7.value = True Or Embedded_In_Form = "FInbox" Then
+         .text = "Dose Advice"
+         Last_Lab_INR = modMeasurementsDBI.Warfarin_Get_Last_Lab_INR(currentconsult!patient!fk_patient)
+         If Not IsNull(Last_Lab_INR) Then    
+            If Last_Lab_INR.count Then
+               txtDateINR.text = Format(Last_Lab_INR!observation_date, "dd/mm/yyyy")
+               txtINR.text = Last_Lab_INR!value
+               If Embedded_In_Form = "FInbox" Then 
+                  If INRRange.count Then  
+                     If Val(txtINR.text) >= Val(INRRange[0]) And Val(txtINR.text) <= Val(INRRange[1]) Then
+                        txtDoseAdvised.text = txtLastWarfarinDose.Text
+                     Endif
+                  End If   
+               End If
+               fk_observation = Last_Lab_INR!fk_observation
+            Endif
+         End If   
+      Else
+         .text = " Enter New Reading & Dose Advice"
+      Endif
+   End With
    Vbox_EditArea.Enabled = True
-   txtDateINR.SetFocus()
+   If txtREason.text = "" Then
+      With lblPlanHeading
+         .Foreground = Color.Red
+         .text = "New INR Plan"
+      End With
+      txtReason.text = "Atrial Fibrillation"
+      txtINRRange.text = "2.0-3.0"
+      With txtCodedTerm
+         .text = "fibrillation"
+         Coded_Terms_Get
+         Wait
+         .SetFocus()
+      End With
+      
+   Else
+      If txtINR.text = "" Then 
+         txtINR.SetFocus()
+      Else
+         txtLastWarfarinDose.SetFocus
+      End If    
+   Endif
+   
+End
+
+Public Function INR_Dose_Format(dose As String) As String
+   '--------------------------------------------------------------------   
+   'the INR dose can be e.g 4.5/4.0 or 3.0/0.0 which doesn't look pretty
+   'so turn this into eg 4.5mg/4.0mg or 3.0mg
+   'called by Progress_Notes_Create() and Reload()
+   '-------------------------------------------------------------------- 
+   
+   dose = dose & "mg"
+   If Not InStr(dose, "0.0") 'i.e have alternating day doses eg 4.0/5.0
+      dose = Replace(dose, "/", "mg/")
+      dose &= " alternate days"
+   Else
+      dose = Replace(dose, "/", "mg")
+      dose = Replace(dose, "0.0mg", "")
+   End If   
+   Return dose
    
 End
 
@@ -47,70 +346,219 @@ Public Sub Reload()
    'Reload the INR Plan and fill the list with most recent INR"s eg 12 months worth
    '-------------------------------------------------------------------------------
    
-   INRPlan = modMeasurementsDBI.INRPlans_Get(CurrentConsult!patient!fk_patient)
-   If IsNull(INRPlan) Then Return
-   bExit = True
-   txtREason.text = INRPlan!reason
-   txtCodedTerm.text = INRPlan!term & " (" & INRPlan!fk_code & ")"
-   txtINRRange.text = INRPlan!inr_target_range
-   txtCommentReason.Text = INRPlan!comment
-   fk_inr_plan = INRPlan!pk
-   bexit = False
-   '------------------------------------------
-   'load last 12 months worth to the columnview
-   '-------------------------------------------
+   Dim x As Integer
+   Dim INR As Collection
+   
+   cvwINR.Clear
+   EditArea_Clear                                                                   'clear input area 
+   INRs_Display_Previous                                                            'display any existing (including hl7 downloaded)
+   INRPlan = modMeasurementsDBI.INRPlans_Get(CurrentConsult!patient!fk_patient)     'Get plan if it exists
+   If IsNull(INRPlan) Then Return                                                   'then (next line) any associate tests for this consult date
+   INR_Plan_Display
+   INRs_Recorded_Today = modUtil.Copy_Collection_Keyed_Sequentially(modMeasurementsDBI.INR_Get_Todays(currentconsult!patient!fk_patient))
+   cvwINR.Clear
+   For Each INR In INRs_Recorded_Today                                                   'populate the coliumnview
+      cvwINR.Add(x, 0)
+      cvwINR[x][0] = Format(INR!date_inr, "dd/mm/yyyy")
+      cvwINR[x][1] = INR!value
+      cvwINR[x][2] = INR_Dose_Format(INR!last_dose)
+      cvwINR[x][3] = INR_Dose_Format(INR!dose_advised)
+      cvwINR[x][4] = INR!comment
+      Inc x 
+   Next
+   If cvwINR.count Then
+      With cvwINR                                                                   'these lines will trigger cvwInr_Select
+         .MoveFirst                                                                 'and hence display the tests
+         .SetFocus
+         .Item.Selected = True   
+      End With
+   Endif
+   cvwINR.SetFocus
    
 End
 
-Public Sub FileAsHL7()
-   '-----------------------------------------------------------------
-   'creates a hl7 message, transfers to backend as a 'filed' document
-   '-----------------------------------------------------------------
+Public Function INR_Plan_Has_Changed() As Boolean
+   '-------------------------------------------------------------
+   'compares the INR plan before/after loading to see if changed
+   'returns true if data has changed
+   '-------------------------------------------------------------
    
-   Dim message As New CHL7Message_REF_I12
-   Dim ReceivingFacility As New CHL7Datatype_HD
-   Dim ConsultingProvider As Collection
-   Dim ReferredtoProvider As New Collection
-   Dim PrimaryCareProvider As Collection
-   Dim ReferralLetterText As String
-   Dim TempFile As File 'just for testing
-   Dim AttachmentsArray As New String[]
-   Dim ReferralStatus As String
-   Dim ReferralPriority As String
-   Dim ReferralType As String
-   Dim ReferralDisposition As String
-   Dim ReferralReason As String
+   If IsNull(INRPlan) Then Return True    'new plan, changed by definition 
+   If Lower(INRPlan!reason) <> Trim(Lower(txtReason.text)) Then
+      Return True
+   Endif
+   If INRPlan!fk_code <> fk_code Then
+      Return True
+   Endif
+   If INRPlan!inr_target_range <> Trim(txtINRRange.text) Then
+      Return True 
+   Endif
+   If Lower(INRPlan!comment) <> Trim(txtCommentReason.text) Then
+      Return True 
+   Endif
+   If INRPlan!use_lab_hl7 <> chkUseLabHl7.value Then
+      Return True 
+   Endif
+   Return
+   '    
+   ' If bEditingPlan Then                                         'if editing work out if we use the old fk_progressnote
+   '    If modUtil.IsSameDay(INRPlan!progress_note_date, Now) Then   'if the progress note for the plan was created on the same day
+   '       If INRPlan!fk_consult = CurrentConsult.GetPK() Then    'if the fk_consults are the smae
+   '          fk_progressnote_plan = INRPlan!fk_progressnote      'we are editing the plan
+   '       Else                                                   'must plan must have been created in different module
+   '          fk_progressnote_plan = 0                            'e.g Could have been created in FClinical & now in FINbox or visa version
+   '       End If                                                 'they would have different fk_consults
+   '       bEditingPlan = True                                    'either way are eidting the plan
+   '       bPlanCreatedToday = True   
+   '    Else                                                         'its not the same date  as the last when last progress note made
+   '       fk_progressnote_plan = 0                               'will need new set of progress notes for any changes
+   '       bEditingPlan = True
+   '    End If 
+   '  End If  
    
-   '  Select Case cmbPriorityTypes.Current.Text
-   '    Case "Routine"
-   ReferralPriority = "R" 'With highest priority = 'S' As soon as possible = 'A' Urgent = 'U' Early = 'E' Routine = 'R'
-   '    Case "Semi-Urgent"
-   '      ReferralPriority = "E" 'With highest priority = 'S' As soon as possible = 'A' Urgent = 'U' Early = 'E' Routine = 'R'
-   '   Case "Urgent"
-   '      ReferralPriority = "A" 'With highest priority = 'S' As soon as possible = 'A' Urgent = 'U' Early = 'E' Routine = 'R'
-   '  End Select
+End
+
+Public Sub INRs_Display_Previous()
+   'Display previous INR's 
    
-   ' Select Case cmbReferralTypes.Current.Text
-   '    Case "opinion"
-   '       ReferralReason = "S" 'Second opinion = ‘S’ Patient preference = ‘P’ Provider ordered = ‘O’ Work load = ‘W’
-   '       ReferralType = "GRF" 'General referral = ‘GRF’Discharge referral = ‘DRF’Shared care update = ‘SCU’Notification = ‘NOT’Shared EHR update = ‘SEU’Decision support system update =‘DSU’
+   Dim INR As Collection
+   Dim x As Integer
    
-   ReferralStatus = "P" 'Accepted = 'A' Pending = 'P' Rejected = 'R' Expired = 'E'
-   ReferralDisposition = "FI" 'Send written report = ‘WR’ Return patient after evaluation =‘RP’Assume management = ‘AM’Second opinion = ‘SO’ NOTE: ‘SO’ = Provide second, third Or other opinion. Additional Australian table values: Discharge summary = ‘DS’ Update care plan = ‘UCP’ Update health record = ‘UHR’ Case conference = ‘CC’ Notification – no further action =‘FI
+   cvwManagement.Clear
    
-   ReferredtoProvider!name = modDBConnect.currentUser!title & " " & modDBConnect.currentUser!firstname & " " & modDBConnect.currentUser!surname
-   ReferredtoProvider!organisation = modDBConnect.currentUser!organisation
-   ReferredtoProvider!branch = "HEAD OFFICE"
-   ReferredtoProvider!street1 = modDBConnect.currentUser!street1
-   ReferredtoProvider!street2 = modDBConnect.currentUser!street2
-   ReferredtoProvider!suburb = modDBConnect.currentUser!suburb
-   ReferredtoProvider!postcode = modDBConnect.currentUser!postcode
-   'ReferredtoProvider!comms = comms
-   '  If Not IsNull(PersonWritingTo) Then
-   '    ReferredtoProvider!provider_number = PersonWritingTo!provider_number
-   '   Endif
-   '  AttachmentsArray.Add(GetLetterText(ReferredtoProvider))
-   message.createHL7Message_REF_I12(ReferredtoProvider, currentconsult!patient, AttachmentsArray, ReferralDisposition, ReferralReason, ReferralPriority, ReferralType, ReferralStatus)
+   Previous_INRs = modUtil.Copy_Collection_Keyed_Sequentially(modMeasurementsDBI.Previous_INR_Management(currentconsult!patient!fk_patient, 50))
+   For Each INR In Previous_INRs
+      cvwManagement.Add(x, 0)
+      cvwManagement[x][0] = Format(INR!date_inr, "dd/mm/yyyy")
+      cvwManagement[x][1] = INR!value
+      cvwManagement[x][2] = INR!last_dose
+      cvwManagement[x][3] = INR!dose_advised 
+      cvwManagement[x][4] = INR!date_recheck
+      Inc x
+   Next
+   
+End
+
+Public Function INR_Plan_Create_HTML() As String
+   '----------------------------------------------------
+   'Creates the text for the progress notes for the plan
+   '----------------------------------------------------
+   
+   Dim sString As String
+   
+   sString = "INR Plan for " & Trim(txtREason.Text)
+   ' If fk_progressnote_plan = 0 And bEditing = True Then sSTring &= " was modified "
+   '  If fk_progressnote_plan = 0 Or bPlanCreatedToday = True Then    
+   '     sString &= " was created "
+   '  Else
+   '     sSTring &= " was modified "
+   '  Endif
+   sString &= " - the inr range will be " & txtINRRange.text & ". "
+   sSTring &= modUtil.Ucase_Word_First_Letter(Trim(txtCommentReason.text)) & "." & "<BR>"
+   sString = Replace(sString, "..", ".")
+   If chkUseLabHl7.value = True Then
+      sString &= "The INR values are expected to be downloaded via HL7 form a pathology lab."
+   Else
+      sString &= "The INR values will be entered in the practice at point of testing."
+   Endif
+   Return sSTring 
+   
+End
+
+Public Sub INR_Plan_Display()
+   '---------------------------------------------------------------
+   'Display the 'core' INR management plan
+   'if use_lab_hl7 is true then EasyGP will retrieve the last INR
+   'sent via HL7 from a lab and not rely on user entering the value
+   'The reason_for_anticoagulation collection is later  used to see 
+   'if the reason changes see Save()
+   '----------------------------------------------------------------   
+   
+   bExit = True
+   reason_for_anticoagulation = New Collection
+   reason_for_anticoagulation!fk_reason_anticoagulant_use = INRPlan!fk_lu_reason_anticoagulant_use
+   reason_for_anticoagulation!reason = INRPlan!reason
+   reason_for_anticoagulation!fk_code = INRPlan!fk_code  
+   txtDateCreated.text = Format(INRPlan!date_plan_created, "dd/mm/yyyy")
+   txtREason.text = INRPlan!reason
+   txtCodedTerm.text = INRPlan!term & " (" & INRPlan!fk_code & ")"
+   txtINRRange.text = INRPlan!inr_target_range
+   INR_Show_Dose_Advice(INRPlan!inr_target_range)
+   txtCommentReason.Text = INRPlan!comment
+   fk_inr_plan = INRPlan!pk
+   fk_code = INRPlan!fk_code
+   'deciding what the fk_progress note is has been a nightmare for my puny brain
+   'e.g the current plan fk_progress note can change all the time within Fclinical
+   'if modified on different days, or if it has been changed or created in the inbox
+   'problem is that the fk_progress note for the plan and the fk_progress note for
+   'the management can be different
+   If modUtil.IsSameDay(INRPlan!progress_note_date, Now) Then   'if the progress note for the plan was created on the same day
+      If INRPlan!fk_consult = CurrentConsult.GetPK() Then    'if the fk_consults are the smae
+         fk_progressnote_plan = INRPlan!fk_progressnote      'we are editing the plan
+      Else                                                   'must plan must have been created in different module
+         fk_progressnote_plan = 0                            'e.g Could have been created in FClinical & now in FINbox or visa version
+      End If                                                 'they would have different fk_consults
+      bPlanCreatedToday = True   
+   Else                                                         'its not the same date  as the last when last progress note made
+      fk_progressnote_plan = 0                               'will need new set of progress notes for any changes
+      bEditingPlan = True
+   End If 
+   chkUseLabHl7.value = INRPlan!use_lab_hl7 
+   bExit = True   
+   
+End
+
+Public Sub Edit()
+   '------------------------------------------------------------------
+   'User wants to Edit the plan, don't allow them to put in dose stuff
+   '------------------------------------------------------------------
+   
+   INR_Edit 
+   
+End
+
+Public Sub INR_Edit()
+   
+   cvwINR.UnselectAll()
+   EditArea_Clear()
+   INRPlan = Null
+   tbDatePicker_1.Enabled = False  
+   tbDatePicker_2.Enabled = False   
+   txtINR.Enabled = False  
+   txtDateINR.Enabled = False
+   txtDateNextINR.Enabled = False   
+   txtDoseAdvised.Enabled = False   
+   txtCommentDoseAdvice.Enabled = False   
+   Vbox_EditArea.Enabled = True 
+   With lblPlanHeading
+      .Foreground = Color.Red
+      .text = "Edit Existing INR Management Plan"
+   End With
+   bEditingPlan = True
+   bSavePlanOnly = True
+   
+End
+
+Public Sub INR_Delete()
+   
+End
+
+Public Sub INR_Display()
+   '-------------------------------------------------------------------------------------
+   'Display the selected INR recorded today this was found via consult_date not inr_date
+   'as for example the doctor/nurse could be recording home INR's recorded by the patient
+   '-------------------------------------------------------------------------------------  
+   
+   bExit = True
+   fk_inr_dose_management = INR_Test!pk
+   txtDateINR.text = Format(INR_Test!date_inr, "dd/mm/yyyy")
+   fk_progressnote_management = INR_Test!fk_progressnote
+   txtINR.text = INR_Test!value
+   txtDoseAdvised.text = INR_Test!dose_advised
+   txtDateNextINR.text = Format(INR_Test!date_recheck, "dd/mm/yyyy")
+   txtCommentDoseAdvice.text = INR_Test!comment_on_advice
+   txtLastWarfarinDose.text = INR_Test!last_dose
+   bexit = False
    
 End
 
@@ -127,11 +575,8 @@ Public Sub Coded_Terms_Get()
    'can't remove the label because it needs to occupy space to keep textbox correct width
    '-------------------------------------------------------------------------------------
    
-   Dim key As String
-   
    If Trim(txtCodedTerm.text) = "" Then
-      fk_code = 0
-      fk_coding_system = const.coding_none_selected
+      fk_code = ""
       Form_Terms.Visible = False
       Return
    End If
@@ -142,6 +587,9 @@ Public Sub Coded_Terms_Get()
 End
 
 Public Sub Timer1_Timer()
+   '--------------------------------------
+   'Controls the searching for coded terms
+   '--------------------------------------   
    
    Inc timer_count
    If timer_count > 1 Then  'FIXME MAKE THESE USER CONFIGURABLE PER TYPING SPEED
@@ -164,69 +612,137 @@ Public Sub EditArea_Notify_Data_Change(flag As Boolean)
 End
 
 Public Sub EditArea_Clear()
-   '--------------------------
+   '-----------------------------------------------------------
    'Clears the data input area
-   '--------------------------
+   'if txtReason.text exists then only clear the INR input area
+   'if this module has been accessed today then then
+   'progress note date = now so don't touch the fk_progressnote
+   'as will simply edit that record
+   '-----------------------------------------------------------
    
-   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
+   bExit = True   
+   If txtREason.text = "" Then
+      modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
+      fk_code = ""
+      fk_inr_plan = 0
+      fk_progressnote_plan = 0
+      fk_progressnote_management = 0
+      fk_inr_dose_management = 0
+      txtDateCreated.text = Format(Now, "dd/mm/yyyy")
+      INRPlan = Null
+   Else
+      With lblDoseHeading
+         .Foreground = Color.Black
+         .text = "INR Management Plan"
+      End With
+      txtDateINR.text = ""
+      txtLastWarfarinDose.text = ""
+      txtDoseAdvised.text = ""
+      txtCommentDoseAdvice.text = ""
+      fk_inr_dose_management = 0
+   Endif
+   With lblPlanHeading
+      .Foreground = Color.Black
+      .text = "INR Management Plan"
+   End With
+   With lblDoseHeading
+      .Foreground = Color.Black
+      .text = "Reading & Dose Advice"
+   End With
+   bexit = False 
+   bSavePlanOnly = False   
+   bEditingPlan = False  
    Form_Terms.Visible = False
    EditArea_Notify_Data_Change(False)
+   Vbox_EditArea.Enabled = False 
    
 End
 
-Private Sub Settings_LOAD()
+Private Sub Settings_load()
    
-   Vsplit_Main.Layout = Settings["FInr/Vsplit_Main", modUtil.VSplit(1, 2)]
+   Vsplit_Main.Layout = Settings["Finr/Vsplit_Main.Layout", modUtil.VSplit([1, 2])]
+   cvwINR.Font = Font[Settings["Finr/cvwINR.font", "DejaVu Sans,9"]]
+   Try VSplit_DoseAdvice.Layout = Settings["Finr/VSplit_DoseAdvice.Layout", modUtil.VSplit([1, 1, 1])]
    
 End
 
 Public Sub Settings_Save()
    
-   Settings["FInr/Vsplit_Main"] = Vsplit_Main.Layout
+   Settings["Finr/Vsplit_Main.Layout"] = Vsplit_Main.Layout
+   Settings["Finr/VSplit_DoseAdvice.Layout"] = VSplit_DoseAdvice.Layout
    
 End
 
 Public Sub Save()
+   '------------------------------------------------------------------------------------
+   'Creates the plan if does not exist
+   'Save the office reading of the INR to documents.document and documents.observations
+   'That way we can view these like we would any old incoming hl7 result plus graph them
+   'Note that though editable this is only editable "on the day....."
+   '------------------------------------------------------------------------------------  
    
-   Dim reason_for_anticoagulation As CRow
+   Dim Reason As CRow
    Dim inr_plan As CRow
-   Dim sProgressNotes As String
-   Dim progressNote As CRow
+   Dim inr_dose_management As CRow
+   Dim ProgressNote_Plan As CRow
+   Dim ProgressNote_Management As CRow 
+   Dim Document As CRow
+   Dim observation As CRow  
+   Dim progress_note_code As CRow   
+   Dim R As Result
+   Dim bPlanHasChanged As Boolean = INR_Plan_Has_Changed() 
    
    If Vbox_EditArea_Outer.padding = 0 Then Return
    If Not Valid_Data() Then Return
-   
-   sProgressNotes = "INR level noted: " & Trim(txtINR.text) & " dosage advised " & Trim(txtDoseAdvised.text)
-   sProgressNotes &= " next INR to be done on " & txtDateNextINR.Text
-   If Trim(txtCommentDoseAdvice.text) <> "" Then
-      sProgressNotes &= " comment added: " & Trim(txtCommentDoseAdvice.text)
-   Endif
-   '----------------------
-   'Save the progress note
-   '----------------------
-   ProgressNote = New CRow
-   If fk_progressnote Then
-      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")
-   Endif
-   ProgressNote!fk_consult = CurrentConsult.GetPK()
-   ProgressNote!notes = sProgressNotes
-   ProgressNote!fk_section = const.cSection_INR_Management
-   ProgressNote!fk_audit_action = const.cAuditAction_Insert
-   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
-   '------------------------------------------------------------
+   '---------------------------------------------------------------------------------
+   'Save the progress notes, there can be two types, one for plan, one for management
+   '---------------------------------------------------------------------------------
+   If bPlanHasChanged Then   
+      ProgressNote_Plan = New CRow
+      If fk_progressnote_plan Then
+         ProgressNote_Plan.put_unchanged(fk_progressnote_plan, "fk_progressnote")
+      Endif
+      ProgressNote_Plan!fk_consult = CurrentConsult.GetPK()
+      ProgressNote_Plan!notes = INR_Plan_Create_HTML() 
+      ProgressNote_Plan!fk_section = const.cSection_INR_Management
+      ProgressNote_Plan!fk_audit_action = const.cAuditAction_Insert
+      ProgressNote_Plan.Save("clin_consult.progressnotes", "fk_progressnote")
+   End If   
+   If bSavePlanOnly = False Then  
+      ProgressNote_Management = New CRow 
+      If fk_progressnote_management Then
+         ProgressNote_Management.put_unchanged(fk_progressnote_management, "fk_progressnote")
+      Endif
+      ProgressNote_Management!fk_consult = CurrentConsult.GetPK()
+      ProgressNote_Management!notes = Progress_Notes_Management_Create()
+      ProgressNote_Management!fk_section = const.cSection_INR_Management
+      ProgressNote_Management!fk_audit_action = const.cAuditAction_Insert
+      ProgressNote_Management.Save("clin_consult.progressnotes", "fk_progressnote")
+   End If   
+   '--------------------------------------------------------------
+   ' Valid_Data has checked we have a valid key for reason for use
+   ' or if unrecognised reason sets key to 0
+   ' The reason that this is editable here is that the user may
+   ' have inadvertantly allocated the wrong code to their
+   ' free text term, and we guage they have the sense to do this
+   ' correctly as they are doctors after all.
+   ' Can change the code associated with this
    ' Create  table clin_measurements.lu_reason_anticoagulant_use
    ' (pk serial primary key,
    ' reason text not null,
    ' fk_code text not null
    ' );
    '-------------------------------------------------------------
-   reason_for_anticoagulation = New CRow
-   If fk_reason_for_anticoagulation_use Then 'editing existing record
-      reason_for_anticoagulation.put_unchanged(fk_reason_for_anticoagulation_USE, "fk_reason_for_anticoagulation")
-   Endif
-   reason_for_anticoagulation!fk_code = fk_code
-   reason_for_anticoagulation!reason = Trim(txtREason.text)
-   reason_for_anticoagulation.Save("clin_measurements.lu_reason_anticoagulant_use", "fk_lu_reason_anticoagulant_use")
+   If Reason_for_anticoagulation_changed() Then   
+      Reason = New CRow  
+      If fk_reason_anticoagulant_use Then 'editing existing record
+         Reason.put_unchanged(fk_reason_anticoagulant_use, "fk_lu_reason_anticoagulant_use")
+      Endif
+      Reason!fk_code = fk_code
+      Reason!reason = Trim(txtREason.text)
+      Reason.Save("clin_measurements.lu_reason_anticoagulant_use", "fk_lu_reason_anticoagulant_use")
+      fk_reason_anticoagulant_use = Reason!fk_lu_reason_anticoagulant_use
+   End If   
    '----------------------------------------------------------------------------------------------------
    ' Create  table clin_measurements.inr_plan
    ' (pk serial primary key,
@@ -237,37 +753,229 @@ Public Sub Save()
    ' "comment" text default null
    ' );
    '----------------------------------------------------------------------------------------------------
-   inr_plan = New CRow
-   If fk_inr_plan Then
-      inr_plan.put_unchanged(fk_inr_plan, "fk_inr_plan")
-   Endif
-   inr_plan!fk_lu_reason_anticoagulant_use = reason_for_anticoagulation!fk_lu_reason_anticoagulant_use
-   inr_plan!fk_consult = CurrentConsult.GetPK()
-   inr_plan!fk_progressnote = ProgressNote!fk_progressnote
-   inr_plan!inr_target_range = Trim(txtINRRange.text)
-   inr_plan!comment = Trim(txtCommentReason.text)
-   inr_plan.Save("clin_measurements.inr_plan", "fk_inr_plan")
+   If bPlanHasChanged Then   
+      inr_plan = New CRow
+      If fk_inr_plan Then
+         inr_plan.put_unchanged(fk_inr_plan, "fk_inr_plan")
+      Else
+         inr_plan!date_plan_created = Val(txtDateCreated.text)   'only ever saved at initial plan instigation
+      End If   
+      inr_plan!fk_lu_reason_anticoagulant_use = fk_reason_anticoagulant_use
+      inr_plan!fk_consult = CurrentConsult.GetPK()
+      inr_plan!fk_progressnote = ProgressNote_Plan!fk_progressnote
+      inr_plan!inr_target_range = Trim(txtINRRange.text)
+      inr_plan!comment = Trim(txtCommentReason.text)
+      inr_plan!use_lab_hl7 = CBool(chkUseLabHl7.value)
+      inr_plan.Save("clin_measurements.inr_plan", "fk_inr_plan")
+   End If   
+   '-------------------------------------------------------------------------------
+   ' If this saving is taking place not when embedded in the inbox
+   ' Create an entry in document.documents table (don't need all fields shown here)
+   ' which makes it look as if the INR was done in the Lab and sent via HL7. 
+   ' This way the result can be graphed later as needed
+   ' Note the user could have been stupid enough not to check the use the lab hl7
+   ' -------------------------------------------------------------------------------
+   ' CREATE TABLE documents.documents
+   ' (
+   '   pk serial NOT NULL,
+   '   source_file text,                           -- not needed here
+   '   fk_sending_entity integer NOT NULL,         -- the practices's sending entity entry (see Init())
+   '   imported_time timestamp without time zone NOT NULL DEFAULT now(),
+   '   date_requested date,
+   '   date_created date, -- date the document was created - ie the document was created or  the observation collected e.g blood
+   '   fk_patient integer,
+   '   fk_staff_filed_document integer, -- key to admin.staff table - who filed the document, may be null if auto-filed eg by the hl7 parser
+   '   originator text,
+   '   originator_reference text,
+   '   provider_of_service_reference text,
+   '   internal_reference text,
+   '   copies_to text, -- Whoever gets a copy of the document - flaw should be keyed for multiple
+   '   fk_staff_destination integer, -- if null, then documented sent to everyones inbox
+   '   comment_on_document text, -- additional comment e.g NAD etc
+   '   patient_access boolean DEFAULT false,
+   '   concluded boolean DEFAULT false,
+   '   deleted boolean DEFAULT false,
+   '   fk_lu_urgency integer,
+   '   tag text,
+   '   md5sum text,
+   '   fk_unmatched_staff integer,
+   '   fk_unmatched_patient integer,
+   '   fk_referral integer, -- If not null, linkt the document e.g incoming letter from specialist to a referral letter written...
+   '   fk_request integer, -- If not null, links the document e.g incoming result form a path lab...
+   '   html text, -- maybe temporary, but as most of the documents are html results, I have included this field
+   '   tag_user text,
+   '   copy_to text,
+   '   staff_intended_for_unknown boolean DEFAULT false, -- Sometimes despite all efforts it is not possible to determine from the hl7 who the message was...
+   '   fk_lu_display_as integer, -- How to display the document 1 as a result 2 as a letter
+   '   fk_lu_request_type integer, -- - key to clin_requests.lu_request_type table which contains the types...
+   '   incoming_referral boolean NOT NULL DEFAULT false,
+   '   CONSTRAINT documents_pkey PRIMARY KEY (pk )
+   ' )
+   '----------------------------------------------------------------------------------------------------------------
+   If Embedded_In_Form <> "FInbox" Then   
+      If bSavePlanOnly = False And chkUseLabHl7.Value = False Then        'If saving dose and or advice ceate document and observation
+         document = New CRow  
+         If fk_document Then
+            Document.put_unchanged(fk_document, "fk_document")
+         Endif
+         Document!fk_sending_entity = fk_sending_entity
+         Document!fk_patient = currentconsult!patient!fk_patient 
+         Document!imported_time = Now
+         Document!date_requested = Val(Trim(txtDateINR.text))
+         Document!date_created = Now
+         Document!fk_staff_filed_document = modDBConnect.currentUser!fk_staff  
+         Document!originator_reference = "In Office INR Testing"
+         Document!originator = UCase(modDBConnect.currentUser!organisation) & "." & UCase(modDBConnect.currentUser!branch)
+         Document!fk_staff_destination = modDBConnect.currentUser!fk_staff 
+         Document!comment_on_document = "INR in office testing"
+         Document!patient_access = False
+         Document!concluded = True 
+         Document!deleted = False
+         Document!fk_lu_urgency = const.UrgencyLevelRoutine
+         Document!tag = "INR"
+         Document!tag_user = "INR"
+         Document!md5sum = Null
+         Document!fk_lu_display_as = const.Document_Display_As_Result
+         Document!fk_lu_request_type = const.Request_Type_Pathology
+         Document!incoming_referral = False
+         Document!html = Result_Create_HTML()       'create the document and save to document.documents table
+         Document.Save("documents.documents", "fk_document")
+         '---------------------------------------------------------------
+         'To allow graphing on the INR, add an observation to the backend
+         '---------------------------------------------------------------
+         ' CREATE TABLE documents.observations
+         ' (
+         '   pk serial NOT NULL,
+         '   fk_document integer,
+         '   set_id integer,
+         '   value_type text,
+         '   identifier text,
+         '   sub_identifier text,
+         '   value text,
+         '   units text,
+         '   reference_range text,
+         '   abnormal text,
+         '   probability text,
+         '   nature_abnormality text,
+         '   result_status text,
+         '   date_last_normal date,
+         '   user_defined_access_checks text,
+         '   observation_date date,
+         '   value_numeric numeric,
+         '   loinc text,
+         '   pit boolean DEFAULT false, -- if true, the FT segment contains PIT lines ie a PIT report
+         '   value_numeric_qualifier text, -- numerical qualifier eg < or > for example egfr <60)
+         '   CONSTRAINT observations_pkey PRIMARY KEY (pk )
+         ' )
+         ' WITH (
+         '   OIDS=FALSE
+         ' );
+         ' In this instance documents.observations needs these fields for example:
+         ' fk_document = 10
+         ' set_id = 2
+         ' value_type = NM
+         ' identifier = INR
+         ' value = 1.8
+         ' reference_range = 2.0 - 3.5
+         ' abnormal = *
+         ' result_status = F
+         ' observation_date = 2010 - 02 - 08
+         ' value_numeric = 1.8
+         ' loinc = 6301 - 6
+         ' pit - False
+         '---------------------------------------------------------------
+         observation = New CRow
+         If fk_observation Then
+            observation.put_unchanged(fk_observation, "fk_observation")
+         End If
+         observation!fk_document = Document!fk_document  
+         observation!set_id = 2
+         observation!value = "NM"
+         observation!identifier = "INR"
+         observation!value = Trim(txtINR.text)
+         observation!reference_range = "2.0-3.5"
+         If Val(txtINR.text) < 2.0 Or Val(txtINR.text) > 3.5 Then
+            observation!abnormal = "*"
+         Endif
+         observation!result_status = "F"
+         observation!observation_date = Document!date_requested
+         observation!value_numeric = Val(txtINR.text)
+         observation!loinc = "6301-6"
+         observation!pit = False
+         observation.Save("documents.observations", "fk_observation")
+         fk_observation = observation!fk_observation
+      End If   
+   End If   
    '-------------------------------------------------------------------
    ' Create  table clin_measurements.inr_dose_management
    ' (pk serial primary key,
    ' fk_consult integer not null references clin_consult.consult (pk),
    ' fk_progressnote integer default null,
+   ' date_inr date not null -- may be different from consult_date  (see comment in back end)
    ' dose_advised text not null,
    ' date_recheck date not null,
    ' comment text default null
    ' );
-   '----------------------------------------------------------------------
+   ' -------------------------------------------------------------------
+   If bSavePlanOnly = False Then
+      inr_dose_management = New CRow   
+      If fk_inr_dose_management Then
+         inr_dose_management.put_unchanged(fk_inr_dose_management, "fk_inr_dose_management")
+      Endif
+      inr_dose_management!fk_consult = CurrentConsult.GetPK()
+      inr_dose_management!fk_progressnote = ProgressNote_Management!fk_progressnote
+      inr_dose_management!date_inr = Val(txtDateINR.text)
+      inr_dose_management!dose_advised = Trim(txtDoseAdvised.text)
+      inr_dose_management!fk_observation = fk_observation 'can come from observation just saved or observation loaded via lab hl7
+      inr_dose_management!date_recheck = Val(txtDateNextINR.text)
+      inr_dose_management!comment = Trim(txtCommentDoseAdvice.text)
+      inr_dose_management!last_dose = Trim(txtLastWarfarinDose.text)
+      inr_dose_management.Save("clin_measurements.inr_dose_management", "fk_inr_dose_management")
+   End If 
+   '-----------------------------
+   'Finally code the consultation FIX ME move all these similar routines to
+   'progress notes module once the concept seems to work
+   '-----------------------------
+   If bSavePlanOnly = False Then 
+      Select Case const.coding_system_in_use
+         Case const.coding_icpcPlus 
+            'Is There coding For this progress note
+            R = modDBConnect.exec_query("Select * from clin_consult.progressnotes_codes where fk_progressnote = " & ProgressNote_Management!fk_progressnote)
+            progress_note_code = New CRow
+            If R.count <> 0 Then
+               progress_note_code.put_unchanged(R!pk, "pk")
+            End If   
+            progress_note_code!fk_progressnote = ProgressNote_Management!fk_progressnote
+            progress_note_code!fk_code = const.icpc2_pathology_test_code
+            progress_note_code.Save("clin_consult.progressnotes_codes", "pk")
+         Case const.coding_icd10
+      End Select
+   End If   
    modDBConnect.CommitTrans()
+   If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then   
+      FClinical.Refresh_Section(const.cSection_Inbox)
+      FClinical.Refresh_AllPreviousNotes()                   ' refresh all previous notes
+   End If   
+   If Embedded_In_Form = "FInbox" Then 
+      FInbox.Previous_Notes_Refresh() 'reloads the previous notes tab to reflect the update to clinical notes
+   Endif
+   Reload()
    
 End
 
 Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
+   '------------------------------------------------------------------------------
+   'Ensure only correct keys
+   'Note that many of the textboxes on this form are mask boxes and do this for us
+   '------------------------------------------------------------------------------  
    
    Select Case tag
-      Case "date last inr"
+      Case "date inr"
          Return modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
       Case "date next inr"
          Return modUtil.AllowKeys(const.AllowKeys_Date_DWMY, keycode)
+      Case "last warfarin dose"
+         Return modUtil.AllowKeys(const.AllowKeys_NumbersDecimal, keycode)
       Case Else
          Return True
    End Select
@@ -284,10 +992,12 @@ Public Sub EditArea_TextBox_KeyPress()
       Return
    End If
    If Key.code = Key.down Then
+      timer1.Stop
       If Form_Terms.Visible Then
-         With Form_Terms
-            .ColumnView1.MoveFirst
-            .ColumnView1.SetFocus()
+         With Form_Terms.ColumnView1
+            .SetFocus
+            .MoveFirst
+            .Item.selected = True
          End With
       Endif
    End If
@@ -327,25 +1037,30 @@ Public Sub EditArea_textbox_GotFocus()
    
    ReferenceHboxForTopOfPopupList = Last.Parent.Parent
    Last.BackGround = Color.rgb(95, 255, 175)
-   If Last.tag = "coded term"
-      With Form_Terms
-         .top = Last.parent.Parent.top + Last.height
-         .left = Last.Parent.left + Vbox_EditArea.Padding
-         .height = listview1.Height
-         .width = txtCodedTerm.Width / 2
-         .Visible = False
-         .ColumnView1.Clear()
-         .Raise()
-      End With
-   End If
+   Form_Terms.visible = False   
+   timer1.Stop
+   Select Case Last.tag
+      Case "coded term"
+         With Form_Terms
+            .top = Last.parent.Parent.top + Last.height
+            .left = Last.Parent.left + Vbox_EditArea.Padding
+            .height = listview1.Height
+            .width = txtCodedTerm.Width / 2
+            .Visible = False
+            .ColumnView1.Clear()
+            .Raise()
+         End With
+      Case "last warfarin dose"
+         'get the last known dose of coumadin
+   End Select
    
 End
 
 Public Sub EditArea_TextBox_KeyRelease()
    
+   timer1.Stop
    If Last.tag = "coded term" Then
       timer_count = 0
-      
       timer1.Start
    End If
    
@@ -362,17 +1077,21 @@ End
 Public Sub Terms_Columnview_dblClick()
    
    Dim CurrentTerm As Collection
-   Dim x As Integer
    
    Stop Event
    Form_Terms.Visible = False
-   Last.movecurrent()
+   Form_Terms.columnview1.movecurrent()
    CurrentTerm = Form_Terms.Terms[Form_Terms.columnview1.Item.key]
    fk_code = CurrentTerm!code
-   fk_coding_system = CurrentTerm!fk_coding_system
    txtCodedTerm.text = CurrentTerm!term & " (" & CurrentTerm!code & ")"
    txtCodedTerm.pos = 0
-   txtINRRange.SetFocus()
+   If txtINRRange.text = "0.0-0.0" Then   
+      txtINRRange.SetFocus()
+   Else
+      txtCommentReason.SetFocus
+   End If   
+Catch
+   Return 
    
 End
 
@@ -424,19 +1143,48 @@ Public Sub DateChooser1_LostFocus()
 End
 
 Public Function Valid_Data() As Boolean
+   '----------------------------------------------
+   'ensures a valid data set, returns true if ok
+   'user given the option of saving the plan alone
+   '----------------------------------------------   
    
    Dim hctrl As Control
    Dim tb As TextBox
    Dim hb As HBox
+   Dim R As Result
    
-   If Not IsDate(txtDateINR.text) Then
-      With txtDateINR
+   'First check if enough plan information, if bEditingPlan= True then don't validate inr data
+   If Trim(txtReason.text) = "" Then
+      With txtREason.Text
          .Background = Color.rgb(95, 255, 175)
-         .SetFocus
+         .setfocus()
          Return
       End With
+   Endif
+   R = modDBConnect.exec_query("Select * from clin_measurements.lu_reason_anticoagulant_use WHERE lower(reason) = $$" & Lower(Trim(txtREason.text)) & "$$")
+   If R.count Then 
+      fk_reason_anticoagulant_use = R!pk
+   Else
+      fk_reason_anticoagulant_use = 0
+   Endif
+   If fk_code = "" Then
+      Message.info("Please select a valid coded reason for anti-coagulation use.")
+      With txtCodedTerm
+         .Background = Color.rgb(95, 255, 175)
+         .SetFocus
+      End With
+      Return
    End If
-   
+   If Trim(txtINRRange.text) = "" Then
+      With txtINRRange
+         .Background = Color.rgb(95, 255, 175)
+         .SetFocus
+      End With
+      Return
+   Endif
+   If bEditingPlan Then Return True
+   bSavePlanOnly = False 
+   'FIX THIS, REMOVE THE AUTO-CHECKING,DO MANUALLY FIX ERROR MESSAGES
    For Each hctrl In Vbox_EditArea.Children
       If hctrl Is Hbox Then
          hb = hctrl
@@ -448,7 +1196,13 @@ Public Function Valid_Data() As Boolean
                      tb = hctrl
                      If Not InStr(tb.tag, "comment") Then
                         If tb.text = "" Then
-                           With tb
+                           If txtREason.text <> "" And fk_code <> "" And txtINRRange.text <> "" Then
+                              If Message.question("Save Plan without completing current warfarin dose & advice?", "Yes", "No") = 1 Then
+                                 bSavePlanOnly = True
+                                 Return True   
+                              End If 
+                           Endif
+                           With tb      
                               .Background = Color.rgb(95, 255, 175)
                               .SetFocus()
                               Return
@@ -461,6 +1215,13 @@ Public Function Valid_Data() As Boolean
          Next
       Endif
    Next
+   If Not IsDate(txtDateINR.text) Then
+      With txtDateINR
+         .Background = Color.rgb(95, 255, 175)
+         .SetFocus
+         Return
+      End With
+   End If
    If Not IsDate(txtDateNextINR.Text) Then
       With txtDateNextINR
          .Background = Color.rgb(95, 255, 175)
@@ -468,21 +1229,13 @@ Public Function Valid_Data() As Boolean
          Return
       End With
    End If
+   
    Return True
-   
-End
-
-Public Sub Form_Resize()
-   
-   Form_Terms.width = txtCodedTerm.Width / 2
    
 End
 
 Public Sub VSplit_Main_Resize()
    
-   ' If listview1.Visible Then
-   '    listview1.top = ReferenceHboxForTopOfPopupList.top + ReferenceHboxForTopOfPopupList.height
-   ' Endif
    If Form_Terms.Visible Then
       Form_Terms.top = HBox_CodedTerm.Top + HBox_CodedTerm.Height
    Endif
@@ -495,6 +1248,31 @@ Public Sub Form_Open()
    
 End
 
+Public Sub Form_Close()
+   
+   Settings_Save()
+   
+End
+
+Public Sub Form_Resize()
+   
+   Form_Terms.width = txtCodedTerm.Width / 2
+   Resize_Grid
+   
+End
+
+Public Sub Resize_Grid()
+   
+   Dim x As Integer
+   
+   With gvwDosageAdvice
+      For x = 0 To 5
+         .Columns[x].width = cvwINR.width / 7
+      Next
+   End With 
+   
+End
+
 Public Sub EditArea_TextBox_Change()
    
    If bexit Then Return
@@ -502,76 +1280,174 @@ Public Sub EditArea_TextBox_Change()
       Case "coded term"
          If Trim(Last.text) = "" Then
             fk_code = ""
-            fk_coding_system = 0
             Form_Terms.Visible = False
          Endif
+      Case "inr range"
+         INR_Dose_Advice_Load_Grid(Last.text)
    End Select
    EditArea_Notify_Data_Change(True)
    
 End
 
-Public Sub Button1_Click()
+Public Function Result_Create_HTML() As String
+   '----------------------------------------
+   'Just creates an HTML document definition
+   '----------------------------------------
    
-   FileAsHL7
+   Dim sHtml As String = modHL7Templates.pathologyResult_Template
+   Dim Doctor_Name As String = UCase(modDBConnect.currentUser!title & " " & modDBConnect.currentUser!wholename)
+   Dim Patient_Name As String = modStrings.CapitaliseWord(currentconsult!patient!wholename)
+   Dim sString As String
+   
+   sHtml = " <HTML><BODY>" & sHTML
+   shtml = Replace(shtml, "%company%", UCase(modDBConnect.currentUser!organisation))
+   shtml = Replace(shtml, "%patient%", Patient_Name)
+   shtml = Replace(shtml, "%dob%", Format(CurrentConsult!patient!birthdate, "dd/mm/yyyy"))
+   shtml = Replace(shtml, "%sex%", CurrentConsult!patient!sex)
+   shtml = Replace(shtml, "%age%", CurrentConsult!patient!age_display)
+   shtml = Replace(shtml, "%reference%", "Patient ID:" & Str(currentconsult!patient!fk_patient))                
+   shtml = Replace(shtml, "%requestingdr%", Doctor_Name)                      
+   shtml = Replace(shtml, "%usualdr%", modStrings.CapitaliseWord(Doctor_Name))
+   shtml = Replace(shtml, "%daterequested%", TxtDateINR.text)
+   shtml = Replace(shtml, "%collected%", txtDateINR.text)
+   shtml = Replace(shtml, "%episode%", Str(currentconsult.GetPK()))
+   shtml = Replace(shtml, "%copytodr%", "")
+   shtml = Replace(shtml, "%clinicalnotes%", "<BR>" & modStrings.CapitaliseWord(txtReason.text) & "<BR>Current dose " & Replace(Trim(txtLastWarfarinDose.text), "/0.0", "") & "mg")
+   sString = "<P><B>Office INR Testing</B><P>"
+   sString &= "<P>INR " & Trim(txtINR.text) & "<P>"
+   sString &= "<P>The INR is derived from the prothrombin time and is applicable to patients on warfarin.<BR>"
+   "For patients not on warfarin the INR reference range is 0.9 - 1.2.<BR>"
+   "Therapeutic Ranges for Patients on Warfarin Therapy<BR><BR>"
+   "(2.0-3.0)&nbsp;&nbsp;Atrial fibrillation, venous thromboembolism, arterial thrombosis or embolism,<BR>"
+   "myocardial infarction, arterial grafts or tissue heart valves.<BR>(2.5-3.5)&nbsp;&nbsp;Mechanical heart valves.</P>"
+   "<P>Test supervised by:" 
+   sString &= modUtil.Ucase_Word_First_Letter(LCase(Doctor_Name)) & "</P>Tests Completed: INR</P>"
+   sHtml = Replace(sHtml, "%result%", sString)
+   shtml &= "</body></html>"
+   Return sHTML    
    
 End
-' --drop table clin_measurements.lu_reason_anticoagulant_use cascade;
-' Create  table clin_measurements.lu_reason_anticoagulant_use
-' (pk serial primary key,
-' reason text not null,
-' fk_code text not null
-' );
-' COMMENT ON TABLE   clin_measurements.lu_reason_anticoagulant_use IS 
-' 'the reason and coded reason for the anti-coagulant''s use';
-' 
-' --drop table  clin_measurements.inr_plan;
-' 
-' Create  table clin_measurements.inr_plan
-' (pk serial primary key,
-' fk_lu_reason_anticoagulant_use integer references clin_measurements.lu_reason_anticoagulant_use(pk) ,
-' fk_consult integer not null references clin_consult.consult (pk),
-' fk_progressnote integer default null,
-' inr_target_range text not null,
-' "comment" text default null
-' );
-' 
-' COMMENT ON TABLE   clin_measurements.inr_plan IS 'the core INR plan for the patient';
-' COMMENT ON COLUMN   clin_measurements.inr_plan.fk_lu_reason_anticoagulant_use is
-' 'foreign key to clin_measurements.lu_reason_anticoagulant_use points to free text and coded reason for anti-coagulation';
-' 
-' --drop table clin_measurements.inr_dose_management;
-' Create  table clin_measurements.inr_dose_management
-' (pk serial primary key,
-' fk_consult integer not null references clin_consult.consult (pk),
-' fk_progressnote integer default null,
-' dose_advised text not null,
-' date_recheck date not null,
-' comment text default null
-' );
-' COMMENT ON TABLE   clin_measurements.inr_dose_management is
-' 'today''s advise about the current INR level';
-' COMMENT ON COLUMN   clin_measurements.inr_dose_management.dose_advised is
-' 'the dosage pattern comma separated eg. 4,3.5 etc i.e here alternate days by implication';
 
-' Create or replace view clin_measurements.vwINRPlans as
-' 
-' SELECT 
-'   inr_plan.pk,
-'   lu_reason_anticoagulant_use.reason, 
-'   generic_terms.term, 
-'   consult.consult_date, 
-'   consult.fk_patient, 
-'   lu_reason_anticoagulant_use.fk_code, 
-'   inr_plan.inr_target_range, 
-'   inr_plan.comment,
-'     inr_plan.fk_progressnote
-' FROM 
-'   clin_consult.consult, 
-'   clin_measurements.inr_plan, 
-'   clin_measurements.lu_reason_anticoagulant_use, 
-'   coding.generic_terms
-' WHERE 
-'   inr_plan.fk_lu_reason_anticoagulant_use = lu_reason_anticoagulant_use.pk AND
-'   inr_plan.fk_consult = consult.pk AND
-'   lu_reason_anticoagulant_use.fk_code = generic_terms.code;
-' 
+Public Sub EditArea_TextBox_Activate()
+   
+   Select Case Last.tag
+      Case "reason"
+         txtCodedTerm.SetFocus
+      Case "coded term"
+         txtINRRange.SetFocus
+      Case "inr range"
+         txtCommentReason.SetFocus
+      Case "reasons comment"
+         txtDateINR.SetFocus
+      Case "date inr"
+         txtINR.SetFocus
+      Case "inr"
+         txtLastWarfarinDose.SetFocus
+      Case "last warfarin dose"
+         txtDoseAdvised.SetFocus
+      Case "dose advised"
+         txtDateNextINR.SetFocus
+      Case "date next inr"
+         txtCommentDoseAdvice.SetFocus
+   End Select
+   
+End
+
+Public Sub cvwINR_Select()
+   '---------------------------------------------------
+   'User has clicked on a row of INR data entered today
+   '---------------------------------------------------
+   
+   editarea_Clear
+   cvwINR.MoveCurrent
+   INR_Test = INRs_Recorded_Today[cvwINR.Item.Key]
+   INR_Display
+   
+End
+
+Public Sub cvwINR_Menu()
+   
+   If cvwINR.count Then
+      mnuINrs.Popup
+   Endif
+   
+End
+
+Public Sub mnuINrs_Click()
+   
+   Select Case Last.tag
+      Case "font"
+         modUtil.Columnview_SetFont(cvwINR, "Finr")
+      Case "delete plan"
+         INR_Delete
+      Case "edit"
+         INR_Edit
+   End Select 
+   
+End
+
+Public Function Progress_Notes_Management_Create() As String
+   
+   Dim sProgressNotes As String
+   
+   sProgressNotes = "INR level noted: " & Trim(txtINR.text) & " dosage advised " & INR_Dose_Format(Trim(txtDoseAdvised.text))
+   sProgressNotes &= " next INR to be done on " & txtDateNextINR.Text
+   If Trim(txtCommentDoseAdvice.text) <> "" Then
+      sProgressNotes &= " comment added: " & Trim(txtCommentDoseAdvice.text) & "."
+   End If
+   Return sProgressNotes
+   
+End
+
+Public Function Reason_for_anticoagulation_changed() As Boolean
+   '---------------------------------------------------------------
+   'Returns True if user has changed the reason for anticoagulation
+   '---------------------------------------------------------------
+   
+   If IsNull(reason_for_anticoagulation) Then Return True
+   If txtREason.text <> reason_for_anticoagulation!reason Then Return True
+   If fk_code <> reason_for_anticoagulation!fk_code Then Return True
+   Return
+   
+End
+
+Public Sub EditArea_Buttons_Click()
+   '---------------------------------------
+   'Used only in when embedded in the Inbox
+   '---------------------------------------
+   
+   Select Case Last.tag
+      Case "new"
+         New_Entry
+      Case "save"
+         Save
+      Case "edit"
+         Edit
+   End Select
+   
+End
+
+Public Sub chkUseLabHl7_Click()
+   '-------------------------------------------------------------------------
+   'User user clicks on the user hl7 checkbox - fetch any result in the inbox
+   '-------------------------------------------------------------------------
+   
+   EditArea_Notify_Data_Change(True)
+   
+End
+
+Public Function High_INR_html() As String
+   
+   Return "<P ALIGN=CENTER><B>MANAGEMENT OF SIGNIFICANTLY ELEVATED INR WITH OR WITHOUT BLEEDING</B></p>"
+   "<UL>"
+   "<LI><B>INR 5.0 to 8.9, no significant bleeding:</B> Omit 1 to 2 doses; reduce dose 10 to 20 percent; monitor frequently. Alternately consider vitamin K1 1 to 2.5 mg orally.</LI>"
+   "<LI><B>INR ≥ 9.0, no significant bleeding:</B> Hold warfarin therapy; give vitamin K1 5 to 10 mg orally; monitor frequently. Resume at lower dose when INR is therapeutic.</LI>"
+   "<LI><B>Serious bleeding, any INR:</B> Hold warfarin; give vitamin K1 10 mg slow intravenous (IV) plus fresh plasma or prothrombin complex concentrate, dependng on urgency; repeat vitamin K1 every 12 hours as needed.</LI>"
+   "<LI><B>Life-threatening bleeding, any INR:</B> Hold warfarin; give prothrombin complex concentrate (or recombinant factor VIIa as an alternate) supplemented with vitamin K1 (10 mg slow IV); repeat as needed.</LI>" 
+   "</UL>"
+   
+End
+
+Public Function INR_No_Decision_Support_Available_HMTL() As String
+   
+End

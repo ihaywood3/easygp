@@ -24,7 +24,6 @@ Private iTeamCareMember As Integer
 Private PlanComponents As Collection
 Private PlanComponent As Collection
 Private fk_component As Integer
-Private HealthIssues As Collection
 Private view_careplan_components As Collection
 Private HealthIssue As Collection
 Private TeamCareMember_SearchBy_Criteria As Integer
@@ -53,10 +52,8 @@ Private fk_interval_unit As Integer
 Private default_interval As Integer
 Private fk_default_interval_unit As Integer
 Private fk_recall_reason As Integer
-Private CarePlanCompoents As Collection
 Private goals As New String[]
 Private grids_data As Collection
-Private Row_data As Collection
 
 Static Private form_careplanning As FCarePlanning_new
 
@@ -137,7 +134,6 @@ Private Sub gridview1_MoveEditingControl()
    '------------------------------------------------------------------------
    
    If IsNull($hEditor_gridview1) Or gridview1.Row = - 1 Then
-      Print "null"
       Return
    End If
    Print gridview1.height - gridview1.ClientH
@@ -213,27 +209,6 @@ Public Sub gridview1_Reload()
    
 End
 
-Public Sub gridview1_Reload_old()
-   
-   Dim x As Integer
-   
-   If bexit Then Return
-   '  gridview1.Rows.Count = goals.Count + 1
-   Print goals
-   For x = 0 To goals.Count - 1
-      Print x
-      If goals[x] <> "" Then
-         With gridview1[x, 0]
-            .Text = goals[x]
-            gridview1.Rows[x].Height = -1
-            .WordWrap = True
-         End With
-      End If
-      
-   Next
-   HBox_ManagementGoals.height = gridview1.Height
-   
-End
 
 Public Function Decision_Support() As String
    
@@ -429,9 +404,6 @@ Public Sub Save()
    Dim RecallReason As CRow
    Dim RecallInterval As CRow
    Dim HealthIssue As CRow
-   Dim TeamCareMember As CRow
-   Dim member As Collection
-   Dim sql As String
    
    If Vbox_EditArea.padding = 0 Then Return
    If Not Valid_CarePlan() Then Return
@@ -508,91 +480,6 @@ Public Sub Save()
    
 End
 
-Public Sub Save_old()
-   '---------------------------------------------------------------
-   'Save the care plan for this past history item
-   'This could include changes to the past history item itself
-   'Unlike many editing areas, the underlying collection has been
-   'copied from the original at the time of display (see Display())
-   'this is because the ModPastHistoryDBI.Save(...) routine needs
-   'an intact collection to be able to write the description of
-   'any audit changes.
-   '---------------------------------------------------------------
-   
-   Dim Recall As Collection
-   Dim pk_recall As Integer = -1     'if > zero this is an existing recall for a component.
-   Dim HealthIssue As CRow
-   Dim TeamCareMember As CRow
-   Dim member As Collection
-   
-   If Vbox_EditArea.padding = 0 Then Return
-   If Not Valid_CarePlan() Then Return
-   '--------------------------------------------
-   'Save the health issues aka past history item
-   '---------------------------------------------
-   HealthIssue = New CRow
-   HealthIssue.put_unchanged(pk_pasthistory, "pk_pasthistory")
-   HealthIssue!description = Trim(txtHealthIssue.text)
-   HealthIssue!management_summary = Trim(txtManagementSummary.text)
-   HealthIssue!condition_summary = Trim(txtHistoricalSummary.text)
-   HealthIssue!aim_of_plan = Trim(txtAim.text)
-   modDBConnect.BeginTrans()
-   HealthIssue.Save("clin_history.past_history", "pk_pasthistory")
-   
-   For Each member In TeamCareMembers
-      TeamCareMember = New CRow
-      
-   Next
-   modPastHistoryDBI.Save_TeamCareMembers(TeamCareMembers_BeforeEdit, TeamCareMembers, pk_pasthistory)
-   '------------------------------------------------------------------------------------------
-   'For each care plan component which the user wants to be included as a recall
-   'create and save the recall, the key of which is returned into the PlanComponent collection
-   '------------------------------------------------------------------------------------------
-   For Each PlanComponent In PlanComponents
-      If PlanComponent!recall = True Then
-         recall = New Collection
-         recall!fk_urgency = const.UrgencyLevelRoutine
-         If Not IsNull(PlanComponent!fk_recall) Then
-            pk_recall = PlanComponent!fk_recall
-         Else
-            pk_recall = -1
-         Endif
-         If Not IsNull(PlanComponent!fk_reason) Then
-            recall!fk_reason = PlanComponent!fk_reason
-         Else
-            recall!fk_reason = 0
-         Endif
-         PlanComponent.Remove("fk_reason")
-         recall!reason = PlanComponent!component
-         recall!default_interval = default_interval 'work this out
-         recall!fk_default_interval_unit = fk_default_interval_unit
-         recall!fk_interval_unit = fk_interval_unit
-         recall!interval = interval
-         recall!due = PlanComponent!due
-         recall!fk_contact_method = cmbContactMethod.Index
-         recall!fk_appointment_length = const.AppointmentLengthStandard
-         recall!active = True
-         recall!additional_text = ""
-         recall!fk_staff = modDBConnect.currentUser!fk_staff
-         recall!fk_pasthistory = pk_pasthistory
-         PlanComponent!fk_recall = modRecallsDBI.Save(currentconsult, pk_recall, recall)
-         PlanComponent.Remove("recall") 'this was  a flag = true or false.
-         PlanComponent.Remove("fk_default_interval_unit") 'this was  a flag = true or false.
-         PlanComponent.Remove("fk_interval_unit")
-         PlanComponent.Remove("default_interval")
-         PlanComponent.Remove("interval")
-      Endif
-   Next
-   '-------------------------------------
-   'finally save the care plan components
-   '-------------------------------------
-   modPastHistoryDBI.Save_CarePlanComponents(view_careplan_components, PlanComponents, pk_pasthistory)
-   modDBConnect.CommitTrans()
-   ProblemLists.Refresh()
-   FClinical.Refresh_Section(const.cSection_PastHistory)
-   FClinical.Refresh_Section(const.cSection_CarePlan)
-   
-End
 
 Public Sub Edit()
    
@@ -717,7 +604,7 @@ Public Function EditArea_txtbox_ExcludeKeys(keycode As Integer, tag As String) A
    
    Dim bKeyValid As Boolean
    
-   Select Case Last.Tag
+   Select Case Tag
       Case "date due"
          bKeyValid = modUtil.AllowKeys(const.AllowKeys_Date_DWMY, keycode)
       Case "default interval", "interval"
@@ -864,7 +751,6 @@ Public Sub TeamCareMembers_RefreshList()
    '-------------------------------------------
    
    Dim TeamCareMember As Collection
-   Dim aCollection As Collection
    Dim x As Integer
    Dim mnu As Menu
    Dim sTeamMember As String
@@ -1429,7 +1315,6 @@ Public Sub CarePlan_Component_Select(Optional bSourceIsTextbox As Boolean = Fals
    '-------------------------------------------------------------------------------
    
    Dim x As Integer
-   Dim bFoundMatch As Boolean
    Dim SelectedReason As Collection
    
    fk_component = 0
@@ -1483,50 +1368,7 @@ Catch
 
 End
 
-Public Sub CarePlan_Component_Select_old(Optional bSourceIsTextbox As Boolean = False)
-   '-------------------------------------------------------------------------------
-   'User is selecting a care plan component from the list or <ENTER> on the textbox
-   '-------------------------------------------------------------------------------
-   
-   Dim x As Integer
-   Dim bFoundMatch As Boolean
-   
-   fk_component = 0
-   If Trim(txtComponent.text) = "" Then Return
-   bExit = True
-   '-------------------------------------------------------------------
-   'If user just hit <enter> form the textbox
-   'assume they want either their text or have seen a match in the list
-   'all this may not be needed, unless I decide to keep the component key
-   'instead of looking the keys up every save.
-   '-------------------------------------------------------------------
-   If bSourceIsTextbox Then
-      If Listview1.Visible = True Then
-         listview1.MoveFirst
-         For x = 0 To listview1.count - 1
-            If Lower(listview1.Item.text) = Trim(Lower(listview1.tag.text)) Then
-               Listview1.Visible = False
-               fk_component = listview1.item.key 'remove all the above if don't use this
-               Break
-            End If
-         Next
-         listview1.Visible = False
-      End If
-      txtDue.SetFocus()
-      Return
-   End If
-   '---------------------------------------
-   'Routine called by user clicking on list
-   '---------------------------------------
-   Listview1.MoveCurrent   'set internal cursor to match marquee
-   txtComponent.text = Listview1.Item.Text
-   Listview1.Visible = False
-   bExit = False
-Catch
-   bexit = False
-   Return
 
-End
 
 Public Sub PlanComponents_Add(currentCarePlanComponent As Collection)
    
@@ -1538,24 +1380,6 @@ Public Sub PlanComponents_Add(currentCarePlanComponent As Collection)
    cvwCareComponents_Refresh()
    
 End
-
-' Public Sub cvwCareComponents_Refresh()
-'    '--------------------------------------------
-'    'Reloads the care plan components to the list
-'    '--------------------------------------------
-'
-'    Dim existing_component As Collection
-'    Dim x As Integer
-'
-'    cvwCareComponents.Clear()
-'    For Each PlanComponent In PlanComponents
-'
-'       cvwCareComponents.Add(x, 0)
-'       cvwCareComponents[x][0] = PlanComponent!component
-'       cvwCareComponents[x][1] = Format(PlanComponent!due, "dd/mm/yyy")
-'       Inc x
-'    Next
-' End
 
 Public Sub Components_CarePlan_Display()
    '----------------------------------------------------------------------------
@@ -1613,8 +1437,7 @@ Public Sub cvwCareComponents_Refresh()
    'Reloads the care plan components to the list
    '--------------------------------------------
    
-   Dim existing_component As Collection
-   Dim x As Integer
+    Dim x As Integer
    
    cvwCareComponents.Clear()
    For Each PlanComponent In PlanComponents
@@ -1637,15 +1460,8 @@ Public Sub CarePlan_Components_Calculate_Recall_Date(txt As Textbox)
    'Works out a date from e.g 18M or 2Y
    'FIXME put in weeks and days
    '--------------------------------------------
-   
-   Dim sIntervalUnits As String 'eg if txtdate contains 3M then units interval is 3
    Dim iNumberOfMonths As Integer      'do not need both these declared, but do for readability
    Dim iNumberOfYears As Integer
-   Dim iNumberOfDays As Integer
-   Dim iNumberOfWeeks As Integer
-   Dim vPossibleDate As Variant
-   Dim aDate As Date
-   Dim x As Integer
    
    bExit = True 'stop change event of edit area triggering
    
@@ -2200,7 +2016,6 @@ End
 Public Sub GridView1_MouseUp()
    
    If gridview1.row = - 1 Or gridview1.column = 0 Then Return
-   Print "on row ", gridview1.Row
    GridView1_ShowEditingControl
    
 End

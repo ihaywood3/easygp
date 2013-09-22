@@ -1,0 +1,146 @@
+' Gambas class file
+
+Private fk_patient As Integer
+Private single_patient As Collection
+Private itimer_count As Integer
+Private patients As Collection
+
+Public Sub Run() As Boolean
+
+ '  Return Not Me.ShowModal()
+ ' Return single_patient!fk_patient  
+End
+
+Public Sub Init(P As Collection)
+   
+   txtFirstname.text = P!firstname
+   txtSurname.text = P!surname
+   txtBirthdate.text = Format(P!birthdate, "dd/mm/yyyy")
+   txtImportPatient.SetFocus
+   cvwPatients.Columns.count = 3
+End
+
+Public Sub btnOK_Click()
+' CREATE TABLE documents.unmatched_patients
+' (
+'   pk serial NOT NULL,
+'   surname text NOT NULL,
+'   firstname text,
+'   birthdate date,
+'   sex text,
+'   title text,
+'   comment text, -- other data about the patient to help matching
+'   fk_real_patient integer,
+'   street text,
+'   town text,
+'   postcode text,
+'   state text,
+'   CONSTRAINT unmatched_patients_pkey PRIMARY KEY (pk ),
+'   CONSTRAINT unmatched_patients_fk_real_patient_fkey FOREIGN KEY (fk_real_patient)
+'       REFERENCES clerical.data_patients (pk) MATCH SIMPLE
+'       ON UPDATE NO ACTION ON DELETE NO ACTION
+' )
+' WITH (
+'   OIDS
+ 
+    Dim missing_patient As New CRow  
+    If IsNull(single_patient) Then Return    
+    missing_patient!firstname = Trim(Lower(txtFirstname.Text))
+    missing_patient!surname = Trim(Lower(txtSurname.text))
+    missing_patient!birthdate = single_patient!birthdate
+    missing_patient!fk_real_patient = single_patient!fk_patient   
+    missing_patient.Save("documents.unmatched_patients", "fk_missing_patient")
+    modDBConnect.CommitTrans()
+    const.globalstring = Str(single_patient!fk_patient)
+    Me.Close(single_patient!fk_patient)
+
+End
+
+Public Sub btnCancel_Click()
+
+   Me.Close
+
+End
+
+Public Sub EditArea_TextBox_LostFocus()
+   
+   Last.BackGround = Color.White
+   
+End
+
+Public Sub EditArea_TextBox_KeyRelease()
+   
+   If Last.tag = "import patient" Then
+      If Trim(Last.text) = "" Then Return
+      itimer_count = 0
+      Timer1.start()
+   Endif
+End
+
+Public Sub EditArea_TextBox_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   If Last.tag = "import patient" Then
+      With cvwPatients
+         .top = Last.parent.parent.top + Last.height
+         .left = Last.parent.left
+         .width = Hbox5.Width
+         .visible = False  
+      End With
+   Else
+      cvwPatients.visible = False   
+   Endif
+   
+End
+
+Public Sub cvwPatients_DblClick()
+   
+   Last.movecurrent
+   single_patient = modUtil.Copy_Collection(patients[cvwPatients.Item.key])
+   txtFirstnameSelected.text = single_patient!firstname
+   txtSurnameSelected.text = single_patient!surname
+   txtBirthdateSelected.text = Format(single_patient!birthdate, "dd/mm/yyyy")
+   Last.visible = False  
+End
+
+Public Sub Patients_Get()
+
+   Dim x As Integer
+   Dim iLastperson_pk As Integer
+   Dim patient As Collection
+   
+   If Trim(txtImportPatient.text) = "" Then Return
+   Inc Application.Busy
+   cvwPatients.Clear
+   patients = modContactsDBI.patients_get_firstname_surname(Trim(txtImportPatient.text))
+   Try patients.Remove("sql_in_english") 'ian included this for FClinical patient search
+   patients = modUtil.Copy_Collection_Keyed_Sequentially(patients) 
+   For Each patient In patients
+      cvwPatients.Add(x, 0)
+      If iLastperson_pk <> patient!fk_person Then
+         cvwPatients[x][0] = patient!surname & "  "
+         cvwPatients[x][1] = patient!firstname & "  "
+       '  cvwPatients[x][2] = patient!sex
+         Try cvwPatients[x][2] = Format(patient!birthdate, "dd/mm/yyyy") & "   "
+       '  Try cvwPatients[x][4] = patient!age_display
+          Inc x
+      End If   
+     
+   Next
+   If patients.count Then
+      cvwPatients.Visible = True
+   Endif
+   Dec Application.Busy
+   
+End
+
+Public Sub timer1_Timer()
+   
+   Inc itimer_Count
+   If itimer_count > 3 Then
+      timer1.stop
+      Patients_Get()
+   End If
+   
+End
+

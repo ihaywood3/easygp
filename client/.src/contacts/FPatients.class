@@ -20,7 +20,9 @@
 '              It was the first gambas code I ever wrote and is really
 '              really crap.........
 '              Don't have any provisions for addresses for other countries
-'              ------------------------------------------------------------
+'---------------------------------------------------------------------------
+Private sSearchCriteria As String 
+Private pic_inactive As Picture = Picture["icons/12/red_dot.png"]
 Private ReferenceHboxForTopOfListBox As Hbox               'used if split moves to reposition columnview
 Private limit As Integer
 Private Views_addresses As Collection
@@ -205,18 +207,75 @@ Public Sub cvwPatients_Select()
 End
 
 Public Sub Patients_Get()
-   
+  
    If Trim(txtSearch.text) = "" Then Return
+   
    Inc Application.Busy
    Try limit = Val(txtlimit.text)
    If Error Then limit = 100
-   rows_in_view = modContactsDBI.patients_get_firstname_surname(Trim(txtSearch.text), chkIncludeDeceased.value, limit)
+   rows_in_view = modContactsDBI.patients_get_firstname_surname(Trim(txtSearch.text), chkIncludeDeceased.value, limit, chkIncludeInactive.value)
    Patients_List_Fill()
    Dec Application.Busy
    
 End
-
+   
 Public Sub Patients_List_Fill()
+   
+   Dim sStatusMessage As String
+   Dim iLastperson_pk As Integer
+   Dim x As Integer
+   
+   With cvwPatients
+      .Clear                           'clear current list persons
+      .Columns.count = 9
+   End With
+   views_comms = New Collection
+   If rows_in_view.count Then
+      Try rows_in_view.Remove("sql_in_english") 'ian included this for FClinical patient search
+      rows_in_view = modUtil.Copy_Collection_Keyed_Sequentially(rows_in_view)
+      sStatusMessage = Str$(rows_in_view.count) & " records found for search criteria '" & Trim(txtSearch.text) & "'"
+      SetStatus("persons", sStatusMessage, False, 0)
+      For Each row_in_view In rows_in_view
+         If row_in_view!fk_lu_active_status = const.PatientStatus_Inactive Then
+            cvwPatients.Add(x, "", pic_inactive)
+         Else
+            cvwPatients.Add(x, "")
+         Endif
+         
+        ' cvwPatients.Add(x, 0)
+         If iLastperson_pk <> row_in_view!fk_person Then
+            cvwPatients[x][1] = row_in_view!surname & "  "
+            cvwPatients[x][2] = row_in_view!firstname & "  "
+            cvwPatients[x][3] = row_in_view!sex
+            Try cvwPatients[x][4] = Format(row_in_view!birthdate, "dd/mm/yyyy") & "   "
+            Try cvwPatients[x][5] = row_in_view!age_display
+            iLastperson_pk = row_in_view!fk_person
+         Else
+            cvwPatients[x][1] = ""
+         End If
+         cvwPatients[x][6] = ""
+         cvwPatients[x][7] = Trim(row_in_view!street1 & " " & row_in_view!street2) & " " & row_in_view!town & " " & row_in_view!postcode
+         cvwPatients[x][8] = ""
+         Inc x
+      Next
+      cvwPatients.Enabled = True                       'enable list for clicking on
+   End If
+   lblMeasure.font = cvwPatients.Font
+   modUtil.Columnview_Columns_Set_Size(cvwPatients, lblMeasure)
+   
+End
+
+Public Sub Person_Picture_Clear()
+   
+   With PictureBox2
+      .Picture = Picture.Load("icons/misc/no_photo.png")
+      .tag = ""
+      .Refresh()
+   End With
+   Wait        'otherwise, visually, picture won't disappear
+   
+End
+Public Sub Patients_List_Fill_old()
    
    Dim sStatusMessage As String
    Dim iLastperson_pk As Integer
@@ -253,17 +312,6 @@ Public Sub Patients_List_Fill()
    End If
    lblMeasure.font = cvwPatients.Font
    modUtil.Columnview_Columns_Set_Size(cvwPatients, lblMeasure)
-   
-End
-
-Public Sub Person_Picture_Clear()
-   
-   With PictureBox2
-      .Picture = Picture.Load("icons/misc/no_photo.png")
-      .tag = ""
-      .Refresh()
-   End With
-   Wait        'otherwise, visually, picture won't disappear
    
 End
 
@@ -545,7 +593,7 @@ Public Sub Save()
    
    If Vbox_EditArea.Padding = 0 Then Return     'no padding = no data
    If Not Patient_Valid() Then Return
-   
+   If txtSearch.text <> "" Then sSearchCriteria = Trim(txtSearch.text) 
    If fk_town <> 0 Then
       Address_Accept()                          'if userrows_in_view has left in the address editing area > to the list   End If
    End If
@@ -750,8 +798,8 @@ Public Sub Save()
    Endif
    modDBConnect.CommitTrans()
    EditArea_Notify_DataChange(False)
-   sSearchText = Trim(txtSurname.text) & "," & Trim(txtFirstname.text)
-   'If Isection = cSection_Patients Then
+   'sSearchText = Trim(txtSurname.text) & "," & Trim(txtFirstname.text)
+   
    If FClinical.IsSamePatient(fk_patient) Then                                   'if patient loaded into FClinical
       FClinical.Patient_Demographics_Refresh()
       If patient!fk_patient And person.Exist("fk_image") Then                    'if we have a picture of them
@@ -770,8 +818,9 @@ Public Sub Save()
       End If
       Try FPregnancyDemographics.Occupation_Update(txtOccupation.text, fk_occupation)  'if ante-natal care demographics is loaded
       Try FOccupation.Occupations_Reload
+    
    End If
-   
+     Try FPsychoSocialHistory.NextOfKin_Reload(person!fk_person) 'if the patient in Fclinical has this person as their NOK - reload their contact details.
    '    rows_in_view = modContactsDBI.Patient_Get_Using_PK(patient!fk_patient) ' must be Collection so the rest of the code works
    '    If IsNull(rows_in_view) Then
    '       rows_in_view = New Collection ' i.e. an empty Collection as code further down insists this result be a Collection
@@ -782,18 +831,16 @@ Public Sub Save()
    '    rows_in_view = modContactsDBI.Person_excluding_patients_Get_By_pk(person!fk_person)
    'End If
    ' Patients_List_Fill()
-   With txtSearch
-      .SetFocus()
-      .text = sSearchText
-   End With
-   itimer_count = 0
-   Timer1.start()
-   ' If cvwPersons.Count > 0 Then
-   '    cvwPersons.MoveFirst
-   '   cvwPersons.SetFocus()
-   '    cvwPersons_Select()
-   ' End If
+   If sSearchCriteria <> "" Then
+      txtSearch.text = sSearchCriteria
+      iTimer_Count = 4
+      Timer1.start()
+   Else
+       txtSearch.SetFocus 'resets the search text for input
+   Endif
+  
    
+     
 End
 
 Public Sub Reset_Gui()
@@ -837,7 +884,7 @@ Public Sub patients_Mark_Left_Practice()
    Dim sMsg As String
    Dim Pat As New CRow 
    Dim x As Integer
-   Dim sSearchCriteria As String = txtSearch.Text
+   sSearchCriteria = txtSearch.Text
    
    Message.Title = "Marking Patients as Left The Practice"
    sMsg = "You have selected "
@@ -2379,4 +2426,13 @@ Public Sub Form_Resize()
    
    VSplit_DataEntry_Resize()
    
+End
+
+Public Sub chkIncludeInactive_Click()
+   '-----------------------------------------------------------------------------
+   'Display patients according to txtSearch but include/exclude inactive patients
+   '-----------------------------------------------------------------------------
+ 
+   Patients_Get
+
 End

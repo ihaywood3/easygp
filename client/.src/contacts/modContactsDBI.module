@@ -431,6 +431,8 @@ Public Function Staff_Member_Save(old_data As Collection, pk_view As String, sta
    Dim $Result As Result
    Dim sql As String
    Dim role As String
+   Dim sMsg As String
+   
    'this is temporary IAN FIXME.
    Select Case staff!fk_role
       Case const.StaffRole_SysAdmin
@@ -464,8 +466,20 @@ Public Function Staff_Member_Save(old_data As Collection, pk_view As String, sta
       employees_place_of_work!fk_link_staff_clinic = modDBConnect.insert("admin.link_staff_clinics", employees_place_of_work)
    Else
       '------------------------------------------------------------
-      'An existing user
+      'An existing user, a problem surfaced here - someone stupid 
+      '(read me) could remove the postgres ROLE,hence this crashes 
+      'so First check if the role exists
       '------------------------------------------------------------
+      sql = "select 1 from pg_roles where rolname=$$" & staff!logon_name & "$$"
+      $Result = modDBConnect.exec_query("select 1 from pg_roles where rolname=$$" & staff!logon_name & "$$")
+      If Not $Result.count Then
+         sMsg = "Some idiot has deleted this user's role from your postgres installation.\n\n"
+         "This is really serious and you will have to talk to your system administrator.\n\nMmmmmm..... hope you are not the sys admin!!!!\n\n"
+         "Anway, EasyGP can't save this staff members changes and will now reload your staff list."
+         Message.title = "Major Problem Encountered"
+         Message.Warning(sMsg)
+         Return 'returns 0 as fk_staff and re-sets things
+      Endif
       If staff!logon_name <> old_data[pk_view]!logon_name Then
          sql = "ALTER ROLE \"&1\" RENAME TO \"&2\""
          sql = Subst$(sql, old_data[pk_view]!logon_name, staff!logon_name)
@@ -1432,7 +1446,7 @@ Public Function Patient_Get_pk_Using_Person_pk(fk_person As Integer) As Integer
    
 End
 
-Public Function patients_get_firstname_surname(searchtext2 As String, Optional bDeceased As Boolean = False, Optional limit As Integer = 100) As Collection
+Public Function patients_get_firstname_surname(searchtext2 As String, Optional bDeceased As Boolean = False, Optional limit As Integer = 100, bIncludeInactive As Boolean = False) As Collection
    '-------------------------------------------------------
    'Find a patient according to criteria
    'if sql criteria, use that, otherwise firstname, surname
@@ -1512,6 +1526,11 @@ Public Function patients_get_firstname_surname(searchtext2 As String, Optional b
    If bDeceased = False Then
       sql &= " AND deceased = false "
    Endif
+   If bIncludeInactive = False Then
+      sql &= " AND fk_lu_active_status = " & const.PatientStatus_Active
+ '  Else
+  '    sql &= " And fk_lu_active_status = " & const.PatientStatus_Active 
+   Endif 
    sql &= " ORDER BY surname, firstname ASC LIMIT " & limit
    Print sql
    $result = modDBConnect.exec_query_collection(sql)

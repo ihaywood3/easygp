@@ -29,7 +29,7 @@ Private bExit As Boolean
 Private pk_socialhistory As Integer
 Private responsible_persons As Collection
 Private responsible_person As Collection
-Private fk_responsible_person As Integer
+Public fk_responsible_person As Integer 'do not make this private
 Private pk_view_responsible_persons As String '(pk_person-pk_adress)-
 Private Towns As Collection
 Private Countries As Collection
@@ -38,9 +38,10 @@ Private fk_town As Integer
 Private timer_count As Integer
 Private country_code As String
 Private fk_consult As Integer
+Static Private Form_Psychosocial As FPsychoSocialHistory
 
 Public Sub Init(cons As CConsult)
-   
+   Form_Psychosocial = Me
    currentConsult = cons
    timer1.Enabled = True
    timer1.stop
@@ -50,6 +51,20 @@ Public Sub Init(cons As CConsult)
    Reload()
    
 End
+
+Static Public Sub NextOfKin_Reload(fk_person As Integer)
+   '------------------------------------------------------------------------------------
+   'Called from FPatients, if a patient there has been changed and they are this persons
+   'next of kin, reload their details. useful if you update the patient in FPatients 
+   '(the contact manager for patient's and you have changed their details. Note that
+   'comms are kept in conacts keyed to the patient's fk_person
+   '-------------------------------------------------------------------------------------
+   If Form_Psychosocial.fk_responsible_person = fk_person Then
+      Form_Psychosocial.Reload()
+   Endif
+   
+End
+
 
 Public Sub EditArea_Notify_Data_Change(flag As Boolean)
    
@@ -178,6 +193,7 @@ Public Sub Reload()
          txtTown.text = SH!person_responsible_town
          txtState.text = SH!person_responsible_state
          txtPostcode.text = SH!person_responsible_postcode
+         txtContactNumber.text = Responsible_person_Get_Comms(fk_responsible_person) 'get comms for this fk_person from contacts
       Else
          txtResponsiblePerson.text = SH!responsible_person
          country_code = SH!country_code
@@ -187,13 +203,34 @@ Public Sub Reload()
          txtTown.text = SH!responsible_person_town
          txtState.text = SH!responsible_person_state
          txtPostcode.text = SH!responsible_person_postcode
+          txtContactNumber.text = SH!responsible_person_contacts
       End If
       teResponsiblePersonNotes.text = SH!responsible_person_notes
       teSocialHistory.text = SH!history
-      txtContactNumber.text = SH!responsible_person_contacts
    Next
    bExit = False
    
+End
+
+Public Function Responsible_person_Get_Comms(fk_person As Integer) As String
+  '------------------------------------------------------------- 
+  'if the responsible person is in our database, get their comms
+  '------------------------------------------------------------ 
+  Dim comm As Collection
+  Dim sComms As String
+  
+  For Each comm In modContactsDBI.person_comms_get(fk_person)
+      If comm!fk_type = const.CommModalityMobile Then
+        scomms &= " Mobile:" & comm!value
+      End If
+      If comm!fk_type = const.CommModalityHome Then
+         scomms &= " Phone:" & comm!value
+      Endif
+      If comm!fk_type = const.CommModalityPhone Then
+        scomms &= " Phone:" & comm!value
+      Endif
+   Next 
+   Return Trim(sComms)
 End
 
 Public Sub responsible_person_Find()
@@ -242,11 +279,7 @@ Public Sub Responsible_Person_Select()
    '-----------------------------------------------------------------------------
    'User has clicked on a name in the list, accept this as the responsible person
    '-----------------------------------------------------------------------------
-   
-   Dim comm As New Collection
-   
    timer1.stop
-   
    pk_view_responsible_persons = columnview1.Item.key
    bexit = True
    txtSearch.text = ""
@@ -257,20 +290,7 @@ Public Sub Responsible_Person_Select()
    txtState.text = responsible_persons[pk_view_responsible_persons]!state
    txtPostcode.text = responsible_persons[pk_view_responsible_persons]!postcode
    fk_responsible_person = responsible_persons[pk_view_responsible_persons]!fk_person
-   
-   'try and get comms
-   For Each comm In modContactsDBI.person_comms_get(responsible_persons[pk_view_responsible_persons]!fk_person)
-      If comm!fk_type = const.CommModalityMobile Then
-         txtContactNumber.text &= " Mobile:" & comm!value
-      End If
-      If comm!fk_type = const.CommModalityHome Then
-         txtContactNumber.text &= " Phone:" & comm!value
-      Endif
-      If comm!fk_type = const.CommModalityPhone Then
-         txtContactNumber.text &= " Phone:" & comm!value
-      Endif
-   Next
-   txtContactNumber.text = Trim(txtContactNumber.text)
+   txtContactNumber.text = Responsible_person_Get_Comms(fk_responsible_person) 'get the latest comms
    If Len(txtContactNumber.text) Then
       teResponsiblePersonNotes.SetFocus
    Else
@@ -281,7 +301,10 @@ Public Sub Responsible_Person_Select()
 End
 
 Public Sub Columnview1_KeyPress()
-   
+   '---------------------------------------
+   'User hits <Enter key> on the columnview
+   'trigger the accept code
+   '---------------------------------------   
    If Key.code = Key.Return Then
       Columnview1_DblClick
    End If
@@ -321,11 +344,11 @@ Public Sub listview1_DblClick()
    Select Case Last.tag.tag
       Case "search"
          Responsible_Person_Select
-         txtCountry.SetFocus
+         txtContactNumber.SetFocus
       Case "suburb"
          town = Towns[listview1.Item.key]
          Suburb_Select
-         
+         txtContactNumber.SetFocus
       Case "country"
          Country_Select
          txtContactNumber.SetFocus
@@ -366,7 +389,7 @@ End
 Public Sub Timer1_Timer()
    
    Inc timer_count          'constantly being zero'd by editarea_keypress until user pauses typign
-   If timer_count > 3 Then  'arbitary should be user configured depending on typing speed FIXME
+   If timer_count > 2 Then  'arbitary should be user configured depending on typing speed FIXME
       timer1.Stop
       responsible_person_Find()
    End If
@@ -442,7 +465,7 @@ Public Sub EditArea_TextBox_Change()
                If Message.Question("Do you want to remove the current responsible person?", "Yes", "No") = 2 Then
                   txtResponsiblePerson.SetFocus
                   Return   
-               end if   
+               End If   
                modEditAreaHelpers.EditArea_Clear(VBox_ResponsiblePerson)
                fk_responsible_person = 0  'defaults
             Endif
@@ -527,6 +550,7 @@ Public Sub Suburb_get()
       Next
       If Towns.count = 1 Then
          Suburb_Select()
+         txtContactNumber.SetFocus
       Else
          With listview1
             .Visible = True

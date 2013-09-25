@@ -21,6 +21,7 @@
 ' BUGS           Millions, in practice this module won't work at all
 ' PLEASE LET RICHARD DELETE THIS WHEN HE IS READY
 ' ------------------------------------------------------------------
+Private missed_patients As Collection
 Private itimer_Count As Integer
 Private oddoccupations As String[]
 Private OddRecords As Collection
@@ -252,7 +253,10 @@ Public Sub DrsDesk_Vaccinations_Import()
    vaccines = modDBConnect.exec_query_collection("Select * from clin_vaccination.vwVaccines")
    schedules = modDBConnect.exec_query_collection("Select * from clin_vaccination.lu_schedules")
    patients = New Collection
-   Sfilename = import_dir & "/" & Trim("Exported_Vaccinations.txt")
+   'Sfilename = import_dir & "/" & Trim("Exported_Vaccinations.txt")
+   import_dir = "/home/richard/easygp/import/missed_patients/"
+   '   Sfilename = import_dir & "/" & Trim("Exported_Vaccinations.txt")
+   Sfilename = import_dir & "missed_vaccinations.txt"
    If sFilename = "" Then
       txtImportDirectory.SetFocus()
       Return
@@ -656,8 +660,14 @@ Public Sub DrsDesk_SocialHistory_Import()
    'I've stuck a field on the end of the import data |end, so
    'that where this code splits a line in the middle of a
    'social history field, I can detect and repair it
+   'This sub has been turned upside down to find and import the 
+   'data of patient's missed in the major import due to name problems
+   'if you are reading this code its spagetti dashed dashed off in
+   'minutes and is real crap and won't make any logical sense to you
+   'so don't waste your time
    '--------------------------------------------------------------
    
+   Dim pk_socialhistory As Integer
    Dim $Result As Result
    Dim sql As String
    Dim cons As CConsult
@@ -675,13 +685,14 @@ Public Sub DrsDesk_SocialHistory_Import()
    Dim bLineComplete As Boolean
    Dim sIncompleteLine As String
    Dim ICPCTerm As Collection
-   Dim SH As Collection
+   Dim SH As CRow
    Dim Errorcount As Integer
    Dim bSaveSocialHistory As Boolean 
    Dim fk_patient As Integer
-   Dim bskip As Boolean = True
+   Dim bskip As Boolean  'if true skip
+   Dim hfile As File
    'open an error file to log errors
-   
+   missed_patients = New Collection    
    modDBConnect.BeginTrans()
    lblProgress.text = ""
    patients = New Collection
@@ -779,38 +790,29 @@ Public Sub DrsDesk_SocialHistory_Import()
       '------------------------
       'ok, not found, try again to find in the unmatched patients table in documents
       '-------------------------
-      If $Result.count = 0 Then
-         Print "Missing:", patient!firstname & " " & patient!surnam
-         sql = "Select * from documents.unmatched_patients where surname ILIKE $$" & Trim(patient!surname) & "$$" 
-         sql &= " AND firstname ILIKE $$" & Trim(patient!firstname) & "$$" 
-         sql &= " AND birthdate ='" & Format(patient!birthdate, "dd/mm/yyyy") & "'"
-         $Result = modDBConnect.exec_query(sql)
-         If $Result.count = 0 Then 
-            '------------------------------------------------
-            'now get the user (me) to match to a real patient
-            '------------------------------------------------
-            Dec Application.Busy
-            FMissingPatients.Init(patient)
-            fk_patient = FMissingPatients.ShowModal()
-            Print fk_patient  
-            Print const.globalstring
-            Inc Application.Busy
-         End If   
+      If $Result.count = 0 Then   'not found a match
+         bSkip = False  
+         patient!fk_patient = Missing_patients_Get_fk_Patient(patient)
+      Else                        'matched, data already imported
+         bskip = True   
       Endif
       If Not bskip Then
-         If $Result.count = 1 Then
-            bSaveSocialHistory = False        
-            If txtImportPatient.text <> "" Then      'put this in sept13 because for some reason a number of my patient's did not import
-               If (Trim(Lower(single_patient!firstname)) = Trim(Lower(patient!firstname)) And (Trim(Lower(single_patient!surname)) = Trim(Lower(patient!surname)) And Format(single_patient!birthdate, "dd/mm/yyyy") = Format(patient!birthdate, "dd/mm/yyyy"))) Then
-                  Print "is the lost patient"
-                  Message.Info("found it")
-                  bSaveSocialHistory = True 
-               End If 
-            Else
-               bSaveSocialHistory = True  
-            End If   
-            patient!fk_patient = $Result!fk_patient
-            If bSaveSocialHistory Then    
+         ' If $Result.count = 1 Then
+         bSaveSocialHistory = True        
+         ' If txtImportPatient.text <> "" Then      'put this in sept13 because for some reason a number of my patient's did not import
+         '    If (Trim(Lower(single_patient!firstname)) = Trim(Lower(patient!firstname)) And (Trim(Lower(single_patient!surname)) = Trim(Lower(patient!surname)) And Format(single_patient!birthdate, "dd/mm/yyyy") = Format(patient!birthdate, "dd/mm/yyyy"))) Then
+         '       Print "is the lost patient"
+         '       Message.Info("found it")
+         '       bSaveSocialHistory = True 
+         '    End If 
+         ' Else
+         '    bSaveSocialHistory = True  
+         ' End If   
+         '  patient!fk_patient = $Result!fk_patient
+         If bSaveSocialHistory Then    
+            'have to manually compare DRsDesk in Windows to what have in linux and answer this question
+            If Message.Question("Import the social history for" & patient!firstname & " " & patient!surname & "?", "Yes", "No") = 1 Then 
+               
                lblProgress.text = "Importing data for" & patient!firstname & " " & patient!surname
                Wait
                '--------------------------------------------------
@@ -832,16 +834,19 @@ Public Sub DrsDesk_SocialHistory_Import()
                ' Public pk_progressnote As Integer
                ' Public responsible_person As String
                '-------------------------------------
-               
-               ' currentconsult = New CConsult(patient)
-               ' currentconsult.Set(const.ConsultType_DataImport, "Social History Imported")
-               ' SH = New Collection
-               ' SH!fk_consult = currentconsult.GetPK()
-               ' SH!history = bits[social_history]
-               ' SH!fk_socialhistory = modDBConnect.insert("clin_history.social_history", SH)
-               
-               '  modDBConnect.CommitTrans()
-            End If   
+               currentconsult = New CConsult(patient)
+               currentconsult.Set(const.ConsultType_DataImport, "Social History Imported")
+               SH = New CRow
+               $result = modDBConnect.exec_query("Select * From clin_history.vwSocialhistory where fk_patient = " & patient!fk_patient)
+               If $result.count Then
+                  Sh.put_unchanged($Result!pk_socialhistory, "fk_socialhistory")
+               Endif
+               SH!fk_consult = currentconsult.GetPK()
+               SH!history = bits[social_history]
+               SH.Save("clin_history.social_history", "fk_socialhistory")
+               modDBConnect.CommitTrans()
+            End If  
+            '  End If   
          Else
             If $Result.count > 1 Then
                Message.info("More than 1 patient found with same names and dob")
@@ -863,6 +868,11 @@ Public Sub DrsDesk_SocialHistory_Import()
       Inc x
    Wend
    modDBConnect.CommitTrans()
+   hFile = Open "/home/richard/easygp/import/missed_patients_socialhistory.txt" For Write Create 
+   For x = 0 To missed_patients.count - 1
+      Print #hfile, missed_patients[x]!firstname & " " & missed_patients!surname
+   Next
+   Close #hfile
    Dec Application.busy
    chkImportSocialHIstory.value = False
    lblProgress.text = ""
@@ -881,8 +891,8 @@ Public Function DrskDesk_Fill_Relationship_ID_Array() As Integer[]
    ids[2] = 31    'x 31;"Step mother"
    ids[3] = 43    'x 43;"father"
    ids[4] = 32    'x 32;"Step father"
-   ids[5] = 44    'x  44;"Brother"
-   ids[6] = 45    'x  45;"Sister"
+   ids[5] = 45    'x  45;"Brother"
+   ids[6] = 44    'x  44;"Sister"
    ids[7] = 19    'x 19;"Aunt - maternal"
    ids[8] = 20    'x 20;"Aunt - paternal"
    ids[9] = 26    'x 26;"Niece - maternal"
@@ -1010,8 +1020,10 @@ Public Sub DrsDesk_Habits_Import()
    
    lblProgress.text = ""
    import_dir = "/home/richard/easygp/import/"
+   import_dir = "/home/richard/easygp/import/missed_patients/"
    ErrorFile = Open import_dir & "/habits_import_errors.txt" For Write Create   'open an error file to log errors
    Sfilename = import_dir & "/" & Trim("Exported_Habits.txt")                   'Insist on at least some sort Of attempt at a name
+  Sfilename = import_dir & "/" & "missed_habits.txt"
    If sFilename = "" Then
       txtImportDirectory.SetFocus()
       Return
@@ -1133,6 +1145,338 @@ Public Sub DrsDesk_Habits_Import()
 End
 
 Public Sub DrsDesk_FamilyHistory_Import()
+   '-------------------------------------------------------------------------------
+   'modified to only import a few 09/2013
+   'to do this find out which patients are missing
+   'cut'n past their records then put a dummy line say test patient on the end
+   'todo - make the file surname/fistname
+   ' Imports the patients family history initially only DrsDesk
+   ' Terry|Richard|19/1/53 0:00:00|Margaret|<birthdate relative>|1|Mother|-1|2|Osteoarthritis|55|0|a comment
+   '   0     1        2                3          4              5  6      7 8   9            10 11
+   ' 0=surname
+   ' 1=firstname
+   ' 2=birthdate
+   ' 3=relations name
+   ' 4=relations birthdate
+   ' 5=relationship id = comon.lu_family_relationships.pk
+   ' 6=the relationship .eg motheer
+   ' 7=age_deat icpc_terms = modDBConnect.exec_query_collection("Select * from coding.icpc2_terms") icpc_terms = modDBConnect.exec_query_collection("Select * from coding.icpc2_terms")h -1 or null = ?
+   ' 8=condition_id
+   ' 9=condition
+   ' 10=age_onset
+   ' 11=boolean cause of death
+   ' 12=comment
+   ' 13=member_id
+   
+   ' ------------------------------------------------------------------------------
+   Dim cRelationship_ID As Integer = 5
+   Dim cRelations_Name As Integer = 3
+   Dim cRelations_Birthdate As Integer = 4
+   Dim cAge_Death As Integer = 7
+   Dim cCondition As Integer = 9
+   Dim cCondition_Age_Onset As Integer = 10
+   Dim cCaused_Death As Integer = 11
+   Dim cCondition_Notes As Integer = 12
+   Dim J_code_count As Integer
+   Dim user_j_terms As Collection
+   Dim new_j_term As CRow
+   Dim sFilename As String
+   Dim hfile As File
+   Dim sFileError As String
+   Dim surname As Integer = 0
+   Dim firstname As Integer = 1
+   Dim birthdate As Integer = 2
+   Dim bits As String[]
+   Dim sLastPatient As String
+   Dim scurrentPatient As String
+   Dim FH_Link As CRow
+   Dim FH_Condition As CRow
+   Dim FH_Member As CRow
+   Dim Members As Collection
+   Dim conditions As Collection
+   Dim relationship_ids As Integer[]
+   Dim family_history_condition_count As Integer
+   
+   Dim import_count As Integer
+   Dim FamilyHistory As Collection
+   Dim bValidPatient As Boolean
+   Dim learntTerms As Result
+   Dim ErrorFile As File
+   Dim icpc_terms As Collection
+   Dim icd10_terms As Collection
+   Dim a_term As Collection
+   Dim sql As String
+   Dim $Result As Result
+   Dim icpc2_mapped_term As CRow
+   
+   missed_patients = New Collection
+   lblProgress.text = ""
+   learntTerms = DrsDesk_Leant_Terms_Refresh()                                'Load mappable terms drsdesk to icpc as result
+   icd10_terms = modDBConnect.exec_query_collection("Select code as pk_code, term  from coding.generic_terms where fk_coding_system = 2")
+   icpc_terms = modDBConnect.exec_query_collection("Select * from coding.icpc2_terms")
+   relationship_ids = DrskDesk_Fill_Relationship_ID_Array()
+   modDBConnect.BeginTrans()
+   patients = New Collection
+   import_dir = "/home/richard/easygp/import/"
+   'Sfilename = import_dir & "/" & Trim("Exported_FamilyHistory.txt")
+   Sfilename = import_dir & "missed_patients/" & "missed_family_history.txt"
+   If sFilename = "" Then
+      txtImportDirectory.SetFocus()
+      Return
+   End If
+   '------------------------------------------------------------------
+   'Attempt to open the designated file
+   'If fail, given an appropriate understandable error message and exit
+   '-------------------------------------------------------------------
+   Try hfile = Open sfilename For Input
+   If Error Then
+      sFileError = File_IO_Describe_Error(Error.code)
+      Message.Warning("Unable to open " & sFilename & "\n\n" & sFileError)
+      Return
+   End If
+   ErrorFile = Open import_dir & "/familyhistory_import_errors.txt" For Write Create   'open an error file to log errors
+   
+   '-------------------------------------------------------------------
+   'So far so good - hourglass to user to indicate we are go for import
+   '-------------------------------------------------------------------
+   Inc Application.Busy
+   lvDataImportProgressMessages.Clear()
+   lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "Starting family history import..............")
+   Patients = New Collection
+   While Not Eof(hfile)
+      '------------------------------------------
+      'Input each line and split at the delimeter
+      '------------------------------------------
+      Line Input #hfile, sLineInput
+      If sLineInput <> "" Then   
+         bits = Split(sLineInput, "|")
+         scurrentPatient = bits[firstname] & bits[surname] & bits[birthdate]
+         If sLastPatient <> scurrentPatient Then
+            '------------------------------------------------------
+            'if line contains a new patient, find match in back end
+            'and reset keys
+            '------------------------------------------------------
+            modDBConnect.CommitTrans()
+            lblProgress.text = "loading data for " & scurrentPatient
+            family_history_condition_count = 0
+            Inc import_count
+            bValidPatient = False
+            last_fk_relationship = 0
+            patient = Patient_Identify(bits)                                    'create the next patient.
+            If patient!fk_patient Then
+               sLastPatient = bits[firstname] & bits[surname] & bits[birthdate]
+               currentconsult = New CConsult(patient)
+               currentconsult.Set(const.ConsultType_DataImport, "Family History Imported")
+               bValidPatient = True
+            End If
+         End If
+         If bValidPatient Then
+            '-----------------------------------------------------------------------------
+            ' At this point probably got a valid patient, save each family history item
+            ' CREATE TABLE clin_history.family_members
+            ' (
+            '   pk serial NOT NULL,
+            '   fk_relationship integer NOT NULL,
+            '   fk_person integer, -- I put this in in-case it was needed if we had imported family history from an person who exists in the easygp database.
+            '   "name" text,
+            '   birthdate date,
+            '   age_of_death integer,
+            '   fk_occupation integer,
+            '   fk_country_birth character(2),
+            '   deleted boolean DEFAULT false,
+            '   fk_consult integer,
+            '
+            '   First - if the row of data contains a different relationship
+            '-----------------------------------------------------------------------------
+            If last_fk_relationship <> relationship_ids[bits[cRelationship_ID]] Then
+               FH_Member = New CRow
+               FH_Member!fk_relationship = relationship_ids[bits[cRelationship_ID]]
+               FH_Member!name = bits[cRelations_Name]
+               Try FH_Member!birthdate = Val(bits[cRelations_Birthdate])
+               If bits[cAge_Death] <> -1 Then
+                  FH_Member!age_of_death = bits[cAge_Death]
+               Else
+                  FH_Member!age_of_death = ""
+               End If
+               FH_Member!fk_consult = currentconsult.GetPK()
+               FH_Member.Save("clin_history.family_members", "fk_member")
+               last_fk_relationship = relationship_ids[bits[cRelationship_ID]]
+               '---------------------------------------------------
+               'Now link this family member to the patient
+               ' CREATE TABLE clin_history.family_links
+               ' (
+               '   pk serial NOT NULL,
+               '   fk_member integer NOT NULL,
+               '   fk_patient integer NOT NULL,
+               '   deleted boolean DEFAULT false,
+               '   CONSTRAINT family_links_pkey PRIMARY KEY (pk)
+               ' )
+               ' WITH (
+               '   OIDS=FALSE
+               ' );
+               '---------------------------------------------------
+               FH_Link = New CRow
+               FH_Link!fk_member = FH_Member!fk_member
+               FH_Link!fk_patient = patient!fk_patient
+               FH_Link.Save("clin_history.family_links", "fk_link")
+            End If
+         End If
+         'End If
+         ' If bValidPatient Then
+         '---------------------------------------------------------------------------------------------
+         'next the conditions for this patient
+         '' CREATE TABLE clin_history.family_conditions
+         ' (
+         '   pk serial NOT NULL,
+         '   fk_member integer NOT NULL,
+         '   condition text NOT NULL, -- note: the condition may NEVER exist in the coded database, ...
+         '   age_of_onset integer,
+         '   cause_of_death boolean DEFAULT false,
+         '   notes text,
+         '   deleted boolean DEFAULT false,
+         '   fk_consult integer,
+         '   contributed_to_death boolean,
+         '   fk_code text, -- foreign key to coding.generic_terms table. Note this key is a text string...
+         '---------------------------------------------------------------------------------------------
+         Inc family_history_condition_count
+         
+         FH_Condition = New CRow
+         FH_Condition!fk_member = FH_Member!fk_member
+         FH_Condition!condition = bits[cCondition]
+         If InStr(bits[cCondition], "?") Then
+            FH_Condition!diagnosis_certain = False 'defaults to true in backend
+         End If
+         If bits[cCondition_Age_Onset] <> -1 Then
+            FH_Condition!age_of_onset = Trim(bits[cCondition_Age_Onset])
+         Else
+            FH_Condition!age_of_onset = "" 'null
+         Endif
+         If Bits[cCaused_Death] <> 0 Then
+            FH_Condition!cause_of_death = True
+            FH_Condition!contributed_to_death = True
+         Else
+            Print
+         Endif
+         FH_Condition!notes = Trim(Bits[cCondition_Notes])
+         FH_Condition!fk_consult = currentconsult.GetPK()
+         '------------------------------------------------------------------------------
+         'Now attempt to get code
+         'first by direct match For the condition To ICPC terms
+         'Now try and match this health_issue with an icpc
+         'natural_language_term. This is because I only
+         'used natural language terms. There are around
+         '4000/17000 terms in my database not equatable
+         'believe it or not things like NIDDM/IDDM for
+         'which ICPC has no equivalent.
+         'if can, equate to pk
+         'of coding.icpc2_terms, otherwise, when saved
+         'the natural_language_term will be added as a
+         'J99-00n term or popup an option to search
+         '-------------------------------------------------
+         For Each a_term In icpc_terms                                            ' loop through all icpc2 terms
+            If Lower(FH_Condition!condition) = Lower(a_term!natural_language_term) Then   ' is there are match to my natural language?
+               '  PH!fk_coding_system = const.coding_icpcPlus                        'yes, then coding system = icpc2 plus
+               FH_Condition!fk_code = a_term!icpc_code & a_term!term_code                   ' the code = join of both codes = key to coding.generic_terms
+               Break
+            End If
+         Next
+         If Not FH_Condition.Exist("fk_code") Then                                          'we didn't find an icpc2 match
+            For Each a_term In icd10_terms                                        'try looking in icd10
+               If Lower(FH_Condition!condition) = Lower(a_term!term) Then                 'found a match?
+                  FH_Condition!fk_code = a_term!pk_code                                     'coding.generic_terms.pk
+                  Break
+               End If
+            Next
+         End If
+         If Not FH_Condition.Exist("fk_code") Then                                          'still not code?, see if we have learnt it
+            For Each LearntTerms
+               If Trim(Lower(FH_Condition!condition)) = Trim(Lower(LearntTerms!free_text)) Then  'Yes?
+                  FH_Condition!fk_code = LearntTerms!icpc_code & LearntTerms!term_code                     'save the code
+                  Break
+               End If
+            Next
+         End If
+         'have we already allocate this to a j-code?
+         If Not FH_Condition.Exist("fk_code") Then                                          'still not code?, see if we have learnt it
+            user_j_terms = ICPC2_Get_J_Terms()                 'get all current j terms
+            For Each a_term In user_j_terms                    'try and find a match
+               If Lower(FH_Condition!condition) = Lower(a_term!natural_language_term) Then
+                  FH_Condition!fk_code = a_term!icpc_code & a_term!term_code
+                  Break
+               Endif
+            Next
+         End If
+         If Not FH_Condition.Exist("fk_code") Then                                           'ok, still have no code
+            '-------------------------------------------
+            'We couldn't match the free text with an icpc
+            'natural language term, so, check if we have
+            're-allocated this one, if not popup a modal
+            'box to get the code.God this could take some
+            'time as there are nearly 4000 of these, so
+            'I should write these to the database.
+            '---------------------------------------------
+            Dec Application.Busy
+            const.globalstring = ""
+            FICPC = New FICPCBrowser
+            FICPC.txtTermToImport.text = FH_Condition!condition                           'term we are trying to match
+            FICPC.txtSearch.SetFocus()
+            FICPC.ShowModal()
+            Inc Application.busy
+            FH_Condition!fk_code = const.globalstring
+            '-----------------------------------------------------
+            'If user (me) did allocate a term, save for future use
+            '-----------------------------------------------------
+            If FH_Condition!fk_code Then
+               icpc2_mapped_term = New CRow
+               icpc2_mapped_term!fk_icpc2_term = FH_Condition!fk_code
+               icpc2_mapped_term!free_text = FH_Condition!condition
+               icpc2_mapped_term.Save("coding.lu_icpc2_plain_language_mapper", "fk_lu_icpc2_plain_language_mapper")
+               modDBConnect.CommitTrans()
+               learntTerms = DrsDesk_Leant_Terms_Refresh() 'Load mappable terms drsdesk to icpc
+            Else
+               'still not term, have we saved before as a j term?
+               user_j_terms = ICPC2_Get_J_Terms()                 'get all current j terms
+               For Each a_term In user_j_terms                    'try and find a match
+                  If Lower(FH_Condition!condition) = Lower(a_term!natural_language_term) Then
+                     FH_Condition!fk_code = a_term!icpc_code & a_term!term_code
+                     FH_Condition!fk_coding_system = const.coding_icpcPlus
+                     Break
+                  Endif
+               Next
+            End If
+            If Not FH_Condition.Exist("fk_code") Or IsNull(FH_Condition!fk_code) Then
+               J_code_count = modDBConnect.exec_query("SELECT CAST(coalesce(term_code, '0') AS integer) as last_j_code from coding.icpc2_user_terms order by pk DESC limit 1")!last_j_code
+               FH_Condition!fk_code = "J99" & Format(J_code_count + 1, "00#")
+               '  FH_Condition!fk_coding_system = 1
+               '  pk integer,
+               '   term text,
+               '   natural_language_term text,
+               '   icpc_code text,
+               '   term_code text,
+               '   status text,
+               '   replacement text
+               
+               new_j_term = New CRow
+               new_j_term!term = "User;" & FH_Condition!condition
+               new_j_term!natural_language_term = FH_Condition!condition
+               new_j_term!icpc_code = "J99"
+               new_j_term!term_code = Str(J_code_count + 1)
+               new_j_term!status = "A"
+               new_j_term.Save("coding.icpc2_user_terms", "fk_new_j_term")
+               modDBConnect.CommitTrans()
+            End If
+         End If
+         Print "....saving condition:", FH_Condition!condition
+         FH_Condition.Save("clin_history.family_conditions", "fk_condition")
+      End If
+   Wend
+   modDBConnect.CommitTrans()
+   Dec Application.Busy
+   chkImportFamilyHistory.value = False
+   
+End
+
+Public Sub DrsDesk_FamilyHistory_Import_works_for_all()
    '-------------------------------------------------------------------------------
    'todo - make the file surname/fistname
    ' Imports the patients family history initially only DrsDesk
@@ -1457,6 +1801,664 @@ Public Sub DrsDesk_FamilyHistory_Import()
 End
 
 Public Sub DrsDesk_PastHistory_Import()
+   '--------------------------------------------------------------
+   ' Imports the patients past history initially only DrsDesk AND ONLY PATIENT'S MISSED WITH WRONG NAMES SEPT2013
+   ' Mouse|Mickey|08/04/1947 0:00:00|0|59|7|ankle fusion|failed union Dr James O'sullivan|1|2006|0|0|0|1|0
+   ' surname
+   ' firstname
+   ' birthdate
+   ' active flag 0=not 1 = yes
+   ' age_onset
+   ' age_onset_units eg 7 = year 5 = week, 6 = month
+   ' condition
+   ' comment
+   ' side body 0, 1=left, 2= right 3 = both
+   ' ozcode
+   ' date_onset
+   ' operation
+   ' cause death
+   ' confidential
+   ' significant
+   ' deleted
+   '    Case "mark major"
+   '          currentProblem!major = True
+   '          Update()
+   '       Case "mark significant"
+   '          currentProblem!major = False
+   '          currentProblem!active = True
+   '          Update()
+   '       Case "mark inactive"
+   '          currentProblem!major = False
+   '          currentProblem!active = Fals  Nexte
+   '          Update()
+   
+   '-----------------------------------------------------------------------------------------------
+   'From the ICPC-2 documentation:
+   '
+   ' After considering spelling, keyword length and term organisation if you
+   ' still can't find the term you want:-
+   ' In each software product, there should be a facility to enter the term in free text and apply a
+   ' temporary code - J99. The term you record should be retained in the database and
+   ' allocated a term code (so that the first time you use J99, the term you record will be saved
+   ' as term number J99-001 and so on.) Your software should allow you to view your list of
+   ' temporary terms. You could print out the list and post or fax it to the Family Medicine
+   ' Research Centre so that the terms can be allocated to the correct ICPC-2 code and added
+   ' to ICPC-2 PLUS with their term keys. The next upgrade you receive will therefore include the
+   ' term, the correct code and term code. Your software should allow you to alter your original
+   ' record to the correct code (of course always retaining the hidden audit trail of the change for
+   ' medico-legal purposes).
+   '-------------------------------------------------------------------------------------------------
+   Dim $Result As Result
+   Dim sql As String
+   Dim LearntTerms As Result
+   Dim cons As CConsult
+   Dim sfilename As String
+   Dim unmatchables As New Collection
+   Dim Unmatchable As Collection
+   Dim progressNote As String
+   Dim fk_progressNote As Integer
+   Dim active As Integer = 3
+   Dim age_onset As Integer = 4
+   Dim age_onset_units As Integer = 5
+   Dim condition As Integer = 6
+   Dim comment As Integer = 7
+   Dim lateralisation As Integer = 8
+   Dim date_onset As Integer = 9
+   Dim operation As Integer = 10
+   Dim cause_death As Integer = 11
+   Dim confidential As Integer = 12
+   Dim significant As Integer = 13
+   Dim Deleted As Integer = 14
+   Dim Errorfile As File
+   Dim bits As String[]
+   Dim vwTerms As Collection
+   Dim skipcode As Boolean
+   Dim x As Integer
+   Dim y As Integer
+   Dim missingpatients As Integer
+   Dim bError As Boolean
+   Dim badfilename As Integer
+   Dim learntTerm As Collection
+   Dim iTemporaryProblemKey As Integer
+   Dim sFileError As String
+   Dim anError As Error
+   Dim bLineComplete As Boolean
+   Dim sIncompleteLine As String
+   Dim past_history_item_count As Integer
+   Dim sLastPatient As String
+   Dim scurrentPatient As String
+   Dim bValidPatient As Boolean
+   Dim PH As CRow
+   Dim PastHistory As Collection 'of all PH
+   Dim a_term As Collection
+   Dim icpc_terms As Collection
+   Dim icd10_terms As Collection
+   Dim J_code_count As Integer
+   Dim PN As CRow
+   Dim import_count As Integer
+   Dim user_j_terms As Collection
+   Dim new_j_term As CRow
+   Dim icpc2_mapped_term As CRow
+   
+   missed_patients = New Collection
+   
+   modDBConnect.BeginTrans()
+   lblProgress.text = ""
+   icpc_terms = modDBConnect.exec_query_collection("Select * from coding.icpc2_terms")
+   icd10_terms = modDBConnect.exec_query_collection("Select code as pk_code, term  from coding.generic_terms where fk_coding_system = 2")
+   learntTerms = DrsDesk_Leant_Terms_Refresh()                                'Load mappable terms drsdesk to icpc as result
+   import_dir = "/home/richard/easygp/import/missed_patients/"
+   ErrorFile = Open import_dir & "/pasthistory_import_errors.txt" For Write Create   'open an error file to log errors
+   Sfilename = import_dir & Trim("missed_past_history.txt")                   'Insist on at least some sort Of attempt at a name
+   '  Sfilename = import_dir & Trim("Exported_PastHistory.txt")                   'Insist on at least some sort Of attempt at a name
+   
+   If sFilename = "" Then
+      txtImportDirectory.SetFocus()
+      Return
+   End If
+   Try hfile = Open sfilename For Input                                              'Attempt to open the designated file
+   If Error Then
+      sFileError = File_IO_Describe_Error(Error.code)
+      Message.Warning("Unable to open " & sFilename & "\n\n" & sFileError)
+      Dec Application.Busy
+      Return
+   End If
+   Inc Application.Busy
+   lvDataImportProgressMessages.Clear()
+   lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "Starting past history import..............")
+   Patients = New Collection
+   While Not Eof(hfile)
+      '------------------------------------------------------------------------------------
+      'Input each line and split at the delimeter the data in DrsDesk is "dirty", there are
+      'carriage returns randomly in the text
+      '------------------------------------------------------------------------------------
+      Line Input #hfile, sLineInput
+      bits = Split(sLineInput, "|")
+      scurrentPatient = bits[firstname] & bits[surname] & bits[birthdate]
+      If sLastPatient <> scurrentPatient Then
+         '----------------------------------------------------------------
+         'if line contains a new patient, then save any outstanding data
+         'If past_history_item_count is > 0, then have data to save
+         'And Then Create a New patient object
+         '----------------------------------------------------------------
+         If past_history_item_count Then
+            For Each PH In PastHistory
+               PH!fk_progressnote = 0
+               PH.Save("clin_history.past_history", "fk_pasthistory")
+               modDBConnect.CommitTrans()
+            Next
+            lblProgress.text = "Imported patient " & import_count & " " & scurrentPatient
+            past_history_item_count = 0
+            Inc import_count
+         End If
+         'start a new patient 
+         bValidPatient = False
+         patient = Patient_Identify(bits)
+         
+         If patient!fk_patient Then
+            sLastPatient = bits[firstname] & bits[surname] & bits[birthdate]
+            currentconsult = New CConsult(patient)
+            currentconsult.Set(const.ConsultType_DataImport, "Past History Imported")
+            bValidPatient = True
+            PastHistory = New Collection
+         End If
+      End If
+      '-----------------------------------------------------------------------------
+      ' At this point probably got a valid patient, save each past history item
+      '
+      '   pk serial NOT NULL,
+      '   fk_consult integer NOT NULL,
+      '   age_onset integer NOT NULL,
+      '   age_onset_units integer NOT NULL,
+      '   description text NOT a_term!pk_codeNULL,
+      '   fk_laterality integer DEFAULT 0,
+      '   year_onset text NOT NULL,
+      '   active boolean DEFAULT false,
+      '   operation boolean DEFAULT false,
+      '   cause_of_death boolean DEFAULT false,
+      '   confidential boolean DEFAULT false,
+      '   major boolean DEFAULT false,
+      '   deleted boolean DEFAULT false,
+      '   year_onset_uncertain boolean DEFAULT false,
+      '   management_summary text DEFAULT ''::text,
+      '   condition_summary text DEFAULT ''::text,
+      '   risk_factor boolean DEFAULT false,
+      '   fk_coding_system integer NOT NULL, -- key to coding.lu_coding_system containing name of coding system ...
+      '   fk_code text,  -- key to coding.generic_terms can be 6 digit ICPC2 or smaller icd10
+      '   aim_of_plan text,
+      '   fk_progressnote integer, -- foreign key to clin_consult.progressnotes table, used only during each consultation...
+      '------------------------------------------ ----------------------------------------------
+      
+      If bValidPatient Then
+         Inc iTemporaryProblemKey
+         PH = New CRow
+         PH!fk_consult = currentconsult.GetPK()
+         PH!age_onset = bits[age_onset]
+         Select Case bits[age_onset_units]
+            Case 5
+               PH!age_onset_units = const.Units_week
+            Case 6
+               PH!age_onset_units = const.Units_month
+            Case 7
+               PH!age_onset_units = const.Units_year
+         End Select
+         PH!description = Trim(bits[condition])
+         '-------------------------------------------------
+         'Now try and match this health_issue with an icpc
+         'natural_language_term. This is because I only
+         'used natural language terms. There are around
+         '4000/17000 terms in my database not equatable
+         'believe it or not things like NIDDM/IDDM for
+         'which ICPC has no equivalent.
+         'if can, equate to pk
+         'of coding.icpc2_terms, otherwise, when saved
+         'the natural_language_term will be added as a
+         'J99-00n term or popup an option to search
+         '-------------------------------------------------
+         For Each a_term In icpc_terms                                            ' loop through all icpc2 terms
+            If Lower(PH!description) = Trim(Lower(a_term!natural_language_term)) Then   ' is there are match to my natural language?
+               PH!fk_coding_system = const.coding_icpcPlus                        'yes, then coding system = icpc2 plus
+               PH!fk_code = a_term!icpc_code & a_term!term_code                   ' the code = join of both codes = key to coding.generic_terms
+               Break
+            End If
+         Next
+         If Not PH.Exist("fk_code") Then                                          'we didn't find an icpc2 match
+            For Each a_term In icd10_terms                                        'try looking in icd10
+               If Lower(PH!description) = Lower(a_term!term) Then                 'found a match?
+                  PH!fk_coding_system = const.coding_icd10                        'save fields
+                  PH!fk_code = a_term!pk_code                                     'coding.generic_terms.pk
+                  Break
+               End If
+            Next
+         End If
+         If Not PH.Exist("fk_code") Then                                          'still not code?, see if we have learnt it
+            For Each LearntTerms
+               If Trim(Lower(PH!description)) = Trim(Lower(LearntTerms!free_text)) Then  'Yes?
+                  PH!fk_coding_system = const.coding_icpcPlus                                    'we only learn from icpc2 plus - my decision
+                  PH!fk_code = LearntTerms!icpc_code & LearntTerms!term_code                     'save the code
+                  Break
+               End If
+            Next
+         End If
+         'have we already allocate this to a j-code?
+         If Not PH.Exist("fk_code") Then                                          'still not code?, see if we have learnt it
+            user_j_terms = ICPC2_Get_J_Terms()                 'get all current j terms
+            For Each a_term In user_j_terms                    'try and find a match
+               If Lower(PH!description) = Trim(Lower(a_term!natural_language_term)) Then
+                  PH!fk_code = a_term!icpc_code & a_term!term_code
+                  PH!fk_coding_system = const.coding_icpcPlus
+                  Break
+               Endif
+            Next
+         End If
+         If Not PH.Exist("fk_code") Then                                           'ok, still have no code
+            '-------------------------------------------
+            'We couldn't match the free text with an icpc
+            'natural language term, so, check if we have
+            're-allocated this one, if not popup a modal
+            'box to get the code.God this could take some
+            'time as there are nearly 4000 of these, so
+            'I should write these to the database.
+            '---------------------------------------------
+            Dec Application.Busy
+            const.globalstring = ""
+            FICPC = New FICPCBrowser
+            FICPC.txtTermToImport.text = PH!description                           'term we are trying to match
+            FICPC.txtSearch.SetFocus()
+            FICPC.ShowModal()
+            '  If const.globalstring = "" Then
+            '     Message.Info("no term code retrieved")
+            '   Endif
+            Inc Application.busy
+            PH!fk_code = const.globalstring
+            PH!fk_coding_system = const.coding_icpcPlus
+            '-----------------------------------------------------
+            'If user (me) did allocate a term, save for future use
+            '-----------------------------------------------------
+            If PH!fk_code Then
+               icpc2_mapped_term = New CRow
+               icpc2_mapped_term!fk_icpc2_term = PH!fk_code
+               icpc2_mapped_term!free_text = PH!description
+               icpc2_mapped_term.Save("coding.lu_icpc2_plain_language_mapper", "fk_lu_icpc2_plain_language_mapper")
+               modDBConnect.CommitTrans()
+               learntTerms = DrsDesk_Leant_Terms_Refresh() 'Load mappable terms drsdesk to icpc
+            Else
+               'still not term, have we saved before as a j term?
+               user_j_terms = ICPC2_Get_J_Terms()                 'get all current j terms
+               For Each a_term In user_j_terms                    'try and find a match
+                  If Lower(PH!description) = Lower(a_term!natural_language_term) Then
+                     PH!fk_code = a_term!icpc_code & a_term!term_code
+                     PH!fk_coding_system = const.coding_icpcPlus
+                     Break
+                  Endif
+               Next
+            End If
+            If Not PH.Exist("fk_code") Or IsNull(PH!fk_code) Then
+               J_code_count = modDBConnect.exec_query("SELECT CAST(coalesce(term_code, '0') AS integer) as last_j_code from coding.icpc2_user_terms order by pk DESC limit 1")!last_j_code
+               PH!fk_code = "J99" & Format(J_code_count + 1, "00#")
+               PH!fk_coding_system = 1
+               '  pk integer,
+               '   term text,
+               '   natural_language_term text,
+               '   icpc_code text,
+               '   term_code text,
+               '   status text,
+               '   replacement text
+               
+               new_j_term = New CRow
+               new_j_term!term = "User;" & PH!description
+               new_j_term!natural_language_term = PH!description
+               new_j_term!icpc_code = "J99"
+               new_j_term!term_code = Str(J_code_count + 1)
+               new_j_term!status = "A"
+               new_j_term.Save("coding.icpc2_user_terms", "fk_new_j_term")
+               modDBConnect.CommitTrans()
+            End If
+         Else
+            PH!condition_summary = bits[comment]
+            PH!fk_laterality = bits[lateralisation] 'same DrsDesk and EasyGP
+            PH!year_onset = bits[date_onset]
+            If bits[active] = 1 Then
+               PH!active = True
+            Else
+               PH!active = False
+            End If
+            
+            If bits[operation] = 1 Then
+               PH!operation = True
+            Else
+               PH!operation = False
+            End If
+            If bits[cause_death] = 1 Then
+               PH!cause_of_death = True
+            Else
+               PH!cause_of_death = False
+            End If
+            If bits[confidential] = 1 Then
+               PH!confidential = True
+            Else
+               confidential = False
+            End If
+            '-------------------------------------------------------------
+            'Now have to do some guessing, in Drs Desk things were either
+            'inactive or active, now they can be major or significant or
+            'a risk factor
+            'fix me - put in some popup learning
+            'for starters lets just make them major or inactive
+            '-------------------------------------------------------------
+            If PH!active = True Then
+               If InStr(Lower(PH!description), "mitral regurgitation") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "mitral stenosis") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "mitral incompetence") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "aortic regurgitation") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "aortic incompetence") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "aortic stenosis") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "transient ischaemic attack") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "prostate cancer") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "hepatitis c") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "haemophilia") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "haemachromatosis") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "chronic kidney disease") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "myasthenia gravis") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "polycythaemia") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "asthma") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "bronchiectasis") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "copd") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "chronic airways disease") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "chronic obstructive pulmonary disease") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "emphysema") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "hyperlipidaemia") Then
+                  PH!risk_factor = True
+               Endif
+               If InStr(Lower(PH!description), "hypercholesterolaemia") Then
+                  PH!risk_factor = True
+               Endif
+               If InStr(Lower(PH!description), "cholesterol") Then
+                  PH!risk_factor = True
+               Endif
+               If InStr(Lower(PH!description), "overweight") Then
+                  PH!risk_factor = True
+               Endif
+               If InStr(Lower(PH!description), "obesity") Then
+                  PH!risk_factor = True
+               Endif
+               If InStr(Lower(PH!description), "hypertension") Then
+                  PH!risk_factor = True
+               Endif
+               If InStr(Lower(PH!description), "high blood pressure") Then
+                  PH!risk_factor = True
+               Endif
+               If InStr(Lower(PH!description), "impaired fasting glycaemia") Then
+                  PH!risk_factor = True
+               Endif
+               If InStr(Lower(PH!description), "niddm") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "niddm on insulin") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "iddm") Then
+                  PH!major = True
+               Endif
+               If Lower(PH!description) = "diabetes" Then ' will miss then gestational
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "sleep apnoea") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "carcinoma breast") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "breast cancer") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "thyroid cancer") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "melanoma") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "mixed mitral valve disease") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "heart failure") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "ccf") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "prostate cancer") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "cancer of prostate") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "atrial fibrillation") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "rheumatoid arthritis") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "psoriatic arthritis") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "lupus") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "cardiomyopathy") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "coronary artery disease") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "ischaemic heart disease") Then
+                  PH!major = True
+               Endif
+               If Lower(PH!description) = "renal failure" Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "hyperthyroidism") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "hypothyroidism") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "epilepsy") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "osteoporosis") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "complex partial") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "parkinson") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "dementia") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "memory loss") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "multiple sclerosis") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "pacemaker") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "macular degeneration") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "congenital blindness") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "developmental delay") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "autism") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "asberger") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "deafness") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "renal impairment") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "chronic kidney") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "alcoholism") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "depression") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "anxiety") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "bipolar") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "vitamin b12") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "alcohol dependence") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "ulcerative colitis") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "crohn") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "panic disorder") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "carcinoma bladder") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "bladder cancer") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "anal carcinoma") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "bowel cancer") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "carcinoma bowel") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "colonic polyps") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "thyroid cancer") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "ptsd") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "warfarinised") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "glaucoma") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "idiopathic pulmonary fibrosis") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "memory impairment") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "leukemia") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "lymphoma") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "anaesthetic risk") Then
+                  PH!major = True
+               Endif
+               If InStr(Lower(PH!description), "anaesthetic reaction") Then
+                  PH!major = True
+               Endif
+            End If
+            PastHistory.Add(PH, PastHistory.count)
+            lblProgress.text = "Importing pasthistory for " & scurrentPatient & " " & Str(import_count) & " " "item count: " & Str(past_history_item_count)
+            Inc past_history_item_count 'this will be 1 if the first item.(x(x
+            
+         End If
+         '  Else
+         '      unmatchables.Add(PH, unmatchables.count)
+         ' End If
+         Inc x
+      End If
+      
+   Wend
+   modDBConnect.CommitTrans()
+   
+   lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "Import completed")
+   lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "We imported " & Str(patients.count) & " patients")
+   lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "there were" & Str$(missingpatients) & "missing or duplicated patients")
+   lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "there were" & Str$(x) & "terms matched")
+   lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "there were" & Str(unmatchables.count) & "terms not matched")
+   Close #hfile
+   hfile = Open User.home &/ "easygp/import/unmatched.txt" For Write Create
+   For Each unmatchable In unmatchables
+      Print #hfile, Lower(unmatchable!description)
+   Next
+   Close #hfile
+   
+   Dec Application.busy
+   chkImportPastHistory.Value = False
+   
+End
+
+Public Sub DrsDesk_PastHistory_Import_works_for_all()
    '--------------------------------------------------------------
    ' Imports the patients past history initially only DrsDesk
    ' Mouse|Mickey|08/04/1947 0:00:00|0|59|7|ankle fusion|failed union Dr James O'sullivan|1|2006|0|0|0|1|0
@@ -2148,20 +3150,13 @@ Public Sub Patient_Identify(bits As String[]) As Collection
       If $Result.count > 1 Then
          patient!fk_patient = $Result!fk_patient
          patient!fk_person = $Result!fk_person
-         '  For Each $Result
-         '     sMsg &= $Result!firstname & " " & $Result!surname & " " & Format($Result!birthdate, "dd/mm/yyyy") & "\n"
-         '  Next
-         '
-         ' If Message.Question("More than 1 patient found with same name and dob\n\n" & sMsg & " Same patient?", "Yes", "No") = 2 Then
-         '     patient!fk_patient = 0
-         '     lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "duplicate name:" & patient!firstname & " " & patient!surname)
-         '     Print patient
-         ' Endif
-         ' Wait
       End If
       If $Result.count = 0 Then
-         lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "Not in Demographic Database:" & patient!firstname & " " & patient!surname)
-         patient!fk_patient = 0
+         'Try the mismatched patients Table
+         patient!fk_patient = Missing_patients_Get_fk_Patient(patient)
+         
+         ' lvDataImportProgressMessages.Add(lvDataImportProgressMessages.count, "Not in Demographic Database:" & patient!firstname & " " & patient!surname)
+         ' patient!fk_patient = 0
          Wait
       End If
    End If
@@ -2216,7 +3211,7 @@ Public Sub EditArea_Buttons_Click()
 End
 
 Public Sub Match_Missing()
-
+   
    Dim $Result As Result
    Dim sql As String
    Dim cons As CConsult
@@ -2238,7 +3233,7 @@ Public Sub Match_Missing()
    Dim Errorcount As Integer
    Dim bSaveSocialHistory As Boolean 
    Dim fk_patient As Integer
-
+   
    If Message.Question("This is only for DrDesk Software Importing, Continue?", "Yes", "No") = 2 Then Return
    
 End
@@ -2329,6 +3324,35 @@ Public Sub Medibase_Import(sImportType As String)
       lvwLog.Add(lvwLog.count, sOneline)
    Wend
    '  Close #hLog_file  'BUG HERE, why can't close
+   
+End
+
+Public Function Missing_patients_Get_fk_Patient(patient As Collection) As Integer
+   
+   'temporary routine to import the last of my missed patients
+   ' 
+   Dim $Result As Result
+   Dim sql As String
+   Dim fk_patient As Integer
+   
+   Print "Missing:", patient!firstname & " " & patient!surname
+   sql = "Select * from documents.unmatched_patients where surname ILIKE $$" & Trim(patient!surname) & "$$" 
+   sql &= " AND firstname ILIKE $$" & Trim(patient!firstname) & "$$" 
+   sql &= " AND birthdate ='" & Format(patient!birthdate, "dd/mm/yyyy") & "'"
+   $Result = modDBConnect.exec_query(sql)
+   If $Result.count = 0 Then 
+      '------------------------------------------------
+      'now get the user (me) to match to a real patient
+      '------------------------------------------------
+      Dec Application.Busy
+      FMissingPatients.Init(patient)
+      fk_patient = FMissingPatients.ShowModal()
+      missed_patients.Add(patient, missed_patients.count)
+      Inc Application.Busy
+   Else
+      fk_patient = $Result!fk_real_patient  
+   End If   
+   Return fk_patient 
    
 End
 
@@ -35582,5 +36606,4 @@ End
 ' --select * from clin_consult.consult where pk=127
 ' --select distinct (fk_consult) from clin_history.past_history
 '
-
-
+'NEW TO CATCH THOSE MISSED 

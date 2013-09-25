@@ -78,12 +78,26 @@ Public Sub Process_Read()
    
   data = Read #pro, Lof(pro)
   final_audit_note &= data 
-   
+  If InStr(data, "~FINISH~") <> 0 Then
+     ' Process_Kill is always called unfortunately
+     If status = 0 Then
+        status = 1
+        Run_Audits()
+        Run_Sql()
+     Endif
+  Endif
 End
 
 Public Sub Process_Error(err As String)
    
-   error_text &= err
+  Dim re As Regexp
+  
+   re = New Regexp(err, "^\\[SSL Cipher .*\\]$") ' unfortunately ftp-ssl abuses it's stderr privileges
+   If re.Offset = -1 Then
+      Message.Error(err, "OK")
+      status = 4
+      Log.ErrorMsg(err)
+   Endif
    
 End
 
@@ -92,20 +106,13 @@ Public Sub Process_Kill()
    Dim has_error As Boolean = False
    
    If pro.Value <> 0 Then
-      has_error = True
-   Else
-      If error_text <> "" Then
-         re = New Regexp(error_text, "^\\[SSL Cipher .*\\]$") ' unfortunately ftp-ssl abuses it's stderr privileges
-         If re.Offset = -1 Then
-            has_error = True
-         Endif
+      If status <> 4 Then ' we haven't already reported it
+        status = 4
+        Message.Error("Process returned error value " & pro.Value)
+        Log.ErrorMsg("process returned error value " & pro.Value)
       Endif
    Endif
-   If has_error Then
-    Message.Error(error_text, "OK")
-    status = 4
-    Log.ErrorMsg(error_text)
-  Else
+   If status = 0 Then
      status = 1
      Debug final_audit_note
      Run_Audits()
@@ -143,6 +150,10 @@ Public Sub Send(s As String)
   Print #pro, s 
    
 End
+
+
+
+
 
 Static Public Sub Unit_Test()
    

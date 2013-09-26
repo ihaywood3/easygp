@@ -26,7 +26,7 @@ begin
    if found then
       update drugs.brand set  fk_product=fk_product1, fk_company=fk_company1, brand=brand1, price=price1, sct=sct1,product_information_filename=pif,from_pbs=from_pbs1 where pk=pk1;
    else
-      insert into drugs.brand (pk, fk_product, fk_company, brand, price, from_pbs, sct,product_information_filename) values (pk1, fk_product1, fk_company1, brand1, price1, from_pb1s, sct1, pif);
+      insert into drugs.brand (pk, fk_product, fk_company, brand, price, from_pbs, sct,product_information_filename) values (pk1, fk_product1, fk_company1, brand1, price1, from_pbs1, sct1, pif);
    end if;
 end
 $func$;

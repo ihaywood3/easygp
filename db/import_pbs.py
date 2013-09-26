@@ -105,7 +105,7 @@ def get_xml_etree():
     if f is None:
         print >>sys.stderr, "can't find pbs-DATE.xml"
         sys.exit(1)
-    m = re.match('pbs-([0-9\-]+)\.xml',f)
+    m = re.match('pbs-([0-9\-]+).*\.xml',f)
     release_date = m.group(1)
     return parse(f)
 
@@ -348,7 +348,7 @@ def verify_brands(t):
                     price = price.replace(',','')
                     pk = r["pk"]
                     if price <> "$"+brand["price"]:
-                        cmd("update drugs.brand set price='%s'::money where pk='%s';" % (brand["price"],pk))
+                        cmd("update drugs.brand set price='%s'::money, fk_company='%s',brand=$$%s$$ where pk='%s';" % (brand["price"],code,brand['brand'],pk))
 
 
 def print_brands():
@@ -457,7 +457,7 @@ elif cd == '3' or cd == 'brands':
     verify_brands(get_xml_etree()) # brands, may spit out errors
 elif cd == '4' or cd == 'print':
     t = get_xml_etree()
-    print """\\set ON_ERROR_STOP 1"
+    print """\\set ON_ERROR_STOP 1
 \\o /dev/null
 \\set QUIET 1
 DO language plpgsql $$
@@ -466,7 +466,7 @@ DECLARE
 BEGIN
    select * into vers from db.lu_version;
    if vers.lu_minor < 317 then 
-      raise exception 'database version must be 316=7 or higher';
+      raise exception 'database version must be 317 or higher';
    end if;
 END$$;
 """

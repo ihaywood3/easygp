@@ -321,6 +321,7 @@ values
 # STEP THREE: update/create new brands where required        
 def verify_brands(t):
     ms = {}
+    cmd("update drugs.brand set current=false where from_pbs")
     for m in xml_manufacturers(t): ms[m["xml:id"]] = m
     for drug in xml_generics_brands(t):
         r = query("select pk from drugs.product where sct='%s' limit 1" % drug["sct"])
@@ -336,7 +337,7 @@ def verify_brands(t):
                         print "WARNING: drug has existing brands from this manufacturer, we are adding more"
                         for i in r:
                             print "existing brand %s %s %s %s" % (i['brand'],i["pk"], i["sct"],i["price"]) 
-                            print "update drugs.brand set brand=$$%s$$, price='%s'::money,sct='%s' where pk='%s';" % (brand["brand"],brand["price"],brand["sct"],i["pk"]) 
+                            print "update drugs.brand set brand=$$%s$$, price='%s'::money,sct='%s',current=true where pk='%s';" % (brand["brand"],brand["price"],brand["sct"],i["pk"]) 
                     else:
                         r = query("select uuid_generate_v4() as uuid")
                         pk = r[0]['uuid']
@@ -348,7 +349,7 @@ def verify_brands(t):
                     price = price.replace(',','')
                     pk = r["pk"]
                     if price <> "$"+brand["price"]:
-                        cmd("update drugs.brand set price='%s'::money, fk_company='%s',brand=$$%s$$ where pk='%s';" % (brand["price"],code,brand['brand'],pk))
+                        cmd("update drugs.brand set price='%s'::money, fk_company='%s',brand=$$%s$$,current=true where pk='%s';" % (brand["price"],code,brand['brand'],pk))
 
 
 def print_brands():

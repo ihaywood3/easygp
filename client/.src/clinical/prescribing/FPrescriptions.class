@@ -1942,7 +1942,9 @@ Public Sub Drug_Add(Optional bSaveItemNoPrint As Boolean = False) As Boolean
       Script_item!prescribed!authority_reason = Trim(txtAuthorityWording.text)
       Script_item!authority_indication = Trim(txtAuthorityWording.Text) 'could be a PBS description or our own for increased authority
    End If
-   Script_Item!prescribed!script_number = modPrescribingDBI.Script_Number_Get_Next()
+   ' we used to generate the script number here.
+   ' we can't as there may be up to 3 scripts on a page and they all have the same
+   ' script number & barcode, but we don't know this yet.
    
    script_items.Add(script_item, script_items.count)
    ' prescribed! = concession_details : these three not yet implemented
@@ -2248,7 +2250,6 @@ Public Sub Print_Script_Items(items As Collection)
    Dim pbs_scripts As New Collection
    Dim rpbs_scripts As New Collection
    Dim private_scripts As New Collection
-   Dim templ As CTemplate
    Dim authority_scripts As New Collection 'do not remove this
    
    For Each script_item In items
@@ -2277,10 +2278,9 @@ Public Sub Print_Script_Items(items As Collection)
                End Select
             Case Else
                
-               templ = New CTemplate("authority-script", "tex")
                authority_scripts = New Collection
                authority_scripts.Add(script_item, 0)
-               modPrinting.Print_latex(Script_Construct_Authority_LaTeX(authority_scripts, templ).GetData(), const.Paper_Script)
+               modPrinting.Print_latex(Script_Construct_Authority_LaTeX(authority_scripts).GetData(), const.Paper_Script)
                script_item!prescribed!printed = True
          End Select
          script_item!printed = True
@@ -2302,24 +2302,41 @@ Public Sub Print_Script(items As Collection, pbs_script_type As Integer)
    'applies to non-authority items only
    '-----------------------------------------------------------------------
    
-   Dim templ As New CTemplate("script", "tex")
    Dim script_latex As String
    
-   script_latex = Script_Construct_LaTex(items, templ, pbs_script_type).GetData()
+   script_latex = Script_Construct_LaTex(items, pbs_script_type).GetData()
    modPrinting.Print_latex(script_latex, const.Paper_Script)
    
 End
 
-Public Sub Script_Construct_LaTex(items As Collection, templ As CTemplate, pbs_script_type As Integer) As CTemplate
+Public Sub Script_Construct_LaTex(items As Collection, pbs_script_type As Integer) As CTemplate
    '------------------------------------------------------------------------------
    'Construct the laTex for a non-authority script, max of three items on a script
    '------------------------------------------------------------------------------
    
+   Dim templ As CTemplate
    Dim item As Collection
+   Dim script_date As Date
+   Dim script_number As Integer
+   Dim barcode As String
+   Dim medisecure_uuid As String
    
+   script_number = modPrescribingDBI.Script_Number_Get_Next()
+   barcode = modPrescribingDBI.Script_Barcode(script_number)
+   If IsNull(barcode) Then
+      templ = New CTemplate("script", "tex")
+   Else
+      templ = New CTemplate("script-barcode", "tex")
+      templ.Subst("barcode", barcode)
+   Endif
+   For Each item In items
+      script_date = item!prescribed!date_on_script
+      item!prescribed!script_number = script_number
+      item!prescribed!medisecure_barcode = barcode
+   Next
    templ.Subst_common(currentconsult)
-   templ.Subst("script-date", Format(script_item!prescribed!date_on_script, "dd/mm/yyyy"))
-   templ.Subst("script-number", script_item!prescribed!script_number)
+   templ.Subst("script-date", Format(script_date, "dd/mm/yyyy"))
+   templ.Subst("script-number", script_number)
    '-----------------------
    'set PBS RPBS or Private
    '-----------------------
@@ -2344,7 +2361,7 @@ Public Sub Script_Construct_LaTex(items As Collection, templ As CTemplate, pbs_s
    End Select
    templ.Subst_Drugs(items) 'build latex for up to 3 script items
    '-------------------------------------------------------------------------------------
-   'This is really dogdy code, The drug has already been saved
+   'The drug has already been saved
    'We couldn't know at the time of saving which particular script page a particular drug
    'was going to end up on, so here we save the latex back to the back-end
    '--------------------------------------------------------------------------------------
@@ -2352,6 +2369,8 @@ Public Sub Script_Construct_LaTex(items As Collection, templ As CTemplate, pbs_s
       item!latex = templ.GetData()
       Latex_Save(item)
    Next
+   modPrescribingDBI.Notify_Script(script_number)
+   modDBConnect.CommitTrans()
    Return templ
    
 End
@@ -2364,34 +2383,51 @@ Public Sub Latex_Save(item As Collection)
    're-printed it together with something else, so won't know prior to the print just what the
    'latex is going to be, and the script item is already saved to the backend.
    '---------------------------------------------------------------------------------------------
+   Dim pk As Integer
    
    If item!prescribed.Exist("fk_prescribed") Then  'item has been prescribed, but re-loaded from the backend.
-      modDBConnect.update("clin_prescribing.prescribed", Null, ["pk": item!prescribed!fk_prescribed, "latex": item!latex])
+      pk = item!prescribed!fk_prescribed
    Else                                           'item not yet reloaded from the backend.
-      modDBConnect.update("clin_prescribing.prescribed", Null, ["pk": item!prescribed!pk, "latex": item!latex])
+      pk = item!prescribed!pk
    End If
-   modDBConnect.CommitTrans()
+   modDBConnect.update("clin_prescribing.prescribed", Null, ["pk": pk, "latex": item!latex, "script_number": item!prescribed!script_number, "medisecure_barcode": item!prescribed!medisecure_barcode])
    
 End
 
-Public Sub Script_Construct_Authority_LaTeX(Auth_Item As Collection, templ As CTemplate) As CTemplate
+Public Sub Script_Construct_Authority_LaTeX(auth_items As Collection) As CTemplate
    '----------------------------------------------
    'Builds the Latex code for the authority script
    '----------------------------------------------
-   Dim script_item As Collection = Auth_item[0]
-   Dim heading As String
    
+   Dim templ As CTemplate
+   Dim Drug As String
+   Dim drugs As String
+   Dim auth_item As Collection = auth_items[0]
+   Dim heading As String
+   Dim script_number As Integer
+   Dim barcode As String
+   
+   script_number = modPrescribingDBI.Script_Number_Get_Next()
+   auth_item!prescribed!script_number = script_number
+   barcode = modPrescribingDBI.Script_Barcode(script_number)
+   If IsNull(barcode) Then
+      templ = New CTemplate("authority-script", "tex")
+   Else
+      templ = New CTemplate("authority-script-barcode", "tex")
+      templ.Subst("barcode", barcode)
+      auth_item!prescribed!medisecure_barcode = barcode
+   Endif
    templ.Subst_common(currentconsult)
-   heading = Replace(const.pbs_script_types[script_item!prescribed!fk_lu_pbs_script_type], "INCREASED QUANTITY", "")
+   heading = Replace(const.pbs_script_types[auth_item!prescribed!fk_lu_pbs_script_type], "INCREASED QUANTITY", "")
    heading = Replace(heading, "STREAMLINED", "")
-   templ.Subst("authority-heading-authority-script-number", heading & " SCRIPT NO. " & Format(script_item!prescribed!authority_script_number, "00000000"))
+   templ.Subst("authority-heading-authority-script-number", heading & " SCRIPT NO. " & Format(auth_item!prescribed!authority_script_number, "00000000"))
    templ.Subst("authority-type", heading)
-   templ.Subst("authority-heading-authority-script-number", Replace(const.pbs_script_types[script_item!prescribed!fk_lu_pbs_script_type], "INCREASED QUANTITY", "") & " SCRIPT NO. " & Format(script_item!prescribed!authority_script_number, "00000000"))
-   templ.Subst("authority-script-number", script_item!prescribed!authority_script_number)
-   templ.Subst("authority-script-number", script_item!prescribed!authority_script_number)
-   templ.Subst("script-date", Format(script_item!prescribed!date_on_script, "dd/mm/yyyy")) 'strictly speaking illegal
-   templ.Subst("script-number", script_item!prescribed!script_number)
-   If InStr(script_item!pbs_script_type, "RPBS") Then   'and check against patients actual rpbs entitlements FIXME SHOULD DO THIS BACK IN PRESRIBING.
+   templ.Subst("authority-heading-authority-script-number", Replace(const.pbs_script_types[auth_item!prescribed!fk_lu_pbs_script_type], "INCREASED QUANTITY", "") & " SCRIPT NO. " & Format(auth_item!prescribed!authority_script_number, "00000000"))
+   templ.Subst("authority-script-number", auth_item!prescribed!authority_script_number)
+   templ.Subst("authority-script-number", auth_item!prescribed!authority_script_number)
+   templ.Subst("script-date", Format(auth_item!prescribed!date_on_script, "dd/mm/yyyy")) 'strictly speaking illegal
+   templ.Subst("script-number", script_number)
+   If InStr(auth_item!pbs_script_type, "RPBS") Then   'and check against patients actual rpbs entitlements FIXME SHOULD DO THIS BACK IN PRESRIBING.
       templ.Subst("rpbs-script", "X")
       templ.Checkbox("pbs-script", "")
       templ.Subst("veteran_heading", "Veteran")
@@ -2401,9 +2437,14 @@ Public Sub Script_Construct_Authority_LaTeX(Auth_Item As Collection, templ As CT
       templ.Subst("veteran_heading", "")
       templ.Subst("veteran_number", "")
    End If
+   ' If InStr(auth_item!pbs_script_type, "PBS") Then
+   '    templ.Subst("pbs-script", "X")
+   ' Else
+   '    templ.Checkbox("pbs-script", "")
+   ' End If
    templ.Checkbox("previous-authority-yes-checkbox", True)
    templ.Checkbox("previous-authority-no-checkbox", False)
-   If script_item!prescribed!authority_post_to_patient = True Then
+   If auth_item!prescribed!authority_post_to_patient = True Then
       templ.Checkbox("sendtopatient-checkbox", True)
    Else
       templ.Checkbox("sendtopatient-checkbox", False)
@@ -2415,15 +2456,15 @@ Public Sub Script_Construct_Authority_LaTeX(Auth_Item As Collection, templ As CT
       script_item!restriction = Replace(script_item!prescribed!authority_reason, "<br/>", "")
       templ.Subst("authority-indication", "[" & script_item!restriction_code & "]" & script_item!prescribed!authority_reason)
    Else
-      script_item!restriction = Replace(script_item!prescribed!authority_reason, "<p>", "")
-      script_item!restriction = Replace(script_item!prescribed!authority_reason, "</p>", "")
-      script_item!restriction = Replace(script_item!prescribed!authority_reason, "<br/>", "")
-      templ.Subst("authority-indication", script_item!prescribed!authority_reason)
+      auth_item!restriction = Replace(auth_item!prescribed!authority_reason, "<p>", "")
+      auth_item!restriction = Replace(auth_item!prescribed!authority_reason, "</p>", "")
+      auth_item!restriction = Replace(auth_item!prescribed!authority_reason, "<br/>", "")
+      templ.Subst("authority-indication", auth_item!prescribed!authority_reason)
    End If
-   templ.Subst("quantity-repeats", script_item!strength & " " & script_item!prescribed!quantity & "'s Rpt " & script_item!prescribed!repeats)
-   templ.Subst_Drugs(auth_item, True)
-   script_item!latex = templ.GetData()
-   Latex_Save(script_item)
+   templ.Subst("quantity-repeats", auth_item!strength & " " & auth_item!prescribed!quantity & "'s Rpt " & auth_item!prescribed!repeats)
+   templ.Subst_Drugs(auth_items, True)
+   auth_item!latex = templ.GetData()
+   Latex_Save(auth_item)
    Return templ
    
 End

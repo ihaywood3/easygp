@@ -20,6 +20,7 @@ Private bTransaction As Boolean
 Private bFirstCommand As Boolean
 Private conninfo As Collection
 Private my_current_user As Collection
+Private my_is_admin As Boolean
 Private pg_socket_file As Stream
 Private storedQueries As String
 Private bStoring As Boolean
@@ -90,18 +91,26 @@ End
 
 Private Function IsAdmin_Read() As Boolean
    
-   Return IsNull(my_current_user)
+   Return my_is_admin
    
 End
 
 Public Function Is_Superuser() As Boolean
    
-  Dim R As Result
-  
- Return modDBConnect.exec_query("select exists(select 1 from pg_catalog.pg_roles where rolname= $$" & my_current_user!logon_name & "$$ and rolsuper) as superuser")!superuser
- Catch 
-   Return 
+  Return my_is_admin
+   
 End
+
+Private Function CheckAdminStatus() As Boolean
+   
+  Dim r As Result
+  
+  r = exec_query("Select 1 From pg_roles r1, pg_roles r2, pg_auth_members m where r1.rolname = current_user And ((r1.oid = m.member And r2.oid = m.roleid And r2.rolname = 'easygp') or r1.rolsuper)")
+  If r.Count = 0 Then Return False
+  Return True
+   
+End
+
 
 Public Function dbConnect_global(host As String, database As String, login As String, password As String) As String
    '-------------------------------------
@@ -134,7 +143,17 @@ Public Function dbConnect_global(host As String, database As String, login As St
    r = Actual_Connect()
    If r = "success" Then
       CheckDBVersion()
-      my_current_user = modConsultDBI.Staff_member_Get()
+      If conninfo!login = "easygp" Then
+         my_is_admin = True
+      Else
+         my_current_user = modConsultDBI.Staff_member_Get()
+         my_is_admin = CheckAdminStatus()
+      Endif
+      If Not my_is_admin And IsNull(my_current_user) Then
+         ' Uh-oh: user is neither the superuser nor an ordinary user
+         ' so even though we have a DB connection, it will be useless.
+         r = "Logon failed: user is a postgres user but not an EasyGP user"
+      Endif
       bStoring = False
       event_listeners = New Collection
    Endif
@@ -352,7 +371,7 @@ do_query:
    If Error Then
       errtxt = Error.Text
       bt = Error.Backtrace
-      If errtxt = "Query failed: SSL SYSCALL error: EOF detected\n" Or If errtxt Begins "Out of memory" Then
+      If errtxt Begins "Query failed: SSL SYSCALL error: EOF detected" Or If errtxt Begins "Out of memory" Or If errtxt Begins "Query failed: SSL SYSCALL error: Connection timed out" Then
          ' connection lost
          $hconn = Null
          Log.ErrorMsg(errtxt)

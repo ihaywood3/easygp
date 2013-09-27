@@ -11,6 +11,8 @@ GRANT ALL ON TABLE documents.observations TO staff;
 CREATE TABLE clin_consult.lu_shortcut
 (
   pk serial NOT NULL,
+  fk_staff integer default NULL,
+  shared boolean default False,
   shortcut text, -- the shortcut that triggers the text expansion
   expanded text, -- the text the shortcut will get expanded to. Any htnl code is valid, including embedded images
   CONSTRAINT lu_shortcut_pkey PRIMARY KEY (pk),
@@ -25,6 +27,7 @@ GRANT ALL ON TABLE clin_consult.lu_shortcut TO easygp;
 GRANT ALL ON TABLE clin_consult.lu_shortcut TO staff;
 COMMENT ON TABLE clin_consult.lu_shortcut
   IS 'System wide shortcuts that the editor will expand to a longer text sequence';
+COMMENT ON COLUMN clin_consult.lu_shortcut.fk_staff IS 'Use only in inherited table - necessary to allow exporting lu_* data without contaminatin from user data';
 COMMENT ON COLUMN clin_consult.lu_shortcut.shortcut IS 'the shortcut that triggers the text expansion';
 COMMENT ON COLUMN clin_consult.lu_shortcut.expanded IS 'the text the shortcut will get expanded to. Any htnl code is valid, including embedded images';
 
@@ -47,11 +50,6 @@ INSERT INTO clin_consult.lu_shortcut(shortcut, expanded) values('.rr','<b>Review
 
 CREATE TABLE clin_consult.shortcuts_user
 (
--- Inherited from table clin_consult.lu_shortcut:  pk integer NOT NULL DEFAULT nextval('clin_consult.lu_shortcut_pk_seq'::regclass),
--- Inherited from table clin_consult.lu_shortcut:  shortcut text,
--- Inherited from table clin_consult.lu_shortcut:  expanded text,
-  fk_staff integer, -- if true, the shortcut will be shared with other users
-  shared boolean DEFAULT false,
   CONSTRAINT shortcuts_user_fk_staff_fkey FOREIGN KEY (fk_staff)
       REFERENCES admin.staff (pk) MATCH SIMPLE
       ON UPDATE NO ACTION ON DELETE NO ACTION,

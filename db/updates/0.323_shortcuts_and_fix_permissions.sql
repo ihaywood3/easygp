@@ -32,15 +32,15 @@ COMMENT ON COLUMN clin_consult.lu_shortcut.shortcut IS 'the shortcut that trigge
 COMMENT ON COLUMN clin_consult.lu_shortcut.expanded IS 'the text the shortcut will get expanded to. Any htnl code is valid, including embedded images';
 
 
-INSERT INTO clin_consult.lu_shortcut(shortcut, expanded) values('.sr','<b>System Review:<b><br>');
-INSERT INTO clin_consult.lu_shortcut(shortcut, expanded) values('.ps','<b>Presenting Symptoms:</b><br>');
-INSERT INTO clin_consult.lu_shortcut(shortcut, expanded) values('.oe','<b>On Examination:</b><br>');
-INSERT INTO clin_consult.lu_shortcut(shortcut, expanded) values('.dx','<b>Diagnosis:</b><br>');
-INSERT INTO clin_consult.lu_shortcut(shortcut, expanded) values('.pl','<b>Plan</b><br>');
-INSERT INTO clin_consult.lu_shortcut(shortcut, expanded) values('.pc','<b>Patient Concerns:</b><br>');
-INSERT INTO clin_consult.lu_shortcut(shortcut, expanded) values('.rx','<b>Scripts:</b><br>');
-INSERT INTO clin_consult.lu_shortcut(shortcut, expanded) values('.wc','<b>Workcover Notes:</b><br>');
-INSERT INTO clin_consult.lu_shortcut(shortcut, expanded) values('.rr','<b>Review of Results:</b><br>');
+INSERT INTO clin_consult.lu_shortcut(shortcut, expanded, shared) values('.sr','<b>System Review:<b><br>', true);
+INSERT INTO clin_consult.lu_shortcut(shortcut, expanded, shared) values('.ps','<b>Presenting Symptoms:</b><br>', true);
+INSERT INTO clin_consult.lu_shortcut(shortcut, expanded, shared) values('.oe','<b>On Examination:</b><br>', true);
+INSERT INTO clin_consult.lu_shortcut(shortcut, expanded, shared) values('.dx','<b>Diagnosis:</b><br>', true);
+INSERT INTO clin_consult.lu_shortcut(shortcut, expanded, shared) values('.pl','<b>Plan</b><br>', true);
+INSERT INTO clin_consult.lu_shortcut(shortcut, expanded, shared) values('.pc','<b>Patient Concerns:</b><br>', true);
+INSERT INTO clin_consult.lu_shortcut(shortcut, expanded, shared) values('.rx','<b>Scripts:</b><br>', true);
+INSERT INTO clin_consult.lu_shortcut(shortcut, expanded, shared) values('.wc','<b>Workcover Notes:</b><br>', true);
+INSERT INTO clin_consult.lu_shortcut(shortcut, expanded, shared) values('.rr','<b>Review of Results:</b><br>', true);
 
 
 

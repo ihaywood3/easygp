@@ -18,8 +18,9 @@ import psycopg2 as DBAPI
 import urllib
 import zipfile
 import os.path
-import sys
+import sys, getopt
 
+#http://www.drugbank.ca/system/downloads/current/drugbank.xml.zip
 DOWNLOAD_URL= "http://www.drugbank.ca/system/downloads/current/drugbank.xml.zip"
 DOWNLOAD_ZIPFILE = "drugbank.xml.zip"
 DRUGBANK_FILENAME = "drugbank.xml"
@@ -57,7 +58,7 @@ def getfile(url=DOWNLOAD_URL, fname=DOWNLOAD_ZIPFILE, download_progress_reporter
 		return DRUGBANK_FILENAME
 
 	
-def pgconnection(host='127.0.0.1', dbname='easygp', user='easygp', password='admin'):
+def pgconnection(password, host='127.0.0.1', dbname='easygp', user='easygp'):
 	""" 
 	Establishes a connection with the database our data will be imported into.
 	quick hack with hardcoded access credentials in order to test the import.
@@ -146,14 +147,16 @@ def add_drug(con, drug, drugname):
 	d.route_of_elimination = drug.find(NS+'route-of-elimination').text
 	d.volume_of_distribution = drug.find(NS+'volume-of-distribution').text
 	d.clearance = drug.find(NS+'clearance').text
+	#print d.clearance
 	# d. = drug.find(NS+'').text
-	sqlstr = """INSERT INTO drugbank.drug(drugbank_id, name, description, pharmacology, mechanism_of_action, toxicity,
+	sqlstr = """INSERT INTO drugbank.drug(drugbank_id, name, description, indication, pharmacology, mechanism_of_action, toxicity,
 				biotransformation, absorption, half_life, route_of_elimination, volume_of_distribution,
-				clearance) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+				clearance) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 	cur = con.cursor()
 	cur.execute(sqlstr, (d.drugbank_id, 
 		d.name, 
 		d.description, 
+		d.indication,
 		d.pharmacology, 
 		d.mechanism_of_action, 
 		d.toxicity,
@@ -344,19 +347,68 @@ def add_external_links(con, drug, drugname):
 	cur.close()
 	
 	
+def help(progname):
+		print
+		print "this script imports drugbank.ca data into easygp's drug reference database"
+		print "USAGE: %s -p,--password=<password>" % progname
+		print "Optional parameters:"
+		print "-s, --server=<postgres ip/url, eg 'localhost', '192.168.0.1'>. Default is 'localhost'"
+		print "-d, --database=<name of postgres database>. Default is 'easygp'"
+		print "-u, --user=<postgres user>. Default is 'easygp'"
+		print
+		print "Example: %s -p mypassword" % progname
+		print "or       %s -s 192.168.0.1 -d drugref -u admin -p mypassword" % progname
+		
+
+	
 if __name__ == "__main__":
+	host='127.0.0.1'
+	db='easygp'
+	user='easygp'
+	password=None
+	
+	try:
+			params = sys.argv[1:]
+	except:
+		help(sys.argv[0])
+		sys.exit(1)
+
+	
+	options, reminder = getopt.getopt(params, 'hs:d:u:p:', ['help', 'server=', 'database=', 'user=', 'password='])
+
+	for opt,arg in options:
+		if opt in ('-h', '--help'):
+			help(sys.argv[0])
+			sys.exit(1)
+		elif opt in ('-s', '--server'):
+			host=arg
+		elif opt in ('-d', '--database'):
+			db=arg
+		elif opt in ('-u', '--user'):
+			user=arg
+		elif opt in ('-p', '--password'):
+			password=arg
+			
+	if password is None:
+		print "YOU HAVE TO SPECIFY THE POSTGRES DATABASE USER PASSWORD"
+		help(sys.argv[0])
+		sys.exit(1)
+			
+	
+	
 	counter = 0
 	#read xml file
 	filename=DRUGBANK_FILENAME
 	if not os.path.exists(filename):
-		filename = getfile(filename)
+		filename = getfile()
 	if filename is None:
 		print "File %s not found, aborting program" % DRUGBANK_FILENAME
 		sys.exit(1)
 	tree = ET.parse(filename)
 	root = tree.getroot()
 	drugs = root.findall(NS+'drug')
-	con = pgconnection()
+	
+	con= pgconnection(host=host, dbname=db, user=user, password=password)
 	
 	for_all_drugs(con, drugs, add_drug, "Adding basic drug data")
 	for_all_drugs(con, drugs, add_synonyms, "Adding drug name synonyms")

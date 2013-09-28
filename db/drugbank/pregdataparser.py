@@ -16,6 +16,7 @@ If this breaks your databases, you get to keep the pieces.
 This script is provided under the terms of the GPL license version 3.0 by Dr H. Herb
 """
 
+import sys, getopt
 import psycopg2 as DBAPI
 import urllib
 import os.path
@@ -42,7 +43,7 @@ def getfile(url=DOWNLOAD_URL, fname=PREGDATA_FILENAME, download_progress_reporte
 	return fname
 
 	
-def pgconnection(host='127.0.0.1', dbname='26june13', user='easygp', password='admin'):
+def pgconnection(password, host='127.0.0.1', dbname='easygp', user='easygp'):
 	""" 
 	Establishes a connection with the database our data will be imported into.
 	quick hack with hardcoded access credentials in order to test the import.
@@ -61,7 +62,8 @@ def find_drug(con, drugname):
 		pk = res[0]
 	return pk
 
-def parsedata(filename=PREGDATA_FILENAME):
+def parsedata(con, filename=PREGDATA_FILENAME):
+	"""con is an already opened postgresql connection"""
 	counter = 0
 	SQL = """insert into drugbank.pregnancy_code(fk_drug, code, safety) values(%s, %s, %s)"""
 	try:
@@ -71,7 +73,6 @@ def parsedata(filename=PREGDATA_FILENAME):
 		sys.exit(1)
 	l = f.readline()  #discard the "function loadSearchData() { return {" part
 	l = f.readline()
-	con = pgconnection()
 	cur = con.cursor()
 	while l:
 		drug, rest = l.split(':',1)
@@ -91,7 +92,7 @@ def parsedata(filename=PREGDATA_FILENAME):
 		l = f.readline().strip()
 		#skip last line
 		if l.endswith("};}"):
-			print "finished, pregnancy categories allocated for %n drugs" % counter
+			print "finished, pregnancy categories allocated for %d drugs" % counter
 			l = '' 
 	f.close()
 	con.commit()
@@ -99,14 +100,60 @@ def parsedata(filename=PREGDATA_FILENAME):
 	con.close()
 	
 
-	
+def help(progname):
+		print
+		print "this script imports pregnancy drug codes/data into easygp's drug reference database"
+		print "USAGE: %s -p,--password=<password>" % progname
+		print "Optional parameters:"
+		print "-s, --server=<postgres ip/url, eg 'localhost', '192.168.0.1'>. Default is 'localhost'"
+		print "-d, --database=<name of postgres database>. Default is 'easygp'"
+		print "-u, --user=<postgres user>. Default is 'easygp'"
+		print
+		print "Example: %s -p mypassword" % progname
+		print "or       %s -s 192.168.0.1 -d drugref -u admin -p mypassword" % progname
+		
 
 if __name__ == "__main__":
+	
+	host='127.0.0.1'
+	db='easygp'
+	user='easygp'
+	password=None
+	
+	try:
+			params = sys.argv[1:]
+	except:
+		help(sys.argv[0])
+		sys.exit(1)
+
+	
+	options, reminder = getopt.getopt(params, 'hs:d:u:p:', ['help', 'server=', 'database=', 'user=', 'password='])
+
+	for opt,arg in options:
+		if opt in ('-h', '--help'):
+			help(sys.argv[0])
+			sys.exit(1)
+		elif opt in ('-s', '--server'):
+			host=arg
+		elif opt in ('-d', '--database'):
+			db=arg
+		elif opt in ('-u', '--user'):
+			user=arg
+		elif opt in ('-p', '--password'):
+			password=arg
+			
+	if password is None:
+		print "YOU HAVE TO SPECIFY THE POSTGRES DATABASE USER PASSWORD"
+		help(sys.argv[0])
+		sys.exit(1)
+			
 	filename=PREGDATA_FILENAME
 	if not os.path.exists(filename):
 		filename = getfile()
 	if filename is None:
 		print "File %s not found, aborting program" % PREGDATA_FILENAME
 		sys.exit(1)
-	parsedata(filename)
+
+	con= pgconnection(host=host, dbname=db, user=user, password=password)
+	parsedata(con, filename)
 

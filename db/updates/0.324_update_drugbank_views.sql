@@ -9,3 +9,4 @@ CREATE OR REPLACE VIEW drugbank.vw_basic_drug_pi AS
 
 ALTER TABLE drugbank.vw_basic_drug_pi
   OWNER TO easygp;
+Grant all on table drugbank.vw_basic_drug_pi to staff;

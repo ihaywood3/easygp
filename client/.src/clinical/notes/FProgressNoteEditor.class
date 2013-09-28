@@ -78,7 +78,8 @@ Public Sub Init(cons As CConsult, notes As String, Optional heading As String, O
    '-----------------------------------------------------------------------
    'If progress notes have already been written this consultation show them
    '-----------------------------------------------------------------------
-   
+   Dim shortcut As Collection
+   Dim dbshortcuts As Collection 'shortcuts loaded from database backend
    Last_Key_Numeric = False
    ParentForm = F                            'Fixme, clumbsy but then accesses FprogressNotePage.Save() see spell checker this module
    currentconsult = cons
@@ -86,28 +87,12 @@ Public Sub Init(cons As CConsult, notes As String, Optional heading As String, O
    shortcuts = New Collection
     modUtil.LoadCombo(cmbConsultationType, modConsultDBI.consult_get_types(), "type")
    'FIXME: These need to be made user defined
-   Add_Shortcut("System Review", ".sr", True, False, False)
-   Add_Shortcut("ANNUAL CHECKUP", ".ann", True, True, False)
-   Add_Shortcut("Presenting Symptoms", ".ps", True, False, False)
-   Add_Shortcut("On Examination", ".oe", True, False, False)
-   Add_Shortcut("Diagnosis", ".dx", True, False, False)
-   Add_Shortcut("Plan", ".pl", True, False, False)
-   Add_Shortcut("Patient Concerns", ".pc", True, False, False)
-   Add_Shortcut("Treatment", ".rx", True, False, False)
-   Add_Shortcut("Workcover Notes", ".wc", True, False, False)
-   Add_Shortcut("no diarrhoea ", ".nd", False, False, False)
-   Add_Shortcut("no vomiting ", ".nv", False, False, False)
-   Add_Shortcut("afebrile ", ".af", False, False, False)
-   Add_Shortcut("Review of Results ", ".rr", True, False, False)
-   Add_Shortcut("Travel Advice/Vaccination ", ".tav", True, False, False)
-   Add_Shortcut("Investigations ", ".in", True, False, False)
-   Add_Shortcut("Complaints ", ".co", True, False, False)
-   Add_Shortcut("Immunization ", ".imm", True, False, False)
-   Add_Shortcut("Scripts ", ".scr", True, False, False)
-   Add_Shortcut("Home Visit ", ".hv", True, False, False)
-   Add_Shortcut("Section:", ".sh", True, True, True)
-   Add_Shortcut("Impression:", ".imp", True, False, False)
-   Add_Shortcut("Coded Diagnosis:", ".cdx", True, False, False)
+   'shortcuts = modConsultDBI.Shortcuts_For_User_get(modDBConnect.currentUser!fk_staff)
+   dbshortcuts = modConsultDBI.Shortcuts_Available_get(modDBConnect.currentUser!fk_clinic)
+   For Each shortcut In dbshortcuts
+      Add_Shortcut(shortcut!expanded, shortcut!shortcut, False, False, False)
+   Next
+
    With FTermSelector = New FCodedTermSelector(HBox_Coding)
       .Ignore = False
       .left = 10
@@ -430,8 +415,8 @@ Public Sub teNotes_KeyRelease()
       notes = modMeasurementsDBI.ProgressNote_Parse_For_Measurement_Keypress(teNotes.RichText)
       If notes <> teNotes.RichText Then teNotes.RichText = notes ' only replace when there is a change
    Endif
-Catch 'the ReExp code above sometimes crashes Ian FIXME
-   Return 
+ Catch 'the ReExp code above sometimes crashes Ian FIXME
+    Return 
    
 End
 
@@ -1030,6 +1015,7 @@ Public Function backup()
 End
 
 Public Sub teNotes_Cursor()
+   If bexit = True Then Return
    
    Object.Lock(btnBold)
    Object.Lock(btnItalic)
@@ -1076,20 +1062,17 @@ Public Sub teNotes_Cursor()
 End
 
 Public Sub Auto_Text(shortcut As Collection)
-   
+   'Replace a text shortcut at the current cursor position with 
+   'expanded user defined text. Silly hack abusing the clipboard
+   'in order to allow inserting html tags
    Dim curpos As Integer = tenotes.Pos
    
-   If shortcut!uline Then
-      teNotes.Format.Font.Underline = True
-   Endif
-   teNotes.Format.Font.Bold = shortcut!bold
-   tenotes.Insert(shortcut!text)
-   teNotes.RichText = Replace(teNotes.RichText, shortcut!abbrev, "")
-   teNotes.Format.Font.Bold = False
-   teNotes.Format.Font.Underline = False
-   tenotes.pos = curpos + Len(shortcut!text) - Len(shortcut!abbrev)
-   tenotes.SetFocus()
-   
+   tenotes.Select(curpos - Len(shortcut!abbrev), Len(shortcut!abbrev)) 
+   tenotes.Cut()
+   bexit = True  'prevent entering needless processing in subroutines
+   Clipboard.Copy(shortcut!text, "text/html")
+   tenotes.Paste()
+   bexit = False
 End
 
 Public Sub Auto_Text_Section(shortcut As Collection, re As Regexp)

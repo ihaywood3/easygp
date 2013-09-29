@@ -35,19 +35,34 @@ Private Towns As Collection
 Private Countries As Collection
 Private town As Collection
 Private fk_town As Integer
+Private restrict_view_to_roles As Collection 
 Private timer_count As Integer
 Private country_code As String
+Private fk_progressnote As Integer
 Private fk_consult As Integer
+Private roles As Collection 
+Private Staff As Collection
+Private fk_staff_may_view_confidential As Integer  'the only staff member who can view the social history
+Private bRoleRestriction As Boolean
+Private bEditing As Boolean                'true if todays date <> date the original fk_consult generated
+Private fk_progressnote_confidential As Integer
+Private existing_confidential_notes As String
+Private teHistoryConfidential_font_size As Integer
+
 Static Private Form_Psychosocial As FPsychoSocialHistory
 
 Public Sub Init(cons As CConsult)
+   
    Form_Psychosocial = Me
    currentConsult = cons
    timer1.Enabled = True
    timer1.stop
-   lblMeasure.text = "Search Patient Database   "
+   teHistoryConfidential_font_size = teConfidentialHistory.Font.Size
+   lblMeasure.text = "   Do Not Print Confidential History   "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea_Inner, lblMeasure)
    modEditAreaHelpers.Resize_labels(Vbox_ResponsiblePerson, lblMeasure)
+   roles = modUtil.LoadCombo(cmbRoles, modUtil.Copy_Collection_Keyed_Sequentially(modAdminDBI.Roles_Get()), "role")
+   lblYourRole.text = "Your Role = " & modDBConnect.currentUser!role
    Reload()
    
 End
@@ -59,12 +74,12 @@ Static Public Sub NextOfKin_Reload(fk_person As Integer)
    '(the contact manager for patient's and you have changed their details. Note that
    'comms are kept in conacts keyed to the patient's fk_person
    '-------------------------------------------------------------------------------------
+   
    If Form_Psychosocial.fk_responsible_person = fk_person Then
       Form_Psychosocial.Reload()
    Endif
    
 End
-
 
 Public Sub EditArea_Notify_Data_Change(flag As Boolean)
    
@@ -86,25 +101,45 @@ Public Sub Save()
    'basically if user has found the responsible person from the patient's list then
    'the patient pk is kept as fk_responsible patient
    'if not, then the name/adress are just kept in text fields
-   
+   ' CREATE TABLE clin_history.social_history
+   ' (
    '   pk serial NOT NULL,
    '   fk_consult integer NOT NULL,
    '   history text,
    '   deleted boolean DEFAULT false,
-   '   fk_responsible_person integer, -- if not null this is the key to  clerical.data_patients table
+   '   fk_responsible_person integer, -- if not null this is the key to  clerical.data_persons table
    '   responsible_person text, -- if not null and fk_patient is null then this is used as name as responsible person
    '   responsible_person_street1 text, -- if not null is the street of responsible person who is not in patients database
    '   responsible_person_street2 text, -- if not null is the street2 of responsible person who is not in patients database
    '   responsible_person_town text, -- if not null is the fk_town of responsible person who is not in patients database
+   '   responsible_person_postcode text,
+   '   responsible_person_state text,
    '   responsible_person_contacts text, -- one or more types of contact
-   '   country_code character(2) NOT NULL,
    '   responsible_person_notes text,
+   '   country_code text,
+   '   do_not_print_confidential_notes boolean DEFAULT true, -- if True (the default) then any confidential social history  is never printed on the patient health summary
+   '   fk_progressnote integer NOT NULL, -- the default value should not be null, however for historical reasons I never ...
+   '   fk_progressnote_confidential integer, -- any progress notes for this social history item which are confidential
+   '   fk_staff_may_view_confidential integer, -- if not null then only the staff memember pointed to by this key may read the confidential history
+   '   restrict_view_to_roles integer[], -- if not null then the confidential social history has role restrictions ...
+   '   history_confidential text, -- important social information history you would not want to let out in the wild...
+   '   CONSTRAINT social_history_pkey PRIMARY KEY (pk ),
+   '   CONSTRAINT social_history_fk_staff_may_view_confidential_fkey FOREIGN KEY (fk_staff_may_view_confidential)
+   '       REFERENCES admin.staff (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
    '-----------------------------------------------------------------------
    
    Dim socialhistory As CRow
+   Dim role As Collection
+   Dim progressnote As CRow   
+   Dim ProgressNote_Confidential As CRow  
    
    If Vbox_EditArea.padding = 0 Then Return
-   If Not Valid_Responsible_person() Then Return
+   If Not Valid_SocialHistory() Then Return
    
    socialhistory = New CRow
    If pk_socialhistory <> 0 Then         'if is =-1 then is a new record
@@ -115,7 +150,48 @@ Public Sub Save()
    Else
       socialhistory!fk_consult = fk_consult
    Endif
+   '----------------------
+   'Save the progress note
+   ' '--------------------
+   ProgressNote = New CRow
+   If fk_progressnote Then
+      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")
+   Endif
+   ProgressNote!fk_consult = currentConsult.GetPK()
+   ProgressNote!notes = ProgressNotes_Create_Normal()
+   ProgressNote!fk_section = const.cSection_SocialHistory
+   ProgressNote!fk_audit_action = const.cAuditAction_Insert
+   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+   If existing_confidential_notes <> "" Or Trim(teConfidentialHistory.text) <> "" Then     'had old notes or have some new ones
+      ProgressNote_Confidential = New CRow
+      ProgressNote_Confidential!fk_consult = currentConsult.GetPK()
+      If existing_confidential_notes <> "" Then                                            'had some note before
+         If fk_progressnote_confidential <> 0 Then                                         'if done at today's consult
+            ProgressNote_Confidential.put_unchanged(fk_progressnote_confidential, "fk_progressnote_confidential")
+         Endif
+      End If   
+      ProgressNote_Confidential!notes = ProgressNotes_Confidential_Create()
+      ProgressNote_Confidential!fk_section = const.cSection_SocialHistory
+      ProgressNote_Confidential!fk_audit_action = const.cAuditAction_Insert
+      ProgressNote_Confidential.Save("clin_consult.progressnotes", "fk_progressnote_confidential")
+      socialhistory!fk_progressnote_confidential = ProgressNote_Confidential!fk_progressnote_confidential
+   End If   
+   socialhistory!fk_progressnote = ProgressNote!fk_progressnote
    socialhistory!history = Trim(teSocialHistory.text)
+   socialhistory!history_confidential = Trim(teConfidentialHistory.text)
+   socialhistory!do_not_print_confidential_notes = CBool(chkDoNotPrintConfidential.value)
+   If fk_staff_may_view_confidential Then 
+      socialhistory!fk_staff_may_view_confidential = fk_staff_may_view_confidential
+   Else
+      socialhistory!fk_staff_may_view_confidential = Null
+   End If   
+   If lvwAllowedRoles.count And fk_staff_may_view_confidential = 0 Then
+      socialhistory!restrict_view_to_roles = "{"
+      For Each role In restrict_view_to_roles
+         socialhistory!restrict_view_to_roles &= role!pk_role & ","
+      Next
+      socialhistory!restrict_view_to_roles = Left(socialhistory!restrict_view_to_roles, Len(socialhistory!restrict_view_to_roles) - 1) & "}"
+   Endif
    If fk_responsible_person Then                                   'if non zero, have retreived from the backend
       socialhistory!fk_responsible_person = fk_responsible_person
       socialhistory!responsible_person = ""
@@ -134,6 +210,7 @@ Public Sub Save()
    socialhistory.Save("clin_history.social_history", "pk_socialhistory")
    modDBConnect.CommitTrans()
    FClinical.Refresh_Section(const.cSection_HealthSummary)    'check if health summary showing, if so update it
+   FClinical.Refresh_AllPreviousNotes()
    Reload()
    
 End
@@ -162,9 +239,27 @@ Public Function Valid_SocialHistory() As Boolean
    'Return True if valid
    '------------------------------------------------------
    
+   Dim sMsg As String
+   
    If pk_socialhistory = 0 Then                    'no social history ever
       If Trim(teSocialHistory.text) = "" Then      'none to save
          Return False
+      Endif
+   Endif
+   If Trim(teConfidentialHistory.text) <> "" Then
+      If fk_staff_may_view_confidential = 0 Then 
+         If restrict_view_to_roles.count = 0 Then
+            Message.Title = "Confidential Psycho-Social History"
+            sMsg = "If you are going to enter confidential information about this patient then you should "
+            "either select the staff member who can access this history, or the roles of staff members "
+            "you would permit to view the patient's history"
+            Message.Warning(sMsg, "Ok")
+            With txtStaffMayView
+               .Background = Color.rgb(95, 255, 175)
+               .SetFocus
+            End With
+            Return 
+         Endif
       Endif
    Endif
    Return True
@@ -172,20 +267,43 @@ Public Function Valid_SocialHistory() As Boolean
 End
 
 Public Sub Reload()
-   '-----------------------------------------------
-   'Reloads the psycho-social history no psycho yet
-   '-----------------------------------------------
+   '------------------------------------------------------------------------
+   'Reloads the psycho-social history and confidential psycho/social history
+   'if bEditing = True the record is being changed at a date 
+   'different from its creation
+   'FIXME: this should use exec_query_first to return single collection
+   '------------------------------------------------------------------------
    
    Dim SH As Collection
+   Dim role As Collection
+   Dim x As Integer
+   Dim y As Integer
+   Dim role_keys As Integer[]
+   Dim bUserCanView As Boolean
+   Dim sMsg As String
    
    currentconsult.Refresh("social_history")
-   
+   If Not currentconsult!social_history.count Then
+      chkDoNotPrintConfidential.value = True
+      Return
+   End If   
    EditArea_Clear()
    bExit = True
    For Each SH In currentconsult!social_history             'there is only one
       pk_socialhistory = SH!pk_socialhistory
       Try fk_responsible_person = SH!fk_responsible_person
-      fk_consult = SH!fk_consult
+      Try fk_staff_may_view_confidential = SH!fk_staff_may_view_confidential
+      If SH!fk_consult <> currentConsult.GetPK() Then
+         fk_consult = 0
+         fk_progressnote = 0
+         fk_progressnote_confidential = 0
+         bEditing = True 
+      Else
+         fk_consult = SH!fk_consult
+         fk_progressnote = SH!fk_progressnote
+         fk_progressnote_confidential = SH!fk_progressnote_confidential
+         bEditing = False   
+      Endif
       If fk_responsible_person <> 0 Then
          txtResponsiblePerson.text = SH!person_responsible_title & " " & SH!person_responsible_firstname & " " & SH!person_responsible_surname
          txtStreet1.text = SH!person_responsible_street1
@@ -203,34 +321,85 @@ Public Sub Reload()
          txtTown.text = SH!responsible_person_town
          txtState.text = SH!responsible_person_state
          txtPostcode.text = SH!responsible_person_postcode
-          txtContactNumber.text = SH!responsible_person_contacts
+         txtContactNumber.text = SH!responsible_person_contacts
       End If
       teResponsiblePersonNotes.text = SH!responsible_person_notes
       teSocialHistory.text = SH!history
+      If Not IsNull(SH!history_confidential)                 'if there is confidential history
+         existing_confidential_notes = SH!history_confidential
+         If SH!fk_staff_may_view_confidential Then
+            txtStaffMayView.text = SH!staff_may_view_confidential_wholename 'usually null unless absolutly restricted to 1 staff member
+            bUserCanView = True 
+         End If   
+         If Not IsNull(SH!restrict_view_to_roles) Then
+            role_keys = Split(Mid(SH!restrict_view_to_roles, 2, Len(SH!restrict_view_to_roles) - 2), ",")
+            For x = 0 To role_keys.count - 1
+               restrict_view_to_roles.Add(["pk_role": role_keys[x]], restrict_view_to_roles.count)
+               For Each role In roles
+                  If role!pk_role = role_keys[x] Then
+                     lvwAllowedRoles.Add(lvwAllowedRoles.count, role!role)
+                     If modDBConnect.currentUser!fk_role = role_keys[x] Then
+                        bUserCanView = True   
+                     Endif
+                     Break
+                  Endif
+               Next
+            Next
+         Endif
+         If bUserCanView Then 
+            HBox_teConfidentialHistory.enabled = True
+            HBox_DoNotPRINT.enabled = True
+            HBox_ViewByDr.enabled = True
+            HBox_SelectRole.enabled = True
+            HBox_RolesPermitted.enabled = True
+            teConfidentialHistory.text = SH!history_confidential
+            tbAddrole.Enabled = True   
+         Else
+            sMsg = "There is confidential information available for this patient but  you are not permitted "
+            "to view of update it.\n\nIf you think this is a mistake please contact the system admin."
+            Message.title = "Viewing Confidential Psycho-Social History Information"
+            Message.info(sMsg)
+            With teConfidentialHistory
+               .Font.Size = 36
+               .RichText = "<B>CENSORED</b>"
+            End With
+         End If  
+      Else  'we have no confidential history , user can be allowed to enter some
+         HBox_teConfidentialHistory.enabled = True
+         HBox_DoNotPRINT.enabled = True
+         HBox_ViewByDr.enabled = True
+         HBox_SelectRole.enabled = True
+         HBox_RolesPermitted.enabled = True
+         tbAddrole.Enabled = True
+      End If   
+      chkDoNotPrintConfidential.value = SH!do_not_print_confidential_notes
+      
    Next
    bExit = False
    
 End
 
 Public Function Responsible_person_Get_Comms(fk_person As Integer) As String
-  '------------------------------------------------------------- 
-  'if the responsible person is in our database, get their comms
-  '------------------------------------------------------------ 
-  Dim comm As Collection
-  Dim sComms As String
-  
-  For Each comm In modContactsDBI.person_comms_get(fk_person)
+   '------------------------------------------------------------- 
+   'if the responsible person is in our database, get their comms
+   '------------------------------------------------------------ 
+   
+   Dim comm As Collection
+   Dim sComms As String
+   
+   For Each comm In modContactsDBI.person_comms_get(fk_person)
       If comm!fk_type = const.CommModalityMobile Then
-        scomms &= " Mobile:" & comm!value
+         scomms &= " Mobile:" & comm!value
       End If
       If comm!fk_type = const.CommModalityHome Then
          scomms &= " Phone:" & comm!value
       Endif
       If comm!fk_type = const.CommModalityPhone Then
-        scomms &= " Phone:" & comm!value
+         scomms &= " Phone:" & comm!value
       Endif
    Next 
    Return Trim(sComms)
+   
 End
 
 Public Sub responsible_person_Find()
@@ -279,6 +448,7 @@ Public Sub Responsible_Person_Select()
    '-----------------------------------------------------------------------------
    'User has clicked on a name in the list, accept this as the responsible person
    '-----------------------------------------------------------------------------
+   
    timer1.stop
    pk_view_responsible_persons = columnview1.Item.key
    bexit = True
@@ -305,6 +475,7 @@ Public Sub Columnview1_KeyPress()
    'User hits <Enter key> on the columnview
    'trigger the accept code
    '---------------------------------------   
+   
    If Key.code = Key.Return Then
       Columnview1_DblClick
    End If
@@ -319,6 +490,8 @@ Public Sub Columnview1_DblClick()
       Case "search"
          responsible_person = responsible_persons[columnview1.Item.key]
          Responsible_Person_Select()
+      Case "staff can view"
+         Staff_May_View_Select(staff[columnview1.Item.key])
    End Select
    columnview1.Visible = False
 Catch
@@ -363,11 +536,27 @@ Public Sub EditArea_Clear()
    
    bExit = True
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea_inner)
+   lvwAllowedRoles.Clear
+   fk_staff_may_view_confidential = 0
    fk_responsible_person = 0  'defaults
    pk_socialhistory = 0
    fk_consult = 0
+   fk_progressnote = 0
+   existing_confidential_notes = ""
+   fk_progressnote_confidential = 0
    country_code = "AU"         'the default
    bExit = False
+   cmbRoles.index = -1
+   restrict_view_to_roles = New Collection
+   chkDoNotPrintConfidential.value = True
+   HBox_teConfidentialHistory.enabled = False  'these next 5 hold the confidential information
+   HBox_DoNotPRINT.enabled = False
+   HBox_ViewByDr.enabled = False
+   HBox_SelectRole.enabled = False
+   HBox_RolesPermitted.enabled = False
+   tbAddrole.Enabled = False  
+   teConfidentialHistory.Font.size = teHistoryConfidential_font_size
+   bEditing = False   
    EditArea_Notify_Data_Change(False)
    
 End
@@ -378,6 +567,8 @@ Public Sub EditArea_TextBox_KeyRelease()
       Case "search"
          timer_count = 0
          timer1.Start()
+      Case "staff can view"
+         Staff_Find(Last)
       Case "suburb"
          Suburb_get()
       Case "country"
@@ -456,6 +647,10 @@ Public Sub EditArea_TextBox_Change()
          Else
             fk_responsible_person = 0
          End If
+      Case "staff can view"
+         If Trim(Last.text) = "" Then
+            fk_staff_may_view_confidential = 0
+         Endif
       Case "search"
          If Trim(Last.text) = "" Then
             Responsible_Person_Remove()
@@ -488,7 +683,7 @@ Public Sub EditArea_TextBox_GotFocus()
    listview1.Visible = False
    columnview1.Visible = False
    Select Case Last.tag
-      Case "search", "country", "suburb"
+      Case "search", "country", "suburb", "staff can view"
          With ListView1
             .top = Last.Parent.Parent.top + Last.Parent.height
             .left = Last.Parent.Left
@@ -608,57 +803,6 @@ Catch
    
 End
 
-'
-' PastHistory = New CRow
-' If pk_pasthistory <> 0 Then
-'    PastHistory.put_unchanged(pk_pasthistory, "pk_pasthistory")
-' End If
-' If fk_consult <> 0 Then
-'    PastHistory!fk_consult = fk_consult
-' Else
-'    PastHistory!fk_consult = currentconsult.GetPK()
-' End If
-' PastHistory!age_onset = Val(txtAgeOnset.text) 'CHECK THIS IS VALIDATED ABOVE
-' PastHistory!age_onset_units = iAgeOnsetUnits
-' PastHistory!description = modUtil.Ucase_Words_First_Letter(Trim(txtCondition.text))
-' PastHistory!fk_laterality = fk_laterality
-' PastHistory!year_onset = Trim(txtYearOnset.text) 'eg could be 1993 or 08/1993
-' Select Case fk_significance
-'    Case const.healthIssue_Major
-'       PastHistory!major = True
-'    Case const.healthIssue_Significant
-'       PastHistory!active = True
-'    Case Else
-'       PastHistory!major = False 'yes, the backend would default but sProgressNote code more difficult
-' End Select
-' If chkOperation.Value = True Then
-'    PastHistory!operation = True
-' Else
-'    PastHistory!operation = False
-' End If
-' If chkCauseOfDeath.Value = True Then
-'    PastHistory!cause_of_death = True
-' Else
-'    PastHistory!cause_of_death = False
-' Endif
-' If rbConfidentialYes.value Then
-'    PastHistory!confidential = True
-' Else
-'    PastHistory!confidential = False
-' End If
-' PastHistory!management_summary = Trim(txtManagementSummary.text)
-' PastHistory!condition_summary = Trim(txtHistoricalSummary.text)
-' If chkRiskFactor.value = True Then
-'    PastHistory!risk_factor = True
-' Else
-'    PastHistory!risk_factor = False
-' End If
-' PastHistory!aim_of_plan = Trim(txtAim.text)
-' PastHistory!fk_coding_system = fk_coding_system
-' PastHistory!fk_code = fk_code
-' sProgressNotes = ProgressNotes_Summary(PastHistory)
-' modDBConnect.BeginTrans()
-' PastHistory.Save("clin_history.past_history", "pk_pasthistory")
 ' '----------------------
 ' 'Save the progress note
 ' '----------------------
@@ -698,5 +842,130 @@ Public Sub Form_Resize()
    If columnview1.Visible Then
       columnview1.width = txtTown.Width 'fixme.
    Endif
+   
+End
+
+Public Sub Staff_Find(txtbox As Textbox)
+   '----------------------------------------------------------------
+   'Show multiple staff members for selection from vwStaffInClinics
+   'User can choose the person to allocate the task to
+   'columns: 0=surname 1=firstname 2=sex 3=street 4= town/postcode
+   'Fixme put this in a central location, used all over the place
+   'e.g FPsychoSocialHistory
+   '----------------------------------------------------------------
+   
+   Dim iLastStaff_Member_pk As Integer
+   Dim x As Integer
+   Dim staff_member As Collection
+   
+   With columnview1
+      .Clear()
+      .Columns.count = 3
+      .Visible = False
+   End With
+   If Trim(txtbox.text) = "" Then Return
+   staff = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get(Trim(txtbox.text)))
+   iLastStaff_Member_pk = -1
+   For Each staff_member In staff
+      columnview1.Add(x, 0)
+      columnview1[x][0] = staff_member!title & " " & staff_member!wholename
+      columnview1[x][1] = staff_member!occupation
+      columnview1[x][2] = staff_member!branch
+      Inc x
+   Next
+   lblmeasure.font = columnview1.Font
+   modUtil.Columnview_Columns_Set_Size(columnview1, lblmeasure)
+   If Staff.count Then
+      Columnview1.Visible = True
+      columnview1.Visible = True
+      Columnview1.Raise
+      columnview1.tag = txtbox
+   End If
+   
+End
+
+Public Sub Staff_May_View_Select(sm As Collection)
+   '---------------------------------------------------
+   'User is selecting a staff member who alone can view
+   'the social history
+   '---------------------------------------------------
+   
+   Try txtStaffMayView.text = sm!title & " " & sm!wholename
+   fk_staff_may_view_confidential = sm!fk_staff
+   columnview1.Visible = False
+   lvwAllowedRoles.Clear
+   cmbRoles.index = -1
+   
+End
+
+Public Sub tbAddrole_Click()
+   '-----------------------------------------------------------------------
+   'User has decided to add a role allowed to view the confidential history
+   'Remove any staff name previous allocated as can't do both
+   '-----------------------------------------------------------------------
+   
+   txtStaffMayView.text = "" ' trigges EditArea_TextBox_Change and remove key 
+   
+   If Not restrict_view_to_roles.Exist(roles[cmbRoles.index]!pk_role) Then
+      lvwAllowedRoles.Add(lvwAllowedRoles.count, cmbRoles.text)
+      restrict_view_to_roles.Add(["pk_role": roles[cmbRoles.index]!pk_role], restrict_view_to_roles.count)
+   Endif
+   cmbRoles.index = -1    
+   tbAddrole.SetFocus
+   
+End
+
+Public Function ProgressNotes_Create_Normal() As String
+   '---------------------------------------------- 
+   'Create some html to put into the progressnotes
+   '---------------------------------------------- 
+   
+   Dim pn As String
+   
+   pn = "<B>Social History" 
+   If bEditing Then
+      pn &= " (changed)"
+   Else
+      pn &= " taken"
+   Endif
+   pn &= "</B><BR>"
+   pn &= Trim(teSocialHistory.text)
+   If Trim(teConfidentialHistory.text) <> "" Then
+      pn &= "Some confidential psycho-social history was added but viewing this is restricted to any authorised users and only in the psycho-social history of the program.<BR>"
+   Endif
+   pn &= "<BR>"
+   If Trim(txtResponsiblePerson.text) <> "" Then
+      pn &= "The next of kin/responsible person is noted to be " & Trim(txtResponsiblePerson.text)  
+   Endif
+   Print pn
+   Return pn   
+   
+End
+
+Public Function ProgressNotes_Confidential_Create() As String
+   '-----------------------------------------------------------------------------
+   'Creates progress notes for text which is confidential and will only be viewed
+   'by designated user or role
+   '------------------------------------------------------------------------------
+   
+   Dim pn As String
+   
+   pn = "<B>Confidential psycho-social notes"
+   If existing_confidential_notes <> "" And Trim(teConfidentialHistory.text) = "" Then 'there were notes, but now deleted
+      pn &= " have been deleted by " & modDBConnect.currentUser!wholename & "</B><BR>"
+      pn &= "<I>:" & existing_confidential_notes & "</I><BR>"
+   Else                                                                             
+      If existing_confidential_notes <> "" Then                                        'note before this consult did exist
+         If Trim(Lower(existing_confidential_notes)) <> Trim(Lower(teConfidentialHistory.text)) Then '?have they changed?
+            pn &= " (changed)</B>"
+         Endif
+      Else                                                                             ' no previous existing psycho-social notes
+         pn &= " (New)</B>"
+      Endif
+      pn &= "<BR>"
+      pn &= Trim(teConfidentialHistory.text)
+   End If 
+   
+   Return pn
    
 End

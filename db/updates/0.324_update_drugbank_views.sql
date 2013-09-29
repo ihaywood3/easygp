@@ -10,3 +10,6 @@ CREATE OR REPLACE VIEW drugbank.vw_basic_drug_pi AS
 ALTER TABLE drugbank.vw_basic_drug_pi
   OWNER TO easygp;
 Grant all on table drugbank.vw_basic_drug_pi to staff;
+
+truncate db.lu_version;
+insert into db.lu_version(lu_major, lu_minor)values(0, 324)

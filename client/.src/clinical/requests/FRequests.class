@@ -134,7 +134,12 @@ Public Sub Init(cons As CConsult)
       .Columns[4].width = 120
    End With
    Deleted_Forms = New Collection
-   
+   If modAdminDBI.Config_Get("user_can_add_requests", False, Null, modDBConnect.currentUser!fk_clinic) = True Then
+      HBox_Buttons.Visible = True
+   Else
+      HBox_Buttons.Visible = False  
+   Endif
+
    lblMeasure.text = " Authority Approval No.  "                   'The widest of all the edit area's to keep them all the same on the left
    EditArea_Resize_Labels()                                       'to current system font
    cProgressNote_Section = const.cSection_GeneralNotes
@@ -183,7 +188,6 @@ Public Sub Save()
    If VBox_Referrals.Padding = 0 Then Return
    If Not Valid_RequestForm() Then Return
    
-   tbSave.Enabled = False                            'prevents user clicking twice in quick succession which is possible! cause it's happend to me > two saves
    sProgressNotes = ProgressNotes_Construct()       'probably not previewed > fills CurrentRequestForm including generates the forms html
    '-------------------------------------------------------------------------------------------------
    ' CREATE TABLE clin_requests.forms
@@ -341,87 +345,6 @@ Public Function Valid_RequestForm() As Boolean
    
 End
 
-Public Sub Save_orig()
-   
-   Dim sProgressNotes As String
-   
-   If VBox_Referrals.Padding = 0 Then Return
-   If Not Valid_RequestForm() Then Return
-   
-   tbSave.Enabled = False                            'prevents user clicking twice in quick succession which is possible! cause it's happend to me > two saves
-   sProgressNotes = RequestForm_Fill_Collection()    'probably not previewed > fills CurrentRequestForm including generates the forms html
-   modDBConnect.BeginTrans()
-   If IsNull(CurrentRequestForm!fk_progressnote) Then
-      fk_progressnote = -1
-   Else
-      fk_progressnote = CurrentRequestForm!fk_progressnote
-   End If
-   If fk_pasthistory <> 0 Then
-      CurrentRequestForm!fk_pasthistory = fk_pasthistory
-   Endif
-   CurrentRequestForm!latex = RequestForm_LaTeX_Construct(CurrentRequestForm).GetData()
-   CurrentRequestForm!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, cProgressNote_Section, fk_progressnote, "Requests", fk_pasthistory, False)
-   fk_form = modRequestsDBI.RequestForm_Save(currentconsult, pk_view, CurrentRequestForm, old_forms_requests, currentFormsRequests, currentRequestFormPictures)
-   
-   modDBConnect.CommitTrans()
-   modPrinting.Print_latex(CurrentRequestForm!latex)
-   FClinical.Refresh_Section(const.cSection_Requests)           'refresh lists on main screen FClinical
-   FClinical.Refresh_AllPreviousNotes()                         'refresh progress notes in FClinical
-   VBox_Referrals.Padding = 0
-   Reload() 'reload all data default to new request
-   
-End
-
-' Public Function Valid_RequestForm() As Boolean
-'
-'    If Trim(txtRequest.text) = "" Then
-'       txtRequest.SetFocus()
-'       Return False
-'    Endif
-'    If Not IsDate(txtDate.text) Then
-'       txtDate.text = ""
-'       txtDate.SetFocus()
-'       Return False
-'    End If
-'    If Not fk_branch Then            '
-'       If Not fk_person Then
-'          tlRequestHints.text = "<P><b><U>Provider Names</U><b></P>"
-'          "<P>Please enter a provider for the selected category. "
-'          "If you unable to find any, it may be that you have not "
-'          "as yet entered any in the Contacts database.</P>"
-'          "Please Click on the Contacts icon on the side bar "
-'          "and enter a provider name. Ensure that the category that "
-'          "you allocate to them matches the category of request form "
-'          "that you have chosen."
-'          Vbox_Communications.visible = False
-'          Vbox_RequestHints.Visible = True
-'          Return False
-'       End If
-'    End If
-'
-'    If Not fk_lu_request_type Then
-'
-'       cmbRequestTypes.SetFocus()
-'
-'       Return False
-'    End If
-'
-'    If Trim(txtRequest.text) = "" Then
-'       txtRequest.SetFocus
-'       Hbox_Items.BackGround = Color.Red
-'       Hbox_Items.Padding = 1
-'       Return False
-'    End If
-'
-'    If Trim(txtHealthIssue.text) = "" Then
-'       Message.Info("Please select a health issue to link to this request\nor link to 'General Notes'")
-'       MenuButton1.SetFocus()
-'       Return False
-'    End If
-'
-'    Return True
-'
-' End
 
 Public Sub Form_Close()
    
@@ -728,7 +651,6 @@ Public Sub RequestForm_New()
    EditArea_Notify_DataChange(False)
    cmbProviders.index = -1
    cmbBranches.index = -1
-   tbSave.Enabled = True
    VBox_Referrals.Enabled = True
    txtRequest.SetFocus()
    
@@ -1031,21 +953,9 @@ End
 
 Public Sub EditAreaButtons_Click()
    
-   ' Select Case Last.tag
-   '    Case "help"
-   '       FClinical.Help_Show("requests.html", "Help:Requests", True)
-   '    Case "new form"
-   '       RequestForm_New()
-   '    Case "save"
-   '       Save()
-   '    Case "diagram"
-   '       Return
-   '       DrawEditor_Show(False, "") 'new diagram,not loading an old one"
-   '    Case "preview"
-   '       RequestForm_Preview()
-   '    Case "hide draw editor"
-   '       EmbeddedForm_Close()
-   ' End Select
+   If Last.tag = "new term" Then
+      FClinical.Editor_ShowPage_External("Request Names", "Request Names", "")
+   Endif
    
 End
 
@@ -1786,7 +1696,7 @@ Public Sub chkEditArea_Click()
       Case "include all medications"
          bExit = True
          If Last.value = True Then
-            For Each med In FClinical.medication_list()
+            For Each med In FClinical.active_medication_list_get_external()
                meds &= med!generic & ";"
             Next
          Else
@@ -1984,12 +1894,9 @@ Public Sub EditArea_Notify_DataChange(flag As Boolean)
    If flag Then
       VBox_Referrals.Padding = 1
       VBox_Referrals.Background = Color.red
-      tbSave.Foreground = Color.Red
-      
    Else
       VBox_Referrals.Padding = 0
       VBox_Referrals.Background = Color.white
-      tbSave.Foreground = Color.black
    End If
    
 End
@@ -1997,7 +1904,7 @@ End
 Public Sub EmbeddedForm_Close()
    
    Fdraw.Close()
-   Hbox_CloseDrawEditor.Visible = False
+  ' Hbox_CloseDrawEditor.Visible = False
    Vbox_EditArea.Visible = True
    Vbox_CopyTo.Visible = True
    VBox_Communications.Show()
@@ -2163,7 +2070,7 @@ End
 Public Sub DrawEditor_Hide()
    
    FDraw.Hide()
-   Hbox_CloseDrawEditor.visible = False
+  ' Hbox_CloseDrawEditor.visible = False
    Vbox_EditArea.Visible = True
    VBox_Communications.Show()
    
@@ -2176,7 +2083,7 @@ Public Sub DrawEditor_Show(bEditing As Boolean, sPicturePath As String)
    
    Vbox_EditArea.Visible = False
    Vbox_CopyTo.Visible = False
-   Hbox_CloseDrawEditor.Visible = True
+   'Hbox_CloseDrawEditor.Visible = True
    Fdraw = New FDrawEditor(VBox_EditArea_Inner)
    Fdraw.bEditing = bediting
    hToolbutton = Fdraw.btnSave

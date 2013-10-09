@@ -36,6 +36,7 @@ Private fk_product As String 'if not null the key to drugs.products
 Private fk_progressnote As Integer
 Private atccode As String
 Private brands As Collection
+Private generics As Collection 
 Private obs As Observer
 Private Form_Terms As FCodedTermSelector
 Private sSearchLimit As Integer = 20 'default to only get 20 terms
@@ -58,7 +59,7 @@ Static Public Sub Allergies_Reload_External()
    'Called from FClinical to reload allergies list if the  user
    'has eg made patient not allergic by the quick popup menu
    '-----------------------------------------------------------   
-
+   
    form_allergy.Reload() 
    
 End
@@ -67,7 +68,7 @@ Public Sub Init(cons As CConsult)
    '--------------------------------
    'Do all the initialization things
    '--------------------------------
-
+   
    form_allergy = Me  
    Try Settings_Load()
    currentconsult = cons  
@@ -230,7 +231,7 @@ Public Sub Refresh_FClinical()
    FClinical.Refresh_Section(const.cSection_Allergies)    'refresh lists on main screen FClinical
    FClinical.Refresh_AllPreviousNotes() 
    Try FClinical.Refresh_Section(const.cSection_HealthSummary)
-
+   
 End
 
 Public Sub Allergy_Or_Sensitivity_New()
@@ -253,7 +254,7 @@ Public Sub Allergy_Or_Sensitivity_New()
    HBox_NoKnownAllergies.enabled = True
    chkNilKnown.value = False   
    txtDateEntered.text = Format(Now, "dd/mm/yyyy") ' not editable
-   txtDate.SetFocus()
+   txtGeneric.SetFocus()
    
 End
 
@@ -471,7 +472,7 @@ Public Sub Reload()
          If allergy!specificity = "g" Then 
             cvwAllergiesSensitivites[x][0] = allergy!generic
          Else
-             cvwAllergiesSensitivites[x][0] = Trim(allergy!class_name & " " & allergy!allergen) 'will be only one
+            cvwAllergiesSensitivites[x][0] = Trim(allergy!class_name & " " & allergy!allergen) 'will be only one
          Endif
          Select Case allergy!specificity
             Case "c"
@@ -571,12 +572,14 @@ End
 
 Public Sub listview1_DblClick()
    
+   Last.MoveCurrent
    Select Case Last.tag.tag
       Case "brand"
          Brand_Select()
       Case "generic"
-         Generic_Select()
+         Generic_Select(generics[listview1.Item.key])
    End Select
+   listview1.Visible = False
    
 End
 
@@ -614,7 +617,7 @@ Public Sub Timer1_Timer()
    Inc timer_count
    If timer_count > 3 Then
       If bGenericSearch Then
-         Generics_Get(Trim(txtGeneric.text))
+         Generics_Get()
       Else
          Brands_Get()
       End If  
@@ -664,29 +667,35 @@ Private Sub Brands_Get()
    
 End
 
-Public Sub Generic_Select()
-   ' 
-   ' listview1.MoveCurrent
-   ' txtGeneric.text = listview1.Item.Text
-   ' atccode = generics_to_atc[listview1.Item.Text]
-   ' ListView1.Visible = False
+Public Sub Generic_Select(generic As Collection)
    
+   txtGeneric.text = generic!generic
+   atccode = generic!atccode
+   txtATCClass.text = generic!class_name  
+   fk_product = generic!fk_product   
+   txtCodedTerm.SetFocus
 End
 
-Private Sub Generics_Get(generic As String)
+Private Sub Generics_Get()
+   '----------------------------------------
+   'Gets list of generics, classes and codes
+   '----------------------------------------   
    
-   ' Dim r As Result
-   ' 
-   ' Timer1.Stop
-   ' listview1.Clear()
-   ' generics_to_atc = New Collection
-   ' Let r = modPrescribingDBI.Generics_Get_Basic(generic)
-   ' For Each r
-   '    Try listview1.Add(r!generic, r!generic)
-   '    Let generics_to_atc[r!generic] = r!atccode
-   '    listview1.tag = txtGeneric
-   ' Next
-   ' listview1.Visible = True
+   Dim Generic As Collection
+   Dim R As Result
+   
+   Timer1.Stop
+   listview1.Clear()
+   generics = modPrescribingDBI.Generics_Get_Class(Trim(txtGeneric.text))
+   For Each generic In generics
+      listview1.Add(listview1.count, generic!generic & " - " & generic!class_name)
+   Next
+   With listview1
+      .Visible = True
+      .tag = txtGeneric
+   End With
+Catch
+   Message.info("An error occurred with generic allergy allocation - please report")  
    
 End
 
@@ -732,7 +741,14 @@ Public Function Valid_Allergy_Or_Sensitivity() As Boolean
          txtCodedTerm.Background = Color.rgb(95, 255, 175)
          txtCodedTerm.SetFocus()
          Return
-      End If   
+      End If 
+   Else
+      Message.title = "Coding drug allergies"
+      sMsg = "Please enter a coded term for this drug reaction"
+      Message.Info(sMsg)
+      txtCodedTerm.Background = Color.rgb(95, 255, 175)
+      txtCodedTerm.SetFocus()
+      Return 
    End If   
    
    If atccode = "" Then       'user not entering a drug
@@ -922,7 +938,7 @@ Public Sub Terms_Get()
    'Cannot set default if count is one because must  be able to add new occupations
    'can't remove the label because it needs to occupy space to keep textbox correct width
    '-------------------------------------------------------------------------------------
-
+   
    If Trim(txtCodedTerm.text) = "" Then
       fk_code = ""
       fk_coding_system = 0

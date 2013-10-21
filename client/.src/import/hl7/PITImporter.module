@@ -1,6 +1,6 @@
 ' Gambas module file
 
-' Copyright (C) 2010 Dr. Ian Haywood
+' Copyright (C) 2010-2013 Dr. Ian Haywood, Dr Richard Terry
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -20,441 +20,479 @@
 ' to handle files that look like PIT files
 ' disturbingly, this format is still in wide use at time of writing
 ' specs kindly provided by Dr. David Guest
-
+'-------------------------------------------------------------------
 Private pk_sending_entity As Integer
 Private doc As Collection
 Private lin As String
+Private fk_lu_request_type As Integer = const.Request_Type_Pathology
 
 Public Sub Import(f As File, fname As String)
-  
-  Dim code As String
-  Dim re As Regexp
-  Dim s As String
-  
-  doc = New Collection
-  doc!source_file = fname
-  While Not f.EndOfFile
-    Line Input #f, lin
-    code = Left$(lin, 3)
-    Select Case code
-    Case "001"
-       Sender_Line()
-    Case "100"
-       Load_Doc() ' if not loaded previously
-       Patient_Name()
-    Case "101"
-       Patient_Address()
-    Case "104"
-       Patient_DOB()
-    Case "105"
-      doc!phone = Grab(38, 54)
-    Case "110"
-      doc!our_ref = Grab(27, 43)
-    Case "111"
-      doc!lab_ref = Grab(27, 43)
-    Case "112"
-      doc!medicare = Grab(27, 39)
-    Case "115"
-      doc!pathologist = Grab(27, 59)
-    Case "121"
-      doc!referred_by = Grab(27, 49)
-    Case "122"
-      s = Grab(27, 49)
-      If Not s = "" Then
-         If Not doc.Exist("copies_to") Then
-            doc!copies_to = s
-         Else
-           doc!copies_to &= "," & s
-         Endif
-      Endif
-    Case "123"
-      doc!fk_staff = Null
-      doc!fk_unmatched_staff = Null
-      doc!addressee = Grab(27, 49)
-      doc!addressee_provider = Grab(61, 69)
-    Case "200"
-      Load_Doc() ' if not loaded previously
-    Case "201"
-      doc!specimen = Grab(27, 100)
-    Case "203"
-      s = Grab(27, 38)
-      re = New Regexp(s, "^[0-9]+/[0-9]+/[0-9]+")
-      If Not CheckRe(re, "request date") Then 
-         doc!request_date = re.Text
-      Endif
-    Case "204"
-      s = Grab(27, 45)
-      re = New Regexp(s, "^[0-9]+/[0-9]+/[0-9]+ *([0-9]?[0-9]:[0-9][0-9])?")
-      If Not CheckRe(re, "collection date") Then 
-         doc!collection_date = re.Text
-      Endif
-    Case "205"
-      doc!test_name = Grab(27, 100)
-    Case "206"
-      s = Grab(27, 100)
-      re = New Regexp(s, "^[0-9]+/[0-9]+/[0-9]+ *([0-9]?[0-9]:[0-9][0-9])?")
-      If Not CheckRe(re, "report date") Then 
-         doc!report_date = re.Text
-      Endif
-    Case "208" ' test category: R=routine, U=urgent
-      s = Upper$(Grab(27, 28))
-      If s = "R" Then doc!urgency = 1
-      If s = "U" Then doc!urgency = 3
-    Case "210"
-      s = Upper$(Grab(27, 28))
-      If s = "N" Then ' PIT field is "normal Y/N" so inverse for us
-        doc!abnormal = "Y"
-      Endif
-      If s = "Y" Then
-        doc!abnormal = "N"
-      Endif
-    Case "211"
-      doc!requested_tests = Grab(27, 100)
-    Case "212"
-      s = Upper$(Grab(27, 28))
-      If s = "Y" Or If s = "N" Then
-        doc!test_complete = s
-      Endif
-    Case "301", "311"
-      If Not doc.Exist("data") Then doc!data = " "
-      doc!data &= HTML_Convert(Grab(5, -1))
-    Case Else
-       Log.DataMsg("unknown PIT line type " & code)
-    End Select  
-  Wend
-  Load_Doc()
-  
+   
+   Dim code As String
+   Dim re As Regexp
+   Dim s As String
+   Dim hl7 As CHL7 'temporarily using this class
+   Dim i As String
+   Dim segments As String[]
+   
+   doc = New Collection
+   doc!source_file = fname
+   i = Read #f, Lof(f)
+   hl7 = New CHL7(i)
+   segments = hl7.Get_segments()
+   For Each lin In segments
+      code = Left$(lin, 3)
+      Select Case code
+         Case "001"                                  'the sender line
+            Sender_Line()
+            If InStr(Lower(lin), "imaging") Or InStr(Lower(lin), "radiology") Then
+               fk_lu_request_type = const.Request_Type_Radiology
+            Endif
+            If InStr(Lower(lin), "pathology") Then
+               fk_lu_request_type = const.Request_Type_Pathology
+            Endif
+            If InStr(Lower(lin), "nuclear") Then
+               fk_lu_request_type = const.Request_Type_NuclearMedicine
+            Endif
+         Case "100"                                      'start of patient details
+            Load_Doc() ' if not loaded previously
+            Patient_Name()
+         Case "101"                                      'start of patient address
+            Patient_Address()
+         Case "104"                                      'start of patient DOB
+            Patient_DOB()
+         Case "105"                                      'start of patient phone
+            doc!phone = Grab(38, 54)                     
+         Case "110"                                      'start of 'your reference' = our reference  
+            doc!our_ref = Grab(27, 43)
+         Case "111"                                      'sender internal reference
+            doc!lab_ref = Grab(27, 43)
+         Case "112"
+            doc!medicare = Grab(27, 39)
+         Case "115"
+            doc!pathologist = Grab(27, 59)
+         Case "121"
+            doc!referred_by = Grab(27, 49)
+         Case "122"
+            s = Grab(27, 49)
+            If Not s = "" Then
+               If Not doc.Exist("copies_to") Then
+                  doc!copies_to = s
+               Else
+                  doc!copies_to &= "," & s
+               Endif
+            Endif
+         Case "123"                                         'start of addressee ie the practice
+            doc!fk_staff = Null
+            doc!fk_unmatched_staff = Null
+            doc!addressee = Grab(27, 49)
+            doc!addressee_provider = Grab(61, 69)
+         Case "200"                                          'start of the result
+            Load_Doc() ' if not loaded previously
+         Case "201"                                          'specimen ?we don't user this  
+            doc!specimen = Grab(27, 100)
+         Case "203"                                           'date this was requested
+            s = Grab(27, 38)
+            re = New Regexp(s, "^[0-9]+/[0-9]+/[0-9]+")
+            If Not CheckRe(re, "request date") Then 
+               doc!request_date = re.Text
+            Endif
+         Case "204"                                           'date collected
+            s = Grab(27, 45)
+            re = New Regexp(s, "^[0-9]+/[0-9]+/[0-9]+ *([0-9]?[0-9]:[0-9][0-9])?")
+            If Not CheckRe(re, "collection date") Then 
+               doc!collection_date = re.Text
+            Endif
+         Case "205"                                           'name of the test
+            doc!test_name = Grab(27, 100)
+         Case "206"                                           'date reported        
+            s = Grab(27, 100)
+            re = New Regexp(s, "^[0-9]+/[0-9]+/[0-9]+ *([0-9]?[0-9]:[0-9][0-9])?")
+            If Not CheckRe(re, "report date") Then 
+               doc!report_date = re.Text
+            Endif
+         Case "207"                                          'confidential
+         Case "208"                                          ' test urgency R=routine, U=urgent
+            s = Upper$(Grab(27, 28))                         ' this may not exisit
+            If s = "R" Then doc!urgency = const.UrgencyLevelRoutine
+            If s = "U" Then doc!urgency = const.UrgencyLevelUrgent
+            If s = "" Then doc!urgency = const.UrgencyLevelRoutine
+         Case "210"
+            s = Upper$(Grab(27, 28))
+            If s = "N" Then ' PIT field is "normal Y/N" so inverse for us
+               doc!abnormal = "Y"
+            Endif
+            If s = "Y" Then
+               doc!abnormal = "N"
+            Endif
+         Case "211"
+            doc!requested_tests = Grab(27, 100)
+         Case "212"
+            s = Upper$(Grab(27, 28))
+            If s = "Y" Or If s = "N" Then
+               doc!test_complete = s
+            Endif
+         Case "301", "311"
+            If Not doc.Exist("data") Then doc!data = " "
+            doc!data &= HTML_Convert(Grab(5, -1))
+         Case Else
+            Log.DataMsg("unknown PIT line type " & code)
+      End Select  
+   Next
+   Load_Doc()
+   
 End Sub
 
 Private Function HTML_Convert(s As String) As String 
-  Dim re As New Regexp
-  Dim repl As String
-  Dim i As Integer
-  Dim j As String
-  Dim s2 As String
-  Dim original_length As Integer
-  
-  If s = "" Then Return "<BR/>"
-  original_length = String.Len(s)
-  s2 = Replace$(s, "&", "&amp;")
-  s2 = Replace$(s2, "<", "&lt;")
-  s2 = Replace$(s2, ">", "&gt;")
-  
-  re.Compile("~([A-Z0-9]+)~")
+   
+   Dim re As New Regexp
+   Dim repl As String
+   Dim i As Integer
+   Dim j As String
+   Dim s2 As String
+   Dim original_length As Integer
+   
+   If s = "" Then Return "<BR/>"
+   original_length = String.Len(s)
+   s2 = Replace$(s, "&", "&amp;")
+   s2 = Replace$(s2, "<", "&lt;")
+   s2 = Replace$(s2, ">", "&gt;")
+   
+   re.Compile("~([A-Z0-9]+)~")
 ScanForTilde:
-  re.Exec(s2)
-  If re.Offset > -1 Then
-    repl = ""
-    i = 1
-    j = re.SubMatches[1].Text
-    While i < Len(j)
-      Select Case Mid$(j, i, 4)
-        Case "FG01"
-          repl &= "<FONT COLOR=\"BLUE\">"
-        Case "FG02"
-          repl &= "<FONT COLOR=\"GREEN\">"
-        Case "FG03"
-          repl &= "<FONT COLOR=\"CYAN2\">"
-        Case "FG04"
-          repl &= "<FONT COLOR=\"RED\">"
-        Case "FG05"
-          repl &= "<FONT COLOR=\"MAGENTA\">"
-        Case "FG06"
-          repl &= "<FONT COLOR=\"BROWN\">"
-        Case "FG07"
-          repl &= "<FONT COLOR=\"#C0C0C0\">"
-        Case "FG08"
-          repl &= "<FONT COLOR=\"#808080\">"
-        Case "FG09"
-          repl &= "<FONT COLOR=\"#82CAFA\">"
-        Case "FG10"
-          repl &= "<FONT COLOR=\"#5EFB6E\">"
-        Case "FG11"
-          repl &= "<FONT COLOR=\"#CFECEC\">"
-        Case "FG12"
-          repl &= "<FONT COLOR=\"#FF00FF\">"
-        Case "FG13"
-          repl &= "<FONT COLOR=\"#FF80FF\">"
-        Case "FG14"
-          repl &= "<FONT COLOR=\"YELLOW\">"
-        Case "FG15"
-          repl &= "<FONT COLOR=\"WHITE\">"
-        Case "FG99"
-          repl &= "</FONT>"
-        Case "SBLD"
-          repl &= "<B>"
-        Case "EBLD"
-          repl &= "</B>"
-        Case "SUND"
-          repl &= "<U>"
-        Case "EUND"
-          repl &= "</U>" 
-      End Select
-      i += 4
-    Wend
-    Mid$(s2, re.Offset + 1, Len(re.Text)) = repl
-    Goto ScanForTilde
-  Endif
-  If Right$(s2, 7) = "</FONT>" Or If original_length < 65 Then
-    s2 &= "<BR/>"
-  Else
-    s2 &= " "
-  Endif
-  Return s2
+   re.Exec(s2)
+   If re.Offset > -1 Then
+      repl = ""
+      i = 1
+      j = re.SubMatches[1].Text
+      While i < Len(j)
+         Select Case Mid$(j, i, 4)
+            Case "FG01"
+               repl &= "<FONT COLOR=\"BLUE\">"
+            Case "FG02"
+               repl &= "<FONT COLOR=\"GREEN\">"
+            Case "FG03"
+               repl &= "<FONT COLOR=\"CYAN2\">"
+            Case "FG04"
+               repl &= "<FONT COLOR=\"RED\">"
+            Case "FG05"
+               repl &= "<FONT COLOR=\"MAGENTA\">"
+            Case "FG06"
+               repl &= "<FONT COLOR=\"BROWN\">"
+            Case "FG07"
+               repl &= "<FONT COLOR=\"#C0C0C0\">"
+            Case "FG08"
+               repl &= "<FONT COLOR=\"#808080\">"
+            Case "FG09"
+               repl &= "<FONT COLOR=\"#82CAFA\">"
+            Case "FG10"
+               repl &= "<FONT COLOR=\"#5EFB6E\">"
+            Case "FG11"
+               repl &= "<FONT COLOR=\"#CFECEC\">"
+            Case "FG12"
+               repl &= "<FONT COLOR=\"#FF00FF\">"
+            Case "FG13"
+               repl &= "<FONT COLOR=\"#FF80FF\">"
+            Case "FG14"
+               repl &= "<FONT COLOR=\"YELLOW\">"
+            Case "FG15"
+               repl &= "<FONT COLOR=\"WHITE\">"
+            Case "FG99"
+               repl &= "</FONT>"
+            Case "SBLD"
+               repl &= "<B>"
+            Case "EBLD"
+               repl &= "</B>"
+            Case "SUND"
+               repl &= "<U>"
+            Case "EUND"
+               repl &= "</U>" 
+         End Select
+         i += 4
+      Wend
+      Mid$(s2, re.Offset + 1, Len(re.Text)) = repl
+      Goto ScanForTilde
+   Endif
+   If Right$(s2, 7) = "</FONT>" Or If original_length < 65 Then
+      s2 &= "<BR/>"
+   Else
+      s2 &= " "
+   Endif
+   Return s2
+   
 End Function
 
-
 Private Sub Sender_Line()
-  Dim q As String
-  Dim coll As Collection
-  Dim r As Result
-  Dim originating_lab As String
-  
-  pk_sending_entity = -1
-  originating_lab = Grab(5, 61)
-  q = "select * from documents.sending_entities "
-      "where fk_lu_message_standard = 1 and "
-      "msh_sending_entity ILIKE $$"
-  q &= originating_lab & "$$ and deleted = False"
-  r = modDBConnect.exec_query(q)
-  If r.Count = 0 Then
-    ' we don't have a matching sender, so create one
-    coll = New Collection
-    coll!msh_sending_entity = originating_lab
-    coll!msh_transmitting_entity = originating_lab
-    coll!fk_lu_message_standard = const.document_message_standard_pit
-    coll!fk_lu_message_display_style = 2
-    pk_sending_entity = modDBConnect.insert("documents.sending_entities", coll)
-  Else
-    pk_sending_entity = r!pk
-  Endif
-  
+   '---------------------------------------------------------------------
+   'get the pk_sending_entity by reading the first line of the PIT file
+   'note that even if this finds a legitimate pk the admin of your easygp
+   'system may not have yet allocated this to a 'real' company
+   '---------------------------------------------------------------------
+   
+   Dim q As String
+   Dim coll As Collection
+   Dim r As Result
+   Dim originating_lab As String
+   
+   pk_sending_entity = -1
+   originating_lab = Grab(5, 61)
+   q = "select * from documents.sending_entities "
+   q &= "where fk_lu_message_standard = " & const.document_message_standard_pit
+   q &= " and msh_sending_entity ILIKE $$"
+   q &= originating_lab & "$$ and deleted = False"
+   r = modDBConnect.exec_query(q)
+   If r.Count = 0 Then
+      ' we don't have a matching sender, so create one
+      coll = New Collection
+      coll!msh_sending_entity = originating_lab
+      coll!msh_transmitting_entity = originating_lab
+      coll!fk_lu_message_standard = const.document_message_standard_pit
+      coll!fk_lu_message_display_style = const.Document_Display_As_Result
+      pk_sending_entity = modDBConnect.insert("documents.sending_entities", coll)
+   Else
+      pk_sending_entity = r!pk
+   Endif
+   
 End
 
+
+
 Private Sub Patient_Name()
-  
-  Dim re As New Regexp(Grab(27, 200), "^(.*),(.*) ?(.?)$")
-  
-  If CheckRe(re, "patient name") Then Return
-  doc.Remove("fk_patient")
-  doc.Remove("fk_unmatched_patient")
-  doc!surname = Trim$(re.SubMatches[1].Text)
-  doc!firstname = Trim$(re.SubMatches[2].Text)
-  If re.SubMatches.Count > 2 Then
-    doc!initial = re.SubMatches[3].Text
-  Endif
-  
+   
+   Dim re As New Regexp(Grab(27, 200), "^(.*),(.*) ?(.?)$")
+   
+   If CheckRe(re, "patient name") Then Return
+   doc.Remove("fk_patient")
+   doc.Remove("fk_unmatched_patient")
+   doc!surname = Trim$(re.SubMatches[1].Text)
+   doc!firstname = Trim$(re.SubMatches[2].Text)
+   If re.SubMatches.Count > 2 Then
+      doc!initial = re.SubMatches[3].Text
+   Endif
+   
 End
 
 Private Sub Patient_Address()
-  
-  Dim s As String
-  Dim re As Regexp
-  
-  s = Grab(27, 200)
-  re = New Regexp(s, "^(.*),.*([0-9][0-9][0-9][0-9])")
-  If re.Offset = -1 Then re = New Regexp(s, "^(.*)   .*([0-9][0-9][0-9][0-9])")
-  If CheckRe(re, "address") Then Return
-  doc!address_line = re.SubMatches[1].Text
-  doc!postcode = re.SubMatches[2].Text
+   
+   Dim s As String
+   Dim re As Regexp
+   
+   s = Grab(27, 200)
+   re = New Regexp(s, "^(.*),.*([0-9][0-9][0-9][0-9])")
+   If re.Offset = -1 Then re = New Regexp(s, "^(.*)   .*([0-9][0-9][0-9][0-9])")
+   If CheckRe(re, "address") Then Return
+   doc!address_line = re.SubMatches[1].Text
+   doc!postcode = re.SubMatches[2].Text
+   
 End
 
 Private Sub Patient_DOB()
-  
-  Dim s As String
-  Dim re As Regexp
-  
-  s = Grab(38, 49)
-  re = New Regexp(s, "[0-9]+/[0-9]+/[0-9]+")
-  If CheckRe(re, "birthdate") Then Return
-  doc!birthdate = re.Text
-  s = Grab(67, 68)
-  s = Upper$(s)
-  If s = "M" Or If s = "F" Then
-    doc!sex = s
-  Endif
-  
+   
+   Dim s As String
+   Dim re As Regexp
+   
+   s = Grab(38, 49)
+   re = New Regexp(s, "[0-9]+/[0-9]+/[0-9]+")
+   If CheckRe(re, "birthdate") Then Return
+   doc!birthdate = re.Text
+   s = Grab(67, 68)
+   s = Upper$(s)
+   If s = "M" Or If s = "F" Then
+      doc!sex = s
+   Endif
+   
 End
 
 Private Sub Load_Doc()
-  Dim newdoc As New Collection
-  Dim obs As New Collection
-  
-  If Not doc.Exist("data") Then Return
-  If Not doc.Exist("fk_patient") And If Not doc.Exist("fk_unmatched_patient") Then
-    Match_Patient()
-  Endif
-  If Not doc.Exist("fk_staff") And If Not doc.Exist("fk_unmatched_staff") Then
-    Match_Staff()
-  Endif
-  newdoc!fk_sending_entity = pk_sending_entity
-  newdoc!source_file = doc!source_file
-  newdoc!date_requested = doc!request_date
-  newdoc!date_created = doc!collection_date
-  newdoc!fk_patient = doc!fk_patient
-  newdoc!fk_staff_filed_document = modDBConnect.currentUser!fk_staff
-  newdoc!internal_reference = doc!our_ref
-  newdoc!provider_of_service_reference = doc!lab_ref
-  newdoc!copies_to = doc!copies_to
-  newdoc!originator = doc!referred_by
-  newdoc!fk_staff_destination = doc!fk_staff
-  newdoc!fk_unmatched_patient = doc!fk_unmatched_patient
-  newdoc!fk_unmatched_staff = doc!fk_unmatched_staff
-  newdoc!fk_lu_urgency = doc!urgency
-  newdoc!tag = doc!test_name
-  obs!fk_document = modDBConnect.insert("documents.documents", newdoc)
-  obs!pit = "t"
-  obs!value = doc!data
-  obs!abnormal = doc!abnormal ' FIXME: I assume Y/N like PIT
-  obs!value_type = "FT" ' PIT is always Formatted Text in HL7 terms
-  obs!identifier = doc!test_name
-  obs!observation_date = doc!report_date
-  obs!result_status = doc!test_complete ' FIXME: convert to HL7's values
-  modDBConnect.insert("documents.observations", obs)
-  doc!data = Null
+   '----------------------------------------------------------------------
+   'Populates the document and observations collection and save to backend 
+   '----------------------------------------------------------------------  
+   Dim newdoc As New Collection
+   Dim obs As New Collection
+   
+   If Not doc.Exist("data") Then Return
+   If Not doc.Exist("fk_patient") And If Not doc.Exist("fk_unmatched_patient") Then
+      Match_Patient()
+   Endif
+   If Not doc.Exist("fk_staff") And If Not doc.Exist("fk_unmatched_staff") Then
+      Match_Staff()
+   Endif
+   newdoc!source_file = doc!source_file
+   newdoc!fk_sending_entity = pk_sending_entity
+   newdoc!imported_time = Now()
+   newdoc!date_requested = doc!request_date
+   newdoc!date_created = doc!collection_date
+   newdoc!fk_patient = doc!fk_patient
+   newdoc!fk_staff_filed_document = Null 'not yet filed
+   newdoc!originator = doc!referred_by
+   newdoc!internal_reference = doc!our_ref
+   newdoc!provider_of_service_reference = doc!lab_ref
+   newdoc!copies_to = doc!copies_to
+   newdoc!fk_staff_destination = doc!fk_staff
+   If Not IsNull(doc!urgency) Then 
+      newdoc!fk_lu_urgency = doc!urgency
+   Else
+      newdoc!fk_lu_urgency = const.UrgencyLevelRoutine
+   End If   
+   newdoc!tag = doc!test_name
+   newdoc!fk_unmatched_staff = doc!fk_unmatched_staff
+   newdoc!fk_unmatched_patient = doc!fk_unmatched_patient
+   newdoc!fk_lu_display_as = const.Document_Display_As_Result
+   newdoc!fk_lu_request_type = fk_lu_request_type
+   obs!fk_document = modDBConnect.insert("documents.documents", newdoc)
+   obs!pit = "t"
+   obs!value = doc!data
+   obs!abnormal = doc!abnormal             ' FIXME: I assume Y/N like PIT no actually not stacks of variations eg *
+   obs!value_type = "FT"                   ' PIT is always Formatted Text in HL7 terms
+   obs!identifier = doc!test_name
+   obs!observation_date = doc!report_date
+   obs!result_status = doc!test_complete ' FIXME: convert to HL7's values
+   modDBConnect.insert("documents.observations", obs)
+   doc!data = Null
+   
 End
 
 Private Sub Match_Patient()
-  
-  Dim r As Result
-  Dim s As String
-  
-  s = "select fk_patient from contacts.vwpatients where firstname ilike $$&1%$$ and surname ilike $$&2$$ and birthdate = $$&3$$"
-  s = Subst$(s, doc!firstname, doc!surname, doc!birthdate) 
-  r = modDBConnect.exec_query(s)
-  If r.Count = 1 Then
-    doc!fk_patient = r!fk_patient
-    Return
-  Endif
-  ' try reversing firstname and surname, this is very common
-  s = "select fk_patient from contacts.vwpatients where surname ilike $$&1$$ and firstname ilike $$&2%$$ and birthdate = $$&3$$"
-  s = Subst$(s, doc!firstname, doc!surname, doc!birthdate) 
-  r = modDBConnect.exec_query(s)
-  If r.Count = 1 Then
-    doc!fk_patient = r!fk_patient
-    Return
-  Endif
-  If doc.Exist("postcode") Then
+   
+   Dim r As Result
+   Dim s As String
+   
+   s = "select fk_patient from contacts.vwpatients where firstname ilike $$&1%$$ and surname ilike $$&2$$ and birthdate = $$&3$$"
+   s = Subst$(s, doc!firstname, doc!surname, doc!birthdate) 
+   r = modDBConnect.exec_query(s)
+   If r.Count = 1 Then
+      doc!fk_patient = r!fk_patient
+      Return
+   Endif
+   ' try reversing firstname and surname, this is very common
+   s = "select fk_patient from contacts.vwpatients where surname ilike $$&1$$ and firstname ilike $$&2%$$ and birthdate = $$&3$$"
+   s = Subst$(s, doc!firstname, doc!surname, doc!birthdate) 
+   r = modDBConnect.exec_query(s)
+   If r.Count = 1 Then
+      doc!fk_patient = r!fk_patient
+      Return
+   Endif
+   If doc.Exist("postcode") Then
       ' try using postcode instead of DOB
       s = "select fk_patient from contacts.vwpatients where surname ilike $$&1%$$ and firstname ilike $$&2$$ and postcode = $$&3$$"
       s = Subst$(s, doc!surname, doc!firstname, doc!postcode) 
       r = modDBConnect.exec_query(s)
       If r.Count = 1 Then
-        doc!fk_patient = r!fk_patient
-        Return
+         doc!fk_patient = r!fk_patient
+         Return
       Endif
       ' try without firstname at all, but using both DOB and postcode
       s = "select fk_patient from contacts.vwpatients where surname ilike $$&1%$$ and birthdate = $$&2$$ and postcode = $$&3$$"
       s = Subst$(s, doc!surname, doc!birthdate, doc!postcode) 
       r = modDBConnect.exec_query(s)
       If r.Count = 1 Then
-        doc!fk_patient = r!fk_patient
-        Return
+         doc!fk_patient = r!fk_patient
+         Return
       Endif
-  Endif
-  ' Look for previously unmatched patients
-  s = "select fk_real_patient, pk from documents.unmatched_patients where surname ilike $$&1$$ and firstname ilike $$&2$$ and birthdate = $$&3$$"
-  s = Subst(s, doc!surname, doc!firstname & "%", doc!birthdate) 
-  r = modDBConnect.exec_query(s)
-  If r.Count = 1 Then
-    If Not IsNull(r!fk_real_patient) Then
-      doc!fk_patient = r!fk_real_patient
-    Else
-      doc!fk_unmatched_patient = r!pk
-    Endif
-    Return
-  Endif
-  ' Ok, give up and create a new unmatched patient
-  doc!fk_unmatched_patient = modDBConnect.insert("documents.unmatched_patients", [
-     "surname": doc!surname, 
-     "firstname": doc!firstname, 
-     "birthdate": doc!birthdate, 
-     "sex": doc!sex, 
-     "street": doc!address_line, 
-     "postcode": doc!postcode])
+   Endif
+   ' Look for previously unmatched patients
+   s = "select fk_real_patient, pk from documents.unmatched_patients where surname ilike $$&1$$ and firstname ilike $$&2$$ and birthdate = $$&3$$"
+   s = Subst(s, doc!surname, doc!firstname & "%", doc!birthdate) 
+   r = modDBConnect.exec_query(s)
+   If r.Count = 1 Then
+      If Not IsNull(r!fk_real_patient) Then
+         doc!fk_patient = r!fk_real_patient
+      Else
+         doc!fk_unmatched_patient = r!pk
+      Endif
+      Return
+   Endif
+   ' Ok, give up and create a new unmatched patient
+   doc!fk_unmatched_patient = modDBConnect.insert("documents.unmatched_patients", [
+      "surname": doc!surname, 
+      "firstname": doc!firstname, 
+      "birthdate": doc!birthdate, 
+      "sex": doc!sex, 
+      "street": doc!address_line, 
+      "postcode": doc!postcode])
+   
 End
 
 Private Sub Match_Staff()
-  
-  Dim r As Result
-  Dim s As String
-  Dim re As Regexp
-  
-  s = Subst$("select fk_staff from admin.vwstaffinclinics where provider_number = $$&1$$ limit 1", doc!addressee_provider)
-  r = modDBConnect.exec_query(s)
-  If r.Count = 1 Then
-    doc!fk_staff = r!pk
-    Return
-  Endif
-  ' lop off last 2 digits and leading zero try again
-  s = Left$(doc!addressee_provider, -2) & "%"
-  If Left$(s, 1) = "0" Then
-    s = Right$(s, -1)
-  Endif
-  s = Subst$("select fk_staff from admin.vwstaffinclinics where provider_number like $$&1$$ limit 1", s)
-  r = modDBConnect.exec_query(s)
-  If r.Count = 1 Then
-    doc!fk_staff = r!pk
-    Return
-  Endif
-  ' Look for unmatched staff by name
-  re = New Regexp(Upper$(doc!addressee), "^DR ([A-Z]+) ([A-Z ]+)$")
-  If re.Offset = 0 Then
-    s = Subst$("select pk,fk_real_staff from documents.unmatched_staff where surname = $$&1$$ and firstname = $$&2$$",
-        re.SubMatches[2].Text, re.SubMatches[1].Text)
-    r = modDBConnect.exec_query(s)
-    If r.Count = 1 Then
-      If Not IsNull(r!fk_real_staff) Then
-        doc!fk_staff = r!fk_real_staff
-      Else
-        doc!fk_unmatched_staff = r!pk
-      Endif
+   
+   Dim r As Result
+   Dim s As String
+   Dim re As Regexp
+   
+   s = Subst$("select fk_staff from admin.vwstaffinclinics where provider_number = $$&1$$ limit 1", doc!addressee_provider)
+   r = modDBConnect.exec_query(s)
+   If r.Count = 1 Then
+      doc!fk_staff = r!pk
       Return
-    Endif
-  Endif
-  ' Ok, create unmatched_staff
-  doc!fk_unmatched_staff = modDBConnect.insert("documents.unmatched_staff", [
-         "surname": doc!addressee,
-         "provider_number": doc!addressee_provider]) 
+   Endif
+   ' lop off last 2 digits and leading zero try again
+   s = Left$(doc!addressee_provider, -2) & "%"
+   If Left$(s, 1) = "0" Then
+      s = Right$(s, -1)
+   Endif
+   s = Subst$("select fk_staff from admin.vwstaffinclinics where provider_number like $$&1$$ limit 1", s)
+   r = modDBConnect.exec_query(s)
+   If r.Count = 1 Then
+      doc!fk_staff = r!fk_staff
+      Return
+   Endif
+   ' Look for unmatched staff by name
+   re = New Regexp(Upper$(doc!addressee), "^DR ([A-Z]+) ([A-Z ]+)$")
+   If re.Offset = 0 Then
+      s = Subst$("select pk,fk_real_staff from documents.unmatched_staff where surname = $$&1$$ and firstname = $$&2$$",
+         re.SubMatches[2].Text, re.SubMatches[1].Text)
+      r = modDBConnect.exec_query(s)
+      If r.Count = 1 Then
+         If Not IsNull(r!fk_real_staff) Then
+            doc!fk_staff = r!fk_real_staff
+         Else
+            doc!fk_unmatched_staff = r!pk
+         Endif
+         Return
+      Endif
+   Endif
+   ' Ok, create unmatched_staff
+   doc!fk_unmatched_staff = modDBConnect.insert("documents.unmatched_staff", [
+      "surname": doc!addressee,
+      "provider_number": doc!addressee_provider]) 
+   
 End
 
-
-
-
 Private Function Grab(s As Integer, e As Integer) As String
-  Dim ret As String
-  
-  Dec s ' Gambas strings are 0-based, but David Guest (the author of the PIT spec) is 1-based
-  Dec e
-  If Len(lin) < s Then Return Null
-  If e <> -2 And If Len(lin) > e Then
-    ret = Mid$(lin, s, e - s)
-  Else
-    ret = Right$(lin, Len(lin) - s)
-  Endif
-  Return Trim$(ret)
-  
+   
+   Dim ret As String
+   
+   Dec s ' Gambas strings are 0-based, but David Guest (the author of the PIT spec) is 1-based
+   Dec e
+   If Len(lin) < s Then Return Null
+   If e <> -2 And If Len(lin) > e Then
+      ret = Mid$(lin, s, e - s)
+   Else
+      ret = Right$(lin, Len(lin) - s)
+   Endif
+   Return Trim$(ret)
+   
 End
 
 Private Function CheckRe(re As Regexp, err As String) As Boolean
-  Dim s As String
-  
-  If re.Offset = -1 Then
-    s = Subst$("&1 line '&2' isn't valid", err, lin)
-    Print #File.Err, s
-    Log.ErrorMsg(s)
-    Return True
-  Endif
-  Return False
-
+   
+   Dim s As String
+   
+   If re.Offset = -1 Then
+      s = Subst$("&1 line '&2' isn't valid", err, lin)
+      Print #File.Err, s
+      Log.ErrorMsg(s)
+      Return True
+   Endif
+   Return False
+   
 End
 
 Public Sub UnitTest(f As FMain)
-  
-  Dim fd As File
-  
-  fd = Open "/home/ian/preserve/mpxiaha00002.pit" For Read
-  Import(fd)
-  
+   
+   Dim fd As File
+   
+   fd = Open "/home/ian/preserve/mpxiaha00002.pit" For Read
+   Import(fd)
+   
 End
-

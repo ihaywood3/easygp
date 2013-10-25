@@ -16,6 +16,10 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 Private $hconn As Connection
+Private inferior_ssh As Process
+Private inferior_ssh_error As String
+Private inferior_ssh_buffer As String
+Private inferior_ssh_connected As Boolean
 Private bTransaction As Boolean
 Private bFirstCommand As Boolean
 Private conninfo As Collection
@@ -131,12 +135,18 @@ Public Function dbConnect_global(host As String, database As String, login As St
       conninfo!database = database
    Endif
    If IsNull(conninfo!database) Then conninfo!database = "easygp"
+   conninfo!port = "5432"
    sa = Split(conninfo!host, ":")
-   If sa.Length = 2 Then
-      conninfo!host = sa[0]
-      conninfo!port = sa[1]
-   Else
-      conninfo!port = "5432"
+   If sa[0] = "ssh" Then
+      conninfo!ssh = True
+      conninfo!host = sa[1]
+      If sa.length = 3 Then conninfo!port = sa[2]
+   Else 
+      conninfo!ssh = False
+      If sa.Length = 2 Then
+        conninfo!host = sa[0]
+        conninfo!port = sa[1]
+     Endif
    Endif
    conninfo!login = login
    conninfo!password = password
@@ -162,19 +172,40 @@ Public Function dbConnect_global(host As String, database As String, login As St
 End
 
 Private Function Actual_Connect() As String
+   Dim ssh_path As String
+   Dim n As Integer = 0
    
    Try $hconn.Close
    Try pg_socket_file.Close()
+   If Not IsNull(inferior_ssh) Then Try inferior_ssh.Kill()
    $hconn = New Connection
    With $hconn
       .Type = "postgresql"
-      .Host = conninfo!host
       .Login = conninfo!login
       .Password = conninfo!password
-      .Name = ""
       .Name = conninfo!database
-      .Port = conninfo!port
    End With
+   If conninfo!ssh Then
+      ssh_path = modUtil.FindProgram("ssh", "ssh")
+      inferior_ssh_connected = False
+      inferior_ssh_buffer = ""
+      inferior_ssh_error = Null
+      inferior_ssh = Exec [ssh_path, "-Nnv", "-L", Subst$("127.0.0.1:15432:127.0.0.1:&1", conninfo!port), conninfo!host] For Read As "Ssh"
+      $hconn.Host = "127.0.0.1"
+      $hconn.Port = "15432"
+      While (Not inferior_ssh_connected) And n < 120 And IsNull(inferior_ssh_error)
+         Wait 1
+         Inc n
+      Wend
+      If Not inferior_ssh_connected Then
+         Try inferior_ssh.Kill()
+         If IsNull(inferior_ssh_error) Then inferior_ssh_error = "Connection timed out"
+         Return inferior_ssh_error
+      Endif
+   Else
+      $hconn.Host = conninfo!host
+      $hconn.Port = conninfo!port
+   Endif
    $hconn.Open
    $hconn.Exec("set datestyle = 'iso,dmy'")
    Try $hconn.Exec("set bytea_output = 'escape'")
@@ -183,8 +214,7 @@ Private Function Actual_Connect() As String
    pg_socket_file = Open "." & PQsocket(Connection.Handle) For Read Watch
    Return "success"
 Catch
-   Return DConv(Error.Text)
-   
+  Return DConv(Error.Text)
 End
 
 Public Sub Close_Listener()
@@ -233,6 +263,37 @@ Public Sub File_Read()
    Wend
    
 End
+
+Public Sub Ssh_Read()
+   
+  Dim s As String
+  
+  s = Read #inferior_ssh, Lof(inferior_ssh)
+  Log.DebugMsg("inferior ssh process emitted \"" & s & "\" on stdout") 
+
+End
+
+Public Sub Ssh_Error(err As String)
+  Dim i As String
+   
+  Log.DebugMsg("inferior ssh process emitted \"" & err & "\" on stderr")
+  inferior_ssh_buffer &= err
+  If IsNull(inferior_ssh_error) Then
+    For Each i In Split(inferior_ssh_buffer, "\n")
+       If Not (i Begins "debug1:" Or i Begins "Authenticated" Or i Begins "OpenSSH" Or Len(i) < 15) Then
+          If IsNull(inferior_ssh_error) Then
+            inferior_ssh_error = i
+          Else
+            inferior_ssh_error &= "\n" & err
+         Endif
+       Endif     
+    Next
+  Endif
+  If Not inferior_ssh_connected And If InStr(inferior_ssh_buffer, "Local forwarding listening on") > 0 Then
+     inferior_ssh_connected = True
+  Endif 
+End
+
 
 Public Sub Register_Listener(evt As String, obj As Object)
    

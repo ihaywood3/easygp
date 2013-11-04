@@ -23,7 +23,7 @@
 
 """Event handlers called by dbwrapper."""
 
-import sys, os, os.path, traceback, time, logging, re, socket
+import sys, os, os.path, traceback, time, logging, re, socket, logging
 import pdb
 import psycopg2
 import soap
@@ -148,16 +148,18 @@ class Event:
     def script_printed(self,pid,payload):
         script_no = int(payload)
         items = self.db.get_scripts(script_no)
+        if len(items) == 0:
+            logging.error("script no %d no scripts found in DB" % script_no)
+            return
         consult_data = self.db.get_prescriber_data(items[0]['fk_consult'])
         patient_data = self.db.get_patient(items[0]['fk_patient'])
         patient_data['comms'] = self.db.get_person_comms(patient_data['fk_person'])
         consult_data['comms'] = self.db.get_staff_comms(consult_data['fk_person'],consult_data['fk_branch'])
-        pdb.set_trace()
         observations = self.db.get_obs(items[0]['fk_patient'])
         try:
             receipt_code = self.medisecure.submit_script(items,consult_data,patient_data,observations)
         except:
-            self.db.log_simple_entry(consult_data['fk_patient'],'MediSecure e-script error: %r' % sys.exc_info()[0])
+            self.db.log_simple_entry(items[0]['fk_patient'],'MediSecure e-script error: %r' % sys.exc_info()[0])
         else:
-            self.db.log_simple_entry(consult_data['fk_patient'],'MediSecure submitted %s' % receipt_code)
+            self.db.log_simple_entry(items[0]['fk_patient'],'MediSecure submitted %s' % receipt_code)
             

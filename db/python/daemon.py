@@ -174,7 +174,7 @@ Options
             if len(server_ip) == 2:
                 server_ip = (server_ip[0],server_ip[1])
             else:
-                server_ip = (server_ip[0],6000)
+                server_ip = (server_ip[0],5678)
             ms = medisecure.Medisecure(server_ip)
             self.evts.medisecure = ms
             self.db.listen("script",self.evts.script_printed)

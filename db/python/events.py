@@ -27,6 +27,7 @@ import sys, os, os.path, traceback, time, logging, re, socket, logging
 import pdb
 import psycopg2
 import soap
+import dbwrapper
 
 class Event:
 
@@ -34,6 +35,7 @@ class Event:
         self.pcehr_soap = None
         self.db = db
         self.daemon = daemon
+        self.config = daemon.config
         self.medisecure = None
         self.mo = None
         self.hi_service = None
@@ -92,12 +94,14 @@ class Event:
         for patient in self.db.get_patients_to_upload():
             dob = patient["birthdate"].strftime("%Y-%m-%d")
             sex = self.translate_gender(patient["sex"])
+            surname = patient["surname"][:40]  # spec sez when sending to HI service no loonger than 40 chars
+            firstname = patient["firstname"][:40]
             try:
-                ihi, record_status, status, messages = self.hi_service.search_ihi(self.config["user"],patient["surname"],patient["firstname"],dob,sex,patient["medicare_number"],patient["medicare_ref_number"],patient["veteran_number"])
+                ihi, record_status, status, messages = self.hi_service.search_ihi(self.config["db_user"],surname,firstname,dob,sex,patient["medicare_number"],patient["medicare_ref_number"],patient["veteran_number"])
             except soap.SOAPError as exc:
                 logging.exception("SOAP failure")
                 error = True
-                logstring = "<p>A SOAP network error occurred: <tt>{}</tt></p>".format(str(exc))
+                logstring = "<p>A SOAP network error occurred: <tt>{}</tt></p>".format(dbwrapper.html(str(exc)))
             except socket.error as exc:
                 if not self.db.is_retry():
                     self.db.log_simple_entry("Tried to get IHI but network down")
@@ -112,38 +116,45 @@ class Event:
                 else:
                     record_status = record_status.lower()
                     status = status.lower()
+                    logstring += "<p>Medicare returned IHI {} [status: {}, record status: {}]<p>".format(ihi,status,record_status) 
                     if record_status == "unverified":
                         error = True
-                        logstring += "<p>Unvertified IHI {} returned, cannot be used. The patient needs to provide identification </p>".format(ihi)
+                        logstring += "<p>Unverified IHI cannot be used. The patient needs to provide further identification to Medicare</p>"
                     if record_status == "provisional":
                         error = True
-                        logstring += "<p>Provisional IHI {} returned, cannot be used. The patient needs to contact Medicare to complete their registration.</p>".format(ihi)
+                        logstring += "<p>Provisional IHI cannot be used. The patient needs to contact Medicare to complete their registration.</p>"
                     if not error and record_status != "verified":
                         error = True
-                        logstring += "<p>IHI {} has unknown record status &quot;{}&quot;. Contact Medicare for clarification".format(ihi,record_status)
+                        logstring += "<p>Unknown record status. Contact Medicare for clarification</p>"
                     if status == "deceased":
-                        logstring += "<p>Medicare records show this patient is dead.</p>"
+                        pass
                     if status == "retired":
                         error = True
-                        logstring += "<p>IHI {} is retired in the Medicare database. Contact Medicare to update details.</p>".format(ihi)
+                        logstring += "<p>Retired means reitred in the Medicare database. Contact Medicare to update details.</p>"
                     if status == "expired":
                         error = True
-                        logstring += "<p>IHI {} is expired in the Medicare database. Contact Medicare to update details.</p>".format(ihi)
+                        logstring += "<p>Expired in the Medicare database, cannot be used. Contact Medicare to update details.</p>"
                     if status == "resolved":
                         error = True
-                        logstring += "<p>IHI {} is marked as &quot;resolved&quot; in the Medicare database. Contact Medicare to update details.</p>".format(ihi)
+                        logstring += "<p>IHI is marked as &quot;resolved&quot; in the Medicare database. Contact Medicare to update details.</p>"
                     if not error and status != "deceased" and status != "active":
                         error = True
-                        logstring += "<p>IHI {} has an unknown status &quot;{}&quot;. Contact Medicare</p>".format(ihi,status)
+                        logstring += "Unknown status, cannot be used. Contact Medicare for details</p>"
                 logstring += self.messages_to_table(messages)
-                if not error:
+                if error:
+                    logstring += "<p>SOAP Request ID: {}</p><p>SOAP reply ID: {}</p>".format(self.soap.outgoing_uuid,self.soap.incoming_uuid)
+                else:
                     logstring += "<p>Successfully obtained IHI {} from Medicare HI Service.</p>".format(ihi)
-                logstring += "<p>SOAP Request ID: {}</p><p>SOAP reply ID: {}</p>".format(self.soap.outgoing_uuid,self.soap.incoming_uuid)
             if error:
                 self.db.set_ihi_error(patient["fk_patient"],logstring)
             else:
-                self.db.set_ihi(patient["fk_patient"],ihi,logstring)
-
+                if self.db.ihi_duplicate_check(ihi,patient["fk_patieht"]):
+                    if status == 'deceased':
+                        self.db.mark_death_informed(patient["fk_patient"],logstring)
+                    else:
+                        if "ihi" in patient and patient["ihi"] is not None and patient["ihi"] != ihi:
+                            logstring += 'Previous IHI %s being replaced' % patient["ihi"]
+                        self.db.set_ihi(patient["fk_patient"],ihi,logstring)
     
     def script_printed(self,pid,payload):
         script_no = int(payload)
@@ -159,7 +170,7 @@ class Event:
         try:
             receipt_code = self.medisecure.submit_script(items,consult_data,patient_data,observations)
         except:
-            self.db.log_simple_entry(items[0]['fk_patient'],'MediSecure e-script error: %r' % sys.exc_info()[0])
+            self.db.log_simple_entry(items[0]['fk_patient'],'MediSecure e-script error: %s' % dbwrapper.html(repr(sys.exc_info()[0])),linked_table='clin_prescribing.prescribed',fk_row=script_no)
         else:
-            self.db.log_simple_entry(items[0]['fk_patient'],'MediSecure submitted %s' % receipt_code)
+            self.db.log_simple_entry(items[0]['fk_patient'],'MediSecure submitted %s' % receipt_code,linked_table='clin_prescribing.prescribed',fk_row=script_no)
             

@@ -65,6 +65,7 @@ class Daemon:
         i = 1
         self.cmd_config = None
         self.debug_mode = False
+        self.test_mode = False
         self.overnight_mode = False
         while i < len(sys.argv):
             s = sys.argv[i]
@@ -79,12 +80,16 @@ Options
    -o,--overnight: instead of becoming a deamon run overnight tasks such as rechecking status
                    on old IHIs in the database. Intended to be run from cron
    -d,--debug:  run in debug mode: no daemon, log to stdout.
+   -t,--test: run unit tests. only if you know what you are doing
 """
                 sys.exit(0)
             if s == '-d' or s =='--debug':
                 self.debug_mode = True
             if s == '-o' or s == '--overnight':
                 self.overnight_mode = True
+            if s == '-t' or s == '--test':
+                self.test_mode = True
+                self.debug_mode = True
             i += 1
 
      
@@ -175,9 +180,12 @@ Options
                 server_ip = (server_ip[0],server_ip[1])
             else:
                 server_ip = (server_ip[0],5678)
-            ms = medisecure.Medisecure(server_ip)
-            self.evts.medisecure = ms
-            self.db.listen("script",self.evts.script_printed)
+            if "medisecure_location_id" in self.config:
+                ms = medisecure.Medisecure(server_ip,self.config["medisecure_location_id"])
+                self.evts.medisecure = ms
+                self.db.listen("script",self.evts.script_printed)
+            else:
+                logging.error("MediSecure not loaded as no config value \"medisecure_location_id\"")
         except ImportError:
             logging.notice("MediSecure module not available in %s" % self.config["drivers"])    
         
@@ -204,7 +212,7 @@ Options
                 self.setup_drivers()
                 if self.overnight_mode: self.evts.overnight()
                 else:
-                    if self.debug_mode:
+                    if self.test_mode:
                         self.db.synth_event("script",11)
                     else:
                         self.db.wait_events()

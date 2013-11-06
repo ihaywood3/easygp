@@ -20,64 +20,97 @@
 # provided at https://vendors.nehta.gov.au/ that was obtained without signing any
 # NDA.
 
-"""A class for accessing the PCEHR
+"""A class for accessing the PCEHR at the high "Pythonic" level. 
+Doesn't do preperation of CDAs or metadata.
 """
 
-import soap
-import xml.etree.ElementTree
+import pcehr_transport
 
-class PCEHR_SOAP(soap.SOAPCrypto):
-    """A descendant class of SOAPCrypto optimised for doing PCEHR SOAP requests"""
+# access reponses
+DENIED=0  # access is denied
+ACCESS=1  # access is granted
+WITH_PASSWORD=2  # access is granted only with a password (so need to called gain_pcehr_access again)
 
-    def __init__(self):
-        self.sigwrapper_tag = '<h:signature xmlns:h="http://ns.electronichealth.net.au/pcehr/xsd/common/CommonCoreElements/1.0">'
-        self.sigwrapper_tag_close = '</h:signature>'
-        #self.pcehr_mode = True
+# document types
+EVENT_SUMMARY=0
+SHARED_HEALTH_SUMMARY=1
+DISCHARGE_SUMMARY=2
+PRESCRIPTION=3
+SPECIALIST_LETTER=4
+MBS_RECORD=5
+PBS_RECORD=6
 
-    def do_action(self,url_tip,action,ihi,hpio,org_name,hpii,user_name,req):
-        """Do a PCEHR SOAP action
-        - action: the action, minus the prefix URL
-        - ihi: the patient's Individual Health Identifier
-        - hpio: the organisations's HPI-O
-        - org_name: the free-string name of the organisation
-        - hpii: the HPI-I of the user
-        - user_name: the free-string name of the user making the request
-        - reg: the request as "canonicalised" XML
-        """
-        action = "http://ns.electronichealth.net.au/pcehr/svc/PCEHRProfile/1.1/PCEHRProfilePortType/" + action
-        header_templ = """
-            <h:PCEHRHeader xmlns:h="http://ns.electronichealth.net.au/pcehr/xsd/common/CommonCoreElements/1.0" xml:id="{{xmlid}}">
-                                <h:User>
-                                    <h:IDType>HPII</h:IDType>
-                                    <h:ID>{hpii}</h:ID>
-                                    <h:userName>{user_name}</h:userName>
-                                    <h:useRoleForAudit>false</h:useRoleForAudit>
-                                </h:User>
-                                <h:ihiNumber>{ihi}</h:ihiNumber>
-                                <h:productType>
-                                    <h:vendor>DrsDesk</h:vendor>
-                                    <h:productName>EasyGP</h:productName>
-                                    <h:productVersion>1.0</h:productVersion>
-                                    <h:platform>Linux</h:platform>
-                                </h:productType>
-                                <h:clientSystemType>CIS</h:clientSystemType>
-                                <h:accessingOrganisation>
-                                    <h:organisationID>{hpio}</h:organisationID>
-                                    <h:organisationName>{org_name}</h:organisationName>
-                                </h:accessingOrganisation>
-            </h:PCEHRHeader>"""
-        hdr = self.clean_template(header_templ).format(ihi=ihi,hpio=hpio,hpii=hpii,org_name=org_name,user_name=user_name)
-        time_templ = """
-    <h:timestamp xmlns:h="http://ns.electronichealth.net.au/pcehr/xsd/common/CommonCoreElements/1.0" xml:id="{{xmlid}}">
-              <h:created>{tim}</h:created>
-    </h:timestamp>"""
-        tim = self.clean_template(time_templ).format(tim=self.soap_date())
-        return self.soap(action,req,[('time',tim),('hdr',hdr)],[],url_tip=url_tip)
+class PCEHR(pcehr_transport.PCEHR_SOAP):
 
     def does_pcehr_exist(self,ihi,hpio,org_name,hpii,user_name):
+        """
+        test if a PCEHR exists. Only called once for a given patient
+        hpio: HPI-O of the organisation making this query
+        org_name: organisation name (without address)
+        hpii: HPI-I of the user
+        user_name: full text name of the user e.g "Dr. Ian Haywood"
+        returns: DENIED, ACCESS, WITH_PASSWORD
+        """
         req = '<p:doesPCEHRExist xmlns:p="http://ns.electronichealth.net.au/pcehr/xsd/interfaces/PCEHRProfile/1.0"></p:doesPCEHRExist>'
         return self.do_action('doesPCEHRExist','doesPCEHRExistRequest',ihi,hpio,org_name,hpii,user_name,req)
+    
+    def gain_pcehr_access(self,ihi,hpio,org_name,hpii,user_name,password=None):
+        """
+        Apply for acess to the PCEHR in this session
+        Needs to be called for each session of access
+        Parameters same meaning as does_pcehr_exist except password
 
+        Returns a Record object, or the values DENIED or WITH_PASSWORD
+        the Record remembers the ihi,hpio,org_name,hpii and user_name from this request. 
+        """
+        pass
+
+
+class Record(object):
+
+    def search(self,begin=None,finish=None,types=None):
+        """
+        Search the PCEHR for documents
+        begin: datetime.Date no results before this date
+        finish: no results after this date
+        types: documents must be one of these types. None means any type
+        if multiple search paramters they are logically ANDed: all must match
+
+        response is a list of Documents
+        """
+        pass
+
+    def upload(self,cda,metsdata):
+        """
+        Uploads a PCEHR document
+        cda: CDA XML as a string
+        metadata: "IHE metadata" as an XML fragment
+        Must be for this same patient
+        Attachments not supported.
+
+        CDA will the signed by this function, CDA and signature are then packaged into a ZIP
+        file as per the "CDA Package" specification, and then uploaded to the PCEHR
+        """
+        pass
+
+class Document(object):
+    """
+    Represents a document on search results
+
+    Object read-only attributes
+    hpio: HPI-O of the authoring organisation
+    org_name: organisation name (without address)
+    hpii: HPI-I of the author
+    user_name: full text name of the author e.g "Dr. Ian Haywood"
+    type: document type, one of constants used in searching
+    """
+
+    def get_cda(self):
+        """
+        returns the CDA XML as a string. For search results this should download the CDA text itself.
+        Attachments currently not supported.
+        """
+        pass
 
 if __name__ == '__main__':
     soaper = PCEHR_SOAP()

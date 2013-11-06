@@ -39,7 +39,15 @@ CONSULT_AUDIT=11
 CONSULT_INBOX=12
 
 AUDIT_FILE_IMPORT=20
-AUDIT_PCEHR=36  # need to add
+AUDIT_PCEHR=36
+
+def html(esc):
+    esc = esc.replace("&","&amp;")
+    esc = esc.replace("<","&lt;")
+    esc = esc.replace(">", "&gt;")
+    esc = esc.replace("\"","&quot;")
+    return esc
+
 
 import soap, socket, logging, sys
 
@@ -100,6 +108,14 @@ class DBWrapper:
         self.listeners[channel] = func
         self.__cmd("LISTEN {}".format(channel),())
 
+    def notify(self,channel,param,cur=None):
+        to_close = False
+        if cur is None:
+            cur = self.conn.cursor()
+            to_close = True
+        cur.execute("NOTIFY %s, '%s'" % (channel,param))
+        if to_close: cur.close()
+
     def wait_events(self):
         pfd = self.conn.fileno()
         time.sleep(1)
@@ -112,8 +128,8 @@ class DBWrapper:
                     notify = self.conn.notifies.pop()
                     logging.debug("Got NOTIFY: {} {} {}".format(notify.pid, notify.channel, notify.payload))
                     self.__events.add((notify.channel,notify.payload))
-            elif pdf in xfd:
-                logging.error("fd {} returned error condition".format(pdf))
+            elif pfd in xfd:
+                logging.error("fd {} returned error condition".format(pfd))
                 sys.exit(1)
             else:
                 # timeout
@@ -134,18 +150,18 @@ class DBWrapper:
         self.listeners[evt] (1234,payload)
 
     def get_patients_to_upload(self):
-        return self.__query("select * from contacts.vwpatients where (ihi is null and pcehr_consent='c') or pcehr_consent='h'")
+        return self.__query("select * from contacts.vwpatients where pcehr_consent='c' or pcehr_consent='h'")
     
     def patients_died_to_upload(self):
-        return self.__query("select * from contacts.vwpatients where ihi is not null and deceased and pcehr_consent='c'")
+        return self.__query("select * from contacts.vwpatients where ihi is not null and deceased and (pcehr_consent='c' or pcehr_consent='h')")
 
     def patient_mark_death_informed(self,fk_patient,logentry):
         cur = self.conn.cursor()
         cur.execute("update clerical.data_patients set ihi_updated=now(),pcehr_consent='d' where pk=%s",(fk_patient))
         fk_consult = self.make_consult(cur,fk_patient)
-        self.make_audit(cur,fk_consult,logentry)
+        self.make_audit(cur,fk_consult,logentry,fk_patient)
         cur.close()
-        self.conn.commit() 
+        self.conn.commit()
 
     def get_scripts(self,script_no):
         return self.__query("select * from clin_prescribing.vwprescribeditems where escript_uploaded is false and script_number = %s",(script_no,))
@@ -163,7 +179,7 @@ where c.pk = %s and c.fk_staff = s.fk_staff"""
         cur = self.conn.cursor()
         cur.execute("update clin_prescribing.prescribed set escript_uploaded='t' where pk=%s",(script["fk_prescribed"],))
         fk_consult = self.make_consult(cur,script['fk_patient'])
-        self.make_audit(cur,fk_consult,logentry)
+        self.make_audit(cur,fk_consult,logentry,script['fk_patient'])
         cur.close()
         self.conn.commit()
 
@@ -181,9 +197,10 @@ select value,note,fk_type,type,preferred_method from contacts.vwbranchescomms wh
 
     def set_ihi(self,fk_patient,ihi,logentry):
         cur = self.conn.cursor()
-        cur.execute("update clerical.data_patients set ihi=%s,ihi_updated=now(),pcehr_consent='c' where pk=%s",(ihi,fk_patient))
+        cur.execute("update clerical.data_patients set ihi=%s,ihi_updated=now(),pcehr_consent='v' where pk=%s",(ihi,fk_patient))
         fk_consult = self.make_consult(cur,fk_patient)
-        self.make_audit(cur,fk_consult,logentry)
+        self.make_audit(cur,fk_consult,logentry,fk_patient)
+        self.notify("ihi_update",fk_patient,cur)
         cur.close()
         self.conn.commit()  
                      
@@ -191,15 +208,46 @@ select value,note,fk_type,type,preferred_method from contacts.vwbranchescomms wh
         cur = self.conn.cursor()
         cur.execute("update clerical.data_patients set pcehr_consent='e' where pk=%s",(fk_patient,))
         fk_consult = self.make_consult(cur,fk_patient)
-        self.make_audit(cur,fk_consult,logentry)
+        self.make_audit(cur,fk_consult,logentry,fk_patient)
         self.make_task(cur,fk_consult,"Problem with IHI for patient",logentry)
-        cur.close()
+        self.notify("ihi_update",fk_patient,cur)
+        cur.close()   
         self.conn.commit()
 
-    def log_simple_entry(self,fk_patient,error):
+    def ihi_duplicate_check(self,ihi,fk_patient):
+        """chech for duplicate IHI, 
+        if duplicate, log errors and return False
+        otherwise true"""
+        cur = self.conn.cursor()
+        cur.execute("select fk_patient, wholename, birthdate from contacts.vwpatients where fk_patient <> %s and ihi = %s", (fk_patient, ihi))
+        r = cur.fetchall()
+        if len(r) == 0: return True
+        other_fk_patient = r[0][0]
+        other_patient_details = "%s DOB: %s" % (r[0][1], r[0][2].strftime("%d/%m/%Y"))
+        cur,execute("select wholename, birthdate from contacts.vwpatients where fk_patient = %s",(fk_patient,))
+        other_patient_details = "%s DOB: %s" % (r[0][1], r[0][2].strftime("%d/%m/%Y"))
+        r = cur.fetchall()
+        patient_details = "%s DOB: %s" % (r[0][0], r[0][1].strftime("%d/%m/%Y"))
+        fk_consult = self.make_consult(cur,fk_patient)
+        self.make_audit(cur,fk_consult,"Medicare returned IHI %s, but same %s already in darabase" % (ihi,other_patient_details),fk_patient)
+        self.make_task(cur,fk_consult, "Duplicate IHIs","Medicare returned IHI %s for patient %s, but our database has the same IHI for patient %s" % (ihi,patient_details,other_patient_details))
+        fk_consult = self.make_consult(cur,other_fk_patient)
+        self.make_audit(cur,fk_consult,"Medicare returned the same IHI but for another patient %s" % patient_details,other_fk_patient)
+        # Medicare specs require both patients IHIs be disabled
+        cur.execute("update clerical.data_patients set pcehr_consent='e' where pk=%s",(fk_patient,))
+        cur.execute("update clerical.data_patients set pcehr_consent='e' where pk=%s",(other_fk_patient,))
+        self.notify("ihi_update",fk_patient,cur)
+        self.notify("ihi_update",other_fk_patient,cur)
+        cur.close()
+        self.conn.commit()
+        return False
+        
+
+    def log_simple_entry(self,fk_patient,error,fk_row=None,linked_table='clerical.data_patient'):
         cur = self.conn.cursor()
         fk_consult = self.make_consult(cur,fk_patient)
-        self.make_audit(cur,fk_consult,error)
+        if fk_row is None: fk_row = fk_patient
+        self.make_audit(cur,fk_consult,error,fk_patient,linked_table=linked_table)
         cur.close()
         self.conn.commit()
 
@@ -210,8 +258,8 @@ select value,note,fk_type,type,preferred_method from contacts.vwbranchescomms wh
         cur.execute("insert into clin_consult.consult (fk_staff,fk_patient,fk_type,consult_date) values(%s,%s,%s,now()) returning (pk)",(self.staff["fk_staff"],fk_patient,fk_type))
         return cur.fetchone()[0]
 
-    def make_audit(self,cur,fk_consult,logentry,fk_audit_action=AUDIT_PCEHR):
-        cur.execute("insert into clin_consult.progressnotes (fk_consult,fk_section,fk_audit_action,notes) values (%s,0,%s,%s)",(fk_consult,fk_audit_action,logentry))
+    def make_audit(self,cur,fk_consult,logentry,fk_row=0,fk_audit_action=AUDIT_PCEHR,linked_table='clerical.data_patients'):
+        cur.execute("insert into clin_consult.progressnotes (fk_consult,linked_table,fk_row,fk_section,fk_audit_action,notes) values (%s,%s,%s,0,%s,%s)",(fk_consult,linked_table,fk_row,fk_audit_action,logentry))
     
     def make_task(self,cur,fk_consult,title,description):
         cur.execute("insert into clerical.tasks (related_to,fk_staff_filed_task,fk_role_can_finalise) values (%s,%s,7) returning (pk)",(title,self.staff["fk_staff"]))

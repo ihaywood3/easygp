@@ -126,8 +126,27 @@ Public Sub Init()
    lblMeasure.text = " Deceased "
    chkDeceased.width = txtOccupation.Width
    txtSearch.SetFocus()
+   modDBConnect.Register_Listener("ihi_update", Me)
    
 End
+
+Public Sub Form_Close()
+   
+  modDBConnect.Unregister_Listener("ihi_update", Me) 
+   
+End
+
+Public Sub Notify(its_us As Boolean, param As String)
+   Dim i As Integer
+   
+   If its_us Then Return
+   Try i = CInt(param)
+   If i = fk_patient Then
+      form_billing.Reload_IHI(fk_patient)
+   Endif
+   
+End
+
 
 Public Sub Combos_Fill()
    'fixme put me in eg editarea helpers
@@ -579,6 +598,8 @@ End
 
 Public Sub Save()
    'FIXME mixture of really old and newer cRow code in this routine
+   Dim new_ihi As String
+   Dim old_ihi As String
    Dim person As CRow
    Dim patient As CRow
    Dim address As CRow
@@ -590,6 +611,7 @@ Public Sub Save()
    Dim sSearchText As String
    Dim occupational_history As CRow 
    Dim Currentconsult As CConsult
+   Dim notes As String
    
    If Vbox_EditArea.Padding = 0 Then Return     'no padding = no data
    If Not Patient_Valid() Then Return
@@ -628,7 +650,6 @@ Public Sub Save()
    patient!medicare_number = form_billing.Medicare_Number()
    patient!medicare_ref_number = form_billing.Medicare_Reference_number()
    patient!medicare_expiry_date = modUtil.Medicare_Create_Expiry_date(form_billing.Medicare_Card_Expiry_Date()) 'add the last day of the month
-   patient!ihi = form_billing.Patient_IndividualHealthIdentifier()    'fixme put in ?date for last updated.
    patient!pcehr_consent = form_billing.PCEHR_Consent() 
    patient!veteran_number = form_billing.Veteran_Card_Number()
    If patient!veteran_number <> "" Then
@@ -757,7 +778,30 @@ Public Sub Save()
       End If
    Next
    patient!fk_person = person!fk_person
+   '-------------------------------------------------------------------------------------------------------------------------
+   ' we need to do some auditing on whether the IHI has changed
+   new_ihi = form_billing.Patient_IndividualHealthIdentifier()
+   patient!ihi = new_ihi
+   If Not IsNull(new_ihi) Then
+      patient!ihi_updated = "now()"
+   Else
+      patient!pcehr_consent = "n" ' null IHI means consent status must be reset 
+   Endif
+   old_ihi = form_billing.Previous_IHI(new_ihi)
    patient.Save("clerical.data_patients", "fk_patient")
+   fk_patient = patient!fk_patient
+   If new_ihi <> old_ihi And If Not (IsNull(new_ihi) And IsNull(old_ihi)) Then
+      Currentconsult = New CConsult(patient.AsCollection(), const.ConsultType_AuditNote, True)
+      Currentconsult.Set(const.ConsultType_AuditNote, "IHI audit")
+      If IsNull(new_ihi) Then
+         notes = Subst$("Old IHI &1 being deleted manually", old_ihi)
+      Else If IsNull(old_ihi) Then
+         notes = Subst$("Manual entry of new IHI &1 [status: unknown, record status: unknown]", new_ihi)
+      Else 
+         notes = Subst$("IHI changed by manual entry from &1 to &2 [status: unknown, record status: unknown]", old_ihi, new_ihi)
+      Endif
+      modAudit.MakeAudit(Currentconsult, const.cAuditAction_PCEHR, "clerical.data_patients", patient!fk_patient, 0, notes)
+   Endif
    '-------------------------------------------------------------------------------------------------------------------------
    'Now, check if the occupation is recorded in the main clin_history.occupational_history table
    'one of the rare times a clerical staff can write to the clinical record

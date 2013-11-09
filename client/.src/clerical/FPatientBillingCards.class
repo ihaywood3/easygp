@@ -37,6 +37,8 @@ Private Payer As Collection
 Private billing_levels As Collection
 Private sParentForm As String          'the name of the parent form e.g FRecordVisit
 Private pcehrconsent As String[]        'n = Not asked yet, c = consented, x = Not eligible(tourist, asylum - seeker, etc), r = refused, e = Error
+Private old_ihi As String
+
 
 Public Function Preferred_Doctor() As Variant
    
@@ -117,9 +119,23 @@ End
 
 Public Function Patient_IndividualHealthIdentifier() As String
    
-   Return Trim(txtIndividualHealthIdentifier.text) 
+   If Trim(txtIndividualHealthIdentifier.Text) <> "" Then
+      Return "800360" & Trim(txtIndividualHealthIdentifier.text) 
+   Else
+      Return Null
+   Endif
+End
+
+Public Function Previous_IHI(new_ihi As String) As String
+   
+  Dim s As String
+  
+  s = old_ihi
+  old_ihi = new_ihi 
+  Return s
    
 End
+
 
 Public Function veteran_specific_condition() As String
    '---------------------------------------------------
@@ -200,13 +216,15 @@ Public Sub Init(VB As VBox, Optional sPF As String)
    pcehrconsent.Add("r", 4)  'patient controlled electronic health record   r = refused, 
    pcehrconsent.Add("h", 5)  ' details cHange
    pcehrconsent.Add("d", 6)  ' Dead
+   pcehrconsent.Add("v", 7)
    cmbPCEHRConsent.Add("Not asked")
    cmbPCEHRConsent.Add("Error")
-   cmbPCEHRConsent.Add("Consented")
+   cmbPCEHRConsent.Add("Consented, for upload")
    cmbPCEHRConsent.Add("Not eligible (e.g. tourist)")
    cmbPCEHRConsent.Add("Refused")
-   cmbPCEHRConsent.Add("Details changed")
-   cmbPCEHRConsent.Add("Dead")
+   cmbPCEHRConsent.Add("Details changed, for upload")
+   cmbPCEHRConsent.Add("Verified/Deceased")
+   cmbPCEHRConsent.Add("Verified/Active")
    cmbPCEHRConsent.width = lblMeasure.Width
    cmbPreferredDoctor.width = lblMeasure.Width
    cmbVeteranCardTypes.width = lblMeasure.Width
@@ -229,6 +247,27 @@ Public Sub Form_Close()
    ParentForm_Vbox_EditArea = Null
    
 End
+
+Public Sub Reload_IHI(fk_patient As Integer)
+   
+  Dim coll As Collection
+  Dim x As Integer
+  
+  bExit = True
+  coll = modContactsDBI.Patient_Get_Using_PK(fk_patient)
+  txtIndividualHealthIdentifier.text = coll!ihi
+  old_ihi = coll!ihi
+  ' this is the best method IMHO (Ian)
+   For x = 0 To pcehrconsent.Max
+      If pcehrconsent[x] = coll!pcehr_consent Then   'n = Not asked yet, c = consented, x = Not eligible(tourist, asylum - seeker, etc), r = refused, e = Error
+         cmbPCEHRConsent.index = x
+         Break
+      End If   
+   Next
+   bExit = False
+   
+End
+
 
 Public Sub EditArea_Recolour(icolor As Integer)
    
@@ -260,6 +299,7 @@ Public Sub EditArea_Clear()
    fk_payer_person = 0
    fk_payer_branch = 0
    payer = Null
+   patient = Null
    bExit = False
    
 End
@@ -314,7 +354,8 @@ Public Sub Display_Patient_Data(P As Collection)
       ' Try txtConcessionExpiryDate.text = P!concession_card_expiry_date
       ' Try txtConcessionNumber.text = P!concession_card_number
    Endif
-   txtIndividualHealthIdentifier.text = P!ihi
+   txtIndividualHealthIdentifier.text = Right$(P!ihi, -6)
+   old_ihi = P!ihi
    ' this is the best method IMHO (Ian)
    For x = 0 To pcehrconsent.Max
       If pcehrconsent[x] = P!pcehr_consent Then   'n = Not asked yet, c = consented, x = Not eligible(tourist, asylum - seeker, etc), r = refused, e = Error
@@ -623,8 +664,20 @@ Public Sub EditArea_TextBox_Change()
             If cmbPCEHRConsent.index = -1 Or cmbPCEHRConsent.index = const.pcehrconsent_notconsented Then
                cmbPCEHRConsent.index = const.pcehrconsent_consented 'consented
             Endif
+
          Endif
    End Select
+   EditArea_Notify_DataChange()
+   
+End
+
+Public Sub EditArea_Combo_Change()
+  
+  If bexit Then Return 
+  If Last.tag <> "pcehr consent" Then Return
+  If cmbPCEHRConsent.Index = 6 Or cmbPCEHRConsent.Index = 7 Or cmbPCEHRConsent.Index = 1 Then
+    Stop Event
+  Endif 
    
 End
 
@@ -635,11 +688,15 @@ Public Function Valid_Data() As Boolean
    'Both those forms have this form embedded
    'fixme add vaidating the medicare card number
    '------------------------------------------------------
+   Dim other_patient As Collection
+   Dim s As String
+   Dim fk_patient As Integer
+   Dim cc As CConsult
    
    If Trim(txtMedicareNumber.text) <> "" Then
       If modUtil.Medicare_Number_Check(Trim(txtMedicareNumber.text)) = "*INVALID*" Then
          Message.Info("Invalid medicare number")
-         Return
+         Return False
          '  Else
          '    modUtil.Medicare_Number_Format(txtMedicareNumber.text)
       Endif
@@ -648,40 +705,64 @@ Public Function Valid_Data() As Boolean
       If cmbVeteranCardTypes.index = -1 Then
          Message.Info("Please select the type of veteran card before saving")
          cmbVeteranCardTypes.SetFocus
-         Return 
+         Return False
       Endif
    Endif
    If txtMedicareCardExpiryDate.text <> "" Then              'only validate if user has entered something
       If Not IsDate(modUtil.Medicare_Create_Expiry_date(txtMedicareCardExpiryDate.text)) Then
          txtMedicareCardExpiryDate.SetFocus()
-         Return
+         Return False
       Endif
    Endif
     If txtConcessionNumber.text <> "" Then
        If cmbCentreLinkCardTypes.index = -1 Then
           Message.info("Please select the type of concession card before saving")
-          Return
+          Return False
        Endif
     Endif
    If cmbCentreLinkCardTypes.index > 0 Then 'allow none or -1
       If txtConcessionNumber.text = "" Then
          Message.info("Please supply a concession card number before saving")
          txtConcessionNumber.SetFocus()
-         Return
+         Return False
       End If
    Endif
    If txtConcessionExpiryDate.text <> "" Then                 'only validate if user has entered something
       If Not IsDate(txtConcessionExpiryDate.text) Then
          txtConcessionExpiryDate.SetFocus()
-         Return
+         Return False
       Endif
    Endif
    If Trim(txtIndividualHealthIdentifier.text) <> "" Then
-      If modPCEHR.checkIdentifier(txtIndividualHealthIdentifier.text) = False Then
+      s = Patient_IndividualHealthIdentifier()
+      If Not modPCEHR.checkIdentifier(s) Then
          Message.Info("Invalid Individual Health Identifer Number")
          txtIndividualHealthIdentifier.SetFocus()
-         Return
-      End If   
+         Return False
+      End If 
+      ' specific checks: not allowed to have another patient in DB with same number
+      fk_patient = -1
+      If Not IsNull(patient) And If patient.Exist("fk_patient") Then fk_patient = patient!fk_patient
+      other_patient = modPCEHR.Check_Unique_IHI(Patient_IndividualHealthIdentifier(), fk_patient)
+      If Not IsNull(other_patient) Then
+        bExit = True
+        cmbPCEHRConsent.Index = 1 ' error
+        bExit = False
+        s = "Another patient "
+        s &= other_patient!wholename & " DOB: " & other_patient!birthdate
+        s &= " has the same IHI " & Patient_IndividualHealthIdentifier()
+        Message.Error(s)
+        modPCEHR.Set_PCEHR_Error(other_patient!fk_patient)
+        cc = New CConsult(other_patient, const.ConsultType_AuditNote, True)
+        cc.Set(const.ConsultType_AuditNote, "IHI error")
+        s = "The IHI is being deactivated because of duplication "
+        If Not IsNull(patient) And If patient.Exist("wholename") Then
+           s &= "other patients is " & patient!wholename & " DOB: " & patient!birthdate
+        Endif
+        modAudit.MakeAudit(cc, const.cAuditAction_PCEHR, "clerical.data_patients", other_patient!fk_patient, 0, s)
+        modDBConnect.CommitTrans()
+        Return False
+      End If
    End If 
    Return True
    

@@ -96,16 +96,16 @@ def last_file(g):
 
 def get_xml_etree():
     global release_date
-    f = last_file("pbs*.xml")
+    f = last_file("sd*.xml")
     if not f:
-        f = last_file("pbs*.zip")
+        f = last_file("*.zip")
         if f:
             os.system("unzip -Laq '%s'" % f)
-            f = last_file("pbs*.xml")
+            f = last_file("sd*.xml")
     if f is None:
         print >>sys.stderr, "can't find pbs-DATE.xml"
         sys.exit(1)
-    m = re.match('pbs-([0-9\-]+).*\.xml',f)
+    m = re.match('sd-([0-9\-]+)-.*\.xml',f)
     release_date = m.group(1)
     return parse(f)
 
@@ -265,48 +265,52 @@ def import_step1(t):
                 print
 
 # STEP TWO: import the human-modified new entities from stdin .
+
+def process_step2_line(drug,lineno,sct_done):
+    if "sct" in drug and not drug["sct"] in sct_done:
+        sct_done.add(drug["sct"])
+        r = query("select 1 from drugs.product where sct='%s'" % drug["sct"])
+        if len(r) > 0:
+            print >>sys.stderr, "SCT %s already exists, skipping" % drug["sct"]
+        else:
+            if drug["free_comment"] == "":
+                drug["free_comment"] = "NULL"
+            else:
+                drug["free_comment"] = "$$%s$$" % drug["free_comment"]
+            au = drug["amount_unit"]
+            au = au.lower()
+            if au == 'g' or au == "gm": 
+                drug["amount_unit"] = 35
+            elif au == 'ml': 
+                drug["amount_unit"] = 26
+            elif au == "":
+                drug["amount_unit"] = "NULL"
+            else:
+                print >> sys.stderr, "amount %s not recognised at line %d" % (au, lineno)
+                sys.exit(1)
+            if drug["amount"] == "": 
+                drug["amount"] = "NULL"
+            r = query("select pk from drugs.form where form='%s'" % drug["form"])
+            if len(r) != 1:
+                print >>sys.stderr,"can't recognise drug form %s at line %d" % (drug["form"],lineno)
+                sys.exit(1)
+            drug["fk_form"] = r[0]["pk"]
+            drug["uuid"] = query("select uuid_generate_v4() as uuid")[0]["uuid"]
+            cmd("""
+insert into drugs.product (pk,generic,fk_form,free_comment,units_per_pack,pack_size,amount,amount_unit,original_pbs_name, sct, atccode, strength)
+values
+('%(uuid)s', $$%(generic)s$$, %(fk_form)d, %(free_comment)s, 
+%(units_per_pack)s, %(pack_size)s, %(amount)s, %(amount_unit)s, $$%(original_pbs_name)s$$, '%(sct)s', '%(atc)s',$$%(strength)s$$)
+""" % drug)
+
 def import_step2():
     drug = {}
     lineno = 1
     sct_done = set()
     for l in sys.stdin.readlines():
         if l.strip() == "":
-            if "sct" in drug and not drug["sct"] in sct_done:
-                sct_done.add(drug["sct"])
-                r = query("select 1 from drugs.product where sct='%s'" % drug["sct"])
-                if len(r) > 0:
-                    print >>sys.stderr, "SCT %s already exists, skipping" % drug["sct"]
-                else:
-                    if drug["free_comment"] == "":
-                        drug["free_comment"] = "NULL"
-                    else:
-                        drug["free_comment"] = "$$%s$$" % drug["free_comment"]
-                    au = drug["amount_unit"]
-                    au = au.lower()
-                    if au == 'g' or au == "gm": 
-                        drug["amount_unit"] = 35
-                    elif au == 'ml': 
-                        drug["amount_unit"] = 26
-                    elif au == "":
-                        drug["amount_unit"] = "NULL"
-                    else:
-                        print >> sys.stderr, "amount %s not recognised at line %d" % (au, lineno)
-                        sys.exit(1)
-                    if drug["amount"] == "": 
-                        drug["amount"] = "NULL"
-                    r = query("select pk from drugs.form where form='%s'" % drug["form"])
-                    if len(r) != 1:
-                        print >>sys.stderr,"can't recognise drug form %s at line %d" % (drug["form"],lineno)
-                        sys.exit(1)
-                    drug["fk_form"] = r[0]["pk"]
-                    drug["uuid"] = query("select uuid_generate_v4() as uuid")[0]["uuid"]
-                    cmd("""
-insert into drugs.product (pk,generic,fk_form,free_comment,units_per_pack,pack_size,amount,amount_unit,original_pbs_name, sct, atccode, strength)
-values
-('%(uuid)s', $$%(generic)s$$, %(fk_form)d, %(free_comment)s, 
-%(units_per_pack)s, %(pack_size)s, %(amount)s, %(amount_unit)s, $$%(original_pbs_name)s$$, '%(sct)s', '%(atc)s',$$%(strength)s$$)
-""" % drug)
-                    drug = {}
+            process_step2_line(drug,lineno,sct_done)
+            drug = {}
         else:
             s = l.split(":", 1)
             if len(s) != 2:
@@ -316,6 +320,7 @@ values
                 s[1] = s[1].strip()
                 drug[s[0]] = s[1]
         lineno += 1
+    if "sct" in drug: process_step2_line(drug,lineno,sct_done)
                 
 
 # STEP THREE: update/create new brands where required        
@@ -334,10 +339,13 @@ def verify_brands(t):
                 if len(r) == 0:
                     r = query("select pk,brand,sct,price from drugs.brand where fk_product='%s' and fk_company='%s'" % (fk_product,code))
                     if len(r) > 0:
-                        print "WARNING: drug has existing brands from this manufacturer, we are adding more"
+                        print "--WARNING: drug has existing brands from this manufacturer, we are adding more"
                         for i in r:
-                            print "existing brand %s %s %s %s" % (i['brand'],i["pk"], i["sct"],i["price"]) 
-                            print "update drugs.brand set brand=$$%s$$, price='%s'::money,sct='%s',current=true where pk='%s';" % (brand["brand"],brand["price"],brand["sct"],i["pk"]) 
+                            print "--existing brand %s %s %s %s" % (i['brand'],i["pk"], i["sct"],i["price"]) 
+                            print "--update drugs.brand set brand=$$%s$$, price='%s'::money,sct='%s',current=true where pk='%s';" % (brand["brand"],brand["price"],brand["sct"],i["pk"]) 
+                            r = query("select uuid_generate_v4() as uuid")
+                            pk = r[0]['uuid']
+                            print "--insert into drugs.brand (pk, fk_product, sct, brand, fk_company, from_pbs, price, current) values ('%s', '%s', '%s', '%s', '%s', true, '%s'::money, true);" % (pk, fk_product, brand['sct'], brand['brand'], code, brand['price'])
                     else:
                         r = query("select uuid_generate_v4() as uuid")
                         pk = r[0]['uuid']

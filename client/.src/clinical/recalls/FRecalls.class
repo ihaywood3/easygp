@@ -44,7 +44,6 @@ Private fk_table_row As Integer        'fixme fim my name = e.g fk_document
 Private schema As String
 Private table As String
 Private Inclusions_EditArea As Collection
-
 Public Sub set_embedded(flag As Boolean, embeddedinform As String)
    '--------------------------------------------------
    'If this form is embeded from another form set flag
@@ -116,14 +115,13 @@ Public Sub EditArea_Clear()
    bExit = False
    
 End
-
+'Public Sub Init(cons As CConsult, ac As CConsult)
 Public Sub Init(cons As CConsult)
    '---------------------------------------------------------
    'Do all the form initialisation stuff like adding stuff to
    'combo's, setting numbers of columns in lists, displaying
    'the patients contact details
    '---------------------------------------------------------
-   
    currentconsult = Cons         'set current consult
    Layout_Controls()
    Settings_Load()         'load settings for this form
@@ -150,9 +148,10 @@ Public Function Consult_Set_Null()
    
 End
 
-Public Sub Save()
+Public Function Save() As Boolean 'the flag is used in the inbox only
    '--------------------------------------------------------------
    'Save the current edit area recall and updates the recalls list
+   'FIXME THIS IS REALLY OLD CODE AND NEEDS REWRITING using crow
    'Need this amount of info to save
    'For table clin_recalls.recalls
    '     due date
@@ -176,10 +175,12 @@ Public Sub Save()
    
    Dim recall As New Collection
    Dim sProgressNote As String
-   
-   FClinical.Enable_Save_Button(False)                           'stop clicking twice FIXME ?does not work
-   If Vbox_EditArea_Outer.Padding = 0 Then Goto Enable_Save
-   If Not Valid_Recall() Then Goto Enable_Save
+   Dim bNewRecall As Boolean 
+   Dim audit_notes As String
+   Dim audit_action As String
+   ' FClinical.Enable_Save_Button(False)                           'stop clicking twice FIXME ?does not work
+   If Vbox_EditArea_Outer.Padding = 0 Then Return   
+   If Not Valid_Recall() Then Return
    
    ' -----------------------------------------------------------
    ' Now load a fresh collection with data from the widgets
@@ -202,15 +203,6 @@ Public Sub Save()
    If fk_pasthistory <> 0 Then
       recall!fk_pasthistory = fk_pasthistory
    End If
-   '  recall!additional_text = FAdditionalNotesEditor.teNotes.text 'always, even if empty string 'could have been deleted
-   'Temporarily put in current user as person to undertake recall but this
-   'may not be the case and code will be inserted to fix this
-   'FIXME RICHARDs
-   ' If IsNull(recall!fk_progressnote) Then
-   '    fk_progressnote = -1
-   ' Else
-   '    fk_progressnote = recall!fk_progressnote
-   ' End If
    '--------------------------------------------------------------------------------------
    'If progress notes exist, then they will be edited if this save is occurring during the
    'same consultation it was created
@@ -218,6 +210,7 @@ Public Sub Save()
    sProgressNote = "<B> Recall logged:</B> for " & txtRecallFor.Text & " due on " & Format(Val(txtdate.text), "dd/mm/yyyy")
    modDBConnect.BeginTrans()
    recall!fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNote, cProgressNote_Section, fk_progressNote, txtHealthIssue.text, fk_pasthistory, False)
+   If pk_recall < 0 Then bNewRecall = True  'fixme fix this whole subroutine, crap code
    pk_recall = modRecallsDBI.Save(currentconsult, pk_recall, recall)
    If Inclusions_EditArea.count Then
       modRecallsDBI.Recalls_Inclusions_Save(pk_recall, Inclusions_EditArea)
@@ -226,8 +219,14 @@ Public Sub Save()
    If fk_table_row Then
       modInboxDBI.Link_Document_Action(Schema, table, pk_recall, fk_table_row)
    Endif
+   If bNewRecall Then audit_action = "recall logged" Else audit_notes = "recall edited"
+   audit_notes = txtRecallFor.text & " due on " & txtDate.Text
+   If Not modAudit.MakeAudit(currentconsult, audit_action, "clin_recalls.recalls", pk_recall, const.cSection_Recalls, audit_notes) Then
+      modDBConnect.RollBack
+      Goto Finished
+      Return
+   Endif
    modDBConnect.CommitTrans()
-   
    If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then
       FClinical.Refresh_Section(const.cSection_Recalls) 'retrieve the data from the backend again.
       FClinical.Refresh_AllPreviousNotes()
@@ -237,14 +236,12 @@ Public Sub Save()
       FInbox.Previous_Notes_Refresh         'refresh the 'Context' tab in the inbox
       FInbox.Switch_tab(cTabInboxDocuments)  'switch back to the main documents list
    End If
+   Goto Finished
+   
+Finished:
    Application.Busy = 0
    ReLoad()                    'update the list under edit area to show recalls this consult, default to new edit
-   Goto Enable_Save
-   
-Enable_Save:
-   
-   FClinical.Enable_Save_Button(True)
-   Dec Application.Busy
+   Return True 
    
 End
 
@@ -985,7 +982,7 @@ Public Sub Calculate_Recall_Date(txt As Textbox)
    'FIXME put in weeks and days
    '--------------------------------------------
    
-     Dim iNumberOfMonths As Integer      'do not need both these declared, but do for readability
+   Dim iNumberOfMonths As Integer      'do not need both these declared, but do for readability
    Dim iNumberOfYears As Integer
    Dim iNumberOfDays As Integer
    Dim iNumberOfWeeks As Integer
@@ -1205,7 +1202,7 @@ Public Sub lvwInclusions_EditArea_Refresh(Inclusions As Collection)
    ' 'Called by  lvwInclusions_EditArea_Drop: Inclusions_EditArea collection
    ' '           Referral_Edit:Inclusions_Referral_This_Consult collection
    ' '---------------------------------------------------------------------
-  '
+   '
    ' Dim inclusion As Collection
    ' Dim sString As String
    ' Dim Request As Collection
@@ -1283,7 +1280,7 @@ Public Sub Recalls_Outstanding_Show()
    
 End
 
-Public Sub mnuTabbedListRecalls_click()
+Public Sub mnuRecallsInbox_click()
    '-----------------------------------------------------------------
    'User has clicked on the recalls list, execute the various options
    'e.g delete the recall, mark it completed, reschedule etc
@@ -1321,10 +1318,10 @@ Public Sub cvwRecalls_Menu()
    '-------------------------------------------------------
    
    If cvwRecalls.count Then
-      mnuTabbedListRecalls_ViewRecallHistory.enabled = False
-      mnuTabbedListRecalls_viewAuditTrail.enabled = False
-      mnuTabbedListRecalls_Completed.caption = "Mark Completed Repeat in " & ExistingRecall!interval & ExistingRecall!abbrev_text
-      mnuTabbedListRecalls.Popup()
+      mnuRecallsInbox_ViewRecallHistory.enabled = False
+      mnuRecallsInbox_viewAuditTrail.enabled = False
+      mnuRecallsInbox_Completed.caption = "Mark Completed Repeat in " & ExistingRecall!interval & ExistingRecall!abbrev_text
+      mnuRecallsInbox.Popup()
    Endif
    
 End
@@ -1381,4 +1378,10 @@ Public Sub Form_Close()
    
    Settings_Save()
    
+End
+
+Public Sub Form_Open()
+
+   
+
 End

@@ -1,20 +1,16 @@
 ' Gambas class file
 
-' Copyright (C) 2008-10 Dr. Richard Terry
-
+' Copyright (C) 2008-2013 Dr. Richard Terry
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
 ' (at your option) any later version.
-
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY; without even the implied warranty of
 ' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ' GNU General Public License for more details.
-
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
 '------------------------------------------------------------------------------------------
 ' PURPOSE        : Collect or display the metadata for a document
 '                : a document can by anything received eg hl7, letter, email, scan
@@ -67,7 +63,7 @@ Private terms As Collection
 Private patient As Collection
 Private Embedded_in_form_name As String
 Private bDocumentNotLinkedToPatient As Boolean
-Private Document As Collection
+Private D As Collection
 Private bReAllocating_Patient As Boolean 'if true, user in the indbox is reallocating the existing patient for the document to a new one.
 Public bReAllocating_Sender As Boolean
 Private member As Collection
@@ -88,6 +84,8 @@ Private Persons As Collection
 Public Person As Collection   'do not make this private
 Private iTimerCount As Integer
 Private PatientAsSender As Collection
+Private Document As Collection
+Private document_prior_to_edit As String 'the guts of the document details prior to an edit
 
 Public Sub Form_KeyPress()
    
@@ -105,6 +103,14 @@ End
 Public Sub Set_Comms(C As Collection)
    
    Comms = C
+   
+End
+
+Public Function Get_Document() As Collection
+   'return document to FarchiveDocuments.tbFile_Click() 
+   'to use in creating the audit trail
+   
+   Return d 
    
 End
 
@@ -145,18 +151,6 @@ Public Sub SetTxtFocus()
    
 End
 
-Public Sub Set_Documents_Collection(c As Collection)
-   
-   Documents = c
-   
-End
-
-Public Sub Set_CurrentDocument(c As Collection)
-   
-   document = c
-   
-End
-
 Public Sub Show_comms()
    '----------------------------------------------------
    'If they exist, show comms for the patient
@@ -183,7 +177,7 @@ Public Function Save() As Boolean
    If Embedded_in_form_name = "Scanning" Then
       Return SaveInScanning()
    Else
-      Return SaveNotInScanning()
+      Return SaveNotInScanning()  'could be FInbox or FClinical
    Endif
    
 End
@@ -201,13 +195,13 @@ Private Function SaveInScanning() As Boolean
    'FIXMe check the md5sum is actually working on a file, also use the modtutil.md5sum
    '------------------------------------------------------------
    
-   Dim d As New Collection
+   ' Dim d As New Collection
    Dim staff_members As Collection
    Dim bSuccess As Boolean                'if true the save succeeded
    Dim md5Output As String
    
    If Not Valid_Document() Then Return    'returns False
-   
+   D = New Collection
    Inc Application.Busy
    
    If cmbStaffType.index <> -1 Then              'If document sent to one or more staff members, get all staff
@@ -215,6 +209,7 @@ Private Function SaveInScanning() As Boolean
    End If
    d!fk_staff_filed_document = modDBConnect.currentUser!fk_staff
    d!date_created = Val(txtDocumentDate.text)
+   d!imported_time = Now()                      'inserted 10/2013 to allow better audit trail (the default was Now() in backend so can't do the audit text properly without this now
    d!fk_patient = fk_patient
    Select Case Contact_Type
       Case const.contacttype_organisation
@@ -244,7 +239,6 @@ Private Function SaveInScanning() As Boolean
       d!incoming_referral = False
    Endif
    modDBConnect.BeginTrans()
-   
    '------------------------------------------------------------------------------
    'Send to any staff whose type eg general practitioner, matches the cmbstafftype
    'If sending to all staff, have to make a copy of the document for all staff
@@ -305,42 +299,58 @@ Private Function SaveNotInScanning() As Boolean
    'documents = the old collection, set by form using this module
    'Documents are never created in this module
    'Returns true if successful
-   'if this save is from an exiting document:
-   '   documents = the collection of old documents
-   '   pk_document = key to the documents collection
-   '   only either new data or changes collected in collection d
-   'FIXME: put back in audit trail on document
-   '------------------------------------------------------------
+   'Data in FMetdata can be
+   '1) Passed from the FInbox - in which case document is in the backend but not concluded
+   '2) Passed from Fclinical - in which case the data is in the backend and can be either
+   '                           i) Not filed i.e not concluded
+   '                           ii) Filed and being edited
+   '-------------------------------------------------------------------------------------
    
-   Dim d As New Collection
    Dim staff_members As Collection
    Dim bSuccess As Boolean = True               'if true the save succeeded
+   Dim sProgressNotes As String                 'audit notes for the progress notes
+   Dim D As New Collection  
    
    If Not Valid_Document() Then Return
    Inc Application.Busy
-   If cmbStaffType.index <> -1 Then
-      Message.Info("IF THIS IS SHOWING STOP AND CHECK WITH RICHARD")
-      Staff_Members = modContactsDBI.Staff_Get() 'refresh the staff list,could have just employed someone!!!!!
+   If cmbStaffType.index <> -1 Then                                    'fixme - remove?
+      Message.Info("IF THIS IS SHOWING STOP AND CHECK WITH RICHARD")   'fixme - remove?
+      Staff_Members = modContactsDBI.Staff_Get()                       'fixme - remove?'refresh the staff list,could have just employed someone!!!!!
    End If
-   '-----------------------------------------------------------------------------------------------
-   'This document has been previously saved to the backend via the clerical module, or incoming hl7
-   'so it is being concluded in some form
-   '-----------------------------------------------------------------------------------------------
-   d!concluded = True
-   d!pk_document = pk_document
-   d!fk_lu_display_as = Get_Display_Style()
-   d!html = Document_HTML             'not displayed in this form, but by parent see Document_HTML_Set()
-   d!tag_user = Trim(txtUserObservationName.text)
-   d!date_created = Val(txtDocumentDate.text)
+   modDBConnect.BeginTrans()                                           'a noop to remind us we are starting data saving
+   If Embedded_in_form_name = "FClinical"                                        'User has loaded metadata from FClinic
+      If Document!concluded = True Then                                          'if editing from users notes, audit what's happening before/after
+         sProgressNotes = modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes("document metadata edited", document) & "<HR>"
+         sProgressNotes &= document_prior_to_edit
+         sProgressNotes &= "<HR><B>After being edited</B><BR>"
+         sProgressNotes &= "<B>Type:&nbsp;</B>" & txtDocumentTag.text & "<BR>"
+         sProgressNotes &= "<B>Tag&nbsp;&nbsp;:&nbsp;</B>" & txtUserObservationName.text & "<BR>"
+         sProgressNotes &= "<B>Date:&nbsp;</B>" & txtDocumentDate.text & "<HR>"
+         modAudit.MakeAudit(currentconsult, "document metadata edited", "documents.documents", pk_document, const.cSection_Documents, sProgressNotes)
+      Else                                                                       'Not an audit - this is the first time filed
+         document!tag_user = Trim(txtUserObservationName.text)                   'add the new tag user has added
+         If get_laterality() > const.LateralityNone Then                         'fix laterality
+            D!tag_user = Replace$(D!tag_user, ";", " (" & UCase(const.LateralityText[get_laterality()]) & ");") 'FIXME, NOT ACCURATE EG FOR xRAY PELVIS + xRAY hIP (RIGHT)
+         End If
+         sProgressNotes = modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes("file", document)
+         modAudit.MakeAudit(currentconsult, "viewed and filed document", "documents.documents", Document!pk_document, const.cSection_Documents, sProgressNotes)
+      End If   
+   End If   
+   D!pk_document = Document!pk_document   
+   D!concluded = True
+   D!fk_lu_display_as = Get_Display_Style()
+   D!html = Document_HTML             'not displayed in this form, but by parent see Document_HTML_Set()
+   D!tag_user = Trim(txtUserObservationName.text)
+   D!date_created = Val(txtDocumentDate.text)
    If chkReferral.Value = chkReferral.True Then
-      d!incoming_referral = True
+      D!incoming_referral = True
    Else
-      d!incoming_referral = False
+      D!incoming_referral = False
    Endif
    If get_laterality() > const.LateralityNone Then
-      d!tag_user = Replace$(d!tag_user, ";", " (" & UCase(const.LateralityText[get_laterality()]) & ");") 'FIXME, NOT ACCURATE EG FOR xRAY PELVIS + xRAY hIP (RIGHT)
+      D!tag_user = Replace$(D!tag_user, ";", " (" & UCase(const.LateralityText[get_laterality()]) & ");") 'FIXME, NOT ACCURATE EG FOR xRAY PELVIS + xRAY hIP (RIGHT)
    End If
-   modDBConnect.BeginTrans()
+   
    '-----------------------------------------
    'Is this document being sent to all staff? FIXME THIS SECTION SHOULD BE REMOVED,ONLY NEEDED IN SCANNING
    '-----------------------------------------
@@ -348,24 +358,27 @@ Private Function SaveNotInScanning() As Boolean
       Message.Info("IF THIS IS SHOWING STOP AND CHECK WITH RICHARD")
       For Each member In Staff_Members
          If member!fk_lu_staff_type = StaffTypes[cmbStaffType.index]!pk Then
-            d!fk_staff_destination = member!fk_staff
-            modArchiveDocumentsDBI.Save(d)
-            d.Remove("pk_document") 'don't want this key to force new copies
+            document!fk_staff_destination = member!fk_staff
+            modArchiveDocumentsDBI.Save(document)
+            document.Remove("pk_document") 'don't want this key to force new copies
          End If
       Next
    Else
       If bHas_sending_entity_fk_lu_request_type = False And rbDisplayAsResult.value = True Then
          modInboxDBI.SendingEntity_Set_fk_lu_request_type(document_types[cmbDocumentTypes.index]!pk, fk_sending_entity)
       End If
-      Document_SignOff(d)            'see documents.signed_off table > he who signed off this document
+      Document_SignOff(D)            'see documents.signed_off table > he who signed off this document
       bSuccess = True
-      d!pk_document = modArchiveDocumentsDBI.Save(d, documents[pk_document])
+      '    document!pk_document = modArchiveDocumentsDBI.Save(document, documents[pk_document])
+      D!pk_document = modArchiveDocumentsDBI.Save(d)
+      
    End If
    modDBConnect.CommitTrans()
    Dec Application.Busy
    Return bSuccess
    
 End
+
 
 Public Sub Get_Document_Type() As Integer
    
@@ -396,8 +409,9 @@ End
 Public Sub Set_Consult(cons As Cconsult)
    
    currentconsult = cons
-   
-   Try comms = modContactsDBI.person_comms_get(currentconsult!patient!fk_person)
+   If Embedded_in_form_name <> "FClinical" Then 'not needed, don't waste a call to the database
+      Try comms = modContactsDBI.person_comms_get(currentconsult!patient!fk_person)
+   End If   
    
 End
 
@@ -429,8 +443,8 @@ Public Sub InitGui_Display_As_Result()
    txtDocumentTag.ReadOnly = True
    lblDocumentTag.text = "Sender Name"
    iDisplay_As = const.Document_Display_As_Result
-   cmbDocumentTypes.index = -1
-   Try Guess_ResultType()
+  ' cmbDocumentTypes.index = -1
+ '  Try Guess_ResultType()
    
 End
 
@@ -574,7 +588,7 @@ Public Sub EditArea_Clear()
    '----------------------------
    'Clear the metadata edit area
    '----------------------------   
-
+   
    Dim bStaffLocked As Boolean
    Dim bPatientLocked As Boolean
    Dim bSenderLocked As Boolean
@@ -583,6 +597,7 @@ Public Sub EditArea_Clear()
    Dim iDocumentType As Integer = cmbDocumentTypes.Index
    Dim bDocumentTypeLocked As Boolean
    
+   document_prior_to_edit = ""
    bReAllocating_Sender = False
    If chkLockDocumentType.value = True Then                                   'save the flags of what is locked
       bDocumentTypeLocked = True
@@ -696,45 +711,26 @@ Public Sub Reallocate()
    
 End
 
-Public Sub Edit(old_documents As Collection, pk_view As Integer)
+Public Sub Edit(d As Collection)
+   '--------------------------------------------------------------------------------------------------------
+   'This is used by:
+   ' 1) FClniical.Document_Edit_Metadata(,,) to allow editing of documents metadata by the users
+   ' 2) FInbox to display metadata before filing.
+   'Not the document collection (d) passed here from FClinical is from vwDocuments hence has
+   'heaps of 'non-savable' fields so when the changed data is saved in SaveNotInScanning
+   'a new collection is created for the save, however we need fields from the orginal collection
+   'to create a readable audit trail prior to that save
+   '--------------------------------------------------------------------------------------------------------
    
-   Documents = old_documents
+   Document = d
    EditArea_Clear()
    Document_HTML = ""
    CurrentRequest = New Collection
    bExit = True
    bReAllocating_Patient = False
-   document = New Collection
-   document!pk_document = Documents[pk_view]!pk_document
-   pk_document = Documents[pk_view]!pk_document
-   document!fk_patient = Documents[pk_view]!fk_patient
-   Try fk_patient = Documents[pk_view]!fk_patient 'may not exist
-   document!incoming_referral = Documents[pk_view]!incoming_referral
-   document!fk_unmatched_patient = Documents[pk_view]!fk_unmatched_patient
-   document!fk_staff_filed_document = Documents[pk_view]!fk_staff_filed_document
-   document!fk_staff_destination = Documents[pk_view]!fk_staff_destination
-   Try fk_staff_destination = Documents[pk_view]!fk_staff_destination
-   document!source_file = Documents[pk_view]!source_file
-   document!md5sum = Documents[pk_view]!md5sum
-   document!imported_time = Documents[pk_view]!imported_time
-   document!date_requested = Documents[pk_view]!date_requested
-   document!date_created = Documents[pk_view]!date_created
-   document!tag = Documents[pk_view]!tag
-   document!tag_user = Documents[pk_view]!tag_user
-   document!comment_on_document = Documents[pk_view]!comment_on_document
-   document!provider_of_service = Documents[pk_view]!msh_sending_entity
-   fk_sending_entity = Documents[pk_view]!fk_sending_entity
-   document!patient_access = Documents[pk_view]!patient_access
-   document!concluded = Documents[pk_view]!concluded
-   document!fk_lu_type = Documents[pk_view]!fk_lu_provider_type
-   document!fk_lu_urgency = Documents[pk_view]!fk_lu_urgency
-   document!fk_blob = Documents[pk_view]!fk_blob
-   'FIXME IN BACKEND = fk_lu_message_display_style = THE defauilt for sender, not how the final document displays
-   ' document!fk_lu_message_display_style = Documents[pk_view]!fk_lu_message_display_style
-   document!fk_lu_display_as = Documents[pk_view]!fk_lu_display_as
-   document!provider_type = Documents[pk_view]!provider_type
-   document!organisation_category = Documents[pk_view]!organisation_category
-   document!request_type = Documents[pk_view]!sending_entity_request_type
+   pk_document = Document!pk_document
+   Try fk_patient = Document!fk_patient 'may not exist
+   Try fk_staff_destination = Document!fk_staff_destination
    If Not IsNull(document!fk_staff_destination)
       With txtRecipient
          .Border = False
@@ -747,7 +743,7 @@ Public Sub Edit(old_documents As Collection, pk_view As Integer)
          .Font.bold = False
          .Foreground = Color.Black
       End With
-      txtRecipient.text = Documents[pk_view]!staff_destination_title & " " & Documents[pk_view]!staff_destination_wholename
+      txtRecipient.text = Document!staff_destination_title & " " & Document!staff_destination_wholename
       txtRecipient.pos = 0
    Else
       txtRecipient.Border = True
@@ -763,15 +759,15 @@ Public Sub Edit(old_documents As Collection, pk_view As Integer)
          .Font.bold = True
       End With
    End If
-   If Lower(Documents[pk_view]!patient_title) <> "unknown" Then
-      txtPatient.text = Trim(Documents[pk_view]!patient_title & " " & Documents[pk_view]!patient_firstname & " " & Documents[pk_view]!patient_surname)
+   If Lower(Document!patient_title) <> "unknown" Then
+      txtPatient.text = Trim(document!patient_title & " " & document!patient_firstname & " " & document!patient_surname)
    Else
-      txtPatient.text = Trim(Documents[pk_view]!patient_firstname & " " & Documents[pk_view]!patient_surname)
+      txtPatient.text = Trim(document!patient_firstname & " " & document!patient_surname)
    Endif
-   Try lblBirthdate.text = Format(Documents[pk_view]!patient_birthdate, "dd/mm/yyyy")
+   Try lblBirthdate.text = Format(document!patient_birthdate, "dd/mm/yyyy")
    lblBirthdate2.text = lblBirthdate.text 'stupid I know, but acts as an identical spacer
-   txtStreet1.text = Trim(Documents[pk_view]!patient_street1 & " " & Documents[pk_view]!patient_street2)
-   txtSuburb.text = Documents[pk_view]!patient_town & " " & Documents[pk_view]!patient_postcode
+   txtStreet1.text = Trim(document!patient_street1 & " " & document!patient_street2)
+   txtSuburb.text = document!patient_town & " " & document!patient_postcode
    If fk_patient Then
       Try Show_comms()
    End If
@@ -781,7 +777,7 @@ Public Sub Edit(old_documents As Collection, pk_view As Integer)
    'E.g if it was 'Pathology company' or 'Pathology provider' or 'Pathology'
    'then the document_type 'Pathology' would find a match
    '---------------------------------------------------------------------------------
-   cmbDocumentTypes.index = cmbDocumentTypes.Find(Documents[pk_view]!sending_entity_request_type)
+   cmbDocumentTypes.index = cmbDocumentTypes.Find(document!sending_entity_request_type)
    '--------------------------------------------------------------------------------------------
    'Scanned sending entities:
    'These are mostly letters, but sometimes can be requests. Unless Admin has set a default
@@ -789,24 +785,23 @@ Public Sub Edit(old_documents As Collection, pk_view As Integer)
    'so in this case, this flag is set so we can automatically correct this
    '---------------------------------------------------------------------------------------------
    bHas_sending_entity_fk_lu_request_type = False   'default to now knowing how to handle doc if usually a letter but is a request
-   If Not IsNull(Documents[pk_view]!sending_entity_fk_lu_request_type) Or (Documents[pk_view]!sending_entity_fk_lu_request_type <> -1) Then
+   If Not IsNull(document!sending_entity_fk_lu_request_type) Or (document!sending_entity_fk_lu_request_type <> -1) Then
       bHas_sending_entity_fk_lu_request_type = True
    Endif
-   If Documents[pk_view]!msh_sending_entity <> "" Then
-      txtSender.text = Documents[pk_view]!msh_sending_entity
+   If document!msh_sending_entity <> "" Then
+      txtSender.text = document!msh_sending_entity
    Else
-      txtSender.text = Documents[pk_view]!originator
+      txtSender.text = document!originator
    End If
    txtSender.pos = 0
-   Try txtDocumentDate.text = Format(Documents[pk_view]!date_created, "dd/mm/yyyy")
-   Try txtDateRequested.text = Format(Documents[pk_view]!date_requested, "dd/mm/yyyy")
+   Try txtDocumentDate.text = Format(document!date_created, "dd/mm/yyyy")
+   Try txtDateRequested.text = Format(document!date_requested, "dd/mm/yyyy")
    txtDocumentTag.text = document!tag
    txtDocumentTag.pos = 1 'this is often quite long - want the start of word showing
    Try txtUserObservationName.text = document!tag_user
    txtUserObservationName.pos = 0
    txtComment.text = document!comment_on_document
    txtFilename.text = Document!source_file
-   
    Select Case document!fk_lu_urgency
       Case const.UrgencyLevelRoutine
          rbUrgencyRoutine.value = True
@@ -820,9 +815,7 @@ Public Sub Edit(old_documents As Collection, pk_view As Integer)
    Else
       chkReferral.Value = chkReferral.False
    Endif
-   
-   If Documents[pk_view]!fk_lu_display_as = const.Document_Display_As_Letter Then  'allow editing of tag if it is a letter
-      
+   If document!fk_lu_display_as = const.Document_Display_As_Letter Then  'allow editing of tag if it is a letter
       rbDisplayAsLetter.value = True
       If txtDocumentTag.text <> "" Then
          txtDocumentTag.text = Replace(txtDocumentTag.text, "result", "letter")
@@ -849,7 +842,6 @@ Public Sub Edit(old_documents As Collection, pk_view As Integer)
          .Font.bold = False
          .Foreground = Color.Black
       End With
-      
    Else
       txtPatient.Border = True
       With txtPatient
@@ -866,6 +858,12 @@ Public Sub Edit(old_documents As Collection, pk_view As Integer)
    End If
    cmbStaffType.index = -1
    bExit = False
+   If document!concluded = True Then
+      document_prior_to_edit = "<B>Prior to being edited the core data was:</B><BR>"
+      document_prior_to_edit &= "<B>Type:&nbsp;</B>" & txtDocumentTag.text & "<BR>"
+      document_prior_to_edit &= "<B>Tag&nbsp;&nbsp;:&nbsp;</B>" & txtUserObservationName.text & "<BR>"
+      document_prior_to_edit &= "<B>Date:&nbsp;</B>" & txtDocumentDate.text & "<BR>"
+   End If   
    
 End
 
@@ -877,6 +875,7 @@ Public Sub Timer1_Timer()
    End If
    
 End
+
 
 Public Sub Patient_Clear()
    
@@ -892,7 +891,7 @@ Public Sub Patient_Clear()
 End
 
 Public Sub Patient_Get()
-
+   
    Dim iLastPatient_pk As Integer
    Dim iAddressCount As Integer
    Dim x As Integer
@@ -904,7 +903,7 @@ Public Sub Patient_Get()
       .Visible = False
    End With
    If Trim(txtPatient.text) = "" Then Return
-   Allpatients = modContactsDBI.patients_get_firstname_surname(txtPatient.text)
+   Allpatients = modContactsDBI.patients_get_firstname_surname(txtPatient.text, chkIncludeDeceased.value,, chkIncludeInactive.value)
    Allpatients.Remove("sql_in_english")       'not used in this context
    Allpatients = modutil.Copy_Collection_Keyed_Sequentially(Allpatients)
    If allpatients.count = 0 Then Return
@@ -1035,9 +1034,9 @@ Public Sub Patient_Show(currentPatient As Collection)
       FInbox.reload_patient(bReAllocating_Patient)
    Else
       'is the scanning module, has no cConsult
-      currentconsult = New CConsult(currentPatient)                                   'Each patient has a new consult
-      currentconsult.Set(const.ConsultType_AuditNote, "scanned document imported")    'to enable an audit-trail for the scanned document import Fixme check this comment is true
-      
+      currentconsult = New CConsult(currentPatient, const.ConsultType_AuditNote)                                   'Each patient has a new consult
+     ' currentconsult.Set(const.ConsultType_AuditNote, "scanned document imported")    'to enable an audit-trail for the scanned document import Fixme check this comment is true
+      'fix these lines above
    End If
    Select Case Contact_Type
       Case const.contacttype_organisation
@@ -1902,7 +1901,10 @@ Public Sub EditArea_CheckBoxes_Click()
       Case "lock name"
          
       Case "all staff"
-         
+      Case "include deceased"
+            Patient_Get
+      Case "include inactive"
+            Patient_Get 
       Case "lock patient"
          If Last.value = False Then Patient_Clear()
       Case "lock sender"
@@ -1918,7 +1920,7 @@ Public Sub Guess_ResultType()
    '--------------------------------------------------------------------------------------
    'Attempts to guess the type of result it will be, given the category of provider/person
    '--------------------------------------------------------------------------------------
-
+   
    Try cmbDocumentTypes.index = cmbDocumentTypes.Find(document!request_type)
    If Error Then cmbDocumentTypes.index = -1 'the document may have no designated provider type
    
@@ -2114,3 +2116,5 @@ Public Sub Form_Resize()
    Endif
    
 End
+
+

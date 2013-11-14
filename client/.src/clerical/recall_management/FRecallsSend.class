@@ -19,6 +19,7 @@
 '----------------------------------------------------------------------
 'TODO
 '           put the audit trail in for notified by phone
+'           fixme put in filter on reason
 '----------------------------------------------------------------------
 Private recalls_due As Collection
 Private bexit As Boolean
@@ -40,13 +41,13 @@ Private max_template_width As Integer
 Private max_contact_method_width As Integer
 
 Public Sub form_Open()
-
+   
    Init()
-
+   
 End
 
 Public Sub Init()
-
+   
    With cvwRecallsDue
       .columns.count = 10
       .Columns[0].Text = "Date Due"
@@ -72,7 +73,7 @@ Public Sub Init()
    cmbRecallsDue.Add("Due in Next Month")
    cvwRecallsDue_Refresh(0, True)              'days overdue and overdue
    Settings_Load()
-
+   
 End
 
 Public Sub Consult_Check_Created()
@@ -80,20 +81,21 @@ Public Sub Consult_Check_Created()
    'probably should live elsewhere ?cConsult and pass parameters
    'see const for types of consult
    '------------------------------------------------------------
-
+   
    If IsNull(currentconsult) Then
-      CurrentConsult = New CConsult(patient)
-      currentconsult.Set(const.cAuditAction_ReminderSent, "recall")
+      CurrentConsult = New CConsult(patient, const.consult_type_audit)
+      '  currentconsult.Set(const.cAuditAction_ReminderSent, "recall")
    End If
-
+   
 End
 
 Public Sub cvwRecallsDue_Refresh(Optional days_due As Integer = 0, Optional bOverdue As Boolean = False)
    '-----------------------------------------------------------
    'Refresh the recalls due list taking into account any filter
    '-----------------------------------------------------------
+   
    Dim recall As Collection
-
+   
    lblMeasure.font = cvwRecallsDue.Font
    max_date_width = 0
    max_firstname_width = 0
@@ -104,10 +106,10 @@ Public Sub cvwRecallsDue_Refresh(Optional days_due As Integer = 0, Optional bOve
    max_Last_done_width = 0
    max_template_width = 0
    max_contact_method_width = 0
-
+   
    cvwRecallsDue.Clear()
    templates = modRecallsDBI.Templates_Get()           'could have been updated
-   recalls_due = modRecallsDBI.Recalls_Due_Get()       'always refresh collection
+   recalls_due = modRecallsDBI.Recalls_Due_Get(Not chkInactivePatients.value, Trim(txtFilterPatient.text))       'always refresh collection
    For Each recall In recalls_due
       If bOverdue Then
          If recall!days_due < 0 Then
@@ -133,13 +135,13 @@ Public Sub cvwRecallsDue_Refresh(Optional days_due As Integer = 0, Optional bOve
    cvwRecallsDue.columns[5].width = max_urgency_width
    cvwRecallsDue.columns[6].width = max_contact_method_width
    cvwRecallsDue.columns[7].width = max_date_width
-
+   
 End
 
 Public Sub cvwRecallsPatient_Add(recall As Collection)
-
+   
    Dim x As Integer
-
+   
    x = recall!pk_recall
    cvwRecallsDue.add(x, 0)
    cvwRecallsDue[x][0] = Format(recall!due, "dd/mm/yyyy")
@@ -164,24 +166,24 @@ Public Sub cvwRecallsPatient_Add(recall As Collection)
    lblMeasure.text = cvwRecallsDue[x][6] & "  "
    max_contact_method_width = Max(lblMeasure.width, max_contact_method_width)
    Try cvwRecallsDue[x][7] = Format(recall!date_reminder_sent, "dd/mm/yyyy") 'may not exist
-
+   
    cvwRecallsDue[x][8] = recall!num_reminders
-
+   
    cvwRecallsDue[x][9] = recall!name                  'of the template
-
+   
 End
 
 Public Sub cmbRecallsDue_Click()
    '---------------------------------------------------------------
    'User has clicked the combo with options for time recalls due in
    '---------------------------------------------------------------
-
+   
    Reload()
-
+   
 End
 
 Public Sub Reload()
-
+   
    Timer1.Stop
    Select Case cmbRecallsDue.Text
       Case "All Overdue Recalls"
@@ -193,59 +195,54 @@ Public Sub Reload()
       Case "Due in Next Month"
          cvwRecallsDue_Refresh(29, False)
    End Select
-   cvwRecallsDue.SetFocus()
-
+   If Trim(txtFilterPatient.text) <> "" Then
+      txtFilterPatient.SetFocus
+   Else
+      cvwRecallsDue.SetFocus()
+   End If   
+   
 End
 
 Public Sub Settings_Save()
    '-----------------------
    'Called from parent form
    '-----------------------
-
+   
    Settings["FRecallsSend/Vsplit.Layout"] = Vsplit1.Layout
    Settings["FRecallsSend/Hsplit.Layout"] = Hsplit1.Layout
-
+   
 End
 
 Private Sub Settings_Load()
    '-------------------------------------------------------------------
    'Load settings, the fonts are saved in the relevant mnu_click events
    '-------------------------------------------------------------------
-
+   
    Vsplit1.Layout = Settings["FRecallsSend/Vsplit.Layout", modUtil.VSplit([612, 280])]
    Hsplit1.Layout = Settings["FRecallsSend/Hsplit.Layout", modUtil.HSplit([1, 1, 1])]
    cvwResults.Font = Font[Settings["FRecallsSend/cvwResults.font", "DejaVu Sans,9"]]
    cvwLettersReceived.font = Font[Settings["FRecallsSend/cvwLettersReceived.font", "DejaVu Sans,9"]]
    cvwRecallsDue.font = Font[Settings["FRecallsSend/cvwRecallsDue.font", "DejaVu Sans,9"]]
-
+   
 End
 
 Public Sub mnuRecallManagement_Click()
    '----------------------------------------
    'The popup menu over the recalls due list
    '----------------------------------------
-
+   
    Dim x As Integer
-
+   
    Select Case Last.tag
-
+         
       Case "arranged by phone"
          modUtil.NotImplemented("Arranging by phone")
          Return
       Case "select all and print"
          cvwRecallsDue.SelectAll()
          Print()
-         Return
-      Case "print for mailing"
-         cvwRecallsDue.MoveFirst()
-         For x = 0 To cvwRecallsDue.count - 1
-            If cvwRecallsDue.Item.Selected = True Then
-               Print()
-            Endif
-            cvwRecallsDue.MoveNext()
-         Next
-         cvwRecallsDue.UnselectAll()
-         cvwRecallsDue_Refresh(0, True)
+      Case "print selected"  
+         Print()
       Case "font"
          modUtil.Columnview_SetFont(cvwRecallsDue, "FRecallsSend")
          Return
@@ -255,22 +252,25 @@ Public Sub mnuRecallManagement_Click()
       Case "exit"
          Return
       Case Else      'tag is numerical
+         If Last.tag = const.recallRepeat_Same_Interval Then
+            If Message.Question("Please confirm that the patient has had this recall completed and that you wish to re-log this at the interval indicated.", "Yes - Re-Log Recall", "Cancel") = 2 Then Return
+         End If   
          modRecallsMenu.Process(currentrecall, Last.tag, currentconsult)
    End Select
    cmbRecallsDue_Click()
-
+   
 End
 
 Public Sub mnuTemplates_Click()
-
+   
    '---------------------------------------------------
    'User wants to link one or more letter to a template
    '---------------------------------------------------
-
+   
    Dim x As Integer
    Dim pk_recall As Integer
    Dim fk_template As Integer = Last.tag
-
+   
    cvwRecallsDue.MoveFirst()
    For x = 0 To cvwRecallsDue.count - 1
       If cvwRecallsDue.Item.Selected = True Then
@@ -281,7 +281,7 @@ Public Sub mnuTemplates_Click()
    Next
    cvwRecallsDue.UnselectAll()
    cvwRecallsDue_Refresh(0, True)
-
+   
 End
 
 Public Sub cvwRecallsDue_Menu()
@@ -289,9 +289,9 @@ Public Sub cvwRecallsDue_Menu()
    'The popup menu over the recalls due list
    'Populate the menu of available templates
    '----------------------------------------
-
+   
    Dim mnu As Menu
-
+   
    If Not Last.count Then Return
    templates = modRecallsDBI.Templates_Get()                                  'get current template list, could have been updated on the other tab
    mnuRecallManagement_LinkToTemplate.Children.Clear                          'get rid of those already on this menu
@@ -306,8 +306,13 @@ Public Sub cvwRecallsDue_Menu()
    currentRecall = recalls_due[cvwRecallsDue.Item.Key]
    mnuRecallManagement_RepeatSameInterval.caption = "Mark Completed Repeat in " & currentrecall!interval & currentrecall!abbrev_text
    mnuRecallManagement.Popup()
-
+   
+   Catch
+      Return 
 End
+
+
+
 
 Public Sub Print()
    '--------------------------------------------------------------------
@@ -321,51 +326,61 @@ Public Sub Print()
    '   fk_staff integer, -- key to admin.staff table staff member who prepared the letter
    '   memo text, -- memo added by staff at the time e.g could have called patient who said they would make appointment
    '---------------------------------------------------------------------------
-
+   
    Dim laTex As String                                                'LaTex definition of the letter
-   Dim sent As New Collection
+   Dim sent As New CRow
    Dim audit_notes As String
-
-   currentRecall = recalls_due[cvwRecallsDue.Item.Key]
-   currentconsult = Null
-   patient = currentRecall
-   Consult_Check_Created()
-   laTex = RecallLetter_LaTex_Construct().GetData()                     'get the letter definition
-   '---------------------------------------------------------------
-   'get the data together about how reminder was sent and save this
-   '---------------------------------------------------------------
-   sent!fk_recall = currentRecall!pk_recall                                                                                '
-   sent!date = Now()
-   sent!latex = laTex
-   sent!fk_contact_method = const.ContactMethodLetter
-   sent!fk_staff = modDBConnect.currentUser!fk_staff
-   sent!pk = modDBConnect.insert("clin_recalls.sent", sent)
-   '-------------------------------------------------------------------------------------
-   'Now update the actual recall so that it knows the last fk_sent and incr num_reminders
-   '-------------------------------------------------------------------------------------
-   modDBConnect.update("clin_recalls.recalls", Null, ["pk": currentRecall!pk_recall, "fk_sent": sent!pk])
-   modDBConnect.update("clin_recalls.recalls", Null, ["pk": currentRecall!pk_recall, "num_reminders": recalls_due[cvwRecallsDue.Item.Key]!num_reminders + 1])
-   '---------------------------------------------------------------------------------------------------------------------------
-   'Now the audit trail this will always be linked to the recall, so viewable e.g in FClinical using menu over the recalls list
-   '---------------------------------------------------------------------------------------------------------------------------
-   audit_notes = "letter sent to " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town & " " & currentconsult!patient!postcode
-
-   If modAudit.MakeAudit(currentconsult, const.sAuditAction[const.cAuditAction_ReminderSent], "clin_recalls.recalls", currentrecall!pk_recall, const.cSection_Recalls, audit_notes) Then
-      modDBConnect.CommitTrans()
-      modPrinting.Print_latex(RecallLetter_LaTex_Construct().GetData(), const.Paper_Plain, 1)
-   Else
-      modDBConnect.RollBack()
-   End If
-
+   Dim x As Integer
+   Dim currentRecall As Collection 
+   
+   For x = 0 To cvwRecallsDue.Selection.Count - 1
+      currentRecall = recalls_due[cvwRecallsDue.Selection[x]]
+      currentconsult = Null
+      patient = currentRecall
+      CurrentConsult = New CConsult(patient, const.ConsultType_AuditNote)
+      Print currentconsult.GetPK()
+      laTex = RecallLetter_LaTex_Construct(currentrecall).GetData()                     'get the letter definition
+      '---------------------------------------------------------------
+      'get the data together about how reminder was sent and save this
+      '---------------------------------------------------------------
+      sent = New CRow   
+      sent!fk_recall = currentRecall!pk_recall                                                                                '
+      sent!date = Now()
+      sent!latex = laTex
+      sent!fk_contact_method = const.ContactMethodLetter
+      sent!fk_staff = modDBConnect.currentUser!fk_staff
+      sent.Save("clin_recalls.sent", "fk_sent")
+      '-------------------------------------------------------------------------------------
+      'Now update the actual recall so that it knows the last fk_sent and incr num_reminders
+      '-------------------------------------------------------------------------------------
+      modDBConnect.update("clin_recalls.recalls", Null, ["pk": currentRecall!pk_recall, "fk_sent": sent!fk_sent])
+      modDBConnect.update("clin_recalls.recalls", Null, ["pk": currentRecall!pk_recall, "num_reminders": recalls_due[cvwRecallsDue.Selection[x]]!num_reminders + 1])
+      '---------------------------------------------------------------------------------------------------------------------------
+      'Now the audit trail this will always be linked to the recall, so viewable e.g in FClinical using menu over the recalls list
+      '---------------------------------------------------------------------------------------------------------------------------
+      audit_notes = "Recall reminder for " & currentrecall!reason & " due on " & Format(currentrecall!due, "dd/mm/yyyy") & " [" & currentrecall!urgency & "] was actioned. "
+      audit_notes &= "A letter was sent to " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town & " " & currentconsult!patient!postcode
+      If modAudit.MakeAudit(currentconsult, const.sAuditAction[const.cAuditAction_ReminderSent], "clin_recalls.recalls", currentrecall!pk_recall, const.cSection_Recalls, audit_notes) Then
+         modDBConnect.CommitTrans()
+         modPrinting.Print_latex(Latex, const.Paper_Plain, 1)
+      Else
+         modDBConnect.RollBack()
+      End If
+      
+   Next
+   cvwRecallsDue.UnselectAll
+   cvwRecallsDue_Refresh(0, True)
+   
 End
 
-Public Sub RecallLetter_LaTex_Construct() As CTemplate
+Public Sub RecallLetter_LaTex_Construct(currentRecall As Collection) As CTemplate
    '------------------------------------------
    'Construct the LaTex to send to the printer
+   
    Dim sString As String
    Dim templ As New CTemplate("recall", "tex")
    Dim sStafftosee As String
-
+   
    templ.Subst_common(currentconsult)
    sString = UCase(Left(currentRecall!reason)) & Right(currentRecall!reason, Len(currentRecall!reason) - 1) & " (" & currentRecall!urgency & ")"
    templ.Subst("recall_details", sSTring)
@@ -374,7 +389,7 @@ Public Sub RecallLetter_LaTex_Construct() As CTemplate
    Else
       templ.Subst("additional_text", "\\relax")
    Endif
-
+   
    sStafftosee = Trim(currentRecall!staff_to_see_title & " " & currentRecall!staff_to_see_firstname & " " & currentRecall!staff_to_see_surname)
    templ.Subst("staff_to_see", sStafftosee)
    '--------------------------------------------------------------------
@@ -396,7 +411,7 @@ Public Sub RecallLetter_LaTex_Construct() As CTemplate
    Endif
    templ.Subst("staff_logged_on", modDBConnect.currentUser_FullName())
    Return templ
-
+   
 End
 
 Public Sub cvwRecallsDue_Select()
@@ -404,10 +419,10 @@ Public Sub cvwRecallsDue_Select()
    'User has selected one of the overdue recalls
    'show any letters/results for the user to aid staff in seeing if sending recall needed
    '-------------------------------------------------------------------------------------
-  
+   
    Inc Application.Busy
    currentconsult = Null
-
+   
    txtInboxResults_Exclude.text = ""
    txtInboxResults_filter.text = ""
    txtLetterFilterAuthor.text = ""
@@ -429,13 +444,13 @@ Public Sub cvwRecallsDue_Select()
    cvwLettersReceived_Refresh()
    cvwRecallsPatient_Refresh()
    Dec Application.Busy
-
+   
 End
 
 Public Sub cvwRecallsPatient_Refresh()
-
+   
    Dim x As Integer
-
+   
    currentconsult.Refresh("recalls_logged")
    cvwRecallsPatient.Clear()
    For Each currentconsult!recalls_logged
@@ -447,21 +462,21 @@ Public Sub cvwRecallsPatient_Refresh()
       cvwRecallsPatient[x][0] = Format(currentconsult!recalls_logged[x]!due, "dd/mm/yyyy")
       cvwRecallsPatient[x][1] = currentconsult!recalls_logged[x]!reason
    Next
-
+   
 End
 
 Public Sub cvwResults_Refresh(Optional bRefresh As Boolean = False)
    '-------------------------------------------
    'Shows any results received for this patient
    '-------------------------------------------
-
+   
    Dim x As Integer                      'for readability = key
    Dim results_received As Collection
    Dim filter As String
    Dim exclude As String
    Dim result_received As String
    Dim guessed_user_Name As Collection
- 
+   
    If Not cvwResults.count Then Return
    If txtInboxResults_filter.text <> "" Then
       filter = txtInboxResults_filter.text
@@ -511,7 +526,7 @@ Public Sub cvwResults_Refresh(Optional bRefresh As Boolean = False)
          cvwResults[x][1] = result_received
       End If
    Next
-
+   
 End
 
 Public Sub cvwLettersReceived_Refresh(Optional bRefresh As Boolean = False)
@@ -520,11 +535,11 @@ Public Sub cvwLettersReceived_Refresh(Optional bRefresh As Boolean = False)
    'If appropriate, filter display according to the document tag or letter author
    'IAN FIXME: REPLACE ME WITH A RELATIVE ONE-LINER.
    '-----------------------------------------------------------------------------
-
+   
    Dim x As Integer                      'for readability = key
    Dim letters_received As Collection
    Dim bSkip As Boolean
-
+   
    Consult_Check_Created()                                              'check consult created
    With cvwLettersReceived
       .Clear()
@@ -565,7 +580,7 @@ Public Sub cvwLettersReceived_Refresh(Optional bRefresh As Boolean = False)
             Else
                bskip = False
             Endif
-
+            
          End If
       Else
          '------------------------------------------------------------------
@@ -587,7 +602,7 @@ Public Sub cvwLettersReceived_Refresh(Optional bRefresh As Boolean = False)
             End If
          Endif
       End If
-
+      
       If bskip = False Then
          cvwLettersReceived.Add(x, 0)
          If IsNull(letters_received!date_created) Then   'fixme remove me when bug fixed in FMetadata
@@ -611,14 +626,14 @@ Public Sub cvwLettersReceived_Refresh(Optional bRefresh As Boolean = False)
          cvwLettersReceived_Refresh() 'try again
       End If
    Endif
-
+   
 End
 
 Public Sub DocumentFilter_KeyRelease()
    '-------------------------------------------------------------------------
    'User wants to filter document on either tag or who sent them 'originator'
    '-------------------------------------------------------------------------
-
+   
    If IsNull(currentconsult) Or bExit Then Return
    Select Case Last.tag
       Case "tag"
@@ -626,7 +641,7 @@ Public Sub DocumentFilter_KeyRelease()
       Case "author"
          cvwLettersReceived_Refresh()
    End Select
-
+   
 End
 
 Public Sub InboxResults_KeyRelease()
@@ -635,7 +650,7 @@ Public Sub InboxResults_KeyRelease()
    'fixme duplicated in Fclinical as are the cvwRecalls/Letters
    'needs moving out
    '-----------------------------------------------------------------------
-
+   
    If Bexit Then Return
    Select Case Last.tag
       Case "exclude"
@@ -648,111 +663,111 @@ Public Sub InboxResults_KeyRelease()
          bexit = False
    End Select
    cvwResults_Refresh()
-
+   
 End
 
 Public Sub cvwResults_Menu()
-
+   
    If Last.count Then
       mnuResults.Popup()
    Endif
-
+   
 End
 
 Public Sub mnuResults_Click()
-
+   
    Select Case Last.tag
       Case "view"
          Result_View()
       Case "font"
          modUtil.Columnview_SetFont(cvwResults, "FRecallsSend")
    End Select
-
+   
 End
 
 Public Sub Result_View()
-
+   
    modUtil.NotImplemented("Viewing results")
-
+   
 End
 
 Public Sub cvwLettersReceived_Menu()
-
+   
    If Last.count Then
       mnuLetters.Popup()
    Endif
-
+   
 End
 
 Public Sub mnuLetters_Click()
-
+   
    Select Case Last.tag
       Case "view"
          Letter_View()
       Case "font"
          modUtil.Columnview_SetFont(cvwLettersReceived, "FRecallsSend")
    End Select
-
+   
 End
 
 Public Sub Letter_View()
-
+   
    modUtil.NotImplemented("Viewing letters")
-
+   
 End
 
 Public Sub Recall_Link_To_Template(pk_recall As Integer, fk_template As Integer)
-
+   
    modDBConnect.update("clin_recalls.recalls", Null, ["pk": pk_recall, "fk_template": fk_template])
    modDBConnect.CommitTrans()
-
+   
 End
 
 Public Sub HBox_Recalls_Filters_Enter()
-
+   
    Timer1.Enabled = True
-
+   
 End
 
 Public Sub HBox_Recalls_Filters_Leave()
-
+   
    Timer1.Enabled = False
-
+   
 End
 
 Public Sub Timer1_Timer()
-
+   
    Inc iTimer_Count
-
-   If iTimer_Count > 3 And Trim(txtRecallFilter.text) <> "" Then
+   
+   If iTimer_Count > 3 And Trim(txtRecallFilter.text) <> "" Or Trim(txtFilterPatient.text) <> "" Then
       Reload()
    End If
-
+   
 End
 
 Public Sub InboxResults_GotFocus()
-
+   
    Last.BackGround = Color.rgb(95, 255, 175)
-
+   
 End
 
 Public Sub InboxResults_LostFocus()
-
+   
    Last.BackGround = Color.white
-
+   
 End
 
 Public Sub txtRecallFilter_GotFocus()
-
+   
    Last.BackGround = Color.rgb(95, 255, 175)
    Timer1.Stop
-
+   
 End
 
 Public Sub txtRecallFilterLostFocus()
-
+   
    Last.BackGround = Color.white
-
+   
 End
 
 Public Sub txtRecallFilter_KeyRelease()
@@ -760,8 +775,21 @@ Public Sub txtRecallFilter_KeyRelease()
    'User is typing on in the textbox to filter the reason for recall
    'e.g find all PAP smears
    '----------------------------------------------------------------
-
+   
    Timer1.Start
    iTimer_Count = 0
+   
+End
 
+Public Sub txtFilterPatient_KeyRelease()
+   
+   Timer1.Start
+   iTimer_Count = 0
+   
+End
+
+Public Sub chkInactivePatients_Click()
+   
+   Reload()
+   
 End

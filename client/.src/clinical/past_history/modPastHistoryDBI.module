@@ -15,7 +15,6 @@
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ' ---------------------------------------------------------------------
-Private iAuditAction As Integer
 
 Public Function PastHistory_Get(pk_patient As Integer) As Collection
    '--------------------------------------------------------------
@@ -52,7 +51,7 @@ Public Sub Save_CarePlanComponents(old_data As Collection, careplancomponents As
    '--------------------------------------------------
    
    Dim cpc As Collection 
-    
+   
    For Each cpc In careplancomponents
       If IsNull(cpc!pk_careplan_components) Then
          '----------------------------------------------------------------------------
@@ -126,7 +125,7 @@ End
 Public Function pasthistory_MakeAuditText(pasthistory As Collection) As String
    
    Dim sMsg As String
-    
+   
    sMsg = "<B>" & pasthistory!description & "</B>"
    If pasthistory!fk_laterality Then
       sMsg &= " [" & const.LateralityText[pasthistory!fk_laterality] & "]"
@@ -195,7 +194,7 @@ Public Function Save(currentconsult As CConsult, fk_pasthistory As Integer, past
       End If
    End If
    '----------------------------
-   'Finally save the audit trailcause_of_death
+   'Finally save the audit trail
    '----------------------------
    modAudit.MakeAudit(currentconsult, audit!action, "clin_history.past_history", fk_pasthistory, const.cSection_PastHistory, audit!data_summary)
    Return fk_pasthistory
@@ -282,7 +281,7 @@ Public Sub Condition_Get(txtCondition As TextBox, listview1 As ListView, lblNewC
    '-------------------------------------------------------------------
    
    Dim $Result As Result
-
+   
    If Trim(txtCondition.text) = "" Then
       listview1.Visible = False
       lblNewCondition.Visible = False
@@ -311,49 +310,42 @@ Public Sub HealthIssue_Delete(currentconsult As Cconsult, pk_pasthistory As Inte
    '--------------------------------------------------------------------
    'PURPOSE  :   Deletes a health issue
    '             Keeps an audit trail
+   '             currentconsult so named for historical reasons 
    'CALLED BY:   Various popup menus in FClinical and FPasthistory
    '             First check there are no associated progress notes
    '             if so, cannot delete, but change the html to make the
    '             text strike through, and add to the audit table
    '------------------------------------------------------------------
-   
-   Dim bNotesExist As Boolean
-   ' Dim audit As New Collection
    Dim sAuditAnnotation As String 'audit annotation to insert into progress notes
-   Dim sToday As String 'todays date as a string
    Dim progressnote As Collection
-   Dim fk_reason As Integer
-   Dim reason As String
-   
-   sToday = Format(Now, "dd/mm/yyyy")
-   ' ----------------------------------------------------------------------------------------------------
-   ' If the consult this past history item was created = today, we can just reverse it no questions asked
-   ' otherwise popup up an audit trail dialog
-   ' ----------------------------------------------------------------------------------------------------
-   If currentPastHistory!fk_consult <> currentconsult.GetPK() Then            'if not the same consult - get reason for audit-trail
-      FAudit.Init("Delete Past History Item", "clin_history.past_history", currentPastHistory!description)
-      fk_reason = FAudit.ShowModal() 
-      modDBConnect.CommitTrans()                                              'otherwise if a new reason it won't have been comitted
-      reason = modAudit.Get_Reason_Using_pk(fk_reason)
-   End If
-   '---------------------------------------------------------------------------------------
-   'Now if progress notes existed for this problem then update the database to reflect this
-   '---------------------------------------------------------------------------------------
-   For Each progressnote In currentconsult!progress_notes
-      If progressnote!fk_problem = pk_pasthistory And progressnote!fk_section = const.cSection_PastHistory Then 
-         '-------------------------------------------------------------------
-         'Mark each problem and associated progress note with strike through
-         '-------------------------------------------------------------------
-         sAuditAnnotation = "<STRIKE><P><FONT COLOR='#b3b3b3'>" & progressnote!notes & "</STRIKE><p>"
-         sAuditAnnotation &= "<P ALIGN=CENTER><I><B>Audit trail</B> : notes deleted by " & modDBConnect.currentUser!wholename & " on "
-         sAuditAnnotation &= sToday & " the reason given was: " & Lower(reason) & "</P></I></FONT><p>"
-         modDBConnect.update("clin_consult.progressnotes", Null, ["pk": progressnote!pk_progressnote, "notes": sAuditAnnotation])
-      End If
-   Next 
-   modDBConnect.update("clin_history.past_history", Null, ["pk": pk_pasthistory, "deleted": True])
-   modDBConnect.CommitTrans()
-   FClinical.Refresh_AllPreviousNotes() 
 
+   If modUtil.IsSameDay(Now(), currentPastHistory!date_noted) Then                       ' If the consult this past history item was created = today, we can just reverse it
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": currentPastHistory!fk_progressnote, "deleted": True])
+      modDBConnect.update("clin_history.past_history", Null, ["pk": pk_pasthistory, "deleted": True])
+      modDBConnect.CommitTrans
+   Else                                   'Now if progress notes existed for this problem then update the database to reflect this
+      For Each progressnote In currentconsult!progress_notes
+         If progressnote!fk_problem = pk_pasthistory And progressnote!fk_section = const.cSection_PastHistory Then 
+            '-------------------------------------------------------------------
+            'Mark each problem and associated progress note with strike through
+            '-------------------------------------------------------------------
+            sAuditAnnotation = "<STRIKE><P><FONT COLOR='#b3b3b3'>" & progressnote!notes & "</STRIKE><p>"
+            sAuditAnnotation &= "<P ALIGN=CENTER><I><B>Audit trail</B> : notes deleted by " & modDBConnect.currentUser!wholename & " on "
+            sAuditAnnotation &= Format(Now(), "dd/mm/yyyy") & "/See the audit notes on that date for the reason</P></I></FONT><p>"
+            modDBConnect.update("clin_consult.progressnotes", Null, ["pk": progressnote!pk_progressnote, "notes": sAuditAnnotation])
+         End If
+      Next 
+      modDBConnect.update("clin_history.past_history", Null, ["pk": pk_pasthistory, "deleted": True])
+      If modAudit.MakeAudit(currentconsult, "mark deleted", "clin_history.past_history", pk_pasthistory, const.cSection_PastHistory, currentPastHistory!description) Then
+         modDBConnect.CommitTrans()
+      Else
+         modDBConnect.RollBack
+      End If   
+   End If   
+   If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then   'health issues also shown in the inbox
+      Try FClinical.Refresh_AllPreviousNotes() 
+   End If 
+   
 End
 
 Public Function TeamCareMembers_Get(fk_pasthistory As Integer) As Collection
@@ -362,95 +354,95 @@ Public Function TeamCareMembers_Get(fk_pasthistory As Integer) As Collection
    
 End
 
-Public Sub Popup_Menu_Process(currentconsult As Cconsult, tag As String, PH As Collection, pk_pasthistory As Integer)
-   '  pk_pastHistory = modPastHistoryDBI.Save(currentconsult, pk_pasthistory, currentPastHistory) 
-   '      fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_PastHistory, fk_progressnote, "Past History", pk_pasthistory, False)
-   
-   Select Case tag
-      Case "mark major"
-         '  currentconsult!past_history[pk_pasthistory]!major = True
-         ' chkMajor.Value = True
-         ' modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_PastHistory, fk_progressnote, "Past History", pk_pasthistory, False)
-         modDBConnect.BeginTrans
-         PH!major = True
-         modPastHistoryDBI.Save(currentconsult, pk_pasthistory, PH) 
-         
-         ' Case "mark major explain"
-         ' '  
-         ' Case "mark significant"
-         '     chkActive.Value = True
-         '  '  pk_pastHistory = modPastHistoryDBI.Save(currentconsult, pk_pasthistory, currentPastHistory) 
-         '  '  fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_PastHistory, fk_progressnote, "Past History", pk_pasthistory, False)
-         '     
-         '     Save()
-         ' Case "mark significant explain"
-         ' 
-         ' Case "mark inactive"
-         '     chkInactive.Value = True
-         '     Save() 
-         ' Case "mark inactive explain"
-         ' 
-         ' Case "view historical trail"  
-         ' Case "delete"
-         '      HealthIssue_Delete()
-         ' Case "undo delete"
-         ' Case "help"
-         ' Case "exit"
-         ' Case "view all notes"
-         ' Case "decision support"
-   End Select
-   '------------------------------------------------------------------
-   'Process the popup menu options over any health issues/problem list
-   'CALLED BY  FClinical
-   '           FAnteNatal
-   '           FPastHistory etc
-   
-   '------------------------------------------
-   ' Dim iAuditAction As Integer
-   ' Dim bDeleted As Boolean
-   ' Dim bIncludeSummaryInProgressNotes As Boolean = True 
-   ' Dim audit As New collection
-   ' audit!fk_row = ScratchPadItem!pk_scratchpad
-   ' audit!fk_consult = currentconsult.GetPK()
-   ' audit!fk_section = const.cSection_ScratchPad
-   ' audit!data_summary = ScratchPadItem!note   ' & " logged on " & Format(ScratchPadItem!consult_date, "dd/mm/yyyy")
-   ' 
-   ' Select Case tag
-   ' Case "delete"
-   ' 
-   '       '--------------------------------------------------------------------
-   '       'scratch pad could be deleted either during consulation (ie mistake)
-   '       'in which case don't need FAudit to popup and get the reason
-   '       'as we are allowed to change out mind within the consultation.
-   '       'or at a later date
-   '       '--------------------------------------------------------------------
-   '       iAuditAction = const.cAuditAction_MarkDeleted
-   '       If ScratchPadItem!fk_consult <> currentconsult.GetPK() Then
-   '          FAudit.Init(ScratchPadItem, Const.cSection_ScratchPad, iAuditAction, currentconsult)
-   '          If Not FAudit.ShowModal() Then Return 
-   '              audit!reason = Last.tag & ":<BR> - " & Lower(const.globalstring)
-   '          If iAuditAction = const.cAuditAction_Delete Then bDeleted = True   
-   '       Else
-   '           audit!reason = const.sAuditAction[const.cAuditAction_Reversal]
-   '       End If
-   '       bDeleted = True
-   ' Case "complete"
-   '  
-   '    iAuditAction = const.cAuditAction_Completed
-   '    audit!reason = const.sAuditAction[const.cAuditAction_Completed]
-   '  
-   ' Case "complete with explanation"
-   '    iAuditAction = const.cAuditAction_CompletedWithExplanation
-   '    FAudit.Init(ScratchPadItem, Const.cSection_ScratchPad, iAuditAction, currentconsult)
-   '    If Not FAudit.ShowModal() Then Return 
-   '    audit!reason = Last.tag & ":<BR> - " & Lower(const.globalstring)
-   ' End Select
-   ' ScratchPadItem!fk_status = iAuditAction
-   ' audit!fk_action = iAuditAction
-   ' '------------------------------------------------------
-   ' 'Ok, now action the menu item and create an audit trail
-   ' '------------------------------------------------------
-   ' modScratchPadDBI.Mark_DealtWith(ScratchPadItem!pk_scratchpad, iAuditAction, bDeleted) 
-   ' modConsultDBI.Make_Audit(audit, "clin_consult", "scratchpad")
-   ' modDBConnect.CommitTrans()
-End
+' Public Sub Popup_Menu_Process(currentconsult As Cconsult, tag As String, PH As Collection, pk_pasthistory As Integer)
+'    '  pk_pastHistory = modPastHistoryDBI.Save(currentconsult, pk_pasthistory, currentPastHistory) 
+'    '      fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_PastHistory, fk_progressnote, "Past History", pk_pasthistory, False)
+'    
+'    Select Case tag
+'       Case "mark major"
+'          '  currentconsult!past_history[pk_pasthistory]!major = True
+'          ' chkMajor.Value = True
+'          ' modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_PastHistory, fk_progressnote, "Past History", pk_pasthistory, False)
+'          modDBConnect.BeginTrans
+'          PH!major = True
+'          modPastHistoryDBI.Save(currentconsult, pk_pasthistory, PH) 
+'          
+'          ' Case "mark major explain"
+'          ' '  
+'          ' Case "mark significant"
+'          '     chkActive.Value = True
+'          '  '  pk_pastHistory = modPastHistoryDBI.Save(currentconsult, pk_pasthistory, currentPastHistory) 
+'          '  '  fk_progressnote = modConsultDBI.ProgressNote_Save(currentconsult, sProgressNotes, const.cSection_PastHistory, fk_progressnote, "Past History", pk_pasthistory, False)
+'          '     
+'          '     Save()
+'          ' Case "mark significant explain"
+'          ' 
+'          ' Case "mark inactive"
+'          '     chkInactive.Value = True
+'          '     Save() 
+'          ' Case "mark inactive explain"
+'          ' 
+'          ' Case "view historical trail"  
+'          ' Case "delete"
+'          '      HealthIssue_Delete()
+'          ' Case "undo delete"
+'          ' Case "help"
+'          ' Case "exit"
+'          ' Case "view all notes"
+'          ' Case "decision support"
+'    End Select
+'    '------------------------------------------------------------------
+'    'Process the popup menu options over any health issues/problem list
+'    'CALLED BY  FClinical
+'    '           FAnteNatal
+'    '           FPastHistory etc
+'    
+'    '------------------------------------------
+'    ' Dim iAuditAction As Integer
+'    ' Dim bDeleted As Boolean
+'    ' Dim bIncludeSummaryInProgressNotes As Boolean = True 
+'    ' Dim audit As New collection
+'    ' audit!fk_row = ScratchPadItem!pk_scratchpad
+'    ' audit!fk_consult = currentconsult.GetPK()
+'    ' audit!fk_section = const.cSection_ScratchPad
+'    ' audit!data_summary = ScratchPadItem!note   ' & " logged on " & Format(ScratchPadItem!consult_date, "dd/mm/yyyy")
+'    ' 
+'    ' Select Case tag
+'    ' Case "delete"
+'    ' 
+'    '       '--------------------------------------------------------------------
+'    '       'scratch pad could be deleted either during consulation (ie mistake)
+'    '       'in which case don't need FAudit to popup and get the reason
+'    '       'as we are allowed to change out mind within the consultation.
+'    '       'or at a later date
+'    '       '--------------------------------------------------------------------
+'    '       iAuditAction = const.cAuditAction_MarkDeleted
+'    '       If ScratchPadItem!fk_consult <> currentconsult.GetPK() Then
+'    '          FAudit.Init(ScratchPadItem, Const.cSection_ScratchPad, iAuditAction, currentconsult)
+'    '          If Not FAudit.ShowModal() Then Return 
+'    '              audit!reason = Last.tag & ":<BR> - " & Lower(const.globalstring)
+'    '          If iAuditAction = const.cAuditAction_Delete Then bDeleted = True   
+'    '       Else
+'    '           audit!reason = const.sAuditAction[const.cAuditAction_Reversal]
+'    '       End If
+'    '       bDeleted = True
+'    ' Case "complete"
+'    '  
+'    '    iAuditAction = const.cAuditAction_Completed
+'    '    audit!reason = const.sAuditAction[const.cAuditAction_Completed]
+'    '  
+'    ' Case "complete with explanation"
+'    '    iAuditAction = const.cAuditAction_CompletedWithExplanation
+'    '    FAudit.Init(ScratchPadItem, Const.cSection_ScratchPad, iAuditAction, currentconsult)
+'    '    If Not FAudit.ShowModal() Then Return 
+'    '    audit!reason = Last.tag & ":<BR> - " & Lower(const.globalstring)
+'    ' End Select
+'    ' ScratchPadItem!fk_status = iAuditAction
+'    ' audit!fk_action = iAuditAction
+'    ' '------------------------------------------------------
+'    ' 'Ok, now action the menu item and create an audit trail
+'    ' '------------------------------------------------------
+'    ' modScratchPadDBI.Mark_DealtWith(ScratchPadItem!pk_scratchpad, iAuditAction, bDeleted) 
+'    ' modConsultDBI.Make_Audit(audit, "clin_consult", "scratchpad")
+'    ' modDBConnect.CommitTrans()
+' End

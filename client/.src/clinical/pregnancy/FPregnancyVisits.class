@@ -35,6 +35,8 @@ Private Presentations As Collection
 Private antenatal_visits As Collection
 Private fk_visit As Integer
 Private fk_pregnancy As Integer
+Private fk_progressnote As Integer
+Private progressnotes_for_visit As String 'this is used for auditing if changes occur
 Private currentPregnancy As Collection
 Private bDeclinedToMeasureBP As Boolean
 Private bDeclinedToMeasureFHH As Boolean
@@ -82,6 +84,7 @@ Public Sub Save()
    '-------------------------
    
    Dim visit As CRow
+   Dim progressnote As CRow   
    
    If HBox_EditArea.Padding = 0 Then Return
    If Not Visit_Valid() Then Return
@@ -110,12 +113,100 @@ Public Sub Save()
       visit!foetal_movements_felt = False
    Endif
    visit!notes = Trim(txtNotes.text)
+  
+   '------------------------------------------
+   ' CREATE TABLE clin_consult.progressnotes
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_consult integer,
+   '   notes text,
+   '   fk_section integer,
+   '   fk_code bigint,
+   '   problem text,
+   '   fk_problem integer,
+   '   fk_audit_action integer DEFAULT 1,
+   '   linked_table regclass,
+   '   fk_row integer,
+   '   fk_audit_reason integer,
+   '   deleted boolean DEFAULT false,
+   '-----------------------------------
+   progressnote = New CRow 
+   If fk_progressnote Then
+      progressnote.put_unchanged(fk_progressnote, "fk_progressnote")
+      If Format(Now(), "dd/mm/yyyy") <> modDBConnect.currentconsult!consult_date Then
+         ' put in an audit on the changed notes FIXME.
+      Endif
+   Endif
+   progressnote!fk_consult = currentconsult.GetPK()
+   progressnote!notes = ProgressNotes_Visit_Create()
+   progressnote!fk_section = const.cSection_Pregnancy
+   ProgressNote!fk_audit_action = const.cAuditAction_Insert 
+   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+   visit!fk_progressnote = progressnote!fk_progressnote
    visit.Save("clin_pregnancy.ante_natal_visits", "fk_visit")
    modDBConnect.CommitTrans()
    FClinical.Pregnancy_Notify()
    EditArea_Notify_DataChange(False)
    Reload()
    
+End
+
+Public Function ProgressNotes_Visit_Create() As String
+   
+   Dim Pn As String 
+   Dim table_row As String 
+   
+   Table_row = ""
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=20%>%col1%</TD>"
+   "<TD WIDTH=80%>%col2%</TD>"
+   "</TR>"
+   pn = "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0>"
+   "<COL WIDTH=20%>"
+   "<COL WIDTH=80%>"
+   pn &= Table_row
+   pn = Replace(pn, "%col1%", "Duration")
+   pn = Replace(pn, "%col2%", txtDuration.text)
+   pn &= Table_row
+   pn = Replace(pn, "%col1%", "Fundal Height")
+   If Trim(txtFundalHeight.text) <> "" Then pn = Replace(pn, "%col2%", Trim(txtFundalHeight.text))
+   pn &= Table_row
+   pn = Replace(pn, "%col1%", "Presentation")
+   pn = Replace(pn, "%col2%", cmbPresentation.Text)
+   pn &= Table_row
+   pn = Replace(pn, "%col1%", "Foetal Heart Sounds")
+   If rbFHH.value = True Then
+      If Trim(txtFoetalHeartRate.text) <> "" Then
+         pn = Replace(pn, "%col2%", "Heard - rate = " & Trim(txtFoetalHeartRate.text) & " bpm")
+      Else
+         pn = Replace(pn, "%col2%", "Heard")
+      Endif
+   Endif
+   pn &= Table_row
+   pn = Replace(pn, "%col1%", "Urinalysis")
+   If Trim(txtUrinalysis.text) <> "" Then pn = Replace(pn, "%col2%", Trim(txtUrinalysis.Text))
+   pn &= Table_row
+   pn = Replace(pn, "%col1%", "BP")
+   If Trim(txtBloodPressure.text) <> "" Then pn = Replace(pn, "%col2%", Trim(txtBloodPressure.Text))
+     pn &= Table_row
+   pn = Replace(pn, "%col1%", "Weight")
+   If Trim(txtWeight.text) <> "" Then pn = Replace(pn, "%col2%", Trim(txtWeight.Text))
+   pn &= Table_row
+   pn = Replace(pn, "%col1%", "Foetal Movements")
+   If rbFMF.value = True Then
+       pn = Replace(pn, "%col2%", "felt")
+   Else
+       pn = Replace(pn, "%col2%", "not felt")
+   Endif
+   If Trim(txtNotes.text) <> "" Then
+      pn &= Table_row
+      pn = Replace(pn, "%col1%", "Notes")
+      pn = Replace(pn, "%col2%", Trim(txtNotes.text))
+   Endif
+    pn = Replace(pn, "%col2%", "")
+    pn &= "</TABLE>"
+    Print pn
+    Return PN  
 End
 
 Public Function Visit_Valid() As Boolean
@@ -288,7 +379,7 @@ Private Sub Reload()
       End If
       gvwVisits[irow, 10].Text = antenatal_visit!notes
       Inc irow
-   
+      
    Next
    VBox_EditArea.Enabled = False
    
@@ -358,6 +449,8 @@ Public Sub EditArea_Clear()
    modEditAreaHelpers.EditArea_Clear(VBox_EditArea)  'clear textboxes/combo's
    cmbPresentation.index = -1
    fk_visit = 0
+   fk_progressnote = 0
+   progressnotes_for_visit = ""
    bDeclinedToMeasureBP = False  
    bDeclinedToMeasureDuration = False  
    bDeclinedToMeasureFHH = False 
@@ -530,6 +623,7 @@ Public Sub AnteNatal_Visit_New()
 End
 
 Public Sub Calc_Gestation() As Variant
+   
    Dim days As Integer
    Dim weeks As Integer
    
@@ -594,6 +688,8 @@ Public Sub Visit_Display()
    txtFoetalHeartRate.text = antenatal_visit!foetal_heart_rate
    fk_pregnancy = antenatal_visit!fk_pregnancy
    fk_visit = antenatal_visit!pk_antenatal_visit
+   fk_progressnote = antenatal_visit!fk_progressnote
+   progressnotes_for_visit = antenatal_visit!progress_notes
    If antenatal_visit!foetal_heart_heard Then
       rbFHH.value = True
    Else

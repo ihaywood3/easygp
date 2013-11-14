@@ -39,7 +39,6 @@ Private brands As Collection
 Private generics As Collection 
 Private obs As Observer
 Private Form_Terms As FCodedTermSelector
-Private sSearchLimit As Integer = 20 'default to only get 20 terms
 Private iCodingSystem As Integer  
 Private currentTerm As Collection
 Private SpellChecker As ClskSpell
@@ -53,7 +52,6 @@ Private Reaction_Types As String[]
 Private ReferenceHboxForTopListView As Hbox               'used if split moves to reposition columnview
 Private cvwAllergiesSensitivites_key As Integer
 Static Private form_allergy As FAllergy
-
 Static Public Sub Allergies_Reload_External()
    '-----------------------------------------------------------
    'Called from FClinical to reload allergies list if the  user
@@ -63,7 +61,7 @@ Static Public Sub Allergies_Reload_External()
    form_allergy.Reload() 
    
 End
-
+'Public Sub Init(cons As CConsult, ac As CConsult)
 Public Sub Init(cons As CConsult)
    '--------------------------------
    'Do all the initialization things
@@ -71,7 +69,7 @@ Public Sub Init(cons As CConsult)
    
    form_allergy = Me  
    Try Settings_Load()
-   currentconsult = cons  
+   currentconsult = cons
    lblmeasure.text = " Authority Approval No.  "                'resize edit area labels, keep size consistant across forms - this from script is the widest
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
    modEditAreaHelpers.Resize_label(lblNoKnownAllergies, lblMeasure)
@@ -276,37 +274,40 @@ Public Sub Allergy_Or_Sensitivity_Delete()
    'Indicate the change in the progress notes and update the
    'main task bar in FClinical
    '------------------------------------------------------------------
-   
-   Dim sSummary As String
-   Dim fk_reason As Integer
-   Dim reason As String
    Dim allergy As Collection   'ease of typing.
+   Dim audit_notes As String
    
    If Message.Question("Delete current allergy?", "Yes", "No") = 2 Then Return
-   sSummary = ""
    cvwAllergiesSensitivites.MoveCurrent()
    allergy = allergies[cvwAllergiesSensitivites.Item.key]
-   sSummary = Progress_Notes_Create()
-   If allergy!fk_consult <> currentconsult.GetPK() Then                                             'if allergy was not deleted this consult
-      Faudit.Init(": Delete Allergy", "clin_allergies.allergies", "Allergy Summary:" & sSummary)     'pop up the audit-trail dialog
-      fk_reason = FAudit.ShowModal()                                                                 'this returns the reason
-      modDBConnect.CommitTrans()                                                                     'otherwise if a new reason it won't have been comMitted FIXMED i DID Put commit trans in the form
-      reason = modAudit.Get_Reason_Using_pk(fk_reason)                                               'get back the details to write into the progress notes
-      allergy!notes = Replace$(allergy!notes, "<TABLE", "<TABLE BGCOLOR='#CFCFCF' ")                 'now, mark this allergy as having been deleted by the user in the notes as part of audit trail
-      allergy!notes = Replace$(allergy!notes, "<small>", "<strike><small>", gb.IgnoreCase)
-      allergy!notes = Replace$(allergy!notes, "</small>", "</strike></small>", gb.IgnoreCase)
-      allergy!notes = Replace(allergy!notes, "</TABLE>", "</TABLE><small><B><I>Audit note:</B> this allergy was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small>")
-      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": allergy!notes])
-   Else                                                                                               'the allergy was inserted this consultation
-      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "deleted": True]) 'just delete the progress note associated with it.
+   audit_notes = Replace(Progress_Notes_Create(), "edited", "")
+   If allergy!fk_consult <> currentconsult.GetPK() Then                                              'if allergy was not deleted this consult
+      Print allergy!notes  
+      allergy!notes = "<strike><P><FONT COLOR='#b3b3b3'>" & allergy!notes & "</strike></P>"
+     ' allergy!notes = Replace$(allergy!notes, "<TABLE", "<TABLE BGCOLOR='#CFCFCF' ")                 'now, mark this allergy as having been deleted by the user in the notes as part of audit trail
+      'allergy!notes = Replace$(allergy!notes, "<small>", "<small><strike>", gb.IgnoreCase)
+     ' allergy!notes = Replace$(allergy!notes, "</small>", "</strike></small>", gb.IgnoreCase)
+    ' allergy!notes = Replace(allergy!notes, "</TABLE>", "</TABLE><small><B><I>Audit note:</B> this allergy was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & ". For the explanation see the audit trail on the date.</I></small>")
+       allergy!notes &= "<small><B><I>Audit note:</B> this allergy was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & ". For the explanation see the audit trail on the date.</I></small>"
+      Print allergy!notes  
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": allergy!notes])   'and save this progress note
+      modDBConnect.update("clin_allergies.allergies", Null, ["pk": fk_allergysensitivity, "deleted": True])      'and delete from the backend.
+       If modAudit.MakeAudit(currentconsult, "mark deleted", "clin_allergies.allergies", fk_allergysensitivity, const.cSection_allergies, audit_notes) Then
+         modDBConnect.CommitTrans()
+      Else
+         modDBConnect.RollBack
+      End If 
+   Else                                                                                                         'the allergy was inserted this consultation
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "deleted": True])         'just delete the progress note associated with it.
+      modDBConnect.update("clin_allergies.allergies", Null, ["pk": fk_allergysensitivity, "deleted": True])      'and delete from the backend.
+      modDBConnect.CommitTrans()
    End If 
-   modDBConnect.update("clin_allergies.allergies", Null, ["pk": fk_allergysensitivity, "deleted": True])      'and delete from the backend.
-   modDBConnect.CommitTrans()
    If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then
       FClinical.Refresh_Section(const.cSection_Allergies) 'retrieve the data from the backend again.
       FClinical.Refresh_AllPreviousNotes()
       FClinical.Refresh_Section(const.cSection_HealthSummary)
    End If 
+   
    Reload()
    
 End
@@ -581,6 +582,10 @@ Public Sub listview1_DblClick()
    End Select
    listview1.Visible = False
    
+Catch
+   listview1.Visible = False
+   Return  
+   
 End
 
 Public Sub EditArea_Notify_DataChange(flag As Boolean)
@@ -674,6 +679,7 @@ Public Sub Generic_Select(generic As Collection)
    txtATCClass.text = generic!class_name  
    fk_product = generic!fk_product   
    txtCodedTerm.SetFocus
+   
 End
 
 Private Sub Generics_Get()
@@ -682,7 +688,6 @@ Private Sub Generics_Get()
    '----------------------------------------   
    
    Dim Generic As Collection
-   Dim R As Result
    
    Timer1.Stop
    listview1.Clear()
@@ -1025,6 +1030,7 @@ Public Sub EditArea_TextBox_GotFocus()
    
    listview1.Visible = False  
    ReferenceHboxForTopListView = Last.Parent.parent
+   Form_Terms.Visible = False 
    Last.BackGround = Color.rgb(95, 255, 175)
    Select Case Last.tag
       Case "coded term"

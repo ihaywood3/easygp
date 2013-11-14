@@ -78,11 +78,7 @@ End
 Public Sub _new(patient As Collection, Optional iConsult_Type As Integer = 0, Optional bForceNew As Boolean = False)
    '-------------------------------------------------------------------
    ' creates a consultation not saved to the backend until necessary
-   ' This is called by:
-   ' FClinical or any of its child forms (i.e entire day to day record
-   ' Task Manager
-   ' FInbox
-   ' 
+   ' This is called by any form needing to save data related to a patient
    ' When checking if consult started today checks optionally against
    ' the consult type
    ' eg If adding documents From the inbox the user
@@ -110,7 +106,7 @@ Public Sub _new(patient As Collection, Optional iConsult_Type As Integer = 0, Op
    '   fk_type integer,
    '   summary text,
    '   CONSTRAINT consult_pkey PRIMARY KEY (pk )
-   ' )
+   ' )iConsult_Type
    ' WITH (
    '   OIDS=FALSE
    ' );
@@ -124,93 +120,31 @@ Public Sub _new(patient As Collection, Optional iConsult_Type As Integer = 0, Op
    pk_consult = -1 
    fk_type = 0   'THINK ABOUT THIS, eventually always need a type, in document etc need Cconsult and ?what is type ?const.cConsultType_Audit
    summary = ""
-   sql = "Select date(consult_date), pk, fk_type from  clin_consult.consult where fk_patient = "
-   sql &= patient!fk_patient & " AND fk_staff=" & modDBConnect.currentUser!fk_staff
-   If iConsult_Type Then                                                       'if consult type we are looking for specified
-      sql &= " AND fk_type=" & iConsult_Type                                   'add that to the query
+   sql = "Select date(consult_date), pk, fk_type from  clin_consult.consult where fk_patient = "  'Select consult details from clin_consult
+   sql &= patient!fk_patient & " AND fk_staff=" & modDBConnect.currentUser!fk_staff               'for this patient and this staff memebr
+   If iConsult_Type Then                                                                          'if consult type defined 
+      sql &= " AND fk_type=" & iConsult_Type                                                      'match to that type of consult
+      sql &= " AND  date(consult_date) = '" & Format(Now, "dd/mm/yyyy") & "'::date"             'and to today's date
+      Print sql 
    Else                                                                        'if not (the default = called from FClinical)
       sql &= " AND fk_type <" & const.ConsultType_DataImport                   'any types eg at surgery/home visit/phone etc This needs fixing talk to me RT 10 =
    Endif                                                                       '     
    sql &= " ORDER BY pk DESC limit 1"                                          'this pulls in the last consult of the requested type or the default FClinical consult                                       
    R = modDBConnect.exec_query(sql)  
-   If Not R.count Then Return                                                  'no records at all for this patient, start new consult
-    If Format(R!date, "dd/mm/yyyy") = Format(Now, "dd/mm/yyyy") Then           'they have been seen ?is the last consult on today's date?
-     ' If R!fk_type = const.ConsultType_DataImport Then                         'don't know why this is in here, probably can remove
-      '   pk_consult = R!pk
-     '    fk_type = R!fk_type
-     ' Else
+   If Not R.count Then 
+      fk_type = iConsult_Type
+      Return                                                  'no records at all for this patient, start new consult
+   Else 
+      If Format(R!date, "dd/mm/yyyy") = Format(Now, "dd/mm/yyyy") Then           'they have been seen ?is the last consult on today's date?
          pk_consult = R!pk                                                     'Yes, then re-use the primary key of clin_consult.consult and the type
          fk_type = R!fk_type
-     ' End If  
-   Endif
-   
-   ''  End Select
-   '  If Format(R!date, "dd/mm/yyyy") = Format(Now, "dd/mm/yyyy") And R!fk_type < const.ConsultType_DataImport Then 
-   ' If Message.Question("There has already been a consultation started today, do you wish to continue this?", "Yes", "No") = 1 Then
-   '   pk_consult = R!pk
-   '  fk_type = R!fk_type
-   '  Else If Format(R!date, "dd/mm/yyyy") = Format(Now, "dd/mm/yyyy") And R!fk_type = const.ConsultType_Added_From_Inbox Then
-   '    pk_consult = R!pk
-   '   fk_type = R!fk_type
-   ' End If
-   
-End
-Public Sub _new_old(patient As Collection, Optional iConsult_Type As Integer = 0, Optional bForceNew As Boolean = False)
-   '-------------------------------------------------------------------
-   ' creates a consultation not saved to the backend until necessary
-   ' This is called by:
-   ' FClinical or any of its child forms (i.e entire day to day record
-   ' Task Manager
-   ' FInbox
-   ' 
-   ' When checking if consult started today checks optionally against
-   ' the consult type eg if adding documents from the inbox the user
-   ' may have done a couple, gone off entered notes for another patient
-   ' filed someone elses result, then gone back to the orginal patient
-   ' We don't want multiple consult.pk for the same type of task
-   ' const.ConsultType_Added_From_Inbox
-   ' If a consultation exists today for that staff member then it's
-   ' pk is re-used FIXME this is not good enough eg. for PM consults
-   ' new 14/09/2013: added optional bForceNew to deal with consults
-   ' being created from the Inbox tabs necessitating new consult.pk
-   ' IAN won't like this - he can find a more elegant solution
-   ' fixme do something with summary i.e decide to implement or not
-   '--------------------------------------------------------------------
-   
-   Dim sql As String 
-   Dim R As Result
-   
-   cache = New Collection    
-   cache!patient = patient
-   pk_consult = -1 
-   fk_type = 0   'THINK ABOUT THIS, eventually always need a type, in document etc need Cconsult and ?what is type ?const.cConsultType_Audit
-   summary = ""
-   ' Need solution to a continued consultation: This won't work as a consult
-   'several hours after this has the wrong time stamp.
-   
-   R = modDBConnect.exec_query("Select date(consult_date), pk, fk_type from  clin_consult.consult where fk_patient = " & patient!fk_patient & " AND fk_staff=" & modDBConnect.currentUser!fk_staff & " order by pk DESC limit 1")
-   If Not R.count Then Return
-    If Format(R!date, "dd/mm/yyyy") = Format(Now, "dd/mm/yyyy") Then
-      If R!fk_type = const.ConsultType_DataImport Then 
-         pk_consult = R!pk
-         fk_type = R!fk_type
       Else
-         pk_consult = R!pk
-         fk_type = R!fk_type
-      End If  
-   Endif
-   
-   ''  End Select
-   '  If Format(R!date, "dd/mm/yyyy") = Format(Now, "dd/mm/yyyy") And R!fk_type < const.ConsultType_DataImport Then 
-   ' If Message.Question("There has already been a consultation started today, do you wish to continue this?", "Yes", "No") = 1 Then
-   '   pk_consult = R!pk
-   '  fk_type = R!fk_type
-   '  Else If Format(R!date, "dd/mm/yyyy") = Format(Now, "dd/mm/yyyy") And R!fk_type = const.ConsultType_Added_From_Inbox Then
-   '    pk_consult = R!pk
-   '   fk_type = R!fk_type
-   ' End If
-   
+         fk_type = iConsult_Type  
+      Endif
+   End If   
+
 End
+
 
 Public Function _get(key As String) As Collection
    ' this implements the "!" notation
@@ -314,19 +248,19 @@ Private Function GetData(key As String) As Collection
          'eg. contains IAN THINK ABOUT THIS.
          '-------------------------------------------------------------------
          Error.Raise("patient should always be populated in cConsult") 
+      Case "progress_notes_audit"
+         Return modConsultDBI.progressnotes_get(cache!patient!fk_patient, "", True)
       Case "progress_notes" 
          Return modConsultDBI.progressnotes_get(cache!patient!fk_patient)
       Case "progress_notes_today"
          Return modUtil.Todays_Rows(GetData("progress_notes")) 
       Case "staff_tasks"
          Return modStaffTasksDBI.Tasks_For_Patient_Get(cache!patient!fk_patient)
-      Case "scratchpad"
-         Return modScratchPadDBI.Get(cache!patient!fk_patient)
       Case "skin_procedures"
          Return modProceduresDBI.SkinProcedures_Get(cache!patient!fk_patient)
       Case "recalls_logged"
          Return modRecallsDBI.Get_Logged(cache!patient!fk_patient)
-      Case "recalls_this_consult"
+      Case "recalls_this_consult" 
          Return modUtil.Todays_Rows(GetData("recalls_logged"))
          '-----------------------------------------------------------------------------------------------------------------
          'Special cases for letters or correspondence in

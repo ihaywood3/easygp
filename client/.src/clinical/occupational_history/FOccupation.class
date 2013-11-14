@@ -40,7 +40,6 @@ Private pk_view As String  'key to the row in the view.
 Private SpellChecker As ClskSpell 
 Private occupations As Collection
 Static Private form_occupations As FOccupation
-
 Public Sub set_embedded(flag As Boolean)
    '--------------------------------------------------
    'If this form is embeded from another form set flag
@@ -49,7 +48,7 @@ Public Sub set_embedded(flag As Boolean)
    bEmbedded = flag
    
 End
-
+'Public Sub Init(cons As CConsult, ac As CConsult)
 Public Sub Init(cons As CConsult)
    '----------------------------------------------------------
    'PURPOSE    :Basic initialiseation
@@ -89,7 +88,8 @@ Static Public Sub Occupations_Reload()
 End
 
 Public Sub Reload()
-   
+   EditArea_Clear()
+   EditArea_NotifyChange(False)
    OccupationsList_Refresh()
    '--------------------------------------------------------------------
    'At Init of this form if there are occupations in the list, highlight
@@ -291,8 +291,9 @@ Public Function Occupation_Valid() As Boolean
    'validates the contents of edit area returns FALSE if invalid
    '  Mimimum amount of data:
    '  an occupation with or without a valid key
-    'Allow a new oocupation, but must have some text
+   'Allow a new oocupation, but must have some text
    '-----------------------------------------------
+
    If Trim(txtOccupation.text) = "" Then Return False
    SpellCheck_TextBox(txtoccupation)
    fk_occupation = modCommonDBI.Occupation_Check_Valid(txtOccupation)
@@ -555,6 +556,7 @@ Public Sub Save()
    '               :or clicked on it with the mouse
    'WHAT IT DOES   :Checks for minimal data validity - an oocupation
    '----------------------------------------------------------------
+
    Dim sProgressNotes As String
    Dim person As CRow   
    
@@ -609,7 +611,7 @@ Public Sub Save()
       Endif
       person.Save("contacts.data_persons", "fk_person")
    End If  
-    
+   
    modDbConnect.CommitTrans()
    If currentoccupation!main_occupation Then FClinical.Patient_Demographics_Refresh()  'and the display in FClinical
    EditArea_NotifyChange(False)
@@ -766,6 +768,7 @@ Public Sub OccupationsList_Refresh()
    'Note: the only unique key in view is :occupational_history!pk_link_occupation_exposure
    'which identifies the occupational history item for editing
    '---------------------------------------------------------------------------------------
+
    Dim Astring As String
    Dim current_fk_occupation As Integer
    
@@ -1023,22 +1026,31 @@ Public Sub mnuOccupations_Click()
    
 End
 
-Public Sub occupation_delete()
-   '-------------------------------------------
-   'Deletes an occupation and all its exposures
-   '-------------------------------------------
+Public Sub Occupation_Delete()
+   '--------------------------------------------------------------------------------------------
+   'Deletes an occupation and all its exposures, don't enforce audit reason - not that important
+   'check if health summary showing, if so update it as it has occupations on it
+   '--------------------------------------------------------------------------------------------
    
-   Dim sql As String
+   Dim audit_note As String
    
    cvwOccupations.MoveCurrent()
+   audit_note = "The patient's occupation " & occupational_history[pk_view]!occupation & " was deleted."
    If Message.Question("Are you sure  you want to delete the occupation " & cvwOccupations.Item.text & "?\n\nIf you continue all associated work exposures will also be deleted.", "Yes", "No") = 2 Then Return
-   modDBConnect.update("clin_history.occupational_history", Null, ["pk": fk_occupational_history, "deleted": True])
-   sql = "Update clin_history.occupations_exposures set deleted = True where fk_occupational_history = " & fk_occupational_history
-   modDBConnect.exec_query(sql)
-   modDBConnect.CommitTrans()
+   modDBConnect.update("clin_history.occupational_history", Null, ["pk": fk_occupational_history, "deleted": True])                                    'delete the occupation
+   modDBConnect.exec_query("Update clin_history.occupations_exposures set deleted = True where fk_occupational_history = " & fk_occupational_history)  'and any exposures
+   If occupational_history[pk_view]!main_occupation Then
+      modDBConnect.exec_query("update  contacts.data_persons set fk_occupation = null where pk=" & currentconsult!patient!fk_person)
+   Endif
+   If modAudit.MakeAudit(currentconsult, "delete", "clin_history.occupational_history", fk_occupational_history, const.cSection_OccupationalHistory, audit_note) Then
+      modDBConnect.CommitTrans()
+      FClinical.Refresh_AllPreviousNotes()
+      FClinical.Refresh_Section(const.cSection_HealthSummary) 
+      If occupational_history[pk_view]!main_occupation Then FClinical.Patient_Demographics_Refresh()  'and the display in FClinical
+   Else
+      modDbConnect.RollBack
+   End If   
    Reload()
-   FClinical.Refresh_AllPreviousNotes()
-   FClinical.Refresh_Section(const.cSection_HealthSummary)    'check if health summary showing, if so update it as it has occupations on it
    
 End
 

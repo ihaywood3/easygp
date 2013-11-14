@@ -165,6 +165,7 @@ Private fk_staff_must_finalise As Integer    'if non zero then this staff member
 Private fk_role_can_action As Integer
 Private fk_task_deleted As Integer           'the last deleted task
 Private fk_tasks_Components_keys_deleted As Collection 'component keys of last deleted task.
+Private Document As Collection 
 
 Public Sub Set_Audit_Schema_Table_SourceRowKey(k As Integer, t As String)
    '----------------------------------------------
@@ -177,6 +178,14 @@ Public Sub Set_Audit_Schema_Table_SourceRowKey(k As Integer, t As String)
    
 End
 
+' Public Sub Set_Patient()
+'   'This is only called when the tasks manager is embedded in FPatientTasks in Fclinical
+'    Patient = currentconsult!patient
+'    Patient_Select
+'    
+'    
+' End
+
 Public Sub Set_Parent_Form(parent_form_name As String)
    '----------------------------------------------------
    'Name of form which embedded this form - mainly used
@@ -188,9 +197,10 @@ Public Sub Set_Parent_Form(parent_form_name As String)
    
 End
 
-Public Sub Set_Document(docKey As Integer)
+Public Sub Set_Document(D As Collection)
    
-   fk_document = docKey
+   Document = D
+   fk_document = document!pk_document 
    
 End
 
@@ -226,6 +236,24 @@ Public Sub Init()
    RolesCanAction = modUtil.LoadCombo(cmbRolesCanAction, modAdminDBI.Roles_Get(), "role")           'fill combo with roles to let user choose who can action a task
    RolesCanFinalise = modUtil.LoadCombo(cmbRolesCanFinalise, modAdminDBI.Roles_Get(), "role")       'fill combo with roles to let user choose who can finalise a task
    Select Case Parent_Form
+      Case "FPatientTasks"
+         Separator1.Visible = False
+         Hbox_Heading.visible = False
+         Hbox_Buttons.Visible = False   
+         VBox_Right.Visible = False 
+         Vbox_AllocatedTasks.visible = False 
+         Hbox_Patient.Visible = False  
+         Hbox_Street.Visible = False  
+         Hbox_Suburb.Visible = False   
+         Hbox_DateFinalised.Visible = False
+         Hbox_FinalisedBy.Visible = False 
+         Hbox_Combo.Visible = False
+         lblWhatToDo.text = "What to do"
+         txtRelatedTo.ReadOnly = False
+         txtStaffToFinalise.ReadOnly = False 
+         Patient = currentconsult!patient
+         Patient_Select
+         Return 
       Case "FDayBook"                                                                               'tasks are embedded in thes users workcentre
          '  cmbwhatToDo.Visible = False  
          iTaskRestriction = const.cTaskRestriction_User                                    'default to this type of task list
@@ -341,7 +369,10 @@ Public Function Save() As Boolean
    
    Note_Save()
    Task_Save()
-   
+   If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then
+      FClinical.Refresh_AllPreviousNotes(True) 'True = only refresh progress notes if in display audit mode
+   Endif
+
 End
 
 Public Sub Task_Save()
@@ -354,6 +385,7 @@ Public Sub Task_Save()
    Dim StaffTask As New CRow
    Dim TaskComponent As New CRow
    Dim sTaskComponentSummary As String
+   Dim sTaskDetails As String
    
    If VBox_EditArea_Outer.Padding = 0 And bFinalised = False Then Return 'no outline = no data
    If Not Valid_task() Then Return                                        'validate contents
@@ -381,6 +413,17 @@ Public Sub Task_Save()
    Else                                                              'new task create new task key
       staffTask!fk_staff_filed_task = fk_staff
       staffTask!related_to = Trim(txtRelatedTo.text)
+      If fk_patient <> 0 Then                                                              'start an audit row in progress notes
+         Consult_Check_Created(const.ConsultType_AuditNote, "Staff task allocated")        'create the consult
+         If Not IsNull(Document) Then                                                      'if about a document describe which one
+            sTaskDetails = modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes("staff task allocated", Document) & "<BR>"
+            sTaskDetails &= "The task allocated to " & txtStaffAllocated.text
+         Else  
+            sTaskDetails &= "The task allocated to " & txtStaffAllocated.text & " regarding '" & Trim(txtRelatedTo.text) & "'"
+         End If   
+         sTaskDetails &= " was:<BR>- '" & Trim(txtTaskDetails.text) & "'<BR>"
+         sTaskDetails &= " and the staff member allocated to finalise this was " & txtStaffToFinalise.Text
+      End If   
    End If
    If fk_staff_must_finalise <> 0 Then
       staffTask!fk_staff_must_finalise = fk_staff_must_finalise
@@ -438,11 +481,12 @@ Public Sub Task_Save()
    Endif
    sTaskComponentSummary &= Trim(txtTaskDetails.text)
    '------------------------------------------------------------------------------------
-   'Check if a consult has been created for the patient, if there is a patient of cours e
+   'Check if a consult has been created for the patient, if there is a patient of course
    '------------------------------------------------------------------------------------
    If fk_patient <> 0 And bFinalised = False Then
       Consult_Check_Created(const.ConsultType_AuditNote, "Staff task allocated")
       TaskComponent!fk_consult = currentconsult.GetPK()
+      
    Else
       TaskComponent!date_logged = Now()
    End If
@@ -453,8 +497,14 @@ Public Sub Task_Save()
    StaffTask.Save("clerical.tasks", "fk_task")
    TaskComponent!fk_task = StaffTask!fk_task
    TaskComponent.Save("clerical.task_components", "fk_component")
+   modAudit.MakeAudit(currentconsult, "staff task allocated", "clerical.tasks", StaffTask!fk_task, const.cSection_StaffTasks, sTaskDetails)
    modDBConnect.CommitTrans
-   Reload()
+   If Parent_Form <> "FPatientTasks" Then
+      Reload()
+   Else
+      FPatientTasks.Hide_Form()
+      FClinical.Refresh_AllPreviousNotes(True)
+   End If
    
 End
 
@@ -469,16 +519,20 @@ Public Function Finalise() As Boolean
    '        - Now this user, may just be finalising their own role
    '          if fk_staff<>fk-staff_must_finalise, so we need to shift the task off their
    '          task list, but leave it 'open' for fk_staff_must_finalise to finish
-   '
    'Fixme currently only applies to a document
    'fixme ?does new cConsult belong here.
    'fixme won't work if not patient nor a doc
    'Transaction is started in the calling routine
+   'this module is really F*d document global being set all over the place, 
+   'or grabbed from backend - fixme all this crap
    '----------------------------------------------------------------------------------------
    
    Dim StaffTask As New Crow
    Dim TaskComponent As New CRow
-   Dim audit As New Collection
+   Dim sProgressNotes As String
+   Dim document As Collection
+   
+   Print fk_component
    
    If Not fk_component Then Return
    
@@ -498,15 +552,21 @@ Public Function Finalise() As Boolean
       Endif
    End If
    
-   If fk_table_row Then
-      audit!fk_row = fk_table_row
+   If fk_table_row Then                                                          'the task is attatched to a document
+      document = modArchiveDocumentsDBI.Document_Get_By_pk(fk_document)           'fixme shouldn't have to do this
       If fk_patient <> 0 Then
          If IsNull(currentconsult) Then
             CurrentConsult = New CConsult(patient)
          Else
             currentconsult.Set(const.ConsultType_AuditNote, "Finalising staff task")
          End If
-         modAudit.MakeAudit(currentconsult, "task component finalised", "documents.documents", fk_document, const.cSection_StaffTasks, " by " & modDBConnect.currentUser_FullName())
+         
+         sProgressNotes = modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes("task component finalised", Document) & "<BR>"
+         sProgressNotes = "The task component (related to " & "'" & txtRelatedTo.Text & "') which was "
+         sProgressNotes &= "'" & txtTaskDetails.text & "' has been marked as finalised"
+         
+         '  modAudit.MakeAudit(currentconsult, "task component finalised", "documents.documents", fk_document, const.cSection_StaffTasks, " by " & modDBConnect.currentUser_FullName())
+         modAudit.MakeAudit(currentconsult, "task component finalised", "clerical.task_components", fk_component, const.cSection_StaffTasks, sProgressNotes)
       End If
    End If
    '-----------------------------
@@ -558,10 +618,11 @@ Public Function Finalise() As Boolean
          StaffTask!fk_staff_finalised_task = modDBConnect.currentUser!fk_staff
          StaffTask!date_finalised = Now()
          StaffTask.Save("clerical.tasks", "fk_task")
+         sProgressNotes = "The task (related to " & "'" & txtRelatedTo.Text & "') which was "
+         sProgressNotes &= "'" & txtTaskDetails.text & "' has been marked as finalised"
+         modAudit.MakeAudit(currentconsult, "staff task finalised", "clerical.tasks", StaffTask!fk_task, const.cSection_StaffTasks, sProgressNotes)
       End If
    End If
-   '   Consult_Check_Created(const.ConsultType_AuditNote, "Staff task note")
-   
    '------------------------------------------
    'Mark the component finalised (last or not)
    '------------------------------------------
@@ -617,7 +678,9 @@ Public Function Note_Save() As Boolean
    'Save a new note about this task complete transaction
    'returns true if not successfully saved
    '---------------------------------------------------
+   
    Dim note As CRow
+   Dim sProgressNotes As String                                                 'for audit insertion into the progress notes
    
    If Trim(txtNotes.text) = "" Then Return                                    'no note, don't save
    If fk_component = 0 Then
@@ -636,6 +699,10 @@ Public Function Note_Save() As Boolean
    note!fk_staff_made_note = fk_staff
    note!date = Now()
    note.Save("clerical.task_component_notes", "fk_note")
+   sProgressNotes = "The task (related to" & "'" & txtRelatedTo.Text & "') which was "
+   sProgressNotes &= "'" & txtTaskDetails.text & "' has been actioned. The comment was:<BR>"
+   sProgressNotes &= note!note
+   modAudit.MakeAudit(currentconsult, "note on task", "clerical.task_component_notes", note!fk_note, const.cSection_StaffTasks, sProgressNotes)
    Return True
    
 End
@@ -662,7 +729,8 @@ Public Sub EditAreaButtons_Click()
    Dim hTextbox As Textbox
    
    Select Case Last.tag
-         
+      Case "hide form"
+         Me.Hide  
       Case "refresh"                                                                  'refresh the tasks by triggering  rbTaskRestriction_Click() event
          ' Select Case iTaskRestriction
          '    Case const.cTaskRestriction_user
@@ -685,7 +753,7 @@ Public Sub EditAreaButtons_Click()
             modDBConnect.RollBack()
          Endif
       Case "save"
-         Save()
+         Save
       Case "new task"
          Task_New()
       Case "pick date"
@@ -933,7 +1001,6 @@ Public Sub EditArea_Clear()
    lblMobilePHone.text = ""
    lblHomePhone.text = ""
    cvwTaskNotes.Clear()
-   ' cmbTaskType.Index = -1
    rbUrgencyRoutine.value = True
    txtDateLogged.text = Format(Now, "dd/mm/yyyy")
    txtLoggedBy.text = CurrentUser
@@ -956,7 +1023,7 @@ Public Sub EditArea_Clear()
    End With
    '--------------------------------------------------------------------
    'If The multi-tabbed Document Actioning form is embedded in the Inbox
-   'We need to not loose the fk_task, as one or more components will be
+   'We need to not lose the fk_task, as one or more components will be
    'linked to this
    '---------------------------------------------------------------------
    Select Case Parent_Form
@@ -966,6 +1033,7 @@ Public Sub EditArea_Clear()
          txtStreet.text = Trim(CurrentConsult!patient!street1 & " " & CurrentConsult!patient!street2)
          txtSuburb.text = CurrentConsult!patient!town & " " & CurrentConsult!patient!postcode
          txtRelatedTo.text = sTask
+         fk_task = 0
       Case "FDayBook"                   'FIXME this is a misnomer
          fk_task = 0
          fk_document = 0
@@ -1160,12 +1228,13 @@ Public Sub EditArea_GotFocus()
    End If
    ReferenceHboxForTopColumnview = Last.Parent.Parent
    Last.BackGround = Color.rgb(95, 255, 175)
-    With columnview1
+   With columnview1
       .Visible = False
       .top = Last.parent.parent.top + Last.parent.Parent.height
       .left = Last.Parent.left + Vbox_EditArea_Inner.Padding
       .Raise
    End With
+   
 End
 
 Public Sub EditArea_LostFocus()
@@ -1274,6 +1343,8 @@ Public Sub Task_New()
          txtTaskDetails.SetFocus()
          lblTaskHeading.text = "Tasks Allocated for This Document"
          Hbox_NotesButtons.Visible = False
+      Case "FPatientTasks"
+         txtRelatedTo.SetFocus
    End Select
    
 End
@@ -1567,11 +1638,6 @@ Public Sub cvwStaffTasks_Select()
          CurrentTaskComponent = TasksComponents[cvwStaffTasks.item.key]                       'for ease of typing
          iCurrentTaskComponent = TasksComponents[cvwStaffTasks.item.key]!fk_component
          Task_Display(CurrentTaskComponent)                                                   'fill edit area with data
-         ' If CurrentTaskComponent!fk_staff_must_finalise = fk_staff Then                       'if staff logged on = staff allowed to finalise
-         '    tbFinalise.Enabled = True
-         ' Else
-         '    tbFinalise.Enabled = False
-         ' End If
          If Not IsNull(CurrentTaskComponent!fk_row) Then                                       'fk_row = documents.fk_document
             Show_Document(CurrentTaskComponent!fk_row)                                        'Show document if available
             With TabStrip1
@@ -1772,7 +1838,9 @@ Public Sub Patient_Select()
       .Font.bold = False
       .Foreground = Color.Black
    End With
-   Consult_Check_Created(const.ConsultType_AuditNote, "New Staff Task for patient")
+   If IsNull(currentconsult) Then
+      Consult_Check_Created(const.ConsultType_AuditNote, "New Staff Task for patient")
+   End If   
    If Parent_Form = "FDayBook" And bPatientTask = True Then
       txtRelatedTo.SetFocus()
    Endif
@@ -1783,7 +1851,7 @@ Public Sub Consult_Check_Created(iconsult_type As Integer, summary As String)
    'probably should live elsewhere ?cConsult and pass parameters
    
    If IsNull(currentconsult) Then
-      CurrentConsult = New CConsult(patient)
+      CurrentConsult = New CConsult(patient, const.consult_type_audit)
    End If
    currentconsult.Set(iconsult_type, summary)
    

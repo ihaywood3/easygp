@@ -99,7 +99,9 @@ Public Sub Form_Close()
    
 End
 
-Public Sub Init(cons As CConsult)
+'Public Sub Init(cons As CConsult, ac As CConsult)
+
+Public Sub Init(cons As CConsult)  
    
    currentconsult = cons                                                   'Set consult from FClinical
    Set_Insist_Coding(True) 'remove me only for testing
@@ -388,8 +390,6 @@ Public Sub Reload()
    If lvwClaims.count Then           'and show in the list
       lvwClaims.MoveLast()           'move to the latest claim
       lvwClaims.Item.Selected = True 'highlight that row with marquee, this loads the visits
-      '   cvwVisits.MoveFirst()           'move to last first visit = the most recent
-      ' cvwVisits.Item.Selected = True 'highlight with  marquee  and show last visit
    End If
    VBox_EditArea.Enabled = False
    HBox_Visit_Type.Enabled = False
@@ -1547,6 +1547,7 @@ Public Sub Claim_New()
    HBox_Visit_Type.Enabled = True
    VBox_EditArea.Enabled = True
    tbPreview.Enabled = True
+   Try txtoccupation.text = currentconsult!patient!occupation
    txtCertificateDate.text = Format(Now, "dd/mm/yyyy")
    txtIdentifier.SetFocus()
    
@@ -1588,7 +1589,9 @@ Public Sub lvwClaims_Select()
    Sole_Trader!postcode = claim!soletrader_postcode
    Claim_Display()                'display the core claim details
    Visits_Refresh()               'get the visits for that claim
+   cvwVisits.SetFocus()
    cvwVisits.MoveFirst()          'Show the first visit in the list
+   cvwVisits_key = cvwVisits.Item.key
    cvwVisits.Item.Selected = True 'highlight the marquee and shows last vitis
    
 End
@@ -1759,37 +1762,39 @@ Public Sub Visit_Delete()
    Dim PN As Collection
    Dim reason As String
    Dim R As Result
+   Dim audit_notes As String
    
    If bClaimLoaded = False Then
       lvwClaims_Select()
       Claim_Display()
    End If
    If Message.Question("Do you really want to delete this workcover form?", "Yes", "No") = 2 Then Return
-   ' cvwVisits.MoveCurrent()
    For Each PN In currentconsult!progress_notes
-      If PN!pk_progressnote = fk_progressnote Then
-         Faudit.Init(": Delete Workcover Form", "clin_consult.progressnotes/clin_workcover.visits", "Workcover summary:" & pn!notes)
-         fk_reason = FAudit.ShowModal()
-         modDBConnect.CommitTrans()  'otherwise if a new reason it won't have been comitted
-         pn!notes = Replace$(pn!notes, "<TABLE", "<TABLE BACKGROUND='/tmp/watermark.png' BGCOLOR='#E7E7E7' ") 'FIXME EXPERIMENTAL PUT IN PROPER NOTE
-         reason = modAudit.Get_Reason_Using_pk(fk_reason)
-         pn!notes = Replace(pn!notes, "</table><HR>", "</TABLE><small><BR><B><I>Audit note:</B> this workcover form was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small><HR>")
+      If PN!pk_progressnote = fk_progressnote Then                                                            'when found the associated progress note
+         pn!notes = Replace$(pn!notes, "<TABLE", "<TABLE BACKGROUND='/tmp/watermark.png' BGCOLOR='#E7E7E7' ") 'FIXME PUT IN PROPER NOTE background watermark
+         audit_notes = pn!notes                                                                         'start audit notes
+         R = modDBConnect.exec_query("Select * from clin_workcover.visits where fk_claim= " & visit!fk_claim & " AND deleted = False")  
+         If R.count = 1 Then                                                                                 'delete claim if no visits left
+            modDBConnect.update("clin_workcover.claims", Null, ["pk": visit!fk_claim, "deleted": True])       
+            audit_notes &= "<BR>The claim will also be deleted:" & claim!identifier & " the diagnosis was: " & visit!diagnosis & "<BR>"
+         End If
+         pn!notes = Replace(pn!notes, "</table><HR>", "</TABLE><small><BR><B><I>Audit note:</B> this workcover form was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & ". Please refer to the audit trail of " & Format(Now, "dd/mm/yyyy") & " for the explanation</I></small><HR>")
          modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
          modDBConnect.update("clin_workcover.visits", Null, ["pk": visit!fk_visit, "deleted": True])
-         'FIXME: DELETE CLAIM TO IF NO VISITS LEFT ON THIS CLAIM.
          R = modDBConnect.exec_query("Select * from clin_workcover.visits where fk_claim= " & visit!fk_claim & " AND deleted = False")
-         If R.count = 0 Then
-            modDBConnect.update("clin_workcover.claims", Null, ["pk": visit!fk_claim, "deleted": True])
-         Endif
-         modDBConnect.CommitTrans()
-         Deleted_WorkcoverVisit = visit
-         Deleted_Workcoverclaim = claim
-         FClinical.Refresh_Section(const.cSection_Workcover)
-         FClinical.Refresh_AllPreviousNotes()
-         Break
+         If modAudit.MakeAudit(currentconsult, "mark deleted", "clin_workcover.visits", visit!fk_visit, const.cSection_Workcover, audit_notes) Then
+            modDBConnect.CommitTrans()
+            Deleted_WorkcoverVisit = visit
+            Deleted_Workcoverclaim = claim
+            Try FClinical.Refresh_Section(const.cSection_Workcover) 
+            Try FClinical.Refresh_AllPreviousNotes() 'may not be open
+            Break
+         End If 
       Endif
    Next
-   Reload()
+   Reload()  
+Catch
+   'Message.Info("An error occurred whilst trying to delete a workcover visit.\n\nIf this persists please talk to your system administrator.")
    
 End
 
@@ -2524,7 +2529,7 @@ Public Sub EditArea_Notify_Datachanged(flag As Boolean)
 End
 
 Public Sub EditAreaTextBox_LostFocus()
-
+   
    Dim Hastext As Boolean
    
    Last.BackGround = Color.rgb(255, 255, 255)

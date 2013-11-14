@@ -43,6 +43,68 @@ Public Function Priority_Get() As Collection
    
 End
 
+Public Function Referral_Delete(currentconsult As CConsult, Referral As Collection) As Boolean
+   '-------------------------------------------------------------------------------------
+   'User has clicked on a letter over the tabbed list referral's and decided to delete it
+   '-------------------------------------------------------------------------------------
+   
+   Dim sHtml As String
+   Dim fk_progressnote As Integer
+   Dim fk_referral As Integer
+   Dim pn As Collection
+   Dim fk_reason As Integer
+   Dim reason As String
+   Dim audit_notes As String
+   
+   If Message.Warning("Are you sure you wish to delete this referral", "Yes", "No") = 2 Then Return
+   fk_progressnote = referral!fk_progressnote
+   fk_referral = referral!pk_referral
+   sHtml = referral!letter_html
+   For Each PN In currentconsult!progress_notes
+      If PN!pk_progressnote = fk_progressnote Then
+         '---------------------------------------------------------
+         'if this progress note was put in today, just mark deleted
+         '----------------------------------------------------------
+         If PN!fk_consult = currentconsult.GetPK() Then           'probabably a reversal, don't need to audit just visually remove from the notes
+            modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "deleted": True])
+         Else
+            pn!notes = Replace$(pn!notes, "<TABLE", "<TABLE BGCOLOR='#CFCFCF' ")
+            pn!notes = Replace$(pn!notes, "<small>", "<strike><small>", gb.IgnoreCase)
+            pn!notes = Replace$(pn!notes, "</small>", "</strike></small>", gb.IgnoreCase)
+            audit_notes = "A referral letter dated " & Format(referral!date_referral, "dd/mm/yyyy") & " written to "
+            If Not IsNull(referral!organisation) Then
+               audit_notes &= referral!organisation
+               If referral!branch <> "HEAD OFFICE" Then
+                  audit_notes &= referral!branch
+               Endif
+               If referral!fk_employee Then
+                  audit_notes &= " " & referral!wholename  
+               Endif
+            Else
+               audit_notes &= " " & referral!wholename
+            Endif
+            audit_notes &= " about '" & referral!tag & "'"
+            audit_notes &= " was deleted."
+            pn!notes = Replace(pn!notes, "</TABLE>", "</TABLE><small><B><I>Audit note:</B> this referral letter was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & ". See audit trail on that date for the reason.</I></small>")
+            modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])             'strike through the letter in progress notes
+         End If
+         modDBConnect.update("clin_referrals.referrals", Null, ["pk": fk_referral, "deleted": True])                        'mark the referral as deleted
+         modDBConnect.exec_query("update clin_referrals.inclusions set deleted = True WHERE fk_referral = " & fk_referral)  'Mark the inclusions as deleted
+         If Not modAudit.MakeAudit(currentconsult, "mark deleted", "clin_referrals.referrals", fk_referral, const.cSection_Referrals, audit_notes) Then
+            modDBConnect.RollBack
+            Return
+         Else
+            modDBConnect.CommitTrans
+            Return True
+         End If   
+      Endif
+   Next
+  
+Catch
+   Return 
+   
+End
+
 Public Function Referrals_Written_This_Consult_Get(fk_patient As Integer) As Collection
    '----------------------------------------------------------------------------------------------------------
    'Returns collection of letters on same date by same doctor - this allows editing of mis-printed letters
@@ -81,13 +143,12 @@ End
 
 Public Function Referrals_Get_By_PK(pk_referral As Integer) As Collection
    
-  Dim sql As String
- 
-  sql = "select * from clin_referrals.vwReferrals where pk_referral = &1"
-  Return modDBConnect.exec_query_collection(sql, [pk_referral])[pk_referral]
+   Dim sql As String
+   
+   sql = "select * from clin_referrals.vwReferrals where pk_referral = &1"
+   Return modDBConnect.exec_query_collection(sql, [pk_referral])[pk_referral]
    
 End
-
 
 Public Function Referral_Get_Types() As Collection 
    '-------------------------------------------------------------
@@ -109,10 +170,12 @@ Public Function UnDelete(pk_referral As Integer)
    modDBConnect.exec_query("Update clin_referrals.referrals set deleted = False where pk = " & pk_referral)
    
 End
+
 Public Function Inclusions_Get(fk_patient As Integer, Optional bdeleted As Boolean = False, Optional bThisConsult As Boolean = False, Optional fk_referral As Integer = 0) As Collection 
-    '-----------------------------------------------------------------------------------------------------------------------
+   '-----------------------------------------------------------------------------------------------------------------------
    'Gets inclusions as keys for patients referrals, either the entire collection or optionally only for current day of consultation
    '-----------------------------------------------------------------------------------------------------------------------
+
    Dim sql As String
    
    sql = "Select pk_inclusion, fk_document, fk_referral from clin_referrals.vwInclusions where fk_patient = " & fk_patient & "  AND deleted = " 
@@ -170,14 +233,14 @@ Public Function Save(currentconsult As CConsult, old_pk As Integer, referral As 
    End If
    
    If Not IsNull(inclusions) Then
-     For Each inclusion In inclusions
-       inclusion!fk_referral = referral!pk_referral
-       If IsNull(inclusion!pk_inclusion) Then
-          inclusion!pk_inclusion = modDBConnect.insert("clin_referrals.inclusions", inclusion)
-       Else
-          modDBConnect.update("clin_referrals.inclusions", inclusions[inclusion!pk_inclusion], inclusion, "pk_inclusion") 
-       Endif
-     Next
+      For Each inclusion In inclusions
+         inclusion!fk_referral = referral!pk_referral
+         If IsNull(inclusion!pk_inclusion) Then
+            inclusion!pk_inclusion = modDBConnect.insert("clin_referrals.inclusions", inclusion)
+         Else
+            modDBConnect.update("clin_referrals.inclusions", inclusions[inclusion!pk_inclusion], inclusion, "pk_inclusion") 
+         Endif
+      Next
    Endif
    Return referral!pk_referral
    
@@ -196,7 +259,6 @@ Public Function Organisations_Get_For_Employee(fk_person As Integer) As Collecti
    
 End
 
-
 Public Function Persons_Addresses_Get(fk_person As Integer) As Collection
    '---------------------------------------------------------------------
    'Get collection of addresses for person either when the contacts entry
@@ -211,11 +273,12 @@ Public Function Persons_Addresses_Get(fk_person As Integer) As Collection
    
 End
 
-Public Function Person_Get_By_Surname(txtName As String) As Collection
+Public Function Person_Get_By_Surname(txtName As String, Optional bExcludeLeftAddress As Boolean = False) As Collection
    '-------------------------------------------------------------------------
    'return a collection of persons by surname, either employee or sole trader
    'Called by FQuickContact, FReferrals and FCarePlanning
    'Excludes persons where are retired, deceased or left organisation
+   'fixme the hard coded limit
    '-------------------------------------------------------------------------
    
    Dim bits As New String[]
@@ -228,6 +291,9 @@ Public Function Person_Get_By_Surname(txtName As String) As Collection
    Else
       sql &= " surname  ILIKE $$%" & txtName & "%$$ "
    Endif
+   If bExcludeLeftAddress Then
+      sql &= " And fk_status <> " & const.StaffStatus_LeftOrganisation  'fixme notice the mixup between left address and left organisation
+   Endif
    sql &= " LIMIT 60"
    Return modDBConnect.exec_query_collection(sql)
    
@@ -239,6 +305,7 @@ Public Function Persons_Get_By_Occupation(occupation As String) As Collection
    'Called by FQuickContact and FReferrals
    'Excludes persons where are retired, deceased or left organisation
    '-----------------------------------------------------------------
+
    Dim sql As String
    
    sql = "Select * from contacts.vwPersonsEmployeesByOccupation where occupation ILIKE $$%" 
@@ -276,15 +343,13 @@ End
 
 Public Sub Referral_Print(currentconsult As CConsult, referral As Collection, bPrintCopies As Boolean, bSingleCopyInclusionsOnly As Boolean, Optional Inclusions As Collection)
    
-  If modAdminDBI.Config_Get("use_ozefax", False) Then
-     Referral_Print_Fax(currentconsult, referral, bPrintCopies)  'currently copies always sent and inclusions not supported
-  Else
-     Referral_Print_Only(currentconsult, referral, bPrintCopies, bSingleCopyInclusionsOnly, Inclusions)
-  Endif
+   If modAdminDBI.Config_Get("use_ozefax", False) Then
+      Referral_Print_Fax(currentconsult, referral, bPrintCopies)  'currently copies always sent and inclusions not supported
+   Else
+      Referral_Print_Only(currentconsult, referral, bPrintCopies, bSingleCopyInclusionsOnly, Inclusions)
+   Endif
    
 End
-
-
 
 Public Sub Referral_Print_Only(currentconsult As CConsult, referral As Collection, bPrintCopies As Boolean, bSingleCopyInclusionsOnly As Boolean, Optional Inclusions As Collection)
    '-----------------------------------------------------------------------------------------------------------------
@@ -315,11 +380,11 @@ Public Sub Referral_Print_Only(currentconsult As CConsult, referral As Collectio
       Else
          modPrinting.PrintHtml(referral!letter_html, const.Paper_Plain)
       Endif
-    
+      
       If referral!include_healthsummary = True Then
-       '  modPrinting.PrintHtml(modProgressNotes.Health_Summary_Construct_html(currentconsult), const.Paper_Plain)
-       modPrinting.Print_PDF(modPrinting.Latex_To_PDF(modProgressNotes.Health_Summary_Construct_LaTex(currentconsult).GetData())) 'gives the filename
-   
+         '  modPrinting.PrintHtml(modProgressNotes.Health_Summary_Construct_html(currentconsult), const.Paper_Plain)
+         modPrinting.Print_PDF(modPrinting.Latex_To_PDF(modProgressNotes.Health_Summary_Construct_LaTex(currentconsult).GetData())) 'gives the filename
+         
       End If
       If referral!include_careplan = True Then
          modPrinting.PrintHtml(modProgressNotes.Care_Plan_Construct_html(currentconsult), const.Paper_Plain)
@@ -359,94 +424,96 @@ Public Sub Referral_Print_Only(currentconsult As CConsult, referral As Collectio
 End
 
 Public Sub Referral_Print_Fax(currentconsult As CConsult, referral As Collection, bPrintCopies As Boolean)
- '-----------------------------------------------------------------------------------------------------------------
- ' print or fax as appropriate, using new cPrintTask structures.
- '-----------------------------------------------------------------------------------------------------------------
- Dim s As String
- Dim num_print_copies As Integer  
- Dim destination_faxes As New String[] 
- Dim coll As Collection
- Dim fax_pdf_path As String
- Dim print_ps_path As String
- Dim re As Regexp
- Dim task As New CPrintTask
+   '-----------------------------------------------------------------------------------------------------------------
+   ' print or fax as appropriate, using new cPrintTask structures.
+   '-----------------------------------------------------------------------------------------------------------------
+
+   Dim s As String
+   Dim num_print_copies As Integer  
+   Dim destination_faxes As New String[] 
+   Dim coll As Collection
+   Dim fax_pdf_path As String
+   Dim print_ps_path As String
+   Dim re As Regexp
+   Dim task As New CPrintTask
    
- num_print_copies = 0                      'maybe we can fax the lot
- ' first question: does the main recipient have a fax?
- If Not IsNull(referral!fk_employee) Then
-   For Each coll In modContactsDBI.Employee_Comms_Get(referral!fk_employee)
-     If coll!fk_type = const.CommModalityFax Then
-       destination_faxes.Add(coll!value)
-     Endif
-   Next
- Else
-   If Not IsNull(referral!fk_person) Then
-     For Each coll In modContactsDBI.person_comms_get(referral!fk_person)
-       If coll!fk_type = const.CommModalityFax Then
-         destination_faxes.Add(coll!value)
-       Endif
-     Next
-   Else 
-      If Not IsNull(referral!fk_branch) Then
-         For Each coll In modContactsDBI.Branch_Comms_Get(referral!fk_branch)
+   num_print_copies = 0                      'maybe we can fax the lot
+   ' first question: does the main recipient have a fax?
+   If Not IsNull(referral!fk_employee) Then
+      For Each coll In modContactsDBI.Employee_Comms_Get(referral!fk_employee)
+         If coll!fk_type = const.CommModalityFax Then
+            destination_faxes.Add(coll!value)
+         Endif
+      Next
+   Else
+      If Not IsNull(referral!fk_person) Then
+         For Each coll In modContactsDBI.person_comms_get(referral!fk_person)
             If coll!fk_type = const.CommModalityFax Then
                destination_faxes.Add(coll!value)
             Endif
          Next
+      Else 
+         If Not IsNull(referral!fk_branch) Then
+            For Each coll In modContactsDBI.Branch_Comms_Get(referral!fk_branch)
+               If coll!fk_type = const.CommModalityFax Then
+                  destination_faxes.Add(coll!value)
+               Endif
+            Next
+         Endif
       Endif
    Endif
- Endif
- If destination_faxes.Length = 0 Then num_print_copies = 1 ' no fax, so print
- '----------------------------------------------------------
- ' now let's see which of the CCs we can fax to
- '---------------------------------------------------------
- re = New Regexp("x", "Fax *: *([0-9]+)")
- For Each s In Split(referral!copyto, "|")
-   re.Exec(s)
-   If re.Offset <> -1 Then
-     destination_faxes.Add(re.SubMatches[1].Text)
-   Else
-     If bPrintCopies Then Inc num_print_copies
-   Endif
- Next
-     
- '-----------------------------------------------------------
- ' now print if we have to
- ' -----------------------------------------------------------
- If num_print_copies > 0 Then
-   If Left$(referral!letter_html, 14) = "\\documentclass" Then
-     s = Replace(referral!letter_html, "% signature", "\\vspace{12mm}")
-     print_ps_path = task.Latex_To_Ps(referral!letter_html, const.Paper_Plain)
-   Else
-     print_ps_path = task.Html_To_Pdf(referral!letter_html)
-   Endif
-   task.Print_PDF(print_ps_path, const.Paper_Plain, num_print_copies)
- Endif
- '---------------------------------------------------------------
- ' now fax if we have to
- ' ---------------------------------------------------------------
- If destination_faxes.Length > 0 Then
-   If Left$(referral!letter_html, 14) = "\\documentclass" Then
-     If Exist(User.Home &/ "signature.jpg") Then
-       s = Replace(referral!letter_html, "% signature", "\\includegraphics[height=12mm]{" & User.Home &/ "signature.jpg" & "}")
-     Else
-       s = Replace(referral!letter_html, "% signature", "\\vspace{12mm}")
-     Endif
-     fax_pdf_path = task.Latex_To_Pdf(s)
-   Else
-     If Not IsNull(print_ps_path) Then
-       fax_pdf_path = task.Html_To_Pdf(referral!letter_html)
-     Else
-       fax_pdf_path = print_ps_path ' will be the same as no signature for HTML letters
-     Endif
-   Endif
-   For Each s In destination_faxes
-     task.Send_Fax(s, fax_pdf_path)
+   If destination_faxes.Length = 0 Then num_print_copies = 1 ' no fax, so print
+   '----------------------------------------------------------
+   ' now let's see which of the CCs we can fax to
+   '---------------------------------------------------------
+   re = New Regexp("x", "Fax *: *([0-9]+)")
+   For Each s In Split(referral!copyto, "|")
+      re.Exec(s)
+      If re.Offset <> -1 Then
+         destination_faxes.Add(re.SubMatches[1].Text)
+      Else
+         If bPrintCopies Then Inc num_print_copies
+      Endif
    Next
-   task.Kill(fax_pdf_path)
- Endif
- If Not IsNull(print_ps_path) Then task.Kill(print_ps_path)
- task.Close()
+   
+   '-----------------------------------------------------------
+   ' now print if we have to
+   ' -----------------------------------------------------------
+   If num_print_copies > 0 Then
+      If Left$(referral!letter_html, 14) = "\\documentclass" Then
+         s = Replace(referral!letter_html, "% signature", "\\vspace{12mm}")
+         print_ps_path = task.Latex_To_Ps(referral!letter_html, const.Paper_Plain)
+      Else
+         print_ps_path = task.Html_To_Pdf(referral!letter_html)
+      Endif
+      task.Print_PDF(print_ps_path, const.Paper_Plain, num_print_copies)
+   Endif
+   '---------------------------------------------------------------
+   ' now fax if we have to
+   ' ---------------------------------------------------------------
+   If destination_faxes.Length > 0 Then
+      If Left$(referral!letter_html, 14) = "\\documentclass" Then
+         If Exist(User.Home &/ "signature.jpg") Then
+            s = Replace(referral!letter_html, "% signature", "\\includegraphics[height=12mm]{" & User.Home &/ "signature.jpg" & "}")
+         Else
+            s = Replace(referral!letter_html, "% signature", "\\vspace{12mm}")
+         Endif
+         fax_pdf_path = task.Latex_To_Pdf(s)
+      Else
+         If Not IsNull(print_ps_path) Then
+            fax_pdf_path = task.Html_To_Pdf(referral!letter_html)
+         Else
+            fax_pdf_path = print_ps_path ' will be the same as no signature for HTML letters
+         Endif
+      Endif
+      For Each s In destination_faxes
+         task.Send_Fax(s, fax_pdf_path)
+      Next
+      task.Kill(fax_pdf_path)
+   Endif
+   If Not IsNull(print_ps_path) Then task.Kill(print_ps_path)
+   task.Close()
+
 End
 
 Public Sub UnitTest(form_main As FMain)

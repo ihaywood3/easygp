@@ -235,8 +235,7 @@ Public Function Generics_Get_Class(generic As String) As Collection
    Dim C As Collection
    Dim generics As New Collection
    
-   generic &= "%"
-   generic = "%" & generic
+   generic = "%" & generic & "%"
    sql = "select distinct class_name, atccode, atcname, fk_product, generic from drugs.vwdrugs where "
    sql &= "generic ilike &1"
    R = modDBConnect.exec_query(sql, [generic])
@@ -460,7 +459,7 @@ Public Function Notify_Script(script_no As Integer)
    ' informs the remote python process script is printed: to generate XML
 
   modDBConnect.exec_query("NOTIFY script, &1", [Str$(script_no)]) 
-   
+
 End
 
 Public Function Authority_Number_Get_Next(fk_staff As Integer) As Integer
@@ -496,9 +495,10 @@ Public Sub Authority_Increased_Qantity_Get_PK(reason As String) As Integer
    
 End
 
-Public Function Medication_Delete(currentconsult As CConsult, medications As Collection, fk_medication As Integer, fk_section As Integer, audit_action As String, audit_notes As String) As Boolean
+Public Function Medication_Delete(currentconsult As CConsult, fk_medication As Integer, fk_section As Integer, audit_action As String, audit_notes As String) As Boolean
    '--------------------------------------------------------------------------------------
    'Marks as deleted a current medication laying down audit trail, returns true if succeeds
+   'Firstlly are not allowed to delete the medication if not prescribed today
    '--------------------------------------------------------------------------------------
    
    modDBConnect.exec_query("Update clin_prescribing.medications set deleted = True where pk = " & fk_medication)
@@ -509,15 +509,30 @@ Public Function Medication_Delete(currentconsult As CConsult, medications As Col
    
 End
 
+Public Function Medication_UnDelete(currentconsult As CConsult, fk_medication As Integer, fk_section As Integer, audit_action As String, audit_notes As String) As Boolean
+   '--------------------------------------------------------------------------------------
+   'Marks as deleted a current medication laying down audit trail, returns true if succeeds
+   '--------------------------------------------------------------------------------------
+   
+   modDBConnect.exec_query("Update clin_prescribing.medications set deleted = False where pk = " & fk_medication)
+   If modAudit.MakeAudit(currentconsult, audit_action, "clin_prescribing.medications", fk_medication, fk_section, audit_notes) Then
+      Return True
+   End If
+   Return False
+   
+End
 Public Function Medication_Prescribed_Before(fk_patient As Integer, fk_generic_product As String) As Result
    '-----------------------------------------------------------------------------
    'Checks if this generic medication has been prescribed before for this patient
+   'if it does prescribing will re-use the key, but not if deleted
    '-----------------------------------------------------------------------------
    
    Dim sql As String
    
    sql = "Select fk_medication, start_date from clin_prescribing.vwprescribeditems "
-   sql &= "WHERE fk_generic_product = $$" & fk_generic_product & "$$ And fk_patient = " & fk_patient & " LIMIT 1 "
+   sql &= "WHERE fk_generic_product = $$" & fk_generic_product & "$$ "
+   sql &= " AND medication_deleted = false "
+   sql &= " AND fk_patient = " & fk_patient & " LIMIT 1 "
    Return modDBConnect.exec_query(sql)
    
 End
@@ -626,6 +641,38 @@ Public Function Medications_History_Construct_HTML(items_prescribed As Collectio
    
 End
 
+Private Function Prescriptions_Written_Prepare(prescribeds As Collection) As Collection
+
+   Dim items_prescribed As New Collection
+   Dim i As Collection
+   Dim c As Collection
+   
+   For Each i In prescribeds
+      c = New Collection
+      c!prescribed = New CRow(modDBConnect.exec_query_first("Select * from clin_prescribing.prescribed where pk=" & i!fk_prescribed))
+      ' c!prescribed.put_unchanged("fk_prescribed", i!fk_prescribed)
+      c!med = New CRow(modDBConnect.exec_query_first("select * from clin_prescribing.medications where pk =  " & i!fk_medication))
+      c!pbs_script_type = i!pbs_script_type
+      c!date_script_written = i!date_script_written
+      c!generic = i!generic
+      c!strength = i!strength
+      c!product_information_filename = i!product_information_filename
+      c!form = i!form
+      c!atccode = i!atccode
+      c!fk_form = i!fk_form
+      c!display_strength = i!display_strength
+      c!display_packsize = i!display_packsize
+      c!brand = i!brand
+      c!instruction = i!instruction
+      c!prescribed_for = i!prescribed_for
+      c!staff_prescribed_wholename = i!staff_prescribed_wholename
+      c!staff_prescribed_title = i!staff_prescribed_title
+      c!pk_view = i!pk_view
+      items_prescribed.Add(c, i!pk_view)
+   Next
+   Return items_prescribed
+End
+
 Public Function Prescription_Written(fk_item_prescribed As Integer) As Collection
    '-------------------------------------------------
    'Returns a collection for a single drug prescribed
@@ -725,16 +772,27 @@ Public Sub Prescriptions_Fill_Columnview(cvw As Columnview, medications As Colle
    
 End
 
-Private Function Prescriptions_Written_Prepare(prescribeds As Collection) As Collection
-
+Public Function Prescriptions_Written(fk_patient As Integer) As Collection
+   '--------------------------------------------------------------
+   'Returns collection of all the evey drug item ever prescribed for the patient
+   'ordered by most recently written, i.e
+   'This and the next routine should be merged FIXME
+   '--------------------------------------------------------------
+   
+   Dim prescribeds As Collection
    Dim items_prescribed As New Collection
    Dim i As Collection
    Dim c As Collection
+   Dim sql As String
    
+   sql = "Select * from clin_prescribing.vwprescribeditems where fk_patient =" & fk_patient
+   sql &= " AND not medication_deleted "
+'   sql &= "And Not prescribed_deleted "
+   sql &= "  ORDER BY " & FClinical.get_Medication_Sort_Order() & " Asc, date_script_written DESC " ""
+   prescribeds = modDBConnect.exec_query_collection(sql)
    For Each i In prescribeds
       c = New Collection
       c!prescribed = New CRow(modDBConnect.exec_query_first("Select * from clin_prescribing.prescribed where pk=" & i!fk_prescribed))
-      ' c!prescribed.put_unchanged("fk_prescribed", i!fk_prescribed)
       c!med = New CRow(modDBConnect.exec_query_first("select * from clin_prescribing.medications where pk =  " & i!fk_medication))
       c!pbs_script_type = i!pbs_script_type
       c!date_script_written = i!date_script_written
@@ -755,21 +813,6 @@ Private Function Prescriptions_Written_Prepare(prescribeds As Collection) As Col
       items_prescribed.Add(c, i!pk_view)
    Next
    Return items_prescribed
-End
-
-Public Function Prescriptions_Written(fk_patient As Integer) As Collection
-   '--------------------------------------------------------------
-   'Returns collection of all the evey drug item ever prescribed for the patient
-   'ordered by most recently written, i.e
-   'This and the next routine should be merged FIXME
-   '--------------------------------------------------------------
-   
-   Dim sql As String
-   
-   sql = "Select * from clin_prescribing.vwprescribeditems where fk_patient = &1 "
-   sql &= " AND not prescribed_deleted ORDER BY " & FClinical.get_Medication_Sort_Order() & " ASC, date_script_written DESC "
-   Return Prescriptions_Written_Prepare(modDBConnect.exec_query_collection(sql, [fk_patient]))
-
    
 End
 
@@ -777,11 +820,42 @@ Public Function Prescriptions_Written_This_Consult(fk_consult As Integer) As Col
    '-----------------------------------------------------------------------------
    'Returns collection of all the drugs prescribed during the current consulation
    '-----------------------------------------------------------------------------
+   
+   Dim prescribeds As Collection
+   Dim prescriptions As New Collection
+   Dim i As Collection
+   Dim c As Collection
    Dim sql As String
    
-   sql = "Select * from clin_prescribing.vwprescribeditems where fk_consult = &1 "
-   sql &= " AND NOT prescribed_deleted "
-   Return Prescriptions_Written_Prepare(modDBConnect.exec_query_collection(sql, [fk_consult]))
+   sql = "Select * from clin_prescribing.vwprescribeditems where fk_consult = " & fk_consult
+    sql &= " AND NOT prescribed_deleted "
+    sql &= " AND NOT medication_deleted "
+   prescribeds = modDBConnect.exec_query_collection(sql)
+   For Each i In prescribeds
+      c = New Collection
+      c!prescribed = New CRow(modDBConnect.exec_query_first("Select * from clin_prescribing.prescribed where pk=" & i!fk_prescribed & " AND fk_consult = " & fk_consult & " AND not deleted"))
+      c!med = New CRow(modDBConnect.exec_query_first("select * from clin_prescribing.medications where pk =  " & i!fk_medication))
+      c!pbs_script_type = i!pbs_script_type
+      c!date_script_written = i!date_script_written
+      c!generic = i!generic
+      c!strength = i!strength
+      c!product_information_filename = i!product_information_filename
+      c!form = i!form
+      c!fk_form = i!fk_form
+      c!atccode = i!atccode
+      c!display_strength = i!display_strength
+      c!display_packsize = i!display_packsize
+      c!brand = i!brand
+      c!instruction = i!instruction
+      c!prescribed_for = i!prescribed_for
+      c!printed = i!printed
+      c!staff_prescribed_wholename = i!staff_prescribed_wholename
+      c!staff_prescribed_title = i!staff_prescribed_title
+      c!pk_view = i!pk_view
+      prescriptions.Add(c, i!pk_view)
+      
+   Next
+   Return prescriptions
    
 End
 
@@ -808,50 +882,19 @@ Public Function Brand_Equivalents_Make_HTML(active_medications As Collection, co
    Dim FI As Collection
    Dim sFoodInteraction As String
    Dim sDoseInstructionsFor As String
-   Dim comm As Collection
-   Dim sPhone As String
-   
-   shtml = "<html>"
-   "<table border=%BORDER% cellpadding=0 cellspacing=%cellspacing% width=100% >"
-   "<TR VALIGN=TOP>"
-   "<TD >"
-   "%patient"
-   "<BR>"
-   "</TD>"
-   "<TD>"
-   "<P ALIGN=CENTER>MEDICATION LIST WITH FOOD INFORMATION AND BRAND EQUIVALENTS</P><BR>"
-   "</TD>"
-   "<TD>"
-   "%practice<BR>"
-   "</TD>"
-   "</TR>" 
-   "</table><HR>"
-   For Each comm In modDBConnect.currentUser!comms
-      If comm!fk_type = const.CommModalityPhone Then
-         sPhone = comm!value
-      Endif
-      ' If comm!fk_type = const.CommModalityFax Then
-      '    sFax = comm!value
-      ' Endif
-   Next
-   shtml = Replace(shtml, "%patient", consult!patient!firstname & " " & consult!patient!surname & "<BR>" & consult!patient!street1 & "<BR>" & consult!patient!town & " " & consult!patient!postcode)
-   sHtml = Replace(shtml, "%practice", modDBConnect.currentUser!organisation & "<BR>" & modDBConnect.currentUser!street1 & "<BR>" & modDBConnect.currentUser!town & " " & modDBConnect.currentUser!postcode & "<BR>Phone:" & sPhone)
-   
-   For Each med In active_medications                                                               'loop through all the active meds
+    
+   sHtml = "<HTML>" & modHTML.Patient_Practice_Heading_Simple_HTML(consult)
+   sHtml = Replace(sHtml, "%central_heading%", "MEDICATION LIST WITH FOOD INFORMATION AND BRAND EQUIVALENTS")
+    For Each med In active_medications                                                               'loop through all the active meds
       shtml &= "<P><B>" & med!generic & "</B><BR>"                                                 'put up bold heading on new line
       sDoseInstructionsFor = med!display_strength & " " & med!form & " " & med!instruction & " for " & med!prescribed_for 
       If med!generic <> "glucometer strip" Then                                                     'exclude glucometer strips
-         ' If Not fk_products.Exist(med!med!fk_generic_product) Then                                  'have we done this generic before? No?
          sHtml &= "<I>"                                                                           'build html for equivalent brands
          For Each brand In Brands_For_Generic_Get(med!generic, med!med!fk_generic_product)
             shtml &= Left(brand!brand) & Lower(Right(brand!brand, Len(brand!brand) - 1)) & ", "
          Next
          shtml = Left(shtml, Len(shtml) - 2) & ".</I>"
-         ' Else
-         '    shtml &= Left(med!brand) & Lower(Right(med!brand, Len(med!brand) - 1)) & ". "
-         ' End If  
          sHtml &= "<BR> - " & sDoseInstructionsFor & "<BR>"
-         '  fk_products.Add(med, med!med!fk_generic_product)
          sFoodInteraction = ""
          If med!form <> "ointment" And med!form <> "cream" And med!form <> "eye ointment" And med!form <> "eye drops" Then   
             For Each FI In modPrescribingDBI.Drug_Have_ATC_Code_Get_FoodInteractions(med!atccode)
@@ -866,7 +909,8 @@ Public Function Brand_Equivalents_Make_HTML(active_medications As Collection, co
          End If   
       End If   
    Next
-   Return shtml  
+   Return shtml & "</HTML>"
+  
    
 End
 

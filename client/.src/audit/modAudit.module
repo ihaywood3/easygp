@@ -15,7 +15,7 @@
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-Public Sub MakeAudit(consult As CConsult, audit_action As Variant, tbl As String, fk_row As Integer, fk_section As Integer, Optional notes As String) As Boolean
+Public Sub MakeAudit(consult As CConsult, audit_action As String, tbl As String, fk_row As Integer, fk_section As Integer, Optional notes As String) As Boolean
    '---------------------------------------------------------------------------------------
    ' Creates an audit entry, uses FAudit not an instance as this is a modal window
    '
@@ -26,48 +26,71 @@ Public Sub MakeAudit(consult As CConsult, audit_action As Variant, tbl As String
    ' notes        = the free-html description of the change provided by calling code
    '
    'Returns True if succeeds
+   'The calling routine must commit the transaction or roll it back as appropriate
+   'Returns False for two reasons i) user cancelled apopup dialog requesting an audit reason
+   '                             ii) The audit action is unrecognised.
    '-----------------------------------------------------------------------------------------
+   
    Dim audit As New Collection
    Dim s As String
    Dim action_coll As Collection
-   
+   Dim sMsg As String
+
+  
    audit!notes = notes
-   
-   If TypeOf(audit_action) = gb.String Then
-     action_coll = modCache.Get("clin_consult.lu_audit_actions", audit_action, "action")
-     audit!fk_audit_action = action_coll!pk
-   Else
-      audit!fk_audit_action = audit_action
+   action_coll = modCache.Get("clin_consult.lu_audit_actions", audit_action, "action")
+   If IsNull(action_coll) Then
+      s = "Unrecognised audit action '" & audit_action & "'"
+      Log.ErrorMsg(s)
+     ' Error.Raise(s)
+      Message.Title = "Auditing Error"
+      sMsg = "EasyGP has encounter a system error whilst carrying out an audit function.\n\n"
+      sMsg &= "This is a serious problem, you should immediately contact the system adminstrator "
+      sMsg &= "show them this dialog or write down the error so they can examine the log file before you do anything else.\n\n"
+      sMsg &= s
+      Message.Warning(sMsg, "Ok")
+      Return False
    Endif
+   audit!fk_audit_action = action_coll!pk
    audit!fk_row = fk_row
    audit!linked_table = tbl
    audit!fk_section = fk_section 
-   If IsNull(audit!fk_audit_action) Then
-      s = "Unrecognised audit action " & audit_action
-      Log.ErrorMsg(s)
-      Error.Raise(s)
-      Return False
-   Endif
-   If Not IsNull(action_coll) And If action_coll!insist_reason Then
+   
+   If action_coll!insist_reason Then
       '------------------------------------------------------------
       'clin_consult.lu_audit_actions has column to enforce a reason
       'for pre-defined actions eg 'Delete'
       'FAudit returns the key of clin_consult.lu_audit_reasons
       '-------------------------------------------------------------
       Faudit.Init(action_coll!action, tbl, notes)
-    '  Dec Application.Busy
       audit!fk_audit_reason = FAudit.ShowModal() 
-       If audit!fk_audit_reason = 0 Then 
-        ' Error.Raise("user refuses to give a reason") 'Ian, can we 'Re-enter this routine here?
-         Message.Warning("You must give a reason for this action\n\nThe operation will now be terminated", "Ok")
-     '    Inc Application.Busy
+      audit!notes &= ". The reason given for the "
+      Select Case audit_action
+         Case "mark deleted", "staff task deleted"
+            audit!notes &= "deletion "
+         Case "completed with explanation"
+            audit!notes &= "completion "
+         Case "refused with explanation"
+            audit!notes &= "refusal "
+         Case "return for re-filing"
+            audit!notes &= "return for re-filing "
+         Case "progress note edited"
+            audit!notes &= "editing "
+         Case "staff task finalised with explanation"
+            audit!notes &= "finalisation "
+      End Select
+      audit!notes &= "was:<BR> '" & const.globalstring & "'."
+      If audit!fk_audit_reason = 0 Then 
+         Message.title = "Audit Cancelled"
+         sMsg = "You have decided not to complete the audit trail, the database transaction will be rolled back."
+         Message.Warning(smsg)
          Return False
-       Endif
+      Endif
    Endif
-  ' Inc Application.Busy
    audit!fk_consult = consult.GetPK()  'BUG here will crash if delete a non-patient document.
    modDBConnect.insert("clin_consult.progressnotes", audit) 
    Return True 
+   
 End
 
 Public Function Get_Reasons(reason As String) As Collection 
@@ -76,7 +99,7 @@ Public Function Get_Reasons(reason As String) As Collection
    'e.g could be "written for the wrong patient" or
    '             "patient has left practice"
    '-----------------------------------------------------------
-
+   
    Dim sql As String
    
    sql = "SELECT * FROM clin_consult.lu_audit_reasons WHERE fk_staff = &1 "
@@ -86,14 +109,15 @@ Public Function Get_Reasons(reason As String) As Collection
    
 End
 
-
-
 Public Function Get_Reason_Using_pk(fk_reason As Integer) As String
-  Dim R As Result 
-  R = modDBConnect.exec_query("Select * from clin_consult.lu_audit_reasons where pk=" & fk_reason) 
-  If R.count Then
+   
+   Dim R As Result 
+
+   R = modDBConnect.exec_query("Select * from clin_consult.lu_audit_reasons where pk=" & fk_reason) 
+   If R.count Then
       Return R!reason
-  End If  
+   End If  
+   
 End
 
 Public Function New_Reason(reason As String) As Integer
@@ -113,10 +137,9 @@ Public Function New_Reason(reason As String) As Integer
    Else
       Return coll!pk
    Endif
-
+   
 End
-
-
+'Public Function MakeTrail(...) As String
 Public Function MakeTrail(...) As String
    '-------------------------------------------------------------------------------------------------------------   
    ' creates a audit trail as HTML
@@ -124,6 +147,7 @@ Public Function MakeTrail(...) As String
    ' EXAMPLE: modAudit.MakeTrail("documents.documents", 435, "clin_request.request", 653, "clin_tasks.tasks", 34)
    ' the trail consists of all audits related to all the rows provided in time order.
    ' ------------------------------------------------------------------------------------------------------------
+   
    Dim sql As String
    Dim row_selector As New String[]
    Dim i As Integer
@@ -189,9 +213,9 @@ Public Function MakeTrail(...) As String
          Endif
          sHtml &= "- document originated from " & r1!originator
          If r1!msh_sending_entity <> "" Then 
-             sHtml &= " and was sent by " & r1!msh_sending_entity & " imported on " 
+            sHtml &= " and was sent by " & r1!msh_sending_entity & " imported on " 
          Else
-             sHtml &= " and was scanned into the database on "
+            sHtml &= " and was scanned into the database on "
          End If
          sHtml &= Format(r1!imported_time, "dd/mm/yyyy:hh:nn:ss")
          sHtml &= "<BR> - destination staff member was " & r1!staff_destination_wholename & "<BR>"
@@ -204,29 +228,29 @@ Public Function MakeTrail(...) As String
    sHtml = ""
    i = 0
    For Each r 
-     
-     sHtml &= modHTML.HTML_Template_Audit_Row()
-     If i = 0 Then
-      sHtml = Replace(sHtml, "%date_logged", Format$(r!consult_date, "dd/mm/yyyy") & "<BR><small><small>" & Format$(r!consult_date, "hh:nn:ss") & "</small></small>")
-      sHtml = Replace(sHtml, "%logged_by", r!title & " " & r!firstname & " " & r!surname & "<BR><small><small>" & "(" & r!role & ")" & "<small><small>")
-      sHtml = Replace(sHtml, "%date_updated", "")
-      sHtml = Replace(sHtml, "%updated_by", "")
+      sHtml &= modHTML.HTML_Template_Audit_Row()
+      If i = 0 Then
+         sHtml = Replace(sHtml, "%date_logged", Format$(r!consult_date, "dd/mm/yyyy") & "<BR><small><small>" & Format$(r!consult_date, "hh:nn:ss") & "</small></small>")
+         sHtml = Replace(sHtml, "%logged_by", r!title & " " & r!firstname & " " & r!surname & "<BR><small><small>" & "(" & r!role & ")" & "<small><small>")
+         sHtml = Replace(sHtml, "%date_updated", "")
+         sHtml = Replace(sHtml, "%updated_by", "")
+         sHtml = Replace(sHtml, "%action", r!audit_action)
+      Else
+         sHtml = Replace(sHtml, "%date_updated", Format$(r!consult_date, "dd/mm/yyyy") & "<BR><small><small>" & Format$(r!consult_date, "hh:nn:ss") & "</small></small>")
+         sHtml = Replace(sHtml, "%date_logged", "")
+         sHtml = Replace(sHtml, "%logged_by", "")
+         sHtml = Replace(sHtml, "%updated_by", r!title & " " & r!firstname & " " & r!surname & "<BR><small><small>" & "(" & r!role & ")" & "</small></small>")
+         sHtml = Replace(sHtml, "%action", r!audit_action)
+      End If
       sHtml = Replace(sHtml, "%action", r!audit_action)
-     Else
-      sHtml = Replace(sHtml, "%date_updated", Format$(r!consult_date, "dd/mm/yyyy") & "<BR><small><small>" & Format$(r!consult_date, "hh:nn:ss") & "</small></small>")
-      sHtml = Replace(sHtml, "%date_logged", "")
-      sHtml = Replace(sHtml, "%logged_by", "")
-      sHtml = Replace(sHtml, "%updated_by", r!title & " " & r!firstname & " " & r!surname & "<BR><small><small>" & "(" & r!role & ")" & "</small></small>")
-      sHtml = Replace(sHtml, "%action", r!audit_action)
-     End If
-     sHtml = Replace(sHtml, "%action", r!audit_action)
-     If Not IsNull(r!audit_reason) Then
-       sHtml = Replace(sHtml, "%data", r!audit_reason)
-     Else
+      If Not IsNull(r!audit_reason) Then
+         sHtml = Replace(sHtml, "%data", r!audit_reason)
+      Else
          sHtml = Replace(sHtml, "%data", r!notes)
-     End If 
-     Inc i 
+      End If 
+      Inc i 
    Next
    Return sHTML
+
 End
 

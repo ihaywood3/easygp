@@ -34,7 +34,7 @@ End
 
 Public Function Provider_Type_Get(fk_type As Integer) As String
    
-  Return modCache.Get("clin_requests.lu_request_type", fk_type, "pk")
+   Return modCache.Get("clin_requests.lu_request_type", fk_type, "pk")
    
 End
 
@@ -307,7 +307,6 @@ Public Sub RequestForm_Preview(RequestForm As Collection)
    
 End
 
-
 Public Sub RequestForm_Delete(currentconsult As Cconsult, requestform As Collection)
    '-----------------------------------------------------------------------------------
    'Delete's the current request form
@@ -321,6 +320,7 @@ Public Sub RequestForm_Delete(currentconsult As Cconsult, requestform As Collect
    Dim pn As Collection
    Dim fk_reason As Integer
    Dim reason As String
+   Dim audit_notes As String
    
    If Format(RequestForm!consult_date, "dd/mm/yyyy") <> Format(Now(), "dd/mm/yyyy") Then 
       '------------------------------------------------------------------- 
@@ -331,14 +331,15 @@ Public Sub RequestForm_Delete(currentconsult As Cconsult, requestform As Collect
       fk_form = RequestForm!fk_form
       For Each PN In currentconsult!progress_notes
          If PN!pk_progressnote = fk_progressnote Then
+            audit_notes = "The request form detail were '" & pn!notes & "'."
             pn!notes = "<strike>" & pn!notes & "</strike><BR>"
-            Faudit.Init(": Delete Request Form", "clin_consult.progressnotes/clin_requests.forms", "Requests summary:" & RequestForm!requests_summary)
-            fk_reason = FAudit.ShowModal() 
-            modDBConnect.CommitTrans()  'otherwise if a new reason it won't have been comitted
-            reason = modAudit.Get_Reason_Using_pk(fk_reason)
-            pn!notes &= "<small><B><I>Audit note:</B> this request form was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small>"
+            pn!notes &= "<small><B><I>Audit note:</B> this request form was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy")  ' & " who gave this explanation: '" & reason & "'</I></small>"
             modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
-            modAudit.MakeAudit(currentconsult, "mark deleted", "clin_consult.progressnotes", RequestForm!fk_form, const.cSection_Requests, pn!notes)
+            If modAudit.MakeAudit(currentconsult, "mark deleted", "clin_consult.progressnotes", RequestForm!fk_form, const.cSection_Requests, audit_notes) Then
+               modDBConnect.CommitTrans
+            Else
+               modDBConnect.RollBack
+            Endif
             Break
          Endif
       Next
@@ -364,8 +365,9 @@ Public Function RequestForm_UnDelete(currentconsult As CConsult, RequestForm As 
    'Un-Deletes a request form provided from the calling forms deleted collection
    'FIXME: check what happens to the audit trail created for this
    '----------------------------------------------------------------------------
+   
    If Format(RequestForm!consult_date, "dd/mm/yyyy") <> Format(Now(), "dd/mm/yyyy") Then 
-  'FIXME; will have to reverse the strike-through
+      'FIXME; will have to reverse the strike-through
    End If   
    modDBConnect.update("clin_requests.forms", Null, ["pk": RequestForm!fk_form, "deleted": False])
    modDBConnect.update("clin_consult.progressnotes", Null, ["pk": RequestForm!fk_progressnote, "deleted": False])

@@ -6,12 +6,10 @@
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
 ' (at your option) any later version.
-
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY; without even the implied warranty of
 ' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ' GNU General Public License for more details.
-
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '-----------------------------------------------------------------------
@@ -19,64 +17,68 @@
 Public currentconsult As CConsult
 Public pk_pasthistory As Integer
 Public healthissue As String
-
 Public currentProblem As Collection
 Public cvwSelected As ColumnView
 Public ParentForm As String
-'Static Public Problem_lists As FPastHistoryProblemLists
 
-' Static Public Sub HealthIssue_Display()
-'    '--------------------------------------------------------------------------
-'    'If user has updated a health issue from somewhere else in the program
-'    'and that health issue is showing in the FPastHistory then refresh the data
-'    '--------------------------------------------------------------------------
-'    '
-' End
-
-Public Sub Init(cons As Cconsult, PF As String)
+Public Sub Init(cons As Cconsult, PF As String)  
 
    ParentForm = PF
    currentconsult = cons
    Try Settings_Load()
    ReLoad()
-
+   
 End
 
 Private Sub Settings_Load()
-
+   
    HSplit_ProblemLists.layout = Settings["FPastHistoryProblemLists_" & ParentForm & "/HSplit_ProblemLists"]
    cvwProblemsActive.font = Font[Settings["FPastHistoryProblemLists_" & ParentForm & "/problemlists_font", "DejaVu Sans,9"]]
    cvwProblemsMajor.font = cvwProblemsActive.font
    cvwProblemsInActive.font = cvwProblemsActive.font
-
+   
 End
 
 Public Sub Settings_Save()
-
+   
    Settings["FPastHistoryProblemLists_" & ParentForm & "/HSplit_ProblemLists"] = HSplit_ProblemLists.layout
-
+   
 End
 
-Public Sub Update()
+Public Sub Update(sMenuTAg As String)
+   '----------------------------------------------------------------------------------
    'deliberately not named save
-
-   modDBConnect.BeginTrans
+   'Create audit path for the actions 'make major', 'make significant', 'make inactive'
+   '-----------------------------------------------------------------------------------
+   
+   Dim sAuditText As String
+   Dim issue_status As String
+   
+   If currentconsult!past_history[pk_pasthistory]!major Then issue_status = "major"
+   If currentconsult!past_history[pk_pasthistory]!active = False Then issue_status = "inactive"
+   If currentconsult!past_history[pk_pasthistory]!active And Not currentconsult!past_history[pk_pasthistory]!major Then issue_status = "significant"
+   sAuditText = "The health issue '" & currentconsult!past_history[pk_pasthistory]!description & "' which was noted on " & currentconsult!past_history[pk_pasthistory]!year_onset
+   sAuditText &= " and listed as a " & issue_status & " issue "
+   sAuditText &= " was " & Replace(sMenuTAg, "make", "changed to a ") & " issue. No reason was given."
    modDBConnect.update("clin_history.past_history", currentconsult!past_history[pk_pasthistory], currentProblem, "pk_pasthistory")
-   modDBConnect.CommitTrans
-   Reload()
-   FClinical_Refresh()
-
+   If modAudit.MakeAudit(currentconsult, sMenuTag, "clin_history.past_history", currentconsult!past_history[pk_pasthistory]!pk_pasthistory, const.cSection_PastHistory, sAuditText) Then
+      modDBConnect.CommitTrans
+      Reload()
+      FClinical_Refresh()
+   Else
+      modDBConnect.RollBack
+   End If   
+   
 End
 
 Public Sub FClinical_Refresh()
-
+   
    If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then
       FClinical.Refresh_Section(const.cSection_PastHistory)    'refresh lists on main screen FClinical
       FClinical.Refresh_AllPreviousNotes()
       FClinical.Refresh_Section(const.cSection_HealthSummary)    'check if health summary showing, if so update it as it has occupations on it
-
    End If
-
+   
 End
 
 Public Sub ReLoad(Optional bReLoad As Boolean = False)
@@ -89,7 +91,7 @@ Public Sub ReLoad(Optional bReLoad As Boolean = False)
    'otherwise the outline will be removed (may or may not be present)
    'i.e visual notification to the user of saved/unsaved status
    '--------------------------------------------------------------------
-
+   
    Dim health_issue As Collection
    Dim bDataChanged As Boolean
    Dim bMajorProblemChanged As Boolean
@@ -102,20 +104,9 @@ Public Sub ReLoad(Optional bReLoad As Boolean = False)
    cvwProblemsActive.Clear()
    cvwProblemsInActive.Clear()
    cvwProblemsMajor.Clear()
-
    cvwProblemsActive.Columns.count = 2
-   ' cvwProblemsActive.Columns[0].width = 45
-   ' cvwProblemsActive.Columns[1].width = 10
-   ' cvwProblemsActive.Columns[2].width = 300
    cvwProblemsInActive.Columns.count = 2
-   ' cvwProblemsInActive.Columns[0].width = 45
-   ' cvwProblemsInActive.Columns[1].width = 10
-   ' cvwProblemsInActive.Columns[2].width = 300
    cvwProblemsMajor.Columns.count = 2
-   ' cvwProblemsMajor.Columns[0].width = 45
-   ' cvwProblemsMajor.Columns[1].width = 10
-   ' cvwProblemsMajor.Columns[2].width = 300
-
    If bReload Then currentconsult.Refresh("past_history")
    For Each health_issue In currentconsult!past_history
       If health_issue!data_changed Then
@@ -123,14 +114,14 @@ Public Sub ReLoad(Optional bReLoad As Boolean = False)
       End If
       sLaterality = ""
       If health_issue!fk_laterality = const.LateralityBoth Then
-        sLaterality = "(Both)"
+         sLaterality = "(Both)"
       Endif
-       If health_issue!fk_laterality = const.LateralityLeft Then
-          sLaterality = "(Left)"
-       Endif
-         If health_issue!fk_laterality = const.LateralityRight Then
-          sLaterality = "(Right)"
-       Endif
+      If health_issue!fk_laterality = const.LateralityLeft Then
+         sLaterality = "(Left)"
+      Endif
+      If health_issue!fk_laterality = const.LateralityRight Then
+         sLaterality = "(Right)"
+      Endif
       If health_issue!major = True
          cvwProblemsMajor.Add(Str$(health_issue!pk_pasthistory), 0)     'add new row, key = row count fixme to pk?
          cvwProblemsMajor[Str$(health_issue!pk_pasthistory)][0] = health_issue!year_onset
@@ -156,11 +147,11 @@ Public Sub ReLoad(Optional bReLoad As Boolean = False)
          Endif
       Endif
    Next
-
+   
 End
 
 Public Sub ProblemLists_Menu()
-
+   
    If Last.count Then '
       cvwSelected = Last
       Last.MoveCurrent()
@@ -168,7 +159,7 @@ Public Sub ProblemLists_Menu()
       healthissue = currentconsult!past_history[pk_pasthistory]!description
       MnuProblemLists.Popup()
    End If
-
+   
 End
 
 Public Sub mnuProblemLists_Click()
@@ -184,9 +175,12 @@ Public Sub mnuProblemLists_Click()
    'automatically loaded into the editing area, so only the piece of
    'information which has been changed eg problem made major, need be
    'visually updated in the editing area
+   'fixme - decide if want to allow the adding comment
+   'eg use the make significant explain
    '----------------------------------------------------------------------
+   
    Dim tempstring As String
-
+   
    currentProblem = New Collection
    currentProblem!pk_pasthistory = pk_pasthistory
    Select Case Last.tag
@@ -196,20 +190,20 @@ Public Sub mnuProblemLists_Click()
          Else
             FCarePlanning_New.Edit_CarePlan()
          End If
-      Case "mark major"
+      Case "make major"
          currentProblem!major = True
-         Update()
-      Case "mark significant"
+         Update(Last.tag)
+      Case "make significant"
          currentProblem!major = False
          currentProblem!active = True
-         Update()
-      Case "mark inactive"
+         Update(Last.tag)
+      Case "make inactive"
          currentProblem!major = False
          currentProblem!active = False
-         Update()
+         Update(Last.tag)
       Case "delete"
          FPastHistory.Delete_PastHistory
-         Reload()
+         Reload(True) 'refresh as well as reload
          FClinical_Refresh()
       Case "view audit trail"
          tempstring = "<HTML><BODY><TABLE>" & modHTML.HTML_Template_Audit_Row_Heading()
@@ -236,5 +230,5 @@ Public Sub mnuProblemLists_Click()
       Case Else ' for "mark significant explain", "mark inactive explain","mark major explain"
          '   modPastHistoryDBI.Popup_Menu_Process(currentconsult, Last.tag, CurrentPastHistory, pk_pasthistory)
    End Select
-
+   
 End

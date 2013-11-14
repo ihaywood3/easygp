@@ -284,7 +284,9 @@ Public Sub Expose_SideBar_Buttons()
    If modDBConnect.Is_Superuser() Then
       BtnSection_Admin.Visible = True  
    Endif
+   
 End
+' 
 
 Public Sub Btn_Section_Tasks_Click()
    '----------------------------------------------------------------------------------------
@@ -642,7 +644,7 @@ Public Sub Settings_Save()
    Try pnlPatients.Settings_Save()
    Try pnlStaffPreferences.Settings_Save()
    Try pnlHelp.Settings_Save()
-   Try pnlDayBook.Settings_Save()
+   ' Try pnlDayBook.Settings_Save()
    Try pnlSetupWorkStation.Settings_Save()
    Try pnlLibrary.Settings_Save()
    Try pnlClinical.Settings_Save()
@@ -743,8 +745,783 @@ Public Sub StaffTasks_For_Staff_Member_ReLoad()
    
 End
 
+Public Sub Import_Nata()
+   'File must be pipe delimited with no " around name
+   'original nata supplied data is kept
+   'Accreditation_No, LabName, LabName2, Address, 
+   'Address2, Address3, Suburb, State, Postcode,
+   ' Contact, Phone, Fax, Mobile, Email, Website,
+   '  Facility_Type, Last_Updated, 
+   
+   Dim hFile As File
+   Dim sOneLine As String
+   Dim labs As Collection
+   Dim lab As Crow
+   Dim bits As String[]
+   
+   labs = New Collection
+   
+   hFile = Open "/home/richard/Downloads/easygp/nata.txt" For Read
+   While Not Eof(hFile)
+      Line Input #hFile, sOneLine
+      bits = Split(soneline, "|")
+      lab = New Crow
+      lab!accreditation_no = bits[0]
+      lab!labname = bits[1]
+      lab!labname2 = bits[2]
+      lab!address = bits[3]
+      lab!address2 = bits[4]
+      lab!address3 = bits[5]
+      lab!suburb = bits[6]
+      lab!state = bits[7]
+      lab!postcode = bits[8]
+      lab!contact = bits[9]
+      lab!phone = bits[10]
+      lab!fax = bits[11]
+      lab!mobile = bits[12]
+      lab!email = bits[13]
+      lab!website = bits[14]
+      lab!facility_type = bits[15]
+      lab!last_updated = bits[16]
+      If bits[8] = "" Then
+         Print lab
+      Endif
+      lab.Save("documents.nata_laboritories", "fk_lab")
+      Labs.Add(lab, labs.count)
+   Wend
+   Close #hFile 
+   
+   'Now construct the sending entities
+   'some lab's eg healthlink have multiple labs - we will only allow a 'generic' company name and always use head office
+   'when loading the hl7, will use the nata number to get the 'generic' company name
+   ' distinct_labnames = modDBConnect.exec_query_collection("select distinct labname as pk, labname from documents.nata_laboritories order by labname")      'distinct lab names
+   ' For Each l In distinct_labnames
+   '    '  R = modDBConnect.exec_query("Select distinct accreditation_no, labname from documents.nata_laboritories where labname ='" & l!labname & "'")  'are there more than 1 accreditation numbers
+   '     R = modDBConnect.exec_query("Select * from documents.sending_entities where msh_sending_entity ILIKE '" & l!labname & "'")
+   '    If R.count = 0 Then  'do we already have this company no?
+   '       sending_entity = New CRow 
+   '       sending_entity!msh_sending_entity = l!labname
+   '       sending_entity!fk_lu_message_standard = const.document_message_standard_hl7
+   '       sending_entity!fk_lu_message_display_style = const.Document_Display_As_Result
+   '       sending_entity!fk_lu_request_type = const.Request_Type_Pathology
+   '       sending_entity.Save("documents.sending_entities", "fk_sendingentity")
+   ' 
+   '    Else
+   '       Print R!msh_sending_entity
+   '    End If   
+   '      
+   ' Next
+   ' 
+   ' For Each l In labs
+   '    'check if this lab number is distinct
+   '    sql = "Select count (pk) from documents.nata_laboritories where accreditation-no ="
+   ' Next
+   modDBConnect.CommitTrans
+   
+End
+
 Public Sub Button1_Click()
-   'clean up my occupations imported from pracsoft - many are crap errors
+   
+   'Import_Nata
+  ' Return 
+   If Message.Question("Update Audit, this will take some time?", " Yes ", " No ") = 2 Then Return 
+   Inc Application.Busy
+   If Not Audits_Update_Document_Notes_Delete_Duplicate() Then
+      Goto Roll_Back_Transaction
+   Endif
+   If Not Audits_Update_Document_Notes_Delete_Preliminary() Then
+      Goto Roll_Back_Transaction
+   Endif
+   If Not Audits_Update_Document_Notes_Mark_Deleted() Then
+      Goto Roll_Back_Transaction
+   Endif
+   If Not Audit_update_recall_notes() Then
+      Goto Roll_Back_Transaction
+   Endif
+   If Not Audits_Update_Document_Notes_Import_Scanning() Then
+      Goto Roll_Back_Transaction
+   Endif
+   ' If Not Audits_Update_Document_Notes_Viewed_And_Filed() Then
+   '    Goto Roll_Back_Transaction
+   ' Endif
+   ' Audits_Update_Tasks
+   ' Return 
+   modDBConnect.CommitTrans
+   Message.Info("Completed the audit update - do not run this again")
+   Dec Application.Busy
+   Return
+   
+Roll_Back_Transaction:
+   modDBConnect.RollBack
+   Dec Application.Busy
+   
+End
+
+Public Function Audits_Update_Document_Notes_Import_Scanning() As Boolean
+   '---------------------------------------------------------------------------
+   'This sub updates the notes associated with these flags to add the details
+   'of these documents in the audit trail so that it makes sense to the viewer
+   'fk_audit_action 26 = 'scanned document imported'
+   'There has been a bug at some stage
+   '---------------------------------------------------------------------------
+   
+   Dim audits As New Collection
+   Dim audit As Collection 
+   Dim new_notes As String
+   Dim sql As String
+   Dim x As Integer
+   Dim tb As TextBox
+   
+   With tb = New TextBox(Me)
+      .Visible = False  
+   End With
+   sql = ""
+   "SELECT distinct"
+   " vwDocuments.pk_document,"
+   "  vwpatients.wholename, "
+   "  vwdocuments.source_file, "
+   "  vwdocuments.imported_time, "
+   "  vwdocuments.date_created, "
+   "  vwdocuments.originator, "
+   "  vwDocuments.msh_sending_entity,"
+   "  vwdocuments.tag, "
+   "  vwdocuments.tag_user,"
+   "  vwprogressnotes.pk_progressnote,"
+   "  vwprogressnotes.fk_row,"
+   "  vwprogressnotes.linked_table,"
+   "  vwprogressnotes.notes,"
+   "  vwProgressNotes.fk_audit_action,"
+   "  vwProgressNotes.audit_action "
+   "FROM "
+   "  clin_consult.vwprogressnotes, "
+   "  documents.vwdocuments, "
+   "  contacts.vwpatients "
+   "WHERE "
+   "  vwprogressnotes.fk_row = vwdocuments.pk_document "
+   "  AND   vwdocuments.fk_patient = vwpatients.fk_patient"
+   "  and linked_table='documents.documents'::regclass "
+   " And fk_audit_action = 26"
+    
+   audits = modDBConnect.exec_query_collection(sql)
+   Print audits.Count
+   For Each audit In audits
+      Print Str(x), "fixing scanned document import for " & audit!wholename    
+      If IsNull(audit!date_created) Then           'bugfix crept in during development e.g I have 5/89,0000 records with no date created.
+         tb.text = Format(audit!imported_time, "dd/mm/yyyy")
+         modDBConnect.exec_query("update documents.documents set date_created = '" & Format(audit!imported_time, "dd/mm/yyyy") & "' WHERE pk = " & audit!pk_document)
+         audit!date_created = Val(tb.text)
+         Print audit!date_created   
+      Endif
+      new_notes = "Document which was dated " & Format(audit!date_created, "dd/mm/yyyy") 
+      new_notes &= " and was imported on " & Format(audit!imported_time, "dd/mm/yyyy")
+      new_notes &= " was scanned - the original document was sent by " & audit!originator
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": audit!pk_progressnote, "notes": new_notes])
+      Inc x
+   Next
+   Return True
+   'Catch 
+   ' Return False
+   
+End
+
+Public Function Audits_Update_Document_Notes_Delete_Preliminary() As Boolean
+   '---------------------------------------------------------------------------
+   'This sub updates the notes associated with these flags to add the details
+   'of these documents in the audit trail so that it makes sense to the viewer
+   'fk_audit_action 29= delete prelimary results
+   '---------------------------------------------------------------------------
+   
+   Dim audits As New Collection
+   Dim audit As Collection 
+   Dim new_notes As String
+   Dim sql As String
+   Dim tb As TextBox
+   
+   With tb = New TextBox(Me)
+      .Visible = False  
+   End With
+   sql = ""
+   "SELECT distinct"
+   " vwDocuments.pk_document,"
+   "  vwpatients.wholename, "
+   "  vwdocuments.source_file, "
+   "  vwdocuments.imported_time, "
+   "  vwdocuments.date_created, "
+   "  vwdocuments.originator, "
+   "  vwDocuments.msh_sending_entity,"
+   "  vwdocuments.tag, "
+   "  vwdocuments.tag_user,"
+   "  vwprogressnotes.pk_progressnote,"
+   "  vwprogressnotes.fk_row,"
+   "  vwprogressnotes.linked_table,"
+   "  vwprogressnotes.notes,"
+   "  vwProgressNotes.fk_audit_action,"
+   "  vwProgressNotes.audit_action "
+   "FROM "
+   "  clin_consult.vwprogressnotes, "
+   "  documents.vwdocuments, "
+   "  contacts.vwpatients "
+   "WHERE "
+   "  vwprogressnotes.fk_row = vwdocuments.pk_document "
+   "  AND   vwdocuments.fk_patient = vwpatients.fk_patient"
+   "  and linked_table='documents.documents'::regclass "
+   " And fk_audit_action = 29"
+   audits = modDBConnect.exec_query_collection(sql)
+   For Each audit In audits
+      If IsNull(audit!date_created) Then           'bugfix crept in during development e.g I have 5/89,0000 records with no date created.
+         tb.text = Format(audit!imported_time, "dd/mm/yyyy")
+         modDBConnect.exec_query("update documents.documents set date_created = '" & Format(audit!imported_time, "dd/mm/yyyy") & "' WHERE pk = " & audit!pk_document)
+         audit!date_created = Val(tb.text)
+      End If 
+      new_notes = "Preminary result which was dated " & Format(audit!date_created, "dd/mm/yyyy")
+      Print "fixing delete prelimary for " & audit!wholename    
+      new_notes &= " and was imported on " & Format(audit!imported_time, "dd/mm/yyyy") & "  was deleted - the original document was sent by " & audit!originator & " with the tag '" & audit!tag & "' "
+      If Not IsNull(audit!tag_user) Then
+         new_notes &= " and the user tag was '" & audit!tag_user & "'"
+      Endif
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": audit!pk_progressnote, "notes": new_notes])
+   Next
+   Return True
+   
+   'Catch 
+   ' Return False
+   
+End
+
+Public Function Audits_Update_Document_Notes_Viewed_And_Filed() As Boolean
+   '---------------------------------------------------------------------------
+   'This sub updates the notes associated with these flags to add the details
+   'of these documents in the audit trail so that it makes sense to the viewer
+   'fk_audit_action 21= viewed and filed the document
+   '---------------------------------------------------------------------------
+   
+   Dim audits As New Collection
+   Dim audit As Collection 
+   Dim new_notes As String
+   Dim sql As String
+   Dim R As Result
+   Dim x As Integer
+   Dim tb As TextBox
+   Dim sTaskAllocatedTo As String
+   
+   With tb = New TextBox(Me)
+      .Visible = False  
+   End With
+   
+   sql = ""
+   "SELECT distinct"
+   " vwDocuments.pk_document,"
+   "  vwpatients.wholename, "
+   "  vwdocuments.source_file, "
+   "  vwdocuments.imported_time, "
+   "  vwdocuments.date_created, "
+   "  vwdocuments.originator, "
+   "  vwDocuments.msh_sending_entity,"
+   "  vwdocuments.tag, "
+   "  vwdocuments.tag_user,"
+   "  vwprogressnotes.pk_progressnote,"
+   "  vwprogressnotes.fk_row,"
+   "  vwprogressnotes.linked_table,"
+   "  vwprogressnotes.notes,"
+   "  vwProgressNotes.fk_audit_action,"
+   "  vwProgressNotes.audit_action "
+   "FROM "
+   "  clin_consult.vwprogressnotes, "
+   "  documents.vwdocuments, "
+   "  contacts.vwpatients "
+   "WHERE "
+   "  vwprogressnotes.fk_row = vwdocuments.pk_document "
+   "  AND   vwdocuments.fk_patient = vwpatients.fk_patient"
+   "  and linked_table='documents.documents'::regclass "
+   " And fk_audit_action = 21"
+   
+   audits = modDBConnect.exec_query_collection(sql)
+   For Each audit In audits
+      If IsNull(audit!date_created) Then           'bugfix crept in during development e.g I have 5/89,0000 records with no date created.
+         tb.text = Format(audit!imported_time, "dd/mm/yyyy")
+         modDBConnect.exec_query("update documents.documents set date_created = '" & Format(audit!imported_time, "dd/mm/yyyy") & "' WHERE pk = " & audit!pk_document)
+         audit!date_created = Val(tb.text)
+      End If 
+      Print Str(x), "fixing viewed & filed document import for " & audit!wholename 
+      new_notes = "Inbox document which was dated " & Format(audit!date_created, "dd/mm/yyyy") 
+      new_notes &= " and was imported on " & Format(audit!imported_time, "dd/mm/yyyy")
+      New_Notes &= " was viewed and filed with "
+      'need to look here and see if any tasks actually were attached to this.
+      sTaskAllocatedTo = ""
+      R = modDBConnect.exec_query("Select * from clerical.vwtaskscomponents where fk_row =" & audit!fk_row)
+      If R.count Then
+         'we have a task... 
+         Select Case R!fk_urgency
+            Case const.UrgencyLevelRoutine
+               If IsNull(R!fk_staff_allocated) Then
+                  New_Notes &= "auto-task generated for a routine appointment"
+               Else
+                  sTaskAllocatedTo = ". A task has been allocated to " & modStrings.Capitalise_Words_In_String(R!staff_allocated_title & " " & R!staff_allocated_wholename)
+               End If  
+            Case const.UrgencyLevelUrgent
+               If IsNull(R!fk_staff_allocated) Then
+                  New_Notes &= "auto-task generated for an urgent appointment"
+               Else
+                  sTaskAllocatedTo = ". A task has been allocated to " & modStrings.Capitalise_Words_In_String(R!staff_allocated_title & " " & R!staff_allocated_wholename)
+               End If  
+         End Select
+      Else
+         New_Notes &= " no action taken"
+      Endif
+      New_Notes &= " - the original document was sent by " & audit!originator & " with the tag '" & audit!tag & "' "
+      If Not IsNull(audit!tag_user) Then
+         new_notes &= " and the user tag was '" & audit!tag_user & "'"
+      Endif
+      If sTaskAllocatedTo Then
+         Print
+      Endif
+      new_notes &= sTaskAllocatedTo
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": audit!pk_progressnote, "notes": new_notes])
+      
+      Inc x
+      '  If x = 2000 Then Break
+   Next
+   Return True
+   'Catch 
+   ' Return False
+   
+End
+
+Public Function Audits_Update_Document_Notes_Delete_Duplicate() As Boolean
+   '---------------------------------------------------------------------------
+   'This sub updates the notes associated with these flags to add the details
+   'of these documents in the audit trail so that it makes sense to the viewer
+   'fk_audit_action 28= delete duplicate document
+   '---------------------------------------------------------------------------
+   
+   Dim audits As New Collection
+   Dim audit As Collection 
+   Dim new_notes As String
+   Dim sql As String
+   Dim tb As TextBox
+   
+   With tb = New TextBox(Me)
+      .Visible = False  
+   End With
+   
+   sql = ""
+   "SELECT distinct"
+   " vwDocuments.pk_document,"
+   "  vwpatients.wholename, "
+   "  vwdocuments.source_file, "
+   "  vwdocuments.imported_time, "
+   "  vwdocuments.date_created, "
+   "  vwdocuments.originator, "
+   "  vwDocuments.msh_sending_entity,"
+   "  vwdocuments.tag, "
+   "  vwdocuments.tag_user,"
+   "  vwprogressnotes.pk_progressnote,"
+   "  vwprogressnotes.fk_row,"
+   "  vwprogressnotes.linked_table,"
+   "  vwprogressnotes.notes,"
+   "  vwProgressNotes.fk_audit_action,"
+   "  vwProgressNotes.audit_action "
+   "FROM "
+   "  clin_consult.vwprogressnotes, "
+   "  documents.vwdocuments, "
+   "  contacts.vwpatients "
+   "WHERE "
+   "  vwprogressnotes.fk_row = vwdocuments.pk_document "
+   "  AND   vwdocuments.fk_patient = vwpatients.fk_patient"
+   "  and linked_table='documents.documents'::regclass "
+   " And fk_audit_action = 28"
+   
+   audits = modDBConnect.exec_query_collection(sql)
+   For Each audit In audits
+      Print "fixing delete duplicate for " & audit!wholename    
+      If IsNull(audit!date_created) Then           'bugfix crept in during development e.g I have 5/89,0000 records with no date created.
+         tb.text = Format(audit!imported_time, "dd/mm/yyyy")
+         modDBConnect.exec_query("update documents.documents set date_created = '" & Format(audit!imported_time, "dd/mm/yyyy") & "' WHERE pk = " & audit!pk_document)
+         audit!date_created = Val(tb.text)
+      End If 
+      new_notes = "Duplicate document which was dated " & Format(audit!date_created, "dd/mm/yyyy")
+      new_notes &= " and was imported on " & Format(audit!imported_time, "dd/mm/yyyy") & "  was deleted - the original document was sent by " & audit!originator & " with the tag '" & audit!tag & "' "
+      If Not IsNull(audit!tag_user) Then
+         new_notes &= " and the user tag was '" & audit!tag_user & "'"
+      Endif
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": audit!pk_progressnote, "notes": new_notes])
+   Next
+   Return True
+   'Catch
+   ' Return False
+   
+End
+
+Public Function Audits_Update_Document_Notes_Mark_Deleted() As Boolean
+   '---------------------------------------------------------------------------
+   'This sub updates the notes associated with these flags to add the details
+   'of these documents in the audit trail so that it makes sense to the viewer
+   'fk_audit_action 4= 'mark deleted'
+   '---------------------------------------------------------------------------
+   
+   Dim audits As New Collection
+   Dim audit As Collection 
+   Dim new_notes As String
+   Dim sql As String
+   Dim tb As TextBox
+   
+   With tb = New TextBox(Me)
+      .Visible = False  
+   End With
+   sql = ""
+   "SELECT distinct"
+   " vwDocuments.pk_document,"
+   "  vwpatients.wholename, "
+   "  vwdocuments.source_file, "
+   "  vwdocuments.imported_time, "
+   "  vwdocuments.date_created, "
+   "  vwdocuments.originator, "
+   "  vwDocuments.msh_sending_entity,"
+   "  vwdocuments.tag, "
+   " vwdocuments.fk_lu_display_as,"
+   "  vwdocuments.tag_user,"
+   "  vwprogressnotes.pk_progressnote,"
+   "  vwprogressnotes.fk_row,"
+   "  vwprogressnotes.linked_table,"
+   "  vwprogressnotes.notes,"
+   "  vwProgressNotes.fk_audit_action,"
+   "  vwProgressNotes.audit_action, "
+   "  vwProgressnotes.audit_reason "
+   "FROM "
+   "  clin_consult.vwprogressnotes, "
+   "  documents.vwdocuments, "
+   "  contacts.vwpatients "
+   "WHERE "
+   "  vwprogressnotes.fk_row = vwdocuments.pk_document "
+   "  AND   vwdocuments.fk_patient = vwpatients.fk_patient"
+   "  and linked_table='documents.documents'::regclass "
+   " And fk_audit_action = 4"
+    
+   audits = modDBConnect.exec_query_collection(sql)
+   For Each audit In audits
+      Print "fixing mark deleted for " & audit!wholename    
+      If IsNull(audit!date_created) Then           'bugfix crept in during development e.g I have 5/89,0000 records with no date created.
+         tb.text = Format(audit!imported_time, "dd/mm/yyyy")
+         modDBConnect.exec_query("update documents.documents set date_created = '" & Format(audit!imported_time, "dd/mm/yyyy") & "' WHERE pk = " & audit!pk_document)
+         audit!date_created = Val(tb.text)
+      End If 
+      Select Case audit!fk_lu_display_as
+         Case 1
+            new_notes = "Letter "
+         Case 2
+            new_notes = "Result "
+         Case 3
+            new_notes = "Certificate "
+         Case 4
+            new_notes = "Image "
+      End Select
+      new_notes = "which was dated " & Format(audit!date_created, "dd/mm/yyyy")
+      new_notes &= " and was imported on " & Format(audit!imported_time, "dd/mm/yyyy") & "  was deleted - the original document was sent by " & audit!originator & " with the tag '" & audit!tag & "' "
+      If Not IsNull(audit!tag_user) Then
+         new_notes &= " and the user tag was '" & audit!tag_user & "' "
+      End If
+      new_notes &= ". The reason given for the deletion was:<BR>'" & audit!audit_reason & "'."
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": audit!pk_progressnote, "notes": new_notes])
+   Next
+   Return True
+   'Catch
+   ' Return False
+   
+End
+
+Public Function Task_Audit_Notes_Save(task As Collection, sTaskDetails As String, audit_action As String)
+   '----------------------------------------------------
+   'Create the clin_consult entry
+   ' CREATE TABLE clin_consult.consult
+   ' (
+   '   pk serial NOT NULL,
+   '   consult_date timestamp without time zone NOT NULL,
+   '   fk_patient integer NOT NULL,
+   '   fk_staff integer NOT NULL,
+   '   fk_type integer,
+   '   summary text,
+   '   CONSTRAINT consult_pkey PRIMARY KEY (pk )
+   ' )
+   '----------------------------------------------------------
+   
+   Dim cons As CRow
+   Dim audit As CRow 
+   
+   cons = New CRow   
+   cons!consult_date = Task!date_component_logged
+   cons!fk_patient = Task!fk_patient
+   cons!fk_staff = Task!fk_staff_filed_task
+   cons!fk_type = const.consult_type_audit
+   cons.Save("clin_consult.consult", "fk_consult")
+   '-----------------------------------------------------------
+   'create the progress note audit entry
+   ' CREATE TABLE clin_consult.progressnotes
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_consult integer,
+   '   notes text,
+   '   fk_section integer,
+   '   fk_code bigint,
+   '   problem text,
+   '   fk_problem integer,
+   '   fk_audit_action integer DEFAULT 1,
+   '   linked_table regclass,
+   '   fk_row integer,
+   '   fk_audit_reason integer,
+   '   deleted boolean DEFAULT false
+   '--------------------------------------------------------------------
+   audit = New CRow
+   audit!fk_consult = cons!fk_consult
+   audit!notes = sTaskDetails    
+   audit!fk_section = const.cSection_StaffTasks
+   If audit_action = "staff task allocated" Then 
+      audit!fk_audit_action = 22 'staff task allocated
+   End If
+   If audit_action = "note on task" Then
+      audit!fk_audit_action = 24
+   Endif
+   ' If Not IsNull(Task!fk_row) Then    
+   ' audit!linked_table = "documents.documents"
+   ' audit!fk_row = Task!fk_row
+   '  End If   
+   audit!linked_table = "clerical.tasks"
+   audit!fk_row = Task!fk_task
+   audit.Save("clin_consult.progressnotes", "fk_progressnote")  
+   
+End
+
+Public Function Task_Audit_Notes_SAve_old(task As Collection, sTaskDetails As String, audit_action As String)
+   '----------------------------------------------------
+   'Create the clin_consult entry
+   ' CREATE TABLE clin_consult.consult
+   ' (
+   '   pk serial NOT NULL,
+   '   consult_date timestamp without time zone NOT NULL,
+   '   fk_patient integer NOT NULL,
+   '   fk_staff integer NOT NULL,
+   '   fk_type integer,
+   '   summary text,
+   '   CONSTRAINT consult_pkey PRIMARY KEY (pk )
+   ' )
+   '----------------------------------------------------------
+   
+   Dim cons As CRow
+   Dim audit As CRow 
+   
+   cons = New CRow   
+   cons!consult_date = Task!date_component_logged
+   cons!fk_patient = Task!fk_patient
+   cons!fk_staff = Task!fk_staff_filed_task
+   cons!fk_type = const.consult_type_audit
+   cons.Save("clin_consult.consult", "fk_consult")
+   '-----------------------------------------------------------
+   'create the progress note audit entry
+   ' CREATE TABLE clin_consult.progressnotes
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_consult integer,
+   '   notes text,
+   '   fk_section integer,
+   '   fk_code bigint,
+   '   problem text,
+   '   fk_problem integer,
+   '   fk_audit_action integer DEFAULT 1,
+   '   linked_table regclass,
+   '   fk_row integer,
+   '   fk_audit_reason integer,
+   '   deleted boolean DEFAULT false
+   '--------------------------------------------------------------------
+   audit = New CRow
+   audit!fk_consult = cons!fk_consult
+   audit!notes = sTaskDetails    
+   audit!fk_section = const.cSection_StaffTasks
+   If audit_action = "staff task allocated" Then 
+      audit!fk_audit_action = 22 'staff task allocated
+   End If
+   If audit_action = "note on task" Then
+      audit!fk_audit_action = 24
+   Endif
+   If Not IsNull(Task!fk_row) Then    
+      audit!linked_table = "documents.documents"
+      audit!fk_row = Task!fk_row
+   End If   
+   audit.Save("clin_consult.progressnotes", "fk_progressnote")  
+   
+End
+
+Public Function Audits_Update_Tasks() As Boolean
+   '---------------------------------------------------------------------------
+   'This sub inserts into progress notes all staff tasks allocated
+   '---------------------------------------------------------------------------
+   
+   Dim audits As New Collection
+   Dim new_notes As String
+   Dim sql As String
+   Dim tasks As Collection
+   Dim Document As Collection 
+   Dim task As Collection
+   Dim sTaskDetails As String
+   Dim fk_last_task As Integer
+    Dim audit As CRow   
+   
+   Tasks = modDBConnect.exec_query_collection("Select * from clerical.vwtaskscomponentsandnotes where fk_patient = 17891 order by fk_patient, fk_task, fk_component")
+   Print tasks
+   For Each task In tasks
+      If Not IsNull(Task!fk_patient) Then    
+         If fk_last_task <> Task!fk_task Then   
+            If Not IsNull(Task!fk_row) Then
+               Document = modDBConnect.exec_query_first("Select * from documents.documents where pk=" & Task!fk_row)
+            Endif
+            sTaskDetails = modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes("staff task allocated", Document) & "<BR>"
+            sTaskDetails &= "The task allocated to " & task!staff_allocated_title & " " & task!staff_allocated_wholename
+            sTaskDetails &= " was:<BR>- " & task!details & "<BR>"
+            If Not IsNull(task!staff_must_finalise_task_wholename) Then 
+               sTaskDetails &= " and the staff member allocated to finalise this was " & task!staff_must_finalise_task_title & " " & task!staff_must_finalise_task_wholename
+            End If  
+            fk_last_task = Task!fk_task
+            Print "Task Key:" & Str(Task!fk_task) & " patient:" & Task!fk_patient & " " & sTaskDetails
+            Task_Audit_Notes_SAve(task, sTaskDetails, "staff task allocated")
+         End If     
+         
+      End If   
+      If Not IsNull(Task!fk_row) Then
+         sTaskDetails = modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes("note on task", Document) & "<BR>"
+      End If   
+      If Not IsNull(Task!note) Then
+         sTaskDetails &= "The notes made by " & Task!staff_made_note_title & " " & Task!staff_made_note_wholename & " were - '" & Task!note & "'."
+      Endif
+      Print sTaskDetails
+      Task_Audit_Notes_SAve(task, sTaskDetails, "note on task") 'saves the notes components as an audit
+   Next
+   
+   modDBConnect.CommitTrans
+   Return   
+   sql = ""
+   ' "SELECT distinct"
+   ' " vwDocuments.pk_document,"
+   ' "  vwpatients.wholename, "
+   ' "  vwdocuments.source_file, "
+   ' "  vwdocuments.imported_time, "
+   ' "  vwdocuments.originator, "
+   ' "  vwDocuments.msh_sending_entity,"
+   ' "  vwdocuments.tag, "
+   ' "  vwdocuments.tag_user,"
+   ' "  vwprogressnotes.pk_progressnote,"
+   ' "  vwprogressnotes.fk_row,"
+   ' "  vwprogressnotes.linked_table,"
+   ' "  vwprogressnotes.notes,"
+   ' "  vwProgressNotes.fk_audit_action,"
+   ' "  vwProgressNotes.audit_action "
+   ' "FROM "
+   ' "  clin_consult.vwprogressnotes, "
+   ' "  documents.vwdocuments, "
+   ' "  contacts.vwpatients "
+   ' "WHERE "
+   ' "  vwprogressnotes.fk_row = vwdocuments.pk_document "
+   ' "  AND   vwdocuments.fk_patient = vwpatients.fk_patient"
+   ' "  and linked_table='documents.documents'::regclass "
+   ' " And fk_audit_action = 28"
+   ' " AND vwprogressnotes.pk_progressnote < 132835" 
+   ' " And fk_audit_action = 28 Or fk_audit_action = 29 "
+   
+   audits = modDBConnect.exec_query_collection(sql)
+   For Each audit In audits
+      If audit!fk_audit_action = 28 Then  
+         new_notes = "Duplicate document"
+         Print "fixing delete duplicate for " & audit!wholename    
+      End If
+      If audit!fk_audit_action = 29 Then  
+         new_notes = "Preminary result"
+         Print "fixing delete prelimary for " & audit!wholename    
+      End If
+      new_notes &= " which was imported on " & Format(audit!imported_time, "dd/mm/yyyy") & "  was deleted - the original document was sent by " & audit!originator & " with the tag '" & audit!tag & "' "
+      If Not IsNull(audit!tag_user) Then
+         new_notes &= " and the user tag was '" & audit!tag_user & "'"
+      Endif
+      
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": audit!pk_progressnote, "notes": new_notes])
+      
+   Next
+   Return True
+Catch
+   Return False
+   
+End
+
+Public Function Audit_update_recall_notes() As Boolean
+   '------------------------------------------------------------------------------------------
+   ' in Early october 2013 we implemented showing audits in the progress notes
+   ' It became clear that the text we have added for all previous audit trails was inadequate
+   ' This subroutine fixes this but reading the row in the table audited, extracting the
+   ' subject e.g in Recalls this is the recall reason and updating the audit entry so that
+   ' it now makes sense
+   ' All subsequent audit trails will now incorporate a more appropriate note.
+   ' This includes update for recalls sent by the system (lu_audit_action=18)
+   ' back porting this to an address could be inaccurate, they may have moved since.
+   ' -----------------------------------------------------------------------------------------
+   
+   Dim audits As New Collection
+   Dim audit As Collection 
+   Dim icounter As Integer
+   Dim sql As String
+   Dim auditnotes As String
+   Dim R As Result 
+   sql = ""
+   "SELECT "
+   " vwprogressnotes.linked_table,"
+   " vwProgressNotes.consult_date,"
+   "  vwpatients.wholename,"
+   " vwrecalls.reason, "
+   " vwrecalls.due, "
+   " vwrecalls.urgency, "
+   "  vwprogressnotes.fk_row, "
+   "  vwrecalls.fk_patient, "
+   "  vwprogressnotes.pk_progressnote, "
+   "  vwprogressnotes.section, "
+   "  vwprogressnotes.problem, "
+   "  vwprogressnotes.notes, "
+   "  vwprogressnotes.summary, "
+   "  vwprogressnotes.fk_row,"
+   "  vwprogressnotes.audit_action,"
+   " vwProgressnotes.fk_audit_action "
+   " "
+   "FROM "
+   "  clin_consult.vwprogressnotes, "
+   "  clin_recalls.vwrecalls,"
+   "  contacts.vwPatients "
+   "WHERE "
+   "  vwprogressnotes.fk_row = vwrecalls.pk_recall "
+   "  and "
+   "  vwProgressnotes.fk_patient=vwPatients.fk_patient "
+   "   and linked_table = 'clin_recalls.recalls'::regclass"
+   "   and( fk_audit_action <> 1 and fk_audit_action <> 2) "
+   audits = modDBConnect.exec_query_collection(sql)
+   
+   For Each audit In audits
+      Print Str(icounter) & " updating notes for " & audit!wholename & " ... " & audit!reason
+      If audit!fk_audit_action = 18 Then  'letters sent by clerical
+         auditnotes = "Recall reminder for " & audit!reason & " due on " & Format(audit!due, "dd/mm/yyyy") & " [" & audit!urgency & "] was actioned. "
+         auditnotes &= "A letter was sent "
+         R = modDBConnect.exec_query("Select * from contacts.vwPatients where fk_patient=" & audit!fk_patient)
+         If R.count Then
+            auditnotes &= "to " & Trim(R!street1 & " " & R!street2) & " " & R!town & " " & R!postcode
+         Else
+            Print 
+         Endif
+      Else
+         auditnotes = audit!reason & " - " & audit!notes
+      Endif
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": audit!pk_progressnote, "notes": auditnotes])
+   Next
+   Return True 
+   ' Return True'/ Catch
+   '  Return False
+   
+End
+
+
+Public Sub Button1_Click_Clean_occupations()
+   'clean up my occupations imported from pracsoft - many aAudit of Recalls - 'reminder sent'
    
    Dim R As Result
    Dim sql As String
@@ -782,7 +1559,7 @@ Public Sub Button1_Click()
       'now get what is left  
       patients = modDBConnect.exec_query_collection("Select * From contacts.vwPatients where fk_occupation > 0")
       For Each patient In patients
-       '  Message.Info(patient!wholename)
+         '  Message.Info(patient!wholename)
          Print patient!wholename 
          'for each of these, check if it exists in the occupational history table
          sql = "select * from clin_history.vwOccupationalHistory where fk_patient = " & patient!fk_patient & " AND  fk_occupation =" & patient!fk_occupation
@@ -814,7 +1591,7 @@ Public Sub Button1_Click()
             'Bizaare as it may seem the occupation is kept in two places. argue with me
             'and you can then fix the code base (historical)
             '--------------------------------------------------------------------------
-            sMsg = "New occupation noted:" & modStrings.CapitaliseWord(Trim(patient!occupation))
+            sMsg = "New occupation noted:" & modStrings.Capitalise_Words_In_String(Trim(patient!occupation))
             occupational_history = New CRow   
             occupational_history!fk_occupation = fk_occupation
             occupational_history!fk_consult = currentconsult.GetPK()
@@ -824,7 +1601,7 @@ Public Sub Button1_Click()
             occupational_history.Save("clin_history.occupational_history", "fk_occupational_history")
             modDBConnect.CommitTrans
             Inc x
-        '    If x = 5 Then Break
+            '    If x = 5 Then Break
          Endif
       Next
    Endif

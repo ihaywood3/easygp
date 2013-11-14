@@ -22,34 +22,64 @@
 '
 'TODO          everything
 '-----------------------------------------------------------------------------------------------'
-
+Private ReferenceHboxForPopupControls As HBox
 Private bexit As Boolean
-Private shortcuts_available As Collection
-Private shortcuts_user As Collection
+Private shortcuts_system As Collection
+Private shortcuts_user_and_system As Collection
+Private shortcuts_user_specific As Collection
 Private SpellChecker As ClskSpell
 Private bHaveSpellChecked As Boolean
 Private fk_shortcut As Integer
 Private form_text_editor As FEditor
 Private bSystem_Shortcut As Boolean
+Private shortcut_categories As Collection
+Private Form_Terms As FCodedTermSelector
+Private obs As Observer
+Private fk_code As String
+Private Sections_Available_In As Collection   'sections the user has set the short cut to be available in
+Private Sections_Available As Collection 
+Private form_embedded_in_Name As String
+Private form_html_editor As FHTMLEditor
+
+Public Sub Set_Embedded_Name(form_name As String)
+   
+   form_embedded_in_Name = form_name
+   
+End
 
 Public Sub Init()
    
-   shortcuts_available = modConsultDBI.Shortcuts_Available_Get(modDBConnect.currentUser!fk_clinic)
-   lblMeasure.text = "  Share With Others "
+   shortcuts_system = modConsultDBI.Shortcuts_Available_Get(modDBConnect.currentUser!fk_clinic)
+   shortcut_categories = modUtil.LoadCombo(cmbShortCutCategory, modUtil.Copy_Collection_Keyed_Sequentially(modConsultDBI.Shortcuts_Get_Categories()), "category")
+   sections_available = modUtil.LoadCombo(cmbSectionsAvailable, modUtil.Copy_Collection_Keyed_Sequentially(modConsultDBI.ProgressNotes_Categories_Get()), "section")
+   lblMeasure.text = "  Select Section Available "
    modEditAreaHelpers.Resize_labels(VBox_EditARea, lblMeasure)
+   modEditAreaHelpers.Resize_label(lblShortCutText, lblmeasure)
+   modEditAreaHelpers.Resize_label(lblShortCutHTML, lblmeasure)
    With form_text_editor = New FEditor(VBox_TextEditor)
       .lblHeading.Visible = False
-      .tbLoadFile.Visible = False   
+      .tbLoadFile.Visible = False  
+      .Hbox_WordProcessorButtons.Visible = False 
    End With
+   With Form_Terms = New FCodedTermSelector(Vbox_EditArea)
+      .Ignore = True
+      .Visible = False
+      .Height = 200
+   End With
+   form_html_editor = New FHTMLEditor(Vbox_HTMLEditor)
    
+   obs = New Observer(Form_Terms.ColumnView1) As "cvwTerms"     
+   obs = New Observer(form_text_editor.tbnSpell) As "tbnSpellCheck_Editor"
+   obs = New Observer(form_text_editor.teNotes) As "TeNotes"
+   obs = New Observer(form_html_editor.edHTML) As "edHTML" 'override for e.g change events
+   obs = New Observer(form_html_editor.tbEditorErase) As "btnEraseHTML"
    With SpellChecker = New ClskSpell
-      '   .EditorControlToCheck = teExpandedText
       .EditorControlToCheck = form_text_editor.teNotes
       .TempFileForSpelling = User.home &/ "myspelltemp.txt"
       .TempFileForErrors = User.home &/ "myspellerrors.txt"
    End With
    Settings_Load
-   
+   EditArea_Clear
    With gvwShortCuts
       .Columns.Count = 3
       .Columns[0].Text = "Keys"
@@ -60,6 +90,107 @@ Public Sub Init()
       .Columns[2].width = 100
    End With
    Reload
+   
+End
+
+Public Sub edHTML_Change()
+   '--------------------------------------------------------
+   'The text has changed in the embedded html text editor
+   'This event handler over-rides that on the embedded form
+   '--------------------------------------------------------   
+   form_html_editor.edHTML.HighlightAll
+   form_text_editor.teNotes.RichText = form_html_editor.edHTML.Text
+   EditArea_Notify_Data_Change(True)
+End
+
+Public Sub tbnSpellCheck_Editor_Click()
+   'See Init for setting up the spellchecker
+   'currently this isn't working and should be transfered to EdHTML
+   'FIXME this should be in one central function
+   '
+   
+   Stop Event
+   SpellChecker.init()
+   SpellChecker.StartSpelling()
+   
+End
+
+Public Sub btnEraseHTML_Click()
+   '---------------------------------------------------------------
+   'Erases the html on the embedded html editor, warning user first
+   '---------------------------------------------------------------  
+   Message.title = "HTML Editor"
+   If Message.Question("Erase editor contents?", "Yes", "No") = 2 Then Return
+   form_html_editor.edHtml.Clear
+   form_text_editor.teNotes.Clear
+   
+End 
+
+Public Sub cvwTerms_KeyPress()
+   '------------------------------------------------------------------
+   'Act only on the <ENTER> key display what is in list in the textbox
+   'This event occurs of Form_Terms and is over-ridden by this observer
+   '------------------------------------------------------------------
+   
+   If Key.code = Key.Return Then
+      cvwTerms_DblClick()
+   End If
+   
+End
+
+Public Sub cvwTerms_DblClick()
+   '-----------------------------------------------------------------
+   'This is an observer event on  Form_Terms.ColumnView1 - see Init()
+   '----------------------------------------------------------------
+   
+   Stop Event
+   
+   Coded_Term_Select()
+   Form_Terms.Visible = False
+   rbSharedYes.SetFocus()
+   
+End
+
+Public Sub Coded_Term_Select()
+   '-------------------------------------------
+   'User has chosen a term from popup listview1
+   'Display this in the txtCodedTerm Textbox
+   'Set currentProblem!fk_code to the pk_term
+   '-------------------------------------------
+   
+   Dim currentTerm As Collection
+   
+   CurrentTerm = Form_Terms.Get_Term()
+   '-----------------------------------------------------------------------
+   'We allow free text in the health issue = past history problem
+   'so, if user has typed something in there like ** very bad diabetes**
+   '(bad example I know), then we keep this as the health issue but it
+   'will be coded back to the appropriate icpc2+ term
+   'However if they havn't typed anything in here, put the natural language
+   'term in the txtConditon text box and the coded term in the coded textbox
+   'e.g Diabetes;Type1 (T89002) or something similar
+   '------------------------------------------------------------------------
+   If txtLinkToCodedTerm.text = "" Then
+      txtLinkToCodedTerm.text = CurrentTerm!term
+   End If
+   txtLinkToCodedTerm.text = CurrentTerm!term & " (" & CurrentTerm!code & ")"
+   fk_code = CurrentTerm!code
+   ' fk_coding_system = CurrentTerm!fk_coding_system
+   
+End
+
+Public Sub Terms_Get()
+   '-------------------------------------------------------------------------------------
+   'Gets list of diagnostic terms
+   'Cannot set default if count is one because must  be able to add new occupations
+   'can't remove the label because it needs to occupy space to keep textbox correct width
+   '-------------------------------------------------------------------------------------
+   
+   If Trim(txtLinkToCodedTerm.text) = "" Then
+      fk_code = ""
+      Return
+   End If
+   Form_Terms.Get_Terms()
    
 End
 
@@ -88,11 +219,13 @@ Private Sub Save()
    ' Saves the shortcut
    'CREATE TABLE clin_consult.shortcuts_user
    ' (
-   ' -- Inherited from table clin_consult.lu_shortcut:  pk integer NOT NULL DEFAULT nextval('clin_consult.lu_shortcut_pk_seq'::regclass),
-   ' -- Inherited from table clin_consult.lu_shortcut:  fk_staff integer, -- if true, the shortcut will be shared with other users
-   ' -- Inherited from table clin_consult.lu_shortcut:  shared boolean DEFAULT false,
-   ' -- Inherited from table clin_consult.lu_shortcut:  shortcut text,
-   ' -- Inherited from table clin_consult.lu_shortcut:  expanded text,
+   '  pk integer NOT NULL DEFAULT nextval('clin_consult.lu_shortcut_pk_seq'::regclass),
+   '  fk_staff integer, -- if true, the shortcut will be shared with other users
+   '  shared boolean DEFAULT false,
+   '  shortcut text,
+   '  fk_lu_shortcut_category,
+   '  expanded text,
+   '  shortcut_progressnotes_sections (integer[] in form {1,2..n} etc
    '   CONSTRAINT shortcuts_user_fk_staff_fkey FOREIGN KEY (fk_staff)
    '       REFERENCES admin.staff (pk) MATCH SIMPLE
    '       ON UPDATE NO ACTION ON DELETE NO ACTION,
@@ -107,7 +240,7 @@ Private Sub Save()
    Dim Shortcut As New CRow
    
    If Vbox_EditArea_Outer.Padding = 0 Then Return
- 
+   
    HBox_Tool_Buttons.Enabled = False   
    If Not ShortCut_Valid() Then 
       HBox_Tool_Buttons.Enabled = True 
@@ -120,7 +253,7 @@ Private Sub Save()
       Shortcut.put_unchanged(fk_shortcut, "fk_shortcut")    
    Endif
    Shortcut!shortcut = Trim(txtShortcut.text)
-    Shortcut!expanded = form_text_editor.teNotes.RichText
+   Shortcut!expanded = Trim(form_html_editor.edHTML.text) ' Expanded_Text_Clean_HTML()
    Shortcut!fk_staff = modDBConnect.currentUser!fk_staff 
    If rbSharedYes.value = True Then    
       Shortcut!shared = True  
@@ -128,9 +261,21 @@ Private Sub Save()
    If rbSharedNo.Value = True Then
       Shortcut!shared = False   
    Endif
+   shortcut!fk_lu_shortcut_category = shortcut_categories[cmbShortCutCategory.index]!pk
+   ' For Each section In Sections_Available_In
+   '    sSections &= Str(section!pk) & ","
+   ' Next
+   ' If sSections <> "" Then
+   '    sSections = "{" & sSections & "}"
+   '    sSections = Replace(sSections, ",}", "}")
+   ' Else
+   '    sSections = "{0}"
+   ' End If   
+   ' Shortcut!shortcut_progressnotes_sections = sSections
    Shortcut.Save("clin_consult.shortcuts_user", "fk_shortcut")
    modDBConnect.CommitTrans()
    FShortcutsAvailable.Reload_Available
+   HBox_Tool_Buttons.Enabled = True 
    Reload()
    
 End
@@ -138,6 +283,13 @@ End
 Private Function ShortCut_Valid() As Boolean
    '------------------------------------------------------
    'Ensures adequate data prior to save returns True if ok
+   'Must have:
+   'fk_staff
+   'shared
+   'shortcut
+   'fk_lu_shorcut_category (read off combo)
+   'expanded (the actual text)
+   'plus/- progress notes sections
    '------------------------------------------------------   
    
    Dim sMsg As String
@@ -163,12 +315,14 @@ Private Function ShortCut_Valid() As Boolean
          Endif
       End If   
    End If    
-   ' If Trim(teExpandedText.text) = "" Then
-   If Trim(form_text_editor.teNotes.text) = "" Then   
-      With form_text_editor.teNotes
-         .setFocus
-         Return   
-      End With
+   If Trim(form_html_editor.text) = "" Then    
+      
+      form_html_editor.SetFocus
+   End If   
+   If cmbShortCutCategory.index = -1 Then
+      Message.Info("Please select a category for this shortcut.")
+      cmbShortCutCategory.SetFocus
+      Return
    Endif
    Return True 
    
@@ -190,51 +344,67 @@ Private Sub Reload()
    
    Dim shortcut As Collection
    Dim x As Integer
+   
    EditArea_Clear 
+   shortcuts_user_specific = New Collection 
    With gvwShortCuts
       .Clear
    End With
-   shortcuts_user = modUtil.Copy_Collection_Keyed_Sequentially(modConsultDBI.Shortcuts_For_User_get(modDBConnect.currentUser!fk_staff))
-   For Each shortcut In shortcuts_user
-      Inc gvwShortCuts.Rows.Count
-      With gvwShortCuts[x, 0]
-         .Text = shortcut!shortcut
-         .Alignment = Align.TopLeft
-         With gvwShortCuts.Rows[x]
-            .Height = -1 
+   shortcuts_user_and_system = modUtil.Copy_Collection_Keyed_Sequentially(modConsultDBI.Shortcuts_For_User_get(modDBConnect.currentUser!fk_staff))
+   For Each shortcut In shortcuts_user_and_system
+      If Not IsNull(shortcut!fk_staff) Then 
+         shortcuts_user_specific.Add(shortcut, x)
+         Inc gvwShortCuts.Rows.Count
+         With gvwShortCuts[x, 0]
+            .Text = shortcut!shortcut
+            .Alignment = Align.TopLeft
+            With gvwShortCuts.Rows[x]
+               .Height = -1 
+            End With
+         End With 
+         With gvwShortCuts[x, 1]
+            .RichText = shortcut!expanded
+            .WordWrap = True  
+            .Alignment = Align.TopLeft
+            With gvwShortCuts.Rows[x]
+               .Height = -1 
+            End With
+         End With  
+         With gvwShortCuts[x, 2]
+            If shortcut!shared Then
+               .Text = "Yes"
+            Else
+               .Text = "No"
+            End If 
          End With
-      End With 
-      With gvwShortCuts[x, 1]
-         .RichText = shortcut!expanded
-         .WordWrap = True  
-         .Alignment = Align.TopLeft
-         With gvwShortCuts.Rows[x]
-            .Height = -1 
-         End With
-      End With  
-      With gvwShortCuts[x, 2]
-         If shortcut!shared Then
-            .Text = "Yes"
-         Else
-            .Text = "No"
-         End If 
-      End With
-      Inc x    
+         Inc x    
+      End If   
    Next
+   
+End
+
+Public Sub TeNotes_Change()
+   
+   If bexit Then Return
+   EditArea_Notify_Data_Change(True) 
    
 End
 
 Public Sub Settings_Save()
    
-   Settings["FStaffPreferencesShortCuts/Vsplit_Shortcuts.layout"] = VSplit_Shortcuts.layout
-   
+   Settings["FStaffPreferencesShortCuts" & form_embedded_in_Name & "/Vsplit_Shortcuts.layout"] = VSplit_Shortcuts.layout
+   Settings["FStaffPreferencesShortCuts" & form_embedded_in_Name & "/Vsplit_EditArea.layout"] = VSplit_EditArea.layout
+   Settings["FStaffPreferencesShortCuts" & form_embedded_in_Name & "/Vsplit_Editors.layout"] = VSplit_Editors.layout
+
 End
 
 Private Sub Settings_Load()
    
-   VSplit_ShortCuts.Layout = Settings["FStaffPreferencesShortCuts/Vsplit_Shortcuts.layout", modUtil.VSplit([1, 3])]
+   VSplit_ShortCuts.Layout = Settings["FStaffPreferencesShortCuts" & form_embedded_in_Name & "/Vsplit_Shortcuts.layout", modUtil.VSplit([814, 166])]
+   VSplit_EditArea.layout = Settings["FStaffPreferencesShortCuts" & form_embedded_in_Name & "/Vsplit_EditArea.layout", modUtil.VSplit([98, 643])]
+   VSplit_Editors.Layout = Settings["FStaffPreferencesShortCuts" & form_embedded_in_Name & "/Vsplit_Editors.layout", modUtil.VSplit([418, 225])]
    gvwShortCuts.Font = Font[Settings["FStaffPreferencesShortCuts/cvwUserShortcuts.font", "DejaVu Sans,9"]]
-   
+
 End
 
 Public Sub teExpandedText_GotFocus()
@@ -255,26 +425,41 @@ End
 
 Public Sub EditArea_Clear()
    
-   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
-   With form_text_editor
+   bExit = True   
+   Vbox_EditArea_Outer.Enabled = False                       'don't allow data entry
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)          'clear input area
+   lvwSectionsAvailable.Clear                                'shrink the shortcuts list
+   Hbox_Available_Section_List.Height = HBox_Shortcut.Height 'by resizing its container
+   With form_text_editor                                     'clear the text editor
       .teNotes.Clear
       .DataChange_Update_Indicators(False)
-   End With     
+   End With   
+   form_html_editor.edHTML.Clear
+   form_html_editor.text = ""  
+   Form_Terms.Visible = False                                'remove the terms form (could be showing)
    rbSharedNo.value = True 
    bSystem_Shortcut = False   
+   fk_code = ""
+   cmbShortCutCategory.index = -1
+   cmbSectionsAvailable.index = -1
+   Sections_Available_In = New Collection                     'the sections the shortcut is available in
+   bExit = False  
    EditArea_Notify_Data_Change(False)
-   Vbox_EditArea.Enabled = False 
    
 End
 
-Public Sub ShortCut_New()
+Public Sub ShortCut_New(Optional sct As String)
    '------------------------------------------------------------
    'User wants to create a new shortcut to use in progress notes
+   'if sct<> "" then this form was called from FClinical and user
+   'has selected some text to create a new shortcut
    '------------------------------------------------------------ 
    
    EditArea_Clear
    fk_shortcut = 0
-   VBox_EditARea.Enabled = True  
+   Vbox_EditArea_Outer.Enabled = True  
+   form_text_editor.teNotes.RichText = sct
+   EditArea_Notify_Data_Change(False)
    txtShortcut.SetFocus
    
 End
@@ -299,7 +484,6 @@ Public Sub rbEditArea_KeyPress()
       If Last.tag = "yes" Then
          rbSharedNo.setFocus
       Else
-         '   teExpandedText.setFocus()
          form_text_editor.teNotes.SetFocus
       Endif
    Endif
@@ -330,12 +514,17 @@ Public Sub mnuShortCuts_Click()
 End
 
 Private Sub ShortCut_Edit()
-     If bSystem_Shortcut Then
+   
+   If bSystem_Shortcut Then
       Message.info("You may not alter system wide shortcuts.")
       Return 
    Endif
-   VBox_EditARea.Enabled = True   
-   
+   Vbox_EditArea_Outer.Enabled = True   
+   gvwShortCuts.UnSelectAll
+   With form_html_editor.edHTML
+      .Goto(0, 0)
+      .SetFocus
+   End With
 End
 
 Private Sub ShortCut_Delete()
@@ -348,7 +537,7 @@ Private Sub ShortCut_Display()
    
    If gvwShortCuts.Row = -1 Then Return
    
-   ShortCut = shortcuts_user[gvwShortCuts.Row]
+   ShortCut = shortcuts_user_specific[gvwShortCuts.Row]
    EditArea_Clear
    bExit = True
    txtShortcut.text = shortcut!shortcut
@@ -361,10 +550,12 @@ Private Sub ShortCut_Display()
    Else
       rbSharedNo.Value = True 
    Endif
+   cmbShortCutCategory.Index = cmbShortCutCategory.Find(shortcut!category)
    fk_shortcut = Shortcut!pk  
+   form_html_editor.edHTML.text = shortcut!expanded
    bSystem_Shortcut = shortcut!system_shortcut
    bexit = False  
-   
+    EditArea_Notify_Data_Change(False)
 End
 
 Public Sub EditArea_Buttons_Click()
@@ -401,6 +592,13 @@ End
 Public Sub EditArea_text_Box_Change()
    
    If bexit Then Return    
+   Select Case Last.tag 
+      Case "coded term"
+         If Trim(Last.text) = "" Then
+            Form_Terms.Visible = False
+            fk_code = ""
+         End If
+   End Select
    EditArea_Notify_Data_Change(True)
    
 End
@@ -423,40 +621,31 @@ Public Sub EditArea_text_Box_KeyPress()
    If Last.tag = "shortcut" Then
       If Not EditArea_TextBox_ExcludeKeys(Key.code, Last.tag) Then Return 'param not needed
    Endif
+   Select Case key.Code
+      Case key.return, key.Tab
+      Case Key.Down
+         If Form_Terms.visible Then
+            With Form_Terms.ColumnView1
+               .SetFocus
+               .MoveFirst
+               .Item.selected = True
+            End With
+            Return
+         End If
+   End Select
    
 End
 
 Public Sub EditArea_text_Box_Activate()
    
-   If Last.tag = "shortcut" Then
-      rbSharedYes.SetFocus
-   Endif
+   Select Case Last.tag
+      Case "shortcut"
+         cmbShortCutCategory.SetFocus
+      Case ""
+         
+   End Select
    
 End
-' 
-' Public Sub teExpandedText_KeyPress()
-'    
-'    Dim CtrlDown As Boolean
-'    Dim FnDown As Boolean
-'    
-'    Try CtrlDown = Key.Control
-'    If CtrlDown Then
-'       Select Case Key.code
-'          Case Asc("L")
-'             teExpandedText.Format.Alignment = Align.Left
-'          Case Asc("M")
-'             teExpandedText.Format.Alignment = Align.Center
-'          Case Asc("R")
-'             teExpandedText.Format.Alignment = Align.Right
-'             teExpandedText.Format.Font.Bold = Not teExpandedText.Format.Font.Bold
-'          Case Asc("I")
-'             teExpandedText.Format.Font.Italic = Not teExpandedText.Format.Font.Italic
-'          Case Asc("U")
-'             teExpandedText.Format.Font.Underline = Not teExpandedText.Format.Font.Underline
-'       End Select
-'    End If  
-'    
-' End
 
 Public Sub gvwShortCuts_Select()
    
@@ -471,5 +660,105 @@ Public Sub Form_Resize()
       .Columns[2].width = 100
       .Columns[1].width = gvwShortCuts.width - 200
    End With
+   Form_Terms.width = txtLinkToCodedTerm.width
+   VSplit_Shortcuts_Resize
    
 End
+
+Public Sub VSplit_Shortcuts_Resize()
+   
+   If Form_Terms.Visible Then
+      Form_Terms.top = ReferenceHboxForPopupControls.Top + ReferenceHboxForPopupControls.Height
+   Endif
+   
+End
+
+Public Sub EditArea_text_Box_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   Form_Terms.Visible = False
+   ReferenceHboxForPopupControls = Last.Parent.Parent
+   Select Case Last.tag
+      Case "coded term"
+         With Form_Terms
+            .top = Last.Parent.Parent.Top + Last.Parent.Height
+            .width = txtLinkToCodedTerm.Width
+            .Left = Last.Parent.Left 
+            .Raise
+            .Visible = False
+            If Trim(Last.text) <> "" Then
+               .Set_SearchText(Trim(Last.text))
+            End If
+         End With
+   End Select
+   
+End
+
+Public Sub EditArea_text_Box_LostFocus()
+   
+   Last.BackGround = Color.White
+   Select Case Last.tag
+         
+      Case "coded term"
+         Form_Terms.Timer1.Stop()
+   End Select
+   
+End
+
+Public Sub EditArea_text_Box_KeyRelease()
+   
+   If Last.tag = "coded term" Then
+      Form_Terms.Set_SearchText(Trim(Last.text))
+   Endif
+   
+End
+
+Public Sub cmbEditArea_Click()
+   '---------------------------------------------------------------------------
+   'User has clicked on combo in edit area, here the one to select the sections 
+   'the shortcut is to be made available in
+   '---------------------------------------------------------------------------
+   
+   Dim section As Collection
+   
+   If bexit Then Return
+   If Last.tag = "available in sections" Then
+      If Sections_Available_In.Exist(cmbSectionsAvailable.index) Then Return 
+      ' If Message.question("Add to available sections?", "Yes", "No") = 2 Then Return
+      ' Sections_Available_In.Add(value, key)
+      section = New Collection
+      section!section = cmbSectionsAvailable.Text
+      section!pk = Sections_Available[cmbSectionsAvailable.index]!pk   
+      Sections_Available_In.Add(section, cmbSectionsAvailable.index)
+      Hbox_Available_Section_List.Height = (HBox_Shortcut.Height) * Sections_Available_In.count
+      Vbox_EditArea_Outer.height += HBox_Shortcut.Height
+      HSplit1.height -= HBox_Shortcut.Height  
+      lvwSectionsAvailable.Add(lvwSectionsAvailable.count, cmbSectionsAvailable.text)
+   End If
+   
+   EditArea_Notify_Data_Change(True)
+   
+End
+
+Public Function Expanded_Text_Clean_HTML() As String
+   '-------------------------------------------------------------------------------------------
+   ' extracts just the html for expanded text
+   ' converts the widget's quite odd HTML to something a bit more standard
+   '--------------------------------------------------------------------------------------------
+   
+   Dim sHTML As String
+   Dim charpos As Integer
+   
+   charpos = InStr(Lower(form_text_editor.teNotes.RichText), "<p")
+   sHTML = Right(form_text_editor.teNotes.RichText, Len(form_text_editor.teNotes.RichText) - charpos + 1)
+   charpos = InStr(sHTML, "</body>")
+   sHTML = Left(sHTML, charpos - 1)
+   Debug sHTML
+   sHTML = modUtil.Fix_HTML(sHTML, [])
+   sHTML = Replace(sHtml, "\n", "")
+   sHTML = Replace(sHTML, "</p><p>", "")
+   Debug sHTML
+   Return Trim(sHTML)
+   
+End
+

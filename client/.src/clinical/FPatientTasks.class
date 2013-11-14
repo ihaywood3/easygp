@@ -1,0 +1,382 @@
+' Gambas class file
+
+' Copyright (C) 2008-2013 Dr Richard TERRY
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+' -----------------------------------------------------------------------
+' A form to allow user to action staff tasks embedded only in Fclinical
+' Tasks can be    a) marked completed
+'                 b) marked completed adding an explanation
+'                 c) deleted with enforced audit trail
+'                 d) the audit trail of an existing task can be viewed
+' After being dealt with
+'                 - the task list is reloaded
+'                 - FClinical main toolbar tasks list is refreshed
+'                 - if open the progress notes are refreshed including
+'                   the audit trail if visible FIXME only do this
+'                   if the audit trail is checked otherwise wasting
+'                   database call
+'------------------------------------------------------------------------
+Private currentconsult As CConsult
+Private tasks As Collection
+Private tasks_form As FStaffTasks
+Static Private form_patient_tasks As FPatientTasks
+
+Static Public Sub Hide_Form()
+   
+   form_patient_tasks.Task_Form_Hide
+   
+End
+
+Public Sub Task_Form_HIde()
+
+   Task_Form_Show(False)
+   ' Vbox_TasksList.Visible = True   
+   ' VBox_Tasks.visible = False
+   ' tbSave.Enabled = False 
+   ' tbHideForm.Enabled = False 
+   Reload
+   
+End
+
+Public Sub mnuStaffTasks_Click()
+   '-----------------------------------------------------------
+   'The popup menu has been activated, user has selected one of
+   'the options, each of which as a tag in the IDE gui code
+   '-----------------------------------------------------------
+   
+   If gvTasks.row = -1 Then Return
+   Select Case Last.tag
+      Case "staff task deleted"
+         StaffTask_Delete(Last.tag)            'True = task related to document
+      Case "font"
+         modUtil.Columnview_SetFont(gvTasks, "FScratchPad")
+      Case "help"
+         modUtil.NotImplemented("Help for Tasks")
+      Case "view in context"
+         modUtil.NotImplemented("Viewing in context")
+      Case "task audit trail"          'show the document's audit trail
+         StaffTask_AuditTrail
+      Case "staff task finalised", "staff task finalised with explanation"
+         If Last.tag = "staff task finalised" Then    
+            Message.title = "Finalise staff task"
+            If Message.Question("Do you want to mark this task completed without adding an explanation?", "Yes", "Cancel") = 2 Then Return  
+         End If
+         StaffTask_Finalise(Last.tag)        ' 
+   End Select
+   
+End
+
+Public Sub StaffTask_AuditTrail()
+   '---------------------------------------------------------
+   'Display html of the audit trail of a document
+   'At the moment - only displaying staff tasks if they exist
+   '---------------------------------------------------------
+   
+   Dim sHtml As String
+   
+   If Not IsNull(tasks[gvTasks.row]!fk_row) Then 
+      sHtml = modArchiveDocumentsDBI.Audit_Trail_Show_Document_Details_Tasks_Attatched(tasks[gvTasks.row]!fk_row)
+      shtml &= "<HTML><BODY><TABLE><BR><B>Document Actioning</B><BR>" & modHTML.HTML_Template_Audit_Row_Heading()
+      shtml &= modAudit.MakeTrail("documents.documents", tasks[gvTasks.row]!fk_row)
+   Else
+      shtml &= "<HTML><BODY><TABLE><BR><B>Staff Task Audit Trail</B><BR>" 
+      shtml &= modAudit.MakeTrail("clerical.tasks", tasks[gvTasks.row]!fk_task)
+   End If   
+   shtml &= "</TABLE>"
+   shtml &= "</BODY></HTML>"
+   FClinical.Editor_ShowPage_External("browser", "Audit Trail", sHtml)
+   
+End
+
+Public Sub StaffTask_Finalise(audit_action As String)
+   '-----------------------------------------------------------
+   'Flag the task as completed
+   'If fails or cancelled by the user roll back the transaction
+   '-----------------------------------------------------------
+   
+   Dim Task As Collection = tasks[gvTasks.Row]
+   Dim StaffTask As New Collection
+   Dim reason As String
+   Dim fk_reason As Integer
+   Dim Document As Collection
+   Dim sProgressNotes As String  
+   
+   '-----------------------------------------------------------
+   'first check if this person is allowed to finalise the task
+   'FIXME REMOVE Or IsNull(Task!fk_staff_must_finalise), had to put this in due to developmental database changes
+   ' till I cleared all tasks where this was a factor.
+   '-----------------------------------------------------------
+   If Task!fk_staff_must_finalise = modDBConnect.currentUser!fk_staff Or IsNull(Task!fk_staff_must_finalise) Then
+      sProgressNotes = ProgressNotes_ForAudit_Create(audit_action, task)
+      If Not IsNull(Task!fk_row) Then   'if this is a document - fk_row = documents.pk
+         If Not modAudit.MakeAudit(currentconsult, audit_action, "documents.documents", Task!fk_row, const.cSection_StaffTasks, sProgressNotes) Then
+            modDBConnect.RollBack
+            Return   
+         Endif
+      Else                              'it was a non-document staff task created by a staff member for the patient eg could be for a script
+         If Not modAudit.MakeAudit(currentconsult, audit_action, "clerical.tasks", Task!fk_task, const.cSection_StaffTasks, sProgressNotes) Then  
+            modDBConnect.RollBack
+            Return 
+         Endif
+      End If   
+      StaffTask!pk = Task!fk_task                                            'in either case
+      StaffTask!fk_staff_finalised_task = modDBConnect.currentUser!fk_staff  'now just mark off the task as finalised
+      StaffTask!date_finalised = Now
+      If modDBConnect.update("clerical.tasks", Null, staffTask) Then         'success?
+         modDBConnect.CommitTrans 
+         FClinical_Refresh                                                   'reload task lists/all previous notes
+         Reload()
+      Else
+         modDBConnect.RollBack()                                             'bugga, we failed, wonder why?  (not seen this actually)
+      Endif
+   Else
+      Message.title = "Tasks Finalisation"
+      Message.Info("Sorry, you do not have permission to finalise this task")
+   End If
+   
+End
+
+Public Sub FClinical_Refresh()
+   '---------------------------------------------------------------------------------------------------
+   'refreshes the tasks and the audit progress notes FIXME only do the latter if audit checkbox checked
+   '---------------------------------------------------------------------------------------------------
+   
+   FClinical.Notifications_Refresh_External                            'refresh the toolbar tasks lis
+   FClinical.Refresh_AllPreviousNotes                                  'and all previous notes FIXME only do this if chkAudit on that FProgressnotesView is True
+   
+End
+
+Public Sub StaffTask_Delete(audit_action As String)
+   '----------------------------------------------------------------------------
+   'Delete current scratch pad item
+   'ModAudit.Audit(,,,,) will enforcing an audit reason based on
+   'the clin_consult.lu_audit_actions.insist_reason field for this audit_action
+   'These tables are affected
+   'clerical.task_components set deleted = true
+   'clerical.tasks set deleted = true
+   'audit_action for this menu item = "staff task deleted"
+   '----------------------------------------------------------------------------
+   
+   Dim sProgressNotes As String 
+   
+   Message.Title = "Deleting a task"
+   If Message.Question("Are you sure you want to delete this task?\n\nYour actions will be audited!", "Yes", "No") = 2 Then Return  
+   sProgressNotes = ProgressNotes_ForAudit_Create("staff task deleted", tasks[gvTasks.Row]) 'force audit popup for explanation
+   modDBConnect.update("clerical.tasks", Null, ["pk": tasks[gvTasks.Row]!fk_task, "deleted": True])
+   modDBConnect.exec_query("Update clerical.task_components set deleted = True where fk_task =" & tasks[gvTasks.Row]!fk_task)
+   If tasks[gvTasks.Row]!fk_row Then
+      If Not modAudit.MakeAudit(currentconsult, audit_action, "documents.documents", tasks[gvTasks.Row]!fk_row, const.cSection_StaffTasks, sProgressNotes) Then
+         modDBConnect.RollBack
+         Return
+      Endif
+   Else
+      If Not modAudit.MakeAudit(currentconsult, audit_action, "clerical.tasks", tasks[gvTasks.Row]!fk_task, const.cSection_StaffTasks, sProgressNotes) Then
+         modDBConnect.RollBack
+         Return
+      Endif
+      
+   End If   
+   modDBConnect.CommitTrans
+   FClinical_Refresh
+   Reload()
+   
+End
+
+Public Function ProgressNotes_ForAudit_Create(audit_action As String, task As Collection) As String
+   '---------------------------------------------------------------------------
+   'Creates some text to add to the audit trail
+   'when deleting, marking complete or complete with comment etc
+   'rely on the clin_consult.lu_audit_actions.insist_reason to popup the dialog
+   'if a reason for the action is required
+   'see modAudit.Audit(,,,,)
+   '----------------------------------------------------------------------------   
+   
+   Dim document As Collection
+   Dim sProgressNotes As String
+   
+   If Not IsNull(tasks[gvTasks.row]!fk_row) Then                               'fk_row = fk_document, we have a document                            '
+      If currentconsult!letters_received.Exist(tasks[gvTasks.row]!fk_row) Then 
+         document = currentconsult!letters_received[tasks[gvTasks.row]!fk_row] 'get either the letter  
+      Else
+         document = currentconsult!results_received[tasks[gvTasks.row]!fk_row] 'or the result
+      End If   
+      If IsNull(document) Then
+         Message.Warning("There is a serious problem. The document attached to this task should exist but was not found.\n\nYou should immediately discuss this With your system administrator.")
+         Return
+      Endif
+      sProgressNotes = modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes(audit_action, document) & ". "
+      sProgressNotes &= "The task was: '" & tasks[gvTasks.Row]!task & " " & tasks[gvTasks.Row]!details & "'"
+      If Not InStr(audit_action, "explanation") Then
+         sProgressNotes &= ". No comment about why this task was " 
+         If audit_action <> "mark deleted" Then 
+            sProgressNotes &= "finalised "
+         Else
+            sProgressNotes &= "deleted "
+         Endif
+         sProgressNotes &= "was given."
+      End If
+   Else                                                                   'this is a non document task
+      sProgressNotes = "The task related to '" & task!related_to & "' " 
+      sProgressNotes &= " which was allocated by " & modStrings.Capitalise_Words_In_String(task!staff_filed_task_wholename) & " - '" & task!details & "', "
+      Select Case audit_action
+         Case "staff task finalised" 
+            sProgressNotes &= "was marked as completed but no reason was given"
+         Case "staff task finalised with explanation"
+            sProgressNotes &= "was marked as completed"
+         Case "staff task deleted"
+            sProgressNotes &= "has been deleted"
+      End Select
+   End If  
+   Return sProgressNotes
+   
+End
+
+Private Sub Settings_Load()
+   '-------------------------------------------------
+   'Load the settings for the gridview with the tasks
+   '-------------------------------------------------   
+   
+   gvTasks.Font = Font[Settings["FScratchpad/gvTasks.font", "DejaVu Sans,7"]]
+   
+End
+
+Public Sub Reload()
+   '---------------------------------------
+   'Reload details of any outstanding tasks
+   '---------------------------------------
+   
+   Dim task As Collection
+   Dim x As Integer
+   
+   If Not currentconsult Then Return
+   currentconsult.Refresh("staff_tasks")
+   With gvTasks
+      .Clear()
+      .Rows.count = 0
+   End With
+   tasks = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!staff_tasks)
+   For Each task In tasks
+      Inc gvTasks.Rows.Count
+      With gvTasks[x, 0]
+         .text = Format(Task!date_component_logged, "dd/mm/yyyy") & "  "
+         .Alignment = Align.Top
+      End With
+      gvTasks.Rows[x].Height = 30
+      With gvTasks[x, 1]
+         .WordWrap = True
+         .RichText = "<B>" & Task!related_to & "</B><BR>" & Task!details
+         .Alignment = Align.Left
+      End With
+      Inc x
+   Next
+   lblmeasure.font = gvTasks.Font
+   modUtil.Gridview_Columns_Set_Size(gvTasks, lblmeasure)
+   
+End
+
+Public Sub Init(cons As CConsult)
+   '-------------------------------------------------------------
+   'set current consult and scratch pad columns, refresh the list
+   '-------------------------------------------------------------
+   
+   form_patient_tasks = Me 
+   currentconsult = Cons
+   With gvTasks
+      .Columns.count = 2
+      .Columns[0].Text = "Date"
+      .Columns[0].Alignment = Align.Top
+      .Columns[1].Text = "Related to"
+      .Columns[1].Alignment = Align.Top
+   End With
+   With tasks_form = New FStaffTasks(Vbox_Tasks)
+      .Set_Parent_Form("FPatientTasks")
+      .Set_consult(CurrentConsult)
+      .Init()
+   End With
+   Settings_Load()
+   Reload()
+   
+End
+
+Public Sub gvTasks_Menu()
+   
+   '----------------------------------------------------------
+   ' Popup a menu on the scratch pad with the following items
+   ' If a consult is in existance, and there are staff task
+   ' items visible to the user
+   '    delete
+   '    complete
+   '    complete with explanation
+   '    view in context FIXME IMPLEMENT ME
+   '    audit trail
+   '    font
+   '    help
+   '---------------------------------------------------------
+   
+   Dim menuitem As Menu
+   
+   If Not currentconsult Or gvTasks.row = -1 Then Return
+   If gvTasks.Rows.count = 0 Then
+      '-------------------------------------------------------------
+      'allow the menu, but only couple of things
+      '  mnuStaffTasks_HistoryEntirew entire pad history or above
+      '-------------------------------------------------------------
+      For Each menuitem In mnuStaffTasks.Children
+         Select Case menuitem.Tag
+            Case "help"
+               menuitem.Enabled = True
+            Case Else
+               menuitem.Enabled = False
+         End Select
+      Next
+   Else
+      '-------------------------------------
+      'Turn them back on it already disabled
+      '-------------------------------------
+      For Each menuitem In mnuStaffTasks.Children
+         menuitem.Enabled = True
+      Next
+   End If
+   mnuStaffTasks.Popup()
+   
+End
+
+Public Sub Task_Form_Show(bFlag As Boolean)
+   
+   Vbox_TasksList.Visible = Not bflag
+   VBox_Tasks.visible = bflag
+   tbSave.Enabled = bflag
+   tbHideForm.Enabled = bflag
+   
+End
+
+Public Sub tbPatientTasks_Click()
+   
+   Select Case Last.tag
+      Case "new"
+         ' Vbox_TasksList.Visible = False   
+         ' VBox_Tasks.visible = True
+         ' tbSave.Enabled = True
+         ' tbHideForm.Enabled = True
+         Task_Form_Show(True)
+         tasks_form.Task_New()
+      Case "save"
+         tasks_form.Task_Save()
+      Case "hide form"
+         Task_Form_Show(False)
+         ' Vbox_TasksList.Visible = True   
+         ' VBox_Tasks.visible = False
+         ' tbSave.Enabled = False 
+         ' tbHideForm.Enabled = False 
+   End Select
+   
+End

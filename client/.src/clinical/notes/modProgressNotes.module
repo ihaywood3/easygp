@@ -1,7 +1,6 @@
 ' Gambas module file
 
 ' Copyright (C)2008-2013 Dr. Richard Terry
-
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
@@ -16,9 +15,28 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '----------------------------------------------------------------------
 
-Public Function ProgressNotes_Codes_Get(fk_progressnote As Integer, Optional deleted As Boolean = False) As Collection
+Public Function ProgressNotes_Add_Page_Header_Create_PDF_File(controls_html As String, currentconsult As CConsult, sHeading As String, Optional sFilename As String = "", Optional sDir As String = "") As String
+   
+   '------------------------------------------------------------------------------------------------
+   'Adds the patient name and page header to the html of the progress notes and returns the filename
+   '------------------------------------------------------------------------------------------------ 
+   Dim sHtml As String
+   
+   sHtml = "<HTML><HR>" & modHTML.Patient_Practice_Heading_Simple_HTML(currentconsult)
+   sHtml = Replace(sHtml, "%central_heading%", sHeading & "<br><small>Created on:" & Format(Now, "dd/mm/yyyy") & "</small>")
+   SHTML &= controls_html & "<html>"
+   If sFilename = "" Then 
+      Return modPrinting.Make_PDF_From_Html(shtml)
+   Else
+      Return modPrinting.Make_PDF_From_Html(shtml,,,, sFilename,, sDir)
+   End If   
+   
+End
 
+Public Function ProgressNotes_Codes_Get(fk_progressnote As Integer, Optional deleted As Boolean = False) As Collection
+   
    Dim sql As String
+   
    sql = "Select * from clin_consult.vwProgressNotesCodes where fk_progressnote =" & fk_progressnote & " AND deleted ="
    If deleted Then
       sql &= "True"
@@ -34,7 +52,7 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
    
    Dim sString As String
    Dim templ As New CTemplate("hsumv3", "tex")
-    Dim item As Collection
+   Dim item As Collection
    Dim r As Result
    Dim sRange As String
    Dim height As Float
@@ -128,7 +146,8 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
       sString &= "\\\\Phone:" & item!responsible_person_contacts
       templ.Subst("responsibleperson", Trim(sString))
    Next
-   
+   Templ.Subst("responsibleperson", "")
+   Templ.Subst("socialhistory", "")
    '----------------------------------
    'Construct the occupational history
    '----------------------------------
@@ -144,14 +163,13 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
    sstring = ""
    
    For Each PH In currentconsult!past_history
-      ' If PH!risk_factor = True Then
-      '    sstring = "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & "} "
-      '    sstring &= PH!condition_summary & ". " & PH!management_summary & ". "
-      '    templ.Row("\\textbf{\\footnotesize " & PH!year_onset & "}", sstring)
-      ' Endif
+      If PH!risk_factor = True Then
+         sstring = "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & "} "
+         sstring &= PH!condition_summary & ". " & PH!management_summary & ". "
+         templ.Row("\\textbf{\\footnotesize " & PH!year_onset & "}", sstring)
+      Endif
    Next
    templ.Table("riskfactors")
-   
    sstring = ""
    Last_Key = 0
    '-----------------------------------------------
@@ -184,7 +202,6 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
       sstring &= "\\\\"
    Next
    templ.Subst("familyhistory", sstring)
-   
    m = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height)
    If Not IsNull(m) Then
       height = m!data
@@ -349,7 +366,7 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
    '------------------------------
    sstring = ""
    For Each PH In currentconsult!past_history
-      If PH!major = True And PH!risk_factor = False Then
+      If PH!major = True And PH!risk_factor = False And PH!confidential = False Then
          Select Case PH!fk_laterality
             Case const.LateralityBoth
                sLaterality = "(Bilateral)"
@@ -365,7 +382,10 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
          ' If the user Is Using this As A management plan, must have aims, goals And management
          If Not IsNull(PH!aim_of_plan) Then
             sstring &= "\\textbf{" & "Plan:" & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
-            sstring &= "\\textbf{" & "History:" & "}" & PH!condition_summary & "." & "." & "}"
+            If Not IsNull(PH!condition_summary) Then    
+               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." 
+            End If   
+            sstring &= "}"
          Else
             sstring &= "\\text{"
             If Not IsNull(PH!condition_summary) Then 
@@ -380,10 +400,10 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
       Endif
    Next
    templ.Subst("majorhealthissues", sstring)
+   'Now the active health issues
    sstring = ""
    For Each PH In currentconsult!past_history
-      If PH!active = True And PH!risk_factor = False And PH!major = False Then
-         
+      If PH!active = True And PH!risk_factor = False And PH!major = False And PH!confidential = False Then
          Select Case PH!fk_laterality
             Case const.LateralityBoth
                sLaterality = "(Bilateral)"
@@ -394,26 +414,25 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
             Case const.LateralityNone
                sLaterality = ""
          End Select
-         ' sstring &= "\\textbf{\\footnotesize " & PH!year_onset & "}" & "\\&"
-         ' sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & "}\\\\"
-         ' sstring &= "\\text{" & PH!condition_summary & ". " & PH!management_summary & "." & "}"
-         ' sstring &= "\\tabularnewline \n"
          sstring &= "\\textbf{\\footnotesize " & PH!year_onset & "}" & "\\&"
          sstring &= "\\textbf{\\footnotesize " & UCase(PH!description) & " " & sLaterality & "}\\\\"
          'If the user is using this as a management plan, must have aims, goals and management
-         '  If Not IsNull(PH!aim_of_plan) Then
-         ' sstring &= "\\textbf{" & "Plan: " & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
-         '  sstring &= "\\textbf{" & "History:" & "}" & PH!condition_summary & "." & "." & "}"
-         '   Else
-         sstring &= "\\text{"
-         If Not IsNull(PH!condition_summary) Then 
-            sstring &= PH!condition_summary & ". "
-         Endif
-         '  If Not IsNull(Ph!management_summary) Then
-         '    sSTring &= PH!management_summary & "."
-         '  End If
-         sString &= "}"
-         ' End If 
+         If Not IsNull(PH!aim_of_plan) Then
+            sstring &= "\\textbf{" & "Plan: " & "}" & PH!aim_of_plan & ". " & PH!management_summary & "\\\\"
+            If Not IsNull(PH!condition_summary) Then    
+               sstring &= "\\textbf{" & "History: " & "}" & PH!condition_summary & "." 
+            End If   
+            sstring &= "}"
+         Else
+            sstring &= "\\text{"
+            If Not IsNull(PH!condition_summary) Then 
+               sstring &= PH!condition_summary & ". "
+            Endif
+            If Not IsNull(Ph!management_summary) Then
+               sSTring &= PH!management_summary & "."
+            End If
+            sString &= "}"
+         End If 
          sstring &= "\\tabularnewline \n"
       Endif
    Next
@@ -423,15 +442,18 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
    'Construct a Table of the current medications generic/strength/instruction/why prescribed
    '----------------------------------------------------------------------------------------
    templ.Row("\\textbf{\\footnotesize MEDICATIONS}", "", "", "")
-   For Each medication In currentconsult!medications
-      If fk_generic_product_keys.Find(medication!prescribed!fk_medication) = True Then 'true= not found
-         fk_generic_product_keys.Add(medication!prescribed!fk_medication, fk_generic_product_keys.count)
-         If medication!med!active = True Then
-            templ.Row(medication!generic, medication!strength, medication!instruction, medication!prescribed_for)
+   If currentconsult!medications.count Then  
+      For Each medication In currentconsult!medications
+         If fk_generic_product_keys.Find(medication!prescribed!fk_medication) = True Then 'true= not found
+            fk_generic_product_keys.Add(medication!prescribed!fk_medication, fk_generic_product_keys.count)
+            If medication!med!active = True Then
+               templ.Row(medication!generic, medication!strength, medication!instruction, medication!prescribed_for)
+            End If
          End If
-      End If
-   Next
-   
+      Next
+   Else
+      templ.Row("No active medications recorded", "", "")
+   End If   
    templ.Table("medications")
    '---------------------------------------------------------------------------------------------
    'Construct a Table of the vaccinations bit complicated because I allowed the date given to be
@@ -507,11 +529,12 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
       templ.Row(Format(recall!due, "dd/mm/yyyy"), recall!reason)
    Next
    templ.Table("recalls")
+   'Now the inactive health issues
    sstring = ""
    '  sstring = "\\&\\textbf{\\footnotesize INACTIVE HEALTH ISSUES}"
    '  sstring &= "\\tabularnewline \n\\hline"
    For Each PH In currentconsult!past_history
-      If PH!active = False And PH!major = False And PH!risk_factor = False Then
+      If PH!active = False And PH!major = False And PH!risk_factor = False And PH!confidential = False Then
          Select Case PH!fk_laterality
             Case const.LateralityBoth
                sLaterality = "(Bilateral)"
@@ -529,11 +552,9 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
       Endif
    Next
    templ.Subst("inactivehealthissues", sstring)
-   Print templ.GetData()
    Return templ
    
 End
-
 
 Public Function Health_Summary_Construct_html(currentconsult As Cconsult) As String
    '--------------------------------------------------------
@@ -597,7 +618,7 @@ Public Function Health_Summary_Construct_html(currentconsult As Cconsult) As Str
    Dim sFamilyHistory As String
    Dim FM As Collection
    Dim PH As Collection
-    Dim TeamCaremember As String
+   Dim TeamCaremember As String
    Dim sRow As String
    Dim sTable As String
    Dim sString As String
@@ -1332,7 +1353,7 @@ Public Function Tasks_summary_Construct_html(task As Collection) As String
    Dim fk_document As Integer = Task!fk_row
    
    ' For Each task In currentconsult!staff_tasks
-   sHtml = modArchiveDocumentsDBI.Staff_Tasks_Document_Audit_Trail(fk_document)
+   sHtml = modArchiveDocumentsDBI.Audit_Trail_Show_Document_Details_Tasks_Attatched(fk_document)
    shtml &= "<HTML><BODY><TABLE><BR><B>Document Actioning</B><BR>" & modHTML.HTML_Template_Audit_Row_Heading()
    shtml &= modAudit.MakeTrail("documents.documents", fk_document)
    shtml &= "</TABLE>"
@@ -1584,7 +1605,7 @@ Public Function Care_Plan_Construct_html(currentconsult As CConsult) As String
    Dim sHistory_Management_Components As String
    Dim sCumulative_html_forPlan As String
    Dim sCumulative_html_for_components As String
-    Dim sComponent_row As String
+   Dim sComponent_row As String
    Dim sTeamCare_row As String
    Dim careplan_components As Collection
    Dim member As Collection
@@ -1887,7 +1908,7 @@ Public Function Care_Plan_Construct_html(currentconsult As CConsult) As String
 End
 
 Public Function Codes_Get(progress_notes_codes As Collection, fk_progressnote As Integer) As String
-
+   
    Dim pnc As Collection
    Dim codes As String
    
@@ -1900,7 +1921,9 @@ Public Function Codes_Get(progress_notes_codes As Collection, fk_progressnote As
    
 End
 
-Public Function AllProgressNotes_Construct_Html(currentconsult As CConsult, Optional fk_lu_audit_action As Integer = 0) As String
+
+
+Public Function AllProgressNotes_Construct_Html(currentconsult As CConsult, Optional bIncludeAuditTrail As Boolean) As String
    '--------------------------------------------------------
    'Constructs the html for the problem using pk_pasthistory
    'ordered by date and time order.
@@ -1919,6 +1942,8 @@ Public Function AllProgressNotes_Construct_Html(currentconsult As CConsult, Opti
    Dim sTable As String
    Dim sEnd As String
    Dim progress_notes_codes As Collection 
+   Dim progressNotes As Collection
+   
    Dim sHtml As String
    Dim progressnote As Collection
    Dim sCurrentDate As String
@@ -1929,7 +1954,6 @@ Public Function AllProgressNotes_Construct_Html(currentconsult As CConsult, Opti
    
    currentconsult.Refresh("progress_notes_codes")
    progress_notes_codes = currentconsult!progress_notes_codes
-   ' progress_notes_codes = modProgressNotesDBI.ProgressNotes_Codes_Get_For_Patient(currentconsult!patient!fk_patient)
    sStart = "<HTML>"
    "<BODY>"
    sTableTemplate = "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0 >"
@@ -1941,12 +1965,11 @@ Public Function AllProgressNotes_Construct_Html(currentconsult As CConsult, Opti
    "col1"
    "</TD>"
    "<TD WIDTH=50%>"
-   "<TABLE WIDTH=100% BORDER=0 CELLPADDING=5 CELLSPACING=0>"
+   "<TABLE %background-color% WIDTH=100% BORDER=0 CELLPADDING=5 CELLSPACING=0>"
    "<COL WIDTH=100%>"
    "<TD WIDTH=100% VALIGN=TOP>"
    "col2"
    "</TD>"
-   
    "</TR>"
    "</TABLE>"
    "</TD>"
@@ -1954,13 +1977,19 @@ Public Function AllProgressNotes_Construct_Html(currentconsult As CConsult, Opti
    "<P ALIGN=LEFT><FONT SIZE=2 STYLE=\"font-size: 10pt\"><I>col3</I></FONT></P>"
    "</TH>"
    "</TR>"
-   
    "</TABLE>"
    sEnd = "</BODY>"
    "</HTML>"
    sHtml = sStart & "<DIV ALIGN=CENTER><H3> All Progress Notes" & "</H3></DIV>"
-   currentconsult.Refresh("progress_notes")
-   For Each progressnote In currentconsult!progress_notes
+   If bIncludeAuditTrail Then
+      currentconsult.Refresh("progress_notes_audit")
+      progressNotes = currentconsult!progress_notes_audit
+   Else
+      currentconsult.Refresh("progress_notes")
+      progressNotes = currentconsult!progress_notes
+   Endif
+   
+   For Each progressnote In progressNotes
       '---------------------------------------------------------
       'Each new date has one or more sections of clinical notes
       'so we want it to end uplooking like
@@ -1971,49 +2000,63 @@ Public Function AllProgressNotes_Construct_Html(currentconsult As CConsult, Opti
       '
       'Ok: if the progress note belongs to the problem in this
       'progress note page, then just display its rows
+      ' 'there was  longstanding bug where pk_consult was generated and notes
+      ' saved as "Progress Note" when nothing was in fact entered
+      ' FIXME - at some point put i
       '---------------------------------------------------------
-    '  If fk_lu_audit_action <> 0 Then  
-'If progressnote.fk_lu_audit_action = fk_lu_audit_action Then 
-If progressnote!notes <> "Allergies: patient questioned and reports nil known." Then
-      sCurrentDate = Format(progressnote!consult_date, "dd/mm/yyyy")
-      modConsultDBI.ImageFix(progressnote!notes, progressnote!fk_consult)
-      If sCurrentDate <> sLastDate Then
-         '-------------------------------------------------------------------
-         'As soon as the date changes, print the new days date in col1
-         '-------------------------------------------------------------------
-         sCurrentConsultType = progressnote!consult_type
-         SLastconsultType = sCurrentConsultType
-         sString = sCurrentDate & "<BR><small><small>" & progressnote!consult_type & "<BR>"
-         sString &= Format(progressnote!consult_date, gb.MediumTime) & "<BR>"
-         sString &= progressnote!title & " " & progressnote!firstname & " " & progressnote!surname & "</small></small>" 'put staff position in here
-         sTable = sTableTemplate
-         ' sTable = Replace$(sTable, "col1", Format$(progressnote!consult_date, "dd/mm/yyyy"))
-         sTable = Replace$(sTable, "col1", sString)
-         sTable = Replace$(sTable, "col2", progressnote!notes)
-         sTable = Replace(sTable, "col3", Codes_Get(progress_notes_codes, progressnote!pk_progressnote))
-         sTable = Replace(sTable, "col3", "")
-         sHtml = sHtml & sTable '& ' "<br>"
-         sLastDate = sCurrentDate
-      Else
-         '-----------------------------------------------------------------
-         'Otherwise, if the date is the same, simply add the problems notes
-         '-----------------------------------------------------------------
-         sTable = sTableTemplate
-         sCurrentConsultType = progressnote!consult_type
-         If sCurrentConsultType <> SLastconsultType Then
-            sstring = "<BR><small><small>" & progressnote!consult_type & "<BR>"
+      
+      If Not IsNull(progressnote!notes) And PRogressnote!notes <> "Progress Note" Then   
+         sCurrentDate = Format(progressnote!consult_date, "dd/mm/yyyy")
+         '  modConsultDBI.ImageFix(progressnote!notes, progressnote!fk_consult)
+         If sCurrentDate <> sLastDate Then
+            '-------------------------------------------------------------------
+            'As soon as the date changes, print the new days date in col1
+            '-------------------------------------------------------------------
+            sCurrentConsultType = progressnote!consult_type
+            SLastconsultType = sCurrentConsultType
+            sString = sCurrentDate & "<BR><small><small>" & progressnote!consult_type & "<BR>"
             sString &= Format(progressnote!consult_date, gb.MediumTime) & "<BR>"
             sString &= progressnote!title & " " & progressnote!firstname & " " & progressnote!surname & "</small></small>" 'put staff position in here
-            sTable = Replace$(sTable, "col1", sstring)
+            sTable = sTableTemplate
+            sTable = Replace$(sTable, "col1", sString)
+            If progressnote!fk_audit_action <> 1 And progressnote!fk_audit_action <> 2 Then
+               sTable = Replace$(sTable, "%background-color%", "bgcolor = '#FFDCE7'")
+               sTable = Audit_Create_HTML(sTable, progressnote)
+            Else
+               sTable = Replace$(sTable, "col2", progressnote!notes)
+               sTable = Replace$(sTable, "%background-color%", "")
+            Endif
+            sTable = Replace(sTable, "col3", Codes_Get(progress_notes_codes, progressnote!pk_progressnote))
+            sTable = Replace(sTable, "col3", "")
+            sHtml = sHtml & sTable 
+            sLastDate = sCurrentDate
          Else
-            sTable = Replace$(sTable, "col1", "") 'put time in here.
-         End If
-         sTable = Replace$(sTable, "col2", progressnote!notes)
-         sTable = Replace(sTable, "col3", Codes_Get(progress_notes_codes, progressnote!pk_progressnote))
-         sTable = Replace(sTable, "col3", "")
-         sHtml = sHtml & sTable '& "<br>"
-      Endif
-   End If   
+            '-----------------------------------------------------------------
+            'Otherwise, if the date is the same, simply add the problems notes
+            '-----------------------------------------------------------------
+            sTable = sTableTemplate
+            sCurrentConsultType = progressnote!consult_type
+            If sCurrentConsultType <> SLastconsultType Then
+               sstring = "<BR><small><small>" & progressnote!consult_type & "<BR>"
+               sString &= Format(progressnote!consult_date, gb.MediumTime) & "<BR>"
+               sString &= progressnote!title & " " & progressnote!firstname & " " & progressnote!surname & "</small></small>" 'put staff position in here
+               sTable = Replace$(sTable, "col1", sstring)
+            Else
+               sTable = Replace$(sTable, "col1", "") 'put time in here.
+            End If
+            
+            If progressnote!fk_audit_action <> 1 And progressnote!fk_audit_action <> 2 Then
+               sTable = Replace$(sTable, "%background-color%", "bgcolor = '#FFDCE7'")
+               sTable = Audit_Create_HTML(sTable, progressnote)
+            Else
+               sTable = Replace$(sTable, "col2", progressnote!notes)
+               sTable = Replace$(sTable, "%background-color%", "")
+            Endif
+            sTable = Replace(sTable, "col3", Codes_Get(progress_notes_codes, progressnote!pk_progressnote))
+            sTable = Replace(sTable, "col3", "")
+            sHtml = sHtml & sTable '& "<br>"
+         Endif
+      End If   
    Next
    sHtml = shtml & sEnd
    '-----------------------------------------------------------
@@ -2023,6 +2066,47 @@ If progressnote!notes <> "Allergies: patient questioned and reports nil known." 
       sHtml = modConsultDBI.Images_Get(sHtml)
    End If
    Return sHtml
+   
+End
+
+Public Function Audit_Create_HTML(sTable As String, pnotes As Collection) As String
+   '-----------------------------------------
+   'Inserts audit log consisting of this text
+   'column 1       column2
+   'Staff Member   Dr who (role)
+   'Notes          the audit notes
+   'Table/Row      linked table, row
+   '---------------- -------------------------
+   
+   Dim audit_trail As String
+   Dim table_row As String
+   Dim start_table As String 
+   
+   start_table = ""
+   "<TABLE WIDTH=100% BORDER=0 CELLPADDING=0 CELLSPACING=0>"
+   "<COL WIDTH=25%>"
+   "<COL WIDTH=75%>"
+   Table_row = ""
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=25%><P>%col1%</P></TD>"
+   "<TD WIDTH=75%><P>%col2%</P></TD>"
+   "</TR>"
+   
+   audit_trail = "<B>Audit of " & modUtil.Ucase_Word_First_Letter(pnotes!section) & " - '" & pnotes!audit_action & "'</B><BR>"
+   audit_trail &= start_table & table_row
+   audit_trail = Replace(audit_trail, "%col1%", "Staff Member")
+   audit_trail = Replace(audit_trail, "%col2%", pnotes!title & " " & pnotes!firstname & " " & pnotes!surname & " (" & pnotes!role & ")")
+   audit_trail &= table_row
+   audit_trail = Replace(audit_trail, "%col1%", "Notes")
+   audit_trail = Replace(audit_trail, "%col2%", modUtil.Ucase_Word_First_Letter(pnotes!notes))
+   audit_trail &= table_row
+   audit_trail = Replace(audit_trail, "%col1%", "Source Table & Row")
+   audit_trail = Replace(audit_trail, "%col2%", pnotes!linked_table & " row " & Str(pnotes!fk_row))
+   audit_trail &= "</TABLE>"
+   sTable = Replace$(sTable, "%background-color%", "bgcolor = '#FFDCE7'")
+   sTable = Replace$(sTable, "col2", audit_trail)
+   
+   Return stable
    
 End
 

@@ -1,11 +1,10 @@
 ' Gambas class file
 
 ' Copyright (C) 2008-2013 Dr. Richard Terry
-
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
-' (at your option) any later version.
+' (at your option) any later version
 
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -91,7 +90,6 @@ Private bIncludeUnmatcheddocuments As Boolean   'If true unmatched documents are
 Private bExcludeFTReport As Boolean             'If true the FT Report segment is not shown in the html of the hl7 document
 Private bExcludePIT As Boolean                  'If True the PIT segments are not shown in the html of the hl7 document
 Private bRequestMatchFound As Boolean           'True if matching reuquest/result
-Private bNoContext As Boolean                   'if true there are no context relevant notes
 '-----------
 'Collections
 '-----------
@@ -105,7 +103,6 @@ Private SelectedDocument As Collection          'currently selected document
 Private synonyms As Collection                  'collection matching a senders terms with readable users terms
 Private Observations As Collection              'Any 'observations' ie measurement results, associated with a document
 Private Documents As Collection
-Private Deleted_Documents As Collection         'allow multi-level undo of deleted documents Inbox-wide
 '--------------
 'Integer Values
 '--------------
@@ -116,23 +113,17 @@ Private bgc_errors As Integer = 16777215        'yellow background as default fo
 'Private iSelectedDocument As Integer            'Key to the inbox_Documents collection
 Private fk_document As Integer                  'key to document.documents
 Private currentconsult As CConsult
-Private EmbeddedForm As Object
 Private Document_HTML As String
-'-------------------------------------------------------------------
-'Constants to describe the tabs which action a document on tabstrip1
-'--------------------------------------------------------------------
-Private Const Metadata_tab As Integer = 0
-Private Const Documents_tab As Integer = 0
-Private Const HealthIssue_tab As Integer = 2
-Private Const recall_tab As Integer = 1
-Private Const PreviousNotes_tab As Integer = 3
-Private Const ProgressNotes_tab As Integer = 4
-'-------------------------------------------------------
-'Constants to describe the main tabs at top of this form
-'-------------------------------------------------------
-Private Const cTabInbox As Integer = 0
-Private Const cTabAudit As Integer = 1
-
+'-----------------------------------------------------------------------
+'Constants to describe the tabs which action a document on tabStripInbox
+'-----------------------------------------------------------------------
+Private Const cTab_Metadata As Integer = 0
+Private Const cTab_Documents As Integer = 0
+Private Const cTab_Recalls As Integer = 1
+Private Const cTab_HealthIssues As Integer = 2
+Private Const cTab_PreviousNotes As Integer = 3
+Private Const cTab_ProgressNotes As Integer = 4
+Private Const cTab_INR_Management As Integer = 5
 '---------------
 'Embedded Forms
 '---------------
@@ -160,7 +151,6 @@ End
 Static Public Sub Previous_Notes_Refresh()
    
    Try form_inbox.Previous_Notes_Reload  'invalid object bug here when closed the program
-
    
 End
 
@@ -220,7 +210,7 @@ End
 Public Sub Init()
    
    chkOnlyRecent.value = True                                           'default to showing on last months inbox contents
- '  If modDBConnect.IsAdmin Then Return                                  'admin obviously not allowed to file stuff
+   '  If modDBConnect.IsAdmin Then Return                                  'admin obviously not allowed to file stuff
    timer1.start                                                         'delay loading inbox data until gui showing
    With Form_ActionDocument = New FActionDocument(Vbox_ActionDocument)
       .Init("Inbox")                                                    'Loads its own forms, initially only an instance of the document metadata
@@ -319,7 +309,6 @@ Public Sub Init()
    loincs.Add("Corrected Calcium", "29265-6")
    loincs.Add("Alb/Creat Ration", "14959-1")
    loincs.Add("Uric Acid", "3084-1")
-   Deleted_Documents = New Collection
    With Form_Recall = New FRecalls(Vbox_Recalls)
       .Hbox_ForINbox_Buttons.visible = True
       .tbClear.visible = True
@@ -336,7 +325,6 @@ End
 Public Sub FmetaData_Keypress()
    
    Dim CtrlDown As Boolean
-   Dim FnDown As Boolean
    
    Try CtrlDown = Key.Control
    If CtrlDown Then
@@ -374,7 +362,7 @@ Public Sub txtUserObservationName_Activate()
    Endif
    Wait                                               'do not remove this  
    Document_Display_Next()                            'success > show next document
-  
+   
 End
 
 Public Function Synonyms_Update() As Boolean
@@ -384,18 +372,12 @@ Public Function Synonyms_Update() As Boolean
    
    Dim syn As Collection
    Dim sMsg As String
-   Dim synonym_exists As Boolean
    Dim bProvider_Synonym_Exists As Boolean
-   Dim bUser_Synonym_Exists As Boolean
-   Dim synonym As String
-   Dim x As Integer
    Dim new_term As Collection
    Dim terms As String[]
    Dim term As String
-   Dim provider_term As Collection
    Dim old_data As Collection           'not used but needed
    Dim pk_view As Integer               'not used but needed
-   Dim Provider_Synonym As Collection
    Dim Link_data As New Collection
    Dim bSuccess As Boolean = True       'hope for the best
    
@@ -508,7 +490,7 @@ Public Sub cvwInboxDocuments_Select()
    '
    '    If bExit Or cvwInboxDocuments.count = 0 Then Return             'no documents > get outa here
    '
-   '    Tabstrip1.index = Documents_tab
+   '    Tabstrip1.index = cTab_Documents
    '    bRequestMatchFound = False                                      'default to cannot match to ordering
    '    cvwPatientsRequests.UnSelectAll()                                'remove marquee on list of ordered requests
    '    bExit = True
@@ -637,47 +619,32 @@ Public Sub gvwInboxDocuments_Menu()
    If Not gvwInboxDocuments.Rows.count Then Return
    
    If Selected_Inbox!fk_patient Then
-      If Not gvwInboxDocuments.Rows.count Then                ' no documents?
-         If Deleted_Documents.count Then                 ' at least enable undo-delete if necessary
-            For Each mnu In mnuDocuments.Children
-               mnu.Enabled = False
-            Next
-            mnuDocuments_UnDelete.enabled = True
-            Return
-         Endif
-      Else
+      If chkDeletedDocuments.value = False Then    
          For Each mnu In mnuDocuments.Children
             mnu.Enabled = True
          Next
-      End If
-      If SelectedDocument!msh_transmitting_entity = "snail mail" Then  'scanned documents,not hl7
-         mnuDocuments_ReFile.Enabled = True
-      Else
-         mnuDocuments_ReFile.enabled = False
-      Endif
-      '   gvwInboxDocuments.MoveFirst()
-      For x = 0 To gvwInboxDocuments.Rows.count  '-1
-         gvwInboxDocuments.row = x
-         If gvwInboxDocuments.Rows[x].Selected = True Then
-            Inc y
+         If SelectedDocument!msh_transmitting_entity = "snail mail" Then  'scanned documents,not hl7
+            mnuDocuments_ReFile.Enabled = True
+         Else
+            mnuDocuments_ReFile.enabled = False
          Endif
-         
-      Next
-      If y > 1 Then
-         mnuDocuments_ReAllocateSingle.Enabled = False
-         mnuDocuments_ReAllocateMultiple.Enabled = True
+         For x = 0 To gvwInboxDocuments.Rows.count  '-1
+            gvwInboxDocuments.row = x
+            If gvwInboxDocuments.Rows[x].Selected = True Then
+               Inc y
+            Endif
+         Next
+         If y > 1 Then
+            mnuDocuments_ReAllocateSingle.Enabled = False
+            mnuDocuments_ReAllocateMultiple.Enabled = True
+         Else
+            mnuDocuments_ReAllocateSingle.Enabled = True
+            mnuDocuments_ReAllocateMultiple.Enabled = False
+         Endif
+         mnuDocuments.Popup()
       Else
-         mnuDocuments_ReAllocateSingle.Enabled = True
-         mnuDocuments_ReAllocateMultiple.Enabled = False
-         
-      Endif
-      If Deleted_Documents.count Then
-         mnuDocuments_UnDelete.enabled = True
-         
-      Else
-         mnuDocuments_UnDelete.enabled = False
-      Endif
-      mnuDocuments.Popup()
+         mnuDocumentsUnDelete.Popup()
+      End If   
    Else
       '--------------------------------------
       'This is not a patient related document
@@ -698,7 +665,7 @@ Public Sub gvwInboxDocuments_Select()
    Dim file_ext As String
    
    If bExit Or gvwInboxDocuments.rows.count = 0 Then Return        'No documents, show nothing
-   Tabstrip1.index = Documents_tab                                 'Make sure we are actually on the documents tab
+   Tabstrip1.index = cTab_Documents                                 'Make sure we are actually on the documents tab
    bRequestMatchFound = False                                      'default to cannot match to ordering
    cvwPatientsRequests.UnSelectAll()                                'remove marquee on list of ordered requests
    bExit = True
@@ -721,8 +688,9 @@ Public Sub gvwInboxDocuments_Select()
    With Form_ActionDocument
       .Set_Document(SelectedDocument)
       .FMetaData.Init("Allocated Documents")                        'must be done each time, eg a sender-reallocation could have been aborted
-      .FMetaData.Edit(Selected_Inbox!documents, gvwInboxDocuments.Row)
+      .FMetaData.Edit(SelectedDocument)
       Try .FTasks.fk_task = 0                                       'each document must have a re-zero'd task
+      Try .FTasks.cvwStaffTasks.Clear                               'clear any tasks from form previously used 
    End With
    chkExcludePIT.value = SelectedDocument!exclude_pit              'do/do not display PIT segments
    chkExcludeFTReport.value = SelectedDocument!exclude_ft_report   'do/do not display FT report
@@ -858,7 +826,6 @@ Public Sub Auto_Recall()
    '     fk_default_interval
    '     fk_default_interval_unit
    '--------------------------------------------------------------
- 
    
 End
 
@@ -1057,15 +1024,15 @@ Public Sub cvwInbox_Select()
    '----------------------------------------------------------------
    
    cvwPatientsRequests.Clear()
-   cvwInbox.MoveCurrent()                                     'sets internal cursor to match whats visible
+   cvwInbox.MoveCurrent()                                    'sets internal cursor to match whats visible
    Selected_Inbox = Inbox[cvwInbox.Item.Key]                 'create SelectedPatient collection
    Form_ActionDocument.EmbeddedForms_Reset()                 'if exists, set all cons to null
    If Selected_Inbox!fk_patient Then
       cvwPatientsRequests.Clear()
       cvwPatientsRequests.tag = 0
       currentconsult = New CConsult(Selected_Inbox, const.ConsultType_Added_From_Inbox)    
-      currentconsult.Set(const.ConsultType_Added_From_Inbox, "importing document")
-      Form_ActionDocument.Init_Cons(currentconsult)           'pass current cons to Any actioning forms
+      Form_ActionDocument.Init_Cons(currentconsult)  
+      Form_ActionDocument.Tabstrip1.index = cTab_Metadata     'user only sees metadata first
       With Form_Recall
          .Init(currentconsult)
          .New_Entry()                                         'default to new recall entry
@@ -1093,9 +1060,9 @@ Public Sub cvwInbox_Select()
          .Init(currentconsult)
          .HBox_InboxButtons.Visible = True   
       End With
-      Form_ActionDocument.Tabstrip1.index = Metadata_tab       'user only sees metadata first
+      
       Patient_Outstanding_Requests_Show()                     'show requests for this category of provider
-      TabStrip1.Enabled = True
+      TabStrip1.Enabled = True                                'Tabstrip with documents
    Else
       TabStrip1.Enabled = False
       Tabstrip1.text = "Document"
@@ -1109,6 +1076,8 @@ Public Sub cvwInbox_Select()
    
 End
 
+
+
 Public Function Document_File(sFilingAction As String) As Boolean
    '----------------------------------------
    'Make sure no half completed staff tasks
@@ -1118,12 +1087,43 @@ Public Function Document_File(sFilingAction As String) As Boolean
    ' 'urgent appointment'
    '----------------------------------------
    
-   If Not IsNull(Form_ActionDocument.FTasks) Then
+   Dim sProgressNotes As String                                'the audit text to be put into the progress notes
+   Dim bHasTask As Boolean
+   
+   If Not IsNull(Form_ActionDocument.FTasks) Then             'check if task filled in but not saved
       If Form_ActionDocument.FTasks.txtTaskDetails.text <> "" Or Form_ActionDocument.FTasks.txtStaffAllocated.text <> "" Then
-         If Not Form_ActionDocument.FTasks.Save() Then
+         If Not Form_ActionDocument.FTasks.Save() Then        'try and save it
             Return
          End If
       End If
+      If Form_ActionDocument.FTasks.cvwStaffTasks.count Then  'either way, if task exists need for audit trail
+         bHasTask = True   
+      Endif
+   End If
+   If Not IsNull(Form_HealthIssues) Then   'bug here, not null but still crashes
+      If Form_HealthIssues.Vbox_EditingArea.Padding Then
+         If Not Form_HealthIssues.Save() Then
+            tabStripInbox.index = cTab_HealthIssues
+            Return
+         Endif
+         Form_HealthIssues = Null
+      Endif
+   Endif
+   If Not IsNull(Form_Recall) Then
+      If Form_Recall.Vbox_EditArea_outer.Padding Then         'check if there is an unsaved recall user forgot to save
+         If Not form_Recall.Save() Then
+            tabStripInbox.index = cTab_Recalls
+            Return
+         Endif
+      Endif
+   Endif
+   If Not IsNull(Form_INRs)
+      If Form_INRs.Vbox_EditArea_Outer.Padding Then
+         If Not Form_INRs.Save() Then
+            tabStripInbox.index = cTab_INR_Management
+            Return
+         Endif
+      Endif
    End If
    tbFile.Enabled = False
    '----------------------------------------------
@@ -1152,10 +1152,16 @@ Public Function Document_File(sFilingAction As String) As Boolean
          tbFile.Enabled = True
          Return False
       End If
-      '--------------------------------------------
-      'filing was successful, create an audit trail
-      '--------------------------------------------
-      modAudit.MakeAudit(currentconsult, "viewed and filed document", "documents.documents", SelectedDocument!pk_document, const.cSection_Documents, "")
+      SelectedDocument!tag_user = Form_ActionDocument.FMetaData.txtUserObservationName.text 'need this to pass to audit to have it make more sense
+      '---------------------------------------------------------------------------
+      'filing was successful, create an audit trail, if a task added, mention that
+      '---------------------------------------------------------------------------
+      sProgressNotes = modArchiveDocumentsDBI.Audit_Trail_Make_Progress_notes(sFilingAction, SelectedDocument)
+      If bHasTask Then
+         sProgressNotes &= ". A Task has been allocated to " & modStrings.Capitalise_Words_In_String(Form_ActionDocument.FTasks.cvwStaffTasks[0][2])
+         sProgressNotes = Replace(sProgressNotes, "with no action taken", "")
+      Endif
+      modAudit.MakeAudit(currentconsult, "viewed and filed document", "documents.documents", SelectedDocument!pk_document, const.cSection_Documents, sProgressNotes)
       '--------------------------------------------------------------------------
       'Finally add any auto tasks for 'file with routine' or 'urgent appointments 
       '--------------------------------------------------------------------------
@@ -1169,12 +1175,15 @@ Public Function Document_File(sFilingAction As String) As Boolean
       modDBConnect.CommitTrans()                          'success - commit transaction
    End If
    Selected_Inbox!documents.Remove(gvwInboxDocuments.row)
+   If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then
+      FClinical.Refresh_AllPreviousNotes(True)
+   Endif
    Document_RefreshList()                                'refresh the documents list or clears it if none left
    tbFile.Enabled = True
    Return True
-Catch
-   Message.info("An error occurred whilst trying to file the document.\n\nIf this persists please contact technical support")
-   Return
+   'Catch
+   '  Message.info("An error occurred whilst trying to file the document.\n\nIf this persists please contact technical support")
+   '  Return
    
 End
 
@@ -1393,7 +1402,7 @@ Public Sub Document_Display_Next()
    
    tabStripInbox.index = 0                             'main tab
    Vbox_ActionDocument.Enabled = False
-   Form_ActionDocument.Tabstrip1.Index = Metadata_tab  'sucess. switch tab back to metadata
+   Form_ActionDocument.Tabstrip1.Index = cTab_Metadata  'sucess. switch tab back to metadata
    If gvwInboxDocuments.rows.count = 0 Then             'no documents left?
       cvwInbox.MoveCurrent()                            'try and show next inbox item, usually next patient
       cvwInbox.Remove(cvwInbox.Item.key)
@@ -1439,9 +1448,23 @@ Public Function Fill_Inbox(Optional fk_sending_entity As Integer = 0, Optional l
       .Columns.count = 1
       .Clear()
    End With
-   sql = "Select count(pk) as count  from documents.Documents Where concluded = false and deleted = False "
+   sql = "Select count(pk) as count  from documents.Documents Where "
+   If chkDeletedDocuments.value Then
+      sql &= "concluded = False And deleted = True "
+      sort_dir = "DESC"
+   Else
+      sql &= "concluded = False And deleted = False "
+   End If   
    total_doc_count = Str(modDBConnect.exec_query(sql)!count)
-   sql = "Select * from documents.vwDocuments Where concluded = false and deleted = False "
+   
+   sql = "Select * from documents.vwDocuments Where "
+   If chkDeletedDocuments.value Then
+      sql &= "concluded = False And deleted = True "
+      sort_dir = "DESC"
+   Else
+      sql &= "concluded = False And deleted = False "
+   End If   
+   
    If fk_sending_entity Then
       sql &= "AND fk_sending_entity = " & fk_sending_entity & " "
    End If
@@ -1589,7 +1612,7 @@ Public Sub rbDisplayFormat_Click()
 End
 
 Public Function SendingEntity_Recognised() As Boolean
-    
+   
    If Not IsNull(Selecteddocument!fk_sender_branch) Then
       If Selecteddocument!fk_sender_branch <> 0 Then
          Return True
@@ -1933,8 +1956,6 @@ Private Sub Patient_Outstanding_Requests_Show()
    'user-tag to match what they ordered
    '------------------------------------------------------------------------------  
    
-   Dim x As Integer
-   
    If cvwPatientsRequests.tag = 0 Then
       modEditAreaHelpers.Patient_Requests_Show(currentconsult, cvwPatientsRequests, 10)
       cvwPatientsRequests.tag = Selected_Inbox!fk_patient
@@ -1963,153 +1984,73 @@ Public Sub chkUnmatchedDocuments_Click()
    
 End
 
+Public Sub mnuDocumentsUnDelete_Click()
+   '----------------------------------------------------------
+   'User has decided to undelete a previously deleted document
+   '---------------------------------------------------------- 
+   
+   If Message.Question("Confirm undelete of current document.", "Yes", "No") = 2 Then Return
+   If modArchiveDocumentsDBI.UnDelete(currentconsult, selecteddocument, const.cSection_Documents) Then
+      modDBConnect.CommitTrans() 
+   End If   
+   Inbox_Reload()
+   
+End
+
 Public Sub mnuDocuments_Click()
    
    Dim x As Integer
-   Dim D As Collection
-   Dim audit_notes As String
    
    Select Case Last.tag
-         
       Case "move to my library", "copy to my library", "copy to patient handouts", "move to patient handouts"
-         
          FInboxTransferToLIbrary.Init(SelectedDocument, currentconsult, Last.tag)
          FInboxTransferToLIbrary.ShowModal()
-         
-      Case "mark deleted", "delete - duplicate document", "delete - preliminary result"            'deletes a document and enforces an audit trail
-         If IsNull(SelectedDocument!tag_user) Then
-            Document_Delete(Last.tag, SelectedDocument!tag)
-         Else
-            Document_Delete(Last.tag, SelectedDocument!tag_user)
-         Endif
+      Case "mark deleted"                            'deletes a document and enforces an audit trail with reason
+         Message.title = "Delete Inbox Document"    'as is first item on the menu, easy to slip off the mouse, so double check
+         If Message.Question("Are you sure you want to delete this document?", "Yes", "No") = 2 Then Return
+         Document_Delete(Last.tag)
          Inbox_Reload()
-      Case "undo delete"                          'unmark the previous document as deleted
-         For Each D In Deleted_Documents
-            If modArchiveDocumentsDBI.UnDelete(currentconsult, d!pk_document, const.cSection_Documents) Then
-               modDBConnect.CommitTrans()
-               Deleted_Documents.Remove(d!pk_document)
-               Inbox_Reload()
-               Break
-            Endif
-         Next
+      Case "delete - duplicate document", "delete - preliminary result" 
+         Document_Delete(Last.tag)
+         Inbox_Reload()
       Case "move to reports due" 'tags this document as a report due effectively removing it from the inbox.
          
       Case "delete selected"
          modutil.NotImplemented("Multiple Document Deletion")
-      Case "delete - sent in error"
-         '    If Message.Warning("Please confirm that the patient to whom these documents are allocated, is not a patient of this practice", "Confirm - not our patient", "Cancel") = 2 Then Return
-         '    gvwInboxDocuments.MoveFirst()
-         '    For x = 1 To gvwInboxDocuments.rows.count
-         '       If gvwInboxDocuments.Item.Selected = True Then
-         '          iSelectedDocument = gvwInboxDocuments.row
-         '          If IsNull(Selected_Inbox!documents[iSelectedDocument]!tag_user) Then
-         '             audit_notes = Selected_Inbox!documents[iSelectedDocument]!tag
-         '          Else
-         '             audit_notes = Selected_Inbox!documents[iSelectedDocument]!tag_user
-         '          Endif
-         '          If modArchiveDocumentsDBI.Delete(currentconsult, Selected_Inbox!documents, iSelectedDocument, const.cSection_Inbox, Last.tag, audit_notes) Then
-         '             modDBConnect.CommitTrans()
-         '             Deleted_Documents.Add(SelectedDocument, iSelectedDocument)            'keep for undelete
-         '          End If
-         '       Endif
-         '       gvwInboxDocuments.MoveNext()
-         '    Next
-         '    Inbox_Reload()
       Case "fonts"
          modutil.Columnview_SetFont(gvwInboxDocuments, "Inbox")
-         
-      Case "reallocate single", "reallocate multiple" 'currently menu item is  hidden
-         ' SelectedDocument!fk_patient = Null
-         ' With Form_ActionDocument.FMetaData
-         '    .txtStreet1.text = ""
-         '    .txtSuburb.text = ""
-         '    .Reallocate()
-         '    .rbTypeSender_Organisation.Value = True
-         ' End With
       Case "display as result"
          For x = 0 To gvwInboxDocuments.rows.count
             gvwInboxDocuments.row = x
             If gvwInboxDocuments.Rows[x].Selected = True Then
-               '   iSelectedDocument = gvwInboxDocuments.Row
-               If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, selecteddocument, const.Document_Display_As_Result, const.cSection_Inbox, "") Then
+               If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, SelectedDocument, const.Document_Display_As_Result, const.cSection_Inbox) Then 
                   modDBConnect.CommitTrans()
                Endif
             End If
          Next
          Inbox_Reload()
       Case "display as letter"
-         If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, selecteddocument, const.Document_Display_As_Letter, const.cSection_Inbox, "") Then
+         If modArchiveDocumentsDBI.Change_Display_Mode(currentconsult, selecteddocument, const.Document_Display_As_Letter, const.cSection_Inbox) Then
             Inbox_Reload()
          Endif
+      Case "fix date"
+         Form_ActionDocument.FMetaData.txtDocumentDate.SetFocus()
       Case "refile"
          Document_SendBack_For_ReFiling()
-      Case "reallocate sender"  'curently menu item is hidden
-         ' With Form_ActionDocument.FMetaData
-         '    .Init("Re_Allocate Sender")
-         '    .Reset_Keys()
-         '    .txtFindSender.SetFocus()
-         ' End With
    End Select
    
 End
 
-Public Function Document_Make_Audit(SelectedDocument As Collection, iAuditAction As Integer, Optional reason As String) As Collection
-   '---------------------------------------------------
-   'Constructs a string for the notes part of the audit
-   'uses modAudit.MakeAudit(..) to do the audit
-   'Ian,pretty much a mess, don't touch, I'll fix
-   '---------------------------------------------------
-   
-   Dim audit_notes As String
-   Dim audit As New Collection 'fixme - fix and remove this and references to it in here collection not needed
-   
-   If SelectedDocument!fk_patient = 0 Then
-      Message.Info("Richard, no patient")
-      Return
-   Endif
-   audit_notes = ""
-   
-   Select Case iAuditAction
-      Case const.cAuditAction_Delete
-         
-         If reason = "" Then
-            FAudit.Init(Audit, Const.cSection_Documents, iAuditAction, currentconsult)
-            If Not FAudit.ShowModal() Then Return
-            Audit!reason = const.globalstring
-         Else
-            audit!reason = reason
-         End If
-      Case const.cAuditAction_StaffTaskAllocated
-         
-      Case const.cAuditAction_Completed
-         audit!reason = "completed without reason being given"
-      Case const.cAuditAction_Refused
-         audit!reason = "nil reason given by patient"
-      Case const.cAuditAction_DocumentFiled
-         audit!reason = "viewed and filed document"
-      Case const.cAuditAction_ScratchPad
-         
-      Case const.cAuditAction_MarkDeleted
-         audit!reason = "moved to trash"
-         
-      Case const.cAuditAction_CompletedWithExplanation, const.cAuditAction_RefusedWithExplanation
-         
-   End Select
-   'fixme remove this collection stuff above and from in here once its working.
-   modAudit.MakeAudit(currentconsult, audit!reason, "documents.documents", SelectedDocument!pk_document, const.cSection_Documents, audit_notes)
-   
-   Return audit
-   
-End
-
-Public Sub Document_Delete(audit_action As String, Optional audit_notes As String = "")
+Public Sub Document_Delete(audit_action As String)
    '---------------------------------------------------------------
    'Delete currrently selected document, laying down an audit trail
+   'Will appear in clinical notes as consult type audit
    '---------------------------------------------------------------
-   
-   If modArchiveDocumentsDBI.Delete(currentconsult, SelectedDocument, const.cSection_Inbox, audit_action, audit_notes) Then
+
+   If modArchiveDocumentsDBI.Delete(currentconsult, SelectedDocument, const.cSection_Inbox, audit_action) Then 
       modDBConnect.CommitTrans()
-      Deleted_Documents.Add(SelectedDocument, fk_document)
+   Else
+      modDBConnect.RollBack
    End If
    
 End
@@ -2153,7 +2094,7 @@ Public Sub Document_SendBack_For_ReFiling()
    'eg, wrongly joined pages etc, not just simple things like wrongly allocated patients
    'so they send it back to clerical for re-filing. Only for scanned documents
    '------------------------------------------------------------------------------------
-   
+
    If modArchiveDocumentsDBI.Document_SendBack_For_ReFiling(currentconsult, SelectedDocument) Then
       Inbox_Reload()
    Endif
@@ -2177,7 +2118,6 @@ End
 Public Sub mnuNonPatientDocuments_Click()
    
    Dim x As Integer
-   Dim audit_notes As String
    
    Try Message.Info("Richard Fix this routine") 'gambas event handling can lead to this trying to popup twice
    Select Case Last.tag
@@ -2196,14 +2136,10 @@ Public Sub mnuNonPatientDocuments_Click()
          If Message.Warning("Please confirm that the patient to whom these documents are allocated, is not a patient of this practice", "Confirm - not our patient", "Cancel") = 2 Then Return
          For x = 1 To gvwInboxDocuments.count
             If gvwInboxDocuments.Rows[x].Selected = True Then
-               If IsNull(Selected_Inbox!documents[gvwInboxDocuments.row]!tag_user) Then
-                  audit_notes = Selected_Inbox!documents[gvwInboxDocuments.row]!tag
-               Else
-                  audit_notes = Selected_Inbox!documents[gvwINboxDocuments.row]!tag_user
-               Endif
-               If modArchiveDocumentsDBI.Delete(currentconsult, Selected_Inbox!documents[gvwInboxDocuments.row],, const.cSection_Inbox, Last.tag, audit_notes) Then
+               If modArchiveDocumentsDBI.Delete(currentconsult, Selected_Inbox!documents[gvwInboxDocuments.row],, const.cSection_Inbox) Then
                   modDBConnect.CommitTrans()
-                  Deleted_Documents.Add(SelectedDocument, fk_document)            'keep for undelete
+               Else
+                  modDBConnect.RollBack
                End If
             Endif
          Next
@@ -2255,7 +2191,6 @@ Public Function Valid_Document() As Boolean
    
    Dim sMsg As String
    Dim diagnosis_guess As String
-   Dim observation As Collection
    Dim button1_text As String
    Dim button2_text As String
    
@@ -2281,8 +2216,8 @@ Public Function Valid_Document() As Boolean
             Message.Title = "Matching Delivered Request to What was Ordered"
             Message.info(sMsg)
             Form_ActionDocument.FMetaData.txtUserObservationName.SetFocus()
-            If Form_ActionDocument.Tabstrip1.index <> Metadata_tab Then
-               Form_ActionDocument.Tabstrip1.Index = Metadata_tab
+            If Form_ActionDocument.Tabstrip1.index <> cTab_Metadata Then
+               Form_ActionDocument.Tabstrip1.Index = cTab_Metadata
             End If
             Return
          End If
@@ -2322,15 +2257,15 @@ Public Function Valid_Document() As Boolean
                   Form_ActionDocument.FMetaData.txtUserObservationName.text = diagnosis_guess
                Case 2
                   Form_ActionDocument.FMetaData.txtUserObservationName.SetFocus()
-                  If Form_ActionDocument.Tabstrip1.index <> Metadata_tab Then
-                     Form_ActionDocument.Tabstrip1.Index = Metadata_tab
+                  If Form_ActionDocument.Tabstrip1.index <> cTab_Metadata Then
+                     Form_ActionDocument.Tabstrip1.Index = cTab_Metadata
                   End If
                   Return
                Case 3
                   If Message.Warning("No descriptor will be added - File anyway.", "Yes", "No") = 2 Then
                      Form_ActionDocument.FMetaData.txtUserObservationName.SetFocus()
-                     If Form_ActionDocument.Tabstrip1.index <> Metadata_tab Then
-                        Form_ActionDocument.Tabstrip1.Index = Metadata_tab
+                     If Form_ActionDocument.Tabstrip1.index <> cTab_Metadata Then
+                        Form_ActionDocument.Tabstrip1.Index = cTab_Metadata
                      End If
                      Return
                   End If
@@ -2404,10 +2339,27 @@ End
 Public Sub tabStripInbox_Click()
    'only use INR module if is an INR - crude, easily avoided if you try FIXME  
    
-   If Last.index = 5 Then 
-      If Not InStr(Lower(Form_ActionDocument.FMetaData.txtUserObservationName.text), "inr") Then
-         tabStripInbox.index = 0
-      End If  
-   End If
+   If Selected_Inbox!fk_patient Then
+      Select Case Last.Index
+          Case cTab_INR_Management
+            If Not InStr(Lower(Form_ActionDocument.FMetaData.txtUserObservationName.text), "inr") Then
+               tabStripInbox.index = 0
+            End If  
+          End Select
+   End If  
+   
+End
+
+Public Sub chkDeletedDocuments_Click()
+   'Reload the inbox with deleted documents
+   
+   Inbox_Reload()
+   
+End
+
+Public Sub txtLimit_KeyPress()
+   'User typing in a limit, only allow numbers  
+   
+   If Not modUtil.AllowKeys(const.AllowKeys_NumbersOnly, Key.code) Then Return
    
 End

@@ -31,7 +31,8 @@ Private bIniting As Boolean
 Private fk_progressnote As Integer
 Private bEditing As Boolean
 
-Public Sub Init(cons As CConsult)
+'Public Sub Init(cons As CConsult, ac As CConsult)
+Public Sub Init(cons As CConsult)   
    
    currentconsult = cons
    lblmeasure.text = " Authority Approval No.  "  'to keep all edit area's left width the same the script one is the widest
@@ -97,12 +98,13 @@ Public Sub Save()
    ' )
    ' WITH (bstance!drug & ".\n\n"
    '   OIDS=FALSE
-   ' );
+   ' );EditArea_RadioButtons
    '-----------------------------------------------------------------------------------------------------------------------
    
    Dim recreationalDrug As CRow
    Dim ProgressNote As CRow
    Dim NotificationFlag As Integer = const.cSmokerUnknown
+   Dim NotificationMessage As String 'summary to be passed to the FClinical Toolbar eg EX-SMOKER ceased 42yrs age
    
    If HBox_EditArea.Padding = 0 Then Return
    If Not RecreationalDrug_Valid() Then Return
@@ -130,8 +132,14 @@ Public Sub Save()
    recreationalDrug!notes = Trim(txtNotes.text)
    recreationalDrug!cumulative_amount = Trim(txtPackYears.Text)
    recreationalDrug!never_used_drug = CBool(chkNeverUsedDrug.value)
+   If rbConfidentialNo.value = True Then
+      recreationalDrug!confidential = False  
+   End If
+   If rbConfidentialYes.Value = True Then
+      recreationalDrug!confidential = True   
+   Endif
    ProgressNote = New CRow
-   ProgressNote!notes = ProgressNotes_Create(fk_progressnote)
+   ProgressNote!notes = ProgressNotes_Create()
    If fk_progressnote Then
       ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")            'am editing todays progress note
    End If
@@ -149,35 +157,33 @@ Public Sub Save()
    modDBConnect.CommitTrans()
    EditArea_Notify_DataChange(False)
    HBox_EditArea.Enabled = False
-   If recreationalDrug!fk_lu_recreational_drug = const.cRecreational_Drug_Nicotine Then
+   If recreationalDrug!fk_lu_recreational_drug = const.cRecreational_Drug_Nicotine Then  'work out the text to show in FClinical about smoking
       If recreationalDrug!never_used_drug Then
          NotificationFlag = const.cSmokerNever
       Else
          If Not IsNull(recreationalDrug!age_last_used) Then
             NotificationFlag = const.cSmokerPast
+            NotificationMessage = " CEASED AGE " & Str(recreationalDrug!age_last_used)
          Else
             NotificationFlag = const.cSmokerCurrent
          End If
       End If
-      If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then             'if the form is not embedded update fclinical FIXME the summary is not updated
-         FClinical.Refresh_AllPreviousNotes()                                        'refresh the progress notes
-         FClinical.Refresh_Section(const.cSection_HealthSummary)
-         If Not IsNull(recreationalDrug!cumulative_amount) Then
-            FClinical.Smoking_Nofication_Update(NotificationFlag, Str(recreationalDrug!cumulative_amount) & " Pack Years")
-         Else
-            '   FClinical.Smoking_Nofication_Update(NotificationFlag, recreationalDrug!quantification)
-            FClinical.Smoking_Nofication_Update(NotificationFlag, "")
-         End If
-      End If
-   Endif
+      If Not IsNull(recreationalDrug!cumulative_amount) Then
+         NotificationMessage &= " " & Str(recreationalDrug!cumulative_amount) & " PY"
+      End If  
+   End If   
+   FClinical.Refresh_AllPreviousNotes()                                        'refresh the progress notes
+   FClinical.Refresh_Section(const.cSection_HealthSummary)
+   FClinical.Smoking_Nofication_Update(NotificationFlag, NotificationMessage)
    Reload()
    
 End
 
-Public Sub ProgressNotes_Create(fk_progressnote As Integer) As String
+Public Sub ProgressNotes_Create() As String
    '-----------------------------------------------------------------
    'Create a progress note entry for the substance along the lines of
    'current smoker 10/day or ex-smoker 15/day from age 23 to 50
+   'fixme remove the fk_progressnote 
    '-----------------------------------------------------------------
    
    Dim sPN As String
@@ -249,7 +255,6 @@ Public Sub ProgressNotes_Create(fk_progressnote As Integer) As String
    If Trim(txtAgeLastUsed.text) <> "" Then
       sPN &= " to age " & txtAgeLastUsed.Text
    Endif
-   Print sPN
    Return sPN
    
 End
@@ -373,15 +378,47 @@ Public Sub RecreationalDrug_New()
 End
 
 Public Sub RecreationalDrug_Delete()
+   '----------------------------------------------------------------
+   'Delete the reacreational drug laying down the audit trail  
+   'if the fk_progressnote for that drug is 0 then drug was imported
+   'i.e the field progressnotes = null
+   '-----------------------------------------------------------------
    
    Dim sMsg As String
+   Dim auditnotes As String
+   Dim RD As Collection 
    
    cvwRecreationalDrugs.MoveCurrent
+   RD = RecreationalDrugs[cvwRecreationalDrugs.Item.key]
    SMsg = "Are you sure you want to delete this drug?\n\n"
-   sMsg = RecreationalDrugs[cvwRecreationalDrugs.Item.key]!drug
+   sMsg = RD!drug
    If Message.Question(sMsg, "Yes - Delete Drug", "No") = 2 Then Return
-   modDBConnect.update("clin_history.recreational_drugs", Null, ["pk": fk_recreationaldrug, "deleted": True])
-   modDBConnect.CommitTrans()
+   If RD!fk_consult = currentconsult.GetPK()                                                                          'the drug was created today, just reverse this
+      modDBConnect.update("clin_history.recreational_drugs", Null, ["pk": fk_recreationaldrug, "deleted": True])      'mark the record as deleted
+      modDBConnect.exec_query("Update clin_consult.progressnotes set deleted = True where pk=" & RD!fk_progressnote)
+      modDBConnect.CommitTrans()
+   Else                                                                                                               'this is an old entry
+      modDBConnect.update("clin_history.recreational_drugs", Null, ["pk": fk_recreationaldrug, "deleted": True])      'mark the record as deleted
+      If Not IsNull(RD!progress_notes) Then                                                                            'if progress notes for this drug exist
+         auditnotes = "<STRIKE><P><FONT COLOR='#b3b3b3'>" & RD!progress_notes & "</STRIKE><p>"                       'strike them through in the persons notes with an annotation
+         auditnotes &= "<small><B><I>Audit note:</B> these recreational drug details were deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & ". Check the audit trail on that date for details.</I></small>"
+         modDBConnect.exec_query("update clin_consult.progressnotes set notes =$$" & auditnotes & "$$ where pk = " & RD!fk_progressnote)
+         Goto Refresh
+      End If 
+      auditnotes = "Details for the drug " & RD!drug & "<BR>"                                                         'create audit notes
+      auditnotes = modUtil.Ucase_Word_First_Letter(Replace(Trim(ProgressNotes_Create()), "updated", "deleted")) 
+      auditnotes = Replace(auditnotes, "<b>", "")
+      auditnotes = Replace(auditnotes, "</b>", "")
+      If modAudit.MakeAudit(currentconsult, "mark deleted", "clin_history.recreational_drugs", fk_recreationaldrug, const.cSection_RecreationalDrugs, auditnotes) Then
+         modDBConnect.CommitTrans()
+      Else
+         modDBConnect.RollBack
+      End If   
+   End If   
+   
+Refresh:
+   FClinical.Refresh_AllPreviousNotes()
+   Try FClinical.Refresh_Section(const.cSection_HealthSummary) 
    Reload()
    
 End
@@ -412,6 +449,11 @@ Public Sub RecreationalDrug_Display()
       Case const.Units_month
          rbMonth.Value = True
    End Select
+   If RecreationalDrug!confidential Then
+      rbConfidentialYes.value = True
+   Else
+      rbConfidentialNo.value = True 
+   Endif
    fk_progressnote = RecreationalDrug!fk_progressnote
    chkNeverUsedDrug.value = RecreationalDrug!never_used_drug
    txtNotes.text = RecreationalDrug!notes
@@ -426,7 +468,7 @@ Public Sub RecreationalDrug_Valid() As Boolean
    '-----------------------------------------------------------------
    'Returns true if enough information to save this recreational drug
    '-----------------------------------------------------------------
-
+   
    Dim sMsg As String
    
    For Each substance In currentconsult!recreationaldrugs
@@ -451,6 +493,10 @@ Public Sub RecreationalDrug_Valid() As Boolean
       txtQuantity.Background = Color.rgb(95, 255, 175)
       txtQuantity.SetFocus()
       Return
+   Endif
+   If rbConfidentialNo.value = False And rbConfidentialYes.Value = False Then
+      Message.info("Please enter confidentiality information for this drug")
+      Return 
    Endif
    Return True
    
@@ -489,6 +535,7 @@ Public Sub EditArea_Clear()
    bEditing = False
    cmbSubstances.index = -1
    cmbRouteTaken.index = -1
+   rbReset.value = True 
    EditArea_Notify_DataChange(False)
    
 End
@@ -525,6 +572,7 @@ Public Sub EditAreaTextBox_KeyPress()
    'first make sure only valid keys for each text box are entered
    'here effectively this means only the date
    '--------------------------------------------------------------
+   
    Dim bKeyValid As Boolean
    
    bkeyvalid = EditAreaTextBox_ExcludeKeys(key.code, Last.tag)
@@ -584,7 +632,7 @@ End
 Public Sub cmbSubstances_Click()
    
    Dim sMsg As String
-    
+   
    If bexit Then Return
    '-----------------------------------------------------------------------
    'First check the user is not stupid enough to be starting another record

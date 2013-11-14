@@ -299,6 +299,8 @@ Public Sub Vaccination_Delete()
    '-----------------------------------------------------------------------------
    'Deletes a vaccination with Audit Trail if not a reversal on the same day
    'The vaccine in the progress notes is struck through with the audit note added
+   'As in my case some 15 years of vaccinations were imported the assumption is
+   'the vaccine is legacy, this won't affect anyone!
    '-----------------------------------------------------------------------------
    
    Dim fk_progressnote As Integer
@@ -307,6 +309,8 @@ Public Sub Vaccination_Delete()
    Dim fk_reason As Integer
    Dim reason As String
    Dim EA As FVaccineEditArea
+   Dim audit_notes As String
+   Dim bLegacyVaccineEntry As Boolean = True   'assume we have imported vaccines, needed for audit trail
    
    fk_progressnote = CurrentVaccination!fk_progressnote
    fk_vaccination = CurrentVaccination!fk_vaccination
@@ -318,18 +322,23 @@ Public Sub Vaccination_Delete()
       Message.title = "Delete Vaccine"
       If Message.Question("Are you sure you want to delete the vaccine:\n\n" & CurrentVaccination!brand, "Yes", "No") = 2 Then Return
       For Each PN In currentconsult!progress_notes
-         If PN!pk_progressnote = fk_progressnote Then
+         If PN!pk_progressnote = fk_progressnote Then            'found a progress note, must have been put in via EasyGP
+            bLegacyVaccineEntry = False
+            audit_notes = pn!notes
             pn!notes = "<strike>" & pn!notes & "</strike><BR>"
-            Faudit.Init(": Delete Vaccination", "clin_consult.progressnotes/clin_vaccination.vaccinations", "Vaccination:" & CurrentVaccination!brand)
-            fk_reason = FAudit.ShowModal()
-            modDBConnect.CommitTrans()  'otherwise if a new reason it won't have been comitted
-            reason = modAudit.Get_Reason_Using_pk(fk_reason)
-            pn!notes &= "<small><B><I>Audit note:</B> this vaccination was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & " who gave this explanation: '" & reason & "'</I></small>"
+            pn!notes &= "<small><B><I>Audit note:</B> this vaccination was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & ". Check the audit trail on that date for details.</I></small>"
             modDBConnect.update("clin_consult.progressnotes", Null, ["pk": fk_progressnote, "notes": pn!notes])
-            modAudit.MakeAudit(currentconsult, "delete", "clin_consult.progressnotes", fk_vaccination, const.cSection_Vaccination, pn!notes)
             Break
          Endif
       Next
+      If bLegacyVaccineEntry Then        
+         audit_notes = "A previously imported vaccine " & CurrentVaccination!brand & " (" & CurrentVaccination!schedule & ") given on "
+         audit_notes &= CurrentVaccination!date_given & " which has no progress notes in EasyGP was deleted." 'this date field is text (could have e.g 2008)
+      Endif
+      If Not modAudit.MakeAudit(currentconsult, "mark deleted", "clin_vaccination.vaccinations", fk_vaccination, const.cSection_Vaccination, audit_notes) Then
+         modDBConnect.RollBack
+         Return 
+      Endif
    Else
       '---------------------------------------------------------------------------------------
       'This vaccination was entered as given today, so just reverse it and audit as a reversal
@@ -353,6 +362,7 @@ Public Sub Vaccination_Delete()
    modDBConnect.update("clin_vaccination.vaccinations", Null, ["pk": fk_vaccination, "deleted": True])
    modDBConnect.CommitTrans()
    FClinical.Refresh_AllPreviousNotes()
+   Try FClinical.Refresh_Section(const.cSection_HealthSummary) 'also update the health summary
    Reload()
    
 End
@@ -661,7 +671,7 @@ Public Sub Save()
    '   deleted boolean default false,
    '   fk_progressnote integer not null
    '-----------------------------------------------------------------------------------
-
+   
    Dim EA As FVaccineEditArea
    Dim sProgressNotes As String
    Dim progress_note_code As CRow

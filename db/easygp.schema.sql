@@ -497,7 +497,7 @@ ALTER FUNCTION billing.update_invoice_payment() OWNER TO easygp;
 SET search_path = clerical, pg_catalog;
 
 --
--- Name: create_patient_new_ihi(); Type: FUNCTION; Schema: clerical; Owner: ian
+-- Name: create_patient_new_ihi(); Type: FUNCTION; Schema: clerical; Owner: easygp
 --
 
 CREATE FUNCTION create_patient_new_ihi() RETURNS trigger
@@ -510,7 +510,7 @@ END;
 $$;
 
 
-ALTER FUNCTION clerical.create_patient_new_ihi() OWNER TO ian;
+ALTER FUNCTION clerical.create_patient_new_ihi() OWNER TO easygp;
 
 --
 -- Name: listavailable(integer, integer, integer); Type: FUNCTION; Schema: clerical; Owner: easygp
@@ -630,7 +630,7 @@ end;$$;
 ALTER FUNCTION clerical.notify_booking() OWNER TO postgres;
 
 --
--- Name: person_death(); Type: FUNCTION; Schema: clerical; Owner: ian
+-- Name: person_death(); Type: FUNCTION; Schema: clerical; Owner: easygp
 --
 
 CREATE FUNCTION person_death() RETURNS trigger
@@ -643,7 +643,7 @@ END;
 $$;
 
 
-ALTER FUNCTION clerical.person_death() OWNER TO ian;
+ALTER FUNCTION clerical.person_death() OWNER TO easygp;
 
 --
 -- Name: tell_remote_server1(); Type: FUNCTION; Schema: clerical; Owner: easygp
@@ -685,7 +685,7 @@ $$;
 ALTER FUNCTION clerical.tell_remote_server2(start integer, duration integer) OWNER TO easygp;
 
 --
--- Name: updated_patient_new_ihi(); Type: FUNCTION; Schema: clerical; Owner: ian
+-- Name: updated_patient_new_ihi(); Type: FUNCTION; Schema: clerical; Owner: easygp
 --
 
 CREATE FUNCTION updated_patient_new_ihi() RETURNS trigger
@@ -699,10 +699,10 @@ END;
 $$;
 
 
-ALTER FUNCTION clerical.updated_patient_new_ihi() OWNER TO ian;
+ALTER FUNCTION clerical.updated_patient_new_ihi() OWNER TO easygp;
 
 --
--- Name: updated_person_new_ihi(); Type: FUNCTION; Schema: clerical; Owner: ian
+-- Name: updated_person_new_ihi(); Type: FUNCTION; Schema: clerical; Owner: easygp
 --
 
 CREATE FUNCTION updated_person_new_ihi() RETURNS trigger
@@ -716,7 +716,7 @@ END;
 $$;
 
 
-ALTER FUNCTION clerical.updated_person_new_ihi() OWNER TO ian;
+ALTER FUNCTION clerical.updated_person_new_ihi() OWNER TO easygp;
 
 SET search_path = clin_careplans, pg_catalog;
 
@@ -1108,7 +1108,7 @@ $_$;
 ALTER FUNCTION drugs.format_strength(text) OWNER TO easygp;
 
 --
--- Name: version_no_delete(); Type: FUNCTION; Schema: drugs; Owner: ian
+-- Name: version_no_delete(); Type: FUNCTION; Schema: drugs; Owner: easygp
 --
 
 CREATE FUNCTION version_no_delete() RETURNS trigger
@@ -1119,7 +1119,7 @@ BEGIN
 END; $$;
 
 
-ALTER FUNCTION drugs.version_no_delete() OWNER TO ian;
+ALTER FUNCTION drugs.version_no_delete() OWNER TO easygp;
 
 SET search_path = public, pg_catalog;
 
@@ -1224,7 +1224,7 @@ $_$;
 ALTER FUNCTION public.load_file(dir_option_name text, fname text) OWNER TO postgres;
 
 --
--- Name: mako(text, integer, integer, text); Type: FUNCTION; Schema: public; Owner: ian
+-- Name: mako(text, integer, integer, text); Type: FUNCTION; Schema: public; Owner: easygp
 --
 
 CREATE FUNCTION mako(templ text, i1 integer, i2 integer DEFAULT 0, t1 text DEFAULT NULL::text) RETURNS xml
@@ -1246,7 +1246,7 @@ return t.render(i1=i1,i2=i2,t1=t1,sql=plpy.execute,attrib={})
 $$;
 
 
-ALTER FUNCTION public.mako(templ text, i1 integer, i2 integer, t1 text) OWNER TO ian;
+ALTER FUNCTION public.mako(templ text, i1 integer, i2 integer, t1 text) OWNER TO easygp;
 
 --
 -- Name: new_uuid(uuid, integer); Type: FUNCTION; Schema: public; Owner: easygp
@@ -11820,14 +11820,14 @@ ALTER TABLE drugs.schedules OWNER TO easygp;
 SET search_path = clin_prescribing, pg_catalog;
 
 --
--- Name: vwprescribeditems; Type: VIEW; Schema: clin_prescribing; Owner: ian
+-- Name: vwprescribeditems; Type: VIEW; Schema: clin_prescribing; Owner: easygp
 --
 
 CREATE VIEW vwprescribeditems AS
     SELECT prescribed.pk AS pk_view, medications.pk AS fk_medication, medications.start_date, medications.last_date, medications.active, medications.deleted AS medication_deleted, medications.fk_generic_product, consult.pk AS fk_consult, consult.consult_date AS date_script_written, consult.fk_patient, product.generic, brand.brand, product.strength, brand.product_information_filename, form.form, brand.pk AS fk_brand, prescribed.pk AS fk_prescribed, prescribed.repeats, prescribed.date_on_script, prescribed.quantity, prescribed_for.prescribed_for, prescribed.deleted AS prescribed_deleted, prescribed.authority_reason, prescribed.print_reason, instructions.instruction, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, product.atccode, product.salt, product.fk_form, product.fk_schedule, product.salt_strength, prescribed.fk_instruction, prescribed.fk_prescribed_for, prescribed.pbscode, prescribed.fk_lu_pbs_script_type, prescribed.restriction_code, prescribed.fk_code, prescribed.reg24, lu_pbs_script_type.type AS pbs_script_type, restriction.streamlined, restriction.restriction, restriction.restriction_type, schedules.schedule, drugs.format_strength(product.strength) AS display_strength, drugs.format_amount(product.amount, product.amount_unit, product.units_per_pack) AS display_packsize, product.units_per_pack, prescribed.medisecure_uuid, prescribed.medisecure_barcode, prescribed.escript_uploaded, prescribed.script_number, product.sct AS product_sct, brand.sct AS brand_sct, product.amount, product.amount_unit, prescribed.brand_substitution, brand.fk_company, product.original_pbs_name, prescribed.authority_script_number, prescribed.authority_approval_number, prescribed.authority_post_to_patient, prescribed.concession_details, prescribed.fk_progress_note, prescribed.printed, prescribed.latex FROM (((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN prescribed ON ((consult.pk = prescribed.fk_consult))) JOIN medications medications ON ((prescribed.fk_medication = medications.pk))) JOIN prescribed_for ON ((prescribed.fk_prescribed_for = prescribed_for.pk))) JOIN instructions ON ((prescribed.fk_instruction = instructions.pk))) JOIN lu_pbs_script_type ON ((prescribed.fk_lu_pbs_script_type = lu_pbs_script_type.pk))) LEFT JOIN drugs.restriction ON (((prescribed.pbscode = (restriction.pbscode)::text) AND (prescribed.restriction_code = (restriction.code)::text)))) LEFT JOIN drugs.brand ON ((prescribed.fk_brand = brand.pk))) JOIN drugs.product ON ((medications.fk_generic_product = product.pk))) LEFT JOIN drugs.schedules ON ((product.fk_schedule = schedules.pk))) JOIN drugs.form ON ((product.fk_form = form.pk)));
 
 
-ALTER TABLE clin_prescribing.vwprescribeditems OWNER TO ian;
+ALTER TABLE clin_prescribing.vwprescribeditems OWNER TO easygp;
 
 SET search_path = clin_procedures, pg_catalog;
 
@@ -19065,7 +19065,7 @@ COMMENT ON COLUMN topic.target IS 'the target of this information: h=health prof
 
 
 --
--- Name: version; Type: TABLE; Schema: drugs; Owner: ian; Tablespace: 
+-- Name: version; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE version (
@@ -19075,7 +19075,7 @@ CREATE TABLE version (
 );
 
 
-ALTER TABLE drugs.version OWNER TO ian;
+ALTER TABLE drugs.version OWNER TO easygp;
 
 --
 -- Name: vwdistinctbrandsforgenericproduct; Type: VIEW; Schema: drugs; Owner: easygp
@@ -24428,7 +24428,7 @@ CREATE INDEX tag_idx ON documents USING btree (tag);
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: version_one_row_only; Type: INDEX; Schema: drugs; Owner: ian; Tablespace: 
+-- Name: version_one_row_only; Type: INDEX; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE UNIQUE INDEX version_one_row_only ON version USING btree (((release_date IS NOT NULL)));
@@ -24531,7 +24531,7 @@ CREATE TRIGGER pcehr_new_doc BEFORE INSERT ON pcehr FOR EACH ROW EXECUTE PROCEDU
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: version_no_delete; Type: TRIGGER; Schema: drugs; Owner: ian
+-- Name: version_no_delete; Type: TRIGGER; Schema: drugs; Owner: easygp
 --
 
 CREATE TRIGGER version_no_delete BEFORE DELETE ON version FOR EACH ROW EXECUTE PROCEDURE version_no_delete();
@@ -32166,13 +32166,12 @@ GRANT ALL ON TABLE topic TO staff;
 
 
 --
--- Name: version; Type: ACL; Schema: drugs; Owner: ian
+-- Name: version; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE version FROM PUBLIC;
-REVOKE ALL ON TABLE version FROM ian;
-GRANT ALL ON TABLE version TO ian;
-GRANT SELECT,UPDATE ON TABLE version TO easygp;
+REVOKE ALL ON TABLE version FROM easygp;
+GRANT ALL ON TABLE version TO easygp;
 GRANT SELECT ON TABLE version TO staff;
 
 

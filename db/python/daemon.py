@@ -213,7 +213,7 @@ Options
                 if self.overnight_mode: self.evts.overnight()
                 else:
                     if self.test_mode:
-                        self.db.synth_event("script",11)
+                        self.db.synth_event("script",12)
                     else:
                         self.db.wait_events()
             except: logging.exception("exception in child")

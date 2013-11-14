@@ -168,9 +168,9 @@ class Event:
         consult_data['comms'] = self.db.get_staff_comms(consult_data['fk_person'],consult_data['fk_branch'])
         observations = self.db.get_obs(items[0]['fk_patient'])
         try:
-            receipt_code = self.medisecure.submit_script(items,consult_data,patient_data,observations)
+            request_code, receipt_code = self.medisecure.submit_script(items,consult_data,patient_data,observations)
         except:
             self.db.log_simple_entry(items[0]['fk_patient'],'MediSecure e-script error: %s' % dbwrapper.html(repr(sys.exc_info()[1])),linked_table='clin_prescribing.prescribed',fk_row=script_no)
         else:
-            self.db.log_simple_entry(items[0]['fk_patient'],'MediSecure submitted %s' % receipt_code,linked_table='clin_prescribing.prescribed',fk_row=script_no)
+            self.db.log_simple_entry(items[0]['fk_patient'],'MediSecure submitted. Request ID %s Response ID %s' % (request_code,receipt_code),linked_table='clin_prescribing.prescribed',fk_row=script_no)
             

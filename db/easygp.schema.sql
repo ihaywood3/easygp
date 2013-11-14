@@ -143,13 +143,13 @@ CREATE SCHEMA clin_mentalhealth;
 ALTER SCHEMA clin_mentalhealth OWNER TO easygp;
 
 --
--- Name: clin_pregnancy; Type: SCHEMA; Schema: -; Owner: postgres
+-- Name: clin_pregnancy; Type: SCHEMA; Schema: -; Owner: easygp
 --
 
 CREATE SCHEMA clin_pregnancy;
 
 
-ALTER SCHEMA clin_pregnancy OWNER TO postgres;
+ALTER SCHEMA clin_pregnancy OWNER TO easygp;
 
 --
 -- Name: clin_prescribing; Type: SCHEMA; Schema: -; Owner: easygp
@@ -317,16 +317,23 @@ CREATE SCHEMA drugbank;
 ALTER SCHEMA drugbank OWNER TO postgres;
 
 --
--- Name: drugs; Type: SCHEMA; Schema: -; Owner: postgres
+-- Name: SCHEMA drugbank; Type: COMMENT; Schema: -; Owner: postgres
+--
+
+COMMENT ON SCHEMA drugbank IS 'http://drugbank.ca derived drug reference data';
+
+
+--
+-- Name: drugs; Type: SCHEMA; Schema: -; Owner: easygp
 --
 
 CREATE SCHEMA drugs;
 
 
-ALTER SCHEMA drugs OWNER TO postgres;
+ALTER SCHEMA drugs OWNER TO easygp;
 
 --
--- Name: SCHEMA drugs; Type: COMMENT; Schema: -; Owner: postgres
+-- Name: SCHEMA drugs; Type: COMMENT; Schema: -; Owner: easygp
 --
 
 COMMENT ON SCHEMA drugs IS '
@@ -490,7 +497,7 @@ ALTER FUNCTION billing.update_invoice_payment() OWNER TO easygp;
 SET search_path = clerical, pg_catalog;
 
 --
--- Name: create_patient_new_ihi(); Type: FUNCTION; Schema: clerical; Owner: postgres
+-- Name: create_patient_new_ihi(); Type: FUNCTION; Schema: clerical; Owner: ian
 --
 
 CREATE FUNCTION create_patient_new_ihi() RETURNS trigger
@@ -503,7 +510,49 @@ END;
 $$;
 
 
-ALTER FUNCTION clerical.create_patient_new_ihi() OWNER TO postgres;
+ALTER FUNCTION clerical.create_patient_new_ihi() OWNER TO ian;
+
+--
+-- Name: listavailable(integer, integer, integer); Type: FUNCTION; Schema: clerical; Owner: easygp
+--
+
+CREATE FUNCTION listavailable(fk_clinicv integer, fk_doctor integer, max integer) RETURNS SETOF timestamp without time zone
+    LANGUAGE plpgsql
+    AS $$
+    declare
+      thedate date;
+      remaining integer;
+      sess clerical.sessions%rowtype;
+      thetime time;
+      thestamp timestamp without time zone;
+    begin
+	thedate := now()::date+'1 day'::interval;
+	remaining := max;
+	while remaining > 0 loop
+            if thedate > '2200-1-1'::date then
+ 	       raise exception 'we''ve gone stupidly far into the future';
+	    end if;	
+            for sess in select * from clerical.listsessions(thedate,fk_clinicv) loop
+	         thetime := sess.begin;
+		 while thetime < sess.finish loop
+		       thestamp := thedate + thetime;
+		       --raise notice 'checking %',thestamp;
+		       perform 1 from clerical.bookings where fk_staff=fk_doctor and fk_clinic=fk_clinicv and "begin" <= thestamp and "begin"+duration > thestamp;
+		       if not found then
+                          remaining := remaining-1;
+		       	  return next thestamp;
+		       end if; 
+		       thetime := thetime + sess.appointment_interval;
+		 end loop;	  
+	      end loop;
+	      thedate := thedate + '1 day'::interval;
+	end loop;
+        return;
+    end;
+$$;
+
+
+ALTER FUNCTION clerical.listavailable(fk_clinicv integer, fk_doctor integer, max integer) OWNER TO easygp;
 
 SET default_tablespace = '';
 
@@ -581,7 +630,7 @@ end;$$;
 ALTER FUNCTION clerical.notify_booking() OWNER TO postgres;
 
 --
--- Name: person_death(); Type: FUNCTION; Schema: clerical; Owner: postgres
+-- Name: person_death(); Type: FUNCTION; Schema: clerical; Owner: ian
 --
 
 CREATE FUNCTION person_death() RETURNS trigger
@@ -594,10 +643,49 @@ END;
 $$;
 
 
-ALTER FUNCTION clerical.person_death() OWNER TO postgres;
+ALTER FUNCTION clerical.person_death() OWNER TO ian;
 
 --
--- Name: updated_patient_new_ihi(); Type: FUNCTION; Schema: clerical; Owner: postgres
+-- Name: tell_remote_server1(); Type: FUNCTION; Schema: clerical; Owner: easygp
+--
+
+CREATE FUNCTION tell_remote_server1() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  start integer;
+  duration integer;
+BEGIN
+  start:=round(extract(epoch from NEW."begin"));
+  IF NEW.deleted THEN
+    duration:=0;
+  ELSE
+    duration:=(extract(hour from NEW.duration)*60)+extract(minute from NEW.duration);
+  END IF;
+  PERFORM clerical.tell_remote_server2(start,duration);
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION clerical.tell_remote_server1() OWNER TO easygp;
+
+--
+-- Name: tell_remote_server2(integer, integer); Type: FUNCTION; Schema: clerical; Owner: easygp
+--
+
+CREATE FUNCTION tell_remote_server2(start integer, duration integer) RETURNS void
+    LANGUAGE plpythonu
+    AS $$
+import urllib
+urllib.urlopen("http://127.0.0.1:4567/auto_update_appt",urllib.urlencode({"start":start,"duration":duration}))
+$$;
+
+
+ALTER FUNCTION clerical.tell_remote_server2(start integer, duration integer) OWNER TO easygp;
+
+--
+-- Name: updated_patient_new_ihi(); Type: FUNCTION; Schema: clerical; Owner: ian
 --
 
 CREATE FUNCTION updated_patient_new_ihi() RETURNS trigger
@@ -611,10 +699,10 @@ END;
 $$;
 
 
-ALTER FUNCTION clerical.updated_patient_new_ihi() OWNER TO postgres;
+ALTER FUNCTION clerical.updated_patient_new_ihi() OWNER TO ian;
 
 --
--- Name: updated_person_new_ihi(); Type: FUNCTION; Schema: clerical; Owner: postgres
+-- Name: updated_person_new_ihi(); Type: FUNCTION; Schema: clerical; Owner: ian
 --
 
 CREATE FUNCTION updated_person_new_ihi() RETURNS trigger
@@ -628,7 +716,7 @@ END;
 $$;
 
 
-ALTER FUNCTION clerical.updated_person_new_ihi() OWNER TO postgres;
+ALTER FUNCTION clerical.updated_person_new_ihi() OWNER TO ian;
 
 SET search_path = clin_careplans, pg_catalog;
 
@@ -682,7 +770,7 @@ COMMENT ON FUNCTION erase_data() IS '**********************
 SET search_path = clin_prescribing, pg_catalog;
 
 --
--- Name: escript_notify(); Type: FUNCTION; Schema: clin_prescribing; Owner: postgres
+-- Name: escript_notify(); Type: FUNCTION; Schema: clin_prescribing; Owner: easygp
 --
 
 CREATE FUNCTION escript_notify() RETURNS trigger
@@ -695,7 +783,7 @@ END;
 $$;
 
 
-ALTER FUNCTION clin_prescribing.escript_notify() OWNER TO postgres;
+ALTER FUNCTION clin_prescribing.escript_notify() OWNER TO easygp;
 
 --
 -- Name: make_auth_number(integer); Type: FUNCTION; Schema: clin_prescribing; Owner: easygp
@@ -739,10 +827,31 @@ $_$;
 
 ALTER FUNCTION clin_prescribing.make_auth_number(integer) OWNER TO easygp;
 
+SET search_path = db, pg_catalog;
+
+--
+-- Name: do_all_tables(text, text, text); Type: FUNCTION; Schema: db; Owner: easygp
+--
+
+CREATE FUNCTION do_all_tables(cmd text, regex text, classes text) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+  DECLARE
+    line text;
+  BEGIN
+    FOR line IN select nspname || '.' || relname from pg_class, pg_namespace where relnamespace = pg_namespace.oid and (not relname ilike 'pg_%') and nspname<>'information_schema' and nspname || '.' || relname ~ regex and position(relkind in classes) > 0 LOOP
+      EXECUTE replace(cmd,'&',line);
+    END LOOP;
+  END;
+$$;
+
+
+ALTER FUNCTION db.do_all_tables(cmd text, regex text, classes text) OWNER TO easygp;
+
 SET search_path = documents, pg_catalog;
 
 --
--- Name: pcehr_have_code_notify(); Type: FUNCTION; Schema: documents; Owner: postgres
+-- Name: pcehr_have_code_notify(); Type: FUNCTION; Schema: documents; Owner: easygp
 --
 
 CREATE FUNCTION pcehr_have_code_notify() RETURNS trigger
@@ -755,10 +864,10 @@ END;
 $$;
 
 
-ALTER FUNCTION documents.pcehr_have_code_notify() OWNER TO postgres;
+ALTER FUNCTION documents.pcehr_have_code_notify() OWNER TO easygp;
 
 --
--- Name: pcehr_need_code_notify(); Type: FUNCTION; Schema: documents; Owner: postgres
+-- Name: pcehr_need_code_notify(); Type: FUNCTION; Schema: documents; Owner: easygp
 --
 
 CREATE FUNCTION pcehr_need_code_notify() RETURNS trigger
@@ -771,10 +880,10 @@ END;
 $$;
 
 
-ALTER FUNCTION documents.pcehr_need_code_notify() OWNER TO postgres;
+ALTER FUNCTION documents.pcehr_need_code_notify() OWNER TO easygp;
 
 --
--- Name: pcehr_new_doc_notify(); Type: FUNCTION; Schema: documents; Owner: postgres
+-- Name: pcehr_new_doc_notify(); Type: FUNCTION; Schema: documents; Owner: easygp
 --
 
 CREATE FUNCTION pcehr_new_doc_notify() RETURNS trigger
@@ -787,12 +896,12 @@ END;
 $$;
 
 
-ALTER FUNCTION documents.pcehr_new_doc_notify() OWNER TO postgres;
+ALTER FUNCTION documents.pcehr_new_doc_notify() OWNER TO easygp;
 
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: assert_atc(text, text); Type: FUNCTION; Schema: drugs; Owner: ian
+-- Name: assert_atc(text, text); Type: FUNCTION; Schema: drugs; Owner: easygp
 --
 
 CREATE FUNCTION assert_atc(atccode1 text, atctext1 text) RETURNS void
@@ -807,10 +916,10 @@ end
 $$;
 
 
-ALTER FUNCTION drugs.assert_atc(atccode1 text, atctext1 text) OWNER TO ian;
+ALTER FUNCTION drugs.assert_atc(atccode1 text, atctext1 text) OWNER TO easygp;
 
 --
--- Name: assert_brand(uuid, uuid, text, text, text, money, boolean, text); Type: FUNCTION; Schema: drugs; Owner: ian
+-- Name: assert_brand(uuid, uuid, text, text, text, money, boolean, text); Type: FUNCTION; Schema: drugs; Owner: easygp
 --
 
 CREATE FUNCTION assert_brand(pk1 uuid, fk_product1 uuid, fk_company1 text, brand1 text, sct1 text, price1 money, from_pbs1 boolean, pif text) RETURNS void
@@ -821,16 +930,16 @@ begin
    if found then
       update drugs.brand set  fk_product=fk_product1, fk_company=fk_company1, brand=brand1, price=price1, sct=sct1,product_information_filename=pif,from_pbs=from_pbs1 where pk=pk1;
    else
-      insert into drugs.brand (pk, fk_product, fk_company, brand, price, from_pbs, sct,product_information_filename) values (pk1, fk_product1, fk_company1, brand1, price1, from_pb1s, sct1, pif);
+      insert into drugs.brand (pk, fk_product, fk_company, brand, price, from_pbs, sct,product_information_filename) values (pk1, fk_product1, fk_company1, brand1, price1, from_pbs1, sct1, pif);
    end if;
 end
 $$;
 
 
-ALTER FUNCTION drugs.assert_brand(pk1 uuid, fk_product1 uuid, fk_company1 text, brand1 text, sct1 text, price1 money, from_pbs1 boolean, pif text) OWNER TO ian;
+ALTER FUNCTION drugs.assert_brand(pk1 uuid, fk_product1 uuid, fk_company1 text, brand1 text, sct1 text, price1 money, from_pbs1 boolean, pif text) OWNER TO easygp;
 
 --
--- Name: assert_company(text, text, text, text); Type: FUNCTION; Schema: drugs; Owner: ian
+-- Name: assert_company(text, text, text, text); Type: FUNCTION; Schema: drugs; Owner: easygp
 --
 
 CREATE FUNCTION assert_company(code1 text, company1 text, address1 text, telephone1 text) RETURNS void
@@ -849,10 +958,10 @@ end
 $$;
 
 
-ALTER FUNCTION drugs.assert_company(code1 text, company1 text, address1 text, telephone1 text) OWNER TO ian;
+ALTER FUNCTION drugs.assert_company(code1 text, company1 text, address1 text, telephone1 text) OWNER TO easygp;
 
 --
--- Name: assert_form(integer, text, boolean); Type: FUNCTION; Schema: drugs; Owner: ian
+-- Name: assert_form(integer, text, boolean); Type: FUNCTION; Schema: drugs; Owner: easygp
 --
 
 CREATE FUNCTION assert_form(pk1 integer, form1 text, vol1 boolean) RETURNS void
@@ -867,10 +976,10 @@ end;
 $$;
 
 
-ALTER FUNCTION drugs.assert_form(pk1 integer, form1 text, vol1 boolean) OWNER TO ian;
+ALTER FUNCTION drugs.assert_form(pk1 integer, form1 text, vol1 boolean) OWNER TO easygp;
 
 --
--- Name: assert_product(uuid, text, text, integer, text, text, text, integer, integer, double precision, integer, integer, text, text, text, timestamp without time zone); Type: FUNCTION; Schema: drugs; Owner: ian
+-- Name: assert_product(uuid, text, text, integer, text, text, text, integer, integer, double precision, integer, integer, text, text, text, timestamp without time zone); Type: FUNCTION; Schema: drugs; Owner: easygp
 --
 
 CREATE FUNCTION assert_product(pk1 uuid, atccode1 text, generic1 text, fk_form1 integer, strength1 text, original_pbs_name1 text, free_comment1 text, fk_schedule1 integer, pack_size1 integer, amount1 double precision, amount_unit1 integer, units_per_pack1 integer, sct1 text, salt1 text DEFAULT NULL::text, salt_strength1 text DEFAULT NULL::text, updated_at1 timestamp without time zone DEFAULT now()) RETURNS void
@@ -888,10 +997,10 @@ end
 $$;
 
 
-ALTER FUNCTION drugs.assert_product(pk1 uuid, atccode1 text, generic1 text, fk_form1 integer, strength1 text, original_pbs_name1 text, free_comment1 text, fk_schedule1 integer, pack_size1 integer, amount1 double precision, amount_unit1 integer, units_per_pack1 integer, sct1 text, salt1 text, salt_strength1 text, updated_at1 timestamp without time zone) OWNER TO ian;
+ALTER FUNCTION drugs.assert_product(pk1 uuid, atccode1 text, generic1 text, fk_form1 integer, strength1 text, original_pbs_name1 text, free_comment1 text, fk_schedule1 integer, pack_size1 integer, amount1 double precision, amount_unit1 integer, units_per_pack1 integer, sct1 text, salt1 text, salt_strength1 text, updated_at1 timestamp without time zone) OWNER TO easygp;
 
 --
--- Name: duplicate_product(uuid, uuid); Type: FUNCTION; Schema: drugs; Owner: ian
+-- Name: duplicate_product(uuid, uuid); Type: FUNCTION; Schema: drugs; Owner: easygp
 --
 
 CREATE FUNCTION duplicate_product(old_pk uuid, new_pk uuid) RETURNS void
@@ -907,10 +1016,10 @@ end;
 $$;
 
 
-ALTER FUNCTION drugs.duplicate_product(old_pk uuid, new_pk uuid) OWNER TO ian;
+ALTER FUNCTION drugs.duplicate_product(old_pk uuid, new_pk uuid) OWNER TO easygp;
 
 --
--- Name: format_amount(double precision, integer, integer); Type: FUNCTION; Schema: drugs; Owner: postgres
+-- Name: format_amount(double precision, integer, integer); Type: FUNCTION; Schema: drugs; Owner: easygp
 --
 
 CREATE FUNCTION format_amount(double precision, integer, integer) RETURNS text
@@ -939,10 +1048,10 @@ END;
 $_$;
 
 
-ALTER FUNCTION drugs.format_amount(double precision, integer, integer) OWNER TO postgres;
+ALTER FUNCTION drugs.format_amount(double precision, integer, integer) OWNER TO easygp;
 
 --
--- Name: FUNCTION format_amount(double precision, integer, integer); Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: FUNCTION format_amount(double precision, integer, integer); Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON FUNCTION format_amount(double precision, integer, integer) IS 'formats the amount and units per pack appropriately for display
@@ -956,7 +1065,7 @@ putting in this value is the responsibility the client';
 
 
 --
--- Name: format_strength(text); Type: FUNCTION; Schema: drugs; Owner: postgres
+-- Name: format_strength(text); Type: FUNCTION; Schema: drugs; Owner: easygp
 --
 
 CREATE FUNCTION format_strength(text) RETURNS text
@@ -996,10 +1105,10 @@ end;
 $_$;
 
 
-ALTER FUNCTION drugs.format_strength(text) OWNER TO postgres;
+ALTER FUNCTION drugs.format_strength(text) OWNER TO easygp;
 
 --
--- Name: version_no_delete(); Type: FUNCTION; Schema: drugs; Owner: postgres
+-- Name: version_no_delete(); Type: FUNCTION; Schema: drugs; Owner: ian
 --
 
 CREATE FUNCTION version_no_delete() RETURNS trigger
@@ -1010,7 +1119,7 @@ BEGIN
 END; $$;
 
 
-ALTER FUNCTION drugs.version_no_delete() OWNER TO postgres;
+ALTER FUNCTION drugs.version_no_delete() OWNER TO ian;
 
 SET search_path = public, pg_catalog;
 
@@ -1033,7 +1142,7 @@ $_$;
 ALTER FUNCTION public.age_display(interval) OWNER TO easygp;
 
 --
--- Name: delete_file(text, text); Type: FUNCTION; Schema: public; Owner: postgres
+-- Name: delete_file(text, text); Type: FUNCTION; Schema: public; Owner: easygp
 --
 
 CREATE FUNCTION delete_file(dir_option_name text, fname text) RETURNS void
@@ -1046,7 +1155,7 @@ CREATE FUNCTION delete_file(dir_option_name text, fname text) RETURNS void
 $_$;
 
 
-ALTER FUNCTION public.delete_file(dir_option_name text, fname text) OWNER TO postgres;
+ALTER FUNCTION public.delete_file(dir_option_name text, fname text) OWNER TO easygp;
 
 --
 -- Name: invoice_received(integer); Type: FUNCTION; Schema: public; Owner: easygp
@@ -1079,14 +1188,17 @@ ALTER FUNCTION public.invoice_total(integer) OWNER TO easygp;
 CREATE FUNCTION list_files(dir_option_name text) RETURNS SETOF text
     LANGUAGE plpythonu
     AS $_$
-  import os, os.path
-  ret = plpy.execute('select "value" from admin.global_preferences where fk_clinic=1 and fk_staff is null and "name" = $$%s$$ limit 1' % dir_option_name)
-  if len(ret) == 0: plpy.error("No such option %s" % dir_option_name)
-  top = ret[0]["value"]
-  for p,s,f in os.walk(top):
-    p = p[len(top)+1:]
-    for j in f:
-       yield os.path.join(p,j)
+import os, os.path
+ret = plpy.execute('select "value" from admin.global_preferences where fk_clinic=1 and fk_staff is null and "name" = $$%s$$ limit 1' % dir_option_name)
+if len(ret) == 0: plpy.error("No such option %s" % dir_option_name)
+top = ret[0]["value"]
+try:
+    for p,s,f in os.walk(top):
+        p = p[len(top)+1:]
+        for j in f:
+            yield os.path.join(p,j)
+except:
+    plpy.error("Directory % not accessible" % top)
 $_$;
 
 
@@ -1099,16 +1211,42 @@ ALTER FUNCTION public.list_files(dir_option_name text) OWNER TO postgres;
 CREATE FUNCTION load_file(dir_option_name text, fname text) RETURNS bytea
     LANGUAGE plpythonu
     AS $_$
-   ret = plpy.execute('select "value" from admin.global_preferences where fk_clinic=1 and fk_staff is null and "name" = $$%s$$ limit 1' % dir_option_name)
-   if len(ret) == 0: plpy.error("No such option %s" % dir_option_name)
-   f = open(ret[0]["value"]+'/'+fname,'r')
-   d = f.read()
-   f.close()
-   return d
+ret = plpy.execute('select "value" from admin.global_preferences where fk_clinic=1 and fk_staff is null and "name" = $$%s$$ limit 1' % dir_option_name)
+if len(ret) == 0: plpy.error("No such option %s" % dir_option_name)
+try:
+    with open(ret[0]["value"]+'/'+fname,'r') as f:
+        return f.read()
+except:
+    plpy.error("File %s not accessible" % (ret[0]["value"]+'/'+fname))    
 $_$;
 
 
 ALTER FUNCTION public.load_file(dir_option_name text, fname text) OWNER TO postgres;
+
+--
+-- Name: mako(text, integer, integer, text); Type: FUNCTION; Schema: public; Owner: ian
+--
+
+CREATE FUNCTION mako(templ text, i1 integer, i2 integer DEFAULT 0, t1 text DEFAULT NULL::text) RETURNS xml
+    LANGUAGE plpythonu
+    AS $$
+import plpy
+if templ in SD:
+    t = SD[templ]
+else:
+    if "lookup" in SD:
+        lookup = SD["lookup"]
+    else:
+        import mako.lookup, sys
+        sys.path.append("/home/ian/easygp/trunk/db/python")
+        lookup = mako.lookup.TemplateLookup(directories=['/home/ian/easygp-secret/trunk/python'], module_directory='/tmp/mako_modules',imports=['import dbwrapper'])
+    t = lookup.get_template(templ)
+    SD[templ] = t
+return t.render(i1=i1,i2=i2,t1=t1,sql=plpy.execute,attrib={})
+$$;
+
+
+ALTER FUNCTION public.mako(templ text, i1 integer, i2 integer, t1 text) OWNER TO ian;
 
 --
 -- Name: new_uuid(uuid, integer); Type: FUNCTION; Schema: public; Owner: easygp
@@ -1155,17 +1293,34 @@ $_$;
 ALTER FUNCTION public.new_uuid(uuid, double precision) OWNER TO easygp;
 
 --
+-- Name: pymax(integer, integer); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION pymax(a integer, b integer) RETURNS integer
+    LANGUAGE plpythonu
+    AS $$
+  if a > b:
+    return a
+  return b
+$$;
+
+
+ALTER FUNCTION public.pymax(a integer, b integer) OWNER TO postgres;
+
+--
 -- Name: save_file(text, text, bytea); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
 CREATE FUNCTION save_file(dir_option_name text, fname text, data bytea) RETURNS void
     LANGUAGE plpythonu
     AS $_$
-   ret = plpy.execute('select "value" from admin.global_preferences where fk_clinic=1 and fk_staff is null and "name" = $$%s$$ limit 1' % dir_option_name)
-   if len(ret) == 0: plpy.error("No such option %s" % dir_option_name)
-   f = open(ret[0]["value"]+'/'+fname,'w')
-   d = f.write(data)
-   f.close()
+ret = plpy.execute('select "value" from admin.global_preferences where fk_clinic=1 and fk_staff is null and "name" = $$%s$$ limit 1' % dir_option_name)
+if len(ret) == 0: plpy.error("No such option %s" % dir_option_name)
+try:
+    with open(ret[0]["value"]+'/'+fname,'w') as f:
+        f.write(data)
+except:
+    plpy.error("File %s not accessible" % (ret[0]["value"]+'/'+fname))
 $_$;
 
 
@@ -1631,14 +1786,14 @@ SET search_path = contacts, pg_catalog;
 CREATE TABLE data_addresses (
     pk integer NOT NULL,
     street1 text,
-    fk_town integer NOT NULL,
-    preferred_address boolean DEFAULT false NOT NULL,
-    postal_address boolean DEFAULT false NOT NULL,
-    head_office boolean DEFAULT false NOT NULL,
+    fk_town integer,
+    preferred_address boolean DEFAULT false,
+    postal_address boolean DEFAULT false,
+    head_office boolean DEFAULT false,
     geolocation point,
-    country_code character(2) DEFAULT 'AU'::bpchar NOT NULL,
-    fk_lu_address_type integer DEFAULT 1 NOT NULL,
-    deleted boolean DEFAULT false NOT NULL,
+    country_code character(2),
+    fk_lu_address_type integer,
+    deleted boolean DEFAULT false,
     street2 text
 );
 
@@ -1673,11 +1828,11 @@ COMMENT ON COLUMN data_addresses.deleted IS 'IF False then this address has had 
 CREATE TABLE data_branches (
     pk integer NOT NULL,
     branch text,
-    fk_organisation integer NOT NULL,
+    fk_organisation integer,
     fk_address integer,
     memo text,
-    fk_category integer NOT NULL,
-    deleted boolean DEFAULT false NOT NULL
+    fk_category integer,
+    deleted boolean DEFAULT false
 );
 
 
@@ -1708,13 +1863,14 @@ CREATE TABLE data_numbers (
     australian_business_number text,
     pk integer NOT NULL,
     hpio text,
+    hpii text,
     hic_location_id character(8),
-    CONSTRAINT abn_is_number CHECK ((australian_business_number ~ '^[0-9]+$'::text)),
     CONSTRAINT data_numbers_hic_location_id_check CHECK ((hic_location_id ~ '[A-Z]{3}[0-9]{5}'::text)),
+    CONSTRAINT data_numbers_hpii_check CHECK ((hpii ~ '^[0-9]+$'::text)),
     CONSTRAINT data_numbers_hpio_check CHECK ((hpio ~ '^[0-9]+$'::text)),
     CONSTRAINT employees_no_hpio CHECK ((NOT (((hpio IS NOT NULL) AND (fk_person IS NOT NULL)) AND (fk_branch IS NOT NULL)))),
     CONSTRAINT one_of_branch_person CHECK ((NOT ((fk_branch IS NULL) AND (fk_person IS NULL)))),
-    CONSTRAINT pn_is_alphanumber CHECK ((provider_number ~ '^[0-9]{5,7}[A-Z]{1,2}$'::text))
+    CONSTRAINT orgs_no_hpii CHECK ((NOT ((hpii IS NOT NULL) AND (fk_person IS NULL))))
 );
 
 
@@ -1759,6 +1915,13 @@ COMMENT ON COLUMN data_numbers.hpio IS 'Health Provider Identifier - Organisatio
 
 
 --
+-- Name: COLUMN data_numbers.hpii; Type: COMMENT; Schema: contacts; Owner: easygp
+--
+
+COMMENT ON COLUMN data_numbers.hpii IS 'Health Provider Identifier - Individual';
+
+
+--
 -- Name: COLUMN data_numbers.hic_location_id; Type: COMMENT; Schema: contacts; Owner: easygp
 --
 
@@ -1772,7 +1935,7 @@ COMMENT ON COLUMN data_numbers.hic_location_id IS 'the HIC Location ID, a legacy
 CREATE TABLE data_organisations (
     pk integer NOT NULL,
     organisation text NOT NULL,
-    deleted boolean DEFAULT false NOT NULL
+    deleted boolean DEFAULT false
 );
 
 
@@ -1784,7 +1947,7 @@ ALTER TABLE contacts.data_organisations OWNER TO easygp;
 
 CREATE TABLE lu_address_types (
     pk integer NOT NULL,
-    type text NOT NULL
+    type text
 );
 
 
@@ -1808,9 +1971,9 @@ ALTER TABLE contacts.lu_categories OWNER TO easygp;
 
 CREATE TABLE lu_towns (
     pk integer NOT NULL,
-    postcode character varying(4) NOT NULL,
+    postcode character varying(4),
     town text,
-    state character varying(3) NOT NULL,
+    state character varying(3),
     comment text
 );
 
@@ -2087,12 +2250,12 @@ SET search_path = contacts, pg_catalog;
 
 CREATE TABLE data_employees (
     pk integer NOT NULL,
-    fk_branch integer NOT NULL,
-    fk_person integer NOT NULL,
+    fk_branch integer,
+    fk_person integer,
     fk_occupation integer,
     memo text,
-    deleted boolean DEFAULT false NOT NULL,
-    fk_status integer DEFAULT 0 NOT NULL
+    deleted boolean DEFAULT false,
+    fk_status integer DEFAULT 0
 );
 
 
@@ -2140,7 +2303,7 @@ COMMENT ON TABLE lu_employee_status IS 'Working status of staff member
 
 CREATE TABLE lu_marital (
     pk integer NOT NULL,
-    marital text NOT NULL
+    marital text
 );
 
 
@@ -2152,8 +2315,8 @@ ALTER TABLE contacts.lu_marital OWNER TO easygp;
 
 CREATE TABLE lu_sex (
     pk integer NOT NULL,
-    sex text NOT NULL,
-    sex_text text NOT NULL
+    sex text,
+    sex_text text
 );
 
 
@@ -2166,7 +2329,7 @@ SET search_path = admin, pg_catalog;
 --
 
 CREATE VIEW vwstaffinclinics AS
-    SELECT DISTINCT ON (staff.pk, clinics.pk) ((staff.pk || '-'::text) || data_addresses.pk) AS pk_view, ((data_persons.firstname || ' '::text) || data_persons.surname) AS wholename, staff.fk_person, staff.fk_role, staff.fk_status, staff.logon_name, employee_numbers.provider_number, data_numbers_persons.prescriber_number, staff.fk_lu_staff_type, staff.logon_date_from, staff.logon_date_to, link_staff_clinics1.fk_staff, link_staff_clinics1.fk_clinic, clinics.fk_branch, data_branches.branch, data_branches.fk_organisation, data_branches.fk_address, data_branches.memo AS branch_memo, data_branches.fk_category AS branch_category, data_branches.deleted AS branch_deleted, data_employees.pk AS fk_employee, data_employees.fk_occupation, data_employees.memo AS employee_memo, data_employees.deleted AS employee_deleted, data_persons.firstname, data_persons.surname, data_persons.salutation, data_persons.birthdate, data_persons.fk_ethnicity, data_persons.fk_language, data_persons.memo AS person_memo, data_persons.fk_marital, data_persons.fk_title, data_persons.fk_sex, data_persons.country_code AS person_country_code, data_persons.fk_image, data_persons.retired, data_persons.deleted AS person_deleted, data_persons.deceased, data_persons.date_deceased, lu_title.title, lu_marital.marital, lu_sex.sex, lu_occupations.occupation, lu_ethnicity.ethnicity, lu_languages.language, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image, images.deleted AS image_deleted, lu_staff_roles.role, lu_staff_type.type AS staff_type, lu_employee_status.status, data_organisations.organisation, data_organisations.deleted AS organisation_deleted, data_addresses.street1, data_addresses.street2, data_addresses.fk_town, lu_address_types.type AS address_type, data_addresses.preferred_address, data_addresses.postal_address, data_addresses.head_office, data_addresses.geolocation, data_addresses.country_code, data_addresses.fk_lu_address_type, data_addresses.deleted AS address_deleted, lu_towns.postcode, lu_towns.town, lu_towns.state, link_staff_clinics1.pk AS fk_link_staff_clinic, staff.qualifications, data_persons.surname_normalised, data_numbers_persons.hpii, org_numbers.hpio, org_numbers.hic_location_id FROM ((((((((((((((((((((((staff JOIN link_staff_clinics link_staff_clinics1 ON ((staff.pk = link_staff_clinics1.fk_staff))) JOIN clinics ON ((link_staff_clinics1.fk_clinic = clinics.pk))) JOIN contacts.data_employees ON (((staff.fk_person = data_employees.fk_person) AND (clinics.fk_branch = data_employees.fk_branch)))) JOIN contacts.data_branches ON ((clinics.fk_branch = data_branches.pk))) JOIN contacts.data_persons ON ((data_employees.fk_person = data_persons.pk))) JOIN lu_staff_type ON ((staff.fk_lu_staff_type = lu_staff_type.pk))) LEFT JOIN contacts.lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN contacts.data_numbers_persons ON ((data_numbers_persons.fk_person = staff.fk_person))) LEFT JOIN contacts.data_numbers employee_numbers ON (((employee_numbers.fk_branch = clinics.fk_branch) AND (employee_numbers.fk_person = staff.fk_person)))) LEFT JOIN contacts.data_numbers org_numbers ON (((org_numbers.fk_person IS NULL) AND (clinics.fk_branch = org_numbers.fk_branch)))) LEFT JOIN contacts.lu_marital ON ((data_persons.fk_marital = lu_marital.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN common.lu_occupations ON ((data_employees.fk_occupation = lu_occupations.pk))) LEFT JOIN common.lu_ethnicity ON ((data_persons.fk_ethnicity = lu_ethnicity.pk))) LEFT JOIN common.lu_languages ON ((data_persons.fk_language = lu_languages.pk))) LEFT JOIN blobs.images ON ((data_persons.fk_image = images.pk))) JOIN lu_staff_roles ON ((staff.fk_role = lu_staff_roles.pk))) JOIN contacts.lu_employee_status ON ((staff.fk_status = lu_employee_status.pk))) JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) LEFT JOIN contacts.lu_address_types ON ((data_addresses.fk_lu_address_type = lu_address_types.pk)));
+    SELECT ((staff.pk || '-'::text) || data_addresses.pk) AS pk_view, ((data_persons.firstname || ' '::text) || data_persons.surname) AS wholename, staff.fk_person, staff.fk_role, staff.fk_status, staff.logon_name, data_numbers.provider_number, data_numbers_persons.prescriber_number, staff.fk_lu_staff_type, staff.logon_date_from, staff.logon_date_to, link_staff_clinics1.fk_staff, link_staff_clinics1.fk_clinic, clinics.fk_branch, data_branches.branch, data_branches.fk_organisation, data_branches.fk_address, data_branches.memo AS branch_memo, data_branches.fk_category AS branch_category, data_branches.deleted AS branch_deleted, data_employees.pk AS fk_employee, data_employees.fk_occupation, data_employees.memo AS employee_memo, data_employees.deleted AS employee_deleted, data_persons.firstname, data_persons.surname, data_persons.salutation, data_persons.birthdate, data_persons.fk_ethnicity, data_persons.fk_language, data_persons.memo AS person_memo, data_persons.fk_marital, data_persons.fk_title, data_persons.fk_sex, data_persons.country_code AS person_country_code, data_persons.fk_image, data_persons.retired, data_persons.deleted AS person_deleted, data_persons.deceased, data_persons.date_deceased, lu_title.title, lu_marital.marital, lu_sex.sex, lu_occupations.occupation, lu_ethnicity.ethnicity, lu_languages.language, images.image, images.md5sum, images.tag, images.fk_consult AS fk_consult_image, images.deleted AS image_deleted, lu_staff_roles.role, lu_staff_type.type AS staff_type, lu_employee_status.status, data_organisations.organisation, data_organisations.deleted AS organisation_deleted, data_addresses.street1, data_addresses.street2, data_addresses.fk_town, lu_address_types.type AS address_type, data_addresses.preferred_address, data_addresses.postal_address, data_addresses.head_office, data_addresses.geolocation, data_addresses.country_code, data_addresses.fk_lu_address_type, data_addresses.deleted AS address_deleted, lu_towns.postcode, lu_towns.town, lu_towns.state, link_staff_clinics1.pk AS fk_link_staff_clinic, staff.qualifications, data_persons.surname_normalised, org_numbers.hpio, data_numbers_persons.hpii, org_numbers.hic_location_id FROM ((((((((((((((((((((((staff JOIN link_staff_clinics link_staff_clinics1 ON ((staff.pk = link_staff_clinics1.fk_staff))) JOIN clinics ON ((link_staff_clinics1.fk_clinic = clinics.pk))) JOIN contacts.data_employees ON (((staff.fk_person = data_employees.fk_person) AND (clinics.fk_branch = data_employees.fk_branch)))) JOIN contacts.data_branches ON ((clinics.fk_branch = data_branches.pk))) JOIN contacts.data_persons ON ((data_employees.fk_person = data_persons.pk))) JOIN lu_staff_type ON ((staff.fk_lu_staff_type = lu_staff_type.pk))) LEFT JOIN contacts.lu_sex ON ((data_persons.fk_sex = lu_sex.pk))) LEFT JOIN contacts.data_numbers_persons ON ((data_numbers_persons.fk_person = staff.fk_person))) LEFT JOIN contacts.data_numbers ON (((data_numbers.fk_person = staff.fk_person) AND (clinics.fk_branch = data_numbers.fk_branch)))) LEFT JOIN contacts.data_numbers org_numbers ON (((org_numbers.fk_person IS NULL) AND (clinics.fk_branch = data_numbers.fk_branch)))) LEFT JOIN contacts.lu_marital ON ((data_persons.fk_marital = lu_marital.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN common.lu_occupations ON ((data_employees.fk_occupation = lu_occupations.pk))) LEFT JOIN common.lu_ethnicity ON ((data_persons.fk_ethnicity = lu_ethnicity.pk))) LEFT JOIN common.lu_languages ON ((data_persons.fk_language = lu_languages.pk))) LEFT JOIN blobs.images ON ((data_persons.fk_image = images.pk))) JOIN lu_staff_roles ON ((staff.fk_role = lu_staff_roles.pk))) JOIN contacts.lu_employee_status ON ((staff.fk_status = lu_employee_status.pk))) JOIN contacts.data_organisations ON ((data_branches.fk_organisation = data_organisations.pk))) LEFT JOIN contacts.data_addresses ON ((data_branches.fk_address = data_addresses.pk))) LEFT JOIN contacts.lu_towns ON ((data_addresses.fk_town = lu_towns.pk))) LEFT JOIN contacts.lu_address_types ON ((data_addresses.fk_lu_address_type = lu_address_types.pk)));
 
 
 ALTER TABLE admin.vwstaffinclinics OWNER TO easygp;
@@ -2281,6 +2444,7 @@ ALTER SEQUENCE bulk_billing_claims_pk_seq OWNED BY bulk_billing_claims.pk;
 
 CREATE TABLE fee_schedule (
     pk integer NOT NULL,
+    item text,
     mbs_item text,
     user_item text,
     ama_item text,
@@ -2338,13 +2502,6 @@ COMMENT ON COLUMN fee_schedule.descriptor_brief IS 'a brief description of a lon
 --
 
 COMMENT ON COLUMN fee_schedule.gst_rate IS 'the goods and services tax rate';
-
-
---
--- Name: COLUMN fee_schedule.number_of_patients; Type: COMMENT; Schema: billing; Owner: easygp
---
-
-COMMENT ON COLUMN fee_schedule.number_of_patients IS 'the number of patients to which this item applies, usually 1, but e.g nursing homes or group therapy sessions can be up to 7';
 
 
 --
@@ -2822,7 +2979,7 @@ ALTER SEQUENCE lu_reasons_not_billed_pk_seq OWNED BY lu_reasons_not_billed.pk;
 
 CREATE TABLE lu_reports (
     pk integer NOT NULL,
-    report_title text NOT NULL
+    report_title text
 );
 
 
@@ -2935,12 +3092,33 @@ ALTER SEQUENCE prices_pk_seq OWNED BY prices.pk;
 --
 
 CREATE TABLE reports (
-    pk integer,
-    report_title text
+    pk integer NOT NULL,
+    report_title text NOT NULL
 );
 
 
 ALTER TABLE billing.reports OWNER TO easygp;
+
+--
+-- Name: reports_pk_seq; Type: SEQUENCE; Schema: billing; Owner: easygp
+--
+
+CREATE SEQUENCE reports_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE billing.reports_pk_seq OWNER TO easygp;
+
+--
+-- Name: reports_pk_seq; Type: SEQUENCE OWNED BY; Schema: billing; Owner: easygp
+--
+
+ALTER SEQUENCE reports_pk_seq OWNED BY reports.pk;
+
 
 SET search_path = clerical, pg_catalog;
 
@@ -2973,7 +3151,6 @@ CREATE TABLE data_patients (
     fk_lu_default_billing_level integer,
     fk_payer_branch integer,
     nursing_home_resident boolean DEFAULT false,
-    fk_payer integer,
     pcehr_consent character(1) DEFAULT 'n'::bpchar NOT NULL,
     ihi text,
     ihi_updated timestamp without time zone,
@@ -3126,7 +3303,7 @@ SET search_path = billing, pg_catalog;
 --
 
 CREATE VIEW vwbulkbilleditems AS
-    SELECT items_billed.pk AS pk_items_billed, items_billed.fk_invoice, items_billed.amount, items_billed.fk_lu_billing_type, invoices.fk_branch, invoices.fk_patient, invoices.fk_staff_provided_service, fee_schedule.mbs_item, invoices.paid, invoices.latex, invoices.fk_lu_bulk_billing_type, invoices.visit_date, ((data_persons.firstname || ' '::text) || data_persons.surname) AS patient_wholename, link_invoice_bulk_bill_claim.fk_claim FROM (((((invoices JOIN items_billed ON ((invoices.pk = items_billed.fk_invoice))) JOIN fee_schedule ON ((items_billed.fk_fee_schedule = fee_schedule.pk))) JOIN clerical.data_patients ON ((invoices.fk_patient = data_patients.pk))) JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) LEFT JOIN link_invoice_bulk_bill_claim ON ((invoices.pk = link_invoice_bulk_bill_claim.fk_invoice))) WHERE (invoices.fk_lu_bulk_billing_type IS NOT NULL);
+    SELECT items_billed.pk AS pk_items_billed, items_billed.fk_invoice, items_billed.amount, items_billed.fk_lu_billing_type, invoices.fk_branch, invoices.fk_patient, invoices.fk_staff_provided_service, fee_schedule.mbs_item, fee_schedule.item, invoices.paid, invoices.latex, invoices.fk_lu_bulk_billing_type, invoices.visit_date, ((data_persons.firstname || ' '::text) || data_persons.surname) AS patient_wholename, link_invoice_bulk_bill_claim.fk_claim FROM (((((invoices JOIN items_billed ON ((invoices.pk = items_billed.fk_invoice))) JOIN fee_schedule ON ((items_billed.fk_fee_schedule = fee_schedule.pk))) JOIN clerical.data_patients ON ((invoices.fk_patient = data_patients.pk))) JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) LEFT JOIN link_invoice_bulk_bill_claim ON ((invoices.pk = link_invoice_bulk_bill_claim.fk_invoice))) WHERE (invoices.fk_lu_bulk_billing_type IS NOT NULL);
 
 
 ALTER TABLE billing.vwbulkbilleditems OWNER TO easygp;
@@ -3247,9 +3424,9 @@ SET search_path = contacts, pg_catalog;
 
 CREATE TABLE links_persons_addresses (
     pk integer NOT NULL,
-    fk_address integer NOT NULL,
-    fk_person integer NOT NULL,
-    deleted boolean DEFAULT false NOT NULL
+    fk_address integer,
+    fk_person integer,
+    deleted boolean DEFAULT false
 );
 
 
@@ -3335,9 +3512,9 @@ CREATE TABLE data_communications (
     pk integer NOT NULL,
     value text NOT NULL,
     note text,
-    preferred_method boolean DEFAULT false NOT NULL,
-    confidential boolean DEFAULT false NOT NULL,
-    deleted boolean DEFAULT false NOT NULL,
+    preferred_method boolean DEFAULT false,
+    confidential boolean DEFAULT false,
+    deleted boolean DEFAULT false,
     fk_type integer NOT NULL
 );
 
@@ -3350,9 +3527,9 @@ ALTER TABLE contacts.data_communications OWNER TO easygp;
 
 CREATE TABLE links_branches_comms (
     pk integer NOT NULL,
-    fk_branch integer NOT NULL,
-    fk_comm integer NOT NULL,
-    deleted boolean DEFAULT false NOT NULL
+    fk_branch integer,
+    fk_comm integer,
+    deleted boolean DEFAULT false
 );
 
 
@@ -3388,14 +3565,14 @@ COMMENT ON VIEW vwpersonsincludingpatients IS 'a view of all persons including t
 SET search_path = billing, pg_catalog;
 
 --
--- Name: vwdaylist; Type: VIEW; Schema: billing; Owner: easygp
+-- Name: vwdaylist; Type: VIEW; Schema: billing; Owner: postgres
 --
 
 CREATE VIEW vwdaylist AS
     SELECT ((bookings.pk || '-'::text) || items_billed.pk) AS pk_view, bookings.pk AS fk_appointment, bookings.fk_patient, bookings.fk_lu_reason_not_billed, data_patients.fk_lu_centrelink_card_type, invoices.pk AS fk_invoice, invoices.paid, invoices.fk_payer_person, invoices.fk_payer_branch, invoices.latex, invoices.total_bill, invoices.total_gst, invoices.total_paid, invoices.fk_staff_provided_service, invoices.fk_lu_bulk_billing_type, lu_bulk_billing_type.type AS bulk_billing_type, bookings.begin AS appointment_date, COALESCE(COALESCE(fee_schedule.ama_item, fee_schedule.mbs_item), fee_schedule.user_item) AS item, fee_schedule.descriptor_brief, items_billed.amount, items_billed.amount_gst, items_billed.pk AS fk_items_billed, payments_received.fk_lu_payment_method, payments_received.amount AS payment_amount, lu_billing_type.type AS billing_type, lu_payment_method.method AS payment_method, NULL::text AS reason_not_billed, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename, data_persons.firstname, data_persons.surname, lu_title.title, data_persons.fk_sex, COALESCE(vworganisations.organisation, vwpersonsincludingpatients.wholename) AS account_to_name, clinics.fk_branch FROM (((((((((((((clerical.bookings JOIN invoices ON ((invoices.fk_appointment = bookings.pk))) JOIN admin.clinics ON ((bookings.fk_clinic = clinics.pk))) JOIN clerical.data_patients ON ((bookings.fk_patient = data_patients.pk))) LEFT JOIN lu_bulk_billing_type ON ((invoices.fk_lu_bulk_billing_type = lu_bulk_billing_type.pk))) JOIN items_billed ON ((invoices.pk = items_billed.fk_invoice))) JOIN fee_schedule ON ((items_billed.fk_fee_schedule = fee_schedule.pk))) JOIN lu_billing_type ON ((items_billed.fk_lu_billing_type = lu_billing_type.pk))) LEFT JOIN contacts.vworganisations ON ((invoices.fk_payer_branch = vworganisations.fk_branch))) LEFT JOIN contacts.vwpersonsincludingpatients ON ((invoices.fk_payer_person = vwpersonsincludingpatients.fk_person))) JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) LEFT JOIN payments_received ON ((invoices.pk = payments_received.fk_invoice))) LEFT JOIN lu_payment_method ON ((payments_received.fk_lu_payment_method = lu_payment_method.pk))) WHERE (bookings.fk_lu_reason_not_billed IS NULL) UNION SELECT ((bookings.pk || '-'::text) || '0'::text) AS pk_view, bookings.pk AS fk_appointment, bookings.fk_patient, bookings.fk_lu_reason_not_billed, NULL::integer AS fk_lu_centrelink_card_type, NULL::integer AS fk_invoice, NULL::boolean AS paid, NULL::integer AS fk_payer_person, NULL::integer AS fk_payer_branch, NULL::text AS latex, NULL::money AS total_bill, NULL::money AS total_gst, NULL::money AS total_paid, bookings.fk_staff AS fk_staff_provided_service, NULL::integer AS fk_lu_bulk_billing_type, NULL::text AS bulk_billing_type, bookings.begin AS appointment_date, NULL::text AS item, NULL::text AS descriptor_brief, NULL::money AS amount, NULL::money AS amount_gst, NULL::integer AS fk_items_billed, NULL::integer AS fk_lu_payment_method, NULL::money AS payment_amount, NULL::text AS billing_type, NULL::text AS payment_method, lu_reasons_not_billed.reason AS reason_not_billed, (((lu_title.title || ' '::text) || (data_persons.firstname || ' '::text)) || (data_persons.surname || ' '::text)) AS wholename, data_persons.firstname, data_persons.surname, lu_title.title, data_persons.fk_sex, NULL::text AS account_to_name, clinics.fk_branch FROM (((((clerical.bookings JOIN clerical.data_patients ON ((bookings.fk_patient = data_patients.pk))) JOIN admin.clinics ON ((bookings.fk_clinic = clinics.pk))) LEFT JOIN lu_reasons_not_billed ON ((bookings.fk_lu_reason_not_billed = lu_reasons_not_billed.pk))) JOIN contacts.data_persons ON ((data_patients.fk_person = data_persons.pk))) JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) WHERE (bookings.fk_lu_reason_not_billed IS NOT NULL);
 
 
-ALTER TABLE billing.vwdaylist OWNER TO easygp;
+ALTER TABLE billing.vwdaylist OWNER TO postgres;
 
 --
 -- Name: vwfees; Type: VIEW; Schema: billing; Owner: easygp
@@ -3422,7 +3599,7 @@ ALTER TABLE billing.vwinvoices OWNER TO easygp;
 --
 
 CREATE VIEW vwitemsbilled AS
-    SELECT items_billed.pk AS pk_items_billed, items_billed.fk_fee_schedule, items_billed.amount, items_billed.amount_gst, items_billed.fk_invoice, items_billed.fk_lu_billing_type, lu_billing_type.type AS billing_type, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, fee_schedule.descriptor, fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule FROM items_billed, lu_billing_type, fee_schedule WHERE ((lu_billing_type.pk = items_billed.fk_lu_billing_type) AND (items_billed.fk_fee_schedule = fee_schedule.pk));
+    SELECT items_billed.pk AS pk_items_billed, items_billed.fk_fee_schedule, items_billed.amount, items_billed.amount_gst, items_billed.fk_invoice, items_billed.fk_lu_billing_type, lu_billing_type.type AS billing_type, fee_schedule.item, fee_schedule.mbs_item, fee_schedule.user_item, fee_schedule.ama_item, fee_schedule.descriptor, fee_schedule.descriptor_brief, fee_schedule.gst_rate, fee_schedule.percentage_fee_rule FROM items_billed, lu_billing_type, fee_schedule WHERE ((lu_billing_type.pk = items_billed.fk_lu_billing_type) AND (items_billed.fk_fee_schedule = fee_schedule.pk));
 
 
 ALTER TABLE billing.vwitemsbilled OWNER TO easygp;
@@ -3432,7 +3609,7 @@ ALTER TABLE billing.vwitemsbilled OWNER TO easygp;
 --
 
 CREATE VIEW vwitemsandinvoices AS
-    SELECT vwitemsbilled.pk_items_billed, vwitemsbilled.fk_fee_schedule, vwitemsbilled.amount, vwitemsbilled.amount_gst, vwitemsbilled.fk_lu_billing_type, vwitemsbilled.billing_type, vwitemsbilled.mbs_item, vwitemsbilled.user_item, vwitemsbilled.ama_item, vwitemsbilled.descriptor, vwitemsbilled.descriptor_brief, vwitemsbilled.gst_rate, vwitemsbilled.percentage_fee_rule, vwinvoices.fk_invoice, vwinvoices.notes, vwinvoices.fk_staff_invoicing, vwinvoices.fk_patient, vwinvoices.date_printed, vwinvoices.fk_staff_provided_service, vwinvoices.date_invoiced, vwinvoices.paid, vwinvoices.fk_payer_person, vwinvoices.fk_payer_branch, vwinvoices.account_to_name, vwinvoices.account_to_branch, vwinvoices.account_to_street, vwinvoices.account_to_town_postcode, vwinvoices.latex, vwinvoices.fk_branch, vwinvoices.visit_date, vwinvoices.fk_appointment, vwinvoices.appointment_time, vwinvoices.duration, vwinvoices.reference, vwinvoices.fk_lu_bulk_billing_type, vwinvoices.total_bill, vwinvoices.total_paid, vwinvoices.total_gst, vwinvoices.due, vwinvoices.staff_invoicing_wholename, vwinvoices.staff_provided_service_wholename, vwinvoices.staff_provided_service_provider_number, vwinvoices.australian_business_number, vwinvoices.patient_firstname, vwinvoices.patient_surname, vwinvoices.patient_title, vwinvoices.patient_fk_sex, vwinvoices.patient_sex, vwinvoices.patient_wholename, vwinvoices.fk_lu_centrelink_card_type, vwinvoices.fk_lu_default_billing_level, vwinvoices.branch FROM vwitemsbilled, vwinvoices WHERE (vwinvoices.fk_invoice = vwitemsbilled.fk_invoice);
+    SELECT vwitemsbilled.pk_items_billed, vwitemsbilled.fk_fee_schedule, vwitemsbilled.amount, vwitemsbilled.amount_gst, vwitemsbilled.fk_lu_billing_type, vwitemsbilled.billing_type, vwitemsbilled.item, vwitemsbilled.mbs_item, vwitemsbilled.user_item, vwitemsbilled.ama_item, vwitemsbilled.descriptor, vwitemsbilled.descriptor_brief, vwitemsbilled.gst_rate, vwitemsbilled.percentage_fee_rule, vwinvoices.fk_invoice, vwinvoices.notes, vwinvoices.fk_staff_invoicing, vwinvoices.fk_patient, vwinvoices.date_printed, vwinvoices.fk_staff_provided_service, vwinvoices.date_invoiced, vwinvoices.paid, vwinvoices.fk_payer_person, vwinvoices.fk_payer_branch, vwinvoices.account_to_name, vwinvoices.account_to_branch, vwinvoices.account_to_street, vwinvoices.account_to_town_postcode, vwinvoices.latex, vwinvoices.fk_branch, vwinvoices.visit_date, vwinvoices.fk_appointment, vwinvoices.appointment_time, vwinvoices.duration, vwinvoices.reference, vwinvoices.fk_lu_bulk_billing_type, vwinvoices.total_bill, vwinvoices.total_paid, vwinvoices.total_gst, vwinvoices.due, vwinvoices.staff_invoicing_wholename, vwinvoices.staff_provided_service_wholename, vwinvoices.staff_provided_service_provider_number, vwinvoices.australian_business_number, vwinvoices.patient_firstname, vwinvoices.patient_surname, vwinvoices.patient_title, vwinvoices.patient_fk_sex, vwinvoices.patient_sex, vwinvoices.patient_wholename, vwinvoices.fk_lu_centrelink_card_type, vwinvoices.fk_lu_default_billing_level, vwinvoices.branch FROM vwitemsbilled, vwinvoices WHERE (vwinvoices.fk_invoice = vwitemsbilled.fk_invoice);
 
 
 ALTER TABLE billing.vwitemsandinvoices OWNER TO easygp;
@@ -5276,7 +5453,7 @@ COMMENT ON COLUMN lu_systems.preferred IS 'true if this is the preferred system'
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: atc; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: atc; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE atc (
@@ -5285,17 +5462,17 @@ CREATE TABLE atc (
 );
 
 
-ALTER TABLE drugs.atc OWNER TO postgres;
+ALTER TABLE drugs.atc OWNER TO easygp;
 
 --
--- Name: TABLE atc; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE atc; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE atc IS 'table associating drug names and Anatomic Therapeutic Chemical (ATC) codes';
 
 
 --
--- Name: brand; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: brand; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE brand (
@@ -5309,37 +5486,37 @@ CREATE TABLE brand (
     pk uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     product_information_filename text,
     product_information_filename_user text,
-    sct text,
     current boolean DEFAULT true NOT NULL,
+    sct text,
     CONSTRAINT sct_is_numeric CHECK ((sct ~ '^[0-9]+$'::text))
 );
 
 
-ALTER TABLE drugs.brand OWNER TO postgres;
+ALTER TABLE drugs.brand OWNER TO easygp;
 
 --
--- Name: TABLE brand; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE brand; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE brand IS 'many to many pivot table linking drug products and manufacturers';
 
 
 --
--- Name: COLUMN brand.fk_company; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN brand.fk_company; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN brand.fk_company IS 'may be null as we can put in our own drug preparations, creams etc';
 
 
 --
--- Name: COLUMN brand.price; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN brand.price; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN brand.price IS 'dispensed price for PBS drugs.';
 
 
 --
--- Name: COLUMN brand.from_pbs; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN brand.from_pbs; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN brand.from_pbs IS 'true if the brand comes from the PBS database, allows the list to be easily reloaded
@@ -5347,21 +5524,21 @@ with new PBS data. False means data we added ourselves.';
 
 
 --
--- Name: COLUMN brand.original_tga_text; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN brand.original_tga_text; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN brand.original_tga_text IS 'drugs imported from TGA database, the original label therein';
 
 
 --
--- Name: COLUMN brand.original_tga_code; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN brand.original_tga_code; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN brand.original_tga_code IS 'drugs imported from TGA database, their TGA code';
 
 
 --
--- Name: COLUMN brand.product_information_filename_user; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN brand.product_information_filename_user; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN brand.product_information_filename_user IS 'If the user downloads a product information file for their own use it then the filename 
@@ -5369,7 +5546,7 @@ COMMENT ON COLUMN brand.product_information_filename_user IS 'If the user downlo
 
 
 --
--- Name: product; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: product; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE product (
@@ -5396,38 +5573,38 @@ CREATE TABLE product (
 );
 
 
-ALTER TABLE drugs.product OWNER TO postgres;
+ALTER TABLE drugs.product OWNER TO easygp;
 
 --
--- Name: TABLE product; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE product; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE product IS 'dispensable form of a generic drug including strength, package size etc';
 
 
 --
--- Name: COLUMN product.generic; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN product.generic; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN product.generic IS 'full generic name in lower-case. For compounds names separated by ";"';
 
 
 --
--- Name: COLUMN product.salt; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN product.salt; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN product.salt IS 'if not normally part of generic name, the adjuvant salt';
 
 
 --
--- Name: COLUMN product.fk_form; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN product.fk_form; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN product.fk_form IS 'the form of the drug';
 
 
 --
--- Name: COLUMN product.strength; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN product.strength; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN product.strength IS 'the strength as a number followed by a unit. For compounds
@@ -5435,7 +5612,7 @@ strengths are separated by "-", in the same order as the names of the consititue
 
 
 --
--- Name: COLUMN product.salt_strength; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN product.salt_strength; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN product.salt_strength IS 'where a weight of the full salt is listed (being heavier than the weight 
@@ -5443,7 +5620,7 @@ of the solid drug. Must be in same unit';
 
 
 --
--- Name: COLUMN product.original_pbs_name; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN product.original_pbs_name; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN product.original_pbs_name IS 'for a drug imported from the PBS Yellow Book database, the original 
@@ -5451,7 +5628,7 @@ generic name as there listed, otherwise NULL';
 
 
 --
--- Name: COLUMN product.original_pbs_fs; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN product.original_pbs_fs; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN product.original_pbs_fs IS 'for a drug imported from the PBS Yellow Book database, the original 
@@ -5459,7 +5636,7 @@ form-and-strength field as there listed, otherwise NULL';
 
 
 --
--- Name: COLUMN product.free_comment; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN product.free_comment; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN product.free_comment IS 'a free-text comment on properties of the product. For example for complex packages
@@ -5467,7 +5644,7 @@ with tablets lof differing strengths';
 
 
 --
--- Name: COLUMN product.shared; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN product.shared; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN product.shared IS 'if true then the user/surgery wants to share this drug with easygp-central';
@@ -6763,8 +6940,8 @@ CREATE TABLE dictations (
     fk_referral integer,
     fk_progress_note integer,
     transcript text,
-    processed boolean DEFAULT false NOT NULL,
-    fk_user integer NOT NULL
+    fk_user integer NOT NULL,
+    processed boolean DEFAULT false NOT NULL
 );
 
 
@@ -7395,14 +7572,14 @@ COMMENT ON COLUMN referrals.finalised IS 'if true the letter has been partly wri
 SET search_path = clin_consult, pg_catalog;
 
 --
--- Name: vwdictations; Type: VIEW; Schema: clin_consult; Owner: postgres
+-- Name: vwdictations; Type: VIEW; Schema: clin_consult; Owner: easygp
 --
 
 CREATE VIEW vwdictations AS
     SELECT d.pk AS pk_dictation, d.fk_referral, d.transcript, d.fk_progress_note, d.fk_user, d.processed, d.filename, vwp.wholename, c.fk_patient FROM dictations d, clin_referrals.referrals r, contacts.vwpatients vwp, consult c WHERE (((d.fk_referral = r.pk) AND (r.fk_consult = c.pk)) AND (c.fk_patient = vwp.fk_patient));
 
 
-ALTER TABLE clin_consult.vwdictations OWNER TO postgres;
+ALTER TABLE clin_consult.vwdictations OWNER TO easygp;
 
 --
 -- Name: vwpatientconsults; Type: VIEW; Schema: clin_consult; Owner: easygp
@@ -8893,7 +9070,7 @@ SET search_path = contacts, pg_catalog;
 
 CREATE TABLE lu_contact_type (
     pk integer NOT NULL,
-    type text NOT NULL
+    type text
 );
 
 
@@ -8906,7 +9083,7 @@ SET search_path = clin_recalls, pg_catalog;
 --
 
 CREATE VIEW vwrecalls AS
-    SELECT consult.fk_patient, consult.consult_date, lu_reasons.reason, recalls.due, lu_urgency.urgency, lu_contact_type.type AS contact_by, lu_appointment_length.length, lu_title.title, ((data_persons.firstname || ' '::text) || data_persons.surname) AS wholename, recalls.fk_consult, recalls.pk AS pk_recall, recalls.fk_reason, recalls.fk_contact_method, recalls.fk_urgency, recalls.fk_appointment_length, recalls.fk_staff, recalls.active, recalls."interval", lu_units.abbrev_text, recalls.fk_interval_unit, recalls.additional_text, recalls.deleted, recalls.fk_pasthistory, recalls.fk_progressnote, recalls.fk_template, recalls.fk_sent, recalls.num_reminders, data_persons.firstname, data_persons.surname, data_persons.fk_title, data_persons.deceased, lu_contact_type.pk AS fk_contact_by, lu_recall_intervals."interval" AS default_interval, lu_recall_intervals.fk_interval_unit AS fk_default_interval_unit, lu_templates.name AS template_name, lu_templates.template, lu_templates.fk_lu_appointment_length AS template_fk_lu_appointment_length, lu_appointment_length1.length AS template_appointment_length, sent.latex, data_patients.fk_lu_active_status FROM ((((((((((((((recalls JOIN lu_recall_intervals ON ((recalls.fk_reason = lu_recall_intervals.fk_reason))) JOIN clin_consult.consult ON ((recalls.fk_consult = consult.pk))) JOIN lu_reasons ON ((recalls.fk_reason = lu_reasons.pk))) JOIN contacts.lu_contact_type ON ((recalls.fk_contact_method = lu_contact_type.pk))) JOIN admin.staff ON ((consult.fk_staff = staff.pk))) LEFT JOIN lu_templates ON ((recalls.fk_template = lu_templates.pk))) LEFT JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) JOIN common.lu_urgency ON ((recalls.fk_urgency = lu_urgency.pk))) LEFT JOIN common.lu_appointment_length ON ((recalls.fk_appointment_length = lu_appointment_length.pk))) LEFT JOIN common.lu_appointment_length lu_appointment_length1 ON ((lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk))) LEFT JOIN common.lu_units ON ((recalls.fk_interval_unit = lu_units.pk))) LEFT JOIN sent ON ((recalls.fk_sent = sent.pk))) JOIN clerical.data_patients ON ((consult.fk_patient = data_patients.pk))) ORDER BY consult.fk_patient, recalls.due;
+    SELECT consult.fk_patient, consult.consult_date, lu_reasons.reason, recalls.due, lu_urgency.urgency, lu_contact_type.type AS contact_by, lu_appointment_length.length, lu_title.title, ((data_persons.firstname || ' '::text) || data_persons.surname) AS wholename, recalls.fk_consult, recalls.pk AS pk_recall, recalls.fk_reason, recalls.fk_contact_method, recalls.fk_urgency, recalls.fk_appointment_length, recalls.fk_staff, recalls.active, recalls."interval", lu_units.abbrev_text, recalls.fk_interval_unit, recalls.additional_text, recalls.deleted, recalls.fk_pasthistory, recalls.fk_progressnote, recalls.fk_template, recalls.fk_sent, recalls.num_reminders, data_persons.firstname, data_persons.surname, data_persons.fk_title, lu_contact_type.pk AS fk_contact_by, lu_recall_intervals."interval" AS default_interval, lu_recall_intervals.fk_interval_unit AS fk_default_interval_unit, lu_templates.name AS template_name, lu_templates.template, lu_templates.fk_lu_appointment_length AS template_fk_lu_appointment_length, lu_appointment_length1.length AS template_appointment_length, sent.latex FROM (((((((((((((recalls JOIN lu_recall_intervals ON ((recalls.fk_reason = lu_recall_intervals.fk_reason))) JOIN clin_consult.consult ON ((recalls.fk_consult = consult.pk))) JOIN lu_reasons ON ((recalls.fk_reason = lu_reasons.pk))) JOIN contacts.lu_contact_type ON ((recalls.fk_contact_method = lu_contact_type.pk))) JOIN admin.staff ON ((consult.fk_staff = staff.pk))) LEFT JOIN lu_templates ON ((recalls.fk_template = lu_templates.pk))) LEFT JOIN contacts.data_persons ON ((staff.fk_person = data_persons.pk))) LEFT JOIN contacts.lu_title ON ((data_persons.fk_title = lu_title.pk))) JOIN common.lu_urgency ON ((recalls.fk_urgency = lu_urgency.pk))) LEFT JOIN common.lu_appointment_length ON ((recalls.fk_appointment_length = lu_appointment_length.pk))) LEFT JOIN common.lu_appointment_length lu_appointment_length1 ON ((lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk))) LEFT JOIN common.lu_units ON ((recalls.fk_interval_unit = lu_units.pk))) LEFT JOIN sent ON ((recalls.fk_sent = sent.pk))) ORDER BY consult.fk_patient, recalls.due;
 
 
 ALTER TABLE clin_recalls.vwrecalls OWNER TO easygp;
@@ -11566,7 +11743,7 @@ ALTER TABLE clin_prescribing.vwprescribedforhabits OWNER TO easygp;
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: form; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: form; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE form (
@@ -11576,10 +11753,10 @@ CREATE TABLE form (
 );
 
 
-ALTER TABLE drugs.form OWNER TO postgres;
+ALTER TABLE drugs.form OWNER TO easygp;
 
 --
--- Name: restriction; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: restriction; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE restriction (
@@ -11591,45 +11768,45 @@ CREATE TABLE restriction (
 );
 
 
-ALTER TABLE drugs.restriction OWNER TO postgres;
+ALTER TABLE drugs.restriction OWNER TO easygp;
 
 --
--- Name: TABLE restriction; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE restriction; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE restriction IS 'list of PBS restrictions and authority warnings';
 
 
 --
--- Name: COLUMN restriction.restriction; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN restriction.restriction; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN restriction.restriction IS 'the actual text of the authority requirement, in basic HTML';
 
 
 --
--- Name: COLUMN restriction.restriction_type; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN restriction.restriction_type; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN restriction.restriction_type IS '1=only applies to increased quantities/repeats, 2=only to normal amounts, 3=to both';
 
 
 --
--- Name: COLUMN restriction.code; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN restriction.code; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN restriction.code IS 'the authority code number, for doing streamlined authorities';
 
 
 --
--- Name: COLUMN restriction.streamlined; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN restriction.streamlined; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN restriction.streamlined IS 'true if this is a "streamlined" Authority';
 
 
 --
--- Name: schedules; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: schedules; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE schedules (
@@ -11638,19 +11815,19 @@ CREATE TABLE schedules (
 );
 
 
-ALTER TABLE drugs.schedules OWNER TO postgres;
+ALTER TABLE drugs.schedules OWNER TO easygp;
 
 SET search_path = clin_prescribing, pg_catalog;
 
 --
--- Name: vwprescribeditems; Type: VIEW; Schema: clin_prescribing; Owner: easygp
+-- Name: vwprescribeditems; Type: VIEW; Schema: clin_prescribing; Owner: ian
 --
 
 CREATE VIEW vwprescribeditems AS
-    SELECT prescribed.pk AS pk_view, medications.pk AS fk_medication, medications.start_date, medications.last_date, medications.active, medications.deleted AS medication_deleted, medications.fk_generic_product, consult.pk AS fk_consult, consult.consult_date AS date_script_written, consult.fk_patient, product.generic, brand.brand, product.strength, brand.product_information_filename, form.form, brand.pk AS fk_brand, prescribed.pk AS fk_prescribed, prescribed.repeats, prescribed.date_on_script, prescribed.quantity, prescribed_for.prescribed_for, prescribed.deleted AS prescribed_deleted, prescribed.authority_reason, prescribed.print_reason, instructions.instruction, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, product.atccode, product.salt, product.fk_form, product.fk_schedule, product.salt_strength, prescribed.fk_instruction, prescribed.fk_prescribed_for, prescribed.pbscode, prescribed.fk_lu_pbs_script_type, prescribed.restriction_code, prescribed.fk_code, prescribed.reg24, lu_pbs_script_type.type AS pbs_script_type, restriction.streamlined, restriction.restriction, restriction.restriction_type, schedules.schedule, drugs.format_strength(product.strength) AS display_strength, drugs.format_amount(product.amount, product.amount_unit, product.units_per_pack) AS display_packsize, product.units_per_pack, prescribed.medisecure_uuid, prescribed.medisecure_barcode, prescribed.escript_uploaded FROM (((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN prescribed ON ((consult.pk = prescribed.fk_consult))) JOIN medications medications ON ((prescribed.fk_medication = medications.pk))) JOIN prescribed_for ON ((prescribed.fk_prescribed_for = prescribed_for.pk))) JOIN instructions ON ((prescribed.fk_instruction = instructions.pk))) JOIN lu_pbs_script_type ON ((prescribed.fk_lu_pbs_script_type = lu_pbs_script_type.pk))) LEFT JOIN drugs.restriction ON (((prescribed.pbscode = (restriction.pbscode)::text) AND (prescribed.restriction_code = (restriction.code)::text)))) LEFT JOIN drugs.brand ON ((prescribed.fk_brand = brand.pk))) JOIN drugs.product ON ((medications.fk_generic_product = product.pk))) LEFT JOIN drugs.schedules ON ((product.fk_schedule = schedules.pk))) JOIN drugs.form ON ((product.fk_form = form.pk)));
+    SELECT prescribed.pk AS pk_view, medications.pk AS fk_medication, medications.start_date, medications.last_date, medications.active, medications.deleted AS medication_deleted, medications.fk_generic_product, consult.pk AS fk_consult, consult.consult_date AS date_script_written, consult.fk_patient, product.generic, brand.brand, product.strength, brand.product_information_filename, form.form, brand.pk AS fk_brand, prescribed.pk AS fk_prescribed, prescribed.repeats, prescribed.date_on_script, prescribed.quantity, prescribed_for.prescribed_for, prescribed.deleted AS prescribed_deleted, prescribed.authority_reason, prescribed.print_reason, instructions.instruction, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, product.atccode, product.salt, product.fk_form, product.fk_schedule, product.salt_strength, prescribed.fk_instruction, prescribed.fk_prescribed_for, prescribed.pbscode, prescribed.fk_lu_pbs_script_type, prescribed.restriction_code, prescribed.fk_code, prescribed.reg24, lu_pbs_script_type.type AS pbs_script_type, restriction.streamlined, restriction.restriction, restriction.restriction_type, schedules.schedule, drugs.format_strength(product.strength) AS display_strength, drugs.format_amount(product.amount, product.amount_unit, product.units_per_pack) AS display_packsize, product.units_per_pack, prescribed.medisecure_uuid, prescribed.medisecure_barcode, prescribed.escript_uploaded, prescribed.script_number, product.sct AS product_sct, brand.sct AS brand_sct, product.amount, product.amount_unit, prescribed.brand_substitution, brand.fk_company, product.original_pbs_name, prescribed.authority_script_number, prescribed.authority_approval_number, prescribed.authority_post_to_patient, prescribed.concession_details, prescribed.fk_progress_note, prescribed.printed, prescribed.latex FROM (((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN prescribed ON ((consult.pk = prescribed.fk_consult))) JOIN medications medications ON ((prescribed.fk_medication = medications.pk))) JOIN prescribed_for ON ((prescribed.fk_prescribed_for = prescribed_for.pk))) JOIN instructions ON ((prescribed.fk_instruction = instructions.pk))) JOIN lu_pbs_script_type ON ((prescribed.fk_lu_pbs_script_type = lu_pbs_script_type.pk))) LEFT JOIN drugs.restriction ON (((prescribed.pbscode = (restriction.pbscode)::text) AND (prescribed.restriction_code = (restriction.code)::text)))) LEFT JOIN drugs.brand ON ((prescribed.fk_brand = brand.pk))) JOIN drugs.product ON ((medications.fk_generic_product = product.pk))) LEFT JOIN drugs.schedules ON ((product.fk_schedule = schedules.pk))) JOIN drugs.form ON ((product.fk_form = form.pk)));
 
 
-ALTER TABLE clin_prescribing.vwprescribeditems OWNER TO easygp;
+ALTER TABLE clin_prescribing.vwprescribeditems OWNER TO ian;
 
 SET search_path = clin_procedures, pg_catalog;
 
@@ -12740,7 +12917,7 @@ ALTER TABLE clin_recalls.vwreasons OWNER TO easygp;
 --
 
 CREATE VIEW vwrecallsdue AS
-    SELECT recalls.pk AS pk_recall, recalls.fk_consult, recalls.due, (recalls.due - date(now())) AS days_due, recalls.fk_reason, recalls.fk_contact_method, recalls.fk_urgency, recalls.fk_appointment_length, recalls.fk_staff, recalls.active, recalls.additional_text, recalls.deleted, recalls."interval", recalls.fk_interval_unit, recalls.fk_progressnote, recalls.fk_pasthistory, recalls.fk_sent, recalls.num_reminders, sent.latex, sent.date AS date_reminder_sent, lu_units.abbrev_text, vwpatients.fk_person, vwpatients.wholename, vwpatients.firstname, vwpatients.surname, vwpatients.salutation, vwpatients.birthdate, vwpatients.age_numeric, vwpatients.sex, vwpatients.deceased, vwpatients.title, vwpatients.street1, vwpatients.street2, vwpatients.town, vwpatients.state, vwpatients.postcode, vwpatients.language_problems, vwpatients.language, consult.fk_patient, vwstaff.firstname AS staff_to_see_firstname, vwstaff.surname AS staff_to_see_surname, vwstaff.wholename AS staff_to_see_wholename, vwstaff.title AS staff_to_see_title, lu_reasons.reason, lu_urgency.urgency, lu_contact_type.type AS contact_method, lu_appointment_length.length AS appointment_length, consult.consult_date, recalls.fk_template, lu_appointment_length1.length, lu_templates.name, lu_templates.template FROM (((((((((((recalls JOIN clin_consult.consult ON ((recalls.fk_consult = consult.pk))) JOIN contacts.vwpatients ON ((consult.fk_patient = vwpatients.fk_patient))) JOIN admin.vwstaff ON ((recalls.fk_staff = vwstaff.fk_staff))) JOIN lu_reasons ON ((recalls.fk_reason = lu_reasons.pk))) JOIN common.lu_urgency ON ((recalls.fk_urgency = lu_urgency.pk))) JOIN contacts.lu_contact_type ON ((recalls.fk_contact_method = lu_contact_type.pk))) JOIN common.lu_appointment_length ON ((recalls.fk_appointment_length = lu_appointment_length.pk))) LEFT JOIN common.lu_units ON ((recalls.fk_interval_unit = lu_units.pk))) LEFT JOIN lu_templates ON ((recalls.fk_template = lu_templates.pk))) LEFT JOIN common.lu_appointment_length lu_appointment_length1 ON ((lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk))) LEFT JOIN sent ON ((recalls.fk_sent = sent.pk))) WHERE (recalls.deleted = false) ORDER BY (recalls.due - date(now())), consult.fk_patient;
+    SELECT recalls.pk AS pk_recall, recalls.fk_consult, recalls.due, (recalls.due - date(now())) AS days_due, recalls.fk_reason, recalls.fk_contact_method, recalls.fk_urgency, recalls.fk_appointment_length, recalls.fk_staff, recalls.active, recalls.additional_text, recalls.deleted, recalls."interval", recalls.fk_interval_unit, recalls.fk_progressnote, recalls.fk_pasthistory, recalls.fk_sent, recalls.num_reminders, sent.latex, sent.date AS date_reminder_sent, lu_units.abbrev_text, vwpatients.fk_person, vwpatients.wholename, vwpatients.firstname, vwpatients.surname, vwpatients.salutation, vwpatients.birthdate, vwpatients.age_numeric, vwpatients.sex, vwpatients.title, vwpatients.street1, vwpatients.street2, vwpatients.town, vwpatients.state, vwpatients.postcode, vwpatients.language_problems, vwpatients.language, consult.fk_patient, vwstaff.firstname AS staff_to_see_firstname, vwstaff.surname AS staff_to_see_surname, vwstaff.wholename AS staff_to_see_wholename, vwstaff.title AS staff_to_see_title, lu_reasons.reason, lu_urgency.urgency, lu_contact_type.type AS contact_method, lu_appointment_length.length AS appointment_length, consult.consult_date, recalls.fk_template, lu_appointment_length1.length, lu_templates.name, lu_templates.template FROM (((((((((((recalls JOIN clin_consult.consult ON ((recalls.fk_consult = consult.pk))) JOIN contacts.vwpatients ON ((consult.fk_patient = vwpatients.fk_patient))) JOIN admin.vwstaff ON ((recalls.fk_staff = vwstaff.fk_staff))) JOIN lu_reasons ON ((recalls.fk_reason = lu_reasons.pk))) JOIN common.lu_urgency ON ((recalls.fk_urgency = lu_urgency.pk))) JOIN contacts.lu_contact_type ON ((recalls.fk_contact_method = lu_contact_type.pk))) JOIN common.lu_appointment_length ON ((recalls.fk_appointment_length = lu_appointment_length.pk))) LEFT JOIN common.lu_units ON ((recalls.fk_interval_unit = lu_units.pk))) LEFT JOIN lu_templates ON ((recalls.fk_template = lu_templates.pk))) LEFT JOIN common.lu_appointment_length lu_appointment_length1 ON ((lu_templates.fk_lu_appointment_length = lu_appointment_length1.pk))) LEFT JOIN sent ON ((recalls.fk_sent = sent.pk))) WHERE (recalls.deleted = false) ORDER BY (recalls.due - date(now())), consult.fk_patient;
 
 
 ALTER TABLE clin_recalls.vwrecallsdue OWNER TO easygp;
@@ -13677,8 +13854,8 @@ SET search_path = contacts, pg_catalog;
 
 CREATE TABLE images (
     pk integer NOT NULL,
-    image bytea NOT NULL,
-    deleted boolean NOT NULL
+    image bytea,
+    deleted boolean
 );
 
 
@@ -14252,8 +14429,11 @@ ALTER TABLE clin_vaccination.vaccinations OWNER TO easygp;
 --
 
 COMMENT ON COLUMN vaccinations.fk_site IS 'foreign key for common.lu_route_administrations.
+
   As sometimes we need to record a vaccine component as not given 
+
   for example when a child is having a catch up schedule then
+
   fk_site is 0';
 
 
@@ -14276,7 +14456,9 @@ COMMENT ON COLUMN vaccinations.date_given IS 'not a date field because sometimes
 --
 
 COMMENT ON COLUMN vaccinations.notes IS 'notes about the vaccine e.g this vaccine not given because child was 
+
  too old, in reference to a 6 month old getting her 2 month needles
+
  because  is late, hence no rotorix vaccine given';
 
 
@@ -14285,6 +14467,7 @@ COMMENT ON COLUMN vaccinations.notes IS 'notes about the vaccine e.g this vaccin
 --
 
 COMMENT ON COLUMN vaccinations.not_given IS 'if true then this vaccine was not given.  Recorded because a schedule
+
 can have several vaccines and one may not be given - we need to know why';
 
 
@@ -15908,14 +16091,14 @@ ALTER SEQUENCE lu_whisper_test_pk_seq OWNED BY lu_whisper_test.pk;
 
 
 --
--- Name: vwrecreationaldrugs; Type: VIEW; Schema: common; Owner: postgres
+-- Name: vwrecreationaldrugs; Type: VIEW; Schema: common; Owner: easygp
 --
 
 CREATE VIEW vwrecreationaldrugs AS
     SELECT lu_recreational_drugs.pk, lu_recreational_drugs.drug, lu_route_administration.route, lu_recreational_drugs.alternative_names, lu_recreational_drugs.illicit, lu_recreational_drugs.quantification, lu_recreational_drugs.default_fk_lu_route_administration FROM lu_route_administration, lu_recreational_drugs WHERE (lu_recreational_drugs.default_fk_lu_route_administration = lu_route_administration.pk);
 
 
-ALTER TABLE common.vwrecreationaldrugs OWNER TO postgres;
+ALTER TABLE common.vwrecreationaldrugs OWNER TO easygp;
 
 --
 -- Name: vwreligions; Type: VIEW; Schema: common; Owner: easygp
@@ -16145,9 +16328,9 @@ ALTER SEQUENCE links_branches_comms_pk_seq OWNED BY links_branches_comms.pk;
 
 CREATE TABLE links_employees_comms (
     pk integer NOT NULL,
-    fk_employee integer NOT NULL,
-    fk_comm integer NOT NULL,
-    deleted boolean DEFAULT false NOT NULL
+    fk_employee integer,
+    fk_comm integer,
+    deleted boolean DEFAULT false
 );
 
 
@@ -16201,9 +16384,9 @@ ALTER SEQUENCE links_persons_addresses_pk_seq OWNED BY links_persons_addresses.p
 
 CREATE TABLE links_persons_comms (
     pk integer NOT NULL,
-    fk_person integer NOT NULL,
-    fk_comm integer NOT NULL,
-    deleted boolean DEFAULT false NOT NULL
+    fk_person integer,
+    fk_comm integer,
+    deleted boolean DEFAULT false
 );
 
 
@@ -16320,9 +16503,9 @@ ALTER SEQUENCE lu_employee_status_pk_seq OWNED BY lu_employee_status.pk;
 
 CREATE TABLE lu_firstnames (
     pk integer NOT NULL,
-    firstname text NOT NULL,
-    ord integer DEFAULT 1 NOT NULL,
-    sex character(1) NOT NULL
+    firstname text,
+    ord integer,
+    sex character(1)
 );
 
 
@@ -16508,6 +16691,17 @@ ALTER TABLE contacts.lu_towns_pk_seq OWNER TO easygp;
 
 ALTER SEQUENCE lu_towns_pk_seq OWNED BY lu_towns.pk;
 
+
+--
+-- Name: todo; Type: TABLE; Schema: contacts; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE todo (
+    text text
+);
+
+
+ALTER TABLE contacts.todo OWNER TO easygp;
 
 --
 -- Name: vwbranchescomms; Type: VIEW; Schema: contacts; Owner: easygp
@@ -17213,10 +17407,10 @@ ALTER SEQUENCE documents_pk_seq OWNED BY documents.pk;
 
 
 --
--- Name: hl7_messages_seq; Type: SEQUENCE; Schema: documents; Owner: easygp
+-- Name: hl7_messages; Type: SEQUENCE; Schema: documents; Owner: easygp
 --
 
-CREATE SEQUENCE hl7_messages_seq
+CREATE SEQUENCE hl7_messages
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -17224,7 +17418,7 @@ CREATE SEQUENCE hl7_messages_seq
     CACHE 1;
 
 
-ALTER TABLE documents.hl7_messages_seq OWNER TO easygp;
+ALTER TABLE documents.hl7_messages OWNER TO easygp;
 
 --
 -- Name: lu_archive_site; Type: TABLE; Schema: documents; Owner: easygp; Tablespace: 
@@ -18362,7 +18556,7 @@ ALTER TABLE drugbank.vwdrugatccodeinteractions OWNER TO easygp;
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: chapters; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: chapters; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE chapters (
@@ -18371,10 +18565,10 @@ CREATE TABLE chapters (
 );
 
 
-ALTER TABLE drugs.chapters OWNER TO postgres;
+ALTER TABLE drugs.chapters OWNER TO easygp;
 
 --
--- Name: clinical_effects; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: clinical_effects; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE clinical_effects (
@@ -18384,10 +18578,10 @@ CREATE TABLE clinical_effects (
 );
 
 
-ALTER TABLE drugs.clinical_effects OWNER TO postgres;
+ALTER TABLE drugs.clinical_effects OWNER TO easygp;
 
 --
--- Name: TABLE clinical_effects; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE clinical_effects; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE clinical_effects IS 'A list of side-effects and consequences of interactions.
@@ -18397,7 +18591,7 @@ too long for a pick list) and confirm with users if they want to create a new en
 
 
 --
--- Name: clinical_effects_pk_seq; Type: SEQUENCE; Schema: drugs; Owner: postgres
+-- Name: clinical_effects_pk_seq; Type: SEQUENCE; Schema: drugs; Owner: easygp
 --
 
 CREATE SEQUENCE clinical_effects_pk_seq
@@ -18408,17 +18602,17 @@ CREATE SEQUENCE clinical_effects_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugs.clinical_effects_pk_seq OWNER TO postgres;
+ALTER TABLE drugs.clinical_effects_pk_seq OWNER TO easygp;
 
 --
--- Name: clinical_effects_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs; Owner: postgres
+-- Name: clinical_effects_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs; Owner: easygp
 --
 
 ALTER SEQUENCE clinical_effects_pk_seq OWNED BY clinical_effects.pk;
 
 
 --
--- Name: company; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: company; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE company (
@@ -18430,45 +18624,45 @@ CREATE TABLE company (
 );
 
 
-ALTER TABLE drugs.company OWNER TO postgres;
+ALTER TABLE drugs.company OWNER TO easygp;
 
 --
--- Name: TABLE company; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE company; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE company IS 'list of pharmaceutical manufacturers/importers';
 
 
 --
--- Name: COLUMN company.company; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN company.company; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN company.company IS 'company name';
 
 
 --
--- Name: COLUMN company.address; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN company.address; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN company.address IS 'complete printable address, lines separated by commas';
 
 
 --
--- Name: COLUMN company.telephone; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN company.telephone; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN company.telephone IS 'phone number of company';
 
 
 --
--- Name: COLUMN company.facsimile; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN company.facsimile; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN company.facsimile IS 'fax number of company';
 
 
 --
--- Name: COLUMN company.code; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN company.code; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN company.code IS 'Two- or three-letter guaranteed-unique code of company. Two-letter codes come
@@ -18476,7 +18670,7 @@ from the PBS system. Three-letter codes assigned by me for companies that only p
 
 
 --
--- Name: evidence_levels; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: evidence_levels; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE evidence_levels (
@@ -18485,17 +18679,17 @@ CREATE TABLE evidence_levels (
 );
 
 
-ALTER TABLE drugs.evidence_levels OWNER TO postgres;
+ALTER TABLE drugs.evidence_levels OWNER TO easygp;
 
 --
--- Name: TABLE evidence_levels; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE evidence_levels; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE evidence_levels IS 'different levels of evidence for a fact in the database';
 
 
 --
--- Name: flags; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: flags; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE flags (
@@ -18504,17 +18698,17 @@ CREATE TABLE flags (
 );
 
 
-ALTER TABLE drugs.flags OWNER TO postgres;
+ALTER TABLE drugs.flags OWNER TO easygp;
 
 --
--- Name: TABLE flags; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE flags; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE flags IS 'flags for adjuvants such as ''gluten-free'', ''paediatric formulation'', etc.';
 
 
 --
--- Name: flags_pk_seq; Type: SEQUENCE; Schema: drugs; Owner: postgres
+-- Name: flags_pk_seq; Type: SEQUENCE; Schema: drugs; Owner: easygp
 --
 
 CREATE SEQUENCE flags_pk_seq
@@ -18525,17 +18719,17 @@ CREATE SEQUENCE flags_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugs.flags_pk_seq OWNER TO postgres;
+ALTER TABLE drugs.flags_pk_seq OWNER TO easygp;
 
 --
--- Name: flags_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs; Owner: postgres
+-- Name: flags_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs; Owner: easygp
 --
 
 ALTER SEQUENCE flags_pk_seq OWNED BY flags.pk;
 
 
 --
--- Name: info; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: info; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE info (
@@ -18554,24 +18748,24 @@ CREATE TABLE info (
 );
 
 
-ALTER TABLE drugs.info OWNER TO postgres;
+ALTER TABLE drugs.info OWNER TO easygp;
 
 --
--- Name: TABLE info; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE info; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE info IS 'any product information about a specific drug or class in HTML format';
 
 
 --
--- Name: COLUMN info.comment; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN info.comment; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN info.comment IS 'the drug product information in HTML format';
 
 
 --
--- Name: info_pk_seq; Type: SEQUENCE; Schema: drugs; Owner: postgres
+-- Name: info_pk_seq; Type: SEQUENCE; Schema: drugs; Owner: easygp
 --
 
 CREATE SEQUENCE info_pk_seq
@@ -18582,17 +18776,17 @@ CREATE SEQUENCE info_pk_seq
     CACHE 1;
 
 
-ALTER TABLE drugs.info_pk_seq OWNER TO postgres;
+ALTER TABLE drugs.info_pk_seq OWNER TO easygp;
 
 --
--- Name: info_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs; Owner: postgres
+-- Name: info_pk_seq; Type: SEQUENCE OWNED BY; Schema: drugs; Owner: easygp
 --
 
 ALTER SEQUENCE info_pk_seq OWNED BY info.pk;
 
 
 --
--- Name: link_atc_info; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: link_atc_info; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE link_atc_info (
@@ -18601,10 +18795,10 @@ CREATE TABLE link_atc_info (
 );
 
 
-ALTER TABLE drugs.link_atc_info OWNER TO postgres;
+ALTER TABLE drugs.link_atc_info OWNER TO easygp;
 
 --
--- Name: TABLE link_atc_info; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE link_atc_info; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE link_atc_info IS 'links one or more ATC codes (i.e. drugs or classes) to a piece of information. Generally one 
@@ -18612,7 +18806,7 @@ link, but for interactions or contraindications there may be more';
 
 
 --
--- Name: link_category_info; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: link_category_info; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE link_category_info (
@@ -18621,10 +18815,10 @@ CREATE TABLE link_category_info (
 );
 
 
-ALTER TABLE drugs.link_category_info OWNER TO postgres;
+ALTER TABLE drugs.link_category_info OWNER TO easygp;
 
 --
--- Name: TABLE link_category_info; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE link_category_info; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE link_category_info IS 'links information to a particular category: information only applies to 
@@ -18632,7 +18826,7 @@ this categoery.';
 
 
 --
--- Name: link_flag_product; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: link_flag_product; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE link_flag_product (
@@ -18641,17 +18835,17 @@ CREATE TABLE link_flag_product (
 );
 
 
-ALTER TABLE drugs.link_flag_product OWNER TO postgres;
+ALTER TABLE drugs.link_flag_product OWNER TO easygp;
 
 --
--- Name: TABLE link_flag_product; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE link_flag_product; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE link_flag_product IS 'many-to-many pivot table linking products to flags';
 
 
 --
--- Name: link_info_source; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: link_info_source; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE link_info_source (
@@ -18660,10 +18854,10 @@ CREATE TABLE link_info_source (
 );
 
 
-ALTER TABLE drugs.link_info_source OWNER TO postgres;
+ALTER TABLE drugs.link_info_source OWNER TO easygp;
 
 --
--- Name: patient_categories; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: patient_categories; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE patient_categories (
@@ -18672,17 +18866,17 @@ CREATE TABLE patient_categories (
 );
 
 
-ALTER TABLE drugs.patient_categories OWNER TO postgres;
+ALTER TABLE drugs.patient_categories OWNER TO easygp;
 
 --
--- Name: TABLE patient_categories; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE patient_categories; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE patient_categories IS 'enumeration of categories of patient populations for targeted drug warnings';
 
 
 --
--- Name: pbs; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: pbs; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE pbs (
@@ -18696,17 +18890,17 @@ CREATE TABLE pbs (
 );
 
 
-ALTER TABLE drugs.pbs OWNER TO postgres;
+ALTER TABLE drugs.pbs OWNER TO easygp;
 
 --
--- Name: TABLE pbs; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE pbs; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE pbs IS 'PBS-specific information about subsidy, authority riles, etc. Private-script only drugs wont have a entry in this table.';
 
 
 --
--- Name: COLUMN pbs.quantity; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN pbs.quantity; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN pbs.quantity IS 'quantity of packaged units dispensed under subsidy for any one prescription. 
@@ -18714,14 +18908,14 @@ AU: this the maximum quantity in the PBS Yellow Book.';
 
 
 --
--- Name: COLUMN pbs.max_rpt; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN pbs.max_rpt; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN pbs.max_rpt IS 'maximum number of repeat (refill) authorizations allowed on any one subsidised prescription (series)';
 
 
 --
--- Name: COLUMN pbs.restrictionflag; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN pbs.restrictionflag; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN pbs.restrictionflag IS 'U=unrestricted, R=restricted, A=authority';
@@ -18734,20 +18928,19 @@ COMMENT ON COLUMN pbs.restrictionflag IS 'U=unrestricted, R=restricted, A=author
 CREATE TABLE pbsconvert (
     fs character varying(200),
     done boolean,
-    route character varying(20),
     dose character varying(100),
     packsize integer,
     amount character varying(20),
     id integer,
-    form text,
-    comment text
+    comment text,
+    form text
 );
 
 
 ALTER TABLE drugs.pbsconvert OWNER TO easygp;
 
 --
--- Name: pharmacologic_mechanisms; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: pharmacologic_mechanisms; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE pharmacologic_mechanisms (
@@ -18756,10 +18949,10 @@ CREATE TABLE pharmacologic_mechanisms (
 );
 
 
-ALTER TABLE drugs.pharmacologic_mechanisms OWNER TO postgres;
+ALTER TABLE drugs.pharmacologic_mechanisms OWNER TO easygp;
 
 --
--- Name: product_information_files; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: product_information_files; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE product_information_files (
@@ -18767,10 +18960,10 @@ CREATE TABLE product_information_files (
 );
 
 
-ALTER TABLE drugs.product_information_files OWNER TO postgres;
+ALTER TABLE drugs.product_information_files OWNER TO easygp;
 
 --
--- Name: TABLE product_information_files; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE product_information_files; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE product_information_files IS 'the filenames of all the guild pdfs as supplied to us under the agreed 
@@ -18778,7 +18971,7 @@ terms and conditions of use';
 
 
 --
--- Name: product_information_unmatched; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: product_information_unmatched; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE product_information_unmatched (
@@ -18787,10 +18980,10 @@ CREATE TABLE product_information_unmatched (
 );
 
 
-ALTER TABLE drugs.product_information_unmatched OWNER TO postgres;
+ALTER TABLE drugs.product_information_unmatched OWNER TO easygp;
 
 --
--- Name: severity_level; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: severity_level; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE severity_level (
@@ -18799,17 +18992,17 @@ CREATE TABLE severity_level (
 );
 
 
-ALTER TABLE drugs.severity_level OWNER TO postgres;
+ALTER TABLE drugs.severity_level OWNER TO easygp;
 
 --
--- Name: TABLE severity_level; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE severity_level; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE severity_level IS 'different level of severity for warnings. Levels may control client behaviour';
 
 
 --
--- Name: sources; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: sources; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE sources (
@@ -18820,31 +19013,31 @@ CREATE TABLE sources (
 );
 
 
-ALTER TABLE drugs.sources OWNER TO postgres;
+ALTER TABLE drugs.sources OWNER TO easygp;
 
 --
--- Name: TABLE sources; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE sources; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE sources IS 'Source of any reference information in this database';
 
 
 --
--- Name: COLUMN sources.source_category; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN sources.source_category; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN sources.source_category IS 'p=peer reviewed, a=official authority, i=independent source, m=manufacturer, o=other, s=self defined';
 
 
 --
--- Name: COLUMN sources.source; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN sources.source; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN sources.source IS 'URL or address or similar informtion allowing to reproduce the source of information';
 
 
 --
--- Name: topic; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: topic; Type: TABLE; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE topic (
@@ -18855,24 +19048,24 @@ CREATE TABLE topic (
 );
 
 
-ALTER TABLE drugs.topic OWNER TO postgres;
+ALTER TABLE drugs.topic OWNER TO easygp;
 
 --
--- Name: TABLE topic; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: TABLE topic; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON TABLE topic IS 'topics for drug information, such as pharmaco-kinetics, indications, etc.';
 
 
 --
--- Name: COLUMN topic.target; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: COLUMN topic.target; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON COLUMN topic.target IS 'the target of this information: h=health professional, p=patient';
 
 
 --
--- Name: version; Type: TABLE; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: version; Type: TABLE; Schema: drugs; Owner: ian; Tablespace: 
 --
 
 CREATE TABLE version (
@@ -18882,30 +19075,30 @@ CREATE TABLE version (
 );
 
 
-ALTER TABLE drugs.version OWNER TO postgres;
+ALTER TABLE drugs.version OWNER TO ian;
 
 --
--- Name: vwdistinctbrandsforgenericproduct; Type: VIEW; Schema: drugs; Owner: postgres
+-- Name: vwdistinctbrandsforgenericproduct; Type: VIEW; Schema: drugs; Owner: easygp
 --
 
 CREATE VIEW vwdistinctbrandsforgenericproduct AS
     SELECT DISTINCT brand.pk AS pk_view, brand.fk_product, product.generic, brand.brand, brand.product_information_filename, brand.pk AS fk_brand FROM (brand JOIN product ON ((product.pk = brand.fk_product)));
 
 
-ALTER TABLE drugs.vwdistinctbrandsforgenericproduct OWNER TO postgres;
+ALTER TABLE drugs.vwdistinctbrandsforgenericproduct OWNER TO easygp;
 
 --
--- Name: vwpbs; Type: VIEW; Schema: drugs; Owner: postgres
+-- Name: vwpbs; Type: VIEW; Schema: drugs; Owner: easygp
 --
 
 CREATE VIEW vwpbs AS
     SELECT pbs.quantity, pbs.max_rpt, pbs.pbscode, pbs.chapter, pbs.restrictionflag, pbs.fk_product, ((CASE WHEN ((pbs.chapter)::text = 'GE'::text) THEN 'PBS'::text WHEN ((pbs.chapter)::text = 'R1'::text) THEN 'RPBS'::text WHEN ((pbs.chapter)::text = 'OT'::text) THEN 'OPTOMETRIST'::text WHEN ((pbs.chapter)::text = 'PL'::text) THEN 'PBS PALLIATIVE CARE'::text WHEN ((pbs.chapter)::text = 'GH'::text) THEN 'Section 100 (GROWTH HORMONE)'::text WHEN ((pbs.chapter)::text = 'IF'::text) THEN 'Section 100 (IVF/GIFT)'::text WHEN ((pbs.chapter)::text = 'PQ'::text) THEN 'Paraplegic/Quadriplegic'::text WHEN ((pbs.chapter)::text = 'MD'::text) THEN 'Section 100 (Opiate Addiction Treatment)'::text WHEN ((pbs.chapter)::text = 'MF'::text) THEN 'Section 100 (Botulinum Toxin Program)'::text WHEN ((pbs.chapter)::text = 'SY'::text) THEN 'Section 100 (Special Authority Items) - Private Hospitals'::text WHEN ((pbs.chapter)::text = 'SZ'::text) THEN 'Section 100 (Special Authority Items) - Public Hospitals'::text WHEN ((pbs.chapter)::text = 'CS'::text) THEN 'Section100 (chemotherapy special benefits)'::text WHEN ((pbs.chapter)::text = 'DB'::text) THEN 'Doctors Bag'::text WHEN ((pbs.chapter)::text = 'HB'::text) THEN 'Section 100 (highly specialised drugs - public hospital)'::text WHEN ((pbs.chapter)::text = 'HS'::text) THEN 'Section 100 (Highly specialised drugs)'::text WHEN ((pbs.chapter)::text = 'SB'::text) THEN 'SPECIAL BENEFITS'::text WHEN ((pbs.chapter)::text = 'CT'::text) THEN 'CHEMOTHERAPY SPECIAL BENEFITS'::text WHEN ((pbs.chapter)::text = 'DT'::text) THEN 'DENTAL'::text WHEN ((pbs.chapter)::text = 'DS'::text) THEN 'DENTAL SPECIAL BENEFITS'::text ELSE NULL::text END || ' '::text) || CASE WHEN ((pbs.restrictionflag)::text = 'U'::text) THEN 'UNRESTRICTED'::text WHEN ((pbs.restrictionflag)::text = 'R'::text) THEN 'RESTRICTED'::text ELSE CASE WHEN restriction.streamlined THEN 'STREAMLINED'::text ELSE 'AUTHORITY'::text END END) AS pbs_type, restriction.restriction, restriction.restriction_type, restriction.code AS restriction_code, restriction.streamlined FROM (pbs LEFT JOIN restriction ON (((pbs.pbscode)::text = (restriction.pbscode)::text)));
 
 
-ALTER TABLE drugs.vwpbs OWNER TO postgres;
+ALTER TABLE drugs.vwpbs OWNER TO easygp;
 
 --
--- Name: VIEW vwpbs; Type: COMMENT; Schema: drugs; Owner: postgres
+-- Name: VIEW vwpbs; Type: COMMENT; Schema: drugs; Owner: easygp
 --
 
 COMMENT ON VIEW vwpbs IS 'THESE ARE THE CHAPTERS:
@@ -18933,24 +19126,34 @@ SZ Section 100 (Special Authority Items) - Public Hospitals
 
 
 --
--- Name: vwdrugs; Type: VIEW; Schema: drugs; Owner: postgres
+-- Name: vwdrugs; Type: VIEW; Schema: drugs; Owner: easygp
 --
 
 CREATE VIEW vwdrugs AS
     SELECT ((brand.pk || (COALESCE(vwpbs.pbscode, ''::character varying))::text) || (COALESCE(vwpbs.restriction_code, ''::character varying))::text) AS pk_view, brand.fk_product, brand.fk_company, brand.brand, brand.pk AS fk_brand, brand.price, brand.from_pbs, product.atccode, product.generic, product.salt, product.fk_form, product.strength, format_strength(product.strength) AS display_strength, format_amount(product.amount, product.amount_unit, product.units_per_pack) AS display_packsize, product.units_per_pack, product.salt_strength, product.free_comment, product.fk_schedule, product.updated_at, product.pack_size, product.amount, product.amount_unit, schedules.schedule, form.form, brand.product_information_filename, brand.product_information_filename_user, COALESCE(vwpbs.quantity, product.pack_size) AS quantity, vwpbs.max_rpt, vwpbs.pbscode, vwpbs.chapter, atc.atcname, company.company, vwpbs.restrictionflag, vwpbs.pbs_type, vwpbs.restriction, vwpbs.restriction_type, vwpbs.restriction_code, vwpbs.streamlined, atc1.atccode AS class_code, atc1.atcname AS class_name FROM (((((((brand brand JOIN product ON ((brand.fk_product = product.pk))) JOIN form ON ((product.fk_form = form.pk))) JOIN atc ON (((product.atccode)::text = atc.atccode))) LEFT JOIN company ON (((company.code)::text = (brand.fk_company)::text))) LEFT JOIN vwpbs ON ((product.pk = vwpbs.fk_product))) LEFT JOIN schedules ON ((schedules.pk = product.fk_schedule))) LEFT JOIN atc atc1 ON (("substring"((product.atccode)::text, 1, 4) = atc1.atccode)));
 
 
-ALTER TABLE drugs.vwdrugs OWNER TO postgres;
+ALTER TABLE drugs.vwdrugs OWNER TO easygp;
 
 --
--- Name: vwgeneric; Type: VIEW; Schema: drugs; Owner: postgres
+-- Name: vwdrugs1; Type: VIEW; Schema: drugs; Owner: easygp
+--
+
+CREATE VIEW vwdrugs1 AS
+    SELECT ((brand.pk || (COALESCE(vwpbs.pbscode, ''::character varying))::text) || (COALESCE(vwpbs.restriction_code, ''::character varying))::text) AS pk_view, brand.fk_product, brand.fk_company, brand.brand, brand.pk AS fk_brand, brand.price, brand.from_pbs, product.atccode, product.generic, product.salt, product.fk_form, product.strength, product.salt_strength, product.free_comment, product.fk_schedule, product.updated_at, product.pack_size, product.amount, product.amount_unit, form.form, brand.product_information_filename, vwpbs.quantity, vwpbs.max_rpt, vwpbs.pbscode, vwpbs.chapter, atc.atcname, vwpbs.restrictionflag, vwpbs.pbs_type, vwpbs.restriction, vwpbs.restriction_type, vwpbs.restriction_code, vwpbs.streamlined FROM ((((brand brand JOIN product ON ((brand.fk_product = product.pk))) JOIN form ON ((product.fk_form = form.pk))) JOIN atc ON (((product.atccode)::text = atc.atccode))) LEFT JOIN vwpbs ON ((product.pk = vwpbs.fk_product)));
+
+
+ALTER TABLE drugs.vwdrugs1 OWNER TO easygp;
+
+--
+-- Name: vwgeneric; Type: VIEW; Schema: drugs; Owner: easygp
 --
 
 CREATE VIEW vwgeneric AS
     SELECT ((product.pk || (COALESCE(vwpbs.pbscode, ''::character varying))::text) || (COALESCE(vwpbs.restriction_code, ''::character varying))::text) AS pk_view, product.pk AS fk_product, NULL::character varying(3) AS fk_company, product.generic AS brand, NULL::uuid AS fk_brand, NULL::money AS price, NULL::boolean AS from_pbs, product.atccode, product.generic, product.salt, product.fk_form, product.strength, product.salt_strength, product.free_comment, product.updated_at, product.pack_size, product.amount, product.amount_unit, form.form, NULL::text AS product_information_filename, vwpbs.quantity, vwpbs.max_rpt, vwpbs.pbscode, vwpbs.chapter, vwpbs.restrictionflag, vwpbs.pbs_type, vwpbs.restriction, vwpbs.restriction_type, vwpbs.restriction_code, vwpbs.streamlined FROM ((product JOIN form ON ((product.fk_form = form.pk))) LEFT JOIN vwpbs ON ((product.pk = vwpbs.fk_product)));
 
 
-ALTER TABLE drugs.vwgeneric OWNER TO postgres;
+ALTER TABLE drugs.vwgeneric OWNER TO easygp;
 
 SET search_path = import_export, pg_catalog;
 
@@ -19149,6 +19352,30 @@ CREATE SEQUENCE authority_number
 ALTER TABLE public.authority_number OWNER TO easygp;
 
 --
+-- Name: dailymed; Type: TABLE; Schema: public; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE dailymed (
+    genericname text,
+    brandname text,
+    dailymed uuid
+);
+
+
+ALTER TABLE public.dailymed OWNER TO easygp;
+
+--
+-- Name: forms1; Type: TABLE; Schema: public; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE forms1 (
+    form text
+);
+
+
+ALTER TABLE public.forms1 OWNER TO easygp;
+
+--
 -- Name: inventory_items_lent; Type: TABLE; Schema: public; Owner: easygp; Tablespace: 
 --
 
@@ -19214,6 +19441,44 @@ CREATE SEQUENCE pbsconvert_id_seq
 ALTER TABLE public.pbsconvert_id_seq OWNER TO easygp;
 
 --
+-- Name: rawpbs; Type: TABLE; Schema: public; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE rawpbs (
+    drugtypecode character(2),
+    atccode character varying(7),
+    atctype character(1),
+    atcprintopt character(1),
+    pbscode character(5),
+    restrictionflag character(1),
+    cautionflag character(1),
+    noteflag character(1),
+    maxquantity integer,
+    numrepeats integer,
+    manufacturercode character(2),
+    packsize integer,
+    markupcode character(1),
+    dispensefee character(2),
+    danger character(2),
+    brandpricepremium money,
+    thergrouppremium money,
+    cwprice money,
+    cwdprice money,
+    thergroupprice money,
+    thergroupdprice money,
+    manufactprice money,
+    manufactdprice money,
+    maxvalsafetynet money,
+    bioequivalence character(1),
+    brandname text,
+    genericname text,
+    formandstrength text
+);
+
+
+ALTER TABLE public.rawpbs OWNER TO easygp;
+
+--
 -- Name: script_number; Type: SEQUENCE; Schema: public; Owner: easygp
 --
 
@@ -19240,6 +19505,35 @@ CREATE SEQUENCE web_pk_seq
 
 
 ALTER TABLE public.web_pk_seq OWNER TO easygp;
+
+--
+-- Name: web; Type: TABLE; Schema: public; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE web (
+    pk integer DEFAULT nextval('web_pk_seq'::regclass),
+    tga_code character varying(10),
+    genericname text,
+    form text,
+    brandname text,
+    strength text,
+    amount double precision,
+    amount_unit character varying(10),
+    packsize text,
+    poison character varying(4),
+    rawname text,
+    mnfr character varying(3),
+    updated_at timestamp without time zone DEFAULT now(),
+    updated_by character varying(20),
+    mode character(1),
+    atc character varying(8),
+    comment text,
+    created_at timestamp without time zone DEFAULT now(),
+    hex text
+);
+
+
+ALTER TABLE public.web OWNER TO easygp;
 
 SET search_path = research, pg_catalog;
 
@@ -19600,6 +19894,13 @@ ALTER TABLE ONLY payments_received ALTER COLUMN pk SET DEFAULT nextval('payments
 --
 
 ALTER TABLE ONLY prices ALTER COLUMN pk SET DEFAULT nextval('prices_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: billing; Owner: easygp
+--
+
+ALTER TABLE ONLY reports ALTER COLUMN pk SET DEFAULT nextval('reports_pk_seq'::regclass);
 
 
 SET search_path = blobs, pg_catalog;
@@ -21463,21 +21764,21 @@ ALTER TABLE ONLY synonyms ALTER COLUMN pk SET DEFAULT nextval('synonyms_pk_seq':
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: pk; Type: DEFAULT; Schema: drugs; Owner: postgres
+-- Name: pk; Type: DEFAULT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY clinical_effects ALTER COLUMN pk SET DEFAULT nextval('clinical_effects_pk_seq'::regclass);
 
 
 --
--- Name: pk; Type: DEFAULT; Schema: drugs; Owner: postgres
+-- Name: pk; Type: DEFAULT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY flags ALTER COLUMN pk SET DEFAULT nextval('flags_pk_seq'::regclass);
 
 
 --
--- Name: pk; Type: DEFAULT; Schema: drugs; Owner: postgres
+-- Name: pk; Type: DEFAULT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY info ALTER COLUMN pk SET DEFAULT nextval('info_pk_seq'::regclass);
@@ -21607,46 +21908,6 @@ ALTER TABLE ONLY staff
 SET search_path = billing, pg_catalog;
 
 --
--- Name: bulk_billing_claims_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY bulk_billing_claims
-    ADD CONSTRAINT bulk_billing_claims_pkey PRIMARY KEY (pk);
-
-
---
--- Name: fee_schedule_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY fee_schedule
-    ADD CONSTRAINT fee_schedule_pkey PRIMARY KEY (pk);
-
-
---
--- Name: invoices_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY invoices
-    ADD CONSTRAINT invoices_pkey PRIMARY KEY (pk);
-
-
---
--- Name: items_billed_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY items_billed
-    ADD CONSTRAINT items_billed_pkey PRIMARY KEY (pk);
-
-
---
--- Name: link_invoice_bulk_bill_claim_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY link_invoice_bulk_bill_claim
-    ADD CONSTRAINT link_invoice_bulk_bill_claim_pkey PRIMARY KEY (pk);
-
-
---
 -- Name: lu_billing_type_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
 --
 
@@ -21676,62 +21937,6 @@ ALTER TABLE ONLY lu_bulk_billing_type
 
 ALTER TABLE ONLY lu_default_billing_level
     ADD CONSTRAINT lu_default_billing_level_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_invoice_comments_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_invoice_comments
-    ADD CONSTRAINT lu_invoice_comments_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_payment_method_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_payment_method
-    ADD CONSTRAINT lu_payment_method_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_reasons_not_billed_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_reasons_not_billed
-    ADD CONSTRAINT lu_reasons_not_billed_pkey PRIMARY KEY (pk);
-
-
---
--- Name: lu_reports_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_reports
-    ADD CONSTRAINT lu_reports_pkey PRIMARY KEY (pk);
-
-
---
--- Name: payments_received_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY payments_received
-    ADD CONSTRAINT payments_received_pkey PRIMARY KEY (pk);
-
-
---
--- Name: prices_pkey; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY prices
-    ADD CONSTRAINT prices_pkey PRIMARY KEY (pk);
-
-
---
--- Name: schedule_ama_item_key; Type: CONSTRAINT; Schema: billing; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY fee_schedule
-    ADD CONSTRAINT schedule_ama_item_key UNIQUE (ama_item);
 
 
 SET search_path = blobs, pg_catalog;
@@ -23347,14 +23552,6 @@ ALTER TABLE ONLY lu_whisper_test
 SET search_path = contacts, pg_catalog;
 
 --
--- Name: category_unique; Type: CONSTRAINT; Schema: contacts; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_categories
-    ADD CONSTRAINT category_unique UNIQUE (category);
-
-
---
 -- Name: data_addresses_pkey; Type: CONSTRAINT; Schema: contacts; Owner: easygp; Tablespace: 
 --
 
@@ -23416,14 +23613,6 @@ ALTER TABLE ONLY data_organisations
 
 ALTER TABLE ONLY data_persons
     ADD CONSTRAINT data_persons_pkey PRIMARY KEY (pk);
-
-
---
--- Name: firstname_unique; Type: CONSTRAINT; Schema: contacts; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_firstnames
-    ADD CONSTRAINT firstname_unique UNIQUE (firstname);
 
 
 --
@@ -23552,54 +23741,6 @@ ALTER TABLE ONLY lu_title
 
 ALTER TABLE ONLY lu_towns
     ADD CONSTRAINT lu_towns_pkey PRIMARY KEY (pk);
-
-
---
--- Name: sex_unique; Type: CONSTRAINT; Schema: contacts; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_sex
-    ADD CONSTRAINT sex_unique UNIQUE (sex);
-
-
---
--- Name: surname_unique; Type: CONSTRAINT; Schema: contacts; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_surnames
-    ADD CONSTRAINT surname_unique UNIQUE (surname);
-
-
---
--- Name: title_unique; Type: CONSTRAINT; Schema: contacts; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_title
-    ADD CONSTRAINT title_unique UNIQUE (title);
-
-
---
--- Name: town_misspelt_unique; Type: CONSTRAINT; Schema: contacts; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_misspelt_towns
-    ADD CONSTRAINT town_misspelt_unique UNIQUE (town_misspelt);
-
-
---
--- Name: town_unique; Type: CONSTRAINT; Schema: contacts; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_towns
-    ADD CONSTRAINT town_unique UNIQUE (postcode, town, state, comment);
-
-
---
--- Name: type_unique; Type: CONSTRAINT; Schema: contacts; Owner: easygp; Tablespace: 
---
-
-ALTER TABLE ONLY lu_address_types
-    ADD CONSTRAINT type_unique UNIQUE (type);
 
 
 SET search_path = db, pg_catalog;
@@ -23965,7 +24106,7 @@ ALTER TABLE ONLY synonyms
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: atc_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: atc_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY atc
@@ -23973,7 +24114,7 @@ ALTER TABLE ONLY atc
 
 
 --
--- Name: brand_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: brand_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY brand
@@ -23981,7 +24122,7 @@ ALTER TABLE ONLY brand
 
 
 --
--- Name: chapters_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: chapters_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY chapters
@@ -23989,7 +24130,7 @@ ALTER TABLE ONLY chapters
 
 
 --
--- Name: clinical_effects_effect_key; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: clinical_effects_effect_key; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY clinical_effects
@@ -23997,7 +24138,7 @@ ALTER TABLE ONLY clinical_effects
 
 
 --
--- Name: clinical_effects_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: clinical_effects_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY clinical_effects
@@ -24005,7 +24146,7 @@ ALTER TABLE ONLY clinical_effects
 
 
 --
--- Name: company_code_key; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: company_code_key; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY company
@@ -24013,7 +24154,7 @@ ALTER TABLE ONLY company
 
 
 --
--- Name: company_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: company_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY company
@@ -24021,7 +24162,7 @@ ALTER TABLE ONLY company
 
 
 --
--- Name: evidence_levels_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: evidence_levels_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY evidence_levels
@@ -24029,7 +24170,7 @@ ALTER TABLE ONLY evidence_levels
 
 
 --
--- Name: flags_pk_key; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: flags_pk_key; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY flags
@@ -24037,7 +24178,7 @@ ALTER TABLE ONLY flags
 
 
 --
--- Name: flags_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: flags_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY flags
@@ -24045,7 +24186,7 @@ ALTER TABLE ONLY flags
 
 
 --
--- Name: form_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: form_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY form
@@ -24053,7 +24194,7 @@ ALTER TABLE ONLY form
 
 
 --
--- Name: info_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: info_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY info
@@ -24061,7 +24202,7 @@ ALTER TABLE ONLY info
 
 
 --
--- Name: patient_categories_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: patient_categories_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY patient_categories
@@ -24069,7 +24210,7 @@ ALTER TABLE ONLY patient_categories
 
 
 --
--- Name: pbs_pbscode_key; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: pbs_pbscode_key; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY pbs
@@ -24077,7 +24218,7 @@ ALTER TABLE ONLY pbs
 
 
 --
--- Name: pharmacologic_mechanisms_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: pharmacologic_mechanisms_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY pharmacologic_mechanisms
@@ -24085,7 +24226,7 @@ ALTER TABLE ONLY pharmacologic_mechanisms
 
 
 --
--- Name: product_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: product_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY product
@@ -24093,7 +24234,7 @@ ALTER TABLE ONLY product
 
 
 --
--- Name: schedules_schedule_key; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: schedules_schedule_key; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY schedules
@@ -24101,7 +24242,7 @@ ALTER TABLE ONLY schedules
 
 
 --
--- Name: severity_level_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: severity_level_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY severity_level
@@ -24109,7 +24250,7 @@ ALTER TABLE ONLY severity_level
 
 
 --
--- Name: sources_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: sources_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY sources
@@ -24117,7 +24258,7 @@ ALTER TABLE ONLY sources
 
 
 --
--- Name: topic_pkey; Type: CONSTRAINT; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: topic_pkey; Type: CONSTRAINT; Schema: drugs; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY topic
@@ -24166,6 +24307,14 @@ SET search_path = public, pg_catalog;
 
 ALTER TABLE ONLY inventory_items_lent
     ADD CONSTRAINT inventory_items_lent_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: pk_uniq; Type: CONSTRAINT; Schema: public; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY web
+    ADD CONSTRAINT pk_uniq UNIQUE (pk);
 
 
 SET search_path = blobs, pg_catalog;
@@ -24279,7 +24428,7 @@ CREATE INDEX tag_idx ON documents USING btree (tag);
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: version_one_row_only; Type: INDEX; Schema: drugs; Owner: postgres; Tablespace: 
+-- Name: version_one_row_only; Type: INDEX; Schema: drugs; Owner: ian; Tablespace: 
 --
 
 CREATE UNIQUE INDEX version_one_row_only ON version USING btree (((release_date IS NOT NULL)));
@@ -24321,7 +24470,7 @@ CREATE TRIGGER ihi_new_provided BEFORE INSERT ON data_patients FOR EACH ROW WHEN
 -- Name: ihi_update; Type: TRIGGER; Schema: clerical; Owner: easygp
 --
 
-CREATE TRIGGER ihi_update BEFORE UPDATE ON data_patients FOR EACH ROW WHEN (((new.pcehr_consent = ANY (ARRAY['c'::bpchar, 'h'::bpchar, 'e'::bpchar])) AND ((((new.ihi IS NULL) OR (new.ihi <> old.ihi)) OR (((new.medicare_number)::text <> (old.medicare_number)::text) AND (new.medicare_number IS NOT NULL))) OR (((new.veteran_number)::text <> (old.veteran_number)::text) AND (new.veteran_number IS NOT NULL))))) EXECUTE PROCEDURE updated_patient_new_ihi();
+CREATE TRIGGER ihi_update BEFORE UPDATE ON data_patients FOR EACH ROW WHEN (((new.pcehr_consent = ANY (ARRAY['c'::bpchar, 'h'::bpchar, 'e'::bpchar])) AND (((new.ihi IS NULL) OR (((new.medicare_number)::text <> (old.medicare_number)::text) AND (new.medicare_number IS NOT NULL))) OR (((new.veteran_number)::text <> (old.veteran_number)::text) AND (new.veteran_number IS NOT NULL))))) EXECUTE PROCEDURE updated_patient_new_ihi();
 
 
 --
@@ -24382,140 +24531,10 @@ CREATE TRIGGER pcehr_new_doc BEFORE INSERT ON pcehr FOR EACH ROW EXECUTE PROCEDU
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: version_no_delete; Type: TRIGGER; Schema: drugs; Owner: postgres
+-- Name: version_no_delete; Type: TRIGGER; Schema: drugs; Owner: ian
 --
 
 CREATE TRIGGER version_no_delete BEFORE DELETE ON version FOR EACH ROW EXECUTE PROCEDURE version_no_delete();
-
-
-SET search_path = billing, pg_catalog;
-
---
--- Name: bulk_billing_claims_fk_branch_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY bulk_billing_claims
-    ADD CONSTRAINT bulk_billing_claims_fk_branch_fkey FOREIGN KEY (fk_branch) REFERENCES contacts.data_branches(pk);
-
-
---
--- Name: bulk_billing_claims_fk_doctor_provided_service_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY bulk_billing_claims
-    ADD CONSTRAINT bulk_billing_claims_fk_doctor_provided_service_fkey FOREIGN KEY (fk_staff_provided_service) REFERENCES admin.staff(pk);
-
-
---
--- Name: bulk_billing_claims_fk_lu_bulk_billing_type_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY bulk_billing_claims
-    ADD CONSTRAINT bulk_billing_claims_fk_lu_bulk_billing_type_fkey FOREIGN KEY (fk_lu_bulk_billing_type) REFERENCES lu_bulk_billing_type(pk);
-
-
---
--- Name: bulk_billing_claims_fk_staff_processed_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY bulk_billing_claims
-    ADD CONSTRAINT bulk_billing_claims_fk_staff_processed_fkey FOREIGN KEY (fk_staff_processed) REFERENCES admin.staff(pk);
-
-
---
--- Name: invoices_fk_branch_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY invoices
-    ADD CONSTRAINT invoices_fk_branch_fkey FOREIGN KEY (fk_branch) REFERENCES contacts.data_branches(pk);
-
-
---
--- Name: invoices_fk_doctor_raising_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY invoices
-    ADD CONSTRAINT invoices_fk_doctor_raising_fkey FOREIGN KEY (fk_staff_provided_service) REFERENCES admin.staff(pk);
-
-
---
--- Name: invoices_fk_patient_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY invoices
-    ADD CONSTRAINT invoices_fk_patient_fkey FOREIGN KEY (fk_patient) REFERENCES clerical.data_patients(pk);
-
-
---
--- Name: invoices_fk_payer_branch_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY invoices
-    ADD CONSTRAINT invoices_fk_payer_branch_fkey FOREIGN KEY (fk_payer_branch) REFERENCES contacts.data_branches(pk);
-
-
---
--- Name: invoices_fk_payer_person_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY invoices
-    ADD CONSTRAINT invoices_fk_payer_person_fkey FOREIGN KEY (fk_payer_person) REFERENCES contacts.data_persons(pk);
-
-
---
--- Name: items_billed_fk_fee_schedule_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY items_billed
-    ADD CONSTRAINT items_billed_fk_fee_schedule_fkey FOREIGN KEY (fk_fee_schedule) REFERENCES fee_schedule(pk);
-
-
---
--- Name: items_billed_fk_invoice_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY items_billed
-    ADD CONSTRAINT items_billed_fk_invoice_fkey FOREIGN KEY (fk_invoice) REFERENCES invoices(pk);
-
-
---
--- Name: payments_received_fk_invoice_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY payments_received
-    ADD CONSTRAINT payments_received_fk_invoice_fkey FOREIGN KEY (fk_invoice) REFERENCES invoices(pk);
-
-
---
--- Name: payments_received_fk_staff_receipted_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY payments_received
-    ADD CONSTRAINT payments_received_fk_staff_receipted_fkey FOREIGN KEY (fk_staff_receipted) REFERENCES admin.staff(pk);
-
-
---
--- Name: prices_fk_fee_schedule_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY prices
-    ADD CONSTRAINT prices_fk_fee_schedule_fkey FOREIGN KEY (fk_fee_schedule) REFERENCES fee_schedule(pk);
-
-
---
--- Name: prices_fk_lu_billing_type_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY items_billed
-    ADD CONSTRAINT prices_fk_lu_billing_type_fkey FOREIGN KEY (fk_lu_billing_type) REFERENCES lu_billing_type(pk);
-
-
---
--- Name: prices_fk_lu_billing_type_fkey; Type: FK CONSTRAINT; Schema: billing; Owner: easygp
---
-
-ALTER TABLE ONLY prices
-    ADD CONSTRAINT prices_fk_lu_billing_type_fkey FOREIGN KEY (fk_lu_billing_type) REFERENCES lu_billing_type(pk);
 
 
 SET search_path = clerical, pg_catalog;
@@ -24672,14 +24691,6 @@ ALTER TABLE ONLY allergies
 
 ALTER TABLE ONLY allergies
     ADD CONSTRAINT allergies_fk_lu_reaction_type_key FOREIGN KEY (fk_lu_reaction_type) REFERENCES lu_reaction_type(pk);
-
-
---
--- Name: allergies_fk_product_fkey; Type: FK CONSTRAINT; Schema: clin_allergies; Owner: easygp
---
-
-ALTER TABLE ONLY allergies
-    ADD CONSTRAINT allergies_fk_product_fkey FOREIGN KEY (fk_product) REFERENCES drugs.product(pk);
 
 
 --
@@ -24915,14 +24926,6 @@ ALTER TABLE ONLY lu_recreational_drugs
 SET search_path = contacts, pg_catalog;
 
 --
--- Name: address_type; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY data_addresses
-    ADD CONSTRAINT address_type FOREIGN KEY (fk_lu_address_type) REFERENCES lu_address_types(pk);
-
-
---
 -- Name: data_numbers_fk_branch_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
 --
 
@@ -24947,86 +24950,6 @@ ALTER TABLE ONLY data_numbers_persons
 
 
 --
--- Name: fk_address_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY data_branches
-    ADD CONSTRAINT fk_address_fkey FOREIGN KEY (fk_address) REFERENCES data_addresses(pk);
-
-
---
--- Name: fk_branchLfkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY data_employees
-    ADD CONSTRAINT "fk_branchLfkey" FOREIGN KEY (fk_branch) REFERENCES data_branches(pk);
-
-
---
--- Name: fk_category_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY data_branches
-    ADD CONSTRAINT fk_category_fkey FOREIGN KEY (fk_category) REFERENCES lu_categories(pk);
-
-
---
--- Name: fk_occupation_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY data_employees
-    ADD CONSTRAINT fk_occupation_fkey FOREIGN KEY (fk_occupation) REFERENCES common.lu_occupations(pk);
-
-
---
--- Name: fk_organisation_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY data_branches
-    ADD CONSTRAINT fk_organisation_fkey FOREIGN KEY (fk_organisation) REFERENCES data_organisations(pk);
-
-
---
--- Name: fk_person_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY data_employees
-    ADD CONSTRAINT fk_person_fkey FOREIGN KEY (fk_person) REFERENCES data_persons(pk);
-
-
---
--- Name: fk_status_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY data_employees
-    ADD CONSTRAINT fk_status_fkey FOREIGN KEY (fk_status) REFERENCES lu_employee_status(pk);
-
-
---
--- Name: fk_town; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY data_addresses
-    ADD CONSTRAINT fk_town FOREIGN KEY (fk_town) REFERENCES lu_towns(pk);
-
-
---
--- Name: fk_town_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY lu_misspelt_towns
-    ADD CONSTRAINT fk_town_fkey FOREIGN KEY (fk_town) REFERENCES lu_towns(pk);
-
-
---
--- Name: fk_type; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY data_communications
-    ADD CONSTRAINT fk_type FOREIGN KEY (fk_type) REFERENCES lu_contact_type(pk);
-
-
---
 -- Name: links_branches_comms_fk_branch_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
 --
 
@@ -25040,62 +24963,6 @@ ALTER TABLE ONLY links_branches_comms
 
 ALTER TABLE ONLY links_branches_comms
     ADD CONSTRAINT links_branches_comms_fk_comm_fkey FOREIGN KEY (fk_comm) REFERENCES data_communications(pk);
-
-
---
--- Name: links_employees_comms_fk_comm_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY links_employees_comms
-    ADD CONSTRAINT links_employees_comms_fk_comm_fkey FOREIGN KEY (fk_comm) REFERENCES data_communications(pk);
-
-
---
--- Name: links_employees_comms_fk_employee_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY links_employees_comms
-    ADD CONSTRAINT links_employees_comms_fk_employee_fkey FOREIGN KEY (fk_employee) REFERENCES data_employees(pk);
-
-
---
--- Name: links_persons_addresses_fk_address_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY links_persons_addresses
-    ADD CONSTRAINT links_persons_addresses_fk_address_fkey FOREIGN KEY (fk_address) REFERENCES data_addresses(pk);
-
-
---
--- Name: links_persons_addresses_fk_person_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY links_persons_addresses
-    ADD CONSTRAINT links_persons_addresses_fk_person_fkey FOREIGN KEY (fk_person) REFERENCES data_persons(pk);
-
-
---
--- Name: links_persons_comms_fk_comm_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY links_persons_comms
-    ADD CONSTRAINT links_persons_comms_fk_comm_fkey FOREIGN KEY (fk_comm) REFERENCES data_communications(pk);
-
-
---
--- Name: links_persons_comms_fk_person_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY links_persons_comms
-    ADD CONSTRAINT links_persons_comms_fk_person_fkey FOREIGN KEY (fk_person) REFERENCES data_persons(pk);
-
-
---
--- Name: sex_fkey; Type: FK CONSTRAINT; Schema: contacts; Owner: easygp
---
-
-ALTER TABLE ONLY lu_firstnames
-    ADD CONSTRAINT sex_fkey FOREIGN KEY (sex) REFERENCES lu_sex(sex);
 
 
 SET search_path = defaults, pg_catalog;
@@ -25291,7 +25158,7 @@ ALTER TABLE ONLY synonyms
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: brand_fk_product_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: brand_fk_product_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY brand
@@ -25299,7 +25166,7 @@ ALTER TABLE ONLY brand
 
 
 --
--- Name: clinical_effects_fk_severity_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: clinical_effects_fk_severity_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY clinical_effects
@@ -25307,7 +25174,7 @@ ALTER TABLE ONLY clinical_effects
 
 
 --
--- Name: info_fk_clinical_effect_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: info_fk_clinical_effect_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY info
@@ -25315,7 +25182,7 @@ ALTER TABLE ONLY info
 
 
 --
--- Name: info_fk_evidence_level_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: info_fk_evidence_level_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY info
@@ -25323,7 +25190,7 @@ ALTER TABLE ONLY info
 
 
 --
--- Name: info_fk_patient_category_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: info_fk_patient_category_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY info
@@ -25331,7 +25198,7 @@ ALTER TABLE ONLY info
 
 
 --
--- Name: info_fk_pharmacologic_mechanism_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: info_fk_pharmacologic_mechanism_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY info
@@ -25339,7 +25206,7 @@ ALTER TABLE ONLY info
 
 
 --
--- Name: info_fk_severity_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: info_fk_severity_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY info
@@ -25347,7 +25214,7 @@ ALTER TABLE ONLY info
 
 
 --
--- Name: info_fk_topic_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: info_fk_topic_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY info
@@ -25355,7 +25222,7 @@ ALTER TABLE ONLY info
 
 
 --
--- Name: link_atc_info_atccode_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: link_atc_info_atccode_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY link_atc_info
@@ -25363,7 +25230,7 @@ ALTER TABLE ONLY link_atc_info
 
 
 --
--- Name: link_atc_info_fk_info_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: link_atc_info_fk_info_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY link_atc_info
@@ -25371,7 +25238,7 @@ ALTER TABLE ONLY link_atc_info
 
 
 --
--- Name: link_category_info_fk_category_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: link_category_info_fk_category_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY link_category_info
@@ -25379,7 +25246,7 @@ ALTER TABLE ONLY link_category_info
 
 
 --
--- Name: link_category_info_fk_info_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: link_category_info_fk_info_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY link_category_info
@@ -25387,7 +25254,7 @@ ALTER TABLE ONLY link_category_info
 
 
 --
--- Name: link_flag_product_fk_flag_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: link_flag_product_fk_flag_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY link_flag_product
@@ -25395,7 +25262,7 @@ ALTER TABLE ONLY link_flag_product
 
 
 --
--- Name: link_flag_product_fk_product_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: link_flag_product_fk_product_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY link_flag_product
@@ -25403,7 +25270,7 @@ ALTER TABLE ONLY link_flag_product
 
 
 --
--- Name: link_info_source_fk_info_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: link_info_source_fk_info_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY link_info_source
@@ -25411,7 +25278,7 @@ ALTER TABLE ONLY link_info_source
 
 
 --
--- Name: link_info_source_fk_source_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: link_info_source_fk_source_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY link_info_source
@@ -25419,7 +25286,7 @@ ALTER TABLE ONLY link_info_source
 
 
 --
--- Name: pbs_chapter_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: pbs_chapter_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY pbs
@@ -25427,7 +25294,7 @@ ALTER TABLE ONLY pbs
 
 
 --
--- Name: pbs_fk_product_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: pbs_fk_product_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY pbs
@@ -25435,7 +25302,7 @@ ALTER TABLE ONLY pbs
 
 
 --
--- Name: product_fk_form_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: product_fk_form_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY product
@@ -25443,7 +25310,7 @@ ALTER TABLE ONLY product
 
 
 --
--- Name: product_fk_schedule_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: product_fk_schedule_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY product
@@ -25451,7 +25318,7 @@ ALTER TABLE ONLY product
 
 
 --
--- Name: restriction_pbscode_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: postgres
+-- Name: restriction_pbscode_fkey; Type: FK CONSTRAINT; Schema: drugs; Owner: easygp
 --
 
 ALTER TABLE ONLY restriction
@@ -25562,7 +25429,6 @@ REVOKE ALL ON SCHEMA clin_certificates FROM PUBLIC;
 REVOKE ALL ON SCHEMA clin_certificates FROM easygp;
 GRANT ALL ON SCHEMA clin_certificates TO easygp;
 GRANT USAGE ON SCHEMA clin_certificates TO staff;
-GRANT USAGE ON SCHEMA clin_certificates TO ian;
 
 
 --
@@ -25616,12 +25482,11 @@ GRANT ALL ON SCHEMA clin_mentalhealth TO staff;
 
 
 --
--- Name: clin_pregnancy; Type: ACL; Schema: -; Owner: postgres
+-- Name: clin_pregnancy; Type: ACL; Schema: -; Owner: easygp
 --
 
 REVOKE ALL ON SCHEMA clin_pregnancy FROM PUBLIC;
-REVOKE ALL ON SCHEMA clin_pregnancy FROM postgres;
-GRANT ALL ON SCHEMA clin_pregnancy TO postgres;
+REVOKE ALL ON SCHEMA clin_pregnancy FROM easygp;
 GRANT ALL ON SCHEMA clin_pregnancy TO easygp;
 GRANT ALL ON SCHEMA clin_pregnancy TO staff;
 
@@ -25768,12 +25633,11 @@ GRANT USAGE ON SCHEMA drugbank TO staff;
 
 
 --
--- Name: drugs; Type: ACL; Schema: -; Owner: postgres
+-- Name: drugs; Type: ACL; Schema: -; Owner: easygp
 --
 
 REVOKE ALL ON SCHEMA drugs FROM PUBLIC;
-REVOKE ALL ON SCHEMA drugs FROM postgres;
-GRANT ALL ON SCHEMA drugs TO postgres;
+REVOKE ALL ON SCHEMA drugs FROM easygp;
 GRANT ALL ON SCHEMA drugs TO easygp;
 GRANT ALL ON SCHEMA drugs TO staff;
 
@@ -25821,6 +25685,16 @@ GRANT USAGE ON SCHEMA research TO staff;
 SET search_path = clerical, pg_catalog;
 
 --
+-- Name: listavailable(integer, integer, integer); Type: ACL; Schema: clerical; Owner: easygp
+--
+
+REVOKE ALL ON FUNCTION listavailable(fk_clinicv integer, fk_doctor integer, max integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION listavailable(fk_clinicv integer, fk_doctor integer, max integer) FROM easygp;
+GRANT ALL ON FUNCTION listavailable(fk_clinicv integer, fk_doctor integer, max integer) TO easygp;
+GRANT ALL ON FUNCTION listavailable(fk_clinicv integer, fk_doctor integer, max integer) TO staff;
+
+
+--
 -- Name: sessions; Type: ACL; Schema: clerical; Owner: easygp
 --
 
@@ -25846,69 +25720,63 @@ GRANT ALL ON FUNCTION make_auth_number(integer) TO staff;
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: assert_atc(text, text); Type: ACL; Schema: drugs; Owner: ian
+-- Name: assert_atc(text, text); Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON FUNCTION assert_atc(atccode1 text, atctext1 text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION assert_atc(atccode1 text, atctext1 text) FROM ian;
-GRANT ALL ON FUNCTION assert_atc(atccode1 text, atctext1 text) TO ian;
-GRANT ALL ON FUNCTION assert_atc(atccode1 text, atctext1 text) TO PUBLIC;
+REVOKE ALL ON FUNCTION assert_atc(atccode1 text, atctext1 text) FROM easygp;
 GRANT ALL ON FUNCTION assert_atc(atccode1 text, atctext1 text) TO easygp;
+GRANT ALL ON FUNCTION assert_atc(atccode1 text, atctext1 text) TO PUBLIC;
 
 
 --
--- Name: assert_brand(uuid, uuid, text, text, text, money, boolean, text); Type: ACL; Schema: drugs; Owner: ian
+-- Name: assert_brand(uuid, uuid, text, text, text, money, boolean, text); Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON FUNCTION assert_brand(pk1 uuid, fk_product1 uuid, fk_company1 text, brand1 text, sct1 text, price1 money, from_pbs1 boolean, pif text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION assert_brand(pk1 uuid, fk_product1 uuid, fk_company1 text, brand1 text, sct1 text, price1 money, from_pbs1 boolean, pif text) FROM ian;
-GRANT ALL ON FUNCTION assert_brand(pk1 uuid, fk_product1 uuid, fk_company1 text, brand1 text, sct1 text, price1 money, from_pbs1 boolean, pif text) TO ian;
-GRANT ALL ON FUNCTION assert_brand(pk1 uuid, fk_product1 uuid, fk_company1 text, brand1 text, sct1 text, price1 money, from_pbs1 boolean, pif text) TO PUBLIC;
+REVOKE ALL ON FUNCTION assert_brand(pk1 uuid, fk_product1 uuid, fk_company1 text, brand1 text, sct1 text, price1 money, from_pbs1 boolean, pif text) FROM easygp;
 GRANT ALL ON FUNCTION assert_brand(pk1 uuid, fk_product1 uuid, fk_company1 text, brand1 text, sct1 text, price1 money, from_pbs1 boolean, pif text) TO easygp;
+GRANT ALL ON FUNCTION assert_brand(pk1 uuid, fk_product1 uuid, fk_company1 text, brand1 text, sct1 text, price1 money, from_pbs1 boolean, pif text) TO PUBLIC;
 
 
 --
--- Name: assert_company(text, text, text, text); Type: ACL; Schema: drugs; Owner: ian
+-- Name: assert_company(text, text, text, text); Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON FUNCTION assert_company(code1 text, company1 text, address1 text, telephone1 text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION assert_company(code1 text, company1 text, address1 text, telephone1 text) FROM ian;
-GRANT ALL ON FUNCTION assert_company(code1 text, company1 text, address1 text, telephone1 text) TO ian;
-GRANT ALL ON FUNCTION assert_company(code1 text, company1 text, address1 text, telephone1 text) TO PUBLIC;
+REVOKE ALL ON FUNCTION assert_company(code1 text, company1 text, address1 text, telephone1 text) FROM easygp;
 GRANT ALL ON FUNCTION assert_company(code1 text, company1 text, address1 text, telephone1 text) TO easygp;
+GRANT ALL ON FUNCTION assert_company(code1 text, company1 text, address1 text, telephone1 text) TO PUBLIC;
 
 
 --
--- Name: assert_form(integer, text, boolean); Type: ACL; Schema: drugs; Owner: ian
+-- Name: assert_form(integer, text, boolean); Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON FUNCTION assert_form(pk1 integer, form1 text, vol1 boolean) FROM PUBLIC;
-REVOKE ALL ON FUNCTION assert_form(pk1 integer, form1 text, vol1 boolean) FROM ian;
-GRANT ALL ON FUNCTION assert_form(pk1 integer, form1 text, vol1 boolean) TO ian;
-GRANT ALL ON FUNCTION assert_form(pk1 integer, form1 text, vol1 boolean) TO PUBLIC;
+REVOKE ALL ON FUNCTION assert_form(pk1 integer, form1 text, vol1 boolean) FROM easygp;
 GRANT ALL ON FUNCTION assert_form(pk1 integer, form1 text, vol1 boolean) TO easygp;
+GRANT ALL ON FUNCTION assert_form(pk1 integer, form1 text, vol1 boolean) TO PUBLIC;
 
 
 --
--- Name: assert_product(uuid, text, text, integer, text, text, text, integer, integer, double precision, integer, integer, text, text, text, timestamp without time zone); Type: ACL; Schema: drugs; Owner: ian
+-- Name: assert_product(uuid, text, text, integer, text, text, text, integer, integer, double precision, integer, integer, text, text, text, timestamp without time zone); Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON FUNCTION assert_product(pk1 uuid, atccode1 text, generic1 text, fk_form1 integer, strength1 text, original_pbs_name1 text, free_comment1 text, fk_schedule1 integer, pack_size1 integer, amount1 double precision, amount_unit1 integer, units_per_pack1 integer, sct1 text, salt1 text, salt_strength1 text, updated_at1 timestamp without time zone) FROM PUBLIC;
-REVOKE ALL ON FUNCTION assert_product(pk1 uuid, atccode1 text, generic1 text, fk_form1 integer, strength1 text, original_pbs_name1 text, free_comment1 text, fk_schedule1 integer, pack_size1 integer, amount1 double precision, amount_unit1 integer, units_per_pack1 integer, sct1 text, salt1 text, salt_strength1 text, updated_at1 timestamp without time zone) FROM ian;
-GRANT ALL ON FUNCTION assert_product(pk1 uuid, atccode1 text, generic1 text, fk_form1 integer, strength1 text, original_pbs_name1 text, free_comment1 text, fk_schedule1 integer, pack_size1 integer, amount1 double precision, amount_unit1 integer, units_per_pack1 integer, sct1 text, salt1 text, salt_strength1 text, updated_at1 timestamp without time zone) TO ian;
-GRANT ALL ON FUNCTION assert_product(pk1 uuid, atccode1 text, generic1 text, fk_form1 integer, strength1 text, original_pbs_name1 text, free_comment1 text, fk_schedule1 integer, pack_size1 integer, amount1 double precision, amount_unit1 integer, units_per_pack1 integer, sct1 text, salt1 text, salt_strength1 text, updated_at1 timestamp without time zone) TO PUBLIC;
+REVOKE ALL ON FUNCTION assert_product(pk1 uuid, atccode1 text, generic1 text, fk_form1 integer, strength1 text, original_pbs_name1 text, free_comment1 text, fk_schedule1 integer, pack_size1 integer, amount1 double precision, amount_unit1 integer, units_per_pack1 integer, sct1 text, salt1 text, salt_strength1 text, updated_at1 timestamp without time zone) FROM easygp;
 GRANT ALL ON FUNCTION assert_product(pk1 uuid, atccode1 text, generic1 text, fk_form1 integer, strength1 text, original_pbs_name1 text, free_comment1 text, fk_schedule1 integer, pack_size1 integer, amount1 double precision, amount_unit1 integer, units_per_pack1 integer, sct1 text, salt1 text, salt_strength1 text, updated_at1 timestamp without time zone) TO easygp;
+GRANT ALL ON FUNCTION assert_product(pk1 uuid, atccode1 text, generic1 text, fk_form1 integer, strength1 text, original_pbs_name1 text, free_comment1 text, fk_schedule1 integer, pack_size1 integer, amount1 double precision, amount_unit1 integer, units_per_pack1 integer, sct1 text, salt1 text, salt_strength1 text, updated_at1 timestamp without time zone) TO PUBLIC;
 
 
 --
--- Name: duplicate_product(uuid, uuid); Type: ACL; Schema: drugs; Owner: ian
+-- Name: duplicate_product(uuid, uuid); Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON FUNCTION duplicate_product(old_pk uuid, new_pk uuid) FROM PUBLIC;
-REVOKE ALL ON FUNCTION duplicate_product(old_pk uuid, new_pk uuid) FROM ian;
-GRANT ALL ON FUNCTION duplicate_product(old_pk uuid, new_pk uuid) TO ian;
-GRANT ALL ON FUNCTION duplicate_product(old_pk uuid, new_pk uuid) TO PUBLIC;
+REVOKE ALL ON FUNCTION duplicate_product(old_pk uuid, new_pk uuid) FROM easygp;
 GRANT ALL ON FUNCTION duplicate_product(old_pk uuid, new_pk uuid) TO easygp;
+GRANT ALL ON FUNCTION duplicate_product(old_pk uuid, new_pk uuid) TO PUBLIC;
 
 
 SET search_path = public, pg_catalog;
@@ -25920,8 +25788,8 @@ SET search_path = public, pg_catalog;
 REVOKE ALL ON FUNCTION invoice_received(integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION invoice_received(integer) FROM easygp;
 GRANT ALL ON FUNCTION invoice_received(integer) TO easygp;
-GRANT ALL ON FUNCTION invoice_received(integer) TO staff;
 GRANT ALL ON FUNCTION invoice_received(integer) TO PUBLIC;
+GRANT ALL ON FUNCTION invoice_received(integer) TO staff;
 
 
 --
@@ -25931,8 +25799,8 @@ GRANT ALL ON FUNCTION invoice_received(integer) TO PUBLIC;
 REVOKE ALL ON FUNCTION invoice_total(integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION invoice_total(integer) FROM easygp;
 GRANT ALL ON FUNCTION invoice_total(integer) TO easygp;
-GRANT ALL ON FUNCTION invoice_total(integer) TO staff;
 GRANT ALL ON FUNCTION invoice_total(integer) TO PUBLIC;
+GRANT ALL ON FUNCTION invoice_total(integer) TO staff;
 
 
 SET search_path = admin, pg_catalog;
@@ -26184,16 +26052,6 @@ GRANT SELECT ON TABLE vwclinicrooms TO staff;
 SET search_path = contacts, pg_catalog;
 
 --
--- Name: data_numbers_persons; Type: ACL; Schema: contacts; Owner: easygp
---
-
-REVOKE ALL ON TABLE data_numbers_persons FROM PUBLIC;
-REVOKE ALL ON TABLE data_numbers_persons FROM easygp;
-GRANT ALL ON TABLE data_numbers_persons TO easygp;
-GRANT ALL ON TABLE data_numbers_persons TO staff;
-
-
---
 -- Name: data_persons; Type: ACL; Schema: contacts; Owner: easygp
 --
 
@@ -26282,6 +26140,15 @@ GRANT ALL ON TABLE data_employees TO staff;
 
 
 --
+-- Name: lu_employee_status; Type: ACL; Schema: contacts; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_employee_status FROM PUBLIC;
+REVOKE ALL ON TABLE lu_employee_status FROM easygp;
+GRANT ALL ON TABLE lu_employee_status TO easygp;
+
+
+--
 -- Name: lu_marital; Type: ACL; Schema: contacts; Owner: easygp
 --
 
@@ -26320,7 +26187,7 @@ GRANT ALL ON TABLE vwstaffinclinics TO staff;
 REVOKE ALL ON TABLE vwstafftoolbarbuttons FROM PUBLIC;
 REVOKE ALL ON TABLE vwstafftoolbarbuttons FROM easygp;
 GRANT ALL ON TABLE vwstafftoolbarbuttons TO easygp;
-GRANT SELECT ON TABLE vwstafftoolbarbuttons TO staff;
+GRANT ALL ON TABLE vwstafftoolbarbuttons TO staff;
 
 
 SET search_path = billing, pg_catalog;
@@ -26422,7 +26289,7 @@ GRANT ALL ON TABLE link_invoice_bulk_bill_claim TO staff;
 REVOKE ALL ON TABLE lu_billing_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_billing_type FROM easygp;
 GRANT ALL ON TABLE lu_billing_type TO easygp;
-GRANT ALL ON TABLE lu_billing_type TO staff;
+GRANT SELECT ON TABLE lu_billing_type TO staff;
 
 
 --
@@ -26432,7 +26299,7 @@ GRANT ALL ON TABLE lu_billing_type TO staff;
 REVOKE ALL ON TABLE lu_bulk_billing_type FROM PUBLIC;
 REVOKE ALL ON TABLE lu_bulk_billing_type FROM easygp;
 GRANT ALL ON TABLE lu_bulk_billing_type TO easygp;
-GRANT ALL ON TABLE lu_bulk_billing_type TO staff;
+GRANT SELECT ON TABLE lu_bulk_billing_type TO staff;
 
 
 --
@@ -26442,7 +26309,7 @@ GRANT ALL ON TABLE lu_bulk_billing_type TO staff;
 REVOKE ALL ON TABLE lu_default_billing_level FROM PUBLIC;
 REVOKE ALL ON TABLE lu_default_billing_level FROM easygp;
 GRANT ALL ON TABLE lu_default_billing_level TO easygp;
-GRANT ALL ON TABLE lu_default_billing_level TO staff;
+GRANT SELECT ON TABLE lu_default_billing_level TO staff;
 
 
 --
@@ -26462,7 +26329,7 @@ GRANT ALL ON TABLE lu_invoice_comments TO staff;
 REVOKE ALL ON TABLE lu_payment_method FROM PUBLIC;
 REVOKE ALL ON TABLE lu_payment_method FROM easygp;
 GRANT ALL ON TABLE lu_payment_method TO easygp;
-GRANT ALL ON TABLE lu_payment_method TO staff;
+GRANT SELECT ON TABLE lu_payment_method TO staff;
 
 
 --
@@ -26532,7 +26399,18 @@ GRANT ALL ON SEQUENCE prices_pk_seq TO staff;
 REVOKE ALL ON TABLE reports FROM PUBLIC;
 REVOKE ALL ON TABLE reports FROM easygp;
 GRANT ALL ON TABLE reports TO easygp;
+GRANT ALL ON TABLE reports TO postgres;
 GRANT ALL ON TABLE reports TO staff;
+
+
+--
+-- Name: reports_pk_seq; Type: ACL; Schema: billing; Owner: easygp
+--
+
+REVOKE ALL ON SEQUENCE reports_pk_seq FROM PUBLIC;
+REVOKE ALL ON SEQUENCE reports_pk_seq FROM easygp;
+GRANT ALL ON SEQUENCE reports_pk_seq TO easygp;
+GRANT ALL ON SEQUENCE reports_pk_seq TO staff;
 
 
 SET search_path = clerical, pg_catalog;
@@ -26654,7 +26532,7 @@ SET search_path = billing, pg_catalog;
 REVOKE ALL ON TABLE vwclaims FROM PUBLIC;
 REVOKE ALL ON TABLE vwclaims FROM easygp;
 GRANT ALL ON TABLE vwclaims TO easygp;
-GRANT ALL ON TABLE vwclaims TO staff;
+GRANT SELECT ON TABLE vwclaims TO staff;
 
 
 SET search_path = clerical, pg_catalog;
@@ -26714,11 +26592,12 @@ GRANT SELECT ON TABLE vwpersonsincludingpatients TO staff;
 SET search_path = billing, pg_catalog;
 
 --
--- Name: vwdaylist; Type: ACL; Schema: billing; Owner: easygp
+-- Name: vwdaylist; Type: ACL; Schema: billing; Owner: postgres
 --
 
 REVOKE ALL ON TABLE vwdaylist FROM PUBLIC;
-REVOKE ALL ON TABLE vwdaylist FROM easygp;
+REVOKE ALL ON TABLE vwdaylist FROM postgres;
+GRANT ALL ON TABLE vwdaylist TO postgres;
 GRANT ALL ON TABLE vwdaylist TO easygp;
 GRANT ALL ON TABLE vwdaylist TO staff;
 
@@ -26770,7 +26649,7 @@ GRANT SELECT ON TABLE vwitemsandinvoices TO staff;
 REVOKE ALL ON TABLE vwpaymentsreceived FROM PUBLIC;
 REVOKE ALL ON TABLE vwpaymentsreceived FROM easygp;
 GRANT ALL ON TABLE vwpaymentsreceived TO easygp;
-GRANT ALL ON TABLE vwpaymentsreceived TO staff;
+GRANT SELECT ON TABLE vwpaymentsreceived TO staff;
 
 
 SET search_path = blobs, pg_catalog;
@@ -26832,6 +26711,24 @@ GRANT ALL ON TABLE vwpatientimages TO staff;
 SET search_path = chronic_disease_management, pg_catalog;
 
 --
+-- Name: diabetes_annual_cycle_of_care; Type: ACL; Schema: chronic_disease_management; Owner: easygp
+--
+
+REVOKE ALL ON TABLE diabetes_annual_cycle_of_care FROM PUBLIC;
+REVOKE ALL ON TABLE diabetes_annual_cycle_of_care FROM easygp;
+GRANT ALL ON TABLE diabetes_annual_cycle_of_care TO easygp;
+
+
+--
+-- Name: diabetes_annual_cycle_of_care_notes; Type: ACL; Schema: chronic_disease_management; Owner: easygp
+--
+
+REVOKE ALL ON TABLE diabetes_annual_cycle_of_care_notes FROM PUBLIC;
+REVOKE ALL ON TABLE diabetes_annual_cycle_of_care_notes FROM easygp;
+GRANT ALL ON TABLE diabetes_annual_cycle_of_care_notes TO easygp;
+
+
+--
 -- Name: diabetes_annual_cycle_of_care_notes_pk_seq; Type: ACL; Schema: chronic_disease_management; Owner: easygp
 --
 
@@ -26852,6 +26749,15 @@ GRANT USAGE ON SEQUENCE diabetes_annual_cycle_of_care_pk_seq TO staff;
 
 
 --
+-- Name: epc_link_provider_form; Type: ACL; Schema: chronic_disease_management; Owner: easygp
+--
+
+REVOKE ALL ON TABLE epc_link_provider_form FROM PUBLIC;
+REVOKE ALL ON TABLE epc_link_provider_form FROM easygp;
+GRANT ALL ON TABLE epc_link_provider_form TO easygp;
+
+
+--
 -- Name: epc_link_provider_form_pk_seq; Type: ACL; Schema: chronic_disease_management; Owner: easygp
 --
 
@@ -26859,6 +26765,15 @@ REVOKE ALL ON SEQUENCE epc_link_provider_form_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE epc_link_provider_form_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE epc_link_provider_form_pk_seq TO easygp;
 GRANT USAGE ON SEQUENCE epc_link_provider_form_pk_seq TO staff;
+
+
+--
+-- Name: epc_referral; Type: ACL; Schema: chronic_disease_management; Owner: easygp
+--
+
+REVOKE ALL ON TABLE epc_referral FROM PUBLIC;
+REVOKE ALL ON TABLE epc_referral FROM easygp;
+GRANT ALL ON TABLE epc_referral TO easygp;
 
 
 --
@@ -26872,6 +26787,15 @@ GRANT USAGE ON SEQUENCE epc_referral_pk_seq TO staff;
 
 
 --
+-- Name: lu_allied_health_type; Type: ACL; Schema: chronic_disease_management; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_allied_health_type FROM PUBLIC;
+REVOKE ALL ON TABLE lu_allied_health_type FROM easygp;
+GRANT ALL ON TABLE lu_allied_health_type TO easygp;
+
+
+--
 -- Name: lu_allied_health_type_pk_seq; Type: ACL; Schema: chronic_disease_management; Owner: easygp
 --
 
@@ -26879,6 +26803,15 @@ REVOKE ALL ON SEQUENCE lu_allied_health_type_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_allied_health_type_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_allied_health_type_pk_seq TO easygp;
 GRANT USAGE ON SEQUENCE lu_allied_health_type_pk_seq TO staff;
+
+
+--
+-- Name: lu_dacc_components; Type: ACL; Schema: chronic_disease_management; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_dacc_components FROM PUBLIC;
+REVOKE ALL ON TABLE lu_dacc_components FROM easygp;
+GRANT ALL ON TABLE lu_dacc_components TO easygp;
 
 
 --
@@ -26899,6 +26832,15 @@ REVOKE ALL ON TABLE patients_with_hba1c_not_diabetic FROM PUBLIC;
 REVOKE ALL ON TABLE patients_with_hba1c_not_diabetic FROM easygp;
 GRANT ALL ON TABLE patients_with_hba1c_not_diabetic TO easygp;
 GRANT ALL ON TABLE patients_with_hba1c_not_diabetic TO staff;
+
+
+--
+-- Name: team_care_arrangements; Type: ACL; Schema: chronic_disease_management; Owner: easygp
+--
+
+REVOKE ALL ON TABLE team_care_arrangements FROM PUBLIC;
+REVOKE ALL ON TABLE team_care_arrangements FROM easygp;
+GRANT ALL ON TABLE team_care_arrangements TO easygp;
 
 
 --
@@ -27448,34 +27390,31 @@ GRANT SELECT ON TABLE lu_systems TO staff;
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: atc; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: atc; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE atc FROM PUBLIC;
-REVOKE ALL ON TABLE atc FROM postgres;
-GRANT ALL ON TABLE atc TO postgres;
+REVOKE ALL ON TABLE atc FROM easygp;
 GRANT ALL ON TABLE atc TO easygp;
 GRANT ALL ON TABLE atc TO staff;
 
 
 --
--- Name: brand; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: brand; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE brand FROM PUBLIC;
-REVOKE ALL ON TABLE brand FROM postgres;
-GRANT ALL ON TABLE brand TO postgres;
+REVOKE ALL ON TABLE brand FROM easygp;
 GRANT ALL ON TABLE brand TO easygp;
 GRANT ALL ON TABLE brand TO staff;
 
 
 --
--- Name: product; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: product; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE product FROM PUBLIC;
-REVOKE ALL ON TABLE product FROM postgres;
-GRANT ALL ON TABLE product TO postgres;
+REVOKE ALL ON TABLE product FROM easygp;
 GRANT ALL ON TABLE product TO easygp;
 GRANT ALL ON TABLE product TO staff;
 
@@ -27783,7 +27722,6 @@ SET search_path = clin_certificates, pg_catalog;
 REVOKE ALL ON TABLE certificate_reasons FROM PUBLIC;
 REVOKE ALL ON TABLE certificate_reasons FROM easygp;
 GRANT ALL ON TABLE certificate_reasons TO easygp;
-GRANT ALL ON TABLE certificate_reasons TO ian;
 GRANT ALL ON TABLE certificate_reasons TO staff;
 
 
@@ -27794,7 +27732,6 @@ GRANT ALL ON TABLE certificate_reasons TO staff;
 REVOKE ALL ON SEQUENCE certificate_reasons_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE certificate_reasons_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE certificate_reasons_pk_seq TO easygp;
-GRANT ALL ON SEQUENCE certificate_reasons_pk_seq TO ian;
 
 
 --
@@ -27804,7 +27741,6 @@ GRANT ALL ON SEQUENCE certificate_reasons_pk_seq TO ian;
 REVOKE ALL ON TABLE lu_fitness FROM PUBLIC;
 REVOKE ALL ON TABLE lu_fitness FROM easygp;
 GRANT ALL ON TABLE lu_fitness TO easygp;
-GRANT ALL ON TABLE lu_fitness TO ian;
 GRANT SELECT ON TABLE lu_fitness TO staff;
 
 
@@ -27815,7 +27751,6 @@ GRANT SELECT ON TABLE lu_fitness TO staff;
 REVOKE ALL ON SEQUENCE lu_fitness_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_fitness_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_fitness_pk_seq TO easygp;
-GRANT ALL ON SEQUENCE lu_fitness_pk_seq TO ian;
 
 
 --
@@ -27826,7 +27761,6 @@ REVOKE ALL ON TABLE lu_illness_temporality FROM PUBLIC;
 REVOKE ALL ON TABLE lu_illness_temporality FROM easygp;
 GRANT ALL ON TABLE lu_illness_temporality TO easygp;
 GRANT SELECT ON TABLE lu_illness_temporality TO staff;
-GRANT ALL ON TABLE lu_illness_temporality TO ian;
 
 
 --
@@ -27837,7 +27771,6 @@ REVOKE ALL ON SEQUENCE lu_illness_temporality_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_illness_temporality_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_illness_temporality_pk_seq TO easygp;
 GRANT USAGE ON SEQUENCE lu_illness_temporality_pk_seq TO staff;
-GRANT ALL ON SEQUENCE lu_illness_temporality_pk_seq TO ian;
 
 
 --
@@ -27847,7 +27780,6 @@ GRANT ALL ON SEQUENCE lu_illness_temporality_pk_seq TO ian;
 REVOKE ALL ON TABLE medical_certificates FROM PUBLIC;
 REVOKE ALL ON TABLE medical_certificates FROM easygp;
 GRANT ALL ON TABLE medical_certificates TO easygp;
-GRANT ALL ON TABLE medical_certificates TO ian;
 GRANT ALL ON TABLE medical_certificates TO staff;
 
 
@@ -27859,7 +27791,6 @@ REVOKE ALL ON SEQUENCE medical_certificate_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE medical_certificate_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE medical_certificate_pk_seq TO easygp;
 GRANT USAGE ON SEQUENCE medical_certificate_pk_seq TO staff;
-GRANT ALL ON SEQUENCE medical_certificate_pk_seq TO ian;
 
 
 --
@@ -27870,7 +27801,6 @@ REVOKE ALL ON TABLE vwmedicalcertificates FROM PUBLIC;
 REVOKE ALL ON TABLE vwmedicalcertificates FROM easygp;
 GRANT ALL ON TABLE vwmedicalcertificates TO easygp;
 GRANT SELECT ON TABLE vwmedicalcertificates TO staff;
-GRANT ALL ON TABLE vwmedicalcertificates TO ian;
 
 
 SET search_path = clin_checkups, pg_catalog;
@@ -28162,12 +28092,12 @@ GRANT ALL ON TABLE referrals TO staff;
 SET search_path = clin_consult, pg_catalog;
 
 --
--- Name: vwdictations; Type: ACL; Schema: clin_consult; Owner: postgres
+-- Name: vwdictations; Type: ACL; Schema: clin_consult; Owner: easygp
 --
 
 REVOKE ALL ON TABLE vwdictations FROM PUBLIC;
-REVOKE ALL ON TABLE vwdictations FROM postgres;
-GRANT ALL ON TABLE vwdictations TO postgres;
+REVOKE ALL ON TABLE vwdictations FROM easygp;
+GRANT ALL ON TABLE vwdictations TO easygp;
 GRANT ALL ON TABLE vwdictations TO staff;
 
 
@@ -28202,6 +28132,15 @@ GRANT ALL ON TABLE vwscratchpad TO staff;
 
 
 SET search_path = clin_history, pg_catalog;
+
+--
+-- Name: care_plan_components; Type: ACL; Schema: clin_history; Owner: easygp
+--
+
+REVOKE ALL ON TABLE care_plan_components FROM PUBLIC;
+REVOKE ALL ON TABLE care_plan_components FROM easygp;
+GRANT ALL ON TABLE care_plan_components TO easygp;
+
 
 --
 -- Name: care_plan_components_due; Type: ACL; Schema: clin_history; Owner: easygp
@@ -29528,48 +29467,33 @@ GRANT ALL ON TABLE vwprescribedforhabits TO staff;
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: form; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: form; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE form FROM PUBLIC;
-REVOKE ALL ON TABLE form FROM postgres;
-GRANT ALL ON TABLE form TO postgres;
+REVOKE ALL ON TABLE form FROM easygp;
 GRANT ALL ON TABLE form TO easygp;
 GRANT ALL ON TABLE form TO staff;
 
 
 --
--- Name: restriction; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: restriction; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE restriction FROM PUBLIC;
-REVOKE ALL ON TABLE restriction FROM postgres;
-GRANT ALL ON TABLE restriction TO postgres;
+REVOKE ALL ON TABLE restriction FROM easygp;
 GRANT ALL ON TABLE restriction TO easygp;
 GRANT ALL ON TABLE restriction TO staff;
 
 
 --
--- Name: schedules; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: schedules; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE schedules FROM PUBLIC;
-REVOKE ALL ON TABLE schedules FROM postgres;
-GRANT ALL ON TABLE schedules TO postgres;
+REVOKE ALL ON TABLE schedules FROM easygp;
 GRANT ALL ON TABLE schedules TO easygp;
 GRANT ALL ON TABLE schedules TO staff;
-
-
-SET search_path = clin_prescribing, pg_catalog;
-
---
--- Name: vwprescribeditems; Type: ACL; Schema: clin_prescribing; Owner: easygp
---
-
-REVOKE ALL ON TABLE vwprescribeditems FROM PUBLIC;
-REVOKE ALL ON TABLE vwprescribeditems FROM easygp;
-GRANT ALL ON TABLE vwprescribeditems TO easygp;
-GRANT SELECT ON TABLE vwprescribeditems TO staff;
 
 
 SET search_path = clin_procedures, pg_catalog;
@@ -29867,7 +29791,7 @@ SET search_path = clin_procedures, pg_catalog;
 REVOKE ALL ON TABLE vwskinprocedures FROM PUBLIC;
 REVOKE ALL ON TABLE vwskinprocedures FROM easygp;
 GRANT ALL ON TABLE vwskinprocedures TO easygp;
-GRANT SELECT ON TABLE vwskinprocedures TO staff;
+GRANT ALL ON TABLE vwskinprocedures TO staff;
 
 
 --
@@ -30013,6 +29937,15 @@ GRANT ALL ON TABLE vwtemplates TO staff;
 
 
 SET search_path = clin_referrals, pg_catalog;
+
+--
+-- Name: inclusions; Type: ACL; Schema: clin_referrals; Owner: easygp
+--
+
+REVOKE ALL ON TABLE inclusions FROM PUBLIC;
+REVOKE ALL ON TABLE inclusions FROM easygp;
+GRANT ALL ON TABLE inclusions TO easygp;
+
 
 --
 -- Name: lu_type; Type: ACL; Schema: clin_referrals; Owner: easygp
@@ -30397,7 +30330,7 @@ GRANT SELECT ON TABLE vwrequestproviders TO staff;
 REVOKE ALL ON TABLE vwrequestforms FROM PUBLIC;
 REVOKE ALL ON TABLE vwrequestforms FROM easygp;
 GRANT ALL ON TABLE vwrequestforms TO easygp;
-GRANT SELECT ON TABLE vwrequestforms TO staff;
+GRANT ALL ON TABLE vwrequestforms TO staff;
 
 
 --
@@ -31047,12 +30980,12 @@ GRANT SELECT ON TABLE lu_whisper_test TO staff;
 
 
 --
--- Name: vwrecreationaldrugs; Type: ACL; Schema: common; Owner: postgres
+-- Name: vwrecreationaldrugs; Type: ACL; Schema: common; Owner: easygp
 --
 
 REVOKE ALL ON TABLE vwrecreationaldrugs FROM PUBLIC;
-REVOKE ALL ON TABLE vwrecreationaldrugs FROM postgres;
-GRANT ALL ON TABLE vwrecreationaldrugs TO postgres;
+REVOKE ALL ON TABLE vwrecreationaldrugs FROM easygp;
+GRANT ALL ON TABLE vwrecreationaldrugs TO easygp;
 GRANT SELECT ON TABLE vwrecreationaldrugs TO staff;
 
 
@@ -31289,6 +31222,16 @@ GRANT USAGE ON SEQUENCE lu_title_pk_seq TO staff;
 
 
 --
+-- Name: todo; Type: ACL; Schema: contacts; Owner: easygp
+--
+
+REVOKE ALL ON TABLE todo FROM PUBLIC;
+REVOKE ALL ON TABLE todo FROM easygp;
+GRANT ALL ON TABLE todo TO easygp;
+GRANT ALL ON TABLE todo TO staff;
+
+
+--
 -- Name: vwbranchescomms; Type: ACL; Schema: contacts; Owner: easygp
 --
 
@@ -31473,6 +31416,15 @@ GRANT USAGE ON SEQUENCE lu_link_printer_task_pk_seq TO staff;
 
 
 --
+-- Name: lu_message_display_style; Type: ACL; Schema: defaults; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_message_display_style FROM PUBLIC;
+REVOKE ALL ON TABLE lu_message_display_style FROM easygp;
+GRANT ALL ON TABLE lu_message_display_style TO easygp;
+
+
+--
 -- Name: lu_message_display_style_pk_seq; Type: ACL; Schema: defaults; Owner: easygp
 --
 
@@ -31480,6 +31432,15 @@ REVOKE ALL ON SEQUENCE lu_message_display_style_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_message_display_style_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_message_display_style_pk_seq TO easygp;
 GRANT USAGE ON SEQUENCE lu_message_display_style_pk_seq TO staff;
+
+
+--
+-- Name: lu_message_standard; Type: ACL; Schema: defaults; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_message_standard FROM PUBLIC;
+REVOKE ALL ON TABLE lu_message_standard FROM easygp;
+GRANT ALL ON TABLE lu_message_standard TO easygp;
 
 
 --
@@ -31595,13 +31556,13 @@ GRANT USAGE ON SEQUENCE documents_pk_seq TO staff;
 
 
 --
--- Name: hl7_messages_seq; Type: ACL; Schema: documents; Owner: easygp
+-- Name: hl7_messages; Type: ACL; Schema: documents; Owner: easygp
 --
 
-REVOKE ALL ON SEQUENCE hl7_messages_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE hl7_messages_seq FROM easygp;
-GRANT ALL ON SEQUENCE hl7_messages_seq TO easygp;
-GRANT ALL ON SEQUENCE hl7_messages_seq TO staff;
+REVOKE ALL ON SEQUENCE hl7_messages FROM PUBLIC;
+REVOKE ALL ON SEQUENCE hl7_messages FROM easygp;
+GRANT ALL ON SEQUENCE hl7_messages TO easygp;
+GRANT ALL ON SEQUENCE hl7_messages TO staff;
 
 
 --
@@ -31622,6 +31583,15 @@ REVOKE ALL ON SEQUENCE lu_archive_site_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE lu_archive_site_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE lu_archive_site_pk_seq TO easygp;
 GRANT USAGE ON SEQUENCE lu_archive_site_pk_seq TO staff;
+
+
+--
+-- Name: lu_display_as; Type: ACL; Schema: documents; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_display_as FROM PUBLIC;
+REVOKE ALL ON TABLE lu_display_as FROM easygp;
+GRANT ALL ON TABLE lu_display_as TO easygp;
 
 
 --
@@ -31652,6 +31622,15 @@ REVOKE ALL ON TABLE vwgraphableobservations FROM PUBLIC;
 REVOKE ALL ON TABLE vwgraphableobservations FROM easygp;
 GRANT ALL ON TABLE vwgraphableobservations TO easygp;
 GRANT SELECT ON TABLE vwgraphableobservations TO staff;
+
+
+--
+-- Name: patientshba1cover75; Type: ACL; Schema: documents; Owner: easygp
+--
+
+REVOKE ALL ON TABLE patientshba1cover75 FROM PUBLIC;
+REVOKE ALL ON TABLE patientshba1cover75 FROM easygp;
+GRANT ALL ON TABLE patientshba1cover75 TO easygp;
 
 
 --
@@ -31722,6 +31701,15 @@ REVOKE ALL ON SEQUENCE unmatched_staff_pk_seq FROM PUBLIC;
 REVOKE ALL ON SEQUENCE unmatched_staff_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE unmatched_staff_pk_seq TO easygp;
 GRANT USAGE ON SEQUENCE unmatched_staff_pk_seq TO staff;
+
+
+--
+-- Name: vwhba1cover75; Type: ACL; Schema: documents; Owner: easygp
+--
+
+REVOKE ALL ON TABLE vwhba1cover75 FROM PUBLIC;
+REVOKE ALL ON TABLE vwhba1cover75 FROM easygp;
+GRANT ALL ON TABLE vwhba1cover75 TO easygp;
 
 
 --
@@ -31897,6 +31885,16 @@ GRANT SELECT ON TABLE patents TO staff;
 
 
 --
+-- Name: pregnancy_code; Type: ACL; Schema: drugbank; Owner: easygp
+--
+
+REVOKE ALL ON TABLE pregnancy_code FROM PUBLIC;
+REVOKE ALL ON TABLE pregnancy_code FROM easygp;
+GRANT ALL ON TABLE pregnancy_code TO easygp;
+GRANT SELECT ON TABLE pregnancy_code TO staff;
+
+
+--
 -- Name: salts; Type: ACL; Schema: drugbank; Owner: easygp
 --
 
@@ -31949,287 +31947,280 @@ GRANT SELECT ON TABLE vwdrugatccodeinteractions TO staff;
 SET search_path = drugs, pg_catalog;
 
 --
--- Name: chapters; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: chapters; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE chapters FROM PUBLIC;
-REVOKE ALL ON TABLE chapters FROM postgres;
-GRANT ALL ON TABLE chapters TO postgres;
+REVOKE ALL ON TABLE chapters FROM easygp;
 GRANT ALL ON TABLE chapters TO easygp;
 GRANT ALL ON TABLE chapters TO staff;
 
 
 --
--- Name: clinical_effects; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: clinical_effects; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE clinical_effects FROM PUBLIC;
-REVOKE ALL ON TABLE clinical_effects FROM postgres;
-GRANT ALL ON TABLE clinical_effects TO postgres;
+REVOKE ALL ON TABLE clinical_effects FROM easygp;
 GRANT ALL ON TABLE clinical_effects TO easygp;
 GRANT ALL ON TABLE clinical_effects TO staff;
 
 
 --
--- Name: clinical_effects_pk_seq; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: clinical_effects_pk_seq; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON SEQUENCE clinical_effects_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE clinical_effects_pk_seq FROM postgres;
-GRANT ALL ON SEQUENCE clinical_effects_pk_seq TO postgres;
+REVOKE ALL ON SEQUENCE clinical_effects_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE clinical_effects_pk_seq TO easygp;
 GRANT ALL ON SEQUENCE clinical_effects_pk_seq TO staff;
 
 
 --
--- Name: company; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: company; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE company FROM PUBLIC;
-REVOKE ALL ON TABLE company FROM postgres;
-GRANT ALL ON TABLE company TO postgres;
+REVOKE ALL ON TABLE company FROM easygp;
 GRANT ALL ON TABLE company TO easygp;
 GRANT ALL ON TABLE company TO staff;
 
 
 --
--- Name: evidence_levels; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: evidence_levels; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE evidence_levels FROM PUBLIC;
-REVOKE ALL ON TABLE evidence_levels FROM postgres;
-GRANT ALL ON TABLE evidence_levels TO postgres;
+REVOKE ALL ON TABLE evidence_levels FROM easygp;
 GRANT ALL ON TABLE evidence_levels TO easygp;
 GRANT ALL ON TABLE evidence_levels TO staff;
 
 
 --
--- Name: flags; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: flags; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE flags FROM PUBLIC;
-REVOKE ALL ON TABLE flags FROM postgres;
-GRANT ALL ON TABLE flags TO postgres;
+REVOKE ALL ON TABLE flags FROM easygp;
 GRANT ALL ON TABLE flags TO easygp;
 GRANT ALL ON TABLE flags TO staff;
 
 
 --
--- Name: flags_pk_seq; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: flags_pk_seq; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON SEQUENCE flags_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE flags_pk_seq FROM postgres;
-GRANT ALL ON SEQUENCE flags_pk_seq TO postgres;
+REVOKE ALL ON SEQUENCE flags_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE flags_pk_seq TO easygp;
 GRANT ALL ON SEQUENCE flags_pk_seq TO staff;
 
 
 --
--- Name: info; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: info; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE info FROM PUBLIC;
-REVOKE ALL ON TABLE info FROM postgres;
-GRANT ALL ON TABLE info TO postgres;
+REVOKE ALL ON TABLE info FROM easygp;
 GRANT ALL ON TABLE info TO easygp;
 GRANT ALL ON TABLE info TO staff;
 
 
 --
--- Name: info_pk_seq; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: info_pk_seq; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON SEQUENCE info_pk_seq FROM PUBLIC;
-REVOKE ALL ON SEQUENCE info_pk_seq FROM postgres;
-GRANT ALL ON SEQUENCE info_pk_seq TO postgres;
+REVOKE ALL ON SEQUENCE info_pk_seq FROM easygp;
 GRANT ALL ON SEQUENCE info_pk_seq TO easygp;
 GRANT ALL ON SEQUENCE info_pk_seq TO staff;
 
 
 --
--- Name: link_atc_info; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: link_atc_info; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE link_atc_info FROM PUBLIC;
-REVOKE ALL ON TABLE link_atc_info FROM postgres;
-GRANT ALL ON TABLE link_atc_info TO postgres;
+REVOKE ALL ON TABLE link_atc_info FROM easygp;
 GRANT ALL ON TABLE link_atc_info TO easygp;
 GRANT ALL ON TABLE link_atc_info TO staff;
 
 
 --
--- Name: link_category_info; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: link_category_info; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE link_category_info FROM PUBLIC;
-REVOKE ALL ON TABLE link_category_info FROM postgres;
-GRANT ALL ON TABLE link_category_info TO postgres;
+REVOKE ALL ON TABLE link_category_info FROM easygp;
 GRANT ALL ON TABLE link_category_info TO easygp;
 GRANT ALL ON TABLE link_category_info TO staff;
 
 
 --
--- Name: link_flag_product; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: link_flag_product; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE link_flag_product FROM PUBLIC;
-REVOKE ALL ON TABLE link_flag_product FROM postgres;
-GRANT ALL ON TABLE link_flag_product TO postgres;
+REVOKE ALL ON TABLE link_flag_product FROM easygp;
 GRANT ALL ON TABLE link_flag_product TO easygp;
 GRANT ALL ON TABLE link_flag_product TO staff;
 
 
 --
--- Name: link_info_source; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: link_info_source; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE link_info_source FROM PUBLIC;
-REVOKE ALL ON TABLE link_info_source FROM postgres;
-GRANT ALL ON TABLE link_info_source TO postgres;
+REVOKE ALL ON TABLE link_info_source FROM easygp;
 GRANT ALL ON TABLE link_info_source TO easygp;
 GRANT SELECT ON TABLE link_info_source TO staff;
 
 
 --
--- Name: patient_categories; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: patient_categories; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE patient_categories FROM PUBLIC;
-REVOKE ALL ON TABLE patient_categories FROM postgres;
-GRANT ALL ON TABLE patient_categories TO postgres;
+REVOKE ALL ON TABLE patient_categories FROM easygp;
 GRANT ALL ON TABLE patient_categories TO easygp;
 GRANT ALL ON TABLE patient_categories TO staff;
 
 
 --
--- Name: pbs; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: pbs; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE pbs FROM PUBLIC;
-REVOKE ALL ON TABLE pbs FROM postgres;
-GRANT ALL ON TABLE pbs TO postgres;
+REVOKE ALL ON TABLE pbs FROM easygp;
 GRANT ALL ON TABLE pbs TO easygp;
 GRANT ALL ON TABLE pbs TO staff;
 
 
 --
--- Name: pharmacologic_mechanisms; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: pbsconvert; Type: ACL; Schema: drugs; Owner: easygp
+--
+
+REVOKE ALL ON TABLE pbsconvert FROM PUBLIC;
+REVOKE ALL ON TABLE pbsconvert FROM easygp;
+GRANT ALL ON TABLE pbsconvert TO easygp;
+
+
+--
+-- Name: pharmacologic_mechanisms; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE pharmacologic_mechanisms FROM PUBLIC;
-REVOKE ALL ON TABLE pharmacologic_mechanisms FROM postgres;
-GRANT ALL ON TABLE pharmacologic_mechanisms TO postgres;
+REVOKE ALL ON TABLE pharmacologic_mechanisms FROM easygp;
 GRANT ALL ON TABLE pharmacologic_mechanisms TO easygp;
 GRANT ALL ON TABLE pharmacologic_mechanisms TO staff;
 
 
 --
--- Name: product_information_files; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: product_information_files; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE product_information_files FROM PUBLIC;
-REVOKE ALL ON TABLE product_information_files FROM postgres;
-GRANT ALL ON TABLE product_information_files TO postgres;
+REVOKE ALL ON TABLE product_information_files FROM easygp;
 GRANT ALL ON TABLE product_information_files TO easygp;
 GRANT ALL ON TABLE product_information_files TO staff;
 
 
 --
--- Name: product_information_unmatched; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: product_information_unmatched; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE product_information_unmatched FROM PUBLIC;
-REVOKE ALL ON TABLE product_information_unmatched FROM postgres;
-GRANT ALL ON TABLE product_information_unmatched TO postgres;
+REVOKE ALL ON TABLE product_information_unmatched FROM easygp;
 GRANT ALL ON TABLE product_information_unmatched TO easygp;
 GRANT ALL ON TABLE product_information_unmatched TO staff;
 
 
 --
--- Name: severity_level; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: severity_level; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE severity_level FROM PUBLIC;
-REVOKE ALL ON TABLE severity_level FROM postgres;
-GRANT ALL ON TABLE severity_level TO postgres;
+REVOKE ALL ON TABLE severity_level FROM easygp;
 GRANT ALL ON TABLE severity_level TO easygp;
 GRANT ALL ON TABLE severity_level TO staff;
 
 
 --
--- Name: sources; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: sources; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE sources FROM PUBLIC;
-REVOKE ALL ON TABLE sources FROM postgres;
-GRANT ALL ON TABLE sources TO postgres;
+REVOKE ALL ON TABLE sources FROM easygp;
 GRANT ALL ON TABLE sources TO easygp;
 GRANT ALL ON TABLE sources TO staff;
 
 
 --
--- Name: topic; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: topic; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE topic FROM PUBLIC;
-REVOKE ALL ON TABLE topic FROM postgres;
-GRANT ALL ON TABLE topic TO postgres;
+REVOKE ALL ON TABLE topic FROM easygp;
 GRANT ALL ON TABLE topic TO easygp;
 GRANT ALL ON TABLE topic TO staff;
 
 
 --
--- Name: version; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: version; Type: ACL; Schema: drugs; Owner: ian
 --
 
 REVOKE ALL ON TABLE version FROM PUBLIC;
-REVOKE ALL ON TABLE version FROM postgres;
-GRANT ALL ON TABLE version TO postgres;
-GRANT SELECT,UPDATE ON TABLE version TO staff;
+REVOKE ALL ON TABLE version FROM ian;
+GRANT ALL ON TABLE version TO ian;
 GRANT SELECT,UPDATE ON TABLE version TO easygp;
+GRANT SELECT ON TABLE version TO staff;
 
 
 --
--- Name: vwdistinctbrandsforgenericproduct; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: vwdistinctbrandsforgenericproduct; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE vwdistinctbrandsforgenericproduct FROM PUBLIC;
-REVOKE ALL ON TABLE vwdistinctbrandsforgenericproduct FROM postgres;
-GRANT ALL ON TABLE vwdistinctbrandsforgenericproduct TO postgres;
+REVOKE ALL ON TABLE vwdistinctbrandsforgenericproduct FROM easygp;
 GRANT ALL ON TABLE vwdistinctbrandsforgenericproduct TO easygp;
 GRANT SELECT ON TABLE vwdistinctbrandsforgenericproduct TO staff;
 
 
 --
--- Name: vwpbs; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: vwpbs; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE vwpbs FROM PUBLIC;
-REVOKE ALL ON TABLE vwpbs FROM postgres;
-GRANT ALL ON TABLE vwpbs TO postgres;
+REVOKE ALL ON TABLE vwpbs FROM easygp;
 GRANT ALL ON TABLE vwpbs TO easygp;
 GRANT ALL ON TABLE vwpbs TO staff;
 
 
 --
--- Name: vwdrugs; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: vwdrugs; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE vwdrugs FROM PUBLIC;
-REVOKE ALL ON TABLE vwdrugs FROM postgres;
-GRANT ALL ON TABLE vwdrugs TO postgres;
+REVOKE ALL ON TABLE vwdrugs FROM easygp;
 GRANT ALL ON TABLE vwdrugs TO easygp;
 GRANT ALL ON TABLE vwdrugs TO staff;
 
 
 --
--- Name: vwgeneric; Type: ACL; Schema: drugs; Owner: postgres
+-- Name: vwdrugs1; Type: ACL; Schema: drugs; Owner: easygp
+--
+
+REVOKE ALL ON TABLE vwdrugs1 FROM PUBLIC;
+REVOKE ALL ON TABLE vwdrugs1 FROM easygp;
+GRANT ALL ON TABLE vwdrugs1 TO easygp;
+
+
+--
+-- Name: vwgeneric; Type: ACL; Schema: drugs; Owner: easygp
 --
 
 REVOKE ALL ON TABLE vwgeneric FROM PUBLIC;
-REVOKE ALL ON TABLE vwgeneric FROM postgres;
-GRANT ALL ON TABLE vwgeneric TO postgres;
+REVOKE ALL ON TABLE vwgeneric FROM easygp;
 GRANT ALL ON TABLE vwgeneric TO easygp;
 GRANT ALL ON TABLE vwgeneric TO staff;
 
@@ -32304,6 +32295,62 @@ REVOKE ALL ON TABLE vwdemographictemplates FROM PUBLIC;
 REVOKE ALL ON TABLE vwdemographictemplates FROM easygp;
 GRANT ALL ON TABLE vwdemographictemplates TO easygp;
 GRANT SELECT ON TABLE vwdemographictemplates TO staff;
+
+
+SET search_path = public, pg_catalog;
+
+--
+-- Name: dailymed; Type: ACL; Schema: public; Owner: easygp
+--
+
+REVOKE ALL ON TABLE dailymed FROM PUBLIC;
+REVOKE ALL ON TABLE dailymed FROM easygp;
+GRANT ALL ON TABLE dailymed TO easygp;
+
+
+--
+-- Name: forms1; Type: ACL; Schema: public; Owner: easygp
+--
+
+REVOKE ALL ON TABLE forms1 FROM PUBLIC;
+REVOKE ALL ON TABLE forms1 FROM easygp;
+GRANT ALL ON TABLE forms1 TO easygp;
+
+
+--
+-- Name: inventory_items_lent; Type: ACL; Schema: public; Owner: easygp
+--
+
+REVOKE ALL ON TABLE inventory_items_lent FROM PUBLIC;
+REVOKE ALL ON TABLE inventory_items_lent FROM easygp;
+GRANT ALL ON TABLE inventory_items_lent TO easygp;
+
+
+--
+-- Name: lu_modes; Type: ACL; Schema: public; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_modes FROM PUBLIC;
+REVOKE ALL ON TABLE lu_modes FROM easygp;
+GRANT ALL ON TABLE lu_modes TO easygp;
+
+
+--
+-- Name: rawpbs; Type: ACL; Schema: public; Owner: easygp
+--
+
+REVOKE ALL ON TABLE rawpbs FROM PUBLIC;
+REVOKE ALL ON TABLE rawpbs FROM easygp;
+GRANT ALL ON TABLE rawpbs TO easygp;
+
+
+--
+-- Name: web; Type: ACL; Schema: public; Owner: easygp
+--
+
+REVOKE ALL ON TABLE web FROM PUBLIC;
+REVOKE ALL ON TABLE web FROM easygp;
+GRANT ALL ON TABLE web TO easygp;
 
 
 SET search_path = research, pg_catalog;

@@ -37,10 +37,16 @@ SHARED_HEALTH_SUMMARY=1
 DISCHARGE_SUMMARY=2
 PRESCRIPTION=3
 SPECIALIST_LETTER=4
-MBS_RECORD=5
-PBS_RECORD=6
+MBS_RECORD=5 # an entry generated for a Medicare Benefits Schedule item
+PBS_RECORD=6 # an entry generated from a PBS prescription
 
-class PCEHR(pcehr_transport.PCEHR_SOAP):
+class PCEHR:
+
+    def __init__(self,soap):
+        """
+        soap: instance of pcehr_transport.PCEHR_SOAP: a specialised module to access the PCEHR via encrypted SOAP
+        """
+        self.soap = soap
 
     def does_pcehr_exist(self,ihi,hpio,org_name,hpii,user_name):
         """
@@ -49,19 +55,22 @@ class PCEHR(pcehr_transport.PCEHR_SOAP):
         org_name: organisation name (without address)
         hpii: HPI-I of the user
         user_name: full text name of the user e.g "Dr. Ian Haywood"
-        returns: DENIED, ACCESS, WITH_PASSWORD
+        returns: constants DENIED, ACCESS, WITH_PASSWORD
         """
         req = '<p:doesPCEHRExist xmlns:p="http://ns.electronichealth.net.au/pcehr/xsd/interfaces/PCEHRProfile/1.0"></p:doesPCEHRExist>'
-        return self.do_action('doesPCEHRExist','doesPCEHRExistRequest',ihi,hpio,org_name,hpii,user_name,req)
+        ret = self.soap.do_action('doesPCEHRExist','doesPCEHRExistRequest',ihi,hpio,org_name,hpii,user_name,req)
+        # FIXME: parse results and return constants
     
     def gain_pcehr_access(self,ihi,hpio,org_name,hpii,user_name,password=None):
         """
         Apply for acess to the PCEHR in this session
         Needs to be called for each session of access
-        Parameters same meaning as does_pcehr_exist except password
+        Parameters same meaning as does_pcehr_exist except password which is an optional per-patient password
 
         Returns a Record object, or the values DENIED or WITH_PASSWORD
-        the Record remembers the ihi,hpio,org_name,hpii and user_name from this request. 
+        the Record object must store the ihi,hpio,org_name,hpii and user_name from this request internally.
+
+        Uses the underlying gainPCEHRAccess method.
         """
         pass
 
@@ -73,10 +82,11 @@ class Record(object):
         Search the PCEHR for documents
         begin: datetime.Date no results before this date
         finish: no results after this date
-        types: documents must be one of these types. None means any type
-        if multiple search paramters they are logically ANDed: all must match
+        types: list of types using constants defined at start of this file.
+        documents must be one of these types. Empty list means any type
+        if multiple search parameters present they are logically ANDed: all must match
 
-        response is a list of Documents
+        response is a list of Documents, empty list if none found.
         """
         pass
 
@@ -84,22 +94,26 @@ class Record(object):
         """
         Uploads a PCEHR document
         cda: CDA XML as a string
-        metadata: "IHE metadata" as an XML fragment
-        Must be for this same patient
+        metadata: the "IHE metadata" as an XML fragment string
+        Must be for the same patient as the Record was created for.
         Attachments not supported.
 
-        CDA will the signed by this function, CDA and signature are then packaged into a ZIP
-        file as per the "CDA Package" specification, and then uploaded to the PCEHR
+        This function must
+        - sign the CDA by creating separate signature XML
+        - package the CDA and signature XML into a ZIP file 
+        (see easygp-secret/trunk/docs/pcehr/core/NEHTA_1229_2011_Common-CDA_CDAPackage_v1.0.pdf)
+        (and look at how trunk/python/soap.py does signing)
+        - upload using the registerAndProvideDocumentSet function
         """
         pass
 
 class Document(object):
     """
-    Represents a document on search results
+    Represents a document provided from search results. Can't be created any other way.
 
     Object read-only attributes
     hpio: HPI-O of the authoring organisation
-    org_name: organisation name (without address)
+    org_name: authoring organisation name (without address)
     hpii: HPI-I of the author
     user_name: full text name of the author e.g "Dr. Ian Haywood"
     type: document type, one of constants used in searching
@@ -107,13 +121,15 @@ class Document(object):
 
     def get_cda(self):
         """
-        returns the CDA XML as a string. For search results this should download the CDA text itself.
+        returns the CDA XML as a string. this should download the CDA text itself and unpack the XML.
+
         Attachments currently not supported.
         """
         pass
 
 if __name__ == '__main__':
-    soaper = PCEHR_SOAP()
+    soaper = pcehr_transport.PCEHR_SOAP()
     soaper.set_configs('../keys/nash/7499758030/private.pem','../keys/nash/7499758030/certs.pem',soap_host='b2b.ehealthvendortest.health.gov.au',soap_path='/')
-    elem = soaper.does_pcehr_exist(ihi='8003608500029616',hpio='8003628233354198',org_name='DHSITESTORGD421',hpii='8003611566666859',user_name='Adrian Grignon')
+    p = PCEHR(soaper)
+    elem = p.does_pcehr_exist(ihi='8003608500029616',hpio='8003628233354198',org_name='DHSITESTORGD421',hpii='8003611566666859',user_name='Adrian Grignon')
     print xml.etree.ElementTree.tostring(elem)

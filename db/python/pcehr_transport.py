@@ -38,9 +38,9 @@ class PCEHR_SOAP(soap.SOAPCrypto):
         """Do a PCEHR SOAP action
         - action: the action, minus the prefix URL
         - ihi: the patient's Individual Health Identifier
-        - hpio: the organisations's HPI-O
+        - hpio: the organisations's Health Provider Identifier - Organisation.
         - org_name: the free-string name of the organisation
-        - hpii: the HPI-I of the user
+        - hpii: the Health Provider Identifier = Individual of the user
         - user_name: the free-string name of the user making the request
         - reg: the request as "canonicalised" XML
         """

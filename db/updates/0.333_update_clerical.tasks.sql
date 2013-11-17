@@ -39,8 +39,7 @@ CREATE OR REPLACE VIEW clerical.vwtaskscomponentsandnotes AS
   WHERE task_components.fk_consult > 0
   ORDER BY vwpatients.fk_patient, task_components.pk;
 
-ALTER TABLE clerical.vwtaskscomponentsandnotes
-  OWNER TO richard;
+ALTER TABLE clerical.vwtaskscomponentsandnotes   OWNER TO easygp;
 GRANT ALL ON TABLE clerical.vwtaskscomponentsandnotes TO easygp;
 GRANT SELECT ON TABLE clerical.vwtaskscomponentsandnotes TO staff;
 COMMENT ON VIEW clerical.vwtaskscomponentsandnotes

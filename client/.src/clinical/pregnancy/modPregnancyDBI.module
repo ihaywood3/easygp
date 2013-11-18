@@ -1,12 +1,10 @@
 ' Gambas module file
 
 ' Copyright (C) 2008-2013 Dr. Richard Terry
-
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
 ' the Free Software Foundation, either version 3 of the License, or
 ' (at your option) any later version.
-
 ' This program is distributed in the hope that it will be useful,
 ' but WITHOUT ANY WARRANTY; without even the implied warranty of
 ' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -22,26 +20,34 @@ Public Function Presentations_Get() As Collection
    '------------------------------------ 
    ' Return a list of baby presentations
    ' -----------------------------------
-
+   
    Return modDBConnect.exec_query_collection("Select * from clin_pregnancy.lu_presentations")
    
 End
 
 Public Function Placental_Positions_Get() As Collection
    
-  Return modDBConnect.exec_query_collection("Select * from clin_pregnancy.lu_placenta_position") 
+   Return modDBConnect.exec_query_collection("Select * from clin_pregnancy.lu_placenta_position") 
    
 End
 
 Public Function Patient_Is_Pregnant(fk_patient As Integer) As Boolean
-   'temporary fixme   proof of concept to put up patient is pregnant in Fclinical   
-   
+   '---------------------------------------------------------------
+   'Returns True if patient pregnant
+   'if pregnancy during > 40 weeks then prompt user ?still pregnant
+   'FIXME ian to do a function in the back end for this.
+   '--------------------------------------------------------------- 
    Dim R As Result
    Dim sql As String
    
-   sql = "Select * from clin_pregnancy.vwPregnancies where fk_patient = " & fk_patient
+   sql = "Select pk, edc  from clin_pregnancy.vwPregnancies where  fk_patient = " & fk_patient & "and edc is not null and date_delivery is null order by edc DESC LIMIT 1"
    R = modDBConnect.exec_query(sql)
    If R.count <> 0 Then
+      If DateDiff(Now, R!edc, gb.day) < 0 Then  
+         If Message.Question("Is the patient still pregnant?\n\nIf not, then please go to the Pregnancy module and update the data.", "Yes", "No") = 2 Then
+            Return
+         Endif
+      Endif
       Return True
    Endif
    
@@ -67,17 +73,44 @@ Public Function Onset_Labour_Types_Get(Optional bsort As Boolean = False) As Col
    
 End
 
+Public Sub Pregnancy_Delete(currentconsult As Cconsult, pregnancy As Collection) As Boolean
+   '------------------------------------------------------------------------------------
+   'deletes pregnancy and associated ante-natal-visits (if they exist) and creates audit
+   'if pregnancy was not created on Today then show the deleted progress notes changed
+   'by graying out the background of that progress note
+   '------------------------------------------------------------------------------------
+   
+   If modUtil.IsSameDay(Now, CurrentConsult.GetConsultDate()) Then                                                   'same day as today
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": pregnancy!fk_progressnote, "deleted": True])   'just remove progress notes, don't enforce audit
+   Else
+      pregnancy!progress_notes = "<TABLE BGCOLOR='#CFCFCF'" & "><COL WIDTH=100%><TR VALIGN=TOP><TD WIDTH=100%>" & pregnancy!progress_notes & "</TD></TR></TABLE>"   'otherwise gray out and leave audit trail message 
+      pregnancy!progress_notes &= "<small><B><I>Audit note:</B> this pregnancy (and all associated ante-natal vists) was deleted by " & modDBConnect.currentUser!wholename & " on " & Format(Now, "dd/mm/yyyy") & ". See audit trail on that date for the reason.</I></small>"
+      modDBConnect.update("clin_consult.progressnotes", Null, ["pk": pregnancy!fk_progressnote, "notes": pregnancy!progress_notes])            
+   End If
+   If modDBConnect.update("clin_pregnancy.pregnancies", Null, ["pk": pregnancy!fk_pregnancy, "deleted": True]) Then                         'success deleting the pregnancy
+      modDBConnect.exec_query("Update clin_pregnancy.ante_natal_visits set deleted = TRUE where fk_pregnancy = " & pregnancy!fk_pregnancy)  'delete associated ante-natal visits
+      If Not modUtil.IsSameDay(Now, currentconsult.GetConsultDate()) Then                                                                   'if not doing this on the same day
+         If modAudit.MakeAudit(currentconsult, "mark deleted", "clin_pregnancy.pregnancies", pregnancy!fk_pregnancy, const.cSection_Pregnancy, pregnancy!progress_notes) Then 'construct audit notes
+            Return True 
+         Endif
+      Else
+         Return True 
+      End If 
+   End If  
+   
+End
+
 Public Function Antenatal_Visits_Get(fk_patient As Integer) As Collection 
    '------------------------------------------------------------------------------
    'ordered by visit date, not key e.g back visits may be transcribed from a sheet
    '------------------------------------------------------------------------------   
-
-   Return modDBConnect.exec_query_collection("Select * from clin_pregnancy.vwAnteNatal_Visits where fk_patient =" & fk_patient & " ORDER BY visit_date")
+   
+   Return modDBConnect.exec_query_collection("Select * from clin_pregnancy.vwAnteNatal_Visits where fk_patient =" & fk_patient & " and not deleted ORDER BY visit_date")
    
 End
 
 Public Sub Pregnancies_Get(fk_patient As Integer) As Collection
    
-   Return modDBConnect.exec_query_collection("Select * from clin_pregnancy.vwPregnancies where fk_patient=" & fk_patient & " order by age_at_delivery ASC")  
+   Return modDBConnect.exec_query_collection("Select * from clin_pregnancy.vwPregnancies where fk_patient=" & fk_patient & " and not deleted order by age_at_delivery ASC")  
    
 End

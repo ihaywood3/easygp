@@ -128,7 +128,7 @@ class DBWrapper:
                     notify = self.conn.notifies.pop()
                     logging.debug("Got NOTIFY: {} {} {}".format(notify.pid, notify.channel, notify.payload))
                     self.__events.add((notify.channel,notify.payload))
-            elif pfd in xfd:
+            elif pfd in xfds:
                 logging.error("fd {} returned error condition".format(pfd))
                 sys.exit(1)
             else:

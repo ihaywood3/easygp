@@ -7,7 +7,7 @@ AS $function$
    f = open(ret[0]["value"]+'/'+fname,'w')
    d = f.write(data)
    f.close()
-$function$
+$function$ ;
 
 CREATE OR REPLACE FUNCTION public.load_file(dir_option_name text, fname text)
  RETURNS bytea
@@ -19,7 +19,7 @@ AS $function$
    d = f.read()
    f.close()
    return d
-$function$
+$function$ ;
 
 CREATE OR REPLACE FUNCTION public.list_files(dir_option_name text)
  RETURNS SETOF text
@@ -33,7 +33,7 @@ AS $function$
     p = p[len(top)+1:]
     for j in f:
        yield os.path.join(p,j)
-$function$
+$function$ ;
 
 CREATE OR REPLACE FUNCTION public.delete_file(dir_option_name text, fname text)
  RETURNS void
@@ -43,6 +43,6 @@ AS $function$
   ret = plpy.execute('select "value" from admin.global_preferences where "name" = $$%s$$ limit 1' % dir_option_name)
   if len(ret) == 0: plpy.error("No such option %s" % dir_option_name)
   os.unlink(ret[0]["value"] + "/" + fname)
-$function$
+$function$ ;
 
 update db.lu_version set lu_minor=344;

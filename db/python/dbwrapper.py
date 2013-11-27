@@ -21,7 +21,7 @@
 
 """A basic wrapper around the EasyGP database"""
 
-import select, time, logging, socket
+import select, time, logging, socket, re
 import pdb
 import psycopg2
 
@@ -53,25 +53,44 @@ import soap, socket, logging, sys
 
 class DBWrapper:
 
-    def __init__(self,config):
+    def __init__(self,config=None):
+        if config is None:
+            config = {'database':'easygp','db_user':'ian','host':'','port':None,'password':None}
         self.config = config
         self.conn = psycopg2.connect(database=config["database"],user=config["db_user"],host=config["host"],port=config["port"],password=config["password"])
-        r = self.__query("select * from admin.vwstaffinclinics where logon_name = user limit 1")
-        if len(r) == 0:
-            logging.critical("no staff member found")
-            sys.exit(1)
-        else:
-            self.staff = r[0]
-            logging.debug("fk_staff is {}".format(self.staff["fk_staff"]))
+        self.staff = None
+        self.tasks_staff = None
+        try:
+            r = self.__query("select * from admin.vwstaffinclinics where logon_name = user limit 1")
+            if len(r) == 0:
+                logging.critical("no staff member found")
+            else:
+                self.staff = r[0]
+                logging.debug("fk_staff is {}".format(self.staff["fk_staff"]))
             if self.config.has_key('tasks_user') and self.config['tasks_user'] != 'nobody':
                 r = self.__query("select * from admin.vwstaffinclinics where logon_name = %s",(self.config["tasks_user"],))
                 self.tasks_staff = r[0]
                 logging.debug("tasks fk_staff is {}".format(self.tasks_staff["fk_staff"]))
             else:
                 self.tasks_staff = self.staff
+        except psycopg2.ProgrammingError as e:
+            logging.critical(repr(e))
+            self.conn.rollback()
         self.listeners = {}
         self.__events = set()
         self.__retry_mode = False
+
+    def each_table(self,tbl,typs):
+        """set of table names matching the provided regular expression"""
+        return set((i['tblnam'] for i in self.__query("select nspname || '.' || relname as tblnam from pg_class, pg_namespace where relnamespace = pg_namespace.oid and (not relname ilike 'pg_%%') and nspname<>'information_schema' and nspname || '.' || relname ~ %s and position(relkind in %s) > 0",(tbl,typs))))
+
+    def each_table_cols(self,tbl):
+        """Set of column names of the listed table"""
+        return set((i['attname'] for i in self.__query("select attname from pg_attribute, pg_class, pg_namespace where relnamespace = pg_namespace.oid and pg_class.oid = attrelid and nspname || '.' || relname = %s",(tbl,))))
+
+    def each_foreign_constraint(self):
+        """list all foreign key constraints in the DB"""
+        return self.__query("select nspname || '.' || relname as tblnam, conname from pg_constraint, pg_class, pg_namespace where relnamespace = pg_namespace.oid and pg_class.oid = conrelid and contype='f'")
 
     def is_retry(self):
         """Return True if we are retrying an event after a network failure"""
@@ -145,6 +164,13 @@ class DBWrapper:
                 logging.exception("network error")
                 self.__retry_mode = True
 
+    def noop(self):
+        cur = self.conn.cursor()
+        cur.execute("select 1")
+        cur.close()
+        self.conn.commit()
+
+
     def synth_event(self,evt,payload):
         """synthemise an event, for debugging"""
         self.listeners[evt] (1234,payload)
@@ -153,11 +179,11 @@ class DBWrapper:
         return self.__query("select * from contacts.vwpatients where pcehr_consent='c' or pcehr_consent='h'")
     
     def patients_died_to_upload(self):
-        return self.__query("select * from contacts.vwpatients where ihi is not null and deceased and (pcehr_consent='c' or pcehr_consent='h')")
+        return self.__query("select * from contacts.vwpatients where ihi is not null and deceased and pcehr_consent='v'")
 
     def patient_mark_death_informed(self,fk_patient,logentry):
         cur = self.conn.cursor()
-        cur.execute("update clerical.data_patients set ihi_updated=now(),pcehr_consent='d' where pk=%s",(fk_patient))
+        cur.execute("update clerical.data_patients set ihi_updated=now(),pcehr_consent='d' where pk=%s",(fk_patient,))
         fk_consult = self.make_consult(cur,fk_patient)
         self.make_audit(cur,fk_consult,logentry,fk_patient)
         cur.close()
@@ -206,7 +232,7 @@ select value,note,fk_type,type,preferred_method from contacts.vwbranchescomms wh
                      
     def set_ihi_error(self,fk_patient,logentry):
         cur = self.conn.cursor()
-        cur.execute("update clerical.data_patients set pcehr_consent='e' where pk=%s",(fk_patient,))
+        cur.execute("update clerical.data_patients set pcehr_consent='e',ihi=null where pk=%s",(fk_patient,))
         fk_consult = self.make_consult(cur,fk_patient)
         self.make_audit(cur,fk_consult,logentry,fk_patient)
         self.make_task(cur,fk_consult,"Problem with IHI for patient",logentry)
@@ -224,15 +250,15 @@ select value,note,fk_type,type,preferred_method from contacts.vwbranchescomms wh
         if len(r) == 0: return True
         other_fk_patient = r[0][0]
         other_patient_details = "%s DOB: %s" % (r[0][1], r[0][2].strftime("%d/%m/%Y"))
-        cur,execute("select wholename, birthdate from contacts.vwpatients where fk_patient = %s",(fk_patient,))
+        cur.execute("select wholename, birthdate from contacts.vwpatients where fk_patient = %s",(fk_patient,))
         other_patient_details = "%s DOB: %s" % (r[0][1], r[0][2].strftime("%d/%m/%Y"))
         r = cur.fetchall()
         patient_details = "%s DOB: %s" % (r[0][0], r[0][1].strftime("%d/%m/%Y"))
         fk_consult = self.make_consult(cur,fk_patient)
-        self.make_audit(cur,fk_consult,"Medicare returned IHI %s, but same %s already in darabase" % (ihi,other_patient_details),fk_patient)
+        self.make_audit(cur,fk_consult,"Medicare returned IHI %s, but it is the same as for patient '%s' who is already in the darabase" % (ihi,other_patient_details),fk_patient)
         self.make_task(cur,fk_consult, "Duplicate IHIs","Medicare returned IHI %s for patient %s, but our database has the same IHI for patient %s" % (ihi,patient_details,other_patient_details))
         fk_consult = self.make_consult(cur,other_fk_patient)
-        self.make_audit(cur,fk_consult,"Medicare returned the same IHI but for another patient %s" % patient_details,other_fk_patient)
+        self.make_audit(cur,fk_consult,"Medicare returned the same IHI for another patient %s" % patient_details,other_fk_patient)
         # Medicare specs require both patients IHIs be disabled
         cur.execute("update clerical.data_patients set pcehr_consent='e' where pk=%s",(fk_patient,))
         cur.execute("update clerical.data_patients set pcehr_consent='e' where pk=%s",(other_fk_patient,))
@@ -243,7 +269,7 @@ select value,note,fk_type,type,preferred_method from contacts.vwbranchescomms wh
         return False
         
 
-    def log_simple_entry(self,fk_patient,error,fk_row=None,linked_table='clerical.data_patient'):
+    def log_simple_entry(self,fk_patient,error,fk_row=None,linked_table='clerical.data_patients'):
         cur = self.conn.cursor()
         fk_consult = self.make_consult(cur,fk_patient)
         if fk_row is None: fk_row = fk_patient
@@ -252,7 +278,7 @@ select value,note,fk_type,type,preferred_method from contacts.vwbranchescomms wh
         self.conn.commit()
 
     def get_ihis_for_refresh(self):
-        self.__query("select * from contacts.vwpatients where age(ihi_updated) > '1 year'::interval and pcehr_consent='c' and ihi is not null")
+        return self.__query("select * from contacts.vwpatients where age(ihi_updated) > '1 year'::interval and pcehr_consent='v' and ihi is not null limit 99")
         
     def make_consult(self,cur,fk_patient,fk_type=CONSULT_AUDIT):
         cur.execute("insert into clin_consult.consult (fk_staff,fk_patient,fk_type,consult_date) values(%s,%s,%s,now()) returning (pk)",(self.staff["fk_staff"],fk_patient,fk_type))
@@ -262,6 +288,11 @@ select value,note,fk_type,type,preferred_method from contacts.vwbranchescomms wh
         cur.execute("insert into clin_consult.progressnotes (fk_consult,linked_table,fk_row,fk_section,fk_audit_action,notes) values (%s,%s,%s,0,%s,%s)",(fk_consult,linked_table,fk_row,fk_audit_action,logentry))
     
     def make_task(self,cur,fk_consult,title,description):
+        # need to clean up HTML tags here
+        description = re.sub('<[^>]+>','',description)
+        description = description.replace('&amp;','&')
+        description = description.replace('&lt;','<')
+        description = description.replace('&gt;','>')
         cur.execute("insert into clerical.tasks (related_to,fk_staff_filed_task,fk_role_can_finalise) values (%s,%s,7) returning (pk)",(title,self.staff["fk_staff"]))
         pk_task = cur.fetchone()[0]
         cur.execute("""

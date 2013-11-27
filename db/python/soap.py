@@ -26,7 +26,7 @@
 
 from httplib import HTTPSConnection
 from M2Crypto import BIO, Rand, SMIME, EVP
-import hashlib, base64, uuid, time, re, pdb, os, sys, os.path
+import hashlib, base64, uuid, time, re, pdb, os, sys, os.path, logging
 import xml.etree.ElementTree as ET
 
 soap12 = '{http://www.w3.org/2003/05/soap-envelope}'
@@ -118,6 +118,7 @@ as open-source code
     def do_https(self,postdata,url_tip=''):
         """Do the actual HTTPS exchange of SOAP packets
         the object must have soap_path and soap_host variables set for the HTTP path and server name respectively"""
+        logging.debug("SOAP host is %s, SOAP path is %s" % (self.soap_host,self.soap_path))
         h = HTTPSConnection(self.soap_host,443,self.__private_key_path,self.__cert_path)
         h.request("POST",self.soap_path+url_tip,postdata,{'Content-Type':'application/soap+xml; charset=utf-8'})
         res = h.getresponse()

@@ -23,11 +23,10 @@
 
 """Event handlers called by dbwrapper."""
 
-import sys, os, os.path, traceback, time, logging, re, socket, logging
+import sys, os, os.path, traceback, time, logging, re, socket, logging, datetime
 import pdb
 import psycopg2
-import soap
-import dbwrapper
+import soap, dbwrapper
 
 class Event:
 
@@ -45,7 +44,7 @@ class Event:
         if self.pcehr_soap is not None: pass
         if self.medisecure is not None: pass
         if self.mo is not None: pass
-        if self.hi_service is not None: pass
+        if self.hi_service is not None: self.refresh_old_ihis()
 
     def translate_gender(self,sex):
         # translate EasyGP gender codes
@@ -57,12 +56,17 @@ class Event:
     def patient_death(self,pid,payload):
         for patient in self.db.patients_died_to_upload():
             sex = self.translate_gender(patient["sex"])
-            died = patient["date_deceased"].strftime("%Y-%m-%d")
+            if not patient['date_deceased'] is None:
+                died = patient["date_deceased"]
+            else:
+                died = datetime.date.today()
+            died = died.strftime("%Y-%m-%d")
             try:
-                ihi, record_status, status, messages = self.hi_service.notify_death(self.config["user"],patient["ihi"],sex,died)
+                ihi, record_status, status, messages = self.hi_service.notify_death(self.config["db_user"],patient["ihi"],sex,died)
             except soap.SOAPError as exc:
                 logging.exception("SOAP failure")
                 logstring = "<p>Tried to report patient death: A SOAP network error occurred: <tt>{}</tt></p>".format(str(exc))
+                logstring += self.logstring_boilerplate(patient)
                 self.db.set_ihi_error(patient["fk_patient"],logstring)
             except socket.error as exc:
                 logging.exception("network error")
@@ -78,7 +82,7 @@ class Event:
                     logstring = "<p>Tried to report death but problems</p>"
                     logstring += "<p>IHI: {}</p><p>Record status: {}</p><p>Status: {}</p>".format(ihi,record_status,status)
                 logstring += self.messages_to_table(messages)
-                logstring += "<p>SOAP Request ID: {}</p><p>SOAP reply ID: {}</p>".format(self.soap.outgoing_uuid,self.soap.incoming_uuid)
+                logstring += self.logstring_boilerplate(patient)
                 self.db.patient_mark_death_informed(patient["fk_patient"],logstring)
 
     def messages_to_table(self,messages):
@@ -91,71 +95,133 @@ class Event:
         return logstring
 
     def new_ihi(self,pid,payload):
-        for patient in self.db.get_patients_to_upload():
-            dob = patient["birthdate"].strftime("%Y-%m-%d")
-            sex = self.translate_gender(patient["sex"])
-            surname = patient["surname"][:40]  # spec sez when sending to HI service no loonger than 40 chars
-            firstname = patient["firstname"][:40]
-            try:
-                ihi, record_status, status, messages = self.hi_service.search_ihi(self.config["db_user"],surname,firstname,dob,sex,patient["medicare_number"],patient["medicare_ref_number"],patient["veteran_number"])
-            except soap.SOAPError as exc:
-                logging.exception("SOAP failure")
-                error = True
-                logstring = "<p>A SOAP network error occurred: <tt>{}</tt></p>".format(dbwrapper.html(str(exc)))
-            except socket.error as exc:
-                if not self.db.is_retry():
-                    self.db.log_simple_entry("Tried to get IHI but network down")
-                raise  # try again later but don't tag patient as not completed.
+        patients = self.db.get_patients_to_upload()
+        for patient in patients:
+            self.do_ihi_search(patient)
+        if len(patients) == 0:
+            logging.warn("event newihi but nothing to do")
+            self.db.noop()
+
+
+    def refresh_old_ihis(self):
+        batch = []
+        allpatients = {}
+        for patient in self.db.get_ihis_for_refresh():
+            b = {}
+            allpatients[patient['fk_patient']] = patient
+            b['dob'] = patient["birthdate"].strftime("%Y-%m-%d")
+            b['sex'] = self.translate_gender(patient["sex"])
+            b['surname'] = patient["surname"][:40]  # spec sez when sending to HI service no loonger than 40 chars
+            b['firstname'] = patient["firstname"][:40]
+            b['ihi'] = patient["ihi"]
+            b['fk_patient'] = patient['fk_patient']
+            batch.append(b)
+        # in this context all exceptions can go to toplevel and be logged
+        results = self.hi_service.search_ihi_batch(self.config["db_user"],batch)
+        for fk_patient in results.keys():
+            patient = allpatients[fk_patient]
+            ihi, record_status, status, messages = results[fk_patient]
+            self.deal_with_ihi_result(ihi,record_status,status,messages,patient,batch=True)
+
+    def do_ihi_search(self,patient):
+        dob = patient["birthdate"].strftime("%Y-%m-%d")
+        sex = self.translate_gender(patient["sex"])
+        surname = patient["surname"][:40]  # spec sez when sending to HI service no longer than 40 chars
+        firstname = None
+        if patient["firstname"] is not None: firstname = patient["firstname"][:40]
+        mcn = patient["medicare_number"]
+        irn = patient["medicare_ref_number"]
+        dva = patient["veteran_number"]
+        ihi = patient["ihi"]
+        try:
+            if ihi is not None:
+                ihi, record_status, status, messages = self.hi_service.search_ihi(self.config["db_user"],surname,firstname,dob,sex,ihi=ihi)
+            elif dva is not None:
+                ihi, record_status, status, messages = self.hi_service.search_ihi(self.config["db_user"],surname,firstname,dob,sex,None,None,dva)
+            elif mcn is not None:
+                ihi, record_status, status, messages = self.hi_service.search_ihi(self.config["db_user"],surname,firstname,dob,sex,mcn,irn)
             else:
-                error = False
-                logstring = ""
-                logging.info("search IHI returns {}".format(repr((ihi,record_status,status,messages))))
-                if ihi is None:
-                    error = True
-                    logstring += "<p>No IHI returned</p>"
-                else:
-                    record_status = record_status.lower()
-                    status = status.lower()
-                    logstring += "<p>Medicare returned IHI {} [status: {}, record status: {}]<p>".format(ihi,status,record_status) 
-                    if record_status == "unverified":
-                        error = True
-                        logstring += "<p>Unverified IHI cannot be used. The patient needs to provide further identification to Medicare</p>"
-                    if record_status == "provisional":
-                        error = True
-                        logstring += "<p>Provisional IHI cannot be used. The patient needs to contact Medicare to complete their registration.</p>"
-                    if not error and record_status != "verified":
-                        error = True
-                        logstring += "<p>Unknown record status. Contact Medicare for clarification</p>"
-                    if status == "deceased":
-                        pass
-                    if status == "retired":
-                        error = True
-                        logstring += "<p>Retired means reitred in the Medicare database. Contact Medicare to update details.</p>"
-                    if status == "expired":
-                        error = True
-                        logstring += "<p>Expired in the Medicare database, cannot be used. Contact Medicare to update details.</p>"
-                    if status == "resolved":
-                        error = True
-                        logstring += "<p>IHI is marked as &quot;resolved&quot; in the Medicare database. Contact Medicare to update details.</p>"
-                    if not error and status != "deceased" and status != "active":
-                        error = True
-                        logstring += "Unknown status, cannot be used. Contact Medicare for details</p>"
-                logstring += self.messages_to_table(messages)
-                if error:
-                    logstring += "<p>SOAP Request ID: {}</p><p>SOAP reply ID: {}</p>".format(self.soap.outgoing_uuid,self.soap.incoming_uuid)
-                else:
-                    logstring += "<p>Successfully obtained IHI {} from Medicare HI Service.</p>".format(ihi)
-            if error:
-                self.db.set_ihi_error(patient["fk_patient"],logstring)
+                ihi, record_status, status, messages = self.hi_service.search_ihi(self.config["db_user"],surname,firstname,dob,sex)
+        except soap.SOAPError as exc:
+            logging.exception("SOAP failure")
+            logstring = "<p>A SOAP network error occurred: <tt>{}</tt></p>".format(dbwrapper.html(str(exc)))
+            logstring += self.logstring_boilerplate(patient)
+            self.db.set_ihi_error(patient["fk_patient"],logstring)
+
+        except socket.error as exc:
+            if not self.db.is_retry():
+                self.db.log_simple_entry(patient["fk_patient"],"Tried to get IHI but network down")
+            raise  # try again later but don't tag patient as not completed.
+        else:
+            logging.info("search IHI returns {}".format(repr((ihi,record_status,status,messages))))
+            if ihi is None and firstname is not None and len(messages) == 1 and messages[0]['code'] == '01439': # try again without firstname
+                patient["firstname"] = None
+                self.do_ihi_search(patient)
             else:
-                if self.db.ihi_duplicate_check(ihi,patient["fk_patieht"]):
-                    if status == 'deceased':
-                        self.db.mark_death_informed(patient["fk_patient"],logstring)
-                    else:
-                        if "ihi" in patient and patient["ihi"] is not None and patient["ihi"] != ihi:
-                            logstring += 'Previous IHI %s being replaced' % patient["ihi"]
-                        self.db.set_ihi(patient["fk_patient"],ihi,logstring)
+                self.deal_with_ihi_result(ihi,record_status,status,messages,patient)
+
+    def deal_with_ihi_result(self,ihi,record_status,status,messages,patient,batch=False):
+        error = False
+        logstring = ""
+        if record_status is None or status is None:
+            error = True
+        else:
+            record_status = record_status.lower()
+            status = status.lower()
+        if batch:
+            logstring += "<p>Running automatic refresh on IHI</p>"
+        if ihi is None:
+            error = True
+            logstring = "<p>No IHI returned</p>"
+        else:
+            logstring += "<p>Medicare returned IHI {} [status: {}, record status: {}]<p>".format(ihi,status,record_status) 
+        if record_status == "unverified":
+            error = True
+            logstring += "<p>Unverified IHI cannot be used. The patient needs to provide further identification to Medicare</p>"
+        if record_status == "provisional":
+            error = True
+            logstring += "<p>Provisional IHI cannot be used. The patient needs to contact Medicare to complete their registration.</p>"
+        if not error and record_status != "verified":
+            error = True
+            logstring += "<p>Unknown record status. Contact Medicare for clarification</p>"
+        if status == "deceased":
+            pass
+        if status == "retired":
+            error = True
+            logstring += "<p>Retired means retired in the Medicare database. Contact Medicare to update details.</p>"
+        if status == "expired":
+            error = True
+            logstring += "<p>Expired in the Medicare database, cannot be used. Contact Medicare to update details.</p>"
+        if status == "resolved":
+            error = True
+            logstring += "<p>IHI is marked as &quot;resolved&quot; in the Medicare database. Contact Medicare to update details.</p>"
+        if not error and status != "deceased" and status != "active":
+            error = True
+            logstring += "Unknown status, cannot be used. Contact Medicare for details"
+        logstring += self.messages_to_table(messages)
+        logstring += self.logstring_boilerplate(patient)
+        if error:
+            self.db.set_ihi_error(patient["fk_patient"],logstring)
+        else:
+            if self.db.ihi_duplicate_check(ihi,patient["fk_patient"]):
+                if status == 'deceased':
+                    self.db.mark_death_informed(patient["fk_patient"],logstring)
+                else:
+                    if "ihi" in patient and patient["ihi"] is not None and patient["ihi"] != ihi:
+                        logstring += 'Previous IHI %s being replaced' % patient["ihi"]
+                    self.db.set_ihi(patient["fk_patient"],ihi,logstring)
     
+    def logstring_boilerplate(self,patient):
+        logstring = "<p><table><tr><td>SOAP Request ID</td><td>{}</td></tr>".format(self.hi_service.soaper.outgoing_uuid)
+        logstring += "<tr><td>SOAP reply ID</td><td>{}</td></tr>".format(self.hi_service.soaper.incoming_uuid)
+        logstring +="<tr><td>Local record ID</td><td>{}</td></tr>".format(patient["fk_patient"])
+        logstring += "<tr><td>Staff HPI-I</td><td>{}</td></tr>".format(self.db.staff["hpii"])
+        logstring += "<tr><td>HPI-O</td><td>{}</td></tr>".format(self.db.staff["hpio"])
+        logstring += "<tr><td>Web Service</td><td>{}</td></tr>".format(self.hi_service.ws_name)
+        logstring += "<tr><td>Web Service Version</td><td>{}</td></tr>".format(self.hi_service.ws_version)
+        logstring += "</table></p>"
+        return logstring
+
     def script_printed(self,pid,payload):
         script_no = int(payload)
         items = self.db.get_scripts(script_no)

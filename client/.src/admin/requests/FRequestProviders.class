@@ -25,7 +25,7 @@ Private RequestProviders As Collection
 Private RequestProvider As Collection 
 Private persons As Collection
 Private person As Collection
-
+Private cvwRequestProviders_Key As Integer
 Private pk_view As Integer
 
 Public Sub Form_Open()
@@ -61,7 +61,7 @@ Public Sub Init()
    rbTypeSender_Organisation.Value = True 
    Type_Request_Provider = const.contacttype_organisation
    FHelp.Help_Show("global-request-ordering.html")
-   lblMeasure.text = " Default Branch "
+   lblMeasure.text = " Set as Users Default "
    modEditAreaHelpers.Resize_labels(VBox_EditArea, lblMeasure)
    modEditAreaHelpers.Fill_Combo_Sex(cmbSex)
    modEditAreaHelpers.Fill_Combo_Titles(cmbtitle)
@@ -72,8 +72,6 @@ Public Sub lvRequestTypes_Select()
    
    lvRequestTypes.MoveCurrent()
    VBox_EditArea_Outer.Enabled = False  'no data change unless explicitly edited
-   
-   EditArea_Clear()     'Clear input area
    cmbRequesttypes.index = cmbRequesttypes.Find(lvRequestTypes.item.text)
    Reload()
    
@@ -124,7 +122,7 @@ Public Sub Reset_Keys()
    '--------------------------------------------------------------------------  
    'resets the keys when this form being used for allocating scanned documents
    '--------------------------------------------------------------------------
-
+   
    fk_organisation = 0
    fk_person = 0
    fk_address_person = 0 'not implemented fixme
@@ -386,38 +384,126 @@ Public Sub Save()
    '-----------------------------------------------------------------------
    'Save nominated company/person/employee as a someone to send requests to
    'the fk_branch = the default branch, not the organisation head office.
+   'If staff have no default for this type of request then add one for them
+   'fixme at some point convert all to crow  
+   '  FIXME - will later need to add to FRequestProviders the flags
+   '  like system wide send electronicallye etc
+   '  currently still have to be set by user but default to print
    '-----------------------------------------------------------------------
    
-   Dim Request_Provider As New Collection 
+   Dim RequestProvider As New Crow 
+   Dim sql As String
+   Dim R As Result
+   Dim user_provider_default As CRow   
+   Dim staff As Collection
+   Dim staff_member As Collection
    
-   If VBox_EditArea_Outer.Padding = 0 Then Return 'no padding = no changes
-   If Not valid_Request_Provider() Then Return
-   If pk_request_provider <> 0 Then
-      Request_Provider!pk_request_provider = pk_request_provider
+   If VBox_EditArea_Outer.Padding = 0 Then Return     'no padding = no changes
+   If Not valid_Request_Provider() Then Return        'invalid data = no changes
+   '-------------------------------------------------------------------------------
+   'now  if admin is making this type of request + this provider the staff default
+   'set to False any other requestprovider of this type for this fk_lu_request_type
+   'otherwise, check they have made at least one of this type a default if they
+   'have left the chkStaffDefault False
+   '-------------------------------------------------------------------------------
+    If chkStaffDefault.value = True Then
+       modDBConnect.exec_query("update clin_requests.request_providers set staff_default = False where fk_lu_request_type =" & RequestTypes[cmbRequesttypes.Index]!pk)
+   Else
+      R = modDBConnect.exec_query("Select * from  clin_requests.request_providers where  fk_lu_request_type =" & RequestTypes[cmbRequesttypes.Index]!pk & " AND staff_default is True")
+      If R.count = 0 Then
+         chkStaffDefault.value = True 'make this one the default, but do tell the user
+         Message.Title = "Default provider for " & cmbRequesttypes.text
+         Message.Info("The Admin user when adding providers for request types should always ensure that at least one provider is set as the staff default.\n\n"
+                      "The reason for this is that when new staff members are added, though they can at a later date choose their own default provider "
+                      "they will be automatically allocated the default that the Admin user has allocated.\n\n"
+                      "Accordingly this provider will be made the default for staff until the Admin User chooses to change it.")
+                      
+      Endif
    Endif
-   Request_Provider!fk_default_branch = fk_default_branch
-   Request_Provider!fk_headoffice_branch = fk_headoffice_branch
-   Request_Provider!fk_employee = fk_employee
-   Request_Provider!fk_person = fk_person
-   Request_Provider!fk_lu_request_type = RequestTypes[cmbRequesttypes.Index]!pk
-   modDBConnect.BeginTrans()
-   modRequestsDBI.Request_Providers_Save(RequestProviders, pk_view, Request_Provider)
+   
+   ' '-----------------------------------------------------------
+   ' Now save the request provider
+   ' 
+   ' CREATE TABLE clin_requests.request_providers
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_headoffice_branch integer,
+   '   fk_employee integer,
+   '   fk_person integer,
+   '   fk_lu_request_type integer NOT NULL,
+   '   deleted boolean DEFAULT false,
+   '   fk_default_branch integer,
+   '   CONSTRAINT request_providers_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '------------------------------------------------------------
+   RequestProvider = New CRow
+   If pk_request_provider <> 0 Then
+      RequestProvider.put_unchanged(pk_request_provider, "fk_request_provider")
+   Endif
+   RequestProvider!fk_default_branch = fk_default_branch
+   RequestProvider!fk_headoffice_branch = fk_headoffice_branch
+   RequestProvider!fk_employee = fk_employee
+   RequestProvider!fk_person = fk_person
+   RequestProvider!fk_lu_request_type = RequestTypes[cmbRequesttypes.Index]!pk
+   RequestProvider!staff_default = CBool(chkStaffDefault.value)
+   RequestProvider.Save("clin_requests.request_providers", "fk_request_provider")
+  
+   '--------------------------------------------------------------------------------------------------
+   'now, do all the users who have appropriate access level (read now only doctors till I change this) 
+   'have an entry in clin_requests.user_provider_defaults?, if not, then add it
+   'User can change this later
+   '
+   ' CREATE TABLE clin_requests.user_provider_defaults
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_staff integer NOT NULL, -- key to admin.staff table ie describes the user
+   '   fk_default_branch integer NOT NULL, -- key to contacts.branches table...
+   '   fk_request_provider integer,
+   '   send_electronically boolean DEFAULT false,
+   '   print_paper boolean DEFAULT true,
+   '   deleted boolean DEFAULT false,
+   '   fk_lu_request_type integer NOT NULL,
+   '   CONSTRAINT user_provider_defaults_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' 
+   ' This doesn't take into acount th staff status but probably doesn't matter. ie if left who cares
+   '---------------------------------------------------------------------------------------------------
+   staff = modDBConnect.exec_query_collection("Select * from admin.staff where fk_role = " & const.StaffRole_Doctor)  'may have to add nurses (!!!) later
+   For Each staff_member In staff
+      sql = "Select * from clin_requests.user_provider_defaults where fk_lu_request_type = " & RequestProvider!fk_lu_request_type
+      sql &= " AND fk_staff = " & staff_member!pk
+      R = modDBConnect.exec_query(sql)                 'does the staff member(doctor) already have a default provider for this request type?
+      If R.count = 0 Then                              'no?
+         user_provider_default = New CRow              'then add one
+         user_provider_default!fk_staff = staff_member!pk
+         user_provider_default!fk_default_branch = RequestProvider!fk_default_branch
+         user_provider_default!fk_lu_request_type = RequestProvider!fk_lu_request_type
+         user_provider_default!fk_request_provider = RequestProvider!fk_request_provider
+         user_provider_default.Save("clin_requests.user_provider_defaults", "fk_user_provider_default")
+     End If 
+   Next
    modDBConnect.CommitTrans()
    Reload()
    EditArea_Clear()
    
 End
 
+
 Public Sub Reload()
-   '-----------------------------------
-   'Displays all the types of providers
-   '-----------------------------------   
+   '---------------------------------------------
+   'Displays all the providers for a request type
+   '---------------------------------------------   
    
    Dim x As Integer
    
    lvRequestTypes.MoveCurrent()
-   lblCompanies.text = "Providers for " & Lower(lvRequestTypes.Item.text) & " requests"   'tell user what type
-   RequestProviders = modRequestsDBI.Request_Providers_Get(lvRequestTypes.Item.key)                    'refresh providers for types
+   lblCompanies.text = "Providers for " & Lower(lvRequestTypes.Item.text) & " requests"                'tell user what type
+   RequestProviders = modRequestsDBI.Request_Providers_Get(lvRequestTypes.Item.key)                    'refresh providers for that type
    cvwRequestProviders.Clear()
    For Each RequestProvider In RequestProviders                                                        'reload the types list
       x = RequestProvider!pk_request_provider
@@ -432,6 +518,13 @@ Public Sub Reload()
       End If   
       cvwRequestProviders[x][1] = Trim(RequestProvider!default_branch_street1 & " " & RequestProvider!default_branch_street2) & " " & RequestProvider!default_branch_town
    Next
+   If cvwRequestProviders.count Then
+      With cvwRequestProviders
+         .MoveFirst
+         .SetFocus
+         .Item.Selected = True   
+      End With      
+   Endif
    
 End
 
@@ -507,7 +600,7 @@ Public Sub mnuRequestProviders_Click()
       Case "edit"
          RequestProvider_Edit()
       Case "remove"
-         RequestProvider_Remove()
+         RequestProvider_Delete()
       Case "help"
          modUtil.NotImplemented("Help for this section")
       Case "font"
@@ -516,7 +609,37 @@ Public Sub mnuRequestProviders_Click()
    
 End
 
-Public Sub RequestProvider_Remove()
+Public Sub RequestProvider_Delete()
+   
+   Dim R As Result
+   Dim sql As String
+   Dim sMsg As String
+   
+   Message.Title = "Deleting a Request Provider" 
+   sql = "Select * from clin_requests.forms where fk_request_provider = " & RequestProvider!pk_request_provider
+   R = modDBConnect.exec_query(sql) 
+   If R.count = 0 Then                            'no request forms printed yet
+      sql = "Select * from clin_requests.user_provider_defaults where fk_request_provider = " & RequestProvider!pk_request_provider
+      R = modDBConnect.exec_query(sql)
+      If R.count <> 0 Then                       'staff members have selected this company/person/employee as a default provider
+         sMsg = "Though no request forms have yet been printed for this provider, there are staff members who have selected this " 
+         "provider.\n\nYou should probably check this with all your staff, however the record can still be deleted."
+         Message.Info(sMsg)
+         Goto Delete_Provider
+      Endif
+   Else 
+      Message.Info("EasyGP cnnot delete this request provider as  you  have already printed request forms in their name.")
+      Return
+   Endif
+   
+   'ok, there are no request forms using this provider key
+Delete_Provider:
+   If modDBConnect.update("clin_requests.request_providers", Null, ["pk": RequestProvider!pk_request_provider, "deleted": True]) Then
+      modDBConnect.CommitTrans
+   Else
+      Message.Info("An error occurred whilst attempting to delete this Request Provider")
+   Endif
+   Reload()
    
 End
 
@@ -575,14 +698,34 @@ Public Sub Layout_screen()
    
 End
 
+Public Sub RequestProvider_Display()
+   
+   EditArea_Clear()                                     'Clear input area
+   RequestProvider = RequestProviders[cvwRequestProviders_Key]
+   If RequestProvider!fk_person <> 0 Then 
+      bExit = True    
+      rbTypeSender_Person.Value = True    'otherwise get re-entry into layout_screen()
+      bExit = False  
+      Layout_screen()                     'change screen display for persons, re-set all keys
+      Person_Display(RequestProvider)
+   Else
+      bExit = True  
+      rbTypeSender_Organisation.value = True 
+      bExit = True  
+      Layout_screen()                     'change screen display for organisations, reset all keys
+      Organisation_Display()
+   Endif
+    chkStaffDefault.value = RequestProvider!staff_default
+   VBox_EditArea_Outer.Enabled = False     'no data change unless explicitly edited
+   
+End
+
 Public Sub RequestProvider_Edit()
    '---------------------------------
    'Edit the current Request Provider
    'note: the fk_request_provider key is kept to indicate an edited record
    '----------------------------------------------------------------------  
    
-   cvwRequestProviders.MoveCurrent()
-   RequestProvider = RequestProviders[cvwRequestProviders.Item.key]
    fk_employee = RequestProvider!fk_employee
    fk_organisation = RequestProvider!fk_organisation
    fk_default_branch = RequestProvider!fk_default_branch  'fixme duplicated in  Organisation_Display()
@@ -594,7 +737,7 @@ Public Sub RequestProvider_Edit()
       Type_Request_Provider = const.contacttype_organisation
       Organisation_Display()
       With lblHeading
-         .text = "Edit " & UCase(txtOrganisation.text) & " - " & RequestProviders[cvwRequestProviders.Item.key]!branch
+         .text = "Edit " & UCase(txtOrganisation.text) & " - " & RequestProvider!branch
          .Foreground = Color.Red
          .Visible = True
       End With
@@ -631,28 +774,15 @@ Public Sub cvwRequestProviders_Select()
    '----------------------------------------------------------------------   
    
    cvwRequestProviders.MoveCurrent
-   RequestProvider = RequestProviders[cvwRequestProviders.Item.key]
-   If RequestProvider!fk_person <> 0 Then 
-      bExit = True    
-      rbTypeSender_Person.Value = True    'otherwise get re-entry into layout_screen()
-      bExit = False  
-      Layout_screen()                     'change screen display for persons, re-set all keys
-      Person_Display(RequestProvider)
-   Else
-      bExit = True  
-      rbTypeSender_Organisation.value = True 
-      bExit = True  
-      Layout_screen()                     'change screen display for organisations, reset all keys
-      Organisation_Display()
-   Endif
-   VBox_EditArea_Outer.Enabled = False  'no data change unless explicitly edited
+   cvwRequestProviders_Key = cvwRequestProviders.Item.key
+   RequestProvider_Display
    
 End
 
 Public Sub lvRequestTypes_Click()
    
-   lvRequestTypes_Select()
-   
+   'lvRequestTypes_Select()
+   ' RequestProvider_Display
 End
 
 Public Sub EditArea_TextBox_LostFocus()
@@ -770,4 +900,10 @@ Public Sub Person_Display(person_data As Collection)
    cmbSex.Index = Person_data!fk_sex  
    fk_person = Person_data!fk_person
    
+End
+
+Public Sub chkEditArea_Click()
+   If Bexit Then Return
+   EditArea_Notify_DataChange(True)
+
 End

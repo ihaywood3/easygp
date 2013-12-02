@@ -954,8 +954,17 @@ Public Sub Save()
    Dim data_numbers As CRow
    Dim data_numbers_persons As CRow
    Dim R As Result
+   Dim toolbar_button As CRow  
+   Dim clinical_modules As Collection
+   Dim clinical_module As Collection
+   Dim display_order As Integer
+   Dim Request_Provider_Defaults As Collection
+   Dim RPD As Collection
+   Dim bNewStaffMember As Boolean
+   Dim user_provider_default As CRow   
    
    If Not Employee_Valid() Then Return
+   
    '---------------------------------------------------------------
    'remove these, they were only kept in case address was re-edited
    '---------------------------------------------------------------
@@ -1088,8 +1097,10 @@ Public Sub Save()
    staff_member!fk_person = person_employee!fk_person
    If fk_staff > 0 Then
       staff_member!fk_staff = fk_staff
+   Else
+      bNewStaffMember = True  
    End If
-   staff_member!fk_status = cmbStaffStatus.Index    'because zero based, should fix at some point
+   staff_member!fk_status = cmbStaffStatus.Index            'because zero based, should fix at some point
    staff_member!fk_lu_staff_type = StaffTypes[cmbStafftype.index]!pk 'this collection has been re-set to zero based.
    staff_member!logon_name = Trim(txtLogonName.text)    'logon name
    staff_member!password = Trim(txtPasswordNew.text)    'password
@@ -1102,12 +1113,47 @@ Public Sub Save()
       employees_place_of_work!fk_link_staff_clinic = fk_link_staff_clinic
    End If
    employees_place_of_work!fk_clinic = fk_clinic
-   staff_member!fk_staff = modContactsDBI.Staff_Member_Save(Staff_Members, pk_view, staff_member, employees_place_of_work)
+   staff_member!fk_staff = modContactsDBI.Staff_Member_Save(Staff_Members, pk_view, staff_member, employees_place_of_work) 'fixme Replace With crow
+   
    If staff_member!fk_staff = 0 Then   'we encountered a major error
       modDBConnect.RollBack()
       Goto Reload_StaffList
    End If   
+   '-----------------------------------------------------------------------------
+   'put in default toolbar for clinical users who are doctors 'fixme later nurses
+   '-----------------------------------------------------------------------------
+   If staff_member!fk_role = const.StaffRole_Doctor Or staff_member!fk_role = const.StaffRole_locum Or staff_member!fk_role = const.StaffRole_Practice_Principal Or staff_member!fk_role = const.StaffRole_Registered_Nurse Then   
+      If modAdminDBI.Clinical_Toolbuttons_Get(fk_staff).count = 0 Then  'no buttons yet for this staff member   
+         modAdminDBI.Toolbuttons_Add_All(staff_member!fk_staff)
+      End If   
+      '---------------------------------------------------------------------------------------------------
+      'next check and see if this (new only) staff member has default providers for all that are available
+      ' CREATE TABLE clin_requests.user_provider_defaults
+      ' (
+      '   pk serial NOT NULL,
+      '   fk_staff integer NOT NULL, -- key to admin.staff table ie describes the user
+      '   fk_default_branch integer NOT NULL, -- key to contacts.branches table...
+      '   fk_request_provider integer, -- foreign key to clin_requests.requests_provideris which ultimately will point to contact details of person/employee or organisation...
+      '   send_electronically boolean DEFAULT false,
+      '   print_paper boolean DEFAULT true,
+      '   deleted boolean DEFAULT false,
+      '   fk_lu_request_type integer NOT NULL,
+      '   FIXME - will later need to add to FRequestProviders these last flags
+      '---------------------------------------------------------------------------------------------------
+      If bNewStaffMember Then    
+         Request_Provider_Defaults = modRequestsDBI.Request_Provider_Staff_Defaults_Get()
+         For Each RPD In Request_Provider_Defaults
+            user_provider_default = New CRow   
+            user_provider_default!fk_staff = staff_member!fk_staff
+            user_provider_default!fk_default_branch = RPD!fk_default_branch
+            user_provider_default!fk_request_provider = RPD!pk_request_provider
+            user_provider_default!fk_lu_request_type = RPD!fk_lu_request_type
+            user_provider_default.Save("clin_requests.user_provider_defaults", "fk_user_provider_default")
+         Next
+      End If   
+   End If   
    
+   '-------------------------------------------------------------------------------------------------------------------------
    ' finally save the prescriber/provider numbers in their special table FIX ME FIX THIS WHOLE MODULE REWRITE IT INTERIM CODE
    '-----------------------------------------------------------------------------------------------------------------
    'Save in numbers, the adress specific numbers go into data_numbers in staff case this is only the provider_number
@@ -1660,7 +1706,7 @@ Public Sub Surname_Duplicates_Selection(action As String, Optional calling_contr
          If Trim(txtSurname.text) = "" Then Return
          Collection_Members = modContactsDBI.Person_Get(Trim(txtSurname.text), const.contacttype_PersonsAndPatients)
          Collection_Members.Remove("sql_in_english")
-          If Collection_Members.count Then
+         If Collection_Members.count Then
             For Each collection_Member In Collection_Members
                smsg = collection_Member!firstname & " " & collection_Member!surname
                If Not IsNull(collection_Member!occupation) Then

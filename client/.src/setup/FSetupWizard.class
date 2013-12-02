@@ -38,6 +38,7 @@ Private fk_occupation As Integer
 Private fk_category As Integer
 Private occupation As Collection
 Private occupations As Collection
+Private bFinished As Boolean
 
 Public Sub wizard1_Close()
    'The final button in the wizard reached, quit and allow uers to re-start
@@ -51,6 +52,8 @@ Public Sub Wizard1_Cancel()
    'User has clicked cancel, give change to change mind
    '---------------------------------------------------
    
+   Message.Title = "EasyGP"
+   If Message.Question("If you cancel this wizard the installation of EasyGP will not be complete.\n\nAre you sure you want to quit?", "Yes", "No") = 2 Then Return 
    modDBConnect.RollBack()
    Quit
    
@@ -106,10 +109,11 @@ Public Sub Form_Close()
    
 End
 
-Public Sub Save_Example_Patient()
+Public Function Save_Example_Patient() As Boolean
    '---------------------------------------------------------------------
    'Note this routine is encapsulated in a begin-commit trans from save()
    'Put in a dummy patient Mr Test Patient
+   'Returns true if succeeds.
    '---------------------------------------------------------------------
    
    Dim comm As New CRow
@@ -289,6 +293,9 @@ Public Sub Save_Example_Patient()
    patient!fk_person = person!fk_person
    patient!fk_lu_active_status = 1 'active
    patient.Save("clerical.data_patients", "fk_patient")
+   Return True 
+Catch
+   Return   
    
 End
 
@@ -297,8 +304,10 @@ Public Sub Save_Organisation_SysAdmin() As Boolean
    'Creates the database entries for
    '- the main clinic for the organisation
    '- the first employee designated sysadmin
-   'If we get to this point we have already validated the data
-   'Note this is old code in part not using cRow
+   ' If we get to this point we have already validated the data
+   ' This will still fail currently if easygp not superuser FIXME > real crash
+   ' Note this is old code in part not using cRow
+   ' Returns True is successful
    '----------------------------------------------------------------------
    
    Dim organisation As CRow
@@ -313,8 +322,8 @@ Public Sub Save_Organisation_SysAdmin() As Boolean
    Dim comms As New Collection
    Dim comm As New Collection  
    Dim clinic As CRow 
+   Dim occupation As CRow  
    
-   If Not Organisation_Valid() Then Return
    '--------------------------------------------------------
    ' CREATE TABLE contacts.data_organisations
    ' (
@@ -387,6 +396,11 @@ Public Sub Save_Organisation_SysAdmin() As Boolean
    '   OIDS=FALSE
    ' );
    '---------------------------------------------------------------------------------------------
+   'Does the category exist?
+   '------------------------
+   If fk_category = 0 Then
+      fk_category = modContactsDBI.Category_Save(Trim(txtCategory.text))
+   Endif
    branch = New CRow 
    branch!fk_category = fk_category
    branch!branch = Trim(txtBranch.text)
@@ -542,6 +556,12 @@ Public Sub Save_Organisation_SysAdmin() As Boolean
    employee = New CRow
    employee!fk_branch = branch!fk_branch
    employee!fk_person = person!fk_person
+   If fk_occupation = 0 Then                                                   'person must have occupation, this is enforced
+      occupation = New CRow
+      occupation!occupation = Trim(txtSysAdminOccupation.text)
+      occupation.Save("common.lu_occupations", "fk_occupation")
+      fk_occupation = occupation!fk_occupation
+   End If
    employee!fk_occupation = fk_occupation
    employee.Save("contacts.data_employees", "fk_employee")
    '-------------------------------------------------------
@@ -571,15 +591,19 @@ Public Sub Save_Organisation_SysAdmin() As Boolean
    staff_member!logon_date_from = Val(txtSysAdminValidFromDate.text)
    staff_member!logon_date_to = Val(txtSysAdminValidToDate.Text)
    staff_member!fk_role = roles[cmbAccessLevel.Index]!pk_role
-   If Not modContactsDBI.Staff_Create_Postgres_User(Null, 0, staff_member, True) 'create postgres user who is superuser then
+   If Not modContactsDBI.Staff_Create_Postgres_User(Null, 0, staff_member, True)        'create postgres user who is superuser then
       Message.info("There is an existing postgres user with the selected logon code.\n\nPlease select another.")
       With txtPassword
          .text = ""
          .SetFocus()
       End With
+      Return 
    End If   
    staff_member.Remove("password")
    staff_member.Save("admin.staff", "fk_staff")
+   If staff_member!fk_role = const.StaffRole_Doctor Then      'If the sysadmin is a doctor then put toolbuttons on their FClinical toolbar
+      modAdminDBI.Toolbuttons_Add_All(staff_member!fk_staff)
+   End If   
    '-----------------------------------------------------------
    ' CREATE TABLE admin.link_staff_clinics
    ' (
@@ -596,6 +620,9 @@ Public Sub Save_Organisation_SysAdmin() As Boolean
    link_staff_clinic!fk_staff = staff_member!fk_staff
    link_staff_clinic!fk_clinic = clinic!fk_clinic
    link_staff_clinic.Save("admin.link_staff_clinics", "fk_link_staff_clinic")
+   Return True
+Catch
+   Return
    
 End
 
@@ -606,10 +633,26 @@ Public Sub Save()
    '  Creates an etnry in admin.clinics for the organisation
    '----------------------------------------------------------
    
-   modDBConnect.BeginTrans
-   Save_Organisation_SysAdmin()
-   Save_Example_Patient()
+   Dim sMsg As String
+   
+   If Not Save_Organisation_SysAdmin() Then  
+      sMsg = "The organisation and or sysadmin could not be created."
+      Goto Apologies   'save practice details and create sysadmin
+   Else  
+      If Not Save_Example_Patient() Then
+         sMsg = "The sample patient could not be created."
+         Goto Apologies 
+      Endif
+   End If   
    modDBConnect.CommitTrans()
+   Return 
+Apologies:
+   modDBConnect.RollBack
+   Message.Title = "Installation Error"
+   sMsg = "A serious installation error has occurred for which we apologise.\n\n" & sMsg
+   sMsg &= "Please email the developers which will try and assist you overcome this problem.\n\nEasyGP will now Quit."
+   Message.info(sMsg)
+   Quit   
    
 End
 
@@ -715,13 +758,26 @@ End
 Public Sub Page_Finished()
    
    tlFinished.text = "<B>Using EasyGP version 0.1</B>"
-   "<p>After the wizard shuts down you can re-start EasyGP and log in as user &quot;" & Trim(txtLogonName.text) & "&quot;, the system administrator. It is recommended that you "
-   "read the help file before using the program.</p>"
-   
+   "<p>After the wizard shuts down you can re-start EasyGP and log in as user &quot;" & Trim(txtLogonName.text) & "&quot;, the system administrator.<P>"
+   "It is recommended that you read the help file before using the program and then go to the Admin section to configure EasyGP for day to day use.</P>"
+   "<P>In particular please note that EasyGP will not be usable if the Admin does not do the configuration for items such as: " 
+   "<UL>"
+   "<LI><B>Default pathways</B> which tell EasyGP where "
+   "to find scanned documents, archived documents, downloaded hl7 files for import into the database, product information files for use in prescribing. "
+   "<LI><B>HL7 File Importers</B> must be set up - note these will be provided by the various companies you use such as radiology companies, or messaging "
+   "companies for e.g Medical Objects."
+   "<LI><B>Vital Staff Identifiers </B> - your doctors prescriber and provider numbers"
+   "<LI><B>Library</B> location on your file server"
+   "<LI><B>Providers of Services</B> must be entered into the contacts database(e.g Pathology / Radiology) And Admin must Then use the setup section "
+   "to tell EasyGP that a particular company is linked to a particular type of ordering."
+   "<LI><B>Coding System Selection</B> - ICD10 should have been setup during installation, however if you want a more user-friendly GP oriented coding system you "
+   "will have to pay for the ICPC2Plus codes. Please consult the help file for details."
+   "<LI><B>Importing Patients</B> please contact the developers for assistance."
+  "</UL>"
    "<p>If the new admin user you have created is not a clinical user, then you will not be able to access the clinical sections, however the admin user "
    "can create new staff members in the appropriate roles."
-   
    Settings["Logon/User"] = txtLogonName.Text
+   bFinished = True  'no going back
    
 End
 
@@ -774,8 +830,12 @@ Public Sub Wizard1_BeforeChange()
    
    Dim $str As String
    
+   If bFinished And Wizard1.Index <> cPage_Finished Then
+      Message.info("You have already saved the data, any changes now must be made in the actual program.\n\nEasyGP will now quit and you can restart EaszyGP, logging in as the new user you created.")
+      Quit
+      Return 
+   Endif
    Select Case Wizard1.Index
-         
       Case cPage_Licence
          If Not chkLicence.value Then
             Hbox_Licence.Padding = 1
@@ -798,7 +858,7 @@ Public Sub Wizard1_BeforeChange()
             Stop Event
             Message.Info(Subst$("An error occurred whilst attempting to initialise EasyGP (&1).", $str))
             modDBConnect.RollBack()
-            Me.Close(0)
+            Quit
          End If
          
    End Select
@@ -814,7 +874,9 @@ Public Function Valid_SysAdmin() As Boolean
    Dim tb As TextBox
    Dim hb As HBox
    Dim cb As ComboBox
+   Dim sMsg As String
    
+   Message.title = "Sys Admin Details"
    For Each Hctrl In VBox_EditArea_SysAdmin.Children
       If hctrl Is Hbox Then
          hb = hctrl
@@ -827,9 +889,23 @@ Public Function Valid_SysAdmin() As Boolean
                      If Trim(tb.text) = "" Then
                         Goto Highlight_textbox
                      Else
-                        If tb.tag = "sys admin occupation" And fk_occupation = 0 Then
-                           Message.Info("Please pick an occupation from the list")
-                           Goto Highlight_textbox
+                        If tb.tag = "sys admin occupation" Then
+                           '------------------------------------------------------------------------------------------ 
+                           'Does the occupation exists
+                           '-------------------------------------------------------------------------------------------
+                           SpellCheck_TextBox(txtSysAdminOccupation)                                  'popup spelling correction dialog if needed
+                           occupation = modCommonDBI.Occupation_Get(Trim(txtSysAdminOccupation.text)) 'check if occupation is in the database
+                           If Not IsNull(occupation) Then                                             'if it is retrieive the key
+                              fk_occupation = occupation!pk
+                           Else
+                              smsg = "The occupation:\n\n " & Trim(txtSysAdminOccupation.text) & "\n\nwas not found in the database.\n\n"
+                              "Please check the spelling and if ok confirm you wish to add this occupation to the database."
+                              If Message.Question(sMsg, "Yes - Add Occupation", "Cancel") = 2 Then
+                                 txtSysAdminOccupation.SetFocus
+                                 Return
+                              End If
+                              fk_occupation = 0 
+                           Endif
                         Endif
                      Endif
                      If InStr(tb.tag, "date") Then
@@ -846,6 +922,17 @@ Public Function Valid_SysAdmin() As Boolean
                      If hctrl Is ComboBox Then
                         cb = hctrl
                         If cb.index = -1 Then
+                           Select Case cb.Tag
+                              Case "title"
+                                 sMsg = "Please select the staff members title from the drop down list."
+                              Case "sex"
+                                 sMsg = "Please select the staff members sex from the drop down list."
+                              Case "staff type"
+                                 sMsg = "Please select the staff type e.g 'doctor' from the drop down list."
+                              Case "staff access level"
+                                 smsg = "Please select the access level from the drop down list."
+                           End Select
+                           Message.Info(smsg)
                            cb.SetFocus
                            Return
                         Endif
@@ -856,6 +943,16 @@ Public Function Valid_SysAdmin() As Boolean
          Next
       Endif
    Next
+   'lastly check the logon name they have chosen does not exist
+   If modDBConnect.Role_Check_If_Exists(Trim(txtLogonName.text)) Then
+      Message.Title = "Sys Admin Logon Name"
+      Message.Info("A postgres user already exists with the logon name you have selected, please select another.")
+      With txtLogonName
+         .background = Color.rgb(95, 255, 175)
+         .SetFocus
+      End With
+      Return 
+   End If   
    Return True
    
 Highlight_textbox:
@@ -873,27 +970,64 @@ Public Function Valid_Organisation() As Boolean
    'is name, street, suburb and a phone
    '--------------------------------------------
    
+   Dim category As Collection    
+   Dim sMsg As String
+   
    If Trim(txtOrganisation.text) = "" Then
-      txtOrganisation.SetFocus()
-      Return False
+      sMsg = "Please enter the name or your organisation.\n\nThis would usually be  your general practices name for example 'The Best Medical Center'"
+      txtOrganisation.SetFocus
+      Goto Display_Help
+      
    End If
    If Trim(txtStreet1.text) = "" Then
+      sMsg = "Please enter the street address" 
       txtStreet1.SetFocus()
-      Return False
+      Goto Display_Help
    End If
    If fk_town = 0 Then
+      sMsg = "Please enter the location or suburb of your practice, as you type you will be presented with a popup list of options."
       txtSuburb.SetFocus()
-      Return False
+      Goto Display_Help
    End If
+   sMsg = "Each entry in the contacts database must be allocated a category.\n\n"
+   "This is extremely important, and should be an accurate reflection of the "
+   "organisations function, so please think carefully before allocating this.\n\n"
+   "If the category does not exist, it will be created when the installation details are saved."
    If Trim(txtCategory.text) = "" Then
       txtCategory.SetFocus()
-      Return False
+      Goto Display_Help
+   Else
+      '---------------------------------------------------------------------------------
+      'though we shouldn't have to do this, the gambas lost focus event does not trigger
+      'when the control recieving focus is e.g button, so the EditArea_LostFocus() event
+      'will not have triggered, anyway also check the category was not an accident eg
+      'a typo. Also I know I shouldn't need to re-fetch the fk_category but.....
+      'user could eg have category of Hospital chosen, hence as a fk_category but then
+      'types a little further to make this Hospital - Public - the key is still there for
+      'the original Hospital
+      '----------------------------------------------------------------------------------
+      SpellCheck_TextBox(txtCategory)
+      category = modContactsDBI.Category_Get(Trim(txtCategory.text)) 'returns single category or null
+      If Not IsNull(category) Then 
+         fk_category = category!pk
+      Else
+         If Message.Question(sMsg & "\n\nPlease confirm that you wish to add a new category called:\n\n" & txtCategory.text, "Yes - Add Category", "No") = 2 Then
+            txtCategory.SetFocus()
+            Return
+         End If 
+         fk_category = 0
+      End If
    End If
    If Trim(txtPhone.text) = "" Then
+      sMsg = "At a minimum please enter the telephone number of your practice."
       txtPhone.SetFocus()
-      Return False
+      Goto Display_Help
    End If
    Return True
+Display_Help:
+   Message.Title = "Adding Your Organisation"
+   Message.Info(smsg)
+   Return  
    
 End
 
@@ -1283,7 +1417,7 @@ End
 
 Public Sub Occupation_Select(occupation As Collection)
    
-   txtSysAdminOccupation.Text = listview1.Item.Text
+   txtSysAdminOccupation.Text = occupation!occupation
    fk_occupation = occupation!pk
 Catch
    Return
@@ -1313,6 +1447,7 @@ Public Sub EditArea_Combo_Click()
             cmbAccessLevel.index = cmbAccessLevel.Find("doctor")
             txtLogonName.SetFocus
          Else
+            cmbAccessLevel.index = -1
             cmbAccessLevel.SetFocus()
          End If   
       Case "staff access level"
@@ -1326,49 +1461,49 @@ Public Sub EditArea_Combo_Click()
    
 End
 
-Public Function Organisation_Valid() As Boolean
-   '-----------------------------------------
-   'Returns True if the organisation is Valid
-   '------------------------------------------   
-   
-   Dim sMsg As String
-   Dim category As Collection
-   
-   If txtCategory.text = "" Then
-      sMsg = "Each entry in the contacts database must be allocated a category.\n\n"
-      "This is extremely important, and should be an accurate reflection of the"
-      "organisations function, so please think carefully before allocating this.\n\n"
-      "If the category does not exist, it will be created when the record is saved."
-      txtCategory.SetFocus()
-      Goto MissingData
-   Else
-      '---------------------------------------------------------------------------------
-      'though we shouldn't have to do this, the gambas lost focus event does not trigger
-      'when the control recieving focus is e.g button, so the EditArea_LostFocus() event
-      'will not have triggered, anyway also check the category was not an accident eg
-      'a typo. Also I know I shouldn't need to re-fetch the fk_category but.....
-      'user could eg have category of Hospital chosen, hence as a fk_category but then
-      'types a little further to make this Hospital - Public - the key is still there for
-      'the original Hospital
-      '----------------------------------------------------------------------------------
-      SpellCheck_TextBox(txtCategory)
-      category = modContactsDBI.Category_Get(Trim(txtCategory.text)) 'returns single category or null
-      If Not IsNull(category) Then 
-         fk_category = category!pk
-      Else
-         If Message.Question("Please confirm that you wish to add a new category:\n\n" & txtCategory.text, "Yes", "No") = 2 Then
-            txtCategory.SetFocus()
-            Return
-         End If 
-         fk_category = 0
-      End If
-   End If
-   Return True  
-MissingData:
-   Message.Info(sMsg)
-   Return False
-   
-End 
+' Public Function Organisation_Valid() As Boolean
+'    '-----------------------------------------
+'    'Returns True if the organisation is Valid
+'    '------------------------------------------   
+'    
+'    Dim sMsg As String
+'    Dim category As Collection
+'    
+'    If txtCategory.text = "" Then
+'       sMsg = "Each entry in the contacts database must be allocated a category.\n\n"
+'       "This is extremely important, and should be an accurate reflection of the"
+'       "organisations function, so please think carefully before allocating this.\n\n"
+'       "If the category does not exist, it will be created when the record is saved."
+'       txtCategory.SetFocus()
+'       Goto MissingData
+'    Else
+'       '---------------------------------------------------------------------------------
+'       'though we shouldn't have to do this, the gambas lost focus event does not trigger
+'       'when the control recieving focus is e.g button, so the EditArea_LostFocus() event
+'       'will not have triggered, anyway also check the category was not an accident eg
+'       'a typo. Also I know I shouldn't need to re-fetch the fk_category but.....
+'       'user could eg have category of Hospital chosen, hence as a fk_category but then
+'       'types a little further to make this Hospital - Public - the key is still there for
+'       'the original Hospital
+'       '----------------------------------------------------------------------------------
+'       SpellCheck_TextBox(txtCategory)
+'       category = modContactsDBI.Category_Get(Trim(txtCategory.text)) 'returns single category or null
+'       If Not IsNull(category) Then 
+'          fk_category = category!pk
+'       Else
+'          If Message.Question("Please confirm that you wish to add a new category:\n\n" & txtCategory.text, "Yes", "No") = 2 Then
+'             txtCategory.SetFocus()
+'             Return
+'          End If 
+'          fk_category = 0
+'       End If
+'    End If
+'    Return True  
+' MissingData:
+'    Message.Info(sMsg)
+'    Return False
+'    
+' End 
 
 Public Sub SpellCheck_TextBox(tb As TextBox)
    

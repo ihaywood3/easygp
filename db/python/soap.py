@@ -41,6 +41,7 @@ Or my XML is wrong ;-)
         self.msg = msg
         self.severity = severity
 
+
     def __str__(self):
         return repr(self.severity+self.msg)
 
@@ -54,6 +55,11 @@ class SOAPCrypto:
 As this is based on public (albeit old and very obscure) standards I believe this can be released
 as open-source code
 """
+
+    def __init__(self):
+        self.incoming_uuid = 'n/a'
+        self.outgoing_uuid = 'n/a'
+
 
     def drop_root(self):
         """drop root privileges if euid set"""
@@ -173,6 +179,8 @@ as open-source code
         signed_headers - list of tuples (name,text) of SOAP header fragments that should be signed. must be {xmlid} for the xml id. name is a short arbitrary (i.e. not defined by standard) string idenitifying the header.
         unsigned_headers - list of strings, header fragments that don't need to be signed
         """
+        self.outgoing_uuid=uuid.uuid4()  # record in public variable as caller may want it for auditing or bug-reporting
+        self.incoming_uuid = 'n/a'
         body_xml = """<soap12:Body xmlns:soap12="http://www.w3.org/2003/05/soap-envelope" xml:id="{{xmlid}}">{body}</soap12:Body>"""
         body = body_xml.format(body=body)
         packets_to_sign = [("body",body)]
@@ -202,10 +210,7 @@ as open-source code
         reply = self.do_https(message,url_tip)
         root = ET.fromstring(reply)
         msgid = root.find(".//{http://www.w3.org/2005/08/addressing}MessageID")
-        if msgid is not None: 
-            self.incoming_uuid = msgid.text # again, caller may want this
-        else:
-            self.incoming_uuid = None
+        if msgid is not None: self.incoming_uuid = msgid.text # again, caller may want this
         # look for old-style SOAP 1.0 ones too.
         fault = root.find('.//{http://schemas.xmlsoap.org/soap/envelope/}Fault')
         if fault is not None:

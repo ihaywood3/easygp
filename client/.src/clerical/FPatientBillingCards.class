@@ -38,6 +38,7 @@ Private billing_levels As Collection
 Private sParentForm As String          'the name of the parent form e.g FRecordVisit
 Private pcehrconsent As String[]        'n = Not asked yet, c = consented, x = Not eligible(tourist, asylum - seeker, etc), r = refused, e = Error
 Private old_ihi As String
+Public old_consent As String
 
 
 Public Function Preferred_Doctor() As Variant
@@ -74,11 +75,10 @@ Public Function Responsible_Payer_Get_fk_branch() As Integer
    
 End
 
-Public Function Medicare_Reference_number() As Integer
+Public Function Medicare_Reference_number() As String
    
-   If txtMedicareReferenceNumber.text <> "" Then
-      Return Val(txtMedicareReferenceNumber.text)
-   End If
+   If Trim(txtMedicareReferenceNumber.Text) = "" Then Return Null
+   Return Trim(txtMedicareReferenceNumber.text)
    
 End
 
@@ -239,6 +239,8 @@ Public Sub Init(VB As VBox, Optional sPF As String)
       HBox_referral_status.Visible = modAdminDBI.Config_Get_Staff_Member("billing_show_referral_status", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff)
    Endif
    EditArea_Recolour(Color.DarkGray)
+   old_consent = "n"
+   old_ihi = Null
    
 End
 
@@ -255,8 +257,9 @@ Public Sub Reload_IHI(fk_patient As Integer)
   
   bExit = True
   coll = modContactsDBI.Patient_Get_Using_PK(fk_patient)
-  txtIndividualHealthIdentifier.text = coll!ihi
+  txtIndividualHealthIdentifier.text = Right$(coll!ihi, -6) ' knock off constant prefix
   old_ihi = coll!ihi
+  old_consent = coll!pcehr_consent
   ' this is the best method IMHO (Ian)
    For x = 0 To pcehrconsent.Max
       If pcehrconsent[x] = coll!pcehr_consent Then   'n = Not asked yet, c = consented, x = Not eligible(tourist, asylum - seeker, etc), r = refused, e = Error
@@ -301,6 +304,9 @@ Public Sub EditArea_Clear()
    payer = Null
    patient = Null
    bExit = False
+   old_consent = "n"
+   old_ihi = Null
+   cmbPCEHRConsent.Index = 0
    
 End
 
@@ -363,6 +369,7 @@ Public Sub Display_Patient_Data(P As Collection)
          Break
       End If   
    Next
+   old_consent = P!pcehr_consent
    Try cmbBIllingLevel.index = cmbBIllingLevel.Find(P!billing_level)
    chkNursingHomeResident.value = P!nursing_home_resident
    Try cmbPrivateInsuranceCompany.index = cmbPrivateInsuranceCompany.Find(P!fund)
@@ -695,7 +702,16 @@ Public Function Valid_Data() As Boolean
    Dim s As String
    Dim fk_patient As Integer
    Dim cc As CConsult
+   Dim i As Integer
    
+   If Trim(txtMedicareReferenceNumber.Text) <> "" Then
+      i = -1
+      Try i = Val(txtMedicareReferenceNumber.Text)
+      If i < 1 Or If i > 9 Then
+         Message.Info("Medicare IRN Number must be between 1 and 9")
+         Return False
+      Endif
+   Endif
    If Trim(txtMedicareNumber.text) <> "" Then
       If modUtil.Medicare_Number_Check(Trim(txtMedicareNumber.text)) = "*INVALID*" Then
          Message.Info("Invalid medicare number")
@@ -767,6 +783,23 @@ Public Function Valid_Data() As Boolean
         Return False
       End If
    End If 
+   If PCEHR_Consent() = "c" Or If PCEHR_Consent() = "h" Then
+      If txtIndividualHealthIdentifier.Text = "" And If txtMedicareNumber.Text = "" And If txtVeteranNumber.Text = "" Then
+         If Message.Warning("You must have one of a Medicare number, DVA number or IHI number to register on the PCEHR", "Don't Care", "I'll Fix It") = 1 Then
+            Return True  ' report to calling code as valid anyway
+         Else 
+            Return False
+         Endif
+      Endif
+   Endif
+   If old_consent <> "v" And If PCEHR_Consent() = "v" Then
+      Message.Error("You can't manually set to PCEHR Consent to Verified")
+      Return False 
+   Endif
+   If old_consent <> "e" And If PCEHR_Consent() = "e" Then
+      Message.Error("You can't manaully set PCEHR Consent to Error")
+      Return False
+   Endif
    Return True
    
 End

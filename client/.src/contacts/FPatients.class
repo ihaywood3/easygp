@@ -573,7 +573,7 @@ Public Sub Save()
    Dim sSearchText As String
    Dim occupational_history As CRow 
    Dim Currentconsult As CConsult
-   Dim notes As String
+   Dim notes As String = ""
    Dim bAddingNewPatient As Boolean
    
    If Vbox_EditArea.Padding = 0 Then Return     'no padding = no data
@@ -615,7 +615,10 @@ Public Sub Save()
    patient!medicare_number = form_billing.Medicare_Number()
    patient!medicare_ref_number = form_billing.Medicare_Reference_number()
    patient!medicare_expiry_date = modUtil.Medicare_Create_Expiry_date(form_billing.Medicare_Card_Expiry_Date()) 'add the last day of the month
-   patient!pcehr_consent = form_billing.PCEHR_Consent() 
+   If form_billing.PCEHR_Consent() <> form_billing.old_consent Then
+      patient!pcehr_consent = form_billing.PCEHR_Consent()
+      form_billing.old_consent = patient!pcehr_consent
+   Endif 
    patient!veteran_number = form_billing.Veteran_Card_Number()
    If patient!veteran_number <> "" Then
       patient!fk_lu_veteran_card_type = form_billing.Veteran_Card_Type()
@@ -743,28 +746,47 @@ Public Sub Save()
       End If
    Next
    patient!fk_person = person!fk_person
-   '-------------------------------------------------------------------------------------------------------------------------
-   ' we need to do some auditing on whether the IHI has changed
-   new_ihi = form_billing.Patient_IndividualHealthIdentifier()
-   patient!ihi = new_ihi
-   If Not IsNull(new_ihi) Then
-      patient!ihi_updated = "now()"
-   Else
-      patient!pcehr_consent = "n" ' null IHI means consent status must be reset 
-   Endif
    old_ihi = form_billing.Previous_IHI(new_ihi)
+   new_ihi = form_billing.Patient_IndividualHealthIdentifier()
+   If new_ihi <> old_ihi And If Not (IsNull(new_ihi) And IsNull(old_ihi)) Then
+         '-------------------------------------------------------------------------------------------------------------------------
+   ' we need to do some very specific auditing on whether the IHI has changed
+   ' ------------------------------------------------------------------------------------------------------------------------
+      patient!ihi = new_ihi
+      If Not IsNull(new_ihi) Then
+         patient!ihi_updated = "now()"
+      Endif
+      If IsNull(new_ihi) Then
+         notes &= Subst$("Old IHI &1 being deleted manually", old_ihi)
+      Else If IsNull(old_ihi) Then
+         notes &= Subst$("Manual entry of new IHI &1 [status: unknown, record status: unknown]", new_ihi)
+      Else 
+         notes &= Subst$("IHI changed by manual entry from &1 to &2 [status: unknown, record status: unknown]", old_ihi, new_ihi)
+      Endif
+   Endif
+   coll = New Collection
+   coll["n"] = "Not consented"
+   coll["e"] = "Error"
+   coll["h"] = "Details changed"
+   coll["c"] = "Consented"
+   coll["v"] = "Verified"
+   coll["r"] = "Refused"
+   coll["x"] = "Not eligible"
+   If form_billing.PCEHR_Consent() <> form_billing.old_consent Then
+      notes &= Subst$("<p>Consent status being changed from &2 to &1</p>", coll[form_billing.PCEHR_Consent()], coll[form_billing.old_consent])
+   Else If notes <> ""
+      notes &= Subst$("<p>Consent status remains &1</p>", coll[form_billing.PCEHR_Consent()])
+   Endif
+   If notes <> "" And If Not IsNull(modDBConnect.currentUser!hpii) Then
+     notes &= " <p>Current users IHI is " & modDBConnect.currentUser!hpii & " </p>"
+   Endif 
+   ' now actually save
    patient.Save("clerical.data_patients", "fk_patient")
    fk_patient = patient!fk_patient
-   If new_ihi <> old_ihi And If Not (IsNull(new_ihi) And IsNull(old_ihi)) Then
+   ' save audit
+   If notes <> "" Then
       Currentconsult = New CConsult(patient.AsCollection(), const.ConsultType_AuditNote, True)
       Currentconsult.Set(const.ConsultType_AuditNote, "IHI audit")
-      If IsNull(new_ihi) Then
-         notes = Subst$("Old IHI &1 being deleted manually", old_ihi)
-      Else If IsNull(old_ihi) Then
-         notes = Subst$("Manual entry of new IHI &1 [status: unknown, record status: unknown]", new_ihi)
-      Else 
-         notes = Subst$("IHI changed by manual entry from &1 to &2 [status: unknown, record status: unknown]", old_ihi, new_ihi)
-      Endif
       modAudit.MakeAudit(Currentconsult, const.cAuditAction_PCEHR, "clerical.data_patients", patient!fk_patient, 0, notes)
    Endif
    '-------------------------------------------------------------------------------------------------------------------------

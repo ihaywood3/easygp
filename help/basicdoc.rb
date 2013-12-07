@@ -231,6 +231,18 @@ EOF
       $pre = false
     when /\.latex (.*)/
       $latex.write($1+"\n")
+    when /\.table(.*)/
+      $output.write("<table%s><tr><td>" % $1)
+      $latex.write("\\begin{tabular}") # then .latex for specific commands
+    when /\.col/
+      $output.write("</td><td>")
+      $latex.write(" & ")
+    when /\.row/
+      $output.write("</td></tr><tr><td>\n")
+      $latex.write("\\\\\n")
+    when /\.end table/
+      $output.write("</td></tr></table>\n")
+      $latex.write("\\end{tabular}\n"
     else
       if $pre
         $latex.write(line) 

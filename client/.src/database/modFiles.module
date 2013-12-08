@@ -1,6 +1,6 @@
 ' Gambas module file
 
-' Copyright (C) 20013 Dr. Ian Haywood
+' Copyright (C) 2013 Dr. Ian Haywood
 
 ' This program is free software: you can redistribute it and/or modify
 ' it under the terms of the GNU General Public License as published by
@@ -19,23 +19,17 @@
 ' this file controls access to the files in the document store and elsewhere
 ' abstracts out whether we accessing through the database or the local filesystem
 
-Private bUseLocalFS As Boolean
-
-Public Sub CheckForLocalDirs()
-
-   Dim d As String
-
-   d = modAdminDBI.Config_Get("document_archiving_directory", "/var/lib/easygp/documents", "Directories/Archiving")
-   Log.DebugMsg("document_archiving_directory=" & d)
-   If Exist(d) Then
-      Log.DebugMsg("exists, using local filesystem access")
-      bUseLocalFS = True
-   Else
-      Log.DebugMsg("doesn't exist, using postgresql connection")
-      bUseLocalFS = False
-   Endif
-
+' returns true if a directory is available either by direct filesystem or server-side, false if not
+Public Function Dir_Working(config As String) As Boolean
+    Dim s As String
+    
+    s = modAdminDBI.Config_Get(config, "no-default", "Files/" & config)
+    If s = "*notused*" Then Return False
+    If s = "*server*" Or If Access(s, gb.read And gb.write) Then Return True
+    Return False
+    
 End
+
 
 ' takes the name of the config option for the directory (e.g. "document_archiving_directory")
 ' and the filename
@@ -46,14 +40,15 @@ Public Function Get(config As String, fname As String) As String
    Dim s As String
    Dim r As Result
 
-   If Not bUseLocalFS Then
+   s = modAdminDBI.Config_Get(config, "no-default", "Files/" & config)
+   If s = "*server*" Then
       ' we need to grab from the remote filesystem
       r = modDBConnect.exec_query("select load_file(&1,&2) as data", [config, fname])
       s = Temp$ & "." & Right$(fname, - RInStr(fname, ".")) ' make the temp name have the same ending as the original file
       File.Save(s, r!data.Data)
       Return s
    Else
-      s = modAdminDBI.Config_Get(config, "no-default", "Files/" & config) &/ fname
+      s = s &/ fname
       If Not Exist(s) Then
          Message.Error(Subst$("File &1 doesn't exist on the local filesystem", s)) 
          Error.Raise("File " & s & " does not exist")
@@ -68,10 +63,13 @@ End
 ' local is the local name (so this function does a name change on the file "for free")
 Public Sub Put(config As String, fname As String, local As String)
 
-   If Not bUseLocalFS Then
+   Dim s As String
+   
+   s = modAdminDBI.Config_Get(config, "no-default", "Files/" & config)
+   If s = "*server*" Then
       modDBConnect.exec_query(modDBConnect.Subst("select save_file(&1,&2,", [config, fname]) & modDBConnect.FormatBlob(local) & "::bytea)")
    Else
-      fname = modAdminDBI.Config_Get(config, "no-default", "Files/" & config) &/ fname
+      fname = s &/ fname
       Log.DebugMsg(Subst$("trying to copy &1 to &2", local, fname))
       Copy local To fname
    Endif
@@ -85,8 +83,10 @@ Public Sub List(config As String) As String[]
 
    Dim r As Result
    Dim ret As String[]
-
-   If Not bUseLocalFS Then
+   Dim s As String
+   
+   s = modAdminDBI.Config_Get(config, "no-default", "Files/" & config)
+   If s = "*server*" Then
       ret = New String[]
       r = modDBConnect.exec_query("select list_files(&1) as fname", [config])
       For Each r
@@ -94,7 +94,7 @@ Public Sub List(config As String) As String[]
       Next
       Return ret
    Else
-      Return Dir(modAdminDBI.Config_Get(config, "no-default", "Files/" & config))
+      Return Dir(s)
    Endif
 
 End
@@ -103,10 +103,13 @@ End
 ' remember it acts as athe "postgres" user there: UNIX permissions must be set correctly.
 Public Sub Delete(config As String, fname As String)
 
-   If Not bUseLocalFS Then
+   Dim s As String
+   
+   s = modAdminDBI.Config_Get(config, "no-default", "Files/" & config)
+   If s = "*server*" Then
       modDBConnect.exec_query("select delete_file(&1,&2)", [config, fname])
    Else
-      Kill modAdminDBI.Config_Get(config, "no-default", "Files/" & config) &/ fname
+      Kill s &/ fname
    Endif
 
 End

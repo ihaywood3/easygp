@@ -98,7 +98,7 @@ as open-source code
         else:
             tz = -time.timezone
         tz = "{:0=+3}:{:0>2}".format(tz/3600,abs((tz % 3600)) / 60)
-        return time.strftime("%Y-%m-%dT%H:%M:%S.00+11:00",date)
+        return time.strftime("%Y-%m-%dT%H:%M:%S{}".format(tz),date)
 
     def make_sig(self,text):
         """Make a base64-encoded RSA signature"""
@@ -208,6 +208,7 @@ as open-source code
         message = self.clean_template(templ).format(sigwrapper_tag=self.sigwrapper_tag,sigwrapper_tag_close=self.sigwrapper_tag_close,action=action,message_uuid=self.outgoing_uuid,headers=headers,sig=sig,cert=self.grab_cert(),siginfo=siginfo,body=body)
         #print message
         reply = self.do_https(message,url_tip)
+        print reply
         root = ET.fromstring(reply)
         msgid = root.find(".//{http://www.w3.org/2005/08/addressing}MessageID")
         if msgid is not None: self.incoming_uuid = msgid.text # again, caller may want this

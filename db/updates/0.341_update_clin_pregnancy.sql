@@ -18,7 +18,9 @@ comment on column clin_pregnancy.ante_natal_visits.deleted is 'If True then this
 alter table clin_pregnancy.pregnancies add column deleted boolean default false;
 comment on column clin_pregnancy.pregnancies.deleted is 'If True then this visit is marked as deleted';
 
+drop VIEW clin_pregnancy.vwpregnancies; 
 CREATE OR REPLACE VIEW clin_pregnancy.vwpregnancies AS 
+
  SELECT consult.fk_patient, pregnancies.pk AS fk_pregnancy, pregnancies.pk, pregnancies.fk_consult, 
  pregnancies.lmp, pregnancies.edc, pregnancies.edc_revised, pregnancies.edc_revised_reason, 
  pregnancies.date_gtt, pregnancies.gtt_result, pregnancies.notes, pregnancies.gestation, 

@@ -251,6 +251,11 @@ def import_step1(t):
         sct =  generics[drug["mpp"]]["sct"]
         r = query("select * from drugs.product where sct='%s'" % sct)
         if len(r) == 0:
+            r = query("select * from drugs.product where original_pbs_name=%s",(drug["title"],))
+            if len(r) > 0:
+                print >>sys.stderr, "SCT seems to have changed on %s " % r[0]["original_pbs_name"]
+                cmd("update drugs.product set sct='%s' where sct='%s'" % (generics[drug["mpp"]]["sct"],r[0]["sct"]))
+        if len(r) == 0:
             if not sct in already_done:
                 already_done.add(sct)
                 print_drug(drug,generics)
@@ -295,6 +300,10 @@ def process_step2_line(drug,lineno,sct_done):
                 print >>sys.stderr,"can't recognise drug form %s at line %d" % (drug["form"],lineno)
                 sys.exit(1)
             drug["fk_form"] = r[0]["pk"]
+            r = query("""
+select * from drugs.product where generic=$$%s$$ and fk_form=%s and strength='%s'""" % (drug['generic'],drug['fk_form'],drug['strength']))
+            if len(r) > 0:
+                print >>sys,stderr, "WARNING: SCT %s looks pretty similar to %s" % (r[0]["sct"],drug['sct'])
             drug["uuid"] = query("select uuid_generate_v4() as uuid")[0]["uuid"]
             cmd("""
 insert into drugs.product (pk,generic,fk_form,free_comment,units_per_pack,pack_size,amount,amount_unit,original_pbs_name, sct, atccode, strength)
@@ -334,8 +343,8 @@ def verify_brands(t):
             fk_product = r[0]['pk']
             for brand in drug["brands"]:
                 code = ms[brand["manufacturer"]]["code"]
-                q = "select pk,price from drugs.brand where sct='%s'" % brand["sct"]
-                r = query(q)
+                q = "select pk,price from drugs.brand where sct=%s or (brand=%s and fk_product=%s)" 
+                r = query(q,(brand["sct"],brand["brand"],fk_product))
                 if len(r) == 0:
                     r = query("select pk,brand,sct,price from drugs.brand where fk_product='%s' and fk_company='%s'" % (fk_product,code))
                     if len(r) > 0:
@@ -357,7 +366,7 @@ def verify_brands(t):
                     price = price.replace(',','')
                     pk = r["pk"]
                     if price <> "$"+brand["price"]:
-                        cmd("update drugs.brand set price='%s'::money, fk_company='%s',brand=$$%s$$,current=true where pk='%s';" % (brand["price"],code,brand['brand'],pk))
+                        cmd("update drugs.brand set price='%s'::money, fk_company='%s',brand=$$%s$$,sct='%s',current=true where pk='%s';" % (brand["price"],code,brand['brand'],brand['sct'],pk))
 
 
 def print_brands():

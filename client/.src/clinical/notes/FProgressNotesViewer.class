@@ -18,7 +18,10 @@
 '           plus sub routines to print and preview as pdf
 '           of switch to an edit mode to allow editing of the consults
 '---------------------------------------------------------------------
-
+Private bHaveImage As Boolean
+Private bHaveSelectedText As Boolean
+Private image_path As String
+Private selected_link As String
 Public Form_NotesEditor As FEditNotes
 Public currentConsult As CConsult
 Public original_text As String
@@ -88,16 +91,17 @@ Public Sub Init(cons As CConsult, Optional sHtml As String)
    ProgressNotes_Show(sHtml)
    ProgressNotesMenu_Refresh
    modDBConnect.Register_Listener("new_progress_note", Me)
+   
 End
 
 Public Sub form_Close()
    
-  modDBConnect.Unregister_Listener("new_progress_note", Me) 
+   modDBConnect.Unregister_Listener("new_progress_note", Me) 
    
 End
 
-
 Public Sub Notify(its_us As Boolean, param As String)
+   
    Dim fk_patient As Integer
    Dim sa As String[]
    
@@ -108,7 +112,6 @@ Public Sub Notify(its_us As Boolean, param As String)
    Endif
    
 End
-
 
 Public Sub ProgressNotes_Show(shtml As String)
    '------------------------------------------------------------------------------------------------------
@@ -235,6 +238,26 @@ Public Sub ProgressNotesMenu_Refresh()
          mnu.tag = PastHistoryCondition!pk_pasthistory
       End If
    Next
+   mnu = New Menu(popupMenuProgressNotes)
+   mnu.name = "separator_1"
+   mnu.caption = ""
+   bNeedSeparator = False
+   If bHaveSelectedText Then
+      mnu = New Menu(popupMenuProgressNotes) As "popupMenuProgressNotes"
+      mnu.name = "Copy"
+      mnu.caption = "Copy Selected Text"
+      mnu.tag = "copy"
+   Endif
+   If bHaveImage Then
+      mnu = New Menu(popupMenuProgressNotes) As "popupMenuProgressNotes"
+      mnu.name = "Copy"
+      mnu.caption = "Copy Image"
+      mnu.tag = "copy"
+      mnu = New Menu(popupMenuProgressNotes) As "popupMenuProgressNotes"
+      mnu.name = "Open in External Program"
+      mnu.caption = "Open Image in Kolourpaint"
+      mnu.tag = "open in external image program"
+   Endif
    
 End
 
@@ -295,7 +318,7 @@ Public Sub Print_Content()
    '-------------------------------------------------------------------------------------
    'creates pdf with page header of the progress notes and prints directly with no prompt
    '-------------------------------------------------------------------------------------
-
+   
    Message.Title = "Print Progress Notes"
    If Message.Question("Are you sure you want to print out all the progress notes in these days of the supposedly paper-less office?\n\nIf your notes are lengthy, this could take quite some time not to mention consume reams of paper\n\nContinue?", "Yes", "No") = 2 Then Return
    modPrinting.Print_PDF(modProgressNotes.ProgressNotes_Add_Page_Header_Create_PDF_File(webview1.HTML, currentConsult, "ALL PROGRESS NOTES"))
@@ -457,6 +480,10 @@ End
 Public Sub popupMenuProgressNotes_Click()
    
    Select Case Last.tag
+      Case "copy"          'WebView1_MouseDown will have already done the copy to clipboard of text/image
+        
+      Case "open in external image program"
+         modUtil.Image_Load_In_External_Program(image_path, False) 'false = not an easygp document
       Case "show all notes"
          LblNotesFilter.text = ""
          webview1.html = modProgressNotes.AllProgressNotes_Construct_Html(currentconsult)
@@ -612,5 +639,45 @@ Public Sub chkIncludeAuditTrail_Click()
    
    lblAuditInformation.Visible = Last.value
    ProgressNotes_Show(modProgressNotes.AllProgressNotes_Construct_Html(currentconsult, chkIncludeAuditTrail.value))
+   
+End
+
+Public Sub WebView1_MouseDown()
+   
+   Dim hView As WebView = Last
+   Dim hTest As WebHitTest = hView.HitTest(Mouse.X, Mouse.Y)
+   Dim sMsg As String
+   Dim pic As New Picture
+   
+   bHaveSelectedText = False 
+   bHaveImage = False   
+   image_path = ""
+   If hTest.Document Then
+       sMsg &= "DOCUMENT "
+     '  Clipboard.Copy(Webview1.SelectedText)
+     ' bHaveSelectedText = True
+   End If   
+   If hTest.Link Then
+      sMsg &= "LINK "
+      selected_link = hTest.Url
+   End If
+   
+   If hTest.Image Then
+      sMsg &= "IMAGE "
+      image_path = Replace(hTest.url, "file://", "")
+      pic = pic.Load(image_path)
+      Clipboard.Copy(pic.image)
+      bHaveImage = True 
+   End If   
+   If hTest.Selected Then
+      sMsg &= "SELECTED "
+      Clipboard.Copy(Webview1.SelectedText)
+    '  bHaveSelectedText = True
+   End If
+   If hTest.Editable Then sMsg &= "EDITABLE "
+   Debug sMsg; hTest.Url
+   ProgressNotesMenu_Refresh
+Catch
+   Return
    
 End

@@ -242,7 +242,7 @@ EOF
       $latex.write("\\\\\n")
     when /\.end table/
       $output.write("</td></tr></table>\n")
-      $latex.write("\\end{tabular}\n"
+      $latex.write("\\end{tabular}\n")
     else
       if $pre
         $latex.write(line) 

@@ -67,11 +67,9 @@ Public Function Pathways_Exist_And_Writable(fk_clinic As Integer) As Boolean
       sDir = modAdminDBI.Config_Get(Param!config, Null, Null, fk_clinic)
       param!val = sDir
       Param!icon_path = sGreenDot
-      If sDir <> "*server*" And If sDir <> "*notused*" Then
-         If IsNull(sDir) Or If Not Access(sDir, gb.read And gb.write) Then
-            Param!icon_path = sRedDot
-            bParametersMissing = True  
-         Endif
+      If sDir <> "*notused*" And If modFiles.Dir_Status(Param!config, fk_clinic) = modFiles.DirNotAvail Then
+        Param!icon_path = sRedDot
+        bParametersMissing = True
       Endif
    Next  
    '----------------------
@@ -124,6 +122,15 @@ Public Function Pathways_Exist_And_Writable(fk_clinic As Integer) As Boolean
    End If   
    Return True 
 End
+
+Public Function Check_Dir_On_Server(sDir As String) As Boolean
+   Dim r As Result
+   
+   r = modDBConnect.exec_query("select admin.check_dir(&1) as chk_dir", [sDir])
+   Return r!chk_dir 
+   
+End
+
 
 Public Function Clinical_Toolbuttons_Get(fk_staff As Integer) As Collection
    '-----------------------------------------------------------------------------------
@@ -262,7 +269,7 @@ End
 
 Public Function Roles_Get() As Collection
    
-   Return modDBConnect.exec_query_collection("Select pk as pk_role, role  from admin.lu_staff_roles order by role")
+   Return modCache.Query("admin.lu_roles", "Select pk as pk_role, role  from admin.lu_staff_roles")
    
 End
 
@@ -294,11 +301,11 @@ Public Function Config_Get_Staff_Member(config As String, Optional default_value
       LoadPrefs_staff(fk_staff)
    End If
    If prefs_staff.Exist(fk_staff) And If prefs_staff[fk_staff].Exist(config) Then
-      Return prefs_staff[fk_staff][config]
+      Return prefs_staff[fk_staff][config]!value
    Endif
    If IsNull(prefs) Then LoadPrefs()
    If prefs.Exist(0) And If prefs[0].Exist(config) Then
-      Return prefs[0][config]
+      Return prefs[0][config]!value
    Endif
    If IsNull(local_setting) Then
      CheckDefault(config, default_value)
@@ -326,21 +333,36 @@ Public Function Config_Get(config As String, Optional default_value As Variant =
    If fk_clinic = 0 And If Not IsNull(modDBConnect.currentUser) Then
       fk_clinic = modDBConnect.currentUser!fk_clinic
    Endif
-   
    If IsNull(prefs) Then LoadPrefs()
    If prefs.Exist(fk_clinic) And If prefs[fk_clinic].Exist(config) Then
-      Return prefs[fk_clinic][config]
+      Return prefs[fk_clinic][config]!value
    Endif
    If Not IsNull(local_setting) Then
       v = Settings[local_setting, Null]
       If Not IsNull(v) Then Return PrefCast(v)
    Endif
    If prefs.Exist(0) And If prefs[0].Exist(config) Then
-     Return prefs[0][config]
+     Return prefs[0][config]!value
    Endif
    CheckDefault(config, default_value)
    Return default_value
    
+End
+
+' return the full collection of config metadata
+Public Sub Config_Get_Full(config As String, Optional fk_clinic As Integer = 0) As Collection
+
+   If fk_clinic = 0 And If Not IsNull(modDBConnect.currentUser) Then
+      fk_clinic = modDBConnect.currentUser!fk_clinic
+   Endif   
+   If IsNull(prefs) Then LoadPrefs()
+   If prefs.Exist(fk_clinic) And If prefs[fk_clinic].Exist(config) Then
+      Return prefs[fk_clinic][config]
+   Endif
+   If prefs.Exist(0) And If prefs[0].Exist(config) Then
+     Return prefs[0][config]
+   Endif
+   Return Null
 End
 
 Private Sub CheckDefault(config As String, def As Variant)
@@ -375,7 +397,8 @@ Private Sub LoadPrefs()
          fk_clinic = coll!fk_clinic
       Endif
       If Not prefs.Exist(fk_clinic) Then prefs[fk_clinic] = New Collection
-      prefs[fk_clinic][coll!name] = PrefCast(coll!value)
+      coll!value = PrefCast(coll!value)
+      prefs[fk_clinic][coll!name] = coll
    Next
    
 End
@@ -387,7 +410,8 @@ Private Sub LoadPrefs_staff(fk_staff As Integer)
    prefs_staff = New Collection
    For Each coll In modDBConnect.exec_query_collection("select * from admin.vwpreferences where fk_staff=" & fk_staff)
       If Not prefs_staff.Exist(coll!fk_staff) Then prefs_staff[coll!fk_staff] = New Collection
-      prefs_staff[coll!fk_staff][coll!name] = PrefCast(coll!value)
+      coll!value = PrefCast(coll!value)
+      prefs_staff[coll!fk_staff][coll!name] = coll
    Next
    
 End

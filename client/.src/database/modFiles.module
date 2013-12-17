@@ -19,14 +19,38 @@
 ' this file controls access to the files in the document store and elsewhere
 ' abstracts out whether we accessing through the database or the local filesystem
 
-' returns true if a directory is available either by direct filesystem or server-side, false if not
-Public Function Dir_Working(config As String) As Boolean
-    Dim s As String
+Public Const DirNotAvail As Byte = 0
+Public Const DirLocal As Byte = 1
+Public Const DirRemote As Byte = 2
+
+Private sFoundDir As String
+
+Public Function Dir_Status(config As String, Optional fk_clinic As Integer = 0) As Byte
+    Dim c As Collection
     
-    s = modAdminDBI.Config_Get(config, "no-default", "Files/" & config)
-    If s = "*notused*" Then Return False
-    If s = "*server*" Or If Access(s, gb.read And gb.write) Then Return True
-    Return False
+    c = modAdminDBI.Config_Get_Full(config, fk_clinic)
+    If IsNull(c) Then Return DirNotAvail
+    If c!value = "*notused*" Then Return DirNotAvail
+    If Access(c!value, gb.read And gb.write) Then 
+       sFoundDir = c!value
+       Return DirLocal
+    Endif
+    sFoundDir = Settings["Files/" & config, Null]
+    If Not IsNull(sFoundDir) And If Access(sFoundDir, gb.Read And gb.Write) Then
+       Return DirLocal
+    Endif
+    If c!server_dir Then 
+      Return DirRemote
+    Endif
+    Return DirNotAvail
+    
+End
+
+' returns true if a directory is available either by direct filesystem or server-side, false if not
+Public Function Dir_Working(config As String, Optional fk_clinic As Integer = 0) As Boolean
+ 
+   If Dir_Status(config, fk_clinic) = DirNotAvail Then Return False
+   Return True
     
 End
 
@@ -40,15 +64,14 @@ Public Function Get(config As String, fname As String) As String
    Dim s As String
    Dim r As Result
 
-   s = modAdminDBI.Config_Get(config, "no-default", "Files/" & config)
-   If s = "*server*" Then
+   If Dir_Status(config) = DirRemote Then
       ' we need to grab from the remote filesystem
       r = modDBConnect.exec_query("select load_file(&1,&2) as data", [config, fname])
       s = Temp$ & "." & Right$(fname, - RInStr(fname, ".")) ' make the temp name have the same ending as the original file
       File.Save(s, r!data.Data)
       Return s
    Else
-      s = s &/ fname
+      s = sFoundDir &/ fname
       If Not Exist(s) Then
          Message.Error(Subst$("File &1 doesn't exist on the local filesystem", s)) 
          Error.Raise("File " & s & " does not exist")
@@ -61,17 +84,22 @@ End
 ' puts a file in a remote filestore
 ' fname is the name you want it to have remotely
 ' local is the local name (so this function does a name change on the file "for free")
-Public Sub Put(config As String, fname As String, local As String)
-
-   Dim s As String
+Public Sub Put(config As String, fname As String, local As String, Optional task As CShellTask)
    
-   s = modAdminDBI.Config_Get(config, "no-default", "Files/" & config)
-   If s = "*server*" Then
-      modDBConnect.exec_query(modDBConnect.Subst("select save_file(&1,&2,", [config, fname]) & modDBConnect.FormatBlob(local) & "::bytea)")
+   If Dir_Status(config) = DirRemote Then
+      If IsNull(task) Then
+         modDBConnect.exec_query(modDBConnect.Subst("select save_file(&1,&2,", [config, fname]) & modDBConnect.FormatBlob(local) & "::bytea)")
+      Else
+         task.Send(Subst$("echo '~SAVE&1~&2~&3~'", config, fname, local))
+      Endif
    Else
-      fname = s &/ fname
+      fname = sFoundDir &/ fname
       Log.DebugMsg(Subst$("trying to copy &1 to &2", local, fname))
-      Copy local To fname
+      If Not IsNull(task) Then
+         Task.Send(Subst$("cp '&1' '&2'", local, fname))
+      Else
+         Copy local To fname
+      Endif
    Endif
 
 End
@@ -83,10 +111,8 @@ Public Sub List(config As String) As String[]
 
    Dim r As Result
    Dim ret As String[]
-   Dim s As String
    
-   s = modAdminDBI.Config_Get(config, "no-default", "Files/" & config)
-   If s = "*server*" Then
+   If Dir_Status(config) = DirRemote Then
       ret = New String[]
       r = modDBConnect.exec_query("select list_files(&1) as fname", [config])
       For Each r
@@ -94,7 +120,7 @@ Public Sub List(config As String) As String[]
       Next
       Return ret
    Else
-      Return Dir(s)
+      Return Dir(sFoundDir)
    Endif
 
 End
@@ -102,14 +128,11 @@ End
 ' deletes a file on the server in the directory specified in the config
 ' remember it acts as athe "postgres" user there: UNIX permissions must be set correctly.
 Public Sub Delete(config As String, fname As String)
-
-   Dim s As String
    
-   s = modAdminDBI.Config_Get(config, "no-default", "Files/" & config)
-   If s = "*server*" Then
+   If Dir_Status(config) = DirRemote Then
       modDBConnect.exec_query("select delete_file(&1,&2)", [config, fname])
    Else
-      Kill s &/ fname
+      Kill sFoundDir &/ fname
    Endif
 
 End

@@ -1,4 +1,4 @@
-drop view view admin.vwpreferences;
+﻿drop view  admin.vwpreferences;
 create or replace view admin.vwpreferences as SELECT 
 COALESCE(g.pk + 10000, lpd.pk) AS pk_view, g.fk_clinic, g.fk_staff, 
 COALESCE(g.name, lpd.name) AS name, COALESCE(g.value, lpd.value) AS value, 

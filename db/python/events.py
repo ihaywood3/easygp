@@ -223,6 +223,7 @@ class Event:
         return logstring
 
     def script_printed(self,pid,payload):
+        pdb.set_trace()
         script_no = int(payload)
         items = self.db.get_scripts(script_no)
         if len(items) == 0:

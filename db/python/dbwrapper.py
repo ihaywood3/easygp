@@ -135,18 +135,32 @@ class DBWrapper:
         cur.execute("NOTIFY %s, '%s'" % (channel,param))
         if to_close: cur.close()
 
+    def __grab_events(self):
+        self.conn.poll()
+        self.__has_events = False
+        while self.conn.notifies:
+            notify = self.conn.notifies.pop()
+            logging.debug("Got NOTIFY: {} {} {}".format(notify.pid, notify.channel, notify.payload))
+            self.__events.add((notify.channel,notify.payload,notify.pid))
+            self.__has_events = True
+
+    def __process_events(self):
+        for evt, param, pid in self.__events.copy():
+            if self.listeners.has_key(evt):
+                logging.debug("calling listener for channel {}".format(param))
+                self.listeners[evt] (pid,param)
+                self.__retry_mode = False
+                self.__events.discard((evt,param,pid))
+
     def wait_events(self):
         pfd = self.conn.fileno()
         time.sleep(1)
         while True:
+            self.__has_events = False
             logging.debug("select()")
             rfd, wfds, xfds = select.select([pfd],[],[],600)
             if pfd in rfd:
-                self.conn.poll()
-                while self.conn.notifies:
-                    notify = self.conn.notifies.pop()
-                    logging.debug("Got NOTIFY: {} {} {}".format(notify.pid, notify.channel, notify.payload))
-                    self.__events.add((notify.channel,notify.payload))
+                self.__grab_events()
             elif pfd in xfds:
                 logging.error("fd {} returned error condition".format(pfd))
                 sys.exit(1)
@@ -154,12 +168,9 @@ class DBWrapper:
                 # timeout
                 logging.debug("timeout")
             try:
-                for evt, param in self.__events.copy():
-                    if self.listeners.has_key(notify.channel):
-                        logging.debug("calling listener for channel {}".format(notify.channel))
-                        self.listeners[notify.channel] (notify.pid,notify.payload)
-                        self.__retry_mode = False
-                        self.__events.discard((evt,param))
+                while self.__has_events:
+                    self.__process_events()
+                    self.__grab_events()
             except socket.error as exc:  # network error
                 logging.exception("network error")
                 self.__retry_mode = True

@@ -73,4 +73,6 @@ grant execute on function public.save_file(text,text,bytea) to staff;
 alter function public.list_files(text) owner to easygp;
 grant execute on function public.list_files(text) to staff;
 
+grant all on admin.lu_preferences_defaults to staff;
+
 update db.lu_version set lu_minor=353;

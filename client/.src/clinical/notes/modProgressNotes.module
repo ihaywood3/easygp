@@ -288,7 +288,7 @@ Public Function Health_Summary_Construct_LaTeX(currentconsult As Cconsult, Optio
          If weight > max_ideal_weight Then
             templ.Subst("overweight_data", Format(weight - max_ideal_weight, "##.#") & "Kg")
          Else
-             templ.Subst("overweight_data", "N/A")
+            templ.Subst("overweight_data", "N/A")
          End If   
       Else
          templ.Subst("overweight_data", "N/A")
@@ -1340,17 +1340,10 @@ Public Function Health_Summary_Construct_html(currentconsult As Cconsult) As Str
 End
 
 Public Function CoverSheet_Construct_HTML(currentconsult As Cconsult) As CTemplate
-   '-------------------------------------------------------------------------
-   'PURPOSE: Contructs a request form in html by using a template and
-   '         substituting the appropriate information
-   'note that patient.name etc don't mean anything, just used for readability
-   'At the top of the page we have in the template, which will show on the
-   'left hand side of the form the tags provider.branch etc.
-   'This is the Head office of the default provider (could be the only address)
-   'At the top of the page on the right hand side we have default.branch
-   'This the default branch user could be sending most patients to, but this
-   'could be the same as the Provider.Branch if a single address
-   '-------------------------------------------------------------------------
+   '--------------------------------------------------------------------
+   'Construct a coversheet for the front of a printed document, with the 
+   'practice name, exporting doctor name and patient details
+   '--------------------------------------------------------------------
    
    Dim templ As CTemplate
    
@@ -1373,7 +1366,7 @@ Public Function Tasks_summary_Construct_html(task As Collection) As String
    '  Dim task As Collection
    Dim fk_document As Integer = Task!fk_row
    
-   ' For Each task In currentconsult!staff_tasks
+   ' For Each task In currentconsult!patient_tasks
    sHtml = modArchiveDocumentsDBI.Audit_Trail_Show_Document_Details_Tasks_Attatched(fk_document)
    shtml &= "<HTML><BODY><TABLE><BR><B>Document Actioning</B><BR>" & modHTML.HTML_Template_Audit_Row_Heading()
    shtml &= modAudit.MakeTrail("documents.documents", fk_document)
@@ -1384,7 +1377,59 @@ Public Function Tasks_summary_Construct_html(task As Collection) As String
    
 End
 
-Public Function ReferralLetter_summary_construct_html(currentconsult As Cconsult) As String
+Public Function ReferralLetter_summary_construct_html(Referrals_written As Collection) As String
+   
+   Dim sHtml As String
+   Dim referral As Collection
+   Dim sRow_Template As String 
+   Dim sSTring As String 
+   
+   sRow_Template = ""
+   "<COL WIDTH=10%>"
+   "<COL WIDTH=40%>"
+   "<COL WIDTH=50%>"
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=10%>"
+   "%consult_date<BR>"
+   "</TD>"
+   "<TD WIDTH=40%>"
+   "%to<BR>"
+   "</TD>"
+   "<TD WIDTH=50%>"
+   "%reason<BR>"
+   "</TD>"
+   "</TR>"
+   shtml = "<HTML><BODY><DIV ALIGN=CENTER><H3>Summary of Referral Letters</H3></DIV><TABLE>"
+   shtml &= sRow_Template
+   sHtml = Replace(shtml, "%consult_date", "<B>Date</B>")
+   sHtml = Replace(shtml, "%to", "<B>To</B>")
+   sHtml = Replace(shtml, "%reason", "<B>Reason</B>")
+   '---------------------------------------------------------
+   'Note - imported letters won't have tag's = contents col 3
+   '---------------------------------------------------------
+   For Each referral In referrals_written
+      shtml &= sRow_Template
+      If referral!surname Then
+         sString = referral!title & " " & referral!wholename
+      Else
+         sString = referral!organisation
+      End If
+      shtml = Replace(shtml, "%consult_date", modUtil.Format_Date(referral!date_referral))
+      If sSTring = "" Then
+         shtml = Replace(shtml, "%to", "")
+      Else
+         shtml = Replace(shtml, "%to", sSTring)
+      End If
+      If Not IsNull(referral!tag) Then
+         shtml = Replace(shtml, "%reason", referral!tag)
+      End If
+      Print sHtml
+   Next
+   Return sHtml & "</TABLE></BODY></HTML>"
+   
+End
+
+Public Function ReferralLetter_summary_construct_html_old(currentconsult As Cconsult) As String
    
    Dim sHtml As String
    Dim referral As Collection
@@ -1434,13 +1479,14 @@ Public Function ReferralLetter_summary_construct_html(currentconsult As Cconsult
    
 End
 
-Public Function Results_Summary_Construct_HTML(currentconsult As CConsult) As String
+Public Function Results_Summary_Construct_HTML(results_received As Collection, bIncludeINR As Boolean) As String
    '-------------------------------------------------------
    'Construct a summary of results recieved by the tag_user
    '-------------------------------------------------------
    
    Dim R As Collection
    Dim sHtml As String
+   Dim bSkipRow As Boolean
    Dim sRow_Template As String = ""
    
    "<COL WIDTH=10%>"
@@ -1457,16 +1503,31 @@ Public Function Results_Summary_Construct_HTML(currentconsult As CConsult) As St
    "%tag_user<BR>"
    "</TD>"
    "</TR>"
-   shtml = "<HTML><BODY><DIV ALIGN=CENTER><H3>Summary of Results Received</H3><DIV><TABLE>"
+   shtml = "<HTML><BODY><DIV ALIGN=CENTER><H3>Results Received Summary Listing by Result Names</H3></DIV><TABLE>"
    shtml &= sRow_Template
    sHtml = Replace(shtml, "%date_created", "<B>Date</B>")
    sHtml = Replace(shtml, "%organisation", "<B>To</B>")
    sHtml = Replace(shtml, "%tag_user", "<B>Reason</B>")
-   For Each R In currentconsult!results_received
-      shtml &= sRow_Template
-      sHtml = Replace(shtml, "%date_created", Format(R!date_created, "dd/mm/yyyy"))
-      sHtml = Replace(shtml, "%organisation", R!organisation)
-      sHtml = Replace(shtml, "%tag_user", R!tag_user)
+   For Each R In results_received
+      If InStr(Lower(R!tag), "inr") Then  'IF result is inr and want to include it do so
+         If bIncludeINR Then  'this construct logic is fucked, fix this when not asleep FIXME.
+            shtml &= sRow_Template
+            sHtml = Replace(shtml, "%date_created", Format(R!date_created, "dd/mm/yyyy"))
+            sHtml = Replace(shtml, "%organisation", R!organisation)
+            sHtml = Replace(shtml, "%tag_user", R!tag_user)  
+            bSkipRow = True    'already have the row
+         Else
+            bSkipRow = True    'skip if not wanted.
+         Endif
+      Else
+         bSkipRow = False  
+      Endif
+      If Not bSkipRow Then    
+         shtml &= sRow_Template
+         sHtml = Replace(shtml, "%date_created", Format(R!date_created, "dd/mm/yyyy"))
+         sHtml = Replace(shtml, "%organisation", R!organisation)
+         sHtml = Replace(shtml, "%tag_user", R!tag_user)
+      End If   
    Next
    Return sHtml & "</TABLE></BODY></HTML>"
    
@@ -1499,7 +1560,7 @@ Public Function Requests_summary_construct_html(currentconsult As CConsult) As S
    "</TR>"
    
    ' shtml = "<HTML><BODY><P><B>REQUESTS ORDERED</B></P><TABLE><small>"
-   shtml = "<HTML><BODY<DIV ALIGN=CENTER><H3>Requests Ordered</H3><DIV><TABLE><small><small>"
+   shtml = "<HTML><BODY<DIV ALIGN=CENTER><H3>Requests Ordered</H3></DIV><TABLE><small><small>"
    "<COL WIDTH=89>"
    "<COL WIDTH=250>"
    "<COL WIDTH=300>"
@@ -1537,7 +1598,7 @@ Public Function Requests_summary_construct_html(currentconsult As CConsult) As S
    
 End
 
-Public Function Letters_Summary_Construct_html(currentconsult As CConsult) As String
+Public Function Letters_Summary_Construct_html(letters_received_sorted_ascending As Collection) As String
    '-----------------------------------------------------
    'Constructs a table of letters/correspondence recieved
    '-----------------------------------------------------
@@ -1554,7 +1615,7 @@ Public Function Letters_Summary_Construct_html(currentconsult As CConsult) As St
    "<TD WIDTH=450>%letter_from<BR></TD>"
    "<TD WIDTH=500>%letter_summary<BR></TD>"
    "</TR>"
-   shtml = "<HTML><BODY<DIV ALIGN=CENTER><H3>Letters Received Summary</H3><DIV><TABLE><small><small>"
+   shtml = "<HTML><BODY<DIV ALIGN=CENTER><H3>Letters Received Summary of Contents</H3></DIV><TABLE><small><small>"
    sHtml &= sRow_Template
    sHtml = Replace(shtml, "%letter_date", "<B>Letter Date</B>")
    sHtml = Replace(shtml, "%letter_from", "<B>From</B>")
@@ -1564,7 +1625,7 @@ Public Function Letters_Summary_Construct_html(currentconsult As CConsult) As St
    'the requests_ordered collection has multiple lines per form, one
    'for each request, so just show the summary
    '-----------------------------------------------------------------
-   For Each letter In currentconsult!letters_received_sorted_ascending
+   For Each letter In letters_received_sorted_ascending
       sHtml &= sRow_Template
       sHtml = Replace(shtml, "%letter_date", Format(letter!date_created, "dd/mm/yyyy"))
       sHtml = Replace(shtml, "%letter_from", letter!originator)
@@ -1591,7 +1652,7 @@ Public Function Recalls_summary_construct_html(currentconsult As CConsult) As St
    "<TD WIDTH=450>%recall_for<BR></TD>"
    "<TD WIDTH=500>%logged_by<BR></TD>"
    "</TR>"
-   shtml = "<HTML><BODY<DIV ALIGN=CENTER><H3>Recalls Outstanding</H3><DIV><TABLE><small><small>"
+   shtml = "<HTML><BODY<DIV ALIGN=CENTER><H3>Recalls Outstanding</H3></DIV><TABLE><small><small>"
    sHtml &= sRow_Template
    sHtml = Replace(shtml, "%recall_date", "<B>Date Due</B>")
    sHtml = Replace(shtml, "%recall_for", "<B>Recall For</B>")
@@ -2074,14 +2135,14 @@ Public Function AllProgressNotes_Construct_Html(currentconsult As CConsult, Opti
 End
 
 Private Function Form_Notes_Table(sTable As String, progressnote As Collection, progress_notes_codes As Collection) As String
-
+   
    Select Case progressnote!fk_audit_action
       Case 1, 2  ' ordinary notes 
-        sTable = Replace$(sTable, "col2", progressnote!notes)
-        sTable = Replace$(sTable, "%background-color%", "")
+         sTable = Replace$(sTable, "col2", progressnote!notes)
+         sTable = Replace$(sTable, "%background-color%", "")
       Case 36 ' PCEHR entries
-        sTable = Replace$(sTable, "col2", progressnote!notes)
-        sTable = Replace$(sTable, "%background-color%", "bgcolor = '#CCD6ED'")
+         sTable = Replace$(sTable, "col2", progressnote!notes)
+         sTable = Replace$(sTable, "%background-color%", "bgcolor = '#CCD6ED'")
       Case Else
          sTable = Replace$(sTable, "%background-color%", "bgcolor = '#FFDCE7'")
          sTable = Audit_Create_HTML(sTable, progressnote)
@@ -2089,8 +2150,8 @@ Private Function Form_Notes_Table(sTable As String, progressnote As Collection, 
    sTable = Replace(sTable, "col3", Codes_Get(progress_notes_codes, progressnote!pk_progressnote))
    sTable = Replace(sTable, "col3", "")
    Return sTable
+   
 End
-
 
 Public Function Audit_Create_HTML(sTable As String, pnotes As Collection) As String
    '-----------------------------------------

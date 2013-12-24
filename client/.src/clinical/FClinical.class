@@ -276,7 +276,7 @@ Static Public Sub Editor_ShowPage_External(page_name As String, page_tag As Stri
    '-------------------------------------------------------------
    'Adds a page to the workspace editor, called from another form
    '-------------------------------------------------------------
-
+   
    Print page_name
    Print page_tag
    Print page_data   
@@ -612,7 +612,6 @@ Public Sub Init()
    Else
       mnuSections_RequestNames.Enabled = False   
    Endif
-   'cmbSearch_LoadPatients()
    
 End
 
@@ -1464,6 +1463,13 @@ Public Sub Patient_Demographics_Display()
    '--------------------------------------------------------
    
    Dim com As Collection
+
+   If Not modFiles.Dir_Working("document_archiving_directory") Then
+      Message.Title = "WARNING"
+      Message.Info("EasyGP was not able to detect a valid directory containing the archived documents, hence you will not be able to view any" 
+      "results or letters for this patient which are archived in the pdf format.\n\n You should speak to your system administrator about correcting this.\n\n "
+      "You will of course be able to use the other clinical function.")
+   Endif
    
    bExit = True
    cmbSearch.text = currentconsult!patient!firstname & " " & currentconsult!patient!surname & " " & Trim(currentconsult!patient!street1 & " " & currentconsult!patient!street2) & " " & currentconsult!patient!town
@@ -1779,7 +1785,10 @@ Public Sub cvwLettersReceived_Select()
    cvwLettersReceived.MoveCurrent
    cvwLettersReceived_Key = cvwLettersReceived.Item.key
    If cvwLettersReceived.key = 0 Or cvwLettersReceived.key = "" Then Return
-   If WorkspaceEditor.ActiveWindow.Caption <> "Referrals" Then Document_Display
+   Print 
+   If WorkspaceEditor.ActiveWindow.Caption <> "Referrals" And WorkspaceEditor.ActiveWindow.Caption <> "Export Wizard" Then
+      Document_Display
+   End If   
 Catch
    Return 
    
@@ -2120,7 +2129,7 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
    '    make it impossible to auto-set focus on the first control
    '    in the new form.
    '--------------------------------------------------------------
-
+   
    Dim ExportPartial As FExportPartial
    Dim PatientTask As FStaffTasks
    Dim INRManager As FInr
@@ -2167,8 +2176,8 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
    Dim EditPastNotes As FEditNotes
    Dim PDF As FPDF
    Dim DrugBrowser As FPDF
-   Dim CarePlans As FCarePlanning
-   '    Dim CarePlans As FCarePlanning_New
+   'Dim CarePlans As FCarePlanning
+   Dim CarePlans As FCarePlanning_New
    Dim Form_Library As FLibrary
    Dim Pictures As FPictureViewer
    Dim sMsg As String
@@ -2347,7 +2356,7 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                retform = Form_Library
                EditorPages.Add(Form_Library, sPageName)
                Control_For_Focus = Form_Library.TreeView1
-            Case "Export File"
+            Case "Export Wizard"
                page = New FLinkContainer
                Export_Clinical = New FExportClinical(page.VBoxEditor)
                Export_Clinical.Init(currentconsult)
@@ -2460,7 +2469,7 @@ Public Sub Editor_ShowPage(sPageName As String, Optional page_tag As String = ""
                ' Return
                '   Message.Warning("before loading this module please note:\n\nTHIS MODULE IS NOT FINISHED, IS INACCURATE AND CANNOT BE USED AND WILL PROBABLY CRASH.\n\nUse it at your own peril.")
                page = New FLinkContainer
-               CarePlans = New FCarePlanning(page.VBoxEditor)
+               CarePlans = New FCarePlanning_New(page.VBoxEditor)
                CarePlans.Init(currentconsult)
                WorkspaceEditor.Add(page)
                page.tag = sPageName
@@ -3575,7 +3584,9 @@ Public Sub Export_Records()
    '------------------------------------------------------
    
    WorkspaceEditor.Visible = False
+   Editor_ShowPage("Export File")
    
+   Return
    With Form_ExportClinical
       .Init(currentconsult)
       .Form_PDF.BtOpen.Visible = False
@@ -3647,18 +3658,18 @@ Public Sub Notifications_Refresh()
    'Refreshes outstanding notifications for the patient
    '---------------------------------------------------
    
-   currentconsult.Refresh("staff_tasks")
-   If currentconsult!staff_tasks.count Then  'To get the users attention hightlight these
+   currentconsult.Refresh("patient_tasks_outstanding")
+   If currentconsult!patient_tasks_outstanding.count Then  'To get the users attention hightlight these
       Vbox_Notifications.Background = Color.red
       tlNotifications.Text = "<TABLE WIDTH=100% BORDER=0 CELLPADDING=2>"
       "<COL WIDTH=256*>"
       "<TR>"
       "<TD WIDTH=100% VALIGN=TOP>"
       tlNotifications.Text &= "<B>There "
-      If currentconsult!staff_tasks.count = 1 Then
+      If currentconsult!patient_tasks_outstanding.count = 1 Then
          tlNotifications.Text &= "is 1 task"
       Else
-         tlNotifications.Text &= " are " & Str(currentconsult!staff_tasks.count) & " tasks "
+         tlNotifications.Text &= " are " & Str(currentconsult!patient_tasks_outstanding.count) & " tasks "
       Endif
       tlNotifications.Text &= " needing attention</B>"
       tlNotifications.Text &= "</TD></TR></TABLE>"
@@ -5181,7 +5192,6 @@ Public Sub tbSections_Click()
    Else
       If Last.tag = "health summary" Then
          Templ = modProgressNotes.Health_Summary_Construct_LaTex(currentconsult)
-         
          Editor_ShowPage("pdf file", "Health Summary", modPrinting.Latex_To_PDF(templ.GetData()))
          lblSection.text = "Health Summary"
       Else If Last.tag = "Gp Management Plan" Then
@@ -5191,7 +5201,8 @@ Public Sub tbSections_Click()
          Editor_ShowPage(Last.tag)
       Else If Last.tag = "care plan" Then
          '  lblSection.text = "Care Plan"
-         Editor_ShowPage("browser", "Care Plan", modProgressNotes.Care_Plan_Construct_html(Currentconsult))
+         ' Editor_ShowPage("browser", "Care Plan", modProgressNotes.Care_Plan_Construct_html(Currentconsult))
+         Editor_ShowPage(Last.tag)
       Else
          Try Editor_ShowPage(Last.tag, Last.tag)
       End If
@@ -5319,11 +5330,11 @@ Public Sub WorkspaceEditor_Activate()
          Endif
       Endif
    Next
-
+   
 End
 
 Private Sub WorkspaceEditor_Activate_Each(hctrl As Control)
-
+   
    Dim frmConsult As FProgressNotePage
    
    If Not hctrl Is Form Then Return
@@ -5384,14 +5395,16 @@ Private Sub WorkspaceEditor_Activate_Each(hctrl As Control)
          tbSave.Enabled = True
          lblSection.text = "Psycho-Social History"
       Case "FExportClinical"
-         tbPrint.Tooltip = "Print PDF to be exported"
-         tbPrint.Enabled = True
-         tbPreview.Enabled = True
-         tbPreview.Tooltip = "Generate and Preview PDF of notes to export"
-         tbRefresh.Enabled = True
-         tbRefresh.Tooltip = "Reload data to export"
-         tbSave.ToolTip = "Save file to be exported"
-         tbSave.Enabled = True
+         ' tbPrint.Tooltip = "Print PDF to be exported"
+         ' tbPrint.Enabled = True
+         ' tbPreview.Enabled = True
+         ' tbPreview.Tooltip = "Generate and Preview PDF of notes to export"
+         ' tbRefresh.Enabled = True
+         ' tbRefresh.Tooltip = "Reload data to export"
+         ' tbSave.ToolTip = "Save file to be exported"
+         ' tbSave.Enabled = True
+         tbNew.Enabled = True
+         tbNew.Tooltip = "Reset Export Options"
       Case "FHtmlViewer"
          tbPrint.Tooltip = "Print Text"
          tbPrint.Enabled = True
@@ -5448,6 +5461,17 @@ Private Sub WorkspaceEditor_Activate_Each(hctrl As Control)
          tbNew.Enabled = True
          tbPrint.Tooltip = "Print Request Form"
          tbPrint.Enabled = True   'print will save
+      Case "FExportClinical"
+         ' lblSection.text = "Export Records"
+         ' tbPreview.Enabled = False
+         ' tbPreview.Tooltip = "Preview PDF"
+         ' tbSave.Enabled = True   
+         ' tbSave.ToolTip = "Save PDF"
+         ' tbNew.Enabled = True
+         ' tbNew.tooltip = "Create New PDF"
+         ' tbPrint.Enabled = True  
+         ' tbPrint.Tooltip = "Print PDF"
+         ' 
       Case "FReferrals"
          lblsection.text = "Referrals"
          If modAdminDBI.Config_Get_Staff_Member("referrals_allow_save_unfinished_letters", False, Null, modDBConnect.currentUser!fk_clinic, modDBConnect.currentUser!fk_staff) Then
@@ -5842,11 +5866,7 @@ End
 
 Public Sub cvwResults_MouseDrag()
    
-   Print "dragging mouse in cvwresults"
-   '  cvwResults.mode = Select.Single
-   'If IsNull(currentconsult) Or Not
    If Not cvwResults.count Then Return
-   Print ".......... stilll dragging mouse in cvwresults"
    Last.MoveCurrent()
    Drag.icon = Picture.Load("icons/16/bloodtube16x16.png")
    Last.Drag(Str(currentconsult!results_received[cvwResultsReceived_Key]!pk_document))
@@ -6363,7 +6383,7 @@ Public Sub Occupation_Save()
       Endif
    End If
    Refresh_Section_Instance(const.cSection_HealthSummary) 
-
+   
 End
 
 Public Sub txtOccupation_Enter()
@@ -6482,7 +6502,9 @@ Public Sub cvwResults_Select()
    
    cvwResults.MoveCurrent
    cvwResultsReceived_Key = cvwResults.item.key
-   If WorkspaceEditor.ActiveWindow.Caption <> "Referrals" Then Inbox_showResult
+   If WorkspaceEditor.ActiveWindow.Caption <> "Referrals" And WorkspaceEditor.ActiveWindow.Caption <> "Export Wizard" Then
+      Inbox_showResult
+   End If   
    
 Catch
    Return 
@@ -6733,7 +6755,9 @@ Public Sub mnuToolbarAllergies_Click()
          Refresh_Section_Instance(const.cSection_HealthSummary) 'Refresh the health summary if showing
          Try FAllergy.Allergies_Reload_External                 'If the allergy module showing, reload the allergies list there
    End Select
-   
+Catch
+   Return 'weird gambas bug where message box not yet displayed, user clicks on button again > bombs.
+
 End
 
 Public Sub SpellCheck_TextBox(tb As TextBox)

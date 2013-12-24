@@ -21,15 +21,22 @@
 '                 naming of sections I've used through the program
 '                 FIXME
 '                 DON'T ALLOW EXPORT WHEN UNFILED RESULTS OR DOCUMENTS.
+'              pdfinfo combined.pdf | grep Pages | sed 's/[^0-9]*//' gives output of no of pages in a pdf
+'               pdftk A=first.pdf B=blank.pdf cat A1 B1 A1-end output res.pdf
 '----------------------------------------------------------------------
+Private bExit As Boolean
+Private Included_Documents As Collection
+Private Patient_INR_Count As Integer
+Private Form_Help As FHtmlViewer
 Public Form_PDF As FPdf
+Private Form_NotesEditor As FEditNotes
 Private sections As Collection
 Private currentconsult As Cconsult
 Private Page_Orientation As Integer
 Private patient As Collection
-Private cPage_Welcome As Integer = 0
-Private cPage_Select_Options As Integer = 1
-Private cPage_Export As Integer = 2
+Private cPage_Select_Options As Integer = 0
+Private cPage_Select_ProgressNotes As Integer = 1
+Private cPage_Select_Documents As Integer = 2
 Private cPage_PDF As Integer = 3
 Private cPage_ZipOptions As Integer = 4
 Private cPage_CreateZip As Integer = 5
@@ -37,20 +44,75 @@ Private Patient_Details As String
 Private current_page As Integer                 'page wizard currently on
 Private export_filename_and_path As String
 Private export_dir As String                    'directory to hold exported files
+Private bExportDocuments As Boolean            'if true user wants to export some documents
+Private filename_incoming_letters_joined As String
+Private filename_results_joined As String
+Private filename_health_summary As String
+Private filename_workcover_joined As String
+Private pagecount_results_joined As Integer
+Private pagecount_incoming_letters_joined As Integer
+Private pagecount_workcover_joined As Integer
+Private pagecount_health_summary As Integer
+Private Pagecount_final_filename As Integer
+Private filename_coverpage_toc As String
+Private filename_the_rest As String
 
 Public Sub Form_Close()
-
+   
    Settings_Save()
+   
+End
 
+Private Function Read_Page_Count(filename As String) As Integer
+   '-------------------------------------------------------------------
+   'Reads the number of page in a pdf with filename and path = filename
+   '-------------------------------------------------------------------
+   
+   Dim page_count As String
+   Dim sText As String = "pdfinfo " & filename & "  | grep Pages | /bin/sed 's/[^0-9]*//'"
+   
+   Shell (sText) To page_count
+   If IsInteger(page_count) Then Return Val(page_count)
+   
+End
+
+Private Function Documents_To_Dump() As Boolean
+   
+   'if true we will be dumping documents
+   If chkLettersReceivedSummary.value = True Then Return True
+   If chkResultsReceivedSummary.value = True Then Return True
+   If rbAllReferralLetters.value = True Then Return True  
+   If rbSelectedReferralLetters.value = True Then Return True   
+   If rbAllResultsReceived.value = True Then Return True
+   If rbSelectedResultsReceived.value = True Then Return True
+   
+End
+
+Private Function Recalls_To_Dump() As Boolean
+   
+   If chkRecalls.value = True Then Return True 
+   
+End
+
+Private Function ProgressNotes_To_Dump() As Boolean
+   
+   If rbAllProgressNotes.value = True Or rbSelectedProgressNotes.Value = True Then Return True 
+   
 End
 
 Public Sub Init(cons As Cconsult)
    '-------------------------------------------------------------------
    'Initialise module, bring in a PDF reviewer, refresh all collections
    '-------------------------------------------------------------------
-
+   
    currentconsult = cons
    patient = currentconsult!patient
+   With Form_Help = New FHtmlViewer(Vbox_Help)
+      .tbWebBrowserZoomIn.Visible = True
+      .tbWebBrowserZoomOut.Visible = True
+      .Help_Show("medical-record-export-wizard.html")
+      .Padding = 0
+   End With
    With Form_PDF = New FPdf(HBox_PDF)                             'insert a pdf viewer
       .btZoomOut.Visible = True
       .btZoomIn.Visible = True
@@ -58,32 +120,47 @@ Public Sub Init(cons As Cconsult)
    lblMeasure.text = "  Filename  "
    modEditAreaHelpers.Resize_labels(Vbox_CreateZip, lblmeasure)
    Try Settings_Load()
-   Refresh_Collections()                                          'refresh all the patients data collections
-   Refresh_Gui()                                                  'show checkboxes where data exists for that collection
    Patient_Details = Trim(patient!wholename) & "_" & Format(patient!birthdate, "dd-mm-yyyy")
    Patient_Details = Replace$(Patient_Details, " ", "-")
    Patient_Details = Replace$(Patient_Details, "'", "")           'construct id string eg Mr-Joe-Blow_10-12-1912
    export_dir = User.home &/ Patient_Details
+   Reload()
+   
+End
+
+Public Sub Reload()
+   
+   Refresh_Collections()                                          'refresh all the patients data collections
+   Refresh_Gui()                                                  'show checkboxes where data exists for that collection
    Create_ExportDir()
+   pagecount_health_summary = 0
+   pagecount_incoming_letters_joined = 0
+   pagecount_results_joined = 0
+   pagecount_health_summary = 0
+   filename_results_joined = ""
+   filename_workcover_joined = ""
+   filename_health_summary = ""
+   filename_incoming_letters_joined = ""
+   filename_workcover_joined = ""
 
 End
 
 Public Sub Save()
-
+   
    Form_PDF.Save_PDF()
-
+   
 End
 
 Public Sub Zoom_In()
-
+   
    Form_PDF.Zoom_In()
-
+   
 End
 
 Public Sub Zoom_Out()
-
+   
    Form_PDF.Zoom_Out()
-
+   
 End
 
 Public Sub Refresh_Collections()
@@ -92,10 +169,10 @@ Public Sub Refresh_Collections()
    're-load the contents when next referenced
    'fixme see note at top of file.
    '-----------------------------------------------------
-
+   
    currentconsult.Refresh("progress_notes")
    currentconsult.Refresh("past_history")
-   currentconsult.Refresh("staff_tasks")
+   currentconsult.Refresh("patient_tasks_outstanding")
    currentconsult.Refresh("mentalhealthplans")
    currentconsult.Refresh("referrals_written")
    currentconsult.Refresh("letters_received")
@@ -103,32 +180,34 @@ Public Sub Refresh_Collections()
    currentconsult.Refresh("recalls_logged")
    currentconsult.Refresh("results_received")
    currentconsult.Refresh("workcover_claims")
-
+   currentconsult.Refresh("medical_certificates")
+   
 End
 
 Public Sub Preview()
-
+   
+   Return
    Export_File()
-
+   
 End
 
 Public Sub Export_File()
-
-   Create_Indexed_PDF()
-   Message.info("starting the document dump")
-   Dump_Documents()
-   Message.info("finished the document dump")
-
+   
+   '  Create_Indexed_PDF()
+   ' Message.info("starting the document dump")
+   
+   '  Message.info("finished the document dump")
+   
 End
 
-Public Sub Dump_Documents()
+Public Sub Dump_Documents_As_Single_PDFs()
    '----------------------------------------------------------------------------------
    'Dump any documents or results, certificates etc as single pdf's
    'These would include scanned pdfs or hl7 files sent to the practice for the patient
    'and any results downloaded as pdf's
    'First the Letters received.
    '----------------------------------------------------------------------------------
-
+   
    Dim member As Collection
    Dim file_extension As String
    Dim tempfile As String
@@ -137,11 +216,12 @@ Public Sub Dump_Documents()
    Dim Cbox As CheckBox
    Dim temp_dir As String
    Dim cmd As String
-    Dim pro As Process
+   Dim pro As Process
    Dim x As Integer
    Dim files_to_join As New Collection
-
-   For Each hctrl In Vbox_Page2.children
+   
+   Return
+   For Each hctrl In VBox_ProgressNotes.children
       If hctrl Is CheckBox Then
          Cbox = hctrl
          If cbox.value = True Then
@@ -163,7 +243,7 @@ Public Sub Dump_Documents()
                         Break
                      End If
                   End If
-
+                  
                   For Each Member In currentconsult!letters_received
                      file_extension = File.Ext(member!source_file)
                      Select Case file_extension
@@ -190,7 +270,7 @@ Public Sub Dump_Documents()
                            Endif
                            files_to_join.Add(Temp_dir &/ filename, files_to_join.count)
                      End Select
-
+                     
                   Next
                   '   modPrinting.Join_PDF(files_to_join, "/tmp/joined_letters.pdf")
                   '----------------------------------------------------------------------------
@@ -256,9 +336,431 @@ Public Sub Dump_Documents()
          End If
       End If
    Next
-
+   
 End
 
+Public Sub PDF_Prepare_New()
+   '---------------------------------------------------------------------------------------------------
+   'Prepare a pdf of the patients records with minimum of coversheet and TOC
+   '-----------------------------------------------------------------------------------------------------
+   
+   Dim progressbar_interval As Float
+   Dim shtml As String
+   Dim sections As Collection
+   Dim bPrintTableOfContents As Boolean = True   
+   Dim bPrintCoversheet As Boolean = True  
+   Dim ContentsPage As String
+   Dim Output_file As String
+   Dim patient As Collection = currentconsult!patient 
+   Dim export_filename_and_path As String
+   Dim sql_letters As String
+   Dim sql_results As String
+   Dim letter As Collection
+   Dim Letters As Collection
+   Dim result As Collection
+   Dim results As Collection
+   Dim document As Collection   
+   Dim Letter_PDF_path As Collection   'the letter and the pdf path   
+   Dim Result_PDF_path As Collection 
+   Dim x As Integer
+   Dim tempstring As String
+   Dim Temp_dir As String
+   Dim pro As Process
+   Dim filename_for_all_the_letters As String
+   Dim filename_for_all_the_results As String
+   Dim final_pdfs_to_join As New Collection
+   Dim final_filename As String
+   
+   ProgressBar1.value = 0.0
+   sections = New Collection 
+   final_pdfs_to_join.Add(export_filename_and_path, 0)  'actual path will be added later
+   lbProgress.Add("Analysing data......")
+   lbProgress.Add("Preparing the coversheet......")  
+   Wait
+   '--------------------------------------------
+   'Create the coversheet page + Output filename
+   '--------------------------------------------
+   ContentsPage = modProgressNotes.CoverSheet_Construct_HTML(currentconsult).GetData()
+   Output_file = patient!wholename                                                       'create filename and remove illegal characters
+   Output_file = Replace(Output_file, " ", "_")
+   Output_file = Replace(Output_file, "'", "")
+   Output_file &= "FileId:" & Str(patient!fk_patient) & "-birthdate:" & Format(patient!birthdate, "dd-mm-yyyy") & ".pdf"
+   If chkHealthSummary.Value = True Then Include_Health_Summary(sections)
+   If ProgressNotes_To_Dump() Then sections.Add(ProgressNotes_HTML_Get(), sections.count)                                  'get only progress notes with checkbox checked
+   If chkTasks.value = True Then Include_Patient_Tasks(sections)
+   If Documents_To_Dump() Then Include_Documents_Received(sections, final_pdfs_to_join)
+   If Recalls_To_Dump() Then Include_Recalls_Outstanding(sections)
+   If chkMentalHealthPlans.value = True Then Include_Mental_Health_Plans(sections)
+   If chkReferralLetterSummaries.value = True Then Include_Referral_Letter_Summaries(sections)
+   If chkWorkcoverSummarised.value = True Then Include_Workcover_Claims_Summary(sections)
+   If chkWorkcoverForms.value = True Then Include_Workcover_Claims(sections, final_pdfs_to_join)
+   '  If sections.count Then                                                                  'if we have sections to compile into pdf's do so
+   lbProgress.Add("Creating final PDF.......")
+   export_filename_and_path = modPrinting.Make_PDF_From_HTML_Pages(sections, const.orientation_portrait, ContentsPage, bPrintTableOfContents, Output_file, ProgressBar1)
+   '  End If   
+   
+   x = 0
+   final_pdfs_to_join[0] = export_filename_and_path
+   final_filename = modPrinting.Join_PDF(final_pdfs_to_join)
+   'Now Make splits and substitions where necessary
+   If pagecount_health_summary Then
+      Pagecount_final_filename = Read_Page_Count(final_filename)
+      'dftk foo.pdf cat 2 - 3 Output abstract.pdf dont_ask
+      'pdftk foo.pdf cat 30 - End Output biography.pdf dont_ask
+      filename_coverpage_toc = modPrinting.PDF_Cut_Out_Pages_From_PDF(final_filename, 1, 2)
+      final_pdfs_to_join.Clear
+      final_pdfs_to_join.Add(filename_coverpage_toc, 0)
+      final_pdfs_to_join.Add(filename_health_summary, 1)
+      If Pagecount_final_filename - 2 - pagecount_health_summary <> 0 Then
+         filename_the_rest = modPrinting.PDF_Cut_Out_Pages_From_PDF(final_filename, 3 + pagecount_health_summary)
+         final_pdfs_to_join.Add(filename_the_rest, 2)
+      End If   
+      
+     
+      
+      final_filename = modPrinting.Join_PDF(final_pdfs_to_join)
+   Endif
+   '  Print filename_for_all_the_letters
+   ' Print export_filename_and_path
+   ' Print modPrinting.Join_PDF(final_pdfs_to_join)
+   '  FClinical.Editor_ShowPage_External("pdf file", "Partial Export", modPrinting.Join_PDF(final_pdfs_to_join))
+   With Form_PDF
+      '     .Load_PDF(modPrinting.Join_PDF(Letter_PDF_path, export_filename_and_path))
+      .Load_PDF(modPrinting.Join_PDF(final_pdfs_to_join))
+      .PBox.Visible = True
+      .HBox_Search.visible = False  
+   End With
+   
+   VBox_PDF.Visible = True   
+   VBox_CreatingPDF.Visible = False   
+   
+End
+
+Public Sub PDF_Prepare_second_oldest()
+   '---------------------------------------------------------------------------------------------------
+   'Prepare a pdf of the patients records with minimum of coversheet and TOC
+   '-----------------------------------------------------------------------------------------------------
+   
+   Dim progressbar_interval As Float
+   Dim shtml As String
+   Dim sections As Collection
+   Dim bPrintTableOfContents As Boolean = True   
+   Dim bPrintCoversheet As Boolean = True  
+   Dim ContentsPage As String
+   Dim Output_file As String
+   Dim patient As Collection = currentconsult!patient 
+   Dim export_filename_and_path As String
+   Dim sql_letters As String
+   Dim sql_results As String
+   Dim letter As Collection
+   Dim Letters As Collection
+   Dim result As Collection
+   Dim results As Collection
+   Dim document As Collection   
+   Dim Letter_PDF_path As Collection   'the letter and the pdf path   
+   Dim Result_PDF_path As Collection 
+   Dim x As Integer
+   Dim tempstring As String
+   Dim Temp_dir As String
+   Dim pro As Process
+   Dim filename_for_all_the_letters As String
+   Dim filename_for_all_the_results As String
+   Dim final_pdfs_to_join As New Collection
+   
+   ProgressBar1.value = 0.0
+   sections = New Collection 
+   final_pdfs_to_join.Add(export_filename_and_path, 0)  'actual path will be added later
+   lbProgress.Add("Analysing data......")
+   lbProgress.Add("Preparing the coversheet......")  
+   Wait
+   '--------------------------------------------
+   'Create the coversheet page + Output filename
+   '--------------------------------------------
+   ContentsPage = modProgressNotes.CoverSheet_Construct_HTML(currentconsult).GetData()
+   Output_file = patient!wholename                                                       'create filename and remove illegal characters
+   Output_file = Replace(Output_file, " ", "_")
+   Output_file = Replace(Output_file, "'", "")
+   Output_file &= "FileId:" & Str(patient!fk_patient) & "-birthdate:" & Format(patient!birthdate, "dd-mm-yyyy") & ".pdf"
+   If chkHealthSummary.Value = True Then Include_Health_Summary(sections)
+   If ProgressNotes_To_Dump() Then sections.Add(ProgressNotes_HTML_Get(), sections.count)                                  'get only progress notes with checkbox checked
+   If chkTasks.value = True Then Include_Patient_Tasks(sections)
+   If Documents_To_Dump() Then Include_Documents_Received(sections, final_pdfs_to_join)
+   If Recalls_To_Dump() Then Include_Recalls_Outstanding(sections)
+   If chkMentalHealthPlans.value = True Then Include_Mental_Health_Plans(sections)
+   If chkReferralLetterSummaries.value = True Then Include_Referral_Letter_Summaries(sections)
+   If chkWorkcoverSummarised.value = True Then Include_Workcover_Claims_Summary(sections)
+   If chkWorkcoverForms.value = True Then Include_Workcover_Claims(sections, final_pdfs_to_join)
+   '  If sections.count Then                                                                  'if we have sections to compile into pdf's do so
+   lbProgress.Add("Creating final PDF.......")
+   export_filename_and_path = modPrinting.Make_PDF_From_HTML_Pages(sections, const.orientation_portrait, ContentsPage, bPrintTableOfContents, Output_file, ProgressBar1)
+   '  End If   
+   
+   x = 0
+   final_pdfs_to_join[0] = export_filename_and_path
+   
+   '  Print filename_for_all_the_letters
+   ' Print export_filename_and_path
+   ' Print modPrinting.Join_PDF(final_pdfs_to_join)
+   '  FClinical.Editor_ShowPage_External("pdf file", "Partial Export", modPrinting.Join_PDF(final_pdfs_to_join))
+   With Form_PDF
+      '     .Load_PDF(modPrinting.Join_PDF(Letter_PDF_path, export_filename_and_path))
+      .Load_PDF(modPrinting.Join_PDF(final_pdfs_to_join))
+      .PBox.Visible = True
+      .HBox_Search.visible = False  
+   End With
+   
+   VBox_PDF.Visible = True   
+   VBox_CreatingPDF.Visible = False   
+   
+End
+
+Public Sub PDF_Prepare_New_oldest()
+   '---------------------------------------------------------------------------------------------------
+   'proof on concept
+   'just thrown together by cutn paste for experiment  
+   'the documents_included collection only has the pk for a couple of reasons
+   '1) the drag command can only drag text (we have used str(documents.pk) or image
+   '2) the user can drop documents at random on the list, ie. unsorted, and can't tell from
+   '   the keys whether letter or documents so lvwIncludedDocuments_Refresh sorts this distinction out
+   'In this routine we pulll back the collection from the db (inefficient, ordered by date (inefficient)
+   'FIXME
+   '-----------------------------------------------------------------------------------------------------
+   
+   Dim shtml As String
+   Dim sections As New Collection
+   Dim bPrintTableOfContents As Boolean = True   
+   Dim bPrintCoversheet As Boolean = True  
+   Dim ContentsPage As String
+   Dim Output_file As String
+   Dim patient As Collection = currentconsult!patient 
+   Dim export_filename_and_path As String
+   Dim sql_letters As String
+   Dim sql_results As String
+   Dim letter As Collection
+   Dim Letters As Collection
+   Dim result As Collection
+   Dim results As Collection
+   Dim document As Collection   
+   Dim Letter_PDF_path As Collection   'the letter and the pdf path   
+   Dim Result_PDF_path As Collection 
+   Dim x As Integer
+   Dim tempstring As String
+   Dim Temp_dir As String
+   Dim pro As Process
+   Dim filename_for_all_the_letters As String
+   Dim filename_for_all_the_results As String
+   Dim final_pdfs_to_join As New Collection
+   
+   Print "chk_letters_received:", chkLettersReceivedSummary.Value
+   Print "chk results received:", chkResultsReceivedSummary.Value
+   lbProgress.Add("Analysing data......")
+   lbProgress.Add("Preparing the coversheet......")  
+   Wait
+   '--------------------------------------------
+   'Create the coversheet page + Output filename
+   '--------------------------------------------
+   ContentsPage = modProgressNotes.CoverSheet_Construct_HTML(currentconsult).GetData()
+   Output_file = patient!wholename                                                       'create filename and remove illegal characters
+   Output_file = Replace(Output_file, " ", "_")
+   Output_file = Replace(Output_file, "'", "")
+   Output_file &= "FileId:" & Str(patient!fk_patient) & "-birthdate:" & Format(patient!birthdate, "dd-mm-yyyy") & ".pdf"
+   lbProgress.Add("Adding progress notes......")  
+   Wait
+   sections.Add(ProgressNotes_HTML_Get(), sections.count)                                  'get only progress notes with checkbox checked
+   If lvwIncludedDocuments.count Then  
+      lbProgress.Add("Collating the subset of documents or results selected.....")
+      Wait
+      '------------------------------------------------------------------------------------
+      ' When the document or result is dragged from the letter or results list
+      'the resultant order in our list is random, we want them sorted by letters or results
+      '------------------------------------------------------------------------------------
+      For Each document In Included_Documents                                                  'included_documents is effectively random keys                                           
+         If Document!type = "letter" Then                                                      'get all documents which are letters
+            sql_letters &= "pk_document=" & document!fk_document & " OR "                      'these will be ordered by dates                  
+         End If   
+         If Document!type = "result" Then                                                      'get all documents which are results
+            sql_results &= "pk_document=" & document!fk_document & " OR "
+         End If   
+      Next
+      If sql_letters <> "" Then                                                                'have letters? make a summary list
+         sql_letters = "Select * from documents.vwdocuments where " & Left(sql_letters, Len(sql_letters) - 4) & " Order by date_created"
+         Letters = modDBConnect.exec_query_collection(sql_letters)
+         sections.Add(modProgressNotes.Letters_Summary_Construct_html(letters), sections.count)
+      End If      
+      If sql_results <> "" Then                                                               'have results ?make a summary list
+         sql_results = "Select * from documents.vwdocuments where " & Left(sql_results, Len(sql_results) - 4) 
+         If chkSortResultsByUserTag.value = True Then                                         'either ordered by like tags (not exact for actual loincs)
+            sql_results &= "ORDER BY tag_user, date_created"
+         Else
+            sql_results &= " Order by date_created"                                           'or by date they were created
+         End If   
+         results = modDBConnect.exec_query_collection(sql_results)
+         sections.Add(modProgressNotes.Results_Summary_Construct_HTML(Results), sections.count)
+      Endif
+      If sql_letters <> "" Then                                                              'Now, back to letters, if we have some
+         Temp_dir = "/tmp/letters"                                                           'create temporary directory to join them all together in
+         Try Mkdir "/tmp/letters"
+         If Error Then
+            If Error.Code = const.File_ioError_DirectoryExists Then
+               pro = Shell "rm /tmp/letters/*.pdf" Wait For Write
+               Close #pro
+            Else
+               Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the letters.")
+               
+            End If
+         End If
+         Letter_PDF_path = New Collection                                                   'collection to hold the letters including paths
+         '-------------------------------------------------------------------------
+         'Later on down this routine, all letters which are pdf's have to be joined
+         'to the pdf generated from the html for the coversheet, toc, etc etc
+         'Letters are added last in our single pdf so:
+         'Letter_PDF_path[0-n] = all the pdfs of the letters, which are either
+         ''native' pdfs on our system or pdf's generated from html recieved.
+         '-------------------------------------------------------------------------
+         For Each letter In letters                                                        
+            Tempstring = ""
+            ' If x = 0 Then                                                                   'first page of joined letters = a heading (expand this)
+            '     tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>LETTERS RECEIVED</H3></DIV</BODY></HTML>"
+            '   Letter_PDF_path.Add(modPrinting.Make_PDF_From_Html(tempstring, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/letters/"), x)
+            Inc x 
+            '  End If
+            Select Case File.Ext(letter!source_file)                                        'then  check file endings
+               Case "pdf"
+                  Print modFiles.Get("document_archiving_directory", letter!source_file)
+                  Letter_PDF_path.Add(modFiles.Get("document_archiving_directory", letter!source_file), x)
+               Case Else                                                                    'if not a pdf must be hl7 (fixme could bomb if an image
+                  '------------------
+                  'must be a hl7 file
+                  '------------------
+                  tempstring &= letter!html
+                  Letter_PDF_path.Add(modPrinting.Make_PDF_From_Html(letter!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/letters/"), x)
+            End Select
+            Inc x
+         Next
+      End If   
+      Print export_filename_and_path
+      If Not IsNull(Letter_PDF_path) Then
+         filename_for_all_the_letters = modPrinting.Join_PDF(Letter_PDF_path, Temp() & ".pdf")
+      End If
+      If sql_results <> "" Then                                                              'Now, back to letters, if we have some
+         Temp_dir = "/tmp/results"                                                           'create temporary directory to join them all together in
+         Try Mkdir "/tmp/results"
+         If Error Then
+            If Error.Code = const.File_ioError_DirectoryExists Then
+               pro = Shell "rm /tmp/results/*.pdf" Wait For Write
+               Close #pro
+            Else
+               Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the results.")
+            End If
+         End If
+         Result_PDF_path = New Collection                                                   'collection to hold the letters including paths
+         '-------------------------------------------------------------------------
+         'Later on down this routine, all letters which are pdf's have to be joined
+         'to the pdf generated from the html for the coversheet, toc, etc etc
+         'Letters are added last in our single pdf so:
+         'Letter_PDF_path[0-n] = all the pdfs of the letters, which are either
+         ''native' pdfs on our system or pdf's generated from html recieved.
+         '-------------------------------------------------------------------------
+         x = 0
+         For Each result In results
+            Tempstring = ""
+            ' If x = 0 Then                                                                   'first page of joined letters = a heading (expand this)
+            '     tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>RESULTS RECEIVED</H3></DIV</BODY></HTML>"
+            '     Result_PDF_path.Add(modPrinting.Make_PDF_From_Html(tempstring, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/results/"), x)
+            '     Inc x 
+            '   End If
+            Select Case File.Ext(result!source_file)                                        'then  check file endings
+               Case "pdf"
+                  Print modFiles.Get("document_archiving_directory", result!source_file)
+                  Result_PDF_path.Add(modFiles.Get("document_archiving_directory", result!source_file), x)
+               Case Else                                                                    'if not a pdf must be hl7 (fixme could bomb if an image
+                  '------------------
+                  'must be a hl7 file
+                  '------------------
+                  tempstring &= result!html
+                  Result_PDF_path.Add(modPrinting.Make_PDF_From_Html(result!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/results/"), x)
+            End Select
+            Inc x
+         Next
+      End If   
+      If Not IsNull(Result_PDF_path) Then
+         filename_for_all_the_results = modPrinting.Join_PDF(Result_PDF_path, Temp() & ".pdf")
+      End If
+      If Sql_letters <> "" And sql_results <> "" Then
+         tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>Letters and Results Received</H3></DIV"
+      Else If sql_letters <> "" And sql_results = "" Then
+         tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>Letters Received</H3></DIV"
+      Else
+         If sql_results <> "" And sql_letters = "" Then
+            tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>Results Received</H3></DIV"
+         Endif
+      End If 
+      tempstring &= "<P>The following pages contain the full text of either selected letters or results</P>" 
+      tempstring &= "Please note that in this development version of EasyGP that the page numbering of these pages will not reflect the actual page number of this pdf "
+      tempstring &= "as all the letters and all the results were joined from single pdf's with if the source was html will contain their own page numbers, or if the source "
+      tempstring &= "was a a scanned file then there will be no page number at all."
+      
+      sections.Add(tempstring & "</Html>", sections.count)
+   Else
+      '-------------------------------------------------------------
+      'Check if user wanted to dump any letters
+      'there were no specifically added documents, include them all
+      '-------------------------------------------------------------
+      If chkLettersReceivedSummary.value = True Then    
+         lbProgress.Add("Generating list of all letters received .....")
+         Wait
+         If currentconsult!letters_received_sorted_ascending.count Then
+            sections.Add(modProgressNotes.Letters_summary_construct_html(currentconsult!letters_received_sorted_ascending), sections.Count)
+         End If
+         If rbAllReferralLetters.value = True Then     'wants to include the actual letters
+            
+         Endif
+      End If   
+      '-------------------------------------------------------------
+      'Check if user wanted to dump any resuilts
+      'there were no specifically added documents, include them all
+      '-------------------------------------------------------------
+      If chkResultsReceivedSummary.value = True Then    
+         results = currentconsult!results_received
+         lbProgress.Add("Generating list of all results received .....")
+         Wait
+         If currentconsult!results_received.count Then
+            sections.Add(modProgressNotes.Results_Summary_Construct_HTML(Results), sections.count)
+         End If
+      End If   
+   End If   
+   
+   If sections.count Then                                                                  'if we have sections to compile into pdf's do so
+      lbProgress.Add("Creating final PDF.......")
+      export_filename_and_path = modPrinting.Make_PDF_From_HTML_Pages(sections, const.orientation_portrait, ContentsPage, bPrintTableOfContents, Output_file, ProgressBar1)
+   End If   
+   
+   x = 0
+   final_pdfs_to_join.Add(export_filename_and_path, x)
+   If sql_letters <> "" Then 
+      Inc x  
+      final_pdfs_to_join.Add(filename_for_all_the_letters, x)
+   End If
+   If sql_results <> "" Then   
+      Inc x
+      final_pdfs_to_join.Add(filename_for_all_the_results, x)
+   Endif
+   
+   '  Print filename_for_all_the_letters
+   ' Print export_filename_and_path
+   ' Print modPrinting.Join_PDF(final_pdfs_to_join)
+   '  FClinical.Editor_ShowPage_External("pdf file", "Partial Export", modPrinting.Join_PDF(final_pdfs_to_join))
+   With Form_PDF
+      '     .Load_PDF(modPrinting.Join_PDF(Letter_PDF_path, export_filename_and_path))
+      .Load_PDF(modPrinting.Join_PDF(final_pdfs_to_join))
+      .PBox.Visible = True
+      .HBox_Search.visible = False  
+   End With
+   
+   VBox_PDF.Visible = True   
+   VBox_CreatingPDF.Visible = False   
+   
+End
 
 Public Sub Create_Indexed_PDF()
    '----------------------------------------------------------------------------------------
@@ -280,7 +782,7 @@ Public Sub Create_Indexed_PDF()
    ' This subroutine is called from the FClinical toolbar and generates the PDF
    ' FIXME: put in summary of results recieved as a list. generate DACc's
    '-----------------------------------------------------------------------------------------
-
+   
    Dim member As Collection
    Dim bPrintCoversheet As Boolean
    Dim bPrintTableOfContents As Boolean
@@ -292,16 +794,17 @@ Public Sub Create_Indexed_PDF()
    Dim Output_file As String
    Dim tempstring As String
    Dim Letter_PDF_path As Collection
-   Dim Workcover_PDF_Path As Collection
+   Dim Workcover_PDF_Paths As Collection
    Dim filename_for_workcover As String
    Dim filename_for_all_the_letters As String
    Dim WorkcoverClaims As Collection
-
+   
+   Return
    lbProgress.Clear()
    Form_PDF.PBox.Visible = False                                     'removed any previously generated pdf
-   lblFinishedExport.text = "<P><FONT COLOR=\"#000000\"><FONT FACE=\"Verdana, sans-serif\"><FONT SIZE=3>Creating pdf's to export data....."
+   ' lblFinishedExport.text = "<P><FONT COLOR=\"#000000\"><FONT FACE=\"Verdana, sans-serif\"><FONT SIZE=3>Creating pdf's to export data....."
    Wait
-   If chkAudit.value = True Then
+   If chkAuditTrailDocuments.value = True Then
       Message.Title = "Adding Audit to Document Export"
       tempstring = "Including the audit trail when exporting the documents will take quite a while.\n\n"
       "This is not recommended unless these documents will be used for medico-legal reasons, or you are "
@@ -311,39 +814,38 @@ Public Sub Create_Indexed_PDF()
          Case 3
             Return
          Case 2
-            chkAudit.value = False
+            chkAuditTrailDocuments.value = False
       End Select
-
+      
    Endif
    Inc application.Busy
    ProgressBar1.value = 0.0
    ProgressBar1.Visible = True
-   lblStatus.Visible = False
    Wait
    '-------------------------------------------------------
    'Loop through each checkbox which is an option for a pdf
    'if checked, generate the html for that section
    '-------------------------------------------------------
    sections = New Collection
-
-   For Each hctrl In Vbox_Page2.children
+   
+   For Each hctrl In Vbox_Page1.children
       If hctrl Is CheckBox Then
          Cbox = hctrl
          If cbox.value = True Then
             Select Case Cbox.Tag
                Case "coversheet"
-                  If Cbox.Value = True Then
-                     lbProgress.Add("Coversheet will be created")
-                     Wait
-                     bPrintCoversheet = True
-                     ContentsPage = modProgressNotes.CoverSheet_Construct_HTML(currentconsult).GetData()
-                  End If
+                  ' If Cbox.Value = True Then
+                  '    lbProgress.Add("Coversheet will be created")
+                  '    Wait
+                  '    bPrintCoversheet = True
+                  '    ContentsPage = modProgressNotes.CoverSheet_Construct_HTML(currentconsult).GetData()
+                  ' End If
                Case "toc"
-                  If Cbox.Value = True Then
-                     bPrintTableOfContents = True
-                     lbProgress.Add("Table of contents will be created")
-                     Wait
-                  End If
+                  ' If Cbox.Value = True Then
+                  '    bPrintTableOfContents = True
+                  '    lbProgress.Add("Table of contents will be created")
+                  '    Wait
+                  ' End If
                Case "health summary"
                   sections.Add(modProgressNotes.Health_Summary_Construct_html(currentconsult), sections.count)
                   lbProgress.Add("Generating the health summary .....")
@@ -351,16 +853,12 @@ Public Sub Create_Indexed_PDF()
                Case "care plan"
                   sections.Add(modProgressNotes.Care_Plan_Construct_html(currentconsult), sections.count)
                   lbProgress.Add("Generating the care plan .....")
-
+                  
                   Wait
                Case "all progress notes"
-                  Message.info("Richard stop this in FExportClinical line 357")
-                  sections.Add(modProgressNotes.AllProgressNotes_Construct_Html(currentconsult), sections.count)
-                  lbProgress.Add("Exporting progress notes .....")
-                  Wait
                Case "health issue progress notes"
                   If currentconsult!past_history.count Then
-
+                     
                      lbProgress.Add("Exporting progress notes listed by problem or health issue .....")
                      Wait
                      For Each member In currentconsult!past_history
@@ -374,8 +872,8 @@ Public Sub Create_Indexed_PDF()
                   lbProgress.Add("Exporting tasks not yet completed for this patient")
                   Wait
                   x = 0
-                  For Each member In currentconsult!staff_tasks
-                     If currentconsult!staff_tasks.count Then
+                  For Each member In currentconsult!patient_tasks_outstanding
+                     If currentconsult!patient_tasks_outstanding.count Then
                         If x = 0 Then
                            tempstring = modProgressNotes.Tasks_summary_Construct_html(member)
                            charpos = InStr(tempstring, "<P")
@@ -388,15 +886,8 @@ Public Sub Create_Indexed_PDF()
                      Endif
                   Next
                Case "workcover summarised"
-                  lbProgress.Add("Generating summary of workcover consulations .....")
-                  Wait
-                  WorkcoverClaims = modWorkCoverDBI.Claims_Get(currentconsult!patient!fk_patient, "ASC")
-                  If WorkcoverClaims.count Then
-                     sections.Add(modWorkCoverDBI.Workcover_summary_construct_html(WorkcoverClaims), sections.count)
-                  Endif
-
                Case "workcover"
-
+                  
                   ' lbProgress.Add("Exporting workcover forms .....")
                   ' Wait
                   ' Temp_dir = "/tmp/workcover"
@@ -411,9 +902,9 @@ Public Sub Create_Indexed_PDF()
                   '    End If
                   ' End If
                   '
-                  ' Workcover_PDF_Path = New Collection
+                  ' Workcover_PDF_Paths = New Collection
                   ' 'Last for a reason
-                  ' Workcover_PDF_Path.Add("", 0) 'will be the generated_pdf sans the letters
+                  ' Workcover_PDF_Paths.Add("", 0) 'will be the generated_pdf sans the letters
                   '-------------------------------------------------------------------------------------------------
                   'Note: For me - many of my workcover consultations have no laTex definition as I added these later
                   'Add the list of workcover claims/dates/fitness in html (Indexed)
@@ -431,186 +922,26 @@ Public Sub Create_Indexed_PDF()
                   '    tempstring = Replace(tempstring, ")", "") 'FIXME need proper routine to strip out illegal chars from filename
                   '    tempstring = Replace(tempstring, " ", "_")
                   '    filename = modPrinting.Latex_To_PDF(modWorkCoverDBI.WorkcoverForm_LaTeX_Construct(currentconsult, member).GetData(), tempstring)
-                  '    Workcover_PDF_Path.Add(filename, x)
+                  '    Workcover_PDF_Paths.Add(filename, x)
                   '    Inc x
                   ' Next
                   ' Print
                Case "mental health"
-                  '-------------------
-                  'Mental Health Plans
-                  '-------------------
-                  If currentconsult!mentalhealthplans.count Then
-                     '------------------------------------------------------------------------------
-                     'So as to get 'Mental Health Plans' into the table of contents, substitute that
-                     'text into the html of the first mental health plan only, use a temp string
-                     'otherwise the member itself will be altered
-                     '------------------------------------------------------------------------------
-                     x = 0
-                     lbProgress.Add("Exporting mental health plans .....")
-                     Wait
-                     For Each Member In currentconsult!mentalhealthplans
-                        If x = 0 Then
-                           tempstring = member!html
-                           charpos = InStr(tempstring, "<P")
-                           tempstring = Left(tempstring, charpos - 1) & "<DIV  ALIGN=CENTER><H3> Mental Health Plans</H3></DIV>" & Right(tempstring, Len(tempstring) - charpos + 1)
-                           sections.Add(tempstring, sections.count)
-                           Inc x
-                        Else
-                           sections.Add(Member!html, sections.count)
-                        End If
-                     Next
-                  End If
                Case "referral letter summaries"
-                  lbProgress.Add("Generating summary of all referrals written .....")
-                  Wait
-                  If currentconsult!referrals_written.count Then
-                     sections.Add(modProgressNotes.ReferralLetter_summary_construct_html(currentconsult), sections.count)
-                  End If
                Case "results received"
-                  lbProgress.Add("Generating summary of all results received .....")
-                  Wait
-                  If currentconsult!results_received.count Then
-                     sections.Add(modProgressNotes.Results_Summary_Construct_HTML(currentconsult), sections.count)
-                  Endif
                Case "referrals"
-                  '------------------
-                  'The actual letters
-                  '------------------
-                  If currentconsult!referrals_written.count Then
-                     x = 0
-                     lbProgress.Add("Exporting referrals written .....")
-                     Wait
-                     For Each Member In currentconsult!referrals_written        'all the referrals
-                        If x = 0 Then
-                           tempstring = Member!letter_html
-                           tempstring = Replace(tempstring, "<BODY>", "<body><DIV ALIGN=CENTRE><H3>Referral Letters</H3></DIV", gb.IgnoreCase)
-                           sections.Add(tempstring, sections.count)
-                           Inc x
-                        Else
-                           sections.Add(Member!letter_html, sections.count)
-                        End If
-                     Next
-                  End If
                Case "requests"
-                  If currentconsult!requests_ordered.count Then
-
-                     lbProgress.Add("Generating list of requests ordered .....")
-                     Wait
-                     sections.Add(modProgressNotes.Requests_summary_construct_html(currentconsult), sections.Count)
-                  End If
                Case "recalls"
-                  lbProgress.Add("Listing outstanding recalls .....")
-                  Wait
-                  sections.Add(modProgressNotes.Recalls_summary_construct_html(currentconsult), sections.Count)
-
                Case "results"
-                  ' 'fix this - will be missing all pdf's
-                  ' x = 0
-                  ' For Each Member In currentconsult!results_received        'all the referrals
-                  '    If x = 0 Then
-                  '       lbProgress.Add("Creating pdf's of all results received .....")
-                  '       Wait
-                  '       Tempstring = ""
-                  '       If (chkExcludeINR.value = True And chkExcludeINR.Enabled) Or chkExcludeINR.Enabled = False Then
-                  '          If member!tag <> "INR" Then tempstring = "<body><DIV ALIGN=CENTRE><H3>Results Received</H3></DIV" & Member!html
-                  '       Else
-                  '          tempstring = "<body><DIV ALIGN=CENTRE><H3>Results Received"
-                  '          If chkExcludeINR.value = True Then
-                  '             tempstring &= "<small>(Exluding all INR's)</small>"
-                  '          Endif
-                  '          tempstring &= "</H3></DIV" & Member!html
-                  '       End If
-                  '
-                  '       '----------------------------------------
-                  '       'now, is there an audit on this document?
-                  '       '----------------------------------------
-                  '       If chkAudit.value = True And Len(tempstring) <> 0 Then
-                  '          sHtml = modArchiveDocumentsDBI.Audit_Trail_Show_Document_Details_Tasks_Attatched_Trail(member!pk_document)
-                  '          sHtml &= "<HTML><BODY><TABLE><BR><B>Document Actioning</B><BR>" & modHTML.HTML_Template_Audit_Row_Heading()
-                  '          sHtml &= modAudit.MakeTrail("documents.documents", Member!pk_document)
-                  '          sHtml &= "</TABLE>"
-                  '          sHtml &= "</BODY></HTML>"
-                  '          tempstring &= shtml
-                  '       End If
-                  '       If Len(tempstring) Then
-                  '          sections.Add(tempstring, sections.count)
-                  '          Inc x
-                  '       End If
-                  '    Else
-                  '       tempstring = ""
-                  '       If chkExcludeINR.value = True And chkExcludeINR.Enabled Then
-                  '          If member!tag <> "INR" Then tempstring = member!html
-                  '       Else
-                  '          tempstring = member!html
-                  '       End If
-                  '       If chkAudit.value = True And Len(tempstring) <> 0 Then
-                  '          sHtml = modArchiveDocumentsDBI.Audit_Trail_Show_Document_Details_Tasks_Attatched(member!pk_document)
-                  '          sHtml &= "<HTML><BODY><TABLE><BR><B>Document Actioning</B><BR>" & modHTML.HTML_Template_Audit_Row_Heading()
-                  '          sHtml &= modAudit.MakeTrail("documents.documents", Member!pk_document)
-                  '          sHtml &= "</TABLE>"
-                  '          sHtml &= "</BODY></HTML>"
-                  '          tempstring &= shtml
-                  '       End If
-                  '       If Len(tempstring) Then sections.Add(tempstring, sections.count)
-                  '    End If
-                  ' Next
-               Case "letters received list"
-                  lbProgress.Add("Generating list of all letters received .....")
-                  Wait
-                  If currentconsult!letters_received_sorted_ascending.count Then
-                     sections.Add(modProgressNotes.Letters_summary_construct_html(currentconsult), sections.Count)
-                  End If
-
                Case "letters received"
-                  ' lbProgress.Add("Creating or dumping pdf's of letters received .....")
-                  ' Wait
-                  ' Temp_dir = "/tmp/letters"
-                  ' Try Mkdir "/tmp/letters"
-                  ' If Error Then
-                  '    If Error.Code = const.File_ioError_DirectoryExists Then
-                  '       pro = Shell "rm /tmp/letters/*.pdf" Wait For Write
-                  '       Close #pro
-                  '    Else
-                  '       Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the letters.")
-                  '       Break
-                  '    End If
-                  ' End If
-                  ' Letter_PDF_path = New Collection
-                  ' '-------------------------------------------------------------------------
-                  ' 'Later on down this routine, all letters which are pdf's have to be joined
-                  ' 'to the pdf generated from the html for the coversheet, toc, etc etc
-                  ' 'Letters are added last in our single pdf so:
-                  ' 'Letter_PDF_path[0]= the pdf generated for the html
-                  ' 'Letter_PDF_path[1-n] = all the pdfs of the letters, which are either
-                  ' ''native' pdfs on our system or pdf's generated from html recieved.
-                  ' '-------------------------------------------------------------------------
-                  ' Letter_PDF_path.Add("", 0)   'will be the generated_pdf sans the letters, path added later
-                  ' x = 1
-                  ' For Each Member In currentconsult!letters_received_sorted_ascending
-                  '
-                  '    Tempstring = ""
-                  '    '    If x = 0 Then
-                  '    '      tempstring = "<body><DIV ALIGN=CENTRE><H3>LETTERS RECEIVED</H3></DIV"
-                  '    '     End If
-                  '    Select Case File.Ext(member!source_file)
-                  '       Case "pdf"
-                  '          Letter_PDF_path.Add(archive_dir &/ member!source_file, x)
-                  '       Case Else
-                  '          '------------------
-                  '          'must be a hl7 file
-                  '          '------------------
-                  '          tempstring &= member!html
-                  '          Letter_PDF_path.Add(modPrinting.Make_PDF_From_Html(member!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/letters/"), x)
-                  '    End Select
-                  '    Inc x
                   ' Next
             End Select
             '    End Select
          End If
       End If
-
+      
    Next
-
+   
    '---------------------------------------------------------------
    'Ok, construct the pdf Pages for each section using wkhtmltopdf
    '---------------------------------------------------------------
@@ -630,7 +961,7 @@ Public Sub Create_Indexed_PDF()
    '- progress notes by condition or health issue
    '- tasks outstanding for any documents (FIXME DO THIS)
    '- summary of workcover visits as a listing
-   '- (the workcover PDF collection = Workcover_PDF_Path collection)
+   '- (the workcover PDF collection = Workcover_PDF_Paths collection)
    '- mental health plans
    '- summary of referral letters
    '- referrals as html
@@ -654,43 +985,419 @@ Public Sub Create_Indexed_PDF()
          filename_for_all_the_letters = Temp()                             'get a new filename
          export_filename_and_path = modPrinting.Join_PDF(Letter_PDF_path, filename_for_all_the_letters)
       End If
-      If Not IsNull(Workcover_PDF_Path) Then
-         Workcover_PDF_Path[0] = export_filename_and_path                            'the pdf with coversheet, all sections and letters
+      If Not IsNull(Workcover_PDF_Paths) Then
+         Workcover_PDF_Paths[0] = export_filename_and_path                            'the pdf with coversheet, all sections and letters
          filename_for_workcover = Temp()
-         export_filename_and_path = modPrinting.Join_PDF(Workcover_PDF_Path, filename_for_workcover)
+         export_filename_and_path = modPrinting.Join_PDF(Workcover_PDF_Paths, filename_for_workcover)
       End If
-
+      
       With Form_PDF
          '  .Load_PDF(modPrinting.Join_PDF(Letter_PDF_path, export_filename_and_path))
          .Load_PDF(export_filename_and_path)
          .PBox.Visible = True
       End With
    End If
-   ProgressBar1.Visible = False
-   lblFinishedExport.text = ""
-   "<P><FONT COLOR=\"#000000\"><FONT FACE=\"Verdana, sans-serif\"><FONT SIZE=3>"
-   "Data export has been successeful -  click the button labelled 'Next' to view the pdf.</P>"
-
+   
+   ' lblFinishedExport.text = ""
+   ' "<P><FONT COLOR=\"#000000\"><FONT FACE=\"Verdana, sans-serif\"><FONT SIZE=3>"
+   ' "Data export has been successeful -  click the button labelled 'Next' to view the pdf.</P>"
+   
    Dec application.Busy
    Message.Title = "Export clinical record"
    Message.Info("Here- at end of Creating indexed pdf")
-   lblFinishedExport.visible = True
-
+   ' lblFinishedExport.visible = True
+   
 Catch
    lbProgress.Add("An error occurred - please discuss with your system administrator")
    Wait
    Message.Info("FExportClinical.Export_Record() Error:" & Error.text)
+   
+End
 
+Private Sub Include_Health_Summary(sections As Collection)
+   'The summary is latex and we can't know how many pages this will take
+   
+   Dim sHtml As String
+   Dim templ As CTemplate
+   
+   Templ = modProgressNotes.Health_Summary_Construct_LaTex(currentconsult)
+   shtml = File.Load("/home/richard/svn/easygp/trunk/templates/empty_2page_health_summary.html")
+   filename_health_summary = modPrinting.Latex_To_PDF(templ.GetData())
+   pagecount_health_summary = Read_Page_Count(filename_health_summary) 
+   Select Case pagecount_health_summary
+      Case 1
+      Case 2
+         sections.Add(sHtml, sections.count)
+      Case 3
+         
+   End Select
+   
+End
+
+Private Sub Include_Workcover_Claims(sections As Collection, final_pdfs_to_join As Collection)
+   
+   Dim tempdir As String
+   Dim Workcover_PDF_Paths As Collection
+   Dim claim As Collection
+   Dim WorkcoverClaims As Collection
+   Dim temp_dir As String
+   Dim pro As Process
+   Dim x As Integer
+   Dim filename_for_all_the_workcoverforms As String
+   Dim tempstring As String
+   Dim filename As String
+   
+   lbProgress.Add("Exporting workcover forms .....")
+   Wait
+   Temp_dir = "/tmp/workcover"
+   Try Mkdir "/tmp/workcover"
+   If Error Then
+      If Error.Code = const.File_ioError_DirectoryExists Then
+         pro = Shell "rm /tmp/workcover/*.pdf" Wait For Write
+         Close #pro
+      Else
+         Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the workcover forms.")
+         Return
+      End If
+   End If
+   
+   Workcover_PDF_Paths = New Collection
+   'Last for a reason
+   Workcover_PDF_Paths.Add("", 0) 'will be the generated_pdf sans the letters
+   WorkcoverClaims = modWorkCoverDBI.Claims_Get(currentconsult!patient!fk_patient, "ASC")
+   ' note: for me - many of my workcover consultations have no latex definition as i added these later
+   ' add the list of workcover claims / dates / fitness in html(indexed)
+   ' join the latex of the form( if available) as pdfs.
+   '  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+   x = 1
+   For Each claim In WorkcoverClaims
+      tempstring = "/tmp/workcover/" & claim!identifier & "-" & Format(claim!certificate_date, "dd-mm-yyyy") & ".pdf"
+      tempstring = Replace(tempstring, "(", "")
+      tempstring = Replace(tempstring, ")", "") 'FIXME need proper routine to strip out illegal chars from filename
+      tempstring = Replace(tempstring, " ", "_")
+      filename = modPrinting.Latex_To_PDF(modWorkCoverDBI.WorkcoverForm_LaTeX_Construct(currentconsult, claim).GetData(), tempstring)
+      Workcover_PDF_Paths.Add(filename, x)
+      Inc x
+   Next
+   If Not IsNull(Workcover_PDF_Paths) Then
+      filename_for_all_the_workcoverforms = modPrinting.Join_PDF(Workcover_PDF_Paths, Temp() & ".pdf")
+      final_pdfs_to_join.Add(filename_for_all_the_workcoverforms, final_pdfs_to_join.count + 1)
+   End If
+   
+End
+
+Private Sub Include_Workcover_Claims_Summary(sections As Collection)
+   
+   lbProgress.Add("Generating summary of workcover consulations .....")
+   Wait
+   sections.Add(modWorkCoverDBI.Workcover_summary_construct_html(modWorkCoverDBI.Claims_Get(currentconsult!patient!fk_patient, "ASC")), sections.count)
+   
+End
+
+Public Sub Include_Mental_Health_Plans(sections As Collection)
+   
+   '------------------------------------------------------------------------------
+   'So as to get 'Mental Health Plans' into the table of contents, substitute that
+   'text into the html of the first mental health plan only, use a temp string
+   'otherwise the member itself will be altered
+   '------------------------------------------------------------------------------
+   Dim x As Integer
+   Dim MHP As Collection 
+   Dim tempstring As String
+   Dim charpos As Integer
+   
+   x = 0
+   lbProgress.Add("Exporting mental health plans .....")
+   Wait
+   For Each MHP In currentconsult!mentalhealthplans
+      If x = 0 Then
+         tempstring = MHP!html
+         charpos = InStr(tempstring, "<P")
+         tempstring = Left(tempstring, charpos - 1) & "<DIV  ALIGN=CENTER><H3> Mental Health Plans</H3></DIV>" & Right(tempstring, Len(tempstring) - charpos + 1)
+         sections.Add(tempstring, sections.count)
+         Inc x
+      Else
+         sections.Add(MHP!html, sections.count)
+      End If
+   Next
+   
+End
+
+Public Sub Include_Recalls_Outstanding(sections As Collection)
+   
+   lbProgress.Add("Listing outstanding recalls .....")
+   Wait
+   sections.Add(modProgressNotes.Recalls_summary_construct_html(currentconsult), sections.Count)
+   
+End
+
+Public Sub Include_Referral_Letter_Summaries(sections As Collection)
+   
+   lbProgress.Add("Generating summary of all referrals written .....")
+   Wait
+   If currentconsult!referrals_written.count Then
+      sections.Add(modProgressNotes.ReferralLetter_summary_construct_html(currentconsult!referrals_written), sections.Count)
+   End If
+   
+End
+
+Public Sub Include_Patient_Tasks(sections As Collection)
+   '--------------------------------------------------------------------
+   'List outstanding tasks 
+   '--------------------------------------------------------------------
+   
+   Dim task As Collection  
+   Dim x As Integer
+   Dim tempstring As String
+   Dim charpos As Integer
+   
+   lbProgress.Add("Exporting tasks not yet completed for this patient......")
+   Wait
+   x = 0
+   For Each task In currentconsult!patient_tasks_outstanding
+      If x = 0 Then
+         tempstring = modProgressNotes.Tasks_summary_Construct_html(task)
+         charpos = InStr(tempstring, "<P")
+         tempstring = Left(tempstring, charpos - 1) & "<DIV  ALIGN=CENTER><H3> Outstanding Tasks</H3></DIV>" & Right(tempstring, Len(tempstring) - charpos + 1)
+         sections.Add(tempstring, sections.count)
+         Inc x
+      Else
+         sections.Add(modProgressNotes.Tasks_summary_Construct_html(task), sections.count)
+      End If
+   Next
+   
+End
+
+Public Sub Include_Documents_Received(sections As Collection, final_pdfs_to_join As Collection)
+   '------------------------------------------------------------------------
+   'Add any letters or results received, either the sub-selection or the lot
+   'the documents_included collection only has the pk for a couple of reasons
+   '1) the drag command can only drag text (we have used str(documents.pk) or image
+   '2) the user can drop documents at random on the list, ie. unsorted, and can't tell from
+   '   the keys whether letter or documents so lvwIncludedDocuments_Refresh sorts this distinction out
+   'In this routine we pulll back the collection from the db (inefficient, ordered by date (inefficient)
+   'FIXME
+   '-------------------------------------------------------------------------
+   
+   Dim progressbar_interval As Float
+   
+   Dim document As Collection
+   Dim results As New Collection
+   Dim letters As New Collection
+   Dim sql_letters As String
+   Dim sql_results As String
+   Dim temp_dir As String
+   Dim Letter_PDF_paths As Collection 
+   Dim Result_PDF_paths As Collection
+   Dim result As Collection
+   Dim letter As Collection
+   Dim pro As Process
+   Dim tempstring As String
+   Dim x As Integer
+   Dim filename_for_all_the_letters As String
+   Dim filename_for_all_the_results As String
+   
+   '-------------------------------------------------------------------------
+   'if this list has contents, then user is selecting a partial document dump
+   '-------------------------------------------------------------------------
+   If lvwIncludedDocuments.count Then  
+      lbProgress.Add("Collating the subset of documents or results selected.....")
+      Wait
+      '------------------------------------------------------------------------------------
+      'When the document or result is dragged from the letter or results list
+      'the resultant order in our list is random, we want them sorted by letters or results
+      'fill the results and letters collections
+      '------------------------------------------------------------------------------------
+      For Each document In Included_Documents                                                  'included_documents is effectively random keys                                           
+         If Document!type = "letter" Then                                                      'get all documents which are letters
+            sql_letters &= "pk_document=" & document!fk_document & " OR "                      'these will be ordered by dates                  
+         End If   
+         If Document!type = "result" Then                                                      'get all documents which are results
+            sql_results &= "pk_document=" & document!fk_document & " OR "
+         End If   
+      Next
+      If sql_letters <> "" Then                                                                'have letters? make a summary list
+         sql_letters = "Select * from documents.vwdocuments where " & Left(sql_letters, Len(sql_letters) - 4) & " Order by date_created"
+         Letters = modDBConnect.exec_query_collection(sql_letters)
+         sections.Add(modProgressNotes.Letters_Summary_Construct_html(letters), sections.count)
+      End If      
+      If sql_results <> "" Then                                                               'have results ?make a summary list
+         sql_results = "Select * from documents.vwdocuments where " & Left(sql_results, Len(sql_results) - 4) 
+         If chkSortResultsByUserTag.value = True Then                                         'either ordered by like tags (not exact for actual loincs)
+            sql_results &= "ORDER BY tag_user, date_created"
+         Else
+            sql_results &= " Order by date_created"                                           'or by date they were created
+         End If   
+         results = modDBConnect.exec_query_collection(sql_results)
+         sections.Add(modProgressNotes.Results_Summary_Construct_HTML(Results, chkIncludeINR.Value), sections.count)
+      Endif
+   Else
+      '----------------------------------------------------------------------------------------
+      'User has not selected a subset - check if user wanted to dump all letters or all results
+      'First, the letters
+      '----------------------------------------------------------------------------------------
+      If chkLettersReceivedSummary.value = True Then    
+         lbProgress.Add("Generating list of all letters received .....")
+         Wait
+         letters = currentconsult!letters_received_sorted_ascending
+         sections.Add(modProgressNotes.Letters_summary_construct_html(currentconsult!letters_received_sorted_ascending), sections.Count)
+         If rbAllReferralLetters.value = True Then     'wants to include the actual letters in the dump
+            
+         Endif
+      End If   
+      '----------------------------------------------------------------------------
+      'Now the results these were not specifically added documents include them all
+      '----------------------------------------------------------------------------
+      If chkResultsReceivedSummary.value = True Then    
+         results = currentconsult!results_received
+         lbProgress.Add("Generating list of all results received .....")
+         Wait
+         sections.Add(modProgressNotes.Results_Summary_Construct_HTML(Results, chkIncludeINR.Value), sections.count)
+      End If   
+   End If  
+   
+   Try progressbar_interval = 1 / (letters.count + results.count)                     'could be divison by zero
+   If rbAllReferralLetters.value = True Or rbSelectedReferralLetters.value = True Then  
+      If letters.count Then                                                              'Now, back to letters, if we have some
+         Temp_dir = "/tmp/letters"                                                           'create temporary directory to join them all together in
+         Try Mkdir "/tmp/letters"
+         If Error Then
+            If Error.Code = const.File_ioError_DirectoryExists Then
+               pro = Shell "rm /tmp/letters/*.pdf" Wait For Write
+               Close #pro
+            Else
+               Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the letters.")
+               Return
+            End If
+         End If
+         Letter_PDF_paths = New Collection                                                   'collection to hold the letters including paths
+         '-------------------------------------------------------------------------
+         'Later on down this routine, all letters which are pdf's have to be joined
+         'to the pdf generated from the html for the coversheet, toc, etc etc
+         'Letters are added last in our single pdf so:
+         'Letter_PDF_path[0-n] = all the pdfs of the letters, which are either
+         ''native' pdfs on our system or pdf's generated from html recieved.
+         '-------------------------------------------------------------------------
+         For Each letter In letters          
+            'progressbar1.value = progressbar1.value + progressbar_interval
+            ' progressbar1.Refresh()
+            Wait                                              
+            Tempstring = ""
+            ' If x = 0 Then                                                                   'first page of joined letters = a heading (expand this)
+            '     tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>LETTERS RECEIVED</H3></DIV</BODY></HTML>"
+            '   Letter_PDF_path.Add(modPrinting.Make_PDF_From_Html(tempstring, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/letters/"), x)
+            Inc x 
+            '  End If
+            Select Case File.Ext(letter!source_file)                                        'then  check file endings
+               Case "pdf"
+                  Letter_PDF_paths.Add(modFiles.Get("document_archiving_directory", letter!source_file), x)
+               Case Else                                                                    'if not a pdf must be hl7 (fixme could bomb if an image
+                  '------------------
+                  'must be a hl7 file
+                  '------------------
+                  tempstring &= letter!html
+                  progressbar1.value = progressbar1.value + progressbar_interval
+                  progressbar1.Refresh()
+                  Wait
+                  Letter_PDF_paths.Add(modPrinting.Make_PDF_From_Html(letter!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/letters/"), x)
+                  Print "createing pdf letter from hl7"
+            End Select
+            Inc x
+         Next
+      End If   
+   End If   
+   Print export_filename_and_path
+   If Not IsNull(Letter_PDF_paths) Then
+      filename_for_all_the_letters = modPrinting.Join_PDF(Letter_PDF_paths, Temp() & ".pdf")
+      final_pdfs_to_join.Add(filename_for_all_the_letters, final_pdfs_to_join.count + 1)
+   End If
+   If rbAllResultsReceived.value = True Or rbSelectedResultsReceived.value = True Then    
+      If results.count Then                                                              'Now, back to letters, if we have some
+         Temp_dir = "/tmp/results"                                                           'create temporary directory to join them all together in
+         Try Mkdir "/tmp/results"
+         If Error Then
+            If Error.Code = const.File_ioError_DirectoryExists Then
+               pro = Shell "rm /tmp/results/*.pdf" Wait For Write
+               Close #pro
+            Else
+               Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the results.")
+            End If
+         End If
+         Result_PDF_paths = New Collection                                                   'collection to hold the letters including paths
+         '-------------------------------------------------------------------------
+         'Later on down this routine, all letters which are pdf's have to be joined
+         'to the pdf generated from the html for the coversheet, toc, etc etc
+         'Letters are added last in our single pdf so:
+         'Letter_PDF_path[0-n] = all the pdfs of the letters, which are either
+         ''native' pdfs on our system or pdf's generated from html recieved.
+         '-------------------------------------------------------------------------
+         x = 0
+         For Each result In results
+            '  progressbar1.value = progressbar1.value + progressbar_interval
+            '  progressbar1.Refresh()
+            Wait    
+            Tempstring = ""
+            ' If x = 0 Then                                                                   'first page of joined letters = a heading (expand this)
+            '     tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>RESULTS RECEIVED</H3></DIV</BODY></HTML>"
+            '     Result_PDF_path.Add(modPrinting.Make_PDF_From_Html(tempstring, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/results/"), x)
+            '     Inc x 
+            '   End If
+            Select Case File.Ext(result!source_file)                                        'then  check file endings
+               Case "pdf"
+                  Print modFiles.Get("document_archiving_directory", result!source_file)
+                  Result_PDF_paths.Add(modFiles.Get("document_archiving_directory", result!source_file), x)
+               Case Else                                                                    'if not a pdf must be hl7 (fixme could bomb if an image
+                  '------------------
+                  'must be a hl7 file
+                  '------------------
+                  Print "creating pdf result from hl7"
+                  progressbar1.value = progressbar1.value + progressbar_interval
+                  progressbar1.Refresh()
+                  Wait
+                  tempstring &= result!html
+                  Result_PDF_paths.Add(modPrinting.Make_PDF_From_Html(result!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/results/"), x)
+            End Select
+            Inc x
+         Next
+      End If   
+   End If   
+   If Not IsNull(Result_PDF_paths) Then
+      filename_for_all_the_results = modPrinting.Join_PDF(Result_PDF_paths, Temp() & ".pdf")
+      final_pdfs_to_join.Add(filename_for_all_the_results, final_pdfs_to_join.count + 1)
+   End If
+   If Sql_letters <> "" And sql_results <> "" Then
+      tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>Letters and Results Received</H3></DIV"
+   Else If sql_letters <> "" And sql_results = "" Then
+      tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>Letters Received</H3></DIV"
+   Else
+      If sql_results <> "" And sql_letters = "" Then
+         tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>Results Received</H3></DIV"
+      Endif
+   End If 
+   tempstring &= "<P>The following pages contain the full text of either selected letters or results</P>" 
+   tempstring &= "Please note that in this development version of EasyGP that the page numbering of these pages will not reflect the actual page number of this pdf "
+   tempstring &= "as all the letters and all the results were joined from single pdf's with if the source was html will contain their own page numbers, or if the source "
+   tempstring &= "was a a scanned file then there will be no page number at all."
+   sections.Add(tempstring & "</Html>", sections.count)
+   
+End
+
+Public Sub New_Entry()
+   
+   Reload()
+   Wizard1.page = 0
+   
 End
 
 Public Sub Create_Zip()
    '---------------------------------
    'Create the password protected zip
    '---------------------------------
-
+   
    Dim cmd As String
    Dim strOutput As String
-
+   
+   Return   
    'copy the indexed pdf to the patients temporary directory
    Try Copy export_filename_and_path To export_dir &/ File.Name(export_filename_and_path)                                                  'try and pdf file to new name
    If Error Then
@@ -699,25 +1406,25 @@ Public Sub Create_Zip()
    End If
    cmd = "zip --junk-paths -P " & Trim(txtPassword2.text) & " " & export_dir &/ Patient_Details & ".zip " & export_dir &/ "* .pdf"  'e.g Peter_Rabbit_01-12-1900.zip"
    Print cmd
-
+   
    taConsole.text = "Starting zip.....\n"
    taConsole.text &= "zip --junk-paths -P ***** " & export_dir &/ Patient_Details & ".zip " & export_dir &/ "* .pdf\n"
-
+   
    Wait
-
+   
    Shell cmd To strOutput
-
+   
    taConsole.text &= strOutput
-
+   
 End
 
 Public Sub Create_ExportDir()
    '---------------------------------------------------------------------
    'creates a temporary directory for the patient's file returns the name
    '---------------------------------------------------------------------
-
+   
    Dim pro As Process
-
+   
    Try Mkdir export_dir
    If Error Then
       If Error.Code = const.File_ioError_DirectoryExists Then
@@ -729,7 +1436,7 @@ Public Sub Create_ExportDir()
          Return
       End If
    End If
-
+   
 End
 
 Public Sub Multiple_PDFs()
@@ -815,8 +1522,8 @@ Public Sub Multiple_PDFs()
    '                Case "tasks"
    '                   Destination_File = Doc_File_Stem & ".outstanding-tasks.pdf"
    '                   x = 0
-   '                   For Each member In currentconsult!staff_tasks
-   '                      If currentconsult!staff_tasks.count Then
+   '                   For Each member In currentconsult!patient_tasks_outstanding
+   '                      If currentconsult!patient_tasks_outstanding.count Then
    '                         If x = 0 Then
    '                            shtml = modProgressNotes.Tasks_summary_Construct_html(member)
    '                            charpos = InStr(tempstring, "<P")
@@ -958,25 +1665,25 @@ Public Sub Multiple_PDFs()
    ' Catch
    '    Message.Info("FExportClinical.Multiple_PDFs() Error:" & Error.text)
    '
-
+   
 End
 
 Public Sub Settings_Save()
-
+   
    Settings["FExportClinical/Form_PDF.currentzoom"] = Form_PDF.CurrentZoom
-
+   
 End
 
 Private Sub Settings_Load()
-
+   
    Form_PDF.CurrentZoom = Settings["FExportClinical/Form_PDF.currentzoom"]
-
+   
 End
 
 Public Sub rbOrientation_Click()
-
+   
    Page_Orientation = Last.tag
-
+   
 End
 
 Public Sub Refresh_Gui()
@@ -985,14 +1692,14 @@ Public Sub Refresh_Gui()
    'Reloads all data needed to export the patients file
    'by removing every collection key
    '---------------------------------------------------
-
+   
    Dim cb As CheckBox
    Dim hctrl As Control
    Dim member As Collection
-
+   
+   bExportDocuments = False
    Inc application.Busy
    modEditAreaHelpers.EditArea_Clear(VBox_Page1)
-   modEditAreaHelpers.EditArea_Clear(VBox_Page2)
    For Each hctrl In Vbox_Page1.Children
       If hctrl Is CheckBox Then
          cb = hctrl
@@ -1003,45 +1710,86 @@ Public Sub Refresh_Gui()
          End If
       End If
    Next
-   ProgressBar1.Visible = False
    ProgressBar1.value = 0.0
-   lblStatus.Visible = True
-   With lblStatus
-      .visible = True
-      .text = "Re-loading data..."
-   End With
-
-   chkAllProgressNotes1.Visible = currentconsult!progress_notes.count
-   chkProgressNotesEachHealthIssue.Visible = currentconsult!past_history.count
-   chkTasks.Visible = currentconsult!staff_tasks.count
+   chkIncludeAuditTrail.value = False  
+   Wizard1[1].Enabled = False   'the progress notes selection page
+   Wizard1[2].Enabled = True  'the referral letter or results selection page
+   HBox_ProgressNotes.Visible = currentconsult!progress_notes.count
+   ' rbAllProgressNotes.value = True   'default to printing all notes out
+   If HBox_ProgressNotes.Visible Then chkProgressNotesEachHealthIssue.Visible = currentconsult!past_history.count
+   chkTasks.Visible = currentconsult!patient_tasks_outstanding.count
    chkMentalHealthPlans.visible = currentconsult!mentalhealthplans.count
    chkReferralLetterSummaries.Visible = currentconsult!referrals_written.count
    chkReferralLetters.Visible = currentconsult!referrals_written.count
    chkRequestsOrdered.Visible = currentconsult!requests_ordered.count
-   chkResults.Visible = currentconsult!results_received.count
+   HBox_ResultsReceived.Visible = currentconsult!results_received.count
    chkRecalls.Visible = currentconsult!recalls_logged.count
-   chkLettersReceived.Visible = currentconsult!letters_received_sorted_ascending.count
-   chkLettersReceivedlist.Visible = currentconsult!letters_received_sorted_ascending.count
-   chkResultsReceived.Visible = currentconsult!results_received.count
-   chkWorkcover.Visible = currentconsult!workcover_claims.count
+   HBox_LettersReceived.Visible = currentconsult!letters_received_sorted_ascending.count
+   chkLettersReceivedSummary.Visible = currentconsult!letters_received_sorted_ascending.count
+   chkResultsReceivedSummary.Visible = currentconsult!results_received.count
    chkWorkcoverSummarised.Visible = currentconsult!workcover_claims.count
-   chkAudit.Visible = True
-   With chkExcludeINR
-      .Enabled = False
-      .Foreground = Color.LightGray
+   chkWorkcoverForms.Visible = currentconsult!workcover_claims.count
+   chkMedicalCertificates.visible = currentconsult!medical_certificates.count
+   chkLettersReceivedSummary.value = False
+   chkResultsReceivedSummary.value = False
+   chkReferralLetterSummaries.value = False
+   chkReferralLetters.value = False
+   chkRequestsOrdered.value = False
+   chkMentalHealthPlans.value = False  
+   chkWorkcoverSummarised.value = False   
+   chkWorkcoverForms.value = False
+   chkMedicalCertificates.value = False   
+   chkAuditTrailDocuments.value = False   
+   chkAuditTrailTasks.value = False 
+   chkAuditTrailRecalls.value = False
+   With chkDumpIncomingLettersAsPDFs
+      .value = False
+      .Enabled = False  
    End With
-   For Each Member In currentconsult!results_received
-      If member!tag = "INR" Then
-         With chkExcludeINR
-            .value = True
-            .visible = True
-            .Enabled = True
-            .Foreground = Color.Black
-         End With
-         Break
-      End If
-   Next
-
+   With chkDumpIncomingResultsAsPDFs
+      .value = False
+      .Enabled = False  
+   End With
+   With chkDumpReferralLettersAsPDFs
+      .value = False  
+      .Enabled = False  
+   End With
+   chkDumpMentalHealthPlansAsPDFs.value = False 
+   If modStaffTasksDBI.Tasks_For_Patient_Exist(currentconsult!patient!fk_patient) Then chkAuditTrailTasks.Visible = True   
+   '------------------------------------------------------------------------
+   'if  there is incoming correspondance then showing heading and checkboxes
+   '------------------------------------------------------------------------
+   If HBox_LettersReceived.Visible Then  
+      lblIncomingCorrespondance.visible = True
+   Else
+      lblIncomingCorrespondance.visible = False
+   End If   
+   If chkResultsReceivedSummary.visible Then
+      HBox_ResultsReceived.Visible = True 
+   Else
+      HBox_ResultsReceived.Visible = False   
+   Endif
+   If HBox_ResultsReceived.Visible = True Or chkResultsReceivedSummary.visible = True Then
+      lblIncomingCorrespondance.visible = True 
+   Else
+      lblIncomingCorrespondance.visible = False
+   Endif
+   '----------------------------------------------------------------------
+   ' If there is outgoing correspondance, show that heading and checkboxes
+   '----------------------------------------------------------------------
+   If chkMedicalCertificates.visible = True Or chkReferralLetterSummaries.visible = True Or chkReferralLetters.visible = True Or chkRequestsOrdered.visible = True Or chkMentalHealthPlans.value = True Or chkWorkcoverForms.visible = True
+      lblOutgoingCorrespondance.Visible = True  
+   Else
+      lblOutgoingCorrespondance.Visible = False   
+   End If   
+   If currentconsult!results_received.count Or currentconsult!letters_received_sorted_ascending.count Then chkAuditTrailDocuments.Visible = True  
+   If chkRecalls.Visible Then chkAuditTrailRecalls.visible = True 
+   If chkRecalls.Visible = True Or chkTasks.Visible = True Or chkAuditTrailDocuments.Visible = True Then
+      lblAuditing.Visible = True 
+   Else
+      lblAuditing.Visible = False 
+   Endif
+   
    For Each hctrl In Vbox_Page1.Children
       If hctrl Is CheckBox Then
          cb = hctrl
@@ -1051,41 +1799,48 @@ Public Sub Refresh_Gui()
          End If
       End If
    Next
-
-   For Each hctrl In Vbox_Page2.Children
-      If hctrl Is CheckBox Then
-         cb = hctrl
-         If cb.Visible Then
-            cb.Foreground = Color.Black
-            cb.Enabled = True
-         End If
-      End If
-   Next
-
+   Patient_INR_Count = modResearchDBI.Patient_INR_Count(currentconsult!patient!fk_patient)
+   If Patient_INR_Count Then
+      With chkIncludeINR
+         .Visible = True
+         .Enabled = False 
+         .value = False 
+      End With  
+   Else
+      With chkIncludeINR
+         .Visible = False
+         .value = False  
+         .Enabled = False  
+      End With
+   Endif
    Dec application.Busy
-   lblStatus.text = ""
-
+   
 End
 
 Public Sub Wizard1_Change()
-
+   
    '-------------------------------------------------------------
-   '
+   'This event occurs as the wizard changes to the next page
    '-------------------------------------------------------------
+   
    current_page = Wizard1.Index
    Select Case Wizard1.Index
-      Case cPage_Welcome
-
       Case cPage_Select_Options
-
-      Case cPage_Export
-         Export_File()
+         Form_Help.Help_Show("medical-record-export-wizard.html")   
+      Case cPage_Select_ProgressNotes
+         Setup_Page_Select_ProgressNotes 
+      Case cPage_Select_Documents
+         Setup_Page_Select_Documents
+      Case cPage_PDF
+         Setup_Page_CreatePDF
+         PDF_Prepare_New 
+         ' Dump_Documents
       Case cPage_ZipOptions
          txtFilename.text = export_dir &/ File.Name(export_filename_and_path)
       Case cPage_CreateZip
          Create_Zip()
    End Select
-
+   
 End
 
 Public Sub Wizard1_BeforeChange()
@@ -1095,48 +1850,372 @@ Public Sub Wizard1_BeforeChange()
    'the event if the information on the page is not correct
    'The index = the index of the page the wizard is currently on
    '-------------------------------------------------------------
-
+   
    Select Case Wizard1.Index
-      Case cPage_PDF
+      Case cPage_Select_Options
+         
+         If rbAllProgressNotes.value = True Then
+            Wizard1[1].Enabled = False   
+         Else If rbSelectedProgressNotes.value = True Then    
+            Wizard1[1].Enabled = True 
+         Endif
+         If rbSelectedReferralLetters.value = True Or rbSelectedResultsReceived.value = True Then
+            Wizard1[2].Enabled = True
+         Else
+            Wizard1[2].Enabled = False  
+         Endif
+         If Patient_INR_Count And chkIncludeINR.value = True And (rbAllResultsReceived.value = True Or rbSelectedResultsReceived.value = True) Then
+            Message.Title = "WARNING"
+            If Message.Question("There are " & Str(Patient_INR_Count) & " INR's in this patient's results.\n\nAre you sure you want to include all these in the pdf?", "Yes", "No") = 2 Then  
+               Stop Event
+               Return
+            End If 
+         Endif
+      Case cPage_Select_ProgressNotes
+         If rbSelectedReferralLetters.value = True Or rbSelectedResultsReceived.value = True Then
+            Wizard1[2].Enabled = True
+         Else
+            Wizard1[2].Enabled = False  
+         Endif
       Case cPage_ZipOptions
          If txtPassword2.text = "" Or txtpassword1.text <> txtPassword2.text Then
             Message.Title = "Invalid Password"
             Message.Info("Please provide a valid password before proceeding.")
             Stop Event
          End If
-
+         
    End Select
+   
+End
 
+Public Sub Setup_Page_CreatePDF()
+   
+   VBox_PDF.Visible = False   
+   VBox_CreatingPDF.Visible = True 
+   lbProgress.Clear
+   
+End
+
+Public Sub Setup_Page_Select_Documents()
+   
+   'If user wants to select a subset of results or referras
+   If IsNull(Included_Documents) Then Included_Documents = New Collection
+   Form_Help.Help_Show("selecting-letters-or-results-for-export.html")
+   
+End
+
+Public Sub Setup_Page_Select_ProgressNotes()
+   
+   If IsNull(Form_NotesEditor) Then 
+      With Form_NotesEditor = New FEditNotes(VBox_ProgressNotes)
+         .Init(currentConsult, True) 'True = include checkboxes
+         .Visible = True
+      End With 
+      Form_Help.Help_Show("selecting-progress-notes-for-export.html")
+   End If   
+   
 End
 
 Public Sub checkboxExport_Click()
-
-   Select Case Last.tag
-      Case "toc1"
-         chkToc.Value = Last.value
-      Case "coversheet1"
-         chkCoverSheet.value = Last.value
-      Case "all progress notes1"
-         chkAllProgressNotes1.value = Last.value
-      Case "care plan"
-         chkCarePlan.value = Last.value
-      Case "health summary"
-         chkHealthSummary.value = Last.value
-   End Select
-
+   
+   ' Select Case Last.tag
+   '    Case "toc1"
+   '       chkToc.Value = Last.value
+   '    Case "coversheet1"
+   '       chkCoverSheet.value = Last.value
+   '    Case "all progress notes1"
+   '       chkAllProgressNotes1.value = Last.value
+   '    Case "care plan"
+   '       chkCarePlan.value = Last.value
+   '    Case "health summary"
+   '       chkHealthSummary.value = Last.value
+   ' End Select
+   
 End
 
 Public Sub ZipInfo_LostFocus()
-
+   
    If Last.tag = "password2" And Trim(txtpassword1.text) <> Trim(txtPassword2.text) Then
       Message.Info("The two passwords don't match.")
    Endif
-
+   
 End
 
 Public Sub chkDisplayPassword_Click()
-
+   
    txtpassword1.Password = Not Last.value
    txtPassword2.Password = Not Last.value
+   
+End
 
+Public Sub lvwIncludedDocuments_Drop()
+   '---------------------------------------------------------------------
+   'Something is being dropped on the included documents list
+   'We will (at some stage) accept stuff which is a document or a graph
+   'at moment I'm only allowing a document from documents (ie path or
+   'letter/scanned document
+   'Drag.source = the control this is coming from, but
+   'is a 'control', not for example a columnview  so
+   'have to test it as below
+   '---------------------------------------------------------------------
+   
+   Dim cv As ColumnView                'the 'source' control if columnview
+   Dim Inclusion As Collection
+   Dim select_mode As Integer
+   Dim x As Integer
+   
+   'if selection mode = 1  = single document is highlighted
+   If Drag.Source Is Columnview Then              'a result or letter ie document
+      cv = Drag.Source
+      cv.MoveCurrent()
+      Select_mode = cv.mode
+      If cv.mode = 1 Then
+         Inclusion = New Collection
+         Inclusion!fk_document = Drag.data
+         If Not Inclusion_In_List(Inclusion) Then
+            Included_Documents.Add(Inclusion, lvwIncludedDocuments.count)
+         End If
+      Else
+         cv.MoveFirst()
+         For x = 0 To cv.count - 1
+            If cv.Item.Selected = True Then
+               inclusion = New Collection
+               Inclusion!fk_document = cv.Item.Key 'the key of the document
+               If Not Inclusion_In_List(Inclusion) Then
+                  Included_Documents.Add(Inclusion, Included_Documents.count)
+               End If
+            Endif
+            cv.MoveNext()
+         Next
+      End If
+      cv.UnselectAll()
+   Else
+      '---------------------------------
+      'Must be a graph which was dropped
+      '---------------------------------
+      ' Included_Documents!type = "graph"
+      'Included_Documentsa!filename = Drag.Source.Tag!fname
+      '  sString = "graph of something"
+      'lvwIncludedDocumentss.add(lvwIncludedDocumentss.count, sSTring)
+   End If
+   lvwIncludedDocuments_Refresh(Included_Documents)
+   
+End
+
+Public Sub Inclusion_In_List(inclusion As Collection) As Boolean
+   '-------------------------------------------------------------------
+   'Checks if an included document is in the list returns true if it is
+   'Inclusions_EditArea is count 0 based
+   'May at later date not just include documents.
+   '-------------------------------------------------------------------
+   
+   Dim I As Collection
+   
+   If Included_Documents.count = 0 Then Return False
+   For Each I In Included_Documents
+      If I!fk_document = Inclusion!fk_document Then
+         Return True
+      End If
+   Next
+   Return False
+   
+End
+
+Public Sub lvwIncludedDocuments_Refresh(Inclusions As Collection)
+   '---------------------------------------------------------------------
+   'Refresh the inclusions list for the current document in the edit area
+   'ie. this is the list next to the letter text, not the one
+   'underneath which is for thos letters already printed
+   'Called by lvwIncludedDocuments_Drop: Inclusions_EditArea collection
+   '           Referral_Edit:Inclusions_Referral_This_Consult collection
+   '---------------------------------------------------------------------
+   
+   Dim inclusion As Collection
+   Dim sString As String
+   Dim document As Collection
+   
+   lvwIncludedDocuments.Clear()
+   For Each Inclusion In Inclusions
+      Try Document = currentconsult!results_received[inclusion!fk_document]         '? a result??
+      If IsNull(document) Then                                                      'it wasn't a result
+         Try Document = currentconsult!letters_received[inclusion!fk_document]      '? a letter ??
+         If Not IsNull(document) Then
+            inclusion!type = "letter"
+         Endif
+      Else
+         inclusion!type = "result"
+         
+      End If
+      sString = Format(Document!date_created, "dd/mm/yyyy") & " " & Document!tag_user
+      lvwIncludedDocuments.add(lvwIncludedDocuments.count, sSTring)
+   Next
+   lblDocuments.text = "Included Documents (" & Str(lvwIncludedDocuments.Count) & ")"
+   Print Included_Documents
+   
+End
+
+Public Function ProgressNotes_HTML_Get() As String
+   '---------------------------------------------------------------
+   'Returns the html of all the progress notes user wants to export
+   '---------------------------------------------------------------
+   
+   Dim hb As HBox
+   Dim vb As VBox
+   Dim hctrl As Control
+   Dim tl As TextLabel
+   Dim notes As String
+   Dim wbv As WebView
+   Dim sTable As String 
+   Dim sRowTemplate As String 
+   Dim bHaveRow As Boolean
+   Dim cb As CheckBox
+   Dim hctrl1 As Control
+   
+   lbProgress.Add("Adding progress notes......")  
+   Wait
+   sRowTemplate = ""
+   "<TR VALIGN=TOP>"
+   "<TD WIDTH=15%"
+   "%col1%<BR>"
+   "</TD>"
+   "<TD WIDTH=85%>"
+   "%col2%<BR>"
+   "</TD>"
+   "</TR>"
+   notes = "<HTML><BODY<DIV ALIGN=CENTER><H3>Progress Notes</H3><DIV>" 'This ensures the heading will be included in the table of contents
+   If Not IsNull(Form_NotesEditor) Then    
+      For Each hctrl In Form_NotesEditor.lcNotes.Children
+         bHaveRow = False  
+         If hctrl Is Hbox Then
+            hb = hctrl   
+            For Each hctrl In hb.Children
+               If hctrl Is Vbox Then
+                  vb = hctrl 
+                  For Each hctrl1 In vb.Children
+                     If hctrl1 Is CheckBox Then
+                        cb = hctrl1   
+                        If cb.value = True Then 
+                           bHaveRow = True    
+                           Break
+                        End If   
+                     End If   
+                  Next
+               Endif
+               If bHaveRow Then 
+                  If hctrl Is TextLabel Then
+                     sTable = "<TABLE width=100%>"
+                     sTable &= sRowTemplate
+                     tl = hctrl 
+                     sTable = Replace(sTable, "%col1%", tl.Text)
+                  Endif
+                  If hctrl Is Vbox Then
+                     VB = hctrl   
+                     For Each hctrl1 In vb.Children
+                        If hctrl1 Is WebView Then
+                           wbv = hctrl1 
+                           ' stable = Replace(stable, "%col2%", modUtil.Fix_HTML(wbv.html, []))
+                           stable = Replace(stable, "%col2%", wbv.html)
+                           notes &= stable & "</TABLE>"
+                           Break
+                        Endif
+                     Next
+                  Endif
+               End If   
+               'If bHaveRow Then Break
+            Next
+         Endif
+      Next   'fixme clean up the abysmal html
+   Else
+      '----------------------------- 
+      'Must want all progress notes
+      '----------------------------
+      
+      notes = modProgressNotes.AllProgressNotes_Construct_Html(currentconsult)
+   End If   
+   Return notes
+   
+End
+
+Public Sub chkSelectAllNotes_Click()
+   '---------------------------------------------------------------------------------------
+   'User has clicked on the option to select or de-select all the individual progress notes   
+   '---------------------------------------------------------------------------------------
+   
+   Notes_Checkboxes_Reset(chkSelectAllNotes.value)
+   
+End
+
+Public Sub Notes_Checkboxes_Reset(bFlag As Boolean)
+   '---------------------------------------------------------
+   'Called either when clearing the form 
+   'of if user has decided to select or  unselect all notes   
+   'by clicking on the 'Select All Notes' under the notes list
+   '----------------------------------------------------------
+   
+   Dim hb As HBox
+   Dim hctrl As Control
+   Dim cb As CheckBox
+   Dim vb As VBox
+   Dim bCheckboxFound As Boolean
+   
+   For Each hctrl In Form_NotesEditor.lcNotes.Children
+      If hctrl Is Hbox Then
+         hb = hctrl   
+         For Each hctrl In hb.Children
+            If hctrl Is Vbox Then
+               vb = hctrl 
+               For Each hctrl In vb.Children
+                  If hctrl Is CheckBox Then
+                     cb = hctrl   
+                     cb.value = bFlag 
+                     Break
+                     bCheckboxFound = True   
+                  End If   
+               Next
+            Endif
+            If bCheckboxFound Then Break
+         Next
+      Endif
+      If bCheckboxFound Then Break
+   Next
+   
+End
+
+Public Sub IncomingCorrespondance_Click()
+   
+   If bexit Then Return
+   bexit = True   
+   If Last.value = True Then bExportDocuments = True
+   Select Case Last.tag
+      Case "selected letters received", "all letters received"
+         chkDumpIncomingLettersAsPDFs.Enabled = True  
+      Case "no letters"
+         With chkDumpIncomingLettersAsPDFs
+            .Enabled = False
+            .value = False 
+         End With
+      Case "all results received", "selected results received"
+         chkIncludeINR.Enabled = True  
+         chkDumpIncomingResultsAsPDFs.Enabled = True  
+      Case "no results"
+         With chkIncludeINR
+            .Enabled = False 
+            .value = False   
+         End With
+         With chkDumpIncomingResultsAsPDFs
+            .Enabled = False
+            .value = False 
+         End With
+   End Select
+   
+   bexit = False  
+   
+End
+
+Public Sub Button1_Click()
+   
+   Dim pc As Integer
+
+   pc = Read_Page_Count("/home/richard/pdf_tutorial/health-summary.pdf")
+   Print pc
 End

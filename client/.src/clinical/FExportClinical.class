@@ -314,20 +314,11 @@ Public Sub Export_PDF_Create()
    'page 2=always toc
    '-----------------------------------------------------------------------------------------------------
    
-   Dim progressbar_interval As Float
-   Dim shtml As String
    Dim bPrintTableOfContents As Boolean = True   
-   Dim bPrintCoversheet As Boolean = True  
    Dim ContentsPage As String
    Dim Output_file As String
    Dim patient As Collection = currentconsult!patient 
    Dim export_filename_and_path As String
-   Dim sql_letters As String
-   Dim sql_results As String
-   Dim letter As Collection
-   Dim Letters As Collection
-   Dim result As Collection
-   Dim results As Collection
    Dim document As Collection   
    Dim Letter_PDF_path As Collection   'the letter and the pdf path   
    Dim Result_PDF_path As Collection 
@@ -380,9 +371,6 @@ Public Sub Export_PDF_Create()
    lblProgress.text = "Creating final pdf...."
    Wait
    final_filename = modPrinting.Join_PDF(final_pdfs_to_join, Temp$() & "export")
- '  If chkDumpIncomingResultsAsPDFs.value = True Then
-  '    Print results
-  ' Endif
    With Form_PDF
       .Load_PDF(final_filename)
       .bexit = False 
@@ -937,6 +925,254 @@ Public Sub Include_Documents_Received()
    Dim filename_for_all_the_results As String
    Dim sHtml As String
    Dim fn As String
+   Dim filename As String
+   
+   progressbar1.value = 0.0
+   progressbar1.Refresh()
+   '----------------------------------------------------------------------------------
+   'Firstly create the core sql depending on if want subset or all letters and results
+   '----------------------------------------------------------------------------------
+   If lvwIncludedDocuments.count Then                                                          'When the document or result is dragged from the letter or results list
+      lboxProgress.Add("Collating the subset of documents or results selected.....")           'the resultant order in our list is random, we want them sorted by letters or results
+      lblProgress.text = "Collating the subset of documents...."                                'fill the results and letters collections
+      Wait
+      For Each document In Included_Documents                                                  'included_documents is effectively a collection of random keys                                           
+         If Document!type = "letter" Then                                                      'get all documents which are letters
+            sql_letters &= "pk_document=" & document!fk_document & " OR "                      'these will be ordered by dates effectively because of the key               
+         End If   
+         If Document!type = "result" Then                                                      'get all documents which are results
+            sql_results &= "pk_document=" & document!fk_document & " OR "
+         End If   
+      Next
+      If sql_letters <> "" Then sql_letters = "Select * from documents.vwdocuments where " & Left(sql_letters, Len(sql_letters) - 4) 'ie Select * where pk=n or pk=n1 or pk=n2 etc
+      If sql_results <> "" Then sql_results = "Select * from documents.vwdocuments where " & Left(sql_results, Len(sql_results) - 4) 
+   Else                                                                                       'User has not selected a subset - check if user wanted to dump all letters or all results
+      If chkLettersReceivedSummary.value = True Then                                           'we will always include a summary, executive decision
+         lboxProgress.Add("Generating list of all letters received .....")                     'notify the gui
+         lblProgress.text = "Generating list of letters...."
+         Wait
+         sql_letters = "Select * from documents.vwDocuments where fk_patient = " & currentconsult!patient!fk_patient
+         sql_letters &= " AND fk_lu_display_as = " & const.Document_Display_As_Letter & " AND deleted = false " 
+      End If   
+      If chkResultsReceivedSummary.value = True Then    
+         lboxProgress.Add("Generating list of all results received .....")
+         lblProgress.text = "Generating list of results...."
+         Wait
+         sql_results = "Select * from documents.vwDocuments where fk_patient = " & currentconsult!patient!fk_patient
+         sql_results &= " AND fk_lu_display_as = " & const.Document_Display_As_Result
+         sql_results &= " AND deleted = false "
+      Endif
+   End If  
+   '--------------------------------------------------------------------------------------------------
+   'Next, order these according to the check boxes located on Page 3 of the wizard
+   'even if this page is not specifically used. If user just selects all from page 1 of the wizard
+   'and checks the e.g chkOrderAllResultsByTag on the first page, this sets the checkboxes on page 3
+   '--------------------------------------------------------------------------------------------------
+   If sql_letters <> "" Then                                                              'have some sort of sql to get the letters
+      If chkOrderLettersBySender.value = True Then                                        'order query as per checkbox values
+         sql_letters &= " ORDER BY originator, date_created"
+      Else
+         sql_letters &= " ORDER by date_created"
+      Endif
+      Letters = modDBConnect.exec_query_collection(sql_letters)                           'fetch data from backend
+      shtml = modProgressNotes.Letters_Summary_Construct_html(letters)                    'create the html summary about the letters
+      html_sections.add(shtml, html_sections.count)
+      fn = modPrinting.Make_PDF_From_Html(shtml,,,, "incoming_letters_summary.pdf")       'executive decision, will always make summary
+      pdf = New Collection
+      pdf!name = "summary incoming letters"
+      pdf!page_count = ModUtil.Read_PDF_Page_Count(fn)
+      pdf!filename = fn
+      pdf_sections.Add(pdf, pdf_sections.count)   
+      ' Endif
+      If letters.count Then                                                               'Now, back to letters, if we have some which we always should
+         lboxProgress.Add("Adding letters received.....")
+         lblProgress.text = "Adding letters received...."
+         Wait
+         Temp_dir = "/tmp/letters"                                                        'create temporary directory to join them all together in
+         Try Mkdir "/tmp/letters"
+         If Error Then
+            If Error.Code = const.File_ioError_DirectoryExists Then
+               pro = Shell "rm /tmp/letters/*.pdf" Wait For Write
+               Close #pro
+            Else
+               Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the letters.")
+               Return
+            End If
+         End If
+         Letter_PDF_paths = New Collection                                                   'collection to hold the letters including paths
+         '-------------------------------------------------------------------------
+         'Later on down this routine, all letters which are pdf's have to be joined
+         'to the pdf generated from the html for the coversheet, toc, etc etc
+         'Letters are added last in our single pdf so:
+         'Letter_PDF_path[0-n] = all the pdfs of the letters, which are either
+         ''native' pdfs on our system or pdf's generated from html recieved.
+         '-------------------------------------------------------------------------
+         x = 0
+         lblProgress.text = "Adding letters received...."
+         For Each letter In letters          
+            Tempstring = ""
+            Select Case File.Ext(letter!source_file)                                        'then  check file endings
+               Case "pdf"
+                  If InStr(letter!source_file, "'") Then
+                     Message.title = "Bad File Name"
+                     Message.Warning("The file:" & letter!source_file & " has an illegal character in the name, i.e - a ' character\n\nThis cannot be processed and will be skipped.\n\nYou should get your system admin to fix this.")
+                  Else
+                     Letter_PDF_paths.Add(modFiles.Get("document_archiving_directory", letter!source_file), x)
+                  End If 
+               Case Else                                                                    'if not a pdf must be hl7 (fixme could bomb if an image
+                  '------------------
+                  'must be a hl7 file
+                  '------------------
+                  tempstring &= letter!html
+                  progressbar1.value = x / letters.Count
+                  progressbar1.Refresh()
+                  Wait
+                  Letter_PDF_paths.Add(modPrinting.Make_PDF_From_Html(letter!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/letters/"), x)
+            End Select
+            Inc x
+         Next
+         If Not IsNull(Letter_PDF_paths) Then                                                         'we have collection of letters to combine into one pdf
+            Try Kill "/tmp/letters_received.pdf"
+            filename_for_all_the_letters = modPrinting.Join_PDF(Letter_PDF_paths, "/tmp/letters_received") 'this routine adds the .pdf extension
+            document_pagecount = ModUtil.Read_PDF_Page_Count(filename_for_all_the_letters)           'get the total page count in this new pdf
+            html_sections.add(modPrinting.Make_HTML_With_Heading_And_Blank_pages("Letters Received", document_pagecount), html_sections.count)
+            pdf = New Collection  
+            pdf!name = "letters recieved"
+            pdf!page_count = document_pagecount
+            pdf!filename = filename_for_all_the_letters
+            pdf_sections.add(pdf, pdf_sections.count)   
+         End If
+      End If   
+   End If   
+   '---------------------------------------------------
+   'Complete the sql for results and fetch from backend
+   '---------------------------------------------------
+   If sql_results <> "" Then                                                               'have results ?make a summary list
+      If chkSortResultsByUserTag.value = True Then                                          'either ordered by like tags (not exact for actual loincs)
+         sql_results &= " ORDER BY tag_user, date_created"
+      Else
+         sql_results &= " ORDER by date_created"                                            'or by date they were created
+      End If  
+      results = modDBConnect.exec_query_collection(sql_results)                             'get collection from backend
+      shtml = modProgressNotes.Results_Summary_Construct_HTML(Results, chkIncludeINR.Value) 'create the html summary
+      html_sections.add(shtml, html_sections.count)                                         'add to sections for later wkhtml processing for TOC
+      fn = modPrinting.Make_PDF_From_Html(shtml,,,, "incoming_results_summary.pdf")         'create the actual pdf summary which will be used in final pdf
+      pdf = New Collection
+      pdf!name = "summary incoming results"
+      pdf!page_count = ModUtil.Read_PDF_Page_Count(fn)
+      pdf!filename = fn
+      pdf_sections.Add(pdf, pdf_sections.count)  
+      lboxProgress.Add("Adding results received.....")
+      lblProgress.text = "Adding results received...."
+      Wait
+      Temp_dir = "/tmp/results"                                                           'create temporary directory to join them all together in
+      Try Mkdir "/tmp/results"
+      If Error Then
+         If Error.Code = const.File_ioError_DirectoryExists Then
+            pro = Shell "rm /tmp/results/*.pdf" Wait For Write
+            Close #pro
+         Else
+            Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the results.")
+         End If
+      End If
+      Result_PDF_paths = New Collection                                                   'collection to hold the letters including paths
+      '-------------------------------------------------------------------------
+      'Later on down this routine, all letters which are pdf's have to be joined
+      'to the pdf generated from the html for the coversheet, toc, etc etc
+      'Letters are added last in our single pdf so:
+      'Letter_PDF_path[0-n] = all the pdfs of the letters, which are either
+      ''native' pdfs on our system or pdf's generated from html recieved.
+      '-------------------------------------------------------------------------
+      x = 0
+      lblProgress.text = "Adding results received...."
+      For Each result In results
+         Tempstring = ""
+         Select Case File.Ext(result!source_file)                                        'then  check file endings
+            Case "pdf"
+               filename = modFiles.Get("document_archiving_directory", result!source_file)
+               Result_PDF_paths.Add(filename, x)
+               ' Print modFiles.Get("document_archiving_directory", result!source_file)
+               If Left$(filename, 5) = "/tmp/" Then
+                  Move filename To "/tmp/results" &/ result!source_file
+                  Message.Warning("Richard this should never happen: Include documents line 1109")
+               Else
+                  Copy filename To "/tmp/results" &/ result!source_file
+               Endif
+               
+            Case Else                                                                    'if not a pdf must be hl7 (fixme could bomb if an image
+               '------------------
+               'must be a hl7 file
+               '------------------
+               progressbar1.value = x / results.Count
+               progressbar1.Refresh()
+               Wait
+               tempstring &= result!html
+               If Not IsNull(result!tag_user) Then
+                  filename = Replace(Trim(result!tag_user), ";", "")                                     'strip separators
+                  If Right(filename) = ";" Then filename = Left(filename, Len(filename) - 1)
+                  filename = Replace(filename, " ", "-")
+                  filename = Replace(filename, "/", "-")
+                  filename = Replace(filename, "(", "")
+                  filename = Replace(filename, ")", "")
+                  filename = Replace(filename, "&", "-")
+                  filename = Patient_Details & "_" & Format(result!date_created, "dd-mm-yyyy") & "_" & filename & ".pdf" 'eg. Mr-Joe-Blogs_10-02/2010_FBC
+                  Print filename, x
+               Else
+                  filename = Str(x) & ".tmp.pdf"
+               Endif
+               '   Result_PDF_paths.Add(modPrinting.Make_PDF_From_Html(result!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/results/"), x)
+               Result_PDF_paths.Add(modPrinting.Make_PDF_From_Html(result!html, const.orientation_portrait, "", False, filename, Progressbar1, "/tmp/results/"), x)
+         End Select
+         Inc x
+      Next
+      '  End If   
+      'End If   
+      If Not IsNull(Result_PDF_paths) Then
+         Try Kill "/tmp/results_recieved.pdf"
+         filename_for_all_the_results = modPrinting.Join_PDF(Result_PDF_paths, "/tmp/results_recieved")  'this routine adds the .pdf extension
+         document_pagecount = ModUtil.Read_PDF_Page_Count(filename_for_all_the_results)
+         html_sections.add(modPrinting.Make_HTML_With_Heading_And_Blank_pages("Results Received", document_pagecount), html_sections.count)
+         pdf = New Collection  
+         pdf!name = "results received"
+         pdf!page_count = document_pagecount
+         pdf!filename = filename_for_all_the_results
+         pdf_sections.add(pdf, pdf_sections.count)   
+      End If
+   End If   
+   
+End
+
+Public Sub Include_Documents_Received_works()
+   '-------------------------------------------------------------------------------------------------------
+   'Add any letters or results received, either the sub-selection or the lot
+   'the documents_included collection which are those documents which have ended up on lvwIncludedDocuments
+   'only have the pk For a couple of reasons
+   '1) the drag command can only drag text (we have used str(documents.pk) or image
+   '2) the user can drop documents at random on the list, ie. unsorted, and can't tell from
+   '   the keys whether letter or documents so lvwIncludedDocuments_Refresh sorts this distinction out
+   'In this routine we pulll back the collection from the db (inefficient, ordered by date (inefficient)
+   'FIXME IAN DO SOMETHING CLEVERER
+   'if chkIncludeDocumentAuditTrail.value = True then each document has its audit trail included.
+   '--------------------------------------------------------------------------------------------------------
+   
+   Dim document As Collection
+   Dim document_pagecount As Integer
+   Dim results As New Collection
+   Dim letters As New Collection
+   Dim sql_letters As String
+   Dim sql_results As String
+   Dim temp_dir As String
+   Dim Letter_PDF_paths As Collection 
+   Dim Result_PDF_paths As Collection
+   Dim result As Collection
+   Dim letter As Collection
+   Dim pro As Process
+   Dim tempstring As String
+   Dim x As Integer
+   Dim filename_for_all_the_letters As String
+   Dim filename_for_all_the_results As String
+   Dim sHtml As String
+   Dim fn As String
    
    progressbar1.value = 0.0
    progressbar1.Refresh()
@@ -1131,519 +1367,6 @@ Public Sub Include_Documents_Received()
    
 End
 
-Public Sub Include_Documents_Received_copy()
-   '------------------------------------------------------------------------
-   'Add any letters or results received, either the sub-selection or the lot
-   'the documents_included collection only has the pk for a couple of reasons
-   '1) the drag command can only drag text (we have used str(documents.pk) or image
-   '2) the user can drop documents at random on the list, ie. unsorted, and can't tell from
-   '   the keys whether letter or documents so lvwIncludedDocuments_Refresh sorts this distinction out
-   'In this routine we pulll back the collection from the db (inefficient, ordered by date (inefficient)
-   'FIXME
-   'if chkIncludeDocumentAuditTrail.value = True then each document has its audit trail included.
-   '-------------------------------------------------------------------------
-   
-   Dim progressbar_interval As Float
-   
-   Dim document As Collection
-   Dim document_pagecount As Integer
-   Dim results As New Collection
-   Dim letters As New Collection
-   Dim sql_letters As String
-   Dim sql_results As String
-   Dim temp_dir As String
-   Dim Letter_PDF_paths As Collection 
-   Dim Result_PDF_paths As Collection
-   Dim result As Collection
-   Dim letter As Collection
-   Dim pro As Process
-   Dim tempstring As String
-   Dim x As Integer
-   Dim filename_for_all_the_letters As String
-   Dim filename_for_all_the_results As String
-   Dim sHtml As String
-   Dim fn As String
-   
-   '-------------------------------------------------------------------------
-   'if this list has contents, then user is selecting a partial document dump
-   '-------------------------------------------------------------------------
-   progressbar1.value = 0.0
-   progressbar1.Refresh()
-   If lvwIncludedDocuments.count Then  
-      lboxProgress.Add("Collating the subset of documents or results selected.....")
-      lblProgress.text = "Collating the subset of document...."
-      Wait
-      '------------------------------------------------------------------------------------
-      'When the document or result is dragged from the letter or results list
-      'the resultant order in our list is random, we want them sorted by letters or results
-      'fill the results and letters collections
-      '------------------------------------------------------------------------------------
-      For Each document In Included_Documents                                                  'included_documents is effectively random keys                                           
-         If Document!type = "letter" Then                                                      'get all documents which are letters
-            sql_letters &= "pk_document=" & document!fk_document & " OR "                      'these will be ordered by dates                  
-         End If   
-         If Document!type = "result" Then                                                      'get all documents which are results
-            sql_results &= "pk_document=" & document!fk_document & " OR "
-         End If   
-      Next
-      
-      If sql_letters <> "" Then                                                                'have letters? make a summary list
-         sql_letters = "Select * from documents.vwdocuments where " & Left(sql_letters, Len(sql_letters) - 4)
-         If chkOrderLettersBySender.value = True Then
-            sql_letters &= " ORDER BY originator, date_created"
-         Else
-            sql_letters &= " Order by date_created"
-         Endif
-         lboxProgress.Add("Generating list of selected letters received .....")
-         lblProgress.text = "Generating list of letters...."
-         Wait
-         Letters = modDBConnect.exec_query_collection(sql_letters)
-         shtml = modProgressNotes.Letters_Summary_Construct_html(letters)
-         html_sections.add(shtml, html_sections.count)
-         fn = modPrinting.Make_PDF_From_Html(shtml,,,, "incoming_letters_summary.pdf")         'executive decision, will always make summary
-         pdf = New Collection
-         pdf!name = "summary incoming letters"
-         pdf!page_count = ModUtil.Read_PDF_Page_Count(fn)
-         pdf!filename = fn
-         pdf_sections.Add(pdf, pdf_sections.count)   
-      End If      
-      If sql_results <> "" Then                                                               'have results ?make a summary list
-         sql_results = "Select * from documents.vwdocuments where " & Left(sql_results, Len(sql_results) - 4) 
-         If chkSortResultsByUserTag.value = True Then                                         'either ordered by like tags (not exact for actual loincs)
-            sql_results &= "ORDER BY tag_user, date_created"
-         Else
-            sql_results &= " Order by date_created"                                           'or by date they were created
-         End If  
-         lboxProgress.Add("Generating list of selected results received .....")               'executive decision, will always make summary
-         lblProgress.text = "Generating list  of results...."
-         Wait
-         results = modDBConnect.exec_query_collection(sql_results)
-         shtml = modProgressNotes.Results_Summary_Construct_HTML(Results, chkIncludeINR.Value)
-         html_sections.add(shtml, html_sections.count)
-         fn = modPrinting.Make_PDF_From_Html(shtml,,,, "incoming_results_summary.pdf")
-         pdf = New Collection
-         pdf!name = "summary incoming results"
-         pdf!page_count = ModUtil.Read_PDF_Page_Count(fn)
-         pdf!filename = fn
-         pdf_sections.Add(pdf, pdf_sections.count)   
-      End If    
-   Else
-      '----------------------------------------------------------------------------------------
-      'User has not selected a subset - check if user wanted to dump all letters or all results
-      'First, the letters
-      '----------------------------------------------------------------------------------------
-      If chkLettersReceivedSummary.value = True Then    
-         lboxProgress.Add("Generating list of all letters received .....")
-         lblProgress.text = "Generating list of letters...."
-         Wait
-         letters = currentconsult!letters_received_sorted_ascending
-         shtml = modProgressNotes.Letters_summary_construct_html(currentconsult!letters_received_sorted_ascending)
-         html_sections.add(shtml, html_sections.Count)
-         fn = modPrinting.Make_PDF_From_Html(shtml,,,, "incoming_letters_summary.pdf")
-         pdf = New Collection
-         pdf!name = "summary incoming letters"
-         pdf!page_count = ModUtil.Read_PDF_Page_Count(fn)
-         pdf!filename = fn
-         pdf_sections.Add(pdf, pdf_sections.count)   
-      End If   
-      '----------------------------------------------------------------------------
-      'Now the results these were not specifically added documents include them all
-      '----------------------------------------------------------------------------
-      If chkResultsReceivedSummary.value = True Then    
-         results = currentconsult!results_received
-         lboxProgress.Add("Generating list of all results received .....")
-         lblProgress.text = "Generating list of results...."
-         Wait
-         shtml = modProgressNotes.Results_Summary_Construct_HTML(Results, chkIncludeINR.Value)
-         html_sections.add(shtml, html_sections.count)
-         fn = modPrinting.Make_PDF_From_Html(shtml,,,, "incoming_results_summary.pdf")
-         pdf = New Collection
-         pdf!name = "summary incoming results"
-         pdf!page_count = ModUtil.Read_PDF_Page_Count(fn)
-         pdf!filename = fn
-         pdf_sections.Add(pdf, pdf_sections.count)   
-      End If   
-   End If  
-   '  If rbAllReferralLetters.value = True Or rbSelectedReferralLetters.value = True Then  
-   If letters.count Then                                                              'Now, back to letters, if we have some
-      Temp_dir = "/tmp/letters"                                                           'create temporary directory to join them all together in
-      Try Mkdir "/tmp/letters"
-      If Error Then
-         If Error.Code = const.File_ioError_DirectoryExists Then
-            pro = Shell "rm /tmp/letters/*.pdf" Wait For Write
-            Close #pro
-         Else
-            Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the letters.")
-            Return
-         End If
-      End If
-      Letter_PDF_paths = New Collection                                                   'collection to hold the letters including paths
-      '-------------------------------------------------------------------------
-      'Later on down this routine, all letters which are pdf's have to be joined
-      'to the pdf generated from the html for the coversheet, toc, etc etc
-      'Letters are added last in our single pdf so:
-      'Letter_PDF_path[0-n] = all the pdfs of the letters, which are either
-      ''native' pdfs on our system or pdf's generated from html recieved.
-      '-------------------------------------------------------------------------
-      x = 0
-      lblProgress.text = "Adding letters received...."
-      For Each letter In letters          
-         Tempstring = ""
-         Select Case File.Ext(letter!source_file)                                        'then  check file endings
-            Case "pdf"
-               If InStr(letter!source_file, "'") Then
-                  Message.title = "Bad File Name"
-                  Message.Warning("The file:" & letter!source_file & " has an illegal character in the name, i.e - a ' character\n\nThis cannot be processed and will be skipped.\n\nYou should get your system admin to fix this.")
-               Else
-                  Letter_PDF_paths.Add(modFiles.Get("document_archiving_directory", letter!source_file), x)
-               End If 
-            Case Else                                                                    'if not a pdf must be hl7 (fixme could bomb if an image
-               '------------------
-               'must be a hl7 file
-               '------------------
-               tempstring &= letter!html
-               progressbar1.value = x / letters.Count
-               progressbar1.Refresh()
-               Wait
-               Letter_PDF_paths.Add(modPrinting.Make_PDF_From_Html(letter!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/letters/"), x)
-         End Select
-         Inc x
-      Next
-   End If   
-   ' End If   
-   If Not IsNull(Letter_PDF_paths) Then                                                         'we have collection of letters to combine into one pdf
-      Try Kill "/tmp/letters_received.pdf"
-      filename_for_all_the_letters = modPrinting.Join_PDF(Letter_PDF_paths, "/tmp/letters_received") 'this routine adds the .pdf extension
-      document_pagecount = ModUtil.Read_PDF_Page_Count(filename_for_all_the_letters)           'get the total page count in this new pdf
-      html_sections.add(modPrinting.Make_HTML_With_Heading_And_Blank_pages("Letters Received", document_pagecount), html_sections.count)
-      pdf = New Collection  
-      pdf!name = "letters recieved"
-      pdf!page_count = document_pagecount
-      pdf!filename = filename_for_all_the_letters
-      pdf_sections.add(pdf, pdf_sections.count)   
-   End If
-   'If rbAllResultsReceived.value = True Or rbSelectedResultsReceived.value = True Then    
-   If results.count Then                                                              'Now, back to letters, if we have some
-      lblProgress.text = "Adding results received...."
-      Temp_dir = "/tmp/results"                                                           'create temporary directory to join them all together in
-      Try Mkdir "/tmp/results"
-      If Error Then
-         If Error.Code = const.File_ioError_DirectoryExists Then
-            pro = Shell "rm /tmp/results/*.pdf" Wait For Write
-            Close #pro
-         Else
-            Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the results.")
-         End If
-      End If
-      Result_PDF_paths = New Collection                                                   'collection to hold the letters including paths
-      '-------------------------------------------------------------------------
-      'Later on down this routine, all letters which are pdf's have to be joined
-      'to the pdf generated from the html for the coversheet, toc, etc etc
-      'Letters are added last in our single pdf so:
-      'Letter_PDF_path[0-n] = all the pdfs of the letters, which are either
-      ''native' pdfs on our system or pdf's generated from html recieved.
-      '-------------------------------------------------------------------------
-      x = 0
-      lblProgress.text = "Adding results received...."
-      For Each result In results
-         Tempstring = ""
-         Select Case File.Ext(result!source_file)                                        'then  check file endings
-            Case "pdf"
-               Result_PDF_paths.Add(modFiles.Get("document_archiving_directory", result!source_file), x)
-               Print modFiles.Get("document_archiving_directory", result!source_file)
-            Case Else                                                                    'if not a pdf must be hl7 (fixme could bomb if an image
-               '------------------
-               'must be a hl7 file
-               '------------------
-               progressbar1.value = x / results.Count
-               progressbar1.Refresh()
-               Wait
-               tempstring &= result!html
-               Result_PDF_paths.Add(modPrinting.Make_PDF_From_Html(result!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/results/"), x)
-         End Select
-         Inc x
-      Next
-   End If   
-   'End If   
-   If Not IsNull(Result_PDF_paths) Then
-      Try Kill "/tmp/results_recieved.pdf"
-      filename_for_all_the_results = modPrinting.Join_PDF(Result_PDF_paths, "/tmp/results_recieved")  'this routine adds the .pdf extension
-      document_pagecount = ModUtil.Read_PDF_Page_Count(filename_for_all_the_results)
-      html_sections.add(modPrinting.Make_HTML_With_Heading_And_Blank_pages("Results Received", document_pagecount), html_sections.count)
-      pdf = New Collection  
-      pdf!name = "results received"
-      pdf!page_count = document_pagecount
-      pdf!filename = filename_for_all_the_results
-      pdf_sections.add(pdf, pdf_sections.count)   
-   End If
-   If Sql_letters <> "" And sql_results <> "" Then
-      tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>Letters and Results Received</H3></DIV"
-   Else If sql_letters <> "" And sql_results = "" Then
-      tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>Letters Received</H3></DIV"
-   Else
-      If sql_results <> "" And sql_letters = "" Then
-         tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>Results Received</H3></DIV"
-      Endif
-   End If 
-   
-End
-
-Public Sub Include_Documents_Received_old()
-   '------------------------------------------------------------------------
-   'Add any letters or results received, either the sub-selection or the lot
-   'the documents_included collection only has the pk for a couple of reasons
-   '1) the drag command can only drag text (we have used str(documents.pk) or image
-   '2) the user can drop documents at random on the list, ie. unsorted, and can't tell from
-   '   the keys whether letter or documents so lvwIncludedDocuments_Refresh sorts this distinction out
-   'In this routine we pulll back the collection from the db (inefficient, ordered by date (inefficient)
-   'FIXME
-   'if chkIncludeDocumentAuditTrail.value = True then each document has its audit trail included.
-   '-------------------------------------------------------------------------
-   
-   Dim progressbar_interval As Float
-   
-   Dim document As Collection
-   Dim document_pagecount As Integer
-   Dim results As New Collection
-   Dim letters As New Collection
-   Dim sql_letters As String
-   Dim sql_results As String
-   Dim temp_dir As String
-   Dim Letter_PDF_paths As Collection 
-   Dim Result_PDF_paths As Collection
-   Dim result As Collection
-   Dim letter As Collection
-   Dim pro As Process
-   Dim tempstring As String
-   Dim x As Integer
-   Dim filename_for_all_the_letters As String
-   Dim filename_for_all_the_results As String
-   Dim sHtml As String
-   Dim fn As String
-   
-   '-------------------------------------------------------------------------
-   'if this list has contents, then user is selecting a partial document dump
-   '-------------------------------------------------------------------------
-   '  progressbar1.value = 0
-   progressbar1.Refresh()
-   If lvwIncludedDocuments.count Then  
-      lboxProgress.Add("Collating the subset of documents or results selected.....")
-      lblProgress.text = "Collating the subset of document...."
-      Wait
-      '------------------------------------------------------------------------------------
-      'When the document or result is dragged from the letter or results list
-      'the resultant order in our list is random, we want them sorted by letters or results
-      'fill the results and letters collections
-      '------------------------------------------------------------------------------------
-      For Each document In Included_Documents                                                  'included_documents is effectively random keys                                           
-         If Document!type = "letter" Then                                                      'get all documents which are letters
-            sql_letters &= "pk_document=" & document!fk_document & " OR "                      'these will be ordered by dates                  
-         End If   
-         If Document!type = "result" Then                                                      'get all documents which are results
-            sql_results &= "pk_document=" & document!fk_document & " OR "
-         End If   
-      Next
-      If sql_letters <> "" Then                                                                'have letters? make a summary list
-         sql_letters = "Select * from documents.vwdocuments where " & Left(sql_letters, Len(sql_letters) - 4)
-         If chkOrderLettersBySender.value = True Then
-            sql_letters &= " ORDER BY originator, date_created"
-         Else
-            sql_letters &= " Order by date_created"
-         Endif
-         lboxProgress.Add("Generating list of selected letters received .....")
-         lblProgress.text = "Generating list of letters...."
-         Wait
-         Letters = modDBConnect.exec_query_collection(sql_letters)
-         shtml = modProgressNotes.Letters_Summary_Construct_html(letters)
-         html_sections.add(shtml, html_sections.count)
-         fn = modPrinting.Make_PDF_From_Html(shtml,,,, "incoming_letters_summary.pdf")         'executive decision, will always make summary
-         pdf = New Collection
-         pdf!name = "summary incoming letters"
-         pdf!page_count = ModUtil.Read_PDF_Page_Count(fn)
-         pdf!filename = fn
-         pdf_sections.Add(pdf, pdf_sections.count)   
-      End If      
-      If sql_results <> "" Then                                                               'have results ?make a summary list
-         sql_results = "Select * from documents.vwdocuments where " & Left(sql_results, Len(sql_results) - 4) 
-         If chkSortResultsByUserTag.value = True Then                                         'either ordered by like tags (not exact for actual loincs)
-            sql_results &= "ORDER BY tag_user, date_created"
-         Else
-            sql_results &= " Order by date_created"                                           'or by date they were created
-         End If  
-         lboxProgress.Add("Generating list of selected results received .....")               'executive decision, will always make summary
-         lblProgress.text = "Generating list  of results...."
-         Wait
-         results = modDBConnect.exec_query_collection(sql_results)
-         shtml = modProgressNotes.Results_Summary_Construct_HTML(Results, chkIncludeINR.Value)
-         html_sections.add(shtml, html_sections.count)
-         fn = modPrinting.Make_PDF_From_Html(shtml,,,, "incoming_results_summary.pdf")
-         pdf = New Collection
-         pdf!name = "summary incoming results"
-         pdf!page_count = ModUtil.Read_PDF_Page_Count(fn)
-         pdf!filename = fn
-         pdf_sections.Add(pdf, pdf_sections.count)   
-      End If    
-   Else
-      '----------------------------------------------------------------------------------------
-      'User has not selected a subset - check if user wanted to dump all letters or all results
-      'First, the letters
-      '----------------------------------------------------------------------------------------
-      If chkLettersReceivedSummary.value = True Then    
-         lboxProgress.Add("Generating list of all letters received .....")
-         lblProgress.text = "Generating list of letters...."
-         Wait
-         letters = currentconsult!letters_received_sorted_ascending
-         shtml = modProgressNotes.Letters_summary_construct_html(currentconsult!letters_received_sorted_ascending)
-         html_sections.add(shtml, html_sections.Count)
-         fn = modPrinting.Make_PDF_From_Html(shtml,,,, "incoming_letters_summary.pdf")
-         pdf = New Collection
-         pdf!name = "summary incoming letters"
-         pdf!page_count = ModUtil.Read_PDF_Page_Count(fn)
-         pdf!filename = fn
-         pdf_sections.Add(pdf, pdf_sections.count)   
-      End If   
-      '----------------------------------------------------------------------------
-      'Now the results these were not specifically added documents include them all
-      '----------------------------------------------------------------------------
-      If chkResultsReceivedSummary.value = True Then    
-         results = currentconsult!results_received
-         lboxProgress.Add("Generating list of all results received .....")
-         lblProgress.text = "Generating list of results...."
-         Wait
-         shtml = modProgressNotes.Results_Summary_Construct_HTML(Results, chkIncludeINR.Value)
-         html_sections.add(shtml, html_sections.count)
-         fn = modPrinting.Make_PDF_From_Html(shtml,,,, "incoming_results_summary.pdf")
-         pdf = New Collection
-         pdf!name = "summary incoming results"
-         pdf!page_count = ModUtil.Read_PDF_Page_Count(fn)
-         pdf!filename = fn
-         pdf_sections.Add(pdf, pdf_sections.count)   
-      End If   
-   End If  
-   '  If rbAllReferralLetters.value = True Or rbSelectedReferralLetters.value = True Then  
-   If letters.count Then                                                              'Now, back to letters, if we have some
-      Temp_dir = "/tmp/letters"                                                           'create temporary directory to join them all together in
-      Try Mkdir "/tmp/letters"
-      If Error Then
-         If Error.Code = const.File_ioError_DirectoryExists Then
-            pro = Shell "rm /tmp/letters/*.pdf" Wait For Write
-            Close #pro
-         Else
-            Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the letters.")
-            Return
-         End If
-      End If
-      Letter_PDF_paths = New Collection                                                   'collection to hold the letters including paths
-      '-------------------------------------------------------------------------
-      'Later on down this routine, all letters which are pdf's have to be joined
-      'to the pdf generated from the html for the coversheet, toc, etc etc
-      'Letters are added last in our single pdf so:
-      'Letter_PDF_path[0-n] = all the pdfs of the letters, which are either
-      ''native' pdfs on our system or pdf's generated from html recieved.
-      '-------------------------------------------------------------------------
-      x = 0
-      lblProgress.text = "Adding letters received...."
-      For Each letter In letters          
-         Tempstring = ""
-         Select Case File.Ext(letter!source_file)                                        'then  check file endings
-            Case "pdf"
-               If InStr(letter!source_file, "'") Then
-                  Message.title = "Bad File Name"
-                  Message.Warning("The file:" & letter!source_file & " has an illegal character in the name, i.e - a ' character\n\nThis cannot be processed and will be skipped.\n\nYou should get your system admin to fix this.")
-               Else
-                  Letter_PDF_paths.Add(modFiles.Get("document_archiving_directory", letter!source_file), x)
-               End If 
-            Case Else                                                                    'if not a pdf must be hl7 (fixme could bomb if an image
-               '------------------
-               'must be a hl7 file
-               '------------------
-               tempstring &= letter!html
-               progressbar1.value = x / letters.Count
-               progressbar1.Refresh()
-               Wait
-               Letter_PDF_paths.Add(modPrinting.Make_PDF_From_Html(letter!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/letters/"), x)
-         End Select
-         Inc x
-      Next
-   End If   
-   ' End If   
-   If Not IsNull(Letter_PDF_paths) Then                                                         'we have collection of letters to combine into one pdf
-      Try Kill "/tmp/letters_received.pdf"
-      filename_for_all_the_letters = modPrinting.Join_PDF(Letter_PDF_paths, "/tmp/letters_received") 'this routine adds the .pdf extension
-      document_pagecount = ModUtil.Read_PDF_Page_Count(filename_for_all_the_letters)           'get the total page count in this new pdf
-      html_sections.add(modPrinting.Make_HTML_With_Heading_And_Blank_pages("Letters Received", document_pagecount), html_sections.count)
-      pdf = New Collection  
-      pdf!name = "letters recieved"
-      pdf!page_count = document_pagecount
-      pdf!filename = filename_for_all_the_letters
-      pdf_sections.add(pdf, pdf_sections.count)   
-   End If
-   'If rbAllResultsReceived.value = True Or rbSelectedResultsReceived.value = True Then    
-   If results.count Then                                                              'Now, back to letters, if we have some
-      lblProgress.text = "Adding results received...."
-      Temp_dir = "/tmp/results"                                                           'create temporary directory to join them all together in
-      Try Mkdir "/tmp/results"
-      If Error Then
-         If Error.Code = const.File_ioError_DirectoryExists Then
-            pro = Shell "rm /tmp/results/*.pdf" Wait For Write
-            Close #pro
-         Else
-            Message.Info("An error occurred code:" & Error.code & ".\n\nCannot process the results.")
-         End If
-      End If
-      Result_PDF_paths = New Collection                                                   'collection to hold the letters including paths
-      '-------------------------------------------------------------------------
-      'Later on down this routine, all letters which are pdf's have to be joined
-      'to the pdf generated from the html for the coversheet, toc, etc etc
-      'Letters are added last in our single pdf so:
-      'Letter_PDF_path[0-n] = all the pdfs of the letters, which are either
-      ''native' pdfs on our system or pdf's generated from html recieved.
-      '-------------------------------------------------------------------------
-      x = 0
-      lblProgress.text = "Adding results received...."
-      For Each result In results
-         Tempstring = ""
-         Select Case File.Ext(result!source_file)                                        'then  check file endings
-            Case "pdf"
-               Result_PDF_paths.Add(modFiles.Get("document_archiving_directory", result!source_file), x)
-               Print modFiles.Get("document_archiving_directory", result!source_file)
-            Case Else                                                                    'if not a pdf must be hl7 (fixme could bomb if an image
-               '------------------
-               'must be a hl7 file
-               '------------------
-               progressbar1.value = x / results.Count
-               progressbar1.Refresh()
-               Wait
-               tempstring &= result!html
-               Result_PDF_paths.Add(modPrinting.Make_PDF_From_Html(result!html, const.orientation_portrait, "", False, Str(x) & ".tmp.pdf", Progressbar1, "/tmp/results/"), x)
-         End Select
-         Inc x
-      Next
-   End If   
-   'End If   
-   If Not IsNull(Result_PDF_paths) Then
-      Try Kill "/tmp/results_recieved.pdf"
-      filename_for_all_the_results = modPrinting.Join_PDF(Result_PDF_paths, "/tmp/results_recieved")  'this routine adds the .pdf extension
-      document_pagecount = ModUtil.Read_PDF_Page_Count(filename_for_all_the_results)
-      html_sections.add(modPrinting.Make_HTML_With_Heading_And_Blank_pages("Results Received", document_pagecount), html_sections.count)
-      pdf = New Collection  
-      pdf!name = "results received"
-      pdf!page_count = document_pagecount
-      pdf!filename = filename_for_all_the_results
-      pdf_sections.add(pdf, pdf_sections.count)   
-   End If
-   If Sql_letters <> "" And sql_results <> "" Then
-      tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>Letters and Results Received</H3></DIV"
-   Else If sql_letters <> "" And sql_results = "" Then
-      tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>Letters Received</H3></DIV"
-   Else
-      If sql_results <> "" And sql_letters = "" Then
-         tempstring = "<HTML><body><DIV ALIGN=CENTRE><H3>Results Received</H3></DIV"
-      Endif
-   End If 
-   
-End
-
 Public Sub New_Entry()
    
    Reload()
@@ -1671,9 +1394,16 @@ Public Sub Create_Zip()
       Message.Info("An error occurred and the zip file was not created.")
       Return
    End If
+   If chkDumpIncomingResultsAsPDFs.value = True Then                        'patient also wants zipped results
+      lboxZipProgress.Add("zipping single result pdfs...")
+      cmd = "zip --junk-paths -P " & Trim(txtPassword2.text) & " " & export_dir &/ Patient_Details & "-results.zip " & "/tmp/results" &/ "*.pdf"  'e.g Peter_Rabbit_01-12-1900.zip" 
+      teConsole.RichText &= whoami_hosthame & cmd
+      Shell cmd To strOutput
+      teConsole.RichText &= whoami_hosthame & strOutput & "\n" 
+   End If
    cmd = "zip --junk-paths -P " & Trim(txtPassword2.text) & " " & export_dir &/ Patient_Details & ".zip " & export_dir &/ "* .pdf"  'e.g Peter_Rabbit_01-12-1900.zip"
-   lboxZipProgress.Add("Starting zip.....")
-   teConsole.RichText &= whoami_hosthame & "zip --junk-paths -P ***** " & export_dir &/ Patient_Details & ".zip " & export_dir &/ "* .pdf\n\n"
+   lboxZipProgress.Add("Starting to zip main file.....")
+   teConsole.RichText &= whoami_hosthame & "zip --junk-paths -P ***** " & export_dir &/ Patient_Details & ".zip " & export_dir &/ "*.pdf\n\n"
    Shell cmd To strOutput
    teConsole.RichText &= whoami_hosthame & strOutput & "\n" 
    lboxZipProgress.Add("removing remaining pdf's....") 
@@ -1681,6 +1411,9 @@ Public Sub Create_Zip()
    cmd = "rm " & export_dir &/ "*.pdf  2>&1"
    Shell cmd To strOutput
    teConsole.RichText &= whoami_hosthame & strOutput & " \n"   
+   cmd = "rm " & export_dir &/ "*results.zip  2>&1"
+   Shell cmd To strOutput
+   teConsole.RichText &= whoami_hosthame & strOutput & " \n" 
    tlFinalMessage.text = "<P><FONT COLOR='#000000'><FONT FACE='Verdana,sans-serif'><FONT SIZE=3>"
    "The patient's file has been exported and can be found in the directory "
    tlFinalMessage.text &= "'" & export_dir & "'."                       

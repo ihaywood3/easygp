@@ -15,6 +15,7 @@
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '-----------------------------------------------------------------------
+'Private MiniBMICalc As FBMICalc
 Private Templates As Collection
 Public bBold As Boolean
 Public cp1 As Integer
@@ -78,19 +79,24 @@ Public Sub Init(cons As CConsult, notes As String, Optional heading As String, O
    '-----------------------------------------------------------------------
    'If progress notes have already been written this consultation show them
    '-----------------------------------------------------------------------
+   
    Dim shortcut As Collection
    Dim dbshortcuts As Collection 'shortcuts loaded from database backend
+   
    Last_Key_Numeric = False
    ParentForm = F                            'Fixme, clumbsy but then accesses FprogressNotePage.Save() see spell checker this module
    currentconsult = cons
    tenotes.RichText = notes
    shortcuts = New Collection
-  ' dbshortcuts = modConsultDBI.Shortcuts_Available_get(modDBConnect.currentUser!fk_clinic)
+   ' dbshortcuts = modConsultDBI.Shortcuts_Available_get(modDBConnect.currentUser!fk_clinic)
    dbshortcuts = modConsultDBI.Shortcuts_For_User_get(modDBConnect.currentUser!fk_staff, True) 'True = included system shortcuts
    For Each shortcut In dbshortcuts
       Add_Shortcut(shortcut!expanded, shortcut!shortcut, False, False, False)
    Next
-
+   ' With MiniBMICalc = New FBMICalc(HBox_BMICalc)
+   '    .pnlBMICalculator.Visible = True 
+   '    .Vbox_EditArea.Visible = False   
+   ' End With
    With FTermSelector = New FCodedTermSelector(HBox_Coding)
       .Ignore = False
       .left = 10
@@ -170,12 +176,10 @@ Public Sub DataChange_Update_Indicators(flag As Integer)
    If flag Then
       Vbox_ConsultNotes.BackGround = Color.Red
       Vbox_ConsultNotes.Padding = 1
-      
       data_changed = True
    Else
       Vbox_ConsultNotes.BackGround = Color.Gray
       Vbox_ConsultNotes.Padding = 1
-      tlsuggestions.text = ""
       data_changed = False
    End If
    
@@ -196,9 +200,7 @@ Public Sub teNotes_Change()
    'this change event is called external to this form
    'see FInboxDocumentPage.Editor_Init()
    '-------------------------------------------------------------
-   ' textarea1.text = teNotes.richtext
    If Trim(teNotes.text) = "" Then
-      
       '--------------------------------------------------------------------
       'If there is not text, this dosn't mean that the data hasn't changed
       'e.g it could have already been saved, and just deleted = changed
@@ -343,7 +345,6 @@ Public Sub tenotes_KeyPress()
          Case Asc("w") 'WIPE fixme put in docs
             backup()
             teNotes.Clear()
-            tlsuggestions.Text = ""
          Case Asc("O") 'OOPS fixme implement me
          Case Asc("B")
             teNotes.Format.Font.Bold = Not teNotes.Format.Font.Bold
@@ -409,11 +410,12 @@ Public Sub teNotes_KeyRelease()
    Next
    
    If Not Last_Key_Numeric Then
-      notes = modMeasurementsDBI.ProgressNote_Parse_For_Measurement_Keypress(teNotes.RichText)
+      '  notes = modMeasurementsDBI.ProgressNote_Parse_For_Measurement_Keypress(teNotes.RichText, MiniBMICalc) ', pnlBMICalculator)
+      notes = modMeasurementsDBI.ProgressNote_Parse_For_Measurement_Keypress(teNotes.RichText, txtHeight, txtweight) ', pnlBMICalculator)
       If notes <> teNotes.RichText Then teNotes.RichText = notes ' only replace when there is a change
    Endif
- Catch 'the ReExp code above sometimes crashes Ian FIXME
-    Return 
+Catch 'the ReExp code above sometimes crashes Ian FIXME
+   Return 
    
 End
 
@@ -480,6 +482,8 @@ Public Sub cmbTemplates_Click()
       bExit = False
    Endif
    Return
+Catch
+   Return   'sometimes the message box due to delay in the gui can already be showing.
    
 End
 
@@ -501,6 +505,8 @@ Public Sub teNotes_Drop()
    Clipboard.Copy(pic.image)
    If Not InStr(tenotes.richtext, ".pic") Then tenotes.Insert(".pic") 'inserts pic at current cursor position
    Insert_Picture("clipboard")
+Catch
+   Return
    
 End
 
@@ -542,7 +548,7 @@ Public Sub Insert_Picture1()
    'User is inserting a picture from the draw editor back into the notes
    '--------------------------------------------------------------------
    'FIX ME, PUT IN APPROPRIATE HEIGHT.WIDTH FROM THE DRAW FORM.
-
+   
    Dim pic As Picture
    Dim sPicPath As String
    Dim tempFile As String
@@ -597,7 +603,7 @@ Public Sub Insert_Picture(sSource As String)
             If Error Then
                File.Save(tempfile, Clipboard.Paste())
             Else
-              NewImage.Save(Tempfile)
+               NewImage.Save(Tempfile)
             Endif
             Shell "convert " & Tempfile & " -bordercolor White -border 5x5 " & Tempfile Wait
             pic = Picture[Tempfile]
@@ -614,44 +620,29 @@ Public Sub Insert_Picture(sSource As String)
 End
 
 Public Sub CalcBMI()
-   '-------------------------------------------------------------------------
-   'Checks html to see if weight/height exist, if do > shows a calculated BMI
-   'and the weight range, and number of Kg's overweight
-   '-------------------------------------------------------------------------
+   'this code is duplicated all over the place FIXME.
    
-   Dim sHeight As String
-   Dim sWeight As String
-   Dim BMI As Float
-   Dim c As Collection
+   Dim Height As Variant
+   Dim weight As Variant
+   Dim lowest As Variant
+   Dim heighest As Variant
+   Dim sString As String
    
-   '---------------------------------------------------------------------------------
-   'Either, get height from these notes, or if none, check if we have an existing one
-   '---------------------------------------------------------------------------------
-   If InStr(Lower(teNotes.richtext), "height=") Then
-      CP1 = InStr(LCase(teNotes.RichText), "height=")
-      cp2 = InStr(teNotes.RichText, "cm", CP1)
-      sHeight = Mid(teNotes.RichText, cp1, Cp2 - cp1 - 1)
-      sheight = Right(sheight, Len(sheight) - InStr(sheight, "="))
-   Else
-      c = modMeasurementsDBI.Measurement_Get_Latest(currentconsult!measurements, const.Measurement_Height)
-      Try sHeight = c!data
-      If Not Error Then
-         teNotes.Richtext &= "Last measured height  on " & c!date & " was " & sHeight & "<BR>"
-      Endif
+   Height = Val(txtHeight.text) / 100
+   weight = Val(txtWeight.text)
+   txtBMI.text = Format((weight / (height ^ 2)), "##.#")
+   lowest = Format(20 * height ^ 2, "##.#")
+   heighest = Format(25 * height ^ 2, "###.#")
+   Try sString = Format(20 * (height ^ 2), "##.#") & " - " & Format(25 * (height ^ 2), "###.#") & "Kg"  'IDEAL
+   lblBMIComment.text = "Ideal Weight Range " & sString
+   If weight > 25 * height ^ 2 Then
+      lblBMIComment.text &= "Overweight "
+      lblBMIComment.text &= Format(weight - 25 * height ^ 2, "###.#")
+   Else If weight < 20 * height ^ 2 Then 
+      lblBMIComment.text &= "Underweight " 
+      lblBMIComment.text &= Format(20 * height ^ 2 - weight, "##.#")
    Endif
-   If InStr(Lower(teNotes.richtext), "weight=") Then
-      CP1 = InStr(LCase(teNotes.RichText), "weight=")
-      cp2 = InStr(teNotes.RichText, "kg", CP1)
-      sWeight = Mid(teNotes.RichText, cp1, Cp2 - cp1 - 1)
-      sweight = Right(sweight, Len(sweight) - InStr(sweight, "="))
-   End If
-   If sHeight <> "" And sWeight <> "" Then
-      BMI = Val(sweight) / ((sHeight / 100) * (sHeight / 100))
-      BMI = Val(Format(Str$(BMI), "##.#"))
-      teNotes.Insert("BMI=" & Str(BMI) & " \n(" & modDecisionSupport.BMI_DecSupp(sweight, sheight) & ")\n")
-   Else
-      '  message.Info("No height data recorded for this patient. To calculate the BMI automatically please enter eg h=180 and hit spacebar")
-   End If
+   ' 
    
 End
 
@@ -685,7 +676,7 @@ Public Sub mnuNotes_Click()
             Endif
          End With
       Case "save as shortcut"
-        FClinical.Editor_ShowPage_External("Short Cuts", "Short Cuts", tenotes.selection.Richtext)
+         FClinical.Editor_ShowPage_External("Short Cuts", "Short Cuts", tenotes.selection.Richtext)
       Case "help"
          modUtil.NotImplemented("Help for progress notes")
       Case "habits"
@@ -693,7 +684,6 @@ Public Sub mnuNotes_Click()
    End Select
    
 End
-
 
 Public Sub Habits_Insert()
    'Currently only inserts alcohol and smoking quick'n dirty paste from elsewhere (FIXME)
@@ -946,15 +936,16 @@ Public Sub Editor_Clear()
       Case 1
          bExit = True
          teNotes.Clear()
-         tlsuggestions.Text = ""
          bExit = False
          sWeight = ""
          sHeight = ""
          bFontBold = False
          cmbTemplates.index = -1
+         BMI_Clear
    End Select
 Catch
    Return
+   
 End
 
 Public Sub EditorButtons_Click()
@@ -964,6 +955,11 @@ Public Sub EditorButtons_Click()
    'User has clicked on one of the editor buttons
    '---------------------------------------------
    Select Case Last.tag
+      Case "bmi clear"
+         txtweight.text = ""
+         txtHeight.text = ""
+         txtBMI.text = ""
+         lblBMIComment.text = ""
       Case "table"
          ' 'insert a table
          ' teNotes.Insert(".!@.")
@@ -1026,6 +1022,7 @@ Public Function backup()
 End
 
 Public Sub teNotes_Cursor()
+   
    If bexit = True Then Return
    
    Object.Lock(btnBold)
@@ -1076,6 +1073,7 @@ Public Sub Auto_Text(shortcut As Collection)
    'Replace a text shortcut at the current cursor position with 
    'expanded user defined text. Silly hack abusing the clipboard
    'in order to allow inserting html tags
+   
    Dim curpos As Integer = tenotes.Pos
    
    tenotes.Select(curpos - Len(shortcut!abbrev), Len(shortcut!abbrev)) 
@@ -1084,6 +1082,7 @@ Public Sub Auto_Text(shortcut As Collection)
    Clipboard.Copy(shortcut!text, "text/html")
    tenotes.Paste()
    bexit = False
+   
 End
 
 Public Sub Auto_Text_Section(shortcut As Collection, re As Regexp)
@@ -1115,7 +1114,7 @@ Public Sub tbLoadFile_Click()
    'changed the file selector to any file
    '-----------------------------------------------------
    Print Dialog.Path
-  
+   
    Try FImageGet.Set_Image(Image.Load(Dialog.Path))
    If Not Error Then
       FImageGet.ShowModal()
@@ -1255,6 +1254,7 @@ Public Sub txtReasonEncounter_KeyPress()
    End Select
 Catch
    Return 
+   
 End
 
 Public Sub txtReasonEncounter_KeyRelease()
@@ -1301,7 +1301,7 @@ Public Sub VBox_Reason_For_Encounter_Leave()
    '-------------------------------------------------------  
    
    txtReasonEncounter.text = ""   'this also resets the list visible if not already and removes terms
-
+   
 End
 
 Public Sub Settings_Save()
@@ -1398,7 +1398,6 @@ Public Sub ProgessNote_Codes_Delete()
    ProgressNotesCodes = modUtil.Copy_Collection_Keyed_Sequentially(ProgressNotesCodes) 're-order the collection 
    cvwReasonForEncounter_ReLoad
    
-   
 End
 
 Public Sub mnuConsultCodes_Click()
@@ -1414,5 +1413,19 @@ Public Sub mnuConsultCodes_Click()
    
 End
 
+Public Sub BMI_Clear()
+   
+   txtHeight.text = ""
+   txtWeight.text = ""
+   txtBMI.text = ""
+   
+End
 
-
+Public Sub EditArea_TxtBox_Change()
+   
+   Select Case Last.tag
+      Case "height", "weight"
+         Try CalcBMI()
+   End Select
+   
+End

@@ -176,12 +176,91 @@ Public Function Pdf_Concat(pdfs As String[]) As String
      cmd &= " '" & s & "'"
   Next
   cmd &= " cat output " & stem & ".pdf\n"
+  Me.Send(cmd & "\n")
   Return stem & ".pdf"
    
 End
 
+Public Function RenameFile(fname1 As String, fname2 As String) As String
+   
+   fname2 = File.Dir(fname1) &/ fname2
+   Me.Send(Subst$("mv '&1' '&2'\n", fname1, fname2))
+   Return fname2
+   
+End
+
+' make an encrypted PDF from an ordinary one
+' pdf1: the PDF to encrypt
+' password: password to encrypt with
+' fancy_name: a filename to ue for the new file
+' delete_original: true if delete the original PDF
+' returns the full path of the new encrypted PDF
+
+Public Function Encrypt_PDF(pdf1 As String, password As String, Optional fancy_name As String, delete_original As Boolean = False) As String
+   Dim pdftk As String
+   Dim out_pdf As String
+   
+   pdftk = modUtil.FindProgram("pdftk", "pdftk")
+   out_pdf = Temp$() & "encrypted.pdf"
+   Me.Send(Subst$("&1 '&2' output '&3' user_pw '&4'\n", pdftk, pdf1, out_pdf, password))
+   If Not IsNull(fancy_name) Then
+      out_pdf = Me.RenameFile(out_pdf, fancy_name) 
+   Endif
+   If delete_original And If pdf1 <> out_pdf Then
+      Me.Kill(pdf1)
+   Endif
+   Return out_pdf
+   
+End
+
+Public Function Encrypt_Zip(the_files As String[], password As String) As String
+  
+  Dim zip_name As String 
+  Dim cmd As String
+  Dim i As String
+  
+  zip_name = Temp$() & "encrypted.zip"
+  cmd = modUtil.FindProgram("7z", "p7zip-full") 
+  cmd &= Subst$(" a -tzip '-p&1' '&2' ", password, zip_name)
+  For Each i In the_files
+     cmd &= Subst$("'&1' ", i)
+  Next
+  cmd &= "\n"
+  Me.Send(cmd)
+  Return zip_name
+End
 
 
 
+Public Function Send_Email_Encrypted_Pdf(pdf1 As String, addr As String, password As String)
+   
+  Dim pdf2 As String
+  
+  pdf2 = Me.Encrypt_PDF(pdf1, password) 
+  Me.Send_Email(addr, "Encrypted PDF", "This PDF is encrypted. The password will have/will be provided to you separately", [pdf2])
+  Me.Kill(pdf2)
+   
+End
+
+Public Function Send_Email_Encrypted_Zip(files As String[], addr As String, password As String)
+   
+  Dim zipfile As String
+  
+  zipfile = Me.Encrypt_Zip(files, password)
+  Me.Send_Email(addr, "Encrypted ZIP", "this zipfile is encrypted, you have/will be provided with an encryption key separately", [zipfile]) 
+  Me.Kill(zipfile)
+End
 
 
+Static Public Sub UnitTest(form_main As FMain)
+   
+  Dim p As CPrintTask
+  Dim f As String
+  
+  p = New CPrintTask
+  
+  f = p.Latex_To_Pdf(File.Load("/home/ian/example.tex"))
+  p.Send_Email_Encrypted_Zip([f], "rterry@internode.on.net", "guimaster")
+  p.Finish()
+  
+End

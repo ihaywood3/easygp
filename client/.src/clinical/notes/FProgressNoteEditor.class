@@ -16,6 +16,7 @@
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 '-----------------------------------------------------------------------
 'Private MiniBMICalc As FBMICalc
+Private CommonCodedTerms As Collection
 Private Templates As Collection
 Public bBold As Boolean
 Public cp1 As Integer
@@ -32,11 +33,11 @@ Private dxText As String
 Public CurAt As Integer
 Public Paragraph_At As Integer
 Public character_at As Integer
-Public iZoom As Integer
+Public iZoom As Integer  ' With MiniBMICalc = New FBMICalc(HBox_BMICalc)
+Private pk_template As Integer       'if non zero is key to clin_consult.lu_progressnote_templates
 Public default_Zoom As Integer
 Public check_state As Boolean
 Public FDraw As FDrawEditor
-Public FExcise As FProcedures
 Private hObs As Observer
 Public EmbeddedForm As Object
 Public sShortCutText As String
@@ -51,11 +52,12 @@ Private SpellChecker As ClskSpell
 Private bFontBold As Boolean
 Private FTermSelector As FCodedTermSelector
 Private obs As Observer
-Private ParentForm As FProgressNotePage
+Private ParentForm As FProgressNotePage  ' With MiniBMICalc = New FBMICalc(HBox_BMICalc)
 Private Last_Key_Numeric As Boolean
 Private ProgressNotesCodes As Collection
 Private fk_progressNote As Integer
 Private cvwReasonForEncounter_Key As Integer
+Private Form_Save_Template As FSaveNotesTemplate
 
 Public Sub Set_Copy_of_Editor_text(sText As String)
    
@@ -93,10 +95,7 @@ Public Sub Init(cons As CConsult, notes As String, Optional heading As String, O
    For Each shortcut In dbshortcuts
       Add_Shortcut(shortcut!expanded, shortcut!shortcut, False, False, False)
    Next
-   ' With MiniBMICalc = New FBMICalc(HBox_BMICalc)
-   '    .pnlBMICalculator.Visible = True 
-   '    .Vbox_EditArea.Visible = False   
-   ' End With
+   Common_Coded_Terms_Make_Buttons
    With FTermSelector = New FCodedTermSelector(HBox_Coding)
       .Ignore = False
       .left = 10
@@ -122,6 +121,25 @@ Public Sub Init(cons As CConsult, notes As String, Optional heading As String, O
       End With
       HBox_Templates.visible = False
    End If
+   
+End
+
+Private Sub Common_Coded_Terms_Make_Buttons()
+   
+   Dim term As Collection
+   Dim bt As ToolButton
+   
+   CommonCodedTerms = modCodingDBI.CommonestTermsGet()
+   For Each term In CommonCodedTerms
+      With bt = New ToolButton(pblCommonCodes)
+         .tag = term
+         .text = term!term
+         lblMeasure.text = .text & "  "
+         .border = True
+         .width = lblmeasure.width
+      End With
+      
+   Next
    
 End
 
@@ -463,7 +481,7 @@ Public Sub cmbTemplates_Click()
    '----------------------------------------------------------------------------------------
    
    If Len(tenotes.text) > 0 Then
-      message.title = "Using Templates"
+      message.title = "Progress Notes Templates"
       Select Case message.Question("Please select how you wish to apply this template", "Erase previous notes", "Add to end of existing notes", "Cancel")
          Case 1
             teNotes.Clear()
@@ -481,7 +499,7 @@ Public Sub cmbTemplates_Click()
       Try teNotes.RichText = templates[cmbTemplates.index]!template
       bExit = False
    Endif
-   Return
+   Try pk_template = templates[cmbTemplates.index]!pk
 Catch
    Return   'sometimes the message box due to delay in the gui can already be showing.
    
@@ -667,14 +685,11 @@ Public Sub mnuNotes_Click()
          Medications_Insert_List(Last.tag)
       Case "insert problem list"
          Problem_list_Insert()
-      Case "save as template"
-         With Save_Template = New FSaveNotesTemplate
-            .Title = "Save Template"
-            .Init(teNotes.RichText)
-            If .ShowModal() Then
-               Templates_ReLoad()
-            Endif
-         End With
+      Case "save new template"
+         pk_template = 0
+         Template_Save(modStrings.Capitalise_Words_In_String(Last.tag))
+      Case "save existing template"
+         Template_Save(modStrings.Capitalise_Words_In_String(Last.tag))
       Case "save as shortcut"
          FClinical.Editor_ShowPage_External("Short Cuts", "Short Cuts", tenotes.selection.Richtext)
       Case "help"
@@ -682,6 +697,28 @@ Public Sub mnuNotes_Click()
       Case "habits"
          Habits_Insert
    End Select
+   
+End
+
+Public Sub Template_Save(sTitle As String)
+   '---------------------------------------------------------------------------------------------------
+   'Saves new or existing template, if existing then the clin_referrals.lu_referral_letter_template.pk
+   'is passed to the popup dialog which saves the template
+   '---------------------------------------------------------------------------------------------------
+   
+   Dim template_name As String
+   
+   If InStr(sTitle, "Existing") Then
+      template_name = cmbTemplates.Text
+   End If   
+   With Form_Save_Template = New FSaveNotesTemplate
+      .Title = sTitle  
+      .Set_Embedded_In_Form("FProgressNoteEditor")
+      .Init(teNotes.RichText, pk_template, template_name)
+      If .ShowModal() Then
+         Templates_ReLoad()
+      Endif
+   End With
    
 End
 
@@ -882,7 +919,7 @@ Public Sub Medications_Insert_List(sMenuText As String)
 End
 
 Public Sub Templates_ReLoad()
-   
+   pk_template = 0
    templates = modUtil.LoadCombo(cmbTemplates, modProgressNotes.Templates_Get(), "name")
    cmbTemplates.index = -1
    
@@ -942,6 +979,8 @@ Public Sub Editor_Clear()
          bFontBold = False
          cmbTemplates.index = -1
          BMI_Clear
+         pk_template = 0
+         cmbTemplates.index = -1
    End Select
 Catch
    Return

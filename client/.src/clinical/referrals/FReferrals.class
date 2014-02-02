@@ -48,6 +48,7 @@ Private bKeyValid As Boolean                                'Used in EditAreaTex
 Private PersonWritingTo As Collection                       'Person for whom the letter is intended
 Private persons As Collection
 Private person As Collection
+Private templates As Collection
 Private Branches As Collection
 Private branch As Collection
 Private stored_state As String
@@ -81,6 +82,9 @@ Public Paragraph_At As Integer
 Public character_at As Integer
 Private priority_types As Collection                        'degree of priority or urgency
 Private ReferenceHboxForTopColumnview As Hbox               'used if split moves to reposition columnview
+Private Form_Save_Template As FSaveNotesTemplate
+Private pk_template As Integer                              'if not zero the primary key to clin_referrals.lu_referral_letter_templates                         
+
 Static Private form_referral As FReferrals
 
 Static Public Sub Refresh_Referrals_Written_Today()
@@ -100,7 +104,7 @@ Public Sub Referral_Edit_As_New(ref As Collection)
    'This is called from FClinical where the user wants to edit an old referral as a new referral
    'perhaps changing some details in the letter
    '--------------------------------------------------------------------------------------------
-
+   
    Referral_New()
    Try fk_person = ref!fk_person   
    Try fk_organisation = ref!fk_organisation
@@ -110,7 +114,7 @@ Public Sub Referral_Edit_As_New(ref As Collection)
    If Not IsNull(ref!wholename) Then
       txtName.text = ref!wholename
    Endif
-  
+   
    If Not IsNull(ref!organisation) Then
       txtOrganisation.text = ref!organisation
       txtBranch.text = ref!branch
@@ -172,7 +176,7 @@ Public Sub Init(cons As CConsult, Optional bEmbedded_Param As Boolean = False)
    If Not bEmbedded Then
       Dictaphone = New FDictaphone(Hbox_Dictaphone)
       Dictaphone.Visible = True
-      Dictaphone.Expand = True
+      '  Dictaphone.Expand = True
    Else
       ' we are embedded, so turn off inclusions and don't load the Dictaphone
       Hbox_Dictaphone.Visible = False
@@ -185,6 +189,8 @@ Public Sub Init(cons As CConsult, Optional bEmbedded_Param As Boolean = False)
    lblReferralsThisConsultation.Width = HSplit_Letter_Include.children[0].width
    lblDocumentsPrinted.width = HSplit_Letter_Include.children[1].width
    EditArea_Notify_DataChange(False)
+   cmbTemplates.index = -1
+   Templates_ReLoad()
    Reload()
    
 End
@@ -265,7 +271,7 @@ Public Sub Save(Optional bFinalised As Boolean = False, bSuppressSpellCheck As B
       If IsNull(dictation_fname) Then Error.Raise("null dictation")
    Else
       If Not bHaveSpellChecked And If Not bSuppressSpellCheck Then
-        Spelling_Check()
+         Spelling_Check()
       Endif
    Endif
    ' -----------------------------------------------------------
@@ -424,7 +430,11 @@ Public Sub LetterWriter_Click()
       Case "erase"
          Message.title = "Erase Letter"
          If Message.Question("Are you sure you want to erase the letter?", "Yes", "No") = 2 Then Return
+         bExit = True   
          teLetter.Clear()
+         EditArea_Notify_DataChange(False)
+         cmbTemplates.index = -1
+         bexit = False  
       Case "bold"
          teLetter.Format.Font.Bold = Last.Value
       Case "italic"
@@ -1103,6 +1113,9 @@ Public Sub teLetter_Change()
    If Len(teLetter.text) Then
       vbox_LetterText.Padding = 0
       vbox_LetterText.BackGround = Color.Default
+   Else
+    'EditArea_Notify_DataChange(False)
+     ' cmbTemplates.index = -1
    End If
    Object.Lock(teLetter)
    sText = teLetter.RichText
@@ -1212,6 +1225,7 @@ Public Sub EditArea_Clear()
    cProgressNote_Section = const.cSection_GeneralNotes
    fk_pasthistory = 0
    chkReprintInclusions.value = False
+   cmbTemplates.index = -1
    EditArea_Notify_DataChange(False)
    '----------------------------------------------------------------
    'create the popup health issues menu but default to general notes
@@ -1454,6 +1468,7 @@ Public Sub Referral_New()
    'the database table is 1-n
    '----------------------------------------
    pk_referral = -1
+   pk_template = 0        'default to not having a template loaded
    fk_organisation = 0    'used if letter to an organisation
    fk_branch = 0          'in which case it will have a branch even if head office
    fk_person = 0
@@ -2632,7 +2647,34 @@ Public Sub mnuLetter_Click()
          If Clipboard.type = Clipboard.Text Then
             teLetter.Insert(Clipboard.Text)
          End If
+      Case "save new template"
+         pk_template = 0
+         Template_Save(modStrings.Capitalise_Words_In_String(Last.tag))
+      Case "save existing template"
+         Template_Save(modStrings.Capitalise_Words_In_String(Last.tag))
    End Select
+   
+End
+
+Public Sub Template_Save(sTitle As String)
+   '---------------------------------------------------------------------------------------------------
+   'Saves new or existing template, if existing then the clin_referrals.lu_referral_letter_template.pk
+   'is passed to the popup dialog which saves the template
+   '---------------------------------------------------------------------------------------------------
+   
+   Dim template_name As String
+   
+   If InStr(sTitle, "Existing") Then
+      template_name = cmbTemplates.Text
+   End If   
+   With Form_Save_Template = New FSaveNotesTemplate
+      .Title = sTitle  
+      .Set_Embedded_In_Form("FReferrals")
+      .Init(teLetter.RichText, pk_template, template_name)
+      If .ShowModal() Then
+         Templates_ReLoad()
+      Endif
+   End With
    
 End
 
@@ -2929,6 +2971,46 @@ Static Public Sub UnitTest(form_main As FMain)
    
 End
 
+Public Sub Templates_ReLoad()
+   pk_template = 0
+   templates = modUtil.LoadCombo(cmbTemplates, modReferralsDBI.Templates_Get(), "name")
+   cmbTemplates.index = -1
+   
+End
+
+Public Sub cmbTemplates_Click()
+   '----------------------------------------------------------------------------------------
+   'If notes exist in the editor then give user option of over-writing or adding to the end
+   'or cancelling.
+   '----------------------------------------------------------------------------------------
+   
+   If Len(teLetter.text) > 0 Then
+      message.title = "Referral Letter Templates"
+      Select Case message.Question("Please select how you wish to use this letter template", "Erase existing letter", "Add to end of existing text", "Cancel")
+         Case 1
+            teLetter.Clear()
+            bexit = True
+            Try teLetter.RichText = templates[cmbTemplates.index]!template
+            bExit = False
+         Case 2
+            bexit = True
+            Try teLetter.RichText &= templates[cmbTemplates.index]!template
+            bExit = False
+      End Select
+   Else
+      teLetter.Clear()
+      bexit = True
+      Try teLetter.RichText = templates[cmbTemplates.index]!template
+      bExit = False
+   Endif
+   
+   Try pk_template = templates[cmbTemplates.index]!pk
+   
+Catch
+   Return   'sometimes the message box due to delay in the gui can already be showing.
+   
+End
+
 Public Sub Form_Close()
    
    If VBox_Letters.Padding Then
@@ -2941,4 +3023,3 @@ Public Sub Form_Close()
    End If
    
 End
-

@@ -1,4 +1,4 @@
-
+﻿
 -- new table to enable user to save templates in the letter writer
 
 CREATE TABLE clin_referrals.lu_referral_letter_templates
@@ -25,5 +25,5 @@ COMMENT ON TABLE clin_referrals.lu_referral_letter_templates   IS 'Table to hold
 COMMENT ON COLUMN clin_referrals.lu_referral_letter_templates.shared IS 'if true then anyone can access this template';
 COMMENT ON COLUMN clin_referrals.lu_referral_letter_templates.template IS 'html for a letter template';
 
-update db.lu_version set lu_minor=354;
+update db.lu_version set lu_minor=355;
 

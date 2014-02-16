@@ -24,10 +24,30 @@
 """A class for making Medicare Online billing submissions
 """
 
-import soap
-import xml.etree.ElementTree
+import json, subprocess, os.join
 
 class MedicareOnline:
-    def __init__(self, mo_path, mo_passphrase):
-        self.java_path = mo_path
-        self.mo_passphrase
+    def __init__(self, java_path, passphrase, sender, location_id):
+        self.passphrase = passphrase
+        self.java_path = java_path
+        self.sender = sender
+        self.location_id = location_id
+        
+    def  run(self, inpu):
+        inpu["passphrase"] = self.passphrase
+        inpu["location_id"] = self.location_id
+        inpu["sender"] = self.sender
+        p = subprocess.Popen(["/usr/bin/java","-classpath","mo/*:mo","-Djava.library.path=mo","medicare.MedicareAPI"],cwd=self.java_path,stdin=subprocess.PIPE,stderr=subprocess.PIPE,stdout=subprocess.PIPE,close_fds=True)
+        sout, serr = p.communicate(json.dumps(inpu))
+        if not serr is None and len(serr) > 2:
+            return {"status_code":9999,"status_text":serr}
+        try:
+            ret = json.loads(sout)
+        except:
+            return {"status_code":9999,"status_text":sout}
+        if ret["status_code"] <> 0:
+            codes = {r[0]:r[1] for r in csv.reader(open(os.path.join(self.java_path,'mo','codes.txt'), 'r'), delimiter='\t')}
+            ret["status_text"] = codes.get(ret["status_code"],"Unknown code %d" % ret["status_code"])
+        else:
+            ret["status_text"] = "success"
+        return ret

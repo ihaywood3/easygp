@@ -151,9 +151,15 @@ Options
         except ImportError:
             logging.notice("hi service driver not found")
         # Medicare Online
-        if os.path.exists(os.path.join(self.config["drivers"],'medicare.jar')):
+        if os.path.exists(os.path.join(self.config["drivers"],'mo','medicare.jar')):
             import mo # python component is FOSS so this will always work
-            mox = mo.MedicareOnline(self.config["drivers"],self.config.get("mo_passphrase",None))
+            if not self.config.has_key("mo_passphrase"):
+                print >>sys.stderr, "mo_passphrase must be set in config file"
+            if not self.config.has_key("mo_sender"):
+                print >>sys.stderr, "mo_sender must be set in config file"
+            if not self.config.has_key("mo_location_id"):
+                print >>sys.stderr, "mo_location_id must be set in config file"       
+            mox = mo.MedicareOnline(self.config["drivers"],self.config["mo_passphrase"],self.config.get["mo_sender"],self.config.get["mo_location_id"])
             self.evts.mo = mox
             # self.db.listen("invoice",self.evts.invoice)
         else:

@@ -410,7 +410,7 @@ COMMENT ON EXTENSION "uuid-ossp" IS 'generate universally unique identifiers (UU
 SET search_path = admin, pg_catalog;
 
 --
--- Name: check_dir(text); Type: FUNCTION; Schema: admin; Owner: ian
+-- Name: check_dir(text); Type: FUNCTION; Schema: admin; Owner: easygp
 --
 
 CREATE FUNCTION check_dir(dir1 text) RETURNS boolean
@@ -421,7 +421,7 @@ return os.access(dir1,os.R_OK|os.W_OK|os.X_OK)
 $$;
 
 
-ALTER FUNCTION admin.check_dir(dir1 text) OWNER TO ian;
+ALTER FUNCTION admin.check_dir(dir1 text) OWNER TO easygp;
 
 SET search_path = billing, pg_catalog;
 
@@ -786,7 +786,7 @@ COMMENT ON FUNCTION erase_data() IS '**********************
 SET search_path = clin_consult, pg_catalog;
 
 --
--- Name: notify_new_progress_note(); Type: FUNCTION; Schema: clin_consult; Owner: ian
+-- Name: notify_new_progress_note(); Type: FUNCTION; Schema: clin_consult; Owner: easygp
 --
 
 CREATE FUNCTION notify_new_progress_note() RETURNS trigger
@@ -802,10 +802,10 @@ END;
 $$;
 
 
-ALTER FUNCTION clin_consult.notify_new_progress_note() OWNER TO ian;
+ALTER FUNCTION clin_consult.notify_new_progress_note() OWNER TO easygp;
 
 --
--- Name: notify_new_progressnote(); Type: FUNCTION; Schema: clin_consult; Owner: ian
+-- Name: notify_new_progressnote(); Type: FUNCTION; Schema: clin_consult; Owner: easygp
 --
 
 CREATE FUNCTION notify_new_progressnote() RETURNS trigger
@@ -818,12 +818,12 @@ END;
 $$;
 
 
-ALTER FUNCTION clin_consult.notify_new_progressnote() OWNER TO ian;
+ALTER FUNCTION clin_consult.notify_new_progressnote() OWNER TO easygp;
 
 SET search_path = clin_prescribing, pg_catalog;
 
 --
--- Name: ctg(date); Type: FUNCTION; Schema: clin_prescribing; Owner: ian
+-- Name: ctg(date); Type: FUNCTION; Schema: clin_prescribing; Owner: easygp
 --
 
 CREATE FUNCTION ctg(script_date date) RETURNS character
@@ -843,7 +843,7 @@ return "{0:02}{1}".format(no_scripts,c)
 $$;
 
 
-ALTER FUNCTION clin_prescribing.ctg(script_date date) OWNER TO ian;
+ALTER FUNCTION clin_prescribing.ctg(script_date date) OWNER TO easygp;
 
 --
 -- Name: escript_notify(); Type: FUNCTION; Schema: clin_prescribing; Owner: easygp
@@ -1649,7 +1649,7 @@ ALTER SEQUENCE lu_clinical_modules_pk_seq OWNED BY lu_clinical_modules.pk;
 
 
 --
--- Name: lu_preferences_defaults; Type: TABLE; Schema: admin; Owner: ian; Tablespace: 
+-- Name: lu_preferences_defaults; Type: TABLE; Schema: admin; Owner: easygp; Tablespace: 
 --
 
 CREATE TABLE lu_preferences_defaults (
@@ -1660,10 +1660,10 @@ CREATE TABLE lu_preferences_defaults (
 );
 
 
-ALTER TABLE admin.lu_preferences_defaults OWNER TO ian;
+ALTER TABLE admin.lu_preferences_defaults OWNER TO easygp;
 
 --
--- Name: lu_preferences_defaults_pk_seq; Type: SEQUENCE; Schema: admin; Owner: ian
+-- Name: lu_preferences_defaults_pk_seq; Type: SEQUENCE; Schema: admin; Owner: easygp
 --
 
 CREATE SEQUENCE lu_preferences_defaults_pk_seq
@@ -1674,10 +1674,10 @@ CREATE SEQUENCE lu_preferences_defaults_pk_seq
     CACHE 1;
 
 
-ALTER TABLE admin.lu_preferences_defaults_pk_seq OWNER TO ian;
+ALTER TABLE admin.lu_preferences_defaults_pk_seq OWNER TO easygp;
 
 --
--- Name: lu_preferences_defaults_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: ian
+-- Name: lu_preferences_defaults_pk_seq; Type: SEQUENCE OWNED BY; Schema: admin; Owner: easygp
 --
 
 ALTER SEQUENCE lu_preferences_defaults_pk_seq OWNED BY lu_preferences_defaults.pk;
@@ -2145,14 +2145,14 @@ CREATE VIEW vwclinicrooms AS
 ALTER TABLE admin.vwclinicrooms OWNER TO easygp;
 
 --
--- Name: vwpreferences; Type: VIEW; Schema: admin; Owner: ian
+-- Name: vwpreferences; Type: VIEW; Schema: admin; Owner: easygp
 --
 
 CREATE VIEW vwpreferences AS
     SELECT COALESCE((g.pk + 10000), lpd.pk) AS pk_view, g.fk_clinic, g.fk_staff, COALESCE(g.name, lpd.name) AS name, COALESCE(g.value, lpd.value) AS value, (lpd.check_dir IS TRUE) AS check_dir, CASE WHEN (lpd.check_dir IS TRUE) THEN check_dir(COALESCE(g.value, lpd.value)) ELSE false END AS server_dir FROM (global_preferences g FULL JOIN lu_preferences_defaults lpd USING (name));
 
 
-ALTER TABLE admin.vwpreferences OWNER TO ian;
+ALTER TABLE admin.vwpreferences OWNER TO easygp;
 
 SET search_path = contacts, pg_catalog;
 
@@ -5716,6 +5716,7 @@ CREATE TABLE product (
     units_per_pack integer DEFAULT 1,
     old_original_pbs_name text,
     sct text,
+    extempore boolean DEFAULT false NOT NULL,
     CONSTRAINT sct_is_numeric CHECK ((sct ~ '^[0-9]+$'::text))
 );
 
@@ -13373,6 +13374,64 @@ ALTER SEQUENCE inclusions_pk_seq OWNED BY inclusions.pk;
 
 
 --
+-- Name: lu_referral_letter_templates; Type: TABLE; Schema: clin_referrals; Owner: easygp; Tablespace: 
+--
+
+CREATE TABLE lu_referral_letter_templates (
+    pk integer NOT NULL,
+    fk_staff integer NOT NULL,
+    shared boolean DEFAULT false,
+    name text NOT NULL,
+    deleted boolean DEFAULT false,
+    template text NOT NULL
+);
+
+
+ALTER TABLE clin_referrals.lu_referral_letter_templates OWNER TO easygp;
+
+--
+-- Name: TABLE lu_referral_letter_templates; Type: COMMENT; Schema: clin_referrals; Owner: easygp
+--
+
+COMMENT ON TABLE lu_referral_letter_templates IS 'Table to hold templates for referral letters';
+
+
+--
+-- Name: COLUMN lu_referral_letter_templates.shared; Type: COMMENT; Schema: clin_referrals; Owner: easygp
+--
+
+COMMENT ON COLUMN lu_referral_letter_templates.shared IS 'if true then anyone can access this template';
+
+
+--
+-- Name: COLUMN lu_referral_letter_templates.template; Type: COMMENT; Schema: clin_referrals; Owner: easygp
+--
+
+COMMENT ON COLUMN lu_referral_letter_templates.template IS 'html for a letter template';
+
+
+--
+-- Name: lu_referral_letter_templates_pk_seq; Type: SEQUENCE; Schema: clin_referrals; Owner: easygp
+--
+
+CREATE SEQUENCE lu_referral_letter_templates_pk_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE clin_referrals.lu_referral_letter_templates_pk_seq OWNER TO easygp;
+
+--
+-- Name: lu_referral_letter_templates_pk_seq; Type: SEQUENCE OWNED BY; Schema: clin_referrals; Owner: easygp
+--
+
+ALTER SEQUENCE lu_referral_letter_templates_pk_seq OWNED BY lu_referral_letter_templates.pk;
+
+
+--
 -- Name: lu_type; Type: TABLE; Schema: clin_referrals; Owner: easygp; Tablespace: 
 --
 
@@ -19630,6 +19689,16 @@ CREATE VIEW vwgeneric AS
 
 ALTER TABLE drugs.vwgeneric OWNER TO easygp;
 
+--
+-- Name: vwprescribeditems; Type: VIEW; Schema: drugs; Owner: easygp
+--
+
+CREATE VIEW vwprescribeditems AS
+    SELECT prescribed.pk AS pk_view, medications.pk AS fk_medication, medications.start_date, medications.last_date, medications.active, medications.deleted AS medication_deleted, medications.fk_generic_product, consult.pk AS fk_consult, consult.consult_date AS date_script_written, consult.fk_patient, product.generic, brand.brand, product.strength, brand.product_information_filename, form.form, brand.pk AS fk_brand, prescribed.pk AS fk_prescribed, prescribed.repeats, prescribed.date_on_script, prescribed.quantity, prescribed_for.prescribed_for, prescribed.deleted AS prescribed_deleted, prescribed.authority_reason, prescribed.print_reason, instructions.instruction, vwstaff.wholename AS staff_prescribed_wholename, vwstaff.title AS staff_prescribed_title, product.atccode, product.salt, product.fk_form, product.fk_schedule, product.salt_strength, prescribed.fk_instruction, prescribed.fk_prescribed_for, prescribed.pbscode, prescribed.fk_lu_pbs_script_type, prescribed.restriction_code, prescribed.fk_code, prescribed.reg24, lu_pbs_script_type.type AS pbs_script_type, restriction.streamlined, restriction.restriction, restriction.restriction_type, schedules.schedule, format_strength(product.strength) AS display_strength, format_amount(product.amount, product.amount_unit, product.units_per_pack) AS display_packsize, product.units_per_pack, prescribed.medisecure_uuid, prescribed.medisecure_barcode, prescribed.escript_uploaded, prescribed.script_number, product.sct AS product_sct, brand.sct AS brand_sct, product.amount, product.amount_unit, prescribed.brand_substitution, brand.fk_company, product.original_pbs_name, prescribed.authority_script_number, prescribed.authority_approval_number, prescribed.authority_post_to_patient, prescribed.concession_details, prescribed.fk_progress_note, prescribed.printed, prescribed.latex, prescribed.ctg, product.extempore FROM (((((((((((clin_consult.consult JOIN admin.vwstaff ON ((consult.fk_staff = vwstaff.fk_staff))) JOIN clin_prescribing.prescribed ON ((consult.pk = prescribed.fk_consult))) JOIN clin_prescribing.medications medications ON ((prescribed.fk_medication = medications.pk))) JOIN clin_prescribing.prescribed_for ON ((prescribed.fk_prescribed_for = prescribed_for.pk))) JOIN clin_prescribing.instructions ON ((prescribed.fk_instruction = instructions.pk))) JOIN clin_prescribing.lu_pbs_script_type ON ((prescribed.fk_lu_pbs_script_type = lu_pbs_script_type.pk))) LEFT JOIN restriction ON (((prescribed.pbscode = (restriction.pbscode)::text) AND (prescribed.restriction_code = (restriction.code)::text)))) LEFT JOIN brand ON ((prescribed.fk_brand = brand.pk))) JOIN product ON ((medications.fk_generic_product = product.pk))) LEFT JOIN schedules ON ((product.fk_schedule = schedules.pk))) JOIN form ON ((product.fk_form = form.pk)));
+
+
+ALTER TABLE drugs.vwprescribeditems OWNER TO easygp;
+
 SET search_path = import_export, pg_catalog;
 
 --
@@ -20207,7 +20276,7 @@ ALTER TABLE ONLY lu_clinical_modules ALTER COLUMN pk SET DEFAULT nextval('lu_cli
 
 
 --
--- Name: pk; Type: DEFAULT; Schema: admin; Owner: ian
+-- Name: pk; Type: DEFAULT; Schema: admin; Owner: easygp
 --
 
 ALTER TABLE ONLY lu_preferences_defaults ALTER COLUMN pk SET DEFAULT nextval('lu_preferences_defaults_pk_seq'::regclass);
@@ -21329,6 +21398,13 @@ ALTER TABLE ONLY inclusions ALTER COLUMN pk SET DEFAULT nextval('inclusions_pk_s
 -- Name: pk; Type: DEFAULT; Schema: clin_referrals; Owner: easygp
 --
 
+ALTER TABLE ONLY lu_referral_letter_templates ALTER COLUMN pk SET DEFAULT nextval('lu_referral_letter_templates_pk_seq'::regclass);
+
+
+--
+-- Name: pk; Type: DEFAULT; Schema: clin_referrals; Owner: easygp
+--
+
 ALTER TABLE ONLY lu_type ALTER COLUMN pk SET DEFAULT nextval('lu_type_pk_seq'::regclass);
 
 
@@ -22346,7 +22422,7 @@ ALTER TABLE ONLY lu_clinical_modules
 
 
 --
--- Name: lu_preferences_defaults_name_key; Type: CONSTRAINT; Schema: admin; Owner: ian; Tablespace: 
+-- Name: lu_preferences_defaults_name_key; Type: CONSTRAINT; Schema: admin; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY lu_preferences_defaults
@@ -22354,7 +22430,7 @@ ALTER TABLE ONLY lu_preferences_defaults
 
 
 --
--- Name: lu_preferences_defaults_pkey; Type: CONSTRAINT; Schema: admin; Owner: ian; Tablespace: 
+-- Name: lu_preferences_defaults_pkey; Type: CONSTRAINT; Schema: admin; Owner: easygp; Tablespace: 
 --
 
 ALTER TABLE ONLY lu_preferences_defaults
@@ -23545,6 +23621,14 @@ SET search_path = clin_referrals, pg_catalog;
 
 ALTER TABLE ONLY inclusions
     ADD CONSTRAINT inclusions_pkey PRIMARY KEY (pk);
+
+
+--
+-- Name: lu_referral_letter_templates_pkey; Type: CONSTRAINT; Schema: clin_referrals; Owner: easygp; Tablespace: 
+--
+
+ALTER TABLE ONLY lu_referral_letter_templates
+    ADD CONSTRAINT lu_referral_letter_templates_pkey PRIMARY KEY (pk);
 
 
 --
@@ -25458,6 +25542,30 @@ ALTER TABLE ONLY pregnancies
 SET search_path = clin_prescribing, pg_catalog;
 
 --
+-- Name: chk_drugs_brand_pk; Type: FK CONSTRAINT; Schema: clin_prescribing; Owner: easygp
+--
+
+ALTER TABLE ONLY prescribed
+    ADD CONSTRAINT chk_drugs_brand_pk FOREIGN KEY (fk_brand) REFERENCES drugs.brand(pk);
+
+
+--
+-- Name: chk_drugs_product_pk; Type: FK CONSTRAINT; Schema: clin_prescribing; Owner: easygp
+--
+
+ALTER TABLE ONLY medications
+    ADD CONSTRAINT chk_drugs_product_pk FOREIGN KEY (fk_generic_product) REFERENCES drugs.product(pk);
+
+
+--
+-- Name: chk_med_pk; Type: FK CONSTRAINT; Schema: clin_prescribing; Owner: easygp
+--
+
+ALTER TABLE ONLY prescribed
+    ADD CONSTRAINT chk_med_pk FOREIGN KEY (fk_medication) REFERENCES medications(pk);
+
+
+--
 -- Name: fk_consult_fkey; Type: FK CONSTRAINT; Schema: clin_prescribing; Owner: easygp
 --
 
@@ -25501,6 +25609,14 @@ SET search_path = clin_referrals, pg_catalog;
 
 ALTER TABLE ONLY referrals
     ADD CONSTRAINT fk_consult_fkey FOREIGN KEY (fk_consult) REFERENCES clin_consult.consult(pk);
+
+
+--
+-- Name: lu_referral_letter_templates_fk_staff_fkey; Type: FK CONSTRAINT; Schema: clin_referrals; Owner: easygp
+--
+
+ALTER TABLE ONLY lu_referral_letter_templates
+    ADD CONSTRAINT lu_referral_letter_templates_fk_staff_fkey FOREIGN KEY (fk_staff) REFERENCES admin.staff(pk);
 
 
 SET search_path = clin_requests, pg_catalog;
@@ -26301,12 +26417,12 @@ GRANT USAGE ON SCHEMA research TO staff;
 SET search_path = admin, pg_catalog;
 
 --
--- Name: check_dir(text); Type: ACL; Schema: admin; Owner: ian
+-- Name: check_dir(text); Type: ACL; Schema: admin; Owner: easygp
 --
 
 REVOKE ALL ON FUNCTION check_dir(dir1 text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION check_dir(dir1 text) FROM ian;
-GRANT ALL ON FUNCTION check_dir(dir1 text) TO ian;
+REVOKE ALL ON FUNCTION check_dir(dir1 text) FROM easygp;
+GRANT ALL ON FUNCTION check_dir(dir1 text) TO easygp;
 GRANT ALL ON FUNCTION check_dir(dir1 text) TO PUBLIC;
 GRANT ALL ON FUNCTION check_dir(dir1 text) TO staff;
 
@@ -26525,6 +26641,16 @@ REVOKE ALL ON TABLE lu_clinical_modules FROM PUBLIC;
 REVOKE ALL ON TABLE lu_clinical_modules FROM easygp;
 GRANT ALL ON TABLE lu_clinical_modules TO easygp;
 GRANT ALL ON TABLE lu_clinical_modules TO staff;
+
+
+--
+-- Name: lu_preferences_defaults; Type: ACL; Schema: admin; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_preferences_defaults FROM PUBLIC;
+REVOKE ALL ON TABLE lu_preferences_defaults FROM easygp;
+GRANT ALL ON TABLE lu_preferences_defaults TO easygp;
+GRANT ALL ON TABLE lu_preferences_defaults TO staff;
 
 
 --
@@ -30633,6 +30759,16 @@ SET search_path = clin_referrals, pg_catalog;
 REVOKE ALL ON TABLE inclusions FROM PUBLIC;
 REVOKE ALL ON TABLE inclusions FROM easygp;
 GRANT ALL ON TABLE inclusions TO easygp;
+
+
+--
+-- Name: lu_referral_letter_templates; Type: ACL; Schema: clin_referrals; Owner: easygp
+--
+
+REVOKE ALL ON TABLE lu_referral_letter_templates FROM PUBLIC;
+REVOKE ALL ON TABLE lu_referral_letter_templates FROM easygp;
+GRANT ALL ON TABLE lu_referral_letter_templates TO easygp;
+GRANT ALL ON TABLE lu_referral_letter_templates TO staff;
 
 
 --

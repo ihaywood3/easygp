@@ -2283,7 +2283,7 @@ CREATE TABLE images (
     pk integer NOT NULL,
     image bytea,
     deleted boolean DEFAULT false,
-    fk_consult uuid,
+    fk_consult integer,
     md5sum text,
     tag text
 );
@@ -3834,7 +3834,7 @@ SET search_path = clin_consult, pg_catalog;
 --
 
 CREATE TABLE consult (
-    pk uuid NOT NULL,
+    pk integer NOT NULL,
     consult_date timestamp without time zone NOT NULL,
     fk_patient integer NOT NULL,
     fk_staff integer NOT NULL,
@@ -3865,7 +3865,7 @@ SET search_path = chronic_disease_management, pg_catalog;
 
 CREATE TABLE diabetes_annual_cycle_of_care (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     date_completed date,
     hba1c_date date,
     hba1c_date_due date,
@@ -4071,7 +4071,7 @@ ALTER SEQUENCE epc_link_provider_form_pk_seq OWNED BY epc_link_provider_form.pk;
 
 CREATE TABLE epc_referral (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     has_gp_management_plan_and_team_care_arrangments boolean DEFAULT true,
     has_aged_care_multidisciplinary_plan boolean DEFAULT false,
     fk_team_care_arrangement integer NOT NULL,
@@ -4364,7 +4364,7 @@ ALTER TABLE clin_consult.lu_progressnotes_sections OWNER TO easygp;
 
 CREATE TABLE progressnotes (
     pk integer NOT NULL,
-    fk_consult uuid,
+    fk_consult integer,
     notes text,
     fk_section integer,
     fk_code bigint,
@@ -5050,7 +5050,7 @@ ALTER SEQUENCE task_component_notes_pk_seq OWNED BY task_component_notes.pk;
 CREATE TABLE task_components (
     pk integer NOT NULL,
     fk_task integer NOT NULL,
-    fk_consult uuid,
+    fk_consult integer,
     date_logged date,
     fk_staff_allocated integer,
     fk_staff_completed integer,
@@ -5360,7 +5360,7 @@ SET search_path = clin_allergies, pg_catalog;
 
 CREATE TABLE allergies (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     fk_brand uuid,
     fk_product uuid,
     allergen text,
@@ -5895,7 +5895,7 @@ ALTER SEQUENCE careplan_pages_pk_seq OWNED BY careplan_pages.pk;
 
 CREATE TABLE careplans (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL
+    fk_consult integer NOT NULL
 );
 
 
@@ -6617,7 +6617,7 @@ ALTER SEQUENCE lu_illness_temporality_pk_seq OWNED BY lu_illness_temporality.pk;
 
 CREATE TABLE medical_certificates (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     reason text,
     fk_coding_system integer,
     fk_code text,
@@ -7528,7 +7528,7 @@ SET search_path = clin_referrals, pg_catalog;
 
 CREATE TABLE referrals (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     date_referral date NOT NULL,
     fk_branch integer,
     fk_employee integer,
@@ -7865,7 +7865,7 @@ CREATE TABLE family_conditions (
     cause_of_death boolean DEFAULT false,
     notes text,
     deleted boolean DEFAULT false,
-    fk_consult uuid,
+    fk_consult integer,
     contributed_to_death boolean,
     fk_code text,
     diagnosis_certain boolean DEFAULT true,
@@ -7961,7 +7961,7 @@ CREATE TABLE family_members (
     fk_occupation integer,
     fk_country_birth character(2),
     deleted boolean DEFAULT false,
-    fk_consult uuid
+    fk_consult integer
 );
 
 
@@ -8192,7 +8192,7 @@ ALTER SEQUENCE lu_exposures_pk_seq OWNED BY lu_exposures.pk;
 
 CREATE TABLE occupational_history (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     fk_occupation integer NOT NULL,
     from_age integer,
     to_age integer,
@@ -8369,7 +8369,7 @@ ALTER SEQUENCE occupations_exposures_pk_seq OWNED BY occupations_exposures.pk;
 
 CREATE TABLE past_history (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     age_onset integer NOT NULL,
     age_onset_units integer NOT NULL,
     description text NOT NULL,
@@ -8452,7 +8452,7 @@ ALTER TABLE clin_history.pk_view_familyhistory OWNER TO easygp;
 
 CREATE TABLE recreational_drugs (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     fk_lu_recreational_drug integer NOT NULL,
     age_started integer,
     age_last_used integer,
@@ -8583,7 +8583,7 @@ ALTER SEQUENCE recreational_drugs_pk_seq OWNED BY recreational_drugs.pk;
 
 CREATE TABLE social_history (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     history text,
     deleted boolean DEFAULT false,
     fk_responsible_person integer,
@@ -8896,7 +8896,7 @@ COMMENT ON COLUMN lu_templates.fk_lu_appointment_length IS 'key to common.lu_app
 
 CREATE TABLE recalls (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     due date NOT NULL,
     fk_reason integer NOT NULL,
     fk_contact_method integer NOT NULL,
@@ -9425,7 +9425,7 @@ SET search_path = clin_measurements, pg_catalog;
 
 CREATE TABLE inr_dose_management (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     fk_progressnote integer,
     dose_advised text NOT NULL,
     date_recheck date NOT NULL,
@@ -9506,7 +9506,7 @@ ALTER SEQUENCE inr_dose_management_pk_seq OWNED BY inr_dose_management.pk;
 CREATE TABLE inr_plan (
     pk integer NOT NULL,
     fk_lu_reason_anticoagulant_use integer,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     fk_progressnote integer,
     inr_target_range text NOT NULL,
     comment text,
@@ -9750,7 +9750,7 @@ ALTER SEQUENCE lu_type_pk_seq OWNED BY lu_type.pk;
 
 CREATE TABLE measurements (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     time_noted time without time zone,
     fk_type integer NOT NULL,
     measurement numeric,
@@ -10490,7 +10490,7 @@ ALTER SEQUENCE lu_risk_to_others_pk_seq OWNED BY lu_risk_to_others.pk;
 
 CREATE TABLE mentalhealth_plan (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     fk_pasthistory integer,
     diagnosis text NOT NULL,
     fk_coding_system integer,
@@ -10686,7 +10686,7 @@ SET search_path = clin_pregnancy, pg_catalog;
 
 CREATE TABLE ante_natal_care_summary (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     fk_progressnote integer NOT NULL,
     lmp date,
     lmp_normal boolean DEFAULT true,
@@ -10834,7 +10834,7 @@ ALTER SEQUENCE ante_natal_care_summary_pk_seq OWNED BY ante_natal_care_summary.p
 
 CREATE TABLE ante_natal_visits (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     fk_pregnancy integer NOT NULL,
     visit_date date NOT NULL,
     duration_weeks text NOT NULL,
@@ -11116,7 +11116,7 @@ ALTER SEQUENCE lu_presentations_pk_seq OWNED BY lu_presentations.pk;
 
 CREATE TABLE pregnancies (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     lmp text,
     edc date,
     date_gtt date,
@@ -11792,7 +11792,7 @@ ALTER SEQUENCE medications_pk_seq OWNED BY medications.pk;
 
 CREATE TABLE prescribed (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     fk_medication integer NOT NULL,
     fk_brand uuid,
     date_on_script date NOT NULL,
@@ -12591,7 +12591,7 @@ ALTER SEQUENCE lu_suture_type_pk_seq OWNED BY lu_suture_type.pk;
 
 CREATE TABLE skin_procedures (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     date date NOT NULL,
     explained_procedure boolean DEFAULT false,
     obtained_consent boolean DEFAULT false,
@@ -12926,7 +12926,7 @@ SET search_path = clin_requests, pg_catalog;
 
 CREATE TABLE forms (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     date date,
     fk_request_provider integer NOT NULL,
     fk_lu_request_type integer NOT NULL,
@@ -14882,7 +14882,7 @@ CREATE TABLE vaccinations (
     notes text,
     not_given boolean DEFAULT false,
     deleted boolean DEFAULT false,
-    fk_consult uuid NOT NULL
+    fk_consult integer NOT NULL
 );
 
 
@@ -15075,7 +15075,7 @@ SET search_path = clin_workcover, pg_catalog;
 
 CREATE TABLE claims (
     pk integer NOT NULL,
-    fk_consult uuid NOT NULL,
+    fk_consult integer NOT NULL,
     claim_number text,
     fk_occupation integer,
     fk_branch integer,
@@ -15318,7 +15318,7 @@ CREATE TABLE visits (
     fitness_unfit_from date,
     fitness_unfit_to date,
     fitness_perm_mod_duties_from date,
-    fk_consult uuid,
+    fk_consult integer,
     fk_progressnote integer,
     fk_coding_system integer,
     capabilities text,
@@ -20808,7 +20808,7 @@ SET search_path = clin_consult, pg_catalog;
 -- Name: pk; Type: DEFAULT; Schema: clin_consult; Owner: easygp
 --
 
-ALTER TABLE ONLY consult ALTER COLUMN pk SET DEFAULT public.uuid_generate_v5(public.uuid_ns_url(), ('http://haywood.id.au/clin_consult.consult/'::text || nextval('consult_pk_seq'::regclass)));
+ALTER TABLE ONLY consult ALTER COLUMN pk SET DEFAULT nextval('consult_pk_seq'::regclass);
 
 
 --

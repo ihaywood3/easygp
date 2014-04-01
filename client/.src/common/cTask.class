@@ -34,6 +34,7 @@ Private error_text As String
 Private status As Byte
 Private destdir As String
 Private showing_error As Boolean
+Private crashfile As String
 
 Public Sub _new()
   final_audit_action = "no-audit"
@@ -48,6 +49,14 @@ Public Sub Init(cmd2 As String[], Optional destdir As String)
   Log.DebugMsg(Subst$("executing task \"&1\" object &2", cmd.Join(" "), Str$(Me)))
   pro = Exec cmd With ["PWD=" & destdir] For Read Write As "Process"
   showing_error = False
+  crashfile = Null
+End
+
+' if the task crashes, try to read in this file and log it
+Public Sub SetCrashFile(s As String)
+   
+  crashfile = s 
+   
 End
 
 
@@ -72,6 +81,7 @@ Public Sub SetAudit(consult As CConsult, audit_action As String, tbl As String, 
    final_audit_action = audit_action
    If status = 1 Then ' program has already run
       Run_Audits()
+      final_audit_action = "no-action"
    Endif
 End
 
@@ -112,16 +122,18 @@ End
 Public Sub Process_Error(err As String)
    
   Dim re As Regexp
-  
    re = New Regexp(err, "^\\[SSL Cipher .*\\]$") ' unfortunately ftp-ssl abuses it's stderr privileges
    If re.Offset = -1 Then
+      status = 4
       Log.ErrorMsg(Subst$("task object &1 returned stderr:\"&2\"", Str$(Me), err))
+      If Not IsNull(crashfile) And If Exist(crashfile) And If Access(crashfile, gb.Read) Then
+         Log.ErrorMsg(Subst$("crashfile &1 found and contains: &2", crashfile, File.Load(crashfile)))
+      Endif
       If Not showing_error Then
          showing_error = True
          Message.Error(err, "OK")
          showing_error = False
       Endif 
-      status = 4
    Endif
    
 End
@@ -130,12 +142,18 @@ Public Sub Process_Kill()
    Dim re As Regexp
    Dim has_error As Boolean = False
    
-   Log.DebugMsg(Subst$("task &1 triggered Process_Kill", Str$(Me)))
+   Log.DebugMsg(Subst$("task &1 triggered Process_Kill. Process.Value =  &2", Str$(Me), pro.Value))
    If pro.Value <> 0 Then
       If status <> 4 Then ' we haven't already reported it
         status = 4
-        Message.Error("Process returned error value " & pro.Value)
-        Log.ErrorMsg("process returned error value " & pro.Value)
+        If Not IsNull(crashfile) And If Exist(crashfile) And If Access(crashfile, gb.Read) Then
+           Log.ErrorMsg(Subst$("crashfile &1 found and contains: &2", crashfile, File.Load(crashfile)))
+        Endif
+        If Not showing_error Then 
+           showing_error = True
+           Message.Error("Process returned error value " & pro.Value)
+           showing_error = False
+        Endif
       Endif
    Endif
    If status = 0 Then

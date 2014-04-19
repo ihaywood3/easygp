@@ -226,9 +226,12 @@ where c.pk = %s and c.fk_staff = s.fk_staff"""
         cur.close()
         self.commit()
 
-    def get_patient(self,fk_patient):
-        return self.query("select * from contacts.vwpatients where fk_patient=%s", (fk_patient,))[0]
-    
+    def get_patient(self,fk_patient=None,fk_person=None):
+        if fk_person is None:
+            return self.query("select * from contacts.vwpatients where fk_patient=%s", (fk_patient,))[0]
+        else:
+            return self.query("select * from contacts.vwpatients where fk_person=%s", (fk_person,))[0]
+
     def get_person_comms(self,fk_person):
         return self.query("select * from contacts.vwpersonscomms where fk_person=%s and confidential is not true",(fk_person,))
 
@@ -328,6 +331,112 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
         c.close()
         self.commit()
         return newoid
+
+    def get_bb_invoices_to_upload(self):
+        """return bulk-billing invoices that haven't been grouped into claims yet. As a dictionary of lists of invoices keyed on (fk_branch,f_staff)"""
+        inv =  self.query("select * from billing.vwinvoices where not online and fk_claim is null and fk_lu_bulk_billing_type = 1") # FIXME: should be where online when this flag is usable.
+        ret = {}
+        for i in inv:
+            i['items_billed'] = self.query("select * from billing.vwitemsbilled where fk_invoice = %s", (i['fk_invoice'],))
+            k = (i['fk_branch'],i['fk_staff_provided_service'])
+            if not k in ret: ret[k] = []
+            ret[k].append(i)
+        return ret
+
+    def get_private_invoice_to_upload(self,pk_invoice):
+        inv =  self.query("select * from billing.vwinvoices where pk_invoice=%s",(pk_invoice,))
+        inv['items_billed'] = self.query("select * from billing.vwitemsbilled where fk_invoice = %s", (inv['fk_invoice'],))
+        return inv
+
+    
+
+    def get_claims_awaiting_report(self):
+        """claims successfully transmitted but no report as yet"""
+        return self.query("select * from billing.claims where not finalised and age(claim_date) > '1 day' and return_code=0")
+
+    def get_claims_awaiting_transmission(self):
+        """claims saved but needing transmission"""
+        return self.query("select * from billings.claims where return_code=-1")
+
+    def get_claim(self,claim_id):
+        """get a claim by its ID, really only for testing"""
+        return self.query("select * from billings.claims where claim_id=%s",(claim_id,))
+
+    def get_invoices_on_claim(self,claim_pk):
+        inv = self.query("select * from billing.vwinvoices where fk_claim=%s", (claim_pk,))
+        for i in inv: 
+            i['items_billed'] = self.query("select * from billing.items_billed where fk_invoice = %s", (i['pk'],))
+        return inv
+
+    def create_claim(self,fk_branch,invoices_to_link):
+        c = self.cursor()
+        c.execute("insert into billing.claims(fk_branch,provider_number) values (%s) returning (pk)",(fk_branch,invoices_to_link[0]['staff_provided_service_provider_number']))
+        pk = c.fetchone()[0]
+        pk = 123 # for testing
+        claim_id = "{0}{1:04d}@".format(chr(ord('B')+(pk/9999)),pk % 9999)
+        c.execute("update billing.claims set claim_id=%s where pk=%s",(claim_id,pk))
+        voucher = 1
+        service_id = 1
+        for i in invoices_to_link:
+            if voucher < 10: 
+                s = '0'+str(voucher)
+            else:
+                s = str(voucher)
+            c.execute("update billing.invoices set fk_claim=%s,voucher_id=%s where pk=%s",(pk,s,i['fk_invoice']))
+            i['voucher_id'] = s
+            voucher += 1
+            for j in i['items_billed']:
+                s = "{0:04}".format(service_id)
+                j['service_id'] = s
+                c.execute("update billing.items_billed set service_id=%s where pk=%s",(s,j['pk']))
+                service_id += 1
+        c.close()
+        self.commit()
+        claim = {}
+        claim['pk'] = pk
+        claim['claim_id'] = claim_id
+        claim['fk_branch'] = fk_branch
+       return claim
+
+  
+    def set_claim_return(self,claim_id,return_code,return_text):
+        c = self.cursor()
+        c.execute("update billing.claims set return_code=%s,return_text=%s, claim_date=now() where claim_id=%s",(return_code,return_text,claim_id))
+        c.close()
+        self.commit()
+
+    def set_invoice_return(self,fk_invoice,return_code,return_text):
+        c = self.cursor()
+        c.execute("update billing.invoices set return_code=%s,return_text=%s where pk=%s",(return_code,return_text,fk_invoice))
+        c.close()
+        self.commit()  
+
+
+    def set_payment_report(self,pk_claim,report):
+        c = self.cursor()
+        c.execute("update billing.claims set payment_report=%s, payment_report_run_date=now() where pk=%s",(report,pk_claim))
+        c.close()
+        self.commit()
+
+    def set_processing_report(self,pk_claim,claim_id,report):
+        c = self.cursor()
+        c.execute("update billing.claims set processing_report_run_date=now() where pk=%s",(pk_claim,))
+        for r in report:
+            inv = self.query("""
+select i.result_text,i.pk as pk_invoice, b.pk as pk_item from billing.invoices i, billing.items_billed b 
+where i.fk_claim=%s and b.service_id=%s""",(pk_claim,r['service_id']),c)
+            if len(inv) != 1:
+                raise MedicareError("couldn't find invoice for claim {} service id {}".format(claim_id,r['service_id']))
+            inv = inv[0]
+            c.execute("update billing.items_billed set reason_code=%s where pk=%s", (r['reason_code'],inv['pk_item']))
+            if r['amount'] > 0:
+                c.execute("insert into billing.payments_received (fk_invoice,fk_lu_payment_method,referent,amount) values (%s,5,%s,%s*'$0.01'::money)", (inv['pk_invoice'],"claim {} service id {}".format(claim_id,r['service_id']),r['amount']))
+            if (inv['result_text'] is None or inv['result_text'] == "") and not r['comment'] is None:
+                c.execute("update billing.invoices set result_code=0,result_text=%s where pk=%s",(r['comment'],inv['pk_invoice']))
+            else:
+                c.execute("update billing.invoices set result_code=0 where pk=%s",(inv['pk_invoice'],))
+        c.close()
+        self.commit()
 
 if __name__=='__main__':
     import daemon

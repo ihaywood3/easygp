@@ -149,21 +149,23 @@ Options
             self.db.listen("newihi",self.evts.new_ihi)
             self.db.listen("death",self.evts.patient_death)            
         except ImportError:
-            logging.notice("hi service driver not found")
+            logging.warn("hi service driver not found")
         # Medicare Online
-        if os.path.exists(os.path.join(self.config["drivers"],'mo','medicare.jar')):
+        if os.path.exists(os.path.join(self.config["drivers"],'lib','au.gov.hic.psi.crypto.jar')):
             import mo # python component is FOSS so this will always work
             if not self.config.has_key("mo_passphrase"):
-                print >>sys.stderr, "mo_passphrase must be set in config file"
-            if not self.config.has_key("mo_sender"):
-                print >>sys.stderr, "mo_sender must be set in config file"
-            if not self.config.has_key("mo_location_id"):
-                print >>sys.stderr, "mo_location_id must be set in config file"       
-            mox = mo.MedicareOnline(self.config["drivers"],self.config["mo_passphrase"],self.config.get["mo_sender"],self.config.get["mo_location_id"])
-            self.evts.mo = mox
-            # self.db.listen("invoice",self.evts.invoice)
+                logging.error("mo_passphrase must be set in config file")
+            elif not self.config.has_key("mo_sender"):
+                logging.error("mo_sender must be set in config file")
+            elif not self.config.has_key("mo_location_id"):
+                logging.error("mo_location_id must be set in config file")       
+            else:
+                mox = mo.MedicareOnline(self.config["drivers"],self.config["mo_passphrase"],self.config["mo_sender"],self.config["mo_location_id"])
+                self.mo = mox
+                self.mo.db = self.db
+                # self.db.listen("invoice",self.evts.invoice)
         else:
-            logging.info('Medicare Online JAR not found in %s so MO module not loaded' % self.config['drivers'])
+            logging.warn('Medicare Online JAR not found in %s so MO module not loaded' % self.config['drivers'])
         # Personally Controlled Electronic Record
         # pcehr.py will always be available as FOSS code, look for NASH keys instead
         pcehr_key = os.path.join(self.config["keydir"],'pcehr.key')
@@ -176,7 +178,7 @@ Options
             # self.db.listen("pcehr_download",self.evts.pcehr_download)
             # self.db.listen("pcehr_upload",self.evts.pcehr_upload)
         else:
-            logging.info("PCEHR module not loaded as no key installed at %s" % pcehr_key)
+            logging.warn("PCEHR module not loaded as no key installed at %s" % pcehr_key)
         # MediSecure e-scripts
         try:
             import medisecure
@@ -193,7 +195,7 @@ Options
             else:
                 logging.error("MediSecure not loaded as no config value \"medisecure_location_id\"")
         except ImportError:
-            logging.notice("MediSecure module not available in %s" % self.config["drivers"])    
+            logging.warn("MediSecure module not available in %s" % self.config["drivers"])    
         
 
     def daemonise(self):
@@ -219,7 +221,8 @@ Options
                 if self.overnight_mode: self.evts.overnight()
                 else:
                     if self.test_mode:
-                        self.db.synth_event("script",12)
+                        #self.db.synth_event("script",12)
+                        self.mo.send_bb_report(fk_staff_only=4)
                     else:
                         self.db.wait_events()
             except: logging.exception("exception in child")

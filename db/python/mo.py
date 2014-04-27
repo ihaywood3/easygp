@@ -316,9 +316,33 @@ class MedicareOnline:
                    service_id = self.get("ServiceId")
                    amount = int(self.get('ServiceBenefitAmount'))
                    reason_code = self.get("ExplanationCode")
-                   self.db.set_item_code(inv['pk_invoice'],service_id,reason_code)
+                   self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,"benefit "+amount)
                    has_row = self.next()
-               self.db.set_invoice_return(inv['pk_invoice'],send_code,result)
+           self.db.set_invoice_return(inv['pk_invoice'],send_code,result)
+       elif send_code == 9501:
+           # failure
+           self.reset()
+           has_row = self.is_report_available()
+           result = ""
+           if not has_row:
+               result = "No report available, contact Medicare"
+           else:
+               claim_id = self.get("PmsClaimId")
+               error_code = int(self.get("ClaimErrorCode"))
+               error_level = self.get("ClaimErrorLevel")
+               if error_code == 9634:
+                   result += "Medicare advises that the claimant's Medicare number is {} - {}".format(self.get("CurrentClaimantMedicareCardNum"),self.get("CurrentClaimantReferenceNum"))
+               if error_code == 9633:
+                   result += "Medicare advises that the patient's Medicare number is {} - {}".format(self.get("CurrentPatientMedicareCardNum"),self.get("CurrentPatientReferenceNum"))
+               result += " Claim ID is {}, Receipt error level is {}".format(claim_id,error_level) 
+               while has_row:
+                   service_id = self.get("ServiceId")
+                   reason_code = self.get("ServiceErrorCode")
+                   service_error_level = self.get("ServiceErrorLevel")
+                   comment = "error level "+service_error_level
+                   self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,comment)
+                   has_row = self.next()
+           self.db.set_invoice_return(inv['pk_invoice'],error_code,result)       
        else: # something else
-           self.db.set_invoice_return(inv['fk_invoice'],send_code,"")
+           self.db.set_invoice_return(inv['fk_invoice'],send_code,"Transmission error")
            self.reset()

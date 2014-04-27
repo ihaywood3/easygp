@@ -344,15 +344,27 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
         return ret
 
     def get_private_invoice_to_upload(self,pk_invoice):
-        inv =  self.query("select * from billing.vwinvoices where pk_invoice=%s",(pk_invoice,))
-        inv['items_billed'] = self.query("select * from billing.vwitemsbilled where fk_invoice = %s", (inv['fk_invoice'],))
+        c = self.cursor()
+        inv = self.query("select * from billing.vwinvoices where pk_invoice=%s",(pk_invoice,),c)
+        inv['items_billed'] = self.query("select * from billing.vwitemsbilled where fk_invoice = %s", (inv['fk_invoice'],),c)
+        n = 1
+        for i in inv['items_billed']:
+            s = "{0:04}".format(n)
+            c.execute("update billing.items_billed set service_id=%s where pk=%s",(s,i['pk_items_billed']))
+            i['service_id'] = s
+            n += 1
+        c.close()
+        self.commit()
         return inv
 
-    
-
-    def get_claims_awaiting_report(self):
+    def get_claims_awaiting_processing_report(self):
         """claims successfully transmitted but no report as yet"""
-        return self.query("select * from billing.claims where not finalised and age(claim_date) > '1 day' and return_code=0")
+        return self.query("select * from billing.claims where processing_report_run_date is null and age(claim_date) > '1 day' and return_code=0")
+
+
+    def get_claims_awaiting_payment_report(self):
+        """claims successfully transmitted but no report as yet"""
+        return self.query("select * from billing.claims where payment_report_run_date is null and age(claim_date) > '1 day' and return_code=0")
 
     def get_claims_awaiting_transmission(self):
         """claims saved but needing transmission"""
@@ -360,17 +372,17 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
 
     def get_claim(self,claim_id):
         """get a claim by its ID, really only for testing"""
-        return self.query("select * from billings.claims where claim_id=%s",(claim_id,))
+        return self.query("select * from billings.claims where claim_id=%s",(claim_id,))[0]
 
     def get_invoices_on_claim(self,claim_pk):
         inv = self.query("select * from billing.vwinvoices where fk_claim=%s", (claim_pk,))
         for i in inv: 
-            i['items_billed'] = self.query("select * from billing.items_billed where fk_invoice = %s", (i['pk'],))
+            i['items_billed'] = self.query("select * from billing.vwitemsbilled where fk_invoice = %s", (i['pk'],))
         return inv
 
     def create_claim(self,fk_branch,invoices_to_link):
         c = self.cursor()
-        c.execute("insert into billing.claims(fk_branch,provider_number) values (%s) returning (pk)",(fk_branch,invoices_to_link[0]['staff_provided_service_provider_number']))
+        c.execute("insert into billing.claims(fk_branch,provider_number,result_code) values (%s,%s,-1) returning (pk)",(fk_branch,invoices_to_link[0]['staff_provided_service_provider_number']))
         pk = c.fetchone()[0]
         pk = 123 # for testing
         claim_id = "{0}{1:04d}@".format(chr(ord('B')+(pk/9999)),pk % 9999)
@@ -388,7 +400,7 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
             for j in i['items_billed']:
                 s = "{0:04}".format(service_id)
                 j['service_id'] = s
-                c.execute("update billing.items_billed set service_id=%s where pk=%s",(s,j['pk']))
+                c.execute("update billing.items_billed set service_id=%s where pk=%s",(s,j['pk_items_billed']))
                 service_id += 1
         c.close()
         self.commit()
@@ -396,7 +408,7 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
         claim['pk'] = pk
         claim['claim_id'] = claim_id
         claim['fk_branch'] = fk_branch
-       return claim
+        return claim
 
   
     def set_claim_return(self,claim_id,return_code,return_text):
@@ -410,6 +422,11 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
         c.execute("update billing.invoices set return_code=%s,return_text=%s where pk=%s",(return_code,return_text,fk_invoice))
         c.close()
         self.commit()  
+
+    def set_item_code(self,pk_invoice,service_id,reason_code,comment):
+        c = self.cursor()
+        c.execute("update billing.items_billed set reason_code=%s,comment=%s where fk_invoice=%s and service_id=%s", (reason_code,comment,pk_invoice,service_id))
+        c.close()
 
 
     def set_payment_report(self,pk_claim,report):
@@ -430,13 +447,16 @@ where i.fk_claim=%s and b.service_id=%s""",(pk_claim,r['service_id']),c)
             inv = inv[0]
             c.execute("update billing.items_billed set reason_code=%s where pk=%s", (r['reason_code'],inv['pk_item']))
             if r['amount'] > 0:
-                c.execute("insert into billing.payments_received (fk_invoice,fk_lu_payment_method,referent,amount) values (%s,5,%s,%s*'$0.01'::money)", (inv['pk_invoice'],"claim {} service id {}".format(claim_id,r['service_id']),r['amount']))
+                c.execute("insert into billing.payments_received (fk_invoice,fk_lu_payment_method,referent,amount) values (%s,5,%s,%s*'$0.01'::money)", (inv['pk_invoice'],"claim q{} service id {}".format(claim_id,r['service_id']),r['amount']))
             if (inv['result_text'] is None or inv['result_text'] == "") and not r['comment'] is None:
                 c.execute("update billing.invoices set result_code=0,result_text=%s where pk=%s",(r['comment'],inv['pk_invoice']))
             else:
                 c.execute("update billing.invoices set result_code=0 where pk=%s",(inv['pk_invoice'],))
         c.close()
         self.commit()
+
+    
+
 
 if __name__=='__main__':
     import daemon

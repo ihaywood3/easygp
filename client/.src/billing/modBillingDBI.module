@@ -736,7 +736,7 @@ Public Function Find_Referrer(fk_patient As Integer) As Collection
    "coalesce(substring(tag_user from '([0-9]+) month')::integer,12) as months "
    "from contacts.vwpersonsemployeesbyoccupation vpe, documents.vwdocuments vd"
    " where ((vd.fk_employee_branch = vpe.fk_employee and vd.fk_sender_branch = vpe.fk_branch" 
-   " and vd.fk_employee_branch <> 0) or (vd.fk_sender_person = vpe.fk_person)) and "
+   " and vd.fk_employee_branch <> 0) or (vd.fk_sender_person = vpe.fk_person and vd.fk_employee_branch = 0)) and "
    " vd.fk_patient = &1 and incoming_referral) "
    "select *,date_created+(months*interval '1 month') as expiry from base order by indefinite desc, expiry desc limit 1 "
    Return modDBConnect.exec_query_first(sql, [fk_patient])
@@ -771,12 +771,11 @@ Public Function Get_Payments(invoice As Crow) As Collection
 
 End
 
-Private Sub Load_FDF_Specialist(fdf As String, items As Collection, doctor As Collection, cc As CConsult, invoice As Crow) As String
+Private Sub Load_FDF_Specialist(fdf As String, items As Collection, doctor As Collection, cc As CConsult, invoice As Crow, referrer As Collection) As String
 
    Dim i As Collection
    Dim no_free_item As Integer = 0
    Dim s As String
-   Dim referrer As Collection
    Dim j As Integer
    
    ' first clear out pathologist-only info
@@ -862,8 +861,6 @@ Private Sub Load_FDF_Specialist(fdf As String, items As Collection, doctor As Co
    Endif
 
    ' load referrer info
-
-   referrer = Find_Referrer(invoice!fk_patient)
    If IsNull(referrer) Then
       ' uh-oh, we can't find a referral for this patient
       fdf = Replace$(fdf, "RefPrac", "NONE")
@@ -1069,7 +1066,7 @@ End
 ' takes a CRow from billing.invoices, from either from Make_Invoice or Invoices_Get, and prints it
 ' also updates the row on the DB as appropriate
 ' ' cc is the current consult object. If not provided a new one will be loaded using th invoices's fk_patient.
-Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBulkBIll As Boolean = False, Optional cc As Cconsult) As String
+Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBulkBIll As Boolean = False, cc As Cconsult, referrer As Collection) As String
    '
 
    Dim sql As String
@@ -1108,7 +1105,7 @@ Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBul
       Endif
       fdf = File.Load(modUtil.Find_File("templates" &/ pdfname & ".fdf"))
       If True Then
-         fdf = Load_FDF_Specialist(fdf, items, doctor, cc, invoice)
+         fdf = Load_FDF_Specialist(fdf, items, doctor, cc, invoice, referrer)
       Else
          fdf = Load_FDF_GP(fdf, items)
       Endif
@@ -1127,13 +1124,12 @@ Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBul
       If referrer_type = "s" Then
          ' specialist's account: need to grab referrer's details first
          templ = New CTemplate("templates/invoice-specialist.tex", "tex")
-         Load_Template_Specialist(templ, invoice)
+         Load_Template_Specialist(templ, invoice, referrer)
       Else
          templ = New CTemplate("templates/invoice-gp.tex", "tex")
       End If
       Load_Template_GP(invoice, templ, doctor, items, payments, cc)
       latex = templ.GetData()
-      Debug latex
       If bPrint Then modPrinting.Print_latex(latex, const.Paper_Plain, 1)
       Return latex
    Endif
@@ -1141,11 +1137,8 @@ Public Sub Print_Invoice(invoice_in As Variant, bPrint As Boolean, Optional bBul
 End
 
 ' loads info about specialist rinvoices (i.e. info about the referral)
-Private Sub Load_Template_Specialist(templ As Ctemplate, invoice As Crow)
+Private Sub Load_Template_Specialist(templ As Ctemplate, invoice As Crow, referrer As Collection)
 
-   Dim referrer As Collection
-
-   referrer = Find_Referrer(invoice!fk_patient)
    If IsNull(referrer) Then
       ' uh-oh, we can't find a referral for this patient
       templ.Subst("referrer-name", templ.Bold("NONE"))

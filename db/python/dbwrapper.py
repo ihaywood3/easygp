@@ -21,7 +21,7 @@
 
 """A basic wrapper around the EasyGP database"""
 
-import select, time, logging, socket, re
+import select, time, socket, re
 import pdb
 import psycopg2
 
@@ -368,25 +368,25 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
 
     def get_claims_awaiting_transmission(self):
         """claims saved but needing transmission"""
-        return self.query("select * from billings.claims where return_code=-1")
+        return self.query("select * from billing.claims where result_code=-1")
 
     def get_claim(self,claim_id):
         """get a claim by its ID, really only for testing"""
-        return self.query("select * from billings.claims where claim_id=%s",(claim_id,))[0]
+        return self.query("select * from billing.claims where claim_id=%s",(claim_id,))[0]
 
     def get_invoices_on_claim(self,claim_pk):
         inv = self.query("select * from billing.vwinvoices where fk_claim=%s", (claim_pk,))
         for i in inv: 
-            i['items_billed'] = self.query("select * from billing.vwitemsbilled where fk_invoice = %s", (i['pk'],))
+            i['items_billed'] = self.query("select * from billing.vwitemsbilled where fk_invoice = %s", (i['fk_invoice'],))
         return inv
 
     def create_claim(self,fk_branch,invoices_to_link):
         c = self.cursor()
         c.execute("insert into billing.claims(fk_branch,provider_number,result_code) values (%s,%s,-1) returning (pk)",(fk_branch,invoices_to_link[0]['staff_provided_service_provider_number']))
         pk = c.fetchone()[0]
-        pk = 123 # for testing
         claim_id = "{0}{1:04d}@".format(chr(ord('B')+(pk/9999)),pk % 9999)
         c.execute("update billing.claims set claim_id=%s where pk=%s",(claim_id,pk))
+        logging.debug("created claim {}".format(claim_id))
         voucher = 1
         service_id = 1
         for i in invoices_to_link:
@@ -396,11 +396,13 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
                 s = str(voucher)
             c.execute("update billing.invoices set fk_claim=%s,voucher_id=%s where pk=%s",(pk,s,i['fk_invoice']))
             i['voucher_id'] = s
+            logging.debug("joining invoice PK {} to claim {} as voucher {}".format(i['fk_invoice'],claim_id,s))
             voucher += 1
             for j in i['items_billed']:
                 s = "{0:04}".format(service_id)
                 j['service_id'] = s
                 c.execute("update billing.items_billed set service_id=%s where pk=%s",(s,j['pk_items_billed']))
+                logging.debug("joining item PK {} to claim {} as service {}".format(j['pk_items_billed'],claim_id,s))
                 service_id += 1
         c.close()
         self.commit()
@@ -413,7 +415,8 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
   
     def set_claim_return(self,claim_id,return_code,return_text):
         c = self.cursor()
-        c.execute("update billing.claims set return_code=%s,return_text=%s, claim_date=now() where claim_id=%s",(return_code,return_text,claim_id))
+        c.execute("update billing.claims set result_code=%s,result_text=%s, claim_date=now() where claim_id=%s",(return_code,return_text,claim_id))
+        logging.debug("claim {} set to {} {}".format(claim_id,return_code,repr(return_text)))
         c.close()
         self.commit()
 
@@ -421,11 +424,13 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
         c = self.cursor()
         c.execute("update billing.invoices set return_code=%s,return_text=%s where pk=%s",(return_code,return_text,fk_invoice))
         c.close()
+        logging.debug("invoice PK {} set to {} {}".format(fk_invoice,return_code,repr(return_text)))
         self.commit()  
 
     def set_item_code(self,pk_invoice,service_id,reason_code,comment):
         c = self.cursor()
         c.execute("update billing.items_billed set reason_code=%s,comment=%s where fk_invoice=%s and service_id=%s", (reason_code,comment,pk_invoice,service_id))
+        logging.debug("item service id {} set to {} {}".format(service_id,reason_code,repr(comment)))
         c.close()
 
 
@@ -433,11 +438,13 @@ insert into clerical.task_components (fk_task,fk_consult,date_logged,fk_staff_al
         c = self.cursor()
         c.execute("update billing.claims set payment_report=%s, payment_report_run_date=now() where pk=%s",(report,pk_claim))
         c.close()
+        logging.debug("setting payment report for claim PK {} to {}".format(pk_claim,repr(report)))
         self.commit()
 
     def set_processing_report(self,pk_claim,claim_id,report):
         c = self.cursor()
         c.execute("update billing.claims set processing_report_run_date=now() where pk=%s",(pk_claim,))
+        logging.debug("setting processing report for claim {} (PK {}) to {}".format(claim_id,pk_claim,repr(report)))
         for r in report:
             inv = self.query("""
 select i.result_text,i.pk as pk_invoice, b.pk as pk_item from billing.invoices i, billing.items_billed b 

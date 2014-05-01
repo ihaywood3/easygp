@@ -24,7 +24,7 @@
 """A class for making Medicare Online billing submissions
 """
 
-import subprocess, os.path, logging, pdb, time
+import subprocess, os.path, pdb, time, logging, re
 
 medicare_flags = {
             'A':'Patient identification amended', 
@@ -53,7 +53,9 @@ class MedicareOnline:
 
     def _write(self,cmd,*params):
         try:
-            self.pro.stdin.write(cmd+"|"+"|".join(params)+"\n")
+            s = cmd+"|"+"|".join(params)+"\n"
+            logging.debug("_write {}".format(repr(s)))
+            self.pro.stdin.write(s)
             self.pro.poll()
         except IOError:
             e = self.pro.stdout.read()
@@ -73,10 +75,14 @@ class MedicareOnline:
             self._setup()
             raise MedicareError(line)
         r = line.strip()
+        m = re.match("ERROR:.*",r)
+        if m:
+            raise MedicareError(line)
         v = int(r)
         if extra:
             line = self.pro.stdout.readline()
-            logging.debug("-> {} {}".format(v, line))
+            line = line.strip()
+            logging.debug("-> {} {}".format(v, repr(line)))
             return (v, line)
         else:
             logging.debug("-> {}".format(v))
@@ -84,14 +90,14 @@ class MedicareOnline:
 
     def create_object(self, obj, path, value):
         self._write("CBO",obj, path, value)
-        logging.debug("CreateBusinessObject({},{},{})".format(obj,path,value))
+        logging.debug("CreateBusinessObject({},{},{})".format(repr(obj),repr(path),repr(value)))
         v, val = self._read(True)
         if v != 0: raise MedicareError("CBO returned "+v)
         return val
 
     def set(self, path, elem, value):
         self._write("SBO", path, elem, value)
-        desc = "SetBusinessObject({},{},{})".format(path,elem.value)
+        desc = "SetBusinessObject({},{},{})".format(repr(path),repr(elem),repr(value))
         logging.debug(desc)
         v = self._read()
         if v == 9201: raise MedicareError("'{}' has invalid format for {}".format(value,elem))
@@ -107,7 +113,7 @@ class MedicareOnline:
 
     def create_report(self, report, param):
         self._write("CR",report, param)
-        logging.debug("CreateReport({},{})".format(report,param))
+        logging.debug("CreateReport({},{})".format(repr(report),repr(param)))
         v = self._read()
         if v == 0: return True
         if v == 8002: return False
@@ -116,7 +122,7 @@ class MedicareOnline:
 
     def get(self, elem):
         self._write("GRE", elem)
-        logging.debug("GetReportElement({})".format(elem))
+        logging.debug("GetReportElement({})".format(repr(elem)))
         v, val = self._read(True)
         if v != 0: raise MedicareError("GRE returned "+v)
         return val
@@ -167,7 +173,7 @@ class MedicareOnline:
     def transmit_claim(self,claim, invoices=None):
         logic_pack = self.get_logic_pack("HIC/HolClassic")
         claim_id = claim["claim_id"]
-        if invoices is None: invoices = self.db.get_invoices_on_claim(self,claim['pk'])
+        if invoices is None: invoices = self.db.get_invoices_on_claim(claim['pk'])
         content_type = "HIC/HolClassic/DirectBillClaim@"+logic_pack
         path = self.create_object(content_type,"","")
         self.set(path, "PmsClaimId", claim_id)
@@ -177,6 +183,7 @@ class MedicareOnline:
         else:
             typ = 'O'
         self.set(path, "ServiceTypeCde",typ)  # O=GP, S=Specialist
+        pts = {}
         for inv in invoices:
             voucher_path = self.create_object("Voucher",'./'+path,inv['voucher_id'])
             if not inv['fk_patient'] in pts:
@@ -190,7 +197,11 @@ class MedicareOnline:
             self.set(voucher_path,"PatientReferenceNum",pt['medicare_ref_number'])
             self.set_voucher_items(voucher_path,inv)
         send_code = self.send_content(content_type)
-        self.db.set_claim_return(claim_id,send_code)
+        self.db.set_claim_return(claim_id,send_code,"")
+
+    def amount_to_cents(self,amt):
+        m = re.match("\$([0-9]+)\.([0-9]+)",amt)
+        return (int(m.group(1)) * 100)+int(m.group(2))
 
     def set_voucher_items(self,voucher_path,inv):
         self.set(voucher_path,"DateOfService",inv['visit_date'].strftime('%d%m%Y'))
@@ -211,7 +222,7 @@ class MedicareOnline:
         items = sorted(inv['items_billed'], key=lambda x: x['amount'])
         for item in items:
             item_path = self.create_object("Service","./"+voucher_path,item['service_id'])
-            self.set(item_path,"ChargeAmount",item['amount'])
+            self.set(item_path,"ChargeAmount",str(self.amount_to_cents(item['amount'])))
             self.set(item_path,"ItemNum",item['mbs_item'])
             if inv_service_text != "":
                 self.set(item_path,"ServiceText",inv_service_text)
@@ -229,7 +240,7 @@ class MedicareOnline:
         lines = []
         while has_row: # report exists
             line = {}
-            line['service_id'] = self.get("ServiceId"))
+            line['service_id'] = self.get("ServiceId")
             line['amount'] = int(self.get('ServiceBenefitAmount'))
             medicare_flag = self.get('MedicareCardFlag') 
             if medicare_flag != " ":
@@ -274,7 +285,7 @@ class MedicareOnline:
         #BankAccountName
         #BankAccountNum
         #BSBCode
-       if not inv['fk_payer_person'] is None:
+        if not inv['fk_payer_person'] is None:
             payer = self.db.get_patient(fk_person=inv['fk_payer_person'])
             self.set(path,"ClaimantAddressLine1",self.clean(payer['street1']))
             self.set(path,"ClaimantAddressLine2",self.clean(payer['street2']))
@@ -289,60 +300,60 @@ class MedicareOnline:
                 if c['type'] in [7,4,0,1,11]:
                     self.set(path,"ContactPhoneNum",self.clean(c['value'],10))
                     break
-       self.set(path,"ClaimSubmissionAuthorised","Y")
-       self.set(path,"DateOfLodgement",time.strftime("%d%m%Y"))
-       self.set(path,"PatientDateOfBirth",pt['birthdate'].strftime('%d%m%Y'))
-       self.set(path,"PatientFamilyName",self.clean(pt['surname']))
-       self.set(path,"PatientFirstName",self.clean(pt['firstname']))
-       self.set(path,"PatientMedicareCardNum",pt['medicare_number'])
-       self.set(path,"PatientReferenceNum",pt['medicare_ref_number'])
-       #PayeeProviderNum
-       self.set(path,"ServicingProviderNum",inv['staff_provided_service_provider_number'])
-       self.set(path,"TimeOfLodgement",time.strftime("%H%M%S"))
-       voucher_path = self.create_object("Voucher","./"+path,"01")
-       self.set_voucher_items(voucher_path,inv)
-       send_code = self.send_content(content_type)
-       if send_code == 0:
-           # success
-           self.reset()
-           has_row = self.is_report_available()
-           result = ""
-           if not has_row:
-               result = "No report available, contact Medicare"
-           else:
-               claim_id = self.get("PmsClaimId")
-               result += "Claim ID is "+claim_id 
-               while has_row:
-                   service_id = self.get("ServiceId")
-                   amount = int(self.get('ServiceBenefitAmount'))
-                   reason_code = self.get("ExplanationCode")
-                   self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,"benefit "+amount)
-                   has_row = self.next()
-           self.db.set_invoice_return(inv['pk_invoice'],send_code,result)
-       elif send_code == 9501:
-           # failure
-           self.reset()
-           has_row = self.is_report_available()
-           result = ""
-           if not has_row:
-               result = "No report available, contact Medicare"
-           else:
-               claim_id = self.get("PmsClaimId")
-               error_code = int(self.get("ClaimErrorCode"))
-               error_level = self.get("ClaimErrorLevel")
-               if error_code == 9634:
-                   result += "Medicare advises that the claimant's Medicare number is {} - {}".format(self.get("CurrentClaimantMedicareCardNum"),self.get("CurrentClaimantReferenceNum"))
-               if error_code == 9633:
-                   result += "Medicare advises that the patient's Medicare number is {} - {}".format(self.get("CurrentPatientMedicareCardNum"),self.get("CurrentPatientReferenceNum"))
-               result += " Claim ID is {}, Receipt error level is {}".format(claim_id,error_level) 
-               while has_row:
-                   service_id = self.get("ServiceId")
-                   reason_code = self.get("ServiceErrorCode")
-                   service_error_level = self.get("ServiceErrorLevel")
-                   comment = "error level "+service_error_level
-                   self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,comment)
-                   has_row = self.next()
-           self.db.set_invoice_return(inv['pk_invoice'],error_code,result)       
-       else: # something else
-           self.db.set_invoice_return(inv['fk_invoice'],send_code,"Transmission error")
-           self.reset()
+        self.set(path,"ClaimSubmissionAuthorised","Y")
+        self.set(path,"DateOfLodgement",time.strftime("%d%m%Y"))
+        self.set(path,"PatientDateOfBirth",pt['birthdate'].strftime('%d%m%Y'))
+        self.set(path,"PatientFamilyName",self.clean(pt['surname']))
+        self.set(path,"PatientFirstName",self.clean(pt['firstname']))
+        self.set(path,"PatientMedicareCardNum",pt['medicare_number'])
+        self.set(path,"PatientReferenceNum",pt['medicare_ref_number'])
+        #PayeeProviderNum
+        self.set(path,"ServicingProviderNum",inv['staff_provided_service_provider_number'])
+        self.set(path,"TimeOfLodgement",time.strftime("%H%M%S"))
+        voucher_path = self.create_object("Voucher","./"+path,"01")
+        self.set_voucher_items(voucher_path,inv)
+        send_code = self.send_content(content_type)
+        if send_code == 0:
+            # success
+            self.reset()
+            has_row = self.is_report_available()
+            result = ""
+            if not has_row:
+                result = "No report available, contact Medicare"
+            else:
+                claim_id = self.get("PmsClaimId")
+                result += "Claim ID is "+claim_id 
+                while has_row:
+                    service_id = self.get("ServiceId")
+                    amount = int(self.get('ServiceBenefitAmount'))
+                    reason_code = self.get("ExplanationCode")
+                    self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,"benefit "+amount)
+                    has_row = self.next()
+            self.db.set_invoice_return(inv['pk_invoice'],send_code,result)
+        elif send_code == 9501:
+            # failure
+            self.reset()
+            has_row = self.is_report_available()
+            result = ""
+            if not has_row:
+                result = "No report available, contact Medicare"
+            else:
+                claim_id = self.get("PmsClaimId")
+                error_code = int(self.get("ClaimErrorCode"))
+                error_level = self.get("ClaimErrorLevel")
+                if error_code == 9634:
+                    result += "Medicare advises that the claimant's Medicare number is {} - {}".format(self.get("CurrentClaimantMedicareCardNum"),self.get("CurrentClaimantReferenceNum"))
+                if error_code == 9633:
+                    result += "Medicare advises that the patient's Medicare number is {} - {}".format(self.get("CurrentPatientMedicareCardNum"),self.get("CurrentPatientReferenceNum"))
+                result += " Claim ID is {}, Receipt error level is {}".format(claim_id,error_level) 
+                while has_row:
+                    service_id = self.get("ServiceId")
+                    reason_code = self.get("ServiceErrorCode")
+                    service_error_level = self.get("ServiceErrorLevel")
+                    comment = "error level "+service_error_level
+                    self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,comment)
+                    has_row = self.next()
+            self.db.set_invoice_return(inv['pk_invoice'],error_code,result)       
+        else: # something else
+            self.db.set_invoice_return(inv['fk_invoice'],send_code,"Transmission error")
+            self.reset()

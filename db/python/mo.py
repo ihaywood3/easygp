@@ -24,7 +24,7 @@
 """A class for making Medicare Online billing submissions
 """
 
-import subprocess, os.path, pdb, time, logging, re
+import subprocess, os.path, pdb, time, logging, re, datetime, time
 
 medicare_flags = {
             'A':'Patient identification amended', 
@@ -45,6 +45,7 @@ class MedicareOnline:
         self.sender = sender
         self.location_id = location_id
         self.pro = subprocess.Popen(["/usr/bin/java","-classpath","lib:lib/*:build","-Djava.library.path=lib","-Dhiconline.sender={}".format(self.sender),"-Dhiconline.passphrase={}".format(self.passphrase),"-Dhiconline.location_id={}".format(self.location_id),"HICOnline"],cwd=self.java_path,stdin=subprocess.PIPE,stderr=subprocess.STDOUT,stdout=subprocess.PIPE,close_fds=True)
+        self.logic_packs = {}
 
     def clean(self,s,maxlen=40):
         s = ''.join(c for c in s if ord(c) >= 32)
@@ -90,9 +91,10 @@ class MedicareOnline:
 
     def create_object(self, obj, path, value):
         self._write("CBO",obj, path, value)
-        logging.debug("CreateBusinessObject({},{},{})".format(repr(obj),repr(path),repr(value)))
+        desc = "CreateBusinessObject({},{},{})".format(repr(obj),repr(path),repr(value))
+        logging.debug(desc)
         v, val = self._read(True)
-        if v != 0: raise MedicareError("CBO returned "+v)
+        if v != 0: raise MedicareError("{} returned {}".format(desc,value))
         return val
 
     def set(self, path, elem, value):
@@ -100,25 +102,29 @@ class MedicareOnline:
         desc = "SetBusinessObject({},{},{})".format(repr(path),repr(elem),repr(value))
         logging.debug(desc)
         v = self._read()
-        if v == 9201: raise MedicareError("'{}' has invalid format for {}".format(value,elem))
-        if v == 9202: raise MedicareError("'{}' has invalid value for {}".format(value,elem))
+        if v == 9201: raise MedicareError("{} has invalid format for value".format(desc))
+        if v == 9202: raise MedicareError("{} has invalid value".format(desc))
         if v != 0: raise MedicareError("{} returned code {}".format(desc,v))
 
     def get_logic_pack(self, pack):
+        if pack in self.logic_packs:
+            return self.logic_packs[pack]
         self._write("GLPV", pack)
         code, s = self._read(True)
         if code != 0: raise MedicareError("GLP returned "+v)
         s = s.strip()[1:-1].split(",")[0]
+        self.logic_packs[pack] = s
         return s
 
     def create_report(self, report, param):
         self._write("CR",report, param)
-        logging.debug("CreateReport({},{})".format(repr(report),repr(param)))
+        l = "CreateReport({},{})".format(repr(report),repr(param))
+        logging.debug(l)
         v = self._read()
         if v == 0: return True
         if v == 8002: return False
         if v == 2023: return False
-        if v != 0: raise MedicareError("CR returned "+v)
+        if v != 0: raise MedicareError("{} returned {}".format(l,v))
 
     def get(self, elem):
         self._write("GRE", elem)
@@ -165,39 +171,44 @@ class MedicareOnline:
             fk_branch, fk_staff = k
             if fk_staff is not None and fk_staff != fk_staff_only: continue
             invoices = bb[k]
+            invoices = sorted(invoices,key=lambda x: x['visit_date'])
+            if len(invoices) > 50:
+                invoices = invoices[:50]
+            elif len(invoices) < 30:
+                if datetime.date.today().toordinal() - invoices[0]['visit_date'].toordinal() < 14: continue
             claim = self.db.create_claim(fk_branch,invoices)
 
-    def transmit_claims(self):
-        for c in self.db.get_claims_awaiting_transmission(): self.transmit_claim(c)
-
     def transmit_claim(self,claim, invoices=None):
-        logic_pack = self.get_logic_pack("HIC/HolClassic")
         claim_id = claim["claim_id"]
-        if invoices is None: invoices = self.db.get_invoices_on_claim(claim['pk'])
-        content_type = "HIC/HolClassic/DirectBillClaim@"+logic_pack
-        path = self.create_object(content_type,"","")
-        self.set(path, "PmsClaimId", claim_id)
-        self.set(path, "ServicingProviderNum", invoices[0]['staff_provided_service_provider_number'])
-        if 'referrer_provider_number' in invoices[0] and not invoices[0]['referrer_provider_number'] is None:
-            typ = 'S'
-        else:
-            typ = 'O'
-        self.set(path, "ServiceTypeCde",typ)  # O=GP, S=Specialist
-        pts = {}
-        for inv in invoices:
-            voucher_path = self.create_object("Voucher",'./'+path,inv['voucher_id'])
-            if not inv['fk_patient'] in pts:
-                pts[inv['fk_patient']] = self.db.get_patient(inv['fk_patient'])
-            pt = pts[inv['fk_patient']]
-            self.set(voucher_path,"BenefitAssignmentAuthorised","Y")
-            self.set(voucher_path,"PatientDateOfBirth",pt['birthdate'].strftime('%d%m%Y'))
-            self.set(voucher_path,"PatientFamilyName",self.clean(pt['surname']))
-            self.set(voucher_path,"PatientFirstName",self.clean(pt['firstname']))
-            self.set(voucher_path,"PatientMedicareCardNum",pt['medicare_number'])
-            self.set(voucher_path,"PatientReferenceNum",pt['medicare_ref_number'])
-            self.set_voucher_items(voucher_path,inv)
-        send_code = self.send_content(content_type)
-        self.db.set_claim_return(claim_id,send_code,"")
+        try:
+            logic_pack = self.get_logic_pack("HIC/HolClassic")`
+            if invoices is None: invoices = self.db.get_invoices_on_claim(claim['pk'])
+            content_type = "HIC/HolClassic/DirectBillClaim@"+logic_pack
+            path = self.create_object(content_type,"","")
+            self.set(path, "PmsClaimId", claim_id)
+            self.set(path, "ServicingProviderNum", invoices[0]['staff_provided_service_provider_number'])
+            if 'referrer_provider_number' in invoices[0] and not invoices[0]['referrer_provider_number'] is None:
+                typ = 'S'
+            else:
+                typ = 'O'
+            self.set(path, "ServiceTypeCde",typ)  # O=GP, S=Specialist
+            pts = {}
+            for inv in invoices:
+                voucher_path = self.create_object("Voucher",'./'+path,inv['voucher_id'])
+                if not inv['fk_patient'] in pts:
+                    pts[inv['fk_patient']] = self.db.get_patient(inv['fk_patient'])
+                pt = pts[inv['fk_patient']]
+                self.set(voucher_path,"BenefitAssignmentAuthorised","Y")
+                self.set(voucher_path,"PatientDateOfBirth",pt['birthdate'].strftime('%d%m%Y'))
+                self.set(voucher_path,"PatientFamilyName",self.clean(pt['surname']))
+                self.set(voucher_path,"PatientFirstName",self.clean(pt['firstname']))
+                self.set(voucher_path,"PatientMedicareCardNum",pt['medicare_number'])
+                self.set(voucher_path,"PatientReferenceNum",pt['medicare_ref_number'])
+                self.set_voucher_items(voucher_path,inv)
+            send_code = self.send_content(content_type)
+            self.db.set_claim_return(claim_id,send_code,"")
+        except MedicareError as e:
+            self.db.set_claim_return(claim_id,9999,str(e))
 
     def amount_to_cents(self,amt):
         m = re.match("\$([0-9]+)\.([0-9]+)",amt)
@@ -236,40 +247,47 @@ class MedicareOnline:
         return pn+claim['claim_id']+claim['claim_date'].strftime("%d%m%Y")
 
     def get_bb_processing_report(self, claim):
-        has_row = self.create_report("DBProcessingReport",self.claim_query(claim))
-        lines = []
-        while has_row: # report exists
-            line = {}
-            line['service_id'] = self.get("ServiceId")
-            line['amount'] = int(self.get('ServiceBenefitAmount'))
-            medicare_flag = self.get('MedicareCardFlag') 
-            if medicare_flag != " ":
-                medicare_number = self.get("PatientMedicareCardNum")
-                medicare_ref_number = self.get('PatientReferenceNum')
-                line['comment'] = medicare_flags[medicare_flag].format(medicare_number, medicare_ref_number)
-            else:
-                line['comment'] = None
-            line['reason_code'] = self.get("ExplanationCode")
-            lines.append(line)
-            has_row = self.next()
-        if len(lines) > 0:
-            self.db.set_processing_report(claim['pk'],claim['claim_id'],lines)
+        try:
+            has_row = self.create_report("DBProcessingReport",self.claim_query(claim))
+            lines = []
+            while has_row: # report exists
+                line = {}
+                line['service_id'] = self.get("ServiceId")
+                line['amount'] = int(self.get('ServiceBenefitAmount'))
+                medicare_flag = self.get('MedicareCardFlag') 
+                if medicare_flag != " ":
+                    medicare_number = self.get("PatientMedicareCardNum")
+                    medicare_ref_number = self.get('PatientReferenceNum')
+                    line['comment'] = medicare_flags[medicare_flag].format(medicare_number, medicare_ref_number)
+                else:
+                    line['comment'] = None
+                line['reason_code'] = self.get("ExplanationCode")
+                lines.append(line)
+                has_row = self.next()
+            if len(lines) > 0:
+                self.db.set_processing_report(claim['pk'],claim['claim_id'],lines)
+        except MedicareError as e:
+            self.db.set_processing_report(claim['pk'],claim['claim_id'],str(e))
 
     def get_bb_payment_report(self, claim):
-        has_row = self.create_report("DBPaymentReport",self.claim_query(claim))
-        report = ""
-        while has_row:
-            line = {}
-            line['bsb']  = self.get("BSBCode") 
-            line['account_no'] = self.get("BankAccountNum") 
-            line['name'] = self.get("BankAccountName") 
-            line['amount'] = int(self.get('DepositAmount'))
-            line['amount_display'] = "$"+line['amount'][:-2]+'.'+line['amount'][-2:]
-            line['date'] = self.get("PaymentRunDate")
-            report += """Deposit of {amount_display} into {bsb} {account_no} {name} on {date}\n""".format(**line)
-            has_row = self.next()
-        if report != "":
-            self.db.set_payment_report(claim['pk'],report)
+        try:
+            has_row = self.create_report("DBPaymentReport",self.claim_query(claim))
+            report = ""
+            while has_row:
+                line = {}
+                line['bsb']  = self.get("BSBCode") 
+                line['account_no'] = self.get("BankAccountNum") 
+                line['name'] = self.get("BankAccountName") 
+                line['amount'] = int(self.get('DepositAmount'))
+                line['amount_display'] = "$"+line['amount'][:-2]+'.'+line['amount'][-2:]
+                line['date'] = self.get("PaymentRunDate")
+                report += """Deposit of {amount_display} into {bsb} {account_no} {name} on {date}\n""".format(**line)
+                has_row = self.next()
+            if report != "":
+                self.db.set_payment_report(claim['pk'],report)
+        except MedicareError as e:
+            self.db.set_payment_report(claim['pk'],str(e))
+
 
     def upload_private_invoice(self, fk_invoice):
         inv = self.db.get_private_invoice_to_upload(fk_invoice)
@@ -319,7 +337,7 @@ class MedicareOnline:
             has_row = self.is_report_available()
             result = ""
             if not has_row:
-                result = "No report available, contact Medicare"
+                result = "No report available, contact Medicare "
             else:
                 claim_id = self.get("PmsClaimId")
                 result += "Claim ID is "+claim_id 
@@ -327,7 +345,7 @@ class MedicareOnline:
                     service_id = self.get("ServiceId")
                     amount = int(self.get('ServiceBenefitAmount'))
                     reason_code = self.get("ExplanationCode")
-                    self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,"benefit "+amount)
+                    self.db.set_item_code(inv['pk_invoice'],service_id,reason_code,"benefit $"+amount/100.0)
                     has_row = self.next()
             self.db.set_invoice_return(inv['pk_invoice'],send_code,result)
         elif send_code == 9501:

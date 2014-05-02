@@ -151,6 +151,7 @@ Options
         except ImportError:
             logging.warn("hi service driver not found")
         # Medicare Online
+        self.mo = None
         if os.path.exists(os.path.join(self.config["drivers"],'lib','au.gov.hic.psi.crypto.jar')):
             import mo # python component is FOSS so this will always work
             if not self.config.has_key("mo_passphrase"):
@@ -218,7 +219,13 @@ Options
                 self.setup()
                 self.db = DBWrapper(self.config)
                 self.setup_drivers()
-                if self.overnight_mode: self.evts.overnight()
+                if self.overnight_mode: 
+                    self.evts.overnight()
+                    if not self.mo is None: 
+                        self.mo.prepare_bb_reports()
+                        for i in self.db.get_claims_awaiting_transmission(): self.transmit_claim(i)
+                        for i in self.db.get_claims_awaiting_processing_report(): self.mo.get_bb_processing_report(i)
+                        for i in self.db.get_claims_awaiting_payment_report(): self.mo.get_bb_payment_report(i)
                 else:
                     if self.test_mode:
                         #self.db.synth_event("script",12)

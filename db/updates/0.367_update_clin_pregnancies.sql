@@ -78,7 +78,7 @@ CREATE OR REPLACE VIEW clin_pregnancy.vwpregnancies AS
    LEFT JOIN common.lu_rhesus_group ON pregnancies.fk_lu_rhesus_group = lu_rhesus_group.pk
    LEFT JOIN contacts.lu_sex ON pregnancies.fk_lu_sex = lu_sex.pk
    LEFT JOIN clin_pregnancy.lu_placenta_position on pregnancies.fk_lu_placenta_position = lu_placenta_position.pk
-   LEFT JOIN clin_pregnancy.lu_contraception_methods on pregnancies.fk_lu_contraception_method = lu_contraception_method.pk;
+   LEFT JOIN clin_pregnancy.lu_contraception_methods on pregnancies.fk_lu_contraception_method = lu_contraception_methods.pk;
    
 ALTER TABLE clin_pregnancy.vwpregnancies   OWNER TO easygp;
 GRANT SELECT ON TABLE clin_pregnancy.vwpregnancies TO staff;

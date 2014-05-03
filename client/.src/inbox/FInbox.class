@@ -185,6 +185,7 @@ End
 Public Sub Settings_Save()
    
    Settings["FInbox/HSplit_Document"] = HSplit_Document.Layout
+   Settings["FInbox/HSplit_Requests_Meds.Layout"] = HSplit_Requests_Meds.Layout
    Settings["FInbox/Vsplit_left"] = Vsplit_left.Layout
    Settings["FInbox/VSplit_Document"] = VSplit_Document.Layout
    Settings["FInbox/HSplit_Inbox_Documents_Lists.Layout"] = HSplit_Inbox_Documents_Lists.Layout
@@ -197,9 +198,10 @@ End
 Private Sub Settings_Load()
    
    VSplit_PatientsDocumentList.Layout = Settings["FInbox/VSplit_PatientsDocumentList.Layout", modutil.VSplit([237, 115])]
-   HSplit_Inbox_Documents_Lists.Layout = Settings["FInbox/HSplit_Inbox_Documents_Lists.Layout", modutil.HSplit([377, 377])]
+   HSplit_Inbox_Documents_Lists.Layout = Settings["FInbox/HSplit_Inbox_Documents_Lists.Layout", modutil.HSplit([1, 1])]
    VSplit_Document.Layout = Settings["FInbox/VSplit_Document.Layout", modutil.VSplit([662, 243])]
    Vsplit_left.Layout = Settings["FInbox/Vsplit_left", modutil.VSplit([480, 479])]
+   HSplit_Requests_Meds.layout = Settings["FInbox/HSplit_Requests_Meds.Layout", modutil.HSplit([1, 1])]
    HSplit_Document.Layout = Settings["FInbox/HSplit_Document.Layout", modutil.HSplit([765, 954])]
    FPreview_HtmlDocument.Webview1.Zoom = Settings["FInbox/Results_Zoom", 1]
    gvwInboxDocuments.font = Font[Settings["Inbox/gvwInboxDocuments.font", "DejaVu Sans,9"]]
@@ -559,6 +561,8 @@ Public Sub mnuPatientsInInbox_Click()
       Case "move to holding file"
          
    End Select
+Catch
+   Return 
    
 End
 
@@ -1119,79 +1123,6 @@ Public Sub cvwInbox_Click()
    
 End
 
-Public Sub cvwInbox_Select_orig()
-   '--------------------------------------------------------------------
-   'The Inbox list of patients or destination staff has been selected
-   'If a patient, then either create a new cConsult or if documents for
-   'this patient have already been filed today, reuse the consult.pk
-   'this way, if for example  progress notes, past history or INR stuff
-   'is written from the inbox as a result of viewing the document the
-   'progress notes for the inbox remain discrete from any clinical notes
-   'written for the same patient on the same day
-   '--------------------------------------------------------------------
-   
-   cvwPatientsRequests.Clear()
-   cvwInbox.MoveCurrent()                                    'sets internal cursor to match whats visible
-   Selected_Inbox = Inbox[cvwInbox.Item.Key]                 'create SelectedPatient collection
-   Form_ActionDocument.EmbeddedForms_Reset()                 'if exists, set all cons to null
-   If Selected_Inbox!fk_patient Then
-      cvwPatientsRequests.Clear()
-      cvwPatientsRequests.tag = 0
-      currentconsult = New CConsult(Selected_Inbox, const.ConsultType_Added_From_Inbox)    
-      Form_ActionDocument.Init_Cons(currentconsult)  
-      Form_ActionDocument.Tabstrip1.index = cTab_Metadata     'user only sees metadata first
-      With Form_Recall
-         .Init(currentconsult)
-         .New_Entry()                                         'default to new recall entry
-      End With
-      Try Form_PreviousNotes.Close
-      Form_PreviousNotes = Null
-      With Form_PreviousNotes = New FProgressNotesViewer(Vbox_PreviousNotes)
-         .Init(currentconsult, modProgressNotes.AllProgressNotes_Construct_Html(currentconsult))
-      End With
-      Try Form_HealthIssues.Close()
-      Form_HealthIssues = Null
-      With Form_HealthIssues = New FPastHistory(Vbox_HealthIssues)
-         .Init(currentconsult)
-         .set_embedded(True, "FInbox")
-         .HBox_Buttons.Visible = True  'need save/new buttons in FClinical these are not visible
-         .HealthIssue_New()            'default to new health issue
-      End With
-      Try Form_ProgressNotes.Close()
-      Form_ProgressNotes = Null
-      With Form_ProgressNotes = New FProgressNotePage(Vbox_ProgressNotes)
-         .Set_Embedded_Form("FInbox")
-         .Init(currentconsult, "Progress notes pertaining to this document") 'fixme for adding codes
-         .HBox_Save.Visible = True
-      End With
-      Try Form_INRs.Close
-      Form_INRs = Null
-      With Form_INRs = New FInr(VBox_INR)
-         .set_embedded_form("FInbox")
-         .Init(currentconsult)
-         .HBox_InboxButtons.Visible = True   
-      End With
-      Patient_Outstanding_Requests_Show()                     'show requests for this category of provider
-      TabStrip1.Enabled = True                                'Tabstrip with documents
-   Else
-      TabStrip1.Enabled = False
-      Tabstrip1.text = "Document"
-      currentconsult = Null
-      Try Form_ProgressNotes = Null
-      Try Form_INRs = Null
-      Try Form_PreviousNotes.close
-      Try Form_PreviousNotes = Null
-      Try Form_HealthIssues = Null
-   End If
-   
-   '-------------------------------------------------------------------------
-   'Refresh the list of individual documents for this staff member or patient
-   'and highlight the first row in the list
-   '--------------------------------------------------------------------------
-   Document_RefreshList
-   
-End
-
 Public Sub cvwInbox_Select()
    '--------------------------------------------------------------------
    'The Inbox list of patients or destination staff has been selected
@@ -1204,6 +1135,7 @@ Public Sub cvwInbox_Select()
    '--------------------------------------------------------------------
    
    cvwPatientsRequests.Clear()
+   cvwPatientMedications.Clear()
    cvwInbox.MoveCurrent()                                    'sets internal cursor to match whats visible
    Selected_Inbox = Inbox[cvwInbox.Item.Key]                 'create SelectedPatient collection
    Form_ActionDocument.EmbeddedForms_Reset()                 'if exists, set all cons to null
@@ -1230,6 +1162,7 @@ Public Sub cvwInbox_Select()
          .Init(currentconsult)
       End With
       Patient_Outstanding_Requests_Show()                     'show requests for this category of provider
+      Patient_Medications_Show()
       TabStrip1.Enabled = True                                'Tabstrip with documents
    Else
       TabStrip1.Enabled = False
@@ -2177,6 +2110,8 @@ Public Sub mnuWebView_Click()
       tlMissingProvider.Visible = False
       Form_Graph.Visible = True
    End If
+Catch
+   Return
    
 End
 
@@ -2221,6 +2156,12 @@ Public Sub WebView_Menu()
    Next
    
    FPreview_HtmlDocument.mnuWebView.Popup()
+   
+End
+
+Private Sub Patient_Medications_Show()
+   
+   modPrescribingDBI.cvwMedications_Refresh(cvwPatientMedications, currentconsult, lblmedications) 
    
 End
 
@@ -2269,6 +2210,8 @@ Public Sub mnuDocumentsUnDelete_Click()
       modDBConnect.CommitTrans() 
    End If   
    Inbox_Reload()
+Catch
+   Return  
    
 End
 
@@ -2313,7 +2256,9 @@ Public Sub mnuDocuments_Click()
       Case "refile"
          Document_SendBack_For_ReFiling()
    End Select
-   
+Catch
+   Return 
+
 End
 
 Public Sub Document_Delete(audit_action As String)

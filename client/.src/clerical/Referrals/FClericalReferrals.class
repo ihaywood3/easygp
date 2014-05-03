@@ -1,0 +1,177 @@
+' Gambas class file
+
+' Copyright (C) 2008-2014 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'-------------------------------------------------------------------------------------
+' PURPOSE        : Allow viewing/re-printing of referrals by clerical staff
+'-------------------------------------------------------------------------------------
+
+Private referrals As Collection
+Private referral As Collection
+Private CurrentConsult As CConsult
+Private PDF_Form As FPdf
+Private Form_HTML_Viewer As FHtmlViewer
+
+Public Sub _new()
+   
+   With PDF_Form = New FPdf(Vbox_PDf)                              'Pdf form to show any scanned doc's
+      .BtOpen.Visible = False
+      .BtPrint.Visible = True
+      .BtPrint.Enabled = True  
+      .btZoomIn.Visible = True
+      .btZoomOut.Visible = True
+      .tbSave.Visible = True
+      .Visible = False  
+   End With 
+   With cvwReferrals
+      .Columns.count = 3
+      .Columns[0].Text = "Date"   'can be back date
+      .Columns[1].Text = "To"
+      .Columns[2].Text = "Regarding"
+   End With
+   Settings_Load()
+   With Form_HTML_Viewer = New FHtmlViewer(Vbox_PDf)
+      .tbWebBrowserPrint.Visible = True   
+      .tbWebBrowserZoomIn.Visible = True  
+      .tbWebBrowserZoomOut.Visible = True 
+      .Visible = True   'default, most letters are html in my surgery!
+   End With
+   
+End
+
+Public Sub Init(cons As CConsult)
+   
+   CurrentConsult = cons
+   Reload
+   
+End
+
+Public Sub Reload()
+   '--------------------------------------------------------------
+   'Loop through the collection, the key of the columnview becomes
+   'the primary key of clin_referrals.inbox
+   '--------------------------------------------------------------
+   
+   Dim Referral As Collection
+   Dim x As Integer
+   Dim sString As String
+   
+   cvwReferrals.Clear()   
+   currentconsult.Refresh("referrals_written")                                            'remove key = refresh    
+   Referrals = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!referrals_written)    'get all keyed 0>n  
+   For Each referral In Referrals
+      If referral!surname Then
+         sString = referral!wholename
+      Else
+         sString = referral!organisation
+      End If
+      cvwReferrals.Add(x, 0)                                                  'add new row
+      cvwReferrals[x][0] = Format(referral!date_referral, "dd/mm/yyyy")
+      cvwReferrals[x][1] = sString
+      cvwReferrals[x][2] = referral!tag
+      If referral!finalised = False Then
+         cvwReferrals[x][2] &= " (** UNFINISHED LETTER **)"
+      Endif
+      Inc x
+   Next 
+   If cvwReferrals.count Then    
+      lblmeasure.font = cvwReferrals.Font   
+      modUtil.Columnview_Columns_Set_Size(cvwReferrals, lblmeasure)
+      With cvwReferrals
+         .MoveFirst
+         .Item.Selected = True  
+      End With
+   End If
+   
+End
+
+Public Sub Settings_Save()
+   
+   Settings["FClericalReferrals/HSplit1.Layout"] = HSplit1.Layout
+   
+End
+
+Private Sub Settings_Load()
+   
+   HSplit1.Layout = Settings["FClericalReferrals/HSplit1.Layout", modUtil.HSplit([1, 1])]
+   cvwReferrals.font = Font[Settings["FClericalReferrals/cvwReferrals.font", "DejaVu Sans,9"]]
+   
+End
+
+Public Sub cvwReferrals_Menu()
+   
+   If cvwReferrals.count Then
+      mnuReferrals.Popup
+   Endif
+   
+End
+
+Public Sub mnuReferrals_Click()
+   '-------------------------------------------------------
+   'user has clicked on the menu over the certificates list
+   '-------------------------------------------------------   
+   
+   Dim x As Integer
+   Dim inclusions As Collection
+   Dim inclusion As Collection
+   
+   Select Case Last.tag
+      Case "print"
+         For x = 0 To cvwReferrals.Selection.count - 1
+            modArchiveDocumentsDBI.Re_Print_Letter(referrals[cvwReferrals.Selection[x]]!letter_html)
+         Next
+         cvwReferrals.UnselectAll()
+      Case "print with inclusions"
+         For x = 0 To cvwReferrals.Selection.count - 1
+            modArchiveDocumentsDBI.Re_Print_Letter(referrals[cvwReferrals.Selection[x]]!letter_html)
+            Inclusions = modReferralsDBI.Inclusions_Get(currentconsult!patient!fk_patient, False, False, referrals[cvwReferrals.Selection[x]]!pk_referral)
+            For Each Inclusion In Inclusions
+               modArchiveDocumentsDBI.Document_Print(currentconsult, inclusion!fk_document) '
+            Next
+         Next
+         cvwReferrals.UnselectAll()
+      Case "font"
+         modUtil.Columnview_SetFont(cvwReferrals, "FClericalReferrals")
+      Case "help"
+         modUtil.NotImplemented("Help for clerical referrals section")
+   End Select 
+Catch
+   Return 
+
+End
+
+Public Sub cvwReferrals_Select()
+   '----------------------------------------------------
+   'Show letter according to whether it is LaTex or html
+   '----------------------------------------------------   
+
+   cvwReferrals.MoveCurrent()
+   referral = referrals[cvwReferrals.item.key]
+   If Referral!letter_html Begins "\\documentclass" Then
+      Form_HTML_Viewer.Visible = False  
+      With PDF_Form
+         .Load_PDF(modPrinting.Latex_To_PDF(Referral!letter_html), False, False)
+         .Visible = True   
+      End With
+   Else
+      Referral!letter_html = modConsultDBI.Images_Get(Referral!letter_html)
+      PDF_Form.visible = False 
+      With Form_HTML_Viewer
+         .WebView1.HTML = Referral!letter_html
+         .Visible = True   
+      End With
+   Endif
+   
+End

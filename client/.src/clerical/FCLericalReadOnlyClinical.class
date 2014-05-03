@@ -1,0 +1,379 @@
+' Gambas class file
+
+Private Form_Documents As FDocumentsImported_New
+Private Form_Workcover_Forms As FWorkcoverClerical
+Private form_Medical_Certificates As FClericalMedicalCertificates
+Private Form_Requests As FClericalRequests
+Private Form_Referrals As FClericalReferrals
+Private Form_Patient_Summaries As FPatientSummaries
+'Private Form_Patient_Tasks As FClericalPatientTasksOutstanding
+Private Form_Patient_Tasks As FStaffTasks     'modified for just patient viewing
+Private currentconsult As CConsult
+Private Const cTab_Documents As Integer = 0
+Private Const cTab_Workcover As Integer = 1
+Private Const cTab_Medical_Certificates As Integer = 2
+Private Const cTab_Health_Summary As Integer = 3
+Private Const cTab_Referrals As Integer = 4
+Private Const Ctab_Requests As Integer = 5
+Private Const cTab_PatientTasks As Integer = 6
+Private patients As Collection
+Private patient As Collection
+Private bExit As Boolean
+Private timer_count As Integer
+Private fk_patient As Integer
+Private cvwPatients_key As Integer
+Private Form_HealthSummary_PDF As FPdf
+
+Public Sub _new()
+   
+   With Form_Documents = New FDocumentsImported_New(Vbox_Documents)
+      .Init()
+   End With
+   Try txtFindPatient.width = Settings["FDocumentsImported/HSplit1.Layout", modUtil.HSplit([844, 843])][0] - lblFindPatient.Width
+   
+End
+
+Public Sub Settings_Save()
+   
+   Form_Documents.Settings_Save()
+   Form_Medical_Certificates.Settings_Save()
+   Form_Referrals.Settings_Save()
+   
+End
+
+Public Sub TabStrip1_Click()
+   
+   If IsNull(patient) Then Return   
+   Select Case Last.Index
+      Case cTab_Workcover
+         Consult_Check_created()
+         If IsNull(Form_Workcover_Forms) Then Form_Workcover_Forms = New FWorkcoverClerical(Vbox_Workcover)
+         With Form_Workcover_Forms
+            .Set_Patient(currentconsult)
+            .Reload  
+         End With
+      Case cTab_Medical_Certificates
+         Consult_Check_created()
+         If IsNull(form_Medical_Certificates) Then form_Medical_Certificates = New FClericalMedicalCertificates(Vbox_MedicalCertificates)
+         form_Medical_Certificates.Init(currentconsult)
+      Case cTab_Health_Summary
+         Consult_Check_created()
+         If IsNull(Form_Patient_Summaries) Then Form_Patient_Summaries = New FPatientSummaries(VBox_Patient_Summaries)
+         Form_Patient_Summaries.Init(currentconsult)
+      Case cTab_Referrals
+         Consult_Check_created()
+         If IsNull(form_Referrals) Then form_Referrals = New FClericalReferrals(Vbox_Referrals)
+         form_Referrals.Init(currentconsult)
+      Case Ctab_Requests
+         Consult_Check_created()
+         If IsNull(Form_Requests) Then Form_Requests = New FClericalRequests(Vbox_Requests)
+         Form_Requests.Init(currentconsult)
+      Case cTab_PatientTasks
+         Consult_Check_created()
+         ' If IsNull(Form_Patient_Tasks) Then Form_Patient_Tasks = New FClericalPatientTasksOutstanding(Vbox_PatientTasks)
+         If IsNull(Form_Patient_Tasks) Then
+            With Form_Patient_Tasks = New FStaffTasks(Vbox_PatientTasks)
+               .Set_Parent_Form("FClericalReadOnlyClinical")
+               .Init() 'the gui
+            End With
+         End If   
+         With Form_Patient_Tasks
+            .Set_consult(currentconsult)
+            .Reload  'the data
+         End With
+         
+   End Select
+   
+End
+
+Public Sub Consult_Check_created()
+   
+   If IsNull(currentconsult) Then
+      currentconsult = New CConsult(patient, const.ConsultType_ClericalNote)
+   Endif
+   
+End
+
+Public Sub EditAreaTextBox_KeyPress()
+   
+   If Key.code = Key.down Then
+      With cvwPatients
+         If .Visible = True And .Count <> 0 Then
+            .MoveFirst
+            .SetFocus
+         End If   
+      End With
+   Endif
+   
+End
+
+Public Sub cvwPatients_Select()
+   '-----------------------------------------------
+   'User has selected a patient from the columnview
+   '-----------------------------------------------   
+   
+   If bExit Then Return
+   cvwPatients.MoveCurrent
+   cvwPatients_key = cvwPatients.Item.Key
+   Patient = Patients[cvwPatients_key]
+Catch
+   Return 
+   
+End
+
+Public Sub cvwPatients_KeyPress()
+   
+   If Key.code = Key.return Then
+      cvwPatients_Dblclick()
+   Endif
+   
+End
+
+Public Sub cvwPatients_Dblclick()
+   '------------------------------------------
+   'User has selected a patient from the list
+   'display their name and their claims/visits
+   '------------------------------------------  
+   
+   If Not cvwPatients.count Then Return
+   cvwPatients.MoveCurrent
+   cvwPatients_key = cvwPatients.Item.Key
+   patient = patients[cvwPatients_key]
+   Patient_Show   
+Catch
+   Return 'bug here fixme, key not being set
+   
+End
+
+Public Sub Patient_Show()
+   
+   fk_patient = patient!fk_patient 
+   bexit = True   
+   With txtFindPatient
+      .text = patient!title & " " & patient!firstname & " " & patient!surname & " " & patient!street1 & " " & patient!town & " " & patient!surburb  
+      .pos = 1
+   End With
+   cvwPatients.Visible = False   
+   bExit = False  
+   Reload()   
+   With TabStrip1
+      .Enabled = True                   
+      .SetFocus
+   End With
+Catch
+   bexit = False  
+   
+End
+
+Public Sub Reload()
+   
+   Try Form_Workcover_Forms.Patient = Null
+   Select Case TabStrip1.Index
+      Case cTab_Documents
+         With Form_Documents
+            .Set_Patient(patient)
+            .Reload
+         End With
+      Case cTab_Workcover
+         
+      Case cTab_Health_Summary
+      Case cTab_Medical_Certificates
+         
+   End Select  
+   
+End
+
+Public Sub Form_Leave()
+   
+   timer1.Enabled = False  
+   
+End
+
+Public Sub Reset()
+   
+   With TabStrip1
+      .index = 0 'the documents
+      .Enabled = False  
+   End With 
+   With Form_Documents
+      .cvwDocumentsImported.Clear()
+      .form_metadata.EditArea_Clear()
+   End With
+   With cvwPatients
+      .Visible = False
+      .Clear
+   End With
+   Try Form_Patient_Summaries.currentconsult = Null
+   Try Form_Patient_Summaries.CurrentConsult = Null
+   Try Form_Patient_Summaries.cvwAvailableSummaries.UnselectAll()
+   Try Form_Patient_Summaries.GUI_Reset
+   
+End
+
+Public Sub EditAreaTextBox_LostFocus()
+   
+   Last.BackGround = Color.white
+   
+End
+
+Public Sub EditAreaTextBox_Change()
+   
+   If Len(txtFindPatient.text) = "" Then
+      Reset()
+   End If  
+   
+End
+
+Public Sub EditAreaTextBox_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)
+   Patient = Null
+   currentconsult = Null
+   With cvwPatients
+      .top = HBox_Patient.top + HBox_Patient.Height
+      .width = txtFindPatient.Width
+      .Height = 500
+      .left = lblFindPatient.Width + HBox_Patient.Left + Vbox1.Padding
+      .Visible = False   
+   End With
+   Reset
+   txtFindPatient.text = ""
+   
+End
+
+Public Sub EditAreaTextBox_KeyRelease()
+   
+   timer1.Stop
+   Select Case Last.tag
+         '    Case "filter sender"
+         ' Documents_Refresh_List()
+      Case "filter patient"
+         timer_count = 0 'don't search for patient whilst typing
+         timer1.Start
+         '  Case "filter document"
+         '     Documents_Refresh_List
+   End Select
+   
+End
+
+Public Sub txtFindPatient_LostFocus()
+   
+   If Last.tag = "filter patient" Then timer1.Stop
+   
+End
+
+Public Sub timer1_Timer()
+   
+   If bexit Then Return
+   Inc timer_count
+   
+   If timer_count > 2 Then  'FIXME MAKE THESE USER CONFIGURABLE PER TYPING SPEED
+      bExit = True
+      timer_count = 0
+      timer1.stop
+      Patients_Get()
+      bExit = False
+   Endif
+   
+End
+
+Public Sub Patients_Get()
+   'Selects patient like the search text   
+   
+   If Trim(txtFindPatient.text) = "" Then Return
+   
+   Inc Application.Busy
+   ' Try limit = Val(txtlimit.text)
+   
+   patients = modContactsDBI.patients_get_firstname_surname(Trim(txtFindPatient.text))
+   '
+   '  patients = modContactsDBI.patients_get_firstname_surname(Trim(txtFilterPatient.text), chkIncludeDeceased.value, limit, chkIncludeInactive.value)
+   Patients_List_Fill()
+   Dec Application.Busy
+   
+End
+
+Public Sub Patients_List_Fill()
+   
+   Dim sStatusMessage As String
+   Dim iLastperson_pk As Integer
+   Dim x As Integer
+   
+   With cvwPatients
+      .Clear                           'clear current list persons
+      .Columns.count = 9
+   End With
+   '  views_comms = New Collection
+   If Patients.count Then
+      Try Patients.Remove("sql_in_english") 'ian included this for FClinical patient search
+      Patients = modUtil.Copy_Collection_Keyed_Sequentially(Patients)
+      sStatusMessage = Str$(Patients.count) & " records found for search criteria '" & Trim(txtFindPatient.text) & "'"
+      For Each patient In Patients
+         ' If Patient!fk_lu_active_status = const.PatientStatus_Inactive Then
+         '    cvwPatients.Add(x, "", pic_inactive)
+         '  Else
+         cvwPatients.Add(x, "")
+         '  Endif
+         If iLastperson_pk <> Patient!fk_person Then
+            cvwPatients[x][1] = Patient!surname & "  "
+            cvwPatients[x][2] = Patient!firstname & "  "
+            cvwPatients[x][3] = Patient!sex
+            Try cvwPatients[x][4] = Format(Patient!birthdate, "dd/mm/yyyy") & "   "
+            Try cvwPatients[x][5] = Patient!age_display
+            iLastperson_pk = Patient!fk_person
+         Else
+            cvwPatients[x][1] = ""
+         End If
+         cvwPatients[x][6] = ""
+         cvwPatients[x][7] = Trim(Patient!street1 & " " & Patient!street2) & " " & Patient!town & " " & Patient!postcode
+         cvwPatients[x][8] = ""
+         Inc x
+      Next
+      If Patients.count = 1 Then
+         Patient_Show
+      Else
+         With cvwPatients
+            .Enabled = True                       'enable list for clicking on
+            .Visible = True   
+         End With
+      Endif
+      
+   End If
+   lblMeasure.font = cvwPatients.Font
+   modUtil.Columnview_Columns_Set_Size(cvwPatients, lblMeasure)
+   
+End
+
+Public Sub Form_KeyPress()
+   
+   Dim CtrlDown As Boolean
+   
+   Try CtrlDown = Key.Control
+   If CtrlDown Then
+      Select Case Key.code
+         Case Asc("=")
+            Zoom("zoom_in")
+         Case Asc("-")
+            Zoom("zoom_out")
+      End Select
+   End If
+   
+End
+
+Public Sub Zoom(zoom As String)
+   '------------------------------------------------------------------------------
+   'Called by either the Form key press event to emulated eg Firefox Ctrl+/- Zoom
+   'or the zoom buttons on the main toolbar MainToolbar_click()
+   '------------------------------------------------------------------------------
+   
+   '    Dim Vb As VBox
+   '    Dim i As Object
+   '    
+   '    VB = WorkspaceEditor.ActiveWindow.Children[0]   'this is VBox containing the form
+   '    i = VB.Children[0]
+   '    
+   '    Try Object.Call(i, zoom)
+   ' Catch
+   '    Return
+   
+End

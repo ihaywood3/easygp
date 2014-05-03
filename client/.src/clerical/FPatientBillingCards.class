@@ -14,12 +14,15 @@
 
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
-' ------------------------------------------------------------------------
+' ------------------------------------------------------------------------------------------
 ' PURPOSE         A module to save patient specific information to do with
 '                 billing and general practice
 ' TODO            Put in an admin general option for the default doctor
 '                 FIX fk_payer_branch
-'-------------------------------------------------------------------------
+' NOTE             Display_Patient_Data() has patient collection passed to it from FPatients
+'                  This sub also creates the cConsult needed if the user clicks on the
+'                  tab and selects the psycho-social history to put in NOK (Next of kin)
+'-------------------------------------------------------------------------------------------
 Private doctors As Collection
 Private itimer_count As Integer
 Private patient As Collection
@@ -39,7 +42,8 @@ Private sParentForm As String          'the name of the parent form e.g FRecordV
 Private pcehrconsent As String[]        'n = Not asked yet, c = consented, x = Not eligible(tourist, asylum - seeker, etc), r = refused, e = Error
 Private old_ihi As String
 Public old_consent As String
-
+Public form_next_of_kin As FPsychoSocialHistory
+Private currentConsult As CConsult 'passed to psycho-social history only but set to null by FPatients
 
 Public Function Preferred_Doctor() As Variant
    
@@ -48,6 +52,12 @@ Public Function Preferred_Doctor() As Variant
    Else
       Return Null
    Endif
+   
+End
+
+Public Sub Currentconsult_Set_Null()
+   
+   currentConsult = Null 
    
 End
 
@@ -108,7 +118,7 @@ End
 
 Public Function PCEHR_Consent() As String
    'returns one of 'n = Not asked yet, c = consented, x = Not eligible(tourist, asylum - seeker, etc), r = refused, e = Error
-
+   
    If cmbPCEHRConsent.index = -1 Then
       Return "n"
    Else
@@ -124,18 +134,18 @@ Public Function Patient_IndividualHealthIdentifier() As String
    Else
       Return Null
    Endif
+   
 End
 
 Public Function Previous_IHI(new_ihi As String) As String
    
-  Dim s As String
-  
-  s = old_ihi
-  old_ihi = new_ihi 
-  Return s
+   Dim s As String
+   
+   s = old_ihi
+   old_ihi = new_ihi 
+   Return s
    
 End
-
 
 Public Function veteran_specific_condition() As String
    '---------------------------------------------------
@@ -195,6 +205,7 @@ Public Sub Init(VB As VBox, Optional sPF As String)
    
    ParentForm_Vbox_EditArea = VB
    sParentForm = sPF
+   currentConsult = Null  'used in the embedded pyscho-social history for NOK.
    lblMeasure.text = "  Individual Health Identifier  "
    modEditAreaHelpers.Resize_labels(Vbox_EditArea, lblMeasure)
    doctors = modUtil.Copy_Collection_Keyed_Sequentially(modContactsDBI.Staff_Get_With_Provider_Number())
@@ -241,6 +252,31 @@ Public Sub Init(VB As VBox, Optional sPF As String)
    EditArea_Recolour(Color.DarkGray)
    old_consent = "n"
    old_ihi = Null
+   lblMeasure.text = "   Search Patient Database   "
+   With form_next_of_kin = New FPsychoSocialHistory(Vbox_Next_Of_Kin)
+      .HBox17.visible = False
+      .HBox2.visible = False
+      .HBox10.visible = False
+      .HBox_teConfidentialHistory.visible = False
+      .HBox_DoNotPRINT.visible = False
+      .HBox_ViewByDr.visible = False
+      .HBox_SelectRole.visible = False
+      .HBox14.visible = False
+      .HBox_RolesPermitted.visible = False
+      .lblState.Visible = False  
+      .lblPostcode.Visible = False  
+      .HBox_ResponsiblePersonsDetailsHeading.Visible = False  
+      .HBox_Buttons.Visible = False  
+      .HBox_Responsible_Person_Hints.Visible = True   
+      .Set_Parent_Form("FPatientBillingCards")
+      .Set_Parent_From_VBox_EditArea(ParentForm_Vbox_EditArea)
+   End With
+   ' If sParentForm <> "FRecordVisit" Then
+   '    Hbox_Save.Visible = False  
+   ' Else
+   '    Hbox_Save.Visible = True 
+   ' End If 
+   modEditAreaHelpers.Resize_labels(form_next_of_kin.VBox_ResponsiblePerson, lblMeasure)
    
 End
 
@@ -252,15 +288,15 @@ End
 
 Public Sub Reload_IHI(fk_patient As Integer)
    
-  Dim coll As Collection
-  Dim x As Integer
-  
-  bExit = True
-  coll = modContactsDBI.Patient_Get_Using_PK(fk_patient)
-  txtIndividualHealthIdentifier.text = Right$(coll!ihi, -6) ' knock off constant prefix
-  old_ihi = coll!ihi
-  old_consent = coll!pcehr_consent
-  ' this is the best method IMHO (Ian)
+   Dim coll As Collection
+   Dim x As Integer
+   
+   bExit = True
+   coll = modContactsDBI.Patient_Get_Using_PK(fk_patient)
+   txtIndividualHealthIdentifier.text = Right$(coll!ihi, -6) ' knock off constant prefix
+   old_ihi = coll!ihi
+   old_consent = coll!pcehr_consent
+   ' this is the best method IMHO (Ian)
    For x = 0 To pcehrconsent.Max
       If pcehrconsent[x] = coll!pcehr_consent Then   'n = Not asked yet, c = consented, x = Not eligible(tourist, asylum - seeker, etc), r = refused, e = Error
          cmbPCEHRConsent.index = x
@@ -270,7 +306,6 @@ Public Sub Reload_IHI(fk_patient As Integer)
    bExit = False
    
 End
-
 
 Public Sub EditArea_Recolour(icolor As Integer)
    
@@ -296,7 +331,9 @@ Public Sub EditArea_Clear()
    
    bExit = True
    modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
-   taNextOfKin.Clear()
+   Me.form_next_of_kin.bexit = True 
+   Try modEditAreaHelpers.EditArea_Clear(Me.form_next_of_kin.Vbox_EditArea_inner)
+   Me.form_next_of_kin.bexit = False 
    Veteran_Data_Entry_Enable(False)
    Concession_Card_Enable(False)
    fk_payer_person = 0
@@ -355,7 +392,6 @@ Public Sub Display_Patient_Data(P As Collection)
    Try txtConcessionExpiryDate.text = P!concession_card_expiry_date
    Try txtConcessionNumber.text = P!concession_card_number
    If Not IsNull(P!concession_card_type) Or Not IsNull(P!concession_card_number) Then
-   
       Concession_Card_Enable(True)
       ' Try txtConcessionExpiryDate.text = P!concession_card_expiry_date
       ' Try txtConcessionNumber.text = P!concession_card_number
@@ -390,8 +426,9 @@ Public Sub Display_Patient_Data(P As Collection)
       End If
       Inc x
    Next
-   
    bExit = False
+   currentConsult = New CConsult(patient, const.ConsultType_ClericalNote)
+   form_next_of_kin.Init(currentconsult)
    
 End
 
@@ -400,6 +437,7 @@ Private Sub Load_Referral_Type(fk_patient As Integer)
    'exect_query_first will not work
    'I've temporarily changed this whilst  you find a solution as 
    'it is crashing my billing system.
+   
    Dim coll As Collection
    
    coll = modBillingDBI.Find_Referrer(fk_patient)
@@ -443,6 +481,8 @@ Public Sub EditArea_Notify_DataChange()
    If bexit Then Return
    If sParentForm <> "FRecordVisit" Then
       ParentForm_Vbox_EditArea.padding = 1
+   Else
+      FRecordVisit.Enable_BOKBIllingSaveButton(True)
    End If
    bDataChanged = True
    
@@ -461,7 +501,7 @@ Public Sub EditArea_TextBox_Activate()
       Case "veteran number"
          txtVeteranSpecificCondition.SetFocus()
       Case "veteran condition"
-         txtFindNextOfKin.SetFocus()
+         ' txtFindNextOfKin.SetFocus()
       Case "Concession number"
          txtConcessionExpiryDate.SetFocus()
       Case "concession expiry date"
@@ -501,7 +541,7 @@ Public Sub EditArea_Combo_Click()
          Select Case Last.index + 1                'the types are 1 based
             Case const.Veteran_Entitlement_None
                Veteran_Data_Entry_Enable(False)
-               txtFindNextOfKin.SetFocus()
+               '     txtFindNextOfKin.SetFocus()
             Case const.Veteran_Entitlement_Full
                Veteran_Data_Entry_Enable(True)
                txtVeteranNumber.SetFocus()
@@ -512,7 +552,7 @@ Public Sub EditArea_Combo_Click()
       Case "centrelink card type"
          If Last.index + 1 = const.Concession_Entitlement_None Then
             Concession_Card_Enable(False)
-            txtFindNextOfKin.SetFocus()
+            ' txtFindNextOfKin.SetFocus()
          Else
             Concession_Card_Enable(True)
             txtConcessionNumber.SetFocus()
@@ -520,7 +560,7 @@ Public Sub EditArea_Combo_Click()
       Case "private insurance company"
          cmbPreferredDoctor.SetFocus()
       Case "preferred doctor"
-         txtFindNextOfKin.SetFocus()
+         '  txtFindNextOfKin.SetFocus()
       Case "billing level"
          If cmbBIllingLevel.text = "Bulk Bill" Then
             txtPayer.text = ""
@@ -529,14 +569,6 @@ Public Sub EditArea_Combo_Click()
          Endif
    End Select
    EditArea_Notify_DataChange()
-   
-End
-
-Public Sub Next_Of_Kin_Get()
-   
-End
-
-Public Sub Next_Of_Kin_Select()
    
 End
 
@@ -674,7 +706,7 @@ Public Sub EditArea_TextBox_Change()
             If cmbPCEHRConsent.index = -1 Or cmbPCEHRConsent.index = const.pcehrconsent_notconsented Then
                cmbPCEHRConsent.index = const.pcehrconsent_consented 'consented
             Endif
-
+            
          Endif
    End Select
    EditArea_Notify_DataChange()
@@ -682,12 +714,12 @@ Public Sub EditArea_TextBox_Change()
 End
 
 Public Sub EditArea_Combo_Change()
-  
-  If bexit Then Return 
-  If Last.tag <> "pcehr consent" Then Return
-  If cmbPCEHRConsent.Index = 6 Or cmbPCEHRConsent.Index = 7 Or cmbPCEHRConsent.Index = 1 Then
-    Stop Event
-  Endif 
+   
+   If bexit Then Return 
+   If Last.tag <> "pcehr consent" Then Return
+   If cmbPCEHRConsent.Index = 6 Or cmbPCEHRConsent.Index = 7 Or cmbPCEHRConsent.Index = 1 Then
+      Stop Event
+   Endif 
    
 End
 
@@ -698,6 +730,7 @@ Public Function Valid_Data() As Boolean
    'Both those forms have this form embedded
    'fixme add vaidating the medicare card number
    '------------------------------------------------------
+   
    Dim other_patient As Collection
    Dim s As String
    Dim fk_patient As Integer
@@ -733,12 +766,12 @@ Public Function Valid_Data() As Boolean
          Return False
       Endif
    Endif
-    If txtConcessionNumber.text <> "" Then
-       If cmbCentreLinkCardTypes.index = -1 Then
-          Message.info("Please select the type of concession card before saving")
-          Return False
-       Endif
-    Endif
+   If txtConcessionNumber.text <> "" Then
+      If cmbCentreLinkCardTypes.index = -1 Then
+         Message.info("Please select the type of concession card before saving")
+         Return False
+      Endif
+   Endif
    If cmbCentreLinkCardTypes.index > 0 Then 'allow none or -1
       If txtConcessionNumber.text = "" Then
          Message.info("Please supply a concession card number before saving")
@@ -764,23 +797,23 @@ Public Function Valid_Data() As Boolean
       If Not IsNull(patient) And If patient.Exist("fk_patient") Then fk_patient = patient!fk_patient
       other_patient = modPCEHR.Check_Unique_IHI(Patient_IndividualHealthIdentifier(), fk_patient)
       If Not IsNull(other_patient) Then
-        bExit = True
-        cmbPCEHRConsent.Index = 1 ' error
-        bExit = False
-        s = "Another patient "
-        s &= other_patient!wholename & " DOB: " & other_patient!birthdate
-        s &= " has the same IHI " & Patient_IndividualHealthIdentifier()
-        Message.Error(s)
-        modPCEHR.Set_PCEHR_Error(other_patient!fk_patient)
-        cc = New CConsult(other_patient, const.ConsultType_AuditNote, True)
-        cc.Set(const.ConsultType_AuditNote, "IHI error")
-        s = "The IHI is being deactivated because of duplication "
-        If Not IsNull(patient) And If patient.Exist("wholename") Then
-           s &= "other patients is " & patient!wholename & " DOB: " & patient!birthdate
-        Endif
-        modAudit.MakeAudit(cc, const.cAuditAction_PCEHR, "clerical.data_patients", other_patient!fk_patient, 0, s)
-        modDBConnect.CommitTrans()
-        Return False
+         bExit = True
+         cmbPCEHRConsent.Index = 1 ' error
+         bExit = False
+         s = "Another patient "
+         s &= other_patient!wholename & " DOB: " & other_patient!birthdate
+         s &= " has the same IHI " & Patient_IndividualHealthIdentifier()
+         Message.Error(s)
+         modPCEHR.Set_PCEHR_Error(other_patient!fk_patient)
+         cc = New CConsult(other_patient, const.ConsultType_AuditNote, True)
+         cc.Set(const.ConsultType_AuditNote, "IHI error")
+         s = "The IHI is being deactivated because of duplication "
+         If Not IsNull(patient) And If patient.Exist("wholename") Then
+            s &= "other patients is " & patient!wholename & " DOB: " & patient!birthdate
+         Endif
+         modAudit.MakeAudit(cc, const.cAuditAction_PCEHR, "clerical.data_patients", other_patient!fk_patient, 0, s)
+         modDBConnect.CommitTrans()
+         Return False
       End If
    End If 
    If PCEHR_Consent() = "c" Or If PCEHR_Consent() = "h" Then
@@ -813,20 +846,12 @@ End
 
 Public Sub Form_Leave()
    
-   If bDataChanged And sParentForm <> "" Then
-      FRecordVisit.Billing_Save_Defaults
-   End If
+  ' Print "Parent form", sParentForm, "data changed:", bDataChanged
+   '   If bDataChanged And sParentForm <> "" Then
+  ' If sParentForm = "FRecordVisit" Then 
+      '  If bDataChanged then        FRecordVisit.Billing_Save_Defaults
+    '  form_next_of_kin.Save()  'will save if data changed on this form
+  ' End If
    
 End
 
-Public Sub HBox_ResponsiblePerson_Leave()
-   
-   Timer1.Enabled = False
-   
-End
-
-Public Sub HBox_ResponsiblePerson_Enter()
-   
-   Timer1.Enabled = True
-   
-End

@@ -24,7 +24,7 @@
 ' TODO'S          Make popup calandar buttons visible and fix code, implement LIMIT ctrl
 
 '-----------------------------------------------------------------------------------------
-
+Private pic_inactive As Picture = Picture["icons/12/red_dot.png"]
 Private Documents As Collection
 Private Document As Collection
 Private Documents_Filtered As Collection
@@ -33,11 +33,15 @@ Private To_Date As Date
 Private form_metadata As FDocumentMetaData
 Private FPreview_HtmlDocument As FHtmlViewer             'The main html viewer for hl7
 Private FDocumentTasks As FHtmlViewer
-Private PDForm As FPdf                                   'View any PDF files here
+Private PDF_Form As FPdf                                   'View any PDF files here
 Private Timer_Count As Integer
 Private bExit As Boolean
 Private pfile As String
 Private fk_document As Integer
+Private patients As Collection
+Private patient As Collection
+Private cvwPatients_key As Integer
+Private fk_patient As Integer
 
 Public Sub Init()
    '------------------------------------------
@@ -53,24 +57,27 @@ Public Sub Init()
       .tbWebBrowserZoomOut.visible = True
       .tbWebBrowserZoomIn.visible = True
    End With
-   With PDForm = New FPdf(Vbox_PDf)                              'Pdf form to show any scanned doc's
+   With PDF_Form = New FPdf(Vbox_PDf)                              'Pdf form to show any scanned doc's
       .BtOpen.Visible = False
       .BtPrint.Visible = True
+      .btnPrint.enabled = True 
       .btZoomIn.Visible = True
       .btZoomOut.Visible = True
    End With
    Settings_Load()
-   cvwDocumentsImported.Columns.Count = 3
+   cvwDocumentsImported.Columns.Count = 4
    cvwDocumentsImported.Columns[0].Text = "Patient"
    cvwDocumentsImported.Columns[1].Text = "Date"
    cvwDocumentsImported.Columns[2].Text = "Document"
+   cvwDocumentsImported.Columns[3].Text = "From"
    With form_metadata = New FDocumentMetaData(VBox_Metadata)     'Set up gui for document metadata cf scanning
       .Init("Allocated Documents")
       .Enabled = False
    End With
    txtDateFrom.text = Format(DateAdd(Now(), gb.month, -1), "dd/mm/yyyy") 'default to the last months records
    txtDateTo.text = Format(Now, "dd/mm/yyyy") '
-   Reload()
+   txtFilterPatient.SetFocus()
+   ' Reload()
    
 End
 
@@ -120,7 +127,7 @@ Public Sub Settings_Save()
    Settings["FDocumentsImported/HSplit1.Layout"] = HSplit1.Layout
    Settings["FDocumentsImported/VSplit1.Layout"] = VSplit1.Layout
    Settings["FDocumentsImported/VSplit_RightSide.Layout"] = VSplit_RightSide.Layout
-   Settings["FDocumentsImported/pdfZoom"] = PDForm.CurrentZoom
+   Settings["FDocumentsImported/pdfZoom"] = PDF_Form.CurrentZoom
    Settings["FDocumentsImported/HTML_Document_Zoom"] = FPreview_HtmlDocument.Webview1.Zoom
    Settings["FDocumentsImported/HTML_Tasks_Zoom"] = FDocumentTasks.Webview1.Zoom
    
@@ -130,7 +137,7 @@ Private Sub Settings_Load()
    
    HSplit1.Layout = Settings["FDocumentsImported/HSplit1.Layout", modUtil.HSplit([844, 843])]
    VSplit1.Layout = Settings["FDocumentsImported/VSplit1.Layout", modUtil.VSplit([548, 398])]
-   PDForm.CurrentZoom = Settings["FDocumentsImported/pdfZoom", 1.0]
+   PDF_Form.CurrentZoom = Settings["FDocumentsImported/pdfZoom", 1.0]
    VSplit_RightSide.Layout = Settings["FDocumentsImported/VSplit_RightSide.Layout", modUtil.VSplit([750, 196])]
    FPreview_HtmlDocument.Webview1.Zoom = Settings["FDocumentsImported/HTML_Document_Zoom", 1.0]
    FDocumentTasks.Webview1.Zoom = Settings["FDocumentsImported/HTML_Tasks_Zoom", 1.0]
@@ -140,16 +147,96 @@ End
 
 Public Sub mnuDocumentsImported_Click()
    
+   Dim x As Integer
+   Dim sMsg As String
+   
    Select Case Last.tag
       Case "help"
          modUtil.NotImplemented("Help for this section")
       Case "font"
          modUtil.Columnview_SetFont(cvwDocumentsImported, "FDocumentsImported")
+      Case "print"
+         For x = 0 To cvwDocumentsImported.Selection.count - 1
+            Document_Print(documents[cvwDocumentsImported.Selection[x]])
+         Next
+         cvwDocumentsImported.UnselectAll()
+      Case "print all"
+         cvwDocumentsImported.SelectAll()
+         If cvwDocumentsImported.Selection.count > 10 Then
+            smsg = "You have selected " & Str(cvwDocumentsImported.Selection.count) & " documents.\n\n"
+            "Are you sure you want to be party to cutting down more and more tree's to provide the paper for  you to do this?"
+         Endif
+         If Message.Question(sMsg, "Yes - Print the lot", "No - I've a social conscience") = 2 Then
+            cvwDocumentsImported.UnselectAll()
+            Return
+         End If   
+         For x = 0 To cvwDocumentsImported.Selection.count - 1
+            Document_Print(documents[cvwDocumentsImported.Selection[x]])
+         Next
+         
+   End Select
+Catch
+   Return
+
+End
+
+Public Sub Document_Print(document As Collection)
+   '--------------------------------------------------------------
+   'Print a document
+   'All documents have a filename - but they are either PDF or HL7
+   'Having got the document, print according to file extension
+   'All our non scanned documents are html
+   'FIXME: could be printing a picture
+   '----------------------------------------------------------
+   
+   Select Case File.Ext(Document!source_file)
+      Case "pdf"
+         modPrinting.Print_PDF(modFiles.Get("document_archiving_directory", Document!source_file))
+      Case "jpg", "png", "tiff", "jpeg", "bitmap"
+         'FIX ME   TO PRINT A PICTURE
+      Case Else
+         modPrinting.PrintHtml(Document!html)
    End Select
    
 End
 
 Public Sub Reload()
+   '----------------------------------------------------------------------------
+   'Re- Loads the viewing list with recent document excluding deleted documents
+   'from the backend, with optional filter on patient.
+   'Note this is different from Documents_Refresh_List() which uses the
+   'existing documents collection to filter patients on the contents of
+   'txtFilterPtient ie not reloaded from the backend
+   '----------------------------------------------------------------------------
+   
+   ' If IsDate(txtDateFrom.text) Then
+   '    From_Date = Val(txtDateFrom.text)
+   ' Else
+   '    txtDateFrom.SetFocus()
+   '    Return
+   ' Endif
+   ' If IsDate(txtDateTo.text) Then
+   '    To_Date = Val(txtDateto.text)
+   ' Else
+   '    to_Date = Now()
+   ' End If
+   txtDateFrom.Background = Color.White
+   txtDateto.Background = Color.White
+   txtFilterPatient.Background = Color.White
+   txtFilterSender.Background = Color.White
+   Inc Application.Busy
+   
+   ' Documents = modUtil.Copy_Collection_Keyed_Sequentially(modInboxDBI.Documents_Get(From_Date, To_Date, False, Trim(txtFilterPatient.text),, Trim(txtFilterDocumentTag.text)))
+   '  Documents = modUtil.Copy_Collection_Keyed_Sequentially(modInboxDBI.Documents_Get_All_For_Patient(fk_patient,,,,,, Trim(txtFilterDocumentTag.text)))
+   Documents = modUtil.Copy_Collection_Keyed_Sequentially(modInboxDBI.Documents_Get_All_For_Patient(fk_patient, rbResults.value, rbLetters.Value,,,, Trim(txtFilterDocumentTag.text)))
+   
+   If documents.Count Then Documents_Refresh_List()
+   
+   Dec Application.Busy
+   
+End
+
+Public Sub Reload_old_version_multi_patients()
    '----------------------------------------------------------------------------
    'Re- Loads the viewing list with recent document excluding deleted documents
    'from the backend, with optional filter on patient.
@@ -177,7 +264,7 @@ Public Sub Reload()
    txtFilterSender.Background = Color.White
    Inc Application.Busy
    If Trim(txtFilterPatient.text) <> "" Then
-      Documents = modUtil.Copy_Collection_Keyed_Sequentially(modInboxDBI.Documents_Get(From_Date, To_Date, False, Trim(txtFilterPatient.text),, Trim(txtFilterDocumentTag.text)))
+      Documents = modUtil.Copy_Collection_Keyed_Sequentially(modInboxDBI.Documents_Get_All_For_Patient(From_Date, To_Date, False, Trim(txtFilterPatient.text),, Trim(txtFilterDocumentTag.text)))
       If documents.Count Then Documents_Refresh_List()
    End If
    Dec Application.Busy
@@ -192,7 +279,11 @@ Public Sub Documents_Refresh_List()
    
    Dim x As Integer
    
-   cvwDocumentsImported.Clear()
+   cvwPatients.Visible = False   
+   With cvwDocumentsImported
+      .Clear()
+      .Visible = True   
+   End With
    Documents_Filtered = New Collection
    For Each Document In Documents
       If Trim(txtFilterDocumentTag.text) = "" Then             'user not filtering?
@@ -211,6 +302,7 @@ Public Sub Documents_Refresh_List()
             Endif
          Endif
       End If
+      
    Next
    lblMeasure.font = cvwDocumentsImported.Font
    modUtil.Columnview_Columns_Set_Size(cvwDocumentsImported, lblmeasure)
@@ -218,8 +310,10 @@ Public Sub Documents_Refresh_List()
       cvwDocumentsImported.MoveFirst()
       cvwDocumentsImported.Item.Selected = True
    End If
-   Catch
-      Return
+   txtFilterDocumentTag.SetFocus
+Catch
+   Return
+   
 End
 
 Public Sub Document_Add(document As Collection, x As Integer)
@@ -245,6 +339,8 @@ Public Sub Document_Add(document As Collection, x As Integer)
    Else
       cvwDocumentsImported[x][2] &= Document!tag
    End If
+   cvwDocumentsImported[x][3] = document!originator
+   cvwDocumentsImported.Columns[2].width = 200
    Documents_Filtered.Add(document, Documents_Filtered.count)
    
 End
@@ -279,9 +375,70 @@ Public Sub timer1_Timer()
       bExit = True
       timer_count = 0
       timer1.stop
-      Reload()
+      If cvwDocumentsImported.Visible Then Reload()
+      Patients_Get()
+      'Reload()
       bExit = False
    Endif
+   
+End
+
+Public Sub Patients_Get()
+   'Selects patient like the search text   
+   
+   If Trim(txtFilterPatient.text) = "" Then Return
+   
+   Inc Application.Busy
+   ' Try limit = Val(txtlimit.text)
+   
+   patients = modContactsDBI.patients_get_firstname_surname(Trim(txtFilterPatient.text))
+   '
+   '  patients = modContactsDBI.patients_get_firstname_surname(Trim(txtFilterPatient.text), chkIncludeDeceased.value, limit, chkIncludeInactive.value)
+   Patients_List_Fill()
+   Dec Application.Busy
+   
+End
+
+Public Sub Patients_List_Fill()
+   
+   Dim sStatusMessage As String
+   Dim iLastperson_pk As Integer
+   Dim x As Integer
+   
+   With cvwPatients
+      .Clear                           'clear current list persons
+      .Columns.count = 9
+   End With
+   '  views_comms = New Collection
+   If Patients.count Then
+      Try Patients.Remove("sql_in_english") 'ian included this for FClinical patient search
+      Patients = modUtil.Copy_Collection_Keyed_Sequentially(Patients)
+      sStatusMessage = Str$(Patients.count) & " records found for search criteria '" & Trim(txtFilterPatient.text) & "'"
+      For Each patient In Patients
+         If Patient!fk_lu_active_status = const.PatientStatus_Inactive Then
+            cvwPatients.Add(x, "", pic_inactive)
+         Else
+            cvwPatients.Add(x, "")
+         Endif
+         If iLastperson_pk <> Patient!fk_person Then
+            cvwPatients[x][1] = Patient!surname & "  "
+            cvwPatients[x][2] = Patient!firstname & "  "
+            cvwPatients[x][3] = Patient!sex
+            Try cvwPatients[x][4] = Format(Patient!birthdate, "dd/mm/yyyy") & "   "
+            Try cvwPatients[x][5] = Patient!age_display
+            iLastperson_pk = Patient!fk_person
+         Else
+            cvwPatients[x][1] = ""
+         End If
+         cvwPatients[x][6] = ""
+         cvwPatients[x][7] = Trim(Patient!street1 & " " & Patient!street2) & " " & Patient!town & " " & Patient!postcode
+         cvwPatients[x][8] = ""
+         Inc x
+      Next
+      cvwPatients.Enabled = True                       'enable list for clicking on
+   End If
+   lblMeasure.font = cvwPatients.Font
+   modUtil.Columnview_Columns_Set_Size(cvwPatients, lblMeasure)
    
 End
 
@@ -318,7 +475,7 @@ Public Sub Document_Display()
          VBox_HTML_Viewer.Visible = False
          Vbox_Images.Visible = False
          Vbox_PDF.Visible = True
-         PDForm.Load_PDF(modFiles.Get("document_archiving_directory", filename))
+         PDF_Form.Load_PDF(modFiles.Get("document_archiving_directory", filename))
       Case "jpg", "png", "bmp", "jpeg", "tiff"
          VBox_HTML_Viewer.Visible = False
          Vbox_PDf.Visible = False
@@ -331,7 +488,11 @@ Public Sub Document_Display()
          Vbox_Images.visible = False
          VBox_HTML_Viewer.Visible = True
          lblSendingEntity.text = documents_filtered[cvwDocumentsImported.item.key]!msh_sending_entity
-         FPreview_HtmlDocument.webview1.HTML = documents_filtered[cvwDocumentsImported.item.key]!html
+         If IsNull(documents_filtered[cvwDocumentsImported.item.key]!tag_user) Then 'this is an unfiled document
+            FPreview_HtmlDocument.webview1.HTML = Unfiled_Document_Html(documents_filtered[cvwDocumentsImported.item.key])
+         Else
+            FPreview_HtmlDocument.webview1.HTML = documents_filtered[cvwDocumentsImported.item.key]!html
+         End If 
    End Select
    'Are there any staff tasks?
    If modDBConnect.exec_query("Select * from clerical.tasks where fk_row=" & documents_filtered[cvwDocumentsImported.item.key]!pk_document).count Then
@@ -345,14 +506,41 @@ Public Sub Document_Display()
    
 End
 
+Public Function Unfiled_Document_Html(SelectedDocument As Collection) As String
+   '---------------------------------------------------------------------
+   'Create missing html from unfiled document and return as string   
+   'Dims included for readability in passing to the ModHl7Process routine
+   '---------------------------------------------------------------------  
+   
+   Dim bExcludeFTReport As Boolean = SelectedDocument!exclude_ft_report
+   Dim bExcludePIT As Boolean = SelectedDocument!exclude_pit
+   Dim fgc As Integer = SelectedDocument!abnormals_foreground_color
+   Dim bgc As Integer = SelectedDocument!abnormals_background_color
+   Dim display_style As Integer = SelectedDocument!fk_lu_message_display_style
+   Dim sHtml As String
+   Dim currentobservations As Collection
+   
+   CurrentObservations = modDBConnect.exec_query_collection("Select  * from documents.observations where fk_document =" & SelectedDocument!pk_document & " ORDER BY observations.observation_date, set_id")
+   shtml = modHL7Process.Construct_HTML(Patient, SelectedDocument, currentobservations, bExcludePIT, bExcludeFTReport, display_style, fgc, bgc)
+   sHtml = Replace(shtml, "%filingas%", "")
+   sHtml = Replace(shtml, "** UNFILED **:", "")
+   Return shtml
+   
+End
+
 Public Sub EditAreaTextBox_GotFocus()
    
    Last.BackGround = Color.rgb(95, 255, 175)
    Last.Clear()
    If Last.tag = "filter patient" Then
       txtFilterDocumentTag.text = ""
+      fk_patient = 0
+      patients = Null
+      rbLettersOrResults.value = True
       txtDateFrom.text = Format(DateAdd(Now(), gb.month, -1), "dd/mm/yyyy") 'default to the last months records
       txtDateTo.text = Format(Now, "dd/mm/yyyy") '
+      cvwDocumentsImported.Visible = False   
+      cvwPatients.Visible = True 
    Endif
    
 End
@@ -411,7 +599,7 @@ Public Function EditAreaTextBox_ExcludeKeys(keycode As Integer, tag As String) A
 End
 
 Public Sub EditAreaTextBox_KeyPress()
-
+   
    Dim bKeyValid As Boolean
    
    bkeyvalid = EditAreaTextBox_ExcludeKeys(key.code, Last.tag)
@@ -425,5 +613,46 @@ End
 Public Sub EditAreaTextBox_LostFocus()
    
    Last.BackGround = Color.white
+   
+End
+
+Public Sub rbDocumentType_Click()
+   
+   If fk_patient Then Reload()
+   
+End
+
+Public Sub cvwPatients_Select()
+   '-----------------------------------------------
+   'User has selected a patient from the columnview
+   '-----------------------------------------------   
+   
+   If bExit Then Return
+   cvwPatients.MoveCurrent
+   cvwPatients_key = cvwPatients.Item.Key
+   Patient = Patients[cvwPatients_key]
+   
+End
+
+Public Sub cvwPatients_KeyPress()
+   
+   If Key.code = Key.return Then
+      cvwPatients_Dblclick()
+   Endif
+   
+End
+
+Public Sub cvwPatients_Dblclick()
+   
+   cvwPatients.MoveCurrent
+   cvwPatients_key = cvwPatients.Item.Key
+   fk_patient = patients[cvwPatients_key]!fk_patient 
+   Reload() 
+   
+End
+
+Public Sub Form_Leave()
+   
+   timer1.Enabled = False  
    
 End

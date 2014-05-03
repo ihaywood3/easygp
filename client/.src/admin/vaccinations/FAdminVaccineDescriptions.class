@@ -1,0 +1,259 @@
+' Gambas class file
+
+' Copyright (C) 2008-2014 Dr. Richard Terry
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'---------------------------------------------------------------------
+' PURPOSE         A module to allow user to modify descriptions of
+'                 vaccines e.g 'typhoid vaccine' or to add new type
+'                 as new vaccines come along
+'---------------------------------------------------------------------
+
+Private Vaccine_Descriptions As Collection
+Private bExit As Boolean
+Private fk_description As Integer
+Private Form_Help As FHtmlViewer
+
+Public Sub Init()
+   
+   With form_help = New FHtmlViewer(Vbox_Help)
+      .tbWebBrowserZoomIn.Visible = True
+      .tbWebBrowserZoomOut.Visible = True 
+   End With
+   form_help.Help_Show("maintaining-vaccine-descriptions.html")
+   Settings_Load
+   Reload()
+   
+End
+
+Public Sub Settings_Save()
+   
+   Settings["FAdminVaccineDescriptions/Vbox_Main.Layout"] = VSplit_Main.layout   
+   
+End
+
+Public Sub Settings_Load()
+   
+   VSplit_Main.layout = Settings["FAdminVaccineDescriptions/Vbox_Main.Layout", modUtil.VSplit([10, 1])]
+   
+End
+
+Public Sub Reload()
+   '--------------------------------------------
+   'Reloads the types or descriptions of vaccines
+   'e.g tetanus, pertussus, diphtheria vaccine
+   '----------------------------------------------
+   
+   Dim type As Collection
+   
+   EditArea_Clear()
+   lvwDescriptions.Clear
+   Vaccine_Descriptions = modUtil.Copy_Collection_Keyed_Sequentially(modVaccinationDBI.Descriptions_Get(Trim(txtfilterDescription.text)))
+   For Each type In Vaccine_Descriptions
+      lvwDescriptions.Add(lvwDescriptions.count, type!description)
+   Next
+   
+End
+
+Public Sub Save()
+   '------------------------------------
+   'Save the current vaccine description
+   '------------------------------------   
+   
+   Dim Description As CRow  
+   
+   tbSave.Enabled = False  
+   If Vbox_EditArea_Inner.Padding = 0 Then 
+      tbSave.Enabled = True 
+      Return
+   End If   
+   If Not Valid_Description() Then
+      tbSave.Enabled = True 
+      Return 
+   End If  
+   '-------------------------------------------------------------------
+   ' CREATE TABLE clin_vaccination.lu_descriptions
+   ' (
+   '   pk integer NOT NULL DEFAULT nextval('clin_vaccination.lu_vaccines_descriptions_pk_seq'::regclass),
+   '   description text,
+   '   deleted boolean DEFAULT false,
+   '   CONSTRAINT lu_vaccines_descriptions_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '-------------------------------------------------------------------
+   Description = New CRow
+   If fk_description Then 
+      Description.put_unchanged(fk_description, "fk_description")
+   End If
+   Description!description = Trim(txtDescription.Text)
+   Description.Save("clin_vaccination.lu_descriptions", "fk_description")
+   modDBConnect.CommitTrans
+   If Not fk_description Then FAdminVaccines.Vaccine_Descriptions_Refresh 'fresh the combo on the vaccines tab
+   Reload()
+   
+End
+
+Public Function Valid_Description() As Boolean
+   'If data is valid returns true   
+   
+   Dim sMsg As String
+   
+   If Trim(txtDescription.text) = "" Then
+      sMsg = "Please enter the text of the type of vaccine you wish to save."
+      Goto TryAgain
+   Endif
+   If fk_description = 0 Then    
+      'Check this type is not duplicated
+      If modVaccinationDBI.Vaccination_Type_Check_If_Duplicated(Trim(txtDescription.text)) Then
+         sMsg = "The description for this type of vaccine already exists in the database."
+         Goto TryAgain
+      Endif
+   End If   
+   Return True  
+   
+TryAgain:
+   Message.Info(smsg)
+   With txtDescription 
+      .Background = Color.rgb(95, 255, 175) 
+      .SetFocus
+   End With
+   
+End
+
+Public Sub EditArea_TextBox_GotFocus()
+   
+   Last.BackGround = Color.rgb(95, 255, 175)  
+   
+End
+
+Public Sub EditArea_TextBox_LostFocus()
+   
+   Last.BackGround = Color.White
+   
+End
+
+Public Sub EditArea_Buttons_Click()
+   
+   Select Case Last.tag
+      Case "new"
+         Type_New()
+      Case "save"
+         Save()
+   End Select
+   
+End
+
+Public Sub EditArea_Notify_Datachange(flag As Boolean)
+   
+   If Flag Then
+      Vbox_EditArea_Inner.Padding = 1
+      tbSave.Enabled = True   
+   Else
+      Vbox_EditArea_Inner.Padding = 0
+      tbSave.Enabled = False
+   Endif
+   
+End    
+
+Public Sub EditArea_Clear()
+   
+   txtDescription.text = ""
+   fk_description = 0
+   EditArea_Notify_Datachange(False) 
+   Vbox_EditArea_Outer.Enabled = False 
+   
+End
+
+Public Sub Type_New()
+   '-----------------------------------------------------
+   'Allow user to enter a new type of vaccine description
+   '----------------------------------------------------- 
+   
+   bExit = True
+   EditArea_Clear()
+   Vbox_EditArea_Outer.Enabled = True  
+   txtDescription.SetFocus()
+   tbSave.Enabled = True 
+   bExit = False
+   
+End
+
+Public Sub Description_Delete()
+   '---------------------------------------------------------- 
+   'Allow user to delete current type of vaccine (if not used)
+   '---------------------------------------------------------- 
+   
+End
+
+Public Sub EditArea_TextBox_Change()
+   
+   If bexit Then Return
+   EditArea_Notify_Datachange(True)
+   
+End
+
+Public Function EditArea_TextBox_ExcludeKeys(keycode As Integer) As Boolean
+   
+   Return modUtil.AllowKeys(const.AllowKeys_Letters, keycode)
+   
+End
+
+Public Sub EditArea_TextBox_KeyPress()
+   
+   If Not EditArea_Textbox_ExcludeKeys(key.code) Then 
+      Stop Event
+      Return
+   End If
+   
+End
+
+Public Sub mnuVaccineDescriptions_Click()
+   
+   Select Case Last.tag
+      Case "edit"
+         Vbox_EditArea_Outer.Enabled = True
+         With txtDescription
+            .pos = 0
+            .SetFocus
+         End With
+      Case "delete"
+         Description_Delete
+   End Select 
+Catch
+   Return 
+   
+End
+
+Public Sub lvwDescriptions_Click()
+   
+   lvwDescriptions.MoveCurrent
+   fk_description = Vaccine_Descriptions[lvwDescriptions.Item.Key]!pk
+   bexit = True   
+   txtDescription.text = Vaccine_Descriptions[lvwDescriptions.Item.Key]!description
+   bexit = False  
+   
+End
+
+Public Sub lvwDescriptions_Menu()
+   
+   If lvwDescriptions.count Then mnuVaccineDescriptions.popup()
+   
+End
+
+Public Sub txtFilter_Change()
+   
+   Reload
+   
+End

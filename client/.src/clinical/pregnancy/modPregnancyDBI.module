@@ -31,25 +31,45 @@ Public Function Placental_Positions_Get() As Collection
    
 End
 
-Public Function Patient_Is_Pregnant(fk_patient As Integer) As Boolean
+Public Function Patient_Is_Pregnant(fk_patient As Integer) As String
    '---------------------------------------------------------------
-   'Returns True if patient pregnant
+   'Returns gestation if patient pregnant unless unknown in which
+   'case returns "EDC?"
    'if pregnancy during > 40 weeks then prompt user ?still pregnant
    'FIXME ian to do a function in the back end for this.
    '--------------------------------------------------------------- 
+   
    Dim R As Result
    Dim sql As String
+   Dim gestation As String
+   Dim LMP As Date
    
-   sql = "Select pk, edc  from clin_pregnancy.vwPregnancies where  fk_patient = " & fk_patient & "and edc is not null and date_delivery is null order by edc DESC LIMIT 1"
+   sql = "Select pk, edc  from clin_pregnancy.vwPregnancies where  fk_patient = " & fk_patient & "and date_delivery is null and deleted = false order by edc DESC LIMIT 1"
    R = modDBConnect.exec_query(sql)
    If R.count <> 0 Then
-      If DateDiff(Now, R!edc, gb.day) < 0 Then  
-         If Message.Question("Is the patient still pregnant?\n\nIf not, then please go to the Pregnancy module and update the data.", "Yes", "No") = 2 Then
-            Return
+      If Not IsNull(R!edc) Then  
+         If DateDiff(Now, R!edc, gb.day) < 0 Then  
+            If Message.Question("Is the patient still pregnant?\n\nIf not, then please go to the Pregnancy module and update the data.", "Yes", "No") = 2 Then
+               Return
+            Endif
          Endif
-      Endif
-      Return True
+         'calc theoretical LMP
+         LMP = Theoretical_LMP_From_EDC(r!edc)
+         gestation = Str(DateDiff(LMP, Now, gb.day) Div 7) & "W " & Str(DateDiff(LMP, Now, gb.day) Mod 7) & "D"
+      Else
+         gestation = "?EDC"
+      End If 
+      Return gestation
    Endif
+   
+End
+
+Public Function Theoretical_LMP_From_EDC(edc As Date) As Date
+   '------------------------------------------------------------------------------------------------------
+   'Attempt to guess an approximate LMP from EDC does not take into account subtle factors e.g cycle lengh
+   '------------------------------------------------------------------------------------------------------
+
+   Return DateAdd(edc, gb.day, -280)
    
 End
 
@@ -63,6 +83,12 @@ Public Function Delivery_Types_get(Optional bsort As Boolean = False) As Collect
    
 End
 
+Public Function Contraception_methods_Get() As Collection
+   
+  Return modDBConnect.exec_query_collection("Select * from clin_pregnancy.lu_contraception_methods") 
+   
+End
+
 Public Function Onset_Labour_Types_Get(Optional bsort As Boolean = False) As Collection
    
    Dim sql As String
@@ -70,6 +96,44 @@ Public Function Onset_Labour_Types_Get(Optional bsort As Boolean = False) As Col
    sql = "Select * from clin_pregnancy.lu_onset_labour "
    If bsort Then sql &= "order by type"
    Return modDBConnect.exec_query_collection(sql) 
+   
+End
+
+Public Function Pregnancy_Haemoglobin_Get_Latest(fk_patient As Integer, edc As Date) As String
+   '---------------------------------------------------------------- 
+   'Returns a haemoglobin as long as date taken was > LMP of patient
+   '----------------------------------------------------------------
+
+   Dim sql As String
+   Dim R As Result
+   
+   sql = "select * from documents.vwObservations where fk_patient=" & fk_patient & " AND loinc = $$" & const.Loinc_Haemoglobin & "$$"
+   sql &= " ORDER BY observation_date DESC limit 1"
+   R = modDBConnect.exec_query(sql)
+   If R.count Then
+      Print DateDiff(R!observation_date, Theoretical_LMP_From_EDC(edc), gb.day)
+      If DateDiff(R!observation_date, Theoretical_LMP_From_EDC(edc), gb.day) > 0 Then Return 
+      Return Str(R!value_numeric)  '& R!units & " (" & R!reference_range & ") on " & Format(R!observation_date, "dd/mm/yyyy")
+   Endif
+   
+End
+
+Public Function Pregnancy_Rubella_Get_Latest(fk_patient As Integer, edc As Date) As Integer
+   '---------------------------------------------------------------- 
+   'Returns a haemoglobin as long as date taken was > LMP of patient
+   '----------------------------------------------------------------
+
+   Dim sql As String
+   Dim R As Result
+   
+   sql = "select * from documents.vwObservations where fk_patient=" & fk_patient & " AND loinc = $$" & const.Loinc_Rubella & "$$"
+   sql &= " ORDER BY observation_date DESC limit 1"
+   R = modDBConnect.exec_query(sql)
+   If R.count Then
+      Print DateDiff(R!observation_date, Theoretical_LMP_From_EDC(edc), gb.day)
+      If DateDiff(R!observation_date, Theoretical_LMP_From_EDC(edc), gb.day) > 0 Then Return 
+      Return R!value_numeric
+   Endif
    
 End
 

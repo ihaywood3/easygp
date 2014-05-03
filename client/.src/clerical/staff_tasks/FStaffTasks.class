@@ -64,13 +64,14 @@
 '       only one left with a  clerical.task_components.date_completed being null
 '       In this case the main clerical.tasks table is updated - and the key of the
 '       staff finalising the task as well as a completion date is finalised.
-'
+'  3) Embedded in FClerical via FClericalReadOnlyClinical the mini 'clinical section for staff use'
+'  
 '   Where the behaviour of the form is necessarily different, case statements where the
 '   name of the parent form (i.e the form which embedded this form) are used
 '
 '  GENERAL COMMENTS ON CODE - PROGRAM FLOW
 '  =======================================
-'  Init()  : Loads form settings, uses a label lblMeasure to make sure edit area labels are correct width
+'  Init()  : Loads form settings, uses a label lblMeasure to make sure edit area labels are correct widthmnuStaffTasks
 '            Loads combo's and hides/unhides gui elements which differ on each form
 '            very rough needs fixing.
 '  ReLoad(): Reloads the staff tasks, used at Init() and after every save
@@ -97,7 +98,7 @@
 '  will point to the date the task (component) was initiated as well as the staff
 '  member who did this.
 '
-'  Staff involvement  - fk_staff_filed = key to indicate who filed the task component
+'  Staff involvement  - fk_staff_filed = key to indicate who filed the task componentmnuStaffTasks
 '                     - fk_staff_allocated = key to indicate who is responsible for the component
 '                     - fk_staff_finalised = key to indicate who finalised the task
 '                     The fk_staff_filed is duplicated in clerical.tasks and clerical.task_components
@@ -157,6 +158,7 @@ Private comm As Collection
 Private Form_PreviousNotes As FProgressNotesViewer
 Private Form_PDF As FPdf
 Private Form_html_viewer As FHtmlViewer
+Private Form_Entire_Audit_Trail_Viewer As FHtmlViewer
 Private RolesCanAction As Collection         'eg secretary, doctor can action the component
 Private RolesCanFinalise As Collection       'only this role can finalise the task. Subcomponents can be actionied by  RolesCanAction or designated staff member
 Private RoleCanAction As String
@@ -177,14 +179,6 @@ Public Sub Set_Audit_Schema_Table_SourceRowKey(k As Integer, t As String)
    table = t  'FIXME - I don't think this is ever used - old code - check calling forms.
    
 End
-
-' Public Sub Set_Patient()
-'   'This is only called when the tasks manager is embedded in FPatientTasks in Fclinical
-'    Patient = currentconsult!patient
-'    Patient_Select
-'    
-'    
-' End
 
 Public Sub Set_Parent_Form(parent_form_name As String)
    '----------------------------------------------------
@@ -236,7 +230,7 @@ Public Sub Init()
    RolesCanAction = modUtil.LoadCombo(cmbRolesCanAction, modAdminDBI.Roles_Get(), "role")           'fill combo with roles to let user choose who can action a task
    RolesCanFinalise = modUtil.LoadCombo(cmbRolesCanFinalise, modAdminDBI.Roles_Get(), "role")       'fill combo with roles to let user choose who can finalise a task
    Select Case Parent_Form
-      Case "FPatientTasks"
+      Case "FPatientTasks"           'embedded in FClinical
          Separator1.Visible = False
          Hbox_Heading.visible = False
          Hbox_Buttons.Visible = False   
@@ -257,8 +251,7 @@ Public Sub Init()
          Panel4.Visible = False  
          Patient_Select
          Return 
-      Case "FDayBook"                                                                               'tasks are embedded in thes users workcentre
-         '  cmbwhatToDo.Visible = False  
+      Case "FDayBook", "FClericalReadOnlyClinical"                                  'tasks are embedded in thes users workcentre
          iTaskRestriction = const.cTaskRestriction_User                                    'default to this type of task list
          HBox_NotesAllStaff.Visible = True
          Hbox_Patient.Visible = True                                                                'set up the gui for the form
@@ -273,8 +266,8 @@ Public Sub Init()
             .Columns[0].text = "Logged  "
             .Columns[1].text = "From"
             .Columns[2].text = "Re:"
-            .Columns[3].text = "Details"
-            .Columns[4].text = "Urgency"
+            .Columns[3].text = "Related To      "
+            .Columns[4].text = "what to do"
          End With
          gvwTasks_Init()
          cvwAllTasks.Columns.count = 3
@@ -296,6 +289,8 @@ Public Sub Init()
          tbNewPatientTask.Enabled = True
          VBox_Notes.Visible = True
          HBox_NotesButtons.Visible = True
+         txtRelatedTo.Enabled = False  
+         txtTaskDetails.Enabled = False  
          With cvwTaskNotes
             .Columns.count = 4
             .Columns[0].width = 100
@@ -319,6 +314,17 @@ Public Sub Init()
          HBox_FilterNames.Visible = True
          VBox_Right.Visible = True   'contains the documents/notes tab
          rbTaskRestrict_User.value = True                          'will not trigger this event because of bExit=True
+         If Parent_Form = "FClericalReadOnlyClinical" Then   
+            HBox_FilterTasks.Visible = False  
+            HBox_FilterNames.Visible = False 
+            HBox_TaskFor.Visible = False   'default to new task always for current patient
+            iTaskRestriction = const.cTaskRestriction_Patient 
+            timer1.Enabled = False 
+            bexit = False
+            lblSpacer.Visible = True 'push the refresh button to right now that HBox_FilterTasks not showing
+            Return
+         End If 
+         
       Case "Inbox"
          '   tbSaveAndFinalise.Visible = False
          iTaskRestriction = const.cTaskRestriction_Document       'default to this type of task list, all tasks, all users
@@ -376,7 +382,7 @@ Public Function Save() As Boolean
       FClinical.Refresh_AllPreviousNotes(True) 'True = only refresh progress notes if in display audit mode
       FClinical.Notifications_Refresh_External()   
    Endif
-
+   
 End
 
 Public Sub Task_Save()
@@ -796,6 +802,11 @@ Public Sub Reload()
    EditArea_Clear()
    bFinalised = False
    Select Case iTaskRestriction
+      Case const.cTaskRestriction_Patient
+         lblTaskHeading.text = "Tasks for patient"
+         currentconsult.Refresh("patient_tasks_outstanding")
+         '  taskscomponents = modUtil.Copy_Collection_Keyed_Sequentially(modDayBookDBI.Tasks_For_Patient_Get(fk_patient))
+         taskscomponents = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!patient_tasks_outstanding)
       Case const.cTaskRestriction_user
          lblTaskHeading.text = "My Tasks"
          'Parameters passed to modDayBookDBI.Staff_Tasks_Get are:
@@ -843,9 +854,7 @@ Public Sub cvwTasks_Reload()
    Select Case Parent_Form
       Case "FDayBook"
          rbTaskRestriction_Click
-         ' cvwTasks_Refresh()
       Case "Inbox"
-         
          TasksComponents = modStaffTasksDBI.Tasks_For_Document_Get(fk_document)
          TasksComponents_Document_Reload()
    End Select
@@ -939,7 +948,8 @@ Public Sub cvwTasks_Refresh()
                cvwStaffTasks.Add(x, "", pic_urgent)
          End Select
          cvwStaffTasks[x][0] = Format(task_component!date_component_logged, "dd/mm/yyyy") & "        "
-         If Parent_Form = "FDayBook" Then                  'fixme misnomer = the users workcentre
+         Print Parent_Form
+         If Parent_Form = "FDayBook" Or Parent_Form = "FClericalReadOnlyClinical" Then                  'FDayBook fixme misnomer = the users workcentre
             cvwStaffTasks[x][1] = " " & task_component!staff_filed_task_wholename & "        "
             If Not IsNull(task_component!patient_wholename) Then  '
                cvwStaffTasks[x][2] = task_component!patient_wholename  ' & "[" & task_component!patient_birthdate & "]"  ' & " " & Trim(task_component!patient_street1 & " " & task_component!patient_street2) & " " & task_component!patient_town & " " & task_component!patient_postcode
@@ -1039,7 +1049,7 @@ Public Sub EditArea_Clear()
          txtSuburb.text = CurrentConsult!patient!town & " " & CurrentConsult!patient!postcode
          txtRelatedTo.text = sTask
          fk_task = 0
-      Case "FDayBook"                   'FIXME this is a misnomer
+      Case "FDayBook", "FClericalReadOnlyClinical"       'FIXME this is a misnomer
          fk_task = 0
          fk_document = 0
          Form_PDF.visible = False
@@ -1140,8 +1150,8 @@ Public Sub DateChooser1_Activate()
    
    DateChooser1.tag.text = Format(DateChooser1.value, "dd/mm/yyyy")
    HBox_Calendar.Visible = False
-   Catch
-      Return
+Catch
+   Return
    
 End
 
@@ -1322,7 +1332,7 @@ Public Sub Task_New()
       .text = "New Task"
    End With
    Select Case parent_form
-      Case "FDayBook"
+      Case "FDayBook", "FClericalReadOnlyClinical"
          VBox_Notes.Background = Color.Background
          VBox_Notes.Visible = True
          txtRelatedTo.ReadOnly = False
@@ -1343,15 +1353,24 @@ Public Sub Task_New()
          VBox_EditArea_Outer.Enabled = True
          HBox_NotesAllStaff.Visible = True
          cvwStaffTasks.UnselectAll()
-         currentconsult = Null
+         If parent_Form = "FDaybook" Then currentconsult = Null  'FClericalReadOnlyClinical" always contains same patient
          HBox_Urgency.Enabled = True
          txtStaffToFinalise.ReadOnly = False
+         If Parent_Form = "FClericalReadOnlyClinical"
+            txtPatient.text = CurrentConsult!patient!wholename
+            lblBirthdate.text = Format(CurrentConsult!patient!birthdate, "dd/mm/yyyy")
+            txtStreet.text = Trim(CurrentConsult!patient!street1 & " " & CurrentConsult!patient!street2)
+            txtSuburb.text = CurrentConsult!patient!town & " " & CurrentConsult!patient!postcode
+            txtRelatedTo.Enabled = True   
+            txtTaskDetails.Enabled = True 
+         End If  
       Case "Inbox"
          txtTaskDetails.SetFocus()
          lblTaskHeading.text = "Tasks Allocated for This Document"
          Hbox_NotesButtons.Visible = False
       Case "FPatientTasks"
          txtRelatedTo.SetFocus
+         
    End Select
    
 End
@@ -1366,7 +1385,7 @@ Public Sub Valid_Task() As Boolean
    If Parent_Form = "FPatientTasks" Then
       sMsg = "You have started to allocate a staff task for this patient, but it is not complete\n\n"
    Else
-     sMsg = "You have started to allocate a staff task to this document, but it is not complete\n\n"
+      sMsg = "You have started to allocate a staff task to this document, but it is not complete\n\n"
    End If   
    Message.Title = "Allocating Staff Task"
    If Trim(txtRelatedTo.text) = "" Then
@@ -1487,6 +1506,8 @@ Public Sub mnuTasks_Click()
       Case "font"
          modUtil.Columnview_SetFont(cvwStaffTasks, "FStaffTasks")
    End Select
+Catch
+   Return
    
 End
 
@@ -1556,7 +1577,7 @@ Public Sub Task_Display(CurrentTaskComponent As Collection)
          rbUrgencyUrgent.value = True
    End Select
    chkVerifyCompleted.value = CurrentTaskComponent!must_verify_completed
-   If Parent_Form = "FDayBook" Then
+   If Parent_Form = "FDayBook" Or Parent_Form = "FClericalReadOnlyClinical" Then
       HBox_StaffMember_Notes.Visible = True
       HBox_StaffMember_AddingNotes.Visible = True
       lblFinaliseTask.Foreground = Color.blue
@@ -1642,8 +1663,8 @@ Public Sub cvwStaffTasks_Select()
    EditArea_Clear()
    VBox_EditArea_Inner.Enabled = False
    Select Case Parent_Form
-      Case "FDayBook"
-         currentconsult = Null
+      Case "FDayBook", "FClericalReadOnlyClinical"                                            'currentconsult already set externally by FClericalReadOnlyClinical
+         If Parent_Form = "FDayBook" Then currentconsult = Null                               'rows in the view pertain to multiple patients 
          TabStrip1.index = 0                                                                  'Ensure the document tab is showing
          VBox_EditArea_Outer.Enabled = False
          cvwStaffTasks.movecurrent()                                                          'sets the key to taskscomponents
@@ -1663,9 +1684,14 @@ Public Sub cvwStaffTasks_Select()
             End With
             
          Endif
-         If CurrentTaskComponent!fk_patient Then                                              'not all tasks are for a patient, could be staff<>staff
-            patient = modContactsDBI.Patient_Get_Using_PK(CurrentTaskComponent!fk_patient)    'get patient collection to create a cConsult
-            fk_patient = CurrentTaskComponent!fk_patient                                      'set fk_patient
+         If CurrentTaskComponent!fk_patient Then                                                 'not all tasks are for a patient, could be staff<>staff
+            If Parent_Form = "FDayBook" Then    
+               patient = modContactsDBI.Patient_Get_Using_PK(CurrentTaskComponent!fk_patient)    'get patient collection to create a cConsult
+               fk_patient = CurrentTaskComponent!fk_patient                                      'set fk_patient
+               Consult_Check_Created(const.ConsultType_AuditNote, "Staff Tasks")                 'set current consult to pass to other forms
+            Else                                                                                 'currentconsult set by parent form
+               patient = currentconsult!patient
+            End If   
             comms = modContactsDBI.person_comms_get(patient!fk_person)                        'get methods of contacting patient
             For Each comm In comms                                                            'and show these in the editing area
                If comm!fk_type = const.CommModalityHome Then
@@ -1675,7 +1701,7 @@ Public Sub cvwStaffTasks_Select()
                   lblMobilePHone.text = comm!value
                Endif
             Next
-            Consult_Check_Created(const.ConsultType_AuditNote, "Staff Tasks")                  'set current consult to pass to other forms
+            
             If IsNull(Form_PreviousNotes) Then
                Form_PreviousNotes = New FProgressNotesViewer(Vbox_PreviousNotes)              'Ensure a progress notes viewer present on tab2
             Endif
@@ -1685,10 +1711,6 @@ Public Sub cvwStaffTasks_Select()
          End If
          VBox_EditArea_Outer.Enabled = True                                         'fixme decide if default to Vbox_EditArea_Inner.Enabled (ie allow edit)
          VBox_EditArea_Inner.Enabled = True
-         ' txtNotes.setFocus()
-         'FIXME   'show other staff members involved
-         ' cvwAllTasks_Refresh()
-         
    End Select
    
 End
@@ -1751,7 +1773,7 @@ Public Sub timer1_Timer()
    '------------------------------------------------------------------------------------
    
    Return
-   If Parent_Form = "Inbox" Then Return
+   If Parent_Form = "Inbox" Or Parent_Form = "FClericalReadOnlyClinical" Then Return
    timer1.Stop()
    cvwTasks_Refresh()
    timer1.Delay = 100000 're-set the delay to something longer
@@ -2027,6 +2049,8 @@ Public Sub mnuTasksNotes_Click()
       Case "font"
          modUtil.Columnview_SetFont(cvwTaskNotes, "FStaffTasks")
    End Select
+Catch
+   Return
    
 End
 
@@ -2069,5 +2093,25 @@ Public Sub cmbWhatToDo_Click()
    
    txtTaskDetails.text = Last.text
    cmbwhatToDo.index = -1
+   
+End
+
+Public Sub TabStrip1_Click()
+   
+   If bexit Then Return
+   Select Case Last.Index
+      Case 2 'the entire audit trail
+         If IsNull(Form_Entire_Audit_Trail_Viewer) Then 
+            With Form_Entire_Audit_Trail_Viewer = New FHtmlViewer(Vbox_Audit_Trail)
+               .tbWebBrowserZoomIn.visible = True
+               .tbWebBrowserZoomout.visible = True
+               .tbWebBrowserPrint.Visible = True
+            End With
+         End If   
+         Inc Application.Busy
+         Wait   
+         Form_Entire_Audit_Trail_Viewer.WebView1.HTML = modStaffTasksDBI.Task_Audit_Trail_For_Task_Get_HTML(CurrentTaskComponent)  
+         Dec Application.Busy
+   End Select
    
 End

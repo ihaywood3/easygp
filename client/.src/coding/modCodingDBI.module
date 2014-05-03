@@ -34,31 +34,70 @@ Private all_systems As Collection
 
 Public Function CommonestTermsGet() As Collection 
    
-  Dim sql As String = ""
+   Dim sql As String = ""
+   
    "SELECT "
-     "generic_terms.term, "
-     "progressnotes_codes.fk_code, progressnotes_codes.fk_code as pk, "
-     "count(progressnotes_codes.fk_code) as total "
-     "FROM "
-     "clin_consult.consult, "
-     "clin_consult.progressnotes_codes, "
-     "clin_consult.progressnotes, "
-     "coding.generic_terms "
-     "WHERE "
-     "progressnotes_codes.fk_progressnote = progressnotes.pk AND "
-     "progressnotes_codes.fk_code = generic_terms.code AND "
-     "progressnotes.fk_consult = consult.pk "
-     "and fk_staff = "
-     sql &= modDBConnect.currentUser!fk_staff  
-     sql &= " group by progressnotes_codes.fk_code, generic_terms.term having count(*) > 10 order by  term asc, total desc limit 40" 
-     Return modDBConnect.exec_query_collection(sql)
-     
+   "generic_terms.term, "
+   "progressnotes_codes.fk_code, progressnotes_codes.fk_code as pk, "
+   "count(progressnotes_codes.fk_code) as total "
+   "FROM "
+   "clin_consult.consult, "
+   "clin_consult.progressnotes_codes, "
+   "clin_consult.progressnotes, "
+   "coding.generic_terms "
+   "WHERE "
+   "progressnotes_codes.fk_progressnote = progressnotes.pk AND "
+   "progressnotes_codes.fk_code = generic_terms.code AND "
+   "progressnotes.fk_consult = consult.pk "
+   "and fk_staff = "
+   sql &= modDBConnect.currentUser!fk_staff  
+   sql &= " group by progressnotes_codes.fk_code, generic_terms.term having count(*) > 10 order by  term asc, total desc limit 40" 
+   Return modDBConnect.exec_query_collection(sql)
+   
+End
+
+Public Function Codes_User_Favourite_Save(fk_staff As Integer, code As Collection)
+   '--------------------------------------------------------
+   'Saves the code (if doesn't exist to the users favourites
+   ' Create table coding.user_favourites
+   ' (pk serial primary key,
+   '  fk_code text not null,
+   '  fk_staff integer not null,
+   '  CONSTRAINT user_favourites_fk_staff_fkey FOREIGN KEY  (fk_staff)
+   '        REFERENCES admin.staff(pk)  MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION --,
+   '   );
+   
+   '--------------------------------------------------------   
+   Dim favourite As New CRow
+   
+   
+   favourite!fk_code = code!fk_code
+   favourite!fk_staff = fk_staff
+   favourite.Save("coding.user_favourites", "fk_favourite")
+   modDBConnect.CommitTrans()
+   
+End
+
+Public Sub Codes_User_Favourite_Delete(favourite As Collection)
+   
+ If Message.Question("Are you sure you want to delete this favourite code?:\n\n" & favourite!term, "Yes", "No") = 2 Then Return
+ modDBConnect.update("coding.user_favourites", Null, ["pk": favourite!pk, "deleted": True])
+ modDBConnect.CommitTrans()
+End
+
+Public Function Codes_User_Favourites_Get(fk_staff As Integer) As Collection
+   '------------------------------------------------------------------------------------------------------------------------------
+   'returns a collection of the users favourite codes to make life easier when searching excluding deleted codes (not in the view)
+   '------------------------------------------------------------------------------------------------------------------------------
+   
+   Return modDBConnect.exec_query_collection("Select * from coding.vwUserFavourites where fk_staff = " & fk_staff & " order by term") 
    
 End
 
 Public Function Loinc_Get_component(loinc_num As String) As String
    'there is a bug in here FIXME: possible to get LOINC not in database.
-
+   
    Try Return modDBConnect.exec_query("Select * from coding.lu_loinc_abbrev WHERE loinc_num=$$" & loinc_num & "$$")!component
    If Error Then Return ""
    
@@ -88,9 +127,9 @@ Public Function Get_Terms(term As String, Optional has_limit As Boolean = False,
 End
 
 Public Function ICPC2_Get_Term(term As String) As Collection
-
+   
    Dim sql As String 
-
+   
    sql = "  Select distinct pk_term, combined_term_code, natural_language_term "
    sql &= "From coding.vwICPC2terms where  natural_language_term ILIKE $$%" & term & "%$$  and status = 'A' "
    sql &= "order by natural_language_term LIMIT 20 " 
@@ -102,7 +141,7 @@ Public Function Coding_System_Check_Default_Exists() As Boolean
    
    Get_Systems()
    Return all_systems.Count > 0
-
+   
 End
 
 Private Function coding_system_Read() As Collection
@@ -119,10 +158,9 @@ Private Function coding_system_Read() As Collection
    
 End
 
-
 Private Sub Get_Systems()
    ' download the systems and cache the result
-
+   
    If IsNull(all_systems) Then all_systems = modCache.Get("coding.lu_systems")
    
 End
@@ -131,31 +169,32 @@ Public Sub Get_coding_Systems_Available() As Collection
    '----------------------------------------------
    ' See which potential systems could be installed
    ' ----------------------------------------------
-
+   
    Return modCache.Get("coding.lu_systems")
    
 End
 
 Public Function ICPC2_Check_Terms_Installed() As Boolean
    
-  'Crudely check if in the generic terms table
-  Dim R As Result
-  
-  R = modDBConnect.exec_query("Select fk_coding_system from coding.generic_terms where fk_coding_system = " & const.coding_icpcPlus & " LIMIT 1")
-  If r.count Then Return True
-  Return
+   'Crudely check if in the generic terms table
+   Dim R As Result
+   
+   R = modDBConnect.exec_query("Select fk_coding_system from coding.generic_terms where fk_coding_system = " & const.coding_icpcPlus & " LIMIT 1")
+   If r.count Then Return True
+   Return
+   
 End
 
 Public Function Check_installed(Optional system As String) As Collection 
    '----------------------------
    'Get which ones are installed
    '----------------------------
-
+   
    Dim sql As String 
-
+   
    sql = "SELECT distinct coding.lu_systems.system , coding.generic_terms.fk_coding_system as pk_system " 
    "FROM coding.lu_systems INNER JOIN coding.generic_terms ON (coding.lu_systems.pk = coding.generic_terms.fk_coding_system) "
    " WHERE system LIKE $$%" & system & "$$"
    Return modDBConnect.exec_query_collection(sql)
-
+   
 End  

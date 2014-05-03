@@ -117,7 +117,6 @@ Public Sub Init()
    chkLeftPractice.Visible = True
    With form_billing = New FPatientBillingCards(VBox_Billing)
       .Init(Vbox_EditArea)
-      .Panel1.border = Border.None
    End With
    bExit = False
    cvwPatients.columns.Count = 8
@@ -137,7 +136,7 @@ Public Sub Form_Close()
 End
 
 Public Sub Notify(its_us As Boolean, param As String)
-
+   
    Dim i As Integer
    
    If its_us Then Return
@@ -412,6 +411,7 @@ Public Sub Patient_Display()
    Vbox_EditArea.Enabled = True
    bExit = False
    VBox_EditArea_Outer.Enabled = True
+   EditArea_Notify_DataChange(False)
    
 End
 
@@ -492,7 +492,12 @@ Public Sub EditArea_Clear()
       .padding = 2
    End With
    If isection = cSection_Patients Then
-      form_billing.EditArea_Clear()
+      With form_billing
+         .EditArea_Clear()
+         .Currentconsult_Set_Null()
+         .form_next_of_kin.EditArea_Clear()
+         .TabStrip1.index = 0
+      End With
    Endif
    fk_occupation = 0
    fk_payer = 0
@@ -559,7 +564,7 @@ End
 
 Public Sub Save()
    'FIXME mixture of really old and newer cRow code in this routine
-
+   
    Dim new_ihi As String
    Dim old_ihi As String
    Dim person As CRow
@@ -573,6 +578,7 @@ Public Sub Save()
    Dim sSearchText As String
    Dim occupational_history As CRow 
    Dim Currentconsult As CConsult
+   Dim NOK_Consult As CConsult    'if saving social history for new patient see below
    Dim notes As String = ""
    Dim bAddingNewPatient As Boolean
    
@@ -749,9 +755,9 @@ Public Sub Save()
    old_ihi = form_billing.Previous_IHI(new_ihi)
    new_ihi = form_billing.Patient_IndividualHealthIdentifier()
    If new_ihi <> old_ihi And If Not (IsNull(new_ihi) And IsNull(old_ihi)) Then
-         '-------------------------------------------------------------------------------------------------------------------------
-   ' we need to do some very specific auditing on whether the IHI has changed
-   ' ------------------------------------------------------------------------------------------------------------------------
+      '-------------------------------------------------------------------------------------------------------------------------
+      ' we need to do some very specific auditing on whether the IHI has changed
+      ' ------------------------------------------------------------------------------------------------------------------------
       patient!ihi = new_ihi
       If Not IsNull(new_ihi) Then
          patient!ihi_updated = "now()"
@@ -778,7 +784,7 @@ Public Sub Save()
       notes &= Subst$("<p>Consent status remains &1</p>", coll[form_billing.PCEHR_Consent()])
    Endif
    If notes <> "" And If Not IsNull(modDBConnect.currentUser!hpii) Then
-     notes &= " <p>Current users IHI is " & modDBConnect.currentUser!hpii & " </p>"
+      notes &= " <p>Current users IHI is " & modDBConnect.currentUser!hpii & " </p>"
    Endif 
    ' now actually save
    patient.Save("clerical.data_patients", "fk_patient")
@@ -827,9 +833,15 @@ Public Sub Save()
          'fixme put in fk_progressnote to say the clerical staff entered this data.
       End If  
    Endif
+   'Adding new patient who has next of kin a problem as NOK kept (historical) in psycho-social history
+   'which needs a cconsult. Chicken and egg. the next of kin form won't have a cConsult if a new patient
+   If bAddingNewPatient Then 
+      NOK_Consult = New CConsult(["fk_patient": patient!fk_patient], const.ConsultType_ClericalNote)
+      form_billing.form_next_of_kin.Set_Consult(NOK_Consult)
+   Endif
+   form_billing.form_next_of_kin.Save()                                          'fix me, this routine as a commit trans in it
    modDBConnect.CommitTrans()
    EditArea_Notify_DataChange(False)
-   
    If FClinical.IsSamePatient(fk_patient) Then                                   'if patient loaded into FClinical
       FClinical.Patient_Demographics_Refresh()
       If patient!fk_patient And person.Exist("fk_image") Then                    'if we have a picture of them
@@ -895,7 +907,9 @@ Public Sub mnuAddresses_Click()
       Case "unlink"
          
    End Select
-   
+Catch
+   Return 
+
 End
 
 Public Sub patients_Mark_Left_Practice()
@@ -906,7 +920,7 @@ Public Sub patients_Mark_Left_Practice()
    Dim sMsg As String
    Dim Pat As New CRow 
    Dim x As Integer
-
+   
    sSearchCriteria = txtSearch.Text
    
    Message.Title = "Marking Patients as Left The Practice"
@@ -1011,7 +1025,9 @@ Public Sub mnuPersons_Click()
       Case "merge"
          Person_Merge()
    End Select
-   
+Catch
+   Return 
+
 End
 
 Public Sub Religions_Menu_Refresh()
@@ -1065,7 +1081,8 @@ Public Sub mnuReligions_Click()
    Try fk_sub_religion = Val(Right(Last.tag, Len(Last.tag) - InStr(Last.tag, "-")))
    txtReligion.text = Last.caption
    txtMemo.SetFocus()
-   
+   Catch
+      Return
 End
 
 Public Sub Person_Merge()
@@ -1106,7 +1123,6 @@ Public Sub Patient_New()
    If bAddFamilyMember Then
       
    Else
-      
       EditArea_Clear()
       PersonPicture = New Collection
       addresses = New Collection
@@ -1122,10 +1138,8 @@ Public Sub Patient_New()
       fk_ethnicity = 0
       fk_country = 0 '?used
       country_code_birth = ""
-      
       iCommunication = 0
       pk_view = 0
-      
       Address_New()       'res-sets variables for new address
    End If
    Communication_New()
@@ -1139,6 +1153,10 @@ Public Sub Patient_New()
    Vbox_EditArea.Enabled = True
    Wait
    VBox_EditArea_Outer.enabled = True
+   
+   ' With With form_billing.form_next_of_kin
+   '    .Init(
+   ' End With
    txtSurname.SetFocus()
    
 End
@@ -1336,7 +1354,8 @@ Public Sub mnuContacts_Click()
       Case "undelete"
          Communication_UnDelete()
    End Select
-   
+   Catch
+      Return 
 End
 
 Public Sub cvwContacts_Menu()
@@ -1709,6 +1728,8 @@ Public Sub Communication_Edit()
    chkCommunicationpreferred.Value = Comms[iCommunication]!preferred_method
    tbnAddContact.text = "Save modifications to list"
    bExit = False
+Catch
+   Return 'can bug out here with wrong iCommunication value ?why FIXME  
    
 End
 
@@ -1740,6 +1761,9 @@ Public Sub Communication_Delete()
             modDBConnect.CommitTrans()
             mnuContacts_UnDelete.Enabled = True
             pk_last_comm_deleted = comm!pk
+            If FClinical.IsSamePatient(fk_patient) Then
+               FClinical.Patient_Demographics_Refresh()  'update the phone numbers etc.
+            Endif
          End If
       End If
       Communications_Reload()
@@ -2342,6 +2366,9 @@ Public Sub cvwContacts_Select()
    iCommunication = cvwContacts.Item.Key
    Comm = comms[iCommunication]
    
+Catch
+   Return
+   
 End
 
 Public Sub Surname_Duplicates_Selection(action As String, Optional calling_control As String)
@@ -2457,13 +2484,13 @@ Public Sub chkIncludeInactive_Click()
    '-----------------------------------------------------------------------------
    
    Patients_Get
-
+   
 End
 
 Public Sub MbtnReligions_Menu()
-
+   
    mnuReligions.Popup()
-
+   
 End
 
 

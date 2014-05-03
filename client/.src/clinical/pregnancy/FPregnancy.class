@@ -20,6 +20,8 @@
 ' TODO: finish and activate the ante-natal care sheet
 ' the tab is currently removed
 ' ----------------------------------------------------------------------
+Private Form_PDF As FPdf
+Private Form_HTML_Viewer As FHtmlViewer
 Private lmp_fake As Date
 Private sNuchalFoldScan As String 'abnormal, normal or unknown
 Private sMorphologyScan As String ' ditto
@@ -41,9 +43,43 @@ Private Const cTabAnteNatalVisits As Integer = 1
 Private Const cTabAnteNatalSheetWizard As Integer = 2
 Private blood_groups As Collection 
 Private placenta_positions As Collection 
+Private contraception_methods As Collection
 Private form_visits As FPregnancyVisits
 
 Static Private form_pregnancy As FPregnancy
+
+Static Public Sub Result_Show(sHtml As String)
+   
+   form_pregnancy.Result_SHow_HTML(shtml)
+   
+End
+
+Static Public Function IsInEditMode() As Boolean
+   
+   Return form_pregnancy.HBox_EditArea.Enabled
+   
+End
+
+Public Sub Result_SHow_HTML(sHTML As String)
+   
+   Vbox_EditArea.Visible = False
+   With Form_HTML_Viewer
+      .WebView1.HTML = sHtml 
+      .Visible = True   
+   End With
+   
+End
+
+Public Sub _new()
+   
+   With Form_PDF = New FPdf(VBox_LeftSide)
+      .Visible = False
+   End With
+   With Form_HTML_Viewer = New FHtmlViewer(VBox_LeftSide)
+      .Visible = False   
+   End With
+   
+End
 
 Public Sub init(cons As Cconsult)
    
@@ -68,7 +104,10 @@ Public Sub init(cons As Cconsult)
    blood_groups.Add(["pk": 4, "group_display": "Unknown"], blood_groups.count)
    placenta_positions = modUtil.LoadCombo(cmbPlacentaPosition, modUtil.Copy_Collection_Keyed_Sequentially(modPregnancyDBI.Placental_Positions_Get()), "position")
    placenta_positions.Add("Unknown", placenta_positions.count)
+   contraception_methods = modUtil.LoadCombo(cmbContraceptionMethods, modUtil.Copy_Collection_Keyed_Sequentially(modPregnancyDBI.Contraception_methods_Get()), "method")
+   cmbOnsetLabour.width = chkMentalHealth.Width
    sex_types = modUtil.LoadCombo(cmbBabySex, Sex_Types_Fill_Collection(), "type")
+   cmbContraceptionMethods.width = cmbDeliveryTypes.Width
    '--------------------------
    'Load pages onto the wizard
    '--------------------------
@@ -112,12 +151,15 @@ End
 
 Private Function Calc_Anti_D_28W_Date() As String
    'Calculate anti-D date due  from real or fake period
-
+   
    If Trim(txtDateLMP.text) Then Return Format(DateAdd(txtDATeLMP.text, gb.week, 28), "dd/mm/yyyy")
    If IsDate(txtEDCRevisedDate.text) Then         'revised EDC, re-calculate the gestation
       Return Format(DateAdd(DateAdd(Val(txtEDCRevisedDate.text), gb.day, -280), gb.week, 28), "dd/mm/yyyy")     
-   End If  
-
+   End If
+   If IsDate(txtEDC.text) Then         'revised EDC, re-calculate the gestation
+      Return Format(DateAdd(DateAdd(Val(txtEDC.text), gb.day, -280), gb.week, 28), "dd/mm/yyyy")     
+   End If 
+   
 End
 
 Private Function Calc_Morphology_Scan_Date(last_period As Date) As String  
@@ -152,7 +194,7 @@ Private Sub Settings_Load()
    VSplit_Main.Layout = Settings["FPregnancy/VSplit_Main.Layout", modUtil.VSplit([450, 169])]
    HSplit_EditArea.Layout = Settings["FPregnancy/HSplit_EditArea.Layout", modUtil.HSplit([1, 1])]
    cvwPregnancies.font = Font[Settings["FPregnancy/cvwPregnancies.font", "DejaVu Sans,9"]]
-
+   
 End
 
 Public Function Sex_Types_Fill_Collection() As Collection
@@ -269,30 +311,40 @@ Public Function ProgressNotes_Pregnancy_Create() As String
    End If   
    
    'Now construct a table within the main table for the risk factors
-   If chkSmoking.value = True Then
+   If chkSmoking.value = True Or Trim(txtRiskFactorsSmoking.text) <> "" Then
       subtable &= Table_row
       subtable = Replace(subtable, "%col1%", "Smoking")
       subtable = Replace(subtable, "%col2%", Trim(txtRiskFactorsSmoking.text))
    End If   
-   If chkAlcohol.value = True Then 
+   If chkAlcohol.value = True Or Trim(txtRiskFactorsAlcohol.text) Then 
       subtable &= Table_row
       subtable = Replace(subtable, "%col1%", "Alcohol")
       subtable = Replace(subtable, "%col2%", Trim(txtRiskFactorsAlcohol.text))
    Endif
-   If chkDrugs.Value = True Then 
+   If chkDrugs.Value = True Or Trim(txtRiskFactorsDrugs.text) <> "" Then 
       subtable &= Table_row
       subtable = Replace(subtable, "%col1%", "Drugs")
       subtable = Replace(subtable, "%col2%", Trim(txtRiskFactorsDrugs.text))
    Endif
-   If chkSocial.value = True Then
+   If chkSocial.value = True Or Trim(txtRiskFactorsSocial.text) <> "" Then
       subtable &= Table_row
       subtable = Replace(subtable, "%col1%", "Social")
       subtable = Replace(subtable, "%col2%", Trim(txtRiskFactorsSocial.text))
    Endif
-   If chkMentalHealth.value = True Then 
+   If chkMentalHealth.value = True Or Trim(txtRiskFactorsMentalHealth.text) <> "" Then 
       subtable &= Table_row
       subtable = Replace(subtable, "%col1%", "Mental Health")
       subtable = Replace(subtable, "%col2%", Trim(txtRiskFactorsMentalHealth.text))
+   Endif
+   If Trim(taRiskFactorsPastHistory.text) <> "" Then
+      subtable &= Table_row
+      subtable = Replace(subtable, "%col1%", "Past History")
+      subtable = Replace(subtable, "%col2%", Trim(taRiskFactorsPastHistory.text))
+   Endif
+   If Trim(taRiskFActorsObstetric.text) <> "" Then
+      subtable &= Table_row
+      subtable = Replace(subtable, "%col1%", "Obstetric")
+      subtable = Replace(subtable, "%col2%", Trim(taRiskFActorsObstetric.text))
    Endif
    If subtable <> "" Then  'we have some risk factors 
       row_contents &= Table_row
@@ -1243,10 +1295,10 @@ Public Function ProgressNotes_Pregnancy_Create_oldest() As String
       pn = Replace(pn, "%col1%", "Type of Delivery")
       pn = Replace(pn, "%col2%", cmbDeliveryTypes.text)
    End If   
-   If Trim(txtcomplications.text) <> "" Then 
+   If Trim(taComplications.text) <> "" Then 
       pn &= Table_row
       pn = Replace(pn, "%col1%", "Complications")
-      pn = Replace(pn, "%col2%", Trim(txtcomplications.Text))
+      pn = Replace(pn, "%col2%", Trim(taComplications.Text))
    End If
    If Trim(txtBabyName.text) <> "" Then   
       pn &= Table_row
@@ -1276,10 +1328,10 @@ Public Function ProgressNotes_Pregnancy_Create_oldest() As String
       Endif
       pn = Replace(pn, "%col2%", sString)  
    End If   
-   If Trim(txtcontraception.text) <> "" Then    
+   If cmbContraceptionMethods.text <> "n/a" Or cmbContraceptionMethods.index <> -1 Then    
       pn &= Table_row
       pn = Replace(pn, "%col1%", "Contraception")
-      pn = Replace(pn, "%col2%", Trim(txtcontraception.Text))  
+      pn = Replace(pn, "%col2%", Trim(cmbContraceptionMethods.text) & " " & Trim(txtcontraceptionNotes.Text)) 
    End If   
    '----------------------------------------------------------------------------------
    'If not entering a completed prognancy then put in whatever tests we currently have
@@ -1388,8 +1440,8 @@ Public Function ProgressNotes_Pregnancy_Create_oldest() As String
          pn = Replace(pn, "%col1%", "Anti D 28wk Injection")
          If rbAntiD28WeeksGivenYes.value = True Then 
             sstring = "Yes"
-            If Trim(txtAntiD28weeksDate.text) <> "" Then
-               sstring &= " on " & txtAntiD28weeksDate.Text
+            If Trim(txtAntiD28weeksGivenDate.text) <> "" Then
+               sstring &= " on " & txtAntiD28weeksGivenDate.Text
             Endif
          End If   
          If rbAntiD28WeeksGivenNo.value = True Then sstring = "No"
@@ -1401,9 +1453,9 @@ Public Function ProgressNotes_Pregnancy_Create_oldest() As String
          pn = Replace(pn, "%col1%", "Anti D 34wk Injection")
          If rbAntiD34WeeksGivenYes.value = True Then
             sstring = "Yes"
-            txtAntiD34WeeksDate
-            If Trim(txtAntiD34WeeksDate.text) <> "" Then
-               sstring &= " on " & txtAntiD34WeeksDate.Text
+            txtAntiD34WeeksGivenDate
+            If Trim(txtAntiD34WeeksGivenDate.text) <> "" Then
+               sstring &= " on " & txtAntiD34WeeksGivenDate.Text
             Endif
          End If   
          If rbAntiD34WeeksGivenNo.value = True Then sstring = "No"
@@ -1564,6 +1616,10 @@ Public Sub Pregnancy_Save()
    ' xd  hiv boolean, - - True If Postive, False If negative And Null If unknown
    ' xd  varicella boolean, - - True If Immune, False If Non Immune And Null If unknown
    ' x rh_antibody_screen_28w boolean, - - True If Positive, False If Negative And Null If unknown
+   ' x fk_lu_placenta_position integer default false
+   ' x risk_factors_past_history,
+   ' x risk_factors_obstetric,
+   ' x reason_caesarian_section
    '-------------------------------------------------------------------------------
    
    Dim Pregnancy As CRow
@@ -1571,6 +1627,9 @@ Public Sub Pregnancy_Save()
    
    If HBox_EditArea.Padding = 0 Then Return
    If Not Pregnancy_Valid() Then Return
+   Form_HTML_Viewer.Visible = False 
+   Form_PDF.Visible = False   
+   Vbox_EditArea.Visible = True  
    Pregnancy = New CRow
    If fk_pregnancy Then
       Pregnancy.put_unchanged(fk_pregnancy, "fk_pregnancy")
@@ -1609,48 +1668,48 @@ Public Sub Pregnancy_Save()
    End If   
    If rbRHPositive.value = True Then pregnancy!fk_lu_rhesus_group = 1
    If rbRHNegative.Value = True Then Pregnancy!fk_lu_rhesus_group = 2
-   If rbRHUnknown.Value = True Then Pregnancy!fk_lu_rhesus_group = Null
+   If rbRHUnknown.Value = True Or rbRHReset.value = True Then Pregnancy!fk_lu_rhesus_group = Null
    If rbAntibodyPositive.value = True Then Pregnancy!booking_antibody_screen = True
    If rbAntibodyNegative.value = True Then Pregnancy!booking_antibody_screen = False   
-   If rbAntibodyUnknown.value = True Then pregnancy!booking_antibody_screen = Null
-   pregnancy!booking_haemoglobin = txtHaemoglobin.Text
+   If rbAntibodyUnknown.value = True Or rbAntibodyReset.Value = True Then pregnancy!booking_antibody_screen = Null
+   pregnancy!booking_haemoglobin = Val(txtHaemoglobin.Text)
    pregnancy!booking_msu = txtMsu.Text
    If rbSyphilusPositive.value = True Then pregnancy!syphilus = True
    If rbSyphilusNegative.value = True Then pregnancy!syphilus = False
-   If rbSyphilusUnknown.value = True Then pregnancy!syphilus = Null
+   If rbSyphilusUnknown.value = True Or rbSyphilusReset.value = True Then pregnancy!syphilus = Null
    If rbRubellaImmune.value = True Then pregnancy!rubella = True
    If rbRubellaNonImmune.value = True Then pregnancy!rubella = False
-   If rbRubellaUnknown.value = True Then pregnancy!rubella = Null
+   If rbRubellaUnknown.value = True Or rbRubellaReset.value = True Then pregnancy!rubella = Null
    Pregnancy!rubella_titre = Val(txtRubellaTitre.text)
    If rbhepatitisBPositive.value = True Then Pregnancy!hepatitis_b = True
    If rbhepatitisBNegative.value = True Then Pregnancy!hepatitis_b = False  
-   If rbhepatitisBUnknown.value = True Then Pregnancy!hepatitis_b = Null
+   If rbhepatitisBUnknown.value = True Or rbHepatitisbReset.Value = True Then Pregnancy!hepatitis_b = Null
    If rbHepatitisCPositive.value = True Then Pregnancy!hepatitis_c = True
    If rbHepatitisCNegative.value = True Then Pregnancy!hepatitis_c = False 
-   If rbHepatitisCUnknown.value = True Then Pregnancy!hepatitis_c = Null
+   If rbHepatitisCUnknown.value = True Or rbhepatitisCReset.Value = True Then Pregnancy!hepatitis_c = Null
    If rbHIVPositive.value = True Then Pregnancy!hiv = True
    If rbHIVNegative.value = True Then Pregnancy!hiv = False
-   If rbHIVUnknown.value = True Then Pregnancy!hiv = Null
+   If rbHIVUnknown.value = True Or rbHIVReset.Value = True Then Pregnancy!hiv = Null
    If rbVaricellaPositive.value = True Then Pregnancy!varicella = True
    If rbVaricellaNegative.value = True Then Pregnancy!varicella = False  
-   If rbVaricellaUnknown.value = True Then Pregnancy!varicella = Null
+   If rbVaricellaUnknown.value = True Or rbVaricellaReset.Value = True Then Pregnancy!varicella = Null
    If rbGroupBStrepPositive.value = True Then Pregnancy!group_b_strep_swabs = True
    If rbGroupBStrepNegative.value = True Then Pregnancy!group_b_strep_swabs = False 
-   If rbGroupBStrepUnknown.value = True Then Pregnancy!group_b_strep_swabs = Null
+   If rbGroupBStrepUnknown.value = True Or rbGroupBStrepReset.Value = True Then Pregnancy!group_b_strep_swabs = Null
    Pregnancy!anti_d_28w_date = Val(txtDate28WAntiDScreen.text)
    If rbAntiD28WeeksGivenYes.value = True Then Pregnancy!anti_d_28w_given = True
    If rbAntiD28WeeksGivenNo.value = True Then Pregnancy!anti_d_28w_given = False
-   If rbAntiD28WeeksGivenUnknown.Value = True Then Pregnancy!anti_d_28w_given = Null
-   Pregnancy!anti_d_34w_date = Val(txtAntiD34WeeksDate.text)
+   If rbAntiD28WeeksGivenUnknown.Value = True Or rbAntiD28WeeksGivenReset.Value = True Then Pregnancy!anti_d_28w_given = Null
+   Pregnancy!anti_d_34w_date = Val(txtAntiD34WeeksGivenDate.text)
    If rbAntiD34WeeksGivenYes.Value = True Then Pregnancy!anti_d_34w_given = True
    If rbAntiD34WeeksGivenNo.Value = False Then Pregnancy!anti_d_34w_given = False 
-   If rbAntiD34WeeksGivenUnknown.Value = True Then Pregnancy!anti_d_34w_given = Null
+   If rbAntiD34WeeksGivenUnknown.Value = True Or rbAntiD34WeeksGivenReset.Value = True Then Pregnancy!anti_d_34w_given = Null
    If rb28WeekRHScreenPositive.value = True Then Pregnancy!rh_antibody_screen_28w = True
    If rb28WeekRHScreenNegative.value = True Then Pregnancy!rh_antibody_screen_28w = False 
-   If rb28WeekRHScreenUnknown.value = True Then Pregnancy!rh_antibody_screen_28w = Null
+   If rb28WeekRHScreenUnknown.value = True Or rb28WeekRHScreenReset.value = True Then Pregnancy!rh_antibody_screen_28w = Null
    If rbRepeatAntibodyScreen34_37WPositive.value = True Then Pregnancy!repeat_antibody_screen_34_37wk = True
    If rbRepeatAntibodyScreen34_37WNegative.value = True Then Pregnancy!repeat_antibody_screen_34_37wk = False
-   If rbRepeatAntibodyScreen34_37WUnknown.value = True Then Pregnancy!repeat_antibody_screen_34_37wk = Null
+   If rbRepeatAntibodyScreen34_37WUnknown.value = True Or rbRepeatAntibodyScreen34_37WReset.Value = True Then Pregnancy!repeat_antibody_screen_34_37wk = Null
    
    Pregnancy!date_gtt = Val(txtDateGTT.text)
    Pregnancy!gtt_result = Trim(txtGTTResult.text)
@@ -1664,7 +1723,7 @@ Public Sub Pregnancy_Save()
    Pregnancy!risk_factor_drugs_details = Trim(txtRiskFactorsDrugs.text)
    Pregnancy!risk_factor_social_details = Trim(txtRiskFactorsSocial.text)
    Pregnancy!risk_factor_mental_health_details = Trim(txtRiskFactorsMentalHealth.text)
-   Pregnancy!complications = Trim(txtcomplications.text)
+   Pregnancy!complications = Trim(taComplications.text)
    If txtDateDelivery.text <> "" Then
       Pregnancy!date_delivery = Trim(txtDateDelivery.text) 'can be eg mm/yyyy kept as text
    Else
@@ -1695,7 +1754,20 @@ Public Sub Pregnancy_Save()
       Pregnancy!breast_fed = Null 'no informationi
    Endif
    pregnancy!breast_fed_duration = Trim(txtBreastFedDuration.text)
-   pregnancy!contraception = Trim(txtcontraception.text)
+   If cmbContraceptionMethods.index <> -1 Then
+      pregnancy!fk_lu_contraception_method = contraception_methods[cmbContraceptionMethods.index]!pk
+   Else
+      pregnancy!fk_lu_contraception_method = Null
+   Endif
+   pregnancy!contraception_method_notes = Trim(txtcontraceptionNotes.text)
+   If cmbPlacentaPosition.index = -1 Or cmbPlacentaPosition.text = "Unknown" Then 
+      pregnancy!fk_lu_placenta_position = Null
+   Else
+      pregnancy!fk_lu_placenta_position = placenta_positions[cmbPlacentaPosition.index]!pk 
+   Endif
+   pregnancy!risk_factors_past_history = Trim(taRiskFactorsPastHistory.text)
+   pregnancy!risk_factors_obstetric = Trim(taRiskFActorsObstetric.text)
+   pregnancy!reason_caesarian_section = Trim(txtReasonCaesarianSection.text)
    '------------------------------------------
    ' CREATE TABLE clin_consult.progressnotes
    ' (
@@ -1766,15 +1838,15 @@ Public Sub Reload()
       End If   
       If Not IsNull(pregnancy!gestation_at_delivery) Then
          cvwPregnancies[x][2] = pregnancy!gestation_at_delivery & " wks"
-         
       Else
-         cvwPregnancies[x][2] = pregnancy!gestation
-         '     Try txtDateLMP.text = Format(currentPregnancy!lmp, "dd/mm/yyyy")
-         ' If Error Then
-         '    txtDateLMP.text = currentPregnancy!lmp
-         ' Endif
-         ' txtGestation.text = (DateDiff(Val(txtDateLMP.text), Now, gb.day) Div 7) & " wks "
-         ' txtGestation.text &= (DateDiff(Val(txtDateLMP.text), Now, gb.day) Mod 7) & " days"
+         
+         If Not IsNull(pregnancy!edc_revised) Then
+            cvwPregnancies[x][2] = Calc_Gestation(calc_fake_lmp(pregnancy!edc_revised))
+         End If
+         If cvwPregnancies[x][2] = "" And Not IsNull(pregnancy!edc) Then
+            cvwPregnancies[x][2] = Calc_Gestation(calc_fake_lmp(pregnancy!edc))
+         Endif
+         
       End If
       cvwPregnancies[x][3] = pregnancy!onset_labour_type
       If Not IsNull(pregnancy!labour_hours) Then
@@ -1823,14 +1895,21 @@ Public Sub Pregnancy_Display()
       If Error Then
          txtDateLMP.text = currentPregnancy!lmp
       Endif
-      txtGestation.text = currentPregnancy!gestation 
    End If
    If Not IsNull(currentPregnancy!edc) Then
       txtEDC.text = Format(currentPregnancy!edc, "dd/mm/yyyy")
    Endif
    Try txtEDCRevisedDate.text = Format(currentPregnancy!edc_revised, "dd/mm/yyyy")
    txtEDCRevisedReason.text = currentpregnancy!edc_revised_reason
-   'FIXME calculate current gestation in weeks
+   '----------------------------------------------------------------------
+   'calculate current gestation in weeks. If have LMP will always have edc
+   '----------------------------------------------------------------------
+   If Not IsNull(currentPregnancy!edc_revised) Then
+      txtGestation.text = Calc_Gestation(calc_fake_lmp(currentPregnancy!edc_revised))
+   Endif
+   If txtGestation.text = "" And Not IsNull(currentPregnancy!edc) Then
+      txtGestation.text = Calc_Gestation(calc_fake_lmp(currentPregnancy!edc))
+   Endif
    If Not IsNull(currentPregnancy!nuchal_fold_scan_date) Then
       txtDateNuchalFold.text = Format(currentPregnancy!nuchal_fold_scan_date, "dd/mm/yyyy")
    Endif
@@ -1869,6 +1948,9 @@ Public Sub Pregnancy_Display()
    txtRiskFactorsSocial.text = currentPregnancy!risk_factor_social_details
    txtRiskFactorsSmoking.text = currentPregnancy!risk_factor_smoking_details
    txtRiskFactorsMentalHealth.text = currentPregnancy!risk_factor_mental_health_details
+   taRiskFactorsPastHistory.text = currentPregnancy!risk_factors_past_history
+   taRiskFActorsObstetric.text = currentpregnancy!risk_factors_obstetric
+   txtReasonCaesarianSection.text = currentpregnancy!reason_caesarian_section
    txtNotes.text = currentPregnancy!notes
    txtDateDelivery.text = currentPregnancy!date_delivery
    txtAgeAtDelivery.text = currentPregnancy!age_at_delivery
@@ -1879,18 +1961,26 @@ Public Sub Pregnancy_Display()
    Try cmbBabySex.Index = cmbBabySex.Find(currentPregnancy!baby_sex)
    txtBirthweight.text = currentPregnancy!birthweight
    txtBabyName.text = currentpregnancy!baby_name
-   txtcomplications.text = currentPregnancy!complications
+   taComplications.text = currentPregnancy!complications
    txtPuerperium.text = currentpregnancy!puerperium
-   If currentPregnancy!breast_fed = True Then rbBreastFedYes.value = True
-   If currentPregnancy!breast_fed = False Then rbBreastFedNo.value = True
+   If currentPregnancy!breast_fed = True Then
+      rbBreastFedYes.value = True
+      txtBreastFedDuration.Enabled = True
+   End If   
+   If currentPregnancy!breast_fed = False Then 
+      rbBreastFedNo.value = True
+      txtBreastFedDuration.Enabled = False   
+   End If   
    txtBreastFedDuration.text = currentPregnancy!breast_fed_duration
-   txtcontraception.text = currentPregnancy!contraception   
+   txtcontraceptionNotes.text = currentPregnancy!contraception_method_notes
+   If Not IsNull(currentPregnancy!contraception_method) Then
+      cmbContraceptionMethods.index = cmbContraceptionMethods.Find(currentPregnancy!contraception_method)
+   Endif
    If currentPregnancy!anti_d_28w_given = True Then rbAntiD28WeeksGivenYes.value = True
    If currentPregnancy!anti_d_28w_given = False Then rbAntiD28WeeksGivenNo.value = True
    If IsNull(currentPregnancy!anti_d_28w_given) Then rbAntiD28WeeksGivenUnknown.value = True 
    
-  
-   Try txtAntiD34WeeksDate = Format(currentpregnancy!anti_d_34w_date, "dd/mm/yyyy")
+   Try txtAntiD34WeeksGivenDate = Format(currentpregnancy!anti_d_34w_date, "dd/mm/yyyy")
    If currentPregnancy!anti_d_34w_given = True Then rbAntiD34WeeksGivenYes.value = True
    If currentPregnancy!anti_d_34w_given = False Then rbAntiD34WeeksGivenNo.value = True
    If IsNull(currentPregnancy!anti_d_34w_given) Then rbAntiD34WeeksGivenUnknown.value = True
@@ -1899,15 +1989,25 @@ Public Sub Pregnancy_Display()
    Endif
    If currentpregnancy!fk_lu_rhesus_group = 1 Then 
       rbRHPositive.value = True
+      lblRhNeg28WeekScreen.Background = Color.Background
+      HBox_RHScreenDate.Enabled = False   
+      HBox_RHAntiDgiven28W.Enabled = False
+      HBox_RHAntiDgiven34W.Enabled = False   
    Else If currentpregnancy!fk_lu_rhesus_group = 2 Then
       rbRHNegative.Value = True
-       If IsNull(currentpregnancy!anti_d_28w_date) Then
-            txtAntiD28weeksDate.text = Calc_Anti_D_28W_Date()
-       Else
-         txtAntiD28weeksDate.text = Format(currentpregnancy!anti_d_28w_date, "dd/mm/yyyy")
-       Endif
+      lblRhNeg28WeekScreen.Background = Color.RGB(255, 255, 0)
+      txtDate28WAntiDScreen.text = Calc_Anti_D_28W_Date()
+      HBox_RHScreenDate.Enabled = True
+      HBox_RHAntiDgiven28W.Enabled = True   
+      HBox_RHAntiDgiven34W.Enabled = True   
+      If IsNull(currentpregnancy!anti_d_28w_date) Then
+         '  txtDate28WAntiDScreen.text = Calc_Anti_D_28W_Date()
+      Else
+         '   txtAntiD28weeksGivenDate.text = Format(currentpregnancy!anti_d_28w_date, "dd/mm/yyyy")
+      Endif
    Else
       rbRHUnknown.value = True   
+      lblRhNeg28WeekScreen.Background = Color.Background
    End If   
    If currentpregnancy!booking_antibody_screen = True Then rbAntibodyPositive.value = True
    If currentpregnancy!booking_antibody_screen = False Then rbAntibodyNegative.Value = True
@@ -1941,9 +2041,13 @@ Public Sub Pregnancy_Display()
    If IsNull(currentpregnancy!varicella) Then rbVaricellaUnknown.value = True
    If currentpregnancy!rh_antibody_screen_28w = True Then rb28WeekRHScreenPositive.value = True
    If currentpregnancy!rh_antibody_screen_28w = False Then rb28WeekRHScreenNegative.value = True
-   If currentpregnancy!rh_antibody_screen_28w = True Then rb28WeekRHScreenUnknown.value = True
+   If currentpregnancy!rh_antibody_screen_28w = Null Then rb28WeekRHScreenUnknown.value = True
    If currentpregnancy!repeat_antibody_screen_34_37wk = True Then rbRepeatAntibodyScreen34_37WPositive.Value = True
    If currentpregnancy!repeat_antibody_screen_34_37wk = False Then rbRepeatAntibodyScreen34_37WNegative.Value = True 
+   If currentpregnancy!repeat_antibody_screen_34_37wk = Null Then rbRepeatAntibodyScreen34_37WUnknown.value = True   
+   If Not IsNull(currentpregnancy!fk_lu_placenta_position) Then
+      cmbPlacentaPosition.index = cmbPlacentaPosition.Find(currentpregnancy!position)
+   Endif
    EditArea_NotifyData_Change(False)
    bExit = False
    
@@ -1953,6 +2057,7 @@ Public Sub Pregnancy_Edit()
    
    HBox_EditArea.Enabled = True
    lblEditAreaHeading.text = "Edit Existing Pregnancy"
+   If txtHaemoglobin.text = "" Then txtHaemoglobin.text = Haemoglobin_Get_Latest()
    
 End
 
@@ -2026,7 +2131,91 @@ Public Sub Pregnancy_New()
    lblEditAreaHeading.text = "New Pregnancy"
    HBox_EditArea.Enabled = True
    EditArea_NotifyData_Change(True) 'can save a pregnancy without any data.
+   Habits_Update_Data
+   MentalHealth_CheckPlans
    txtDateLMP.SetFocus()
+   
+End
+
+Public Function rubella_titre_Get_Latest() As String
+   '-------------------------------------------------------------------------------------------
+   'Attempt to find the pregnancy rubella titre as long as blood taken after LMP or calc'd LMP
+   '------------------------------------------------------------------------------------------
+   
+   Dim titre As Integer
+   
+   If txtEDC.text = "" Then Return
+   titre = modPregnancyDBI.Pregnancy_Rubella_Get_Latest(currentConsult!patient!fk_patient, Val(txtEDC.text))
+   If titre = 0 Then Return 'there was no titre found 
+   If titre < 10 Then rbRubellaNonImmune.value = True
+   If titre > 10 And titre < 30 Then rbRubellaUnknown.value = True
+   If titre > 30 Then rbRubellaImmune.value = True
+   Return Str(titre)
+   
+End
+
+Public Function Haemoglobin_Get_Latest() As String
+   '-------------------------------------------------------------------------------
+   'Attempt to find the pregnancy hb as long as blood taken after LMP or calc'd LMP
+   '-------------------------------------------------------------------------------
+   
+   If txtEDC.text = "" Then Return
+   Return modPregnancyDBI.Pregnancy_Haemoglobin_Get_Latest(currentConsult!patient!fk_patient, Val(txtEDC.text))
+   
+End
+
+Public Sub MentalHealth_CheckPlans()
+   '----------------------------------
+   'Checks if mental health plan done 
+   '----------------------------------
+   
+   Dim plans As Collection = modMentalHealthDBI.Plans_Get(currentconsult!patient!fk_patient, 1)
+   Dim plan As Collection
+   
+   If plans.count Then
+      For Each plan In plans 'will be only 1
+         txtRiskFactorsMentalHealth.text = plan!diagnosis & " MHP:" & Format(plan!plan_date, "dd/mm/yyyy")
+         chkMentalHealth.value = True  
+         Return
+      Next
+   Endif
+   chkMentalHealth.Value = False 
+   
+End
+
+Public Sub Habits_Update_Data()
+   '----------------------------------------------------
+   'Pulls in the patients smoking/alcohol/other drug use
+   '----------------------------------------------------  
+   
+   Dim smoking_status As String = modRecreationalDrugs.SmokingStatus_String(currentConsult)
+   Dim drinking_status As String = modRecreationalDrugs.AlcoholStatus_String(currentConsult)
+   Dim other_drugs As String = modRecreationalDrugs.OtherDrugsStatus_String(currentconsult)
+   
+   chkAlcohol.value = False   
+   chkSmoking.Value = False  
+   chkDrugs.Value = False   
+   If smoking_status = "NEVER SMOKED" Then txtRiskFactorsSmoking.text = Lower(smoking_status)
+   If smoking_status = "CURRENT SMOKER" Then 
+      txtRiskFactorsSmoking.text = Lower(smoking_status)
+      chkSmoking.value = True 
+   End If
+   txtRiskFactorsAlcohol.text = Lower(drinking_status)
+   If InStr(Lower(drinking_status), "current") Then chkAlcohol.value = True  
+   If other_drugs <> "" Then
+      txtRiskFactorsDrugs.text = other_drugs
+      chkDrugs.value = True   
+   Endif
+   
+End
+
+Public Sub Refresh()
+   '--------------------------------
+   'Reloads stuff like drugs/smoking
+   '--------------------------------
+   
+   Habits_Update_Data
+   MentalHealth_CheckPlans
    
 End
 
@@ -2043,7 +2232,8 @@ End
 Public Sub EditArea_Clear()
    
    bexit = True   
-   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)
+   modEditAreaHelpers.EditArea_Clear(Vbox_EditArea)  'fixme at some point to descend more control depths
+   txtDateLMP.text = ""
    modEditAreaHelpers.EditArea_Clear(VBox_EditArea_Right)
    cmbDeliveryTypes.index = cmbDeliveryTypes.Find("n/a")
    cmbOnsetLabour.index = cmbOnsetLabour.Find("n/a")
@@ -2051,16 +2241,26 @@ Public Sub EditArea_Clear()
    cmbPlacentaPosition.index = -1
    cmbBloodGroups.index = -1
    txtBreastFedDuration.enabled = False   
+   txtRubellaTitre.text = ""
    lblEditAreaHeading.text = "" 'fixme
    lblNuchalFoldDateComment.text = ""
    lblMorphologyScanDateComment.text = ""
+   rbSyphilusReset.value = True
+   rbRHReset.value = True
+   rbAntibodyReset.value = True  
+   rbRubellaReset.value = True
+   rbHepatitisbReset.value = True
+   rbhepatitisCReset.value = True
+   rbHIVReset.value = True
+   rbVaricellaReset.value = True
+   rb28WeekRHScreenReset.Value = True
    rbMorphologyScanReset.value = True
    rbBreastFedReset.Value = True
-   rbNuchalFoldReset.value = True   
-   rbGroupBStrepReset.value = True  
-   rbRepeatAntibodyScreen34_37WUReset.Value = True
-   rbAntiD28WeeksGivenReset.value = True
+   rbAntiD28WeeksGivenReset.Value = True
    rbAntiD34WeeksGivenReset.value = True
+   rbGroupBStrepReset.value = True  
+   rbRepeatAntibodyScreen34_37WReset.Value = True
+   rbNuchalFoldReset.value = True   
    sNuchalFoldScan = "unknown"
    sMorphologyScan = "unknown"
    HBox_RHScreenDate.Enabled = False   
@@ -2120,7 +2320,7 @@ Public Sub tbDatePicker_ReviewDate_Click()
             Next
             With HBox_Calander
                .top = Last.Parent.Parent.top + Last.Parent.Height + Vbox_EditArea.padding
-               .left = Last.Parent.left + Vbox_EditArea.padding
+               .left = Last.Parent.Parent.left + Vbox_EditArea.padding
                .width = 170
                .height = 170
                .Raise()
@@ -2166,24 +2366,38 @@ Public Sub EditAreaTextBox_KeyPress()
             Case "edc revised"
                txtEDCRevisedReason.SetFocus
             Case "edc revised reason"
-               txtNotes.SetFocus
+               taRiskFactorsPastHistory.SetFocus
+            Case "smoking details"
+               chkAlcohol.SetFocus
+            Case "alcohol details"
+               chkDrugs.SetFocus
+            Case "drugs details"
+               chkSocial.SetFocus
+            Case "social factors details"
+               chkMentalHealth.SetFocus
+            Case "mental health factors details"
+               taRiskFactorsPastHistory.SetFocus
             Case "date of delivery"
-               '   txtGestationAtDelivery.SetFocus
+               txtGestationAtDelivery.SetFocus
             Case "gestation at delivery"
                cmbOnsetLabour.SetFocus
             Case "hours labour"
                cmbDeliveryTypes.SetFocus
+            Case "reason caesarian section"
+               taComplications.SetFocus
             Case "complications"
-               txtBabyName.SetFocus
-            Case "baby name"
                cmbBabySex.SetFocus
+            Case "baby name"
+               txtBirthweight.SetFocus
             Case "birth weight"
                txtPuerperium.SetFocus
             Case "contraception"
                txtNotes.SetFocus
             Case "puerperium"
                rbBreastFedYes.SetFocus
-            Case "contraception"
+            Case "breast feeding duration"
+               cmbContraceptionMethods.SetFocus
+            Case "contraception notes"
                txtNotes.SetFocus
          End Select
    End Select
@@ -2193,7 +2407,7 @@ End
 Public Function EditArea_TxtBox_ExcludeKeys(keycode As Integer, tag As String) As Boolean
    
    Select Case tag
-      Case "edc", "date nuchal fold scan", "date anti-d test", "date morphology scan", "lmp", "date gtt", "anti-d 34 weeks date", "anti-d 28 weeks date", "edc revised date"
+      Case "edc", "date nuchal fold scan", "date anti-d test", "date morphology scan", "lmp", "date gtt", "anti-d 34 weeks given date", "anti-d 28 weeks given date", "edc revised"
          bKeyValid = modUtil.AllowKeys(const.AllowKeys_DateFormat, keycode)
       Case "date of delivery"
          bKeyValid = modUtil.AllowKeys(const.AllowKeys_Date_DWMY, keycode) 'eg mm/yy or full date
@@ -2216,51 +2430,32 @@ Public Sub EditAreaTextBox_Change()
    Select Case Last.tag
       Case "date anti-d test"
          If IsDate(Last.text) Then
-            lblRhNeg28WeekScreen.text = "28W RH -ve Screen Date"
-            '   Else
-            '    lblRhNeg28WeekScreen.text = "28W RH -ve Screen Date?"
+            lblRhNeg28WeekScreen.text = "28W RH -ve Screen Date Due"
          Endif
-      Case "lmp"
+      Case "lmp"                                        
          If IsDate(Last.text) Then
             bexit = True
             txtEDC.text = Format(DateAdd(Val(Last.text), gb.day, 280), "dd/mm/yyyy")
+            txtHaemoglobin.text = Haemoglobin_Get_Latest()
             txtDateNuchalFold.text = Format(DateAdd(Val(Last.text), gb.week, 12), "dd/mm/yyyy")
             txtDateMorphologyScan.text = Format(DateAdd(Val(Last.text), gb.week, 18), "dd/mm/yyyy")
-            txtGestation.text = (DateDiff(Val(txtDateLMP.text), Now, gb.day) Div 7) & " wks "
-            txtGestation.text &= (DateDiff(Val(txtDateLMP.text), Now, gb.day) Mod 7) & " days"
+            txtGestation.text = Calc_Gestation(Val(Last.text))
             txtDateGTT.text = Format(DateAdd(Val(txtDateLMP.text), gb.week, 28), "dd/mm/yyyy")
             If rbRHNegative.value = True Then   
                txtDate28WAntiDScreen.text = txtDateGTT.Text
             End If   
             bExit = False  
          Endif
-      Case "edc revised"
-         bexit = True   
+         txtRubellaTitre.text = rubella_titre_Get_Latest()
+         txtHaemoglobin.text = Haemoglobin_Get_Latest()
+      Case "edc revised", "edc"
          If Len(Last.text) = "" Then
             lblMorphologyScanDateComment.text = ""
             lblNuchalFoldDateComment.text = ""
-            ' lblAntiDDateComment.text = ""
-         Else
-            If IsDate(txtEDCRevisedDate.text) And Len(Last.text) = 10 Then         'revised EDC, re-calculate the gestation
-               lmp_fake = DateAdd(Val(txtEDCRevisedDate.text), gb.day, -280)
-               txtGestation.text = Str(39 - (DateDiff(Now, Val(txtEDCRevisedDate.text), gb.day) Div 7)) & " wks "
-               txtGestation.text &= Str(7 - (DateDiff(Now, Val(txtEDCRevisedDate.text), gb.day) Mod 7)) & " days"
-               If Val(Split(txtGestation.text, " ")[0]) < 12 Then
-                  txtDateNuchalFold.text = calc_Nuchal_fold_date(lmp_fake)
-                  lblNuchalFoldDateComment.text = "** Recalculated from revised EDC"
-               Endif
-               If Val(Split(txtGestation.text, " ")[0]) < 18 Then
-                  txtDateMorphologyScan.text = Calc_Morphology_Scan_Date(lmp_fake)
-                  lblMorphologyScanDateComment.text = "** Recalculated from revised EDC"
-               Endif
-               If Val(Split(txtGestation.text, " ")[0]) < 28 Then
-                  txtDateGTT.text = Calc_GTT_Or_Anti_D(lmp_fake)
-                  '   txtDateAntiD.text = txtDateGTT.Text
-                  '    lblAntiDDateComment.text = "** Recalculated from revised EDC" 
-               Endif
-            End If 
-         End If   
-         bExit = False    
+         End If 
+         Calc_Scan_GTT_Dates_From_EDC(Last)  'also calcs the txtGestation
+         txtRubellaTitre.text = rubella_titre_Get_Latest()
+         txtHaemoglobin.text = Haemoglobin_Get_Latest()
       Case "date of delivery"
          If IsDate(Last.text) And Len(Last.text) = 10 Then
             If Year(Val(Last.text)) < Year(Now) Then
@@ -2280,9 +2475,79 @@ Public Sub EditAreaTextBox_Change()
             '    Endif
             ' Endif
          Endif
-         
+      Case "risk factors medical"
+         If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "")
+            taRiskFActorsObstetric.SetFocus
+         End If
+      Case "risk factors obstetric"
+         If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "")
+            txtDateDelivery.SetFocus
+         End If
+      Case "complications"
+         If InStr(Last.text, "\n\n") Then
+            Last.text = Replace(Last.text, "\n\n", "")
+            txtDateDelivery.SetFocus
+         End If
    End Select
    EditArea_NotifyData_Change(True)
+   
+End
+
+Public Function Calc_Gestation(date_lmp As Date) As String
+   '------------------------------------------------
+   'the date_lmp could be fake (ie know only the EDC
+   'If have revised EDC use that
+   '------------------------------------------------- 
+   
+   Dim gestation As String
+   
+   gestation = (DateDiff(date_lmp, Now, gb.day) Div 7) & " wks "
+   gestation &= (DateDiff(date_lmp, Now, gb.day) Mod 7) & " days"
+   Return gestation
+   
+End
+
+Public Function calc_fake_lmp(edc As Date) As Date
+   'given EDC work out rough period  
+   
+   Return DateAdd(edc, gb.day, -280)
+   
+End
+
+Public Sub Calc_Scan_GTT_Dates_From_EDC(tb As Textbox)
+   
+   'expects and EDC or revised EDC
+   bexit = True   
+   If txtEDC.text = "" Then 
+      If IsDate(txtEDCRevisedDate.Text) And Len(txtEDCRevisedDate.text) = 10 Then 
+         txtEDC.Text = tb.Text
+      End If
+   End If  
+   If IsDate(tb.text) And Len(Last.text) = 10 Then         'revised EDC, re-calculate the gestation
+      lmp_fake = calc_fake_lmp(Val(tb.text))
+      txtGestation.text = Calc_Gestation(lmp_fake)
+      ' txtGestation.text = Str(39 - (DateDiff(Now, Val(tb.text), gb.day) Div 7)) & " wks "
+      ' txtGestation.text &= Str(7 - (DateDiff(Now, Val(tb.text), gb.day) Mod 7)) & " days"
+      If Val(Split(txtGestation.text, " ")[0]) < 12 Then                           'not done the nuchal fold scan?
+         txtDateNuchalFold.text = calc_Nuchal_fold_date(lmp_fake)
+         lblNuchalFoldDateComment.text = "** Recalculated from revised EDC"
+      Endif
+      If Val(Split(txtGestation.text, " ")[0]) < 18 Then
+         txtDateMorphologyScan.text = Calc_Morphology_Scan_Date(lmp_fake)
+         lblMorphologyScanDateComment.text = "** Recalculated from revised EDC"
+      Endif
+      If Val(Split(txtGestation.text, " ")[0]) < 28 Then
+         txtDateGTT.text = Calc_GTT_Or_Anti_D(lmp_fake)
+         '   txtDateAntiD.text = txtDateGTT.Text
+         '    lblAntiDDateComment.text = "** Recalculated from revised EDC" 
+      Endif
+      If rbRHNegative.value = True And Val(Split(txtGestation.text, " ")[0]) < 28 Then 
+         txtDate28WAntiDScreen.text = Calc_GTT_Or_Anti_D(lmp_fake)
+      Endif
+   End If 
+   bExit = False    
    
 End
 
@@ -2302,15 +2567,15 @@ Public Function Pregnancy_Valid() As Boolean
          Return
       Endif
    Endif
-   If Trim(txtEDC.text) <> "" Then
-      If Not IsDate(Trim(txtDateLMP.text)) Then
-         With txtDateLMP
-            .SetFocus()
-            .Background = Color.rgb(95, 255, 175)
-         End With
-         Return
-      Endif
-   End If
+   ' If Trim(txtEDC.text) <> "" Then
+   '    If Not IsDate(Trim(txtDateLMP.text)) Then
+   '       With txtDateLMP
+   '          .SetFocus()
+   '          .Background = Color.rgb(95, 255, 175)
+   '       End With
+   '       Return
+   '    Endif
+   ' End If
    If Trim(txtEDCRevisedDate.text) <> "" And If Trim(txtEDCRevisedReason.text) = "" Then
       Message.info("Please enter the reason the EDC has been revised")
       With txtEDCRevisedReason
@@ -2352,7 +2617,7 @@ End
 
 Public Sub cmbDeliveryTypes_KeyPress()
    
-   If key.code = key.return Or key.code = key.tab Then txtcomplications.SetFocus
+   If key.code = key.return Or key.code = key.tab Then taComplications.SetFocus
    
 End
 
@@ -2379,7 +2644,9 @@ Public Sub mnuPregnancies_Click()
       Case "font"
          modUtil.Columnview_SetFont(cvwPregnancies, "FPregnancy")        'allow use to change the font, save to settings"
    End Select
-   
+Catch
+   Return 
+
 End
 
 Public Sub TabStripPregnancy_Click()
@@ -2429,10 +2696,19 @@ Public Sub cmbEditArea_Click()
    Select Case Last.tag
       Case "onset labour"
          txtHoursLabour.SetFocus
-      Case "delivery types"
-         txtcomplications.SetFocus
       Case "baby sex"
-         txtBirthweight.SetFocus
+         txtBabyName.SetFocus
+      Case "delivery types"
+         If InStr(cmbDeliveryTypes.text, "caesar") Then
+            HBox_Reason_Caesar.Enabled = True
+            lblReasonCaesar.Foreground = Color.Black
+            txtReasonCaesarianSection.SetFocus
+         Else
+            HBox_Reason_Caesar.Enabled = False
+            txtReasonCaesarianSection.text = ""
+            lblReasonCaesar.Foreground = Color.LightForeground
+            taComplications.SetFocus
+         Endif
    End Select
    
 End
@@ -2440,8 +2716,10 @@ End
 Public Sub cmbEditArea_KeyPress()
    
    Select Case Last.tag
+      Case "contraception methods"
+         txtcontraceptionNotes.SetFocus
       Case "baby sex"
-         txtBirthweight.SetFocus
+         txtBabyName.SetFocus
    End Select
    
 End
@@ -2480,7 +2758,7 @@ Public Sub rbEditArea_Click()
             .text = ""
             .enabled = False  
          End With
-         txtcontraception.SetFocus
+         cmbContraceptionMethods.SetFocus
       Case "breast red unknown"
          With txtBreastFedDuration
             .text = ""
@@ -2494,11 +2772,14 @@ Public Sub rbEditArea_Click()
             lblRhNeg28WeekScreen.text = "28W RH -ve Screen Due"
             txtDate28WAntiDScreen.text = Calc_Anti_D_28W_Date()
          Endif
-      Case "rh positive"
+         
+         lblRhNeg28WeekScreen.BackGround = Color.RGB(255, 255, 0)
+      Case "rh positive", "rh unknown"
          If Anit_D_Have_Data() Then 
             If Message.Question("Delete all existing RH -ve testing/injection data?", "Yes", "No") = 2 Then Return
             Anti_D_Clear_Data
          End If   
+         lblRhNeg28WeekScreen.Background = Color.Background
          HBox_RHScreenDate.Enabled = False   
          HBox_RHAntiDgiven28W.Enabled = False 
          HBox_RHAntiDgiven34W.Enabled = False  
@@ -2508,7 +2789,10 @@ Public Sub rbEditArea_Click()
          '   Else
          '    lblRhNeg28WeekScreen.text = "28W RH -ve Screen Date"
          '   End If 
-         
+      Case "28wk rh screen positive", "28wk rh screen negative" 
+         lblRhNeg28WeekScreen.text = "28W RH -ve Screen"
+      Case "28wk rh screen unknown"
+         lblRhNeg28WeekScreen.text = "28W RH -ve Screen Due"
    End Select
    EditArea_NotifyData_Change(True)
    
@@ -2523,7 +2807,9 @@ Public Sub Anti_D_Clear_Data()
    Dim HB As HBox
    Dim rb As RadioButton
    
-   txtAntiD28weeksDate.text = ""
+   txtDate28WAntiDScreen.text = ""
+   txtAntiD28weeksGivenDate.text = ""
+   lblRhNeg28WeekScreen.Background = Color.RGB(255, 255, 0)
    For Each hctrl In HBox_RHScreenDate.Children
       If hctrl Is Hbox Then
          HB = hctrl
@@ -2581,7 +2867,7 @@ Public Function Anit_D_Have_Data() As Boolean
    Dim HB As HBox
    Dim rb As RadioButton
    
-   If Trim(txtAntiD28weeksDate.text) <> "" Then Return True
+   If Trim(txtAntiD28weeksGivenDate.text) <> "" Then Return True
    For Each hctrl In HBox_RHScreenDate.Children
       If hctrl Is Hbox Then
          HB = hctrl
@@ -2616,5 +2902,13 @@ Public Function Anit_D_Have_Data() As Boolean
       Endif
    Next
    Return False
+   
+End
+
+Public Sub VBox_LeftSide_Enter()
+   
+   Form_HTML_Viewer.Visible = False 
+   Form_PDF.Visible = False   
+   Vbox_EditArea.Visible = True  
    
 End

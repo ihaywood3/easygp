@@ -22,12 +22,10 @@
 '              calender dosn't triggPhoner reliably, leaving it poppup up at inopportune
 '              times.
 '              fk_code is a string because the database field in coding is a string
-'KNOWN BUGS    one known not quantified see this code:
-'  If IsNull(visit!fk_claim) Then
-'          Message.Info("Richard the fk_claim Null bug...the gui will Stop at the Next Line , please check the collection contents ")
-'          Error.Raise("an error")
-'       Endif
-
+' GUI-NOTES    gui design to cope with the change in workcover by nsw workcover in ?2013
+'              also any Hboxes in Vbox_EditArea tagged 'disable' are because this form
+'              is embedded in clerical to let them change only the claim number, the
+'              company, occupation. see Gui_Disable_For_Clerical_Use()
 ' TODO'S       Implement delete of visit/claim with audit trail
 '              Look at implications if you allow the user to change an existing diagnosis wording
 '              this should be allowable eg (could have made a spelling mistake etc, but need
@@ -35,6 +33,7 @@
 '-----------------------------------------------------------------------------------
 Private ReferenceHBoxForColumnview As Hbox   'used to reset columnview position when form resizing
 Private bEmbedded As Boolean
+Private bEditing As Boolean
 Private bDateInvalid As Boolean
 Private bInsistCoding As Boolean
 Private bNewVisit As Boolean
@@ -76,6 +75,36 @@ Private Sole_Traders As Collection
 Private Sole_Trader As Collection
 Private Deleted_WorkcoverVisit As Collection
 Private Deleted_Workcoverclaim As Collection
+Private Embedded_Form As String             'if not null string the name of form this form is embedded in FWorkcoverClerical
+
+Public Sub Set_Embedded_Form_Name(fn As String)
+   '--------------------------------------------------------------------------------------------------
+   'This is called by FWorkcoverClerical - form for staff to view/reprint and minimally edit this form
+   '--------------------------------------------------------------------------------------------------
+   
+   Embedded_Form = fn 
+   
+End
+
+Public Sub Gui_Disable_For_Clerical_Use()
+   '------------------------------------------------------------------------------- 
+   ' Called from FWorkcoverClerical
+   ' disables the input area except for the textboxes clerical is allowed to change
+   ' ie the number of the claim, the company, the workers occupation
+   ' ------------------------------------------------------------------------------ 
+   
+   Dim hctrl As Control
+   Dim HB As HBox
+   
+   For Each hctrl In VBox_EditArea.Children
+      If hctrl Is Hbox Then
+         If hctrl.tag = "disable" Then
+            hctrl.Enabled = False 
+         Endif
+      Endif
+   Next
+   
+End
 
 Public Sub set_embedded(flag As Boolean)
    
@@ -141,6 +170,7 @@ End
 Public Sub Save()
    '----------------------------------
    'Save the workcover claim and visit
+   'Note the visit_date member of the collection (vwWorkcover) is never displayed and = consult.date
    'Note those idiots at NSW workcover changed the whole damn form oct 2011
    'and enforced not accepting them end of march!!!!!!
    'i.e all the old forms may/may not save with this new routine
@@ -264,94 +294,157 @@ Public Sub Save()
       claim!consistant_with_cause = 2
    End If
    claim.Save("clin_workcover.claims", "fk_claim")
-   '--------------
-   'next the visit
-   '--------------
-   Visit = New CRow
-   If fk_visit <> 0 Then
-      visit.put_unchanged(fk_visit, "fk_visit")
-   Endif
-   If fk_consult_visit <> 0 Then
-      visit!fk_consult = fk_consult_visit
+   '----------------------------------------------------
+   'next the visit, can only be altered by medical staff
+   '----------------------------------------------------
+   If modDBConnect.currentUser!fk_role = const.StaffRole_Doctor Then 
+      Visit = New CRow
+      If fk_visit <> 0 Then
+         visit.put_unchanged(fk_visit, "fk_visit")
+      Endif
+      If fk_consult_visit <> 0 Then
+         visit!fk_consult = fk_consult_visit
+      Else
+         visit!fk_consult = currentconsult.GetPK()
+      Endif
+      visit!fk_lu_visit_type = fk_lu_visit_type
+      visit!fk_claim = claim!fk_claim
+      visit!diagnosis = Trim(txtDiagnosis.text)
+      visit!fk_code = fk_code  'fk_code is string, if "" will set this to null
+      If fk_coding_system <> 0 Then visit!fk_coding_system = fk_coding_system
+      visit!management_plan = Trim(txtManagementPlan.text)
+      Try visit!review_date = Trim(txtReviewDate.text)
+      Try visit!hours_capable = Val(txtCanWork_HrsPerDay.text)
+      Try visit!days_capable = Val(txtCanWork_DaysPerWeek.Text)
+      visit!restrictions = Trim(txtRestrictions.text)
+      visit!capabilities = Trim(txtCapabilities.text)
+      Try visit!certificate_date = Val(txtCertificateDate.text)
+      Try visit!fitness_preinjury_from = Val(txtPreInjury_From.text)
+      Try visit!fitness_suitable_from = Val(txtSuitable_From.text)
+      Try visit!fitness_suitable_to = Val(txtSuitable_To.text)
+      Try visit!fitness_unfit_from = Val(txtUnfit_From.text)
+      Try visit!fitness_unfit_to = Val(txtUnfit_To.text)
+      Try visit!fitness_perm_mod_duties_from = Val(txtPermModDuties_From.text)
+      If rbAssessWorkplaceYes.value = True Then
+         visit!assessworkplace = True
+      Else
+         visit!assessworkplace = False
+      End If
+      If rbCopyOfDutiesYes.value = True Then
+         visit!copy_of_duties = True
+      Else
+         visit!copy_of_duties = False
+      End If
+      If rbRehabProviderYes.value = True Then
+         visit!refer_rehab_provider = True
+      Else
+         visit!refer_rehab_provider = False
+      Endif
+      visit!fk_caused_by_employment = fk_caused_by_employment
+      visit!doctor_consented = CBool(chkAgreeToTreat_Doctor.value)
+      visit!worker_consented = CBool(chkAgreeToTreat_Worker.value)
+      visit!time_return_any_duties = Trim(txtEstimatedTimeForAnyDuties.text)
+      visit!factors_delaying_return = Trim(txtDelayingFactors.text)
+      visit!referrals_other_providers = Trim(TxtReferrals.text)
+      visit!capacity_lifting_carrying = Trim(txtLifting.text)
+      visit!capacity_sitting_tolerance = Trim(txtSitting.text)
+      visit!capacity_standing_tolerance = Trim(txtStanding.text)
+      visit!capacity_pushing_pulling = Trim(txtPushing.text)
+      visit!capacity_bend_twist_squat = Trim(txtBendTwistSquat.text)
+      visit!capacity_driving = Trim(txtDriving.text)
+      visit!capacity_other = Trim(txtOtherCapability.text)
+      visit!review_comments = Trim(txtReviewComments.text)
+      '----------------------------------------------------------------------------------------------------------------
+      'add or edit an existing progress note, complex! because could be editing form from a previous day, even long ago
+      '   Create TABLE clin_consult.progressnotes
+      ' (
+      '   pk serial Not Null,
+      '   fk_consult integer,
+      '   notes text,
+      '   fk_section integer,
+      '   fk_code bigint,
+      '   problem text,
+      '   fk_problem integer,
+      '   fk_audit_action integer Default 1,
+      '   linked_table regclass,
+      '   fk_row integer,
+      '   fk_audit_reason integer,
+      '   deleted boolean Default False, - - If True Then the record Is Marked As Deleted.An audit trail will have been inserted
+      '   CONSTRAINT progressnotes_pkey PRIMARY KEY(pk),
+      '   CONSTRAINT action_action_ref FOREIGN KEY(fk_audit_action)
+      '       REFERENCES clin_consult.lu_audit_actions(pk) Match SIMPLE
+      '       On UPDATE NO ACTION On DELETE NO ACTION,
+      '   CONSTRAINT progressnotes_fk_audit_reason_fkey FOREIGN KEY(fk_audit_reason)
+      '       REFERENCES clin_consult.lu_audit_reasons(pk) Match SIMPLE
+      '       On UPDATE NO ACTION On DELETE NO ACTION
+      ' )
+      ' With (
+      '   OIDS = False
+      ' );
+      '----------------------------------------------------------------------------------------------------------------
+      ProgressNote = New CRow
+      ProgressNote!notes = Claim_Construct_ProgressNotes_structured_HTML(visit).GetData() 'construct the basic progress note
+      ProgressNote!fk_consult = currentconsult.GetPK() 
+      '----------------------------------------------------------------------------------------
+      '? is this is an old form - being edited today, or on a day subsequent to its generation
+      'txtVisitDate = the date the form was actually generated - ie the consultation date
+      'at the time the original fk_consult was generated (could be <> today
+      '----------------------------------------------------------------------------------------
+      If fk_progressnote Then                                                          'have a progress note key, must be have been created or edited today
+         ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")                'am editing todays progress note
+         'If today() = the day of the visit date
+         If modUtil.IsSameDay(Now, modUtil.Make_Date_From_String(txtVisitDate.text)) Then 'txtVisitDate is not visible in gui- is the original consult date the forms printed on
+            ProgressNote!fk_audit_action = const.cAuditAction_Insert                    'is an insert
+         Else                                                                         'the visit date <> today, could however have been edited, saved and re-edited
+            ProgressNote!fk_audit_action = const.cAuditAction_Edit                    'is an edit
+            ProgressNote!notes = Replace(ProgressNote!notes, "Workcover claim", "Workcover claim (Edited on:" & Format(Now(), "dd/mm/yyyy") & " - see audit log for details) ")
+         Endif
+      Else                                                                            'we have no key, this is new progress note, could be an edited consult
+         If bEditing Then                                                             'am editinga visit, but not on same day created
+            '   ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")               
+            ProgressNote!fk_audit_action = const.cAuditAction_Edit
+            ProgressNote!notes = Replace(ProgressNote!notes, "Workcover claim", "Workcover claim (Edited on:" & Format(Now(), "dd/mm/yyyy") & ")")
+         Else
+            ProgressNote!fk_audit_action = const.cAuditAction_Insert                          'is an insert
+         Endif
+      End If   
+      ProgressNote!fk_section = const.cSection_Workcover
+      ProgressNote!problem = "Workcover"
+      ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+      visit!fk_progressnote = progressnote!fk_progressnote
+      'this code needs fixing
+      'with the LaTex overpic command I found I needed to use pdflatex
+      If DateDiff(Val("31/03/2013"), Val(txtCertificateDate.text), gb.day) > 0 Then 'all dates later than 31/03/2013
+         visit!latex = WorkcoverForm_LaTeX_Construct(visit).GetData()
+         modPrinting.Print_latex_PDF(visit!latex)  'IAN TO FIX THIS uses overpic
+      Else
+         visit!latex = WorkcoverForm_LaTeX_Construct_To_31March2013(visit).GetData()
+         modPrinting.Print_latex(visit!latex, const.Paper_Plain)  'IAN COMPARE TO THIS
+      End If
+      visit.Save("clin_workcover.visits", "fk_visit")
    Else
-      visit!fk_consult = currentconsult.GetPK()
-   Endif
-   visit!fk_lu_visit_type = fk_lu_visit_type
-   visit!fk_claim = claim!fk_claim
-   visit!diagnosis = Trim(txtDiagnosis.text)
-   visit!fk_code = fk_code  'fk_code is string, if "" will set this to null
-   If fk_coding_system <> 0 Then visit!fk_coding_system = fk_coding_system
-   visit!management_plan = Trim(txtManagementPlan.text)
-   Try visit!review_date = Trim(txtReviewDate.text)
-   Try visit!hours_capable = Val(txtCanWork_HrsPerDay.text)
-   Try visit!days_capable = Val(txtCanWork_DaysPerWeek.Text)
-   visit!restrictions = Trim(txtRestrictions.text)
-   visit!capabilities = Trim(txtCapabilities.text)
-   Try visit!certificate_date = Val(txtCertificateDate.text)
-   Try visit!fitness_preinjury_from = Val(txtPreInjury_From.text)
-   Try visit!fitness_suitable_from = Val(txtSuitable_From.text)
-   Try visit!fitness_suitable_to = Val(txtSuitable_To.text)
-   Try visit!fitness_unfit_from = Val(txtUnfit_From.text)
-   Try visit!fitness_unfit_to = Val(txtUnfit_To.text)
-   Try visit!fitness_perm_mod_duties_from = Val(txtPermModDuties_From.text)
-   If rbAssessWorkplaceYes.value = True Then
-      visit!assessworkplace = True
-   Else
-      visit!assessworkplace = False
-   End If
-   If rbCopyOfDutiesYes.value = True Then
-      visit!copy_of_duties = True
-   Else
-      visit!copy_of_duties = False
-   End If
-   If rbRehabProviderYes.value = True Then
-      visit!refer_rehab_provider = True
-   Else
-      visit!refer_rehab_provider = False
-   Endif
-   visit!fk_caused_by_employment = fk_caused_by_employment
-   visit!doctor_consented = CBool(chkAgreeToTreat_Doctor.value)
-   visit!worker_consented = CBool(chkAgreeToTreat_Worker.value)
-   visit!time_return_any_duties = Trim(txtEstimatedTimeForAnyDuties.text)
-   visit!factors_delaying_return = Trim(txtDelayingFactors.text)
-   visit!referrals_other_providers = Trim(TxtReferrals.text)
-   visit!capacity_lifting_carrying = Trim(txtLifting.text)
-   visit!capacity_sitting_tolerance = Trim(txtSitting.text)
-   visit!capacity_standing_tolerance = Trim(txtStanding.text)
-   visit!capacity_pushing_pulling = Trim(txtPushing.text)
-   visit!capacity_bend_twist_squat = Trim(txtBendTwistSquat.text)
-   visit!capacity_driving = Trim(txtDriving.text)
-   visit!capacity_other = Trim(txtOtherCapability.text)
-   visit!review_comments = Trim(txtReviewComments.text)
-   '-------------------------------------
-   'add or edit an existing progress note
-   '--------------------------------------
-   ProgressNote = New CRow
-   ' sProgressNotes = Claim_Construct_ProgressNotes_structured_HTML().GetData()
-   ProgressNote!notes = Claim_Construct_ProgressNotes_structured_HTML(visit).GetData()
-   If fk_progressnote Then
-      ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")            'am editing todays progress note
-   End If
-   ProgressNote!fk_audit_action = const.cAuditAction_Insert                  'is an insert
-   ProgressNote!fk_consult = visit!fk_consult
-   ProgressNote!fk_section = const.cSection_Workcover
-   ProgressNote!problem = "Workcover"
-   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
-   visit!fk_progressnote = progressnote!fk_progressnote
-   'this code needs fixing
-   'with the LaTex overpic command I found I needed to use pdflatex
-   If DateDiff(Val("31/03/2013"), Val(txtCertificateDate.text), gb.day) > 0 Then 'all dates later than 31/03/2013
-      visit!latex = WorkcoverForm_LaTeX_Construct(visit).GetData()
-      modPrinting.Print_latex_PDF(visit!latex)  'IAN TO FIX THIS uses overpic
-   Else
-      visit!latex = WorkcoverForm_LaTeX_Construct_To_31March2013(visit).GetData()
-      modPrinting.Print_latex(visit!latex, const.Paper_Plain)  'IAN COMPARE TO THIS
-   End If
-   visit.Save("clin_workcover.visits", "fk_visit")
+      '------------------------------------------------------------------------------
+      'This claim is being edited by clerical - do a limited progress note annotation
+      'Check there has been no claims.pk (clin_consult.fk_row) for this claim today 
+      'if there has edit the progress note, otherwise create it via an audit
+      '------------------------------------------------------------------------------
+      ProgressNote = New CRow
+      ProgressNote!notes = Claim_Construct_Progressnotes_Staff_Edit(visit).GetData() 'construct the basic progress note
+      fk_progressnote = modWorkCoverDBI.Progress_Note_For_Claim_Consult_Row_Check_If_Exists(currentconsult.GetPK(), fk_claim)
+      If fk_progressnote Then
+         ProgressNote.put_unchanged(fk_progressnote, "fk_progressnote")
+         ProgressNote.Save("Clin_consult.progressnotes", "fk_progressnote")
+      Else
+         modAudit.MakeAudit(currentconsult, "edit", "clin_workcover.claims", fk_claim, const.cSection_Workcover, ProgressNote!notes)
+      End If  
+   End If    
    modDBConnect.CommitTrans()
    EditArea_Notify_Datachanged(False)
-   FClinical.Refresh_AllPreviousNotes()
-   FClinical.Refresh_Section(const.cSection_Workcover)
+   
+   If FClinical.IsSamePatient(currentconsult!patient!fk_patient) Then   
+      FClinical.Refresh_AllPreviousNotes()
+      FClinical.Refresh_Section(const.cSection_Workcover)
+   End If   
    Reload()
    
 End
@@ -646,17 +739,31 @@ Public Sub SpellCheck_TextBox(tb As TextBox)
 End
 
 Public Sub Settings_Save()
+   '----------------------------------------------------------------------------------------------
+   'This form is embedded in FClerical in FWorkcoverClerical as well us as FWorkcover in FClinical
+   '----------------------------------------------------------------------------------------------   
    
-   Settings["FWorkcover/VSplit_workcoverform"] = VSplit_WorkcoverForm.Layout
-   Settings["FWorkcover/HSplit_WorkcoverClaims"] = HSplit_WorkcoverClaims.Layout
+   If Embedded_Form = "FWorkcoverClerical" Then
+      Settings["FWorkcoverClerical_FWorkcover" & "/VSplit_workcoverform "] = VSplit_WorkcoverForm.Layout
+      Settings["FWorkcoverClerical_FWorkcover" & "/HSplit_WorkcoverClaims "] = HSplit_WorkcoverClaims.Layout 
+   Else
+      Settings["FWorkcover/VSplit_workcoverform"] = VSplit_WorkcoverForm.Layout
+      Settings["FWorkcover/HSplit_WorkcoverClaims"] = HSplit_WorkcoverClaims.Layout
+   Endif
    
 End
 
 Private Sub Settings_Load()
    
-   VSplit_WorkcoverForm.Layout = Settings["FWorkCover/VSplit_workcoverform", modUtil.VSplit([647, 169])]
-   HSplit_WorkcoverClaims.Layout = Settings["FWorkCover/HSplit_WorkcoverClaims", modUtil.HSplit([350, 815])]
-   cvwVisits.font = Font[Settings["FWorkcover/cvwVisits.font", "DejaVu Sans,9"]]
+   If Embedded_Form = "FWorkcoverClerical" Then
+      VSplit_WorkcoverForm.Layout = Settings["FWorkcoverClerical_FWorkcover" & "/VSplit_workcoverform ", modUtil.VSplit([647, 169])]
+      HSplit_WorkcoverClaims.Layout = Settings["FWorkcoverClerical_FWorkcover" & "/HSplit_WorkcoverClaims ", modUtil.HSplit([350, 815])]
+      cvwVisits.font = Font[Settings["FWorkcoverClerical_FWorkcover/cvwVisits.font", "DejaVu Sans,9"]]
+   Else
+      VSplit_WorkcoverForm.Layout = Settings["FWorkCover/VSplit_workcoverform", modUtil.VSplit([647, 169])]
+      HSplit_WorkcoverClaims.Layout = Settings["FWorkCover/HSplit_WorkcoverClaims", modUtil.HSplit([350, 815])]
+      cvwVisits.font = Font[Settings["FWorkcover/cvwVisits.font", "DejaVu Sans,9"]]
+   End If   
    
 End
 
@@ -820,8 +927,17 @@ Public Sub Claim_Preview()
    
    If bNewVisit Then Return 'currently can't preview a new form
    cvwVisits.MoveCurrent()
-   filename = modPrinting.Latex_To_PDF(currentconsult!workcover_claims[fk_visit]!latex)
+   Filename = Latex_Convert_To_pdf_File_Return_Filename(currentconsult!workcover_claims[fk_visit]!latex)
+   ' FClinical.Editor_ShowPage_External("pdf file", "Workcover Form " & Format(currentconsult!workcover_claims[fk_visit]!certificate_date, "dd/mm/yyyy"), filename)
    FClinical.Editor_ShowPage_External("pdf file", "Workcover Form " & Format(currentconsult!workcover_claims[fk_visit]!certificate_date, "dd/mm/yyyy"), filename)
+   
+End
+
+Public Sub Latex_Convert_To_pdf_File_Return_Filename(latex As String) As String
+   
+   ' Dim Filename As String
+   Return modPrinting.Latex_To_PDF(latex)
+   ' Return filename
    
 End
 
@@ -1392,6 +1508,7 @@ Public Function Claim_Construct_Progressnotes_Structured_HTML(visit As CRow) As 
    templ = New CTemplate(modHTML.workcover_progressnotes_structured_html)
    templ.Subst_common(currentconsult)
    templ.Subst("visit_type", UCase(visit_types[visit!fk_lu_visit_type]))
+   templ.Subst("identifier", Trim(txtIdentifier.text))
    templ.Subst("claim", Trim(txtClaim.text))
    templ.Subst("employer", Trim(txtEmployer.text))
    templ.Subst("workaddress", Trim(txtAddress.text))
@@ -1542,6 +1659,24 @@ Public Function Claim_Construct_Progressnotes_Structured_HTML(visit As CRow) As 
    
 End
 
+Public Function Claim_Construct_Progressnotes_Staff_Edit(visit As CRow) As CTemplate
+   '-----------------------------------------------------
+   'HTML to put into progress notes when staff edit notes
+   '-----------------------------------------------------
+   
+   Dim templ As CTemplate
+   Dim sString As String
+   
+   templ = New CTemplate(modHTML.workcover_progressnotes_structured_html_clerical_edit)
+   templ.Subst("identifier", Trim(txtIdentifier.text))
+   templ.Subst("claim", Trim(txtClaim.text))
+   templ.Subst("employer", Trim(txtEmployer.text))
+   templ.Subst("workaddress", Trim(txtAddress.text))
+   templ.Subst("occupation", txtOccupation.Text)
+   Return templ
+   
+End
+
 Public Sub Claim_New()
    '----------------------------------------------------------
    'User wants to start a new claim
@@ -1646,6 +1781,32 @@ End
 Public Sub cvwVisits_Click()
    '
    
+   ' If fk_claim = 0 Then
+   '    Message.info("Please select a claim before clicking on a visit")
+   '    Return
+   '    
+   ' Endif
+   ' cvwVisits_key = cvwVisits.Item.Key
+   ' If bClaimLoaded = False Then
+   '    lvwClaims_Select()
+   '    Claim_Display()
+   ' End If
+   ' cvwVisits_Select()
+   ' Visit_Display()
+   ' EditArea_Notify_Datachanged(False)
+   ' VBox_EditArea.Enabled = False
+   ' HBox_Visit_Type.Enabled = False
+   
+End
+
+Public Sub cvwVisits_Select_old()
+   
+   Visit_Display()
+   
+End
+
+Public Sub cvwVisits_Select()
+   
    If fk_claim = 0 Then
       Message.info("Please select a claim before clicking on a visit")
       Return
@@ -1655,18 +1816,11 @@ Public Sub cvwVisits_Click()
    If bClaimLoaded = False Then
       lvwClaims_Select()
       Claim_Display()
-   End If
-   cvwVisits_Select()
+   End If 
    Visit_Display()
    EditArea_Notify_Datachanged(False)
    VBox_EditArea.Enabled = False
    HBox_Visit_Type.Enabled = False
-   
-End
-
-Public Sub cvwVisits_Select()
-   
-   Visit_Display()
    
 End
 
@@ -1786,7 +1940,7 @@ Public Sub EditAreaButtons_Click()
       Case "preview"
          Claim_Preview()
       Case "save"
-         Save()
+         If Embedded_Form = "FWorkcoverClerical" Then Save()
       Case "restrictions"
          txtRestrictions.Clear()
    End Select
@@ -1841,17 +1995,52 @@ Catch
 End
 
 Public Sub Visit_Edit()
-   
+   '-----------------------------------------------------------------------------------------------
+   'Edit visit - either in FClinical in FworkcoverNSW or in FClericalWorkcover
+   'if this is being done on different date to visit_date then get new fk_progresssnote otherwise
+   'the default fk_progressnote = 0
+   'If this is a clerical edit, only the consult part is saved as these keys are not relevant
+   'also see Gui_Disable_For_Clerical_Use()
+   '-----------------------------------------------------------------------------------------------
+
+   If Embedded_Form = "FWorkcoverClerical" Then HBox_Visit_Type.Enabled = False  
+   If visit!fk_consult = currentconsult.GetPK() Then      'saves a potential database call
+      fk_progressnote = visit!fk_progressnote
+   Else
+      If Progressnote_Was_Written_Today(visit!fk_progressnote) Then  'check for when record edited not written today
+         fk_progressnote = visit!fk_progressnote
+      Endif
+   End If  
+   bEditing = True
    lblWorkcover.text = "Edit Exiting Visit"
    VBox_EditArea.Enabled = True
    HBox_Visit_Type.Enabled = True
    
 End
 
+Public Function Progressnote_Was_Written_Today(fk_progressnote As Integer) As Boolean
+   '------------------------------------------------------------------------------------------------
+   'Checks if the progress note for a visit being edited was written today, ie. during currentconsult
+   '-------------------------------------------------------------------------------------------------
+   
+   Dim R As Result 
+   
+   R = modDBConnect.exec_query("Select  fk_consult from clin_consult.progressnotes where pk = " & fk_progressnote)
+   If R.count Then
+      If R!fk_consult = currentconsult.GetPK() Then
+         Return True
+      Endif
+   Endif
+   
+End
+
 Public Sub Visit_Display()
-   '----------------------------------------
-   'Display the details of the current visit
-   '----------------------------------------
+   '-----------------------------------------------------------------------------------
+   'Display the details of the current visit. If this form is embedded for clerical use
+   'then the visit pdf is displayed 
+   '-----------------------------------------------------------------------------------
+   
+   Dim filename As String
    
    If bexit Then Return
    EditArea_Visit_Clear()        'just clear textboxes etc, dosn't affect the keys
@@ -1860,6 +2049,7 @@ Public Sub Visit_Display()
    cvwVisits.MoveCurrent()
    fk_visit = claims_visits[cvwVisits_Key]!fk_visit  'primary key of vwWorkcover = cin_workcover.visits.pk
    visit = New Collection
+   lblWorkcover.Text = "Existing Claim for " & claim!identifier
    fk_consult_visit = claims_visits[cvwVisits_Key]!fk_consult
    visit!fk_consult = claims_visits[cvwVisits_Key]!fk_consult
    visit!fk_visit = claims_visits[cvwVisits_Key]!fk_visit
@@ -1928,13 +2118,7 @@ Public Sub Visit_Display()
    txtDriving.text = visit!capacity_driving
    txtOtherCapability.text = visit!capacity_other
    txtReviewComments.text = visit!review_comments
-   
-   'Editing a pre-existing claim - really need to allow editing of th progress note
-   ' but later FIXME put in an audit-trail to show what was changed
-   fk_progressnote = 0  'new unless editing a visit
-   If Not IsNull(visits[cvwVisits_Key]!fk_progressnote) Then
-      fk_progressnote = claims_visits[cvwVisits_Key]!fk_progressnote
-   End If
+   txtVisitDate.text = Format(visit!visit_date, "dd/mm/yyyy") 'this is not visible, used in Save()
    bExit = True
    Select Case visit!fk_lu_visit_type
       Case Const.Workcover_VisitType_Initial
@@ -2004,6 +2188,11 @@ Public Sub Visit_Display()
    Endif
    bVisitLoaded = True
    bExit = False
+   If Embedded_Form = "FWorkcoverClerical" Then
+      filename = Latex_Convert_To_pdf_File_Return_Filename(currentconsult!workcover_claims[fk_visit]!latex)
+      Print filename
+      FWorkcoverClerical.Form_Display(filename)
+   Endif
    
 End
 
@@ -2083,7 +2272,9 @@ Public Sub EditArea_Visit_Clear()
       txtSitting.text = ""
       txtStanding.text = ""
       txtDriving.text = ""
-   End If   
+   End If 
+   TxtReferrals.text = ""  
+   txtReviewComments.text = ""
    chkFitness_PermModDuties.value = False
    chkFitness_Unfit.value = False
    chkFitness_Suitable.value = False
@@ -2095,6 +2286,8 @@ Public Sub EditArea_Visit_Clear()
    rbCopyOfDutiesNo.value = True
    bVisitLoaded = False
    bExit = False
+   fk_progressnote = 0 'new unless editing a visit
+   bEditing = False 
    bNewVisit = False
    lblLastCertificateDetails.text = ""
    
@@ -2873,18 +3066,28 @@ Public Sub mnuVisits_Click()
       Case "help"
          modUtil.NotImplemented("Displaying Help")
       Case "preview"
-         Preview()
+         If Embedded_Form <> "FWorkcoverClerical" Then Preview()
       Case "reprint"
          Visit_RePrint()
       Case "font"
-         modUtil.Columnview_SetFont(cvwVisits, "FWorkcover")
+         If Embedded_Form = "FWorkcoverClerical" Then
+            modUtil.Columnview_SetFont(cvwVisits, "FWorkcoverClerical_FWorkcover")
+         Else
+            modUtil.Columnview_SetFont(cvwVisits, "FWorkcover") 
+         Endif
    End Select
-   
+Catch
+   Return 
+
 End
 
 Public Sub cvwVisits_Menu()
    
    If Not cvwVisits.count Then Return
+   If Embedded_Form = "FWorkcoverClerical" Then
+      mnuVisits_Delete.Enabled = False 
+      mnuVisits_Preview.Enabled = False 
+   Endif
    mnuVisits.Popup()
    
 End

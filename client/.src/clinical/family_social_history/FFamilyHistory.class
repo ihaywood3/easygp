@@ -52,6 +52,7 @@ Private countries As Collection
 Private country As Collection
 Private occupations As Collection
 Private SpellChecker As ClskSpell
+Private fk_progressNote As Integer       'key to clin_consult.progressnotes for historical reasons can unfortunatley be 0
 
 Public Sub set_embedded(flag As Boolean)
    '--------------------------------------------------
@@ -275,6 +276,7 @@ Public Sub EditArea_Condition_Clear()
    rbCausedDeathNo.value = True
    txtCondition.SetFocus
    fk_condition = 0
+   fk_progressnote = 0  
    bExit = False
    
 End
@@ -1029,17 +1031,19 @@ Public Sub Save()
    Dim member As New CRow
    Dim condition As New CRow
    Dim link As New CRow                 'link family member to patient.
+   Dim progressnote As CRow   
    
    If Vbox_EditArea.padding = 0 Then Return
    If Not FamilyMember_Valid() Then Return
    VBox_EditArea_Outer.Enabled = False
    If fk_member <> 0 Then
       member.put_unchanged(fk_member, "fk_member")
-   End If
-   If fk_condition <> 0 Then
+   End If   
+   member!fk_consult = currentconsult.GetPK()
+   If fk_condition <> 0 Then                                        'non zero- editing an existing condition
       condition.put_unchanged(fk_condition, "fk_condition")
-   End If
-   
+   End If                                                               
+   condition!fk_consult = currentconsult.GetPK()                     'either way the fk_consult will be today's
    member!fk_relationship = fk_member_relationship
    member!name = Trim(txtName.text)
    member!birthdate = Val(txtBirthdate.text)
@@ -1053,6 +1057,46 @@ Public Sub Save()
    End If
    If Trim(txtOccupation.text) = "" Then member!fk_occupation = Null         'could be removing an occupation
    member!fk_country_birth = fk_member_country_birth
+   '-------------------------------------------------------------------------
+   ' CREATE TABLE clin_consult.progressnotes
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_consult integer,
+   '   notes text,
+   '   fk_section integer,
+   '   fk_code bigint,
+   '   problem text,
+   '   fk_problem integer,
+   '   fk_audit_action integer DEFAULT 1,
+   '   linked_table regclass,
+   '   fk_row integer,
+   '   fk_audit_reason integer,
+   '   deleted boolean DEFAULT false, -- if True then the record is marked as deleted. An audit trail will have been inserted
+   '   CONSTRAINT progressnotes_pkey PRIMARY KEY (pk ),
+   '   CONSTRAINT action_action_ref FOREIGN KEY (fk_audit_action)
+   '       REFERENCES clin_consult.lu_audit_actions (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT progressnotes_fk_audit_reason_fkey FOREIGN KEY (fk_audit_reason)
+   '       REFERENCES clin_consult.lu_audit_reasons (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '-----------------------------------------------------------------------------------------------
+   progressnote = New CRow 
+   If fk_progressNote Then                                                'if non zero then was added today
+      progressnote.put_unchanged(fk_progressnote, "fk_progressnote")
+      progressnote!fk_audit_action = const.cAuditAction_Edit   
+   Else
+      progressnote!fk_audit_action = const.cAuditAction_Insert
+   Endif
+   progressnote!fk_section = const.cSection_FamilyHistory
+   progressnote!problem = "Family History"
+   progressnote!fk_consult = currentconsult.GetPK()
+   progressnote!notes = ProgressNote_Html().GetData()
+   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+   condition!fk_progressnote = progressnote!fk_progressnote
    condition!condition = Trim(txtcondition.text)
    condition!age_of_onset = Val(txtAgeOnset.text)
    If rbDiagnosisCertainYes.Value = True Then
@@ -1080,9 +1124,146 @@ Public Sub Save()
       link!fk_member = member!fk_member
       link.Save("clin_history.family_links", "fk_link")
    Endif
-   '  fk_member = modFamilyHistoryDBI.FamilyHistory_Save(currentconsult, fk_member, Member, fk_condition, condition, row_key_member, row_key_condition)
    modDBConnect.CommitTrans()
+   currentconsult.Refresh("family_history")     'reload all the history
+   Reload()                  'reload visual display
+   EditArea_Notify_DataChange(False)
+   FClinical.Refresh_Section(const.cSection_HealthSummary)
    
+End
+
+Public Sub Save_old()
+   '-------------------------------------------------------
+   ' Save the family Member And condition To database
+   '------------------------------------------------------
+   'The view has 1-n rows
+   'eg member1 condition1
+   '     "     condition2
+   '   member2 condition1 etc
+   ' So the key of the members list = the view key of it's record in the old data
+   ' the key of the conditions list = the view key of its record in the old data
+   '
+   'TABLE clin_history.family_members
+   '   pk serial NOT NULL,
+   '   fk_relationship integer NOT NULL,
+   '   fk_person integer, -- I put this in in-case it was needed if we had imported family history from an person who exists in the easygp database.
+   '   "name" text,
+   '   birthdate date,
+   '   age_of_death integer,
+   '   fk_occupation integer,
+   '   fk_country_birth character(2),
+   '   deleted boolean DEFAULT false,
+   '   fk_consult integer,
+   '
+   ' TABLE clin_history.family_conditions
+   '   pk serial NOT NULL,
+   '   fk_member integer NOT NULL,Click
+   '   condition text NOT NULL, -- note: the condition may NEVER exist in the coded database, ...
+   '   age_of_onset integer,
+   '   cause_of_death boolean DEFAULT false,
+   '   notes text,
+   '   deleted boolean DEFAULT false,
+   '   fk_consult integer,
+   '   contributed_to_death boolean,
+   '   fk_code text, -- foreign key to coding.generic_terms table. Note this key is a text string...
+   '-------------------------------
+   
+   Dim member As New CRow
+   Dim condition As New CRow
+   Dim link As New CRow                 'link family member to patient.
+   Dim progressnote As CRow   
+   
+   If Vbox_EditArea.padding = 0 Then Return
+   If Not FamilyMember_Valid() Then Return
+   VBox_EditArea_Outer.Enabled = False
+   If fk_member <> 0 Then
+      member.put_unchanged(fk_member, "fk_member")
+   End If
+   If fk_condition <> 0 Then
+      condition.put_unchanged(fk_condition, "fk_condition")
+   End If
+   member!fk_relationship = fk_member_relationship
+   member!name = Trim(txtName.text)
+   member!birthdate = Val(txtBirthdate.text)
+   member!age_of_death = Val(txtAgeDeath.text)
+   If fk_member_occupation Then                                                'member has existing occupation or chosen now
+      member!fk_occupation = fk_member_occupation                              'will always exist if text exists see FamilyMember_Valid()
+   Else
+      If Trim(txtOccupation.text) = "" Then                                                    
+         member!fk_occupation = Null
+      End If
+   End If
+   If Trim(txtOccupation.text) = "" Then member!fk_occupation = Null         'could be removing an occupation
+   member!fk_country_birth = fk_member_country_birth
+   '-------------------------------------------------------------------------
+   ' CREATE TABLE clin_consult.progressnotes
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_consult integer,
+   '   notes text,
+   '   fk_section integer,
+   '   fk_code bigint,
+   '   problem text,
+   '   fk_problem integer,
+   '   fk_audit_action integer DEFAULT 1,
+   '   linked_table regclass,
+   '   fk_row integer,
+   '   fk_audit_reason integer,
+   '   deleted boolean DEFAULT false, -- if True then the record is marked as deleted. An audit trail will have been inserted
+   '   CONSTRAINT progressnotes_pkey PRIMARY KEY (pk ),
+   '   CONSTRAINT action_action_ref FOREIGN KEY (fk_audit_action)
+   '       REFERENCES clin_consult.lu_audit_actions (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION,
+   '   CONSTRAINT progressnotes_fk_audit_reason_fkey FOREIGN KEY (fk_audit_reason)
+   '       REFERENCES clin_consult.lu_audit_reasons (pk) MATCH SIMPLE
+   '       ON UPDATE NO ACTION ON DELETE NO ACTION
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '-----------------------------------------------------------------------------------------------
+   progressnote = New CRow 
+   If fk_progressNote Then
+      progressnote.put_unchanged(fk_progressnote, "fk_progressnote")
+      progressnote!fk_audit_action = const.cAuditAction_Edit   
+   Else
+      progressnote!fk_audit_action = const.cAuditAction_Insert
+      condition!fk_consult = currentconsult.GetPK()
+   Endif
+   progressnote!fk_section = const.cSection_FamilyHistory
+   progressnote!problem = "Family History"
+   progressnote!fk_consult = currentconsult.GetPK()
+   progressnote!notes = ProgressNote_Html().GetData()
+   ProgressNote.Save("clin_consult.progressnotes", "fk_progressnote")
+   condition!fk_progressnote = progressnote!fk_progressNote
+   condition!condition = Trim(txtcondition.text)
+   condition!age_of_onset = Val(txtAgeOnset.text)
+   If rbDiagnosisCertainYes.Value = True Then
+      condition!diagnosis_certain = True
+   Else
+      condition!diagnosis_certain = False
+   Endif
+   If rbCausedDeathYes.value = True Then
+      condition!cause_of_death = True
+   Else
+      condition!cause_of_death = False
+   End If
+   If rbContributedToDeathYes.value = True Then
+      condition!contributed_to_death = True
+   Else
+      condition!contributed_to_death = False
+   Endif
+   condition!notes = Trim(txtConditionNotes.text)
+   condition!fk_code = fk_code
+   member.Save("Clin_history.family_members", "fk_member")          'save the family member
+   condition!fk_member = member!fk_member
+   condition.Save("clin_history.family_conditions", "fk_condition")
+   If fk_link = 0 Then
+      link!fk_patient = currentconsult!patient!fk_patient
+      link!fk_member = member!fk_member
+      link.Save("clin_history.family_links", "fk_link")
+   Endif
+   modDBConnect.CommitTrans()
    currentconsult.Refresh("family_history")     'reload all the history
    Reload()                  'reload visual display
    EditArea_Notify_DataChange(False)
@@ -1140,12 +1321,18 @@ Public Sub Condition_Display()
    'User has clicked on conditions list
    'Displays a condition in editing area ready for editing
    'row_key_condition = cvwConditions.Item.Key set when user clicked on row or program set it
+   'Note for historical reasons - the progress notes were not generated, the fk_progressnote
+   'can be null. FIXME do a fix for this, then normalise the table.
    '-----------------------------------------------------------------------------------------
    
    cvwConditions.Enabled = True
    EditArea_Condition_Clear()
    bExit = True
    fk_condition = currentconsult!family_history[row_key_condition]!fk_condition
+   'if condition was created this consult - re-use the fk_progressnote  
+   If currentconsult!family_history[row_key_condition]!fk_consult_condition = currentconsult.GetPK() Then
+      Try fk_progressnote = currentconsult!family_history[row_key_condition]!fk_progressnote 'can be null
+   Endif
    fk_code = currentconsult!family_history[row_key_condition]!fk_code
    txtcondition.text = currentconsult!family_history[row_key_condition]!condition
    Try txtCodedTerm.text = currentconsult!family_history[row_key_condition]!term & " (" & currentconsult!family_history[row_key_condition]!code & ")"
@@ -1231,12 +1418,12 @@ Public Sub FamilyMemberCondition_Change()
          End If
       Case "age onset"
          If txtAgeDeath.text <> "" Then
-             If txtAgeOnset.text <> "" Then   
-                bexit = True 
-                If Val(txtAgeOnset.text) > Val(txtAgeDeath.text) Then
+            If txtAgeOnset.text <> "" Then   
+               bexit = True 
+               If Val(txtAgeOnset.text) > Val(txtAgeDeath.text) Then
                   txtAgeOnset.text = ""   
                Endif
-                bexit = False
+               bexit = False
             End If   
          Endif
          
@@ -1372,6 +1559,8 @@ Public Sub mnuFamilyMember_Click()
       Case "font"
          modUtil.Listview_SetFont(lvwMembers, "FFamilyHistory")
    End Select
+Catch
+   Return 
    
 End
 
@@ -1411,6 +1600,8 @@ Public Sub mnuMemberConditions_Click()
       Case "help"
          modUtil.NotImplemented("Help")
    End Select
+Catch
+   Return 
    
 End
 
@@ -1573,5 +1764,51 @@ Public Sub Form_Resize()
    
    Form_Terms.Width = txtCodedTerm.Width
    VSplit_FamilyHistory_Resize
+   
+End
+
+Public Function ProgressNote_Html() As CTemplate  
+   '------------------------------------------------------------
+   'Generates the progress note html for the family history item
+   '------------------------------------------------------------  
+   
+   Dim sString As String
+   
+   Dim templ As CTemplate
+   
+   templ = New CTemplate(modHTML.familyhistory_progressnotes_structured_html)
+   sSTring = Trim(txtRelationship.text)
+   If Trim(txtName.text) <> "" Then
+      sString &= " (" & modUtil.Ucase_Word_First_Letter(Trim(txtName.text)) & ")"
+   Endif
+   templ.Subst("relationship", sstring)
+   sString = Trim(txtCondition.text)
+   If rbDiagnosisCertainYes.value = True Then
+      sstring &= " - diagnosis certain"
+   Else
+      sSTring &= " - diagnosis uncertain"
+   Endif
+   sSTring &= " [" & Trim(txtCodedTerm.text) & "]"
+   If Trim(txtConditionNotes.text) <> "" Then
+      sstring &= " " & modUtil.Ucase_Word_First_Letter(Trim(txtConditionNotes.text))
+   Endif
+   templ.Subst("condition", sstring)
+   Templ.Subst("age-onset", Trim(txtAgeOnset.text))
+   If rbCausedDeathYes.value = True Then
+      sstring = "Yes"
+   Else
+      sstring = "No"
+      If rbContributedToDeathYes.value = True Then
+         sstring &= " but contributed to death"
+      End If
+   Endif
+   templ.Subst("caused-death", sSTring)
+   If Trim(txtAgeDeath.text) <> "" Then
+      templ.Subst("age-death", txtAgeDeath.text)
+   Else
+      templ.Subst("age-death", "unknown") 
+   Endif
+   Print templ.GetData()
+   Return templ   
    
 End

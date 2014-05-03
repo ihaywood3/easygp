@@ -34,6 +34,7 @@
 
 ' KNOWN BUGS      in Schedule_save() when restoring the row, dosn't move the marquee
 '                 to make visible if below what's showing in the list.
+'                 This module is a mixture of really old code and cRow FIXME
 '---------------------------------------------------------------------------------
 Private bexit As Boolean                  'prevent entry to subroutines as needed
 Private bKeyValid As Boolean              'if True this is a valid key press in edit area
@@ -200,8 +201,9 @@ Public Sub EditArea_TextBox_GotFocus()
             .left = Last.Parent.left
             .width = Last.width + chkVaccineFemaleOnly.Width
             .Raise
-            
          End With
+         cvwVaccines.UnselectAll()
+         fk_vaccine = 0
    End Select
    
 End
@@ -232,7 +234,6 @@ Public Sub EditArea_TextBox_Activate()
    Select Case Last.tag
       Case "schedule"
          rbMultipleYes.SetFocus()
-         
       Case "date inactive"
          txtAgeDueFrom.SetFocus()
       Case "age due from"
@@ -240,7 +241,6 @@ Public Sub EditArea_TextBox_Activate()
       Case "age due to"
          tbSave.SetFocus()
       Case "notes"
-         
          txtFindVaccine.SetFocus()
       Case "find vaccine"
          If Trim(txtFindVaccine.text) = "" Then
@@ -248,7 +248,6 @@ Public Sub EditArea_TextBox_Activate()
          Else
             tbAddVaccine.SetFocus()
          Endif
-         
    End Select
    
 End
@@ -379,6 +378,7 @@ Public Sub Schedule_Display()
    End If
    Vaccines_In_Schedule_Refresh()
    Vaccines_In_Schedule_Display()
+   fk_vaccine = 0 'no vaccine selected
    Vbox_EditArea_Inner.Enabled = False   
    bExit = False
    EditArea_Notify_DataChanged(False)
@@ -408,13 +408,16 @@ Public Sub Schedule_Save()
    '------------------------------------------------------------   
    
    Dim x As Integer
+   Dim Schedule As CRow 
+   Dim vaccine_in_schedule As CRow
    
    If Vbox_EditArea_Outer.padding = 0 Then Return ' no changes, nothing to save
    If Not Schedule_Valid() Then Return
    
-   Schedule = New Collection
+   Schedule = New CRow
    If fk_schedule Then
-      Schedule!pk = fk_schedule
+      '   Schedule!pk = fk_schedule
+      Schedule.put_unchanged(fk_schedule, "fk_schedule")
    End If
    schedule!schedule = Trim(txtSchedule.text)
    schedule!age_due_from_months = Val(txtAgeDueFrom.text)
@@ -424,15 +427,39 @@ Public Sub Schedule_Save()
    If fk_season Then    
       schedule!fk_season = fk_season   'IAN FIXME: THE PROBLEM OF REVERTING TO NULL
    End If  
-   schedule!inactive = bScheduleStatus
+   If rbScheduleActiveYes.value = True Then schedule!inactive = False  
+   If rbScheduleActiveNo.value = True Then schedule!inactive = True   
    schedule!multiple_vaccines = bMultipleVaccinesInSchedule
    If rbScheduleActiveNo.value = True Then
       schedule!date_inactive = Val(txtDateInactive.text)
    Endif
    schedule!notes = Trim(txtNotes.text)
-   modDBConnect.BeginTrans()
-   fk_schedule = modVaccinationDBI.Schedules_Save(Schedules, pk_view, schedule)
-   modVaccinationDBI.Vaccines_In_Schedule_Save(Vaccines_in_schedule, fk_schedule)
+   schedule.Save("clin_vaccination.lu_schedules", "fk_schedule")
+   '---------------------------------------------------------------
+   'Now if user adding a new vaccine then save this
+   ' CREATE TABLE clin_vaccination.lu_vaccines_in_schedule
+   ' (
+   '   pk serial NOT NULL,
+   '   fk_vaccine integer,
+   '   fk_schedule integer,
+   '   atsi_only boolean DEFAULT false,   'FIXME this never seems to be used, this is in the schedules table.
+   '   date_inactive date,
+   '   CONSTRAINT lu_vaccines_in_schedule_pkey PRIMARY KEY (pk )
+   ' )
+   ' WITH (
+   '   OIDS=FALSE
+   ' );
+   '---------------------------------------------------------------
+   '   modVaccinationDBI.Vaccines_In_Schedule_Save(Vaccines_in_schedule, fk_schedule)
+   For Each Vaccine In Vaccines_in_schedule
+      Try fk_vaccine = Split(Vaccine!pk_view, "-")[1]
+      If Not Error Then
+         vaccine_in_schedule = New CRow
+         Vaccine_in_schedule!fk_schedule = schedule!fk_schedule
+         Vaccine_in_schedule!fk_vaccine = fk_vaccine
+         vaccine_in_Schedule.Save("clin_vaccination.lu_vaccines_in_schedule", "fk_vaccine_in_schedule")
+      Endif
+   Next
    modDBConnect.CommitTrans()
    Reload() 
    'Move to the row just saved. FIXME: THIS SOMETIMES DOSN'T SHOW THE ROW MARQUEE
@@ -562,6 +589,8 @@ Public Sub mnuSchedules_Click()
          
       Case "help"
    End Select
+Catch
+   Return 
    
 End
 
@@ -588,13 +617,15 @@ Public Sub mnuVaccines_Click()
       Case "help"
          modUtil.NotImplemented()
    End Select
-   
+Catch
+   Return 
+
 End
 
 Public Sub rbScheduleStatus_Click()
    
    bScheduleStatus = True
-   If Last.tag = "No" Then bScheduleStatus = False
+   If Last.tag = "no" Then bScheduleStatus = False
    
 End
 
@@ -705,7 +736,15 @@ End
 Public Sub Vaccine_Add()
    
    Dim Schedule_Vaccine As New Collection
+   Dim sMsg As String
    
+   If Not fk_vaccine Then 
+      sMsg = "Please select a new vaccine to add to the schedule by clicking in the 'Find Vaccine' textbox and search for an existing vaccine.\n\n"
+      "If you do not find the vaccine  you want, and, having checked you are spelling it correctly, then you may add a new vaccine "  
+      "by clicking on the Maintain Vaccines tab and adding the details for the new vaccine."
+      Message.Info(smsg)
+      Return
+   Endif
    Schedule_Vaccine!fk_vaccine = fk_vaccine
    Schedule_Vaccine!fk_schedule = fk_schedule
    Schedule_Vaccine!brand = txtFindVaccine.Text
@@ -717,7 +756,6 @@ Public Sub Vaccine_Add()
    Endif
    
    Schedule_Vaccine!description = vaccine!description
-   ' Schedule_Vaccine!fk_lu_vaccines_in_schedule = 
    Schedule_Vaccine!form = vaccine!form
    Schedule_Vaccine!pk_view = Str(fk_schedule & "-" & fk_vaccine) '?FIXME THIS IS NOT TRUE
    Try Vaccines_in_schedule.Add(Schedule_Vaccine, Str(fk_schedule & "-" & fk_vaccine)) 

@@ -1,0 +1,142 @@
+' Gambas class file
+
+' Copyright (C) 2008-2014 Dr. Richard Terry
+
+' This program is free software: you can redistribute it and/or modify
+' it under the terms of the GNU General Public License as published by
+' the Free Software Foundation, either version 3 of the License, or
+' (at your option) any later version.
+
+' This program is distributed in the hope that it will be useful,
+' but WITHOUT ANY WARRANTY; without even the implied warranty of
+' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+' GNU General Public License for more details.
+
+' You should have received a copy of the GNU General Public License
+' along with this program.  If not, see <http://www.gnu.org/licenses/>.
+'-------------------------------------------------------------------------------------
+' PURPOSE        : Allow viewing/re-printing of medical certificates by clerical staff
+'-------------------------------------------------------------------------------------
+
+Private Certificates As Collection
+Private Certificate As Collection
+Private Temporality As String[]
+Private Fitness As String[]
+Private CurrentConsult As CConsult
+Private PDF_Form As FPdf
+
+Public Sub _new()
+   
+   With PDF_Form = New FPdf(Vbox_PDf)                              'Pdf form to show any scanned doc's
+      .BtOpen.Visible = False
+      .BtPrint.Visible = True
+      .btZoomIn.Visible = True
+      .btZoomOut.Visible = True
+   End With 
+   PDF_Form.BtPrint.Enabled = True  
+   With cvwCertificates
+      .Columns.count = 6
+      .Columns[0].Text = "Certificate Date"   'can be back date
+      .Columns[1].Text = "Reason"
+      .Columns[2].Text = "Fitness"
+      .Columns[3].Text = "From Date"
+      .Columns[4].Text = "To Date"
+      .Columns[5].Text = "Notes"
+   End With
+   Temporality = New String[4]
+   Temporality[1] = "is"
+   Temporality[2] = "was"
+   Temporality[3] = "will be"
+   Fitness = New String[3]
+   Fitness[1] = "fit"
+   Fitness[2] = "unfit"
+   Settings_Load()
+   
+End
+
+Public Sub Init(cons As CConsult)
+   
+   CurrentConsult = cons
+   Reload
+   
+End
+
+Public Sub Reload()
+   '-----------------------------------------
+   'Show all certificates written for patient
+   '-----------------------------------------
+   
+   Dim Certificate As Collection
+   Dim sSTring As String
+   Dim x As Integer
+   
+   currentconsult.Refresh("medical_certificates")                                                 'remove key = refresh
+   Certificates = modUtil.Copy_Collection_Keyed_Sequentially(currentconsult!medical_certificates) 'get all keyed 0>n  
+   cvwCertificates.Clear()                                                                        'clear the list
+   For Each Certificate In Certificates
+      cvwCertificates.Add(x, 0)
+      cvwCertificates[x][0] = Format(Certificate!certificate_date, "dd/mm/yyyy") & "  "           'date on certificate <> date was printed
+      cvwCertificates[x][1] = Certificate!reason & "  "                                           'the free text reason
+      sString = Temporality[Certificate!fk_lu_illness_temporality]
+      sString &= "  " & Fitness[Certificate!fk_lu_fitness] & "  for work from  "
+      cvwCertificates[x][2] = sString                                                             'fitness for work
+      cvwCertificates[x][3] = Format(Certificate!from_date, "dd/mm/yyyy") & "  "
+      Try cvwCertificates[x][4] = Format(Certificate!to_date, "dd/mm/yyyy") & "  "                 'can be null
+      cvwCertificates[x][5] = Certificate!notes
+      Inc x
+   Next
+   lblmeasure.font = cvwCertificates.Font   
+   modUtil.Columnview_Columns_Set_Size(cvwCertificates, lblmeasure)
+   
+End
+
+Public Sub Settings_Save()
+   
+   Settings["FClericalMedicalCertificates/HSplit1.Layout"] = HSplit1.Layout
+   
+End
+
+Private Sub Settings_Load()
+   
+   HSplit1.Layout = Settings["FClericalMedicalCertificates/HSplit1.Layout", modUtil.HSplit([1, 1])]
+   cvwCertificates.font = Font[Settings["FClericalMedicalCertificates/cvwCertificates.font", "DejaVu Sans,9"]]
+   
+End
+
+Public Sub cvwCertificates_Menu()
+   
+   If cvwCertificates.count Then
+      mnuCertificates.Popup
+   Endif
+   
+End
+
+Public Sub mnuCertificates_Click()
+   '-------------------------------------------------------
+   'user has clicked on the menu over the certificates list
+   '-------------------------------------------------------   
+   
+   Dim x As Integer
+   
+   Select Case Last.tag
+      Case "print"
+         For x = 0 To cvwCertificates.Selection.count - 1
+            modPrinting.Print_latex(certificates[cvwCertificates.Selection[x]]!latex, const.Paper_Plain, 1)
+         Next
+         cvwCertificates.UnselectAll()
+      Case "font"
+         modUtil.Columnview_SetFont(cvwCertificates, "FClericalMedicalCertificates")
+      Case "help"
+         modUtil.NotImplemented("Help for clerical medical certificates section")
+   End Select 
+Catch
+   Return
+
+End
+
+Public Sub cvwCertificates_Select()
+   
+   cvwCertificates.MoveCurrent()
+   PDF_Form.load_PDF(modPrinting.Latex_To_PDF(certificates[cvwCertificates.Item.Key]!latex), False, False)
+   
+End

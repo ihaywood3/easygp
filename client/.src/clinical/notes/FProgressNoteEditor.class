@@ -17,6 +17,8 @@
 '-----------------------------------------------------------------------
 'Private MiniBMICalc As FBMICalc
 Private CommonCodedTerms As Collection
+Private lvwFavourites_Key As Integer
+Private Favourite_Codes As Collection      'of the clinician's favourite codes e.g could hard to rememember ones or common ones
 Private Templates As Collection
 Public bBold As Boolean
 Public cp1 As Integer
@@ -95,7 +97,8 @@ Public Sub Init(cons As CConsult, notes As String, Optional heading As String, O
    For Each shortcut In dbshortcuts
       Add_Shortcut(shortcut!expanded, shortcut!shortcut, False, False, False)
    Next
-   Common_Coded_Terms_Make_Buttons
+   ' Common_Coded_Terms_Make_Buttons
+   lvwFavourites_Refresh                                   'load the users favourite codes to make data entry easier
    With FTermSelector = New FCodedTermSelector(HBox_Coding)
       .Ignore = False
       .left = 10
@@ -124,24 +127,24 @@ Public Sub Init(cons As CConsult, notes As String, Optional heading As String, O
    
 End
 
-Private Sub Common_Coded_Terms_Make_Buttons()
-   
-   Dim term As Collection
-   Dim bt As ToolButton
-   
-   CommonCodedTerms = modCodingDBI.CommonestTermsGet()
-   For Each term In CommonCodedTerms
-      With bt = New ToolButton(pblCommonCodes)
-         .tag = term
-         .text = term!term
-         lblMeasure.text = .text & "  "
-         .border = True
-         .width = lblmeasure.width
-      End With
-      
-   Next
-   
-End
+' Private Sub Common_Coded_Terms_Make_Buttons()
+'    
+'    Dim term As Collection
+'    Dim bt As ToolButton
+'    
+'    CommonCodedTerms = modCodingDBI.CommonestTermsGet()
+'    For Each term In CommonCodedTerms
+'       With bt = New ToolButton(pblCommonCodes)
+'          .tag = term
+'          .text = term!term
+'          lblMeasure.text = .text & "  "
+'          .border = True
+'          .width = lblmeasure.width
+'       End With
+'       
+'    Next
+'    
+' End
 
 Private Sub Add_Shortcut(text As String, abbrev As String, bold As Boolean, uline As Boolean, section As Boolean)
    
@@ -712,6 +715,8 @@ Public Sub mnuNotes_Click()
       Case "habits"
          Habits_Insert
    End Select
+Catch
+   Return  
    
 End
 
@@ -898,7 +903,7 @@ Public Sub Medications_Insert_List(sMenuText As String)
    If InStr(sMenuText, "today") Then
       medications = FClinical.Prescribed_today_list_get_external()
    Else
-      medications = FClinical.active_medication_list_get_external()
+      medications = modPrescribingDBI.active_medication_list(currentconsult)
    Endif
    
    If Not medications.count Then Return
@@ -934,7 +939,7 @@ Public Sub Medications_Insert_List(sMenuText As String)
 End
 
 Public Sub Templates_ReLoad()
-
+   
    pk_template = 0
    templates = modUtil.LoadCombo(cmbTemplates, modProgressNotes.Templates_Get(), "name")
    cmbTemplates.index = -1
@@ -1203,23 +1208,58 @@ Public Sub Terms_Columnview_dblClick()
    '----------------------------------------------------   
    
    Dim CurrentTerm As Collection
-   Dim coded_diagnosis As New Collection
+   ' Dim coded_diagnosis As New Collection
    
    Stop Event
    FTermSelector.Visible = False
    Last.movecurrent()
    CurrentTerm = FTermSelector.Terms[FTermSelector.columnview1.Item.key]  'BUG HERE
-   coded_diagnosis!fk_progressnote = fk_progressnote
-   coded_diagnosis!fk_code = currenTterm!code
-   coded_diagnosis!fk_coding_system = CurrentTerm!fk_coding_system
-   coded_diagnosis!term = CurrentTerm!term
-   ProgressNotesCodes.Add(coded_diagnosis, ProgressNotesCodes.count)
-   DataChange_Update_Indicators(True)
-   cvwReasonForEncounter_ReLoad()
+   ProgressNotes_Code_Add(CurrentTerm)
+   ' coded_diagnosis!fk_progressnote = fk_progressnote
+   ' coded_diagnosis!fk_code = currenTterm!code
+   ' coded_diagnosis!fk_coding_system = CurrentTerm!fk_coding_system
+   ' coded_diagnosis!term = CurrentTerm!term
+   ' ProgressNotesCodes.Add(coded_diagnosis, ProgressNotesCodes.count)
+   ' DataChange_Update_Indicators(True)
+   ' cvwReasonForEncounter_ReLoad()
    With FTermSelector
       .Visible = False 
       .set_SearchText("")
    End With
+   ' cvwReasonForEncounter.Visible = True
+   ' With txtReasonEncounter
+   '    .Clear()
+   '    .SetFocus()
+   ' End With
+Catch
+   Return 
+   
+End
+
+Public Sub ProgressNotes_Code_Add(CurrentTerm As Collection)
+   '-------------------------------------------------------------
+   'Adds a coded term to progress notes code
+   'Called by Terms_Columnview_dblClick or lvwFavourites_Dblclick
+   '------------------------------------------------------------   
+   
+   Dim coded_diagnosis As New Collection
+   Dim existing_code As Collection 
+   Dim bcodeExists As Boolean
+   'First check this is not duplicated
+   For Each existing_code In ProgressNotesCodes
+      If CurrentTerm!code = existing_code!fk_code Then
+         bcodeExists = True   
+      Endif
+   Next
+   If Not bcodeExists Then
+      coded_diagnosis!fk_progressnote = fk_progressnote
+      coded_diagnosis!fk_code = currentterm!code
+      coded_diagnosis!fk_coding_system = CurrentTerm!fk_coding_system
+      coded_diagnosis!term = CurrentTerm!term
+      ProgressNotesCodes.Add(coded_diagnosis, ProgressNotesCodes.count)
+      DataChange_Update_Indicators(True)
+      cvwReasonForEncounter_ReLoad()
+   End If   
    cvwReasonForEncounter.Visible = True
    With txtReasonEncounter
       .Clear()
@@ -1286,6 +1326,7 @@ End
 Public Sub Form_Resize()
    
    Try FTermSelector.width = Me.Width - 100
+   HSplit_Coding_Buttons_Resize
    
 End
 
@@ -1460,7 +1501,26 @@ Public Sub mnuConsultCodes_Click()
          modUtil.NotImplemented("Help for coding consultations")
       Case "delete"
          ProgessNote_Codes_Delete
+      Case "add to favourites"
+         Code_Add_To_Favourites()    'put in the row if not exist to check not already on the list
    End Select
+Catch
+   Return 
+   
+End
+
+Public Sub Code_Add_To_Favourites()
+   'If doesn't already exist, add to favourites   
+   
+   Dim code As Collection
+   
+   For Each code In Favourite_Codes
+      If code!code = ProgressNotesCodes[cvwReasonForEncounter_key]!fk_code Then
+         Return
+      Endif
+   Next
+   modCodingDBI.Codes_User_Favourite_Save(modDBConnect.currentUser!fk_staff, ProgressNotesCodes[cvwReasonForEncounter_key])
+   lvwFavourites_Refresh 
    
 End
 
@@ -1493,4 +1553,82 @@ Public Sub tbBMIClear_Click()
       .Visible = False  
    End With
    
+End
+
+Public Sub HSplit_Coding_Buttons_Resize()
+   
+   lblCodedFavourites.width = HSplit_Coding_Buttons.Layout[1]
+   
+End
+
+Public Sub lvwFavourites_Refresh()
+   '---------------------------------------------------------------------------- 
+   'Reload the users favourite codes - saves searching e.g for hard to find ones
+   '----------------------------------------------------------------------------
+   
+   Dim favourite As Collection
+   
+   lvwFavourites.clear
+   Favourite_Codes = modUtil.Copy_Collection_Keyed_Sequentially(modCodingDBI.Codes_User_Favourites_Get(modDBConnect.currentUser!fk_staff))
+   For Each favourite In Favourite_Codes
+      lvwFavourites.Add(lvwFavourites.count, favourite!term & " (" & favourite!code & ")")
+   Next
+   
+End
+
+Public Sub lvwFavourites_keypress()
+   
+   If Key.code = Key.return Then
+      lvwFavourites_dblclick
+   Endif
+   
+End
+
+Public Sub lvwFavourites_dblclick()
+   '---------------------------------------------------
+   'Transfer the code to the cvwReasonForEncounter list
+   '---------------------------------------------------
+   
+   lvwFavourites.MoveCurrent
+   ProgressNotes_Code_Add(Favourite_Codes[lvwFavourites.Item.key])
+Catch
+   Return
+   
+End
+
+Public Sub lvwFavourites_Menu()
+   
+   lvwFavourites.MoveCurrent
+   lvwFavourites_Key = lvwFavourites.Item.Key
+   If lvwFavourites.count Then mnuCodeFavourites.Popup
+   
+End
+
+Public Sub mnuCodeFavourites_Click()
+   
+   Dim sMsg As String
+   
+   Select Case Last.tag
+      Case "delete"
+         modCodingDBI.Codes_User_Favourite_Delete(Favourite_Codes[lvwFavourites_Key])
+         lvwFavourites_Refresh
+      Case "use code"
+         If Not modAdminDBI.Has_User_Seen_Tip("FProgressNoteEditor.Favourites") Then 
+            sMsg = "Make coding your consultations quicker and easier.\n\n"
+            "Instead of using the popup menu to select your code, just double click on the item in the favourites list "
+            "and it will be transferred to the coded terms list for your current encounter - "
+            "its much quicker!\n\nYou can also remove codes at any time using the 'Remove' option from the popup menu.\n\n"
+            "You can move favourites on/off the list for example you could put the code  'immunization; influenza(R44003)'"
+            " onto your favourties list just for the duration of the flu season.\n\n"
+            "You could also temporarily put on a term you find hard to remember until you can pull select it easily from the general terms search."
+            With FUsageTip
+               .Init("Using the Favourites Terms List", "FProgressNote.Favourites", sMsg)
+               .ShowModal()
+            End With  
+         End If
+         lvwFavourites_dblclick
+   End Select 
+Catch
+   Return 
+
 End

@@ -83,7 +83,7 @@ def import_restricts(t):
     for drug in xml_pbs_items(t):
         pbscode = drug['code']
         for xmlid in drug['restricts']:
-            if restricts.has_key(xmlid):
+             if restricts.has_key(xmlid):
                 r = restricts[xmlid]
                 streamlined = 'f'
                 if drug['type'] == 'streamlined': streamlined = 't'
@@ -96,16 +96,16 @@ def last_file(g):
 
 def get_xml_etree():
     global release_date
-    f = last_file("sd*.xml")
+    f = last_file("pbs*.xml")
     if not f:
         f = last_file("*.zip")
         if f:
             os.system("unzip -Laq '%s'" % f)
-            f = last_file("sd*.xml")
+            f = last_file("pbs*.xml")
     if f is None:
-        print >>sys.stderr, "can't find pbs-DATE.xml"
-        sys.exit(1)
-    m = re.match('sd-([0-9\-]+)-.*\.xml',f)
+        print >>sys.stderr, "can't find file"
+        sys.exit(0)
+    m = re.match('pbs-([0-9]+-[0-9]+-[0-9]+)-.*\.xml',f)
     release_date = m.group(1)
     return parse(f)
 
@@ -241,6 +241,16 @@ def print_drug(drug,generics):
         print "brand: %s" % b["brand"]
 
 
+def set_original_pbs_names(t):
+    generics = {}
+    for g in xml_generics_brands(t):
+        generics[g["xml:id"]] = g
+    for drug in xml_pbs_items(t):
+        sct =  generics[drug["mpp"]]["sct"]
+        r = query("select * from drugs.product where sct='%s'" % sct)
+        if len(r) > 0:
+            cmd("update drugs.product set original_pbs_name=$$%s$$ where pk='%s'" % (drug["title"],r[0]['pk']))
+            
 # STEP ONE: go through all drugs by SCT and complain on stdout about the ones we can't find
 def import_step1(t):
     generics = {}
@@ -254,7 +264,8 @@ def import_step1(t):
             r = query("select * from drugs.product where original_pbs_name=%s",(drug["title"],))
             if len(r) > 0:
                 print >>sys.stderr, "SCT seems to have changed on %s " % r[0]["original_pbs_name"]
-                cmd("update drugs.product set sct='%s' where sct='%s'" % (generics[drug["mpp"]]["sct"],r[0]["sct"]))
+                cmd("insert into drugs.old_sct (fk_product,sct) values ('%s','%s')" % (r[0]['pk'],r[0]['sct']))
+                cmd("update drugs.product set sct='%s' where pk='%s'" % (generics[drug["mpp"]]["sct"],r[0]["pk"]))
         if len(r) == 0:
             if not sct in already_done:
                 already_done.add(sct)
@@ -303,7 +314,7 @@ def process_step2_line(drug,lineno,sct_done):
             r = query("""
 select * from drugs.product where generic=$$%s$$ and fk_form=%s and strength='%s'""" % (drug['generic'],drug['fk_form'],drug['strength']))
             if len(r) > 0:
-                print >>sys,stderr, "WARNING: SCT %s looks pretty similar to %s" % (r[0]["sct"],drug['sct'])
+                print >>sys.stderr, "WARNING: skipping %s %s %s SCT %s as looks pretty similar to existing SCT %s" % (drug['generic'],drug['form'],drug['strength'],drug['sct'],r[0]["sct"])
             drug["uuid"] = query("select uuid_generate_v4() as uuid")[0]["uuid"]
             cmd("""
 insert into drugs.product (pk,generic,fk_form,free_comment,units_per_pack,pack_size,amount,amount_unit,original_pbs_name, sct, atccode, strength)
@@ -500,6 +511,8 @@ elif cd == 'scts':
     scan_all_scts()
 elif cd == "--help":
     print_help()
+elif cd == 'set_orig_names':
+    set_original_pbs_names(get_xml_etree())
 else:
     print >>sys.stderr,"unknown command: %s" % cd
     print_help()
